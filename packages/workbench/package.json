@@ -9,6 +9,7 @@
     "./adapter": "./src/adapter.ts",
     "./platform": "./src/platform.ts",
     "./theme": "./src/theme.ts",
+    "./settings-window": "./src/settings-window.ts",
     "./*": "./src/*"
   },
   "dependencies": {

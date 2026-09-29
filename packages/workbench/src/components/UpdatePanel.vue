@@ -2,8 +2,11 @@
 import { computed } from 'vue';
 import { Download, LoaderCircle, RefreshCw } from 'lucide-vue-next';
 import { useUpdatesStore } from '../stores/updates';
+import type { SettingsSnapshot } from '../settings-window';
+const props = defineProps<{ remote?: boolean; remoteState?: SettingsSnapshot['updates'] }>();
+const emit = defineEmits<{ activate: [] }>();
 const updates = useUpdatesStore();
-const state = computed(() => updates.state);
+const state = computed(() => props.remoteState ?? updates.state);
 const downloaded = computed(() => (state.value.progress.downloaded / 1024 / 1024).toFixed(1));
 const label = computed(() => {
   switch (state.value.phase) {
@@ -22,6 +25,7 @@ const hint = computed(() =>
 );
 function activate() {
   if (state.value.busy) return;
+  if (props.remote) { emit('activate'); return; }
   if (state.value.phase === 'available') void updates.download();
   else if (state.value.phase === 'ready') void updates.install();
   else void updates.check();

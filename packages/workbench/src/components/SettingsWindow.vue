@@ -1,0 +1,151 @@
+<script setup lang="ts">
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { emitTo, listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import SettingsPanel from './SettingsPanel.vue';
+import UpdatePanel from './UpdatePanel.vue';
+import { useWorkbenchRuntime } from '../runtime';
+import {
+  SETTINGS_COMMAND, SETTINGS_NAVIGATE, SETTINGS_RENDERED, SETTINGS_STATE, settingsWindowRequest,
+} from '../settings-window';
+import type {
+  SettingsAction, SettingsCommand, SettingsPageId, SettingsSnapshot, SettingsValues,
+} from '../settings-window';
+import type { CapabilityPatch } from '../workspace-capabilities';
+import { applyTheme } from '../theme';
+
+const request = settingsWindowRequest()!;
+const extensions = useWorkbenchRuntime().extensions?.();
+const snapshot = ref<SettingsSnapshot | null>(null);
+const page = ref<SettingsPageId>(request.page);
+const error = ref('');
+const unlisten: Array<() => void> = [];
+let mounted = false;
+let rendered = false;
+
+async function send(command: SettingsCommand) {
+  try {
+    await emitTo(request.opener, SETTINGS_COMMAND, command);
+  } catch (cause) {
+    error.value = `无法与工作台通信：${String(cause)}`;
+  }
+}
+
+function change(key: keyof SettingsValues, value: SettingsValues[keyof SettingsValues]) {
+  if (snapshot.value) snapshot.value = { ...snapshot.value, [key]: value };
+  if (key === 'theme') applyTheme(value as SettingsValues['theme']);
+  void send({ type: 'change', key, value });
+}
+
+async function action(value: SettingsAction) {
+  await send({ type: 'action', value });
+  if (!error.value) await getCurrentWindow().close();
+}
+
+function dragWindow(event: MouseEvent) {
+  if (event.button === 0 && event.detail === 1) void getCurrentWindow().startDragging();
+}
+
+onMounted(async () => {
+  mounted = true;
+  const appWindow = getCurrentWindow();
+  const closeListener = await appWindow.onCloseRequested(event => {
+    event.preventDefault();
+    void appWindow.hide();
+  });
+  if (!mounted) { closeListener(); return; }
+  unlisten.push(closeListener);
+  const stateListener = await listen<SettingsSnapshot>(SETTINGS_STATE, async event => {
+    snapshot.value = event.payload;
+    applyTheme(event.payload.theme);
+    if (!rendered) {
+      await nextTick();
+      rendered = true;
+      void emitTo(request.opener, SETTINGS_RENDERED, { label: appWindow.label }).catch(() => {});
+    }
+  });
+  if (!mounted) { stateListener(); return; }
+  unlisten.push(stateListener);
+  const navigationListener = await listen<SettingsPageId>(SETTINGS_NAVIGATE, event => {
+    page.value = event.payload;
+  });
+  if (!mounted) { navigationListener(); return; }
+  unlisten.push(navigationListener);
+  await send({ type: 'ready' });
+});
+
+onBeforeUnmount(() => {
+  mounted = false;
+  for (const stop of unlisten) stop();
+  void extensions?.disconnect().catch(() => {});
+});
+</script>
+
+<template>
+  <div v-if="!snapshot" class="settings-window-loading" role="status">正在打开设置…</div>
+  <SettingsPanel
+    v-else
+    :key="page"
+    windowed
+    :workspace="snapshot.workspace"
+    :extra-pages="extensions?.settingsPages"
+    :mode="snapshot.mode"
+    :native="true"
+    :mobile="false"
+    :default-source="snapshot.defaultSource"
+    :theme="snapshot.theme"
+    :visual-font-choice="snapshot.visualFontChoice"
+    :custom-font-name="snapshot.customFontName"
+    :reveal-markdown="snapshot.revealMarkdown"
+    :show-page-title="snapshot.showPageTitle"
+    :visual-font-size="snapshot.visualFontSize"
+    :source-font-size="snapshot.sourceFontSize"
+    :history-enabled="snapshot.historyEnabled"
+    :capabilities="snapshot.capabilities"
+    :version="snapshot.version"
+    :initial-page="page"
+    :editor-preferences="snapshot.editorPreferences"
+    :capability-error="snapshot.capabilityError"
+    :capability-saving="snapshot.capabilitySaving"
+    @close="getCurrentWindow().close()"
+    @drag-window="dragWindow"
+    @update:default-source="change('defaultSource', $event)"
+    @update:theme="change('theme', $event)"
+    @update:visual-font-choice="change('visualFontChoice', $event)"
+    @update:custom-font-name="change('customFontName', $event)"
+    @update:reveal-markdown="change('revealMarkdown', $event)"
+    @update:show-page-title="change('showPageTitle', $event)"
+    @update:visual-font-size="change('visualFontSize', $event)"
+    @update:source-font-size="change('sourceFontSize', $event)"
+    @update:editor-preferences="change('editorPreferences', $event)"
+    @capability="send({ type: 'capability', value: $event as CapabilityPatch })"
+    @action="action"
+  >
+    <template #update-panel>
+      <UpdatePanel remote :remote-state="snapshot.updates" @activate="send({ type: 'update' })" />
+    </template>
+  </SettingsPanel>
+  <p v-if="error" class="settings-window-error" role="alert">{{ error }}</p>
+</template>
+
+<style>
+.settings-window-loading {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  color: var(--muted);
+  background: var(--paper);
+}
+.settings-window-error {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 100;
+  max-width: 440px;
+  padding: 12px;
+  border: 1px solid var(--warning);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--warning);
+}
+</style>

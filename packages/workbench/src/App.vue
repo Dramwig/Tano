@@ -126,6 +126,11 @@ import type { ThemePreference } from './theme';
 import { parseVisualFontChoice, sanitizeCustomFontName, visualFontFamily } from './editor-font';
 import type { VisualFontChoice } from './editor-font';
 import { emitTo, listen } from '@tauri-apps/api/event';
+import {
+  SETTINGS_COMMAND, SETTINGS_NAVIGATE, SETTINGS_STATE, closeSettingsWindow, openSettingsWindow,
+  prewarmSettingsWindow, settingsWindowLabel,
+} from './settings-window';
+import type { SettingsCommand, SettingsPageId, SettingsSnapshot } from './settings-window';
 
 const store = useWorkspaceStore();
 const detachedWindow = native && !mobile && !!detachedTabRequest();
@@ -1523,11 +1528,76 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
     settled?.();
   }
 }
-function openSettings(page: 'preferences' | 'appearance' | 'editing' | 'workspace' | 'about' = 'appearance') {
+const settingsSnapshot = computed<SettingsSnapshot>(() => ({
+  workspace: workspace.value ? {
+    name: workspace.value.name, path: workspace.value.path, readOnly: workspace.value.readOnly,
+  } : null,
+  mode: store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local',
+  defaultSource: defaultSource.value,
+  theme: theme.value,
+  visualFontChoice: visualFontChoice.value,
+  customFontName: customFontName.value,
+  revealMarkdown: revealMarkdown.value,
+  showPageTitle: showPageTitle.value,
+  visualFontSize: visualFontSize.value,
+  sourceFontSize: sourceFontSize.value,
+  editorPreferences: editorPreferences.value,
+  historyEnabled: !!extensions.historyEnabled,
+  capabilities: store.capabilities,
+  capabilityError: store.capabilityError,
+  capabilitySaving: store.capabilitySaving,
+  version: updates.state.status?.currentVersion ?? appVersion,
+  updates: updates.state,
+}));
+let settingsWindowVisible = false;
+let requestedSettingsPage: SettingsPageId = 'appearance';
+async function syncSettingsWindow() {
+  if (!settingsWindowVisible) return;
+  try {
+    await emitTo(settingsWindowLabel(), SETTINGS_STATE, settingsSnapshot.value);
+  } catch {
+    settingsWindowVisible = false;
+  }
+}
+watch(settingsSnapshot, () => { void syncSettingsWindow(); }, { deep: true });
+
+function openSettings(page: SettingsPageId = 'appearance') {
   menu.value = false;
   workspaceMenu.value = false;
+  if (native && !mobile) {
+    requestedSettingsPage = page;
+    void openSettingsWindow(page).then(() => { settingsWindowVisible = true; }).catch(store.report);
+    return;
+  }
   settingsPage.value = page === 'preferences' ? 'appearance' : page;
   settingsPanel.value = true;
+}
+function handleSettingsCommand(command: SettingsCommand) {
+  if (command.type === 'ready') {
+    settingsWindowVisible = true;
+    void syncSettingsWindow();
+    void emitTo(settingsWindowLabel(), SETTINGS_NAVIGATE, requestedSettingsPage).catch(store.report);
+    return;
+  }
+  if (command.type === 'capability') { void store.updateCapabilities(command.value); return; }
+  if (command.type === 'action') { settingsAction(command.value); return; }
+  if (command.type === 'update') {
+    if (updates.state.phase === 'available') void updates.download();
+    else if (updates.state.phase === 'ready') void updates.install();
+    else void updates.check();
+    return;
+  }
+  switch (command.key) {
+    case 'defaultSource': defaultSource.value = command.value as boolean; break;
+    case 'theme': theme.value = command.value as typeof theme.value; break;
+    case 'visualFontChoice': visualFontChoice.value = command.value as typeof visualFontChoice.value; break;
+    case 'customFontName': customFontName.value = command.value as string; break;
+    case 'revealMarkdown': revealMarkdown.value = command.value as boolean; break;
+    case 'showPageTitle': showPageTitle.value = command.value as boolean; break;
+    case 'visualFontSize': visualFontSize.value = command.value as number; break;
+    case 'sourceFontSize': sourceFontSize.value = command.value as number; break;
+    case 'editorPreferences': editorPreferences.value = command.value as typeof editorPreferences.value; break;
+  }
 }
 function settingsAction(
   action: 'open-folder' | 'switch-mode' | 'reveal' | 'agent' | 'history' | 'recycle' | 'backup' | 'export' | 'import' | 'sign-out',
@@ -1853,6 +1923,8 @@ let unlistenWatchError: (() => void) | undefined;
 let unlistenBackupError: (() => void) | undefined;
 let unlistenTabTransfer: (() => void) | undefined;
 let unlistenTabRollback: (() => void) | undefined;
+let unlistenSettingsCommand: (() => void) | undefined;
+let settingsPrewarmTimer: number | undefined;
 onMounted(async () => {
   if (!detachedWindow) window.addEventListener('keydown', handleSidebarShortcut, true);
   window.addEventListener('keydown', keydown);
@@ -1869,6 +1941,9 @@ onMounted(async () => {
   document.addEventListener('visibilitychange', mobileVisibility);
   await store.initialize();
   if (native && !mobile) {
+    unlistenSettingsCommand = await listen<SettingsCommand>(SETTINGS_COMMAND, ({ payload }) => {
+      handleSettingsCommand(payload);
+    });
     unlistenTabTransfer = await listen<TabTransferRequest>(TAB_TRANSFER_REQUEST, ({ payload }) => {
       void acceptTabTransfer(payload).catch(store.report);
     });
@@ -1884,7 +1959,12 @@ onMounted(async () => {
       );
     await reportDetachedReady(opened ? undefined : '独立窗口未能打开所选标签页');
   }
-  if (native && !mobile && !detachedWindow) void updates.initialize();
+  if (native && !mobile && !detachedWindow) {
+    void updates.initialize();
+    settingsPrewarmTimer = window.setTimeout(() => {
+      void prewarmSettingsWindow().catch(() => {});
+    }, 800);
+  }
   if (native) {
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
     if (localNative)
@@ -1899,9 +1979,14 @@ onMounted(async () => {
       unlistenClose = await getCurrentWindow().onCloseRequested(async (event) => {
         event.preventDefault();
         if (updates.state.phase === 'installing') return;
+        if (settingsPrewarmTimer !== undefined) {
+          window.clearTimeout(settingsPrewarmTimer);
+          settingsPrewarmTimer = undefined;
+        }
         try {
           if (await store.flush()) {
             await editing.suspendAll();
+            await closeSettingsWindow();
             await getCurrentWindow().destroy();
           } else store.report('还有未保存的内容，窗口已保留。请先保存或另存副本。');
         } catch (error) {
@@ -1933,6 +2018,8 @@ onBeforeUnmount(() => {
   unlistenBackupError?.();
   unlistenTabTransfer?.();
   unlistenTabRollback?.();
+  unlistenSettingsCommand?.();
+  if (settingsPrewarmTimer !== undefined) window.clearTimeout(settingsPrewarmTimer);
   for (const pending of transferRollback.values()) clearTimeout(pending.timer);
   transferRollback.clear();
   store.dispose();

@@ -41,7 +41,8 @@ type Action =
   'open-folder' | 'switch-mode' | 'reveal' | 'agent' | 'history' | 'recycle' | 'backup' | 'export' | 'import' | 'sign-out';
 
 const props = defineProps<{
-  workspace: Workspace | null;
+  workspace: Pick<Workspace, 'name' | 'path' | 'readOnly'> | null;
+  windowed?: boolean;
   extraPages?: SettingsPage[];
   mode: 'demo' | 'web' | 'local';
   native: boolean;
@@ -64,6 +65,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   close: [];
+  'drag-window': [event: MouseEvent];
   'update:defaultSource': [value: boolean];
   'update:theme': [value: ThemePreference];
   'update:visualFontChoice': [value: VisualFontChoice];
@@ -204,14 +206,20 @@ function customFontInput(event: Event) {
 </script>
 
 <template>
-  <div class="modal-backdrop settings-backdrop" @mousedown.self="emit('close')">
+  <div class="modal-backdrop settings-backdrop" :class="{ 'settings-windowed': windowed }" @mousedown.self="!windowed && emit('close')">
     <section
       class="settings-dialog"
       role="dialog"
-      aria-modal="true"
+      :aria-modal="!windowed"
       aria-labelledby="settings-title"
       @keydown="keydown"
     >
+      <div
+        v-if="windowed"
+        class="settings-window-drag-region"
+        aria-hidden="true"
+        @mousedown="emit('drag-window', $event)"
+      />
       <aside class="settings-nav" aria-label="设置分类">
         <label class="settings-search">
           <Search :size="16" />
@@ -691,7 +699,7 @@ function customFontInput(event: Event) {
               <h3>Tano <span>/ 同页</span></h3>
               <div class="settings-brand-actions">
                 <span class="settings-version-pill">{{ version }}</span>
-                <UpdatePanel v-if="native && !mobile" />
+                <slot v-if="native && !mobile" name="update-panel"><UpdatePanel /></slot>
               </div>
             </div>
             <p class="settings-about-slogan">Humans and agents, on the same page.</p>
@@ -1537,5 +1545,33 @@ function customFontInput(event: Event) {
   .settings-dialog *::before {
     transition: none;
   }
+}
+.modal-backdrop.settings-backdrop.settings-windowed {
+  padding: 0;
+  background: var(--paper);
+  backdrop-filter: none;
+}
+.settings-windowed .settings-dialog {
+  width: 100%;
+  height: 100dvh;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.settings-window-drag-region {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 1;
+  height: 24px;
+  cursor: grab;
+  user-select: none;
+}
+.settings-window-drag-region:active {
+  cursor: grabbing;
+}
+.settings-windowed .settings-close {
+  z-index: 2;
 }
 </style>
