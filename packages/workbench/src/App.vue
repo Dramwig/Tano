@@ -470,7 +470,7 @@ watch(defaultSource, (value) => {
 });
 watch(revealMarkdown, (value) => savePreference('revealMarkdown', value));
 const modal = ref<
-  '' | 'newTab' | 'document' | 'folder' | 'rename' | 'search' | 'delete' | 'saveAs' | 'workspace'
+  '' | 'newTab' | 'rename' | 'search' | 'delete' | 'saveAs' | 'workspace'
 >('');
 const modalTarget = ref<FileEntry | null>(null);
 const modalDeleteEntries = ref<FileEntry[]>([]);
@@ -863,7 +863,7 @@ function directoryContextAction(action: 'document' | 'folder') {
     ? workspace.value?.files.find((entry) => entry.kind === 'directory' && entry.path === parent)
     : undefined;
   if (parent && !target) return;
-  showModal(action, target);
+  void createNewEntry(action, parent);
 }
 function closePageContextMenu() {
   pageContextMenu.value = null;
@@ -1128,6 +1128,10 @@ async function fileContextAction(
     await removeDocument(file);
     return;
   }
+  if (action === 'document' || action === 'folder') {
+    await createNewEntry(action, file.path);
+    return;
+  }
   showModal(action, file);
 }
 function fileContextKeydown(event: KeyboardEvent) {
@@ -1313,8 +1317,6 @@ const activeTitle = computed(() =>
 const modalTitle = computed(() => {
   const titles = {
     newTab: '打开文件',
-    document: '新建文档',
-    folder: '新建文件夹',
     rename:
       modalTarget.value?.kind === 'directory'
         ? '重命名文件夹'
@@ -1333,7 +1335,7 @@ function showModal(kind: Exclude<typeof modal.value, ''>, target?: FileEntry) {
   if (
     store.busy ||
     (workspace.value?.readOnly &&
-      ['document', 'folder', 'rename', 'delete', 'saveAs'].includes(kind))
+      ['rename', 'delete', 'saveAs'].includes(kind))
   )
     return;
   menu.value = false;
@@ -1358,9 +1360,7 @@ function showModal(kind: Exclude<typeof modal.value, ''>, target?: FileEntry) {
       ? (target?.path ?? active.value?.path ?? '')
       : kind === 'saveAs'
         ? (active.value?.path.replace(/\.(md|markdown)$/i, '-副本.md') ?? '')
-        : (kind === 'folder' || kind === 'document') && target?.kind === 'directory'
-          ? `${target.path}/`
-          : '';
+        : '';
   modal.value = kind;
   void nextTick(() => {
     inputEl.value?.focus();
@@ -1390,12 +1390,21 @@ async function removeDocument(target?: FileEntry) {
   await removeDocuments(entries);
 }
 async function createNewDocument() {
+  await createNewEntry('document');
+}
+async function createNewEntry(kind: 'document' | 'folder', parent = '') {
   if (store.busy || workspace.value?.readOnly || updateLock.value) return;
   menu.value = false;
   workspaceMenu.value = false;
+  fileContextMenu.value = null;
+  directoryContextMenu.value = null;
   modal.value = '';
   try {
-    await store.createUntitledDocument();
+    if (kind === 'folder') {
+      await store.createUntitledFolder(parent);
+      return;
+    }
+    await store.createUntitledDocument(parent);
     if (window.innerWidth <= 700) sidebar.value = false;
     await nextTick();
     for (let attempt = 0; attempt < 10; attempt++) {
@@ -1692,7 +1701,6 @@ async function submitModal() {
     } else {
       let path = input.value.trim();
       if (
-        kind !== 'folder' &&
         !(
           kind === 'rename' &&
           modalTarget.value &&
@@ -1707,7 +1715,6 @@ async function submitModal() {
       if (kind === 'rename' && modalTarget.value) await store.renameEntry(modalTarget.value, path);
       else if (kind === 'rename' && active.value) await store.rename(active.value, path);
       else if (kind === 'saveAs' && active.value) await store.saveCopy(active.value, path);
-      else await store.create(path, kind === 'folder');
     }
     modal.value = '';
   } catch (e) {
@@ -3435,19 +3442,17 @@ watch(activeId, () => {
           ><template v-else
             ><p class="modal-description">
               {{
-                modal === 'folder'
-                  ? '给新的想法留一个位置。'
-                  : modal === 'rename'
-                    ? '更换名称，文件的身份保持不变。'
-                    : modal === 'saveAs'
-                      ? '把当前编辑内容保存为独立的 Markdown 文件。'
-                      : '从一个名字开始，把想法留在这一页。'
+                modal === 'rename'
+                  ? '更换名称，文件的身份保持不变。'
+                  : modal === 'saveAs'
+                    ? '把当前编辑内容保存为独立的 Markdown 文件。'
+                    : '从一个名字开始，把想法留在这一页。'
               }}
             </p>
             <label for="file-name">{{
               modal === 'workspace'
                 ? '工作空间名称'
-                : modal === 'folder' || (modal === 'rename' && modalTarget?.kind === 'directory')
+                : modal === 'rename' && modalTarget?.kind === 'directory'
                   ? '文件夹路径'
                   : modal === 'rename' && modalTarget && !isMarkdown(modalTarget.path)
                     ? '文件路径'
@@ -3460,7 +3465,7 @@ watch(activeId, () => {
               :placeholder="
                 modal === 'workspace'
                   ? '例如：研究笔记'
-                  : modal === 'folder'
+                  : modal === 'rename' && modalTarget?.kind === 'directory'
                     ? '例如：灵感'
                     : '例如：我的新想法.md'
               "
@@ -3504,9 +3509,7 @@ watch(activeId, () => {
                       ? '保存名称'
                       : modal === 'workspace'
                         ? '创建空间'
-                        : modal === 'folder'
-                          ? '创建文件夹'
-                          : '创建文档'
+                        : '创建文档'
               }}<ArrowRight v-if="!modalBusy" :size="16" />
             </button>
           </div>

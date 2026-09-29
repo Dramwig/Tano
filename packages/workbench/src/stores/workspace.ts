@@ -1017,16 +1017,26 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   ) {
     await serial(() => createInternal(path, folder, content, expectedWorkspaceId));
   }
-  async function createUntitledDocument() {
+  async function createUntitledEntry(parent: string, folder: boolean) {
     await serial(async () => {
       writable();
       if (!workspace.value) throw new Error('请先打开一个工作空间');
       workspace.value = await adapter.refresh();
-      const paths = new Set(workspace.value.files.map((file) => file.path.toLowerCase()));
-      let path = '新建文档.md';
-      for (let index = 2; paths.has(path.toLowerCase()); index++) path = `新建文档 ${index}.md`;
-      await createInternal(path);
+      if (parent && !workspace.value.files.some((file) => file.kind === 'directory' && file.path === parent))
+        throw new Error('目标文件夹不存在，请重新选择后重试');
+      const paths = new Set(workspace.value.files.map((file) => pathKey(file.path)));
+      const prefix = `${parent ? `${parent}/` : ''}${folder ? '新建文件夹' : '新建文档'}`;
+      const extension = folder ? '' : '.md';
+      let path = `${prefix}${extension}`;
+      for (let index = 2; paths.has(pathKey(path)); index++) path = `${prefix} ${index}${extension}`;
+      await createInternal(path, folder);
     });
+  }
+  async function createUntitledDocument(parent = '') {
+    await createUntitledEntry(parent, false);
+  }
+  async function createUntitledFolder(parent = '') {
+    await createUntitledEntry(parent, true);
   }
   async function renameEntry(file: Pick<FileEntry, 'id' | 'path' | 'kind'>, path: string) {
     writable();
@@ -1399,6 +1409,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       ),
     create,
     createUntitledDocument,
+    createUntitledFolder,
     saveCopy,
     rename,
     renameEntry,

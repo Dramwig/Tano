@@ -645,6 +645,41 @@ describe('workspace file reconciliation', () => {
     expect(store.active!.path).toBe('新建文档 2.md');
   });
 
+  it('creates untitled entries in the selected folder and rejects a missing parent', async () => {
+    await backend.createFolder('资料');
+    await store.createUntitledDocument('资料');
+    expect(store.active!.path).toBe('资料/新建文档.md');
+    expect(store.active!.content).toBe('');
+    await store.createUntitledFolder('资料');
+    expect(backend.folders.has('资料/新建文件夹')).toBe(true);
+    expect(store.active!.path).toBe('资料/新建文档.md');
+    await store.createUntitledFolder();
+    expect(backend.folders.has('新建文件夹')).toBe(true);
+    await expect(store.createUntitledDocument('已删除')).rejects.toThrow('目标文件夹不存在');
+    await expect(store.createUntitledFolder('已删除')).rejects.toThrow('目标文件夹不存在');
+    expect(backend.files.has('已删除/新建文档.md')).toBe(false);
+    expect(backend.folders.has('已删除/新建文件夹')).toBe(false);
+  });
+
+  it('avoids fresh file and folder collisions when untitled entries are created repeatedly', async () => {
+    await backend.create('新建文档.MD', 'existing document');
+    await backend.createFolder('新建文档 2.md');
+    await backend.create('新建文件夹', 'existing attachment');
+    await backend.createFolder('新建文件夹 2');
+    await Promise.all([
+      store.createUntitledDocument(),
+      store.createUntitledDocument(),
+      store.createUntitledFolder(),
+      store.createUntitledFolder(),
+    ]);
+    expect(backend.files.has('新建文档 3.md')).toBe(true);
+    expect(backend.files.has('新建文档 4.md')).toBe(true);
+    expect(backend.folders.has('新建文件夹 3')).toBe(true);
+    expect(backend.folders.has('新建文件夹 4')).toBe(true);
+    expect((await backend.read('新建文档.MD')).content).toBe('existing document');
+    expect((await backend.read('新建文件夹')).content).toBe('existing attachment');
+  });
+
   it('refreshes filename conflicts before rename and preserves both files', async () => {
     await backend.create('TAKEN.md', 'other content');
     await expect(store.rename(store.active!, 'taken.md')).rejects.toThrow('已经存在一个同名文件');
