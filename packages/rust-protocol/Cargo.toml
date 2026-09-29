@@ -1,0 +1,17 @@
+[package]
+name = "tano-page"
+version = "0.1.0-alpha.2"
+edition = "2021"
+rust-version = "1.70"
+description = "Tano Markdown workspace protocol helpers: content hashes, short IDs and portable path classification."
+authors = ["Zixi Wang"]
+license = "MIT"
+readme = "README.md"
+keywords = ["tano", "markdown", "workspace", "protocol"]
+categories = ["filesystem"]
+include = ["src/**", "README.md", "LICENSE", "Cargo.toml", "Cargo.lock"]
+
+[dependencies]
+sha2 = "0.10"
+
+[workspace]

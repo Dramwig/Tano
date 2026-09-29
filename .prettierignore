@@ -1,0 +1,6 @@
+node_modules
+dist
+target
+package-lock.json
+apps/client/src-tauri/gen
+apps/client/src-tauri/icons

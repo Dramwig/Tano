@@ -1,0 +1,48 @@
+{
+  "name": "tano",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @tano/client",
+    "build": "npm run build -w @tano/client",
+    "desktop": "npm run tauri -w @tano/client -- dev",
+    "desktop:build": "npm run tauri -w @tano/client -- build",
+    "desktop:release": "node scripts/release-desktop.mjs",
+    "version:set": "node scripts/version.mjs set",
+    "version:check": "node scripts/version.mjs check",
+    "updater:manifest": "node scripts/updater-manifest.mjs",
+    "android:init": "npm run tauri -w @tano/client -- android init",
+    "android:build": "npm run tauri -w @tano/client -- android build",
+    "android:dev": "npm run tauri -w @tano/client -- android dev",
+    "test:android": "node scripts/android-native-tests.mjs",
+    "test:android:lifecycle": "powershell -NoProfile -File scripts/android-lifecycle-smoke.ps1",
+    "bench:native": "node scripts/benchmark-native.mjs",
+    "test:cross-volume": "node scripts/cross-volume-native.mjs",
+    "ios:init": "npm run tauri -w @tano/client -- ios init --ci",
+    "ios:build": "npm run tauri -w @tano/client -- ios build --ci",
+    "typecheck": "npm run typecheck -w @tano/client && npm run typecheck -w @tano/mcp",
+    "test": "vitest run --maxWorkers=2",
+    "test:native": "node scripts/test-native.mjs",
+    "check": "npm run version:check && npm run typecheck && npm test && npm run build && npm run mcp:build && npm run docs:check && npm run boundary:check",
+    "mcp:build": "npm run build -w @tano/mcp",
+    "mcp:start": "npm run start -w @tano/mcp",
+    "mcp:smoke": "node scripts/mcp-smoke.mjs",
+    "docs:check": "node scripts/check-doc-links.mjs",
+    "core:export": "npm run mcp:build && node scripts/export-core.mjs",
+    "boundary:check": "node scripts/check-boundaries.mjs",
+    "notices:generate": "node scripts/generate-notices.mjs"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.8",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=24.12"
+  },
+  "license": "MIT"
+}

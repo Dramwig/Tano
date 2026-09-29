@@ -1,0 +1,72 @@
+name: Tano checks
+run-name: Tano checks ${{ github.ref }}
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'core-v*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/client/src-tauri
+      - run: npm ci
+      - name: Match Core tag and version
+        if: github.ref_type == 'tag'
+        run: npm run version:check -- --tag $env:GITHUB_REF_NAME
+      - run: npm run check
+      - run: npm run mcp:smoke
+      - run: cargo fmt --manifest-path crates/tano-native/Cargo.toml --check
+      - run: cargo fmt --manifest-path apps/client/src-tauri/Cargo.toml --check
+      - run: npm run test:native
+      - run: npm run desktop:build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tano-windows-x64
+          path: apps/client/src-tauri/target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+
+  desktop-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libwebkit2gtk-4.1-dev libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev patchelf libfuse2t64 xvfb
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/client/src-tauri
+      - run: npm ci
+      - run: npm run build && npm run mcp:build
+      - run: xvfb-run -a npm run test:native
+      - run: npm run desktop:build
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tano-linux-x64
+          path: |
+            apps/client/src-tauri/target/release/bundle/deb/*.deb
+            apps/client/src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error

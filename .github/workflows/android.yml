@@ -1,0 +1,64 @@
+name: Android build
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'core-v*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: sdkmanager "platforms;android-36" "build-tools;35.0.0" "build-tools;36.0.0" "ndk;28.2.13676358"
+      - run: echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/client/src-tauri
+          key: android
+      - run: npm ci
+      - run: npm run docs:check
+      - name: Enable KVM for the test emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          script: npm run test:android
+      - run: npm run android:init -- --ci --skip-targets-install
+      - run: npm run android:build -- --debug --apk --target aarch64 --ci
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tano-android-arm64-debug
+          path: apps/client/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tano-android-native-test-results
+          path: artifacts/android-native-tests.log

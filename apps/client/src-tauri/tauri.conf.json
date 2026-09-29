@@ -1,0 +1,60 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tano Local",
+  "version": "0.1.0",
+  "identifier": "app.tano.local",
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "requireSignedVersion": true
+    }
+  },
+  "build": {
+    "beforeDevCommand": "npm run build -w @tano/mcp && npm run dev -- --port 43842",
+    "devUrl": "http://127.0.0.1:43842",
+    "beforeBuildCommand": "npm run build -w @tano/mcp && npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Tano / 同页",
+        "width": 1440,
+        "height": 940,
+        "minWidth": 800,
+        "minHeight": 580,
+        "decorations": false,
+        "dragDropEnabled": false,
+        "backgroundColor": "#f7f7f2"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' tano-asset: http://tano-asset.localhost https: data: blob:; connect-src ipc: http://ipc.localhost https: wss: http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "windows": {
+      "nsis": {
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
+        "displayLanguageSelector": true,
+        "installMode": "currentUser"
+      }
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../../mcp/dist/tano-mcp.cjs": "mcp/tano-mcp.cjs",
+      "../public/THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt"
+    }
+  }
+}

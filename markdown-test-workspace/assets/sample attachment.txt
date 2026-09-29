@@ -1,0 +1,2 @@
+Tano local attachment test file.
+Use it to check links, file cards, export, and spaces in resource paths.

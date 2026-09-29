@@ -1,0 +1,39 @@
+{
+  "name": "@tano/workbench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/App.vue",
+    "./runtime": "./src/runtime.ts",
+    "./adapter": "./src/adapter.ts",
+    "./platform": "./src/platform.ts",
+    "./theme": "./src/theme.ts",
+    "./*": "./src/*"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.13",
+    "@fontsource-variable/inter": "^5.3.0",
+    "@tano/editor": "0.1.0",
+    "@tano/markdown": "0.1.0",
+    "@tano/protocol": "0.1.0",
+    "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/plugin-dialog": "^2.4.0",
+    "d3-force": "^3.0.0",
+    "lucide-vue-next": "^0.468.0"
+  },
+  "license": "MIT",
+  "files": [
+    "src",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "pinia": "^3.0.3",
+    "vue": "^3.5.22"
+  },
+  "devDependencies": {
+    "@types/d3-force": "^3.0.10"
+  }
+}

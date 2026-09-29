@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "targets": ["deb", "appimage"],
+    "category": "Productivity",
+    "shortDescription": "Humans and agents, on the same page.",
+    "longDescription": "Tano is a local-first Markdown workspace for humans and agents, with local files, search, recovery and MCP integration."
+  }
+}
