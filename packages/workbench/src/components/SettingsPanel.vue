@@ -12,9 +12,12 @@ import {
   FolderOpen,
   History,
   LogOut,
+  Minus,
   Monitor,
+  Palette,
+  PencilLine,
+  Plus,
   Search,
-  Settings2,
   Trash2,
   UserRound,
   X,
@@ -101,15 +104,22 @@ const displayOptions = [
 const search = ref('');
 const searchInput = ref<HTMLInputElement>();
 const mainContent = ref<HTMLElement>();
-const page = ref<Page>(props.initialPage ?? 'preferences');
+const page = ref<Page>(props.initialPage === 'preferences' ? 'appearance' : props.initialPage ?? 'appearance');
 const originalFocus = document.activeElement as HTMLElement | null;
 const pages = [
   {
-    id: 'preferences',
-    label: '偏好设置',
+    id: 'appearance',
+    label: '外观设置',
     group: '个人偏好',
-    icon: Settings2,
-    terms: '外观 主题 白天 黑夜 深色 浅色 跟随系统 字体 系统字体 衬线字体 自定义字体 编辑器 Markdown 源码 默认编辑模式 光标 语法 展开 编辑 Reveal 数学 公式 KaTeX 标题 列表 折叠 字号 字体大小',
+    icon: Palette,
+    terms: '外观 主题 白天 黑夜 深色 浅色 跟随系统 字体 系统字体 衬线字体 等宽字体 Mono Maple 自定义字体 字号 字体大小 页面内标题',
+  },
+  {
+    id: 'editing',
+    label: '编辑设置',
+    group: '个人偏好',
+    icon: PencilLine,
+    terms: '编辑器 Markdown 源码 默认编辑模式 光标 语法 展开 编辑 Reveal 数学 公式 KaTeX 标题 列表 折叠',
   },
   {
     id: 'workspace',
@@ -203,7 +213,6 @@ function customFontInput(event: Event) {
       @keydown="keydown"
     >
       <aside class="settings-nav" aria-label="设置分类">
-        <div class="settings-nav-heading">设置</div>
         <label class="settings-search">
           <Search :size="16" />
           <input
@@ -263,15 +272,15 @@ function customFontInput(event: Event) {
           <h2 id="settings-title">搜索设置</h2>
           <p class="settings-lead">没有找到相关设置，请尝试其他关键词。</p>
         </div>
-        <div v-else-if="page === 'preferences'" class="settings-content">
+        <div v-else-if="page === 'appearance' || page === 'editing'" class="settings-content">
           <div class="settings-title-line">
-            <h2 id="settings-title">偏好设置</h2>
+            <h2 id="settings-title">{{ page === 'appearance' ? '外观设置' : '编辑设置' }}</h2>
             <div class="settings-page-scope" role="note" tabindex="0" :aria-label="scopeLabel">
               <Monitor :size="13" /><span>{{ scopeLabel }}</span>
             </div>
           </div>
-          <p class="settings-lead">适用于这台设备上的所有工作区，仅影响你的编辑体验。</p>
-          <section class="settings-section" aria-label="外观">
+          <p class="settings-lead">适用于这台设备上的所有工作区，仅影响你的{{ page === 'appearance' ? '显示效果' : '编辑体验' }}。</p>
+          <section v-if="page === 'appearance'" class="settings-section" aria-label="外观">
             <h3>外观</h3>
             <div class="settings-card">
               <div class="settings-row">
@@ -291,7 +300,7 @@ function customFontInput(event: Event) {
               </div>
             </div>
           </section>
-          <section class="settings-section" aria-labelledby="settings-editor">
+          <section v-if="page === 'editing'" class="settings-section" aria-labelledby="settings-editor">
             <h3 id="settings-editor">编辑器</h3>
             <div class="settings-card">
               <div class="settings-row">
@@ -332,9 +341,9 @@ function customFontInput(event: Event) {
               </div>
             </div>
           </section>
-          <section class="settings-section" aria-label="编辑字体">
-            <h3>编辑字体</h3>
-            <div class="settings-card">
+          <section v-if="page === 'appearance'" class="settings-section" aria-label="编辑字体与字号">
+            <h3>编辑字体与字号</h3>
+            <div class="settings-card settings-font-card">
               <div class="settings-row">
                 <div>
                   <strong>可视化编辑字体</strong>
@@ -347,6 +356,7 @@ function customFontInput(event: Event) {
                 >
                   <option value="system">系统字体</option>
                   <option value="serif">衬线字体</option>
+                  <option value="mono">等宽字体</option>
                   <option value="custom">自定义字体</option>
                 </select>
               </div>
@@ -365,18 +375,9 @@ function customFontInput(event: Event) {
                   @input="customFontInput"
                 />
               </div>
-              <div class="settings-font-preview" :style="{ fontFamily: visualFontFamily(visualFontChoice, customFontName) }">
-                在同一页写下新的想法。 Tano 123
-              </div>
-            </div>
-            <p class="settings-local-note">仅影响可视化编辑和页面内标题；Markdown 源码保持等宽字体。</p>
-          </section>
-          <section class="settings-section" aria-label="编辑字号">
-            <h3>编辑字号</h3>
-            <div class="settings-card">
               <div class="settings-row settings-font-row">
                 <div>
-                  <strong>可视化编辑</strong>
+                  <strong>可视化编辑字号</strong>
                   <p>调整正文、标题和编辑中的内容大小。</p>
                 </div>
                 <div class="settings-font-controls">
@@ -385,14 +386,14 @@ function customFontInput(event: Event) {
                     aria-label="减小可视化编辑字号"
                     :disabled="visualFontSize <= 12"
                     @click="emit('update:visualFontSize', visualFontSize - 1)"
-                  >−</button>
+                  ><Minus :size="15" :stroke-width="1.75" /></button>
                   <output aria-label="可视化编辑字号">{{ visualFontSize }} px</output>
                   <button
                     type="button"
                     aria-label="增大可视化编辑字号"
                     :disabled="visualFontSize >= 24"
                     @click="emit('update:visualFontSize', visualFontSize + 1)"
-                  >+</button>
+                  ><Plus :size="15" :stroke-width="1.75" /></button>
                   <button
                     type="button"
                     class="settings-font-reset"
@@ -404,7 +405,7 @@ function customFontInput(event: Event) {
               </div>
               <div class="settings-row settings-font-row">
                 <div>
-                  <strong>Markdown 源码</strong>
+                  <strong>Markdown 源码字号</strong>
                   <p>调整源码视图中的文字大小。</p>
                 </div>
                 <div class="settings-font-controls">
@@ -413,14 +414,14 @@ function customFontInput(event: Event) {
                     aria-label="减小 Markdown 源码字号"
                     :disabled="sourceFontSize <= 12"
                     @click="emit('update:sourceFontSize', sourceFontSize - 1)"
-                  >−</button>
+                  ><Minus :size="15" :stroke-width="1.75" /></button>
                   <output aria-label="Markdown 源码字号">{{ sourceFontSize }} px</output>
                   <button
                     type="button"
                     aria-label="增大 Markdown 源码字号"
                     :disabled="sourceFontSize >= 24"
                     @click="emit('update:sourceFontSize', sourceFontSize + 1)"
-                  >+</button>
+                  ><Plus :size="15" :stroke-width="1.75" /></button>
                   <button
                     type="button"
                     class="settings-font-reset"
@@ -430,10 +431,29 @@ function customFontInput(event: Event) {
                   >重置</button>
                 </div>
               </div>
+              <div class="settings-font-preview" aria-label="字体与字号预览">
+                <div class="settings-font-preview-samples">
+                  <div class="settings-font-preview-sample" role="group" aria-label="可视化编辑预览">
+                    <p
+                      class="settings-visual-font-sample"
+                      :style="{
+                        fontFamily: visualFontFamily(visualFontChoice, customFontName),
+                        fontSize: `${visualFontSize}px`,
+                      }"
+                    >在同一页写下新的想法。<br />Tano 123</p>
+                  </div>
+                  <div class="settings-font-preview-sample" role="group" aria-label="Markdown 源码预览">
+                    <p class="settings-source-font-sample" :style="{ fontSize: `${sourceFontSize}px` }">
+                      # 在同一页写下新的想法<br />Tano 123
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
+            <p class="settings-local-note">可视化字体仅影响可视化编辑和页面内标题；Markdown 源码保持等宽字体。</p>
           </section>
-          <section class="settings-section" aria-label="内容显示">
-            <h3>内容显示</h3>
+          <section v-if="page === 'editing'" class="settings-section" aria-label="编辑行为">
+            <h3>编辑行为</h3>
             <div class="settings-card">
               <div
                 v-for="option in displayOptions"
@@ -467,6 +487,11 @@ function customFontInput(event: Event) {
                   <span />
                 </button>
               </div>
+            </div>
+          </section>
+          <section v-if="page === 'appearance'" class="settings-section" aria-label="内容显示">
+            <h3>内容显示</h3>
+            <div class="settings-card">
               <div class="settings-row">
                 <div>
                   <strong>页面内标题</strong>
@@ -745,12 +770,6 @@ function customFontInput(event: Event) {
   border-right: 1px solid var(--line);
   background: var(--paper);
 }
-.settings-nav-heading {
-  margin: 0 10px 22px;
-  font-size: 18px;
-  font-weight: 650;
-  letter-spacing: -0.3px;
-}
 .settings-search {
   flex-shrink: 0;
   height: 36px;
@@ -873,10 +892,32 @@ function customFontInput(event: Event) {
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
-.settings-main,
-.settings-nav-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: var(--control-border) transparent;
+.settings-main::-webkit-scrollbar,
+.settings-nav-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.settings-main::-webkit-scrollbar-track,
+.settings-nav-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.settings-main::-webkit-scrollbar-thumb,
+.settings-nav-scroll::-webkit-scrollbar-thumb {
+  border-radius: 6px;
+  background: var(--control-border);
+}
+.settings-main::-webkit-scrollbar-button,
+.settings-nav-scroll::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+@supports (-moz-appearance: none) {
+  .settings-main,
+  .settings-nav-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--control-border) transparent;
+  }
 }
 .settings-close {
   position: absolute;
@@ -1051,12 +1092,35 @@ function customFontInput(event: Event) {
 .settings-custom-font-row input::placeholder {
   color: var(--muted);
 }
+.settings-font-card {
+  padding-bottom: 20px;
+}
 .settings-font-preview {
-  padding: 15px 0 18px;
-  border-top: 1px solid var(--line);
+  padding: 20px 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  text-align: center;
+}
+.settings-font-preview-samples {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+}
+.settings-font-preview-sample {
+  min-width: 0;
+  padding: 6px 12px;
+}
+.settings-font-preview-sample + .settings-font-preview-sample {
+  border-left: 1px solid var(--line);
+}
+.settings-font-preview p {
+  margin: 0;
   color: var(--text);
-  font-size: 17px;
-  line-height: 1.6;
+  line-height: 1.7;
+}
+.settings-source-font-sample {
+  font-family: 'Cascadia Code', Consolas, 'Microsoft YaHei', monospace;
 }
 .settings-font-controls {
   display: flex;
@@ -1065,6 +1129,9 @@ function customFontInput(event: Event) {
   gap: 5px;
 }
 .settings-font-controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 30px;
   min-width: 30px;
   padding: 0 7px;
@@ -1072,7 +1139,7 @@ function customFontInput(event: Event) {
   border-radius: 6px;
   background: var(--paper);
   color: var(--text);
-  font-size: 16px;
+  line-height: 1;
 }
 .settings-font-controls button:hover:not(:disabled) {
   border-color: var(--control-border);
@@ -1338,10 +1405,6 @@ function customFontInput(event: Event) {
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
-  .settings-nav-heading {
-    margin: 0 0 14px;
-    font-size: 16px;
-  }
   .settings-close {
     top: 10px;
     right: 12px;
@@ -1423,6 +1486,15 @@ function customFontInput(event: Event) {
   }
   .settings-custom-font-row input {
     flex: 1 1 190px;
+  }
+  .settings-font-preview-samples {
+    grid-template-columns: 1fr;
+  }
+  .settings-font-preview-sample + .settings-font-preview-sample {
+    margin-top: 14px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    border-left: 0;
   }
   .settings-actions {
     grid-template-columns: 1fr;

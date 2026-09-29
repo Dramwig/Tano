@@ -10,7 +10,7 @@ import {
   shallowRef,
   watch,
 } from 'vue';
-import { Focus, GitFork, Minus, Plus, RefreshCw, Settings2, X } from 'lucide-vue-next';
+import { Focus, GitFork, Minus, Plus, Settings2, X } from 'lucide-vue-next';
 import { documentLinks } from '@tano/editor/document-links';
 import type { DocumentLink } from '@tano/editor/document-links';
 import { useWorkspaceStore } from '../stores/workspace';
@@ -353,12 +353,6 @@ onBeforeUnmount(() => {
 
 <template>
   <main ref="host" class="relation-graph" aria-label="关系图谱">
-    <header class="graph-heading">
-      <h1><GitFork :size="16" />关系图谱</h1>
-      <span role="status">{{
-        loading ? '正在读取文档…' : `${nodes.length} 篇文档 · ${layout?.edges.length ?? 0} 条连线`
-      }}</span>
-    </header>
     <svg
       ref="viewport"
       class="graph-viewport"
@@ -451,15 +445,6 @@ onBeforeUnmount(() => {
       <button class="icon-button" title="适应窗口 · 0" aria-label="图谱居中" @click="fit">
         <Focus :size="17" />
       </button>
-      <button
-        class="icon-button"
-        title="重新读取文档关系"
-        aria-label="刷新图谱"
-        :disabled="loading"
-        @click="refresh"
-      >
-        <RefreshCw :size="16" />
-      </button>
     </div>
     <section
       v-if="settings"
@@ -540,25 +525,6 @@ onBeforeUnmount(() => {
   overflow: hidden;
   background: var(--paper);
 }
-.graph-heading {
-  position: absolute;
-  z-index: 1;
-  top: 12px;
-  left: 24px;
-  pointer-events: none;
-}
-.graph-heading h1 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 7px;
-  font-size: 14px;
-  font-weight: 500;
-}
-.graph-heading span {
-  color: var(--muted);
-  font-size: 11px;
-}
 .graph-viewport {
   width: 100%;
   height: 100%;
@@ -614,8 +580,7 @@ onBeforeUnmount(() => {
 .graph-node:focus-visible .graph-node-halo {
   opacity: 0.12;
 }
-.graph-node.highlighted .graph-node-dot,
-.graph-node.neighbour .graph-node-dot {
+.graph-node.highlighted .graph-node-dot {
   fill: var(--green);
 }
 .graph-node.dimmed {
@@ -722,15 +687,10 @@ onBeforeUnmount(() => {
   text-decoration: underline;
 }
 @media (max-width: 600px) {
-  .graph-heading {
-    left: 16px;
-  }
   .graph-controls {
-    top: 67px;
     right: 12px;
   }
   .graph-settings {
-    top: 114px;
     right: 12px;
   }
   .graph-help {

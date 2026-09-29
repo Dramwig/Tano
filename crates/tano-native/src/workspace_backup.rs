@@ -689,6 +689,7 @@ pub fn restore(
     }
     restore_directory(&base.join(snapshot_id).join("data"), root, &manifest)?;
     identity_manifest::require(root, workspace_id)?;
+    identity_manifest::invalidate_native_keys_after_restore(cache, workspace_id)?;
     let mut workspace = storage::scan(root, workspace_id, cache)?;
     let current_ids = workspace
         .files
@@ -1001,6 +1002,31 @@ mod tests {
         let (_directory, data, root, id, cache) = workspace();
         let before = storage::scan(&root, &id, &cache).unwrap();
         let snapshot = create(data.path(), &root, &id).unwrap().unwrap();
+        // Model a reused filesystem key: without invalidation, the scan would
+        // assign the object's ID to note.md before consulting the manifest path.
+        let connection = storage::database(&cache).unwrap();
+        let note_key: String = connection
+            .query_row(
+                "SELECT native_key FROM files WHERE workspace_id=? AND path='note.md'",
+                [&id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        if !note_key.is_empty() {
+            connection
+                .execute(
+                    "UPDATE files SET native_key='' WHERE workspace_id=? AND path='note.md'",
+                    [&id],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "UPDATE files SET native_key=? WHERE workspace_id=? AND path='.tano/objects/a82f91.tano.json'",
+                    rusqlite::params![note_key, id],
+                )
+                .unwrap();
+        }
+        drop(connection);
         fs::remove_file(root.join(".tano/identities.json")).unwrap();
         assert!(identity_manifest::require(&root, &id).is_err());
         assert!(create(data.path(), &root, &id).is_err());
@@ -1009,7 +1035,7 @@ mod tests {
             .iter()
             .any(|item| item.snapshot_id == snapshot.snapshot_id && item.error.is_none()));
         let review = preview(data.path(), &root, &id, &snapshot.snapshot_id).unwrap();
-        restore(
+        let restored = restore(
             data.path(),
             &root,
             &id,
@@ -1018,6 +1044,18 @@ mod tests {
             &cache,
         )
         .unwrap();
+        assert_eq!(
+            restored
+                .files
+                .iter()
+                .map(|file| (&file.path, &file.id))
+                .collect::<Vec<_>>(),
+            before
+                .files
+                .iter()
+                .map(|file| (&file.path, &file.id))
+                .collect::<Vec<_>>()
+        );
         fs::remove_file(&cache).unwrap();
         let after = storage::scan(&root, &id, &cache).unwrap();
         assert_eq!(

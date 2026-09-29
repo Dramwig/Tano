@@ -1,12 +1,14 @@
-export type VisualFontChoice = 'system' | 'serif' | 'custom';
+export type VisualFontChoice = 'system' | 'serif' | 'mono' | 'custom';
 
 const systemFontFamily =
   "'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif";
 const serifFontFamily =
-  "ui-serif, Georgia, 'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', SimSun, serif";
+  'Literata, Georgia, ui-serif, serif';
+const monoFontFamily =
+  "'Maple Mono NF', 'Cascadia Code', 'Microsoft YaHei', ui-monospace, monospace";
 
 export function parseVisualFontChoice(value: string | null): VisualFontChoice {
-  return value === 'serif' || value === 'custom' ? value : 'system';
+  return value === 'serif' || value === 'mono' || value === 'custom' ? value : 'system';
 }
 
 export function sanitizeCustomFontName(value: string): string {
@@ -15,6 +17,7 @@ export function sanitizeCustomFontName(value: string): string {
 
 export function visualFontFamily(choice: VisualFontChoice, customName: string): string {
   if (choice === 'serif') return serifFontFamily;
+  if (choice === 'mono') return monoFontFamily;
   const name = sanitizeCustomFontName(customName).trim();
   return choice === 'custom' && name
     ? `${JSON.stringify(name)}, ${systemFontFamily}`

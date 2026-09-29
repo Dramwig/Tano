@@ -40,6 +40,7 @@ export interface WorkspaceAdapter {
   readonly mode: 'desktop' | 'demo' | 'web';
   reserveObjectId?(occupied: string[]): Promise<string>;
   open(path?: string): Promise<Workspace | null>;
+  close?(workspaceId: string): Promise<void>;
   createWorkspace?(name: string): Promise<Workspace>;
   recent?(): Promise<RecentWorkspace[]>;
   loadSession?(workspaceId: string): Promise<WorkspaceSession | null>;

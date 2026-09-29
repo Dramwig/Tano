@@ -128,6 +128,25 @@ async fn open_workspace(path: String, app: tauri::AppHandle) -> Result<storage::
     .map_err(|e| format!("打开工作空间任务失败：{e}"))?
 }
 
+#[tauri::command]
+fn close_workspace(
+    workspace_id: String,
+    state: State<AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let mut guard = state.session.lock().map_err(|e| e.to_string())?;
+    if guard
+        .as_ref()
+        .is_some_and(|session| session.id == workspace_id)
+    {
+        if app.webview_windows().len() > 1 {
+            return Err("请先关闭此工作区的独立窗口，再退出工作区".into());
+        }
+        guard.take();
+    }
+    Ok(())
+}
+
 fn open_workspace_blocking(
     path: String,
     app: tauri::AppHandle,
@@ -151,6 +170,9 @@ fn open_workspace_blocking(
                 workspace.backup_warning = Some(format!("自动备份未完成：{error}"));
             }
             return Ok(workspace);
+        }
+        if app.webview_windows().len() > 1 {
+            return Err("请先关闭此工作区的独立窗口，再切换工作区".into());
         }
     }
     let data = app_data(&app)?;
@@ -393,6 +415,35 @@ fn recent_workspaces(
 #[tauri::command]
 fn runtime_platform() -> serde_json::Value {
     serde_json::json!({"mobile": cfg!(mobile), "os": std::env::consts::OS})
+}
+
+#[tauri::command]
+async fn tab_drag_release() -> Result<serde_json::Value, String> {
+    #[cfg(windows)]
+    {
+        tauri::async_runtime::spawn_blocking(|| {
+            use windows_sys::Win32::Foundation::POINT;
+            use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
+            use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
+
+            // The WebView may not dispatch dragend after an OS drag ends outside its window.
+            // Observe the button on a host thread so renderer timer throttling cannot lose it.
+            while unsafe { GetAsyncKeyState(VK_LBUTTON.into()) < 0 } {
+                std::thread::sleep(std::time::Duration::from_millis(8));
+            }
+            let mut point = POINT { x: 0, y: 0 };
+            if unsafe { GetCursorPos(&mut point) } == 0 {
+                return Err(std::io::Error::last_os_error().to_string());
+            }
+            Ok(serde_json::json!({"x": point.x, "y": point.y}))
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
+    #[cfg(not(windows))]
+    {
+        Err("Tab drag release observation is only available on Windows".to_owned())
+    }
 }
 
 #[tauri::command]
@@ -960,7 +1011,9 @@ pub fn configure_with_commands(
                     updates::update_download,
                     updates::update_install,
                     open_workspace,
+                    close_workspace,
                     runtime_platform,
+                    tab_drag_release,
                     open_mobile_workspace,
                     mobile_recycled,
                     mobile_recover,

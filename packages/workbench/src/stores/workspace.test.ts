@@ -13,6 +13,7 @@ import type {
 const fixture = vi.hoisted(() => ({ adapter: null as WorkspaceAdapter | null }));
 import { useWorkspaceStore } from './workspace';
 import { GRAPH_TAB_ID } from '../document-graph';
+import { PLUGINS_TAB_ID } from '../workspace-plugins';
 
 class MemoryWorkspace implements WorkspaceAdapter {
   readonly mode = 'demo' as const;
@@ -37,6 +38,7 @@ class MemoryWorkspace implements WorkspaceAdapter {
   async open() {
     return this.refresh();
   }
+  async close(_workspaceId: string) {}
   async refresh(): Promise<Workspace> {
     return {
       id: 'test',
@@ -133,6 +135,40 @@ beforeEach(async () => {
 afterEach(() => store.dispose());
 
 describe('workspace file reconciliation', () => {
+  it('leaves the workspace, keeps its session, and releases its watcher', async () => {
+    const close = vi.spyOn(backend, 'close');
+    const beforeSwitch = vi.fn(async () => {});
+    const afterSwitch = vi.fn(async () => {});
+    store.setDocumentLifecycle({ beforeSwitch, afterSwitch, beforeCloseDocument: async () => {} });
+    store.edit('saved before leaving');
+
+    expect(await store.leaveWorkspace()).toBe(true);
+    expect(backend.files.get('note.md')?.content).toBe('saved before leaving');
+    expect(backend.session?.tabs).toEqual(['note-id']);
+    expect(close).toHaveBeenCalledWith('test');
+    expect(backend.watchCallback).toBeUndefined();
+    expect(beforeSwitch).toHaveBeenCalledOnce();
+    expect(afterSwitch).toHaveBeenCalledOnce();
+    expect(store.workspace).toBeNull();
+    expect(store.tabs).toEqual([]);
+
+    await store.openWorkspace();
+    expect(store.workspace?.id).toBe('test');
+    expect(store.active?.content).toBe('saved before leaving');
+  });
+
+  it('keeps the workspace open if its changes cannot be saved', async () => {
+    const close = vi.spyOn(backend, 'close');
+    store.edit('unsaved');
+    backend.failWrites = true;
+
+    expect(await store.leaveWorkspace()).toBe(false);
+    expect(store.workspace?.id).toBe('test');
+    expect(store.active?.content).toBe('unsaved');
+    expect(backend.watchCallback).toBeDefined();
+    expect(close).not.toHaveBeenCalled();
+  });
+
   it('opens one graph tab, keeps it when opening documents, and restores it from the session', async () => {
     backend.files.set('other.md', { id: 'other-id', content: 'Other' });
     await store.refresh();
@@ -156,6 +192,27 @@ describe('workspace file reconciliation', () => {
     await store.close(GRAPH_TAB_ID);
     expect(closeHook).not.toHaveBeenCalled();
     expect(store.tabs.some(tab => tab.graph)).toBe(false);
+  });
+  it('opens the plugin page as one restorable tab without replacing it when a file opens', async () => {
+    backend.files.set('other.md', { id: 'other-id', content: 'Other' });
+    await store.refresh();
+    store.openPluginsTab(); store.openPluginsTab();
+    expect(store.tabs.filter(tab => tab.plugins)).toHaveLength(1);
+    expect(store.activeId).toBe(PLUGINS_TAB_ID);
+    await store.openFile(store.workspace!.files.find(file => file.id === 'other-id')!);
+    expect(store.tabs.map(tab => tab.id)).toEqual(['note-id', PLUGINS_TAB_ID, 'other-id']);
+    store.openPluginsTab();
+    await vi.waitFor(() => expect(backend.session?.activeId).toBe(PLUGINS_TAB_ID));
+    await store.dispose();
+    setActivePinia(configureWorkbench(createPinia(), { adapter: backend, native: false, mobile: false }));
+    store = useWorkspaceStore();
+    await store.initialize();
+    expect(store.activeId).toBe(PLUGINS_TAB_ID);
+    const closeHook = vi.fn(async () => {});
+    store.setDocumentLifecycle({ beforeSwitch: async () => {}, beforeCloseDocument: closeHook });
+    await store.close(PLUGINS_TAB_ID);
+    expect(closeHook).not.toHaveBeenCalled();
+    expect(store.tabs.some(tab => tab.plugins)).toBe(false);
   });
   it('reads graph content without writing drafts and rejects stale workspace or file identities', async () => {
     store.edit('[[draft link]]');
@@ -401,6 +458,18 @@ describe('workspace file reconciliation', () => {
     store.moveDocument(first.id, first.id, 'after');
     store.moveDocument(first.id, second.id, 'before');
     expect(store.documents).toBe(original);
+  });
+  it('places an arriving tab at a cross-window insertion index without changing file content', async () => {
+    await store.create('second.md', false, 'second');
+    await store.create('third.md', false, 'third');
+    await store.flush();
+    const [first, second, third] = store.tabs;
+    store.placeTab(third.id, 1);
+    expect(store.tabs.map((tab) => tab.id)).toEqual([first.id, third.id, second.id]);
+    expect(store.documents.map((doc) => doc.id)).toEqual([first.id, third.id, second.id]);
+    store.placeTab('closed', 0);
+    expect(store.tabs.map((tab) => tab.id)).toEqual([first.id, third.id, second.id]);
+    expect(backend.files.get('third.md')?.content).toBe('third');
   });
   it('moves an already open file into the focused slot and restores that order', async () => {
     await store.create('second.md', false, 'second');

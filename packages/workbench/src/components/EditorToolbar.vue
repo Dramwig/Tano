@@ -315,6 +315,7 @@ function escape() {
         </div>
       </form>
     </template>
+    <slot name="trailing" />
   </div>
 </template>
 

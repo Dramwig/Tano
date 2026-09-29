@@ -302,6 +302,23 @@ pub fn publish_cache(root: &Path, workspace_id: &str, cache: &Path) -> Result<()
     transaction.commit().map_err(|e| e.to_string())
 }
 
+pub fn invalidate_native_keys_after_restore(
+    cache: &Path,
+    workspace_id: &str,
+) -> Result<(), String> {
+    let connection = storage::database(cache)?;
+    // Restored files are new filesystem objects. Their inode/file indices may
+    // reuse those of different cached files, so the next scan must match the
+    // restored manifest by path and content instead of stale native keys.
+    connection
+        .execute(
+            "UPDATE files SET native_key='' WHERE workspace_id=?",
+            [workspace_id],
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub fn reserve(
     root: &Path,
     workspace_id: &str,

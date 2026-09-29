@@ -1,11 +1,21 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { FileText, GitFork, Plus, X, XCircle, PanelRightClose, SquarePen } from 'lucide-vue-next';
+import { FileText, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, SquarePen, ExternalLink } from 'lucide-vue-next';
 import { basename } from '@tano/protocol';
+import { invoke } from '@tauri-apps/api/core';
+import { cursorPosition, getCurrentWindow } from '@tauri-apps/api/window';
+import { emitTo, listen } from '@tauri-apps/api/event';
+import type { DetachedDropPoint } from '../detach-tab';
+import { TAB_DOCK_PROBE, TAB_DOCK_REPLY, parseTabDragMeta, tabDockIndex, tabDragMetaType } from '../tab-docking';
+import type { TabDockProbe } from '../tab-docking';
+import { nativeOs } from '../platform';
 import { useWorkspaceStore } from '../stores/workspace';
 
 const store = useWorkspaceStore();
-const emit = defineEmits<{ 'new-tab': []; 'new-document': [] }>();
+const props = defineProps<{ detachable?: boolean }>();
+// WebView content is clipped at the native window edge. A native drag image is not.
+const nativeTabDrag = props.detachable && nativeOs === 'windows';
+const emit = defineEmits<{ 'new-tab': []; 'new-document': []; 'detach-tab': [id: string, drop?: DetachedDropPoint, settled?: () => void] }>();
 const tabList = ref<HTMLElement>();
 const contextMenuElement = ref<HTMLElement>();
 const contextMenu = ref<{ tabId: string | null; x: number; y: number }>();
@@ -16,6 +26,7 @@ const frozenStripWidth = ref<number>();
 const pointerInsideTabList = ref(false);
 const title = (path: string) => basename(path).replace(/\.(md|markdown)$/i, '');
 const draggingId = ref('');
+const outgoingId = ref('');
 const dragPreview = ref<{
   path: string;
   dirty: boolean;
@@ -25,6 +36,11 @@ const dragPreview = ref<{
   height: number;
 }>();
 const dropTarget = ref<{ id: string; side: 'before' | 'after' }>();
+const incomingSlot = ref<{ sourceLabel: string; tabId: string; index: number }>();
+let incomingHoverAt = 0;
+let incomingDropTimer: ReturnType<typeof setTimeout> | undefined;
+let unlistenDockProbe: (() => void) | undefined;
+let dockProbeMounted = false;
 let gesture:
   | {
       id: string;
@@ -43,29 +59,110 @@ let gesture:
     }
   | undefined;
 let scrollFrame = 0;
+let nativeDragging = false;
+let finishingDrag = false;
 let suppressClick = false;
 let clickTimer: ReturnType<typeof setTimeout> | undefined;
 
-function updateDropTarget() {
+function updateDropTargetAt(x: number, y: number, id: string) {
   const list = tabList.value;
-  if (!gesture || !list) return;
+  if (!list) return;
   const bounds = list.getBoundingClientRect();
   dropTarget.value = undefined;
   if (
-    gesture.y < bounds.top ||
-    gesture.y > bounds.bottom ||
-    gesture.x < bounds.left - 24 ||
-    gesture.x > bounds.right + 24
+    y < bounds.top ||
+    y > bounds.bottom ||
+    x < bounds.left - 24 ||
+    x > bounds.right + 24
   )
     return;
   const tabs = [...list.querySelectorAll<HTMLElement>('.desktop-tab')];
-  const target = tabs.find((tab) => gesture!.x < tab.getBoundingClientRect().right) ?? tabs.at(-1);
-  if (!target || target.dataset.id === gesture.id) return;
+  const target = tabs.find((tab) => x < tab.getBoundingClientRect().right) ?? tabs.at(-1);
+  if (!target || target.dataset.id === id) return;
   const rect = target.getBoundingClientRect();
   dropTarget.value = {
     id: target.dataset.id!,
-    side: gesture.x < rect.left + rect.width / 2 ? 'before' : 'after',
+    side: x < rect.left + rect.width / 2 ? 'before' : 'after',
   };
+}
+function updateDropTarget() {
+  if (gesture) updateDropTargetAt(gesture.x, gesture.y, gesture.id);
+}
+
+function dockIndexAt(x: number, y: number, centerOffset: number) {
+  const list = tabList.value;
+  if (!list) return null;
+  const rect = list.getBoundingClientRect();
+  if (x < rect.left - 24 || x > rect.right + 24 || y < rect.top - 24 || y > rect.bottom + 24) return null;
+  const centers = [...list.querySelectorAll<HTMLElement>('.desktop-tab')]
+    .map((tab) => { const box = tab.getBoundingClientRect(); return box.left + box.width / 2; });
+  return tabDockIndex(x + centerOffset, centers);
+}
+
+function incomingDragOver(event: DragEvent) {
+  if (!nativeTabDrag || nativeDragging || !store.workspace) return;
+  const meta = parseTabDragMeta(event.dataTransfer?.types ?? []);
+  if (!meta || meta.sourceLabel === getCurrentWindow().label || meta.workspaceId !== store.workspace.id) return;
+  if (incomingSlot.value &&
+      (incomingSlot.value.sourceLabel !== meta.sourceLabel || incomingSlot.value.tabId !== meta.tabId))
+    clearIncomingSlot();
+  if (incomingDropTimer) {
+    clearTimeout(incomingDropTimer);
+    incomingDropTimer = undefined;
+  }
+  const index = dockIndexAt(event.clientX, event.clientY, meta.centerOffset);
+  if (index === null) { clearIncomingSlot(); return; }
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  incomingHoverAt = Date.now();
+  if (incomingSlot.value?.sourceLabel !== meta.sourceLabel || incomingSlot.value.tabId !== meta.tabId ||
+      incomingSlot.value.index !== index)
+    incomingSlot.value = { sourceLabel: meta.sourceLabel, tabId: meta.tabId, index };
+}
+
+function clearIncomingSlot() {
+  clearTimeout(incomingDropTimer);
+  incomingDropTimer = undefined;
+  incomingSlot.value = undefined;
+  incomingHoverAt = 0;
+}
+
+function incomingDragLeave(event: DragEvent) {
+  if (event.relatedTarget || !incomingSlot.value || incomingDropTimer) return;
+  // Child transitions may briefly emit dragleave; allow the next dragover to retain the slot.
+  incomingDropTimer = setTimeout(clearIncomingSlot, 90);
+}
+
+function incomingDrop(event: DragEvent) {
+  if (!incomingSlot.value) return;
+  event.preventDefault();
+  clearTimeout(incomingDropTimer);
+  incomingDropTimer = setTimeout(clearIncomingSlot, 3_000);
+}
+
+function incomingTransferSettled(event: Event) {
+  const detail = (event as CustomEvent<{ sourceLabel: string; tabId: string }>).detail;
+  if (incomingSlot.value?.sourceLabel === detail?.sourceLabel && incomingSlot.value.tabId === detail.tabId)
+    clearIncomingSlot();
+}
+
+async function answerDockProbe(probe: TabDockProbe) {
+  if (!nativeTabDrag || !store.workspace || probe.workspaceId !== store.workspace.id ||
+      probe.sourceLabel === getCurrentWindow().label || document.visibilityState === 'hidden') return;
+  const appWindow = getCurrentWindow();
+  const [origin, scale] = await Promise.all([appWindow.innerPosition(), appWindow.scaleFactor()]);
+  if (!dockProbeMounted) return;
+  const x = (probe.x - origin.x) / scale;
+  const y = (probe.y - origin.y) / scale;
+  const insideWindow = x >= 0 && y >= 0 && x < window.innerWidth && y < window.innerHeight;
+  const index = dockIndexAt(x, y, probe.centerOffset);
+  if (!insideWindow && index === null) return;
+  await emitTo(probe.sourceLabel, TAB_DOCK_REPLY, {
+    requestId: probe.requestId, targetLabel: appWindow.label, insideWindow,
+    ...(index === null ? {} : { index }),
+    hovered: incomingSlot.value?.sourceLabel === probe.sourceLabel &&
+      incomingSlot.value.tabId === probe.tabId && Date.now() - incomingHoverAt < 400,
+  });
 }
 
 function scrollWhileDragging() {
@@ -86,6 +183,7 @@ function scrollWhileDragging() {
 }
 
 function startDrag(event: PointerEvent, id: string) {
+  if (nativeTabDrag) return;
   if (event.button !== 0 || !event.isPrimary || gesture) return;
   const element = event.currentTarget as HTMLElement;
   const doc = store.tabs.find((item) => item.id === id);
@@ -104,7 +202,7 @@ function startDrag(event: PointerEvent, id: string) {
     grabY: event.clientY - rect.top,
     width: Math.max(160, rect.width),
     height: rect.height,
-    path: doc.graph ? '关系图谱' : doc.blank ? '新标签页' : doc.path,
+    path: doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.blank ? '新标签页' : doc.path,
     dirty: !!doc.document && store.dirty(doc.document),
   };
   element.setPointerCapture(event.pointerId);
@@ -140,10 +238,12 @@ function finishDrag(commit = false) {
     store.moveDocument(current.id, dropTarget.value.id, dropTarget.value.side);
   }
   cancelAnimationFrame(scrollFrame);
+  nativeDragging = false;
+  finishingDrag = false;
   draggingId.value = '';
   dragPreview.value = undefined;
   dropTarget.value = undefined;
-  if (current.element.hasPointerCapture(current.pointerId)) {
+  if (current.pointerId >= 0 && current.element.hasPointerCapture(current.pointerId)) {
     current.element.releasePointerCapture(current.pointerId);
   }
   // A drag's synthetic click must not switch the active document on release.
@@ -155,10 +255,139 @@ function finishDrag(commit = false) {
 
 function endDrag(event: PointerEvent) {
   if (gesture?.pointerId !== event.pointerId) return;
+  if (finishingDrag) return;
   gesture.x = event.clientX;
   gesture.y = event.clientY;
   updateDropTarget();
-  finishDrag(true);
+  const bounds = tabList.value?.getBoundingClientRect();
+  const withinStrip = bounds &&
+    event.clientX >= bounds.left - 48 && event.clientX <= bounds.right + 48 &&
+    event.clientY >= bounds.top - 36 && event.clientY <= bounds.bottom + 36;
+  if (!props.detachable || !draggingId.value || withinStrip) finishDrag(true);
+  else void finishAtSystemCursor();
+}
+
+async function finishAtSystemCursor(drop?: { x: number; y: number }) {
+  if (!gesture || finishingDrag) return;
+  finishingDrag = true;
+  const current = gesture;
+  try {
+    const appWindow = getCurrentWindow();
+    const [cursor, origin, scale] = await Promise.all([
+      drop ? Promise.resolve(drop) : cursorPosition(), appWindow.innerPosition(), appWindow.scaleFactor(),
+    ]);
+    if (gesture !== current) return;
+    current.x = (cursor.x - origin.x) / scale;
+    current.y = (cursor.y - origin.y) / scale;
+    updateDropTarget();
+    const bounds = tabList.value?.getBoundingClientRect();
+    const withinWindow = current.x >= 0 && current.x < window.innerWidth &&
+      current.y >= 0 && current.y < window.innerHeight;
+    const withinStrip = withinWindow && bounds &&
+      current.x >= bounds.left - 48 && current.x <= bounds.right + 48 &&
+      current.y >= bounds.top - 36 && current.y <= bounds.bottom + 36;
+    if (withinStrip) {
+      finishDrag(true);
+      return;
+    }
+    finishDrag();
+    outgoingId.value = current.id;
+    emit('detach-tab', current.id, {
+      x: cursor.x, y: cursor.y, grabX: current.grabX, grabY: current.grabY,
+      width: current.width, insideSourceWindow: withinWindow,
+    }, () => {
+      if (outgoingId.value === current.id) outgoingId.value = '';
+    });
+  } catch (error) {
+    finishDrag();
+    store.report(error);
+  }
+}
+
+function pointerInterrupted() {
+  // Native HTML drag cancels the pointer stream when it takes ownership.
+  // The gesture remains active until dragend or the host observes button release.
+  if (nativeDragging) return;
+  finishDrag();
+}
+
+async function watchNativeRelease(current: NonNullable<typeof gesture>) {
+  try {
+    const drop = await invoke<{ x: number; y: number }>('tab_drag_release');
+    if (gesture !== current || !nativeDragging) return;
+    // Let the browser finish its native drop dispatch before changing the tab tree.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (gesture === current && nativeDragging) await finishAtSystemCursor(drop);
+  } catch (error) {
+    if (gesture !== current || !nativeDragging) return;
+    finishDrag();
+    store.report(error);
+  }
+}
+
+function startNativeDrag(event: DragEvent, id: string) {
+  if (!nativeTabDrag || !event.dataTransfer || gesture) {
+    event.preventDefault();
+    return;
+  }
+  const element = event.currentTarget as HTMLElement;
+  const tab = element.closest<HTMLElement>('.desktop-tab');
+  const doc = store.tabs.find((item) => item.id === id);
+  if (!tab || !doc) {
+    event.preventDefault();
+    return;
+  }
+  const rect = tab.getBoundingClientRect();
+  const grabX = event.clientX - rect.left;
+  const grabY = event.clientY - rect.top;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('application/x-tano-tab', id);
+  if (store.workspace) event.dataTransfer.setData(tabDragMetaType({
+    sourceLabel: getCurrentWindow().label, workspaceId: store.workspace.id, tabId: id,
+    width: rect.width, centerOffset: rect.width / 2 - grabX,
+  }), '1');
+  const image = tab.cloneNode(true) as HTMLElement;
+  image.classList.add('desktop-tab-native-drag-image');
+  image.classList.remove('desktop-tab-dragging');
+  image.style.cssText = `position:fixed;left:0;top:0;width:${rect.width}px;height:${rect.height}px;pointer-events:none;background:var(--paper);box-shadow:0 6px 18px rgb(0 0 0 / 16%);`;
+  document.body.append(image);
+  event.dataTransfer.setDragImage(image, grabX, grabY);
+  requestAnimationFrame(() => image.remove());
+  gesture = {
+    id, pointerId: -1, element, startX: event.clientX, startY: event.clientY,
+    x: event.clientX, y: event.clientY, grabX, grabY,
+    width: rect.width, height: rect.height,
+    path: doc.path, dirty: !!doc.document && store.dirty(doc.document),
+  };
+  nativeDragging = true;
+  draggingId.value = id;
+  suppressClick = true;
+  scrollFrame = requestAnimationFrame(scrollWhileDragging);
+  void watchNativeRelease(gesture);
+}
+
+function nativeDragOver(event: DragEvent) {
+  if (!nativeDragging || !gesture) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  gesture.x = event.clientX;
+  gesture.y = event.clientY;
+  updateDropTarget();
+}
+
+function nativeDrop(event: DragEvent) {
+  if (nativeDragging) event.preventDefault();
+}
+
+function nativeDragEnd() {
+  if (nativeDragging) void finishAtSystemCursor();
+}
+
+function cancelDragOnEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape' && gesture) {
+    event.preventDefault();
+    finishDrag();
+  }
 }
 
 function onClick(event: MouseEvent) {
@@ -274,12 +503,13 @@ async function closeTabs(ids: string[]) {
 }
 
 async function contextAction(
-  action: 'new-tab' | 'new-document' | 'close' | 'close-others' | 'close-right' | 'close-all',
+  action: 'new-tab' | 'new-document' | 'detach' | 'close' | 'close-others' | 'close-right' | 'close-all',
 ) {
   const tabId = contextMenu.value?.tabId;
   closeContextMenu();
   if (action === 'new-tab') return emit('new-tab');
   if (action === 'new-document') return emit('new-document');
+  if (action === 'detach' && tabId) return emit('detach-tab', tabId);
   if (action === 'close' && tabId) return closeTab(tabId);
   const ids = store.tabs.map((tab) => tab.id);
   if (action === 'close-others' && tabId) {
@@ -298,8 +528,26 @@ onMounted(() => {
     null;
   blankTrack?.addEventListener('contextmenu', onBlankTrackContext);
   window.addEventListener('pointerdown', onOutsidePointer, true);
+  if (props.detachable) window.addEventListener('pointerup', endDrag, true);
   window.addEventListener('contextmenu', onOutsideContext);
   window.addEventListener('keydown', onContextKeydown, true);
+  window.addEventListener('keydown', cancelDragOnEscape, true);
+  if (nativeTabDrag) {
+    window.addEventListener('dragover', nativeDragOver, true);
+    window.addEventListener('dragover', incomingDragOver, true);
+    window.addEventListener('dragleave', incomingDragLeave, true);
+    window.addEventListener('drop', nativeDrop, true);
+    window.addEventListener('drop', incomingDrop, true);
+    window.addEventListener('dragend', nativeDragEnd, true);
+    window.addEventListener('tano-tab-transfer-settled', incomingTransferSettled);
+    dockProbeMounted = true;
+    void listen<TabDockProbe>(TAB_DOCK_PROBE, ({ payload }) => {
+      void answerDockProbe(payload).catch(store.report);
+    }).then((unlisten) => {
+      if (dockProbeMounted) unlistenDockProbe = unlisten;
+      else unlisten();
+    }).catch(store.report);
+  }
   window.addEventListener('scroll', dismissContextMenu, true);
   window.addEventListener('resize', dismissContextMenu);
 });
@@ -335,8 +583,20 @@ onBeforeUnmount(() => {
   clearTimeout(clickTimer);
   blankTrack?.removeEventListener('contextmenu', onBlankTrackContext);
   window.removeEventListener('pointerdown', onOutsidePointer, true);
+  window.removeEventListener('pointerup', endDrag, true);
   window.removeEventListener('contextmenu', onOutsideContext);
   window.removeEventListener('keydown', onContextKeydown, true);
+  window.removeEventListener('keydown', cancelDragOnEscape, true);
+  window.removeEventListener('dragover', nativeDragOver, true);
+  window.removeEventListener('dragover', incomingDragOver, true);
+  window.removeEventListener('dragleave', incomingDragLeave, true);
+  window.removeEventListener('drop', nativeDrop, true);
+  window.removeEventListener('drop', incomingDrop, true);
+  window.removeEventListener('dragend', nativeDragEnd, true);
+  window.removeEventListener('tano-tab-transfer-settled', incomingTransferSettled);
+  dockProbeMounted = false;
+  unlistenDockProbe?.();
+  clearIncomingSlot();
   window.removeEventListener('scroll', dismissContextMenu, true);
   window.removeEventListener('resize', dismissContextMenu);
 });
@@ -350,6 +610,10 @@ watch(
       ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   },
 );
+
+watch(() => store.tabs.map((tab) => tab.id).join('|'), () => {
+  if (incomingDropTimer) clearIncomingSlot();
+});
 
 async function onTabKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape' && gesture) {
@@ -403,22 +667,25 @@ async function onTabKeydown(event: KeyboardEvent) {
       @pointerenter="onTabListPointerEnter"
       @pointerleave="onTabListPointerLeave"
       @pointerup="endDrag"
-      @pointercancel="finishDrag()"
-      @lostpointercapture="finishDrag()"
+      @pointercancel="pointerInterrupted"
+      @lostpointercapture="pointerInterrupted"
       @click.capture="onClick"
       @contextmenu.self.prevent="openContextMenu($event, null)"
-      @dragstart.prevent
+      @dragstart="!nativeTabDrag && $event.preventDefault()"
     >
       <div
-        v-for="doc in store.tabs"
+        v-for="(doc, index) in store.tabs"
         :key="doc.id"
         :data-id="doc.id"
         class="desktop-tab"
         :class="{
           'desktop-tab-active': doc.id === store.activeId,
           'desktop-tab-dragging': doc.id === draggingId,
+          'desktop-tab-outgoing': doc.id === outgoingId,
           'desktop-tab-drop-before': dropTarget?.id === doc.id && dropTarget.side === 'before',
           'desktop-tab-drop-after': dropTarget?.id === doc.id && dropTarget.side === 'after',
+          'desktop-tab-dock-before': incomingSlot?.index === index,
+          'desktop-tab-dock-after': incomingSlot?.index === store.tabs.length && index === store.tabs.length - 1,
         }"
         :style="frozenTabWidths[doc.id] ? { flex: `0 0 ${frozenTabWidths[doc.id]}px` } : undefined"
         @contextmenu.stop.prevent="openContextMenu($event, doc.id)"
@@ -429,13 +696,16 @@ async function onTabKeydown(event: KeyboardEvent) {
           role="tab"
           :aria-selected="doc.id === store.activeId"
           :tabindex="doc.id === store.activeId ? 0 : -1"
-          :title="doc.graph ? '关系图谱' : doc.blank ? '新标签页' : doc.path"
+          :title="doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.blank ? '新标签页' : doc.path"
+          :draggable="nativeTabDrag"
           @pointerdown="startDrag($event, doc.id)"
+          @dragstart.stop="startNativeDrag($event, doc.id)"
           @click="store.activeId = doc.id"
         >
           <GitFork v-if="doc.graph" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
+          <Puzzle v-else-if="doc.plugins" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <FileText v-else-if="!doc.blank" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
-          <span class="desktop-tab-label">{{ doc.graph ? '关系图谱' : doc.blank ? '新标签页' : title(doc.path) }}</span>
+          <span class="desktop-tab-label">{{ doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.blank ? '新标签页' : title(doc.path) }}</span>
           <span
             v-if="doc.document && store.dirty(doc.document)"
             class="desktop-tab-dirty"
@@ -445,13 +715,14 @@ async function onTabKeydown(event: KeyboardEvent) {
         <button
           class="desktop-tab-close"
           type="button"
-          :aria-label="`关闭 ${doc.graph ? '关系图谱' : doc.blank ? '新标签页' : title(doc.path)}`"
-          :title="`关闭 ${doc.graph ? '关系图谱' : doc.blank ? '新标签页' : title(doc.path)}`"
+          :aria-label="`关闭 ${doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.blank ? '新标签页' : title(doc.path)}`"
+          :title="`关闭 ${doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.blank ? '新标签页' : title(doc.path)}`"
           @click="closeTab(doc.id)"
         >
           <X :size="13" />
         </button>
       </div>
+      <div v-if="incomingSlot && !store.tabs.length" class="desktop-tab-dock-empty" aria-hidden="true" />
     </div>
     <button
       class="desktop-tab-add"
@@ -474,6 +745,9 @@ async function onTabKeydown(event: KeyboardEvent) {
       :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
     >
       <template v-if="contextMenu.tabId">
+        <button v-if="detachable" type="button" role="menuitem" @click="contextAction('detach')">
+          <ExternalLink :size="15" />在新窗口中打开
+        </button>
         <button type="button" role="menuitem" @click="contextAction('close')">
           <X :size="15" />关闭标签页
         </button>
@@ -549,6 +823,7 @@ async function onTabKeydown(event: KeyboardEvent) {
   align-items: stretch;
 }
 .desktop-tab-list {
+  position: relative;
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
@@ -561,6 +836,25 @@ async function onTabKeydown(event: KeyboardEvent) {
 }
 .desktop-tab-dragging {
   opacity: 0.45;
+}
+.desktop-tab-outgoing {
+  flex: 0 0 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  overflow: hidden;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.desktop-tab-dock-empty {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--green);
+  pointer-events: none;
 }
 .desktop-tab-context-menu {
   position: fixed;
@@ -584,7 +878,9 @@ async function onTabKeydown(event: KeyboardEvent) {
   user-select: none;
 }
 .desktop-tab-drop-before::after,
-.desktop-tab-drop-after::after {
+.desktop-tab-drop-after::after,
+.desktop-tab-dock-before::after,
+.desktop-tab-dock-after::after {
   content: '';
   position: absolute;
   z-index: 1;
@@ -595,10 +891,12 @@ async function onTabKeydown(event: KeyboardEvent) {
   background: var(--green);
   pointer-events: none;
 }
-.desktop-tab-drop-before::after {
+.desktop-tab-drop-before::after,
+.desktop-tab-dock-before::after {
   left: 0;
 }
-.desktop-tab-drop-after::after {
+.desktop-tab-drop-after::after,
+.desktop-tab-dock-after::after {
   right: 0;
 }
 .desktop-tab {

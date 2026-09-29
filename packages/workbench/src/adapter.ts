@@ -319,6 +319,10 @@ export class NativeAdapter implements WorkspaceAdapter {
     return invoke<WorkspaceArchiveResult>('import_workspace_export', { source, destinationParent });
   }
   createWorkspace = (name: string) => invoke<Workspace>('open_mobile_workspace', { name });
+  async close(workspaceId: string) {
+    await invoke<void>('close_workspace', { workspaceId });
+    this.selectedPath = null;
+  }
   recent = () => invoke<RecentWorkspace[]>('recent_workspaces');
   loadSession = (workspaceId: string) =>
     invoke<WorkspaceSession | null>('load_session', { workspaceId });

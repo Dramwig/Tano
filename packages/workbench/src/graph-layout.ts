@@ -16,7 +16,7 @@ export interface LayoutEdge {
 // charge and collision leave enough room to read titles and drag individual nodes.
 export const graphPhysics = Object.freeze({
   center: 0.018,
-  attraction: 0.12,
+  attraction: 0.2,
   repulsion: 420,
   distance: 130,
   damping: 0.32,

@@ -2641,7 +2641,6 @@ onBeforeUnmount(() => {
             <button v-if="editingProperty !== null" type="button" role="menuitem" class="frontmatter-type-delete" @click="deleteProperty"><Trash2 :size="16" />删除属性</button>
           </div>
         </div>
-        <p v-if="!properties.length && editingProperty !== null" class="frontmatter-empty">暂无属性</p>
       </template>
       <button
         v-if="!readonly && properties !== null && editingProperty !== null"

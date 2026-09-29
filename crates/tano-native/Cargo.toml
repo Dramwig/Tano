@@ -27,9 +27,9 @@ tauri-plugin-updater = "2"
 trash = "5"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem", "Win32_Foundation", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 
-[target.'cfg(target_os = "android")'.dependencies]
+[target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 libc = "0.2"
 
 [dev-dependencies]

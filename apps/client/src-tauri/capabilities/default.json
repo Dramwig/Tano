@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: select a workspace and protect unsaved edits on close.",
-  "windows": ["main"],
+  "description": "Main and detached windows: access the workspace and protect unsaved edits on close.",
+  "windows": ["main", "detached-*"],
   "permissions": [
     "core:default",
     "dialog:allow-open",
@@ -11,7 +11,14 @@
     "core:window:allow-destroy",
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
+    "core:window:allow-set-focus",
     "core:window:allow-is-maximized",
-    "core:window:allow-start-dragging"
+    "core:window:allow-start-dragging",
+    "core:window:allow-cursor-position",
+    "core:window:allow-inner-position",
+    "core:window:allow-scale-factor",
+    "core:window:allow-monitor-from-point",
+    "core:window:allow-create",
+    "core:webview:allow-create-webview-window"
   ]
 }

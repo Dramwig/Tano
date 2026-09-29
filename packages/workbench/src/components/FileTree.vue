@@ -143,7 +143,7 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
           attachment: file.kind === 'file' && !isMarkdown(file.path),
         }"
         :draggable="canDrag?.(file) ?? false"
-        :style="{ paddingLeft: `${12 + depth * 17}px` }"
+        :style="{ paddingLeft: `${4 + depth * 17}px` }"
         :title="file.path"
         :data-entry-id="file.id"
         :aria-selected="selectedIds.has(file.id)"

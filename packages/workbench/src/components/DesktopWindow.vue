@@ -106,6 +106,7 @@ async function toggleMaximize() {
   background: var(--sidebar);
   color: var(--text-secondary);
   user-select: none;
+  transition: left 240ms ease;
 }
 .desktop-window:has(.app-shell.workspace-empty) .desktop-window-titlebar {
   background: transparent;
@@ -117,6 +118,9 @@ async function toggleMaximize() {
 .desktop-window:has(.app-shell:not(.sidebar-hidden)) .desktop-window-titlebar {
   left: var(--sidebar-width);
 }
+.desktop-window:has(.app-shell.sidebar-resizing) .desktop-window-titlebar {
+  transition: none;
+}
 .desktop-window-tab-slot:has(.desktop-tab-strip) {
   display: flex;
   flex: 0 1 auto;
@@ -127,11 +131,19 @@ async function toggleMaximize() {
   display: grid;
   place-items: center;
   flex: 0 0 38px;
+  width: 38px;
   height: 100%;
+  overflow: hidden;
   padding: 0;
   border-right: 1px solid var(--line);
   border-radius: 0;
   color: var(--text-secondary);
+  transition: flex-basis 240ms ease, width 240ms ease, border-color 240ms ease;
+}
+.desktop-sidebar-toggle-hidden {
+  flex-basis: 0;
+  width: 0;
+  border-right-color: transparent;
 }
 .desktop-sidebar-toggle:hover {
   background: color-mix(in srgb, var(--paper) 55%, var(--sidebar));

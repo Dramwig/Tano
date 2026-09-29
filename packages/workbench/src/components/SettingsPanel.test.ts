@@ -15,11 +15,20 @@ let revealUpdates: boolean[];
 let preferenceUpdates: EditorPreferences[];
 let revealMarkdown = ref(true);
 let theme = ref<'light' | 'dark' | 'system'>('system');
-let visualFontChoice = ref<'system' | 'serif' | 'custom'>('system');
+let visualFontChoice = ref<'system' | 'serif' | 'mono' | 'custom'>('system');
 let customFontName = ref('');
 let showPageTitle = ref(true);
 let visualFontSize = ref(16);
 let sourceFontSize = ref(14);
+
+async function openPage(label: string) {
+  const button = [...root.querySelectorAll<HTMLButtonElement>('.settings-nav button')].find(
+    (item) => item.textContent?.includes(label),
+  );
+  expect(button).toBeDefined();
+  button!.click();
+  await nextTick();
+}
 
 beforeEach(() => {
   revealUpdates = [];
@@ -53,7 +62,7 @@ beforeEach(() => {
         initialPage: 'about',
         'onUpdate:revealMarkdown': (value: boolean) => revealUpdates.push(value),
         'onUpdate:theme': (value: 'light' | 'dark' | 'system') => { theme.value = value; },
-        'onUpdate:visualFontChoice': (value: 'system' | 'serif' | 'custom') => { visualFontChoice.value = value; },
+        'onUpdate:visualFontChoice': (value: 'system' | 'serif' | 'mono' | 'custom') => { visualFontChoice.value = value; },
         'onUpdate:customFontName': (value: string) => { customFontName.value = value; },
         'onUpdate:showPageTitle': (value: boolean) => { showPageTitle.value = value; },
         'onUpdate:editorPreferences': (value: EditorPreferences) => preferenceUpdates.push(value),
@@ -66,8 +75,7 @@ beforeEach(() => {
 });
 
 it('shows the Markdown reveal switch enabled and emits a change', async () => {
-  root.querySelectorAll<HTMLButtonElement>('.settings-nav button')[0]!.click();
-  await nextTick();
+  await openPage('编辑设置');
   const toggle = root.querySelector<HTMLButtonElement>('[role="switch"]')!;
   expect(toggle.getAttribute('aria-checked')).toBe('true');
   toggle.click();
@@ -75,8 +83,7 @@ it('shows the Markdown reveal switch enabled and emits a change', async () => {
 });
 
 it('offers light, dark, and system themes', async () => {
-  root.querySelectorAll<HTMLButtonElement>('.settings-nav button')[0]!.click();
-  await nextTick();
+  await openPage('外观设置');
   const select = root.querySelector<HTMLSelectElement>('select[aria-label="主题"]')!;
   expect([...select.options].map(({ textContent }) => textContent)).toEqual(['白天', '黑夜', '跟随系统']);
   expect(select.value).toBe('system');
@@ -87,18 +94,26 @@ it('offers light, dark, and system themes', async () => {
   expect(select.value).toBe('dark');
 });
 
-it('offers system, serif, and a custom local font with a live preview', async () => {
-  root.querySelectorAll<HTMLButtonElement>('.settings-nav button')[0]!.click();
-  await nextTick();
+it('offers system, serif, mono, and a custom local font with a live preview', async () => {
+  await openPage('外观设置');
+  const fontSection = root.querySelector<HTMLElement>('section[aria-label="编辑字体与字号"]')!;
+  expect(fontSection.querySelectorAll('.settings-font-preview-sample')).toHaveLength(2);
+  expect(fontSection.querySelector('.settings-font-preview')?.textContent).not.toMatch(/预览|px/);
+  expect(root.querySelector('section[aria-label="编辑字号"]')).toBeNull();
   const select = root.querySelector<HTMLSelectElement>('select[aria-label="可视化编辑字体"]')!;
   expect([...select.options].map(({ textContent }) => textContent)).toEqual([
-    '系统字体', '衬线字体', '自定义字体',
+    '系统字体', '衬线字体', '等宽字体', '自定义字体',
   ]);
   select.value = 'serif';
   select.dispatchEvent(new Event('change'));
   await nextTick();
   expect(visualFontChoice.value).toBe('serif');
-  expect(root.querySelector<HTMLElement>('.settings-font-preview')?.style.fontFamily).toContain('Georgia');
+  expect(root.querySelector<HTMLElement>('.settings-visual-font-sample')?.style.fontFamily).toContain('Georgia');
+  select.value = 'mono';
+  select.dispatchEvent(new Event('change'));
+  await nextTick();
+  expect(visualFontChoice.value).toBe('mono');
+  expect(root.querySelector<HTMLElement>('.settings-visual-font-sample')?.style.fontFamily).toContain('Maple Mono NF');
   select.value = 'custom';
   select.dispatchEvent(new Event('change'));
   await nextTick();
@@ -107,18 +122,17 @@ it('offers system, serif, and a custom local font with a live preview', async ()
   input.dispatchEvent(new Event('input'));
   await nextTick();
   expect(customFontName.value).toBe('霞鹜文楷');
-  expect(root.querySelector<HTMLElement>('.settings-font-preview')?.style.fontFamily).toContain('霞鹜文楷');
+  expect(root.querySelector<HTMLElement>('.settings-visual-font-sample')?.style.fontFamily).toContain('霞鹜文楷');
 });
 
 it('shows the formula preview setting and emits its change', async () => {
-  root.querySelectorAll<HTMLButtonElement>('.settings-nav button')[0]!.click();
-  await nextTick();
-  const content = root.querySelector<HTMLElement>('section[aria-label="内容显示"]')!;
+  await openPage('编辑设置');
+  const content = root.querySelector<HTMLElement>('section[aria-label="编辑行为"]')!;
   expect(content.textContent).toContain('编辑时预览公式');
   expect(content.textContent).toContain('标题与列表折叠');
   expect(content.textContent).not.toContain('渲染数学公式');
   expect(content.textContent).not.toContain('同时显示公式源码');
-  expect(content.querySelectorAll('[role="switch"]')).toHaveLength(3);
+  expect(content.querySelectorAll('[role="switch"]')).toHaveLength(2);
   const preview = content.querySelector<HTMLButtonElement>('[aria-label="编辑时预览公式"]')!;
   expect(preview.getAttribute('aria-checked')).toBe('true');
   preview.click();
@@ -126,8 +140,7 @@ it('shows the formula preview setting and emits its change', async () => {
 });
 
 it('keeps the page title preference in sync with its current value', async () => {
-  root.querySelectorAll<HTMLButtonElement>('.settings-nav button')[0]!.click();
-  await nextTick();
+  await openPage('外观设置');
   const toggle = root.querySelector<HTMLButtonElement>('[aria-label="页面内标题"]')!;
   expect(toggle.getAttribute('aria-checked')).toBe('true');
   toggle.click();
@@ -140,28 +153,35 @@ it('keeps the page title preference in sync with its current value', async () =>
 });
 
 it('adjusts each editor font size independently and restores its default', async () => {
-  root.querySelectorAll<HTMLButtonElement>('.settings-nav button')[0]!.click();
-  await nextTick();
+  await openPage('外观设置');
+  const visualPreview = root.querySelector<HTMLElement>('.settings-visual-font-sample')!;
+  const sourcePreview = root.querySelector<HTMLElement>('.settings-source-font-sample')!;
+  expect(visualPreview.style.fontSize).toBe('16px');
+  expect(sourcePreview.style.fontSize).toBe('14px');
   root.querySelector<HTMLButtonElement>('[aria-label="增大可视化编辑字号"]')!.click();
   await nextTick();
   expect(visualFontSize.value).toBe(17);
   expect(sourceFontSize.value).toBe(14);
   expect(root.querySelector('output[aria-label="可视化编辑字号"]')?.textContent).toBe('17 px');
+  expect(visualPreview.style.fontSize).toBe('17px');
+  expect(sourcePreview.style.fontSize).toBe('14px');
   const visualReset = root.querySelectorAll<HTMLButtonElement>('.settings-font-reset')[0]!;
   visualReset.click();
   await nextTick();
   expect(visualFontSize.value).toBe(16);
   expect(visualReset.disabled).toBe(true);
+  expect(visualPreview.style.fontSize).toBe('16px');
   root.querySelector<HTMLButtonElement>('[aria-label="减小 Markdown 源码字号"]')!.click();
   await nextTick();
   expect(sourceFontSize.value).toBe(13);
   expect(visualFontSize.value).toBe(16);
+  expect(sourcePreview.style.fontSize).toBe('13px');
+  expect(visualPreview.style.fontSize).toBe('16px');
 });
 
 it('disables formula preview when Markdown reveal is off and restores its saved choice', async () => {
-  root.querySelectorAll<HTMLButtonElement>('.settings-nav button')[0]!.click();
-  await nextTick();
-  const content = root.querySelector<HTMLElement>('section[aria-label="内容显示"]')!;
+  await openPage('编辑设置');
+  const content = root.querySelector<HTMLElement>('section[aria-label="编辑行为"]')!;
   const preview = content.querySelector<HTMLButtonElement>('[aria-label="编辑时预览公式"]')!;
   const folding = content.querySelector<HTMLButtonElement>('[aria-label="标题与列表折叠"]')!;
   expect(preview.disabled).toBe(false);
@@ -201,18 +221,22 @@ it('opens directly on the complete about page', () => {
 });
 
 it('keeps the about content inside settings navigation', async () => {
-  const preferences = [...root.querySelectorAll<HTMLButtonElement>('.settings-nav button')].find(
-    (button) => button.textContent?.includes('偏好设置'),
-  );
-  preferences?.click();
-  await nextTick();
-  expect(root.querySelector('h2')?.textContent).toBe('偏好设置');
-
-  const about = [...root.querySelectorAll<HTMLButtonElement>('.settings-nav button')].find(
-    (button) => button.textContent?.includes('关于同页'),
-  );
-  about?.click();
-  await nextTick();
+  await openPage('外观设置');
+  expect(root.querySelector('h2')?.textContent).toBe('外观设置');
+  await openPage('编辑设置');
+  expect(root.querySelector('h2')?.textContent).toBe('编辑设置');
+  await openPage('关于同页');
   expect(root.querySelector('h2')?.textContent).toBe('关于同页');
   expect(root.querySelector('.settings-about-brand')).not.toBeNull();
+});
+
+it('separates appearance and editing controls', async () => {
+  await openPage('外观设置');
+  expect(root.querySelector('select[aria-label="主题"]')).not.toBeNull();
+  expect(root.querySelector('select[aria-label="默认编辑模式"]')).toBeNull();
+  expect(root.querySelector('[aria-label="页面内标题"]')).not.toBeNull();
+  await openPage('编辑设置');
+  expect(root.querySelector('select[aria-label="主题"]')).toBeNull();
+  expect(root.querySelector('select[aria-label="默认编辑模式"]')).not.toBeNull();
+  expect(root.querySelector('[aria-label="页面内标题"]')).toBeNull();
 });

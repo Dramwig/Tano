@@ -1,5 +1,53 @@
 @import '@fontsource-variable/inter/wght.css';
 
+@font-face {
+  font-family: Literata;
+  src: url('./fonts/Literata.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: Literata;
+  src: url('./fonts/Literata-Italic.woff2') format('woff2');
+  font-style: italic;
+  font-weight: 200 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Maple Mono NF';
+  src: url('./fonts/MapleMono-NF-Regular.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Maple Mono NF';
+  src: url('./fonts/MapleMono-NF-Italic.ttf') format('truetype');
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Maple Mono NF';
+  src: url('./fonts/MapleMono-NF-Bold.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Maple Mono NF';
+  src: url('./fonts/MapleMono-NF-BoldItalic.ttf') format('truetype');
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
@@ -150,18 +198,49 @@ button:hover {
   display: none;
 }
 .sidebar {
+  position: relative;
   width: var(--sidebar-width);
   flex: 0 0 var(--sidebar-width);
   background: var(--sidebar);
   border-right: 1px solid var(--line);
   display: flex;
   flex-direction: column;
-  padding: 0 13px;
+  padding: 0 7px;
   min-height: 0;
   user-select: none;
 }
 .sidebar > * {
-  min-width: calc(var(--sidebar-width) - 27px);
+  min-width: calc(var(--sidebar-width) - 15px);
+}
+.sidebar > .sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -5px;
+  bottom: 0;
+  z-index: 11;
+  width: 10px;
+  min-width: 0;
+  cursor: col-resize;
+  touch-action: none;
+}
+.sidebar-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  background: transparent;
+  transition: background 120ms ease;
+}
+.sidebar-resize-handle:hover::after,
+.sidebar-resize-handle:focus-visible::after,
+.sidebar-resizing .sidebar-resize-handle::after {
+  background: var(--green);
+}
+.sidebar-resizing,
+.sidebar-resizing * {
+  cursor: col-resize !important;
 }
 .sidebar-enter-active,
 .sidebar-leave-active {
@@ -185,20 +264,34 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 0 3px;
+  gap: 4px;
+  padding: 0;
   flex-shrink: 0;
 }
 .sidebar-header-actions {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 0;
+  margin-right: 0;
+}
+.sidebar-header-actions .icon-button {
+  flex: 0 0 25px;
+  width: 25px;
+}
+.sidebar-brand-slot {
+  position: relative;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
 }
 .brand {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
   min-width: 0;
+  width: 30px;
+  height: 30px;
 }
 .brand[href] {
   color: var(--text);
@@ -214,6 +307,30 @@ button:hover {
 .brand > img {
   width: 22px;
   height: 22px;
+}
+.sidebar-brand-slot .sidebar-toggle {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.sidebar-brand-slot:hover .brand,
+.sidebar-brand-slot:has(.sidebar-toggle:focus-visible) .brand {
+  opacity: 0;
+}
+.sidebar-brand-slot:hover .sidebar-toggle,
+.sidebar-brand-slot .sidebar-toggle:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .sidebar-brand-slot .brand {
+    visibility: hidden;
+  }
+  .sidebar-brand-slot .sidebar-toggle {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 .version-pill {
   font-size: 12px;
@@ -310,8 +427,8 @@ button:hover {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  margin: 6px -13px 0 -4px;
-  padding: 0 13px 0 4px;
+  margin: 6px -7px 0 0;
+  padding: 0 7px 0 0;
 }
 .agent-file-dot {
   width: 5px;
@@ -324,11 +441,18 @@ button:hover {
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
   font-size: 12px;
   color: var(--muted);
-  padding: 0 0 0 9px;
+  padding: 0 0 0 4px;
   margin-bottom: 4px;
   font-weight: 600;
+}
+.section-label > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .section-label.drop-target {
   background: var(--accent);
@@ -338,11 +462,8 @@ button:hover {
 }
 .section-label > div {
   display: flex;
+  flex-shrink: 0;
   gap: 3px;
-}
-.document-count {
-  margin-left: 8px;
-  font-weight: 400;
 }
 .icon-button {
   height: 30px;
@@ -363,22 +484,15 @@ button:hover {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  margin: 0 -13px 0 -4px;
+  margin: 0;
   padding-bottom: 16px;
   scrollbar-width: none;
-  scrollbar-color: var(--control-border) transparent;
 }
 .tree-scroll.drop-root {
   background: linear-gradient(var(--accent), var(--accent)) top / 100% 3px no-repeat;
 }
 .tree-scroll::-webkit-scrollbar {
-  width: 0;
-}
-.sidebar:hover .tree-scroll {
-  scrollbar-width: thin;
-}
-.sidebar:hover .tree-scroll::-webkit-scrollbar {
-  width: 6px;
+  display: none;
 }
 .file-tree {
   list-style: none;
@@ -483,9 +597,9 @@ button:hover {
   align-items: center;
   gap: 3px;
   flex-shrink: 0;
-  margin: 0 -13px;
+  margin: 0 -7px;
   border-top: 1px solid var(--line);
-  padding: 8px 10px;
+  padding: 8px 5px;
   background: var(--sidebar);
 }
 .sidebar-bottom > .icon-button {
@@ -639,6 +753,12 @@ button:hover {
   justify-content: space-between;
   padding: 0 25px;
   gap: 8px;
+}
+.detached-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
 }
 .format-actions,
 .document-actions {
@@ -1037,19 +1157,11 @@ button:hover {
 }
 .workspace-dropdown {
   left: 8px;
-  bottom: calc(100% + 6px);
-  width: 300px;
-  max-width: calc(100vw - 16px);
-  max-height: min(560px, calc(100dvh - 76px));
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-.sidebar-settings-dropdown {
-  left: 8px;
   right: 8px;
   bottom: calc(100% + 6px);
   width: auto;
-  max-height: min(520px, calc(100dvh - 110px));
+  max-width: calc(100vw - 16px);
+  max-height: min(560px, calc(100dvh - 76px));
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -1065,9 +1177,46 @@ button:hover {
   font-size: 12px;
   letter-spacing: 0;
 }
+.workspace-recent-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.workspace-dropdown .workspace-recent-open {
+  display: grid;
+  place-items: center;
+  flex: 0 0 26px;
+  width: 26px;
+  min-height: 26px;
+  padding: 0;
+  margin-right: 2px;
+  color: var(--text-secondary);
+}
 .sidebar-popover .workspace-menu-summary {
   gap: 6px;
   padding: 4px 7px;
+}
+.workspace-menu-summary-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 16px;
+}
+.workspace-dropdown .workspace-menu-exit {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--text-secondary);
+}
+.workspace-dropdown .workspace-menu-exit svg {
+  width: 16px;
+  height: 16px;
 }
 .sidebar-popover .workspace-menu-avatar {
   width: 28px;
@@ -2534,6 +2683,38 @@ button:hover {
   place-items: center;
   background: var(--paper);
 }
+.plugins-tab-page {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--paper);
+}
+.plugins-tab-content {
+  width: min(960px, 100%);
+  margin: 0 auto;
+  padding: 28px 32px 48px;
+}
+.plugins-tab-heading h1 {
+  margin: 0;
+  font-size: 23px;
+}
+.plugins-tab-heading p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.plugins-tab-content > .tool-level-notice {
+  margin-top: 20px;
+  border-radius: 6px;
+}
+.plugins-tab-content > .plugin-installer {
+  padding: 24px 0 0;
+}
+@media (max-width: 700px) {
+  .plugins-tab-content {
+    padding: 20px 16px 40px;
+  }
+}
 .blank-tab-actions {
   display: grid;
   gap: 14px;
@@ -3056,8 +3237,8 @@ button:hover {
   .sidebar-leave-to {
     width: var(--sidebar-width);
     flex-basis: var(--sidebar-width);
-    padding-left: 13px;
-    padding-right: 13px;
+    padding-left: 7px;
+    padding-right: 7px;
     border-right-color: var(--line);
     transform: translateX(-100%);
   }
@@ -3758,10 +3939,6 @@ button:hover {
   border-top: 1px solid var(--line);
   border-radius: 0;
   color: var(--danger, #b42318);
-}
-.frontmatter-empty {
-  margin: 4px 0 8px 25px;
-  color: var(--muted);
 }
 .frontmatter-raw {
   margin: 0 0 8px 25px;

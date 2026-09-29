@@ -1,6 +1,8 @@
 import { ObjectTypeRegistry, objectTypeRegistry, parseObjectPlugin } from '@tano/protocol';
 import type { ObjectPluginManifest } from '@tano/protocol';
 
+export const PLUGINS_TAB_ID = 'view:plugins';
+
 export interface InstalledObjectPlugin {
   manifest: ObjectPluginManifest;
   enabled: boolean;

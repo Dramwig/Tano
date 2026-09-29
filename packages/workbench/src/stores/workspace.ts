@@ -24,13 +24,13 @@ import { assetTargets, documentTargets, parseObject, objectTypeRegistry, validat
 import type { WorkspaceObject, ReferenceTarget } from '@tano/protocol';
 import { coreRelationTypes, newShortId, RelationIndex, referenceKey, validateRelation } from '@tano/protocol';
 import type { ReferenceIdentity, WorkspaceRelation } from '@tano/protocol';
-import { WorkspacePluginHost } from '../workspace-plugins';
+import { PLUGINS_TAB_ID, WorkspacePluginHost } from '../workspace-plugins';
 import type { InstalledObjectPlugin, PluginChange } from '../workspace-plugins';
 import { loadRelations, saveRelationChange } from '../workspace-relations';
 import type { RelationChange } from '../workspace-relations';
 import { GRAPH_TAB_ID } from '../document-graph';
 
-const isUtilityTab = (id: string) => id.startsWith('blank:') || id === GRAPH_TAB_ID;
+const isUtilityTab = (id: string) => id.startsWith('blank:') || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID;
 
 export interface OpenDocument {
   id: string;
@@ -47,6 +47,7 @@ export interface DocumentTab {
   path: string;
   blank: boolean;
   graph: boolean;
+  plugins: boolean;
   document?: OpenDocument;
 }
 export interface Activity {
@@ -222,7 +223,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const tabs = computed<DocumentTab[]>(() =>
     tabIds.value.map((id) => {
       const document = documents.value.find((doc) => doc.id === id);
-      return { id, path: document?.path ?? '', blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, document };
+      return { id, path: document?.path ?? '', blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, document };
     }),
   );
   type TabNavigation = { entries: string[]; index: number };
@@ -317,6 +318,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const sessionError = ref('');
   const isDemo = adapter.mode === 'demo';
   const isWeb = adapter.mode === 'web';
+  const detachedTabId = !isDemo && !isWeb && !mobile
+    ? new URLSearchParams(window.location.search).get('detachedTab')
+    : null;
+  const detachedWorkspacePath = detachedTabId
+    ? new URLSearchParams(window.location.search).get('workspacePath')
+    : null;
   const dirty = (doc: OpenDocument) => doc.content !== doc.base.content;
   const pending = computed(() => documents.value.some((d) => dirty(d) && !d.conflict));
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -335,7 +342,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   let afterSwitch: (() => Promise<void>) | undefined;
   let beforeCloseDocument: ((id: string) => Promise<void>) | undefined;
   function queueSession() {
-    if (!sessionReady || sessionBlocked || !workspace.value || !adapter.saveSession) return;
+    if (detachedTabId || !sessionReady || sessionBlocked || !workspace.value || !adapter.saveSession) return;
     pendingSession = {
       id: workspace.value.id,
       payload: {
@@ -504,17 +511,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     }
   }
+  if (!isDemo && !isWeb && !mobile && typeof window !== 'undefined') {
+    const refreshRecentOnFocus = () => { void refreshWorkspaces(); };
+    window.addEventListener('focus', refreshRecentOnFocus);
+    onScopeDispose(() => window.removeEventListener('focus', refreshRecentOnFocus));
+  }
   async function initialize() {
-    if (isDemo || isWeb) {
+    if (detachedTabId && detachedWorkspacePath) await openWorkspace(detachedWorkspacePath);
+    else if (isDemo || isWeb) {
       await openWorkspace();
       if (isWeb) await refreshWorkspaces();
-    } else if (adapter.recent) {
-      try {
-        recent.value = await adapter.recent();
-      } catch (error) {
-        report(error);
-      }
-    }
+    } else if (adapter.recent) await refreshWorkspaces();
   }
   async function refreshWorkspaces() {
     if (!adapter.recent) return;
@@ -583,7 +590,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           document.addEventListener('visibilitychange', refreshWhenVisible);
         }
         let saved: WorkspaceSession | null = null;
-        if (adapter.loadSession) {
+        if (!detachedTabId && adapter.loadSession) {
           try {
             saved = await adapter.loadSession(next.id);
           } catch (error) {
@@ -596,7 +603,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           next.files.find((f) => f.path === '开始使用.md') ??
           next.files.find((f) => /^readme\.md$/i.test(f.path)) ??
           next.files.find((f) => f.kind === 'file' && isMarkdown(f.path));
-        if (!saved && first) {
+        if (detachedTabId) {
+          if (detachedTabId === GRAPH_TAB_ID) openGraphTab();
+          else if (detachedTabId === PLUGINS_TAB_ID) openPluginsTab();
+          else if (detachedTabId.startsWith('blank:')) createBlankTab();
+          else {
+            const detachedFile = next.files.find((file) => file.id === detachedTabId);
+            if (!detachedFile) throw new Error('拖出的文档已不存在');
+            await openInternal(detachedFile);
+            if (activeId.value !== detachedFile.id) throw new Error('无法打开拖出的文档');
+          }
+        } else if (!saved && first) {
           try {
             await openInternal(first);
             ensureTabNavigation(activeId.value, activeId.value);
@@ -611,8 +628,63 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         activity(isDemo ? '演示工作空间已就绪' : '工作空间已打开', next.name, 'file');
       });
     } catch (error) {
+      if (path && recent.value.some((item) => item.path === path)) {
+        await refreshWorkspaces();
+        if (!recent.value.some((item) => item.path === path)) {
+          fatal.value = '';
+          return;
+        }
+      }
       report(error);
       if (isRecoveryError(error)) await openRecovery(path ?? adapter.recoveryPath?.() ?? '', false);
+    } finally {
+      busy.value = false;
+      try {
+        await afterSwitch?.();
+      } catch (error) {
+        report(error);
+      }
+    }
+  }
+  async function leaveWorkspace(): Promise<boolean> {
+    if (busy.value || !workspace.value) return false;
+    busy.value = true;
+    try {
+      if (!(await flush())) {
+        report('还有未保存的修改。请先处理保存错误，再退出工作区。');
+        return false;
+      }
+      await beforeSwitch?.();
+      await serial(async () => {
+        const current = workspace.value;
+        if (!current) return;
+        queueSession();
+        await journalTask;
+        if (!detachedTabId) await adapter.close?.(current.id);
+        sessionReady = false;
+        stopWatching();
+        pluginHost.dispose();
+        workspace.value = null;
+        documents.value = [];
+        tabIds.value = [];
+        activeId.value = '';
+        resetTabNavigation();
+        objects.value = []; objectErrors.value = [];
+        installedPlugins.value = []; pluginError.value = '';
+        relations.value = []; relationBase = null; relationError.value = '';
+        capabilities.value = structuredClone(defaultCapabilities);
+        capabilityBase = null; capabilityError.value = '';
+        activities.value = [];
+        recovery.value = null; recoveryPreview.value = null; recoveryError.value = '';
+        sessionError.value = '';
+        sessionBlocked = false;
+        fatal.value = '';
+      });
+      await refreshWorkspaces();
+      return true;
+    } catch (error) {
+      report(error);
+      return false;
     } finally {
       busy.value = false;
       try {
@@ -722,7 +794,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function openFile(file: FileEntry, options?: { historyIndex?: number }) {
     try {
       if (!isMarkdown(file.path) || file.kind !== 'file') return;
-      const replaceId = activeId.value === GRAPH_TAB_ID ? undefined : activeId.value;
+      const replaceId = isUtilityTab(activeId.value) && !activeId.value.startsWith('blank:') ? undefined : activeId.value;
       const wasOpen = documents.value.some((doc) => doc.id === file.id);
       const current = documents.value.find((doc) => doc.id === replaceId);
       if (!documents.value.some((doc) => doc.id === file.id) && current) {
@@ -775,6 +847,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (!tabIds.value.includes(GRAPH_TAB_ID)) tabIds.value.push(GRAPH_TAB_ID);
     activeId.value = GRAPH_TAB_ID;
     ensureTabNavigation(GRAPH_TAB_ID);
+    touchNavigation();
+  }
+  function openPluginsTab() {
+    if (!workspace.value) return;
+    if (!tabIds.value.includes(PLUGINS_TAB_ID)) tabIds.value.push(PLUGINS_TAB_ID);
+    activeId.value = PLUGINS_TAB_ID;
+    ensureTabNavigation(PLUGINS_TAB_ID);
     touchNavigation();
   }
   // Serialize adapter reads with workspace switches. The graph never writes
@@ -879,8 +958,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function refresh() {
     if (!workspace.value) return;
+    const expectedId = workspace.value.id;
+    const expectedPath = workspace.value.path;
     try {
       await serial(async () => {
+        if (workspace.value?.id !== expectedId || workspace.value.path !== expectedPath) return;
         workspace.value = await adapter.refresh();
         if (workspace.value.backupWarning) report(workspace.value.backupWarning);
         await refreshCapabilities();
@@ -1164,6 +1246,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     documents.value = reordered.flatMap((tabId) => byId.get(tabId) ?? []);
     tabIds.value = reordered;
   }
+  function placeTab(id: string, index: number) {
+    if (!tabIds.value.includes(id)) return;
+    const reordered = tabIds.value.filter((tabId) => tabId !== id);
+    reordered.splice(Math.max(0, Math.min(index, reordered.length)), 0, id);
+    if (reordered.every((tabId, position) => tabId === tabIds.value[position])) return;
+    const byId = new Map(documents.value.map((doc) => [doc.id, doc]));
+    documents.value = reordered.flatMap((tabId) => byId.get(tabId) ?? []);
+    tabIds.value = reordered;
+  }
   async function close(id: string) {
     if (isUtilityTab(id)) {
       tabIds.value = tabIds.value.filter((tabId) => tabId !== id);
@@ -1278,11 +1369,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     initialize,
     refreshWorkspaces,
     openWorkspace,
+    leaveWorkspace,
     createWorkspace: (name: string) => openWorkspace(undefined, name),
     openFile,
     openFileInNewTab,
     createBlankTab,
     openGraphTab,
+    openPluginsTab,
     readGraphDocument,
     edit,
     editDocument,
@@ -1315,6 +1408,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     removeEntry,
     removeEntries,
     moveDocument,
+    placeTab,
     close,
     resolveConflict,
     reveal,

@@ -81,6 +81,10 @@ it('highlights only the hovered node and its connections, and supports keyboard 
   await nextTick();
   expect(node.classList.contains('highlighted')).toBe(true);
   expect(root.querySelectorAll('line.highlighted')).toHaveLength(1);
+  const connected = root.querySelector('[data-node="1"]')!;
+  expect(connected.classList.contains('neighbour')).toBe(true);
+  expect(connected.classList.contains('highlighted')).toBe(false);
+  expect(connected.classList.contains('dimmed')).toBe(false);
   expect(root.querySelector('[data-node="2"]')!.classList.contains('dimmed')).toBe(true);
   node.dispatchEvent(new MouseEvent('pointerleave'));
   await nextTick();
@@ -144,9 +148,12 @@ it('updates edges from unsaved drafts and removes deleted documents', async () =
 
 it('reports unreadable documents while preserving the rest of the graph', async () => {
   fixture.store.readGraphDocument.mockRejectedValueOnce(new Error('unreadable'));
-  (root.querySelector('[aria-label="刷新图谱"]') as HTMLButtonElement).click();
+  fixture.store.workspace.files[0].modified = 1;
   await vi.waitFor(() =>
     expect(root.querySelector('.graph-warning')?.textContent).toContain('1 篇文档未能读取'),
   );
   expect(root.querySelectorAll('.graph-node')).toHaveLength(3);
+  expect(root.querySelector('[aria-label="刷新图谱"]')).toBeNull();
+  (root.querySelector('.graph-warning button') as HTMLButtonElement).click();
+  await vi.waitFor(() => expect(root.querySelector('.graph-warning')).toBeNull());
 });

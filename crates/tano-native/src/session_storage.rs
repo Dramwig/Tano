@@ -65,9 +65,7 @@ pub fn record(cache: &Path, workspace: &storage::Workspace) -> Result<(), String
 pub fn recent(cache: &Path) -> Result<Vec<RecentWorkspace>, String> {
     let db = connection(cache)?;
     let mut statement = db
-        .prepare(
-            "SELECT id,name,path,opened_at FROM recent_workspaces ORDER BY opened_at DESC LIMIT 12",
-        )
+        .prepare("SELECT id,name,path,opened_at FROM recent_workspaces ORDER BY opened_at DESC")
         .map_err(|e| e.to_string())?;
     let rows = statement
         .query_map([], |row| {
@@ -79,7 +77,31 @@ pub fn recent(cache: &Path) -> Result<Vec<RecentWorkspace>, String> {
             })
         })
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    let rows: Vec<RecentWorkspace> = rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?;
+    drop(statement);
+    let mut valid = Vec::new();
+    for workspace in rows {
+        match fs::metadata(&workspace.path) {
+            Ok(metadata) if metadata.is_dir() => valid.push(workspace),
+            Ok(_) => {
+                db.execute(
+                    "DELETE FROM recent_workspaces WHERE id = ?1 AND path = ?2",
+                    params![workspace.id, workspace.path],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                db.execute(
+                    "DELETE FROM recent_workspaces WHERE id = ?1 AND path = ?2",
+                    params![workspace.id, workspace.path],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            Err(_) => valid.push(workspace),
+        }
+    }
+    valid.truncate(12);
+    Ok(valid)
 }
 pub fn known_identity(cache: &Path, root: &Path) -> Result<Option<String>, String> {
     let db = connection(cache)?;
@@ -191,6 +213,80 @@ pub fn save(app_data: &Path, workspace_id: &str, session: &WorkspaceSession) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn recent_removes_missing_and_moved_workspaces_from_history() {
+        let data = tempfile::tempdir().unwrap();
+        let cache = data.path().join("index.sqlite");
+        let existing = data.path().join("existing");
+        let moved = data.path().join("moved");
+        let new_location = data.path().join("new-location");
+        let deleted = data.path().join("deleted");
+        fs::create_dir(&existing).unwrap();
+        fs::create_dir(&moved).unwrap();
+        fs::create_dir(&deleted).unwrap();
+        let db = connection(&cache).unwrap();
+        for (id, path, opened_at) in [
+            ("existing", &existing, 1),
+            ("moved", &moved, 2),
+            ("deleted", &deleted, 3),
+        ] {
+            db.execute(
+                "INSERT INTO recent_workspaces VALUES (?1, ?2, ?3, ?4)",
+                params![id, id, path.to_string_lossy(), opened_at],
+            )
+            .unwrap();
+        }
+        fs::rename(&moved, &new_location).unwrap();
+        fs::remove_dir(&deleted).unwrap();
+
+        let history = recent(&cache).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].id, "existing");
+        let count: i64 = db
+            .query_row("SELECT COUNT(*) FROM recent_workspaces", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn recent_checks_all_rows_before_limiting_results() {
+        let data = tempfile::tempdir().unwrap();
+        let cache = data.path().join("index.sqlite");
+        let db = connection(&cache).unwrap();
+        for index in 0..13 {
+            let path = data.path().join(format!("workspace-{index}"));
+            fs::create_dir(&path).unwrap();
+            db.execute(
+                "INSERT INTO recent_workspaces VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    format!("id-{index}"),
+                    "workspace",
+                    path.to_string_lossy(),
+                    index
+                ],
+            )
+            .unwrap();
+        }
+        db.execute(
+            "INSERT INTO recent_workspaces VALUES ('missing', 'missing', ?1, 99)",
+            [data.path().join("missing").to_string_lossy().to_string()],
+        )
+        .unwrap();
+
+        let history = recent(&cache).unwrap();
+        assert_eq!(history.len(), 12);
+        assert_eq!(history[0].id, "id-12");
+        assert_eq!(history[11].id, "id-1");
+        let count: i64 = db
+            .query_row("SELECT COUNT(*) FROM recent_workspaces", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 13);
+    }
+
     fn session() -> WorkspaceSession {
         WorkspaceSession {
             version: 1,

@@ -26,7 +26,6 @@ import {
   History,
   List,
   CircleHelp,
-  Monitor,
   ArrowLeft,
   ArrowRight,
   AlertTriangle,
@@ -42,6 +41,7 @@ import {
   Users,
   Puzzle,
   GitFork,
+  Link2,
   CalendarDays,
   Globe2,
   LogOut,
@@ -87,6 +87,7 @@ import { headings } from '@tano/markdown';
 import FileTree from './components/FileTree.vue';
 import DesktopTabs from './components/DesktopTabs.vue';
 import { GRAPH_TAB_ID } from './document-graph';
+import { PLUGINS_TAB_ID } from './workspace-plugins';
 const RelationGraph = defineAsyncComponent(() => import('./components/RelationGraph.vue'));
 import NewTabPicker from './components/NewTabPicker.vue';
 import EditorToolbar from './components/EditorToolbar.vue';
@@ -103,6 +104,7 @@ import MobileRecycle from './components/MobileRecycle.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
 import ObjectPanel from './components/ObjectPanel.vue';
 import WorkspaceTools from './components/WorkspaceTools.vue';
+import PluginInstaller from './components/PluginInstaller.vue';
 import WorkspaceRecoveryDialog from './components/WorkspaceRecoveryDialog.vue';
 import type { WorkspaceTool } from './components/WorkspaceTools.vue';
 import { relationPath } from '@tano/protocol';
@@ -113,22 +115,27 @@ import { useUpdatesStore } from './stores/updates';
 import { resolveWikiLink } from './wiki-links';
 import { applyFileMovePreview, planFileMovePreview, type FileMovePreview } from './file-move';
 import { isSidebarToggleShortcut } from './shortcuts';
+import { createDetachedTabWindow, detachedTabRequest, reportDetachedReady } from './detach-tab';
+import type { DetachedDropPoint } from './detach-tab';
+import { findTabDockTarget, requestTabTransfer, TAB_TRANSFER_REQUEST, TAB_TRANSFER_RESULT, TAB_TRANSFER_ROLLBACK } from './tab-docking';
+import type { TabTransferRequest, TabTransferRollback, TabTransferResult } from './tab-docking';
 import { selectTreeEntry, topLevelEntries } from './file-selection';
 import { isBlankPageTarget } from './page-context-menu';
 import { applyTheme, readThemePreference, saveThemePreference } from './theme';
 import type { ThemePreference } from './theme';
 import { parseVisualFontChoice, sanitizeCustomFontName, visualFontFamily } from './editor-font';
 import type { VisualFontChoice } from './editor-font';
-import { listen } from '@tauri-apps/api/event';
+import { emitTo, listen } from '@tauri-apps/api/event';
 
 const store = useWorkspaceStore();
+const detachedWindow = native && !mobile && !!detachedTabRequest();
 const welcomeSlogan = welcomeSlogans[Math.floor(Math.random() * welcomeSlogans.length)];
 const welcomeSloganParts = sloganParts(welcomeSlogan);
 const localNative = native && !store.isWeb;
 const extensions = useWorkbenchRuntime().extensions?.() ?? createLocalExtensions();
 const editing = extensions.editing;
 const extensionActions: WorkbenchActions = {
-  closeMenus: () => { workspaceMenu.value = false; settingsMenu.value = false; menu.value = false; },
+  closeMenus: () => { workspaceMenu.value = false; menu.value = false; },
   createWorkspace: () => showModal('workspace'), openSettings,
   showDiff: value => { selectedDiff.value = value; },
 };
@@ -151,7 +158,7 @@ watch(
     agentPanel.value = false;
     selectedDiff.value = undefined;
     recyclePanel.value = false;
-    settingsMenu.value = false;
+    workspaceMenu.value = false;
     settingsPanel.value = false;
     fileContextMenu.value = null;
     selectedEntryIds.value = new Set();
@@ -164,7 +171,16 @@ watch(
   },
 );
 const { workspace, active, activeId, activities, fatal, busy } = storeToRefs(store);
-const sidebar = ref(window.innerWidth > 700);
+const sidebar = ref(!detachedWindow && window.innerWidth > 700);
+const viewportWidth = ref(window.innerWidth);
+const sidebarWidth = ref<number | null>(null);
+const resizingSidebar = ref(false);
+const SIDEBAR_MIN_WIDTH = 180;
+const SIDEBAR_MAX_WIDTH = 480;
+let sidebarResizePointerId: number | null = null;
+let sidebarResizeStartX = 0;
+let sidebarResizeStartWidth = 0;
+let preferredSidebarWidth: number | null = null;
 const theme = ref<ThemePreference>(readThemePreference());
 const systemThemeMedia = window.matchMedia?.('(prefers-color-scheme: dark)');
 const onSystemThemeChange = () => {
@@ -217,6 +233,63 @@ function saveTextPreference(key: string, value: string) {
   } catch {
     // The setting still works for this session when device storage is unavailable.
   }
+}
+const savedSidebarWidth = Number(readTextPreference('sidebarWidth'));
+if (!detachedWindow && Number.isInteger(savedSidebarWidth) && savedSidebarWidth >= SIDEBAR_MIN_WIDTH && savedSidebarWidth <= SIDEBAR_MAX_WIDTH) {
+  setSidebarWidth(savedSidebarWidth, true);
+}
+function sidebarWidthLimit() {
+  return Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, viewportWidth.value - (viewportWidth.value <= 700 ? 48 : 320)));
+}
+function defaultSidebarWidth() {
+  return viewportWidth.value >= 1600 ? 245 : viewportWidth.value <= 1180 ? 210 : 230;
+}
+function setSidebarWidth(width: number, preservePreference = false) {
+  const requestedWidth = Math.round(width);
+  sidebarWidth.value = Math.max(SIDEBAR_MIN_WIDTH, Math.min(sidebarWidthLimit(), requestedWidth));
+  preferredSidebarWidth = preservePreference ? requestedWidth : sidebarWidth.value;
+  document.documentElement.style.setProperty('--sidebar-width', `${sidebarWidth.value}px`);
+}
+function currentSidebarWidth() {
+  return document.querySelector<HTMLElement>('.sidebar')?.getBoundingClientRect().width ?? 230;
+}
+function startSidebarResize(event: PointerEvent) {
+  if (mobile || event.button !== 0) return;
+  event.preventDefault();
+  const handle = event.currentTarget as HTMLElement;
+  handle.focus();
+  sidebarResizePointerId = event.pointerId;
+  sidebarResizeStartX = event.clientX;
+  sidebarResizeStartWidth = currentSidebarWidth();
+  resizingSidebar.value = true;
+  handle.setPointerCapture(event.pointerId);
+}
+function moveSidebarResize(event: PointerEvent) {
+  if (event.pointerId !== sidebarResizePointerId) return;
+  setSidebarWidth(sidebarResizeStartWidth + event.clientX - sidebarResizeStartX);
+}
+function finishSidebarResize(event: PointerEvent) {
+  if (event.pointerId !== sidebarResizePointerId) return;
+  sidebarResizePointerId = null;
+  resizingSidebar.value = false;
+  if (sidebarWidth.value !== null) saveTextPreference('sidebarWidth', String(sidebarWidth.value));
+}
+function resizeSidebarWithKeyboard(event: KeyboardEvent) {
+  if (mobile) return;
+  const width = sidebarWidth.value ?? currentSidebarWidth();
+  const nextWidth = event.key === 'ArrowLeft' ? width - 10
+    : event.key === 'ArrowRight' ? width + 10
+    : event.key === 'Home' ? SIDEBAR_MIN_WIDTH
+    : event.key === 'End' ? sidebarWidthLimit()
+    : null;
+  if (nextWidth === null) return;
+  event.preventDefault();
+  setSidebarWidth(nextWidth);
+  saveTextPreference('sidebarWidth', String(sidebarWidth.value));
+}
+function constrainSidebarToViewport() {
+  viewportWidth.value = window.innerWidth;
+  if (preferredSidebarWidth !== null) setSidebarWidth(preferredSidebarWidth, true);
 }
 const defaultSource = ref(readPreference('defaultSource', false));
 const revealMarkdown = ref(readPreference('revealMarkdown', true));
@@ -326,7 +399,6 @@ const menu = ref(false);
 const documentMenuButton = ref<HTMLButtonElement>();
 const documentMenuElement = ref<HTMLElement>();
 const workspaceMenu = ref(false);
-const settingsMenu = ref(false);
 const fileContextMenu = ref<{ file: FileEntry; x: number; y: number } | null>(null);
 const directoryContextMenu = ref<{ parent: string; x: number; y: number } | null>(null);
 const pageContextMenu = ref<{ x: number; y: number } | null>(null);
@@ -386,7 +458,7 @@ let fileContextTrigger: HTMLElement | null = null;
 const settingsPanel = ref(false);
 const archiveBusy = ref(false);
 const archiveResult = ref<{ kind: 'export' | 'import'; value: WorkspaceArchiveResult } | null>(null);
-const settingsPage = ref<'preferences' | 'workspace' | 'about'>('preferences');
+const settingsPage = ref<'appearance' | 'editing' | 'workspace' | 'about'>('appearance');
 watch(defaultSource, (value) => {
   savePreference('defaultSource', value);
   if (!editing.active && !editing.activeBusy) source.value = value;
@@ -444,17 +516,17 @@ const inputEl = ref<HTMLInputElement>();
 const editor = ref<InstanceType<typeof MarkdownEditor>>();
 const objectPanel = ref(false);
 const toolsOpen = ref(false);
-const workspaceTool = ref<WorkspaceTool>('plugins');
+const workspaceTool = ref<WorkspaceTool>('relations');
 function showWorkspaceTool(tab: WorkspaceTool) {
   workspaceTool.value = tab;
   toolsOpen.value = true;
-  settingsMenu.value = false;
+  workspaceMenu.value = false;
 }
 const selectedObjectId = ref<string>();
 function showObjects(id?: string) {
   selectedObjectId.value = id;
   objectPanel.value = true;
-  settingsMenu.value = false;
+  workspaceMenu.value = false;
 }
 async function openReference(identity: ReferenceIdentity) {
   const result = resolveReference(store.referenceTargets, identity);
@@ -734,7 +806,6 @@ function openFileContextMenu(file: FileEntry, event: MouseEvent | KeyboardEvent)
   const y = event instanceof MouseEvent ? event.clientY : (rect?.bottom ?? 0);
   menu.value = false;
   workspaceMenu.value = false;
-  settingsMenu.value = false;
   fileContextMenu.value = {
     file,
     x: Math.max(8, x),
@@ -1262,7 +1333,6 @@ function showModal(kind: Exclude<typeof modal.value, ''>, target?: FileEntry) {
     return;
   menu.value = false;
   workspaceMenu.value = false;
-  settingsMenu.value = false;
   fileContextMenu.value = null;
   directoryContextMenu.value = null;
   settingsPanel.value = false;
@@ -1318,7 +1388,6 @@ async function createNewDocument() {
   if (store.busy || workspace.value?.readOnly || updateLock.value) return;
   menu.value = false;
   workspaceMenu.value = false;
-  settingsMenu.value = false;
   modal.value = '';
   try {
     await store.createUntitledDocument();
@@ -1338,11 +1407,126 @@ async function createNewDocument() {
     store.report(error);
   }
 }
-function openSettings(page: 'preferences' | 'workspace' | 'about' = 'preferences') {
+let detachingTab = false;
+const transferRollback = new Map<string, { tabId: string; created: boolean; priorIndex: number; priorActive: string; timer: ReturnType<typeof setTimeout> }>();
+
+async function acceptTabTransfer(request: TabTransferRequest) {
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  const targetLabel = getCurrentWindow().label;
+  let actualId = request.tabId;
+  let created = false;
+  const priorActive = store.activeId;
+  const priorIndex = store.tabs.findIndex((tab) => tab.id === request.tabId);
+  let error: string | undefined;
+  try {
+    if (request.sourceLabel === targetLabel || !workspace.value ||
+        workspace.value.id !== request.workspaceId || store.busy)
+      throw new Error('目标窗口当前无法接收这个标签页');
+    if (request.tabId.startsWith('blank:')) {
+      store.createBlankTab();
+      actualId = store.activeId;
+      created = true;
+    } else if (request.tabId === GRAPH_TAB_ID) {
+      created = priorIndex < 0;
+      store.openGraphTab();
+    } else if (request.tabId === PLUGINS_TAB_ID) {
+      created = priorIndex < 0;
+      store.openPluginsTab();
+    } else if (priorIndex < 0) {
+      const file = workspace.value.files.find((entry) => entry.id === request.tabId && entry.kind === 'file');
+      if (!file) throw new Error('目标窗口找不到拖入的文档');
+      await store.openFileInNewTab(file);
+      created = true;
+    }
+    if (!store.tabs.some((tab) => tab.id === actualId)) throw new Error('目标窗口未能打开拖入的标签页');
+    const index = priorIndex >= 0 && priorIndex < request.index ? request.index - 1 : request.index;
+    store.placeTab(actualId, index);
+    store.activeId = actualId;
+    const timer = setTimeout(() => transferRollback.delete(request.requestId), 15_000);
+    transferRollback.set(request.requestId, { tabId: actualId, created, priorIndex, priorActive, timer });
+  } catch (reason) {
+    error = String(reason);
+  }
+  try {
+    await emitTo(request.sourceLabel, TAB_TRANSFER_RESULT, {
+      requestId: request.requestId, targetLabel,
+      ...(error ? { error } : { tabId: actualId, created }),
+    } satisfies TabTransferResult);
+  } catch (reason) {
+    await rollbackTabTransfer({ requestId: request.requestId });
+    throw reason;
+  } finally {
+    window.dispatchEvent(new CustomEvent('tano-tab-transfer-settled', {
+      detail: { sourceLabel: request.sourceLabel, tabId: request.tabId },
+    }));
+  }
+  if (!error) void getCurrentWindow().setFocus().catch(store.report);
+}
+
+async function rollbackTabTransfer(request: TabTransferRollback) {
+  const pending = transferRollback.get(request.requestId);
+  if (!pending) return;
+  transferRollback.delete(request.requestId);
+  clearTimeout(pending.timer);
+  if (pending.created) await store.close(pending.tabId);
+  else if (pending.priorIndex >= 0) store.placeTab(pending.tabId, pending.priorIndex);
+  if (store.tabs.some((tab) => tab.id === pending.priorActive)) store.activeId = pending.priorActive;
+}
+
+async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => void) {
+  if (!native || mobile || detachingTab || !workspace.value || store.busy) {
+    settled?.();
+    return;
+  }
+  const tab = store.tabs.find((item) => item.id === id);
+  if (!tab) { settled?.(); return; }
+  if (tab.document?.conflict || tab.document?.missing) {
+    store.report('请先处理文档冲突或缺失，再拖出标签页。');
+    settled?.();
+    return;
+  }
+  detachingTab = true;
+  try {
+    await editing.flush();
+    if (!(await store.flush())) throw new Error('还有未保存的修改，请先处理保存错误。');
+    const dock = drop ? await findTabDockTarget(workspace.value.id, id, {
+      x: drop.x, y: drop.y, centerOffset: (drop.width ?? 0) / 2 - drop.grabX,
+    }) : null;
+    if (dock === 'inside-window' || (!dock && drop?.insideSourceWindow)) return;
+    if (dock) {
+      const transfer = await requestTabTransfer(dock.targetLabel, {
+        workspaceId: workspace.value.id, tabId: id, index: dock.index,
+      });
+      await store.close(id);
+      if (store.tabs.some((item) => item.id === id)) {
+        await emitTo(dock.targetLabel, TAB_TRANSFER_ROLLBACK, { requestId: transfer.requestId } satisfies TabTransferRollback);
+        throw new Error('原标签页未能关闭，已取消跨窗口移动');
+      }
+      if (detachedWindow && !store.tabs.length) {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        await getCurrentWindow().destroy();
+      }
+      return;
+    }
+    const title = tab.graph ? '关系图谱' : tab.plugins ? '插件' : tab.blank
+      ? '新标签页' : basename(tab.path).replace(/\.(md|markdown)$/i, '');
+    const detached = await createDetachedTabWindow(workspace.value.path, id, title, drop);
+    await store.close(id);
+    if (store.tabs.some((item) => item.id === id)) {
+      await detached.destroy();
+      throw new Error('原标签页未能关闭，已取消拖出。');
+    }
+  } catch (error) {
+    store.report(error);
+  } finally {
+    detachingTab = false;
+    settled?.();
+  }
+}
+function openSettings(page: 'preferences' | 'appearance' | 'editing' | 'workspace' | 'about' = 'appearance') {
   menu.value = false;
   workspaceMenu.value = false;
-  settingsMenu.value = false;
-  settingsPage.value = page;
+  settingsPage.value = page === 'preferences' ? 'appearance' : page;
   settingsPanel.value = true;
 }
 function settingsAction(
@@ -1370,9 +1554,17 @@ async function runArchive(kind: 'export' | 'import') {
   }
 }
 function toggleWorkspaceMenu() {
-  settingsMenu.value = false;
   workspaceMenu.value = !workspaceMenu.value;
   if (workspaceMenu.value && store.isWeb) void store.refreshWorkspaces();
+}
+async function leaveWorkspace() {
+  if (store.busy || !workspace.value) return;
+  try {
+    await editing.flush();
+    if (await store.leaveWorkspace()) workspaceMenu.value = false;
+  } catch (error) {
+    store.report(error);
+  }
 }
 let returningHome = false;
 async function returnHome(event: MouseEvent) {
@@ -1498,11 +1690,12 @@ function jumpToHeading(index: number) {
       [index]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 function toggleSidebar() {
+  if (detachedWindow) return;
   sidebar.value = !sidebar.value;
   workspaceMenu.value = false;
-  settingsMenu.value = false;
 }
 function handleSidebarShortcut(event: KeyboardEvent) {
+  if (detachedWindow) return;
   if (!workspace.value || settingsPanel.value || toolsOpen.value || updateLock.value) return;
   if (!isSidebarToggleShortcut(event)) return;
   event.preventDefault();
@@ -1570,7 +1763,6 @@ function keydown(event: KeyboardEvent) {
     modal.value = '';
     menu.value = false;
     workspaceMenu.value = false;
-    settingsMenu.value = false;
     if (window.innerWidth <= 700) sidebar.value = false;
   }
   if (event.key === 'Tab' && modal.value) {
@@ -1636,7 +1828,6 @@ function outsideClick(event: MouseEvent) {
   if (!target.closest('.dropdown, .menu-wrap, .sidebar-bottom')) {
     menu.value = false;
     workspaceMenu.value = false;
-    settingsMenu.value = false;
   }
 }
 function dismissFileContextMenu() {
@@ -1660,8 +1851,10 @@ watch(sidebar, (visible) => {
 let unlistenClose: (() => void) | undefined;
 let unlistenWatchError: (() => void) | undefined;
 let unlistenBackupError: (() => void) | undefined;
+let unlistenTabTransfer: (() => void) | undefined;
+let unlistenTabRollback: (() => void) | undefined;
 onMounted(async () => {
-  window.addEventListener('keydown', handleSidebarShortcut, true);
+  if (!detachedWindow) window.addEventListener('keydown', handleSidebarShortcut, true);
   window.addEventListener('keydown', keydown);
   window.addEventListener('beforeunload', beforeUnload);
   window.addEventListener('click', outsideClick);
@@ -1672,9 +1865,26 @@ onMounted(async () => {
   window.addEventListener('resize', dismissFileContextMenu);
   window.addEventListener('resize', closeDirectoryContextMenu);
   window.addEventListener('resize', dismissPageContextMenu);
+  if (!detachedWindow) window.addEventListener('resize', constrainSidebarToViewport);
   document.addEventListener('visibilitychange', mobileVisibility);
   await store.initialize();
-  if (native && !mobile) void updates.initialize();
+  if (native && !mobile) {
+    unlistenTabTransfer = await listen<TabTransferRequest>(TAB_TRANSFER_REQUEST, ({ payload }) => {
+      void acceptTabTransfer(payload).catch(store.report);
+    });
+    unlistenTabRollback = await listen<TabTransferRollback>(TAB_TRANSFER_ROLLBACK, ({ payload }) => {
+      void rollbackTabTransfer(payload).catch(store.report);
+    });
+  }
+  const detachedRequest = detachedWindow ? detachedTabRequest() : null;
+  if (detachedRequest) {
+    const opened = store.workspace?.path === detachedRequest.workspacePath &&
+      store.tabs.length === 1 && (
+        detachedRequest.tabId.startsWith('blank:') || store.tabs[0]?.id === detachedRequest.tabId
+      );
+    await reportDetachedReady(opened ? undefined : '独立窗口未能打开所选标签页');
+  }
+  if (native && !mobile && !detachedWindow) void updates.initialize();
   if (native) {
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
     if (localNative)
@@ -1701,6 +1911,7 @@ onMounted(async () => {
   }
 });
 onBeforeUnmount(() => {
+  document.documentElement.style.removeProperty('--sidebar-width');
   if (headingFrame !== undefined) cancelAnimationFrame(headingFrame);
   void extensions.disconnect().catch(store.report);
   void editing.dispose().catch(store.report);
@@ -1715,10 +1926,15 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', dismissFileContextMenu);
   window.removeEventListener('resize', closeDirectoryContextMenu);
   window.removeEventListener('resize', dismissPageContextMenu);
+  window.removeEventListener('resize', constrainSidebarToViewport);
   document.removeEventListener('visibilitychange', mobileVisibility);
   unlistenClose?.();
   unlistenWatchError?.();
   unlistenBackupError?.();
+  unlistenTabTransfer?.();
+  unlistenTabRollback?.();
+  for (const pending of transferRollback.values()) clearTimeout(pending.timer);
+  transferRollback.clear();
   store.dispose();
 });
 watch(activeId, () => {
@@ -1740,27 +1956,33 @@ watch(activeId, () => {
 <template>
   <Teleport v-if="native && !mobile && workspace" to="#desktop-window-tab-slot">
     <button
-      v-if="!sidebar"
+      v-if="!detachedWindow"
+      :class="{ 'desktop-sidebar-toggle-hidden': sidebar }"
       class="desktop-sidebar-toggle"
       type="button"
       aria-label="展开侧栏"
       title="展开侧栏 · Ctrl B"
+      :aria-hidden="sidebar"
+      :tabindex="sidebar ? -1 : 0"
+      :disabled="sidebar"
       @click="toggleSidebar"
     >
       <PanelLeftOpen :size="17" />
     </button>
-    <DesktopTabs @new-tab="store.createBlankTab()" @new-document="createNewDocument" />
+    <DesktopTabs detachable @new-tab="store.createBlankTab()" @new-document="createNewDocument" @detach-tab="detachTab" />
   </Teleport>
   <div
     class="app-shell"
     :class="{
-      'sidebar-hidden': !sidebar || !workspace,
+      'sidebar-hidden': detachedWindow || !sidebar || !workspace,
+      'detached-window': detachedWindow,
+      'sidebar-resizing': resizingSidebar,
       'workspace-empty': !workspace,
     }"
   >
     <Transition name="sidebar-dismiss">
       <button
-        v-if="workspace && sidebar"
+        v-if="workspace && sidebar && !detachedWindow"
         class="sidebar-dismiss"
         aria-label="收起侧栏"
         @click="toggleSidebar"
@@ -1768,42 +1990,23 @@ watch(activeId, () => {
     </Transition>
     <Transition name="sidebar">
       <aside
-        v-if="workspace && sidebar"
+        v-if="workspace && sidebar && !detachedWindow"
         class="sidebar"
         aria-label="工作区侧栏"
         :inert="!sidebar"
         :aria-hidden="!sidebar"
       >
         <div class="sidebar-header">
-          <component
-            :is="native ? 'div' : 'a'"
-            class="brand"
-            :href="native ? undefined : '/'"
-            :aria-label="native ? undefined : '返回同页首页'"
-            @click="returnHome"
-          >
-            <img src="/favicon-green.svg?v=3" alt="" />
-          </component>
-          <div class="sidebar-header-actions">
-            <button
-              type="button"
-              class="icon-button"
-              aria-label="打开关系图谱"
-              title="关系图谱"
-              :aria-pressed="activeId === GRAPH_TAB_ID"
-              @click="store.openGraphTab()"
+          <div class="sidebar-brand-slot">
+            <component
+              :is="native ? 'div' : 'a'"
+              class="brand"
+              :href="native ? undefined : '/'"
+              :aria-label="native ? undefined : '返回同页首页'"
+              @click="returnHome"
             >
-              <GitFork :size="17" :stroke-width="1.6" />
-            </button>
-            <button
-              type="button"
-              class="icon-button"
-              aria-label="查找文档"
-              title="查找文档 · Ctrl K"
-              @click="showModal('search')"
-            >
-              <Search :size="17" :stroke-width="1.6" />
-            </button>
+              <img src="/favicon-green.svg?v=3" alt="" />
+            </component>
             <button
               type="button"
               class="icon-button sidebar-toggle"
@@ -1814,18 +2017,37 @@ watch(activeId, () => {
               <PanelLeftClose :size="17" :stroke-width="1.6" />
             </button>
           </div>
+          <div class="sidebar-header-actions">
+            <button
+              type="button"
+              class="icon-button"
+              aria-label="打开插件标签页"
+              title="插件"
+              :aria-pressed="activeId === PLUGINS_TAB_ID"
+              @click="store.openPluginsTab()"
+            >
+              <Puzzle :size="17" :stroke-width="1.6" />
+            </button>
+            <button
+              type="button"
+              class="icon-button"
+              aria-label="打开关系引擎"
+              title="关系引擎 · Level 2"
+              @click="showWorkspaceTool('relations')"
+            >
+              <Link2 :size="17" :stroke-width="1.6" />
+            </button>
+            <button
+              type="button"
+              class="icon-button"
+              aria-label="打开日历视图"
+              title="日历视图 · Level 2"
+              @click="showWorkspaceTool('calendar')"
+            >
+              <CalendarDays :size="17" :stroke-width="1.6" />
+            </button>
+          </div>
         </div>
-        <nav class="sidebar-tools" aria-label="工作区工具入口">
-          <button title="插件安装器 · Level 2" @click="showWorkspaceTool('plugins')">
-            <Puzzle :size="16" /><span>插件</span>
-          </button>
-          <button title="关系引擎 · Level 2" @click="showWorkspaceTool('relations')">
-            <GitFork :size="16" /><span>关系</span>
-          </button>
-          <button title="日历视图 · Level 2" @click="showWorkspaceTool('calendar')">
-            <CalendarDays :size="16" /><span>日历</span>
-          </button>
-        </nav>
         <div class="sidebar-content">
           <div
             class="section-label"
@@ -1834,20 +2056,28 @@ watch(activeId, () => {
             @dragleave="fileDragLeave('', $event)"
             @drop="fileDrop('', $event)"
           >
-            <span
-              >{{ draggedEntry ? '放到工作区根目录' : '文档目录'
-              }}<span v-if="!draggedEntry" class="document-count">{{ noteCount }}</span></span
-            >
+            <span :title="draggedEntry ? undefined : workspace?.name">{{
+              draggedEntry ? '放到工作区根目录' : (workspace?.name ?? '仓库')
+            }}</span>
             <div>
               <button
-                v-if="!store.isWeb"
+                type="button"
                 class="icon-button"
-                aria-label="新建文件夹"
-                title="新建文件夹"
-                :disabled="!workspace || workspace.readOnly || busy"
-                @click="showModal('folder')"
+                aria-label="打开关系图谱"
+                title="关系图谱"
+                :aria-pressed="activeId === GRAPH_TAB_ID"
+                @click="store.openGraphTab()"
               >
-                <FolderPlus :size="15" :stroke-width="1.6" />
+                <GitFork :size="15" :stroke-width="1.6" />
+              </button>
+              <button
+                type="button"
+                class="icon-button"
+                aria-label="查找文档"
+                title="查找文档 · Ctrl K"
+                @click="showModal('search')"
+              >
+                <Search :size="15" :stroke-width="1.6" />
               </button>
               <button
                 class="icon-button"
@@ -2104,7 +2334,7 @@ watch(activeId, () => {
               class="dropdown compact-action-menu sidebar-popover workspace-dropdown"
             >
               <div class="workspace-menu-summary">
-                <span class="workspace-menu-avatar"><BookOpen :size="18" /></span>
+                <span class="workspace-menu-avatar"><BookOpen :size="16" /></span>
                 <span class="workspace-menu-summary-text">
                   <strong>{{ workspace?.name ?? '选择工作区' }}</strong>
                   <small>{{
@@ -2117,12 +2347,64 @@ watch(activeId, () => {
                         : '本地工作区'
                   }}</small>
                 </span>
+                <button
+                  v-if="!store.isWeb && workspace"
+                  class="workspace-menu-exit"
+                  type="button"
+                  aria-label="退出当前工作区"
+                  title="退出当前工作区"
+                  :disabled="busy"
+                  @click="leaveWorkspace"
+                ><LogOut :size="16" /></button>
               </div>
               <div class="menu-divider" />
               <button @click="openSettings()"><Settings2 :size="16" />设置</button>
+              <button @click="showObjects()"><Users :size="16" />工作区对象 · Level 2</button>
+              <button
+                v-if="workspace && localNative && !mobile"
+                @click="
+                  workspaceMenu = false;
+                  store.reveal();
+                "
+              >
+                <ExternalLink :size="16" />在资源管理器中显示
+              </button>
+              <button @click="openSettings('about')">
+                <CircleHelp :size="16" />关于 Tano / 同页{{
+                  updates.state.candidate ? ' · 有新版本' : ''
+                }}
+              </button>
+              <div v-if="extensions.regions['account-note']" class="menu-divider" />
+              <component  :is="extensions.regions['account-note']" v-if="extensions.regions['account-note']" :actions="extensionActions" />
+              <div
+                v-if="extensions.regions['mode-switch'] || (mobile && workspace) || (workspace && localNative) || extensions.regions['workspace-history'] || extensions.regions['sign-out']"
+                class="menu-divider"
+              />
+              <component  :is="extensions.regions['mode-switch']" v-if="extensions.regions['mode-switch']" :actions="extensionActions" />
+              <button
+                v-if="mobile && workspace"
+                @click="
+                  workspaceMenu = false;
+                  recyclePanel = true;
+                "
+              >
+                <Trash2 :size="16" />手机回收站
+              </button>
+              <button
+                v-if="workspace && localNative"
+                @click="
+                  workspaceMenu = false;
+                  agentPanel = true;
+                "
+              >
+                <Bot :size="16" />与 Agent 一起工作
+              </button>
+              <component  :is="extensions.regions['workspace-history']" v-if="extensions.regions['workspace-history']" :actions="extensionActions" />
+              <component  :is="extensions.regions['sign-out']" v-if="extensions.regions['sign-out']" :actions="extensionActions" />
               <component v-if="store.isWeb" :is="extensions.regions['workspace-menu']"  :actions="extensionActions" />
               <template v-else>
                 <button
+                  v-if="store.isDemo || mobile"
                   :disabled="busy"
                   @click="
                     workspaceMenu = false;
@@ -2130,16 +2412,30 @@ watch(activeId, () => {
                   "
                 >
                   <FolderOpen :size="16" />{{
-                    store.isDemo ? '了解演示存储' : mobile ? '打开默认手机空间' : '打开工作文件夹'
+                    store.isDemo ? '了解演示存储' : '打开默认手机空间'
                   }}
                 </button>
                 <component  :is="extensions.regions['local-menu-login']" v-if="extensions.regions['local-menu-login']" :actions="extensionActions" />
                 <button v-if="mobile" :disabled="busy" @click="showModal('workspace')">
                   <FolderPlus :size="16" />新建手机空间
                 </button>
-                <template v-if="store.recent.length">
+                <template v-if="store.recent.length || (!store.isDemo && !mobile)">
                   <div class="menu-divider" />
-                  <span class="recent-label">最近工作空间</span>
+                  <div class="workspace-recent-heading">
+                    <span class="recent-label">最近工作空间</span>
+                    <button
+                      v-if="!store.isDemo && !mobile"
+                      type="button"
+                      class="workspace-recent-open"
+                      aria-label="打开新的本地文件夹"
+                      title="打开新的本地文件夹"
+                      :disabled="busy"
+                      @click="
+                        workspaceMenu = false;
+                        store.openWorkspace();
+                      "
+                    ><FolderPlus :size="16" :stroke-width="1.6" /></button>
+                  </div>
                   <button
                     v-for="item in store.recent.slice(0, 5)"
                     :key="item.id"
@@ -2160,19 +2456,6 @@ watch(activeId, () => {
             </div>
           </div>
           <button
-            class="icon-button sidebar-settings"
-            aria-label="工作区设置"
-            title="工作区设置"
-            :aria-expanded="settingsMenu"
-            aria-controls="workspace-settings"
-            @click="
-              settingsMenu = !settingsMenu;
-              workspaceMenu = false;
-            "
-          >
-            <Settings2 :size="17" />
-          </button>
-          <button
             class="icon-button sidebar-help"
             aria-label="帮助与快捷键"
             title="帮助与快捷键"
@@ -2180,73 +2463,24 @@ watch(activeId, () => {
           >
             <CircleHelp :size="17" />
           </button>
-          <div
-            v-if="settingsMenu"
-            id="workspace-settings"
-            class="dropdown compact-action-menu sidebar-popover sidebar-settings-dropdown"
-          >
-            <span class="recent-label">工作区设置</span>
-            <button @click="openSettings()"><Settings2 :size="16" />打开设置面板</button>
-            <button @click="showObjects()"><Users :size="16" />工作区对象 · Level 2</button>
-            <div class="menu-divider" />
-            <component  :is="extensions.regions['account-note']" v-if="extensions.regions['account-note']" :actions="extensionActions" />
-            <div class="local-note">
-              <span class="local-note-icon"
-                ><component :is="store.isWeb ? Globe2 : Monitor" :size="17"
-              /></span>
-              <div>
-                <strong>{{
-                  store.isDemo ? '浏览器演示空间' : store.isWeb ? '在线工作区' : '本地工作空间'
-                }}</strong>
-                <p>
-                  {{
-                    store.isDemo
-                      ? '内容保存在当前浏览器'
-                      : store.isWeb
-                        ? 'Markdown 保存在服务器'
-                        : 'Markdown 文件 · 自动保存'
-                  }}
-                </p>
-              </div>
-            </div>
-            <div class="menu-divider" />
-            <component  :is="extensions.regions['mode-switch']" v-if="extensions.regions['mode-switch']" :actions="extensionActions" />
-            <button
-              v-if="workspace && localNative && !mobile"
-              @click="
-                settingsMenu = false;
-                store.reveal();
-              "
-            >
-              <ExternalLink :size="16" />在资源管理器中显示
-            </button>
-            <button
-              v-if="mobile && workspace"
-              @click="
-                settingsMenu = false;
-                recyclePanel = true;
-              "
-            >
-              <Trash2 :size="16" />手机回收站
-            </button>
-            <button
-              v-if="workspace && localNative"
-              @click="
-                settingsMenu = false;
-                agentPanel = true;
-              "
-            >
-              <Bot :size="16" />与 Agent 一起工作
-            </button>
-            <component  :is="extensions.regions['workspace-history']" v-if="extensions.regions['workspace-history']" :actions="extensionActions" />
-            <button @click="openSettings('about')">
-              <CircleHelp :size="16" />关于 Tano / 同页{{
-                updates.state.candidate ? ' · 有新版本' : ''
-              }}
-            </button>
-            <component  :is="extensions.regions['sign-out']" v-if="extensions.regions['sign-out']" :actions="extensionActions" />
-          </div>
         </div>
+        <div
+          v-if="!mobile"
+          class="sidebar-resize-handle"
+          role="separator"
+          aria-label="调整侧栏宽度"
+          aria-orientation="vertical"
+          :aria-valuenow="sidebarWidth ?? defaultSidebarWidth()"
+          :aria-valuemin="SIDEBAR_MIN_WIDTH"
+          :aria-valuemax="sidebarWidthLimit()"
+          tabindex="0"
+          @pointerdown="startSidebarResize"
+          @pointermove="moveSidebarResize"
+          @pointerup="finishSidebarResize"
+          @pointercancel="finishSidebarResize"
+          @lostpointercapture="finishSidebarResize"
+          @keydown="resizeSidebarWithKeyboard"
+        />
       </aside>
     </Transition>
 
@@ -2254,7 +2488,7 @@ watch(activeId, () => {
       <div v-if="workspace && (!native || mobile)" class="workspace-tabbar">
         <DesktopTabs @new-tab="store.createBlankTab()" @new-document="createNewDocument" />
       </div>
-      <header v-if="workspace" class="topbar">
+      <header v-if="workspace && !detachedWindow" class="topbar">
         <div class="topbar-navigation" role="group" aria-label="文档导航">
           <button
             type="button"
@@ -2289,6 +2523,7 @@ watch(activeId, () => {
           ><span class="breadcrumb-workspace"
             ><BookOpen :size="14" />{{ workspace?.name ?? 'Tano' }}</span
           ><template v-if="activeId === GRAPH_TAB_ID"><ChevronRight :size="12" /><GitFork :size="14" /><span class="breadcrumb-current">关系图谱</span></template
+          ><template v-if="activeId === PLUGINS_TAB_ID"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">插件</span></template
           ><template v-for="(part, index) in breadcrumbs" :key="index"
             ><ChevronRight :size="12" /><component
               :is="index === breadcrumbs.length - 1 ? FileText : FolderOpen"
@@ -2449,6 +2684,26 @@ watch(activeId, () => {
         <RelationGraph v-if="workspace && activeId === GRAPH_TAB_ID" :key="`${workspace.id}:${workspace.path}`" />
       </KeepAlive>
 
+      <main
+        v-if="workspace && store.tabs.some(tab => tab.plugins)"
+        v-show="activeId === PLUGINS_TAB_ID"
+        class="plugins-tab-page"
+      >
+        <div class="plugins-tab-content">
+          <header class="plugins-tab-heading">
+            <h1>插件</h1>
+            <p>为工作区安装和管理领域插件</p>
+          </header>
+          <p v-if="!store.capabilities.features.objectReferences" class="tool-level-notice">
+            Level 2 已关闭，插件对象和关系暂时只读。可在工作区设置中重新启用。
+          </p>
+          <p v-else-if="workspace.readOnly" class="tool-level-notice">
+            此工作区为只读，无法修改对象和关系。
+          </p>
+          <PluginInstaller @objects="showObjects()" />
+        </div>
+      </main>
+
       <template v-if="active">
         <div ref="documentScroll" class="document-layout" @scroll.passive="scheduleActiveHeading">
           <main class="document-main">
@@ -2458,7 +2713,32 @@ watch(activeId, () => {
               :source="source"
               :disabled="editorReadonly"
               @command="(name, value) => editor?.command(name, value)"
-            />
+            >
+              <template v-if="detachedWindow" #trailing>
+                <div class="detached-editor-actions">
+                  <button
+                    type="button"
+                    class="icon-button"
+                    :class="{ active: source }"
+                    :disabled="!!editing.active || editing.activeBusy"
+                    :aria-label="source ? '返回编辑' : '切换源码模式'"
+                    :aria-pressed="source"
+                    :title="source ? '返回编辑' : '切换源码模式'"
+                    @click="source = !source"
+                  ><Code2 :size="17" /></button>
+                  <button
+                    v-if="localNative"
+                    type="button"
+                    class="icon-button"
+                    aria-label="导入图片或附件"
+                    title="导入图片或附件"
+                    :disabled="editorReadonly || attachmentBusy"
+                    @click="fileInput?.click()"
+                  ><Paperclip :size="17" /></button>
+                  <input ref="fileInput" type="file" multiple hidden @change="pickedFiles" />
+                </div>
+              </template>
+            </EditorToolbar>
 
             <component  :is="extensions.regions['editing-panel']" v-if="extensions.regions['editing-panel']" :actions="extensionActions" />
             <div v-if="active.conflict" class="conflict-banner" role="alert">
@@ -2607,6 +2887,7 @@ watch(activeId, () => {
         </div>
 
         <aside
+          v-if="!detachedWindow"
           class="inspector"
           :class="{
             'inspector-outline': panel === 'outline',
@@ -2748,7 +3029,7 @@ watch(activeId, () => {
         </div>
       </main>
 
-      <main v-else-if="workspace && activeId !== GRAPH_TAB_ID" class="workspace-no-tabs">
+      <main v-else-if="workspace && activeId !== GRAPH_TAB_ID && activeId !== PLUGINS_TAB_ID" class="workspace-no-tabs">
         <div class="workspace-no-tabs-content">
           <FileText :size="32" :stroke-width="1.4" aria-hidden="true" />
           <h1>当前没有打开的文档</h1>

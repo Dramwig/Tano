@@ -9,12 +9,13 @@ import { configureWorkbench } from '../runtime';
 const fixture = vi.hoisted(() => ({ adapter: null as unknown }));
 import { useWorkspaceStore } from '../stores/workspace';
 import WorkspaceTools from './WorkspaceTools.vue';
+import PluginInstaller from './PluginInstaller.vue';
 import type { WorkspaceTool } from './WorkspaceTools.vue';
 let app: App,
   root: HTMLElement,
   pinia: ReturnType<typeof createPinia>,
   store: ReturnType<typeof useWorkspaceStore>;
-const tab = ref<WorkspaceTool>('plugins'),
+const tab = ref<WorkspaceTool>('relations'),
   open = ref(true);
 beforeEach(async () => {
   localStorage.clear();
@@ -24,18 +25,21 @@ beforeEach(async () => {
   setActivePinia(pinia);
   store = useWorkspaceStore();
   await store.openWorkspace();
-  tab.value = 'plugins';
+  tab.value = 'relations';
   open.value = true;
   root = document.createElement('div');
   document.body.append(root);
   app = createApp(() =>
-    h(WorkspaceTools, {
-      tab: tab.value,
-      open: open.value,
-      onTab: (value) => {
-        tab.value = value;
-      },
-    }),
+    h('div', [
+      h(PluginInstaller),
+      h(WorkspaceTools, {
+        tab: tab.value,
+        open: open.value,
+        onTab: (value) => {
+          tab.value = value;
+        },
+      }),
+    ]),
   );
   app.use(pinia);
   app.mount(root);
@@ -99,8 +103,6 @@ it('installs through the UI, connects plugin objects, and restores references af
   expect(root.querySelectorAll('.relation-list li')).toHaveLength(1);
   await fill('关系方向', 'outgoing');
   expect(root.querySelectorAll('.relation-list li')).toHaveLength(0);
-  tab.value = 'plugins';
-  await nextTick();
   button('停用').click();
   await vi.waitFor(() =>
     expect(store.referenceTargets.some((item) => item.type === 'research.paper')).toBe(false),

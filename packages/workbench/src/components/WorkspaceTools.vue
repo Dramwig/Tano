@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { CalendarDays, GitFork, Puzzle, X } from 'lucide-vue-next';
+import { CalendarDays, GitFork, X } from 'lucide-vue-next';
 import type { ReferenceIdentity } from '@tano/protocol';
 import { useWorkspaceStore } from '../stores/workspace';
-import PluginInstaller from './PluginInstaller.vue';
 import RelationsPanel from './RelationsPanel.vue';
 import CalendarPanel from './CalendarPanel.vue';
 import '../workspace-tools.css';
-export type WorkspaceTool = 'plugins' | 'relations' | 'calendar';
+export type WorkspaceTool = 'relations' | 'calendar';
 const props = defineProps<{ open: boolean; tab: WorkspaceTool }>();
 const emit = defineEmits<{
   close: [];
@@ -80,7 +79,7 @@ function trap(event: KeyboardEvent) {
       <header class="workspace-tools-header">
         <div>
           <h2 id="workspace-tools-title">
-            {{ tab === 'plugins' ? '插件安装器' : tab === 'relations' ? '关系引擎' : '日历视图' }}
+            {{ tab === 'relations' ? '关系引擎' : '日历视图' }}
           </h2>
           <span class="tool-badge">Level 2 · {{ store.workspace?.name }}</span>
         </div>
@@ -90,11 +89,6 @@ function trap(event: KeyboardEvent) {
       </header>
       <nav class="workspace-tools-tabs" aria-label="工作区工具">
         <button
-          :aria-current="tab === 'plugins' ? 'page' : undefined"
-          @click="emit('tab', 'plugins')"
-        >
-          <Puzzle :size="17" />插件</button
-        ><button
           :aria-current="tab === 'relations' ? 'page' : undefined"
           @click="emit('tab', 'relations')"
         >
@@ -113,7 +107,6 @@ function trap(event: KeyboardEvent) {
         此工作区为只读，无法修改对象和关系。
       </p>
       <div class="workspace-tools-body">
-        <PluginInstaller v-show="tab === 'plugins'" @objects="emit('objects')" />
         <RelationsPanel
           v-show="tab === 'relations'"
           @objects="emit('objects')"
