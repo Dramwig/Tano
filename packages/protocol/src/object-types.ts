@@ -11,23 +11,28 @@ export interface ObjectTypeDefinition {
   level: 2;
   category: 'core' | 'plugin';
   storage: 'record' | 'resource';
+  /** Retained for existing files and references; not offered for new objects. */
+  legacy?: boolean;
   plugin?: string;
   fields: readonly ObjectField[];
 }
 export const coreObjectTypes: readonly ObjectTypeDefinition[] = [
-  { type: 'task', label: '任务', level: 2, category: 'core', storage: 'record', fields: [] },
+  { type: 'task', label: '任务（旧版）', level: 2, category: 'core', storage: 'record', legacy: true, fields: [] },
   { type: 'project', label: '项目', level: 2, category: 'core', storage: 'record', fields: [] },
   { type: 'person', label: '人物', level: 2, category: 'core', storage: 'record', fields: [] },
   { type: 'document', label: '文档', level: 2, category: 'core', storage: 'resource', fields: [] },
   {
     type: 'event',
-    label: '日历事件',
+    label: '事件',
     level: 2,
     category: 'core',
     storage: 'record',
     fields: [
-      { key: 'start', label: '开始时间', type: 'datetime', required: true },
-      { key: 'end', label: '结束时间', type: 'datetime', required: true },
+      { key: 'checkable', label: '需要完成', type: 'boolean' },
+      { key: 'completed', label: '已完成', type: 'boolean' },
+      { key: 'date', label: '计划日期（不指定时间）', type: 'text' },
+      { key: 'start', label: '开始时间', type: 'datetime' },
+      { key: 'end', label: '结束时间', type: 'datetime' },
     ],
   },
   { type: 'asset', label: '资产', level: 2, category: 'core', storage: 'resource', fields: [] },
@@ -107,6 +112,13 @@ export const registerObjectType = (
   input: Parameters<ObjectTypeRegistry['registerObjectType']>[0],
 ) => objectTypeRegistry.registerObjectType(input);
 
+/** A local calendar date, intentionally independent of a time zone. */
+export function validEventDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
 /** RFC 3339 timestamps with an explicit offset keep events unambiguous across devices. */
 export function validEventTime(value: unknown): value is string {
   if (typeof value !== 'string') return false;
@@ -156,6 +168,16 @@ export function validateObjectProperties(
         `${field.label}格式无效${field.type === 'datetime' ? '，请使用带时区的日期时间' : ''}`,
       );
   }
-  if (type === 'event' && Date.parse(String(properties.end)) < Date.parse(String(properties.start)))
-    throw new Error('结束时间不能早于开始时间');
+  if (type === 'event') {
+    const hasStart = properties.start !== undefined && properties.start !== '';
+    const hasEnd = properties.end !== undefined && properties.end !== '';
+    const hasDate = properties.date !== undefined && properties.date !== '';
+    if (hasStart !== hasEnd) throw new Error('开始时间和结束时间需要一起填写');
+    if (hasStart && Date.parse(String(properties.end)) < Date.parse(String(properties.start)))
+      throw new Error('结束时间不能早于开始时间');
+    if (hasDate && !validEventDate(properties.date)) throw new Error('计划日期格式无效');
+    if (hasDate && hasStart) throw new Error('计划日期与具体时间段只能选择一种安排方式');
+    if (properties.completed === true && properties.checkable !== true)
+      throw new Error('只有需要完成的事件可以标记为已完成');
+  }
 }

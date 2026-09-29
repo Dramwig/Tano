@@ -278,6 +278,51 @@ button:hover {
   flex: 0 0 25px;
   width: 25px;
 }
+.sidebar-navigation {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 40px;
+  padding: 3px 4px;
+  flex-shrink: 0;
+}
+.sidebar-navigation-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  flex: 0 0 auto;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.sidebar-navigation-button svg {
+  flex-shrink: 0;
+}
+.sidebar-navigation-button span {
+  max-width: 0;
+  overflow: hidden;
+  margin-left: 0;
+  opacity: 0;
+  transition:
+    max-width 220ms ease,
+    margin-left 220ms ease,
+    opacity 160ms ease;
+}
+.sidebar-navigation-button:hover,
+.sidebar-navigation-button[aria-pressed='true'] {
+  background: var(--hover);
+  color: var(--text);
+}
+.sidebar-navigation-button[aria-pressed='true'] span {
+  max-width: 2em;
+  margin-left: 6px;
+  opacity: 1;
+}
 .sidebar-brand-slot {
   position: relative;
   flex: 0 0 30px;
@@ -478,6 +523,12 @@ button:hover {
 .icon-button:hover {
   background: var(--hover);
   color: var(--text);
+}
+.tool-level-notice {
+  margin: 0;
+  padding: 10px 26px;
+  background: var(--surface);
+  font-size: 13px;
 }
 .tree-scroll {
   flex: 1;
@@ -705,6 +756,69 @@ button:hover {
 .topbar-right > .local-badge,
 .topbar-right > .demo-badge {
   margin-right: 8px;
+}
+.calendar-topbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.calendar-topbar-period {
+  margin-right: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.calendar-topbar-today,
+.calendar-topbar-events,
+.calendar-topbar-mode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.calendar-topbar-today:hover,
+.calendar-topbar-events:hover,
+.calendar-topbar-mode:hover { background: var(--hover); color: var(--text); }
+.calendar-view-picker { position: relative; }
+.calendar-topbar-mode { min-width: 58px; }
+.calendar-view-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 154px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 8px 24px #0002;
+}
+.calendar-view-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 9px;
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+}
+.calendar-view-menu button:hover,
+.calendar-view-menu button:focus-visible { background: var(--hover); }
+.calendar-view-menu button[aria-checked='true'] { color: var(--green); font-weight: 600; }
+@media (max-width: 900px) {
+  .calendar-topbar-period { display: none; }
 }
 .demo-badge,
 .local-badge {

@@ -6,6 +6,7 @@ import {
   BookOpen,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
   ChevronRight,
   Search,
   Plus,
@@ -41,7 +42,6 @@ import {
   Users,
   Puzzle,
   GitFork,
-  Link2,
   CalendarDays,
   Globe2,
   LogOut,
@@ -88,6 +88,8 @@ import FileTree from './components/FileTree.vue';
 import DesktopTabs from './components/DesktopTabs.vue';
 import { GRAPH_TAB_ID } from './document-graph';
 import { PLUGINS_TAB_ID } from './workspace-plugins';
+import { CALENDAR_TAB_ID, calendarPeriodTitle, shiftCalendarDate } from './calendar';
+import type { CalendarViewMode } from './calendar';
 const RelationGraph = defineAsyncComponent(() => import('./components/RelationGraph.vue'));
 import NewTabPicker from './components/NewTabPicker.vue';
 import EditorToolbar from './components/EditorToolbar.vue';
@@ -103,11 +105,10 @@ import { mobile } from './platform';
 import MobileRecycle from './components/MobileRecycle.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
 import ObjectPanel from './components/ObjectPanel.vue';
-import WorkspaceTools from './components/WorkspaceTools.vue';
+import SidebarPlan from './components/SidebarPlan.vue';
+import CalendarView from './components/CalendarView.vue';
 import PluginInstaller from './components/PluginInstaller.vue';
 import WorkspaceRecoveryDialog from './components/WorkspaceRecoveryDialog.vue';
-import type { WorkspaceTool } from './components/WorkspaceTools.vue';
-import { relationPath } from '@tano/protocol';
 import { isObjectPath, resolveReference } from '@tano/protocol';
 import type { ReferenceIdentity, ReferenceTarget } from '@tano/protocol';
 import { sloganParts, welcomeSlogans } from './welcome-slogans';
@@ -150,6 +151,40 @@ const historyPanel = ref(false);
 const historyPage = ref<'versions' | 'updates'>('versions');
 const agentPanel = ref(false);
 const recyclePanel = ref(false);
+const sidebarView = ref<'repository' | 'plan'>('repository');
+const calendarDate = ref(new Date());
+const calendarMode = ref<CalendarViewMode>('week');
+const calendarModeOpen = ref(false);
+const calendarModeOptions: { mode: CalendarViewMode; label: string }[] = [
+  { mode: 'day', label: '日' },
+  { mode: 'week', label: '周' },
+  { mode: 'month', label: '月' },
+  { mode: 'year', label: '年' },
+  { mode: 'agenda', label: '日程' },
+  { mode: 'four-days', label: '4 天' },
+];
+const calendarModeLabel = computed(() => calendarModeOptions.find(option => option.mode === calendarMode.value)?.label ?? '周');
+const calendarPeriod = computed(() => calendarPeriodTitle(calendarDate.value, calendarMode.value));
+function moveCalendarPeriod(offset: number) {
+  calendarDate.value = shiftCalendarDate(calendarDate.value, calendarMode.value, offset);
+}
+function selectCalendarMode(mode: CalendarViewMode) {
+  calendarMode.value = mode;
+  calendarModeOpen.value = false;
+}
+function showCalendarDay(date: Date) {
+  calendarDate.value = date;
+  calendarMode.value = 'day';
+}
+function showCalendarMonth(date: Date) {
+  calendarDate.value = date;
+  calendarMode.value = 'month';
+}
+function openCalendar(date?: Date) {
+  sidebarView.value = 'plan';
+  if (date) calendarDate.value = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  store.openCalendarTab();
+}
 const selectedDiff = ref<{
   title: string;
   before: string;
@@ -163,6 +198,10 @@ watch(
     agentPanel.value = false;
     selectedDiff.value = undefined;
     recyclePanel.value = false;
+    sidebarView.value = 'repository';
+    calendarDate.value = new Date();
+    calendarMode.value = 'week';
+    calendarModeOpen.value = false;
     workspaceMenu.value = false;
     settingsPanel.value = false;
     fileContextMenu.value = null;
@@ -176,6 +215,10 @@ watch(
   },
 );
 const { workspace, active, activeId, activities, fatal, busy } = storeToRefs(store);
+watch(activeId, (id) => {
+  calendarModeOpen.value = false;
+  if (id === CALENDAR_TAB_ID) sidebarView.value = 'plan';
+});
 const sidebar = ref(!detachedWindow && window.innerWidth > 700);
 const viewportWidth = ref(window.innerWidth);
 const sidebarWidth = ref<number | null>(null);
@@ -520,13 +563,6 @@ const modalBusy = ref(false);
 const inputEl = ref<HTMLInputElement>();
 const editor = ref<InstanceType<typeof MarkdownEditor>>();
 const objectPanel = ref(false);
-const toolsOpen = ref(false);
-const workspaceTool = ref<WorkspaceTool>('relations');
-function showWorkspaceTool(tab: WorkspaceTool) {
-  workspaceTool.value = tab;
-  toolsOpen.value = true;
-  workspaceMenu.value = false;
-}
 const selectedObjectId = ref<string>();
 function showObjects(id?: string) {
   selectedObjectId.value = id;
@@ -744,10 +780,6 @@ function pickedFiles(event: Event) {
   else editor.value?.importFiles(files);
 }
 async function openEntry(file: FileEntry, newTab = false) {
-  if (file.path === relationPath) {
-    showWorkspaceTool('relations');
-    return;
-  }
   if (isObjectPath(file.path)) {
     const record = store.objects.find((item) => item.path === file.path);
     if (record) showObjects(record.object.id);
@@ -1446,6 +1478,9 @@ async function acceptTabTransfer(request: TabTransferRequest) {
     } else if (request.tabId === PLUGINS_TAB_ID) {
       created = priorIndex < 0;
       store.openPluginsTab();
+    } else if (request.tabId === CALENDAR_TAB_ID) {
+      created = priorIndex < 0;
+      store.openCalendarTab();
     } else if (priorIndex < 0) {
       const file = workspace.value.files.find((entry) => entry.id === request.tabId && entry.kind === 'file');
       if (!file) throw new Error('目标窗口找不到拖入的文档');
@@ -1773,14 +1808,13 @@ function toggleSidebar() {
 }
 function handleSidebarShortcut(event: KeyboardEvent) {
   if (detachedWindow) return;
-  if (!workspace.value || settingsPanel.value || toolsOpen.value || updateLock.value) return;
+  if (!workspace.value || settingsPanel.value || updateLock.value) return;
   if (!isSidebarToggleShortcut(event)) return;
   event.preventDefault();
   event.stopPropagation();
   toggleSidebar();
 }
 function keydown(event: KeyboardEvent) {
-  if (toolsOpen.value) return;
   if (settingsPanel.value) {
     if (event.key === 'Escape') settingsPanel.value = false;
     return;
@@ -1899,6 +1933,7 @@ async function mobileVisibility() {
 }
 function outsideClick(event: MouseEvent) {
   const target = event.target as HTMLElement;
+  if (!target.closest('.calendar-view-picker')) calendarModeOpen.value = false;
   if (!target.closest('.file-context-menu')) closeFileContextMenu();
   if (!target.closest('.directory-context-menu')) closeDirectoryContextMenu();
   if (!target.closest('.page-context-menu')) closePageContextMenu();
@@ -2122,27 +2157,35 @@ watch(activeId, () => {
             >
               <Puzzle :size="17" :stroke-width="1.6" />
             </button>
-            <button
-              type="button"
-              class="icon-button"
-              aria-label="打开关系引擎"
-              title="关系引擎 · Level 2"
-              @click="showWorkspaceTool('relations')"
-            >
-              <Link2 :size="17" :stroke-width="1.6" />
-            </button>
-            <button
-              type="button"
-              class="icon-button"
-              aria-label="打开日历视图"
-              title="日历视图 · Level 2"
-              @click="showWorkspaceTool('calendar')"
-            >
-              <CalendarDays :size="17" :stroke-width="1.6" />
-            </button>
           </div>
         </div>
-        <div class="sidebar-content">
+        <nav class="sidebar-navigation" aria-label="工作区导航">
+          <button
+            type="button"
+            class="sidebar-navigation-button"
+            aria-label="仓库"
+            title="仓库"
+            aria-controls="sidebar-repository-panel"
+            :aria-pressed="sidebarView === 'repository'"
+            @click="sidebarView = 'repository'"
+          >
+            <FolderOpen :size="17" :stroke-width="1.8" aria-hidden="true" />
+            <span :aria-hidden="sidebarView !== 'repository'">仓库</span>
+          </button>
+          <button
+            type="button"
+            class="sidebar-navigation-button"
+            aria-label="计划"
+            title="计划"
+            aria-controls="sidebar-plan-panel"
+            :aria-pressed="sidebarView === 'plan'"
+            @click="openCalendar()"
+          >
+            <CalendarDays :size="18" :stroke-width="1.6" aria-hidden="true" />
+            <span :aria-hidden="sidebarView !== 'plan'">计划</span>
+          </button>
+        </nav>
+        <div v-show="sidebarView === 'repository'" id="sidebar-repository-panel" class="sidebar-content">
           <div
             class="section-label"
             :class="{ 'drop-target': draggedEntry && dropFolder === '' }"
@@ -2219,6 +2262,13 @@ watch(activeId, () => {
             </div>
           </div>
         </div>
+        <SidebarPlan
+          v-show="sidebarView === 'plan'"
+          id="sidebar-plan-panel"
+          :date="calendarDate"
+          @select-date="openCalendar"
+          @select-event="showObjects"
+        />
         <Teleport to="body">
           <div
             v-if="fileContextMenu"
@@ -2585,6 +2635,16 @@ watch(activeId, () => {
       <header v-if="workspace && !detachedWindow" class="topbar">
         <div class="topbar-navigation" role="group" aria-label="文档导航">
           <button
+            v-if="activeId === CALENDAR_TAB_ID && !sidebar && !(native && !mobile && workspace)"
+            type="button"
+            class="icon-button"
+            aria-label="展开侧栏"
+            title="展开侧栏 · Ctrl B"
+            @click="toggleSidebar"
+          >
+            <PanelLeftOpen :size="18" />
+          </button>
+          <button
             type="button"
             class="icon-button"
             aria-label="后退"
@@ -2605,7 +2665,7 @@ watch(activeId, () => {
             <ArrowRight :size="16" :stroke-width="1.6" />
           </button>
         </div>
-        <nav class="breadcrumb" aria-label="当前位置">
+        <nav v-if="activeId !== CALENDAR_TAB_ID" class="breadcrumb" aria-label="当前位置">
           <button
             v-if="!sidebar && !(native && !mobile && workspace)"
             class="icon-button"
@@ -2633,6 +2693,33 @@ watch(activeId, () => {
           ><span v-else-if="store.isWeb" class="local-badge"
             ><Globe2 :size="14" />{{ workspace?.readOnly ? '只读权限' : '在线工作区' }}</span
           >
+          <div v-if="activeId === CALENDAR_TAB_ID" class="calendar-topbar-controls" role="group" aria-label="日历导航">
+            <span class="calendar-topbar-period">{{ calendarPeriod }}</span>
+            <button type="button" class="calendar-topbar-today" @click="calendarDate = new Date()">今天</button>
+            <button type="button" class="icon-button" aria-label="上一时段" title="上一时段" @click="moveCalendarPeriod(-1)"><ChevronLeft :size="17" /></button>
+            <button type="button" class="icon-button" aria-label="下一时段" title="下一时段" @click="moveCalendarPeriod(1)"><ChevronRight :size="17" /></button>
+            <div class="calendar-view-picker" @keydown.esc.stop.prevent="calendarModeOpen = false">
+              <button
+                type="button"
+                class="calendar-topbar-mode"
+                aria-label="切换日历视图"
+                aria-haspopup="menu"
+                :aria-expanded="calendarModeOpen"
+                @click="calendarModeOpen = !calendarModeOpen"
+              >{{ calendarModeLabel }}<ChevronDown :size="14" /></button>
+              <div v-if="calendarModeOpen" class="calendar-view-menu" role="menu" aria-label="日历视图">
+                <button
+                  v-for="option in calendarModeOptions"
+                  :key="option.mode"
+                  type="button"
+                  role="menuitemradio"
+                  :aria-checked="calendarMode === option.mode"
+                  @click="selectCalendarMode(option.mode)"
+                >{{ option.label }}<Check v-if="calendarMode === option.mode" :size="15" /></button>
+              </div>
+            </div>
+            <button type="button" class="calendar-topbar-events" title="查看和管理事件" @click="showObjects()"><CalendarDays :size="15" />管理事件</button>
+          </div>
           <template v-if="active">
             <button
               type="button"
@@ -2777,6 +2864,18 @@ watch(activeId, () => {
       <KeepAlive v-if="store.tabs.some(tab => tab.graph)">
         <RelationGraph v-if="workspace && activeId === GRAPH_TAB_ID" :key="`${workspace.id}:${workspace.path}`" />
       </KeepAlive>
+
+      <CalendarView
+        v-if="workspace && activeId === CALENDAR_TAB_ID"
+        :date="calendarDate"
+        :mode="calendarMode"
+        @visible-month="calendarDate = $event"
+        @visible-year="calendarDate = $event"
+        @visible-timeline="calendarDate = $event"
+        @select-date="showCalendarDay"
+        @select-month="showCalendarMonth"
+        @select-event="showObjects"
+      />
 
       <main
         v-if="workspace && store.tabs.some(tab => tab.plugins)"
@@ -3123,7 +3222,7 @@ watch(activeId, () => {
         </div>
       </main>
 
-      <main v-else-if="workspace && activeId !== GRAPH_TAB_ID && activeId !== PLUGINS_TAB_ID" class="workspace-no-tabs">
+      <main v-else-if="workspace && activeId !== GRAPH_TAB_ID && activeId !== PLUGINS_TAB_ID && activeId !== CALENDAR_TAB_ID" class="workspace-no-tabs">
         <div class="workspace-no-tabs-content">
           <FileText :size="32" :stroke-width="1.4" aria-hidden="true" />
           <h1>当前没有打开的文档</h1>
@@ -3255,21 +3354,6 @@ watch(activeId, () => {
       "
     />
     <input ref="assetInput" type="file" multiple hidden @change="importObjectAssets" />
-    <WorkspaceTools
-      v-if="workspace"
-      :open="toolsOpen"
-      :tab="workspaceTool"
-      @close="toolsOpen = false"
-      @tab="workspaceTool = $event"
-      @objects="
-        toolsOpen = false;
-        showObjects();
-      "
-      @open-object="
-        toolsOpen = false;
-        openReference($event);
-      "
-    />
     <ObjectPanel
       v-show="objectPanel"
       :open="objectPanel"

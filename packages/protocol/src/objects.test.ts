@@ -159,6 +159,21 @@ it('validates event time zones, calendar dates, required times and order', () =>
   for (const type of ['document', 'asset'])
     expect(() => validateObjectProperties(type, {})).toThrow('工作区文件');
 });
+it('supports unscheduled, date-only and timed tasks using the same event type', () => {
+  for (const properties of [
+    { checkable: true, completed: false },
+    { checkable: true, completed: true, date: '2028-02-29' },
+    { checkable: true, start: '2026-10-01T10:00:00Z', end: '2026-10-01T11:00:00Z' },
+    { start: '2026-10-01T10:00:00Z', end: '2026-10-01T11:00:00Z' },
+  ]) expect(() => validateObjectProperties('event', properties)).not.toThrow();
+  for (const properties of [
+    { checkable: 'yes' }, { checkable: true, completed: 'yes' }, { completed: true },
+    { date: '2026-02-29' }, { date: '2026-9-29' },
+    { checkable: true, start: '2026-10-01T10:00:00Z' },
+    { date: '2026-10-01', start: '2026-10-01T10:00:00Z', end: '2026-10-01T11:00:00Z' },
+  ]) expect(() => validateObjectProperties('event', properties)).toThrow();
+  expect(coreObjectTypes.find(type => type.type === 'task')?.legacy).toBe(true);
+});
 it('derives Document and Asset metadata from file identity without storing content or following paths', () => {
   const files = [
     {

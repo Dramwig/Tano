@@ -109,3 +109,18 @@ it('validates merged event times before writing independent external changes', a
   ).rejects.toThrow('早于');
   expect(await adapter.read(eventPath)).toEqual(theirs.snapshot);
 });
+it('merges a completion with external event edits and refuses an incompatible external task change', async () => {
+  const { adapter } = await setup();
+  const event = { ...object, id: 'b00002', type: 'event', properties: { checkable: true, completed: false } };
+  const eventPath = '.tano/objects/b00002.tano.json';
+  await adapter.create(eventPath, JSON.stringify(event));
+  const record = { object: event, path: eventPath, snapshot: await adapter.read(eventPath) };
+  await saveObject(adapter, record, { ...event, name: '外部修改的名称' });
+  const completed = await saveObject(adapter, record, { ...event, properties: { ...event.properties, completed: true } });
+  expect(completed.object.name).toBe('外部修改的名称');
+  expect(completed.object.properties.completed).toBe(true);
+  const reopened = await saveObject(adapter, completed, { ...completed.object, properties: { checkable: true, completed: false } });
+  const external = await saveObject(adapter, reopened, { ...reopened.object, properties: { checkable: false, completed: false } });
+  await expect(saveObject(adapter, reopened, { ...reopened.object, properties: { checkable: true, completed: true } })).rejects.toThrow('需要完成');
+  expect(await adapter.read(eventPath)).toEqual(external.snapshot);
+});

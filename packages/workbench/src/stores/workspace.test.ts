@@ -14,6 +14,7 @@ const fixture = vi.hoisted(() => ({ adapter: null as WorkspaceAdapter | null }))
 import { useWorkspaceStore } from './workspace';
 import { GRAPH_TAB_ID } from '../document-graph';
 import { PLUGINS_TAB_ID } from '../workspace-plugins';
+import { CALENDAR_TAB_ID } from '../calendar';
 
 class MemoryWorkspace implements WorkspaceAdapter {
   readonly mode = 'demo' as const;
@@ -213,6 +214,25 @@ describe('workspace file reconciliation', () => {
     await store.close(PLUGINS_TAB_ID);
     expect(closeHook).not.toHaveBeenCalled();
     expect(store.tabs.some(tab => tab.plugins)).toBe(false);
+  });
+  it('opens the calendar as one restorable tab and keeps it when documents open', async () => {
+    backend.files.set('other.md', { id: 'other-id', content: 'Other' });
+    await store.refresh();
+    store.openCalendarTab();
+    store.openCalendarTab();
+    expect(store.tabs.filter(tab => tab.calendar)).toHaveLength(1);
+    expect(store.activeId).toBe(CALENDAR_TAB_ID);
+    await store.openFile(store.workspace!.files.find(file => file.id === 'other-id')!);
+    expect(store.tabs.map(tab => tab.id)).toEqual(['note-id', CALENDAR_TAB_ID, 'other-id']);
+    store.openCalendarTab();
+    await vi.waitFor(() => expect(backend.session?.activeId).toBe(CALENDAR_TAB_ID));
+    await store.dispose();
+    setActivePinia(configureWorkbench(createPinia(), { adapter: backend, native: false, mobile: false }));
+    store = useWorkspaceStore();
+    await store.initialize();
+    expect(store.activeId).toBe(CALENDAR_TAB_ID);
+    await store.close(CALENDAR_TAB_ID);
+    expect(store.tabs.some(tab => tab.calendar)).toBe(false);
   });
   it('reads graph content without writing drafts and rejects stale workspace or file identities', async () => {
     store.edit('[[draft link]]');

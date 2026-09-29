@@ -144,7 +144,7 @@ export function referencePicker(options: {
       title.textContent = '选择目标 · Level 2';
       const search = document.createElement('input');
       search.setAttribute('aria-label', '搜索引用目标');
-      search.placeholder = '名称，或 person:Alice / task:任务';
+      search.placeholder = '名称，或 person:Alice / event:事件';
       const list = document.createElement('div');
       list.setAttribute('role', 'listbox');
       list.setAttribute('aria-label', '引用候选');

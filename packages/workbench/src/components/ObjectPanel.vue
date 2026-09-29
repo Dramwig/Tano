@@ -47,6 +47,7 @@ const resourceTypes = computed(() =>
 const recordTypes = computed(() =>
   store.objectDefinitions.filter((type) => type.storage === 'record'),
 );
+const selectableTypes = computed(() => recordTypes.value.filter(type => !type.legacy || current.value?.record?.object.type === type.type));
 const definition = computed(() =>
   recordTypes.value.find((type) => type.type === current.value?.value.type),
 );
@@ -196,7 +197,11 @@ function updateField(field: ObjectField, event: Event) {
     if (!properties || typeof properties !== 'object' || Array.isArray(properties))
       throw new Error('请先修正结构化属性 JSON');
     const input = event.target as HTMLInputElement;
-    if (field.type === 'boolean') properties[field.key] = input.checked;
+    if (field.type === 'boolean') {
+      properties[field.key] = input.checked;
+      if (current.value.value.type === 'event' && field.key === 'checkable' && !input.checked)
+        properties.completed = false;
+    }
     else if (!input.value) delete properties[field.key];
     else
       properties[field.key] =
@@ -205,6 +210,12 @@ function updateField(field: ObjectField, event: Event) {
           : field.type === 'number'
             ? Number(input.value)
             : input.value;
+    if (current.value.value.type === 'event' && input.value) {
+      if (field.key === 'date') {
+        delete properties.start;
+        delete properties.end;
+      } else if (field.key === 'start' || field.key === 'end') delete properties.date;
+    }
     current.value.json = JSON.stringify(properties, null, 2);
     current.value.error = '';
   } catch (error) {
@@ -248,7 +259,7 @@ const uri = computed(() =>
       <header>
         <div>
           <h2>工作区对象 <small>Level 2 · 核心与插件对象</small></h2>
-          <p>内置任务、项目、人物、文档、日历事件和资产，也可安装领域插件。引用绑定唯一 ID。</p>
+          <p>内置事件、项目、人物、文档和资产。需要完成的事件就是任务，也可为事件安排时间。</p>
         </div>
         <button aria-label="关闭工作区对象" @click="emit('close')">关闭</button>
       </header>
@@ -307,7 +318,7 @@ const uri = computed(() =>
               <option v-if="!definition" :value="current.value.type">
                 {{ referenceTypeLabel(current.value.type) }}
               </option>
-              <option v-for="type in recordTypes" :key="type.type" :value="type.type">
+              <option v-for="type in selectableTypes" :key="type.type" :value="type.type">
                 {{ type.label }}
               </option>
             </select></label
@@ -335,7 +346,9 @@ const uri = computed(() =>
               >{{ field.label }}{{ field.required ? ' *' : ''
               }}<input
                 :type="
-                  field.type === 'datetime'
+                  current.value.type === 'event' && field.key === 'date'
+                    ? 'date'
+                    : field.type === 'datetime'
                     ? 'datetime-local'
                     : field.type === 'boolean'
                       ? 'checkbox'
@@ -347,11 +360,11 @@ const uri = computed(() =>
                 :value="fieldValue(field)"
                 :checked="field.type === 'boolean' && fieldValue(field) === true"
                 :required="field.required && field.type !== 'boolean'"
-                :disabled="editDisabled"
+                :disabled="editDisabled || (current.value.type === 'event' && field.key === 'completed' && fieldValue({ key: 'checkable', label: '', type: 'boolean' }) !== true)"
                 @input="updateField(field, $event)"
             /></label>
             <small v-if="current.value.type === 'event'"
-              >按本地时区输入，保存时包含时区。可从侧栏日历查看；提醒和重复事件尚未实现。</small
+              >勾选「需要完成」即可作为任务。可不安排时间、只填计划日期，或成对填写开始与结束时间；计划日期与时间段二选一。时间按本地时区输入。</small
             >
           </div>
           <p v-if="current.value.type === 'person'" class="object-notice">
@@ -373,7 +386,7 @@ const uri = computed(() =>
                 rows="6"
                 spellcheck="false"
               /></label
-            ><small>任务可记录 status、owner、deadline 等属性。</small>
+            ><small>事件可补充 owner、deadline 等属性；截止日期不等同于计划执行时间。</small>
           </details>
           <code class="object-identity">{{ uri }}</code
           ><small v-if="current.record">{{ current.record.path }}</small>
@@ -434,7 +447,7 @@ const uri = computed(() =>
         <div v-else class="object-panel-empty">
           <h3>让人与 Agent 引用同一个对象</h3>
           <p>
-            创建人物、任务、项目或日历事件。文档和资产自动从工作区文件索引，正文和文件内容保持原样。关闭面板后，未保存的草稿会保留在本次会话中。
+            创建人物、项目或事件。事件勾选「需要完成」即可作为任务。文档和资产自动从工作区文件索引。关闭面板后，未保存的草稿会保留在本次会话中。
           </p>
           <p>
             文件资源：{{

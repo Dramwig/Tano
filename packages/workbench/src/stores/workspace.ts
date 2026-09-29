@@ -29,8 +29,9 @@ import type { InstalledObjectPlugin, PluginChange } from '../workspace-plugins';
 import { loadRelations, saveRelationChange } from '../workspace-relations';
 import type { RelationChange } from '../workspace-relations';
 import { GRAPH_TAB_ID } from '../document-graph';
+import { CALENDAR_TAB_ID } from '../calendar';
 
-const isUtilityTab = (id: string) => id.startsWith('blank:') || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID;
+const isUtilityTab = (id: string) => id.startsWith('blank:') || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || id === CALENDAR_TAB_ID;
 
 export interface OpenDocument {
   id: string;
@@ -48,6 +49,7 @@ export interface DocumentTab {
   blank: boolean;
   graph: boolean;
   plugins: boolean;
+  calendar: boolean;
   document?: OpenDocument;
 }
 export interface Activity {
@@ -148,6 +150,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return editRelation({ remove: JSON.parse(JSON.stringify(row)) }, workspaceId);
   }
   async function createObject(draft: Pick<WorkspaceObject, 'type' | 'name' | 'description' | 'properties' | 'archived'>) {
+    // New tasks use the event model. Existing task files retain their identity and references.
+    if (draft.type === 'task') draft = {
+      ...draft,
+      type: 'event',
+      properties: { ...draft.properties, checkable: true, completed: draft.properties.completed === true || ['done', 'completed'].includes(String(draft.properties.status)) },
+    };
     const workspaceId = workspace.value?.id;
     return serial(async () => {
       if (!workspaceId || workspace.value?.id !== workspaceId) throw new Error('工作区已切换');
@@ -223,7 +231,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const tabs = computed<DocumentTab[]>(() =>
     tabIds.value.map((id) => {
       const document = documents.value.find((doc) => doc.id === id);
-      return { id, path: document?.path ?? '', blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, document };
+      return { id, path: document?.path ?? '', blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, document };
     }),
   );
   type TabNavigation = { entries: string[]; index: number };
@@ -606,6 +614,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         if (detachedTabId) {
           if (detachedTabId === GRAPH_TAB_ID) openGraphTab();
           else if (detachedTabId === PLUGINS_TAB_ID) openPluginsTab();
+          else if (detachedTabId === CALENDAR_TAB_ID) openCalendarTab();
           else if (detachedTabId.startsWith('blank:')) createBlankTab();
           else {
             const detachedFile = next.files.find((file) => file.id === detachedTabId);
@@ -854,6 +863,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (!tabIds.value.includes(PLUGINS_TAB_ID)) tabIds.value.push(PLUGINS_TAB_ID);
     activeId.value = PLUGINS_TAB_ID;
     ensureTabNavigation(PLUGINS_TAB_ID);
+    touchNavigation();
+  }
+  function openCalendarTab() {
+    if (!workspace.value) return;
+    if (!tabIds.value.includes(CALENDAR_TAB_ID)) tabIds.value.push(CALENDAR_TAB_ID);
+    activeId.value = CALENDAR_TAB_ID;
+    ensureTabNavigation(CALENDAR_TAB_ID);
     touchNavigation();
   }
   // Serialize adapter reads with workspace switches. The graph never writes
@@ -1386,6 +1402,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     createBlankTab,
     openGraphTab,
     openPluginsTab,
+    openCalendarTab,
     readGraphDocument,
     edit,
     editDocument,

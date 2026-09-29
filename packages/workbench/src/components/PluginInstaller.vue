@@ -209,3 +209,216 @@ async function change(value: PluginChange) {
     </details>
   </div>
 </template>
+
+<style scoped>
+.plugin-installer {
+  padding: 24px 26px 28px;
+}
+.plugin-installer h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.tool-intro {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.tool-intro p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.tool-note {
+  color: var(--muted);
+  font-size: 12px;
+}
+.tool-badge,
+.tool-count {
+  display: inline-block;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+.tool-count {
+  margin-left: 5px;
+}
+.tool-primary,
+.tool-secondary,
+.tool-text-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.tool-primary {
+  background: var(--green-fill);
+  color: #fff;
+}
+.tool-primary:hover:not(:disabled) {
+  background: var(--green-hover);
+}
+.tool-secondary {
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+.tool-text-button {
+  color: var(--muted);
+}
+.tool-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.tool-error {
+  padding: 10px 12px;
+  border: 1px solid #c5444430;
+  border-radius: 6px;
+  background: #c5444410;
+  color: #b53939;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.tool-success {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--green);
+  font-size: 13px;
+}
+.tool-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 15px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  text-align: center;
+}
+.tool-empty.compact {
+  padding: 22px 15px;
+}
+.tool-empty p {
+  margin: 8px 0 4px;
+  font-size: 13px;
+}
+.tool-empty small {
+  font-size: 12px;
+}
+input:not([type='file']),
+textarea {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--text);
+  font-size: 13px;
+}
+.tool-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 20px 0 12px;
+}
+.tool-section-heading h3 {
+  margin: 0;
+}
+section {
+  margin-top: 24px;
+}
+.plugin-installed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--line);
+}
+.plugin-installed strong {
+  margin-right: 8px;
+  font-size: 14px;
+}
+.plugin-installed p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.plugin-catalog {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.plugin-card {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+.plugin-card > svg {
+  color: var(--green);
+}
+.plugin-card p {
+  min-height: 42px;
+  margin: 6px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.plugin-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 14px 0 18px;
+}
+.plugin-import {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.plugin-import summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.plugin-import textarea {
+  display: block;
+  width: 100%;
+  margin: 12px 0;
+  font-family: monospace;
+  resize: vertical;
+}
+.plugin-preview {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 13px;
+}
+@media (max-width: 700px) {
+  .plugin-installer {
+    padding: 16px;
+  }
+  .plugin-catalog {
+    grid-template-columns: 1fr;
+  }
+  .plugin-installed,
+  .tool-section-heading {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 420px) {
+  .tool-intro {
+    flex-wrap: wrap;
+  }
+}
+</style>

@@ -49,14 +49,13 @@ function mountPanel(objects: ObjectRecord[] = [], selectedId?: string, visible =
   app.mount(root);
   return store;
 }
-it('offers four record types, keeps resources separate, and saves event timestamps with an offset', async () => {
+it('offers unified events instead of new legacy tasks and saves event timestamps with an offset', async () => {
   const store = mountPanel();
   Array.from(root.querySelectorAll('button'))
     .find((button) => button.textContent?.includes('新建对象'))!
     .click();
   await nextTick();
   expect(Array.from(root.querySelectorAll('option')).map((option) => option.value)).toEqual([
-    'task',
     'project',
     'person',
     'event',

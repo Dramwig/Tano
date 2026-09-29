@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { FileText, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, SquarePen, ExternalLink } from 'lucide-vue-next';
+import { CalendarDays, FileText, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, SquarePen, ExternalLink } from 'lucide-vue-next';
 import { basename } from '@tano/protocol';
 import { invoke } from '@tauri-apps/api/core';
 import { cursorPosition, getCurrentWindow } from '@tauri-apps/api/window';
@@ -202,7 +202,7 @@ function startDrag(event: PointerEvent, id: string) {
     grabY: event.clientY - rect.top,
     width: Math.max(160, rect.width),
     height: rect.height,
-    path: doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.blank ? '新标签页' : doc.path,
+    path: doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.calendar ? '计划' : doc.blank ? '新标签页' : doc.path,
     dirty: !!doc.document && store.dirty(doc.document),
   };
   element.setPointerCapture(event.pointerId);
@@ -696,7 +696,7 @@ async function onTabKeydown(event: KeyboardEvent) {
           role="tab"
           :aria-selected="doc.id === store.activeId"
           :tabindex="doc.id === store.activeId ? 0 : -1"
-          :title="doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.blank ? '新标签页' : doc.path"
+          :title="doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.calendar ? '计划' : doc.blank ? '新标签页' : doc.path"
           :draggable="nativeTabDrag"
           @pointerdown="startDrag($event, doc.id)"
           @dragstart.stop="startNativeDrag($event, doc.id)"
@@ -704,8 +704,9 @@ async function onTabKeydown(event: KeyboardEvent) {
         >
           <GitFork v-if="doc.graph" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <Puzzle v-else-if="doc.plugins" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
+          <CalendarDays v-else-if="doc.calendar" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <FileText v-else-if="!doc.blank" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
-          <span class="desktop-tab-label">{{ doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.blank ? '新标签页' : title(doc.path) }}</span>
+          <span class="desktop-tab-label">{{ doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.calendar ? '计划' : doc.blank ? '新标签页' : title(doc.path) }}</span>
           <span
             v-if="doc.document && store.dirty(doc.document)"
             class="desktop-tab-dirty"
@@ -715,8 +716,8 @@ async function onTabKeydown(event: KeyboardEvent) {
         <button
           class="desktop-tab-close"
           type="button"
-          :aria-label="`关闭 ${doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.blank ? '新标签页' : title(doc.path)}`"
-          :title="`关闭 ${doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.blank ? '新标签页' : title(doc.path)}`"
+          :aria-label="`关闭 ${doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.calendar ? '计划' : doc.blank ? '新标签页' : title(doc.path)}`"
+          :title="`关闭 ${doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.calendar ? '计划' : doc.blank ? '新标签页' : title(doc.path)}`"
           @click="closeTab(doc.id)"
         >
           <X :size="13" />
