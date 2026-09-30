@@ -4,6 +4,9 @@ pub mod identity_manifest;
 mod mobile_storage;
 #[cfg(test)]
 mod performance;
+mod personal_plans;
+#[cfg(desktop)]
+mod plan_connections;
 mod search;
 mod session_storage;
 pub mod storage;
@@ -1002,6 +1005,28 @@ pub fn configure_with_commands(
                 .expect("static response")
         })
         .invoke_handler(move |invoke| {
+            #[cfg(desktop)]
+            if matches!(
+                invoke.message.command(),
+                "plan_accounts_list"
+                    | "plan_account_save"
+                    | "plan_account_remove"
+                    | "plan_account_oauth"
+                    | "plan_remote_request"
+                    | "plan_sync_state_read"
+                    | "plan_sync_state_write"
+            ) {
+                let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                    plan_connections::plan_accounts_list,
+                    plan_connections::plan_account_save,
+                    plan_connections::plan_account_remove,
+                    plan_connections::plan_account_oauth,
+                    plan_connections::plan_remote_request,
+                    plan_connections::plan_sync_state_read,
+                    plan_connections::plan_sync_state_write,
+                ];
+                return handler(invoke);
+            }
             if commands.contains(&invoke.message.command()) {
                 extra(invoke)
             } else {
@@ -1031,6 +1056,11 @@ pub fn configure_with_commands(
                     export_workspace,
                     import_workspace_export,
                     reserve_reference_id,
+                    personal_plans::personal_plans_list,
+                    personal_plans::personal_plans_read,
+                    personal_plans::personal_plans_reserve,
+                    personal_plans::personal_plans_create,
+                    personal_plans::personal_plans_write,
                     read_document,
                     write_document,
                     create_document,

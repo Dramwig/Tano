@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { CalendarDays, FileText, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, SquarePen, ExternalLink } from 'lucide-vue-next';
-import { basename } from '@tano/protocol';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { CalendarDays, FileText, GitFork, MessageCircle, Puzzle, Plus, X, XCircle, PanelRightClose, SquarePen, ExternalLink } from 'lucide-vue-next';
+import { basename, isMarkdown } from '@tano/protocol';
 import { invoke } from '@tauri-apps/api/core';
 import { cursorPosition, getCurrentWindow } from '@tauri-apps/api/window';
 import { emitTo, listen } from '@tauri-apps/api/event';
@@ -12,10 +12,13 @@ import { nativeOs } from '../platform';
 import { useWorkspaceStore } from '../stores/workspace';
 
 const store = useWorkspaceStore();
-const props = defineProps<{ detachable?: boolean }>();
+const props = defineProps<{
+  detachable?: boolean;
+  fileDrag?: { workspaceId: string; ids: readonly string[] };
+}>();
 // WebView content is clipped at the native window edge. A native drag image is not.
 const nativeTabDrag = props.detachable && nativeOs === 'windows';
-const emit = defineEmits<{ 'new-tab': []; 'new-document': []; 'detach-tab': [id: string, drop?: DetachedDropPoint, settled?: () => void] }>();
+const emit = defineEmits<{ 'new-tab': []; 'new-document': []; 'detach-tab': [id: string, drop?: DetachedDropPoint, settled?: () => void]; 'files-dropped': [] }>();
 const tabList = ref<HTMLElement>();
 const contextMenuElement = ref<HTMLElement>();
 const contextMenu = ref<{ tabId: string | null; x: number; y: number }>();
@@ -37,6 +40,18 @@ const dragPreview = ref<{
 }>();
 const dropTarget = ref<{ id: string; side: 'before' | 'after' }>();
 const incomingSlot = ref<{ sourceLabel: string; tabId: string; index: number }>();
+const fileSlot = ref<{ index: number; x: number; y: number }>();
+const fileHintStyle = computed(() => fileSlot.value ? {
+  left: `${Math.max(8, Math.min(fileSlot.value.x + 16, window.innerWidth - 240))}px`,
+  top: `${Math.max(8, Math.min(fileSlot.value.y + 24, window.innerHeight - 64))}px`,
+} : undefined);
+const dockSlotIndex = computed(() => fileSlot.value?.index ?? incomingSlot.value?.index);
+const draggedFiles = computed(() => {
+  if (!props.fileDrag || props.fileDrag.workspaceId !== store.workspace?.id || store.busy) return [];
+  const files = props.fileDrag.ids.map((id) => store.workspace!.files.find((file) => file.id === id));
+  return files.every((file) => file?.kind === 'file' && isMarkdown(file.path)) ? files : [];
+});
+let fileScrollFrame = 0;
 let incomingHoverAt = 0;
 let incomingDropTimer: ReturnType<typeof setTimeout> | undefined;
 let unlistenDockProbe: (() => void) | undefined;
@@ -97,6 +112,73 @@ function dockIndexAt(x: number, y: number, centerOffset: number) {
   const centers = [...list.querySelectorAll<HTMLElement>('.desktop-tab')]
     .map((tab) => { const box = tab.getBoundingClientRect(); return box.left + box.width / 2; });
   return tabDockIndex(x + centerOffset, centers);
+}
+
+function isFileDropSurface(target: EventTarget | null) {
+  return target instanceof Node && !!(
+    tabList.value?.parentElement?.contains(target) || blankTrack?.contains(target) ||
+    tabList.value?.closest('.workspace-tabbar')?.contains(target)
+  );
+}
+
+function fileIndexAt(x: number) {
+  const bounds = tabList.value?.getBoundingClientRect();
+  // The add button and trailing titlebar always append, including when tabs overflow.
+  if (bounds && x > bounds.right) return store.tabs.length;
+  if (bounds && x < bounds.left) return 0;
+  const centers = [...(tabList.value?.querySelectorAll<HTMLElement>('.desktop-tab') ?? [])]
+    .map((tab) => { const box = tab.getBoundingClientRect(); return box.left + box.width / 2; });
+  return tabDockIndex(x, centers);
+}
+
+function clearFileSlot() {
+  fileSlot.value = undefined;
+  cancelAnimationFrame(fileScrollFrame);
+  fileScrollFrame = 0;
+}
+
+function scrollWhileFileDragging() {
+  const list = tabList.value;
+  const slot = fileSlot.value;
+  if (!list || !slot) return;
+  const bounds = list.getBoundingClientRect();
+  if (slot.x >= bounds.left && slot.x <= bounds.right) {
+    if (slot.x < bounds.left + 32) list.scrollLeft -= 10;
+    else if (slot.x > bounds.right - 32) list.scrollLeft += 10;
+  }
+  slot.index = fileIndexAt(slot.x);
+  fileScrollFrame = requestAnimationFrame(scrollWhileFileDragging);
+}
+
+function fileDragOver(event: DragEvent) {
+  if (!draggedFiles.value.length || !event.dataTransfer?.types.includes('application/x-tano-entry') ||
+      !isFileDropSurface(event.target)) {
+    clearFileSlot();
+    return;
+  }
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'copy';
+  fileSlot.value = { index: fileIndexAt(event.clientX), x: event.clientX, y: event.clientY };
+  if (!fileScrollFrame) fileScrollFrame = requestAnimationFrame(scrollWhileFileDragging);
+}
+
+function fileDragLeave(event: DragEvent) {
+  if (!isFileDropSurface(event.relatedTarget)) clearFileSlot();
+}
+
+function fileDrop(event: DragEvent) {
+  const drag = props.fileDrag;
+  if (!drag || !draggedFiles.value.length || !isFileDropSurface(event.target) ||
+      !event.dataTransfer?.types.includes('application/x-tano-entry')) {
+    clearFileSlot();
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  const index = fileIndexAt(event.clientX);
+  clearFileSlot();
+  emit('files-dropped');
+  void store.openFilesInNewTabsAt(drag.ids, index, drag.workspaceId);
 }
 
 function incomingDragOver(event: DragEvent) {
@@ -202,7 +284,7 @@ function startDrag(event: PointerEvent, id: string) {
     grabY: event.clientY - rect.top,
     width: Math.max(160, rect.width),
     height: rect.height,
-    path: doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.calendar ? '计划' : doc.blank ? '新标签页' : doc.path,
+    path: doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.calendar ? '计划' : doc.chat ? '聊天' : doc.blank ? '新标签页' : doc.path,
     dirty: !!doc.document && store.dirty(doc.document),
   };
   element.setPointerCapture(event.pointerId);
@@ -384,6 +466,7 @@ function nativeDragEnd() {
 }
 
 function cancelDragOnEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape') clearFileSlot();
   if (event.key === 'Escape' && gesture) {
     event.preventDefault();
     finishDrag();
@@ -527,6 +610,10 @@ onMounted(() => {
     tabList.value?.closest('.desktop-window-titlebar')?.querySelector('.desktop-window-drag') ??
     null;
   blankTrack?.addEventListener('contextmenu', onBlankTrackContext);
+  window.addEventListener('dragover', fileDragOver, true);
+  window.addEventListener('dragleave', fileDragLeave, true);
+  window.addEventListener('drop', fileDrop, true);
+  window.addEventListener('dragend', clearFileSlot, true);
   window.addEventListener('pointerdown', onOutsidePointer, true);
   if (props.detachable) window.addEventListener('pointerup', endDrag, true);
   window.addEventListener('contextmenu', onOutsideContext);
@@ -580,6 +667,11 @@ function onTabWheel(event: WheelEvent) {
 
 onBeforeUnmount(() => {
   finishDrag();
+  clearFileSlot();
+  window.removeEventListener('dragover', fileDragOver, true);
+  window.removeEventListener('dragleave', fileDragLeave, true);
+  window.removeEventListener('drop', fileDrop, true);
+  window.removeEventListener('dragend', clearFileSlot, true);
   clearTimeout(clickTimer);
   blankTrack?.removeEventListener('contextmenu', onBlankTrackContext);
   window.removeEventListener('pointerdown', onOutsidePointer, true);
@@ -613,6 +705,10 @@ watch(
 
 watch(() => store.tabs.map((tab) => tab.id).join('|'), () => {
   if (incomingDropTimer) clearIncomingSlot();
+});
+
+watch(draggedFiles, (files) => {
+  if (!files.length) clearFileSlot();
 });
 
 async function onTabKeydown(event: KeyboardEvent) {
@@ -649,6 +745,7 @@ async function onTabKeydown(event: KeyboardEvent) {
 <template>
   <nav
     class="desktop-tab-strip"
+    :class="{ 'desktop-tab-strip-file-drop': fileSlot }"
     :style="{
       '--desktop-tab-count': store.tabs.length,
       width: frozenStripWidth === undefined ? undefined : `${frozenStripWidth}px`,
@@ -684,8 +781,8 @@ async function onTabKeydown(event: KeyboardEvent) {
           'desktop-tab-outgoing': doc.id === outgoingId,
           'desktop-tab-drop-before': dropTarget?.id === doc.id && dropTarget.side === 'before',
           'desktop-tab-drop-after': dropTarget?.id === doc.id && dropTarget.side === 'after',
-          'desktop-tab-dock-before': incomingSlot?.index === index,
-          'desktop-tab-dock-after': incomingSlot?.index === store.tabs.length && index === store.tabs.length - 1,
+          'desktop-tab-dock-before': dockSlotIndex === index,
+          'desktop-tab-dock-after': dockSlotIndex === store.tabs.length && index === store.tabs.length - 1,
         }"
         :style="frozenTabWidths[doc.id] ? { flex: `0 0 ${frozenTabWidths[doc.id]}px` } : undefined"
         @contextmenu.stop.prevent="openContextMenu($event, doc.id)"
@@ -696,7 +793,7 @@ async function onTabKeydown(event: KeyboardEvent) {
           role="tab"
           :aria-selected="doc.id === store.activeId"
           :tabindex="doc.id === store.activeId ? 0 : -1"
-          :title="doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.calendar ? '计划' : doc.blank ? '新标签页' : doc.path"
+          :title="doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.calendar ? '计划' : doc.chat ? '聊天' : doc.blank ? '新标签页' : doc.path"
           :draggable="nativeTabDrag"
           @pointerdown="startDrag($event, doc.id)"
           @dragstart.stop="startNativeDrag($event, doc.id)"
@@ -705,8 +802,9 @@ async function onTabKeydown(event: KeyboardEvent) {
           <GitFork v-if="doc.graph" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <Puzzle v-else-if="doc.plugins" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <CalendarDays v-else-if="doc.calendar" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
+          <MessageCircle v-else-if="doc.chat" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <FileText v-else-if="!doc.blank" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
-          <span class="desktop-tab-label">{{ doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.calendar ? '计划' : doc.blank ? '新标签页' : title(doc.path) }}</span>
+          <span class="desktop-tab-label">{{ doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.calendar ? '计划' : doc.chat ? '聊天' : doc.blank ? '新标签页' : title(doc.path) }}</span>
           <span
             v-if="doc.document && store.dirty(doc.document)"
             class="desktop-tab-dirty"
@@ -716,14 +814,14 @@ async function onTabKeydown(event: KeyboardEvent) {
         <button
           class="desktop-tab-close"
           type="button"
-          :aria-label="`关闭 ${doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.calendar ? '计划' : doc.blank ? '新标签页' : title(doc.path)}`"
-          :title="`关闭 ${doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.calendar ? '计划' : doc.blank ? '新标签页' : title(doc.path)}`"
+          :aria-label="`关闭 ${doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.calendar ? '计划' : doc.chat ? '聊天' : doc.blank ? '新标签页' : title(doc.path)}`"
+          :title="`关闭 ${doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.calendar ? '计划' : doc.chat ? '聊天' : doc.blank ? '新标签页' : title(doc.path)}`"
           @click="closeTab(doc.id)"
         >
           <X :size="13" />
         </button>
       </div>
-      <div v-if="incomingSlot && !store.tabs.length" class="desktop-tab-dock-empty" aria-hidden="true" />
+      <div v-if="dockSlotIndex !== undefined && !store.tabs.length" class="desktop-tab-dock-empty" aria-hidden="true" />
     </div>
     <button
       class="desktop-tab-add"
@@ -738,6 +836,15 @@ async function onTabKeydown(event: KeyboardEvent) {
   </nav>
   <Teleport to="body">
     <div
+      v-if="fileSlot"
+      class="desktop-tab-file-drop-hint"
+      :style="fileHintStyle"
+      role="status"
+    >
+      <strong>{{ draggedFiles.length === 1 ? title(draggedFiles[0]!.path) : `${draggedFiles.length} 个文档` }}</strong>
+      <span>在此处作为新标签页打开</span>
+    </div>
+    <div
       v-if="contextMenu"
       ref="contextMenuElement"
       class="dropdown compact-action-menu desktop-tab-context-menu"
@@ -746,7 +853,7 @@ async function onTabKeydown(event: KeyboardEvent) {
       :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
     >
       <template v-if="contextMenu.tabId">
-        <button v-if="detachable" type="button" role="menuitem" @click="contextAction('detach')">
+        <button v-if="detachable" type="button" role="menuitem" :disabled="store.tabs.find(tab => tab.id === contextMenu?.tabId)?.chat" @click="contextAction('detach')">
           <ExternalLink :size="15" />在新窗口中打开
         </button>
         <button type="button" role="menuitem" @click="contextAction('close')">
@@ -822,6 +929,31 @@ async function onTabKeydown(event: KeyboardEvent) {
   min-width: 0;
   height: 100%;
   align-items: stretch;
+}
+.desktop-tab-strip-file-drop .desktop-tab-list {
+  min-width: 4px;
+}
+.desktop-tab-file-drop-hint {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  gap: 3px;
+  max-width: min(224px, calc(100vw - 16px));
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+  color: var(--text-secondary);
+  font-size: 12px;
+  pointer-events: none;
+}
+.desktop-tab-file-drop-hint strong {
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .desktop-tab-list {
   position: relative;

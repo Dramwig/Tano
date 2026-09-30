@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { createApp, nextTick, reactive } from 'vue';
+import { createApp, h, nextTick, reactive } from 'vue';
 import type { App } from 'vue';
 import DesktopTabs from './DesktopTabs.vue';
 import { TAB_DOCK_PROBE, tabDragMetaType } from '../tab-docking';
@@ -164,6 +164,121 @@ afterEach(() => {
   root.remove();
   document.body.querySelectorAll('.desktop-tab-native-drag-image').forEach((image) => image.remove());
   vi.unstubAllGlobals();
+});
+
+function mountFileDrag(detachable = false) {
+  app.unmount();
+  fixture.store.workspace.files = [
+    { id: 'file-1', path: '项目/拖入文档.md', kind: 'file' },
+    { id: 'folder', path: '项目', kind: 'directory' },
+    { id: 'image', path: 'image.png', kind: 'file' },
+  ];
+  fixture.store.openFilesInNewTabsAt = vi.fn(async () => {});
+  const state = reactive({ fileDrag: { workspaceId: 'workspace-1', ids: ['file-1'] } });
+  const dropped = vi.fn();
+  app = createApp({ render: () => h(DesktopTabs, { detachable, fileDrag: state.fileDrag, onFilesDropped: dropped }) });
+  app.mount(root.querySelector('.desktop-window-tab-slot')!);
+  const list = root.querySelector<HTMLElement>('.desktop-tab-list')!;
+  list.getBoundingClientRect = () => ({ left: 0, right: 600, top: 0, bottom: 36 }) as DOMRect;
+  root.querySelectorAll<HTMLElement>('.desktop-tab').forEach((tab, index) => {
+    tab.getBoundingClientRect = () => ({ left: index * 200, right: (index + 1) * 200, width: 200 }) as DOMRect;
+  });
+  return { state, dropped, list };
+}
+
+function fileDragEvent(target: Element | Window, type: string, x = 250, types = ['application/x-tano-entry'], relatedTarget?: Element) {
+  const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: 18, relatedTarget });
+  const dataTransfer = { types, dropEffect: '' };
+  Object.defineProperty(event, 'dataTransfer', { value: dataTransfer });
+  target.dispatchEvent(event);
+  return { event, dataTransfer };
+}
+
+it.each([false, true])('accepts file-tree drops between tabs (native=%s)', async (native) => {
+  const { dropped, list } = mountFileDrag(native);
+  const { event, dataTransfer } = fileDragEvent(list, 'dragover');
+  await nextTick();
+  expect(event.defaultPrevented).toBe(true);
+  expect(dataTransfer.dropEffect).toBe('copy');
+  expect(list.querySelector('.desktop-tab-dock-before')?.getAttribute('data-id')).toBe('b');
+  expect(document.querySelector('.desktop-tab-file-drop-hint')?.textContent).toContain('拖入文档');
+  expect(list.querySelectorAll('.desktop-tab')).toHaveLength(3);
+  expect(fixture.store.openFilesInNewTabsAt).not.toHaveBeenCalled();
+  fileDragEvent(list, 'drop');
+  await nextTick();
+  expect(fixture.store.openFilesInNewTabsAt).toHaveBeenCalledExactlyOnceWith(['file-1'], 1, 'workspace-1');
+  expect(dropped).toHaveBeenCalledOnce();
+  expect(document.querySelector('.desktop-tab-file-drop-hint')).toBeNull();
+  expect(list.querySelector('.desktop-tab-dock-before')).toBeNull();
+});
+
+it('accepts the first slot, add button, blank titlebar and empty strip', async () => {
+  const { list } = mountFileDrag();
+  fileDragEvent(list, 'drop', 20);
+  expect(fixture.store.openFilesInNewTabsAt).toHaveBeenLastCalledWith(['file-1'], 0, 'workspace-1');
+  fileDragEvent(root.querySelector('.desktop-tab-add')!, 'drop', 610);
+  expect(fixture.store.openFilesInNewTabsAt).toHaveBeenLastCalledWith(['file-1'], 3, 'workspace-1');
+  const blank = root.querySelector('.desktop-window-drag')!;
+  fileDragEvent(blank, 'dragover', 750);
+  await nextTick();
+  expect(list.querySelector('.desktop-tab-dock-after')?.getAttribute('data-id')).toBe('c');
+  fileDragEvent(blank, 'drop', 750);
+  expect(fixture.store.openFilesInNewTabsAt).toHaveBeenLastCalledWith(['file-1'], 3, 'workspace-1');
+  fixture.store.tabs = [];
+  await nextTick();
+  fileDragEvent(root.querySelector('.desktop-tab-add')!, 'dragover', 10);
+  await nextTick();
+  expect(list.querySelector('.desktop-tab-dock-empty')).not.toBeNull();
+  fileDragEvent(root.querySelector('.desktop-tab-add')!, 'drop', 10);
+  expect(fixture.store.openFilesInNewTabsAt).toHaveBeenLastCalledWith(['file-1'], 0, 'workspace-1');
+});
+
+it('clears the file insertion hint on leave, escape, dragend and workspace changes', async () => {
+  const { state, list } = mountFileDrag();
+  for (const cancel of [
+    () => fileDragEvent(list, 'dragleave'),
+    () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })),
+    () => fileDragEvent(window, 'dragend'),
+    () => { state.fileDrag.workspaceId = 'other'; },
+  ]) {
+    fileDragEvent(list, 'dragover');
+    await nextTick();
+    expect(document.querySelector('.desktop-tab-file-drop-hint')).not.toBeNull();
+    cancel();
+    await nextTick();
+    expect(document.querySelector('.desktop-tab-file-drop-hint')).toBeNull();
+  }
+  expect(fixture.store.openFilesInNewTabsAt).not.toHaveBeenCalled();
+});
+
+it('scrolls at the strip edge and appends from the add button even when tabs overflow', async () => {
+  const { list } = mountFileDrag();
+  list.getBoundingClientRect = () => ({ left: 0, right: 320, top: 0, bottom: 36 }) as DOMRect;
+  fileDragEvent(list, 'dragover', 315);
+  const frame = vi.mocked(requestAnimationFrame).mock.calls.at(-1)![0];
+  frame(0);
+  expect(list.scrollLeft).toBe(10);
+  fileDragEvent(root.querySelector('.desktop-tab-add')!, 'drop', 340);
+  expect(fixture.store.openFilesInNewTabsAt).toHaveBeenCalledExactlyOnceWith(['file-1'], 3, 'workspace-1');
+});
+
+it('keeps the slot across tab child transitions and ignores invalid drops', async () => {
+  const { state, list } = mountFileDrag();
+  fileDragEvent(list, 'dragover');
+  fileDragEvent(list, 'dragleave', 250, undefined, list.querySelector('.desktop-tab-switch')!);
+  await nextTick();
+  expect(list.querySelector('.desktop-tab-dock-before')).not.toBeNull();
+  for (const ids of [['folder'], ['image'], ['file-1', 'folder'], ['missing'], []]) {
+    state.fileDrag.ids = ids;
+    await nextTick();
+    expect(fileDragEvent(list, 'dragover').event.defaultPrevented).toBe(false);
+    fileDragEvent(list, 'drop');
+  }
+  state.fileDrag.ids = ['file-1'];
+  await nextTick();
+  fileDragEvent(list, 'drop', 250, ['Files']);
+  fileDragEvent(document.body, 'drop');
+  expect(fixture.store.openFilesInNewTabsAt).not.toHaveBeenCalled();
 });
 
 it('shows the insertion side and commits only on release, suppressing the trailing click', async () => {

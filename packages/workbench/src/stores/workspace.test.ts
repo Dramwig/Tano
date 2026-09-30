@@ -15,6 +15,7 @@ import { useWorkspaceStore } from './workspace';
 import { GRAPH_TAB_ID } from '../document-graph';
 import { PLUGINS_TAB_ID } from '../workspace-plugins';
 import { CALENDAR_TAB_ID } from '../calendar';
+import { CHAT_TAB_ID } from '../chat';
 
 class MemoryWorkspace implements WorkspaceAdapter {
   readonly mode = 'demo' as const;
@@ -234,6 +235,26 @@ describe('workspace file reconciliation', () => {
     await store.close(CALENDAR_TAB_ID);
     expect(store.tabs.some(tab => tab.calendar)).toBe(false);
   });
+  it('keeps chat separate from file contents and restores its singleton tab', async () => {
+    const filesBefore = structuredClone([...backend.files]);
+    store.openChatTab(); store.openChatTab();
+    expect(store.tabs.filter(tab => tab.chat)).toHaveLength(1);
+    expect(store.active).toBeUndefined();
+    await store.openFile(store.workspace!.files[0]!);
+    expect(store.tabs.some(tab => tab.chat)).toBe(true);
+    store.openChatTab();
+    await vi.waitFor(() => expect(backend.session?.activeId).toBe(CHAT_TAB_ID));
+    await store.dispose();
+    setActivePinia(configureWorkbench(createPinia(), { adapter: backend, native: false, mobile: false }));
+    store = useWorkspaceStore();
+    await store.initialize();
+    expect(store.activeId).toBe(CHAT_TAB_ID);
+    const closeHook = vi.fn(async () => {});
+    store.setDocumentLifecycle({ beforeSwitch: async () => {}, beforeCloseDocument: closeHook });
+    await store.close(CHAT_TAB_ID);
+    expect(closeHook).not.toHaveBeenCalled();
+    expect([...backend.files]).toEqual(filesBefore);
+  });
   it('reads graph content without writing drafts and rejects stale workspace or file identities', async () => {
     store.edit('[[draft link]]');
     const file = store.workspace!.files.find(file => file.id === 'note-id')!;
@@ -370,6 +391,70 @@ describe('workspace file reconciliation', () => {
     await store.refresh();
     await store.openFileInNewTab(store.workspace!.files.find((entry) => entry.path === 'other.md')!);
     expect(store.tabs.map((tab) => tab.path)).toEqual(['note.md', 'other.md']);
+  });
+  it('opens dropped files at the requested slot without replacing tabs or writing files', async () => {
+    await backend.create('second.md', 'second');
+    await backend.create('third.md', 'third');
+    await store.refresh();
+    store.openGraphTab();
+    store.createBlankTab();
+    const blankId = store.activeId;
+    const write = vi.spyOn(backend, 'write');
+    const move = vi.spyOn(backend, 'move');
+    const files = store.workspace!.files.filter((file) => file.path !== 'note.md');
+    await store.openFilesInNewTabsAt(files.map((file) => file.id), 1, 'test');
+    expect(store.tabs.map((tab) => tab.id)).toEqual(['note-id', ...files.map((file) => file.id), GRAPH_TAB_ID, blankId]);
+    expect(store.activeId).toBe(files[1].id);
+    expect(write).not.toHaveBeenCalled();
+    expect(move).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(backend.session?.tabs).toEqual(store.tabs.map((tab) => tab.id)));
+  });
+  it.each([0, 1, 3])('reuses an open draft when dropped into slot %s', async (index) => {
+    await store.create('second.md', false, 'second');
+    await store.create('third.md', false, 'third');
+    store.activeId = 'note-id';
+    store.edit('unsaved draft');
+    const draft = store.active;
+    const read = vi.spyOn(backend, 'read');
+    const original = store.tabs.map((tab) => tab.id);
+    await store.openFilesInNewTabsAt(['note-id'], index, 'test');
+    const expected = original.slice(1);
+    expected.splice(Math.max(0, index - 1), 0, 'note-id');
+    expect(store.tabs.map((tab) => tab.id)).toEqual(expected);
+    expect(store.active).toBe(draft);
+    expect(store.active?.content).toBe('unsaved draft');
+    expect(read).not.toHaveBeenCalled();
+  });
+  it('preserves selection order when dropping a mix of open and closed files', async () => {
+    await store.create('second.md', false, 'second');
+    await store.create('third.md', false, 'third');
+    await backend.create('fourth.md', 'fourth');
+    await store.refresh();
+    const id = (path: string) => store.workspace!.files.find((file) => file.path === path)!.id;
+    const ids = [id('third.md'), id('fourth.md'), 'note-id'];
+    await store.openFilesInNewTabsAt([...ids, ids[0]], 1, 'test');
+    expect(store.tabs.map((tab) => tab.id)).toEqual([...ids, id('second.md')]);
+  });
+  it('opens into an empty strip and resolves a dragged file by its current identity', async () => {
+    await store.close('note-id');
+    await backend.rename('note.md', 'renamed.md');
+    await store.refresh();
+    await store.openFilesInNewTabsAt(['note-id'], 0, 'test');
+    expect(store.tabs.map((tab) => tab.path)).toEqual(['renamed.md']);
+    expect(store.activeId).toBe('note-id');
+  });
+  it('ignores foreign, missing, folder and unsupported file drops', async () => {
+    await backend.create('image.png', 'image');
+    await backend.createFolder('folder');
+    await store.refresh();
+    const original = store.tabs.map((tab) => tab.id);
+    const read = vi.spyOn(backend, 'read');
+    await store.openFilesInNewTabsAt(['note-id'], 0, 'another-workspace');
+    await store.openFilesInNewTabsAt(['missing'], 0, 'test');
+    await store.openFilesInNewTabsAt(['folder:folder'], 0, 'test');
+    await store.openFilesInNewTabsAt(store.workspace!.files.map((file) => file.id), 0, 'test');
+    expect(store.tabs.map((tab) => tab.id)).toEqual(original);
+    expect(read).not.toHaveBeenCalled();
   });
   it('moves backward and forward through visits, reopening replaced documents', async () => {
     const firstId = store.activeId;

@@ -30,8 +30,9 @@ import { loadRelations, saveRelationChange } from '../workspace-relations';
 import type { RelationChange } from '../workspace-relations';
 import { GRAPH_TAB_ID } from '../document-graph';
 import { CALENDAR_TAB_ID } from '../calendar';
+import { CHAT_TAB_ID } from '../chat';
 
-const isUtilityTab = (id: string) => id.startsWith('blank:') || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || id === CALENDAR_TAB_ID;
+const isUtilityTab = (id: string) => id.startsWith('blank:') || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || id === CALENDAR_TAB_ID || id === CHAT_TAB_ID;
 
 export interface OpenDocument {
   id: string;
@@ -50,6 +51,7 @@ export interface DocumentTab {
   graph: boolean;
   plugins: boolean;
   calendar: boolean;
+  chat: boolean;
   document?: OpenDocument;
 }
 export interface Activity {
@@ -231,7 +233,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const tabs = computed<DocumentTab[]>(() =>
     tabIds.value.map((id) => {
       const document = documents.value.find((doc) => doc.id === id);
-      return { id, path: document?.path ?? '', blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, document };
+      return { id, path: document?.path ?? '', blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, chat: id === CHAT_TAB_ID, document };
     }),
   );
   type TabNavigation = { entries: string[]; index: number };
@@ -615,6 +617,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           if (detachedTabId === GRAPH_TAB_ID) openGraphTab();
           else if (detachedTabId === PLUGINS_TAB_ID) openPluginsTab();
           else if (detachedTabId === CALENDAR_TAB_ID) openCalendarTab();
+          else if (detachedTabId === CHAT_TAB_ID) openChatTab();
           else if (detachedTabId.startsWith('blank:')) createBlankTab();
           else {
             const detachedFile = next.files.find((file) => file.id === detachedTabId);
@@ -843,6 +846,28 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       if (isRecoveryError(error)) await openRecovery(workspace.value?.path ?? '', false);
     }
   }
+  async function openFilesInNewTabsAt(ids: readonly string[], index: number, workspaceId: string) {
+    try {
+      await serial(async () => {
+        if (workspace.value?.id !== workspaceId) return;
+        const files = [...new Set(ids)].map((id) => workspace.value!.files.find((file) => file.id === id));
+        if (!files.length || files.some((file) => !file || file.kind !== 'file' || !isMarkdown(file.path))) return;
+        // Keep a stable neighbor while reads are pending and already-open tabs move.
+        const moving = new Set(ids);
+        const following = tabIds.value.slice(Math.max(0, index)).filter((id) => !moving.has(id));
+        for (const file of files) {
+          await openInternal(file!);
+          ensureTabNavigation(file!.id, file!.id);
+          const target = following.find((id) => tabIds.value.includes(id));
+          if (target) moveDocument(file!.id, target, 'before');
+          else placeTab(file!.id, tabIds.value.length);
+        }
+      });
+    } catch (error) {
+      report(error);
+      if (isRecoveryError(error)) await openRecovery(workspace.value?.path ?? '', false);
+    }
+  }
   function createBlankTab() {
     if (!workspace.value) return;
     const id = `blank:${crypto.randomUUID()}`;
@@ -870,6 +895,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (!tabIds.value.includes(CALENDAR_TAB_ID)) tabIds.value.push(CALENDAR_TAB_ID);
     activeId.value = CALENDAR_TAB_ID;
     ensureTabNavigation(CALENDAR_TAB_ID);
+    touchNavigation();
+  }
+  function openChatTab() {
+    if (!workspace.value) return;
+    if (!tabIds.value.includes(CHAT_TAB_ID)) tabIds.value.push(CHAT_TAB_ID);
+    activeId.value = CHAT_TAB_ID;
+    ensureTabNavigation(CHAT_TAB_ID);
     touchNavigation();
   }
   // Serialize adapter reads with workspace switches. The graph never writes
@@ -1399,10 +1431,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     createWorkspace: (name: string) => openWorkspace(undefined, name),
     openFile,
     openFileInNewTab,
+    openFilesInNewTabsAt,
     createBlankTab,
     openGraphTab,
     openPluginsTab,
     openCalendarTab,
+    openChatTab,
     readGraphDocument,
     edit,
     editDocument,

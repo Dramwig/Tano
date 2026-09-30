@@ -11,8 +11,11 @@ export interface ObjectRecord {
   object: WorkspaceObject;
   path: string;
   snapshot: FileSnapshot;
+  /** View metadata only; never serialized into a workspace object. */
+  source?: { scope: 'personal' | 'workspace'; id: string; name: string };
 }
-export async function loadObjects(adapter: WorkspaceAdapter, workspace: Workspace) {
+export type ObjectStorage = Pick<WorkspaceAdapter, 'read' | 'write' | 'create' | 'refresh' | 'reserveObjectId'>;
+export async function loadObjects(adapter: Pick<ObjectStorage, 'read'>, workspace: Workspace) {
   const records: ObjectRecord[] = [],
     errors: string[] = [];
   for (const file of workspace.files.filter(
@@ -79,7 +82,7 @@ export function mergeObject(
   return parseObject(JSON.stringify(merged));
 }
 export async function saveObject(
-  adapter: WorkspaceAdapter,
+  adapter: Pick<ObjectStorage, 'write'>,
   record: ObjectRecord,
   draft: WorkspaceObject,
 ) {

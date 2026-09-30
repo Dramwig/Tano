@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
-import { calendarEvents, eventsOnDay, localDayKey, monthDays, shiftCalendarDate, visibleCalendarDays, weekDays } from '../calendar';
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
+import { calendarEvents, eventsOnDay, hasEventTime, localDayKey, monthDays, plannedEventsOnDay, planningEvents, shiftCalendarDate, visibleCalendarDays, weekDays } from '../calendar';
 import type { CalendarViewMode } from '../calendar';
 import type { ObjectRecord } from '../workspace-objects';
-import { useWorkspaceStore } from '../stores/workspace';
+import { usePlanStore } from '../stores/plans';
+import { planKey, planSourceLabel } from '../personal-plans';
+import CalendarDayPopover from './CalendarDayPopover.vue';
 
 const props = defineProps<{ date: Date; mode: CalendarViewMode }>();
 const emit = defineEmits<{
+  'select-mode': [mode: CalendarViewMode];
   'select-date': [date: Date];
   'select-month': [date: Date];
   'select-event': [id: string];
@@ -14,9 +17,24 @@ const emit = defineEmits<{
   'visible-year': [date: Date];
   'visible-timeline': [date: Date];
 }>();
-const store = useWorkspaceStore();
+const plans = usePlanStore();
 const scroll = ref<HTMLElement>();
-const events = computed(() => calendarEvents(store.objects));
+const events = computed(() => calendarEvents(plans.records));
+const planned = computed(() => planningEvents(plans.records));
+const dateOnly = computed(() => planned.value.filter(record => record.object.properties.allDay === true || (!hasEventTime(record) && record.object.properties.date)));
+const dateOnlyEvents = (day: Date) => plannedEventsOnDay(dateOnly.value, day);
+const hasVisibleDateOnly = computed(() => visibleCalendarDays(props.date, props.mode).some(day => dateOnlyEvents(day).length > 0));
+const yearDay = shallowRef<{ date: Date; anchor: HTMLElement; scrollTop: number; scrollLeft: number }>();
+const dayPopoverId = useId();
+const yearDayKey = computed(() => yearDay.value && localDayKey(yearDay.value.date));
+const yearDayRecords = (day: Date) => plannedEventsOnDay(planned.value, day);
+function openYearDay(day: Date, event: MouseEvent) {
+  yearDay.value = yearDayKey.value === localDayKey(day)
+    ? undefined : {
+      date: day, anchor: event.currentTarget as HTMLElement,
+      scrollTop: scroll.value?.scrollTop ?? 0, scrollLeft: scroll.value?.scrollLeft ?? 0,
+    };
+}
 const timeline = computed(() => props.mode === 'day' || props.mode === 'four-days' || props.mode === 'week');
 const timelineDays = ref<Date[]>([]);
 const timelineDayWidth = ref(120);
@@ -32,7 +50,7 @@ const agendaDates = computed(() => {
   const month = props.date.getMonth();
   const length = new Date(year, month + 1, 0).getDate();
   return Array.from({ length }, (_, index) => new Date(year, month, index + 1))
-    .filter(day => eventsOnDay(events.value, day).length > 0);
+    .filter(day => dayRecords(day).length > 0);
 });
 const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
 const hours = Array.from({ length: 24 }, (_, hour) => hour);
@@ -112,7 +130,34 @@ function onTimelineScroll() {
   else if (container.scrollWidth - container.scrollLeft - container.clientWidth < edgeDistance)
     void extendTimelineDays(1);
 }
-function onTimelineWheel(event: WheelEvent) {
+const zoomModes: CalendarViewMode[] = ['day', 'four-days', 'week', 'month', 'year'];
+let zoomDelta = 0;
+let lastZoomWheel = -Infinity;
+let lastZoomChange = -Infinity;
+function onCalendarWheel(event: WheelEvent) {
+  if (event.ctrlKey) {
+    // Keep browser zoom disabled here, even at the smallest/largest calendar scale.
+    event.preventDefault();
+    event.stopPropagation();
+    if (!event.deltaY || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+    const now = performance.now();
+    if (now - lastZoomWheel > 200 || Math.sign(zoomDelta) !== Math.sign(event.deltaY)) zoomDelta = 0;
+    lastZoomWheel = now;
+    if (now - lastZoomChange < 200) return;
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? scroll.value?.clientHeight || 800 : 1;
+    zoomDelta += event.deltaY * unit;
+    if (Math.abs(zoomDelta) < 40) return;
+    // The agenda lists one month, so zoom from the same scale as the month grid.
+    const index = zoomModes.indexOf(props.mode === 'agenda' ? 'month' : props.mode);
+    const mode = zoomModes[Math.max(0, Math.min(zoomModes.length - 1, index + Math.sign(zoomDelta)))]!;
+    zoomDelta = 0;
+    if (mode !== props.mode) {
+      lastZoomChange = now;
+      emit('select-mode', mode);
+    }
+    return;
+  }
+  zoomDelta = 0;
   if (!timeline.value || !event.shiftKey || !scroll.value) return;
   event.preventDefault();
   const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
@@ -244,6 +289,11 @@ function onYearScroll() {
     void extendYears(1);
 }
 function onCalendarScroll() {
+  // Focusing a date can queue a scroll event before its click opens the panel.
+  // Only dismiss for a scroll that actually moves the calendar after opening.
+  if (yearDay.value && scroll.value && (
+    yearDay.value.scrollTop !== scroll.value.scrollTop || yearDay.value.scrollLeft !== scroll.value.scrollLeft
+  )) yearDay.value = undefined;
   if (timeline.value) onTimelineScroll();
   else if (props.mode === 'month') onMonthScroll();
   else if (props.mode === 'year') onYearScroll();
@@ -253,22 +303,25 @@ function monthShade(day: Date) {
 }
 
 function dayRecords(day: Date) {
-  return eventsOnDay(events.value, day);
+  return plannedEventsOnDay(planned.value, day);
 }
 function timedEvents(day: Date) {
   const start = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
   const end = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1).getTime();
-  return dayRecords(day).map((record) => {
+  return eventsOnDay(events.value, day).filter(record => !record.object.properties.allDay).map((record) => {
     const from = Date.parse(String(record.object.properties.start));
     const to = Date.parse(String(record.object.properties.end));
     const visibleStart = Math.max(from, start);
     const visibleEnd = Math.min(Math.max(to, from + 30 * 60_000), end);
     const top = (visibleStart - start) / 3_600_000 * hourHeight;
-    const height = Math.max(22, (visibleEnd - visibleStart) / 3_600_000 * hourHeight);
-    return { record, top, height, time: eventTime(record) };
+    const point = from === to;
+    const height = point ? 24 : Math.max(22, (visibleEnd - visibleStart) / 3_600_000 * hourHeight);
+    return { record, top, height, point, time: eventTime(record) };
   });
 }
 function eventTime(record: ObjectRecord) {
+  if (record.object.properties.allDay === true) return '全天';
+  if (!hasEventTime(record)) return '仅日期';
   return new Date(String(record.object.properties.start)).toLocaleTimeString('zh-CN', {
     hour: '2-digit', minute: '2-digit', hour12: false,
   });
@@ -278,6 +331,7 @@ function weekday(day: Date) {
 }
 async function positionTimeline() {
   await nextTick();
+  if (!timeline.value && scroll.value) scroll.value.scrollLeft = 0;
   if (timeline.value) {
     const container = scroll.value;
     if (!container) return;
@@ -302,9 +356,11 @@ onMounted(() => {
 });
 onUnmounted(() => timelineResizeObserver?.disconnect());
 watch(() => props.mode, () => {
+  yearDay.value = undefined;
   void positionTimeline();
 });
 watch(() => props.date, (date) => {
+  yearDay.value = undefined;
   if (props.mode === 'month') {
     if (reportedMonthKey === monthKey(date)) {
       reportedMonthKey = '';
@@ -335,7 +391,7 @@ watch(() => props.date, (date) => {
     :class="{ 'calendar-view-timeline': timeline, 'calendar-view-month': mode === 'month', 'calendar-view-year': mode === 'year' }"
     :aria-label="`日历${viewLabel}`"
     @scroll.passive="onCalendarScroll"
-    @wheel="onTimelineWheel"
+    @wheel="onCalendarWheel"
   >
     <div
       v-if="timeline"
@@ -357,6 +413,19 @@ watch(() => props.date, (date) => {
           <span>周{{ weekday(day) }}</span>
           <strong>{{ day.getDate() }}</strong>
         </div>
+        <template v-if="hasVisibleDateOnly">
+          <span class="calendar-view-date-label">全天</span>
+          <div v-for="day in timelineDays" :key="`date-${localDayKey(day)}`" class="calendar-view-date-events">
+            <button
+              v-for="record in dateOnlyEvents(day)"
+              :key="planKey(record)"
+              type="button"
+              class="calendar-view-date-event"
+              :title="`${planSourceLabel(record)} · ${record.object.name} · ${eventTime(record)}`"
+              @click="emit('select-event', planKey(record))"
+            >{{ record.object.name }}</button>
+          </div>
+        </template>
       </div>
       <div class="calendar-view-grid">
         <div class="calendar-view-hours" aria-hidden="true">
@@ -365,15 +434,16 @@ watch(() => props.date, (date) => {
         <div v-for="day in timelineDays" :key="localDayKey(day)" class="calendar-view-day-column">
           <button
             v-for="item in timedEvents(day)"
-            :key="item.record.object.id"
+            :key="planKey(item.record)"
             type="button"
             class="calendar-view-event"
+            :class="{ 'calendar-view-point': item.point }"
             :style="{ top: `${item.top}px`, height: `${item.height}px` }"
-            :title="`${item.record.object.name} · ${item.time}`"
-            @click="emit('select-event', item.record.object.id)"
+            :title="`${planSourceLabel(item.record)} · ${item.record.object.name} · ${item.time}`"
+            @click="emit('select-event', planKey(item.record))"
           >
             <strong>{{ item.record.object.name }}</strong>
-            <span>{{ item.time }}</span>
+            <span>{{ planSourceLabel(item.record) }} · {{ item.time }}</span>
           </button>
         </div>
       </div>
@@ -404,12 +474,12 @@ watch(() => props.date, (date) => {
           >{{ day.getDate() === 1 ? `${day.getMonth() + 1} 月 1 日` : day.getDate() }}</button>
           <button
             v-for="record in dayRecords(day).slice(0, 3)"
-            :key="record.object.id"
+            :key="planKey(record)"
             type="button"
             class="calendar-month-event"
-            :title="`${record.object.name} · ${eventTime(record)}`"
-            @click="emit('select-event', record.object.id)"
-          >{{ eventTime(record) }} {{ record.object.name }}</button>
+            :title="`${planSourceLabel(record)} · ${record.object.name} · ${eventTime(record)}`"
+            @click="emit('select-event', planKey(record))"
+          >{{ planSourceLabel(record) }} · {{ eventTime(record) }} {{ record.object.name }}</button>
           <span v-if="dayRecords(day).length > 3" class="calendar-month-more">另有 {{ dayRecords(day).length - 3 }} 项</span>
         </div>
       </div>
@@ -432,9 +502,12 @@ watch(() => props.date, (date) => {
                 <button
                   v-else
                   type="button"
-                  :class="{ today: localDayKey(day) === today, 'has-event': dayRecords(day).length > 0 }"
-                  :aria-label="`${localDayKey(day)}，${dayRecords(day).length} 个事件`"
-                  @click="emit('select-date', day)"
+                  :class="{ today: localDayKey(day) === today, selected: localDayKey(day) === yearDayKey, 'has-event': yearDayRecords(day).length > 0 }"
+                  :aria-label="`${localDayKey(day)}，${yearDayRecords(day).length} 个事件`"
+                  aria-haspopup="dialog"
+                  :aria-expanded="localDayKey(day) === yearDayKey"
+                  :aria-controls="localDayKey(day) === yearDayKey ? dayPopoverId : undefined"
+                  @click="openYearDay(day, $event)"
                 >{{ day.getDate() }}</button>
               </template>
             </div>
@@ -453,17 +526,26 @@ watch(() => props.date, (date) => {
         <div class="calendar-agenda-events">
           <button
             v-for="record in dayRecords(day)"
-            :key="record.object.id"
+            :key="planKey(record)"
             type="button"
-            @click="emit('select-event', record.object.id)"
+            @click="emit('select-event', planKey(record))"
           >
             <time>{{ eventTime(record) }}</time>
-            <span>{{ record.object.name }}</span>
+            <span>{{ record.object.name }} <small>{{ planSourceLabel(record) }}</small></span>
           </button>
         </div>
       </section>
     </div>
   </main>
+  <CalendarDayPopover
+    v-if="mode === 'year' && yearDay"
+    :id="dayPopoverId"
+    :date="yearDay.date"
+    :anchor="yearDay.anchor"
+    :records="yearDayRecords(yearDay.date)"
+    @close="yearDay = undefined"
+    @select-event="emit('select-event', $event)"
+  />
 </template>
 
 <style scoped>
@@ -488,6 +570,7 @@ watch(() => props.date, (date) => {
   position: sticky;
   top: 0;
   z-index: 2;
+  grid-template-rows: 70px;
   min-height: 70px;
   align-items: center;
   background: var(--paper);
@@ -523,6 +606,42 @@ watch(() => props.date, (date) => {
   font-weight: 500;
 }
 .calendar-view-day-heading.today { color: var(--green); }
+.calendar-view-date-label {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  align-self: stretch;
+  padding: 10px 9px;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 10px;
+}
+.calendar-view-date-events {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  gap: 4px;
+  max-height: 104px;
+  overflow: auto;
+  padding: 6px 4px;
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+}
+.calendar-view-date-event {
+  flex-shrink: 0;
+  padding: 4px 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--text);
+  text-align: left;
+  font-size: 11px;
+}
+.calendar-view-date-event:hover { background: var(--hover); }
+.calendar-view-date-event:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
 .calendar-view-day-heading.today strong,
 .calendar-month-date.today,
 .calendar-year-days button.today,
@@ -565,6 +684,9 @@ watch(() => props.date, (date) => {
 .calendar-view-event strong,
 .calendar-view-event span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .calendar-view-event strong { font-size: 12px; font-weight: 600; }
+.calendar-view-point { flex-direction: row; align-items: center; gap: 5px; padding: 2px 4px 2px 13px; border-left: 0; background: transparent; }
+.calendar-view-point::before { content: ''; position: absolute; left: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
+.calendar-view-point span { color: var(--muted); }
 .calendar-month-view { min-width: 630px; }
 .calendar-month-weekdays,
 .calendar-month-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
@@ -645,6 +767,9 @@ watch(() => props.date, (date) => {
 .calendar-year-days span { width: 28px; height: 28px; margin: auto; font-size: 11px; }
 .calendar-year-days button.has-event { color: var(--green); font-weight: 700; }
 .calendar-year-days button.today { color: white; }
+.calendar-year-days button.selected { color: var(--green); background: var(--accent); }
+.calendar-year-days button.today.selected { color: white; background: var(--green-fill); box-shadow: 0 0 0 3px var(--accent); }
+.calendar-year-days button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 .calendar-agenda-view { max-width: 900px; margin: 0 auto; padding: 28px 32px; }
 .calendar-agenda-empty { padding: 60px 0; color: var(--muted); text-align: center; }
 .calendar-agenda-day { display: flex; gap: 24px; padding: 18px 0; border-bottom: 1px solid var(--line); }

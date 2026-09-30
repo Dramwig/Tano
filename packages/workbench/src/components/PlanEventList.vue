@@ -2,6 +2,7 @@
 import { CalendarDays, CalendarPlus } from 'lucide-vue-next';
 import type { ObjectRecord } from '../workspace-objects';
 import { hasEventTime, isCheckableEvent, isEventCompleted, localDayKey } from '../calendar';
+import { planKey, planSourceLabel } from '../personal-plans';
 
 defineProps<{
   records: ObjectRecord[];
@@ -9,6 +10,7 @@ defineProps<{
   disabled: boolean;
   pending: string[];
   unscheduled?: boolean;
+  canEdit?: (record: ObjectRecord) => boolean;
 }>();
 const emit = defineEmits<{
   select: [id: string];
@@ -23,6 +25,7 @@ function complete(record: ObjectRecord, event: Event) {
   emit('complete', record, completed);
 }
 function eventTime(record: ObjectRecord, day: Date) {
+  if (record.object.properties.allDay === true) return '全天';
   if (!hasEventTime(record)) return record.object.properties.date ? '当天' : '未安排';
   const format = (value: unknown) => {
     const date = new Date(String(value));
@@ -33,7 +36,9 @@ function eventTime(record: ObjectRecord, day: Date) {
     });
     return `${localDayKey(date) === localDayKey(day) ? '' : `${date.getMonth() + 1}/${date.getDate()} `}${time}`;
   };
-  return `${format(record.object.properties.start)} – ${format(record.object.properties.end)}`;
+  return Date.parse(String(record.object.properties.start)) === Date.parse(String(record.object.properties.end))
+    ? format(record.object.properties.start)
+    : `${format(record.object.properties.start)} – ${format(record.object.properties.end)}`;
 }
 </script>
 
@@ -41,23 +46,23 @@ function eventTime(record: ObjectRecord, day: Date) {
   <ul class="plan-events">
     <li
       v-for="record in records"
-      :key="record.object.id"
+      :key="planKey(record)"
       :class="{ completed: isEventCompleted(record) }"
-      :aria-busy="pending.includes(record.object.id)"
+      :aria-busy="pending.includes(planKey(record))"
     >
       <input
         v-if="isCheckableEvent(record)"
         type="checkbox"
         :checked="isEventCompleted(record)"
-        :disabled="disabled || pending.includes(record.object.id)"
+        :disabled="disabled || canEdit?.(record) === false || pending.includes(planKey(record))"
         :aria-label="`${isEventCompleted(record) ? '标记未完成' : '完成'}：${record.object.name}`"
         @change="complete(record, $event)"
       />
       <CalendarDays v-else :size="15" class="plan-event-icon" aria-hidden="true" />
-      <button type="button" class="plan-event-detail" @click="emit('select', record.object.id)">
+      <button type="button" class="plan-event-detail" @click="emit('select', planKey(record))">
         <strong>{{ record.object.name }}</strong>
         <small
-          >{{ isEventCompleted(record) ? '已完成 · ' : '' }}{{ eventTime(record, date) }}</small
+          >{{ planSourceLabel(record) }} · {{ isEventCompleted(record) ? '已完成 · ' : '' }}{{ eventTime(record, date) }}{{ record.object.properties.due ? ` · 截止 ${record.object.properties.due}` : '' }}</small
         >
       </button>
       <button
@@ -66,7 +71,7 @@ function eventTime(record: ObjectRecord, day: Date) {
         class="plan-schedule"
         :title="`安排到 ${date.getMonth() + 1} 月 ${date.getDate()} 日`"
         :aria-label="`将 ${record.object.name} 安排到 ${localDayKey(date)}`"
-        :disabled="disabled || pending.includes(record.object.id)"
+        :disabled="disabled || canEdit?.(record) === false || pending.includes(planKey(record))"
         @click="emit('schedule', record)"
       >
         <CalendarPlus :size="15" />

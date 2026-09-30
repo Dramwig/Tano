@@ -3,6 +3,7 @@ import type { Pinia } from 'pinia';
 import type { Component } from 'vue';
 import type { WorkspaceAdapter } from '@tano/protocol';
 import type { EditorExtension } from '@tano/editor/extension';
+import type { ObjectStorage } from './workspace-objects';
 
 export interface WorkbenchActions {
   closeMenus(): void;
@@ -33,6 +34,7 @@ export interface WorkbenchExtensions {
 }
 export interface WorkbenchRuntime {
   adapter: WorkspaceAdapter;
+  personalPlans?: ObjectStorage;
   native: boolean;
   mobile: boolean;
   extensions?: () => WorkbenchExtensions;

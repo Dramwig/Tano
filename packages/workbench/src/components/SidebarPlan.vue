@@ -6,9 +6,13 @@ import {
   ChevronDown,
   Circle,
   CircleCheck,
-  Clock3,
+  Cloud,
+  FolderOpen,
+  Layers3,
+  CircleAlert,
   Plus,
   ListTodo,
+  UserRound,
   X,
 } from 'lucide-vue-next';
 import type { ObjectRecord } from '../workspace-objects';
@@ -19,16 +23,76 @@ import {
   planningEvents,
   plannedEventsOnDay,
   unscheduledTasks,
-  localDateTime,
   localDayKey,
   weekDays,
 } from '../calendar';
 import { useWorkspaceStore } from '../stores/workspace';
+import { usePlanStore } from '../stores/plans';
+import type { PlanScope } from '../stores/plans';
+import { planKey } from '../personal-plans';
+import { useWorkbenchRuntime } from '../runtime';
 import PlanEventList from './PlanEventList.vue';
+import PlanConnectionsDialog from './PlanConnectionsDialog.vue';
+import { usePlanSyncStore } from '../stores/plan-sync';
+import type { SyncKind } from '../plan-sync/types';
+import PlanDateField from './PlanDateField.vue';
+import { writePlanDate } from '../plan-date';
+import type { PlanDateValue } from '../plan-date';
 
 const props = defineProps<{ date: Date }>();
 const emit = defineEmits<{ 'select-date': [date: Date]; 'select-event': [id: string] }>();
 const store = useWorkspaceStore();
+const plans = usePlanStore();
+const sync = usePlanSyncStore();
+const connectionKind = ref<SyncKind>();
+function openConnections(kind: SyncKind) { viewOpen.value = false; connectionKind.value = kind; }
+async function closeConnections() { connectionKind.value = undefined; await nextTick(); viewTrigger.value?.focus(); }
+const personalNative = useWorkbenchRuntime().native;
+const viewPicker = ref<HTMLElement>();
+const viewTrigger = ref<HTMLButtonElement>();
+const viewMenu = ref<HTMLElement>();
+const viewMenuPosition = ref({ left: '0px', top: '0px' });
+const viewOpen = ref(false);
+const viewLabel = computed(() => ({ workspace: '工作区', personal: '个人', all: '全部' })[plans.view]);
+const personalIssue = computed(() => !!plans.loadError || !!plans.errors.length);
+const personalIssueTitle = computed(() => plans.requiresDesktopRestart ? '个人计划需更新桌面程序' : '个人计划暂时无法读取');
+const personalConnectionCount = computed(() => sync.connections.filter(c => c.scope === 'personal').length);
+const viewOptions = computed(() => [
+  { value: 'workspace' as const, label: '工作区', icon: FolderOpen, detail: store.workspace?.name ?? '尚未打开工作区', disabled: !store.workspace },
+  { value: 'personal' as const, label: '个人', icon: UserRound, detail: personalIssue.value ? personalIssueTitle.value : personalNative ? personalConnectionCount.value ? `本设备 · ${personalConnectionCount.value} 个同步连接` : '本设备 · 未连接同步服务' : '仅当前浏览器 · 未同步', disabled: false },
+  { value: 'all' as const, label: '全部', icon: Layers3, detail: '个人 + 当前工作区', disabled: !store.workspace },
+]);
+async function toggleViewMenu() {
+  viewOpen.value = !viewOpen.value;
+  if (!viewOpen.value) return;
+  await nextTick();
+  placeViewMenu();
+  viewMenu.value?.querySelector<HTMLElement>('[aria-checked="true"]:not(:disabled)')?.focus({ preventScroll: true });
+}
+function placeViewMenu() {
+  if (!viewOpen.value || !viewMenu.value || !viewPicker.value || !viewTrigger.value) return;
+  const anchor = viewPicker.value.getBoundingClientRect();
+  const trigger = viewTrigger.value.getBoundingClientRect();
+  const { width, height } = viewMenu.value.getBoundingClientRect();
+  const margin = 12;
+  viewMenuPosition.value = {
+    left: `${Math.max(margin, Math.min(anchor.left, window.innerWidth - width - margin))}px`,
+    top: `${Math.max(margin, Math.min(trigger.bottom + 8, window.innerHeight - height - margin))}px`,
+  };
+}
+async function closeViewMenu() {
+  viewOpen.value = false;
+  await nextTick();
+  viewTrigger.value?.focus();
+}
+function chooseView(value: typeof plans.view) {
+  plans.view = value;
+  void closeViewMenu();
+}
+function dismissViewMenu(event: Event) {
+  if (event.target instanceof Node && !viewTrigger.value?.contains(event.target) && !viewMenu.value?.contains(event.target)) viewOpen.value = false;
+}
+watch(() => plans.view, () => { viewOpen.value = false; });
 const WEEK_HEIGHT = 30;
 const BUFFER_WEEKS = 26;
 const VISIBLE_WEEKS = 6;
@@ -41,10 +105,13 @@ const start = ref(offsetDays(firstWeek(props.date), -BUFFER_WEEKS * 7));
 const month = ref(props.date);
 const selected = computed(() => localDayKey(props.date));
 const focused = ref(selected.value);
+const draggingCalendar = ref(false);
+let calendarDrag: { pointerId: number; startX: number; startY: number; lastY: number } | undefined;
+let suppressCalendarClick = false;
 let savedScrollTop = BUFFER_WEEKS * WEEK_HEIGHT;
 let repositioning = false;
 let resizeObserver: ResizeObserver | undefined;
-const events = computed(() => planningEvents(store.objects));
+const events = computed(() => planningEvents(plans.records));
 const days = computed(() =>
   Array.from({ length: TOTAL_WEEKS * 7 }, (_, index) => offsetDays(start.value, index)).map(
     (date) => ({
@@ -63,60 +130,52 @@ const monthTitle = computed(
 const selectedTitle = computed(
   () => `${selectedDate.value.getMonth() + 1} 月 ${selectedDate.value.getDate()} 日`,
 );
-const readonly = computed(
-  () =>
-    !store.workspace || store.workspace.readOnly || !store.capabilities.features.objectReferences,
-);
+const readonly = computed(() => (draft.value?.scope ?? plans.defaultScope) === 'personal'
+  ? !plans.personalWritable : !plans.workspaceWritable);
+const cannotAdd = computed(() => !plans.personalWritable && !plans.workspaceWritable);
 const pending = ref<string[]>([]);
 const saving = ref(false);
 const error = ref('');
 const nameInput = ref<HTMLInputElement>();
 const createPanel = ref<HTMLElement>();
-const schedulePicker = ref<HTMLElement>();
-const scheduleTrigger = ref<HTMLButtonElement>();
-const scheduleOpen = ref(false);
+const scopePicker = ref<HTMLElement>();
+const scopeTrigger = ref<HTMLButtonElement>();
+const scopeOpen = ref(false);
 let previousCreateFocus: HTMLElement | null = null;
 interface EventDraft {
+  scope: PlanScope;
+  workspaceId?: string;
   name: string;
   checkable: boolean;
-  schedule: 'none' | 'date' | 'time';
-  date: string;
-  start: string;
-  end: string;
+  planDate: PlanDateValue;
 }
 const draft = ref<EventDraft>();
-const scheduleOptions = computed(() => [
-  ...(draft.value?.checkable
-    ? ([
-        { value: 'none', label: '未安排', icon: ListTodo },
-        { value: 'date', label: '仅日期', icon: CalendarDays },
-      ] as const)
-    : []),
-  { value: 'time', label: '时间段', icon: Clock3 } as const,
-]);
-const scheduleLabel = computed(
-  () => scheduleOptions.value.find((option) => option.value === draft.value?.schedule)?.label,
-);
-async function toggleSchedule() {
-  scheduleOpen.value = !scheduleOpen.value;
-  if (!scheduleOpen.value) return;
+const scopeDescription = computed(() => draft.value?.scope === 'personal'
+  ? (personalNative ? '仅保存在这台设备，不随工作区分享。' : '仅保存在当前浏览器，不随工作区分享。')
+  : `保存在 ${store.workspace?.name ?? '当前工作区'}，随工作区一起携带。`);
+async function toggleScope() {
+  scopeOpen.value = !scopeOpen.value;
+  if (!scopeOpen.value) return;
   await nextTick();
-  schedulePicker.value?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+  const menu = scopePicker.value;
+  (menu?.querySelector<HTMLElement>('[aria-checked="true"]:not(:disabled)')
+    ?? menu?.querySelector<HTMLElement>('[role="menuitemradio"]:not(:disabled)'))?.focus();
 }
-async function closeSchedule() {
-  scheduleOpen.value = false;
+async function closeScope() {
+  scopeOpen.value = false;
   await nextTick();
-  scheduleTrigger.value?.focus();
+  scopeTrigger.value?.focus();
 }
-function chooseSchedule(value: EventDraft['schedule']) {
-  if (!draft.value || saving.value || readonly.value) return;
-  draft.value.schedule = value;
-  void closeSchedule();
+function chooseScope(scope: PlanScope) {
+  if (!draft.value || saving.value || (scope === 'personal' ? !plans.personalWritable : !plans.workspaceWritable)) return;
+  draft.value.scope = scope;
+  void closeScope();
 }
-function onScheduleKeydown(event: KeyboardEvent) {
+function onPickerKeydown(event: KeyboardEvent, picker?: HTMLElement) {
   const options = [
-    ...(schedulePicker.value?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]') ?? []),
+    ...(picker?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]:not(:disabled), [role="menuitem"]:not(:disabled)') ?? []),
   ];
+  if (!options.length) return;
   const index = options.indexOf(document.activeElement as HTMLButtonElement);
   let next: number;
   if (event.key === 'ArrowDown') next = (index + 1) % options.length;
@@ -127,22 +186,21 @@ function onScheduleKeydown(event: KeyboardEvent) {
   event.preventDefault();
   options[next]?.focus();
 }
-function dismissSchedule(event: MouseEvent | FocusEvent) {
-  if (event.target instanceof Node && !schedulePicker.value?.contains(event.target))
-    scheduleOpen.value = false;
+function dismissPickers(event: MouseEvent | FocusEvent) {
+  if (!(event.target instanceof Node)) return;
+  if (!scopePicker.value?.contains(event.target)) scopeOpen.value = false;
 }
-async function addEvent(schedule: EventDraft['schedule']) {
-  if (readonly.value || saving.value) return;
+async function addEvent(schedule: 'none' | 'date') {
+  if (cannotAdd.value || saving.value) return;
+  viewOpen.value = false;
   if (!draft.value) {
     previousCreateFocus = document.activeElement as HTMLElement | null;
-    const day = selectedDate.value;
     draft.value = {
+      scope: plans.defaultScope,
+      workspaceId: store.workspace?.id,
       name: '',
       checkable: true,
-      schedule,
-      date: selected.value,
-      start: localDateTime(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 9)),
-      end: localDateTime(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 10)),
+      planDate: { date: schedule === 'none' ? '' : selected.value, time: '', end: '' },
     };
   }
   error.value = '';
@@ -151,7 +209,7 @@ async function addEvent(schedule: EventDraft['schedule']) {
 }
 function closeCreate() {
   if (saving.value) return;
-  scheduleOpen.value = false;
+  scopeOpen.value = false;
   draft.value = undefined;
   error.value = '';
 }
@@ -186,43 +244,42 @@ watch(
   () => !!draft.value,
   async (open) => {
     if (open) return;
-    scheduleOpen.value = false;
+    scopeOpen.value = false;
     await nextTick();
     if (previousCreateFocus?.isConnected) previousCreateFocus.focus({ preventScroll: true });
     previousCreateFocus = null;
   },
 );
 watch(saving, async (busy) => {
-  if (busy) scheduleOpen.value = false;
+  if (busy) scopeOpen.value = false;
   await nextTick();
   if (!draft.value) return;
   if (busy) createPanel.value?.focus({ preventScroll: true });
   else nameInput.value?.focus({ preventScroll: true });
 });
 function changeCheckable() {
-  if (draft.value && !draft.value.checkable) draft.value.schedule = 'time';
+  if (draft.value && !draft.value.checkable && !draft.value.planDate.date)
+    draft.value.planDate.date = selected.value;
 }
 async function saveEvent() {
   const value = draft.value;
   const workspaceId = store.workspace?.id;
-  if (!value || !workspaceId || readonly.value || saving.value || !value.name.trim()) return;
+  if (!value || readonly.value || saving.value || !value.name.trim()) return;
   saving.value = true;
   error.value = '';
   try {
-    const properties: Record<string, unknown> = { checkable: value.checkable, completed: false };
-    if (value.schedule === 'date') properties.date = value.date;
-    if (value.schedule === 'time') {
-      properties.start = new Date(value.start).toISOString();
-      properties.end = new Date(value.end).toISOString();
-    }
-    await store.createObject({
+    const properties = writePlanDate({ checkable: value.checkable, completed: false }, value.planDate);
+    await plans.create({
       type: 'event',
       name: value.name.trim(),
       description: '',
       archived: false,
       properties,
-    });
-    if (store.workspace?.id === workspaceId && draft.value === value) draft.value = undefined;
+    }, value.scope, value.workspaceId);
+    if (draft.value === value) {
+      if (plans.view !== 'all') plans.view = value.scope;
+      draft.value = undefined;
+    }
   } catch (cause) {
     if (store.workspace?.id === workspaceId) error.value = String(cause);
   } finally {
@@ -231,16 +288,16 @@ async function saveEvent() {
 }
 async function updateEvent(record: ObjectRecord, properties: Record<string, unknown>) {
   const workspaceId = store.workspace?.id;
-  if (!workspaceId || readonly.value || pending.value.includes(record.object.id)) return;
-  pending.value.push(record.object.id);
+  const key = planKey(record);
+  if (!plans.canEdit(record) || pending.value.includes(key)) return;
+  pending.value.push(key);
   error.value = '';
   try {
-    await store.updateObject(record, { ...record.object, properties }, workspaceId);
+    await plans.update(record, { ...record.object, properties });
   } catch (cause) {
-    if (store.workspace?.id === workspaceId) error.value = String(cause);
+    if (record.source?.scope === 'personal' || store.workspace?.id === workspaceId) error.value = String(cause);
   } finally {
-    if (store.workspace?.id === workspaceId)
-      pending.value = pending.value.filter((id) => id !== record.object.id);
+    pending.value = pending.value.filter((id) => id !== key);
   }
 }
 function completeEvent(record: ObjectRecord, completed: boolean) {
@@ -256,6 +313,7 @@ function scheduleEvent(record: ObjectRecord) {
 }
 
 async function resetScroll(date: Date) {
+  finishCalendarDrag();
   repositioning = true;
   start.value = offsetDays(firstWeek(date), -BUFFER_WEEKS * 7);
   month.value = date;
@@ -264,13 +322,36 @@ async function resetScroll(date: Date) {
   if (viewport.value?.clientHeight) viewport.value.scrollTop = savedScrollTop;
   repositioning = false;
 }
+function updateVisibleMonth(top: number, height: number) {
+  const bottom = top + height;
+  const coverage = new Map<number, number>();
+  // Count visible date-cell area, including partially clipped rows at both edges.
+  for (let week = Math.floor(top / WEEK_HEIGHT); week < Math.ceil(bottom / WEEK_HEIGHT); week++) {
+    const visibleHeight = Math.min(bottom, (week + 1) * WEEK_HEIGHT) - Math.max(top, week * WEEK_HEIGHT);
+    for (let day = 0; day < 7; day++) {
+      const date = offsetDays(start.value, week * 7 + day);
+      const key = date.getFullYear() * 12 + date.getMonth();
+      coverage.set(key, (coverage.get(key) ?? 0) + visibleHeight);
+    }
+  }
+  // Keep the current month on a tie so small movements at the boundary stay stable.
+  let dominant = month.value.getFullYear() * 12 + month.value.getMonth();
+  let mostVisible = coverage.get(dominant) ?? 0;
+  for (const [key, visible] of coverage) {
+    if (visible > mostVisible) {
+      dominant = key;
+      mostVisible = visible;
+    }
+  }
+  if (dominant !== month.value.getFullYear() * 12 + month.value.getMonth())
+    month.value = new Date(Math.floor(dominant / 12), dominant % 12, 1);
+}
 async function onScroll() {
   const element = viewport.value;
   if (!element?.clientHeight || repositioning) return;
   savedScrollTop = element.scrollTop;
   const week = Math.floor(savedScrollTop / WEEK_HEIGHT);
-  // Thursday identifies the month containing most of the top visible week.
-  month.value = offsetDays(start.value, week * 7 + 3);
+  updateVisibleMonth(savedScrollTop, element.clientHeight);
   if (!element.contains(document.activeElement))
     focused.value = localDayKey(
       offsetDays(start.value, Math.ceil(savedScrollTop / WEEK_HEIGHT) * 7),
@@ -284,6 +365,62 @@ async function onScroll() {
   await nextTick();
   element.scrollTop = savedScrollTop;
   repositioning = false;
+}
+function startCalendarDrag(event: PointerEvent) {
+  if (!event.isPrimary || event.button !== 0 || calendarDrag) return;
+  suppressCalendarClick = false;
+  // Touch keeps native vertical scrolling, including the browser's gesture handling.
+  if (event.pointerType === 'touch') return;
+  calendarDrag = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    lastY: event.clientY,
+  };
+  window.addEventListener('pointermove', moveCalendarDrag, { passive: false });
+  window.addEventListener('pointerup', endCalendarDrag);
+  window.addEventListener('pointercancel', endCalendarDrag);
+  window.addEventListener('blur', finishCalendarDrag);
+}
+function moveCalendarDrag(event: PointerEvent) {
+  const drag = calendarDrag;
+  const element = viewport.value;
+  if (!drag || !element || event.pointerId !== drag.pointerId) return;
+  if (!(event.buttons & 1)) {
+    finishCalendarDrag();
+    return;
+  }
+  if (!draggingCalendar.value) {
+    if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 4) return;
+    draggingCalendar.value = true;
+    suppressCalendarClick = true;
+    // Capture only after dragging starts so ordinary clicks still reach the date button.
+    element.setPointerCapture(event.pointerId);
+  }
+  event.preventDefault();
+  // Incremental movement stays continuous when onScroll recycles offscreen weeks.
+  element.scrollTop += drag.lastY - event.clientY;
+  drag.lastY = event.clientY;
+}
+function endCalendarDrag(event: PointerEvent) {
+  if (event.pointerId === calendarDrag?.pointerId) finishCalendarDrag();
+}
+function finishCalendarDrag() {
+  const drag = calendarDrag;
+  calendarDrag = undefined;
+  draggingCalendar.value = false;
+  window.removeEventListener('pointermove', moveCalendarDrag);
+  window.removeEventListener('pointerup', endCalendarDrag);
+  window.removeEventListener('pointercancel', endCalendarDrag);
+  window.removeEventListener('blur', finishCalendarDrag);
+  if (drag && viewport.value?.hasPointerCapture(drag.pointerId))
+    viewport.value.releasePointerCapture(drag.pointerId);
+}
+function onCalendarClick(event: MouseEvent) {
+  if (!suppressCalendarClick || event.detail === 0) return;
+  suppressCalendarClick = false;
+  event.preventDefault();
+  event.stopPropagation();
 }
 function chooseDay(date: Date) {
   focused.value = localDayKey(date);
@@ -322,57 +459,92 @@ watch(
   () => {
     const today = new Date();
     focused.value = selected.value;
-    draft.value = undefined;
-    error.value = '';
-    pending.value = [];
-    saving.value = false;
+    if (draft.value?.scope !== 'personal') {
+      draft.value = undefined;
+      error.value = '';
+      saving.value = false;
+    }
+    pending.value = pending.value.filter(key => key.startsWith('personal:'));
     void resetScroll(today);
   },
 );
 onMounted(() => {
+  document.addEventListener('pointerdown', dismissViewMenu, true);
+  document.addEventListener('focusin', dismissViewMenu, true);
+  window.addEventListener('resize', placeViewMenu);
+  document.addEventListener('scroll', placeViewMenu, true);
   // The sidebar is initially hidden with v-show; restore its position when it opens.
   resizeObserver = new ResizeObserver(() => {
-    if (viewport.value?.clientHeight) viewport.value.scrollTop = savedScrollTop;
+    if (viewport.value?.clientHeight) {
+      viewport.value.scrollTop = savedScrollTop;
+      placeViewMenu();
+    } else viewOpen.value = false;
   });
   if (viewport.value) resizeObserver.observe(viewport.value);
 });
-onBeforeUnmount(() => resizeObserver?.disconnect());
+onBeforeUnmount(() => {
+  finishCalendarDrag();
+  resizeObserver?.disconnect();
+  document.removeEventListener('pointerdown', dismissViewMenu, true);
+  document.removeEventListener('focusin', dismissViewMenu, true);
+  window.removeEventListener('resize', placeViewMenu);
+  document.removeEventListener('scroll', placeViewMenu, true);
+});
 </script>
 
 <template>
   <div class="sidebar-calendar" role="region" aria-label="计划侧栏">
-    <div class="sidebar-calendar-heading">
-      <strong>计划</strong>
-      <button
-        type="button"
-        class="plan-add"
-        aria-label="添加事件"
-        title="添加事件"
-        :disabled="readonly || saving"
-        @click="addEvent('none')"
-      >
-        <Plus :size="16" />
-      </button>
+    <div ref="viewPicker" class="sidebar-calendar-heading">
+      <div class="sidebar-calendar-month">
+        <span :title="monthTitle"><span class="sidebar-calendar-year">{{ month.getFullYear() }} 年 </span>{{ month.getMonth() + 1 }} 月</span>
+        <button ref="viewTrigger" type="button" class="plan-view-trigger" aria-label="计划范围" aria-haspopup="menu" aria-controls="plan-view-menu" :aria-expanded="viewOpen" :title="viewOptions.find(option => option.value === plans.view)?.detail" @click="toggleViewMenu" @keydown.down.prevent="viewOpen || toggleViewMenu()">
+          <span>{{ viewLabel }}</span><ChevronDown :size="12" aria-hidden="true" />
+        </button>
+        <button type="button" class="sidebar-calendar-today" aria-label="回到今天" @click="goToToday">今天</button>
+      </div>
+      <Teleport to="body">
+        <div v-if="viewOpen" id="plan-view-menu" ref="viewMenu" class="plan-scope-menu plan-view-menu" :style="viewMenuPosition" role="menu" aria-label="查看计划" @keydown="onPickerKeydown($event, viewMenu)" @keydown.esc.stop.prevent="closeViewMenu()">
+          <span class="plan-scope-menu-heading">查看计划</span>
+          <button v-for="option in viewOptions" :key="option.value" type="button" role="menuitemradio" :aria-label="option.label" :aria-checked="plans.view === option.value" :disabled="option.disabled" @click="chooseView(option.value)">
+            <component :is="option.icon" :size="16" aria-hidden="true" />
+            <span><strong>{{ option.label }}</strong><small :title="option.detail">{{ option.detail }}</small></span>
+            <Check v-if="plans.view === option.value" :size="14" aria-hidden="true" />
+            <CircleAlert v-else-if="option.value === 'personal' && personalIssue" :size="14" class="plan-issue-icon" aria-hidden="true" />
+          </button>
+          <div class="plan-connections-menu">
+            <button type="button" role="menuitem" @click="openConnections('calendar')"><Cloud :size="15" /><span>日历同步与导入</span></button>
+            <button type="button" role="menuitem" @click="openConnections('todo')"><ListTodo :size="15" /><span>Todo 同步与导入</span></button>
+          </div>
+          <p v-if="store.isDemo" class="plan-view-footnote">浏览器演示 · 数据仅保存在本浏览器</p>
+        </div>
+      </Teleport>
     </div>
-    <p v-if="store.isDemo" class="plan-storage-note">浏览器演示存储</p>
-    <p v-if="!store.capabilities.features.objectReferences" class="plan-storage-note">
+    <PlanConnectionsDialog v-if="connectionKind" :initial-kind="connectionKind" @close="closeConnections" />
+    <p v-if="plans.view !== 'personal' && !store.capabilities.features.objectReferences" class="plan-storage-note">
       事件编辑需在工作区设置中启用对象功能。
     </p>
-    <div class="sidebar-calendar-month">
-      <span>{{ monthTitle }}</span>
-      <button type="button" aria-label="回到今天" @click="goToToday">今天</button>
-    </div>
+    <details v-if="plans.view !== 'workspace' && personalIssue" class="plan-load-notice" role="status">
+      <summary><CircleAlert :size="13" aria-hidden="true" /><span>{{ personalIssueTitle }}</span><ChevronDown :size="12" aria-hidden="true" /></summary>
+      <p>{{ plans.loadError || '部分个人事项格式有误，原文件已保留。请修复后重试。' }}</p>
+      <p v-for="issue in plans.errors" :key="issue">{{ issue }}</p>
+      <button type="button" @click="plans.refreshPersonal()">重试</button>
+    </details>
     <div class="sidebar-calendar-weekdays" aria-hidden="true">
       <span v-for="day in ['一', '二', '三', '四', '五', '六', '日']" :key="day">{{ day }}</span>
     </div>
     <div
       ref="viewport"
       class="sidebar-calendar-scroll"
+      :class="{ dragging: draggingCalendar }"
       role="region"
-      aria-label="连续日历，可上下滚动"
+      aria-label="连续日历，可上下滚动或拖动"
       tabindex="0"
       :style="{ '--week-height': `${WEEK_HEIGHT}px`, height: `${VISIBLE_WEEKS * WEEK_HEIGHT}px` }"
       @scroll.passive="onScroll"
+      @pointerdown="startCalendarDrag"
+      @lostpointercapture="endCalendarDrag"
+      @click.capture="onCalendarClick"
+      @dragstart.prevent
     >
       <div class="sidebar-calendar-grid">
         <button
@@ -381,7 +553,9 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
           type="button"
           class="sidebar-calendar-day"
           :class="{
-            alternate: day.date.getMonth() % 2 === 1,
+            'outside-month':
+              day.date.getFullYear() !== month.getFullYear() ||
+              day.date.getMonth() !== month.getMonth(),
             today: day.key === localDayKey(new Date()),
             'month-start': day.date.getDate() === 1,
           }"
@@ -410,20 +584,62 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
           :aria-busy="saving"
           tabindex="-1"
           @keydown.stop="onCreateKeydown"
-          @mousedown="dismissSchedule"
-          @focusin="dismissSchedule"
+          @mousedown="dismissPickers"
+          @focusin="dismissPickers"
         >
           <header>
             <h2>新建事件</h2>
-            <button
-              type="button"
-              class="icon-button"
-              aria-label="关闭新建事件"
-              :disabled="saving"
-              @click="closeCreate"
-            >
-              <X :size="18" />
-            </button>
+            <div class="plan-create-header-actions">
+              <div ref="scopePicker" class="plan-scope-picker">
+                <button
+                  ref="scopeTrigger"
+                  type="button"
+                  class="plan-scope-trigger"
+                  aria-label="保存到"
+                  :title="scopeDescription"
+                  aria-haspopup="menu"
+                  aria-controls="plan-create-scope-menu"
+                  :aria-expanded="scopeOpen"
+                  :disabled="saving"
+                  @click="toggleScope"
+                  @keydown.down.prevent="scopeOpen || toggleScope()"
+                >
+                  <component :is="draft.scope === 'personal' ? UserRound : FolderOpen" :size="14" aria-hidden="true" />
+                  <span>{{ draft.scope === 'personal' ? '个人' : '工作区' }}</span>
+                  <ChevronDown :size="13" aria-hidden="true" />
+                </button>
+                <div
+                  v-if="scopeOpen"
+                  id="plan-create-scope-menu"
+                  class="plan-scope-menu"
+                  role="menu"
+                  aria-label="保存位置"
+                  @keydown="onPickerKeydown($event, scopePicker)"
+                  @keydown.esc.stop.prevent="closeScope"
+                >
+                  <span class="plan-scope-menu-heading">保存到</span>
+                  <button type="button" role="menuitemradio" aria-label="工作区" :aria-checked="draft.scope === 'workspace'" :disabled="!plans.workspaceWritable" @click="chooseScope('workspace')">
+                    <FolderOpen :size="17" aria-hidden="true" />
+                    <span><strong>工作区</strong><small>{{ store.workspace?.name ?? '尚未打开工作区' }}</small></span>
+                    <Check v-if="draft.scope === 'workspace'" :size="15" aria-hidden="true" />
+                  </button>
+                  <button type="button" role="menuitemradio" aria-label="个人" :aria-checked="draft.scope === 'personal'" :disabled="!plans.personalWritable" @click="chooseScope('personal')">
+                    <UserRound :size="17" aria-hidden="true" />
+                    <span><strong>个人</strong><small>{{ personalNative ? '仅这台设备，不随工作区分享' : '仅当前浏览器，不随工作区分享' }}</small></span>
+                    <Check v-if="draft.scope === 'personal'" :size="15" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                class="icon-button"
+                aria-label="关闭新建事件"
+                :disabled="saving"
+                @click="closeCreate"
+              >
+                <X :size="18" />
+              </button>
+            </div>
           </header>
           <form class="plan-create" aria-label="新建事件" @submit.prevent="saveEvent">
             <input
@@ -437,7 +653,8 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
               maxlength="200"
               :disabled="saving || readonly"
             />
-            <div class="plan-create-properties">
+            <PlanDateField v-model="draft.planDate" :default-date="selected" :required="!draft.checkable" :disabled="saving || readonly">
+              <template #leading>
               <label
                 class="plan-checkable"
                 :class="{ checked: draft.checkable, disabled: saving || readonly }"
@@ -456,72 +673,8 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
                 />
                 <span>需要完成</span>
               </label>
-              <div ref="schedulePicker" class="plan-schedule-picker">
-                <button
-                  ref="scheduleTrigger"
-                  type="button"
-                  class="plan-schedule-trigger"
-                  aria-label="时间安排"
-                  aria-haspopup="menu"
-                  aria-controls="plan-create-schedule-menu"
-                  :aria-expanded="scheduleOpen"
-                  :disabled="saving || readonly"
-                  @click="toggleSchedule"
-                  @keydown.down.prevent="scheduleOpen || toggleSchedule()"
-                >
-                  <CalendarDays :size="22" :stroke-width="1.8" aria-hidden="true" />
-                  <span>{{ scheduleLabel }}</span>
-                  <ChevronDown :size="16" aria-hidden="true" />
-                </button>
-                <div
-                  v-if="scheduleOpen"
-                  id="plan-create-schedule-menu"
-                  class="plan-schedule-menu"
-                  role="menu"
-                  aria-label="时间安排"
-                  @keydown="onScheduleKeydown"
-                >
-                  <button
-                    v-for="option in scheduleOptions"
-                    :key="option.value"
-                    type="button"
-                    role="menuitemradio"
-                    :aria-checked="draft.schedule === option.value"
-                    @click="chooseSchedule(option.value)"
-                  >
-                    <component :is="option.icon" :size="17" aria-hidden="true" />
-                    <span>{{ option.label }}</span>
-                    <Check v-if="draft.schedule === option.value" :size="16" aria-hidden="true" />
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div v-if="draft.schedule !== 'none'" class="plan-create-dates">
-              <label v-if="draft.schedule === 'date'"
-                >计划日期<input
-                  v-model="draft.date"
-                  type="date"
-                  required
-                  :disabled="saving || readonly"
-              /></label>
-              <template v-if="draft.schedule === 'time'">
-                <label
-                  >开始时间<input
-                    v-model="draft.start"
-                    type="datetime-local"
-                    required
-                    :disabled="saving || readonly"
-                /></label>
-                <label
-                  >结束时间<input
-                    v-model="draft.end"
-                    type="datetime-local"
-                    required
-                    :min="draft.start"
-                    :disabled="saving || readonly"
-                /></label>
               </template>
-            </div>
+            </PlanDateField>
             <p v-if="error" class="plan-error" role="alert">{{ error }}</p>
             <div class="plan-create-actions">
               <span class="plan-create-hint" aria-hidden="true">Esc 取消 · Enter 创建</span>
@@ -545,20 +698,21 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
           type="button"
           class="plan-add"
           :aria-label="`为 ${selectedTitle} 添加事件`"
-          :disabled="readonly || saving"
+          :disabled="cannotAdd || saving"
           @click="addEvent('date')"
         >
           <Plus :size="14" />
         </button>
       </div>
       <p v-if="!agenda.length" class="sidebar-calendar-empty">
-        <CalendarDays :size="15" />这一天没有安排
+        <CalendarDays :size="15" />{{ plans.view === 'personal' && personalIssue ? '个人事项尚未加载' : '这一天没有安排' }}
       </p>
       <PlanEventList
         v-else
         :records="agenda"
         :date="selectedDate"
-        :disabled="readonly"
+        :disabled="false"
+        :can-edit="plans.canEdit"
         :pending="pending"
         @select="emit('select-event', $event)"
         @complete="completeEvent"
@@ -574,20 +728,21 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
           type="button"
           class="plan-add"
           aria-label="添加未安排任务"
-          :disabled="readonly || saving"
+          :disabled="cannotAdd || saving"
           @click="addEvent('none')"
         >
           <Plus :size="14" />
         </button>
       </div>
       <p v-if="!unscheduled.length" class="sidebar-calendar-empty">
-        <ListTodo :size="15" />没有未安排的任务
+        <ListTodo :size="15" />{{ plans.view === 'personal' && personalIssue ? '个人事项尚未加载' : '没有未安排的任务' }}
       </p>
       <PlanEventList
         v-else
         :records="unscheduled"
         :date="selectedDate"
-        :disabled="readonly"
+        :disabled="false"
+        :can-edit="plans.canEdit"
         :pending="pending"
         unscheduled
         @select="emit('select-event', $event)"
@@ -599,6 +754,20 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
 </template>
 
 <style scoped>
+.plan-view-trigger { display: flex; flex-shrink: 0; align-items: center; gap: 4px; height: 24px; padding: 2px 6px; border-radius: 5px; color: var(--muted); font-size: 12px; font-weight: 400; line-height: inherit; }
+.plan-view-trigger > svg { color: var(--muted); }
+.plan-view-trigger:hover,
+.plan-view-trigger[aria-expanded='true'] { background: var(--hover); color: var(--text); }
+.plan-view-footnote { margin: 6px 5px 2px; padding: 8px 4px 2px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; line-height: 1.5; }
+.plan-load-notice { margin: 0 0 14px; border: 1px solid var(--line); border-radius: 6px; padding: 7px 8px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.plan-load-notice summary { display: flex; align-items: center; gap: 6px; list-style: none; cursor: pointer; }
+.plan-load-notice summary::-webkit-details-marker { display: none; }
+.plan-load-notice summary span { flex: 1; }
+.plan-load-notice summary svg { flex: 0 0 auto; }
+.plan-load-notice[open] summary > svg:last-child { transform: rotate(180deg); }
+.plan-load-notice p { margin: 7px 0; overflow-wrap: anywhere; }
+.plan-load-notice button { color: var(--green); }
+.plan-issue-icon { color: var(--warning); }
 .sidebar-calendar {
   flex: 1;
   min-height: 0;
@@ -618,8 +787,11 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
   justify-content: space-between;
 }
 .sidebar-calendar-heading {
+  position: relative;
+  gap: 8px;
   color: var(--text);
   font-size: 13px;
+  line-height: 20px;
   padding: 2px 0 10px;
 }
 .plan-storage-note {
@@ -655,6 +827,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
   padding-top: 14px;
 }
 .plan-create-backdrop {
+  z-index: 90;
   padding: max(24px, 26vh) 20px 24px;
   background: #1f23282b;
   backdrop-filter: none;
@@ -674,6 +847,81 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
   font-weight: 400;
   color: var(--muted);
 }
+.plan-create-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.plan-scope-picker { position: relative; }
+.plan-scope-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 4px 7px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 20px;
+}
+.plan-scope-trigger:hover,
+.plan-scope-trigger[aria-expanded='true'] {
+  background: var(--surface);
+  color: var(--text);
+}
+.plan-scope-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 2;
+  width: min(264px, calc(100vw - 80px));
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  box-shadow: 0 8px 28px #1f232820;
+}
+.plan-scope-menu-heading {
+  display: block;
+  padding: 5px 9px 7px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.plan-scope-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border-radius: 6px;
+  text-align: left;
+  color: var(--text-secondary);
+}
+.plan-scope-menu button > span { flex: 1; min-width: 0; }
+.plan-scope-menu button > svg { flex: 0 0 auto; }
+.plan-scope-menu strong { display: block; color: var(--text); font-size: 13px; font-weight: 500; }
+.plan-scope-menu small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.plan-scope-menu button[aria-checked='true'] { background: var(--accent); color: var(--green); }
+.plan-scope-menu button:not(:disabled):hover { background: var(--hover); }
+.plan-view-menu {
+  position: fixed;
+  right: auto;
+  z-index: 40;
+  width: 248px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  padding: 4px;
+}
+.plan-view-menu .plan-scope-menu-heading { padding: 4px 8px 6px; line-height: 16px; }
+.plan-view-menu button { gap: 8px; padding: 6px 8px; line-height: 18px; }
+.plan-view-menu strong { line-height: 18px; }
+.plan-view-menu small { margin-top: 0; line-height: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-view-menu button:disabled { opacity: 0.5; cursor: not-allowed; }
+.plan-connections-menu { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
+.plan-connections-menu button { font-size: 12px; }
+.plan-create-header-actions button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.plan-create-header-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
 .plan-create-panel > header .icon-button {
   width: 28px;
   height: 28px;
@@ -702,37 +950,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
 .plan-create .plan-create-title:focus-visible {
   outline: none;
 }
-.plan-create-properties {
-  display: flex;
-  align-items: center;
-  gap: 22px;
-  margin-top: 28px;
-}
-.plan-create-dates {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
-  gap: 16px;
-  margin-top: 22px;
-}
-.plan-create-dates label {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-.plan-create-dates input {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--text);
-  background: var(--paper);
-  font-size: 14px;
-}
+.plan-create > .plan-date-field { margin-top: 28px; }
 .plan-create .plan-checkable {
   position: relative;
   display: flex;
@@ -770,50 +988,6 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
 .plan-checkable:has(input:focus-visible) {
   outline: 2px solid var(--green);
   outline-offset: 2px;
-}
-.plan-schedule-picker {
-  position: relative;
-  padding-left: 20px;
-  border-left: 1px solid var(--line);
-}
-.plan-schedule-trigger {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 36px;
-  padding: 4px 6px;
-  border-radius: 6px;
-  font-size: 15px;
-  color: var(--text-secondary);
-}
-.plan-schedule-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 20px;
-  z-index: 1;
-  min-width: 176px;
-  padding: 5px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--paper);
-  box-shadow: 0 6px 24px #1f23281c;
-}
-.plan-schedule-menu button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 9px;
-  border-radius: 5px;
-  text-align: left;
-  font-size: 13px;
-}
-.plan-schedule-menu button span {
-  flex: 1;
-}
-.plan-schedule-menu button[aria-checked='true'] {
-  color: var(--green);
-  background: var(--accent);
 }
 .plan-create-actions {
   display: flex;
@@ -853,17 +1027,6 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
   .plan-create .plan-create-title {
     font-size: 23px;
   }
-  .plan-create-properties {
-    gap: 12px;
-  }
-  .plan-schedule-picker {
-    padding-left: 12px;
-  }
-  .plan-schedule-menu {
-    left: auto;
-    right: 0;
-    min-width: 152px;
-  }
 }
 @media (max-height: 600px) {
   .plan-create-backdrop {
@@ -877,6 +1040,10 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
   overflow-wrap: anywhere;
 }
 .plan-add:focus-visible,
+.plan-view-trigger:focus-visible,
+.plan-view-menu button:focus-visible,
+.plan-load-notice summary:focus-visible,
+.plan-load-notice button:focus-visible,
 .plan-create input:focus-visible,
 .plan-create select:focus-visible,
 .plan-create button:focus-visible {
@@ -888,9 +1055,11 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
   opacity: 0.5;
   cursor: not-allowed;
 }
-.sidebar-calendar-month button {
+.sidebar-calendar-today {
   display: grid;
+  flex-shrink: 0;
   place-items: center;
+  margin-left: auto;
   min-width: 34px;
   height: 26px;
   border-radius: 6px;
@@ -902,21 +1071,40 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
   overscroll-behavior-y: contain;
   overflow-anchor: none;
   scrollbar-width: none;
+  touch-action: pan-y;
+  user-select: none;
+  cursor: grab;
+}
+.sidebar-calendar-scroll.dragging {
+  cursor: grabbing;
 }
 .sidebar-calendar-scroll:focus-visible {
   outline: 1px solid var(--green);
   outline-offset: 2px;
   border-radius: 6px;
 }
-.sidebar-calendar-month button:hover {
+.sidebar-calendar-today:hover {
   background: var(--hover);
   color: var(--text);
 }
 .sidebar-calendar-month {
+  container: plan-month-header / inline-size;
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-start;
+  gap: 6px;
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
-  margin-bottom: 10px;
+}
+.sidebar-calendar-month > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@container plan-month-header (max-width: 190px) {
+  .sidebar-calendar-year { display: none; }
 }
 .sidebar-calendar-weekdays,
 .sidebar-calendar-grid {
@@ -939,6 +1127,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
   border-radius: 6px;
   font-size: 12px;
   color: var(--text-secondary);
+  cursor: inherit;
 }
 .sidebar-calendar-day:hover,
 .sidebar-calendar-day[aria-pressed='true'] {
@@ -948,8 +1137,8 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
 .sidebar-calendar-day[aria-pressed='true'] {
   font-weight: 600;
 }
-.sidebar-calendar-day.alternate {
-  color: var(--muted);
+.sidebar-calendar-day.outside-month {
+  color: color-mix(in srgb, var(--muted) 65%, transparent);
 }
 .sidebar-calendar-day.month-start {
   font-size: 10px;

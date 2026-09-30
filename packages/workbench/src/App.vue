@@ -43,6 +43,7 @@ import {
   Puzzle,
   GitFork,
   CalendarDays,
+  MessageCircle,
   Globe2,
   LogOut,
   Settings2,
@@ -89,6 +90,11 @@ import DesktopTabs from './components/DesktopTabs.vue';
 import { GRAPH_TAB_ID } from './document-graph';
 import { PLUGINS_TAB_ID } from './workspace-plugins';
 import { CALENDAR_TAB_ID, calendarPeriodTitle, shiftCalendarDate } from './calendar';
+import { CHAT_TAB_ID } from './chat';
+import { useChatStore } from './stores/chat';
+import SidebarChat from './components/SidebarChat.vue';
+import ChatView from './components/ChatView.vue';
+import ChatCreateDialog from './components/ChatCreateDialog.vue';
 import type { CalendarViewMode } from './calendar';
 const RelationGraph = defineAsyncComponent(() => import('./components/RelationGraph.vue'));
 import NewTabPicker from './components/NewTabPicker.vue';
@@ -105,6 +111,10 @@ import { mobile } from './platform';
 import MobileRecycle from './components/MobileRecycle.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
 import ObjectPanel from './components/ObjectPanel.vue';
+import { usePlanStore } from './stores/plans';
+import { usePlanSyncStore } from './stores/plan-sync';
+import { planKey } from './personal-plans';
+import PersonalPlanDialog from './components/PersonalPlanDialog.vue';
 import SidebarPlan from './components/SidebarPlan.vue';
 import CalendarView from './components/CalendarView.vue';
 import PluginInstaller from './components/PluginInstaller.vue';
@@ -134,6 +144,10 @@ import {
 import type { SettingsCommand, SettingsPageId, SettingsSnapshot } from './settings-window';
 
 const store = useWorkspaceStore();
+const plans = usePlanStore();
+usePlanSyncStore();
+const chat = useChatStore();
+const personalHome = ref(false);
 const detachedWindow = native && !mobile && !!detachedTabRequest();
 const welcomeSlogan = welcomeSlogans[Math.floor(Math.random() * welcomeSlogans.length)];
 const welcomeSloganParts = sloganParts(welcomeSlogan);
@@ -151,17 +165,17 @@ const historyPanel = ref(false);
 const historyPage = ref<'versions' | 'updates'>('versions');
 const agentPanel = ref(false);
 const recyclePanel = ref(false);
-const sidebarView = ref<'repository' | 'plan'>('repository');
+const sidebarView = ref<'repository' | 'plan' | 'chat'>('repository');
 const calendarDate = ref(new Date());
 const calendarMode = ref<CalendarViewMode>('week');
 const calendarModeOpen = ref(false);
 const calendarModeOptions: { mode: CalendarViewMode; label: string }[] = [
   { mode: 'day', label: '日' },
+  { mode: 'four-days', label: '4 天' },
   { mode: 'week', label: '周' },
   { mode: 'month', label: '月' },
   { mode: 'year', label: '年' },
   { mode: 'agenda', label: '日程' },
-  { mode: 'four-days', label: '4 天' },
 ];
 const calendarModeLabel = computed(() => calendarModeOptions.find(option => option.mode === calendarMode.value)?.label ?? '周');
 const calendarPeriod = computed(() => calendarPeriodTitle(calendarDate.value, calendarMode.value));
@@ -184,6 +198,14 @@ function openCalendar(date?: Date) {
   sidebarView.value = 'plan';
   if (date) calendarDate.value = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   store.openCalendarTab();
+}
+function openChat() {
+  sidebarView.value = 'chat';
+  store.openChatTab();
+}
+function openChatConversation() {
+  openChat();
+  if (window.innerWidth <= 700) sidebar.value = false;
 }
 const selectedDiff = ref<{
   title: string;
@@ -218,6 +240,8 @@ const { workspace, active, activeId, activities, fatal, busy } = storeToRefs(sto
 watch(activeId, (id) => {
   calendarModeOpen.value = false;
   if (id === CALENDAR_TAB_ID) sidebarView.value = 'plan';
+  else if (id === CHAT_TAB_ID) sidebarView.value = 'chat';
+  else if (sidebarView.value === 'chat') sidebarView.value = 'repository';
 });
 const sidebar = ref(!detachedWindow && window.innerWidth > 700);
 const viewportWidth = ref(window.innerWidth);
@@ -486,6 +510,10 @@ const contextEntries = computed(() => (fileContextMenu.value ? selectedEntries.v
 const multipleContextEntries = computed(() => contextEntries.value.length > 1);
 const draggedEntry = ref<{ file: FileEntry; workspaceId: string } | null>(null);
 const draggedSelection = ref<FileEntry[]>([]);
+const tabFileDrag = computed(() => draggedEntry.value ? {
+  workspaceId: draggedEntry.value.workspaceId,
+  ids: draggedSelection.value.map((file) => file.id),
+} : undefined);
 const dropFolder = ref<string | null>(null);
 const moveBusy = ref(false);
 const optimisticFileMove = ref<{ workspaceId: string; changes: FileMovePreview[] } | null>(null);
@@ -564,10 +592,23 @@ const inputEl = ref<HTMLInputElement>();
 const editor = ref<InstanceType<typeof MarkdownEditor>>();
 const objectPanel = ref(false);
 const selectedObjectId = ref<string>();
+const selectedPersonal = ref(false);
 function showObjects(id?: string) {
+  selectedPersonal.value = false;
   selectedObjectId.value = id;
   objectPanel.value = true;
   workspaceMenu.value = false;
+}
+function showPlanEvent(key: string) {
+  const record = plans.personal.find(item => planKey(item) === key);
+  if (!record) return showObjects(key);
+  selectedPersonal.value = true;
+  selectedObjectId.value = record.object.id;
+  objectPanel.value = true;
+}
+function managePlanEvents() {
+  showObjects();
+  selectedPersonal.value = plans.view === 'personal';
 }
 async function openReference(identity: ReferenceIdentity) {
   const result = resolveReference(store.referenceTargets, identity);
@@ -1023,7 +1064,7 @@ function fileDragStart(file: FileEntry, event: DragEvent) {
   draggedEntry.value = { file, workspaceId: workspace.value.id };
   draggedSelection.value = selection;
   dropFolder.value = null;
-  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.effectAllowed = 'copyMove';
   event.dataTransfer.setData(
     'application/x-tano-entry',
     selection.map((entry) => entry.id).join(','),
@@ -1529,6 +1570,11 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
   }
   const tab = store.tabs.find((item) => item.id === id);
   if (!tab) { settled?.(); return; }
+  if (tab.chat) {
+    store.report('聊天演示保留在当前窗口，暂不支持移到其他窗口。');
+    settled?.();
+    return;
+  }
   if (tab.document?.conflict || tab.document?.missing) {
     store.report('请先处理文档冲突或缺失，再拖出标签页。');
     settled?.();
@@ -2098,7 +2144,7 @@ watch(activeId, () => {
     >
       <PanelLeftOpen :size="17" />
     </button>
-    <DesktopTabs detachable @new-tab="store.createBlankTab()" @new-document="createNewDocument" @detach-tab="detachTab" />
+    <DesktopTabs detachable :file-drag="tabFileDrag" @files-dropped="fileDragEnd" @new-tab="store.createBlankTab()" @new-document="createNewDocument" @detach-tab="detachTab" />
   </Teleport>
   <div
     class="app-shell"
@@ -2184,6 +2230,18 @@ watch(activeId, () => {
             <CalendarDays :size="18" :stroke-width="1.6" aria-hidden="true" />
             <span :aria-hidden="sidebarView !== 'plan'">计划</span>
           </button>
+          <button
+            type="button"
+            class="sidebar-navigation-button"
+            aria-label="聊天"
+            title="聊天"
+            aria-controls="sidebar-chat-panel"
+            :aria-pressed="sidebarView === 'chat'"
+            @click="openChat"
+          >
+            <MessageCircle :size="18" :stroke-width="1.6" aria-hidden="true" />
+            <span :aria-hidden="sidebarView !== 'chat'">聊天</span>
+          </button>
         </nav>
         <div v-show="sidebarView === 'repository'" id="sidebar-repository-panel" class="sidebar-content">
           <div
@@ -2267,7 +2325,12 @@ watch(activeId, () => {
           id="sidebar-plan-panel"
           :date="calendarDate"
           @select-date="openCalendar"
-          @select-event="showObjects"
+          @select-event="showPlanEvent"
+        />
+        <SidebarChat
+          v-show="sidebarView === 'chat'"
+          id="sidebar-chat-panel"
+          @open="openChatConversation"
         />
         <Teleport to="body">
           <div
@@ -2630,7 +2693,7 @@ watch(activeId, () => {
 
     <div class="main-column">
       <div v-if="workspace && (!native || mobile)" class="workspace-tabbar">
-        <DesktopTabs @new-tab="store.createBlankTab()" @new-document="createNewDocument" />
+        <DesktopTabs :file-drag="tabFileDrag" @files-dropped="fileDragEnd" @new-tab="store.createBlankTab()" @new-document="createNewDocument" />
       </div>
       <header v-if="workspace && !detachedWindow" class="topbar">
         <div class="topbar-navigation" role="group" aria-label="文档导航">
@@ -2678,6 +2741,7 @@ watch(activeId, () => {
             ><BookOpen :size="14" />{{ workspace?.name ?? 'Tano' }}</span
           ><template v-if="activeId === GRAPH_TAB_ID"><ChevronRight :size="12" /><GitFork :size="14" /><span class="breadcrumb-current">关系图谱</span></template
           ><template v-if="activeId === PLUGINS_TAB_ID"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">插件</span></template
+          ><template v-if="activeId === CHAT_TAB_ID"><ChevronRight :size="12" /><MessageCircle :size="14" /><span class="breadcrumb-current">聊天</span></template
           ><template v-for="(part, index) in breadcrumbs" :key="index"
             ><ChevronRight :size="12" /><component
               :is="index === breadcrumbs.length - 1 ? FileText : FolderOpen"
@@ -2703,6 +2767,7 @@ watch(activeId, () => {
                 type="button"
                 class="calendar-topbar-mode"
                 aria-label="切换日历视图"
+                title="Ctrl + 滚轮：切换日历视图"
                 aria-haspopup="menu"
                 :aria-expanded="calendarModeOpen"
                 @click="calendarModeOpen = !calendarModeOpen"
@@ -2718,7 +2783,7 @@ watch(activeId, () => {
                 >{{ option.label }}<Check v-if="calendarMode === option.mode" :size="15" /></button>
               </div>
             </div>
-            <button type="button" class="calendar-topbar-events" title="查看和管理事件" @click="showObjects()"><CalendarDays :size="15" />管理事件</button>
+            <button type="button" class="calendar-topbar-events" title="查看和管理事件" @click="managePlanEvents"><CalendarDays :size="15" />管理事件</button>
           </div>
           <template v-if="active">
             <button
@@ -2869,12 +2934,18 @@ watch(activeId, () => {
         v-if="workspace && activeId === CALENDAR_TAB_ID"
         :date="calendarDate"
         :mode="calendarMode"
+        @select-mode="selectCalendarMode"
         @visible-month="calendarDate = $event"
         @visible-year="calendarDate = $event"
         @visible-timeline="calendarDate = $event"
         @select-date="showCalendarDay"
         @select-month="showCalendarMonth"
-        @select-event="showObjects"
+        @select-event="showPlanEvent"
+      />
+
+      <ChatView
+        v-if="workspace && activeId === CHAT_TAB_ID"
+        @show-list="sidebarView = 'chat'; sidebar = true"
       />
 
       <main
@@ -2883,10 +2954,6 @@ watch(activeId, () => {
         class="plugins-tab-page"
       >
         <div class="plugins-tab-content">
-          <header class="plugins-tab-heading">
-            <h1>插件</h1>
-            <p>为工作区安装和管理领域插件</p>
-          </header>
           <p v-if="!store.capabilities.features.objectReferences" class="tool-level-notice">
             Level 2 已关闭，插件对象和关系暂时只读。可在工作区设置中重新启用。
           </p>
@@ -3222,7 +3289,7 @@ watch(activeId, () => {
         </div>
       </main>
 
-      <main v-else-if="workspace && activeId !== GRAPH_TAB_ID && activeId !== PLUGINS_TAB_ID && activeId !== CALENDAR_TAB_ID" class="workspace-no-tabs">
+      <main v-else-if="workspace && activeId !== GRAPH_TAB_ID && activeId !== PLUGINS_TAB_ID && activeId !== CALENDAR_TAB_ID && activeId !== CHAT_TAB_ID" class="workspace-no-tabs">
         <div class="workspace-no-tabs-content">
           <FileText :size="32" :stroke-width="1.4" aria-hidden="true" />
           <h1>当前没有打开的文档</h1>
@@ -3262,6 +3329,9 @@ watch(activeId, () => {
           }}
         </p>
         <div class="welcome-actions">
+          <button class="secondary-button" @click="plans.view = 'personal'; personalHome = true">
+            <CalendarDays :size="18" />个人计划
+          </button>
           <button
             class="primary-button"
             :disabled="busy"
@@ -3358,6 +3428,7 @@ watch(activeId, () => {
       v-show="objectPanel"
       :open="objectPanel"
       :selected-id="selectedObjectId"
+      :personal="selectedPersonal ? plans.panel : undefined"
       :can-open-asset="localNative"
       :can-import-asset="localNative && !assetImportBusy"
       :preview-asset="assetPreview"
@@ -3369,6 +3440,8 @@ watch(activeId, () => {
       "
       @import-asset="assetInput?.click()"
     />
+    <PersonalPlanDialog v-if="personalHome" :date="calendarDate" @close="personalHome = false" @select-date="calendarDate = $event" @select-event="showPlanEvent" />
+    <ChatCreateDialog v-if="chat.dialog" :key="chat.dialog" @created="openChatConversation" />
     <SettingsPanel
       v-if="settingsPanel"
       :workspace="workspace"

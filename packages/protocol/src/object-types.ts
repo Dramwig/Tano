@@ -30,6 +30,7 @@ export const coreObjectTypes: readonly ObjectTypeDefinition[] = [
     fields: [
       { key: 'checkable', label: '需要完成', type: 'boolean' },
       { key: 'completed', label: '已完成', type: 'boolean' },
+      { key: 'due', label: '截止日期', type: 'text' },
       { key: 'date', label: '计划日期（不指定时间）', type: 'text' },
       { key: 'start', label: '开始时间', type: 'datetime' },
       { key: 'end', label: '结束时间', type: 'datetime' },
@@ -176,6 +177,7 @@ export function validateObjectProperties(
     if (hasStart && Date.parse(String(properties.end)) < Date.parse(String(properties.start)))
       throw new Error('结束时间不能早于开始时间');
     if (hasDate && !validEventDate(properties.date)) throw new Error('计划日期格式无效');
+    if (properties.due !== undefined && properties.due !== '' && !validEventDate(properties.due)) throw new Error('截止日期格式无效，请使用 YYYY-MM-DD');
     if (hasDate && hasStart) throw new Error('计划日期与具体时间段只能选择一种安排方式');
     if (properties.completed === true && properties.checkable !== true)
       throw new Error('只有需要完成的事件可以标记为已完成');

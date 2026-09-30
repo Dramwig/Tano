@@ -72,3 +72,14 @@ it('separates unscheduled, date-only and timed events without copying a task int
   expect(calendarEvents(rows).map(row => row.object.id)).toEqual(['a00003']);
   expect(isEventCompleted(rows.find(row => row.object.id === 'a00005')!)).toBe(true);
 });
+
+it('keeps anniversaries on their local date without a time slot or completion state', () => {
+  const anniversary = event('a00001', '', '');
+  anniversary.object.properties = { checkable: false, completed: false, date: '2028-02-29' };
+  const rows = planningEvents([anniversary]);
+  expect(plannedEventsOnDay(rows, new Date(2028, 1, 29))).toEqual([anniversary]);
+  expect(plannedEventsOnDay(rows, new Date(2028, 1, 28))).toEqual([]);
+  expect(plannedEventsOnDay(rows, new Date(2028, 2, 1))).toEqual([]);
+  expect(calendarEvents(rows)).toEqual([]);
+  expect(unscheduledTasks(rows)).toEqual([]);
+});

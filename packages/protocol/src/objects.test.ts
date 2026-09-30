@@ -163,6 +163,8 @@ it('supports unscheduled, date-only and timed tasks using the same event type', 
   for (const properties of [
     { checkable: true, completed: false },
     { checkable: true, completed: true, date: '2028-02-29' },
+    { checkable: false, completed: false, date: '2028-02-29' },
+    { date: '2026-10-01' },
     { checkable: true, start: '2026-10-01T10:00:00Z', end: '2026-10-01T11:00:00Z' },
     { start: '2026-10-01T10:00:00Z', end: '2026-10-01T11:00:00Z' },
   ]) expect(() => validateObjectProperties('event', properties)).not.toThrow();
