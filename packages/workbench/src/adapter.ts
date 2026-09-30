@@ -101,6 +101,17 @@ export class DemoAdapter implements WorkspaceAdapter {
   async open() {
     return this.refresh();
   }
+  async loadSession(workspaceId: string): Promise<WorkspaceSession | null> {
+    const saved = localStorage.getItem(`${DEMO_KEY}.session.${workspaceId}`);
+    if (!saved) return null;
+    const value = JSON.parse(saved) as WorkspaceSession;
+    if (value.version !== 1 || !Array.isArray(value.documents) || typeof value.activeId !== 'string')
+      throw new Error('浏览器会话格式无效，恢复记录已保留');
+    return value;
+  }
+  async saveSession(workspaceId: string, session: WorkspaceSession) {
+    localStorage.setItem(`${DEMO_KEY}.session.${workspaceId}`, JSON.stringify(session));
+  }
   async refresh(): Promise<Workspace> {
     await this.rememberIds();
     const files: FileEntry[] = Object.entries(this.files).map(([path, file]) => ({

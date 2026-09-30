@@ -237,6 +237,40 @@ async function toggleMaximize() {
 .desktop-window-content > .app-shell.workspace-empty .main-column {
   padding-top: 0;
 }
+/* Each pane owns its title strip. Only the native window controls float above
+   the top-right strip; blank space in those strips remains a drag handle. */
+.desktop-window:has(.workspace-native-tabs) .desktop-window-titlebar {
+  z-index: 30;
+  background: transparent;
+  box-shadow: none;
+  pointer-events: none;
+}
+.desktop-window:has(.workspace-native-tabs) .desktop-window-tab-slot,
+.desktop-window:has(.workspace-native-tabs) .desktop-window-drag {
+  display: none;
+}
+.desktop-window:has(.workspace-native-tabs) .desktop-window-actions {
+  margin-left: auto;
+  background: var(--sidebar);
+  pointer-events: auto;
+}
+.desktop-window-content > .app-shell:has(.workspace-native-tabs) .main-column {
+  padding-top: 0;
+}
+.workspace-native-tabs .workspace-pane {
+  --inspector-top: calc(36px + 44px + 44px + 16px);
+}
+.workspace-native-tabs .workspace-pane-top-right > .workspace-tabbar {
+  padding-right: 138px;
+}
+.workspace-window-drag {
+  flex: 1 0 24px;
+  min-width: 24px;
+  cursor: grab;
+}
+.workspace-window-drag:active {
+  cursor: grabbing;
+}
 .desktop-window-content > .app-shell .topbar {
   height: 44px;
   padding-inline: 6px 20px;

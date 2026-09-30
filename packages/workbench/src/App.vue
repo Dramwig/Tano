@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowReactive, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { version as appVersion } from '../package.json';
 import {
@@ -43,7 +43,6 @@ import {
   Puzzle,
   GitFork,
   CalendarDays,
-  MessageCircle,
   Globe2,
   LogOut,
   Settings2,
@@ -87,14 +86,11 @@ import {
 import { headings } from '@tano/markdown';
 import FileTree from './components/FileTree.vue';
 import DesktopTabs from './components/DesktopTabs.vue';
+import WorkspacePanes from './components/WorkspacePanes.vue';
+import type { OpenDocument } from './stores/workspace';
 import { GRAPH_TAB_ID } from './document-graph';
 import { PLUGINS_TAB_ID } from './workspace-plugins';
 import { CALENDAR_TAB_ID, calendarPeriodTitle, shiftCalendarDate } from './calendar';
-import { CHAT_TAB_ID } from './chat';
-import { useChatStore } from './stores/chat';
-import SidebarChat from './components/SidebarChat.vue';
-import ChatView from './components/ChatView.vue';
-import ChatCreateDialog from './components/ChatCreateDialog.vue';
 import type { CalendarViewMode } from './calendar';
 const RelationGraph = defineAsyncComponent(() => import('./components/RelationGraph.vue'));
 import NewTabPicker from './components/NewTabPicker.vue';
@@ -146,13 +142,22 @@ import type { SettingsCommand, SettingsPageId, SettingsSnapshot } from './settin
 const store = useWorkspaceStore();
 const plans = usePlanStore();
 usePlanSyncStore();
-const chat = useChatStore();
 const personalHome = ref(false);
 const detachedWindow = native && !mobile && !!detachedTabRequest();
 const welcomeSlogan = welcomeSlogans[Math.floor(Math.random() * welcomeSlogans.length)];
 const welcomeSloganParts = sloganParts(welcomeSlogan);
 const localNative = native && !store.isWeb;
 const extensions = useWorkbenchRuntime().extensions?.() ?? createLocalExtensions();
+const extensionViews = extensions.views ?? [];
+store.registerViews(extensionViews);
+const activeExtensionView = computed(() => extensionViews.find(view => view.id === store.activeId));
+const viewActions = Object.fromEntries(extensionViews.map(view => [view.id, {
+  open: () => {
+    openExtensionView(view.id);
+    if (window.innerWidth <= 700) sidebar.value = false;
+  },
+  showSidebar: () => { sidebarView.value = view.id; sidebar.value = true; },
+}]));
 const editing = extensions.editing;
 const extensionActions: WorkbenchActions = {
   closeMenus: () => { workspaceMenu.value = false; menu.value = false; },
@@ -165,7 +170,7 @@ const historyPanel = ref(false);
 const historyPage = ref<'versions' | 'updates'>('versions');
 const agentPanel = ref(false);
 const recyclePanel = ref(false);
-const sidebarView = ref<'repository' | 'plan' | 'chat'>('repository');
+const sidebarView = ref('repository');
 const calendarDate = ref(new Date());
 const calendarMode = ref<CalendarViewMode>('week');
 const calendarModeOpen = ref(false);
@@ -199,13 +204,9 @@ function openCalendar(date?: Date) {
   if (date) calendarDate.value = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   store.openCalendarTab();
 }
-function openChat() {
-  sidebarView.value = 'chat';
-  store.openChatTab();
-}
-function openChatConversation() {
-  openChat();
-  if (window.innerWidth <= 700) sidebar.value = false;
+function openExtensionView(id: string) {
+  sidebarView.value = extensionViews.find(view => view.id === id)?.sidebar ? id : 'repository';
+  store.openViewTab(id);
 }
 const selectedDiff = ref<{
   title: string;
@@ -240,11 +241,12 @@ const { workspace, active, activeId, activities, fatal, busy } = storeToRefs(sto
 watch(activeId, (id) => {
   calendarModeOpen.value = false;
   if (id === CALENDAR_TAB_ID) sidebarView.value = 'plan';
-  else if (id === CHAT_TAB_ID) sidebarView.value = 'chat';
-  else if (sidebarView.value === 'chat') sidebarView.value = 'repository';
+  else if (activeExtensionView.value?.sidebar) sidebarView.value = id;
+  else if (extensionViews.some(view => view.id === sidebarView.value)) sidebarView.value = 'repository';
 });
 const sidebar = ref(!detachedWindow && window.innerWidth > 700);
 const viewportWidth = ref(window.innerWidth);
+const compactPanes = computed(() => mobile || viewportWidth.value <= 700);
 const sidebarWidth = ref<number | null>(null);
 const resizingSidebar = ref(false);
 const SIDEBAR_MIN_WIDTH = 180;
@@ -414,7 +416,9 @@ watch(
   { deep: true },
 );
 const hoverOutline = window.matchMedia('(hover: hover)').matches;
-const source = ref(defaultSource.value);
+const sourceModes = shallowReactive<Record<string, boolean>>({});
+const paneSource = (id: string) => sourceModes[id] ?? defaultSource.value;
+const source = computed({ get: () => paneSource(store.activeId), set: value => { sourceModes[store.activeId] = value; } });
 const pageLocked = ref(false);
 function pageLockPreferenceKey(workspaceId: string, documentId: string) {
   return `pageLocked.${workspaceId}.${documentId}`;
@@ -589,7 +593,12 @@ const input = ref('');
 const modalError = ref('');
 const modalBusy = ref(false);
 const inputEl = ref<HTMLInputElement>();
-const editor = ref<InstanceType<typeof MarkdownEditor>>();
+const paneEditors = shallowReactive(new Map<string, InstanceType<typeof MarkdownEditor>>());
+const editor = computed(() => paneEditors.get(store.activePaneId));
+function setPaneEditor(id: string, value: unknown) {
+  if (value) paneEditors.set(id, value as InstanceType<typeof MarkdownEditor>);
+  else paneEditors.delete(id);
+}
 const objectPanel = ref(false);
 const selectedObjectId = ref<string>();
 const selectedPersonal = ref(false);
@@ -669,16 +678,33 @@ function assetPreview(target: ReferenceTarget) {
     ? imageUrl(workspace.value, '', relativeWorkspaceReference('', target.path))
     : null;
 }
-const editorSelection = ref<EditorSelectionContext>({ ...defaultSelectionContext });
-watch([activeId, source], () => {
-  editorSelection.value = { ...defaultSelectionContext };
-});
-const documentScroll = ref<HTMLElement>();
-const editorScroll = ref<HTMLElement>();
-const sourceEditor = ref<InstanceType<typeof SourceEditor>>();
+const paneSelections = shallowReactive<Record<string, EditorSelectionContext>>({});
+const paneScrolls = shallowReactive(new Map<string, HTMLElement>());
+const paneEditorScrolls = shallowReactive(new Map<string, HTMLElement>());
+const paneSourceEditors = shallowReactive(new Map<string, InstanceType<typeof SourceEditor>>());
+const documentScroll = computed(() => paneScrolls.get(store.activePaneId));
+const editorScroll = computed(() => paneEditorScrolls.get(store.activePaneId));
+const sourceEditor = computed(() => paneSourceEditors.get(store.activePaneId));
+function setPaneElement(kind: 'scroll' | 'editor' | 'source', id: string, value: unknown) {
+  if (kind === 'source') {
+    if (value) paneSourceEditors.set(id, value as InstanceType<typeof SourceEditor>);
+    else paneSourceEditors.delete(id);
+  } else {
+    const map = kind === 'scroll' ? paneScrolls : paneEditorScrolls;
+    if (value) map.set(id, value as HTMLElement); else map.delete(id);
+  }
+}
+function paneReadonly(doc: OpenDocument) {
+  return updateLock.value || store.busy || !!workspace.value?.readOnly || !!doc.conflict ||
+    (doc.id === store.activeId ? editorReadonly.value :
+      readPreference(pageLockPreferenceKey(workspace.value?.id ?? '', doc.id), false) || editing.isManaging(doc.id));
+}
 const documentUndoAvailable = ref(false);
 const documentRedoAvailable = ref(false);
-async function toggleDocumentMenu() {
+async function toggleDocumentMenu(event: MouseEvent) {
+  documentMenuButton.value = event.currentTarget as HTMLButtonElement;
+  // Focusing another pane closes its predecessor's menu in the activeId watcher.
+  await nextTick();
   menu.value = !menu.value;
   if (!menu.value) {
     documentUndoAvailable.value = false;
@@ -764,6 +790,20 @@ function insertBlockBelowTitle(workspaceId: string, documentId: string) {
 const activeHeading = ref(0);
 let headingFrame: number | undefined;
 const fileInput = ref<HTMLInputElement>();
+let attachmentTarget: { paneId: string; documentId: string } | undefined;
+function pickFilesFor(paneId: string, doc: OpenDocument) {
+  attachmentTarget = { paneId, documentId: doc.id };
+  fileInput.value?.click();
+}
+async function dragPaneWindow(event: MouseEvent) {
+  if (event.button !== 0 || event.detail !== 1) return;
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  await getCurrentWindow().startDragging();
+}
+async function maximizePaneWindow() {
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  await getCurrentWindow().toggleMaximize();
+}
 const attachmentBusy = ref(false);
 const resourceRevision = computed(
   () =>
@@ -772,36 +812,31 @@ const resourceRevision = computed(
       .map((file) => `${file.path}:${file.modified}:${file.size}`)
       .join('|')}`,
 );
-const resolveImage = (reference: string) =>
-  localNative
-    ? imageUrl(workspace.value, active.value?.path ?? '', reference)
-    : safeRemoteImage(reference);
-async function uploadFile(file: File, requireImage: boolean) {
-  const currentWorkspace = workspace.value,
-    doc = active.value;
+async function uploadFile(file: File, requireImage: boolean, doc = active.value) {
+  const currentWorkspace = workspace.value;
   if (!localNative || !currentWorkspace || !doc) throw new Error('请在本地工作空间中导入附件');
   const result = await importAttachment(currentWorkspace.id, doc.path, file, requireImage);
-  if (workspace.value?.id !== currentWorkspace.id || active.value?.id !== doc.id)
+  if (workspace.value?.id !== currentWorkspace.id || !store.documents.some(item => item.id === doc.id))
     throw new Error('附件已保存到原工作空间的 assets；文档已切换，请重新插入链接');
   await store.refresh();
-  if (workspace.value?.id !== currentWorkspace.id || active.value?.id !== doc.id)
+  if (workspace.value?.id !== currentWorkspace.id || !store.documents.some(item => item.id === doc.id))
     throw new Error('附件已导入，原文档已关闭');
-  return { ...result, url: relativeWorkspaceReference(active.value.path, result.path) };
+  return { ...result, url: relativeWorkspaceReference(doc.path, result.path) };
 }
-async function insertSourceFiles(files: File[], position: number, requireImage: boolean) {
-  if (!active.value || active.value.conflict || attachmentBusy.value) return;
-  const id = active.value.id,
-    before = active.value.content;
+async function insertSourceFiles(files: File[], position: number, requireImage: boolean, doc = active.value) {
+  if (!doc || doc.conflict || attachmentBusy.value) return;
+  const id = doc.id,
+    before = doc.content;
   attachmentBusy.value = true;
   try {
     const links: string[] = [];
     for (const file of files.slice(0, 10))
-      links.push(resourceMarkdown(await uploadFile(file, requireImage)));
-    if (active.value?.id !== id) return;
+      links.push(resourceMarkdown(await uploadFile(file, requireImage, doc)));
+    if (!store.documents.includes(doc)) return;
     // Preserve typing that happened while the bytes were being imported.
-    const content = active.value.content;
+    const content = doc.content;
     const at = content === before ? position : content.length;
-    store.edit(`${content.slice(0, at)}\n${links.join('\n')}\n${content.slice(at)}`);
+    store.editDocument(id, `${content.slice(0, at)}\n${links.join('\n')}\n${content.slice(at)}`);
   } catch (error) {
     store.report(error);
   } finally {
@@ -812,14 +847,17 @@ function pickedFiles(event: Event) {
   const input = event.target as HTMLInputElement;
   const files = Array.from(input.files ?? []);
   input.value = '';
-  if (source.value)
-    void insertSourceFiles(
-      files,
-      sourceEditor.value?.cursor() ?? active.value?.content.length ?? 0,
-      false,
-    );
-  else editor.value?.importFiles(files);
+  const target = attachmentTarget;
+  attachmentTarget = undefined;
+  if (!target || !files.length) return;
+  const doc = store.documents.find(item => item.id === target.documentId);
+  const pane = store.panes.find(item => item.id === target.paneId);
+  if (!doc || pane?.activeId !== doc.id || paneReadonly(doc)) return;
+  if (paneSource(doc.id))
+    void insertSourceFiles(files, paneSourceEditors.get(pane.id)?.cursor() ?? doc.content.length, false, doc);
+  else paneEditors.get(pane.id)?.importFiles(files);
 }
+
 async function openEntry(file: FileEntry, newTab = false) {
   if (isObjectPath(file.path)) {
     const record = store.objects.find((item) => item.path === file.path);
@@ -1383,10 +1421,6 @@ function searchHighlightParts(text: string) {
   if (cursor < text.length) parts.push({ text: text.slice(cursor), matched: false });
   return parts.length ? parts : [{ text, matched: false }];
 }
-const breadcrumbs = computed(() => active.value?.path.split('/') ?? []);
-const activeTitle = computed(() =>
-  basename(active.value?.path ?? '').replace(/\.(md|markdown)$/i, ''),
-);
 const modalTitle = computed(() => {
   const titles = {
     newTab: '打开文件',
@@ -1495,7 +1529,7 @@ async function createNewEntry(kind: 'document' | 'folder', parent = '') {
   }
 }
 let detachingTab = false;
-const transferRollback = new Map<string, { tabId: string; created: boolean; priorIndex: number; priorActive: string; timer: ReturnType<typeof setTimeout> }>();
+const transferRollback = new Map<string, { tabId: string; created: boolean; priorIndex: number; priorActive: string; undoDock?: () => void; timer: ReturnType<typeof setTimeout> }>();
 
 async function acceptTabTransfer(request: TabTransferRequest) {
   const { getCurrentWindow } = await import('@tauri-apps/api/window');
@@ -1504,11 +1538,16 @@ async function acceptTabTransfer(request: TabTransferRequest) {
   let created = false;
   const priorActive = store.activeId;
   const priorIndex = store.tabs.findIndex((tab) => tab.id === request.tabId);
+  let undoDock: (() => void) | undefined;
   let error: string | undefined;
   try {
     if (request.sourceLabel === targetLabel || !workspace.value ||
         workspace.value.id !== request.workspaceId || store.busy)
       throw new Error('目标窗口当前无法接收这个标签页');
+    if (request.drop) {
+      if (!store.panes.some(pane => pane.id === request.drop!.paneId)) throw new Error('目标分栏已关闭，请重新拖入');
+      store.focusPane(request.drop.paneId);
+    }
     if (request.tabId.startsWith('blank:')) {
       store.createBlankTab();
       actualId = store.activeId;
@@ -1522,6 +1561,11 @@ async function acceptTabTransfer(request: TabTransferRequest) {
     } else if (request.tabId === CALENDAR_TAB_ID) {
       created = priorIndex < 0;
       store.openCalendarTab();
+    } else if (extensionViews.some(view => view.id === request.tabId)) {
+      const view = extensionViews.find(view => view.id === request.tabId)!;
+      if (!view.detachable) throw new Error(view.detachBlockedMessage ?? '此扩展视图不支持移到其他窗口');
+      created = priorIndex < 0;
+      store.openViewTab(view.id);
     } else if (priorIndex < 0) {
       const file = workspace.value.files.find((entry) => entry.id === request.tabId && entry.kind === 'file');
       if (!file) throw new Error('目标窗口找不到拖入的文档');
@@ -1529,13 +1573,20 @@ async function acceptTabTransfer(request: TabTransferRequest) {
       created = true;
     }
     if (!store.tabs.some((tab) => tab.id === actualId)) throw new Error('目标窗口未能打开拖入的标签页');
-    const index = priorIndex >= 0 && priorIndex < request.index ? request.index - 1 : request.index;
-    store.placeTab(actualId, index);
+    if (request.drop) {
+      if (!store.panes.some(pane => pane.id === request.drop!.paneId)) throw new Error('目标分栏已关闭，请重新拖入');
+      undoDock = store.dockTab(actualId, request.drop);
+    } else {
+      const index = priorIndex >= 0 && priorIndex < request.index ? request.index - 1 : request.index;
+      store.placeTab(actualId, index);
+    }
     store.activeId = actualId;
     const timer = setTimeout(() => transferRollback.delete(request.requestId), 15_000);
-    transferRollback.set(request.requestId, { tabId: actualId, created, priorIndex, priorActive, timer });
+    transferRollback.set(request.requestId, { tabId: actualId, created, priorIndex, priorActive, undoDock, timer });
   } catch (reason) {
     error = String(reason);
+    if (created) await store.close(actualId);
+    if (store.tabs.some(tab => tab.id === priorActive)) store.activeId = priorActive;
   }
   try {
     await emitTo(request.sourceLabel, TAB_TRANSFER_RESULT, {
@@ -1559,6 +1610,7 @@ async function rollbackTabTransfer(request: TabTransferRollback) {
   transferRollback.delete(request.requestId);
   clearTimeout(pending.timer);
   if (pending.created) await store.close(pending.tabId);
+  else if (pending.undoDock) pending.undoDock();
   else if (pending.priorIndex >= 0) store.placeTab(pending.tabId, pending.priorIndex);
   if (store.tabs.some((tab) => tab.id === pending.priorActive)) store.activeId = pending.priorActive;
 }
@@ -1570,8 +1622,8 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
   }
   const tab = store.tabs.find((item) => item.id === id);
   if (!tab) { settled?.(); return; }
-  if (tab.chat) {
-    store.report('聊天演示保留在当前窗口，暂不支持移到其他窗口。');
+  if (tab.view && !tab.view.detachable) {
+    store.report(tab.view.detachBlockedMessage ?? '此视图保留在当前窗口，暂不支持移到其他窗口。');
     settled?.();
     return;
   }
@@ -1581,6 +1633,9 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
     return;
   }
   detachingTab = true;
+  // Collapse a departing single-tab pane before saving or starting a WebView.
+  // For a drop still over this window, first confirm it belongs to another one.
+  if (!drop?.insideSourceWindow) store.detachingTabId = id;
   try {
     await editing.flush();
     if (!(await store.flush())) throw new Error('还有未保存的修改，请先处理保存错误。');
@@ -1588,9 +1643,10 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
       x: drop.x, y: drop.y, centerOffset: (drop.width ?? 0) / 2 - drop.grabX,
     }) : null;
     if (dock === 'inside-window' || (!dock && drop?.insideSourceWindow)) return;
+    store.detachingTabId = id;
     if (dock) {
       const transfer = await requestTabTransfer(dock.targetLabel, {
-        workspaceId: workspace.value.id, tabId: id, index: dock.index,
+        workspaceId: workspace.value.id, tabId: id, index: dock.index, drop: dock.drop,
       });
       await store.close(id);
       if (store.tabs.some((item) => item.id === id)) {
@@ -1614,6 +1670,7 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
   } catch (error) {
     store.report(error);
   } finally {
+    if (store.detachingTabId === id) store.detachingTabId = '';
     detachingTab = false;
     settled?.();
   }
@@ -2120,16 +2177,15 @@ watch(activeId, () => {
   panel.value = 'outline';
   outlineSearchOpen.value = false;
   outlineSearch.value = '';
-  source.value = defaultSource.value && !editing.active;
   menu.value = false;
   activeHeading.value = 0;
-  if (documentScroll.value) documentScroll.value.scrollTop = 0;
   void nextTick(scheduleActiveHeading);
 });
 </script>
 
 <template>
-  <Teleport v-if="native && !mobile && workspace" to="#desktop-window-tab-slot">
+  <input ref="fileInput" type="file" multiple hidden @change="pickedFiles" />
+  <Teleport v-if="native && !mobile && workspace && compactPanes" to="#desktop-window-tab-slot">
     <button
       v-if="!detachedWindow"
       :class="{ 'desktop-sidebar-toggle-hidden': sidebar }"
@@ -2231,16 +2287,18 @@ watch(activeId, () => {
             <span :aria-hidden="sidebarView !== 'plan'">计划</span>
           </button>
           <button
+            v-for="view in extensionViews"
+            :key="view.id"
             type="button"
             class="sidebar-navigation-button"
-            aria-label="聊天"
-            title="聊天"
-            aria-controls="sidebar-chat-panel"
-            :aria-pressed="sidebarView === 'chat'"
-            @click="openChat"
+            :aria-label="view.label"
+            :title="view.label"
+            :aria-controls="view.sidebar ? `sidebar-${view.id}` : undefined"
+            :aria-pressed="view.sidebar ? sidebarView === view.id : activeId === view.id"
+            @click="openExtensionView(view.id)"
           >
-            <MessageCircle :size="18" :stroke-width="1.6" aria-hidden="true" />
-            <span :aria-hidden="sidebarView !== 'chat'">聊天</span>
+            <component :is="view.icon" :size="18" :stroke-width="1.6" aria-hidden="true" />
+            <span :aria-hidden="view.sidebar ? sidebarView !== view.id : activeId !== view.id">{{ view.label }}</span>
           </button>
         </nav>
         <div v-show="sidebarView === 'repository'" id="sidebar-repository-panel" class="sidebar-content">
@@ -2327,11 +2385,15 @@ watch(activeId, () => {
           @select-date="openCalendar"
           @select-event="showPlanEvent"
         />
-        <SidebarChat
-          v-show="sidebarView === 'chat'"
-          id="sidebar-chat-panel"
-          @open="openChatConversation"
-        />
+        <template v-for="view in extensionViews" :key="view.id">
+          <component
+            :is="view.sidebar"
+            v-if="view.sidebar"
+            v-show="sidebarView === view.id"
+            :id="`sidebar-${view.id}`"
+            :actions="viewActions[view.id]"
+          />
+        </template>
         <Teleport to="body">
           <div
             v-if="fileContextMenu"
@@ -2692,623 +2754,598 @@ watch(activeId, () => {
     </Transition>
 
     <div class="main-column">
-      <div v-if="workspace && (!native || mobile)" class="workspace-tabbar">
+      <div v-if="workspace && compactPanes && (!native || mobile)" class="workspace-tabbar">
         <DesktopTabs :file-drag="tabFileDrag" @files-dropped="fileDragEnd" @new-tab="store.createBlankTab()" @new-document="createNewDocument" />
       </div>
-      <header v-if="workspace && !detachedWindow" class="topbar">
-        <div class="topbar-navigation" role="group" aria-label="文档导航">
-          <button
-            v-if="activeId === CALENDAR_TAB_ID && !sidebar && !(native && !mobile && workspace)"
-            type="button"
-            class="icon-button"
-            aria-label="展开侧栏"
-            title="展开侧栏 · Ctrl B"
-            @click="toggleSidebar"
-          >
-            <PanelLeftOpen :size="18" />
-          </button>
-          <button
-            type="button"
-            class="icon-button"
-            aria-label="后退"
-            title="后退"
-            :disabled="!store.canGoBack"
-            @click="store.navigateHistory(-1)"
-          >
-            <ArrowLeft :size="16" :stroke-width="1.6" />
-          </button>
-          <button
-            type="button"
-            class="icon-button"
-            aria-label="前进"
-            title="前进"
-            :disabled="!store.canGoForward"
-            @click="store.navigateHistory(1)"
-          >
-            <ArrowRight :size="16" :stroke-width="1.6" />
-          </button>
-        </div>
-        <nav v-if="activeId !== CALENDAR_TAB_ID" class="breadcrumb" aria-label="当前位置">
-          <button
-            v-if="!sidebar && !(native && !mobile && workspace)"
-            class="icon-button"
-            aria-label="展开侧栏"
-            title="展开侧栏 · Ctrl B"
-            @click="toggleSidebar"
-          >
-            <PanelLeftOpen :size="18" /></button
-          ><span class="breadcrumb-workspace"
-            ><BookOpen :size="14" />{{ workspace?.name ?? 'Tano' }}</span
-          ><template v-if="activeId === GRAPH_TAB_ID"><ChevronRight :size="12" /><GitFork :size="14" /><span class="breadcrumb-current">关系图谱</span></template
-          ><template v-if="activeId === PLUGINS_TAB_ID"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">插件</span></template
-          ><template v-if="activeId === CHAT_TAB_ID"><ChevronRight :size="12" /><MessageCircle :size="14" /><span class="breadcrumb-current">聊天</span></template
-          ><template v-for="(part, index) in breadcrumbs" :key="index"
-            ><ChevronRight :size="12" /><component
-              :is="index === breadcrumbs.length - 1 ? FileText : FolderOpen"
-              :size="14"
-            /><span :class="{ 'breadcrumb-current': index === breadcrumbs.length - 1 }">{{
-              index === breadcrumbs.length - 1 ? activeTitle : part
-            }}</span></template
-          >
-        </nav>
-        <div class="topbar-right">
-          <component  :is="extensions.regions['editing-status']" v-if="extensions.regions['editing-status']" :actions="extensionActions" />
-          <span v-if="store.isDemo" class="demo-badge"><span />浏览器演示</span
-          ><span v-else-if="store.isWeb" class="local-badge"
-            ><Globe2 :size="14" />{{ workspace?.readOnly ? '只读权限' : '在线工作区' }}</span
-          >
-          <div v-if="activeId === CALENDAR_TAB_ID" class="calendar-topbar-controls" role="group" aria-label="日历导航">
-            <span class="calendar-topbar-period">{{ calendarPeriod }}</span>
-            <button type="button" class="calendar-topbar-today" @click="calendarDate = new Date()">今天</button>
-            <button type="button" class="icon-button" aria-label="上一时段" title="上一时段" @click="moveCalendarPeriod(-1)"><ChevronLeft :size="17" /></button>
-            <button type="button" class="icon-button" aria-label="下一时段" title="下一时段" @click="moveCalendarPeriod(1)"><ChevronRight :size="17" /></button>
-            <div class="calendar-view-picker" @keydown.esc.stop.prevent="calendarModeOpen = false">
+
+      <WorkspacePanes v-if="workspace" :compact="compactPanes" :class="{ 'workspace-native-tabs': native && !mobile && !compactPanes }">
+        <template #default="{ pane, rect, document: active }">
+          <div v-if="!compactPanes" class="workspace-tabbar" :data-tab-pane-id="pane.id">
+            <button v-if="native && !mobile && !detachedWindow && !sidebar && rect.top === 0 && rect.left === 0"
+              class="desktop-sidebar-toggle" type="button" aria-label="展开侧栏" title="展开侧栏 · Ctrl B" @click="toggleSidebar">
+              <PanelLeftOpen :size="17" />
+            </button>
+            <DesktopTabs :pane-id="pane.id" :detachable="native && !mobile" :file-drag="tabFileDrag"
+              @files-dropped="fileDragEnd" @new-tab="store.focusPane(pane.id); store.createBlankTab()"
+              @new-document="store.focusPane(pane.id); createNewDocument()" @detach-tab="detachTab" />
+            <div v-if="native && !mobile" v-show="rect.top === 0" class="workspace-window-drag" title="拖动窗口"
+              @mousedown="dragPaneWindow" @dblclick="maximizePaneWindow" />
+          </div>
+          <header v-if="!detachedWindow" class="topbar">
+            <div class="topbar-navigation" role="group" aria-label="文档导航">
+              <button
+                v-if="pane.activeId === CALENDAR_TAB_ID && !sidebar && !(native && !mobile && workspace)"
+                type="button"
+                class="icon-button"
+                aria-label="展开侧栏"
+                title="展开侧栏 · Ctrl B"
+                @click="toggleSidebar"
+              >
+                <PanelLeftOpen :size="18" />
+              </button>
               <button
                 type="button"
-                class="calendar-topbar-mode"
-                aria-label="切换日历视图"
-                title="Ctrl + 滚轮：切换日历视图"
-                aria-haspopup="menu"
-                :aria-expanded="calendarModeOpen"
-                @click="calendarModeOpen = !calendarModeOpen"
-              >{{ calendarModeLabel }}<ChevronDown :size="14" /></button>
-              <div v-if="calendarModeOpen" class="calendar-view-menu" role="menu" aria-label="日历视图">
-                <button
-                  v-for="option in calendarModeOptions"
-                  :key="option.mode"
-                  type="button"
-                  role="menuitemradio"
-                  :aria-checked="calendarMode === option.mode"
-                  @click="selectCalendarMode(option.mode)"
-                >{{ option.label }}<Check v-if="calendarMode === option.mode" :size="15" /></button>
-              </div>
-            </div>
-            <button type="button" class="calendar-topbar-events" title="查看和管理事件" @click="managePlanEvents"><CalendarDays :size="15" />管理事件</button>
-          </div>
-          <template v-if="active">
-            <button
-              type="button"
-              class="icon-button source-mode-button"
-              :class="{ active: source }"
-              :disabled="!!editing.active || editing.activeBusy"
-              :aria-label="source ? '返回编辑' : '切换源码模式'"
-              :aria-pressed="source"
-              :title="
-                editing.active
-                  ? '当前编辑扩展不支持切换源码模式'
-                  : source
-                    ? '返回编辑'
-                    : '切换源码模式'
-              "
-              @click="source = !source"
-            >
-              <Code2 :size="17" />
-            </button>
-            <button
-              v-if="localNative"
-              class="icon-button"
-              aria-label="导入图片或附件"
-              title="导入图片或附件；也可直接粘贴图片"
-              :disabled="editorReadonly || attachmentBusy"
-              @click="fileInput?.click()"
-            >
-              <Paperclip :size="17" />
-            </button>
-            <input ref="fileInput" type="file" multiple hidden @change="pickedFiles" />
-            <div class="menu-wrap">
-              <button
-                ref="documentMenuButton"
                 class="icon-button"
-                aria-label="文档操作"
-                :aria-expanded="menu"
-                @click="toggleDocumentMenu"
-                @keydown="documentMenuTriggerKeydown"
+                aria-label="后退"
+                title="后退"
+                :disabled="!store.canNavigateHistory(-1, pane.activeId)"
+                @click="store.navigateHistory(-1, pane.id)"
               >
-                <MoreHorizontal :size="19" />
+                <ArrowLeft :size="16" :stroke-width="1.6" />
               </button>
-              <div
-                v-if="menu"
-                ref="documentMenuElement"
-                class="dropdown compact-action-menu document-dropdown"
-                @keydown="documentMenuKeydown"
+              <button
+                type="button"
+                class="icon-button"
+                aria-label="前进"
+                title="前进"
+                :disabled="!store.canNavigateHistory(1, pane.activeId)"
+                @click="store.navigateHistory(1, pane.id)"
               >
-                <button
-                  type="button"
-                  class="page-toggle-menu-item"
-                  role="switch"
-                  :aria-checked="pageLocked"
-                  :title="pageLocked ? '退出阅读模式' : '锁定后进入阅读模式'"
-                  @click="togglePageLock"
-                >
-                  <LockKeyhole :size="15" />锁定页面<span
-                    class="menu-switch"
-                    :class="{ on: pageLocked }"
-                    aria-hidden="true"
-                    ><span
-                  /></span>
-                </button>
-                <button
-                  type="button"
-                  class="page-toggle-menu-item"
-                  role="switch"
-                  :aria-checked="!limitPageWidth"
-                  :disabled="!pageWidthWritable"
-                  title="切换页面内容宽度"
-                  @click="setLimitPageWidth(!limitPageWidth)"
-                >
-                  <MoveHorizontal :size="15" />全宽<span
-                    class="menu-switch"
-                    :class="{ on: !limitPageWidth }"
-                    aria-hidden="true"
-                    ><span
-                  /></span>
-                </button>
-                <div class="menu-divider" />
-                <button
-                  type="button"
-                  :disabled="editorReadonly || !documentUndoAvailable"
-                  @click="undoDocument"
-                >
-                  <Undo2 :size="15" />撤销<span class="menu-shortcut">Ctrl Z</span>
-                </button>
-                <button
-                  type="button"
-                  :disabled="editorReadonly || !documentRedoAvailable"
-                  @click="redoDocument"
-                >
-                  <Redo2 :size="15" />重做<span class="menu-shortcut">Ctrl Y</span>
-                </button>
-                <button
-                  :disabled="editorReadonly || !!editing.active || editing.activeBusy"
-                  @click="showModal('rename')"
-                >
-                  <Pencil :size="15" />重命名文档</button
-                ><button :disabled="workspace?.readOnly || busy" @click="showModal('saveAs')">
-                  <FileText :size="15" />另存副本</button
-                ><button
-                  @click="
-                    menu = false;
-                    historyPage = 'versions';
-                    historyPanel = true;
-                  "
-                >
-                  <Archive :size="15" />版本历史<span class="menu-beta">Beta</span></button
-                ><button
-                  @click="
-                    menu = false;
-                    historyPage = 'updates';
-                    historyPanel = true;
-                  "
-                >
-                  <Clock3 :size="15" />更新历史</button
-                ><button @click="exportDocument"><ArrowDownToLine :size="15" />导出 Markdown</button
-                ><button
-                  @click="
-                    menu = false;
-                    store.flush();
-                  "
-                >
-                  <CheckCheck :size="15" />立即保存<span class="menu-shortcut">Ctrl S</span>
-                </button>
-                <div class="menu-divider" />
-                <button
-                  class="danger-text"
-                  :disabled="editorReadonly || !!editing.active || editing.activeBusy"
-                  @click="removeDocument()"
-                >
-                  <Trash2 :size="15" />{{
-                    store.isDemo ? '删除演示文档' : store.isWeb ? '删除在线文档' : '移入回收站'
-                  }}
-                </button>
-              </div>
+                <ArrowRight :size="16" :stroke-width="1.6" />
+              </button>
             </div>
-          </template>
-        </div>
-      </header>
-
-      <KeepAlive v-if="store.tabs.some(tab => tab.graph)">
-        <RelationGraph v-if="workspace && activeId === GRAPH_TAB_ID" :key="`${workspace.id}:${workspace.path}`" />
-      </KeepAlive>
-
-      <CalendarView
-        v-if="workspace && activeId === CALENDAR_TAB_ID"
-        :date="calendarDate"
-        :mode="calendarMode"
-        @select-mode="selectCalendarMode"
-        @visible-month="calendarDate = $event"
-        @visible-year="calendarDate = $event"
-        @visible-timeline="calendarDate = $event"
-        @select-date="showCalendarDay"
-        @select-month="showCalendarMonth"
-        @select-event="showPlanEvent"
-      />
-
-      <ChatView
-        v-if="workspace && activeId === CHAT_TAB_ID"
-        @show-list="sidebarView = 'chat'; sidebar = true"
-      />
-
-      <main
-        v-if="workspace && store.tabs.some(tab => tab.plugins)"
-        v-show="activeId === PLUGINS_TAB_ID"
-        class="plugins-tab-page"
-      >
-        <div class="plugins-tab-content">
-          <p v-if="!store.capabilities.features.objectReferences" class="tool-level-notice">
-            Level 2 已关闭，插件对象和关系暂时只读。可在工作区设置中重新启用。
-          </p>
-          <p v-else-if="workspace.readOnly" class="tool-level-notice">
-            此工作区为只读，无法修改对象和关系。
-          </p>
-          <PluginInstaller @objects="showObjects()" />
-        </div>
-      </main>
-
-      <template v-if="active">
-        <div ref="documentScroll" class="document-layout" @scroll.passive="scheduleActiveHeading">
-          <main class="document-main">
-            <EditorToolbar
-              :features="store.capabilities.features"
-              :context="editorSelection"
-              :source="source"
-              :disabled="editorReadonly"
-              @command="(name, value) => editor?.command(name, value)"
-            >
-              <template v-if="detachedWindow" #trailing>
-                <div class="detached-editor-actions">
+            <nav v-if="pane.activeId !== CALENDAR_TAB_ID" class="breadcrumb" aria-label="当前位置">
+              <button
+                v-if="!sidebar && !(native && !mobile && workspace)"
+                class="icon-button"
+                aria-label="展开侧栏"
+                title="展开侧栏 · Ctrl B"
+                @click="toggleSidebar"
+              >
+                <PanelLeftOpen :size="18" /></button
+              ><span class="breadcrumb-workspace"
+                ><BookOpen :size="14" />{{ workspace?.name ?? 'Tano' }}</span
+              ><template v-if="pane.activeId === GRAPH_TAB_ID"><ChevronRight :size="12" /><GitFork :size="14" /><span class="breadcrumb-current">关系图谱</span></template
+              ><template v-if="pane.activeId === PLUGINS_TAB_ID"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">插件</span></template
+              ><template v-for="view in extensionViews.filter(view => view.id === pane.activeId)" :key="view.id"><ChevronRight :size="12" /><component :is="view.icon" :size="14" /><span class="breadcrumb-current">{{ view.label }}</span></template
+              ><template v-for="(part, index) in (active?.path.split('/') ?? [])" :key="index"
+                ><ChevronRight :size="12" /><component
+                  :is="index === active!.path.split('/').length - 1 ? FileText : FolderOpen"
+                  :size="14"
+                /><span :class="{ 'breadcrumb-current': index === active!.path.split('/').length - 1 }">{{
+                  index === active!.path.split('/').length - 1 ? basename(active!.path).replace(/\.(md|markdown)$/i, '') : part
+                }}</span></template
+              >
+            </nav>
+            <div class="topbar-right">
+              <component  :is="extensions.regions['editing-status']" v-if="pane.id === store.activePaneId && extensions.regions['editing-status']" :actions="extensionActions" />
+              <span v-if="store.isDemo" class="demo-badge"><span />浏览器演示</span
+              ><span v-else-if="store.isWeb" class="local-badge"
+                ><Globe2 :size="14" />{{ workspace?.readOnly ? '只读权限' : '在线工作区' }}</span
+              >
+              <div v-if="pane.activeId === CALENDAR_TAB_ID" class="calendar-topbar-controls" role="group" aria-label="日历导航">
+                <span class="calendar-topbar-period">{{ calendarPeriod }}</span>
+                <button type="button" class="calendar-topbar-today" @click="calendarDate = new Date()">今天</button>
+                <button type="button" class="icon-button" aria-label="上一时段" title="上一时段" @click="moveCalendarPeriod(-1)"><ChevronLeft :size="17" /></button>
+                <button type="button" class="icon-button" aria-label="下一时段" title="下一时段" @click="moveCalendarPeriod(1)"><ChevronRight :size="17" /></button>
+                <div class="calendar-view-picker" @keydown.esc.stop.prevent="calendarModeOpen = false">
                   <button
                     type="button"
-                    class="icon-button"
-                    :class="{ active: source }"
-                    :disabled="!!editing.active || editing.activeBusy"
-                    :aria-label="source ? '返回编辑' : '切换源码模式'"
-                    :aria-pressed="source"
-                    :title="source ? '返回编辑' : '切换源码模式'"
-                    @click="source = !source"
-                  ><Code2 :size="17" /></button>
+                    class="calendar-topbar-mode"
+                    aria-label="切换日历视图"
+                    title="Ctrl + 滚轮：切换日历视图"
+                    aria-haspopup="menu"
+                    :aria-expanded="calendarModeOpen"
+                    @click="calendarModeOpen = !calendarModeOpen"
+                  >{{ calendarModeLabel }}<ChevronDown :size="14" /></button>
+                  <div v-if="calendarModeOpen" class="calendar-view-menu" role="menu" aria-label="日历视图">
+                    <button
+                      v-for="option in calendarModeOptions"
+                      :key="option.mode"
+                      type="button"
+                      role="menuitemradio"
+                      :aria-checked="calendarMode === option.mode"
+                      @click="selectCalendarMode(option.mode)"
+                    >{{ option.label }}<Check v-if="calendarMode === option.mode" :size="15" /></button>
+                  </div>
+                </div>
+                <button type="button" class="calendar-topbar-events" title="查看和管理事件" @click="managePlanEvents"><CalendarDays :size="15" />管理事件</button>
+              </div>
+              <template v-if="active">
+                <button
+                  type="button"
+                  class="icon-button source-mode-button"
+                  :class="{ active: paneSource(pane.activeId) }"
+                  :disabled="editing.isManaging(pane.activeId) || (pane.id === store.activePaneId && editing.activeBusy)"
+                  :aria-label="paneSource(pane.activeId) ? '返回编辑' : '切换源码模式'"
+                  :aria-pressed="paneSource(pane.activeId)"
+                  :title="
+                    editing.isManaging(pane.activeId)
+                      ? '当前编辑扩展不支持切换源码模式'
+                      : paneSource(pane.activeId)
+                        ? '返回编辑'
+                        : '切换源码模式'
+                  "
+                  @click="sourceModes[pane.activeId] = !paneSource(pane.activeId)"
+                >
+                  <Code2 :size="17" />
+                </button>
+                <button
+                  v-if="localNative"
+                  class="icon-button"
+                  aria-label="导入图片或附件"
+                  title="导入图片或附件；也可直接粘贴图片"
+                  :disabled="paneReadonly(active!) || attachmentBusy"
+                  @click="pickFilesFor(pane.id, active!)"
+                >
+                  <Paperclip :size="17" />
+                </button>
+                <div class="menu-wrap">
                   <button
-                    v-if="localNative"
-                    type="button"
                     class="icon-button"
-                    aria-label="导入图片或附件"
-                    title="导入图片或附件"
-                    :disabled="editorReadonly || attachmentBusy"
-                    @click="fileInput?.click()"
-                  ><Paperclip :size="17" /></button>
-                  <input ref="fileInput" type="file" multiple hidden @change="pickedFiles" />
+                    aria-label="文档操作"
+                    :aria-expanded="menu && pane.id === store.activePaneId"
+                    @click="toggleDocumentMenu"
+                    @keydown="documentMenuTriggerKeydown"
+                  >
+                    <MoreHorizontal :size="19" />
+                  </button>
+                  <div
+                    v-if="menu && pane.id === store.activePaneId"
+                    ref="documentMenuElement"
+                    class="dropdown compact-action-menu document-dropdown"
+                    @keydown="documentMenuKeydown"
+                  >
+                    <button
+                      type="button"
+                      class="page-toggle-menu-item"
+                      role="switch"
+                      :aria-checked="pageLocked"
+                      :title="pageLocked ? '退出阅读模式' : '锁定后进入阅读模式'"
+                      @click="togglePageLock"
+                    >
+                      <LockKeyhole :size="15" />锁定页面<span
+                        class="menu-switch"
+                        :class="{ on: pageLocked }"
+                        aria-hidden="true"
+                        ><span
+                      /></span>
+                    </button>
+                    <button
+                      type="button"
+                      class="page-toggle-menu-item"
+                      role="switch"
+                      :aria-checked="!limitPageWidth"
+                      :disabled="!pageWidthWritable"
+                      title="切换页面内容宽度"
+                      @click="setLimitPageWidth(!limitPageWidth)"
+                    >
+                      <MoveHorizontal :size="15" />全宽<span
+                        class="menu-switch"
+                        :class="{ on: !limitPageWidth }"
+                        aria-hidden="true"
+                        ><span
+                      /></span>
+                    </button>
+                    <div class="menu-divider" />
+                    <button
+                      type="button"
+                      :disabled="editorReadonly || !documentUndoAvailable"
+                      @click="undoDocument"
+                    >
+                      <Undo2 :size="15" />撤销<span class="menu-shortcut">Ctrl Z</span>
+                    </button>
+                    <button
+                      type="button"
+                      :disabled="editorReadonly || !documentRedoAvailable"
+                      @click="redoDocument"
+                    >
+                      <Redo2 :size="15" />重做<span class="menu-shortcut">Ctrl Y</span>
+                    </button>
+                    <button
+                      :disabled="editorReadonly || editing.isManaging(pane.activeId) || (pane.id === store.activePaneId && editing.activeBusy)"
+                      @click="showModal('rename')"
+                    >
+                      <Pencil :size="15" />重命名文档</button
+                    ><button :disabled="workspace?.readOnly || busy" @click="showModal('saveAs')">
+                      <FileText :size="15" />另存副本</button
+                    ><button
+                      @click="
+                        menu = false;
+                        historyPage = 'versions';
+                        historyPanel = true;
+                      "
+                    >
+                      <Archive :size="15" />版本历史<span class="menu-beta">Beta</span></button
+                    ><button
+                      @click="
+                        menu = false;
+                        historyPage = 'updates';
+                        historyPanel = true;
+                      "
+                    >
+                      <Clock3 :size="15" />更新历史</button
+                    ><button @click="exportDocument"><ArrowDownToLine :size="15" />导出 Markdown</button
+                    ><button
+                      @click="
+                        menu = false;
+                        store.flush();
+                      "
+                    >
+                      <CheckCheck :size="15" />立即保存<span class="menu-shortcut">Ctrl S</span>
+                    </button>
+                    <div class="menu-divider" />
+                    <button
+                      class="danger-text"
+                      :disabled="editorReadonly || editing.isManaging(pane.activeId) || (pane.id === store.activePaneId && editing.activeBusy)"
+                      @click="removeDocument()"
+                    >
+                      <Trash2 :size="15" />{{
+                        store.isDemo ? '删除演示文档' : store.isWeb ? '删除在线文档' : '移入回收站'
+                      }}
+                    </button>
+                  </div>
                 </div>
               </template>
-            </EditorToolbar>
+            </div>
+          </header>
+          <KeepAlive v-if="pane.tabs.includes(GRAPH_TAB_ID)">
+            <RelationGraph v-if="workspace && pane.activeId === GRAPH_TAB_ID" :key="`${workspace.id}:${workspace.path}`" />
+          </KeepAlive>
 
-            <component  :is="extensions.regions['editing-panel']" v-if="extensions.regions['editing-panel']" :actions="extensionActions" />
-            <div v-if="active.conflict" class="conflict-banner" role="alert">
-              <AlertTriangle :size="19" />
-              <div>
-                <strong>这一页有两份新的想法</strong>
-                <p>外部修改与你的修改重叠。你的内容已保存为 conflict 副本，原文件保留外部版本。</p>
-                <button @click="store.resolveConflict(active!, true)">
-                  打开我的副本 <ArrowUpRight :size="14" /></button
-                ><button @click="store.resolveConflict(active!, false)">载入磁盘版本</button>
-                <button
-                  @click="
-                    selectedDiff = {
-                      title: active.path,
-                      before: active.conflict.disk.content,
-                      after: active.content,
-                      beforeLabel: '磁盘版本',
-                      afterLabel: '我的副本',
-                    }
-                  "
-                >
-                  比较两个版本
-                </button>
-              </div>
+          <CalendarView
+            v-if="workspace && pane.activeId === CALENDAR_TAB_ID"
+            :date="calendarDate"
+            :mode="calendarMode"
+            @select-mode="selectCalendarMode"
+            @visible-month="calendarDate = $event"
+            @visible-year="calendarDate = $event"
+            @visible-timeline="calendarDate = $event"
+            @select-date="showCalendarDay"
+            @select-month="showCalendarMonth"
+            @select-event="showPlanEvent"
+          />
+
+          <template v-for="view in extensionViews" :key="view.id">
+            <component v-if="pane.activeId === view.id" :is="view.component" :actions="viewActions[view.id]" />
+          </template>
+
+          <main
+            v-if="workspace && pane.tabs.includes(PLUGINS_TAB_ID)"
+            v-show="pane.activeId === PLUGINS_TAB_ID"
+            class="plugins-tab-page"
+          >
+            <div class="plugins-tab-content">
+              <p v-if="!store.capabilities.features.objectReferences" class="tool-level-notice">
+                Level 2 已关闭，插件对象和关系暂时只读。可在工作区设置中重新启用。
+              </p>
+              <p v-else-if="workspace.readOnly" class="tool-level-notice">
+                此工作区为只读，无法修改对象和关系。
+              </p>
+              <PluginInstaller @objects="showObjects()" />
             </div>
-            <div v-else-if="active.missing || active.error" class="conflict-banner" role="alert">
-              <AlertTriangle :size="19" />
-              <div>
-                <strong>{{
-                  active.missing ? '文件已在工作文件夹中移除' : '这次保存没有完成'
-                }}</strong>
-                <p>{{ active.error ?? '编辑器中的内容仍然保留，你可以把它另存为一个新文档。' }}</p>
-                <button @click="showModal('saveAs')">另存副本 <ArrowUpRight :size="14" /></button
-                ><button v-if="!active.missing" @click="store.flush()">重试保存</button>
-              </div>
-            </div>
-            <div
-              ref="editorScroll"
-              class="editor-scroll"
-              :style="{
-                '--tano-prose-font-family': selectedVisualFontFamily,
-                '--tano-prose-font-size': `${visualFontSize}px`,
-                '--tano-source-font-size': `${sourceFontSize}px`,
-              }"
-              :class="{
-                'source-view': source,
-                'conflicted-editor': active.conflict,
-                'width-unlimited': !limitPageWidth,
-              }"
-              tabindex="-1"
-              @mousedown.self="!source && editor?.focusTrailingParagraph($event)"
-              @contextmenu="openPageContextMenu"
-            >
-              <DocumentTitle
-                v-if="workspace && showPageTitle"
-                :key="`${workspace.id}:${active.id}`"
-                :workspace-id="workspace.id"
-                :document-id="active.id"
-                :path="active.path"
-                :files="workspace.files"
-                :readonly="
-                  editorReadonly ||
-                  active.missing ||
-                  !!editing.active ||
-                  editing.activeBusy
-                "
-                :rename="renameDocumentTitle"
-                @enter="insertBlockBelowTitle"
-              />
-              <SourceEditor
-                v-if="source"
-                :key="active.id"
-                ref="sourceEditor"
-                :model-value="active.content"
-                :readonly="editorReadonly"
-                :local-native="localNative"
-                @update:model-value="store.edit"
-                @files="
-                  (files, requireImage, position) =>
-                    insertSourceFiles(files, position, requireImage)
-                "
-              />
-              <MarkdownEditor
-                v-else
-                :key="`${active.id}:${editing.active?.key ?? 'local'}`"
-                ref="editor"
-                :document-id="active.id"
-                :readonly="editorReadonly"
-                :open-links-on-tap="mobile"
-                :reveal-markdown="revealMarkdown"
-                :capabilities="store.capabilities"
-                :reference-targets="store.referenceTargets"
-                :preferences="editorPreferences"
-                :extension="editing.active?.extension"
-                :model-value="active.content"
-                :resolve-image="resolveImage"
-                :resource-revision="resourceRevision"
-                :import-file="localNative ? uploadFile : undefined"
-                @update:model-value="store.edit"
-                @error="store.report"
-                @open-link="openDocumentLink"
-                @open-wiki-link="openWikiLink"
-                @open-reference="openReference"
-                @edit-source="source = true"
-                @selection-change="editorSelection = $event"
-              />
-            </div>
-            <Teleport to="body">
-              <div
-                v-if="pageContextMenu"
-                ref="pageContextMenuElement"
-                class="dropdown compact-action-menu page-context-menu"
-                role="menu"
-                aria-label="页面显示选项"
-                :style="{ left: `${pageContextMenu.x}px`, top: `${pageContextMenu.y}px` }"
-                @keydown="pageContextKeydown"
-              >
-                <button
-                  type="button"
-                  role="menuitemcheckbox"
-                  :aria-checked="limitPageWidth"
-                  :disabled="!pageWidthWritable"
-                  @click="togglePageOption('width')"
-                >
-                  <Ruler :size="15" />限制行宽<Check
-                    v-if="limitPageWidth"
-                    class="page-context-check"
-                    :size="14"
-                  />
-                </button>
-                <button
-                  type="button"
-                  role="menuitemcheckbox"
-                  :aria-checked="showPageTitle"
-                  @click="togglePageOption('title')"
-                >
-                  <Heading1 :size="15" />页面内标题<Check
-                    v-if="showPageTitle"
-                    class="page-context-check"
-                    :size="14"
-                  />
-                </button>
-              </div>
-            </Teleport>
           </main>
-        </div>
 
-        <aside
-          v-if="!detachedWindow"
-          class="inspector"
-          :class="{
-            'inspector-outline': panel === 'outline',
-            'inspector-hover-outline':
-              panel === 'outline' && hoverOutline && !outlinePinned && !outlineSearchOpen,
-            'inspector-activity': panel === 'activity',
-          }"
-          :aria-label="panel === 'outline' ? '文档目录' : '文档动态'"
-        >
-          <div class="inspector-surface">
-            <div v-if="panel === 'activity'" class="inspector-tabs">
-              <button @click="panel = 'outline'"><List :size="14" />大纲</button
-              ><button class="active" @click="panel = 'activity'">
-                <History :size="14" />动态
-              </button>
-            </div>
-            <div v-if="panel === 'outline'" class="outline-controls">
-              <span>文档大纲</span>
-              <button
-                class="outline-control"
-                type="button"
-                aria-label="搜索大纲标题"
-                title="搜索大纲标题"
-                :aria-expanded="outlineSearchOpen"
-                @click="toggleOutlineSearch"
-              >
-                <Search :size="15" />
-              </button>
-              <button
-                v-if="hoverOutline"
-                class="outline-control"
-                :class="{ active: outlinePinned }"
-                type="button"
-                :aria-label="outlinePinned ? '取消固定大纲' : '固定大纲'"
-                :title="outlinePinned ? '取消固定大纲' : '固定大纲'"
-                :aria-pressed="outlinePinned"
-                @click="toggleOutlinePin"
-              >
-                <Pin :size="15" :fill="outlinePinned ? 'currentColor' : 'none'" />
-              </button>
-            </div>
-            <div v-if="panel === 'outline' && outlineSearchOpen" class="outline-search">
-              <Search :size="14" aria-hidden="true" />
-              <input
-                ref="outlineSearchInput"
-                v-model="outlineSearch"
-                type="search"
-                aria-label="搜索当前文档标题"
-                placeholder="搜索标题"
-                autocomplete="off"
-                @keydown.enter="visibleOutline[0] && jumpToHeading(visibleOutline[0].index)"
-                @keydown.esc.stop.prevent="toggleOutlineSearch"
-              />
-            </div>
-            <nav v-if="panel === 'outline'" class="outline" aria-label="文档大纲">
-              <button
-                v-for="{ heading, index } in visibleOutline"
-                :key="index"
-                :class="{
-                  'outline-active': activeHeading === index,
-                }"
-                :style="{
-                  '--outline-indent': `${Math.max(0, heading.level - 2) * 12}px`,
-                  '--outline-marker-width': `${Math.max(9, 20 - heading.level * 2)}px`,
-                }"
-                :aria-label="`跳转到${heading.text}`"
-                :aria-current="activeHeading === index ? 'location' : undefined"
-                @click="jumpToHeading(index)"
-              >
-                <span class="outline-marker" aria-hidden="true" />
-                <span class="outline-text">{{ heading.text }}</span>
-              </button>
-              <p v-if="!outline.length" class="panel-empty">
-                <span class="outline-empty-marker" aria-hidden="true" />
-                写下一个标题，<br />让思路有迹可循。
-              </p>
-              <p v-else-if="!visibleOutline.length" class="outline-no-results" role="status">
-                没有匹配的标题
-              </p>
-            </nav>
-            <div v-else class="activity-list">
-              <p class="activity-explainer">这个会话中的文件变化。外部编辑者身份暂不可识别。</p>
-              <button v-if="localNative" class="secondary-button" @click="agentPanel = true">
-                <Bot :size="14" />工作区指引与 MCP 活动
-              </button>
-              <div v-for="item in activities" :key="item.id" class="activity-item">
-                <span class="activity-icon" :class="item.kind"
-                  ><component
-                    :is="
-                      item.kind === 'conflict'
-                        ? AlertTriangle
-                        : item.kind === 'external'
-                          ? RefreshCw
-                          : item.kind === 'save'
-                            ? Check
-                            : FileText
+          <template v-if="active">
+            <div :key="active.id" :ref="el => setPaneElement('scroll', pane.id, el)" class="document-layout" @scroll.passive="scheduleActiveHeading">
+              <main class="document-main">
+                <EditorToolbar
+                  :features="store.capabilities.features"
+                  :context="paneSelections[pane.id] ?? defaultSelectionContext"
+                  :source="paneSource(pane.activeId)"
+                  :disabled="paneReadonly(active!)"
+                  @command="(name, value) => paneEditors.get(pane.id)?.command(name, value)"
+                >
+                  <template v-if="detachedWindow" #trailing>
+                    <div class="detached-editor-actions">
+                      <button
+                        type="button"
+                        class="icon-button"
+                        :class="{ active: paneSource(pane.activeId) }"
+                        :disabled="!!editing.active || editing.activeBusy"
+                        :aria-label="paneSource(pane.activeId) ? '返回编辑' : '切换源码模式'"
+                        :aria-pressed="paneSource(pane.activeId)"
+                        :title="paneSource(pane.activeId) ? '返回编辑' : '切换源码模式'"
+                        @click="sourceModes[pane.activeId] = !paneSource(pane.activeId)"
+                      ><Code2 :size="17" /></button>
+                      <button
+                        v-if="localNative"
+                        type="button"
+                        class="icon-button"
+                        aria-label="导入图片或附件"
+                        title="导入图片或附件"
+                        :disabled="paneReadonly(active!) || attachmentBusy"
+                        @click="pickFilesFor(pane.id, active!)"
+                      ><Paperclip :size="17" /></button>
+                    </div>
+                  </template>
+                </EditorToolbar>
+
+                <component  :is="extensions.regions['editing-panel']" v-if="pane.id === store.activePaneId && extensions.regions['editing-panel']" :actions="extensionActions" />
+                <div v-if="active.conflict" class="conflict-banner" role="alert">
+                  <AlertTriangle :size="19" />
+                  <div>
+                    <strong>这一页有两份新的想法</strong>
+                    <p>外部修改与你的修改重叠。你的内容已保存为 conflict 副本，原文件保留外部版本。</p>
+                    <button @click="store.resolveConflict(active!, true)">
+                      打开我的副本 <ArrowUpRight :size="14" /></button
+                    ><button @click="store.resolveConflict(active!, false)">载入磁盘版本</button>
+                    <button
+                      @click="
+                        selectedDiff = {
+                          title: active.path,
+                          before: active.conflict.disk.content,
+                          after: active.content,
+                          beforeLabel: '磁盘版本',
+                          afterLabel: '我的副本',
+                        }
+                      "
+                    >
+                      比较两个版本
+                    </button>
+                  </div>
+                </div>
+                <div v-else-if="active.missing || active.error" class="conflict-banner" role="alert">
+                  <AlertTriangle :size="19" />
+                  <div>
+                    <strong>{{
+                      active.missing ? '文件已在工作文件夹中移除' : '这次保存没有完成'
+                    }}</strong>
+                    <p>{{ active.error ?? '编辑器中的内容仍然保留，你可以把它另存为一个新文档。' }}</p>
+                    <button @click="showModal('saveAs')">另存副本 <ArrowUpRight :size="14" /></button
+                    ><button v-if="!active.missing" @click="store.flush()">重试保存</button>
+                  </div>
+                </div>
+                <div
+                  :ref="el => setPaneElement('editor', pane.id, el)"
+                  class="editor-scroll"
+                  :style="{
+                    '--tano-prose-font-family': selectedVisualFontFamily,
+                    '--tano-prose-font-size': `${visualFontSize}px`,
+                    '--tano-source-font-size': `${sourceFontSize}px`,
+                  }"
+                  :class="{
+                    'source-view': paneSource(pane.activeId),
+                    'conflicted-editor': active.conflict,
+                    'width-unlimited': !limitPageWidth,
+                  }"
+                  tabindex="-1"
+                  @mousedown.self="!paneSource(pane.activeId) && paneEditors.get(pane.id)?.focusTrailingParagraph($event)"
+                  @contextmenu="openPageContextMenu"
+                >
+                  <DocumentTitle
+                    v-if="workspace && showPageTitle"
+                    :key="`${workspace.id}:${active.id}`"
+                    :workspace-id="workspace.id"
+                    :document-id="active.id"
+                    :path="active.path"
+                    :files="workspace.files"
+                    :readonly="
+                      paneReadonly(active!) ||
+                      active.missing ||
+                      !!editing.active ||
+                      editing.activeBusy
                     "
-                    :size="13"
-                /></span>
-                <div>
-                  <strong>{{ item.label }}</strong>
-                  <p>{{ item.detail }}</p>
-                  <button
-                    v-if="item.change"
-                    class="activity-diff-button"
-                    @click="selectedDiff = { title: item.detail, ...item.change }"
-                  >
-                    查看差异
+                    :rename="renameDocumentTitle"
+                    @enter="insertBlockBelowTitle"
+                  />
+                  <SourceEditor
+                    v-if="paneSource(pane.activeId)"
+                    :key="active.id"
+                    :ref="el => setPaneElement('source', pane.id, el)"
+                    :model-value="active.content"
+                    :readonly="paneReadonly(active!)"
+                    :local-native="localNative"
+                    @update:model-value="store.editDocument(active!.id, $event)"
+                    @files="
+                      (files, requireImage, position) =>
+                        insertSourceFiles(files, position, requireImage, active)
+                    "
+                  />
+                  <MarkdownEditor
+                    v-else
+                    :key="`${active.id}:${active.id === store.activeId ? editing.active?.key ?? 'local' : 'local'}`"
+                    :ref="el => setPaneEditor(pane.id, el)"
+                    :document-id="active.id"
+                    :readonly="paneReadonly(active!)"
+                    :open-links-on-tap="mobile"
+                    :reveal-markdown="revealMarkdown"
+                    :capabilities="store.capabilities"
+                    :reference-targets="store.referenceTargets"
+                    :preferences="editorPreferences"
+                    :extension="active.id === store.activeId ? editing.active?.extension : undefined"
+                    :model-value="active.content"
+                    :resolve-image="reference => localNative ? imageUrl(workspace, active!.path, reference) : safeRemoteImage(reference)"
+                    :resource-revision="resourceRevision"
+                    :import-file="localNative ? (file, image) => uploadFile(file, image, active) : undefined"
+                    @update:model-value="store.editDocument(active!.id, $event)"
+                    @error="store.report"
+                    @open-link="openDocumentLink"
+                    @open-wiki-link="openWikiLink"
+                    @open-reference="openReference"
+                    @edit-source="sourceModes[pane.activeId] = true"
+                    @selection-change="paneSelections[pane.id] = $event"
+                  />
+                </div>
+
+              </main>
+            </div>
+
+          </template>
+
+          <main v-else-if="workspace && pane.activeId.startsWith('blank:')" class="blank-tab-page">
+            <div class="blank-tab-actions">
+              <button :disabled="workspace.readOnly" @click="createNewDocument">
+                创建新文件 <span>Ctrl + N</span>
+              </button>
+              <button @click="showModal('newTab')">打开文件 <span>Ctrl + O</span></button>
+              <button @click="store.close(pane.activeId)">关闭标签页</button>
+            </div>
+          </main>
+
+          <main v-else-if="workspace && pane.activeId !== GRAPH_TAB_ID && pane.activeId !== PLUGINS_TAB_ID && pane.activeId !== CALENDAR_TAB_ID && !extensionViews.find(view => view.id === pane.activeId)" class="workspace-no-tabs">
+            <div class="workspace-no-tabs-content">
+              <FileText :size="32" :stroke-width="1.4" aria-hidden="true" />
+              <h1>当前没有打开的文档</h1>
+              <p>工作区已打开。创建新文件，或打开工作区中的文档继续。</p>
+              <div class="workspace-no-tabs-actions">
+                <button
+                  class="primary-button"
+                  :disabled="busy || workspace.readOnly || updateLock"
+                  @click="createNewDocument"
+                >
+                  <Plus :size="17" />创建新文件 <kbd>Ctrl + N</kbd>
+                </button>
+                <button class="secondary-button" @click="showModal('newTab')">
+                  <FolderOpen :size="17" />打开文件 <kbd>Ctrl + O</kbd>
+                </button>
+              </div>
+            </div>
+          </main>
+
+            <aside
+              v-if="active && !detachedWindow && pane.id === store.activePaneId"
+              class="inspector"
+              :class="{
+                'inspector-outline': panel === 'outline',
+                'inspector-hover-outline':
+                  panel === 'outline' && hoverOutline && !outlinePinned && !outlineSearchOpen,
+                'inspector-activity': panel === 'activity',
+              }"
+              :aria-label="panel === 'outline' ? '文档目录' : '文档动态'"
+            >
+              <div class="inspector-surface">
+                <div v-if="panel === 'activity'" class="inspector-tabs">
+                  <button @click="panel = 'outline'"><List :size="14" />大纲</button
+                  ><button class="active" @click="panel = 'activity'">
+                    <History :size="14" />动态
                   </button>
-                  <time>{{
-                    new Date(item.time).toLocaleTimeString('zh-CN', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })
-                  }}</time>
+                </div>
+                <div v-if="panel === 'outline'" class="outline-controls">
+                  <span>文档大纲</span>
+                  <button
+                    class="outline-control"
+                    type="button"
+                    aria-label="搜索大纲标题"
+                    title="搜索大纲标题"
+                    :aria-expanded="outlineSearchOpen"
+                    @click="toggleOutlineSearch"
+                  >
+                    <Search :size="15" />
+                  </button>
+                  <button
+                    v-if="hoverOutline"
+                    class="outline-control"
+                    :class="{ active: outlinePinned }"
+                    type="button"
+                    :aria-label="outlinePinned ? '取消固定大纲' : '固定大纲'"
+                    :title="outlinePinned ? '取消固定大纲' : '固定大纲'"
+                    :aria-pressed="outlinePinned"
+                    @click="toggleOutlinePin"
+                  >
+                    <Pin :size="15" :fill="outlinePinned ? 'currentColor' : 'none'" />
+                  </button>
+                </div>
+                <div v-if="panel === 'outline' && outlineSearchOpen" class="outline-search">
+                  <Search :size="14" aria-hidden="true" />
+                  <input
+                    ref="outlineSearchInput"
+                    v-model="outlineSearch"
+                    type="search"
+                    aria-label="搜索当前文档标题"
+                    placeholder="搜索标题"
+                    autocomplete="off"
+                    @keydown.enter="visibleOutline[0] && jumpToHeading(visibleOutline[0].index)"
+                    @keydown.esc.stop.prevent="toggleOutlineSearch"
+                  />
+                </div>
+                <nav v-if="panel === 'outline'" class="outline" aria-label="文档大纲">
+                  <button
+                    v-for="{ heading, index } in visibleOutline"
+                    :key="index"
+                    :class="{
+                      'outline-active': activeHeading === index,
+                    }"
+                    :style="{
+                      '--outline-indent': `${Math.max(0, heading.level - 2) * 12}px`,
+                      '--outline-marker-width': `${Math.max(9, 20 - heading.level * 2)}px`,
+                    }"
+                    :aria-label="`跳转到${heading.text}`"
+                    :aria-current="activeHeading === index ? 'location' : undefined"
+                    @click="jumpToHeading(index)"
+                  >
+                    <span class="outline-marker" aria-hidden="true" />
+                    <span class="outline-text">{{ heading.text }}</span>
+                  </button>
+                  <p v-if="!outline.length" class="panel-empty">
+                    <span class="outline-empty-marker" aria-hidden="true" />
+                    写下一个标题，<br />让思路有迹可循。
+                  </p>
+                  <p v-else-if="!visibleOutline.length" class="outline-no-results" role="status">
+                    没有匹配的标题
+                  </p>
+                </nav>
+                <div v-else class="activity-list">
+                  <p class="activity-explainer">这个会话中的文件变化。外部编辑者身份暂不可识别。</p>
+                  <button v-if="localNative" class="secondary-button" @click="agentPanel = true">
+                    <Bot :size="14" />工作区指引与 MCP 活动
+                  </button>
+                  <div v-for="item in activities" :key="item.id" class="activity-item">
+                    <span class="activity-icon" :class="item.kind"
+                      ><component
+                        :is="
+                          item.kind === 'conflict'
+                            ? AlertTriangle
+                            : item.kind === 'external'
+                              ? RefreshCw
+                              : item.kind === 'save'
+                                ? Check
+                                : FileText
+                        "
+                        :size="13"
+                    /></span>
+                    <div>
+                      <strong>{{ item.label }}</strong>
+                      <p>{{ item.detail }}</p>
+                      <button
+                        v-if="item.change"
+                        class="activity-diff-button"
+                        @click="selectedDiff = { title: item.detail, ...item.change }"
+                      >
+                        查看差异
+                      </button>
+                      <time>{{
+                        new Date(item.time).toLocaleTimeString('zh-CN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      }}</time>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="panel === 'activity'" class="inspector-footer">
+                  <span class="live-dot" />{{
+                    store.isDemo
+                      ? '浏览器本地存储'
+                      : store.isWeb
+                        ? '定期检查服务器修改'
+                        : '正在监听工作文件夹'
+                  }}
                 </div>
               </div>
-            </div>
-            <div v-if="panel === 'activity'" class="inspector-footer">
-              <span class="live-dot" />{{
-                store.isDemo
-                  ? '浏览器本地存储'
-                  : store.isWeb
-                    ? '定期检查服务器修改'
-                    : '正在监听工作文件夹'
-              }}
-            </div>
-          </div>
-        </aside>
-      </template>
-
-      <main v-else-if="workspace && activeId.startsWith('blank:')" class="blank-tab-page">
-        <div class="blank-tab-actions">
-          <button :disabled="workspace.readOnly" @click="createNewDocument">
-            创建新文件 <span>Ctrl + N</span>
-          </button>
-          <button @click="showModal('newTab')">打开文件 <span>Ctrl + O</span></button>
-          <button @click="store.close(activeId)">关闭标签页</button>
-        </div>
-      </main>
-
-      <main v-else-if="workspace && activeId !== GRAPH_TAB_ID && activeId !== PLUGINS_TAB_ID && activeId !== CALENDAR_TAB_ID && activeId !== CHAT_TAB_ID" class="workspace-no-tabs">
-        <div class="workspace-no-tabs-content">
-          <FileText :size="32" :stroke-width="1.4" aria-hidden="true" />
-          <h1>当前没有打开的文档</h1>
-          <p>工作区已打开。创建新文件，或打开工作区中的文档继续。</p>
-          <div class="workspace-no-tabs-actions">
-            <button
-              class="primary-button"
-              :disabled="busy || workspace.readOnly || updateLock"
-              @click="createNewDocument"
-            >
-              <Plus :size="17" />创建新文件 <kbd>Ctrl + N</kbd>
-            </button>
-            <button class="secondary-button" @click="showModal('newTab')">
-              <FolderOpen :size="17" />打开文件 <kbd>Ctrl + O</kbd>
-            </button>
-          </div>
-        </div>
-      </main>
-
+            </aside>
+        </template>
+      </WorkspacePanes>
       <main v-else-if="!workspace" class="welcome">
         <div class="welcome-mark"><img src="/favicon-green.svg?v=3" alt="Tano 标志" /></div>
         <h1>
@@ -3374,6 +3411,45 @@ watch(activeId, () => {
           </button>
         </div>
       </main>
+
+
+            <Teleport to="body">
+              <div
+                v-if="pageContextMenu"
+                ref="pageContextMenuElement"
+                class="dropdown compact-action-menu page-context-menu"
+                role="menu"
+                aria-label="页面显示选项"
+                :style="{ left: `${pageContextMenu.x}px`, top: `${pageContextMenu.y}px` }"
+                @keydown="pageContextKeydown"
+              >
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  :aria-checked="limitPageWidth"
+                  :disabled="!pageWidthWritable"
+                  @click="togglePageOption('width')"
+                >
+                  <Ruler :size="15" />限制行宽<Check
+                    v-if="limitPageWidth"
+                    class="page-context-check"
+                    :size="14"
+                  />
+                </button>
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  :aria-checked="showPageTitle"
+                  @click="togglePageOption('title')"
+                >
+                  <Heading1 :size="15" />页面内标题<Check
+                    v-if="showPageTitle"
+                    class="page-context-check"
+                    :size="14"
+                  />
+                </button>
+              </div>
+            </Teleport>
     </div>
 
     <component  :is="extensions.regions['sync-dialog']" v-if="extensions.regions['sync-dialog']" :actions="extensionActions" />
@@ -3441,7 +3517,9 @@ watch(activeId, () => {
       @import-asset="assetInput?.click()"
     />
     <PersonalPlanDialog v-if="personalHome" :date="calendarDate" @close="personalHome = false" @select-date="calendarDate = $event" @select-event="showPlanEvent" />
-    <ChatCreateDialog v-if="chat.dialog" :key="chat.dialog" @created="openChatConversation" />
+    <template v-for="view in extensionViews" :key="view.id">
+      <component :is="view.overlay" v-if="workspace && view.overlay" :actions="viewActions[view.id]" />
+    </template>
     <SettingsPanel
       v-if="settingsPanel"
       :workspace="workspace"

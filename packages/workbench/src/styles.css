@@ -702,6 +702,7 @@ button:hover {
   gap: 15px;
 }
 .workspace-tabbar {
+  display: flex;
   height: 36px;
   flex-shrink: 0;
   background: var(--sidebar);
@@ -1699,6 +1700,7 @@ button:hover {
 }
 .tano-prose {
   outline: none;
+  white-space: pre-wrap;
   color: var(--text);
   font-family: var(
     --tano-prose-font-family,

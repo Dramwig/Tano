@@ -6,4 +6,4 @@ Tano's desktop application, browser demo, local MCP server, and shared workspace
 
 MIT permits use, modification, and redistribution when the copyright and license notice are retained. Third-party dependencies and assets keep their own licenses; consult the [third-party notices](../THIRD_PARTY_NOTICES.md) and the relevant package license files before distributing a build.
 
-This repository provides local file workflows and optional desktop connections to external calendar and task services. The browser demo stores its data in the browser, while the desktop app works with real workspace folders. Hosted workspace synchronization and collaboration remain outside this repository's scope.
+This repository provides local file workflows and optional desktop connections to external calendar and task services. The browser demo stores its data in the browser, while the desktop app works with real workspace folders. Account-based chat (including its UI, state, and preview), hosted workspace synchronization, and collaboration remain outside this repository's scope. Product views can be injected through the [Cloud Extension API](cloud-extension.md).

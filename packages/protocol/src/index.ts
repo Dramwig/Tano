@@ -115,6 +115,23 @@ export interface WorkspaceSession {
   activeId: string;
   documents: SessionDocument[];
   tabs?: string[];
+  layout?: WorkspaceLayout;
 }
+
+export interface WorkspacePane {
+  kind: 'pane';
+  id: string;
+  tabs: string[];
+  activeId: string;
+}
+export interface WorkspaceSplit {
+  kind: 'split';
+  id: string;
+  axis: 'horizontal' | 'vertical';
+  ratio: number;
+  first: WorkspaceLayout;
+  second: WorkspaceLayout;
+}
+export type WorkspaceLayout = WorkspacePane | WorkspaceSplit;
 
 export * from './paths';

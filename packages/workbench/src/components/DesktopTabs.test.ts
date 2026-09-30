@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { createApp, h, nextTick, reactive } from 'vue';
+import { createApp, h, markRaw, nextTick, reactive } from 'vue';
 import type { App } from 'vue';
 import DesktopTabs from './DesktopTabs.vue';
-import { TAB_DOCK_PROBE, tabDragMetaType } from '../tab-docking';
+import { TAB_DOCK_PROBE, TAB_DRAG_FINISHED, tabDragMetaType } from '../tab-docking';
 
 const fixture = vi.hoisted(() => ({ store: null as any }));
 const nativeWindow = vi.hoisted(() => ({
@@ -101,6 +101,26 @@ beforeEach(() => {
   }
 });
 
+it('renders extension labels and icons and prevents detaching window-local views', async () => {
+  app.unmount();
+  fixture.store.tabs.push({
+    id: 'view:sample', path: '', blank: false,
+    view: { id: 'view:sample', label: '扩展页面', icon: markRaw({ render: () => h('svg', { 'data-extension-icon': '' }) }) },
+  });
+  fixture.store.activeId = 'view:sample';
+  app = createApp(DesktopTabs, { detachable: true });
+  app.mount(root.querySelector('.desktop-window-tab-slot')!);
+  const tab = root.querySelector<HTMLElement>('[role="tab"][title="扩展页面"]')!;
+  expect(tab.getAttribute('aria-selected')).toBe('true');
+  expect(tab.querySelector('[data-extension-icon]')).not.toBeNull();
+  tab.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await nextTick();
+  const detach = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(button => button.textContent?.includes('在新窗口中打开'))!;
+  expect(detach.disabled).toBe(true);
+  root.querySelector<HTMLButtonElement>('[aria-label="关闭 扩展页面"]')!.click();
+  expect(fixture.store.close).toHaveBeenCalledWith('view:sample');
+});
+
 it('marks an incoming tab position with a line without reserving space and answers a cross-window drop probe', async () => {
   app.unmount();
   app = createApp(DesktopTabs, { detachable: true });
@@ -164,6 +184,59 @@ afterEach(() => {
   root.remove();
   document.body.querySelectorAll('.desktop-tab-native-drag-image').forEach((image) => image.remove());
   vi.unstubAllGlobals();
+  delete (document as Partial<Document>).elementFromPoint;
+});
+
+it('previews foreign tabs in the hovered pane only and retains the released destination while saving', async () => {
+  app.unmount();
+  fixture.store.panes = [
+    { id: 'left', tabs: ['a', 'b'], activeId: 'a' },
+    { id: 'right', tabs: ['c'], activeId: 'c' },
+  ];
+  fixture.store.focusPane = vi.fn();
+  app = createApp({ render: () => h('div', fixture.store.panes.map((pane: { id: string }) =>
+    h('section', { class: 'workspace-pane', 'data-pane-id': pane.id }, [h(DesktopTabs, { paneId: pane.id, detachable: true })]))) });
+  app.mount(root.querySelector('.desktop-window-tab-slot')!);
+  const left = root.querySelector<HTMLElement>('[data-pane-id="left"]')!;
+  const right = root.querySelector<HTMLElement>('[data-pane-id="right"]')!;
+  for (const [i, pane] of [left, right].entries()) pane.getBoundingClientRect = () =>
+    ({ left: i * 500, top: 0, right: (i + 1) * 500, bottom: 600, width: 500, height: 600 }) as DOMRect;
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: (x: number, y: number) => {
+    const pane = x < 500 ? left : right;
+    return y < 36 ? pane.querySelector('.desktop-tab-strip') : pane;
+  } });
+  const meta = { sourceLabel: 'other-window', workspaceId: 'workspace-1', tabId: 'foreign', width: 200, centerOffset: 0 };
+  const drag = (type: string, x: number, y: number, workspaceId = meta.workspaceId) => {
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y });
+    Object.defineProperty(event, 'dataTransfer', { value: { types: [tabDragMetaType({ ...meta, workspaceId })], dropEffect: '' } });
+    window.dispatchEvent(event);
+    return event;
+  };
+  await vi.waitFor(() => expect(nativeEvents.listeners.get(TAB_DOCK_PROBE)?.size).toBe(2));
+  expect(drag('dragover', 490, 300).defaultPrevented).toBe(true);
+  expect(fixture.store.paneDrop).toEqual({ paneId: 'left', side: 'right' });
+  drag('dragover', 980, 300);
+  expect(fixture.store.paneDrop).toEqual({ paneId: 'right', side: 'right' });
+  drag('dragover', 750, 300);
+  expect(fixture.store.paneDrop).toBeUndefined();
+  drag('dragover', 980, 300, 'different-workspace');
+  expect(fixture.store.paneDrop).toBeUndefined();
+  drag('dragover', 750, 590);
+  expect(fixture.store.paneDrop).toEqual({ paneId: 'right', side: 'bottom' });
+  drag('drop', 750, 590);
+  const date = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 1200);
+  for (const handler of nativeEvents.listeners.get(TAB_DOCK_PROBE) ?? []) handler({ payload: {
+    ...meta, requestId: 'nested', x: 750, y: 300,
+  } });
+  await vi.waitFor(() => expect(nativeEvents.emitTo).toHaveBeenCalledWith('other-window', 'tano-tab-dock-reply',
+    expect.objectContaining({ requestId: 'nested', hovered: true, index: 3, drop: { paneId: 'right', side: 'bottom' } })));
+  date.mockRestore();
+  for (const handler of nativeEvents.listeners.get(TAB_DRAG_FINISHED) ?? []) handler({ payload: meta });
+  expect(fixture.store.paneDrop).toBeUndefined();
+  drag('dragover', 750, 18);
+  expect(fixture.store.paneDrop).toEqual({ paneId: 'right', side: 'center', index: 1 });
+  drag('dragleave', -1, -1);
+  await vi.waitFor(() => expect(fixture.store.paneDrop).toBeUndefined());
 });
 
 function mountFileDrag(detachable = false) {
@@ -435,6 +508,8 @@ it('renders and closes an empty tab without treating it as a document', async ()
   tab.scrollIntoView = vi.fn();
   expect(tab.textContent).toContain('新标签页');
   expect(tab.querySelector('.desktop-tab-icon')).toBeNull();
+  // Vue ignores synthetic events stamped in the same tick as a new listener.
+  await new Promise(resolve => setTimeout(resolve, 1));
   tab.querySelector<HTMLButtonElement>('.desktop-tab-switch')!.click();
   expect(fixture.store.activeId).toBe('blank:test');
   tab.querySelector<HTMLButtonElement>('.desktop-tab-close')!.click();
@@ -576,4 +651,65 @@ it('stops closing tabs when one tab remains open', async () => {
     .click();
   await vi.waitFor(() => expect(fixture.store.close).toHaveBeenCalledOnce());
   expect(fixture.store.close).toHaveBeenCalledWith('a');
+});
+
+it.each([false, true])('previews a pane edge and docks on release without detaching (native=%s)', async native => {
+  app.unmount();
+  fixture.store.panes = [{ id: 'pane', tabs: ['a', 'b', 'c'], activeId: 'b' }];
+  fixture.store.focusPane = vi.fn();
+  fixture.store.dockTab = vi.fn();
+  const onDetachTab = vi.fn();
+  app = createApp(DesktopTabs, { paneId: 'pane', detachable: native, onDetachTab });
+  app.mount(root.querySelector('.desktop-window-tab-slot')!);
+  const pane = document.createElement('section');
+  pane.className = 'workspace-pane';
+  pane.dataset.paneId = 'pane';
+  root.append(pane);
+  pane.getBoundingClientRect = () => ({ left: 0, top: 36, width: 600, height: 500, right: 600, bottom: 536 }) as DOMRect;
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: vi.fn(() => pane) });
+  const button = root.querySelector<HTMLButtonElement>('.desktop-tab-switch')!;
+  const tab = button.closest<HTMLElement>('.desktop-tab')!;
+  tab.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 36, right: 200, bottom: 36 }) as DOMRect;
+  button.setPointerCapture = vi.fn();
+  button.hasPointerCapture = () => true;
+  button.releasePointerCapture = vi.fn();
+  if (native) {
+    const start = new MouseEvent('dragstart', { bubbles: true, cancelable: true, clientX: 80, clientY: 18 });
+    Object.defineProperty(start, 'dataTransfer', { value: { setData: vi.fn(), setDragImage: vi.fn() } });
+    button.dispatchEvent(start);
+    window.dispatchEvent(new MouseEvent('dragover', { bubbles: true, cancelable: true, clientX: 590, clientY: 250 }));
+  } else {
+    pointer(button, 'pointerdown', 80);
+    pointer(button, 'pointermove', 590, 250);
+  }
+  expect(fixture.store.paneDrop).toEqual({ paneId: 'pane', side: 'right' });
+  expect(fixture.store.dockTab).not.toHaveBeenCalled();
+  if (native) {
+    window.dispatchEvent(new MouseEvent('dragleave', { bubbles: true, clientX: -1, clientY: 250 }));
+    expect(fixture.store.paneDrop).toBeUndefined();
+    window.dispatchEvent(new MouseEvent('dragover', { bubbles: true, cancelable: true, clientX: 590, clientY: 250 }));
+    expect(fixture.store.paneDrop).toEqual({ paneId: 'pane', side: 'right' });
+    nativeWindow.cursorPosition.mockResolvedValueOnce({ x: 590, y: 250 });
+    window.dispatchEvent(new MouseEvent('dragend', { bubbles: true }));
+    await vi.waitFor(() => expect(fixture.store.dockTab).toHaveBeenCalledOnce());
+  } else pointer(button, 'pointerup', 590, 250);
+  expect(fixture.store.dockTab).toHaveBeenCalledExactlyOnceWith('a', { paneId: 'pane', side: 'right' });
+  expect(fixture.store.paneDrop).toBeUndefined();
+  expect(onDetachTab).not.toHaveBeenCalled();
+  if (native) {
+    // The foreground destination can overlap the source's docking edge. After
+    // leaving the native WebView, do not commit a hit in the background source.
+    fixture.store.dockTab.mockClear();
+    const start = new MouseEvent('dragstart', { bubbles: true, cancelable: true, clientX: 80, clientY: 18 });
+    Object.defineProperty(start, 'dataTransfer', { value: { setData: vi.fn(), setDragImage: vi.fn() } });
+    button.dispatchEvent(start);
+    window.dispatchEvent(new MouseEvent('dragleave', { bubbles: true, clientX: 590, clientY: 250 }));
+    nativeWindow.cursorPosition.mockResolvedValueOnce({ x: 590, y: 250 });
+    window.dispatchEvent(new MouseEvent('dragend', { bubbles: true }));
+    await vi.waitFor(() => expect(onDetachTab).toHaveBeenCalledOnce());
+    expect(fixture.store.dockTab).not.toHaveBeenCalled();
+    expect(onDetachTab.mock.calls[0].slice(0, 2)).toEqual(['a', expect.objectContaining({ x: 590, y: 250, insideSourceWindow: true })]);
+    onDetachTab.mock.calls[0][2]();
+  }
+  delete (document as Partial<Document>).elementFromPoint;
 });

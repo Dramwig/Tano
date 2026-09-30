@@ -23,6 +23,8 @@ pub struct WorkspaceSession {
     documents: Vec<SessionDocument>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     tabs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    layout: Option<serde_json::Value>,
 }
 #[derive(Serialize, Deserialize)]
 pub struct SessionDocument {
@@ -304,6 +306,7 @@ mod tests {
                 }),
             }],
             tabs: vec!["file-id".into(), "blank:test".into()],
+            layout: None,
         }
     }
     #[test]
@@ -328,6 +331,30 @@ mod tests {
         assert!(load(data.path(), &id).is_err());
         assert!(save(data.path(), &id, &session()).is_err());
         assert_eq!(fs::read(&record).unwrap(), b"corrupted bytes");
+    }
+    #[test]
+    fn restores_nested_layout_in_application_session() {
+        let data = tempfile::tempdir().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut saved = session();
+        saved.layout = Some(serde_json::json!({
+            "kind": "split", "id": "split", "axis": "horizontal", "ratio": 0.6,
+            "first": { "kind": "pane", "id": "left", "tabs": ["file-id"], "activeId": "file-id" },
+            "second": { "kind": "pane", "id": "right", "tabs": ["blank:test"], "activeId": "blank:test" }
+        }));
+        save(data.path(), &id, &saved).unwrap();
+        let restored = load(data.path(), &id).unwrap().unwrap();
+        assert_eq!(restored.layout, saved.layout);
+        assert_eq!(
+            restored.documents[0].draft.as_ref().unwrap().content,
+            "unsaved human edit"
+        );
+        let old = serde_json::to_value(session()).unwrap();
+        assert!(old.get("layout").is_none());
+        assert!(serde_json::from_value::<WorkspaceSession>(old)
+            .unwrap()
+            .layout
+            .is_none());
     }
     #[test]
     fn restores_graph_tab_without_a_fake_document() {

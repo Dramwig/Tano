@@ -22,9 +22,29 @@ export interface EditingSession {
 export interface SettingsPage {
   id: string; label: string; group: string; terms: string; component: Component;
 }
+/** Only this metadata enters the tab store; components and business state stay in the overlay. */
+export interface WorkbenchViewTab {
+  id: string;
+  label: string;
+  icon: Component;
+  /** Window-local views cannot be transferred unless the overlay explicitly supports it. */
+  detachable?: boolean;
+  detachBlockedMessage?: string;
+}
+export interface WorkbenchViewActions {
+  open(): void;
+  showSidebar(): void;
+}
+/** Stable view:* IDs are restored only when registered by the current product. */
+export interface WorkbenchView extends WorkbenchViewTab {
+  component: Component;
+  sidebar?: Component;
+  overlay?: Component;
+}
 export interface WorkbenchExtensions {
   editing: EditingSession;
   regions: Record<string, Component>;
+  views?: readonly WorkbenchView[];
   settingsPages?: SettingsPage[];
   historyView?: Component;
   readonly historyEnabled?: boolean;

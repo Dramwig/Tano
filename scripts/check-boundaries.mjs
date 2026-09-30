@@ -21,6 +21,10 @@ for(const folder of ['apps','packages','crates'])for(const f of walk(path.join(r
  }
  if(path.basename(f)==='Cargo.toml'&&/tano-cloud|sync_storage/.test(fs.readFileSync(f,'utf8')))failures.push(`${relative}: private native dependency`);
 }
-for(const p of ['apps/server','packages/sync','deploy','compose.yaml','compose.https.yaml'])if(fs.existsSync(path.join(root,p)))failures.push(`Private path: ${p}`);
+for(const p of ['apps/server','packages/sync','deploy','compose.yaml','compose.https.yaml',
+ 'packages/workbench/src/chat.ts','packages/workbench/src/stores/chat.ts',
+ 'packages/workbench/src/components/ChatView.vue','packages/workbench/src/components/SidebarChat.vue',
+ 'packages/workbench/src/components/ChatCreateDialog.vue',
+])if(fs.existsSync(path.join(root,p)))failures.push(`Private product path: ${p}`);
 if(failures.length)throw new Error([...new Set(failures)].join('\n'));
 console.log('Public source and dependency boundary verified.');

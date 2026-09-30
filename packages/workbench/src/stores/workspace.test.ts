@@ -1,6 +1,7 @@
 import { configureWorkbench } from '../runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
+import { markRaw } from 'vue';
 import type {
   WorkspaceAdapter,
   FileSnapshot,
@@ -15,7 +16,8 @@ import { useWorkspaceStore } from './workspace';
 import { GRAPH_TAB_ID } from '../document-graph';
 import { PLUGINS_TAB_ID } from '../workspace-plugins';
 import { CALENDAR_TAB_ID } from '../calendar';
-import { CHAT_TAB_ID } from '../chat';
+
+const extensionView = { id: 'view:sample', label: '扩展', icon: markRaw({ render: () => null }) };
 
 class MemoryWorkspace implements WorkspaceAdapter {
   readonly mode = 'demo' as const;
@@ -235,25 +237,52 @@ describe('workspace file reconciliation', () => {
     await store.close(CALENDAR_TAB_ID);
     expect(store.tabs.some(tab => tab.calendar)).toBe(false);
   });
-  it('keeps chat separate from file contents and restores its singleton tab', async () => {
+  it('keeps extension views separate from file contents and restores registered singleton tabs', async () => {
     const filesBefore = structuredClone([...backend.files]);
-    store.openChatTab(); store.openChatTab();
-    expect(store.tabs.filter(tab => tab.chat)).toHaveLength(1);
+    store.registerViews([extensionView]);
+    store.openViewTab(extensionView.id); store.openViewTab(extensionView.id);
+    expect(store.tabs.filter(tab => tab.view)).toHaveLength(1);
+    expect(store.tabs.find(tab => tab.view)?.view?.label).toBe('扩展');
     expect(store.active).toBeUndefined();
     await store.openFile(store.workspace!.files[0]!);
-    expect(store.tabs.some(tab => tab.chat)).toBe(true);
-    store.openChatTab();
-    await vi.waitFor(() => expect(backend.session?.activeId).toBe(CHAT_TAB_ID));
+    expect(store.tabs.some(tab => tab.view)).toBe(true);
+    store.openViewTab(extensionView.id);
+    await vi.waitFor(() => expect(backend.session?.activeId).toBe(extensionView.id));
+    expect(backend.session?.documents.some(doc => doc.id === extensionView.id)).toBe(false);
+    await store.dispose();
+    setActivePinia(configureWorkbench(createPinia(), { adapter: backend, native: false, mobile: false }));
+    store = useWorkspaceStore();
+    store.registerViews([extensionView]);
+    await store.initialize();
+    expect(store.activeId).toBe(extensionView.id);
+    const closeHook = vi.fn(async () => {});
+    store.setDocumentLifecycle({ beforeSwitch: async () => {}, beforeCloseDocument: closeHook });
+    await store.close(extensionView.id);
+    expect(closeHook).not.toHaveBeenCalled();
+    expect([...backend.files]).toEqual(filesBefore);
+  });
+  it('drops unavailable extension tabs on restore and keeps documents usable in the local product', async () => {
+    store.registerViews([extensionView]);
+    store.openViewTab(extensionView.id);
+    await vi.waitFor(() => expect(backend.session?.activeId).toBe(extensionView.id));
     await store.dispose();
     setActivePinia(configureWorkbench(createPinia(), { adapter: backend, native: false, mobile: false }));
     store = useWorkspaceStore();
     await store.initialize();
-    expect(store.activeId).toBe(CHAT_TAB_ID);
-    const closeHook = vi.fn(async () => {});
-    store.setDocumentLifecycle({ beforeSwitch: async () => {}, beforeCloseDocument: closeHook });
-    await store.close(CHAT_TAB_ID);
-    expect(closeHook).not.toHaveBeenCalled();
-    expect([...backend.files]).toEqual(filesBefore);
+    expect(store.tabs.map(tab => tab.id)).toEqual(['note-id']);
+    expect(store.active?.id).toBe('note-id');
+    expect(() => store.openViewTab(extensionView.id)).toThrow('未注册');
+  });
+  it('rejects invalid or reserved view identities and does not strand open views', async () => {
+    expect(() => store.registerViews([{ ...extensionView, id: 'note-id' }])).toThrow('无效或重复');
+    expect(() => store.registerViews([{ ...extensionView, id: GRAPH_TAB_ID }])).toThrow('无效或重复');
+    expect(() => store.registerViews([extensionView, extensionView])).toThrow('无效或重复');
+    store.registerViews([extensionView]);
+    store.openViewTab(extensionView.id);
+    expect(() => store.registerViews([])).toThrow('请先关闭');
+    await store.close(extensionView.id);
+    store.registerViews([]);
+    expect(() => store.openViewTab(extensionView.id)).toThrow('未注册');
   });
   it('reads graph content without writing drafts and rejects stale workspace or file identities', async () => {
     store.edit('[[draft link]]');
@@ -931,5 +960,137 @@ describe('workspace file reconciliation', () => {
     expect(store.active!.path).toBe('recovered.md');
     expect(store.documents).toHaveLength(1);
     expect(await store.flush()).toBe(true);
+  });
+});
+
+
+describe('workspace panes', () => {
+  it('keeps a pending detached tab and its pane in the recovery session until it actually closes', async () => {
+    store.createBlankTab();
+    const blank = store.activeId;
+    store.dockTab(blank, { paneId: store.panes[0].id, side: 'bottom' });
+    const layout = JSON.parse(JSON.stringify(store.layout));
+    store.detachingTabId = blank;
+    await store.flush();
+    expect(store.tabs.map(tab => tab.id)).toContain(blank);
+    expect(backend.session?.layout).toEqual(layout);
+    expect(backend.session?.tabs).toContain(blank);
+    await store.close(blank);
+    store.detachingTabId = '';
+    await store.flush();
+    expect(store.panes).toHaveLength(1);
+    expect(backend.session?.tabs).not.toContain(blank);
+  });
+
+  it('undoes a transferred tab move including a collapsed source pane without touching its draft', async () => {
+    store.createBlankTab();
+    const blank = store.activeId, left = store.panes[0].id;
+    store.dockTab(blank, { paneId: left, side: 'right' });
+    const before = JSON.parse(JSON.stringify(store.layout));
+    store.editDocument('note-id', 'Keep this draft');
+    const undo = store.dockTab(blank, { paneId: left, side: 'center', index: 0 });
+    expect(store.panes).toHaveLength(1);
+    undo?.();
+    expect(store.layout).toEqual(before);
+    expect(store.tabs.map(tab => tab.id)).toEqual(['note-id', blank]);
+    expect(store.documents.find(doc => doc.id === 'note-id')?.content).toBe('Keep this draft');
+  });
+
+  it('does not roll back other tabs opened while a transfer acknowledgement is pending', () => {
+    store.createBlankTab();
+    const moved = store.activeId, left = store.panes[0].id;
+    const undo = store.dockTab(moved, { paneId: left, side: 'right' });
+    store.createBlankTab();
+    const later = store.activeId;
+    undo?.();
+    expect(store.tabs.map(tab => tab.id)).toContain(later);
+    expect(store.panes.find(pane => pane.id === left)?.tabs).toContain(moved);
+    expect(store.panes).toHaveLength(2);
+  });
+
+  it('reads and navigates the history of a specific pane without replacing its neighbor', async () => {
+    await backend.create('left-next.md', 'Left next');
+    await backend.create('right.md', 'Right');
+    await backend.create('right-next.md', 'Right next');
+    await store.refresh();
+    const file = (path: string) => store.workspace!.files.find(entry => entry.path === path)!;
+    const left = store.activePaneId;
+    await store.openFile(file('left-next.md'));
+    const leftId = store.activeId;
+    await store.openFileInNewTab(file('right.md'));
+    const rightId = store.activeId;
+    store.dockTab(rightId, { paneId: left, side: 'right' });
+    const right = store.activePaneId;
+    expect(store.canNavigateHistory(-1, leftId)).toBe(true);
+    expect(store.canNavigateHistory(-1, rightId)).toBe(false);
+    expect(store.activePaneId).toBe(right);
+    await store.openFile(file('right-next.md'));
+    const rightNextId = store.activeId;
+    await store.navigateHistory(-1, left);
+    expect(store.panes.find(pane => pane.id === left)?.activeId).toBe('note-id');
+    expect(store.panes.find(pane => pane.id === right)?.activeId).toBe(rightNextId);
+    expect(store.canNavigateHistory(1, 'note-id')).toBe(true);
+    await store.navigateHistory(-1, right);
+    expect(store.activeId).toBe(rightId);
+    expect(store.panes.find(pane => pane.id === left)?.activeId).toBe('note-id');
+    await store.navigateHistory(1, left);
+    expect(store.activeId).toBe(leftId);
+    expect(store.panes.find(pane => pane.id === right)?.activeId).toBe(rightId);
+  });
+
+  it('persists nested splits, selection, proportions and drafts together and restores them', async () => {
+    store.createBlankTab();
+    const blank = store.activeId;
+    const original = store.panes[0].id;
+    store.dockTab(blank, { paneId: original, side: 'right' });
+    store.focusPane(original);
+    store.createBlankTab();
+    store.dockTab(store.activeId, { paneId: original, side: 'bottom' });
+    store.resizeSplit(store.layout.id, .6);
+    store.editDocument('note-id', 'pane draft');
+    await store.flush();
+    const layout = JSON.parse(JSON.stringify(store.layout));
+    const selected = store.activeId;
+    expect(store.panes).toHaveLength(3);
+    expect(backend.session?.layout).toEqual(layout);
+    await store.openWorkspace();
+    expect(store.layout).toEqual(layout);
+    expect(store.activeId).toBe(selected);
+    expect(store.documents.find(doc => doc.id === 'note-id')?.content).toBe('pane draft');
+  });
+
+  it('keeps edits bound to their documents and does not swap documents across panes when opening', async () => {
+    backend.files.set('other.md', { id: 'other-id', content: 'Other' });
+    await store.refresh();
+    await store.openFileInNewTab(store.workspace!.files.find(file => file.id === 'other-id')!);
+    store.dockTab('other-id', { paneId: store.panes[0].id, side: 'right' });
+    const before = store.panes.map(pane => [...pane.tabs]);
+    store.editDocument('note-id', 'Left draft');
+    store.editDocument('other-id', 'Right draft');
+    await store.openFile(store.workspace!.files.find(file => file.id === 'note-id')!);
+    expect(store.panes.map(pane => pane.tabs)).toEqual(before);
+    expect(store.activeId).toBe('note-id');
+    await store.flush();
+    expect(backend.files.get('note.md')?.content).toBe('Left draft');
+    expect(backend.files.get('other.md')?.content).toBe('Right draft');
+  });
+
+  it('replaces within the focused group and collapses only after a tab can safely close', async () => {
+    backend.files.set('other.md', { id: 'other-id', content: 'Other' });
+    await store.refresh();
+    store.createBlankTab();
+    const blank = store.activeId;
+    store.dockTab(blank, { paneId: store.panes[0].id, side: 'right' });
+    const right = store.activePaneId;
+    await store.openFile(store.workspace!.files.find(file => file.id === 'other-id')!);
+    expect(store.panes.find(pane => pane.id === right)?.tabs).toEqual(['other-id']);
+    store.edit('Draft');
+    backend.failWrites = true;
+    await store.close('other-id');
+    expect(store.panes).toHaveLength(2);
+    backend.failWrites = false;
+    await store.close('other-id');
+    expect(store.panes).toHaveLength(1);
+    expect(store.activeId).toBe('note-id');
   });
 });

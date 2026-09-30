@@ -1,5 +1,6 @@
 import { emit, emitTo, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import type { PaneDrop } from './pane-layout';
 
 export const TAB_DRAG_META_PREFIX = 'application/x-tano-tab-meta-';
 export const TAB_DOCK_PROBE = 'tano-tab-dock-probe';
@@ -7,6 +8,8 @@ export const TAB_DOCK_REPLY = 'tano-tab-dock-reply';
 export const TAB_TRANSFER_REQUEST = 'tano-tab-transfer-request';
 export const TAB_TRANSFER_RESULT = 'tano-tab-transfer-result';
 export const TAB_TRANSFER_ROLLBACK = 'tano-tab-transfer-rollback';
+export const TAB_DRAG_FINISHED = 'tano-tab-drag-finished';
+export type TabDragFinished = { sourceLabel: string; tabId: string };
 export type TabTransferRollback = { requestId: string };
 
 export type TabDragMeta = {
@@ -30,6 +33,7 @@ export type TabDockReply = {
   targetLabel: string;
   insideWindow: boolean;
   index?: number;
+  drop?: PaneDrop;
   hovered?: boolean;
 };
 export type TabTransferRequest = {
@@ -38,6 +42,7 @@ export type TabTransferRequest = {
   workspaceId: string;
   tabId: string;
   index: number;
+  drop?: PaneDrop;
 };
 export type TabTransferResult = {
   requestId: string;
@@ -77,7 +82,7 @@ export async function findTabDockTarget(
   workspaceId: string,
   tabId: string,
   point: { x: number; y: number; centerOffset: number },
-): Promise<{ targetLabel: string; index: number } | 'inside-window' | null> {
+): Promise<{ targetLabel: string; index: number; drop?: PaneDrop } | 'inside-window' | null> {
   const requestId = crypto.randomUUID();
   const replies: TabDockReply[] = [];
   const unlisten = await listen<TabDockReply>(TAB_DOCK_REPLY, ({ payload }) => {
@@ -89,9 +94,13 @@ export async function findTabDockTarget(
       x: point.x, y: point.y, centerOffset: point.centerOffset,
     });
     await new Promise((resolve) => setTimeout(resolve, 250));
-    const target = replies.filter((reply) => reply.index !== undefined)
-      .sort((a, b) => Number(b.hovered) - Number(a.hovered))[0];
-    if (target?.index !== undefined) return { targetLabel: target.targetLabel, index: target.index };
+    // A window actually under the native drag takes precedence over windows
+    // behind it, even when the pointer is in its non-docking interior.
+    const hovered = replies.filter(reply => reply.hovered);
+    const target = (hovered.length ? hovered : replies).find(reply => reply.index !== undefined);
+    if (target?.index !== undefined) return {
+      targetLabel: target.targetLabel, index: target.index, ...(target.drop ? { drop: target.drop } : {}),
+    };
     return replies.some((reply) => reply.insideWindow) ? 'inside-window' : null;
   } finally {
     unlisten();

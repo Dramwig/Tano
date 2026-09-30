@@ -59,9 +59,24 @@ it('waits for target acknowledgement before the source may close its tab', async
     } });
   }]));
   const result = await requestTabTransfer('detached-2', {
-    workspaceId: 'workspace', tabId: 'document', index: 2,
+    workspaceId: 'workspace', tabId: 'document', index: 2, drop: { paneId: 'nested', side: 'bottom' },
   });
   expect(result).toMatchObject({ targetLabel: 'detached-2', tabId: 'document', created: true });
   expect(bus.emitted.find((event) => event.name === 'tano-tab-transfer-request'))
-    .toMatchObject({ target: 'detached-2', payload: { sourceLabel: 'main', index: 2 } });
+    .toMatchObject({ target: 'detached-2', payload: { sourceLabel: 'main', index: 2, drop: { paneId: 'nested', side: 'bottom' } } });
+});
+
+it('preserves the destination pane and edge and does not dock through the foreground window', async () => {
+  let front: Record<string, unknown> = { index: 3, drop: { paneId: 'nested', side: 'left' } };
+  bus.handlers.set('tano-tab-dock-probe', new Set([({ payload }) => {
+    for (const reply of [
+      { targetLabel: 'behind', insideWindow: true, index: 0 },
+      { targetLabel: 'front', insideWindow: true, hovered: true, ...front },
+    ]) for (const handler of bus.handlers.get('tano-tab-dock-reply') ?? [])
+      handler({ payload: { requestId: payload.requestId, ...reply } });
+  }]));
+  expect(await findTabDockTarget('workspace', 'tab', { x: 400, y: 200, centerOffset: 0 }))
+    .toEqual({ targetLabel: 'front', index: 3, drop: { paneId: 'nested', side: 'left' } });
+  front = {};
+  expect(await findTabDockTarget('workspace', 'tab', { x: 400, y: 200, centerOffset: 0 })).toBe('inside-window');
 });

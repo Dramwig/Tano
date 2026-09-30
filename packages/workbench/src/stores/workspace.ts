@@ -1,10 +1,11 @@
-import { computed, onScopeDispose, ref, watch } from 'vue';
+import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { defineStore } from 'pinia';
 import type {
   FileEntry,
   FileSnapshot,
   Workspace,
   WorkspaceSession,
+  WorkspaceLayout,
   RecentWorkspace,
   WorkspaceBackupCatalog,
   WorkspaceRecoveryPreview,
@@ -13,6 +14,7 @@ import type {
 import { basename, isMarkdown, pathKey, objectDirectory } from '@tano/protocol';
 import { mergeMarkdown } from '@tano/markdown';
 import { useWorkbenchRuntime } from '../runtime';
+import type { WorkbenchViewTab } from '../runtime';
 import { planFileMove } from '../file-move';
 import { topLevelEntries } from '../file-selection';
 import { defaultCapabilities } from '@tano/editor/runtime';
@@ -30,9 +32,8 @@ import { loadRelations, saveRelationChange } from '../workspace-relations';
 import type { RelationChange } from '../workspace-relations';
 import { GRAPH_TAB_ID } from '../document-graph';
 import { CALENDAR_TAB_ID } from '../calendar';
-import { CHAT_TAB_ID } from '../chat';
-
-const isUtilityTab = (id: string) => id.startsWith('blank:') || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || id === CALENDAR_TAB_ID || id === CHAT_TAB_ID;
+import { dockLayout, layoutPanes, newPane, reconcileLayout, restoreLayout } from '../pane-layout';
+import type { PaneDrop } from '../pane-layout';
 
 export interface OpenDocument {
   id: string;
@@ -51,7 +52,7 @@ export interface DocumentTab {
   graph: boolean;
   plugins: boolean;
   calendar: boolean;
-  chat: boolean;
+  view?: WorkbenchViewTab;
   document?: OpenDocument;
 }
 export interface Activity {
@@ -65,6 +66,21 @@ export interface Activity {
 
 export const useWorkspaceStore = defineStore('workspace', () => {
   const { adapter, mobile } = useWorkbenchRuntime();
+  const views = shallowRef<ReadonlyMap<string, WorkbenchViewTab>>(new Map());
+  const isBuiltinTab = (id: string) => id.startsWith('blank:') || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || id === CALENDAR_TAB_ID;
+  const isUtilityTab = (id: string) => isBuiltinTab(id) || views.value.has(id);
+  function registerViews(definitions: readonly WorkbenchViewTab[]) {
+    const next = new Map<string, WorkbenchViewTab>();
+    for (const { id, label, icon, detachable, detachBlockedMessage } of definitions) {
+      if (!/^view:[a-z][a-z0-9-]*$/.test(id) || isBuiltinTab(id) || next.has(id) || !label.trim())
+        throw new Error(`无效或重复的扩展视图：${id}`);
+      next.set(id, { id, label, icon, detachable, detachBlockedMessage });
+    }
+    // Register before session restoration. Refuse to strand an already open view.
+    if (tabIds.value.some(id => views.value.has(id) && !next.has(id)))
+      throw new Error('请先关闭扩展标签页，再移除视图');
+    views.value = next;
+  }
   const workspace = ref<Workspace | null>(null);
   const objects = ref<ObjectRecord[]>([]);
   const objectErrors = ref<string[]>([]);
@@ -228,12 +244,74 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const documents = ref<OpenDocument[]>([]);
   const tabIds = ref<string[]>([]);
   const activeId = ref('');
+  const layout = ref<WorkspaceLayout>(newPane());
+  const panes = computed(() => layoutPanes(layout.value));
+  const activePaneId = ref(layout.value.id);
+  const paneDrop = ref<PaneDrop>();
+  // Presentation only: keep the real tab/session until its new window is ready.
+  const detachingTabId = ref('');
+  let changingLayout = false;
+  watch(() => [...tabIds.value], (ids, previous) => {
+    if (changingLayout) return;
+    layout.value = reconcileLayout(layout.value, ids, previous, activePaneId.value);
+    if (!panes.value.some(pane => pane.id === activePaneId.value)) activePaneId.value = panes.value[0].id;
+  }, { flush: 'sync' });
+  watch(activeId, id => {
+    const pane = panes.value.find(pane => pane.tabs.includes(id));
+    if (pane) { pane.activeId = id; activePaneId.value = pane.id; }
+  }, { flush: 'sync' });
+  function focusPane(id: string) {
+    const pane = panes.value.find(pane => pane.id === id);
+    if (!pane) return;
+    activePaneId.value = pane.id;
+    activeId.value = pane.activeId;
+  }
+  function dockTab(id: string, drop: PaneDrop) {
+    const before = layout.value;
+    const priorActive = activeId.value;
+    const origin = panes.value.find(pane => pane.tabs.includes(id));
+    const next = dockLayout(layout.value, id, drop);
+    paneDrop.value = undefined;
+    if (next === layout.value) return;
+    changingLayout = true;
+    layout.value = next;
+    tabIds.value = panes.value.flatMap(pane => pane.tabs);
+    const pane = panes.value.find(pane => pane.tabs.includes(id))!;
+    activePaneId.value = pane.id;
+    activeId.value = id;
+    changingLayout = false;
+    const applied = JSON.stringify(layout.value);
+    // A receiving window can undo a move if the source fails to close. Never
+    // overwrite layout changes made by the user while that acknowledgement ran.
+    return () => {
+      if (JSON.stringify(layout.value) !== applied) {
+        if (origin && panes.value.some(pane => pane.id === origin.id))
+          dockTab(id, { paneId: origin.id, side: 'center', index: origin.tabs.indexOf(id) });
+        return;
+      }
+      changingLayout = true;
+      layout.value = before;
+      tabIds.value = panes.value.flatMap(pane => pane.tabs);
+      activeId.value = priorActive;
+      activePaneId.value = panes.value.find(pane => pane.tabs.includes(priorActive))?.id ?? panes.value[0].id;
+      changingLayout = false;
+    };
+  }
+  function resizeSplit(id: string, ratio: number) {
+    if (!Number.isFinite(ratio)) return;
+    function resize(node: WorkspaceLayout): void {
+      if (node.kind !== 'split') return;
+      if (node.id === id) node.ratio = Math.max(.1, Math.min(.9, ratio));
+      else { resize(node.first); resize(node.second); }
+    }
+    resize(layout.value);
+  }
   const busy = ref(false);
   const active = computed(() => documents.value.find((d) => d.id === activeId.value));
   const tabs = computed<DocumentTab[]>(() =>
     tabIds.value.map((id) => {
       const document = documents.value.find((doc) => doc.id === id);
-      return { id, path: document?.path ?? '', blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, chat: id === CHAT_TAB_ID, document };
+      return { id, path: document?.path ?? '', blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, view: views.value.get(id), document };
     }),
   );
   type TabNavigation = { entries: string[]; index: number };
@@ -285,12 +363,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   watch(() => workspace.value?.id, () => {
     resetTabNavigation();
   }, { flush: 'sync' });
-  function activeNavigation() {
+  function activeNavigation(tabId = activeId.value) {
     void navigationRevision.value;
-    return activeId.value ? ensureTabNavigation(activeId.value) : undefined;
+    return tabId ? ensureTabNavigation(tabId) : undefined;
   }
-  function navigationDestination(direction: -1 | 1) {
-    const history = activeNavigation();
+  function navigationDestination(direction: -1 | 1, tabId = activeId.value) {
+    const history = activeNavigation(tabId);
     if (!history) return -1;
     for (let index = history.index + direction;
       index >= 0 && index < history.entries.length; index += direction) {
@@ -300,10 +378,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
     return -1;
   }
-  const canGoBack = computed(() => !busy.value && !navigationBusy.value && navigationDestination(-1) >= 0);
-  const canGoForward = computed(() => !busy.value && !navigationBusy.value && navigationDestination(1) >= 0);
-  async function navigateHistory(direction: -1 | 1) {
+  function canNavigateHistory(direction: -1 | 1, tabId = activeId.value) {
+    return !busy.value && !navigationBusy.value && navigationDestination(direction, tabId) >= 0;
+  }
+  const canGoBack = computed(() => canNavigateHistory(-1));
+  const canGoForward = computed(() => canNavigateHistory(1));
+  async function navigateHistory(direction: -1 | 1, paneId?: string) {
     if (busy.value || navigationBusy.value) return;
+    if (paneId) {
+      if (!panes.value.some(pane => pane.id === paneId)) return;
+      focusPane(paneId);
+    }
     const index = navigationDestination(direction);
     if (index < 0) return;
     const history = activeNavigation();
@@ -359,6 +444,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         version: 1,
         activeId: activeId.value,
         tabs: [...tabIds.value],
+        layout: JSON.parse(JSON.stringify(layout.value)) as WorkspaceLayout,
         documents: documents.value.map((doc) => ({
           id: doc.id,
           path: doc.path,
@@ -382,7 +468,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       journalWriting = false;
     })();
   }
-  const stopSessionWatch = watch([documents, tabIds, activeId], queueSession, {
+  const stopSessionWatch = watch([documents, tabIds, activeId, layout], queueSession, {
     deep: true,
     flush: 'sync',
   });
@@ -617,7 +703,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           if (detachedTabId === GRAPH_TAB_ID) openGraphTab();
           else if (detachedTabId === PLUGINS_TAB_ID) openPluginsTab();
           else if (detachedTabId === CALENDAR_TAB_ID) openCalendarTab();
-          else if (detachedTabId === CHAT_TAB_ID) openChatTab();
+          else if (views.value.has(detachedTabId)) {
+            if (!views.value.get(detachedTabId)?.detachable) throw new Error('此扩展视图不支持移到其他窗口');
+            openViewTab(detachedTabId);
+          }
           else if (detachedTabId.startsWith('blank:')) createBlankTab();
           else {
             const detachedFile = next.files.find((file) => file.id === detachedTabId);
@@ -749,6 +838,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       .filter((id) => isUtilityTab(id) || documents.value.some((doc) => doc.id === id));
     tabIds.value = [...new Set([...(restored ?? []), ...documents.value.map((doc) => doc.id)])];
     const restoredActive = remapped.get(saved.activeId) ?? saved.activeId;
+    layout.value = restoreLayout(saved.layout, tabIds.value, remapped);
+    activePaneId.value = panes.value.find(pane => pane.tabs.includes(restoredActive))?.id ?? panes.value[0].id;
     activeId.value = tabIds.value.includes(restoredActive)
       ? restoredActive
       : (tabIds.value[0] ?? '');
@@ -759,6 +850,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (!isMarkdown(file.path) || file.kind !== 'file') return;
     let doc = documents.value.find((d) => d.id === file.id);
     if (doc) {
+      const sourcePane = panes.value.find(pane => pane.tabs.includes(file.id));
+      const targetPane = panes.value.find(pane => pane.tabs.includes(replaceId ?? ''));
+      if (sourcePane && targetPane && sourcePane.id !== targetPane.id) {
+        activeId.value = doc.id;
+        return;
+      }
       const sourceIndex = tabIds.value.indexOf(doc.id);
       const targetIndex = replaceId ? tabIds.value.indexOf(replaceId) : -1;
       if (sourceIndex >= 0 && targetIndex >= 0 && sourceIndex !== targetIndex) {
@@ -897,11 +994,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     ensureTabNavigation(CALENDAR_TAB_ID);
     touchNavigation();
   }
-  function openChatTab() {
+  function openViewTab(id: string) {
+    if (!views.value.has(id)) throw new Error(`扩展视图未注册：${id}`);
     if (!workspace.value) return;
-    if (!tabIds.value.includes(CHAT_TAB_ID)) tabIds.value.push(CHAT_TAB_ID);
-    activeId.value = CHAT_TAB_ID;
-    ensureTabNavigation(CHAT_TAB_ID);
+    if (!tabIds.value.includes(id)) tabIds.value.push(id);
+    activeId.value = id;
+    ensureTabNavigation(id);
     touchNavigation();
   }
   // Serialize adapter reads with workspace switches. The graph never writes
@@ -1314,10 +1412,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     tabIds.value = reordered;
   }
   async function close(id: string) {
+    const pane = panes.value.find(pane => pane.tabs.includes(id));
+    const nextTab = () => panes.value.find(item => item.id === pane?.id)?.activeId ?? tabIds.value.at(-1) ?? '';
     if (isUtilityTab(id)) {
       tabIds.value = tabIds.value.filter((tabId) => tabId !== id);
       removeTabNavigation(id);
-      if (activeId.value === id) activeId.value = tabIds.value.at(-1) ?? '';
+      if (activeId.value === id) activeId.value = nextTab();
       return;
     }
     await flush();
@@ -1335,7 +1435,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     documents.value = documents.value.filter((d) => d.id !== id);
     tabIds.value = tabIds.value.filter((tabId) => tabId !== id);
     removeTabNavigation(id);
-    if (activeId.value === id) activeId.value = tabIds.value.at(-1) ?? '';
+    if (activeId.value === id) activeId.value = nextTab();
   }
   async function resolveConflict(doc: OpenDocument, openCopy: boolean) {
     await serial(async () => {
@@ -1388,6 +1488,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     });
   }
   return {
+    layout,
+    panes,
+    activePaneId,
+    paneDrop,
+    detachingTabId,
+    focusPane,
+    dockTab,
+    resizeSplit,
     installedPlugins,
     pluginError,
     changePlugin,
@@ -1408,6 +1516,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activeId,
     active,
     canGoBack,
+    canNavigateHistory,
     canGoForward,
     navigateHistory,
     activities,
@@ -1436,7 +1545,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openGraphTab,
     openPluginsTab,
     openCalendarTab,
-    openChatTab,
+    registerViews,
+    openViewTab,
     readGraphDocument,
     edit,
     editDocument,
