@@ -20,6 +20,7 @@ let customFontName = ref('');
 let showPageTitle = ref(true);
 let visualFontSize = ref(16);
 let sourceFontSize = ref(14);
+let toolbarMode = ref<'selection' | 'fixed' | 'left' | 'right'>('selection');
 
 async function openPage(label: string) {
   const button = [...root.querySelectorAll<HTMLButtonElement>('.settings-nav button')].find(
@@ -40,6 +41,7 @@ beforeEach(() => {
   showPageTitle = ref(true);
   visualFontSize = ref(16);
   sourceFontSize = ref(14);
+  toolbarMode = ref('selection');
   root = document.createElement('div');
   document.body.append(root);
   app = createApp(
@@ -54,6 +56,7 @@ beforeEach(() => {
         visualFontChoice: visualFontChoice.value,
         customFontName: customFontName.value,
         revealMarkdown: revealMarkdown.value,
+        toolbarMode: toolbarMode.value,
         showPageTitle: showPageTitle.value,
         visualFontSize: visualFontSize.value,
         sourceFontSize: sourceFontSize.value,
@@ -61,6 +64,7 @@ beforeEach(() => {
         version: '1.2.3',
         initialPage: 'about',
         'onUpdate:revealMarkdown': (value: boolean) => revealUpdates.push(value),
+        'onUpdate:toolbarMode': (value: 'selection' | 'fixed' | 'left' | 'right') => { toolbarMode.value = value; },
         'onUpdate:theme': (value: 'light' | 'dark' | 'system') => { theme.value = value; },
         'onUpdate:visualFontChoice': (value: 'system' | 'serif' | 'mono' | 'custom') => { visualFontChoice.value = value; },
         'onUpdate:customFontName': (value: string) => { customFontName.value = value; },
@@ -80,6 +84,21 @@ it('shows the Markdown reveal switch enabled and emits a change', async () => {
   expect(toggle.getAttribute('aria-checked')).toBe('true');
   toggle.click();
   expect(revealUpdates).toEqual([false]);
+});
+
+it('offers all toolbar positions as a device preference even without a workspace', async () => {
+  await openPage('编辑设置');
+  const select = root.querySelector<HTMLSelectElement>('select[aria-label="编辑工具栏"]')!;
+  expect(select.disabled).toBe(false);
+  expect(select.value).toBe('selection');
+  expect([...select.options].map(option => option.textContent)).toEqual(['随选区显示（默认）', '固定在顶部', '靠左停靠', '靠右停靠']);
+  for (const mode of ['fixed', 'left', 'right', 'selection']) {
+    select.value = mode;
+    select.dispatchEvent(new Event('change'));
+    await nextTick();
+    expect(toolbarMode.value).toBe(mode);
+    expect(select.value).toBe(mode);
+  }
 });
 
 it('offers light, dark, and system themes', async () => {
@@ -213,7 +232,7 @@ it('opens directly on the complete about page', () => {
   expect(root.querySelector('.settings-version-pill')?.textContent).toBe('1.2.3');
   expect(root.textContent).toContain('Humans and agents, on the same page.');
   expect(root.textContent).toContain('这是你的本地 Markdown 工作台');
-  expect(root.textContent).toContain('收起或展开侧栏 Ctrl B');
+  expect(root.textContent).toContain('收起或展开侧栏（编辑区外） Ctrl B');
   expect(root.textContent).toContain('查找文档 Ctrl K');
   expect(root.textContent).not.toContain('版本与更新');
   expect(root.textContent).not.toContain('备份恢复与 Agent 工作流');

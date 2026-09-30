@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-import { AlignLeft, ArrowDownAZ, Braces, CalendarClock, CalendarDays, CheckSquare2, CircleHelp, Hash, List, Pencil, Plus, Trash2 } from 'lucide-vue-next';
+import { AlignLeft, ArrowDownAZ, Braces, CalendarClock, CalendarDays, CheckSquare2, CircleHelp, Hash, List, Plus, Trash2 } from 'lucide-vue-next';
 import {
   Editor,
   rootCtx,
@@ -22,7 +22,7 @@ import { gfm, toggleStrikethroughCommand } from '@milkdown/kit/preset/gfm';
 import { toggleMark } from '@milkdown/kit/prose/commands';
 import { history } from '@milkdown/kit/plugin/history';
 import { clipboard } from '@milkdown/kit/plugin/clipboard';
-import { replaceAll, callCommand, $prose } from '@milkdown/kit/utils';
+import { callCommand, $prose } from '@milkdown/kit/utils';
 import { Plugin, PluginKey, NodeSelection, Selection, TextSelection } from '@milkdown/kit/prose/state';
 import type { EditorState, Transaction } from '@milkdown/kit/prose/state';
 import {
@@ -88,7 +88,7 @@ import { referenceViews } from './reference-views';
 import { referencePicker, openReferencePicker } from './reference-picker';
 import { floatingPanelPosition, positionAnchoredPanel } from './panel-position';
 import type { PanelSide } from './panel-position';
-import { activateEditorPanel, announceEditorPanel, createEditorPanel, createEditorTrigger, onOtherEditorPanel } from './editor-panel';
+import { activateEditorPanel, announceEditorPanel, createEditorPanel, onOtherEditorPanel } from './editor-panel';
 import { parseReferenceUrl, resolveReference } from '@tano/protocol';
 import type { ReferenceTarget, ReferenceIdentity } from '@tano/protocol';
 
@@ -129,45 +129,6 @@ const referencesEnabled = () => props.referenceTargets !== undefined && commandE
 const preferences = () => props.preferences ?? defaultEditorPreferences;
 const root = ref<HTMLElement>();
 const linkModifier = ref(false);
-const hoveredLink = shallowRef<{ anchor: HTMLAnchorElement; x: number; y: number } | null>(null);
-let linkHoverTimer: ReturnType<typeof setTimeout> | undefined;
-function hideLinkEditTrigger() {
-  clearTimeout(linkHoverTimer);
-  linkHoverTimer = undefined;
-  hoveredLink.value = null;
-}
-function keepLinkEditTrigger() {
-  clearTimeout(linkHoverTimer);
-  linkHoverTimer = undefined;
-}
-function scheduleLinkEditTriggerHide() {
-  clearTimeout(linkHoverTimer);
-  linkHoverTimer = setTimeout(hideLinkEditTrigger, 120);
-}
-function showLinkEditTrigger(event: MouseEvent) {
-  if (props.revealMarkdown === false || props.readonly || !(event.target instanceof Element)) return;
-  const anchor = event.target.closest<HTMLAnchorElement>('a[href]');
-  if (!anchor || !root.value?.contains(anchor)) return;
-  clearTimeout(linkHoverTimer);
-  const bounds = anchor.getBoundingClientRect();
-  hoveredLink.value = {
-    anchor,
-    x: bounds.right + 30 < window.innerWidth ? bounds.right + 4 : Math.max(8, bounds.left - 30),
-    y: Math.max(8, Math.min(bounds.top + (bounds.height - 26) / 2, window.innerHeight - 34)),
-  };
-}
-function leaveLinkEditTrigger(event: MouseEvent) {
-  const anchor = hoveredLink.value?.anchor;
-  if (anchor && event.target instanceof globalThis.Node && anchor.contains(event.target) &&
-      !(event.relatedTarget instanceof globalThis.Node && anchor.contains(event.relatedTarget)))
-    scheduleLinkEditTriggerHide();
-}
-function openHoveredLinkPanel() {
-  const anchor = hoveredLink.value?.anchor;
-  if (!anchor || !bridgeView?.dom.contains(anchor)) return;
-  hideLinkEditTrigger();
-  openLinkPanel(bridgeView, anchor);
-}
 type LinkPanel =
   | { kind: 'wiki'; pos: number; target: string; label: string; explicitLabel: boolean; x: number; y: number }
   | { kind: 'link'; from: number; to: number; text: string; href: string; title: string; x: number; y: number };
@@ -239,7 +200,7 @@ function linkMarkRange(view: EditorView, link: Element) {
   return null;
 }
 function openLinkPanel(view: EditorView, link: Element) {
-  if (props.readonly) return false;
+  if (props.readonly || props.revealMarkdown !== false) return false;
   linkPanelSide = undefined;
   const bounds = link.getBoundingClientRect();
   const wikiTarget = link.getAttribute('data-tano-wiki-target');
@@ -342,6 +303,7 @@ let bridgeView: EditorView | undefined;
 let localSource:
   | { kind: 'block'; id: string; original: Node; initial: string; style: Record<string, string> | null }
   | { kind: 'inline'; id: string; original: Fragment; initial: string }
+  | { kind: 'footnote-label'; id: string; initial: string; createdParagraph: boolean }
   | undefined;
 let localSourceCounter = 0;
 let frontmatter = splitFrontmatter(props.modelValue);
@@ -434,6 +396,13 @@ function finishProperty() {
   editingProperty.value = undefined;
   typeMenuProperty.value = undefined;
   propertyError.value = '';
+}
+function finishPropertyOnKey(event: KeyboardEvent) {
+  if (event.isComposing || event.keyCode === 229 ||
+    (event.target as HTMLInputElement & { composing?: boolean }).composing) return;
+  event.preventDefault();
+  event.stopPropagation();
+  finishProperty();
 }
 function onPropertyFocusOut(event: FocusEvent) {
   if (activatingProperty) return;
@@ -753,7 +722,7 @@ function inlineSourceTransaction(
   range: { from: number; to: number },
   tr: Transaction = state.tr,
 ) {
-  const $from = tr.selection.$from;
+  const $from = tr.doc.resolve(range.from);
   const original = $from.parent.cut(range.from - $from.start(), range.to - $from.start()).content;
   const paragraph = state.schema.nodes.paragraph!.create(null, original);
   const source = ctx
@@ -768,10 +737,13 @@ function inlineSourceTransaction(
     sourceOffset(source, before, tr.doc.textBetween(range.from, range.to)[0] ?? ''),
   );
   const id = sourceId();
+  const footnote = original.firstChild?.type.name === 'footnote_reference'
+    ? String(original.firstChild.attrs.label)
+    : '';
   const node = liveInlineSource
     .type(ctx)
     .create(
-      { id, origin: original.firstChild?.type.name === 'math_inline' ? 'math_inline' : '' },
+      { id, origin: original.firstChild?.type.name === 'math_inline' ? 'math_inline' : '', footnoteLabel: footnote },
       source ? state.schema.text(source) : undefined,
     );
   localSource = { kind: 'inline', id, original, initial: source };
@@ -793,14 +765,29 @@ function activateInlineSource(ctx: Ctx, view: EditorView, event?: MouseEvent | K
   } finally {
     applying = false;
   }
-  view.focus();
+  focusRevealedSource(view, event);
   return true;
 }
 
-function activateLinkSource(ctx: Ctx, view: EditorView, link: Element) {
+// Resolve the pointer against the newly rendered source so the caret stays at
+// the click, even when delimiters or a block preview change the layout.
+function focusRevealedSource(view: EditorView, event?: MouseEvent | KeyboardEvent) {
+  view.focus();
+  if (!(event instanceof MouseEvent) || (!event.clientX && !event.clientY)) return;
+  const source = currentSource(view);
+  if (!source) return;
+  const hit = view.posAtCoords({ left: event.clientX, top: event.clientY });
+  if (!hit) return;
+  const pos = Math.max(source.pos + 1, Math.min(source.pos + source.node.nodeSize - 1, hit.pos));
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos))
+    .setMeta('addToHistory', false));
+}
+
+function activateLinkSource(ctx: Ctx, view: EditorView, link: Element, event: MouseEvent) {
   const range = linkMarkRange(view, link);
   if (!range) return false;
-  const selection = TextSelection.create(view.state.doc, range.from + 1);
+  const selection = TextSelection.create(view.state.doc,
+    Math.max(range.from, Math.min(range.to, view.state.selection.from)));
   const tr = inlineSourceTransaction(ctx, view.state, range, view.state.tr.setSelection(selection));
   applying = true;
   try {
@@ -808,7 +795,7 @@ function activateLinkSource(ctx: Ctx, view: EditorView, link: Element) {
   } finally {
     applying = false;
   }
-  view.focus();
+  focusRevealedSource(view, event);
   return true;
 }
 
@@ -821,7 +808,8 @@ function blockNodeSourceTransaction(
   const source = ctx
     .get(serializerCtx)(state.schema.nodes.doc!.create(null, [selected.node]))
     .replace(/\n+$/, '');
-  const before = tr.doc.textBetween(selected.pos, tr.selection.from, '\n');
+  const before = tr.doc.textBetween(selected.pos,
+    Math.max(selected.pos, Math.min(selected.pos + selected.node.nodeSize, tr.selection.from)), '\n');
   const offset = selected.node.type.name === 'code_block'
     ? Math.min(
         source.length,
@@ -835,10 +823,16 @@ function blockNodeSourceTransaction(
   // A previous source block may already have been replaced in this transaction.
   // Read the target's DOM at its position in the still-rendered document.
   const renderedPos = tr.mapping.invert().map(selected.pos, -1);
-  const style = bridgeView?.state.doc === state.doc &&
+  const rendered = bridgeView?.state.doc === state.doc &&
     state.doc.nodeAt(renderedPos)?.eq(selected.node)
-    ? sourceBlockStyle(bridgeView.nodeDOM(renderedPos))
+    ? bridgeView.nodeDOM(renderedPos)
     : null;
+  // A Mermaid preview is a div with no vertical padding. Its padding must not
+  // become the fence line height of the editable <pre> source block.
+  const style = selected.node.type.name === 'code_block' &&
+    !(rendered instanceof HTMLElement && rendered.matches('pre'))
+    ? null
+    : sourceBlockStyle(rendered);
   const sourceNode = liveSource
     .type(ctx)
     .create(
@@ -932,6 +926,56 @@ function clickedCodeBlockSourceTransaction(ctx: Ctx, view: EditorView, target: E
   return null;
 }
 
+function activateFootnoteLabelAt(ctx: Ctx, view: EditorView, pos: number, fromBody: boolean) {
+  if (localSource?.kind === 'footnote-label' || props.readonly || props.revealMarkdown === false)
+    return false;
+  const definition = view.state.doc.nodeAt(pos);
+  if (definition?.type.name !== 'footnote_definition') return false;
+  const createdParagraph = definition.firstChild?.type.name !== 'paragraph';
+  const id = sourceId();
+  const source = `[^${String(definition.attrs.label)}]: `;
+  const label = liveInlineSource.type(ctx).create(
+    { id, origin: 'footnote_definition' },
+    view.state.schema.text(source),
+  );
+  const tr = view.state.tr;
+  const sourcePos = pos + 2;
+  if (createdParagraph)
+    tr.insert(pos + 1, view.state.schema.nodes.paragraph!.create(null, label));
+  else tr.insert(sourcePos, label);
+  tr.setSelection(TextSelection.create(tr.doc, sourcePos + 1 + (fromBody ? source.length : 2)));
+  tr.setMeta('addToHistory', false);
+  localSource = { kind: 'footnote-label', id, initial: source, createdParagraph };
+  applying = true;
+  try {
+    view.dispatch(tr);
+  } finally {
+    applying = false;
+  }
+  view.focus();
+  return true;
+}
+
+function activateFootnoteLabelSource(ctx: Ctx, view: EditorView, target: Element) {
+  // The number is a ::before pseudo-element, so its click targets the dl.
+  if (!target.matches('dl[data-type="footnote_definition"]') || !view.dom.contains(target))
+    return false;
+  const mapped = view.posAtDOM(target, 0);
+  return activateFootnoteLabelAt(ctx, view, mapped, false) ||
+    activateFootnoteLabelAt(ctx, view, mapped - 1, false);
+}
+
+function enterFootnoteLabelFromCaret(ctx: Ctx, view: EditorView) {
+  const selection = view.state.selection;
+  if (!(selection instanceof TextSelection) || !selection.empty ||
+      selection.$from.parent.type.name !== 'paragraph' ||
+      selection.$from.parentOffset !== 0 || selection.$from.depth < 2) return false;
+  const definitionDepth = selection.$from.depth - 1;
+  if (selection.$from.node(definitionDepth).type.name !== 'footnote_definition' ||
+      selection.$from.index(definitionDepth) !== 0) return false;
+  return activateFootnoteLabelAt(ctx, view, selection.$from.before(definitionDepth), true);
+}
+
 function selectedSourceTransaction(ctx: Ctx, state: EditorState, tr: Transaction = state.tr) {
   const selection = tr.selection;
   if (selection instanceof NodeSelection) {
@@ -962,7 +1006,7 @@ function activateReferenceSource(view: EditorView, pos: number) {
 function activateLocalSource(ctx: Ctx, view: EditorView, event: MouseEvent | KeyboardEvent) {
   const target = event.target instanceof Element ? event.target : null;
   const previewBlock = target
-    ?.closest('.math-preview, .tano-mermaid-preview, .tano-image-block img')
+    ?.closest('.math-preview, .tano-mermaid-preview, .tano-image-block')
     ?.closest('.math-block, .tano-mermaid, .tano-image-block');
   if (
     props.revealMarkdown === false ||
@@ -985,7 +1029,7 @@ function activateLocalSource(ctx: Ctx, view: EditorView, event: MouseEvent | Key
       } finally {
         applying = false;
       }
-      view.focus();
+      focusRevealedSource(view, event);
       return true;
     }
   }
@@ -998,7 +1042,7 @@ function activateLocalSource(ctx: Ctx, view: EditorView, event: MouseEvent | Key
       } finally {
         applying = false;
       }
-      view.focus();
+      focusRevealedSource(view, event);
       return true;
     }
   }
@@ -1025,8 +1069,39 @@ function activateLocalSource(ctx: Ctx, view: EditorView, event: MouseEvent | Key
   } finally {
     applying = false;
   }
-  view.focus();
+  focusRevealedSource(view, event);
   return true;
+}
+
+function footnoteLabelTransaction(
+  state: EditorState,
+  source: { node: Node; pos: number },
+  createdParagraph: boolean,
+) {
+  const $source = state.doc.resolve(source.pos);
+  let depth = $source.depth;
+  while (depth > 0 && $source.node(depth).type.name !== 'footnote_definition') depth--;
+  if (!depth) return null;
+  const definitionPos = $source.before(depth);
+  const definition = $source.node(depth);
+  const raw = source.node.textContent;
+  const label = /^\[\^([^\]\r\n]+)\]:[ \t]*$/.exec(raw)?.[1];
+  const tr = state.tr;
+  if (createdParagraph) {
+    const paragraph = definition.firstChild!;
+    tr.delete(definitionPos + 1, definitionPos + 1 + paragraph.nodeSize);
+  } else tr.delete(source.pos, source.pos + source.node.nodeSize);
+  if (label?.trim())
+    tr.setNodeMarkup(definitionPos, undefined, { ...definition.attrs, label });
+  return { tr, valid: !!label?.trim() };
+}
+
+function serializableDocument(state: EditorState) {
+  if (localSource?.kind !== 'footnote-label') return state.doc;
+  const source = findCurrentSource(state);
+  return source
+    ? footnoteLabelTransaction(state, source, localSource.createdParagraph)?.tr.doc ?? state.doc
+    : state.doc;
 }
 
 function finishLocalSourceTransaction(ctx: Ctx, state: EditorState) {
@@ -1036,6 +1111,14 @@ function finishLocalSourceTransaction(ctx: Ctx, state: EditorState) {
   localSource = undefined;
   if (!current) return;
   const raw = current.node.textContent;
+  if (session.kind === 'footnote-label') {
+    const result = footnoteLabelTransaction(state, current, session.createdParagraph);
+    if (!result) return;
+    if (!result.valid && raw !== session.initial)
+      emit('error', '脚注名称无效，已保留原名称');
+    if (raw === session.initial) result.tr.setMeta('addToHistory', false);
+    return { tr: result.tr, unchanged: raw === session.initial };
+  }
   let replacement: Node[] | Fragment;
   if (raw === session.initial)
     replacement = session.kind === 'block' ? [session.original] : session.original;
@@ -1210,6 +1293,9 @@ function restoreOrphanSource(ctx: Ctx, state: EditorState) {
     }
   });
   if (!orphan) return null;
+  if (orphan.node.attrs.origin === 'footnote_definition')
+    return state.tr.delete(orphan.pos, orphan.pos + orphan.node.nodeSize)
+      .setMeta('addToHistory', false);
   const parsed = ctx.get(parserCtx)(orphan.node.textContent);
   if (!parsed?.childCount) return null;
   const replacement = orphan.node.type.name === 'tano_live_source_inline'
@@ -1383,7 +1469,7 @@ const bridge = $prose(
             )
               emit('selectionChange', selectionContext(view.state));
             if (activated || applying || disposed || props.readonly || previous.doc.eq(view.state.doc)) return;
-            const markdown = frontmatter.prefix + ctx.get(serializerCtx)(view.state.doc);
+            const markdown = frontmatter.prefix + ctx.get(serializerCtx)(serializableDocument(view.state));
             if (markdown === lastValue) return;
             lastValue = markdown;
             emit('update:modelValue', markdown);
@@ -1442,6 +1528,9 @@ const bridge = $prose(
               );
             if (!node.isBlock) return;
             const type = blockType(node);
+            const editingFootnoteLabel = type === 'FootnoteDefinition' &&
+              node.firstChild?.firstChild?.type.name === 'tano_live_source_inline' &&
+              node.firstChild.firstChild.attrs.origin === 'footnote_definition';
             if (type === 'Callout' && policy().features.callout) {
               const marker = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i.exec(
                 node.firstChild?.textContent ?? '',
@@ -1475,6 +1564,7 @@ const bridge = $prose(
               Decoration.node(pos, pos + node.nodeSize, {
                 'data-block-type': type,
                 'data-feature-level': String(featureLevel(type)),
+                ...(editingFootnoteLabel ? { class: 'tano-footnote-label-editing' } : {}),
                 ...(type === 'Callout' && policy().features.callout
                   ? {
                       class:
@@ -1513,6 +1603,12 @@ const bridge = $prose(
           },
           keydown(view, event) {
             const source = currentSource(view);
+            if (event.key === 'ArrowLeft' && !event.shiftKey && !event.ctrlKey &&
+                !event.metaKey && !event.altKey && !event.isComposing && !view.composing &&
+                enterFootnoteLabelFromCaret(ctx, view)) {
+              event.preventDefault();
+              return true;
+            }
             if (
               event.key === 'Enter' &&
               !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey &&
@@ -1588,6 +1684,12 @@ const bridge = $prose(
               event.preventDefault();
               return true;
             }
+            if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
+                event.target instanceof Element &&
+                activateFootnoteLabelSource(ctx, _view, event.target)) {
+              event.preventDefault();
+              return true;
+            }
             if ((event.ctrlKey || event.metaKey) && openInlineSourceLink(ctx, _view, event)) {
               event.preventDefault();
               return true;
@@ -1616,7 +1718,7 @@ const bridge = $prose(
               }
               if (wikiTarget === null && props.revealMarkdown !== false && !props.readonly &&
                   event.button === 0 && !event.altKey && !event.shiftKey)
-                return activateLinkSource(ctx, _view, link);
+                return activateLinkSource(ctx, _view, link, event);
               if (props.revealMarkdown === false && event.button === 0 && !event.altKey && !event.shiftKey)
                 return openLinkPanel(_view, link);
             }
@@ -1699,7 +1801,6 @@ const bridge = $prose(
               const status = document.createElement('small');
               const imageCaption = document.createElement('span');
               imageCaption.className = 'tano-image-caption';
-              const edit = createEditorTrigger('tano-image-edit-trigger', '编辑图片');
               const panel = createEditorPanel('div', 'tano-image-editor-panel', '编辑图片');
               const fields = (['src', 'alt', 'title'] as const).map((key) => {
                 const label = document.createElement('label');
@@ -1712,7 +1813,7 @@ const bridge = $prose(
                 panel.append(label);
                 return { key, input };
               });
-              wrapper.append(img, status, imageCaption, edit, panel);
+              wrapper.append(img, status, imageCaption, panel);
               let current = node;
               let editing = false;
               let stopPositioning: (() => void) | undefined;
@@ -1728,7 +1829,7 @@ const bridge = $prose(
               }
               function render() {
                 const block = standalone();
-                if (editing && (!block || props.readonly)) {
+                if (editing && (props.revealMarkdown !== false || props.readonly)) {
                   editing = false;
                   panelSide = undefined;
                   stopPositioning?.();
@@ -1736,10 +1837,10 @@ const bridge = $prose(
                 }
                 wrapper.classList.toggle('tano-image-block', block);
                 wrapper.classList.toggle('tano-editor-active', editing);
-                wrapper.classList.toggle('tano-image-click-to-edit', block && props.revealMarkdown === false && !props.readonly);
-                img.tabIndex = status.tabIndex = block && !props.readonly ? 0 : -1;
-                img.setAttribute('role', block && !props.readonly ? 'button' : 'img');
-                if (block && !props.readonly) {
+                wrapper.classList.toggle('tano-image-click-to-edit', props.revealMarkdown === false && !props.readonly);
+                img.tabIndex = status.tabIndex = !props.readonly ? 0 : -1;
+                img.setAttribute('role', !props.readonly ? 'button' : 'img');
+                if (!props.readonly) {
                   img.setAttribute('aria-label', '编辑图片');
                   status.setAttribute('role', 'button');
                   status.setAttribute('aria-label', '编辑图片');
@@ -1748,7 +1849,6 @@ const bridge = $prose(
                   status.removeAttribute('role');
                   status.removeAttribute('aria-label');
                 }
-                edit.hidden = !block || editing || props.revealMarkdown === false || props.readonly;
                 panel.hidden = !editing;
                 for (const { key, input } of fields) {
                   const value = String(current.attrs[key] ?? '');
@@ -1780,7 +1880,7 @@ const bridge = $prose(
                 if (refocus) view.focus();
               }
               function openPanel() {
-                if (!standalone() || props.readonly || editing) return;
+                if (props.revealMarkdown !== false || props.readonly || editing) return;
                 announceEditorPanel(view.dom, wrapper);
                 editing = true;
                 panelSide = undefined;
@@ -1800,9 +1900,8 @@ const bridge = $prose(
                 imageCaption.hidden = !standalone() || !imageCaption.textContent;
                 if (editing) positionPanel();
               };
-              edit.onclick = openPanel;
               wrapper.onclick = (event) => {
-                if (panel.contains(event.target as globalThis.Node) || event.target === edit) return;
+                if (panel.contains(event.target as globalThis.Node)) return;
                 if (editing) finish(false);
                 else if (props.revealMarkdown === false) openPanel();
               };
@@ -1811,6 +1910,7 @@ const bridge = $prose(
                   return;
                 event.preventDefault();
                 if (editing) finish(false);
+                else if (props.revealMarkdown !== false) img.click();
                 else openPanel();
               };
               for (const { key, input } of fields) {
@@ -1840,9 +1940,7 @@ const bridge = $prose(
                 dom: wrapper,
                 stopEvent: (event) =>
                   panel.contains(event.target as globalThis.Node) ||
-                  event.target === edit ||
                   ((props.revealMarkdown === false || editing) &&
-                    standalone() &&
                     wrapper.contains(event.target as globalThis.Node)),
                 update(next) {
                   if (next.type !== current.type) return false;
@@ -1856,7 +1954,7 @@ const bridge = $prose(
                   stopPositioning?.();
                   stopOtherPanel();
                   wrapper.removeEventListener('tano-math-refresh', render);
-                  wrapper.onclick = wrapper.onkeydown = edit.onclick = null;
+                  wrapper.onclick = wrapper.onkeydown = null;
                   for (const { input } of fields) input.oninput = input.onkeydown = null;
                   img.onload = img.onerror = null;
                 },
@@ -2012,16 +2110,35 @@ onMounted(async () => {
 
 function applyContent(value: string) {
   if (!editor || value === lastValue) return;
-  hideLinkEditTrigger();
+
   if (!linkPanelWriting) closeLinkPanel();
   applying = true;
   try {
-    localSource = undefined;
+    const previousBody = splitFrontmatter(lastValue).body;
     frontmatter = splitFrontmatter(value);
     metadata.value = frontmatter.prefix;
-    if (props.extension)
+    if (props.extension) {
+      localSource = undefined;
       editor.action((ctx) => props.extension!.apply(ctx, value));
-    else editor.action(replaceAll(frontmatter.body));
+    } else if (frontmatter.body !== previousBody) editor.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      const doc = ctx.get(parserCtx)(frontmatter.body);
+      if (!doc) throw new Error('Markdown 无法解析，编辑内容已保留');
+      // Generated heading anchors are view state, not Markdown changes.
+      const comparison = view.state.tr;
+      view.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'heading' && node.attrs.id) comparison.setNodeAttribute(pos, 'id', '');
+      });
+      const from = comparison.doc.content.findDiffStart(doc.content);
+      if (from === null) return;
+      const end = comparison.doc.content.findDiffEnd(doc.content)!;
+      // Repeated text can make the shared prefix and suffix overlap.
+      const overlap = from - Math.min(end.a, end.b);
+      if (overlap > 0) { end.a += overlap; end.b += overlap; }
+      localSource = undefined;
+      const tr = view.state.tr.replace(from, end.a, doc.slice(from, end.b));
+      view.dispatch(closeHistory(tr).setMeta('addToHistory', false));
+    });
     lastValue = value;
   } catch (error) {
     emit('error', String(error));
@@ -2035,7 +2152,7 @@ watch(() => props.readonly, () => {
   if (props.readonly) {
     editingProperty.value = undefined;
     typeMenuProperty.value = undefined;
-    hideLinkEditTrigger();
+
     closeLinkPanel();
   }
 });
@@ -2060,7 +2177,7 @@ watch(
 watch(
   () => props.revealMarkdown,
   () => {
-    hideLinkEditTrigger();
+
     closeLinkPanel();
     editor?.action((ctx) => {
       const view = ctx.get(editorViewCtx);
@@ -2120,7 +2237,7 @@ function command(name: string, value?: string) {
     editor.action((ctx) => {
       const view = ctx.get(editorViewCtx);
       if (!blockCommand(name, value)(view.state, view.dispatch))
-        emit('error', '当前块无法转换为此类型，请先选择普通段落或标题');
+        emit('error', '当前块无法转换为此类型，请先选择正文或标题');
     });
   if (name === 'link')
     editor.action((ctx) => {
@@ -2511,7 +2628,7 @@ defineExpose({
 onBeforeUnmount(() => {
   disposed = true;
   blockMenu.value = null;
-  hideLinkEditTrigger();
+
   closeLinkPanel();
   stopOtherLinkPanel?.();
   window.removeEventListener('pointerdown', dismissBlockMenuOnPointer, true);
@@ -2564,7 +2681,7 @@ onBeforeUnmount(() => {
           :data-property-name="property.name"
           :style="editingProperty === property.name || (editingProperty === null && !property.name) ? { height: `${editingRowHeight}px` } : undefined"
           @focusout="onPropertyFocusOut"
-          @keydown.esc.stop="finishProperty"
+          @keydown.esc="finishPropertyOnKey"
         >
           <button
             v-if="!readonly"
@@ -2581,7 +2698,7 @@ onBeforeUnmount(() => {
             class="frontmatter-row-editor"
           >
             <div class="frontmatter-name-editor">
-              <input v-model="propertyName" class="frontmatter-name-input" aria-label="属性名" :aria-invalid="propertyError && propertyErrorField === 'name' ? true : undefined" spellcheck="false" @input="syncProperty" @compositionend="syncProperty" @keydown.enter.prevent="finishProperty" />
+              <input v-model="propertyName" class="frontmatter-name-input" aria-label="属性名" :aria-invalid="propertyError && propertyErrorField === 'name' ? true : undefined" spellcheck="false" @input="syncProperty" @compositionend="syncProperty" @keydown.enter="finishPropertyOnKey" />
               <span v-if="propertyError && propertyErrorField === 'name'" class="frontmatter-row-error" role="alert">{{ propertyError }}</span>
             </div>
             <div class="frontmatter-value-editor">
@@ -2611,7 +2728,7 @@ onBeforeUnmount(() => {
                 :inputmode="propertyKind === 'number' ? 'decimal' : undefined"
                 @input="syncProperty"
                 @compositionend="syncProperty"
-                @keydown.enter.prevent="finishProperty"
+                @keydown.enter="finishPropertyOnKey"
               />
               <span v-if="propertyError && propertyErrorField === 'value'" class="frontmatter-row-error" role="alert">{{ propertyError }}</span>
             </div>
@@ -2657,26 +2774,9 @@ onBeforeUnmount(() => {
     class="milkdown-host"
     :class="{ 'tano-link-modifier': linkModifier }"
     @pointermove="syncLinkModifier"
-    @mouseover="showLinkEditTrigger"
-    @mouseout="leaveLinkEditTrigger"
-    @mouseleave="scheduleLinkEditTriggerHide"
     @mousedown.capture="rememberRightClickSelection($event); focusTrailingParagraph($event)"
     @contextmenu="openBlockMenu"
   />
-  <Teleport to="body">
-    <button
-      v-if="hoveredLink && revealMarkdown !== false && !readonly"
-      type="button"
-      class="tano-editor-trigger tano-link-edit-trigger"
-      :style="{ left: `${hoveredLink.x}px`, top: `${hoveredLink.y}px` }"
-      :aria-label="hoveredLink.anchor.hasAttribute('data-tano-wiki-target') ? '编辑 Wiki 链接' : '编辑链接'"
-      title="编辑链接"
-      @mouseenter="keepLinkEditTrigger"
-      @mouseleave="scheduleLinkEditTriggerHide"
-      @mousedown.prevent.stop
-      @click.prevent.stop="openHoveredLinkPanel"
-    ><Pencil :size="14" aria-hidden="true" /></button>
-  </Teleport>
   <Teleport to="body">
     <div
       v-if="linkPanel"
@@ -2715,7 +2815,7 @@ onBeforeUnmount(() => {
       <button role="menuitem" type="button" @click="blockMenuAction('copy')"><span aria-hidden="true">⧉</span>复制 Markdown</button>
       <button role="menuitem" type="button" @click="blockMenuAction('duplicate')"><span aria-hidden="true">▣</span>创建副本</button>
       <div class="menu-divider" role="separator" />
-      <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('paragraph')" @click="blockMenuAction('paragraph')"><span aria-hidden="true">¶</span>转为段落</button>
+      <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('paragraph')" @click="blockMenuAction('paragraph')"><span aria-hidden="true">¶</span>转为正文</button>
       <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('heading')" @click="blockMenuAction('heading')"><span aria-hidden="true">H</span>转为标题</button>
       <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('list')" @click="blockMenuAction('list')"><span aria-hidden="true">☷</span>转为列表</button>
       <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('quote')" @click="blockMenuAction('quote')"><span aria-hidden="true">❝</span>转为引用</button>

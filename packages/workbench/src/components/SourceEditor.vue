@@ -10,7 +10,7 @@ import {
   undo,
   undoDepth,
 } from '@codemirror/commands';
-import { Compartment, EditorState, StateField } from '@codemirror/state';
+import { Compartment, EditorState, StateField, Transaction } from '@codemirror/state';
 import { Decoration, EditorView, keymap } from '@codemirror/view';
 import { sourceStyleRanges } from '@tano/editor/source-highlight';
 import { splitFrontmatter } from '@tano/editor/syntax';
@@ -94,13 +94,21 @@ onBeforeUnmount(() => view?.destroy());
 watch(
   () => props.modelValue,
   (value) => {
-    if (!view || value === view.state.doc.toString()) return;
-    const head = Math.min(view.state.selection.main.head, value.length);
+    if (!view) return;
+    const previous = view.state.doc.toString();
+    const next = view.state.toText(value).toString();
+    if (next === previous) return;
+    // Map the selection and local undo steps through just the changed range.
+    let from = 0;
+    while (from < previous.length && from < next.length && previous[from] === next[from]) from++;
+    let to = previous.length;
+    let end = next.length;
+    while (to > from && end > from && previous[to - 1] === next[end - 1]) { to--; end--; }
     applyingModel = true;
     try {
       view.dispatch({
-        changes: { from: 0, to: view.state.doc.length, insert: value },
-        selection: { anchor: head },
+        changes: { from, to, insert: next.slice(from, end) },
+        annotations: [Transaction.addToHistory.of(false), isolateHistory.of('full')],
       });
     } finally {
       applyingModel = false;
@@ -124,6 +132,19 @@ function cursor() {
 
 function focus() {
   view?.focus();
+}
+
+function insertText(text: string, position = cursor()) {
+  if (!view || props.readonly) return false;
+  const at = Math.max(0, Math.min(position, view.state.doc.length));
+  const insert = view.state.toText(text);
+  view.dispatch({
+    changes: { from: at, insert },
+    selection: { anchor: at + insert.length },
+    annotations: isolateHistory.of('full'),
+    scrollIntoView: true,
+  });
+  return true;
 }
 
 function canUndo() {
@@ -176,6 +197,7 @@ function insertBlockAtStart() {
 defineExpose({
   cursor,
   focus,
+  insertText,
   canUndo,
   undoLastChange,
   canRedo,

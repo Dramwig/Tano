@@ -35,7 +35,7 @@ export function moveBlock(
 }
 
 const blockLabel: Record<string, string> = {
-  paragraph: '段落',
+  paragraph: '正文',
   heading: '标题',
   table: '表格',
   bullet_list: '列表',

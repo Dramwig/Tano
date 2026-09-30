@@ -838,6 +838,7 @@ button:hover {
   border-radius: 50%;
 }
 .document-layout {
+  position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
@@ -1076,11 +1077,23 @@ button:hover {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+.tano-prose dl[data-type='footnote_definition'].tano-footnote-label-editing {
+  grid-template-columns: minmax(0, 1fr);
+}
+.tano-prose dl[data-type='footnote_definition'].tano-footnote-label-editing::before {
+  content: none;
+}
 .tano-prose dl[data-type='footnote_definition'] dt {
   color: var(--muted);
 }
 .tano-prose dl[data-type='footnote_definition'][data-footnote-number] dt {
   display: none;
+}
+.tano-prose dl[data-type='footnote_definition'].tano-footnote-label-editing dt {
+  display: none;
+}
+.tano-prose dl[data-type='footnote_definition'].tano-footnote-label-editing dd {
+  grid-column: 1;
 }
 .tano-prose dl[data-type='footnote_definition'] dd {
   margin: 0;
@@ -2036,35 +2049,7 @@ button:hover {
   white-space: nowrap;
   pointer-events: none;
 }
-.tano-editor-trigger {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  box-sizing: border-box;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--surface);
-  color: var(--text-secondary);
-  box-shadow: 0 2px 8px #00000012;
-  cursor: pointer;
-}
-.tano-editor-trigger:hover,
-.tano-editor-trigger:focus-visible {
-  background: var(--accent);
-  color: var(--green);
-}
-.tano-editor-trigger[hidden] {
-  display: none;
-}
-.tano-editor-trigger svg {
-  display: block;
-}
-.tano-link-edit-trigger {
-  position: fixed;
-  z-index: 95;
-}
+
 .tano-prose pre.tano-live-source-block {
   min-height: 1em;
   margin: 13px 0;
@@ -3606,19 +3591,7 @@ button:hover {
   text-align: center;
   overflow-wrap: anywhere;
 }
-.tano-image-edit-trigger {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 2;
-  opacity: 0;
-  pointer-events: none;
-}
-.tano-image:hover > .tano-image-edit-trigger,
-.tano-image:focus-within > .tano-image-edit-trigger {
-  opacity: 1;
-  pointer-events: auto;
-}
+
 .tano-image-editor-panel {
   display: grid;
   width: min(360px, var(--tano-panel-available-width, calc(100vw - 16px)));
@@ -3716,26 +3689,7 @@ button:hover {
   align-items: center;
   padding-right: 4px;
 }
-.tano-math > .math-edit-trigger {
-  position: absolute;
-  top: 50%;
-  left: 100%;
-  z-index: 10;
-  transform: translateY(-50%);
-  opacity: 0;
-  pointer-events: none;
-}
-.tano-math:hover > .math-edit-trigger,
-.tano-math:focus-within > .math-edit-trigger {
-  opacity: 1;
-  pointer-events: auto;
-}
-.math-block > .math-edit-trigger {
-  top: 8px;
-  right: 8px;
-  left: auto;
-  transform: none;
-}
+
 .math-editor-input {
   position: relative;
   display: block;
@@ -4412,19 +4366,7 @@ div.tano-feature-source {
   color: color-mix(in srgb, var(--muted) 40%, var(--paper));
   font-size: 18px;
 }
-.tano-mermaid-edit-trigger {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 2;
-  opacity: 0;
-  pointer-events: none;
-}
-.tano-mermaid:hover > .tano-mermaid-edit-trigger,
-.tano-mermaid:focus-within > .tano-mermaid-edit-trigger {
-  opacity: 1;
-  pointer-events: auto;
-}
+
 .tano-mermaid-editor-panel {
   display: block;
   padding-right: 4px;

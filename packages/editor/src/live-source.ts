@@ -44,6 +44,7 @@ export const liveInlineSource = $nodeSchema('tano_live_source_inline', () => ({
   attrs: {
     id: { default: '', validate: 'string' },
     origin: { default: '', validate: 'string' },
+    footnoteLabel: { default: '', validate: 'string' },
   },
   parseDOM: [{ tag: 'span[data-tano-live-inline-source]' }],
   toDOM: () => [

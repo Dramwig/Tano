@@ -6,7 +6,8 @@ import MarkdownEditor from '@tano/editor';
 import { defaultSelectionContext } from '@tano/editor/document-model';
 import type { EditorSelectionContext } from '@tano/editor/document-model';
 import { createHeadlessMarkdown } from '@tano/editor/headless';
-import EditorToolbar from './EditorToolbar.vue';
+import EditorTools from './EditorTools.vue';
+import type { ToolbarMode } from '../toolbar-preference';
 
 let app: App | undefined;
 let root: HTMLDivElement;
@@ -16,21 +17,29 @@ afterEach(async () => {
   root?.remove();
   await nextTick();
 });
-async function mount(content: string) {
+async function mount(content: string, mode: ToolbarMode = 'fixed') {
   root = document.createElement('div');
   document.body.append(root);
   const value = ref(content);
   const readonly = ref(false);
   const source = ref(false);
+  const toolbarMode = ref(mode);
+  const active = ref(true);
+  const revealMarkdown = ref(true);
   const levels = ref([0, 1]);
   const editor = ref<InstanceType<typeof MarkdownEditor>>();
   const context = ref<EditorSelectionContext>({ ...defaultSelectionContext });
   const errors: string[] = [];
-  Range.prototype.getBoundingClientRect = () => new DOMRect();
-  Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+  root.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
+  Range.prototype.getBoundingClientRect = () => new DOMRect(100, 200, 100, 24);
+  Range.prototype.getClientRects = () => [new DOMRect(100, 200, 100, 24)] as unknown as DOMRectList;
   app = createApp(
     defineComponent(() => () => [
-      h(EditorToolbar, {
+      h(EditorTools, {
+        mode: toolbarMode.value,
+        'onUpdate:mode': value => { toolbarMode.value = value; },
+        active: active.value,
+        editorElement: root,
         context: context.value,
         disabled: readonly.value,
         source: source.value,
@@ -43,6 +52,7 @@ async function mount(content: string) {
         documentId: 'toolbar-test',
         readonly: readonly.value,
         enabledLevels: levels.value,
+        revealMarkdown: revealMarkdown.value,
         'onUpdate:modelValue': (next) => {
           value.value = next;
         },
@@ -56,7 +66,7 @@ async function mount(content: string) {
   app.mount(root);
   await vi.waitFor(() => expect(root.querySelector('.ProseMirror')).not.toBeNull());
   await nextTick();
-  return { value, editor, context, errors, readonly, source, levels };
+  return { value, editor, context, errors, readonly, source, levels, revealMarkdown, toolbarMode, active };
 }
 function button(label: string) {
   return root.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
@@ -210,7 +220,7 @@ it('preserves footnotes, callouts, Mermaid and mentions through Markdown normali
 });
 
 it('treats a cross-paragraph range and code text as block selections without moving selection for math editing', async () => {
-  const { context, editor } = await mount('First\n\nSecond\n\n```js\ncode\n```\n');
+  const { context, editor, revealMarkdown } = await mount('First\n\nSecond\n\n```js\ncode\n```\n');
   const paragraphs = root.querySelectorAll('.ProseMirror > p');
   root.querySelector<HTMLElement>('.ProseMirror')!.focus();
   const range = document.createRange();
@@ -228,7 +238,9 @@ it('treats a cross-paragraph range and code text as block selections without mov
   editor.value!.command('math');
   await nextTick();
   // Opening the formula panel keeps the editor's existing selection.
-  await click(root.querySelector<HTMLElement>('.tano-math button')!);
+  revealMarkdown.value = false;
+  await nextTick();
+  await click(root.querySelector<HTMLElement>('.math-preview')!);
   expect(root.querySelector('.math-editor-panel:not([hidden])')).not.toBeNull();
   expect(context.value.level).toBe('block');
   expect(context.value.activeInline).not.toContain('InlineMath');
@@ -246,7 +258,10 @@ it('keeps read-only and source modes non-editable and closes stale menus', async
   expect(value.value).toBe('正文\n');
   source.value = true;
   await nextTick();
-  expect(root.querySelector('.editor-toolbar button')).toBeNull();
+  expect(button('块级类型')).toBeNull();
+  expect(button('粗体')).toBeNull();
+  await click(button('更多'));
+  expect(button('随选区显示').disabled).toBe(false);
 });
 
 it('filters Level 1 tools and commands while keeping existing enhanced Markdown readable', async () => {
@@ -271,4 +286,244 @@ it('filters Level 1 tools and commands while keeping existing enhanced Markdown 
   expect(value.value).toContain(':::columns');
   expect(value.value).toContain('<summary>保留</summary>');
   expect(errors).toEqual([]);
+});
+
+function floatingButton(label: string) {
+  return document.querySelector<HTMLButtonElement>(`.selection-toolbar button[aria-label="${label}"]`)!;
+}
+async function expectFloating() {
+  await vi.waitFor(() => expect(document.querySelector('.selection-toolbar')).not.toBeNull());
+}
+
+it('shows a compact selection toolbar only for text, and preserves the selection when applying bold', async () => {
+  const { value, errors } = await mount('正文文字\n', 'selection');
+  expect(root.querySelector('.editor-toolbar')).toBeNull();
+  expect(document.querySelector('.selection-toolbar')).toBeNull();
+  await selectText(root.querySelector('.ProseMirror p')!, 0, 2);
+  await expectFloating();
+  expect(floatingButton('粗体')).not.toBeNull();
+  expect(floatingButton('更多格式')).not.toBeNull();
+  expect(floatingButton('行内公式')).toBeNull();
+  await click(floatingButton('粗体'));
+  expect(value.value).toContain('**正文**文字');
+  expect(errors).toEqual([]);
+});
+
+it('keeps a selected range while entering a link and commits it to that range', async () => {
+  const { value, errors } = await mount('正文文字\n', 'selection');
+  await selectText(root.querySelector('.ProseMirror p')!, 0, 2);
+  await expectFloating();
+  await click(floatingButton('链接'));
+  const input = document.querySelector<HTMLInputElement>('.selection-toolbar input')!;
+  expect(document.activeElement).toBe(input);
+  window.getSelection()!.removeAllRanges();
+  document.dispatchEvent(new Event('selectionchange'));
+  await expectFloating();
+  input.value = 'https://example.com';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  await nextTick();
+  expect(value.value).toContain('[正文](https://example.com)文字');
+  expect(errors).toEqual([]);
+});
+
+it('dismisses with Escape until the selection changes and hides when a pane becomes inactive, read-only, or source', async () => {
+  const { active, source, readonly } = await mount('正文文字\n', 'selection');
+  const paragraph = root.querySelector('.ProseMirror p')!;
+  await selectText(paragraph, 0, 2);
+  await expectFloating();
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await nextTick();
+  expect(document.querySelector('.selection-toolbar')).toBeNull();
+  window.dispatchEvent(new Event('resize'));
+  await new Promise(resolve => setTimeout(resolve, 35));
+  expect(document.querySelector('.selection-toolbar')).toBeNull();
+  await selectText(paragraph, 0, 3);
+  await expectFloating();
+  active.value = false;
+  await nextTick();
+  expect(document.querySelector('.selection-toolbar')).toBeNull();
+  active.value = true;
+  await expectFloating();
+  readonly.value = true;
+  await nextTick();
+  expect(document.querySelector('.selection-toolbar')).toBeNull();
+  readonly.value = false;
+  await expectFloating();
+  source.value = true;
+  await nextTick();
+  expect(document.querySelector('.selection-toolbar')).toBeNull();
+});
+
+it('switches from the capsule menu to fixed mode and back without editing content or losing the selection', async () => {
+  const { toolbarMode, value } = await mount('正文文字\n', 'selection');
+  await selectText(root.querySelector('.ProseMirror p')!, 0, 2);
+  await expectFloating();
+  await click(floatingButton('更多格式'));
+  await click(floatingButton('固定到顶部'));
+  expect(toolbarMode.value).toBe('fixed');
+  expect(document.querySelector('.selection-toolbar')).toBeNull();
+  expect(root.querySelector('.editor-toolbar')).not.toBeNull();
+  expect(button('粗体')).not.toBeNull();
+  expect(button('随选区显示')).toBeNull();
+  await click(button('更多'));
+  button('随选区显示').focus();
+  await click(button('随选区显示'));
+  expect(toolbarMode.value).toBe('selection');
+  await expectFloating();
+  expect(document.activeElement).toBe(root.querySelector('.ProseMirror'));
+  expect(value.value).toBe('正文文字\n');
+  await click(floatingButton('粗体'));
+  expect(value.value).toContain('**正文**文字');
+});
+
+async function pointer(target: EventTarget, type: string, x: number, y: number) {
+  const event = new MouseEvent(type, { clientX: x, clientY: y, button: 0, bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'pointerId', { value: 1 });
+  target.dispatchEvent(event);
+  await nextTick();
+}
+
+it('previews a drop, commits only on release, and keeps text selected through top and side docking', async () => {
+  const { toolbarMode, value } = await mount('正文文字\n', 'selection');
+  root.classList.add('workspace-pane');
+  const outline = document.createElement('aside');
+  outline.className = 'inspector-outline';
+  root.append(outline);
+  await selectText(root.querySelector('.ProseMirror p')!, 0, 2);
+  await expectFloating();
+  await pointer(floatingButton('拖动工具栏'), 'pointerdown', 130, 160);
+  await pointer(window, 'pointermove', 130, 14);
+  expect(document.querySelector('.toolbar-dock-preview')?.getAttribute('data-target')).toBe('fixed');
+  const topPreview = document.querySelector<HTMLElement>('.toolbar-dock-preview')!;
+  expect(topPreview.querySelector('.editor-toolbar')).not.toBeNull();
+  expect(topPreview.querySelector('button[aria-label="更多"]')).not.toBeNull();
+  expect(topPreview.querySelector('[inert][aria-hidden="true"]')).not.toBeNull();
+  expect(document.querySelector('.toolbar-drop-hint')).toBeNull();
+  expect(topPreview.style.top).toBe('0px');
+  expect(topPreview.style.width).toBe('800px');
+  expect(toolbarMode.value).toBe('selection');
+  await pointer(window, 'pointerup', 130, 14);
+  expect(toolbarMode.value).toBe('fixed');
+  expect(document.querySelector('.toolbar-drag-preview')).toBeNull();
+  await pointer(button('拖动工具栏'), 'pointerdown', 40, 20);
+  await pointer(window, 'pointermove', 785, 260);
+  const preview = document.querySelector<HTMLElement>('.toolbar-dock-preview')!;
+  expect(preview.querySelector('.selection-format-toolbar[aria-orientation="vertical"]')).not.toBeNull();
+  expect(preview.querySelector<HTMLButtonElement>('button[aria-label="粗体"]')?.disabled).toBe(false);
+  expect(document.querySelector('.toolbar-drag-ghost')).toBeNull();
+  expect(document.querySelector('.toolbar-drop-hint')).toBeNull();
+  preview.getBoundingClientRect = () => new DOMRect(0, 0, 46, 250);
+  await pointer(window, 'pointermove', 785, 270);
+  const centeredTop = preview.style.top;
+  await pointer(window, 'pointermove', 785, 550);
+  expect(preview.style.top).toBe(centeredTop);
+  expect(Number.parseFloat(preview.style.top) + 250 / 2).toBe(300);
+  expect(Number.parseFloat(preview.style.left) + 46).toBe(792);
+  await pointer(window, 'pointerup', 785, 550);
+  expect(toolbarMode.value).toBe('right');
+  await expectFloating();
+  expect(document.querySelector('.selection-toolbar')?.getAttribute('data-dock')).toBe('right');
+  await click(floatingButton('粗体'));
+  expect(value.value).toContain('**正文**文字');
+});
+
+it('cancels drags on Escape, outside drops, pointer cancellation and pane changes without changing content', async () => {
+  const { toolbarMode, value, active } = await mount('正文文字\n', 'fixed');
+  await selectText(root.querySelector('.ProseMirror p')!, 0, 2);
+  for (const reason of ['escape', 'outside', 'pointercancel', 'inactive']) {
+    active.value = true;
+    await nextTick();
+    await pointer(button('拖动工具栏'), 'pointerdown', 50, 20);
+    await pointer(window, 'pointermove', 15, 260);
+    expect(document.querySelector('.toolbar-dock-preview')).not.toBeNull();
+    if (reason === 'escape') {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    } else if (reason === 'outside') {
+      await pointer(window, 'pointerup', 900, 260);
+    } else if (reason === 'pointercancel') {
+      await pointer(window, 'pointercancel', 15, 260);
+    } else active.value = false;
+    await nextTick();
+    expect(toolbarMode.value).toBe('fixed');
+    expect(document.querySelector('.toolbar-drag-preview')).toBeNull();
+    await pointer(window, 'pointerup', 15, 260);
+    expect(toolbarMode.value).toBe('fixed');
+  }
+  expect(value.value).toBe('正文文字\n');
+});
+
+it.each(['fixed', 'left', 'selection'] as const)('follows the pointer from %s mode and returns to the selection only on release', async (mode) => {
+  const { toolbarMode, value } = await mount('正文文字\n', mode);
+  await selectText(root.querySelector('.ProseMirror p')!, 0, 2);
+  if (mode !== 'fixed') await expectFloating();
+  await pointer(mode === 'fixed' ? button('拖动工具栏') : floatingButton('拖动工具栏'), 'pointerdown', 40, 20);
+  await pointer(window, 'pointermove', 400, 300);
+  const preview = document.querySelector<HTMLElement>('.toolbar-drag-preview')!;
+  preview.getBoundingClientRect = () => new DOMRect(0, 0, 270, 42);
+  await pointer(window, 'pointermove', 430, 350);
+  expect(preview.classList.contains('toolbar-preview-inactive')).toBe(false);
+  expect(preview.querySelector('.selection-format-toolbar[aria-orientation="horizontal"]')).not.toBeNull();
+  expect(preview.style.left).toBe('444px');
+  expect(preview.style.top).toBe('368px');
+  await pointer(window, 'pointermove', 500, 400);
+  expect(preview.style.left).toBe('514px');
+  expect(preview.style.top).toBe('418px');
+  await pointer(window, 'pointermove', 15, 260);
+  expect(preview.dataset.target).toBe('left');
+  expect(preview.querySelector('[aria-orientation="vertical"]')).not.toBeNull();
+  await pointer(window, 'pointermove', 450, 320);
+  expect(preview.dataset.target).toBe('selection');
+  expect(preview.querySelector('[aria-orientation="horizontal"]')).not.toBeNull();
+  expect(preview.style.left).toBe('464px');
+  expect(preview.style.top).toBe('338px');
+  expect(toolbarMode.value).toBe(mode);
+  expect(document.querySelector('.toolbar-drop-hint')).toBeNull();
+  await pointer(window, 'pointerup', 450, 320);
+  expect(toolbarMode.value).toBe('selection');
+  await expectFloating();
+  expect(window.getSelection()?.toString()).toBe('正文');
+  await click(floatingButton('粗体'));
+  expect(value.value).toContain('**正文**文字');
+});
+
+it('ignores handle clicks and waits for the next text selection after a body drop with no selected text', async () => {
+  const { toolbarMode, value } = await mount('正文文字\n', 'fixed');
+  await pointer(button('拖动工具栏'), 'pointerdown', 40, 20);
+  await pointer(window, 'pointermove', 43, 21);
+  await pointer(window, 'pointerup', 43, 21);
+  expect(toolbarMode.value).toBe('fixed');
+  expect(document.querySelector('.toolbar-drag-ghost')).toBeNull();
+  await pointer(button('拖动工具栏'), 'pointerdown', 40, 20);
+  await pointer(window, 'pointermove', 400, 250);
+  expect(document.querySelector('.toolbar-drop-hint')).toBeNull();
+  expect(document.querySelector('.toolbar-drag-preview.toolbar-preview-inactive')).not.toBeNull();
+  expect(document.querySelector('.toolbar-drag-status')?.textContent).toContain('选中文字时显示');
+  await pointer(window, 'pointerup', 400, 250);
+  expect(toolbarMode.value).toBe('selection');
+  expect(document.querySelector('.selection-toolbar')).toBeNull();
+  await selectText(root.querySelector('.ProseMirror p')!, 0, 2);
+  await expectFloating();
+  expect(value.value).toBe('正文文字\n');
+});
+
+it('keeps side tools available without a selection and offers all other placements in the menu', async () => {
+  const { toolbarMode, source, readonly, value } = await mount('正文文字\n', 'left');
+  await expectFloating();
+  expect(floatingButton('块级类型')).not.toBeNull();
+  await click(floatingButton('更多格式'));
+  expect(floatingButton('随选区显示')).not.toBeNull();
+  expect(floatingButton('固定到顶部')).not.toBeNull();
+  await click(floatingButton('靠右停靠'));
+  expect(toolbarMode.value).toBe('right');
+  await click(floatingButton('更多格式'));
+  expect(floatingButton('靠左停靠')).not.toBeNull();
+  readonly.value = true;
+  await nextTick();
+  expect(document.querySelector('.selection-toolbar')).toBeNull();
+  readonly.value = false;
+  source.value = true;
+  await nextTick();
+  expect(document.querySelector('.selection-toolbar')).toBeNull();
+  expect(value.value).toBe('正文文字\n');
 });

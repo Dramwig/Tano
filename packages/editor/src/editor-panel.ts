@@ -1,23 +1,6 @@
 import { observePanelPosition } from './panel-position';
-import { createVNode, render } from 'vue';
-import { Pencil } from 'lucide-vue-next';
 
 const openEvent = 'tano-editor-panel-open';
-
-export function createEditorTrigger(className: string, label: string) {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = `tano-editor-trigger ${className}`;
-  button.setAttribute('aria-label', label);
-  button.title = label;
-  button.addEventListener('mousedown', (event) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-  });
-  render(createVNode(Pencil, { size: 14, 'aria-hidden': 'true' }), button);
-  return button;
-}
 
 export function createEditorPanel<T extends 'div' | 'span'>(tag: T, className: string, label: string): HTMLElementTagNameMap[T] {
   const panel = document.createElement(tag);

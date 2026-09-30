@@ -31,13 +31,20 @@ export function jumpToFootnote(view: EditorView, event: MouseEvent): boolean {
 function footnoteDecorations(doc: Node): DecorationSet {
   const definitions = new Set<string>();
   const numbers = new Map<string, number>();
-  const nodes: { pos: number; label: string; reference: boolean; size: number }[] = [];
+  const nodes: { pos: number; label: string; reference: boolean; size: number; rendered: boolean }[] = [];
 
   doc.descendants((node, pos) => {
+    if (node.type.name === 'tano_live_source_inline' && node.attrs.footnoteLabel) {
+      // The editable Markdown temporarily replaces its reference node. Keep its
+      // original place in reading order until the source is committed.
+      nodes.push({ pos, label: String(node.attrs.footnoteLabel), reference: true,
+        size: node.nodeSize, rendered: false });
+      return false;
+    }
     const reference = node.type.name === 'footnote_reference';
     if (!reference && node.type.name !== 'footnote_definition') return;
     const label = String(node.attrs.label);
-    nodes.push({ pos, label, reference, size: node.nodeSize });
+    nodes.push({ pos, label, reference, size: node.nodeSize, rendered: true });
     if (!reference) definitions.add(footnoteLabelKey(label));
   });
 
@@ -55,7 +62,8 @@ function footnoteDecorations(doc: Node): DecorationSet {
 
   return DecorationSet.create(
     doc,
-    nodes.flatMap(({ pos, label, reference, size }) => {
+    nodes.flatMap(({ pos, label, reference, size, rendered }) => {
+      if (!rendered) return [];
       const number = numbers.get(footnoteLabelKey(label));
       if (!number) return [];
       return [

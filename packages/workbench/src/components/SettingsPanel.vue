@@ -35,6 +35,7 @@ import type { CapabilityPatch } from '../workspace-capabilities';
 import type { ThemePreference } from '../theme';
 import { sanitizeCustomFontName, visualFontFamily } from '../editor-font';
 import type { VisualFontChoice } from '../editor-font';
+import type { ToolbarMode } from '../toolbar-preference';
 
 type Page = string;
 type Action =
@@ -52,6 +53,7 @@ const props = defineProps<{
   visualFontChoice: VisualFontChoice;
   customFontName: string;
   revealMarkdown: boolean;
+  toolbarMode?: ToolbarMode;
   showPageTitle: boolean;
   visualFontSize: number;
   sourceFontSize: number;
@@ -71,6 +73,7 @@ const emit = defineEmits<{
   'update:visualFontChoice': [value: VisualFontChoice];
   'update:customFontName': [value: string];
   'update:revealMarkdown': [value: boolean];
+  'update:toolbarMode': [value: ToolbarMode];
   'update:showPageTitle': [value: boolean];
   'update:visualFontSize': [value: number];
   'update:sourceFontSize': [value: number];
@@ -121,7 +124,7 @@ const pages = [
     label: '编辑设置',
     group: '个人偏好',
     icon: PencilLine,
-    terms: '编辑器 Markdown 源码 默认编辑模式 光标 语法 展开 编辑 Reveal 数学 公式 KaTeX 标题 列表 折叠',
+    terms: '编辑器 Markdown 源码 默认编辑模式 光标 语法 展开 编辑 Reveal 数学 公式 KaTeX 标题 列表 折叠 工具栏 选区 顶部 固定 胶囊',
   },
   {
     id: 'workspace',
@@ -463,6 +466,19 @@ function customFontInput(event: Event) {
           <section v-if="page === 'editing'" class="settings-section" aria-label="编辑行为">
             <h3>编辑行为</h3>
             <div class="settings-card">
+              <div class="settings-row">
+                <div>
+                  <strong>编辑工具栏</strong>
+                  <p>随选区显示，或停靠在顶部、左侧、右侧；也可拖动工具栏手柄调整。仅影响当前设备。</p>
+                </div>
+                <select aria-label="编辑工具栏" :value="toolbarMode ?? 'selection'"
+                  @change="emit('update:toolbarMode', ($event.target as HTMLSelectElement).value as ToolbarMode)">
+                  <option value="selection">随选区显示（默认）</option>
+                  <option value="fixed">固定在顶部</option>
+                  <option value="left">靠左停靠</option>
+                  <option value="right">靠右停靠</option>
+                </select>
+              </div>
               <div
                 v-for="option in displayOptions"
                 :key="option.key"
@@ -734,10 +750,11 @@ function customFontInput(event: Event) {
           <section class="settings-section" aria-labelledby="settings-shortcuts">
             <h3 id="settings-shortcuts">键盘快捷键</h3>
             <div class="settings-shortcut-list settings-card">
-              <span>收起或展开侧栏 <kbd>Ctrl B</kbd></span>
+              <span>收起或展开侧栏（编辑区外） <kbd>Ctrl B</kbd></span>
               <span>查找文档 <kbd>Ctrl K</kbd></span>
               <span>新建文档 <kbd>Ctrl N</kbd></span>
               <span>立即保存 <kbd>Ctrl S</kbd></span>
+              <span>聚焦选区工具栏（显示时） <kbd>Alt F10</kbd></span>
             </div>
           </section>
         </div>

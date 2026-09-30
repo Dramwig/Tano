@@ -9,7 +9,7 @@ import type { DocumentFeatures } from './runtime';
 export const blockTypes = [
   { type: 'ObjectReference', label: '对象引用卡片', command: 'object-reference', level: 2 },
   { type: 'Heading', label: '标题', command: 'heading', level: 0 },
-  { type: 'Paragraph', label: '段落', command: 'paragraph', level: 0 },
+  { type: 'Paragraph', label: '正文', command: 'paragraph', level: 0 },
   { type: 'Quote', label: '引用', command: 'quote', level: 0 },
   { type: 'BulletList', label: '无序列表', command: 'list', level: 0 },
   { type: 'OrderedList', label: '有序列表', command: 'ordered-list', level: 0 },
@@ -83,6 +83,8 @@ export interface EditorSelectionContext {
   canTransform: boolean;
   canStyleText: boolean;
   inlineSource?: boolean;
+  /** A non-empty text range, rather than a caret or an explicit block selection. */
+  textSelected?: boolean;
 }
 export const defaultSelectionContext: EditorSelectionContext = {
   level: 'block',
@@ -250,6 +252,7 @@ export function selectionContext(state: EditorState): EditorSelectionContext {
   const node = selectedNode?.type.name === 'image' ? selectedNode : blocks[0]?.node;
   return {
     level: inline ? 'inline' : 'block',
+    textSelected: selection instanceof TextSelection && !selection.empty,
     block: blocks.length > 1 ? 'Document' : node ? blockType(node) : 'Document',
     headingLevel: node?.type.name === 'heading' ? Number(node.attrs.level) : undefined,
     multiple: blocks.length > 1,

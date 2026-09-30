@@ -1,4 +1,5 @@
 import { emitTo, listen } from '@tauri-apps/api/event';
+import { PhysicalPosition } from '@tauri-apps/api/dpi';
 import { Window, getCurrentWindow, monitorFromPoint } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import type { Workspace } from '@tano/protocol';
@@ -6,6 +7,7 @@ import type { EditorPreferences, WorkspaceCapabilities } from '@tano/editor/runt
 import type { CapabilityPatch } from './workspace-capabilities';
 import type { ThemePreference } from './theme';
 import type { VisualFontChoice } from './editor-font';
+import type { ToolbarMode } from './toolbar-preference';
 import type { UpdateCandidate, UpdatePhase, UpdateProgress, UpdateStatus } from './updates/controller';
 
 export type SettingsPageId = 'preferences' | 'appearance' | 'editing' | 'workspace' | 'about';
@@ -19,6 +21,7 @@ export interface SettingsValues {
   visualFontChoice: VisualFontChoice;
   customFontName: string;
   revealMarkdown: boolean;
+  toolbarMode: ToolbarMode;
   showPageTitle: boolean;
   visualFontSize: number;
   sourceFontSize: number;
@@ -76,32 +79,45 @@ const SETTINGS_HEIGHT = 780;
 
 export function centeredSettingsPosition(
   parent: { position: { x: number; y: number }; size: { width: number; height: number } },
-  scale: number,
+  settingsSize: { width: number; height: number },
   workArea?: { position: { x: number; y: number }; size: { width: number; height: number } },
 ) {
-  const x = (parent.position.x + (parent.size.width - SETTINGS_WIDTH * scale) / 2) / scale;
-  const y = (parent.position.y + (parent.size.height - SETTINGS_HEIGHT * scale) / 2) / scale;
+  // Native geometry and setPosition use physical pixels, including on mixed-DPI monitors.
+  const x = parent.position.x + (parent.size.width - settingsSize.width) / 2;
+  const y = parent.position.y + (parent.size.height - settingsSize.height) / 2;
   if (!workArea) return { x: Math.round(x), y: Math.round(y) };
-  const left = workArea.position.x / scale;
-  const top = workArea.position.y / scale;
-  const right = left + workArea.size.width / scale - SETTINGS_WIDTH;
-  const bottom = top + workArea.size.height / scale - SETTINGS_HEIGHT;
+  const left = workArea.position.x;
+  const top = workArea.position.y;
+  const right = left + workArea.size.width - settingsSize.width;
+  const bottom = top + workArea.size.height - settingsSize.height;
   return {
     x: Math.round(Math.max(left, Math.min(x, Math.max(left, right)))),
     y: Math.round(Math.max(top, Math.min(y, Math.max(top, bottom)))),
   };
 }
 
-async function initialSettingsPosition() {
-  const parent = await Window.getByLabel('main').catch(() => null) ?? getCurrentWindow();
-  const [position, size, scale] = await Promise.all([
-    parent.outerPosition(), parent.outerSize(), parent.scaleFactor(),
+async function settingsParentWindow() {
+  return await Window.getByLabel('main').catch(() => null) ?? getCurrentWindow();
+}
+
+async function positionSettingsWindow(window: WebviewWindow) {
+  const parent = await settingsParentWindow();
+  const [position, size, settingsSize] = await Promise.all([
+    parent.outerPosition(), parent.outerSize(), window.outerSize(),
   ]);
   const monitor = await monitorFromPoint(
     Math.round(position.x + size.width / 2),
     Math.round(position.y + size.height / 2),
   ).catch(() => null);
-  return centeredSettingsPosition({ position, size }, scale, monitor?.workArea);
+  const center = (childSize: typeof settingsSize) => window.setPosition(new PhysicalPosition(
+    centeredSettingsPosition({ position, size }, childSize, monitor?.workArea),
+  ));
+  await center(settingsSize);
+  // Moving to another monitor can change the native size before the window is shown.
+  const movedSize = await window.outerSize();
+  if (movedSize.width !== settingsSize.width || movedSize.height !== settingsSize.height) {
+    await center(movedSize);
+  }
 }
 
 async function createSettingsWindow(page: SettingsPageId): Promise<WebviewWindow> {
@@ -113,14 +129,14 @@ async function createSettingsWindow(page: SettingsPageId): Promise<WebviewWindow
     if (event.payload.label === label) rendered();
   });
   try {
-    // A missing monitor or unavailable geometry must not prevent settings from opening.
-    const position = await initialSettingsPosition().catch(() => null);
+    const parent = await settingsParentWindow();
     const window = new WebviewWindow(label, {
       url: `index.html?${query.toString()}`,
       title: '设置 — Tano / 同页',
       width: SETTINGS_WIDTH,
       height: SETTINGS_HEIGHT,
-      ...(position ?? { center: true }),
+      parent: parent.label,
+      center: true,
       visible: false,
       minWidth: 700,
       minHeight: 500,
@@ -164,21 +180,27 @@ export async function prewarmSettingsWindow() {
   await ensureSettingsWindow('appearance');
 }
 
+async function showSettingsWindow(window: WebviewWindow, page: SettingsPageId) {
+  await emitTo(window.label, SETTINGS_NAVIGATE, page);
+  if (!await window.isVisible()) {
+    // Prewarming and hiding preserve an old position. Refresh it before each reveal.
+    // Unavailable native geometry must not prevent settings from opening.
+    await positionSettingsWindow(window).catch(() => {});
+  }
+  await window.show();
+  await window.setFocus();
+  return window;
+}
+
 export async function openSettingsWindow(page: SettingsPageId): Promise<WebviewWindow> {
   let window = await ensureSettingsWindow(page);
   try {
-    await emitTo(window.label, SETTINGS_NAVIGATE, page);
-    await window.show();
-    await window.setFocus();
-    return window;
+    return await showSettingsWindow(window, page);
   } catch {
     // An externally destroyed window can leave a stale handle until its event arrives.
     if (opened === window) opened = null;
     window = await ensureSettingsWindow(page);
-    await emitTo(window.label, SETTINGS_NAVIGATE, page);
-    await window.show();
-    await window.setFocus();
-    return window;
+    return showSettingsWindow(window, page);
   }
 }
 

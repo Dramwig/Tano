@@ -14,6 +14,7 @@ import {
   Quote,
   ListTodo,
   Plus,
+  Type,
   X,
 } from 'lucide-vue-next';
 import {
@@ -33,8 +34,11 @@ const props = defineProps<{
   source?: boolean;
   enabledLevels?: readonly number[];
   features?: DocumentFeatures;
+  compact?: boolean;
+  vertical?: boolean;
+  dragging?: boolean;
 }>();
-const emit = defineEmits<{ command: [name: string, value?: string] }>();
+const emit = defineEmits<{ command: [name: string, value?: string]; dismiss: [] }>();
 const root = ref<HTMLElement>();
 const trigger = ref<HTMLButtonElement>();
 const input = ref<HTMLInputElement>();
@@ -57,6 +61,20 @@ const availableBlocks = computed(() =>
 );
 const availableInline = computed(() =>
   inlineTypes.filter((item) => commandEnabled(item.command, props.enabledLevels, props.features)),
+);
+const primaryInline = computed(() =>
+  props.compact
+    ? availableInline.value.filter((item) =>
+        ['bold', 'italic', 'code', 'link'].includes(item.command),
+      )
+    : availableInline.value,
+);
+const extraInline = computed(() =>
+  availableInline.value.filter(
+    (item) => props.context.level === 'inline'
+      ? !['bold', 'italic', 'code', 'link'].includes(item.command)
+      : ['reference', 'mention'].includes(item.command),
+  ),
 );
 const blockLabel = computed(() =>
   props.context.multiple
@@ -95,7 +113,7 @@ function close() {
   form.value = null;
   error.value = '';
 }
-watch(() => [props.context.level, props.context.block, props.disabled, props.source], close);
+watch(() => [props.context.level, props.context.block, props.disabled, props.source, props.dragging], close);
 function outside(event: MouseEvent) {
   if (!root.value?.contains(event.target as Node)) close();
 }
@@ -136,6 +154,10 @@ function submit() {
   emit('command', command, trimmed);
 }
 function escape() {
+  if (props.compact && !open.value && !form.value) {
+    emit('dismiss');
+    return;
+  }
   close();
   trigger.value?.focus();
 }
@@ -144,28 +166,32 @@ function escape() {
 <template>
   <div
     ref="root"
-    class="editor-toolbar contextual-toolbar"
+    class="contextual-toolbar"
+    :class="compact ? 'selection-format-toolbar' : 'editor-toolbar'"
     :data-selection-level="source ? 'source' : context.level"
     role="toolbar"
+    :aria-orientation="vertical ? 'vertical' : 'horizontal'"
     :aria-label="
       source ? 'Markdown 源码' : context.level === 'block' ? '块级编辑工具' : '行内文字工具'
     "
     @keydown.esc.stop.prevent="escape"
   >
+    <slot name="leading" />
     <template v-if="source"><span class="document-type">Markdown 源码</span></template>
     <template v-else>
-      <span class="selection-level"
+      <span v-if="!compact" class="selection-level"
         >{{ context.level === 'block' ? '块级' : '文字'
         }}<small>{{ context.level === 'block' ? 'Block' : 'Text' }}</small></span
       >
-      <span class="toolbar-divider" />
-      <div v-if="context.level === 'block'" class="format-actions">
+      <span v-if="!compact" class="toolbar-divider" />
+      <div v-if="context.level === 'block' || compact" class="format-actions">
         <div class="menu-wrap">
           <button
             ref="trigger"
             type="button"
             class="block-type-trigger"
             aria-label="块级类型"
+            :title="vertical ? blockLabel : undefined"
             :aria-expanded="open"
             :disabled="disabled"
             @mousedown.prevent
@@ -174,7 +200,8 @@ function escape() {
               form = null;
             "
           >
-            {{ blockLabel }}<small>Level {{ featureLevel(context.block) }}</small
+            <component v-if="vertical" :is="context.block === 'Heading' ? Heading2 : Type" :size="17" />
+            <span v-else>{{ blockLabel }}</span><small v-if="!compact">Level {{ featureLevel(context.block) }}</small
             ><ChevronDown :size="13" />
           </button>
           <div
@@ -183,6 +210,20 @@ function escape() {
             aria-label="Block Level 选项"
           >
             <div class="toolbar-menu-label">块类型 · ＋ 插入新块</div>
+            <div v-if="compact" class="heading-levels" aria-label="标题级别">
+              <button
+                v-for="level in 4"
+                :key="level"
+                type="button"
+                :aria-label="`${level} 级标题`"
+                :aria-pressed="context.block === 'Heading' && context.headingLevel === level"
+                :disabled="disabled || !context.canTransform"
+                @mousedown.prevent
+                @click="run('heading', String(level))"
+              >
+                H{{ level }}
+              </button>
+            </div>
             <button
               v-for="item in availableBlocks"
               :key="item.type"
@@ -202,12 +243,25 @@ function escape() {
               @click="run(item.command)"
             >
               <span
-                >{{ item.label }}<small>{{ item.type }} · Level {{ item.level }}</small></span
+                >{{ item.label
+                }}<small v-if="!compact">{{ item.type }} · Level {{ item.level }}</small></span
               ><Plus v-if="insertionCommands.has(item.command)" :size="13" />
             </button>
+            <select v-if="compact && context.block === 'Callout'" aria-label="提示块类型"
+              :disabled="disabled || !commandEnabled('callout', enabledLevels, features)"
+              @change="run('callout', ($event.target as HTMLSelectElement).value)">
+              <option disabled selected value="">提示类型</option>
+              <option value="NOTE">备注</option><option value="TIP">提示</option>
+              <option value="IMPORTANT">重要</option><option value="WARNING">警告</option>
+              <option value="CAUTION">注意</option>
+            </select>
           </div>
         </div>
-        <div v-if="context.block === 'Heading'" class="heading-levels" aria-label="标题级别">
+        <div
+          v-if="context.block === 'Heading' && !compact"
+          class="heading-levels"
+          aria-label="标题级别"
+        >
           <button
             v-for="level in 4"
             :key="level"
@@ -221,7 +275,7 @@ function escape() {
             H{{ level }}
           </button>
         </div>
-        <template v-else>
+        <template v-else-if="!compact">
           <button
             v-for="item in [
               { name: 'heading', label: '标题', icon: Heading2 },
@@ -242,15 +296,15 @@ function escape() {
           </button>
         </template>
       </div>
-      <div v-else class="format-actions inline-actions">
+      <div v-if="context.level === 'inline'" class="format-actions inline-actions">
         <button
-          v-for="item in availableInline"
+          v-for="item in primaryInline"
           :key="item.type"
           type="button"
           class="icon-button"
           :class="{ active: context.activeInline.includes(item.type) }"
           :aria-label="item.label"
-          :title="`${item.label} · ${item.type} · Level ${item.level}`"
+          :title="compact ? item.label : `${item.label} · ${item.type} · Level ${item.level}`"
           :data-feature-level="item.level"
           :aria-pressed="context.activeInline.includes(item.type)"
           :disabled="
@@ -263,14 +317,46 @@ function escape() {
         >
           <component :is="icons[item.type]" :size="17" />
         </button>
-        <TextStyleMenu
-          :disabled="disabled || !context.canStyleText || context.inlineSource"
-          @format="(name, color) => emit('command', name, color)"
-        />
       </div>
-      <button v-if="context.level === 'block' && commandEnabled('reference', enabledLevels, features)" type="button" class="icon-button" aria-label="引用对象或文档" title="@ 引用对象或文档 · Level 2" :disabled="disabled" @mousedown.prevent @click="run('reference')"><AtSign :size="17" /></button>
+      <TextStyleMenu
+        v-if="context.level === 'inline' || compact"
+        :more="compact"
+        :dragging="dragging"
+        :hide-formats="context.level !== 'inline'"
+        :disabled="disabled || !context.canStyleText || context.inlineSource"
+        @format="(name, color) => emit('command', name, color)"
+      >
+        <template v-if="compact && $slots.preferences" #preferences>
+          <slot name="preferences" />
+        </template>
+        <template v-if="compact && extraInline.length" #extra>
+          <button
+            v-for="item in extraInline"
+            :key="item.type"
+            type="button"
+            :aria-label="item.label"
+            :disabled="disabled || context.inlineSource"
+            @mousedown.prevent
+            @click="run(item.command)"
+          >
+            <component :is="icons[item.type]" :size="16" />{{ item.label }}
+          </button>
+        </template>
+      </TextStyleMenu>
       <button
-        v-if="context.level === 'block' && commandEnabled('mention', enabledLevels, features)"
+        v-if="!compact && context.level === 'block' && commandEnabled('reference', enabledLevels, features)"
+        type="button"
+        class="icon-button"
+        aria-label="引用对象或文档"
+        title="@ 引用对象或文档 · Level 2"
+        :disabled="disabled"
+        @mousedown.prevent
+        @click="run('reference')"
+      >
+        <AtSign :size="17" />
+      </button>
+      <button
+        v-if="!compact && context.level === 'block' && commandEnabled('mention', enabledLevels, features)"
         type="button"
         class="icon-button"
         aria-label="提及文档"
@@ -282,7 +368,7 @@ function escape() {
         <AtSign :size="17" />
       </button>
       <select
-        v-if="context.block === 'Callout'"
+        v-if="!compact && context.block === 'Callout'"
         aria-label="提示块类型"
         :disabled="disabled || !commandEnabled('callout', enabledLevels, features)"
         @change="run('callout', ($event.target as HTMLSelectElement).value)"
@@ -322,6 +408,67 @@ function escape() {
 <style scoped>
 .contextual-toolbar {
   justify-content: flex-start;
+}
+.selection-format-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  color: var(--text);
+  background: var(--paper);
+  box-shadow:
+    0 5px 24px #1f23281a,
+    0 1px 4px #1f23280d;
+}
+.selection-format-toolbar .block-type-trigger {
+  min-width: 0;
+}
+.selection-format-toolbar .format-actions {
+  gap: 2px;
+}
+.selection-format-toolbar .icon-button:not(.toolbar-drag-handle) {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+}
+.selection-format-toolbar :deep(.menu-wrap) {
+  position: static;
+}
+.selection-format-toolbar :deep(.dropdown),
+.selection-format-toolbar .toolbar-input-panel {
+  left: 0;
+  top: calc(100% + 6px);
+  width: min(300px, var(--selection-toolbar-width, 300px));
+  max-height: var(--selection-menu-height, 60vh);
+  overflow-y: auto;
+  transform: none;
+}
+.selection-format-toolbar :deep(.text-style-dropdown) {
+  width: min(260px, var(--selection-toolbar-width, 300px));
+}
+.selection-format-toolbar[aria-orientation='vertical'] {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  width: 46px;
+  padding: 7px;
+  gap: 4px;
+}
+.selection-format-toolbar[aria-orientation='vertical'] .format-actions {
+  flex-direction: column;
+}
+.selection-format-toolbar[aria-orientation='vertical'] .block-type-trigger {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+}
+.selection-format-toolbar[aria-orientation='vertical'] .block-type-trigger > svg:last-child {
+  width: 10px;
 }
 .selection-level {
   display: flex;

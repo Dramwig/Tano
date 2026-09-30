@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApp, defineComponent, h, nextTick, ref } from 'vue';
 import type { App } from 'vue';
-import { editorViewCtx } from '@milkdown/kit/core';
+import { editorViewCtx, parserCtx } from '@milkdown/kit/core';
 import { TextSelection } from '@milkdown/kit/prose/state';
 import MarkdownEditor from './MarkdownEditor.vue';
 import { splitFrontmatter, unsupportedMarkdown } from './syntax';
@@ -87,6 +87,13 @@ async function mount(
   };
 }
 
+async function mountPanel(content: string) {
+  const result = await mount(content);
+  result.revealMarkdown.value = false;
+  await nextTick();
+  return result;
+}
+
 it('reports and applies undo history through the public editor API', async () => {
   const source = '# 标题\n\n正文\n';
   const { value, editor } = await mount(source);
@@ -101,6 +108,109 @@ it('reports and applies undo history through the public editor API', async () =>
   await vi.waitFor(() => expect(value.value).not.toBe(source));
   expect(editor.value!.undoLastChange()).toBe(true);
   await vi.waitFor(() => expect(value.value).toBe(source));
+});
+
+it('maps a backward selection through external edits without adding undo history', async () => {
+  const { value, editor, errors } = await mount('前文\n\n选中文字\n');
+  const view = editor.value!.withContext((ctx) => ctx.get(editorViewCtx));
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 9, 5)));
+  value.value = '新前文\n\n选中文字\n';
+  await nextTick();
+  expect(view.state.selection.anchor).toBe(10);
+  expect(view.state.selection.head).toBe(6);
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+it.each(['', '# 标题\n\n'])('keeps independent external edits when undoing and redoing local typing with prefix %j', async (prefix) => {
+  const { value, editor, errors } = await mount(`${prefix}第一段\n\n第二段\n`);
+  const view = editor.value!.withContext((ctx) => ctx.get(editorViewCtx));
+  const start = prefix ? view.state.doc.firstChild!.nodeSize : 0;
+  view.dispatch(view.state.tr.insertText('本地', start + 4));
+  await nextTick();
+  value.value = value.value.replace('第二段', '第二段外部');
+  await nextTick();
+  expect(editor.value!.undoLastChange()).toBe(true);
+  await nextTick();
+  expect(value.value).toBe(`${prefix}第一段\n\n第二段外部\n`);
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(editor.value!.redoLastChange()).toBe(true);
+  await nextTick();
+  expect(value.value).toBe(`${prefix}第一段本地\n\n第二段外部\n`);
+  expect(errors).toEqual([]);
+});
+
+it('keeps active Markdown source and selection when only external metadata changes', async () => {
+  const { value, editor, errors } = await mount('---\ntitle: old\n---\n\n# 标题\n\n正文\n');
+  const view = editor.value!.withContext((ctx) => ctx.get(editorViewCtx));
+  view.focus();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 2)));
+  const source = root.querySelector('[data-tano-live-source]');
+  expect(source).not.toBeNull();
+  const selection = view.state.selection;
+  value.value = value.value.replace('title: old', 'title: new');
+  await nextTick();
+  expect(root.querySelector('[data-tano-live-source]')).toBe(source);
+  expect(view.state.selection.eq(selection)).toBe(true);
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+it.each(['属性名', '属性值'])('keeps the %s field open while Enter confirms an IME candidate', async (label) => {
+  const { value, errors } = await mount('---\ntitle: original\n---\n\n正文\n');
+  root.querySelector<HTMLButtonElement>('.frontmatter-property-value')!.click();
+  await nextTick();
+  const input = root.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
+  input.focus();
+  input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+  input.value = '中文';
+  input.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true }));
+  const enter = new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, cancelable: true });
+  input.dispatchEvent(enter);
+  await nextTick();
+  expect(enter.defaultPrevented).toBe(false);
+  expect(root.contains(input)).toBe(true);
+  input.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+  await nextTick();
+  expect(value.value).toContain(label === '属性名' ? '"中文": original' : 'title: 中文');
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await nextTick();
+  expect(root.querySelector('.frontmatter-row-editor')).toBeNull();
+  expect(errors).toEqual([]);
+});
+
+it.each([
+  ['aa\n', 'aaa\n'],
+  ['aaa\n', 'aa\n'],
+  ['', '# 新标题\n\n正文\n'],
+  ['# 标题\n\n正文\n', ''],
+  ['一段\n\n二段\n', '前言\n\n一段\n\n二段\n'],
+  ['一段\n\n二段\n', '二段\n'],
+  ['正文\n', '**正文**\n'],
+  ['| A | B |\n| - | - |\n| 1 | 2 |\n', '| A | B |\n| - | - |\n| 3 | 2 |\n'],
+])('applies external structural and repeated-text changes from %j to %j', async (before, after) => {
+  const { value, editor, errors } = await mount(before);
+  value.value = after;
+  await nextTick();
+  editor.value!.withContext((ctx) => {
+    const withoutGeneratedIds = (key: string, value: unknown) => key === 'id' ? undefined : value;
+    expect(JSON.stringify(ctx.get(editorViewCtx).state.doc.toJSON(), withoutGeneratedIds))
+      .toBe(JSON.stringify(ctx.get(parserCtx)(after)!.toJSON(), withoutGeneratedIds));
+  });
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+it.each(['Enter', 'Escape'])('ignores IME %s with the legacy key code', async (key) => {
+  await mount('---\ntitle: original\n---\n\n正文\n');
+  root.querySelector<HTMLButtonElement>('.frontmatter-property-value')!.click();
+  await nextTick();
+  const input = root.querySelector<HTMLInputElement>('input[aria-label="属性值"]')!;
+  const event = new KeyboardEvent('keydown', { key, keyCode: 229, bubbles: true, cancelable: true });
+  input.dispatchEvent(event);
+  await nextTick();
+  expect(event.defaultPrevented).toBe(false);
+  expect(root.contains(input)).toBe(true);
 });
 
 it('switches workspace capabilities without mutating content, and restores rendering', async () => {
@@ -146,13 +256,13 @@ it('opens a document with disabled capabilities while keeping its table visual',
 
 it('edits a formula in a panel while keeping its rendering visible', async () => {
   const source = '公式 $x$。\n\n| A | B |\n| - | - |\n| 1 | 2 |\n';
-  const { value, errors } = await mount(source);
+  const { value, errors } = await mountPanel(source);
   const input = root.querySelector<HTMLTextAreaElement>('.tano-math textarea')!;
   const preview = root.querySelector<HTMLElement>('.tano-math .math-preview')!;
   expect(input.wrap).toBe('off');
   expect(input.hidden).toBe(true);
   expect(preview.hidden).toBe(false);
-  root.querySelector<HTMLButtonElement>('button[aria-label="编辑公式"]')!.click();
+  root.querySelector<HTMLButtonElement>('.math-preview')!.click();
   expect(input.hidden).toBe(false);
   expect(root.querySelector('.tano-math')?.classList.contains('tano-editor-active')).toBe(true);
   expect(preview.hidden).toBe(false);
@@ -177,8 +287,8 @@ it('edits a formula in a panel while keeping its rendering visible', async () =>
 });
 
 it('keeps long formula source visible through synchronized horizontal scrolling', async () => {
-  await mount('$$\n\\int_0^1 x^2\\,dx = \\frac{1}{3}\n$$\n');
-  root.querySelector<HTMLButtonElement>('.math-block .math-edit-trigger')!.click();
+  await mountPanel('$$\n\\int_0^1 x^2\\,dx = \\frac{1}{3}\n$$\n');
+  root.querySelector<HTMLButtonElement>('.math-block .math-preview')!.click();
   const input = root.querySelector<HTMLTextAreaElement>('.math-block textarea')!;
   const highlight = root.querySelector<HTMLElement>('.math-block .math-editor-highlight')!;
   const source = '\\int_0^1 x^2\\,dx = \\frac{1}31232143412422';
@@ -196,14 +306,10 @@ it('opens the formula panel by clicking the formula when Markdown reveal is off'
   const { value, revealMarkdown, preferences, errors } = await mount(source);
   const inline = root.querySelector<HTMLElement>('.math-inline')!;
   const preview = inline.querySelector<HTMLElement>('.math-preview')!;
-  const edit = inline.querySelector<HTMLButtonElement>('button[aria-label="编辑公式"]')!;
-  expect(edit.classList.contains('tano-editor-trigger')).toBe(true);
-  expect(edit.querySelector('svg.lucide')).not.toBeNull();
-  expect(edit.hidden).toBe(false);
+  expect(inline.querySelector("button")).toBeNull();
   revealMarkdown.value = false;
   preferences.value = { ...preferences.value, previewMathWhileEditing: false };
   await nextTick();
-  expect(edit.hidden).toBe(true);
   expect(preview.getAttribute('role')).toBe('button');
   preview.click();
   const panel = inline.querySelector<HTMLElement>('.math-editor-panel')!;
@@ -229,12 +335,11 @@ it('opens the formula panel by clicking the formula when Markdown reveal is off'
   expect(errors).toEqual([]);
 });
 
-it('opens the inline formula panel from its edit button without expanding Markdown source', async () => {
-  const { value, errors } = await mount('公式 $x$ 后接文字。\n');
-  const edit = root.querySelector<HTMLButtonElement>('.math-inline .math-edit-trigger')!;
+it('opens the inline formula panel by clicking it with reveal disabled without expanding Markdown source', async () => {
+  const { value, errors } = await mountPanel('公式 $x$ 后接文字。\n');
+  const edit = root.querySelector<HTMLButtonElement>('.math-inline .math-preview')!;
   const mouseDown = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
   edit.dispatchEvent(mouseDown);
-  expect(mouseDown.defaultPrevented).toBe(true);
   edit.click();
   await nextTick();
   expect(root.querySelector<HTMLElement>('.math-inline .math-editor-panel')?.hidden).toBe(false);
@@ -244,14 +349,13 @@ it('opens the inline formula panel from its edit button without expanding Markdo
   expect(errors).toEqual([]);
 });
 
-it('opens formula, Mermaid, and image edit buttons without moving the editor selection', async () => {
-  const { selectionChangeCount, errors } = await mount('前 $x$ 后。\n\n```mermaid\ngraph TD\n  A --> B\n```\n\n![图](assets/p.png)\n');
+it('opens formula, Mermaid, and image panels without moving the editor selection', async () => {
+  const { selectionChangeCount, errors } = await mountPanel('前 $x$ 后。\n\n```mermaid\ngraph TD\n  A --> B\n```\n\n![图](assets/p.png)\n');
   const initial = selectionChangeCount();
-  for (const selector of ['.math-inline .math-edit-trigger', '.tano-mermaid-edit-trigger', '.tano-image-edit-trigger']) {
+  for (const selector of ['.math-inline .math-preview', '.tano-mermaid-preview', '.tano-image img']) {
     const button = root.querySelector<HTMLButtonElement>(selector)!;
     const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
     button.dispatchEvent(down);
-    expect(down.defaultPrevented).toBe(true);
     button.click();
     await nextTick();
     expect(selectionChangeCount()).toBe(initial);
@@ -262,7 +366,7 @@ it('opens formula, Mermaid, and image edit buttons without moving the editor sel
 
 it('keeps only one formula panel open and closes it on an outside click', async () => {
   const source = '公式 $x$ 和 $y$。\n';
-  const { value, revealMarkdown } = await mount(source);
+  const { value, revealMarkdown } = await mountPanel(source);
   const formulas = [...root.querySelectorAll<HTMLElement>('.math-inline')];
   const [first, second] = formulas;
   const firstPanel = first.querySelector<HTMLElement>('.math-editor-panel')!;
@@ -270,12 +374,12 @@ it('keeps only one formula panel open and closes it on an outside click', async 
   const pointerDown = (target: Element) =>
     target.dispatchEvent(new Event('pointerdown', { bubbles: true }));
 
-  first.querySelector<HTMLButtonElement>('button[aria-label="编辑公式"]')!.click();
+  first.querySelector<HTMLButtonElement>('.math-preview')!.click();
   expect(firstPanel.hidden).toBe(false);
   pointerDown(firstPanel.querySelector('textarea')!);
   expect(firstPanel.hidden).toBe(false);
 
-  second.querySelector<HTMLButtonElement>('button[aria-label="编辑公式"]')!.click();
+  second.querySelector<HTMLButtonElement>('.math-preview')!.click();
   expect(firstPanel.hidden).toBe(true);
   expect(secondPanel.hidden).toBe(false);
   pointerDown(document.body);
@@ -293,19 +397,18 @@ it('keeps only one formula panel open and closes it on an outside click', async 
   expect(value.value).toBe(source);
 });
 
-it('hides the rendered formula while editing when its preview preference is off', async () => {
-  const source = '公式 $x$。\n';
-  const { value, errors, preferences } = await mount(source);
-  root.querySelector<HTMLButtonElement>('button[aria-label="编辑公式"]')!.click();
+it('closes the formula panel when source reveal is enabled', async () => {
+  const { value, revealMarkdown, errors } = await mountPanel('公式 $x$。\n');
+  root.querySelector<HTMLElement>('.math-preview')!.click();
   const input = root.querySelector<HTMLTextAreaElement>('.tano-math textarea')!;
-  expect(input.hidden).toBe(false);
-  preferences.value = { ...defaultEditorPreferences, previewMathWhileEditing: false };
+  input.value = 'x^2';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  revealMarkdown.value = true;
   await nextTick();
-  expect(root.querySelector<HTMLElement>('.tano-math .math-preview')?.style.visibility).toBe('hidden');
-  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-  expect(input.hidden).toBe(true);
-  expect(root.querySelector('.tano-math .katex')).not.toBeNull();
-  expect(value.value).toBe(source);
+  expect(root.querySelector('.tano-editor-panel:not([hidden])')).toBeNull();
+  root.querySelector<HTMLElement>('.math-preview')!.click();
+  expect(root.querySelector('[data-tano-live-inline-source]')).not.toBeNull();
+  expect(value.value).toBe('公式 $x^2$。\n');
   expect(errors).toEqual([]);
 });
 
@@ -338,8 +441,8 @@ it('folds headings and lists without changing Markdown, and can be disabled', as
 });
 
 it('keeps a formula delimiter after editing its value and obeys explicit output policy', async () => {
-  const { value, capabilities, errors } = await mount('公式 \\(x\\)。\n');
-  root.querySelector<HTMLButtonElement>('.tano-math button')!.click();
+  const { value, capabilities, errors } = await mountPanel('公式 \\(x\\)。\n');
+  root.querySelector<HTMLButtonElement>('.math-preview')!.click();
   const input = root.querySelector<HTMLTextAreaElement>('.tano-math textarea')!;
   input.value = 'y^2';
   input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -509,12 +612,7 @@ it('edits a Mermaid block as fenced Markdown when source reveal is enabled', asy
   const { value, errors } = await mount(content);
   const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
   prose.focus();
-  prose.querySelector<HTMLButtonElement>('.tano-mermaid-edit-trigger')!.click();
-  expect(prose.querySelector<HTMLElement>('.tano-mermaid-editor-panel')?.hidden).toBe(false);
-  expect(prose.querySelector('.tano-mermaid')?.classList.contains('tano-editor-active')).toBe(true);
-  document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
-  expect(prose.querySelector<HTMLElement>('.tano-mermaid-editor-panel')?.hidden).toBe(true);
-  expect(prose.querySelector('.tano-mermaid')?.classList.contains('tano-editor-active')).toBe(false);
+  expect(prose.querySelector('.tano-editor-trigger')).toBeNull();
   prose.querySelector<HTMLElement>('.tano-mermaid-preview')!.click();
   await nextTick();
   const source = prose.querySelector<HTMLElement>('pre[data-tano-live-source]')!;
@@ -529,6 +627,25 @@ it('edits a Mermaid block as fenced Markdown when source reveal is enabled', asy
   prose.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
   await vi.waitFor(() => expect(value.value).toContain('graph LR\n  A --> Z'));
   expect(prose.querySelector('.tano-mermaid')).not.toBeNull();
+  expect(errors).toEqual([]);
+});
+
+it('keeps Mermaid source fence lines at a readable height after expanding a preview', async () => {
+  const content = '# Mermaid 图表\n\n```mermaid\ngraph TD\n  A --> B\n```\n\n脚注\n';
+  const { value, errors } = await mount(content);
+  const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
+  const previewBlock = prose.querySelector<HTMLElement>('.tano-mermaid')!;
+  previewBlock.style.paddingTop = '0px';
+  prose.focus();
+  previewBlock.querySelector<HTMLElement>('.tano-mermaid-preview')!.click();
+  await nextTick();
+
+  const source = prose.querySelector<HTMLElement>('pre[data-source-kind="code_block"]')!;
+  expect(source.querySelector('code')?.textContent).toBe('```mermaid\ngraph TD\n  A --> B\n```');
+  expect(source.style.getPropertyValue('--tano-code-fence-line-height')).toBe('');
+  expect(source.style.paddingTop).toBe('');
+  expect(source.nextElementSibling?.textContent).toBe('脚注');
+  expect(value.value).toBe(content);
   expect(errors).toEqual([]);
 });
 
@@ -565,10 +682,7 @@ it('edits Mermaid in one live panel and closes it on outside click', async () =>
   await nextTick();
   const previews = root.querySelectorAll<HTMLElement>('.tano-mermaid-preview');
   expect(previews).toHaveLength(2);
-  const mermaidEdit = root.querySelector<HTMLButtonElement>('.tano-mermaid-edit-trigger')!;
-  expect(mermaidEdit.classList.contains('tano-editor-trigger')).toBe(true);
-  expect(mermaidEdit.querySelector('svg.lucide')).not.toBeNull();
-  expect(root.querySelector('.tano-mermaid-edit-trigger:not([hidden])')).toBeNull();
+  expect(root.querySelector('.tano-mermaid-edit-trigger')).toBeNull();
   previews[0]!.click();
   const firstPanel = root.querySelector<HTMLElement>('.tano-mermaid-editor-panel')!;
   expect(firstPanel.classList.contains('tano-editor-panel')).toBe(true);
@@ -805,10 +919,7 @@ it('edits a standalone image as Markdown when source reveal is enabled', async (
   prose.focus();
   expect(prose.querySelector('.tano-image-caption')?.textContent).toBe('图');
   expect(prose.querySelector<HTMLImageElement>('.tano-image img')?.title).toBe('');
-  prose.querySelector<HTMLButtonElement>('.tano-image-edit-trigger')!.click();
-  expect(prose.querySelector<HTMLElement>('.tano-image-editor-panel')?.hidden).toBe(false);
-  document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
-  expect(prose.querySelector<HTMLElement>('.tano-image-editor-panel')?.hidden).toBe(true);
+  expect(prose.querySelector('.tano-editor-trigger')).toBeNull();
   prose.querySelector<HTMLElement>('.tano-image img')!.click();
   await nextTick();
   expect(prose.querySelector('[data-tano-live-inline-source]')).toBeNull();
@@ -834,10 +945,7 @@ it('edits standalone image fields live in one panel when source reveal is disabl
   await nextTick();
   const images = root.querySelectorAll<HTMLElement>('.tano-image-block img');
   expect(images).toHaveLength(2);
-  const imageEdit = root.querySelector<HTMLButtonElement>('.tano-image-edit-trigger')!;
-  expect(imageEdit.classList.contains('tano-editor-trigger')).toBe(true);
-  expect(imageEdit.querySelector('svg.lucide')).not.toBeNull();
-  expect(root.querySelector('.tano-image-edit-trigger:not([hidden])')).toBeNull();
+  expect(root.querySelector('.tano-image-edit-trigger')).toBeNull();
   images[0]!.click();
   const firstPanel = root.querySelector<HTMLElement>('.tano-image-editor-panel')!;
   expect(firstPanel.classList.contains('tano-editor-panel')).toBe(true);
@@ -981,45 +1089,90 @@ it('opens a clicked document link as Markdown source while reveal is enabled', a
   expect(value.value).toBe('查看 [目标文档](./target.md)。\n');
 });
 
-it('opens the link panel from the hover edit button while Markdown reveal is enabled', async () => {
-  const { value, revealMarkdown, readonly, openedLinks, openedWikiLinks } = await mount(
-    '[目标文档](./target.md) 和 [[Notes/Plan|计划]]。\n',
-  );
-  const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
-  const regular = prose.querySelector<HTMLAnchorElement>('a[href="./target.md"]')!;
-  regular.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+it.each([
+  ['[目标文档](./target.md)', 'a[href]'],
+  ['[[Notes/Plan|计划]]', 'a[data-tano-wiki-target]'],
+  ['$x^2$', '.math-preview'],
+  ['$$\nx^2\n$$', '.math-preview'],
+  ['![图](assets/one.png)', '.tano-image img'],
+  ['```mermaid\ngraph TD\nA --> B\n```', '.tano-mermaid-preview'],
+])('places the source caret at the click for %s from another paragraph', async (syntax, selector) => {
+  const content = `Unrelated paragraph\n\n${syntax}\n`;
+  const { editor, value, errors } = await mount(content);
+  const view = editor.value!.withContext((ctx) => ctx.get(editorViewCtx));
+  const position = vi.spyOn(view, 'posAtCoords').mockImplementation(() => {
+    let pos = -1;
+    view.state.doc.descendants((node, offset) => {
+      if (node.type.name === 'tano_live_source' || node.type.name === 'tano_live_source_inline')
+        pos = offset + 4;
+    });
+    expect(pos).toBeGreaterThan(0);
+    return { pos, inside: -1 };
+  });
+  root.querySelector(selector)!.dispatchEvent(new MouseEvent('click', {
+    bubbles: true, cancelable: true, clientX: 160, clientY: 220,
+  }));
+  expect(position).toHaveBeenCalledWith({ left: 160, top: 220 });
+  expect(view.state.selection.$from.parentOffset).toBe(3);
+  expect(document.activeElement).toBe(view.dom);
+  expect(document.querySelector('.tano-editor-panel:not([hidden])')).toBeNull();
+  expect(value.value).toBe(content);
+  view.dispatch(view.state.tr.insertText('Z'));
+  expect(view.state.selection.$from.parent.textContent).toBe(`${syntax.slice(0, 3)}Z${syntax.slice(3)}`);
+  expect(errors).toEqual([]);
+});
+
+it.each([
+  ['$x^2$', '.math-preview'],
+  ['```mermaid\ngraph TD\nA --> B\n```', '.tano-mermaid-preview'],
+  ['前 ![图](assets/one.png) 后', '.tano-image img'],
+  ['[文档](./target.md)', 'a[href]'],
+  ['[[Notes/Plan|计划]]', 'a[data-tano-wiki-target]'],
+])('closes the field panel on enabling source reveal for %s', async (syntax, selector) => {
+  const { value, revealMarkdown, errors } = await mountPanel(`${syntax}\n`);
+  root.querySelector<HTMLElement>(selector)!.click();
   await nextTick();
-  const edit = document.querySelector<HTMLButtonElement>('.tano-link-edit-trigger')!;
-  expect(edit?.getAttribute('aria-label')).toBe('编辑链接');
-  expect(edit.classList.contains('tano-editor-trigger')).toBe(true);
-  expect(edit.querySelector('svg.lucide')).not.toBeNull();
-  edit.click();
-  await nextTick();
-  expect(document.querySelector('.tano-link-editor-panel [aria-label="链接地址"]')).not.toBeNull();
-  expect(prose.querySelector('[data-tano-live-inline-source]')).toBeNull();
-  expect(openedLinks).toEqual([]);
-  document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
-  await nextTick();
-  const wiki = prose.querySelector<HTMLAnchorElement>('a[data-tano-wiki-target]')!;
-  wiki.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-  await nextTick();
-  const wikiEdit = document.querySelector<HTMLButtonElement>('.tano-link-edit-trigger')!;
-  expect(wikiEdit?.getAttribute('aria-label')).toBe('编辑 Wiki 链接');
-  wikiEdit.click();
-  await nextTick();
-  expect(document.querySelector('.tano-link-editor-panel [aria-label="Wiki 链接目标"]')).not.toBeNull();
-  expect(openedWikiLinks).toEqual([]);
-  revealMarkdown.value = false;
-  await nextTick();
-  expect(document.querySelector('.tano-link-edit-trigger')).toBeNull();
-  expect(document.querySelector('.tano-link-editor-panel')).toBeNull();
+  expect(document.querySelectorAll('.tano-editor-panel:not([hidden])')).toHaveLength(1);
+  expect(root.querySelector('[data-tano-live-source], [data-tano-live-inline-source]')).toBeNull();
   revealMarkdown.value = true;
-  readonly.value = true;
   await nextTick();
-  regular.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+  expect(document.querySelector('.tano-editor-panel:not([hidden])')).toBeNull();
+  root.querySelector<HTMLElement>(selector)!.click();
   await nextTick();
-  expect(document.querySelector('.tano-link-edit-trigger')).toBeNull();
-  expect(value.value).toBe('[目标文档](./target.md) 和 [[Notes/Plan|计划]]。\n');
+  expect(root.querySelector('[data-tano-live-source], [data-tano-live-inline-source]')).not.toBeNull();
+  expect(value.value).toBe(`${syntax}\n`);
+  expect(errors).toEqual([]);
+});
+
+it('obeys source reveal on touch devices for formulas', async () => {
+  vi.stubGlobal('matchMedia', () => ({ matches: false }));
+  try {
+    const { revealMarkdown, errors } = await mount('公式 $x$。\n');
+    const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
+    root.querySelector<HTMLElement>('.math-preview')!.click();
+    expect(prose.querySelector('[data-tano-live-inline-source]')).not.toBeNull();
+    expect(prose.querySelector('.math-editor-panel:not([hidden])')).toBeNull();
+    revealMarkdown.value = false;
+    await nextTick();
+    root.querySelector<HTMLElement>('.math-preview')!.click();
+    expect(prose.querySelector<HTMLElement>('.math-editor-panel')?.hidden).toBe(false);
+    expect(errors).toEqual([]);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it.each([true, false])('has no hover edit buttons in reveal mode %s', async (enabled) => {
+  const { value, revealMarkdown, errors } = await mount('[目标文档](./target.md) 和 [[Notes/Plan|计划]]。\n\n$x$\n\n![图](assets/one.png)\n\n```mermaid\ngraph TD\nA --> B\n```\n');
+  revealMarkdown.value = enabled;
+  await nextTick();
+  for (const element of root.querySelectorAll('a, .math-preview, .tano-image, .tano-mermaid'))
+    element.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+  await nextTick();
+  expect(document.querySelector('.tano-editor-trigger')).toBeNull();
+  expect(document.querySelector('.tano-link-editor-panel')).toBeNull();
+  expect(value.value).toContain('[目标文档](./target.md)');
+  expect(errors).toEqual([]);
 });
 
 it('keeps a live link panel attached to its link while the document scrolls', async () => {
@@ -2190,6 +2343,151 @@ describe('Markdown editor round trips', () => {
     expect(errors).toEqual([]);
   });
 
+  it('keeps footnote numbers stable while the first reference source is expanded', async () => {
+    const input = '第一处[^note]，第二处[^second]。\n\n[^note]: 第一条\n\n[^second]: 第二条\n';
+    const { value, editor, errors } = await mount(input);
+    const references = [...root.querySelectorAll<HTMLElement>('sup[data-type="footnote_reference"]')];
+    expect(references.map((node) => node.getAttribute('data-footnote-number'))).toEqual(['1', '2']);
+
+    references[0]!.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+    await nextTick();
+    const source = root.querySelector<HTMLElement>('[data-tano-live-inline-source]')!;
+    expect(source.textContent).toBe('[^note]');
+    expect(root.querySelector('sup[data-type="footnote_reference"]')?.getAttribute('data-footnote-number'))
+      .toBe('2');
+    expect([...root.querySelectorAll('dl[data-type="footnote_definition"]')]
+      .map((node) => node.getAttribute('data-footnote-number'))).toEqual(['1', '2']);
+
+    const view = editor.value!.withContext((ctx) => ctx.get(editorViewCtx));
+    view.dispatch(view.state.tr.insertText('x', view.state.selection.from));
+    expect(root.querySelector('sup[data-type="footnote_reference"]')?.getAttribute('data-footnote-number'))
+      .toBe('2');
+    expect(errors).toEqual([]);
+    expect(value.value).toContain('[^note]');
+  });
+
+  it('expands a footnote number to edit its Markdown label', async () => {
+    const input = '正文[^note]，另一个[^second]。\n\n[^note]: 第一条支持 **粗体** 和 [链接](https://example.com)。\n\n[^second]: 第二条\n';
+    const { value, editor, errors } = await mount(input);
+    const definition = root.querySelector<HTMLElement>('dl[data-type="footnote_definition"]')!;
+    definition.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+    await nextTick();
+
+    const source = definition.querySelector<HTMLElement>('dd p > [data-tano-live-inline-source]')!;
+    expect(source.textContent).toBe('[^note]: ');
+    expect(source.nextSibling?.textContent).toContain('第一条支持');
+    expect(definition.querySelector('input')).toBeNull();
+    expect(definition.querySelector('strong')?.textContent).toBe('粗体');
+    expect(definition.querySelector('a[href="https://example.com"]')?.textContent).toBe('链接');
+    expect(root.querySelector('pre[data-tano-live-source]')).toBeNull();
+    expect([...root.querySelectorAll('sup[data-type="footnote_reference"]')]
+      .map((node) => node.getAttribute('data-footnote-number'))).toEqual(['1', '2']);
+
+    const view = editor.value!.withContext((ctx) => ctx.get(editorViewCtx));
+    let sourcePos = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'tano_live_source_inline' && node.attrs.origin === 'footnote_definition')
+        sourcePos = pos;
+    });
+    expect(sourcePos).toBeGreaterThanOrEqual(0);
+    expect(view.state.selection.from).toBe(sourcePos + 3);
+    view.dispatch(view.state.tr.insertText('renamed', sourcePos + 3, sourcePos + 7));
+    await nextTick();
+    expect(value.value).toContain('[^renamed]: 第一条支持 **粗体** 和 [链接](https://example.com)。');
+    view.dom.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Escape', bubbles: true, cancelable: true,
+    }));
+    await nextTick();
+    expect(value.value).toContain('[^renamed]: 第一条支持 **粗体** 和 [链接](https://example.com)。');
+    expect(value.value).toContain('正文[^note]，另一个[^second]');
+    expect(root.querySelector('dl[data-type="footnote_definition"]')?.getAttribute('data-label'))
+      .toBe('renamed');
+    const updated = root.querySelector<HTMLElement>('dl[data-type="footnote_definition"]')!;
+    expect(updated.querySelector('[data-tano-live-inline-source]')).toBeNull();
+    expect(updated.querySelector('strong')?.textContent).toBe('粗体');
+    expect(updated.querySelector('a[href="https://example.com"]')?.textContent).toBe('链接');
+    expect(editor.value!.undoLastChange()).toBe(true);
+    await nextTick();
+    expect(value.value).toContain('[^note]: 第一条支持 **粗体** 和 [链接](https://example.com)。');
+    expect(editor.value!.redoLastChange()).toBe(true);
+    await nextTick();
+    expect(value.value).toContain('[^renamed]: 第一条支持 **粗体** 和 [链接](https://example.com)。');
+    expect(errors).toEqual([]);
+  });
+
+  it('enters the footnote label naturally when moving left from the body start', async () => {
+    const input = '正文[^note]\n\n[^note]: 第一条支持 **粗体** 和 [链接](https://example.com)。\n';
+    const { value, editor, errors } = await mount(input);
+    const view = editor.value!.withContext((ctx) => ctx.get(editorViewCtx));
+    let definitionPos = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'footnote_definition') definitionPos = pos;
+    });
+    expect(definitionPos).toBeGreaterThanOrEqual(0);
+    const bodyStart = definitionPos + 2;
+    view.focus();
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, bodyStart + 1)));
+    const first = new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true });
+    view.dom.dispatchEvent(first);
+    expect(first.defaultPrevented).toBe(false);
+    // jsdom does not move the native caret; this is the browser's first ArrowLeft.
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, bodyStart)));
+    const second = new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true });
+    view.dom.dispatchEvent(second);
+    expect(second.defaultPrevented).toBe(true);
+    const definition = root.querySelector<HTMLElement>('dl[data-type="footnote_definition"]')!;
+    const source = definition.querySelector<HTMLElement>('dd p > [data-tano-live-inline-source]')!;
+    expect(source.textContent).toBe('[^note]: ');
+    expect(source.nextSibling?.textContent).toContain('第一条支持');
+    let sourcePos = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'tano_live_source_inline' && node.attrs.origin === 'footnote_definition')
+        sourcePos = pos;
+    });
+    expect(view.state.selection.from).toBe(sourcePos + 1 + source.textContent!.length);
+    expect(definition.querySelector('strong')?.textContent).toBe('粗体');
+    expect(definition.querySelector('a[href="https://example.com"]')?.textContent).toBe('链接');
+    expect(value.value).toBe(input);
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(
+      view.state.doc, sourcePos + source.textContent!.length + 2,
+    )));
+    expect(root.querySelector('[data-tano-live-inline-source]')).toBeNull();
+    expect(root.querySelector('dl[data-type="footnote_definition"]')?.getAttribute('data-footnote-number'))
+      .toBe('1');
+    expect(value.value).toBe(input);
+    expect(errors).toEqual([]);
+  });
+
+  it('keeps footnote body formatting rendered when the caret is outside its marks', async () => {
+    const { editor, errors } = await mount(
+      '正文[^note]\n\n[^note]: 第一条支持 **粗体** 和 [链接](https://example.com)。\n',
+    );
+    const view = editor.value!.withContext((ctx) => ctx.get(editorViewCtx));
+    let definitionPos = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'footnote_definition') definitionPos = pos;
+    });
+    expect(definitionPos).toBeGreaterThanOrEqual(0);
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, definitionPos + 2)));
+    const definition = root.querySelector<HTMLElement>('dl[data-type="footnote_definition"]')!;
+    definition.querySelector<HTMLElement>('dd p')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+    expect(root.querySelector('pre[data-tano-live-source]')).toBeNull();
+    expect(definition.querySelector('strong')?.textContent).toBe('粗体');
+    expect(definition.querySelector('a[href="https://example.com"]')?.textContent).toBe('链接');
+    let boldPos = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.isText && node.marks.some((mark) => mark.type.name === 'strong')) boldPos = pos + 1;
+    });
+    expect(boldPos).toBeGreaterThanOrEqual(0);
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, boldPos)));
+    definition.querySelector<HTMLElement>('strong')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+    expect(definition.querySelector('[data-tano-live-inline-source]')?.textContent).toBe('**粗体**');
+    expect(definition.querySelector('a[href="https://example.com"]')?.textContent).toBe('链接');
+    expect(errors).toEqual([]);
+  });
+
   it('jumps from a modified footnote reference to its matching definition', async () => {
     const input = '第一处[^note]，第二处[^second]。\n\n[^second]: 第二条\n\n[^note]: 第一条\n';
     const { value, errors } = await mount(input);
@@ -2808,9 +3106,9 @@ describe('Markdown editor round trips', () => {
     expect(unsupportedMarkdown('```html\n<div>sample</div>\n```\n\n$\\text{<tag>}$')).toEqual([]);
   });
   it('edits formula source without granting KaTeX trusted HTML or URL access', async () => {
-    const { value, errors } = await mount('Formula $x$ and $\\href{javascript:alert(1)}{bad}$.\n');
+    const { value, errors } = await mountPanel('Formula $x$ and $\\href{javascript:alert(1)}{bad}$.\n');
     expect(root.querySelector('a[href^="javascript:"]')).toBeNull();
-    const button = root.querySelector<HTMLButtonElement>('button[aria-label="编辑公式"]')!;
+    const button = root.querySelector<HTMLButtonElement>('.math-preview')!;
     button.click();
     const input = root.querySelector<HTMLTextAreaElement>('textarea[aria-label="LaTeX 公式源码"]')!;
     input.value = '\\frac{a}{b}';
@@ -2821,13 +3119,13 @@ describe('Markdown editor round trips', () => {
   });
 
   it('inserts a display formula and renders updated multiline source after reloading', async () => {
-    const { value, editor, errors } = await mount('正文\n');
+    const { value, editor, errors } = await mountPanel('正文\n');
     editor.value!.command('math-block');
     await nextTick();
     expect(root.querySelector('.math-block .katex-display')).not.toBeNull();
     expect(value.value).toContain('$$\nE = mc^2\n$$');
     expect(value.value).toContain('正文');
-    const button = root.querySelector<HTMLButtonElement>('.math-block button')!;
+    const button = root.querySelector<HTMLButtonElement>('.math-block .math-preview')!;
     button.click();
     const input = root.querySelector<HTMLTextAreaElement>('.math-block textarea')!;
     const latex = '\\begin{aligned}\na &= b + c \\\\\nd &= \\frac{1}{2}\n\\end{aligned}';

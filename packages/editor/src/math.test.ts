@@ -39,8 +39,8 @@ async function mount(markdown = '') {
       ctx.update(editorViewOptionsCtx, (previous) => ({
         ...previous,
         nodeViews: {
-          math_inline: mathView(false, () => false),
-          math_block: mathView(true, () => false),
+          math_inline: mathView(false, () => false, () => true, () => false),
+          math_block: mathView(true, () => false, () => true, () => false),
         },
       }));
     })
@@ -68,11 +68,11 @@ function markdown() {
 }
 
 describe('formula input', () => {
-  it('opens the edit button without moving the editor selection', async () => {
+  it('opens the formula panel without moving the editor selection', async () => {
     const view = await mount('前 $x$ 后。\n');
     const original = TextSelection.create(view.state.doc, view.state.doc.content.size - 1);
     view.dispatch(view.state.tr.setSelection(original));
-    const button = root.querySelector<HTMLButtonElement>('.math-inline .math-edit-trigger')!;
+    const button = root.querySelector<HTMLButtonElement>('.math-inline .math-preview')!;
     button.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     button.click();
     expect(view.state.selection.eq(original)).toBe(true);
@@ -84,7 +84,7 @@ describe('formula input', () => {
     ['Escape', '$$\nx\n$$\n', '.math-block', '$$\ny\n$$'],
   ])('saves %s and leaves the %s selection', async (key, source, selector, expected) => {
     const view = await mount(source);
-    root.querySelector<HTMLButtonElement>(`${selector} .math-edit-trigger`)!.click();
+    root.querySelector<HTMLButtonElement>(`${selector} .math-preview`)!.click();
     const input = root.querySelector<HTMLTextAreaElement>(`${selector} textarea`)!;
     input.value = 'y';
     const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
@@ -99,7 +99,7 @@ describe('formula input', () => {
 
   it('keeps Enter in the formula editor and updates multiline LaTeX live', async () => {
     const view = await mount('$$\nx\n$$\n');
-    root.querySelector<HTMLButtonElement>('.math-block .math-edit-trigger')!.click();
+    root.querySelector<HTMLButtonElement>('.math-block .math-preview')!.click();
     const input = root.querySelector<HTMLTextAreaElement>('.math-block textarea')!;
     for (const shiftKey of [false, true]) {
       const event = new KeyboardEvent('keydown', {

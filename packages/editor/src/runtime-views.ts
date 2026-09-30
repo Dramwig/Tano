@@ -7,7 +7,7 @@ import type { WorkspaceCapabilities } from './runtime';
 import { mermaidHighlightRanges } from './mermaid-highlight';
 import { floatingPanelPosition, observePanelPosition, positionAnchoredPanel } from './panel-position';
 import type { PanelSide } from './panel-position';
-import { activateEditorPanel, announceEditorPanel, createEditorPanel, createEditorTrigger, onOtherEditorPanel } from './editor-panel';
+import { activateEditorPanel, announceEditorPanel, createEditorPanel, onOtherEditorPanel } from './editor-panel';
 import { matchingCodeLanguages } from './code-languages';
 import type { CodeLanguage } from './code-languages';
 
@@ -330,7 +330,6 @@ export function mermaidView(
     dom.contentEditable = 'false';
     const preview = document.createElement('div');
     preview.className = 'tano-mermaid-preview';
-    const edit = createEditorTrigger('tano-mermaid-edit-trigger', '编辑 Mermaid 图表');
     const panel = createEditorPanel('div', 'tano-mermaid-editor-panel', '编辑 Mermaid 图表');
     const input = document.createElement('textarea');
     input.setAttribute('aria-label', 'Mermaid 源码');
@@ -345,7 +344,7 @@ export function mermaidView(
     highlight.setAttribute('aria-hidden', 'true');
     field.append(highlight, input);
     panel.append(field);
-    dom.append(preview, edit, panel);
+    dom.append(preview, panel);
     let currentNode = node;
     let editing = false;
     let stopPositioning: (() => void) | undefined;
@@ -412,7 +411,7 @@ export function mermaidView(
       }
     }
     function refresh() {
-      if (editing && readonly()) {
+      if (editing && (readonly() || revealMarkdown())) {
         editing = false;
         panelSide = undefined;
         stopPositioning?.();
@@ -421,7 +420,6 @@ export function mermaidView(
       if (input.value !== currentNode.textContent) input.value = currentNode.textContent;
       renderSource();
       input.readOnly = readonly();
-      edit.hidden = editing || !revealMarkdown() || readonly();
       panel.hidden = !editing;
       preview.tabIndex = readonly() ? -1 : 0;
       preview.setAttribute('role', readonly() ? 'img' : 'button');
@@ -470,7 +468,7 @@ export function mermaidView(
       if (refocus) view.focus();
     }
     function openPanel() {
-      if (readonly() || editing) return;
+      if (readonly() || revealMarkdown() || editing) return;
       announceEditorPanel(view.dom, dom);
       editing = true;
       panelSide = undefined;
@@ -478,7 +476,6 @@ export function mermaidView(
       stopPositioning = activateEditorPanel({ panel, anchor: dom, position: positionPanel, close: () => finish(false) });
       input.focus();
     }
-    edit.onclick = openPanel;
     preview.onclick = () => {
       if (editing) finish(false);
       else if (!revealMarkdown()) openPanel();
@@ -487,6 +484,7 @@ export function mermaidView(
       if (event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
       if (editing) finish(false);
+      else if (revealMarkdown()) preview.click();
       else openPanel();
     };
     input.oninput = () => {
@@ -528,7 +526,6 @@ export function mermaidView(
       },
       stopEvent: (event) =>
         panel.contains(event.target as globalThis.Node) ||
-        event.target === edit ||
         ((!revealMarkdown() || editing) && preview.contains(event.target as globalThis.Node)),
       ignoreMutation: () => true,
       destroy() {
@@ -536,7 +533,7 @@ export function mermaidView(
         stopPositioning?.();
         stopOtherPanel();
         dom.removeEventListener('tano-math-refresh', refresh);
-        edit.onclick = preview.onclick = preview.onkeydown = input.oninput = input.onkeydown = input.onscroll = null;
+        preview.onclick = preview.onkeydown = input.oninput = input.onkeydown = input.onscroll = null;
       },
     };
   };

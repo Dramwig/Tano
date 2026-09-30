@@ -118,7 +118,12 @@ onBeforeUnmount(endResize);
 .pane-divider::before { content: ''; position: absolute; background: var(--line); pointer-events: none; }
 .pane-divider-horizontal::before { top: 0; bottom: 0; left: 3px; width: 1px; }
 .pane-divider-vertical::before { left: 0; right: 0; top: 3px; height: 1px; }
-.pane-divider:hover, .pane-divider:focus-visible { background: color-mix(in srgb, var(--green) 45%, transparent); outline: none; }
+/* Match the sidebar's thin highlight while preserving the wider drag target. */
+.pane-divider::after { content: ''; position: absolute; background: transparent; pointer-events: none; transition: background 120ms ease; }
+.pane-divider-horizontal::after { top: 0; bottom: 0; left: calc(50% - 1px); width: 2px; }
+.pane-divider-vertical::after { left: 0; right: 0; top: calc(50% - 1px); height: 2px; }
+.pane-divider:hover::after, .pane-divider:focus-visible::after, .pane-divider:active::after { background: var(--green); }
+.pane-divider:focus-visible { outline: none; }
 .workspace-panes-resizing { user-select: none; }
 .workspace-panes-resizing :deep(.document-layout) { pointer-events: none; }
 .pane-dock-region { position: absolute; pointer-events: none; }

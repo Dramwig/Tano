@@ -6,7 +6,7 @@ import { remarkMathSyntax } from './math-markdown';
 import { mathHighlightRanges } from './math-highlight';
 import { positionAnchoredPanel } from './panel-position';
 import type { PanelSide } from './panel-position';
-import { activateEditorPanel, announceEditorPanel, createEditorPanel, createEditorTrigger, onOtherEditorPanel } from './editor-panel';
+import { activateEditorPanel, announceEditorPanel, createEditorPanel, onOtherEditorPanel } from './editor-panel';
 import { markdownPolicy } from './runtime';
 import katex from 'katex';
 import type { NodeViewConstructor } from '@milkdown/kit/prose/view';
@@ -226,7 +226,6 @@ export function mathView(
     input.wrap = 'off';
     input.spellcheck = false;
     input.hidden = true;
-    const edit = createEditorTrigger('math-edit-trigger', '编辑公式');
     const panel = createEditorPanel('span', 'math-editor-panel', '编辑公式');
     const field = document.createElement('span');
     field.className = 'math-editor-input';
@@ -235,7 +234,7 @@ export function mathView(
     highlight.setAttribute('aria-hidden', 'true');
     field.append(highlight, input);
     panel.append(field);
-    dom.append(preview, edit, panel);
+    dom.append(preview, panel);
     function renderSource() {
       const source = input.value;
       const fragment = document.createDocumentFragment();
@@ -256,7 +255,7 @@ export function mathView(
       highlight.scrollLeft = input.scrollLeft;
     }
     function clickToEdit() {
-      return !revealMarkdown() || !(window.matchMedia?.('(hover: hover)').matches ?? true);
+      return !revealMarkdown();
     }
     function positionPanel() {
       const bounds = dom.getBoundingClientRect();
@@ -265,11 +264,16 @@ export function mathView(
       panelSide = positionAnchoredPanel(dom, panel, preferred, panelSide);
     }
     function render() {
+      if (editing && (readonly() || revealMarkdown())) {
+        editing = false;
+        panelSide = undefined;
+        stopPositioning?.();
+        stopPositioning = undefined;
+      }
       const value = String(current.attrs.value);
       const emptyBlock = display && !value.trim();
       if (input.value !== value) input.value = value;
       input.readOnly = readonly();
-      edit.disabled = readonly();
       preview.title = emptyBlock ? 'LaTeX 公式' : value;
       preview.classList.toggle('math-preview-empty', emptyBlock);
       const showPreview = !editing || previewWhileEditing();
@@ -283,7 +287,6 @@ export function mathView(
       panel.hidden = !editing;
       input.hidden = !editing;
       renderSource();
-      edit.hidden = editing || clickToEdit() || readonly();
       renderMathPreview(
         emptyBlock ? '\\LaTeX{}\\;\\text{公式}' : value,
         preview,
@@ -323,7 +326,7 @@ export function mathView(
       if (refocus) view.focus();
     }
     function openPanel() {
-      if (readonly() || editing) return;
+      if (readonly() || revealMarkdown() || editing) return;
       announceEditorPanel(view.dom, dom);
       editing = true;
       panelSide = undefined;
@@ -335,7 +338,6 @@ export function mathView(
       if (readonly() || editing) return;
       openPanel();
     }
-    edit.onclick = startEditing;
     preview.onclick = () => {
       if (editing) {
         finish(false);
@@ -391,7 +393,6 @@ export function mathView(
       },
       stopEvent: (event) =>
         panel.contains(event.target as Node) ||
-        event.target === edit ||
         ((clickToEdit() || editing) && preview.contains(event.target as Node)),
       ignoreMutation: () => true,
       update(next) {
@@ -404,7 +405,7 @@ export function mathView(
         stopPositioning?.();
         stopOtherPanel();
         dom.removeEventListener('tano-math-refresh', refresh);
-        edit.onclick = preview.onclick = input.oninput = input.onkeydown = input.onscroll = null;
+        preview.onclick = input.oninput = input.onkeydown = input.onscroll = null;
         preview.onkeydown = null;
       },
     };

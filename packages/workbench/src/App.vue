@@ -61,6 +61,7 @@ import type { EditorPreferences } from '@tano/editor/runtime';
 import { defaultSelectionContext } from '@tano/editor/document-model';
 import type { EditorSelectionContext } from '@tano/editor/document-model';
 import SourceEditor from './components/SourceEditor.vue';
+import MarkdownRevealToggle from './components/MarkdownRevealToggle.vue';
 import DocumentTitle from './components/DocumentTitle.vue';
 import { unsupportedMarkdown } from '@tano/editor/syntax';
 import {
@@ -94,7 +95,8 @@ import { CALENDAR_TAB_ID, calendarPeriodTitle, shiftCalendarDate } from './calen
 import type { CalendarViewMode } from './calendar';
 const RelationGraph = defineAsyncComponent(() => import('./components/RelationGraph.vue'));
 import NewTabPicker from './components/NewTabPicker.vue';
-import EditorToolbar from './components/EditorToolbar.vue';
+import EditorTools from './components/EditorTools.vue';
+import { parseToolbarMode, toolbarPreferenceKey } from './toolbar-preference';
 import DocumentHistoryPanel from './components/DocumentHistoryPanel.vue';
 import AgentPanel from './components/AgentPanel.vue';
 import DiffDialog from './components/DiffDialog.vue';
@@ -367,6 +369,14 @@ function constrainSidebarToViewport() {
 }
 const defaultSource = ref(readPreference('defaultSource', false));
 const revealMarkdown = ref(readPreference('revealMarkdown', true));
+const toolbarMode = ref(parseToolbarMode(readTextPreference('toolbarMode')));
+watch(toolbarMode, value => saveTextPreference('toolbarMode', value));
+function syncToolbarPreference(event: StorageEvent) {
+  if (event.key === toolbarPreferenceKey || event.key === null)
+    toolbarMode.value = parseToolbarMode(event.newValue);
+}
+onMounted(() => window.addEventListener('storage', syncToolbarPreference));
+onBeforeUnmount(() => window.removeEventListener('storage', syncToolbarPreference));
 const visualFontChoice = ref<VisualFontChoice>(
   parseVisualFontChoice(readTextPreference('visualFontChoice')),
 );
@@ -823,10 +833,11 @@ async function uploadFile(file: File, requireImage: boolean, doc = active.value)
     throw new Error('附件已导入，原文档已关闭');
   return { ...result, url: relativeWorkspaceReference(doc.path, result.path) };
 }
-async function insertSourceFiles(files: File[], position: number, requireImage: boolean, doc = active.value) {
+async function insertSourceFiles(files: File[], position: number, requireImage: boolean, doc = active.value, paneId = store.activePaneId) {
   if (!doc || doc.conflict || attachmentBusy.value) return;
   const id = doc.id,
     before = doc.content;
+  const targetEditor = paneSourceEditors.get(paneId);
   attachmentBusy.value = true;
   try {
     const links: string[] = [];
@@ -836,7 +847,12 @@ async function insertSourceFiles(files: File[], position: number, requireImage: 
     // Preserve typing that happened while the bytes were being imported.
     const content = doc.content;
     const at = content === before ? position : content.length;
-    store.editDocument(id, `${content.slice(0, at)}\n${links.join('\n')}\n${content.slice(at)}`);
+    const text = `\n${links.join('\n')}\n`;
+    // Local insertions belong to editor history; incoming model updates do not.
+    if (targetEditor && paneSourceEditors.get(paneId) === targetEditor &&
+      store.panes.find(pane => pane.id === paneId)?.activeId === id) {
+      targetEditor.insertText(text, at);
+    } else store.editDocument(id, `${content.slice(0, at)}${text}${content.slice(at)}`);
   } catch (error) {
     store.report(error);
   } finally {
@@ -854,7 +870,7 @@ function pickedFiles(event: Event) {
   const pane = store.panes.find(item => item.id === target.paneId);
   if (!doc || pane?.activeId !== doc.id || paneReadonly(doc)) return;
   if (paneSource(doc.id))
-    void insertSourceFiles(files, paneSourceEditors.get(pane.id)?.cursor() ?? doc.content.length, false, doc);
+    void insertSourceFiles(files, paneSourceEditors.get(pane.id)?.cursor() ?? doc.content.length, false, doc, pane.id);
   else paneEditors.get(pane.id)?.importFiles(files);
 }
 
@@ -1685,6 +1701,7 @@ const settingsSnapshot = computed<SettingsSnapshot>(() => ({
   visualFontChoice: visualFontChoice.value,
   customFontName: customFontName.value,
   revealMarkdown: revealMarkdown.value,
+  toolbarMode: toolbarMode.value,
   showPageTitle: showPageTitle.value,
   visualFontSize: visualFontSize.value,
   sourceFontSize: sourceFontSize.value,
@@ -1740,6 +1757,7 @@ function handleSettingsCommand(command: SettingsCommand) {
     case 'visualFontChoice': visualFontChoice.value = command.value as typeof visualFontChoice.value; break;
     case 'customFontName': customFontName.value = command.value as string; break;
     case 'revealMarkdown': revealMarkdown.value = command.value as boolean; break;
+    case 'toolbarMode': toolbarMode.value = parseToolbarMode(command.value); break;
     case 'showPageTitle': showPageTitle.value = command.value as boolean; break;
     case 'visualFontSize': visualFontSize.value = command.value as number; break;
     case 'sourceFontSize': sourceFontSize.value = command.value as number; break;
@@ -2862,6 +2880,10 @@ watch(activeId, () => {
                 <button type="button" class="calendar-topbar-events" title="查看和管理事件" @click="managePlanEvents"><CalendarDays :size="15" />管理事件</button>
               </div>
               <template v-if="active">
+                <MarkdownRevealToggle
+                  v-model="revealMarkdown"
+                  :source="paneSource(pane.activeId)"
+                />
                 <button
                   type="button"
                   class="icon-button source-mode-button"
@@ -2879,16 +2901,6 @@ watch(activeId, () => {
                   @click="sourceModes[pane.activeId] = !paneSource(pane.activeId)"
                 >
                   <Code2 :size="17" />
-                </button>
-                <button
-                  v-if="localNative"
-                  class="icon-button"
-                  aria-label="导入图片或附件"
-                  title="导入图片或附件；也可直接粘贴图片"
-                  :disabled="paneReadonly(active!) || attachmentBusy"
-                  @click="pickFilesFor(pane.id, active!)"
-                >
-                  <Paperclip :size="17" />
                 </button>
                 <div class="menu-wrap">
                   <button
@@ -2908,19 +2920,36 @@ watch(activeId, () => {
                   >
                     <button
                       type="button"
-                      class="page-toggle-menu-item"
-                      role="switch"
-                      :aria-checked="pageLocked"
-                      :title="pageLocked ? '退出阅读模式' : '锁定后进入阅读模式'"
-                      @click="togglePageLock"
+                      :disabled="editorReadonly || !documentUndoAvailable"
+                      @click="undoDocument"
                     >
-                      <LockKeyhole :size="15" />锁定页面<span
-                        class="menu-switch"
-                        :class="{ on: pageLocked }"
-                        aria-hidden="true"
-                        ><span
-                      /></span>
+                      <Undo2 :size="15" />撤销<span class="menu-shortcut">Ctrl Z</span>
                     </button>
+                    <button
+                      type="button"
+                      :disabled="editorReadonly || !documentRedoAvailable"
+                      @click="redoDocument"
+                    >
+                      <Redo2 :size="15" />重做<span class="menu-shortcut">Ctrl Y</span>
+                    </button>
+                    <button
+                      @click="
+                        menu = false;
+                        store.flush();
+                      "
+                    >
+                      <CheckCheck :size="15" />立即保存<span class="menu-shortcut">Ctrl S</span>
+                    </button>
+                    <button
+                      class="danger-text"
+                      :disabled="editorReadonly || editing.isManaging(pane.activeId) || (pane.id === store.activePaneId && editing.activeBusy)"
+                      @click="removeDocument()"
+                    >
+                      <Trash2 :size="15" />{{
+                        store.isDemo ? '删除演示文档' : store.isWeb ? '删除在线文档' : '移入回收站'
+                      }}
+                    </button>
+                    <div class="menu-divider" role="separator" />
                     <button
                       type="button"
                       class="page-toggle-menu-item"
@@ -2937,62 +2966,44 @@ watch(activeId, () => {
                         ><span
                       /></span>
                     </button>
-                    <div class="menu-divider" />
+                    <div class="menu-divider" role="separator" />
                     <button
                       type="button"
-                      :disabled="editorReadonly || !documentUndoAvailable"
-                      @click="undoDocument"
+                      class="page-toggle-menu-item"
+                      role="switch"
+                      :aria-checked="pageLocked"
+                      :title="pageLocked ? '退出阅读模式' : '锁定后进入阅读模式'"
+                      @click="togglePageLock"
                     >
-                      <Undo2 :size="15" />撤销<span class="menu-shortcut">Ctrl Z</span>
+                      <LockKeyhole :size="15" />锁定页面<span
+                        class="menu-switch"
+                        :class="{ on: pageLocked }"
+                        aria-hidden="true"
+                        ><span
+                      /></span>
                     </button>
+                    <div class="menu-divider" role="separator" />
                     <button
-                      type="button"
-                      :disabled="editorReadonly || !documentRedoAvailable"
-                      @click="redoDocument"
-                    >
-                      <Redo2 :size="15" />重做<span class="menu-shortcut">Ctrl Y</span>
-                    </button>
-                    <button
-                      :disabled="editorReadonly || editing.isManaging(pane.activeId) || (pane.id === store.activePaneId && editing.activeBusy)"
-                      @click="showModal('rename')"
-                    >
-                      <Pencil :size="15" />重命名文档</button
-                    ><button :disabled="workspace?.readOnly || busy" @click="showModal('saveAs')">
-                      <FileText :size="15" />另存副本</button
-                    ><button
                       @click="
                         menu = false;
                         historyPage = 'versions';
                         historyPanel = true;
                       "
                     >
-                      <Archive :size="15" />版本历史<span class="menu-beta">Beta</span></button
-                    ><button
+                      <Archive :size="15" />版本历史<span class="menu-beta">Beta</span>
+                    </button>
+                    <button
                       @click="
                         menu = false;
                         historyPage = 'updates';
                         historyPanel = true;
                       "
                     >
-                      <Clock3 :size="15" />更新历史</button
-                    ><button @click="exportDocument"><ArrowDownToLine :size="15" />导出 Markdown</button
-                    ><button
-                      @click="
-                        menu = false;
-                        store.flush();
-                      "
-                    >
-                      <CheckCheck :size="15" />立即保存<span class="menu-shortcut">Ctrl S</span>
+                      <Clock3 :size="15" />更新历史
                     </button>
-                    <div class="menu-divider" />
-                    <button
-                      class="danger-text"
-                      :disabled="editorReadonly || editing.isManaging(pane.activeId) || (pane.id === store.activePaneId && editing.activeBusy)"
-                      @click="removeDocument()"
-                    >
-                      <Trash2 :size="15" />{{
-                        store.isDemo ? '删除演示文档' : store.isWeb ? '删除在线文档' : '移入回收站'
-                      }}
+                    <div class="menu-divider" role="separator" />
+                    <button @click="exportDocument">
+                      <ArrowDownToLine :size="15" />导出 Markdown
                     </button>
                   </div>
                 </div>
@@ -3037,9 +3048,14 @@ watch(activeId, () => {
           </main>
 
           <template v-if="active">
-            <div :key="active.id" :ref="el => setPaneElement('scroll', pane.id, el)" class="document-layout" @scroll.passive="scheduleActiveHeading">
+            <div :key="active.id" :ref="el => setPaneElement('scroll', pane.id, el)" class="document-layout"
+              :data-toolbar-dock="pane.id === store.activePaneId && !paneSource(pane.activeId) && !paneReadonly(active!) ? toolbarMode : undefined"
+              @scroll.passive="scheduleActiveHeading">
               <main class="document-main">
-                <EditorToolbar
+                <EditorTools
+                  v-model:mode="toolbarMode"
+                  :active="pane.id === store.activePaneId"
+                  :editor-element="paneEditorScrolls.get(pane.id)"
                   :features="store.capabilities.features"
                   :context="paneSelections[pane.id] ?? defaultSelectionContext"
                   :source="paneSource(pane.activeId)"
@@ -3048,6 +3064,10 @@ watch(activeId, () => {
                 >
                   <template v-if="detachedWindow" #trailing>
                     <div class="detached-editor-actions">
+                      <MarkdownRevealToggle
+                        v-model="revealMarkdown"
+                        :source="paneSource(pane.activeId)"
+                      />
                       <button
                         type="button"
                         class="icon-button"
@@ -3069,7 +3089,7 @@ watch(activeId, () => {
                       ><Paperclip :size="17" /></button>
                     </div>
                   </template>
-                </EditorToolbar>
+                </EditorTools>
 
                 <component  :is="extensions.regions['editing-panel']" v-if="pane.id === store.activePaneId && extensions.regions['editing-panel']" :actions="extensionActions" />
                 <div v-if="active.conflict" class="conflict-banner" role="alert">
@@ -3149,7 +3169,7 @@ watch(activeId, () => {
                     @update:model-value="store.editDocument(active!.id, $event)"
                     @files="
                       (files, requireImage, position) =>
-                        insertSourceFiles(files, position, requireImage, active)
+                        insertSourceFiles(files, position, requireImage, active, pane.id)
                     "
                   />
                   <MarkdownEditor
@@ -3532,6 +3552,7 @@ watch(activeId, () => {
       :visual-font-choice="visualFontChoice"
       :custom-font-name="customFontName"
       :reveal-markdown="revealMarkdown"
+      :toolbar-mode="toolbarMode"
       :show-page-title="showPageTitle"
       :visual-font-size="visualFontSize"
       :source-font-size="sourceFontSize"
@@ -3550,6 +3571,7 @@ watch(activeId, () => {
       @update:visual-font-choice="visualFontChoice = $event"
       @update:custom-font-name="customFontName = $event"
       @update:reveal-markdown="revealMarkdown = $event"
+      @update:toolbar-mode="toolbarMode = $event"
       @update:show-page-title="showPageTitle = $event"
       @update:visual-font-size="visualFontSize = $event"
       @update:source-font-size="sourceFontSize = $event"
