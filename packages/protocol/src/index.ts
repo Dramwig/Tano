@@ -1,11 +1,14 @@
 export * from './references';
 export * from './agent';
+export * from './assistant';
 export * from './objects';
 export * from './object-types';
 export * from './short-id';
 export * from './relations';
 export * from './plugins';
 export * from './workspace-paths';
+export * from './comments';
+export * from './document-layout';
 
 export interface FileEntry {
   id: string;
@@ -22,7 +25,6 @@ export interface Workspace {
   path: string;
   files: FileEntry[];
   readOnly?: boolean;
-  backupWarning?: string;
 }
 
 export interface FileSnapshot {
@@ -57,40 +59,6 @@ export interface WorkspaceAdapter {
   remove(path: string): Promise<void>;
   reveal(): Promise<void>;
   watch(callback: () => void): Promise<() => void>;
-  recoveryPath?(): string | null;
-  backupCatalog?(path: string): Promise<WorkspaceBackupCatalog>;
-  backupPreview?(path: string, snapshotId: string): Promise<WorkspaceRecoveryPreview>;
-  restoreBackup?(path: string, snapshotId: string, currentFingerprint?: string): Promise<Workspace>;
-  exportWorkspace?(): Promise<WorkspaceArchiveResult | null>;
-  importWorkspace?(): Promise<WorkspaceArchiveResult | null>;
-}
-
-export interface WorkspaceArchiveResult {
-  path: string;
-  workspaceId: string;
-  fileCount: number;
-  bytes: number;
-}
-
-export interface WorkspaceBackupSummary {
-  snapshotId: string;
-  createdAt: number;
-  fileCount: number;
-  bytes: number;
-  error?: string | null;
-}
-export interface WorkspaceBackupCatalog {
-  path: string;
-  workspaceId: string;
-  snapshots: WorkspaceBackupSummary[];
-  pendingRestore?: string | null;
-}
-export interface WorkspaceRecoveryPreview {
-  workspaceId: string;
-  snapshot: WorkspaceBackupSummary;
-  currentFingerprint: string;
-  changes: { path: string; kind: string }[];
-  markdownAndAttachmentsUnchanged: boolean;
 }
 
 export interface SearchHit {

@@ -54,6 +54,7 @@ import {
   MoveHorizontal,
   Undo2,
   Redo2,
+  MessageSquare,
 } from 'lucide-vue-next';
 import MarkdownEditor from '@tano/editor';
 import { defaultEditorPreferences } from '@tano/editor/runtime';
@@ -61,8 +62,11 @@ import type { EditorPreferences } from '@tano/editor/runtime';
 import { defaultSelectionContext } from '@tano/editor/document-model';
 import type { EditorSelectionContext } from '@tano/editor/document-model';
 import SourceEditor from './components/SourceEditor.vue';
+import EmptyEditor from './components/EmptyEditor.vue';
 import MarkdownRevealToggle from './components/MarkdownRevealToggle.vue';
 import DocumentTitle from './components/DocumentTitle.vue';
+import DocumentComments from './components/DocumentComments.vue';
+import type { CommentAnchor } from '@tano/protocol';
 import { unsupportedMarkdown } from '@tano/editor/syntax';
 import {
   basename,
@@ -74,7 +78,6 @@ import {
   safeRemoteImage,
 } from '@tano/protocol';
 import type { FileEntry, SearchHit } from '@tano/protocol';
-import type { WorkspaceArchiveResult } from '@tano/protocol';
 import {
   imageUrl,
   importAttachment,
@@ -99,6 +102,8 @@ import EditorTools from './components/EditorTools.vue';
 import { parseToolbarMode, toolbarPreferenceKey } from './toolbar-preference';
 import DocumentHistoryPanel from './components/DocumentHistoryPanel.vue';
 import AgentPanel from './components/AgentPanel.vue';
+import AssistantPanel from './components/AssistantPanel.vue';
+import { useAssistantStore } from './assistant/store';
 import DiffDialog from './components/DiffDialog.vue';
 import { handleMobileVisibility } from './mobile-lifecycle';
 import { useWorkspaceStore } from './stores/workspace';
@@ -114,9 +119,11 @@ import { usePlanSyncStore } from './stores/plan-sync';
 import { planKey } from './personal-plans';
 import PersonalPlanDialog from './components/PersonalPlanDialog.vue';
 import SidebarPlan from './components/SidebarPlan.vue';
+import SidebarNavigation from './components/SidebarNavigation.vue';
+import WorkspaceSwitcher from './components/WorkspaceSwitcher.vue';
+import ButtonVisibilityGroup from './components/ButtonVisibilityGroup.vue';
 import CalendarView from './components/CalendarView.vue';
 import PluginInstaller from './components/PluginInstaller.vue';
-import WorkspaceRecoveryDialog from './components/WorkspaceRecoveryDialog.vue';
 import { isObjectPath, resolveReference } from '@tano/protocol';
 import type { ReferenceIdentity, ReferenceTarget } from '@tano/protocol';
 import { sloganParts, welcomeSlogans } from './welcome-slogans';
@@ -142,6 +149,7 @@ import {
 import type { SettingsCommand, SettingsPageId, SettingsSnapshot } from './settings-window';
 
 const store = useWorkspaceStore();
+const assistant = useAssistantStore();
 const plans = usePlanStore();
 usePlanSyncStore();
 const personalHome = ref(false);
@@ -151,6 +159,41 @@ const welcomeSloganParts = sloganParts(welcomeSlogan);
 const localNative = native && !store.isWeb;
 const extensions = useWorkbenchRuntime().extensions?.() ?? createLocalExtensions();
 const extensionViews = extensions.views ?? [];
+const sidebarNavigationItems = computed(() => [
+  { id: 'repository', label: '仓库' },
+  { id: 'plan', label: '计划' },
+  ...extensionViews.filter(view => view.sidebar).map(view => ({ id: view.id, label: view.label })),
+]);
+const documentToolItems = [
+  { id: 'assistant', label: 'Tano 助手' },
+  { id: 'annotation', label: '局部批注' },
+  { id: 'markdown-reveal', label: '光标展开源码' },
+  { id: 'source-mode', label: '源码模式' },
+];
+const topbarItems = [
+  { id: 'back', label: '后退' },
+  { id: 'forward', label: '前进' },
+  { id: 'breadcrumb', label: '面包屑' },
+  { id: 'workspace-status', label: '工作区状态' },
+];
+const workspaceStatusLabel = computed(() => store.workspace?.readOnly ? '只读权限'
+  : store.isDemo ? '浏览器演示' : store.isWeb ? '在线工作区' : null);
+const calendarToolItems = [
+  { id: 'calendar-period', label: '日历日期' },
+  { id: 'calendar-today', label: '今天' },
+  { id: 'calendar-previous', label: '上一时段' },
+  { id: 'calendar-next', label: '下一时段' },
+  { id: 'calendar-mode', label: '日历视图' },
+  { id: 'calendar-events', label: '管理事件' },
+];
+function topbarVisibilityItems(tabId: string, hasDocument: boolean, activePane: boolean) {
+  return [
+    ...topbarItems.filter(item => item.id !== 'breadcrumb' || tabId !== CALENDAR_TAB_ID),
+    ...(activePane && extensions.regions['editing-status'] ? [{ id: 'editing-status', label: '同步状态' }] : []),
+    ...(tabId === CALENDAR_TAB_ID ? calendarToolItems : []),
+    ...(hasDocument ? documentToolItems : []),
+  ];
+}
 store.registerViews(extensionViews);
 const activeExtensionView = computed(() => extensionViews.find(view => view.id === store.activeId));
 const viewActions = Object.fromEntries(extensionViews.map(view => [view.id, {
@@ -161,6 +204,7 @@ const viewActions = Object.fromEntries(extensionViews.map(view => [view.id, {
   showSidebar: () => { sidebarView.value = view.id; sidebar.value = true; },
 }]));
 const editing = extensions.editing;
+assistant.setManaged(id => editing.isManaging(id));
 const extensionActions: WorkbenchActions = {
   closeMenus: () => { workspaceMenu.value = false; menu.value = false; },
   createWorkspace: () => showModal('workspace'), openSettings,
@@ -476,10 +520,18 @@ watch(
 );
 const syntaxIssues = computed(() => unsupportedMarkdown(active.value?.content ?? ''));
 const panel = ref<'outline' | 'activity'>('outline');
+const showOutline = ref(readPreference('showOutline', true));
 const outlinePinned = ref(readPreference('outlinePinned', false));
 const outlineSearchOpen = ref(false);
 const outlineSearch = ref('');
 const outlineSearchInput = ref<HTMLInputElement>();
+watch(showOutline, (visible) => {
+  savePreference('showOutline', visible);
+  if (!visible) {
+    outlineSearchOpen.value = false;
+    outlineSearch.value = '';
+  } else void nextTick(scheduleActiveHeading);
+});
 watch(outlinePinned, (pinned) => savePreference('outlinePinned', pinned));
 const menu = ref(false);
 const documentMenuButton = ref<HTMLButtonElement>();
@@ -546,8 +598,6 @@ const managedFilePaths = computed(
 );
 let fileContextTrigger: HTMLElement | null = null;
 const settingsPanel = ref(false);
-const archiveBusy = ref(false);
-const archiveResult = ref<{ kind: 'export' | 'import'; value: WorkspaceArchiveResult } | null>(null);
 const settingsPage = ref<'appearance' | 'editing' | 'workspace' | 'about'>('appearance');
 watch(defaultSource, (value) => {
   savePreference('defaultSource', value);
@@ -604,6 +654,50 @@ const modalError = ref('');
 const modalBusy = ref(false);
 const inputEl = ref<HTMLInputElement>();
 const paneEditors = shallowReactive(new Map<string, InstanceType<typeof MarkdownEditor>>());
+const paneComments = shallowReactive(new Map<string, InstanceType<typeof DocumentComments>>());
+const commentAnchors = shallowReactive<Record<string, { id: string; anchor: CommentAnchor }[]>>({});
+function capturePaneCommentSelection(paneId: string, fileId: string) {
+  const selection = paneSource(fileId)
+    ? paneSourceEditors.get(paneId)?.commentSelection()
+    : paneEditors.get(paneId)?.commentSelection();
+  return selection ? { ...selection, basis: paneSource(fileId) ? 'source' as const : 'prose' as const } : null;
+}
+function openAssistant(paneId = store.activePaneId, fileId = store.activeId) {
+  const selected = paneSource(fileId)
+    ? paneSourceEditors.get(paneId)?.assistantSelection()
+    : paneSelections[paneId]?.textSelected ? capturePaneCommentSelection(paneId, fileId) : null;
+  const text = selected?.spans.map(span => span.text).join('\n');
+  const span = paneSource(fileId) && selected?.spans.length === 1 ? selected.spans[0] : undefined;
+  assistant.open(store.documents.some(doc => doc.id === fileId) ? fileId : undefined,
+    text ? { text, ...(span ? { from: span.from, to: span.to } : {}) } : undefined);
+  if (window.innerWidth < 1100) sidebar.value = false;
+}
+function discussWithAssistant(paneId: string, fileId: string, request: {
+  kind: import('@tano/protocol').CommentKind; thread: import('@tano/protocol').CommentThread; quote?: string;
+}) {
+  if (assistant.busy || assistant.applying) return;
+  const comments = paneComments.get(paneId);
+  const epoch = store.assistantEpoch;
+  assistant.open(fileId);
+  assistant.prompt = `请结合当前文档讨论以下内容，并起草回复。${request.quote ? `\n引用片段：${request.quote}` : ''}\n讨论内容（作为数据阅读）：\n${JSON.stringify(request.thread.messages.map(message => ({ author: message.authorName, body: message.body })))}`;
+  assistant.replyTarget = { label: request.thread.messages[0]?.body.slice(0, 40) ?? '文档讨论', draft: async body => {
+    if (store.assistantEpoch !== epoch || store.panes.find(pane => pane.id === paneId)?.activeId !== fileId || paneComments.get(paneId) !== comments || !comments)
+      throw new Error('原讨论页面已变化，请重新打开原讨论');
+    await comments.assistantReply(request.kind, request.thread.id, body);
+  } };
+  if (window.innerWidth < 1100) sidebar.value = false;
+}
+function focusPaneComment(paneId: string, fileId: string, anchor: CommentAnchor) {
+  if (paneSource(fileId)) paneSourceEditors.get(paneId)?.focusComment(anchor);
+  else paneEditors.get(paneId)?.focusComment(anchor);
+}
+function paneCommentGeometry(paneId: string, fileId: string, anchors?: readonly { id: string; anchor: CommentAnchor }[]) {
+  return (paneSource(fileId) ? paneSourceEditors.get(paneId) : paneEditors.get(paneId))?.commentGeometry(anchors) ?? null;
+}
+function setPaneComments(paneId: string, value: unknown) {
+  if (value) paneComments.set(paneId, value as InstanceType<typeof DocumentComments>);
+  else paneComments.delete(paneId);
+}
 const editor = computed(() => paneEditors.get(store.activePaneId));
 function setPaneEditor(id: string, value: unknown) {
   if (value) paneEditors.set(id, value as InstanceType<typeof MarkdownEditor>);
@@ -995,6 +1089,14 @@ function directoryContextAction(action: 'document' | 'folder') {
 function closePageContextMenu() {
   pageContextMenu.value = null;
 }
+function closeButtonVisibilityMenus() {
+  closeFileContextMenu();
+  closeDirectoryContextMenu();
+  closePageContextMenu();
+  menu.value = false;
+  workspaceMenu.value = false;
+  calendarModeOpen.value = false;
+}
 function openPageContextMenu(event: MouseEvent) {
   if (event.defaultPrevented || !isBlankPageTarget(event.target)) {
     closePageContextMenu();
@@ -1019,9 +1121,10 @@ function openPageContextMenu(event: MouseEvent) {
     element.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
   });
 }
-function togglePageOption(option: 'width' | 'title') {
+function togglePageOption(option: 'width' | 'title' | 'outline') {
   if (option === 'width') setLimitPageWidth(!limitPageWidth.value);
   if (option === 'title') showPageTitle.value = !showPageTitle.value;
+  if (option === 'outline') showOutline.value = !showOutline.value;
   closePageContextMenu();
 }
 function pageContextKeydown(event: KeyboardEvent) {
@@ -1765,28 +1868,14 @@ function handleSettingsCommand(command: SettingsCommand) {
   }
 }
 function settingsAction(
-  action: 'open-folder' | 'switch-mode' | 'reveal' | 'agent' | 'history' | 'recycle' | 'backup' | 'export' | 'import' | 'sign-out',
+  action: 'open-folder' | 'switch-mode' | 'reveal' | 'agent' | 'history' | 'recycle' | 'sign-out',
 ) {
   settingsPanel.value = false;
   if (action === 'open-folder') void store.openWorkspace();
   else if (action === 'reveal') void store.reveal();
   else if (action === 'agent') agentPanel.value = true;
   else if (action === 'history') extensions.showHistory?.();
-  else if (action === 'backup') void store.openRecovery();
-  else if (action === 'export' || action === 'import') void runArchive(action);
   else if (action === 'recycle') recyclePanel.value = true;
-}
-async function runArchive(kind: 'export' | 'import') {
-  if (archiveBusy.value) return;
-  archiveBusy.value = true;
-  try {
-    const value = kind === 'export' ? await store.exportFullArchive() : await store.importFullArchive();
-    if (value) archiveResult.value = { kind, value };
-  } catch (error) {
-    store.report(error);
-  } finally {
-    archiveBusy.value = false;
-  }
 }
 function toggleWorkspaceMenu() {
   workspaceMenu.value = !workspaceMenu.value;
@@ -2083,7 +2172,6 @@ watch(sidebar, (visible) => {
 });
 let unlistenClose: (() => void) | undefined;
 let unlistenWatchError: (() => void) | undefined;
-let unlistenBackupError: (() => void) | undefined;
 let unlistenTabTransfer: (() => void) | undefined;
 let unlistenTabRollback: (() => void) | undefined;
 let unlistenSettingsCommand: (() => void) | undefined;
@@ -2134,10 +2222,6 @@ onMounted(async () => {
       unlistenWatchError = await listen<string>('workspace-watch-error', (event) =>
         store.report(`文件监听遇到错误：${event.payload}。目录仍会定期自动检查。`),
       );
-    if (localNative)
-      unlistenBackupError = await listen<string>('workspace-backup-error', (event) =>
-        store.report(event.payload),
-      );
     if (!mobile)
       unlistenClose = await getCurrentWindow().onCloseRequested(async (event) => {
         event.preventDefault();
@@ -2148,6 +2232,7 @@ onMounted(async () => {
         }
         try {
           if (await store.flush()) {
+            await assistant.settle();
             await editing.suspendAll();
             await closeSettingsWindow();
             await getCurrentWindow().destroy();
@@ -2162,6 +2247,7 @@ onBeforeUnmount(() => {
   document.documentElement.style.removeProperty('--sidebar-width');
   if (headingFrame !== undefined) cancelAnimationFrame(headingFrame);
   void extensions.disconnect().catch(store.report);
+  assistant.stop();
   void editing.dispose().catch(store.report);
   window.removeEventListener('keydown', handleSidebarShortcut, true);
   window.removeEventListener('keydown', keydown);
@@ -2178,7 +2264,6 @@ onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', mobileVisibility);
   unlistenClose?.();
   unlistenWatchError?.();
-  unlistenBackupError?.();
   unlistenTabTransfer?.();
   unlistenTabRollback?.();
   unlistenSettingsCommand?.();
@@ -2267,6 +2352,23 @@ watch(activeId, () => {
             </button>
           </div>
           <div class="sidebar-header-actions">
+            <template v-for="view in extensionViews" :key="`header-${view.id}`">
+              <component
+                :is="view.header"
+                v-if="view.header"
+                :actions="viewActions[view.id]"
+              />
+            </template>
+            <button
+              type="button"
+              class="icon-button"
+              aria-label="打开关系图谱"
+              title="关系图谱"
+              :aria-pressed="activeId === GRAPH_TAB_ID"
+              @click="store.openGraphTab()"
+            >
+              <GitFork :size="17" :stroke-width="1.6" />
+            </button>
             <button
               type="button"
               class="icon-button"
@@ -2279,8 +2381,13 @@ watch(activeId, () => {
             </button>
           </div>
         </div>
-        <nav class="sidebar-navigation" aria-label="工作区导航">
+        <SidebarNavigation
+          v-slot="{ isVisible }"
+          :items="sidebarNavigationItems"
+          @open="closeButtonVisibilityMenus"
+        >
           <button
+            v-if="isVisible('repository')"
             type="button"
             class="sidebar-navigation-button"
             aria-label="仓库"
@@ -2293,6 +2400,7 @@ watch(activeId, () => {
             <span :aria-hidden="sidebarView !== 'repository'">仓库</span>
           </button>
           <button
+            v-if="isVisible('plan')"
             type="button"
             class="sidebar-navigation-button"
             aria-label="计划"
@@ -2304,21 +2412,22 @@ watch(activeId, () => {
             <CalendarDays :size="18" :stroke-width="1.6" aria-hidden="true" />
             <span :aria-hidden="sidebarView !== 'plan'">计划</span>
           </button>
-          <button
-            v-for="view in extensionViews"
-            :key="view.id"
-            type="button"
-            class="sidebar-navigation-button"
-            :aria-label="view.label"
-            :title="view.label"
-            :aria-controls="view.sidebar ? `sidebar-${view.id}` : undefined"
-            :aria-pressed="view.sidebar ? sidebarView === view.id : activeId === view.id"
-            @click="openExtensionView(view.id)"
-          >
-            <component :is="view.icon" :size="18" :stroke-width="1.6" aria-hidden="true" />
-            <span :aria-hidden="view.sidebar ? sidebarView !== view.id : activeId !== view.id">{{ view.label }}</span>
-          </button>
-        </nav>
+          <template v-for="view in extensionViews" :key="view.id">
+            <button
+              v-if="view.sidebar && isVisible(view.id)"
+              type="button"
+              class="sidebar-navigation-button"
+              :aria-label="view.label"
+              :title="view.label"
+              :aria-controls="`sidebar-${view.id}`"
+              :aria-pressed="sidebarView === view.id"
+              @click="openExtensionView(view.id)"
+            >
+              <component :is="view.icon" :size="18" :stroke-width="1.6" aria-hidden="true" />
+              <span :aria-hidden="sidebarView !== view.id">{{ view.label }}</span>
+            </button>
+          </template>
+        </SidebarNavigation>
         <div v-show="sidebarView === 'repository'" id="sidebar-repository-panel" class="sidebar-content">
           <div
             class="section-label"
@@ -2327,20 +2436,13 @@ watch(activeId, () => {
             @dragleave="fileDragLeave('', $event)"
             @drop="fileDrop('', $event)"
           >
-            <span :title="draggedEntry ? undefined : workspace?.name">{{
-              draggedEntry ? '放到工作区根目录' : (workspace?.name ?? '仓库')
-            }}</span>
+            <span v-if="draggedEntry">放到工作区根目录</span>
+            <WorkspaceSwitcher
+              v-else
+              :active="sidebarView === 'repository' && !workspaceMenu && !modal && !settingsPanel"
+              @open="closeButtonVisibilityMenus"
+            />
             <div>
-              <button
-                type="button"
-                class="icon-button"
-                aria-label="打开关系图谱"
-                title="关系图谱"
-                :aria-pressed="activeId === GRAPH_TAB_ID"
-                @click="store.openGraphTab()"
-              >
-                <GitFork :size="15" :stroke-width="1.6" />
-              </button>
               <button
                 type="button"
                 class="icon-button"
@@ -2677,6 +2779,7 @@ watch(activeId, () => {
               >
                 <Trash2 :size="16" />手机回收站
               </button>
+              <button v-if="workspace && assistant.available" @click="workspaceMenu = false; openAssistant()"><Bot :size="16" />Tano 助手</button>
               <button
                 v-if="workspace && localNative"
                 @click="
@@ -2789,10 +2892,23 @@ watch(activeId, () => {
             <div v-if="native && !mobile" v-show="rect.top === 0" class="workspace-window-drag" title="拖动窗口"
               @mousedown="dragPaneWindow" @dblclick="maximizePaneWindow" />
           </div>
-          <header v-if="!detachedWindow" class="topbar">
-            <div class="topbar-navigation" role="group" aria-label="文档导航">
+          <ButtonVisibilityGroup
+            v-if="!detachedWindow"
+            v-slot="{ isVisible }"
+            :items="topbarVisibilityItems(pane.activeId, !!active, pane.id === store.activePaneId)"
+            preference-key="tano.preference.documentHiddenTools"
+            tag="header"
+            group-class="topbar"
+            label="文档顶部栏"
+            menu-label="顶部栏显示设置"
+            @open="closeButtonVisibilityMenus"
+          >
+            <div
+              v-if="isVisible('back') || isVisible('forward') || (!sidebar && !(native && !mobile && workspace))"
+              class="topbar-navigation" role="group" aria-label="文档导航"
+            >
               <button
-                v-if="pane.activeId === CALENDAR_TAB_ID && !sidebar && !(native && !mobile && workspace)"
+                v-if="!sidebar && !(native && !mobile && workspace)"
                 type="button"
                 class="icon-button"
                 aria-label="展开侧栏"
@@ -2802,6 +2918,7 @@ watch(activeId, () => {
                 <PanelLeftOpen :size="18" />
               </button>
               <button
+                v-if="isVisible('back')"
                 type="button"
                 class="icon-button"
                 aria-label="后退"
@@ -2812,6 +2929,7 @@ watch(activeId, () => {
                 <ArrowLeft :size="16" :stroke-width="1.6" />
               </button>
               <button
+                v-if="isVisible('forward')"
                 type="button"
                 class="icon-button"
                 aria-label="前进"
@@ -2822,16 +2940,8 @@ watch(activeId, () => {
                 <ArrowRight :size="16" :stroke-width="1.6" />
               </button>
             </div>
-            <nav v-if="pane.activeId !== CALENDAR_TAB_ID" class="breadcrumb" aria-label="当前位置">
-              <button
-                v-if="!sidebar && !(native && !mobile && workspace)"
-                class="icon-button"
-                aria-label="展开侧栏"
-                title="展开侧栏 · Ctrl B"
-                @click="toggleSidebar"
-              >
-                <PanelLeftOpen :size="18" /></button
-              ><span class="breadcrumb-workspace"
+            <nav v-if="isVisible('breadcrumb') && pane.activeId !== CALENDAR_TAB_ID" class="breadcrumb" aria-label="当前位置">
+              <span class="breadcrumb-workspace"
                 ><BookOpen :size="14" />{{ workspace?.name ?? 'Tano' }}</span
               ><template v-if="pane.activeId === GRAPH_TAB_ID"><ChevronRight :size="12" /><GitFork :size="14" /><span class="breadcrumb-current">关系图谱</span></template
               ><template v-if="pane.activeId === PLUGINS_TAB_ID"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">插件</span></template
@@ -2846,17 +2956,22 @@ watch(activeId, () => {
               >
             </nav>
             <div class="topbar-right">
-              <component  :is="extensions.regions['editing-status']" v-if="pane.id === store.activePaneId && extensions.regions['editing-status']" :actions="extensionActions" />
-              <span v-if="store.isDemo" class="demo-badge"><span />浏览器演示</span
-              ><span v-else-if="store.isWeb" class="local-badge"
-                ><Globe2 :size="14" />{{ workspace?.readOnly ? '只读权限' : '在线工作区' }}</span
+              <component  :is="extensions.regions['editing-status']" v-if="isVisible('editing-status') && pane.id === store.activePaneId && extensions.regions['editing-status']" :actions="extensionActions" />
+              <span
+                v-if="isVisible('workspace-status') && workspaceStatusLabel"
+                :class="store.isDemo ? 'demo-badge' : 'local-badge'"
               >
-              <div v-if="pane.activeId === CALENDAR_TAB_ID" class="calendar-topbar-controls" role="group" aria-label="日历导航">
-                <span class="calendar-topbar-period">{{ calendarPeriod }}</span>
-                <button type="button" class="calendar-topbar-today" @click="calendarDate = new Date()">今天</button>
-                <button type="button" class="icon-button" aria-label="上一时段" title="上一时段" @click="moveCalendarPeriod(-1)"><ChevronLeft :size="17" /></button>
-                <button type="button" class="icon-button" aria-label="下一时段" title="下一时段" @click="moveCalendarPeriod(1)"><ChevronRight :size="17" /></button>
-                <div class="calendar-view-picker" @keydown.esc.stop.prevent="calendarModeOpen = false">
+                <LockKeyhole v-if="workspace?.readOnly" :size="14" />
+                <span v-else-if="store.isDemo" />
+                <Globe2 v-else-if="store.isWeb" :size="14" />
+                {{ workspaceStatusLabel }}
+              </span>
+              <div v-if="pane.activeId === CALENDAR_TAB_ID && calendarToolItems.some(item => isVisible(item.id))" class="calendar-topbar-controls" role="group" aria-label="日历导航">
+                <span v-if="isVisible('calendar-period')" class="calendar-topbar-period">{{ calendarPeriod }}</span>
+                <button v-if="isVisible('calendar-today')" type="button" class="calendar-topbar-today" @click="calendarDate = new Date()">今天</button>
+                <button v-if="isVisible('calendar-previous')" type="button" class="icon-button" aria-label="上一时段" title="上一时段" @click="moveCalendarPeriod(-1)"><ChevronLeft :size="17" /></button>
+                <button v-if="isVisible('calendar-next')" type="button" class="icon-button" aria-label="下一时段" title="下一时段" @click="moveCalendarPeriod(1)"><ChevronRight :size="17" /></button>
+                <div v-if="isVisible('calendar-mode')" class="calendar-view-picker" @keydown.esc.stop.prevent="calendarModeOpen = false">
                   <button
                     type="button"
                     class="calendar-topbar-mode"
@@ -2877,31 +2992,41 @@ watch(activeId, () => {
                     >{{ option.label }}<Check v-if="calendarMode === option.mode" :size="15" /></button>
                   </div>
                 </div>
-                <button type="button" class="calendar-topbar-events" title="查看和管理事件" @click="managePlanEvents"><CalendarDays :size="15" />管理事件</button>
+                <button v-if="isVisible('calendar-events')" type="button" class="calendar-topbar-events" title="查看和管理事件" @click="managePlanEvents"><CalendarDays :size="15" />管理事件</button>
               </div>
               <template v-if="active">
-                <MarkdownRevealToggle
-                  v-model="revealMarkdown"
-                  :source="paneSource(pane.activeId)"
-                />
-                <button
-                  type="button"
-                  class="icon-button source-mode-button"
-                  :class="{ active: paneSource(pane.activeId) }"
-                  :disabled="editing.isManaging(pane.activeId) || (pane.id === store.activePaneId && editing.activeBusy)"
-                  :aria-label="paneSource(pane.activeId) ? '返回编辑' : '切换源码模式'"
-                  :aria-pressed="paneSource(pane.activeId)"
-                  :title="
-                    editing.isManaging(pane.activeId)
-                      ? '当前编辑扩展不支持切换源码模式'
-                      : paneSource(pane.activeId)
-                        ? '返回编辑'
-                        : '切换源码模式'
-                  "
-                  @click="sourceModes[pane.activeId] = !paneSource(pane.activeId)"
-                >
-                  <Code2 :size="17" />
-                </button>
+                <div v-if="documentToolItems.some(item => isVisible(item.id))" class="document-tool-buttons">
+                  <button v-if="assistant.available && isVisible('assistant')" type="button" class="icon-button" aria-label="打开 Tano 助手" title="与助手讨论" @mousedown.prevent @click="openAssistant(pane.id, active!.id)"><Bot :size="17" /></button>
+                  <button v-if="isVisible('annotation')" type="button" class="icon-button annotation-create-button"
+                    aria-label="添加局部批注" title="批注所选文字或当前块" :disabled="paneReadonly(active!)"
+                    @mousedown.prevent @click="paneComments.get(pane.id)?.beginAnnotation()">
+                    <MessageSquare :size="17" />
+                  </button>
+                  <MarkdownRevealToggle
+                    v-if="isVisible('markdown-reveal')"
+                    v-model="revealMarkdown"
+                    :source="paneSource(pane.activeId)"
+                  />
+                  <button
+                    v-if="isVisible('source-mode')"
+                    type="button"
+                    class="icon-button source-mode-button"
+                    :class="{ active: paneSource(pane.activeId) }"
+                    :disabled="editing.isManaging(pane.activeId) || (pane.id === store.activePaneId && editing.activeBusy)"
+                    :aria-label="paneSource(pane.activeId) ? '返回编辑' : '切换源码模式'"
+                    :aria-pressed="paneSource(pane.activeId)"
+                    :title="
+                      editing.isManaging(pane.activeId)
+                        ? '当前编辑扩展不支持切换源码模式'
+                        : paneSource(pane.activeId)
+                          ? '返回编辑'
+                          : '切换源码模式'
+                    "
+                    @click="sourceModes[pane.activeId] = !paneSource(pane.activeId)"
+                  >
+                    <Code2 :size="17" />
+                  </button>
+                </div>
                 <div class="menu-wrap">
                   <button
                     class="icon-button"
@@ -3009,7 +3134,7 @@ watch(activeId, () => {
                 </div>
               </template>
             </div>
-          </header>
+          </ButtonVisibilityGroup>
           <KeepAlive v-if="pane.tabs.includes(GRAPH_TAB_ID)">
             <RelationGraph v-if="workspace && pane.activeId === GRAPH_TAB_ID" :key="`${workspace.id}:${workspace.path}`" />
           </KeepAlive>
@@ -3054,6 +3179,8 @@ watch(activeId, () => {
               <main class="document-main">
                 <EditorTools
                   v-model:mode="toolbarMode"
+                  :assistant="assistant.available"
+                  @assistant="openAssistant(pane.id, active!.id)"
                   :active="pane.id === store.activePaneId"
                   :editor-element="paneEditorScrolls.get(pane.id)"
                   :features="store.capabilities.features"
@@ -3063,12 +3190,26 @@ watch(activeId, () => {
                   @command="(name, value) => paneEditors.get(pane.id)?.command(name, value)"
                 >
                   <template v-if="detachedWindow" #trailing>
-                    <div class="detached-editor-actions">
+                    <ButtonVisibilityGroup
+                      v-slot="{ isVisible }"
+                      :items="documentToolItems"
+                      preference-key="tano.preference.documentHiddenTools"
+                      group-class="detached-editor-actions document-tool-buttons"
+                      label="文档工具"
+                      menu-label="文档工具按钮显示设置"
+                      @open="closeButtonVisibilityMenus"
+                    >
+                      <button v-if="isVisible('annotation')" type="button" class="icon-button annotation-create-button" aria-label="添加局部批注" title="批注所选文字或当前块"
+                        :disabled="paneReadonly(active!)" @mousedown.prevent @click="paneComments.get(pane.id)?.beginAnnotation()">
+                        <MessageSquare :size="17" />
+                      </button>
                       <MarkdownRevealToggle
+                        v-if="isVisible('markdown-reveal')"
                         v-model="revealMarkdown"
                         :source="paneSource(pane.activeId)"
                       />
                       <button
+                        v-if="isVisible('source-mode')"
                         type="button"
                         class="icon-button"
                         :class="{ active: paneSource(pane.activeId) }"
@@ -3087,7 +3228,7 @@ watch(activeId, () => {
                         :disabled="paneReadonly(active!) || attachmentBusy"
                         @click="pickFilesFor(pane.id, active!)"
                       ><Paperclip :size="17" /></button>
-                    </div>
+                    </ButtonVisibilityGroup>
                   </template>
                 </EditorTools>
 
@@ -3166,6 +3307,7 @@ watch(activeId, () => {
                     :model-value="active.content"
                     :readonly="paneReadonly(active!)"
                     :local-native="localNative"
+                    :comment-anchors="commentAnchors[active.id]"
                     @update:model-value="store.editDocument(active!.id, $event)"
                     @files="
                       (files, requireImage, position) =>
@@ -3185,10 +3327,13 @@ watch(activeId, () => {
                     :preferences="editorPreferences"
                     :extension="active.id === store.activeId ? editing.active?.extension : undefined"
                     :model-value="active.content"
+                    :table-layouts="active.tableLayout?.file.tables"
+                    :comment-anchors="commentAnchors[active.id]"
                     :resolve-image="reference => localNative ? imageUrl(workspace, active!.path, reference) : safeRemoteImage(reference)"
                     :resource-revision="resourceRevision"
                     :import-file="localNative ? (file, image) => uploadFile(file, image, active) : undefined"
                     @update:model-value="store.editDocument(active!.id, $event)"
+                    @table-layout-change="store.editTableLayout(active!.id, $event)"
                     @error="store.report"
                     @open-link="openDocumentLink"
                     @open-wiki-link="openWikiLink"
@@ -3196,45 +3341,38 @@ watch(activeId, () => {
                     @edit-source="sourceModes[pane.activeId] = true"
                     @selection-change="paneSelections[pane.id] = $event"
                   />
+                  <DocumentComments
+                    v-if="workspace"
+                    :ref="el => setPaneComments(pane.id, el)"
+                    :workspace-id="workspace.id"
+                    :document="active"
+                    :assistant="assistant.available"
+                    @assistant="discussWithAssistant(pane.id, active!.id, $event)"
+                    :readonly="paneReadonly(active!)"
+                    :author="extensions.commentAuthor?.() ?? { id: 'local', name: '本机用户' }"
+                    :capture-selection="() => capturePaneCommentSelection(pane.id, active!.id)"
+                    :focus-anchor="anchor => focusPaneComment(pane.id, active!.id, anchor)"
+                    :editor-element="paneEditorScrolls.get(pane.id)"
+                    :geometry="anchors => paneCommentGeometry(pane.id, active!.id, anchors)"
+                    @annotations="commentAnchors[active!.id] = $event"
+                  />
                 </div>
-
               </main>
             </div>
 
           </template>
 
-          <main v-else-if="workspace && pane.activeId.startsWith('blank:')" class="blank-tab-page">
-            <div class="blank-tab-actions">
-              <button :disabled="workspace.readOnly" @click="createNewDocument">
-                创建新文件 <span>Ctrl + N</span>
-              </button>
-              <button @click="showModal('newTab')">打开文件 <span>Ctrl + O</span></button>
-              <button @click="store.close(pane.activeId)">关闭标签页</button>
-            </div>
-          </main>
-
           <main v-else-if="workspace && pane.activeId !== GRAPH_TAB_ID && pane.activeId !== PLUGINS_TAB_ID && pane.activeId !== CALENDAR_TAB_ID && !extensionViews.find(view => view.id === pane.activeId)" class="workspace-no-tabs">
-            <div class="workspace-no-tabs-content">
-              <FileText :size="32" :stroke-width="1.4" aria-hidden="true" />
-              <h1>当前没有打开的文档</h1>
-              <p>工作区已打开。创建新文件，或打开工作区中的文档继续。</p>
-              <div class="workspace-no-tabs-actions">
-                <button
-                  class="primary-button"
-                  :disabled="busy || workspace.readOnly || updateLock"
-                  @click="createNewDocument"
-                >
-                  <Plus :size="17" />创建新文件 <kbd>Ctrl + N</kbd>
-                </button>
-                <button class="secondary-button" @click="showModal('newTab')">
-                  <FolderOpen :size="17" />打开文件 <kbd>Ctrl + O</kbd>
-                </button>
-              </div>
-            </div>
+            <EmptyEditor
+              :create-disabled="busy || workspace.readOnly || updateLock"
+              @create="createNewDocument"
+              @open="showModal('newTab')"
+              @search="showModal('search')"
+            />
           </main>
 
             <aside
-              v-if="active && !detachedWindow && pane.id === store.activePaneId"
+              v-if="active && !assistant.opened && !detachedWindow && pane.id === store.activePaneId && (panel !== 'outline' || showOutline)"
               class="inspector"
               :class="{
                 'inspector-outline': panel === 'outline',
@@ -3274,6 +3412,15 @@ watch(activeId, () => {
                     @click="toggleOutlinePin"
                   >
                     <Pin :size="15" :fill="outlinePinned ? 'currentColor' : 'none'" />
+                  </button>
+                  <button
+                    class="outline-control"
+                    type="button"
+                    aria-label="关闭目录"
+                    title="关闭目录"
+                    @click="showOutline = false"
+                  >
+                    <X :size="15" />
                   </button>
                 </div>
                 <div v-if="panel === 'outline' && outlineSearchOpen" class="outline-search">
@@ -3405,11 +3552,7 @@ watch(activeId, () => {
             }}<ArrowRight :size="17" />
           </button>
           <component  :is="extensions.regions['welcome-login']" v-if="extensions.regions['welcome-login']" :actions="extensionActions" />
-          <button v-if="localNative && !mobile" class="secondary-button" :disabled="busy || archiveBusy" @click="runArchive('import')">
-            <ArrowDownToLine :size="16" />导入工作区归档
-          </button>
         </div>
-        <span v-if="store.isWeb" class="welcome-footnote">在线工作区 · Markdown 保存在服务器</span>
         <div
           v-if="!workspace && store.recent.length"
           class="recent-spaces"
@@ -3468,30 +3611,25 @@ watch(activeId, () => {
                     :size="14"
                   />
                 </button>
+                <button
+                  v-if="!detachedWindow"
+                  type="button"
+                  role="menuitemcheckbox"
+                  :aria-checked="showOutline"
+                  @click="togglePageOption('outline')"
+                >
+                  <List :size="15" />显示目录<Check
+                    v-if="showOutline"
+                    class="page-context-check"
+                    :size="14"
+                  />
+                </button>
               </div>
             </Teleport>
     </div>
 
+    <AssistantPanel v-if="workspace && assistant.available && assistant.opened" />
     <component  :is="extensions.regions['sync-dialog']" v-if="extensions.regions['sync-dialog']" :actions="extensionActions" />
-    <WorkspaceRecoveryDialog
-      v-if="store.recovery"
-      :catalog="store.recovery"
-      :preview="store.recoveryPreview"
-      :busy="store.recoveryBusy"
-      :error="store.recoveryError"
-      @close="store.closeRecovery()"
-      @select="store.previewRecovery($event)"
-      @restore="store.restoreRecovery($event)"
-    />
-    <div v-if="archiveResult" class="modal-backdrop" @mousedown.self="archiveResult = null">
-      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="archive-result-title">
-        <header><h2 id="archive-result-title">{{ archiveResult.kind === 'export' ? '整库导出完成' : '工作区导入完成' }}</h2>
-          <button class="icon-button" type="button" aria-label="关闭" @click="archiveResult = null"><X :size="19" /></button></header>
-        <p class="modal-description">{{ archiveResult.value.fileCount }} 个文件已校验，包含 Markdown、附件和 .tano。</p>
-        <p class="modal-description" style="overflow-wrap: anywhere">{{ archiveResult.value.path }}</p>
-        <footer><button class="primary-button" type="button" @click="archiveResult = null">完成</button></footer>
-      </section>
-    </div>
     <MobileRecycle
       v-if="mobile && recyclePanel && workspace"
       :workspace-id="workspace.id"

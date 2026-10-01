@@ -9,9 +9,6 @@ import type {
   WriteResult,
   RecentWorkspace,
   WorkspaceSession,
-  WorkspaceBackupCatalog,
-  WorkspaceRecoveryPreview,
-  WorkspaceArchiveResult,
   SearchHit,
 } from '@tano/protocol';
 import {
@@ -296,7 +293,6 @@ export class DemoAdapter implements WorkspaceAdapter {
 
 export class NativeAdapter implements WorkspaceAdapter {
   readonly mode = 'desktop' as const;
-  private selectedPath: string | null = null;
   reserveObjectId = (occupied: string[]) => invoke<string>('reserve_reference_id', { occupied });
   async open(savedPath?: string): Promise<Workspace | null> {
     if (mobile && !savedPath) return invoke('open_mobile_workspace', { name: null });
@@ -308,31 +304,11 @@ export class NativeAdapter implements WorkspaceAdapter {
         title: '选择 Tano 工作文件夹',
       }));
     if (typeof path !== 'string') return null;
-    this.selectedPath = path;
     return invoke('open_workspace', { path });
-  }
-  recoveryPath = () => this.selectedPath;
-  backupCatalog = (path: string) => invoke<WorkspaceBackupCatalog>('workspace_backup_catalog', { path });
-  backupPreview = (path: string, snapshotId: string) =>
-    invoke<WorkspaceRecoveryPreview>('workspace_backup_preview', { path, snapshotId });
-  restoreBackup = (path: string, snapshotId: string, currentFingerprint?: string) =>
-    invoke<Workspace>('restore_workspace_backup', { path, snapshotId, currentFingerprint });
-  async exportWorkspace(): Promise<WorkspaceArchiveResult | null> {
-    const destinationParent = await chooseDirectory({ directory: true, multiple: false, title: '选择工作区归档的保存位置' });
-    if (typeof destinationParent !== 'string') return null;
-    return invoke<WorkspaceArchiveResult>('export_workspace', { destinationParent });
-  }
-  async importWorkspace(): Promise<WorkspaceArchiveResult | null> {
-    const source = await chooseDirectory({ directory: true, multiple: false, title: '选择 Tano 整库归档文件夹' });
-    if (typeof source !== 'string') return null;
-    const destinationParent = await chooseDirectory({ directory: true, multiple: false, title: '选择导入后新工作区的保存位置' });
-    if (typeof destinationParent !== 'string') return null;
-    return invoke<WorkspaceArchiveResult>('import_workspace_export', { source, destinationParent });
   }
   createWorkspace = (name: string) => invoke<Workspace>('open_mobile_workspace', { name });
   async close(workspaceId: string) {
     await invoke<void>('close_workspace', { workspaceId });
-    this.selectedPath = null;
   }
   recent = () => invoke<RecentWorkspace[]>('recent_workspaces');
   loadSession = (workspaceId: string) =>

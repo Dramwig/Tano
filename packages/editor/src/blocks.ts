@@ -324,6 +324,15 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
           if (element && rect)
             handle.style.top = `${firstLineCenter(element, rect) - top - (handle.offsetHeight || 24) / 2}px`;
           handle.hidden = readonly() || !rect;
+          const table = element?.matches('.tano-table-viewport:not(.has-comments)') ? element.querySelector('table') : null;
+          handle.style.transform = table ? `translateX(${table.getBoundingClientRect().left - hostLeft}px)` : '';
+          handle.style.clipPath = '';
+          if (table) {
+            const pane = hoverSurface.getBoundingClientRect();
+            const bounds = handle.getBoundingClientRect();
+            if (pane.width > 0 && bounds.width > 0)
+              handle.style.clipPath = `inset(0 ${Math.max(0, bounds.right - pane.right)}px 0 ${Math.max(0, pane.left - bounds.left)}px)`;
+          }
           const foldButton = foldButtons[index];
           const canFold = folding() && foldable(view.state.doc.child(index));
           const isFolded = (foldingKey.getState(view.state) ?? new Set()).has(blockKey(index));
@@ -346,6 +355,10 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       function removeDragPreview() {
         dragPreview?.remove();
         dragPreview = null;
+      }
+
+      function onTableScroll(event: Event) {
+        if (event.target instanceof Element && event.target.matches('.tableWrapper')) layout();
       }
 
       function clearDragVisuals() {
@@ -561,6 +574,8 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       view.dom.addEventListener('keydown', onEditorKeyDown, true);
       view.dom.addEventListener('beforeinput', onEditorInput, true);
       view.dom.addEventListener('compositionstart', onEditorInput, true);
+      view.dom.addEventListener('scroll', onTableScroll, true);
+      view.dom.addEventListener('tano-table-layout', layout);
       hoverSurface.addEventListener('mouseover', onHover);
       hoverSurface.addEventListener('mousemove', onHover);
       hoverSurface.addEventListener('mouseleave', onHoverLeave);
@@ -597,6 +612,8 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
           view.dom.removeEventListener('keydown', onEditorKeyDown, true);
           view.dom.removeEventListener('beforeinput', onEditorInput, true);
           view.dom.removeEventListener('compositionstart', onEditorInput, true);
+          view.dom.removeEventListener('scroll', onTableScroll, true);
+          view.dom.removeEventListener('tano-table-layout', layout);
           hoverSurface.removeEventListener('mouseover', onHover);
           hoverSurface.removeEventListener('mousemove', onHover);
           hoverSurface.removeEventListener('mouseleave', onHoverLeave);

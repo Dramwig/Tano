@@ -91,6 +91,15 @@ import type { PanelSide } from './panel-position';
 import { activateEditorPanel, announceEditorPanel, createEditorPanel, onOtherEditorPanel } from './editor-panel';
 import { parseReferenceUrl, resolveReference } from '@tano/protocol';
 import type { ReferenceTarget, ReferenceIdentity } from '@tano/protocol';
+import type { CommentAnchor } from '@tano/protocol';
+import { commentSpansForSelection, projectCommentText, proseRangesForCommentSpans } from './comment-projection';
+import { columnResizing } from '@milkdown/kit/prose/tables';
+import { defaultTableColumnWidth, minimumTableColumnWidth } from '@tano/protocol';
+import type { TableLayout } from '@tano/protocol';
+import { tableLayouts, tableLayoutKey, sameMarkdownContent } from './table-layout';
+import { tableControls } from './table-controls';
+import { TableViewport, tableViewports } from './table-viewport';
+import type { CommentGeometry } from './comment-projection';
 
 interface ImportedResource {
   url: string;
@@ -110,6 +119,8 @@ const props = withDefaults(
     revealMarkdown?: boolean;
     extension?: EditorExtension;
     resourceRevision?: string;
+    commentAnchors?: readonly { id: string; anchor: CommentAnchor }[];
+    tableLayouts?: readonly TableLayout[];
     resolveImage?: (reference: string) => string | null;
     importFile?: (file: File, requireImage: boolean) => Promise<ImportedResource>;
   }>(),
@@ -123,6 +134,7 @@ const emit = defineEmits<{
   openReference: [identity: ReferenceIdentity];
   editSource: [];
   selectionChange: [context: EditorSelectionContext];
+  tableLayoutChange: [tables: TableLayout[]];
 }>();
 const policy = () => props.capabilities ?? defaultCapabilities;
 const referencesEnabled = () => props.referenceTargets !== undefined && commandEnabled('reference', props.enabledLevels, policy().features);
@@ -1469,6 +1481,7 @@ const bridge = $prose(
             )
               emit('selectionChange', selectionContext(view.state));
             if (activated || applying || disposed || props.readonly || previous.doc.eq(view.state.doc)) return;
+            if (sameMarkdownContent(previous.doc, view.state.doc)) return;
             const markdown = frontmatter.prefix + ctx.get(serializerCtx)(serializableDocument(view.state));
             if (markdown === lastValue) return;
             lastValue = markdown;
@@ -2019,6 +2032,26 @@ const bridge = $prose(
     }),
 );
 
+const commentMarks = $prose(() => new Plugin({
+  props: {
+    decorations(state) {
+      if (!props.commentAnchors?.length) return DecorationSet.empty;
+      const text = projectCommentText(state.doc).text;
+      const marks = (props.commentAnchors ?? []).flatMap(({ id, anchor }) => {
+        if (anchor.basis !== 'prose' ||
+            anchor.spans.some(span => text.slice(span.from, span.to) !== span.text)) return [];
+        return proseRangesForCommentSpans(state.doc, anchor.spans).map(({ from, to }) => {
+          const node = state.doc.nodeAt(from);
+          return node && !node.isText && node.isAtom && node.nodeSize === to - from
+            ? Decoration.node(from, to, { class: 'tano-comment-mark', 'data-comment-id': id }, { id })
+            : Decoration.inline(from, to, { class: 'tano-comment-mark', 'data-comment-id': id }, { id });
+        });
+      });
+      return DecorationSet.create(state.doc, marks);
+    },
+  },
+}));
+
 onMounted(async () => {
   window.addEventListener('pointerdown', dismissBlockMenuOnPointer, true);
   window.addEventListener('contextmenu', dismissBlockMenuOnContext);
@@ -2043,7 +2076,11 @@ onMounted(async () => {
       })
       .use(commonmark)
       .use(codeBlankLinesRemark)
+      .use($prose(() => columnResizing({ cellMinWidth: minimumTableColumnWidth, defaultCellMinWidth: defaultTableColumnWidth, handleWidth: 6, View: TableViewport })))
       .use(gfm)
+      .use($prose(() => tableLayouts(() => props.tableLayouts ?? [], tables => emit('tableLayoutChange', tables), () => !!props.readonly)))
+      .use($prose(() => tableControls(() => !!props.readonly)))
+      .use($prose(tableViewports))
       .use($prose(footnoteNumbers))
       .use(textStyles)
       .use(wikiLinkRemark)
@@ -2084,7 +2121,8 @@ onMounted(async () => {
           }),
         ),
       )
-      .use(bridge);
+      .use(bridge)
+      .use(commentMarks);
     editor = await instance.create();
     if (disposed) {
       await editor.destroy();
@@ -2147,6 +2185,13 @@ function applyContent(value: string) {
   }
 }
 watch(() => props.modelValue, applyContent);
+watch(() => props.tableLayouts, (tables) => {
+  if (bridgeView) bridgeView.dispatch(bridgeView.state.tr
+    .setMeta(tableLayoutKey, tables ?? []).setMeta('addToHistory', false));
+});
+watch(() => props.commentAnchors, () => {
+  if (bridgeView) bridgeView.dispatch(bridgeView.state.tr.setMeta('addToHistory', false));
+}, { deep: true });
 watch(() => props.readonly, () => {
   if (blockMenu.value) closeBlockMenu();
   if (props.readonly) {
@@ -2614,10 +2659,54 @@ function withContext<T>(action: (ctx: Ctx, markdown: string) => T): T {
   if (!editor) throw new Error('编辑器尚未就绪');
   return editor.action((ctx) => action(ctx, lastValue));
 }
+function commentSelection() {
+  if (!bridgeView) return null;
+  const { doc, selection } = bridgeView.state;
+  const range = selection.empty && selection.$from.parent.isTextblock
+    ? TextSelection.create(doc, selection.$from.start(), selection.$from.end()) : selection;
+  const spans = commentSpansForSelection(doc, range);
+  return spans.length ? { text: projectCommentText(doc).text, spans } : null;
+}
+function focusComment(anchor: CommentAnchor) {
+  if (!bridgeView || anchor.basis !== 'prose') return false;
+  const ranges = proseRangesForCommentSpans(bridgeView.state.doc, anchor.spans);
+  if (!ranges.length) return false;
+  const { from, to } = ranges[0]!;
+  bridgeView.dispatch(bridgeView.state.tr.setSelection(TextSelection.create(bridgeView.state.doc, from, to)).scrollIntoView());
+  bridgeView.focus();
+  return true;
+}
+function commentGeometry(anchors = props.commentAnchors ?? []): CommentGeometry | null {
+  if (!bridgeView) return null;
+  const { doc } = bridgeView.state;
+  const text = projectCommentText(doc).text;
+  const blocks = new Map<number, { key: string; ids: string[]; top: number; bottom: number }>();
+  for (const { id, anchor } of anchors) {
+    if (anchor.basis !== 'prose' || anchor.spans.some(span => text.slice(span.from, span.to) !== span.text)) continue;
+    for (const { from } of proseRangesForCommentSpans(doc, anchor.spans)) {
+      const $pos = doc.resolve(from);
+      let depth = $pos.depth;
+      while (depth > 1 && !$pos.node(depth).isTextblock) depth--;
+      const position = depth ? $pos.before(depth) : from;
+      const dom = bridgeView.nodeDOM(position);
+      const element = dom instanceof HTMLElement ? dom : dom?.parentElement;
+      if (!element || !element.getClientRects().length) continue;
+      const rect = element.getBoundingClientRect();
+      const block = blocks.get(position) ?? { key: String(position), ids: [], top: rect.top, bottom: rect.bottom };
+      if (!block.ids.includes(id)) block.ids.push(id);
+      blocks.set(position, block);
+    }
+  }
+  const rect = bridgeView.dom.getBoundingClientRect();
+  return { left: rect.left, right: rect.right, blocks: [...blocks.values()].sort((a, b) => a.top - b.top) };
+}
 defineExpose({
   command,
   importFiles,
   withContext,
+  commentSelection,
+  focusComment,
+  commentGeometry,
   insertBlockAtStart,
   focusTrailingParagraph,
   canUndo,

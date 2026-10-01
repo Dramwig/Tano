@@ -7,11 +7,8 @@ import type {
   WorkspaceSession,
   WorkspaceLayout,
   RecentWorkspace,
-  WorkspaceBackupCatalog,
-  WorkspaceRecoveryPreview,
-  WorkspaceArchiveResult,
 } from '@tano/protocol';
-import { basename, isMarkdown, pathKey, objectDirectory } from '@tano/protocol';
+import { basename, isMarkdown, pathKey, objectDirectory, validatePath, assistantRulesPath, isWorkspaceInternalPath } from '@tano/protocol';
 import { mergeMarkdown } from '@tano/markdown';
 import { useWorkbenchRuntime } from '../runtime';
 import type { WorkbenchViewTab } from '../runtime';
@@ -24,7 +21,7 @@ import { loadObjects, saveObject } from '../workspace-objects';
 import type { ObjectRecord } from '../workspace-objects';
 import { assetTargets, documentTargets, parseObject, objectTypeRegistry, validateObjectProperties } from '@tano/protocol';
 import type { WorkspaceObject, ReferenceTarget } from '@tano/protocol';
-import { coreRelationTypes, newShortId, RelationIndex, referenceKey, validateRelation } from '@tano/protocol';
+import { coreRelationTypes, newShortId, RelationIndex, referenceKey, relationKey, validateRelation, parseRelations, workspaceRelationPath } from '@tano/protocol';
 import type { ReferenceIdentity, WorkspaceRelation } from '@tano/protocol';
 import { PLUGINS_TAB_ID, WorkspacePluginHost } from '../workspace-plugins';
 import type { InstalledObjectPlugin, PluginChange } from '../workspace-plugins';
@@ -34,6 +31,12 @@ import { GRAPH_TAB_ID } from '../document-graph';
 import { CALENDAR_TAB_ID } from '../calendar';
 import { dockLayout, layoutPanes, newPane, reconcileLayout, restoreLayout } from '../pane-layout';
 import type { PaneDrop } from '../pane-layout';
+import { DocumentLayoutConflict, loadDocumentLayout, layoutDirty, saveDocumentLayout } from '../workspace-document-layout';
+import type { DocumentLayoutState } from '../workspace-document-layout';
+import type { TableLayout } from '@tano/protocol';
+import type { AssistantProposal, AssistantPreview, AssistantSource, AssistantToolCall } from '@tano/protocol';
+import { assistantHash } from '../assistant/hash';
+import { structureProposal } from '../assistant/structures';
 
 export interface OpenDocument {
   id: string;
@@ -44,6 +47,7 @@ export interface OpenDocument {
   missing: boolean;
   conflict?: { copyPath: string; disk: FileSnapshot };
   error?: string;
+  tableLayout?: DocumentLayoutState;
 }
 export interface DocumentTab {
   id: string;
@@ -82,6 +86,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     views.value = next;
   }
   const workspace = ref<Workspace | null>(null);
+  const assistantEpoch = ref(0);
   const objects = ref<ObjectRecord[]>([]);
   const objectErrors = ref<string[]>([]);
   const pluginHost = new WorkspacePluginHost();
@@ -107,7 +112,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     ...documentTargets(workspace.value.id, workspace.value.files),
     ...assetTargets(workspace.value.id, workspace.value.files),
     ...objects.value.filter(({ object }) => {
-      if (!objectDefinitions.value.some((definition) => definition.type === object.type && definition.storage === 'record')) return false;
+      const definition = objectDefinitions.value.find((entry) => entry.type === object.type)
+        ?? objectTypeRegistry.get(object.type);
+      if (definition?.storage !== 'record') return false;
+      if (definition.retired) return true;
       try { validateObjectProperties(object.type, object.properties); return true; } catch { return false; }
     }).map(({ object, path }) => ({ workspace: workspace.value!.id, type: object.type, id: object.id, name: object.name, description: object.description, archived: object.archived, path, properties: object.properties })),
   ] : []);
@@ -405,10 +413,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const activities = ref<Activity[]>([]);
   const notice = ref('');
   const fatal = ref('');
-  const recovery = ref<WorkspaceBackupCatalog | null>(null);
-  const recoveryPreview = ref<WorkspaceRecoveryPreview | null>(null);
-  const recoveryError = ref('');
-  const recoveryBusy = ref(false);
   const recent = ref<RecentWorkspace[]>([]);
   const sessionError = ref('');
   const isDemo = adapter.mode === 'demo';
@@ -420,7 +424,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     ? new URLSearchParams(window.location.search).get('workspacePath')
     : null;
   const dirty = (doc: OpenDocument) => doc.content !== doc.base.content;
-  const pending = computed(() => documents.value.some((d) => dirty(d) && !d.conflict));
+  const layoutPending = (doc: OpenDocument) => !!doc.tableLayout && layoutDirty(doc.tableLayout) &&
+    doc.tableLayout.conflict?.draft !== JSON.stringify(doc.tableLayout.file);
+  const pending = computed(() => documents.value.some((d) => (dirty(d) || layoutPending(d)) && !d.conflict));
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   let watchTimer: ReturnType<typeof setTimeout> | undefined;
   let pollTimer: ReturnType<typeof setInterval> | undefined;
@@ -498,84 +504,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   function report(error: unknown) {
     fatal.value = error instanceof Error ? error.message : String(error);
-  }
-  const isRecoveryError = (error: unknown) => /\.tano|身份清单|工作空间配置|工作区配置|恢复尚未完成|身份与本机登记/.test(String(error));
-  async function openRecovery(path = workspace.value?.path ?? adapter.recoveryPath?.() ?? '', reportFailure = true) {
-    if (!path || !adapter.backupCatalog) return;
-    try {
-      recovery.value = await adapter.backupCatalog(path);
-      recoveryPreview.value = null;
-      recoveryError.value = '';
-      const first = recovery.value.pendingRestore ?? recovery.value.snapshots.find((item) => !item.error)?.snapshotId;
-      if (first) await previewRecovery(first);
-    } catch (error) {
-      recoveryError.value = String(error);
-      if (reportFailure) report(error);
-    }
-  }
-  async function previewRecovery(snapshotId: string) {
-    if (!recovery.value || !adapter.backupPreview) return;
-    recoveryBusy.value = true;
-    recoveryError.value = '';
-    try {
-      recoveryPreview.value = await adapter.backupPreview(recovery.value.path, snapshotId);
-    } catch (error) {
-      recoveryPreview.value = null;
-      recoveryError.value = String(error);
-    } finally {
-      recoveryBusy.value = false;
-    }
-  }
-  async function restoreRecovery(snapshotId: string) {
-    if (!recovery.value || !adapter.restoreBackup) return;
-    const catalog = recovery.value;
-    if (catalog.pendingRestore !== snapshotId && recoveryPreview.value?.snapshot.snapshotId !== snapshotId) {
-      recoveryError.value = '请先检查此备份的恢复预览';
-      return;
-    }
-    recoveryBusy.value = true;
-    busy.value = true;
-    recoveryError.value = '';
-    let restored = false;
-    let restorationWarning = '';
-    try {
-      queueSession();
-      await journalTask;
-      const result = await adapter.restoreBackup(catalog.path, snapshotId, recoveryPreview.value?.currentFingerprint);
-      restorationWarning = result.backupWarning ?? '';
-      recovery.value = null;
-      recoveryPreview.value = null;
-      fatal.value = '';
-      restored = true;
-    } catch (error) {
-      recoveryError.value = String(error);
-      try { recovery.value = await adapter.backupCatalog?.(catalog.path) ?? catalog; }
-      catch { /* The recovery journal remains available for a later retry. */ }
-    } finally {
-      busy.value = false;
-      recoveryBusy.value = false;
-    }
-    if (restored) {
-      if (workspace.value?.id === catalog.workspaceId && workspace.value.path === catalog.path) await refresh();
-      else await openWorkspace(catalog.path);
-      if (restorationWarning) report(restorationWarning);
-    }
-  }
-  async function exportFullArchive(): Promise<WorkspaceArchiveResult | null> {
-    if (!workspace.value || !adapter.exportWorkspace) return null;
-    if (!(await flush())) throw new Error('还有未保存的修改，请先处理保存错误');
-    return adapter.exportWorkspace();
-  }
-  async function importFullArchive(): Promise<WorkspaceArchiveResult | null> {
-    if (!adapter.importWorkspace) return null;
-    if (!(await flush())) throw new Error('还有未保存的修改，请先处理保存错误');
-    const result = await adapter.importWorkspace();
-    if (result) {
-      await openWorkspace(result.path);
-      if (workspace.value?.path !== result.path)
-        throw new Error(`归档已导入到 ${result.path}，但未能自动打开；请检查通知后重新打开该目录`);
-    }
-    return result;
   }
   function scheduleRefresh() {
     if (!workspace.value) return;
@@ -660,9 +588,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         }
         stopWatching();
         fatal.value = '';
-        recovery.value = null;
         workspace.value = next;
-        if (next.backupWarning) report(next.backupWarning);
+        assistantEpoch.value++;
+        assistantApplied.clear();
         objects.value = []; objectErrors.value = [];
         await refreshObjects();
         capabilityBase = null;
@@ -737,7 +665,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         }
       }
       report(error);
-      if (isRecoveryError(error)) await openRecovery(path ?? adapter.recoveryPath?.() ?? '', false);
     } finally {
       busy.value = false;
       try {
@@ -766,6 +693,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         stopWatching();
         pluginHost.dispose();
         workspace.value = null;
+        assistantEpoch.value++;
+        assistantApplied.clear();
         documents.value = [];
         tabIds.value = [];
         activeId.value = '';
@@ -776,7 +705,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         capabilities.value = structuredClone(defaultCapabilities);
         capabilityBase = null; capabilityError.value = '';
         activities.value = [];
-        recovery.value = null; recoveryPreview.value = null; recoveryError.value = '';
         sessionError.value = '';
         sessionBlocked = false;
         fatal.value = '';
@@ -820,6 +748,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         saving: false,
         missing: !file,
       };
+      await hydrateDocumentLayout(doc);
       documents.value.push(doc);
       remapped.set(tab.id, doc.id);
       activity('已恢复未保存草稿', doc.path, 'file');
@@ -883,11 +812,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         saving: false,
         missing: false,
       };
+      await hydrateDocumentLayout(doc);
       const replaceIndex = replaceId ? tabIds.value.indexOf(replaceId) : -1;
       if (replaceIndex >= 0) {
         const oldDocumentIndex = documents.value.findIndex((entry) => entry.id === replaceId);
         const oldDocument = documents.value[oldDocumentIndex];
-        if (oldDocument && (dirty(oldDocument) || oldDocument.conflict || oldDocument.missing))
+        if (oldDocument && (dirty(oldDocument) || layoutPending(oldDocument) || oldDocument.conflict || oldDocument.missing))
           throw new Error('当前文档仍有未保存的修改或冲突，标签页未被替换。');
         const insertIndex = tabIds.value.slice(0, replaceIndex).filter((id) => !isUtilityTab(id)).length;
         if (oldDocumentIndex >= 0) documents.value.splice(oldDocumentIndex, 1, doc);
@@ -907,7 +837,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const wasOpen = documents.value.some((doc) => doc.id === file.id);
       const current = documents.value.find((doc) => doc.id === replaceId);
       if (!documents.value.some((doc) => doc.id === file.id) && current) {
-        if (dirty(current) && !(await flush())) {
+        if ((dirty(current) || layoutPending(current)) && !(await flush())) {
           report('此文档尚未保存，请先处理保存错误。');
           return;
         }
@@ -916,7 +846,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           return;
         }
         await beforeCloseDocument?.(current.id);
-        if (dirty(current) && !(await flush())) {
+        if ((dirty(current) || layoutPending(current)) && !(await flush())) {
           report('此文档尚未保存，请先处理保存错误。');
           return;
         }
@@ -940,7 +870,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       if (activeId.value === file.id) ensureTabNavigation(file.id, file.id);
     } catch (error) {
       report(error);
-      if (isRecoveryError(error)) await openRecovery(workspace.value?.path ?? '', false);
     }
   }
   async function openFilesInNewTabsAt(ids: readonly string[], index: number, workspaceId: string) {
@@ -962,7 +891,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       });
     } catch (error) {
       report(error);
-      if (isRecoveryError(error)) await openRecovery(workspace.value?.path ?? '', false);
     }
   }
   function createBlankTab() {
@@ -1019,6 +947,211 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   function edit(content: string) {
     if (active.value) editDocument(active.value.id, content);
   }
+  const assistantApplied = new Map<string, { signature: string; before: string; after: string; hash: string; fileId: string }>();
+  function requireAssistantWorkspace(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }) {
+    if (workspace.value?.id !== scope.id || workspace.value.path !== scope.path)
+      throw new Error('工作区已切换，请在原工作区恢复助手会话');
+    if (scope.epoch !== undefined && scope.epoch !== assistantEpoch.value) throw new Error('工作区打开会话已变化');
+  }
+  async function assistantRules(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }) {
+    return serial(async () => {
+      requireAssistantWorkspace(scope);
+      const current = await adapter.refresh();
+      if (current.id !== scope.id || current.path !== scope.path) throw new Error('工作区身份已变化');
+      const rules: { path: string; content: string }[] = [];
+      for (const path of ['AGENTS.md', assistantRulesPath]) {
+        if (!current.files.some(file => file.path === path && file.kind === 'file')) continue;
+        const disk = await adapter.read(path);
+        const content = documents.value.find(doc => doc.path === path)?.content ?? disk.content;
+        if (new TextEncoder().encode(content).length > 32_000) throw new Error(`${path} 超过 32 KB，请缩短工作区助手规则`);
+        rules.push({ path, content });
+      }
+      return rules;
+    });
+  }
+  async function assistantStructures(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }) {
+    return serial(async () => {
+      requireAssistantWorkspace(scope);
+      if (!capabilities.value.features.objectReferences) throw new Error('工作区对象能力未启用');
+      const current = await adapter.refresh();
+      if (current.id !== scope.id || current.path !== scope.path) throw new Error('工作区身份已变化');
+      workspace.value = current; await refreshObjects();
+      if (objectErrors.value.length || relationError.value) throw new Error('请先处理工作区对象或关系记录错误');
+      return JSON.parse(JSON.stringify({ targets: referenceTargets.value.filter(target => !isWorkspaceInternalPath(target.path) || target.type !== 'document'),
+        relationTypes: relationDefinitions.value, relations: relations.value }));
+    });
+  }
+  async function proposeAssistantStructure(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }, runId: string, call: AssistantToolCall) {
+    return serial(async () => {
+      requireAssistantWorkspace(scope);
+      writable();
+      if (!capabilities.value.features.objectReferences) throw new Error('工作区对象能力未启用');
+      const current = await adapter.refresh();
+      if (current.id !== scope.id || current.path !== scope.path) throw new Error('工作区身份已变化');
+      workspace.value = current; await refreshObjects();
+      if (objectErrors.value.length || relationError.value) throw new Error('请先处理工作区对象或关系记录错误');
+      const id = call.function.name === 'propose_event'
+        ? await adapter.reserveObjectId?.(objects.value.map(record => record.object.id))
+        : newShortId(new Set(relations.value.map(row => row.id)));
+      if (!id) throw new Error('此存储适配器无法分配工作区对象身份');
+      return structureProposal(call, { workspaceId: scope.id, runId, id, relationContent: relationBase?.content ?? '',
+        targets: referenceTargets.value.filter(target => target.type !== 'document' || !isWorkspaceInternalPath(target.path)),
+        relationTypes: relationDefinitions.value });
+    });
+  }
+  async function reviewAssistantStructure(proposal: AssistantProposal, accepted?: AssistantPreview) {
+    if (!capabilities.value.features.objectReferences) throw new Error('工作区对象能力未启用');
+    await refreshObjects();
+    if (objectErrors.value.length || relationError.value) throw new Error('请先处理工作区对象或关系记录错误');
+    let disk: FileSnapshot | null = null;
+    let content = proposal.content;
+    if (proposal.kind === 'object') {
+      const object = parseObject(content);
+      if (object.type !== 'event' || proposal.path !== `${objectDirectory}/${object.id}.tano.json` || proposal.base !== '' || object.archived)
+        throw new Error('助手只能建议新增工作区事件');
+      validateObjectProperties('event', object.properties);
+      if (referenceTargets.value.some(target => target.id === object.id) || workspace.value!.files.some(file => file.path === proposal.path))
+        throw new Error('对象身份或路径已被使用，请保留建议并重新生成');
+    } else {
+      if (proposal.path !== workspaceRelationPath) throw new Error('关系建议路径无效');
+      const base = proposal.base ? parseRelations(proposal.base) : { version: 1 as const, relations: [] };
+      const proposed = parseRelations(proposal.content);
+      const added = proposed.relations.filter(row => !base.relations.some(old => old.id === row.id));
+      if (added.length !== 1 || proposed.relations.length !== base.relations.length + 1 ||
+          base.relations.some(row => JSON.stringify(row) !== JSON.stringify(proposed.relations.find(next => next.id === row.id))))
+        throw new Error('助手关系建议只能新增一个关系');
+      const row = added[0]; validateRelation(row, relationDefinitions.value);
+      for (const endpoint of [row.source, row.target])
+        if (!referenceTargets.value.some(target => referenceKey(target) === referenceKey(endpoint) && !target.archived &&
+            (target.type !== 'document' || !isWorkspaceInternalPath(target.path)))) throw new Error('关系端点不存在或已停用');
+      disk = relationBase;
+      const current = disk ? parseRelations(disk.content) : { version: 1 as const, relations: [] };
+      if (current.relations.some(existing => existing.id === row.id || relationKey(existing) === relationKey(row))) throw new Error('该关系已存在，请核对原建议');
+      content = JSON.stringify({ ...current, relations: [...current.relations, row] }, null, 2) + '\n';
+    }
+    const preview: AssistantPreview = { before: disk?.content ?? '', after: content, diskHash: disk?.hash ?? null, path: proposal.path };
+    if (!accepted) return { status: 'preview' as const, preview };
+    if (JSON.stringify(accepted) !== JSON.stringify(preview)) return { status: 'stale' as const, preview };
+    writable();
+    if (disk) {
+      const written = await adapter.write(proposal.path, preview.after, disk.hash);
+      if (written.status === 'missing') throw new Error('关系文件在保存前移除，请重新审阅');
+      if (written.status !== 'saved') return { status: 'stale' as const, preview: undefined };
+    } else await adapter.create(proposal.path, preview.after);
+    workspace.value = await adapter.refresh();
+    const file = workspace.value.files.find(file => file.path === proposal.path);
+    if (!file) throw new Error('工作区记录可能已保存，请刷新核对');
+    const result = await adapter.read(proposal.path);
+    await refreshObjects();
+    return { status: 'saved' as const, applied: { before: preview.before, after: result.content, hash: result.hash, fileId: file.id } };
+  }
+  async function assistantSnapshot(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }, fileId: string): Promise<AssistantSource> {
+    return serial(async () => {
+      requireAssistantWorkspace(scope);
+      const refreshed = await adapter.refresh();
+      if (refreshed.id !== scope.id || refreshed.path !== scope.path) throw new Error('工作区身份已变化');
+      const file = refreshed.files.find(file => file.id === fileId && file.kind === 'file' && isMarkdown(file.path) && !isWorkspaceInternalPath(file.path));
+      if (!file) throw new Error('参考文档已移除');
+      const disk = await adapter.read(file.path);
+      const doc = documents.value.find(doc => doc.id === fileId);
+      if (doc?.conflict || doc?.missing) throw new Error('请先处理参考文档的冲突或缺失');
+      const content = doc?.content ?? disk.content;
+      if (content.length > 512_000) throw new Error('参考文档过大，请使用较小文档');
+      return { id: '', workspaceId: scope.id, fileId, path: file.path, content,
+        hash: await assistantHash(content), origin: doc && content !== disk.content ? 'draft' : 'disk' };
+    });
+  }
+  async function reviewAssistantProposal(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }, proposal: AssistantProposal,
+    accepted?: AssistantPreview) {
+    return serial(async () => {
+      requireAssistantWorkspace(scope);
+      if (proposal.workspaceId !== scope.id) throw new Error('建议不属于当前工作区');
+      const signature = JSON.stringify([scope, proposal.kind, proposal.fileId, proposal.path, proposal.base, proposal.content]);
+      const applied = assistantApplied.get(proposal.id);
+      if (applied) {
+        if (applied.signature !== signature) throw new Error('同一操作标识不能对应不同建议');
+        return { status: 'saved' as const, applied };
+      }
+      const refreshed = await adapter.refresh();
+      if (refreshed.id !== scope.id || refreshed.path !== scope.path) throw new Error('工作区身份已变化');
+      workspace.value = refreshed;
+      if (proposal.kind === 'object' || proposal.kind === 'relation') {
+        const result = await reviewAssistantStructure(proposal, accepted);
+        if (result.status === 'saved') {
+          assistantApplied.set(proposal.id, { signature, ...result.applied });
+          activity('助手工作区建议已应用', proposal.path, 'save', { before: result.applied.before, after: result.applied.after });
+        }
+        return result;
+      }
+      let disk: FileSnapshot | null = null;
+      let doc: OpenDocument | undefined;
+      let path = proposal.path;
+      let current = '';
+      if (proposal.kind === 'create') {
+        if (!isMarkdown(path) || validatePath(path)) throw new Error('新文档路径无效');
+        if (refreshed.files.some(file => pathKey(file.path) === pathKey(path))) throw new Error('同名文件已存在，请调整建议路径');
+      } else {
+        const file = refreshed.files.find(file => file.id === proposal.fileId && file.kind === 'file' && isMarkdown(file.path));
+        if (!file) throw new Error('目标文档已删除或身份变化');
+        path = file.path;
+        disk = await adapter.read(path);
+        doc = documents.value.find(doc => doc.id === file.id);
+        if (doc?.conflict || doc?.missing) throw new Error('请先处理文档已有的冲突或缺失');
+        const reconciled = doc ? mergeMarkdown(doc.base.content, doc.content, disk.content) : { clean: true, content: disk.content };
+        if (!reconciled.clean) return { status: 'conflict' as const, preview: { before: doc!.content, after: proposal.content, diskHash: disk.hash, path } };
+        current = reconciled.content;
+      }
+      const merged = mergeMarkdown(proposal.base, proposal.content, current);
+      const preview: AssistantPreview = { before: current, after: merged.content, diskHash: disk?.hash ?? null, path };
+      if (!merged.clean) return { status: 'conflict' as const, preview: { ...preview, after: proposal.content } };
+      if (!accepted) return { status: 'preview' as const, preview };
+      if (JSON.stringify(preview) !== JSON.stringify(accepted)) return { status: 'stale' as const, preview };
+      writable();
+      const draftBefore = doc?.content;
+      if (doc) doc.saving = true;
+      try {
+        let result: FileSnapshot;
+        let fileId: string;
+        if (proposal.kind === 'create') {
+          await adapter.create(path, preview.after);
+          workspace.value = await adapter.refresh();
+          fileId = workspace.value.files.find(file => file.path === path)?.id ?? '';
+          if (!fileId) throw new Error('文档可能已创建，请刷新核对');
+          result = await adapter.read(path);
+        } else {
+          fileId = proposal.fileId!;
+          const written = await adapter.write(path, preview.after, disk!.hash);
+          if (written.status === 'missing') throw new Error('目标文档已在保存前删除');
+          if (written.status === 'conflict') {
+            const live = doc ? mergeMarkdown(doc.base.content, doc.content, written.snapshot.content)
+              : { clean: true, content: written.snapshot.content };
+            const updated = mergeMarkdown(proposal.base, proposal.content, live.content);
+            return { status: live.clean && updated.clean ? 'stale' as const : 'conflict' as const,
+              preview: { before: live.content, after: live.clean && updated.clean ? updated.content : proposal.content,
+                diskHash: written.snapshot.hash, path } };
+          }
+          result = written.snapshot;
+          if (doc) {
+            const duringSave = doc.content;
+            const remaining = mergeMarkdown(draftBefore!, duringSave, result.content);
+            doc.base = result;
+            doc.error = undefined;
+            if (remaining.clean) doc.content = remaining.content;
+            else {
+              const copyPath = path.replace(/\.(md|markdown)$/i, `.conflict-${Date.now()}-${crypto.randomUUID().slice(0, 6)}.md`);
+              doc.conflict = { copyPath, disk: result };
+              await adapter.create(copyPath, duringSave);
+              activity('保存期间的新输入已保留为冲突副本', copyPath, 'conflict');
+            }
+          }
+        }
+        const receipt = { signature, before: preview.before, after: result.content, hash: result.hash, fileId };
+        assistantApplied.set(proposal.id, receipt);
+        activity('助手修改已应用', path, 'save', { before: preview.before, after: result.content });
+        return { status: 'saved' as const, applied: receipt };
+      } finally { if (doc) doc.saving = false; }
+    });
+  }
   function editDocument(id: string, content: string) {
     const doc = documents.value.find((document) => document.id === id);
     if (!doc || doc.conflict || workspace.value?.readOnly) return;
@@ -1028,6 +1161,35 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     saveTimer = setTimeout(() => {
       void flush();
     }, 600);
+  }
+  async function hydrateDocumentLayout(doc: OpenDocument) {
+    if (!workspace.value || !/^[0-9a-f]{6}$/.test(doc.id)) return;
+    try { doc.tableLayout = await loadDocumentLayout(adapter, workspace.value, doc.id); }
+    catch (error) { report(`无法读取表格布局，原文件已保留：${String(error)}`); }
+  }
+  function editTableLayout(id: string, tables: TableLayout[]) {
+    const doc = documents.value.find(item => item.id === id);
+    if (!doc?.tableLayout || doc.conflict || doc.missing || workspace.value?.readOnly) return;
+    doc.tableLayout.file = { ...doc.tableLayout.file, tables: JSON.parse(JSON.stringify(tables)) };
+    doc.tableLayout.error = undefined;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { void flush(); }, 300);
+  }
+  async function saveTableLayout(doc: OpenDocument) {
+    const state = doc.tableLayout;
+    if (!state || !layoutDirty(state) || doc.missing || doc.conflict) return;
+    const draft = JSON.stringify(state.file);
+    if (state.conflict?.draft === draft) return;
+    try {
+      const saved = await saveDocumentLayout(adapter, state);
+      state.base = saved.base;
+      if (JSON.stringify(state.file) === draft) state.file = saved.file;
+      state.error = undefined;
+      state.conflict = undefined;
+    } catch (error) {
+      if (error instanceof DocumentLayoutConflict) state.conflict = { path: error.path, draft };
+      state.error = String(error); report(error);
+    }
   }
   async function reconcile(doc: OpenDocument, disk: FileSnapshot) {
     if (doc.conflict) {
@@ -1096,8 +1258,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function flush(): Promise<boolean> {
     clearTimeout(saveTimer);
     const saved = await serial(async () => {
-      for (const doc of documents.value) await saveInternal(doc);
-      return documents.value.every((doc) => !dirty(doc) || !!doc.conflict);
+      for (const doc of documents.value) { await saveInternal(doc); await saveTableLayout(doc); }
+      return documents.value.every((doc) => (!dirty(doc) || !!doc.conflict) &&
+        !layoutPending(doc));
     });
     await journalTask;
     return saved;
@@ -1110,7 +1273,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       await serial(async () => {
         if (workspace.value?.id !== expectedId || workspace.value.path !== expectedPath) return;
         workspace.value = await adapter.refresh();
-        if (workspace.value.backupWarning) report(workspace.value.backupWarning);
         await refreshCapabilities();
         await refreshObjects();
         for (const doc of documents.value) {
@@ -1127,11 +1289,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           doc.missing = false;
           await reconcile(doc, await adapter.read(doc.path));
           await saveInternal(doc);
+          if (doc.tableLayout && !layoutDirty(doc.tableLayout)) await hydrateDocumentLayout(doc);
+          await saveTableLayout(doc);
         }
       });
     } catch (error) {
       report(error);
-      if (isRecoveryError(error)) await openRecovery(workspace.value?.path ?? '', false);
     }
   }
   async function createInternal(
@@ -1428,7 +1591,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return;
     }
     const doc = documents.value.find((d) => d.id === id);
-    if (doc && dirty(doc) && !doc.conflict) {
+    if (doc && ((dirty(doc) && !doc.conflict) || layoutPending(doc))) {
       report('此文档尚未保存，请先另存副本或解决保存错误。');
       return;
     }
@@ -1522,10 +1685,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activities,
     notice,
     fatal,
-    recovery,
-    recoveryPreview,
-    recoveryError,
-    recoveryBusy,
     busy,
     recent,
     sessionError,
@@ -1548,8 +1707,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     registerViews,
     openViewTab,
     readGraphDocument,
+    assistantSnapshot,
+    assistantRules,
+    assistantStructures,
+    proposeAssistantStructure,
+    assistantEpoch,
+    reviewAssistantProposal,
     edit,
     editDocument,
+    editTableLayout,
     preserveDraft,
     setDocumentLifecycle: (hooks: {
       beforeSwitch: () => Promise<void>;
@@ -1586,11 +1752,5 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     reveal,
     dispose,
     report,
-    openRecovery,
-    previewRecovery,
-    restoreRecovery,
-    exportFullArchive,
-    importFullArchive,
-    closeRecovery: () => { recovery.value = null; recoveryPreview.value = null; recoveryError.value = ''; },
   };
 });

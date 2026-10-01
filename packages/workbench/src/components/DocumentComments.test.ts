@@ -1,0 +1,278 @@
+// @vitest-environment jsdom
+import { afterEach, expect, it, vi } from 'vitest';
+import { createApp, defineComponent, h, nextTick, reactive, ref } from 'vue';
+import { createPinia, setActivePinia } from 'pinia';
+import { DemoAdapter, sha256 } from '../adapter';
+import { configureWorkbench } from '../runtime';
+import { loadCommentFile, saveCommentChange } from '../workspace-comments';
+import type { OpenDocument } from '../stores/workspace';
+import DocumentComments from './DocumentComments.vue';
+
+let app: ReturnType<typeof createApp> | undefined;
+let root: HTMLDivElement | undefined;
+afterEach(async () => {
+  app?.unmount();
+  root?.remove();
+  app = undefined;
+  root = undefined;
+  localStorage.clear();
+  vi.restoreAllMocks();
+  await nextTick();
+});
+
+it('uses one bottom composer for discussions and replies, preserving drafts on cancellation and failed saves', async () => {
+  const adapter = new DemoAdapter();
+  const pinia = configureWorkbench(createPinia(), { adapter, native: false, mobile: false });
+  setActivePinia(pinia);
+  const author = { id: 'reviewer', name: '审阅者' };
+  const content = '正文';
+  const openDocument = reactive<OpenDocument>({
+    id: 'a0b1c2', path: '文章.md', content,
+    base: { content, hash: await sha256(content), modified: Date.now() },
+    saving: false, missing: false,
+  });
+  for (const [id, body] of [['thread-1', '第一个讨论'], ['thread-2', '第二个讨论']]) {
+    await saveCommentChange(adapter, 'discussion', openDocument.id, { type: 'start', id: id!, body: body!, author });
+  }
+  root = document.createElement('div');
+  document.body.append(root);
+  app = createApp(DocumentComments, {
+    workspaceId: 'demo', document: openDocument, readonly: false, author,
+    captureSelection: () => null, focusAnchor: () => {}, geometry: () => null,
+  });
+  app.use(pinia).mount(root);
+  await expect.poll(() => root!.querySelectorAll('.comment-conversation').length).toBe(2);
+  const field = root.querySelector<HTMLTextAreaElement>('.document-discussion-compose textarea')!;
+  const write = async (value: string) => {
+    field.value = value;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+  };
+  const replyTo = async (index: number) => {
+    root!.querySelectorAll<HTMLButtonElement>('.document-discussion-messages [aria-label="回复评论"]')[index]!.click();
+    await nextTick();
+    await nextTick();
+  };
+  const submit = () => root!.querySelector<HTMLButtonElement>('.document-discussion-compose .comment-send')!.click();
+
+  await write('保留草稿');
+  await replyTo(0);
+  expect(root.querySelectorAll('textarea')).toHaveLength(1);
+  expect(root.querySelector('textarea')).toBe(field);
+  expect(document.activeElement).toBe(field);
+  expect(field.value).toBe('保留草稿');
+  expect(field.getAttribute('aria-label')).toBe('回复评论');
+  expect(root.querySelector('.discussion-reply-target')?.textContent).toContain('第一个讨论');
+  root.querySelector<HTMLButtonElement>('[aria-label="取消回复"]')!.click();
+  await nextTick();
+  expect(field.getAttribute('aria-label')).toBe('输入评论');
+  expect(field.value).toBe('保留草稿');
+
+  await replyTo(0);
+  await replyTo(1);
+  expect(root.querySelector('.discussion-reply-target')?.textContent).toContain('第二个讨论');
+  const writeFile = vi.spyOn(adapter, 'write').mockRejectedValueOnce(new Error('保存失败'));
+  submit();
+  await expect.poll(() => root!.querySelector('[role="alert"]')?.textContent).toBe('保存失败');
+  expect(field.value).toBe('保留草稿');
+  expect(field.getAttribute('aria-label')).toBe('回复评论');
+  writeFile.mockRestore();
+  submit();
+  await expect.poll(() => field.getAttribute('aria-label')).toBe('输入评论');
+  expect(field.value).toBe('');
+  expect(root.querySelectorAll('textarea')).toHaveLength(1);
+  let file = (await loadCommentFile(adapter, 'discussion', openDocument.id)).file;
+  expect(file.threads.map(thread => thread.messages.length)).toEqual([1, 2]);
+  expect(file.threads[1]?.messages[1]?.body).toBe('保留草稿');
+
+  await write('新的讨论');
+  submit();
+  await expect.poll(async () => (await loadCommentFile(adapter, 'discussion', openDocument.id)).file.threads.length).toBe(3);
+  await expect.poll(() => field.value).toBe('');
+  await replyTo(0);
+  await write('目标被删除时保留');
+  file = (await loadCommentFile(adapter, 'discussion', openDocument.id)).file;
+  const target = file.threads[0]!;
+  await saveCommentChange(adapter, 'discussion', openDocument.id, {
+    type: 'delete', threadId: target.id, messageId: target.messages[0]!.id,
+    expectedBody: target.messages[0]!.body, authorId: author.id,
+    expectedMessages: target.messages.map(message => ({ id: message.id, body: message.body })),
+  });
+  submit();
+  await expect.poll(() => root!.querySelector('[role="alert"]')?.textContent).toContain('评论已被移除');
+  expect(field.value).toBe('目标被删除时保留');
+  expect(field.getAttribute('aria-label')).toBe('回复评论');
+  expect((await loadCommentFile(adapter, 'discussion', openDocument.id)).file.threads).toHaveLength(2);
+
+  openDocument.id = 'd0e1f2';
+  await nextTick();
+  expect(field.value).toBe('');
+  expect(field.getAttribute('aria-label')).toBe('输入评论');
+  expect(root.querySelector('.discussion-reply-target')).toBeNull();
+});
+
+it('creates, replies to, resolves and detaches local annotations independently of document discussions', async () => {
+  localStorage.clear();
+  const adapter = new DemoAdapter();
+  const pinia = configureWorkbench(createPinia(), { adapter, native: false, mobile: false });
+  setActivePinia(pinia);
+  const content = '正文';
+  const openDocument = reactive<OpenDocument>({
+    id: 'a0b1c2', path: '文章.md', content,
+    base: { content, hash: await sha256(content), modified: Date.now() },
+    saving: false, missing: false,
+  });
+  root = document.createElement('div');
+  document.body.append(root);
+  const marks: string[][] = [];
+  const readonly = ref(false);
+  const comments = ref<InstanceType<typeof DocumentComments>>();
+  app = createApp(defineComponent(() => () => h('main', { class: 'document-main' }, [
+    h('button', { class: 'annotation-create-button', onClick: () => comments.value?.beginAnnotation() }, '添加批注'),
+    h(DocumentComments, {
+    ref: comments,
+    workspaceId: 'demo', document: openDocument, readonly: readonly.value,
+    author: { id: 'reviewer', name: '审阅者' },
+    captureSelection: () => ({ basis: 'prose' as const, text: content,
+      spans: [{ from: 0, to: 2, text: content }] }),
+    focusAnchor: () => {},
+    geometry: (anchors = []) => ({ left: 100, right: 700,
+      blocks: anchors.length ? [{ key: 'first', ids: anchors.map(anchor => anchor.id), top: 100, bottom: 140 }] : [] }),
+    onAnnotations: value => marks.push(value.map(item => item.id)),
+  })])));
+  app.use(pinia);
+  app.mount(root);
+  root.querySelector('main')!.getBoundingClientRect = () => new DOMRect(0, 0, 800, 900);
+  await expect.poll(() => root!.textContent?.includes('文档讨论')).toBe(true);
+  const click = (label: string) => {
+    const button = [...document.querySelectorAll('button')].find(item => item.textContent?.trim() === label || item.getAttribute('aria-label') === label);
+    expect(button, label).toBeTruthy();
+    button!.click();
+  };
+  const write = (label: string, value: string) => {
+    const field = root!.querySelector<HTMLTextAreaElement>(`textarea[aria-label="${label}"]`)!;
+    field.value = value;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  click('添加批注');
+  await expect.poll(() => root!.querySelector('[aria-label="添加批注"]')).toBeTruthy();
+  expect(marks.at(-1)).toEqual(['@draft']);
+  write('添加批注', '这里需要核对');
+  await nextTick();
+  root.querySelector('main')!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  await nextTick();
+  expect(root.querySelector<HTMLElement>('.annotation-popup')?.style.display).toBe('none');
+  expect(marks.at(-1)).toEqual(['@draft']);
+  click('添加批注');
+  await expect.poll(() => root!.querySelector<HTMLTextAreaElement>('[aria-label="添加批注"]')?.value).toBe('这里需要核对');
+  root.querySelector<HTMLButtonElement>('[aria-label="发表添加批注"]')!.click();
+  await expect.poll(async () => (await loadCommentFile(adapter, 'annotation', openDocument.id)).file.threads.length).toBe(1);
+  expect(marks.at(-1)).toHaveLength(1);
+  expect(marks.at(-1)).not.toContain('@draft');
+  await expect.poll(() => root!.querySelector('.annotation-count')?.textContent?.trim()).toBe('1');
+  const popup = root.querySelector<HTMLElement>('.annotation-popup')!;
+  expect(popup.style.left).toBe('140px');
+  expect(popup.style.top).toBe('148px');
+  expect(root.querySelector('.document-comments')).toBeNull();
+  expect(root.querySelector('[aria-label="关闭批注"]')).toBeNull();
+  root.querySelector<HTMLButtonElement>('.annotation-count')!.click();
+  await nextTick();
+  expect(root.querySelector<HTMLElement>('.annotation-popup')?.style.display).toBe('none');
+  root.querySelector<HTMLButtonElement>('.annotation-count')!.click();
+  await nextTick();
+  write('添加回复', '已核对');
+  await nextTick();
+  root.querySelector('main')!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  await nextTick();
+  expect(root.querySelector<HTMLElement>('.annotation-popup')?.style.display).toBe('none');
+  root.querySelector<HTMLButtonElement>('.annotation-count')!.click();
+  await nextTick();
+  expect(root.querySelector<HTMLTextAreaElement>('[aria-label="添加回复"]')?.value).toBe('已核对');
+  root.querySelector<HTMLButtonElement>('[aria-label="发表添加回复"]')!.click();
+  await expect.poll(() => root!.querySelector('.annotation-count')?.textContent?.trim()).toBe('2');
+  expect((await loadCommentFile(adapter, 'annotation', openDocument.id)).file.threads[0]?.messages).toHaveLength(2);
+  await expect.poll(() => root!.querySelector<HTMLTextAreaElement>('[aria-label="添加回复"]')?.value).toBe('');
+  click('完成批注');
+  await expect.poll(() => root!.querySelector('.annotation-count')).toBeNull();
+  expect(root.querySelector('.annotation-popup')).toBeNull();
+  expect(marks.at(-1)).toEqual([]);
+  expect((await loadCommentFile(adapter, 'annotation', openDocument.id)).file.threads[0]?.resolved).toBe(true);
+  const resolved = root.querySelector<HTMLDetailsElement>('.resolved-annotations')!;
+  expect(resolved).toBeTruthy();
+  resolved.open = true;
+  click('重新打开批注');
+  await expect.poll(() => root!.querySelector('.annotation-count')?.textContent?.trim()).toBe('2');
+  expect(marks.at(-1)).toHaveLength(1);
+  expect((await loadCommentFile(adapter, 'annotation', openDocument.id)).file.threads[0]?.resolved).toBe(false);
+  readonly.value = true;
+  await nextTick();
+  expect(root.querySelectorAll('textarea')).toHaveLength(0);
+  expect(root.querySelector('button[title="完成批注"]')).toBeNull();
+  expect(root.querySelector('.annotation-count')?.textContent?.trim()).toBe('2');
+  await comments.value?.beginAnnotation();
+  expect(root.querySelector('[aria-label="添加批注"]')).toBeNull();
+  readonly.value = false;
+  await nextTick();
+  write('输入评论', '整体方案可行');
+  await nextTick();
+  root.querySelector<HTMLButtonElement>('[aria-label="发表输入评论"]')!.click();
+  await expect.poll(async () => (await loadCommentFile(adapter, 'discussion', openDocument.id)).file.threads.length).toBe(1);
+  expect((await loadCommentFile(adapter, 'annotation', openDocument.id)).file.threads[0]?.anchor).toBeDefined();
+  expect((await loadCommentFile(adapter, 'discussion', openDocument.id)).file.threads[0]?.anchor).toBeUndefined();
+  if (!root.querySelector('.annotation-popup')) {
+    root.querySelector<HTMLButtonElement>('.annotation-count')!.click();
+    await nextTick();
+  }
+  root.querySelector<HTMLButtonElement>('.annotation-popup [aria-label="更多评论操作"]')!.click();
+  await nextTick();
+  click('编辑');
+  await nextTick();
+  write('编辑评论', '这里已经核对');
+  await nextTick();
+  click('确认编辑');
+  await expect.poll(async () => (await loadCommentFile(adapter, 'annotation', openDocument.id))
+    .file.threads[0]?.messages[0]?.body).toBe('这里已经核对');
+  await expect.poll(() => root!.querySelector('[aria-label="编辑评论"]')).toBeNull();
+  root.querySelector<HTMLButtonElement>('.annotation-popup .is-reply [aria-label="更多评论操作"]')!.click();
+  await nextTick();
+  click('删除');
+  await nextTick();
+  click('确认删除');
+  await expect.poll(() => root!.querySelector('.annotation-count')?.textContent?.trim()).toBe('1');
+  root.querySelector<HTMLButtonElement>('.document-discussion-messages [aria-label="更多评论操作"]')!.click();
+  await nextTick();
+  click('编辑');
+  await nextTick();
+  write('编辑评论', '整体方案已经确认');
+  await nextTick();
+  click('确认编辑');
+  await expect.poll(() => root!.textContent?.includes('整体方案已经确认')).toBe(true);
+  openDocument.content = '';
+  await expect.poll(() => marks.at(-1)?.length).toBe(0);
+  openDocument.base = { content: '', hash: await sha256(''), modified: Date.now() };
+  await expect.poll(async () => (await loadCommentFile(adapter, 'annotation', openDocument.id))
+    .file.threads[0]?.detached).toBe(true);
+  openDocument.content = content;
+  openDocument.base = { content, hash: await sha256(content), modified: Date.now() };
+  await nextTick();
+  expect(root.querySelector('.annotation-count')).toBeNull();
+  expect(root.textContent).toContain('整体方案已经确认');
+  click('添加批注');
+  await expect.poll(() => root!.querySelector('[aria-label="添加批注"]')).toBeTruthy();
+  write('添加批注', '再次核对');
+  await nextTick();
+  root.querySelector<HTMLButtonElement>('[aria-label="发表添加批注"]')!.click();
+  await expect.poll(async () => (await loadCommentFile(adapter, 'annotation', openDocument.id))
+    .file.threads.length).toBe(2);
+  openDocument.content = '';
+  openDocument.content = content;
+  await expect.poll(async () => (await loadCommentFile(adapter, 'annotation', openDocument.id))
+    .file.threads[1]?.detached).toBe(true);
+  await expect.poll(() => root!.querySelector('.annotation-count')).toBeNull();
+  root.querySelector<HTMLButtonElement>('.document-discussion-messages [aria-label="更多评论操作"]')!.click();
+  await nextTick();
+  click('删除');
+  await nextTick();
+  click('确认删除');
+  await expect.poll(async () => (await loadCommentFile(adapter, 'discussion', openDocument.id)).file.threads).toEqual([]);
+});
