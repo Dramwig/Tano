@@ -1,9 +1,9 @@
 import { h, render } from 'vue';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronRight, Copy, Eraser, GripHorizontal, GripVertical, PaintRoller, Trash2 } from 'lucide-vue-next';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronRight, Copy, Eraser, GripHorizontal, GripVertical, PaintRoller, Plus, Trash2 } from 'lucide-vue-next';
 import type { Component } from 'vue';
-import { Plugin, PluginKey } from '@milkdown/kit/prose/state';
+import { Plugin, PluginKey, TextSelection } from '@milkdown/kit/prose/state';
 import type { Node as ProseNode } from '@milkdown/kit/prose/model';
-import { TableMap } from '@milkdown/kit/prose/tables';
+import { CellSelection, TableMap } from '@milkdown/kit/prose/tables';
 import { tableColors } from '@tano/protocol';
 import type { TableColor } from '@tano/protocol';
 import { activateEditorPanel, announceEditorPanel, createEditorPanel, onOtherEditorPanel } from './editor-panel';
@@ -23,7 +23,7 @@ export function tableControls(readonly: () => boolean) {
     key: new PluginKey('tanoTableControls'),
     view(view) {
       const host = view.dom.parentElement!;
-      const surface = host.closest('.editor-scroll') ?? host;
+      const surface = host.closest<HTMLElement>('.editor-scroll') ?? host;
       const controls = document.createElement('div');
       controls.className = 'tano-table-controls';
       const grips = {} as Record<TableAxis, HTMLButtonElement>;
@@ -45,6 +45,12 @@ export function tableControls(readonly: () => boolean) {
       const marker = document.createElement('div');
       marker.className = 'tano-table-line-drop';
       marker.hidden = true;
+      const insertionControls = document.createElement('div');
+      insertionControls.className = 'tano-table-insert-controls';
+      insertionControls.hidden = true;
+      const insertionLine = document.createElement('div');
+      insertionLine.className = 'tano-table-insert-line';
+      insertionLine.hidden = true;
       const menu = createEditorPanel('div', 'tano-table-menu', '表格操作');
       menu.setAttribute('role', 'menu');
       const items = document.createElement('div');
@@ -58,7 +64,7 @@ export function tableControls(readonly: () => boolean) {
       const colorGroups = document.createElement('div');
       palette.append(colorGroups);
       menu.append(items, palette);
-      controls.append(outline, marker, menu);
+      controls.append(outline, marker, insertionControls, insertionLine, menu);
       host.append(controls);
       let hovered: { pos: number; row: number; column: number } | null = null;
       let selected: TableTarget | null = null;
@@ -67,6 +73,15 @@ export function tableControls(readonly: () => boolean) {
       let colorButton: HTMLButtonElement | null = null;
       let colorCloseTimer: number | undefined;
       let dragPreview: ReturnType<typeof createTableDragPreview> = null;
+      let insertionDoc: ProseNode | null = null;
+      let insertionTable: number | null = null;
+      let activeInsertion: HTMLButtonElement | null = null;
+      let insertions: { button: HTMLButtonElement; target: TableTarget; action: 'before' | 'after' }[] = [];
+
+      const hideInsertions = () => {
+        insertionControls.hidden = insertionLine.hidden = true;
+        activeInsertion = null;
+      };
 
       const keepColors = () => {
         window.clearTimeout(colorCloseTimer);
@@ -104,6 +119,7 @@ export function tableControls(readonly: () => boolean) {
       const hide = () => {
         close(); cancelDrag(); hovered = null;
         grips.row.hidden = grips.column.hidden = true;
+        hideInsertions();
       };
       const cellDOM = (pos: number, row: number, column: number): HTMLElement | null => {
         const table = view.state.doc.nodeAt(pos);
@@ -127,7 +143,89 @@ export function tableControls(readonly: () => boolean) {
         const right = Math.min(bounds.right, clip.right, viewport.right, window.innerWidth);
         const top = Math.max(bounds.top, viewport.top, 0);
         const bottom = Math.min(bounds.bottom, viewport.bottom, window.innerHeight);
-        return { cell: cell.getBoundingClientRect(), bounds, left, right, top, bottom, viewportLeft: Math.max(viewport.left, 0) };
+        return { cell: cell.getBoundingClientRect(), bounds, left, right, top, bottom,
+          viewportLeft: Math.max(viewport.left, 0), viewportRight: Math.min(viewport.right, window.innerWidth) };
+      };
+      const positionInsertions = (g: NonNullable<ReturnType<typeof geometry>>) => {
+        if (!hovered || selected || pending || !menu.hidden) { hideInsertions(); return; }
+        if (insertionDoc !== view.state.doc || insertionTable !== hovered.pos) {
+          hideInsertions();
+          for (const span of insertionControls.querySelectorAll('span')) render(null, span);
+          insertionControls.replaceChildren();
+          insertions = [];
+          insertionDoc = view.state.doc;
+          insertionTable = hovered.pos;
+          const map = TableMap.get(view.state.doc.nodeAt(hovered.pos)!);
+          for (const axis of ['column', 'row'] as const) {
+            const count = axis === 'column' ? map.width : map.height;
+            for (let index = 0; index <= count; index++) {
+              const target = { pos: hovered.pos, axis, index: Math.min(index, count - 1) };
+              const action = index === count ? 'after' : 'before';
+              const button = document.createElement('button');
+              button.type = 'button';
+              button.className = `tano-table-insert is-${axis}`;
+              button.title = axis === 'row' ? '插入行' : '插入列';
+              button.setAttribute('aria-label', button.title);
+              button.dataset.index = String(index);
+              button.append(icon(Plus));
+              if (index === 0) {
+                button.classList.add('is-corner');
+                const hit = document.createElement('div');
+                hit.className = 'tano-table-insert-hit';
+                hit.setAttribute('aria-hidden', 'true');
+                button.append(hit);
+              }
+              const activate = () => { activeInsertion = button; position(); };
+              const deactivate = () => {
+                if (activeInsertion === button) { activeInsertion = null; insertionLine.hidden = true; }
+              };
+              button.addEventListener('pointerenter', activate);
+              button.addEventListener('pointerleave', () => { if (document.activeElement !== button) deactivate(); });
+              button.addEventListener('focus', activate);
+              button.addEventListener('blur', deactivate);
+              button.addEventListener('pointerdown', event => { event.preventDefault(); event.stopPropagation(); });
+              button.addEventListener('click', event => {
+                event.preventDefault(); event.stopPropagation();
+                if (readonly() || insertionControls.hidden || button.hidden || insertionDoc !== view.state.doc) return;
+                const tr = tableLineAction(view.state, target, action);
+                hide();
+                if (tr) {
+                  if (tr.selection instanceof CellSelection)
+                    tr.setSelection(TextSelection.near(tr.doc.resolve(tr.selection.$anchorCell.pos + 1)));
+                  view.dispatch(tr);
+                  view.focus();
+                }
+              });
+              insertionControls.append(button);
+              insertions.push({ button, target, action });
+            }
+          }
+        }
+        insertionControls.hidden = false;
+        insertionLine.hidden = true;
+        for (const { button, target, action } of insertions) {
+          const rect = cellDOM(target.pos, target.axis === 'row' ? target.index : 0,
+            target.axis === 'column' ? target.index : 0)?.getBoundingClientRect();
+          if (!rect) { button.hidden = true; continue; }
+          const column = target.axis === 'column';
+          const boundary = column ? (action === 'after' ? rect.right : rect.left)
+            : (action === 'after' ? rect.bottom : rect.top);
+          button.hidden = column ? g.bounds.top < g.top || boundary < g.left || boundary > g.right
+            : boundary < g.top || boundary > g.bottom;
+          if (button.hidden) continue;
+          button.style.left = `${column ? Math.max(g.viewportLeft, Math.min(boundary - 12, g.viewportRight - 24))
+            : Math.max(g.left - 12, g.viewportLeft)}px`;
+          button.style.top = `${column ? g.bounds.top - 12 : boundary - 12}px`;
+          if (activeInsertion === button) {
+            insertionLine.hidden = false;
+            insertionLine.style.transform = column ? 'translateX(-50%)' : 'translateY(-50%)';
+            Object.assign(insertionLine.style, column ? {
+              left: `${boundary}px`, top: `${g.top}px`, width: '2px', height: `${g.bottom - g.top}px`,
+            } : {
+              left: `${g.left}px`, top: `${boundary}px`, width: `${g.right - g.left}px`, height: '2px',
+            });
+          }
+        }
       };
       const positionMenu = () => {
         if (menu.hidden || !selected) return;
@@ -179,6 +277,7 @@ export function tableControls(readonly: () => boolean) {
             Object.assign(outline.style, { left: `${left}px`, top: `${top}px`, width: `${Math.max(0, right - left)}px`, height: `${Math.max(0, bottom - top)}px` });
           }
         }
+        positionInsertions(g);
         positionMenu();
       };
       const select = (target: TableTarget) => {
@@ -365,7 +464,16 @@ export function tableControls(readonly: () => boolean) {
         }
         if (!menu.hidden) return;
         if (!(event.target instanceof Element) || controls.contains(event.target)) return;
-        const cell = event.target.closest('td, th');
+        let cell = event.target.closest('td, th');
+        if (!cell && surface.contains(event.target)) {
+          const table = [...view.dom.querySelectorAll('table')].find(table => {
+            const bounds = table.getBoundingClientRect();
+            const clip = (table.closest('.tableWrapper') ?? table).getBoundingClientRect();
+            return event.clientX >= Math.max(bounds.left, clip.left) - 28 && event.clientX <= Math.min(bounds.right, clip.right) + 12 &&
+              event.clientY >= bounds.top - 28 && event.clientY <= bounds.bottom + 12;
+          });
+          cell = table?.querySelector('td, th') ?? null;
+        }
         if (cell && view.dom.contains(cell)) {
           const resolved = view.state.doc.resolve(view.posAtDOM(cell, 0));
           for (let depth = resolved.depth; depth > 0; depth--) {
@@ -399,7 +507,11 @@ export function tableControls(readonly: () => boolean) {
           event.preventDefault(); event.stopPropagation();
         }
       };
-      const onLeave = () => { if (!pending && menu.hidden) hide(); };
+      const onLeave = (event: PointerEvent) => {
+        if (event.relatedTarget instanceof globalThis.Node &&
+            (surface.contains(event.relatedTarget) || controls.contains(event.relatedTarget))) return;
+        if (!pending && menu.hidden) hide();
+      };
       controls.addEventListener('keydown', event => {
         if (!palette.hidden && (event.key === 'Escape' || event.key === 'ArrowLeft')) {
           closeColors(); colorButton?.focus({ preventScroll: true });
@@ -428,7 +540,9 @@ export function tableControls(readonly: () => boolean) {
       document.addEventListener('keydown', onDragKeyDown, true);
       window.addEventListener('blur', onCancel);
       surface.addEventListener('pointerleave', onLeave);
-      const stopPosition = observePanelPosition(() => { if (hovered) position(); });
+      const reposition = () => { if (hovered) position(); };
+      const stopPosition = observePanelPosition(reposition);
+      host.addEventListener('tano-table-layout', reposition);
       const stopOther = onOtherEditorPanel(host, () => selected ? grips[selected.axis] : null, close);
       return {
         update(next, previous) {
@@ -444,6 +558,7 @@ export function tableControls(readonly: () => boolean) {
           document.removeEventListener('keydown', onDragKeyDown, true);
           window.removeEventListener('blur', onCancel);
           surface.removeEventListener('pointerleave', onLeave);
+          host.removeEventListener('tano-table-layout', reposition);
           for (const element of controls.querySelectorAll('span')) render(null, element);
           controls.remove();
         },

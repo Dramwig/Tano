@@ -2021,8 +2021,8 @@ button:hover {
   position: relative;
 }
 .tano-prose th {
-  background: var(--surface);
-  font-weight: 600;
+  background: var(--paper);
+  font-weight: normal;
   color: var(--text);
 }
 .tano-prose td {
@@ -2107,6 +2107,43 @@ button:hover {
   cursor: col-resize !important;
 }
 .tano-table-controls { pointer-events: none; }
+.tano-table-insert-controls[hidden], .tano-table-insert[hidden], .tano-table-insert-line[hidden] { display: none; }
+.tano-table-insert {
+  position: fixed;
+  z-index: 16;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: white;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.tano-table-insert > span {
+  display: none;
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  align-items: center;
+  justify-content: center;
+  background: var(--green-fill);
+  color: white;
+  pointer-events: none;
+}
+.tano-table-insert:is(:hover, :focus-visible) > span { display: flex; }
+.tano-table-insert:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+/* Split the shared corner hit area without moving the visible control. */
+.tano-table-insert.is-corner { pointer-events: none; }
+.tano-table-insert.is-corner:is(:hover, :focus-visible) { z-index: 17; }
+.tano-table-insert-hit { position: absolute; inset: 0; pointer-events: auto; }
+.tano-table-insert.is-column > .tano-table-insert-hit { clip-path: polygon(0 0, 100% 0, 100% 100%); }
+.tano-table-insert.is-row > .tano-table-insert-hit { clip-path: polygon(0 0, 0 100%, 100% 100%); }
+.tano-table-insert-line { position: fixed; z-index: 12; background: var(--green); pointer-events: none; }
 .tano-table-grip {
   position: fixed;
   z-index: 15;
@@ -2128,6 +2165,7 @@ button:hover {
   width: 22px;
   height: 4px;
   background: currentColor;
+  opacity: 0.4;
   border-radius: 3px;
 }
 .tano-table-grip.is-row::before { width: 4px; height: 22px; }

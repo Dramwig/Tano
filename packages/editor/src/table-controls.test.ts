@@ -4,6 +4,7 @@ import { createApp, h, nextTick, ref } from 'vue';
 import type { App } from 'vue';
 import { editorViewCtx } from '@milkdown/kit/core';
 import { CellSelection } from '@milkdown/kit/prose/tables';
+import { TextSelection } from '@milkdown/kit/prose/state';
 import { parseDocumentLayout } from '@tano/protocol';
 import type { TableLayout } from '@tano/protocol';
 import MarkdownEditor from './MarkdownEditor.vue';
@@ -36,6 +37,125 @@ async function mount(source = markdown, saved: TableLayout[] = [], readonly = fa
   await vi.waitFor(() => expect(tablesInDocument(view.state.doc)[0]?.layout.id).toBeTruthy());
   return { view, editor, value, layouts };
 }
+
+function measureInsertionTable(left = 100) {
+  for (const element of root.querySelectorAll<HTMLElement>('*'))
+    element.getBoundingClientRect = () => new DOMRect(80, 80, 600, 300);
+  root.querySelector<HTMLTableElement>('table')!.getBoundingClientRect = () => new DOMRect(left, 100, 480, 120);
+  root.querySelectorAll<HTMLTableRowElement>('tr').forEach((row, r) => {
+    row.getBoundingClientRect = () => new DOMRect(left, 100 + r * 40, 480, 40);
+    [...row.children].forEach((cell, c) => {
+      cell.getBoundingClientRect = () => new DOMRect(left + c * 160, 100 + r * 40, 160, 40);
+    });
+  });
+}
+
+function hoverInsertionTable(x = 260, y = 84) {
+  root.querySelector('.tableWrapper')!.dispatchEvent(new MouseEvent('pointermove', {
+    bubbles: true, clientX: x, clientY: y,
+  }));
+}
+
+it.each([
+  ['column', 0], ['column', 1], ['column', 3],
+  ['row', 0], ['row', 1], ['row', 3],
+] as const)('inserts an empty %s at boundary %i with caret placement, Markdown persistence, and undo/redo', async (axis, index) => {
+  const { view, editor, value } = await mount();
+  measureInsertionTable();
+  const original = view.state.doc;
+  const layoutId = original.firstChild!.attrs.layoutId;
+  hoverInsertionTable();
+  const points = root.querySelectorAll<HTMLButtonElement>(`.tano-table-insert.is-${axis}`);
+  expect(points).toHaveLength(4);
+  const button = points[index]!;
+  expect(button.hidden).toBe(false);
+  expect(Number.parseFloat(axis === 'column' ? button.style.top : button.style.left) + 12).toBe(100);
+  button.focus();
+  const line = root.querySelector<HTMLElement>('.tano-table-insert-line')!;
+  expect(line.hidden).toBe(false);
+  expect(axis === 'column' ? line.style.left : line.style.top).toBe(`${100 + index * (axis === 'column' ? 160 : 40)}px`);
+  expect(Number.parseFloat(axis === 'column' ? button.style.left : button.style.top) + 12)
+    .toBe(Number.parseFloat(axis === 'column' ? line.style.left : line.style.top));
+  button.click();
+  const table = view.state.doc.firstChild!;
+  view.state.doc.check();
+  expect(table.attrs.layoutId).toBe(layoutId);
+  expect(table.child(0).type.name).toBe('table_header_row');
+  const contents: string[][] = [];
+  table.forEach(row => {
+    const cells: string[] = [];
+    row.forEach(cell => cells.push(cell.textContent));
+    contents.push(cells);
+  });
+  const expected = [['A', 'B', 'C'], ['alpha', 'beta', 'gamma'], ['one', 'two', 'three']];
+  if (axis === 'column') expected.forEach(row => row.splice(index, 0, ''));
+  else expected.splice(index, 0, ['', '', '']);
+  expect(contents).toEqual(expected);
+  expect(view.state.selection).toBeInstanceOf(TextSelection);
+  expect(view.state.selection.$from.parent.textContent).toBe('');
+  expect(root.querySelector<HTMLElement>('.tano-table-insert-controls')!.hidden).toBe(true);
+  expect(line.hidden).toBe(true);
+  await vi.waitFor(() => expect(value.value).not.toBe(markdown));
+  const insertedMarkdown = value.value;
+  expect(editor.value!.undoLastChange()).toBe(true);
+  expect(view.state.doc.eq(original)).toBe(true);
+  expect(editor.value!.redoLastChange()).toBe(true);
+  await nextTick();
+  expect(value.value).toBe(insertedMarkdown);
+});
+
+it('clips insertion points and previews to the visible table and repositions on horizontal scroll', async () => {
+  await mount();
+  measureInsertionTable();
+  const wrapper = root.querySelector<HTMLElement>('.tableWrapper')!;
+  wrapper.getBoundingClientRect = () => new DOMRect(200, 80, 240, 300);
+  hoverInsertionTable();
+  const columns = root.querySelectorAll<HTMLButtonElement>('.tano-table-insert.is-column');
+  expect([...columns].map(button => button.hidden)).toEqual([true, false, false, true]);
+  const row = root.querySelector<HTMLButtonElement>('.tano-table-insert.is-row[data-index="1"]')!;
+  row.focus();
+  const line = root.querySelector<HTMLElement>('.tano-table-insert-line')!;
+  expect(line.style.left).toBe('200px');
+  expect(line.style.width).toBe('240px');
+  measureInsertionTable(60);
+  wrapper.getBoundingClientRect = () => new DOMRect(200, 80, 240, 300);
+  wrapper.dispatchEvent(new Event('scroll'));
+  await vi.waitFor(() => expect(columns[1]!.style.left).toBe('208px'));
+  measureInsertionTable(80);
+  wrapper.getBoundingClientRect = () => new DOMRect(200, 80, 240, 300);
+  wrapper.dispatchEvent(new Event('tano-table-layout', { bubbles: true }));
+  expect(columns[1]!.style.left).toBe('228px');
+  measureInsertionTable();
+  root.querySelector<HTMLTableElement>('table')!.getBoundingClientRect = () => new DOMRect(100, 50, 480, 120);
+  hoverInsertionTable(260, 120);
+  expect([...columns].every(button => button.hidden)).toBe(true);
+});
+
+it('hides quick insertion on leave, document changes, line menus, and in readonly editors', async () => {
+  const { view } = await mount();
+  measureInsertionTable(); hoverInsertionTable();
+  const controls = root.querySelector<HTMLElement>('.tano-table-insert-controls')!;
+  const stale = root.querySelector<HTMLButtonElement>('.tano-table-insert.is-row[data-index="1"]')!;
+  view.dom.parentElement!.dispatchEvent(new MouseEvent('pointerleave', { relatedTarget: stale }));
+  expect(controls.hidden).toBe(false);
+  root.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 10, clientY: 10 }));
+  expect(controls.hidden).toBe(true);
+  hoverInsertionTable();
+  root.querySelector<HTMLButtonElement>('.tano-table-grip.is-column')!.click();
+  expect(controls.hidden).toBe(true);
+  document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  hoverInsertionTable();
+  view.dispatch(tableLineAction(view.state, { pos: 0, axis: 'row', index: 1 }, 'clear')!);
+  expect(controls.hidden).toBe(true);
+  const changed = view.state.doc;
+  stale.click();
+  expect(view.state.doc).toBe(changed);
+  app!.unmount(); root.remove();
+  await mount(markdown, [], true);
+  measureInsertionTable(); hoverInsertionTable();
+  expect(root.querySelector<HTMLElement>('.tano-table-insert-controls')!.hidden).toBe(true);
+  expect(root.querySelectorAll('.tano-table-insert')).toHaveLength(0);
+});
 
 it('selects exactly the whole row or column without changing Markdown', async () => {
   const { view, value } = await mount();
