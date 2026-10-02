@@ -62,7 +62,11 @@ onBeforeUnmount(() => window.removeEventListener('click', closeOutside));
     >
       <Ellipsis v-if="more" :size="17" /><Type v-else :size="17" />
     </button>
-    <div v-if="open && (!disabled || $slots.preferences)" class="dropdown text-style-dropdown">
+    <div
+      v-if="open && (!disabled || $slots.preferences)"
+      class="dropdown compact-action-menu text-style-dropdown"
+      :class="{ 'toolbar-action-dropdown': hideFormats }"
+    >
       <template v-if="!hideFormats">
         <div class="text-style-grid">
           <button
@@ -106,17 +110,21 @@ onBeforeUnmount(() => window.removeEventListener('click', closeOutside));
 
 <style scoped>
 .text-style-dropdown {
+  --text-style-menu-width: 226px;
   top: calc(100% + 6px);
   left: 0;
-  width: 226px;
+  width: var(--text-style-menu-width);
+}
+.toolbar-action-dropdown {
+  --text-style-menu-width: 184px;
 }
 .text-style-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
 }
 .text-style-label {
-  margin: 6px 4px 0;
-  padding: 10px 6px 4px;
+  margin: 3px -6px 0;
+  padding: 5px 13px 4px;
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 11px;

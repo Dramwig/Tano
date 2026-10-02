@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { dockedToolbarPosition, toolbarDropTarget } from './toolbar-docking';
+import { dockedToolbarMenuPosition, dockedToolbarPosition, toolbarDropTarget } from './toolbar-docking';
 import { parseToolbarMode } from './toolbar-preference';
 
 const pane = { left: 308, top: 108, right: 792, bottom: 692 };
@@ -27,7 +27,7 @@ it('centers side toolbars of different heights and keeps inward menus inside the
   expect(position.x + 46).toBe(pane.right);
   expect(position.y + 244 / 2).toBe((pane.top + pane.bottom) / 2);
   expect(position.y + position.menuTop).toBeGreaterThanOrEqual(pane.top);
-  expect(position.y + position.menuTop + position.menuHeight).toBe(pane.bottom);
+  expect(position.menuHeight).toBe(pane.bottom - pane.top);
   expect(position.menuWidth + 46 + 8).toBe(pane.right - pane.left);
   const shorter = dockedToolbarPosition(pane, 'left', 46, 114);
   expect(shorter.x).toBe(pane.left);
@@ -36,6 +36,19 @@ it('centers side toolbars of different heights and keeps inward menus inside the
   expect(dockedToolbarPosition(resized, 'left', 46, 114).y + 114 / 2).toBe(
     (resized.top + resized.bottom) / 2,
   );
+});
+
+it('anchors a short docked menu to its trigger without reserving space for a taller menu', () => {
+  expect(dockedToolbarMenuPosition(pane, 343, 385, 147)).toEqual({ top: 42, maxHeight: 584 });
+});
+
+it('moves a docked menu up only enough to keep its bottom inside the pane', () => {
+  expect(dockedToolbarMenuPosition(pane, 343, 385, 356)).toEqual({ top: -7, maxHeight: 584 });
+});
+
+it('limits an oversized docked menu to the pane height and clamps triggers above the pane', () => {
+  expect(dockedToolbarMenuPosition(pane, 343, 385, 700)).toEqual({ top: -235, maxHeight: 584 });
+  expect(dockedToolbarMenuPosition(pane, 108, 90, 147)).toEqual({ top: 0, maxHeight: 584 });
 });
 
 it('loads toolbar mode preferences', () => {

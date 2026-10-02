@@ -5,7 +5,11 @@ import type { EditorSelectionContext } from '@tano/editor/document-model';
 import type { DocumentFeatures } from '@tano/editor/runtime';
 import EditorToolbar from './EditorToolbar.vue';
 import { selectionToolbarPosition } from '../selection-toolbar-position';
-import { dockedToolbarPosition, toolbarPaneBounds } from '../toolbar-docking';
+import {
+  dockedToolbarMenuPosition,
+  dockedToolbarPosition,
+  toolbarPaneBounds,
+} from '../toolbar-docking';
 
 const props = defineProps<{
   context: EditorSelectionContext;
@@ -27,6 +31,8 @@ let composing = false;
 let windowBlurred = false;
 let frame = 0;
 let resizeObserver: ResizeObserver | undefined;
+let menuObserver: MutationObserver | undefined;
+const observedMenus = new Set<HTMLElement>();
 let mounted = false;
 const animations = new Map<Element, ReturnType<typeof animate>>();
 
@@ -143,6 +149,30 @@ function position() {
       '--selection-menu-height',
       `${vertical.value ? result.menuHeight : Math.max(above, below)}px`,
     );
+    const menus = new Set(
+      element.querySelectorAll<HTMLElement>('.dropdown, .toolbar-input-panel'),
+    );
+    for (const menu of observedMenus) {
+      if (!menus.has(menu)) {
+        resizeObserver?.unobserve(menu);
+        observedMenus.delete(menu);
+      }
+    }
+    for (const menu of menus) {
+      if (!observedMenus.has(menu)) {
+        observedMenus.add(menu);
+        resizeObserver?.observe(menu);
+      }
+      if (!vertical.value) continue;
+      const trigger = menu.closest('.menu-wrap')?.querySelector<HTMLElement>('button');
+      const menuPosition = dockedToolbarMenuPosition(
+        bounds,
+        result.y,
+        trigger?.getBoundingClientRect().top ?? result.y,
+        menu.offsetHeight,
+      );
+      menu.style.setProperty('--dock-menu-top', `${menuPosition.top}px`);
+    }
     return;
   }
   if (!anchor || !content.contains(anchor.commonAncestorContainer)) return hide();
@@ -257,8 +287,14 @@ function focus() {
 }
 watch(() => props.context, schedule);
 watch(panel, (element, previous) => {
+  menuObserver?.disconnect();
+  for (const menu of observedMenus) resizeObserver?.unobserve(menu);
+  observedMenus.clear();
   if (previous) resizeObserver?.unobserve(previous);
-  if (element) resizeObserver?.observe(element);
+  if (element) {
+    resizeObserver?.observe(element);
+    menuObserver?.observe(element, { childList: true, subtree: true });
+  }
 });
 watch(
   () => [props.mode, props.dragging],
@@ -292,6 +328,7 @@ onMounted(() => {
   window.addEventListener('focus', focus);
   window.visualViewport?.addEventListener('resize', schedule);
   window.visualViewport?.addEventListener('scroll', schedule);
+  menuObserver = new MutationObserver(schedule);
   if (typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver(schedule);
     if (props.editorElement) resizeObserver.observe(props.editorElement);
@@ -303,6 +340,7 @@ onBeforeUnmount(() => {
   for (const element of animations.keys()) cancelAnimation(element);
   cancelAnimationFrame(frame);
   resizeObserver?.disconnect();
+  menuObserver?.disconnect();
   document.removeEventListener('selectionchange', schedule);
   document.removeEventListener('pointerdown', pointerDown, true);
   document.removeEventListener('pointerup', pointerUp);

@@ -569,6 +569,29 @@ it('offers all other placements in the side menu while editing', async () => {
   expect(value.value).toBe('正文文字\n');
 });
 
+it('positions newly opened docked menus using their trigger and actual height', async () => {
+  await mount('正文文字\n', 'left');
+  await selectText(root.querySelector('.ProseMirror p')!, 0, 0);
+  await expectFloating();
+  const panel = document.querySelector<HTMLElement>('.selection-toolbar')!;
+  panel.getBoundingClientRect = () => new DOMRect(8, 243, 46, 114);
+  const more = floatingButton('更多格式');
+  more.getBoundingClientRect = () => new DOMRect(16, 283, 30, 30);
+  await click(more);
+  const menu = panel.querySelector<HTMLElement>('.text-style-dropdown')!;
+  Object.defineProperty(menu, 'offsetHeight', { value: 147 });
+  // Opening a menu must trigger positioning even when the toolbar itself has not resized.
+  await vi.waitFor(() => expect(menu.style.getPropertyValue('--dock-menu-top')).toBe('40px'));
+  await click(more);
+  const blockTrigger = floatingButton('块级类型');
+  blockTrigger.getBoundingClientRect = () => new DOMRect(16, 250, 30, 30);
+  await click(blockTrigger);
+  const blockMenu = panel.querySelector<HTMLElement>('.block-type-menu')!;
+  Object.defineProperty(blockMenu, 'offsetHeight', { value: 700 });
+  await vi.waitFor(() => expect(blockMenu.style.getPropertyValue('--dock-menu-top')).toBe('-235px'));
+  expect(panel.style.getPropertyValue('--selection-menu-height')).toBe('584px');
+});
+
 it('disables a fading toolbar and keeps a reopened toolbar when the previous exit finishes', async () => {
   const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'animate');
   const nativeAnimations: { onfinish: (() => void) | null; cancel: ReturnType<typeof vi.fn> }[] = [];

@@ -40,12 +40,23 @@ export function dockedToolbarPosition(
   const travel = Math.max(0, bounds.bottom - bounds.top - height);
   const y = bounds.top + travel / 2;
   const x = side === 'left' ? bounds.left : Math.max(bounds.left, bounds.right - width);
-  const menuTop = Math.min(y, Math.max(bounds.top, bounds.bottom - 540));
   return {
     x,
     y,
-    menuTop: menuTop - y,
-    menuHeight: bounds.bottom - menuTop,
+    menuTop: 0,
+    menuHeight: bounds.bottom - bounds.top,
     menuWidth: Math.max(0, bounds.right - bounds.left - width - 8),
   };
+}
+
+export function dockedToolbarMenuPosition(
+  bounds: ToolbarRect,
+  toolbarTop: number,
+  triggerTop: number,
+  menuHeight: number,
+) {
+  const maxHeight = Math.max(0, bounds.bottom - bounds.top);
+  const height = Math.min(Math.max(0, menuHeight), maxHeight);
+  const y = Math.max(bounds.top, Math.min(triggerTop, bounds.bottom - height));
+  return { top: y - toolbarTop, maxHeight };
 }

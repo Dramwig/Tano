@@ -217,7 +217,7 @@ function enableEnteringActions(element: Element) {
           </button>
           <div
             v-if="open && !disabled"
-            class="dropdown block-type-menu"
+            class="dropdown compact-action-menu block-type-menu"
             aria-label="Block Level 选项"
           >
             <div class="toolbar-menu-label">块类型 · ＋ 插入新块</div>
@@ -474,8 +474,11 @@ function enableEnteringActions(element: Element) {
   overflow-y: auto;
   transform: none;
 }
+.selection-format-toolbar :deep(.block-type-menu) {
+  width: min(248px, var(--selection-toolbar-width, 300px));
+}
 .selection-format-toolbar :deep(.text-style-dropdown) {
-  width: min(260px, var(--selection-toolbar-width, 300px));
+  width: min(var(--text-style-menu-width), var(--selection-toolbar-width, 300px));
 }
 .selection-format-toolbar[aria-orientation='vertical'] {
   flex-direction: column;
@@ -584,7 +587,7 @@ function enableEnteringActions(element: Element) {
 .toolbar-menu-label {
   color: var(--muted);
   font-size: 11px;
-  padding: 6px 10px;
+  padding: 5px 7px 4px;
 }
 .is-current,
 button[aria-pressed='true'] {

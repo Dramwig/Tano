@@ -164,7 +164,7 @@ async function changeMode(mode: ToolbarMode) {
         >
           <Ellipsis :size="17" />
         </button>
-        <div v-if="menuOpen" class="dropdown toolbar-mode-menu">
+        <div v-if="menuOpen" class="dropdown compact-action-menu toolbar-mode-menu">
           <ToolbarModeOptions :mode="mode" @select="changeMode" />
         </div>
       </div>
@@ -270,12 +270,11 @@ async function changeMode(mode: ToolbarMode) {
 .toolbar-mode-menu {
   top: calc(100% + 6px);
   left: 0;
-  width: 172px;
 }
 @media (max-width: 700px) {
   .toolbar-mode-menu {
-    left: 50%;
-    transform: translateX(-50%);
+    left: auto;
+    right: 0;
   }
   .switchable-toolbar {
     height: auto;

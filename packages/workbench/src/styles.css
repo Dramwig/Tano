@@ -1179,6 +1179,12 @@ button:hover {
     0 8px 24px #1b23311f,
     0 18px 40px #1b233114;
 }
+.editor-toolbar .dropdown,
+.selection-format-toolbar .dropdown {
+  box-shadow:
+    0 4px 14px #1b23310c,
+    0 10px 24px #1b233106;
+}
 .compact-action-menu button {
   min-height: 26px;
   padding: 4px 7px;
