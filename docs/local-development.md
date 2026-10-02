@@ -11,6 +11,10 @@ npm ci
 npm run desktop
 ```
 
+On Windows, you can also double-click `local-desktop.bat`. It checks the Node.js version and desktop toolchain and runs `npm install --no-audit --no-fund` before every launch, so added or changed dependencies are synchronized even when `node_modules` already exists. Dependencies that already match the lockfile are reused.
+
+Both Windows launchers check the Node.js version before installing dependencies, and the repository's npm configuration rejects incompatible versions. If the version check fails, run `node -v` and `where.exe node` to inspect the active version and path. With nvm-windows, install and switch to Node.js 24.12+, then reopen the terminal or launcher.
+
 For the browser demo, use `npm run dev` and open `http://127.0.0.1:43841`. It stores data in the browser and does not access a real workspace folder. Desktop development uses port 43842, so both commands can run together. Both ports must be free when starting their respective services.
 
 The desktop application ID is `app.tano.local`. On Windows, application data is normally under `%APPDATA%/app.tano.local`; use the path shown in Tano's MCP panel when configuring an agent. Workspace Markdown and `.tano/` are portable, while indexes, drafts, and session state stay in application data.

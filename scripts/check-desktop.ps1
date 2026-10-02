@@ -7,6 +7,9 @@ foreach ($command in @('node', 'npm', 'rustc', 'cargo')) {
     Write-Host "$command : $($resolved.Source)"
 }
 
+& node (Join-Path $PSScriptRoot 'check-node.mjs')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 $tanoVsWhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 if (-not (Test-Path -LiteralPath $tanoVsWhere)) {
     throw 'Visual Studio Installer was not found. Install Visual Studio Build Tools with Desktop development with C++.'

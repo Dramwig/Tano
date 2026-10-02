@@ -43,6 +43,8 @@ fn feed(version: &str, payload: &[u8]) -> Feed {
                 thread::sleep(Duration::from_millis(5));
                 continue;
             };
+            // Windows accepted sockets inherit the listener's nonblocking mode.
+            stream.set_nonblocking(false).unwrap();
             stream
                 .set_read_timeout(Some(Duration::from_secs(3)))
                 .unwrap();

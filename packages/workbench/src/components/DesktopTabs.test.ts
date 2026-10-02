@@ -6,6 +6,7 @@ import DesktopTabs from './DesktopTabs.vue';
 import { TAB_DOCK_PROBE, TAB_DRAG_FINISHED, tabDragMetaType } from '../tab-docking';
 
 const fixture = vi.hoisted(() => ({ store: null as any }));
+const platform = vi.hoisted(() => ({ nativeOs: 'windows', mobile: false }));
 const nativeWindow = vi.hoisted(() => ({
   label: 'main',
   cursorPosition: vi.fn(async () => ({ x: 1200, y: 800 })),
@@ -18,7 +19,7 @@ const nativeEvents = vi.hoisted(() => ({
   emitTo: vi.fn(async (_label: string, _event: string, _payload: unknown) => {}),
 }));
 vi.mock('../stores/workspace', () => ({ useWorkspaceStore: () => fixture.store }));
-vi.mock('../platform', () => ({ nativeOs: 'windows' }));
+vi.mock('../platform', () => platform);
 vi.mock('@tauri-apps/api/core', () => ({ invoke: nativeCore.invoke }));
 vi.mock('@tauri-apps/api/event', () => ({
   emitTo: nativeEvents.emitTo,
@@ -51,6 +52,8 @@ function pointer(target: HTMLElement, type: string, x: number, y = 18) {
 }
 
 beforeEach(() => {
+  platform.nativeOs = 'windows';
+  platform.mobile = false;
   nativeCore.invoke.mockReset().mockImplementation(() => new Promise(() => {}));
   nativeEvents.listeners.clear();
   nativeEvents.emitTo.mockClear();
@@ -620,6 +623,54 @@ it('opens blank-track actions without starting window drag', async () => {
     .find((button) => button.textContent?.includes('新建标签页'))!
     .click();
   expect(newTab).toHaveBeenCalledOnce();
+});
+
+it('opens devtools from the blank track without changing tabs and dismisses the menu', async () => {
+  root.querySelector<HTMLElement>('.desktop-window-drag')!
+    .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await nextTick();
+  const menu = document.body.querySelector<HTMLElement>('.desktop-tab-context-menu')!;
+  [...menu.querySelectorAll('button')].find(button => button.textContent?.includes('打开调试窗口'))!.click();
+  expect(nativeCore.invoke).toHaveBeenCalledExactlyOnceWith('open_devtools');
+  await nextTick();
+  expect(document.body.querySelector('.desktop-tab-context-menu')).toBeNull();
+  expect(fixture.store.tabs.map((tab: { id: string }) => tab.id)).toEqual(['a', 'b', 'c']);
+  expect(fixture.store.activeId).toBe('b');
+  expect(fixture.store.close).not.toHaveBeenCalled();
+});
+
+it('reports a devtools invocation failure', async () => {
+  nativeCore.invoke.mockRejectedValueOnce(new Error('调试窗口无法打开'));
+  root.querySelector<HTMLElement>('.desktop-window-drag')!
+    .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await nextTick();
+  [...document.body.querySelectorAll<HTMLButtonElement>('.desktop-tab-context-menu button')]
+    .find(button => button.textContent?.includes('打开调试窗口'))!.click();
+  await vi.waitFor(() => expect(fixture.store.report).toHaveBeenCalledWith(new Error('调试窗口无法打开')));
+});
+
+it.each([
+  { nativeOs: '', mobile: false },
+  { nativeOs: 'android', mobile: true },
+  { nativeOs: 'ios', mobile: true },
+])('hides devtools outside desktop ($nativeOs)', async values => {
+  Object.assign(platform, values);
+  root.querySelector<HTMLElement>('.desktop-window-drag')!
+    .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await nextTick();
+  const menu = document.body.querySelector<HTMLElement>('.desktop-tab-context-menu')!;
+  expect(menu.textContent).toContain('新建标签页');
+  expect(menu.textContent).not.toContain('打开调试窗口');
+  expect(nativeCore.invoke).not.toHaveBeenCalled();
+});
+
+it('keeps devtools out of individual tab menus', async () => {
+  root.querySelector<HTMLElement>('[data-id="a"]')!
+    .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await nextTick();
+  const menu = document.body.querySelector<HTMLElement>('.desktop-tab-context-menu')!;
+  expect(menu.textContent).toContain('关闭标签页');
+  expect(menu.textContent).not.toContain('打开调试窗口');
 });
 
 it('closes only tabs to the right of the clicked tab', async () => {

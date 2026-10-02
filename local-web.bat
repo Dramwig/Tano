@@ -22,6 +22,12 @@ if errorlevel 1 (
   exit /b 1
 )
 
+node scripts\check-node.mjs
+if errorlevel 1 (
+  pause
+  exit /b 1
+)
+
 if not exist "node_modules\vite\bin\vite.js" (
   echo 正在安装项目依赖，首次启动可能需要几分钟...
   call npm ci

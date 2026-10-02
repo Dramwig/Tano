@@ -17,6 +17,12 @@ if errorlevel 1 (
   exit /b 1
 )
 
+node scripts\check-node.mjs
+if errorlevel 1 (
+  pause
+  exit /b 1
+)
+
 powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\check-desktop.ps1"
 if errorlevel 1 (
   echo.
@@ -25,27 +31,22 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist "node_modules\vite\bin\vite.js" goto install_dependencies
-if not exist "node_modules\@tauri-apps\cli\tauri.js" goto install_dependencies
-goto start_desktop
-
-:install_dependencies
-echo 正在安装项目依赖，首次启动可能需要几分钟...
-call npm ci
+echo 正在检查并同步项目依赖，首次启动或依赖变更时可能需要几分钟...
+call npm install --no-audit --no-fund
 if errorlevel 1 (
   echo [错误] 依赖安装失败，请检查上方提示。
   pause
   exit /b 1
 )
 
-:start_desktop
 echo 正在启动同页桌面开发版。首次编译 Rust 可能需要较长时间。
 echo 请保留此窗口，关闭窗口即可停止桌面开发服务。
 echo.
 call npm run desktop
 if errorlevel 1 (
   echo.
-  echo [错误] 桌面启动失败。若 43842 端口已占用，请先关闭之前的桌面开发服务。
+  echo [错误] 桌面启动失败，请查看上方具体错误。
+  echo 若提示 43842 端口已占用，请先关闭之前的桌面开发服务。
   pause
   exit /b 1
 )

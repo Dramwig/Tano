@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { CalendarDays, FileText, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, SquarePen, ExternalLink } from 'lucide-vue-next';
+import { CalendarDays, FileText, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, SquarePen, ExternalLink, Bug } from 'lucide-vue-next';
 import { basename, isMarkdown } from '@tano/protocol';
 import { invoke } from '@tauri-apps/api/core';
 import { cursorPosition, getCurrentWindow } from '@tauri-apps/api/window';
@@ -10,7 +10,7 @@ import { TAB_DOCK_PROBE, TAB_DOCK_REPLY, TAB_DRAG_FINISHED, parseTabDragMeta, ta
 import type { TabDockProbe, TabDragFinished } from '../tab-docking';
 import { paneDropAt } from '../pane-docking';
 import type { PaneDrop } from '../pane-layout';
-import { nativeOs } from '../platform';
+import { mobile, nativeOs } from '../platform';
 import { useWorkspaceStore } from '../stores/workspace';
 
 const store = useWorkspaceStore();
@@ -649,10 +649,11 @@ async function closeTabs(ids: string[]) {
 }
 
 async function contextAction(
-  action: 'split-right' | 'split-bottom' | 'new-tab' | 'new-document' | 'detach' | 'close' | 'close-others' | 'close-right' | 'close-all',
+  action: 'split-right' | 'split-bottom' | 'new-tab' | 'new-document' | 'detach' | 'close' | 'close-others' | 'close-right' | 'close-all' | 'open-devtools',
 ) {
   const tabId = contextMenu.value?.tabId;
   closeContextMenu();
+  if (action === 'open-devtools') return invoke<void>('open_devtools').catch(store.report);
   activatePane();
   if ((action === 'split-right' || action === 'split-bottom') && tabId && props.paneId) {
     if (paneTabs.value.length === 1) store.createBlankTab();
@@ -982,6 +983,12 @@ async function onTabKeydown(event: KeyboardEvent) {
         >
           <XCircle :size="15" />关闭全部标签页
         </button>
+        <template v-if="nativeOs && !mobile">
+          <div class="menu-divider" role="separator" />
+          <button type="button" role="menuitem" @click="contextAction('open-devtools')">
+            <Bug :size="15" />打开调试窗口
+          </button>
+        </template>
       </template>
     </div>
   </Teleport>

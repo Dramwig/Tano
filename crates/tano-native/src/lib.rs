@@ -264,6 +264,12 @@ fn runtime_platform() -> serde_json::Value {
     serde_json::json!({"mobile": cfg!(mobile), "os": std::env::consts::OS})
 }
 
+#[cfg(desktop)]
+#[tauri::command]
+fn open_devtools(window: tauri::WebviewWindow) {
+    window.open_devtools();
+}
+
 #[tauri::command]
 async fn tab_drag_release() -> Result<serde_json::Value, String> {
     #[cfg(windows)]
@@ -847,6 +853,12 @@ pub fn configure_with_commands(
                 .expect("static response")
         })
         .invoke_handler(move |invoke| {
+            #[cfg(desktop)]
+            if invoke.message.command() == "open_devtools" {
+                let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool =
+                    tauri::generate_handler![open_devtools];
+                return handler(invoke);
+            }
             #[cfg(desktop)]
             if invoke.message.command().starts_with("assistant_") {
                 let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![

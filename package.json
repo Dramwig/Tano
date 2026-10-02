@@ -44,5 +44,9 @@
   "engines": {
     "node": ">=24.12"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true
+  }
 }
