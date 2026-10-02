@@ -2241,6 +2241,65 @@ describe('Markdown editor round trips', () => {
     expect(errors).toEqual([]);
   });
 
+  it('targets nested children for duplicate/delete and hides their handles when their parent closes', async () => {
+    const { value, errors } = await mountPanel('<details>\n<summary>Parent</summary>\n\nChild\n\n</details>\n\nOutside\n');
+    const handles = () => [...root.querySelectorAll<HTMLButtonElement>('.tano-block-handle')];
+    expect(handles().map((handle) => handle.dataset.blockDepth)).toEqual(['0', '1', '0']);
+    async function menuAction(target: Element, label: string) {
+      target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      await nextTick();
+      [...document.querySelectorAll<HTMLButtonElement>('.block-context-menu button')].find((button) => button.textContent?.includes(label))!.click();
+      await nextTick();
+    }
+    await menuAction(root.querySelector('.tano-toggle p')!, '创建副本');
+    expect(root.querySelectorAll('.tano-toggle p')).toHaveLength(2);
+    expect(root.querySelectorAll('.ProseMirror > .tano-toggle')).toHaveLength(1);
+    await menuAction(handles()[1]!, '删除块');
+    await menuAction(handles()[1]!, '删除块');
+    expect(root.querySelectorAll('.tano-toggle p')).toHaveLength(1);
+    expect(root.querySelector('.tano-toggle p')?.textContent).toBe('');
+    expect(value.value).toContain('Outside');
+    const saved = value.value;
+    root.querySelector<HTMLButtonElement>('[aria-label="展开或收起折叠块"]')!.click();
+    await nextTick();
+    expect(handles()[1]!.hidden).toBe(true);
+    expect(handles()[0]!.hidden).toBe(false);
+    expect(value.value).toBe(saved);
+    root.querySelector<HTMLButtonElement>('[aria-label="添加子块"]')!.click();
+    await nextTick();
+    expect(handles()[1]!.hidden).toBe(false);
+    expect(root.querySelectorAll('.tano-toggle p')).toHaveLength(1);
+    expect(errors).toEqual([]);
+  });
+
+  it('creates recursively nested toggles from the child caret and moves children with the keyboard', async () => {
+    const { editor, value, errors } = await mountPanel('');
+    editor.value!.command('toggle');
+    editor.value!.command('toggle');
+    await nextTick();
+    expect(root.querySelector('.tano-toggle .tano-toggle p')).not.toBeNull();
+    root.querySelectorAll<HTMLButtonElement>('[aria-label="添加子块"]')[0]!.click();
+    await nextTick();
+    const view = editor.value!.withContext((ctx) => ctx.get(editorViewCtx));
+    view.dispatch(view.state.tr.insertText('Sibling'));
+    await nextTick();
+    const handle = [...root.querySelectorAll<HTMLButtonElement>('.tano-block-handle')].at(-1)!;
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true, bubbles: true }));
+    await nextTick();
+    expect(root.querySelector('.tano-toggle .tano-toggle')?.textContent).toContain('Sibling');
+    [...root.querySelectorAll<HTMLButtonElement>('.tano-block-handle')].at(-1)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, bubbles: true }));
+    await nextTick();
+    expect(root.querySelector('.tano-toggle .tano-toggle')?.textContent).not.toContain('Sibling');
+    expect(root.querySelector('.ProseMirror > .tano-toggle > .tano-enhanced-content > p')?.textContent).toBe('Sibling');
+    const saved = value.value;
+    value.value = 'temporary';
+    await nextTick();
+    value.value = saved;
+    await nextTick();
+    expect(root.querySelector('.tano-toggle .tano-toggle p')).not.toBeNull();
+    expect(errors).toEqual([]);
+  });
+
   it('renders portable file cards, previews images and preserves unsafe or malformed containers', async () => {
     const input =
       '正文\n\n:::embed\n\n[图片](assets/picture.png)\n\n:::\n\n:::file\n\n[危险](javascript:alert)\n\n:::\n';

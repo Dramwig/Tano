@@ -14,6 +14,12 @@ Each save compares the file with a base hash. Independent external changes can b
 
 Workspace identity is independent of file paths. The workspace UUID, short file IDs, and ID reservations travel with `.tano/identities.json`. Objects, relations, and rules also live under `.tano/`. SQLite indexes, drafts, and session state stay in application data outside the workspace. Tano does not follow symlinks outside the selected workspace.
 
+## Block tree
+
+The document, toggles, and tab/column panels own ordered block children. A toggle is itself a block and can contain paragraphs, tables, lists, other toggles, or tabs/columns recursively. Lists and tables retain their existing internal schemas and move as whole blocks. Toggle titles are node attributes; their body is editable block content. Markdown remains the persistence format: toggles use balanced `<details>` / `<summary>` wrappers, and tabs/columns use nested container fences. No content migration or additional storage is required.
+
+`packages/editor/src/block-tree.ts` provides revision-scoped block positions, parent relationships, and atomic subtree moves, independent of Vue and storage. Moves reject descendants as destinations and leave an editable paragraph when the last child leaves a container. Gutter handles, context menus, and drag targets use the same tree; stale drags are cancelled after document changes. Alt+Up/Down reorders siblings; Alt+Right moves into the previous container and Alt+Left moves out. The context menu can also wrap a block in a new toggle. Expansion and active-tab state remain presentation-only.
+
 ## Table layout
 
 GFM tables remain ordinary Markdown. Column widths are integer CSS pixels, persisted separately in `.tano/document-layout/<fileId>.tano.json` using the stable document identity. Tables use the sum of their column widths, with horizontal scrolling when they exceed the editor width. The default column width is 160 px and the minimum is 48 px. Layout-only edits never rewrite Markdown.

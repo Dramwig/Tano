@@ -12,6 +12,30 @@ let app: ReturnType<typeof createApp> | undefined;
 let root: HTMLElement;
 afterEach(() => { app?.unmount(); root?.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
+it('keeps a wide nested table within its toggle content width', async () => {
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
+  Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    if (this.classList.contains('tano-enhanced-content')) return new DOMRect(100, 100, 400, 200);
+    if (this.tagName === 'TABLE') return new DOMRect(100, 100, 1600, 140);
+    return new DOMRect(0, 0, 900, 900);
+  });
+  root = document.createElement('div');
+  root.className = 'editor-scroll';
+  Object.defineProperty(root, 'clientWidth', { value: 900 });
+  document.body.append(root);
+  const changes = vi.fn();
+  app = createApp({ render: () => h(MarkdownEditor, {
+    documentId: 'nested-table',
+    modelValue: '<details>\n<summary>Table</summary>\n\n| A | B |\n| --- | --- |\n| alpha | beta |\n\n</details>\n',
+    'onUpdate:modelValue': changes,
+  }) });
+  app.mount(root);
+  await vi.waitFor(() => expect(root.querySelector<HTMLElement>('.tano-toggle .tano-table-viewport')?.style.width).toBe('400px'));
+  expect(root.querySelector<HTMLElement>('.tano-table-viewport')!.style.marginLeft).toBe('0px');
+  expect(changes).not.toHaveBeenCalled();
+});
+
 it('expands only wide tables, reserves the comment gutter, and tracks each scrollable edge without changing Markdown', async () => {
   const source = 'Before\n\n| A | B |\n| --- | --- |\n| alpha | beta |\n\nAfter\n';
   let tableWidth = 1600;

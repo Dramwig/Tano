@@ -60,7 +60,8 @@ import 'katex/dist/katex.min.css';
 import type { EditorExtension } from './extension';
 import { configureMarkdownSchema } from './schema';
 import { codeBlankLinesRemark } from './code-blank-lines';
-import { blockControls, moveBlock } from './blocks';
+import { blockControls } from './blocks';
+import { blockTree, moveBlockSibling, indentBlock, outdentBlock, wrapBlockInToggle } from './block-tree';
 import { emptyBlockDeletion } from './empty-block';
 import { slashCommands } from './slash-commands';
 import { textStyles, underline, superscript, subscript, highlight, textColor } from './text-styles';
@@ -2402,21 +2403,16 @@ function blockIndexFromEvent(view: EditorView, target: EventTarget | null): numb
   if (!(target instanceof Element)) return null;
   const handle = target.closest<HTMLElement>('.tano-block-handle');
   if (handle && root.value?.contains(handle)) {
-    const index = Number(handle.dataset.blockIndex);
-    return Number.isInteger(index) && index >= 0 && index < view.state.doc.childCount
-      ? index
-      : null;
+    const index = blockTree(view.state.doc).findIndex(({ pos }) => pos === Number(handle.dataset.blockPos));
+    return index < 0 ? null : index;
   }
   if (!view.dom.contains(target)) return null;
-  let block = target;
-  while (block.parentElement && block.parentElement !== view.dom) block = block.parentElement;
-  if (block.parentElement !== view.dom) return null;
-  try {
-    const index = view.state.doc.resolve(view.posAtDOM(block, 0)).index(0);
-    return index < view.state.doc.childCount ? index : null;
-  } catch {
-    return null;
+  const entries = blockTree(view.state.doc);
+  for (let index = entries.length - 1; index >= 0; index--) {
+    const dom = view.nodeDOM(entries[index]!.pos);
+    if (dom instanceof Element && dom.contains(target)) return index;
   }
+  return null;
 }
 
 function openBlockMenu(event: MouseEvent) {
@@ -2434,10 +2430,7 @@ function openBlockMenu(event: MouseEvent) {
       ? rightClickSelection
       : { selection: view.state.selection, doc: view.state.doc };
     rightClickSelection = null;
-    let pos = 0;
-    view.state.doc.forEach((_node, offset, nodeIndex) => {
-      if (nodeIndex === index) pos = offset;
-    });
+    const pos = blockTree(view.state.doc)[index]!.pos;
     view.dispatch(
       view.state.tr
         .setSelection(NodeSelection.create(view.state.doc, pos))
@@ -2476,8 +2469,21 @@ function openBlockMenu(event: MouseEvent) {
 function blockMenuCommandAvailable(name: string) {
   const current = blockMenu.value;
   return !!current &&
-    canTransformBlock(current.doc.child(current.index)) &&
+    canTransformBlock(blockTree(current.doc)[current.index]!.node) &&
     commandEnabled(name, props.enabledLevels, policy().features);
+}
+
+function blockMenuMoveAvailable(action: string) {
+  const current = blockMenu.value;
+  if (!current || !editor) return false;
+  return editor.action((ctx) => {
+    const state = ctx.get(editorViewCtx).state;
+    if (!state.doc.eq(current.doc)) return false;
+    const pos = blockTree(state.doc)[current.index]?.pos;
+    if (pos == null) return false;
+    return !!(action === 'indent' ? indentBlock(state, pos) : action === 'outdent' ? outdentBlock(state, pos)
+      : moveBlockSibling(state, pos, action === 'move-up' ? -1 : 1));
+  });
 }
 
 async function blockMenuAction(action: string) {
@@ -2493,7 +2499,7 @@ async function blockMenuAction(action: string) {
     const markdown = editor.action((ctx) => {
       const view = ctx.get(editorViewCtx);
       if (!view.state.doc.eq(current.doc)) return null;
-      const node = view.state.doc.child(current.index);
+      const node = blockTree(view.state.doc)[current.index]!.node;
       return ctx.get(serializerCtx)(view.state.schema.topNodeType.create(null, node));
     });
     closeBlockMenu();
@@ -2510,28 +2516,23 @@ async function blockMenuAction(action: string) {
     const view = ctx.get(editorViewCtx);
     if (!view.state.doc.eq(current.doc)) return;
     const { doc, schema } = view.state;
-    let pos = 0;
-    doc.forEach((_node, offset, index) => {
-      if (index === current.index) pos = offset;
-    });
-    const node = doc.child(current.index);
+    const { node, pos, parent } = blockTree(doc)[current.index]!;
     if (action === 'duplicate') {
       const insertPos = pos + node.nodeSize;
       const tr = view.state.tr.insert(insertPos, node);
       tr.setSelection(NodeSelection.create(tr.doc, insertPos));
       view.dispatch(tr.scrollIntoView());
-    } else if (action === 'move-up' || action === 'move-down') {
-      const nextIndex = current.index + (action === 'move-up' ? -1 : 1);
-      const tr = moveBlock(view.state, current.index, action === 'move-up' ? nextIndex : nextIndex + 1);
+    } else if (['move-up', 'move-down', 'indent', 'outdent'].includes(action)) {
+      const tr = action === 'indent' ? indentBlock(view.state, pos) : action === 'outdent' ? outdentBlock(view.state, pos)
+        : moveBlockSibling(view.state, pos, action === 'move-up' ? -1 : 1);
       if (!tr) return;
-      let movedPos = 0;
-      tr.doc.forEach((_node, offset, index) => {
-        if (index === nextIndex) movedPos = offset;
-      });
-      tr.setSelection(NodeSelection.create(tr.doc, movedPos));
       view.dispatch(tr.scrollIntoView());
+    } else if (action === 'wrap-toggle') {
+      if (!commandEnabled('toggle', props.enabledLevels, policy().features)) return;
+      const tr = wrapBlockInToggle(view.state, pos);
+      if (tr) view.dispatch(tr.scrollIntoView());
     } else if (action === 'delete') {
-      const tr = doc.childCount === 1
+      const tr = parent.childCount === 1
         ? view.state.tr.replaceWith(pos, pos + node.nodeSize, schema.nodes.paragraph!.create())
         : view.state.tr.delete(pos, pos + node.nodeSize);
       tr.setSelection(Selection.near(tr.doc.resolve(Math.min(pos, tr.doc.content.size))));
@@ -2908,9 +2909,12 @@ onBeforeUnmount(() => {
       <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('heading')" @click="blockMenuAction('heading')"><span aria-hidden="true">H</span>转为标题</button>
       <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('list')" @click="blockMenuAction('list')"><span aria-hidden="true">☷</span>转为列表</button>
       <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('quote')" @click="blockMenuAction('quote')"><span aria-hidden="true">❝</span>转为引用</button>
+      <button role="menuitem" type="button" :disabled="!commandEnabled('toggle', props.enabledLevels, policy().features)" @click="blockMenuAction('wrap-toggle')"><span aria-hidden="true">▸</span>放入新折叠块</button>
       <div class="menu-divider" role="separator" />
-      <button role="menuitem" type="button" :disabled="blockMenu.index === 0" @click="blockMenuAction('move-up')"><span aria-hidden="true">↑</span>上移块</button>
-      <button role="menuitem" type="button" :disabled="blockMenu.index >= blockMenu.doc.childCount - 1" @click="blockMenuAction('move-down')"><span aria-hidden="true">↓</span>下移块</button>
+      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('move-up')" @click="blockMenuAction('move-up')"><span aria-hidden="true">↑</span>上移块</button>
+      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('move-down')" @click="blockMenuAction('move-down')"><span aria-hidden="true">↓</span>下移块</button>
+      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('indent')" @click="blockMenuAction('indent')"><span aria-hidden="true">→</span>移入前一个容器</button>
+      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('outdent')" @click="blockMenuAction('outdent')"><span aria-hidden="true">←</span>移出当前容器</button>
       <div class="menu-divider" role="separator" />
       <button role="menuitem" type="button" class="danger-text" @click="blockMenuAction('delete')"><Trash2 :size="15" aria-hidden="true" />删除块</button>
     </div>

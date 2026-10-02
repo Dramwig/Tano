@@ -998,8 +998,21 @@ button:hover {
   cursor: default;
 }
 .tano-enhanced-content {
-  padding: 6px 16px;
+  padding: 6px;
   min-width: 0;
+}
+.tano-toggle > .tano-enhanced-content,
+.tano-panel > .tano-enhanced-content {
+  padding-left: 24px;
+  margin-left: 0;
+}
+.tano-toggle > .tano-enhanced-content > :first-child,
+.tano-panel > .tano-enhanced-content > :first-child {
+  margin-top: 8px;
+}
+.tano-enhanced-header .tano-add-child {
+  font-size: 12px;
+  white-space: nowrap;
 }
 .tano-enhanced-content[hidden],
 .tano-enhanced[hidden] {

@@ -1,6 +1,7 @@
 import type { NodeViewConstructor } from '@milkdown/kit/prose/view';
 import { safeResourceUrl } from './enhanced-markdown';
 import { watch } from 'vue';
+import { NodeSelection, TextSelection } from '@milkdown/kit/prose/state';
 
 /** Presentation state (expanded toggle / active tab) stays out of Markdown and Yjs. */
 export function enhancedViews(
@@ -42,10 +43,41 @@ export function enhancedViews(
       title.oninput = () => setAttrs({ title: title.value.replace(/[\r\n]/g, ' ') });
       toggle.onclick = () => {
         expanded = !expanded;
+        const pos = getPos();
+        if (!expanded && pos !== undefined && view.state.selection.from > pos && view.state.selection.to < pos + current.nodeSize)
+          view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)).setMeta('addToHistory', false));
         render();
       };
       if (kind === 'toggle') header.append(toggle);
       if (['toggle', 'panel', 'file', 'embed'].includes(kind)) header.append(title);
+      if (kind === 'toggle' || kind === 'panel') {
+        const add = document.createElement('button');
+        add.type = 'button';
+        add.className = 'tano-add-child';
+        add.textContent = '＋ 子块';
+        add.setAttribute('aria-label', '添加子块');
+        add.title = '添加子块，输入 / 选择类型';
+        add.onclick = () => {
+          const pos = getPos();
+          if (pos === undefined || readonly()) return;
+          expanded = true;
+          const at = pos + current.nodeSize - 1;
+          const last = current.lastChild;
+          const reuse = last?.type.name === 'paragraph' && last.content.size === 0;
+          const tr = view.state.tr;
+          if (!reuse) tr.insert(at, view.state.schema.nodes.paragraph!.create());
+          tr.setSelection(TextSelection.create(tr.doc, reuse ? at - last!.nodeSize + 1 : at + 1));
+          view.dispatch(tr.scrollIntoView());
+          render();
+          view.focus();
+        };
+        header.append(add);
+        title.onkeydown = (event) => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          add.click();
+        };
+      }
       if (kind === 'panel') {
         for (const [action, label] of [
           ['up', '前移分区'],
@@ -208,6 +240,8 @@ export function enhancedViews(
             }
           }
         }
+        // Gutter handles live outside the node view and must follow collapsed/hidden children.
+        if (dom.isConnected) dom.dispatchEvent(new Event('tano-block-layout', { bubbles: true }));
       }
       render();
       const stop = watch(() => [readonly(), revision()], render);
@@ -238,7 +272,7 @@ export function enhancedViews(
             (mutation.type === 'attributes' && mutation.attributeName === 'hidden')),
         destroy() {
           stop();
-          title.oninput = url.onchange = toggle.onclick = link.onclick = null;
+          title.oninput = url.onchange = toggle.onclick = link.onclick = title.onkeydown = null;
         },
       };
     };

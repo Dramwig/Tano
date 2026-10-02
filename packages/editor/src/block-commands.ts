@@ -216,6 +216,7 @@ export function blockCommand(name: string, value?: string, currentTextblock = fa
           from + 1 + Math.min(state.selection.$from.parentOffset, replacement[0].content.size),
         ),
       );
+    else if (name === 'toggle') tr.setSelection(TextSelection.create(tr.doc, from + 2));
     else tr.setSelection(NodeSelection.create(tr.doc, from));
     dispatch(tr.scrollIntoView());
     return true;

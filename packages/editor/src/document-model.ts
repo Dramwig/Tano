@@ -4,6 +4,7 @@ import type { EditorState } from '@milkdown/kit/prose/state';
 import { sourceStyleRanges } from './source-highlight';
 import { featureEnabled } from './runtime';
 import type { DocumentFeatures } from './runtime';
+import { isBlockContainer } from './block-tree';
 
 /** Semantic presentation types, independent of Milkdown's Markdown storage schema. */
 export const blockTypes = [
@@ -161,7 +162,7 @@ export function selectedBlocks(state: EditorState) {
   const $from = state.selection.$from;
   for (let depth = $from.depth; depth > 0; depth--) {
     if (
-      ['tano_toggle', 'tano_panel'].includes($from.node(depth).type.name) &&
+      isBlockContainer($from.node(depth)) &&
       to <= $from.end(depth)
     ) {
       parent = $from.node(depth);

@@ -77,9 +77,10 @@ export class TableViewport extends TableView {
     const baseWidth = parent === this.view.dom ? prose.width : Math.max(0, container.width - insetLeft - insetRight);
     const annotated = !!this.table.querySelector('[data-comment-id]');
     const contentWidth = this.table.getBoundingClientRect().width;
-    // Wide tables can use the full pane independently of prose padding.
-    const availableLeft = Math.min(originLeft, surface.left);
-    const availableRight = Math.max(originLeft + baseWidth, surface.left + this.surface.clientWidth);
+    // A nested table scrolls inside its block container instead of escaping/clipping its children.
+    const contained = !!parent.closest('.tano-enhanced');
+    const availableLeft = contained ? originLeft : Math.min(originLeft, surface.left);
+    const availableRight = contained ? originLeft + baseWidth : Math.max(originLeft + baseWidth, surface.left + this.surface.clientWidth);
     const width = annotated || contentWidth <= baseWidth ? baseWidth
       : Math.max(baseWidth, availableRight - availableLeft);
     const left = Math.max(availableLeft, Math.min(originLeft - (width - baseWidth) / 2, availableRight - width));
