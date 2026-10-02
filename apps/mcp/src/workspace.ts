@@ -17,7 +17,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { isMarkdown, validatePath } from '@tano/protocol';
+import { isMarkdown, validatePath, parseAssistantSession } from '@tano/protocol';
 
 const maxBytes = 8 * 1024 ** 2;
 const previewBytes = 512 * 1024;
@@ -77,6 +77,10 @@ function openActivityDatabase(path: string) {
           instance_id TEXT NOT NULL DEFAULT '', operation TEXT NOT NULL, created_at INTEGER NOT NULL, status TEXT NOT NULL,
           before_hash TEXT, after_hash TEXT NOT NULL, before_content TEXT, after_content TEXT,
           error TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS agent_proposals (
+          id TEXT PRIMARY KEY, root TEXT NOT NULL, root_key TEXT NOT NULL, fingerprint TEXT NOT NULL,
+          body TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'ready'
         );`);
       const columns = db.prepare("PRAGMA table_info('agent_changes')").all() as { name: string }[];
       if (!columns.some((column) => column.name === 'instance_id')) {
@@ -191,6 +195,72 @@ export class AgentWorkspace {
     const bytes = readFileSync(target);
     if (bytes.length > maxBytes) throw new Error('文档超过 8 MiB');
     return { path, content: text(bytes), sha256: hash(bytes) };
+  }
+  readIdentity(path: string) {
+    const snapshot = this.read(path);
+    const file = join(this.root, '.tano/identities.json');
+    const metadata = lstatSync(file);
+    if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.size > 16 * 1024 ** 2) throw new Error('工作区身份清单无效');
+    const manifest = JSON.parse(readFileSync(file, 'utf8'));
+    const entries = Array.isArray(manifest.files) ? manifest.files.filter((entry: { path: string; deleted: boolean }) => entry.path === path && !entry.deleted) : [];
+    if (manifest.format !== 1 || manifest.workspaceId !== this.id || entries.length !== 1 || !/^[a-f0-9]{6}$/.test(entries[0].id))
+      throw new Error('文档尚未有稳定身份，请在 Tano 中刷新工作区后重新读取');
+    return { ...snapshot, workspaceId: this.id, fileId: entries[0].id as string };
+  }
+  rules() {
+    this.assertWorkspace();
+    const rules: { path: string; content: string }[] = [];
+    for (const path of ['AGENTS.md', '.tano/rules/assistant.md']) {
+      let current = this.root;
+      let missing = false;
+      const parts = path.split('/');
+      for (let index = 0; index < parts.length; index++) {
+        current = join(current, parts[index]);
+        const metadata = lstatSync(current, { throwIfNoEntry: false });
+        if (!metadata) { missing = true; break; }
+        if (metadata.isSymbolicLink() || (index < parts.length - 1 ? !metadata.isDirectory() : !metadata.isFile())) throw new Error('工作区规则必须是普通工作区文件');
+        if (index === parts.length - 1 && metadata.size > 32_000) throw new Error('工作区规则超过 32 KB');
+      }
+      if (missing) continue;
+      const bytes = readFileSync(current);
+      if (bytes.length > 32_000) throw new Error('工作区规则超过 32 KB');
+      rules.push({ path, content: text(bytes) });
+    }
+    return { workspaceId: this.id, rules };
+  }
+  propose(operationId: string, path: string, content: string, expectedHash: string | null, reason: string, client: string) {
+    this.assertWorkspace();
+    if (!uuid.test(operationId) || !reason.trim() || reason.length > 4000 || Buffer.byteLength(content) > previewBytes || text(Buffer.from(content)) !== content)
+      throw new Error('建议身份、正文或理由无效');
+    const fingerprint = hash(JSON.stringify([path, content, expectedHash, reason]));
+    const rootKey = `${this.rootIdentity.dev}:${this.rootIdentity.ino}`;
+    const existing = this.db.prepare('SELECT root,root_key,fingerprint,body,status FROM agent_proposals WHERE id=?').get(operationId) as
+      { root: string; root_key: string; fingerprint: string; body: string; status: string } | undefined;
+    if (existing) {
+      if (existing.root !== this.root || existing.root_key !== rootKey || existing.fingerprint !== fingerprint) throw new Error('同一操作标识不能对应不同建议');
+      return { proposalId: operationId, status: existing.status, written: existing.status === 'applied' };
+    }
+    this.target(path, expectedHash !== null);
+    const before = expectedHash === null ? null : this.readIdentity(path);
+    if (before && before.sha256 !== expectedHash) throw new Error('内容已变化，请重新读取并审阅');
+    if (before && Buffer.byteLength(before.content) > previewBytes) throw new Error('建议基线超过 512 KB');
+    if (!before && existsSync(join(this.root, path))) throw new Error('新建建议的同名文件已存在');
+    const now = Date.now();
+    const session = parseAssistantSession({ version: 1, external: true, id: operationId, workspaceId: this.id, title: reason.slice(0, 50), revision: 0,
+      createdAt: now, updatedAt: now, messages: [{ id: operationId, role: 'assistant', content: `外部 Agent 建议：${client.slice(0, 120)}（客户端自报名称）`,
+        createdAt: now, state: 'completed', proposals: [{ id: operationId, runId: operationId, workspaceId: this.id,
+          kind: before ? 'edit' : 'create', ...(before ? { fileId: before.fileId } : {}), path, base: before?.content ?? '', content, reason, status: 'ready' }] }] });
+    this.db.prepare('INSERT INTO agent_proposals(id,root,root_key,fingerprint,body) VALUES(?,?,?,?,?)')
+      .run(operationId, this.root, rootKey, fingerprint, JSON.stringify(session));
+    return { proposalId: operationId, status: 'awaiting_review', written: false };
+  }
+  proposalStatus(operationId: string) {
+    this.assertWorkspace();
+    if (!uuid.test(operationId)) throw new Error('建议标识无效');
+    const row = this.db.prepare('SELECT status FROM agent_proposals WHERE id=? AND root=? AND root_key=?')
+      .get(operationId, this.root, `${this.rootIdentity.dev}:${this.rootIdentity.ino}`) as { status: string } | undefined;
+    if (!row) throw new Error('建议不存在于当前工作区');
+    return { proposalId: operationId, status: row.status, written: row.status === 'applied' };
   }
   list(query = '') {
     const files: { path: string; size: number }[] = [];

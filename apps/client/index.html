@@ -10,9 +10,54 @@
     />
     <title>Tano / 同页</title>
     <link rel="icon" type="image/svg+xml" href="/favicon-green.svg?v=3" />
+    <style>
+      body { margin: 0; }
+      .tano-startup {
+        box-sizing: border-box;
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 32px;
+        background: #f7f7f2;
+        color: #252820;
+        font: 14px/1.6 system-ui, sans-serif;
+        text-align: center;
+      }
+      .tano-startup img { width: 36px; height: 36px; }
+      .tano-startup h1 { margin: 0; font-size: 18px; font-weight: 600; }
+      .tano-startup p { margin: 0; max-width: 560px; overflow-wrap: anywhere; }
+      .tano-startup-detail { color: #a3362c; white-space: pre-wrap; }
+      .tano-startup button {
+        padding: 6px 16px;
+        border: 1px solid #b6bcb0;
+        border-radius: 6px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+      }
+      .tano-startup button:hover { background: #e9ece4; }
+      .tano-startup [hidden] { display: none; }
+      @media (prefers-color-scheme: dark) {
+        .tano-startup { background: #1d201c; color: #e6e9e0; }
+        .tano-startup-detail { color: #f0a59d; }
+        .tano-startup button:hover { background: #30362c; }
+      }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <main id="tano-startup" class="tano-startup" aria-busy="true">
+        <img src="/favicon-green.svg?v=3" alt="" />
+        <h1>Tano / 同页</h1>
+        <p id="tano-startup-status" role="status">正在打开同页...</p>
+        <p id="tano-startup-detail" class="tano-startup-detail" hidden></p>
+        <button id="tano-startup-retry" type="button" hidden>重新加载</button>
+      </main>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

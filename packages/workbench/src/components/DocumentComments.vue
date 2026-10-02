@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { MessageSquare, Reply, X } from 'lucide-vue-next';
 import { createHeadlessMarkdown } from '@tano/editor/headless';
 import { makeCommentAnchor, rebaseCommentAnchor, resolveCommentAnchor } from '@tano/editor/comment-anchors';
-import type { CommentAnchor, CommentFile, CommentKind, CommentMessage, CommentSpan, CommentThread } from '@tano/protocol';
+import type { CommentAnchor, CommentFile, CommentKind, CommentMessage, CommentMention, CommentSpan, CommentThread } from '@tano/protocol';
 import type { CommentGeometry } from '@tano/editor/comment-projection';
 import { useWorkbenchRuntime } from '../runtime';
 import { useWorkspaceStore } from '../stores/workspace';
@@ -72,6 +72,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', scheduleLayout);
   window.removeEventListener('pointerdown', outsidePointer, true);
   window.removeEventListener('keydown', escapePopup);
+  window.removeEventListener('tano:open-comment', openComment);
   props.editorElement?.removeEventListener('click', markClicked);
   void parserPromise.then(parser => parser.destroy());
 });
@@ -183,6 +184,7 @@ watch(() => props.document.base.hash, () => {
   if (!annotations.value) void load();
 });
 onMounted(() => {
+  window.addEventListener('tano:open-comment', openComment);
   window.addEventListener('resize', scheduleLayout);
   window.addEventListener('pointerdown', outsidePointer, true);
   window.addEventListener('keydown', escapePopup);
@@ -320,6 +322,21 @@ function markClicked(event: MouseEvent) {
 function showDiscussion() {
   section.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+async function openComment(event: Event) {
+  const target = (event as CustomEvent<{ fileId: string; threadId: string; kind: CommentKind }>).detail;
+  if (!target || target.fileId !== props.document.id) return;
+  await load();
+  if (target.kind === 'annotation') {
+    openIds.value = [target.threadId];
+    popupCollapsed.value = false;
+    const anchor = working.value[target.threadId];
+    if (anchor) props.focusAnchor(anchor);
+    updateLayout();
+  }
+  await nextTick();
+  const conversation = section.value?.querySelector<HTMLElement>(`[data-comment-thread="${CSS.escape(target.threadId)}"]`);
+  conversation?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
 
 async function beginAnnotation() {
   if (props.readonly) return;
@@ -373,14 +390,14 @@ async function cancelDiscussionReply() {
   discussionReply.value = undefined;
   await discussionComposer.value?.focus();
 }
-async function submitDiscussion() {
+async function submitDiscussion(mentions: CommentMention[] = []) {
   const target = discussionReply.value;
-  if (!target) { await start('discussion'); return; }
+  if (!target) { await start('discussion', mentions); return; }
   const body = discussionDraft.value;
   if (!body.trim()) return;
   const epoch = documentEpoch;
   const saved = await saveChange('discussion', {
-    type: 'reply', threadId: target.threadId, id: crypto.randomUUID(), body, author: props.author,
+    type: 'reply', threadId: target.threadId, id: crypto.randomUUID(), body, author: props.author, replyTo: target.message.id, mentions,
   });
   if (saved && epoch === documentEpoch && discussionReply.value === target && discussionDraft.value === body) {
     discussionDraft.value = '';
@@ -388,7 +405,7 @@ async function submitDiscussion() {
   }
 }
 
-async function start(kind: CommentKind) {
+async function start(kind: CommentKind, mentions: CommentMention[] = []) {
   if (busy.value || props.readonly) return;
   if (kind === 'annotation' && !selected.value) return;
   const body = (kind === 'annotation' ? annotationDraft.value : discussionDraft.value).trim();
@@ -407,7 +424,7 @@ async function start(kind: CommentKind) {
     const anchor = selected.value && kind === 'annotation'
       ? { ...selected.value, baseHash: props.document.base.hash } : undefined;
     const next = await saveCommentChange(adapter, kind, props.document.id,
-      { type: 'start', id, body, author: props.author, anchor });
+      { type: 'start', id, body, author: props.author, anchor, mentions });
     if (kind === 'annotation') {
       annotations.value = next;
       working.value = { ...working.value, [id]: anchor ?? null };
@@ -421,10 +438,10 @@ async function start(kind: CommentKind) {
   finally { busy.value = false; }
 }
 
-async function change(kind: CommentKind, threadId: string, action: 'reply' | 'resolve', body = '', resolved = false) {
+async function change(kind: CommentKind, threadId: string, action: 'reply' | 'resolve', body = '', resolved = false, mentions: CommentMention[] = []) {
   if (action === 'reply' && !body) return;
   const saved = await saveChange(kind, action === 'reply'
-    ? { type: 'reply', threadId, id: crypto.randomUUID(), body, author: props.author }
+    ? { type: 'reply', threadId, id: crypto.randomUUID(), body, author: props.author, mentions }
     : { type: 'resolve', threadId, resolved });
   if (saved && action === 'reply') conversations.get(threadId)?.clearReply();
 }
@@ -470,12 +487,12 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
           :ref="value => value ? conversations.set(thread.id, value as InstanceType<typeof CommentConversation>) : conversations.delete(thread.id)"
           :thread="thread" :quote="quote(working[thread.id]!)" local :readonly="readonly" :busy="busy" :author-id="author.id" :author-name="author.name"
           :assistant="assistant" @assistant="emit('assistant', { kind: 'annotation', thread, quote: quote(working[thread.id]!) })"
-          @reply="change('annotation', thread.id, 'reply', $event)"
+          @reply="(body, mentions) => change('annotation', thread.id, 'reply', body, false, mentions)"
           @edit="editMessage('annotation', thread.id, $event)" @remove="removeMessage('annotation', thread.id, $event)"
           @resolve="change('annotation', thread.id, 'resolve', '', $event)" />
         <blockquote v-if="selected" class="annotation-selected">{{ quote(selected) }}</blockquote>
         <CommentComposer v-if="selected && !readonly" ref="composer" v-model="annotationDraft" :author-name="author.name"
-          label="添加批注" :busy="busy" compact @submit="start('annotation')" />
+          label="添加批注" :busy="busy" compact @submit="start('annotation', $event)" />
       </div>
       <p v-if="error" class="comment-error" role="alert">{{ error }}</p>
     </div>
@@ -496,7 +513,7 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
         :quote="quote(working[thread.id]!)" local :readonly="readonly" :busy="busy" :author-id="author.id" :author-name="author.name"
         :assistant="assistant" @assistant="emit('assistant', { kind: 'annotation', thread, quote: quote(working[thread.id]!) })"
         :ref="value => value ? conversations.set(thread.id, value as InstanceType<typeof CommentConversation>) : conversations.delete(thread.id)"
-        @reply="change('annotation', thread.id, 'reply', $event)"
+        @reply="(body, mentions) => change('annotation', thread.id, 'reply', body, false, mentions)"
         @edit="editMessage('annotation', thread.id, $event)" @remove="removeMessage('annotation', thread.id, $event)"
         @resolve="change('annotation', thread.id, 'resolve', '', $event)" />
     </details>

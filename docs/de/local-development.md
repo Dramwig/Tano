@@ -13,9 +13,9 @@ npm run desktop
 
 Für die Browserdemo `npm run dev` ausführen und `http://127.0.0.1:43841` öffnen. Sie speichert Daten im Browser und greift nicht auf einen echten Arbeitsbereichsordner zu. Die Desktop-Entwicklung nutzt Port 43842; beide Befehle können gleichzeitig laufen. Der jeweilige Port muss beim Start frei sein.
 
-Die Desktop-App hat die Kennung `app.tano.local`. Unter Windows liegen die Anwendungsdaten normalerweise unter `%APPDATA%/app.tano.local`; für Agenten ist der im MCP-Bereich von Tano angezeigte Pfad maßgeblich. Markdown und `.tano/` sind übertragbar, während Indizes und Wiederherstellungszustand in den Anwendungsdaten liegen.
+Die Desktop-App hat die Kennung `app.tano.local`. Unter Windows liegen die Anwendungsdaten normalerweise unter `%APPDATA%/app.tano.local`; für Agenten ist der im MCP-Bereich von Tano angezeigte Pfad maßgeblich. Markdown und `.tano/` sind übertragbar, während Indizes, Entwürfe und Sitzungszustand in den Anwendungsdaten liegen.
 
-Nach Installation der Abhängigkeiten funktionieren lokales Bearbeiten, Suchen und Wiederherstellen offline. Externe Bilder und eine ausdrücklich konfigurierte Update-Prüfung benötigen weiterhin eine Netzwerkverbindung. Ein Build aus dem Quellcode hat standardmäßig keinen Update-Endpunkt.
+Nach Installation der Abhängigkeiten funktionieren lokales Bearbeiten, Suchen und Speichern von Entwürfen offline. Externe Bilder und eine ausdrücklich konfigurierte Update-Prüfung benötigen weiterhin eine Netzwerkverbindung. Ein Build aus dem Quellcode hat standardmäßig keinen Update-Endpunkt.
 
 Vor dem Einreichen von Änderungen `npm run check`, `npm run test:native` und `npm run mcp:smoke` ausführen. Nach Änderungen am Rust-Code außerdem:
 

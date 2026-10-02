@@ -1,21 +1,47 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, useId, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
 import { basename, parentPath, pathKey, validatePath } from '@tano/protocol';
 import type { FileEntry } from '@tano/protocol';
+import { splitFrontmatter } from '@tano/editor/syntax';
+import { frontmatterValue, updateFrontmatterProperty } from '@tano/editor/frontmatter-display';
+import type { PageTitleSource } from '../page-title-source';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   workspaceId: string;
   documentId: string;
   path: string;
+  titleSource?: PageTitleSource;
+  modelValue?: string;
   files: FileEntry[];
   readonly: boolean;
   rename: (workspaceId: string, id: string, from: string, to: string) => Promise<void>;
+}>(), { titleSource: 'frontmatter-first', modelValue: '' });
+const emit = defineEmits<{
+  enter: [workspaceId: string, documentId: string];
+  'update:modelValue': [value: string];
 }>();
-const emit = defineEmits<{ enter: [workspaceId: string, documentId: string] }>();
 let disposed = false;
 onBeforeUnmount(() => { disposed = true; });
 const errorId = useId();
-const title = computed(() => basename(props.path).replace(/\.(md|markdown)$/i, ''));
+const yamlTitle = computed(() => {
+  if (props.titleSource === 'filename') return null;
+  try {
+    return frontmatterValue(splitFrontmatter(props.modelValue).prefix, 'title');
+  } catch {
+    return null;
+  }
+});
+const yamlTitleText = computed(() => {
+  const property = yamlTitle.value;
+  return property && ['text', 'date', 'datetime'].includes(property.kind)
+    ? property.value.trim().replace(/[\r\n]+/g, ' ') : '';
+});
+const resolvedTitleSource = computed(() => props.titleSource === 'frontmatter' ||
+  (props.titleSource === 'frontmatter-first' && yamlTitleText.value) ? 'frontmatter' : 'filename');
+const title = computed(() => resolvedTitleSource.value === 'frontmatter'
+  ? yamlTitleText.value : basename(props.path).replace(/\.(md|markdown)$/i, ''));
+let titleBase = '';
+let titleSourceBase = resolvedTitleSource.value;
 const draft = ref(title.value);
 const saving = ref(false);
 const saveError = ref('');
@@ -28,7 +54,10 @@ const destination = computed(() => {
 });
 const validation = computed(() => {
   if (!edited.value) return '';
+  if (resolvedTitleSource.value !== titleSourceBase)
+    return '标题来源已改变，请按 Esc 重新载入后重试';
   if (!draft.value.trim()) return '请输入文档标题';
+  if (resolvedTitleSource.value === 'frontmatter') return '';
   if (/[\/\\]/.test(draft.value)) return '标题不能包含路径分隔符';
   const invalid = validatePath(destination.value);
   if (invalid) return invalid;
@@ -43,9 +72,14 @@ function reset() {
   edited.value = false;
   saveError.value = '';
 }
-watch(() => props.path, reset);
+watch([() => props.path, () => props.titleSource], reset);
+watch(title, () => { if (!edited.value) reset(); });
 
 function input(event: Event) {
+  if (!edited.value) {
+    titleBase = JSON.stringify(yamlTitle.value);
+    titleSourceBase = resolvedTitleSource.value;
+  }
   draft.value = (event.target as HTMLInputElement).value;
   edited.value = true;
   saveError.value = '';
@@ -53,14 +87,30 @@ function input(event: Event) {
 async function commit(): Promise<boolean> {
   if (props.readonly || saving.value || composing.value || validation.value) return false;
   if (!edited.value) return true;
-  if (destination.value === props.path) {
+  if (resolvedTitleSource.value === 'filename' && destination.value === props.path) {
     reset();
     return true;
   }
   saving.value = true;
   saveError.value = '';
   try {
-    await props.rename(props.workspaceId, props.documentId, props.path, destination.value);
+    if (resolvedTitleSource.value === 'frontmatter') {
+      if (JSON.stringify(yamlTitle.value) !== titleBase)
+        throw new Error('YAML title 已被修改，请按 Esc 重新载入后重试');
+      if (draft.value.trim() === title.value) { reset(); return true; }
+      const { prefix } = splitFrontmatter(props.modelValue);
+      if (!prefix && /^\uFEFF?(?:---|\+\+\+)\r?\n/.test(props.modelValue))
+        throw new Error('文档开头的属性无法解析，请在源码中修改');
+      const markdown = updateFrontmatterProperty(
+        props.modelValue, yamlTitle.value ? 'title' : null, 'title', 'text', draft.value.trim(),
+      );
+      if (frontmatterValue(splitFrontmatter(markdown).prefix, 'title')?.value !== draft.value.trim())
+        throw new Error('YAML title 无法更新，请在源码中修改');
+      emit('update:modelValue', markdown);
+      await nextTick();
+    } else {
+      await props.rename(props.workspaceId, props.documentId, props.path, destination.value);
+    }
     reset();
     return true;
   } catch (cause) {

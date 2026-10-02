@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/MarkdownEditor.vue",
     "./syntax": "./src/syntax.ts",
+    "./frontmatter-display": "./src/frontmatter-display.ts",
     "./document-model": "./src/document-model.ts",
     "./document-links": "./src/document-links.ts",
     "./runtime": "./src/runtime.ts",

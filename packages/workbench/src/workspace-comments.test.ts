@@ -3,6 +3,23 @@ import { beforeEach, expect, it } from 'vitest';
 import { commentDataPath } from '@tano/protocol';
 import { DemoAdapter } from './adapter';
 import { applyCommentChange, loadCommentFile, saveCommentChange } from './workspace-comments';
+import { emptyCommentFile, isObjectPath, parseCommentFile } from '@tano/protocol';
+
+it('stores explicit person mentions and precise reply targets, retaining portable identity on edits', () => {
+  const author = { id: 'reviewer', name: 'Reviewer' };
+  let file = applyCommentChange(emptyCommentFile('discussion', 'a0b1c2'), { type: 'start', id: 'thread-001', body: 'Root', author });
+  file = applyCommentChange(file, { type: 'reply', threadId: 'thread-001', id: 'reply-0001', body: '@Alice hello', author,
+    replyTo: 'thread-001', mentions: [{ personId: 'a00001', text: '@Alice' }] });
+  expect(parseCommentFile(JSON.stringify(file), 'discussion', 'a0b1c2').threads[0]?.messages[1]).toMatchObject({ replyTo: 'thread-001', mentions: [{ personId: 'a00001', text: '@Alice' }] });
+  file = applyCommentChange(file, { type: 'reply', threadId: 'thread-001', id: 'reply-0002', body: 'Nested', author, replyTo: 'reply-0001' });
+  file = applyCommentChange(file, { type: 'edit', threadId: 'thread-001', messageId: 'reply-0001', expectedBody: '@Alice hello', body: 'hello', authorId: 'reviewer' });
+  expect(file.threads[0]?.messages[1]?.mentions).toEqual([]);
+  file = applyCommentChange(file, { type: 'delete', threadId: 'thread-001', messageId: 'reply-0001', expectedBody: 'hello', authorId: 'reviewer' });
+  expect(file.threads[0]?.messages[1]?.replyTo).toBeUndefined();
+  expect(isObjectPath('.tano/discussions/a0b1c2.tano.json')).toBe(false);
+  expect(isObjectPath('.tano/annotations/a0b1c2.tano.json')).toBe(false);
+  expect(isObjectPath('.tano/objects/a0b1c2.tano.json')).toBe(true);
+});
 
 beforeEach(() => localStorage.clear());
 

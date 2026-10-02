@@ -79,8 +79,7 @@ import {
 } from '@tano/protocol';
 import type { FileEntry, SearchHit } from '@tano/protocol';
 import {
-  imageUrl,
-  importAttachment,
+  nativeAttachments,
   exportAttachment,
   resourceMarkdown,
   openExternalUrl,
@@ -100,6 +99,7 @@ const RelationGraph = defineAsyncComponent(() => import('./components/RelationGr
 import NewTabPicker from './components/NewTabPicker.vue';
 import EditorTools from './components/EditorTools.vue';
 import { parseToolbarMode, toolbarPreferenceKey } from './toolbar-preference';
+import { parsePageTitleSource } from './page-title-source';
 import DocumentHistoryPanel from './components/DocumentHistoryPanel.vue';
 import AgentPanel from './components/AgentPanel.vue';
 import AssistantPanel from './components/AssistantPanel.vue';
@@ -157,6 +157,7 @@ const detachedWindow = native && !mobile && !!detachedTabRequest();
 const welcomeSlogan = welcomeSlogans[Math.floor(Math.random() * welcomeSlogans.length)];
 const welcomeSloganParts = sloganParts(welcomeSlogan);
 const localNative = native && !store.isWeb;
+const attachments = useWorkbenchRuntime().attachments ?? (localNative ? nativeAttachments : undefined);
 const extensions = useWorkbenchRuntime().extensions?.() ?? createLocalExtensions();
 const extensionViews = extensions.views ?? [];
 const sidebarNavigationItems = computed(() => [
@@ -169,6 +170,7 @@ const documentToolItems = [
   { id: 'annotation', label: '局部批注' },
   { id: 'markdown-reveal', label: '光标展开源码' },
   { id: 'source-mode', label: '源码模式' },
+  { id: 'attachments', label: '附件' },
 ];
 const topbarItems = [
   { id: 'back', label: '后退' },
@@ -434,6 +436,8 @@ watch(visualFontSize, (value) => saveFontSizePreference('visualFontSize', value)
 watch(sourceFontSize, (value) => saveFontSizePreference('sourceFontSize', value));
 const showPageTitle = ref(readPreference('showPageTitle', true));
 watch(showPageTitle, (value) => savePreference('showPageTitle', value));
+const pageTitleSource = ref(parsePageTitleSource(readTextPreference('pageTitleSource')));
+watch(pageTitleSource, value => saveTextPreference('pageTitleSource', value));
 const limitPageWidth = computed(() => {
   const documentId = active.value?.id;
   return !documentId || store.capabilities.pageWidthLimits[documentId] !== false;
@@ -500,6 +504,7 @@ const editorReadonly = computed(
     updateLock.value ||
     store.busy ||
     !!workspace.value?.readOnly ||
+    !!workspace.value?.files.find(file => file.id === active.value?.id)?.readOnly ||
     !!active.value?.conflict ||
     editing.activeBusy ||
     !!editing.active?.readOnly,
@@ -754,7 +759,7 @@ async function importObjectAssets(event: Event) {
   input.value = '';
   const selectedWorkspace = workspace.value;
   if (
-    !localNative ||
+    !attachments ||
     !selectedWorkspace ||
     selectedWorkspace.readOnly ||
     !store.capabilities.features.objectReferences ||
@@ -766,7 +771,7 @@ async function importObjectAssets(event: Event) {
     for (const file of files) {
       if (workspace.value?.id !== selectedWorkspace.id)
         throw new Error('工作区已切换，已导入的资产保留在原工作区');
-      await importAttachment(selectedWorkspace.id, '', file, false);
+      await attachments.importAttachment(selectedWorkspace.id, '', file, false);
     }
   } catch (error) {
     store.report(error);
@@ -776,10 +781,10 @@ async function importObjectAssets(event: Event) {
   }
 }
 function assetPreview(target: ReferenceTarget) {
-  return localNative &&
+  return attachments &&
     target.type === 'asset' &&
     ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(target.mime ?? '')
-    ? imageUrl(workspace.value, '', relativeWorkspaceReference('', target.path))
+    ? attachments.imageUrl(workspace.value, '', relativeWorkspaceReference('', target.path))
     : null;
 }
 const paneSelections = shallowReactive<Record<string, EditorSelectionContext>>({});
@@ -799,7 +804,8 @@ function setPaneElement(kind: 'scroll' | 'editor' | 'source', id: string, value:
   }
 }
 function paneReadonly(doc: OpenDocument) {
-  return updateLock.value || store.busy || !!workspace.value?.readOnly || !!doc.conflict ||
+  return updateLock.value || store.busy || !!workspace.value?.readOnly ||
+    !!workspace.value?.files.find(file => file.id === doc.id)?.readOnly || !!doc.conflict ||
     (doc.id === store.activeId ? editorReadonly.value :
       readPreference(pageLockPreferenceKey(workspace.value?.id ?? '', doc.id), false) || editing.isManaging(doc.id));
 }
@@ -911,15 +917,15 @@ async function maximizePaneWindow() {
 const attachmentBusy = ref(false);
 const resourceRevision = computed(
   () =>
-    `${active.value?.path}:${workspace.value?.files
+    `${attachments?.revision ?? 0}:${active.value?.path}:${workspace.value?.files
       .filter((file) => !isMarkdown(file.path))
       .map((file) => `${file.path}:${file.modified}:${file.size}`)
       .join('|')}`,
 );
 async function uploadFile(file: File, requireImage: boolean, doc = active.value) {
   const currentWorkspace = workspace.value;
-  if (!localNative || !currentWorkspace || !doc) throw new Error('请在本地工作空间中导入附件');
-  const result = await importAttachment(currentWorkspace.id, doc.path, file, requireImage);
+  if (!attachments || !currentWorkspace || !doc) throw new Error('当前工作区不支持导入附件');
+  const result = await attachments.importAttachment(currentWorkspace.id, doc.path, file, requireImage);
   if (workspace.value?.id !== currentWorkspace.id || !store.documents.some(item => item.id === doc.id))
     throw new Error('附件已保存到原工作空间的 assets；文档已切换，请重新插入链接');
   await store.refresh();
@@ -981,9 +987,9 @@ async function openEntry(file: FileEntry, newTab = false) {
     if (window.innerWidth <= 700) sidebar.value = false;
     return;
   }
-  if (workspace.value && localNative) {
+  if (workspace.value && attachments) {
     try {
-      await exportAttachment(workspace.value.id, file.path);
+      await attachments.exportAttachment(workspace.value.id, file.path);
     } catch (error) {
       store.report(error);
     }
@@ -1156,6 +1162,7 @@ function pageContextKeydown(event: KeyboardEvent) {
 function fileMutationDisabled(file: FileEntry) {
   return (
     !!workspace.value?.readOnly ||
+    !!file.readOnly ||
     store.busy ||
     updateLock.value ||
     editing.isManaging(file.id)
@@ -1170,7 +1177,7 @@ function directoryHasManagedFile(file: FileEntry) {
 function fileDeleteDisabled(file: FileEntry) {
   return (
     fileMutationDisabled(file) ||
-    (store.isWeb && (file.kind !== 'file' || !isMarkdown(file.path))) ||
+    (store.isWeb && file.kind !== 'file') ||
     (mobile && file.kind === 'directory') ||
     directoryHasManagedFile(file)
   );
@@ -1806,6 +1813,7 @@ const settingsSnapshot = computed<SettingsSnapshot>(() => ({
   revealMarkdown: revealMarkdown.value,
   toolbarMode: toolbarMode.value,
   showPageTitle: showPageTitle.value,
+  pageTitleSource: pageTitleSource.value,
   visualFontSize: visualFontSize.value,
   sourceFontSize: sourceFontSize.value,
   editorPreferences: editorPreferences.value,
@@ -1862,6 +1870,7 @@ function handleSettingsCommand(command: SettingsCommand) {
     case 'revealMarkdown': revealMarkdown.value = command.value as boolean; break;
     case 'toolbarMode': toolbarMode.value = parseToolbarMode(command.value); break;
     case 'showPageTitle': showPageTitle.value = command.value as boolean; break;
+    case 'pageTitleSource': pageTitleSource.value = parsePageTitleSource(command.value); break;
     case 'visualFontSize': visualFontSize.value = command.value as number; break;
     case 'sourceFontSize': sourceFontSize.value = command.value as number; break;
     case 'editorPreferences': editorPreferences.value = command.value as typeof editorPreferences.value; break;
@@ -2054,7 +2063,7 @@ function keydown(event: KeyboardEvent) {
         file &&
         !fileMutationDisabled(file) &&
         !directoryHasManagedFile(file) &&
-        (!store.isWeb || (file.kind === 'file' && isMarkdown(file.path)))
+        (!store.isWeb || file.kind === 'file')
       )
         showModal('rename', file);
       return;
@@ -2597,7 +2606,7 @@ watch(activeId, () => {
               </template>
               <template v-else>
                 <button
-                  v-if="isMarkdown(fileContextMenu.file.path) || localNative"
+                  v-if="isMarkdown(fileContextMenu.file.path) || attachments"
                   role="menuitem"
                   @click="fileContextAction('open')"
                 >
@@ -2621,7 +2630,7 @@ watch(activeId, () => {
                   <Pencil :size="15" />重命名文档
                 </button>
                 <button
-                  v-else-if="!store.isWeb"
+                  v-else-if="attachments"
                   role="menuitem"
                   :disabled="fileMutationDisabled(fileContextMenu.file)"
                   @click="fileContextAction('rename')"
@@ -3026,6 +3035,15 @@ watch(activeId, () => {
                   >
                     <Code2 :size="17" />
                   </button>
+                  <button
+                    v-if="attachments && isVisible('attachments')"
+                    type="button"
+                    class="icon-button"
+                    aria-label="导入图片或附件"
+                    title="导入图片或附件"
+                    :disabled="paneReadonly(active!) || attachmentBusy"
+                    @click="pickFilesFor(pane.id, active!)"
+                  ><Paperclip :size="17" /></button>
                 </div>
                 <div class="menu-wrap">
                   <button
@@ -3220,7 +3238,7 @@ watch(activeId, () => {
                         @click="sourceModes[pane.activeId] = !paneSource(pane.activeId)"
                       ><Code2 :size="17" /></button>
                       <button
-                        v-if="localNative"
+                        v-if="attachments && isVisible('attachments')"
                         type="button"
                         class="icon-button"
                         aria-label="导入图片或附件"
@@ -3290,6 +3308,8 @@ watch(activeId, () => {
                     :workspace-id="workspace.id"
                     :document-id="active.id"
                     :path="active.path"
+                    :title-source="pageTitleSource"
+                    :model-value="active.content"
                     :files="workspace.files"
                     :readonly="
                       paneReadonly(active!) ||
@@ -3298,6 +3318,7 @@ watch(activeId, () => {
                       editing.activeBusy
                     "
                     :rename="renameDocumentTitle"
+                    @update:model-value="store.editDocument(active!.id, $event)"
                     @enter="insertBlockBelowTitle"
                   />
                   <SourceEditor
@@ -3306,7 +3327,7 @@ watch(activeId, () => {
                     :ref="el => setPaneElement('source', pane.id, el)"
                     :model-value="active.content"
                     :readonly="paneReadonly(active!)"
-                    :local-native="localNative"
+                    :local-native="!!attachments"
                     :comment-anchors="commentAnchors[active.id]"
                     @update:model-value="store.editDocument(active!.id, $event)"
                     @files="
@@ -3329,9 +3350,9 @@ watch(activeId, () => {
                     :model-value="active.content"
                     :table-layouts="active.tableLayout?.file.tables"
                     :comment-anchors="commentAnchors[active.id]"
-                    :resolve-image="reference => localNative ? imageUrl(workspace, active!.path, reference) : safeRemoteImage(reference)"
+                    :resolve-image="reference => attachments ? attachments.imageUrl(workspace, active!.path, reference) : safeRemoteImage(reference)"
                     :resource-revision="resourceRevision"
-                    :import-file="localNative ? (file, image) => uploadFile(file, image, active) : undefined"
+                    :import-file="attachments ? (file, image) => uploadFile(file, image, active) : undefined"
                     @update:model-value="store.editDocument(active!.id, $event)"
                     @table-layout-change="store.editTableLayout(active!.id, $event)"
                     @error="store.report"
@@ -3649,7 +3670,7 @@ watch(activeId, () => {
       :path="active.path"
       :workspace-id="workspace.id"
       :activities="activities"
-      :history-view="localNative && extensions.historyEnabled ? extensions.historyView : undefined"
+      :history-view="extensions.historyEnabled ? extensions.historyView : undefined"
       :initial-page="historyPage"
       @close="historyPanel = false"
       @diff="
@@ -3663,8 +3684,8 @@ watch(activeId, () => {
       :open="objectPanel"
       :selected-id="selectedObjectId"
       :personal="selectedPersonal ? plans.panel : undefined"
-      :can-open-asset="localNative"
-      :can-import-asset="localNative && !assetImportBusy"
+      :can-open-asset="!!attachments"
+      :can-import-asset="!!attachments && !assetImportBusy"
       :preview-asset="assetPreview"
       @close="objectPanel = false"
       @open-resource="openObjectResource"
@@ -3692,6 +3713,7 @@ watch(activeId, () => {
       :reveal-markdown="revealMarkdown"
       :toolbar-mode="toolbarMode"
       :show-page-title="showPageTitle"
+      :page-title-source="pageTitleSource"
       :visual-font-size="visualFontSize"
       :source-font-size="sourceFontSize"
       :history-enabled="!!extensions.historyEnabled"
@@ -3711,6 +3733,7 @@ watch(activeId, () => {
       @update:reveal-markdown="revealMarkdown = $event"
       @update:toolbar-mode="toolbarMode = $event"
       @update:show-page-title="showPageTitle = $event"
+      @update:page-title-source="pageTitleSource = $event"
       @update:visual-font-size="visualFontSize = $event"
       @update:source-font-size="sourceFontSize = $event"
       @action="settingsAction"
@@ -3814,7 +3837,7 @@ watch(activeId, () => {
                 store.isDemo
                   ? '将删除浏览器中的演示文档，此操作无法在应用内撤销。'
                   : store.isWeb
-                    ? '将从在线工作区移除文档。服务端按配置保留版本历史；网页暂不提供恢复入口。'
+                    ? '将从在线工作区移除所选文件。服务端按配置保留版本历史。'
                     : mobile
                       ? '文件将保留在手机回收站。可从工作空间菜单恢复副本。'
                       : '文件将移入系统回收站，你可以在回收站中恢复。'

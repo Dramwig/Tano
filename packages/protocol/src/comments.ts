@@ -23,7 +23,12 @@ export interface CommentMessage {
   body: string;
   createdAt: number;
   updatedAt?: number;
+  replyTo?: string;
+  mentions?: CommentMention[];
 }
+
+/** Explicit person references remain portable; account bindings belong to Cloud. */
+export interface CommentMention { personId: string; text: string }
 
 export interface CommentThread {
   id: string;
@@ -82,6 +87,12 @@ export function parseCommentFile(content: string, kind: CommentKind, fileId: str
           !validText(message.body, 20_000) || !message.body.trim() ||
           !Number.isFinite(message.createdAt) ||
           (message.updatedAt !== undefined && !Number.isFinite(message.updatedAt))) throw new Error('评论内容格式无效');
+      if (message.replyTo !== undefined && (!validId(message.replyTo) || message.replyTo === message.id ||
+          !thread.messages.some(item => item.id === message.replyTo))) throw new Error('回复目标无效');
+      if (message.mentions !== undefined && (!Array.isArray(message.mentions) || message.mentions.length > 100 ||
+          message.mentions.some(item => !item || !/^[0-9a-f]{6}$/.test(item.personId) ||
+            !validText(item.text, 120) || !item.text.startsWith('@') || item.text.length < 2 ||
+            !message.body.includes(item.text)))) throw new Error('提及人物格式无效');
       messageIds.add(message.id);
     }
   }

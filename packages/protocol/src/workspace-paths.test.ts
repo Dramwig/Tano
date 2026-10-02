@@ -8,6 +8,10 @@ it('allows only portable platform files through storage while keeping user paths
     '.tano/capabilities.json',
     '.tano/relations.tano-relations.json',
     '.tano/conflicts/object.json',
+    '.tano/annotations/a00001.tano.json',
+    '.tano/discussions/a00001.tano.json',
+    '.tano/document-layout/a00001.tano.json',
+    '.tano/rules/assistant.md',
   ]) {
     expect(validateStoragePath(path), path).toBeNull();
     expect(validatePath(path), path).not.toBeNull();
@@ -24,10 +28,16 @@ it('allows only portable platform files through storage while keeping user paths
     '.workspace/private.json',
     '.workspace/objects/../config.tano.json',
     '.tano/private.json',
+    '.tano/rules/secrets.md',
+    '.tano/rules/../assistant.md',
     '.tano/objects/../config.tano.json',
     '.tano/objects/.secret/a.tano.json',
     '.tano/objects/CON.tano.json',
     '.tano/objects/a.md',
+    '.tano/annotations/not-an-id.tano.json',
+    '.tano/discussions/a00001.md',
+    '.tano/document-layout/not-an-id.tano.json',
+    '.tano/document-layout/a00001.md',
     'x/.tano/objects/a.tano.json',
     '.Tano/objects/a.tano.json',
     '.git/config',

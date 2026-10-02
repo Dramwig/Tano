@@ -1,4 +1,9 @@
 @echo off
+if /i "%~1"=="--tano-web-run" goto run
+"%ComSpec%" /d /k ""%~f0" --tano-web-run"
+exit /b
+
+:run
 setlocal
 chcp 65001 >nul
 title Tano - Local Frontend
@@ -27,14 +32,17 @@ if not exist "node_modules\vite\bin\vite.js" (
   )
 )
 
-echo 正在启动同页前端，浏览器将自动打开 http://127.0.0.1:1420
+echo 正在启动同页前端，浏览器将自动打开 http://127.0.0.1:43841
 echo 浏览器演示直接进入工作台，数据保存在浏览器中。请保留此窗口，关闭窗口即可停止前端服务。
 echo.
 call npm run dev -w @tano/client -- --host 127.0.0.1 --open
 if errorlevel 1 (
   echo.
-  echo [错误] 前端启动失败。若 1420 端口已占用，请先关闭之前的前端或桌面开发服务。
+  echo [错误] 前端启动失败。若 43841 端口已占用，请先关闭之前的浏览器前端服务。
   pause
   exit /b 1
 )
+echo.
+echo 前端服务已停止。请检查上方输出。
+pause
 endlocal

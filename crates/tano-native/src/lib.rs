@@ -1,5 +1,9 @@
 mod agent;
 mod assets;
+#[cfg(desktop)]
+mod assistant;
+#[cfg(desktop)]
+mod assistant_cli;
 pub mod identity_manifest;
 mod mobile_storage;
 #[cfg(test)]
@@ -11,13 +15,10 @@ mod search;
 mod session_storage;
 pub mod storage;
 mod updates;
-mod workspace_archive;
-mod workspace_backup;
+mod workspace_identity;
 mod workspace_lock;
-mod workspace_recovery;
 
 use notify::{RecursiveMode, Watcher};
-use serde::Serialize;
 use std::{
     path::{Path, PathBuf},
     sync::Mutex,
@@ -27,7 +28,7 @@ use tauri::{Emitter, Manager, State};
 pub struct Session {
     pub root: PathBuf,
     pub id: String,
-    data: PathBuf,
+    root_key: String,
     _watcher: notify::RecommendedWatcher,
     _lock: std::fs::File,
 }
@@ -86,28 +87,14 @@ fn with_session<T>(
 ) -> Result<T, String> {
     let guard = state.session.lock().map_err(|e| e.to_string())?;
     let session = guard.as_ref().ok_or("请先打开一个工作空间")?;
-    if workspace_backup::pending_restore(&session.data, &session.root, &session.id)?.is_some() {
-        return Err("工作区恢复尚未完成，请继续上一次恢复".into());
+    if !session.root_key.is_empty() && storage::native_key(&session.root) != session.root_key {
+        return Err("工作区根目录已替换，请重新打开工作区".into());
     }
     identity_manifest::require(&session.root, &session.id)?;
     f(session)
 }
 
-fn with_mutating_session<T>(
-    state: State<AppState>,
-    app: &tauri::AppHandle,
-    f: impl FnOnce(&Session) -> Result<T, String>,
-) -> Result<T, String> {
-    with_session(state, |session| {
-        let result = f(session)?;
-        if let Err(error) = workspace_backup::create(&session.data, &session.root, &session.id) {
-            let _ = app.emit("workspace-backup-error", format!("自动备份未完成：{error}"));
-        }
-        Ok(result)
-    })
-}
-
-fn with_session_for_recovery<T>(
+fn with_session_for_journal<T>(
     state: State<AppState>,
     f: impl FnOnce(&Session) -> Result<T, String>,
 ) -> Result<T, String> {
@@ -156,7 +143,8 @@ fn open_workspace_blocking(
     state: State<AppState>,
 ) -> Result<storage::Workspace, String> {
     let mut guard = state.session.lock().map_err(|e| e.to_string())?;
-    let root = std::fs::canonicalize(&path).map_err(|e| e.to_string())?;
+    let root = std::fs::canonicalize(&path)
+        .map_err(|e| format!("无法打开工作文件夹，请确认目录仍然存在：{e}"))?;
     #[cfg(mobile)]
     let root = mobile_storage::validate(&app_data(&app)?, &root)?;
     if !root.is_dir() {
@@ -164,27 +152,20 @@ fn open_workspace_blocking(
     }
     if let Some(session) = guard.as_ref() {
         if session.root == root {
-            if workspace_backup::pending_restore(&session.data, &root, &session.id)?.is_some() {
-                return Err("工作区恢复尚未完成，请继续上一次恢复".into());
-            }
             identity_manifest::require(&root, &session.id)?;
-            let mut workspace = storage::scan(&root, &session.id, &cache_path(&app)?)?;
-            if let Err(error) = workspace_backup::create(&session.data, &root, &session.id) {
-                workspace.backup_warning = Some(format!("自动备份未完成：{error}"));
-            }
-            return Ok(workspace);
+            return storage::scan(&root, &session.id, &cache_path(&app)?);
         }
         if app.webview_windows().len() > 1 {
             return Err("请先关闭此工作区的独立窗口，再切换工作区".into());
         }
     }
     let data = app_data(&app)?;
-    let recent_id = if workspace_recovery::registered_identity(&data, &root)?.is_none() {
+    let recent_id = if workspace_identity::registered_identity(&data, &root)?.is_none() {
         session_storage::known_identity(&cache_path(&app)?, &root)?
     } else {
         None
     };
-    let id = workspace_recovery::identity_for_open(
+    let id = workspace_identity::identity_for_open(
         &data,
         &root,
         recent_id.as_deref(),
@@ -200,7 +181,7 @@ fn open_workspace_blocking(
         )?)
     };
     storage::assert_workspace_identity(&root, &id)?;
-    let mut workspace = storage::scan(&root, &id, &cache_path(&app)?)?;
+    let workspace = storage::scan(&root, &id, &cache_path(&app)?)?;
     let handle = app.clone();
     let watch_root = root.clone();
     let mut watcher = notify::recommended_watcher(
@@ -226,18 +207,15 @@ fn open_workspace_blocking(
         .watch(&root, RecursiveMode::Recursive)
         .map_err(|e| e.to_string())?;
     session_storage::record(&cache_path(&app)?, &workspace)?;
-    workspace_recovery::register_identity(&data, &root, &id)?;
-    if let Err(error) = workspace_backup::create(&data, &root, &id) {
-        workspace.backup_warning = Some(format!("自动备份未完成：{error}"));
-    }
+    workspace_identity::register_identity(&data, &root, &id)?;
     let lock = match lock {
         Some(lock) => lock,
         None => guard.take().ok_or("工作区会话已关闭")?._lock,
     };
     *guard = Some(Session {
+        root_key: storage::native_key(&root),
         root,
         id,
-        data,
         _watcher: watcher,
         _lock: lock,
     });
@@ -248,144 +226,10 @@ fn open_workspace_blocking(
 async fn refresh_workspace(app: tauri::AppHandle) -> Result<storage::Workspace, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        with_session(state, |s| {
-            let mut workspace = storage::scan(&s.root, &s.id, &cache_path(&app)?)?;
-            if let Err(error) = workspace_backup::create(&app_data(&app)?, &s.root, &s.id) {
-                workspace.backup_warning = Some(format!("自动备份未完成：{error}"));
-            }
-            Ok(workspace)
-        })
+        with_session(state, |s| storage::scan(&s.root, &s.id, &cache_path(&app)?))
     })
     .await
     .map_err(|e| format!("刷新工作空间任务失败：{e}"))?
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WorkspaceBackupCatalog {
-    path: String,
-    workspace_id: String,
-    snapshots: Vec<workspace_backup::BackupSummary>,
-    pending_restore: Option<String>,
-}
-
-fn backup_identity(app: &tauri::AppHandle, root: &std::path::Path) -> Result<String, String> {
-    if let Some(id) = workspace_recovery::registered_identity(&app_data(app)?, root)? {
-        return Ok(id);
-    }
-    session_storage::known_identity(&cache_path(app)?, root)?
-        .ok_or_else(|| "此文件夹没有可识别的本机工作区登记".into())
-}
-
-#[tauri::command]
-async fn workspace_backup_catalog(
-    path: String,
-    app: tauri::AppHandle,
-) -> Result<WorkspaceBackupCatalog, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let root = std::fs::canonicalize(&path).map_err(|e| e.to_string())?;
-        let id = backup_identity(&app, &root)?;
-        let data = app_data(&app)?;
-        Ok(WorkspaceBackupCatalog {
-            path: root.to_string_lossy().into_owned(),
-            workspace_id: id.clone(),
-            snapshots: workspace_backup::list(&data, &root, &id)?,
-            pending_restore: workspace_backup::pending_restore(&data, &root, &id)?,
-        })
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-async fn workspace_backup_preview(
-    path: String,
-    snapshot_id: String,
-    app: tauri::AppHandle,
-) -> Result<workspace_backup::RecoveryPreview, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let root = std::fs::canonicalize(&path).map_err(|e| e.to_string())?;
-        let id = backup_identity(&app, &root)?;
-        workspace_backup::preview(&app_data(&app)?, &root, &id, &snapshot_id)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-async fn restore_workspace_backup(
-    path: String,
-    snapshot_id: String,
-    current_fingerprint: Option<String>,
-    app: tauri::AppHandle,
-) -> Result<storage::Workspace, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let root = std::fs::canonicalize(&path).map_err(|e| e.to_string())?;
-        let id = backup_identity(&app, &root)?;
-        let state = app.state::<AppState>();
-        let guard = state.session.lock().map_err(|e| e.to_string())?;
-        if guard
-            .as_ref()
-            .is_some_and(|session| session.root == root && session.id != id)
-        {
-            return Err("当前会话的工作区身份与备份不同".into());
-        }
-        let _lock = if guard.as_ref().is_some_and(|session| session.root == root) {
-            None
-        } else {
-            Some(workspace_lock::acquire(
-                &workspace_lock_directory(&app)?,
-                &id,
-            )?)
-        };
-        let workspace = workspace_backup::restore(
-            &app_data(&app)?,
-            &root,
-            &id,
-            &snapshot_id,
-            current_fingerprint.as_deref(),
-            &cache_path(&app)?,
-        )?;
-        session_storage::record(&cache_path(&app)?, &workspace)?;
-        Ok(workspace)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-async fn export_workspace(
-    destination_parent: String,
-    app: tauri::AppHandle,
-) -> Result<workspace_archive::ArchiveResult, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let state = app.state::<AppState>();
-        with_mutating_session(state, &app, |session| {
-            storage::scan(&session.root, &session.id, &cache_path(&app)?)?;
-            workspace_archive::export(
-                &session.root,
-                &session.id,
-                std::path::Path::new(&destination_parent),
-            )
-        })
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-async fn import_workspace_export(
-    source: String,
-    destination_parent: String,
-) -> Result<workspace_archive::ArchiveResult, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        workspace_archive::import(
-            std::path::Path::new(&source),
-            std::path::Path::new(&destination_parent),
-        )
-    })
-    .await
-    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -499,7 +343,7 @@ fn load_session(
     app: tauri::AppHandle,
     state: State<AppState>,
 ) -> Result<Option<session_storage::WorkspaceSession>, String> {
-    with_session_for_recovery(state, |s| {
+    with_session_for_journal(state, |s| {
         if s.id != workspace_id {
             return Err("会话所属工作区已切换".into());
         }
@@ -513,7 +357,7 @@ fn save_session(
     app: tauri::AppHandle,
     state: State<AppState>,
 ) -> Result<(), String> {
-    with_session_for_recovery(state, |s| {
+    with_session_for_journal(state, |s| {
         if s.id != workspace_id {
             return Err("会话所属工作区已切换".into());
         }
@@ -679,19 +523,12 @@ fn write_document(
     path: String,
     content: String,
     expected_hash: String,
-    app: tauri::AppHandle,
     state: State<AppState>,
 ) -> Result<storage::WriteResult, String> {
-    let workspace_data = storage::is_workspace_data_path(&path);
-    let write = |s: &Session| {
+    with_session(state, |s| {
         let target = storage::resolve_storage(&s.root, &path, false)?;
         storage::write(&target, &content, &expected_hash)
-    };
-    if workspace_data {
-        with_mutating_session(state, &app, write)
-    } else {
-        with_session(state, write)
-    }
+    })
 }
 
 #[tauri::command]
@@ -700,7 +537,7 @@ fn reserve_reference_id(
     occupied: Vec<String>,
     state: State<AppState>,
 ) -> Result<String, String> {
-    with_mutating_session(state, &app, |s| {
+    with_session(state, |s| {
         identity_manifest::reserve(&s.root, &s.id, &cache_path(&app)?, &occupied)
     })
 }
@@ -712,7 +549,7 @@ fn create_document(
     app: tauri::AppHandle,
     state: State<AppState>,
 ) -> Result<(), String> {
-    with_mutating_session(state, &app, |s| {
+    with_session(state, |s| {
         let target = if storage::is_workspace_data_path(&path) {
             storage::ensure_file_parent(&s.root, &path)?
         } else {
@@ -742,7 +579,7 @@ fn rename_document(
     app: tauri::AppHandle,
     state: State<AppState>,
 ) -> Result<(), String> {
-    with_mutating_session(state, &app, |s| {
+    with_session(state, |s| {
         storage::rename(&s.root, &s.id, &from, &to, &cache_path(&app)?)
     })
 }
@@ -754,7 +591,7 @@ fn move_entry(
     app: tauri::AppHandle,
     state: State<AppState>,
 ) -> Result<(), String> {
-    with_mutating_session(state, &app, |s| {
+    with_session(state, |s| {
         storage::move_entry(&s.root, &s.id, &from, &to, &cache_path(&app)?)
     })
 }
@@ -765,7 +602,7 @@ fn remove_document(
     app: tauri::AppHandle,
     state: State<AppState>,
 ) -> Result<(), String> {
-    with_mutating_session(state, &app, |s| {
+    with_session(state, |s| {
         let target = storage::resolve_storage(&s.root, &path, true)?;
         #[cfg(mobile)]
         if !target.is_file() {
@@ -956,15 +793,10 @@ pub fn with_workspace_session<T>(
 pub fn with_workspace_mutating_session<T>(
     workspace_id: &str,
     state: State<AppState>,
-    app: &tauri::AppHandle,
+    _app: &tauri::AppHandle,
     f: impl FnOnce(&Session) -> Result<T, String>,
 ) -> Result<T, String> {
-    with_mutating_session(state, app, |session| {
-        if session.id != workspace_id {
-            return Err("所属工作空间已切换，操作已取消".into());
-        }
-        f(session)
-    })
+    with_workspace_session(workspace_id, state, f)
 }
 
 pub fn app_data(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -985,12 +817,22 @@ pub fn configure_with_commands(
 ) -> tauri::Builder<tauri::Wry> {
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    #[cfg(desktop)]
+    let builder = builder.manage(assistant::AssistantState::default());
     builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .manage(AppState::default())
         .manage(updates::UpdateState::default())
+        .on_window_event(|window, event| {
+            #[cfg(desktop)]
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                window
+                    .state::<assistant::AssistantState>()
+                    .stop_window(window.label());
+            }
+        })
         .register_uri_scheme_protocol("tano-asset", |context, request| {
             let state = context.app_handle().state::<AppState>();
             let guard = state.session.lock();
@@ -1005,6 +847,24 @@ pub fn configure_with_commands(
                 .expect("static response")
         })
         .invoke_handler(move |invoke| {
+            #[cfg(desktop)]
+            if invoke.message.command().starts_with("assistant_") {
+                let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                    assistant::assistant_protocol_version,
+                    assistant::assistant_connections,
+                    assistant::assistant_models,
+                    assistant::assistant_connection_save,
+                    assistant::assistant_connection_remove,
+                    assistant::assistant_request,
+                    assistant::assistant_cancel,
+                    assistant::assistant_sessions_load,
+                    assistant::assistant_session_save,
+                    assistant::assistant_session_delete,
+                    assistant::assistant_external_sessions,
+                    assistant::assistant_external_result,
+                ];
+                return handler(invoke);
+            }
             #[cfg(desktop)]
             if matches!(
                 invoke.message.command(),
@@ -1050,11 +910,6 @@ pub fn configure_with_commands(
                     export_attachment,
                     open_external_url,
                     refresh_workspace,
-                    workspace_backup_catalog,
-                    workspace_backup_preview,
-                    restore_workspace_backup,
-                    export_workspace,
-                    import_workspace_export,
                     reserve_reference_id,
                     personal_plans::personal_plans_list,
                     personal_plans::personal_plans_read,

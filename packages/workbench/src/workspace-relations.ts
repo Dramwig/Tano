@@ -1,10 +1,11 @@
-import { parseRelations, relationKey, relationPath } from '@tano/protocol';
+import { parseRelations, referenceKey, relationKey, relationPath } from '@tano/protocol';
 import type {
   FileSnapshot,
   RelationFile,
   Workspace,
   WorkspaceAdapter,
   WorkspaceRelation,
+  ReferenceIdentity,
 } from '@tano/protocol';
 
 export async function loadRelations(adapter: WorkspaceAdapter, workspace: Workspace) {
@@ -13,7 +14,9 @@ export async function loadRelations(adapter: WorkspaceAdapter, workspace: Worksp
   const snapshot = await adapter.read(relationPath);
   return { snapshot, file: parseRelations(snapshot.content) };
 }
-export type RelationChange = { add: WorkspaceRelation } | { remove: WorkspaceRelation };
+export type RelationChange = { add: WorkspaceRelation } | { remove: WorkspaceRelation } | {
+  replace: { type: string; target: ReferenceIdentity; previous: WorkspaceRelation[]; next: WorkspaceRelation[] };
+};
 
 /** Row-level compare-and-swap. Independent edges merge; a changed edge is never silently removed. */
 export async function saveRelationChange(
@@ -33,11 +36,21 @@ export async function saveRelationChange(
           throw new Error('关系 ID 已被占用，请重试');
         file.relations.push(change.add);
       }
-    } else {
+    } else if ('remove' in change) {
       const existing = file.relations.find((row) => row.id === change.remove.id);
       if (existing && JSON.stringify(existing) !== JSON.stringify(change.remove))
         throw new Error('这条关系已被外部修改，尚未移除；请检查最新关系后重试');
       file.relations = file.relations.filter((row) => row.id !== change.remove.id);
+    } else {
+      const replacement = change.replace;
+      const matches = (row: WorkspaceRelation) => row.type === replacement.type && referenceKey(row.target) === referenceKey(replacement.target);
+      const ordered = (rows: WorkspaceRelation[]) => JSON.stringify([...rows].sort((a, b) => a.id.localeCompare(b.id)));
+      if (ordered(file.relations.filter(matches)) !== ordered(replacement.previous))
+        throw new Error('这些关系已被外部修改，请刷新后重试');
+      const retained = file.relations.filter(row => !matches(row));
+      if (replacement.next.some(row => retained.some(existing => existing.id === row.id)))
+        throw new Error('关系 ID 已被占用，请重试');
+      file.relations = [...retained, ...replacement.next];
     }
     const content = JSON.stringify(file, null, 2) + '\n';
     parseRelations(content);

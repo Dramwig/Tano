@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Bot, Check, MoreHorizontal, Pencil, Reply, RotateCcw, Trash2, UserRound, X } from 'lucide-vue-next';
-import type { CommentMessage, CommentThread } from '@tano/protocol';
+import type { CommentMessage, CommentMention, CommentThread } from '@tano/protocol';
 import type { CommentMessageEdit, CommentMessageRemoval } from '../workspace-comments';
 import CommentComposer from './CommentComposer.vue';
 
 const props = defineProps<{ thread: CommentThread; quote?: string; local?: boolean; readonly: boolean; busy: boolean; authorId: string; authorName: string; assistant?: boolean }>();
 const emit = defineEmits<{
-  reply: [body: string];
+  reply: [body: string, mentions: CommentMention[]];
   'reply-request': [message: CommentMessage];
   resolve: [resolved: boolean];
   edit: [change: CommentMessageEdit];
@@ -22,8 +22,8 @@ const menuMessage = ref<CommentMessage>();
 const menuPosition = ref({ left: '0px', top: '0px' });
 const removal = ref<CommentMessageRemoval>();
 let menuButton: HTMLButtonElement | undefined;
-function sendReply() {
-  if (reply.value.trim()) emit('reply', reply.value);
+function sendReply(mentions: CommentMention[] = []) {
+  if (reply.value.trim()) emit('reply', reply.value, mentions);
 }
 function clearReply() { reply.value = ''; }
 function finishEdit() { editing.value = undefined; }
@@ -134,7 +134,7 @@ function relativeTime(timestamp: number) {
 </script>
 
 <template>
-  <article class="comment-conversation" :class="{ 'is-local': local }">
+  <article class="comment-conversation" :class="{ 'is-local': local }" :data-comment-thread="thread.id">
     <div v-for="(message, index) in thread.messages" :key="message.id" class="comment-message" :class="{ 'is-reply': index > 0 }">
       <span class="comment-avatar" :title="message.authorName"><UserRound :size="15" /></span>
       <div class="comment-message-content">

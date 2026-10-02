@@ -15,6 +15,7 @@ import {
   ListTodo,
   Plus,
   Type,
+  Bot,
   X,
 } from 'lucide-vue-next';
 import {
@@ -37,8 +38,9 @@ const props = defineProps<{
   compact?: boolean;
   vertical?: boolean;
   dragging?: boolean;
+  assistant?: boolean;
 }>();
-const emit = defineEmits<{ command: [name: string, value?: string]; dismiss: [] }>();
+const emit = defineEmits<{ command: [name: string, value?: string]; dismiss: []; assistant: [] }>();
 const root = ref<HTMLElement>();
 const trigger = ref<HTMLButtonElement>();
 const input = ref<HTMLInputElement>();
@@ -160,6 +162,15 @@ function escape() {
   }
   close();
   trigger.value?.focus();
+}
+function disableLeavingActions(element: Element) {
+  // Outgoing buttons remain visible briefly, but no longer apply to the selection.
+  element.setAttribute('inert', '');
+  element.setAttribute('aria-hidden', 'true');
+}
+function enableEnteringActions(element: Element) {
+  element.removeAttribute('inert');
+  element.removeAttribute('aria-hidden');
 }
 </script>
 
@@ -296,28 +307,43 @@ function escape() {
           </button>
         </template>
       </div>
-      <div v-if="context.level === 'inline'" class="format-actions inline-actions">
-        <button
-          v-for="item in primaryInline"
-          :key="item.type"
-          type="button"
-          class="icon-button"
-          :class="{ active: context.activeInline.includes(item.type) }"
-          :aria-label="item.label"
-          :title="compact ? item.label : `${item.label} · ${item.type} · Level ${item.level}`"
-          :data-feature-level="item.level"
-          :aria-pressed="context.activeInline.includes(item.type)"
-          :disabled="
-            disabled ||
-            (context.inlineSource && !['bold', 'italic', 'code'].includes(item.command)) ||
-            (!context.canStyleText && ['bold', 'italic', 'code', 'link'].includes(item.command))
-          "
-          @mousedown.prevent
-          @click="run(item.command)"
+      <!-- Keep side buttons mounted so an interrupted transition can reverse in place. -->
+      <Transition
+        name="inline-tools"
+        :css="compact && vertical"
+        @before-enter="enableEnteringActions"
+        @before-leave="disableLeavingActions"
+        @leave-cancelled="enableEnteringActions"
+      >
+        <div
+          v-if="context.level === 'inline' || (compact && vertical)"
+          v-show="context.level === 'inline'"
+          class="inline-tools"
         >
-          <component :is="icons[item.type]" :size="17" />
-        </button>
-      </div>
+          <div class="format-actions inline-actions">
+            <button
+              v-for="item in primaryInline"
+              :key="item.type"
+              type="button"
+              class="icon-button"
+              :class="{ active: context.activeInline.includes(item.type) }"
+              :aria-label="item.label"
+              :title="compact ? item.label : `${item.label} · ${item.type} · Level ${item.level}`"
+              :data-feature-level="item.level"
+              :aria-pressed="context.activeInline.includes(item.type)"
+              :disabled="
+                disabled ||
+                (context.inlineSource && !['bold', 'italic', 'code'].includes(item.command)) ||
+                (!context.canStyleText && ['bold', 'italic', 'code', 'link'].includes(item.command))
+              "
+              @mousedown.prevent
+              @click="run(item.command)"
+            >
+              <component :is="icons[item.type]" :size="17" />
+            </button>
+          </div>
+        </div>
+      </Transition>
       <TextStyleMenu
         v-if="context.level === 'inline' || compact"
         :more="compact"
@@ -402,6 +428,7 @@ function escape() {
       </form>
     </template>
     <slot name="trailing" />
+    <button v-if="assistant" type="button" class="icon-button" aria-label="请助手讨论选区" title="与助手讨论选区" @mousedown.prevent @click="emit('assistant')"><Bot :size="16" /></button>
   </div>
 </template>
 
@@ -459,6 +486,46 @@ function escape() {
 }
 .selection-format-toolbar[aria-orientation='vertical'] .format-actions {
   flex-direction: column;
+}
+.inline-tools {
+  display: contents;
+}
+.selection-format-toolbar[aria-orientation='vertical'] .inline-tools {
+  display: grid;
+  grid-template-rows: 1fr;
+  margin-block: 0;
+}
+.selection-format-toolbar[aria-orientation='vertical'] .inline-actions {
+  min-height: 0;
+}
+.selection-format-toolbar[aria-orientation='vertical'] .inline-actions > button {
+  flex-shrink: 0;
+}
+.selection-format-toolbar[aria-orientation='vertical'] .inline-tools-enter-active,
+.selection-format-toolbar[aria-orientation='vertical'] .inline-tools-leave-active {
+  transition:
+    grid-template-rows 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    margin-block 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease,
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.inline-tools-enter-active .inline-actions,
+.inline-tools-leave-active .inline-actions {
+  overflow: hidden;
+}
+.selection-format-toolbar[aria-orientation='vertical'] .inline-tools-enter-from,
+.selection-format-toolbar[aria-orientation='vertical'] .inline-tools-leave-to {
+  grid-template-rows: 0fr;
+  /* Cancel the extra flex gap while the button group has no height. */
+  margin-block: -2px;
+  opacity: 0;
+  transform: translateY(-4px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .inline-tools-enter-active,
+  .inline-tools-leave-active {
+    transition: none !important;
+  }
 }
 .selection-format-toolbar[aria-orientation='vertical'] .block-type-trigger {
   width: 30px;

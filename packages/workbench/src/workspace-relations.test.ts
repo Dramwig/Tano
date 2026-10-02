@@ -55,3 +55,15 @@ it('rejects removal of an externally changed edge and preserves invalid files', 
   ).rejects.toThrow();
   expect((await adapter.read(relationPath)).content).toBe('{broken');
 });
+
+it('replaces a target atomically, merges unrelated edits and rejects concurrent reassignment', async () => {
+  const original = { ...edge('b00001'), type: 'assigned', target: { type: 'event', id: 'a00002' } };
+  const next = { ...original, id: 'b00003', source: { type: 'person', id: 'a00005' } };
+  const first = await saveRelationChange(adapter, null, { add: original });
+  await saveRelationChange(adapter, first.snapshot, { add: edge('b00002', 'a00003') });
+  const replacement = { type: 'assigned', target: original.target, previous: [original], next: [next] };
+  const saved = await saveRelationChange(adapter, first.snapshot, { replace: replacement });
+  expect(saved.file.relations).toEqual([edge('b00002', 'a00003'), next]);
+  await expect(saveRelationChange(adapter, first.snapshot, { replace: { ...replacement, next: [] } })).rejects.toThrow('外部修改');
+  expect(parseRelations((await adapter.read(relationPath)).content).relations).toEqual(saved.file.relations);
+});

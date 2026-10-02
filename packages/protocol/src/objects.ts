@@ -32,7 +32,8 @@ export interface ReferenceTarget extends ReferenceIdentity {
   properties?: Record<string, unknown>;
 }
 export const objectSuffix = '.tano.json';
-export const isObjectPath = (path: string) => path.endsWith(objectSuffix);
+export const isObjectPath = (path: string) => path.endsWith(objectSuffix) &&
+  (!path.startsWith('.tano/') || path.startsWith('.tano/objects/'));
 export const referenceTypeLabel = (type: string) =>
   objectTypeRegistry.get(type)?.label ?? `未启用类型（${type}）`;
 export function parseObject(content: string): WorkspaceObject {
@@ -146,6 +147,7 @@ export function referenceCandidates(
     .filter(
       (target) =>
         !!objectTypeRegistry.get(target.type) &&
+        !objectTypeRegistry.get(target.type)?.retired &&
         !target.archived &&
         (!qualifier || target.type === qualifier[1]!.toLowerCase()) &&
         `${target.name}\n${target.path}`.normalize('NFKC').toLocaleLowerCase().includes(name),

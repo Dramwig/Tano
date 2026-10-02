@@ -81,7 +81,7 @@ export function blockCommand(name: string, value?: string, currentTextblock = fa
       insert = true;
     } else if (name === 'table') {
       const row = (header: boolean) =>
-        schema.nodes.table_row!.create(
+        schema.nodes[header ? 'table_header_row' : 'table_row']!.create(
           null,
           Array.from({ length: 3 }, () =>
             schema.nodes[header ? 'table_header' : 'table_cell']!.create(null, paragraph.create()),

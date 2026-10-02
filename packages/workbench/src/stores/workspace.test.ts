@@ -8,7 +8,6 @@ import type {
   Workspace,
   WriteResult,
   WorkspaceSession,
-  WorkspaceBackupCatalog,
 } from '@tano/protocol';
 
 const fixture = vi.hoisted(() => ({ adapter: null as WorkspaceAdapter | null }));
@@ -29,7 +28,6 @@ class MemoryWorkspace implements WorkspaceAdapter {
   session: WorkspaceSession | null = null;
   failJournal = false;
   corruptJournal = false;
-  backupCatalog?: (path: string) => Promise<WorkspaceBackupCatalog>;
   watchCallback?: () => void;
   async loadSession() {
     if (this.corruptJournal) throw new Error('corrupt journal retained');
@@ -138,7 +136,186 @@ beforeEach(async () => {
 });
 afterEach(() => store.dispose());
 
+describe('assistant proposal coordination', () => {
+  const scope = { id: 'test', path: 'test' };
+  async function proposal(content = 'A\nB\nAI\n') {
+    await store.openFileInNewTab(store.workspace!.files.find(file => file.id === 'note-id')!);
+    return { id: crypto.randomUUID(), runId: 'run', workspaceId: 'test', kind: 'edit' as const,
+      fileId: 'note-id', path: 'note.md', base: 'A\nB\nC\n', content, reason: 'test', status: 'ready' as const };
+  }
+  it('reviews workspace events and applies them only after acceptance and capability checks', async () => {
+    store.capabilities.features.objectReferences = true;
+    const object = { version: 1, id: 'e00001', type: 'event', name: '审阅', description: '', archived: false, properties: { checkable: true, completed: false } };
+    const suggested = { id: crypto.randomUUID(), runId: 'run', workspaceId: 'test', kind: 'object' as const,
+      path: '.tano/objects/e00001.tano.json', base: '', content: JSON.stringify(object, null, 2) + '\n', reason: '后续任务', status: 'ready' as const };
+    const reviewed = await store.reviewAssistantProposal(scope, suggested);
+    expect(backend.files.has(suggested.path)).toBe(false);
+    expect((await store.reviewAssistantProposal(scope, suggested, reviewed.preview)).status).toBe('saved');
+    expect(store.objects.some(record => record.object.id === 'e00001')).toBe(true);
+    expect((await store.reviewAssistantProposal(scope, suggested, reviewed.preview)).status).toBe('saved');
+    store.capabilities.features.objectReferences = false;
+    await expect(store.reviewAssistantProposal(scope, { ...suggested, id: crypto.randomUUID() })).rejects.toThrow('未启用');
+  });
+  it('rejects stale scopes after reopening the same workspace and reads only supported rules', async () => {
+    const oldScope = { ...scope, epoch: store.assistantEpoch };
+    backend.files.set('.tano/rules/assistant.md', { id: 'rule-id', content: '保留引用' });
+    expect(await store.assistantRules(oldScope)).toEqual([{ path: '.tano/rules/assistant.md', content: '保留引用' }]);
+    await expect(store.assistantSnapshot(oldScope, 'rule-id')).rejects.toThrow('移除');
+    await store.openWorkspace('test');
+    await expect(store.assistantRules(oldScope)).rejects.toThrow('打开会话已变化');
+  });
+  it('preserves concurrent relations and requires reviewing the combined file before acceptance', async () => {
+    store.capabilities.features.objectReferences = true;
+    for (const id of ['a00001', 'b00001', 'c00001']) backend.files.set(`${id}.md`, { id, content: id });
+    const row = { id: 'e00001', type: 'related', source: { type: 'document', id: 'a00001' }, target: { type: 'document', id: 'b00001' } };
+    const suggested = { id: crypto.randomUUID(), runId: 'run', workspaceId: 'test', kind: 'relation' as const,
+      path: '.tano/relations.tano-relations.json', base: '', content: JSON.stringify({ version: 1, relations: [row] }), reason: '关联', status: 'ready' as const };
+    const reviewed = await store.reviewAssistantProposal(scope, suggested);
+    const independent = { ...row, id: 'e00002', target: { type: 'document', id: 'c00001' } };
+    backend.files.set(suggested.path, { id: 'relation-file', content: JSON.stringify({ version: 1, relations: [independent] }) });
+    const stale = await store.reviewAssistantProposal(scope, suggested, reviewed.preview);
+    expect(stale.status).toBe('stale');
+    expect(JSON.parse(stale.preview!.after).relations).toEqual([independent, row]);
+    const applied = await store.reviewAssistantProposal(scope, suggested, stale.preview);
+    expect(applied.status).toBe('saved');
+    expect(JSON.parse(backend.files.get(suggested.path)!.content).relations).toEqual([independent, row]);
+  });
+  it('refreshes the diff after a conditional write detects an external change', async () => {
+    const suggested = await proposal();
+    const reviewed = await store.reviewAssistantProposal(scope, suggested);
+    backend.beforeWrite = async () => { backend.files.get('note.md')!.content = 'External\nB\nC\n'; };
+    const stale = await store.reviewAssistantProposal(scope, suggested, reviewed.preview);
+    expect(stale.status).toBe('stale');
+    expect(stale.preview!.before).toBe('External\nB\nC\n');
+    expect(stale.preview!.after).toBe('External\nB\nAI\n');
+    expect(backend.files.get('note.md')!.content).toBe('External\nB\nC\n');
+  });
+  it('captures unsaved input and merges independent human, disk, and model edits', async () => {
+    const suggested = await proposal();
+    store.editDocument('note-id', 'Human\nB\nC\n');
+    expect((await store.assistantSnapshot(scope, 'note-id')).content).toBe('Human\nB\nC\n');
+    const reviewed = await store.reviewAssistantProposal(scope, suggested);
+    expect(reviewed.status).toBe('preview');
+    expect(reviewed.preview!.after).toBe('Human\nB\nAI\n');
+    const saved = await store.reviewAssistantProposal(scope, suggested, reviewed.preview);
+    if (saved.status !== 'saved') throw new Error('expected assistant write receipt');
+    expect(saved.status).toBe('saved');
+    expect(backend.files.get('note.md')!.content).toBe('Human\nB\nAI\n');
+    expect(store.active!.content).toBe('Human\nB\nAI\n');
+  });
+  it('requires review again when a human types after the preview and preserves overlapping versions', async () => {
+    const suggested = await proposal();
+    const reviewed = await store.reviewAssistantProposal(scope, suggested);
+    store.editDocument('note-id', 'Human\nB\nC\n');
+    const stale = await store.reviewAssistantProposal(scope, suggested, reviewed.preview);
+    expect(stale.status).toBe('stale');
+    expect(backend.files.get('note.md')!.content).toBe('A\nB\nC\n');
+    store.editDocument('note-id', 'A\nB\nHuman\n');
+    const conflict = await store.reviewAssistantProposal(scope, suggested);
+    expect(conflict.status).toBe('conflict');
+    expect(store.active!.content).toBe('A\nB\nHuman\n');
+    expect(suggested.content).toBe('A\nB\nAI\n');
+  });
+  it('keeps input entered while the write acknowledgement is pending', async () => {
+    const suggested = await proposal();
+    const reviewed = await store.reviewAssistantProposal(scope, suggested);
+    backend.beforeWrite = async () => { store.editDocument('note-id', 'Human\nB\nC\n'); };
+    expect((await store.reviewAssistantProposal(scope, suggested, reviewed.preview)).status).toBe('saved');
+    expect(store.active!.content).toBe('Human\nB\nAI\n');
+    expect(backend.files.get('note.md')!.content).toBe('A\nB\nAI\n');
+    backend.beforeWrite = undefined;
+    await store.flush();
+    expect(backend.files.get('note.md')!.content).toBe('Human\nB\nAI\n');
+  });
+  it('preserves both versions when typing during publication overlaps the AI change', async () => {
+    const suggested = await proposal();
+    const reviewed = await store.reviewAssistantProposal(scope, suggested);
+    backend.beforeWrite = async () => { store.editDocument('note-id', 'A\nB\nHuman\n'); };
+    await store.reviewAssistantProposal(scope, suggested, reviewed.preview);
+    expect(backend.files.get('note.md')!.content).toBe('A\nB\nAI\n');
+    expect(store.active!.conflict).toBeTruthy();
+    expect(backend.files.get(store.active!.conflict!.copyPath)!.content).toBe('A\nB\nHuman\n');
+  });
+  it('follows stable identity on rename and refuses same-path replacement', async () => {
+    const suggested = await proposal();
+    await backend.rename('note.md', 'moved.md');
+    const reviewed = await store.reviewAssistantProposal(scope, suggested);
+    expect(reviewed.preview!.path).toBe('moved.md');
+    backend.files.delete('moved.md');
+    backend.files.set('note.md', { id: 'other-id', content: 'A\nB\nC\n' });
+    await expect(store.reviewAssistantProposal(scope, suggested, reviewed.preview)).rejects.toThrow('身份变化');
+    expect(backend.files.get('note.md')!.content).toBe('A\nB\nC\n');
+  });
+  it('does not repeat an applied operation or overwrite new edits during undo', async () => {
+    const suggested = await proposal();
+    const reviewed = await store.reviewAssistantProposal(scope, suggested);
+    const saved = await store.reviewAssistantProposal(scope, suggested, reviewed.preview);
+    expect((await store.reviewAssistantProposal(scope, suggested, reviewed.preview)).status).toBe('saved');
+    await expect(store.reviewAssistantProposal(scope, { ...suggested, content: 'different' }, reviewed.preview)).rejects.toThrow('操作标识');
+    if (saved.status !== 'saved') throw new Error('expected assistant write receipt');
+    store.editDocument('note-id', 'Later\nB\nAI\n');
+    const reverse = { ...suggested, id: crypto.randomUUID(), base: saved.applied!.after, content: saved.applied!.before };
+    const undoPreview = await store.reviewAssistantProposal(scope, reverse);
+    expect(undoPreview.preview!.after).toBe('Later\nB\nC\n');
+    await expect(store.reviewAssistantProposal({ id: 'other', path: 'other' }, reverse)).rejects.toThrow('已切换');
+  });
+});
+
 describe('workspace file reconciliation', () => {
+  it('persists pixel layouts separately from Markdown and restores them after rename and reopen', async () => {
+    backend.files.set('table.md', { id: 'a12345', content: '| A | B |\n| --- | --- |\n| 1 | 2 |\n' });
+    await store.refresh();
+    await store.openFileInNewTab(store.workspace!.files.find(file => file.id === 'a12345')!);
+    const source = store.active!.content;
+    const tables = [{ id: 'table-one', widths: [90, 1000], anchor: { content: 'table', before: '', after: '' } }];
+    store.editTableLayout('a12345', tables);
+    expect(store.pending).toBe(true);
+    expect(await store.flush()).toBe(true);
+    expect(backend.files.get('table.md')!.content).toBe(source);
+    expect(JSON.parse(backend.files.get('.tano/document-layout/a12345.tano.json')!.content).tables).toEqual(tables);
+    await backend.rename('table.md', 'renamed.md');
+    await store.refresh();
+    expect(store.active!.path).toBe('renamed.md');
+    await store.close('a12345');
+    await store.openFileInNewTab(store.workspace!.files.find(file => file.id === 'a12345')!);
+    expect(store.active!.tableLayout!.file.tables).toEqual(tables);
+  });
+
+  it('keeps a table layout draft open when its write fails and retries it on flush', async () => {
+    backend.files.set('table.md', { id: 'a12345', content: 'table' });
+    await store.refresh();
+    await store.openFileInNewTab(store.workspace!.files.find(file => file.id === 'a12345')!);
+    store.editTableLayout('a12345', [{ id: 'table-one', widths: [90, 1000], anchor: { content: 'table', before: '', after: '' } }]);
+    backend.failCopies = true;
+    expect(await store.flush()).toBe(false);
+    await store.close('a12345');
+    expect(store.documents.some(doc => doc.id === 'a12345')).toBe(true);
+    backend.failCopies = false;
+    expect(await store.flush()).toBe(true);
+    expect(store.pending).toBe(false);
+  });
+
+  it('preserves conflicting layouts once and allows closing after both versions are on disk', async () => {
+    backend.files.set('table.md', { id: 'a12345', content: 'table' });
+    await store.refresh();
+    await store.openFileInNewTab(store.workspace!.files.find(file => file.id === 'a12345')!);
+    const tables = [{ id: 'table-one', widths: [90, 160], anchor: { content: 'table', before: '', after: '' } }];
+    store.editTableLayout('a12345', tables);
+    await store.flush();
+    const path = '.tano/document-layout/a12345.tano.json';
+    const external = JSON.parse(backend.files.get(path)!.content);
+    external.tables[0].widths = [200, 160];
+    backend.files.get(path)!.content = JSON.stringify(external);
+    store.editTableLayout('a12345', [{ ...tables[0], widths: [300, 160] }]);
+    expect(await store.flush()).toBe(true);
+    expect(store.active!.tableLayout!.conflict?.path).toContain('.tano/conflicts/');
+    expect(JSON.parse(backend.files.get(path)!.content).tables[0].widths).toEqual([200, 160]);
+    await store.flush();
+    expect([...backend.files.keys()].filter(path => path.startsWith('.tano/conflicts/'))).toHaveLength(1);
+    await store.close('a12345');
+    expect(store.documents.some(doc => doc.id === 'a12345')).toBe(false);
+  });
+
   it('leaves the workspace, keeps its session, and releases its watcher', async () => {
     const close = vi.spyOn(backend, 'close');
     const beforeSwitch = vi.fn(async () => {});
@@ -293,31 +470,38 @@ describe('workspace file reconciliation', () => {
     await expect(store.readGraphDocument({ id: 'other', path: 'other' }, file)).rejects.toThrow('工作区已切换');
     await expect(store.readGraphDocument(store.workspace!, { ...file, path: 'moved.md' })).rejects.toThrow('文档已移动或删除');
   });
-  it('keeps an unsaved draft in application data and opens recovery after metadata loss', async () => {
+  it('reports metadata loss while retaining the unsaved draft in application data', async () => {
     store.edit('unsaved draft');
     await vi.waitFor(() => expect(backend.session?.documents[0]?.draft?.content).toBe('unsaved draft'));
-    backend.backupCatalog = vi.fn(async (path) => ({
-      path, workspaceId: 'test', snapshots: [], pendingRestore: null,
-    }));
     vi.spyOn(backend, 'refresh').mockRejectedValue(new Error('.tano 已丢失'));
 
     await store.refresh();
 
-    expect(store.recovery?.workspaceId).toBe('test');
+    expect(store.fatal).toBe('.tano 已丢失');
     expect(store.active?.content).toBe('unsaved draft');
     expect(backend.session?.documents[0]?.draft?.content).toBe('unsaved draft');
-    expect(backend.backupCatalog).toHaveBeenCalledWith('test');
   });
-  it('keeps the original open error when no local recovery registration exists', async () => {
+  it('reports the original workspace open error', async () => {
     const originalError = '此文件夹已有 .tano/config.json，但缺少 .tano/identities.json';
     vi.spyOn(backend, 'open').mockRejectedValue(new Error(originalError));
-    backend.backupCatalog = vi.fn(async () => { throw new Error('此文件夹没有可识别的本机工作区登记'); });
 
     await store.openWorkspace('legacy-folder');
 
     expect(store.fatal).toBe(originalError);
-    expect(store.recoveryError).toContain('没有可识别的本机工作区登记');
-    expect(backend.backupCatalog).toHaveBeenCalledWith('legacy-folder');
+  });
+
+  it('reports a deleted workspace folder without creating or writing files', async () => {
+    const create = vi.spyOn(backend, 'create');
+    const createFolder = vi.spyOn(backend, 'createFolder');
+    const write = vi.spyOn(backend, 'write');
+    vi.spyOn(backend, 'open').mockRejectedValue(new Error('工作文件夹已不存在'));
+
+    await store.openWorkspace('deleted-folder');
+
+    expect(store.fatal).toBe('工作文件夹已不存在');
+    expect(create).not.toHaveBeenCalled();
+    expect(createFolder).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 
   it('updates the file tree from external filesystem events without a manual refresh', async () => {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
-import { referenceTypeLabel, referenceUrl } from '@tano/protocol';
+import { objectTypeRegistry, referenceTypeLabel, referenceUrl } from '@tano/protocol';
 import type {
   WorkspaceObject,
   ReferenceIdentity,
@@ -9,6 +9,7 @@ import type {
 } from '@tano/protocol';
 import type { ObjectRecord } from '../workspace-objects';
 import { useWorkspaceStore } from '../stores/workspace';
+import { useWorkbenchRuntime } from '../runtime';
 import PlanDateField from './PlanDateField.vue';
 import { readPlanDate, writePlanDate } from '../plan-date';
 import type { PlanDateValue } from '../plan-date';
@@ -35,6 +36,7 @@ const emit = defineEmits<{
   importAsset: [];
 }>();
 const store = useWorkspaceStore();
+const objectDetails = useWorkbenchRuntime().extensions?.().objectDetails;
 const scopeId = computed(() => props.personal?.id ?? store.workspace?.id);
 const scopeKey = computed(() => `${props.personal ? 'personal' : 'workspace'}:${scopeId.value ?? ''}`);
 const records = computed(() => props.personal?.records ?? store.objects);
@@ -67,6 +69,7 @@ const selectableTypes = computed(() => recordTypes.value.filter(type => !type.le
 const definition = computed(() =>
   recordTypes.value.find((type) => type.type === current.value?.value.type),
 );
+const retired = computed(() => objectTypeRegistry.get(current.value?.value.type ?? '')?.retired === true);
 const visibleFields = computed(() => definition.value?.fields.filter(field =>
   current.value?.value.type !== 'event' || !['date', 'start', 'end'].includes(field.key)) ?? []);
 const planDate = computed<PlanDateValue>(() => {
@@ -292,7 +295,7 @@ const uri = computed(() =>
       <header>
         <div>
           <h2>{{ personal ? '个人事项' : '工作区对象' }} <small v-if="!personal">Level 2 · 核心与插件对象</small></h2>
-          <p>{{ personal ? '个人计划独立保存，不随工作区分享；尚未开启跨设备同步。' : '内置事件、项目、人物、文档和资产。需要完成的事件就是任务，也可为事件安排时间。' }}</p>
+          <p>{{ personal ? '个人计划独立保存，不随工作区分享；尚未开启跨设备同步。' : '内置事件、人物、文档和资产。需要完成的事件就是任务，也可为事件安排时间。' }}</p>
         </div>
         <button :aria-label="personal ? '关闭个人事项' : '关闭工作区对象'" @click="emit('close')">关闭</button>
       </header>
@@ -326,7 +329,7 @@ const uri = computed(() =>
                   ?.category === 'core'
                   && !personal
                   ? 'Level 2-A'
-                  : personal ? '个人' : '插件对象'
+                  : personal ? '个人' : objectTypeRegistry.get(record.object.type)?.retired ? '旧版记录' : '插件对象'
               }}{{ record.object.archived ? ' · 已归档' : '' }}</small
             >
           </button>
@@ -347,7 +350,7 @@ const uri = computed(() =>
         </aside>
         <form v-if="current" @submit.prevent="save()">
           <label
-            >类别 · {{ personal ? '个人' : definition?.category === 'plugin' ? '插件对象' : 'Level 2-A'
+            >类别 · {{ personal ? '个人' : retired ? '旧版记录' : definition?.category === 'plugin' ? '插件对象' : 'Level 2-A'
             }}<select v-model="current.value.type" :disabled="disabled || !!current.record">
               <option v-if="!definition" :value="current.value.type">
                 {{ referenceTypeLabel(current.value.type) }}
@@ -372,7 +375,18 @@ const uri = computed(() =>
               maxlength="20000"
             />
           </label>
-          <p v-if="!definition" class="object-notice">
+          <component
+            :is="objectDetails"
+            v-if="objectDetails && !personal && current.record"
+            :key="`${current.scope}:${current.record.object.id}`"
+            :workspace-id="current.workspace"
+            :object="current.record.object"
+            :disabled="editDisabled"
+          />
+          <p v-if="retired" class="object-notice">
+            项目由工作区文件夹和 Markdown 文档承载。旧项目对象及已有引用只读保留，不再创建、编辑或另存为项目对象。
+          </p>
+          <p v-else-if="!definition" class="object-notice">
             此类型不属于内置核心对象，且未注册对应插件。文件和既有引用已保留，当前只读，不参与引用推荐。
           </p>
           <p v-if="current.record?.object.properties.syncReadOnly" class="object-notice">此事项来自只读连接或重复日程系列，请在来源应用中编辑；更新会在同步后显示。</p>
@@ -403,7 +417,7 @@ const uri = computed(() =>
               >计划日期可精确到某天或具体时刻，有起止时间时选择「时间段」。时间按本地时区输入。勾选「需要完成」即可作为任务。</small
             >
           </div>
-          <p v-if="current.value.type === 'person'" class="object-notice">
+          <p v-if="current.value.type === 'person' && !objectDetails" class="object-notice">
             人物是工作区记录，不代表登录账号或访问权限。
           </p>
           <label class="object-archive"
@@ -483,7 +497,7 @@ const uri = computed(() =>
         <div v-else class="object-panel-empty">
           <h3>让人与 Agent 引用同一个对象</h3>
           <p>
-            创建人物、项目或事件。事件勾选「需要完成」即可作为任务。文档和资产自动从工作区文件索引。关闭面板后，未保存的草稿会保留在本次会话中。
+            创建人物或事件。事件勾选「需要完成」即可作为任务。文档和资产自动从工作区文件索引。关闭面板后，未保存的草稿会保留在本次会话中。
           </p>
           <p>
             文件资源：{{

@@ -37,9 +37,10 @@ fn active(root: &Path, workspace_id: &str) -> Result<bool, String> {
 pub fn require(root: &Path, workspace_id: &str) -> Result<(), String> {
     storage::assert_workspace_identity(root, workspace_id)?;
     if !path(root).is_file() {
-        return Err("工作区身份清单已丢失，已停止写入；请从备份恢复".into());
+        return Err("工作区身份清单已丢失，已停止写入；请检查 .tano/identities.json".into());
     }
-    read(root, workspace_id)?.ok_or("工作区身份清单已丢失，请从备份恢复".to_string())?;
+    read(root, workspace_id)?
+        .ok_or("工作区身份清单已丢失，请检查 .tano/identities.json".to_string())?;
     Ok(())
 }
 
@@ -95,17 +96,6 @@ fn validate(manifest: &IdentityManifest, workspace_id: &str) -> Result<(), Strin
     Ok(())
 }
 
-pub fn validate_backup_bytes(content: &[u8], workspace_id: &str) -> Result<(), String> {
-    parse_backup_bytes(content, workspace_id).map(|_| ())
-}
-
-pub fn parse_backup_bytes(content: &[u8], workspace_id: &str) -> Result<IdentityManifest, String> {
-    let manifest: IdentityManifest =
-        serde_json::from_slice(content).map_err(|e| format!("备份身份清单损坏：{e}"))?;
-    validate(&manifest, workspace_id)?;
-    Ok(manifest)
-}
-
 fn bytes(manifest: &IdentityManifest) -> Result<Vec<u8>, String> {
     serde_json::to_vec_pretty(manifest).map_err(|e| e.to_string())
 }
@@ -150,7 +140,7 @@ pub fn hydrate(
     let prior_revision = cache_revision(transaction, workspace_id)?;
     let Some(manifest) = read(root, workspace_id)? else {
         if prior_revision.is_some() {
-            return Err("工作区身份清单已丢失，已停止扫描；请从备份恢复".into());
+            return Err("工作区身份清单已丢失，已停止扫描；请检查 .tano/identities.json".into());
         }
         return Ok(());
     };
@@ -300,23 +290,6 @@ pub fn publish_cache(root: &Path, workspace_id: &str, cache: &Path) -> Result<()
     let transaction = connection.transaction().map_err(|e| e.to_string())?;
     publish(&transaction, root, workspace_id)?;
     transaction.commit().map_err(|e| e.to_string())
-}
-
-pub fn invalidate_native_keys_after_restore(
-    cache: &Path,
-    workspace_id: &str,
-) -> Result<(), String> {
-    let connection = storage::database(cache)?;
-    // Restored files are new filesystem objects. Their inode/file indices may
-    // reuse those of different cached files, so the next scan must match the
-    // restored manifest by path and content instead of stale native keys.
-    connection
-        .execute(
-            "UPDATE files SET native_key='' WHERE workspace_id=?",
-            [workspace_id],
-        )
-        .map_err(|e| e.to_string())?;
-    Ok(())
 }
 
 pub fn reserve(

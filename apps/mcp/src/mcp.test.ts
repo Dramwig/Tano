@@ -52,6 +52,41 @@ function database() {
   return new DatabaseSync(join(data, 'agents', `${id}.sqlite`));
 }
 
+it('queues immutable proposals with stable document identity without writing Markdown', () => {
+  const store = open();
+  const snapshot = store.read('note.md');
+  writeFileSync(join(root, '.tano/identities.json'), JSON.stringify({ format: 1, workspaceId: id,
+    files: [{ path: 'note.md', id: 'a00001', deleted: false }] }));
+  expect(store.readIdentity('note.md').fileId).toBe('a00001');
+  const operationId = randomUUID();
+  const response = store.propose(operationId, 'note.md', '# Revised\n', snapshot.sha256, '整理', 'self-reported');
+  expect(response).toMatchObject({ written: false, status: 'awaiting_review' });
+  expect(readFileSync(join(root, 'note.md'), 'utf8')).toBe(snapshot.content);
+  expect(store.propose(operationId, 'note.md', '# Revised\n', snapshot.sha256, '整理', 'self-reported').proposalId).toBe(operationId);
+  expect(() => store.propose(operationId, 'note.md', 'different', snapshot.sha256, '整理', 'self-reported')).toThrow('同一操作');
+  const db = database();
+  try {
+    const row = db.prepare('SELECT body FROM agent_proposals WHERE id=?').get(operationId) as { body: string };
+    const saved = JSON.parse(row.body);
+    expect(saved.messages[0].proposals[0]).toMatchObject({ fileId: 'a00001', base: snapshot.content, status: 'ready' });
+    db.prepare("UPDATE agent_proposals SET status='applied' WHERE id=?").run(operationId);
+    expect(store.proposalStatus(operationId)).toMatchObject({ written: true, status: 'applied' });
+  } finally { db.close(); }
+  const newId = randomUUID();
+  expect(store.propose(newId, 'new.md', '# New\n', null, '新增', 'client').written).toBe(false);
+  expect(existsSync(join(root, 'new.md'))).toBe(false);
+  expect(() => store.propose(randomUUID(), '../outside.md', 'x', null, '新增', 'client')).toThrow();
+});
+it('reads portable rules without exposing arbitrary hidden files', () => {
+  const store = open();
+  mkdirSync(join(root, '.tano/rules'));
+  writeFileSync(join(root, '.tano/rules/assistant.md'), '保留术语');
+  expect(store.rules().rules).toEqual([{ path: '.tano/rules/assistant.md', content: '保留术语' }]);
+  expect(() => store.read('.tano/rules/assistant.md')).toThrow();
+  writeFileSync(join(root, '.tano/rules/assistant.md'), 'x'.repeat(32_001));
+  expect(() => store.rules()).toThrow('32 KB');
+});
+
 it('requires .tano identity even when another hidden directory contains the old identity', () => {
   const store = open();
   const original = readFileSync(join(root, '.tano/config.json'), 'utf8');
@@ -87,6 +122,10 @@ it('runs the MCP handshake, tool discovery and conditional writes with client-ch
       'tano_read_document',
       'tano_write_document',
       'tano_create_document',
+      'tano_read_document_identity',
+      'tano_propose_document',
+      'tano_get_proposal',
+      'tano_read_workspace_rules',
     ]);
     const read = await client.callTool({
       name: 'tano_read_document',

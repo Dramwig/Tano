@@ -24,7 +24,8 @@
     "@tauri-apps/plugin-dialog": "^2.4.0",
     "d3-force": "^3.0.0",
     "ical.js": "^2.2.1",
-    "lucide-vue-next": "^0.468.0"
+    "lucide-vue-next": "^0.468.0",
+    "motion": "^13.4.6"
   },
   "license": "MIT",
   "files": [

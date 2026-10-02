@@ -8,6 +8,17 @@ import {
 } from '@tano/protocol';
 import type { Workspace } from '@tano/protocol';
 
+export interface AttachmentService {
+  readonly revision?: number;
+  imageUrl(workspace: Workspace | null, documentPath: string, reference: string): string | null;
+  importAttachment(workspaceId: string, documentPath: string, file: File, requireImage: boolean): Promise<{
+    path: string; name: string; image: boolean; url: string;
+  }>;
+  exportAttachment(workspaceId: string, path: string): Promise<void>;
+}
+
+export const nativeAttachments: AttachmentService = { imageUrl, importAttachment, exportAttachment };
+
 export function imageUrl(
   workspace: Workspace | null,
   documentPath: string,

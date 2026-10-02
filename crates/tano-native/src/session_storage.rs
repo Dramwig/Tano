@@ -102,7 +102,6 @@ pub fn recent(cache: &Path) -> Result<Vec<RecentWorkspace>, String> {
             Err(_) => valid.push(workspace),
         }
     }
-    valid.truncate(12);
     Ok(valid)
 }
 pub fn known_identity(cache: &Path, root: &Path) -> Result<Option<String>, String> {
@@ -253,7 +252,7 @@ mod tests {
     }
 
     #[test]
-    fn recent_checks_all_rows_before_limiting_results() {
+    fn recent_returns_all_existing_workspaces_and_prunes_missing_rows() {
         let data = tempfile::tempdir().unwrap();
         let cache = data.path().join("index.sqlite");
         let db = connection(&cache).unwrap();
@@ -278,9 +277,9 @@ mod tests {
         .unwrap();
 
         let history = recent(&cache).unwrap();
-        assert_eq!(history.len(), 12);
+        assert_eq!(history.len(), 13);
         assert_eq!(history[0].id, "id-12");
-        assert_eq!(history[11].id, "id-1");
+        assert_eq!(history[12].id, "id-0");
         let count: i64 = db
             .query_row("SELECT COUNT(*) FROM recent_workspaces", [], |row| {
                 row.get(0)

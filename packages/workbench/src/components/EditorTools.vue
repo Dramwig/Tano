@@ -21,10 +21,12 @@ const props = defineProps<{
   enabledLevels?: readonly number[];
   disabled?: boolean;
   source?: boolean;
+  assistant?: boolean;
 }>();
 const emit = defineEmits<{
   command: [name: string, value?: string];
   'update:mode': [value: ToolbarMode];
+  assistant: [];
 }>();
 const menuOpen = ref(false);
 const menuRoot = ref<HTMLElement>();
@@ -143,6 +145,8 @@ async function changeMode(mode: ToolbarMode) {
     :disabled="disabled"
     :source="source"
     :dragging="!!drag"
+    :assistant="assistant"
+    @assistant="emit('assistant')"
     @command="(name, value) => emit('command', name, value)"
   >
     <template #leading><ToolbarDragHandle @start="startDrag" /></template>
@@ -179,6 +183,8 @@ async function changeMode(mode: ToolbarMode) {
       :enabled-levels="enabledLevels"
       :mode="mode"
       :dragging="!!drag"
+      :assistant="assistant"
+      @assistant="emit('assistant')"
       @command="(name, value) => emit('command', name, value)"
     >
       <template #leading><ToolbarDragHandle @start="startDrag" /></template>

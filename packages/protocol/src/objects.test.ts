@@ -22,9 +22,9 @@ const targets: ReferenceTarget[] = [
   { workspace: 'ws', type: 'document', id: 'c72bb3', name: 'Alice', path: 'Alice.md' },
 ];
 it('disambiguates names by type and binds identity independently of name or path', () => {
-  expect(referenceCandidates(targets, '@Alice')).toHaveLength(3);
+  expect(referenceCandidates(targets, '@Alice')).toEqual([targets[2], targets[0]]);
   expect(referenceCandidates(targets, '@person/Alice')).toEqual([targets[0]]);
-  expect(referenceCandidates(targets, 'project:Alice')).toEqual([targets[1]]);
+  expect(referenceCandidates(targets, 'project:Alice')).toEqual([]);
   const identity = parseReferenceUrl(referenceUrl(targets[0]!))!;
   expect(referenceUrl(targets[0]!)).toBe('object://person/a82f91');
   expect(identity).toEqual({ type: 'person', id: 'a82f91' });
@@ -54,10 +54,9 @@ it('accepts only six-digit local reference IDs, without legacy URL compatibility
     expect(parseReferenceUrl(`object://${type}/d00001`)).toEqual({ type, id: 'd00001' });
   }
 });
-it('ships only six core types and preserves unregistered domain data without enabling it', () => {
+it('ships core types without projects and preserves unregistered domain data without enabling it', () => {
   expect(coreObjectTypes.map((type) => type.type)).toEqual([
     'task',
-    'project',
     'person',
     'document',
     'event',
@@ -86,6 +85,14 @@ it('ships only six core types and preserves unregistered domain data without ena
     expect(resolveReference([target], target).error).toBe('unregistered');
     expect(parseReferenceUrl(referenceUrl(target))).toEqual({ type, id: object.id });
   }
+});
+it('opens retired project identities without offering new references or allowing mutations', () => {
+  expect(objectTypeRegistry.list().some((type) => type.type === 'project')).toBe(false);
+  expect(objectTypeRegistry.get('project')).toMatchObject({ legacy: true, retired: true });
+  const project = targets[1]!;
+  expect(resolveReference(targets, project).target).toEqual(project);
+  expect(parseReferenceUrl(referenceUrl(project))).toEqual({ type: 'project', id: project.id });
+  expect(() => validateObjectProperties('project', { custom: 'retained' })).toThrow('项目对象已停用');
 });
 it('registers namespaced plugin fields and unregisters without losing stored references', () => {
   const unregister = registerObjectType({

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it } from 'vitest';
-import { bundledObjectPlugins, ObjectTypeRegistry } from '@tano/protocol';
+import { bundledObjectPlugins, coreObjectTypes, ObjectTypeRegistry } from '@tano/protocol';
 import { WorkspacePluginHost } from './workspace-plugins';
 let registry: ObjectTypeRegistry, host: WorkspacePluginHost;
 beforeEach(() => {
@@ -27,7 +27,7 @@ it('installs, restores after restart, scopes by workspace, disables, and uninsta
   await host.change('one', { id: 'research', enabled: true });
   await host.change('one', { uninstall: 'research' });
   expect(host.load('one')).toEqual([]);
-  expect(registry.list()).toHaveLength(6);
+  expect(registry.list()).toEqual(coreObjectTypes);
 });
 it('does not activate a plugin on persistence failure or partially register conflicting manifests', async () => {
   const failing = new WorkspacePluginHost(registry, {
@@ -39,7 +39,7 @@ it('does not activate a plugin on persistence failure or partially register conf
   await expect(failing.change('one', { install: bundledObjectPlugins[0]! })).rejects.toThrow(
     'quota',
   );
-  expect(registry.list()).toHaveLength(6);
+  expect(registry.list()).toEqual(coreObjectTypes);
   registry.registerObjectType({
     plugin: 'research',
     type: 'research.experiment',

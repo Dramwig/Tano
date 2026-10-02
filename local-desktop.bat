@@ -45,7 +45,7 @@ echo.
 call npm run desktop
 if errorlevel 1 (
   echo.
-  echo [错误] 桌面启动失败。若 1420 端口已占用，请先关闭浏览器预览或之前的桌面开发服务。
+  echo [错误] 桌面启动失败。若 43842 端口已占用，请先关闭之前的桌面开发服务。
   pause
   exit /b 1
 )

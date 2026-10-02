@@ -152,9 +152,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       writable();
       if (!capabilities.value.features.objectReferences) throw new Error('Level 2 已关闭');
       if (relationError.value) throw new Error(relationError.value);
-      if ('add' in change) {
-        validateRelation(change.add, relationDefinitions.value);
-        for (const endpoint of [change.add.source, change.add.target])
+      const added = 'add' in change ? [change.add] : 'replace' in change ? change.replace.next : [];
+      for (const row of added) {
+        validateRelation(row, relationDefinitions.value);
+        for (const endpoint of [row.source, row.target])
           if (!referenceTargets.value.some((target) => referenceKey(target) === referenceKey(endpoint) && !target.archived))
             throw new Error('关系端点不存在、已归档或插件未启用');
       }
@@ -162,7 +163,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       relationBase = saved.snapshot; relations.value = saved.file.relations;
       workspace.value = await adapter.refresh();
       await refreshObjects();
-      activity('关系已更新', 'add' in change ? change.add.type : change.remove.type, 'save');
+      activity('关系已更新', 'add' in change ? change.add.type : 'remove' in change ? change.remove.type : change.replace.type, 'save');
     });
   }
   function createRelation(type: string, source: ReferenceIdentity, target: ReferenceIdentity) {
@@ -174,6 +175,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const workspaceId = workspace.value?.id;
     if (!workspaceId) return Promise.reject(new Error('请先打开工作区'));
     return editRelation({ remove: JSON.parse(JSON.stringify(row)) }, workspaceId);
+  }
+  function setRelationSource(type: string, target: ReferenceIdentity, source: ReferenceIdentity | null) {
+    const workspaceId = workspace.value?.id;
+    if (!workspaceId) return Promise.reject(new Error('请先打开工作区'));
+    const previous: WorkspaceRelation[] = JSON.parse(JSON.stringify(relations.value.filter(row =>
+      row.type === type && referenceKey(row.target) === referenceKey(target))));
+    const existing = source && previous.find(row => referenceKey(row.source) === referenceKey(source));
+    const next = source ? [existing ?? {
+      id: newShortId(new Set(relations.value.map(row => row.id))), type, source, target,
+    }] : [];
+    return editRelation({ replace: { type, target, previous, next } }, workspaceId);
   }
   async function createObject(draft: Pick<WorkspaceObject, 'type' | 'name' | 'description' | 'properties' | 'archived'>) {
     // New tasks use the event model. Existing task files retain their identity and references.
@@ -1154,13 +1166,20 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   function editDocument(id: string, content: string) {
     const doc = documents.value.find((document) => document.id === id);
-    if (!doc || doc.conflict || workspace.value?.readOnly) return;
+    if (!doc || doc.conflict || workspace.value?.readOnly || workspace.value?.files.find(file => file.id === id)?.readOnly) return;
     doc.content = content;
     doc.error = undefined;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       void flush();
     }, 600);
+  }
+  function receiveDocument(id: string, content: string) {
+    const doc = documents.value.find((document) => document.id === id);
+    if (!doc || doc.conflict || doc.missing) return;
+    doc.content = content;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { void flush(); }, 600);
   }
   async function hydrateDocumentLayout(doc: OpenDocument) {
     if (!workspace.value || !/^[0-9a-f]{6}$/.test(doc.id)) return;
@@ -1349,8 +1368,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function renameEntry(file: Pick<FileEntry, 'id' | 'path' | 'kind'>, path: string) {
     writable();
-    if (isWeb && (file.kind !== 'file' || !isMarkdown(file.path)))
-      throw new Error('在线工作区只能重命名 Markdown 文档');
+    if (isWeb && file.kind !== 'file')
+      throw new Error('在线工作区暂不支持重命名文件夹');
     if (!(await flush())) throw new Error('请先处理未保存的修改');
     await serial(async () => {
       workspace.value = await adapter.refresh();
@@ -1475,8 +1494,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   ) {
     writable();
     if (!files.length) return;
-    if (files.some((file) => isWeb && (file.kind !== 'file' || !isMarkdown(file.path))))
-      throw new Error('在线工作区只能移除 Markdown 文档');
+    if (files.some((file) => isWeb && file.kind !== 'file'))
+      throw new Error('在线工作区暂不支持移除文件夹');
     if (files.some((file) => mobile && file.kind === 'directory'))
       throw new Error('手机回收站暂不支持文件夹');
     const locallyModified = new Set(
@@ -1668,6 +1687,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     relationIndex,
     createRelation,
     removeRelation,
+    setRelationSource,
     objects, objectErrors, objectDefinitions, referenceTargets, createObject, updateObject,
     capabilities,
     capabilityError,
@@ -1717,6 +1737,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     editDocument,
     editTableLayout,
     preserveDraft,
+    receiveDocument,
     setDocumentLifecycle: (hooks: {
       beforeSwitch: () => Promise<void>;
       afterSwitch?: () => Promise<void>;

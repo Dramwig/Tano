@@ -188,10 +188,10 @@ export function mermaidView(
           icon.setAttribute('aria-hidden', 'true');
           if (choice.icon) {
             const image = document.createElement('img');
-            image.src = choice.icon;
             image.alt = '';
             image.loading = 'lazy';
             icon.append(image);
+            void choice.icon().then(url => { image.src = url; }).catch(() => image.remove());
           }
           const label = document.createElement('span');
           label.className = 'tano-code-language-label';

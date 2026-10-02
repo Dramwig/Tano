@@ -6,6 +6,7 @@ import type { ObjectRecord } from '../workspace-objects';
 import { coreObjectTypes, validateObjectProperties } from '@tano/protocol';
 const fixture = vi.hoisted(() => ({ store: null as unknown }));
 vi.mock('../stores/workspace', () => ({ useWorkspaceStore: () => fixture.store }));
+vi.mock('../runtime', () => ({ useWorkbenchRuntime: () => ({}) }));
 import ObjectPanel from './ObjectPanel.vue';
 let app: App | undefined, root: HTMLDivElement;
 afterEach(() => {
@@ -56,7 +57,6 @@ it('offers unified events instead of new legacy tasks and saves event timestamps
     .click();
   await nextTick();
   expect(Array.from(root.querySelectorAll('option')).map((option) => option.value)).toEqual([
-    'project',
     'person',
     'event',
   ]);
@@ -143,6 +143,34 @@ it('shows a retired object read-only and preserves its original type and propert
   expect((root.querySelector('button[type=submit]') as HTMLButtonElement).disabled).toBe(true);
   expect(root.textContent).toContain('object://dataset/d00001');
   expect(store.objects[0]!.object).toEqual(object);
+});
+it('shows historical projects read-only without offering project creation or duplication', async () => {
+  const object = {
+    version: 1 as const, id: 'd00001', type: 'project', name: '历史项目',
+    description: '项目说明', archived: false, properties: { custom: 42 },
+  };
+  const store = mountPanel([{ object, path: '.tano/objects/old.tano.json',
+    snapshot: { content: JSON.stringify(object), hash: 'h', modified: 1 } }], object.id);
+  expect(root.textContent).toContain('项目（旧版）');
+  expect(root.textContent).toContain('旧项目对象及已有引用只读保留');
+  expect(root.textContent).toContain('object://project/d00001');
+  for (const input of root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('form input, form textarea'))
+    expect(input.disabled).toBe(true);
+  for (const button of root.querySelectorAll<HTMLButtonElement>('form footer button')) {
+    if (button.textContent?.includes('保存') || button.textContent?.includes('另存')) {
+      expect(button.disabled).toBe(true);
+      button.click();
+    }
+  }
+  expect(store.createObject).not.toHaveBeenCalled();
+  expect(store.updateObject).not.toHaveBeenCalled();
+  root.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+  await nextTick();
+  expect(store.updateObject).not.toHaveBeenCalled();
+  expect(store.objects[0]!.object).toEqual(object);
+  [...root.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent?.includes('新建对象'))!.click();
+  await nextTick();
+  expect([...root.querySelectorAll('option')].map((option) => option.value)).toEqual(['person', 'event']);
 });
 it('shows resource metadata without offering a duplicate JSON record or binary edit form', () => {
   mountPanel([], 'f00001');

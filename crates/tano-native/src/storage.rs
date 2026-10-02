@@ -18,8 +18,6 @@ pub struct Workspace {
     pub name: String,
     pub path: String,
     pub files: Vec<Entry>,
-    #[serde(skip_serializing_if = "Option::is_none", rename = "backupWarning")]
-    pub(crate) backup_warning: Option<String>,
 }
 #[derive(Serialize)]
 pub struct Entry {
@@ -69,9 +67,23 @@ pub fn is_workspace_data_path(relative: &str) -> bool {
     let Some(path) = relative.strip_prefix(".tano/") else {
         return false;
     };
-    matches!(path, "capabilities.json" | "relations.tano-relations.json")
-        || (path.starts_with("objects/") && path.ends_with(".tano.json"))
+    matches!(
+        path,
+        "capabilities.json" | "relations.tano-relations.json" | "rules/assistant.md"
+    ) || (path.starts_with("objects/") && path.ends_with(".tano.json"))
         || (path.starts_with("conflicts/") && path.ends_with(".json"))
+        || ["annotations/", "discussions/", "document-layout/"]
+            .iter()
+            .any(|prefix| {
+                path.strip_prefix(prefix).is_some_and(|name| {
+                    name.strip_suffix(".tano.json").is_some_and(|id| {
+                        id.len() == 6
+                            && id
+                                .bytes()
+                                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+                    })
+                })
+            })
 }
 
 pub fn is_workspace_data_directory(relative: &str) -> bool {
@@ -81,8 +93,10 @@ pub fn is_workspace_data_directory(relative: &str) -> bool {
     let Some(path) = relative.strip_prefix(".tano/") else {
         return false;
     };
-    matches!(path, "objects" | "conflicts")
-        || path.starts_with("objects/")
+    matches!(
+        path,
+        "objects" | "conflicts" | "annotations" | "discussions" | "document-layout" | "rules"
+    ) || path.starts_with("objects/")
         || path.starts_with("conflicts/")
 }
 
@@ -208,7 +222,7 @@ pub fn existing_workspace_identity(root: &Path) -> Result<Option<String>, String
         return read_identity(&path).map(Some);
     }
     if root.join(".tano").exists() {
-        return Err(".tano/config.json 缺失，工作区原始数据已保留，请从备份恢复".into());
+        return Err(".tano/config.json 缺失，已停止打开，未改动现有文件".into());
     }
     Ok(None)
 }
@@ -216,16 +230,19 @@ pub fn existing_workspace_identity(root: &Path) -> Result<Option<String>, String
 pub fn assert_workspace_identity(root: &Path, expected_id: &str) -> Result<(), String> {
     match existing_workspace_identity(root)? {
         Some(id) if id == expected_id => Ok(()),
-        _ => Err("工作区身份已丢失或改变，已停止写入；请从备份恢复 .tano".into()),
+        _ => Err("工作区身份已丢失或改变，已停止写入；请检查 .tano 数据".into()),
     }
 }
 
 pub fn workspace_identity(root: &Path) -> Result<String, String> {
+    if !root.is_dir() {
+        return Err("工作文件夹已不存在或不是目录，请选择现有文件夹".into());
+    }
     if let Some(id) = existing_workspace_identity(root)? {
         return Ok(id);
     }
     let path = identity_path(root)?;
-    fs::create_dir_all(root.join(".tano")).map_err(|e| format!("无法创建工作空间配置：{e}"))?;
+    fs::create_dir(root.join(".tano")).map_err(|e| format!("无法创建工作空间配置：{e}"))?;
     let id = Uuid::new_v4().to_string();
     let content =
         serde_json::to_string_pretty(&serde_json::json!({ "id": id, "format": 1, "name": "Tano" }))
@@ -339,12 +356,17 @@ pub(crate) fn reserve_reference_id(
 }
 
 #[cfg(windows)]
-fn native_key(path: &Path) -> String {
+pub(crate) fn native_key(path: &Path) -> String {
+    use std::os::windows::fs::OpenOptionsExt;
     use std::os::windows::io::AsRawHandle;
     use windows_sys::Win32::Storage::FileSystem::{
-        GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION,
+        GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, FILE_FLAG_BACKUP_SEMANTICS,
     };
-    let Ok(file) = fs::File::open(path) else {
+    let Ok(file) = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(path)
+    else {
         return String::new();
     };
     let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
@@ -357,14 +379,14 @@ fn native_key(path: &Path) -> String {
     )
 }
 #[cfg(unix)]
-fn native_key(path: &Path) -> String {
+pub(crate) fn native_key(path: &Path) -> String {
     use std::os::unix::fs::MetadataExt;
     fs::metadata(path)
         .map(|metadata| format!("{}:{}", metadata.dev(), metadata.ino()))
         .unwrap_or_default()
 }
 #[cfg(not(any(windows, unix)))]
-fn native_key(_path: &Path) -> String {
+pub(crate) fn native_key(_path: &Path) -> String {
     String::new()
 }
 
@@ -645,7 +667,6 @@ pub fn scan(root: &Path, id: &str, cache: &Path) -> Result<Workspace, String> {
             .into(),
         path: display_path(root),
         files: entries,
-        backup_warning: None,
     })
 }
 
@@ -1453,6 +1474,19 @@ mod tests {
             assert!(ensure_file_parent(&root, path).is_err());
         }
         assert!(!is_workspace_data_directory(".workspace"));
+        for path in [
+            ".tano/annotations/a0b1c2.tano.json",
+            ".tano/discussions/a0b1c2.tano.json",
+            ".tano/document-layout/a0b1c2.tano.json",
+            ".tano/rules/assistant.md",
+        ] {
+            assert!(is_workspace_data_path(path));
+            assert!(ensure_file_parent(&root, path).is_ok());
+            assert!(resolve_storage(&root, path, false).is_ok());
+        }
+        assert!(!is_workspace_data_path(
+            ".tano/annotations/not-an-id.tano.json"
+        ));
         assert!(!is_workspace_data_directory(".workspace/objects"));
     }
 
@@ -1469,6 +1503,29 @@ mod tests {
         assert_eq!(fs::read_to_string(&old).unwrap(), "invalid JSON");
         assert_eq!(fs::read(root.join(".tano/config.json")).unwrap(), config);
         assert!(resolve_storage(&root, ".tano/config.json", true).is_err());
+    }
+
+    #[test]
+    fn table_layout_files_are_portable_and_use_compared_writes() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(temp.path()).unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let id = workspace_identity(&root).unwrap();
+        let relative = ".tano/document-layout/a0b1c2.tano.json";
+        let path = ensure_file_parent(&root, relative).unwrap();
+        create(&path, r#"{"version":1,"fileId":"a0b1c2","tables":[]}"#).unwrap();
+        let base = read(&path).unwrap();
+        let scanned = scan(&root, &id, &cache.path().join("index.sqlite")).unwrap();
+        assert!(scanned.files.iter().any(|entry| entry.path == relative));
+        fs::write(&path, "external layout").unwrap();
+        assert!(matches!(
+            write(&path, "local layout", &base.hash).unwrap(),
+            WriteResult::Conflict { .. }
+        ));
+        assert_eq!(read(&path).unwrap().content, "external layout");
+        assert!(
+            resolve_storage(&root, ".tano/document-layout/not-an-id.tano.json", false).is_err()
+        );
     }
 
     #[test]

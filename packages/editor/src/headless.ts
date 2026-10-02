@@ -33,6 +33,7 @@ import { references } from './references';
 import { liveSource, liveInlineSource } from './live-source';
 import { enhanced } from './enhanced';
 import { splitFrontmatter, unsupportedMarkdown } from './syntax';
+import { projectCommentText } from './comment-projection';
 import { configureMarkdownRuntime, defaultCapabilities } from './runtime';
 import type { WorkspaceCapabilities } from './runtime';
 
@@ -111,6 +112,12 @@ export async function createHeadlessMarkdown(policy: WorkspaceCapabilities = def
     }
   });
   return {
+    projectComments(markdown: string) {
+      const { body } = splitFrontmatter(markdown);
+      const node = ctx.get(parserCtx)(body);
+      if (!node) throw new Error('无法解析批注文档');
+      return projectCommentText(node).text;
+    },
     normalize(markdown: string) {
       if (unsupportedMarkdown(markdown).length) throw new Error('此 Markdown 扩展暂不支持规范化');
       const { prefix, body } = splitFrontmatter(markdown);

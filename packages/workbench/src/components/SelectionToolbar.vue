@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { animate } from 'motion/mini';
 import type { EditorSelectionContext } from '@tano/editor/document-model';
 import type { DocumentFeatures } from '@tano/editor/runtime';
 import EditorToolbar from './EditorToolbar.vue';
@@ -13,8 +14,9 @@ const props = defineProps<{
   enabledLevels?: readonly number[];
   mode?: 'selection' | 'left' | 'right';
   dragging?: boolean;
+  assistant?: boolean;
 }>();
-const emit = defineEmits<{ command: [name: string, value?: string] }>();
+const emit = defineEmits<{ command: [name: string, value?: string]; assistant: [] }>();
 const panel = ref<HTMLElement>();
 const visible = ref(false);
 const vertical = ref(false);
@@ -22,9 +24,64 @@ let anchor: Range | null = null;
 let dismissed: Range | null = null;
 let pointerSelecting = false;
 let composing = false;
+let windowBlurred = false;
 let frame = 0;
 let resizeObserver: ResizeObserver | undefined;
 let mounted = false;
+const animations = new Map<Element, ReturnType<typeof animate>>();
+
+function cancelAnimation(element: Element) {
+  animations.get(element)?.stop();
+  animations.delete(element);
+}
+function prepareEnter(element: Element) {
+  element.removeAttribute('inert');
+  element.removeAttribute('aria-hidden');
+  const surface = element.firstElementChild as HTMLElement | null;
+  if (surface) {
+    surface.style.opacity = '0';
+    surface.style.transform = 'scale(0.96)';
+  }
+}
+function animateVisibility(element: Element, done: () => void, entering: boolean) {
+  cancelAnimation(element);
+  if (!entering) {
+    element.setAttribute('inert', '');
+    element.setAttribute('aria-hidden', 'true');
+  }
+  // Animate the surface so docking transforms and positioning measurements stay stable.
+  const surface = element.firstElementChild as HTMLElement | null;
+  if (
+    !surface ||
+    typeof surface.animate !== 'function' ||
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  ) {
+    if (surface) {
+      surface.style.opacity = entering ? '1' : '0';
+      surface.style.transform = '';
+    }
+    done();
+    return;
+  }
+  const animation = animate(
+    surface,
+    { opacity: entering ? 1 : 0, transform: entering ? 'scale(1)' : 'scale(0.96)' },
+    { duration: entering ? 0.16 : 0.12, ease: [0.22, 1, 0.36, 1] },
+  );
+  animations.set(element, animation);
+  void animation.finished.then(() => {
+    if (animations.get(element) !== animation) return;
+    animations.delete(element);
+    surface.style.transform = '';
+    done();
+  });
+}
+function enter(element: Element, done: () => void) {
+  animateVisibility(element, done, true);
+}
+function leave(element: Element, done: () => void) {
+  animateVisibility(element, done, false);
+}
 
 function editor() {
   return props.editorElement?.querySelector<HTMLElement>('.ProseMirror');
@@ -71,7 +128,9 @@ function position() {
       rect.height,
     );
     element.style.left = `${result.x}px`;
-    element.style.top = `${result.y}px`;
+    // Anchor the capsule by its center so a height transition stays centered
+    // without waiting for a ResizeObserver / animation frame to reposition it.
+    element.style.top = `${vertical.value ? result.y + rect.height / 2 : result.y}px`;
     element.style.setProperty('--dock-menu-top', `${result.menuTop}px`);
     element.style.setProperty(
       '--selection-toolbar-width',
@@ -105,9 +164,16 @@ function position() {
 }
 async function refresh() {
   if (!mounted || props.dragging) return;
+  if (windowBlurred) return hide();
   const content = editor();
   if (props.mode === 'left' || props.mode === 'right') {
-    visible.value = !!content;
+    if (
+      !content ||
+      (!content.contains(document.activeElement) &&
+        !(visible.value && panel.value?.contains(document.activeElement)))
+    )
+      return hide();
+    visible.value = true;
     await nextTick();
     if (visible.value) position();
     return;
@@ -143,7 +209,10 @@ function schedule() {
 function pointerDown(event: PointerEvent) {
   const target = event.target as Node | null;
   if (panel.value?.contains(target)) return;
-  if (props.mode === 'left' || props.mode === 'right') return;
+  if (props.mode === 'left' || props.mode === 'right') {
+    if (!editor()?.contains(target)) hide();
+    return;
+  }
   if (editor()?.contains(target)) {
     dismissed = null;
     pointerSelecting = true;
@@ -178,9 +247,19 @@ function compositionEnd() {
 }
 function blur() {
   pointerSelecting = false;
+  windowBlurred = true;
   if (!props.mode || props.mode === 'selection') dismiss();
+  else hide();
+}
+function focus() {
+  windowBlurred = false;
+  schedule();
 }
 watch(() => props.context, schedule);
+watch(panel, (element, previous) => {
+  if (previous) resizeObserver?.unobserve(previous);
+  if (element) resizeObserver?.observe(element);
+});
 watch(
   () => [props.mode, props.dragging],
   () => {
@@ -203,12 +282,14 @@ onMounted(() => {
   document.addEventListener('pointerup', pointerUp);
   document.addEventListener('pointercancel', pointerUp);
   document.addEventListener('focusin', schedule);
+  document.addEventListener('focusout', schedule);
   document.addEventListener('keydown', keydown);
   document.addEventListener('compositionstart', compositionStart);
   document.addEventListener('compositionend', compositionEnd);
   window.addEventListener('scroll', schedule, true);
   window.addEventListener('resize', schedule);
   window.addEventListener('blur', blur);
+  window.addEventListener('focus', focus);
   window.visualViewport?.addEventListener('resize', schedule);
   window.visualViewport?.addEventListener('scroll', schedule);
   if (typeof ResizeObserver !== 'undefined') {
@@ -219,6 +300,7 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   mounted = false;
+  for (const element of animations.keys()) cancelAnimation(element);
   cancelAnimationFrame(frame);
   resizeObserver?.disconnect();
   document.removeEventListener('selectionchange', schedule);
@@ -226,12 +308,14 @@ onBeforeUnmount(() => {
   document.removeEventListener('pointerup', pointerUp);
   document.removeEventListener('pointercancel', pointerUp);
   document.removeEventListener('focusin', schedule);
+  document.removeEventListener('focusout', schedule);
   document.removeEventListener('keydown', keydown);
   document.removeEventListener('compositionstart', compositionStart);
   document.removeEventListener('compositionend', compositionEnd);
   window.removeEventListener('scroll', schedule, true);
   window.removeEventListener('resize', schedule);
   window.removeEventListener('blur', blur);
+  window.removeEventListener('focus', focus);
   window.visualViewport?.removeEventListener('resize', schedule);
   window.visualViewport?.removeEventListener('scroll', schedule);
 });
@@ -239,29 +323,40 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div
-      v-if="visible"
-      ref="panel"
-      class="selection-toolbar"
-      :class="{ 'docked-toolbar': vertical, 'toolbar-being-dragged': dragging }"
-      :data-dock="mode === 'left' || mode === 'right' ? mode : undefined"
-      :aria-label="mode === 'left' ? '左侧工具栏' : mode === 'right' ? '右侧工具栏' : '选区工具栏'"
-      aria-keyshortcuts="Alt+F10 Escape"
+    <Transition
+      :css="false"
+      @before-enter="prepareEnter"
+      @enter="enter"
+      @leave="leave"
+      @enter-cancelled="cancelAnimation"
+      @leave-cancelled="cancelAnimation"
     >
-      <EditorToolbar
-        compact
-        :vertical="vertical"
-        :dragging="dragging"
-        :context="context"
-        :features="features"
-        :enabled-levels="enabledLevels"
-        @dismiss="dismissAndFocus"
-        @command="(name, value) => emit('command', name, value)"
+      <div
+        v-if="visible"
+        ref="panel"
+        class="selection-toolbar"
+        :class="{ 'docked-toolbar': vertical, 'toolbar-being-dragged': dragging }"
+        :data-dock="mode === 'left' || mode === 'right' ? mode : undefined"
+        :aria-label="mode === 'left' ? '左侧工具栏' : mode === 'right' ? '右侧工具栏' : '选区工具栏'"
+        aria-keyshortcuts="Alt+F10 Escape"
       >
-        <template #leading><slot name="leading" /></template>
-        <template #preferences><slot name="preferences" /></template>
-      </EditorToolbar>
-    </div>
+        <EditorToolbar
+          compact
+          :vertical="vertical"
+          :dragging="dragging"
+          :assistant="assistant"
+          @assistant="visible && emit('assistant')"
+          :context="context"
+          :features="features"
+          :enabled-levels="enabledLevels"
+          @dismiss="dismissAndFocus"
+          @command="(name, value) => visible && emit('command', name, value)"
+        >
+          <template #leading><slot name="leading" /></template>
+          <template #preferences><slot name="preferences" /></template>
+        </EditorToolbar>
+      </div>
+    </Transition>
   </Teleport>
 </template>
 
@@ -270,6 +365,12 @@ onBeforeUnmount(() => {
   position: fixed;
   z-index: 35;
   width: max-content;
+}
+.selection-toolbar[inert] {
+  pointer-events: none;
+}
+.docked-toolbar {
+  transform: translateY(-50%);
 }
 .selection-toolbar:not(.docked-toolbar)[data-menu-side='above']
   :deep(.selection-format-toolbar .dropdown),

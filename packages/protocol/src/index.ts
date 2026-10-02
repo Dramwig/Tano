@@ -17,6 +17,7 @@ export interface FileEntry {
   kind: 'file' | 'directory';
   size: number;
   modified: number;
+  readOnly?: boolean;
 }
 
 export interface Workspace {

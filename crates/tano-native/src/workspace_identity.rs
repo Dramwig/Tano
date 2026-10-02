@@ -1,4 +1,4 @@
-use crate::{identity_manifest, storage, workspace_backup};
+use crate::{identity_manifest, storage};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -31,11 +31,11 @@ pub fn registered_identity(app_data: &Path, root: &Path) -> Result<Option<String
     }
     let registration: Registration =
         serde_json::from_slice(&fs::read(&path).map_err(|e| e.to_string())?)
-            .map_err(|e| format!("工作区恢复登记损坏，原文件已保留：{e}"))?;
+            .map_err(|e| format!("工作区身份登记损坏，原文件已保留：{e}"))?;
     if registration.root != root.to_string_lossy()
         || uuid::Uuid::parse_str(&registration.workspace_id).is_err()
     {
-        return Err("工作区恢复登记无效，原文件已保留".into());
+        return Err("工作区身份登记无效，原文件已保留".into());
     }
     Ok(Some(registration.workspace_id))
 }
@@ -63,29 +63,24 @@ pub fn identity_for_open(
     cache: &Path,
 ) -> Result<String, String> {
     let registered = registered_identity(app_data, root)?;
-    if let Some(id) = &registered {
-        if workspace_backup::pending_restore(app_data, root, id)?.is_some() {
-            return Err("工作区恢复尚未完成，请继续上一次恢复".into());
-        }
-    }
     let expected = registered.as_deref().or(recent_id);
     match storage::existing_workspace_identity(root)? {
         Some(id) => {
             if expected.is_some_and(|prior| prior != id) {
-                return Err("工作区身份与本机登记不一致，已停止打开；请检查恢复备份".into());
+                return Err(
+                    "工作区身份与本机登记不一致，已停止打开；请检查选定目录的 .tano 数据".into(),
+                );
             }
             if registered.is_some() {
                 identity_manifest::require(root, &id)?;
             } else if identity_manifest::read(root, &id)?.is_none()
                 && !storage::cached_identity_exists(cache, &id)?
             {
-                return Err("此文件夹已有 .tano/config.json，但缺少 .tano/identities.json，且本机没有可导出的旧 ID；为避免改变已有文件身份，已停止打开，请从备份恢复身份清单".into());
+                return Err("此文件夹已有 .tano/config.json，但缺少 .tano/identities.json，且本机没有可导出的旧 ID；为避免改变已有文件身份，已停止打开，请检查 .tano 数据".into());
             }
             Ok(id)
         }
-        None if expected.is_some() => {
-            Err("工作区 .tano 已丢失，已停止自动生成新身份；请从备份恢复".into())
-        }
+        None if expected.is_some() => Err("工作区 .tano 已丢失，已停止打开，未改动现有文件".into()),
         None => storage::workspace_identity(root),
     }
 }
@@ -93,6 +88,27 @@ pub fn identity_for_open(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn deleted_workspace_folder_is_never_recreated() {
+        for registered in [false, true] {
+            let data = tempfile::tempdir().unwrap();
+            let parent = tempfile::tempdir().unwrap();
+            let root = parent.path().join("workspace");
+            fs::create_dir(&root).unwrap();
+            let root = fs::canonicalize(root).unwrap();
+            let cache = data.path().join("index.sqlite");
+            let id = identity_for_open(data.path(), &root, None, &cache).unwrap();
+            if registered {
+                register_identity(data.path(), &root, &id).unwrap();
+            }
+            fs::remove_dir_all(&root).unwrap();
+
+            assert!(identity_for_open(data.path(), &root, None, &cache).is_err());
+            assert!(storage::workspace_identity(&root).is_err());
+            assert!(!root.exists());
+        }
+    }
+
     #[test]
     fn registration_is_independent_of_index_and_never_replaces_another_identity() {
         let data = tempfile::tempdir().unwrap();

@@ -21,9 +21,8 @@ const aliases: Record<string, string> = {
   rust: 'rs', typescript: 'ts', yaml: 'yml',
 };
 
-// Vite bundles these local SVGs, so the picker also works without a network connection.
+// Load bundled icons only when the picker renders them, rather than blocking app startup.
 const iconFiles = import.meta.glob<string>('./language-icons/**/*.svg', {
-  eager: true,
   import: 'default',
   query: '?url',
 });
@@ -51,7 +50,7 @@ export interface CodeLanguage {
   id: string;
   label: string;
   search: string;
-  icon?: string;
+  icon?: () => Promise<string>;
 }
 
 export const codeLanguages: readonly CodeLanguage[] = languageIds

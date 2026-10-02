@@ -2,9 +2,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   BookOpen,
-  Archive,
-  Download,
-  Upload,
   Bot,
   CircleHelp,
   ExternalLink,
@@ -36,10 +33,11 @@ import type { ThemePreference } from '../theme';
 import { sanitizeCustomFontName, visualFontFamily } from '../editor-font';
 import type { VisualFontChoice } from '../editor-font';
 import type { ToolbarMode } from '../toolbar-preference';
+import type { PageTitleSource } from '../page-title-source';
 
 type Page = string;
 type Action =
-  'open-folder' | 'switch-mode' | 'reveal' | 'agent' | 'history' | 'recycle' | 'backup' | 'export' | 'import' | 'sign-out';
+  'open-folder' | 'switch-mode' | 'reveal' | 'agent' | 'history' | 'recycle' | 'sign-out';
 
 const props = defineProps<{
   workspace: Pick<Workspace, 'name' | 'path' | 'readOnly'> | null;
@@ -55,6 +53,7 @@ const props = defineProps<{
   revealMarkdown: boolean;
   toolbarMode?: ToolbarMode;
   showPageTitle: boolean;
+  pageTitleSource: PageTitleSource;
   visualFontSize: number;
   sourceFontSize: number;
   historyEnabled: boolean;
@@ -75,6 +74,7 @@ const emit = defineEmits<{
   'update:revealMarkdown': [value: boolean];
   'update:toolbarMode': [value: ToolbarMode];
   'update:showPageTitle': [value: boolean];
+  'update:pageTitleSource': [value: PageTitleSource];
   'update:visualFontSize': [value: number];
   'update:sourceFontSize': [value: number];
   action: [value: Action];
@@ -117,7 +117,7 @@ const pages = [
     label: '外观设置',
     group: '个人偏好',
     icon: Palette,
-    terms: '外观 主题 白天 黑夜 深色 浅色 跟随系统 字体 系统字体 衬线字体 等宽字体 Mono Maple 自定义字体 字号 字体大小 页面内标题',
+    terms: '外观 主题 白天 黑夜 深色 浅色 跟随系统 字体 系统字体 衬线字体 等宽字体 Mono Maple 自定义字体 字号 字体大小 页面内标题 标题来源 文件名 YAML title 属性',
   },
   {
     id: 'editing',
@@ -533,6 +533,21 @@ function customFontInput(event: Event) {
                   <span />
                 </button>
               </div>
+              <div class="settings-row">
+                <div>
+                  <strong>页面标题来源</strong>
+                  <p>仅“YAML title 优先”在字段为空或无效时使用文件名。</p>
+                </div>
+                <select
+                  :value="pageTitleSource"
+                  aria-label="页面标题来源"
+                  @change="emit('update:pageTitleSource', ($event.target as HTMLSelectElement).value as PageTitleSource)"
+                >
+                  <option value="filename">文件名</option>
+                  <option value="frontmatter">YAML title</option>
+                  <option value="frontmatter-first">YAML title 优先</option>
+                </select>
+              </div>
             </div>
           </section>
           <p class="settings-local-note">
@@ -687,15 +702,6 @@ function customFontInput(event: Event) {
                   @click="emit('action', 'history')"
                 >
                   <History :size="17" />空间版本历史
-                </button>
-                <button v-if="mode === 'local' && native && workspace" @click="emit('action', 'backup')">
-                  <Archive :size="17" />工作区备份与恢复
-                </button>
-                <button v-if="mode === 'local' && native && workspace && !mobile" @click="emit('action', 'export')">
-                  <Download :size="17" />导出整个工作区
-                </button>
-                <button v-if="mode === 'local' && native && !mobile" @click="emit('action', 'import')">
-                  <Upload :size="17" />导入工作区归档
                 </button>
                 <button v-if="mobile && workspace" @click="emit('action', 'recycle')">
                   <Trash2 :size="17" />手机回收站

@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { Bot, X, Terminal, RefreshCw, FileText, Copy } from 'lucide-vue-next';
-import { workspaceAgentGuide } from '@tano/protocol';
+import { workspaceAgentGuide, assistantRulesPath } from '@tano/protocol';
 import type { AgentChange, AgentChangeDetail, AgentSetup } from '@tano/protocol';
 import { useWorkspaceStore } from '../stores/workspace';
 import { native } from '../adapter';
@@ -18,7 +18,8 @@ const draft = computed(() =>
   workspaceAgentGuide(workspace.workspace?.name ?? '', purpose.value, language.value),
 );
 const existing = computed(() =>
-  workspace.workspace?.files.find((file) => /^agents\.md$/i.test(file.path)),
+  workspace.workspace?.files.find((file) => file.path === assistantRulesPath) ??
+    workspace.workspace?.files.find((file) => /^agents\.md$/i.test(file.path)),
 );
 const error = ref(''),
   notice = ref('');
@@ -52,7 +53,7 @@ async function createGuide() {
     await workspace.refresh();
     if (workspace.workspace?.id !== props.workspaceId) throw new Error('工作区已切换');
     if (existing.value) await workspace.openFile(existing.value);
-    else await workspace.create('AGENTS.md', false, draft.value, props.workspaceId);
+    else await workspace.create(assistantRulesPath, false, draft.value, props.workspaceId);
     emit('close');
   });
 }
@@ -198,7 +199,7 @@ onBeforeUnmount(() => {
         >
         <template v-else
           ><p class="panel-hint">
-            写下工作背景，生成可预览的 AGENTS.md。兼容能读取此文件约定的 Agent。
+            工作区助手约定
           </p>
           <label
             >工作背景<textarea
@@ -217,10 +218,10 @@ onBeforeUnmount(() => {
               class="agent-preview"
               readonly
               :value="draft"
-              aria-label="AGENTS.md 生成预览"
+              aria-label="助手约定生成预览"
             /></label
           ><button class="primary-button" :disabled="busy" @click="createGuide">
-            创建 AGENTS.md
+            创建助手约定
           </button></template
         >
       </div>

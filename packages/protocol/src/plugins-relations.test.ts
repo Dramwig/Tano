@@ -62,3 +62,20 @@ it('preserves uninstalled plugin relations and extra fields, but validates new e
     parseRelations(JSON.stringify({ version: 1, relations: [rows[0], rows[0]] })),
   ).toThrow();
 });
+it('retains historical project relations while rejecting new project endpoints and relation types', () => {
+  const legacy: WorkspaceRelation[] = [
+    { id: 'c00001', type: 'member', source: alice, target: project, custom: 'preserved' },
+    { id: 'c00002', type: 'contains', source: project, target: task },
+  ];
+  expect(coreRelationTypes.map((type) => type.type)).not.toContain('member');
+  expect(coreRelationTypes.map((type) => type.type)).not.toContain('contains');
+  expect(parseRelations(JSON.stringify({ version: 1, relations: legacy })).relations).toEqual(legacy);
+  expect(new RelationIndex(legacy).traverse(alice, 2)).toEqual([project, task]);
+  for (const row of legacy) expect(() => validateRelation(row, coreRelationTypes)).toThrow();
+  for (const row of rows.slice(1))
+    expect(() => validateRelation(row, coreRelationTypes)).toThrow('项目对象已停用');
+  const plugin = bundledObjectPlugins[0]!;
+  expect(() => parseObjectPlugin(JSON.stringify({ ...plugin, relationTypes: [
+    { type: 'research.links', label: '关联项目', sourceTypes: ['research.paper'], targetTypes: ['project'] },
+  ] }))).toThrow('端点');
+});

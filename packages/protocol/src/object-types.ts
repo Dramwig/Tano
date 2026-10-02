@@ -13,12 +13,13 @@ export interface ObjectTypeDefinition {
   storage: 'record' | 'resource';
   /** Retained for existing files and references; not offered for new objects. */
   legacy?: boolean;
+  /** Compatibility metadata only; excluded from available types and all mutations. */
+  retired?: boolean;
   plugin?: string;
   fields: readonly ObjectField[];
 }
 export const coreObjectTypes: readonly ObjectTypeDefinition[] = [
   { type: 'task', label: '任务（旧版）', level: 2, category: 'core', storage: 'record', legacy: true, fields: [] },
-  { type: 'project', label: '项目', level: 2, category: 'core', storage: 'record', fields: [] },
   { type: 'person', label: '人物', level: 2, category: 'core', storage: 'record', fields: [] },
   { type: 'document', label: '文档', level: 2, category: 'core', storage: 'resource', fields: [] },
   {
@@ -48,6 +49,12 @@ export const validObjectType = (type: unknown): type is string =>
   typeof type === 'string' &&
   /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/.test(type) &&
   type.length <= 80;
+const retiredObjectTypes = new Map<string, ObjectTypeDefinition>([
+  ['project', Object.freeze({
+    type: 'project', label: '项目（旧版）', level: 2, category: 'core', storage: 'record',
+    legacy: true, retired: true, fields: Object.freeze([]),
+  })],
+]);
 export class ObjectTypeRegistry {
   private definitions = new Map(coreObjectTypes.map((definition) => [definition.type, definition]));
   private listeners = new Set<() => void>();
@@ -55,7 +62,7 @@ export class ObjectTypeRegistry {
     return [...this.definitions.values()];
   }
   get(type: string) {
-    return this.definitions.get(type);
+    return this.definitions.get(type) ?? retiredObjectTypes.get(type);
   }
   subscribe(listener: () => void) {
     this.listeners.add(listener);
@@ -148,6 +155,8 @@ export function validateObjectProperties(
 ) {
   const definition = registry.get(type);
   if (!definition) throw new Error(`类型 ${type} 未启用，请先注册对应领域插件；原文件已保留`);
+  if (definition.retired)
+    throw new Error('项目对象已停用；请使用工作区文件夹和 Markdown 文档组织项目，旧记录只读保留');
   if (definition.storage !== 'record')
     throw new Error('文档和资产来自工作区文件，不创建重复内容对象');
   for (const field of definition.fields) {

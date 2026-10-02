@@ -8,6 +8,7 @@ import type {
   CommentFile,
   CommentKind,
   CommentMessage,
+  CommentMention,
   CommentThread,
   WorkspaceAdapter,
 } from '@tano/protocol';
@@ -21,15 +22,16 @@ export interface CommentMessageRemoval {
 }
 const pendingWrites = new WeakMap<WorkspaceAdapter, Map<string, Promise<unknown>>>();
 export type CommentChange =
-  | { type: 'start'; id: string; body: string; author: CommentAuthor; anchor?: CommentAnchor }
-  | { type: 'reply'; threadId: string; id: string; body: string; author: CommentAuthor }
+  | { type: 'start'; id: string; body: string; author: CommentAuthor; anchor?: CommentAnchor; mentions?: CommentMention[] }
+  | { type: 'reply'; threadId: string; id: string; body: string; author: CommentAuthor; replyTo?: string; mentions?: CommentMention[] }
   | { type: 'resolve'; threadId: string; resolved: boolean }
   | ({ type: 'edit'; threadId: string; authorId: string } & CommentMessageEdit)
   | ({ type: 'delete'; threadId: string; authorId: string } & CommentMessageRemoval)
   | { type: 'reanchor'; threadId: string; expectedBaseHash: string; anchor: CommentAnchor | null };
 
-function message(id: string, body: string, author: CommentAuthor): CommentMessage {
-  return { id, body: body.trim(), authorId: author.id, authorName: author.name, createdAt: Date.now() };
+function message(id: string, body: string, author: CommentAuthor, mentions?: CommentMention[], replyTo?: string): CommentMessage {
+  return { id, body: body.trim(), authorId: author.id, authorName: author.name, createdAt: Date.now(),
+    ...(mentions?.length ? { mentions } : {}), ...(replyTo ? { replyTo } : {}) };
 }
 
 /** Each edit is reapplied to the newest file, so independent replies survive a CAS conflict. */
@@ -42,7 +44,7 @@ export function applyCommentChange(file: CommentFile, change: CommentChange): Co
     if (next.kind === 'discussion' && change.anchor) throw new Error('整篇讨论不需要局部锚点');
     const createdAt = Date.now();
     next.threads.push({ id: change.id, ...(change.anchor ? { anchor: change.anchor } : {}),
-      messages: [message(change.id, change.body, change.author)], resolved: false,
+      messages: [message(change.id, change.body, change.author, change.mentions)], resolved: false,
       detached: false, createdAt });
   } else {
     const thread = next.threads.find(item => item.id === change.threadId);
@@ -51,7 +53,7 @@ export function applyCommentChange(file: CommentFile, change: CommentChange): Co
     if (change.type === 'reply') {
       if (thread.messages.some(item => item.id === change.id)) return next;
       if (!change.body.trim()) throw new Error('请输入回复内容');
-      thread.messages.push(message(change.id, change.body, change.author));
+      thread.messages.push(message(change.id, change.body, change.author, change.mentions, change.replyTo));
     } else if (change.type === 'resolve') thread.resolved = change.resolved;
     else if (change.type === 'edit' || change.type === 'delete') {
       const index = thread.messages.findIndex(item => item.id === change.messageId);
@@ -63,6 +65,7 @@ export function applyCommentChange(file: CommentFile, change: CommentChange): Co
       if (change.type === 'edit') {
         if (!change.body.trim()) throw new Error('请输入评论内容');
         current.body = change.body.trim();
+        current.mentions = current.mentions?.filter(item => current.body.includes(item.text));
         current.updatedAt = Date.now();
       } else if (index === 0) {
         if (!change.expectedMessages || change.expectedMessages.length !== thread.messages.length ||
@@ -70,7 +73,10 @@ export function applyCommentChange(file: CommentFile, change: CommentChange): Co
               item.body !== change.expectedMessages![i]?.body))
           throw new Error('评论或回复已变化，请刷新后重新确认删除');
         next.threads = next.threads.filter(item => item.id !== thread.id);
-      } else thread.messages.splice(index, 1);
+      } else {
+        thread.messages.splice(index, 1);
+        for (const item of thread.messages) if (item.replyTo === change.messageId) delete item.replyTo;
+      }
     }
     else {
       if (!thread.anchor || thread.anchor.baseHash !== change.expectedBaseHash)

@@ -1,9 +1,11 @@
 import { getActivePinia } from 'pinia';
 import type { Pinia } from 'pinia';
 import type { Component } from 'vue';
-import type { WorkspaceAdapter } from '@tano/protocol';
+import type { WorkspaceAdapter, AssistantTransport, WorkspaceObject } from '@tano/protocol';
 import type { EditorExtension } from '@tano/editor/extension';
 import type { ObjectStorage } from './workspace-objects';
+import type { CommentAuthor } from './workspace-comments';
+import type { AttachmentService } from './attachments';
 
 export interface WorkbenchActions {
   closeMenus(): void;
@@ -39,12 +41,22 @@ export interface WorkbenchViewActions {
 export interface WorkbenchView extends WorkbenchViewTab {
   component: Component;
   sidebar?: Component;
+  /** Optional control rendered in the workspace sidebar header. */
+  header?: Component;
   overlay?: Component;
+}
+export interface WorkbenchObjectDetailsProps {
+  workspaceId: string;
+  object: WorkspaceObject;
+  disabled: boolean;
 }
 export interface WorkbenchExtensions {
   editing: EditingSession;
   regions: Record<string, Component>;
   views?: readonly WorkbenchView[];
+  /** Receives WorkbenchObjectDetailsProps for a saved workspace object. */
+  objectDetails?: Component;
+  commentAuthor?: () => CommentAuthor;
   settingsPages?: SettingsPage[];
   historyView?: Component;
   readonly historyEnabled?: boolean;
@@ -54,7 +66,9 @@ export interface WorkbenchExtensions {
 }
 export interface WorkbenchRuntime {
   adapter: WorkspaceAdapter;
+  attachments?: AttachmentService;
   personalPlans?: ObjectStorage;
+  assistant?: AssistantTransport;
   native: boolean;
   mobile: boolean;
   extensions?: () => WorkbenchExtensions;

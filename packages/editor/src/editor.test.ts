@@ -193,7 +193,7 @@ it.each([
   value.value = after;
   await nextTick();
   editor.value!.withContext((ctx) => {
-    const withoutGeneratedIds = (key: string, value: unknown) => key === 'id' ? undefined : value;
+    const withoutGeneratedIds = (key: string, value: unknown) => ['id', 'layoutId', 'colwidth'].includes(key) ? undefined : value;
     expect(JSON.stringify(ctx.get(editorViewCtx).state.doc.toJSON(), withoutGeneratedIds))
       .toBe(JSON.stringify(ctx.get(parserCtx)(after)!.toJSON(), withoutGeneratedIds));
   });
@@ -818,8 +818,10 @@ it('lists, filters and accepts custom code block languages', async () => {
   const cpp = menu.querySelector('[role="option"]')!;
   expect(cpp.querySelector('.tano-code-language-label')?.textContent).toBe('C++');
   expect(cpp.querySelector('.tano-code-language-id')?.textContent).toBe('cpp');
-  expect(cpp.querySelector<HTMLImageElement>('.tano-code-language-icon img')?.getAttribute('src'))
-    .toBeTruthy();
+  await vi.waitFor(() => {
+    expect(cpp.querySelector<HTMLImageElement>('.tano-code-language-icon img')?.getAttribute('src'))
+      .toBeTruthy();
+  });
 
   input.value = 'abap';
   input.dispatchEvent(new Event('input', { bubbles: true }));

@@ -41,7 +41,7 @@ const client = connections[0].client;
 try {
   await Promise.all(connections.map(({ client, transport }) => client.connect(transport)));
   const tools = await client.listTools();
-  assert.equal(tools.tools.length, 4);
+  assert.equal(tools.tools.length, 8);
   const create = await client.callTool({
     name: 'tano_create_document',
     arguments: { path: 'Shared.md', content: '# Shared\n\nFirst\n' },

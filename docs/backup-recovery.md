@@ -4,6 +4,6 @@ English | [中文](zh/backup-recovery.md) | [日本語](ja/backup-recovery.md) |
 
 Back up Markdown files, attachments, and the entire `.tano/` directory together. The workspace UUID, file identities, objects, relations, and rules are portable source data, not disposable cache.
 
-The native core keeps metadata snapshots in application data. If a known workspace loses its identity, ordinary opening and writing stop. Use the recovery flow to preview and confirm restoration instead of assigning a new UUID. A full export includes document content and application data; import verifies byte digests and will not overwrite an existing destination.
+Tano does not create automatic workspace backups or provide workspace archive import, export, or restoration. If a workspace folder is deleted outside Tano, opening it fails; Tano does not recreate the folder or recover its contents. Use your own backup tool, version control, or the operating system's recycle bin for recovery.
 
-Draft journals also live in application data. External file changes still go through base-hash comparison, three-way merge, and conflict preservation. A failed recovery retains its data and records. Local snapshots are useful for recovery, but keep a separate backup on another device or medium.
+If an existing workspace loses its identity metadata, opening or writing stops to avoid changing file identities. Draft journals live in application data and preserve unsaved edits across application restarts; they are not a backup of the workspace. External file changes still go through base-hash comparison, three-way merge, and conflict preservation.

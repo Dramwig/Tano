@@ -169,16 +169,16 @@ it('keeps removed domain references visible and inert without enabling them as c
   expect(errors).toEqual([]);
 });
 it('binds the chosen same-name target and creates a card through the block command', async () => {
-  const { value, editor, errors } = await mount();
+  const { value, editor, errors } = await mount('', false, [targets[0]!, { ...targets[1]!, type: 'event' }]);
   editor.value!.command('reference');
   await nextTick();
   expect(root.querySelectorAll('[role=option]')).toHaveLength(2);
   (
     Array.from(root.querySelectorAll('[role=option]')).find((node) =>
-      node.textContent?.includes('项目'),
+      node.textContent?.includes('事件'),
     ) as HTMLButtonElement
   ).click();
-  await vi.waitFor(() => expect(value.value).toContain('[@Alice](object://project/b00002)'));
+  await vi.waitFor(() => expect(value.value).toContain('[@Alice](object://event/b00002)'));
   editor.value!.command('object-reference');
   await nextTick();
   (root.querySelector('[role=option]') as HTMLButtonElement).click();

@@ -10,8 +10,10 @@ import {
   undo,
   undoDepth,
 } from '@codemirror/commands';
-import { Compartment, EditorState, StateField, Transaction } from '@codemirror/state';
+import { Compartment, EditorState, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { Decoration, EditorView, keymap } from '@codemirror/view';
+import type { CommentAnchor } from '@tano/protocol';
+import type { CommentGeometry } from '@tano/editor/comment-projection';
 import { sourceStyleRanges } from '@tano/editor/source-highlight';
 import { splitFrontmatter } from '@tano/editor/syntax';
 
@@ -19,6 +21,7 @@ const props = defineProps<{
   modelValue: string;
   readonly: boolean;
   localNative: boolean;
+  commentAnchors?: readonly { id: string; anchor: CommentAnchor }[];
 }>();
 const emit = defineEmits<{
   'update:modelValue': [value: string];
@@ -27,6 +30,7 @@ const emit = defineEmits<{
 
 const host = ref<HTMLElement>();
 const readonlyMode = new Compartment();
+const refreshCommentMarks = StateEffect.define<void>();
 let view: EditorView | undefined;
 let applyingModel = false;
 
@@ -35,7 +39,8 @@ const sourceStyles = StateField.define({
     return decorations(state.doc.toString());
   },
   update(current, transaction) {
-    return transaction.docChanged ? decorations(transaction.state.doc.toString()) : current;
+    return transaction.docChanged || transaction.effects.some(effect => effect.is(refreshCommentMarks))
+      ? decorations(transaction.state.doc.toString()) : current;
   },
   provide: (field) => EditorView.decorations.from(field),
 });
@@ -49,6 +54,13 @@ function decorations(markdown: string) {
     }
     return marks;
   });
+  for (const { id, anchor } of props.commentAnchors ?? []) {
+    if (anchor.basis !== 'source' ||
+        anchor.spans.some(span => markdown.slice(span.from, span.to) !== span.text)) continue;
+    for (const span of anchor.spans)
+      ranges.push(Decoration.mark({ class: 'cm-comment-mark', attributes: { 'data-comment-id': id } })
+        .range(span.from, span.to));
+  }
   return Decoration.set(ranges, true);
 }
 
@@ -126,6 +138,47 @@ watch(
       ]),
     }),
 );
+watch(() => props.commentAnchors, () => view?.dispatch({ effects: refreshCommentMarks.of() }), { deep: true });
+function commentSelection() {
+  if (!view) return null;
+  const range = view.state.selection.main;
+  const line = view.state.doc.lineAt(range.head);
+  const from = range.empty ? line.from : range.from;
+  const to = range.empty ? line.to : range.to;
+  if (from === to || !view.state.doc.sliceString(from, to).trim()) return null;
+  const text = view.state.doc.toString();
+  return { text, spans: [{ from, to, text: text.slice(from, to) }] };
+}
+function focusComment(anchor: CommentAnchor) {
+  if (!view || anchor.basis !== 'source' || !anchor.spans.length) return false;
+  const span = anchor.spans[0]!;
+  if (view.state.doc.sliceString(span.from, span.to) !== span.text) return false;
+  view.dispatch({ selection: { anchor: span.from, head: span.to }, scrollIntoView: true });
+  view.focus();
+  return true;
+}
+function commentGeometry(anchors = props.commentAnchors ?? []): CommentGeometry | null {
+  if (!view) return null;
+  const blocks = new Map<number, { key: string; ids: string[]; top: number; bottom: number }>();
+  const text = view.state.doc.toString();
+  for (const { id, anchor } of anchors) {
+    if (anchor.basis !== 'source' || anchor.spans.some(span => text.slice(span.from, span.to) !== span.text)) continue;
+    for (const span of anchor.spans) {
+      const first = view.state.doc.lineAt(span.from).number;
+      const last = view.state.doc.lineAt(span.to - 1).number;
+      for (let number = first; number <= last; number++) {
+        const line = view.state.doc.line(number);
+        const start = view.coordsAtPos(line.from), end = view.coordsAtPos(line.to);
+        if (!start || !end) continue;
+        const block = blocks.get(line.from) ?? { key: String(line.from), ids: [], top: start.top, bottom: end.bottom };
+        if (!block.ids.includes(id)) block.ids.push(id);
+        blocks.set(line.from, block);
+      }
+    }
+  }
+  const rect = view.contentDOM.getBoundingClientRect();
+  return { left: rect.left, right: rect.right, blocks: [...blocks.values()].sort((a, b) => a.top - b.top) };
+}
 function cursor() {
   return view?.state.selection.main.head ?? 0;
 }
@@ -195,6 +248,10 @@ function insertBlockAtStart() {
 }
 
 defineExpose({
+  assistantSelection: () => view?.state.selection.main.empty ? null : commentSelection(),
+  commentSelection,
+  focusComment,
+  commentGeometry,
   cursor,
   focus,
   insertText,

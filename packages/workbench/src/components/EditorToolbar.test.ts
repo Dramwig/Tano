@@ -507,8 +507,49 @@ it('ignores handle clicks and waits for the next text selection after a body dro
   expect(value.value).toBe('正文文字\n');
 });
 
-it('keeps side tools available without a selection and offers all other placements in the menu', async () => {
+it.each(['left', 'right'] as const)('shows %s tools only while the editor or toolbar owns focus', async (mode) => {
+  const { value } = await mount('正文文字\n', mode);
+  expect(document.querySelector('.selection-toolbar')).toBeNull();
+  const paragraph = root.querySelector('.ProseMirror p')!;
+  const content = root.querySelector<HTMLElement>('.ProseMirror')!;
+  await selectText(paragraph, 2, 2);
+  await expectFloating();
+  expect(floatingButton('块级类型')).not.toBeNull();
+  content.blur();
+  await vi.waitFor(() => expect(document.querySelector('.selection-toolbar')).toBeNull());
+  await selectText(paragraph, 0, 2);
+  await expectFloating();
+  await click(floatingButton('链接'));
+  const input = document.querySelector<HTMLInputElement>('.selection-toolbar input')!;
+  expect(document.activeElement).toBe(input);
+  window.getSelection()!.removeAllRanges();
+  document.dispatchEvent(new Event('selectionchange'));
+  await expectFloating();
+  input.value = 'https://example.com';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  await nextTick();
+  expect(value.value).toContain('[正文](https://example.com)文字');
+  await expectFloating();
+  const outside = document.createElement('button');
+  root.append(outside);
+  outside.focus();
+  await vi.waitFor(() => expect(document.querySelector('.selection-toolbar')).toBeNull());
+  content.focus();
+  await expectFloating();
+  window.dispatchEvent(new Event('blur'));
+  window.dispatchEvent(new Event('resize'));
+  await vi.waitFor(() => expect(document.querySelector('.selection-toolbar')).toBeNull());
+  await new Promise(resolve => setTimeout(resolve, 35));
+  expect(document.querySelector('.selection-toolbar')).toBeNull();
+  window.dispatchEvent(new Event('focus'));
+  await expectFloating();
+});
+
+it('offers all other placements in the side menu while editing', async () => {
   const { toolbarMode, source, readonly, value } = await mount('正文文字\n', 'left');
+  expect(document.querySelector('.selection-toolbar')).toBeNull();
+  await selectText(root.querySelector('.ProseMirror p')!, 0, 0);
   await expectFloating();
   expect(floatingButton('块级类型')).not.toBeNull();
   await click(floatingButton('更多格式'));
@@ -526,4 +567,54 @@ it('keeps side tools available without a selection and offers all other placemen
   await nextTick();
   expect(document.querySelector('.selection-toolbar')).toBeNull();
   expect(value.value).toBe('正文文字\n');
+});
+
+it('disables a fading toolbar and keeps a reopened toolbar when the previous exit finishes', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'animate');
+  const nativeAnimations: { onfinish: (() => void) | null; cancel: ReturnType<typeof vi.fn> }[] = [];
+  Object.defineProperty(Element.prototype, 'animate', {
+    configurable: true,
+    value: vi.fn(() => {
+      const animation = {
+        onfinish: null as (() => void) | null,
+        cancel: vi.fn(),
+        playState: 'running',
+        playbackRate: 1,
+        currentTime: 0,
+      };
+      nativeAnimations.push(animation);
+      return animation;
+    }),
+  });
+  const finishAnimations = () => nativeAnimations.splice(0).forEach(animation => animation.onfinish?.());
+  try {
+    const { value } = await mount('正文文字\n', 'left');
+    const content = root.querySelector<HTMLElement>('.ProseMirror')!;
+    await selectText(root.querySelector('.ProseMirror p')!, 0, 2);
+    await expectFloating();
+    finishAnimations();
+    await nextTick();
+    const outgoing = document.querySelector('.selection-toolbar')!;
+    const bold = floatingButton('粗体');
+    content.blur();
+    await vi.waitFor(() => expect(outgoing.hasAttribute('inert')).toBe(true));
+    expect(outgoing.getAttribute('aria-hidden')).toBe('true');
+    expect(outgoing.isConnected).toBe(true);
+    await click(bold);
+    expect(value.value).toBe('正文文字\n');
+    content.focus();
+    await vi.waitFor(() => expect(document.querySelector('.selection-toolbar:not([inert])')).not.toBeNull());
+    const reopened = document.querySelector('.selection-toolbar:not([inert])')!;
+    finishAnimations();
+    await nextTick();
+    expect(reopened.isConnected).toBe(true);
+    expect(reopened.hasAttribute('inert')).toBe(false);
+    content.blur();
+    await vi.waitFor(() => expect(reopened.hasAttribute('inert')).toBe(true));
+    finishAnimations();
+    await vi.waitFor(() => expect(document.querySelector('.selection-toolbar')).toBeNull());
+  } finally {
+    if (descriptor) Object.defineProperty(Element.prototype, 'animate', descriptor);
+    else Reflect.deleteProperty(Element.prototype, 'animate');
+  }
 });

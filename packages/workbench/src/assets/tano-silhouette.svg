@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="320 260 625 720">
+  <defs>
+    <mask id="back" maskUnits="userSpaceOnUse" x="320" y="260" width="625" height="720">
+      <rect x="320" y="260" width="625" height="720" fill="white"/>
+      <path d="M343 545c0-65 38-119 97-150l205-108c33-18 66 3 66 40v318c0 64-35 110-96 142l-147 76c-37 19-54 47-47 77l-36-24c-28-18-42-44-42-76z" fill="black" stroke="black" stroke-width="18"/>
+    </mask>
+  </defs>
+  <path d="m711 461 162-66c23-9 46 7 46 32v315c0 64-35 108-92 127l-292 91c-44 14-88 1-114-20-7-30 10-58 47-77l147-76c61-32 96-78 96-142z" mask="url(#back)"/>
+  <path d="M343 545c0-65 38-119 97-150l205-108c33-18 66 3 66 40v318c0 64-35 110-96 142l-147 76c-37 19-54 47-47 77l-36-24c-28-18-42-44-42-76z"/>
+</svg>

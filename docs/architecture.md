@@ -12,7 +12,21 @@ Markdown files are the source of truth. The editor and headless codec share the 
 
 Each save compares the file with a base hash. Independent external changes can be merged; overlapping edits preserve both versions for review. There is a small race window between the final hash check and atomic replacement when another process does not coordinate with Tano.
 
-Workspace identity is independent of file paths. The workspace UUID, short file IDs, and ID reservations travel with `.tano/identities.json`. Objects, relations, and rules also live under `.tano/`. SQLite indexes, drafts, and recovery state stay in application data outside the workspace. Tano does not follow symlinks outside the selected workspace.
+Workspace identity is independent of file paths. The workspace UUID, short file IDs, and ID reservations travel with `.tano/identities.json`. Objects, relations, and rules also live under `.tano/`. SQLite indexes, drafts, and session state stay in application data outside the workspace. Tano does not follow symlinks outside the selected workspace.
+
+## Table layout
+
+GFM tables remain ordinary Markdown. Column widths are integer CSS pixels, persisted separately in `.tano/document-layout/<fileId>.tano.json` using the stable document identity. Tables use the sum of their column widths, with horizontal scrolling when they exceed the editor width. The default column width is 160 px and the minimum is 48 px. Layout-only edits never rewrite Markdown.
+
+Hover controls select entire rows or columns and offer insertion, duplication, clearing, deletion, and a color submenu with separate text and background groups. Dragging a control reorders its row or column in one undoable transaction. Structural operations preserve GFM's single header and at least one body row. Optional cell text and background colors are stored as palette-key matrices alongside column widths; widths and colors move with their cells and do not enter Markdown.
+
+Editor table identities survive in-session edits and moves. On reopen or external reparsing, layout restoration requires an unambiguous table content/context match; ambiguous or changed tables use default widths while unmatched records are retained. Layout writes compare a base hash, merge independent table edits, and preserve conflicting local layouts under `.tano/conflicts/`. Copying only a Markdown file does not carry its layout.
+
+## Project organization
+
+Projects are organized with ordinary workspace folders and Markdown documents. A project overview is a user document and uses its existing stable document ID; folder paths organize files, not project identities or permissions. There is no built-in `project` object or project-specific `member` / `contains` relationship. Workspace membership and access control remain separate from content organization.
+
+Historical `project` JSON files, IDs, properties, and relations are preserved without automatic conversion. Existing `object://project/<id>` links still open a read-only compatibility record. Projects are excluded from new object creation, copies, reference suggestions, and new relation endpoints. Task/event records, calendar synchronization, and person responsibility relations retain their existing model.
 
 ## Planning events
 

@@ -4,6 +4,7 @@ import { createApp, defineComponent, h, nextTick, ref } from 'vue';
 import type { App } from 'vue';
 import SettingsPanel from './SettingsPanel.vue';
 import type { EditorPreferences } from '@tano/editor/runtime';
+import { parsePageTitleSource, type PageTitleSource } from '../page-title-source';
 
 vi.mock('./UpdatePanel.vue', () => ({
   default: { template: '<div class="update-panel-stub">应用更新</div>' },
@@ -18,6 +19,7 @@ let theme = ref<'light' | 'dark' | 'system'>('system');
 let visualFontChoice = ref<'system' | 'serif' | 'mono' | 'custom'>('system');
 let customFontName = ref('');
 let showPageTitle = ref(true);
+let pageTitleSource = ref<PageTitleSource>(parsePageTitleSource(''));
 let visualFontSize = ref(16);
 let sourceFontSize = ref(14);
 let toolbarMode = ref<'selection' | 'fixed' | 'left' | 'right'>('selection');
@@ -39,6 +41,7 @@ beforeEach(() => {
   visualFontChoice = ref('system');
   customFontName = ref('');
   showPageTitle = ref(true);
+  pageTitleSource = ref(parsePageTitleSource(''));
   visualFontSize = ref(16);
   sourceFontSize = ref(14);
   toolbarMode = ref('selection');
@@ -58,6 +61,7 @@ beforeEach(() => {
         revealMarkdown: revealMarkdown.value,
         toolbarMode: toolbarMode.value,
         showPageTitle: showPageTitle.value,
+        pageTitleSource: pageTitleSource.value,
         visualFontSize: visualFontSize.value,
         sourceFontSize: sourceFontSize.value,
         historyEnabled: true,
@@ -69,6 +73,7 @@ beforeEach(() => {
         'onUpdate:visualFontChoice': (value: 'system' | 'serif' | 'mono' | 'custom') => { visualFontChoice.value = value; },
         'onUpdate:customFontName': (value: string) => { customFontName.value = value; },
         'onUpdate:showPageTitle': (value: boolean) => { showPageTitle.value = value; },
+        'onUpdate:pageTitleSource': (value: PageTitleSource) => { pageTitleSource.value = value; },
         'onUpdate:editorPreferences': (value: EditorPreferences) => preferenceUpdates.push(value),
         'onUpdate:visualFontSize': (value: number) => { visualFontSize.value = value; },
         'onUpdate:sourceFontSize': (value: number) => { sourceFontSize.value = value; },
@@ -169,6 +174,29 @@ it('keeps the page title preference in sync with its current value', async () =>
   showPageTitle.value = true;
   await nextTick();
   expect(toggle.getAttribute('aria-checked')).toBe('true');
+});
+
+it('selects the page title source independently of title visibility', async () => {
+  await openPage('外观设置');
+  const select = root.querySelector<HTMLSelectElement>('[aria-label="页面标题来源"]')!;
+  expect(select.value).toBe('frontmatter-first');
+  expect([...select.options].map(option => option.textContent)).toEqual(['文件名', 'YAML title', 'YAML title 优先']);
+  select.value = 'frontmatter';
+  select.dispatchEvent(new Event('change'));
+  await nextTick();
+  expect(pageTitleSource.value).toBe('frontmatter');
+  select.value = 'frontmatter-first';
+  select.dispatchEvent(new Event('change'));
+  await nextTick();
+  expect(pageTitleSource.value).toBe('frontmatter-first');
+  root.querySelector<HTMLButtonElement>('[aria-label="页面内标题"]')!.click();
+  await nextTick();
+  expect(select.disabled).toBe(false);
+  expect(select.value).toBe('frontmatter-first');
+  select.value = 'filename';
+  select.dispatchEvent(new Event('change'));
+  await nextTick();
+  expect(pageTitleSource.value).toBe('filename');
 });
 
 it('adjusts each editor font size independently and restores its default', async () => {

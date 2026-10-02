@@ -8,12 +8,13 @@ import type { CapabilityPatch } from './workspace-capabilities';
 import type { ThemePreference } from './theme';
 import type { VisualFontChoice } from './editor-font';
 import type { ToolbarMode } from './toolbar-preference';
+import type { PageTitleSource } from './page-title-source';
 import type { UpdateCandidate, UpdatePhase, UpdateProgress, UpdateStatus } from './updates/controller';
 
 export type SettingsPageId = 'preferences' | 'appearance' | 'editing' | 'workspace' | 'about';
 export type SettingsAction =
   'open-folder' | 'switch-mode' | 'reveal' | 'agent' | 'history' | 'recycle' |
-  'backup' | 'export' | 'import' | 'sign-out';
+  'sign-out';
 
 export interface SettingsValues {
   defaultSource: boolean;
@@ -23,6 +24,7 @@ export interface SettingsValues {
   revealMarkdown: boolean;
   toolbarMode: ToolbarMode;
   showPageTitle: boolean;
+  pageTitleSource: PageTitleSource;
   visualFontSize: number;
   sourceFontSize: number;
   editorPreferences: EditorPreferences;
