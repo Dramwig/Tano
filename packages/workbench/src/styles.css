@@ -708,6 +708,11 @@ button:hover {
   background: var(--sidebar);
   box-shadow: inset 0 -1px var(--line);
 }
+.workspace-tabbar > .graph-sidebar-toggle {
+  align-self: center;
+  flex: 0 0 30px;
+  margin: 0 4px;
+}
 .topbar-navigation {
   display: flex;
   align-items: center;
@@ -1169,7 +1174,8 @@ button:hover {
 .dropdown button:disabled:hover {
   background: transparent;
 }
-.compact-action-menu {
+.compact-action-menu,
+.tano-editor-panel.compact-action-menu {
   width: 184px;
   max-width: calc(100vw - 16px);
   padding: 4px 6px;
@@ -2237,45 +2243,40 @@ button:hover {
 .tano-editor-panel.tano-table-color-menu {
   position: fixed;
   z-index: 60;
-  width: 240px;
   max-width: var(--tano-panel-available-width, calc(100vw - 16px));
   max-height: var(--tano-panel-available-height, calc(100vh - 16px));
   overflow: auto;
   box-sizing: border-box;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px;
   background: var(--paper);
   color: var(--text);
-  box-shadow: 0 6px 24px #00000018;
   pointer-events: auto;
-  font-size: 13px;
+  font-size: 12px;
 }
 .tano-table-menu-item {
   display: flex;
   width: 100%;
   align-items: center;
-  gap: 10px;
-  padding: 7px 8px;
   border: 0;
-  border-radius: 4px;
   background: transparent;
-  color: var(--text);
   text-align: left;
-  font: inherit;
   cursor: pointer;
 }
 .tano-table-menu-item > span { display: flex; flex: none; }
-.tano-table-menu-item:is(:hover, :focus-visible) { background: var(--surface); outline: none; }
+.tano-table-menu-item:is(:hover, :focus-visible) { background: var(--hover); outline: none; }
 .tano-table-menu-item.is-danger { color: var(--danger, #c44040); }
 .tano-table-menu-item > .tano-table-menu-trailing { margin-left: auto; }
-.tano-editor-panel.tano-table-color-menu { z-index: 61; width: 220px; }
+.tano-table-alignment { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding-bottom: 4px; margin-bottom: 3px; border-bottom: 1px solid var(--line); }
+.compact-action-menu .tano-table-alignment-option { display: flex; align-items: center; justify-content: center; height: 26px; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.tano-table-alignment-option > span { display: flex; }
+.tano-table-alignment-option:is(:hover, :focus-visible) { background: var(--hover); outline: none; }
+.compact-action-menu .tano-table-alignment-option[aria-checked='true'] { background: var(--accent); color: var(--green); }
+.compact-action-menu .tano-table-alignment-option:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+.tano-editor-panel.tano-table-color-menu { z-index: 61; }
 .tano-table-color-back[hidden] { display: none; }
 .tano-table-color-back { margin-bottom: 4px; }
-.tano-table-color-title { padding: 5px 8px; color: var(--muted); font-size: 12px; }
-.tano-table-color-group + .tano-table-color-group { border-top: 1px solid var(--line); margin-top: 7px; padding-top: 7px; }
-.tano-table-color-option { padding: 3px 6px; min-height: 29px; }
-.tano-table-color-swatch { box-sizing: border-box; width: 22px; height: 22px; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); color: var(--text); font-size: 16px; }
+.tano-table-color-title { padding: 5px 7px 4px; color: var(--muted); font-size: 11px; }
+.tano-table-color-group + .tano-table-color-group { border-top: 1px solid var(--line); margin-top: 3px; padding-top: 3px; }
+.tano-table-color-swatch { box-sizing: border-box; width: 18px; height: 18px; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); color: var(--text); font-size: 14px; }
 .tano-prose [data-tano-table-color='gray'], .tano-table-color-swatch[data-tano-table-color='gray'] { background-color: color-mix(in srgb, #a1a1aa 22%, var(--paper)); }
 .tano-prose [data-tano-table-color='red'], .tano-table-color-swatch[data-tano-table-color='red'] { background-color: color-mix(in srgb, #f87171 22%, var(--paper)); }
 .tano-prose [data-tano-table-color='yellow'], .tano-table-color-swatch[data-tano-table-color='yellow'] { background-color: color-mix(in srgb, #facc15 22%, var(--paper)); }

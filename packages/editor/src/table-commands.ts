@@ -6,7 +6,7 @@ import type { TableColor } from '@tano/protocol';
 
 export type TableAxis = 'row' | 'column';
 export interface TableTarget { pos: number; axis: TableAxis; index: number }
-export type TableAction = 'before' | 'after' | 'duplicate' | 'clear' | 'delete' | 'color' | 'textColor';
+export type TableAction = 'before' | 'after' | 'duplicate' | 'clear' | 'delete' | 'color' | 'textColor' | 'alignLeft' | 'alignCenter' | 'alignRight';
 
 export function tableLineSelection(doc: Node, target: TableTarget): CellSelection | null {
   const table = doc.nodeAt(target.pos);
@@ -23,6 +23,8 @@ export function tableLineSelection(doc: Node, target: TableTarget): CellSelectio
 
 /** GFM requires exactly one header followed by at least one body row. */
 export function tableLineAction(state: EditorState, target: TableTarget, action: TableAction, color: TableColor | null = null): Transaction | null {
+  const alignment = action === 'alignLeft' ? 'left' : action === 'alignCenter' ? 'center' : action === 'alignRight' ? 'right' : null;
+  if (alignment && target.axis !== 'column') return null;
   const selection = tableLineSelection(state.doc, target);
   if (!selection) return null;
   const table = state.doc.nodeAt(target.pos)!;
@@ -36,10 +38,11 @@ export function tableLineAction(state: EditorState, target: TableTarget, action:
   if (rows.some(row => row.some(cell => cell.attrs.colspan !== 1 || cell.attrs.rowspan !== 1))) return null;
   const empty = (cell: Node) => cell.type.create({ ...cell.attrs, background: null, foreground: null }, state.schema.nodes.paragraph!.create());
   let selected = target.index;
-  if (action === 'clear' || action === 'color' || action === 'textColor') {
+  if (action === 'clear' || action === 'color' || action === 'textColor' || alignment) {
     const tr = closeHistory(state.tr);
     selection.forEachCell((cell, pos) => {
       if (action === 'clear') tr.replaceWith(tr.mapping.map(pos + 1), tr.mapping.map(pos + cell.nodeSize - 1), state.schema.nodes.paragraph!.create());
+      else if (alignment) tr.setNodeMarkup(pos, undefined, { ...cell.attrs, alignment });
       else tr.setNodeMarkup(pos, undefined, { ...cell.attrs, [action === 'textColor' ? 'foreground' : 'background']: color });
     });
     const next = tableLineSelection(tr.doc, target);

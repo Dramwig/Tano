@@ -1,5 +1,5 @@
 import { h, render } from 'vue';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronRight, Copy, Eraser, GripHorizontal, GripVertical, PaintRoller, Plus, Trash2 } from 'lucide-vue-next';
+import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronRight, Copy, Eraser, GripHorizontal, GripVertical, PaintRoller, Plus, Trash2 } from 'lucide-vue-next';
 import type { Component } from 'vue';
 import { Plugin, PluginKey, TextSelection } from '@milkdown/kit/prose/state';
 import type { Node as ProseNode } from '@milkdown/kit/prose/model';
@@ -51,10 +51,10 @@ export function tableControls(readonly: () => boolean) {
       const insertionLine = document.createElement('div');
       insertionLine.className = 'tano-table-insert-line';
       insertionLine.hidden = true;
-      const menu = createEditorPanel('div', 'tano-table-menu', '表格操作');
+      const menu = createEditorPanel('div', 'tano-table-menu compact-action-menu', '表格操作');
       menu.setAttribute('role', 'menu');
       const items = document.createElement('div');
-      const palette = createEditorPanel('div', 'tano-table-color-menu', '表格颜色');
+      const palette = createEditorPanel('div', 'tano-table-color-menu compact-action-menu', '表格颜色');
       palette.setAttribute('role', 'menu');
       const back = document.createElement('button');
       back.type = 'button';
@@ -360,6 +360,37 @@ export function tableControls(readonly: () => boolean) {
         items.replaceChildren();
         if (!selected) return;
         const column = selected.axis === 'column';
+        const deferCloseColors = () => {
+          keepColors();
+          colorCloseTimer = window.setTimeout(closeColors, 150);
+        };
+        if (column) {
+          const alignment = document.createElement('div');
+          alignment.className = 'tano-table-alignment';
+          alignment.setAttribute('role', 'group');
+          alignment.setAttribute('aria-label', '列对齐');
+          const current = new Set<string>();
+          tableLineSelection(view.state.doc, selected)?.forEachCell(cell => current.add(cell.attrs.alignment ?? 'left'));
+          const options: { value: string; label: string; action: TableAction; icon: Component }[] = [
+            { value: 'left', label: '左对齐', action: 'alignLeft', icon: AlignLeft },
+            { value: 'center', label: '居中对齐', action: 'alignCenter', icon: AlignCenter },
+            { value: 'right', label: '右对齐', action: 'alignRight', icon: AlignRight },
+          ];
+          for (const option of options) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'tano-table-alignment-option';
+            button.title = option.label;
+            button.setAttribute('aria-label', option.label);
+            button.setAttribute('role', 'menuitemradio');
+            button.setAttribute('aria-checked', String(current.size === 1 && current.has(option.value)));
+            button.append(icon(option.icon));
+            button.addEventListener('click', () => run(option.action));
+            alignment.append(button);
+          }
+          alignment.addEventListener('pointerenter', deferCloseColors);
+          items.append(alignment);
+        }
         const actions: { label: string; action: TableAction; icon: Component }[] = [
           { label: '颜色', action: 'color', icon: PaintRoller },
           { label: column ? '向左插入列' : '向上插入行', action: 'before', icon: column ? ArrowLeft : ArrowUp },
@@ -383,10 +414,7 @@ export function tableControls(readonly: () => boolean) {
             arrow.className = 'tano-table-menu-trailing';
             button.append(arrow);
             button.addEventListener('pointerenter', event => { if (event.pointerType !== 'touch') openColors(); });
-          } else button.addEventListener('pointerenter', () => {
-            keepColors();
-            colorCloseTimer = window.setTimeout(closeColors, 150);
-          });
+          } else button.addEventListener('pointerenter', deferCloseColors);
           button.addEventListener('click', () => {
             if (action.action === 'color') openColors(true);
             else run(action.action);
@@ -528,6 +556,13 @@ export function tableControls(readonly: () => boolean) {
           const step = event.key === 'ArrowDown' ? 1 : -1;
           const next = index < 0 ? (step === 1 ? 0 : buttons.length - 1) : (index + step + buttons.length) % buttons.length;
           buttons[next]?.focus();
+          event.preventDefault();
+        } else if (!menu.hidden && palette.hidden && (event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
+            document.activeElement?.closest('.tano-table-alignment')) {
+          const buttons = [...items.querySelectorAll<HTMLButtonElement>('.tano-table-alignment-option')];
+          const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+          const step = event.key === 'ArrowRight' ? 1 : -1;
+          buttons[(index + step + buttons.length) % buttons.length]?.focus({ preventScroll: true });
           event.preventDefault();
         } else if (!menu.hidden && event.key === 'ArrowRight' && document.activeElement === colorButton) {
           openColors(true);

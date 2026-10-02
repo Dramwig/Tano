@@ -279,6 +279,58 @@ it('saves text colors independently of backgrounds and Markdown, restores, moves
   expect(tablesInDocument(reopened.view.state.doc)[0]!.layout.foregrounds?.map(row => row[2])).toEqual(['pink', 'pink', 'pink']);
 });
 
+it.each(['left', 'center', 'right'] as const)('switches a column to %s alignment through the menu and persists, undoes, and restores it', async alignment => {
+  const source = markdown.replace('| --- | --- | --- |', '| :--- | --- | ---: |');
+  const { view, value, editor, layouts } = await mount(source);
+  const target = { pos: 0, axis: 'column' as const, index: 1 };
+  view.dispatch(tableLineAction(view.state, target, 'color', 'yellow')!);
+  const original = view.state.doc;
+  const openColumnMenu = () => {
+    measureInsertionTable();
+    root.querySelectorAll('tr')[1]!.children[1]!.dispatchEvent(new MouseEvent('pointermove', {
+      bubbles: true, clientX: 340, clientY: 160,
+    }));
+    root.querySelector<HTMLButtonElement>('.tano-table-grip.is-column')!.click();
+    return [...root.querySelectorAll<HTMLButtonElement>('.tano-table-alignment-option')];
+  };
+  const options = openColumnMenu();
+  expect(options.map(button => button.title)).toEqual(['左对齐', '居中对齐', '右对齐']);
+  expect(options.map(button => button.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false']);
+  options[['left', 'center', 'right'].indexOf(alignment)]!.click();
+  expect(root.querySelector<HTMLElement>('.tano-table-menu')!.hidden).toBe(true);
+  view.state.doc.firstChild!.forEach(row => {
+    expect(row.child(0).attrs.alignment).toBe('left');
+    expect(row.child(1).attrs.alignment).toBe(alignment);
+    expect(row.child(1).attrs.background).toBe('yellow');
+    expect(row.child(2).attrs.alignment).toBe('right');
+  });
+  root.querySelectorAll('tr').forEach(row => expect((row.children[1] as HTMLElement).style.textAlign).toBe(alignment));
+  expect(view.state.selection).toBeInstanceOf(CellSelection);
+  expect((view.state.selection as CellSelection).isColSelection()).toBe(true);
+  expect(view.state.doc.firstChild!.attrs.layoutId).toBe(original.firstChild!.attrs.layoutId);
+  await vi.waitFor(() => expect(value.value).not.toBe(source));
+  const persisted = value.value;
+  const delimiter = persisted.split('\n')[1]!.split('|').map(cell => cell.trim())[2]!;
+  expect(delimiter).toMatch(alignment === 'left' ? /^:-+$/ : alignment === 'center' ? /^:-+:$/ : /^-+:$/);
+  expect(editor.value!.undoLastChange()).toBe(true);
+  expect(view.state.doc.eq(original)).toBe(true);
+  expect(editor.value!.redoLastChange()).toBe(true);
+  await vi.waitFor(() => expect(value.value).toBe(persisted));
+  expect(openColumnMenu().map(button => button.getAttribute('aria-checked')))
+    .toEqual(['left', 'center', 'right'].map(value => String(value === alignment)));
+  const saved = JSON.parse(JSON.stringify(layouts.value)) as TableLayout[];
+  app!.unmount(); root.remove();
+  const reopened = await mount(persisted, saved);
+  reopened.view.state.doc.firstChild!.forEach(row => expect(row.child(1).attrs.alignment).toBe(alignment));
+  expect(tablesInDocument(reopened.view.state.doc)[0]!.layout.widths).toEqual(saved[0]!.widths);
+  expect(tablesInDocument(reopened.view.state.doc)[0]!.layout.backgrounds).toEqual(saved[0]!.backgrounds);
+  measureInsertionTable();
+  root.querySelectorAll('tr')[1]!.children[1]!.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 340, clientY: 160 }));
+  root.querySelector<HTMLButtonElement>('.tano-table-grip.is-row')!.click();
+  expect(root.querySelector('.tano-table-alignment-option')).toBeNull();
+  expect(tableLineAction(reopened.view.state, { ...target, axis: 'row' }, 'alignCenter')).toBeNull();
+});
+
 it('opens all line actions with keyboard navigation and cancels a pending gesture after a document edit', async () => {
   const { view } = await mount();
   for (const element of root.querySelectorAll<HTMLElement>('*'))
@@ -299,6 +351,14 @@ it('opens all line actions with keyboard navigation and cancels a pending gestur
   expect((view.state.selection as CellSelection).isColSelection()).toBe(true);
   expect(menu.querySelector('input')).toBeNull();
   expect(menu.querySelectorAll('[role=menuitem]')).toHaveLength(6);
+  expect(document.activeElement!.getAttribute('aria-label')).toBe('左对齐');
+  document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  expect(document.activeElement!.getAttribute('aria-label')).toBe('居中对齐');
+  document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+  expect(document.activeElement!.getAttribute('aria-label')).toBe('左对齐');
+  document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+  expect(document.activeElement!.getAttribute('aria-label')).toBe('右对齐');
+  document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
   expect(document.activeElement).toBe(menu.querySelector('[role=menuitem]'));
   document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
   const palette = menu.querySelector<HTMLElement>('.tano-table-color-menu')!;
@@ -311,6 +371,9 @@ it('opens all line actions with keyboard navigation and cancels a pending gestur
   expect(menu.hidden).toBe(false);
   expect(document.activeElement).toBe(menu.querySelector('[role=menuitem]'));
   document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+  expect(document.activeElement!.getAttribute('aria-label')).toBe('右对齐');
+  for (let i = 0; i < 3; i++)
+    document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
   expect(document.activeElement!.textContent).toBe('删除列');
   document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   expect(menu.hidden).toBe(true);

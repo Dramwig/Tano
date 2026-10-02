@@ -16,6 +16,7 @@ import {
   Plus,
   Type,
   Bot,
+  MessageSquare,
   X,
 } from 'lucide-vue-next';
 import {
@@ -39,8 +40,9 @@ const props = defineProps<{
   vertical?: boolean;
   dragging?: boolean;
   assistant?: boolean;
+  annotation?: boolean;
 }>();
-const emit = defineEmits<{ command: [name: string, value?: string]; dismiss: []; assistant: [] }>();
+const emit = defineEmits<{ command: [name: string, value?: string]; dismiss: []; assistant: []; annotation: [] }>();
 const root = ref<HTMLElement>();
 const trigger = ref<HTMLButtonElement>();
 const input = ref<HTMLInputElement>();
@@ -321,6 +323,7 @@ function enableEnteringActions(element: Element) {
           class="inline-tools"
         >
           <div class="format-actions inline-actions">
+            <span v-if="compact && primaryInline.length" class="toolbar-divider toolbar-group-divider" aria-hidden="true" />
             <button
               v-for="item in primaryInline"
               :key="item.type"
@@ -428,13 +431,37 @@ function enableEnteringActions(element: Element) {
       </form>
     </template>
     <slot name="trailing" />
-    <button v-if="assistant" type="button" class="icon-button" aria-label="请助手讨论选区" title="与助手讨论选区" @mousedown.prevent @click="emit('assistant')"><Bot :size="16" /></button>
+    <span v-if="(annotation && !source) || assistant" class="toolbar-divider toolbar-group-divider" aria-hidden="true" />
+    <button
+      v-if="annotation && !source"
+      type="button"
+      class="icon-button annotation-create-button"
+      aria-label="添加局部批注"
+      title="批注所选文字或当前块"
+      :disabled="disabled"
+      @mousedown.prevent
+      @click="emit('annotation')"
+    ><MessageSquare :size="17" /></button>
+    <button v-if="assistant" type="button" class="icon-button" aria-label="打开 Tano 助手" title="与助手讨论" @mousedown.prevent @click="emit('assistant')"><Bot :size="16" /></button>
   </div>
 </template>
 
 <style scoped>
 .contextual-toolbar {
   justify-content: flex-start;
+}
+.contextual-toolbar .toolbar-group-divider {
+  display: block;
+  flex-shrink: 0;
+  align-self: center;
+  width: 1px;
+  height: 20px;
+  margin: 0 3px;
+}
+.contextual-toolbar[aria-orientation='vertical'] .toolbar-group-divider {
+  width: 22px;
+  height: 1px;
+  margin: 3px 0;
 }
 .selection-format-toolbar {
   display: flex;

@@ -54,7 +54,6 @@ import {
   MoveHorizontal,
   Undo2,
   Redo2,
-  MessageSquare,
 } from 'lucide-vue-next';
 import MarkdownEditor from '@tano/editor';
 import { defaultEditorPreferences } from '@tano/editor/runtime';
@@ -166,8 +165,6 @@ const sidebarNavigationItems = computed(() => [
   ...extensionViews.filter(view => view.sidebar).map(view => ({ id: view.id, label: view.label })),
 ]);
 const documentToolItems = [
-  { id: 'assistant', label: 'Tano 助手' },
-  { id: 'annotation', label: '局部批注' },
   { id: 'markdown-reveal', label: '光标展开源码' },
   { id: 'source-mode', label: '源码模式' },
   { id: 'attachments', label: '附件' },
@@ -2885,6 +2882,10 @@ watch(activeId, () => {
 
     <div class="main-column">
       <div v-if="workspace && compactPanes && (!native || mobile)" class="workspace-tabbar">
+        <button v-if="!detachedWindow && !sidebar && activeId === GRAPH_TAB_ID"
+          class="icon-button graph-sidebar-toggle" type="button" aria-label="展开侧栏" title="展开侧栏 · Ctrl B" @click="toggleSidebar">
+          <PanelLeftOpen :size="17" />
+        </button>
         <DesktopTabs :file-drag="tabFileDrag" @files-dropped="fileDragEnd" @new-tab="store.createBlankTab()" @new-document="createNewDocument" />
       </div>
 
@@ -2895,6 +2896,10 @@ watch(activeId, () => {
               class="desktop-sidebar-toggle" type="button" aria-label="展开侧栏" title="展开侧栏 · Ctrl B" @click="toggleSidebar">
               <PanelLeftOpen :size="17" />
             </button>
+            <button v-if="(!native || mobile) && !detachedWindow && !sidebar && pane.activeId === GRAPH_TAB_ID"
+              class="icon-button graph-sidebar-toggle" type="button" aria-label="展开侧栏" title="展开侧栏 · Ctrl B" @click="toggleSidebar">
+              <PanelLeftOpen :size="17" />
+            </button>
             <DesktopTabs :pane-id="pane.id" :detachable="native && !mobile" :file-drag="tabFileDrag"
               @files-dropped="fileDragEnd" @new-tab="store.focusPane(pane.id); store.createBlankTab()"
               @new-document="store.focusPane(pane.id); createNewDocument()" @detach-tab="detachTab" />
@@ -2902,7 +2907,7 @@ watch(activeId, () => {
               @mousedown="dragPaneWindow" @dblclick="maximizePaneWindow" />
           </div>
           <ButtonVisibilityGroup
-            v-if="!detachedWindow"
+            v-if="!detachedWindow && pane.activeId !== GRAPH_TAB_ID"
             v-slot="{ isVisible }"
             :items="topbarVisibilityItems(pane.activeId, !!active, pane.id === store.activePaneId)"
             preference-key="tano.preference.documentHiddenTools"
@@ -2952,7 +2957,6 @@ watch(activeId, () => {
             <nav v-if="isVisible('breadcrumb') && pane.activeId !== CALENDAR_TAB_ID" class="breadcrumb" aria-label="当前位置">
               <span class="breadcrumb-workspace"
                 ><BookOpen :size="14" />{{ workspace?.name ?? 'Tano' }}</span
-              ><template v-if="pane.activeId === GRAPH_TAB_ID"><ChevronRight :size="12" /><GitFork :size="14" /><span class="breadcrumb-current">关系图谱</span></template
               ><template v-if="pane.activeId === PLUGINS_TAB_ID"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">插件</span></template
               ><template v-for="view in extensionViews.filter(view => view.id === pane.activeId)" :key="view.id"><ChevronRight :size="12" /><component :is="view.icon" :size="14" /><span class="breadcrumb-current">{{ view.label }}</span></template
               ><template v-for="(part, index) in (active?.path.split('/') ?? [])" :key="index"
@@ -3005,12 +3009,6 @@ watch(activeId, () => {
               </div>
               <template v-if="active">
                 <div v-if="documentToolItems.some(item => isVisible(item.id))" class="document-tool-buttons">
-                  <button v-if="assistant.available && isVisible('assistant')" type="button" class="icon-button" aria-label="打开 Tano 助手" title="与助手讨论" @mousedown.prevent @click="openAssistant(pane.id, active!.id)"><Bot :size="17" /></button>
-                  <button v-if="isVisible('annotation')" type="button" class="icon-button annotation-create-button"
-                    aria-label="添加局部批注" title="批注所选文字或当前块" :disabled="paneReadonly(active!)"
-                    @mousedown.prevent @click="paneComments.get(pane.id)?.beginAnnotation()">
-                    <MessageSquare :size="17" />
-                  </button>
                   <MarkdownRevealToggle
                     v-if="isVisible('markdown-reveal')"
                     v-model="revealMarkdown"
@@ -3199,6 +3197,8 @@ watch(activeId, () => {
                   v-model:mode="toolbarMode"
                   :assistant="assistant.available"
                   @assistant="openAssistant(pane.id, active!.id)"
+                  annotation
+                  @annotation="paneComments.get(pane.id)?.beginAnnotation()"
                   :active="pane.id === store.activePaneId"
                   :editor-element="paneEditorScrolls.get(pane.id)"
                   :features="store.capabilities.features"
@@ -3217,10 +3217,6 @@ watch(activeId, () => {
                       menu-label="文档工具按钮显示设置"
                       @open="closeButtonVisibilityMenus"
                     >
-                      <button v-if="isVisible('annotation')" type="button" class="icon-button annotation-create-button" aria-label="添加局部批注" title="批注所选文字或当前块"
-                        :disabled="paneReadonly(active!)" @mousedown.prevent @click="paneComments.get(pane.id)?.beginAnnotation()">
-                        <MessageSquare :size="17" />
-                      </button>
                       <MarkdownRevealToggle
                         v-if="isVisible('markdown-reveal')"
                         v-model="revealMarkdown"
