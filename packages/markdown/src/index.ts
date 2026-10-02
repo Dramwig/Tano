@@ -1,5 +1,6 @@
 import { diffArrays } from 'diff';
 export * from './diff';
+export * from './text-merge';
 
 type Edit = { start: number; end: number; lines: string[] };
 const lines = (text: string) => text.match(/[^\n]*\n|[^\n]+$/g) ?? [];

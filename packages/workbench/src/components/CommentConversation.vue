@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Bot, Check, MoreHorizontal, Pencil, Reply, RotateCcw, Trash2, UserRound, X } from 'lucide-vue-next';
 import type { CommentMessage, CommentMention, CommentThread } from '@tano/protocol';
 import type { CommentMessageEdit, CommentMessageRemoval } from '../workspace-comments';
 import CommentComposer from './CommentComposer.vue';
 
-const props = defineProps<{ thread: CommentThread; quote?: string; local?: boolean; readonly: boolean; busy: boolean; authorId: string; authorName: string; assistant?: boolean }>();
+const props = defineProps<{ thread: CommentThread; quote?: string; local?: boolean; preview?: boolean; readonly: boolean; busy: boolean; authorId: string; authorName: string; assistant?: boolean }>();
 const emit = defineEmits<{
+  expand: [];
   reply: [body: string, mentions: CommentMention[]];
   'reply-request': [message: CommentMessage];
   resolve: [resolved: boolean];
@@ -15,6 +16,7 @@ const emit = defineEmits<{
   assistant: [];
 }>();
 const reply = ref('');
+const hiddenReplies = computed(() => Math.max(0, props.thread.messages.length - 2));
 const editInput = ref<HTMLTextAreaElement[]>();
 const editing = ref<{ id: string; body: string; base: string }>();
 const menu = ref<HTMLElement>();
@@ -134,8 +136,8 @@ function relativeTime(timestamp: number) {
 </script>
 
 <template>
-  <article class="comment-conversation" :class="{ 'is-local': local }" :data-comment-thread="thread.id">
-    <div v-for="(message, index) in thread.messages" :key="message.id" class="comment-message" :class="{ 'is-reply': index > 0 }">
+  <article class="comment-conversation" :class="{ 'is-local': local, 'is-preview': preview }" :data-comment-thread="thread.id">
+    <div v-for="(message, index) in thread.messages" v-show="!preview || index === 0 || index === thread.messages.length - 1" :key="message.id" class="comment-message" :class="{ 'is-reply': index > 0 }">
       <span class="comment-avatar" :title="message.authorName"><UserRound :size="15" /></span>
       <div class="comment-message-content">
         <div class="comment-message-header">
@@ -160,13 +162,14 @@ function relativeTime(timestamp: number) {
           </div>
         </form>
         <p v-else>{{ message.body }}</p>
+        <button v-if="preview && index === 0 && hiddenReplies" type="button" class="comment-expand-replies" @click="emit('expand')">查看 {{ hiddenReplies }} 条回复</button>
         <button v-if="index === 0 && assistant" type="button" class="comment-assistant" :disabled="busy" aria-label="请助手参与讨论" title="请助手讨论" @click="emit('assistant')"><Bot :size="14" /></button>
         <div v-if="index === 0 && thread.resolved" class="comment-message-actions">
           <span>已完成</span>
         </div>
       </div>
     </div>
-    <CommentComposer v-if="!readonly && local" v-model="reply" :author-name="authorName"
+    <CommentComposer v-if="!readonly && local" v-show="!preview" v-model="reply" :author-name="authorName"
       label="添加回复" :busy="busy" compact class="comment-reply-composer" @submit="sendReply" />
   </article>
   <Teleport to="body">
@@ -222,6 +225,10 @@ function relativeTime(timestamp: number) {
 .comment-edit-actions button:focus-visible { outline: 2px solid #2683e8; outline-offset: 3px; }
 .comment-edit-actions button:disabled { opacity: .45; cursor: default; }
 .comment-reply-composer { margin-top: 12px; }
+.comment-expand-replies { margin: 10px 0 0; padding: 0; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.comment-expand-replies:hover { color: var(--text); }
+.comment-expand-replies:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+.is-preview .comment-message-tools, .is-preview .comment-assistant { display: none; }
 .is-local { padding: 0; }
 .is-local + .is-local { padding-top: 16px; margin-top: 16px; }
 .is-local .comment-message.is-reply { margin-left: 20px; }

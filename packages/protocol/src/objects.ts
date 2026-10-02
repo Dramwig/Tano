@@ -1,7 +1,10 @@
 import type { FileEntry } from './index';
 import { isMarkdown } from './paths';
+import { isWorkspaceInternalPath } from './workspace-paths';
 import { isShortId } from './short-id';
 import { coreObjectTypes, objectTypeRegistry, validObjectType } from './object-types';
+import { parseTaskReview } from './task-review';
+import { validateTaskRepeat } from './task-repeat';
 
 export const objectTypes = coreObjectTypes;
 export type ObjectType = string;
@@ -57,11 +60,17 @@ export function parseObject(content: string): WorkspaceObject {
     Array.isArray(data.properties)
   )
     throw new Error('对象格式无效，请检查 version、id、type、name 和 properties');
+  if (data.properties.deliveryReview !== undefined) parseTaskReview(data.properties.deliveryReview);
+  validateTaskRepeat(data.type, data.properties);
   return data;
 }
 export function referenceUrl(target: ReferenceIdentity): string {
   if (!isShortId(target.id) || !validObjectType(target.type)) throw new Error('引用身份无效');
   return `object://${target.type}/${target.id}`;
+}
+export function referenceMarkdown(target: ReferenceIdentity, label: string): string {
+  const name = label.replace(/[\r\n]+/g, ' ').replace(/[\\\[\]]/g, '\\$&');
+  return `[@${name}](${referenceUrl(target)})`;
 }
 export function parseReferenceUrl(url: string): ReferenceIdentity | null {
   const match = /^object:\/\/([a-z][a-z0-9.-]*)\/([0-9a-f]{6})$/.exec(url);
@@ -69,7 +78,7 @@ export function parseReferenceUrl(url: string): ReferenceIdentity | null {
 }
 export function documentTargets(workspace: string, files: FileEntry[]): ReferenceTarget[] {
   return files
-    .filter((file) => file.kind === 'file' && isMarkdown(file.path) && isShortId(file.id))
+    .filter((file) => file.kind === 'file' && !isWorkspaceInternalPath(file.path) && isMarkdown(file.path) && isShortId(file.id))
     .map((file) => ({
       workspace,
       type: 'document',

@@ -1,4 +1,4 @@
-export const ASSISTANT_PROTOCOL_VERSION = 3;
+export const ASSISTANT_PROTOCOL_VERSION = 5;
 
 export interface AssistantConnection {
   id: string;
@@ -153,7 +153,7 @@ export function parseAssistantSession(value: unknown): AssistantSession {
           !text(proposal.runId, 80) || !['edit', 'create', 'object', 'relation'].includes(proposal.kind) ||
           !['ready', 'applying', 'applied', 'rejected', 'conflicted', 'unknown'].includes(proposal.status) ||
           !text(proposal.path, 220) || !text(proposal.base, 512_000) || !text(proposal.content, 512_000) ||
-          !text(proposal.reason, 4000) || (proposal.kind === 'edit' && !text(proposal.fileId, 80)) ||
+          !text(proposal.reason, 4000) || ((proposal.kind === 'edit' || (proposal.kind === 'object' && proposal.base !== '')) && !text(proposal.fileId, 80)) ||
           (proposal.preview && (!text(proposal.preview.before, 512_000) ||
             !text(proposal.preview.after, 512_000) || !text(proposal.preview.path, 220) ||
             (proposal.preview.diskHash !== null && !text(proposal.preview.diskHash, 128)))) ||

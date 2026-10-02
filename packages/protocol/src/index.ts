@@ -28,6 +28,13 @@ export interface Workspace {
   readOnly?: boolean;
 }
 
+export class WorkspaceAccessRevokedError extends Error {
+  constructor() {
+    super('你已失去此工作区的访问权限');
+    this.name = 'WorkspaceAccessRevokedError';
+  }
+}
+
 export interface FileSnapshot {
   content: string;
   hash: string;
@@ -104,3 +111,5 @@ export interface WorkspaceSplit {
 export type WorkspaceLayout = WorkspacePane | WorkspaceSplit;
 
 export * from './paths';
+export * from './task-review';
+export * from './task-repeat';

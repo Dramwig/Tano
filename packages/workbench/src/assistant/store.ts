@@ -201,11 +201,20 @@ export const useAssistantStore = defineStore('assistant', () => {
       target.title = target.messages.find(message => message.role === 'user')!.content.slice(0, 50);
       target.updatedAt = now; prompt.value = '';
       await persist(target);
+      let structureSnapshot: Awaited<ReturnType<typeof workspace.assistantStructures>> | undefined;
       reply.usage = await runAssistant({ transport, connectionId: config.id, model, tools: config.tools,
         workspaceId: expected.id, runId: reply.id, sources: reply.sources!, history, rules, prompt: question, signal: abort.signal,
+        ...(allowSearch.value && allowStructures.value ? { references: (identity: import('@tano/protocol').ReferenceIdentity) => workspace.assistantReferenceContext(expected, identity) } : {}),
+        ...(allowSearch.value && allowStructures.value ? { tasks: async (query: import('./tasks').TaskQuery) => {
+          structureSnapshot ??= await workspace.assistantStructures(expected);
+          return workspace.assistantTaskQuery(expected, query, structureSnapshot);
+        } } : {}),
         ...(allowStructures.value ? { structures: {
-          read: () => workspace.assistantStructures(expected),
-          propose: (call: import('@tano/protocol').AssistantToolCall) => workspace.proposeAssistantStructure(expected, reply!.id, call),
+          read: async () => {
+            structureSnapshot ??= await workspace.assistantStructures(expected);
+            return { targets: structureSnapshot.targets, relations: structureSnapshot.relations, relationTypes: structureSnapshot.relationTypes };
+          },
+          propose: (call: import('@tano/protocol').AssistantToolCall) => workspace.proposeAssistantStructure(expected, reply!.id, call, structureSnapshot),
         } } : {}),
         ...(allowSearch.value ? { lookup: {
           search: async (query: string) => {

@@ -43,6 +43,28 @@ it('maps a backward selection through external changes without making them undoa
   expect(changed).not.toHaveBeenCalled();
   expect(editor.value!.canUndo()).toBe(false);
 });
+it('appends a Todo reference without replacing the selected text and makes the insertion undoable', async () => {
+  const { value, editor, view } = await mountSource('before selected after');
+  view.dispatch({ selection: { anchor: 7, head: 15 } });
+  const captured = editor.value!.captureTodoSelection()!;
+  expect(captured.text).toBe('selected');
+  expect(captured.insert({ type: 'event', id: 'b00001' }, 'Task')).toBe(true);
+  await nextTick();
+  expect(value.value).toBe('before selected [@Task](object://event/b00001) after');
+  expect(editor.value!.undoLastChange()).toBe(true);
+  await nextTick();
+  expect(value.value).toBe('before selected after');
+  value.value = 'changed selected after';
+  await nextTick();
+  expect(captured.insert({ type: 'event', id: 'b00001' }, 'Task')).toBe(false);
+});
+it('keeps a source-mode reference outside selected fenced code', async () => {
+  const { value, editor, view } = await mountSource('```ts\nselected code\n```\n\nafter');
+  view.dispatch({ selection: { anchor: 6, head: 19 } });
+  expect(editor.value!.captureTodoSelection()!.insert({ type: 'event', id: 'b00001' }, 'Task')).toBe(true);
+  await nextTick();
+  expect(value.value).toContain('```ts\nselected code\n```\n\n[@Task](object://event/b00001)');
+});
 
 it('undoes local typing without reverting an independent external edit', async () => {
   const { value, editor, view } = await mountSource('第一段\n\n第二段');

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowReactive, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowReactive, shallowRef, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { version as appVersion } from '../package.json';
 import {
@@ -21,11 +21,11 @@ import {
   Code2,
   MoreHorizontal,
   ArrowUpRight,
-  ArrowDownToLine,
   Archive,
   Clock3,
   History,
   List,
+  ListTodo,
   CircleHelp,
   ArrowLeft,
   ArrowRight,
@@ -54,6 +54,8 @@ import {
   MoveHorizontal,
   Undo2,
   Redo2,
+  ArrowDownToLine,
+  Files,
 } from 'lucide-vue-next';
 import MarkdownEditor from '@tano/editor';
 import { defaultEditorPreferences } from '@tano/editor/runtime';
@@ -64,7 +66,18 @@ import SourceEditor from './components/SourceEditor.vue';
 import EmptyEditor from './components/EmptyEditor.vue';
 import MarkdownRevealToggle from './components/MarkdownRevealToggle.vue';
 import DocumentTitle from './components/DocumentTitle.vue';
+import DocumentExportMenu from './components/DocumentExportMenu.vue';
+import type { ImportRecord } from './components/ImportPanel.vue';
+const ImportPanel = defineAsyncComponent(() => import('./components/ImportPanel.vue'));
+const TemplateDialog = defineAsyncComponent(() => import('./components/TemplateDialog.vue'));
+import { downloadExport, exportFilename, renderDocumentExport } from './document-export';
+import type { DocumentExportFormat } from './document-export';
 import DocumentComments from './components/DocumentComments.vue';
+import ReferenceConnections from './components/ReferenceConnections.vue';
+import SelectionTodoDialog from './components/SelectionTodoDialog.vue';
+import { selectionTodoSession } from './selection-todo';
+import type { SelectionTodoSession } from './selection-todo';
+import { documentLinks } from '@tano/editor/document-links';
 import type { CommentAnchor } from '@tano/protocol';
 import { unsupportedMarkdown } from '@tano/editor/syntax';
 import {
@@ -113,6 +126,8 @@ import { mobile } from './platform';
 import MobileRecycle from './components/MobileRecycle.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
 import ObjectPanel from './components/ObjectPanel.vue';
+import PlanDetailPanel from './components/PlanDetailPanel.vue';
+import type { ObjectRecord } from './workspace-objects';
 import { usePlanStore } from './stores/plans';
 import { usePlanSyncStore } from './stores/plan-sync';
 import { planKey } from './personal-plans';
@@ -123,7 +138,7 @@ import WorkspaceSwitcher from './components/WorkspaceSwitcher.vue';
 import ButtonVisibilityGroup from './components/ButtonVisibilityGroup.vue';
 import CalendarView from './components/CalendarView.vue';
 import PluginInstaller from './components/PluginInstaller.vue';
-import { isObjectPath, resolveReference } from '@tano/protocol';
+import { isObjectPath, referenceMarkdown, referenceUrl, resolveReference } from '@tano/protocol';
 import type { ReferenceIdentity, ReferenceTarget } from '@tano/protocol';
 import { sloganParts, welcomeSlogans } from './welcome-slogans';
 import { useUpdatesStore } from './stores/updates';
@@ -212,6 +227,14 @@ const extensionActions: WorkbenchActions = {
 const updates = useUpdatesStore();
 const updateLock = computed(() => ['downloading', 'installing'].includes(updates.state.phase));
 const historyPanel = ref(false);
+const importPanel = ref(false);
+const templateDialog = ref(false);
+const importRecords = ref<ImportRecord[]>([]);
+function openImport() {
+  menu.value = false;
+  workspaceMenu.value = false;
+  importPanel.value = true;
+}
 const historyPage = ref<'versions' | 'updates'>('versions');
 const agentPanel = ref(false);
 const recyclePanel = ref(false);
@@ -536,6 +559,7 @@ watch(showOutline, (visible) => {
 });
 watch(outlinePinned, (pinned) => savePreference('outlinePinned', pinned));
 const menu = ref(false);
+const exportBusy = ref(false);
 const documentMenuButton = ref<HTMLButtonElement>();
 const documentMenuElement = ref<HTMLElement>();
 const workspaceMenu = ref(false);
@@ -656,6 +680,44 @@ const modalError = ref('');
 const modalBusy = ref(false);
 const inputEl = ref<HTMLInputElement>();
 const paneEditors = shallowReactive(new Map<string, InstanceType<typeof MarkdownEditor>>());
+const selectionTodo = shallowRef<SelectionTodoSession>();
+const paneSourceSelections = shallowReactive<Record<string, boolean>>({});
+function beginSelectionTodo(paneId: string, fileId: string) {
+  const scope = workspace.value;
+  const doc = store.documents.find(doc => doc.id === fileId);
+  if (!scope || !doc || paneReadonly(doc) || editing.isManaging(fileId) || !store.capabilities.features.objectReferences) return;
+  const captured = (paneSource(fileId) ? paneSourceEditors.get(paneId) : paneEditors.get(paneId))?.captureTodoSelection();
+  if (!captured) { store.report('请先选择要创建 Todo 的文字'); return; }
+  const expected = { id: scope.id, path: scope.path, content: doc.content };
+  const source: ReferenceTarget = { workspace: scope.id, type: 'document', id: doc.id, path: doc.path, name: basename(doc.path).replace(/\.(md|markdown)$/i, '') };
+  function originalDocument() {
+    if (workspace.value?.id !== expected.id || workspace.value.path !== expected.path) throw new Error('工作区已切换，请返回原工作区后重试');
+    const original = store.documents.find(doc => doc.id === fileId);
+    if (!original || paneReadonly(original) || original.missing || editing.isManaging(fileId) || !store.capabilities.features.objectReferences)
+      throw new Error('原文档已关闭或不可编辑，请重新打开原文档');
+    return original;
+  }
+  selectionTodo.value = selectionTodoSession(captured.text, source, {
+    create: draft => {
+      if (originalDocument().content !== expected.content) throw new Error('原文已变化，请重新选择文字');
+      return store.createObject(draft);
+    },
+    insert: async (record, append) => {
+      const original = originalDocument();
+      const url = referenceUrl(record.object);
+      const alreadyInserted = documentLinks(original.content).some(link => link.target === url);
+      if (!alreadyInserted) {
+        if (append) store.editDocument(fileId, `${original.content.replace(/\n*$/, '')}\n\n${referenceMarkdown(record.object, record.object.name)}\n`);
+        else if (original.content !== expected.content || !captured.insert(record.object, record.object.name))
+          throw new Error('原文或选区已变化，任务已保留；可在原文末尾插入引用');
+      }
+      await nextTick();
+      if (!documentLinks(original.content).some(link => link.target === url)) throw new Error('任务已保留，当前选区不能插入引用；可在原文末尾插入引用');
+      await store.flush();
+      if (original.conflict || original.missing || original.error || store.dirty(original)) throw new Error('任务已保留，原文保存发生冲突或失败，请处理文档提示后重试');
+    },
+  });
+}
 const paneComments = shallowReactive(new Map<string, InstanceType<typeof DocumentComments>>());
 const commentAnchors = shallowReactive<Record<string, { id: string; anchor: CommentAnchor }[]>>({});
 function capturePaneCommentSelection(paneId: string, fileId: string) {
@@ -708,6 +770,7 @@ function setPaneEditor(id: string, value: unknown) {
 const objectPanel = ref(false);
 const selectedObjectId = ref<string>();
 const selectedPersonal = ref(false);
+const planDetail = shallowRef<ObjectRecord>();
 function showObjects(id?: string) {
   selectedPersonal.value = false;
   selectedObjectId.value = id;
@@ -715,11 +778,13 @@ function showObjects(id?: string) {
   workspaceMenu.value = false;
 }
 function showPlanEvent(key: string) {
-  const record = plans.personal.find(item => planKey(item) === key);
-  if (!record) return showObjects(key);
-  selectedPersonal.value = true;
-  selectedObjectId.value = record.object.id;
-  objectPanel.value = true;
+  const personal = plans.personal.find(item => planKey(item) === key);
+  const local = store.objects.find(item => item.object.id === key && ['event', 'task'].includes(item.object.type));
+  const record = personal ?? (local && workspace.value ? { ...local, source: { scope: 'workspace' as const, id: workspace.value.id, name: workspace.value.name } } : undefined);
+  if (!record) { store.report('事项已不存在，请刷新计划后重试'); return; }
+  objectPanel.value = false;
+  personalHome.value = false;
+  planDetail.value = record;
 }
 function managePlanEvents() {
   showObjects();
@@ -732,7 +797,8 @@ async function openReference(identity: ReferenceIdentity) {
     return;
   }
   if (identity.type !== 'document') {
-    showObjects(identity.id);
+    if (['event', 'task'].includes(identity.type)) showPlanEvent(identity.id);
+    else showObjects(identity.id);
     return;
   }
   const file = workspace.value?.files.find((file) => file.id === identity.id);
@@ -747,6 +813,21 @@ async function openObjectResource(identity: ReferenceIdentity) {
   if (!file) return;
   if (identity.type === 'document') objectPanel.value = false;
   await openEntry(file);
+}
+async function openObjectReference(identity: ReferenceIdentity) {
+  if (identity.type === 'document') objectPanel.value = false;
+  await openReference(identity);
+}
+async function openPlanReference(identity: ReferenceIdentity) {
+  const current = planDetail.value;
+  if (current?.source?.scope === 'personal') {
+    const record = plans.personal.find(item => item.object.type === identity.type && item.object.id === identity.id);
+    if (record) planDetail.value = record;
+    else store.report('个人事项引用目标不可用');
+    return;
+  }
+  planDetail.value = undefined;
+  await openReference(identity);
 }
 const assetInput = ref<HTMLInputElement>();
 const assetImportBusy = ref(false);
@@ -1981,29 +2062,33 @@ async function submitModal() {
     modalBusy.value = false;
   }
 }
-async function exportDocument() {
-  if (!active.value) return;
-  if (mobile && workspace.value) {
-    menu.value = false;
-    try {
-      const workspaceId = workspace.value.id,
-        path = active.value.path;
-      if (!(await store.flush())) throw new Error('请先处理保存错误再导出');
-      await exportAttachment(workspaceId, path);
-    } catch (reason) {
-      store.report(reason);
-    }
-    return;
-  }
-  const url = URL.createObjectURL(
-    new Blob([active.value.content], { type: 'text/markdown;charset=utf-8' }),
-  );
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = basename(active.value.path);
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+async function exportDocument(format: DocumentExportFormat) {
+  const doc = active.value, currentWorkspace = workspace.value;
+  if (!doc || exportBusy.value) return;
+  const title = showPageTitle.value
+    ? editorScroll.value?.querySelector<HTMLInputElement>('.document-title-input')?.value : undefined;
+  const options = {
+    id: doc.id, path: doc.path, content: doc.content, title,
+    capabilities: store.capabilities, referenceTargets: store.referenceTargets,
+    tableLayouts: doc.tableLayout?.file.tables,
+    resolveImage: (reference: string) => attachments
+      ? attachments.imageUrl(currentWorkspace, doc.path, reference) : safeRemoteImage(reference),
+    fontFamily: selectedVisualFontFamily.value, fontSize: visualFontSize.value,
+  };
   menu.value = false;
+  exportBusy.value = true;
+  try {
+    const blob = await renderDocumentExport(options, format);
+    const filename = exportFilename(doc.path, format);
+    if (localNative) {
+      const { saveDocumentExport } = await import('./native-document-export');
+      await saveDocumentExport(blob, filename, format);
+    } else downloadExport(blob, filename);
+  } catch (reason) {
+    store.report(reason);
+  } finally {
+    exportBusy.value = false;
+  }
 }
 function jumpToHeading(index: number) {
   activeHeading.value = index;
@@ -2023,6 +2108,7 @@ function toggleSidebar() {
   workspaceMenu.value = false;
 }
 function handleSidebarShortcut(event: KeyboardEvent) {
+  if (importPanel.value) return;
   if (detachedWindow) return;
   if (!workspace.value || settingsPanel.value || updateLock.value) return;
   if (!isSidebarToggleShortcut(event)) return;
@@ -2031,6 +2117,7 @@ function handleSidebarShortcut(event: KeyboardEvent) {
   toggleSidebar();
 }
 function keydown(event: KeyboardEvent) {
+  if (importPanel.value) return;
   if (settingsPanel.value) {
     if (event.key === 'Escape') settingsPanel.value = false;
     return;
@@ -2754,6 +2841,8 @@ watch(activeId, () => {
               </div>
               <div class="menu-divider" />
               <button @click="openSettings()"><Settings2 :size="16" />设置</button>
+              <button v-if="workspace" :disabled="workspace.readOnly || busy" @click="openImport"><ArrowDownToLine :size="16" />导入</button>
+              <button v-if="workspace" :disabled="workspace.readOnly || busy" @click="workspaceMenu = false; templateDialog = true"><Files :size="16" />文档模板</button>
               <button @click="showObjects()"><Users :size="16" />工作区对象 · Level 2</button>
               <button
                 v-if="workspace && localNative && !mobile"
@@ -3143,9 +3232,9 @@ watch(activeId, () => {
                       <Clock3 :size="15" />更新历史
                     </button>
                     <div class="menu-divider" role="separator" />
-                    <button @click="exportDocument">
-                      <ArrowDownToLine :size="15" />导出 Markdown
-                    </button>
+                    <DocumentExportMenu :disabled="exportBusy" @select="exportDocument" />
+                    <button type="button" :disabled="workspace?.readOnly || busy" @click="openImport"><ArrowDownToLine :size="15" />导入</button>
+                    <button type="button" :disabled="workspace?.readOnly || busy" @click="templateDialog = true"><Files :size="15" />文档模板</button>
                   </div>
                 </div>
               </template>
@@ -3198,6 +3287,8 @@ watch(activeId, () => {
                   :assistant="assistant.available"
                   @assistant="openAssistant(pane.id, active!.id)"
                   annotation
+                  :todo="store.capabilities.features.objectReferences && !paneReadonly(active!) && !editing.isManaging(active!.id)"
+                  @todo="beginSelectionTodo(pane.id, active!.id)"
                   @annotation="paneComments.get(pane.id)?.beginAnnotation()"
                   :active="pane.id === store.activePaneId"
                   :editor-element="paneEditorScrolls.get(pane.id)"
@@ -3207,8 +3298,10 @@ watch(activeId, () => {
                   :disabled="paneReadonly(active!)"
                   @command="(name, value) => paneEditors.get(pane.id)?.command(name, value)"
                 >
-                  <template v-if="detachedWindow" #trailing>
+                  <template v-if="detachedWindow || paneSource(pane.activeId)" #trailing>
+                    <button v-if="paneSource(pane.activeId) && store.capabilities.features.objectReferences" type="button" class="icon-button" aria-label="从选区创建 Todo" title="从选区创建 Todo" :disabled="paneReadonly(active!) || !paneSourceSelections[pane.id] || editing.isManaging(active!.id)" @mousedown.prevent @click="beginSelectionTodo(pane.id, active!.id)"><ListTodo :size="17" /></button>
                     <ButtonVisibilityGroup
+                      v-if="detachedWindow"
                       v-slot="{ isVisible }"
                       :items="documentToolItems"
                       preference-key="tano.preference.documentHiddenTools"
@@ -3325,6 +3418,7 @@ watch(activeId, () => {
                     :readonly="paneReadonly(active!)"
                     :local-native="!!attachments"
                     :comment-anchors="commentAnchors[active.id]"
+                    @selection-change="paneSourceSelections[pane.id] = $event"
                     @update:model-value="store.editDocument(active!.id, $event)"
                     @files="
                       (files, requireImage, position) =>
@@ -3358,6 +3452,7 @@ watch(activeId, () => {
                     @edit-source="sourceModes[pane.activeId] = true"
                     @selection-change="paneSelections[pane.id] = $event"
                   />
+                  <ReferenceConnections class="document-references" :identity="{ type: 'document', id: active.id }" @open="openReference" />
                   <DocumentComments
                     v-if="workspace"
                     :ref="el => setPaneComments(pane.id, el)"
@@ -3645,7 +3740,10 @@ watch(activeId, () => {
             </Teleport>
     </div>
 
-    <AssistantPanel v-if="workspace && assistant.available && assistant.opened" />
+    <AssistantPanel v-if="workspace && assistant.available && assistant.opened" @open-reference="openReference" />
+    <ImportPanel v-if="importPanel && workspace" :key="workspace.id" :attachments="attachments" :records="importRecords"
+      @close="importPanel = false" @completed="importRecords.unshift($event)" />
+    <TemplateDialog v-if="templateDialog && workspace" :key="workspace.id" :source="store.active?.content" @close="templateDialog = false" />
     <component  :is="extensions.regions['sync-dialog']" v-if="extensions.regions['sync-dialog']" :actions="extensionActions" />
     <MobileRecycle
       v-if="mobile && recyclePanel && workspace"
@@ -3685,12 +3783,15 @@ watch(activeId, () => {
       :preview-asset="assetPreview"
       @close="objectPanel = false"
       @open-resource="openObjectResource"
+      @open-reference="openObjectReference"
       @create-document="
         objectPanel = false;
         createNewDocument();
       "
       @import-asset="assetInput?.click()"
     />
+    <PlanDetailPanel v-if="planDetail" :key="`${planDetail.source?.scope}:${planDetail.source?.id}:${planDetail.object.id}`" :record="planDetail" @close="planDetail = undefined" @open-reference="openPlanReference" @open-record="planDetail = $event" />
+    <SelectionTodoDialog v-if="selectionTodo" :session="selectionTodo" @close="selectionTodo = undefined" @open-task="selectionTodo = undefined; showPlanEvent($event)" />
     <PersonalPlanDialog v-if="personalHome" :date="calendarDate" @close="personalHome = false" @select-date="calendarDate = $event" @select-event="showPlanEvent" />
     <template v-for="view in extensionViews" :key="view.id">
       <component :is="view.overlay" v-if="workspace && view.overlay" :actions="viewActions[view.id]" />

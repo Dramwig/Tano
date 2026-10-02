@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
-import { ArrowLeft, ArrowUp, Bot, Check, Copy, FilePlus2, FileText, History, LoaderCircle, Pencil, Plus, RefreshCw, Reply, Search, Settings2, Square, Trash2, Undo2, X } from 'lucide-vue-next';
+import { ArrowLeft, ArrowUp, Bot, Check, ChevronDown, Copy, FilePlus2, FileText, History, LoaderCircle, Pencil, Plus, RefreshCw, Reply, Search, Settings2, Square, Trash2, Undo2, X } from 'lucide-vue-next';
 import MarkdownEditor from '@tano/editor';
-import type { AssistantConnection, AssistantMessage, AssistantProposal, AssistantSource } from '@tano/protocol';
+import type { AssistantConnection, AssistantMessage, AssistantProposal, AssistantSource, ReferenceIdentity } from '@tano/protocol';
 import { useAssistantStore } from '../assistant/store';
 import { useWorkspaceStore } from '../stores/workspace';
 import ChangeDiff from './ChangeDiff.vue';
+import TaskProposalPreview from './TaskProposalPreview.vue';
 
 const assistant = useAssistantStore();
 const workspace = useWorkspaceStore();
+const emit = defineEmits<{ openReference: [identity: ReferenceIdentity] }>();
 const section = ref<'conversation' | 'settings' | 'history' | 'sources'>('conversation');
 const query = ref('');
 const textarea = ref<HTMLTextAreaElement>();
@@ -23,6 +25,7 @@ const deleting = ref<string>();
 const exportMessage = ref<AssistantMessage>();
 const exportPath = ref('助手结果.md');
 const visibleMessages = ref(30);
+const proposalChecks = ref<Record<string, boolean>>({});
 const sourceFiles = computed(() => workspace.workspace?.files.filter(file => file.kind === 'file' && /\.(?:md|markdown)$/i.test(file.path) &&
   !file.path.startsWith('.tano/') && file.path.toLocaleLowerCase().includes(query.value.toLocaleLowerCase())).slice(0, 100) ?? []);
 const displayed = computed(() => assistant.session?.messages.slice(-visibleMessages.value) ?? []);
@@ -87,6 +90,10 @@ function sourceLink(message: AssistantMessage, reference: string) {
   if (source) void openSource(source);
   else notice.value = '此链接未关联本次提供的来源';
 }
+function openAnswerReference(identity: ReferenceIdentity) {
+  if (assistant.session?.workspaceId !== workspace.workspace?.id) { notice.value = '请在原工作区打开引用'; return; }
+  emit('openReference', identity);
+}
 async function copy(message: AssistantMessage) {
   try { await navigator.clipboard.writeText(message.content); notice.value = '已复制'; }
   catch { notice.value = '无法访问剪贴板'; }
@@ -122,8 +129,11 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
   <aside class="assistant-panel" aria-label="Tano 助手">
     <header class="assistant-heading">
       <button v-if="section !== 'conversation'" class="icon-button" aria-label="返回助手对话" title="返回对话" @click="section = 'conversation'; secret = ''"><ArrowLeft :size="17" /></button>
-      <Bot v-else :size="19" />
-      <h2>{{ section === 'settings' ? '模型连接' : section === 'history' ? '会话记录' : section === 'sources' ? '参考文档' : '助手' }}</h2>
+      <Bot v-if="section === 'conversation'" :size="19" />
+      <h2 v-if="section !== 'conversation'">{{ section === 'settings' ? '模型连接' : section === 'history' ? '会话记录' : '参考文档' }}</h2>
+      <h2 v-else class="assistant-title" title="当前助手会话">
+        <span>助手</span><ChevronDown :size="15" />
+      </h2>
       <template v-if="section === 'conversation'">
         <button class="icon-button" title="新建会话" aria-label="新建助手会话" :disabled="assistant.busy || assistant.applying" @click="assistant.newSession()"><Plus :size="17" /></button>
         <button class="icon-button" title="会话记录" aria-label="助手会话记录" @click="section = 'history'; assistant.loadExternal()"><History :size="17" /></button>
@@ -225,19 +235,20 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
         <article v-for="message in displayed" :key="message.id" class="assistant-message" :class="`assistant-message-${message.role}`">
           <div class="assistant-message-heading"><strong>{{ message.role === 'user' ? '你' : '助手' }}</strong><small>{{ message.model ?? '' }}</small></div>
           <div v-if="message.role === 'user' || message.state === 'running'" class="assistant-message-text">{{ message.content }}</div>
-          <div v-else-if="message.content" class="assistant-answer"><MarkdownEditor :model-value="answerMarkdown(message)" :document-id="`assistant-${message.id}`" readonly :reveal-markdown="false" open-links-on-tap :resolve-image="() => null" @open-link="sourceLink(message, $event)" @error="notice = $event" /></div>
+          <div v-else-if="message.content" class="assistant-answer"><MarkdownEditor :model-value="answerMarkdown(message)" :document-id="`assistant-${message.id}`" :reference-targets="assistant.session?.workspaceId === workspace.workspace?.id ? workspace.referenceTargets : []" readonly :reveal-markdown="false" open-links-on-tap :resolve-image="() => null" @open-link="sourceLink(message, $event)" @open-reference="openAnswerReference" @error="notice = $event" /></div>
           <p v-if="message.error || message.state === 'interrupted'" class="assistant-message-error">{{ message.error ?? '上次运行已中断；不会自动恢复执行' }}</p>
           <div v-if="message.sources?.length" class="assistant-citations"><button v-for="source in message.sources" :key="source.id" :title="source.path" @click="openSource(source)"><FileText :size="12" />{{ source.id }} · {{ source.path }}</button></div>
           <small v-if="message.rules?.length" class="assistant-rules">工作区约定：{{ message.rules.join('、') }}</small>
           <section v-for="proposal in message.proposals" :key="proposal.id" class="assistant-proposal" :aria-label="`修改建议 ${proposal.path}`">
-            <div class="assistant-proposal-heading"><strong>{{ proposal.kind === 'object' ? '工作区事件' : proposal.kind === 'relation' ? '新增关系' : proposal.kind === 'create' ? '新建' : '修改' }} · {{ proposal.preview?.path ?? proposal.path }}</strong><small>{{ statusLabels[proposal.status] }}</small></div>
+            <div class="assistant-proposal-heading"><strong>{{ proposal.kind === 'object' ? (proposal.base ? '修改任务' : '工作区事件') : proposal.kind === 'relation' ? '维护关系' : proposal.kind === 'create' ? '新建' : '修改' }} · {{ proposal.preview?.path ?? proposal.path }}</strong><small>{{ statusLabels[proposal.status] }}</small></div>
             <p>{{ proposal.reason }}</p>
+            <TaskProposalPreview :proposal="proposal" @open-reference="openAnswerReference" @ready="proposalChecks[proposal.id] = $event" />
             <p v-if="proposal.error" class="assistant-message-error">{{ proposal.error }}</p>
             <ChangeDiff v-if="proposal.preview" :before="proposal.preview.before" :after="proposal.preview.after" />
             <div class="assistant-proposal-actions">
               <template v-if="['ready', 'conflicted'].includes(proposal.status)">
                 <button class="secondary-button" :disabled="assistant.busy || assistant.applying" @click="assistant.review(proposal)"><Search :size="14" />查看差异</button>
-                <button v-if="proposal.preview && proposal.status === 'ready'" class="primary-button" :disabled="assistant.busy || assistant.applying" @click="assistant.review(proposal, true)"><Check :size="14" />应用修改</button>
+                <button v-if="proposal.preview && proposal.status === 'ready'" class="primary-button" :disabled="assistant.busy || assistant.applying || proposalChecks[proposal.id] === false" @click="assistant.review(proposal, true)"><Check :size="14" />应用修改</button>
                 <button class="icon-button" title="放弃建议" aria-label="放弃修改建议" :disabled="assistant.busy || assistant.applying" @click="assistant.reject(proposal)"><X :size="15" /></button>
               </template>
               <button v-if="proposal.status === 'unknown'" class="secondary-button" :disabled="assistant.applying" @click="assistant.verify(proposal)"><Search :size="14" />核对写入结果</button>
@@ -257,54 +268,73 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
       <form class="assistant-composer" @submit.prevent="assistant.send()">
         <div v-if="assistant.busy || assistant.applying" class="assistant-progress" role="status"><LoaderCircle :size="14" class="spinning" />{{ assistant.applying ? '正在处理修改' : assistant.progress }}</div>
         <textarea ref="textarea" v-model="assistant.prompt" rows="3" maxlength="20000" aria-label="给助手的任务" placeholder="与助手讨论这份笔记…" @keydown="sendKey" />
-        <div class="assistant-compose-actions"><span>{{ assistant.modelId === 'cli-default' ? 'CLI 默认模型' : assistant.modelId }}</span><button v-if="assistant.busy" type="button" class="icon-button" aria-label="停止助手生成" title="停止生成" @click="assistant.stop()"><Square :size="16" /></button><button v-else class="primary-button assistant-send" aria-label="发送给助手" title="发送" :disabled="!assistant.prompt.trim() || !assistant.connection || !assistant.modelId || assistant.loading || assistant.applying"><ArrowUp :size="18" /></button></div>
+        <div class="assistant-compose-actions">
+          <button type="button" class="assistant-compose-tool" :disabled="assistant.busy" @click="section = 'sources'"><Plus :size="17" />参考文档</button>
+          <span class="assistant-compose-model">{{ assistant.modelId === 'cli-default' ? 'CLI 默认模型' : assistant.modelId || '自动' }}</span>
+          <button v-if="assistant.busy" type="button" class="icon-button assistant-stop" aria-label="停止助手生成" title="停止生成" @click="assistant.stop()"><Square :size="16" /></button><button v-else class="primary-button assistant-send" aria-label="发送给助手" title="发送" :disabled="!assistant.prompt.trim() || !assistant.connection || !assistant.modelId || assistant.loading || assistant.applying"><ArrowUp :size="18" /></button>
+        </div>
       </form>
     </template>
   </aside>
 </template>
 
 <style scoped>
-.assistant-panel { flex: 0 0 380px; width: 380px; min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--paper); color: var(--text); padding-top: var(--desktop-titlebar-height, 0px); }
-.assistant-heading { display: flex; align-items: center; gap: 7px; min-height: 48px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
-.assistant-heading h2 { flex: 1; font-size: 15px; margin: 0; }
-.assistant-heading .icon-button { flex: 0 0 28px; width: 28px; height: 28px; }
-.assistant-demo-label { padding: 6px 14px; color: var(--warning); background: var(--warning-bg); font-size: 11px; }
-.assistant-error, .assistant-notice { margin: 0; padding: 8px 14px; font-size: 12px; overflow-wrap: anywhere; }
+.assistant-panel { flex: 0 1 clamp(390px, 38vw, 600px); width: clamp(390px, 38vw, 600px); min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--paper); color: var(--text); padding-top: var(--desktop-titlebar-height, 0px); box-shadow: -14px 0 32px rgba(32, 39, 46, 0.06); }
+.assistant-heading { display: flex; align-items: center; gap: 9px; min-height: 64px; padding: 12px 18px; border-bottom: 1px solid var(--line); background: var(--paper); }
+.assistant-heading h2 { flex: 1; font-size: 15px; font-weight: 600; margin: 0; }
+.assistant-heading .icon-button { flex: 0 0 32px; width: 32px; height: 32px; border-radius: 9px; }
+.assistant-title { display: inline-flex; align-items: center; gap: 6px; flex: 1; min-width: 0; padding: 6px 2px; color: var(--text); font-size: 15px; font-weight: 600; text-align: left; }
+.assistant-title svg { color: var(--muted); }
+.assistant-title:hover { color: var(--green); }
+.assistant-demo-label { padding: 8px 20px; color: var(--warning); background: var(--warning-bg); font-size: 11px; }
+.assistant-error, .assistant-notice { margin: 0; padding: 10px 20px; font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
 .assistant-error { color: var(--danger); background: var(--danger-bg); }
 .assistant-notice { color: var(--text-secondary); background: var(--surface); }
-.assistant-model-row { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px 4px; }
-.assistant-model-row select { width: 100%; min-width: 0; padding: 6px; border: 1px solid var(--line); border-radius: 4px; color: var(--text); background: var(--paper); font-size: 12px; }
-.assistant-model-picker { display: flex; align-items: center; gap: 5px; min-height: 32px; }
+.assistant-model-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 8px; padding: 12px 20px 6px; }
+.assistant-model-row > .assistant-text-action { grid-column: 1 / -1; }
+.assistant-model-row > .assistant-model-error { grid-column: 1 / -1; }
+.assistant-model-row select { width: 100%; min-width: 0; height: 36px; padding: 0 11px; border: 1px solid var(--line); border-radius: 10px; color: var(--text); background: var(--surface); font-size: 12px; }
+.assistant-model-picker { display: flex; align-items: center; gap: 6px; min-height: 36px; }
 .assistant-model-picker select, .assistant-model-picker input { flex: 1; min-width: 0; }
-.assistant-model-picker input { padding: 6px; border: 1px solid var(--line); border-radius: 4px; color: var(--text); background: var(--paper); font: inherit; font-size: 12px; }
-.assistant-model-picker .icon-button { flex: 0 0 28px; width: 28px; height: 28px; }
+.assistant-model-picker input { height: 36px; padding: 0 11px; border: 1px solid var(--line); border-radius: 10px; color: var(--text); background: var(--surface); font: inherit; font-size: 12px; }
+.assistant-model-picker .icon-button { flex: 0 0 30px; width: 30px; height: 30px; border-radius: 8px; }
 .assistant-model-error { margin: 0; color: var(--danger); font-size: 11px; overflow-wrap: anywhere; }
-.assistant-contexts { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 6px 14px 10px; border-bottom: 1px solid var(--line); }
-.assistant-search-grant { width: 100%; display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-secondary); }
-.assistant-text-action { display: inline-flex; align-items: center; gap: 5px; border: 0; padding: 4px 0; color: var(--text-secondary); background: transparent; font-size: 12px; }
-.assistant-context { display: inline-flex; align-items: center; gap: 4px; max-width: 180px; padding: 3px 5px; border: 0; border-bottom: 1px solid var(--line); color: var(--text-secondary); background: transparent; font-size: 11px; }
+.assistant-contexts { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 8px 20px 14px; border-bottom: 1px solid var(--line); }
+.assistant-search-grant { flex: 1 1 205px; min-width: 0; display: flex; align-items: center; gap: 7px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 11px; color: var(--text-secondary); }
+.assistant-search-grant input { accent-color: var(--green); }
+.assistant-text-action { display: inline-flex; align-items: center; gap: 5px; border: 0; padding: 5px 0; color: var(--text-secondary); background: transparent; font-size: 12px; }
+.assistant-contexts > .assistant-text-action { padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.assistant-text-action:hover { color: var(--green); }
+.assistant-context { display: inline-flex; align-items: center; gap: 5px; max-width: 220px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--text-secondary); background: var(--surface); font-size: 11px; }
+.assistant-context:hover { border-color: var(--control-border); background: var(--hover); }
 .assistant-context span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.assistant-selection { display: flex; align-items: center; gap: 5px; width: 100%; border-left: 2px solid var(--green); padding-left: 8px; color: var(--muted); font-size: 12px; }
+.assistant-selection { display: flex; align-items: center; gap: 7px; width: 100%; border-left: 2px solid var(--green); padding: 4px 0 4px 10px; color: var(--muted); font-size: 12px; }
 .assistant-selection span { flex: 1; min-width: 0; max-height: 54px; overflow: auto; overflow-wrap: anywhere; }
-.assistant-messages { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 0 14px 16px; }
-.assistant-empty { margin: 28px 0; color: var(--muted); font-size: 13px; text-align: center; }
-.assistant-message { padding: 17px 0 12px; border-bottom: 1px solid var(--line); }
-.assistant-message-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 12px; }
+.assistant-messages { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: auto; overscroll-behavior: contain; padding: 12px 20px 24px; }
+.assistant-empty { margin: auto; padding: 30px 12px; color: var(--muted); font-size: 13px; text-align: center; }
+.assistant-message { width: 100%; padding: 15px 0 4px; }
+.assistant-message-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; color: var(--muted); font-size: 11px; }
 .assistant-message-heading small { overflow-wrap: anywhere; color: var(--muted); }
-.assistant-message-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.75; }
-.assistant-message-user { color: var(--text-secondary); }
-.assistant-answer { font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.assistant-message-user { display: flex; flex-direction: column; align-items: flex-end; color: var(--text-secondary); }
+.assistant-message-user .assistant-message-heading { justify-content: flex-end; margin-bottom: 5px; }
+.assistant-message-user .assistant-message-heading strong { display: none; }
+.assistant-message-text { max-width: 86%; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.7; }
+.assistant-message-user .assistant-message-text { padding: 10px 14px; border-radius: 18px 18px 5px 18px; background: var(--surface); color: var(--text); }
+.assistant-message-assistant { padding-top: 24px; }
+.assistant-message-assistant .assistant-message-heading strong { font-weight: 600; color: var(--text-secondary); }
+.assistant-answer { max-width: 96%; font-size: 13px; line-height: 1.75; overflow-wrap: anywhere; }
 .assistant-answer :deep(.ProseMirror) { padding: 0; min-height: 0; font-size: 13px; }
 .assistant-answer :deep(.frontmatter-panel) { display: none; }
 .assistant-answer :deep(h1), .assistant-answer :deep(h2), .assistant-answer :deep(h3) { font-size: 16px; line-height: 1.5; margin: 12px 0 6px; }
 .assistant-answer :deep(pre) { max-width: 100%; overflow: auto; font-size: 11px; }
 .assistant-answer :deep(p) { margin: 6px 0; }
 .assistant-message-error { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; color: var(--danger); }
-.assistant-citations { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
-.assistant-citations button { display: inline-flex; align-items: center; gap: 3px; max-width: 100%; padding: 3px 0; background: transparent; border: 0; color: var(--green); font-size: 11px; text-align: left; overflow-wrap: anywhere; }
+.assistant-citations { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.assistant-citations button { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--green); font-size: 11px; text-align: left; overflow-wrap: anywhere; }
+.assistant-citations button:hover { background: var(--accent); }
 .assistant-citations svg { flex-shrink: 0; }
-.assistant-rules { display: block; margin-top: 8px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
-.assistant-proposal { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.assistant-rules { display: block; margin-top: 9px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.assistant-proposal { margin-top: 14px; border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--surface); }
 .assistant-proposal-heading { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; font-size: 12px; }
 .assistant-proposal-heading strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .assistant-proposal-heading small { color: var(--muted); }
@@ -313,33 +343,38 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
 .assistant-proposal :deep(.diff-line) { font-size: 10px; }
 .assistant-proposal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
 .assistant-proposal-actions button { min-height: 29px; font-size: 11px; padding: 5px 8px; }
-.assistant-message-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 8px; color: var(--muted); }
-.assistant-message-actions .icon-button { width: 27px; height: 27px; }
+.assistant-message-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 11px; color: var(--muted); }
+.assistant-message-actions .icon-button { width: 28px; height: 28px; border-radius: 8px; }
 .assistant-message-actions small { max-width: 100%; margin-left: auto; font-size: 10px; overflow-wrap: anywhere; }
-.assistant-composer { border-top: 1px solid var(--line); padding: 12px 14px; }
-.assistant-composer textarea { width: 100%; resize: vertical; min-height: 70px; max-height: 180px; border: 1px solid var(--control-border); border-radius: 5px; background: var(--paper); color: var(--text); padding: 9px; font: inherit; font-size: 13px; line-height: 1.6; }
-.assistant-compose-actions { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin-top: 6px; }
-.assistant-compose-actions span { min-width: 0; overflow-wrap: anywhere; color: var(--muted); font-size: 10px; }
-.assistant-send { flex: 0 0 32px; width: 32px; height: 32px; padding: 5px; }
+.assistant-composer { flex: 0 0 auto; margin: 12px 18px 18px; padding: 12px 13px 10px; border: 1px solid var(--line); border-radius: 18px; background: var(--paper); box-shadow: 0 7px 24px rgba(32, 39, 46, 0.08); }
+.assistant-composer textarea { width: 100%; resize: vertical; min-height: 58px; max-height: 180px; border: 0; border-radius: 10px; background: transparent; color: var(--text); padding: 3px 1px; font: inherit; font-size: 13px; line-height: 1.6; }
+.assistant-composer textarea::placeholder { color: var(--muted); }
+.assistant-composer textarea:focus { outline: none; }
+.assistant-compose-actions { display: flex; align-items: center; gap: 8px; min-height: 32px; margin-top: 7px; }
+.assistant-compose-tool { display: inline-flex; align-items: center; gap: 6px; padding: 5px 7px; border-radius: 8px; color: var(--text-secondary); font-size: 12px; }
+.assistant-compose-tool:hover { background: var(--surface); color: var(--text); }
+.assistant-compose-model { min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }
+.assistant-send, .assistant-stop { flex: 0 0 32px; width: 32px; height: 32px; padding: 5px; border-radius: 10px; }
 .assistant-progress { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; color: var(--muted); font-size: 11px; }
-.assistant-settings, .assistant-history { flex: 1; overflow: auto; padding: 14px; }
-.assistant-settings form { display: grid; gap: 14px; padding-top: 14px; }
+.assistant-settings, .assistant-history { flex: 1; overflow: auto; padding: 20px; }
+.assistant-settings form { display: grid; gap: 14px; padding-top: 16px; }
 .assistant-settings label, .assistant-export label { display: grid; gap: 6px; font-size: 12px; }
-.assistant-settings input:not([type=checkbox]), .assistant-settings select, .assistant-export input { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--control-border); border-radius: 4px; background: var(--paper); color: var(--text); font: inherit; }
+.assistant-settings input:not([type=checkbox]), .assistant-settings select, .assistant-export input { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid var(--control-border); border-radius: 9px; background: var(--paper); color: var(--text); font: inherit; }
 .assistant-settings .assistant-checkbox { display: flex; align-items: center; gap: 6px; }
 .assistant-connection-list > div, .assistant-history-row { display: flex; gap: 6px; align-items: center; border-bottom: 1px solid var(--line); }
-.assistant-connection-list > div > button:first-child, .assistant-history-row > button:first-child { flex: 1; min-width: 0; padding: 10px 0; display: grid; gap: 4px; color: var(--text); border: 0; background: transparent; text-align: left; overflow-wrap: anywhere; }
+.assistant-connection-list > div > button:first-child, .assistant-history-row > button:first-child { flex: 1; min-width: 0; padding: 12px 0; display: grid; gap: 4px; color: var(--text); border: 0; background: transparent; text-align: left; overflow-wrap: anywhere; }
 .assistant-connection-list small, .assistant-history-row small { font-size: 11px; color: var(--muted); }
 .assistant-history-row strong { font-size: 13px; font-weight: 500; }
-.assistant-source-search { display: flex; align-items: center; gap: 8px; margin: 12px 14px; padding: 7px; border: 1px solid var(--control-border); border-radius: 4px; }
+.assistant-source-search { display: flex; align-items: center; gap: 8px; margin: 16px 20px; padding: 9px 11px; border: 1px solid var(--control-border); border-radius: 10px; background: var(--surface); }
 .assistant-source-search input { min-width: 0; width: 100%; border: 0; background: transparent; color: var(--text); outline: none; }
-.assistant-source-picker { flex: 1; overflow: auto; padding: 0 14px; }
-.assistant-source-picker label { display: flex; align-items: flex-start; gap: 7px; padding: 9px 0; font-size: 12px; border-bottom: 1px solid var(--line); }
+.assistant-source-picker { flex: 1; overflow: auto; padding: 0 20px; }
+.assistant-source-picker label { display: flex; align-items: flex-start; gap: 7px; padding: 11px 0; font-size: 12px; border-bottom: 1px solid var(--line); }
 .assistant-source-picker label span { min-width: 0; overflow-wrap: anywhere; }
 .assistant-source-picker svg, .assistant-source-picker input { flex-shrink: 0; }
-.assistant-delete-confirm, .assistant-export { border-top: 1px solid var(--line); padding: 14px; font-size: 12px; }
+.assistant-delete-confirm, .assistant-export { border-top: 1px solid var(--line); padding: 16px 20px; font-size: 12px; }
 .assistant-export { display: flex; flex-wrap: wrap; gap: 8px; }
 .assistant-export label { flex-basis: 100%; }
-@media (max-width: 1100px) { .assistant-panel { flex-basis: 340px; width: 340px; } }
-@media (max-width: 700px) { .assistant-panel { position: absolute; inset: 0; z-index: 45; width: 100%; border-left: 0; padding-top: 0; } }
+@media (max-width: 1100px) { .assistant-panel { flex-basis: 360px; width: 360px; } }
+@media (max-width: 430px) { .assistant-model-row { grid-template-columns: 1fr; } .assistant-model-row > .assistant-text-action, .assistant-model-row > .assistant-model-error { grid-column: auto; } }
+@media (max-width: 700px) { .assistant-panel { position: absolute; inset: 0; z-index: 45; width: 100%; border-left: 0; padding-top: 0; box-shadow: none; } .assistant-composer { margin: 10px 12px 12px; } .assistant-messages { padding-left: 14px; padding-right: 14px; } }
 </style>

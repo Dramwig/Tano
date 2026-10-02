@@ -1,4 +1,6 @@
 /** Declarative object types shared by the editor, storage validation and future plugin hosts. */
+import { parseTaskReview } from './task-review';
+import { validateTaskRepeat } from './task-repeat';
 export interface ObjectField {
   key: string;
   label: string;
@@ -153,6 +155,12 @@ export function validateObjectProperties(
   properties: Record<string, unknown>,
   registry = objectTypeRegistry,
 ) {
+  validateTaskRepeat(type, properties);
+  if (properties.deliveryReview !== undefined) {
+    const review = parseTaskReview(properties.deliveryReview);
+    if (!(type === 'task' || (type === 'event' && properties.checkable === true))) throw new Error('只有任务可以提交交付审阅');
+    if ((properties.completed === true || type === 'task' && ['done', 'completed'].includes(String(properties.status))) && review.state !== 'approved') throw new Error('此任务需由指定审阅人确认通过后完成');
+  }
   const definition = registry.get(type);
   if (!definition) throw new Error(`类型 ${type} 未启用，请先注册对应领域插件；原文件已保留`);
   if (definition.retired)

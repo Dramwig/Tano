@@ -2,9 +2,11 @@ import type { Node } from '@milkdown/kit/prose/model';
 import { Plugin } from '@milkdown/kit/prose/state';
 import { TableView } from '@milkdown/kit/prose/tables';
 import type { EditorView, ViewMutationRecord } from '@milkdown/kit/prose/view';
+import { animate } from 'motion/mini';
 
 const viewports = new WeakMap<EditorView, Set<TableViewport>>();
 let viewportId = 0;
+type ViewportStyles = Partial<Record<'width' | 'marginLeft' | 'marginRight', number>>;
 
 /** Keep the content width independent of the visible, horizontally scrollable viewport. */
 export class TableViewport extends TableView {
@@ -15,6 +17,9 @@ export class TableViewport extends TableView {
   private scrollbar: HTMLDivElement;
   private thumb: HTMLDivElement;
   private drag: { id: number; x: number; scroll: number; scale: number } | undefined;
+  private layoutState: { annotated: boolean; target: string } | undefined;
+  private motions: ReturnType<typeof animate>[] | undefined;
+  private motionFrame: number | undefined;
 
   constructor(node: Node, minimumWidth: number, private view: EditorView) {
     super(node, minimumWidth);
@@ -84,15 +89,63 @@ export class TableViewport extends TableView {
     const width = annotated || contentWidth <= baseWidth ? baseWidth
       : Math.max(baseWidth, availableRight - availableLeft);
     const left = Math.max(availableLeft, Math.min(originLeft - (width - baseWidth) / 2, availableRight - width));
-    this.dom.style.width = `${width}px`;
-    this.dom.style.marginLeft = `${annotated ? 0 : left - originLeft}px`;
-    this.table.style.marginLeft = `${annotated ? 0 : originLeft - left}px`;
-    this.table.style.marginRight = `${annotated ? 0 : left + width - originLeft - baseWidth}px`;
-    this.scrollbar.style.width = `${baseWidth}px`;
-    this.scrollbar.style.marginLeft = `${annotated ? 0 : originLeft - left}px`;
+    this.applyLayout(annotated, [
+      { element: this.dom, styles: { width, marginLeft: annotated ? 0 : left - originLeft } },
+      { element: this.table, styles: { marginLeft: annotated ? 0 : originLeft - left, marginRight: annotated ? 0 : left + width - originLeft - baseWidth } },
+      { element: this.scrollbar, styles: { width: baseWidth, marginLeft: annotated ? 0 : originLeft - left } },
+    ]);
     this.dom.classList.toggle('has-comments', annotated);
     this.edges();
     this.dom.dispatchEvent(new Event('tano-table-layout', { bubbles: true }));
+  }
+
+  private applyLayout(annotated: boolean, targets: { element: HTMLElement; styles: ViewportStyles }[]) {
+    const target = JSON.stringify(targets.map(entry => entry.styles));
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (this.layoutState?.target === target && this.layoutState.annotated === annotated && !(reduceMotion && this.motions)) return;
+    const transition = this.layoutState !== undefined && this.layoutState.annotated !== annotated && !reduceMotion;
+    const frames = targets.map(({ element, styles }) => {
+      const computed = getComputedStyle(element);
+      return Object.fromEntries(Object.entries(styles).flatMap(([property, value]) => {
+        const from = parseFloat(computed[property as keyof ViewportStyles]) || 0;
+        return Math.abs(from - value) > 0.01 ? [[property, [`${from}px`, `${value}px`]]] : [];
+      }));
+    });
+    this.stopMotion();
+    for (const { element, styles } of targets) {
+      for (const [property, value] of Object.entries(styles)) element.style[property as keyof ViewportStyles] = `${value}px`;
+    }
+    this.layoutState = { annotated, target };
+    if (!transition || typeof this.dom.animate !== 'function') return;
+    // Animate the viewport and its compensating margins together; cell text stays unscaled.
+    const motions = targets.flatMap(({ element }, index) => Object.keys(frames[index]!).length
+      ? [animate(element, frames[index]!, { duration: 0.24, ease: [0.22, 1, 0.36, 1] })] : []);
+    if (!motions.length) return;
+    this.motions = motions;
+    this.trackMotion();
+    void Promise.all(motions.map(motion => motion.finished)).then(() => {
+      if (this.motions !== motions) return;
+      this.stopMotion();
+      this.edges();
+      this.dom.dispatchEvent(new Event('tano-table-layout', { bubbles: true }));
+    });
+  }
+
+  private trackMotion = () => {
+    this.motionFrame = window.requestAnimationFrame(() => {
+      this.motionFrame = undefined;
+      if (!this.motions) return;
+      this.edges();
+      this.dom.dispatchEvent(new Event('tano-table-layout', { bubbles: true }));
+      this.trackMotion();
+    });
+  };
+
+  private stopMotion() {
+    this.motions?.forEach(motion => motion.stop());
+    this.motions = undefined;
+    if (this.motionFrame !== undefined) window.cancelAnimationFrame(this.motionFrame);
+    this.motionFrame = undefined;
   }
 
   private edges = () => {
@@ -163,6 +216,7 @@ export class TableViewport extends TableView {
   }
 
   destroy() {
+    this.stopMotion();
     if (this.frame !== undefined) window.cancelAnimationFrame(this.frame);
     this.observer?.disconnect();
     this.wrapper.removeEventListener('scroll', this.edges);

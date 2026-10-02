@@ -126,14 +126,36 @@ pub fn respond(root: &Path, workspace_id: &str, request: &Request<Vec<u8>>) -> R
         Ok((mime, bytes)) => (StatusCode::OK, mime, bytes),
         Err(status) => (status, "text/plain", b"Image unavailable".to_vec()),
     };
-    Response::builder()
+    let mut response = Response::builder()
         .status(status)
         .header("Content-Type", mime)
         .header("Cache-Control", "no-store")
         .header("X-Content-Type-Options", "nosniff")
         .header("Content-Security-Policy", "default-src 'none'; sandbox")
         .body(bytes)
-        .expect("static response headers")
+        .expect("static response headers");
+    if let Some(origin) = request.headers().get("Origin") {
+        if origin
+            .to_str()
+            .ok()
+            .and_then(|value| tauri::Url::parse(value).ok())
+            .is_some_and(|url| {
+                matches!(url.scheme(), "http" | "https" | "tauri")
+                    && matches!(
+                        url.host_str(),
+                        Some("localhost" | "127.0.0.1" | "tauri.localhost")
+                    )
+            })
+        {
+            response
+                .headers_mut()
+                .insert("Access-Control-Allow-Origin", origin.clone());
+            response
+                .headers_mut()
+                .insert("Vary", "Origin".parse().unwrap());
+        }
+    }
+    response
 }
 
 #[cfg(test)]
@@ -157,6 +179,23 @@ mod tests {
         assert_eq!(response.body(), bytes);
         assert_eq!(response.headers()["content-type"], "image/png");
         assert_eq!(respond(&root, "another-workspace", &request).status(), 404);
+        let local_request = Request::builder()
+            .uri(request.uri())
+            .header("Origin", "http://tauri.localhost")
+            .body(vec![])
+            .unwrap();
+        assert_eq!(
+            respond(&root, "workspace", &local_request).headers()["access-control-allow-origin"],
+            "http://tauri.localhost"
+        );
+        let external_request = Request::builder()
+            .uri(request.uri())
+            .header("Origin", "https://example.com")
+            .body(vec![])
+            .unwrap();
+        assert!(!respond(&root, "workspace", &external_request)
+            .headers()
+            .contains_key("access-control-allow-origin"));
     }
     #[test]
     fn imported_attachment_identity_survives_index_loss() {

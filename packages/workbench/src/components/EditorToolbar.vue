@@ -41,8 +41,9 @@ const props = defineProps<{
   dragging?: boolean;
   assistant?: boolean;
   annotation?: boolean;
+  todo?: boolean;
 }>();
-const emit = defineEmits<{ command: [name: string, value?: string]; dismiss: []; assistant: []; annotation: [] }>();
+const emit = defineEmits<{ command: [name: string, value?: string]; dismiss: []; assistant: []; annotation: []; todo: [] }>();
 const root = ref<HTMLElement>();
 const trigger = ref<HTMLButtonElement>();
 const input = ref<HTMLInputElement>();
@@ -431,7 +432,8 @@ function enableEnteringActions(element: Element) {
       </form>
     </template>
     <slot name="trailing" />
-    <span v-if="(annotation && !source) || assistant" class="toolbar-divider toolbar-group-divider" aria-hidden="true" />
+    <span v-if="(annotation && !source) || assistant || todo" class="toolbar-divider toolbar-group-divider" aria-hidden="true" />
+    <button v-if="todo && !source" type="button" class="icon-button" aria-label="从选区创建 Todo" title="从选区创建 Todo" :disabled="disabled || !context.textSelected" @mousedown.prevent @click="emit('todo')"><ListTodo :size="17" /></button>
     <button
       v-if="annotation && !source"
       type="button"

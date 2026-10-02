@@ -23,12 +23,14 @@ const props = defineProps<{
   source?: boolean;
   assistant?: boolean;
   annotation?: boolean;
+  todo?: boolean;
 }>();
 const emit = defineEmits<{
   command: [name: string, value?: string];
   'update:mode': [value: ToolbarMode];
   assistant: [];
   annotation: [];
+  todo: [];
 }>();
 const menuOpen = ref(false);
 const menuRoot = ref<HTMLElement>();
@@ -149,6 +151,8 @@ async function changeMode(mode: ToolbarMode) {
     :dragging="!!drag"
     :assistant="assistant"
     :annotation="annotation"
+    :todo="todo"
+    @todo="emit('todo')"
     @assistant="emit('assistant')"
     @annotation="emit('annotation')"
     @command="(name, value) => emit('command', name, value)"
@@ -189,6 +193,8 @@ async function changeMode(mode: ToolbarMode) {
       :dragging="!!drag"
       :assistant="assistant"
       :annotation="annotation"
+      :todo="todo"
+      @todo="emit('todo')"
       @assistant="emit('assistant')"
       @annotation="emit('annotation')"
       @command="(name, value) => emit('command', name, value)"
@@ -222,6 +228,7 @@ async function changeMode(mode: ToolbarMode) {
             :source="source"
             :assistant="assistant"
             :annotation="annotation"
+            :todo="todo"
           >
             <template #leading><ToolbarDragHandle /></template>
             <template v-if="drag.target !== 'fixed'" #preferences>

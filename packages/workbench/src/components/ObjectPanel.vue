@@ -11,6 +11,8 @@ import type { ObjectRecord } from '../workspace-objects';
 import { useWorkspaceStore } from '../stores/workspace';
 import { useWorkbenchRuntime } from '../runtime';
 import PlanDateField from './PlanDateField.vue';
+import DescriptionEditor from './DescriptionEditor.vue';
+import ReferenceConnections from './ReferenceConnections.vue';
 import { readPlanDate, writePlanDate } from '../plan-date';
 import type { PlanDateValue } from '../plan-date';
 
@@ -32,6 +34,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
   openResource: [identity: ReferenceIdentity];
+  openReference: [identity: ReferenceIdentity];
   createDocument: [];
   importAsset: [];
 }>();
@@ -40,6 +43,14 @@ const objectDetails = useWorkbenchRuntime().extensions?.().objectDetails;
 const scopeId = computed(() => props.personal?.id ?? store.workspace?.id);
 const scopeKey = computed(() => `${props.personal ? 'personal' : 'workspace'}:${scopeId.value ?? ''}`);
 const records = computed(() => props.personal?.records ?? store.objects);
+const personalTargets = computed<ReferenceTarget[] | undefined>(() => props.personal?.records.map(({ object, path }) => ({
+  workspace: props.personal!.id, type: object.type, id: object.id, name: object.name, path, description: object.description, archived: object.archived,
+})));
+function openLinked(identity: ReferenceIdentity) {
+  if (!props.personal) return emit('openReference', identity);
+  const record = records.value.find(record => record.object.type === identity.type && record.object.id === identity.id);
+  if (record) select(record);
+}
 const objectErrors = computed(() => props.personal?.errors ?? store.objectErrors);
 interface Draft {
   workspace: string;
@@ -367,14 +378,8 @@ const uri = computed(() =>
               required
               maxlength="200"
           /></label>
-          <label
-            >描述<textarea
-              v-model="current.value.description"
-              :disabled="editDisabled"
-              rows="4"
-              maxlength="20000"
-            />
-          </label>
+          <DescriptionEditor :key="`${current.scope}:${current.record?.object.id ?? 'new'}`" v-model="current.value.description" :disabled="editDisabled" :targets="personal ? [] : store.referenceTargets.filter(target => target.type !== 'document' || !target.path.startsWith('.tano/'))" />
+          <ReferenceConnections :identity="current.value" :draft="current.value.description" :local-targets="personalTargets" :active="open" @open="openLinked" />
           <component
             :is="objectDetails"
             v-if="objectDetails && !personal && current.record"
@@ -382,6 +387,7 @@ const uri = computed(() =>
             :workspace-id="current.workspace"
             :object="current.record.object"
             :disabled="editDisabled"
+            @open-reference="openLinked"
           />
           <p v-if="retired" class="object-notice">
             项目由工作区文件夹和 Markdown 文档承载。旧项目对象及已有引用只读保留，不再创建、编辑或另存为项目对象。
@@ -474,6 +480,7 @@ const uri = computed(() =>
             <dd>{{ new Date(resource.modified ?? 0).toLocaleString() }}</dd>
           </dl>
           <code class="object-identity">{{ referenceUrl(resource) }}</code>
+          <ReferenceConnections :identity="resource" :active="open" @open="openLinked" />
           <p>
             {{
               resource.type === 'document'

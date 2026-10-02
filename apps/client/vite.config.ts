@@ -2,7 +2,18 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    {
+      name: 'isolated-dev-cache',
+      config(config, { command }) {
+        // Concurrent browser and desktop servers must not overwrite each other's bundles.
+        if (command === 'serve') {
+          return { cacheDir: `node_modules/.vite/dev-${config.server?.port ?? 43841}` };
+        }
+      },
+    },
+  ],
   server: {
     host: process.env.TAURI_DEV_HOST || '127.0.0.1', port: 43841, strictPort: true,
     watch: {

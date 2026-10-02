@@ -20,6 +20,7 @@ function mountPanel(objects: ObjectRecord[] = [], selectedId?: string, visible =
     objectDefinitions: coreObjectTypes,
     objects,
     objectErrors: [],
+    getReferenceContext: vi.fn(async () => ({ outgoing: [], incoming: [], errors: [] })),
     referenceTargets: [
       {
         id: 'f00001',
@@ -198,6 +199,7 @@ it('retains an object draft across workspace scans and selects the saved object'
     referenceTargets: [],
     objectErrors: [],
     isDemo: true,
+    getReferenceContext: vi.fn(async () => ({ outgoing: [], incoming: [], errors: [] })),
     createObject: vi.fn(async (value) => {
       const object = { ...value, id: 'a00001', version: 1 };
       const saved = {

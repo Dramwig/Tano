@@ -55,11 +55,13 @@ export function referenceViews(
             ? `${block ? '' : '@'}${target?.name ?? current.attrs.label}`
             : `[${block ? '' : '@'}${current.attrs.label}](${current.attrs.url}${block ? ' "tano:object-card"' : ''})`;
           button.disabled = (!enabled() || missing) && !canEditSource();
+          const task = target && (target.type === 'task' || (target.type === 'event' && target.properties?.checkable === true));
+          const completed = target?.properties?.completed === true || ['done', 'completed'].includes(String(target?.properties?.status));
           badge.textContent = !enabled()
             ? 'Level 2 已关闭'
             : missing
               ? '引用不可用'
-              : `${referenceTypeLabel(target.type)}${target.archived ? ' · 已归档' : ''}`;
+              : `${task ? `任务 · ${completed ? '已完成' : '未完成'}` : referenceTypeLabel(target.type)}${target.archived ? ' · 已归档' : ''}`;
           detail.textContent =
             (target?.type === 'event'
               ? `${String(target.properties?.start ?? '')} — ${String(target.properties?.end ?? '')}`

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, ref, watch } from 'vue';
+import { animate } from 'motion/mini';
 import { MessageSquare, Reply, X } from 'lucide-vue-next';
 import { createHeadlessMarkdown } from '@tano/editor/headless';
 import { makeCommentAnchor, rebaseCommentAnchor, resolveCommentAnchor } from '@tano/editor/comment-anchors';
@@ -46,12 +47,18 @@ const popup = ref<HTMLElement>();
 const composer = ref<InstanceType<typeof CommentComposer>>();
 const discussionComposer = ref<InstanceType<typeof CommentComposer>>();
 const conversations = new Map<string, InstanceType<typeof CommentConversation>>();
+const annotationCards = new Map<string, HTMLElement>();
+const cardBounds = new Map<HTMLElement, { top: number; height: number; width: number; marginLeft: number; padding: number; opacity: number }>();
+const cardMotions = new Map<HTMLElement, { top: number; height: number; width: number; outset: number; lift: number; animation: ReturnType<typeof animate> }>();
 const openIds = ref<string[]>([]);
 const openBlockKey = ref<string>();
 const popupCollapsed = ref(false);
-const layout = ref<{ blocks: { key: string; ids: string[]; top: number; bottom: number }[]; buttonLeft: number; popupLeft: number; popupWidth: number }>({ blocks: [], buttonLeft: 0, popupLeft: 0, popupWidth: 520 });
+const layout = ref<{ blocks: { key: string; ids: string[]; top: number; bottom: number }[]; buttonLeft: number; popupLeft: number; popupWidth: number; rail: boolean; railLeft: number; cardTops: Record<string, number> }>({ blocks: [], buttonLeft: 0, popupLeft: 0, popupWidth: 520, rail: false, railLeft: 0, cardTops: {} });
+const railWidth = 320;
+const railGap = 24;
 let layoutFrame = 0;
 let resizeObserver: ResizeObserver | undefined;
+let cardResizeObserver: ResizeObserver | undefined;
 let mutationObserver: MutationObserver | undefined;
 let generation = 0;
 let projectionTask: Promise<void> = Promise.resolve();
@@ -68,6 +75,8 @@ onBeforeUnmount(() => {
   clearTimeout(saveTimer);
   cancelAnimationFrame(layoutFrame);
   resizeObserver?.disconnect();
+  cardResizeObserver?.disconnect();
+  for (const card of cardMotions.keys()) stopCardMotion(card);
   mutationObserver?.disconnect();
   window.removeEventListener('resize', scheduleLayout);
   window.removeEventListener('pointerdown', outsidePointer, true);
@@ -76,6 +85,91 @@ onBeforeUnmount(() => {
   props.editorElement?.removeEventListener('click', markClicked);
   void parserPromise.then(parser => parser.destroy());
 });
+
+onBeforeUpdate(() => {
+  cardBounds.clear();
+  if (!layout.value.rail) return;
+  for (const card of annotationCards.values()) {
+    const bounds = card.getBoundingClientRect();
+    const style = getComputedStyle(card);
+    cardBounds.set(card, {
+      top: bounds.top, height: bounds.height, width: bounds.width,
+      marginLeft: parseFloat(style.marginLeft) || 0, padding: parseFloat(style.paddingLeft) || 12,
+      opacity: parseFloat(style.opacity) || 0,
+    });
+  }
+});
+onUpdated(() => {
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (!layout.value.rail || reduceMotion) {
+    for (const card of cardMotions.keys()) stopCardMotion(card);
+    return;
+  }
+  for (const card of annotationCards.values()) {
+    if (typeof card.animate !== 'function' || !card.getClientRects().length) {
+      stopCardMotion(card);
+      continue;
+    }
+    const top = parseFloat(card.style.top) || 0;
+    const height = annotationCardHeight(card);
+    const style = getComputedStyle(card);
+    const outset = parseFloat(style.getPropertyValue('--annotation-card-outset')) || 0;
+    const width = railWidth + outset * 2;
+    const lift = parseFloat(style.getPropertyValue('--annotation-card-lift')) || 0;
+    const current = cardMotions.get(card);
+    if (current?.top === top && current.height === height && current.width === width && current.outset === outset && current.lift === lift) continue;
+    const previous = current ? cardBounds.get(card) : undefined;
+    stopCardMotion(card);
+    const offset = previous ? previous.top - card.getBoundingClientRect().top : 8;
+    card.style.overflow = 'clip';
+    const animation = animate(card, {
+      transform: [`translateY(${offset + lift}px)`, `translateY(${lift}px)`],
+      width: [`${previous?.width ?? width}px`, `${width}px`],
+      marginLeft: [`${previous?.marginLeft ?? -outset}px`, `${-outset}px`],
+      paddingLeft: [`${previous?.padding ?? 12 + outset}px`, `${12 + outset}px`],
+      paddingRight: [`${previous?.padding ?? 12 + outset}px`, `${12 + outset}px`],
+      opacity: [previous?.opacity ?? 0, 1],
+      height: [`${previous?.height ?? height}px`, `${height}px`],
+    }, { duration: 0.22, ease: [0.22, 1, 0.36, 1] });
+    cardMotions.set(card, { top, height, width, outset, lift, animation });
+    void animation.finished.then(() => {
+      if (cardMotions.get(card)?.animation !== animation) return;
+      card.style.height = '';
+      card.style.width = '';
+      card.style.marginLeft = '';
+      card.style.paddingLeft = '';
+      card.style.paddingRight = '';
+      card.style.transform = '';
+      card.style.opacity = '';
+      card.style.overflow = '';
+    });
+  }
+});
+
+function stopCardMotion(card: HTMLElement) {
+  cardMotions.get(card)?.animation.stop();
+  cardMotions.delete(card);
+  card.style.height = '';
+  card.style.width = '';
+  card.style.marginLeft = '';
+  card.style.paddingLeft = '';
+  card.style.paddingRight = '';
+  card.style.transform = '';
+  card.style.opacity = '';
+  card.style.overflow = '';
+}
+function annotationCardHeight(card: HTMLElement) {
+  if (!card.classList.contains('annotation-card')) return card.offsetHeight;
+  if (card.style.display === 'none') return 0;
+  const content = card.firstElementChild as HTMLElement | null;
+  if (!content) return card.offsetHeight;
+  const style = getComputedStyle(card);
+  // Measure natural content rather than the animated height so card placement stays stable.
+  const height = (parseFloat(getComputedStyle(content).height) || content.offsetHeight) +
+    [style.paddingTop, style.paddingBottom, style.borderTopWidth, style.borderBottomWidth]
+      .reduce((total, value) => total + (parseFloat(value) || 0), 0);
+  return Math.round(height * 64) / 64;
+}
 
 function publish() {
   const anchors = (annotations.value?.threads ?? []).flatMap(thread => {
@@ -184,6 +278,10 @@ watch(() => props.document.base.hash, () => {
   if (!annotations.value) void load();
 });
 onMounted(() => {
+  if (typeof ResizeObserver !== 'undefined') {
+    cardResizeObserver = new ResizeObserver(scheduleLayout);
+    for (const card of annotationCards.values()) cardResizeObserver.observe(card);
+  }
   window.addEventListener('tano:open-comment', openComment);
   window.addEventListener('resize', scheduleLayout);
   window.addEventListener('pointerdown', outsidePointer, true);
@@ -203,10 +301,12 @@ watch(() => props.editorElement, (element, previous) => {
   if (element && typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver(scheduleLayout);
     resizeObserver.observe(element);
+    const parent = section.value?.closest('.document-main');
+    if (parent) resizeObserver.observe(parent);
   }
   if (element && typeof MutationObserver !== 'undefined') {
     mutationObserver = new MutationObserver(scheduleLayout);
-    mutationObserver.observe(element, { childList: true, subtree: true, characterData: true });
+    mutationObserver.observe(element, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class'] });
   }
   scheduleLayout();
 }, { immediate: true, flush: 'post' });
@@ -240,11 +340,26 @@ async function saveAnchors() {
 const activeAnnotations = computed(() => (annotations.value?.threads ?? [])
   .filter(thread => !thread.detached && working.value[thread.id]));
 const resolvedAnnotations = computed(() => activeAnnotations.value.filter(thread => thread.resolved));
-const openThreads = computed(() => activeAnnotations.value.filter(thread => openIds.value.includes(thread.id)));
+const pendingAnnotations = computed(() => activeAnnotations.value.filter(thread => !thread.resolved));
+const openThreads = computed(() => pendingAnnotations.value.filter(thread => openIds.value.includes(thread.id)));
+const visibleThreads = computed(() => layout.value.rail ? pendingAnnotations.value
+  .filter(thread => layout.value.cardTops[thread.id] !== undefined)
+  .sort((a, b) => layout.value.cardTops[a.id]! - layout.value.cardTops[b.id]!) : openThreads.value);
 const openBlock = computed(() => layout.value.blocks.find(block => block.key === openBlockKey.value));
 const popupTop = computed(() => (openBlock.value?.bottom ?? 0) + 8);
 const popupMounted = computed(() => !!openBlock.value && (!!selected.value || !!openThreads.value.length));
 const popupVisible = computed(() => popupMounted.value && !popupCollapsed.value);
+const annotationMounted = computed(() => layout.value.rail ? !!pendingAnnotations.value.length || !!selected.value : popupMounted.value);
+function threadExpanded(id: string) { return !popupCollapsed.value && openIds.value.includes(id); }
+function setAnnotationCard(id: string, value: unknown) {
+  const previous = annotationCards.get(id);
+  if (previous === value) return;
+  if (previous) { cardResizeObserver?.unobserve(previous); stopCardMotion(previous); }
+  if (value instanceof HTMLElement) {
+    annotationCards.set(id, value);
+    cardResizeObserver?.observe(value);
+  } else annotationCards.delete(id);
+}
 watch(activeAnnotations, () => {
   if (!selected.value && openIds.value.length && !openThreads.value.length) closePopup();
   scheduleLayout();
@@ -268,7 +383,7 @@ function updateLayout() {
     .map(thread => ({ id: thread.id, anchor: working.value[thread.id]! }));
   if (selected.value) anchors.push({ id: '@draft', anchor: selected.value });
   const geometry = props.geometry(anchors);
-  if (!geometry) { layout.value = { ...layout.value, blocks: [] }; return; }
+  if (!geometry) { layout.value = { ...layout.value, blocks: [], rail: false }; return; }
   const bounds = parent.getBoundingClientRect();
   const blocks: typeof layout.value.blocks = [];
   for (const block of geometry.blocks) {
@@ -280,18 +395,51 @@ function updateLayout() {
   }
   const width = Math.max(0, Math.min(520, bounds.width - 32));
   const center = (geometry.left + geometry.right) / 2 - bounds.left;
+  const railLeft = geometry.right - bounds.left + railGap;
+  // Use existing space beside centered prose, including the selected card's 3px outset.
+  const rail = blocks.length > 0 && railLeft + railWidth + 3 <= bounds.width - 16;
+  const modeChanged = rail !== layout.value.rail;
+  const cardTops: Record<string, number> = {};
+  let bottom = 0;
+  // A multi-block annotation has one card at its first anchor; expanded cards push later cards down.
+  const positioned = new Set<string>();
+  for (const block of [...blocks].sort((a, b) => a.top - b.top)) {
+    for (const id of block.ids) {
+      if (positioned.has(id)) continue;
+      positioned.add(id);
+      const top = Math.max(block.top, bottom);
+      cardTops[id] = top;
+      const card = annotationCards.get(id);
+      const cardStyle = card ? getComputedStyle(card) : undefined;
+      const lift = parseFloat(cardStyle?.getPropertyValue('--annotation-card-lift') ?? '') || 0;
+      bottom = top + (card ? annotationCardHeight(card) + lift : 100) + 12;
+    }
+  }
   layout.value = {
     blocks,
     buttonLeft: Math.min(geometry.right - bounds.left + 12, bounds.width - 48),
     popupLeft: Math.max(16, Math.min(center - width / 2, bounds.width - width - 16)),
     popupWidth: width,
+    rail,
+    railLeft,
+    cardTops,
   };
+  if (modeChanged) void nextTick(scheduleLayout);
   const current = blocks.find(block => block.key === openBlockKey.value &&
     (selected.value ? block.ids.includes('@draft') : block.ids.some(id => openIds.value.includes(id))));
   if (!current && (selected.value || openIds.value.length)) {
     openBlockKey.value = blocks.find(block => selected.value ? block.ids.includes('@draft') :
       block.ids.some(id => openIds.value.includes(id)))?.key;
   }
+}
+function selectThread(id: string, focus = false) {
+  if (threadExpanded(id) && !selected.value) return;
+  selected.value = undefined;
+  openIds.value = [id];
+  openBlockKey.value = layout.value.blocks.find(block => block.ids.includes(id))?.key;
+  popupCollapsed.value = false;
+  if (focus && working.value[id]) props.focusAnchor(working.value[id]!);
+  scheduleLayout();
 }
 function closePopup() { openIds.value = []; openBlockKey.value = undefined; selected.value = undefined; popupCollapsed.value = false; }
 function openBlockComments(key: string, ids: string[]) {
@@ -303,16 +451,18 @@ function openBlockComments(key: string, ids: string[]) {
 }
 function outsidePointer(event: PointerEvent) {
   const target = event.target;
-  if (!(target instanceof Element) || target.closest('.annotation-popup, .comment-more-menu, .annotation-count, .annotation-create-button, [data-comment-id]')) return;
+  if (!(target instanceof Element) || target.closest('.annotation-popup, .annotation-rail, .comment-more-menu, .annotation-count, .annotation-create-button, [data-comment-id]')) return;
   popupCollapsed.value = true;
+  scheduleLayout();
 }
-function escapePopup(event: KeyboardEvent) { if (event.key === 'Escape') popupCollapsed.value = true; }
+function escapePopup(event: KeyboardEvent) { if (event.key === 'Escape') { popupCollapsed.value = true; scheduleLayout(); } }
 function markClicked(event: MouseEvent) {
   const target = event.target instanceof Element ? event.target.closest('[data-comment-id]') : null;
   const id = target?.getAttribute('data-comment-id');
   if (!id) return;
-  if (id === '@draft') { popupCollapsed.value = false; return; }
+  if (id === '@draft') { popupCollapsed.value = false; scheduleLayout(); return; }
   updateLayout();
+  if (layout.value.rail) { selectThread(id); return; }
   const parent = section.value?.closest<HTMLElement>('.document-main');
   const top = event.clientY - (parent?.getBoundingClientRect().top ?? 0);
   const block = layout.value.blocks.find(item => item.ids.includes(id) && top >= item.top && top <= item.bottom)
@@ -473,28 +623,49 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
 
 <template>
   <section ref="section" class="document-discussion" aria-label="文档讨论">
-    <button v-for="block in layout.blocks.filter(item => count(item.ids))" :key="block.key" type="button"
+    <button v-for="block in layout.rail ? [] : layout.blocks.filter(item => count(item.ids))" :key="block.key" type="button"
       class="annotation-count" :class="{ 'is-open': openBlockKey === block.key && popupVisible }"
       :style="{ left: `${layout.buttonLeft}px`, top: `${block.top + 2}px` }"
       :aria-label="`查看 ${count(block.ids)} 条局部批注`" :title="`${count(block.ids)} 条局部批注`"
       :aria-expanded="openBlockKey === block.key && popupVisible" @mousedown.prevent @click="openBlockComments(block.key, block.ids)">
       <MessageSquare :size="15" /><span>{{ count(block.ids) }}</span>
     </button>
-    <div v-if="popupMounted" v-show="popupVisible" ref="popup" class="annotation-popup" role="dialog" aria-label="局部批注"
-      :style="{ top: `${popupTop}px`, left: `${layout.popupLeft}px`, width: `${layout.popupWidth}px` }">
-      <div class="annotation-popup-content">
-        <CommentConversation v-for="thread in openThreads" :key="thread.id"
-          :ref="value => value ? conversations.set(thread.id, value as InstanceType<typeof CommentConversation>) : conversations.delete(thread.id)"
-          :thread="thread" :quote="quote(working[thread.id]!)" local :readonly="readonly" :busy="busy" :author-id="author.id" :author-name="author.name"
-          :assistant="assistant" @assistant="emit('assistant', { kind: 'annotation', thread, quote: quote(working[thread.id]!) })"
-          @reply="(body, mentions) => change('annotation', thread.id, 'reply', body, false, mentions)"
-          @edit="editMessage('annotation', thread.id, $event)" @remove="removeMessage('annotation', thread.id, $event)"
-          @resolve="change('annotation', thread.id, 'resolve', '', $event)" />
-        <blockquote v-if="selected" class="annotation-selected">{{ quote(selected) }}</blockquote>
-        <CommentComposer v-if="selected && !readonly" ref="composer" v-model="annotationDraft" :author-name="author.name"
-          label="添加批注" :busy="busy" compact @submit="start('annotation', $event)" />
+    <div v-if="annotationMounted" v-show="layout.rail || popupVisible" ref="popup" :class="layout.rail ? 'annotation-rail' : 'annotation-popup'"
+      :role="layout.rail ? 'region' : 'dialog'" aria-label="局部批注"
+      :style="{ top: `${layout.rail ? 0 : popupTop}px`, left: `${layout.rail ? layout.railLeft : layout.popupLeft}px`, width: `${layout.rail ? railWidth : layout.popupWidth}px` }">
+      <div :class="{ 'annotation-popup-content': !layout.rail }">
+        <div v-for="thread in visibleThreads" :key="thread.id" :ref="value => setAnnotationCard(thread.id, value)"
+          class="annotation-thread" :class="{ 'annotation-card': layout.rail, 'is-expanded': layout.rail && threadExpanded(thread.id) }"
+          :style="layout.rail ? { top: `${layout.cardTops[thread.id]}px` } : undefined"
+          :tabindex="layout.rail && !threadExpanded(thread.id) ? 0 : undefined"
+          :aria-label="layout.rail ? `批注：${thread.messages[0]?.body}` : undefined"
+          :aria-expanded="layout.rail ? threadExpanded(thread.id) : undefined"
+          @click="layout.rail && selectThread(thread.id, true)"
+          @keydown.enter.self.prevent="selectThread(thread.id, true)" @keydown.space.self.prevent="selectThread(thread.id, true)">
+          <div class="annotation-card-content">
+            <CommentConversation
+              :ref="value => value ? conversations.set(thread.id, value as InstanceType<typeof CommentConversation>) : conversations.delete(thread.id)"
+              :thread="thread" :quote="layout.rail ? undefined : quote(working[thread.id]!)" local :preview="layout.rail && !threadExpanded(thread.id)"
+              :readonly="readonly" :busy="busy" :author-id="author.id" :author-name="author.name" @expand="selectThread(thread.id, true)"
+              :assistant="assistant" @assistant="emit('assistant', { kind: 'annotation', thread, quote: quote(working[thread.id]!) })"
+              @reply="(body, mentions) => change('annotation', thread.id, 'reply', body, false, mentions)"
+              @edit="editMessage('annotation', thread.id, $event)" @remove="removeMessage('annotation', thread.id, $event)"
+              @resolve="change('annotation', thread.id, 'resolve', '', $event)" />
+            <p v-if="layout.rail && error && threadExpanded(thread.id)" class="comment-error" role="alert">{{ error }}</p>
+          </div>
+        </div>
+        <div v-if="selected" v-show="!popupCollapsed" :ref="value => setAnnotationCard('@draft', value)"
+          :class="{ 'annotation-card': layout.rail, 'is-expanded': layout.rail }"
+          :style="layout.rail ? { top: `${layout.cardTops['@draft']}px` } : undefined">
+          <div class="annotation-card-content">
+            <blockquote class="annotation-selected">{{ quote(selected) }}</blockquote>
+            <CommentComposer v-if="!readonly" ref="composer" v-model="annotationDraft" :author-name="author.name"
+              label="添加批注" :busy="busy" compact @submit="start('annotation', $event)" />
+            <p v-if="layout.rail && error" class="comment-error" role="alert">{{ error }}</p>
+          </div>
+        </div>
       </div>
-      <p v-if="error" class="comment-error" role="alert">{{ error }}</p>
+      <p v-if="error && !layout.rail" class="comment-error" role="alert">{{ error }}</p>
     </div>
     <header class="document-discussion-header"><h2>文档讨论</h2><span v-if="discussions?.threads.length">{{ discussions.threads.reduce((total, thread) => total + thread.messages.length, 0) }}</span></header>
     <p v-if="error && !popupVisible" class="comment-error" role="alert">{{ error }}</p>
@@ -550,7 +721,24 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
 .annotation-count:focus-visible { outline: 2px solid #d5ad2d; outline-offset: 2px; }
 .annotation-popup { position: absolute; z-index: 12; box-sizing: border-box; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); box-shadow: 0 8px 24px #00000012, 0 2px 6px #00000005; padding: 12px 16px 14px; }
 .annotation-popup-content { max-height: 400px; overflow-y: auto; overscroll-behavior: contain; }
+.annotation-popup-content > .annotation-thread + .annotation-thread { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.annotation-rail { position: absolute; z-index: 4; --annotation-card-border: rgb(42 28 0 / 7%); }
+.annotation-card { --annotation-card-outset: 0px; --annotation-card-lift: 0px; position: absolute; width: calc(100% + var(--annotation-card-outset) * 2); margin-left: calc(-1 * var(--annotation-card-outset)); box-sizing: border-box; padding: 12px calc(12px + var(--annotation-card-outset)); border: 1px solid var(--annotation-card-border); border-radius: 8px; background: var(--paper); cursor: pointer; transform: translateY(var(--annotation-card-lift)); transition: box-shadow .22s cubic-bezier(.22, 1, .36, 1); }
+.annotation-card.is-expanded { --annotation-card-outset: 3px; --annotation-card-lift: -2px; z-index: 2; cursor: default; box-shadow: 0 4px 12px rgb(25 25 25 / 2.7%), 0 1px 2px rgb(25 25 25 / 2%); }
+:global(:root[data-theme='dark'] .annotation-rail) { --annotation-card-border: rgb(255 255 255 / 9%); }
+:global(:root[data-theme='dark'] .annotation-card.is-expanded) { box-shadow: 0 4px 12px rgb(0 0 0 / 14%), 0 1px 2px rgb(0 0 0 / 10%); }
+.annotation-card-content { display: flow-root; }
+.annotation-card:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.annotation-card :deep(.comment-message) { position: relative; gap: 8px; }
+.annotation-card :deep(.comment-message:not(:last-of-type)::after) { content: ''; position: absolute; left: 11.5px; top: 30px; bottom: -10px; width: 1px; background: color-mix(in srgb, var(--line) 50%, transparent); pointer-events: none; }
+.annotation-card :deep(.comment-avatar) { width: 24px; height: 24px; }
+.annotation-card :deep(.comment-message.is-reply) { margin-left: 0; }
+.annotation-card :deep(.comment-message p) { margin-top: 5px; }
+.annotation-card :deep(.comment-message-meta) { gap: 6px; }
+.annotation-card :deep(.comment-message-tools) { border: 0; }
+.annotation-card :deep(.comment-message-content) { padding: 0 0 2px; }
 .annotation-selected { margin: 0 0 12px 38px; border-left: 2px solid #eabf35; padding: 2px 10px; max-height: 80px; overflow: auto; font-size: 12px; line-height: 1.6; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
 .comment-error { margin: 10px 0; color: #a63636; font-size: 12px; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { .annotation-card { transition: none; } }
 @media (max-width: 600px) { .document-discussion { margin-top: 32px; } .annotation-popup { padding: 10px 12px 12px; } .annotation-popup-content { max-height: 320px; } }
 </style>

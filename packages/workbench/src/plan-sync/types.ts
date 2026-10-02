@@ -20,14 +20,14 @@ export interface RemoteAdapter {
   write(collection: string, item: RemoteItem, value: ItemValue): Promise<RemoteItem>;
   create(collection: string, value: ItemValue, operationId: string): Promise<RemoteItem>;
 }
-export interface Binding { localId: string; remote: RemoteItem; base: ItemValue }
+export interface Binding { localId: string; remote: RemoteItem; base: ItemValue; localDescription?: string }
 export interface SyncConflict { remoteId: string; localId: string; local: ItemValue; remote: ItemValue; reason: string }
 export interface Connection {
   id: string; accountId: string; kind: SyncKind; collection: Collection;
   scope: 'personal' | 'workspace'; workspaceId?: string; workspaceName?: string;
   direction: 'both' | 'pull'; enabled: boolean; uploadNew: boolean;
   bindings: Binding[]; conflicts: SyncConflict[];
-  pending?: { localId: string; operationId: string; value?: ItemValue; uncertain?: boolean };
+  pending?: { localId: string; operationId: string; value?: ItemValue; localDescription?: string; uncertain?: boolean };
   lastSync?: string; lastAttempt?: string; error?: string;
 }
 export interface SyncState { version: 1; connections: Connection[] }

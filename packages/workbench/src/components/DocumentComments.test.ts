@@ -7,6 +7,7 @@ import { configureWorkbench } from '../runtime';
 import { loadCommentFile, saveCommentChange } from '../workspace-comments';
 import type { OpenDocument } from '../stores/workspace';
 import DocumentComments from './DocumentComments.vue';
+import { makeCommentAnchor } from '@tano/editor/comment-anchors';
 
 let app: ReturnType<typeof createApp> | undefined;
 let root: HTMLDivElement | undefined;
@@ -18,6 +19,83 @@ afterEach(async () => {
   localStorage.clear();
   vi.restoreAllMocks();
   await nextTick();
+});
+
+it('uses the space beside centered prose for annotations and keeps the reply draft when switching to a popup', async () => {
+  const adapter = new DemoAdapter();
+  const pinia = configureWorkbench(createPinia(), { adapter, native: false, mobile: false });
+  setActivePinia(pinia);
+  const author = { id: 'reviewer', name: '审阅者' };
+  const content = '正文';
+  const hash = await sha256(content);
+  const openDocument = reactive<OpenDocument>({
+    id: 'a0b1c2', path: '文章.md', content,
+    base: { content, hash, modified: Date.now() }, saving: false, missing: false,
+  });
+  const anchor = makeCommentAnchor('prose', content, [{ from: 0, to: 2, text: content }], hash);
+  for (const id of ['thread-1', 'thread-2']) {
+    await saveCommentChange(adapter, 'annotation', openDocument.id, { type: 'start', id, body: `${id} 首条评论`, author, anchor });
+  }
+  for (let index = 1; index <= 4; index++) {
+    await saveCommentChange(adapter, 'annotation', openDocument.id, {
+      type: 'reply', threadId: 'thread-1', id: `reply-000${index}`, body: `回复 ${index}`, author,
+    });
+  }
+  let paneWidth = 1600;
+  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
+    return this.closest('.is-expanded') ? 280 : 120;
+  });
+  root = document.createElement('div');
+  document.body.append(root);
+  const focusAnchor = vi.fn();
+  app = createApp(defineComponent(() => () => h('main', { class: 'document-main' }, h(DocumentComments, {
+    workspaceId: 'demo', document: openDocument, readonly: false, author,
+    captureSelection: () => null, focusAnchor,
+    geometry: () => ({ left: (paneWidth - 780) / 2, right: (paneWidth + 780) / 2, blocks: [
+      { key: 'first', ids: ['thread-1'], top: 100, bottom: 140 },
+      { key: 'second', ids: ['thread-2'], top: 130, bottom: 170 },
+      { key: 'third', ids: ['thread-1'], top: 200, bottom: 240 },
+    ] }),
+  }))));
+  app.use(pinia).mount(root);
+  root.querySelector('main')!.getBoundingClientRect = () => new DOMRect(0, 0, paneWidth, 900);
+  await expect.poll(() => root!.querySelectorAll('.annotation-card').length).toBe(2);
+  expect(root.querySelector('.annotation-count')).toBeNull();
+  expect(root.querySelector('.annotation-popup')).toBeNull();
+  const first = root.querySelector<HTMLElement>('.annotation-card')!;
+  const second = root.querySelectorAll<HTMLElement>('.annotation-card')[1]!;
+  const messages = first.querySelectorAll<HTMLElement>('.comment-message');
+  expect([...messages].filter(message => message.style.display !== 'none').map(message => message.querySelector('p')?.textContent))
+    .toEqual(['thread-1 首条评论', '回复 4']);
+  expect(first.querySelector('.comment-expand-replies')?.textContent).toBe('查看 3 条回复');
+  await expect.poll(() => parseFloat(second.style.top)).toBeGreaterThanOrEqual(parseFloat(first.style.top) + first.offsetHeight);
+  first.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await nextTick();
+  window.dispatchEvent(new Event('resize'));
+  await expect.poll(() => parseFloat(second.style.top)).toBeGreaterThanOrEqual(parseFloat(first.style.top) + first.offsetHeight);
+  expect([...messages].every(message => message.style.display !== 'none')).toBe(true);
+  expect(focusAnchor).toHaveBeenCalledWith(anchor);
+  const reply = first.querySelector<HTMLTextAreaElement>('[aria-label="添加回复"]')!;
+  reply.value = '切换布局仍保留的草稿';
+  reply.dispatchEvent(new Event('input', { bubbles: true }));
+  await nextTick();
+  paneWidth = 1400;
+  window.dispatchEvent(new Event('resize'));
+  await expect.poll(() => root!.querySelector('.annotation-popup')).toBeTruthy();
+  expect(root.querySelectorAll('.annotation-count')).toHaveLength(3);
+  expect(root.querySelector<HTMLTextAreaElement>('.annotation-popup [aria-label="添加回复"]')).toBe(reply);
+  expect(reply.value).toBe('切换布局仍保留的草稿');
+  paneWidth = 1600;
+  window.dispatchEvent(new Event('resize'));
+  await expect.poll(() => root!.querySelectorAll('.annotation-card').length).toBe(2);
+  expect(root.querySelector<HTMLTextAreaElement>('.annotation-card [aria-label="添加回复"]')).toBe(reply);
+  root.querySelector('main')!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  await nextTick();
+  expect(root.querySelectorAll('.annotation-card')).toHaveLength(2);
+  expect(first.querySelector<HTMLElement>('.comment-reply-composer')?.style.display).toBe('none');
+  first.click();
+  await nextTick();
+  expect(reply.value).toBe('切换布局仍保留的草稿');
 });
 
 it('uses one bottom composer for discussions and replies, preserving drafts on cancellation and failed saves', async () => {

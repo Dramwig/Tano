@@ -10,7 +10,7 @@ import {
   Search,
   X,
 } from 'lucide-vue-next';
-import { basename, isMarkdown } from '@tano/protocol';
+import { basename, isMarkdown, isWorkspaceInternalPath } from '@tano/protocol';
 import type { FileEntry } from '@tano/protocol';
 import { useWorkspaceStore } from '../stores/workspace';
 
@@ -32,6 +32,7 @@ const matches = computed(() => {
       (file) =>
         file.kind === 'file' &&
         isMarkdown(file.path) &&
+        !isWorkspaceInternalPath(file.path) &&
         terms.every((term) => file.path.toLocaleLowerCase().includes(term)),
     )
     .sort(

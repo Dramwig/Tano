@@ -9,6 +9,7 @@ const props = defineProps<{
   disabled?: boolean;
   required?: boolean;
   defaultDate?: string;
+  compact?: boolean;
 }>();
 const emit = defineEmits<{ 'update:modelValue': [value: PlanDateValue] }>();
 const dateId = useId();
@@ -122,7 +123,7 @@ watch(() => props.disabled, disabled => { if (disabled) pickerOpen.value = false
 </script>
 
 <template>
-  <div class="plan-date-field">
+  <div class="plan-date-field" :class="{ 'is-compact': compact }">
     <div class="plan-date-heading">
       <slot name="leading" />
       <div ref="picker" class="plan-date-picker" :class="{ 'with-leading': !!$slots.leading }" @keydown.esc="pickerEscape">
@@ -133,12 +134,13 @@ watch(() => props.disabled, disabled => { if (disabled) pickerOpen.value = false
           <button v-for="option in options" :key="option.value" type="button" role="menuitemradio" :aria-checked="mode === option.value" @click="chooseSchedule(option.value)"><component :is="option.icon" :size="17" aria-hidden="true" /><span>{{ option.label }}</span><Check v-if="mode === option.value" :size="16" aria-hidden="true" /></button>
         </div>
       </div>
+      <button v-if="compact && mode !== 'none'" type="button" class="compact-precision" :aria-label="precisionLabel" :title="precisionLabel" :disabled="disabled" @click="toggleTime"><CalendarDays v-if="modelValue.time" :size="15" /><Clock3 v-else :size="15" /></button>
     </div>
     <div v-if="mode !== 'none'" class="plan-date-inputs">
       <div class="plan-date-input">
-        <div class="plan-date-label">
+        <div class="plan-date-label" :class="{ 'compact-single-label': compact && mode !== 'range' }">
           <label :for="dateId">{{ mode === 'range' ? (modelValue.time ? '开始时间' : '开始日期') : '计划日期' }}</label>
-          <button v-if="mode === 'date'" type="button" class="plan-date-precision" :disabled="disabled" @click="toggleTime">{{ precisionLabel }}</button>
+          <button v-if="mode === 'date' && !compact" type="button" class="plan-date-precision" :disabled="disabled" @click="toggleTime">{{ precisionLabel }}</button>
         </div>
         <input v-if="!modelValue.time" :id="dateId" type="date" :value="modelValue.date" required :disabled="disabled" @input="updateDate" />
         <input v-else :id="dateId" type="datetime-local" :value="startValue" required :disabled="disabled" @input="updateStart" />
@@ -146,7 +148,7 @@ watch(() => props.disabled, disabled => { if (disabled) pickerOpen.value = false
       <div v-if="mode === 'range'" class="plan-date-input">
         <div class="plan-date-label">
           <label :for="endId">{{ modelValue.time ? '结束时间' : '结束日期' }}</label>
-          <button type="button" class="plan-date-precision" :disabled="disabled" @click="toggleTime">{{ precisionLabel }}</button>
+          <button v-if="!compact" type="button" class="plan-date-precision" :disabled="disabled" @click="toggleTime">{{ precisionLabel }}</button>
         </div>
         <input :id="endId" :type="modelValue.time ? 'datetime-local' : 'date'" :value="modelValue.end" :min="modelValue.time ? startValue : modelValue.date" required :disabled="disabled" @input="update({ end: ($event.target as HTMLInputElement).value })" />
       </div>
@@ -176,6 +178,17 @@ watch(() => props.disabled, disabled => { if (disabled) pickerOpen.value = false
 .plan-date-field input { box-sizing: border-box; width: 100%; min-width: 0; margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); background: var(--paper); font: inherit; font-size: 14px; }
 .plan-date-field :is(input, button):disabled { opacity: 0.55; cursor: not-allowed; }
 .plan-date-field :is(input, button):focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.plan-date-field.is-compact .plan-date-heading { justify-content: space-between; gap: 8px; min-height: 28px; }
+.plan-date-field.is-compact .plan-schedule-trigger { padding: 0; gap: 7px; min-height: 28px; font-size: 12px; }
+.plan-date-field.is-compact .plan-schedule-trigger > svg:first-child { width: 15px; height: 15px; }
+.plan-date-field.is-compact .plan-schedule-trigger > svg:last-child { width: 13px; height: 13px; }
+.plan-date-field.is-compact .compact-precision { width: 28px; height: 28px; padding: 0; flex-shrink: 0; }
+.plan-date-field.is-compact .plan-date-inputs { margin-top: 8px; gap: 10px; }
+.plan-date-field.is-compact .plan-date-label { min-height: 0; }
+.plan-date-field.is-compact .compact-single-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.plan-date-field.is-compact .plan-date-input { gap: 6px; }
+.plan-date-field.is-compact input { height: 36px; padding: 7px 9px; font-size: 13px; background: var(--paper); }
+.plan-date-field.is-compact label { font-size: 12px; }
 @media (max-width: 480px) {
   .plan-date-field .plan-date-heading { gap: 12px; }
   .plan-date-picker.with-leading { padding-left: 12px; }

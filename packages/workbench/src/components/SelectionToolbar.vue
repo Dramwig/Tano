@@ -20,8 +20,9 @@ const props = defineProps<{
   dragging?: boolean;
   assistant?: boolean;
   annotation?: boolean;
+  todo?: boolean;
 }>();
-const emit = defineEmits<{ command: [name: string, value?: string]; assistant: []; annotation: [] }>();
+const emit = defineEmits<{ command: [name: string, value?: string]; assistant: []; annotation: []; todo: [] }>();
 const panel = ref<HTMLElement>();
 const visible = ref(false);
 const vertical = ref(false);
@@ -385,6 +386,8 @@ onBeforeUnmount(() => {
           :dragging="dragging"
           :assistant="assistant"
           :annotation="annotation"
+          :todo="todo"
+          @todo="visible && emit('todo')"
           @assistant="visible && emit('assistant')"
           @annotation="visible && emit('annotation')"
           :context="context"

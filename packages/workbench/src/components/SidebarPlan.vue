@@ -13,7 +13,6 @@ import {
   Plus,
   ListTodo,
   UserRound,
-  X,
 } from 'lucide-vue-next';
 import type { ObjectRecord } from '../workspace-objects';
 import {
@@ -630,15 +629,6 @@ onBeforeUnmount(() => {
                   </button>
                 </div>
               </div>
-              <button
-                type="button"
-                class="icon-button"
-                aria-label="关闭新建事件"
-                :disabled="saving"
-                @click="closeCreate"
-              >
-                <X :size="18" />
-              </button>
             </div>
           </header>
           <form class="plan-create" aria-label="新建事件" @submit.prevent="saveEvent">
@@ -922,13 +912,6 @@ onBeforeUnmount(() => {
 .plan-connections-menu button { font-size: 12px; }
 .plan-create-header-actions button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 .plan-create-header-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
-.plan-create-panel > header .icon-button {
-  width: 28px;
-  height: 28px;
-  margin-right: -6px;
-  border-radius: 6px;
-  color: var(--text-secondary);
-}
 .plan-create {
   margin: 0;
 }

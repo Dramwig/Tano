@@ -506,7 +506,7 @@ it('keeps the panel open during saving and closes it once the event is persisted
   submit();
   await nextTick();
   const panel = document.querySelector<HTMLElement>('[role=dialog]')!;
-  expect(control<HTMLButtonElement>('关闭新建事件').disabled).toBe(true);
+  expect(panel.querySelector<HTMLButtonElement>('.plan-create-actions button[type=button]')!.disabled).toBe(true);
   panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   panel.parentElement!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
   await nextTick();

@@ -185,6 +185,28 @@ kbd {
 svg {
   flex-shrink: 0;
 }
+.panel-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.panel-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.panel-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 6px;
+  background: var(--control-border);
+}
+.panel-scrollbar::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+@supports (-moz-appearance: none) {
+  .panel-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--control-border) transparent;
+  }
+}
 button:hover {
   color: var(--text);
 }
@@ -1327,6 +1349,49 @@ button:hover {
   right: 0;
   top: 35px;
 }
+.document-export-trigger .document-export-chevron {
+  margin-left: auto;
+}
+.document-export-trigger[aria-expanded='true'] {
+  background: var(--hover);
+}
+.document-export-menu {
+  position: fixed;
+  z-index: 100;
+  width: 176px;
+}
+.document-export-renderer {
+  position: fixed;
+  top: 0;
+  left: -10000px;
+  width: 800px;
+  background: #ffffff;
+  color: #24272b;
+}
+.document-export-content {
+  box-sizing: border-box;
+  width: 800px;
+  padding: 24px;
+  background: #ffffff;
+  color: #24272b;
+}
+.document-export-content .tano-prose {
+  min-height: 0;
+}
+.document-export-content .tano-table-viewport,
+.document-export-content .tableWrapper {
+  overflow: visible;
+}
+.document-export-content pre,
+.document-export-content pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.document-export-title {
+  margin: 0 0 24px;
+  font-size: 30px;
+  line-height: 1.4;
+}
 .workspace-dropdown {
   left: 8px;
   right: 8px;
@@ -1438,6 +1503,7 @@ button:hover {
 .editor-scroll.width-unlimited .milkdown-host,
 .editor-scroll.width-unlimited .source-editor,
 .editor-scroll.width-unlimited .document-title,
+.editor-scroll.width-unlimited .document-references,
 .editor-scroll.width-unlimited .frontmatter-panel,
 .editor-scroll.width-unlimited .document-discussion {
   max-width: none;
@@ -2789,11 +2855,11 @@ button:hover {
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
   padding: 16px 10px;
-  box-shadow: none;
+  box-shadow: 0 12px 28px #1f232810;
   pointer-events: auto;
   overscroll-behavior: contain;
 }

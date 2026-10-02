@@ -3,7 +3,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { createApp, defineComponent, h, nextTick, ref } from 'vue';
 import type { App } from 'vue';
 import { EditorView } from '@milkdown/kit/prose/view';
-import { EditorState } from '@milkdown/kit/prose/state';
+import { EditorState, TextSelection } from '@milkdown/kit/prose/state';
+import { editorViewCtx } from '@milkdown/kit/core';
 import { Schema } from '@milkdown/kit/prose/model';
 import { referencePicker, referencePickerKey } from './reference-picker';
 import type { ReferenceTarget } from '@tano/protocol';
@@ -85,6 +86,36 @@ it.each(['task', 'project', 'person', 'document', 'event', 'asset'])(
     expect(errors).toEqual([]);
   },
 );
+it('creates an inline Todo reference after selected prose and supports undo without losing the source', async () => {
+  const { value, editor } = await mount('before selected after\n', false, [{ workspace: 'ws', type: 'event', id: 'b00001', name: 'Task', path: '.tano/objects/b00001.tano.json' }]);
+  editor.value!.withContext(ctx => {
+    const view = ctx.get(editorViewCtx);
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 8, 16)));
+  });
+  const selection = editor.value!.captureTodoSelection()!;
+  expect(selection.text).toBe('selected');
+  expect(selection.insert({ type: 'event', id: 'b00001' }, 'Task')).toBe(true);
+  await nextTick();
+  expect(value.value).toContain('before selected [@Task](object://event/b00001) after');
+  expect(editor.value!.undoLastChange()).toBe(true);
+  await nextTick();
+  expect(value.value.trim()).toBe('before selected after');
+  value.value = 'changed selected after\n';
+  await nextTick();
+  expect(selection.insert({ type: 'event', id: 'b00001' }, 'Task')).toBe(false);
+});
+it('places a Todo reference in a paragraph after selected fenced code', async () => {
+  const { value, editor } = await mount('```ts\nselected code\n```\n');
+  editor.value!.withContext(ctx => {
+    const view = ctx.get(editorViewCtx);
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 14)));
+  });
+  const selection = editor.value!.captureTodoSelection()!;
+  expect(selection.text).toBe('selected code');
+  expect(selection.insert({ type: 'event', id: 'b00001' }, 'Task')).toBe(true);
+  await nextTick();
+  expect(value.value).toContain('```ts\nselected code\n```\n\n[@Task](object://event/b00001)');
+});
 it('keeps a core object card rendered when clicked with Markdown reveal enabled', async () => {
   const source = '[Plan](object://project/b00002 "tano:object-card")\n';
   const { value, opened, errors } = await mount(source, true);

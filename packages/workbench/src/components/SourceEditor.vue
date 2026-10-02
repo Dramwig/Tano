@@ -12,10 +12,12 @@ import {
 } from '@codemirror/commands';
 import { Compartment, EditorState, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { Decoration, EditorView, keymap } from '@codemirror/view';
-import type { CommentAnchor } from '@tano/protocol';
+import { referenceMarkdown } from '@tano/protocol';
+import type { CommentAnchor, ReferenceIdentity } from '@tano/protocol';
 import type { CommentGeometry } from '@tano/editor/comment-projection';
 import { sourceStyleRanges } from '@tano/editor/source-highlight';
 import { splitFrontmatter } from '@tano/editor/syntax';
+import { referenceInsertionPoint } from '@tano/editor/document-links';
 
 const props = defineProps<{
   modelValue: string;
@@ -26,6 +28,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [value: string];
   files: [files: File[], requireImage: boolean, position: number];
+  selectionChange: [selected: boolean];
 }>();
 
 const host = ref<HTMLElement>();
@@ -95,6 +98,7 @@ onMounted(() => {
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !applyingModel)
             emit('update:modelValue', update.state.doc.toString());
+          if (update.selectionSet || update.docChanged) emit('selectionChange', !update.state.selection.main.empty);
         }),
       ],
     }),
@@ -182,6 +186,19 @@ function commentGeometry(anchors = props.commentAnchors ?? []): CommentGeometry 
 function cursor() {
   return view?.state.selection.main.head ?? 0;
 }
+function captureTodoSelection() {
+  const current = view;
+  if (!current || props.readonly || current.state.selection.main.empty) return null;
+  const { from, to } = current.state.selection.main;
+  const content = current.state.doc.toString();
+  const text = content.slice(from, to);
+  if (!text.trim()) return null;
+  const point = referenceInsertionPoint(content, to);
+  return { text, insert: (identity: ReferenceIdentity, label: string) => {
+    if (view !== current || props.readonly || current.state.doc.toString() !== content) return false;
+    return insertText(`${point.prefix}${referenceMarkdown(identity, label)}${point.suffix}`, point.at);
+  } };
+}
 
 function focus() {
   view?.focus();
@@ -249,6 +266,7 @@ function insertBlockAtStart() {
 
 defineExpose({
   assistantSelection: () => view?.state.selection.main.empty ? null : commentSelection(),
+  captureTodoSelection,
   commentSelection,
   focusComment,
   commentGeometry,

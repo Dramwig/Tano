@@ -71,6 +71,14 @@ pub fn is_workspace_data_path(relative: &str) -> bool {
         path,
         "capabilities.json" | "relations.tano-relations.json" | "rules/assistant.md"
     ) || (path.starts_with("objects/") && path.ends_with(".tano.json"))
+        || path.strip_prefix("templates/").is_some_and(|name| {
+            name.strip_suffix(".md").is_some_and(|id| {
+                id.len() == 6
+                    && id
+                        .bytes()
+                        .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+            })
+        })
         || (path.starts_with("conflicts/") && path.ends_with(".json"))
         || ["annotations/", "discussions/", "document-layout/"]
             .iter()
@@ -95,7 +103,13 @@ pub fn is_workspace_data_directory(relative: &str) -> bool {
     };
     matches!(
         path,
-        "objects" | "conflicts" | "annotations" | "discussions" | "document-layout" | "rules"
+        "objects"
+            | "conflicts"
+            | "annotations"
+            | "discussions"
+            | "document-layout"
+            | "rules"
+            | "templates"
     ) || path.starts_with("objects/")
         || path.starts_with("conflicts/")
 }
@@ -1479,6 +1493,7 @@ mod tests {
             ".tano/discussions/a0b1c2.tano.json",
             ".tano/document-layout/a0b1c2.tano.json",
             ".tano/rules/assistant.md",
+            ".tano/templates/a0b1c2.md",
         ] {
             assert!(is_workspace_data_path(path));
             assert!(ensure_file_parent(&root, path).is_ok());

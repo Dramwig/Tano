@@ -234,7 +234,7 @@ function customFontInput(event: Event) {
             aria-label="搜索设置"
           />
         </label>
-        <div class="settings-nav-scroll">
+        <div class="settings-nav-scroll panel-scrollbar">
           <div
             v-for="group in navigationGroups"
             :key="group.label"
@@ -278,7 +278,7 @@ function customFontInput(event: Event) {
       >
         <X :size="18" />
       </button>
-      <main ref="mainContent" class="settings-main">
+      <main ref="mainContent" class="settings-main panel-scrollbar">
         <div v-if="!visiblePages.length" class="settings-content">
           <h2 id="settings-title">搜索设置</h2>
           <p class="settings-lead">没有找到相关设置，请尝试其他关键词。</p>
@@ -922,33 +922,6 @@ function customFontInput(event: Event) {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-}
-.settings-main::-webkit-scrollbar,
-.settings-nav-scroll::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-.settings-main::-webkit-scrollbar-track,
-.settings-nav-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-.settings-main::-webkit-scrollbar-thumb,
-.settings-nav-scroll::-webkit-scrollbar-thumb {
-  border-radius: 6px;
-  background: var(--control-border);
-}
-.settings-main::-webkit-scrollbar-button,
-.settings-nav-scroll::-webkit-scrollbar-button {
-  display: none;
-  width: 0;
-  height: 0;
-}
-@supports (-moz-appearance: none) {
-  .settings-main,
-  .settings-nav-scroll {
-    scrollbar-width: thin;
-    scrollbar-color: var(--control-border) transparent;
-  }
 }
 .settings-close {
   position: absolute;

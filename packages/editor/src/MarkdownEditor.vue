@@ -90,7 +90,7 @@ import { referencePicker, openReferencePicker } from './reference-picker';
 import { floatingPanelPosition, positionAnchoredPanel } from './panel-position';
 import type { PanelSide } from './panel-position';
 import { activateEditorPanel, announceEditorPanel, createEditorPanel, onOtherEditorPanel } from './editor-panel';
-import { parseReferenceUrl, resolveReference } from '@tano/protocol';
+import { parseReferenceUrl, referenceUrl, resolveReference } from '@tano/protocol';
 import type { ReferenceTarget, ReferenceIdentity } from '@tano/protocol';
 import type { CommentAnchor } from '@tano/protocol';
 import { commentSpansForSelection, projectCommentText, proseRangesForCommentSpans } from './comment-projection';
@@ -136,6 +136,7 @@ const emit = defineEmits<{
   editSource: [];
   selectionChange: [context: EditorSelectionContext];
   tableLayoutChange: [tables: TableLayout[]];
+  ready: [];
 }>();
 const policy = () => props.capabilities ?? defaultCapabilities;
 const referencesEnabled = () => props.referenceTargets !== undefined && commandEnabled('reference', props.enabledLevels, policy().features);
@@ -2142,7 +2143,9 @@ onMounted(async () => {
         }),
       );
     } else if (lastValue !== props.modelValue) applyContent(props.modelValue);
+    emit('ready');
   } catch (error) {
+    console.error('Markdown editor initialization failed', error);
     emit('error', String(error));
   }
 });
@@ -2668,6 +2671,29 @@ function commentSelection() {
   const spans = commentSpansForSelection(doc, range);
   return spans.length ? { text: projectCommentText(doc).text, spans } : null;
 }
+function captureTodoSelection() {
+  const view = bridgeView;
+  if (!view || props.readonly || props.extension || !(view.state.selection instanceof TextSelection) || view.state.selection.empty || !view.state.selection.$to.parent.isTextblock) return null;
+  const doc = view.state.doc, at = view.state.selection.to;
+  const type = view.state.schema.nodes.tano_reference;
+  if (!type) return null;
+  const $to = view.state.selection.$to;
+  const inline = $to.parent.canReplaceWith($to.index(), $to.index(), type);
+  const paragraph = view.state.schema.nodes.paragraph;
+  if (!inline && (!paragraph || !$to.node(-1).canReplaceWith($to.index(-1) + 1, $to.index(-1) + 1, paragraph))) return null;
+  const spans = commentSpansForSelection(doc, view.state.selection);
+  const text = spans.map(span => span.text).join('\n');
+  if (!text.trim()) return null;
+  return { text, insert: (identity: ReferenceIdentity, label: string) => {
+    if (bridgeView !== view || props.readonly || props.extension || !view.state.doc.eq(doc)) return false;
+    const reference = type.create({ url: referenceUrl(identity), label });
+    const insertion = inline ? Fragment.fromArray([
+      view.state.schema.text(' '), type.create({ url: referenceUrl(identity), label }),
+    ]) : Fragment.from(paragraph!.create(null, reference));
+    view.dispatch(view.state.tr.insert(inline ? at : $to.after(), insertion).scrollIntoView());
+    return true;
+  } };
+}
 function focusComment(anchor: CommentAnchor) {
   if (!bridgeView || anchor.basis !== 'prose') return false;
   const ranges = proseRangesForCommentSpans(bridgeView.state.doc, anchor.spans);
@@ -2706,6 +2732,7 @@ defineExpose({
   importFiles,
   withContext,
   commentSelection,
+  captureTodoSelection,
   focusComment,
   commentGeometry,
   insertBlockAtStart,

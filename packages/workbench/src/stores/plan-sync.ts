@@ -13,6 +13,7 @@ import { sha256 } from '../adapter';
 import type { Account, Connection, ItemValue, LocalSyncPort, RemoteItem, SyncKind, SyncState } from '../plan-sync/types';
 import { remoteAdapter, readMissingTodoist } from '../plan-sync/providers';
 import { synchronize } from '../plan-sync/engine';
+import { projectDescription } from '../plan-sync/descriptions';
 
 export const usePlanSyncStore = defineStore('plan-sync', () => {
   const runtime = useWorkbenchRuntime(), plans = usePlanStore(), workspace = useWorkspaceStore();
@@ -158,12 +159,13 @@ export const usePlanSyncStore = defineStore('plan-sync', () => {
       const p = port(c), local = (await p.list()).find(r => r.object.id === conflict.localId);
       if (!local) throw new Error('本地事项已不存在，请先恢复该事项');
       // Preserve the user's version as an independent local copy before accepting the reviewed remote snapshot.
-      const current = localValue(local, c.kind);
-      const copy = draft({ ...current, name: `${current.name.slice(0, 180)}（本地冲突副本）` }, c.kind, { syncConflictCopy: true });
+      const properties: Record<string, unknown> = { ...local.object.properties, syncConflictCopy: true };
+      for (const key of ['syncConnection', 'syncRemoteId', 'syncReadOnly']) delete properties[key];
+      const copy = { ...local.object, name: `${local.object.name.slice(0, 180)}（本地冲突副本）`, properties };
       await plans.create(copy, c.scope, c.workspaceId);
       await p.update(local, conflict.remote);
       const binding = c.bindings.find(b => b.remote.id === remoteId);
-      if (binding) binding.base = conflict.remote;
+      if (binding) { binding.base = { ...conflict.remote, description: projectDescription(conflict.remote.description) }; binding.localDescription = conflict.remote.description; }
       c.conflicts = c.conflicts.filter(v => v.remoteId !== remoteId);
       await save();
     });

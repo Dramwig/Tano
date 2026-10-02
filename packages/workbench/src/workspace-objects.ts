@@ -6,6 +6,7 @@ import {
   validateObjectProperties,
 } from '@tano/protocol';
 import type { FileSnapshot, Workspace, WorkspaceAdapter, WorkspaceObject } from '@tano/protocol';
+import { mergeDescription } from './description-merge';
 
 export interface ObjectRecord {
   object: WorkspaceObject;
@@ -75,6 +76,10 @@ export function mergeObject(
         else delete result[field];
       }
       merged.properties = result;
+    } else if (key === 'description') {
+      const description = mergeDescription(base.description, ours.description, theirs.description);
+      if (description === null) return null;
+      merged.description = description;
     } else if (!same(base[key], ours[key])) {
       if (!same(base[key], theirs[key]) && !same(ours[key], theirs[key])) return null;
       Object.assign(merged, { [key]: ours[key] });

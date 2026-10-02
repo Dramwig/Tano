@@ -7,6 +7,8 @@ export const workspaceRelationPath = '.tano/relations.tano-relations.json';
 export const annotationDirectory = '.tano/annotations';
 export const discussionDirectory = '.tano/discussions';
 export const assistantRulesPath = '.tano/rules/assistant.md';
+export const templateDirectory = '.tano/templates';
+export const isTemplatePath = (path: string) => /^\.tano\/templates\/[0-9a-f]{6}\.md$/.test(path);
 
 export function commentDataPath(kind: 'annotation' | 'discussion', fileId: string) {
   if (!/^[0-9a-f]{6}$/.test(fileId)) throw new Error('文档身份无效');
@@ -23,6 +25,7 @@ export function isWorkspaceDataPath(path: string) {
     path === workspaceCapabilityPath ||
     path === workspaceRelationPath ||
     path === assistantRulesPath ||
+    isTemplatePath(path) ||
     (path.startsWith('.tano/conflicts/') && path.endsWith('.json')) ||
     (path.startsWith(`${objectDirectory}/`) && path.endsWith('.tano.json')) ||
     /^\.tano\/(?:annotations|discussions|document-layout)\/[0-9a-f]{6}\.tano\.json$/.test(path)

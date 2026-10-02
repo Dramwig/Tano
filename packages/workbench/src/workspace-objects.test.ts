@@ -52,6 +52,22 @@ it('leaves conflicting external changes intact and never changes identity', asyn
   expect(mergeObject(object, { ...object, id: 'new' }, object)).toBeNull();
   expect(mergeObject(object, { ...object, type: 'person' }, object)).toBeNull();
 });
+it('merges an inserted document reference with an independent external description edit using the original hash', async () => {
+  const { adapter } = await setup();
+  const base = { ...object, description: 'First task. Second task.' };
+  const snapshot = await adapter.read(path);
+  await adapter.write(path, JSON.stringify(base), snapshot.hash);
+  const record = { object: base, path, snapshot: await adapter.read(path) };
+  await saveObject(adapter, record, { ...base, description: 'First task. Second task updated.' });
+  const saved = await saveObject(adapter, record, { ...base, description: 'First task [@note](object://document/b00001). Second task.' });
+  expect(saved.object.description).toBe('First task [@note](object://document/b00001). Second task updated.');
+  expect(mergeObject(base, { ...base, description: 'Our replacement' }, { ...base, description: 'External replacement' })).toBeNull();
+});
+it('never combines concurrent retargets of one reference into a different object ID', () => {
+  const base = { ...object, description: '[@Note](object://document/a00001)' };
+  expect(mergeObject(base, { ...base, description: base.description.replace('a00001', 'b00001') },
+    { ...base, description: base.description.replace('a00001', 'a00002') })).toBeNull();
+});
 it('does not recreate deleted objects or overwrite malformed JSON', async () => {
   const { adapter, record } = await setup();
   await adapter.write(path, '{broken', record.snapshot.hash);

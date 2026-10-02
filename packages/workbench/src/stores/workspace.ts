@@ -17,16 +17,17 @@ import { topLevelEntries } from '../file-selection';
 import { defaultCapabilities } from '@tano/editor/runtime';
 import { loadCapabilities, saveCapabilityPatch } from '../workspace-capabilities';
 import type { CapabilityPatch } from '../workspace-capabilities';
-import { loadObjects, saveObject } from '../workspace-objects';
+import { loadObjects, saveObject, mergeObject } from '../workspace-objects';
 import type { ObjectRecord } from '../workspace-objects';
 import { assetTargets, documentTargets, parseObject, objectTypeRegistry, validateObjectProperties } from '@tano/protocol';
 import type { WorkspaceObject, ReferenceTarget } from '@tano/protocol';
-import { coreRelationTypes, newShortId, RelationIndex, referenceKey, relationKey, validateRelation, parseRelations, workspaceRelationPath } from '@tano/protocol';
+import { coreRelationTypes, newShortId, RelationIndex, referenceKey, relationKey, validateRelation, parseRelations, workspaceRelationPath, WorkspaceAccessRevokedError } from '@tano/protocol';
 import type { ReferenceIdentity, WorkspaceRelation } from '@tano/protocol';
 import { PLUGINS_TAB_ID, WorkspacePluginHost } from '../workspace-plugins';
 import type { InstalledObjectPlugin, PluginChange } from '../workspace-plugins';
 import { loadRelations, saveRelationChange } from '../workspace-relations';
 import type { RelationChange } from '../workspace-relations';
+import { contentReferences, referenceContext } from '../content-references';
 import { GRAPH_TAB_ID } from '../document-graph';
 import { CALENDAR_TAB_ID } from '../calendar';
 import { dockLayout, layoutPanes, newPane, reconcileLayout, restoreLayout } from '../pane-layout';
@@ -36,7 +37,16 @@ import type { DocumentLayoutState } from '../workspace-document-layout';
 import type { TableLayout } from '@tano/protocol';
 import type { AssistantProposal, AssistantPreview, AssistantSource, AssistantToolCall } from '@tano/protocol';
 import { assistantHash } from '../assistant/hash';
-import { structureProposal } from '../assistant/structures';
+import { structureProposal, mergeStructureRelations, validateTaskUpdate } from '../assistant/structures';
+import { parseTaskQuery, queryTasks } from '../assistant/tasks';
+import type { TaskQuery } from '../assistant/tasks';
+import type { StructureSnapshot } from '../assistant/structures';
+import { writeWorkspaceImport } from '../workspace-import';
+import type { PreparedImport } from '../document-import';
+import { loadTemplates, saveTemplate } from '../workspace-templates';
+import type { DocumentTemplate } from '../workspace-templates';
+import { previewTaskRepeat, repeatRelations } from '../task-repeat';
+import type { RepeatPreview } from '../task-repeat';
 
 export interface OpenDocument {
   id: string;
@@ -119,8 +129,19 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       try { validateObjectProperties(object.type, object.properties); return true; } catch { return false; }
     }).map(({ object, path }) => ({ workspace: workspace.value!.id, type: object.type, id: object.id, name: object.name, description: object.description, archived: object.archived, path, properties: object.properties })),
   ] : []);
+  const referenceRevision = computed(() => JSON.stringify([workspace.value?.id, workspace.value?.path,
+    workspace.value?.files.map(file => [file.id, file.path, file.modified, file.size]),
+    documents.value.map(doc => [doc.id, doc.content]), objects.value.map(record => [record.object.id, record.object.description, record.object.name, record.object.archived])]));
+  const referenceDocumentCache = new Map<string, { stamp: string; content: string }>();
+  function clearRevokedReferences(error: unknown) {
+    if (!(error instanceof WorkspaceAccessRevokedError)) return;
+    if (workspace.value) workspace.value = { ...workspace.value, files: [], readOnly: true };
+    objects.value = []; relations.value = []; relationBase = null;
+    referenceDocumentCache.clear();
+  }
   async function refreshObjects() {
     if (!workspace.value) return;
+    referenceDocumentCache.clear();
     try {
       installedPlugins.value = pluginHost.load(workspace.value.id);
       pluginError.value = '';
@@ -221,6 +242,72 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const saved = await saveObject(adapter, record, draft);
       workspace.value = await adapter.refresh(); await refreshObjects();
       activity('对象已更新', `${saved.object.name} · ${saved.object.type}`, 'save');
+      return saved;
+    });
+  }
+  async function templates(expectedWorkspace: string) {
+    if (workspace.value?.id !== expectedWorkspace) throw new Error('工作区已切换');
+    const current = await adapter.refresh();
+    const loaded = await loadTemplates(adapter, current);
+    if (workspace.value?.id !== expectedWorkspace) throw new Error('工作区已切换');
+    return loaded;
+  }
+  async function writeTemplate(content: string, expectedWorkspace: string, base?: DocumentTemplate) {
+    return serial(async () => {
+      if (workspace.value?.id !== expectedWorkspace) throw new Error('工作区已切换，模板草稿已保留');
+      writable();
+      workspace.value = await adapter.refresh();
+      const path = await saveTemplate(adapter, content, base, new Set(workspace.value.files.map(file => file.path.split('/').at(-1)!.slice(0, 6))));
+      workspace.value = await adapter.refresh(); return path;
+    });
+  }
+  async function repeatPreview(record: ObjectRecord, expectedWorkspace: string) {
+    return serial(async () => {
+      if (workspace.value?.id !== expectedWorkspace) throw new Error('工作区已切换');
+      writable(); workspace.value = await adapter.refresh(); await refreshObjects();
+      const current = objects.value.find(item => item.object.id === record.object.id);
+      if (!current || current.snapshot.hash !== record.snapshot.hash) throw new Error('任务已变化，请重新读取再创建下一次');
+      const series = objects.value.find(item => item.object.id === (current.object.properties.repeatSourceId ?? current.object.id));
+      if (!series) throw new Error('重复任务来源已不可用');
+      return previewTaskRepeat(current, relations.value, series);
+    });
+  }
+  async function createRepeat(preview: RepeatPreview, expectedWorkspace: string) {
+    return serial(async () => {
+      if (workspace.value?.id !== expectedWorkspace) throw new Error('工作区已切换');
+      writable(); workspace.value = await adapter.refresh(); await refreshObjects();
+      if (objectErrors.value.length || relationError.value) throw new Error('请先处理对象或关系读取错误');
+      const source = objects.value.find(item => item.object.id === preview.sourceId);
+      if (!source || source.snapshot.hash !== preview.sourceHash || JSON.stringify(repeatRelations(source.object, relations.value)) !== preview.relationBase)
+        throw new Error('任务或关联已变化，请重新预览');
+      const series = objects.value.find(item => item.object.id === preview.seriesId);
+      if (!series || series.snapshot.hash !== preview.seriesHash) throw new Error('重复规则已变化，请重新预览');
+      const recomputed = await previewTaskRepeat(source, relations.value, series);
+      if (JSON.stringify(recomputed) !== JSON.stringify(preview)) throw new Error('重复任务预览已失效');
+      const content = JSON.stringify(preview.object, null, 2) + '\n';
+      let saved = objects.value.find(item => item.object.id === preview.object.id);
+      if (saved && (saved.object.properties.repeatSourceId !== preview.object.properties.repeatSourceId || saved.object.properties.repeatOccurrence !== preview.object.properties.repeatOccurrence))
+        throw new Error('下一次任务身份发生冲突，已有文件未改动');
+      if (saved && JSON.stringify(saved.object) !== JSON.stringify(preview.object)) return saved;
+      for (const row of preview.relations) for (const endpoint of [row.source, row.target]) {
+        if (referenceKey(endpoint) === referenceKey(preview.object)) continue;
+        if (!referenceTargets.value.some(target => !target.archived && referenceKey(target) === referenceKey(endpoint))) throw new Error('关联目标已不可用');
+      }
+      try {
+        if (!saved) {
+          if (workspace.value.files.some(file => file.id === preview.object.id)) throw new Error('下一次任务身份与文件冲突');
+          await adapter.create(`${objectDirectory}/${preview.object.id}.tano.json`, content);
+        }
+        for (const row of preview.relations) {
+          if (relations.value.some(existing => relationKey(existing) === relationKey(row))) continue;
+          if (row.type === 'assigned' && relations.value.some(existing => existing.type === 'assigned' && referenceKey(existing.target) === referenceKey(row.target)))
+            throw new Error('下一次任务负责人已变化，请检查已有任务');
+          const result = await saveRelationChange(adapter, relationBase, { add: row });
+          relationBase = result.snapshot; relations.value = result.file.relations;
+        }
+      } finally { workspace.value = await adapter.refresh(); await refreshObjects(); }
+      saved = objects.value.find(item => item.object.id === preview.object.id);
+      if (!saved) throw new Error('下一次任务已被移除，请刷新');
       return saved;
     });
   }
@@ -956,6 +1043,43 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return documents.value.find(doc => doc.id === file.id)?.content ?? snapshot.content;
     });
   }
+  function getReferenceContext(identity: ReferenceIdentity, draft?: string,
+    expected = workspace.value ? { id: workspace.value.id, path: workspace.value.path } : undefined) {
+    return serial(async () => {
+      if (!expected || workspace.value?.id !== expected.id || workspace.value.path !== expected.path)
+        throw new Error('工作区已切换');
+      if (adapter.mode === 'web') {
+        try { workspace.value = await adapter.refresh(); await refreshObjects(); }
+        catch (error) { clearRevokedReferences(error); throw error; }
+      }
+      const targets = referenceTargets.value.filter(target => target.type !== 'document' || !isWorkspaceInternalPath(target.path));
+      if (draft !== undefined && !targets.some(target => referenceKey(target) === referenceKey(identity)))
+        targets.push({ ...identity, workspace: expected.id, name: '未保存对象', path: '', description: draft });
+      const contents = new Map<string, string>();
+      const errors: string[] = [...objectErrors.value];
+      for (const target of targets) {
+        const key = referenceKey(target);
+        if (target.type !== 'document') { contents.set(key, target.description ?? ''); continue; }
+        try {
+          const open = documents.value.find(doc => doc.id === target.id);
+          const stamp = JSON.stringify([expected.id, expected.path, target.path, target.modified, target.size]);
+          const cached = referenceDocumentCache.get(target.id);
+          const content = open?.content ?? (cached?.stamp === stamp ? cached.content : (await adapter.read(target.path)).content);
+          if (!open) referenceDocumentCache.set(target.id, { stamp, content });
+          contents.set(key, content);
+        } catch (error) { errors.push(`${target.path}：${String(error)}`); }
+      }
+      if (draft !== undefined) contents.set(referenceKey(identity), draft);
+      return referenceContext(contentReferences(targets, contents), identity, errors);
+    });
+  }
+  async function assistantReferenceContext(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }, identity: ReferenceIdentity) {
+    requireAssistantWorkspace(scope);
+    if (!capabilities.value.features.objectReferences) throw new Error('工作区对象能力未启用');
+    const result = await getReferenceContext(identity, undefined, scope);
+    requireAssistantWorkspace(scope);
+    return result;
+  }
   function edit(content: string) {
     if (active.value) editDocument(active.value.id, content);
   }
@@ -990,10 +1114,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       workspace.value = current; await refreshObjects();
       if (objectErrors.value.length || relationError.value) throw new Error('请先处理工作区对象或关系记录错误');
       return JSON.parse(JSON.stringify({ targets: referenceTargets.value.filter(target => !isWorkspaceInternalPath(target.path) || target.type !== 'document'),
-        relationTypes: relationDefinitions.value, relations: relations.value }));
+        relationTypes: relationDefinitions.value, relations: relations.value, relationContent: relationBase?.content ?? '',
+        objects: objects.value.map(record => ({ object: record.object, path: record.path, content: record.snapshot.content,
+          fileId: current.files.find(file => file.path === record.path)!.id })),
+      })) as StructureSnapshot & { relations: WorkspaceRelation[] };
     });
   }
-  async function proposeAssistantStructure(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }, runId: string, call: AssistantToolCall) {
+  async function proposeAssistantStructure(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }, runId: string, call: AssistantToolCall, snapshot?: StructureSnapshot) {
     return serial(async () => {
       requireAssistantWorkspace(scope);
       writable();
@@ -1002,13 +1129,39 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       if (current.id !== scope.id || current.path !== scope.path) throw new Error('工作区身份已变化');
       workspace.value = current; await refreshObjects();
       if (objectErrors.value.length || relationError.value) throw new Error('请先处理工作区对象或关系记录错误');
+      if (!snapshot && (call.function.name !== 'propose_event' || JSON.parse(call.function.arguments)?.properties?.checkable === true))
+        throw new Error('必须先读取工作区对象快照，检查已有任务');
       const id = call.function.name === 'propose_event'
         ? await adapter.reserveObjectId?.(objects.value.map(record => record.object.id))
         : newShortId(new Set(relations.value.map(row => row.id)));
       if (!id) throw new Error('此存储适配器无法分配工作区对象身份');
       return structureProposal(call, { workspaceId: scope.id, runId, id, relationContent: relationBase?.content ?? '',
         targets: referenceTargets.value.filter(target => target.type !== 'document' || !isWorkspaceInternalPath(target.path)),
-        relationTypes: relationDefinitions.value });
+        relationTypes: relationDefinitions.value, ...snapshot });
+    });
+  }
+  async function assistantTaskQuery(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }, input: TaskQuery, snapshot: StructureSnapshot) {
+    return serial(async () => {
+      requireAssistantWorkspace(scope);
+      if (!capabilities.value.features.objectReferences) throw new Error('工作区对象能力未启用');
+      const current = await adapter.refresh();
+      if (current.id !== scope.id || current.path !== scope.path) throw new Error('工作区身份已变化');
+      workspace.value = current; await refreshObjects();
+      const accessible = new Map(referenceTargets.value.map(target => [referenceKey(target), target]));
+      const targets = snapshot.targets.filter(target => accessible.has(referenceKey(target)))
+        .map(target => target.type === 'document' ? accessible.get(referenceKey(target))! : target);
+      const contents = new Map<string, string>();
+      const errors: string[] = [];
+      for (const target of targets) {
+        if (target.type !== 'document') { contents.set(referenceKey(target), target.description ?? ''); continue; }
+        try {
+          const content = documents.value.find(doc => doc.id === target.id)?.content ?? (await adapter.read(target.path)).content;
+          contents.set(referenceKey(target), content);
+        } catch (error) { errors.push(`${target.path}：${String(error)}`); }
+      }
+      const relations = snapshot.relationContent ? parseRelations(snapshot.relationContent).relations : [];
+      return { ...queryTasks(targets, relations, contentReferences(targets, contents), parseTaskQuery(input)),
+        complete: errors.length === 0, errors };
     });
   }
   async function reviewAssistantStructure(proposal: AssistantProposal, accepted?: AssistantPreview) {
@@ -1019,27 +1172,34 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     let content = proposal.content;
     if (proposal.kind === 'object') {
       const object = parseObject(content);
-      if (object.type !== 'event' || proposal.path !== `${objectDirectory}/${object.id}.tano.json` || proposal.base !== '' || object.archived)
-        throw new Error('助手只能建议新增工作区事件');
-      validateObjectProperties('event', object.properties);
-      if (referenceTargets.value.some(target => target.id === object.id) || workspace.value!.files.some(file => file.path === proposal.path))
-        throw new Error('对象身份或路径已被使用，请保留建议并重新生成');
+      if (proposal.base) {
+        const base = parseObject(proposal.base);
+        validateTaskUpdate(base, object);
+        const file = workspace.value!.files.find(file => file.id === proposal.fileId && file.path === proposal.path);
+        const record = objects.value.find(record => record.object.id === base.id && record.path === file?.path);
+        if (!file || !record) throw new Error('任务已删除、移动或身份变化');
+        disk = record.snapshot;
+        const merged = mergeObject(base, object, record.object);
+        if (!merged) return { status: 'conflict' as const, preview: { before: disk.content, after: content, diskHash: disk.hash, path: proposal.path } };
+        validateTaskUpdate(record.object, merged);
+        content = JSON.stringify(merged, null, 2) + '\n';
+      } else {
+        if (object.type !== 'event' || proposal.path !== `${objectDirectory}/${object.id}.tano.json` || object.archived)
+          throw new Error('助手只能建议新增工作区事件');
+        validateObjectProperties('event', object.properties);
+        if (referenceTargets.value.some(target => target.id === object.id) || workspace.value!.files.some(file => file.path === proposal.path))
+          throw new Error('对象身份或路径已被使用，请保留建议并重新生成');
+      }
     } else {
       if (proposal.path !== workspaceRelationPath) throw new Error('关系建议路径无效');
       const base = proposal.base ? parseRelations(proposal.base) : { version: 1 as const, relations: [] };
       const proposed = parseRelations(proposal.content);
-      const added = proposed.relations.filter(row => !base.relations.some(old => old.id === row.id));
-      if (added.length !== 1 || proposed.relations.length !== base.relations.length + 1 ||
-          base.relations.some(row => JSON.stringify(row) !== JSON.stringify(proposed.relations.find(next => next.id === row.id))))
-        throw new Error('助手关系建议只能新增一个关系');
-      const row = added[0]; validateRelation(row, relationDefinitions.value);
-      for (const endpoint of [row.source, row.target])
-        if (!referenceTargets.value.some(target => referenceKey(target) === referenceKey(endpoint) && !target.archived &&
-            (target.type !== 'document' || !isWorkspaceInternalPath(target.path)))) throw new Error('关系端点不存在或已停用');
       disk = relationBase;
       const current = disk ? parseRelations(disk.content) : { version: 1 as const, relations: [] };
-      if (current.relations.some(existing => existing.id === row.id || relationKey(existing) === relationKey(row))) throw new Error('该关系已存在，请核对原建议');
-      content = JSON.stringify({ ...current, relations: [...current.relations, row] }, null, 2) + '\n';
+      const merged = mergeStructureRelations(base, proposed, current,
+        referenceTargets.value.filter(target => target.type !== 'document' || !isWorkspaceInternalPath(target.path)), relationDefinitions.value);
+      if (!merged) return { status: 'conflict' as const, preview: { before: disk?.content ?? '', after: content, diskHash: disk?.hash ?? null, path: proposal.path } };
+      content = JSON.stringify(merged, null, 2) + '\n';
     }
     const preview: AssistantPreview = { before: disk?.content ?? '', after: content, diskHash: disk?.hash ?? null, path: proposal.path };
     if (!accepted) return { status: 'preview' as const, preview };
@@ -1216,6 +1376,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return;
     }
     if (disk.hash === doc.base.hash) return;
+    referenceDocumentCache.delete(doc.id);
     const change = { before: doc.base.content, after: disk.content };
     const merge = mergeMarkdown(doc.base.content, doc.content, disk.content);
     if (merge.clean) {
@@ -1252,6 +1413,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         const content = doc.content;
         const result = await adapter.write(doc.path, content, doc.base.hash);
         if (result.status === 'saved') {
+          referenceDocumentCache.delete(doc.id);
           const change = { before: doc.base.content, after: result.snapshot.content };
           doc.base = result.snapshot;
           doc.error = undefined;
@@ -1313,6 +1475,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         }
       });
     } catch (error) {
+      clearRevokedReferences(error);
       report(error);
     }
   }
@@ -1362,6 +1525,26 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function createUntitledDocument(parent = '') {
     await createUntitledEntry(parent, false);
+  }
+  async function importDocuments(prepared: PreparedImport, folder: string, workspaceId: string,
+    options: Parameters<typeof writeWorkspaceImport>[4] = {}) {
+    return serial(async () => {
+      writable();
+      if (workspace.value?.id !== workspaceId) throw new Error('工作区已切换，请重新选择导入文件');
+      const receipt = await writeWorkspaceImport(adapter, prepared, folder, workspaceId, options);
+      activity('内容已导入', `${receipt.folder} · ${receipt.paths.length} 个页面`, 'file');
+      try {
+        workspace.value = await adapter.refresh();
+        const first = workspace.value.files.find(file => file.path === receipt.paths[0]);
+        if (first) {
+          try { await openInternal(first); }
+          catch (error) { receipt.issues.push({ name: first.path, message: `文件已导入，打开失败：${error instanceof Error ? error.message : String(error)}` }); }
+        }
+      } catch (error) {
+        receipt.issues.push({ name: receipt.folder, message: `文件已导入，刷新工作区失败：${error instanceof Error ? error.message : String(error)}` });
+      }
+      return receipt;
+    });
   }
   async function createUntitledFolder(parent = '') {
     await createUntitledEntry(parent, true);
@@ -1688,7 +1871,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     createRelation,
     removeRelation,
     setRelationSource,
-    objects, objectErrors, objectDefinitions, referenceTargets, createObject, updateObject,
+    objects, objectErrors, objectDefinitions, referenceTargets, referenceRevision, getReferenceContext, assistantReferenceContext, createObject, updateObject,
+    templates, writeTemplate, repeatPreview, createRepeat,
     capabilities,
     capabilityError,
     capabilitySaving,
@@ -1731,6 +1915,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     assistantRules,
     assistantStructures,
     proposeAssistantStructure,
+    assistantTaskQuery,
     assistantEpoch,
     reviewAssistantProposal,
     edit,
@@ -1756,6 +1941,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           : Promise.resolve([]),
       ),
     create,
+    importDocuments,
     createUntitledDocument,
     createUntitledFolder,
     saveCopy,

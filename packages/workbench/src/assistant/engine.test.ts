@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { AssistantSource, AssistantTransport, AssistantToolCall, AssistantRequest } from '@tano/protocol';
 import { AssistantStream, proposalFromTool, runAssistant } from './engine';
 
@@ -9,6 +9,49 @@ const encode = (frames: unknown[]) => new TextEncoder().encode(frames.map(frame 
 const responseFrames = (frames: unknown[]) => new TextEncoder().encode(frames.map(frame => `data: ${JSON.stringify(frame)}\r\n\r\n`).join(''));
 
 describe('assistant streaming and proposals', () => {
+  it.each(['propose_task_update', 'propose_assignment', 'propose_relation_change'])('routes %s through authorized proposal review without writing', async name => {
+    for (const allowed of [false, true]) {
+      const requests: AssistantRequest[] = [];
+      const proposals: unknown[] = [];
+      const propose = vi.fn(async () => ({ id: 'suggestion', status: 'ready' } as never));
+      const transport = { async request(_id, request, _signal, chunk) {
+        requests.push(structuredClone(request));
+        chunk(encode(requests.length === 1 ? [{ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, ...call(name, {}) }] } }] }]
+          : [{ choices: [{ index: 0, delta: { content: '等待审阅' }, finish_reason: 'stop' }] }]));
+      } } as AssistantTransport;
+      await runAssistant({ transport, connectionId: 'test', model: 'test', tools: true, workspaceId: 'workspace', runId: 'run',
+        sources: [], history: [], prompt: '跟进事项', signal: new AbortController().signal, delta: () => {}, progress: () => {},
+        proposal: proposal => proposals.push(proposal), ...(allowed ? { structures: { read: async () => ({}), propose } } : {}),
+      });
+      expect(requests[0].tools?.some(tool => tool.function.name === name)).toBe(allowed);
+      expect(propose).toHaveBeenCalledTimes(allowed ? 1 : 0);
+      expect(proposals).toHaveLength(allowed ? 1 : 0);
+      const result = JSON.parse(requests[1].messages.at(-1)!.content!);
+      expect(result.written).toBe(false);
+      if (allowed) expect(result.status).toBe('awaiting_review');
+      else expect(result.error).toContain('未允许');
+    }
+  });
+  it.each(['none', 'search', 'objects', 'both'])('scopes reference-context reads to both permissions (%s)', async permission => {
+    const requests: AssistantRequest[] = [];
+    const references = vi.fn(async () => ({ outgoing: [], incoming: [{ source: { type: 'event', id: 'a00001', name: 'Task' } }], errors: [] }));
+    const transport = { async request(_id, request, _signal, chunk) {
+      requests.push(structuredClone(request));
+      chunk(encode(requests.length === 1 ? [{ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, ...call('read_reference_context', { type: 'document', id: 'abc123' }) }] } }] }]
+        : [{ choices: [{ index: 0, delta: { content: 'Done' }, finish_reason: 'stop' }] }]));
+    } } as AssistantTransport;
+    await runAssistant({ transport, connectionId: 'test', model: 'test', tools: true, workspaceId: 'workspace', runId: 'run', sources: [], history: [], prompt: 'context', signal: new AbortController().signal,
+      delta: () => {}, proposal: () => {}, progress: () => {}, references,
+      ...(['search', 'both'].includes(permission) ? { lookup: { search: async () => [], read: async () => source } } : {}),
+      ...(['objects', 'both'].includes(permission) ? { structures: { read: async () => ({}), propose: async () => { throw new Error('Unexpected proposal'); } } } : {}),
+    });
+    const names = requests[0].tools?.map(tool => tool.function.name) ?? [];
+    expect(names.includes('read_reference_context')).toBe(permission === 'both');
+    expect(references).toHaveBeenCalledTimes(permission === 'both' ? 1 : 0);
+    const result = JSON.parse(requests[1].messages.at(-1)!.content!);
+    if (permission === 'both') expect(result.incoming[0].source.name).toBe('Task');
+    else expect(result.error).toContain('未同时允许');
+  });
   it('reads Responses text once and retains reasoning and complete tools for continuation', () => {
     let text = '';
     const stream = new AssistantStream(delta => { text += delta; });

@@ -333,7 +333,7 @@ pub async fn assistant_models(
 
 #[tauri::command]
 pub fn assistant_protocol_version() -> u32 {
-    3
+    5
 }
 
 #[tauri::command]
@@ -530,7 +530,7 @@ fn request_body(config: &Connection, request: Value) -> Result<Value, String> {
     if let Some(tools) = request.get("tools") {
         let tools = tools.as_array().ok_or("模型工具无效")?;
         if !config.tools
-            || tools.len() > 8
+            || tools.len() > 12
             || tools.iter().any(|tool| {
                 !matches!(
                     tool.pointer("/function/name").and_then(Value::as_str),
@@ -540,8 +540,13 @@ fn request_body(config: &Connection, request: Value) -> Result<Value, String> {
                             | "search_documents"
                             | "read_document"
                             | "read_workspace_objects"
+                            | "read_reference_context"
                             | "propose_event"
                             | "propose_relation"
+                            | "propose_task_update"
+                            | "propose_assignment"
+                            | "propose_relation_change"
+                            | "query_tasks"
                     )
                 )
             })
@@ -1112,6 +1117,21 @@ mod tests {
         let session = json!({"version": 1, "id": uuid::Uuid::new_v4().to_string(), "workspaceId": "one", "messages": []});
         assert!(validate_session(&session, "two").is_err());
         assert!(validate_session(&session, "one").is_ok());
+        let reference_request = json!({"model": "test", "messages": [{"role": "user", "content": "context"}],
+            "tools": [{"type": "function", "function": {"name": "read_reference_context", "parameters": {"type": "object"}}}]});
+        assert!(request_body(&connection, reference_request.clone()).is_err());
+        let mut enabled = connection;
+        enabled.tools = true;
+        for protocol in [Protocol::ChatCompletions, Protocol::Responses] {
+            enabled.protocol = protocol;
+            let body = request_body(&enabled, reference_request.clone()).unwrap();
+            let name = if matches!(enabled.protocol, Protocol::Responses) {
+                &body["tools"][0]["name"]
+            } else {
+                &body["tools"][0]["function"]["name"]
+            };
+            assert_eq!(name, "read_reference_context");
+        }
     }
     #[test]
     fn atomic_data_replacement_and_corrupt_connections_are_preserved() {
@@ -1154,6 +1174,49 @@ mod tests {
         let restored: Connection = serde_json::from_value(serialized).unwrap();
         assert!(restored._legacy_model.is_none());
         assert!(matches!(restored.protocol, Protocol::ChatCompletions));
+    }
+    #[test]
+    fn authorizes_task_follow_up_tools_for_both_api_protocols() {
+        let names = [
+            "propose_edit",
+            "propose_create",
+            "search_documents",
+            "read_document",
+            "read_workspace_objects",
+            "read_reference_context",
+            "propose_event",
+            "propose_relation",
+            "propose_task_update",
+            "propose_assignment",
+            "propose_relation_change",
+            "query_tasks",
+        ];
+        for protocol in ["responses", "chat-completions"] {
+            let config: Connection =
+                serde_json::from_value(json!({"id": uuid::Uuid::new_v4().to_string(),
+                "name": "test", "endpoint": "https://example.com/v1", "protocol": protocol,
+                "tools": true, "maxOutputTokens": 2048}))
+                .unwrap();
+            let tools: Vec<Value> = names
+                .iter()
+                .map(|name| {
+                    json!({"type": "function", "function": {
+                "name": name, "description": "review", "parameters": {"type": "object"}}})
+                })
+                .collect();
+            let request = json!({"model": "test", "messages": [{"role": "user", "content": "follow up"}], "tools": tools});
+            assert_eq!(
+                request_body(&config, request.clone()).unwrap()["tools"]
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                12
+            );
+            let mut forbidden = request;
+            forbidden["tools"][10]["function"]["name"] = json!("execute_shell");
+            assert!(request_body(&config, forbidden).is_err());
+        }
+        assert_eq!(assistant_protocol_version(), 5);
     }
     #[test]
     fn responses_requests_preserve_reasoning_and_use_flat_tools() {
