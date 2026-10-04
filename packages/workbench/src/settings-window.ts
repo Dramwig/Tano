@@ -11,7 +11,7 @@ import type { ToolbarMode } from './toolbar-preference';
 import type { PageTitleSource } from './page-title-source';
 import type { UpdateCandidate, UpdatePhase, UpdateProgress, UpdateStatus } from './updates/controller';
 
-export type SettingsPageId = 'preferences' | 'appearance' | 'editing' | 'workspace' | 'about';
+export type SettingsPageId = 'preferences' | 'appearance' | 'editing' | 'assistant' | 'workspace' | 'about';
 export type SettingsAction =
   'open-folder' | 'switch-mode' | 'reveal' | 'agent' | 'history' | 'recycle' |
   'sign-out';
@@ -51,6 +51,7 @@ export interface SettingsSnapshot extends SettingsValues {
 export type SettingsCommand =
   | { type: 'ready' }
   | { type: 'change'; key: keyof SettingsValues; value: SettingsValues[keyof SettingsValues] }
+  | { type: 'assistant-refresh' }
   | { type: 'capability'; value: CapabilityPatch }
   | { type: 'action'; value: SettingsAction }
   | { type: 'update' };

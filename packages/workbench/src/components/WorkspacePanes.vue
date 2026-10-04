@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { layoutGeometry, mapLayout, panePreviewRects } from '../pane-layout';
 import type { LayoutRect } from '../pane-layout';
 import { useWorkspaceStore } from '../stores/workspace';
@@ -7,6 +7,13 @@ import { useWorkspaceStore } from '../stores/workspace';
 const props = defineProps<{ compact?: boolean }>();
 const store = useWorkspaceStore();
 const host = ref<HTMLElement>();
+const contentWidth = ref<number>();
+let resizeObserver: ResizeObserver | undefined;
+onMounted(() => {
+  if (!host.value || typeof ResizeObserver === 'undefined') return;
+  resizeObserver = new ResizeObserver(([entry]) => { contentWidth.value = entry.contentRect.width; });
+  resizeObserver.observe(host.value);
+});
 const committed = computed(() => layoutGeometry(store.layout));
 const geometry = computed(() => {
   if (props.compact || !store.detachingTabId) return committed.value;
@@ -25,19 +32,29 @@ const preview = computed(() => {
   const target = visible.value.find(({ pane }) => pane.id === drop.paneId);
   return target ? panePreviewRects(target.rect, drop.side) : undefined;
 });
-const displayed = computed(() => [
+// Top tab strips use the full workspace width; the sidebar only narrows content.
+const tabbarPanes = computed(() => [
   ...visible.value.map(item => ({
     ...item, hidden: false,
-    rect: preview.value && item.pane.id === store.paneDrop?.paneId ? preview.value.content : item.rect,
   })),
   // Keep departing editors mounted to flush drafts and restore on failure.
   // No hidden-pane geometry participates in hit tests or visible dividers.
   ...(!props.compact ? committed.value.panes.filter(item => !visible.value.some(({ pane }) => pane.id === item.pane.id))
     .map(item => ({ ...item, hidden: true })) : []),
 ]);
+const displayed = computed(() => tabbarPanes.value.map(item => ({
+  ...item, topTabbar: item.rect.top === 0,
+  rect: preview.value && item.pane.id === store.paneDrop?.paneId ? preview.value.content : item.rect,
+})));
 const visibleActivePaneId = computed(() => visible.value.some(({ pane }) => pane.id === store.activePaneId)
   ? store.activePaneId : visible.value[0]?.pane.id);
 const rectStyle = (rect: LayoutRect) => ({ left: `${rect.left * 100}%`, top: `${rect.top * 100}%`, width: `${rect.width * 100}%`, height: `${rect.height * 100}%` });
+const tabbarStyle = (rect: LayoutRect) => ({
+  left: contentWidth.value === undefined ? `${rect.left * 100}%` : `${rect.left * contentWidth.value}px`,
+  ...(rect.left + rect.width >= 1 - 1e-6 ? { right: '0' } : {
+    width: contentWidth.value === undefined ? `${rect.width * 100}%` : `${rect.width * contentWidth.value}px`,
+  }),
+});
 type Divider = ReturnType<typeof layoutGeometry>['dividers'][number];
 let resizing: { divider: Divider; pointer: number; target: HTMLElement; bounds: DOMRect } | undefined;
 const isResizing = ref(false);
@@ -71,44 +88,65 @@ function resizeKey(event: KeyboardEvent, divider: Divider) {
   event.preventDefault();
   store.resizeSplit(divider.id, event.key === 'Home' ? .5 : divider.ratio + (event.key === keys[0] ? -.05 : .05));
 }
-onBeforeUnmount(endResize);
+onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
 </script>
 
 <template>
-  <div ref="host" class="workspace-panes" :class="{ 'workspace-panes-multiple': !compact && (visible.length > 1 || !!preview), 'workspace-panes-resizing': isResizing }">
-    <!-- Hit regions keep their committed bounds while the visible pane makes
-         room for the preview, so a stationary edge drag cannot oscillate. -->
-    <div v-for="{ pane, rect } in visible" :key="`hit:${pane.id}`" class="pane-dock-region"
-      :data-dock-pane-id="pane.id" :style="rectStyle(rect)" aria-hidden="true" />
-    <section
-      v-for="{ pane, rect, hidden } in displayed" :key="pane.id" v-show="!hidden" class="workspace-pane" :inert="hidden"
-      :class="{ 'workspace-pane-active': !hidden && pane.id === visibleActivePaneId, 'workspace-pane-top': rect.top === 0, 'workspace-pane-top-right': rect.top === 0 && rect.left + rect.width >= 1 - 1e-6 }"
-      :data-pane-id="pane.id" :style="rectStyle(rect)" aria-label="文档标签组"
-      @pointerdown.capture="store.focusPane(pane.id)" @focusin="store.focusPane(pane.id)"
-    >
-      <slot :pane="pane" :rect="rect" :document="store.documents.find(doc => doc.id === pane.activeId)"
-        :tab="store.tabs.find(tab => tab.id === pane.activeId)" />
-    </section>
-    <div v-if="preview && store.paneDrop" class="pane-dock-preview" :class="`pane-dock-${store.paneDrop.side}`"
-      :style="rectStyle(preview.preview)" aria-hidden="true">
-      <span>{{ ({ center: '合并到标签组', left: '向左分屏', right: '向右分屏', top: '向上分屏', bottom: '向下分屏' })[store.paneDrop.side] }}</span>
+  <div class="workspace-layout">
+    <div v-if="!compact && $slots.tabs" class="workspace-pane-tabbars">
+      <div v-for="{ pane, rect, hidden } in tabbarPanes.filter(item => item.rect.top === 0)" :key="pane.id"
+        v-show="!hidden" class="workspace-pane-tabbar" :inert="hidden"
+        :class="{ 'workspace-pane-top-right': rect.left + rect.width >= 1 - 1e-6 }"
+        :style="tabbarStyle(rect)"
+        @pointerdown.capture="store.focusPane(pane.id)" @focusin="store.focusPane(pane.id)">
+        <slot name="tabs" :pane="pane" :rect="rect" />
+      </div>
     </div>
-    <template v-if="!compact">
-      <div v-for="divider in geometry.dividers" :key="divider.id" class="pane-divider"
-        :class="`pane-divider-${divider.axis}`" :style="rectStyle(divider.rect)"
-        role="separator" tabindex="0" :aria-label="divider.axis === 'horizontal' ? '调整左右分屏大小' : '调整上下分屏大小'"
-        :aria-orientation="divider.axis === 'horizontal' ? 'vertical' : 'horizontal'"
-        :aria-valuenow="Math.round(divider.ratio * 100)" :aria-valuemin="10" :aria-valuemax="90"
-        @pointerdown="startResize($event, divider)" @pointermove="moveResize" @pointerup="endResize"
-        @pointercancel="endResize" @lostpointercapture="endResize" @keydown="resizeKey($event, divider)"
-        @dblclick="store.resizeSplit(divider.id, .5)" />
-    </template>
+    <div class="workspace-body">
+      <div ref="host" class="workspace-panes" :class="{ 'workspace-panes-multiple': !compact && (visible.length > 1 || !!preview), 'workspace-panes-resizing': isResizing }">
+        <!-- Hit regions keep their committed bounds while the visible pane makes
+             room for the preview, so a stationary edge drag cannot oscillate. -->
+        <div v-for="{ pane, rect } in visible" :key="`hit:${pane.id}`" class="pane-dock-region"
+          :data-dock-pane-id="pane.id" :style="rectStyle(rect)" aria-hidden="true" />
+        <section
+          v-for="{ pane, rect, hidden, topTabbar } in displayed" :key="pane.id" v-show="!hidden" class="workspace-pane" :inert="hidden"
+          :class="{ 'workspace-pane-active': !hidden && pane.id === visibleActivePaneId, 'workspace-pane-top': rect.top === 0, 'workspace-pane-external-tabs': !compact && topTabbar && !!$slots.tabs }"
+          :data-pane-id="pane.id" :style="rectStyle(rect)" aria-label="文档标签组"
+          @pointerdown.capture="store.focusPane(pane.id)" @focusin="store.focusPane(pane.id)"
+        >
+          <slot v-if="!compact && !topTabbar" name="tabs" :pane="pane" :rect="rect" />
+          <slot :pane="pane" :rect="rect" :document="store.documents.find(doc => doc.id === pane.activeId)"
+            :tab="store.tabs.find(tab => tab.id === pane.activeId)" />
+        </section>
+        <div v-if="preview && store.paneDrop" class="pane-dock-preview" :class="`pane-dock-${store.paneDrop.side}`"
+          :style="rectStyle(preview.preview)" aria-hidden="true">
+          <span>{{ ({ center: '合并到标签组', left: '向左分屏', right: '向右分屏', top: '向上分屏', bottom: '向下分屏' })[store.paneDrop.side] }}</span>
+        </div>
+        <template v-if="!compact">
+          <div v-for="divider in geometry.dividers" :key="divider.id" class="pane-divider"
+            :class="`pane-divider-${divider.axis}`" :style="rectStyle(divider.rect)"
+            role="separator" tabindex="0" :aria-label="divider.axis === 'horizontal' ? '调整左右分屏大小' : '调整上下分屏大小'"
+            :aria-orientation="divider.axis === 'horizontal' ? 'vertical' : 'horizontal'"
+            :aria-valuenow="Math.round(divider.ratio * 100)" :aria-valuemin="10" :aria-valuemax="90"
+            @pointerdown="startResize($event, divider)" @pointermove="moveResize" @pointerup="endResize"
+            @pointercancel="endResize" @lostpointercapture="endResize" @keydown="resizeKey($event, divider)"
+            @dblclick="store.resizeSplit(divider.id, .5)" />
+        </template>
+      </div>
+      <slot name="sidebar" />
+    </div>
   </div>
 </template>
 
 <style scoped>
+.workspace-layout { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.workspace-pane-tabbars { position: relative; flex: 0 0 36px; background: var(--sidebar); }
+.workspace-pane-tabbar { position: absolute; top: 0; height: 100%; min-width: 0; }
+.workspace-pane-tabbar + .workspace-pane-tabbar::before { content: ''; position: absolute; z-index: 1; top: 0; bottom: 0; left: 0; border-left: 1px solid var(--line); pointer-events: none; }
+.workspace-body { display: flex; flex: 1; min-width: 0; min-height: 0; }
 .workspace-panes { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
-.workspace-pane { --inspector-top: calc(36px + 52px + 44px + 16px); position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--paper); }
+.workspace-pane { --workspace-pane-tabbar-height: 36px; --inspector-top: calc(var(--workspace-pane-tabbar-height) + 52px + 44px + 16px); position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--paper); }
+.workspace-pane-external-tabs { --workspace-pane-tabbar-height: 0px; }
 .workspace-panes-multiple .workspace-pane { container-type: size; }
 .workspace-panes-multiple .workspace-pane-active { box-shadow: inset 0 2px var(--green); }
 .pane-divider { position: absolute; z-index: 12; touch-action: none; }

@@ -1,4 +1,4 @@
-export const ASSISTANT_PROTOCOL_VERSION = 5;
+export const ASSISTANT_PROTOCOL_VERSION = 6;
 
 export interface AssistantConnection {
   id: string;

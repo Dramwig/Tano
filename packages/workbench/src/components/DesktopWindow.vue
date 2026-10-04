@@ -273,7 +273,7 @@ async function toggleMaximize() {
   padding-top: 0;
 }
 .workspace-native-tabs .workspace-pane {
-  --inspector-top: calc(36px + 44px + 44px + 16px);
+  --inspector-top: calc(var(--workspace-pane-tabbar-height) + 44px + 44px + 16px);
 }
 .workspace-native-tabs .workspace-pane-top-right > .workspace-tabbar {
   padding-right: 138px;
@@ -300,5 +300,10 @@ async function toggleMaximize() {
   height: 100%;
   overflow-y: auto;
   padding-top: 70px;
+}
+@media (max-width: 700px) {
+  .desktop-window-content > .app-shell .assistant-panel {
+    top: var(--desktop-titlebar-height);
+  }
 }
 </style>

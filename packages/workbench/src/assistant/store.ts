@@ -109,9 +109,13 @@ export const useAssistantStore = defineStore('assistant', () => {
     if (!connections.value.some(item => item.id === id)) throw new Error('模型连接已移除');
     if (id === connectionId.value && !reset) return;
     connectionId.value = id; modelId.value = '';
-    if (!session.value) newSession();
-    session.value!.connectionId = id; delete session.value!.model;
-    await persist();
+    // Connection settings are personal and can be edited from the standalone
+    // settings window, where no workspace conversation is loaded.
+    if (!session.value && workspace.workspace) newSession();
+    if (session.value) {
+      session.value.connectionId = id; delete session.value.model;
+      await persist();
+    }
   }
   async function selectModel(id: string) {
     if (busy.value || applying.value || loading.value) return;

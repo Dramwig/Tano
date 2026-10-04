@@ -10,7 +10,7 @@ import type { AttachmentService } from './attachments';
 export interface WorkbenchActions {
   closeMenus(): void;
   createWorkspace(): void;
-  openSettings(page?: 'preferences' | 'appearance' | 'editing' | 'workspace' | 'about'): void;
+  openSettings(page?: 'preferences' | 'appearance' | 'editing' | 'assistant' | 'workspace' | 'about'): void;
   showDiff(value: {title: string; before: string; after: string}): void;
 }
 export interface EditingSession {

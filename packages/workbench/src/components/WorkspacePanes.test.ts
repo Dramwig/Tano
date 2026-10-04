@@ -12,12 +12,12 @@ let app: App | undefined;
 let root: HTMLElement;
 afterEach(() => { app?.unmount(); root?.remove(); vi.restoreAllMocks(); });
 
-async function mountPanes(side: 'right' | 'bottom' = 'right') {
+async function mountPanes(side: 'right' | 'bottom' = 'right', sharedTabs = false) {
   const layout = newPane(['a', 'b', 'c']);
   fixture.store = reactive({
     layout: dockLayout(layout, 'c', { paneId: layout.id, side }),
     get panes() { return layoutPanes(this.layout); },
-    activePaneId: layout.id, paneDrop: undefined,
+    activePaneId: layout.id, paneDrop: undefined, assistantOpened: false,
     documents: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], focusPane: vi.fn(),
     tabs: [{ id: 'a', path: 'a.md' }, { id: 'b', path: 'b.md' }, { id: 'c', path: 'c.md' }],
   });
@@ -26,12 +26,62 @@ async function mountPanes(side: 'right' | 'bottom' = 'right') {
   root = document.createElement('div');
   document.body.append(root);
   app = createApp({ render: () => h(WorkspacePanes, {}, {
-    default: () => [h('div', { class: 'workspace-tabbar' }), h('header', { class: 'topbar' }), h(editor)],
+    ...(sharedTabs ? {
+      tabs: ({ pane }: any) => h('div', { class: 'workspace-tabbar', 'data-tab-pane-id': pane.id }),
+      sidebar: () => fixture.store.assistantOpened ? h('aside', { class: 'assistant-panel' }) : null,
+    } : {}),
+    default: () => [!sharedTabs && h('div', { class: 'workspace-tabbar' }), h('header', { class: 'topbar' }), h(editor)],
   }) });
   app.mount(root);
   await nextTick();
   return { id: layout.id, mounted };
 }
+
+it.each(['right', 'bottom'] as const)('keeps top tabs above the assistant in a %s split without remounting editors', async side => {
+  const { mounted } = await mountPanes(side, true);
+  const tabs = [...root.querySelectorAll<HTMLElement>('.workspace-tabbar')];
+  const panes = [...root.querySelectorAll<HTMLElement>('.workspace-pane')];
+  const editors = panes.map(pane => pane.querySelector('textarea'));
+  const header = root.querySelector('.workspace-pane-tabbars')!;
+  expect(header.querySelectorAll('.workspace-tabbar')).toHaveLength(side === 'right' ? 2 : 1);
+  expect(panes[0].querySelector('.workspace-tabbar')).toBeNull();
+  expect(panes[1].querySelector('.workspace-tabbar') !== null).toBe(side === 'bottom');
+  const initialLayout = JSON.stringify(fixture.store.layout);
+  const initialWidths = [...header.children].map(element => (element as HTMLElement).style.width);
+  fixture.store.assistantOpened = true;
+  await nextTick();
+  const assistant = root.querySelector('.assistant-panel')!;
+  expect(assistant.parentElement).toBe(root.querySelector('.workspace-body'));
+  expect(header.parentElement).toBe(assistant.parentElement!.parentElement);
+  expect([...header.children].map(element => (element as HTMLElement).style.width)).toEqual(initialWidths);
+  expect([...root.querySelectorAll('.workspace-tabbar')]).toEqual(tabs);
+  expect(panes.map(pane => pane.querySelector('textarea'))).toEqual(editors);
+  expect(JSON.stringify(fixture.store.layout)).toBe(initialLayout);
+  fixture.store.assistantOpened = false;
+  await nextTick();
+  expect(root.querySelector('.assistant-panel')).toBeNull();
+  expect(mounted).toHaveBeenCalledTimes(2);
+});
+
+it('retains top tab targets during split preview and a failed window transfer', async () => {
+  const { id } = await mountPanes('right', true);
+  const tabs = [...root.querySelectorAll<HTMLElement>('.workspace-pane-tabbars .workspace-tabbar')];
+  fixture.store.paneDrop = { paneId: id, side: 'top' };
+  await nextTick();
+  expect([...root.querySelectorAll('.workspace-pane-tabbars .workspace-tabbar')]).toEqual(tabs);
+  fixture.store.paneDrop = undefined;
+  fixture.store.detachingTabId = 'c';
+  await nextTick();
+  expect(tabs[0].parentElement!.style.left).toBe('0%');
+  expect(tabs[0].parentElement!.style.right).toBe('0px');
+  expect(tabs[1].parentElement!.style.display).toBe('none');
+  expect(tabs[1].parentElement!.hasAttribute('inert')).toBe(true);
+  fixture.store.detachingTabId = '';
+  await nextTick();
+  expect(tabs[0].parentElement!.style.width).toBe('50%');
+  expect(tabs[1].parentElement!.style.display).toBe('');
+  expect([...root.querySelectorAll('.workspace-pane-tabbars .workspace-tabbar')]).toEqual(tabs);
+});
 
 it('makes room for a preview without remounting editors or persisting a split, and restores on cancel', async () => {
   const { id, mounted } = await mountPanes();

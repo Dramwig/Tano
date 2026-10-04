@@ -631,7 +631,7 @@ const managedFilePaths = computed(
 );
 let fileContextTrigger: HTMLElement | null = null;
 const settingsPanel = ref(false);
-const settingsPage = ref<'appearance' | 'editing' | 'workspace' | 'about'>('appearance');
+const settingsPage = ref<'appearance' | 'editing' | 'assistant' | 'workspace' | 'about'>('appearance');
 watch(defaultSource, (value) => {
   savePreference('defaultSource', value);
   if (!editing.active && !editing.activeBusy) source.value = value;
@@ -1941,6 +1941,7 @@ function handleSettingsCommand(command: SettingsCommand) {
     return;
   }
   if (command.type === 'capability') { void store.updateCapabilities(command.value); return; }
+  if (command.type === 'assistant-refresh') { void assistant.reloadConnections().catch(store.report); return; }
   if (command.type === 'action') { settingsAction(command.value); return; }
   if (command.type === 'update') {
     if (updates.state.phase === 'available') void updates.download();
@@ -3012,7 +3013,7 @@ watch(activeId, () => {
       </div>
 
       <WorkspacePanes v-if="workspace" :compact="compactPanes" :class="{ 'workspace-native-tabs': native && !mobile && !compactPanes }">
-        <template #default="{ pane, rect, document: active, tab }">
+        <template #tabs="{ pane, rect }">
           <div v-if="!compactPanes" class="workspace-tabbar" :data-tab-pane-id="pane.id">
             <button v-if="native && !mobile && !detachedWindow && !sidebar && rect.top === 0 && rect.left === 0"
               class="desktop-sidebar-toggle" type="button" aria-label="展开侧栏" title="展开侧栏 · Ctrl B" @click="toggleSidebar">
@@ -3024,6 +3025,11 @@ watch(activeId, () => {
             <div v-if="native && !mobile" v-show="rect.top === 0" class="workspace-window-drag" title="拖动窗口"
               @mousedown="dragPaneWindow" @dblclick="maximizePaneWindow" />
           </div>
+        </template>
+        <template #sidebar>
+          <AssistantPanel v-if="assistant.available && assistant.opened" @open-reference="openReference" @open-settings="openSettings('assistant')" />
+        </template>
+        <template #default="{ pane, document: active, tab }">
           <ButtonVisibilityGroup
             v-if="!detachedWindow"
             v-slot="{ isVisible }"
@@ -3780,7 +3786,6 @@ watch(activeId, () => {
             </Teleport>
     </div>
 
-    <AssistantPanel v-if="workspace && assistant.available && assistant.opened" @open-reference="openReference" />
     <ImportPanel v-if="importPanel && workspace" :key="workspace.id" :attachments="attachments" :records="importRecords"
       @close="importPanel = false" @completed="importRecords.unshift($event)" />
     <TemplateDialog v-if="templateDialog && workspace" :key="workspace.id" :source="store.active?.content" @close="templateDialog = false" />
@@ -3861,6 +3866,7 @@ watch(activeId, () => {
       :capability-error="store.capabilityError"
       :capability-saving="store.capabilitySaving"
       @capability="store.updateCapabilities"
+      @assistant-changed="assistant.reloadConnections"
       @update:editor-preferences="editorPreferences = $event"
       @close="settingsPanel = false"
       @update:default-source="defaultSource = $event"

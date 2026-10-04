@@ -333,7 +333,7 @@ pub async fn assistant_models(
 
 #[tauri::command]
 pub fn assistant_protocol_version() -> u32 {
-    5
+    6
 }
 
 #[tauri::command]
@@ -648,7 +648,10 @@ pub async fn assistant_request(
             .map_err(|_| "助手运行正忙")?
             .active
             .remove(&owner);
-        return result;
+        result?;
+        return on_chunk
+            .send(Vec::new())
+            .map_err(|_| "助手界面已关闭".into());
     }
     let url = generation_endpoint(&config.config)?;
     let body = request_body(&config.config, request)?;
@@ -680,7 +683,9 @@ pub async fn assistant_request(
             let Some(chunk) = chunk else { break; };
             size += chunk.len();
             if size > 4_000_000 { return Err("模型响应超过大小限制".into()); }
-            on_chunk.send(chunk.to_vec()).map_err(|_| "助手界面已关闭")?;
+            if !chunk.is_empty() {
+                on_chunk.send(chunk.to_vec()).map_err(|_| "助手界面已关闭")?;
+            }
         }
         Ok(())
     }.await;
@@ -690,7 +695,11 @@ pub async fn assistant_request(
         .map_err(|_| "助手运行正忙")?
         .active
         .remove(&owner);
-    result
+    result?;
+    // Ordered channel completion is separate from the command's IPC response.
+    on_chunk
+        .send(Vec::new())
+        .map_err(|_| "助手界面已关闭".into())
 }
 
 #[tauri::command]
@@ -1216,7 +1225,7 @@ mod tests {
             forbidden["tools"][10]["function"]["name"] = json!("execute_shell");
             assert!(request_body(&config, forbidden).is_err());
         }
-        assert_eq!(assistant_protocol_version(), 5);
+        assert_eq!(assistant_protocol_version(), 6);
     }
     #[test]
     fn responses_requests_preserve_reasoning_and_use_flat_tools() {

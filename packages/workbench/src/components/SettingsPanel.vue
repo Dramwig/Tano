@@ -22,6 +22,7 @@ import {
 import type { Workspace } from '@tano/protocol';
 import type { SettingsPage } from '../runtime';
 import UpdatePanel from './UpdatePanel.vue';
+import AssistantSettings from './AssistantSettings.vue';
 import {
   featureDefinitions,
   defaultCapabilities,
@@ -80,6 +81,7 @@ const emit = defineEmits<{
   action: [value: Action];
   capability: [value: CapabilityPatch];
   'update:editorPreferences': [value: EditorPreferences];
+  'assistant-changed': [];
 }>();
 const rules = computed(() => props.capabilities ?? defaultCapabilities);
 const display = computed(() => props.editorPreferences ?? defaultEditorPreferences);
@@ -125,6 +127,13 @@ const pages = [
     group: '个人偏好',
     icon: PencilLine,
     terms: '编辑器 Markdown 源码 默认编辑模式 光标 语法 展开 编辑 Reveal 数学 公式 KaTeX 标题 列表 折叠 工具栏 选区 顶部 固定 胶囊',
+  },
+  {
+    id: 'assistant',
+    label: '助手设置',
+    group: '个人偏好',
+    icon: Bot,
+    terms: '助手 模型 连接 API 密钥 Codex CLI Claude CLI token 工具调用 个人设置',
   },
   {
     id: 'workspace',
@@ -554,6 +563,8 @@ function customFontInput(event: Event) {
             <Monitor :size="14" />仅保存在当前设备，不随工作区共享。
           </p>
         </div>
+
+        <AssistantSettings v-else-if="page === 'assistant'" @changed="emit('assistant-changed')" />
 
         <div v-else-if="page === 'documents'" class="settings-content">
           <div class="settings-title-line">

@@ -123,6 +123,7 @@ onBeforeUnmount(() => {
     @update:source-font-size="change('sourceFontSize', $event)"
     @update:editor-preferences="change('editorPreferences', $event)"
     @capability="send({ type: 'capability', value: $event as CapabilityPatch })"
+    @assistant-changed="send({ type: 'assistant-refresh' })"
     @action="action"
   >
     <template #update-panel>

@@ -33,20 +33,30 @@ export function nativeAssistantTransport(): AssistantTransport {
       signal.throwIfAborted();
       const requestId = crypto.randomUUID();
       let streamError: unknown;
-      const cancel = () => { void call('assistant_cancel', { requestId }).catch(() => {}); };
+      let closed = false;
+      let delivered!: () => void;
+      const delivery = new Promise<void>(resolve => { delivered = resolve; });
+      const cancel = () => {
+        delivered();
+        void call('assistant_cancel', { requestId }).catch(() => {});
+      };
       const channel = new Channel<number[]>();
       channel.onmessage = bytes => {
-        if (signal.aborted || streamError) return;
+        if (closed || signal.aborted || streamError) return;
+        // Protocol 6 ends successful delivery with an ordered empty chunk.
+        // The invoke result can arrive before Tauri has delivered channel data.
+        if (!bytes.length) { closed = true; delivered(); return; }
         try { chunk(new Uint8Array(bytes)); }
         catch (error) { streamError = error; cancel(); }
       };
       signal.addEventListener('abort', cancel, { once: true });
       try {
         await call('assistant_request', { connectionId, requestId, request, onChunk: channel });
+        await delivery;
         if (streamError) throw streamError;
         signal.throwIfAborted();
       } catch (error) { if (streamError) throw streamError; throw error; }
-      finally { signal.removeEventListener('abort', cancel); }
+      finally { closed = true; signal.removeEventListener('abort', cancel); }
     },
     async loadSessions(workspaceId) {
       const values = await call<unknown[]>('assistant_sessions_load', { workspaceId });
