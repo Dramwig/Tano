@@ -33,6 +33,7 @@ function latexConstruct(display: boolean): Construct {
     name: type,
     concrete: display,
     tokenize(effects, ok, nok) {
+      const context = this;
       let slash = false;
       const start: State = (code) => {
         if (code !== 92) return nok(code);
@@ -69,6 +70,10 @@ function latexConstruct(display: boolean): Construct {
       };
       const nextLine: State = (code) => {
         if (code === null) return nok(code);
+        // A display formula cannot continue after its enclosing quote/list ends.
+        // Unmatched escaped brackets must fall back to ordinary Markdown before
+        // the tokenizer consumes unrelated blocks as lazy container content.
+        if (display && context.parser.lazy[context.now().line]) return nok(code);
         if (code < -2) {
           effects.enter('lineEnding');
           effects.consume(code);

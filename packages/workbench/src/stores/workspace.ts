@@ -68,6 +68,8 @@ export interface DocumentTab {
   calendar: boolean;
   view?: WorkbenchViewTab;
   document?: OpenDocument;
+  attachmentPreview: boolean;
+  attachment?: FileEntry;
 }
 export interface Activity {
   id: string;
@@ -81,7 +83,7 @@ export interface Activity {
 export const useWorkspaceStore = defineStore('workspace', () => {
   const { adapter, mobile } = useWorkbenchRuntime();
   const views = shallowRef<ReadonlyMap<string, WorkbenchViewTab>>(new Map());
-  const isBuiltinTab = (id: string) => id.startsWith('blank:') || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || id === CALENDAR_TAB_ID;
+  const isBuiltinTab = (id: string) => id.startsWith('blank:') || id.startsWith('attachment:') || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || id === CALENDAR_TAB_ID;
   const isUtilityTab = (id: string) => isBuiltinTab(id) || views.value.has(id);
   function registerViews(definitions: readonly WorkbenchViewTab[]) {
     const next = new Map<string, WorkbenchViewTab>();
@@ -418,7 +420,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const tabs = computed<DocumentTab[]>(() =>
     tabIds.value.map((id) => {
       const document = documents.value.find((doc) => doc.id === id);
-      return { id, path: document?.path ?? '', blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, view: views.value.get(id), document };
+      const attachmentPreview = id.startsWith('attachment:');
+      const attachment = attachmentPreview ? workspace.value?.files.find(file => file.id === id.slice('attachment:'.length) && file.kind === 'file') : undefined;
+      return { id, path: document?.path ?? attachment?.path ?? (attachmentPreview ? '附件不可用' : ''), blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, view: views.value.get(id), document, attachmentPreview, attachment };
     }),
   );
   type TabNavigation = { entries: string[]; index: number };
@@ -970,6 +974,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     } catch (error) {
       report(error);
     }
+  }
+  function openAttachmentInNewTab(file: FileEntry) {
+    if (!workspace.value || file.kind !== 'file' || isMarkdown(file.path) ||
+        !workspace.value.files.some(entry => entry.id === file.id && entry.path === file.path)) return;
+    const id = `attachment:${file.id}`;
+    if (!tabIds.value.includes(id)) tabIds.value.push(id);
+    activeId.value = id;
+    ensureTabNavigation(id);
+    touchNavigation();
   }
   async function openFilesInNewTabsAt(ids: readonly string[], index: number, workspaceId: string) {
     try {
@@ -1903,6 +1916,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     createWorkspace: (name: string) => openWorkspace(undefined, name),
     openFile,
     openFileInNewTab,
+    openAttachmentInNewTab,
     openFilesInNewTabsAt,
     createBlankTab,
     openGraphTab,

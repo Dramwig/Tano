@@ -165,7 +165,15 @@ fn validate(session: &WorkspaceSession) -> Result<(), String> {
         id.is_empty()
             || id.len() > 100
             || !tab_ids.insert(id)
-            || (!id.starts_with("blank:") && id != "view:graph" && !ids.contains(id))
+            || (!id.starts_with("blank:")
+                && id != "view:graph"
+                && !id.strip_prefix("attachment:").is_some_and(|file_id| {
+                    !file_id.is_empty()
+                        && file_id.bytes().all(|byte| {
+                            byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_'
+                        })
+                })
+                && !ids.contains(id))
     }) {
         return Err("会话中的标签页身份无效".into());
     }
@@ -368,6 +376,20 @@ mod tests {
         assert_eq!(restored.tabs, ["file-id", "blank:test", "view:graph"]);
         assert_eq!(restored.documents.len(), 1);
         saved.tabs.push("view:unknown".into());
+        assert!(validate(&saved).is_err());
+    }
+    #[test]
+    fn restores_attachment_tab_without_a_document_draft() {
+        let data = tempfile::tempdir().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut saved = session();
+        saved.tabs.push("attachment:a12345".into());
+        saved.active_id = "attachment:a12345".into();
+        save(data.path(), &id, &saved).unwrap();
+        let restored = load(data.path(), &id).unwrap().unwrap();
+        assert_eq!(restored.active_id, "attachment:a12345");
+        assert_eq!(restored.documents.len(), 1);
+        saved.tabs.push("attachment:".into());
         assert!(validate(&saved).is_err());
     }
     #[test]

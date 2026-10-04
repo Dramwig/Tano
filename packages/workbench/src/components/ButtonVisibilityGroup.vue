@@ -4,7 +4,7 @@ import { Check } from 'lucide-vue-next';
 
 const props = withDefaults(
   defineProps<{
-    items: readonly { id: string; label: string }[];
+    items: readonly { id: string; label: string; separatorBefore?: boolean }[];
     preferenceKey: string;
     label: string;
     menuLabel: string;
@@ -163,19 +163,20 @@ onBeforeUnmount(() => {
       @contextmenu.stop.prevent
       @keydown.stop="menuKeydown"
     >
-      <button
-        v-for="item in items"
-        :key="item.id"
-        type="button"
-        role="menuitemcheckbox"
-        :aria-checked="isVisible(item.id)"
-        @click="toggleVisibility(item.id)"
-      >
-        <span class="button-visibility-menu-check" aria-hidden="true">
-          <Check v-if="isVisible(item.id)" :size="14" />
-        </span>
-        <span>{{ item.label }}</span>
-      </button>
+      <template v-for="(item, index) in items" :key="item.id">
+        <div v-if="item.separatorBefore && index > 0" class="menu-divider" role="separator" />
+        <button
+          type="button"
+          role="menuitemcheckbox"
+          :aria-checked="isVisible(item.id)"
+          @click="toggleVisibility(item.id)"
+        >
+          <span class="button-visibility-menu-check" aria-hidden="true">
+            <Check v-if="isVisible(item.id)" :size="14" />
+          </span>
+          <span>{{ item.label }}</span>
+        </button>
+      </template>
     </div>
   </Teleport>
 </template>

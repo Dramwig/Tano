@@ -3,7 +3,8 @@ import type { EditorState, Transaction } from '@milkdown/kit/prose/state';
 import type { Node as ProseMirrorNode } from '@milkdown/kit/prose/model';
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
 import { blockType, blockTypes, featureLevel } from './document-model';
-import { blockTree, moveBlockTo, moveBlockSibling, indentBlock, outdentBlock } from './block-tree';
+import { blockTree, moveBlockTo, moveBlockBeside, moveBlockSibling, indentBlock, outdentBlock } from './block-tree';
+import { closeHistory } from '@milkdown/kit/prose/history';
 
 /** Move one top-level Markdown block in a single, undoable editor transaction. */
 export function moveBlock(
@@ -41,12 +42,23 @@ const blockLabel: Record<string, string> = {
   hr: '分隔线',
 };
 
+/** List items fold their own continuation; list containers never fold sibling items. */
+function foldingTree(doc: ProseMirrorNode) {
+  const entries: Pick<ReturnType<typeof blockTree>[number], 'node' | 'pos' | 'parent' | 'index'>[] =
+    blockTree(doc).filter(({ node }) => node.type.name === 'heading');
+  doc.descendants((node, pos, parent, index) => {
+    if (node.type.name === 'list_item' && node.childCount > 1 && parent)
+      entries.push({ node, pos, parent, index });
+  });
+  return entries.sort((a, b) => a.pos - b.pos);
+}
+
 /** Measure the visible first text line, including content inset in tables and code blocks. */
 function firstLineCenter(element: Element, block: DOMRect): number {
-  const header = element.querySelector(':scope > .tano-enhanced-header');
+  const header = element.querySelector(':scope > .tano-enhanced-header, :scope > .tano-callout-title');
   if (header) {
     const rect = header.getBoundingClientRect();
-    return rect.top + rect.height / 2;
+    if (rect.height > 0) return rect.top + rect.height / 2;
   }
   const standaloneImage = element.matches('p')
     ? element.querySelector<HTMLImageElement>(':scope > .tano-image-block > img:not([hidden])')
@@ -55,9 +67,10 @@ function firstLineCenter(element: Element, block: DOMRect): number {
     const rect = standaloneImage.getBoundingClientRect();
     if (rect.height > 0) return rect.top + rect.height / 2;
   }
-  const firstRow = element.querySelector('tr');
+  const firstRow = element.matches('table, .tano-table-viewport, .tableWrapper')
+    ? element.querySelector('tr') : null;
   const firstItem = element.matches('ul, ol') ? element.querySelector('li') : null;
-  const firstParagraph = element.matches('blockquote') ? element.querySelector('p') : null;
+  const firstParagraph = element.matches('blockquote') ? element.querySelector(':scope > p') : null;
   const firstContent = firstRow ?? firstItem ?? firstParagraph ?? element;
   const walker = document.createTreeWalker(firstContent, NodeFilter.SHOW_TEXT);
   while (walker.nextNode()) {
@@ -103,13 +116,31 @@ function firstLineCenter(element: Element, block: DOMRect): number {
 }
 
 /** A gutter beside the document, outside contenteditable and Markdown serialization. */
-export function blockControls(readonly: () => boolean, folding: () => boolean = () => true) {
+export function blockControls(readonly: () => boolean, folding: () => boolean = () => true, columns: () => boolean = () => true) {
   const foldingKey = new PluginKey<Set<string>>('tano-folding');
   return new Plugin({
     key: foldingKey,
     state: {
       init: () => new Set<string>(),
       apply(transaction, current) {
+        const reveal = transaction.getMeta('tanoRevealPosition') as number | undefined;
+        if (reveal !== undefined && current.size) {
+          const next = new Set(current);
+          foldingTree(transaction.doc).forEach(({ node, pos, parent, index }) => {
+            const key = `${pos}:${node.type.name}:${node.textContent.slice(0, 80)}`;
+            if (!next.has(key)) return;
+            if (node.type.name === 'heading') {
+              let end = pos + node.nodeSize;
+              for (let i = index + 1; i < parent.childCount; i++) {
+                const sibling = parent.child(i);
+                if (sibling.type.name === 'heading' && Number(sibling.attrs.level) <= Number(node.attrs.level)) break;
+                end += sibling.nodeSize;
+              }
+              if (reveal >= pos + node.nodeSize && reveal < end) next.delete(key);
+            } else if (reveal > pos && reveal < pos + node.nodeSize) next.delete(key);
+          });
+          return next;
+        }
         const toggle = transaction.getMeta(foldingKey) as string | undefined;
         if (!toggle) return current;
         const next = new Set(current);
@@ -130,7 +161,8 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
         const folded = foldingKey.getState(state) ?? new Set<string>();
         const hidden = new Set<number>();
         const tree = blockTree(state.doc);
-        tree.forEach(({ node, pos, parent, index }) => {
+        const foldTargets = foldingTree(state.doc);
+        foldTargets.forEach(({ node, pos, parent, index }) => {
           if (!folded.has(`${pos}:${node.type.name}:${node.textContent.slice(0, 80)}`)) return;
           if (node.type.name === 'heading') {
             const level = Number(node.attrs.level ?? 1);
@@ -148,11 +180,14 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
         tree.forEach(({ node, pos: offset }) => {
           if (hidden.has(offset))
             decorations.push(Decoration.node(offset, offset + node.nodeSize, { class: 'tano-folded-heading-content' }));
-          if (
-            folded.has(`${offset}:${node.type.name}:${node.textContent.slice(0, 80)}`) &&
-            (node.type.name === 'bullet_list' || node.type.name === 'ordered_list')
-          )
-            decorations.push(Decoration.node(offset, offset + node.nodeSize, { class: 'tano-folded-list' }));
+        });
+        foldTargets.forEach(({ node, pos }) => {
+          if (node.type.name !== 'list_item' ||
+            !folded.has(`${pos}:${node.type.name}:${node.textContent.slice(0, 80)}`)) return;
+          node.forEach((child, offset, index) => {
+            if (index > 0) decorations.push(Decoration.node(pos + 1 + offset,
+              pos + 1 + offset + child.nodeSize, { class: 'tano-folded-list-content' }));
+          });
         });
         return DecorationSet.create(state.doc, decorations);
       },
@@ -186,45 +221,51 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       let suppressClick = false;
       let clickResetTimer: number | null = null;
       let hoveredIndex: number | null = null;
+      let hoveredFoldIndex: number | null = null;
       let hoverSuppressed = false;
       const handles: HTMLButtonElement[] = [];
       const foldButtons: HTMLButtonElement[] = [];
       let entries = blockTree(view.state.doc);
+      let foldEntries = foldingTree(view.state.doc);
       let positions: number[] = [];
 
       function blockKey(index: number) {
-        const { node, pos } = entries[index]!;
+        const { node, pos } = foldEntries[index]!;
         return `${pos}:${node.type.name}:${node.textContent.slice(0, 80)}`;
       }
 
-      function foldable(node: ProseMirrorNode) {
-        return node.type.name === 'heading' || node.type.name === 'bullet_list' || node.type.name === 'ordered_list';
-      }
-
       function showHoveredHandle() {
+        const hovered = hoveredIndex == null ? null : entries[hoveredIndex];
         handles.forEach((handle, index) => {
+          const entry = entries[index]!;
           handle.classList.toggle(
             'is-visible',
-            index === hoveredIndex || (dragging && index === sourceIndex),
+            index === hoveredIndex || (dragging && index === sourceIndex) ||
+              (!dragging && !!hovered && entry.node.type.name === 'tano_columns' &&
+                entry.pos < hovered.pos && hovered.pos < entry.pos + entry.node.nodeSize),
           );
         });
         foldButtons.forEach((button, index) => {
           button.classList.toggle(
             'is-visible',
             folding() &&
-              (index === hoveredIndex || (foldingKey.getState(view.state) ?? new Set()).has(blockKey(index))),
+              (index === hoveredFoldIndex || (foldingKey.getState(view.state) ?? new Set()).has(blockKey(index))),
           );
         });
       }
 
-      function setHovered(index: number | null) {
-        if (hoveredIndex === index) return;
+      function setHovered(index: number | null, foldIndex: number | null = null) {
+        if (hoveredIndex === index && hoveredFoldIndex === foldIndex) return;
         hoveredIndex = index;
+        hoveredFoldIndex = foldIndex;
         showHoveredHandle();
       }
 
       function blockIndexAt(target: EventTarget | null): number | null {
-        if (!(target instanceof Element) || !view.dom.contains(target)) return null;
+        if (!(target instanceof Element)) return null;
+        const handle = target.closest<HTMLButtonElement>('.tano-block-handle');
+        if (handle && controls.contains(handle)) return Number(handle.dataset.blockIndex);
+        if (!view.dom.contains(target)) return null;
         for (let index = entries.length - 1; index >= 0; index--)
           if (blockElement(index)?.contains(target)) return index;
         return null;
@@ -239,8 +280,44 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
 
       function blockRect(index: number) {
         const element = blockElement(index);
-        if (!element || element.closest('[hidden], .tano-folded-heading-content')) return null;
+        if (!element || element.closest('[hidden], .tano-folded-heading-content, .tano-folded-list-content')) return null;
         return element.getBoundingClientRect();
+      }
+
+      function foldElement(index: number) {
+        const element = view.nodeDOM(foldEntries[index]!.pos);
+        return element instanceof Element ? element : null;
+      }
+
+      function foldRect(index: number) {
+        const element = foldElement(index);
+        if (!element || element.closest('[hidden], .tano-folded-heading-content, .tano-folded-list-content')) return null;
+        return element.getBoundingClientRect();
+      }
+
+      function foldLeft(index: number, element: Element, rect: DOMRect) {
+        return foldEntries[index]!.node.type.name === 'list_item'
+          ? element.parentElement!.getBoundingClientRect().left : rect.left;
+      }
+
+      function foldIndexAt(target: EventTarget | null, x: number, y: number) {
+        if (target instanceof Element) {
+          const button = target.closest<HTMLButtonElement>('.tano-fold-toggle');
+          if (button && controls.contains(button)) return foldButtons.indexOf(button);
+          if (view.dom.contains(target)) {
+            for (let index = foldEntries.length - 1; index >= 0; index--)
+              if (foldRect(index) && foldElement(index)?.contains(target)) return index;
+            return null;
+          }
+        }
+        for (let index = foldEntries.length - 1; index >= 0; index--) {
+          const rect = foldRect(index);
+          const element = foldElement(index);
+          if (rect && element && x >= foldLeft(index, element, rect) - 24 &&
+            x <= rect.right + 24 && y >= rect.top && y <= rect.bottom)
+            return index;
+        }
+        return null;
       }
 
       function blockIndexAtCoords(x: number, y: number) {
@@ -256,7 +333,10 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
             y > rect.bottom + 12
           )
             continue;
-          const distance = Math.max(rect.top - y, 0, y - rect.bottom);
+          const distance = Math.hypot(
+            Math.max(rect.top - y, 0, y - rect.bottom),
+            Math.max(rect.left - x, 0, x - rect.right),
+          );
           if (distance < closestDistance) {
             closest = index;
             closestDistance = distance;
@@ -273,6 +353,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
         }
         controls.hidden = false;
         entries = blockTree(view.state.doc);
+        foldEntries = foldingTree(view.state.doc);
         const count = entries.length;
         positions = entries.map(({ pos }) => pos);
         while (handles.length > count) handles.pop()!.remove();
@@ -290,8 +371,8 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
           controls.append(handle);
           handles.push(handle);
         }
-        while (foldButtons.length > count) foldButtons.pop()!.remove();
-        while (foldButtons.length < count) {
+        while (foldButtons.length > foldEntries.length) foldButtons.pop()!.remove();
+        while (foldButtons.length < foldEntries.length) {
           const button = document.createElement('button');
           button.type = 'button';
           button.className = 'tano-fold-toggle';
@@ -304,10 +385,16 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
         }
         const top = host.getBoundingClientRect().top;
         const hostLeft = host.getBoundingClientRect().left;
+        const pane = hoverSurface.getBoundingClientRect();
+        const gutterLeft = pane.width > 0 ? pane.left + 4 : -Infinity;
         for (let index = 0; index < count; index++) {
           const handle = handles[index];
           const element = blockElement(index);
           const rect = blockRect(index);
+          handle.classList.toggle('is-column-child', !!element?.parentElement?.closest('.tano-columns'));
+          handle.classList.toggle('is-columns', entries[index]!.node.type.name === 'tano_columns');
+          handle.style.left = rect && handle.classList.contains('is-column-child')
+            ? `${Math.max(-48, gutterLeft - rect.left)}px` : '';
           const type = blockType(entries[index]!.node);
           const kind =
             blockTypes.find((item) => item.type === type)?.label ??
@@ -335,22 +422,50 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
             if (pane.width > 0 && bounds.width > 0)
               handle.style.clipPath = `inset(0 ${Math.max(0, bounds.right - pane.right)}px 0 ${Math.max(0, pane.left - bounds.left)}px)`;
           }
+        }
+        // Place outer column controls beyond the first column's controls. If the
+        // viewport has no spare gutter, stack them above the row instead.
+        for (let index = count - 1; index >= 0; index--) {
+          const entry = entries[index]!;
+          if (entry.node.type.name !== 'tano_columns') continue;
+          const rect = blockRect(index);
+          if (!rect) continue;
+          let left = rect.left - 72;
+          let above = rect.top - 28;
+          for (let child = index + 1; child < count && entries[child]!.pos < entry.pos + entry.node.nodeSize; child++) {
+            const childRect = blockRect(child);
+            if (!childRect || childRect.left > rect.left + 1) continue;
+            const bounds = handles[child]!.getBoundingClientRect();
+            if (bounds.width === 0) continue;
+            left = Math.min(left, bounds.left - 24);
+            above = Math.min(above, bounds.top - 28);
+          }
+          const stacked = left < gutterLeft;
+          const anchor = entry.depth > 0 ? rect.left : hostLeft;
+          handles[index]!.style.left = `${(stacked ? Math.max(gutterLeft, rect.left - 48) : left) - anchor}px`;
+          if (stacked) handles[index]!.style.top = `${above - top}px`;
+        }
+        for (let index = 0; index < foldEntries.length; index++) {
+          const element = foldElement(index);
+          const rect = foldRect(index);
           const foldButton = foldButtons[index];
-          const canFold = folding() && foldable(entries[index]!.node);
+          const canFold = folding();
           const isFolded = (foldingKey.getState(view.state) ?? new Set()).has(blockKey(index));
           foldButton.textContent = isFolded ? '▸' : '▾';
           foldButton.hidden = !rect || !canFold;
           foldButton.classList.toggle('is-folded', isFolded);
-          foldButton.classList.toggle('is-visible', index === hoveredIndex || isFolded);
+          foldButton.classList.toggle('is-visible', index === hoveredFoldIndex || isFolded);
+          foldButton.dataset.blockPos = String(foldEntries[index]!.pos);
           foldButton.setAttribute('aria-hidden', String(!canFold));
           foldButton.setAttribute('aria-label', isFolded ? '展开内容' : '折叠内容');
           foldButton.title = isFolded ? '展开内容' : '折叠内容';
           if (element && rect)
             foldButton.style.top = `${firstLineCenter(element, rect) - top - (foldButton.offsetHeight || 24) / 2}px`;
           if (element && rect)
-            foldButton.style.left = `${rect.left - hostLeft - 18}px`;
+            foldButton.style.left = `${foldLeft(index, element, rect) - hostLeft - 18}px`;
         }
         if (hoveredIndex != null && hoveredIndex >= count) hoveredIndex = null;
+        if (hoveredFoldIndex != null && hoveredFoldIndex >= foldEntries.length) hoveredFoldIndex = null;
         showHoveredHandle();
       }
 
@@ -378,6 +493,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
         sourceIndex = null;
         startingDoc = null;
         hoveredIndex = null;
+        hoveredFoldIndex = null;
         showHoveredHandle();
       }
 
@@ -385,7 +501,39 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
         if (dragging || (readonly() && !folding())) return;
         if (event.type === 'mousemove') hoverSuppressed = false;
         if (hoverSuppressed) return;
-        setHovered(blockIndexAt(event.target) ?? blockIndexAtCoords(event.clientX, event.clientY));
+        setHovered(hoveredHandleBridge(event) ?? blockIndexAt(event.target) ?? blockIndexAtCoords(event.clientX, event.clientY),
+          foldIndexAt(event.target, event.clientX, event.clientY));
+      }
+
+      function hoveredHandleBridge(event: MouseEvent) {
+        if (hoveredIndex == null) return null;
+        const handle = handles[hoveredIndex];
+        if (!handle || handle.hidden || (!handle.classList.contains('is-column-child') && !handle.classList.contains('is-columns'))) return null;
+        if (event.target instanceof Element && event.target.closest('.tano-block-handle')) return null;
+        const hovered = entries[hoveredIndex]!;
+        const targetIndex = blockIndexAt(event.target);
+        const target = targetIndex == null ? null : entries[targetIndex];
+        if (target && targetIndex !== hoveredIndex && !(target.node.type.name === 'tano_columns' &&
+          target.pos < hovered.pos && hovered.pos < target.pos + target.node.nodeSize)) return null;
+        const block = blockRect(hoveredIndex);
+        const bounds = handle.getBoundingClientRect();
+        if (!block || bounds.width === 0) return null;
+        let left = bounds.left;
+        let top = Math.min(bounds.top, block.top);
+        handles.forEach((ancestor, index) => {
+          const entry = entries[index]!;
+          if (entry.node.type.name !== 'tano_columns' || entry.pos >= hovered.pos ||
+            hovered.pos >= entry.pos + entry.node.nodeSize) return;
+          const rect = ancestor.getBoundingClientRect();
+          if (ancestor.hidden || rect.width === 0) return;
+          left = Math.min(left, rect.left);
+          top = Math.min(top, rect.top);
+        });
+        // The column gap (including its separator) belongs to the parent DOM node.
+        // Keep the child's handle reachable while crossing that gap from its content.
+        return event.clientX >= left && event.clientX <= Math.max(bounds.right, block.left) &&
+          event.clientY >= top - 4 &&
+          event.clientY <= Math.max(bounds.bottom, block.bottom) + 4 ? hoveredIndex : null;
       }
 
       function onEditorInput() {
@@ -423,7 +571,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
         const button = (event.target as Element).closest<HTMLButtonElement>('.tano-fold-toggle');
         if (!button || !folding()) return;
         const index = foldButtons.indexOf(button);
-        if (index < 0 || !foldable(entries[index]!.node)) return;
+        if (index < 0 || button.hidden) return;
         event.preventDefault();
         event.stopPropagation();
         const key = blockKey(index);
@@ -438,27 +586,63 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
         for (const entry of entries) {
           if (entry.parentPos < 0 || (source && entry.parentPos >= source.pos && entry.parentPos < source.pos + source.node.nodeSize)) continue;
           const dom = view.nodeDOM(entry.parentPos);
-          const content = dom instanceof Element ? dom.querySelector(':scope > .tano-enhanced-content') : null;
-          if (!content || content.closest('[hidden], .tano-folded-heading-content')) continue;
+          const content = dom instanceof Element
+            ? dom.matches('blockquote') ? dom : dom.querySelector(':scope > .tano-enhanced-content')
+            : null;
+          if (!content || content.closest('[hidden], .tano-folded-heading-content, .tano-folded-list-content')) continue;
           const rect = content.getBoundingClientRect();
-          if (entry.depth >= depth && x >= rect.left + 12 && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+          const firstBody = dom instanceof Element && dom.matches('blockquote')
+            ? view.nodeDOM(entry.pos) : null;
+          const bodyTop = firstBody instanceof Element ? firstBody.getBoundingClientRect().top : rect.top;
+          if (entry.depth >= depth && x >= rect.left + 12 && x <= rect.right && y >= bodyTop && y <= rect.bottom) {
             parentPos = entry.parentPos;
             depth = entry.depth;
           }
         }
         const siblings = entries.map((entry, i) => ({ ...entry, rect: blockRect(i) })).filter((entry) => entry.parentPos === parentPos);
         const next = siblings.find(({ rect }) => rect && y < (rect.top + rect.bottom) / 2);
-        const index = next?.index ?? siblings.length;
-        const previous = siblings[index - 1]?.rect;
+        const parent = parentPos === -1 ? view.state.doc : view.state.doc.nodeAt(parentPos)!;
+        const index = next?.index ?? parent.childCount;
+        const previous = siblings.find((entry) => entry.index === index - 1)?.rect;
         const rect = next?.rect ?? previous;
         return { parentPos, index, y: previous && next?.rect ? (previous.bottom + next.rect.top) / 2 : (next?.rect?.top ?? previous?.bottom), rect };
       }
 
-      function showInsertion(target: ReturnType<typeof findInsertion>) {
+      function findDropTarget(x: number, y: number) {
         const source = sourceIndex == null ? null : entries[sourceIndex];
+        if (source && columns() && window.innerWidth > 640) {
+          // Prefer the deepest visible block. Top/bottom edges keep ordinary vertical sorting.
+          for (let index = entries.length - 1; index >= 0; index--) {
+            const target = entries[index]!;
+            const rect = blockRect(index);
+            if (!rect || rect.width <= 0 || rect.height <= 0) continue;
+            const inset = Math.min(8, rect.height * 0.2);
+            if (y < rect.top + inset || y > rect.bottom - inset) continue;
+            const edge = Math.min(48, rect.width * 0.18);
+            const side: 'left' | 'right' | null = x >= rect.left - 20 && x <= rect.left + edge ? 'left'
+              : x >= rect.right - edge && x <= rect.right + 20 ? 'right' : null;
+            if (side && moveBlockBeside(view.state, source.pos, target.pos, side))
+              return { kind: 'column' as const, pos: target.pos, side, rect };
+          }
+        }
+        return { kind: 'vertical' as const, ...findInsertion(x, y) };
+      }
+
+      function showInsertion(target: ReturnType<typeof findDropTarget>) {
+        const source = sourceIndex == null ? null : entries[sourceIndex];
+        const hostRect = host.getBoundingClientRect();
+        marker.classList.toggle('is-column', target.kind === 'column');
+        if (target.kind === 'column') {
+          marker.hidden = false;
+          marker.style.top = `${target.rect.top - hostRect.top}px`;
+          marker.style.left = `${(target.side === 'left' ? target.rect.left : target.rect.right) - hostRect.left}px`;
+          marker.style.width = '3px';
+          marker.style.height = `${target.rect.height}px`;
+          return;
+        }
         marker.hidden = !source || target.y == null || !moveBlockTo(view.state, source.pos, target.parentPos, target.index);
         if (marker.hidden) return;
-        const hostRect = host.getBoundingClientRect();
+        marker.style.height = '2px';
         marker.style.top = `${target.y! - hostRect.top}px`;
         marker.style.left = `${(target.rect?.left ?? hostRect.left) - hostRect.left}px`;
         marker.style.width = `${target.rect?.width ?? hostRect.width}px`;
@@ -483,6 +667,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
           item.removeAttribute('contenteditable');
           item.classList.remove('ProseMirror-selectednode', 'tano-block-drag-source');
         }
+        copy.querySelectorAll('.tano-column-controls').forEach(element => element.remove());
         preview.append(copy);
         host.append(preview);
         dragPreview = preview;
@@ -525,7 +710,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
         if (!dragging) return;
         event.preventDefault();
         movePreview(event.clientX, event.clientY);
-        showInsertion(findInsertion(event.clientX, event.clientY));
+        showInsertion(findDropTarget(event.clientX, event.clientY));
       }
 
       function onPointerUp(event: PointerEvent) {
@@ -548,9 +733,14 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
           !readonly() &&
           startingDoc?.eq(view.state.doc)
         ) {
-          const target = findInsertion(event.clientX, event.clientY);
-          const transaction = moveBlockTo(view.state, entries[sourceIndex]!.pos, target.parentPos, target.index);
-          if (transaction) view.dispatch(transaction.scrollIntoView());
+          const target = findDropTarget(event.clientX, event.clientY);
+          const transaction = target.kind === 'column'
+            ? moveBlockBeside(view.state, entries[sourceIndex]!.pos, target.pos, target.side)
+            : moveBlockTo(view.state, entries[sourceIndex]!.pos, target.parentPos, target.index, false);
+          if (transaction) {
+            view.dispatch(closeHistory(transaction.scrollIntoView()));
+            view.dispatch(closeHistory(view.state.tr));
+          }
         }
         if (wasDragging) {
           event.preventDefault();
@@ -566,6 +756,13 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
 
       function onPointerCancel(event: PointerEvent) {
         if (pendingPointer?.id === event.pointerId) clearDrag();
+      }
+
+      function onDragKeyDown(event: KeyboardEvent) {
+        if (event.key !== 'Escape' || !pendingPointer) return;
+        event.preventDefault();
+        event.stopPropagation();
+        clearDrag();
       }
 
       function onKeyDown(event: KeyboardEvent) {
@@ -600,6 +797,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       window.addEventListener('pointermove', onPointerMove, true);
       window.addEventListener('pointerup', onPointerUp, true);
       window.addEventListener('pointercancel', onPointerCancel, true);
+      window.addEventListener('keydown', onDragKeyDown, true);
       window.addEventListener('blur', clearDrag);
       const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(layout);
       observer?.observe(view.dom);
@@ -622,6 +820,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
           window.removeEventListener('pointermove', onPointerMove, true);
           window.removeEventListener('pointerup', onPointerUp, true);
           window.removeEventListener('pointercancel', onPointerCancel, true);
+          window.removeEventListener('keydown', onDragKeyDown, true);
           window.removeEventListener('blur', clearDrag);
           controls.removeEventListener('pointerdown', onPointerDown);
           controls.removeEventListener('keydown', onKeyDown);

@@ -10,6 +10,7 @@ let app: App;
 let root: HTMLDivElement;
 let svg: SVGSVGElement;
 const active = ref(true);
+const controlsTarget = ref<string>();
 const content: Record<string, string> = {
   'Start.md': '[[Target]]',
   'Target.md': '',
@@ -37,6 +38,7 @@ async function ready() {
 }
 beforeEach(async () => {
   active.value = true;
+  controlsTarget.value = undefined;
   fixture.store = reactive({
     workspace: {
       id: 'workspace',
@@ -65,7 +67,10 @@ beforeEach(async () => {
   );
   root = document.createElement('div');
   document.body.append(root);
-  app = createApp({ render: () => h(KeepAlive, () => (active.value ? h(RelationGraph) : null)) });
+  app = createApp({
+    render: () => h(KeepAlive, () =>
+      active.value ? h(RelationGraph, { controlsTarget: controlsTarget.value }) : null),
+  });
   app.mount(root);
   await ready();
 });
@@ -134,6 +139,32 @@ it('pans and zooms the viewport and preserves the camera while switching tabs', 
   expect(root.querySelector('.graph-viewport > g')?.getAttribute('transform')).toBe(moved);
   expect(fixture.store.readGraphDocument).toHaveBeenCalledTimes(3);
   expect(fixture.store.openFileInNewTab).not.toHaveBeenCalled();
+});
+
+it('keeps toolbar controls in the shared header only while the graph tab is active', async () => {
+  const target = document.createElement('div');
+  target.id = 'graph-toolbar-test';
+  document.body.append(target);
+  try {
+    controlsTarget.value = '#graph-toolbar-test';
+    await nextTick();
+    expect(root.querySelector('.graph-controls')).toBeNull();
+    expect(target.querySelectorAll('.graph-controls')).toHaveLength(1);
+    const original = svg.firstElementChild!.getAttribute('transform');
+    (target.querySelector('[aria-label="放大图谱"]') as HTMLButtonElement).click();
+    await nextTick();
+    expect(svg.firstElementChild!.getAttribute('transform')).not.toBe(original);
+    active.value = false;
+    await nextTick();
+    expect(target.querySelector('.graph-controls')).toBeNull();
+    active.value = true;
+    await nextTick();
+    expect(target.querySelectorAll('.graph-controls')).toHaveLength(1);
+  } finally {
+    controlsTarget.value = undefined;
+    await nextTick();
+    target.remove();
+  }
 });
 
 it('updates edges from unsaved drafts and removes deleted documents', async () => {

@@ -5,6 +5,7 @@ import { sourceStyleRanges } from './source-highlight';
 import { featureEnabled } from './runtime';
 import type { DocumentFeatures } from './runtime';
 import { isBlockContainer } from './block-tree';
+import { blockContentStart } from './callout';
 
 /** Semantic presentation types, independent of Milkdown's Markdown storage schema. */
 export const blockTypes = [
@@ -60,6 +61,8 @@ export const insertionCommands = new Set([
   'tabs',
   'columns',
 ]);
+/** Lossless containers can wrap blocks that cannot be flattened into text. */
+export const wrappingCommands = new Set(['quote', 'callout']);
 /** Feature level is separate from selection granularity (block/inline) and heading depth. */
 export function featureLevel(type: string): FeatureLevel {
   return (
@@ -163,14 +166,16 @@ export function selectedBlocks(state: EditorState) {
   for (let depth = $from.depth; depth > 0; depth--) {
     if (
       isBlockContainer($from.node(depth)) &&
-      to <= $from.end(depth)
+      to <= $from.end(depth) &&
+      $from.index(depth) >= blockContentStart($from.node(depth))
     ) {
       parent = $from.node(depth);
       start = $from.start(depth);
       break;
     }
   }
-  parent.forEach((node, offset) => {
+  parent.forEach((node, offset, index) => {
+    if (index < blockContentStart(parent)) return;
     const pos = start + offset;
     if (empty ? pos <= from && from < pos + node.nodeSize : pos < to && pos + node.nodeSize > from)
       blocks.push({ node, pos });

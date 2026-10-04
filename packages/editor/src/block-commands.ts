@@ -90,7 +90,7 @@ export function blockCommand(name: string, value?: string, currentTextblock = fa
       replacement = [schema.nodes.table!.create(null, [row(true), row(false), row(false)])];
       insert = true;
     } else {
-      if (!blocks.every(({ node }) => canTransformBlock(node))) return false;
+      if (!['quote', 'callout'].includes(name) && !blocks.every(({ node }) => canTransformBlock(node))) return false;
       const content = blocks.flatMap(({ node }) => paragraphs(node, schema));
       if (name === 'paragraph') replacement = content;
       else if (name === 'heading') {

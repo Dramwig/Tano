@@ -18,6 +18,8 @@ import { buildDocumentGraph, graphDocuments } from '../document-graph';
 import { createGraphLayout, graphPhysics, nodeRadius } from '../graph-layout';
 import type { LayoutNode } from '../graph-layout';
 
+defineProps<{ controlsTarget?: string }>();
+
 const store = useWorkspaceStore();
 const host = ref<HTMLElement>();
 const viewport = ref<SVGSVGElement>();
@@ -352,7 +354,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main ref="host" class="relation-graph" aria-label="关系图谱">
+  <main ref="host" class="relation-graph" :class="{ 'has-topbar': controlsTarget }" aria-label="关系图谱">
     <svg
       ref="viewport"
       class="graph-viewport"
@@ -426,26 +428,28 @@ onBeforeUnmount(() => {
         </g>
       </g>
     </svg>
-    <div class="graph-controls" role="group" aria-label="图谱操作">
-      <button
-        class="icon-button"
-        title="布局设置"
-        aria-label="布局设置"
-        :aria-expanded="settings"
-        @click="settings = !settings"
-      >
-        <Settings2 :size="17" />
-      </button>
-      <button class="icon-button" title="放大" aria-label="放大图谱" @click="zoom(1.25)">
-        <Plus :size="17" />
-      </button>
-      <button class="icon-button" title="缩小" aria-label="缩小图谱" @click="zoom(0.8)">
-        <Minus :size="17" />
-      </button>
-      <button class="icon-button" title="适应窗口 · 0" aria-label="图谱居中" @click="fit">
-        <Focus :size="17" />
-      </button>
-    </div>
+    <Teleport v-if="visible" :to="controlsTarget ?? 'body'" :disabled="!controlsTarget" defer>
+      <div class="graph-controls" :class="{ 'graph-controls-inline': controlsTarget }" role="group" aria-label="图谱操作">
+        <button
+          class="icon-button"
+          title="布局设置"
+          aria-label="布局设置"
+          :aria-expanded="settings"
+          @click="settings = !settings"
+        >
+          <Settings2 :size="17" />
+        </button>
+        <button class="icon-button" title="放大" aria-label="放大图谱" @click="zoom(1.25)">
+          <Plus :size="17" />
+        </button>
+        <button class="icon-button" title="缩小" aria-label="缩小图谱" @click="zoom(0.8)">
+          <Minus :size="17" />
+        </button>
+        <button class="icon-button" title="适应窗口 · 0" aria-label="图谱居中" @click="fit">
+          <Focus :size="17" />
+        </button>
+      </div>
+    </Teleport>
     <section
       v-if="settings"
       class="graph-settings"
@@ -612,6 +616,16 @@ onBeforeUnmount(() => {
 .graph-controls .icon-button {
   width: 29px;
   height: 29px;
+}
+.graph-controls-inline {
+  position: static;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.has-topbar .graph-settings {
+  top: var(--topbar-height, 52px);
+  right: 8px;
 }
 .graph-settings {
   position: absolute;

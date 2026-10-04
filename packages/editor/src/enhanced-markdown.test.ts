@@ -3,6 +3,17 @@ import { enhancedRegions, safeResourceUrl, splitPanels } from './enhanced-markdo
 import { unsupportedMarkdown } from './syntax';
 
 describe('enhanced Markdown boundaries', () => {
+  it('recognizes saved column ratios and protects nested containers and headings', () => {
+    const source = ':::columns widths=40,60\n\n## Left\n\n<details>\n<summary>Nested</summary>\n\n## Body\n\n</details>\n\n## Right\n\ncontent\n\n:::';
+    expect(enhancedRegions(source)[0]?.widths).toBe('40,60');
+    expect(splitPanels(enhancedRegions(source)[0]!.body)?.map(panel => panel.title)).toEqual(['Left', 'Right']);
+    expect(unsupportedMarkdown(source)).toEqual([]);
+  });
+  it.each(['0,100', '20,30,50', '-1,2', 'NaN,1'])('preserves invalid column attributes in the compatibility guard: %s', widths => {
+    const source = `:::columns widths=${widths}\n\n## Left\n\ntext\n\n## Right\n\ntext\n\n:::`;
+    expect(enhancedRegions(source)).toEqual([]);
+    expect(unsupportedMarkdown(source)).toContain('自定义指令块');
+  });
   it.each([
     ':::tabs\n\n## One\n\ncontent',
     '::::tabs\n\n## One\n\ncontent\n\n:::',
@@ -26,6 +37,12 @@ describe('enhanced Markdown boundaries', () => {
       '## One\n\n<details>\n<summary>Details</summary>\n\n## Nested heading\n\n</details>\n\n## Two\n\ntext';
     expect(splitPanels(body)?.map((panel) => panel.title)).toEqual(['One', 'Two']);
     expect(unsupportedMarkdown(`:::tabs\n\n${body}\n\n:::`)).toEqual([]);
+  });
+  it('keeps quoted code examples and unsupported content outside their container boundaries', () => {
+    const source = '> ```md\n> <details>\n> <summary>Example</summary>\n> ```\n\n:::unknown\n\ncontent\n\n:::';
+    expect(unsupportedMarkdown(source)).toContain('自定义指令块');
+    expect(unsupportedMarkdown(source)).not.toContain('内嵌 HTML / MDX');
+    expect(unsupportedMarkdown('> <details>\n> <summary>Nested</summary>\n>\n> <script>bad</script>\n>\n> </details>')).toContain('内嵌 HTML / MDX');
   });
   it.each([
     'javascript:alert(1)',

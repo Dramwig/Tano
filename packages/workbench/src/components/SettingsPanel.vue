@@ -758,6 +758,10 @@ function customFontInput(event: Event) {
             <div class="settings-shortcut-list settings-card">
               <span>收起或展开侧栏（编辑区外） <kbd>Ctrl B</kbd></span>
               <span>查找文档 <kbd>Ctrl K</kbd></span>
+              <span>页内搜索 <kbd>Ctrl F</kbd></span>
+              <span>查找与替换 <kbd>Ctrl H</kbd></span>
+              <span>下一个 / 上一个匹配（搜索时） <kbd>Enter / Shift Enter</kbd></span>
+              <span>关闭页内搜索 <kbd>Esc</kbd></span>
               <span>新建文档 <kbd>Ctrl N</kbd></span>
               <span>立即保存 <kbd>Ctrl S</kbd></span>
               <span>聚焦选区工具栏（显示时） <kbd>Alt F10</kbd></span>

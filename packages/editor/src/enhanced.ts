@@ -20,6 +20,7 @@ export const enhancedNodes = kinds
       attrs: {
         title: { default: '', validate: 'string' },
         url: { default: '', validate: 'string' },
+        ...(kind === 'columns' ? { widths: { default: '', validate: 'string' } } : {}),
       },
       parseDOM: [
         {
@@ -27,6 +28,7 @@ export const enhancedNodes = kinds
           getAttrs: (dom) => ({
             title: dom.getAttribute('data-title') ?? '',
             url: dom.getAttribute('data-url') ?? '',
+            ...(kind === 'columns' ? { widths: dom.getAttribute('data-widths') ?? '' } : {}),
           }),
           contentElement: '.tano-enhanced-content',
         },
@@ -39,6 +41,7 @@ export const enhancedNodes = kinds
             'data-feature-level': '1',
             'data-title': node.attrs.title,
             'data-url': node.attrs.url,
+            ...(kind === 'columns' ? { 'data-widths': node.attrs.widths } : {}),
           },
           ...(kind === 'file' || kind === 'embed'
             ? [['span', node.attrs.title]]
@@ -47,7 +50,7 @@ export const enhancedNodes = kinds
       parseMarkdown: {
         match: (node) => node.type === 'tanoEnhanced' && node.kind === kind,
         runner: (state, node, type) => {
-          state.openNode(type, { title: node.title, url: node.url });
+          state.openNode(type, { title: node.title, url: node.url, ...(kind === 'columns' ? { widths: node.widths ?? '' } : {}) });
           if (node.children?.length) state.next(node.children);
           state.closeNode();
         },
@@ -59,6 +62,7 @@ export const enhancedNodes = kinds
             kind,
             title: node.attrs.title,
             url: node.attrs.url,
+            ...(kind === 'columns' ? { widths: node.attrs.widths } : {}),
           });
           if (kind === 'file' || kind === 'embed') {
             state.openNode('paragraph');

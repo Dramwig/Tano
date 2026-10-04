@@ -861,8 +861,8 @@ async function onTabKeydown(event: KeyboardEvent) {
           'desktop-tab-active': doc.id === selectedId,
           'desktop-tab-dragging': doc.id === draggingId,
           'desktop-tab-outgoing': doc.id === outgoingId,
-          'desktop-tab-drop-before': dropTarget?.id === doc.id && dropTarget.side === 'before',
-          'desktop-tab-drop-after': dropTarget?.id === doc.id && dropTarget.side === 'after',
+          'desktop-tab-drop-before': dockSlotIndex === undefined && dropTarget?.id === doc.id && dropTarget.side === 'before',
+          'desktop-tab-drop-after': dockSlotIndex === undefined && dropTarget?.id === doc.id && dropTarget.side === 'after',
           'desktop-tab-dock-before': dockSlotIndex === index,
           'desktop-tab-dock-after': dockSlotIndex === paneTabs.length && index === paneTabs.length - 1,
         }"
@@ -902,6 +902,10 @@ async function onTabKeydown(event: KeyboardEvent) {
         >
           <X :size="13" />
         </button>
+        <span v-if="doc.id === selectedId" class="desktop-tab-corners" aria-hidden="true">
+          <span class="desktop-tab-corner-outline-left" />
+          <span class="desktop-tab-corner-outline-right" />
+        </span>
       </div>
       <div v-if="dockSlotIndex !== undefined && !paneTabs.length" class="desktop-tab-dock-empty" aria-hidden="true" />
     </div>
@@ -1050,6 +1054,9 @@ async function onTabKeydown(event: KeyboardEvent) {
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
+  /* Allow the last active tab's lower curve to extend toward the add button. */
+  padding-right: 8px;
+  margin-right: -8px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -1106,7 +1113,7 @@ async function onTabKeydown(event: KeyboardEvent) {
 .desktop-tab-dock-after::after {
   content: '';
   position: absolute;
-  z-index: 1;
+  z-index: 4;
   top: 6px;
   bottom: 6px;
   width: 2px;
@@ -1116,11 +1123,15 @@ async function onTabKeydown(event: KeyboardEvent) {
 }
 .desktop-tab-drop-before::after,
 .desktop-tab-dock-before::after {
-  left: 0;
+  left: -1px;
 }
 .desktop-tab-drop-after::after,
 .desktop-tab-dock-after::after {
-  right: 0;
+  right: -1px;
+}
+.desktop-tab:first-child.desktop-tab-drop-before::after,
+.desktop-tab:first-child.desktop-tab-dock-before::after {
+  left: 0;
 }
 .desktop-tab {
   --desktop-tab-close-mask: var(--sidebar);
@@ -1131,13 +1142,25 @@ async function onTabKeydown(event: KeyboardEvent) {
   flex: 1 1 200px;
   min-width: 28px;
   max-width: 200px;
-  height: 100%;
-  border-right: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
-  box-shadow: inset 0 -1px var(--line);
+  height: calc(100% - 4px);
+  margin-top: 4px;
+  border-radius: 8px 8px 0 0;
   color: var(--text-secondary);
   transition:
     background 0.15s,
     color 0.15s;
+}
+.desktop-tab::before {
+  content: '';
+  position: absolute;
+  z-index: 3;
+  inset: 6px 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  pointer-events: none;
+}
+.desktop-tab:has(+ .desktop-tab-active)::before {
+  border-right-color: transparent;
 }
 .desktop-tab:hover {
   --desktop-tab-close-mask: color-mix(in srgb, var(--paper) 55%, var(--sidebar));
@@ -1146,9 +1169,57 @@ async function onTabKeydown(event: KeyboardEvent) {
 .desktop-tab-active,
 .desktop-tab-active:hover {
   --desktop-tab-close-mask: var(--paper);
+  z-index: 1;
   background: var(--paper);
   color: var(--text);
-  box-shadow: none;
+}
+.desktop-tab-active::before {
+  inset: 0;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: inherit;
+}
+.desktop-tab-corners {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  /* Align the outward curves with the inside edge of the tab outline, using
+     the browser's actual border width at fractional zoom levels. */
+  border-inline: 1px solid transparent;
+  pointer-events: none;
+}
+.desktop-tab-corners::before,
+.desktop-tab-corners::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 8px;
+  height: 8px;
+}
+.desktop-tab-corners::before {
+  left: -8px;
+  background: radial-gradient(circle at top left, transparent 7.5px, var(--paper) 8px);
+}
+.desktop-tab-corners::after {
+  right: -8px;
+  background: radial-gradient(circle at top right, transparent 7.5px, var(--paper) 8px);
+}
+.desktop-tab-corners > span {
+  position: absolute;
+  bottom: 0;
+  width: 8px;
+  height: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.desktop-tab-corner-outline-left {
+  left: -8px;
+  border-right: 1px solid var(--line);
+  border-bottom-right-radius: 8px;
+}
+.desktop-tab-corner-outline-right {
+  right: -8px;
+  border-left: 1px solid var(--line);
+  border-bottom-left-radius: 8px;
 }
 .desktop-tab-switch {
   touch-action: none;

@@ -339,13 +339,16 @@ async function saveAnchors() {
 
 const activeAnnotations = computed(() => (annotations.value?.threads ?? [])
   .filter(thread => !thread.detached && working.value[thread.id]));
-const resolvedAnnotations = computed(() => activeAnnotations.value.filter(thread => thread.resolved));
 const pendingAnnotations = computed(() => activeAnnotations.value.filter(thread => !thread.resolved));
-const openThreads = computed(() => pendingAnnotations.value.filter(thread => openIds.value.includes(thread.id)));
+const openBlock = computed(() => layout.value.blocks.find(block => block.key === openBlockKey.value));
+const openThreads = computed(() => {
+  const ids = !layout.value.rail && !selected.value
+    ? [...openIds.value, ...(openBlock.value?.ids ?? [])] : openIds.value;
+  return pendingAnnotations.value.filter(thread => ids.includes(thread.id));
+});
 const visibleThreads = computed(() => layout.value.rail ? pendingAnnotations.value
   .filter(thread => layout.value.cardTops[thread.id] !== undefined)
   .sort((a, b) => layout.value.cardTops[a.id]! - layout.value.cardTops[b.id]!) : openThreads.value);
-const openBlock = computed(() => layout.value.blocks.find(block => block.key === openBlockKey.value));
 const popupTop = computed(() => (openBlock.value?.bottom ?? 0) + 8);
 const popupMounted = computed(() => !!openBlock.value && (!!selected.value || !!openThreads.value.length));
 const popupVisible = computed(() => popupMounted.value && !popupCollapsed.value);
@@ -442,12 +445,21 @@ function selectThread(id: string, focus = false) {
   scheduleLayout();
 }
 function closePopup() { openIds.value = []; openBlockKey.value = undefined; selected.value = undefined; popupCollapsed.value = false; }
-function openBlockComments(key: string, ids: string[]) {
-  if (openBlockKey.value === key && !selected.value) { popupCollapsed.value = !popupCollapsed.value; return; }
+async function scrollPopupToThread(id: string) {
+  await nextTick();
+  if (layout.value.rail || !popupVisible.value) return;
+  const content = popup.value?.querySelector<HTMLElement>('.annotation-popup-content');
+  const card = annotationCards.get(id);
+  if (content && card) content.scrollTop += card.getBoundingClientRect().top - content.getBoundingClientRect().top
+    - (parseFloat(getComputedStyle(content).paddingTop) || 0);
+}
+function openBlockComments(key: string, ids: string[], threadId?: string) {
+  const toggle = !threadId && openBlockKey.value === key && !selected.value;
   selected.value = undefined;
   openIds.value = ids.filter(id => id !== '@draft');
   openBlockKey.value = key;
-  popupCollapsed.value = false;
+  popupCollapsed.value = toggle ? !popupCollapsed.value : false;
+  if (threadId) void scrollPopupToThread(threadId);
 }
 function outsidePointer(event: PointerEvent) {
   const target = event.target;
@@ -467,7 +479,7 @@ function markClicked(event: MouseEvent) {
   const top = event.clientY - (parent?.getBoundingClientRect().top ?? 0);
   const block = layout.value.blocks.find(item => item.ids.includes(id) && top >= item.top && top <= item.bottom)
     ?? layout.value.blocks.find(item => item.ids.includes(id));
-  if (block) openBlockComments(block.key, block.ids);
+  if (block) openBlockComments(block.key, block.ids, id);
 }
 function showDiscussion() {
   section.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -484,6 +496,10 @@ async function openComment(event: Event) {
     updateLayout();
   }
   await nextTick();
+  if (target.kind === 'annotation' && !layout.value.rail) {
+    await scrollPopupToThread(target.threadId);
+    return;
+  }
   const conversation = section.value?.querySelector<HTMLElement>(`[data-comment-thread="${CSS.escape(target.threadId)}"]`);
   conversation?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
@@ -633,7 +649,7 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
     <div v-if="annotationMounted" v-show="layout.rail || popupVisible" ref="popup" :class="layout.rail ? 'annotation-rail' : 'annotation-popup'"
       :role="layout.rail ? 'region' : 'dialog'" aria-label="局部批注"
       :style="{ top: `${layout.rail ? 0 : popupTop}px`, left: `${layout.rail ? layout.railLeft : layout.popupLeft}px`, width: `${layout.rail ? railWidth : layout.popupWidth}px` }">
-      <div :class="{ 'annotation-popup-content': !layout.rail }">
+      <div :class="{ 'annotation-popup-content panel-scrollbar': !layout.rail }">
         <div v-for="thread in visibleThreads" :key="thread.id" :ref="value => setAnnotationCard(thread.id, value)"
           class="annotation-thread" :class="{ 'annotation-card': layout.rail, 'is-expanded': layout.rail && threadExpanded(thread.id) }"
           :style="layout.rail ? { top: `${layout.cardTops[thread.id]}px` } : undefined"
@@ -678,16 +694,6 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
         @reply-request="beginDiscussionReply(thread.id, $event)"
         @edit="editMessage('discussion', thread.id, $event)" @remove="removeMessage('discussion', thread.id, $event)" />
     </div>
-    <details v-if="resolvedAnnotations.length" class="resolved-annotations">
-      <summary>已解决的批注 · {{ resolvedAnnotations.length }}</summary>
-      <CommentConversation v-for="thread in resolvedAnnotations" :key="thread.id" :thread="thread"
-        :quote="quote(working[thread.id]!)" local :readonly="readonly" :busy="busy" :author-id="author.id" :author-name="author.name"
-        :assistant="assistant" @assistant="emit('assistant', { kind: 'annotation', thread, quote: quote(working[thread.id]!) })"
-        :ref="value => value ? conversations.set(thread.id, value as InstanceType<typeof CommentConversation>) : conversations.delete(thread.id)"
-        @reply="(body, mentions) => change('annotation', thread.id, 'reply', body, false, mentions)"
-        @edit="editMessage('annotation', thread.id, $event)" @remove="removeMessage('annotation', thread.id, $event)"
-        @resolve="change('annotation', thread.id, 'resolve', '', $event)" />
-    </details>
     <div v-if="!readonly" class="document-discussion-compose">
       <div v-if="discussionReply" class="discussion-reply-target" role="status">
         <Reply :size="14" aria-hidden="true" />
@@ -695,17 +701,21 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
         <button type="button" aria-label="取消回复" title="取消回复" :disabled="busy" @click="cancelDiscussionReply"><X :size="14" /></button>
       </div>
       <CommentComposer ref="discussionComposer" v-model="discussionDraft" :author-name="author.name"
-        :label="discussionReply ? '回复评论' : '输入评论'" :busy="busy" @submit="submitDiscussion" />
+        :label="discussionReply ? '回复评论' : '添加评论'" :busy="busy" compact @submit="submitDiscussion" />
     </div>
   </section>
 </template>
 
 <style scoped>
 .document-discussion { max-width: 780px; margin: 48px auto 0; padding-top: 24px; color: var(--text); font-family: 'Inter Variable', 'Microsoft YaHei', sans-serif; }
-.document-discussion-header { display: flex; align-items: baseline; gap: 10px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+.document-discussion-header { display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px; }
 .document-discussion-header h2 { font-size: 19px; font-weight: 500; line-height: 28px; margin: 0; }
 .document-discussion-header > span { color: var(--muted); font-size: 13px; }
-.document-discussion-compose { margin-top: 24px; }
+.document-discussion-compose { margin-top: 16px; }
+.document-discussion-compose :deep(.comment-composer) { gap: 12px; }
+.document-discussion-compose :deep(.comment-avatar) { width: 32px; height: 32px; }
+.document-discussion-compose :deep(.comment-avatar svg) { width: 18px; height: 18px; }
+.document-discussion-compose :deep(textarea) { min-height: 40px; padding-block: 10px; font-size: 14px; }
 .discussion-reply-target { display: flex; align-items: center; gap: 6px; min-width: 0; margin-bottom: 8px; color: var(--muted); font-size: 12px; line-height: 20px; }
 .discussion-reply-target > svg { flex: none; }
 .discussion-reply-target > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -714,13 +724,13 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
 .discussion-reply-target button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 .discussion-reply-target button:disabled { opacity: .5; cursor: default; }
 .discussion-loading { font-size: 13px; color: var(--muted); }
-.resolved-annotations { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
-.resolved-annotations summary { color: var(--muted); font-size: 12px; cursor: pointer; margin-bottom: 12px; }
 .annotation-count { position: absolute; z-index: 4; width: 42px; height: 26px; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 500; cursor: pointer; }
 .annotation-count:hover, .annotation-count.is-open { background: color-mix(in srgb, #edc142 16%, var(--paper)); color: var(--text); }
 .annotation-count:focus-visible { outline: 2px solid #d5ad2d; outline-offset: 2px; }
-.annotation-popup { position: absolute; z-index: 12; box-sizing: border-box; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); box-shadow: 0 8px 24px #00000012, 0 2px 6px #00000005; padding: 12px 16px 14px; }
-.annotation-popup-content { max-height: 400px; overflow-y: auto; overscroll-behavior: contain; }
+.annotation-popup { position: absolute; z-index: 12; box-sizing: border-box; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); box-shadow: 0 8px 24px #00000012, 0 2px 6px #00000005; overflow: hidden; }
+.annotation-popup-content { max-height: 400px; overflow-y: auto; overscroll-behavior: contain; padding: 12px 0 14px; }
+.annotation-popup-content > div { padding-inline: 16px; }
+.annotation-popup > .comment-error { margin: 10px 16px 14px; }
 .annotation-popup-content > .annotation-thread + .annotation-thread { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
 .annotation-rail { position: absolute; z-index: 4; --annotation-card-border: rgb(42 28 0 / 7%); }
 .annotation-card { --annotation-card-outset: 0px; --annotation-card-lift: 0px; position: absolute; width: calc(100% + var(--annotation-card-outset) * 2); margin-left: calc(-1 * var(--annotation-card-outset)); box-sizing: border-box; padding: 12px calc(12px + var(--annotation-card-outset)); border: 1px solid var(--annotation-card-border); border-radius: 8px; background: var(--paper); cursor: pointer; transform: translateY(var(--annotation-card-lift)); transition: box-shadow .22s cubic-bezier(.22, 1, .36, 1); }
@@ -729,16 +739,8 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
 :global(:root[data-theme='dark'] .annotation-card.is-expanded) { box-shadow: 0 4px 12px rgb(0 0 0 / 14%), 0 1px 2px rgb(0 0 0 / 10%); }
 .annotation-card-content { display: flow-root; }
 .annotation-card:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
-.annotation-card :deep(.comment-message) { position: relative; gap: 8px; }
-.annotation-card :deep(.comment-message:not(:last-of-type)::after) { content: ''; position: absolute; left: 11.5px; top: 30px; bottom: -10px; width: 1px; background: color-mix(in srgb, var(--line) 50%, transparent); pointer-events: none; }
-.annotation-card :deep(.comment-avatar) { width: 24px; height: 24px; }
-.annotation-card :deep(.comment-message.is-reply) { margin-left: 0; }
-.annotation-card :deep(.comment-message p) { margin-top: 5px; }
-.annotation-card :deep(.comment-message-meta) { gap: 6px; }
-.annotation-card :deep(.comment-message-tools) { border: 0; }
-.annotation-card :deep(.comment-message-content) { padding: 0 0 2px; }
 .annotation-selected { margin: 0 0 12px 38px; border-left: 2px solid #eabf35; padding: 2px 10px; max-height: 80px; overflow: auto; font-size: 12px; line-height: 1.6; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
 .comment-error { margin: 10px 0; color: #a63636; font-size: 12px; overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) { .annotation-card { transition: none; } }
-@media (max-width: 600px) { .document-discussion { margin-top: 32px; } .annotation-popup { padding: 10px 12px 12px; } .annotation-popup-content { max-height: 320px; } }
+@media (max-width: 600px) { .document-discussion { margin-top: 32px; } .annotation-popup-content { max-height: 320px; padding: 10px 0 12px; } .annotation-popup-content > div { padding-inline: 12px; } .annotation-popup > .comment-error { margin-inline: 12px; } }
 </style>

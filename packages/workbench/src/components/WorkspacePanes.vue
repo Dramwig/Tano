@@ -86,7 +86,8 @@ onBeforeUnmount(endResize);
       :data-pane-id="pane.id" :style="rectStyle(rect)" aria-label="文档标签组"
       @pointerdown.capture="store.focusPane(pane.id)" @focusin="store.focusPane(pane.id)"
     >
-      <slot :pane="pane" :rect="rect" :document="store.documents.find(doc => doc.id === pane.activeId)" />
+      <slot :pane="pane" :rect="rect" :document="store.documents.find(doc => doc.id === pane.activeId)"
+        :tab="store.tabs.find(tab => tab.id === pane.activeId)" />
     </section>
     <div v-if="preview && store.paneDrop" class="pane-dock-preview" :class="`pane-dock-${store.paneDrop.side}`"
       :style="rectStyle(preview.preview)" aria-hidden="true">

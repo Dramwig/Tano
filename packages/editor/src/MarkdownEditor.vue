@@ -61,7 +61,7 @@ import type { EditorExtension } from './extension';
 import { configureMarkdownSchema } from './schema';
 import { codeBlankLinesRemark } from './code-blank-lines';
 import { blockControls } from './blocks';
-import { blockTree, moveBlockSibling, indentBlock, outdentBlock, wrapBlockInToggle } from './block-tree';
+import { blockTree, moveBlockSibling, indentBlock, outdentBlock, wrapBlockInToggle, deleteBlock } from './block-tree';
 import { emptyBlockDeletion } from './empty-block';
 import { slashCommands } from './slash-commands';
 import { textStyles, underline, superscript, subscript, highlight, textColor } from './text-styles';
@@ -73,6 +73,9 @@ import { renderHtml } from './html-render';
 import { blockType, canTransformBlock, selectionContext } from './document-model';
 import type { EditorSelectionContext } from './document-model';
 import { blockCommand, blockCommandNames } from './block-commands';
+import { createCalloutTitle } from './callout-title';
+import type { CalloutKind } from './callout-title';
+import { blockContentStart } from './callout';
 import { enhanced } from './enhanced';
 import { enhancedViews } from './enhanced-views';
 import { safeResourceUrl } from './enhanced-markdown';
@@ -101,6 +104,7 @@ import { tableLayouts, tableLayoutKey, sameMarkdownContent } from './table-layou
 import { tableControls } from './table-controls';
 import { TableViewport, tableViewports } from './table-viewport';
 import type { CommentGeometry } from './comment-projection';
+import { pageSearchKey, pageSearchPlugin, proseSearchRanges } from './search';
 
 interface ImportedResource {
   url: string;
@@ -130,18 +134,27 @@ const props = withDefaults(
 const emit = defineEmits<{
   'update:modelValue': [value: string];
   error: [message: string];
-  openLink: [reference: string];
+  openLink: [reference: string, newTab?: boolean];
   openWikiLink: [target: string];
   openReference: [identity: ReferenceIdentity];
   editSource: [];
   selectionChange: [context: EditorSelectionContext];
   tableLayoutChange: [tables: TableLayout[]];
   ready: [];
+  searchChange: [];
 }>();
 const policy = () => props.capabilities ?? defaultCapabilities;
 const referencesEnabled = () => props.referenceTargets !== undefined && commandEnabled('reference', props.enabledLevels, policy().features);
 const preferences = () => props.preferences ?? defaultEditorPreferences;
 const root = ref<HTMLElement>();
+function preventEditorTabNavigation(event: KeyboardEvent) {
+  if (event.key !== 'Tab' || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+  const target = event.target;
+  if (!(target instanceof Element) || !target.closest('.ProseMirror') ||
+      target.closest('input, select, button, a[href], [role="button"], [role="tab"]')) return;
+  // Run after the editor keymaps so list indentation and table navigation still work.
+  event.preventDefault();
+}
 const linkModifier = ref(false);
 type LinkPanel =
   | { kind: 'wiki'; pos: number; target: string; label: string; explicitLabel: boolean; x: number; y: number }
@@ -1556,16 +1569,7 @@ const bridge = $prose(
                     class: 'tano-callout-marker',
                   }),
                 );
-                const label = document.createElement('div');
-                label.className = 'tano-callout-title';
-                label.contentEditable = 'false';
-                label.textContent = {
-                  NOTE: 'ⓘ 备注',
-                  TIP: '◇ 提示',
-                  IMPORTANT: '◆ 重要',
-                  WARNING: '⚠ 警告',
-                  CAUTION: '⚠ 注意',
-                }[marker[1]!.toUpperCase() as 'NOTE'];
+                const label = createCalloutTitle(marker[1]!.toUpperCase() as CalloutKind);
                 decorations.push(Decoration.widget(pos + 1, label, { side: -1 }));
                 if (node.firstChild.textContent === marker[0])
                   decorations.push(
@@ -1751,7 +1755,7 @@ const bridge = $prose(
             ),
             ...enhancedViews(
               () => !!props.readonly,
-              (url) => emit('openLink', url),
+              (url) => emit('openLink', url, true),
               (url) =>
                 props.resolveImage?.(url) ??
                 (!props.resolveImage && /^https?:\/\//i.test(url) ? url : null),
@@ -2112,7 +2116,7 @@ onMounted(async () => {
           ),
         ),
       )
-      .use($prose(() => blockControls(() => !!props.readonly, () => preferences().folding)))
+      .use($prose(() => blockControls(() => !!props.readonly, () => preferences().folding, () => commandEnabled('columns', props.enabledLevels, policy().features))))
       .use($prose(() => emptyBlockDeletion(() => !!props.readonly)))
       .use(
         $prose(() =>
@@ -2124,7 +2128,8 @@ onMounted(async () => {
         ),
       )
       .use(bridge)
-      .use(commentMarks);
+      .use(commentMarks)
+      .use($prose(() => pageSearchPlugin(() => emit('searchChange'))));
     editor = await instance.create();
     if (disposed) {
       await editor.destroy();
@@ -2472,7 +2477,7 @@ function openBlockMenu(event: MouseEvent) {
 function blockMenuCommandAvailable(name: string) {
   const current = blockMenu.value;
   return !!current &&
-    canTransformBlock(blockTree(current.doc)[current.index]!.node) &&
+    (name === 'quote' || canTransformBlock(blockTree(current.doc)[current.index]!.node)) &&
     commandEnabled(name, props.enabledLevels, policy().features);
 }
 
@@ -2535,11 +2540,8 @@ async function blockMenuAction(action: string) {
       const tr = wrapBlockInToggle(view.state, pos);
       if (tr) view.dispatch(tr.scrollIntoView());
     } else if (action === 'delete') {
-      const tr = parent.childCount === 1
-        ? view.state.tr.replaceWith(pos, pos + node.nodeSize, schema.nodes.paragraph!.create())
-        : view.state.tr.delete(pos, pos + node.nodeSize);
-      tr.setSelection(Selection.near(tr.doc.resolve(Math.min(pos, tr.doc.content.size))));
-      view.dispatch(tr.scrollIntoView());
+      const tr = deleteBlock(view.state, pos);
+      if (tr) view.dispatch(tr.scrollIntoView());
     }
     view.focus();
   });
@@ -2727,7 +2729,47 @@ function commentGeometry(anchors = props.commentAnchors ?? []): CommentGeometry 
   const rect = bridgeView.dom.getBoundingClientRect();
   return { left: rect.left, right: rect.right, blocks: [...blocks.values()].sort((a, b) => a.top - b.top) };
 }
+function search(query: string, index = 0, scroll = true) {
+  if (!bridgeView || disposed) return 0;
+  const view = bridgeView;
+  view.dispatch(view.state.tr.setMeta(pageSearchKey, { query, index }).setMeta('addToHistory', false));
+  const ranges = pageSearchKey.getState(view.state)?.ranges ?? [];
+  const match = ranges[index];
+  if (scroll && match) {
+    view.dispatch(view.state.tr.setMeta('tanoRevealPosition', match.from).setMeta('addToHistory', false));
+    const element = view.dom.querySelector<HTMLElement>('.tano-search-current');
+    element?.dispatchEvent(new Event('tano-reveal-search', { bubbles: true }));
+    for (let parent = element; parent && parent !== view.dom; parent = parent.parentElement)
+      if (parent instanceof HTMLDetailsElement) parent.open = true;
+    element?.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+  }
+  return ranges.length;
+}
+function searchSelection() {
+  if (!bridgeView) return '';
+  const { doc, selection } = bridgeView.state;
+  return doc.textBetween(selection.from, selection.to, '\n');
+}
+function replaceSearch(query: string, replacement: string, index: number | 'all') {
+  if (!bridgeView || disposed || props.readonly) return { replaced: 0, index: 0 };
+  const view = bridgeView;
+  const matches = proseSearchRanges(view.state.doc, query);
+  const selected = index === 'all' ? matches : matches[index] ? [matches[index]!] : [];
+  if (!selected.length) return { replaced: 0, index: 0 };
+  const tr = closeHistory(view.state.tr);
+  for (const { from, to } of [...selected].reverse()) tr.insertText(replacement, from, to);
+  // Keep replacement as one undo step, separate from typing before and after it.
+  view.dispatch(tr);
+  view.dispatch(closeHistory(view.state.tr));
+  const next = index === 'all' ? 0 : proseSearchRanges(view.state.doc, query)
+    .findIndex(match => match.from >= selected[0]!.from + replacement.length);
+  return { replaced: selected.length, index: Math.max(0, next) };
+}
 defineExpose({
+  search,
+  replaceSearch,
+  searchSelection,
+  focus: () => bridgeView?.focus(),
   command,
   importFiles,
   withContext,
@@ -2893,6 +2935,7 @@ onBeforeUnmount(() => {
     @pointermove="syncLinkModifier"
     @mousedown.capture="rememberRightClickSelection($event); focusTrailingParagraph($event)"
     @contextmenu="openBlockMenu"
+    @keydown="preventEditorTabNavigation"
   />
   <Teleport to="body">
     <div

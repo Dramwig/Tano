@@ -23,6 +23,83 @@ afterEach(async () => {
   root?.remove();
   await nextTick();
 });
+
+it('searches across formatting in readonly prose without editing or moving the caret', async () => {
+  const { value, editor, readonly, errors } = await mount('同**页** 同页\n\n其他正文\n');
+  readonly.value = true;
+  await nextTick();
+  const original = value.value;
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  const selection = view.state.selection;
+  expect(editor.value!.search('同页', 1, false)).toBe(2);
+  expect(root.querySelector('.tano-search-current')?.textContent).toBe('同页');
+  expect(view.state.selection.eq(selection)).toBe(true);
+  expect(value.value).toBe(original);
+  expect(editor.value!.canUndo()).toBe(false);
+  value.value += '\n同页\n';
+  await nextTick();
+  expect(editor.value!.search('同页', 2, false)).toBe(3);
+  editor.value!.search('', 0, false);
+  expect(root.querySelector('.tano-search-match')).toBeNull();
+  expect(errors).toEqual([]);
+});
+
+it('reveals a search match inside folded heading and list content without editing Markdown', async () => {
+  const source = '# Project\n\nDetails\n\n- One\n  - Two\n';
+  const { value, editor } = await mount(source);
+  const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
+  const buttons = () => [...root.querySelectorAll<HTMLButtonElement>('.tano-fold-toggle')];
+  buttons()[0]!.click();
+  expect(prose.children[1]?.classList.contains('tano-folded-heading-content')).toBe(true);
+  editor.value!.search('Details');
+  expect(prose.children[1]?.classList.contains('tano-folded-heading-content')).toBe(false);
+  buttons()[1]!.click();
+  expect(prose.querySelector('li > ul')?.classList.contains('tano-folded-list-content')).toBe(true);
+  editor.value!.search('Two');
+  expect(prose.querySelector('li > ul')?.classList.contains('tano-folded-list-content')).toBe(false);
+  expect(value.value).toBe(source);
+  expect(editor.value!.canUndo()).toBe(false);
+});
+
+it('replaces prose matches across formatting and undoes all replacements as one step', async () => {
+  const source = '同**页** 同页 同页\n\n独立正文\n';
+  const { value, editor, readonly, errors } = await mount(source);
+  const replaced = editor.value!.replaceSearch('同页', '一起', 0);
+  expect(replaced).toEqual({ replaced: 1, index: 0 });
+  await nextTick();
+  expect(editor.value!.search('同页', 0, false)).toBe(2);
+  expect(value.value).toContain('一起');
+  expect(editor.value!.undoLastChange()).toBe(true);
+  await nextTick();
+  expect(value.value).toBe(source);
+  editor.value!.withContext(ctx => ctx.get(editorViewCtx).dom.blur());
+  expect(editor.value!.replaceSearch('同页', '一起', 'all').replaced).toBe(3);
+  await nextTick();
+  expect(editor.value!.search('同页', 0, false)).toBe(0);
+  expect(editor.value!.search('一起', 0, false)).toBe(3);
+  value.value = value.value.replace('独立正文', '外部修改');
+  await nextTick();
+  expect(editor.value!.undoLastChange()).toBe(true);
+  await nextTick();
+  expect(value.value).toBe(source.replace('独立正文', '外部修改'));
+  readonly.value = true;
+  await nextTick();
+  expect(editor.value!.replaceSearch('同页', '禁止修改', 'all').replaced).toBe(0);
+  expect(value.value).toBe(source.replace('独立正文', '外部修改'));
+  expect(errors).toEqual([]);
+});
+
+it('supports deleting matches and skips newly inserted matches after single replacement', async () => {
+  const { value, editor } = await mount('find find\n');
+  expect(editor.value!.replaceSearch('find', 'find find', 0)).toEqual({ replaced: 1, index: 2 });
+  await nextTick();
+  expect(editor.value!.replaceSearch('find', '', 'all').replaced).toBe(3);
+  await nextTick();
+  expect(value.value).not.toContain('find');
+  expect(editor.value!.undoLastChange()).toBe(true);
+  await nextTick();
+  expect(value.value).toBe('find find find\n');
+});
 async function mount(
   content: string,
   importer?: (
@@ -43,6 +120,7 @@ async function mount(
   const errors: string[] = [];
   const openedWikiLinks: string[] = [];
   const openedLinks: string[] = [];
+  const openedNewTabLinks: string[] = [];
   let selectionChanges = 0;
   Range.prototype.getBoundingClientRect = () => new DOMRect();
   Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
@@ -65,7 +143,10 @@ async function mount(
           },
           onError: (error: string) => errors.push(error),
           onOpenWikiLink: (target: string) => openedWikiLinks.push(target),
-          onOpenLink: (href: string) => openedLinks.push(href),
+          onOpenLink: (href: string, newTab?: boolean) => {
+            openedLinks.push(href);
+            if (newTab) openedNewTabLinks.push(href);
+          },
           onSelectionChange: () => { selectionChanges++; },
         }),
     ),
@@ -79,6 +160,7 @@ async function mount(
     errors,
     openedWikiLinks,
     openedLinks,
+    openedNewTabLinks,
     readonly,
     revealMarkdown,
     capabilities,
@@ -93,6 +175,46 @@ async function mountPanel(content: string) {
   await nextTick();
   return result;
 }
+
+it.each(['正文\n', '- 第一个项目\n', '```ts\nconst value = 1;\n```\n'])(
+  'keeps unhandled Tab and Shift-Tab inside prose: %s', async (source) => {
+    const { value, editor } = await mount(source);
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    view.focus();
+    for (const shiftKey of [false, true]) {
+      const event = new KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true, cancelable: true });
+      view.dom.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(view.dom);
+      if (!shiftKey) expect(value.value).toBe(source);
+    }
+  },
+);
+
+it('preserves list indentation and outdentation with Tab', async () => {
+  const source = '* First\n* Second\n';
+  const { value, editor } = await mount(source);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  let second = 0;
+  view.state.doc.descendants((node, pos) => { if (node.isText && node.text === 'Second') second = pos; });
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, second)));
+  view.focus();
+  view.dom.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+  await nextTick();
+  expect(value.value).toMatch(/\n +[-*] Second/);
+  view.dom.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+  await nextTick();
+  expect(value.value).toBe(source);
+});
+
+it('keeps embedded form controls available to keyboard focus navigation', async () => {
+  await mount('正文\n');
+  const input = document.createElement('input');
+  root.querySelector('.ProseMirror')!.append(input);
+  const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+  input.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(false);
+});
 
 it('reports and applies undo history through the public editor API', async () => {
   const source = '# 标题\n\n正文\n';
@@ -412,8 +534,8 @@ it('closes the formula panel when source reveal is enabled', async () => {
   expect(errors).toEqual([]);
 });
 
-it('folds headings and lists without changing Markdown, and can be disabled', async () => {
-  const source = '# Project\n\nDetails\n\n## Notes\n\n- One\n- Two\n\nAfter\n';
+it('folds headings and list item children without changing Markdown, and can be disabled', async () => {
+  const source = '# Project\n\nDetails\n\n## Notes\n\n- One\n  - Two\n\nAfter\n';
   const { value, preferences } = await mount(source);
   const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
   const buttons = () =>
@@ -426,18 +548,60 @@ it('folds headings and lists without changing Markdown, and can be disabled', as
   expect(prose.children[2]?.classList.contains('tano-folded-heading-content')).toBe(true);
   expect(value.value).toBe(source);
 
-  const listButton = buttons()[3]!;
+  buttons()[0]!.click();
+  const listButton = buttons()[2]!;
   listButton.click();
   await nextTick();
-  expect(prose.children[3]?.classList.contains('tano-folded-list')).toBe(true);
+  expect(prose.querySelector('li > ul')?.classList.contains('tano-folded-list-content')).toBe(true);
   expect(value.value).toBe(source);
 
   preferences.value = { ...defaultEditorPreferences, folding: false };
   await nextTick();
   expect(buttons().every((button) => button.hidden)).toBe(true);
   expect(prose.children[1]?.classList.contains('tano-folded-heading-content')).toBe(false);
-  expect(prose.children[3]?.classList.contains('tano-folded-list')).toBe(false);
+  expect(prose.querySelector('li > ul')?.classList.contains('tano-folded-list-content')).toBe(false);
   expect(value.value).toBe(source);
+});
+
+it.each(['1. One\n2. Two\n3. Three\n', '- One\n- Two\n- Three\n'])(
+  'has no folding controls for a flat list: %s', async source => {
+    const { value } = await mount(source);
+    root.querySelector('.ProseMirror li')!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    expect(root.querySelector('.tano-fold-toggle')).toBeNull();
+    expect(value.value).toBe(source);
+  },
+);
+
+it('folds only an ordered item’s children, keeps sibling numbering, and supports nested folds in readonly mode', async () => {
+  const source = '1. First\n2. Second\n3. Parent\n   1. Child\n      - Grandchild\n4. Fourth\n5. Fifth\n';
+  const { value, editor, readonly } = await mount(source);
+  readonly.value = true;
+  await nextTick();
+  const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
+  const list = prose.querySelector('ol')!;
+  const items = [...list.children];
+  const buttons = () => [...root.querySelectorAll<HTMLButtonElement>('.tano-fold-toggle')];
+  expect(buttons()).toHaveLength(2);
+  items[0]!.querySelector('p')!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+  expect(buttons().some(button => button.classList.contains('is-visible'))).toBe(false);
+  items[2]!.querySelector('p')!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+  expect(buttons()[0]!.classList.contains('is-visible')).toBe(true);
+  expect(buttons()[1]!.classList.contains('is-visible')).toBe(false);
+  buttons()[1]!.click();
+  expect(items[2]!.querySelector('ul')?.classList.contains('tano-folded-list-content')).toBe(true);
+  buttons()[0]!.click();
+  expect(items[2]!.querySelector('ol')?.classList.contains('tano-folded-list-content')).toBe(true);
+  expect(buttons()[1]!.hidden).toBe(true);
+  expect(items).toHaveLength(5);
+  expect(items.filter(item => item.className || item.querySelector(':scope > p')?.className)).toEqual([]);
+  buttons()[0]!.click();
+  expect(items[2]!.querySelector('ol')?.classList.contains('tano-folded-list-content')).toBe(false);
+  expect(items[2]!.querySelector('ul')?.classList.contains('tano-folded-list-content')).toBe(true);
+  expect(buttons()[1]!.hidden).toBe(false);
+  editor.value!.search('Grandchild');
+  expect(prose.querySelector('.tano-folded-list-content')).toBeNull();
+  expect(value.value).toBe(source);
+  expect(editor.value!.canUndo()).toBe(false);
 });
 
 it('keeps a formula delimiter after editing its value and obeys explicit output policy', async () => {
@@ -893,6 +1057,26 @@ it.each([
   prose.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
   await nextTick();
   expect(value.value).toBe(content);
+  expect(errors).toEqual([]);
+});
+
+it('keeps other callouts and prose separate after editing and reparsing an unknown marker', async () => {
+  const source = '> [!NOTE]\n> 普通说明，包含 **强调**。\n>\n> 123\n\n> [!TIP]\n> 操作建议。\n\n> [!IMPORTANT]\n> 重要信息。\n\n> [!WARNING]\n> 警告信息。\n\n> [!CAUTION]\n> 谨慎操作。\n\n后面的正文。\n';
+  const { value, editor, errors } = await mount(source);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.dispatch(view.state.tr.insertText('[!NOT]', 2, 9));
+  await nextTick();
+  expect(value.value).toContain('> \\[!NOT]\n>\n> 普通说明');
+  value.value = value.value.replace('普通说明', '外部说明');
+  await nextTick();
+  const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
+  expect(prose.querySelectorAll(':scope > blockquote')).toHaveLength(5);
+  expect(prose.querySelectorAll('.tano-callout-title')).toHaveLength(4);
+  expect(prose.querySelector('blockquote')!.querySelectorAll('p')).toHaveLength(3);
+  expect(prose.querySelector('blockquote p')!.textContent).toBe('[!NOT]');
+  expect(prose.querySelector('blockquote p:nth-of-type(2)')!.textContent).toContain('外部说明');
+  expect(prose.lastElementChild!.tagName).toBe('P');
+  expect(prose.lastElementChild!.textContent).toBe('后面的正文。');
   expect(errors).toEqual([]);
 });
 
@@ -2241,6 +2425,117 @@ describe('Markdown editor round trips', () => {
     expect(errors).toEqual([]);
   });
 
+  it('manages tab panels from the compact menu and keeps the selected panel when reordered', async () => {
+    const { value, readonly, errors } = await mount('::::tabs\n\n:::panel "说明"\n\n第一段\n\n:::\n\n:::panel "代码"\n\n第二段\n\n:::\n\n::::\n');
+    const tabs = () => [...root.querySelectorAll<HTMLButtonElement>('.tano-tab-list [role="tab"]')];
+    tabs()[1]!.click();
+    const panel = root.querySelector<HTMLElement>('.tano-tabs > .tano-enhanced-content > .tano-panel:not([hidden])')!;
+    const menu = panel.querySelector<HTMLDetailsElement>('.tano-panel-menu')!;
+    expect(menu.open).toBe(false);
+    expect(document.getElementById(tabs()[1]!.getAttribute('aria-controls')!)).toBe(panel);
+    expect(panel.getAttribute('aria-labelledby')).toBe(tabs()[1]!.id);
+    menu.open = true;
+    const title = menu.querySelector<HTMLInputElement>('input')!;
+    title.value = '示例代码';
+    title.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+    expect(tabs()[1]!.textContent).toBe('示例代码');
+    expect(value.value).toContain('示例代码');
+    menu.querySelector<HTMLButtonElement>('[aria-label="前移分区"]')!.click();
+    await nextTick();
+    expect(tabs().map(tab => tab.textContent)).toEqual(['示例代码', '说明']);
+    expect(tabs()[0]!.getAttribute('aria-selected')).toBe('true');
+    const selected = root.querySelector<HTMLElement>('.tano-panel:not([hidden])')!;
+    expect(selected.textContent).toContain('第二段');
+    expect(selected.querySelector<HTMLButtonElement>('[aria-label="前移分区"]')!.disabled).toBe(true);
+    const saved = value.value;
+    readonly.value = true;
+    await nextTick();
+    expect(selected.querySelector<HTMLDetailsElement>('.tano-panel-menu')!.hidden).toBe(true);
+    tabs()[1]!.click();
+    await nextTick();
+    expect(tabs()[1]!.getAttribute('aria-selected')).toBe('true');
+    expect(value.value).toBe(saved);
+    expect(errors).toEqual([]);
+  });
+
+  it('loads column ratios, edits nested blocks, and preserves layout through save, reload, and readonly mode', async () => {
+    const source = '::::columns widths=40,60\n\n:::panel "Left"\n\n<details>\n<summary>Nested</summary>\n\nChild\n\n</details>\n\n:::\n\n:::panel "Right"\n\nOther\n\n:::\n\n::::\n';
+    const { editor, value, readonly, errors } = await mount(source);
+    const columns = () => root.querySelector<HTMLElement>('.tano-columns')!;
+    const tracks = () => columns().querySelector<HTMLElement>(':scope > .tano-enhanced-content')!;
+    expect(tracks().style.getPropertyValue('--tano-column-tracks')).toBe('minmax(0, 40fr) minmax(0, 60fr)');
+    expect([...tracks().children].every(panel => panel.querySelector<HTMLElement>(':scope > .tano-enhanced-header')!.hidden)).toBe(true);
+    const separator = columns().querySelector<HTMLElement>('[role="separator"]')!;
+    separator.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+    await nextTick();
+    expect(value.value).toContain('columns widths=41,59');
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    let child = 0;
+    view.state.doc.descendants((node, pos) => { if (node.type.name === 'paragraph' && node.textContent === 'Child') child = pos + 1; });
+    view.dispatch(view.state.tr.insertText(' edited', child + 5));
+    await nextTick();
+    expect(value.value).toContain('Child edited');
+    expect(value.value).toContain('columns widths=41,59');
+    const saved = value.value;
+    value.value = 'Temporary';
+    await nextTick();
+    value.value = saved;
+    await nextTick();
+    expect(tracks().style.getPropertyValue('--tano-column-tracks')).toBe('minmax(0, 41fr) minmax(0, 59fr)');
+    readonly.value = true;
+    await nextTick();
+    expect(columns().querySelector<HTMLElement>('.tano-column-controls')!.hidden).toBe(true);
+    columns().querySelector<HTMLElement>('[role="separator"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(columns().querySelector('[aria-label="添加分栏"]')).toBeNull();
+    expect(value.value).toBe(saved);
+    expect(errors).toEqual([]);
+  });
+
+  it('previews column dragging, cancels without saving, commits once, and undoes the whole resize', async () => {
+    const { editor, value, readonly, errors } = await mount(':::columns\n\n## Left\n\nChild\n\n## Right\n\nOther\n\n:::\n');
+    const columns = root.querySelector<HTMLElement>('.tano-columns')!;
+    const content = columns.querySelector<HTMLElement>(':scope > .tano-enhanced-content')!;
+    [...content.children].forEach((panel, index) => {
+      vi.spyOn(panel, 'getBoundingClientRect').mockReturnValue({ left: index * 416, right: index * 416 + 384, width: 384, top: 0, bottom: 100, height: 100, x: index * 416, y: 0, toJSON: () => ({}) });
+    });
+    readonly.value = true;
+    await nextTick();
+    readonly.value = false;
+    await nextTick();
+    const separator = columns.querySelector<HTMLElement>('[role="separator"]')!;
+    const pointer = (target: EventTarget, type: string, x: number) => {
+      const event = new MouseEvent(type, { clientX: x, button: 0, bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'pointerId', { value: 1 });
+      target.dispatchEvent(event);
+    };
+    const saved = value.value;
+    pointer(separator, 'pointerdown', 400);
+    pointer(document, 'pointermove', 500);
+    expect(content.style.getPropertyValue('--tano-column-tracks')).not.toBe('minmax(0, 50fr) minmax(0, 50fr)');
+    expect(value.value).toBe(saved);
+    const focusedTitle = root.querySelector<HTMLInputElement>('[aria-label="分区标题"]')!;
+    focusedTitle.addEventListener('keydown', event => event.stopPropagation());
+    focusedTitle.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    pointer(document, 'pointerup', 500);
+    expect(value.value).toBe(saved);
+    expect(content.style.getPropertyValue('--tano-column-tracks')).toBe('minmax(0, 50fr) minmax(0, 50fr)');
+    expect(editor.value!.canUndo()).toBe(false);
+    pointer(separator, 'pointerdown', 400);
+    pointer(document, 'pointermove', 450);
+    pointer(document, 'pointermove', 500);
+    pointer(document, 'pointerup', 500);
+    await nextTick();
+    expect(value.value).toContain('columns widths=63.021,36.979');
+    expect(editor.value!.undoLastChange()).toBe(true);
+    await nextTick();
+    expect(value.value).not.toContain('widths=');
+    expect(editor.value!.canUndo()).toBe(false);
+    expect(value.value).toContain('Child');
+    expect(value.value).toContain('Other');
+    expect(errors).toEqual([]);
+  });
+
   it('targets nested children for duplicate/delete and hides their handles when their parent closes', async () => {
     const { value, errors } = await mountPanel('<details>\n<summary>Parent</summary>\n\nChild\n\n</details>\n\nOutside\n');
     const handles = () => [...root.querySelectorAll<HTMLButtonElement>('.tano-block-handle')];
@@ -2300,6 +2595,58 @@ describe('Markdown editor round trips', () => {
     expect(errors).toEqual([]);
   });
 
+  it.each(['', '[!TIP]\n'])('edits quote children independently and preserves their parent on delete and reload: %s', async (marker) => {
+    const { editor, value, errors } = await mountPanel(`> ${marker.replace(/\n/g, '\n> ')}Child\n\nOutside\n`);
+    const handles = () => [...root.querySelectorAll<HTMLButtonElement>('.tano-block-handle')];
+    expect(handles().map(handle => handle.dataset.blockDepth)).toEqual(['0', '1', '0']);
+    root.querySelector('blockquote')!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    expect(handles()[0]!.classList.contains('is-visible')).toBe(true);
+    handles()[0]!.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+    expect(handles()[0]!.classList.contains('is-visible')).toBe(true);
+    async function action(target: Element, label: string) {
+      target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      await nextTick();
+      [...document.querySelectorAll<HTMLButtonElement>('.block-context-menu button')].find(button => button.textContent?.includes(label))!.click();
+      await nextTick();
+    }
+    await action(root.querySelector('blockquote > p:last-of-type')!, '创建副本');
+    expect(root.querySelectorAll('.ProseMirror > blockquote')).toHaveLength(1);
+    expect(root.querySelectorAll('blockquote > p')).toHaveLength(marker ? 3 : 2);
+    await action(handles()[1]!, '删除块');
+    await action(handles()[1]!, '删除块');
+    expect(root.querySelector('blockquote > p:last-of-type')?.textContent).toBe('');
+    if (marker) expect(root.querySelector('.tano-callout-title')?.textContent).toBe('提示');
+    const saved = value.value;
+    value.value = 'temporary';
+    await nextTick();
+    value.value = saved;
+    await nextTick();
+    expect(root.querySelector('blockquote > p:last-of-type')?.textContent).toBe('');
+    expect(root.querySelector('.ProseMirror > p')?.textContent).toBe('Outside');
+    expect(errors).toEqual([]);
+  });
+
+  it('indents and outdents a nested callout child with the handle keyboard shortcuts', async () => {
+    const { value, errors } = await mountPanel('> [!IMPORTANT]\n>\n> > [!TIP]\n> > Nested\n>\n> Sibling\n\nOutside\n');
+    const handles = () => [...root.querySelectorAll<HTMLButtonElement>('.tano-block-handle')];
+    expect(handles().map(handle => handle.dataset.blockDepth)).toEqual(['0', '1', '2', '1', '0']);
+    handles()[3]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true, bubbles: true }));
+    await nextTick();
+    expect(root.querySelector('blockquote blockquote')?.textContent).toContain('Sibling');
+    expect(handles().map(handle => handle.dataset.blockDepth)).toEqual(['0', '1', '2', '2', '0']);
+    handles()[3]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, bubbles: true }));
+    await nextTick();
+    expect(root.querySelector('blockquote blockquote')?.textContent).not.toContain('Sibling');
+    const saved = value.value;
+    value.value = 'temporary';
+    await nextTick();
+    value.value = saved;
+    await nextTick();
+    expect(root.querySelectorAll('.tano-callout-title')).toHaveLength(2);
+    expect(root.querySelector('.ProseMirror > blockquote > p:last-of-type')?.textContent).toBe('Sibling');
+    expect(errors).toEqual([]);
+  });
+
   it('renders portable file cards, previews images and preserves unsafe or malformed containers', async () => {
     const input =
       '正文\n\n:::embed\n\n[图片](assets/picture.png)\n\n:::\n\n:::file\n\n[危险](javascript:alert)\n\n:::\n';
@@ -2333,6 +2680,92 @@ describe('Markdown editor round trips', () => {
     expect(value.value).toContain('原有正文');
     expect(value.value).toContain(':::file');
     expect(value.value).toContain('[Paper.pdf](assets/Paper.pdf)');
+    expect(errors).toEqual([]);
+  });
+  it('opens compact file rows and edits their Markdown metadata in a dismissible panel', async () => {
+    const { value, openedLinks, openedNewTabLinks, readonly, errors } = await mount(':::file\n\n[说明文档](assets/guide.pdf)\n\n:::\n');
+    const file = root.querySelector<HTMLElement>('.tano-file')!;
+    const row = file.querySelector<HTMLButtonElement>('.tano-resource-row')!;
+    expect(file.querySelector('.tano-enhanced-header')).toBeNull();
+    expect(row.textContent).toBe('说明文档PDF');
+    row.click();
+    expect(openedLinks).toEqual(['assets/guide.pdf']);
+    expect(openedNewTabLinks).toEqual(['assets/guide.pdf']);
+    const panel = file.querySelector<HTMLElement>('.tano-resource-editor-panel')!;
+    expect(panel.hidden).toBe(true);
+    file.querySelector<HTMLButtonElement>('[aria-label="编辑附件"]')!.click();
+    expect(panel.hidden).toBe(false);
+    const title = panel.querySelector<HTMLInputElement>('[aria-label="附件名称"]')!;
+    const url = panel.querySelector<HTMLInputElement>('[aria-label="附件地址"]')!;
+    title.value = '阅读材料';
+    title.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+    url.value = 'javascript:alert(1)';
+    url.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(panel.querySelector<HTMLElement>('[role="status"]')!.hidden).toBe(false);
+    expect(value.value).toContain('[阅读材料](assets/guide.pdf)');
+    url.value = 'assets/new%20guide.pdf';
+    panel.querySelector<HTMLButtonElement>('.tano-resource-done')!.click();
+    await nextTick();
+    expect(value.value).toContain('[阅读材料](assets/new%20guide.pdf)');
+    expect(panel.hidden).toBe(true);
+    file.querySelector<HTMLButtonElement>('[aria-label="编辑附件"]')!.click();
+    panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(panel.hidden).toBe(true);
+    file.querySelector<HTMLButtonElement>('[aria-label="编辑附件"]')!.click();
+    readonly.value = true;
+    await nextTick();
+    expect(panel.hidden).toBe(true);
+    expect(file.querySelector<HTMLButtonElement>('[aria-label="编辑附件"]')!.hidden).toBe(true);
+    row.click();
+    expect(openedLinks.at(-1)).toBe('assets/new%20guide.pdf');
+    expect(errors).toEqual([]);
+  });
+
+  it('shows embedded images directly and falls back to a file row when loading fails', async () => {
+    const { value, errors } = await mount(':::embed\n\n[图片](assets/picture.png)\n\n:::\n');
+    const embed = root.querySelector<HTMLElement>('.tano-embed')!;
+    const image = embed.querySelector<HTMLImageElement>('img')!;
+    const row = embed.querySelector<HTMLButtonElement>('.tano-resource-row')!;
+    expect(embed.querySelector('.tano-enhanced-header')).toBeNull();
+    expect(row.hidden).toBe(true);
+    image.click();
+    const panel = embed.querySelector<HTMLElement>('.tano-resource-editor-panel')!;
+    expect(panel.hidden).toBe(false);
+    const title = panel.querySelector<HTMLInputElement>('[aria-label="附件名称"]')!;
+    title.value = '图片说明';
+    title.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+    expect(embed.querySelector('img')).toBe(image);
+    expect(image.alt).toBe('图片说明');
+    image.dispatchEvent(new Event('error'));
+    expect(row.hidden).toBe(false);
+    expect(row.textContent).toContain('图片暂不可用');
+    expect(embed.querySelector<HTMLElement>('.tano-embed-preview')!.hidden).toBe(true);
+    const url = panel.querySelector<HTMLInputElement>('[aria-label="附件地址"]')!;
+    url.value = 'assets/replacement.png';
+    url.dispatchEvent(new Event('change', { bubbles: true }));
+    await nextTick();
+    expect(row.hidden).toBe(true);
+    expect(embed.querySelector('img')).not.toBe(image);
+    expect(value.value).toContain('[图片说明](assets/replacement.png)');
+    expect(errors).toEqual([]);
+  });
+
+  it('preserves a playable embedded media element when its label or readonly state changes', async () => {
+    const { readonly, errors } = await mount(':::embed\n\n[录音](assets/recording.mp3)\n\n:::\n');
+    const embed = root.querySelector<HTMLElement>('.tano-embed')!;
+    const audio = embed.querySelector<HTMLAudioElement>('audio')!;
+    expect(audio.controls).toBe(true);
+    expect(audio.src).toBe('https://example.test/assets/recording.mp3');
+    embed.querySelector<HTMLButtonElement>('[aria-label="编辑附件"]')!.click();
+    const title = embed.querySelector<HTMLInputElement>('[aria-label="附件名称"]')!;
+    title.value = '会议录音';
+    title.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+    readonly.value = true;
+    await nextTick();
+    expect(embed.querySelector('audio')).toBe(audio);
     expect(errors).toEqual([]);
   });
   it('renders safe block and inline HTML while keeping the original tags', async () => {
@@ -2724,14 +3157,13 @@ describe('Markdown editor round trips', () => {
     const handles = Array.from(root.querySelectorAll<HTMLButtonElement>('.tano-block-handle'));
     const foldButtons = Array.from(root.querySelectorAll<HTMLButtonElement>('.tano-fold-toggle'));
     expect(handles).toHaveLength(2);
-    expect(foldButtons).toHaveLength(2);
+    expect(foldButtons).toHaveLength(1);
     root
       .querySelector('.ProseMirror > h1')!
       .dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
     expect(handles[0].classList.contains('is-visible')).toBe(true);
     expect(handles[1].classList.contains('is-visible')).toBe(false);
     expect(foldButtons[0].classList.contains('is-visible')).toBe(true);
-    expect(foldButtons[1].classList.contains('is-visible')).toBe(false);
     handles[1].dispatchEvent(
       new KeyboardEvent('keydown', { key: 'ArrowUp', altKey: true, bubbles: true }),
     );
@@ -2739,6 +3171,94 @@ describe('Markdown editor round trips', () => {
     expect(value.value.indexOf('Next paragraph.')).toBeLessThan(
       value.value.indexOf('# 新建文档 3'),
     );
+    expect(errors).toEqual([]);
+  });
+
+  it('keeps a column block handle reachable across the gap and separator', async () => {
+    const content = ':::columns\n\n## Left\n\nLeft body\n\n## Right\n\nRight body\n\n:::\n\nOutside\n';
+    const { value, errors } = await mount(content);
+    const columns = root.querySelector<HTMLElement>('.tano-columns')!;
+    const paragraphs = columns.querySelectorAll<HTMLParagraphElement>('p');
+    const handles = root.querySelectorAll<HTMLButtonElement>('.tano-block-handle');
+    const rightHandle = handles[2]!;
+    vi.spyOn(paragraphs[0]!, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 100, 300, 160));
+    vi.spyOn(paragraphs[1]!, 'getBoundingClientRect').mockReturnValue(new DOMRect(448, 100, 300, 160));
+    vi.spyOn(rightHandle, 'getBoundingClientRect').mockReturnValue(new DOMRect(400, 100, 18, 24));
+    const hover = (target: Element, x: number, y = 112) =>
+      target.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: x, clientY: y }));
+    hover(paragraphs[1]!, 480);
+    expect(rightHandle.classList.contains('is-visible')).toBe(true);
+    hover(columns, 440);
+    expect(rightHandle.classList.contains('is-visible')).toBe(true);
+    hover(columns.querySelector('[role="separator"]')!, 424);
+    expect(rightHandle.classList.contains('is-visible')).toBe(true);
+    hover(columns, 419);
+    expect(rightHandle.classList.contains('is-visible')).toBe(true);
+    hover(rightHandle, 409);
+    rightHandle.click();
+    expect(paragraphs[1]!.classList.contains('ProseMirror-selectednode')).toBe(true);
+    expect(value.value).toBe(content);
+
+    hover(paragraphs[0]!, 380);
+    expect(rightHandle.classList.contains('is-visible')).toBe(false);
+    expect(handles[1]!.classList.contains('is-visible')).toBe(true);
+    hover(paragraphs[1]!, 480);
+    hover(columns, 424, 180);
+    expect(rightHandle.classList.contains('is-visible')).toBe(true);
+    hover(columns, 424, 280);
+    expect(rightHandle.classList.contains('is-visible')).toBe(false);
+    hover(paragraphs[1]!, 480);
+    root.querySelector('.ProseMirror')!.parentElement!.parentElement!.dispatchEvent(new MouseEvent('mouseleave'));
+    expect(rightHandle.classList.contains('is-visible')).toBe(false);
+    expect(errors).toEqual([]);
+  });
+
+  it('separates the columns handle from its first child and keeps both reachable in a narrow gutter', async () => {
+    const content = ':::columns\n\n## Left\n\nLeft body\n\n## Right\n\nRight body\n\n:::\n';
+    const { value, errors } = await mount(content);
+    const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
+    const host = prose.parentElement!;
+    const surface = host.parentElement!;
+    const columns = prose.querySelector<HTMLElement>('.tano-columns')!;
+    const paragraphs = columns.querySelectorAll<HTMLParagraphElement>('p');
+    const handles = root.querySelectorAll<HTMLButtonElement>('.tano-block-handle');
+    const group = handles[0]!, child = handles[1]!;
+    vi.spyOn(host, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 0, 648, 500));
+    const pane = vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 800, 600));
+    vi.spyOn(columns, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 100, 648, 160));
+    vi.spyOn(paragraphs[0]!, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 100, 300, 160));
+    vi.spyOn(paragraphs[1]!, 'getBoundingClientRect').mockReturnValue(new DOMRect(448, 100, 300, 160));
+    for (const handle of [group, child])
+      vi.spyOn(handle, 'getBoundingClientRect').mockImplementation(() =>
+        new DOMRect(100 + Number.parseFloat(handle.style.left), Number.parseFloat(handle.style.top), 18, 24));
+    window.dispatchEvent(new Event('resize'));
+    expect(group.getBoundingClientRect().right).toBeLessThan(child.getBoundingClientRect().left);
+    const hover = (target: Element, x: number, y = 112) =>
+      target.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: x, clientY: y }));
+    hover(paragraphs[0]!, 120);
+    expect(group.classList.contains('is-visible')).toBe(true);
+    expect(child.classList.contains('is-visible')).toBe(true);
+    hover(surface, 48);
+    expect(group.classList.contains('is-visible')).toBe(true);
+    hover(group, 37);
+    group.click();
+    expect(columns.classList.contains('ProseMirror-selectednode')).toBe(true);
+    child.click();
+    expect(columns.classList.contains('ProseMirror-selectednode')).toBe(false);
+    expect(paragraphs[0]!.classList.contains('ProseMirror-selectednode')).toBe(true);
+
+    pane.mockReturnValue(new DOMRect(80, 0, 800, 600));
+    window.dispatchEvent(new Event('resize'));
+    expect(group.getBoundingClientRect().left).toBeGreaterThanOrEqual(84);
+    expect(child.getBoundingClientRect().left).toBeGreaterThanOrEqual(84);
+    expect(group.getBoundingClientRect().bottom).toBeLessThan(child.getBoundingClientRect().top);
+    hover(paragraphs[0]!, 120);
+    hover(surface, 90, 90);
+    expect(group.classList.contains('is-visible')).toBe(true);
+    hover(group, 90, 84);
+    group.click();
+    expect(columns.classList.contains('ProseMirror-selectednode')).toBe(true);
+    expect(value.value).toBe(content);
     expect(errors).toEqual([]);
   });
 
@@ -2822,10 +3342,16 @@ describe('Markdown editor round trips', () => {
     expect(errors).toEqual([]);
   });
 
-  it('reorders a whole table by dragging its handle', async () => {
-    const { value, errors } = await mount(
-      'First.\n\n| Name | Value |\n| --- | --- |\n| A | 1 |\n\nLast.\n',
-    );
+  it.each([
+    { block: '| Name | Value |\n| --- | --- |\n| A | 1 |', label: '表格块', text: 'Name' },
+    { block: '## Heading', label: '标题块', text: 'Heading' },
+    { block: '<details>\n<summary>Details</summary>\n\nBody\n\n</details>', label: '折叠块', text: 'Body' },
+  ])('reorders a whole $label by dragging without selecting it', async ({ block, label, text }) => {
+    const content = `First.\n\n${block}\n\nLast.\n`;
+    const { value, editor, revealMarkdown, errors } = await mount(content);
+    revealMarkdown.value = false;
+    await nextTick();
+    const before = editor.value!.withContext(ctx => ctx.get(editorViewCtx).state.doc);
     const prose = root.querySelector('.ProseMirror')!;
     const handles = root.querySelectorAll<HTMLButtonElement>('.tano-block-handle');
     const rect = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
@@ -2845,25 +3371,71 @@ describe('Markdown editor round trips', () => {
       return event;
     }
     try {
-      expect(handles).toHaveLength(3);
-      expect(handles[1].getAttribute('aria-label')).toContain('表格块');
+      expect(handles[1].getAttribute('aria-label')).toContain(label);
+      // Even a previously selected source must not remain selected after a drop.
+      handles[1].click();
+      expect(root.querySelector('.ProseMirror-selectednode')).not.toBeNull();
       handles[1].dispatchEvent(pointerEvent('pointerdown', 120));
       const over = pointerEvent('pointermove', -10);
       prose.dispatchEvent(over);
-      expect(root.querySelector('.tano-block-drag-preview')?.textContent).toContain('Name');
+      expect(root.querySelector('.tano-block-drag-preview')?.textContent).toContain(text);
       expect(over.defaultPrevented).toBe(true);
       expect(root.querySelector('.tano-block-drop-line')?.hasAttribute('hidden')).toBe(false);
       prose.dispatchEvent(pointerEvent('pointerup', -10));
+      handles[1].click(); // The browser's click following pointerup must be suppressed.
       await nextTick();
-      expect(value.value.indexOf('| Name')).toBeLessThan(value.value.indexOf('First.'));
-      expect(value.value).toContain('| A');
+      expect(value.value.indexOf(text)).toBeLessThan(value.value.indexOf('First.'));
       expect(value.value).toContain('Last.');
       expect(root.querySelector('.tano-block-drag-source')).toBeNull();
       expect(root.querySelector('.tano-block-drag-preview')).toBeNull();
+      expect(root.querySelector('.ProseMirror-selectednode')).toBeNull();
+      handles[0].click(); // An intentional click still selects the moved block.
+      expect(root.querySelector('.ProseMirror-selectednode')?.textContent).toContain(text);
+      expect(editor.value!.undoLastChange()).toBe(true);
+      await nextTick();
+      expect(editor.value!.withContext(ctx => ctx.get(editorViewCtx).state.doc.eq(before))).toBe(true);
       expect(errors).toEqual([]);
     } finally {
       rect.mockRestore();
     }
+  });
+
+  it.each(['left', 'right'] as const)('creates columns from a %s side drop with a vertical snap marker and one undo step', async side => {
+    const { value, editor, errors } = await mount('Target\n\nMoved\n\nOutside\n');
+    const before = editor.value!.withContext(ctx => ctx.get(editorViewCtx).state.doc);
+    const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
+    const handles = root.querySelectorAll<HTMLButtonElement>('.tano-block-handle');
+    const rectangles = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const index = Array.from(prose.children).indexOf(this);
+      return index < 0 ? new DOMRect() : new DOMRect(100, index * 100, 400, 60);
+    });
+    const pointer = (type: string, x: number, y: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperties(event, { clientX: { value: x }, clientY: { value: y }, pointerId: { value: 1 }, button: { value: 0 } });
+      return event;
+    };
+    try {
+      const x = side === 'left' ? 100 : 500;
+      handles[1]!.dispatchEvent(pointer('pointerdown', 100, 120));
+      prose.dispatchEvent(pointer('pointermove', x, 30));
+      const marker = root.querySelector<HTMLElement>('.tano-block-drop-line')!;
+      expect(marker.hidden).toBe(false);
+      expect(marker.classList.contains('is-column')).toBe(true);
+      expect(marker.style.width).toBe('3px');
+      expect(marker.style.height).toBe('60px');
+      prose.dispatchEvent(pointer('pointerup', x, 30));
+      await nextTick();
+      const columns = root.querySelector<HTMLElement>('.ProseMirror > .tano-columns')!;
+      const panels = columns.querySelector<HTMLElement>(':scope > .tano-enhanced-content')!.children;
+      expect(panels.length).toBe(2);
+      expect(panels[side === 'left' ? 0 : 1]!.querySelector('p')?.textContent).toBe('Moved');
+      expect(value.value).toContain('columns');
+      expect(value.value).toContain('Outside');
+      expect(root.querySelector('.tano-block-drag-preview')).toBeNull();
+      expect(editor.value!.undoLastChange()).toBe(true);
+      expect(editor.value!.withContext(ctx => ctx.get(editorViewCtx).state.doc.eq(before))).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { rectangles.mockRestore(); }
   });
 
   it('shows frontmatter as collapsible property rows without changing the Markdown', async () => {

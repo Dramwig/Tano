@@ -14,7 +14,8 @@
     "./headless": "./src/headless.ts",
     "./comment-projection": "./src/comment-projection.ts",
     "./comment-anchors": "./src/comment-anchors.ts",
-    "./extension": "./src/extension.ts"
+    "./extension": "./src/extension.ts",
+    "./search": "./src/search.ts"
   },
   "dependencies": {
     "@milkdown/kit": "^7.22.1",

@@ -102,11 +102,23 @@ async function toggleMaximize() {
   align-items: stretch;
   height: var(--desktop-titlebar-height);
   left: 0;
-  box-shadow: inset 0 -1px var(--line);
   background: var(--sidebar);
   color: var(--text-secondary);
   user-select: none;
   transition: left 240ms ease;
+}
+.desktop-window-titlebar::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  border-bottom: 1px solid var(--line);
+  pointer-events: none;
+}
+.desktop-window:has(.app-shell.workspace-empty) .desktop-window-titlebar::after,
+.desktop-window:has(.workspace-native-tabs) .desktop-window-titlebar::after {
+  display: none;
 }
 .desktop-window:has(.app-shell.workspace-empty) .desktop-window-titlebar {
   background: transparent;
@@ -231,6 +243,7 @@ async function toggleMaximize() {
   height: var(--desktop-titlebar-height);
 }
 .desktop-window-content > .app-shell .main-column {
+  --topbar-height: 44px;
   --inspector-top: calc(var(--desktop-titlebar-height) + 44px + 44px + 16px);
   padding-top: var(--desktop-titlebar-height);
 }
@@ -251,6 +264,8 @@ async function toggleMaximize() {
 }
 .desktop-window:has(.workspace-native-tabs) .desktop-window-actions {
   margin-left: auto;
+  /* Leave the pane's bottom separator visible beneath button backgrounds. */
+  margin-bottom: 1px;
   background: var(--sidebar);
   pointer-events: auto;
 }
@@ -272,7 +287,6 @@ async function toggleMaximize() {
   cursor: grabbing;
 }
 .desktop-window-content > .app-shell .topbar {
-  height: 44px;
   padding-inline: 6px 20px;
 }
 .desktop-window-content > .app-shell .breadcrumb > svg {

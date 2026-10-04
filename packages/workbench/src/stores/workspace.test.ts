@@ -262,6 +262,35 @@ describe('assistant proposal coordination', () => {
 });
 
 describe('workspace file reconciliation', () => {
+  it('opens attachments in a separate tab, preserves the source document, and follows file identity after rename', async () => {
+    const note = store.workspace!.files.find(file => file.id === 'note-id')!;
+    await store.openFileInNewTab(note);
+    store.edit('保留当前文档的内容\n');
+    backend.files.set('assets/notes.txt', { id: 'attachment-id', content: '附件正文' });
+    await store.refresh();
+    const file = store.workspace!.files.find(file => file.id === 'attachment-id')!;
+    store.openAttachmentInNewTab(file);
+    expect(store.activeId).toBe('attachment:attachment-id');
+    expect(store.documents.find(doc => doc.id === note.id)?.content).toBe('保留当前文档的内容\n');
+    expect(store.tabs.map(tab => tab.id)).toContain(note.id);
+    expect(store.tabs.find(tab => tab.id === store.activeId)?.attachment?.path).toBe('assets/notes.txt');
+    store.openAttachmentInNewTab(file);
+    expect(store.tabs.filter(tab => tab.attachmentPreview)).toHaveLength(1);
+    await backend.rename('assets/notes.txt', 'assets/renamed.txt');
+    await store.refresh();
+    expect(store.tabs.find(tab => tab.id === store.activeId)?.path).toBe('assets/renamed.txt');
+    expect(store.documents.some(doc => doc.id === file.id)).toBe(false);
+    await vi.waitFor(() => expect(backend.session?.activeId).toBe('attachment:attachment-id'));
+    await store.dispose();
+    setActivePinia(configureWorkbench(createPinia(), { adapter: backend, native: false, mobile: false }));
+    store = useWorkspaceStore();
+    await store.initialize();
+    expect(store.activeId).toBe('attachment:attachment-id');
+    expect(store.tabs.find(tab => tab.attachmentPreview)?.attachment?.path).toBe('assets/renamed.txt');
+    await store.close(store.activeId);
+    expect(store.activeId).toBe(note.id);
+  });
+
   it('persists pixel layouts separately from Markdown and restores them after rename and reopen', async () => {
     backend.files.set('table.md', { id: 'a12345', content: '| A | B |\n| --- | --- |\n| 1 | 2 |\n' });
     await store.refresh();

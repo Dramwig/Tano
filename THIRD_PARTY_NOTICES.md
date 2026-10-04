@@ -12,4 +12,6 @@ The Maple Mono NF font uses the SIL Open Font License in `apps/client/public/MAP
 
 The code block language picker bundles SVGs from [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme) and [Devicon](https://github.com/devicons/devicon). Both sets are distributed under MIT; their license texts and source versions are recorded in `packages/editor/src/language-icons/`.
 
+Callout titles bundle five duotone SVGs from [Phosphor Icons](https://github.com/phosphor-icons/core), distributed under MIT. The license text, pinned source revision, and asset paths are recorded in [packages/editor/src/callout-icons/](packages/editor/src/callout-icons/README.md).
+
 `npm run notices:generate` collects LICENSE, COPYING, and NOTICE files from the current npm and Cargo dependencies. It writes `apps/client/public/THIRD_PARTY_NOTICES.txt` and the MCP distribution notice file. Desktop and MCP distributions include the generated notices. Regenerate them after updating dependencies; Tano's MIT license does not replace third-party obligations.

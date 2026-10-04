@@ -185,6 +185,11 @@ kbd {
 svg {
   flex-shrink: 0;
 }
+.panel-scrollbar {
+  /* Inherited native scrollbar colors override the arrow-free WebKit styling. */
+  scrollbar-color: auto;
+  scrollbar-width: auto;
+}
 .panel-scrollbar::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -293,6 +298,9 @@ button:hover {
 .sidebar-header-actions {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
+  min-width: 25px;
+  min-height: 30px;
   gap: 0;
   margin-right: 0;
 }
@@ -706,6 +714,7 @@ button:hover {
   line-height: 1.8;
 }
 .main-column {
+  --topbar-height: 52px;
   --inspector-top: calc(52px + 44px + 16px);
   position: relative;
   min-width: 0;
@@ -715,7 +724,7 @@ button:hover {
   background: var(--paper);
 }
 .topbar {
-  height: 52px;
+  height: var(--topbar-height);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -724,16 +733,22 @@ button:hover {
   gap: 15px;
 }
 .workspace-tabbar {
+  position: relative;
   display: flex;
   height: 36px;
   flex-shrink: 0;
   background: var(--sidebar);
-  box-shadow: inset 0 -1px var(--line);
 }
-.workspace-tabbar > .graph-sidebar-toggle {
-  align-self: center;
-  flex: 0 0 30px;
-  margin: 0 4px;
+/* Draw the track separator once, above inactive tab backgrounds. Active tabs
+   cover it so the document surface stays connected at the rounded corners. */
+.workspace-tabbar::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  border-bottom: 1px solid var(--line);
+  pointer-events: none;
 }
 .topbar-navigation {
   display: flex;
@@ -784,6 +799,43 @@ button:hover {
 .topbar-right > .local-badge,
 .topbar-right > .demo-badge {
   margin-right: 8px;
+}
+.topbar-attachment-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.topbar-attachment-action:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.graph-topbar {
+  position: relative;
+  z-index: 2;
+  margin-bottom: calc(-1 * var(--topbar-height));
+  background: transparent;
+  pointer-events: none;
+}
+.graph-topbar .topbar-navigation,
+.graph-topbar .topbar-right {
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 2px 8px #00000006;
+  pointer-events: auto;
+}
+.graph-topbar .topbar-right {
+  margin-left: auto;
+}
+.graph-toolbar-host {
+  display: flex;
+  align-items: center;
 }
 .calendar-topbar-controls {
   display: flex;
@@ -887,6 +939,8 @@ button:hover {
   cursor: pointer;
 }
 .tano-comment-mark:hover, .cm-comment-mark:hover { background: color-mix(in srgb, #f4d35e 38%, transparent); }
+.tano-search-match { background: color-mix(in srgb, #f4d35e 48%, transparent); border-radius: 2px; }
+.tano-search-current { background: color-mix(in srgb, #eea82b 72%, var(--paper)); box-shadow: 0 0 0 1px #c79027; }
 .document-main {
   position: relative;
   flex: 1;
@@ -946,36 +1000,69 @@ button:hover {
   width: 30px;
 }
 .tano-prose .tano-callout {
-  border-left: 3px solid var(--green);
-  background: var(--accent);
-  border-radius: 0 6px 6px 0;
-  padding: 12px 18px;
+  --callout-color: var(--syntax-blue);
+  border-left: 3px solid var(--callout-color);
+  background: color-mix(in srgb, var(--callout-color) 7%, var(--paper));
+  border-radius: 8px;
+  padding: 14px 16px;
+  color: var(--text-secondary);
 }
-.tano-prose .tano-callout[data-callout-kind='warning'],
-.tano-prose .tano-callout[data-callout-kind='caution'] {
-  border-color: #c88b25;
-  background: color-mix(in srgb, #c88b25 9%, var(--bg));
+.tano-prose .tano-callout[data-callout-kind='tip'] {
+  --callout-color: var(--green);
 }
 .tano-prose .tano-callout[data-callout-kind='important'] {
-  border-color: #8a67bd;
+  --callout-color: var(--syntax-purple);
+}
+.tano-prose .tano-callout[data-callout-kind='warning'] {
+  --callout-color: var(--warning);
+}
+.tano-prose .tano-callout[data-callout-kind='caution'] {
+  --callout-color: var(--danger);
+}
+.tano-prose .tano-callout > :first-child {
+  margin-top: 0;
+}
+.tano-prose .tano-callout > :last-child {
+  margin-bottom: 0;
 }
 .tano-callout-marker,
 .tano-callout-marker-paragraph {
   display: none;
 }
-.tano-callout-title {
-  font-weight: 600;
-  font-size: 14px;
-  margin-bottom: 4px;
-  color: var(--text);
-}
-.tano-prose.ProseMirror-focused .tano-live-callout .tano-callout-title {
+.tano-prose .tano-callout-marker + [data-type='hardbreak'] {
   display: none;
 }
-.tano-prose.ProseMirror-focused .tano-live-callout .tano-callout-marker {
-  display: inline;
+.tano-callout-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 6px;
+  color: var(--text);
 }
-.tano-prose.ProseMirror-focused .tano-live-callout .tano-callout-marker-paragraph {
+.tano-prose .tano-callout-icon {
+  display: block;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  color: color-mix(in srgb, var(--callout-color) 75%, var(--text-secondary));
+  border-radius: 0;
+}
+.tano-prose.ProseMirror-focused .tano-live-callout > .tano-callout-title {
+  display: none;
+}
+.tano-prose.ProseMirror-focused .tano-live-callout > p:first-of-type {
+  margin-top: 0;
+}
+.tano-prose.ProseMirror-focused .tano-live-callout > p:first-of-type > .tano-callout-marker {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.tano-prose.ProseMirror-focused .tano-live-callout > .tano-callout-marker-paragraph {
   display: block;
 }
 .tano-prose .tano-enhanced {
@@ -1028,18 +1115,89 @@ button:hover {
   padding: 6px;
   min-width: 0;
 }
-.tano-toggle > .tano-enhanced-content,
 .tano-panel > .tano-enhanced-content {
   padding-left: 24px;
   margin-left: 0;
 }
-.tano-toggle > .tano-enhanced-content > :first-child,
 .tano-panel > .tano-enhanced-content > :first-child {
   margin-top: 8px;
 }
 .tano-enhanced-header .tano-add-child {
   font-size: 12px;
   white-space: nowrap;
+}
+.tano-prose .tano-toggle {
+  margin: 8px 0;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+.tano-toggle > .tano-enhanced-header {
+  gap: 4px;
+  flex-wrap: nowrap;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+}
+.tano-toggle > .tano-enhanced-header > input {
+  min-width: 0;
+  width: 0;
+  padding: 0;
+  line-height: inherit;
+}
+.tano-toggle > .tano-enhanced-header > input:focus {
+  outline: none;
+  background: transparent;
+}
+.tano-toggle > .tano-enhanced-header > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+.tano-toggle > .tano-enhanced-header > button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.tano-toggle > .tano-enhanced-header > .tano-toggle-trigger {
+  font-size: 18px;
+}
+.tano-toggle > .tano-enhanced-header > button:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.tano-toggle > .tano-enhanced-header > .tano-add-child {
+  font-size: 18px;
+  opacity: 0;
+  pointer-events: none;
+}
+.tano-toggle > .tano-enhanced-header:hover > .tano-add-child,
+.tano-toggle > .tano-enhanced-header:focus-within > .tano-add-child {
+  opacity: 1;
+  pointer-events: auto;
+}
+.tano-toggle > .tano-enhanced-header > .tano-add-child:disabled {
+  display: none;
+}
+.tano-toggle > .tano-enhanced-content {
+  padding: 0 0 0 28px;
+}
+.tano-toggle > .tano-enhanced-content > :first-child {
+  margin-top: 6px;
+}
+.tano-toggle > .tano-enhanced-content > :last-child {
+  margin-bottom: 0;
+}
+@media (hover: none) {
+  .tano-toggle > .tano-enhanced-header > .tano-add-child {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 .tano-enhanced-content[hidden],
 .tano-enhanced[hidden] {
@@ -1048,28 +1206,230 @@ button:hover {
 .tano-prose .tano-panel {
   margin: 8px 0;
 }
-.tano-tabs > .tano-enhanced-content > .tano-panel {
+.tano-panel-menu {
+  width: 100%;
+}
+.tano-panel-menu > summary {
+  display: none;
+}
+.tano-panel-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tano-prose .tano-tabs {
+  position: relative;
   border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+.tano-tabs > .tano-enhanced-header {
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 0 36px 0 0;
+  background: transparent;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.tano-tabs > .tano-enhanced-content {
+  padding: 16px 0 0;
+}
+.tano-tabs > .tano-enhanced-content > .tano-panel {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+.tano-tabs > .tano-enhanced-content > .tano-panel > .tano-enhanced-content {
+  padding: 0;
+}
+.tano-tabs > .tano-enhanced-content > .tano-panel > .tano-enhanced-content > :first-child {
+  margin-top: 0;
+}
+.tano-tabs > .tano-enhanced-content > .tano-panel > .tano-enhanced-content > :last-child {
+  margin-bottom: 0;
+}
+.tano-tabs > .tano-enhanced-content > .tano-panel > .tano-enhanced-header {
+  position: absolute;
+  top: 6px;
+  right: 0;
+  padding: 0;
+  background: transparent;
+}
+.tano-panel[data-tab-panel='true'] > .tano-enhanced-header .tano-panel-menu {
+  width: auto;
+}
+.tano-tabs > .tano-enhanced-content > .tano-panel > .tano-enhanced-header .tano-panel-menu > summary,
+.tano-tabs > .tano-enhanced-header > .tano-add-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  padding: 0;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.tano-panel[data-tab-panel='true'] > .tano-enhanced-header .tano-panel-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.tano-panel[data-tab-panel='true'] > .tano-enhanced-header .tano-panel-menu > summary:hover,
+.tano-tabs > .tano-enhanced-header > .tano-add-panel:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.tano-panel[data-tab-panel='true'] > .tano-enhanced-header .tano-panel-menu > summary:focus-visible,
+.tano-tabs > .tano-enhanced-header > .tano-add-panel:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.tano-tabs > .tano-enhanced-header > .tano-add-panel:disabled,
+.tano-panel[data-tab-panel='true'] > .tano-enhanced-header .tano-panel-menu[hidden] {
+  display: none;
+}
+.tano-tabs > .tano-enhanced-content > .tano-panel > .tano-enhanced-header .tano-panel-menu[open] > .tano-panel-actions {
+  position: absolute;
+  z-index: 20;
+  top: 34px;
+  right: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  width: min(240px, calc(100vw - 48px));
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 6px 24px #00000014;
+}
+.tano-panel[data-tab-panel='true'] > .tano-enhanced-header .tano-panel-actions > input {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+}
+.tano-panel[data-tab-panel='true'] > .tano-enhanced-header .tano-panel-actions > .tano-add-child {
+  grid-column: 1 / -1;
+  text-align: left;
+}
+.tano-prose .tano-columns {
+  position: relative;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
 }
 .tano-columns > .tano-enhanced-content {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: var(--tano-column-tracks);
+  align-items: start;
+  gap: 48px;
+  padding: 0;
+}
+.tano-columns > .tano-enhanced-content > .tano-panel {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+.tano-columns > .tano-enhanced-content > .tano-panel > .tano-enhanced-header {
+  display: none;
+}
+.tano-columns > .tano-enhanced-content > .tano-panel > .tano-enhanced-content {
+  padding: 0;
+}
+.tano-columns > .tano-enhanced-content > .tano-panel > .tano-enhanced-content > :first-child {
+  margin-top: 0;
+}
+.tano-columns > .tano-enhanced-content > .tano-panel > .tano-enhanced-content > :last-child {
+  margin-bottom: 0;
+}
+.tano-column-controls[hidden],
+.tano-column-separators[hidden] {
+  display: none;
+}
+.tano-column-resizer {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  transform: translateX(-50%);
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+.tano-column-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  opacity: 0;
+}
+.tano-column-resizer:hover::after,
+.tano-column-resizer:focus-visible::after,
+.tano-columns.is-resizing .tano-column-resizer::after {
+  opacity: 1;
+}
+.tano-column-resizer:focus-visible {
+  outline: none;
+}
+.tano-column-resizer:focus-visible::after {
+  background: var(--green);
+}
+.tano-columns.is-resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 .tano-tab-list {
   display: flex;
-  gap: 4px;
+  align-items: stretch;
+  gap: 20px;
   flex: 1;
+  min-width: 0;
   overflow-x: auto;
+  scrollbar-width: thin;
 }
-.tano-tab-list button {
+.tano-tab-list [role='tab'] {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 10px 0;
+  border-radius: 0;
   white-space: nowrap;
+  background: transparent;
+  box-shadow: none;
 }
-.tano-tab-list button[aria-selected='true'] {
-  background: var(--bg);
-  color: var(--green);
-  box-shadow: 0 1px 3px #0001;
+.tano-tab-list [role='tab']:hover {
+  background: transparent;
+  color: var(--text);
+}
+.tano-tab-list [role='tab'][aria-selected='true'] {
+  background: transparent;
+  color: var(--text);
+}
+.tano-tab-list [role='tab'][aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--green);
+}
+.tano-tab-list [role='tab']:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
 }
 .tano-embed-preview {
   padding: 12px 16px;
@@ -1086,6 +1446,171 @@ button:hover {
   max-width: 100%;
   max-height: 480px;
 }
+.tano-prose .tano-resource {
+  position: relative;
+  margin: 12px 0;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+.tano-resource [hidden] {
+  display: none !important;
+}
+.tano-resource-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 4px 36px 4px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+.tano-resource-row:hover {
+  background: var(--surface);
+}
+.tano-resource-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+.tano-resource-icon svg {
+  display: block;
+}
+.tano-resource-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.tano-resource-meta {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+.tano-resource[data-resource-state='placeholder'] > .tano-resource-row {
+  min-height: 56px;
+  padding: 12px 44px 12px 16px;
+  gap: 12px;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+}
+.tano-resource > .tano-embed-preview {
+  padding: 0;
+}
+.tano-resource > .tano-embed-preview img,
+.tano-resource > .tano-embed-preview video {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: none;
+  border-radius: 4px;
+}
+.tano-resource > .tano-embed-preview img {
+  cursor: pointer;
+}
+.tano-resource > .tano-embed-preview audio {
+  width: min(100%, 480px);
+}
+.tano-resource-actions {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+}
+.tano-resource[data-resource-state='preview'] > .tano-resource-actions {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--paper);
+  box-shadow: 0 2px 6px #0000000a;
+}
+.tano-resource:hover > .tano-resource-actions,
+.tano-resource:focus-within > .tano-resource-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+.tano-resource-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+.tano-resource-actions button:hover {
+  background: var(--hover);
+}
+.tano-resource-row:focus-visible,
+.tano-resource-actions button:focus-visible,
+.tano-resource img:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.tano-resource-editor-panel {
+  display: grid;
+  width: min(360px, var(--tano-panel-available-width, calc(100vw - 16px)));
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.tano-resource-editor-panel label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.tano-resource-editor-panel input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.tano-resource-editor-panel input:focus {
+  outline: none;
+  border-color: var(--green);
+}
+.tano-resource-editor-panel .tano-resource-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+.tano-resource-done {
+  justify-self: end;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+@media (hover: none) {
+  .tano-resource > .tano-resource-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
 .tano-file-mention {
   color: var(--green);
   background: var(--accent);
@@ -1094,8 +1619,11 @@ button:hover {
 }
 @media (max-width: 640px) {
   .tano-columns > .tano-enhanced-content {
-    grid-auto-flow: row;
-    grid-auto-columns: auto;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .tano-column-separators {
+    display: none;
   }
 }
 .tano-prose sup[data-type='footnote_reference'] {
@@ -1755,6 +2283,14 @@ button:hover {
   border-radius: 4px;
   transition: background-color 120ms ease;
 }
+.tano-block-handle.is-column-child {
+  left: -48px;
+  width: 18px;
+}
+.tano-block-handle.is-columns {
+  left: -72px;
+  width: 18px;
+}
 .tano-block-handle.is-visible,
 .tano-block-handle:focus-visible {
   opacity: 1;
@@ -1814,9 +2350,7 @@ button:hover {
 .tano-folded-heading-content {
   display: none !important;
 }
-.tano-folded-list > li:not(:first-child),
-.tano-folded-list > li:first-child > ul,
-.tano-folded-list > li:first-child > ol {
+.tano-folded-list-content {
   display: none !important;
 }
 .tano-block-drop-line {
@@ -1938,15 +2472,33 @@ button:hover {
 }
 .tano-prose blockquote {
   margin: 26px 0;
-  border-left: 3px solid var(--control-border);
-  background: var(--surface);
-  border-radius: 0 6px 6px 0;
-  padding: 9px 20px;
-  color: var(--text-secondary);
   font-size: inherit;
+}
+.tano-prose blockquote:not(.tano-callout) {
+  margin: 16px 0;
+  border-left: 3px solid var(--text);
+  background: transparent;
+  border-radius: 0;
+  padding: 0 0 0 20px;
+  color: var(--text);
 }
 .tano-prose blockquote p {
   margin: 8px 0;
+}
+.tano-prose blockquote:not(.tano-callout) > :first-child {
+  margin-top: 0;
+}
+.tano-prose blockquote:not(.tano-callout) > :last-child {
+  margin-bottom: 0;
+}
+/* Milkdown represents a soft newline as a span containing a space. Keep the
+   Markdown node unchanged while rendering a line break within quoted paragraphs. */
+.tano-prose blockquote span[data-type='hardbreak'][data-is-inline='true'] {
+  font-size: 0;
+}
+.tano-prose blockquote span[data-type='hardbreak'][data-is-inline='true']::after {
+  content: '\a';
+  white-space: pre;
 }
 .tano-prose ul,
 .tano-prose ol {

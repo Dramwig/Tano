@@ -4,6 +4,7 @@ import {
   defaultKeymap,
   history,
   historyKeymap,
+  indentWithTab,
   isolateHistory,
   redo,
   redoDepth,
@@ -18,6 +19,22 @@ import type { CommentGeometry } from '@tano/editor/comment-projection';
 import { sourceStyleRanges } from '@tano/editor/source-highlight';
 import { splitFrontmatter } from '@tano/editor/syntax';
 import { referenceInsertionPoint } from '@tano/editor/document-links';
+import { textSearchRanges } from '@tano/editor/search';
+
+const setPageSearch = StateEffect.define<{ query: string; index: number }>();
+const pageSearch = StateField.define({
+  create: () => ({ query: '', index: 0, ranges: Decoration.none }),
+  update(previous, tr) {
+    const request = tr.effects.find(effect => effect.is(setPageSearch))?.value;
+    if (!request && !tr.docChanged) return previous;
+    const { query, index } = request ?? previous;
+    return { query, index, ranges: Decoration.set(
+      textSearchRanges(tr.state.doc.toString(), query).map(({ from, to }, i) =>
+        Decoration.mark({ class: `tano-search-match${i === index ? ' tano-search-current' : ''}` }).range(from, to)),
+    ) };
+  },
+  provide: field => EditorView.decorations.from(field, value => value.ranges),
+});
 
 const props = defineProps<{
   modelValue: string;
@@ -83,7 +100,7 @@ onMounted(() => {
       doc: props.modelValue,
       extensions: [
         history(),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
+        keymap.of([{ ...indentWithTab, preventDefault: true }, ...defaultKeymap, ...historyKeymap]),
         EditorView.lineWrapping,
         EditorView.contentAttributes.of({ 'aria-label': 'Markdown 源码', spellcheck: 'false' }),
         readonlyMode.of([
@@ -91,6 +108,7 @@ onMounted(() => {
           EditorView.editable.of(!props.readonly),
         ]),
         sourceStyles,
+        pageSearch,
         EditorView.domEventHandlers({
           paste: (event) => fileHandler(event, event.clipboardData?.files, true),
           drop: (event) => fileHandler(event, event.dataTransfer?.files, false),
@@ -105,7 +123,7 @@ onMounted(() => {
   });
 });
 
-onBeforeUnmount(() => view?.destroy());
+onBeforeUnmount(() => { view?.destroy(); view = undefined; });
 
 watch(
   () => props.modelValue,
@@ -264,7 +282,31 @@ function insertBlockAtStart() {
   view.focus();
 }
 
+function search(query: string, index = 0, scroll = true) {
+  if (!view) return 0;
+  const matches = textSearchRanges(view.state.doc.toString(), query);
+  view.dispatch({ effects: [setPageSearch.of({ query, index }),
+    ...(scroll && matches[index] ? [EditorView.scrollIntoView(matches[index]!.from, { y: 'center' })] : []),
+  ] });
+  return matches.length;
+}
+function replaceSearch(query: string, replacement: string, index: number | 'all') {
+  if (!view || props.readonly) return { replaced: 0, index: 0 };
+  const matches = textSearchRanges(view.state.doc.toString(), query);
+  const selected = index === 'all' ? matches : matches[index] ? [matches[index]!] : [];
+  if (!selected.length) return { replaced: 0, index: 0 };
+  view.dispatch({
+    changes: selected.map(({ from, to }) => ({ from, to, insert: replacement })),
+    annotations: isolateHistory.of('full'),
+  });
+  const next = index === 'all' ? 0 : textSearchRanges(view.state.doc.toString(), query)
+    .findIndex(match => match.from >= selected[0]!.from + replacement.length);
+  return { replaced: selected.length, index: Math.max(0, next) };
+}
 defineExpose({
+  search,
+  replaceSearch,
+  searchSelection: () => view ? view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to) : '',
   assistantSelection: () => view?.state.selection.main.empty ? null : commentSelection(),
   captureTodoSelection,
   commentSelection,

@@ -371,6 +371,39 @@ it('shows the insertion side and commits only on release, suppressing the traili
   expect(root.querySelector('.desktop-tab-dragging')).toBeNull();
 });
 
+it.each([390, 410])('shows one pane insertion marker on either side of the same boundary at x=%s', async x => {
+  app.unmount();
+  fixture.store.panes = [{ id: 'pane', tabs: ['a', 'b', 'c'], activeId: 'b' }];
+  fixture.store.focusPane = vi.fn();
+  fixture.store.dockTab = vi.fn();
+  app = createApp(DesktopTabs, { paneId: 'pane' });
+  app.mount(root.querySelector('.desktop-window-tab-slot')!);
+  const list = root.querySelector<HTMLElement>('.desktop-tab-list')!;
+  list.getBoundingClientRect = () => ({ left: 0, right: 600, top: 0, bottom: 36 }) as DOMRect;
+  root.querySelectorAll<HTMLElement>('.desktop-tab').forEach((tab, index) => {
+    tab.getBoundingClientRect = () => ({ left: index * 200, right: (index + 1) * 200, top: 0, bottom: 36, width: 200, height: 36 }) as DOMRect;
+  });
+  const button = root.querySelector<HTMLButtonElement>('.desktop-tab-switch')!;
+  button.setPointerCapture = vi.fn();
+  button.hasPointerCapture = () => true;
+  button.releasePointerCapture = vi.fn();
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: vi.fn(() => list) });
+  try {
+    pointer(button, 'pointerdown', 80);
+    pointer(button, 'pointermove', x);
+    await nextTick();
+    const markers = root.querySelectorAll('.desktop-tab-drop-before, .desktop-tab-drop-after, .desktop-tab-dock-before, .desktop-tab-dock-after');
+    expect(markers).toHaveLength(1);
+    expect(markers[0]?.getAttribute('data-id')).toBe('c');
+    expect(root.querySelector('.desktop-tab-drop-before, .desktop-tab-drop-after')).toBeNull();
+    pointer(button, 'pointerup', x);
+    expect(fixture.store.dockTab).toHaveBeenCalledExactlyOnceWith('a', { paneId: 'pane', side: 'center', index: 2 });
+    expect(fixture.store.moveDocument).not.toHaveBeenCalled();
+  } finally {
+    delete (document as Partial<Document>).elementFromPoint;
+  }
+});
+
 it('shows the dragged tab under the pointer, including outside the strip, and removes it on cancel', async () => {
   pointer(buttons[0], 'pointerdown', 80);
   pointer(buttons[0], 'pointermove', 82);

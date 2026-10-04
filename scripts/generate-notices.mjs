@@ -34,10 +34,11 @@ for (const pkg of metadata.packages.filter(p => p.source).sort((a,b) => a.id.loc
 }
 const text = sections.join('\n\n' + '='.repeat(78) + '\n\n') + '\n';
 const iconNotices = await Promise.all([
-  ['Material Icon Theme 5.38.1 (bundled SVGs)', 'https://github.com/material-extensions/vscode-material-icon-theme', 'material'],
-  ['Devicon 7330accdbc47e2dc0c19789a48533c4a3c50fe58 (bundled SVGs)', 'https://github.com/devicons/devicon', 'devicon'],
+  ['Material Icon Theme 5.38.1 (bundled SVGs)', 'https://github.com/material-extensions/vscode-material-icon-theme', 'packages/editor/src/language-icons/material'],
+  ['Devicon 7330accdbc47e2dc0c19789a48533c4a3c50fe58 (bundled SVGs)', 'https://github.com/devicons/devicon', 'packages/editor/src/language-icons/devicon'],
+  ['Phosphor Icons 2b75f3ad12b420c9504ef05df8d2564a28f8500e (bundled duotone SVGs)', 'https://github.com/phosphor-icons/core', 'packages/editor/src/callout-icons/phosphor'],
 ].map(async ([name, url, folder]) =>
-  `${name}\nLicense: MIT\n${url}\n\n${await readFile(join(root, 'packages/editor/src/language-icons', folder, 'LICENSE'), 'utf8')}`,
+  `${name}\nLicense: MIT\n${url}\n\n${await readFile(join(root, folder, 'LICENSE'), 'utf8')}`,
 ));
 for (const target of ['apps/client/public/THIRD_PARTY_NOTICES.txt', 'apps/mcp/THIRD_PARTY_NOTICES.txt']) {
   await mkdir(dirname(join(root, target)), { recursive: true });

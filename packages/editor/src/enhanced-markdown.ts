@@ -1,7 +1,10 @@
 import type { Plugin } from 'unified';
+import { unified } from 'unified';
+import remarkParse from 'remark-parse';
 import type { Parent, Root, RootContent } from 'mdast';
 import type { Handle } from 'mdast-util-to-markdown';
 import { defaultHandlers } from 'mdast-util-to-markdown';
+import { parseColumnWidths } from './column-widths';
 
 export type EnhancedKind = 'toggle' | 'tabs' | 'columns' | 'panel' | 'file' | 'embed';
 export interface EnhancedNode extends Parent {
@@ -9,6 +12,7 @@ export interface EnhancedNode extends Parent {
   kind: EnhancedKind;
   title: string;
   url: string;
+  widths?: string;
   children: RootContent[];
 }
 declare module 'mdast' {
@@ -36,6 +40,7 @@ interface Region {
   kind: EnhancedKind | 'callout';
   title: string;
   body: string;
+  widths?: string;
 }
 const decode = (text: string) =>
   text.replace(
@@ -60,10 +65,11 @@ export function enhancedRegions(source: string): Region[] {
     }
     if (code) continue;
     const panel = /^(:{3,})panel ("(?:[^"\\]|\\.)*")\s*$/.exec(line);
+    const columns = /^(:{3,})columns(?:\s+widths=([\d.,]+))?\s*$/.exec(line);
     const container =
       /^(:{3,})(tabs|columns|file|embed|callout)(?:\s+type=(note|tip|important|warning|caution))?\s*$/.exec(
         line,
-      ) ?? (panel ? [panel[0], panel[1], 'panel'] : null);
+      ) ?? (panel ? [panel[0], panel[1], 'panel'] : columns ? [columns[0], columns[1], 'columns'] : null);
     const details = /^<details>\s*$/.test(line);
     if (!container && !details) continue;
     if (container?.[3] && container[2] !== 'callout') continue;
@@ -122,12 +128,14 @@ export function enhancedRegions(source: string): Region[] {
     const body = source.slice(lines[bodyLine]?.index ?? 0, lines[end]!.index).trim();
     const kind = details ? 'toggle' : (container![2] as Region['kind']);
     if ((kind === 'tabs' || kind === 'columns') && !splitPanels(body)) continue;
+    if (columns?.[2] && !parseColumnWidths(columns[2], splitPanels(body)!.length)) continue;
     regions.push({
       start: lines[i]!.index!,
       end: lines[end]!.index! + lines[end]![0].length,
       kind,
       title: kind === 'callout' ? (container?.[3] ?? 'note').toUpperCase() : title,
       body,
+      ...(columns?.[2] ? { widths: columns[2] } : {}),
     });
     i = end;
   }
@@ -170,8 +178,32 @@ export function splitPanels(body: string): { title: string; body: string }[] | n
   }));
 }
 
+const quoteParser = unified().use(remarkParse);
 /** Strip only recognized wrappers for the compatibility guard; keep all enclosed content visible. */
 export function enhancedBody(source: string): string {
+  if (/^(?:[\t ]*>[\t ]*)+(?:<details>|:{3,}[a-z])/m.test(source)) {
+    const quotes: { start: number; end: number; body: string }[] = [];
+    const visit = (parent: Parent) => {
+      for (const node of parent.children) {
+        if (node.type === 'blockquote' && node.position) {
+          const start = node.position.start.offset!;
+          const end = node.position.end.offset!;
+          const body = source.slice(start, end).replace(/^[\t ]*>[\t ]?/gm, '');
+          if (/^(?:[\t ]*>[\t ]*)*(?:<details>|:{3,}[a-z])/m.test(body))
+            quotes.push({ start, end, body });
+        } else if ('children' in node) visit(node as Parent);
+      }
+    };
+    visit(quoteParser.parse(source) as Root);
+    if (quotes.length) {
+      let result = '', cursor = 0;
+      for (const quote of quotes) {
+        result += source.slice(cursor, quote.start) + '\n' + enhancedBody(quote.body) + '\n';
+        cursor = quote.end;
+      }
+      return enhancedBody(result + source.slice(cursor));
+    }
+  }
   let result = '',
     cursor = 0;
   for (const region of enhancedRegions(source)) {
@@ -190,7 +222,9 @@ const serialize: Handle = (node, _parent, state, info) => {
   const fence = ':'.repeat(
     Math.max(3, ...[...body.matchAll(/^(:{3,})/gm)].map((m) => m[1]!.length + 1)),
   );
-  return `${fence}${block.kind}${block.kind === 'panel' ? ` ${JSON.stringify(block.title.replace(/[\r\n]/g, ' '))}` : ''}\n\n${body}\n\n${fence}`;
+  const attributes = block.kind === 'panel' ? ` ${JSON.stringify(block.title.replace(/[\r\n]/g, ' '))}`
+    : block.kind === 'columns' && parseColumnWidths(block.widths, block.children.length) ? ` widths=${block.widths}` : '';
+  return `${fence}${block.kind}${attributes}\n\n${body}\n\n${fence}`;
 };
 
 export const remarkEnhanced: Plugin<[], Root> = function () {
@@ -209,7 +243,8 @@ export const remarkEnhanced: Plugin<[], Root> = function () {
   return (tree, file) => {
     const source = String(file.value);
     const regions = enhancedRegions(source);
-    if (!regions.length) return;
+    const quotedContainers = /^(?:[\t ]*>[\t ]*)+(?:<details>|:{3,}[a-z])/m.test(source);
+    if (!regions.length && !quotedContainers) return;
     // Reference definitions have document scope, including references inside containers.
     // Supply them while parsing fragments, then remove the synthetic definitions.
     const localDefinitions = (processor.parse(source) as Root).children
@@ -243,6 +278,25 @@ export const remarkEnhanced: Plugin<[], Root> = function () {
           return content as RootContent;
         });
     };
+    if (!regions.length) {
+      const visit = (parent: Parent) => {
+        for (const node of parent.children) {
+          if (node.type === 'blockquote' && node.position) {
+            // Parse the logical body without its outer quote prefix. The same
+            // transformer handles deeper quotes and enhanced containers recursively.
+            const body = source.slice(node.position.start.offset, node.position.end.offset)
+              .replace(/^[\t ]*>[\t ]?/gm, '');
+            if (/^(?:[\t ]*>[\t ]*)*(?:<details>|:{3,}[a-z])/m.test(body)) {
+              node.children = parse(body) as typeof node.children;
+              continue;
+            }
+          }
+          if ('children' in node) visit(node as Parent);
+        }
+      };
+      visit(tree);
+      return;
+    }
     const children: RootContent[] = [];
     let cursor = 0;
     for (const region of regions) {
@@ -304,6 +358,7 @@ export const remarkEnhanced: Plugin<[], Root> = function () {
             title: region.title,
             url: '',
             children: contents,
+            ...(region.widths ? { widths: region.widths } : {}),
           });
       }
       cursor = region.end;

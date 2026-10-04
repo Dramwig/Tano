@@ -1,7 +1,10 @@
 import type { NodeViewConstructor } from '@milkdown/kit/prose/view';
-import { safeResourceUrl } from './enhanced-markdown';
 import { watch } from 'vue';
 import { NodeSelection, TextSelection } from '@milkdown/kit/prose/state';
+import { resourceView } from './resource-views';
+import { columnsView } from './columns-view';
+
+let tabsId = 0;
 
 /** Presentation state (expanded toggle / active tab) stays out of Markdown and Yjs. */
 export function enhancedViews(
@@ -11,7 +14,10 @@ export function enhancedViews(
   revision: () => string | undefined = () => undefined,
 ): Record<string, NodeViewConstructor> {
   const views: Record<string, NodeViewConstructor> = {};
-  for (const kind of ['toggle', 'panel', 'tabs', 'columns', 'file', 'embed']) {
+  views.tano_file = resourceView('file', readonly, open, resolve, revision);
+  views.tano_embed = resourceView('embed', readonly, open, resolve, revision);
+  views.tano_columns = columnsView(readonly);
+  for (const kind of ['toggle', 'panel', 'tabs']) {
     views[`tano_${kind}`] = (node, view, getPos) => {
       let current = node,
         expanded = true,
@@ -26,12 +32,23 @@ export function enhancedViews(
       const content = document.createElement('div');
       content.className = 'tano-enhanced-content';
       const title = document.createElement('input');
+      const panelMenu = document.createElement('details');
+      panelMenu.className = 'tano-panel-menu';
+      const panelMenuTrigger = document.createElement('summary');
+      panelMenuTrigger.textContent = '⋯';
+      panelMenuTrigger.setAttribute('aria-label', '标签页操作');
+      panelMenuTrigger.title = '标签页操作';
+      const panelActions = document.createElement('div');
+      panelActions.className = 'tano-panel-actions';
+      panelActions.setAttribute('role', 'group');
+      panelActions.setAttribute('aria-label', '管理标签页');
       title.setAttribute(
         'aria-label',
         kind === 'toggle' ? '折叠块标题' : kind === 'panel' ? '分区标题' : '附件名称',
       );
       const toggle = document.createElement('button');
       toggle.type = 'button';
+      toggle.className = 'tano-toggle-trigger';
       toggle.setAttribute('aria-label', '展开或收起折叠块');
       const setAttrs = (attrs: Record<string, string>) => {
         const pos = getPos();
@@ -49,12 +66,12 @@ export function enhancedViews(
         render();
       };
       if (kind === 'toggle') header.append(toggle);
-      if (['toggle', 'panel', 'file', 'embed'].includes(kind)) header.append(title);
+      if (['toggle', 'panel'].includes(kind)) header.append(title);
       if (kind === 'toggle' || kind === 'panel') {
         const add = document.createElement('button');
         add.type = 'button';
         add.className = 'tano-add-child';
-        add.textContent = '＋ 子块';
+        add.textContent = kind === 'toggle' ? '+' : '＋ 子块';
         add.setAttribute('aria-label', '添加子块');
         add.title = '添加子块，输入 / 选择类型';
         add.onclick = () => {
@@ -67,6 +84,7 @@ export function enhancedViews(
           const tr = view.state.tr;
           if (!reuse) tr.insert(at, view.state.schema.nodes.paragraph!.create());
           tr.setSelection(TextSelection.create(tr.doc, reuse ? at - last!.nodeSize + 1 : at + 1));
+          if (dom.dataset.tabPanel === 'true') panelMenu.open = false;
           view.dispatch(tr.scrollIntoView());
           render();
           view.focus();
@@ -88,6 +106,7 @@ export function enhancedViews(
           button.type = 'button';
           button.textContent = action === 'up' ? '←' : action === 'down' ? '→' : '×';
           button.setAttribute('aria-label', label);
+          button.title = label;
           button.onclick = () => {
             const pos = getPos();
             if (pos === undefined || readonly()) return;
@@ -111,17 +130,31 @@ export function enhancedViews(
           };
           header.append(button);
         }
+        panelActions.append(...Array.from(header.children));
+        panelMenu.append(panelMenuTrigger, panelActions);
+        header.append(panelMenu);
+        panelMenu.onkeydown = (event) => {
+          if (event.key !== 'Escape' || !panelMenu.open) return;
+          event.preventDefault();
+          panelMenu.open = false;
+          panelMenuTrigger.focus();
+        };
       }
       const tabs = document.createElement('div');
       tabs.className = 'tano-tab-list';
       tabs.setAttribute('role', 'tablist');
       tabs.setAttribute('aria-label', '内容标签页');
-      if (kind === 'tabs') header.append(tabs);
-      if (kind === 'tabs' || kind === 'columns') {
+      if (kind === 'tabs') {
+        dom.id = `tano-tabs-${++tabsId}`;
+        header.append(tabs);
+      }
+      if (kind === 'tabs') {
         const add = document.createElement('button');
         add.type = 'button';
-        add.textContent = kind === 'tabs' ? '＋ 标签页' : '＋ 分栏';
-        add.setAttribute('aria-label', kind === 'tabs' ? '添加标签页' : '添加分栏');
+        add.className = 'tano-add-panel';
+        add.textContent = '+';
+        add.setAttribute('aria-label', '添加标签页');
+        add.title = '添加标签页';
         add.onclick = () => {
           const pos = getPos();
           if (pos === undefined || readonly()) return;
@@ -134,40 +167,41 @@ export function enhancedViews(
         };
         header.append(add);
       }
-      const resource = kind === 'file' || kind === 'embed';
-      const url = document.createElement('input');
-      url.setAttribute('aria-label', '附件地址');
-      url.onchange = () => {
-        if (safeResourceUrl(url.value)) {
-          url.setCustomValidity('');
-          setAttrs({ url: url.value });
-        } else {
-          url.setCustomValidity('请使用 HTTP(S) 地址或工作空间内的相对路径');
-          url.reportValidity();
-        }
-      };
-      const link = document.createElement('button');
-      link.type = 'button';
-      link.textContent = '打开附件';
-      link.onclick = () => {
-        if (safeResourceUrl(current.attrs.url)) open(current.attrs.url);
-      };
-      const preview = document.createElement('div');
-      preview.className = 'tano-embed-preview';
-      if (resource) {
-        header.append(url, link);
-        dom.append(header, preview);
-      } else dom.append(header, content);
+      dom.append(header, content);
+      function closePanelMenu(event: Event) {
+        if (dom.dataset.tabPanel === 'true' && !panelMenu.contains(event.target as globalThis.Node))
+          panelMenu.open = false;
+      }
+      if (kind === 'panel') document.addEventListener('pointerdown', closePanelMenu);
+      function refreshPanel() { render(); }
+      if (kind === 'panel') dom.addEventListener('tano-panel-layout', refreshPanel);
       function render() {
         dom.dataset.title = current.attrs.title;
         dom.dataset.url = current.attrs.url;
         title.value = current.attrs.title;
         title.readOnly = readonly();
-        url.readOnly = readonly();
         header.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {
-          if (button !== toggle && button !== link) button.disabled = readonly();
+          if (button !== toggle) button.disabled = readonly();
         });
-        url.value = current.attrs.url;
+        if (kind === 'panel') {
+          const pos = getPos();
+          const tabPanel = pos !== undefined && view.state.doc.resolve(pos).parent.type.name === 'tano_tabs';
+          const columnPanel = pos !== undefined && view.state.doc.resolve(pos).parent.type.name === 'tano_columns';
+          header.hidden = columnPanel;
+          if (dom.dataset.tabPanel !== String(tabPanel)) panelMenu.open = !tabPanel;
+          dom.dataset.tabPanel = String(tabPanel);
+          panelMenu.hidden = tabPanel && readonly();
+          if (tabPanel && readonly()) panelMenu.open = false;
+          const $pos = pos !== undefined ? view.state.doc.resolve(pos) : null;
+          const index = $pos?.index() ?? 0;
+          for (const [label, disabled] of [
+            ['前移分区', index === 0],
+            ['后移分区', index === ($pos?.parent.childCount ?? 1) - 1],
+            ['删除分区', ($pos?.parent.childCount ?? 1) <= 1],
+          ] as const) {
+            header.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!.disabled = readonly() || disabled;
+          }
+        }
         if (kind === 'toggle') {
           toggle.textContent = expanded ? '▾' : '▸';
           toggle.setAttribute('aria-expanded', String(expanded));
@@ -180,11 +214,14 @@ export function enhancedViews(
             const button = document.createElement('button');
             button.type = 'button';
             button.setAttribute('role', 'tab');
+            button.id = `${dom.id}-tab-${index}`;
+            button.setAttribute('aria-controls', `${dom.id}-panel-${index}`);
             button.setAttribute('aria-selected', String(index === active));
             button.textContent = panel.attrs.title || `标签页 ${index + 1}`;
             button.onclick = () => {
               active = index;
               render();
+              tabs.querySelectorAll<HTMLButtonElement>('button')[active]?.focus();
             };
             button.tabIndex = index === active ? 0 : -1;
             button.onkeydown = (event) => {
@@ -206,43 +243,37 @@ export function enhancedViews(
           dom.style.setProperty('--tano-active-tab', String(active));
           dom.dataset.activeTab = String(active);
           Array.from(content.children).forEach((child, index) => {
-            (child as HTMLElement).hidden = index !== active;
+            const panel = child as HTMLElement;
+            panel.id = `${dom.id}-panel-${index}`;
+            panel.setAttribute('role', 'tabpanel');
+            panel.setAttribute('aria-labelledby', `${dom.id}-tab-${index}`);
+            panel.hidden = index !== active;
+            if (index !== active) {
+              const menu = panel.querySelector<HTMLDetailsElement>('.tano-panel-menu');
+              if (menu) menu.open = false;
+            }
           });
         }
-        if (resource) {
-          link.disabled = !safeResourceUrl(current.attrs.url);
-          preview.replaceChildren();
-          if (kind === 'embed') {
-            const reference = String(current.attrs.url);
-            const resolved = safeResourceUrl(reference) ? resolve(reference) : null;
-            if (resolved && /\.(?:png|jpe?g|gif|webp|svg)(?:[?#]|$)/i.test(reference)) {
-              const img = document.createElement('img');
-              img.src = resolved;
-              img.alt = current.attrs.title;
-              img.referrerPolicy = 'no-referrer';
-              img.onerror = () => {
-                preview.textContent = '图片暂不可用，可点击“打开附件”查看';
-              };
-              preview.append(img);
-            } else if (resolved && /\.(?:mp4|webm|mp3|wav|ogg)(?:[?#]|$)/i.test(reference)) {
-              const media = document.createElement(
-                /\.(?:mp3|wav|ogg)(?:[?#]|$)/i.test(reference) ? 'audio' : 'video',
-              );
-              media.src = resolved;
-              media.controls = true;
-              media.preload = 'none';
-              media.onerror = () => {
-                preview.textContent = '音视频暂不可用，可点击“打开附件”查看';
-              };
-              preview.append(media);
-            } else {
-              preview.textContent = '链接预览 · 点击“打开附件”查看文件或网页';
-            }
-          }
+        if (kind === 'tabs') {
+          queueMicrotask(() => {
+            if (dom.isConnected)
+              for (const panel of content.children) panel.dispatchEvent(new Event('tano-panel-layout'));
+          });
         }
         // Gutter handles live outside the node view and must follow collapsed/hidden children.
         if (dom.isConnected) dom.dispatchEvent(new Event('tano-block-layout', { bubbles: true }));
       }
+      function revealSearch(event: Event) {
+        const target = event.target as globalThis.Node;
+        if (!content.contains(target)) return;
+        if (kind === 'toggle') expanded = true;
+        else if (kind === 'tabs') {
+          const index = Array.from(content.children).findIndex(panel => panel.contains(target));
+          if (index >= 0) active = index;
+        } else return;
+        render();
+      }
+      dom.addEventListener('tano-reveal-search', revealSearch);
       render();
       const stop = watch(() => [readonly(), revision()], render);
       // Child DOM is mounted by ProseMirror after construction.
@@ -251,9 +282,15 @@ export function enhancedViews(
       });
       return {
         dom,
-        ...(resource ? {} : { contentDOM: content }),
+        contentDOM: content,
         update(next) {
           if (next.type !== current.type) return false;
+          if (kind === 'tabs' && active < current.childCount) {
+            const selected = current.child(active);
+            next.forEach((panel, _offset, index) => {
+              if (panel === selected) active = index;
+            });
+          }
           current = next;
           render();
           queueMicrotask(() => {
@@ -261,18 +298,19 @@ export function enhancedViews(
           });
           return true;
         },
-        stopEvent: (event) =>
-          header.contains(event.target as globalThis.Node) ||
-          preview.contains(event.target as globalThis.Node),
+        stopEvent: (event) => header.contains(event.target as globalThis.Node),
         ignoreMutation: (mutation) =>
           mutation.type !== 'selection' &&
           (header.contains(mutation.target) ||
-            preview.contains(mutation.target) ||
             mutation.target === dom ||
             (mutation.type === 'attributes' && mutation.attributeName === 'hidden')),
         destroy() {
           stop();
-          title.oninput = url.onchange = toggle.onclick = link.onclick = title.onkeydown = null;
+          if (kind === 'panel') document.removeEventListener('pointerdown', closePanelMenu);
+          dom.removeEventListener('tano-panel-layout', refreshPanel);
+          dom.removeEventListener('tano-reveal-search', revealSearch);
+          panelMenu.onkeydown = null;
+          title.oninput = toggle.onclick = title.onkeydown = null;
         },
       };
     };

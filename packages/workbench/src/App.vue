@@ -31,6 +31,7 @@ import {
   ArrowRight,
   AlertTriangle,
   RefreshCw,
+  Repeat2,
   Pencil,
   Trash2,
   Bot,
@@ -38,7 +39,6 @@ import {
   CheckCheck,
   Copy,
   LoaderCircle,
-  Paperclip,
   Users,
   Puzzle,
   GitFork,
@@ -63,6 +63,8 @@ import type { EditorPreferences } from '@tano/editor/runtime';
 import { defaultSelectionContext } from '@tano/editor/document-model';
 import type { EditorSelectionContext } from '@tano/editor/document-model';
 import SourceEditor from './components/SourceEditor.vue';
+import AttachmentPreview from './components/AttachmentPreview.vue';
+import PageSearch from './components/PageSearch.vue';
 import EmptyEditor from './components/EmptyEditor.vue';
 import MarkdownRevealToggle from './components/MarkdownRevealToggle.vue';
 import DocumentTitle from './components/DocumentTitle.vue';
@@ -179,16 +181,20 @@ const sidebarNavigationItems = computed(() => [
   { id: 'plan', label: '计划' },
   ...extensionViews.filter(view => view.sidebar).map(view => ({ id: view.id, label: view.label })),
 ]);
+const sidebarHeaderItems = computed(() => [
+  ...extensionViews.filter(view => view.header).map(view => ({ id: view.id, label: view.label })),
+  { id: 'graph', label: '关系图谱' },
+  { id: 'plugins', label: '插件' },
+]);
 const documentToolItems = [
   { id: 'markdown-reveal', label: '光标展开源码' },
   { id: 'source-mode', label: '源码模式' },
-  { id: 'attachments', label: '附件' },
 ];
 const topbarItems = [
   { id: 'back', label: '后退' },
   { id: 'forward', label: '前进' },
-  { id: 'breadcrumb', label: '面包屑' },
-  { id: 'workspace-status', label: '工作区状态' },
+  { id: 'breadcrumb', label: '面包屑', separatorBefore: true },
+  { id: 'workspace-status', label: '工作区状态', separatorBefore: true },
 ];
 const workspaceStatusLabel = computed(() => store.workspace?.readOnly ? '只读权限'
   : store.isDemo ? '浏览器演示' : store.isWeb ? '在线工作区' : null);
@@ -202,9 +208,10 @@ const calendarToolItems = [
 ];
 function topbarVisibilityItems(tabId: string, hasDocument: boolean, activePane: boolean) {
   return [
-    ...topbarItems.filter(item => item.id !== 'breadcrumb' || tabId !== CALENDAR_TAB_ID),
+    ...topbarItems.filter(item => item.id !== 'breadcrumb' || (tabId !== CALENDAR_TAB_ID && tabId !== GRAPH_TAB_ID)),
     ...(activePane && extensions.regions['editing-status'] ? [{ id: 'editing-status', label: '同步状态' }] : []),
     ...(tabId === CALENDAR_TAB_ID ? calendarToolItems : []),
+    ...(tabId.startsWith('attachment:') && attachments ? [{ id: 'attachment-export', label: '导出附件' }] : []),
     ...(hasDocument ? documentToolItems : []),
   ];
 }
@@ -869,6 +876,17 @@ const paneSelections = shallowReactive<Record<string, EditorSelectionContext>>({
 const paneScrolls = shallowReactive(new Map<string, HTMLElement>());
 const paneEditorScrolls = shallowReactive(new Map<string, HTMLElement>());
 const paneSourceEditors = shallowReactive(new Map<string, InstanceType<typeof SourceEditor>>());
+const paneSearches = new Map<string, InstanceType<typeof PageSearch>>();
+const paneSearchRevisions = shallowReactive<Record<string, number>>({});
+function setPaneSearch(id: string, value: unknown) {
+  if (value) paneSearches.set(id, value as InstanceType<typeof PageSearch>);
+  else paneSearches.delete(id);
+}
+function openPaneSearch(id = store.activePaneId, replace = false) {
+  menu.value = false;
+  if (window.innerWidth <= 700) sidebar.value = false;
+  void paneSearches.get(id)?.open(replace);
+}
 const documentScroll = computed(() => paneScrolls.get(store.activePaneId));
 const editorScroll = computed(() => paneEditorScrolls.get(store.activePaneId));
 const sourceEditor = computed(() => paneSourceEditors.get(store.activePaneId));
@@ -977,12 +995,6 @@ function insertBlockBelowTitle(workspaceId: string, documentId: string) {
 }
 const activeHeading = ref(0);
 let headingFrame: number | undefined;
-const fileInput = ref<HTMLInputElement>();
-let attachmentTarget: { paneId: string; documentId: string } | undefined;
-function pickFilesFor(paneId: string, doc: OpenDocument) {
-  attachmentTarget = { paneId, documentId: doc.id };
-  fileInput.value?.click();
-}
 async function dragPaneWindow(event: MouseEvent) {
   if (event.button !== 0 || event.detail !== 1) return;
   const { getCurrentWindow } = await import('@tauri-apps/api/window');
@@ -1037,20 +1049,6 @@ async function insertSourceFiles(files: File[], position: number, requireImage: 
     attachmentBusy.value = false;
   }
 }
-function pickedFiles(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const files = Array.from(input.files ?? []);
-  input.value = '';
-  const target = attachmentTarget;
-  attachmentTarget = undefined;
-  if (!target || !files.length) return;
-  const doc = store.documents.find(item => item.id === target.documentId);
-  const pane = store.panes.find(item => item.id === target.paneId);
-  if (!doc || pane?.activeId !== doc.id || paneReadonly(doc)) return;
-  if (paneSource(doc.id))
-    void insertSourceFiles(files, paneSourceEditors.get(pane.id)?.cursor() ?? doc.content.length, false, doc, pane.id);
-  else paneEditors.get(pane.id)?.importFiles(files);
-}
 
 async function openEntry(file: FileEntry, newTab = false) {
   if (isObjectPath(file.path)) {
@@ -1062,6 +1060,11 @@ async function openEntry(file: FileEntry, newTab = false) {
   if (isMarkdown(file.path)) {
     if (newTab) await store.openFileInNewTab(file);
     else await store.openFile(file);
+    if (window.innerWidth <= 700) sidebar.value = false;
+    return;
+  }
+  if (newTab) {
+    store.openAttachmentInNewTab(file);
     if (window.innerWidth <= 700) sidebar.value = false;
     return;
   }
@@ -1464,8 +1467,8 @@ function fileContextKeydown(event: KeyboardEvent) {
   else next = (index + (event.key === 'ArrowDown' ? 1 : buttons.length - 1)) % buttons.length;
   buttons[next]?.focus();
 }
-async function openDocumentLink(reference: string) {
-  if (!workspace.value || !active.value) return;
+async function openDocumentLink(reference: string, newTab = false, documentPath = active.value?.path) {
+  if (!workspace.value || documentPath === undefined) return;
   if (/^(?:https?:\/\/|mailto:)/i.test(reference)) {
     if (native) {
       try {
@@ -1476,9 +1479,9 @@ async function openDocumentLink(reference: string) {
     } else window.open(reference, '_blank', 'noopener,noreferrer');
     return;
   }
-  const path = resolveWorkspaceReference(active.value.path, reference);
+  const path = resolveWorkspaceReference(documentPath, reference);
   const file = workspace.value.files.find((entry) => entry.path === path && entry.kind === 'file');
-  if (file) await openEntry(file);
+  if (file) await openEntry(file, newTab);
   else store.report('此链接不在当前工作空间；请复制链接到浏览器打开');
 }
 async function openWikiLink(target: string) {
@@ -1826,6 +1829,11 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
   }
   const tab = store.tabs.find((item) => item.id === id);
   if (!tab) { settled?.(); return; }
+  if (tab.attachmentPreview) {
+    store.report('附件预览暂不支持移到其他窗口。');
+    settled?.();
+    return;
+  }
   if (tab.view && !tab.view.detachable) {
     store.report(tab.view.detachBlockedMessage ?? '此视图保留在当前窗口，暂不支持移到其他窗口。');
     settled?.();
@@ -2116,6 +2124,24 @@ function handleSidebarShortcut(event: KeyboardEvent) {
   event.stopPropagation();
   toggleSidebar();
 }
+function handlePageSearchShortcut(event: KeyboardEvent) {
+  if (importPanel.value || settingsPanel.value || updateLock.value || modal.value ||
+      event.isComposing || event.keyCode === 229 || event.altKey) return;
+  const search = paneSearches.get(store.activePaneId);
+  if (!search) return;
+  const key = event.key.toLowerCase();
+  if ((event.ctrlKey || event.metaKey) && (key === 'f' || key === 'h') && !event.shiftKey) {
+    event.preventDefault();
+    event.stopPropagation();
+    openPaneSearch(store.activePaneId, key === 'h');
+  } else if (search.isOpen() && (key === 'escape' ||
+    ((event.ctrlKey || event.metaKey) && key === 'g'))) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (key === 'escape') search.close();
+    else search.navigate(event.shiftKey ? -1 : 1);
+  }
+}
 function keydown(event: KeyboardEvent) {
   if (importPanel.value) return;
   if (settingsPanel.value) {
@@ -2272,6 +2298,7 @@ let settingsPrewarmTimer: number | undefined;
 onMounted(async () => {
   if (!detachedWindow) window.addEventListener('keydown', handleSidebarShortcut, true);
   window.addEventListener('keydown', keydown);
+  window.addEventListener('keydown', handlePageSearchShortcut, true);
   window.addEventListener('beforeunload', beforeUnload);
   window.addEventListener('click', outsideClick);
   window.addEventListener('contextmenu', outsideContextMenu);
@@ -2344,6 +2371,7 @@ onBeforeUnmount(() => {
   void editing.dispose().catch(store.report);
   window.removeEventListener('keydown', handleSidebarShortcut, true);
   window.removeEventListener('keydown', keydown);
+  window.removeEventListener('keydown', handlePageSearchShortcut, true);
   window.removeEventListener('beforeunload', beforeUnload);
   window.removeEventListener('click', outsideClick);
   window.removeEventListener('contextmenu', outsideContextMenu);
@@ -2380,7 +2408,6 @@ watch(activeId, () => {
 </script>
 
 <template>
-  <input ref="fileInput" type="file" multiple hidden @change="pickedFiles" />
   <Teleport v-if="native && !mobile && workspace && compactPanes" to="#desktop-window-tab-slot">
     <button
       v-if="!detachedWindow"
@@ -2444,15 +2471,24 @@ watch(activeId, () => {
               <PanelLeftClose :size="17" :stroke-width="1.6" />
             </button>
           </div>
-          <div class="sidebar-header-actions">
+          <ButtonVisibilityGroup
+            v-slot="{ isVisible }"
+            :items="sidebarHeaderItems"
+            preference-key="tano.preference.sidebarHiddenHeaderActions"
+            group-class="sidebar-header-actions"
+            label="侧栏顶部按钮"
+            menu-label="侧栏顶部按钮显示设置"
+            @open="closeButtonVisibilityMenus"
+          >
             <template v-for="view in extensionViews" :key="`header-${view.id}`">
               <component
                 :is="view.header"
-                v-if="view.header"
+                v-if="view.header && isVisible(view.id)"
                 :actions="viewActions[view.id]"
               />
             </template>
             <button
+              v-if="isVisible('graph')"
               type="button"
               class="icon-button"
               aria-label="打开关系图谱"
@@ -2463,6 +2499,7 @@ watch(activeId, () => {
               <GitFork :size="17" :stroke-width="1.6" />
             </button>
             <button
+              v-if="isVisible('plugins')"
               type="button"
               class="icon-button"
               aria-label="打开插件标签页"
@@ -2472,7 +2509,7 @@ watch(activeId, () => {
             >
               <Puzzle :size="17" :stroke-width="1.6" />
             </button>
-          </div>
+          </ButtonVisibilityGroup>
         </div>
         <SidebarNavigation
           v-slot="{ isVisible }"
@@ -2971,22 +3008,14 @@ watch(activeId, () => {
 
     <div class="main-column">
       <div v-if="workspace && compactPanes && (!native || mobile)" class="workspace-tabbar">
-        <button v-if="!detachedWindow && !sidebar && activeId === GRAPH_TAB_ID"
-          class="icon-button graph-sidebar-toggle" type="button" aria-label="展开侧栏" title="展开侧栏 · Ctrl B" @click="toggleSidebar">
-          <PanelLeftOpen :size="17" />
-        </button>
         <DesktopTabs :file-drag="tabFileDrag" @files-dropped="fileDragEnd" @new-tab="store.createBlankTab()" @new-document="createNewDocument" />
       </div>
 
       <WorkspacePanes v-if="workspace" :compact="compactPanes" :class="{ 'workspace-native-tabs': native && !mobile && !compactPanes }">
-        <template #default="{ pane, rect, document: active }">
+        <template #default="{ pane, rect, document: active, tab }">
           <div v-if="!compactPanes" class="workspace-tabbar" :data-tab-pane-id="pane.id">
             <button v-if="native && !mobile && !detachedWindow && !sidebar && rect.top === 0 && rect.left === 0"
               class="desktop-sidebar-toggle" type="button" aria-label="展开侧栏" title="展开侧栏 · Ctrl B" @click="toggleSidebar">
-              <PanelLeftOpen :size="17" />
-            </button>
-            <button v-if="(!native || mobile) && !detachedWindow && !sidebar && pane.activeId === GRAPH_TAB_ID"
-              class="icon-button graph-sidebar-toggle" type="button" aria-label="展开侧栏" title="展开侧栏 · Ctrl B" @click="toggleSidebar">
               <PanelLeftOpen :size="17" />
             </button>
             <DesktopTabs :pane-id="pane.id" :detachable="native && !mobile" :file-drag="tabFileDrag"
@@ -2996,19 +3025,19 @@ watch(activeId, () => {
               @mousedown="dragPaneWindow" @dblclick="maximizePaneWindow" />
           </div>
           <ButtonVisibilityGroup
-            v-if="!detachedWindow && pane.activeId !== GRAPH_TAB_ID"
+            v-if="!detachedWindow"
             v-slot="{ isVisible }"
             :items="topbarVisibilityItems(pane.activeId, !!active, pane.id === store.activePaneId)"
             preference-key="tano.preference.documentHiddenTools"
             tag="header"
-            group-class="topbar"
-            label="文档顶部栏"
+            :group-class="pane.activeId === GRAPH_TAB_ID ? 'topbar graph-topbar' : 'topbar'"
+            :label="pane.activeId === GRAPH_TAB_ID ? '图谱顶部栏' : '文档顶部栏'"
             menu-label="顶部栏显示设置"
             @open="closeButtonVisibilityMenus"
           >
             <div
               v-if="isVisible('back') || isVisible('forward') || (!sidebar && !(native && !mobile && workspace))"
-              class="topbar-navigation" role="group" aria-label="文档导航"
+              class="topbar-navigation" role="group" :aria-label="pane.activeId === GRAPH_TAB_ID ? '图谱导航' : '文档导航'"
             >
               <button
                 v-if="!sidebar && !(native && !mobile && workspace)"
@@ -3043,21 +3072,26 @@ watch(activeId, () => {
                 <ArrowRight :size="16" :stroke-width="1.6" />
               </button>
             </div>
-            <nav v-if="isVisible('breadcrumb') && pane.activeId !== CALENDAR_TAB_ID" class="breadcrumb" aria-label="当前位置">
+            <nav v-if="isVisible('breadcrumb') && pane.activeId !== CALENDAR_TAB_ID && pane.activeId !== GRAPH_TAB_ID" class="breadcrumb" aria-label="当前位置">
               <span class="breadcrumb-workspace"
                 ><BookOpen :size="14" />{{ workspace?.name ?? 'Tano' }}</span
               ><template v-if="pane.activeId === PLUGINS_TAB_ID"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">插件</span></template
               ><template v-for="view in extensionViews.filter(view => view.id === pane.activeId)" :key="view.id"><ChevronRight :size="12" /><component :is="view.icon" :size="14" /><span class="breadcrumb-current">{{ view.label }}</span></template
-              ><template v-for="(part, index) in (active?.path.split('/') ?? [])" :key="index"
+              ><template v-for="(part, index) in (tab?.path ? tab.path.split('/') : [])" :key="index"
                 ><ChevronRight :size="12" /><component
-                  :is="index === active!.path.split('/').length - 1 ? FileText : FolderOpen"
+                  :is="index === tab!.path.split('/').length - 1 ? FileText : FolderOpen"
                   :size="14"
-                /><span :class="{ 'breadcrumb-current': index === active!.path.split('/').length - 1 }">{{
-                  index === active!.path.split('/').length - 1 ? basename(active!.path).replace(/\.(md|markdown)$/i, '') : part
+                /><span :class="{ 'breadcrumb-current': index === tab!.path.split('/').length - 1 }" :title="part">{{
+                  index === tab!.path.split('/').length - 1 && active ? part.replace(/\.(md|markdown)$/i, '') : part
                 }}</span></template
               >
             </nav>
             <div class="topbar-right">
+              <button v-if="tab?.attachment && attachments && isVisible('attachment-export')"
+                type="button" class="topbar-attachment-action" aria-label="导出附件" title="导出附件副本"
+                @click="attachments.exportAttachment(workspace!.id, tab.attachment.path).catch(store.report)">
+                <ArrowDownToLine :size="16" /><span>导出</span>
+              </button>
               <component  :is="extensions.regions['editing-status']" v-if="isVisible('editing-status') && pane.id === store.activePaneId && extensions.regions['editing-status']" :actions="extensionActions" />
               <span
                 v-if="isVisible('workspace-status') && workspaceStatusLabel"
@@ -3068,6 +3102,7 @@ watch(activeId, () => {
                 <Globe2 v-else-if="store.isWeb" :size="14" />
                 {{ workspaceStatusLabel }}
               </span>
+              <div :id="`graph-controls-${pane.id}`" v-show="pane.activeId === GRAPH_TAB_ID" class="graph-toolbar-host" />
               <div v-if="pane.activeId === CALENDAR_TAB_ID && calendarToolItems.some(item => isVisible(item.id))" class="calendar-topbar-controls" role="group" aria-label="日历导航">
                 <span v-if="isVisible('calendar-period')" class="calendar-topbar-period">{{ calendarPeriod }}</span>
                 <button v-if="isVisible('calendar-today')" type="button" class="calendar-topbar-today" @click="calendarDate = new Date()">今天</button>
@@ -3122,15 +3157,6 @@ watch(activeId, () => {
                   >
                     <Code2 :size="17" />
                   </button>
-                  <button
-                    v-if="attachments && isVisible('attachments')"
-                    type="button"
-                    class="icon-button"
-                    aria-label="导入图片或附件"
-                    title="导入图片或附件"
-                    :disabled="paneReadonly(active!) || attachmentBusy"
-                    @click="pickFilesFor(pane.id, active!)"
-                  ><Paperclip :size="17" /></button>
                 </div>
                 <div class="menu-wrap">
                   <button
@@ -3178,6 +3204,12 @@ watch(activeId, () => {
                       <Trash2 :size="15" />{{
                         store.isDemo ? '删除演示文档' : store.isWeb ? '删除在线文档' : '移入回收站'
                       }}
+                    </button>
+                    <button type="button" @click="openPaneSearch(pane.id)">
+                      <Search :size="15" />页内搜索<span class="menu-shortcut">Ctrl F</span>
+                    </button>
+                    <button type="button" @click="openPaneSearch(pane.id, true)">
+                      <Repeat2 :size="15" />查找与替换<span class="menu-shortcut">Ctrl H</span>
                     </button>
                     <div class="menu-divider" role="separator" />
                     <button
@@ -3241,7 +3273,8 @@ watch(activeId, () => {
             </div>
           </ButtonVisibilityGroup>
           <KeepAlive v-if="pane.tabs.includes(GRAPH_TAB_ID)">
-            <RelationGraph v-if="workspace && pane.activeId === GRAPH_TAB_ID" :key="`${workspace.id}:${workspace.path}`" />
+            <RelationGraph v-if="workspace && pane.activeId === GRAPH_TAB_ID" :key="`${workspace.id}:${workspace.path}`"
+              :controls-target="detachedWindow ? undefined : `#graph-controls-${pane.id}`" />
           </KeepAlive>
 
           <CalendarView
@@ -3278,6 +3311,14 @@ watch(activeId, () => {
           </main>
 
           <template v-if="active">
+            <PageSearch
+              :key="`search:${active.id}`"
+              :ref="el => setPaneSearch(pane.id, el)"
+              :editor="paneSource(pane.activeId) ? paneSourceEditors.get(pane.id) : paneEditors.get(pane.id)"
+              :content="active.content"
+              :readonly="paneReadonly(active!)"
+              :revision="paneSearchRevisions[pane.id]"
+            />
             <div :key="active.id" :ref="el => setPaneElement('scroll', pane.id, el)" class="document-layout"
               :data-toolbar-dock="pane.id === store.activePaneId && !paneSource(pane.activeId) && !paneReadonly(active!) ? toolbarMode : undefined"
               @scroll.passive="scheduleActiveHeading">
@@ -3326,15 +3367,6 @@ watch(activeId, () => {
                         :title="paneSource(pane.activeId) ? '返回编辑' : '切换源码模式'"
                         @click="sourceModes[pane.activeId] = !paneSource(pane.activeId)"
                       ><Code2 :size="17" /></button>
-                      <button
-                        v-if="attachments && isVisible('attachments')"
-                        type="button"
-                        class="icon-button"
-                        aria-label="导入图片或附件"
-                        title="导入图片或附件"
-                        :disabled="paneReadonly(active!) || attachmentBusy"
-                        @click="pickFilesFor(pane.id, active!)"
-                      ><Paperclip :size="17" /></button>
                     </ButtonVisibilityGroup>
                   </template>
                 </EditorTools>
@@ -3446,7 +3478,9 @@ watch(activeId, () => {
                     @update:model-value="store.editDocument(active!.id, $event)"
                     @table-layout-change="store.editTableLayout(active!.id, $event)"
                     @error="store.report"
-                    @open-link="openDocumentLink"
+                    @ready="paneSearchRevisions[pane.id] = (paneSearchRevisions[pane.id] ?? 0) + 1"
+                    @search-change="paneSearchRevisions[pane.id] = (paneSearchRevisions[pane.id] ?? 0) + 1"
+                    @open-link="(reference, newTab) => openDocumentLink(reference, newTab, active!.path)"
                     @open-wiki-link="openWikiLink"
                     @open-reference="openReference"
                     @edit-source="sourceModes[pane.activeId] = true"
@@ -3474,6 +3508,12 @@ watch(activeId, () => {
 
           </template>
 
+          <AttachmentPreview
+            v-else-if="workspace && pane.activeId.startsWith('attachment:')"
+            :file="tab?.attachment"
+            :url="attachments && tab?.attachment
+              ? attachments.imageUrl(workspace, '', relativeWorkspaceReference('', tab.attachment.path)) : null"
+          />
           <main v-else-if="workspace && pane.activeId !== GRAPH_TAB_ID && pane.activeId !== PLUGINS_TAB_ID && pane.activeId !== CALENDAR_TAB_ID && !extensionViews.find(view => view.id === pane.activeId)" class="workspace-no-tabs">
             <EmptyEditor
               :create-disabled="busy || workspace.readOnly || updateLock"

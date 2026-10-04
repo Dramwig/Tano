@@ -98,6 +98,92 @@ it('uses the space beside centered prose for annotations and keeps the reply dra
   expect(reply.value).toBe('切换布局仍保留的草稿');
 });
 
+it('groups annotations on the same row after creation and opens the clicked thread without toggling or losing replies', async () => {
+  const adapter = new DemoAdapter();
+  const pinia = configureWorkbench(createPinia(), { adapter, native: false, mobile: false });
+  setActivePinia(pinia);
+  const author = { id: 'reviewer', name: '审阅者' };
+  const content = '列表、引用、表格，分隔线、行内样式\n其他段落';
+  const hash = await sha256(content);
+  const openDocument = reactive<OpenDocument>({
+    id: 'a0b1c2', path: '文章.md', content,
+    base: { content, hash, modified: Date.now() }, saving: false, missing: false,
+  });
+  const span = (text: string) => ({ from: content.indexOf(text), to: content.indexOf(text) + text.length, text });
+  await saveCommentChange(adapter, 'annotation', openDocument.id, {
+    type: 'start', id: 'thread-1', body: '第一部分的批注', author,
+    anchor: makeCommentAnchor('prose', content, [span('列表、引用、表格')], hash),
+  });
+  await saveCommentChange(adapter, 'annotation', openDocument.id, {
+    type: 'start', id: 'other-row', body: '其他段落的批注', author,
+    anchor: makeCommentAnchor('prose', content, [span('其他段落')], hash),
+  });
+  root = document.createElement('div');
+  document.body.append(root);
+  const editorElement = document.createElement('div');
+  const comments = ref<InstanceType<typeof DocumentComments>>();
+  app = createApp(defineComponent(() => () => h('main', { class: 'document-main' }, h(DocumentComments, {
+    ref: comments, workspaceId: 'demo', document: openDocument, readonly: false, author, editorElement,
+    captureSelection: () => ({ basis: 'prose' as const, text: content, spans: [span('分隔线、行内样式')] }),
+    focusAnchor: () => {},
+    geometry: (anchors = []) => ({ left: 100, right: 700, blocks: [
+      { key: 'first', ids: anchors.filter(anchor => anchor.id !== 'other-row').map(anchor => anchor.id), top: 100, bottom: 140 },
+      { key: 'other', ids: ['other-row'], top: 200, bottom: 240 },
+    ] }),
+  }))));
+  app.use(pinia).mount(root);
+  const main = root.querySelector('main')!;
+  main.append(editorElement);
+  main.getBoundingClientRect = () => new DOMRect(0, 0, 800, 900);
+  await expect.poll(() => root!.querySelectorAll('.annotation-count').length).toBe(2);
+  await comments.value!.beginAnnotation();
+  const draft = root.querySelector<HTMLTextAreaElement>('[aria-label="添加批注"]')!;
+  draft.value = '第二部分的批注';
+  draft.dispatchEvent(new Event('input', { bubbles: true }));
+  await nextTick();
+  root.querySelector<HTMLButtonElement>('[aria-label="发表添加批注"]')!.click();
+  await expect.poll(() => root!.querySelectorAll('.annotation-popup .annotation-thread').length).toBe(2);
+  const threads = [...root.querySelectorAll<HTMLElement>('.annotation-popup .annotation-thread')];
+  expect(threads.map(thread => thread.querySelector('.comment-quote')?.textContent)).toEqual(['列表、引用、表格', '分隔线、行内样式']);
+  expect(root.querySelector('.annotation-popup')?.textContent).not.toContain('其他段落的批注');
+  const reply = threads[0]!.querySelector<HTMLTextAreaElement>('[aria-label="添加回复"]')!;
+  reply.value = '保留第一部分的回复草稿';
+  reply.dispatchEvent(new Event('input', { bubbles: true }));
+  await nextTick();
+  const popup = root.querySelector<HTMLElement>('.annotation-popup')!;
+  const scroll = popup.querySelector<HTMLElement>('.annotation-popup-content')!;
+  scroll.getBoundingClientRect = () => new DOMRect(0, 100, 520, 320);
+  threads.forEach((thread, index) => {
+    thread.getBoundingClientRect = () => new DOMRect(0, 100 + index * 260 - scroll.scrollTop, 520, 260);
+  });
+  const clickMark = async (index: number) => {
+    const mark = document.createElement('span');
+    mark.dataset.commentId = threads[index]!.querySelector<HTMLElement>('[data-comment-thread]')!.dataset.commentThread;
+    editorElement.replaceChildren(mark);
+    mark.dispatchEvent(new MouseEvent('click', { bubbles: true, clientY: 120 }));
+    await nextTick();
+    await nextTick();
+  };
+  await clickMark(1);
+  expect(scroll.scrollTop).toBe(260);
+  expect(popup.style.display).not.toBe('none');
+  await clickMark(0);
+  expect(scroll.scrollTop).toBe(0);
+  expect(popup.style.display).not.toBe('none');
+  expect(root.querySelectorAll('.annotation-popup .annotation-thread')).toHaveLength(2);
+  expect(threads[0]!.querySelector('textarea')).toBe(reply);
+  expect(reply.value).toBe('保留第一部分的回复草稿');
+  root.querySelector<HTMLButtonElement>('.annotation-count')!.click();
+  await nextTick();
+  expect(popup.style.display).toBe('none');
+  await clickMark(0);
+  expect(popup.style.display).not.toBe('none');
+  expect(reply.value).toBe('保留第一部分的回复草稿');
+  threads[0]!.querySelector<HTMLButtonElement>('[aria-label="完成批注"]')!.click();
+  await expect.poll(() => root!.querySelectorAll('.annotation-popup .annotation-thread').length).toBe(1);
+  expect(popup.textContent).toContain('第二部分的批注');
+});
+
 it('uses one bottom composer for discussions and replies, preserving drafts on cancellation and failed saves', async () => {
   const adapter = new DemoAdapter();
   const pinia = configureWorkbench(createPinia(), { adapter, native: false, mobile: false });
@@ -143,7 +229,7 @@ it('uses one bottom composer for discussions and replies, preserving drafts on c
   expect(root.querySelector('.discussion-reply-target')?.textContent).toContain('第一个讨论');
   root.querySelector<HTMLButtonElement>('[aria-label="取消回复"]')!.click();
   await nextTick();
-  expect(field.getAttribute('aria-label')).toBe('输入评论');
+  expect(field.getAttribute('aria-label')).toBe('添加评论');
   expect(field.value).toBe('保留草稿');
 
   await replyTo(0);
@@ -156,12 +242,15 @@ it('uses one bottom composer for discussions and replies, preserving drafts on c
   expect(field.getAttribute('aria-label')).toBe('回复评论');
   writeFile.mockRestore();
   submit();
-  await expect.poll(() => field.getAttribute('aria-label')).toBe('输入评论');
+  await expect.poll(() => field.getAttribute('aria-label')).toBe('添加评论');
   expect(field.value).toBe('');
   expect(root.querySelectorAll('textarea')).toHaveLength(1);
   let file = (await loadCommentFile(adapter, 'discussion', openDocument.id)).file;
   expect(file.threads.map(thread => thread.messages.length)).toEqual([1, 2]);
   expect(file.threads[1]?.messages[1]?.body).toBe('保留草稿');
+  expect(file.threads[1]?.messages[1]?.replyTo).toBe(file.threads[1]?.messages[0]?.id);
+  expect(root.querySelector('.comment-reply-reference')?.textContent).toContain('回复 审阅者：');
+  expect(root.querySelector('.comment-reply-reference')?.textContent).toContain('第二个讨论');
 
   await write('新的讨论');
   submit();
@@ -185,7 +274,7 @@ it('uses one bottom composer for discussions and replies, preserving drafts on c
   openDocument.id = 'd0e1f2';
   await nextTick();
   expect(field.value).toBe('');
-  expect(field.getAttribute('aria-label')).toBe('输入评论');
+  expect(field.getAttribute('aria-label')).toBe('添加评论');
   expect(root.querySelector('.discussion-reply-target')).toBeNull();
 });
 
@@ -270,18 +359,6 @@ it('creates, replies to, resolves and detaches local annotations independently o
   await expect.poll(() => root!.querySelector('.annotation-count')?.textContent?.trim()).toBe('2');
   expect((await loadCommentFile(adapter, 'annotation', openDocument.id)).file.threads[0]?.messages).toHaveLength(2);
   await expect.poll(() => root!.querySelector<HTMLTextAreaElement>('[aria-label="添加回复"]')?.value).toBe('');
-  click('完成批注');
-  await expect.poll(() => root!.querySelector('.annotation-count')).toBeNull();
-  expect(root.querySelector('.annotation-popup')).toBeNull();
-  expect(marks.at(-1)).toEqual([]);
-  expect((await loadCommentFile(adapter, 'annotation', openDocument.id)).file.threads[0]?.resolved).toBe(true);
-  const resolved = root.querySelector<HTMLDetailsElement>('.resolved-annotations')!;
-  expect(resolved).toBeTruthy();
-  resolved.open = true;
-  click('重新打开批注');
-  await expect.poll(() => root!.querySelector('.annotation-count')?.textContent?.trim()).toBe('2');
-  expect(marks.at(-1)).toHaveLength(1);
-  expect((await loadCommentFile(adapter, 'annotation', openDocument.id)).file.threads[0]?.resolved).toBe(false);
   readonly.value = true;
   await nextTick();
   expect(root.querySelectorAll('textarea')).toHaveLength(0);
@@ -291,9 +368,9 @@ it('creates, replies to, resolves and detaches local annotations independently o
   expect(root.querySelector('[aria-label="添加批注"]')).toBeNull();
   readonly.value = false;
   await nextTick();
-  write('输入评论', '整体方案可行');
+  write('添加评论', '整体方案可行');
   await nextTick();
-  root.querySelector<HTMLButtonElement>('[aria-label="发表输入评论"]')!.click();
+  root.querySelector<HTMLButtonElement>('[aria-label="发表添加评论"]')!.click();
   await expect.poll(async () => (await loadCommentFile(adapter, 'discussion', openDocument.id)).file.threads.length).toBe(1);
   expect((await loadCommentFile(adapter, 'annotation', openDocument.id)).file.threads[0]?.anchor).toBeDefined();
   expect((await loadCommentFile(adapter, 'discussion', openDocument.id)).file.threads[0]?.anchor).toBeUndefined();
@@ -325,6 +402,17 @@ it('creates, replies to, resolves and detaches local annotations independently o
   await nextTick();
   click('确认编辑');
   await expect.poll(() => root!.textContent?.includes('整体方案已经确认')).toBe(true);
+  root.querySelector<HTMLButtonElement>('.annotation-count')!.click();
+  await nextTick();
+  click('完成批注');
+  await expect.poll(() => root!.querySelector('.annotation-count')).toBeNull();
+  expect(root.querySelector('.annotation-popup')).toBeNull();
+  expect(marks.at(-1)).toEqual([]);
+  const savedAnnotation = (await loadCommentFile(adapter, 'annotation', openDocument.id)).file.threads[0]!;
+  expect(savedAnnotation.resolved).toBe(true);
+  expect(savedAnnotation.messages[0]?.body).toBe('这里已经核对');
+  expect(root.querySelector('.resolved-annotations')).toBeNull();
+  expect(root.textContent).not.toContain('已解决的批注');
   openDocument.content = '';
   await expect.poll(() => marks.at(-1)?.length).toBe(0);
   openDocument.base = { content: '', hash: await sha256(''), modified: Date.now() };

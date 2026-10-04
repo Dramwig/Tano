@@ -38,3 +38,28 @@ it('selects a stable person identity when typing @ and drops removed mentions be
   root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
   expect(submissions[1]).toEqual([]);
 });
+
+it('resizes a compact composer for programmatic drafts and collapses after a multiline comment is sent', async () => {
+  const pinia = configureWorkbench(createPinia(), { adapter: new DemoAdapter(), native: false, mobile: false });
+  setActivePinia(pinia);
+  const body = ref('');
+  root = document.createElement('div');
+  document.body.append(root);
+  app = createApp(defineComponent(() => () => h(CommentComposer, {
+    modelValue: body.value, authorName: 'Bob', label: '添加评论', compact: true,
+    'onUpdate:modelValue': value => { body.value = value; }, onSubmit: () => { body.value = ''; },
+  })));
+  app.use(pinia).mount(root);
+  const input = root.querySelector('textarea')!;
+  Object.defineProperty(input, 'scrollHeight', { configurable: true, get: () => input.value.includes('\n') ? 76 : 36 });
+  body.value = '第一行\n第二行';
+  await nextTick();
+  await nextTick();
+  expect(input.value).toBe('第一行\n第二行');
+  expect(input.style.height).toBe('76px');
+  root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  await nextTick();
+  await nextTick();
+  expect(input.value).toBe('');
+  expect(input.style.height).toBe('36px');
+});

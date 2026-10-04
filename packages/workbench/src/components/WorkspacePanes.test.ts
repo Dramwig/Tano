@@ -19,6 +19,7 @@ async function mountPanes(side: 'right' | 'bottom' = 'right') {
     get panes() { return layoutPanes(this.layout); },
     activePaneId: layout.id, paneDrop: undefined,
     documents: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], focusPane: vi.fn(),
+    tabs: [{ id: 'a', path: 'a.md' }, { id: 'b', path: 'b.md' }, { id: 'c', path: 'c.md' }],
   });
   const mounted = vi.fn();
   const editor = defineComponent({ setup() { mounted(); return () => h('textarea', { value: 'unsaved draft' }); } });
@@ -60,6 +61,26 @@ it('makes room for a preview without remounting editors or persisting a split, a
   expect(pane.querySelector('textarea')).toBe(editor);
   expect(mounted).toHaveBeenCalledTimes(2);
   expect(root.querySelector('.pane-dock-preview')).toBeNull();
+});
+
+it('exposes each pane’s current tab path for document and attachment breadcrumbs', async () => {
+  const layout = newPane(['attachment:image', 'note']);
+  fixture.store = reactive({
+    layout: dockLayout(layout, 'note', { paneId: layout.id, side: 'right' }),
+    activePaneId: layout.id, focusPane: vi.fn(), documents: [{ id: 'note', path: 'notes/note.md' }],
+    tabs: [{ id: 'attachment:image', path: 'assets/image.png' }, { id: 'note', path: 'notes/note.md' }],
+  });
+  root = document.createElement('div'); document.body.append(root);
+  app = createApp({ render: () => h(WorkspacePanes, {}, {
+    default: ({ tab, document }: any) => h('nav', { 'data-document': document?.id ?? '' }, tab?.path),
+  }) });
+  app.mount(root);
+  await nextTick();
+  expect([...root.querySelectorAll('nav')].map(nav => nav.textContent)).toEqual(['assets/image.png', 'notes/note.md']);
+  expect(root.querySelector('nav')!.dataset.document).toBe('');
+  fixture.store.tabs[0].path = 'images/renamed.png';
+  await nextTick();
+  expect(root.querySelector('nav')!.textContent).toBe('images/renamed.png');
 });
 
 it.each(['right', 'bottom'] as const)('fills a departing %s pane immediately, retaining editors until acknowledgement or rollback', async side => {

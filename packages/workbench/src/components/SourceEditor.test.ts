@@ -21,17 +21,46 @@ async function mountSource(content: string) {
   document.body.append(root);
   const value = ref(content);
   const editor = ref<InstanceType<typeof SourceEditor>>();
+  const readonly = ref(false);
   const changed = vi.fn((next: string) => (value.value = next));
   app = createApp({
     render: () => h(SourceEditor, {
-      ref: editor, modelValue: value.value, readonly: false, localNative: false,
+      ref: editor, modelValue: value.value, readonly: readonly.value, localNative: false,
       'onUpdate:modelValue': changed,
     }),
   });
   app.mount(root);
   await nextTick();
-  return { value, editor, changed, view: EditorView.findFromDOM(root.querySelector('.cm-editor')!)! };
+  return { value, editor, readonly, changed, view: EditorView.findFromDOM(root.querySelector('.cm-editor')!)! };
 }
+
+it('indents and outdents source with Tab without moving focus to page buttons', async () => {
+  const { value, editor, view, readonly } = await mountSource('正文');
+  view.focus();
+  const pressTab = (shiftKey = false) => {
+    const event = new KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true, cancelable: true });
+    view.contentDOM.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(view.contentDOM);
+  };
+  pressTab();
+  await nextTick();
+  expect(value.value).toBe('  正文');
+  expect(editor.value!.undoLastChange()).toBe(true);
+  await nextTick();
+  expect(value.value).toBe('正文');
+  expect(editor.value!.redoLastChange()).toBe(true);
+  await nextTick();
+  expect(value.value).toBe('  正文');
+  pressTab(true);
+  await nextTick();
+  expect(value.value).toBe('正文');
+  readonly.value = true;
+  await nextTick();
+  pressTab();
+  pressTab(true);
+  expect(value.value).toBe('正文');
+});
 
 it('maps a backward selection through external changes without making them undoable', async () => {
   const { value, editor, changed, view } = await mountSource('前文\n选中文字\n后文');
@@ -42,6 +71,52 @@ it('maps a backward selection through external changes without making them undoa
   expect(view.state.selection.main.head).toBe(4);
   expect(changed).not.toHaveBeenCalled();
   expect(editor.value!.canUndo()).toBe(false);
+});
+
+it('highlights and navigates literal matches without changing source, caret or history', async () => {
+  const { value, editor, changed, view } = await mountSource('同页 **同页**\nA+B a+b');
+  view.dispatch({ selection: { anchor: 2 } });
+  expect(editor.value!.search('同页', 1, false)).toBe(2);
+  expect(root.querySelectorAll('.tano-search-match')).toHaveLength(2);
+  expect(root.querySelector('.tano-search-current')?.textContent).toBe('同页');
+  expect(view.state.selection.main.head).toBe(2);
+  expect(changed).not.toHaveBeenCalled();
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(editor.value!.search('a+b', 0, false)).toBe(2);
+  value.value += '\nA+B';
+  await nextTick();
+  expect(root.querySelectorAll('.tano-search-match')).toHaveLength(3);
+  editor.value!.search('', 0, false);
+  expect(root.querySelector('.tano-search-match')).toBeNull();
+});
+
+it('replaces all source matches as one undo step while preserving independent external edits', async () => {
+  const source = 'A+B **a+b**\n独立正文';
+  const { value, editor, readonly } = await mountSource(source);
+  expect(editor.value!.replaceSearch('a+b', '同页', 'all').replaced).toBe(2);
+  await nextTick();
+  expect(value.value).toBe('同页 **同页**\n独立正文');
+  value.value = value.value.replace('独立正文', '外部修改');
+  await nextTick();
+  expect(editor.value!.undoLastChange()).toBe(true);
+  await nextTick();
+  expect(value.value).toBe(source.replace('独立正文', '外部修改'));
+  expect(editor.value!.redoLastChange()).toBe(true);
+  await nextTick();
+  expect(value.value).toBe('同页 **同页**\n外部修改');
+  readonly.value = true;
+  await nextTick();
+  expect(editor.value!.replaceSearch('同页', '', 'all').replaced).toBe(0);
+  expect(value.value).toBe('同页 **同页**\n外部修改');
+});
+
+it('skips new matches in the replacement and allows empty replacement in source mode', async () => {
+  const { value, editor } = await mountSource('find find');
+  expect(editor.value!.replaceSearch('find', 'find find', 0)).toEqual({ replaced: 1, index: 2 });
+  await nextTick();
+  expect(editor.value!.replaceSearch('find', '', 2).replaced).toBe(1);
+  await nextTick();
+  expect(value.value).toBe('find find ');
 });
 it('appends a Todo reference without replacing the selected text and makes the insertion undoable', async () => {
   const { value, editor, view } = await mountSource('before selected after');

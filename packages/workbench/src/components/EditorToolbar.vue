@@ -23,6 +23,7 @@ import {
   blockTypes,
   inlineTypes,
   insertionCommands,
+  wrappingCommands,
   commandEnabled,
   featureLevel,
 } from '@tano/editor/document-model';
@@ -243,7 +244,7 @@ function enableEnteringActions(element: Element) {
               :key="item.type"
               :data-feature-level="item.level"
               type="button"
-              :disabled="!context.canTransform && !insertionCommands.has(item.command)"
+              :disabled="!context.canTransform && !insertionCommands.has(item.command) && !wrappingCommands.has(item.command)"
               :class="{ 'is-current': context.block === item.type }"
               :aria-pressed="context.block === item.type"
               :title="

@@ -16,6 +16,7 @@ const people = computed(() => workspace.objects.map(item => item.object).filter(
 watch(() => props.modelValue, value => {
   mentions.value = mentions.value.filter(item => value.includes(item.text));
   if (!value) choosing.value = false;
+  void nextTick(resize);
 });
 function submit() { if (!props.busy && props.modelValue.trim()) emit('submit', mentions.value); }
 async function mention(personId: string, name: string) {
@@ -63,7 +64,7 @@ defineExpose({ focus });
 </script>
 
 <template>
-  <form class="comment-composer" :class="{ 'is-compact': compact }" @submit.prevent="submit">
+  <form class="comment-composer" :class="{ 'is-compact': compact, 'has-content': !!modelValue }" @submit.prevent="submit">
     <span v-if="compact" class="comment-avatar" :title="authorName"><UserRound :size="15" /></span>
     <div class="comment-composer-field">
       <textarea ref="input" :value="modelValue" :aria-label="label" :placeholder="label" rows="1"
@@ -88,14 +89,17 @@ defineExpose({ focus });
 .comment-people input { width: 100%; box-sizing: border-box; padding: 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--text); font: inherit; }
 .comment-people button { display: flex; align-items: center; gap: 8px; padding: 6px; border: 0; background: transparent; color: var(--text); text-align: left; overflow-wrap: anywhere; cursor: pointer; }
 .comment-people button:hover { background: var(--hover); }
-.comment-avatar { display: grid; place-items: center; width: 28px; height: 28px; flex: none; margin-top: 4px; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); background: var(--paper); }
+.comment-avatar { display: grid; place-items: center; width: 24px; height: 24px; flex: none; margin-top: 4px; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); background: var(--paper); }
 .comment-composer-field { display: flex; align-items: flex-end; gap: 8px; min-width: 0; flex: 1; padding: 6px 9px; border: 1px solid var(--control-border, var(--line)); border-radius: 6px; transition: border-color .15s; }
 .comment-composer-field:focus-within { border-color: var(--green); }
 textarea { width: 100%; min-width: 0; min-height: 36px; max-height: 160px; resize: none; border: 0; padding: 8px 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 13px; line-height: 20px; box-sizing: border-box; }
-textarea::placeholder { color: var(--muted); }
+textarea::placeholder { color: color-mix(in srgb, var(--muted) 55%, var(--paper)); opacity: 1; }
 .comment-send { display: grid; place-items: center; width: 26px; height: 26px; flex: none; margin-bottom: 5px; padding: 0; border: 0; border-radius: 50%; background: var(--green); color: white; cursor: pointer; }
 .comment-send:disabled { background: var(--line); color: var(--muted); cursor: default; }
 .comment-send:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
-.is-compact .comment-composer-field { border-color: transparent; padding: 0 6px; }
-.is-compact .comment-composer-field:focus-within { border-color: var(--line); }
+.comment-composer .comment-send, .comment-composer .comment-mention { visibility: hidden; }
+.comment-composer:focus-within .comment-send, .comment-composer:focus-within .comment-mention,
+.comment-composer.has-content .comment-send, .comment-composer.has-content .comment-mention { visibility: visible; }
+.is-compact { gap: 8px; }
+.is-compact .comment-composer-field { border: 0; padding: 0; }
 </style>
