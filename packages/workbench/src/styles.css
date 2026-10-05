@@ -71,6 +71,8 @@
   --control-border: #b9bfc8;
   --sidebar: #f7f7f8;
   --sidebar-width: 230px;
+  --workbench-tabbar-height: 36px;
+  --workbench-topbar-height: 44px;
   --paper: #ffffff;
   --surface: #f5f6f7;
   --hover: #ebedef;
@@ -287,7 +289,7 @@ button:hover {
   border-right-color: transparent;
 }
 .sidebar-header {
-  height: 52px;
+  height: var(--workbench-tabbar-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -714,8 +716,8 @@ button:hover {
   line-height: 1.8;
 }
 .main-column {
-  --topbar-height: 52px;
-  --inspector-top: calc(52px + 44px + 16px);
+  --topbar-height: var(--workbench-topbar-height);
+  --inspector-top: calc(var(--topbar-height) + 44px + 16px);
   position: relative;
   min-width: 0;
   flex: 1;
@@ -735,7 +737,7 @@ button:hover {
 .workspace-tabbar {
   position: relative;
   display: flex;
-  height: 36px;
+  height: var(--workbench-tabbar-height);
   flex-shrink: 0;
   background: var(--sidebar);
 }

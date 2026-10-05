@@ -153,6 +153,7 @@ import { findTabDockTarget, requestTabTransfer, TAB_TRANSFER_REQUEST, TAB_TRANSF
 import type { TabTransferRequest, TabTransferRollback, TabTransferResult } from './tab-docking';
 import { selectTreeEntry, topLevelEntries } from './file-selection';
 import { isBlankPageTarget } from './page-context-menu';
+import { pageRoutePath, parsePageRoute } from './web-navigation';
 import { applyTheme, readThemePreference, saveThemePreference } from './theme';
 import type { ThemePreference } from './theme';
 import { parseVisualFontChoice, sanitizeCustomFontName, visualFontFamily } from './editor-font';
@@ -169,7 +170,9 @@ const assistant = useAssistantStore();
 const plans = usePlanStore();
 usePlanSyncStore();
 const personalHome = ref(false);
-const detachedWindow = native && !mobile && !!detachedTabRequest();
+const tabsEnabled = native;
+const desktopTabsEnabled = native && !mobile;
+const detachedWindow = desktopTabsEnabled && !!detachedTabRequest();
 const welcomeSlogan = welcomeSlogans[Math.floor(Math.random() * welcomeSlogans.length)];
 const welcomeSloganParts = sloganParts(welcomeSlogan);
 const localNative = native && !store.isWeb;
@@ -313,6 +316,98 @@ watch(
   },
 );
 const { workspace, active, activeId, activities, fatal, busy } = storeToRefs(store);
+const webPageRouting = !native && (store.isDemo || store.isWeb);
+const initialPageRoute = webPageRouting ? parsePageRoute(window.location.pathname) : null;
+const pageRouteStateKey = '__tanoPageRoute';
+const pageRouteIndex = ref(0);
+const pageRouteMax = ref(0);
+let pageRouteReady = false;
+let applyingPageRoute = false;
+
+function routeStateIndex() {
+  const value = (window.history.state as Record<string, unknown> | null)?.[pageRouteStateKey];
+  return value && typeof value === 'object' && Number.isInteger((value as { index?: unknown }).index)
+    ? Math.max(0, (value as { index: number }).index)
+    : 0;
+}
+
+function initializePageHistory() {
+  if (!webPageRouting) return;
+  pageRouteIndex.value = routeStateIndex();
+  pageRouteMax.value = pageRouteIndex.value;
+  const state = window.history.state && typeof window.history.state === 'object'
+    ? { ...window.history.state }
+    : {};
+  window.history.replaceState({ ...state, [pageRouteStateKey]: { index: pageRouteIndex.value } }, '', window.location.href);
+}
+
+function currentPageRoute() {
+  const currentWorkspace = workspace.value;
+  const currentFile = currentWorkspace?.files.find((file) => file.id === activeId.value && file.kind === 'file' && isMarkdown(file.path));
+  return currentWorkspace && currentFile ? pageRoutePath(currentWorkspace.id, currentFile.id) : null;
+}
+
+function writePageRoute(replace: boolean) {
+  const path = currentPageRoute();
+  if (!webPageRouting || !path) return;
+  const url = new URL(window.location.href);
+  if (url.pathname === path) return;
+  const nextIndex = replace ? pageRouteIndex.value : pageRouteIndex.value + 1;
+  const state = window.history.state && typeof window.history.state === 'object'
+    ? { ...window.history.state }
+    : {};
+  const nextState = { ...state, [pageRouteStateKey]: { index: nextIndex } };
+  pageRouteIndex.value = nextIndex;
+  if (!replace) pageRouteMax.value = nextIndex;
+  window.history[replace ? 'replaceState' : 'pushState'](nextState, '', `${path}${url.search}${url.hash}`);
+}
+
+function canNavigatePage(direction: -1 | 1) {
+  if (!webPageRouting || busy.value) return false;
+  return direction < 0 ? pageRouteIndex.value > 0 : pageRouteIndex.value < pageRouteMax.value;
+}
+
+function navigatePage(direction: -1 | 1) {
+  if (!canNavigatePage(direction)) return;
+  window.history[direction < 0 ? 'back' : 'forward']();
+}
+
+watch(
+  [() => workspace.value?.id, activeId],
+  () => {
+    if (pageRouteReady && !applyingPageRoute) writePageRoute(false);
+  },
+);
+
+async function applyPageRoute() {
+  if (!webPageRouting) return;
+  const route = parsePageRoute(window.location.pathname);
+  pageRouteIndex.value = routeStateIndex();
+  pageRouteMax.value = Math.max(pageRouteMax.value, pageRouteIndex.value);
+  if (!route) {
+    writePageRoute(true);
+    return;
+  }
+  applyingPageRoute = true;
+  try {
+    if (workspace.value?.id !== route.workspaceId) await store.openWorkspace(route.workspaceId);
+    if (workspace.value?.id !== route.workspaceId) {
+      store.report('链接中的工作区不存在或你已失去访问权限');
+    } else {
+      const file = workspace.value.files.find((entry) => entry.id === route.fileId && entry.kind === 'file' && isMarkdown(entry.path));
+      if (!file) store.report('链接中的文档不存在或已被删除');
+      else await store.openFile(file);
+    }
+  } finally {
+    applyingPageRoute = false;
+  }
+  writePageRoute(true);
+}
+
+function handlePagePopState() {
+  void applyPageRoute().catch(store.report);
+}
+
 watch(activeId, (id) => {
   calendarModeOpen.value = false;
   if (id === CALENDAR_TAB_ID) sidebarView.value = 'plan';
@@ -1051,6 +1146,7 @@ async function insertSourceFiles(files: File[], position: number, requireImage: 
 }
 
 async function openEntry(file: FileEntry, newTab = false) {
+  newTab = newTab && tabsEnabled;
   if (isObjectPath(file.path)) {
     const record = store.objects.find((item) => item.path === file.path);
     if (record) showObjects(record.object.id);
@@ -2311,7 +2407,15 @@ onMounted(async () => {
   window.addEventListener('resize', dismissPageContextMenu);
   if (!detachedWindow) window.addEventListener('resize', constrainSidebarToViewport);
   document.addEventListener('visibilitychange', mobileVisibility);
-  await store.initialize();
+  if (webPageRouting) {
+    initializePageHistory();
+    window.addEventListener('popstate', handlePagePopState);
+  }
+  await store.initialize(initialPageRoute?.workspaceId);
+  if (webPageRouting) {
+    pageRouteReady = true;
+    await applyPageRoute();
+  }
   if (native && !mobile) {
     unlistenSettingsCommand = await listen<SettingsCommand>(SETTINGS_COMMAND, ({ payload }) => {
       handleSettingsCommand(payload);
@@ -2383,6 +2487,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', closeDirectoryContextMenu);
   window.removeEventListener('resize', dismissPageContextMenu);
   window.removeEventListener('resize', constrainSidebarToViewport);
+  window.removeEventListener('popstate', handlePagePopState);
   document.removeEventListener('visibilitychange', mobileVisibility);
   unlistenClose?.();
   unlistenWatchError?.();
@@ -2737,7 +2842,7 @@ watch(activeId, () => {
                   }}
                 </button>
                 <button
-                  v-if="isMarkdown(fileContextMenu.file.path)"
+                  v-if="tabsEnabled && isMarkdown(fileContextMenu.file.path)"
                   role="menuitem"
                   @click="fileContextAction('open-new-tab')"
                 >
@@ -3008,11 +3113,11 @@ watch(activeId, () => {
     </Transition>
 
     <div class="main-column">
-      <div v-if="workspace && compactPanes && (!native || mobile)" class="workspace-tabbar">
+      <div v-if="workspace && compactPanes && tabsEnabled" class="workspace-tabbar">
         <DesktopTabs :file-drag="tabFileDrag" @files-dropped="fileDragEnd" @new-tab="store.createBlankTab()" @new-document="createNewDocument" />
       </div>
 
-      <WorkspacePanes v-if="workspace" :compact="compactPanes" :class="{ 'workspace-native-tabs': native && !mobile && !compactPanes }">
+      <WorkspacePanes v-if="workspace" :compact="compactPanes" :tabs-enabled="desktopTabsEnabled" :class="{ 'workspace-native-tabs': desktopTabsEnabled && !compactPanes }">
         <template #tabs="{ pane, rect }">
           <div v-if="!compactPanes" class="workspace-tabbar" :data-tab-pane-id="pane.id">
             <button v-if="native && !mobile && !detachedWindow && !sidebar && rect.top === 0 && rect.left === 0"
@@ -3027,7 +3132,8 @@ watch(activeId, () => {
           </div>
         </template>
         <template #sidebar>
-          <AssistantPanel v-if="assistant.available && assistant.opened" @open-reference="openReference" @open-settings="openSettings('assistant')" />
+          <AssistantPanel v-if="assistant.available && assistant.opened" :open-sources-in-new-tab="tabsEnabled"
+            @open-reference="openReference" @open-settings="openSettings('assistant')" />
         </template>
         <template #default="{ pane, document: active, tab }">
           <ButtonVisibilityGroup
@@ -3042,7 +3148,7 @@ watch(activeId, () => {
             @open="closeButtonVisibilityMenus"
           >
             <div
-              v-if="isVisible('back') || isVisible('forward') || (!sidebar && !(native && !mobile && workspace))"
+              v-if="(!tabsEnabled && (isVisible('back') || isVisible('forward'))) || (!sidebar && !(native && !mobile && workspace))"
               class="topbar-navigation" role="group" :aria-label="pane.activeId === GRAPH_TAB_ID ? '图谱导航' : '文档导航'"
             >
               <button
@@ -3056,24 +3162,24 @@ watch(activeId, () => {
                 <PanelLeftOpen :size="18" />
               </button>
               <button
-                v-if="isVisible('back')"
+                v-if="!tabsEnabled && isVisible('back')"
                 type="button"
                 class="icon-button"
                 aria-label="后退"
                 title="后退"
-                :disabled="!store.canNavigateHistory(-1, pane.activeId)"
-                @click="store.navigateHistory(-1, pane.id)"
+                :disabled="!canNavigatePage(-1)"
+                @click="navigatePage(-1)"
               >
                 <ArrowLeft :size="16" :stroke-width="1.6" />
               </button>
               <button
-                v-if="isVisible('forward')"
+                v-if="!tabsEnabled && isVisible('forward')"
                 type="button"
                 class="icon-button"
                 aria-label="前进"
                 title="前进"
-                :disabled="!store.canNavigateHistory(1, pane.activeId)"
-                @click="store.navigateHistory(1, pane.id)"
+                :disabled="!canNavigatePage(1)"
+                @click="navigatePage(1)"
               >
                 <ArrowRight :size="16" :stroke-width="1.6" />
               </button>
@@ -3280,6 +3386,7 @@ watch(activeId, () => {
           </ButtonVisibilityGroup>
           <KeepAlive v-if="pane.tabs.includes(GRAPH_TAB_ID)">
             <RelationGraph v-if="workspace && pane.activeId === GRAPH_TAB_ID" :key="`${workspace.id}:${workspace.path}`"
+              :open-in-new-tab="tabsEnabled"
               :controls-target="detachedWindow ? undefined : `#graph-controls-${pane.id}`" />
           </KeepAlive>
 

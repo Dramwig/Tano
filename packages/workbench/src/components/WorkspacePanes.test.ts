@@ -37,6 +37,21 @@ async function mountPanes(side: 'right' | 'bottom' = 'right', sharedTabs = false
   return { id: layout.id, mounted };
 }
 
+it('omits tab strips when tabs are disabled by the runtime', async () => {
+  await mountPanes('right', true);
+  app?.unmount();
+  root.innerHTML = '';
+  app = createApp({ render: () => h(WorkspacePanes, { tabsEnabled: false }, {
+    tabs: ({ pane }: any) => h('div', { class: 'workspace-tabbar', 'data-tab-pane-id': pane.id }),
+    default: () => h('textarea', { value: 'document' }),
+  }) });
+  app.mount(root);
+  await nextTick();
+  expect(root.querySelector('.workspace-pane-tabbars')).toBeNull();
+  expect(root.querySelectorAll('.workspace-tabbar')).toHaveLength(0);
+  expect(root.querySelectorAll('.workspace-pane-external-tabs')).toHaveLength(0);
+});
+
 it.each(['right', 'bottom'] as const)('keeps top tabs above the assistant in a %s split without remounting editors', async side => {
   const { mounted } = await mountPanes(side, true);
   const tabs = [...root.querySelectorAll<HTMLElement>('.workspace-tabbar')];

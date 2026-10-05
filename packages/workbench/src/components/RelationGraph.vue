@@ -18,7 +18,9 @@ import { buildDocumentGraph, graphDocuments } from '../document-graph';
 import { createGraphLayout, graphPhysics, nodeRadius } from '../graph-layout';
 import type { LayoutNode } from '../graph-layout';
 
-defineProps<{ controlsTarget?: string }>();
+const props = withDefaults(defineProps<{ controlsTarget?: string; openInNewTab?: boolean }>(), {
+  openInNewTab: true,
+});
 
 const store = useWorkspaceStore();
 const host = ref<HTMLElement>();
@@ -286,7 +288,7 @@ function endGesture(event: PointerEvent, cancelled = false) {
 }
 function openNode(id: string) {
   const file = store.workspace?.files.find((file) => file.id === id);
-  if (file) void store.openFileInNewTab(file);
+  if (file) void (props.openInNewTab ? store.openFileInNewTab(file) : store.openFile(file));
 }
 function accessibleClick(event: MouseEvent, id: string) {
   // Pointer activation is handled on release because SVG owns pointer capture.
@@ -624,7 +626,7 @@ onBeforeUnmount(() => {
   background: transparent;
 }
 .has-topbar .graph-settings {
-  top: var(--topbar-height, 52px);
+  top: var(--topbar-height, var(--workbench-topbar-height));
   right: 8px;
 }
 .graph-settings {

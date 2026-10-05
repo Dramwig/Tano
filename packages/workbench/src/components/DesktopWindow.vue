@@ -83,7 +83,7 @@ async function toggleMaximize() {
 
 <style>
 .desktop-window {
-  --desktop-titlebar-height: 36px;
+  --desktop-titlebar-height: var(--workbench-tabbar-height);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -239,12 +239,8 @@ async function toggleMaximize() {
   height: 100%;
   min-height: 0;
 }
-.desktop-window-content > .app-shell .sidebar-header {
-  height: var(--desktop-titlebar-height);
-}
 .desktop-window-content > .app-shell .main-column {
-  --topbar-height: 44px;
-  --inspector-top: calc(var(--desktop-titlebar-height) + 44px + 44px + 16px);
+  --inspector-top: calc(var(--desktop-titlebar-height) + var(--topbar-height) + 44px + 16px);
   padding-top: var(--desktop-titlebar-height);
 }
 .desktop-window-content > .app-shell.workspace-empty .main-column {
@@ -271,9 +267,6 @@ async function toggleMaximize() {
 }
 .desktop-window-content > .app-shell:has(.workspace-native-tabs) .main-column {
   padding-top: 0;
-}
-.workspace-native-tabs .workspace-pane {
-  --inspector-top: calc(var(--workspace-pane-tabbar-height) + 44px + 44px + 16px);
 }
 .workspace-native-tabs .workspace-pane-top-right > .workspace-tabbar {
   padding-right: 138px;

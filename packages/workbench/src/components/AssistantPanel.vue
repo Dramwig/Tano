@@ -10,6 +10,9 @@ import TaskProposalPreview from './TaskProposalPreview.vue';
 
 const assistant = useAssistantStore();
 const workspace = useWorkspaceStore();
+const props = withDefaults(defineProps<{ openSourcesInNewTab?: boolean }>(), {
+  openSourcesInNewTab: true,
+});
 const emit = defineEmits<{ openReference: [identity: ReferenceIdentity]; openSettings: [] }>();
 const section = ref<'conversation' | 'history'>('conversation');
 const query = ref('');
@@ -104,7 +107,8 @@ async function openSource(source: AssistantSource) {
     const snapshot = await workspace.assistantSnapshot({ id: workspace.workspace.id, path: workspace.workspace.path }, source.fileId);
     const file = workspace.workspace.files.find(file => file.id === source.fileId);
     if (!file) throw new Error('来源文档已移除');
-    await workspace.openFileInNewTab({ ...file, path: snapshot.path });
+    if (props.openSourcesInNewTab) await workspace.openFileInNewTab({ ...file, path: snapshot.path });
+    else await workspace.openFile({ ...file, path: snapshot.path });
     if (snapshot.hash !== source.hash) notice.value = '来源已更新；回答基于生成时的版本';
   } catch (error) { notice.value = String(error); }
 }

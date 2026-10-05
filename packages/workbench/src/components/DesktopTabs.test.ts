@@ -68,6 +68,8 @@ beforeEach(() => {
     activeId: 'b',
     workspace: { id: 'workspace-1' },
     dirty: () => false,
+    canNavigateHistory: vi.fn(() => false),
+    navigateHistory: vi.fn(),
     moveDocument: vi.fn(),
     close: vi.fn(),
     report: vi.fn(),

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { CalendarDays, FileText, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, SquarePen, ExternalLink, Bug } from 'lucide-vue-next';
+import { ArrowLeft, ArrowRight, CalendarDays, FileText, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, SquarePen, ExternalLink, Bug } from 'lucide-vue-next';
 import { basename, isMarkdown } from '@tano/protocol';
 import { invoke } from '@tauri-apps/api/core';
 import { cursorPosition, getCurrentWindow } from '@tauri-apps/api/window';
@@ -12,8 +12,13 @@ import { paneDropAt } from '../pane-docking';
 import type { PaneDrop } from '../pane-layout';
 import { mobile, nativeOs } from '../platform';
 import { useWorkspaceStore } from '../stores/workspace';
+import ButtonVisibilityGroup from './ButtonVisibilityGroup.vue';
 
 const store = useWorkspaceStore();
+const navigationItems = [
+  { id: 'back', label: '后退' },
+  { id: 'forward', label: '前进' },
+];
 const props = defineProps<{
   detachable?: boolean;
   paneId?: string;
@@ -823,6 +828,38 @@ async function onTabKeydown(event: KeyboardEvent) {
 </script>
 
 <template>
+  <ButtonVisibilityGroup
+    v-slot="{ isVisible }"
+    :items="navigationItems"
+    preference-key="tano.preference.documentHiddenTools"
+    group-class="topbar-navigation desktop-tab-navigation"
+    label="标签页导航"
+    menu-label="导航按钮显示设置"
+    @open="contextMenu = undefined"
+  >
+    <button
+      v-if="isVisible('back')"
+      type="button"
+      class="icon-button"
+      aria-label="后退"
+      title="后退"
+      :disabled="!store.canNavigateHistory(-1, selectedId)"
+      @click="store.navigateHistory(-1, paneId)"
+    >
+      <ArrowLeft :size="16" :stroke-width="1.6" />
+    </button>
+    <button
+      v-if="isVisible('forward')"
+      type="button"
+      class="icon-button"
+      aria-label="前进"
+      title="前进"
+      :disabled="!store.canNavigateHistory(1, selectedId)"
+      @click="store.navigateHistory(1, paneId)"
+    >
+      <ArrowRight :size="16" :stroke-width="1.6" />
+    </button>
+  </ButtonVisibilityGroup>
   <nav
     class="desktop-tab-strip"
     :data-tab-pane-id="paneId"
@@ -1016,6 +1053,10 @@ async function onTabKeydown(event: KeyboardEvent) {
 </template>
 
 <style>
+.desktop-tab-navigation:has(.icon-button) {
+  position: relative;
+  padding-inline: 6px;
+}
 .desktop-tab-strip {
   display: flex;
   width: calc(var(--desktop-tab-count) * 200px + 42px);
@@ -1150,15 +1191,20 @@ async function onTabKeydown(event: KeyboardEvent) {
     background 0.15s,
     color 0.15s;
 }
+.desktop-tab-navigation:has(.icon-button)::before,
 .desktop-tab::before {
   content: '';
   position: absolute;
   z-index: 3;
-  inset: 6px 0;
+  inset: 4px 0 8px;
   border-right: 1px solid var(--line);
   border-radius: 0;
   pointer-events: none;
 }
+.desktop-tab-navigation::before {
+  margin-top: 4px;
+}
+.desktop-tab-navigation:has(+ .desktop-tab-strip .desktop-tab:first-child.desktop-tab-active)::before,
 .desktop-tab:has(+ .desktop-tab-active)::before {
   border-right-color: transparent;
 }
@@ -1230,9 +1276,11 @@ async function onTabKeydown(event: KeyboardEvent) {
   flex: 1;
   min-width: 0;
   height: 100%;
-  padding: 0 0 0 16px;
+  /* Center content in the strip despite the tab's 4px top inset. */
+  padding: 0 0 4px 16px;
   text-align: left;
   font-size: 13px;
+  line-height: 18px;
 }
 .desktop-tab-icon {
   flex: 0 0 15px;
@@ -1270,7 +1318,7 @@ async function onTabKeydown(event: KeyboardEvent) {
 .desktop-tab-close {
   position: absolute;
   z-index: 2;
-  top: 50%;
+  top: calc(50% - 2px);
   right: 0;
   width: 40px;
   transform: translateY(-50%);
@@ -1320,7 +1368,7 @@ async function onTabKeydown(event: KeyboardEvent) {
   .desktop-tab-switch {
     justify-content: center;
     gap: 0;
-    padding: 0;
+    padding: 0 0 4px;
   }
   .desktop-tab-label,
   .desktop-tab-dirty,

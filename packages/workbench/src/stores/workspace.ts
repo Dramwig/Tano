@@ -643,10 +643,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     window.addEventListener('focus', refreshRecentOnFocus);
     onScopeDispose(() => window.removeEventListener('focus', refreshRecentOnFocus));
   }
-  async function initialize() {
+  async function initialize(requestedWorkspaceId?: string) {
     if (detachedTabId && detachedWorkspacePath) await openWorkspace(detachedWorkspacePath);
     else if (isDemo || isWeb) {
-      await openWorkspace();
+      await openWorkspace(requestedWorkspaceId);
+      if (!workspace.value && requestedWorkspaceId) await openWorkspace();
       if (isWeb) await refreshWorkspaces();
     } else if (adapter.recent) await refreshWorkspaces();
   }

@@ -4,8 +4,11 @@ import { layoutGeometry, mapLayout, panePreviewRects } from '../pane-layout';
 import type { LayoutRect } from '../pane-layout';
 import { useWorkspaceStore } from '../stores/workspace';
 
-const props = defineProps<{ compact?: boolean }>();
+const props = withDefaults(defineProps<{ compact?: boolean; tabsEnabled?: boolean }>(), {
+  tabsEnabled: true,
+});
 const store = useWorkspaceStore();
+const showTabs = computed(() => props.tabsEnabled);
 const host = ref<HTMLElement>();
 const contentWidth = ref<number>();
 let resizeObserver: ResizeObserver | undefined;
@@ -93,7 +96,7 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
 
 <template>
   <div class="workspace-layout">
-    <div v-if="!compact && $slots.tabs" class="workspace-pane-tabbars">
+    <div v-if="!compact && showTabs && $slots.tabs" class="workspace-pane-tabbars">
       <div v-for="{ pane, rect, hidden } in tabbarPanes.filter(item => item.rect.top === 0)" :key="pane.id"
         v-show="!hidden" class="workspace-pane-tabbar" :inert="hidden"
         :class="{ 'workspace-pane-top-right': rect.left + rect.width >= 1 - 1e-6 }"
@@ -110,11 +113,11 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
           :data-dock-pane-id="pane.id" :style="rectStyle(rect)" aria-hidden="true" />
         <section
           v-for="{ pane, rect, hidden, topTabbar } in displayed" :key="pane.id" v-show="!hidden" class="workspace-pane" :inert="hidden"
-          :class="{ 'workspace-pane-active': !hidden && pane.id === visibleActivePaneId, 'workspace-pane-top': rect.top === 0, 'workspace-pane-external-tabs': !compact && topTabbar && !!$slots.tabs }"
-          :data-pane-id="pane.id" :style="rectStyle(rect)" aria-label="文档标签组"
+          :class="{ 'workspace-pane-active': !hidden && pane.id === visibleActivePaneId, 'workspace-pane-top': rect.top === 0, 'workspace-pane-external-tabs': !compact && showTabs && topTabbar && !!$slots.tabs }"
+          :data-pane-id="pane.id" :style="rectStyle(rect)" :aria-label="showTabs ? '文档标签组' : '文档内容'"
           @pointerdown.capture="store.focusPane(pane.id)" @focusin="store.focusPane(pane.id)"
         >
-          <slot v-if="!compact && !topTabbar" name="tabs" :pane="pane" :rect="rect" />
+          <slot v-if="!compact && showTabs && !topTabbar" name="tabs" :pane="pane" :rect="rect" />
           <slot :pane="pane" :rect="rect" :document="store.documents.find(doc => doc.id === pane.activeId)"
             :tab="store.tabs.find(tab => tab.id === pane.activeId)" />
         </section>
@@ -140,12 +143,12 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
 
 <style scoped>
 .workspace-layout { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
-.workspace-pane-tabbars { position: relative; flex: 0 0 36px; background: var(--sidebar); }
+.workspace-pane-tabbars { position: relative; flex: 0 0 var(--workbench-tabbar-height); background: var(--sidebar); }
 .workspace-pane-tabbar { position: absolute; top: 0; height: 100%; min-width: 0; }
 .workspace-pane-tabbar + .workspace-pane-tabbar::before { content: ''; position: absolute; z-index: 1; top: 0; bottom: 0; left: 0; border-left: 1px solid var(--line); pointer-events: none; }
 .workspace-body { display: flex; flex: 1; min-width: 0; min-height: 0; }
 .workspace-panes { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
-.workspace-pane { --workspace-pane-tabbar-height: 36px; --inspector-top: calc(var(--workspace-pane-tabbar-height) + 52px + 44px + 16px); position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--paper); }
+.workspace-pane { --workspace-pane-tabbar-height: var(--workbench-tabbar-height); --inspector-top: calc(var(--workspace-pane-tabbar-height) + var(--topbar-height) + 44px + 16px); position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--paper); }
 .workspace-pane-external-tabs { --workspace-pane-tabbar-height: 0px; }
 .workspace-panes-multiple .workspace-pane { container-type: size; }
 .workspace-panes-multiple .workspace-pane-active { box-shadow: inset 0 2px var(--green); }
@@ -177,7 +180,7 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
 .workspace-panes-multiple :deep(.breadcrumb) { gap: 5px; }
 .workspace-panes-multiple :deep(.document-dropdown) { max-height: calc(100cqh - 100px); overflow-y: auto; overscroll-behavior: contain; }
 .workspace-panes-multiple :deep(.calendar-topbar-controls) { min-width: 0; flex-wrap: wrap; }
-.workspace-panes-multiple :deep(.topbar:has(.calendar-topbar-controls)) { height: auto; min-height: 52px; flex-wrap: wrap; padding-block: 6px; }
+.workspace-panes-multiple :deep(.topbar:has(.calendar-topbar-controls)) { height: auto; min-height: var(--topbar-height); flex-wrap: wrap; padding-block: 6px; }
 .workspace-panes-multiple :deep(.topbar:has(.calendar-topbar-controls) .topbar-right) { flex-shrink: 1; min-width: 0; flex-wrap: wrap; }
 @container (max-width: 560px) {
   .workspace-panes-multiple :deep(.breadcrumb:has(.breadcrumb-current) .breadcrumb-workspace),
