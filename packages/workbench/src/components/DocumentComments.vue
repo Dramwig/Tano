@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import './review-card.css';
 import { computed, nextTick, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, ref, watch } from 'vue';
-import { animate } from 'motion/mini';
+import { captureReviewRail, updateReviewRail, removeReviewRail } from './review-rail';
 import { MessageSquare, Reply, X } from 'lucide-vue-next';
 import { createHeadlessMarkdown } from '@tano/editor/headless';
 import { makeCommentAnchor, rebaseCommentAnchor, resolveCommentAnchor } from '@tano/editor/comment-anchors';
@@ -13,6 +14,7 @@ import { loadCommentFile, saveCommentChange } from '../workspace-comments';
 import type { CommentAuthor, CommentChange, CommentMessageEdit, CommentMessageRemoval } from '../workspace-comments';
 import CommentComposer from './CommentComposer.vue';
 import CommentConversation from './CommentConversation.vue';
+import ReviewCard from './ReviewCard.vue';
 
 const props = defineProps<{
   workspaceId: string;
@@ -38,18 +40,19 @@ const projection = ref<{ source: string; prose: string }>();
 const loading = ref(false);
 const busy = ref(false);
 const error = ref('');
-const annotationDraft = ref('');
+const drafts = ref<{ id: string; anchor?: CommentAnchor; body: string }[]>([]);
+const activeDraftId = ref<string>();
+const activeDraft = computed(() => drafts.value.find(draft => draft.id === activeDraftId.value));
 const discussionDraft = ref('');
 const discussionReply = ref<{ threadId: string; message: CommentMessage }>();
-const selected = ref<CommentAnchor>();
+const selected = computed(() => activeDraft.value?.anchor);
 const section = ref<HTMLElement>();
 const popup = ref<HTMLElement>();
-const composer = ref<InstanceType<typeof CommentComposer>>();
+const composers = new Map<string, InstanceType<typeof CommentComposer>>();
 const discussionComposer = ref<InstanceType<typeof CommentComposer>>();
 const conversations = new Map<string, InstanceType<typeof CommentConversation>>();
 const annotationCards = new Map<string, HTMLElement>();
-const cardBounds = new Map<HTMLElement, { top: number; height: number; width: number; marginLeft: number; padding: number; opacity: number }>();
-const cardMotions = new Map<HTMLElement, { top: number; height: number; width: number; outset: number; lift: number; animation: ReturnType<typeof animate> }>();
+const reviewOwner = {};
 const openIds = ref<string[]>([]);
 const openBlockKey = ref<string>();
 const popupCollapsed = ref(false);
@@ -76,111 +79,30 @@ onBeforeUnmount(() => {
   cancelAnimationFrame(layoutFrame);
   resizeObserver?.disconnect();
   cardResizeObserver?.disconnect();
-  for (const card of cardMotions.keys()) stopCardMotion(card);
+  removeReviewRail(reviewOwner);
   mutationObserver?.disconnect();
   window.removeEventListener('resize', scheduleLayout);
   window.removeEventListener('pointerdown', outsidePointer, true);
   window.removeEventListener('keydown', escapePopup);
   window.removeEventListener('tano:open-comment', openComment);
   props.editorElement?.removeEventListener('click', markClicked);
+  props.editorElement?.removeEventListener('tano-table-layout', scheduleLayout);
   void parserPromise.then(parser => parser.destroy());
 });
 
-onBeforeUpdate(() => {
-  cardBounds.clear();
-  if (!layout.value.rail) return;
-  for (const card of annotationCards.values()) {
-    const bounds = card.getBoundingClientRect();
-    const style = getComputedStyle(card);
-    cardBounds.set(card, {
-      top: bounds.top, height: bounds.height, width: bounds.width,
-      marginLeft: parseFloat(style.marginLeft) || 0, padding: parseFloat(style.paddingLeft) || 12,
-      opacity: parseFloat(style.opacity) || 0,
-    });
-  }
-});
-onUpdated(() => {
-  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  if (!layout.value.rail || reduceMotion) {
-    for (const card of cardMotions.keys()) stopCardMotion(card);
-    return;
-  }
-  for (const card of annotationCards.values()) {
-    if (typeof card.animate !== 'function' || !card.getClientRects().length) {
-      stopCardMotion(card);
-      continue;
-    }
-    const top = parseFloat(card.style.top) || 0;
-    const height = annotationCardHeight(card);
-    const style = getComputedStyle(card);
-    const outset = parseFloat(style.getPropertyValue('--annotation-card-outset')) || 0;
-    const width = railWidth + outset * 2;
-    const lift = parseFloat(style.getPropertyValue('--annotation-card-lift')) || 0;
-    const current = cardMotions.get(card);
-    if (current?.top === top && current.height === height && current.width === width && current.outset === outset && current.lift === lift) continue;
-    const previous = current ? cardBounds.get(card) : undefined;
-    stopCardMotion(card);
-    const offset = previous ? previous.top - card.getBoundingClientRect().top : 8;
-    card.style.overflow = 'clip';
-    const animation = animate(card, {
-      transform: [`translateY(${offset + lift}px)`, `translateY(${lift}px)`],
-      width: [`${previous?.width ?? width}px`, `${width}px`],
-      marginLeft: [`${previous?.marginLeft ?? -outset}px`, `${-outset}px`],
-      paddingLeft: [`${previous?.padding ?? 12 + outset}px`, `${12 + outset}px`],
-      paddingRight: [`${previous?.padding ?? 12 + outset}px`, `${12 + outset}px`],
-      opacity: [previous?.opacity ?? 0, 1],
-      height: [`${previous?.height ?? height}px`, `${height}px`],
-    }, { duration: 0.22, ease: [0.22, 1, 0.36, 1] });
-    cardMotions.set(card, { top, height, width, outset, lift, animation });
-    void animation.finished.then(() => {
-      if (cardMotions.get(card)?.animation !== animation) return;
-      card.style.height = '';
-      card.style.width = '';
-      card.style.marginLeft = '';
-      card.style.paddingLeft = '';
-      card.style.paddingRight = '';
-      card.style.transform = '';
-      card.style.opacity = '';
-      card.style.overflow = '';
-    });
-  }
-});
-
-function stopCardMotion(card: HTMLElement) {
-  cardMotions.get(card)?.animation.stop();
-  cardMotions.delete(card);
-  card.style.height = '';
-  card.style.width = '';
-  card.style.marginLeft = '';
-  card.style.paddingLeft = '';
-  card.style.paddingRight = '';
-  card.style.transform = '';
-  card.style.opacity = '';
-  card.style.overflow = '';
-}
-function annotationCardHeight(card: HTMLElement) {
-  if (!card.classList.contains('annotation-card')) return card.offsetHeight;
-  if (card.style.display === 'none') return 0;
-  const content = card.firstElementChild as HTMLElement | null;
-  if (!content) return card.offsetHeight;
-  const style = getComputedStyle(card);
-  // Measure natural content rather than the animated height so card placement stays stable.
-  const height = (parseFloat(getComputedStyle(content).height) || content.offsetHeight) +
-    [style.paddingTop, style.paddingBottom, style.borderTopWidth, style.borderBottomWidth]
-      .reduce((total, value) => total + (parseFloat(value) || 0), 0);
-  return Math.round(height * 64) / 64;
-}
+onBeforeUpdate(() => captureReviewRail(reviewOwner));
+onUpdated(scheduleLayout);
 
 function publish() {
   const anchors = (annotations.value?.threads ?? []).flatMap(thread => {
     const anchor = working.value[thread.id];
     return !thread.detached && !thread.resolved && anchor ? [{ id: thread.id, anchor }] : [];
   });
-  if (selected.value) anchors.push({ id: '@draft', anchor: selected.value });
+  for (const draft of drafts.value) if (draft.anchor) anchors.push({ id: draft.id, anchor: draft.anchor });
   emit('annotations', anchors);
   scheduleLayout();
 }
-watch(selected, publish);
+watch(() => drafts.value.map(draft => ({ id: draft.id, anchor: draft.anchor })), publish, { deep: true });
 
 async function project(content: string) {
   const parser = await parserPromise;
@@ -236,8 +158,8 @@ watch(() => [props.workspaceId, props.document.id], () => {
   discussions.value = undefined;
   projection.value = undefined;
   working.value = {};
-  selected.value = undefined;
-  annotationDraft.value = '';
+  activeDraftId.value = undefined;
+  drafts.value = [];
   discussionDraft.value = '';
   discussionReply.value = undefined;
   closePopup();
@@ -261,10 +183,10 @@ watch(() => props.document.content, (content) => {
       updated[thread.id] = rebaseCommentAnchor(anchor, previous[anchor.basis], next[anchor.basis]);
     }
     working.value = updated;
-    if (selected.value) {
-      const anchor = rebaseCommentAnchor(selected.value,
-        previous[selected.value.basis], next[selected.value.basis]);
-      selected.value = anchor ?? undefined;
+    for (const draft of drafts.value) if (draft.anchor) {
+      const anchor = rebaseCommentAnchor(draft.anchor,
+        previous[draft.anchor.basis], next[draft.anchor.basis]);
+      draft.anchor = anchor ?? undefined;
       if (!anchor) error.value = '选中的内容已删除，请重新选择批注位置';
     }
     publish();
@@ -295,9 +217,11 @@ onMounted(() => {
 });
 watch(() => props.editorElement, (element, previous) => {
   previous?.removeEventListener('click', markClicked);
+  previous?.removeEventListener('tano-table-layout', scheduleLayout);
   resizeObserver?.disconnect();
   mutationObserver?.disconnect();
   element?.addEventListener('click', markClicked);
+  element?.addEventListener('tano-table-layout', scheduleLayout);
   if (element && typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver(scheduleLayout);
     resizeObserver.observe(element);
@@ -350,14 +274,15 @@ const visibleThreads = computed(() => layout.value.rail ? pendingAnnotations.val
   .filter(thread => layout.value.cardTops[thread.id] !== undefined)
   .sort((a, b) => layout.value.cardTops[a.id]! - layout.value.cardTops[b.id]!) : openThreads.value);
 const popupTop = computed(() => (openBlock.value?.bottom ?? 0) + 8);
-const popupMounted = computed(() => !!openBlock.value && (!!selected.value || !!openThreads.value.length));
-const popupVisible = computed(() => popupMounted.value && !popupCollapsed.value);
-const annotationMounted = computed(() => layout.value.rail ? !!pendingAnnotations.value.length || !!selected.value : popupMounted.value);
+const popupMounted = computed(() => !!drafts.value.length || (!!openBlock.value && !!openThreads.value.length));
+const popupVisible = computed(() => popupMounted.value && (!popupCollapsed.value || !!drafts.value.length));
+const annotationMounted = computed(() => layout.value.rail ? !!pendingAnnotations.value.length || !!drafts.value.length : popupMounted.value);
 function threadExpanded(id: string) { return !popupCollapsed.value && openIds.value.includes(id); }
 function setAnnotationCard(id: string, value: unknown) {
+  if (value && typeof value === 'object' && '$el' in value) value = value.$el;
   const previous = annotationCards.get(id);
   if (previous === value) return;
-  if (previous) { cardResizeObserver?.unobserve(previous); stopCardMotion(previous); }
+  if (previous) { cardResizeObserver?.unobserve(previous); }
   if (value instanceof HTMLElement) {
     annotationCards.set(id, value);
     cardResizeObserver?.observe(value);
@@ -384,9 +309,9 @@ function updateLayout() {
   if (!parent) return;
   const anchors = activeAnnotations.value.filter(thread => !thread.resolved)
     .map(thread => ({ id: thread.id, anchor: working.value[thread.id]! }));
-  if (selected.value) anchors.push({ id: '@draft', anchor: selected.value });
+  for (const draft of drafts.value) if (draft.anchor) anchors.push({ id: draft.id, anchor: draft.anchor });
   const geometry = props.geometry(anchors);
-  if (!geometry) { layout.value = { ...layout.value, blocks: [], rail: false }; return; }
+  if (!geometry) { removeReviewRail(reviewOwner); if (layout.value.blocks.length || layout.value.rail) layout.value = { ...layout.value, blocks: [], rail: false }; return; }
   const bounds = parent.getBoundingClientRect();
   const blocks: typeof layout.value.blocks = [];
   for (const block of geometry.blocks) {
@@ -403,22 +328,28 @@ function updateLayout() {
   const rail = blocks.length > 0 && railLeft + railWidth + 3 <= bounds.width - 16;
   const modeChanged = rail !== layout.value.rail;
   const cardTops: Record<string, number> = {};
-  let bottom = 0;
   // A multi-block annotation has one card at its first anchor; expanded cards push later cards down.
   const positioned = new Set<string>();
   for (const block of [...blocks].sort((a, b) => a.top - b.top)) {
     for (const id of block.ids) {
       if (positioned.has(id)) continue;
       positioned.add(id);
-      const top = Math.max(block.top, bottom);
-      cardTops[id] = top;
-      const card = annotationCards.get(id);
-      const cardStyle = card ? getComputedStyle(card) : undefined;
-      const lift = parseFloat(cardStyle?.getPropertyValue('--annotation-card-lift') ?? '') || 0;
-      bottom = top + (card ? annotationCardHeight(card) + lift : 100) + 12;
+      cardTops[id] = block.top;
     }
   }
-  layout.value = {
+  if (rail) updateReviewRail(reviewOwner, parent, [...positioned].flatMap(id => {
+    const card = annotationCards.get(id);
+    const block = blocks.find(block => block.ids.includes(id));
+    if (!card || !block || card.style.display === 'none') return [];
+    // Use the marked line, including wrapped text and paragraphs inside enhanced blocks.
+    const mark = [...(props.editorElement?.querySelectorAll<HTMLElement>('[data-comment-id]') ?? [])]
+      .find(element => element.dataset.commentId === id && element.getClientRects().length);
+    const line = mark?.getClientRects()[0];
+    return [{ id: 'comment:' + id, element: card, anchor: line ? line.top - bounds.top : block.top,
+      selected: activeDraftId.value === id || threadExpanded(id) }];
+  }));
+  else removeReviewRail(reviewOwner);
+  const nextLayout = {
     blocks,
     buttonLeft: Math.min(geometry.right - bounds.left + 12, bounds.width - 48),
     popupLeft: Math.max(16, Math.min(center - width / 2, bounds.width - width - 16)),
@@ -427,24 +358,32 @@ function updateLayout() {
     railLeft,
     cardTops,
   };
+  if (JSON.stringify(nextLayout) !== JSON.stringify(layout.value)) layout.value = nextLayout;
   if (modeChanged) void nextTick(scheduleLayout);
   const current = blocks.find(block => block.key === openBlockKey.value &&
-    (selected.value ? block.ids.includes('@draft') : block.ids.some(id => openIds.value.includes(id))));
+    (selected.value ? block.ids.includes(activeDraftId.value!) : block.ids.some(id => openIds.value.includes(id))));
   if (!current && (selected.value || openIds.value.length)) {
-    openBlockKey.value = blocks.find(block => selected.value ? block.ids.includes('@draft') :
+    openBlockKey.value = blocks.find(block => selected.value ? block.ids.includes(activeDraftId.value!) :
       block.ids.some(id => openIds.value.includes(id)))?.key;
   }
 }
-function selectThread(id: string, focus = false) {
-  if (threadExpanded(id) && !selected.value) return;
-  selected.value = undefined;
+async function selectThread(id: string, focus = false) {
+  if (threadExpanded(id) && !selected.value) {
+    if (focus) await conversations.get(id)?.focusReply();
+    return;
+  }
+  activeDraftId.value = undefined;
   openIds.value = [id];
   openBlockKey.value = layout.value.blocks.find(block => block.ids.includes(id))?.key;
   popupCollapsed.value = false;
   if (focus && working.value[id]) props.focusAnchor(working.value[id]!);
   scheduleLayout();
+  if (focus) {
+    await nextTick();
+    await conversations.get(id)?.focusReply();
+  }
 }
-function closePopup() { openIds.value = []; openBlockKey.value = undefined; selected.value = undefined; popupCollapsed.value = false; }
+function closePopup() { openIds.value = []; openBlockKey.value = undefined; activeDraftId.value = undefined; popupCollapsed.value = false; }
 async function scrollPopupToThread(id: string) {
   await nextTick();
   if (layout.value.rail || !popupVisible.value) return;
@@ -455,31 +394,59 @@ async function scrollPopupToThread(id: string) {
 }
 function openBlockComments(key: string, ids: string[], threadId?: string) {
   const toggle = !threadId && openBlockKey.value === key && !selected.value;
-  selected.value = undefined;
-  openIds.value = ids.filter(id => id !== '@draft');
+  activeDraftId.value = undefined;
+  openIds.value = ids.filter(id => !drafts.value.some(draft => draft.id === id));
   openBlockKey.value = key;
   popupCollapsed.value = toggle ? !popupCollapsed.value : false;
   if (threadId) void scrollPopupToThread(threadId);
 }
+function dismissPopup() {
+  if (!busy.value) drafts.value = drafts.value.filter(draft => draft.body.trim());
+  activeDraftId.value = undefined;
+  openIds.value = [];
+  popupCollapsed.value = !drafts.value.length;
+  scheduleLayout();
+}
+async function annotationFocusout(id: string) {
+  await nextTick();
+  const draft = drafts.value.find(draft => draft.id === id);
+  if (draft && !draft.body.trim() && !busy.value && !annotationCards.get(id)?.contains(document.activeElement)) {
+    drafts.value = drafts.value.filter(draft => draft.id !== id);
+    if (activeDraftId.value === id) activeDraftId.value = undefined;
+  }
+}
 function outsidePointer(event: PointerEvent) {
   const target = event.target;
   if (!(target instanceof Element) || target.closest('.annotation-popup, .annotation-rail, .comment-more-menu, .annotation-count, .annotation-create-button, [data-comment-id]')) return;
-  popupCollapsed.value = true;
-  scheduleLayout();
+  dismissPopup();
 }
-function escapePopup(event: KeyboardEvent) { if (event.key === 'Escape') { popupCollapsed.value = true; scheduleLayout(); } }
+function escapePopup(event: KeyboardEvent) { if (event.key === 'Escape') dismissPopup(); }
+async function selectDraft(id: string) {
+  activeDraftId.value = id;
+  openIds.value = [];
+  popupCollapsed.value = false;
+  updateLayout();
+  await nextTick();
+  await composers.get(id)?.focus();
+}
 function markClicked(event: MouseEvent) {
   const target = event.target instanceof Element ? event.target.closest('[data-comment-id]') : null;
   const id = target?.getAttribute('data-comment-id');
   if (!id) return;
-  if (id === '@draft') { popupCollapsed.value = false; scheduleLayout(); return; }
+  if (drafts.value.some(draft => draft.id === id)) {
+    void selectDraft(id);
+    return;
+  }
   updateLayout();
-  if (layout.value.rail) { selectThread(id); return; }
+  if (layout.value.rail) { void selectThread(id, true); return; }
   const parent = section.value?.closest<HTMLElement>('.document-main');
   const top = event.clientY - (parent?.getBoundingClientRect().top ?? 0);
   const block = layout.value.blocks.find(item => item.ids.includes(id) && top >= item.top && top <= item.bottom)
     ?? layout.value.blocks.find(item => item.ids.includes(id));
-  if (block) openBlockComments(block.key, block.ids, id);
+  if (block) {
+    openBlockComments(block.key, block.ids, id);
+    void nextTick(() => conversations.get(id)?.focusReply());
+  }
 }
 function showDiscussion() {
   section.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -514,13 +481,21 @@ async function beginAnnotation() {
     return;
   }
   try {
-    selected.value = makeCommentAnchor(selection.basis, selection.text, selection.spans, props.document.base.hash);
+    const anchor = makeCommentAnchor(selection.basis, selection.text, selection.spans, props.document.base.hash);
+    drafts.value = drafts.value.filter(draft => draft.body.trim());
+    let draft = drafts.value.find(draft => draft.anchor?.basis === anchor.basis && JSON.stringify(draft.anchor.spans) === JSON.stringify(anchor.spans));
+    if (!draft) {
+      draft = { id: drafts.value.length ? `@draft-${crypto.randomUUID()}` : '@draft', anchor, body: '' };
+      drafts.value.push(draft);
+    }
+    activeDraftId.value = draft.id;
     popupCollapsed.value = false;
     openIds.value = [];
     openBlockKey.value = undefined;
     await nextTick();
     updateLayout();
-    await composer.value?.focus();
+    await nextTick();
+    await composers.get(draft.id)?.focus();
   } catch (reason) { error.value = reason instanceof Error ? reason.message : String(reason); }
 }
 async function assistantReply(kind: CommentKind, threadId: string, body: string) {
@@ -571,35 +546,41 @@ async function submitDiscussion(mentions: CommentMention[] = []) {
   }
 }
 
-async function start(kind: CommentKind, mentions: CommentMention[] = []) {
+async function start(kind: CommentKind, mentions: CommentMention[] = [], draftId = activeDraftId.value) {
   if (busy.value || props.readonly) return;
-  if (kind === 'annotation' && !selected.value) return;
-  const body = (kind === 'annotation' ? annotationDraft.value : discussionDraft.value).trim();
+  const epoch = documentEpoch;
+  const fileId = props.document.id;
+  const draft = kind === 'annotation' ? drafts.value.find(draft => draft.id === draftId) : undefined;
+  if (kind === 'annotation' && !draft?.anchor) { error.value = '请重新选择批注位置'; return; }
+  const body = (kind === 'annotation' ? draft!.body : discussionDraft.value).trim();
   if (!body) { error.value = '请输入评论内容'; return; }
   busy.value = true;
   error.value = '';
   try {
     if (!(await workspace.flush())) throw new Error('正文尚未保存，请先处理保存错误');
+    await projectionTask;
+    if (epoch !== documentEpoch) return;
     if (kind === 'annotation') {
       const current = await project(props.document.content);
-      if (!selected.value || !selected.value.spans.every(span =>
-        current[selected.value!.basis].slice(span.from, span.to) === span.text))
+      if (!draft?.anchor || !draft.anchor.spans.every(span =>
+        current[draft.anchor!.basis].slice(span.from, span.to) === span.text))
         throw new Error('选中的内容已经变化，请重新选择批注位置');
     }
     const id = crypto.randomUUID();
-    const anchor = selected.value && kind === 'annotation'
-      ? { ...selected.value, baseHash: props.document.base.hash } : undefined;
-    const next = await saveCommentChange(adapter, kind, props.document.id,
+    const anchor = draft?.anchor && kind === 'annotation'
+      ? { ...draft.anchor, baseHash: props.document.base.hash } : undefined;
+    if (epoch !== documentEpoch) return;
+    const next = await saveCommentChange(adapter, kind, fileId,
       { type: 'start', id, body, author: props.author, anchor, mentions });
+    if (epoch !== documentEpoch) return;
     if (kind === 'annotation') {
       annotations.value = next;
       working.value = { ...working.value, [id]: anchor ?? null };
       openIds.value = [id];
-      selected.value = undefined;
+      drafts.value = drafts.value.filter(item => item.id !== draftId);
+      if (activeDraftId.value === draftId) activeDraftId.value = undefined;
       publish();
-      annotationDraft.value = '';
     } else { discussions.value = next; discussionDraft.value = ''; }
-    selected.value = undefined;
   } catch (reason) { error.value = reason instanceof Error ? reason.message : String(reason); }
   finally { busy.value = false; }
 }
@@ -650,14 +631,10 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
       :role="layout.rail ? 'region' : 'dialog'" aria-label="局部批注"
       :style="{ top: `${layout.rail ? 0 : popupTop}px`, left: `${layout.rail ? layout.railLeft : layout.popupLeft}px`, width: `${layout.rail ? railWidth : layout.popupWidth}px` }">
       <div :class="{ 'annotation-popup-content panel-scrollbar': !layout.rail }">
-        <div v-for="thread in visibleThreads" :key="thread.id" :ref="value => setAnnotationCard(thread.id, value)"
-          class="annotation-thread" :class="{ 'annotation-card': layout.rail, 'is-expanded': layout.rail && threadExpanded(thread.id) }"
-          :style="layout.rail ? { top: `${layout.cardTops[thread.id]}px` } : undefined"
-          :tabindex="layout.rail && !threadExpanded(thread.id) ? 0 : undefined"
-          :aria-label="layout.rail ? `批注：${thread.messages[0]?.body}` : undefined"
-          :aria-expanded="layout.rail ? threadExpanded(thread.id) : undefined"
-          @click="layout.rail && selectThread(thread.id, true)"
-          @keydown.enter.self.prevent="selectThread(thread.id, true)" @keydown.space.self.prevent="selectThread(thread.id, true)">
+        <ReviewCard v-for="thread in visibleThreads" :key="thread.id" :ref="value => setAnnotationCard(thread.id, value)"
+          class="annotation-thread" :class="{ 'annotation-card': layout.rail }" :framed="layout.rail"
+          :expanded="threadExpanded(thread.id)" :label="layout.rail ? `批注：${thread.messages[0]?.body}` : undefined"
+          @activate="selectThread(thread.id, true)">
           <div class="annotation-card-content">
             <CommentConversation
               :ref="value => value ? conversations.set(thread.id, value as InstanceType<typeof CommentConversation>) : conversations.delete(thread.id)"
@@ -669,17 +646,16 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
               @resolve="change('annotation', thread.id, 'resolve', '', $event)" />
             <p v-if="layout.rail && error && threadExpanded(thread.id)" class="comment-error" role="alert">{{ error }}</p>
           </div>
-        </div>
-        <div v-if="selected" v-show="!popupCollapsed" :ref="value => setAnnotationCard('@draft', value)"
-          :class="{ 'annotation-card': layout.rail, 'is-expanded': layout.rail }"
-          :style="layout.rail ? { top: `${layout.cardTops['@draft']}px` } : undefined">
+        </ReviewCard>
+        <ReviewCard v-for="draft in drafts" :key="draft.id" :ref="value => setAnnotationCard(draft.id, value)" :data-annotation-draft="draft.id"
+          class="annotation-draft" :class="{ 'annotation-card': layout.rail }" :framed="layout.rail" :expanded="activeDraftId === draft.id"
+          label="批注草稿" @activate="selectDraft(draft.id)">
           <div class="annotation-card-content">
-            <blockquote class="annotation-selected">{{ quote(selected) }}</blockquote>
-            <CommentComposer v-if="!readonly" ref="composer" v-model="annotationDraft" :author-name="author.name"
-              label="添加批注" :busy="busy" compact @submit="start('annotation', $event)" />
+            <CommentComposer v-if="!readonly" :ref="value => value ? composers.set(draft.id, value as InstanceType<typeof CommentComposer>) : composers.delete(draft.id)" v-model="draft.body" :author-name="author.name"
+              label="添加批注" :busy="busy" compact @submit="start('annotation', $event, draft.id)" @focusin="activeDraftId = draft.id; openIds = []" @focusout="annotationFocusout(draft.id)" />
             <p v-if="layout.rail && error" class="comment-error" role="alert">{{ error }}</p>
           </div>
-        </div>
+        </ReviewCard>
       </div>
       <p v-if="error && !layout.rail" class="comment-error" role="alert">{{ error }}</p>
     </div>
@@ -730,17 +706,12 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
 .annotation-popup { position: absolute; z-index: 12; box-sizing: border-box; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); box-shadow: 0 8px 24px #00000012, 0 2px 6px #00000005; overflow: hidden; }
 .annotation-popup-content { max-height: 400px; overflow-y: auto; overscroll-behavior: contain; padding: 12px 0 14px; }
 .annotation-popup-content > div { padding-inline: 16px; }
+.annotation-draft.review-card { padding-block: 6px; }
 .annotation-popup > .comment-error { margin: 10px 16px 14px; }
 .annotation-popup-content > .annotation-thread + .annotation-thread { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
 .annotation-rail { position: absolute; z-index: 4; --annotation-card-border: rgb(42 28 0 / 7%); }
-.annotation-card { --annotation-card-outset: 0px; --annotation-card-lift: 0px; position: absolute; width: calc(100% + var(--annotation-card-outset) * 2); margin-left: calc(-1 * var(--annotation-card-outset)); box-sizing: border-box; padding: 12px calc(12px + var(--annotation-card-outset)); border: 1px solid var(--annotation-card-border); border-radius: 8px; background: var(--paper); cursor: pointer; transform: translateY(var(--annotation-card-lift)); transition: box-shadow .22s cubic-bezier(.22, 1, .36, 1); }
-.annotation-card.is-expanded { --annotation-card-outset: 3px; --annotation-card-lift: -2px; z-index: 2; cursor: default; box-shadow: 0 4px 12px rgb(25 25 25 / 2.7%), 0 1px 2px rgb(25 25 25 / 2%); }
-:global(:root[data-theme='dark'] .annotation-rail) { --annotation-card-border: rgb(255 255 255 / 9%); }
-:global(:root[data-theme='dark'] .annotation-card.is-expanded) { box-shadow: 0 4px 12px rgb(0 0 0 / 14%), 0 1px 2px rgb(0 0 0 / 10%); }
+.annotation-card { position: absolute; }
 .annotation-card-content { display: flow-root; }
-.annotation-card:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
-.annotation-selected { margin: 0 0 12px 38px; border-left: 2px solid #eabf35; padding: 2px 10px; max-height: 80px; overflow: auto; font-size: 12px; line-height: 1.6; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
 .comment-error { margin: 10px 0; color: #a63636; font-size: 12px; overflow-wrap: anywhere; }
-@media (prefers-reduced-motion: reduce) { .annotation-card { transition: none; } }
 @media (max-width: 600px) { .document-discussion { margin-top: 32px; } .annotation-popup-content { max-height: 320px; padding: 10px 0 12px; } .annotation-popup-content > div { padding-inline: 12px; } .annotation-popup > .comment-error { margin-inline: 12px; } }
 </style>

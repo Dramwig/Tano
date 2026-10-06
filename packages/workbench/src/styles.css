@@ -89,6 +89,8 @@
   --syntax-teal: #087c69;
   --syntax-green: #658135;
   --highlight-bg: #fef08a;
+  --suggestion-color: #2683e8;
+  --suggestion-bg: color-mix(in srgb, var(--suggestion-color) 12%, transparent);
   --diff-add-bg: #eaf5e7;
   --diff-remove-bg: #fcefea;
 }
@@ -122,6 +124,7 @@
   --syntax-teal: #73d0bd;
   --syntax-green: #a9d677;
   --highlight-bg: #5b4d20;
+  --suggestion-color: #80b7ff;
   --diff-add-bg: #20392c;
   --diff-remove-bg: #422b2b;
 }
@@ -715,11 +718,21 @@ button:hover {
   color: var(--muted);
   line-height: 1.8;
 }
+.workspace-page-content {
+  display: contents;
+}
+.assistant-fullscreen-host {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
 .main-column {
   --topbar-height: var(--workbench-topbar-height);
   --inspector-top: calc(var(--topbar-height) + 44px + 16px);
   position: relative;
   min-width: 0;
+  min-height: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -918,6 +931,12 @@ button:hover {
   background: var(--green);
   border-radius: 50%;
 }
+.document-scroll-shell {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
 .document-layout {
   position: relative;
   display: flex;
@@ -926,10 +945,13 @@ button:hover {
   min-width: 0;
   align-items: flex-start;
   overflow-y: auto;
-  scrollbar-gutter: stable;
-  scroll-behavior: smooth;
-  scrollbar-color: var(--control-border) transparent;
-  scrollbar-width: thin;
+  overflow-x: hidden;
+}
+.document-layout-managed-scrollbar {
+  scrollbar-width: none;
+}
+.document-layout-managed-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 .tano-comment-mark, .cm-comment-mark {
   background: color-mix(in srgb, #f4d35e 24%, transparent);
@@ -961,7 +983,7 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 25px;
+  padding: 0 25px 0 8px;
   gap: 8px;
 }
 .detached-editor-actions {
@@ -2286,11 +2308,10 @@ button:hover {
   transition: background-color 120ms ease;
 }
 .tano-block-handle.is-column-child {
-  left: -48px;
   width: 18px;
 }
 .tano-block-handle.is-columns {
-  left: -72px;
+  left: -60px;
   width: 18px;
 }
 .tano-block-handle.is-visible,
@@ -2647,7 +2668,11 @@ button:hover {
   background: var(--surface);
 }
 .tano-prose table {
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
   width: auto;
   max-width: none;
   margin: 24px 0;
@@ -2659,7 +2684,9 @@ button:hover {
 .tano-prose td {
   box-sizing: border-box;
   overflow-wrap: anywhere;
-  border: 1px solid var(--line);
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
   padding: 9px 13px;
   text-align: left;
   vertical-align: top;
@@ -2676,6 +2703,9 @@ button:hover {
 .tano-prose table p {
   margin: 0;
 }
+/* The table paints the continuous rounded outline; cells paint each divider once. */
+.tano-prose table tr > :last-child { border-right: 0; }
+.tano-prose table > :is(tbody, tfoot):last-child > tr:last-child > :is(th, td) { border-bottom: 0; }
 .tano-prose .selectedCell:after {
   content: none;
 }
@@ -2689,10 +2719,25 @@ button:hover {
 .tano-table-scrollbar {
   height: 10px;
   position: relative;
+  margin-top: -16px;
+  margin-bottom: 6px;
   touch-action: none;
   cursor: pointer;
   border-radius: 5px;
   background: color-mix(in srgb, var(--line) 45%, transparent);
+  transition: opacity 120ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .tano-table-scrollbar {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .tano-table-viewport:hover .tano-table-scrollbar,
+  .tano-table-scrollbar:focus-visible,
+  .tano-table-scrollbar.is-dragging {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 .tano-table-scrollbar[hidden] { display: none; }
 .tano-table-scroll-thumb {
@@ -2807,13 +2852,20 @@ button:hover {
 .tano-table-grip::before {
   content: '';
   position: absolute;
+  top: calc(50% - 1.5px);
+  left: calc(50% - 11px);
   width: 22px;
-  height: 4px;
+  height: 3px;
   background: currentColor;
   opacity: 0.4;
   border-radius: 3px;
 }
-.tano-table-grip.is-row::before { width: 4px; height: 22px; }
+.tano-table-grip.is-row::before {
+  top: calc(50% - 11px);
+  left: calc(50% - 1.5px);
+  width: 3px;
+  height: 22px;
+}
 .tano-table-grip > span {
   display: none;
   width: 24px;
@@ -2843,13 +2895,13 @@ button:hover {
   padding: 0;
   overflow: hidden;
   outline: 2px solid var(--green);
-  background: var(--paper);
-  box-shadow: 0 8px 24px #00000024;
+  background: transparent;
   pointer-events: none;
   user-select: none;
   will-change: transform;
 }
 .tano-table-drag-preview > table { position: absolute; margin: 0; }
+.tano-prose.tano-table-drag-preview :is(table, thead, tbody, tr, th, td) { background: transparent; }
 .tano-table-controls.is-dragging .tano-table-grip.is-selected { z-index: 41; will-change: transform; }
 .tano-table-line-outline {
   position: fixed;
@@ -2858,7 +2910,7 @@ button:hover {
   border: 2px solid var(--green);
   pointer-events: none;
 }
-.tano-table-line-drop { position: fixed; z-index: 16; background: var(--green); pointer-events: none; }
+.tano-table-line-drop { position: fixed; z-index: 42; background: var(--green); pointer-events: none; }
 .tano-editor-panel.tano-table-menu,
 .tano-editor-panel.tano-table-color-menu {
   position: fixed;
@@ -3213,6 +3265,14 @@ button:hover {
   background-color: var(--block-selection);
   box-shadow: 0 0 0 4px var(--block-selection);
 }
+/* A table's scroll viewport includes page gutters; highlight only its cells. */
+.tano-prose .tano-table-viewport.ProseMirror-selectednode {
+  background-color: transparent;
+  box-shadow: none;
+}
+.tano-prose .tano-table-viewport.ProseMirror-selectednode:not(.tano-block-drag-source) > .tableWrapper > table > tbody > tr > :is(th, td) {
+  box-shadow: inset 0 0 0 100vmax var(--block-selection);
+}
 .tano-prose .tano-math.ProseMirror-selectednode.tano-editor-active,
 .tano-prose .tano-mermaid.ProseMirror-selectednode.tano-editor-active {
   background-color: transparent;
@@ -3400,6 +3460,10 @@ button:hover {
   z-index: 20;
   pointer-events: none;
 }
+.inspector.inspector-outline-left {
+  right: auto;
+  left: 12px;
+}
 .inspector-outline .inspector-surface {
   position: relative;
   align-self: flex-end;
@@ -3417,6 +3481,9 @@ button:hover {
   pointer-events: auto;
   overscroll-behavior: contain;
 }
+.inspector-outline-left .inspector-surface {
+  align-self: flex-start;
+}
 .inspector-hover-outline:not(:hover):not(:focus-within) .inspector-surface {
   width: 32px;
   margin-right: 0;
@@ -3426,6 +3493,7 @@ button:hover {
   background: transparent;
   box-shadow: none;
   scrollbar-width: none;
+  pointer-events: auto;
 }
 .inspector-tabs {
   height: 44px;
@@ -4172,7 +4240,7 @@ button:hover {
     --inspector-width: 200px;
   }
   .editor-toolbar {
-    padding: 0 16px;
+    padding: 0 16px 0 8px;
   }
   .format-actions,
   .document-actions {
@@ -4276,7 +4344,7 @@ button:hover {
     width: 24px;
   }
   .editor-toolbar {
-    padding: 0 12px;
+    padding: 0 12px 0 8px;
   }
   .document-type {
     display: none;
@@ -4302,6 +4370,14 @@ button:hover {
   }
   .error-toast {
     max-width: calc(100vw - 30px);
+  }
+}
+
+/* Keep the full scroll track visible when the browser viewport is shorter
+   than the shell's usual minimum height. */
+@media (max-height: 450px) {
+  .app-shell {
+    min-height: 0;
   }
 }
 
@@ -5582,3 +5658,14 @@ div.tano-feature-source {
     max-height: 160px;
   }
 }
+
+/* Pending review decorations are presentation only, never Markdown marks. */
+.tano-suggestion-insert { background: var(--suggestion-bg); color: var(--suggestion-color); border-bottom: 1px solid var(--suggestion-color); text-decoration: none; cursor: pointer; }
+.tano-suggestion-delete { background: var(--suggestion-bg); color: var(--suggestion-color); text-decoration: line-through; white-space: pre-wrap; cursor: pointer; user-select: none; }
+.tano-suggestion-delete.is-source-text { user-select: text; }
+
+.suggestion-mode-badge { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; padding: 4px 7px 4px 10px; border-radius: 999px; color: var(--suggestion-color); background: color-mix(in srgb, var(--suggestion-color) 9%, var(--paper)); font-size: 12px; line-height: 20px; white-space: nowrap; }
+.suggestion-mode-badge button { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; color: inherit; background: transparent; opacity: .7; }
+.suggestion-mode-badge button:hover { background: var(--suggestion-bg); opacity: 1; }
+.suggestion-mode-badge button:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
+.suggestion-mode-badge button:disabled { opacity: .4; }

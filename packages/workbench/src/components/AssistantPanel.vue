@@ -1,19 +1,23 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { AlignLeft, ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRight, ChevronsRight, CircleCheck, Copy, Cpu, FilePlus2, FileText, History, Languages, LoaderCircle, MessageCircle, MessageCirclePlus, MoreHorizontal, Paperclip, Pencil, Plug, Plus, RefreshCw, Reply, Search, Settings2, ShieldCheck, Square, Terminal, Trash2, Undo2, X } from 'lucide-vue-next';
+import { AlignLeft, ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRight, ChevronsRight, CircleCheck, Copy, Cpu, createLucideIcon, FilePlus2, FileText, History, Languages, LoaderCircle, MessageCircle, MessageCirclePlus, Minus, MoreHorizontal, Paperclip, Pencil, Plug, Plus, RefreshCw, Reply, Search, Settings2, ShieldCheck, Square, Terminal, Trash2, Undo2, X } from 'lucide-vue-next';
 import MarkdownEditor from '@tano/editor';
 import type { AssistantMessage, AssistantProposal, AssistantSource, ReferenceIdentity } from '@tano/protocol';
 import { useAssistantStore } from '../assistant/store';
+import type { AssistantDisplayMode } from '../assistant/store';
 import { useWorkspaceStore } from '../stores/workspace';
 import ChangeDiff from './ChangeDiff.vue';
 import TaskProposalPreview from './TaskProposalPreview.vue';
 
 const assistant = useAssistantStore();
 const workspace = useWorkspaceStore();
-const props = withDefaults(defineProps<{ openSourcesInNewTab?: boolean }>(), {
+const props = withDefaults(defineProps<{ openSourcesInNewTab?: boolean; fullscreenTarget?: string | HTMLElement }>(), {
   openSourcesInNewTab: true,
 });
 const emit = defineEmits<{ openReference: [identity: ReferenceIdentity]; openSettings: [] }>();
+// Keep the destination while disabled so re-enabling Teleport updates its target.
+const teleportTarget = computed<string | HTMLElement>(previous => assistant.displayMode === 'sidebar' ? previous ?? 'body'
+  : assistant.displayMode === 'fullscreen' ? props.fullscreenTarget ?? 'body' : 'body');
 const section = ref<'conversation' | 'history'>('conversation');
 const query = ref('');
 const textarea = ref<HTMLTextAreaElement>();
@@ -26,7 +30,25 @@ const exportPath = ref('助手结果.md');
 const visibleMessages = ref(30);
 const proposalChecks = ref<Record<string, boolean>>({});
 const panel = ref<HTMLElement>();
-const popover = ref<'model' | 'permissions' | 'add' | 'history' | 'more' | null>(null);
+const popover = ref<'model' | 'permissions' | 'add' | 'history' | 'more' | 'mode' | null>(null);
+function displayIcon(name: string, region: { x: string; y: string; width: string; height: string }) {
+  return createLucideIcon(name, [
+    ['rect', { x: '2', y: '4', width: '20', height: '16', rx: '2', key: 'frame' }],
+    ['rect', { ...region, rx: '0.5', fill: 'currentColor', stroke: 'none', class: 'assistant-mode-region', key: 'region' }],
+  ]);
+}
+const displayModes = [
+  { id: 'sidebar', label: '侧栏', icon: displayIcon('AssistantSidebar', { x: '15', y: '6', width: '5', height: '12' }) },
+  { id: 'floating', label: '浮动', icon: displayIcon('AssistantFloating', { x: '15', y: '12', width: '5', height: '6' }) },
+  { id: 'fullscreen', label: '全屏', icon: displayIcon('AssistantFullscreen', { x: '4', y: '6', width: '16', height: '12' }) },
+] as const;
+const displayModeIcon = computed(() => displayModes.find(mode => mode.id === assistant.displayMode)!.icon);
+const floatingRect = ref<{ left: number; top: number; width: number; height: number }>();
+const floatingStyle = computed(() => assistant.displayMode === 'floating' && floatingRect.value ? {
+  left: `${floatingRect.value.left}px`, top: `${floatingRect.value.top}px`,
+  width: `${floatingRect.value.width}px`, height: `${floatingRect.value.height}px`, right: 'auto', bottom: 'auto',
+} : {});
+let floatingGesture: { pointer: number; target: HTMLElement; x: number; y: number; rect: NonNullable<typeof floatingRect.value> } | undefined;
 const modelView = ref<'main' | 'all' | 'connections' | 'manual'>('main');
 const modelQuery = ref('');
 const addView = ref<'main' | 'sources'>('main');
@@ -165,6 +187,34 @@ function closePopover(focus = false) {
   popover.value = null;
   if (focus && wasOpen) popoverTrigger?.focus();
 }
+function selectDisplayMode(mode: AssistantDisplayMode) {
+  closePopover(true);
+  assistant.setDisplayMode(mode);
+}
+function startFloatingGesture(event: PointerEvent) {
+  if (assistant.displayMode !== 'floating' || event.button !== 0 || !panel.value ||
+    (event.target as Element).closest('button, input, .assistant-popover')) return;
+  const { left, top, width, height } = panel.value.getBoundingClientRect();
+  const target = event.currentTarget as HTMLElement;
+  floatingGesture = { pointer: event.pointerId, target, x: event.clientX, y: event.clientY, rect: { left, top, width, height } };
+  floatingRect.value = { left, top, width, height };
+  target.setPointerCapture(event.pointerId);
+  event.preventDefault();
+}
+function moveFloatingGesture(event: PointerEvent) {
+  const gesture = floatingGesture;
+  if (!gesture || gesture.pointer !== event.pointerId) return;
+  const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y;
+  const rect = { ...gesture.rect };
+  rect.left = Math.max(8, Math.min(window.innerWidth - rect.width - 8, rect.left + dx));
+  rect.top = Math.max(8, Math.min(window.innerHeight - rect.height - 8, rect.top + dy));
+  floatingRect.value = rect;
+}
+function endFloatingGesture() {
+  const gesture = floatingGesture;
+  floatingGesture = undefined;
+  if (gesture?.target.hasPointerCapture(gesture.pointer)) gesture.target.releasePointerCapture(gesture.pointer);
+}
 function outsidePopover(event: PointerEvent) {
   if (!(event.target instanceof Element) || !panel.value?.contains(event.target) ||
     !event.target.closest('.assistant-popover, [data-assistant-popover]')) closePopover();
@@ -228,8 +278,9 @@ function preparePrompt(prompt: string) {
 }
 function resizeInput() {
   if (!textarea.value) return;
-  textarea.value.style.height = 'auto';
-  textarea.value.style.height = `${Math.min(168, Math.max(52, textarea.value.scrollHeight))}px`;
+  // Let each display mode's CSS minimum size the empty composer.
+  textarea.value.style.height = '0px';
+  textarea.value.style.height = `${Math.min(168, textarea.value.scrollHeight)}px`;
   updateMenuPosition();
 }
 function updateMenuPosition() {
@@ -250,6 +301,13 @@ function updateMenuPosition() {
   menuMaxHeight.value = Math.max(80, triggerBounds.top - topBoundary - 16);
 }
 function resized() {
+  if (floatingRect.value) {
+    const rect = floatingRect.value;
+    const width = Math.min(rect.width, window.innerWidth - 16), height = Math.min(rect.height, window.innerHeight - 16);
+    floatingRect.value = { width, height,
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+      top: Math.max(8, Math.min(rect.top, window.innerHeight - height - 8)) };
+  }
   updateScroll(); updateMenuPosition();
 }
 function updateScroll() {
@@ -278,6 +336,7 @@ onMounted(() => {
   void nextTick(() => { resizeInput(); scrollToLatest(); });
 });
 onBeforeUnmount(() => {
+  endFloatingGesture();
   composerObserver?.disconnect();
   window.removeEventListener('pointerdown', outsidePopover);
   window.removeEventListener('resize', resized);
@@ -286,6 +345,10 @@ watch(() => assistant.prompt, () => { void nextTick(resizeInput); });
 watch(() => [assistant.files.length, assistant.selection?.text], () => { void nextTick(updateMenuPosition); });
 watch(section, () => { closePopover(); void nextTick(() => { resizeInput(); scrollToLatest(); }); });
 watch(() => assistant.opened, open => { if (open) void nextTick(() => textarea.value?.focus()); });
+watch(() => [assistant.displayMode, props.fullscreenTarget], () => {
+  endFloatingGesture();
+  void nextTick(() => { resized(); resizeInput(); textarea.value?.focus(); });
+}, { flush: 'post' });
 watch(() => [assistant.session?.id, assistant.connectionId], () => { modelView.value = 'main'; });
 watch(() => assistant.session?.id, () => { visibleMessages.value = 30; void nextTick(scrollToLatest); });
 watch(() => assistant.session?.messages.map(message => message.content.length).join(','), () => {
@@ -296,8 +359,9 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
 </script>
 
 <template>
-  <aside ref="panel" class="assistant-panel" :style="{ '--assistant-menu-max-height': `${menuMaxHeight}px` }" aria-label="Tano 助手" @keydown.esc="closePopover(true)" @keydown="menuKey">
-    <header class="assistant-heading">
+  <Teleport :to="teleportTarget" :disabled="assistant.displayMode === 'sidebar'">
+  <aside ref="panel" v-show="assistant.displayMode !== 'fullscreen' || !!fullscreenTarget" class="assistant-panel" :class="`assistant-panel-${assistant.displayMode}`" :style="{ '--assistant-menu-max-height': `${menuMaxHeight}px`, ...floatingStyle }" aria-label="Tano 助手" @keydown.esc="closePopover(true)" @keydown="menuKey">
+    <header class="assistant-heading" @pointerdown="startFloatingGesture" @pointermove="moveFloatingGesture" @pointerup="endFloatingGesture" @pointercancel="endFloatingGesture" @lostpointercapture="endFloatingGesture">
       <button v-if="section !== 'conversation'" class="icon-button" aria-label="返回助手对话" title="返回对话" @click="section = 'conversation'"><ArrowLeft :size="17" /></button>
       <h2 v-if="section !== 'conversation'">会话记录</h2>
       <h2 v-else class="assistant-title-heading">
@@ -305,13 +369,22 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
       </h2>
       <template v-if="section === 'conversation'">
         <button class="icon-button" title="新建会话" aria-label="新建助手会话" :disabled="assistant.busy || assistant.applying" @click="startNewSession"><MessageCirclePlus :size="18" /></button>
+      </template>
+      <button class="icon-button assistant-display-mode" title="切换助手显示模式" aria-label="切换助手显示模式" :aria-expanded="popover === 'mode'" aria-controls="assistant-display-options" data-assistant-popover @click="togglePopover('mode', $event)"><component :is="displayModeIcon" :size="18" :stroke-width="1.5" /></button>
+      <div v-if="popover === 'mode'" id="assistant-display-options" class="assistant-popover assistant-mode-menu" role="menu" aria-label="助手显示模式">
+        <template v-for="mode in displayModes" :key="mode.id">
+          <div v-if="mode.id === 'fullscreen'" class="assistant-menu-divider" role="separator" />
+          <button class="assistant-menu-item" role="menuitemradio" :aria-checked="assistant.displayMode === mode.id" :class="{ selected: assistant.displayMode === mode.id }" data-menu-item @click="selectDisplayMode(mode.id)"><component :is="mode.icon" class="assistant-mode-icon" :size="16" :stroke-width="1.5" /><span class="assistant-menu-label">{{ mode.label }}</span><Check v-if="assistant.displayMode === mode.id" :size="14" class="assistant-menu-check" /></button>
+        </template>
+      </div>
+      <template v-if="section === 'conversation'">
         <button class="icon-button" title="更多选项" aria-label="助手更多选项" :aria-expanded="popover === 'more'" aria-controls="assistant-more-options" data-assistant-popover @click="togglePopover('more', $event)"><MoreHorizontal :size="19" /></button>
         <div v-if="popover === 'more'" id="assistant-more-options" class="assistant-popover assistant-more-menu">
           <button data-menu-item @click="openHistory"><History :size="16" />管理会话</button>
           <button v-if="!assistant.demo" data-menu-item @click="closePopover(); emit('openSettings')"><Settings2 :size="16" />助手设置</button>
         </div>
       </template>
-      <button class="icon-button" title="收起助手" aria-label="关闭助手侧栏" @click="assistant.opened = false"><ChevronsRight :size="19" /></button>
+      <button class="icon-button" title="收起助手" aria-label="收起助手" @click="assistant.opened = false"><ChevronsRight v-if="assistant.displayMode === 'sidebar'" :size="19" /><Minus v-else :size="17" /></button>
       <div v-if="popover === 'history'" id="assistant-history-options" class="assistant-popover assistant-history-menu" role="dialog" aria-label="最近助手会话">
         <div class="assistant-popover-heading"><span>会话记录</span><button class="icon-button" :class="{ selected: searchingHistory }" aria-label="搜索会话记录" title="搜索会话" @click="searchHistory"><Search :size="16" /></button></div>
         <label v-if="searchingHistory" class="assistant-menu-search"><Search :size="15" /><input v-model="historyQuery" aria-label="搜索助手会话" placeholder="搜索会话" /></label>
@@ -373,7 +446,8 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
             <p v-if="proposal.error" class="assistant-message-error">{{ proposal.error }}</p>
             <ChangeDiff v-if="proposal.preview" :before="proposal.preview.before" :after="proposal.preview.after" />
             <div class="assistant-proposal-actions">
-              <template v-if="['ready', 'conflicted'].includes(proposal.status)">
+              <button v-if="proposal.kind === 'edit' && ['ready', 'conflicted'].includes(proposal.status)" class="secondary-button" :disabled="assistant.busy || assistant.applying" @click="assistant.publishSuggestions(proposal)"><Pencil :size="14" />{{ proposal.suggestionGroupId ? '打开文档建议' : '在文档中逐项审阅' }}</button>
+              <template v-if="!proposal.suggestionGroupId && ['ready', 'conflicted'].includes(proposal.status)">
                 <button class="secondary-button" :disabled="assistant.busy || assistant.applying" @click="assistant.review(proposal)"><Search :size="14" />查看差异</button>
                 <button v-if="proposal.preview && proposal.status === 'ready'" class="primary-button" :disabled="assistant.busy || assistant.applying || proposalChecks[proposal.id] === false" @click="assistant.review(proposal, true)"><Check :size="14" />应用修改</button>
                 <button class="icon-button" title="放弃建议" aria-label="放弃修改建议" :disabled="assistant.busy || assistant.applying" @click="assistant.reject(proposal)"><X :size="15" /></button>
@@ -476,6 +550,7 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
       </div>
     </template>
   </aside>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -491,9 +566,14 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
 .assistant-error, .assistant-notice { margin: 0; padding: 10px 20px; font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
 .assistant-error { color: var(--danger); background: var(--danger-bg); }
 .assistant-notice { color: var(--text-secondary); background: var(--surface); }
-.assistant-popover { position: absolute; z-index: 5; padding: 5px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); box-shadow: 0 8px 28px rgb(0 0 0 / 10%); }
+.assistant-popover { position: absolute; z-index: 5; padding: 4px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); box-shadow: 0 8px 28px rgb(0 0 0 / 10%); font-size: 12px; line-height: 16px; }
 .assistant-more-menu { top: calc(100% - 4px); right: 17px; width: 180px; }
-.assistant-more-menu > button { display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 10px; border-radius: 5px; font-size: 13px; text-align: left; }
+.assistant-mode-menu { z-index: 10; top: calc(100% - 4px); right: 50px; width: 184px; }
+.assistant-mode-menu .assistant-mode-icon { width: 16px; height: 16px; }
+.assistant-display-mode :deep(.assistant-mode-region), .assistant-mode-menu :deep(.assistant-mode-region) { fill: var(--text); }
+.assistant-display-mode[aria-expanded='true'] { background: var(--surface); }
+.assistant-more-menu > button { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 26px; padding: 4px 7px; border-radius: 6px; font-size: 12px; line-height: 16px; text-align: left; }
+.assistant-more-menu > button > svg { width: 14px; height: 14px; }
 .assistant-more-menu > button:hover { background: var(--surface); }
 .assistant-model-menu, .assistant-permissions-menu, .assistant-add-menu { z-index: 70; max-height: min(440px, var(--assistant-menu-max-height)); overflow: auto; }
 .assistant-model-menu { width: min(332px, 100%); }
@@ -502,38 +582,39 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
 .assistant-history-menu { top: calc(100% + 2px); left: 12px; width: min(360px, calc(100% - 24px)); max-height: min(440px, calc(100dvh - 90px)); overflow: auto; }
 .assistant-model-menu, .assistant-add-menu, .assistant-history-menu { display: flex; flex-direction: column; overflow: hidden; }
 .assistant-model-menu > :not(.assistant-menu-scroll), .assistant-add-menu > :not(.assistant-menu-scroll), .assistant-history-menu > :not(.assistant-menu-scroll) { flex-shrink: 0; }
-.assistant-popover-heading { display: flex; align-items: center; gap: 6px; padding: 4px 7px 7px; color: var(--muted); font-size: 12px; }
+.assistant-popover-heading { display: flex; align-items: center; gap: 6px; padding: 0 7px 4px; color: var(--muted); font-size: 11px; }
 .assistant-popover-heading > span { flex: 1; min-width: 0; }
 .assistant-popover-heading small { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .assistant-popover-heading .icon-button { flex: 0 0 24px; width: 24px; height: 24px; border-radius: 5px; }
-.assistant-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; padding: 7px 9px; border-radius: 5px; color: var(--text-secondary); font-size: 14px; text-align: left; }
+.assistant-popover-heading .icon-button > svg { width: 14px; height: 14px; }
+.assistant-menu-item { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 26px; padding: 4px 7px; border-radius: 6px; color: var(--text-secondary); font-size: 12px; line-height: 16px; text-align: left; }
 .assistant-menu-item:hover:not(:disabled), .assistant-menu-item.selected { background: var(--surface); color: var(--text); }
-.assistant-menu-item > svg { flex-shrink: 0; color: var(--muted); }
+.assistant-menu-item > svg { flex-shrink: 0; width: 14px; height: 14px; color: var(--muted); }
 .assistant-menu-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .assistant-menu-check { color: var(--text) !important; }
 .assistant-menu-count { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .assistant-menu-badge { flex-shrink: 0; padding: 2px 4px; border-radius: 3px; color: var(--muted); background: var(--hover); font-size: 10px; line-height: 1.2; }
-.assistant-menu-divider { height: 1px; margin: 5px 8px; background: var(--line); }
-.assistant-menu-caption, .assistant-history-group h3 { margin: 0; padding: 7px 9px 5px; color: var(--muted); font-size: 12px; font-weight: 500; }
+.assistant-menu-divider { height: 1px; margin: 3px -6px; background: var(--line); }
+.assistant-menu-caption, .assistant-history-group h3 { margin: 0; padding: 4px 7px 3px; color: var(--muted); font-size: 11px; font-weight: 500; }
 .assistant-menu-scroll { flex: 1 1 auto; max-height: 258px; min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.assistant-menu-empty { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0; padding: 22px 9px; color: var(--muted); font-size: 12px; }
+.assistant-menu-empty { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0; padding: 16px 7px; color: var(--muted); font-size: 12px; }
 .assistant-detail-option { align-items: flex-start; }
-.assistant-detail-option > svg { margin-top: 3px; }
-.assistant-detail-option .assistant-menu-label { display: grid; gap: 3px; }
+.assistant-detail-option > svg { margin-top: 1px; }
+.assistant-detail-option .assistant-menu-label { display: grid; gap: 2px; }
 .assistant-detail-option .assistant-menu-label > span { overflow: hidden; text-overflow: ellipsis; }
-.assistant-detail-option small { color: var(--muted); font-size: 12px; line-height: 1.5; font-weight: 400; }
+.assistant-detail-option small { color: var(--muted); font-size: 11px; line-height: 16px; font-weight: 400; }
 .assistant-permission-option .assistant-menu-label { white-space: normal; overflow: visible; }
-.assistant-permission-note { display: flex; align-items: center; gap: 6px; margin: 8px 9px 7px; color: var(--muted); font-size: 11px; }
+.assistant-permission-note { display: flex; align-items: center; gap: 6px; margin: 5px 7px 4px; color: var(--muted); font-size: 11px; }
 .assistant-permission-note svg { flex-shrink: 0; }
-.assistant-model-error { margin: 6px 9px; color: var(--danger); font-size: 11px; overflow-wrap: anywhere; }
-.assistant-menu-search { display: flex; align-items: center; gap: 7px; margin: 2px 7px 7px; padding: 7px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
+.assistant-model-error { margin: 4px 7px; color: var(--danger); font-size: 11px; overflow-wrap: anywhere; }
+.assistant-menu-search { display: flex; align-items: center; gap: 6px; margin: 2px 7px 4px; padding: 4px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
 .assistant-menu-search input { width: 100%; min-width: 0; border: 0; padding: 0; background: transparent; color: var(--text); font-size: 12px; }
-.assistant-menu-search svg { flex-shrink: 0; }
-.assistant-manual-model { display: grid; gap: 6px; padding: 5px 8px 8px; font-size: 12px; }
+.assistant-menu-search svg { flex-shrink: 0; width: 14px; height: 14px; }
+.assistant-manual-model { display: grid; gap: 6px; padding: 4px 7px 6px; font-size: 12px; }
 .assistant-manual-model > div { display: flex; align-items: center; gap: 5px; }
-.assistant-manual-model input { flex: 1; width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); color: var(--text); }
+.assistant-manual-model input { flex: 1; width: 100%; min-width: 0; padding: 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); color: var(--text); }
 .assistant-session-option small { flex-shrink: 0; color: var(--muted); font-size: 11px; }
-.assistant-history-group + .assistant-history-group { margin-top: 7px; }
+.assistant-history-group + .assistant-history-group { margin-top: 3px; }
 .assistant-menu-toggle { position: relative; cursor: pointer; }
 .assistant-menu-toggle input { position: absolute; right: 9px; width: 30px; height: 18px; opacity: 0; cursor: pointer; }
 .assistant-switch { flex: 0 0 30px; width: 30px; height: 18px; padding: 2px; border-radius: 10px; background: var(--switch-off); pointer-events: none; transition: background 120ms ease; }
@@ -546,8 +627,8 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
 .assistant-contexts { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; max-height: 116px; overflow: auto; padding: 0 0 8px; }
 .assistant-text-action { display: inline-flex; align-items: center; gap: 5px; border: 0; padding: 5px 0; color: var(--text-secondary); background: transparent; font-size: 12px; }
 .assistant-text-action:hover { color: var(--green); }
-.assistant-context { display: inline-flex; align-items: center; gap: 5px; max-width: min(220px, 100%); padding: 4px 7px; border: 1px solid var(--line); border-radius: 5px; color: var(--text-secondary); background: var(--surface); font-size: 11px; }
-.assistant-context:hover { border-color: var(--control-border); background: var(--hover); }
+.assistant-context { display: inline-flex; align-items: center; gap: 5px; max-width: min(220px, 100%); padding: 4px 7px; border: 1px solid var(--assistant-composer-line); border-radius: 5px; color: var(--assistant-composer-muted); background: color-mix(in srgb, var(--surface) 55%, var(--paper)); font-size: 11px; }
+.assistant-context:hover { border-color: var(--line); background: var(--surface); color: var(--text-secondary); }
 .assistant-context span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .assistant-context svg { flex-shrink: 0; }
 .assistant-selection { display: flex; align-items: center; gap: 7px; width: 100%; border-left: 2px solid var(--green); padding: 4px 0 4px 10px; color: var(--muted); font-size: 12px; }
@@ -598,24 +679,26 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
 .assistant-jump-latest { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--text); color: var(--paper); box-shadow: 0 3px 10px rgb(0 0 0 / 12%); }
 .assistant-jump-latest:hover { color: var(--paper); background: var(--text-secondary); }
 .assistant-composer-area { position: relative; flex: 0 0 auto; min-width: 0; margin: 4px 18px 18px; }
-.assistant-composer { padding: 12px 12px 9px; border: 1px solid var(--line); border-radius: 18px; background: var(--paper); box-shadow: 0 3px 10px rgb(0 0 0 / 4%); transition: border-color 120ms ease; }
-.assistant-composer:focus-within { border-color: var(--control-border); }
+.assistant-composer { --assistant-composer-muted: color-mix(in srgb, var(--muted) 80%, var(--paper)); --assistant-composer-placeholder: color-mix(in srgb, var(--muted) 45%, var(--paper)); --assistant-composer-line: color-mix(in srgb, var(--line) 65%, var(--paper)); padding: 12px 12px 9px; border: 1px solid var(--assistant-composer-line); border-radius: 18px; background: var(--paper); box-shadow: 0 2px 6px rgb(0 0 0 / 2%); transition: border-color 120ms ease; }
+.assistant-composer:focus-within { border-color: color-mix(in srgb, var(--line) 90%, var(--paper)); }
+:global(:root[data-theme='dark'] .assistant-composer) { --assistant-composer-placeholder: var(--assistant-composer-muted); }
 .assistant-composer textarea { display: block; width: 100%; resize: none; min-height: 52px; max-height: 168px; border: 0; background: transparent; color: var(--text); padding: 0; font: inherit; font-size: 14px; line-height: 1.65; }
-.assistant-composer textarea::placeholder { color: var(--muted); opacity: 0.65; }
+.assistant-composer textarea::placeholder { color: var(--assistant-composer-placeholder); opacity: 1; }
 .assistant-composer textarea:focus { outline: none; }
 .assistant-compose-actions { display: flex; align-items: center; gap: 3px; min-height: 30px; margin-top: 7px; }
-.assistant-compose-tool { flex: 0 0 28px; width: 28px; height: 28px; border-radius: 6px; color: var(--muted); }
-.assistant-compose-permission { min-width: 0; max-width: 100px; padding: 6px 9px; border-radius: 6px; color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
+.assistant-compose-tool { flex: 0 0 28px; width: 28px; height: 28px; border-radius: 6px; color: var(--assistant-composer-muted); }
+.assistant-compose-permission { min-width: 0; max-width: 100px; padding: 6px 9px; border-radius: 6px; color: var(--assistant-composer-muted); font-size: 12px; white-space: nowrap; }
 .assistant-compose-permission.assistant-granted { color: var(--green); }
 .assistant-compose-permission:hover, .assistant-compose-permission[aria-expanded='true'], .assistant-compose-tool[aria-expanded='true'] { background: var(--surface); }
-.assistant-compose-model { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 52%; margin-left: auto; padding: 6px 7px; border-radius: 6px; color: var(--text-secondary); font-size: 12px; }
+.assistant-compose-permission:not(.assistant-granted):hover, .assistant-compose-permission:not(.assistant-granted)[aria-expanded='true'], .assistant-compose-tool:hover, .assistant-compose-tool[aria-expanded='true'] { color: var(--text-secondary); }
+.assistant-compose-model { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 52%; margin-left: auto; padding: 6px 7px; border-radius: 6px; color: var(--assistant-composer-muted); font-size: 12px; }
 .assistant-compose-model span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .assistant-compose-model svg { flex-shrink: 0; }
-.assistant-compose-model:hover, .assistant-compose-model[aria-expanded='true'] { background: var(--surface); }
+.assistant-compose-model:hover, .assistant-compose-model[aria-expanded='true'] { background: var(--surface); color: var(--text-secondary); }
 .assistant-send, .assistant-stop { display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; min-height: 30px; padding: 0; margin-left: 4px; border-radius: 50%; }
 .assistant-send { background: var(--text); color: var(--paper); }
 .assistant-send:hover:not(:disabled) { background: var(--text-secondary); }
-.assistant-send:disabled { background: var(--surface); color: var(--control-border); opacity: 1; }
+.assistant-send:disabled { background: color-mix(in srgb, var(--surface) 55%, var(--paper)); color: color-mix(in srgb, var(--control-border) 60%, var(--paper)); opacity: 1; }
 .assistant-progress { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; color: var(--muted); font-size: 11px; }
 .assistant-history { flex: 1; overflow: auto; padding: 20px; }
 .assistant-history-row { display: flex; gap: 6px; align-items: center; border-bottom: 1px solid var(--line); }
@@ -628,4 +711,26 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
 .assistant-export input { width: 100%; min-width: 0; margin-top: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); background: var(--paper); }
 @media (max-width: 1100px) { .assistant-panel { flex-basis: 360px; width: 360px; } }
 @media (max-width: 700px) { .assistant-panel { position: absolute; inset: 0; z-index: 45; width: 100%; border-left: 0; } .assistant-composer-area { margin: 4px 14px 14px; } .assistant-messages { padding-left: 22px; padding-right: 22px; } }
+.assistant-panel-floating { position: fixed; inset: auto 24px 24px auto; z-index: 50; flex: none; width: min(460px, calc(100vw - 32px)); height: min(520px, calc(100dvh - 80px)); border: 1px solid var(--line); border-radius: 24px; box-shadow: 0 4px 8px rgb(0 0 0 / 3%), 0 12px 32px rgb(0 0 0 / 8%); overflow: hidden; }
+.assistant-panel-floating .assistant-heading { min-height: 48px; padding: 8px 12px; cursor: move; touch-action: none; user-select: none; }
+.assistant-panel-floating .assistant-title { font-size: 13px; }
+.assistant-panel-floating .assistant-demo-label { padding: 0 24px 6px; }
+.assistant-panel-floating .assistant-messages { padding: 12px 24px 16px; }
+.assistant-panel-floating .assistant-welcome { padding-top: 24px; }
+.assistant-panel-floating .assistant-welcome-mark { width: 48px; height: 48px; margin-bottom: 16px; border: 0; box-shadow: none; }
+.assistant-panel-floating .assistant-welcome-mark img { width: 36px; height: 36px; }
+.assistant-panel-floating .assistant-welcome h3 { margin-bottom: 12px; font-size: 17px; }
+.assistant-panel-floating .assistant-starters button { min-height: 35px; gap: 10px; font-size: 13px; }
+.assistant-panel-floating .assistant-conversation-meta { padding-bottom: 12px; }
+.assistant-panel-floating .assistant-message-user .assistant-message-text { padding: 8px 14px; border-radius: 18px; }
+.assistant-panel-floating .assistant-composer-area { margin: 0 14px 14px; }
+.assistant-panel-floating .assistant-composer { padding: 12px 12px 8px; box-shadow: none; }
+.assistant-panel-floating .assistant-composer textarea { min-height: 40px; }
+.assistant-panel-floating .assistant-compose-actions { margin-top: 4px; }
+.assistant-panel-floating .assistant-context { padding: 3px 6px; }
+.assistant-panel-fullscreen { position: relative; inset: auto; z-index: auto; flex: 1; width: 100%; height: 100%; border-left: 0; }
+.assistant-panel-fullscreen .assistant-messages { width: 100%; max-width: 820px; margin-inline: auto; }
+.assistant-panel-fullscreen .assistant-composer-area { width: calc(100% - 36px); max-width: 768px; margin: 4px auto 18px; }
+.assistant-panel-fullscreen .assistant-welcome { padding-bottom: 24px; }
+@media (max-width: 700px) { .assistant-panel-floating { right: 16px; bottom: 16px; } .assistant-panel-fullscreen .assistant-composer-area { width: calc(100% - 28px); margin-bottom: 14px; } }
 </style>

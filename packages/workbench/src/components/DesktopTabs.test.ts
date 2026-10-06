@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { createApp, h, markRaw, nextTick, reactive } from 'vue';
+import { createApp, h, markRaw, nextTick, reactive, ref } from 'vue';
 import type { App } from 'vue';
 import DesktopTabs from './DesktopTabs.vue';
 import { TAB_DOCK_PROBE, TAB_DRAG_FINISHED, tabDragMetaType } from '../tab-docking';
@@ -104,6 +104,21 @@ beforeEach(() => {
     button.hasPointerCapture = () => true;
     button.releasePointerCapture = vi.fn();
   }
+});
+
+it('labels the fullscreen assistant tab and restores the document label when its mode changes', async () => {
+  app.unmount();
+  const assistantTab = ref<{ id: string; title: string } | undefined>({ id: 'b', title: 'Tano 助手' });
+  app = createApp(() => h(DesktopTabs, { assistantTab: assistantTab.value }));
+  app.mount(root.querySelector('.desktop-window-tab-slot')!);
+  const tab = root.querySelector<HTMLButtonElement>('[data-id="b"] [role="tab"]')!;
+  expect(tab.title).toBe('Tano 助手');
+  expect(tab.querySelector('.lucide-bot-icon')).not.toBeNull();
+  expect(root.querySelector('[aria-label="关闭 Tano 助手"]')).not.toBeNull();
+  assistantTab.value = undefined; await nextTick();
+  expect(tab.title).toBe('b.md');
+  expect(tab.querySelector('.desktop-tab-label')!.textContent).toBe('b');
+  expect(tab.querySelector('.lucide-file-text-icon')).not.toBeNull();
 });
 
 it('renders extension labels and icons and prevents detaching window-local views', async () => {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ArrowLeft, ArrowRight, CalendarDays, FileText, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, SquarePen, ExternalLink, Bug } from 'lucide-vue-next';
+import { ArrowLeft, ArrowRight, Bot, CalendarDays, FileText, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, SquarePen, ExternalLink, Bug } from 'lucide-vue-next';
 import { basename, isMarkdown } from '@tano/protocol';
 import { invoke } from '@tauri-apps/api/core';
 import { cursorPosition, getCurrentWindow } from '@tauri-apps/api/window';
@@ -12,6 +12,7 @@ import { paneDropAt } from '../pane-docking';
 import type { PaneDrop } from '../pane-layout';
 import { mobile, nativeOs } from '../platform';
 import { useWorkspaceStore } from '../stores/workspace';
+import type { DocumentTab } from '../stores/workspace';
 import ButtonVisibilityGroup from './ButtonVisibilityGroup.vue';
 
 const store = useWorkspaceStore();
@@ -23,6 +24,7 @@ const props = defineProps<{
   detachable?: boolean;
   paneId?: string;
   fileDrag?: { workspaceId: string; ids: readonly string[] };
+  assistantTab?: { id: string; title: string };
 }>();
 const paneTabs = computed(() => props.paneId
   ? store.tabs.filter(tab => store.panes.find(pane => pane.id === props.paneId)?.tabs.includes(tab.id))
@@ -54,6 +56,8 @@ const frozenTabWidths = ref<Record<string, number>>({});
 const frozenStripWidth = ref<number>();
 const pointerInsideTabList = ref(false);
 const title = (path: string) => basename(path).replace(/\.(md|markdown)$/i, '');
+const tabLabel = (tab: DocumentTab) => props.assistantTab?.id === tab.id ? props.assistantTab.title
+  : tab.graph ? '关系图谱' : tab.plugins ? '插件' : tab.calendar ? '计划' : tab.view ? tab.view.label : tab.blank ? '新标签页' : title(tab.path);
 const draggingId = ref('');
 const outgoingId = ref('');
 const dragPreview = ref<{
@@ -912,18 +916,19 @@ async function onTabKeydown(event: KeyboardEvent) {
           role="tab"
           :aria-selected="doc.id === selectedId"
           :tabindex="doc.id === selectedId ? 0 : -1"
-          :title="doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.calendar ? '计划' : doc.view ? doc.view.label : doc.blank ? '新标签页' : doc.path"
+          :title="assistantTab?.id === doc.id ? assistantTab.title : doc.blank || doc.graph || doc.plugins || doc.calendar || doc.view ? tabLabel(doc) : doc.path"
           :draggable="nativeTabDrag"
           @pointerdown="startDrag($event, doc.id)"
           @dragstart.stop="startNativeDrag($event, doc.id)"
           @click="store.activeId = doc.id"
         >
-          <GitFork v-if="doc.graph" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
+          <Bot v-if="assistantTab?.id === doc.id" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
+          <GitFork v-else-if="doc.graph" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <Puzzle v-else-if="doc.plugins" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <CalendarDays v-else-if="doc.calendar" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <component :is="doc.view.icon" v-else-if="doc.view" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <FileText v-else-if="!doc.blank" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
-          <span class="desktop-tab-label">{{ doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.calendar ? '计划' : doc.view ? doc.view.label : doc.blank ? '新标签页' : title(doc.path) }}</span>
+          <span class="desktop-tab-label">{{ tabLabel(doc) }}</span>
           <span
             v-if="doc.document && store.dirty(doc.document)"
             class="desktop-tab-dirty"
@@ -933,8 +938,8 @@ async function onTabKeydown(event: KeyboardEvent) {
         <button
           class="desktop-tab-close"
           type="button"
-          :aria-label="`关闭 ${doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.calendar ? '计划' : doc.view ? doc.view.label : doc.blank ? '新标签页' : title(doc.path)}`"
-          :title="`关闭 ${doc.graph ? '关系图谱' : doc.plugins ? '插件' : doc.calendar ? '计划' : doc.view ? doc.view.label : doc.blank ? '新标签页' : title(doc.path)}`"
+          :aria-label="`关闭 ${tabLabel(doc)}`"
+          :title="`关闭 ${tabLabel(doc)}`"
           @click="closeTab(doc.id)"
         >
           <X :size="13" />

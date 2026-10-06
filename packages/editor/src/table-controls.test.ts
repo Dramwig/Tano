@@ -10,6 +10,7 @@ import type { TableLayout } from '@tano/protocol';
 import MarkdownEditor from './MarkdownEditor.vue';
 import { moveTableLine, tableLineAction, tableLineSelection } from './table-commands';
 import { tablesInDocument } from './table-layout';
+import { createTableDragPreview } from './table-drag-preview';
 
 vi.mock('mermaid', () => ({ default: { initialize: vi.fn(), render: vi.fn() } }));
 let app: App | undefined;
@@ -387,6 +388,32 @@ it('opens all line actions with keyboard navigation and cancels a pending gestur
   app!.unmount(); app = undefined;
   expect(root.querySelector('.tano-table-controls')).toBeNull();
   pointer('pointermove', root);
+});
+
+it.each(['row', 'column'] as const)('keeps a clipped %s preview independent of wide-table gutters and minimum width', async axis => {
+  const { view } = await mount();
+  measureInsertionTable();
+  const table = root.querySelector('table')!;
+  Object.assign(table.style, { marginLeft: '640px', marginRight: '640px', minWidth: '2200px' });
+  const originalStyle = table.getAttribute('style');
+  const originalDoc = view.state.doc;
+  const grip = root.querySelector<HTMLElement>(`.tano-table-grip.is-${axis}`)!;
+  const drag = createTableDragPreview(view, { pos: 0, axis, index: 1 }, grip,
+    { x: 300, y: 160 }, { left: 280, right: 440, top: 120, bottom: 200 })!;
+  const preview = root.querySelector<HTMLElement>('.tano-table-drag-preview')!;
+  const copy = preview.querySelector('table')!;
+  expect(copy.style.marginLeft).toBe('0px');
+  expect(copy.style.marginRight).toBe('0px');
+  expect(copy.style.minWidth).toBe('0px');
+  expect(copy.style.width).toBe(axis === 'row' ? '480px' : '160px');
+  expect(copy.style.left).toBe(axis === 'row' ? '-180px' : '-20px');
+  expect(copy.style.top).toBe(axis === 'row' ? '0px' : '-20px');
+  expect([...copy.querySelectorAll('th, td')].map(cell => cell.textContent))
+    .toEqual(axis === 'row' ? ['alpha', 'beta', 'gamma'] : ['B', 'beta', 'two']);
+  expect(table.getAttribute('style')).toBe(originalStyle);
+  expect(view.state.doc).toBe(originalDoc);
+  drag.destroy();
+  expect(root.querySelector('.tano-table-drag-preview')).toBeNull();
 });
 
 it('previews the selected row only after drag intent, follows its axis, and cleans up on cancellation, edits, and teardown', async () => {

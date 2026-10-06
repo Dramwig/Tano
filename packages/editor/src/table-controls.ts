@@ -143,7 +143,14 @@ export function tableControls(readonly: () => boolean) {
         const right = Math.min(bounds.right, clip.right, viewport.right, window.innerWidth);
         const top = Math.max(bounds.top, viewport.top, 0);
         const bottom = Math.min(bounds.bottom, viewport.bottom, window.innerHeight);
+        const border = getComputedStyle(table.rows[0]?.cells[0] ?? cell);
+        const pixelRatio = window.devicePixelRatio || 1;
+        // Collapsed borders are painted on device pixels; DOM bounds can remain fractional.
+        const borderCenter = (edge: number, width: string) =>
+          (Math.round(edge * pixelRatio) + Math.round((parseFloat(width) || 1) * pixelRatio) / 2) / pixelRatio;
         return { cell: cell.getBoundingClientRect(), bounds, left, right, top, bottom,
+          borderLeft: borderCenter(bounds.left, border.borderLeftWidth),
+          borderTop: borderCenter(bounds.top, border.borderTopWidth),
           viewportLeft: Math.max(viewport.left, 0), viewportRight: Math.min(viewport.right, window.innerWidth) };
       };
       const positionInsertions = (g: NonNullable<ReturnType<typeof geometry>>) => {
@@ -262,8 +269,8 @@ export function tableControls(readonly: () => boolean) {
         grips.row.hidden = y < g.top || y > g.bottom;
         if (selected && grips[selected.axis].hidden) close();
         grips.column.style.left = `${x - 14}px`;
-        grips.column.style.top = `${g.bounds.top - 14}px`;
-        grips.row.style.left = `${Math.max(g.left - 14, g.viewportLeft)}px`;
+        grips.column.style.top = `${g.borderTop - 14}px`;
+        grips.row.style.left = `${Math.max(g.borderLeft, g.left, g.viewportLeft + 14) - 14}px`;
         grips.row.style.top = `${y - 14}px`;
         if (selected) {
           const dom = cellDOM(selected.pos, selected.axis === 'row' ? selected.index : 0, selected.axis === 'column' ? selected.index : 0);

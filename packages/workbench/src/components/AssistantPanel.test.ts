@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { createApp, h, nextTick } from 'vue';
+import { createApp, h, nextTick, ref } from 'vue';
+import type { Ref } from 'vue';
 import { createPinia, disposePinia, setActivePinia } from 'pinia';
 import { configureWorkbench } from '../runtime';
 import { DemoAdapter } from '../adapter';
@@ -32,7 +33,7 @@ it('opens task evidence from an assistant report and disables references in a di
   expect(root.querySelector<HTMLButtonElement>('.tano-reference button')!.disabled).toBe(true);
 });
 
-async function mountEmptyConversation() {
+async function mountEmptyConversation(fullscreenTarget?: string | Ref<HTMLElement | undefined>) {
   localStorage.clear();
   vi.stubGlobal('navigator', Object.create(navigator, { locks: { value: { request: async (_name: string, action: () => unknown) => action() } } }));
   pinia = configureWorkbench(createPinia(), { adapter: new DemoAdapter(), native: false, mobile: false });
@@ -44,10 +45,74 @@ async function mountEmptyConversation() {
   await vi.waitFor(() => expect(assistant.loading).toBe(false));
   assistant.open();
   root = document.createElement('div'); document.body.append(root);
-  app = createApp(() => h(AssistantPanel)).use(pinia); app.mount(root);
+  app = createApp(() => h(AssistantPanel, { fullscreenTarget: typeof fullscreenTarget === 'string' ? fullscreenTarget : fullscreenTarget?.value })).use(pinia); app.mount(root);
   await nextTick();
   return { workspace, assistant };
 }
+
+it('moves the same conversation between sidebar, floating and the current tab with a keyboard-accessible mode menu', async () => {
+  const { workspace, assistant } = await mountEmptyConversation('#assistant-test-fullscreen');
+  const host = document.createElement('div'); host.id = 'assistant-test-fullscreen'; root.append(host);
+  const originalPanel = root.querySelector('.assistant-panel');
+  const originalInput = root.querySelector('textarea');
+  assistant.prompt = '未发送的草稿';
+  assistant.allowSearch = true;
+  const files = [...assistant.files];
+  await nextTick();
+  const choose = async (mode: string) => {
+    document.querySelector<HTMLButtonElement>('[aria-label="切换助手显示模式"]')!.click(); await nextTick();
+    const menu = document.querySelector('#assistant-display-options')!;
+    expect(menu.querySelector('[aria-checked="true"]')!.textContent).toContain(({ sidebar: '侧栏', floating: '浮动', fullscreen: '全屏' })[assistant.displayMode]);
+    [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(button => button.textContent === mode)!.click();
+    await nextTick(); await nextTick();
+    expect(document.querySelector('#assistant-display-options')).toBeNull();
+    expect(document.querySelector('textarea')).toBe(originalInput);
+    expect(assistant.prompt).toBe('未发送的草稿');
+  };
+  await choose('浮动');
+  expect(document.body.querySelector('.assistant-panel-floating')).toBe(originalPanel);
+  expect(originalPanel!.parentElement).toBe(document.body);
+  expect(root.querySelector('.assistant-panel')).toBeNull();
+  expect(document.querySelector('[aria-label="调整浮动助手大小"]')).toBeNull();
+  await choose('全屏');
+  expect(host.querySelector('.assistant-panel-fullscreen')).toBe(originalPanel);
+  expect(assistant.fullscreenTabId).toBe(workspace.activeId);
+  document.querySelector<HTMLButtonElement>('[aria-label="切换助手显示模式"]')!.click(); await nextTick();
+  document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+  expect(document.activeElement!.textContent).toBe('全屏');
+  document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await nextTick();
+  expect(document.activeElement).toBe(document.querySelector('[aria-label="切换助手显示模式"]'));
+  await choose('侧栏');
+  expect(root.querySelector('.assistant-panel-sidebar')).toBe(originalPanel);
+  expect(host.querySelector('.assistant-panel')).toBeNull();
+  await choose('浮动');
+  expect(originalPanel!.parentElement).toBe(document.body);
+  await choose('全屏');
+  expect(originalPanel!.parentElement).toBe(host);
+  await choose('侧栏');
+  expect(assistant.files).toEqual(files);
+  expect(assistant.allowSearch).toBe(true);
+});
+
+it('restores the same fullscreen conversation when a compact pane replaces its host', async () => {
+  const target = ref<HTMLElement>();
+  const { assistant } = await mountEmptyConversation(target);
+  const originalPanel = root.querySelector<HTMLElement>('.assistant-panel')!;
+  const host = document.createElement('div'); root.append(host); target.value = host;
+  assistant.prompt = '保留草稿'; assistant.setDisplayMode('fullscreen');
+  await nextTick(); await nextTick();
+  expect(originalPanel.parentElement).toBe(host);
+  target.value = undefined; host.remove();
+  await nextTick(); await nextTick();
+  expect(originalPanel.parentElement).toBe(document.body);
+  expect(originalPanel.style.display).toBe('none');
+  const replacement = document.createElement('div'); root.append(replacement); target.value = replacement;
+  await nextTick(); await nextTick();
+  expect(replacement.querySelector('.assistant-panel')).toBe(originalPanel);
+  expect(originalPanel.style.display).not.toBe('none');
+  expect(originalPanel.querySelector('textarea')!.value).toBe('保留草稿');
+  expect(assistant.displayMode).toBe('fullscreen');
+});
 
 it('prepares a starter draft with the current document without sending or granting workspace access', async () => {
   const { workspace, assistant } = await mountEmptyConversation();

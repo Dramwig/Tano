@@ -80,7 +80,8 @@ export class TableViewport extends TableView {
     const insetRight = inset(style.paddingRight) + inset(style.borderRightWidth);
     const originLeft = parent === this.view.dom ? prose.left : container.left + insetLeft;
     const baseWidth = parent === this.view.dom ? prose.width : Math.max(0, container.width - insetLeft - insetRight);
-    const annotated = !!this.table.querySelector('[data-comment-id]');
+    // Reserve the review gutter only for annotations belonging to this table.
+    const annotated = !!this.table.querySelector('[data-comment-id], [data-suggestion-id]');
     const contentWidth = this.table.getBoundingClientRect().width;
     // A nested table scrolls inside its block container instead of escaping/clipping its children.
     const contained = !!parent.closest('.tano-enhanced');

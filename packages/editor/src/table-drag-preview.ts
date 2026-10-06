@@ -42,6 +42,8 @@ export function createTableDragPreview(
   preview.style.transform = `translate3d(${left}px, ${top}px, 0)`;
   const copy = table.cloneNode(false) as HTMLTableElement;
   Object.assign(copy.style, {
+    // Viewport gutters and the full table's minimum width do not belong to the selected slice.
+    margin: '0', minWidth: '0',
     width: `${origin.right - origin.left}px`,
     left: `${origin.left - left}px`, top: `${origin.top - top}px`,
     font: getComputedStyle(table).font,

@@ -32,6 +32,38 @@ export function nodeRadius(node: GraphNode) {
   return 5 + Math.min(5, Math.sqrt(node.degree) * 1.5);
 }
 
+/** Turns edges into a right-facing cone using tangential impulses, without a preferred length or position. */
+export function createGraphDirectionForce(edges: readonly LayoutEdge[], strength = 0.55) {
+  const pairs = new Set(edges.map(({ source, target }) => JSON.stringify([source.id, target.id])));
+  const maxAngle = Math.PI / 5;
+  const force = (alpha: number) => {
+    for (const edge of edges) {
+      // Reciprocal references cannot both point right; let the shared layout settle them.
+      if (pairs.has(JSON.stringify([edge.target.id, edge.source.id]))) continue;
+      const dx = edge.target.x - edge.source.x;
+      const dy = edge.target.y - edge.source.y;
+      const angle = Math.atan2(dy, dx);
+      const error = angle - Math.max(-maxAngle, Math.min(maxAngle, angle));
+      if (!error || Math.hypot(dx, dy) < 0.001) continue;
+      const turn = Math.max(-0.3, Math.min(0.3, error * strength * alpha));
+      const vx = dy * turn;
+      const vy = -dx * turn;
+      const sourceFree = edge.source.fx == null && edge.source.fy == null;
+      const targetFree = edge.target.fx == null && edge.target.fy == null;
+      const share = sourceFree && targetFree ? 0.5 : 1;
+      if (sourceFree) {
+        edge.source.vx = (edge.source.vx ?? 0) - vx * share;
+        edge.source.vy = (edge.source.vy ?? 0) - vy * share;
+      }
+      if (targetFree) {
+        edge.target.vx = (edge.target.vx ?? 0) + vx * share;
+        edge.target.vy = (edge.target.vy ?? 0) + vy * share;
+      }
+    }
+  };
+  return force;
+}
+
 export function createGraphLayout(
   graph: DocumentGraph,
   previous: LayoutNode[] = [],

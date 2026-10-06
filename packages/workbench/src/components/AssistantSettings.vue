@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { Bot, Check, LoaderCircle, Plus, Trash2 } from 'lucide-vue-next';
+import { computed, onMounted, ref } from 'vue';
+import { Bot, Check, LoaderCircle, Plus, Trash2, X } from 'lucide-vue-next';
 import type { AssistantConnection } from '@tano/protocol';
 import { useAssistantStore } from '../assistant/store';
 
@@ -25,27 +25,42 @@ function blankConnection(): ConnectionDraft {
   };
 }
 
-const draft = ref<ConnectionDraft>(blankConnection());
+const draft = ref<ConnectionDraft | null>(null);
 
-function editConnection(connection?: AssistantConnection) {
-  draft.value = connection
-    ? {
-        id: connection.id,
-        name: connection.name,
-        endpoint: connection.endpoint,
-        kind: connection.kind ?? 'api',
-        cliPath: connection.cliPath ?? '',
-        protocol: connection.protocol ?? 'chat-completions',
-        tools: connection.tools,
-        maxOutputTokens: connection.maxOutputTokens,
-      }
-    : blankConnection();
+const editing = computed(() => draft.value !== null);
+
+function editConnection(connection: AssistantConnection) {
+  draft.value = {
+    id: connection.id,
+    name: connection.name,
+    endpoint: connection.endpoint,
+    kind: connection.kind ?? 'api',
+    cliPath: connection.cliPath ?? '',
+    protocol: connection.protocol ?? 'chat-completions',
+    tools: connection.tools,
+    maxOutputTokens: connection.maxOutputTokens,
+  };
+  secret.value = '';
+  error.value = '';
+  notice.value = '';
+}
+
+function addConnection() {
+  draft.value = blankConnection();
+  secret.value = '';
+  error.value = '';
+  notice.value = '';
+}
+
+function closeEditor() {
+  draft.value = null;
   secret.value = '';
   error.value = '';
   notice.value = '';
 }
 
 async function saveConnection() {
+  if (!draft.value) return;
   saving.value = true;
   error.value = '';
   notice.value = '';
@@ -70,7 +85,7 @@ async function removeConnection(id: string) {
   notice.value = '';
   try {
     await assistant.removeConnection(id);
-    editConnection();
+    closeEditor();
     notice.value = '模型连接已删除';
     emit('changed');
   } catch (cause) {
@@ -107,7 +122,7 @@ onMounted(() => {
         <div class="settings-card assistant-settings-card">
           <div class="assistant-connection-list">
             <div v-for="connection in assistant.connections" :key="connection.id">
-              <button type="button" @click="editConnection(connection)">
+              <button type="button" :aria-current="draft?.id === connection.id ? 'true' : undefined" @click="editConnection(connection)">
                 <strong>{{ connection.name }}</strong>
                 <small>{{ connection.kind === 'codex-cli' ? 'Codex CLI' : connection.kind === 'claude-cli' ? 'Claude CLI' : connection.endpoint }}</small>
               </button>
@@ -120,17 +135,21 @@ onMounted(() => {
                 @click="removeConnection(connection.id)"
               ><Trash2 :size="15" /></button>
             </div>
-            <button type="button" class="assistant-add-connection" @click="editConnection()"><Plus :size="15" />添加连接</button>
-            <p v-if="!assistant.connections.length" class="assistant-settings-empty">还没有模型连接，请先添加一个连接。</p>
+            <button v-if="!editing" type="button" class="assistant-add-connection" @click="addConnection"><Plus :size="15" />添加连接</button>
+            <p v-if="!assistant.connections.length && !editing" class="assistant-settings-empty">还没有模型连接，请先添加一个连接。</p>
           </div>
 
-          <form class="assistant-connection-form" @submit.prevent="saveConnection">
+          <form v-if="editing && draft" class="assistant-connection-form" @submit.prevent="saveConnection">
+            <div class="assistant-form-heading">
+              <h4>{{ assistant.connections.some(connection => connection.id === draft?.id) ? '编辑连接' : '新建连接' }}</h4>
+              <button type="button" class="assistant-close-form" aria-label="收起连接编辑" title="收起" @click="closeEditor"><X :size="16" /></button>
+            </div>
             <label>连接名称<input v-model="draft.name" required maxlength="120" autocomplete="off" /></label>
             <label>连接方式<select v-model="draft.kind" @change="secret = ''"><option value="api">API</option><option value="codex-cli">Codex CLI</option><option value="claude-cli">Claude CLI</option></select></label>
             <template v-if="draft.kind === 'api'">
               <label>API 服务地址<input v-model="draft.endpoint" required type="url" maxlength="2000" autocomplete="off" /></label>
               <label>接口协议<select v-model="draft.protocol"><option value="responses">Responses</option><option value="chat-completions">Chat Completions</option></select></label>
-              <label>API 密钥<input v-model="secret" type="password" maxlength="2000" autocomplete="new-password" :placeholder="assistant.connections.some(connection => connection.id === draft.id && connection.hasKey) ? '已保存；留空保留当前密钥' : ''" /></label>
+              <label>API 密钥<input v-model="secret" type="password" maxlength="2000" autocomplete="new-password" :placeholder="assistant.connections.some(connection => connection.id === draft?.id && connection.hasKey) ? '已保存；留空保留当前密钥' : ''" /></label>
             </template>
             <label v-else>CLI 可执行文件路径<input v-model="draft.cliPath" maxlength="2000" autocomplete="off" placeholder="留空自动查找" /></label>
             <label class="assistant-settings-checkbox"><input v-model="draft.tools" type="checkbox" />工具调用与修改建议</label>
@@ -140,6 +159,8 @@ onMounted(() => {
             <button class="primary-button" :disabled="saving || assistant.busy || assistant.loading"><LoaderCircle v-if="saving" :size="15" class="spinning" /><Check v-else :size="15" />保存连接</button>
           </form>
         </div>
+        <p v-if="!editing && error" class="form-error" role="alert">{{ error }}</p>
+        <p v-if="!editing && notice" class="settings-notice" role="status">{{ notice }}</p>
         <p class="settings-local-note">模型连接和 API 密钥仅保存在当前设备的个人配置中，不会写入工作区 Markdown 文件。</p>
       </section>
     </template>
@@ -148,9 +169,7 @@ onMounted(() => {
 
 <style scoped>
 .assistant-settings-card {
-  display: grid;
-  grid-template-columns: minmax(220px, 0.85fr) minmax(300px, 1.15fr);
-  gap: 28px;
+  display: block;
   padding: 20px;
 }
 .assistant-connection-list {
@@ -173,6 +192,9 @@ onMounted(() => {
   overflow-wrap: anywhere;
 }
 .assistant-connection-list > div > button:first-child:hover {
+  color: var(--green);
+}
+.assistant-connection-list > div > button:first-child[aria-current='true'] {
   color: var(--green);
 }
 .assistant-connection-list strong {
@@ -203,6 +225,32 @@ onMounted(() => {
   display: grid;
   gap: 13px;
   min-width: 0;
+  margin-top: 20px;
+}
+.assistant-form-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.assistant-form-heading h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+.assistant-close-form {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+.assistant-close-form:hover {
+  background: var(--hover);
+  color: var(--text);
 }
 .assistant-connection-form label {
   display: grid;
@@ -235,9 +283,6 @@ onMounted(() => {
   margin: 0;
 }
 @media (max-width: 760px) {
-  .assistant-settings-card {
-    grid-template-columns: 1fr;
-    gap: 24px;
-  }
+  .assistant-connection-form { margin-top: 18px; }
 }
 </style>

@@ -9,7 +9,10 @@ import {
   serializerCtx,
   parserCtx,
   editorViewCtx,
+  remarkCtx,
 } from '@milkdown/kit/core';
+import { SerializerState } from '@milkdown/kit/transformer';
+import remarkGfm from 'remark-gfm';
 import {
   commonmark,
   toggleStrongCommand,
@@ -104,6 +107,8 @@ import { tableLayouts, tableLayoutKey, sameMarkdownContent } from './table-layou
 import { tableControls } from './table-controls';
 import { TableViewport, tableViewports } from './table-viewport';
 import type { CommentGeometry } from './comment-projection';
+import { suggestionMarks } from './suggestion-marks';
+import type { SuggestionDecorations } from '@tano/protocol';
 import { pageSearchKey, pageSearchPlugin, proseSearchRanges } from './search';
 
 interface ImportedResource {
@@ -125,6 +130,9 @@ const props = withDefaults(
     extension?: EditorExtension;
     resourceRevision?: string;
     commentAnchors?: readonly { id: string; anchor: CommentAnchor }[];
+    suggestionMarks?: SuggestionDecorations;
+    /** Host maps a normalized transaction back to its original Markdown spelling. */
+    transformChange?: (raw: string, before: string, after: string) => string;
     tableLayouts?: readonly TableLayout[];
     resolveImage?: (reference: string) => string | null;
     importFile?: (file: File, requireImage: boolean) => Promise<ImportedResource>;
@@ -319,6 +327,7 @@ const blockMenu = shallowRef<{ index: number; x: number; y: number; doc: Node } 
 let selectionBeforeMenu: { selection: Selection; doc: Node } | null = null;
 let rightClickSelection: { selection: Selection; doc: Node } | null = null;
 let editor: Editor | undefined;
+let suggestionSerializer: ReturnType<typeof SerializerState.create> | undefined;
 let disposed = false;
 let unbindExtension: (() => void) | undefined;
 let lastValue = props.modelValue;
@@ -1497,7 +1506,41 @@ const bridge = $prose(
               emit('selectionChange', selectionContext(view.state));
             if (activated || applying || disposed || props.readonly || previous.doc.eq(view.state.doc)) return;
             if (sameMarkdownContent(previous.doc, view.state.doc)) return;
-            const markdown = frontmatter.prefix + ctx.get(serializerCtx)(serializableDocument(view.state));
+            // Column padding depends on the widest cell: typing in that cell
+            // otherwise looks like edits to every row. Use stable table spacing
+            // for the transaction diff; transformChange restores source spelling.
+            let serialize = ctx.get(serializerCtx);
+            if (props.transformChange) {
+              if (!suggestionSerializer) {
+                const remark = ctx.get(remarkCtx)();
+                remark.use(remarkGfm, { tablePipeAlign: false });
+                suggestionSerializer = SerializerState.create(view.state.schema, remark);
+              }
+              serialize = suggestionSerializer;
+            }
+            let markdown = frontmatter.prefix + serialize(serializableDocument(view.state));
+            if (props.transformChange) {
+              try {
+                const baseline = ctx.get(parserCtx)(splitFrontmatter(lastValue).body);
+                if (!baseline) throw new Error('无法解析建议基线');
+                const before = frontmatter.prefix + serialize(baseline);
+                if (before === markdown) return;
+                const mapped = props.transformChange(lastValue, before, markdown);
+                const parsed = ctx.get(parserCtx)(splitFrontmatter(mapped).body);
+                const normalized = ctx.get(parserCtx)(splitFrontmatter(markdown).body);
+                if (!parsed || !normalized || ctx.get(serializerCtx)(parsed) !== ctx.get(serializerCtx)(normalized)) {
+                  throw new Error('此结构修改无法精确映射，请在源码模式重新编辑；原文和已有建议保留');
+                }
+                markdown = mapped;
+              } catch (error) {
+                emit('error', String(error));
+                // Restore the last safely represented view instead of leaving unsaved text hidden.
+                const retained = lastValue;
+                lastValue = markdown;
+                queueMicrotask(() => { if (!disposed) applyContent(retained); });
+                return;
+              }
+            }
             if (markdown === lastValue) return;
             lastValue = markdown;
             emit('update:modelValue', markdown);
@@ -2129,6 +2172,7 @@ onMounted(async () => {
       )
       .use(bridge)
       .use(commentMarks)
+      .use($prose(() => suggestionMarks(() => props.suggestionMarks)))
       .use($prose(() => pageSearchPlugin(() => emit('searchChange'))));
     editor = await instance.create();
     if (disposed) {
@@ -2194,6 +2238,9 @@ function applyContent(value: string) {
   }
 }
 watch(() => props.modelValue, applyContent);
+watch(() => props.suggestionMarks, () => {
+  if (bridgeView && !disposed) bridgeView.dispatch(bridgeView.state.tr.setMeta('addToHistory', false));
+});
 watch(() => props.tableLayouts, (tables) => {
   if (bridgeView) bridgeView.dispatch(bridgeView.state.tr
     .setMeta(tableLayoutKey, tables ?? []).setMeta('addToHistory', false));

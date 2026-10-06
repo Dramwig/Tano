@@ -1,4 +1,4 @@
-import { NodeSelection, Plugin, PluginKey } from '@milkdown/kit/prose/state';
+import { NodeSelection, Plugin, PluginKey, TextSelection } from '@milkdown/kit/prose/state';
 import type { EditorState, Transaction } from '@milkdown/kit/prose/state';
 import type { Node as ProseMirrorNode } from '@milkdown/kit/prose/model';
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
@@ -394,7 +394,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
           handle.classList.toggle('is-column-child', !!element?.parentElement?.closest('.tano-columns'));
           handle.classList.toggle('is-columns', entries[index]!.node.type.name === 'tano_columns');
           handle.style.left = rect && handle.classList.contains('is-column-child')
-            ? `${Math.max(-48, gutterLeft - rect.left)}px` : '';
+            ? `${Math.max(-36, gutterLeft - rect.left)}px` : '';
           const type = blockType(entries[index]!.node);
           const kind =
             blockTypes.find((item) => item.type === type)?.label ??
@@ -430,7 +430,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
           if (entry.node.type.name !== 'tano_columns') continue;
           const rect = blockRect(index);
           if (!rect) continue;
-          let left = rect.left - 72;
+          let left = rect.left - 60;
           let above = rect.top - 28;
           for (let child = index + 1; child < count && entries[child]!.pos < entry.pos + entry.node.nodeSize; child++) {
             const childRect = blockRect(child);
@@ -442,7 +442,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
           }
           const stacked = left < gutterLeft;
           const anchor = entry.depth > 0 ? rect.left : hostLeft;
-          handles[index]!.style.left = `${(stacked ? Math.max(gutterLeft, rect.left - 48) : left) - anchor}px`;
+          handles[index]!.style.left = `${(stacked ? Math.max(gutterLeft, rect.left - 36) : left) - anchor}px`;
           if (stacked) handles[index]!.style.top = `${above - top}px`;
         }
         for (let index = 0; index < foldEntries.length; index++) {
@@ -539,6 +539,25 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       function onEditorInput() {
         hoverSuppressed = true;
         setHovered(null);
+      }
+
+      function dismissBlockSelection(event: PointerEvent) {
+        const { selection, doc } = view.state;
+        const target = event.target;
+        if (event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey ||
+          view.composing || view.dragging || pendingPointer ||
+          !(selection instanceof NodeSelection) || !selection.node.isBlock ||
+          !(target instanceof Element)) return;
+        // Keep the selection available to block actions and floating editor controls.
+        if (target.closest('.tano-block-controls, .tano-editor-panel, [role="menu"], button, input, textarea, select')) return;
+        const selectedDOM = view.nodeDOM(selection.from);
+        if (selectedDOM?.contains(target)) return;
+        // Backgrounds and noneditable previews do not update ProseMirror's selection.
+        // Let the subsequent native click still place the caret or start a new selection.
+        const caret = TextSelection.findFrom(selection.$from, 1, true) ??
+          TextSelection.findFrom(doc.resolve(selection.to), -1, true);
+        if (caret) view.dispatch(view.state.tr.setSelection(caret)
+          .setMeta('addToHistory', false).setMeta('tanoKeepNodeView', true));
       }
 
       function onEditorKeyDown(event: KeyboardEvent) {
@@ -794,6 +813,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       hoverSurface.addEventListener('mouseover', onHover);
       hoverSurface.addEventListener('mousemove', onHover);
       hoverSurface.addEventListener('mouseleave', onHoverLeave);
+      hoverSurface.addEventListener('pointerdown', dismissBlockSelection, true);
       window.addEventListener('pointermove', onPointerMove, true);
       window.addEventListener('pointerup', onPointerUp, true);
       window.addEventListener('pointercancel', onPointerCancel, true);
@@ -835,6 +855,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
           hoverSurface.removeEventListener('mouseover', onHover);
           hoverSurface.removeEventListener('mousemove', onHover);
           hoverSurface.removeEventListener('mouseleave', onHoverLeave);
+          hoverSurface.removeEventListener('pointerdown', dismissBlockSelection, true);
           controls.remove();
         },
       };

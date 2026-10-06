@@ -22,6 +22,8 @@ describe('assistant session coordination', () => {
   beforeEach(() => {
     history = [];
     fixture.workspace = reactive({ workspace: { id: 'workspace', path: 'local', files: [] }, assistantEpoch: 1,
+      activeId: 'abc123', tabs: [{ id: 'abc123' }, { id: 'other' }],
+      panes: [{ id: 'pane', tabs: ['abc123', 'other'], activeId: 'abc123' }], createBlankTab: vi.fn(),
       assistantRules: vi.fn(async () => []), assistantSnapshot: vi.fn(), search: vi.fn(),
       reviewAssistantProposal: vi.fn(async () => ({ status: 'saved', applied: { before: 'old', after: 'new', hash: 'new', fileId: 'abc123' } })) });
     transport = {
@@ -38,6 +40,50 @@ describe('assistant session coordination', () => {
     await vi.waitFor(() => expect(store.loading).toBe(false));
     return store;
   }
+  it('changes display modes during a run without changing the conversation, draft or access', async () => {
+    const store = await ready(); store.open();
+    const current = store.session;
+    store.prompt = 'draft'; store.files = ['abc123']; store.allowSearch = true; store.busy = true;
+    store.setDisplayMode('floating');
+    expect(store.displayMode).toBe('floating');
+    store.setDisplayMode('fullscreen');
+    expect(store.fullscreenTabId).toBe('abc123');
+    expect(store.fullscreenPaneId).toBe('pane');
+    expect(store.isFullscreenTab('abc123')).toBe(true);
+    expect(store.isFullscreenTab('other')).toBe(false);
+    fixture.workspace.activeId = 'other';
+    expect(store.fullscreenTabId).toBe('abc123');
+    store.setDisplayMode('sidebar');
+    expect(store.fullscreenTabId).toBe('');
+    expect(store.session).toBe(current);
+    expect(store.prompt).toBe('draft');
+    expect(store.files).toEqual(['abc123']);
+    expect(store.allowSearch).toBe(true);
+    expect(store.busy).toBe(true);
+    expect(transport.request).not.toHaveBeenCalled();
+  });
+  it('returns to the sidebar when the fullscreen tab closes or its workspace changes', async () => {
+    const store = await ready(); store.open(); store.setDisplayMode('fullscreen');
+    fixture.workspace.tabs = [{ id: 'other' }];
+    await vi.waitFor(() => expect(store.displayMode).toBe('sidebar'));
+    expect(store.opened).toBe(true);
+    fixture.workspace.activeId = 'other'; store.setDisplayMode('fullscreen');
+    fixture.workspace.assistantEpoch++;
+    await vi.waitFor(() => expect(store.loading).toBe(false));
+    expect(store.displayMode).toBe('sidebar');
+    expect(store.fullscreenTabId).toBe('');
+  });
+  it('creates a blank tab for fullscreen when there is no current tab', async () => {
+    const store = await ready(); store.open();
+    fixture.workspace.activeId = ''; fixture.workspace.tabs = [];
+    fixture.workspace.createBlankTab.mockImplementation(() => {
+      fixture.workspace.activeId = 'blank:assistant';
+      fixture.workspace.tabs = [{ id: 'blank:assistant' }];
+    });
+    store.setDisplayMode('fullscreen');
+    expect(fixture.workspace.createBlankTab).toHaveBeenCalledOnce();
+    expect(store.isFullscreenTab('blank:assistant')).toBe(true);
+  });
   it('restores interrupted generation and unknown writes without restarting execution', async () => {
     const restored = session();
     restored.messages = [{ id: 'reply', role: 'assistant', content: 'partial', createdAt: 1, state: 'running', proposals: [{ ...proposal(), status: 'applying' }] }];

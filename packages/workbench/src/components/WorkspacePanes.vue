@@ -58,6 +58,19 @@ const tabbarStyle = (rect: LayoutRect) => ({
     width: contentWidth.value === undefined ? `${rect.width * 100}%` : `${rect.width * contentWidth.value}px`,
   }),
 });
+function focusPaneFromPointer(event: PointerEvent, paneId: string) {
+  const target = event.target;
+  if (target instanceof HTMLElement && target.closest('.document-scrollbar')) return;
+  if (target instanceof HTMLElement && target.classList.contains('document-layout')) {
+    const rect = target.getBoundingClientRect();
+    const scrollbarWidth = target.offsetWidth - target.clientWidth;
+    // Native scrollbar drags must keep the current DOM and active pane stable.
+    // WebView2 can otherwise cancel the drag when focusPane synchronously updates
+    // the pane tree on the initial pointerdown.
+    if (scrollbarWidth > 0 && event.clientX >= rect.right - scrollbarWidth) return;
+  }
+  store.focusPane(paneId);
+}
 type Divider = ReturnType<typeof layoutGeometry>['dividers'][number];
 let resizing: { divider: Divider; pointer: number; target: HTMLElement; bounds: DOMRect } | undefined;
 const isResizing = ref(false);
@@ -101,7 +114,7 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
         v-show="!hidden" class="workspace-pane-tabbar" :inert="hidden"
         :class="{ 'workspace-pane-top-right': rect.left + rect.width >= 1 - 1e-6 }"
         :style="tabbarStyle(rect)"
-        @pointerdown.capture="store.focusPane(pane.id)" @focusin="store.focusPane(pane.id)">
+        @pointerdown.capture="focusPaneFromPointer($event, pane.id)" @focusin="store.focusPane(pane.id)">
         <slot name="tabs" :pane="pane" :rect="rect" />
       </div>
     </div>
@@ -115,7 +128,7 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
           v-for="{ pane, rect, hidden, topTabbar } in displayed" :key="pane.id" v-show="!hidden" class="workspace-pane" :inert="hidden"
           :class="{ 'workspace-pane-active': !hidden && pane.id === visibleActivePaneId, 'workspace-pane-top': rect.top === 0, 'workspace-pane-external-tabs': !compact && showTabs && topTabbar && !!$slots.tabs }"
           :data-pane-id="pane.id" :style="rectStyle(rect)" :aria-label="showTabs ? '文档标签组' : '文档内容'"
-          @pointerdown.capture="store.focusPane(pane.id)" @focusin="store.focusPane(pane.id)"
+          @pointerdown.capture="focusPaneFromPointer($event, pane.id)" @focusin="store.focusPane(pane.id)"
         >
           <slot v-if="!compact && showTabs && !topTabbar" name="tabs" :pane="pane" :rect="rect" />
           <slot :pane="pane" :rect="rect" :document="store.documents.find(doc => doc.id === pane.activeId)"

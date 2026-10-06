@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import './review-card.css';
+import { relativeTime } from './review-time';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Bot, Check, MoreHorizontal, Pencil, Reply, RotateCcw, Trash2, UserRound, X } from 'lucide-vue-next';
 import type { CommentMessage, CommentMention, CommentThread } from '@tano/protocol';
@@ -16,6 +18,7 @@ const emit = defineEmits<{
   assistant: [];
 }>();
 const reply = ref('');
+const replyComposer = ref<InstanceType<typeof CommentComposer>>();
 const hiddenReplies = computed(() => Math.max(0, props.thread.messages.length - 2));
 const replyTargets = computed(() => {
   const messages = new Map(props.thread.messages.map(message => [message.id, message]));
@@ -38,7 +41,8 @@ function sendReply(mentions: CommentMention[] = []) {
 }
 function clearReply() { reply.value = ''; }
 function finishEdit() { editing.value = undefined; }
-defineExpose({ clearReply, finishEdit, setReply: (body: string) => { if (reply.value.trim()) throw new Error('批注回复已有草稿，请先发布或清除'); reply.value = body; } });
+async function focusReply() { await replyComposer.value?.focus(); }
+defineExpose({ clearReply, finishEdit, focusReply, setReply: (body: string) => { if (reply.value.trim()) throw new Error('批注回复已有草稿，请先发布或清除'); reply.value = body; } });
 
 async function openMenu(event: MouseEvent, message: CommentMessage) {
   if (menuMessage.value?.id === message.id) { closeMenu(); return; }
@@ -145,13 +149,6 @@ watch(() => props.thread.messages, messages => {
   if (menuMessage.value && !messages.some(message => message.id === menuMessage.value?.id)) closeMenu();
   if (editing.value && !messages.some(message => message.id === editing.value?.id)) finishEdit();
 });
-function relativeTime(timestamp: number) {
-  const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
-  if (minutes < 1) return '刚刚';
-  if (minutes < 60) return `${minutes} 分钟前`;
-  if (minutes < 1440) return `${Math.floor(minutes / 60)} 小时前`;
-  return new Date(timestamp).toLocaleDateString('zh-CN');
-}
 </script>
 
 <template>
@@ -164,7 +161,8 @@ function relativeTime(timestamp: number) {
             <time :datetime="new Date(message.createdAt).toISOString()" :title="new Date(message.createdAt).toLocaleString('zh-CN')">{{ relativeTime(message.createdAt) }}</time>
             <span v-if="message.updatedAt" class="comment-edited" :title="new Date(message.updatedAt).toLocaleString('zh-CN')">已编辑</span>
           </div>
-          <div v-if="!readonly && editing?.id !== message.id && (!local || index === 0 || message.authorId === authorId)" class="comment-message-tools" :class="{ 'is-open': menuMessage?.id === message.id }" role="group" aria-label="评论操作">
+          <slot v-if="index === 0 && $slots['first-tools']" name="first-tools" />
+          <div v-else-if="!readonly && editing?.id !== message.id && (!local || index === 0 || message.authorId === authorId)" class="comment-message-tools review-card-tools" :class="{ 'is-open': menuMessage?.id === message.id }" role="group" aria-label="评论操作">
             <button v-if="!local" type="button" :disabled="busy" aria-label="回复评论" title="回复" @click="emit('reply-request', message)"><Reply :size="15" /></button>
             <button v-if="local && index === 0" type="button" :disabled="busy" :aria-label="thread.resolved ? '重新打开批注' : '完成批注'" :title="thread.resolved ? '重新打开批注' : '完成批注'" @click="emit('resolve', !thread.resolved)">
               <RotateCcw v-if="thread.resolved" :size="15" /><Check v-else :size="15" />
@@ -179,7 +177,8 @@ function relativeTime(timestamp: number) {
           <span class="comment-reply-reference-author">回复 {{ replyTargets.get(message.id)?.authorName }}：</span>
           <span class="comment-reply-reference-body">{{ replyTargets.get(message.id)?.body }}</span>
         </div>
-        <form v-if="editing?.id === message.id" class="comment-edit" @submit.prevent="saveEdit" @keydown="editKeydown">
+        <slot v-if="index === 0 && $slots['first-body']" name="first-body" :preview="preview" />
+        <form v-else-if="editing?.id === message.id" class="comment-edit" @submit.prevent="saveEdit" @keydown="editKeydown">
           <textarea ref="editInput" v-model="editing.body" aria-label="编辑评论" rows="1" maxlength="20000" :readonly="busy" @input="resizeEdit" />
           <div class="comment-edit-actions" role="group" aria-label="编辑操作">
             <button type="button" class="comment-edit-cancel" aria-label="取消编辑" title="取消编辑" :disabled="busy" @click="cancelEdit"><X :size="13" /></button>
@@ -193,7 +192,7 @@ function relativeTime(timestamp: number) {
         </div>
       </div>
     </div>
-    <CommentComposer v-if="!readonly && local" v-show="!preview" v-model="reply" :author-name="authorName"
+    <CommentComposer v-if="!readonly && local" v-show="!preview" ref="replyComposer" v-model="reply" :author-name="authorName"
       label="添加回复" :busy="busy" compact class="comment-reply-composer" @submit="sendReply" />
   </article>
   <Teleport to="body">
@@ -219,24 +218,12 @@ function relativeTime(timestamp: number) {
 .comment-message { position: relative; display: flex; align-items: flex-start; gap: 8px; }
 .is-local .comment-message:not(:last-of-type)::after { content: ''; position: absolute; left: 11.45px; top: 30px; bottom: -10px; width: 1.1px; background: color-mix(in srgb, var(--control-border) 60%, transparent); pointer-events: none; }
 .comment-message.is-reply { margin: 16px 0 0; }
-.comment-avatar { display: grid; place-items: center; width: 24px; height: 24px; flex: none; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); background: var(--paper); }
+.comment-avatar { display: grid; place-items: center; width: 24px; height: 24px; box-sizing: border-box; flex: none; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); background: var(--paper); }
 .comment-message-content { min-width: 0; flex: 1; padding: 0 0 2px; }
-.comment-message-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.comment-message-header { display: flex; align-items: center; min-height: 24px; justify-content: space-between; gap: 8px; }
 .comment-message-meta { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; min-width: 0; font-size: 13px; line-height: 20px; overflow-wrap: anywhere; }
 .comment-message-meta strong { font-weight: 600; color: var(--text); }
 .comment-message-meta time, .comment-edited { color: var(--muted); font-size: 12px; }
-.comment-message-tools { display: flex; flex: none; align-items: center; height: 28px; padding: 1px; border: 0; border-radius: 6px; }
-.comment-message-tools button { display: grid; place-items: center; width: 26px; height: 24px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); padding: 0; cursor: pointer; }
-.comment-message-tools button:hover, .comment-message-tools button[aria-expanded='true'] { background: var(--hover); color: var(--text); }
-.comment-message-tools button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
-.comment-message-tools button:disabled { opacity: .5; cursor: default; }
-.comment-message-tools { opacity: 0; pointer-events: none; }
-.comment-message:hover .comment-message-tools,
-.comment-message:focus-within .comment-message-tools,
-.comment-message-tools.is-open { opacity: 1; pointer-events: auto; }
-@media (hover: none) {
-  .comment-message-tools { opacity: 1; pointer-events: auto; }
-}
 .comment-message p { margin: 5px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.65; color: var(--text); }
 .comment-quote { margin: 8px 0 10px 2px; border-left: 2px solid #eabf35; padding-left: 10px; color: var(--muted); font-size: 12px; line-height: 1.6; max-height: 80px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .comment-message-actions { display: flex; align-items: center; gap: 12px; min-height: 22px; margin-top: 7px; font-size: 12px; color: var(--muted); }
@@ -266,7 +253,6 @@ function relativeTime(timestamp: number) {
 .comment-expand-replies { margin: 10px 0 0; padding: 0; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
 .comment-expand-replies:hover { color: var(--text); }
 .comment-expand-replies:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
-.is-preview .comment-message-tools { display: none; }
 .is-local { padding: 0; }
 .is-local + .is-local { padding-top: 16px; margin-top: 16px; }
 .comment-more-menu { position: fixed; z-index: 100; max-height: calc(100dvh - 16px); overflow-y: auto; }

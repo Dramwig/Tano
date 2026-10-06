@@ -37,7 +37,7 @@ const input = ref<HTMLTextAreaElement>();
 function resize() {
   if (!input.value) return;
   input.value.style.height = 'auto';
-  input.value.style.height = `${Math.min(160, Math.max(36, input.value.scrollHeight))}px`;
+  input.value.style.height = `${Math.min(160, Math.max(props.compact ? 26 : 36, input.value.scrollHeight))}px`;
 }
 function update(event: Event) {
   const field = event.target as HTMLTextAreaElement;
@@ -102,4 +102,7 @@ textarea::placeholder { color: color-mix(in srgb, var(--muted) 55%, var(--paper)
 .comment-composer.has-content .comment-send, .comment-composer.has-content .comment-mention { visibility: visible; }
 .is-compact { gap: 8px; }
 .is-compact .comment-composer-field { border: 0; padding: 0; }
+.is-compact textarea { min-height: 26px; padding-block: 3px; }
+.is-compact .comment-avatar { margin-top: 1px; }
+.is-compact .comment-send, .is-compact .comment-mention { margin-bottom: 0; }
 </style>

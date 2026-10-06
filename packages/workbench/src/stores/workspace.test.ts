@@ -379,15 +379,15 @@ describe('workspace file reconciliation', () => {
     expect(close).not.toHaveBeenCalled();
   });
 
-  it('opens one graph tab, keeps it when opening documents, and restores it from the session', async () => {
+  it('reuses the focused tab for the graph and documents and restores the graph from the session', async () => {
     backend.files.set('other.md', { id: 'other-id', content: 'Other' });
     await store.refresh();
-    store.openGraphTab(); store.openGraphTab();
+    await store.openGraphTab(); await store.openGraphTab();
     expect(store.tabs.filter(tab => tab.graph)).toHaveLength(1);
     expect(store.active).toBeUndefined();
     await store.openFile(store.workspace!.files.find(file => file.id === 'other-id')!);
-    expect(store.tabs.map(tab => tab.id)).toEqual(['note-id', GRAPH_TAB_ID, 'other-id']);
-    store.openGraphTab();
+    expect(store.tabs.map(tab => tab.id)).toEqual(['other-id']);
+    await store.openGraphTab();
     await vi.waitFor(() => expect(backend.session?.activeId).toBe(GRAPH_TAB_ID));
     await store.dispose();
     setActivePinia(configureWorkbench(createPinia(), { adapter: backend, native: false, mobile: false }));
@@ -403,15 +403,15 @@ describe('workspace file reconciliation', () => {
     expect(closeHook).not.toHaveBeenCalled();
     expect(store.tabs.some(tab => tab.graph)).toBe(false);
   });
-  it('opens the plugin page as one restorable tab without replacing it when a file opens', async () => {
+  it('reuses the focused tab for plugins and documents and restores the plugin page', async () => {
     backend.files.set('other.md', { id: 'other-id', content: 'Other' });
     await store.refresh();
-    store.openPluginsTab(); store.openPluginsTab();
+    await store.openPluginsTab(); await store.openPluginsTab();
     expect(store.tabs.filter(tab => tab.plugins)).toHaveLength(1);
     expect(store.activeId).toBe(PLUGINS_TAB_ID);
     await store.openFile(store.workspace!.files.find(file => file.id === 'other-id')!);
-    expect(store.tabs.map(tab => tab.id)).toEqual(['note-id', PLUGINS_TAB_ID, 'other-id']);
-    store.openPluginsTab();
+    expect(store.tabs.map(tab => tab.id)).toEqual(['other-id']);
+    await store.openPluginsTab();
     await vi.waitFor(() => expect(backend.session?.activeId).toBe(PLUGINS_TAB_ID));
     await store.dispose();
     setActivePinia(configureWorkbench(createPinia(), { adapter: backend, native: false, mobile: false }));
@@ -424,6 +424,111 @@ describe('workspace file reconciliation', () => {
     expect(closeHook).not.toHaveBeenCalled();
     expect(store.tabs.some(tab => tab.plugins)).toBe(false);
   });
+  describe.each([
+    { id: GRAPH_TAB_ID, open: () => store.openGraphTab(), openNew: () => store.openGraphTab({ newTab: true }) },
+    { id: PLUGINS_TAB_ID, open: () => store.openPluginsTab(), openNew: () => store.openPluginsTab({ newTab: true }) },
+  ])('page navigation to $id', ({ id, open, openNew }) => {
+    it('fills the selected blank tab in place and keeps neighboring tabs', async () => {
+      store.createBlankTab();
+      const selected = store.activeId;
+      store.createBlankTab();
+      const neighbor = store.activeId;
+      store.activeId = selected;
+      await open();
+      expect(store.tabs.map(tab => tab.id)).toEqual(['note-id', id, neighbor]);
+      expect(store.activeId).toBe(id);
+      await open();
+      expect(store.tabs.map(tab => tab.id)).toEqual(['note-id', id, neighbor]);
+    });
+
+    it('saves edits from the editor lifecycle before replacing the document', async () => {
+      store.edit('first draft');
+      const closeHook = vi.fn(async () => { store.edit('final draft'); });
+      store.setDocumentLifecycle({ beforeSwitch: async () => {}, beforeCloseDocument: closeHook });
+      await open();
+      expect(closeHook).toHaveBeenCalledExactlyOnceWith('note-id');
+      expect(backend.files.get('note.md')?.content).toBe('final draft');
+      expect(store.tabs.map(tab => tab.id)).toEqual([id]);
+      expect(store.documents).toHaveLength(0);
+    });
+
+    it('keeps the current document and draft if saving fails', async () => {
+      store.edit('unsaved draft');
+      backend.failWrites = true;
+      await open();
+      expect(store.tabs.map(tab => tab.id)).toEqual(['note-id']);
+      expect(store.active?.content).toBe('unsaved draft');
+      expect(store.fatal).toContain('尚未保存');
+    });
+
+    it.each(['conflict', 'missing'] as const)('keeps the current document with %s', async (state) => {
+      if (state === 'conflict') store.active!.conflict = { copyPath: 'copy.md', disk: store.active!.base };
+      else store.active!.missing = true;
+      await open();
+      expect(store.tabs.map(tab => tab.id)).toEqual(['note-id']);
+      expect(store.activeId).toBe('note-id');
+      expect(store.fatal).toContain('冲突或缺失');
+    });
+
+    it('reuses an already open page with the same slot behavior as an open file', async () => {
+      await openNew();
+      store.activeId = 'note-id';
+      store.edit('keep this draft');
+      await open();
+      expect(store.tabs.map(tab => tab.id)).toEqual([id, 'note-id']);
+      expect(store.documents.find(doc => doc.id === 'note-id')?.content).toBe('keep this draft');
+      store.createBlankTab();
+      await open();
+      expect(store.tabs.map(tab => tab.id)).toEqual(['note-id', id]);
+    });
+
+    it('replaces in the focused pane and focuses an existing page in another pane', async () => {
+      const left = store.activePaneId;
+      store.createBlankTab();
+      store.dockTab(store.activeId, { paneId: left, side: 'right' });
+      const right = store.activePaneId;
+      await open();
+      expect(store.panes.find(pane => pane.id === left)?.tabs).toEqual(['note-id']);
+      expect(store.panes.find(pane => pane.id === right)?.tabs).toEqual([id]);
+      store.focusPane(left);
+      await open();
+      expect(store.panes.find(pane => pane.id === left)?.tabs).toEqual(['note-id']);
+      expect(store.panes.find(pane => pane.id === right)?.tabs).toEqual([id]);
+      expect(store.activePaneId).toBe(right);
+    });
+
+    it('adds a page without replacing drafts when a new tab is explicitly requested', async () => {
+      store.edit('unsaved draft');
+      backend.failWrites = true;
+      await openNew();
+      expect(store.tabs.map(tab => tab.id)).toEqual(['note-id', id]);
+      expect(store.documents[0].content).toBe('unsaved draft');
+      await openNew();
+      expect(store.tabs.map(tab => tab.id)).toEqual(['note-id', id]);
+    });
+  });
+
+  it('navigates backward and forward through documents, graph and plugins in one tab', async () => {
+    backend.files.set('other.md', { id: 'other-id', content: 'Other' });
+    await store.refresh();
+    await store.openGraphTab();
+    await store.openPluginsTab();
+    await store.openFile(store.workspace!.files.find(file => file.id === 'other-id')!);
+    expect(store.tabs.map(tab => tab.id)).toEqual(['other-id']);
+    for (const id of [PLUGINS_TAB_ID, GRAPH_TAB_ID, 'note-id']) {
+      expect(store.canGoBack).toBe(true);
+      await store.navigateHistory(-1);
+      expect(store.tabs.map(tab => tab.id)).toEqual([id]);
+    }
+    expect(store.canGoBack).toBe(false);
+    for (const id of [GRAPH_TAB_ID, PLUGINS_TAB_ID, 'other-id']) {
+      expect(store.canGoForward).toBe(true);
+      await store.navigateHistory(1);
+      expect(store.tabs.map(tab => tab.id)).toEqual([id]);
+    }
+    expect(store.canGoForward).toBe(false);
+  });
+
   it('opens the calendar as one restorable tab and keeps it when documents open', async () => {
     backend.files.set('other.md', { id: 'other-id', content: 'Other' });
     await store.refresh();
@@ -638,7 +743,7 @@ describe('workspace file reconciliation', () => {
     await backend.create('second.md', 'second');
     await backend.create('third.md', 'third');
     await store.refresh();
-    store.openGraphTab();
+    await store.openGraphTab({ newTab: true });
     store.createBlankTab();
     const blankId = store.activeId;
     const write = vi.spyOn(backend, 'write');

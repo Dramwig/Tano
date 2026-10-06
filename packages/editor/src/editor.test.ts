@@ -725,6 +725,48 @@ it('reserves whole-block selection for the handle and context menu', async () =>
   expect(errors).toEqual([]);
 });
 
+it('clears a selected column block when pressing document space outside it without editing', async () => {
+  const content = ':::columns\n\n## Left\n\nLeft body\n\n## Right\n\nRight body\n\n:::\n\nOutside\n\n---\n';
+  const { value, editor, errors } = await mount(content);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  const columns = root.querySelector<HTMLElement>('.tano-columns')!;
+  const paragraphs = columns.querySelectorAll('p');
+  const handle = root.querySelectorAll<HTMLButtonElement>('.tano-block-handle')[1]!;
+  const surface = view.dom.parentElement!.parentElement!;
+  for (const target of [surface, view.dom, columns, paragraphs[1]!, view.dom.querySelector('hr')!]) {
+    handle.click();
+    expect(paragraphs[0]!.classList.contains('ProseMirror-selectednode')).toBe(true);
+    const press = new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 });
+    target.dispatchEvent(press);
+    expect(root.querySelector('.ProseMirror-selectednode')).toBeNull();
+    expect(view.state.selection.empty).toBe(true);
+    expect(press.defaultPrevented).toBe(false);
+  }
+  await nextTick();
+  expect(value.value).toBe(content);
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+it('preserves block selection for its contents, controls, right clicks and modified clicks', async () => {
+  const { editor, errors } = await mount('Selected **content**\n\nOutside\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  const handle = root.querySelector<HTMLButtonElement>('.tano-block-handle')!;
+  handle.click();
+  const selected = view.state.selection;
+  const surface = view.dom.parentElement!.parentElement!;
+  for (const [target, options] of [
+    [view.dom.querySelector('strong')!, {}],
+    [handle, {}],
+    [surface, { button: 2 }],
+    [surface, { shiftKey: true }],
+  ] as const) {
+    target.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, ...options }));
+    expect(view.state.selection.eq(selected)).toBe(true);
+  }
+  expect(errors).toEqual([]);
+});
+
 it('previews the editable inline formula only while the preference is enabled', async () => {
   const content = '前 $x^2$ 后。\n';
   const { value, preferences, revealMarkdown } = await mount(content);
@@ -3183,7 +3225,7 @@ describe('Markdown editor round trips', () => {
     const rightHandle = handles[2]!;
     vi.spyOn(paragraphs[0]!, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 100, 300, 160));
     vi.spyOn(paragraphs[1]!, 'getBoundingClientRect').mockReturnValue(new DOMRect(448, 100, 300, 160));
-    vi.spyOn(rightHandle, 'getBoundingClientRect').mockReturnValue(new DOMRect(400, 100, 18, 24));
+    vi.spyOn(rightHandle, 'getBoundingClientRect').mockReturnValue(new DOMRect(412, 100, 18, 24));
     const hover = (target: Element, x: number, y = 112) =>
       target.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: x, clientY: y }));
     hover(paragraphs[1]!, 480);
@@ -3194,7 +3236,7 @@ describe('Markdown editor round trips', () => {
     expect(rightHandle.classList.contains('is-visible')).toBe(true);
     hover(columns, 419);
     expect(rightHandle.classList.contains('is-visible')).toBe(true);
-    hover(rightHandle, 409);
+    hover(rightHandle, 421);
     rightHandle.click();
     expect(paragraphs[1]!.classList.contains('ProseMirror-selectednode')).toBe(true);
     expect(value.value).toBe(content);

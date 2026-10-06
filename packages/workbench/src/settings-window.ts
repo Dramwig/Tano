@@ -24,6 +24,8 @@ export interface SettingsValues {
   revealMarkdown: boolean;
   toolbarMode: ToolbarMode;
   showPageTitle: boolean;
+  showOutline: boolean;
+  outlineOnLeft: boolean;
   pageTitleSource: PageTitleSource;
   visualFontSize: number;
   sourceFontSize: number;

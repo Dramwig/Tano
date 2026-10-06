@@ -19,6 +19,7 @@ let theme = ref<'light' | 'dark' | 'system'>('system');
 let visualFontChoice = ref<'system' | 'serif' | 'mono' | 'custom'>('system');
 let customFontName = ref('');
 let showPageTitle = ref(true);
+let outlineOnLeft = ref(false);
 let pageTitleSource = ref<PageTitleSource>(parsePageTitleSource(''));
 let visualFontSize = ref(16);
 let sourceFontSize = ref(14);
@@ -41,6 +42,7 @@ beforeEach(() => {
   visualFontChoice = ref('system');
   customFontName = ref('');
   showPageTitle = ref(true);
+  outlineOnLeft = ref(false);
   pageTitleSource = ref(parsePageTitleSource(''));
   visualFontSize = ref(16);
   sourceFontSize = ref(14);
@@ -61,6 +63,8 @@ beforeEach(() => {
         revealMarkdown: revealMarkdown.value,
         toolbarMode: toolbarMode.value,
         showPageTitle: showPageTitle.value,
+        showOutline: true,
+        outlineOnLeft: outlineOnLeft.value,
         pageTitleSource: pageTitleSource.value,
         visualFontSize: visualFontSize.value,
         sourceFontSize: sourceFontSize.value,
@@ -73,6 +77,7 @@ beforeEach(() => {
         'onUpdate:visualFontChoice': (value: 'system' | 'serif' | 'mono' | 'custom') => { visualFontChoice.value = value; },
         'onUpdate:customFontName': (value: string) => { customFontName.value = value; },
         'onUpdate:showPageTitle': (value: boolean) => { showPageTitle.value = value; },
+        'onUpdate:outlineOnLeft': (value: boolean) => { outlineOnLeft.value = value; },
         'onUpdate:pageTitleSource': (value: PageTitleSource) => { pageTitleSource.value = value; },
         'onUpdate:editorPreferences': (value: EditorPreferences) => preferenceUpdates.push(value),
         'onUpdate:visualFontSize': (value: number) => { visualFontSize.value = value; },
@@ -174,6 +179,19 @@ it('keeps the page title preference in sync with its current value', async () =>
   showPageTitle.value = true;
   await nextTick();
   expect(toggle.getAttribute('aria-checked')).toBe('true');
+});
+
+it('toggles the directory position preference', async () => {
+  await openPage('外观设置');
+  const toggle = root.querySelector<HTMLButtonElement>('[aria-label="目录显示在左侧"]')!;
+  expect(toggle.getAttribute('aria-checked')).toBe('false');
+  toggle.click();
+  await nextTick();
+  expect(outlineOnLeft.value).toBe(true);
+  expect(toggle.getAttribute('aria-checked')).toBe('true');
+  toggle.click();
+  await nextTick();
+  expect(outlineOnLeft.value).toBe(false);
 });
 
 it('selects the page title source independently of title visibility', async () => {

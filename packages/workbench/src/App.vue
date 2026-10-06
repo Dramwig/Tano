@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowReactive, shallowRef, watch } from 'vue';
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  shallowReactive,
+  shallowRef,
+  watch,
+} from 'vue';
 import { storeToRefs } from 'pinia';
 import { version as appVersion } from '../package.json';
 import {
@@ -35,6 +45,7 @@ import {
   Pencil,
   Trash2,
   Bot,
+  MessageSquareDiff,
   ExternalLink,
   CheckCheck,
   Copy,
@@ -68,6 +79,7 @@ import PageSearch from './components/PageSearch.vue';
 import EmptyEditor from './components/EmptyEditor.vue';
 import MarkdownRevealToggle from './components/MarkdownRevealToggle.vue';
 import DocumentTitle from './components/DocumentTitle.vue';
+import DocumentScrollbar from './components/DocumentScrollbar.vue';
 import DocumentExportMenu from './components/DocumentExportMenu.vue';
 import type { ImportRecord } from './components/ImportPanel.vue';
 const ImportPanel = defineAsyncComponent(() => import('./components/ImportPanel.vue'));
@@ -75,7 +87,8 @@ const TemplateDialog = defineAsyncComponent(() => import('./components/TemplateD
 import { downloadExport, exportFilename, renderDocumentExport } from './document-export';
 import type { DocumentExportFormat } from './document-export';
 import DocumentComments from './components/DocumentComments.vue';
-import ReferenceConnections from './components/ReferenceConnections.vue';
+import DocumentSuggestions from './components/DocumentSuggestions.vue';
+import ReferenceGraphPopover from './components/ReferenceGraphPopover.vue';
 import SelectionTodoDialog from './components/SelectionTodoDialog.vue';
 import { selectionTodoSession } from './selection-todo';
 import type { SelectionTodoSession } from './selection-todo';
@@ -121,6 +134,7 @@ import { useAssistantStore } from './assistant/store';
 import DiffDialog from './components/DiffDialog.vue';
 import { handleMobileVisibility } from './mobile-lifecycle';
 import { useWorkspaceStore } from './stores/workspace';
+import { useSuggestionStore } from './stores/suggestions';
 import { useWorkbenchRuntime, createLocalExtensions } from './runtime';
 import type { WorkbenchActions } from './runtime';
 import { native } from './adapter';
@@ -149,7 +163,13 @@ import { applyFileMovePreview, planFileMovePreview, type FileMovePreview } from 
 import { isSidebarToggleShortcut } from './shortcuts';
 import { createDetachedTabWindow, detachedTabRequest, reportDetachedReady } from './detach-tab';
 import type { DetachedDropPoint } from './detach-tab';
-import { findTabDockTarget, requestTabTransfer, TAB_TRANSFER_REQUEST, TAB_TRANSFER_RESULT, TAB_TRANSFER_ROLLBACK } from './tab-docking';
+import {
+  findTabDockTarget,
+  requestTabTransfer,
+  TAB_TRANSFER_REQUEST,
+  TAB_TRANSFER_RESULT,
+  TAB_TRANSFER_ROLLBACK,
+} from './tab-docking';
 import type { TabTransferRequest, TabTransferRollback, TabTransferResult } from './tab-docking';
 import { selectTreeEntry, topLevelEntries } from './file-selection';
 import { isBlankPageTarget } from './page-context-menu';
@@ -160,13 +180,41 @@ import { parseVisualFontChoice, sanitizeCustomFontName, visualFontFamily } from 
 import type { VisualFontChoice } from './editor-font';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import {
-  SETTINGS_COMMAND, SETTINGS_NAVIGATE, SETTINGS_STATE, closeSettingsWindow, openSettingsWindow,
-  prewarmSettingsWindow, settingsWindowLabel,
+  SETTINGS_COMMAND,
+  SETTINGS_NAVIGATE,
+  SETTINGS_STATE,
+  closeSettingsWindow,
+  openSettingsWindow,
+  prewarmSettingsWindow,
+  settingsWindowLabel,
 } from './settings-window';
 import type { SettingsCommand, SettingsPageId, SettingsSnapshot } from './settings-window';
 
 const store = useWorkspaceStore();
+const documentSuggestions = useSuggestionStore();
+const suggestionModeBusy = ref(false);
+async function toggleSuggestionMode(fileId: string) {
+  if (suggestionModeBusy.value) return;
+  menu.value = false;
+  suggestionModeBusy.value = true;
+  try { await documentSuggestions.toggle(fileId); }
+  catch (error) { store.report(error); }
+  finally { suggestionModeBusy.value = false; }
+}
 const assistant = useAssistantStore();
+const assistantHosts = shallowReactive(new Map<string, HTMLElement>());
+function setAssistantHost(paneId: string, value: unknown) {
+  if (value) assistantHosts.set(paneId, value as HTMLElement);
+  else assistantHosts.delete(paneId);
+}
+const assistantTab = computed(() =>
+  assistant.opened && assistant.displayMode === 'fullscreen'
+    ? {
+        id: assistant.fullscreenTabId,
+        title: assistant.session?.messages.length ? assistant.session.title : 'Tano 助手',
+      }
+    : undefined,
+);
 const plans = usePlanStore();
 usePlanSyncStore();
 const personalHome = ref(false);
@@ -176,16 +224,21 @@ const detachedWindow = desktopTabsEnabled && !!detachedTabRequest();
 const welcomeSlogan = welcomeSlogans[Math.floor(Math.random() * welcomeSlogans.length)];
 const welcomeSloganParts = sloganParts(welcomeSlogan);
 const localNative = native && !store.isWeb;
-const attachments = useWorkbenchRuntime().attachments ?? (localNative ? nativeAttachments : undefined);
+const attachments =
+  useWorkbenchRuntime().attachments ?? (localNative ? nativeAttachments : undefined);
 const extensions = useWorkbenchRuntime().extensions?.() ?? createLocalExtensions();
 const extensionViews = extensions.views ?? [];
 const sidebarNavigationItems = computed(() => [
   { id: 'repository', label: '仓库' },
   { id: 'plan', label: '计划' },
-  ...extensionViews.filter(view => view.sidebar).map(view => ({ id: view.id, label: view.label })),
+  ...extensionViews
+    .filter((view) => view.sidebar)
+    .map((view) => ({ id: view.id, label: view.label })),
 ]);
 const sidebarHeaderItems = computed(() => [
-  ...extensionViews.filter(view => view.header).map(view => ({ id: view.id, label: view.label })),
+  ...extensionViews
+    .filter((view) => view.header)
+    .map((view) => ({ id: view.id, label: view.label })),
   { id: 'graph', label: '关系图谱' },
   { id: 'plugins', label: '插件' },
 ]);
@@ -199,8 +252,15 @@ const topbarItems = [
   { id: 'breadcrumb', label: '面包屑', separatorBefore: true },
   { id: 'workspace-status', label: '工作区状态', separatorBefore: true },
 ];
-const workspaceStatusLabel = computed(() => store.workspace?.readOnly ? '只读权限'
-  : store.isDemo ? '浏览器演示' : store.isWeb ? '在线工作区' : null);
+const workspaceStatusLabel = computed(() =>
+  store.workspace?.readOnly
+    ? '只读权限'
+    : store.isDemo
+      ? '浏览器演示'
+      : store.isWeb
+        ? '在线工作区'
+        : null,
+);
 const calendarToolItems = [
   { id: 'calendar-period', label: '日历日期' },
   { id: 'calendar-today', label: '今天' },
@@ -211,28 +271,51 @@ const calendarToolItems = [
 ];
 function topbarVisibilityItems(tabId: string, hasDocument: boolean, activePane: boolean) {
   return [
-    ...topbarItems.filter(item => item.id !== 'breadcrumb' || (tabId !== CALENDAR_TAB_ID && tabId !== GRAPH_TAB_ID)),
-    ...(activePane && extensions.regions['editing-status'] ? [{ id: 'editing-status', label: '同步状态' }] : []),
+    ...topbarItems.filter(
+      (item) => item.id !== 'breadcrumb' || (tabId !== CALENDAR_TAB_ID && tabId !== GRAPH_TAB_ID),
+    ),
+    ...(activePane && extensions.regions['editing-status']
+      ? [{ id: 'editing-status', label: '同步状态' }]
+      : []),
     ...(tabId === CALENDAR_TAB_ID ? calendarToolItems : []),
-    ...(tabId.startsWith('attachment:') && attachments ? [{ id: 'attachment-export', label: '导出附件' }] : []),
+    ...(tabId.startsWith('attachment:') && attachments
+      ? [{ id: 'attachment-export', label: '导出附件' }]
+      : []),
+    ...(workspace.value && assistant.available ? [{ id: 'assistant', label: 'Tano 助手' }] : []),
     ...(hasDocument ? documentToolItems : []),
   ];
 }
 store.registerViews(extensionViews);
-const activeExtensionView = computed(() => extensionViews.find(view => view.id === store.activeId));
-const viewActions = Object.fromEntries(extensionViews.map(view => [view.id, {
-  open: () => {
-    openExtensionView(view.id);
-    if (window.innerWidth <= 700) sidebar.value = false;
-  },
-  showSidebar: () => { sidebarView.value = view.id; sidebar.value = true; },
-}]));
+const activeExtensionView = computed(() =>
+  extensionViews.find((view) => view.id === store.activeId),
+);
+const viewActions = Object.fromEntries(
+  extensionViews.map((view) => [
+    view.id,
+    {
+      open: () => {
+        openExtensionView(view.id);
+        if (window.innerWidth <= 700) sidebar.value = false;
+      },
+      showSidebar: () => {
+        sidebarView.value = view.id;
+        sidebar.value = true;
+      },
+    },
+  ]),
+);
 const editing = extensions.editing;
-assistant.setManaged(id => editing.isManaging(id));
+assistant.setManaged((id) => editing.isManaging(id));
 const extensionActions: WorkbenchActions = {
-  closeMenus: () => { workspaceMenu.value = false; menu.value = false; },
-  createWorkspace: () => showModal('workspace'), openSettings,
-  showDiff: value => { selectedDiff.value = value; },
+  closeMenus: () => {
+    workspaceMenu.value = false;
+    menu.value = false;
+  },
+  createWorkspace: () => showModal('workspace'),
+  openSettings,
+  showDiff: (value) => {
+    selectedDiff.value = value;
+  },
 };
 const updates = useUpdatesStore();
 const updateLock = computed(() => ['downloading', 'installing'].includes(updates.state.phase));
@@ -260,7 +343,9 @@ const calendarModeOptions: { mode: CalendarViewMode; label: string }[] = [
   { mode: 'year', label: '年' },
   { mode: 'agenda', label: '日程' },
 ];
-const calendarModeLabel = computed(() => calendarModeOptions.find(option => option.mode === calendarMode.value)?.label ?? '周');
+const calendarModeLabel = computed(
+  () => calendarModeOptions.find((option) => option.mode === calendarMode.value)?.label ?? '周',
+);
 const calendarPeriod = computed(() => calendarPeriodTitle(calendarDate.value, calendarMode.value));
 function moveCalendarPeriod(offset: number) {
   calendarDate.value = shiftCalendarDate(calendarDate.value, calendarMode.value, offset);
@@ -283,7 +368,7 @@ function openCalendar(date?: Date) {
   store.openCalendarTab();
 }
 function openExtensionView(id: string) {
-  sidebarView.value = extensionViews.find(view => view.id === id)?.sidebar ? id : 'repository';
+  sidebarView.value = extensionViews.find((view) => view.id === id)?.sidebar ? id : 'repository';
   store.openViewTab(id);
 }
 const selectedDiff = ref<{
@@ -326,7 +411,9 @@ let applyingPageRoute = false;
 
 function routeStateIndex() {
   const value = (window.history.state as Record<string, unknown> | null)?.[pageRouteStateKey];
-  return value && typeof value === 'object' && Number.isInteger((value as { index?: unknown }).index)
+  return value &&
+    typeof value === 'object' &&
+    Number.isInteger((value as { index?: unknown }).index)
     ? Math.max(0, (value as { index: number }).index)
     : 0;
 }
@@ -335,16 +422,25 @@ function initializePageHistory() {
   if (!webPageRouting) return;
   pageRouteIndex.value = routeStateIndex();
   pageRouteMax.value = pageRouteIndex.value;
-  const state = window.history.state && typeof window.history.state === 'object'
-    ? { ...window.history.state }
-    : {};
-  window.history.replaceState({ ...state, [pageRouteStateKey]: { index: pageRouteIndex.value } }, '', window.location.href);
+  const state =
+    window.history.state && typeof window.history.state === 'object'
+      ? { ...window.history.state }
+      : {};
+  window.history.replaceState(
+    { ...state, [pageRouteStateKey]: { index: pageRouteIndex.value } },
+    '',
+    window.location.href,
+  );
 }
 
 function currentPageRoute() {
   const currentWorkspace = workspace.value;
-  const currentFile = currentWorkspace?.files.find((file) => file.id === activeId.value && file.kind === 'file' && isMarkdown(file.path));
-  return currentWorkspace && currentFile ? pageRoutePath(currentWorkspace.id, currentFile.id) : null;
+  const currentFile = currentWorkspace?.files.find(
+    (file) => file.id === activeId.value && file.kind === 'file' && isMarkdown(file.path),
+  );
+  return currentWorkspace && currentFile
+    ? pageRoutePath(currentWorkspace.id, currentFile.id)
+    : null;
 }
 
 function writePageRoute(replace: boolean) {
@@ -353,13 +449,18 @@ function writePageRoute(replace: boolean) {
   const url = new URL(window.location.href);
   if (url.pathname === path) return;
   const nextIndex = replace ? pageRouteIndex.value : pageRouteIndex.value + 1;
-  const state = window.history.state && typeof window.history.state === 'object'
-    ? { ...window.history.state }
-    : {};
+  const state =
+    window.history.state && typeof window.history.state === 'object'
+      ? { ...window.history.state }
+      : {};
   const nextState = { ...state, [pageRouteStateKey]: { index: nextIndex } };
   pageRouteIndex.value = nextIndex;
   if (!replace) pageRouteMax.value = nextIndex;
-  window.history[replace ? 'replaceState' : 'pushState'](nextState, '', `${path}${url.search}${url.hash}`);
+  window.history[replace ? 'replaceState' : 'pushState'](
+    nextState,
+    '',
+    `${path}${url.search}${url.hash}`,
+  );
 }
 
 function canNavigatePage(direction: -1 | 1) {
@@ -372,12 +473,9 @@ function navigatePage(direction: -1 | 1) {
   window.history[direction < 0 ? 'back' : 'forward']();
 }
 
-watch(
-  [() => workspace.value?.id, activeId],
-  () => {
-    if (pageRouteReady && !applyingPageRoute) writePageRoute(false);
-  },
-);
+watch([() => workspace.value?.id, activeId], () => {
+  if (pageRouteReady && !applyingPageRoute) writePageRoute(false);
+});
 
 async function applyPageRoute() {
   if (!webPageRouting) return;
@@ -394,7 +492,9 @@ async function applyPageRoute() {
     if (workspace.value?.id !== route.workspaceId) {
       store.report('链接中的工作区不存在或你已失去访问权限');
     } else {
-      const file = workspace.value.files.find((entry) => entry.id === route.fileId && entry.kind === 'file' && isMarkdown(entry.path));
+      const file = workspace.value.files.find(
+        (entry) => entry.id === route.fileId && entry.kind === 'file' && isMarkdown(entry.path),
+      );
       if (!file) store.report('链接中的文档不存在或已被删除');
       else await store.openFile(file);
     }
@@ -412,7 +512,8 @@ watch(activeId, (id) => {
   calendarModeOpen.value = false;
   if (id === CALENDAR_TAB_ID) sidebarView.value = 'plan';
   else if (activeExtensionView.value?.sidebar) sidebarView.value = id;
-  else if (extensionViews.some(view => view.id === sidebarView.value)) sidebarView.value = 'repository';
+  else if (extensionViews.some((view) => view.id === sidebarView.value))
+    sidebarView.value = 'repository';
 });
 const sidebar = ref(!detachedWindow && window.innerWidth > 700);
 const viewportWidth = ref(window.innerWidth);
@@ -479,11 +580,19 @@ function saveTextPreference(key: string, value: string) {
   }
 }
 const savedSidebarWidth = Number(readTextPreference('sidebarWidth'));
-if (!detachedWindow && Number.isInteger(savedSidebarWidth) && savedSidebarWidth >= SIDEBAR_MIN_WIDTH && savedSidebarWidth <= SIDEBAR_MAX_WIDTH) {
+if (
+  !detachedWindow &&
+  Number.isInteger(savedSidebarWidth) &&
+  savedSidebarWidth >= SIDEBAR_MIN_WIDTH &&
+  savedSidebarWidth <= SIDEBAR_MAX_WIDTH
+) {
   setSidebarWidth(savedSidebarWidth, true);
 }
 function sidebarWidthLimit() {
-  return Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, viewportWidth.value - (viewportWidth.value <= 700 ? 48 : 320)));
+  return Math.max(
+    SIDEBAR_MIN_WIDTH,
+    Math.min(SIDEBAR_MAX_WIDTH, viewportWidth.value - (viewportWidth.value <= 700 ? 48 : 320)),
+  );
 }
 function defaultSidebarWidth() {
   return viewportWidth.value >= 1600 ? 245 : viewportWidth.value <= 1180 ? 210 : 230;
@@ -521,11 +630,16 @@ function finishSidebarResize(event: PointerEvent) {
 function resizeSidebarWithKeyboard(event: KeyboardEvent) {
   if (mobile) return;
   const width = sidebarWidth.value ?? currentSidebarWidth();
-  const nextWidth = event.key === 'ArrowLeft' ? width - 10
-    : event.key === 'ArrowRight' ? width + 10
-    : event.key === 'Home' ? SIDEBAR_MIN_WIDTH
-    : event.key === 'End' ? sidebarWidthLimit()
-    : null;
+  const nextWidth =
+    event.key === 'ArrowLeft'
+      ? width - 10
+      : event.key === 'ArrowRight'
+        ? width + 10
+        : event.key === 'Home'
+          ? SIDEBAR_MIN_WIDTH
+          : event.key === 'End'
+            ? sidebarWidthLimit()
+            : null;
   if (nextWidth === null) return;
   event.preventDefault();
   setSidebarWidth(nextWidth);
@@ -538,7 +652,7 @@ function constrainSidebarToViewport() {
 const defaultSource = ref(readPreference('defaultSource', false));
 const revealMarkdown = ref(readPreference('revealMarkdown', true));
 const toolbarMode = ref(parseToolbarMode(readTextPreference('toolbarMode')));
-watch(toolbarMode, value => saveTextPreference('toolbarMode', value));
+watch(toolbarMode, (value) => saveTextPreference('toolbarMode', value));
 function syncToolbarPreference(event: StorageEvent) {
   if (event.key === toolbarPreferenceKey || event.key === null)
     toolbarMode.value = parseToolbarMode(event.newValue);
@@ -549,7 +663,9 @@ const visualFontChoice = ref<VisualFontChoice>(
   parseVisualFontChoice(readTextPreference('visualFontChoice')),
 );
 const customFontName = ref(sanitizeCustomFontName(readTextPreference('customFontName')));
-const selectedVisualFontFamily = computed(() => visualFontFamily(visualFontChoice.value, customFontName.value));
+const selectedVisualFontFamily = computed(() =>
+  visualFontFamily(visualFontChoice.value, customFontName.value),
+);
 watch(visualFontChoice, (value) => saveTextPreference('visualFontChoice', value));
 watch(customFontName, (value) => saveTextPreference('customFontName', value));
 const visualFontSize = ref(readFontSizePreference('visualFontSize', 16));
@@ -559,14 +675,18 @@ watch(sourceFontSize, (value) => saveFontSizePreference('sourceFontSize', value)
 const showPageTitle = ref(readPreference('showPageTitle', true));
 watch(showPageTitle, (value) => savePreference('showPageTitle', value));
 const pageTitleSource = ref(parsePageTitleSource(readTextPreference('pageTitleSource')));
-watch(pageTitleSource, value => saveTextPreference('pageTitleSource', value));
+watch(pageTitleSource, (value) => saveTextPreference('pageTitleSource', value));
 const limitPageWidth = computed(() => {
   const documentId = active.value?.id;
   return !documentId || store.capabilities.pageWidthLimits[documentId] !== false;
 });
 const pageWidthWritable = computed(
-  () => !!workspace.value && !workspace.value.readOnly && !active.value?.missing &&
-    !store.capabilitySaving && !store.capabilityError,
+  () =>
+    !!workspace.value &&
+    !workspace.value.readOnly &&
+    !active.value?.missing &&
+    !store.capabilitySaving &&
+    !store.capabilityError,
 );
 function setLimitPageWidth(value: boolean) {
   const document = active.value;
@@ -598,7 +718,12 @@ watch(
 const hoverOutline = window.matchMedia('(hover: hover)').matches;
 const sourceModes = shallowReactive<Record<string, boolean>>({});
 const paneSource = (id: string) => sourceModes[id] ?? defaultSource.value;
-const source = computed({ get: () => paneSource(store.activeId), set: value => { sourceModes[store.activeId] = value; } });
+const source = computed({
+  get: () => paneSource(store.activeId),
+  set: (value) => {
+    sourceModes[store.activeId] = value;
+  },
+});
 const pageLocked = ref(false);
 function pageLockPreferenceKey(workspaceId: string, documentId: string) {
   return `pageLocked.${workspaceId}.${documentId}`;
@@ -626,7 +751,7 @@ const editorReadonly = computed(
     updateLock.value ||
     store.busy ||
     !!workspace.value?.readOnly ||
-    !!workspace.value?.files.find(file => file.id === active.value?.id)?.readOnly ||
+    !!workspace.value?.files.find((file) => file.id === active.value?.id)?.readOnly ||
     !!active.value?.conflict ||
     editing.activeBusy ||
     !!editing.active?.readOnly,
@@ -648,6 +773,7 @@ watch(
 const syntaxIssues = computed(() => unsupportedMarkdown(active.value?.content ?? ''));
 const panel = ref<'outline' | 'activity'>('outline');
 const showOutline = ref(readPreference('showOutline', true));
+const outlineOnLeft = ref(readPreference('outlineOnLeft', false));
 const outlinePinned = ref(readPreference('outlinePinned', false));
 const outlineSearchOpen = ref(false);
 const outlineSearch = ref('');
@@ -659,8 +785,19 @@ watch(showOutline, (visible) => {
     outlineSearch.value = '';
   } else void nextTick(scheduleActiveHeading);
 });
+watch(outlineOnLeft, (left) => savePreference('outlineOnLeft', left));
 watch(outlinePinned, (pinned) => savePreference('outlinePinned', pinned));
 const menu = ref(false);
+const referenceGraphOpened = ref(false);
+const referenceGraphTarget = shallowRef<Pick<OpenDocument, 'id' | 'path'>>();
+const referenceGraphAnchor = shallowRef<HTMLElement>();
+watch(
+  () => [active.value?.id, active.value?.path] as const,
+  ([id, path]) => {
+    // Keep the latest document's graph when switching to a non-document tab.
+    if (referenceGraphTarget.value && id && path) referenceGraphTarget.value = { id, path };
+  },
+);
 const exportBusy = ref(false);
 const documentMenuButton = ref<HTMLButtonElement>();
 const documentMenuElement = ref<HTMLElement>();
@@ -669,6 +806,8 @@ const fileContextMenu = ref<{ file: FileEntry; x: number; y: number } | null>(nu
 const directoryContextMenu = ref<{ parent: string; x: number; y: number } | null>(null);
 const pageContextMenu = ref<{ x: number; y: number } | null>(null);
 const pageContextMenuElement = ref<HTMLElement>();
+const outlineContextMenu = ref<{ x: number; y: number } | null>(null);
+const outlineContextMenuElement = ref<HTMLElement>();
 const selectedEntryIds = ref<Set<string>>(new Set());
 const selectionAnchorId = ref<string | null>(null);
 const pendingTreeOpenIds = new Set<string>();
@@ -704,15 +843,21 @@ const contextEntries = computed(() => (fileContextMenu.value ? selectedEntries.v
 const multipleContextEntries = computed(() => contextEntries.value.length > 1);
 const draggedEntry = ref<{ file: FileEntry; workspaceId: string } | null>(null);
 const draggedSelection = ref<FileEntry[]>([]);
-const tabFileDrag = computed(() => draggedEntry.value ? {
-  workspaceId: draggedEntry.value.workspaceId,
-  ids: draggedSelection.value.map((file) => file.id),
-} : undefined);
+const tabFileDrag = computed(() =>
+  draggedEntry.value
+    ? {
+        workspaceId: draggedEntry.value.workspaceId,
+        ids: draggedSelection.value.map((file) => file.id),
+      }
+    : undefined,
+);
 const dropFolder = ref<string | null>(null);
 const moveBusy = ref(false);
 const optimisticFileMove = ref<{ workspaceId: string; changes: FileMovePreview[] } | null>(null);
 const treeFiles = computed(() => {
-  const files = (workspace.value?.files ?? []).filter((file) => !isWorkspaceInternalPath(file.path));
+  const files = (workspace.value?.files ?? []).filter(
+    (file) => !isWorkspaceInternalPath(file.path),
+  );
   const preview = optimisticFileMove.value;
   return preview && workspace.value?.id === preview.workspaceId
     ? applyFileMovePreview(files, preview.changes)
@@ -726,15 +871,15 @@ const managedFilePaths = computed(
 );
 let fileContextTrigger: HTMLElement | null = null;
 const settingsPanel = ref(false);
-const settingsPage = ref<'appearance' | 'editing' | 'assistant' | 'workspace' | 'about'>('appearance');
+const settingsPage = ref<'appearance' | 'editing' | 'assistant' | 'workspace' | 'about'>(
+  'appearance',
+);
 watch(defaultSource, (value) => {
   savePreference('defaultSource', value);
   if (!editing.active && !editing.activeBusy) source.value = value;
 });
 watch(revealMarkdown, (value) => savePreference('revealMarkdown', value));
-const modal = ref<
-  '' | 'newTab' | 'rename' | 'search' | 'delete' | 'saveAs' | 'workspace'
->('');
+const modal = ref<'' | 'newTab' | 'rename' | 'search' | 'delete' | 'saveAs' | 'workspace'>('');
 const modalTarget = ref<FileEntry | null>(null);
 const modalDeleteEntries = ref<FileEntry[]>([]);
 const modalDeleteContents = ref<FileEntry[]>([]);
@@ -786,37 +931,72 @@ const selectionTodo = shallowRef<SelectionTodoSession>();
 const paneSourceSelections = shallowReactive<Record<string, boolean>>({});
 function beginSelectionTodo(paneId: string, fileId: string) {
   const scope = workspace.value;
-  const doc = store.documents.find(doc => doc.id === fileId);
-  if (!scope || !doc || paneReadonly(doc) || editing.isManaging(fileId) || !store.capabilities.features.objectReferences) return;
-  const captured = (paneSource(fileId) ? paneSourceEditors.get(paneId) : paneEditors.get(paneId))?.captureTodoSelection();
-  if (!captured) { store.report('请先选择要创建 Todo 的文字'); return; }
+  const doc = store.documents.find((doc) => doc.id === fileId);
+  if (
+    !scope ||
+    !doc ||
+    paneReadonly(doc) ||
+    editing.isManaging(fileId) ||
+    !store.capabilities.features.objectReferences
+  )
+    return;
+  const captured = (
+    paneSource(fileId) ? paneSourceEditors.get(paneId) : paneEditors.get(paneId)
+  )?.captureTodoSelection();
+  if (!captured) {
+    store.report('请先选择要创建 Todo 的文字');
+    return;
+  }
   const expected = { id: scope.id, path: scope.path, content: doc.content };
-  const source: ReferenceTarget = { workspace: scope.id, type: 'document', id: doc.id, path: doc.path, name: basename(doc.path).replace(/\.(md|markdown)$/i, '') };
+  const source: ReferenceTarget = {
+    workspace: scope.id,
+    type: 'document',
+    id: doc.id,
+    path: doc.path,
+    name: basename(doc.path).replace(/\.(md|markdown)$/i, ''),
+  };
   function originalDocument() {
-    if (workspace.value?.id !== expected.id || workspace.value.path !== expected.path) throw new Error('工作区已切换，请返回原工作区后重试');
-    const original = store.documents.find(doc => doc.id === fileId);
-    if (!original || paneReadonly(original) || original.missing || editing.isManaging(fileId) || !store.capabilities.features.objectReferences)
+    if (workspace.value?.id !== expected.id || workspace.value.path !== expected.path)
+      throw new Error('工作区已切换，请返回原工作区后重试');
+    const original = store.documents.find((doc) => doc.id === fileId);
+    if (
+      !original ||
+      paneReadonly(original) ||
+      original.missing ||
+      editing.isManaging(fileId) ||
+      !store.capabilities.features.objectReferences
+    )
       throw new Error('原文档已关闭或不可编辑，请重新打开原文档');
     return original;
   }
   selectionTodo.value = selectionTodoSession(captured.text, source, {
-    create: draft => {
-      if (originalDocument().content !== expected.content) throw new Error('原文已变化，请重新选择文字');
+    create: (draft) => {
+      if (originalDocument().content !== expected.content)
+        throw new Error('原文已变化，请重新选择文字');
       return store.createObject(draft);
     },
     insert: async (record, append) => {
       const original = originalDocument();
       const url = referenceUrl(record.object);
-      const alreadyInserted = documentLinks(original.content).some(link => link.target === url);
+      const alreadyInserted = documentLinks(original.content).some((link) => link.target === url);
       if (!alreadyInserted) {
-        if (append) store.editDocument(fileId, `${original.content.replace(/\n*$/, '')}\n\n${referenceMarkdown(record.object, record.object.name)}\n`);
-        else if (original.content !== expected.content || !captured.insert(record.object, record.object.name))
+        if (append)
+          store.editDocument(
+            fileId,
+            `${original.content.replace(/\n*$/, '')}\n\n${referenceMarkdown(record.object, record.object.name)}\n`,
+          );
+        else if (
+          original.content !== expected.content ||
+          !captured.insert(record.object, record.object.name)
+        )
           throw new Error('原文或选区已变化，任务已保留；可在原文末尾插入引用');
       }
       await nextTick();
-      if (!documentLinks(original.content).some(link => link.target === url)) throw new Error('任务已保留，当前选区不能插入引用；可在原文末尾插入引用');
+      if (!documentLinks(original.content).some((link) => link.target === url))
+        throw new Error('任务已保留，当前选区不能插入引用；可在原文末尾插入引用');
       await store.flush();
-      if (original.conflict || original.missing || original.error || store.dirty(original)) throw new Error('任务已保留，原文保存发生冲突或失败，请处理文档提示后重试');
+      if (original.conflict || original.missing || original.error || store.dirty(original))
+        throw new Error('任务已保留，原文保存发生冲突或失败，请处理文档提示后重试');
     },
   });
 }
@@ -826,39 +1006,69 @@ function capturePaneCommentSelection(paneId: string, fileId: string) {
   const selection = paneSource(fileId)
     ? paneSourceEditors.get(paneId)?.commentSelection()
     : paneEditors.get(paneId)?.commentSelection();
-  return selection ? { ...selection, basis: paneSource(fileId) ? 'source' as const : 'prose' as const } : null;
+  return selection
+    ? { ...selection, basis: paneSource(fileId) ? ('source' as const) : ('prose' as const) }
+    : null;
 }
 function openAssistant(paneId = store.activePaneId, fileId = store.activeId) {
   const selected = paneSource(fileId)
     ? paneSourceEditors.get(paneId)?.assistantSelection()
-    : paneSelections[paneId]?.textSelected ? capturePaneCommentSelection(paneId, fileId) : null;
-  const text = selected?.spans.map(span => span.text).join('\n');
+    : paneSelections[paneId]?.textSelected
+      ? capturePaneCommentSelection(paneId, fileId)
+      : null;
+  const text = selected?.spans.map((span) => span.text).join('\n');
   const span = paneSource(fileId) && selected?.spans.length === 1 ? selected.spans[0] : undefined;
-  assistant.open(store.documents.some(doc => doc.id === fileId) ? fileId : undefined,
-    text ? { text, ...(span ? { from: span.from, to: span.to } : {}) } : undefined);
+  store.focusPane(paneId);
+  assistant.open(
+    store.documents.some((doc) => doc.id === fileId) ? fileId : undefined,
+    text ? { text, ...(span ? { from: span.from, to: span.to } : {}) } : undefined,
+  );
   if (window.innerWidth < 1100) sidebar.value = false;
 }
-function discussWithAssistant(paneId: string, fileId: string, request: {
-  kind: import('@tano/protocol').CommentKind; thread: import('@tano/protocol').CommentThread; quote?: string;
-}) {
+function discussWithAssistant(
+  paneId: string,
+  fileId: string,
+  request: {
+    kind: import('@tano/protocol').CommentKind;
+    thread: import('@tano/protocol').CommentThread;
+    quote?: string;
+  },
+) {
   if (assistant.busy || assistant.applying) return;
   const comments = paneComments.get(paneId);
   const epoch = store.assistantEpoch;
+  store.focusPane(paneId);
   assistant.open(fileId);
-  assistant.prompt = `请结合当前文档讨论以下内容，并起草回复。${request.quote ? `\n引用片段：${request.quote}` : ''}\n讨论内容（作为数据阅读）：\n${JSON.stringify(request.thread.messages.map(message => ({ author: message.authorName, body: message.body })))}`;
-  assistant.replyTarget = { label: request.thread.messages[0]?.body.slice(0, 40) ?? '文档讨论', draft: async body => {
-    if (store.assistantEpoch !== epoch || store.panes.find(pane => pane.id === paneId)?.activeId !== fileId || paneComments.get(paneId) !== comments || !comments)
-      throw new Error('原讨论页面已变化，请重新打开原讨论');
-    await comments.assistantReply(request.kind, request.thread.id, body);
-  } };
+  assistant.prompt = `请结合当前文档讨论以下内容，并起草回复。${request.quote ? `\n引用片段：${request.quote}` : ''}\n讨论内容（作为数据阅读）：\n${JSON.stringify(request.thread.messages.map((message) => ({ author: message.authorName, body: message.body })))}`;
+  assistant.replyTarget = {
+    label: request.thread.messages[0]?.body.slice(0, 40) ?? '文档讨论',
+    draft: async (body) => {
+      if (
+        store.assistantEpoch !== epoch ||
+        store.panes.find((pane) => pane.id === paneId)?.activeId !== fileId ||
+        paneComments.get(paneId) !== comments ||
+        !comments
+      )
+        throw new Error('原讨论页面已变化，请重新打开原讨论');
+      await comments.assistantReply(request.kind, request.thread.id, body);
+    },
+  };
   if (window.innerWidth < 1100) sidebar.value = false;
 }
 function focusPaneComment(paneId: string, fileId: string, anchor: CommentAnchor) {
   if (paneSource(fileId)) paneSourceEditors.get(paneId)?.focusComment(anchor);
   else paneEditors.get(paneId)?.focusComment(anchor);
 }
-function paneCommentGeometry(paneId: string, fileId: string, anchors?: readonly { id: string; anchor: CommentAnchor }[]) {
-  return (paneSource(fileId) ? paneSourceEditors.get(paneId) : paneEditors.get(paneId))?.commentGeometry(anchors) ?? null;
+function paneCommentGeometry(
+  paneId: string,
+  fileId: string,
+  anchors?: readonly { id: string; anchor: CommentAnchor }[],
+) {
+  return (
+    (paneSource(fileId) ? paneSourceEditors.get(paneId) : paneEditors.get(paneId))?.commentGeometry(
+      anchors,
+    ) ?? null
+  );
 }
 function setPaneComments(paneId: string, value: unknown) {
   if (value) paneComments.set(paneId, value as InstanceType<typeof DocumentComments>);
@@ -880,10 +1090,26 @@ function showObjects(id?: string) {
   workspaceMenu.value = false;
 }
 function showPlanEvent(key: string) {
-  const personal = plans.personal.find(item => planKey(item) === key);
-  const local = store.objects.find(item => item.object.id === key && ['event', 'task'].includes(item.object.type));
-  const record = personal ?? (local && workspace.value ? { ...local, source: { scope: 'workspace' as const, id: workspace.value.id, name: workspace.value.name } } : undefined);
-  if (!record) { store.report('事项已不存在，请刷新计划后重试'); return; }
+  const personal = plans.personal.find((item) => planKey(item) === key);
+  const local = store.objects.find(
+    (item) => item.object.id === key && ['event', 'task'].includes(item.object.type),
+  );
+  const record =
+    personal ??
+    (local && workspace.value
+      ? {
+          ...local,
+          source: {
+            scope: 'workspace' as const,
+            id: workspace.value.id,
+            name: workspace.value.name,
+          },
+        }
+      : undefined);
+  if (!record) {
+    store.report('事项已不存在，请刷新计划后重试');
+    return;
+  }
   objectPanel.value = false;
   personalHome.value = false;
   planDetail.value = record;
@@ -923,7 +1149,9 @@ async function openObjectReference(identity: ReferenceIdentity) {
 async function openPlanReference(identity: ReferenceIdentity) {
   const current = planDetail.value;
   if (current?.source?.scope === 'personal') {
-    const record = plans.personal.find(item => item.object.type === identity.type && item.object.id === identity.id);
+    const record = plans.personal.find(
+      (item) => item.object.type === identity.type && item.object.id === identity.id,
+    );
     if (record) planDetail.value = record;
     else store.report('个人事项引用目标不可用');
     return;
@@ -991,17 +1219,31 @@ function setPaneElement(kind: 'scroll' | 'editor' | 'source', id: string, value:
     else paneSourceEditors.delete(id);
   } else {
     const map = kind === 'scroll' ? paneScrolls : paneEditorScrolls;
-    if (value) map.set(id, value as HTMLElement); else map.delete(id);
+    if (value) map.set(id, value as HTMLElement);
+    else map.delete(id);
   }
 }
 function paneReadonly(doc: OpenDocument) {
-  return updateLock.value || store.busy || !!workspace.value?.readOnly ||
-    !!workspace.value?.files.find(file => file.id === doc.id)?.readOnly || !!doc.conflict ||
-    (doc.id === store.activeId ? editorReadonly.value :
-      readPreference(pageLockPreferenceKey(workspace.value?.id ?? '', doc.id), false) || editing.isManaging(doc.id));
+  return (
+    updateLock.value ||
+    store.busy ||
+    !!workspace.value?.readOnly ||
+    !!workspace.value?.files.find((file) => file.id === doc.id)?.readOnly ||
+    !!doc.conflict ||
+    (doc.id === store.activeId
+      ? editorReadonly.value
+      : readPreference(pageLockPreferenceKey(workspace.value?.id ?? '', doc.id), false) ||
+        editing.isManaging(doc.id))
+  );
 }
 const documentUndoAvailable = ref(false);
 const documentRedoAvailable = ref(false);
+function showReferenceGraph(paneId: string, document: OpenDocument) {
+  referenceGraphTarget.value = { id: document.id, path: document.path };
+  referenceGraphAnchor.value = paneScrolls.get(paneId);
+  referenceGraphOpened.value = true;
+  menu.value = false;
+}
 async function toggleDocumentMenu(event: MouseEvent) {
   documentMenuButton.value = event.currentTarget as HTMLButtonElement;
   // Focusing another pane closes its predecessor's menu in the activeId watcher.
@@ -1023,13 +1265,12 @@ async function toggleDocumentMenu(event: MouseEvent) {
 function documentMenuTriggerKeydown(event: KeyboardEvent) {
   if (!menu.value || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
   const items = [
-    ...(documentMenuElement.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []),
+    ...(documentMenuElement.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ??
+      []),
   ];
   if (!items.length) return;
   event.preventDefault();
-  items[
-    event.key === 'ArrowUp' || event.key === 'End' ? items.length - 1 : 0
-  ]?.focus();
+  items[event.key === 'ArrowUp' || event.key === 'End' ? items.length - 1 : 0]?.focus();
 }
 function documentMenuKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
@@ -1040,7 +1281,8 @@ function documentMenuKeydown(event: KeyboardEvent) {
   }
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
   const items = [
-    ...(documentMenuElement.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []),
+    ...(documentMenuElement.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ??
+      []),
   ];
   if (!items.length) return;
   event.preventDefault();
@@ -1110,15 +1352,32 @@ const resourceRevision = computed(
 async function uploadFile(file: File, requireImage: boolean, doc = active.value) {
   const currentWorkspace = workspace.value;
   if (!attachments || !currentWorkspace || !doc) throw new Error('当前工作区不支持导入附件');
-  const result = await attachments.importAttachment(currentWorkspace.id, doc.path, file, requireImage);
-  if (workspace.value?.id !== currentWorkspace.id || !store.documents.some(item => item.id === doc.id))
+  const result = await attachments.importAttachment(
+    currentWorkspace.id,
+    doc.path,
+    file,
+    requireImage,
+  );
+  if (
+    workspace.value?.id !== currentWorkspace.id ||
+    !store.documents.some((item) => item.id === doc.id)
+  )
     throw new Error('附件已保存到原工作空间的 assets；文档已切换，请重新插入链接');
   await store.refresh();
-  if (workspace.value?.id !== currentWorkspace.id || !store.documents.some(item => item.id === doc.id))
+  if (
+    workspace.value?.id !== currentWorkspace.id ||
+    !store.documents.some((item) => item.id === doc.id)
+  )
     throw new Error('附件已导入，原文档已关闭');
   return { ...result, url: relativeWorkspaceReference(doc.path, result.path) };
 }
-async function insertSourceFiles(files: File[], position: number, requireImage: boolean, doc = active.value, paneId = store.activePaneId) {
+async function insertSourceFiles(
+  files: File[],
+  position: number,
+  requireImage: boolean,
+  doc = active.value,
+  paneId = store.activePaneId,
+) {
   if (!doc || doc.conflict || attachmentBusy.value) return;
   const id = doc.id,
     before = doc.content;
@@ -1134,8 +1393,11 @@ async function insertSourceFiles(files: File[], position: number, requireImage: 
     const at = content === before ? position : content.length;
     const text = `\n${links.join('\n')}\n`;
     // Local insertions belong to editor history; incoming model updates do not.
-    if (targetEditor && paneSourceEditors.get(paneId) === targetEditor &&
-      store.panes.find(pane => pane.id === paneId)?.activeId === id) {
+    if (
+      targetEditor &&
+      paneSourceEditors.get(paneId) === targetEditor &&
+      store.panes.find((pane) => pane.id === paneId)?.activeId === id
+    ) {
       targetEditor.insertText(text, at);
     } else store.editDocument(id, `${content.slice(0, at)}${text}${content.slice(at)}`);
   } catch (error) {
@@ -1204,6 +1466,8 @@ function selectFileTreeEntry(file: FileEntry, event: MouseEvent) {
 }
 function openFileContextMenu(file: FileEntry, event: MouseEvent | KeyboardEvent) {
   closeDirectoryContextMenu();
+  closeOutlineContextMenu();
+  closePageContextMenu();
   if (!selectedEntryIds.value.has(file.id)) {
     selectedEntryIds.value = new Set([file.id]);
     selectionAnchorId.value = file.id;
@@ -1237,6 +1501,8 @@ function openFileContextMenu(file: FileEntry, event: MouseEvent | KeyboardEvent)
 function openDirectoryContextMenu(parent: string, event: MouseEvent) {
   event.preventDefault();
   closeFileContextMenu();
+  closeOutlineContextMenu();
+  closePageContextMenu();
   const trigger = event.currentTarget as HTMLElement | null;
   const rect = trigger?.getBoundingClientRect();
   const x = event.clientX || (rect?.left ?? 0) + 24;
@@ -1276,6 +1542,7 @@ function closeButtonVisibilityMenus() {
   closeFileContextMenu();
   closeDirectoryContextMenu();
   closePageContextMenu();
+  closeOutlineContextMenu();
   menu.value = false;
   workspaceMenu.value = false;
   calendarModeOpen.value = false;
@@ -1287,6 +1554,8 @@ function openPageContextMenu(event: MouseEvent) {
   }
   event.preventDefault();
   closeFileContextMenu();
+  closeDirectoryContextMenu();
+  closeOutlineContextMenu();
   pageContextMenu.value = { x: Math.max(8, event.clientX), y: Math.max(8, event.clientY) };
   void nextTick(() => {
     const element = pageContextMenuElement.value;
@@ -1563,7 +1832,11 @@ function fileContextKeydown(event: KeyboardEvent) {
   else next = (index + (event.key === 'ArrowDown' ? 1 : buttons.length - 1)) % buttons.length;
   buttons[next]?.focus();
 }
-async function openDocumentLink(reference: string, newTab = false, documentPath = active.value?.path) {
+async function openDocumentLink(
+  reference: string,
+  newTab = false,
+  documentPath = active.value?.path,
+) {
   if (!workspace.value || documentPath === undefined) return;
   if (/^(?:https?:\/\/|mailto:)/i.test(reference)) {
     if (native) {
@@ -1640,6 +1913,58 @@ async function toggleOutlineSearch(event?: Event) {
 function toggleOutlinePin(event: MouseEvent) {
   outlinePinned.value = !outlinePinned.value;
   if (!outlinePinned.value) (event.currentTarget as HTMLButtonElement).blur();
+}
+function closeOutlineContextMenu() {
+  outlineContextMenu.value = null;
+}
+function openOutlineContextMenu(event: MouseEvent) {
+  if (panel.value !== 'outline') return;
+  event.preventDefault();
+  closeFileContextMenu();
+  closeDirectoryContextMenu();
+  closePageContextMenu();
+  if (hoverOutline && !outlinePinned.value) toggleOutlinePin(event);
+  const x = Math.max(8, event.clientX);
+  const y = Math.max(8, event.clientY);
+  outlineContextMenu.value = { x, y };
+  void nextTick(() => {
+    const element = outlineContextMenuElement.value;
+    if (!element || !outlineContextMenu.value) return;
+    outlineContextMenu.value = {
+      x: Math.min(x, Math.max(8, window.innerWidth - element.offsetWidth - 8)),
+      y: Math.min(y, Math.max(8, window.innerHeight - element.offsetHeight - 8)),
+    };
+    element.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+  });
+}
+function toggleOutlineSide() {
+  outlineOnLeft.value = !outlineOnLeft.value;
+  closeOutlineContextMenu();
+}
+function outlineContextKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeOutlineContextMenu();
+    return;
+  }
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+  const items = [
+    ...(outlineContextMenuElement.value?.querySelectorAll<HTMLButtonElement>('button') ?? []),
+  ];
+  if (!items.length) return;
+  event.preventDefault();
+  const current = items.indexOf(document.activeElement as HTMLButtonElement);
+  const next =
+    event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? items.length - 1
+        : current < 0
+          ? event.key === 'ArrowDown'
+            ? 0
+            : items.length - 1
+          : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+  items[next]?.focus();
 }
 function updateActiveHeading() {
   const container = documentScroll.value;
@@ -1742,11 +2067,7 @@ const modalTitle = computed(() => {
 });
 
 function showModal(kind: Exclude<typeof modal.value, ''>, target?: FileEntry) {
-  if (
-    store.busy ||
-    (workspace.value?.readOnly &&
-      ['rename', 'delete', 'saveAs'].includes(kind))
-  )
+  if (store.busy || (workspace.value?.readOnly && ['rename', 'delete', 'saveAs'].includes(kind)))
     return;
   menu.value = false;
   workspaceMenu.value = false;
@@ -1792,8 +2113,7 @@ async function removeDocuments(entries: FileEntry[]) {
   }
 }
 async function removeDocument(target?: FileEntry) {
-  if (!target && (editorReadonly.value || !!editing.active || editing.activeBusy))
-    return;
+  if (!target && (editorReadonly.value || !!editing.active || editing.activeBusy)) return;
   const entries = target
     ? [target]
     : (workspace.value?.files.filter((file) => file.id === activeId.value) ?? []);
@@ -1832,7 +2152,17 @@ async function createNewEntry(kind: 'document' | 'folder', parent = '') {
   }
 }
 let detachingTab = false;
-const transferRollback = new Map<string, { tabId: string; created: boolean; priorIndex: number; priorActive: string; undoDock?: () => void; timer: ReturnType<typeof setTimeout> }>();
+const transferRollback = new Map<
+  string,
+  {
+    tabId: string;
+    created: boolean;
+    priorIndex: number;
+    priorActive: string;
+    undoDock?: () => void;
+    timer: ReturnType<typeof setTimeout>;
+  }
+>();
 
 async function acceptTabTransfer(request: TabTransferRequest) {
   const { getCurrentWindow } = await import('@tauri-apps/api/window');
@@ -1844,11 +2174,16 @@ async function acceptTabTransfer(request: TabTransferRequest) {
   let undoDock: (() => void) | undefined;
   let error: string | undefined;
   try {
-    if (request.sourceLabel === targetLabel || !workspace.value ||
-        workspace.value.id !== request.workspaceId || store.busy)
+    if (
+      request.sourceLabel === targetLabel ||
+      !workspace.value ||
+      workspace.value.id !== request.workspaceId ||
+      store.busy
+    )
       throw new Error('目标窗口当前无法接收这个标签页');
     if (request.drop) {
-      if (!store.panes.some(pane => pane.id === request.drop!.paneId)) throw new Error('目标分栏已关闭，请重新拖入');
+      if (!store.panes.some((pane) => pane.id === request.drop!.paneId))
+        throw new Error('目标分栏已关闭，请重新拖入');
       store.focusPane(request.drop.paneId);
     }
     if (request.tabId.startsWith('blank:')) {
@@ -1857,52 +2192,68 @@ async function acceptTabTransfer(request: TabTransferRequest) {
       created = true;
     } else if (request.tabId === GRAPH_TAB_ID) {
       created = priorIndex < 0;
-      store.openGraphTab();
+      await store.openGraphTab({ newTab: true });
     } else if (request.tabId === PLUGINS_TAB_ID) {
       created = priorIndex < 0;
-      store.openPluginsTab();
+      await store.openPluginsTab({ newTab: true });
     } else if (request.tabId === CALENDAR_TAB_ID) {
       created = priorIndex < 0;
       store.openCalendarTab();
-    } else if (extensionViews.some(view => view.id === request.tabId)) {
-      const view = extensionViews.find(view => view.id === request.tabId)!;
-      if (!view.detachable) throw new Error(view.detachBlockedMessage ?? '此扩展视图不支持移到其他窗口');
+    } else if (extensionViews.some((view) => view.id === request.tabId)) {
+      const view = extensionViews.find((view) => view.id === request.tabId)!;
+      if (!view.detachable)
+        throw new Error(view.detachBlockedMessage ?? '此扩展视图不支持移到其他窗口');
       created = priorIndex < 0;
       store.openViewTab(view.id);
     } else if (priorIndex < 0) {
-      const file = workspace.value.files.find((entry) => entry.id === request.tabId && entry.kind === 'file');
+      const file = workspace.value.files.find(
+        (entry) => entry.id === request.tabId && entry.kind === 'file',
+      );
       if (!file) throw new Error('目标窗口找不到拖入的文档');
       await store.openFileInNewTab(file);
       created = true;
     }
-    if (!store.tabs.some((tab) => tab.id === actualId)) throw new Error('目标窗口未能打开拖入的标签页');
+    if (!store.tabs.some((tab) => tab.id === actualId))
+      throw new Error('目标窗口未能打开拖入的标签页');
     if (request.drop) {
-      if (!store.panes.some(pane => pane.id === request.drop!.paneId)) throw new Error('目标分栏已关闭，请重新拖入');
+      if (!store.panes.some((pane) => pane.id === request.drop!.paneId))
+        throw new Error('目标分栏已关闭，请重新拖入');
       undoDock = store.dockTab(actualId, request.drop);
     } else {
-      const index = priorIndex >= 0 && priorIndex < request.index ? request.index - 1 : request.index;
+      const index =
+        priorIndex >= 0 && priorIndex < request.index ? request.index - 1 : request.index;
       store.placeTab(actualId, index);
     }
     store.activeId = actualId;
     const timer = setTimeout(() => transferRollback.delete(request.requestId), 15_000);
-    transferRollback.set(request.requestId, { tabId: actualId, created, priorIndex, priorActive, undoDock, timer });
+    transferRollback.set(request.requestId, {
+      tabId: actualId,
+      created,
+      priorIndex,
+      priorActive,
+      undoDock,
+      timer,
+    });
   } catch (reason) {
     error = String(reason);
     if (created) await store.close(actualId);
-    if (store.tabs.some(tab => tab.id === priorActive)) store.activeId = priorActive;
+    if (store.tabs.some((tab) => tab.id === priorActive)) store.activeId = priorActive;
   }
   try {
     await emitTo(request.sourceLabel, TAB_TRANSFER_RESULT, {
-      requestId: request.requestId, targetLabel,
+      requestId: request.requestId,
+      targetLabel,
       ...(error ? { error } : { tabId: actualId, created }),
     } satisfies TabTransferResult);
   } catch (reason) {
     await rollbackTabTransfer({ requestId: request.requestId });
     throw reason;
   } finally {
-    window.dispatchEvent(new CustomEvent('tano-tab-transfer-settled', {
-      detail: { sourceLabel: request.sourceLabel, tabId: request.tabId },
-    }));
+    window.dispatchEvent(
+      new CustomEvent('tano-tab-transfer-settled', {
+        detail: { sourceLabel: request.sourceLabel, tabId: request.tabId },
+      }),
+    );
   }
   if (!error) void getCurrentWindow().setFocus().catch(store.report);
 }
@@ -1915,7 +2266,8 @@ async function rollbackTabTransfer(request: TabTransferRollback) {
   if (pending.created) await store.close(pending.tabId);
   else if (pending.undoDock) pending.undoDock();
   else if (pending.priorIndex >= 0) store.placeTab(pending.tabId, pending.priorIndex);
-  if (store.tabs.some((tab) => tab.id === pending.priorActive)) store.activeId = pending.priorActive;
+  if (store.tabs.some((tab) => tab.id === pending.priorActive))
+    store.activeId = pending.priorActive;
 }
 
 async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => void) {
@@ -1924,7 +2276,10 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
     return;
   }
   const tab = store.tabs.find((item) => item.id === id);
-  if (!tab) { settled?.(); return; }
+  if (!tab) {
+    settled?.();
+    return;
+  }
   if (tab.attachmentPreview) {
     store.report('附件预览暂不支持移到其他窗口。');
     settled?.();
@@ -1947,18 +2302,27 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
   try {
     await editing.flush();
     if (!(await store.flush())) throw new Error('还有未保存的修改，请先处理保存错误。');
-    const dock = drop ? await findTabDockTarget(workspace.value.id, id, {
-      x: drop.x, y: drop.y, centerOffset: (drop.width ?? 0) / 2 - drop.grabX,
-    }) : null;
+    const dock = drop
+      ? await findTabDockTarget(workspace.value.id, id, {
+          x: drop.x,
+          y: drop.y,
+          centerOffset: (drop.width ?? 0) / 2 - drop.grabX,
+        })
+      : null;
     if (dock === 'inside-window' || (!dock && drop?.insideSourceWindow)) return;
     store.detachingTabId = id;
     if (dock) {
       const transfer = await requestTabTransfer(dock.targetLabel, {
-        workspaceId: workspace.value.id, tabId: id, index: dock.index, drop: dock.drop,
+        workspaceId: workspace.value.id,
+        tabId: id,
+        index: dock.index,
+        drop: dock.drop,
       });
       await store.close(id);
       if (store.tabs.some((item) => item.id === id)) {
-        await emitTo(dock.targetLabel, TAB_TRANSFER_ROLLBACK, { requestId: transfer.requestId } satisfies TabTransferRollback);
+        await emitTo(dock.targetLabel, TAB_TRANSFER_ROLLBACK, {
+          requestId: transfer.requestId,
+        } satisfies TabTransferRollback);
         throw new Error('原标签页未能关闭，已取消跨窗口移动');
       }
       if (detachedWindow && !store.tabs.length) {
@@ -1967,8 +2331,13 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
       }
       return;
     }
-    const title = tab.graph ? '关系图谱' : tab.plugins ? '插件' : tab.blank
-      ? '新标签页' : basename(tab.path).replace(/\.(md|markdown)$/i, '');
+    const title = tab.graph
+      ? '关系图谱'
+      : tab.plugins
+        ? '插件'
+        : tab.blank
+          ? '新标签页'
+          : basename(tab.path).replace(/\.(md|markdown)$/i, '');
     const detached = await createDetachedTabWindow(workspace.value.path, id, title, drop);
     await store.close(id);
     if (store.tabs.some((item) => item.id === id)) {
@@ -1984,9 +2353,13 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
   }
 }
 const settingsSnapshot = computed<SettingsSnapshot>(() => ({
-  workspace: workspace.value ? {
-    name: workspace.value.name, path: workspace.value.path, readOnly: workspace.value.readOnly,
-  } : null,
+  workspace: workspace.value
+    ? {
+        name: workspace.value.name,
+        path: workspace.value.path,
+        readOnly: workspace.value.readOnly,
+      }
+    : null,
   mode: store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local',
   defaultSource: defaultSource.value,
   theme: theme.value,
@@ -1995,6 +2368,8 @@ const settingsSnapshot = computed<SettingsSnapshot>(() => ({
   revealMarkdown: revealMarkdown.value,
   toolbarMode: toolbarMode.value,
   showPageTitle: showPageTitle.value,
+  showOutline: showOutline.value,
+  outlineOnLeft: outlineOnLeft.value,
   pageTitleSource: pageTitleSource.value,
   visualFontSize: visualFontSize.value,
   sourceFontSize: sourceFontSize.value,
@@ -2016,14 +2391,24 @@ async function syncSettingsWindow() {
     settingsWindowVisible = false;
   }
 }
-watch(settingsSnapshot, () => { void syncSettingsWindow(); }, { deep: true });
+watch(
+  settingsSnapshot,
+  () => {
+    void syncSettingsWindow();
+  },
+  { deep: true },
+);
 
 function openSettings(page: SettingsPageId = 'appearance') {
   menu.value = false;
   workspaceMenu.value = false;
   if (native && !mobile) {
     requestedSettingsPage = page;
-    void openSettingsWindow(page).then(() => { settingsWindowVisible = true; }).catch(store.report);
+    void openSettingsWindow(page)
+      .then(() => {
+        settingsWindowVisible = true;
+      })
+      .catch(store.report);
     return;
   }
   settingsPage.value = page === 'preferences' ? 'appearance' : page;
@@ -2033,12 +2418,23 @@ function handleSettingsCommand(command: SettingsCommand) {
   if (command.type === 'ready') {
     settingsWindowVisible = true;
     void syncSettingsWindow();
-    void emitTo(settingsWindowLabel(), SETTINGS_NAVIGATE, requestedSettingsPage).catch(store.report);
+    void emitTo(settingsWindowLabel(), SETTINGS_NAVIGATE, requestedSettingsPage).catch(
+      store.report,
+    );
     return;
   }
-  if (command.type === 'capability') { void store.updateCapabilities(command.value); return; }
-  if (command.type === 'assistant-refresh') { void assistant.reloadConnections().catch(store.report); return; }
-  if (command.type === 'action') { settingsAction(command.value); return; }
+  if (command.type === 'capability') {
+    void store.updateCapabilities(command.value);
+    return;
+  }
+  if (command.type === 'assistant-refresh') {
+    void assistant.reloadConnections().catch(store.report);
+    return;
+  }
+  if (command.type === 'action') {
+    settingsAction(command.value);
+    return;
+  }
   if (command.type === 'update') {
     if (updates.state.phase === 'available') void updates.download();
     else if (updates.state.phase === 'ready') void updates.install();
@@ -2046,17 +2442,45 @@ function handleSettingsCommand(command: SettingsCommand) {
     return;
   }
   switch (command.key) {
-    case 'defaultSource': defaultSource.value = command.value as boolean; break;
-    case 'theme': theme.value = command.value as typeof theme.value; break;
-    case 'visualFontChoice': visualFontChoice.value = command.value as typeof visualFontChoice.value; break;
-    case 'customFontName': customFontName.value = command.value as string; break;
-    case 'revealMarkdown': revealMarkdown.value = command.value as boolean; break;
-    case 'toolbarMode': toolbarMode.value = parseToolbarMode(command.value); break;
-    case 'showPageTitle': showPageTitle.value = command.value as boolean; break;
-    case 'pageTitleSource': pageTitleSource.value = parsePageTitleSource(command.value); break;
-    case 'visualFontSize': visualFontSize.value = command.value as number; break;
-    case 'sourceFontSize': sourceFontSize.value = command.value as number; break;
-    case 'editorPreferences': editorPreferences.value = command.value as typeof editorPreferences.value; break;
+    case 'defaultSource':
+      defaultSource.value = command.value as boolean;
+      break;
+    case 'theme':
+      theme.value = command.value as typeof theme.value;
+      break;
+    case 'visualFontChoice':
+      visualFontChoice.value = command.value as typeof visualFontChoice.value;
+      break;
+    case 'customFontName':
+      customFontName.value = command.value as string;
+      break;
+    case 'revealMarkdown':
+      revealMarkdown.value = command.value as boolean;
+      break;
+    case 'toolbarMode':
+      toolbarMode.value = parseToolbarMode(command.value);
+      break;
+    case 'showPageTitle':
+      showPageTitle.value = command.value as boolean;
+      break;
+    case 'showOutline':
+      showOutline.value = command.value as boolean;
+      break;
+    case 'outlineOnLeft':
+      outlineOnLeft.value = command.value as boolean;
+      break;
+    case 'pageTitleSource':
+      pageTitleSource.value = parsePageTitleSource(command.value);
+      break;
+    case 'visualFontSize':
+      visualFontSize.value = command.value as number;
+      break;
+    case 'sourceFontSize':
+      sourceFontSize.value = command.value as number;
+      break;
+    case 'editorPreferences':
+      editorPreferences.value = command.value as typeof editorPreferences.value;
+      break;
   }
 }
 function settingsAction(
@@ -2168,17 +2592,26 @@ async function submitModal() {
   }
 }
 async function exportDocument(format: DocumentExportFormat) {
-  const doc = active.value, currentWorkspace = workspace.value;
+  const doc = active.value,
+    currentWorkspace = workspace.value;
   if (!doc || exportBusy.value) return;
   const title = showPageTitle.value
-    ? editorScroll.value?.querySelector<HTMLInputElement>('.document-title-input')?.value : undefined;
+    ? editorScroll.value?.querySelector<HTMLInputElement>('.document-title-input')?.value
+    : undefined;
   const options = {
-    id: doc.id, path: doc.path, content: doc.content, title,
-    capabilities: store.capabilities, referenceTargets: store.referenceTargets,
+    id: doc.id,
+    path: doc.path,
+    content: doc.content,
+    title,
+    capabilities: store.capabilities,
+    referenceTargets: store.referenceTargets,
     tableLayouts: doc.tableLayout?.file.tables,
-    resolveImage: (reference: string) => attachments
-      ? attachments.imageUrl(currentWorkspace, doc.path, reference) : safeRemoteImage(reference),
-    fontFamily: selectedVisualFontFamily.value, fontSize: visualFontSize.value,
+    resolveImage: (reference: string) =>
+      attachments
+        ? attachments.imageUrl(currentWorkspace, doc.path, reference)
+        : safeRemoteImage(reference),
+    fontFamily: selectedVisualFontFamily.value,
+    fontSize: visualFontSize.value,
   };
   menu.value = false;
   exportBusy.value = true;
@@ -2222,8 +2655,16 @@ function handleSidebarShortcut(event: KeyboardEvent) {
   toggleSidebar();
 }
 function handlePageSearchShortcut(event: KeyboardEvent) {
-  if (importPanel.value || settingsPanel.value || updateLock.value || modal.value ||
-      event.isComposing || event.keyCode === 229 || event.altKey) return;
+  if (
+    importPanel.value ||
+    settingsPanel.value ||
+    updateLock.value ||
+    modal.value ||
+    event.isComposing ||
+    event.keyCode === 229 ||
+    event.altKey
+  )
+    return;
   const search = paneSearches.get(store.activePaneId);
   if (!search) return;
   const key = event.key.toLowerCase();
@@ -2231,8 +2672,10 @@ function handlePageSearchShortcut(event: KeyboardEvent) {
     event.preventDefault();
     event.stopPropagation();
     openPaneSearch(store.activePaneId, key === 'h');
-  } else if (search.isOpen() && (key === 'escape' ||
-    ((event.ctrlKey || event.metaKey) && key === 'g'))) {
+  } else if (
+    search.isOpen() &&
+    (key === 'escape' || ((event.ctrlKey || event.metaKey) && key === 'g'))
+  ) {
     event.preventDefault();
     event.stopPropagation();
     if (key === 'escape') search.close();
@@ -2253,6 +2696,11 @@ function keydown(event: KeyboardEvent) {
   if (event.key === 'Escape' && directoryContextMenu.value) {
     event.preventDefault();
     closeDirectoryContextMenu();
+    return;
+  }
+  if (event.key === 'Escape' && outlineContextMenu.value) {
+    event.preventDefault();
+    closeOutlineContextMenu();
     return;
   }
   if (updateLock.value && event.key !== 'Tab') {
@@ -2363,6 +2811,7 @@ function outsideClick(event: MouseEvent) {
   if (!target.closest('.file-context-menu')) closeFileContextMenu();
   if (!target.closest('.directory-context-menu')) closeDirectoryContextMenu();
   if (!target.closest('.page-context-menu')) closePageContextMenu();
+  if (!target.closest('.outline-context-menu')) closeOutlineContextMenu();
   if (!target.closest('.dropdown, .menu-wrap, .sidebar-bottom')) {
     menu.value = false;
     workspaceMenu.value = false;
@@ -2375,7 +2824,10 @@ function outsideContextMenu(event: MouseEvent) {
   if (!(event.target as HTMLElement).closest('.tree-row')) closeFileContextMenu();
   if (!event.defaultPrevented && !(event.target as HTMLElement).closest('.directory-context-menu'))
     closeDirectoryContextMenu();
-  if (!event.defaultPrevented) closePageContextMenu();
+  if (!event.defaultPrevented) {
+    closePageContextMenu();
+    closeOutlineContextMenu();
+  }
 }
 function dismissPageContextMenu() {
   closePageContextMenu();
@@ -2384,6 +2836,7 @@ watch(sidebar, (visible) => {
   if (!visible) {
     closeFileContextMenu();
     closeDirectoryContextMenu();
+    closeOutlineContextMenu();
   }
 });
 let unlistenClose: (() => void) | undefined;
@@ -2402,9 +2855,11 @@ onMounted(async () => {
   window.addEventListener('scroll', dismissFileContextMenu, true);
   window.addEventListener('scroll', closeDirectoryContextMenu, true);
   window.addEventListener('scroll', dismissPageContextMenu, true);
+  window.addEventListener('scroll', closeOutlineContextMenu, true);
   window.addEventListener('resize', dismissFileContextMenu);
   window.addEventListener('resize', closeDirectoryContextMenu);
   window.addEventListener('resize', dismissPageContextMenu);
+  window.addEventListener('resize', closeOutlineContextMenu);
   if (!detachedWindow) window.addEventListener('resize', constrainSidebarToViewport);
   document.addEventListener('visibilitychange', mobileVisibility);
   if (webPageRouting) {
@@ -2423,16 +2878,19 @@ onMounted(async () => {
     unlistenTabTransfer = await listen<TabTransferRequest>(TAB_TRANSFER_REQUEST, ({ payload }) => {
       void acceptTabTransfer(payload).catch(store.report);
     });
-    unlistenTabRollback = await listen<TabTransferRollback>(TAB_TRANSFER_ROLLBACK, ({ payload }) => {
-      void rollbackTabTransfer(payload).catch(store.report);
-    });
+    unlistenTabRollback = await listen<TabTransferRollback>(
+      TAB_TRANSFER_ROLLBACK,
+      ({ payload }) => {
+        void rollbackTabTransfer(payload).catch(store.report);
+      },
+    );
   }
   const detachedRequest = detachedWindow ? detachedTabRequest() : null;
   if (detachedRequest) {
-    const opened = store.workspace?.path === detachedRequest.workspacePath &&
-      store.tabs.length === 1 && (
-        detachedRequest.tabId.startsWith('blank:') || store.tabs[0]?.id === detachedRequest.tabId
-      );
+    const opened =
+      store.workspace?.path === detachedRequest.workspacePath &&
+      store.tabs.length === 1 &&
+      (detachedRequest.tabId.startsWith('blank:') || store.tabs[0]?.id === detachedRequest.tabId);
     await reportDetachedReady(opened ? undefined : '独立窗口未能打开所选标签页');
   }
   if (native && !mobile && !detachedWindow) {
@@ -2483,9 +2941,11 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', dismissFileContextMenu, true);
   window.removeEventListener('scroll', closeDirectoryContextMenu, true);
   window.removeEventListener('scroll', dismissPageContextMenu, true);
+  window.removeEventListener('scroll', closeOutlineContextMenu, true);
   window.removeEventListener('resize', dismissFileContextMenu);
   window.removeEventListener('resize', closeDirectoryContextMenu);
   window.removeEventListener('resize', dismissPageContextMenu);
+  window.removeEventListener('resize', closeOutlineContextMenu);
   window.removeEventListener('resize', constrainSidebarToViewport);
   window.removeEventListener('popstate', handlePagePopState);
   document.removeEventListener('visibilitychange', mobileVisibility);
@@ -2501,6 +2961,7 @@ onBeforeUnmount(() => {
 });
 watch(activeId, () => {
   closePageContextMenu();
+  closeOutlineContextMenu();
   if (!pendingTreeOpenIds.has(activeId.value) || !selectedEntryIds.value.has(activeId.value))
     selectActiveFileInTree();
   historyPanel.value = false;
@@ -2529,7 +2990,14 @@ watch(activeId, () => {
     >
       <PanelLeftOpen :size="17" />
     </button>
-    <DesktopTabs detachable :file-drag="tabFileDrag" @files-dropped="fileDragEnd" @new-tab="store.createBlankTab()" @new-document="createNewDocument" @detach-tab="detachTab" />
+    <DesktopTabs
+      detachable
+      :file-drag="tabFileDrag"
+      @files-dropped="fileDragEnd"
+      @new-tab="store.createBlankTab()"
+      @new-document="createNewDocument"
+      @detach-tab="detachTab"
+    />
   </Teleport>
   <div
     class="app-shell"
@@ -2664,7 +3132,11 @@ watch(activeId, () => {
             </button>
           </template>
         </SidebarNavigation>
-        <div v-show="sidebarView === 'repository'" id="sidebar-repository-panel" class="sidebar-content">
+        <div
+          v-show="sidebarView === 'repository'"
+          id="sidebar-repository-panel"
+          class="sidebar-content"
+        >
           <div
             class="section-label"
             :class="{ 'drop-target': draggedEntry && dropFolder === '' }"
@@ -2980,12 +3452,25 @@ watch(activeId, () => {
                   title="退出当前工作区"
                   :disabled="busy"
                   @click="leaveWorkspace"
-                ><LogOut :size="16" /></button>
+                >
+                  <LogOut :size="16" />
+                </button>
               </div>
               <div class="menu-divider" />
               <button @click="openSettings()"><Settings2 :size="16" />设置</button>
-              <button v-if="workspace" :disabled="workspace.readOnly || busy" @click="openImport"><ArrowDownToLine :size="16" />导入</button>
-              <button v-if="workspace" :disabled="workspace.readOnly || busy" @click="workspaceMenu = false; templateDialog = true"><Files :size="16" />文档模板</button>
+              <button v-if="workspace" :disabled="workspace.readOnly || busy" @click="openImport">
+                <ArrowDownToLine :size="16" />导入
+              </button>
+              <button
+                v-if="workspace"
+                :disabled="workspace.readOnly || busy"
+                @click="
+                  workspaceMenu = false;
+                  templateDialog = true;
+                "
+              >
+                <Files :size="16" />文档模板
+              </button>
               <button @click="showObjects()"><Users :size="16" />工作区对象 · Level 2</button>
               <button
                 v-if="workspace && localNative && !mobile"
@@ -3002,12 +3487,26 @@ watch(activeId, () => {
                 }}
               </button>
               <div v-if="extensions.regions['account-note']" class="menu-divider" />
-              <component  :is="extensions.regions['account-note']" v-if="extensions.regions['account-note']" :actions="extensionActions" />
+              <component
+                :is="extensions.regions['account-note']"
+                v-if="extensions.regions['account-note']"
+                :actions="extensionActions"
+              />
               <div
-                v-if="extensions.regions['mode-switch'] || (mobile && workspace) || (workspace && localNative) || extensions.regions['workspace-history'] || extensions.regions['sign-out']"
+                v-if="
+                  extensions.regions['mode-switch'] ||
+                  (mobile && workspace) ||
+                  (workspace && localNative) ||
+                  extensions.regions['workspace-history'] ||
+                  extensions.regions['sign-out']
+                "
                 class="menu-divider"
               />
-              <component  :is="extensions.regions['mode-switch']" v-if="extensions.regions['mode-switch']" :actions="extensionActions" />
+              <component
+                :is="extensions.regions['mode-switch']"
+                v-if="extensions.regions['mode-switch']"
+                :actions="extensionActions"
+              />
               <button
                 v-if="mobile && workspace"
                 @click="
@@ -3017,7 +3516,15 @@ watch(activeId, () => {
               >
                 <Trash2 :size="16" />手机回收站
               </button>
-              <button v-if="workspace && assistant.available" @click="workspaceMenu = false; openAssistant()"><Bot :size="16" />Tano 助手</button>
+              <button
+                v-if="workspace && assistant.available"
+                @click="
+                  workspaceMenu = false;
+                  openAssistant();
+                "
+              >
+                <Bot :size="16" />Tano 助手
+              </button>
               <button
                 v-if="workspace && localNative"
                 @click="
@@ -3027,9 +3534,21 @@ watch(activeId, () => {
               >
                 <Bot :size="16" />与 Agent 一起工作
               </button>
-              <component  :is="extensions.regions['workspace-history']" v-if="extensions.regions['workspace-history']" :actions="extensionActions" />
-              <component  :is="extensions.regions['sign-out']" v-if="extensions.regions['sign-out']" :actions="extensionActions" />
-              <component v-if="store.isWeb" :is="extensions.regions['workspace-menu']"  :actions="extensionActions" />
+              <component
+                :is="extensions.regions['workspace-history']"
+                v-if="extensions.regions['workspace-history']"
+                :actions="extensionActions"
+              />
+              <component
+                :is="extensions.regions['sign-out']"
+                v-if="extensions.regions['sign-out']"
+                :actions="extensionActions"
+              />
+              <component
+                v-if="store.isWeb"
+                :is="extensions.regions['workspace-menu']"
+                :actions="extensionActions"
+              />
               <template v-else>
                 <button
                   v-if="store.isDemo || mobile"
@@ -3039,11 +3558,13 @@ watch(activeId, () => {
                     store.isDemo ? openSettings('about') : store.openWorkspace();
                   "
                 >
-                  <FolderOpen :size="16" />{{
-                    store.isDemo ? '了解演示存储' : '打开默认手机空间'
-                  }}
+                  <FolderOpen :size="16" />{{ store.isDemo ? '了解演示存储' : '打开默认手机空间' }}
                 </button>
-                <component  :is="extensions.regions['local-menu-login']" v-if="extensions.regions['local-menu-login']" :actions="extensionActions" />
+                <component
+                  :is="extensions.regions['local-menu-login']"
+                  v-if="extensions.regions['local-menu-login']"
+                  :actions="extensionActions"
+                />
                 <button v-if="mobile" :disabled="busy" @click="showModal('workspace')">
                   <FolderPlus :size="16" />新建手机空间
                 </button>
@@ -3062,7 +3583,9 @@ watch(activeId, () => {
                         workspaceMenu = false;
                         store.openWorkspace();
                       "
-                    ><FolderPlus :size="16" :stroke-width="1.6" /></button>
+                    >
+                      <FolderPlus :size="16" :stroke-width="1.6" />
+                    </button>
                   </div>
                   <button
                     v-for="item in store.recent.slice(0, 5)"
@@ -3113,539 +3636,896 @@ watch(activeId, () => {
     </Transition>
 
     <div class="main-column">
+      <ReferenceGraphPopover
+        v-if="referenceGraphTarget"
+        v-model:opened="referenceGraphOpened"
+        variant="panel"
+        :identity="{ type: 'document', id: referenceGraphTarget.id }"
+        :label="referenceGraphTarget.path.replace(/\.(md|markdown)$/i, '')"
+        :anchor="referenceGraphAnchor"
+        @open="openReference"
+      />
       <div v-if="workspace && compactPanes && tabsEnabled" class="workspace-tabbar">
-        <DesktopTabs :file-drag="tabFileDrag" @files-dropped="fileDragEnd" @new-tab="store.createBlankTab()" @new-document="createNewDocument" />
+        <DesktopTabs
+          :file-drag="tabFileDrag"
+          :assistant-tab="assistantTab"
+          @files-dropped="fileDragEnd"
+          @new-tab="store.createBlankTab()"
+          @new-document="createNewDocument"
+        />
       </div>
 
-      <WorkspacePanes v-if="workspace" :compact="compactPanes" :tabs-enabled="desktopTabsEnabled" :class="{ 'workspace-native-tabs': desktopTabsEnabled && !compactPanes }">
+      <WorkspacePanes
+        v-if="workspace"
+        :compact="compactPanes"
+        :tabs-enabled="desktopTabsEnabled"
+        :class="{ 'workspace-native-tabs': desktopTabsEnabled && !compactPanes }"
+      >
         <template #tabs="{ pane, rect }">
           <div v-if="!compactPanes" class="workspace-tabbar" :data-tab-pane-id="pane.id">
-            <button v-if="native && !mobile && !detachedWindow && !sidebar && rect.top === 0 && rect.left === 0"
-              class="desktop-sidebar-toggle" type="button" aria-label="展开侧栏" title="展开侧栏 · Ctrl B" @click="toggleSidebar">
+            <button
+              v-if="
+                native &&
+                !mobile &&
+                !detachedWindow &&
+                !sidebar &&
+                rect.top === 0 &&
+                rect.left === 0
+              "
+              class="desktop-sidebar-toggle"
+              type="button"
+              aria-label="展开侧栏"
+              title="展开侧栏 · Ctrl B"
+              @click="toggleSidebar"
+            >
               <PanelLeftOpen :size="17" />
             </button>
-            <DesktopTabs :pane-id="pane.id" :detachable="native && !mobile" :file-drag="tabFileDrag"
-              @files-dropped="fileDragEnd" @new-tab="store.focusPane(pane.id); store.createBlankTab()"
-              @new-document="store.focusPane(pane.id); createNewDocument()" @detach-tab="detachTab" />
-            <div v-if="native && !mobile" v-show="rect.top === 0" class="workspace-window-drag" title="拖动窗口"
-              @mousedown="dragPaneWindow" @dblclick="maximizePaneWindow" />
+            <DesktopTabs
+              :pane-id="pane.id"
+              :detachable="native && !mobile"
+              :file-drag="tabFileDrag"
+              :assistant-tab="assistantTab"
+              @files-dropped="fileDragEnd"
+              @new-tab="
+                store.focusPane(pane.id);
+                store.createBlankTab();
+              "
+              @new-document="
+                store.focusPane(pane.id);
+                createNewDocument();
+              "
+              @detach-tab="detachTab"
+            />
+            <div
+              v-if="native && !mobile"
+              v-show="rect.top === 0"
+              class="workspace-window-drag"
+              title="拖动窗口"
+              @mousedown="dragPaneWindow"
+              @dblclick="maximizePaneWindow"
+            />
           </div>
         </template>
         <template #sidebar>
-          <AssistantPanel v-if="assistant.available && assistant.opened" :open-sources-in-new-tab="tabsEnabled"
-            @open-reference="openReference" @open-settings="openSettings('assistant')" />
+          <AssistantPanel
+            v-if="assistant.available && assistant.opened"
+            :open-sources-in-new-tab="tabsEnabled"
+            :fullscreen-target="assistantHosts.get(assistant.fullscreenPaneId ?? '')"
+            @open-reference="openReference"
+            @open-settings="openSettings('assistant')"
+          />
         </template>
         <template #default="{ pane, document: active, tab }">
-          <ButtonVisibilityGroup
-            v-if="!detachedWindow"
-            v-slot="{ isVisible }"
-            :items="topbarVisibilityItems(pane.activeId, !!active, pane.id === store.activePaneId)"
-            preference-key="tano.preference.documentHiddenTools"
-            tag="header"
-            :group-class="pane.activeId === GRAPH_TAB_ID ? 'topbar graph-topbar' : 'topbar'"
-            :label="pane.activeId === GRAPH_TAB_ID ? '图谱顶部栏' : '文档顶部栏'"
-            menu-label="顶部栏显示设置"
-            @open="closeButtonVisibilityMenus"
-          >
-            <div
-              v-if="(!tabsEnabled && (isVisible('back') || isVisible('forward'))) || (!sidebar && !(native && !mobile && workspace))"
-              class="topbar-navigation" role="group" :aria-label="pane.activeId === GRAPH_TAB_ID ? '图谱导航' : '文档导航'"
+          <div
+            :id="`assistant-fullscreen-${pane.id}`"
+            :ref="(el) => setAssistantHost(pane.id, el)"
+            v-show="assistant.isFullscreenTab(pane.activeId)"
+            class="assistant-fullscreen-host"
+          />
+          <div v-show="!assistant.isFullscreenTab(pane.activeId)" class="workspace-page-content">
+            <ButtonVisibilityGroup
+              v-if="!detachedWindow"
+              v-slot="{ isVisible }"
+              :items="
+                topbarVisibilityItems(pane.activeId, !!active, pane.id === store.activePaneId)
+              "
+              preference-key="tano.preference.documentHiddenTools"
+              tag="header"
+              :group-class="pane.activeId === GRAPH_TAB_ID ? 'topbar graph-topbar' : 'topbar'"
+              :label="pane.activeId === GRAPH_TAB_ID ? '图谱顶部栏' : '文档顶部栏'"
+              menu-label="顶部栏显示设置"
+              @open="closeButtonVisibilityMenus"
             >
-              <button
-                v-if="!sidebar && !(native && !mobile && workspace)"
-                type="button"
-                class="icon-button"
-                aria-label="展开侧栏"
-                title="展开侧栏 · Ctrl B"
-                @click="toggleSidebar"
+              <div
+                v-if="
+                  (!tabsEnabled && (isVisible('back') || isVisible('forward'))) ||
+                  (!sidebar && !(native && !mobile && workspace))
+                "
+                class="topbar-navigation"
+                role="group"
+                :aria-label="pane.activeId === GRAPH_TAB_ID ? '图谱导航' : '文档导航'"
               >
-                <PanelLeftOpen :size="18" />
-              </button>
-              <button
-                v-if="!tabsEnabled && isVisible('back')"
-                type="button"
-                class="icon-button"
-                aria-label="后退"
-                title="后退"
-                :disabled="!canNavigatePage(-1)"
-                @click="navigatePage(-1)"
-              >
-                <ArrowLeft :size="16" :stroke-width="1.6" />
-              </button>
-              <button
-                v-if="!tabsEnabled && isVisible('forward')"
-                type="button"
-                class="icon-button"
-                aria-label="前进"
-                title="前进"
-                :disabled="!canNavigatePage(1)"
-                @click="navigatePage(1)"
-              >
-                <ArrowRight :size="16" :stroke-width="1.6" />
-              </button>
-            </div>
-            <nav v-if="isVisible('breadcrumb') && pane.activeId !== CALENDAR_TAB_ID && pane.activeId !== GRAPH_TAB_ID" class="breadcrumb" aria-label="当前位置">
-              <span class="breadcrumb-workspace"
-                ><BookOpen :size="14" />{{ workspace?.name ?? 'Tano' }}</span
-              ><template v-if="pane.activeId === PLUGINS_TAB_ID"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">插件</span></template
-              ><template v-for="view in extensionViews.filter(view => view.id === pane.activeId)" :key="view.id"><ChevronRight :size="12" /><component :is="view.icon" :size="14" /><span class="breadcrumb-current">{{ view.label }}</span></template
-              ><template v-for="(part, index) in (tab?.path ? tab.path.split('/') : [])" :key="index"
-                ><ChevronRight :size="12" /><component
-                  :is="index === tab!.path.split('/').length - 1 ? FileText : FolderOpen"
-                  :size="14"
-                /><span :class="{ 'breadcrumb-current': index === tab!.path.split('/').length - 1 }" :title="part">{{
-                  index === tab!.path.split('/').length - 1 && active ? part.replace(/\.(md|markdown)$/i, '') : part
-                }}</span></template
-              >
-            </nav>
-            <div class="topbar-right">
-              <button v-if="tab?.attachment && attachments && isVisible('attachment-export')"
-                type="button" class="topbar-attachment-action" aria-label="导出附件" title="导出附件副本"
-                @click="attachments.exportAttachment(workspace!.id, tab.attachment.path).catch(store.report)">
-                <ArrowDownToLine :size="16" /><span>导出</span>
-              </button>
-              <component  :is="extensions.regions['editing-status']" v-if="isVisible('editing-status') && pane.id === store.activePaneId && extensions.regions['editing-status']" :actions="extensionActions" />
-              <span
-                v-if="isVisible('workspace-status') && workspaceStatusLabel"
-                :class="store.isDemo ? 'demo-badge' : 'local-badge'"
-              >
-                <LockKeyhole v-if="workspace?.readOnly" :size="14" />
-                <span v-else-if="store.isDemo" />
-                <Globe2 v-else-if="store.isWeb" :size="14" />
-                {{ workspaceStatusLabel }}
-              </span>
-              <div :id="`graph-controls-${pane.id}`" v-show="pane.activeId === GRAPH_TAB_ID" class="graph-toolbar-host" />
-              <div v-if="pane.activeId === CALENDAR_TAB_ID && calendarToolItems.some(item => isVisible(item.id))" class="calendar-topbar-controls" role="group" aria-label="日历导航">
-                <span v-if="isVisible('calendar-period')" class="calendar-topbar-period">{{ calendarPeriod }}</span>
-                <button v-if="isVisible('calendar-today')" type="button" class="calendar-topbar-today" @click="calendarDate = new Date()">今天</button>
-                <button v-if="isVisible('calendar-previous')" type="button" class="icon-button" aria-label="上一时段" title="上一时段" @click="moveCalendarPeriod(-1)"><ChevronLeft :size="17" /></button>
-                <button v-if="isVisible('calendar-next')" type="button" class="icon-button" aria-label="下一时段" title="下一时段" @click="moveCalendarPeriod(1)"><ChevronRight :size="17" /></button>
-                <div v-if="isVisible('calendar-mode')" class="calendar-view-picker" @keydown.esc.stop.prevent="calendarModeOpen = false">
-                  <button
-                    type="button"
-                    class="calendar-topbar-mode"
-                    aria-label="切换日历视图"
-                    title="Ctrl + 滚轮：切换日历视图"
-                    aria-haspopup="menu"
-                    :aria-expanded="calendarModeOpen"
-                    @click="calendarModeOpen = !calendarModeOpen"
-                  >{{ calendarModeLabel }}<ChevronDown :size="14" /></button>
-                  <div v-if="calendarModeOpen" class="calendar-view-menu" role="menu" aria-label="日历视图">
-                    <button
-                      v-for="option in calendarModeOptions"
-                      :key="option.mode"
-                      type="button"
-                      role="menuitemradio"
-                      :aria-checked="calendarMode === option.mode"
-                      @click="selectCalendarMode(option.mode)"
-                    >{{ option.label }}<Check v-if="calendarMode === option.mode" :size="15" /></button>
-                  </div>
-                </div>
-                <button v-if="isVisible('calendar-events')" type="button" class="calendar-topbar-events" title="查看和管理事件" @click="managePlanEvents"><CalendarDays :size="15" />管理事件</button>
+                <button
+                  v-if="!sidebar && !(native && !mobile && workspace)"
+                  type="button"
+                  class="icon-button"
+                  aria-label="展开侧栏"
+                  title="展开侧栏 · Ctrl B"
+                  @click="toggleSidebar"
+                >
+                  <PanelLeftOpen :size="18" />
+                </button>
+                <button
+                  v-if="!tabsEnabled && isVisible('back')"
+                  type="button"
+                  class="icon-button"
+                  aria-label="后退"
+                  title="后退"
+                  :disabled="!canNavigatePage(-1)"
+                  @click="navigatePage(-1)"
+                >
+                  <ArrowLeft :size="16" :stroke-width="1.6" />
+                </button>
+                <button
+                  v-if="!tabsEnabled && isVisible('forward')"
+                  type="button"
+                  class="icon-button"
+                  aria-label="前进"
+                  title="前进"
+                  :disabled="!canNavigatePage(1)"
+                  @click="navigatePage(1)"
+                >
+                  <ArrowRight :size="16" :stroke-width="1.6" />
+                </button>
               </div>
-              <template v-if="active">
-                <div v-if="documentToolItems.some(item => isVisible(item.id))" class="document-tool-buttons">
-                  <MarkdownRevealToggle
-                    v-if="isVisible('markdown-reveal')"
-                    v-model="revealMarkdown"
-                    :source="paneSource(pane.activeId)"
-                  />
+              <nav
+                v-if="
+                  isVisible('breadcrumb') &&
+                  pane.activeId !== CALENDAR_TAB_ID &&
+                  pane.activeId !== GRAPH_TAB_ID
+                "
+                class="breadcrumb"
+                aria-label="当前位置"
+              >
+                <span class="breadcrumb-workspace"
+                  ><BookOpen :size="14" />{{ workspace?.name ?? 'Tano' }}</span
+                ><template v-if="pane.activeId === PLUGINS_TAB_ID"
+                  ><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current"
+                    >插件</span
+                  ></template
+                ><template
+                  v-for="view in extensionViews.filter((view) => view.id === pane.activeId)"
+                  :key="view.id"
+                  ><ChevronRight :size="12" /><component :is="view.icon" :size="14" /><span
+                    class="breadcrumb-current"
+                    >{{ view.label }}</span
+                  ></template
+                ><template
+                  v-for="(part, index) in tab?.path ? tab.path.split('/') : []"
+                  :key="index"
+                  ><ChevronRight :size="12" /><component
+                    :is="index === tab!.path.split('/').length - 1 ? FileText : FolderOpen"
+                    :size="14"
+                  /><span
+                    :class="{ 'breadcrumb-current': index === tab!.path.split('/').length - 1 }"
+                    :title="part"
+                    >{{
+                      index === tab!.path.split('/').length - 1 && active
+                        ? part.replace(/\.(md|markdown)$/i, '')
+                        : part
+                    }}</span
+                  ></template
+                >
+              </nav>
+              <div class="topbar-right">
+                <button
+                  v-if="tab?.attachment && attachments && isVisible('attachment-export')"
+                  type="button"
+                  class="topbar-attachment-action"
+                  aria-label="导出附件"
+                  title="导出附件副本"
+                  @click="
+                    attachments
+                      .exportAttachment(workspace!.id, tab.attachment.path)
+                      .catch(store.report)
+                  "
+                >
+                  <ArrowDownToLine :size="16" /><span>导出</span>
+                </button>
+                <component
+                  :is="extensions.regions['editing-status']"
+                  v-if="
+                    isVisible('editing-status') &&
+                    pane.id === store.activePaneId &&
+                    extensions.regions['editing-status']
+                  "
+                  :actions="extensionActions"
+                />
+                <span
+                  v-if="isVisible('workspace-status') && workspaceStatusLabel"
+                  :class="store.isDemo ? 'demo-badge' : 'local-badge'"
+                >
+                  <LockKeyhole v-if="workspace?.readOnly" :size="14" />
+                  <span v-else-if="store.isDemo" />
+                  <Globe2 v-else-if="store.isWeb" :size="14" />
+                  {{ workspaceStatusLabel }}
+                </span>
+                <div
+                  :id="`graph-controls-${pane.id}`"
+                  v-show="pane.activeId === GRAPH_TAB_ID"
+                  class="graph-toolbar-host"
+                />
+                <div
+                  v-if="
+                    pane.activeId === CALENDAR_TAB_ID &&
+                    calendarToolItems.some((item) => isVisible(item.id))
+                  "
+                  class="calendar-topbar-controls"
+                  role="group"
+                  aria-label="日历导航"
+                >
+                  <span v-if="isVisible('calendar-period')" class="calendar-topbar-period">{{
+                    calendarPeriod
+                  }}</span>
                   <button
-                    v-if="isVisible('source-mode')"
+                    v-if="isVisible('calendar-today')"
                     type="button"
-                    class="icon-button source-mode-button"
-                    :class="{ active: paneSource(pane.activeId) }"
-                    :disabled="editing.isManaging(pane.activeId) || (pane.id === store.activePaneId && editing.activeBusy)"
-                    :aria-label="paneSource(pane.activeId) ? '返回编辑' : '切换源码模式'"
-                    :aria-pressed="paneSource(pane.activeId)"
-                    :title="
-                      editing.isManaging(pane.activeId)
-                        ? '当前编辑扩展不支持切换源码模式'
-                        : paneSource(pane.activeId)
-                          ? '返回编辑'
-                          : '切换源码模式'
-                    "
-                    @click="sourceModes[pane.activeId] = !paneSource(pane.activeId)"
+                    class="calendar-topbar-today"
+                    @click="calendarDate = new Date()"
                   >
-                    <Code2 :size="17" />
+                    今天
                   </button>
-                </div>
-                <div class="menu-wrap">
                   <button
+                    v-if="isVisible('calendar-previous')"
+                    type="button"
                     class="icon-button"
-                    aria-label="文档操作"
-                    :aria-expanded="menu && pane.id === store.activePaneId"
-                    @click="toggleDocumentMenu"
-                    @keydown="documentMenuTriggerKeydown"
+                    aria-label="上一时段"
+                    title="上一时段"
+                    @click="moveCalendarPeriod(-1)"
                   >
-                    <MoreHorizontal :size="19" />
+                    <ChevronLeft :size="17" />
+                  </button>
+                  <button
+                    v-if="isVisible('calendar-next')"
+                    type="button"
+                    class="icon-button"
+                    aria-label="下一时段"
+                    title="下一时段"
+                    @click="moveCalendarPeriod(1)"
+                  >
+                    <ChevronRight :size="17" />
                   </button>
                   <div
-                    v-if="menu && pane.id === store.activePaneId"
-                    ref="documentMenuElement"
-                    class="dropdown compact-action-menu document-dropdown"
-                    @keydown="documentMenuKeydown"
+                    v-if="isVisible('calendar-mode')"
+                    class="calendar-view-picker"
+                    @keydown.esc.stop.prevent="calendarModeOpen = false"
                   >
                     <button
                       type="button"
-                      :disabled="editorReadonly || !documentUndoAvailable"
-                      @click="undoDocument"
+                      class="calendar-topbar-mode"
+                      aria-label="切换日历视图"
+                      title="Ctrl + 滚轮：切换日历视图"
+                      aria-haspopup="menu"
+                      :aria-expanded="calendarModeOpen"
+                      @click="calendarModeOpen = !calendarModeOpen"
                     >
-                      <Undo2 :size="15" />撤销<span class="menu-shortcut">Ctrl Z</span>
+                      {{ calendarModeLabel }}<ChevronDown :size="14" />
                     </button>
-                    <button
-                      type="button"
-                      :disabled="editorReadonly || !documentRedoAvailable"
-                      @click="redoDocument"
+                    <div
+                      v-if="calendarModeOpen"
+                      class="calendar-view-menu"
+                      role="menu"
+                      aria-label="日历视图"
                     >
-                      <Redo2 :size="15" />重做<span class="menu-shortcut">Ctrl Y</span>
-                    </button>
-                    <button
-                      @click="
-                        menu = false;
-                        store.flush();
-                      "
-                    >
-                      <CheckCheck :size="15" />立即保存<span class="menu-shortcut">Ctrl S</span>
-                    </button>
-                    <button
-                      class="danger-text"
-                      :disabled="editorReadonly || editing.isManaging(pane.activeId) || (pane.id === store.activePaneId && editing.activeBusy)"
-                      @click="removeDocument()"
-                    >
-                      <Trash2 :size="15" />{{
-                        store.isDemo ? '删除演示文档' : store.isWeb ? '删除在线文档' : '移入回收站'
-                      }}
-                    </button>
-                    <button type="button" @click="openPaneSearch(pane.id)">
-                      <Search :size="15" />页内搜索<span class="menu-shortcut">Ctrl F</span>
-                    </button>
-                    <button type="button" @click="openPaneSearch(pane.id, true)">
-                      <Repeat2 :size="15" />查找与替换<span class="menu-shortcut">Ctrl H</span>
-                    </button>
-                    <div class="menu-divider" role="separator" />
-                    <button
-                      type="button"
-                      class="page-toggle-menu-item"
-                      role="switch"
-                      :aria-checked="!limitPageWidth"
-                      :disabled="!pageWidthWritable"
-                      title="切换页面内容宽度"
-                      @click="setLimitPageWidth(!limitPageWidth)"
-                    >
-                      <MoveHorizontal :size="15" />全宽<span
-                        class="menu-switch"
-                        :class="{ on: !limitPageWidth }"
-                        aria-hidden="true"
-                        ><span
-                      /></span>
-                    </button>
-                    <div class="menu-divider" role="separator" />
-                    <button
-                      type="button"
-                      class="page-toggle-menu-item"
-                      role="switch"
-                      :aria-checked="pageLocked"
-                      :title="pageLocked ? '退出阅读模式' : '锁定后进入阅读模式'"
-                      @click="togglePageLock"
-                    >
-                      <LockKeyhole :size="15" />锁定页面<span
-                        class="menu-switch"
-                        :class="{ on: pageLocked }"
-                        aria-hidden="true"
-                        ><span
-                      /></span>
-                    </button>
-                    <div class="menu-divider" role="separator" />
-                    <button
-                      @click="
-                        menu = false;
-                        historyPage = 'versions';
-                        historyPanel = true;
-                      "
-                    >
-                      <Archive :size="15" />版本历史<span class="menu-beta">Beta</span>
-                    </button>
-                    <button
-                      @click="
-                        menu = false;
-                        historyPage = 'updates';
-                        historyPanel = true;
-                      "
-                    >
-                      <Clock3 :size="15" />更新历史
-                    </button>
-                    <div class="menu-divider" role="separator" />
-                    <DocumentExportMenu :disabled="exportBusy" @select="exportDocument" />
-                    <button type="button" :disabled="workspace?.readOnly || busy" @click="openImport"><ArrowDownToLine :size="15" />导入</button>
-                    <button type="button" :disabled="workspace?.readOnly || busy" @click="templateDialog = true"><Files :size="15" />文档模板</button>
-                  </div>
-                </div>
-              </template>
-            </div>
-          </ButtonVisibilityGroup>
-          <KeepAlive v-if="pane.tabs.includes(GRAPH_TAB_ID)">
-            <RelationGraph v-if="workspace && pane.activeId === GRAPH_TAB_ID" :key="`${workspace.id}:${workspace.path}`"
-              :open-in-new-tab="tabsEnabled"
-              :controls-target="detachedWindow ? undefined : `#graph-controls-${pane.id}`" />
-          </KeepAlive>
-
-          <CalendarView
-            v-if="workspace && pane.activeId === CALENDAR_TAB_ID"
-            :date="calendarDate"
-            :mode="calendarMode"
-            @select-mode="selectCalendarMode"
-            @visible-month="calendarDate = $event"
-            @visible-year="calendarDate = $event"
-            @visible-timeline="calendarDate = $event"
-            @select-date="showCalendarDay"
-            @select-month="showCalendarMonth"
-            @select-event="showPlanEvent"
-          />
-
-          <template v-for="view in extensionViews" :key="view.id">
-            <component v-if="pane.activeId === view.id" :is="view.component" :actions="viewActions[view.id]" />
-          </template>
-
-          <main
-            v-if="workspace && pane.tabs.includes(PLUGINS_TAB_ID)"
-            v-show="pane.activeId === PLUGINS_TAB_ID"
-            class="plugins-tab-page"
-          >
-            <div class="plugins-tab-content">
-              <p v-if="!store.capabilities.features.objectReferences" class="tool-level-notice">
-                Level 2 已关闭，插件对象和关系暂时只读。可在工作区设置中重新启用。
-              </p>
-              <p v-else-if="workspace.readOnly" class="tool-level-notice">
-                此工作区为只读，无法修改对象和关系。
-              </p>
-              <PluginInstaller @objects="showObjects()" />
-            </div>
-          </main>
-
-          <template v-if="active">
-            <PageSearch
-              :key="`search:${active.id}`"
-              :ref="el => setPaneSearch(pane.id, el)"
-              :editor="paneSource(pane.activeId) ? paneSourceEditors.get(pane.id) : paneEditors.get(pane.id)"
-              :content="active.content"
-              :readonly="paneReadonly(active!)"
-              :revision="paneSearchRevisions[pane.id]"
-            />
-            <div :key="active.id" :ref="el => setPaneElement('scroll', pane.id, el)" class="document-layout"
-              :data-toolbar-dock="pane.id === store.activePaneId && !paneSource(pane.activeId) && !paneReadonly(active!) ? toolbarMode : undefined"
-              @scroll.passive="scheduleActiveHeading">
-              <main class="document-main">
-                <EditorTools
-                  v-model:mode="toolbarMode"
-                  :assistant="assistant.available"
-                  @assistant="openAssistant(pane.id, active!.id)"
-                  annotation
-                  :todo="store.capabilities.features.objectReferences && !paneReadonly(active!) && !editing.isManaging(active!.id)"
-                  @todo="beginSelectionTodo(pane.id, active!.id)"
-                  @annotation="paneComments.get(pane.id)?.beginAnnotation()"
-                  :active="pane.id === store.activePaneId"
-                  :editor-element="paneEditorScrolls.get(pane.id)"
-                  :features="store.capabilities.features"
-                  :context="paneSelections[pane.id] ?? defaultSelectionContext"
-                  :source="paneSource(pane.activeId)"
-                  :disabled="paneReadonly(active!)"
-                  @command="(name, value) => paneEditors.get(pane.id)?.command(name, value)"
-                >
-                  <template v-if="detachedWindow || paneSource(pane.activeId)" #trailing>
-                    <button v-if="paneSource(pane.activeId) && store.capabilities.features.objectReferences" type="button" class="icon-button" aria-label="从选区创建 Todo" title="从选区创建 Todo" :disabled="paneReadonly(active!) || !paneSourceSelections[pane.id] || editing.isManaging(active!.id)" @mousedown.prevent @click="beginSelectionTodo(pane.id, active!.id)"><ListTodo :size="17" /></button>
-                    <ButtonVisibilityGroup
-                      v-if="detachedWindow"
-                      v-slot="{ isVisible }"
-                      :items="documentToolItems"
-                      preference-key="tano.preference.documentHiddenTools"
-                      group-class="detached-editor-actions document-tool-buttons"
-                      label="文档工具"
-                      menu-label="文档工具按钮显示设置"
-                      @open="closeButtonVisibilityMenus"
-                    >
-                      <MarkdownRevealToggle
-                        v-if="isVisible('markdown-reveal')"
-                        v-model="revealMarkdown"
-                        :source="paneSource(pane.activeId)"
-                      />
                       <button
-                        v-if="isVisible('source-mode')"
+                        v-for="option in calendarModeOptions"
+                        :key="option.mode"
                         type="button"
-                        class="icon-button"
-                        :class="{ active: paneSource(pane.activeId) }"
-                        :disabled="!!editing.active || editing.activeBusy"
-                        :aria-label="paneSource(pane.activeId) ? '返回编辑' : '切换源码模式'"
-                        :aria-pressed="paneSource(pane.activeId)"
-                        :title="paneSource(pane.activeId) ? '返回编辑' : '切换源码模式'"
-                        @click="sourceModes[pane.activeId] = !paneSource(pane.activeId)"
-                      ><Code2 :size="17" /></button>
-                    </ButtonVisibilityGroup>
-                  </template>
-                </EditorTools>
-
-                <component  :is="extensions.regions['editing-panel']" v-if="pane.id === store.activePaneId && extensions.regions['editing-panel']" :actions="extensionActions" />
-                <div v-if="active.conflict" class="conflict-banner" role="alert">
-                  <AlertTriangle :size="19" />
-                  <div>
-                    <strong>这一页有两份新的想法</strong>
-                    <p>外部修改与你的修改重叠。你的内容已保存为 conflict 副本，原文件保留外部版本。</p>
-                    <button @click="store.resolveConflict(active!, true)">
-                      打开我的副本 <ArrowUpRight :size="14" /></button
-                    ><button @click="store.resolveConflict(active!, false)">载入磁盘版本</button>
+                        role="menuitemradio"
+                        :aria-checked="calendarMode === option.mode"
+                        @click="selectCalendarMode(option.mode)"
+                      >
+                        {{ option.label }}<Check v-if="calendarMode === option.mode" :size="15" />
+                      </button>
+                    </div>
+                  </div>
+                  <button
+                    v-if="isVisible('calendar-events')"
+                    type="button"
+                    class="calendar-topbar-events"
+                    title="查看和管理事件"
+                    @click="managePlanEvents"
+                  >
+                    <CalendarDays :size="15" />管理事件
+                  </button>
+                </div>
+                <div v-if="active && documentSuggestions.get(active.id)?.mode && !editing.isManaging(active.id)"
+                  class="suggestion-mode-badge" role="status" aria-label="建议模式已开启">
+                  <MessageSquareDiff :size="14" /><span>建议模式</span>
+                  <button type="button" aria-label="退出建议模式" title="退出建议模式"
+                    :disabled="suggestionModeBusy || documentSuggestions.get(active.id)?.reviewing"
+                    @click="toggleSuggestionMode(active.id)"><X :size="14" /></button>
+                </div>
+                <button
+                  v-if="workspace && assistant.available && isVisible('assistant')"
+                  type="button"
+                  class="icon-button"
+                  :class="{ active: assistant.opened }"
+                  aria-label="打开 Tano 助手"
+                  title="打开 Tano 助手"
+                  :aria-expanded="assistant.opened"
+                  @mousedown.prevent
+                  @click="openAssistant(pane.id, pane.activeId)"
+                >
+                  <Bot :size="17" />
+                </button>
+                <template v-if="active">
+                  <div
+                    v-if="documentToolItems.some((item) => isVisible(item.id))"
+                    class="document-tool-buttons"
+                  >
+                    <MarkdownRevealToggle
+                      v-if="isVisible('markdown-reveal')"
+                      v-model="revealMarkdown"
+                      :source="paneSource(pane.activeId)"
+                    />
                     <button
-                      @click="
-                        selectedDiff = {
-                          title: active.path,
-                          before: active.conflict.disk.content,
-                          after: active.content,
-                          beforeLabel: '磁盘版本',
-                          afterLabel: '我的副本',
-                        }
+                      v-if="isVisible('source-mode')"
+                      type="button"
+                      class="icon-button source-mode-button"
+                      :class="{ active: paneSource(pane.activeId) }"
+                      :disabled="
+                        editing.isManaging(pane.activeId) ||
+                        (pane.id === store.activePaneId && editing.activeBusy)
                       "
+                      :aria-label="paneSource(pane.activeId) ? '返回编辑' : '切换源码模式'"
+                      :aria-pressed="paneSource(pane.activeId)"
+                      :title="
+                        editing.isManaging(pane.activeId)
+                          ? '当前编辑扩展不支持切换源码模式'
+                          : paneSource(pane.activeId)
+                            ? '返回编辑'
+                            : '切换源码模式'
+                      "
+                      @click="sourceModes[pane.activeId] = !paneSource(pane.activeId)"
                     >
-                      比较两个版本
+                      <Code2 :size="17" />
                     </button>
                   </div>
-                </div>
-                <div v-else-if="active.missing || active.error" class="conflict-banner" role="alert">
-                  <AlertTriangle :size="19" />
-                  <div>
-                    <strong>{{
-                      active.missing ? '文件已在工作文件夹中移除' : '这次保存没有完成'
-                    }}</strong>
-                    <p>{{ active.error ?? '编辑器中的内容仍然保留，你可以把它另存为一个新文档。' }}</p>
-                    <button @click="showModal('saveAs')">另存副本 <ArrowUpRight :size="14" /></button
-                    ><button v-if="!active.missing" @click="store.flush()">重试保存</button>
+                  <div class="menu-wrap">
+                    <button
+                      class="icon-button"
+                      aria-label="文档操作"
+                      :aria-expanded="menu && pane.id === store.activePaneId"
+                      @click="toggleDocumentMenu"
+                      @keydown="documentMenuTriggerKeydown"
+                    >
+                      <MoreHorizontal :size="19" />
+                    </button>
+                    <div
+                      v-if="menu && pane.id === store.activePaneId"
+                      ref="documentMenuElement"
+                      class="dropdown compact-action-menu document-dropdown"
+                      @keydown="documentMenuKeydown"
+                    >
+                      <button type="button"
+                        :disabled="suggestionModeBusy || (!documentSuggestions.get(active.id)?.mode && (paneReadonly(active) || editing.isManaging(active.id) || editing.activeBusy)) || documentSuggestions.get(active.id)?.loading || documentSuggestions.get(active.id)?.reviewing"
+                        @click="toggleSuggestionMode(active.id)">
+                        <MessageSquareDiff :size="15" />{{ documentSuggestions.get(active.id)?.mode ? '退出建议模式' : '建议编辑' }}
+                      </button>
+                      <button
+                        type="button"
+                        :disabled="editorReadonly || !documentUndoAvailable"
+                        @click="undoDocument"
+                      >
+                        <Undo2 :size="15" />撤销<span class="menu-shortcut">Ctrl Z</span>
+                      </button>
+                      <button
+                        type="button"
+                        :disabled="editorReadonly || !documentRedoAvailable"
+                        @click="redoDocument"
+                      >
+                        <Redo2 :size="15" />重做<span class="menu-shortcut">Ctrl Y</span>
+                      </button>
+                      <button
+                        @click="
+                          menu = false;
+                          store.flush();
+                        "
+                      >
+                        <CheckCheck :size="15" />立即保存<span class="menu-shortcut">Ctrl S</span>
+                      </button>
+                      <button
+                        class="danger-text"
+                        :disabled="
+                          editorReadonly ||
+                          editing.isManaging(pane.activeId) ||
+                          (pane.id === store.activePaneId && editing.activeBusy)
+                        "
+                        @click="removeDocument()"
+                      >
+                        <Trash2 :size="15" />{{
+                          store.isDemo
+                            ? '删除演示文档'
+                            : store.isWeb
+                              ? '删除在线文档'
+                              : '移入回收站'
+                        }}
+                      </button>
+                      <button type="button" @click="openPaneSearch(pane.id)">
+                        <Search :size="15" />页内搜索<span class="menu-shortcut">Ctrl F</span>
+                      </button>
+                      <button type="button" @click="openPaneSearch(pane.id, true)">
+                        <Repeat2 :size="15" />查找与替换<span class="menu-shortcut">Ctrl H</span>
+                      </button>
+                      <button
+                        type="button"
+                        aria-haspopup="dialog"
+                        :aria-expanded="referenceGraphOpened"
+                        @click="showReferenceGraph(pane.id, active!)"
+                      >
+                        <GitFork :size="15" />查看关系图谱
+                      </button>
+                      <div class="menu-divider" role="separator" />
+                      <button
+                        type="button"
+                        class="page-toggle-menu-item"
+                        role="switch"
+                        :aria-checked="!limitPageWidth"
+                        :disabled="!pageWidthWritable"
+                        title="切换页面内容宽度"
+                        @click="setLimitPageWidth(!limitPageWidth)"
+                      >
+                        <MoveHorizontal :size="15" />全宽<span
+                          class="menu-switch"
+                          :class="{ on: !limitPageWidth }"
+                          aria-hidden="true"
+                          ><span
+                        /></span>
+                      </button>
+                      <button
+                        type="button"
+                        class="page-toggle-menu-item"
+                        role="switch"
+                        :aria-checked="showOutline"
+                        title="切换文档目录显示"
+                        @click="showOutline = !showOutline"
+                      >
+                        <List :size="15" />显示目录<span
+                          class="menu-switch"
+                          :class="{ on: showOutline }"
+                          aria-hidden="true"
+                          ><span
+                        /></span>
+                      </button>
+                      <div class="menu-divider" role="separator" />
+                      <button
+                        type="button"
+                        class="page-toggle-menu-item"
+                        role="switch"
+                        :aria-checked="pageLocked"
+                        :title="pageLocked ? '退出阅读模式' : '锁定后进入阅读模式'"
+                        @click="togglePageLock"
+                      >
+                        <LockKeyhole :size="15" />锁定页面<span
+                          class="menu-switch"
+                          :class="{ on: pageLocked }"
+                          aria-hidden="true"
+                          ><span
+                        /></span>
+                      </button>
+                      <div class="menu-divider" role="separator" />
+                      <button
+                        @click="
+                          menu = false;
+                          historyPage = 'versions';
+                          historyPanel = true;
+                        "
+                      >
+                        <Archive :size="15" />版本历史<span class="menu-beta">Beta</span>
+                      </button>
+                      <button
+                        @click="
+                          menu = false;
+                          historyPage = 'updates';
+                          historyPanel = true;
+                        "
+                      >
+                        <Clock3 :size="15" />更新历史
+                      </button>
+                      <div class="menu-divider" role="separator" />
+                      <DocumentExportMenu :disabled="exportBusy" @select="exportDocument" />
+                      <button
+                        type="button"
+                        :disabled="workspace?.readOnly || busy"
+                        @click="openImport"
+                      >
+                        <ArrowDownToLine :size="15" />导入
+                      </button>
+                      <button
+                        type="button"
+                        :disabled="workspace?.readOnly || busy"
+                        @click="templateDialog = true"
+                      >
+                        <Files :size="15" />文档模板
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <div
-                  :ref="el => setPaneElement('editor', pane.id, el)"
-                  class="editor-scroll"
-                  :style="{
-                    '--tano-prose-font-family': selectedVisualFontFamily,
-                    '--tano-prose-font-size': `${visualFontSize}px`,
-                    '--tano-source-font-size': `${sourceFontSize}px`,
-                  }"
-                  :class="{
-                    'source-view': paneSource(pane.activeId),
-                    'conflicted-editor': active.conflict,
-                    'width-unlimited': !limitPageWidth,
-                  }"
-                  tabindex="-1"
-                  @mousedown.self="!paneSource(pane.activeId) && paneEditors.get(pane.id)?.focusTrailingParagraph($event)"
-                  @contextmenu="openPageContextMenu"
-                >
-                  <DocumentTitle
-                    v-if="workspace && showPageTitle"
-                    :key="`${workspace.id}:${active.id}`"
-                    :workspace-id="workspace.id"
-                    :document-id="active.id"
-                    :path="active.path"
-                    :title-source="pageTitleSource"
-                    :model-value="active.content"
-                    :files="workspace.files"
-                    :readonly="
-                      paneReadonly(active!) ||
-                      active.missing ||
-                      !!editing.active ||
-                      editing.activeBusy
-                    "
-                    :rename="renameDocumentTitle"
-                    @update:model-value="store.editDocument(active!.id, $event)"
-                    @enter="insertBlockBelowTitle"
-                  />
-                  <SourceEditor
-                    v-if="paneSource(pane.activeId)"
-                    :key="active.id"
-                    :ref="el => setPaneElement('source', pane.id, el)"
-                    :model-value="active.content"
-                    :readonly="paneReadonly(active!)"
-                    :local-native="!!attachments"
-                    :comment-anchors="commentAnchors[active.id]"
-                    @selection-change="paneSourceSelections[pane.id] = $event"
-                    @update:model-value="store.editDocument(active!.id, $event)"
-                    @files="
-                      (files, requireImage, position) =>
-                        insertSourceFiles(files, position, requireImage, active, pane.id)
-                    "
-                  />
-                  <MarkdownEditor
-                    v-else
-                    :key="`${active.id}:${active.id === store.activeId ? editing.active?.key ?? 'local' : 'local'}`"
-                    :ref="el => setPaneEditor(pane.id, el)"
-                    :document-id="active.id"
-                    :readonly="paneReadonly(active!)"
-                    :open-links-on-tap="mobile"
-                    :reveal-markdown="revealMarkdown"
-                    :capabilities="store.capabilities"
-                    :reference-targets="store.referenceTargets"
-                    :preferences="editorPreferences"
-                    :extension="active.id === store.activeId ? editing.active?.extension : undefined"
-                    :model-value="active.content"
-                    :table-layouts="active.tableLayout?.file.tables"
-                    :comment-anchors="commentAnchors[active.id]"
-                    :resolve-image="reference => attachments ? attachments.imageUrl(workspace, active!.path, reference) : safeRemoteImage(reference)"
-                    :resource-revision="resourceRevision"
-                    :import-file="attachments ? (file, image) => uploadFile(file, image, active) : undefined"
-                    @update:model-value="store.editDocument(active!.id, $event)"
-                    @table-layout-change="store.editTableLayout(active!.id, $event)"
-                    @error="store.report"
-                    @ready="paneSearchRevisions[pane.id] = (paneSearchRevisions[pane.id] ?? 0) + 1"
-                    @search-change="paneSearchRevisions[pane.id] = (paneSearchRevisions[pane.id] ?? 0) + 1"
-                    @open-link="(reference, newTab) => openDocumentLink(reference, newTab, active!.path)"
-                    @open-wiki-link="openWikiLink"
-                    @open-reference="openReference"
-                    @edit-source="sourceModes[pane.activeId] = true"
-                    @selection-change="paneSelections[pane.id] = $event"
-                  />
-                  <ReferenceConnections class="document-references" :identity="{ type: 'document', id: active.id }" @open="openReference" />
-                  <DocumentComments
-                    v-if="workspace"
-                    :ref="el => setPaneComments(pane.id, el)"
-                    :workspace-id="workspace.id"
-                    :document="active"
-                    :assistant="assistant.available"
-                    @assistant="discussWithAssistant(pane.id, active!.id, $event)"
-                    :readonly="paneReadonly(active!)"
-                    :author="extensions.commentAuthor?.() ?? { id: 'local', name: '本机用户' }"
-                    :capture-selection="() => capturePaneCommentSelection(pane.id, active!.id)"
-                    :focus-anchor="anchor => focusPaneComment(pane.id, active!.id, anchor)"
-                    :editor-element="paneEditorScrolls.get(pane.id)"
-                    :geometry="anchors => paneCommentGeometry(pane.id, active!.id, anchors)"
-                    @annotations="commentAnchors[active!.id] = $event"
-                  />
-                </div>
-              </main>
-            </div>
+                </template>
+              </div>
+            </ButtonVisibilityGroup>
+            <KeepAlive v-if="pane.tabs.includes(GRAPH_TAB_ID)">
+              <RelationGraph
+                v-if="workspace && pane.activeId === GRAPH_TAB_ID"
+                :key="`${workspace.id}:${workspace.path}`"
+                :open-in-new-tab="tabsEnabled"
+                :controls-target="detachedWindow ? undefined : `#graph-controls-${pane.id}`"
+              />
+            </KeepAlive>
 
-          </template>
-
-          <AttachmentPreview
-            v-else-if="workspace && pane.activeId.startsWith('attachment:')"
-            :file="tab?.attachment"
-            :url="attachments && tab?.attachment
-              ? attachments.imageUrl(workspace, '', relativeWorkspaceReference('', tab.attachment.path)) : null"
-          />
-          <main v-else-if="workspace && pane.activeId !== GRAPH_TAB_ID && pane.activeId !== PLUGINS_TAB_ID && pane.activeId !== CALENDAR_TAB_ID && !extensionViews.find(view => view.id === pane.activeId)" class="workspace-no-tabs">
-            <EmptyEditor
-              :create-disabled="busy || workspace.readOnly || updateLock"
-              @create="createNewDocument"
-              @open="showModal('newTab')"
-              @search="showModal('search')"
+            <CalendarView
+              v-if="workspace && pane.activeId === CALENDAR_TAB_ID"
+              :date="calendarDate"
+              :mode="calendarMode"
+              @select-mode="selectCalendarMode"
+              @visible-month="calendarDate = $event"
+              @visible-year="calendarDate = $event"
+              @visible-timeline="calendarDate = $event"
+              @select-date="showCalendarDay"
+              @select-month="showCalendarMonth"
+              @select-event="showPlanEvent"
             />
-          </main>
+
+            <template v-for="view in extensionViews" :key="view.id">
+              <component
+                v-if="pane.activeId === view.id"
+                :is="view.component"
+                :actions="viewActions[view.id]"
+              />
+            </template>
+
+            <main
+              v-if="workspace && pane.tabs.includes(PLUGINS_TAB_ID)"
+              v-show="pane.activeId === PLUGINS_TAB_ID"
+              class="plugins-tab-page"
+            >
+              <div class="plugins-tab-content">
+                <p v-if="!store.capabilities.features.objectReferences" class="tool-level-notice">
+                  Level 2 已关闭，插件对象和关系暂时只读。可在工作区设置中重新启用。
+                </p>
+                <p v-else-if="workspace.readOnly" class="tool-level-notice">
+                  此工作区为只读，无法修改对象和关系。
+                </p>
+                <PluginInstaller @objects="showObjects()" />
+              </div>
+            </main>
+
+            <template v-if="active">
+              <PageSearch
+                :key="`search:${active.id}`"
+                :ref="(el) => setPaneSearch(pane.id, el)"
+                :editor="
+                  paneSource(pane.activeId)
+                    ? paneSourceEditors.get(pane.id)
+                    : paneEditors.get(pane.id)
+                "
+                :content="active.content"
+                :readonly="paneReadonly(active!)"
+                :revision="paneSearchRevisions[pane.id]"
+              />
+              <div :key="active.id" class="document-scroll-shell">
+                <div
+                  :id="`document-scroll-${pane.id}`"
+                  :ref="(el) => setPaneElement('scroll', pane.id, el)"
+                  class="document-layout"
+                  :data-toolbar-dock="
+                    pane.id === store.activePaneId &&
+                    !paneSource(pane.activeId) &&
+                    !paneReadonly(active!)
+                      ? toolbarMode
+                      : undefined
+                  "
+                  @scroll.passive="scheduleActiveHeading"
+                >
+                  <main class="document-main">
+                    <EditorTools
+                      v-model:mode="toolbarMode"
+                      :assistant="assistant.available"
+                      @assistant="openAssistant(pane.id, active!.id)"
+                      annotation
+                      :todo="
+                        store.capabilities.features.objectReferences &&
+                        !paneReadonly(active!) &&
+                        !editing.isManaging(active!.id)
+                      "
+                      @todo="beginSelectionTodo(pane.id, active!.id)"
+                      @annotation="paneComments.get(pane.id)?.beginAnnotation()"
+                      :active="pane.id === store.activePaneId"
+                      :editor-element="paneEditorScrolls.get(pane.id)"
+                      :features="store.capabilities.features"
+                      :context="paneSelections[pane.id] ?? defaultSelectionContext"
+                      :source="paneSource(pane.activeId)"
+                      :disabled="paneReadonly(active!)"
+                      @command="(name, value) => paneEditors.get(pane.id)?.command(name, value)"
+                    >
+                      <template v-if="detachedWindow || paneSource(pane.activeId)" #trailing>
+                        <button
+                          v-if="
+                            paneSource(pane.activeId) &&
+                            store.capabilities.features.objectReferences
+                          "
+                          type="button"
+                          class="icon-button"
+                          aria-label="从选区创建 Todo"
+                          title="从选区创建 Todo"
+                          :disabled="
+                            paneReadonly(active!) ||
+                            !paneSourceSelections[pane.id] ||
+                            editing.isManaging(active!.id)
+                          "
+                          @mousedown.prevent
+                          @click="beginSelectionTodo(pane.id, active!.id)"
+                        >
+                          <ListTodo :size="17" />
+                        </button>
+                        <ButtonVisibilityGroup
+                          v-if="detachedWindow"
+                          v-slot="{ isVisible }"
+                          :items="documentToolItems"
+                          preference-key="tano.preference.documentHiddenTools"
+                          group-class="detached-editor-actions document-tool-buttons"
+                          label="文档工具"
+                          menu-label="文档工具按钮显示设置"
+                          @open="closeButtonVisibilityMenus"
+                        >
+                          <MarkdownRevealToggle
+                            v-if="isVisible('markdown-reveal')"
+                            v-model="revealMarkdown"
+                            :source="paneSource(pane.activeId)"
+                          />
+                          <button
+                            v-if="isVisible('source-mode')"
+                            type="button"
+                            class="icon-button"
+                            :class="{ active: paneSource(pane.activeId) }"
+                            :disabled="!!editing.active || editing.activeBusy"
+                            :aria-label="paneSource(pane.activeId) ? '返回编辑' : '切换源码模式'"
+                            :aria-pressed="paneSource(pane.activeId)"
+                            :title="paneSource(pane.activeId) ? '返回编辑' : '切换源码模式'"
+                            @click="sourceModes[pane.activeId] = !paneSource(pane.activeId)"
+                          >
+                            <Code2 :size="17" />
+                          </button>
+                        </ButtonVisibilityGroup>
+                      </template>
+                    </EditorTools>
+
+                    <component
+                      :is="extensions.regions['editing-panel']"
+                      v-if="pane.id === store.activePaneId && extensions.regions['editing-panel']"
+                      :actions="extensionActions"
+                    />
+                    <div v-if="active.conflict" class="conflict-banner" role="alert">
+                      <AlertTriangle :size="19" />
+                      <div>
+                        <strong>这一页有两份新的想法</strong>
+                        <p>
+                          外部修改与你的修改重叠。你的内容已保存为 conflict
+                          副本，原文件保留外部版本。
+                        </p>
+                        <button @click="store.resolveConflict(active!, true)">
+                          打开我的副本 <ArrowUpRight :size="14" /></button
+                        ><button @click="store.resolveConflict(active!, false)">
+                          载入磁盘版本
+                        </button>
+                        <button
+                          @click="
+                            selectedDiff = {
+                              title: active.path,
+                              before: active.conflict.disk.content,
+                              after: active.content,
+                              beforeLabel: '磁盘版本',
+                              afterLabel: '我的副本',
+                            }
+                          "
+                        >
+                          比较两个版本
+                        </button>
+                      </div>
+                    </div>
+                    <div
+                      v-else-if="active.missing || active.error"
+                      class="conflict-banner"
+                      role="alert"
+                    >
+                      <AlertTriangle :size="19" />
+                      <div>
+                        <strong>{{
+                          active.missing ? '文件已在工作文件夹中移除' : '这次保存没有完成'
+                        }}</strong>
+                        <p>
+                          {{
+                            active.error ?? '编辑器中的内容仍然保留，你可以把它另存为一个新文档。'
+                          }}
+                        </p>
+                        <button @click="showModal('saveAs')">
+                          另存副本 <ArrowUpRight :size="14" /></button
+                        ><button v-if="!active.missing" @click="store.flush()">重试保存</button>
+                      </div>
+                    </div>
+                    <div
+                      :ref="(el) => setPaneElement('editor', pane.id, el)"
+                      class="editor-scroll"
+                      :style="{
+                        '--tano-prose-font-family': selectedVisualFontFamily,
+                        '--tano-prose-font-size': `${visualFontSize}px`,
+                        '--tano-source-font-size': `${sourceFontSize}px`,
+                      }"
+                      :class="{
+                        'source-view': paneSource(pane.activeId),
+                        'conflicted-editor': active.conflict,
+                        'width-unlimited': !limitPageWidth,
+                      }"
+                      tabindex="-1"
+                      @mousedown.self="
+                        !paneSource(pane.activeId) &&
+                        paneEditors.get(pane.id)?.focusTrailingParagraph($event)
+                      "
+                      @contextmenu="openPageContextMenu"
+                    >
+                      <DocumentSuggestions v-slot="suggestions" :document="active" :readonly="paneReadonly(active!)"
+                        :managed="!!editing.active" :author="extensions.commentAuthor?.() ?? { id: 'local', name: '本机用户' }">
+                      <DocumentTitle
+                        v-if="workspace && showPageTitle"
+                        :key="`${workspace.id}:${active.id}`"
+                        :workspace-id="workspace.id"
+                        :document-id="active.id"
+                        :path="active.path"
+                        :title-source="pageTitleSource"
+                        :model-value="suggestions.content"
+                        :files="workspace.files"
+                        :readonly="
+                          suggestions.readonly ||
+                          suggestions.suggesting ||
+                          active.missing ||
+                          !!editing.active ||
+                          editing.activeBusy
+                        "
+                        :rename="renameDocumentTitle"
+                        @update:model-value="suggestions.edit($event)"
+                        @enter="insertBlockBelowTitle"
+                      />
+                      <SourceEditor :suggestion-marks="suggestions.sourceMarks"
+                        v-if="paneSource(pane.activeId)"
+                        :key="`${active.id}:${suggestions.viewKey}`"
+                        :ref="(el) => setPaneElement('source', pane.id, el)"
+                        :model-value="suggestions.content"
+                        :readonly="suggestions.readonly"
+                        :local-native="!!attachments && !suggestions.suggesting"
+                        :comment-anchors="commentAnchors[active.id]"
+                        @selection-change="paneSourceSelections[pane.id] = $event"
+                        @update:model-value="suggestions.edit($event)"
+                        @files="
+                          (files, requireImage, position) =>
+                            insertSourceFiles(files, position, requireImage, active, pane.id)
+                        "
+                      />
+                      <MarkdownEditor :suggestion-marks="suggestions.richMarks" :transform-change="suggestions.transformChange"
+                        v-else
+                        :key="`${active.id}:${suggestions.viewKey}:${active.id === store.activeId ? (editing.active?.key ?? 'local') : 'local'}`"
+                        :ref="(el) => setPaneEditor(pane.id, el)"
+                        :document-id="active.id"
+                        :readonly="suggestions.readonly"
+                        :open-links-on-tap="mobile"
+                        :reveal-markdown="suggestions.suggesting ? false : revealMarkdown"
+                        :capabilities="store.capabilities"
+                        :reference-targets="store.referenceTargets"
+                        :preferences="editorPreferences"
+                        :extension="
+                          active.id === store.activeId ? editing.active?.extension : undefined
+                        "
+                        :model-value="suggestions.content"
+                        :table-layouts="active.tableLayout?.file.tables"
+                        :comment-anchors="commentAnchors[active.id]"
+                        :resolve-image="
+                          (reference) =>
+                            attachments
+                              ? attachments.imageUrl(workspace, active!.path, reference)
+                              : safeRemoteImage(reference)
+                        "
+                        :resource-revision="resourceRevision"
+                        :import-file="
+                          attachments && !suggestions.suggesting ? (file, image) => uploadFile(file, image, active) : undefined
+                        "
+                        @update:model-value="suggestions.edit($event)"
+                        @table-layout-change="!suggestions.suggesting && store.editTableLayout(active!.id, $event)"
+                        @error="store.report"
+                        @ready="
+                          paneSearchRevisions[pane.id] = (paneSearchRevisions[pane.id] ?? 0) + 1
+                        "
+                        @search-change="
+                          paneSearchRevisions[pane.id] = (paneSearchRevisions[pane.id] ?? 0) + 1
+                        "
+                        @open-link="
+                          (reference, newTab) => openDocumentLink(reference, newTab, active!.path)
+                        "
+                        @open-wiki-link="openWikiLink"
+                        @open-reference="openReference"
+                        @edit-source="sourceModes[pane.activeId] = true"
+                        @selection-change="paneSelections[pane.id] = $event"
+                      />
+                      <DocumentComments
+                        v-if="workspace"
+                        :ref="(el) => setPaneComments(pane.id, el)"
+                        :workspace-id="workspace.id"
+                        :document="active"
+                        :assistant="assistant.available"
+                        @assistant="discussWithAssistant(pane.id, active!.id, $event)"
+                        :readonly="suggestions.readonly"
+                        :author="extensions.commentAuthor?.() ?? { id: 'local', name: '本机用户' }"
+                        :capture-selection="() => capturePaneCommentSelection(pane.id, active!.id)"
+                        :focus-anchor="(anchor) => focusPaneComment(pane.id, active!.id, anchor)"
+                        :editor-element="paneEditorScrolls.get(pane.id)"
+                        :geometry="(anchors) => paneCommentGeometry(pane.id, active!.id, anchors)"
+                        @annotations="commentAnchors[active!.id] = $event"
+                      />
+                      </DocumentSuggestions>
+                    </div>
+                  </main>
+                </div>
+                <DocumentScrollbar v-if="!mobile" :scroll-element="paneScrolls.get(pane.id)" />
+              </div>
+            </template>
+
+            <AttachmentPreview
+              v-else-if="workspace && pane.activeId.startsWith('attachment:')"
+              :file="tab?.attachment"
+              :url="
+                attachments && tab?.attachment
+                  ? attachments.imageUrl(
+                      workspace,
+                      '',
+                      relativeWorkspaceReference('', tab.attachment.path),
+                    )
+                  : null
+              "
+            />
+            <main
+              v-else-if="
+                workspace &&
+                pane.activeId !== GRAPH_TAB_ID &&
+                pane.activeId !== PLUGINS_TAB_ID &&
+                pane.activeId !== CALENDAR_TAB_ID &&
+                !extensionViews.find((view) => view.id === pane.activeId)
+              "
+              class="workspace-no-tabs"
+            >
+              <EmptyEditor
+                :create-disabled="busy || workspace.readOnly || updateLock"
+                @create="createNewDocument"
+                @open="showModal('newTab')"
+                @search="showModal('search')"
+              />
+            </main>
 
             <aside
-              v-if="active && !assistant.opened && !detachedWindow && pane.id === store.activePaneId && (panel !== 'outline' || showOutline)"
+              v-if="
+                active &&
+                !(assistant.opened && assistant.displayMode === 'sidebar') &&
+                !detachedWindow &&
+                pane.id === store.activePaneId &&
+                (panel !== 'outline' || showOutline)
+              "
               class="inspector"
               :class="{
                 'inspector-outline': panel === 'outline',
+                'inspector-outline-left': panel === 'outline' && outlineOnLeft,
                 'inspector-hover-outline':
                   panel === 'outline' && hoverOutline && !outlinePinned && !outlineSearchOpen,
                 'inspector-activity': panel === 'activity',
               }"
               :aria-label="panel === 'outline' ? '文档目录' : '文档动态'"
+              @contextmenu="openOutlineContextMenu"
             >
               <div class="inspector-surface">
                 <div v-if="panel === 'activity'" class="inspector-tabs">
@@ -3677,15 +4557,6 @@ watch(activeId, () => {
                     @click="toggleOutlinePin"
                   >
                     <Pin :size="15" :fill="outlinePinned ? 'currentColor' : 'none'" />
-                  </button>
-                  <button
-                    class="outline-control"
-                    type="button"
-                    aria-label="关闭目录"
-                    title="关闭目录"
-                    @click="showOutline = false"
-                  >
-                    <X :size="15" />
                   </button>
                 </div>
                 <div v-if="panel === 'outline' && outlineSearchOpen" class="outline-search">
@@ -3776,6 +4647,7 @@ watch(activeId, () => {
                 </div>
               </div>
             </aside>
+          </div>
         </template>
       </WorkspacePanes>
       <main v-else-if="!workspace" class="welcome">
@@ -3798,7 +4670,13 @@ watch(activeId, () => {
           }}
         </p>
         <div class="welcome-actions">
-          <button class="secondary-button" @click="plans.view = 'personal'; personalHome = true">
+          <button
+            class="secondary-button"
+            @click="
+              plans.view = 'personal';
+              personalHome = true;
+            "
+          >
             <CalendarDays :size="18" />个人计划
           </button>
           <button
@@ -3816,7 +4694,11 @@ watch(activeId, () => {
                     : '本地仓库'
             }}<ArrowRight :size="17" />
           </button>
-          <component  :is="extensions.regions['welcome-login']" v-if="extensions.regions['welcome-login']" :actions="extensionActions" />
+          <component
+            :is="extensions.regions['welcome-login']"
+            v-if="extensions.regions['welcome-login']"
+            :actions="extensionActions"
+          />
         </div>
         <div
           v-if="!workspace && store.recent.length"
@@ -3840,63 +4722,102 @@ watch(activeId, () => {
         </div>
       </main>
 
-
-            <Teleport to="body">
-              <div
-                v-if="pageContextMenu"
-                ref="pageContextMenuElement"
-                class="dropdown compact-action-menu page-context-menu"
-                role="menu"
-                aria-label="页面显示选项"
-                :style="{ left: `${pageContextMenu.x}px`, top: `${pageContextMenu.y}px` }"
-                @keydown="pageContextKeydown"
-              >
-                <button
-                  type="button"
-                  role="menuitemcheckbox"
-                  :aria-checked="limitPageWidth"
-                  :disabled="!pageWidthWritable"
-                  @click="togglePageOption('width')"
-                >
-                  <Ruler :size="15" />限制行宽<Check
-                    v-if="limitPageWidth"
-                    class="page-context-check"
-                    :size="14"
-                  />
-                </button>
-                <button
-                  type="button"
-                  role="menuitemcheckbox"
-                  :aria-checked="showPageTitle"
-                  @click="togglePageOption('title')"
-                >
-                  <Heading1 :size="15" />页面内标题<Check
-                    v-if="showPageTitle"
-                    class="page-context-check"
-                    :size="14"
-                  />
-                </button>
-                <button
-                  v-if="!detachedWindow"
-                  type="button"
-                  role="menuitemcheckbox"
-                  :aria-checked="showOutline"
-                  @click="togglePageOption('outline')"
-                >
-                  <List :size="15" />显示目录<Check
-                    v-if="showOutline"
-                    class="page-context-check"
-                    :size="14"
-                  />
-                </button>
-              </div>
-            </Teleport>
+      <Teleport to="body">
+        <div
+          v-if="pageContextMenu"
+          ref="pageContextMenuElement"
+          class="dropdown compact-action-menu page-context-menu"
+          role="menu"
+          aria-label="页面显示选项"
+          :style="{ left: `${pageContextMenu.x}px`, top: `${pageContextMenu.y}px` }"
+          @keydown="pageContextKeydown"
+        >
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            :aria-checked="limitPageWidth"
+            :disabled="!pageWidthWritable"
+            @click="togglePageOption('width')"
+          >
+            <Ruler :size="15" />限制行宽<Check
+              v-if="limitPageWidth"
+              class="page-context-check"
+              :size="14"
+            />
+          </button>
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            :aria-checked="showPageTitle"
+            @click="togglePageOption('title')"
+          >
+            <Heading1 :size="15" />页面内标题<Check
+              v-if="showPageTitle"
+              class="page-context-check"
+              :size="14"
+            />
+          </button>
+          <button
+            v-if="!detachedWindow"
+            type="button"
+            role="menuitemcheckbox"
+            :aria-checked="showOutline"
+            @click="togglePageOption('outline')"
+          >
+            <List :size="15" />显示目录<Check
+              v-if="showOutline"
+              class="page-context-check"
+              :size="14"
+            />
+          </button>
+        </div>
+      </Teleport>
+      <Teleport to="body">
+        <div
+          v-if="outlineContextMenu"
+          ref="outlineContextMenuElement"
+          class="dropdown compact-action-menu page-context-menu outline-context-menu"
+          role="menu"
+          aria-label="目录显示选项"
+          tabindex="-1"
+          :style="{ left: `${outlineContextMenu.x}px`, top: `${outlineContextMenu.y}px` }"
+          @keydown="outlineContextKeydown"
+        >
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            :aria-checked="outlineOnLeft"
+            @click="toggleOutlineSide"
+          >
+            <PanelLeftOpen :size="15" />显示在左侧<Check
+              v-if="outlineOnLeft"
+              class="page-context-check"
+              :size="14"
+            />
+          </button>
+        </div>
+      </Teleport>
     </div>
 
-    <ImportPanel v-if="importPanel && workspace" :key="workspace.id" :attachments="attachments" :records="importRecords"
-      @close="importPanel = false" @completed="importRecords.unshift($event)" />
-    <TemplateDialog v-if="templateDialog && workspace" :key="workspace.id" :source="store.active?.content" @close="templateDialog = false" />
-    <component  :is="extensions.regions['sync-dialog']" v-if="extensions.regions['sync-dialog']" :actions="extensionActions" />
+    <ImportPanel
+      v-if="importPanel && workspace"
+      :key="workspace.id"
+      :attachments="attachments"
+      :records="importRecords"
+      @close="importPanel = false"
+      @completed="importRecords.unshift($event)"
+    />
+    <TemplateDialog
+      v-if="templateDialog && workspace"
+      :key="workspace.id"
+      :source="store.active?.content"
+      @close="templateDialog = false"
+    />
+    <component
+      :is="extensions.regions['sync-dialog']"
+      v-if="extensions.regions['sync-dialog']"
+      :actions="extensionActions"
+    />
     <MobileRecycle
       v-if="mobile && recyclePanel && workspace"
       :workspace-id="workspace.id"
@@ -3908,7 +4829,11 @@ watch(activeId, () => {
       @close="agentPanel = false"
     />
     <DiffDialog v-if="selectedDiff" v-bind="selectedDiff" @close="selectedDiff = undefined" />
-    <component  :is="extensions.regions['history-dialog']" v-if="extensions.regions['history-dialog']" :actions="extensionActions" />
+    <component
+      :is="extensions.regions['history-dialog']"
+      v-if="extensions.regions['history-dialog']"
+      :actions="extensionActions"
+    />
     <DocumentHistoryPanel
       v-if="historyPanel && active && workspace"
       :key="active.id"
@@ -3942,11 +4867,36 @@ watch(activeId, () => {
       "
       @import-asset="assetInput?.click()"
     />
-    <PlanDetailPanel v-if="planDetail" :key="`${planDetail.source?.scope}:${planDetail.source?.id}:${planDetail.object.id}`" :record="planDetail" @close="planDetail = undefined" @open-reference="openPlanReference" @open-record="planDetail = $event" />
-    <SelectionTodoDialog v-if="selectionTodo" :session="selectionTodo" @close="selectionTodo = undefined" @open-task="selectionTodo = undefined; showPlanEvent($event)" />
-    <PersonalPlanDialog v-if="personalHome" :date="calendarDate" @close="personalHome = false" @select-date="calendarDate = $event" @select-event="showPlanEvent" />
+    <PlanDetailPanel
+      v-if="planDetail"
+      :key="`${planDetail.source?.scope}:${planDetail.source?.id}:${planDetail.object.id}`"
+      :record="planDetail"
+      @close="planDetail = undefined"
+      @open-reference="openPlanReference"
+      @open-record="planDetail = $event"
+    />
+    <SelectionTodoDialog
+      v-if="selectionTodo"
+      :session="selectionTodo"
+      @close="selectionTodo = undefined"
+      @open-task="
+        selectionTodo = undefined;
+        showPlanEvent($event);
+      "
+    />
+    <PersonalPlanDialog
+      v-if="personalHome"
+      :date="calendarDate"
+      @close="personalHome = false"
+      @select-date="calendarDate = $event"
+      @select-event="showPlanEvent"
+    />
     <template v-for="view in extensionViews" :key="view.id">
-      <component :is="view.overlay" v-if="workspace && view.overlay" :actions="viewActions[view.id]" />
+      <component
+        :is="view.overlay"
+        v-if="workspace && view.overlay"
+        :actions="viewActions[view.id]"
+      />
     </template>
     <SettingsPanel
       v-if="settingsPanel"
@@ -3962,6 +4912,8 @@ watch(activeId, () => {
       :reveal-markdown="revealMarkdown"
       :toolbar-mode="toolbarMode"
       :show-page-title="showPageTitle"
+      :show-outline="showOutline"
+      :outline-on-left="outlineOnLeft"
       :page-title-source="pageTitleSource"
       :visual-font-size="visualFontSize"
       :source-font-size="sourceFontSize"
@@ -3983,6 +4935,8 @@ watch(activeId, () => {
       @update:reveal-markdown="revealMarkdown = $event"
       @update:toolbar-mode="toolbarMode = $event"
       @update:show-page-title="showPageTitle = $event"
+      @update:show-outline="showOutline = $event"
+      @update:outline-on-left="outlineOnLeft = $event"
       @update:page-title-source="pageTitleSource = $event"
       @update:visual-font-size="visualFontSize = $event"
       @update:source-font-size="sourceFontSize = $event"
@@ -4031,12 +4985,7 @@ watch(activeId, () => {
               aria-label="搜索文档名称和正文"
               placeholder="搜索文件名、路径或正文…"
               @keydown.enter="searchResults[0] && (store.openFile(searchResults[0]), (modal = ''))"
-            /><button
-              type="button"
-              aria-label="关闭搜索"
-              title="关闭搜索"
-              @click="modal = ''"
-            >
+            /><button type="button" aria-label="关闭搜索" title="关闭搜索" @click="modal = ''">
               <X :size="18" />
             </button>
           </div>

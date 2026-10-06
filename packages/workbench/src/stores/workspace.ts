@@ -47,6 +47,10 @@ import { loadTemplates, saveTemplate } from '../workspace-templates';
 import type { DocumentTemplate } from '../workspace-templates';
 import { previewTaskRepeat, repeatRelations } from '../task-repeat';
 import type { RepeatPreview } from '../task-repeat';
+import { loadSuggestions, saveSuggestions } from '../workspace-suggestions';
+import type { SuggestionState } from '../workspace-suggestions';
+import type { DocumentSuggestion } from '@tano/protocol';
+import { locateSuggestion } from '../document-suggestions';
 
 export interface OpenDocument {
   id: string;
@@ -83,6 +87,7 @@ export interface Activity {
 export const useWorkspaceStore = defineStore('workspace', () => {
   const { adapter, mobile } = useWorkbenchRuntime();
   const views = shallowRef<ReadonlyMap<string, WorkbenchViewTab>>(new Map());
+  const isNavigationPage = (id: string) => id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID;
   const isBuiltinTab = (id: string) => id.startsWith('blank:') || id.startsWith('attachment:') || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || id === CALENDAR_TAB_ID;
   const isUtilityTab = (id: string) => isBuiltinTab(id) || views.value.has(id);
   function registerViews(definitions: readonly WorkbenchViewTab[]) {
@@ -484,7 +489,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     for (let index = history.index + direction;
       index >= 0 && index < history.entries.length; index += direction) {
       const id = history.entries[index];
-      if (tabIds.value.includes(id) || workspace.value?.files.some((file) =>
+      if (isNavigationPage(id) || tabIds.value.includes(id) || workspace.value?.files.some((file) =>
         file.id === id && file.kind === 'file' && isMarkdown(file.path))) return index;
     }
     return -1;
@@ -507,8 +512,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const id = history.entries[index];
     navigationBusy.value = true;
     try {
-      const file = workspace.value?.files.find((entry) => entry.id === id);
-      if (file) await openFile(file, { historyIndex: index });
+      if (isNavigationPage(id)) await openPageTab(id, { historyIndex: index });
+      else {
+        const file = workspace.value?.files.find((entry) => entry.id === id);
+        if (file) await openFile(file, { historyIndex: index });
+      }
     } finally {
       navigationBusy.value = false;
     }
@@ -529,7 +537,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const dirty = (doc: OpenDocument) => doc.content !== doc.base.content;
   const layoutPending = (doc: OpenDocument) => !!doc.tableLayout && layoutDirty(doc.tableLayout) &&
     doc.tableLayout.conflict?.draft !== JSON.stringify(doc.tableLayout.file);
-  const pending = computed(() => documents.value.some((d) => (dirty(d) || layoutPending(d)) && !d.conflict));
+  const suggestionPersistence = shallowRef<{ flush: () => Promise<void>; pending: () => boolean }>();
+  const pending = computed(() => !!suggestionPersistence.value?.pending() || documents.value.some((d) => (dirty(d) || layoutPending(d)) && !d.conflict));
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   let watchTimer: ReturnType<typeof setTimeout> | undefined;
   let pollTimer: ReturnType<typeof setInterval> | undefined;
@@ -732,8 +741,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           next.files.find((f) => /^readme\.md$/i.test(f.path)) ??
           next.files.find((f) => f.kind === 'file' && isMarkdown(f.path));
         if (detachedTabId) {
-          if (detachedTabId === GRAPH_TAB_ID) openGraphTab();
-          else if (detachedTabId === PLUGINS_TAB_ID) openPluginsTab();
+          if (detachedTabId === GRAPH_TAB_ID) await openGraphTab({ newTab: true });
+          else if (detachedTabId === PLUGINS_TAB_ID) await openPluginsTab({ newTab: true });
           else if (detachedTabId === CALENDAR_TAB_ID) openCalendarTab();
           else if (views.value.has(detachedTabId)) {
             if (!views.value.get(detachedTabId)?.detachable) throw new Error('此扩展视图不支持移到其他窗口');
@@ -879,22 +888,20 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     for (const tabId of tabIds.value) ensureTabNavigation(tabId, tabId);
     touchNavigation();
   }
-  async function openInternal(file: FileEntry, replaceId?: string) {
-    if (!isMarkdown(file.path) || file.kind !== 'file') return;
-    let doc = documents.value.find((d) => d.id === file.id);
-    if (doc) {
-      const sourcePane = panes.value.find(pane => pane.tabs.includes(file.id));
+  function activateTab(id: string, replaceId?: string, doc?: OpenDocument) {
+    if (tabIds.value.includes(id)) {
+      const sourcePane = panes.value.find(pane => pane.tabs.includes(id));
       const targetPane = panes.value.find(pane => pane.tabs.includes(replaceId ?? ''));
       if (sourcePane && targetPane && sourcePane.id !== targetPane.id) {
-        activeId.value = doc.id;
+        activeId.value = id;
         return;
       }
-      const sourceIndex = tabIds.value.indexOf(doc.id);
+      const sourceIndex = tabIds.value.indexOf(id);
       const targetIndex = replaceId ? tabIds.value.indexOf(replaceId) : -1;
       if (sourceIndex >= 0 && targetIndex >= 0 && sourceIndex !== targetIndex) {
         const reordered = [...tabIds.value];
         if (replaceId?.startsWith('blank:')) {
-          reordered[targetIndex] = doc.id;
+          reordered[targetIndex] = id;
           reordered.splice(sourceIndex, 1);
         } else {
           [reordered[targetIndex], reordered[sourceIndex]] = [
@@ -907,6 +914,29 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         tabIds.value = reordered;
       }
     } else {
+      const replaceIndex = replaceId ? tabIds.value.indexOf(replaceId) : -1;
+      if (replaceIndex >= 0) {
+        const oldDocumentIndex = documents.value.findIndex((entry) => entry.id === replaceId);
+        const oldDocument = documents.value[oldDocumentIndex];
+        if (oldDocument && (dirty(oldDocument) || layoutPending(oldDocument) || oldDocument.conflict || oldDocument.missing))
+          throw new Error('当前文档仍有未保存的修改或冲突，标签页未被替换。');
+        if (doc) {
+          const insertIndex = tabIds.value.slice(0, replaceIndex).filter((id) => !isUtilityTab(id)).length;
+          if (oldDocumentIndex >= 0) documents.value.splice(oldDocumentIndex, 1, doc);
+          else documents.value.splice(insertIndex, 0, doc);
+        } else if (oldDocumentIndex >= 0) documents.value.splice(oldDocumentIndex, 1);
+        tabIds.value.splice(replaceIndex, 1, id);
+      } else {
+        if (doc) documents.value.push(doc);
+        tabIds.value.push(id);
+      }
+    }
+    activeId.value = id;
+  }
+  async function openInternal(file: FileEntry, replaceId?: string) {
+    if (!isMarkdown(file.path) || file.kind !== 'file') return;
+    let doc = documents.value.find((d) => d.id === file.id);
+    if (!doc) {
       const snapshot = await adapter.read(file.path);
       doc = {
         id: file.id,
@@ -917,48 +947,39 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         missing: false,
       };
       await hydrateDocumentLayout(doc);
-      const replaceIndex = replaceId ? tabIds.value.indexOf(replaceId) : -1;
-      if (replaceIndex >= 0) {
-        const oldDocumentIndex = documents.value.findIndex((entry) => entry.id === replaceId);
-        const oldDocument = documents.value[oldDocumentIndex];
-        if (oldDocument && (dirty(oldDocument) || layoutPending(oldDocument) || oldDocument.conflict || oldDocument.missing))
-          throw new Error('当前文档仍有未保存的修改或冲突，标签页未被替换。');
-        const insertIndex = tabIds.value.slice(0, replaceIndex).filter((id) => !isUtilityTab(id)).length;
-        if (oldDocumentIndex >= 0) documents.value.splice(oldDocumentIndex, 1, doc);
-        else documents.value.splice(insertIndex, 0, doc);
-        tabIds.value.splice(replaceIndex, 1, doc.id);
-      } else {
-        documents.value.push(doc);
-        tabIds.value.push(doc.id);
-      }
     }
-    activeId.value = doc.id;
+    activateTab(doc.id, replaceId, doc);
+  }
+  async function prepareTabReplacement(id?: string) {
+    if (suggestionPersistence.value?.pending() && !(await flush())) return false;
+    const current = documents.value.find((doc) => doc.id === id);
+    if (!current) return true;
+    if ((dirty(current) || layoutPending(current)) && !(await flush())) {
+      report('此文档尚未保存，请先处理保存错误。');
+      return false;
+    }
+    if (current.conflict || current.missing) {
+      report('请先处理当前文档的冲突或缺失，再替换标签页。');
+      return false;
+    }
+    await beforeCloseDocument?.(current.id);
+    if ((dirty(current) || layoutPending(current)) && !(await flush())) {
+      report('此文档尚未保存，请先处理保存错误。');
+      return false;
+    }
+    if (current.conflict || current.missing) {
+      report('请先处理当前文档的冲突或缺失，再替换标签页。');
+      return false;
+    }
+    return true;
   }
   async function openFile(file: FileEntry, options?: { historyIndex?: number }) {
     try {
       if (!isMarkdown(file.path) || file.kind !== 'file') return;
-      const replaceId = isUtilityTab(activeId.value) && !activeId.value.startsWith('blank:') ? undefined : activeId.value;
+      const replaceId = isUtilityTab(activeId.value) && !activeId.value.startsWith('blank:') && !isNavigationPage(activeId.value)
+        ? undefined : activeId.value;
       const wasOpen = documents.value.some((doc) => doc.id === file.id);
-      const current = documents.value.find((doc) => doc.id === replaceId);
-      if (!documents.value.some((doc) => doc.id === file.id) && current) {
-        if ((dirty(current) || layoutPending(current)) && !(await flush())) {
-          report('此文档尚未保存，请先处理保存错误。');
-          return;
-        }
-        if (current.conflict || current.missing) {
-          report('请先处理当前文档的冲突或缺失，再替换标签页。');
-          return;
-        }
-        await beforeCloseDocument?.(current.id);
-        if ((dirty(current) || layoutPending(current)) && !(await flush())) {
-          report('此文档尚未保存，请先处理保存错误。');
-          return;
-        }
-        if (current.conflict || current.missing) {
-          report('请先处理当前文档的冲突或缺失，再替换标签页。');
-          return;
-        }
-      }
+      if (!wasOpen && !(await prepareTabReplacement(replaceId))) return;
       await serial(() => openInternal(file, activeId.value === replaceId ? replaceId : undefined));
       if (!wasOpen && replaceId && activeId.value === file.id)
         recordTabNavigation(replaceId, file.id, options?.historyIndex);
@@ -1014,19 +1035,38 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     ensureTabNavigation(id, id);
     touchNavigation();
   }
-  function openGraphTab() {
+  async function openPageTab(id: string, options?: { newTab?: boolean; historyIndex?: number }) {
     if (!workspace.value) return;
-    if (!tabIds.value.includes(GRAPH_TAB_ID)) tabIds.value.push(GRAPH_TAB_ID);
-    activeId.value = GRAPH_TAB_ID;
-    ensureTabNavigation(GRAPH_TAB_ID);
-    touchNavigation();
+    if (options?.newTab) {
+      activateTab(id);
+      ensureTabNavigation(id);
+      touchNavigation();
+      return;
+    }
+    const workspaceId = workspace.value.id, epoch = assistantEpoch.value;
+    const replaceId = activeId.value;
+    const wasOpen = tabIds.value.includes(id);
+    try {
+      if (!wasOpen && !(await prepareTabReplacement(replaceId))) return;
+      await serial(async () => {
+        if (workspace.value?.id !== workspaceId || assistantEpoch.value !== epoch) return;
+        const targetId = activeId.value === replaceId ? replaceId : undefined;
+        activateTab(id, targetId);
+        if (!wasOpen && targetId) recordTabNavigation(targetId, id, options?.historyIndex);
+        else {
+          ensureTabNavigation(id);
+          touchNavigation();
+        }
+      });
+    } catch (error) {
+      report(error);
+    }
   }
-  function openPluginsTab() {
-    if (!workspace.value) return;
-    if (!tabIds.value.includes(PLUGINS_TAB_ID)) tabIds.value.push(PLUGINS_TAB_ID);
-    activeId.value = PLUGINS_TAB_ID;
-    ensureTabNavigation(PLUGINS_TAB_ID);
-    touchNavigation();
+  function openGraphTab(options?: { newTab?: boolean; historyIndex?: number }) {
+    return openPageTab(GRAPH_TAB_ID, options);
+  }
+  function openPluginsTab(options?: { newTab?: boolean; historyIndex?: number }) {
+    return openPageTab(PLUGINS_TAB_ID, options);
   }
   function openCalendarTab() {
     if (!workspace.value) return;
@@ -1249,7 +1289,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function reviewAssistantProposal(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }, proposal: AssistantProposal,
     accepted?: AssistantPreview) {
-    return serial(async () => {
+    return serial(() => reviewAssistantProposalNow(scope, proposal, accepted));
+  }
+  async function reviewAssistantProposalNow(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }, proposal: AssistantProposal,
+    accepted?: AssistantPreview) {
       requireAssistantWorkspace(scope);
       if (proposal.workspaceId !== scope.id) throw new Error('建议不属于当前工作区');
       const signature = JSON.stringify([scope, proposal.kind, proposal.fileId, proposal.path, proposal.base, proposal.content]);
@@ -1261,6 +1304,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const refreshed = await adapter.refresh();
       if (refreshed.id !== scope.id || refreshed.path !== scope.path) throw new Error('工作区身份已变化');
       workspace.value = refreshed;
+      if (proposal.kind === 'edit' && proposal.fileId && /^[0-9a-f]{6}$/.test(proposal.fileId)) {
+        const published = await loadSuggestions(adapter, scope.id, proposal.fileId);
+        if (published.file.suggestions.some(item => item.groupId === proposal.id))
+          throw new Error('此提案已转为文档建议，请在文档中逐项审阅，不能再次整篇应用');
+      }
       if (proposal.kind === 'object' || proposal.kind === 'relation') {
         const result = await reviewAssistantStructure(proposal, accepted);
         if (result.status === 'saved') {
@@ -1336,6 +1384,71 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         activity('助手修改已应用', path, 'save', { before: preview.before, after: result.content });
         return { status: 'saved' as const, applied: receipt };
       } finally { if (doc) doc.saving = false; }
+  }
+  function readDocumentSuggestions(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }, fileId: string) {
+    return serial(async () => {
+      requireAssistantWorkspace(scope);
+      return loadSuggestions(adapter, scope.id, fileId);
+    });
+  }
+  function writeDocumentSuggestions(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }, state: SuggestionState, records: DocumentSuggestion[]) {
+    return serial(async () => {
+      requireAssistantWorkspace(scope);
+      writable();
+      if (state.file.workspaceId !== scope.id) throw new Error('建议不属于当前工作区');
+      const file = workspace.value?.files.find(file => file.id === state.file.fileId);
+      if (!file || file.readOnly) throw new Error('目标文档已移除或只读');
+      return saveSuggestions(adapter, state, records);
+    });
+  }
+  function acceptDocumentSuggestion(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }, state: SuggestionState,
+    id: string, accepted?: AssistantPreview) {
+    return serial(async () => {
+      requireAssistantWorkspace(scope);
+      writable();
+      if (state.file.workspaceId !== scope.id) throw new Error('建议不属于当前工作区');
+      const latest = await loadSuggestions(adapter, scope.id, state.file.fileId);
+      const item = latest.file.suggestions.find(item => item.id === id);
+      const expected = state.file.suggestions.find(item => item.id === id);
+      if (!item || JSON.stringify(item) !== JSON.stringify(expected)) throw new Error('建议已变化，请重新载入后审阅');
+      const target = (await adapter.refresh()).files.find(file => file.id === state.file.fileId && isMarkdown(file.path));
+      if (!target || target.readOnly) throw new Error('目标文档已移除或只读');
+      const disk = await adapter.read(target.path);
+      if (item.status === 'applying') {
+        if (disk.content !== item.application?.after) throw new Error('上次写入结果待核对，未重复应用；请比较正式正文与修改前后内容');
+        const completed = { ...item, status: 'accepted' as const, revision: item.revision + 1,
+          application: { ...item.application, resultHash: disk.hash } };
+        const saved = await saveSuggestions(adapter, latest, latest.file.suggestions.map(row => row.id === id ? completed : row));
+        return { status: 'saved' as const, state: saved };
+      }
+      if (item.status !== 'pending') return { status: 'saved' as const, state: latest };
+      const doc = documents.value.find(doc => doc.id === state.file.fileId);
+      if (doc?.conflict || doc?.missing) throw new Error('请先处理文档冲突或缺失');
+      const merged = doc ? mergeMarkdown(doc.base.content, doc.content, disk.content) : { clean: true, content: disk.content };
+      if (!merged.clean) throw new Error('外部修改与当前草稿冲突，原文和建议均已保留');
+      const location = locateSuggestion(item, merged.content);
+      if (!location) throw new Error('建议的原文已变化或无法唯一定位，请核对后重新提出建议');
+      const proposal: AssistantProposal = { id: crypto.randomUUID(), runId: id, workspaceId: scope.id,
+        kind: 'edit', fileId: state.file.fileId, path: target.path, base: merged.content,
+        content: merged.content.slice(0, location.from) + item.text + merged.content.slice(location.to), reason: item.reason ?? '文档建议', status: 'ready' };
+      const reviewed = await reviewAssistantProposalNow(scope, proposal);
+      if (reviewed.status !== 'preview') throw new Error('文档存在冲突，请重新审阅');
+      if (!accepted || JSON.stringify(accepted) !== JSON.stringify(reviewed.preview))
+        return { status: 'preview' as const, preview: reviewed.preview, state: latest };
+      const intent: DocumentSuggestion = { ...item, status: 'applying', revision: item.revision + 1,
+        application: { operationId: proposal.id, before: accepted.before, after: accepted.after, diskHash: accepted.diskHash! } };
+      const prepared = await saveSuggestions(adapter, latest, latest.file.suggestions.map(row => row.id === id ? intent : row));
+      // A durable intent precedes the Markdown write. Exceptions leave it for explicit recovery.
+      const result = await reviewAssistantProposalNow(scope, proposal, accepted);
+      if (result.status !== 'saved') {
+        const reset = { ...item, revision: intent.revision + 1 };
+        const saved = await saveSuggestions(adapter, prepared, prepared.file.suggestions.map(row => row.id === id ? reset : row));
+        return { status: 'preview' as const, preview: result.preview, state: saved };
+      }
+      const completed = { ...intent, status: 'accepted' as const, revision: intent.revision + 1,
+        application: { ...intent.application!, resultHash: result.applied.hash } };
+      const saved = await saveSuggestions(adapter, prepared, prepared.file.suggestions.map(row => row.id === id ? completed : row));
+      return { status: 'saved' as const, state: saved };
     });
   }
   function editDocument(id: string, content: string) {
@@ -1451,6 +1564,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
   async function flush(): Promise<boolean> {
+    try { await suggestionPersistence.value?.flush(); }
+    catch (error) { report(error); return false; }
     clearTimeout(saveTimer);
     const saved = await serial(async () => {
       for (const doc of documents.value) { await saveInternal(doc); await saveTableLayout(doc); }
@@ -1799,7 +1914,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       if (activeId.value === id) activeId.value = nextTab();
       return;
     }
-    await flush();
+    if (!(await flush())) { report('此文档尚有未保存的修改或建议，请先处理保存错误。'); return; }
     try {
       await beforeCloseDocument?.(id);
     } catch (error) {
@@ -1933,6 +2048,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     assistantTaskQuery,
     assistantEpoch,
     reviewAssistantProposal,
+    readDocumentSuggestions,
+    writeDocumentSuggestions,
+    acceptDocumentSuggestion,
+    setSuggestionPersistence: (hooks: { flush: () => Promise<void>; pending: () => boolean }) => { suggestionPersistence.value = hooks; },
     edit,
     editDocument,
     editTableLayout,

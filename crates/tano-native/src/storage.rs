@@ -80,18 +80,23 @@ pub fn is_workspace_data_path(relative: &str) -> bool {
             })
         })
         || (path.starts_with("conflicts/") && path.ends_with(".json"))
-        || ["annotations/", "discussions/", "document-layout/"]
-            .iter()
-            .any(|prefix| {
-                path.strip_prefix(prefix).is_some_and(|name| {
-                    name.strip_suffix(".tano.json").is_some_and(|id| {
-                        id.len() == 6
-                            && id
-                                .bytes()
-                                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-                    })
+        || [
+            "annotations/",
+            "discussions/",
+            "document-layout/",
+            "suggestions/",
+        ]
+        .iter()
+        .any(|prefix| {
+            path.strip_prefix(prefix).is_some_and(|name| {
+                name.strip_suffix(".tano.json").is_some_and(|id| {
+                    id.len() == 6
+                        && id
+                            .bytes()
+                            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
                 })
             })
+        })
 }
 
 pub fn is_workspace_data_directory(relative: &str) -> bool {
@@ -108,6 +113,7 @@ pub fn is_workspace_data_directory(relative: &str) -> bool {
             | "annotations"
             | "discussions"
             | "document-layout"
+            | "suggestions"
             | "rules"
             | "templates"
     ) || path.starts_with("objects/")
@@ -1492,6 +1498,7 @@ mod tests {
             ".tano/annotations/a0b1c2.tano.json",
             ".tano/discussions/a0b1c2.tano.json",
             ".tano/document-layout/a0b1c2.tano.json",
+            ".tano/suggestions/a0b1c2.tano.json",
             ".tano/rules/assistant.md",
             ".tano/templates/a0b1c2.md",
         ] {
@@ -1541,6 +1548,28 @@ mod tests {
         assert!(
             resolve_storage(&root, ".tano/document-layout/not-an-id.tano.json", false).is_err()
         );
+    }
+
+    #[test]
+    fn suggestion_files_are_portable_and_never_overwrite_external_edits() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(temp.path()).unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let id = workspace_identity(&root).unwrap();
+        let relative = ".tano/suggestions/a0b1c2.tano.json";
+        let path = ensure_file_parent(&root, relative).unwrap();
+        create(&path, r#"{"version":1,"suggestions":[]}"#).unwrap();
+        let base = read(&path).unwrap();
+        let scanned = scan(&root, &id, &cache.path().join("index.sqlite")).unwrap();
+        assert!(scanned.files.iter().any(|entry| entry.path == relative));
+        fs::write(&path, "external suggestion review").unwrap();
+        assert!(matches!(
+            write(&path, "local suggestion review", &base.hash).unwrap(),
+            WriteResult::Conflict { .. }
+        ));
+        assert_eq!(read(&path).unwrap().content, "external suggestion review");
+        assert!(resolve_storage(&root, ".tano/suggestions/not-an-id.tano.json", false).is_err());
+        assert!(resolve_storage(&root, ".tano/suggestions/../config.json", false).is_err());
     }
 
     #[test]

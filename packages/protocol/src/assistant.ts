@@ -44,6 +44,8 @@ export interface AssistantProposal {
   preview?: AssistantPreview;
   applied?: { before: string; after: string; hash: string; fileId: string };
   error?: string;
+  /** Once published, per-edit review belongs to the portable document records. */
+  suggestionGroupId?: string;
 }
 
 export interface AssistantMessage {
@@ -153,7 +155,7 @@ export function parseAssistantSession(value: unknown): AssistantSession {
           !text(proposal.runId, 80) || !['edit', 'create', 'object', 'relation'].includes(proposal.kind) ||
           !['ready', 'applying', 'applied', 'rejected', 'conflicted', 'unknown'].includes(proposal.status) ||
           !text(proposal.path, 220) || !text(proposal.base, 512_000) || !text(proposal.content, 512_000) ||
-          !text(proposal.reason, 4000) || ((proposal.kind === 'edit' || (proposal.kind === 'object' && proposal.base !== '')) && !text(proposal.fileId, 80)) ||
+          !text(proposal.reason, 4000) || (proposal.suggestionGroupId !== undefined && !text(proposal.suggestionGroupId, 80)) || ((proposal.kind === 'edit' || (proposal.kind === 'object' && proposal.base !== '')) && !text(proposal.fileId, 80)) ||
           (proposal.preview && (!text(proposal.preview.before, 512_000) ||
             !text(proposal.preview.after, 512_000) || !text(proposal.preview.path, 220) ||
             (proposal.preview.diskHash !== null && !text(proposal.preview.diskHash, 128)))) ||

@@ -6,6 +6,9 @@ import { useWorkspaceStore } from '../stores/workspace';
 import { useWorkbenchRuntime } from '../runtime';
 import { demoAssistantTransport, nativeAssistantTransport } from './transport';
 import { runAssistant } from './engine';
+import { useSuggestionStore } from '../stores/suggestions';
+
+export type AssistantDisplayMode = 'sidebar' | 'floating' | 'fullscreen';
 
 export const useAssistantStore = defineStore('assistant', () => {
   const workspace = useWorkspaceStore();
@@ -15,6 +18,17 @@ export const useAssistantStore = defineStore('assistant', () => {
   const available = !!transport;
   const demo = !!transport?.demo;
   const opened = ref(false), loading = ref(false), busy = ref(false), applying = ref(false);
+  const displayMode = ref<AssistantDisplayMode>('sidebar');
+  const fullscreenTabId = ref('');
+  const fullscreenPaneId = computed(() => workspace.panes.find(pane => pane.tabs.includes(fullscreenTabId.value))?.id);
+  function isFullscreenTab(id: string) {
+    return opened.value && displayMode.value === 'fullscreen' && fullscreenTabId.value === id;
+  }
+  function setDisplayMode(mode: AssistantDisplayMode) {
+    if (mode === 'fullscreen' && !workspace.activeId) workspace.createBlankTab();
+    fullscreenTabId.value = mode === 'fullscreen' ? workspace.activeId : '';
+    displayMode.value = mode;
+  }
   const connections = ref<AssistantConnection[]>([]);
   const connectionId = ref('');
   const modelId = ref('');
@@ -145,6 +159,7 @@ export const useAssistantStore = defineStore('assistant', () => {
   }
   function open(fileId?: string, selected?: { text: string; from?: number; to?: number }) {
     if (!available) return;
+    if (displayMode.value === 'fullscreen') setDisplayMode('fullscreen');
     opened.value = true;
     if (fileId && !busy.value) {
       if (!files.value.includes(fileId)) files.value.push(fileId);
@@ -257,6 +272,7 @@ export const useAssistantStore = defineStore('assistant', () => {
   }
   async function review(proposal: AssistantProposal, apply = false) {
     if (busy.value || applying.value || !transport) return;
+    if (proposal.suggestionGroupId) { error.value = '此提案已转为文档建议，请在文档中逐项审阅'; return; }
     const expected = scope();
     if (proposal.status === 'applied' || proposal.status === 'rejected') return;
     if (proposal.status === 'unknown' || proposal.status === 'applying') { error.value = '请先核对待确认的写入结果'; return; }
@@ -295,6 +311,19 @@ export const useAssistantStore = defineStore('assistant', () => {
       error.value = proposal.error;
       try { await persist(target); } catch { /* Keep the in-memory result visible. */ }
     } finally { applying.value = false; }
+  }
+  async function publishSuggestions(proposal: AssistantProposal) {
+    if (busy.value || applying.value || proposal.kind !== 'edit' || !['ready', 'conflicted'].includes(proposal.status)) return;
+    if (proposal.fileId && managed(proposal.fileId)) { error.value = '此文档正由协作会话管理，暂不支持建议模式'; return; }
+    applying.value = true;
+    const target = session.value;
+    try {
+      await useSuggestionStore().publish(proposal);
+      proposal.suggestionGroupId = proposal.id;
+      await persist(target);
+      error.value = '';
+    } catch (reason) { error.value = String(reason); }
+    finally { applying.value = false; }
   }
   async function verify(proposal: AssistantProposal) {
     if (applying.value || busy.value || !proposal.preview) return;
@@ -371,6 +400,7 @@ export const useAssistantStore = defineStore('assistant', () => {
   }
   watch(() => workspace.workspace ? `${workspace.workspace.id}:${workspace.workspace.path}:${workspace.assistantEpoch}` : '', async key => {
     stop(); modelController?.abort(); const epoch = ++generation;
+    if (displayMode.value === 'fullscreen') setDisplayMode('sidebar');
     busy.value = false; prompt.value = ''; files.value = []; selection.value = null; session.value = null; sessions.value = []; allowSearch.value = false;
     replyTarget.value = null;
     connectionId.value = ''; modelId.value = ''; models.value = []; modelsError.value = ''; modelsLoading.value = false;
@@ -393,9 +423,12 @@ export const useAssistantStore = defineStore('assistant', () => {
     } catch (reason) { if (epoch === generation) error.value = String(reason); }
     finally { if (epoch === generation) loading.value = false; }
   }, { immediate: true });
+  watch(() => workspace.tabs.map(tab => tab.id), ids => {
+    if (fullscreenTabId.value && !ids.includes(fullscreenTabId.value)) setDisplayMode('sidebar');
+  });
   watch([connection, opened], () => { void reloadModels(); });
   onScopeDispose(() => { stop(); modelController?.abort(); });
-  return { available, demo, opened, loading, busy, applying, connections, connectionId, connection, modelId, models, modelsLoading, modelsError, reloadModels, selectModel, selectConnection, sessions, session, externalSessions, loadExternal, importExternal,
+  return { available, demo, opened, displayMode, fullscreenTabId, fullscreenPaneId, isFullscreenTab, setDisplayMode, loading, busy, applying, connections, connectionId, connection, modelId, models, modelsLoading, modelsError, reloadModels, selectModel, selectConnection, sessions, session, externalSessions, loadExternal, importExternal,
     files, selection, prompt, error, progress, allowSearch, allowStructures, replyTarget, open, stop, settle, send, newSession, selectSession, deleteSession, review, verify,
-    undo, reject, saveConnection, removeConnection, reloadConnections, setManaged: (check: (id: string) => boolean) => { managed = check; } };
+    undo, reject, publishSuggestions, saveConnection, removeConnection, reloadConnections, setManaged: (check: (id: string) => boolean) => { managed = check; } };
 });

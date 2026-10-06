@@ -21,6 +21,198 @@ afterEach(async () => {
   await nextTick();
 });
 
+it.each([800, 1600])('focuses the annotation composer on first toolbar activation (pane width: %s)', async width => {
+  const adapter = new DemoAdapter();
+  const pinia = configureWorkbench(createPinia(), { adapter, native: false, mobile: false });
+  setActivePinia(pinia);
+  const content = '正文';
+  const openDocument = reactive<OpenDocument>({ id: 'a0b1c2', path: '文章.md', content,
+    base: { content, hash: await sha256(content), modified: Date.now() }, saving: false, missing: false });
+  const comments = ref<InstanceType<typeof DocumentComments>>();
+  const marks: string[][] = [];
+  root = document.createElement('div'); document.body.append(root);
+  app = createApp(defineComponent(() => () => h('main', { class: 'document-main' }, [
+    h('button', { class: 'annotation-create-button', onClick: () => comments.value?.beginAnnotation() }, '添加批注'),
+    h(DocumentComments, { ref: comments, workspaceId: 'demo', document: openDocument, readonly: false,
+      onAnnotations: value => marks.push(value.map(item => item.id)),
+      author: { id: 'reviewer', name: '审阅者' }, focusAnchor: () => {},
+      captureSelection: () => ({ basis: 'prose' as const, text: content, spans: [{ from: 0, to: 2, text: content }] }),
+      geometry: (anchors = []) => ({ left: (width - 780) / 2, right: (width + 780) / 2,
+        blocks: anchors.length ? [{ key: 'first', ids: anchors.map(anchor => anchor.id), top: 100, bottom: 140 }] : [] }),
+    }),
+  ])));
+  app.use(pinia).mount(root);
+  root.querySelector('main')!.getBoundingClientRect = () => new DOMRect(0, 0, width, 900);
+  await nextTick();
+  root.querySelector<HTMLButtonElement>('.annotation-create-button')!.click();
+  await expect.poll(() => document.activeElement?.getAttribute('aria-label')).toBe('添加批注');
+  for (const dismiss of ['outside', 'escape', 'blur']) {
+    const input = root.querySelector<HTMLTextAreaElement>('[aria-label="添加批注"]')!;
+    if (dismiss === 'escape') {
+      input.value = '   ';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    } else if (dismiss === 'blur') input.blur();
+    else root.querySelector('main')!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    await expect.poll(() => root!.querySelector('[aria-label="添加批注"]')).toBeNull();
+    expect(marks.at(-1)).toEqual([]);
+    expect((await loadCommentFile(adapter, 'annotation', openDocument.id)).file.threads).toEqual([]);
+    root.querySelector<HTMLButtonElement>('.annotation-create-button')!.click();
+    await expect.poll(() => document.activeElement?.getAttribute('aria-label')).toBe('添加批注');
+  }
+  const draft = root.querySelector<HTMLTextAreaElement>('[aria-label="添加批注"]')!;
+  draft.value = '未发布的草稿';
+  draft.dispatchEvent(new Event('input', { bubbles: true }));
+  await nextTick();
+  root.querySelector('main')!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  draft.blur();
+  await nextTick(); await nextTick();
+  expect(root.querySelector('.annotation-selected')).toBeNull();
+  expect(root.querySelector('[aria-label="添加批注"]')).toBe(draft);
+  expect(draft.value).toBe('未发布的草稿');
+  if (width === 1600) {
+    const card = draft.closest<HTMLElement>('.review-card')!;
+    expect(card.classList.contains('is-expanded')).toBe(false);
+    expect(card.getAttribute('aria-expanded')).toBe('false');
+    card.click();
+    await nextTick(); await nextTick();
+    expect(card.classList.contains('is-expanded')).toBe(true);
+    expect(document.activeElement).toBe(draft);
+    root.querySelector('main')!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    await nextTick();
+    expect(card.classList.contains('is-expanded')).toBe(false);
+  }
+  expect(root.querySelector<HTMLElement>('.annotation-popup, .annotation-rail')?.style.display).not.toBe('none');
+  expect(draft.closest<HTMLElement>('.annotation-card, .annotation-popup-content')?.style.display).not.toBe('none');
+  expect(marks.at(-1)).toEqual(['@draft']);
+  expect((await loadCommentFile(adapter, 'annotation', openDocument.id)).file.threads).toEqual([]);
+});
+
+it('repositions an external comment draft when the table viewport changes without an editor transaction', async () => {
+  const adapter = new DemoAdapter();
+  const pinia = configureWorkbench(createPinia(), { adapter, native: false, mobile: false });
+  setActivePinia(pinia);
+  const content = '正文';
+  const openDocument = reactive<OpenDocument>({ id: 'a0b1c2', path: '文章.md', content,
+    base: { content, hash: await sha256(content), modified: Date.now() }, saving: false, missing: false });
+  const comments = ref<InstanceType<typeof DocumentComments>>();
+  const editor = ref<HTMLElement>();
+  let tableWidth = 780;
+  vi.spyOn(HTMLElement.prototype, 'getClientRects').mockImplementation(function (this: HTMLElement) {
+    return (this.hasAttribute('data-comment-id') ? [new DOMRect(250, 110, 80, 20)] : []) as unknown as DOMRectList;
+  });
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    if (this.classList.contains('document-main')) return new DOMRect(0, 0, 1600, 900);
+    if (this.classList.contains('ProseMirror')) return new DOMRect(250, 0, 780, 900);
+    if (this.classList.contains('tano-table-viewport')) return new DOMRect(0, 140, tableWidth, 120);
+    if (this.classList.contains('review-card')) return new DOMRect(1054, 100, 320, 80);
+    return new DOMRect();
+  });
+  root = document.createElement('div'); document.body.append(root);
+  app = createApp(() => h('main', { class: 'document-main' }, [
+    h('div', { ref: editor }, [h('div', { class: 'ProseMirror' }, [
+      h('span', { 'data-comment-id': '@draft' }, content), h('div', { class: 'tano-table-viewport' }),
+    ])]),
+    h(DocumentComments, { ref: comments, editorElement: editor.value, workspaceId: 'demo', document: openDocument, readonly: false,
+      author: { id: 'reviewer', name: '审阅者' }, focusAnchor: () => {},
+      captureSelection: () => ({ basis: 'prose' as const, text: content, spans: [{ from: 0, to: 2, text: content }] }),
+      geometry: (anchors = []) => ({ left: 250, right: 1030,
+        blocks: anchors.length ? [{ key: 'first', ids: anchors.map(anchor => anchor.id), top: 100, bottom: 120 }] : [] }),
+    }),
+  ])).use(pinia);
+  app.mount(root);
+  await nextTick();
+  await comments.value!.beginAnnotation();
+  await vi.waitFor(() => expect(root!.querySelector<HTMLElement>('.annotation-card')?.style.top).toBe('110px'));
+  const card = root.querySelector<HTMLElement>('.annotation-card')!;
+  (card.firstElementChild as HTMLElement).style.height = '80px';
+  const input = card.querySelector<HTMLTextAreaElement>('textarea')!;
+  input.value = '保留草稿';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  root.querySelector('main')!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  const table = root.querySelector<HTMLElement>('.tano-table-viewport')!;
+  tableWidth = 1600;
+  table.dispatchEvent(new Event('tano-table-layout', { bubbles: true }));
+  await vi.waitFor(() => expect(card.style.top).toBe('272px'));
+  card.click();
+  await vi.waitFor(() => expect(card.style.top).toBe('110px'));
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+  await vi.waitFor(() => expect(card.style.top).toBe('272px'));
+  tableWidth = 780;
+  table.dispatchEvent(new Event('tano-table-layout', { bubbles: true }));
+  await vi.waitFor(() => expect(card.style.top).toBe('110px'));
+});
+
+it.each([800, 1600])('keeps separate drafts bound to their selections and publishes only the submitted draft (width: %s)', async width => {
+  const adapter = new DemoAdapter();
+  const pinia = configureWorkbench(createPinia(), { adapter, native: false, mobile: false });
+  setActivePinia(pinia);
+  const content = '第一段\n第二段';
+  const openDocument = reactive<OpenDocument>({ id: 'a0b1c2', path: '文章.md', content,
+    base: { content, hash: await sha256(content), modified: Date.now() }, saving: false, missing: false });
+  let from = 0;
+  let anchors: { id: string; anchor: ReturnType<typeof makeCommentAnchor> }[] = [];
+  const comments = ref<InstanceType<typeof DocumentComments>>();
+  root = document.createElement('div'); document.body.append(root);
+  app = createApp(defineComponent(() => () => h('main', { class: 'document-main' }, h(DocumentComments, {
+    ref: comments, workspaceId: 'demo', document: openDocument, readonly: false,
+    author: { id: 'reviewer', name: '审阅者' }, focusAnchor: () => {},
+    captureSelection: () => ({ basis: 'prose' as const, text: content, spans: [{ from, to: from + 3, text: content.slice(from, from + 3) }] }),
+    onAnnotations: value => { anchors = value; },
+    geometry: (marks = []) => ({ left: (width - 780) / 2, right: (width + 780) / 2, blocks: marks.map(mark => ({
+      key: String(mark.anchor.spans[0]!.from), ids: [mark.id], top: 100 + mark.anchor.spans[0]!.from * 30, bottom: 140 + mark.anchor.spans[0]!.from * 30,
+    })) }),
+  }))));
+  app.use(pinia).mount(root);
+  root.querySelector('main')!.getBoundingClientRect = () => new DOMRect(0, 0, width, 900);
+  await comments.value!.beginAnnotation();
+  const first = root.querySelector<HTMLTextAreaElement>('[aria-label="添加批注"]')!;
+  first.value = '第一处草稿'; first.dispatchEvent(new Event('input', { bubbles: true }));
+  await nextTick();
+  from = 4;
+  await comments.value!.beginAnnotation();
+  const inputs = root.querySelectorAll<HTMLTextAreaElement>('[aria-label="添加批注"]');
+  expect(inputs).toHaveLength(2);
+  const second = inputs[1]!;
+  expect(document.activeElement).toBe(second);
+  expect(second.value).toBe('');
+  expect(first.value).toBe('第一处草稿');
+  if (width === 1600) {
+    expect(first.closest('.review-card')?.classList.contains('is-expanded')).toBe(false);
+    expect(second.closest('.review-card')?.classList.contains('is-expanded')).toBe(true);
+    (first.closest('.review-card') as HTMLElement).click();
+    await nextTick(); await nextTick();
+    expect(document.activeElement).toBe(first);
+    expect(first.closest('.review-card')?.classList.contains('is-expanded')).toBe(true);
+    expect(second.closest('.review-card')?.classList.contains('is-expanded')).toBe(false);
+    second.focus();
+    await nextTick();
+  }
+  second.value = '第二处草稿'; second.dispatchEvent(new Event('input', { bubbles: true }));
+  await nextTick();
+  root.querySelector('main')!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  await nextTick();
+  expect(anchors.map(mark => mark.anchor.spans[0]!.text)).toEqual(['第一段', '第二段']);
+  from = 0;
+  await comments.value!.beginAnnotation();
+  expect(root.querySelectorAll('[aria-label="添加批注"]')).toHaveLength(2);
+  expect(document.activeElement).toBe(first);
+  openDocument.content = '新增\n' + content;
+  openDocument.base = { content: openDocument.content, hash: await sha256(openDocument.content), modified: Date.now() };
+  await expect.poll(() => anchors.filter(mark => mark.id.startsWith('@draft')).map(mark => mark.anchor.spans[0]!.from)).toEqual([3, 7]);
+  second.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  await expect.poll(async () => (await loadCommentFile(adapter, 'annotation', openDocument.id)).file.threads.length).toBe(1);
+  await expect.poll(() => root!.querySelectorAll('[aria-label="添加批注"]').length).toBe(1);
+  expect(first.value).toBe('第一处草稿');
+  const saved = (await loadCommentFile(adapter, 'annotation', openDocument.id)).file.threads[0]!;
+  expect(saved.anchor?.spans[0]?.text).toBe('第二段');
+  expect(saved.anchor?.spans[0]?.from).toBe(7);
+  expect(saved.messages[0]?.body).toBe('第二处草稿');
+  first.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  await expect.poll(async () => (await loadCommentFile(adapter, 'annotation', openDocument.id)).file.threads.length).toBe(2);
+  expect((await loadCommentFile(adapter, 'annotation', openDocument.id)).file.threads[1]!.anchor?.spans[0]?.text).toBe('第一段');
+});
+
 it('uses the space beside centered prose for annotations and keeps the reply draft when switching to a popup', async () => {
   const adapter = new DemoAdapter();
   const pinia = configureWorkbench(createPinia(), { adapter, native: false, mobile: false });
@@ -68,6 +260,7 @@ it('uses the space beside centered prose for annotations and keeps the reply dra
   expect([...messages].filter(message => message.style.display !== 'none').map(message => message.querySelector('p')?.textContent))
     .toEqual(['thread-1 首条评论', '回复 4']);
   expect(first.querySelector('.comment-expand-replies')?.textContent).toBe('查看 3 条回复');
+  await expect.poll(() => first.style.top).not.toBe('');
   await expect.poll(() => parseFloat(second.style.top)).toBeGreaterThanOrEqual(parseFloat(first.style.top) + first.offsetHeight);
   first.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   await nextTick();
@@ -76,6 +269,7 @@ it('uses the space beside centered prose for annotations and keeps the reply dra
   expect([...messages].every(message => message.style.display !== 'none')).toBe(true);
   expect(focusAnchor).toHaveBeenCalledWith(anchor);
   const reply = first.querySelector<HTMLTextAreaElement>('[aria-label="添加回复"]')!;
+  expect(document.activeElement).toBe(reply);
   reply.value = '切换布局仍保留的草稿';
   reply.dispatchEvent(new Event('input', { bubbles: true }));
   await nextTick();
@@ -95,6 +289,8 @@ it('uses the space beside centered prose for annotations and keeps the reply dra
   expect(first.querySelector<HTMLElement>('.comment-reply-composer')?.style.display).toBe('none');
   first.click();
   await nextTick();
+  await nextTick();
+  expect(document.activeElement).toBe(reply);
   expect(reply.value).toBe('切换布局仍保留的草稿');
 });
 
@@ -328,7 +524,7 @@ it('creates, replies to, resolves and detaches local annotations independently o
   await nextTick();
   root.querySelector('main')!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
   await nextTick();
-  expect(root.querySelector<HTMLElement>('.annotation-popup')?.style.display).toBe('none');
+  expect(root.querySelector<HTMLElement>('.annotation-popup')?.style.display).not.toBe('none');
   expect(marks.at(-1)).toEqual(['@draft']);
   click('添加批注');
   await expect.poll(() => root!.querySelector<HTMLTextAreaElement>('[aria-label="添加批注"]')?.value).toBe('这里需要核对');

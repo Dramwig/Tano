@@ -148,6 +148,35 @@ it('exposes each pane’s current tab path for document and attachment breadcrum
   expect(root.querySelector('nav')!.textContent).toBe('images/renamed.png');
 });
 
+it('does not refocus a pane when its native document scrollbar starts a drag', async () => {
+  await mountPanes();
+  const pane = root.querySelector<HTMLElement>('.workspace-pane')!;
+  const scroll = document.createElement('div');
+  scroll.className = 'document-layout';
+  Object.defineProperties(scroll, {
+    clientWidth: { value: 300 },
+    offsetWidth: { value: 315 },
+  });
+  scroll.getBoundingClientRect = () => ({ left: 0, right: 315, top: 0, bottom: 400, width: 315, height: 400 } as DOMRect);
+  pane.append(scroll);
+
+  scroll.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 310, button: 0 }));
+  expect(fixture.store.focusPane).not.toHaveBeenCalled();
+  scroll.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 200, button: 0 }));
+  expect(fixture.store.focusPane).toHaveBeenCalledTimes(1);
+});
+
+it('keeps the pane stable when dragging its custom document scrollbar', async () => {
+  await mountPanes();
+  const scrollbar = document.createElement('div');
+  scrollbar.className = 'document-scrollbar';
+  const thumb = document.createElement('div');
+  scrollbar.append(thumb);
+  root.querySelector('.workspace-pane')!.append(scrollbar);
+  thumb.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+  expect(fixture.store.focusPane).not.toHaveBeenCalled();
+});
+
 it.each(['right', 'bottom'] as const)('fills a departing %s pane immediately, retaining editors until acknowledgement or rollback', async side => {
   const { mounted } = await mountPanes(side);
   const original = JSON.stringify(fixture.store.layout);

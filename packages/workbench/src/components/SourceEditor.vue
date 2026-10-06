@@ -12,9 +12,10 @@ import {
   undoDepth,
 } from '@codemirror/commands';
 import { Compartment, EditorState, StateEffect, StateField, Transaction } from '@codemirror/state';
-import { Decoration, EditorView, keymap } from '@codemirror/view';
+import { Decoration, EditorView, keymap, WidgetType } from '@codemirror/view';
 import { referenceMarkdown } from '@tano/protocol';
 import type { CommentAnchor, ReferenceIdentity } from '@tano/protocol';
+import type { SuggestionDecorations } from '@tano/protocol';
 import type { CommentGeometry } from '@tano/editor/comment-projection';
 import { sourceStyleRanges } from '@tano/editor/source-highlight';
 import { splitFrontmatter } from '@tano/editor/syntax';
@@ -41,6 +42,7 @@ const props = defineProps<{
   readonly: boolean;
   localNative: boolean;
   commentAnchors?: readonly { id: string; anchor: CommentAnchor }[];
+  suggestionMarks?: SuggestionDecorations;
 }>();
 const emit = defineEmits<{
   'update:modelValue': [value: string];
@@ -81,8 +83,27 @@ function decorations(markdown: string) {
       ranges.push(Decoration.mark({ class: 'cm-comment-mark', attributes: { 'data-comment-id': id } })
         .range(span.from, span.to));
   }
+  if (props.suggestionMarks?.text === markdown) for (const range of props.suggestionMarks.ranges) {
+    if (range.to > range.from) ranges.push(Decoration.mark({ class: range.inserted === undefined ? 'tano-suggestion-insert' : 'tano-suggestion-delete is-source-text', attributes: { 'data-suggestion-id': range.id } }).range(range.from, range.to));
+    if (range.removed) ranges.push(Decoration.widget({ widget: new DeletedSuggestion(range.id, range.removed), side: -1 }).range(range.from));
+    if (range.inserted) ranges.push(Decoration.widget({ widget: new DeletedSuggestion(range.id, range.inserted, true), side: -1 }).range(range.to));
+  }
   return Decoration.set(ranges, true);
 }
+
+class DeletedSuggestion extends WidgetType {
+  constructor(readonly id: string, readonly text: string, readonly inserted = false) { super(); }
+  eq(other: DeletedSuggestion) { return other.id === this.id && other.text === this.text && other.inserted === this.inserted; }
+  toDOM() {
+    const element = document.createElement(this.inserted ? 'ins' : 'del');
+    element.className = this.inserted ? 'tano-suggestion-insert' : 'tano-suggestion-delete';
+    element.dataset.suggestionId = this.id;
+    element.textContent = this.text;
+    return element;
+  }
+  ignoreEvent() { return false; }
+}
+watch(() => props.suggestionMarks, () => view?.dispatch({ effects: refreshCommentMarks.of() }));
 
 function fileHandler(event: Event, files: FileList | null | undefined, requireImage: boolean) {
   if (!props.localNative || props.readonly) return false;

@@ -8,6 +8,7 @@ export * from './relations';
 export * from './plugins';
 export * from './workspace-paths';
 export * from './comments';
+export * from './suggestions';
 export * from './document-layout';
 
 export interface FileEntry {

@@ -356,7 +356,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main ref="host" class="relation-graph" :class="{ 'has-topbar': controlsTarget }" aria-label="关系图谱">
+  <main
+    ref="host"
+    class="relation-graph"
+    :class="{ 'has-topbar': controlsTarget }"
+    aria-label="关系图谱"
+  >
     <svg
       ref="viewport"
       class="graph-viewport"
@@ -431,7 +436,12 @@ onBeforeUnmount(() => {
       </g>
     </svg>
     <Teleport v-if="visible" :to="controlsTarget ?? 'body'" :disabled="!controlsTarget" defer>
-      <div class="graph-controls" :class="{ 'graph-controls-inline': controlsTarget }" role="group" aria-label="图谱操作">
+      <div
+        class="graph-controls"
+        :class="{ 'graph-controls-inline': controlsTarget }"
+        role="group"
+        aria-label="图谱操作"
+      >
         <button
           class="icon-button"
           title="布局设置"
@@ -487,7 +497,7 @@ onBeforeUnmount(() => {
           v-model.number="physics.repulsion"
           aria-label="斥力"
           type="range"
-          min="80"
+          min="0"
           max="1200"
           step="20"
       /></label>

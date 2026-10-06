@@ -39,6 +39,10 @@ const emit = defineEmits<{ start: [event: PointerEvent] }>();
   border-radius: 1px;
   background: currentColor;
   transform: translate(-50%, -50%);
+  opacity: 0;
+}
+.contextual-toolbar:hover .toolbar-drag-handle::after {
+  opacity: 1;
 }
 .toolbar-drag-handle :deep(svg) {
   position: absolute;

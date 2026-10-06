@@ -54,6 +54,8 @@ const props = defineProps<{
   revealMarkdown: boolean;
   toolbarMode?: ToolbarMode;
   showPageTitle: boolean;
+  showOutline: boolean;
+  outlineOnLeft?: boolean;
   pageTitleSource: PageTitleSource;
   visualFontSize: number;
   sourceFontSize: number;
@@ -75,6 +77,8 @@ const emit = defineEmits<{
   'update:revealMarkdown': [value: boolean];
   'update:toolbarMode': [value: ToolbarMode];
   'update:showPageTitle': [value: boolean];
+  'update:showOutline': [value: boolean];
+  'update:outlineOnLeft': [value: boolean];
   'update:pageTitleSource': [value: PageTitleSource];
   'update:visualFontSize': [value: number];
   'update:sourceFontSize': [value: number];
@@ -119,7 +123,7 @@ const pages = [
     label: '外观设置',
     group: '个人偏好',
     icon: Palette,
-    terms: '外观 主题 白天 黑夜 深色 浅色 跟随系统 字体 系统字体 衬线字体 等宽字体 Mono Maple 自定义字体 字号 字体大小 页面内标题 标题来源 文件名 YAML title 属性',
+    terms: '外观 主题 白天 黑夜 深色 浅色 跟随系统 字体 系统字体 衬线字体 等宽字体 Mono Maple 自定义字体 字号 字体大小 页面内标题 标题来源 文件名 YAML title 属性 显示目录 文档大纲 目录位置 左侧 右侧',
   },
   {
     id: 'editing',
@@ -556,6 +560,39 @@ function customFontInput(event: Event) {
                   <option value="frontmatter">YAML title</option>
                   <option value="frontmatter-first">YAML title 优先</option>
                 </select>
+              </div>
+              <div class="settings-row">
+                <div>
+                  <strong>显示目录</strong>
+                </div>
+                <button
+                  type="button"
+                  class="settings-switch"
+                  :class="{ on: showOutline }"
+                  role="switch"
+                  :aria-checked="showOutline"
+                  aria-label="显示目录"
+                  @click="emit('update:showOutline', !showOutline)"
+                >
+                  <span />
+                </button>
+              </div>
+              <div class="settings-row">
+                <div>
+                  <strong>目录显示在左侧</strong>
+                  <p>将文档大纲放到编辑区左侧。</p>
+                </div>
+                <button
+                  type="button"
+                  class="settings-switch"
+                  :class="{ on: outlineOnLeft }"
+                  role="switch"
+                  :aria-checked="outlineOnLeft ?? false"
+                  aria-label="目录显示在左侧"
+                  @click="emit('update:outlineOnLeft', !(outlineOnLeft ?? false))"
+                >
+                  <span />
+                </button>
               </div>
             </div>
           </section>

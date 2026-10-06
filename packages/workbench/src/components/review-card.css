@@ -1,0 +1,36 @@
+/* Shared surface and interaction states for annotations and editing suggestions. */
+.review-card-tools { display: flex; flex: none; align-items: center; gap: 0; height: 24px; box-sizing: border-box; padding: 0; border: 0; border-radius: 6px; }
+.review-card-tools button { display: grid; place-items: center; flex: none; width: 26px; height: 24px; box-sizing: border-box; border: 0; border-radius: 4px; background: transparent; color: var(--muted); padding: 0; cursor: pointer; }
+.review-card-tools button:hover, .review-card-tools button[aria-expanded='true'] { background: var(--hover); color: var(--text); }
+.review-card-tools button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.review-card-tools button:disabled { opacity: .5; cursor: default; }
+.comment-message .review-card-tools { opacity: 0; pointer-events: none; }
+.comment-message:hover .review-card-tools,
+.comment-message:focus-within .review-card-tools,
+.comment-message .review-card-tools.is-open { opacity: 1; pointer-events: auto; }
+@media (hover: none) {
+  .comment-message .review-card-tools { opacity: 1; pointer-events: auto; }
+}
+.review-card {
+  --annotation-card-outset: 0px;
+  --annotation-card-lift: 0px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px solid rgb(42 28 0 / 7%);
+  border-radius: 8px;
+  background: var(--paper);
+  cursor: pointer;
+  translate: 0px 0px;
+  transition: box-shadow .28s cubic-bezier(.22, 1, .36, 1);
+}
+.review-card.is-expanded {
+  translate: -12px 0px;
+  z-index: 2;
+  cursor: default;
+  box-shadow: 0 4px 12px rgb(25 25 25 / 2.7%), 0 1px 2px rgb(25 25 25 / 2%);
+}
+.review-card:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+:root[data-theme='dark'] .review-card { border-color: rgb(255 255 255 / 9%); }
+:root[data-theme='dark'] .review-card.is-expanded { box-shadow: 0 4px 10px rgb(0 0 0 / 8%), 0 1px 2px rgb(0 0 0 / 6%); }
+@media (prefers-reduced-motion: reduce) { .review-card { transition: none; } }
