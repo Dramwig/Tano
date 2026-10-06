@@ -41,7 +41,7 @@ npm ci
 npm run desktop
 ```
 
-For a browser-only preview, run `npm run dev` and open `http://127.0.0.1:43841`. Desktop development uses port 43842, so both can run at the same time.
+For a browser-only preview, run `npm run dev` and open `http://127.0.0.1:43841`. Desktop development prefers port 43842 and automatically selects a free port if it is occupied, so both can run at the same time.
 
 ## Documentation
 

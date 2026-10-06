@@ -6,47 +6,12 @@ cd /d "%~dp0"
 
 where node >nul 2>nul
 if errorlevel 1 (
-  echo [错误] 请先安装 Node.js 24.12 或更新版本，然后重新打开本文件。
+  echo [Error] Install Node.js 24.12 or newer, then reopen this file.
   pause
   exit /b 1
 )
-where npm >nul 2>nul
+node scripts\local-desktop.mjs
 if errorlevel 1 (
-  echo [错误] 找不到 npm，请检查 Node.js 安装和 PATH 配置。
-  pause
-  exit /b 1
-)
-
-node scripts\check-node.mjs
-if errorlevel 1 (
-  pause
-  exit /b 1
-)
-
-powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\check-desktop.ps1"
-if errorlevel 1 (
-  echo.
-  echo [错误] 桌面开发工具链检查失败，请根据上方提示安装所需组件。
-  pause
-  exit /b 1
-)
-
-echo 正在检查并同步项目依赖，首次启动或依赖变更时可能需要几分钟...
-call npm install --no-audit --no-fund
-if errorlevel 1 (
-  echo [错误] 依赖安装失败，请检查上方提示。
-  pause
-  exit /b 1
-)
-
-echo 正在启动同页桌面开发版。首次编译 Rust 可能需要较长时间。
-echo 请保留此窗口，关闭窗口即可停止桌面开发服务。
-echo.
-call npm run desktop
-if errorlevel 1 (
-  echo.
-  echo [错误] 桌面启动失败，请查看上方具体错误。
-  echo 若提示 43842 端口已占用，请先关闭之前的桌面开发服务。
   pause
   exit /b 1
 )

@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "npm run dev -w @tano/client",
     "build": "npm run build -w @tano/client",
-    "desktop": "npm run tauri -w @tano/client -- dev",
+    "desktop": "node scripts/dev-desktop.mjs",
     "desktop:build": "npm run tauri -w @tano/client -- build",
     "desktop:release": "node scripts/release-desktop.mjs",
     "version:set": "node scripts/version.mjs set",
