@@ -1100,9 +1100,10 @@ async function onTabKeydown(event: KeyboardEvent) {
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
-  /* Allow the last active tab's lower curve to extend toward the add button. */
-  padding-right: 8px;
-  margin-right: -8px;
+  /* Keep both edge tabs' lower curves inside the scroll viewport without
+     shifting the tabs or the adjacent navigation and add buttons. */
+  padding-inline: 8px;
+  margin-inline: -8px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;

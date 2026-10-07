@@ -17,3 +17,8 @@ apps/client/src-tauri/gen/android/app/tauri.properties
 data/
 /markdown-test-workspace/.obsidian/
 /markdown-test-workspace/.tano/
+!/markdown-test-workspace/.tano/
+/markdown-test-workspace/.tano/*
+!/markdown-test-workspace/.tano/objects/
+/markdown-test-workspace/.tano/objects/*
+!/markdown-test-workspace/.tano/objects/[a-f12]82f91.tano.json

@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node ../../scripts/markdown-demo.mjs",
     "dev": "vite",
+    "prebuild": "node ../../scripts/markdown-demo.mjs",
     "build": "vue-tsc --noEmit && vite build",
     "typecheck": "vue-tsc --noEmit",
     "icons": "tauri icon public/favicon-green.svg --ios-color #ffffff && tauri icon public/favicon.svg --png 1024 --output brand && tauri icon public/favicon-green.svg --png 1024 --output brand/green && node ../../scripts/sync-android-icons.mjs",

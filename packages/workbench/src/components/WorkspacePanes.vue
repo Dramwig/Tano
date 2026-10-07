@@ -197,7 +197,8 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
 .workspace-panes-multiple :deep(.topbar:has(.calendar-topbar-controls) .topbar-right) { flex-shrink: 1; min-width: 0; flex-wrap: wrap; }
 @container (max-width: 560px) {
   .workspace-panes-multiple :deep(.breadcrumb:has(.breadcrumb-current) .breadcrumb-workspace),
-  .workspace-panes-multiple :deep(.breadcrumb:has(.breadcrumb-current) .breadcrumb-workspace + svg) { display: none; }
+  .workspace-panes-multiple :deep(.breadcrumb:has(.breadcrumb-current) .breadcrumb-workspace + svg),
+  .workspace-panes-multiple :deep(.breadcrumb:has(.breadcrumb-current) .breadcrumb-demo-badge + svg) { display: none; }
   .workspace-panes-multiple :deep(.topbar-right) { gap: 2px; }
   .workspace-panes-multiple :deep(.topbar-right > .demo-badge),
   .workspace-panes-multiple :deep(.topbar-right > .local-badge) { margin-right: 0; font-size: 10px; }

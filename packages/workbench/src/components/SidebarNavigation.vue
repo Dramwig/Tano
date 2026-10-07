@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import ButtonVisibilityGroup from './ButtonVisibilityGroup.vue';
 
-defineProps<{ items: readonly { id: string; label: string }[] }>();
+withDefaults(defineProps<{ items: readonly { id: string; label: string }[]; active?: boolean }>(), { active: true });
 defineEmits<{ open: [] }>();
 </script>
 
@@ -9,6 +9,7 @@ defineEmits<{ open: [] }>();
   <ButtonVisibilityGroup
     v-slot="{ isVisible }"
     :items="items"
+    :active="active"
     preference-key="tano.preference.sidebarHiddenViews"
     tag="nav"
     group-class="sidebar-navigation"

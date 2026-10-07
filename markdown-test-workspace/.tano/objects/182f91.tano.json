@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "id": "182f91",
+  "type": "project",
+  "name": "Markdown 验收",
+  "description": "历史项目类型的引用兼容示例",
+  "archived": false,
+  "properties": { "phase": "review", "progress": 0.5, "active": true }
+}

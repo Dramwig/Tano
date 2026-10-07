@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="background" x1="64" y1="0" x2="64" y2="128" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFB34D" />
+      <stop offset="1" stop-color="#F47724" />
+    </linearGradient>
+    <radialGradient
+      id="light"
+      cx="0"
+      cy="0"
+      r="1"
+      gradientTransform="translate(24 4) rotate(60) scale(112)"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop stop-color="#FFE6B8" stop-opacity=".5" />
+      <stop offset="1" stop-color="#FFE6B8" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="left-page" x1="26" y1="52" x2="62" y2="52" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF" />
+      <stop offset=".75" stop-color="#FFF9EB" />
+      <stop offset="1" stop-color="#FFE6C2" />
+    </linearGradient>
+    <linearGradient id="right-page" x1="66" y1="52" x2="102" y2="52" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFEBCF" />
+      <stop offset=".25" stop-color="#FFFBF2" />
+      <stop offset="1" stop-color="#FFF" />
+    </linearGradient>
+  </defs>
+  <path
+    d="M44 0H84C116 0 128 12 128 44V84C128 116 116 128 84 128H44C12 128 0 116 0 84V44C0 12 12 0 44 0Z"
+    fill="url(#background)"
+  />
+  <path
+    d="M44 0H84C116 0 128 12 128 44V84C128 116 116 128 84 128H44C12 128 0 116 0 84V44C0 12 12 0 44 0Z"
+    fill="url(#light)"
+  />
+  <path
+    d="M23 42C36 37 51 38 64 47C77 38 92 37 105 42V95C91 90 77 91 64 100C51 91 37 90 23 95V42Z"
+    fill="#B34F12"
+    fill-opacity=".18"
+  />
+  <path
+    d="M23 38C37 33 51 34 64 43C77 34 91 33 105 38V91C91 86 77 87 64 96C51 87 37 86 23 91V38Z"
+    fill="#FFE5BD"
+  />
+  <path d="M27 34C39 31 52 33 62 40V89C52 82 39 80 27 84V34Z" fill="url(#left-page)" />
+  <path d="M66 40C76 33 89 31 101 34V84C89 80 76 82 66 89V40Z" fill="url(#right-page)" />
+  <path
+    d="M64 43V94"
+    stroke="#D88B42"
+    stroke-opacity=".55"
+    stroke-width="2"
+    stroke-linecap="round"
+  />
+  <path
+    d="M35 46C41 45 48 46 54 49M35 56C41 55 48 56 54 59M35 66C41 65 48 66 54 69"
+    stroke="#DDB47C"
+    stroke-opacity=".65"
+    stroke-width="2.5"
+    stroke-linecap="round"
+  />
+  <path
+    d="M74 49C80 46 87 45 93 46M74 59C80 56 87 55 93 56M74 69C80 66 87 65 93 66"
+    stroke="#DDB47C"
+    stroke-opacity=".65"
+    stroke-width="2.5"
+    stroke-linecap="round"
+  />
+  <path d="M84 33V54L89 50L94 53V32C90.5 32 87 32.3 84 33Z" fill="#EFA24D" />
+  <path
+    d="M44 .75H84C115.5.75 127.25 12.5 127.25 44V84C127.25 115.5 115.5 127.25 84 127.25H44C12.5 127.25.75 115.5.75 84V44C.75 12.5 12.5.75 44 .75Z"
+    stroke="#FFF"
+    stroke-opacity=".22"
+    stroke-width="1.5"
+  />
+</svg>

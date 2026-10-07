@@ -27,6 +27,10 @@ export interface Workspace {
   path: string;
   files: FileEntry[];
   readOnly?: boolean;
+  /** Transient creation result; omitted on subsequent opens and refreshes. */
+  newlyCreated?: boolean;
+  /** True only when the current user may delete this workspace. */
+  canDelete?: boolean;
 }
 
 export class WorkspaceAccessRevokedError extends Error {
@@ -53,6 +57,7 @@ export interface WorkspaceAdapter {
   open(path?: string): Promise<Workspace | null>;
   close?(workspaceId: string): Promise<void>;
   createWorkspace?(name: string): Promise<Workspace>;
+  deleteWorkspace?(workspaceId: string): Promise<void>;
   recent?(): Promise<RecentWorkspace[]>;
   loadSession?(workspaceId: string): Promise<WorkspaceSession | null>;
   saveSession?(workspaceId: string, session: WorkspaceSession): Promise<void>;
@@ -81,6 +86,7 @@ export interface RecentWorkspace {
   name: string;
   path: string;
   openedAt: number;
+  icon?: string;
 }
 export interface SessionDocument {
   id: string;

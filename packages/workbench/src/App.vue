@@ -141,15 +141,17 @@ import { native } from './adapter';
 import { mobile } from './platform';
 import MobileRecycle from './components/MobileRecycle.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
+import WorkspaceIcon from './components/WorkspaceIcon.vue';
+import { workspaceArchive, workspaceArchiveName } from './workspace-export';
 import ObjectPanel from './components/ObjectPanel.vue';
 import PlanDetailPanel from './components/PlanDetailPanel.vue';
 import type { ObjectRecord } from './workspace-objects';
 import { usePlanStore } from './stores/plans';
 import { usePlanSyncStore } from './stores/plan-sync';
 import { planKey } from './personal-plans';
-import PersonalPlanDialog from './components/PersonalPlanDialog.vue';
 import SidebarPlan from './components/SidebarPlan.vue';
 import SidebarNavigation from './components/SidebarNavigation.vue';
+import WorkspaceSidebar from './components/WorkspaceSidebar.vue';
 import WorkspaceSwitcher from './components/WorkspaceSwitcher.vue';
 import ButtonVisibilityGroup from './components/ButtonVisibilityGroup.vue';
 import CalendarView from './components/CalendarView.vue';
@@ -190,6 +192,7 @@ import {
 } from './settings-window';
 import type { SettingsCommand, SettingsPageId, SettingsSnapshot } from './settings-window';
 
+const props = defineProps<{ initialWorkspace?: string; createWorkspace?: boolean }>();
 const store = useWorkspaceStore();
 const documentSuggestions = useSuggestionStore();
 const suggestionModeBusy = ref(false);
@@ -217,7 +220,6 @@ const assistantTab = computed(() =>
 );
 const plans = usePlanStore();
 usePlanSyncStore();
-const personalHome = ref(false);
 const tabsEnabled = native;
 const desktopTabsEnabled = native && !mobile;
 const detachedWindow = desktopTabsEnabled && !!detachedTabRequest();
@@ -226,6 +228,7 @@ const welcomeSloganParts = sloganParts(welcomeSlogan);
 const localNative = native && !store.isWeb;
 const attachments =
   useWorkbenchRuntime().attachments ?? (localNative ? nativeAttachments : undefined);
+const workspaceAdapter = useWorkbenchRuntime().adapter;
 const extensions = useWorkbenchRuntime().extensions?.() ?? createLocalExtensions();
 const extensionViews = extensions.views ?? [];
 const sidebarNavigationItems = computed(() => [
@@ -247,9 +250,7 @@ const documentToolItems = [
   { id: 'source-mode', label: '源码模式' },
 ];
 const topbarItems = [
-  { id: 'back', label: '后退' },
-  { id: 'forward', label: '前进' },
-  { id: 'breadcrumb', label: '面包屑', separatorBefore: true },
+  { id: 'breadcrumb', label: '面包屑' },
   { id: 'workspace-status', label: '工作区状态', separatorBefore: true },
 ];
 const workspaceStatusLabel = computed(() =>
@@ -311,7 +312,7 @@ const extensionActions: WorkbenchActions = {
     workspaceMenu.value = false;
     menu.value = false;
   },
-  createWorkspace: () => showModal('workspace'),
+  createWorkspace: () => { void createNewWorkspace(); },
   openSettings,
   showDiff: (value) => {
     selectedDiff.value = value;
@@ -516,6 +517,7 @@ watch(activeId, (id) => {
     sidebarView.value = 'repository';
 });
 const sidebar = ref(!detachedWindow && window.innerWidth > 700);
+const mainColumn = ref<HTMLElement>();
 const viewportWidth = ref(window.innerWidth);
 const compactPanes = computed(() => mobile || viewportWidth.value <= 700);
 const sidebarWidth = ref<number | null>(null);
@@ -871,15 +873,13 @@ const managedFilePaths = computed(
 );
 let fileContextTrigger: HTMLElement | null = null;
 const settingsPanel = ref(false);
-const settingsPage = ref<'appearance' | 'editing' | 'assistant' | 'workspace' | 'about'>(
-  'appearance',
-);
+const settingsPage = ref<SettingsPageId>('appearance');
 watch(defaultSource, (value) => {
   savePreference('defaultSource', value);
   if (!editing.active && !editing.activeBusy) source.value = value;
 });
 watch(revealMarkdown, (value) => savePreference('revealMarkdown', value));
-const modal = ref<'' | 'newTab' | 'rename' | 'search' | 'delete' | 'saveAs' | 'workspace'>('');
+const modal = ref<'' | 'newTab' | 'rename' | 'search' | 'delete' | 'saveAs'>('');
 const modalTarget = ref<FileEntry | null>(null);
 const modalDeleteEntries = ref<FileEntry[]>([]);
 const modalDeleteContents = ref<FileEntry[]>([]);
@@ -1111,7 +1111,6 @@ function showPlanEvent(key: string) {
     return;
   }
   objectPanel.value = false;
-  personalHome.value = false;
   planDetail.value = record;
 }
 function managePlanEvents() {
@@ -2061,7 +2060,6 @@ const modalTitle = computed(() => {
     search: '找到那一页',
     delete: `${store.isDemo ? '删除' : store.isWeb ? '删除在线文档' : mobile ? '移入手机回收站' : '移入回收站'}${modalDeleteEntries.value.length > 1 ? ` · ${modalDeleteEntries.value.length} 项` : ''}`,
     saveAs: '另存为新文档',
-    workspace: store.isWeb ? '创建工作区' : '新建手机工作空间',
   };
   return modal.value ? titles[modal.value] : '';
 });
@@ -2352,14 +2350,73 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
     settled?.();
   }
 }
+const workspaceExporting = ref(false);
+const workspaceExportError = ref('');
+const workspaceDeleting = ref(false);
+const workspaceDeletionError = ref('');
+watch(() => workspace.value?.id, () => { workspaceDeletionError.value = ''; });
+async function deleteWorkspace(workspaceId: string) {
+  if (workspaceDeleting.value || store.busy || workspaceExporting.value || store.workspaceSettingsSaving) return;
+  workspaceDeleting.value = true;
+  workspaceDeletionError.value = '';
+  try {
+    if (workspace.value?.id !== workspaceId) throw new Error('工作区已切换，请重新确认删除');
+    await editing.flush();
+    if (!await store.deleteWorkspace(workspaceId)) throw new Error(store.fatal || '无法删除工作区，请稍后重试');
+    settingsPanel.value = false;
+    workspaceMenu.value = false;
+    if (native && !mobile) await closeSettingsWindow();
+  } catch (error) {
+    workspaceDeletionError.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    workspaceDeleting.value = false;
+  }
+}
+async function exportWorkspace(workspaceId: string) {
+  if (workspaceExporting.value || workspaceDeleting.value) return;
+  workspaceExporting.value = true;
+  workspaceExportError.value = '';
+  const assertCurrent = () => {
+    if (workspace.value?.id !== workspaceId) throw new Error('工作区已切换，请重新导出');
+  };
+  try {
+    assertCurrent();
+    await editing.flush();
+    if (!await store.flush()) throw new Error('还有未保存的修改，请处理保存错误后再导出');
+    assertCurrent();
+    await store.refresh();
+    assertCurrent();
+    const current = workspace.value!;
+    const blob = await workspaceArchive(current, workspaceAdapter, attachments?.readAttachment, assertCurrent);
+    const filename = workspaceArchiveName(current.name);
+    if (native) {
+      const { saveDocumentExport } = await import('./native-document-export');
+      await saveDocumentExport(blob, filename, 'zip');
+    } else downloadExport(blob, filename);
+  } catch (error) {
+    workspaceExportError.value = String(error instanceof Error ? error.message : error);
+  } finally { workspaceExporting.value = false; }
+}
 const settingsSnapshot = computed<SettingsSnapshot>(() => ({
   workspace: workspace.value
     ? {
+        id: workspace.value.id,
         name: workspace.value.name,
         path: workspace.value.path,
         readOnly: workspace.value.readOnly,
+        canDelete: workspace.value.canDelete,
       }
     : null,
+  activeFile: store.active ? { id: store.active.id, path: store.active.path } : null,
+  workspaceSettings: store.workspaceSettings,
+  workspacePages: workspace.value?.files.filter(file => file.kind === 'file' && isMarkdown(file.path) && !isWorkspaceInternalPath(file.path)).map(file => ({ id: file.id, path: file.path })) ?? [],
+  workspaceSettingsError: store.workspaceSettingsError,
+  workspaceSettingsSaving: store.workspaceSettingsSaving,
+  workspaceExporting: workspaceExporting.value,
+  workspaceExportError: workspaceExportError.value,
+  workspaceDeletionSupported: !!workspaceAdapter.deleteWorkspace,
+  workspaceDeleting: workspaceDeleting.value || store.busy,
+  workspaceDeletionError: workspaceDeletionError.value,
   mode: store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local',
   defaultSource: defaultSource.value,
   theme: theme.value,
@@ -2415,6 +2472,22 @@ function openSettings(page: SettingsPageId = 'appearance') {
   settingsPanel.value = true;
 }
 function handleSettingsCommand(command: SettingsCommand) {
+  if (command.type === 'workspace-delete') {
+    void deleteWorkspace(command.workspaceId);
+    return;
+  }
+  if (command.type === 'workspace-setting') {
+    void store.updateWorkspaceSettings(command.workspaceId, command.patch);
+    return;
+  }
+  if (command.type === 'workspace-settings-reload') {
+    void store.reloadWorkspaceSettings();
+    return;
+  }
+  if (command.type === 'workspace-export') {
+    void exportWorkspace(command.workspaceId);
+    return;
+  }
   if (command.type === 'ready') {
     settingsWindowVisible = true;
     void syncSettingsWindow();
@@ -2497,6 +2570,17 @@ function toggleWorkspaceMenu() {
   workspaceMenu.value = !workspaceMenu.value;
   if (workspaceMenu.value && store.isWeb) void store.refreshWorkspaces();
 }
+async function createNewWorkspace() {
+  if (store.busy) return;
+  menu.value = false;
+  workspaceMenu.value = false;
+  fileContextMenu.value = null;
+  directoryContextMenu.value = null;
+  settingsPanel.value = false;
+  modal.value = '';
+  await store.createWorkspace();
+  if (workspace.value) sidebarView.value = 'repository';
+}
 async function leaveWorkspace() {
   if (store.busy || !workspace.value) return;
   try {
@@ -2554,11 +2638,6 @@ async function submitModal() {
         modalDeleteContents.value,
       );
       selectActiveFileInTree();
-    } else if (kind === 'workspace') {
-      if (!input.value.trim()) throw new Error('请填写工作空间名称');
-      store.fatal = '';
-      await store.createWorkspace(input.value.trim());
-      if (store.fatal) throw new Error(store.fatal);
     } else {
       let path = input.value.trim();
       if (
@@ -2866,10 +2945,12 @@ onMounted(async () => {
     initializePageHistory();
     window.addEventListener('popstate', handlePagePopState);
   }
-  await store.initialize(initialPageRoute?.workspaceId);
+  if (props.createWorkspace) await createNewWorkspace();
+  else await store.initialize(initialPageRoute?.workspaceId ?? props.initialWorkspace);
   if (webPageRouting) {
     pageRouteReady = true;
-    await applyPageRoute();
+    if (props.createWorkspace) writePageRoute(true);
+    else await applyPageRoute();
   }
   if (native && !mobile) {
     unlistenSettingsCommand = await listen<SettingsCommand>(SETTINGS_COMMAND, ({ payload }) => {
@@ -3016,14 +3097,13 @@ watch(activeId, () => {
         @click="toggleSidebar"
       />
     </Transition>
-    <Transition name="sidebar">
-      <aside
-        v-if="workspace && sidebar && !detachedWindow"
-        class="sidebar"
-        aria-label="工作区侧栏"
-        :inert="!sidebar"
-        :aria-hidden="!sidebar"
-      >
+    <WorkspaceSidebar
+      v-if="workspace && !detachedWindow"
+      :key="workspace.id"
+      :open="sidebar"
+      :compact="compactPanes"
+      :content-element="mainColumn"
+    >
         <div class="sidebar-header">
           <div class="sidebar-brand-slot">
             <component
@@ -3048,6 +3128,7 @@ watch(activeId, () => {
           <ButtonVisibilityGroup
             v-slot="{ isVisible }"
             :items="sidebarHeaderItems"
+            :active="sidebar"
             preference-key="tano.preference.sidebarHiddenHeaderActions"
             group-class="sidebar-header-actions"
             label="侧栏顶部按钮"
@@ -3057,12 +3138,12 @@ watch(activeId, () => {
             <template v-for="view in extensionViews" :key="`header-${view.id}`">
               <component
                 :is="view.header"
-                v-if="view.header && isVisible(view.id)"
+                v-if="store.workspaceSettings.showCollaborationViews && view.header && isVisible(view.id)"
                 :actions="viewActions[view.id]"
               />
             </template>
             <button
-              v-if="isVisible('graph')"
+              v-if="store.workspaceSettings.showGraph && isVisible('graph')"
               type="button"
               class="icon-button"
               aria-label="打开关系图谱"
@@ -3073,7 +3154,7 @@ watch(activeId, () => {
               <GitFork :size="17" :stroke-width="1.6" />
             </button>
             <button
-              v-if="isVisible('plugins')"
+              v-if="store.workspaceSettings.showPlugins && isVisible('plugins')"
               type="button"
               class="icon-button"
               aria-label="打开插件标签页"
@@ -3088,6 +3169,7 @@ watch(activeId, () => {
         <SidebarNavigation
           v-slot="{ isVisible }"
           :items="sidebarNavigationItems"
+          :active="sidebar"
           @open="closeButtonVisibilityMenus"
         >
           <button
@@ -3104,7 +3186,7 @@ watch(activeId, () => {
             <span :aria-hidden="sidebarView !== 'repository'">仓库</span>
           </button>
           <button
-            v-if="isVisible('plan')"
+            v-if="store.workspaceSettings.showPlan && isVisible('plan')"
             type="button"
             class="sidebar-navigation-button"
             aria-label="计划"
@@ -3118,7 +3200,7 @@ watch(activeId, () => {
           </button>
           <template v-for="view in extensionViews" :key="view.id">
             <button
-              v-if="view.sidebar && isVisible(view.id)"
+              v-if="store.workspaceSettings.showCollaborationViews && view.sidebar && isVisible(view.id)"
               type="button"
               class="sidebar-navigation-button"
               :aria-label="view.label"
@@ -3147,7 +3229,7 @@ watch(activeId, () => {
             <span v-if="draggedEntry">放到工作区根目录</span>
             <WorkspaceSwitcher
               v-else
-              :active="sidebarView === 'repository' && !workspaceMenu && !modal && !settingsPanel"
+              :active="sidebar && sidebarView === 'repository' && !workspaceMenu && !modal && !settingsPanel"
               @open="closeButtonVisibilityMenus"
             />
             <div>
@@ -3208,6 +3290,7 @@ watch(activeId, () => {
         </div>
         <SidebarPlan
           v-show="sidebarView === 'plan'"
+          :active="sidebar && sidebarView === 'plan'"
           id="sidebar-plan-panel"
           :date="calendarDate"
           @select-date="openCalendar"
@@ -3419,7 +3502,7 @@ watch(activeId, () => {
               :title="workspace?.name ?? '选择工作区'"
               @click="toggleWorkspaceMenu"
             >
-              <span class="workspace-avatar"><BookOpen :size="15" /></span>
+              <span class="workspace-avatar"><WorkspaceIcon :icon="store.workspaceSettings.icon" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" :size="15" /></span>
               <span class="workspace-picker-text"
                 ><strong>{{ workspace?.name ?? '选择工作区' }}</strong></span
               >
@@ -3431,7 +3514,7 @@ watch(activeId, () => {
               class="dropdown compact-action-menu sidebar-popover workspace-dropdown"
             >
               <div class="workspace-menu-summary">
-                <span class="workspace-menu-avatar"><BookOpen :size="16" /></span>
+                <span class="workspace-menu-avatar"><WorkspaceIcon :icon="store.workspaceSettings.icon" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" :size="16" /></span>
                 <span class="workspace-menu-summary-text">
                   <strong>{{ workspace?.name ?? '选择工作区' }}</strong>
                   <small>{{
@@ -3445,7 +3528,7 @@ watch(activeId, () => {
                   }}</small>
                 </span>
                 <button
-                  v-if="!store.isWeb && workspace"
+                  v-if="!store.isWeb && workspace && !extensions.regions['workspace-menu-layout']"
                   class="workspace-menu-exit"
                   type="button"
                   aria-label="退出当前工作区"
@@ -3456,8 +3539,17 @@ watch(activeId, () => {
                   <LogOut :size="16" />
                 </button>
               </div>
-              <div class="menu-divider" />
-              <button @click="openSettings()"><Settings2 :size="16" />设置</button>
+              <component
+                :is="extensions.regions['workspace-menu-layout'] ?? 'div'"
+                :actions="extensions.regions['workspace-menu-layout'] ? extensionActions : undefined"
+              >
+              <div v-if="!extensions.regions['workspace-menu-layout']" class="menu-divider" />
+              <component
+                :is="extensions.regions['workspace-settings']"
+                v-if="extensions.regions['workspace-settings']"
+                :actions="extensionActions"
+              />
+              <button v-else-if="!extensions.regions['workspace-menu-layout']" @click="openSettings()"><Settings2 :size="16" />设置</button>
               <button v-if="workspace" :disabled="workspace.readOnly || busy" @click="openImport">
                 <ArrowDownToLine :size="16" />导入
               </button>
@@ -3472,15 +3564,6 @@ watch(activeId, () => {
                 <Files :size="16" />文档模板
               </button>
               <button @click="showObjects()"><Users :size="16" />工作区对象 · Level 2</button>
-              <button
-                v-if="workspace && localNative && !mobile"
-                @click="
-                  workspaceMenu = false;
-                  store.reveal();
-                "
-              >
-                <ExternalLink :size="16" />在资源管理器中显示
-              </button>
               <button @click="openSettings('about')">
                 <CircleHelp :size="16" />关于 Tano / 同页{{
                   updates.state.candidate ? ' · 有新版本' : ''
@@ -3495,8 +3578,7 @@ watch(activeId, () => {
               <div
                 v-if="
                   extensions.regions['mode-switch'] ||
-                  (mobile && workspace) ||
-                  (workspace && localNative) ||
+                  workspace ||
                   extensions.regions['workspace-history'] ||
                   extensions.regions['sign-out']
                 "
@@ -3517,16 +3599,7 @@ watch(activeId, () => {
                 <Trash2 :size="16" />手机回收站
               </button>
               <button
-                v-if="workspace && assistant.available"
-                @click="
-                  workspaceMenu = false;
-                  openAssistant();
-                "
-              >
-                <Bot :size="16" />Tano 助手
-              </button>
-              <button
-                v-if="workspace && localNative"
+                v-if="workspace"
                 @click="
                   workspaceMenu = false;
                   agentPanel = true;
@@ -3544,8 +3617,16 @@ watch(activeId, () => {
                 v-if="extensions.regions['sign-out']"
                 :actions="extensionActions"
               />
+              <button
+                v-if="extensions.regions['workspace-menu-layout'] && !store.isWeb && workspace"
+                :disabled="busy"
+                @click="leaveWorkspace"
+              >
+                <LogOut :size="16" />退出当前工作区
+              </button>
+              <template v-if="!extensions.regions['workspace-menu-layout']">
               <component
-                v-if="store.isWeb"
+                v-if="extensions.regions['workspace-menu']"
                 :is="extensions.regions['workspace-menu']"
                 :actions="extensionActions"
               />
@@ -3565,13 +3646,13 @@ watch(activeId, () => {
                   v-if="extensions.regions['local-menu-login']"
                   :actions="extensionActions"
                 />
-                <button v-if="mobile" :disabled="busy" @click="showModal('workspace')">
+                <button v-if="mobile" :disabled="busy" @click="createNewWorkspace">
                   <FolderPlus :size="16" />新建手机空间
                 </button>
                 <template v-if="store.recent.length || (!store.isDemo && !mobile)">
                   <div class="menu-divider" />
                   <div class="workspace-recent-heading">
-                    <span class="recent-label">最近工作空间</span>
+                    <span class="recent-label">{{ store.isDemo ? '最近工作空间' : '本地工作区' }}</span>
                     <button
                       v-if="!store.isDemo && !mobile"
                       type="button"
@@ -3598,14 +3679,21 @@ watch(activeId, () => {
                       store.openWorkspace(item.path);
                     "
                   >
-                    <span class="workspace-list-avatar">{{ item.name.slice(0, 1) }}</span>
+                    <span class="workspace-list-avatar"><WorkspaceIcon :icon="item.id === workspace?.id ? store.workspaceSettings.icon : item.icon" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" :size="16" /></span>
                     <span class="recent-name">{{ item.name }}</span>
                     <Check v-if="item.id === workspace?.id" :size="15" />
                   </button>
                 </template>
               </template>
+              </template>
+              </component>
             </div>
           </div>
+          <component
+            :is="extensions.regions['sidebar-footer']"
+            v-if="extensions.regions['sidebar-footer']"
+            :actions="extensionActions"
+          />
           <button
             class="icon-button sidebar-help"
             aria-label="帮助与快捷键"
@@ -3632,10 +3720,9 @@ watch(activeId, () => {
           @lostpointercapture="finishSidebarResize"
           @keydown="resizeSidebarWithKeyboard"
         />
-      </aside>
-    </Transition>
+    </WorkspaceSidebar>
 
-    <div class="main-column">
+    <div ref="mainColumn" class="main-column">
       <ReferenceGraphPopover
         v-if="referenceGraphTarget"
         v-model:opened="referenceGraphOpened"
@@ -3738,7 +3825,7 @@ watch(activeId, () => {
             >
               <div
                 v-if="
-                  (!tabsEnabled && (isVisible('back') || isVisible('forward'))) ||
+                  (native && !tabsEnabled && (isVisible('back') || isVisible('forward'))) ||
                   (!sidebar && !(native && !mobile && workspace))
                 "
                 class="topbar-navigation"
@@ -3756,7 +3843,7 @@ watch(activeId, () => {
                   <PanelLeftOpen :size="18" />
                 </button>
                 <button
-                  v-if="!tabsEnabled && isVisible('back')"
+                  v-if="native && !tabsEnabled && isVisible('back')"
                   type="button"
                   class="icon-button"
                   aria-label="后退"
@@ -3767,7 +3854,7 @@ watch(activeId, () => {
                   <ArrowLeft :size="16" :stroke-width="1.6" />
                 </button>
                 <button
-                  v-if="!tabsEnabled && isVisible('forward')"
+                  v-if="native && !tabsEnabled && isVisible('forward')"
                   type="button"
                   class="icon-button"
                   aria-label="前进"
@@ -3787,9 +3874,17 @@ watch(activeId, () => {
                 class="breadcrumb"
                 aria-label="当前位置"
               >
-                <span class="breadcrumb-workspace"
+                <span v-if="!store.isDemo" class="breadcrumb-workspace"
                   ><BookOpen :size="14" />{{ workspace?.name ?? 'Tano' }}</span
-                ><template v-if="pane.activeId === PLUGINS_TAB_ID"
+                ><span
+                  v-if="store.isDemo && isVisible('workspace-status')"
+                  class="demo-badge breadcrumb-demo-badge"
+                  title="浏览器演示 · 数据仅保存在本浏览器"
+                >
+                  <LockKeyhole v-if="workspace?.readOnly" :size="14" />
+                  {{ workspaceStatusLabel }}
+                </span>
+                <template v-if="pane.activeId === PLUGINS_TAB_ID"
                   ><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current"
                     >插件</span
                   ></template
@@ -3842,11 +3937,18 @@ watch(activeId, () => {
                   :actions="extensionActions"
                 />
                 <span
-                  v-if="isVisible('workspace-status') && workspaceStatusLabel"
+                  v-if="
+                    isVisible('workspace-status') &&
+                    workspaceStatusLabel &&
+                    (!store.isDemo ||
+                      !isVisible('breadcrumb') ||
+                      pane.activeId === CALENDAR_TAB_ID ||
+                      pane.activeId === GRAPH_TAB_ID)
+                  "
                   :class="store.isDemo ? 'demo-badge' : 'local-badge'"
+                  :title="store.isDemo ? '浏览器演示 · 数据仅保存在本浏览器' : undefined"
                 >
                   <LockKeyhole v-if="workspace?.readOnly" :size="14" />
-                  <span v-else-if="store.isDemo" />
                   <Globe2 v-else-if="store.isWeb" :size="14" />
                   {{ workspaceStatusLabel }}
                 </span>
@@ -4671,18 +4773,9 @@ watch(activeId, () => {
         </p>
         <div class="welcome-actions">
           <button
-            class="secondary-button"
-            @click="
-              plans.view = 'personal';
-              personalHome = true;
-            "
-          >
-            <CalendarDays :size="18" />个人计划
-          </button>
-          <button
             class="primary-button"
             :disabled="busy"
-            @click="store.isWeb ? showModal('workspace') : store.openWorkspace()"
+            @click="store.isWeb ? createNewWorkspace() : store.openWorkspace()"
           >
             <FolderOpen :size="18" />{{
               busy
@@ -4691,7 +4784,7 @@ watch(activeId, () => {
                   ? '创建工作区'
                   : mobile
                     ? '打开手机工作空间'
-                    : '本地仓库'
+                    : '打开文件夹'
             }}<ArrowRight :size="17" />
           </button>
           <component
@@ -4700,8 +4793,13 @@ watch(activeId, () => {
             :actions="extensionActions"
           />
         </div>
+        <component
+          :is="extensions.regions['welcome-recent']"
+          v-if="extensions.regions['welcome-recent']"
+          :actions="extensionActions"
+        />
         <div
-          v-if="!workspace && store.recent.length"
+          v-else-if="store.recent.length"
           class="recent-spaces"
           aria-label="最近工作空间"
         >
@@ -4712,12 +4810,18 @@ watch(activeId, () => {
             :disabled="busy"
             @click="store.openWorkspace(item.path)"
           >
-            <FolderOpen :size="16" /><span
-              ><strong>{{ item.name }}</strong
-              ><small>{{
-                store.isWeb ? '在线工作区' : mobile ? '保存在这台设备' : item.path
-              }}</small></span
-            ><ArrowRight :size="14" />
+            <span class="workspace-list-avatar">
+              <WorkspaceIcon
+                :icon="item.icon"
+                :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'"
+                :size="16"
+              />
+            </span>
+            <span class="recent-workspace-details">
+              <strong>{{ item.name }}</strong>
+              <small>{{ store.isWeb ? '在线工作区' : mobile ? '保存在这台设备' : item.path }}</small>
+            </span>
+            <ArrowRight :size="14" />
           </button>
         </div>
       </main>
@@ -4824,7 +4928,7 @@ watch(activeId, () => {
       @close="recyclePanel = false"
     />
     <AgentPanel
-      v-if="agentPanel && workspace && localNative"
+      v-if="agentPanel && workspace"
       :workspace-id="workspace.id"
       @close="agentPanel = false"
     />
@@ -4884,13 +4988,6 @@ watch(activeId, () => {
         showPlanEvent($event);
       "
     />
-    <PersonalPlanDialog
-      v-if="personalHome"
-      :date="calendarDate"
-      @close="personalHome = false"
-      @select-date="calendarDate = $event"
-      @select-event="showPlanEvent"
-    />
     <template v-for="view in extensionViews" :key="view.id">
       <component
         :is="view.overlay"
@@ -4902,6 +4999,20 @@ watch(activeId, () => {
       v-if="settingsPanel"
       :workspace="workspace"
       :extra-pages="extensions.settingsPages"
+      :workspace-settings="store.workspaceSettings"
+      :workspace-pages="settingsSnapshot.workspacePages"
+      :workspace-settings-error="store.workspaceSettingsError"
+      :workspace-settings-saving="store.workspaceSettingsSaving"
+      :workspace-exporting="workspaceExporting"
+      :workspace-export-error="workspaceExportError"
+      :workspace-deletion-supported="settingsSnapshot.workspaceDeletionSupported"
+      :workspace-deleting="settingsSnapshot.workspaceDeleting"
+      :workspace-deletion-error="workspaceDeletionError"
+      @workspace-delete="deleteWorkspace"
+      @workspace-setting="store.updateWorkspaceSettings"
+      @workspace-settings-reload="store.reloadWorkspaceSettings"
+      @workspace-export="exportWorkspace"
+      :active-file="settingsSnapshot.activeFile"
       :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'"
       :native="native"
       :mobile="mobile"
@@ -4941,7 +5052,11 @@ watch(activeId, () => {
       @update:visual-font-size="visualFontSize = $event"
       @update:source-font-size="sourceFontSize = $event"
       @action="settingsAction"
-    />
+    >
+      <template #workspace-members-export>
+        <component v-if="extensions.regions['workspace-members-export']" :is="extensions.regions['workspace-members-export']" :workspace="workspace" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" />
+      </template>
+    </SettingsPanel>
     <div v-if="fatal || store.sessionError" class="error-toast" role="alert">
       <AlertTriangle :size="18" /><span>{{ fatal || store.sessionError }}</span
       ><button v-if="fatal" class="icon-button" aria-label="关闭通知" @click="fatal = ''">
@@ -5067,39 +5182,29 @@ watch(activeId, () => {
               }}
             </p>
             <label for="file-name">{{
-              modal === 'workspace'
-                ? '工作空间名称'
-                : modal === 'rename' && modalTarget?.kind === 'directory'
-                  ? '文件夹路径'
-                  : modal === 'rename' && modalTarget && !isMarkdown(modalTarget.path)
-                    ? '文件路径'
-                    : '文档路径'
+              modal === 'rename' && modalTarget?.kind === 'directory'
+                ? '文件夹路径'
+                : modal === 'rename' && modalTarget && !isMarkdown(modalTarget.path)
+                  ? '文件路径'
+                  : '文档路径'
             }}</label
             ><input
               id="file-name"
               ref="inputEl"
               v-model="input"
               :placeholder="
-                modal === 'workspace'
-                  ? '例如：研究笔记'
-                  : modal === 'rename' && modalTarget?.kind === 'directory'
-                    ? '例如：灵感'
-                    : '例如：我的新想法.md'
+                modal === 'rename' && modalTarget?.kind === 'directory'
+                  ? '例如：灵感'
+                  : '例如：我的新想法.md'
               "
               autocomplete="off"
-              :maxlength="modal === 'workspace' ? 120 : 220"
+              maxlength="220"
             />
             <p class="input-hint">
               {{
-                modal === 'workspace'
-                  ? store.isWeb
-                    ? '工作区及文档保存在服务器；不会自动复制到本地文件夹。'
-                    : mobile
-                      ? '保存在当前手机应用内。'
-                      : '本地文件夹是此工作区的唯一保存源。'
-                  : store.isWeb
-                    ? '可使用「项目/新想法.md」创建文档及所在目录。'
-                    : '相对于工作空间，可使用已有目录，例如「项目/新想法.md」。'
+                store.isWeb
+                  ? '可使用「项目/新想法.md」创建文档及所在目录。'
+                  : '相对于工作空间，可使用已有目录，例如「项目/新想法.md」。'
               }}
             </p></template
           >
@@ -5124,9 +5229,7 @@ watch(activeId, () => {
                     ? '确认移除'
                     : modal === 'rename'
                       ? '保存名称'
-                      : modal === 'workspace'
-                        ? '创建空间'
-                        : '创建文档'
+                      : '创建文档'
               }}<ArrowRight v-if="!modalBusy" :size="16" />
             </button>
           </div>

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "id": "e82f91",
+  "type": "person",
+  "name": "测试人物",
+  "description": "用于检查人物引用与改名",
+  "archived": false,
+  "properties": { "role": "测试者", "experienceYears": 3, "available": true }
+}

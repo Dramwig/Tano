@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "id": "a82f91",
+  "type": "person",
+  "name": "Alex Morgan",
+  "description": "Tests Person references and renaming",
+  "archived": false,
+  "properties": {
+    "role": "Tester",
+    "experienceYears": 3,
+    "available": true
+  }
+}

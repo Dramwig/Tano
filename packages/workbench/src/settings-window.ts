@@ -2,16 +2,18 @@ import { emitTo, listen } from '@tauri-apps/api/event';
 import { PhysicalPosition } from '@tauri-apps/api/dpi';
 import { Window, getCurrentWindow, monitorFromPoint } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
-import type { Workspace } from '@tano/protocol';
+import type { SettingsPageContext } from './runtime';
 import type { EditorPreferences, WorkspaceCapabilities } from '@tano/editor/runtime';
 import type { CapabilityPatch } from './workspace-capabilities';
+import type { WorkspaceSettings, WorkspaceSettingsPatch } from './workspace-settings';
 import type { ThemePreference } from './theme';
 import type { VisualFontChoice } from './editor-font';
 import type { ToolbarMode } from './toolbar-preference';
 import type { PageTitleSource } from './page-title-source';
 import type { UpdateCandidate, UpdatePhase, UpdateProgress, UpdateStatus } from './updates/controller';
 
-export type SettingsPageId = 'preferences' | 'appearance' | 'editing' | 'assistant' | 'workspace' | 'about';
+/** Built-in pages and IDs registered by a product's settings extension. */
+export type SettingsPageId = 'preferences' | 'appearance' | 'editing' | 'assistant' | 'workspace' | 'about' | (string & {});
 export type SettingsAction =
   'open-folder' | 'switch-mode' | 'reveal' | 'agent' | 'history' | 'recycle' |
   'sign-out';
@@ -32,9 +34,16 @@ export interface SettingsValues {
   editorPreferences: EditorPreferences;
 }
 
-export interface SettingsSnapshot extends SettingsValues {
-  workspace: Pick<Workspace, 'name' | 'path' | 'readOnly'> | null;
-  mode: 'demo' | 'web' | 'local';
+export interface SettingsSnapshot extends SettingsValues, SettingsPageContext {
+  workspaceSettings: WorkspaceSettings;
+  workspacePages: { id: string; path: string }[];
+  workspaceSettingsError: string;
+  workspaceSettingsSaving: boolean;
+  workspaceExporting: boolean;
+  workspaceExportError: string;
+  workspaceDeletionSupported?: boolean;
+  workspaceDeleting?: boolean;
+  workspaceDeletionError?: string;
   historyEnabled: boolean;
   capabilities: WorkspaceCapabilities;
   capabilityError: string;
@@ -55,6 +64,10 @@ export type SettingsCommand =
   | { type: 'change'; key: keyof SettingsValues; value: SettingsValues[keyof SettingsValues] }
   | { type: 'assistant-refresh' }
   | { type: 'capability'; value: CapabilityPatch }
+  | { type: 'workspace-setting'; workspaceId: string; patch: WorkspaceSettingsPatch }
+  | { type: 'workspace-settings-reload' }
+  | { type: 'workspace-export'; workspaceId: string }
+  | { type: 'workspace-delete'; workspaceId: string }
   | { type: 'action'; value: SettingsAction }
   | { type: 'update' };
 

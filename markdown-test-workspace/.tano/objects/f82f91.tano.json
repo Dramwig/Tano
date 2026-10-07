@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "id": "f82f91",
+  "type": "task",
+  "name": "检查渲染",
+  "description": "历史任务类型的引用兼容示例",
+  "archived": false,
+  "properties": { "status": "todo", "priority": 2, "done": false }
+}

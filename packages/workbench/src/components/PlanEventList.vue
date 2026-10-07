@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CalendarDays, CalendarPlus } from 'lucide-vue-next';
+import { CalendarDays } from 'lucide-vue-next';
 import type { ObjectRecord } from '../workspace-objects';
 import { hasEventTime, isCheckableEvent, isEventCompleted, localDayKey } from '../calendar';
 import { planKey, planSourceLabel } from '../personal-plans';
@@ -9,13 +9,11 @@ defineProps<{
   date: Date;
   disabled: boolean;
   pending: string[];
-  unscheduled?: boolean;
   canEdit?: (record: ObjectRecord) => boolean;
 }>();
 const emit = defineEmits<{
   select: [id: string];
   complete: [record: ObjectRecord, completed: boolean];
-  schedule: [record: ObjectRecord];
 }>();
 function complete(record: ObjectRecord, event: Event) {
   const input = event.target as HTMLInputElement;
@@ -65,17 +63,6 @@ function eventTime(record: ObjectRecord, day: Date) {
           >{{ planSourceLabel(record) }} · {{ isEventCompleted(record) ? '已完成 · ' : '' }}{{ eventTime(record, date) }}{{ record.object.properties.due ? ` · 截止 ${record.object.properties.due}` : '' }}</small
         >
       </button>
-      <button
-        v-if="unscheduled && !isEventCompleted(record)"
-        type="button"
-        class="plan-schedule"
-        :title="`安排到 ${date.getMonth() + 1} 月 ${date.getDate()} 日`"
-        :aria-label="`将 ${record.object.name} 安排到 ${localDayKey(date)}`"
-        :disabled="disabled || canEdit?.(record) === false || pending.includes(planKey(record))"
-        @click="emit('schedule', record)"
-      >
-        <CalendarPlus :size="15" />
-      </button>
     </li>
   </ul>
 </template>
@@ -97,11 +84,41 @@ function eventTime(record: ObjectRecord, day: Date) {
   background: var(--hover);
 }
 .plan-events input {
+  appearance: none;
+  display: grid;
+  place-items: center;
   flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
-  margin: 3px 0 0;
-  accent-color: var(--green);
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  padding: 0;
+  border: 1.5px solid var(--control-border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--paper);
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+.plan-events input::after {
+  content: '';
+  width: 7px;
+  height: 4px;
+  border-left: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-1px) rotate(-45deg);
+  opacity: 0;
+}
+.plan-events input:hover:not(:disabled):not(:checked) {
+  border-color: var(--green);
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+}
+.plan-events input:checked {
+  border-color: var(--green);
+  background: var(--green);
+}
+.plan-events input:checked::after {
+  opacity: 1;
 }
 .plan-event-icon {
   flex: 0 0 auto;
@@ -132,20 +149,6 @@ function eventTime(record: ObjectRecord, day: Date) {
 .completed .plan-event-detail strong {
   color: var(--muted);
   text-decoration: line-through;
-}
-.plan-schedule {
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border-radius: 4px;
-  color: var(--muted);
-}
-.plan-schedule:hover {
-  color: var(--green);
-  background: var(--surface);
 }
 button:focus-visible,
 input:focus-visible {

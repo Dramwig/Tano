@@ -251,7 +251,7 @@ async function choosePrecision(label: '全天事件' | '精确时间') {
   expect(buttons[0]!.textContent).toBe(label === '全天事件' ? '切换为精确时间' : '切换为全天事件');
 }
 
-it('creates, completes, reopens and schedules one persisted event while the sidebar follows the selected date', async () => {
+it('creates, completes, reopens and opens one persisted event while the sidebar reflects date changes', async () => {
   await quickAdd('整理资料');
   submit();
   await vi.waitFor(() => expect(store.objects).toHaveLength(1));
@@ -261,12 +261,20 @@ it('creates, completes, reopens and schedules one persisted event while the side
     properties: { checkable: true, completed: false },
   });
   expect(section('未安排任务').textContent).toContain('整理资料');
+  const details = section('未安排任务').querySelectorAll<HTMLButtonElement>('li button');
+  expect(details).toHaveLength(1);
+  details[0]!.click();
+  expect(selectEvent).toHaveBeenCalledWith(id);
   control<HTMLInputElement>('完成：整理资料').click();
   await vi.waitFor(() => expect(store.objects[0]!.object.properties.completed).toBe(true));
   expect(control<HTMLInputElement>('标记未完成：整理资料').checked).toBe(true);
   control<HTMLInputElement>('标记未完成：整理资料').click();
   await vi.waitFor(() => expect(store.objects[0]!.object.properties.completed).toBe(false));
-  control<HTMLButtonElement>('将 整理资料 安排到 2026-09-29').click();
+  const record = store.objects[0]!;
+  await usePlanStore().update(record, {
+    ...record.object,
+    properties: { ...record.object.properties, date: '2026-09-29' },
+  });
   await vi.waitFor(() => expect(store.objects[0]!.object.properties.date).toBe('2026-09-29'));
   expect(store.objects).toHaveLength(1);
   expect(store.objects[0]!.object.id).toBe(id);
@@ -529,7 +537,6 @@ it('keeps workspace records read-only while allowing creation in the independent
   await nextTick();
   expect(control<HTMLButtonElement>('添加未安排任务').disabled).toBe(false);
   expect(control<HTMLInputElement>('完成：旧接口新任务').disabled).toBe(true);
-  expect(control<HTMLButtonElement>('将 旧接口新任务 安排到 2026-09-29').disabled).toBe(true);
   await quickAdd('只读项目之外的个人任务');
   control<HTMLButtonElement>('保存到').click();
   await nextTick();

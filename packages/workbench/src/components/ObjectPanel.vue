@@ -149,6 +149,7 @@ const disabled = computed(
 );
 const filtered = computed(() =>
   records.value.filter(({ object }) =>
+    (props.personal || store.workspaceSettings.showPeopleDirectory || object.type !== 'person') &&
     `${object.name} ${referenceTypeLabel(object.type)}`
       .toLowerCase()
       .includes(search.value.toLowerCase()),

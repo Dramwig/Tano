@@ -15,9 +15,16 @@ export interface AttachmentService {
     path: string; name: string; image: boolean; url: string;
   }>;
   exportAttachment(workspaceId: string, path: string): Promise<void>;
+  readAttachment?(workspaceId: string, path: string): Promise<Uint8Array>;
 }
 
-export const nativeAttachments: AttachmentService = { imageUrl, importAttachment, exportAttachment };
+export const nativeAttachments: AttachmentService = {
+  imageUrl, importAttachment, exportAttachment,
+  async readAttachment(workspaceId, path) {
+    const content = await invoke<string>('read_attachment', { workspaceId, path });
+    return Uint8Array.from(atob(content), char => char.charCodeAt(0));
+  },
+};
 
 export function imageUrl(
   workspace: Workspace | null,

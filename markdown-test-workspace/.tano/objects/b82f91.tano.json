@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "id": "b82f91",
+  "type": "task",
+  "name": "Review rendering",
+  "description": "Tests Task references",
+  "archived": false,
+  "properties": {
+    "status": "todo",
+    "priority": 2,
+    "done": false
+  }
+}

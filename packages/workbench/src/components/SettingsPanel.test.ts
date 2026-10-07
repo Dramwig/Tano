@@ -4,6 +4,7 @@ import { createApp, defineComponent, h, nextTick, ref } from 'vue';
 import type { App } from 'vue';
 import SettingsPanel from './SettingsPanel.vue';
 import type { EditorPreferences } from '@tano/editor/runtime';
+import type { SettingsPageContext } from '../runtime';
 import { parsePageTitleSource, type PageTitleSource } from '../page-title-source';
 
 vi.mock('./UpdatePanel.vue', () => ({
@@ -24,6 +25,14 @@ let pageTitleSource = ref<PageTitleSource>(parsePageTitleSource(''));
 let visualFontSize = ref(16);
 let sourceFontSize = ref(14);
 let toolbarMode = ref<'selection' | 'fixed' | 'left' | 'right'>('selection');
+let workspaceMode = ref<'demo' | 'web' | 'local'>('local');
+let hostWorkspace = ref<SettingsPageContext['workspace']>(null);
+let hostFile = ref<SettingsPageContext['activeFile']>(null);
+const ExtraSettings = defineComponent({
+  props: ['mode', 'workspace', 'activeFile'],
+  setup: props => () => h('div', { class: 'extra-settings-mode' },
+    `${props.mode}:${props.workspace?.id ?? ''}:${props.activeFile?.id ?? ''}`),
+});
 
 async function openPage(label: string) {
   const button = [...root.querySelectorAll<HTMLButtonElement>('.settings-nav button')].find(
@@ -47,13 +56,19 @@ beforeEach(() => {
   visualFontSize = ref(16);
   sourceFontSize = ref(14);
   toolbarMode = ref('selection');
+  workspaceMode = ref('local');
+  hostWorkspace = ref(null);
+  hostFile = ref(null);
   root = document.createElement('div');
   document.body.append(root);
   app = createApp(
     defineComponent(() => () =>
       h(SettingsPanel, {
-        workspace: null,
-        mode: 'local',
+        workspace: hostWorkspace.value,
+        workspaceDeletionSupported: true,
+        activeFile: hostFile.value,
+        mode: workspaceMode.value,
+        extraPages: [{ id: 'extra', label: '扩展设置', group: '个人偏好', terms: '', component: ExtraSettings }],
         native: true,
         mobile: false,
         defaultSource: false,
@@ -94,6 +109,23 @@ it('shows the Markdown reveal switch enabled and emits a change', async () => {
   expect(toggle.getAttribute('aria-checked')).toBe('true');
   toggle.click();
   expect(revealUpdates).toEqual([false]);
+});
+it('shows registration-only deletion in local workspace settings and omits it from the browser demo', async () => {
+  hostWorkspace.value = { id: 'local-workspace', name: '本地', path: 'C:/Notes', canDelete: true };
+  await openPage('工作区');
+  expect(root.querySelector('.workspace-deletion-settings')?.textContent).toContain('本地仓库注册');
+  workspaceMode.value = 'demo'; await nextTick();
+  expect(root.querySelector('.workspace-deletion-settings')).toBeNull();
+});
+
+it('passes host workspace identity and file context to extension pages and clears them when the host changes', async () => {
+  workspaceMode.value = 'web';
+  hostWorkspace.value = { id: 'online-workspace', name: '在线', path: 'web' };
+  hostFile.value = { id: 'article-1', path: '文章.md' };
+  await openPage('扩展设置');
+  expect(root.querySelector('.extra-settings-mode')?.textContent).toBe('web:online-workspace:article-1');
+  workspaceMode.value = 'local'; hostWorkspace.value = null; hostFile.value = null; await nextTick();
+  expect(root.querySelector('.extra-settings-mode')?.textContent).toBe('local::');
 });
 
 it('offers all toolbar positions as a device preference even without a workspace', async () => {

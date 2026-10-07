@@ -41,6 +41,7 @@ class MemoryWorkspace implements WorkspaceAdapter {
     return this.refresh();
   }
   async close(_workspaceId: string) {}
+  async deleteWorkspace(_workspaceId: string) { this.files.clear(); this.session = null; }
   async refresh(): Promise<Workspace> {
     return {
       id: 'test',
@@ -377,6 +378,47 @@ describe('workspace file reconciliation', () => {
     expect(store.active?.content).toBe('unsaved');
     expect(backend.watchCallback).toBeDefined();
     expect(close).not.toHaveBeenCalled();
+  });
+  it('deletes only the confirmed workspace after saving, and releases its session and watcher', async () => {
+    const remove = vi.spyOn(backend, 'deleteWorkspace');
+    store.workspace!.canDelete = true;
+    store.recent = [{ id: 'test', name: 'test', path: 'test', openedAt: 1 }];
+    store.edit('saved before deletion');
+    remove.mockImplementation(async () => {
+      expect(backend.files.get('note.md')?.content).toBe('saved before deletion');
+      backend.files.clear(); backend.session = null;
+    });
+    expect(await store.deleteWorkspace('test')).toBe(true);
+    expect(remove).toHaveBeenCalledWith('test');
+    expect(store.workspace).toBeNull();
+    expect(store.tabs).toEqual([]);
+    expect(store.recent).toEqual([]);
+    expect(backend.session).toBeNull();
+    expect(backend.watchCallback).toBeUndefined();
+  });
+  it('rejects deletion with a stale workspace ID or without owner permission', async () => {
+    const remove = vi.spyOn(backend, 'deleteWorkspace');
+    store.workspace!.canDelete = true;
+    expect(await store.deleteWorkspace('previous-workspace')).toBe(false);
+    store.workspace!.canDelete = false;
+    expect(await store.deleteWorkspace('test')).toBe(false);
+    expect(remove).not.toHaveBeenCalled();
+    expect(store.workspace?.id).toBe('test');
+  });
+  it('retains the current workspace and watcher when saving or deletion fails', async () => {
+    const remove = vi.spyOn(backend, 'deleteWorkspace');
+    store.workspace!.canDelete = true;
+    store.edit('unsaved'); backend.failWrites = true;
+    expect(await store.deleteWorkspace('test')).toBe(false);
+    expect(remove).not.toHaveBeenCalled();
+    expect(store.active?.content).toBe('unsaved');
+    backend.failWrites = false;
+    remove.mockRejectedValue(new Error('连接中断'));
+    expect(await store.deleteWorkspace('test')).toBe(false);
+    expect(store.fatal).toBe('连接中断');
+    expect(store.workspace?.id).toBe('test');
+    expect(backend.watchCallback).toBeDefined();
+    expect(store.busy).toBe(false);
   });
 
   it('reuses the focused tab for the graph and documents and restores the graph from the session', async () => {

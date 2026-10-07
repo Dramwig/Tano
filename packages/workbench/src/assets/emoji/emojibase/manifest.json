@@ -1,0 +1,16 @@
+{
+  "package": "emojibase-data",
+  "version": "17.0.0",
+  "source": "https://github.com/milesj/emojibase",
+  "locales": [
+    "zh",
+    "en"
+  ],
+  "emojiCount": 1914,
+  "inputs": {
+    "package.json": "bf331a49d67b4264914cbedc0a226a64e970c76bf9adfecbd37beb8e521baecc",
+    "zh/data.json": "ab26566248ccb4e991c6314a0b98e07daa38325bf44bc32260a6502f4cd6cb37",
+    "en/data.json": "ed014f1049bd370c5794f815850156196ac382850f51c3e9f6a9e83553fb3f01",
+    "LICENSE": "5c4e1582dcae9429a5d00ec0a64185c3a711f9757b2308fdf275d90b120f6149"
+  }
+}

@@ -1,16 +1,17 @@
 import { getActivePinia } from 'pinia';
 import type { Pinia } from 'pinia';
 import type { Component } from 'vue';
-import type { WorkspaceAdapter, AssistantTransport, WorkspaceObject } from '@tano/protocol';
+import type { WorkspaceAdapter, AssistantTransport, WorkspaceObject, Workspace, FileEntry } from '@tano/protocol';
 import type { EditorExtension } from '@tano/editor/extension';
 import type { ObjectStorage } from './workspace-objects';
 import type { CommentAuthor } from './workspace-comments';
 import type { AttachmentService } from './attachments';
+import type { SettingsPageId } from './settings-window';
 
 export interface WorkbenchActions {
   closeMenus(): void;
   createWorkspace(): void;
-  openSettings(page?: 'preferences' | 'appearance' | 'editing' | 'assistant' | 'workspace' | 'about'): void;
+  openSettings(page?: SettingsPageId): void;
   showDiff(value: {title: string; before: string; after: string}): void;
 }
 export interface EditingSession {
@@ -21,6 +22,13 @@ export interface EditingSession {
   suspendAll(): Promise<void>;
   dispose(): Promise<void>;
 }
+/** Host metadata shared with settings pages; no document content or window-local store. */
+export interface SettingsPageContext {
+  mode: 'demo' | 'web' | 'local';
+  workspace: Pick<Workspace, 'id' | 'name' | 'path' | 'readOnly' | 'canDelete'> | null;
+  activeFile: Pick<FileEntry, 'id' | 'path'> | null;
+}
+/** Components receive SettingsPageContext props, including in a separate settings window. */
 export interface SettingsPage {
   id: string; label: string; group: string; terms: string; component: Component;
 }
@@ -52,6 +60,7 @@ export interface WorkbenchObjectDetailsProps {
 }
 export interface WorkbenchExtensions {
   editing: EditingSession;
+  /** workspace-menu-layout can wrap the built-in workspace actions through its default slot. */
   regions: Record<string, Component>;
   views?: readonly WorkbenchView[];
   /** Receives WorkbenchObjectDetailsProps for a saved workspace object. */

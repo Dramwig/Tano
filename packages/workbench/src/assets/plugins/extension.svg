@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="background" x1="64" y1="0" x2="64" y2="128" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#92A8C8" />
+      <stop offset="1" stop-color="#587498" />
+    </linearGradient>
+    <radialGradient
+      id="light"
+      cx="0"
+      cy="0"
+      r="1"
+      gradientTransform="translate(24 4) rotate(60) scale(112)"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop stop-color="#DEE9FF" stop-opacity=".4" />
+      <stop offset="1" stop-color="#DEE9FF" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="piece" x1="45" y1="27" x2="83" y2="102" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF" />
+      <stop offset="1" stop-color="#E1EAF7" />
+    </linearGradient>
+  </defs>
+  <path
+    d="M44 0H84C116 0 128 12 128 44V84C128 116 116 128 84 128H44C12 128 0 116 0 84V44C0 12 12 0 44 0Z"
+    fill="url(#background)"
+  />
+  <path
+    d="M44 0H84C116 0 128 12 128 44V84C128 116 116 128 84 128H44C12 128 0 116 0 84V44C0 12 12 0 44 0Z"
+    fill="url(#light)"
+  />
+  <path
+    d="M37 45H54V39C54 33 58 29 64 29C70 29 74 33 74 39V45H91C94 45 96 47 96 50V67H90C84 67 80 71 80 77C80 83 84 87 90 87H96V100C96 103 94 105 91 105H74V99C74 93 70 89 64 89C58 89 54 93 54 99V105H37C34 105 32 103 32 100V87H38C44 87 48 83 48 77C48 71 44 67 38 67H32V50C32 47 34 45 37 45Z"
+    fill="#263F62"
+    fill-opacity=".18"
+  />
+  <path
+    d="M37 41H54V35C54 29 58 25 64 25C70 25 74 29 74 35V41H91C94 41 96 43 96 46V63H90C84 63 80 67 80 73C80 79 84 83 90 83H96V96C96 99 94 101 91 101H74V95C74 89 70 85 64 85C58 85 54 89 54 95V101H37C34 101 32 99 32 96V83H38C44 83 48 79 48 73C48 67 44 63 38 63H32V46C32 43 34 41 37 41Z"
+    fill="url(#piece)"
+  />
+  <path
+    d="M37 46H51M59 36C59 33 61 31 64 31"
+    stroke="#FFF"
+    stroke-opacity=".8"
+    stroke-width="3"
+    stroke-linecap="round"
+  />
+  <path
+    d="M44 .75H84C115.5.75 127.25 12.5 127.25 44V84C127.25 115.5 115.5 127.25 84 127.25H44C12.5 127.25.75 115.5.75 84V44C.75 12.5 12.5.75 44 .75Z"
+    stroke="#FFF"
+    stroke-opacity=".22"
+    stroke-width="1.5"
+  />
+</svg>

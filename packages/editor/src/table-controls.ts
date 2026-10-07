@@ -53,6 +53,7 @@ export function tableControls(readonly: () => boolean) {
       insertionLine.hidden = true;
       const menu = createEditorPanel('div', 'tano-table-menu compact-action-menu', '表格操作');
       menu.setAttribute('role', 'menu');
+      menu.tabIndex = -1;
       const items = document.createElement('div');
       const palette = createEditorPanel('div', 'tano-table-color-menu compact-action-menu', '表格颜色');
       palette.setAttribute('role', 'menu');
@@ -227,9 +228,9 @@ export function tableControls(readonly: () => boolean) {
             insertionLine.hidden = false;
             insertionLine.style.transform = column ? 'translateX(-50%)' : 'translateY(-50%)';
             Object.assign(insertionLine.style, column ? {
-              left: `${boundary}px`, top: `${g.top}px`, width: '2px', height: `${g.bottom - g.top}px`,
+              left: `${boundary}px`, top: `${g.top}px`, width: 'var(--tano-table-stroke-width, 3px)', height: `${g.bottom - g.top}px`,
             } : {
-              left: `${g.left}px`, top: `${boundary}px`, width: `${g.right - g.left}px`, height: '2px',
+              left: `${g.left}px`, top: `${boundary}px`, width: `${g.right - g.left}px`, height: 'var(--tano-table-stroke-width, 3px)',
             });
           }
         }
@@ -438,7 +439,7 @@ export function tableControls(readonly: () => boolean) {
         grip.setAttribute('aria-expanded', 'true');
         announceEditorPanel(host, grip);
         stopPanel = activateEditorPanel({ panel: menu, anchor: grip, position: positionMenu, close });
-        items.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+        menu.focus({ preventScroll: true });
       };
       for (const axis of ['row', 'column'] as const) {
         const grip = grips[axis];
@@ -491,9 +492,9 @@ export function tableControls(readonly: () => boolean) {
           const rect = dom?.getBoundingClientRect();
           marker.hidden = !overTable || to === pending.target.index || !rect;
           if (g && rect) Object.assign(marker.style, axis === 'row' ? {
-            left: `${g.left}px`, top: `${to > pending.target.index ? rect.bottom : rect.top}px`, width: `${g.right - g.left}px`, height: '2px',
+            left: `${g.left}px`, top: `${to > pending.target.index ? rect.bottom : rect.top}px`, width: `${g.right - g.left}px`, height: 'var(--tano-table-stroke-width, 3px)',
           } : {
-            left: `${to > pending.target.index ? rect.right : rect.left}px`, top: `${g.top}px`, width: '2px', height: `${g.bottom - g.top}px`,
+            left: `${to > pending.target.index ? rect.right : rect.left}px`, top: `${g.top}px`, width: 'var(--tano-table-stroke-width, 3px)', height: `${g.bottom - g.top}px`,
           });
           return;
         }

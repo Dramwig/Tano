@@ -17,6 +17,7 @@ function mountPanel(objects: ObjectRecord[] = [], selectedId?: string, visible =
   const store = reactive({
     workspace: { id: 'ws', readOnly: false },
     capabilities: { features: { objectReferences: true } },
+    workspaceSettings: { showPeopleDirectory: true },
     objectDefinitions: coreObjectTypes,
     objects,
     objectErrors: [],
@@ -194,6 +195,7 @@ it('retains an object draft across workspace scans and selects the saved object'
   const store = reactive({
     workspace: { id: 'ws', readOnly: false },
     capabilities: { features: { objectReferences: true } },
+    workspaceSettings: { showPeopleDirectory: true },
     objects: [] as ObjectRecord[],
     objectDefinitions: coreObjectTypes,
     referenceTargets: [],

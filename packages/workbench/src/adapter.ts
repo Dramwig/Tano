@@ -29,6 +29,13 @@ export const native = isTauri();
 import { mobile } from './platform';
 const DEMO_KEY = 'tano.demo.v2';
 type DemoFiles = Record<string, { id: string; content: string; modified: number }>;
+export interface DemoOptions {
+  files?: Record<string, string>;
+  storageKey?: string;
+  name?: string;
+  workspaceId?: string;
+  workspacePath?: string;
+}
 
 export async function sha256(content: string) {
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(content));
@@ -39,14 +46,35 @@ export class DemoAdapter implements WorkspaceAdapter {
   readonly mode = 'demo' as const;
   private files: DemoFiles;
   private folders: string[] = ['项目', '研究'];
-  constructor() {
+  private readonly storageKey: string;
+  private readonly workspaceName: string;
+  private readonly workspaceId: string;
+  private readonly workspacePath: string;
+  constructor(options: DemoOptions = {}) {
+    this.storageKey = options.storageKey ?? DEMO_KEY;
+    this.workspaceName = options.name ?? '我的工作空间';
+    this.workspaceId = options.workspaceId ?? 'demo';
+    this.workspacePath = options.workspacePath ?? '浏览器演示 · 数据仅保存在本浏览器';
+    const seed = options.files ?? demoFiles;
+    if (options.files) {
+      const folders = new Set<string>();
+      for (const path of Object.keys(seed)) {
+        let folder = parentPath(path);
+        while (folder) { folders.add(folder); folder = parentPath(folder); }
+      }
+      this.folders = [...folders];
+    }
     let saved: { files: DemoFiles; folders: string[] } | null = null;
     try {
-      saved = JSON.parse(localStorage.getItem(DEMO_KEY) ?? 'null');
+      saved = JSON.parse(localStorage.getItem(this.storageKey) ?? 'null');
     } catch {
       /* A corrupt demo cache is replaceable. */
     }
     const initialIds = new Set<string>();
+    for (const [path, content] of Object.entries(seed)) {
+      if (!isObjectPath(path)) continue;
+      try { initialIds.add(parseObject(content).id); } catch { /* Invalid objects remain visible. */ }
+    }
     const initialId = () => {
       const id = newShortId(initialIds);
       initialIds.add(id);
@@ -55,19 +83,21 @@ export class DemoAdapter implements WorkspaceAdapter {
     this.files =
       saved?.files ??
       Object.fromEntries(
-        Object.entries(demoFiles).map(([path, content]) => [
+        Object.entries(seed).map(([path, content]) => [
           path,
           { id: initialId(), content, modified: Date.now() },
         ]),
       );
     this.folders = saved?.folders ?? this.folders;
+    // Seeded demos need stable file IDs even before their first edit or session save.
+    if (options.files && !saved?.files) this.persist();
   }
   private persist() {
-    localStorage.setItem(DEMO_KEY, JSON.stringify({ files: this.files, folders: this.folders }));
+    localStorage.setItem(this.storageKey, JSON.stringify({ files: this.files, folders: this.folders }));
   }
   private async rememberIds(occupied: string[] = [], allocate = false) {
     const reserve = () => {
-      const used = new Set<string>(JSON.parse(localStorage.getItem(`${DEMO_KEY}.ids`) ?? '[]'));
+      const used = new Set<string>(JSON.parse(localStorage.getItem(`${this.storageKey}.ids`) ?? '[]'));
       for (const id of [...occupied, ...Object.values(this.files).map((file) => file.id)])
         used.add(id);
       for (const [path, file] of Object.entries(this.files)) {
@@ -80,10 +110,10 @@ export class DemoAdapter implements WorkspaceAdapter {
       }
       const id = allocate ? newShortId(used) : '';
       if (id) used.add(id);
-      localStorage.setItem(`${DEMO_KEY}.ids`, JSON.stringify([...used]));
+      localStorage.setItem(`${this.storageKey}.ids`, JSON.stringify([...used]));
       return id;
     };
-    return navigator.locks ? navigator.locks.request(`${DEMO_KEY}.ids`, reserve) : reserve();
+    return navigator.locks ? navigator.locks.request(`${this.storageKey}.ids`, reserve) : reserve();
   }
   async reserveObjectId(occupied: string[] = []) {
     return this.rememberIds(occupied, true);
@@ -99,7 +129,7 @@ export class DemoAdapter implements WorkspaceAdapter {
     return this.refresh();
   }
   async loadSession(workspaceId: string): Promise<WorkspaceSession | null> {
-    const saved = localStorage.getItem(`${DEMO_KEY}.session.${workspaceId}`);
+    const saved = localStorage.getItem(`${this.storageKey}.session.${workspaceId}`);
     if (!saved) return null;
     const value = JSON.parse(saved) as WorkspaceSession;
     if (value.version !== 1 || !Array.isArray(value.documents) || typeof value.activeId !== 'string')
@@ -107,7 +137,7 @@ export class DemoAdapter implements WorkspaceAdapter {
     return value;
   }
   async saveSession(workspaceId: string, session: WorkspaceSession) {
-    localStorage.setItem(`${DEMO_KEY}.session.${workspaceId}`, JSON.stringify(session));
+    localStorage.setItem(`${this.storageKey}.session.${workspaceId}`, JSON.stringify(session));
   }
   async refresh(): Promise<Workspace> {
     await this.rememberIds();
@@ -128,7 +158,13 @@ export class DemoAdapter implements WorkspaceAdapter {
         size: 0,
         modified: 0,
       });
-    return { id: 'demo', name: '我的工作空间', path: '浏览器演示 · 数据仅保存在本浏览器', files };
+    return { id: this.workspaceId, name: this.workspaceName, path: this.workspacePath, files };
+  }
+  /** Browser-only resource bytes, kept with the file so moves preserve the attachment. */
+  resource(path: string): { id: string; content: string } | null {
+    this.check(path);
+    const file = this.files[path];
+    return file ? { id: file.id, content: file.content } : null;
   }
   async read(path: string): Promise<FileSnapshot> {
     this.check(path);
@@ -276,7 +312,7 @@ export class DemoAdapter implements WorkspaceAdapter {
   }
   async watch(callback: () => void) {
     const onStorage = (event: StorageEvent) => {
-      if (event.key !== DEMO_KEY || !event.newValue) return;
+      if (event.key !== this.storageKey || !event.newValue) return;
       try {
         const data = JSON.parse(event.newValue);
         this.files = data.files;
@@ -295,7 +331,7 @@ export class NativeAdapter implements WorkspaceAdapter {
   readonly mode = 'desktop' as const;
   reserveObjectId = (occupied: string[]) => invoke<string>('reserve_reference_id', { occupied });
   async open(savedPath?: string): Promise<Workspace | null> {
-    if (mobile && !savedPath) return invoke('open_mobile_workspace', { name: null });
+    if (mobile && !savedPath) return { ...await invoke<Workspace>('open_mobile_workspace', { name: null }), canDelete: true };
     const path =
       savedPath ??
       (await chooseDirectory({
@@ -304,9 +340,10 @@ export class NativeAdapter implements WorkspaceAdapter {
         title: '选择 Tano 工作文件夹',
       }));
     if (typeof path !== 'string') return null;
-    return invoke('open_workspace', { path });
+    return { ...await invoke<Workspace>('open_workspace', { path }), canDelete: true };
   }
-  createWorkspace = (name: string) => invoke<Workspace>('open_mobile_workspace', { name });
+  createWorkspace = async (name: string) => ({ ...await invoke<Workspace>('open_mobile_workspace', { name }), canDelete: true });
+  deleteWorkspace = (workspaceId: string) => invoke<void>('unregister_workspace', { workspaceId });
   async close(workspaceId: string) {
     await invoke<void>('close_workspace', { workspaceId });
   }
@@ -315,7 +352,7 @@ export class NativeAdapter implements WorkspaceAdapter {
     invoke<WorkspaceSession | null>('load_session', { workspaceId });
   saveSession = (workspaceId: string, session: WorkspaceSession) =>
     invoke<void>('save_session', { workspaceId, session });
-  refresh = () => invoke<Workspace>('refresh_workspace');
+  refresh = async () => ({ ...await invoke<Workspace>('refresh_workspace'), canDelete: true });
   search = (workspaceId: string, query: string) =>
     invoke<SearchHit[]>('search_documents', { workspaceId, query });
   read = (path: string) => invoke<FileSnapshot>('read_document', { path });

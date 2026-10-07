@@ -6,6 +6,7 @@ it('allows only portable platform files through storage while keeping user paths
     '.tano/objects/a00001.tano.json',
     '.tano/objects/nested/copy.tano.json',
     '.tano/capabilities.json',
+    '.tano/settings.tano.json',
     '.tano/relations.tano-relations.json',
     '.tano/conflicts/object.json',
     '.tano/annotations/a00001.tano.json',

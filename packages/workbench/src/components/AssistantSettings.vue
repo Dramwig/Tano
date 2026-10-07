@@ -161,7 +161,6 @@ onMounted(() => {
         </div>
         <p v-if="!editing && error" class="form-error" role="alert">{{ error }}</p>
         <p v-if="!editing && notice" class="settings-notice" role="status">{{ notice }}</p>
-        <p class="settings-local-note">模型连接和 API 密钥仅保存在当前设备的个人配置中，不会写入工作区 Markdown 文件。</p>
       </section>
     </template>
   </div>

@@ -18,6 +18,8 @@ pub struct Workspace {
     pub name: String,
     pub path: String,
     pub files: Vec<Entry>,
+    #[serde(rename = "newlyCreated", skip_serializing_if = "Option::is_none")]
+    pub newly_created: Option<bool>,
 }
 #[derive(Serialize)]
 pub struct Entry {
@@ -69,7 +71,10 @@ pub fn is_workspace_data_path(relative: &str) -> bool {
     };
     matches!(
         path,
-        "capabilities.json" | "relations.tano-relations.json" | "rules/assistant.md"
+        "capabilities.json"
+            | "settings.tano.json"
+            | "relations.tano-relations.json"
+            | "rules/assistant.md"
     ) || (path.starts_with("objects/") && path.ends_with(".tano.json"))
         || path.strip_prefix("templates/").is_some_and(|name| {
             name.strip_suffix(".md").is_some_and(|id| {
@@ -687,6 +692,7 @@ pub fn scan(root: &Path, id: &str, cache: &Path) -> Result<Workspace, String> {
             .into(),
         path: display_path(root),
         files: entries,
+        newly_created: None,
     })
 }
 
@@ -1597,6 +1603,25 @@ mod tests {
         assert!(create(&temp.path().join("other.json"), "{}").is_err());
     }
 
+    #[test]
+    fn workspace_settings_are_portable_and_preserve_external_edits() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(temp.path()).unwrap();
+        let relative = ".tano/settings.tano.json";
+        assert!(is_workspace_data_path(relative));
+        let path = ensure_file_parent(&root, relative).unwrap();
+        create(&path, "{\"version\":1,\"name\":\"A\"}").unwrap();
+        let base = read(&path).unwrap();
+        fs::write(&path, "{\"version\":1,\"name\":\"B\"}").unwrap();
+        assert!(matches!(
+            write(&path, "{}", &base.hash).unwrap(),
+            WriteResult::Conflict { .. }
+        ));
+        assert_eq!(
+            read(&path).unwrap().content,
+            "{\"version\":1,\"name\":\"B\"}"
+        );
+    }
     #[test]
     fn workspace_objects_use_conflict_checked_writes() {
         let temp = tempfile::tempdir().unwrap();

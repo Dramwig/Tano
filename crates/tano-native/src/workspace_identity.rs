@@ -56,6 +56,18 @@ pub fn register_identity(app_data: &Path, root: &Path, workspace_id: &str) -> Re
     storage::create_atomic(&path, &bytes)
 }
 
+/// Remove only this app's registration; the workspace's portable identity stays on disk.
+pub fn unregister_identity(app_data: &Path, root: &Path, workspace_id: &str) -> Result<(), String> {
+    uuid::Uuid::parse_str(workspace_id).map_err(|_| "无效的工作空间身份")?;
+    match registered_identity(app_data, root)? {
+        Some(existing) if existing != workspace_id => {
+            Err("工作区身份登记已变化，未删除其他工作区的注册".into())
+        }
+        Some(_) => fs::remove_file(registration_path(app_data, root)?).map_err(|e| e.to_string()),
+        None => Ok(()),
+    }
+}
+
 pub fn identity_for_open(
     app_data: &Path,
     root: &Path,

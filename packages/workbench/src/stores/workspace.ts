@@ -17,6 +17,8 @@ import { topLevelEntries } from '../file-selection';
 import { defaultCapabilities } from '@tano/editor/runtime';
 import { loadCapabilities, saveCapabilityPatch } from '../workspace-capabilities';
 import type { CapabilityPatch } from '../workspace-capabilities';
+import { defaultWorkspaceSettings, loadWorkspaceSettings, saveWorkspaceSettingsPatch } from '../workspace-settings';
+import type { WorkspaceSettingsPatch } from '../workspace-settings';
 import { loadObjects, saveObject, mergeObject } from '../workspace-objects';
 import type { ObjectRecord } from '../workspace-objects';
 import { assetTargets, documentTargets, parseObject, objectTypeRegistry, validateObjectProperties } from '@tano/protocol';
@@ -51,6 +53,7 @@ import { loadSuggestions, saveSuggestions } from '../workspace-suggestions';
 import type { SuggestionState } from '../workspace-suggestions';
 import type { DocumentSuggestion } from '@tano/protocol';
 import { locateSuggestion } from '../document-suggestions';
+import { addWorkspaceWelcome, workspaceWelcomePath } from '../workspace-welcome';
 
 export interface OpenDocument {
   id: string;
@@ -103,6 +106,71 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     views.value = next;
   }
   const workspace = ref<Workspace | null>(null);
+  const workspaceSettings = ref({ ...defaultWorkspaceSettings });
+  const workspaceSettingsError = ref('');
+  const workspaceSettingsSaving = ref(false);
+  let workspaceSettingsBase: FileSnapshot | null = null;
+  let workspaceSettingsScope = '';
+  let workspaceDefaultName = '';
+  const workspaceNames = new Map<string, string>();
+  watch(workspace, current => {
+    workspaceDefaultName = current?.name ?? '';
+    if (current?.id === workspaceSettingsScope && workspaceSettings.value.name)
+      current.name = workspaceSettings.value.name;
+  }, { flush: 'sync' });
+  async function refreshWorkspaceSettings() {
+    const current = workspace.value;
+    if (!current) return;
+    try {
+      const loaded = await loadWorkspaceSettings(adapter, current);
+      workspaceSettingsScope = current.id;
+      workspaceSettingsBase = loaded.snapshot;
+      workspaceSettings.value = loaded.settings;
+      workspaceSettingsError.value = '';
+      current.name = loaded.settings.name || workspaceDefaultName;
+      workspaceNames.set(current.id, current.name);
+      recent.value = recent.value.map(item => ({ ...item, name: workspaceNames.get(item.id) ?? item.name,
+        ...(item.id === current.id ? { icon: loaded.settings.icon } : {}) }));
+    } catch (error) {
+      workspaceSettingsError.value = `无法读取工作区设置：${String(error)}。原文件已保留。`;
+    }
+  }
+  async function updateWorkspaceSettings(workspaceId: string, patch: WorkspaceSettingsPatch) {
+    if (workspaceSettingsSaving.value || workspaceSettingsError.value) return;
+    workspaceSettingsSaving.value = true;
+    try {
+      await serial(async () => {
+        if (workspace.value?.id !== workspaceId) throw new Error('工作区已切换，请重新打开设置');
+        writable();
+        if (patch.key === 'homePageId' && patch.value && !workspace.value.files.some(file => file.id === patch.value && file.kind === 'file' && isMarkdown(file.path) && !isWorkspaceInternalPath(file.path)))
+          throw new Error('默认页面已不存在，请重新选择');
+        const saved = await saveWorkspaceSettingsPatch(adapter, workspaceSettingsBase, patch);
+        workspaceSettingsBase = saved.snapshot;
+        workspaceSettings.value = saved.settings;
+        workspace.value = await adapter.refresh();
+        await refreshWorkspaceSettings();
+      });
+    } catch (error) {
+      report(error);
+      if (workspace.value?.id === workspaceId) {
+        await serial(async () => {
+          if (workspace.value?.id !== workspaceId) return;
+          workspace.value = await adapter.refresh();
+          await refreshWorkspaceSettings();
+        }).catch(report);
+        if (workspace.value?.id === workspaceId) workspaceSettingsError.value = String(error);
+      }
+    } finally {
+      workspaceSettingsSaving.value = false;
+    }
+  }
+  async function reloadWorkspaceSettings() {
+    await serial(async () => {
+      if (!workspace.value) return;
+      workspace.value = await adapter.refresh();
+      await refreshWorkspaceSettings();
+    }).catch(report);
+  }
   const assistantEpoch = ref(0);
   const objects = ref<ObjectRecord[]>([]);
   const objectErrors = ref<string[]>([]);
@@ -652,18 +720,22 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     window.addEventListener('focus', refreshRecentOnFocus);
     onScopeDispose(() => window.removeEventListener('focus', refreshRecentOnFocus));
   }
-  async function initialize(requestedWorkspaceId?: string) {
+  async function initialize(requestedWorkspace?: string) {
     if (detachedTabId && detachedWorkspacePath) await openWorkspace(detachedWorkspacePath);
     else if (isDemo || isWeb) {
-      await openWorkspace(requestedWorkspaceId);
-      if (!workspace.value && requestedWorkspaceId) await openWorkspace();
+      await openWorkspace(requestedWorkspace);
+      if (!workspace.value && requestedWorkspace) await openWorkspace();
       if (isWeb) await refreshWorkspaces();
+    } else if (requestedWorkspace) {
+      await openWorkspace(requestedWorkspace);
     } else if (adapter.recent) await refreshWorkspaces();
   }
   async function refreshWorkspaces() {
     if (!adapter.recent) return;
     try {
       recent.value = await adapter.recent();
+      recent.value = recent.value.map(item => ({ ...item, name: workspaceNames.get(item.id) ?? item.name,
+        ...(item.id === workspaceSettingsScope ? { icon: workspaceSettings.value.icon } : {}) }));
     } catch (error) {
       report(error);
     }
@@ -701,7 +773,19 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         }
         stopWatching();
         fatal.value = '';
+        if (!detachedTabId && (newName !== undefined || next.newlyCreated)) {
+          try {
+            next = await addWorkspaceWelcome(adapter, next);
+          } catch (error) {
+            report(`工作区已创建，但入门文档未能添加：${String(error)}。可以继续新建文档。`);
+          }
+        }
+        workspaceSettingsScope = '';
+        workspaceSettingsBase = null;
+        workspaceSettings.value = { ...defaultWorkspaceSettings };
+        workspaceSettingsError.value = '';
         workspace.value = next;
+        await refreshWorkspaceSettings();
         assistantEpoch.value++;
         assistantApplied.clear();
         objects.value = []; objectErrors.value = [];
@@ -737,9 +821,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         }
         if (saved) await restoreSession(saved);
         const first =
-          next.files.find((f) => f.path === '开始使用.md') ??
+          next.files.find(f => f.id === workspaceSettings.value.homePageId && f.kind === 'file' && isMarkdown(f.path)) ??
+          next.files.find((f) => f.path === workspaceWelcomePath) ??
           next.files.find((f) => /^readme\.md$/i.test(f.path)) ??
-          next.files.find((f) => f.kind === 'file' && isMarkdown(f.path));
+          next.files.find((f) => f.kind === 'file' && isMarkdown(f.path) && !isWorkspaceInternalPath(f.path));
         if (detachedTabId) {
           if (detachedTabId === GRAPH_TAB_ID) await openGraphTab({ newTab: true });
           else if (detachedTabId === PLUGINS_TAB_ID) await openPluginsTab({ newTab: true });
@@ -767,6 +852,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         sessionReady = true;
         queueSession();
         if (adapter.recent) recent.value = await adapter.recent();
+        recent.value = recent.value.map(item => ({ ...item, name: workspaceNames.get(item.id) ?? item.name }));
         activity(isDemo ? '演示工作空间已就绪' : '工作空间已打开', next.name, 'file');
       });
     } catch (error) {
@@ -787,25 +873,55 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       }
     }
   }
-  async function leaveWorkspace(): Promise<boolean> {
+  function createWorkspace(name?: string) {
+    if (name === undefined) {
+      const spaces = [...recent.value, ...(workspace.value ? [workspace.value] : [])];
+      // Local display names can change independently of their backing folder names.
+      const occupied = new Set(spaces.flatMap(space => [space.name, basename(space.path.replace(/\\/g, '/'))]));
+      name = '新工作区';
+      for (let suffix = 2; occupied.has(name); suffix++) name = `新工作区 ${suffix}`;
+    }
+    return openWorkspace(undefined, name);
+  }
+  function leaveWorkspace(): Promise<boolean> {
+    return exitWorkspace();
+  }
+  function deleteWorkspace(workspaceId: string): Promise<boolean> {
+    return exitWorkspace(workspaceId);
+  }
+  async function exitWorkspace(deleteId?: string): Promise<boolean> {
     if (busy.value || !workspace.value) return false;
     busy.value = true;
     try {
+      const assertDeletion = () => {
+        if (deleteId === undefined) return;
+        if (workspace.value?.id !== deleteId) throw new Error('工作区已切换，请重新确认删除');
+        if (detachedTabId) throw new Error('请在主工作台删除工作区');
+        if (!adapter.deleteWorkspace || !workspace.value.canDelete)
+          throw new Error(isWeb ? '仅工作区所有者可以删除工作区' : '此平台暂不支持删除本地工作区注册');
+      };
+      assertDeletion();
       if (!(await flush())) {
-        report('还有未保存的修改。请先处理保存错误，再退出工作区。');
+        report(`还有未保存的修改。请先处理保存错误，再${deleteId === undefined ? '退出' : '删除'}工作区。`);
         return false;
       }
       await beforeSwitch?.();
       await serial(async () => {
+        assertDeletion();
         const current = workspace.value;
         if (!current) return;
         queueSession();
         await journalTask;
-        if (!detachedTabId) await adapter.close?.(current.id);
+        if (deleteId !== undefined) await adapter.deleteWorkspace!(deleteId);
+        else if (!detachedTabId) await adapter.close?.(current.id);
         sessionReady = false;
         stopWatching();
         pluginHost.dispose();
         workspace.value = null;
+        workspaceSettingsScope = '';
+        workspaceSettingsBase = null;
+        workspaceSettings.value = { ...defaultWorkspaceSettings };
+        workspaceSettingsError.value = '';
         assistantEpoch.value++;
         assistantApplied.clear();
         documents.value = [];
@@ -821,6 +937,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         sessionError.value = '';
         sessionBlocked = false;
         fatal.value = '';
+        if (deleteId !== undefined) {
+          workspaceNames.delete(deleteId);
+          recent.value = recent.value.filter(item => item.id !== deleteId);
+          referenceDocumentCache.clear();
+        }
       });
       await refreshWorkspaces();
       return true;
@@ -1584,6 +1705,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         if (workspace.value?.id !== expectedId || workspace.value.path !== expectedPath) return;
         workspace.value = await adapter.refresh();
         await refreshCapabilities();
+        await refreshWorkspaceSettings();
         await refreshObjects();
         for (const doc of documents.value) {
           const entry = workspace.value.files.find((f) => f.id === doc.id);
@@ -2006,6 +2128,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     capabilityError,
     capabilitySaving,
     updateCapabilities,
+    workspaceSettings,
+    workspaceSettingsError,
+    workspaceSettingsSaving,
+    updateWorkspaceSettings,
+    reloadWorkspaceSettings,
     workspace,
     documents,
     tabs,
@@ -2029,7 +2156,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     refreshWorkspaces,
     openWorkspace,
     leaveWorkspace,
-    createWorkspace: (name: string) => openWorkspace(undefined, name),
+    deleteWorkspace,
+    createWorkspace,
     openFile,
     openFileInNewTab,
     openAttachmentInNewTab,

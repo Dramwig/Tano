@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Check } from 'lucide-vue-next';
 
 const props = withDefaults(
@@ -10,8 +10,9 @@ const props = withDefaults(
     menuLabel: string;
     tag?: 'nav' | 'div' | 'header';
     groupClass?: string;
+    active?: boolean;
   }>(),
-  { tag: 'div', groupClass: 'button-visibility-group' },
+  { tag: 'div', groupClass: 'button-visibility-group', active: true },
 );
 const emit = defineEmits<{ open: [] }>();
 const preferenceChanged = 'tano:button-visibility-changed';
@@ -113,6 +114,7 @@ function outsideContext(event: MouseEvent) {
 function dismissMenu() {
   closeMenu();
 }
+watch(() => props.active, (active) => { if (!active) closeMenu(); });
 function syncPreference(event: StorageEvent) {
   if (event.key === props.preferenceKey || event.key === null)
     hiddenViews.value = readHiddenViews();

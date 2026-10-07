@@ -3,6 +3,7 @@ import { validatePath } from './paths';
 export const workspaceDataDirectory = '.tano';
 export const objectDirectory = '.tano/objects';
 export const workspaceCapabilityPath = '.tano/capabilities.json';
+export const workspaceSettingsPath = '.tano/settings.tano.json';
 export const workspaceRelationPath = '.tano/relations.tano-relations.json';
 export const annotationDirectory = '.tano/annotations';
 export const discussionDirectory = '.tano/discussions';
@@ -23,6 +24,7 @@ export function isWorkspaceInternalPath(path: string) {
 export function isWorkspaceDataPath(path: string) {
   return (
     path === workspaceCapabilityPath ||
+    path === workspaceSettingsPath ||
     path === workspaceRelationPath ||
     path === assistantRulesPath ||
     isTemplatePath(path) ||

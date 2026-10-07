@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 pub const WORKSPACE_DATA_DIRECTORY: &str = ".tano";
 pub const OBJECT_DIRECTORY: &str = ".tano/objects";
 pub const WORKSPACE_CAPABILITY_PATH: &str = ".tano/capabilities.json";
+pub const WORKSPACE_SETTINGS_PATH: &str = ".tano/settings.tano.json";
 pub const WORKSPACE_RELATION_PATH: &str = ".tano/relations.tano-relations.json";
 
 /// SHA-256 of the exact bytes, suitable for Tano's expectedHash protocol field.
@@ -28,8 +29,10 @@ pub fn is_workspace_internal_path(path: &str) -> bool {
 
 /// Classifies portable data paths; excludes workspace identity and app caches.
 pub fn is_workspace_data_path(path: &str) -> bool {
-    matches!(path, WORKSPACE_CAPABILITY_PATH | WORKSPACE_RELATION_PATH)
-        || (path.starts_with(".tano/conflicts/") && path.ends_with(".json"))
+    matches!(
+        path,
+        WORKSPACE_CAPABILITY_PATH | WORKSPACE_SETTINGS_PATH | WORKSPACE_RELATION_PATH
+    ) || (path.starts_with(".tano/conflicts/") && path.ends_with(".json"))
         || (path.starts_with(".tano/objects/") && path.ends_with(".tano.json"))
 }
 
@@ -60,6 +63,7 @@ mod tests {
     fn identity_and_caches_are_excluded_from_portable_data() {
         for path in [
             WORKSPACE_CAPABILITY_PATH,
+            WORKSPACE_SETTINGS_PATH,
             WORKSPACE_RELATION_PATH,
             ".tano/objects/a1b2c3.tano.json",
             ".tano/conflicts/conflict.json",

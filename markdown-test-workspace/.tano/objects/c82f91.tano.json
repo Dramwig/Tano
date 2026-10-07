@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "id": "c82f91",
+  "type": "project",
+  "name": "Markdown QA",
+  "description": "Tests Project references",
+  "archived": false,
+  "properties": {
+    "phase": "review",
+    "progress": 0.5,
+    "active": true
+  }
+}

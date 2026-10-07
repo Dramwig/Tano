@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
-import { Check, ChevronDown, FolderOpen } from 'lucide-vue-next';
+import { Check, ChevronDown, ExternalLink } from 'lucide-vue-next';
+import WorkspaceIcon from './WorkspaceIcon.vue';
 import { useWorkspaceStore } from '../stores/workspace';
+import { native } from '../adapter';
 import { mobile } from '../platform';
 
 const props = defineProps<{ active: boolean }>();
@@ -14,9 +16,10 @@ const position = ref<{ left: number; top: number; width: number; maxHeight: numb
 const workspaces = computed(() => {
   const current = store.workspace;
   if (!current) return store.recent;
-  return [current, ...store.recent.filter((item) => item.id !== current.id)];
+  return [{ ...current, icon: store.workspaceSettings.icon }, ...store.recent.filter((item) => item.id !== current.id)];
 });
 const showPathTooltip = !store.isWeb && !store.isDemo && !mobile;
+const localNative = native && !store.isWeb;
 
 function close(restoreFocus = false) {
   position.value = undefined;
@@ -48,6 +51,11 @@ function select(id: string, path: string) {
   if (store.busy) return;
   close(true);
   if (id !== store.workspace?.id) void store.openWorkspace(path);
+}
+function reveal() {
+  if (store.busy || !store.workspace) return;
+  close(true);
+  void store.reveal();
 }
 function keydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
@@ -151,13 +159,20 @@ onBeforeUnmount(() => {
         :disabled="store.busy"
         @click="select(item.id, item.path)"
       >
-        <FolderOpen :size="15" aria-hidden="true" />
+        <span class="repository-workspace-icon"><WorkspaceIcon :icon="item.id === store.workspace?.id ? store.workspaceSettings.icon : item.icon" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" :size="15" /></span>
         <span class="repository-switcher-details">
           <span>{{ item.name }}</span>
           <small v-if="store.isDemo">浏览器演示</small>
         </span>
         <Check v-if="item.id === store.workspace?.id" :size="14" aria-hidden="true" />
       </button>
+      <template v-if="store.workspace && localNative && !mobile">
+        <div class="menu-divider" role="separator" />
+        <button type="button" role="menuitem" :disabled="store.busy" @click="reveal">
+          <ExternalLink :size="15" aria-hidden="true" />
+          <span>在资源管理器中显示</span>
+        </button>
+      </template>
     </div>
   </Teleport>
 </template>
@@ -192,6 +207,14 @@ onBeforeUnmount(() => {
 .repository-switcher-trigger > svg,
 .repository-switcher-menu button > svg {
   flex-shrink: 0;
+}
+.repository-workspace-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
 }
 .repository-switcher-trigger > svg.expanded {
   transform: rotate(180deg);

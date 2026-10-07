@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { createApp, h, nextTick } from 'vue';
+import { createApp, h, nextTick, ref } from 'vue';
 import type { App } from 'vue';
 import SidebarNavigation from './SidebarNavigation.vue';
 
@@ -13,10 +13,11 @@ const items = [
 let app: App;
 let root: HTMLElement;
 const onOpen = vi.fn();
+const active = ref(true);
 
 function mount() {
   app = createApp({
-    render: () => h(SidebarNavigation, { items, onOpen }, {
+    render: () => h(SidebarNavigation, { items, onOpen, active: active.value }, {
       default: ({ isVisible }: { isVisible: (id: string) => boolean }) =>
         items.filter(item => isVisible(item.id)).map(item =>
           h('button', { 'data-view': item.id }, item.label)),
@@ -40,9 +41,23 @@ function key(target: Element, value: string, shiftKey = false) {
 beforeEach(() => {
   localStorage.clear();
   onOpen.mockClear();
+  active.value = true;
   root = document.createElement('div');
   document.body.append(root);
   mount();
+});
+
+it('closes the teleported menu when the sidebar is hidden and keeps navigation mounted', async () => {
+  const navigation = root.querySelector('nav');
+  await open();
+  active.value = false;
+  await nextTick();
+  expect(menuItems()).toHaveLength(0);
+  expect(root.querySelector('nav')).toBe(navigation);
+  active.value = true;
+  await nextTick();
+  await open();
+  expect(menuItems()).toHaveLength(3);
 });
 afterEach(() => {
   app.unmount();

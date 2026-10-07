@@ -11,6 +11,7 @@ import ChangeDiff from './ChangeDiff.vue';
 const props = defineProps<{ workspaceId: string }>();
 const emit = defineEmits<{ close: [] }>();
 const workspace = useWorkspaceStore();
+const localMcp = native && !mobile && !workspace.isWeb;
 const tab = ref<'guide' | 'changes' | 'mcp'>('guide');
 const purpose = ref('');
 const language = ref<'zh' | 'en'>('zh');
@@ -58,6 +59,7 @@ async function createGuide() {
   });
 }
 async function terminal() {
+  if (!localMcp) return;
   await run(async () => {
     if (!(await workspace.flush())) throw new Error('请先完成文档保存');
     await invoke('open_workspace_terminal', { workspaceId: props.workspaceId });
@@ -65,7 +67,7 @@ async function terminal() {
   });
 }
 async function load() {
-  if (!native || loading.value) return;
+  if (!localMcp || loading.value) return;
   loading.value = true;
   try {
     const result = await invoke<AgentChange[]>('agent_changes', {
@@ -80,6 +82,7 @@ async function load() {
   }
 }
 async function preview(item: AgentChange) {
+  if (!localMcp) return;
   const current = ++request;
   selected.value = undefined;
   error.value = '';
@@ -123,7 +126,7 @@ function trap(event: KeyboardEvent) {
 }
 onMounted(async () => {
   closeButton.value?.focus();
-  if (native && !mobile) {
+  if (localMcp) {
     try {
       const result = await invoke<AgentSetup>('agent_setup', { workspaceId: props.workspaceId });
       if (!disposed) setup.value = result;
@@ -168,14 +171,24 @@ onBeforeUnmount(() => {
       <p class="panel-hint">{{ workspace.workspace?.name }} · 普通 Markdown，是共同的工作界面。</p>
       <div class="agent-tabs">
         <button :class="{ active: tab === 'guide' }" @click="tab = 'guide'">工作区指引</button
-        ><button v-if="!mobile" :class="{ active: tab === 'changes' }" @click="tab = 'changes'">
+        ><button
+          v-if="!mobile"
+          :disabled="!localMcp"
+          :class="{ active: tab === 'changes' }"
+          @click="tab = 'changes'"
+        >
           Agent 活动 <small>{{ changes.length }}</small></button
-        ><button v-if="!mobile" :class="{ active: tab === 'mcp' }" @click="tab = 'mcp'">
+        ><button
+          v-if="!mobile"
+          :disabled="!localMcp"
+          :class="{ active: tab === 'mcp' }"
+          @click="tab = 'mcp'"
+        >
           连接 MCP</button
         ><button
           v-if="!mobile"
           class="agent-terminal"
-          :disabled="!native || busy"
+          :disabled="!localMcp || busy"
           @click="terminal"
         >
           <Terminal :size="15" />在此打开终端
@@ -183,6 +196,11 @@ onBeforeUnmount(() => {
       </div>
       <p v-if="mobile" class="panel-hint">
         手机与电脑连接同一同步空间后，电脑上的 Agent 修改会同步到这里。本机 MCP 与终端在电脑端使用。
+      </p>
+      <p v-else-if="!localMcp" class="panel-hint">
+        {{
+          workspace.isDemo ? '浏览器演示可查看和编辑工作区指引。' : '这里可查看和编辑工作区指引。'
+        }}本机 MCP 与终端请在桌面版的本地工作区使用。
       </p>
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
       <p v-if="notice" class="panel-hint" role="status">{{ notice }}</p>
@@ -220,7 +238,11 @@ onBeforeUnmount(() => {
               :value="draft"
               aria-label="助手约定生成预览"
             /></label
-          ><button class="primary-button" :disabled="busy" @click="createGuide">
+          ><button
+            class="primary-button"
+            :disabled="busy || workspace.workspace?.readOnly"
+            @click="createGuide"
+          >
             创建助手约定
           </button></template
         >
@@ -230,7 +252,7 @@ onBeforeUnmount(() => {
           本机 MCP 工具调用记录，保留最近 200
           条。客户端名称由对方声明，不能证明人员或模型身份。普通外部改动可在工作动态查看。
         </p>
-        <button class="secondary-button" :disabled="loading || !native" @click="load">
+        <button class="secondary-button" :disabled="loading || !localMcp" @click="load">
           <RefreshCw :size="14" />刷新记录
         </button>
         <p v-if="!changes.length" class="panel-hint">

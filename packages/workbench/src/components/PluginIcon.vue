@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { BookOpen, FlaskConical, Puzzle } from 'lucide-vue-next';
-defineProps<{ id: string; compact?: boolean }>();
+import { computed } from 'vue';
+import researchIcon from '../assets/plugins/research.svg';
+import readingIcon from '../assets/plugins/reading.svg';
+import extensionIcon from '../assets/plugins/extension.svg';
+
+const props = defineProps<{ id: string; compact?: boolean }>();
+const icon = computed(() =>
+  props.id === 'research' ? researchIcon : props.id === 'reading' ? readingIcon : extensionIcon,
+);
 </script>
 
 <template>
-  <span class="plugin-icon" :class="{ reading: id === 'reading', compact }" aria-hidden="true">
-    <FlaskConical v-if="id === 'research'" :size="27" :stroke-width="1.7" />
-    <BookOpen v-else-if="id === 'reading'" :size="27" :stroke-width="1.7" />
-    <Puzzle v-else :size="27" :stroke-width="1.7" />
+  <span class="plugin-icon" :class="{ compact }" aria-hidden="true">
+    <img :src="icon" alt="" width="128" height="128" draggable="false" />
   </span>
 </template>
 
@@ -18,21 +23,16 @@ defineProps<{ id: string; compact?: boolean }>();
   flex: none;
   width: 56px;
   height: 56px;
-  border-radius: 13px;
-  background: var(--accent);
-  color: var(--green);
+  filter: drop-shadow(0 1px 1px rgb(21 35 29 / 10%));
 }
-.plugin-icon.reading {
-  background: var(--warning-bg);
-  color: var(--warning);
+.plugin-icon img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  user-select: none;
 }
 .plugin-icon.compact {
   width: 40px;
   height: 40px;
-  border-radius: 10px;
-}
-.plugin-icon.compact svg {
-  width: 23px;
-  height: 23px;
 }
 </style>

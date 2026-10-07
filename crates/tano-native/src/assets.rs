@@ -198,6 +198,21 @@ mod tests {
             .contains_key("access-control-allow-origin"));
     }
     #[test]
+    fn reads_binary_export_attachments_without_relaxing_image_preview_or_path_boundaries() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(temp.path()).unwrap();
+        let bytes = b"%PDF-1.7\n\0\xff";
+        fs::write(root.join("attachment.pdf"), bytes).unwrap();
+        assert_eq!(read(&root, "attachment.pdf").unwrap(), bytes);
+        let request = Request::builder()
+            .uri("tano-asset://localhost/workspace/attachment.pdf")
+            .body(vec![])
+            .unwrap();
+        assert_eq!(respond(&root, "workspace", &request).status(), 415);
+        assert!(read(&root, "../attachment.pdf").is_err());
+        assert!(read(&root, ".tano/config.json").is_err());
+    }
+    #[test]
     fn imported_attachment_identity_survives_index_loss() {
         let temp = tempfile::tempdir().unwrap();
         let data = tempfile::tempdir().unwrap();

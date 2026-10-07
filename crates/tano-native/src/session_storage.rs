@@ -3,6 +3,7 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
+    io::Read,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -14,6 +15,8 @@ pub struct RecentWorkspace {
     name: String,
     pub(crate) path: String,
     opened_at: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    icon: Option<String>,
 }
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -64,6 +67,26 @@ pub fn record(cache: &Path, workspace: &storage::Workspace) -> Result<(), String
     db.execute("INSERT INTO recent_workspaces VALUES (?1,?2,?3,?4) ON CONFLICT(id) DO UPDATE SET name=excluded.name,path=excluded.path,opened_at=excluded.opened_at", params![workspace.id,workspace.name,workspace.path,time]).map_err(|e| e.to_string())?;
     Ok(())
 }
+/// Forget the app registration and menu entry, retaining all content, indexes and recovery drafts.
+pub fn unregister(
+    cache: &Path,
+    app_data: &Path,
+    root: &Path,
+    workspace_id: &str,
+) -> Result<(), String> {
+    let mut db = connection(cache)?;
+    let transaction = db
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
+    transaction
+        .execute(
+            "DELETE FROM recent_workspaces WHERE id = ?1 AND path = ?2",
+            params![workspace_id, storage::display_path(root)],
+        )
+        .map_err(|e| e.to_string())?;
+    crate::workspace_identity::unregister_identity(app_data, root, workspace_id)?;
+    transaction.commit().map_err(|e| e.to_string())
+}
 pub fn recent(cache: &Path) -> Result<Vec<RecentWorkspace>, String> {
     let db = connection(cache)?;
     let mut statement = db
@@ -76,15 +99,19 @@ pub fn recent(cache: &Path) -> Result<Vec<RecentWorkspace>, String> {
                 name: row.get(1)?,
                 path: row.get(2)?,
                 opened_at: row.get(3)?,
+                icon: None,
             })
         })
         .map_err(|e| e.to_string())?;
     let rows: Vec<RecentWorkspace> = rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?;
     drop(statement);
     let mut valid = Vec::new();
-    for workspace in rows {
+    for mut workspace in rows {
         match fs::metadata(&workspace.path) {
-            Ok(metadata) if metadata.is_dir() => valid.push(workspace),
+            Ok(metadata) if metadata.is_dir() => {
+                workspace.icon = recent_icon(Path::new(&workspace.path));
+                valid.push(workspace);
+            }
             Ok(_) => {
                 db.execute(
                     "DELETE FROM recent_workspaces WHERE id = ?1 AND path = ?2",
@@ -103,6 +130,40 @@ pub fn recent(cache: &Path) -> Result<Vec<RecentWorkspace>, String> {
         }
     }
     Ok(valid)
+}
+
+// Read presentation from the portable settings, without opening or mutating the workspace.
+fn recent_icon(root: &Path) -> Option<String> {
+    let root = fs::canonicalize(root).ok()?;
+    let path = storage::resolve_storage(&root, ".tano/settings.tano.json", true).ok()?;
+    let mut content = String::new();
+    fs::File::open(path)
+        .ok()?
+        .take(262_145)
+        .read_to_string(&mut content)
+        .ok()?;
+    if content.len() > 262_144 {
+        return None;
+    }
+    let settings: serde_json::Value = serde_json::from_str(&content).ok()?;
+    if settings.get("version")?.as_u64()? != 1 {
+        return None;
+    }
+    let icon = settings.get("icon")?.as_str()?;
+    let valid = if let Some(base64) = icon.strip_prefix("data:image/png;base64,") {
+        let data = base64.trim_end_matches('=');
+        icon.len() <= 200_000
+            && !data.is_empty()
+            && base64.len() - data.len() <= 2
+            && data
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'+' || byte == b'/')
+    } else {
+        !icon.starts_with("data:")
+            && icon.chars().count() <= 16
+            && !icon.chars().any(|character| character <= '\u{1f}')
+    };
+    valid.then(|| icon.to_owned())
 }
 pub fn known_identity(cache: &Path, root: &Path) -> Result<Option<String>, String> {
     let db = connection(cache)?;
@@ -222,6 +283,137 @@ pub fn save(app_data: &Path, workspace_id: &str, session: &WorkspaceSession) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn unregister_retains_workspace_content_identity_cache_and_recovery_drafts() {
+        let data = tempfile::tempdir().unwrap();
+        let cache = data.path().join("index.sqlite");
+        let workspace = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(workspace.path()).unwrap();
+        fs::write(root.join("note.md"), "# 用户内容\n").unwrap();
+        fs::write(root.join("attachment.bin"), [0, 1, 2, 255]).unwrap();
+        let id = storage::workspace_identity(&root).unwrap();
+        let before = storage::scan(&root, &id, &cache).unwrap();
+        fs::write(
+            root.join(".tano/settings.tano.json"),
+            r#"{"version":1,"name":"本地工作区"}"#,
+        )
+        .unwrap();
+        record(&cache, &before).unwrap();
+        crate::workspace_identity::register_identity(data.path(), &root, &id).unwrap();
+        let draft = session();
+        save(data.path(), &id, &draft).unwrap();
+        let saved_draft = fs::read(path(data.path(), &id).unwrap()).unwrap();
+        let preserved: Vec<_> = [
+            "note.md",
+            "attachment.bin",
+            ".tano/config.json",
+            ".tano/identities.json",
+            ".tano/settings.tano.json",
+        ]
+        .into_iter()
+        .map(|name| (name, fs::read(root.join(name)).unwrap()))
+        .collect();
+
+        let other = tempfile::tempdir().unwrap();
+        let other_root = fs::canonicalize(other.path()).unwrap();
+        let other_id = storage::workspace_identity(&other_root).unwrap();
+        let other_workspace = storage::scan(&other_root, &other_id, &cache).unwrap();
+        record(&cache, &other_workspace).unwrap();
+        crate::workspace_identity::register_identity(data.path(), &other_root, &other_id).unwrap();
+
+        unregister(&cache, data.path(), &root, &id).unwrap();
+        assert_eq!(
+            recent(&cache)
+                .unwrap()
+                .iter()
+                .map(|entry| &entry.id)
+                .collect::<Vec<_>>(),
+            vec![&other_id]
+        );
+        assert_eq!(
+            crate::workspace_identity::registered_identity(data.path(), &root).unwrap(),
+            None
+        );
+        assert_eq!(known_identity(&cache, &root).unwrap(), None);
+        for (name, bytes) in &preserved {
+            assert_eq!(fs::read(root.join(name)).unwrap(), *bytes, "{name}");
+        }
+        assert_eq!(
+            fs::read(path(data.path(), &id).unwrap()).unwrap(),
+            saved_draft
+        );
+        assert!(load(data.path(), &id).unwrap().is_some());
+        assert!(storage::cached_identity_exists(&cache, &id).unwrap());
+
+        let reopened_id =
+            crate::workspace_identity::identity_for_open(data.path(), &root, None, &cache).unwrap();
+        assert_eq!(reopened_id, id);
+        let after = storage::scan(&root, &id, &cache).unwrap();
+        for file in &before.files {
+            assert!(after
+                .files
+                .iter()
+                .any(|next| next.path == file.path && next.id == file.id));
+        }
+        record(&cache, &after).unwrap();
+        crate::workspace_identity::register_identity(data.path(), &root, &id).unwrap();
+        assert!(recent(&cache).unwrap().iter().any(|entry| entry.id == id));
+    }
+
+    #[test]
+    fn unregister_rolls_back_the_menu_entry_when_registration_identity_has_changed() {
+        let data = tempfile::tempdir().unwrap();
+        let cache = data.path().join("index.sqlite");
+        let workspace = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(workspace.path()).unwrap();
+        let id = storage::workspace_identity(&root).unwrap();
+        record(&cache, &storage::scan(&root, &id, &cache).unwrap()).unwrap();
+        let changed_id = uuid::Uuid::new_v4().to_string();
+        crate::workspace_identity::register_identity(data.path(), &root, &changed_id).unwrap();
+        assert!(unregister(&cache, data.path(), &root, &id).is_err());
+        assert_eq!(recent(&cache).unwrap()[0].id, id);
+        assert_eq!(
+            crate::workspace_identity::registered_identity(data.path(), &root).unwrap(),
+            Some(changed_id)
+        );
+    }
+    #[test]
+    fn recent_reads_current_icons_without_rewriting_settings() {
+        let data = tempfile::tempdir().unwrap();
+        let cache = data.path().join("index.sqlite");
+        let root = data.path().join("workspace");
+        fs::create_dir_all(root.join(".tano")).unwrap();
+        connection(&cache)
+            .unwrap()
+            .execute(
+                "INSERT INTO recent_workspaces VALUES ('workspace', 'Workspace', ?1, 1)",
+                [root.to_string_lossy().to_string()],
+            )
+            .unwrap();
+        let settings = root.join(".tano/settings.tano.json");
+        for icon in ["🌿", "data:image/png;base64,aGVsbG8=", ""] {
+            let content = serde_json::json!({"version": 1, "icon": icon}).to_string();
+            fs::write(&settings, &content).unwrap();
+            assert_eq!(recent(&cache).unwrap()[0].icon.as_deref(), Some(icon));
+            assert_eq!(fs::read_to_string(&settings).unwrap(), content);
+        }
+        fs::write(&settings, "invalid settings").unwrap();
+        assert!(recent(&cache).unwrap()[0].icon.is_none());
+        assert_eq!(fs::read_to_string(&settings).unwrap(), "invalid settings");
+    }
+    #[test]
+    #[cfg(unix)]
+    fn recent_icons_do_not_follow_workspace_data_symlinks() {
+        let data = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(
+            outside.path().join("settings.tano.json"),
+            r#"{"version":1,"icon":"🌿"}"#,
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(outside.path(), data.path().join(".tano")).unwrap();
+        assert!(recent_icon(data.path()).is_none());
+    }
     #[test]
     fn recent_removes_missing_and_moved_workspaces_from_history() {
         let data = tempfile::tempdir().unwrap();

@@ -16,7 +16,6 @@ import {
 } from 'lucide-vue-next';
 import type { ObjectRecord } from '../workspace-objects';
 import {
-  hasEventTime,
   isCheckableEvent,
   isEventCompleted,
   planningEvents,
@@ -38,7 +37,7 @@ import PlanDateField from './PlanDateField.vue';
 import { writePlanDate } from '../plan-date';
 import type { PlanDateValue } from '../plan-date';
 
-const props = defineProps<{ date: Date }>();
+const props = withDefaults(defineProps<{ date: Date; active?: boolean }>(), { active: true });
 const emit = defineEmits<{ 'select-date': [date: Date]; 'select-event': [id: string] }>();
 const store = useWorkspaceStore();
 const plans = usePlanStore();
@@ -52,6 +51,7 @@ const viewTrigger = ref<HTMLButtonElement>();
 const viewMenu = ref<HTMLElement>();
 const viewMenuPosition = ref({ left: '0px', top: '0px' });
 const viewOpen = ref(false);
+watch(() => props.active, (active) => { if (!active) viewOpen.value = false; });
 const viewLabel = computed(() => ({ workspace: '工作区', personal: '个人', all: '全部' })[plans.view]);
 const personalIssue = computed(() => !!plans.loadError || !!plans.errors.length);
 const personalIssueTitle = computed(() => plans.requiresDesktopRestart ? '个人计划需更新桌面程序' : '个人计划暂时无法读取');
@@ -305,10 +305,6 @@ function completeEvent(record: ObjectRecord, completed: boolean) {
   if (record.object.type === 'task')
     Object.assign(properties, { status: completed ? 'done' : 'todo' });
   return updateEvent(record, properties);
-}
-function scheduleEvent(record: ObjectRecord) {
-  if (hasEventTime(record)) return;
-  return updateEvent(record, { ...record.object.properties, date: selected.value });
 }
 
 async function resetScroll(date: Date) {
@@ -734,10 +730,8 @@ onBeforeUnmount(() => {
         :disabled="false"
         :can-edit="plans.canEdit"
         :pending="pending"
-        unscheduled
         @select="emit('select-event', $event)"
         @complete="completeEvent"
-        @schedule="scheduleEvent"
       />
     </section>
   </div>
@@ -1134,7 +1128,7 @@ onBeforeUnmount(() => {
 .sidebar-calendar-day.today > span {
   display: grid;
   place-items: center;
-  width: min(22px, 100%);
+  width: min(18px, 100%);
   aspect-ratio: 1;
   border-radius: 50%;
   background: var(--green-fill);
@@ -1142,7 +1136,7 @@ onBeforeUnmount(() => {
 }
 .sidebar-calendar-event-dot {
   position: absolute;
-  bottom: 2px;
+  bottom: 1px;
   width: 3px;
   height: 3px;
   border-radius: 50%;

@@ -7,6 +7,8 @@
     ".": "./src/App.vue",
     "./runtime": "./src/runtime.ts",
     "./adapter": "./src/adapter.ts",
+    "./markdown-demo": "./src/markdown-demo.ts",
+    "./markdown-demo-routes": "./src/markdown-demo-routes.ts",
     "./platform": "./src/platform.ts",
     "./theme": "./src/theme.ts",
     "./settings-window": "./src/settings-window.ts",

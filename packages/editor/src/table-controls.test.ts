@@ -352,6 +352,8 @@ it('opens all line actions with keyboard navigation and cancels a pending gestur
   expect((view.state.selection as CellSelection).isColSelection()).toBe(true);
   expect(menu.querySelector('input')).toBeNull();
   expect(menu.querySelectorAll('[role=menuitem]')).toHaveLength(6);
+  expect(document.activeElement).toBe(menu);
+  document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
   expect(document.activeElement!.getAttribute('aria-label')).toBe('左对齐');
   document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
   expect(document.activeElement!.getAttribute('aria-label')).toBe('居中对齐');
@@ -388,6 +390,29 @@ it('opens all line actions with keyboard navigation and cancels a pending gestur
   app!.unmount(); app = undefined;
   expect(root.querySelector('.tano-table-controls')).toBeNull();
   pointer('pointermove', root);
+});
+
+it.each(['row', 'column'] as const)('waits for an arrow key before focusing a keyboard-opened %s menu item', async axis => {
+  await mount();
+  measureInsertionTable();
+  hoverInsertionTable();
+  const grip = root.querySelector<HTMLButtonElement>(`.tano-table-grip.is-${axis}`)!;
+  grip.focus();
+  grip.click();
+  const menu = root.querySelector<HTMLElement>('.tano-table-menu')!;
+  const buttons = [...menu.querySelectorAll<HTMLButtonElement>('button')]
+    .filter(button => !button.closest('.tano-table-color-menu'));
+  expect(menu.hidden).toBe(false);
+  expect(document.activeElement).toBe(menu);
+  menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+  expect(document.activeElement).toBe(buttons.at(-1));
+  document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  expect(menu.hidden).toBe(true);
+  expect(document.activeElement).toBe(grip);
+  grip.click();
+  expect(document.activeElement).toBe(menu);
+  menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  expect(document.activeElement).toBe(menu.querySelector('button'));
 });
 
 it.each(['row', 'column'] as const)('keeps a clipped %s preview independent of wide-table gutters and minimum width', async axis => {

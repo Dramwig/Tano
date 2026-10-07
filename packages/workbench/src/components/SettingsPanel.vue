@@ -19,8 +19,7 @@ import {
   UserRound,
   X,
 } from 'lucide-vue-next';
-import type { Workspace } from '@tano/protocol';
-import type { SettingsPage } from '../runtime';
+import type { SettingsPage, SettingsPageContext } from '../runtime';
 import UpdatePanel from './UpdatePanel.vue';
 import AssistantSettings from './AssistantSettings.vue';
 import {
@@ -35,13 +34,27 @@ import { sanitizeCustomFontName, visualFontFamily } from '../editor-font';
 import type { VisualFontChoice } from '../editor-font';
 import type { ToolbarMode } from '../toolbar-preference';
 import type { PageTitleSource } from '../page-title-source';
+import type { WorkspaceSettings, WorkspaceSettingsPatch } from '../workspace-settings';
+import WorkspaceGeneralSettings from './WorkspaceGeneralSettings.vue';
+import WorkspaceIcon from './WorkspaceIcon.vue';
+import WorkspaceDeletionSettings from './WorkspaceDeletionSettings.vue';
 
 type Page = string;
 type Action =
   'open-folder' | 'switch-mode' | 'reveal' | 'agent' | 'history' | 'recycle' | 'sign-out';
 
 const props = defineProps<{
-  workspace: Pick<Workspace, 'name' | 'path' | 'readOnly'> | null;
+  workspace: SettingsPageContext['workspace'];
+  workspaceSettings?: WorkspaceSettings;
+  workspacePages?: { id: string; path: string }[];
+  workspaceSettingsError?: string;
+  workspaceSettingsSaving?: boolean;
+  workspaceExporting?: boolean;
+  workspaceExportError?: string;
+  workspaceDeletionSupported?: boolean;
+  workspaceDeleting?: boolean;
+  workspaceDeletionError?: string;
+  activeFile?: SettingsPageContext['activeFile'];
   windowed?: boolean;
   extraPages?: SettingsPage[];
   mode: 'demo' | 'web' | 'local';
@@ -86,6 +99,10 @@ const emit = defineEmits<{
   capability: [value: CapabilityPatch];
   'update:editorPreferences': [value: EditorPreferences];
   'assistant-changed': [];
+  'workspace-setting': [workspaceId: string, patch: WorkspaceSettingsPatch];
+  'workspace-settings-reload': [];
+  'workspace-export': [workspaceId: string];
+  'workspace-delete': [workspaceId: string];
 }>();
 const rules = computed(() => props.capabilities ?? defaultCapabilities);
 const display = computed(() => props.editorPreferences ?? defaultEditorPreferences);
@@ -144,7 +161,7 @@ const pages = [
     label: '工作区',
     group: '工作区设置',
     icon: BookOpen,
-    terms: '文件夹 历史 回收站 Agent 存储 当前空间',
+    terms: '文件夹 历史 回收站 Agent 存储 当前空间 名称 图标 表情 默认页面 首页 侧栏 计划 图谱 插件 导出 ZIP 浏览统计 人物 目录 活动 悬浮卡片 ID 删除',
   },
   {
     id: 'documents',
@@ -272,7 +289,7 @@ function customFontInput(event: Event) {
           <p v-if="!visiblePages.length" class="settings-search-empty">没有找到相关设置</p>
         </div>
         <div class="settings-nav-foot">
-          <span class="settings-workspace-icon"><BookOpen :size="17" /></span>
+          <span class="settings-workspace-icon"><WorkspaceIcon :icon="workspaceSettings?.icon" :mode="mode" :size="17" /></span>
           <div>
             <span>{{ workspace?.name ?? '尚未打开工作区' }}</span>
             <small>{{
@@ -596,9 +613,6 @@ function customFontInput(event: Event) {
               </div>
             </div>
           </section>
-          <p class="settings-local-note">
-            <Monitor :size="14" />仅保存在当前设备，不随工作区共享。
-          </p>
         </div>
 
         <AssistantSettings v-else-if="page === 'assistant'" @changed="emit('assistant-changed')" />
@@ -700,7 +714,6 @@ function customFontInput(event: Event) {
                 </select>
               </div>
             </div>
-            <p class="settings-local-note">文档能力随工作区共享，只读成员无法更改。</p>
           </section>
         </div>
 
@@ -711,7 +724,23 @@ function customFontInput(event: Event) {
               <BookOpen :size="13" /><span>{{ scopeLabel }}</span>
             </div>
           </div>
-          <p class="settings-lead">查看当前工作区的存储位置，管理文件、历史与 Agent 连接。</p>
+          <p class="settings-lead">管理工作区名称、图标、默认页面、侧栏与内容导出。</p>
+          <WorkspaceGeneralSettings
+            :key="workspace?.id"
+            :workspace="workspace"
+            :settings="workspaceSettings"
+            :pages="workspacePages"
+            :mode="mode"
+            :saving="workspaceSettingsSaving || workspaceDeleting"
+            :error="workspaceSettingsError"
+            :exporting="workspaceExporting || workspaceDeleting"
+            :export-error="workspaceExportError"
+            @change="(id, patch) => emit('workspace-setting', id, patch)"
+            @reload="emit('workspace-settings-reload')"
+            @export="emit('workspace-export', $event)"
+          >
+            <template #members-export><slot name="workspace-members-export" /></template>
+          </WorkspaceGeneralSettings>
           <section class="settings-section" aria-labelledby="settings-current-workspace">
             <h3 id="settings-current-workspace">当前空间</h3>
             <div class="settings-card settings-workspace-card">
@@ -757,9 +786,24 @@ function customFontInput(event: Event) {
               </div>
             </div>
           </section>
+          <WorkspaceDeletionSettings
+            v-if="mode !== 'demo' && workspaceDeletionSupported"
+            :key="workspace?.id"
+            :workspace="workspace"
+            :mode="mode"
+            :busy="workspaceDeleting || workspaceSettingsSaving || workspaceExporting"
+            :error="workspaceDeletionError"
+            @delete="emit('workspace-delete', $event)"
+          />
         </div>
 
-        <component v-else-if="extraPages?.some(item => item.id === page)" :is="extraPages?.find(item => item.id === page)?.component" />
+        <component
+          v-else-if="extraPages?.some(item => item.id === page)"
+          :is="extraPages?.find(item => item.id === page)?.component"
+          :mode="mode"
+          :workspace="workspace"
+          :active-file="activeFile ?? null"
+        />
         <div v-else class="settings-content settings-about">
           <h2 id="settings-title">关于同页</h2>
           <p class="settings-lead">了解同页、常用快捷键与版本信息。</p>
@@ -1134,6 +1178,7 @@ function customFontInput(event: Event) {
   opacity: 0.5;
   cursor: default;
 }
+.settings-input,
 .settings-custom-font-row input {
   flex: 0 1 220px;
   min-width: 0;
@@ -1145,8 +1190,43 @@ function customFontInput(event: Event) {
   background: var(--paper);
   font-size: 12px;
 }
+.settings-input::placeholder,
 .settings-custom-font-row input::placeholder {
   color: var(--muted);
+}
+.settings-input:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.settings-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+.settings-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--paper);
+  box-shadow: 0 1px 2px #18212b08;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.settings-button:hover:not(:disabled) {
+  border-color: var(--control-border);
+}
+.settings-button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .settings-font-card {
   padding-bottom: 20px;
@@ -1262,9 +1342,6 @@ function customFontInput(event: Event) {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.7;
-}
-.settings-local-note > svg {
-  margin-top: 2px;
 }
 .settings-scope {
   color: var(--muted);
@@ -1525,11 +1602,13 @@ function customFontInput(event: Event) {
     min-height: 56px;
     padding: 15px 0;
   }
-  .settings-row:has(select) {
+  .settings-row:has(select),
+  .settings-row-with-controls {
     flex-wrap: wrap;
     gap: 12px;
   }
-  .settings-row:has(select) > div {
+  .settings-row:has(select) > div,
+  .settings-row-with-controls > div:first-child {
     flex: 1 1 190px;
   }
   .settings-font-row {

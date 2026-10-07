@@ -88,6 +88,16 @@ onBeforeUnmount(() => {
     :key="page"
     windowed
     :workspace="snapshot.workspace"
+    :workspace-settings="snapshot.workspaceSettings"
+    :workspace-pages="snapshot.workspacePages"
+    :workspace-settings-error="snapshot.workspaceSettingsError"
+    :workspace-settings-saving="snapshot.workspaceSettingsSaving"
+    :workspace-exporting="snapshot.workspaceExporting"
+    :workspace-export-error="snapshot.workspaceExportError"
+    :workspace-deletion-supported="snapshot.workspaceDeletionSupported"
+    :workspace-deleting="snapshot.workspaceDeleting"
+    :workspace-deletion-error="snapshot.workspaceDeletionError"
+    :active-file="snapshot.activeFile"
     :extra-pages="extensions?.settingsPages"
     :mode="snapshot.mode"
     :native="true"
@@ -127,9 +137,16 @@ onBeforeUnmount(() => {
     @update:source-font-size="change('sourceFontSize', $event)"
     @update:editor-preferences="change('editorPreferences', $event)"
     @capability="send({ type: 'capability', value: $event as CapabilityPatch })"
+    @workspace-setting="(workspaceId, patch) => send({ type: 'workspace-setting', workspaceId, patch })"
+    @workspace-settings-reload="send({ type: 'workspace-settings-reload' })"
+    @workspace-export="send({ type: 'workspace-export', workspaceId: $event })"
+    @workspace-delete="send({ type: 'workspace-delete', workspaceId: $event })"
     @assistant-changed="send({ type: 'assistant-refresh' })"
     @action="action"
   >
+    <template #workspace-members-export>
+      <component v-if="extensions?.regions['workspace-members-export']" :is="extensions.regions['workspace-members-export']" :workspace="snapshot.workspace" :mode="snapshot.mode" />
+    </template>
     <template #update-panel>
       <UpdatePanel remote :remote-state="snapshot.updates" @activate="send({ type: 'update' })" />
     </template>

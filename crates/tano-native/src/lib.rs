@@ -137,6 +137,35 @@ fn close_workspace(
     Ok(())
 }
 
+#[tauri::command]
+fn unregister_workspace(
+    workspace_id: String,
+    state: State<AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let mut guard = state.session.lock().map_err(|e| e.to_string())?;
+    let session = guard.as_ref().ok_or("请先打开一个工作空间")?;
+    if session.id != workspace_id {
+        return Err("工作区已切换，请重新确认删除注册".into());
+    }
+    // The settings window is part of this flow; only detached editors block unregistering.
+    if app
+        .webview_windows()
+        .keys()
+        .any(|label| label.starts_with("detached-"))
+    {
+        return Err("请先关闭此工作区的独立文档窗口，再删除注册".into());
+    }
+    session_storage::unregister(
+        &cache_path(&app)?,
+        &app_data(&app)?,
+        &session.root,
+        &session.id,
+    )?;
+    guard.take();
+    Ok(())
+}
+
 fn open_workspace_blocking(
     path: String,
     app: tauri::AppHandle,
@@ -165,6 +194,7 @@ fn open_workspace_blocking(
     } else {
         None
     };
+    let newly_created = storage::existing_workspace_identity(&root)?.is_none();
     let id = workspace_identity::identity_for_open(
         &data,
         &root,
@@ -181,7 +211,8 @@ fn open_workspace_blocking(
         )?)
     };
     storage::assert_workspace_identity(&root, &id)?;
-    let workspace = storage::scan(&root, &id, &cache_path(&app)?)?;
+    let mut workspace = storage::scan(&root, &id, &cache_path(&app)?)?;
+    workspace.newly_created = newly_created.then_some(true);
     let handle = app.clone();
     let watch_root = root.clone();
     let mut watcher = notify::recommended_watcher(
@@ -395,6 +426,19 @@ fn import_attachment(
             require_image,
             Some((&s.id, &cache_path(&app)?)),
         )
+    })
+}
+
+#[tauri::command]
+fn read_attachment(
+    workspace_id: String,
+    path: String,
+    state: State<AppState>,
+) -> Result<String, String> {
+    use base64::Engine;
+    with_workspace_session(&workspace_id, state, |s| {
+        let bytes = assets::read(&s.root, &path)?;
+        Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
     })
 }
 
@@ -932,6 +976,7 @@ pub fn configure_with_commands(
                     updates::update_install,
                     open_workspace,
                     close_workspace,
+                    unregister_workspace,
                     runtime_platform,
                     tab_drag_release,
                     open_mobile_workspace,
@@ -942,6 +987,7 @@ pub fn configure_with_commands(
                     load_session,
                     save_session,
                     import_attachment,
+                    read_attachment,
                     export_attachment,
                     export_document,
                     open_external_url,

@@ -37,8 +37,10 @@ const iconNotices = await Promise.all([
   ['Material Icon Theme 5.38.1 (bundled SVGs)', 'https://github.com/material-extensions/vscode-material-icon-theme', 'packages/editor/src/language-icons/material'],
   ['Devicon 7330accdbc47e2dc0c19789a48533c4a3c50fe58 (bundled SVGs)', 'https://github.com/devicons/devicon', 'packages/editor/src/language-icons/devicon'],
   ['Phosphor Icons 2b75f3ad12b420c9504ef05df8d2564a28f8500e (bundled duotone SVGs)', 'https://github.com/phosphor-icons/core', 'packages/editor/src/callout-icons/phosphor'],
-].map(async ([name, url, folder]) =>
-  `${name}\nLicense: MIT\n${url}\n\n${await readFile(join(root, folder, 'LICENSE'), 'utf8')}`,
+  ['Twemoji 17.0.3 (local WebP sprite derived from original SVGs)', 'https://github.com/jdecked/twemoji/tree/v17.0.3', 'packages/workbench/src/assets/emoji/twemoji', 'CC-BY-4.0', 'LICENSE-GRAPHICS', 'Copyright Twitter, Inc. and other Twemoji contributors. Tano rasterizes and arranges the artwork in a lossless sprite sheet with transparent gutters; artwork colors are unchanged.'],
+  ['Emojibase Data 17.0.0 (localized workspace emoji metadata)', 'https://github.com/milesj/emojibase', 'packages/workbench/src/assets/emoji/emojibase', 'MIT', 'LICENSE', 'Copyright (c) 2017-2019 Miles Johnson. Tano selects base emoji and combines Simplified Chinese and English names and search tags.'],
+].map(async ([name, url, folder, license = 'MIT', licenseFile = 'LICENSE', attribution = '']) =>
+  `${name}\nLicense: ${license}\n${url}\n${attribution}\n\n${await readFile(join(root, folder, licenseFile), 'utf8')}`,
 ));
 for (const target of ['apps/client/public/THIRD_PARTY_NOTICES.txt', 'apps/mcp/THIRD_PARTY_NOTICES.txt']) {
   await mkdir(dirname(join(root, target)), { recursive: true });
