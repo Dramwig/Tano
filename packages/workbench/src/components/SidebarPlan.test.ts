@@ -10,6 +10,9 @@ import { calendarEvents } from '../calendar';
 import SidebarPlan from './SidebarPlan.vue';
 import { usePlanStore } from '../stores/plans';
 import { BrowserPersonalPlans } from '../personal-plans';
+import { animate } from 'motion/mini';
+
+vi.mock('motion/mini', () => ({ animate: vi.fn(() => ({ stop: vi.fn(), finished: Promise.resolve() })) }));
 
 let app: App;
 let root: HTMLElement;
@@ -252,6 +255,11 @@ async function choosePrecision(label: '全天事件' | '精确时间') {
 }
 
 it('creates, completes, reopens and opens one persisted event while the sidebar reflects date changes', async () => {
+  const completedToggle = control<HTMLButtonElement>('已完成');
+  const completedPanel = document.getElementById(completedToggle.getAttribute('aria-controls')!)!;
+  expect(completedToggle.getAttribute('aria-expanded')).toBe('false');
+  expect(completedPanel.hidden).toBe(true);
+  expect(completedToggle.textContent).toContain('0');
   await quickAdd('整理资料');
   submit();
   await vi.waitFor(() => expect(store.objects).toHaveLength(1));
@@ -267,9 +275,27 @@ it('creates, completes, reopens and opens one persisted event while the sidebar 
   expect(selectEvent).toHaveBeenCalledWith(id);
   control<HTMLInputElement>('完成：整理资料').click();
   await vi.waitFor(() => expect(store.objects[0]!.object.properties.completed).toBe(true));
+  expect(section('未安排任务').textContent).not.toContain('整理资料');
+  expect(completedToggle.textContent).toContain('1');
+  expect(completedToggle.getAttribute('aria-expanded')).toBe('false');
+  expect(control<HTMLInputElement>('标记未完成：整理资料')).toBeNull();
+  completedToggle.click();
+  await nextTick();
+  expect(completedToggle.getAttribute('aria-expanded')).toBe('true');
+  expect(completedPanel.hidden).toBe(false);
+  expect(section('已完成任务').textContent).toContain('整理资料');
+  completedToggle.click();
+  await nextTick();
+  expect(completedPanel.hidden).toBe(true);
+  expect(control<HTMLInputElement>('标记未完成：整理资料')).toBeNull();
+  completedToggle.click();
+  await nextTick();
   expect(control<HTMLInputElement>('标记未完成：整理资料').checked).toBe(true);
   control<HTMLInputElement>('标记未完成：整理资料').click();
   await vi.waitFor(() => expect(store.objects[0]!.object.properties.completed).toBe(false));
+  expect(completedToggle.textContent).toContain('0');
+  expect(section('已完成任务').textContent).toContain('没有已完成的任务');
+  expect(section('未安排任务').textContent).toContain('整理资料');
   const record = store.objects[0]!;
   await usePlanStore().update(record, {
     ...record.object,
@@ -290,6 +316,26 @@ it('creates, completes, reopens and opens one persisted event while the sidebar 
   expect(JSON.parse(persisted.files[store.objects[0]!.path].content).properties.date).toBe(
     '2026-09-29',
   );
+  date.value = new Date(2026, 8, 29);
+  await nextTick();
+  control<HTMLInputElement>('完成：整理资料').click();
+  await vi.waitFor(() => expect(store.objects[0]!.object.properties.completed).toBe(true));
+  expect(section('当天安排').textContent).toContain('整理资料');
+  expect(section('当天安排').querySelector<HTMLInputElement>('input[type=checkbox]')!.checked).toBe(true);
+  expect(section('已完成任务').textContent).toContain('整理资料');
+  expect(section('已完成任务').querySelector<HTMLInputElement>('input[type=checkbox]')!.checked).toBe(true);
+  expect(section('当天安排').querySelector('.sidebar-calendar-empty')).toBeNull();
+  section('已完成任务').querySelector<HTMLInputElement>('input[type=checkbox]')!.click();
+  await vi.waitFor(() => expect(store.objects[0]!.object.properties.completed).toBe(false));
+  expect(section('当天安排').querySelector<HTMLInputElement>('input[type=checkbox]')!.checked).toBe(false);
+  expect(section('已完成任务').textContent).not.toContain('整理资料');
+  section('当天安排').querySelector<HTMLInputElement>('input[type=checkbox]')!.click();
+  await vi.waitFor(() => expect(store.objects[0]!.object.properties.completed).toBe(true));
+  date.value = new Date(2026, 8, 30);
+  await nextTick();
+  expect(section('当天安排').textContent).not.toContain('整理资料');
+  expect(section('已完成任务').textContent).toContain('整理资料');
+  expect(section('已完成任务').textContent).toContain('2026-09-29');
 });
 
 it('creates ordinary timed events through the same form and opens their detail', async () => {
@@ -452,7 +498,7 @@ it('merges day and time into one schedule option, preserves date and time, and s
   expect(store.objects).toHaveLength(1);
 });
 
-it('preserves the creation draft and resets the completion checkbox when storage rejects a write', async () => {
+it('preserves the creation draft and resets completion feedback when storage rejects a write', async () => {
   const create = vi
     .spyOn(store, 'createObject')
     .mockRejectedValueOnce(new Error('保存失败，请重试'));
@@ -465,14 +511,51 @@ it('preserves the creation draft and resets the completion checkbox when storage
   create.mockRestore();
   submit();
   await vi.waitFor(() => expect(store.objects).toHaveLength(1));
-  vi.spyOn(store, 'updateObject').mockRejectedValueOnce(new Error('外部修改冲突'));
-  control<HTMLInputElement>('完成：保留草稿').click();
+  let rejectWrite!: (reason: Error) => void;
+  const update = vi.spyOn(store, 'updateObject').mockImplementationOnce(() => new Promise((_resolve, reject) => {
+    rejectWrite = reject;
+  }));
+  const completion = control<HTMLInputElement>('完成：保留草稿');
+  completion.click();
+  await nextTick();
+  expect(completion.checked).toBe(false);
+  expect(completion.disabled).toBe(true);
+  expect(completion.parentElement!.classList.contains('is-completed')).toBe(true);
+  expect(completion.closest('li')!.classList.contains('completed')).toBe(true);
+  expect(store.objects[0]!.object.properties.completed).toBe(false);
+  completion.click();
+  expect(update).toHaveBeenCalledTimes(1);
+  rejectWrite(new Error('外部修改冲突'));
   await vi.waitFor(() =>
     expect(root.querySelector('[role=alert]')?.textContent).toContain('外部修改冲突'),
   );
   await nextTick();
   expect(store.objects[0]!.object.properties.completed).toBe(false);
   expect(control<HTMLInputElement>('完成：保留草稿').checked).toBe(false);
+  expect(completion.disabled).toBe(false);
+  expect(completion.parentElement!.classList.contains('is-completed')).toBe(false);
+  expect(completion.closest('li')!.classList.contains('completed')).toBe(false);
+});
+
+it('persists completion immediately while keeping the source row visible until its animation finishes', async () => {
+  await quickAdd('动画完成前保留事项');
+  submit();
+  await vi.waitFor(() => expect(store.objects).toHaveLength(1));
+  const row = control<HTMLInputElement>('完成：动画完成前保留事项').closest('li')!;
+  let finishFade!: () => void;
+  const finished = new Promise<void>(resolve => { finishFade = resolve; });
+  row.animate = vi.fn();
+  vi.mocked(animate).mockReturnValueOnce({ finished, stop: vi.fn() } as unknown as ReturnType<typeof animate>);
+  control<HTMLInputElement>('完成：动画完成前保留事项').click();
+  await vi.waitFor(() => expect(store.objects[0]!.object.properties.completed).toBe(true));
+  expect(JSON.parse(store.objects[0]!.snapshot.content).properties.completed).toBe(true);
+  expect(row.isConnected).toBe(true);
+  expect(section('未安排任务').textContent).toContain('动画完成前保留事项');
+  expect(section('未安排任务').querySelector('.sidebar-calendar-empty')).toBeNull();
+  finishFade();
+  await vi.waitFor(() => expect(row.isConnected).toBe(false));
+  expect(section('未安排任务').textContent).not.toContain('动画完成前保留事项');
+  expect(section('未安排任务').textContent).toContain('没有未安排的任务');
 });
 
 it('opens a separate panel with the selected date and returns keyboard focus when dismissed', async () => {
@@ -564,11 +647,20 @@ it('defaults to the selected source and scopes detail selection and completion f
   control<HTMLInputElement>('完成：个人事项').click();
   await vi.waitFor(() => expect(plans.personal[0]!.object.properties.completed).toBe(true));
   expect(shared.object.properties.completed).not.toBe(true);
+  control<HTMLButtonElement>('已完成').click();
+  await nextTick();
+  expect(section('已完成任务').textContent).toContain('个人事项');
+  expect(section('未安排任务').textContent).not.toContain('个人事项');
   const button = [...root.querySelectorAll<HTMLButtonElement>('.plan-event-detail')].find(button => button.textContent!.includes('个人事项'))!;
   button.click();
   expect(selectEvent).toHaveBeenCalledWith(`personal:${plans.personalId}:${personal.object.id}`);
+  plans.view = 'workspace';
+  await nextTick();
+  expect(section('已完成任务').textContent).not.toContain('个人事项');
+  expect(section('未安排任务').textContent).toContain('工作区事项');
   plans.view = 'personal';
   await nextTick();
+  expect(section('已完成任务').textContent).toContain('个人事项');
   await quickAdd('第二条个人事项');
   expect(control<HTMLButtonElement>('保存到').textContent).toContain('个人');
 });

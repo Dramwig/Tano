@@ -502,13 +502,16 @@ watch(() => props.date, (date) => {
                 <button
                   v-else
                   type="button"
-                  :class="{ today: localDayKey(day) === today, selected: localDayKey(day) === yearDayKey, 'has-event': yearDayRecords(day).length > 0 }"
+                  :class="{ today: localDayKey(day) === today, selected: localDayKey(day) === yearDayKey }"
                   :aria-label="`${localDayKey(day)}，${yearDayRecords(day).length} 个事件`"
                   aria-haspopup="dialog"
                   :aria-expanded="localDayKey(day) === yearDayKey"
                   :aria-controls="localDayKey(day) === yearDayKey ? dayPopoverId : undefined"
                   @click="openYearDay(day, $event)"
-                >{{ day.getDate() }}</button>
+                >
+                  <span class="calendar-year-date">{{ day.getDate() }}</span>
+                  <i v-if="yearDayRecords(day).length" class="calendar-year-event-dot" aria-hidden="true" />
+                </button>
               </template>
             </div>
           </section>
@@ -519,10 +522,9 @@ watch(() => props.date, (date) => {
     <div v-else class="calendar-agenda-view">
       <p v-if="!agendaDates.length" class="calendar-agenda-empty">本月没有日程</p>
       <section v-for="day in agendaDates" :key="localDayKey(day)" class="calendar-agenda-day">
-        <div class="calendar-agenda-date">
-          <strong :class="{ today: localDayKey(day) === today }">{{ day.getDate() }}</strong>
-          <span>{{ day.getMonth() + 1 }} 月 · 周{{ weekday(day) }}</span>
-        </div>
+        <time class="calendar-agenda-date" :datetime="localDayKey(day)">
+          {{ day.getMonth() + 1 }}月{{ day.getDate() }}日
+        </time>
         <div class="calendar-agenda-events">
           <button
             v-for="record in dayRecords(day)"
@@ -644,8 +646,7 @@ watch(() => props.date, (date) => {
 .calendar-view-date-event:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
 .calendar-view-day-heading.today strong,
 .calendar-month-date.today,
-.calendar-year-days button.today,
-.calendar-agenda-date strong.today { color: white; background: var(--green-fill); }
+.calendar-year-days button.today > .calendar-year-date { color: white; background: var(--green-fill); }
 .calendar-view-grid { height: 1344px; }
 .calendar-view-hours { position: sticky; left: 0; z-index: 1; background: var(--paper); }
 .calendar-view-hours span {
@@ -712,8 +713,7 @@ watch(() => props.date, (date) => {
 }
 .calendar-month-cell.shaded { background: var(--surface); }
 .calendar-month-date,
-.calendar-year-days button,
-.calendar-agenda-date strong {
+.calendar-year-days button {
   display: grid;
   place-items: center;
   width: 27px;
@@ -764,19 +764,25 @@ watch(() => props.date, (date) => {
 .calendar-year-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center; }
 .calendar-year-weekdays span { padding-bottom: 4px; color: var(--muted); font-size: 10px; }
 .calendar-year-days button,
-.calendar-year-days span { width: 28px; height: 28px; margin: auto; font-size: 11px; }
-.calendar-year-days button.has-event { color: var(--green); font-weight: 700; }
-.calendar-year-days button.today { color: white; }
+.calendar-year-days > span { width: 28px; height: 28px; margin: auto; font-size: 11px; }
+.calendar-year-days button { position: relative; padding: 0; }
+.calendar-year-date { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; }
+.calendar-year-event-dot {
+  position: absolute;
+  bottom: 1px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--green);
+}
 .calendar-year-days button.selected { color: var(--green); background: var(--accent); }
-.calendar-year-days button.today.selected { color: white; background: var(--green-fill); box-shadow: 0 0 0 3px var(--accent); }
 .calendar-year-days button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 .calendar-agenda-view { max-width: 900px; margin: 0 auto; padding: 28px 32px; }
 .calendar-agenda-empty { padding: 60px 0; color: var(--muted); text-align: center; }
-.calendar-agenda-day { display: flex; gap: 24px; padding: 18px 0; border-bottom: 1px solid var(--line); }
-.calendar-agenda-date { display: flex; align-items: center; gap: 8px; width: 120px; flex-shrink: 0; color: var(--muted); font-size: 12px; }
-.calendar-agenda-date strong { color: var(--text); font-size: 16px; }
+.calendar-agenda-day { display: flex; gap: 24px; padding: 18px 0; border-bottom: 1px solid var(--line); line-height: 20px; }
+.calendar-agenda-date { display: flex; align-items: center; width: 120px; flex-shrink: 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .calendar-agenda-events { flex: 1; min-width: 0; }
-.calendar-agenda-events button { display: flex; gap: 20px; width: 100%; padding: 10px 12px; border-radius: 6px; color: var(--text); text-align: left; }
+.calendar-agenda-events button { display: flex; align-items: center; gap: 20px; width: 100%; padding: 10px 12px; border-radius: 6px; color: var(--text); text-align: left; }
 .calendar-agenda-events button:hover { background: var(--hover); }
 .calendar-agenda-events time { width: 46px; flex-shrink: 0; color: var(--muted); font-size: 12px; }
 @media (max-width: 700px) {

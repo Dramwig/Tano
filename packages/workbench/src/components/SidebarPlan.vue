@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, ref, useId, watch } from 'vue';
 import {
   CalendarDays,
   Check,
@@ -30,6 +30,7 @@ import type { PlanScope } from '../stores/plans';
 import { planKey } from '../personal-plans';
 import { useWorkbenchRuntime } from '../runtime';
 import PlanEventList from './PlanEventList.vue';
+import { createPlanListMotion } from './plan-list-motion';
 import PlanConnectionsDialog from './PlanConnectionsDialog.vue';
 import { usePlanSyncStore } from '../stores/plan-sync';
 import type { SyncKind } from '../plan-sync/types';
@@ -38,6 +39,10 @@ import { writePlanDate } from '../plan-date';
 import type { PlanDateValue } from '../plan-date';
 
 const props = withDefaults(defineProps<{ date: Date; active?: boolean }>(), { active: true });
+const listRoot = ref<HTMLElement>();
+let listMotion: ReturnType<typeof createPlanListMotion> | undefined;
+onBeforeUpdate(() => listMotion?.capture());
+onUpdated(() => listMotion?.update());
 const emit = defineEmits<{ 'select-date': [date: Date]; 'select-event': [id: string] }>();
 const store = useWorkspaceStore();
 const plans = usePlanStore();
@@ -111,6 +116,10 @@ let savedScrollTop = BUFFER_WEEKS * WEEK_HEIGHT;
 let repositioning = false;
 let resizeObserver: ResizeObserver | undefined;
 const events = computed(() => planningEvents(plans.records));
+const unfinished = computed(() => events.value.filter(record => !isEventCompleted(record)));
+const completed = computed(() => events.value.filter(isEventCompleted));
+const completedExpanded = ref(false);
+const completedListId = useId();
 const days = computed(() =>
   Array.from({ length: TOTAL_WEEKS * 7 }, (_, index) => offsetDays(start.value, index)).map(
     (date) => ({
@@ -122,7 +131,7 @@ const days = computed(() =>
 );
 const selectedDate = computed(() => new Date(`${selected.value}T00:00:00`));
 const agenda = computed(() => plannedEventsOnDay(events.value, selectedDate.value));
-const unscheduled = computed(() => unscheduledTasks(events.value));
+const unscheduled = computed(() => unscheduledTasks(unfinished.value));
 const monthTitle = computed(
   () => `${month.value.getFullYear()} 年 ${month.value.getMonth() + 1} 月`,
 );
@@ -464,6 +473,7 @@ watch(
   },
 );
 onMounted(() => {
+  if (listRoot.value) listMotion = createPlanListMotion(listRoot.value);
   document.addEventListener('pointerdown', dismissViewMenu, true);
   document.addEventListener('focusin', dismissViewMenu, true);
   window.addEventListener('resize', placeViewMenu);
@@ -478,6 +488,7 @@ onMounted(() => {
   if (viewport.value) resizeObserver.observe(viewport.value);
 });
 onBeforeUnmount(() => {
+  listMotion?.dispose();
   finishCalendarDrag();
   resizeObserver?.disconnect();
   document.removeEventListener('pointerdown', dismissViewMenu, true);
@@ -488,7 +499,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="sidebar-calendar" role="region" aria-label="计划侧栏">
+  <div ref="listRoot" class="sidebar-calendar" role="region" aria-label="计划侧栏">
     <div ref="viewPicker" class="sidebar-calendar-heading">
       <div class="sidebar-calendar-month">
         <span :title="monthTitle"><span class="sidebar-calendar-year">{{ month.getFullYear() }} 年 </span>{{ month.getMonth() + 1 }} 月</span>
@@ -675,10 +686,10 @@ onBeforeUnmount(() => {
     </Teleport>
     <p v-if="error && !draft" class="plan-error" role="alert">{{ error }}</p>
     <section class="sidebar-calendar-agenda" aria-label="当天安排">
-      <div class="plan-section-heading">
+      <div class="plan-section-heading" data-plan-layout="agenda-heading">
         <h3>
           {{ selectedTitle }}
-          <small>{{ agenda.filter((record) => !isEventCompleted(record)).length }}</small>
+          <small>{{ agenda.length }}</small>
         </h3>
         <button
           type="button"
@@ -690,11 +701,7 @@ onBeforeUnmount(() => {
           <Plus :size="14" />
         </button>
       </div>
-      <p v-if="!agenda.length" class="sidebar-calendar-empty">
-        <CalendarDays :size="15" />{{ plans.view === 'personal' && personalIssue ? '个人事项尚未加载' : '这一天没有安排' }}
-      </p>
       <PlanEventList
-        v-else
         :records="agenda"
         :date="selectedDate"
         :disabled="false"
@@ -702,13 +709,19 @@ onBeforeUnmount(() => {
         :pending="pending"
         @select="emit('select-event', $event)"
         @complete="completeEvent"
-      />
+      >
+        <template #empty>
+          <p class="sidebar-calendar-empty" data-plan-layout="agenda-empty">
+            <CalendarDays :size="15" />{{ plans.view === 'personal' && personalIssue ? '个人事项尚未加载' : '这一天没有安排' }}
+          </p>
+        </template>
+      </PlanEventList>
     </section>
     <section class="sidebar-calendar-agenda plan-unscheduled" aria-label="未安排任务">
-      <div class="plan-section-heading">
+      <div class="plan-section-heading" data-plan-layout="unscheduled-heading">
         <h3>
           未安排
-          <small>{{ unscheduled.filter((record) => !isEventCompleted(record)).length }}</small>
+          <small>{{ unscheduled.length }}</small>
         </h3>
         <button
           type="button"
@@ -720,11 +733,7 @@ onBeforeUnmount(() => {
           <Plus :size="14" />
         </button>
       </div>
-      <p v-if="!unscheduled.length" class="sidebar-calendar-empty">
-        <ListTodo :size="15" />{{ plans.view === 'personal' && personalIssue ? '个人事项尚未加载' : '没有未安排的任务' }}
-      </p>
       <PlanEventList
-        v-else
         :records="unscheduled"
         :date="selectedDate"
         :disabled="false"
@@ -732,7 +741,48 @@ onBeforeUnmount(() => {
         :pending="pending"
         @select="emit('select-event', $event)"
         @complete="completeEvent"
-      />
+      >
+        <template #empty>
+          <p class="sidebar-calendar-empty" data-plan-layout="unscheduled-empty">
+            <ListTodo :size="15" />{{ plans.view === 'personal' && personalIssue ? '个人事项尚未加载' : '没有未安排的任务' }}
+          </p>
+        </template>
+      </PlanEventList>
+    </section>
+    <section class="sidebar-calendar-agenda plan-completed" aria-label="已完成任务">
+      <h3 class="plan-completed-heading" data-plan-layout="completed-heading">
+        <button
+          type="button"
+          class="plan-completed-toggle"
+          aria-label="已完成"
+          :aria-expanded="completedExpanded"
+          :aria-controls="completedListId"
+          @click="completedExpanded = !completedExpanded"
+        >
+          <span>已完成 <small>{{ completed.length }}</small></span>
+          <ChevronDown :size="14" aria-hidden="true" />
+        </button>
+      </h3>
+      <div :id="completedListId" :hidden="!completedExpanded">
+        <template v-if="completedExpanded">
+          <PlanEventList
+            :records="completed"
+            :date="selectedDate"
+            show-date
+            :disabled="false"
+            :can-edit="plans.canEdit"
+            :pending="pending"
+            @select="emit('select-event', $event)"
+            @complete="completeEvent"
+          >
+            <template #empty>
+              <p class="sidebar-calendar-empty" data-plan-layout="completed-empty">
+                <CircleCheck :size="15" />{{ plans.view === 'personal' && personalIssue ? '个人事项尚未加载' : '没有已完成的任务' }}
+              </p>
+            </template>
+          </PlanEventList>
+        </template>
+      </div>
     </section>
   </div>
 </template>
@@ -806,10 +856,27 @@ onBeforeUnmount(() => {
 .plan-section-heading h3 {
   margin: 0;
 }
-.plan-unscheduled {
+.plan-unscheduled,
+.plan-completed {
   border-top: 1px solid var(--line);
   padding-top: 14px;
 }
+.sidebar-calendar-agenda .plan-completed-heading { margin: 0; }
+.plan-completed-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 4px 0;
+  border-radius: 5px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.plan-completed-toggle:hover { background: var(--hover); color: var(--text); }
+.plan-completed-toggle:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.plan-completed-toggle > svg { transform: rotate(-90deg); transition: transform 150ms ease; }
+.plan-completed-toggle[aria-expanded='true'] > svg { transform: rotate(0); }
 .plan-create-backdrop {
   z-index: 90;
   padding: max(24px, 26vh) 20px 24px;

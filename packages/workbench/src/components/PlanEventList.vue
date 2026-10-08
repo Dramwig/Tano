@@ -1,28 +1,113 @@
 <script setup lang="ts">
+import { onBeforeUnmount, ref, TransitionGroup, watch } from 'vue';
+import { animate } from 'motion/mini';
 import { CalendarDays } from 'lucide-vue-next';
 import type { ObjectRecord } from '../workspace-objects';
 import { hasEventTime, isCheckableEvent, isEventCompleted, localDayKey } from '../calendar';
 import { planKey, planSourceLabel } from '../personal-plans';
+import { readPlanDate } from '../plan-date';
 
-defineProps<{
+const props = defineProps<{
   records: ObjectRecord[];
   date: Date;
   disabled: boolean;
   pending: string[];
   canEdit?: (record: ObjectRecord) => boolean;
+  showDate?: boolean;
 }>();
 const emit = defineEmits<{
   select: [id: string];
   complete: [record: ObjectRecord, completed: boolean];
 }>();
+const completionFeedback = ref<Record<string, boolean>>({});
+const leavingCount = ref(0);
+const leavingAnimations = new Map<Element, ReturnType<typeof animate>>();
+const enteringAnimations = new Map<Element, ReturnType<typeof animate>>();
+watch(() => [...props.pending], pending => {
+  for (const key of Object.keys(completionFeedback.value)) {
+    if (!pending.includes(key)) delete completionFeedback.value[key];
+  }
+});
+function visualCompleted(record: ObjectRecord) {
+  return completionFeedback.value[planKey(record)] ?? isEventCompleted(record);
+}
 function complete(record: ObjectRecord, event: Event) {
   const input = event.target as HTMLInputElement;
   const completed = input.checked;
   // Reflect persisted state until the hash-checked write succeeds, including on failure.
   input.checked = isEventCompleted(record);
+  const key = planKey(record);
+  if (props.disabled || props.canEdit?.(record) === false || props.pending.includes(key)) return;
+  completionFeedback.value[key] = completed;
   emit('complete', record, completed);
 }
+function cancelEnter(element: Element) {
+  enteringAnimations.get(element)?.stop();
+  enteringAnimations.delete(element);
+}
+function enterRow(element: Element, done: () => void) {
+  const row = element as HTMLElement;
+  if (typeof row.animate !== 'function' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    done();
+    return;
+  }
+  const animation = animate(row, { opacity: [0, 1] }, { duration: 0.16, ease: 'easeOut' });
+  enteringAnimations.set(row, animation);
+  void animation.finished.then(() => {
+    if (enteringAnimations.get(row) !== animation) return;
+    cancelEnter(row);
+    row.style.removeProperty('opacity');
+    done();
+  });
+}
+function leaveRow(element: Element, done: () => void) {
+  const row = element as HTMLElement;
+  const opacity = getComputedStyle(row).opacity || '1';
+  cancelEnter(row);
+  if (typeof row.animate !== 'function' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    done();
+    return;
+  }
+  // Let the check finish drawing before its row leaves; storage writes are never delayed.
+  const completing = row.hasAttribute('data-completion-transition');
+  const animation = animate(row, { opacity: [Number(opacity), 0] }, {
+    delay: completing ? 0.6 : 0,
+    duration: completing ? 0.2 : 0.12, ease: 'easeOut',
+  });
+  row.style.pointerEvents = 'none';
+  row.setAttribute('inert', '');
+  leavingAnimations.set(row, animation);
+  leavingCount.value++;
+  const finish = () => {
+    if (leavingAnimations.get(row) !== animation) return;
+    leavingAnimations.delete(row);
+    animation.stop();
+    leavingCount.value = Math.max(0, leavingCount.value - 1);
+    done();
+  };
+  void animation.finished.then(finish, finish);
+}
+function cancelLeave(element: Element) {
+  const animation = leavingAnimations.get(element);
+  leavingAnimations.delete(element);
+  if (animation) { animation.stop(); leavingCount.value = Math.max(0, leavingCount.value - 1); }
+  (element as HTMLElement).style.removeProperty('pointer-events');
+  (element as HTMLElement).style.removeProperty('opacity');
+  element.removeAttribute('inert');
+}
+onBeforeUnmount(() => {
+  for (const animation of leavingAnimations.values()) animation.stop();
+  for (const animation of enteringAnimations.values()) animation.stop();
+  leavingAnimations.clear();
+  enteringAnimations.clear();
+});
 function eventTime(record: ObjectRecord, day: Date) {
+  if (props.showDate) {
+    const { date, time, end } = readPlanDate(record.object.properties);
+    if (!date) return '未安排';
+    const start = `${date}${time ? ` ${time}` : ' · 全天'}`;
+    return end ? `${start} – ${end.replace('T', ' ')}` : start;
+  }
   if (record.object.properties.allDay === true) return '全天';
   if (!hasEventTime(record)) return record.object.properties.date ? '当天' : '未安排';
   const format = (value: unknown) => {
@@ -41,30 +126,49 @@ function eventTime(record: ObjectRecord, day: Date) {
 </script>
 
 <template>
-  <ul class="plan-events">
+  <slot v-if="!records.length && !leavingCount" name="empty" />
+  <TransitionGroup tag="ul" class="plan-events" :class="{ 'has-leaving': leavingCount > 0 }" :css="false" @enter="enterRow" @enter-cancelled="cancelEnter" @leave="leaveRow" @leave-cancelled="cancelLeave">
     <li
       v-for="record in records"
       :key="planKey(record)"
-      :class="{ completed: isEventCompleted(record) }"
+      :data-plan-layout="planKey(record)"
+      :class="{ completed: visualCompleted(record) }"
       :aria-busy="pending.includes(planKey(record))"
+      :data-completion-transition="completionFeedback[planKey(record)] !== undefined || undefined"
     >
-      <input
+      <label
         v-if="isCheckableEvent(record)"
-        type="checkbox"
-        :checked="isEventCompleted(record)"
-        :disabled="disabled || canEdit?.(record) === false || pending.includes(planKey(record))"
-        :aria-label="`${isEventCompleted(record) ? '标记未完成' : '完成'}：${record.object.name}`"
-        @change="complete(record, $event)"
-      />
+        class="plan-completion-control"
+        :class="{ 'is-completed': visualCompleted(record), 'is-readonly': disabled || canEdit?.(record) === false }"
+      >
+        <input
+          type="checkbox"
+          :checked="isEventCompleted(record)"
+          :disabled="disabled || canEdit?.(record) === false || pending.includes(planKey(record))"
+          :aria-label="`${isEventCompleted(record) ? '标记未完成' : '完成'}：${record.object.name}`"
+          @change="complete(record, $event)"
+        />
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 18 18"
+          class="plan-completion-icon"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <circle class="plan-completion-ring" cx="9" cy="9" r="7.25" />
+          <path class="plan-completion-check" d="M5.25 9.15 L7.85 11.7 L12.9 6.35" pathLength="1" />
+        </svg>
+      </label>
       <CalendarDays v-else :size="15" class="plan-event-icon" aria-hidden="true" />
       <button type="button" class="plan-event-detail" @click="emit('select', planKey(record))">
-        <strong>{{ record.object.name }}</strong>
+        <strong><span class="plan-event-title">{{ record.object.name }}</span></strong>
         <small
           >{{ planSourceLabel(record) }} · {{ isEventCompleted(record) ? '已完成 · ' : '' }}{{ eventTime(record, date) }}{{ record.object.properties.due ? ` · 截止 ${record.object.properties.due}` : '' }}</small
         >
       </button>
     </li>
-  </ul>
+  </TransitionGroup>
 </template>
 
 <style scoped>
@@ -72,6 +176,9 @@ function eventTime(record: ObjectRecord, day: Date) {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+.plan-events.has-leaving {
+  cursor: pointer;
 }
 .plan-events li {
   display: flex;
@@ -83,42 +190,70 @@ function eventTime(record: ObjectRecord, day: Date) {
 .plan-events li:hover {
   background: var(--hover);
 }
-.plan-events input {
-  appearance: none;
-  display: grid;
-  place-items: center;
+.plan-completion-control {
+  position: relative;
+  display: flex;
   flex: 0 0 auto;
-  box-sizing: border-box;
-  width: 16px;
-  height: 16px;
-  margin: 1px 0 0;
+  width: 18px;
+  height: 18px;
+  color: var(--control-border);
+}
+.plan-completion-control input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   padding: 0;
-  border: 1.5px solid var(--control-border);
-  border-radius: 50%;
-  background: transparent;
-  color: var(--paper);
-  cursor: pointer;
-  transition: border-color 150ms ease, background-color 150ms ease;
-}
-.plan-events input::after {
-  content: '';
-  width: 7px;
-  height: 4px;
-  border-left: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: translateY(-1px) rotate(-45deg);
   opacity: 0;
+  cursor: pointer;
 }
-.plan-events input:hover:not(:disabled):not(:checked) {
-  border-color: var(--green);
-  background: color-mix(in srgb, var(--green) 8%, transparent);
+.plan-completion-icon {
+  overflow: visible;
+  pointer-events: none;
 }
-.plan-events input:checked {
-  border-color: var(--green);
-  background: var(--green);
+.plan-completion-ring {
+  fill: transparent;
+  stroke: var(--control-border);
+  stroke-width: 1.5;
+  transition: stroke 240ms ease, fill 280ms ease;
 }
-.plan-events input:checked::after {
+.plan-completion-check {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  opacity: 0;
+  transition: stroke-dashoffset 300ms ease, opacity 180ms ease;
+}
+.plan-completion-control:hover input:not(:disabled) + .plan-completion-icon .plan-completion-ring,
+.plan-completion-control.is-completed .plan-completion-ring {
+  stroke: var(--green);
+}
+.plan-completion-control.is-completed .plan-completion-ring {
+  fill: color-mix(in srgb, var(--green) 8%, transparent);
+}
+.plan-completion-control.is-completed .plan-completion-check {
+  stroke-dashoffset: 0;
   opacity: 1;
+  transition: stroke-dashoffset 440ms cubic-bezier(0.35, 0, 0.25, 1) 30ms, opacity 140ms ease;
+}
+.plan-completion-control input:focus-visible + .plan-completion-icon {
+  border-radius: 50%;
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.plan-completion-control.is-readonly input:disabled {
+  cursor: not-allowed;
+}
+.plan-completion-control:not(.is-readonly) input:disabled {
+  cursor: pointer;
+}
+.plan-completion-control.is-readonly .plan-completion-icon {
+  opacity: 0.5;
 }
 .plan-event-icon {
   flex: 0 0 auto;
@@ -138,6 +273,16 @@ function eventTime(record: ObjectRecord, day: Date) {
   line-height: 1.5;
   font-weight: 500;
   overflow-wrap: anywhere;
+  transition: color 240ms ease;
+}
+.plan-event-title {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: left 55%;
+  background-size: 0% 1px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition: background-size 300ms ease;
 }
 .plan-event-detail small {
   display: block;
@@ -148,16 +293,27 @@ function eventTime(record: ObjectRecord, day: Date) {
 }
 .completed .plan-event-detail strong {
   color: var(--muted);
-  text-decoration: line-through;
 }
-button:focus-visible,
-input:focus-visible {
+.completed .plan-event-title {
+  background-size: 100% 1px;
+  transition: background-size 440ms cubic-bezier(0.35, 0, 0.25, 1) 30ms;
+}
+button:focus-visible {
   outline: 2px solid var(--green);
   outline-offset: 2px;
 }
-button:disabled,
-input:disabled {
+button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+@media (prefers-reduced-motion: reduce) {
+  .plan-completion-ring,
+  .plan-completion-check,
+  .plan-completion-control.is-completed .plan-completion-check,
+  .plan-event-detail strong,
+  .plan-event-title,
+  .completed .plan-event-title {
+    transition: none;
+  }
 }
 </style>
