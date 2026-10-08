@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PanelLeft, PanelRight, Pin, TextCursorInput } from 'lucide-vue-next';
+import { PanelBottom, PanelLeft, PanelRight, Pin, TextCursorInput } from 'lucide-vue-next';
 import { toolbarModeLabels } from '../toolbar-preference';
 import type { ToolbarMode } from '../toolbar-preference';
 
@@ -10,6 +10,7 @@ const options = [
   { mode: 'selection', icon: TextCursorInput },
   { mode: 'left', icon: PanelLeft },
   { mode: 'right', icon: PanelRight },
+  { mode: 'bottom', icon: PanelBottom },
   { mode: 'fixed', icon: Pin },
 ] as const;
 </script>

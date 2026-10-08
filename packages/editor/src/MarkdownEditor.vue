@@ -62,6 +62,7 @@ import type { FrontmatterValueKind } from './frontmatter-display';
 import 'katex/dist/katex.min.css';
 import type { EditorExtension } from './extension';
 import { configureMarkdownSchema } from './schema';
+import { listMarkdown } from './list-markdown';
 import { codeBlankLinesRemark } from './code-blank-lines';
 import { blockControls } from './blocks';
 import { blockTree, moveBlockSibling, indentBlock, outdentBlock, wrapBlockInToggle, deleteBlock } from './block-tree';
@@ -127,6 +128,7 @@ const props = withDefaults(
     preferences?: EditorPreferences;
     openLinksOnTap?: boolean;
     revealMarkdown?: boolean;
+    showDocumentProperties?: boolean;
     extension?: EditorExtension;
     resourceRevision?: string;
     commentAnchors?: readonly { id: string; anchor: CommentAnchor }[];
@@ -137,7 +139,7 @@ const props = withDefaults(
     resolveImage?: (reference: string) => string | null;
     importFile?: (file: File, requireImage: boolean) => Promise<ImportedResource>;
   }>(),
-  { revealMarkdown: true },
+  { revealMarkdown: true, showDocumentProperties: true },
 );
 const emit = defineEmits<{
   'update:modelValue': [value: string];
@@ -2125,6 +2127,7 @@ onMounted(async () => {
       })
       .use(commonmark)
       .use(codeBlankLinesRemark)
+      .use(listMarkdown)
       .use($prose(() => columnResizing({ cellMinWidth: minimumTableColumnWidth, defaultCellMinWidth: defaultTableColumnWidth, handleWidth: 6, View: TableViewport })))
       .use(gfm)
       .use($prose(() => tableLayouts(() => props.tableLayouts ?? [], tables => emit('tableLayoutChange', tables), () => !!props.readonly)))
@@ -2850,7 +2853,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <details ref="frontmatterPanel" class="frontmatter-panel">
+  <details v-if="showDocumentProperties" ref="frontmatterPanel" class="frontmatter-panel">
     <summary class="frontmatter-heading">
       <svg class="frontmatter-chevron" viewBox="0 0 16 16" fill="none" aria-hidden="true">
         <path

@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { animate } from 'motion/mini';
 import type { EditorSelectionContext } from '@tano/editor/document-model';
 import type { DocumentFeatures } from '@tano/editor/runtime';
 import EditorToolbar from './EditorToolbar.vue';
+import { defaultShortcutBindings, matchesShortcut, shortcutAriaLabel } from '../shortcuts';
+import type { ShortcutBindings } from '../shortcuts';
 import { selectionToolbarPosition } from '../selection-toolbar-position';
+import type { ToolbarMode } from '../toolbar-preference';
 import {
   dockedToolbarMenuPosition,
   dockedToolbarPosition,
@@ -16,16 +19,18 @@ const props = defineProps<{
   editorElement?: HTMLElement;
   features?: DocumentFeatures;
   enabledLevels?: readonly number[];
-  mode?: 'selection' | 'left' | 'right';
+  mode?: Exclude<ToolbarMode, 'fixed'>;
   dragging?: boolean;
   assistant?: boolean;
   annotation?: boolean;
   todo?: boolean;
+  shortcuts?: ShortcutBindings;
 }>();
 const emit = defineEmits<{ command: [name: string, value?: string]; assistant: []; annotation: []; todo: [] }>();
 const panel = ref<HTMLElement>();
 const visible = ref(false);
 const vertical = ref(false);
+const docked = computed(() => !!props.mode && props.mode !== 'selection');
 let anchor: Range | null = null;
 let dismissed: Range | null = null;
 let pointerSelecting = false;
@@ -120,36 +125,37 @@ function position() {
   if (!element || !content || !bounds) return hide();
   const { left, top, right, bottom } = bounds;
   element.style.maxWidth = `${Math.max(0, right - left)}px`;
-  const docked = props.mode === 'left' || props.mode === 'right';
-  const shouldBeVertical = docked && bottom - top >= 280;
+  const mode = props.mode;
+  const shouldBeVertical = (mode === 'left' || mode === 'right') && bottom - top >= 280;
   if (vertical.value !== shouldBeVertical) {
     vertical.value = shouldBeVertical;
     void nextTick(position);
     return;
   }
   const rect = element.getBoundingClientRect();
-  if (docked) {
-    const result = dockedToolbarPosition(
-      bounds,
-      props.mode as 'left' | 'right',
-      rect.width,
-      rect.height,
-    );
-    element.style.left = `${result.x}px`;
-    // Anchor the capsule by its center so a height transition stays centered
-    // without waiting for a ResizeObserver / animation frame to reposition it.
-    element.style.top = `${vertical.value ? result.y + rect.height / 2 : result.y}px`;
+  if (mode && mode !== 'selection') {
+    const result = dockedToolbarPosition(bounds, mode, rect.width, rect.height);
+    element.style.left = `${mode === 'bottom' ? (left + right) / 2 : result.x}px`;
+    // Anchor at the bottom edge or side center while the controls change height.
+    const anchorY =
+      mode === 'bottom' ? bottom : vertical.value ? result.y + rect.height / 2 : result.y;
+    element.style.top = `${anchorY}px`;
     element.style.setProperty('--dock-menu-top', `${result.menuTop}px`);
     element.style.setProperty(
       '--selection-toolbar-width',
-      `${vertical.value ? result.menuWidth : right - left}px`,
+      `${vertical.value || mode === 'bottom' ? result.menuWidth : right - left}px`,
     );
     const above = result.y - top - 6;
     const below = bottom - result.y - rect.height - 6;
-    element.dataset.menuSide = below >= above ? 'below' : 'above';
+    element.dataset.menuSide = mode === 'bottom' || above > below ? 'above' : 'below';
+    const menuHeight = vertical.value
+      ? result.menuHeight
+      : mode === 'bottom'
+        ? above
+        : Math.max(above, below);
     element.style.setProperty(
       '--selection-menu-height',
-      `${vertical.value ? result.menuHeight : Math.max(above, below)}px`,
+      `${Math.max(0, menuHeight)}px`,
     );
     const menus = new Set(
       element.querySelectorAll<HTMLElement>('.dropdown, .toolbar-input-panel'),
@@ -198,7 +204,7 @@ async function refresh() {
   if (!mounted || props.dragging) return;
   if (windowBlurred) return hide();
   const content = editor();
-  if (props.mode === 'left' || props.mode === 'right') {
+  if (docked.value) {
     if (
       !content ||
       (!content.contains(document.activeElement) &&
@@ -241,7 +247,7 @@ function schedule() {
 function pointerDown(event: PointerEvent) {
   const target = event.target as Node | null;
   if (panel.value?.contains(target)) return;
-  if (props.mode === 'left' || props.mode === 'right') {
+  if (docked.value) {
     if (!editor()?.contains(target)) hide();
     return;
   }
@@ -256,18 +262,23 @@ function pointerUp() {
   schedule();
 }
 function keydown(event: KeyboardEvent) {
-  if (props.dragging) return;
+  if (props.dragging || event.defaultPrevented) return;
   if (event.key === 'Escape' && visible.value) {
     // Nested menus consume Escape first; the next Escape dismisses the capsule.
-    if (props.mode === 'left' || props.mode === 'right') return;
+    if (docked.value) return;
     dismiss();
     if (panel.value?.contains(document.activeElement)) editor()?.focus();
     event.preventDefault();
     event.stopPropagation();
-  } else if (event.key === 'F10' && event.altKey && visible.value) {
-    panel.value?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
-    event.preventDefault();
   }
+}
+function focusShortcut(event: KeyboardEvent) {
+  if (props.dragging || event.defaultPrevented || !visible.value ||
+      (event.target instanceof Element && event.target.closest('[role="dialog"]'))) return;
+  if (!matchesShortcut(event, 'focusToolbar', props.shortcuts ?? defaultShortcutBindings)) return;
+  panel.value?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+  event.preventDefault();
+  event.stopPropagation();
 }
 function compositionStart() {
   composing = true;
@@ -322,6 +333,7 @@ onMounted(() => {
   document.addEventListener('focusin', schedule);
   document.addEventListener('focusout', schedule);
   document.addEventListener('keydown', keydown);
+  document.addEventListener('keydown', focusShortcut, true);
   document.addEventListener('compositionstart', compositionStart);
   document.addEventListener('compositionend', compositionEnd);
   window.addEventListener('scroll', schedule, true);
@@ -350,6 +362,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('focusin', schedule);
   document.removeEventListener('focusout', schedule);
   document.removeEventListener('keydown', keydown);
+  document.removeEventListener('keydown', focusShortcut, true);
   document.removeEventListener('compositionstart', compositionStart);
   document.removeEventListener('compositionend', compositionEnd);
   window.removeEventListener('scroll', schedule, true);
@@ -376,9 +389,9 @@ onBeforeUnmount(() => {
         ref="panel"
         class="selection-toolbar"
         :class="{ 'docked-toolbar': vertical, 'toolbar-being-dragged': dragging }"
-        :data-dock="mode === 'left' || mode === 'right' ? mode : undefined"
-        :aria-label="mode === 'left' ? '左侧工具栏' : mode === 'right' ? '右侧工具栏' : '选区工具栏'"
-        aria-keyshortcuts="Alt+F10 Escape"
+        :data-dock="docked ? mode : undefined"
+        :aria-label="mode === 'left' ? '左侧工具栏' : mode === 'right' ? '右侧工具栏' : mode === 'bottom' ? '底部工具栏' : '选区工具栏'"
+        :aria-keyshortcuts="[shortcutAriaLabel((shortcuts ?? defaultShortcutBindings).focusToolbar), 'Escape'].filter(Boolean).join(' ')"
       >
         <EditorToolbar
           compact
@@ -415,6 +428,10 @@ onBeforeUnmount(() => {
 }
 .docked-toolbar {
   transform: translateY(-50%);
+}
+.selection-toolbar[data-dock='bottom'] {
+  /* Keep the capsule centered and above the bottom edge while its controls animate. */
+  transform: translate(-50%, -100%);
 }
 .selection-toolbar:not(.docked-toolbar)[data-menu-side='above']
   :deep(.selection-format-toolbar .dropdown),

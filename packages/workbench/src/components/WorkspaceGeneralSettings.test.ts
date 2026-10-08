@@ -73,6 +73,7 @@ it('allows content export while all shared settings remain read-only', () => {
   const { change, exportContent } = mount(true);
   expect(root.querySelector<HTMLInputElement>('[aria-label="工作区名称"]')!.disabled).toBe(true);
   expect(root.querySelector<HTMLSelectElement>('[aria-label="默认打开页面"]')!.disabled).toBe(true);
+  expect(root.querySelector<HTMLSelectElement>('[aria-label="页面标题来源"]')!.disabled).toBe(true);
   for (const toggle of root.querySelectorAll<HTMLButtonElement>('[role="switch"]')) expect(toggle.disabled).toBe(true);
   [...root.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '导出')!.click();
   expect(exportContent).toHaveBeenCalledWith('ws');

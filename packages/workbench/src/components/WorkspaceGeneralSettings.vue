@@ -4,6 +4,7 @@ import { Check, Copy, Download } from 'lucide-vue-next';
 import type { Workspace } from '@tano/protocol';
 import { defaultWorkspaceSettings } from '../workspace-settings';
 import type { WorkspaceSettings, WorkspaceSettingsPatch } from '../workspace-settings';
+import type { PageTitleSource } from '../page-title-source';
 import WorkspaceIconPicker from './WorkspaceIconPicker.vue';
 
 const props = defineProps<{
@@ -130,6 +131,22 @@ const sidebarOptions = [
           <option value="">自动选择</option>
           <option v-if="settings.homePageId && !pages?.some(page => page.id === settings.homePageId)" :value="settings.homePageId" disabled>原页面已移除（请重新选择）</option>
           <option v-for="page in pages" :key="page.id" :value="page.id">{{ page.path }}</option>
+        </select>
+      </div>
+      <div class="settings-row">
+        <div>
+          <strong>页面标题来源</strong>
+          <p>适用于当前工作区的所有页面。仅“YAML title 优先”在字段为空或无效时使用文件名。</p>
+        </div>
+        <select
+          :value="settings.pageTitleSource"
+          aria-label="页面标题来源"
+          :disabled="disabled"
+          @change="change({ key: 'pageTitleSource', value: ($event.target as HTMLSelectElement).value as PageTitleSource, previous: settings.pageTitleSource })"
+        >
+          <option value="filename">文件名</option>
+          <option value="frontmatter">YAML title</option>
+          <option value="frontmatter-first">YAML title 优先</option>
         </select>
       </div>
     </div>

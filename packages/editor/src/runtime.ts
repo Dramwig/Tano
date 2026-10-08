@@ -17,11 +17,13 @@ export type DocumentFeature = (typeof featureDefinitions)[number]['key'];
 export type DocumentFeatures = Record<DocumentFeature, boolean>;
 export type MarkdownDialect = 'obsidian' | 'github' | 'pandoc' | 'commonmark';
 export type MathSyntax = 'preserve' | 'dollar' | 'latex';
+export type BulletListMarker = '-' | '+' | '*';
 export interface WorkspaceCapabilities {
   version: 1;
   features: DocumentFeatures;
   markdownDialect: MarkdownDialect;
   mathSyntax: MathSyntax;
+  bulletListMarker: BulletListMarker;
   /** Shared per-document layout keyed by the stable short file ID; absent means limited width. */
   pageWidthLimits: Record<string, boolean>;
 }
@@ -36,6 +38,7 @@ export const defaultCapabilities: WorkspaceCapabilities = {
   ) as DocumentFeatures,
   markdownDialect: 'obsidian',
   mathSyntax: 'preserve',
+  bulletListMarker: '*',
   pageWidthLimits: {},
 };
 export const defaultEditorPreferences: EditorPreferences = {
@@ -63,10 +66,13 @@ export function parseCapabilities(content: string): WorkspaceCapabilities {
   }
   const markdownDialect = data.markdownDialect ?? defaultCapabilities.markdownDialect;
   const mathSyntax = data.mathSyntax ?? defaultCapabilities.mathSyntax;
+  const bulletListMarker = data.bulletListMarker ?? defaultCapabilities.bulletListMarker;
   if (!['obsidian', 'github', 'pandoc', 'commonmark'].includes(String(markdownDialect)))
     throw new Error('未知的 Markdown 方言');
   if (!['preserve', 'dollar', 'latex'].includes(String(mathSyntax)))
     throw new Error('未知的公式输出语法');
+  if (!['-', '+', '*'].includes(bulletListMarker as string))
+    throw new Error('未知的无序列表标记');
   const pageWidthLimits: Record<string, boolean> = {};
   if (data.pageWidthLimits !== undefined) {
     if (!data.pageWidthLimits || typeof data.pageWidthLimits !== 'object' || Array.isArray(data.pageWidthLimits))
@@ -82,6 +88,7 @@ export function parseCapabilities(content: string): WorkspaceCapabilities {
     features,
     markdownDialect: markdownDialect as MarkdownDialect,
     mathSyntax: mathSyntax as MathSyntax,
+    bulletListMarker: bulletListMarker as BulletListMarker,
     pageWidthLimits,
   };
 }

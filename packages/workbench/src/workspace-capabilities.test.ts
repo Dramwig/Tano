@@ -39,6 +39,23 @@ it('merges independent external edits and preserves unknown policy fields', asyn
     features: { future: false },
   });
 });
+
+it('persists bullet markers, merges independent rules, and rejects competing marker edits', async () => {
+  const adapter = new DemoAdapter();
+  const workspace = await adapter.open();
+  const document = workspace.files.find(file => file.kind === 'file' && file.path.endsWith('.md'))!;
+  const before = await adapter.read(document.path);
+  const initial = await saveCapabilityPatch(adapter, null, { bulletListMarker: '*' });
+  await saveCapabilityPatch(adapter, initial.snapshot, { mathSyntax: 'latex' });
+  const saved = await saveCapabilityPatch(adapter, initial.snapshot, { bulletListMarker: '+' });
+  expect(saved.capabilities).toMatchObject({ mathSyntax: 'latex', bulletListMarker: '+' });
+  expect((await loadCapabilities(new DemoAdapter(), await adapter.refresh())).capabilities.bulletListMarker)
+    .toBe('+');
+  await expect(saveCapabilityPatch(adapter, initial.snapshot, { bulletListMarker: '-' }))
+    .rejects.toThrow('外部修改');
+  expect(await adapter.read(capabilityPath)).toEqual(saved.snapshot);
+  expect(await adapter.read(document.path)).toEqual(before);
+});
 it('shares page width per document and merges changes to different documents', async () => {
   const adapter = new DemoAdapter();
   const workspace = await adapter.open();

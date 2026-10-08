@@ -2,13 +2,17 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { ArrowDown, ArrowUp, CornerDownLeft, Repeat2, X } from 'lucide-vue-next';
 import type { PageSearchEditor } from '@tano/editor/search';
+import { defaultShortcutBindings, matchesShortcut, shortcutLabel } from '../shortcuts';
+import type { ShortcutBindings } from '../shortcuts';
 
 const props = defineProps<{
   editor?: PageSearchEditor;
   content: string;
   revision?: number;
   readonly?: boolean;
+  shortcuts?: ShortcutBindings;
 }>();
+const bindings = computed(() => props.shortcuts ?? defaultShortcutBindings);
 const opened = ref(false);
 const input = ref<HTMLInputElement>();
 const query = ref('');
@@ -58,7 +62,8 @@ async function replaceMatch(all = false) {
   refresh(true);
 }
 function replacementKeydown(event: KeyboardEvent) {
-  if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
+  if (event.key !== 'Enter' || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey ||
+      event.isComposing || event.keyCode === 229 || matchesShortcut(event, 'closeSearch', bindings.value)) return;
   event.preventDefault();
   event.stopPropagation();
   void replaceMatch();
@@ -75,16 +80,18 @@ function navigate(direction: number) {
 }
 function keydown(event: KeyboardEvent) {
   if (event.isComposing || event.keyCode === 229) return;
-  if (event.key === 'Escape') {
+  if (matchesShortcut(event, 'closeSearch', bindings.value)) {
     event.preventDefault();
     close();
+    return;
   }
-  if (
-    (event.key === 'Enter' && event.target === input.value) ||
-    ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'g')
-  ) {
+  const next = (event.target === input.value && matchesShortcut(event, 'nextMatch', bindings.value)) ||
+    matchesShortcut(event, 'nextMatchFromEditor', bindings.value);
+  const previous = (event.target === input.value && matchesShortcut(event, 'previousMatch', bindings.value)) ||
+    matchesShortcut(event, 'previousMatchFromEditor', bindings.value);
+  if (next || previous) {
     event.preventDefault();
-    navigate(event.shiftKey ? -1 : 1);
+    navigate(previous ? -1 : 1);
   }
 }
 watch(query, () => {
@@ -131,7 +138,7 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
           type="button"
           :disabled="!count"
           aria-label="上一个匹配"
-          title="上一个匹配 (Shift+Enter)"
+          :title="`上一个匹配 (${shortcutLabel(bindings.previousMatch)})`"
           @click="navigate(-1)"
         >
           <ArrowUp :size="15" :stroke-width="1.7" />
@@ -140,7 +147,7 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
           type="button"
           :disabled="!count"
           aria-label="下一个匹配"
-          title="下一个匹配 (Enter)"
+          :title="`下一个匹配 (${shortcutLabel(bindings.nextMatch)})`"
           @click="navigate(1)"
         >
           <ArrowDown :size="15" :stroke-width="1.7" />
@@ -150,14 +157,14 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
           :class="{ active: replacing }"
           :aria-pressed="replacing"
           aria-label="展开或收起替换"
-          title="替换 (Ctrl+H)"
+          :title="`替换 (${shortcutLabel(bindings.pageReplace)})`"
           @click="toggleReplace"
         >
           <Repeat2 :size="15" :stroke-width="1.7" />
         </button>
       </template>
       <span v-else class="page-search-not-found" role="status" aria-live="polite">not found</span>
-      <button type="button" aria-label="关闭页内搜索" title="关闭 (Esc)" @click="close">
+      <button type="button" aria-label="关闭页内搜索" :title="`关闭 (${shortcutLabel(bindings.closeSearch)})`" @click="close">
         <X :size="15" :stroke-width="1.7" />
       </button>
     </div>

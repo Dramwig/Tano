@@ -61,6 +61,7 @@ import {
   Pin,
   Ruler,
   Heading1,
+  SlidersHorizontal,
   LockKeyhole,
   MoveHorizontal,
   Undo2,
@@ -126,7 +127,6 @@ const RelationGraph = defineAsyncComponent(() => import('./components/RelationGr
 import NewTabPicker from './components/NewTabPicker.vue';
 import EditorTools from './components/EditorTools.vue';
 import { parseToolbarMode, toolbarPreferenceKey } from './toolbar-preference';
-import { parsePageTitleSource } from './page-title-source';
 import DocumentHistoryPanel from './components/DocumentHistoryPanel.vue';
 import AgentPanel from './components/AgentPanel.vue';
 import AssistantPanel from './components/AssistantPanel.vue';
@@ -162,7 +162,11 @@ import { sloganParts, welcomeSlogans } from './welcome-slogans';
 import { useUpdatesStore } from './stores/updates';
 import { resolveWikiLink } from './wiki-links';
 import { applyFileMovePreview, planFileMovePreview, type FileMovePreview } from './file-move';
-import { isSidebarToggleShortcut } from './shortcuts';
+import {
+  isSidebarToggleShortcut, matchesShortcut, parseShortcutBindings, readShortcutBindings,
+  saveShortcutBindings, shortcutLabel, shortcutPreferenceKey,
+} from './shortcuts';
+import type { ShortcutId } from './shortcuts';
 import { createDetachedTabWindow, detachedTabRequest, reportDetachedReady } from './detach-tab';
 import type { DetachedDropPoint } from './detach-tab';
 import {
@@ -654,6 +658,14 @@ function constrainSidebarToViewport() {
 const defaultSource = ref(readPreference('defaultSource', false));
 const revealMarkdown = ref(readPreference('revealMarkdown', true));
 const toolbarMode = ref(parseToolbarMode(readTextPreference('toolbarMode')));
+const shortcuts = ref(readShortcutBindings());
+watch(shortcuts, saveShortcutBindings, { deep: true });
+function syncShortcutPreferences(event: StorageEvent) {
+  if (event.key === shortcutPreferenceKey || event.key === null) shortcuts.value = readShortcutBindings();
+}
+onMounted(() => window.addEventListener('storage', syncShortcutPreferences));
+onBeforeUnmount(() => window.removeEventListener('storage', syncShortcutPreferences));
+function shortcutHint(id: ShortcutId) { return shortcutLabel(shortcuts.value[id]); }
 watch(toolbarMode, (value) => saveTextPreference('toolbarMode', value));
 function syncToolbarPreference(event: StorageEvent) {
   if (event.key === toolbarPreferenceKey || event.key === null)
@@ -676,8 +688,8 @@ watch(visualFontSize, (value) => saveFontSizePreference('visualFontSize', value)
 watch(sourceFontSize, (value) => saveFontSizePreference('sourceFontSize', value));
 const showPageTitle = ref(readPreference('showPageTitle', true));
 watch(showPageTitle, (value) => savePreference('showPageTitle', value));
-const pageTitleSource = ref(parsePageTitleSource(readTextPreference('pageTitleSource')));
-watch(pageTitleSource, (value) => saveTextPreference('pageTitleSource', value));
+const showDocumentProperties = ref(readPreference('showDocumentProperties', true));
+watch(showDocumentProperties, (value) => savePreference('showDocumentProperties', value));
 const limitPageWidth = computed(() => {
   const documentId = active.value?.id;
   return !documentId || store.capabilities.pageWidthLimits[documentId] !== false;
@@ -1572,9 +1584,10 @@ function openPageContextMenu(event: MouseEvent) {
     element.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
   });
 }
-function togglePageOption(option: 'width' | 'title' | 'outline') {
+function togglePageOption(option: 'width' | 'title' | 'properties' | 'outline') {
   if (option === 'width') setLimitPageWidth(!limitPageWidth.value);
   if (option === 'title') showPageTitle.value = !showPageTitle.value;
+  if (option === 'properties') showDocumentProperties.value = !showDocumentProperties.value;
   if (option === 'outline') showOutline.value = !showOutline.value;
   closePageContextMenu();
 }
@@ -2424,10 +2437,11 @@ const settingsSnapshot = computed<SettingsSnapshot>(() => ({
   customFontName: customFontName.value,
   revealMarkdown: revealMarkdown.value,
   toolbarMode: toolbarMode.value,
+  shortcuts: shortcuts.value,
   showPageTitle: showPageTitle.value,
+  showDocumentProperties: showDocumentProperties.value,
   showOutline: showOutline.value,
   outlineOnLeft: outlineOnLeft.value,
-  pageTitleSource: pageTitleSource.value,
   visualFontSize: visualFontSize.value,
   sourceFontSize: sourceFontSize.value,
   editorPreferences: editorPreferences.value,
@@ -2533,17 +2547,20 @@ function handleSettingsCommand(command: SettingsCommand) {
     case 'toolbarMode':
       toolbarMode.value = parseToolbarMode(command.value);
       break;
+    case 'shortcuts':
+      shortcuts.value = parseShortcutBindings(command.value);
+      break;
     case 'showPageTitle':
       showPageTitle.value = command.value as boolean;
+      break;
+    case 'showDocumentProperties':
+      showDocumentProperties.value = command.value as boolean;
       break;
     case 'showOutline':
       showOutline.value = command.value as boolean;
       break;
     case 'outlineOnLeft':
       outlineOnLeft.value = command.value as boolean;
-      break;
-    case 'pageTitleSource':
-      pageTitleSource.value = parsePageTitleSource(command.value);
       break;
     case 'visualFontSize':
       visualFontSize.value = command.value as number;
@@ -2724,14 +2741,18 @@ function toggleSidebar() {
   sidebar.value = !sidebar.value;
   workspaceMenu.value = false;
 }
-function handleSidebarShortcut(event: KeyboardEvent) {
-  if (importPanel.value) return;
-  if (detachedWindow) return;
-  if (!workspace.value || settingsPanel.value || updateLock.value) return;
-  if (!isSidebarToggleShortcut(event)) return;
+function handleWorkbenchShortcut(event: KeyboardEvent) {
+  if (event.defaultPrevented || importPanel.value || settingsPanel.value || updateLock.value || modal.value) return;
+  let action: (() => void) | undefined;
+  if (!detachedWindow && workspace.value && isSidebarToggleShortcut(event, shortcuts.value)) action = toggleSidebar;
+  else if (matchesShortcut(event, 'save', shortcuts.value)) action = () => { void store.flush(); };
+  else if (matchesShortcut(event, 'findDocument', shortcuts.value)) action = () => showModal('search');
+  else if (workspace.value && matchesShortcut(event, 'openDocument', shortcuts.value)) action = () => showModal('newTab');
+  else if (workspace.value && matchesShortcut(event, 'newDocument', shortcuts.value)) action = () => { void createNewDocument(); };
+  if (!action) return;
   event.preventDefault();
   event.stopPropagation();
-  toggleSidebar();
+  action();
 }
 function handlePageSearchShortcut(event: KeyboardEvent) {
   if (
@@ -2741,24 +2762,28 @@ function handlePageSearchShortcut(event: KeyboardEvent) {
     modal.value ||
     event.isComposing ||
     event.keyCode === 229 ||
-    event.altKey
+    event.defaultPrevented
   )
     return;
   const search = paneSearches.get(store.activePaneId);
   if (!search) return;
-  const key = event.key.toLowerCase();
-  if ((event.ctrlKey || event.metaKey) && (key === 'f' || key === 'h') && !event.shiftKey) {
+  const find = matchesShortcut(event, 'pageSearch', shortcuts.value);
+  const replace = matchesShortcut(event, 'pageReplace', shortcuts.value);
+  if (find || replace) {
     event.preventDefault();
     event.stopPropagation();
-    openPaneSearch(store.activePaneId, key === 'h');
+    openPaneSearch(store.activePaneId, replace);
   } else if (
     search.isOpen() &&
-    (key === 'escape' || ((event.ctrlKey || event.metaKey) && key === 'g'))
+    !(event.target instanceof Element && event.target.closest('.page-search')) &&
+    (matchesShortcut(event, 'closeSearch', shortcuts.value) ||
+      matchesShortcut(event, 'nextMatchFromEditor', shortcuts.value) ||
+      matchesShortcut(event, 'previousMatchFromEditor', shortcuts.value))
   ) {
     event.preventDefault();
     event.stopPropagation();
-    if (key === 'escape') search.close();
-    else search.navigate(event.shiftKey ? -1 : 1);
+    if (matchesShortcut(event, 'closeSearch', shortcuts.value)) search.close();
+    else search.navigate(matchesShortcut(event, 'previousMatchFromEditor', shortcuts.value) ? -1 : 1);
   }
 }
 function keydown(event: KeyboardEvent) {
@@ -2845,23 +2870,6 @@ function keydown(event: KeyboardEvent) {
       first?.focus();
     }
   }
-  if (!(event.ctrlKey || event.metaKey)) return;
-  if (event.key.toLowerCase() === 's') {
-    event.preventDefault();
-    void store.flush();
-  }
-  if (event.key.toLowerCase() === 'k') {
-    event.preventDefault();
-    showModal('search');
-  }
-  if (event.key.toLowerCase() === 'o' && workspace.value) {
-    event.preventDefault();
-    showModal('newTab');
-  }
-  if (event.key.toLowerCase() === 'n' && workspace.value) {
-    event.preventDefault();
-    void createNewDocument();
-  }
 }
 function beforeUnload(event: BeforeUnloadEvent) {
   if (store.pending) {
@@ -2925,7 +2933,7 @@ let unlistenTabRollback: (() => void) | undefined;
 let unlistenSettingsCommand: (() => void) | undefined;
 let settingsPrewarmTimer: number | undefined;
 onMounted(async () => {
-  if (!detachedWindow) window.addEventListener('keydown', handleSidebarShortcut, true);
+  window.addEventListener('keydown', handleWorkbenchShortcut, true);
   window.addEventListener('keydown', keydown);
   window.addEventListener('keydown', handlePageSearchShortcut, true);
   window.addEventListener('beforeunload', beforeUnload);
@@ -3013,7 +3021,7 @@ onBeforeUnmount(() => {
   void extensions.disconnect().catch(store.report);
   assistant.stop();
   void editing.dispose().catch(store.report);
-  window.removeEventListener('keydown', handleSidebarShortcut, true);
+  window.removeEventListener('keydown', handleWorkbenchShortcut, true);
   window.removeEventListener('keydown', keydown);
   window.removeEventListener('keydown', handlePageSearchShortcut, true);
   window.removeEventListener('beforeunload', beforeUnload);
@@ -3063,7 +3071,7 @@ watch(activeId, () => {
       class="desktop-sidebar-toggle"
       type="button"
       aria-label="展开侧栏"
-      title="展开侧栏 · Ctrl B"
+      :title="`展开侧栏 · ${shortcutHint('toggleSidebar')}`"
       :aria-hidden="sidebar"
       :tabindex="sidebar ? -1 : 0"
       :disabled="sidebar"
@@ -3119,7 +3127,7 @@ watch(activeId, () => {
               type="button"
               class="icon-button sidebar-toggle"
               aria-label="收起侧栏"
-              title="收起侧栏 · Ctrl B"
+              :title="`收起侧栏 · ${shortcutHint('toggleSidebar')}`"
               @click="toggleSidebar"
             >
               <PanelLeftClose :size="17" :stroke-width="1.6" />
@@ -3237,7 +3245,7 @@ watch(activeId, () => {
                 type="button"
                 class="icon-button"
                 aria-label="查找文档"
-                title="查找文档 · Ctrl K"
+                :title="`查找文档 · ${shortcutHint('findDocument')}`"
                 @click="showModal('search')"
               >
                 <Search :size="15" :stroke-width="1.6" />
@@ -3245,7 +3253,7 @@ watch(activeId, () => {
               <button
                 class="icon-button"
                 aria-label="新建文档"
-                title="新建文档 · Ctrl N"
+                :title="`新建文档 · ${shortcutHint('newDocument')}`"
                 :disabled="!workspace || workspace.readOnly || busy"
                 @click="createNewDocument"
               >
@@ -3762,7 +3770,7 @@ watch(activeId, () => {
               class="desktop-sidebar-toggle"
               type="button"
               aria-label="展开侧栏"
-              title="展开侧栏 · Ctrl B"
+              :title="`展开侧栏 · ${shortcutHint('toggleSidebar')}`"
               @click="toggleSidebar"
             >
               <PanelLeftOpen :size="17" />
@@ -3837,7 +3845,7 @@ watch(activeId, () => {
                   type="button"
                   class="icon-button"
                   aria-label="展开侧栏"
-                  title="展开侧栏 · Ctrl B"
+                  :title="`展开侧栏 · ${shortcutHint('toggleSidebar')}`"
                   @click="toggleSidebar"
                 >
                   <PanelLeftOpen :size="18" />
@@ -4135,7 +4143,7 @@ watch(activeId, () => {
                           store.flush();
                         "
                       >
-                        <CheckCheck :size="15" />立即保存<span class="menu-shortcut">Ctrl S</span>
+                        <CheckCheck :size="15" />立即保存<span class="menu-shortcut">{{ shortcutHint('save') }}</span>
                       </button>
                       <button
                         class="danger-text"
@@ -4155,10 +4163,10 @@ watch(activeId, () => {
                         }}
                       </button>
                       <button type="button" @click="openPaneSearch(pane.id)">
-                        <Search :size="15" />页内搜索<span class="menu-shortcut">Ctrl F</span>
+                        <Search :size="15" />页内搜索<span class="menu-shortcut">{{ shortcutHint('pageSearch') }}</span>
                       </button>
                       <button type="button" @click="openPaneSearch(pane.id, true)">
-                        <Repeat2 :size="15" />查找与替换<span class="menu-shortcut">Ctrl H</span>
+                        <Repeat2 :size="15" />查找与替换<span class="menu-shortcut">{{ shortcutHint('pageReplace') }}</span>
                       </button>
                       <button
                         type="button"
@@ -4304,6 +4312,7 @@ watch(activeId, () => {
 
             <template v-if="active">
               <PageSearch
+                :shortcuts="shortcuts"
                 :key="`search:${active.id}`"
                 :ref="(el) => setPaneSearch(pane.id, el)"
                 :editor="
@@ -4331,6 +4340,7 @@ watch(activeId, () => {
                 >
                   <main class="document-main">
                     <EditorTools
+                      :shortcuts="shortcuts"
                       v-model:mode="toolbarMode"
                       :assistant="assistant.available"
                       @assistant="openAssistant(pane.id, active!.id)"
@@ -4483,7 +4493,7 @@ watch(activeId, () => {
                         :workspace-id="workspace.id"
                         :document-id="active.id"
                         :path="active.path"
-                        :title-source="pageTitleSource"
+                        :title-source="store.workspaceSettings.pageTitleSource"
                         :model-value="suggestions.content"
                         :files="workspace.files"
                         :readonly="
@@ -4520,6 +4530,7 @@ watch(activeId, () => {
                         :readonly="suggestions.readonly"
                         :open-links-on-tap="mobile"
                         :reveal-markdown="suggestions.suggesting ? false : revealMarkdown"
+                        :show-document-properties="showDocumentProperties"
                         :capabilities="store.capabilities"
                         :reference-targets="store.referenceTargets"
                         :preferences="editorPreferences"
@@ -4862,6 +4873,18 @@ watch(activeId, () => {
             />
           </button>
           <button
+            type="button"
+            role="menuitemcheckbox"
+            :aria-checked="showDocumentProperties"
+            @click="togglePageOption('properties')"
+          >
+            <SlidersHorizontal :size="15" />文档属性<Check
+              v-if="showDocumentProperties"
+              class="page-context-check"
+              :size="14"
+            />
+          </button>
+          <button
             v-if="!detachedWindow"
             type="button"
             role="menuitemcheckbox"
@@ -5022,10 +5045,11 @@ watch(activeId, () => {
       :custom-font-name="customFontName"
       :reveal-markdown="revealMarkdown"
       :toolbar-mode="toolbarMode"
+      :shortcuts="shortcuts"
       :show-page-title="showPageTitle"
+      :show-document-properties="showDocumentProperties"
       :show-outline="showOutline"
       :outline-on-left="outlineOnLeft"
-      :page-title-source="pageTitleSource"
       :visual-font-size="visualFontSize"
       :source-font-size="sourceFontSize"
       :history-enabled="!!extensions.historyEnabled"
@@ -5045,10 +5069,11 @@ watch(activeId, () => {
       @update:custom-font-name="customFontName = $event"
       @update:reveal-markdown="revealMarkdown = $event"
       @update:toolbar-mode="toolbarMode = $event"
+      @update:shortcuts="shortcuts = $event"
       @update:show-page-title="showPageTitle = $event"
+      @update:show-document-properties="showDocumentProperties = $event"
       @update:show-outline="showOutline = $event"
       @update:outline-on-left="outlineOnLeft = $event"
-      @update:page-title-source="pageTitleSource = $event"
       @update:visual-font-size="visualFontSize = $event"
       @update:source-font-size="sourceFontSize = $event"
       @action="settingsAction"

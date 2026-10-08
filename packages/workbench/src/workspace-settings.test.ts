@@ -49,6 +49,35 @@ it('rejects invalid settings without creating a file', async () => {
   expect(() => parseWorkspaceSettings(JSON.stringify({ ...defaultWorkspaceSettings, icon: 'data:image/svg+xml;base64,xxx' }))).toThrow('图标');
   expect(() => parseWorkspaceSettings(JSON.stringify({ ...defaultWorkspaceSettings, showPlan: 'false' }))).toThrow('类型');
 });
+it('defaults older workspaces to YAML title first and persists the source separately for each workspace', async () => {
+  expect(parseWorkspaceSettings('{"version":1}').pageTitleSource).toBe('frontmatter-first');
+  const adapter = new DemoAdapter({ storageKey: 'workspace-a', workspaceId: 'a', files: { '文档.md': '---\ntitle: 标题\n---\n正文\n' } });
+  await adapter.open();
+  const document = await adapter.read('文档.md');
+  await saveWorkspaceSettingsPatch(adapter, null, { key: 'pageTitleSource', value: 'filename', previous: 'frontmatter-first' });
+  const reopened = new DemoAdapter({ storageKey: 'workspace-a', workspaceId: 'a' });
+  expect((await loadWorkspaceSettings(reopened, await reopened.open())).settings.pageTitleSource).toBe('filename');
+  expect(await reopened.read('文档.md')).toEqual(document);
+  const other = new DemoAdapter({ storageKey: 'workspace-b', workspaceId: 'b' });
+  expect((await loadWorkspaceSettings(other, await other.open())).settings.pageTitleSource).toBe('frontmatter-first');
+});
+it('merges other settings while preserving a conflicting external title source', async () => {
+  const adapter = new DemoAdapter();
+  const initial = await saveWorkspaceSettingsPatch(adapter, null, { key: 'pageTitleSource', value: 'filename', previous: 'frontmatter-first' });
+  await saveWorkspaceSettingsPatch(adapter, initial.snapshot, { key: 'icon', value: '🌙', previous: '' });
+  const external = await saveWorkspaceSettingsPatch(adapter, initial.snapshot, { key: 'pageTitleSource', value: 'frontmatter', previous: 'filename' });
+  expect(external.settings.icon).toBe('🌙');
+  await expect(saveWorkspaceSettingsPatch(adapter, initial.snapshot, { key: 'pageTitleSource', value: 'frontmatter-first', previous: 'filename' })).rejects.toThrow('其他人或程序修改');
+  expect(await adapter.read(workspaceSettingsPath)).toEqual(external.snapshot);
+});
+it.each(['unknown', '', null, 1])('rejects an invalid title source %j without changing workspace settings', async (pageTitleSource) => {
+  const adapter = new DemoAdapter();
+  const initial = await saveWorkspaceSettingsPatch(adapter, null, { key: 'name', value: '工作区', previous: '' });
+  await expect(saveWorkspaceSettingsPatch(adapter, initial.snapshot, {
+    key: 'pageTitleSource', value: pageTitleSource as 'filename', previous: 'frontmatter-first',
+  })).rejects.toThrow();
+  expect(await adapter.read(workspaceSettingsPath)).toEqual(initial.snapshot);
+});
 it('persists built-in icon IDs and accepts catalog emojis within the native recent-icon limits', async () => {
   for (const icon of [...builtinWorkspaceIcons, ...workspaceEmojiGroups.flatMap(group => group.icons)]) {
     expect([...icon.value].length).toBeLessThanOrEqual(16);

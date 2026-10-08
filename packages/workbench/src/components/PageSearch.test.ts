@@ -3,6 +3,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { createApp, h, nextTick, ref } from 'vue';
 import type { App } from 'vue';
 import PageSearch from './PageSearch.vue';
+import { defaultShortcutBindings } from '../shortcuts';
+import type { ShortcutBindings } from '../shortcuts';
 
 let app: App | undefined;
 let root: HTMLDivElement;
@@ -11,7 +13,7 @@ afterEach(() => {
   root?.remove();
 });
 
-async function mountSearch() {
+async function mountSearch(shortcuts: ShortcutBindings = defaultShortcutBindings) {
   root = document.createElement('div');
   document.body.append(root);
   const bar = ref<InstanceType<typeof PageSearch>>();
@@ -24,7 +26,7 @@ async function mountSearch() {
   };
   app = createApp({
     render: () =>
-      h(PageSearch, { ref: bar, editor, content: '同页 同页', readonly: readonly.value }),
+      h(PageSearch, { ref: bar, editor, content: '同页 同页', readonly: readonly.value, shortcuts }),
   });
   app.mount(root);
   await bar.value!.open(true);
@@ -81,4 +83,21 @@ it('keeps native Enter activation available on search and replacement buttons', 
     button.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(false);
   }
+});
+
+it('uses configured navigation and close shortcuts without retaining old defaults', async () => {
+  const { editor, bar } = await mountSearch({
+    ...defaultShortcutBindings, nextMatch: 'Alt+J', previousMatch: 'Alt+K', closeSearch: 'Mod+Shift+X',
+  });
+  const input = root.querySelector<HTMLInputElement>('[aria-label="在当前页面中查找"]')!;
+  const press = (key: string, options: KeyboardEventInit = {}) => input.dispatchEvent(
+    new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...options }),
+  );
+  editor.search.mockClear();
+  press('Enter'); expect(editor.search).not.toHaveBeenCalled();
+  press('j', { altKey: true }); expect(editor.search).toHaveBeenLastCalledWith('同页', 1, true);
+  press('k', { altKey: true }); expect(editor.search).toHaveBeenLastCalledWith('同页', 0, true);
+  press('Escape'); expect(bar.value!.isOpen()).toBe(true);
+  press('x', { metaKey: true, shiftKey: true }); expect(bar.value!.isOpen()).toBe(false);
+  expect(editor.focus).toHaveBeenCalled();
 });

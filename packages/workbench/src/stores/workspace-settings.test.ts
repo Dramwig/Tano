@@ -55,3 +55,15 @@ it('rejects settings from another workspace and refuses to modify a read-only wo
   expect(store.workspaceSettings.showPlan).toBe(true);
   expect((await adapter.refresh()).files.some(file => file.path === workspaceSettingsPath)).toBe(false);
 });
+it('uses the saved workspace title source and follows external changes on refresh', async () => {
+  const adapter = new DemoAdapter();
+  const initial = await saveWorkspaceSettingsPatch(adapter, null, { key: 'pageTitleSource', value: 'filename', previous: 'frontmatter-first' });
+  await setup(adapter);
+  expect(store.workspaceSettings.pageTitleSource).toBe('filename');
+  await saveWorkspaceSettingsPatch(adapter, initial.snapshot, { key: 'pageTitleSource', value: 'frontmatter', previous: 'filename' });
+  await store.refresh();
+  expect(store.workspaceSettings.pageTitleSource).toBe('frontmatter');
+  await store.updateWorkspaceSettings(store.workspace!.id, { key: 'pageTitleSource', value: 'frontmatter-first', previous: 'frontmatter' });
+  expect(store.workspaceSettings.pageTitleSource).toBe('frontmatter-first');
+  expect(JSON.parse((await adapter.read(workspaceSettingsPath)).content).pageTitleSource).toBe('frontmatter-first');
+});

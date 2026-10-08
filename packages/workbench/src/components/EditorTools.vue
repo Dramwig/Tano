@@ -4,6 +4,7 @@ import { Ellipsis } from 'lucide-vue-next';
 import type { EditorSelectionContext } from '@tano/editor/document-model';
 import type { DocumentFeatures } from '@tano/editor/runtime';
 import type { ToolbarMode } from '../toolbar-preference';
+import type { ShortcutBindings } from '../shortcuts';
 import { toolbarModeLabels } from '../toolbar-preference';
 import { useToolbarDrag } from '../use-toolbar-drag';
 import { dockedToolbarPosition } from '../toolbar-docking';
@@ -24,6 +25,7 @@ const props = defineProps<{
   assistant?: boolean;
   annotation?: boolean;
   todo?: boolean;
+  shortcuts?: ShortcutBindings;
 }>();
 const emit = defineEmits<{
   command: [name: string, value?: string];
@@ -57,10 +59,15 @@ const previewStatus = computed(() => {
   return `松开后${toolbarModeLabels[target]}`;
 });
 const previewDocked = computed(
-  () => drag.value?.target === 'left' || drag.value?.target === 'right',
+  () =>
+    drag.value?.target === 'left' ||
+    drag.value?.target === 'right' ||
+    drag.value?.target === 'bottom',
 );
 const previewVertical = computed(
-  () => previewDocked.value && !!drag.value && drag.value.bounds.bottom - drag.value.bounds.top >= 280,
+  () =>
+    (drag.value?.target === 'left' || drag.value?.target === 'right') &&
+    drag.value.bounds.bottom - drag.value.bounds.top >= 280,
 );
 const previewSplit = computed(() => !!props.editorElement?.closest('.workspace-panes-multiple'));
 function positionPreview() {
@@ -86,7 +93,7 @@ function positionPreview() {
   const rect = panel.getBoundingClientRect();
   // Follow the pointer until release. SelectionToolbar anchors to the saved range after committing.
   const position =
-    target === 'left' || target === 'right'
+    target === 'left' || target === 'right' || target === 'bottom'
       ? dockedToolbarPosition(bounds, target, rect.width, rect.height)
       : {
           x: Math.max(bounds.left, Math.min(current.x + 14, bounds.right - rect.width)),
@@ -184,6 +191,7 @@ async function changeMode(mode: ToolbarMode) {
       <slot name="trailing" />
     </div>
     <SelectionToolbar
+      :shortcuts="shortcuts"
       v-if="active && !disabled && !source"
       :editor-element="editorElement"
       :context="context"

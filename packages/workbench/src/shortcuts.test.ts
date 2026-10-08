@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
-import { expect, it } from 'vitest';
-import { isSidebarToggleShortcut } from './shortcuts';
+import { afterEach, expect, it, vi } from 'vitest';
+import {
+  defaultShortcutBindings, isSidebarToggleShortcut, matchesShortcut, parseShortcutBindings,
+  readShortcutBindings, saveShortcutBindings, shortcutBindingError, shortcutBindingFromEvent,
+  shortcutLabel, shortcutPreferenceKey,
+} from './shortcuts';
+
+afterEach(() => { localStorage.clear(); vi.restoreAllMocks(); });
 
 function shortcut(key: string, options: KeyboardEventInit = {}) {
   return new KeyboardEvent('keydown', { key, ...options });
@@ -37,4 +43,59 @@ it('keeps the sidebar shortcut available outside editable controls', () => {
   button.addEventListener('keydown', event => { matched = isSidebarToggleShortcut(event); });
   button.dispatchEvent(shortcut('b', { ctrlKey: true }));
   expect(matched).toBe(true);
+});
+
+it('uses custom bindings immediately and stops matching old defaults', () => {
+  const bindings = { ...defaultShortcutBindings, save: 'Alt+Shift+S', toggleSidebar: 'Mod+Shift+B' };
+  expect(matchesShortcut(shortcut('s', { ctrlKey: true }), 'save', bindings)).toBe(false);
+  expect(matchesShortcut(shortcut('S', { altKey: true, shiftKey: true }), 'save', bindings)).toBe(true);
+  expect(isSidebarToggleShortcut(shortcut('B', { metaKey: true, shiftKey: true }), bindings)).toBe(true);
+  expect(matchesShortcut(shortcut('s', { ctrlKey: true, shiftKey: true }), 'save')).toBe(false);
+  expect(matchesShortcut(shortcut('s', { ctrlKey: true, altKey: true }), 'save')).toBe(false);
+});
+
+it('records modifier combinations and ignores modifier-only, IME, and held key events', () => {
+  expect(shortcutBindingFromEvent(shortcut('p', { metaKey: true, shiftKey: true }))).toBe('Mod+Shift+P');
+  expect(shortcutBindingFromEvent(shortcut('F10', { altKey: true }))).toBe('Alt+F10');
+  expect(shortcutBindingFromEvent(shortcut('å', { altKey: true, code: 'KeyA' }))).toBe('Alt+A');
+  expect(shortcutBindingFromEvent(shortcut('!', { ctrlKey: true, shiftKey: true, code: 'Digit1' }))).toBe('Mod+Shift+1');
+  expect(shortcutBindingFromEvent(shortcut('Control', { ctrlKey: true }))).toBeNull();
+  expect(shortcutBindingFromEvent(shortcut('p', { ctrlKey: true, isComposing: true }))).toBeNull();
+  expect(shortcutBindingFromEvent(shortcut('p', { ctrlKey: true, keyCode: 229 }))).toBeNull();
+  expect(shortcutBindingFromEvent(shortcut('p', { ctrlKey: true, repeat: true }))).toBeNull();
+});
+
+it('rejects conflicts and bindings that interfere with typing', () => {
+  expect(shortcutBindingError('save', 'Mod+K', defaultShortcutBindings)).toContain('查找文档');
+  expect(shortcutBindingError('save', 'S', defaultShortcutBindings)).toBeTruthy();
+  expect(shortcutBindingError('save', 'Shift+S', defaultShortcutBindings)).toBeTruthy();
+  expect(shortcutBindingError('save', 'Mod+Alt+S', defaultShortcutBindings)).toBeTruthy();
+  expect(shortcutBindingError('save', 'F8', defaultShortcutBindings)).toBe('');
+  expect(shortcutBindingError('nextMatch', 'ArrowDown', defaultShortcutBindings)).toBe('');
+});
+
+it('persists bindings and disabled actions in device preferences', () => {
+  const bindings = { ...defaultShortcutBindings, findDocument: 'Mod+Shift+P', save: null };
+  saveShortcutBindings(bindings);
+  expect(readShortcutBindings()).toEqual(bindings);
+  expect(matchesShortcut(shortcut('s', { ctrlKey: true }), 'save', readShortcutBindings())).toBe(false);
+  expect(shortcutLabel(null)).toBe('未设置');
+  expect(localStorage.length).toBe(1);
+});
+
+it('recovers from corrupt preferences and disables ambiguous saved conflicts', () => {
+  localStorage.setItem(shortcutPreferenceKey, '{invalid');
+  expect(readShortcutBindings()).toEqual(defaultShortcutBindings);
+  expect(parseShortcutBindings({ save: 'S', findDocument: 'Alt+Shift+P', unknown: 'Mod+L' }))
+    .toEqual({ ...defaultShortcutBindings, findDocument: 'Alt+Shift+P' });
+  const conflicting = parseShortcutBindings({ save: 'Mod+K' });
+  expect(conflicting.save).toBeNull();
+  expect(conflicting.findDocument).toBeNull();
+});
+
+it('keeps preferences usable when device storage is unavailable', () => {
+  vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('unavailable'); });
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('unavailable'); });
+  expect(readShortcutBindings()).toEqual(defaultShortcutBindings);
+  expect(() => saveShortcutBindings(defaultShortcutBindings)).not.toThrow();
 });

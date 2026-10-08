@@ -8,6 +8,7 @@ import {
   FileText,
   FolderOpen,
   History,
+  Keyboard,
   LogOut,
   Minus,
   Monitor,
@@ -33,11 +34,13 @@ import type { ThemePreference } from '../theme';
 import { sanitizeCustomFontName, visualFontFamily } from '../editor-font';
 import type { VisualFontChoice } from '../editor-font';
 import type { ToolbarMode } from '../toolbar-preference';
-import type { PageTitleSource } from '../page-title-source';
 import type { WorkspaceSettings, WorkspaceSettingsPatch } from '../workspace-settings';
 import WorkspaceGeneralSettings from './WorkspaceGeneralSettings.vue';
 import WorkspaceIcon from './WorkspaceIcon.vue';
 import WorkspaceDeletionSettings from './WorkspaceDeletionSettings.vue';
+import ShortcutSettings from './ShortcutSettings.vue';
+import { defaultShortcutBindings } from '../shortcuts';
+import type { ShortcutBindings } from '../shortcuts';
 
 type Page = string;
 type Action =
@@ -66,10 +69,11 @@ const props = defineProps<{
   customFontName: string;
   revealMarkdown: boolean;
   toolbarMode?: ToolbarMode;
+  shortcuts?: ShortcutBindings;
   showPageTitle: boolean;
+  showDocumentProperties: boolean;
   showOutline: boolean;
   outlineOnLeft?: boolean;
-  pageTitleSource: PageTitleSource;
   visualFontSize: number;
   sourceFontSize: number;
   historyEnabled: boolean;
@@ -89,10 +93,11 @@ const emit = defineEmits<{
   'update:customFontName': [value: string];
   'update:revealMarkdown': [value: boolean];
   'update:toolbarMode': [value: ToolbarMode];
+  'update:shortcuts': [value: ShortcutBindings];
   'update:showPageTitle': [value: boolean];
+  'update:showDocumentProperties': [value: boolean];
   'update:showOutline': [value: boolean];
   'update:outlineOnLeft': [value: boolean];
-  'update:pageTitleSource': [value: PageTitleSource];
   'update:visualFontSize': [value: number];
   'update:sourceFontSize': [value: number];
   action: [value: Action];
@@ -140,7 +145,7 @@ const pages = [
     label: '外观设置',
     group: '个人偏好',
     icon: Palette,
-    terms: '外观 主题 白天 黑夜 深色 浅色 跟随系统 字体 系统字体 衬线字体 等宽字体 Mono Maple 自定义字体 字号 字体大小 页面内标题 标题来源 文件名 YAML title 属性 显示目录 文档大纲 目录位置 左侧 右侧',
+    terms: '外观 主题 白天 黑夜 深色 浅色 跟随系统 字体 系统字体 衬线字体 等宽字体 Mono Maple 自定义字体 字号 字体大小 页面内标题 属性 文档属性 显示目录 文档大纲 目录位置 左侧 右侧',
   },
   {
     id: 'editing',
@@ -148,6 +153,13 @@ const pages = [
     group: '个人偏好',
     icon: PencilLine,
     terms: '编辑器 Markdown 源码 默认编辑模式 光标 语法 展开 编辑 Reveal 数学 公式 KaTeX 标题 列表 折叠 工具栏 选区 顶部 固定 胶囊',
+  },
+  {
+    id: 'shortcuts',
+    label: '快捷键',
+    group: '个人偏好',
+    icon: Keyboard,
+    terms: '键盘 快捷键 按键 组合键 热键 shortcut keybinding Ctrl Command 保存 搜索 查找 替换 侧栏 新建 默认',
   },
   {
     id: 'assistant',
@@ -161,7 +173,7 @@ const pages = [
     label: '工作区',
     group: '工作区设置',
     icon: BookOpen,
-    terms: '文件夹 历史 回收站 Agent 存储 当前空间 名称 图标 表情 默认页面 首页 侧栏 计划 图谱 插件 导出 ZIP 浏览统计 人物 目录 活动 悬浮卡片 ID 删除',
+    terms: '文件夹 历史 回收站 Agent 存储 当前空间 名称 图标 表情 默认页面 首页 页面标题来源 文件名 YAML title 侧栏 计划 图谱 插件 导出 ZIP 浏览统计 人物 目录 活动 悬浮卡片 ID 删除',
   },
   {
     id: 'documents',
@@ -169,14 +181,14 @@ const pages = [
     group: '工作区设置',
     icon: FileText,
     terms:
-      'Markdown 数学 公式 Math Mermaid Wiki Links 提示块 脚注 HTML 嵌入 对象 引用 折叠 标签页 分栏 附件 输出 语法 方言 Obsidian GitHub Pandoc CommonMark',
+      'Markdown 数学 公式 Math Mermaid Wiki Links 提示块 脚注 HTML 嵌入 对象 引用 折叠 标签页 分栏 附件 输出 语法 方言 无序列表 标记 Obsidian GitHub Pandoc CommonMark',
   },
   {
     id: 'about',
     label: '关于同页',
     group: '帮助',
     icon: CircleHelp,
-    terms: '版本 更新 检查更新 Tano 快捷键 存储 Markdown Agent',
+    terms: '版本 更新 检查更新 Tano 存储 Markdown Agent',
   },
 ] as const;
 const visiblePages = computed(() => {
@@ -499,12 +511,13 @@ function customFontInput(event: Event) {
               <div class="settings-row">
                 <div>
                   <strong>编辑工具栏</strong>
-                  <p>随选区显示，或停靠在顶部、左侧、右侧；也可拖动工具栏手柄调整。仅影响当前设备。</p>
+                  <p>随选区显示，或停靠在顶部、底部、左侧、右侧；也可拖动工具栏手柄调整。仅影响当前设备。</p>
                 </div>
                 <select aria-label="编辑工具栏" :value="toolbarMode ?? 'selection'"
                   @change="emit('update:toolbarMode', ($event.target as HTMLSelectElement).value as ToolbarMode)">
                   <option value="selection">随选区显示（默认）</option>
                   <option value="fixed">固定在顶部</option>
+                  <option value="bottom">吸附在底部</option>
                   <option value="left">靠左停靠</option>
                   <option value="right">靠右停靠</option>
                 </select>
@@ -565,18 +578,20 @@ function customFontInput(event: Event) {
               </div>
               <div class="settings-row">
                 <div>
-                  <strong>页面标题来源</strong>
-                  <p>仅“YAML title 优先”在字段为空或无效时使用文件名。</p>
+                  <strong>文档属性</strong>
+                  <p>在可视化编辑区显示文档属性。</p>
                 </div>
-                <select
-                  :value="pageTitleSource"
-                  aria-label="页面标题来源"
-                  @change="emit('update:pageTitleSource', ($event.target as HTMLSelectElement).value as PageTitleSource)"
+                <button
+                  type="button"
+                  class="settings-switch"
+                  :class="{ on: showDocumentProperties }"
+                  role="switch"
+                  :aria-checked="showDocumentProperties"
+                  aria-label="文档属性"
+                  @click="emit('update:showDocumentProperties', !showDocumentProperties)"
                 >
-                  <option value="filename">文件名</option>
-                  <option value="frontmatter">YAML title</option>
-                  <option value="frontmatter-first">YAML title 优先</option>
-                </select>
+                  <span />
+                </button>
               </div>
               <div class="settings-row">
                 <div>
@@ -713,6 +728,27 @@ function customFontInput(event: Event) {
                   <option value="latex">LaTeX：\( \) / \[ \]</option>
                 </select>
               </div>
+              <div class="settings-row">
+                <div>
+                  <strong>无序列表标记</strong>
+                  <p>选择无序列表与待办列表的 Markdown 标记，在下一次编辑保存正文时应用。</p>
+                </div>
+                <select
+                  :value="rules.bulletListMarker"
+                  :disabled="rulesDisabled"
+                  aria-label="无序列表标记"
+                  @change="
+                    emit('capability', {
+                      bulletListMarker: ($event.target as HTMLSelectElement)
+                        .value as WorkspaceCapabilities['bulletListMarker'],
+                    })
+                  "
+                >
+                  <option value="-">-</option>
+                  <option value="+">+</option>
+                  <option value="*">*</option>
+                </select>
+              </div>
             </div>
           </section>
         </div>
@@ -724,7 +760,7 @@ function customFontInput(event: Event) {
               <BookOpen :size="13" /><span>{{ scopeLabel }}</span>
             </div>
           </div>
-          <p class="settings-lead">管理工作区名称、图标、默认页面、侧栏与内容导出。</p>
+          <p class="settings-lead">管理工作区名称、图标、默认页面、页面标题来源、侧栏与内容导出。</p>
           <WorkspaceGeneralSettings
             :key="workspace?.id"
             :workspace="workspace"
@@ -797,6 +833,17 @@ function customFontInput(event: Event) {
           />
         </div>
 
+        <div v-else-if="page === 'shortcuts'" class="settings-content">
+          <div class="settings-title-line">
+            <h2 id="settings-title">快捷键</h2>
+            <div class="settings-page-scope" role="note" tabindex="0" :aria-label="scopeLabel">
+              <UserRound :size="13" /><span>{{ scopeLabel }}</span>
+            </div>
+          </div>
+          <p class="settings-lead">为常用操作设置顺手的组合键。</p>
+          <ShortcutSettings :bindings="shortcuts ?? defaultShortcutBindings" @change="emit('update:shortcuts', $event)" />
+        </div>
+
         <component
           v-else-if="extraPages?.some(item => item.id === page)"
           :is="extraPages?.find(item => item.id === page)?.component"
@@ -806,7 +853,7 @@ function customFontInput(event: Event) {
         />
         <div v-else class="settings-content settings-about">
           <h2 id="settings-title">关于同页</h2>
-          <p class="settings-lead">了解同页、常用快捷键与版本信息。</p>
+          <p class="settings-lead">了解同页与版本信息。</p>
           <div class="settings-card settings-brand-card">
             <div class="settings-about-brand">
               <img :src="'/favicon-green.svg?v=3'" alt="" />
@@ -845,20 +892,6 @@ function customFontInput(event: Event) {
             </div>
           </section>
 
-          <section class="settings-section" aria-labelledby="settings-shortcuts">
-            <h3 id="settings-shortcuts">键盘快捷键</h3>
-            <div class="settings-shortcut-list settings-card">
-              <span>收起或展开侧栏（编辑区外） <kbd>Ctrl B</kbd></span>
-              <span>查找文档 <kbd>Ctrl K</kbd></span>
-              <span>页内搜索 <kbd>Ctrl F</kbd></span>
-              <span>查找与替换 <kbd>Ctrl H</kbd></span>
-              <span>下一个 / 上一个匹配（搜索时） <kbd>Enter / Shift Enter</kbd></span>
-              <span>关闭页内搜索 <kbd>Esc</kbd></span>
-              <span>新建文档 <kbd>Ctrl N</kbd></span>
-              <span>立即保存 <kbd>Ctrl S</kbd></span>
-              <span>聚焦选区工具栏（显示时） <kbd>Alt F10</kbd></span>
-            </div>
-          </section>
         </div>
       </main>
     </section>
@@ -1485,28 +1518,6 @@ function customFontInput(event: Event) {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.8;
-}
-.settings-shortcut-list {
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-.settings-shortcut-list > span {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 0;
-}
-.settings-shortcut-list > span + span {
-  border-top: 1px solid var(--line);
-}
-.settings-shortcut-list kbd {
-  min-width: 52px;
-  padding: 3px 7px;
-  text-align: center;
-  background: var(--paper);
-  font-size: 11px;
-  box-shadow: 0 1px 2px #18212b08;
 }
 @media (max-width: 900px) {
   .settings-nav {

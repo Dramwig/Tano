@@ -9,7 +9,9 @@ it('limits drop targets to the current pane, including its edge inset', () => {
   expect(toolbarDropTarget(315, 340, pane)).toBe('left');
   expect(toolbarDropTarget(790, 340, pane)).toBe('right');
   expect(toolbarDropTarget(530, 340, pane)).toBe('selection');
-  expect(toolbarDropTarget(530, 680, pane)).toBe('selection');
+  expect(toolbarDropTarget(530, 680, pane)).toBe('bottom');
+  expect(toolbarDropTarget(302, 698, pane)).toBe('bottom');
+  expect(toolbarDropTarget(530, 655, pane)).toBe('selection');
   expect(toolbarDropTarget(299, 340, pane)).toBeNull();
   expect(toolbarDropTarget(803, 340, pane)).toBeNull();
   expect(toolbarDropTarget(530, 705, pane)).toBeNull();
@@ -20,6 +22,20 @@ it('leaves a body target between edge zones in a narrow or short pane', () => {
   expect(toolbarDropTarget(70, 40, small)).toBe('selection');
   expect(toolbarDropTarget(20, 40, small)).toBe('left');
   expect(toolbarDropTarget(120, 40, small)).toBe('right');
+  expect(toolbarDropTarget(70, 64, small)).toBe('bottom');
+  expect(toolbarDropTarget(70, 63, small)).toBe('selection');
+});
+
+it('centers bottom toolbars inside their pane and follows changes in pane size', () => {
+  const position = dockedToolbarPosition(pane, 'bottom', 270, 42);
+  expect(position.x + 270 / 2).toBe((pane.left + pane.right) / 2);
+  expect(position.y + 42).toBe(pane.bottom);
+  expect(position.x + position.menuWidth).toBe(pane.right);
+  const resized = { ...pane, right: 608, bottom: 430 };
+  const wrapped = dockedToolbarPosition(resized, 'bottom', 284, 84);
+  expect(wrapped.x + 284 / 2).toBe((resized.left + resized.right) / 2);
+  expect(wrapped.y + 84).toBe(resized.bottom);
+  expect(dockedToolbarPosition(resized, 'bottom', 400, 400)).toMatchObject({ x: resized.left, y: resized.top });
 });
 
 it('centers side toolbars of different heights and keeps inward menus inside the pane', () => {
@@ -53,6 +69,7 @@ it('limits an oversized docked menu to the pane height and clamps triggers above
 
 it('loads toolbar mode preferences', () => {
   expect(parseToolbarMode('fixed')).toBe('fixed');
+  expect(parseToolbarMode('bottom')).toBe('bottom');
   expect(parseToolbarMode('left')).toBe('left');
   expect(parseToolbarMode('right')).toBe('right');
   expect(parseToolbarMode('unknown')).toBe('selection');

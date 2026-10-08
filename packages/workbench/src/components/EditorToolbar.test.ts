@@ -384,7 +384,7 @@ async function pointer(target: EventTarget, type: string, x: number, y: number) 
   await nextTick();
 }
 
-it('previews a drop, commits only on release, and keeps text selected through top and side docking', async () => {
+it('previews a drop, commits only on release, and keeps text selected through top, side, and bottom docking', async () => {
   const { toolbarMode, value } = await mount('正文文字\n', 'selection');
   root.classList.add('workspace-pane');
   const outline = document.createElement('aside');
@@ -424,6 +424,21 @@ it('previews a drop, commits only on release, and keeps text selected through to
   expect(toolbarMode.value).toBe('right');
   await expectFloating();
   expect(document.querySelector('.selection-toolbar')?.getAttribute('data-dock')).toBe('right');
+  await pointer(floatingButton('拖动工具栏'), 'pointerdown', 785, 300);
+  await pointer(window, 'pointermove', 400, 590);
+  const bottomPreview = document.querySelector<HTMLElement>('.toolbar-dock-preview')!;
+  expect(bottomPreview.dataset.target).toBe('bottom');
+  expect(bottomPreview.querySelector('.selection-format-toolbar[aria-orientation="horizontal"]')).not.toBeNull();
+  bottomPreview.getBoundingClientRect = () => new DOMRect(0, 0, 270, 42);
+  await pointer(window, 'pointermove', 420, 590);
+  expect(bottomPreview.style.left).toBe('265px');
+  expect(bottomPreview.style.top).toBe('550px');
+  expect(toolbarMode.value).toBe('right');
+  await pointer(window, 'pointerup', 420, 590);
+  expect(toolbarMode.value).toBe('bottom');
+  await expectFloating();
+  expect(document.querySelector('.selection-toolbar')?.getAttribute('data-dock')).toBe('bottom');
+  expect(window.getSelection()?.toString()).toBe('正文');
   await click(floatingButton('粗体'));
   expect(value.value).toContain('**正文**文字');
 });
@@ -453,7 +468,7 @@ it('cancels drags on Escape, outside drops, pointer cancellation and pane change
   expect(value.value).toBe('正文文字\n');
 });
 
-it.each(['fixed', 'left', 'selection'] as const)('follows the pointer from %s mode and returns to the selection only on release', async (mode) => {
+it.each(['fixed', 'left', 'bottom', 'selection'] as const)('follows the pointer from %s mode and returns to the selection only on release', async (mode) => {
   const { toolbarMode, value } = await mount('正文文字\n', mode);
   await selectText(root.querySelector('.ProseMirror p')!, 0, 2);
   if (mode !== 'fixed') await expectFloating();
@@ -507,7 +522,7 @@ it('ignores handle clicks and waits for the next text selection after a body dro
   expect(value.value).toBe('正文文字\n');
 });
 
-it.each(['left', 'right'] as const)('shows %s tools only while the editor or toolbar owns focus', async (mode) => {
+it.each(['left', 'right', 'bottom'] as const)('shows %s tools only while the editor or toolbar owns focus', async (mode) => {
   const { value } = await mount('正文文字\n', mode);
   expect(document.querySelector('.selection-toolbar')).toBeNull();
   const paragraph = root.querySelector('.ProseMirror p')!;
@@ -555,6 +570,12 @@ it('offers all other placements in the side menu while editing', async () => {
   await click(floatingButton('更多格式'));
   expect(floatingButton('随选区显示')).not.toBeNull();
   expect(floatingButton('固定到顶部')).not.toBeNull();
+  await click(floatingButton('吸附在底部'));
+  expect(toolbarMode.value).toBe('bottom');
+  await expectFloating();
+  await click(floatingButton('更多格式'));
+  expect(floatingButton('吸附在底部')).toBeNull();
+  expect(floatingButton('靠左停靠')).not.toBeNull();
   await click(floatingButton('靠右停靠'));
   expect(toolbarMode.value).toBe('right');
   await click(floatingButton('更多格式'));
@@ -567,6 +588,32 @@ it('offers all other placements in the side menu while editing', async () => {
   await nextTick();
   expect(document.querySelector('.selection-toolbar')).toBeNull();
   expect(value.value).toBe('正文文字\n');
+});
+
+it('anchors the horizontal bottom toolbar and upward menus to its pane on scroll and resize', async () => {
+  await mount('正文文字\n', 'bottom');
+  root.classList.add('document-layout');
+  root.getBoundingClientRect = () => new DOMRect(100, 50, 420, 320);
+  await selectText(root.querySelector('.ProseMirror p')!, 0, 0);
+  await expectFloating();
+  const panel = document.querySelector<HTMLElement>('.selection-toolbar')!;
+  panel.getBoundingClientRect = () => new DOMRect(175, 320, 270, 42);
+  root.dispatchEvent(new Event('scroll'));
+  await vi.waitFor(() => expect(panel.style.getPropertyValue('--selection-menu-height')).toBe('256px'));
+  expect(panel.style.left).toBe('310px');
+  expect(panel.style.top).toBe('362px');
+  expect(panel.dataset.menuSide).toBe('above');
+  expect(panel.getAttribute('aria-label')).toBe('底部工具栏');
+  expect(panel.querySelector('[aria-orientation="horizontal"]')).not.toBeNull();
+  expect(panel.style.getPropertyValue('--selection-toolbar-width')).toBe('337px');
+  await click(floatingButton('更多格式'));
+  expect(panel.querySelector('.dropdown')).not.toBeNull();
+  root.getBoundingClientRect = () => new DOMRect(100, 50, 320, 220);
+  window.dispatchEvent(new Event('resize'));
+  await vi.waitFor(() => expect(panel.style.top).toBe('262px'));
+  expect(panel.style.left).toBe('260px');
+  expect(panel.style.getPropertyValue('--selection-menu-height')).toBe('156px');
+  expect(panel.style.getPropertyValue('--selection-toolbar-width')).toBe('287px');
 });
 
 it('positions newly opened docked menus using their trigger and actual height', async () => {

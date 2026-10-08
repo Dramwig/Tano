@@ -108,6 +108,7 @@ async function mount(
   ) => Promise<{ url: string; name: string; image: boolean }>,
   initialCapabilities = defaultCapabilities,
   initialPreferences = defaultEditorPreferences,
+  initialShowDocumentProperties?: boolean,
 ) {
   root = document.createElement('div');
   document.body.append(root);
@@ -115,6 +116,7 @@ async function mount(
     editor = ref<InstanceType<typeof MarkdownEditor>>();
   const readonly = ref(false);
   const revealMarkdown = ref(true);
+  const showDocumentProperties = ref(initialShowDocumentProperties);
   const capabilities = ref(structuredClone(initialCapabilities));
   const preferences = ref({ ...initialPreferences });
   const errors: string[] = [];
@@ -133,6 +135,7 @@ async function mount(
           documentId: 'document',
           readonly: readonly.value,
           revealMarkdown: revealMarkdown.value,
+          showDocumentProperties: showDocumentProperties.value,
           capabilities: capabilities.value,
           preferences: preferences.value,
           resolveImage: (reference) =>
@@ -163,6 +166,7 @@ async function mount(
     openedNewTabLinks,
     readonly,
     revealMarkdown,
+    showDocumentProperties,
     capabilities,
     preferences,
     selectionChangeCount: () => selectionChanges,
@@ -619,6 +623,23 @@ it('keeps a formula delimiter after editing its value and obeys explicit output 
   input.dispatchEvent(new Event('input', { bubbles: true }));
   await nextTick();
   expect(value.value).toBe('公式 $z$。\n');
+  expect(errors).toEqual([]);
+});
+
+it('applies a new bullet marker only after a content edit without changing ordered numbering', async () => {
+  const source = '- One\n- Two\n\n1. First\n2. Second\n';
+  const { value, editor, capabilities, errors } = await mountPanel(source);
+  capabilities.value.bulletListMarker = '+';
+  await nextTick();
+  expect(value.value).toBe(source);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  let end = 0;
+  view.state.doc.descendants((node, pos) => {
+    if (node.isText && node.text === 'One') end = pos + node.nodeSize;
+  });
+  view.dispatch(view.state.tr.insertText('!', end));
+  await nextTick();
+  expect(value.value).toBe('+ One!\n+ Two\n\n1. First\n2. Second\n');
   expect(errors).toEqual([]);
 });
 
@@ -3492,6 +3513,40 @@ describe('Markdown editor round trips', () => {
     ).toEqual(['typereference', 'statusactive', 'domainsmeta、docs', 'created2026/05/11']);
     expect(panel.querySelector('.frontmatter-raw')).toBeNull();
     expect(value.value).toBe(content);
+  });
+
+  it('hides document properties without changing frontmatter, resetting the editor, or dropping later updates', async () => {
+    const prefix = '---\n# keep this comment\ntitle: "旧标题"\ntags: [agent, human]\n---\n\n';
+    const content = prefix + 'Body\n';
+    const { value, editor, showDocumentProperties, errors } = await mount(
+      content, undefined, defaultCapabilities, defaultEditorPreferences, false,
+    );
+    const prose = root.querySelector('.ProseMirror');
+    expect(root.querySelector('.frontmatter-panel')).toBeNull();
+    expect(value.value).toBe(content);
+
+    showDocumentProperties.value = true;
+    await nextTick();
+    expect(root.querySelector('.frontmatter-panel')?.textContent).toContain('旧标题');
+    showDocumentProperties.value = false;
+    await nextTick();
+    expect(root.querySelector('.frontmatter-panel')).toBeNull();
+    expect(root.querySelector('.ProseMirror')).toBe(prose);
+    expect(editor.value!.canUndo()).toBe(false);
+    expect(value.value).toBe(content);
+
+    editor.value!.withContext(ctx => {
+      const view = ctx.get(editorViewCtx);
+      view.dispatch(view.state.tr.insertText('Updated ', 1));
+    });
+    await vi.waitFor(() => expect(value.value).toBe(prefix + 'Updated Body\n'));
+    value.value = value.value.replace('旧标题', '外部标题');
+    await nextTick();
+    showDocumentProperties.value = true;
+    await nextTick();
+    expect(root.querySelector('.frontmatter-panel')?.textContent).toContain('外部标题');
+    expect(value.value).toBe(prefix.replace('旧标题', '外部标题') + 'Updated Body\n');
+    expect(errors).toEqual([]);
   });
 
   it('edits document properties in the panel and writes typed YAML', async () => {

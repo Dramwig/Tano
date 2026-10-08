@@ -7,6 +7,7 @@ export type CapabilityPatch =
   | { feature: keyof WorkspaceCapabilities['features']; enabled: boolean }
   | { markdownDialect: WorkspaceCapabilities['markdownDialect'] }
   | { mathSyntax: WorkspaceCapabilities['mathSyntax'] }
+  | { bulletListMarker: WorkspaceCapabilities['bulletListMarker'] }
   | { pageWidth: { documentId: string; limited: boolean } };
 
 export async function loadCapabilities(adapter: WorkspaceAdapter, workspace: Workspace) {
@@ -29,11 +30,13 @@ export async function saveCapabilityPatch(
     if ('feature' in patch) return policy.features[patch.feature];
     if ('pageWidth' in patch) return policy.pageWidthLimits[patch.pageWidth.documentId] ?? true;
     if ('mathSyntax' in patch) return policy.mathSyntax;
+    if ('bulletListMarker' in patch) return policy.bulletListMarker;
     return policy.markdownDialect;
   };
   const desired = 'feature' in patch ? patch.enabled
     : 'pageWidth' in patch ? patch.pageWidth.limited
     : 'mathSyntax' in patch ? patch.mathSyntax
+    : 'bulletListMarker' in patch ? patch.bulletListMarker
     : patch.markdownDialect;
   let current = base;
   // Each retry has a fresh hash. A racing creator is handled by the same merge path.

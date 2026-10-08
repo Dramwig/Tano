@@ -9,11 +9,11 @@ import type { WorkspaceSettings, WorkspaceSettingsPatch } from './workspace-sett
 import type { ThemePreference } from './theme';
 import type { VisualFontChoice } from './editor-font';
 import type { ToolbarMode } from './toolbar-preference';
-import type { PageTitleSource } from './page-title-source';
+import type { ShortcutBindings } from './shortcuts';
 import type { UpdateCandidate, UpdatePhase, UpdateProgress, UpdateStatus } from './updates/controller';
 
 /** Built-in pages and IDs registered by a product's settings extension. */
-export type SettingsPageId = 'preferences' | 'appearance' | 'editing' | 'assistant' | 'workspace' | 'about' | (string & {});
+export type SettingsPageId = 'preferences' | 'appearance' | 'editing' | 'shortcuts' | 'assistant' | 'workspace' | 'about' | (string & {});
 export type SettingsAction =
   'open-folder' | 'switch-mode' | 'reveal' | 'agent' | 'history' | 'recycle' |
   'sign-out';
@@ -25,10 +25,11 @@ export interface SettingsValues {
   customFontName: string;
   revealMarkdown: boolean;
   toolbarMode: ToolbarMode;
+  shortcuts: ShortcutBindings;
   showPageTitle: boolean;
+  showDocumentProperties: boolean;
   showOutline: boolean;
   outlineOnLeft: boolean;
-  pageTitleSource: PageTitleSource;
   visualFontSize: number;
   sourceFontSize: number;
   editorPreferences: EditorPreferences;

@@ -26,6 +26,7 @@ import { schema as gfmSchema, remarkGFMPlugin } from '@milkdown/kit/preset/gfm';
 import { mathRemark, inlineMath, blockMath } from './math';
 import { configureMarkdownSchema } from './schema';
 import { codeBlankLinesRemark } from './code-blank-lines';
+import { listMarkdown } from './list-markdown';
 import { textStyles } from './text-styles';
 import { wikiLink, wikiLinkRemark } from './wiki-link';
 import { rawBlocks } from './raw-block';
@@ -72,6 +73,7 @@ export async function createHeadlessMarkdown(policy: WorkspaceCapabilities = def
     config(configureMarkdownSchema),
     ...commonmarkSchema,
     ...codeBlankLinesRemark,
+    ...listMarkdown,
     ...gfmSchema,
     ...textStyles,
     ...wikiLinkRemark,

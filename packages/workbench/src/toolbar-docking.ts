@@ -24,7 +24,9 @@ export function toolbarDropTarget(x: number, y: number, bounds: ToolbarRect): To
   // Include the small inset at the edge, but never dock in another pane or the sidebar.
   if (x < bounds.left - 8 || x > bounds.right + 8 || y < bounds.top - 8 || y > bounds.bottom + 8)
     return null;
-  if (y <= bounds.top + Math.min(36, (bounds.bottom - bounds.top) * 0.2)) return 'fixed';
+  const horizontalEdge = Math.min(36, (bounds.bottom - bounds.top) * 0.2);
+  if (y <= bounds.top + horizontalEdge) return 'fixed';
+  if (y >= bounds.bottom - horizontalEdge) return 'bottom';
   const edge = Math.min(48, (bounds.right - bounds.left) * 0.2);
   if (x <= bounds.left + edge) return 'left';
   if (x >= bounds.right - edge) return 'right';
@@ -33,19 +35,27 @@ export function toolbarDropTarget(x: number, y: number, bounds: ToolbarRect): To
 
 export function dockedToolbarPosition(
   bounds: ToolbarRect,
-  side: 'left' | 'right',
+  side: 'left' | 'right' | 'bottom',
   width: number,
   height: number,
 ) {
   const travel = Math.max(0, bounds.bottom - bounds.top - height);
-  const y = bounds.top + travel / 2;
-  const x = side === 'left' ? bounds.left : Math.max(bounds.left, bounds.right - width);
+  const y = bounds.top + (side === 'bottom' ? travel : travel / 2);
+  const x =
+    side === 'bottom'
+      ? bounds.left + Math.max(0, bounds.right - bounds.left - width) / 2
+      : side === 'left'
+        ? bounds.left
+        : Math.max(bounds.left, bounds.right - width);
   return {
     x,
     y,
     menuTop: 0,
     menuHeight: bounds.bottom - bounds.top,
-    menuWidth: Math.max(0, bounds.right - bounds.left - width - 8),
+    menuWidth: Math.max(
+      0,
+      side === 'bottom' ? bounds.right - x : bounds.right - bounds.left - width - 8,
+    ),
   };
 }
 
