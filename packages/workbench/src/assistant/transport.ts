@@ -43,7 +43,7 @@ export function nativeAssistantTransport(): AssistantTransport {
       const channel = new Channel<number[]>();
       channel.onmessage = bytes => {
         if (closed || signal.aborted || streamError) return;
-        // Protocol 6 ends successful delivery with an ordered empty chunk.
+        // Successful delivery ends with an ordered empty chunk.
         // The invoke result can arrive before Tauri has delivered channel data.
         if (!bytes.length) { closed = true; delivered(); return; }
         try { chunk(new Uint8Array(bytes)); }

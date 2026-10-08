@@ -9,6 +9,26 @@ const encode = (frames: unknown[]) => new TextEncoder().encode(frames.map(frame 
 const responseFrames = (frames: unknown[]) => new TextEncoder().encode(frames.map(frame => `data: ${JSON.stringify(frame)}\r\n\r\n`).join(''));
 
 describe('assistant streaming and proposals', () => {
+  it('reports compatibility progress separately from model output and still requires completion', () => {
+    const changed = vi.fn(), progress = vi.fn();
+    const stream = new AssistantStream(changed, progress);
+    stream.push(responseFrames([
+      { type: 'tano.adaptation', kind: 'protocol' },
+      { type: 'tano.adaptation', kind: 'max-tokens' },
+      { type: 'tano.adaptation', kind: 'usage' },
+      { type: 'tano.adaptation', kind: 'untrusted text' },
+      { type: 'tano.adaptation', kind: 'toString' },
+    ]));
+    expect(progress.mock.calls.map(([text]) => text)).toEqual([
+      '正在自动适配接口协议', '正在自动适配输出上限参数', '正在自动适配流式用量参数',
+    ]);
+    expect(changed).not.toHaveBeenCalled();
+    expect(stream.content).toBe('');
+    expect(() => stream.finish()).toThrow('模型响应中断');
+    stream.push(encode([{ choices: [{ index: 0, delta: { content: '回答' }, finish_reason: 'stop' }] }]));
+    expect(stream.finish()).toEqual([]);
+    expect(stream.content).toBe('回答');
+  });
   it.each(['propose_task_update', 'propose_assignment', 'propose_relation_change'])('routes %s through authorized proposal review without writing', async name => {
     for (const allowed of [false, true]) {
       const requests: AssistantRequest[] = [];

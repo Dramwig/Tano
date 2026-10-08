@@ -106,6 +106,10 @@ function inputModel() {
   manualModelId.value = assistant.modelId; modelView.value = 'manual';
   void nextTick(() => panel.value?.querySelector<HTMLInputElement>('[aria-label="当前对话的模型 ID"]')?.focus());
 }
+function chooseRecoveryModel() {
+  closePopover();
+  panel.value?.querySelector<HTMLButtonElement>('[aria-label="选择助手模型"]')?.click();
+}
 function setModelView(view: 'main' | 'connections') {
   modelView.value = view;
   void nextTick(() => panel.value?.querySelector<HTMLButtonElement>('#assistant-model-options [data-menu-item]:not(:disabled)')?.focus());
@@ -437,6 +441,10 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
           <div v-if="message.role === 'user' || message.state === 'running'" class="assistant-message-text">{{ message.content }}</div>
           <div v-else-if="message.content" class="assistant-answer"><MarkdownEditor :model-value="answerMarkdown(message)" :document-id="`assistant-${message.id}`" :reference-targets="assistant.session?.workspaceId === workspace.workspace?.id ? workspace.referenceTargets : []" readonly :reveal-markdown="false" open-links-on-tap :resolve-image="() => null" @open-link="sourceLink(message, $event)" @open-reference="openAnswerReference" @ready="answerReady" @error="notice = $event" /></div>
           <p v-if="message.error || message.state === 'interrupted'" class="assistant-message-error">{{ message.error ?? '上次运行已中断；不会自动恢复执行' }}</p>
+          <div v-if="message.state === 'failed' && message.error?.includes('模型服务返回 HTTP')" class="assistant-recovery-actions">
+            <button type="button" class="assistant-text-action" :disabled="controlsLocked" @click="chooseRecoveryModel"><Cpu :size="13" />切换模型</button>
+            <button v-if="!assistant.demo" type="button" class="assistant-text-action" :disabled="controlsLocked" @click="closePopover(); emit('openSettings')"><Plug :size="13" />模型连接</button>
+          </div>
           <div v-if="message.sources?.length" class="assistant-citations"><button v-for="source in message.sources" :key="source.id" :title="source.path" @click="openSource(source)"><FileText :size="12" />{{ source.id }} · {{ source.path }}</button></div>
           <small v-if="message.rules?.length" class="assistant-rules">工作区约定：{{ message.rules.join('、') }}</small>
           <section v-for="proposal in message.proposals" :key="proposal.id" class="assistant-proposal" :aria-label="`修改建议 ${proposal.path}`">
@@ -700,6 +708,7 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
 .assistant-send:hover:not(:disabled) { background: var(--text-secondary); }
 .assistant-send:disabled { background: color-mix(in srgb, var(--surface) 55%, var(--paper)); color: color-mix(in srgb, var(--control-border) 60%, var(--paper)); opacity: 1; }
 .assistant-progress { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; color: var(--muted); font-size: 11px; }
+.assistant-recovery-actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 4px 0 10px; }
 .assistant-history { flex: 1; overflow: auto; padding: 20px; }
 .assistant-history-row { display: flex; gap: 6px; align-items: center; border-bottom: 1px solid var(--line); }
 .assistant-history-row > button:first-child { flex: 1; min-width: 0; padding: 12px 0; display: grid; gap: 4px; color: var(--text); border: 0; background: transparent; text-align: left; overflow-wrap: anywhere; }

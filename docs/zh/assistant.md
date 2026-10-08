@@ -20,7 +20,11 @@ Tano 助手在文档旁提供问答与修改建议。桌面版支持 API、Codex
 
 回到对话，选择连接及当前对话的模型。模型列表由该连接的 `/models` 接口读取，可刷新；服务未提供列表时，可在对话中手动指定模型 ID。每个会话分别保存连接和模型，重新打开时恢复；切换连接后须重新选择模型，生成期间不能切换。连接被删除时，历史会话保留原选择，须另选连接才能继续。旧会话从最后一条助手消息恢复模型。模型出现在列表中不保证支持当前文本流及工具调用协议。
 
-支持 Responses 和 Chat Completions 文本流与函数工具调用。新连接默认 Responses，旧连接默认 Chat Completions。Responses 发送 `max_output_tokens`、`store: false`，工具续轮回传完整输出及加密推理数据；Chat Completions 发送 `max_completion_tokens` 与 `stream_options.include_usage`。供应商必须支持所选协议及参数；同一服务中的不同模型可能要求不同协议，此时可建立分别使用两种协议的连接。暂不支持 Anthropic 或 Gemini 原生协议。关闭「工具调用与修改建议」后仅提供问答。远程服务须使用 HTTPS；本机 HTTP 地址仅允许 localhost、127.0.0.1 和 ::1。连接不跟随重定向。
+支持 Responses 和 Chat Completions 文本流与函数工具调用。新连接首选 Responses，旧连接首选 Chat Completions。Responses 发送 `max_output_tokens`、`store: false`，工具续轮回传完整输出及加密推理数据；Chat Completions 发送 `max_completion_tokens` 与 `stream_options.include_usage`。暂不支持 Anthropic 或 Gemini 原生协议。关闭「工具调用与修改建议」后仅提供问答。远程服务须使用 HTTPS；本机 HTTP 地址仅允许 localhost、127.0.0.1 和 ::1。连接不跟随重定向。
+
+API 连接默认开启「自动适配接口与参数」，已有连接也默认开启。服务明确报告协议不支持或接口路由不存在时，在同一服务、密钥和模型下尝试另一种协议；明确不支持 Chat Completions 的 `max_completion_tokens` 时改用同值的 `max_tokens`，不支持 `stream_options` 时省略流式用量参数。一次请求最多尝试四次，成功的配置仅缓存在本机进程内并按连接配置、密钥记录和模型隔离，重启后重新协商。工具续轮保持产生工具调用的协议与推理数据；不会删除工具、关闭 `store: false`、取消输出上限或在流式响应中断后重放请求。生成状态会显示适配进度。关闭此选项后严格使用首选协议和标准参数。
+
+HTTP 401/403、模型不存在、上下文超限或额度不足不会触发自动适配，也不会自动更换模型或将文档发送给另一家供应商。失败消息提供「切换模型」与「模型连接」入口。如果服务要求标准 Codex 客户端，可接入已登录的 Codex CLI，使用其已有供应商配置和权限；Tano 不会伪装客户端身份，CLI 接入也不保证供应商已授权。模型列表中的模型不等于当前账户获准调用的模型。
 
 真实模型需要可用密钥、模型权限及额度。构建和本机协议验收不表示已完成真实模型质量评估，固定材料及检查流程见[真实模型验收](assistant-evaluation.md)。修改到其他服务主机时，已有密钥不会被自动复用，须重新填写或新增本机无密钥连接。
 

@@ -20,6 +20,7 @@ function blankConnection(): ConnectionDraft {
     cliPath: '',
     endpoint: 'https://api.openai.com/v1',
     protocol: 'responses',
+    autoAdapt: true,
     tools: true,
     maxOutputTokens: 4096,
   };
@@ -37,6 +38,7 @@ function editConnection(connection: AssistantConnection) {
     kind: connection.kind ?? 'api',
     cliPath: connection.cliPath ?? '',
     protocol: connection.protocol ?? 'chat-completions',
+    autoAdapt: connection.autoAdapt ?? true,
     tools: connection.tools,
     maxOutputTokens: connection.maxOutputTokens,
   };
@@ -148,7 +150,9 @@ onMounted(() => {
             <label>连接方式<select v-model="draft.kind" @change="secret = ''"><option value="api">API</option><option value="codex-cli">Codex CLI</option><option value="claude-cli">Claude CLI</option></select></label>
             <template v-if="draft.kind === 'api'">
               <label>API 服务地址<input v-model="draft.endpoint" required type="url" maxlength="2000" autocomplete="off" /></label>
-              <label>接口协议<select v-model="draft.protocol"><option value="responses">Responses</option><option value="chat-completions">Chat Completions</option></select></label>
+              <label>首选接口协议<select v-model="draft.protocol"><option value="responses">Responses</option><option value="chat-completions">Chat Completions</option></select></label>
+              <label class="assistant-settings-checkbox"><input v-model="draft.autoAdapt" type="checkbox" />自动适配接口与参数</label>
+              <p v-if="draft.autoAdapt" class="settings-notice">服务明确拒绝接口或兼容参数时，使用同一模型自动调整。模型权限受限时可改选模型或添加 Codex CLI 连接。</p>
               <label>API 密钥<input v-model="secret" type="password" maxlength="2000" autocomplete="new-password" :placeholder="assistant.connections.some(connection => connection.id === draft?.id && connection.hasKey) ? '已保存；留空保留当前密钥' : ''" /></label>
             </template>
             <label v-else>CLI 可执行文件路径<input v-model="draft.cliPath" maxlength="2000" autocomplete="off" placeholder="留空自动查找" /></label>

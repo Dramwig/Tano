@@ -94,6 +94,27 @@ it('moves the same conversation between sidebar, floating and the current tab wi
   expect(assistant.allowSearch).toBe(true);
 });
 
+it('opens model recovery after a provider error without sending or changing the draft and permissions', async () => {
+  const { assistant } = await mountEmptyConversation();
+  const message = { id: 'failed-answer', role: 'assistant' as const, content: '', createdAt: 1,
+    state: 'failed' as const, error: '模型服务返回 HTTP 403；服务要求通过标准 Codex 客户端使用此模型' };
+  assistant.session = { version: 1, id: crypto.randomUUID(), workspaceId: useWorkspaceStore().workspace!.id,
+    title: '失败问题', createdAt: 1, updatedAt: 1, revision: 0, messages: [message] };
+  assistant.prompt = '保留草稿';
+  const files = [...assistant.files];
+  await nextTick();
+  root.querySelector<HTMLButtonElement>('.assistant-recovery-actions button')!.click(); await nextTick();
+  expect(root.querySelector('#assistant-model-options')).not.toBeNull();
+  expect(assistant.session.messages).toHaveLength(1);
+  expect(assistant.prompt).toBe('保留草稿');
+  expect(assistant.files).toEqual(files);
+  expect(assistant.allowSearch).toBe(false);
+  expect(assistant.allowStructures).toBe(false);
+  assistant.busy = true; await nextTick();
+  expect(root.querySelector<HTMLButtonElement>('.assistant-recovery-actions button')!.disabled).toBe(true);
+  assistant.busy = false;
+});
+
 it('restores the same fullscreen conversation when a compact pane replaces its host', async () => {
   const target = ref<HTMLElement>();
   const { assistant } = await mountEmptyConversation(target);

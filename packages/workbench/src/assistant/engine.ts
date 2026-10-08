@@ -18,7 +18,7 @@ export class AssistantStream {
   usage = { input: 0, output: 0 };
   done = false;
   finishReason: string | null = null;
-  constructor(private changed: (text: string) => void) {}
+  constructor(private changed: (text: string) => void, private progress?: (text: string) => void) {}
   push(bytes: Uint8Array) {
     this.pending += this.decoder.decode(bytes, { stream: true });
     if (this.pending.length > assistantLimits.responseBytes) throw new Error('模型单条响应超过大小限制');
@@ -32,6 +32,15 @@ export class AssistantStream {
       if (data === '[DONE]') { this.done = true; continue; }
       if (this.done) throw new Error('模型在结束标记之后发送了响应');
       const value = JSON.parse(data);
+      if (value.type === 'tano.adaptation') {
+        const notices: Record<string, string> = {
+          protocol: '正在自动适配接口协议',
+          'max-tokens': '正在自动适配输出上限参数',
+          usage: '正在自动适配流式用量参数',
+        };
+        if (typeof value.kind === 'string' && Object.prototype.hasOwnProperty.call(notices, value.kind)) this.progress?.(notices[value.kind]);
+        continue;
+      }
       if (value.error) throw new Error('模型服务返回错误，请检查连接设置');
       if (typeof value.type === 'string' && (value.type.startsWith('response.') || value.type === 'error')) {
         this.responses = true;
@@ -208,7 +217,7 @@ export async function runAssistant(options: {
     options.signal.throwIfAborted();
     if (new TextEncoder().encode(JSON.stringify(messages)).length > 700_000) throw new Error('对话已超过上下文上限，请新建会话');
     options.progress(round ? `正在整理结果 · 第 ${round + 1} 轮` : '正在生成');
-    const stream = new AssistantStream(options.delta);
+    const stream = new AssistantStream(options.delta, options.progress);
     await options.transport.request(options.connectionId, { model: options.model, messages, ...(options.tools ? { tools: [...assistantTools, ...(options.lookup ? lookupTools : []), ...(options.structures ? structureTools : []), ...(options.references && options.lookup && options.structures ? referenceTools : []), ...(options.tasks && options.lookup && options.structures ? taskTools : [])] } : {}) }, options.signal, bytes => {
       options.signal.throwIfAborted(); stream.push(bytes);
     });

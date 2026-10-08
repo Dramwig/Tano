@@ -1,4 +1,4 @@
-export const ASSISTANT_PROTOCOL_VERSION = 6;
+export const ASSISTANT_PROTOCOL_VERSION = 7;
 
 export interface AssistantConnection {
   id: string;
@@ -7,6 +7,7 @@ export interface AssistantConnection {
   cliPath?: string;
   endpoint: string;
   protocol?: 'chat-completions' | 'responses';
+  autoAdapt?: boolean;
   tools: boolean;
   maxOutputTokens: number;
   hasKey: boolean;

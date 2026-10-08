@@ -13,9 +13,13 @@ use tokio::sync::watch;
 static CONNECTION_LOCK: Mutex<()> = Mutex::new(());
 static SESSION_LOCK: Mutex<()> = Mutex::new(());
 
+#[path = "assistant_api.rs"]
+mod api;
+
 #[derive(Default)]
 pub struct AssistantState {
     requests: Mutex<Requests>,
+    profiles: Mutex<HashMap<String, api::Profile>>,
 }
 
 #[derive(Default)]
@@ -72,7 +76,7 @@ impl AssistantState {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 enum Protocol {
     ChatCompletions,
@@ -97,12 +101,18 @@ pub struct Connection {
     endpoint: String,
     #[serde(default)]
     protocol: Protocol,
+    #[serde(default = "auto_adapt_default")]
+    auto_adapt: bool,
     #[serde(default, skip_serializing, rename = "model")]
     _legacy_model: Option<String>,
     tools: bool,
     max_output_tokens: u32,
     #[serde(default)]
     has_key: bool,
+}
+
+fn auto_adapt_default() -> bool {
+    true
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -333,7 +343,7 @@ pub async fn assistant_models(
 
 #[tauri::command]
 pub fn assistant_protocol_version() -> u32 {
-    6
+    7
 }
 
 #[tauri::command]
@@ -568,47 +578,9 @@ fn request_body(config: &Connection, request: Value) -> Result<Value, String> {
     Ok(body)
 }
 
+#[cfg(test)]
 fn provider_error(status: u16, bytes: &[u8]) -> String {
-    let value: Value = serde_json::from_slice(bytes).unwrap_or(Value::Null);
-    let code = value.pointer("/error/code").and_then(Value::as_str);
-    let codex_only = status == 403
-        && value
-            .pointer("/error/message")
-            .and_then(Value::as_str)
-            .is_some_and(|message| {
-                message.contains("标准 Codex 客户端") || message.contains("standard Codex client")
-            });
-    if codex_only {
-        return format!("模型服务返回 HTTP {status}；服务要求通过标准 Codex 客户端使用此模型，请在对话中改选允许第三方应用使用的模型，或联系供应商调整权限");
-    }
-    let detail = match code {
-        Some("protocol_not_supported") => {
-            "当前模型不支持所选接口协议，请在模型连接中切换 Responses 或 Chat Completions"
-        }
-        Some("model_not_found" | "invalid_model") => {
-            "当前模型不存在或没有访问权限，请在对话中重新选择模型"
-        }
-        Some("context_length_exceeded") => "对话超过模型上下文上限，请减少参考内容或新建会话",
-        Some("insufficient_quota") => "模型服务额度不足，请检查服务账户",
-        _ => match status {
-            401 | 403 => "API 密钥无效或没有模型权限",
-            429 => "模型服务限流或额度不足，请稍后重试",
-            _ => "请核对接口协议、当前对话模型与服务地址",
-        },
-    };
-    format!("模型服务返回 HTTP {status}；{detail}")
-}
-
-async fn read_provider_error(mut response: reqwest::Response) -> String {
-    let status = response.status().as_u16();
-    let mut bytes = Vec::new();
-    while let Ok(Some(chunk)) = response.chunk().await {
-        if bytes.len() + chunk.len() > 32_768 {
-            return provider_error(status, &[]);
-        }
-        bytes.extend_from_slice(&chunk);
-    }
-    provider_error(status, &bytes)
+    api::ProviderError::parse(status, bytes).display()
 }
 
 #[tauri::command]
@@ -653,42 +625,63 @@ pub async fn assistant_request(
             .send(Vec::new())
             .map_err(|_| "助手界面已关闭".into());
     }
-    let url = generation_endpoint(&config.config)?;
-    let body = request_body(&config.config, request)?;
+    request_body(&config.config, request.clone())?;
+    let profile_key = api::profile_key(&config, &request)?;
+    let cached = state
+        .profiles
+        .lock()
+        .map_err(|_| "助手运行正忙")?
+        .get(&profile_key)
+        .copied();
+    let mut profile = api::Profile::for_request(&config.config, &request, cached);
     let client = http_client(Duration::from_secs(180))?;
-    let request = authenticate(client.post(url).json(&body), &config)?;
     let owner = format!("{}:{request_id}", window.label());
     let mut cancelled = state
         .requests
         .lock()
         .map_err(|_| "助手运行正忙")?
         .start(&owner)?;
-    let result = async {
-        let mut response = tokio::select! {
-            _ = cancelled.changed() => return Err("已停止生成".into()),
-            response = request.send() => response.map_err(|_| "模型连接失败或超时，请检查网络与服务地址")?,
-        };
-        if !response.status().is_success() {
-            return Err(tokio::select! {
-                _ = cancelled.changed() => "已停止生成".into(),
-                error = read_provider_error(response) => error,
-            });
-        }
+    let result: Result<(), String> = tokio::time::timeout(Duration::from_secs(180), async {
+        let mut response = api::open_stream(
+            &client,
+            &config,
+            &request,
+            &mut profile,
+            &mut cancelled,
+            |notice| {
+                let data = format!(
+                    "data: {}\n\n",
+                    json!({"type": "tano.adaptation", "kind": notice})
+                );
+                on_chunk
+                    .send(data.into_bytes())
+                    .map_err(|_| "助手界面已关闭".to_owned())
+            },
+        )
+        .await?;
         let mut size = 0;
         loop {
             let chunk = tokio::select! {
                 _ = cancelled.changed() => return Err("已停止生成".into()),
                 chunk = response.chunk() => chunk.map_err(|_| "模型响应中断或超时")?,
             };
-            let Some(chunk) = chunk else { break; };
+            let Some(chunk) = chunk else {
+                break;
+            };
             size += chunk.len();
-            if size > 4_000_000 { return Err("模型响应超过大小限制".into()); }
+            if size > 4_000_000 {
+                return Err("模型响应超过大小限制".into());
+            }
             if !chunk.is_empty() {
-                on_chunk.send(chunk.to_vec()).map_err(|_| "助手界面已关闭")?;
+                on_chunk
+                    .send(chunk.to_vec())
+                    .map_err(|_| "助手界面已关闭")?;
             }
         }
         Ok(())
-    }.await;
+    })
+    .await
+    .unwrap_or_else(|_| Err("模型连接失败或超时，请检查网络与服务地址".into()));
     state
         .requests
         .lock()
@@ -696,6 +689,13 @@ pub async fn assistant_request(
         .active
         .remove(&owner);
     result?;
+    if config.config.auto_adapt {
+        let mut profiles = state.profiles.lock().map_err(|_| "助手运行正忙")?;
+        if profiles.len() >= 256 {
+            profiles.clear();
+        }
+        profiles.insert(profile_key, profile);
+    }
     // Ordered channel completion is separate from the command's IPC response.
     on_chunk
         .send(Vec::new())
@@ -1106,6 +1106,7 @@ mod tests {
             cli_path: String::new(),
             endpoint: "https://example.com/v1".into(),
             protocol: Protocol::ChatCompletions,
+            auto_adapt: true,
             _legacy_model: Some("old-default".into()),
             tools: false,
             max_output_tokens: 2048,
@@ -1156,6 +1157,7 @@ mod tests {
                 cli_path: String::new(),
                 endpoint: "http://127.0.0.1:1441/v1".into(),
                 protocol: Protocol::ChatCompletions,
+                auto_adapt: true,
                 _legacy_model: None,
                 tools: true,
                 max_output_tokens: 4096,
@@ -1225,7 +1227,7 @@ mod tests {
             forbidden["tools"][10]["function"]["name"] = json!("execute_shell");
             assert!(request_body(&config, forbidden).is_err());
         }
-        assert_eq!(assistant_protocol_version(), 6);
+        assert_eq!(assistant_protocol_version(), 7);
     }
     #[test]
     fn responses_requests_preserve_reasoning_and_use_flat_tools() {
