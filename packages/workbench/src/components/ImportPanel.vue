@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useId } from 'vue';
 import { ArrowDownToLine, ArrowUpFromLine, Check, CheckCircle2, ChevronRight, CircleAlert, Code2, FileArchive, FileText,
   FileType, Folder, Globe2, Layers, ListTodo, LoaderCircle, NotebookPen, Search, Table2, UploadCloud, X } from 'lucide-vue-next';
+import WordFileIcon from './WordFileIcon.vue';
 import { importAccept, prepareImport } from '../document-import';
 import type { PreparedImport, ImportIssue } from '../document-import';
 import type { ImportReceipt } from '../workspace-import';
@@ -41,7 +42,7 @@ const formats = [
   { name: 'CSV 与 TSV', detail: 'CSV · TSV', accept: '.csv,.tsv', icon: Table2, tone: 'green' },
   { name: 'PDF', detail: 'PDF 文本提取', accept: '.pdf', icon: FileType, tone: 'red' },
   { name: 'HTML', detail: 'HTML · HTM', accept: '.html,.htm', icon: Code2, tone: 'amber' },
-  { name: 'Word', detail: 'DOCX', accept: '.docx', icon: FileText, tone: 'blue' },
+  { name: 'Word', detail: 'DOCX', accept: '.docx', icon: WordFileIcon, tone: 'blue' },
   { name: 'EPUB', detail: 'EPUB 电子书', accept: '.epub', icon: NotebookPen, tone: 'amber' },
   { name: 'ZIP', detail: '文档、目录与附件', accept: '.zip', icon: FileArchive, tone: 'gray' },
   { name: 'Evernote 文件', detail: 'ENEX', accept: '.enex', icon: NotebookPen, tone: 'green' },

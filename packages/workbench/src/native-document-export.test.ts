@@ -20,3 +20,11 @@ it('does not write when the save dialog is canceled', async () => {
   await saveDocumentExport(new Blob(['正文']), '文档.md', 'markdown');
   expect(invoke).not.toHaveBeenCalled();
 });
+
+it('offers a Word document filter and saves DOCX bytes without text conversion', async () => {
+  vi.mocked(save).mockResolvedValue('C:\\Exports\\文档.docx');
+  const bytes = new Uint8Array([80, 75, 3, 4, 0, 255]);
+  await saveDocumentExport(new Blob([bytes]), '文档.docx', 'docx');
+  expect(save).toHaveBeenCalledWith({ title: '导出文档', defaultPath: '文档.docx', filters: [{ name: 'Word 文档', extensions: ['docx'] }] });
+  expect(invoke).toHaveBeenCalledWith('export_document', { destination: 'C:\\Exports\\文档.docx', content: Buffer.from(bytes).toString('base64') });
+});

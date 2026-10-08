@@ -20,17 +20,17 @@ async function mount(disabled = false) {
   return { trigger, select };
 }
 
-it('opens on hover, stays open on click, and exports only the four supported formats', async () => {
+it('opens on hover, stays open on click, and offers Word alongside the existing formats', async () => {
   const { trigger, select } = await mount();
   trigger.dispatchEvent(new Event('pointerenter'));
   await nextTick();
   trigger.click();
   await nextTick();
   const panel = document.querySelector('[aria-label="导出格式"]')!;
-  expect([...panel.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Markdown', 'PDF', 'HTML', '图片']);
-  (panel.querySelectorAll('button')[2] as HTMLButtonElement).click();
+  expect([...panel.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Markdown', 'Word', 'PDF', 'HTML', '图片']);
+  (panel.querySelectorAll('button')[1] as HTMLButtonElement).click();
   await nextTick();
-  expect(select).toHaveBeenCalledWith('html');
+  expect(select).toHaveBeenCalledWith('docx');
   expect(document.querySelector('[aria-label="导出格式"]')).toBeNull();
 });
 
@@ -46,8 +46,8 @@ it.each(['click', 'keyboard'])('opens with no selected format via %s and selects
   panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
   expect(document.activeElement).toBe(items[0]);
   items[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
-  expect(document.activeElement).toBe(items[3]);
-  items[3].dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  expect(document.activeElement).toBe(items[items.length - 1]);
+  items[items.length - 1].dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await nextTick();
   expect(document.activeElement).toBe(trigger);
   expect(trigger.getAttribute('aria-expanded')).toBe('false');

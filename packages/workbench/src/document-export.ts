@@ -4,7 +4,7 @@ import type { WorkspaceCapabilities } from '@tano/editor/runtime';
 import type { ReferenceTarget, TableLayout } from '@tano/protocol';
 import { basename } from '@tano/protocol';
 
-export type DocumentExportFormat = 'markdown' | 'pdf' | 'html' | 'png';
+export type DocumentExportFormat = 'markdown' | 'docx' | 'pdf' | 'html' | 'png';
 export interface DocumentExportOptions {
   id: string;
   path: string;
@@ -172,12 +172,25 @@ export async function renderDocumentExport(options: DocumentExportOptions, forma
       snapshot.append(title);
     }
     snapshot.append(prose.cloneNode(true));
+    if (format === 'docx') {
+      // These buttons carry document content, rather than editor actions.
+      snapshot.querySelectorAll('.tano-reference > button, .tano-reference-card > button, .tano-resource-row').forEach(button => {
+        const label = document.createElement('span');
+        label.append(...button.childNodes);
+        label.hidden = button.hasAttribute('hidden');
+        button.replaceWith(label);
+      });
+    }
     cleanExportContent(snapshot);
     host.append(snapshot);
     mount.style.display = 'none';
     await inlineImages(snapshot);
     await Promise.all([...snapshot.querySelectorAll<HTMLImageElement>('img[src]')].map(image => image.decode()));
     await document.fonts.ready;
+    if (format === 'docx') {
+      const { renderWordDocument } = await import('./word-document-export');
+      return await renderWordDocument(snapshot, options);
+    }
     const { getFontEmbedCSS, toCanvas } = await import('html-to-image');
     const fontEmbedCSS = await getFontEmbedCSS(snapshot, { preferredFontFormat: 'woff2' });
     if (format === 'html') {

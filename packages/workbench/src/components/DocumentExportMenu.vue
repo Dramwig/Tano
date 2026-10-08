@@ -2,6 +2,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 import { ArrowDownToLine, ChevronRight, Code2, FileText, Image, FileType } from 'lucide-vue-next';
 import type { DocumentExportFormat } from '../document-export';
+import WordFileIcon from './WordFileIcon.vue';
 
 defineProps<{ disabled?: boolean }>();
 const emit = defineEmits<{ select: [format: DocumentExportFormat] }>();
@@ -12,6 +13,7 @@ const open = ref(false);
 const position = ref({ left: '0px', top: '0px' });
 const formats = [
   { id: 'markdown', label: 'Markdown', icon: FileText },
+  { id: 'docx', label: 'Word', icon: WordFileIcon },
   { id: 'pdf', label: 'PDF', icon: FileType },
   { id: 'html', label: 'HTML', icon: Code2 },
   { id: 'png', label: '图片', icon: Image },

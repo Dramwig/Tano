@@ -17,6 +17,7 @@ it('preserves the exact Markdown snapshot and the original Markdown extension', 
   expect(result).toBe(content);
   expect(exportFilename('folder/标题.markdown', 'markdown')).toBe('标题.markdown');
   expect(exportFilename('folder/标题.markdown', 'pdf')).toBe('标题.pdf');
+  expect(exportFilename('folder/标题.markdown', 'docx')).toBe('标题.docx');
 });
 
 it('includes inactive enhanced panels, removes editing controls, and preserves task completion', () => {
