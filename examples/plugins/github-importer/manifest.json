@@ -1,0 +1,15 @@
+{
+  "manifestVersion": 2,
+  "apiVersion": 1,
+  "id": "github-importer",
+  "name": "GitHub 议题导入",
+  "version": "1.0.0",
+  "description": "通过自己的 GitHub 服务连接预览议题，并明确确认后保存为工作区 Markdown。",
+  "objectTypes": [],
+  "relationTypes": [],
+  "permissions": ["connections", "documents.read", "documents.write"],
+  "networkOrigins": ["https://api.github.com"],
+  "nativeCommands": [],
+  "commands": [{ "id": "open", "label": "导入 GitHub 议题", "menus": ["workspace"] }],
+  "views": [{ "id": "import", "label": "GitHub 议题导入", "location": "tab" }]
+}

@@ -1,11 +1,13 @@
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { defineStore } from 'pinia';
-import { isAssistantModelId, parseAssistantSession } from '@tano/protocol';
-import type { AssistantConnection, AssistantMessage, AssistantProposal, AssistantSession, AssistantSource } from '@tano/protocol';
+import { isAssistantModelId, isAssistantReasoningSelection, parseAssistantSession } from '@tano/protocol';
+import type { AssistantConnection, AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSession, AssistantSource } from '@tano/protocol';
+import type { AssistantExecutionResult } from './execution';
 import { useWorkspaceStore } from '../stores/workspace';
 import { useWorkbenchRuntime } from '../runtime';
 import { demoAssistantTransport, nativeAssistantTransport } from './transport';
 import { runAssistant } from './engine';
+import { assistantHistory } from './results';
 import { useSuggestionStore } from '../stores/suggestions';
 
 export type AssistantDisplayMode = 'sidebar' | 'floating' | 'fullscreen';
@@ -17,6 +19,7 @@ export const useAssistantStore = defineStore('assistant', () => {
     ? nativeAssistantTransport() : runtime.adapter.mode === 'demo' ? demoAssistantTransport() : undefined);
   const available = !!transport;
   const demo = !!transport?.demo;
+  const canConfigure = transport?.canConfigure !== false;
   const opened = ref(false), loading = ref(false), busy = ref(false), applying = ref(false);
   const displayMode = ref<AssistantDisplayMode>('sidebar');
   const fullscreenTabId = ref('');
@@ -32,6 +35,7 @@ export const useAssistantStore = defineStore('assistant', () => {
   const connections = ref<AssistantConnection[]>([]);
   const connectionId = ref('');
   const modelId = ref('');
+  const reasoningEffort = ref<AssistantReasoningSelection>('medium');
   const models = ref<string[]>([]);
   const modelsLoading = ref(false), modelsError = ref('');
   const sessions = ref<AssistantSession[]>([]);
@@ -40,8 +44,6 @@ export const useAssistantStore = defineStore('assistant', () => {
   const files = ref<string[]>([]);
   const selection = ref<{ fileId: string; text: string; from?: number; to?: number } | null>(null);
   const prompt = ref(''), error = ref(''), progress = ref('');
-  const allowSearch = ref(false);
-  const allowStructures = ref(false);
   const replyTarget = shallowRef<{ label: string; draft: (body: string) => Promise<void> } | null>(null);
   const connection = computed(() => connections.value.find(item => item.id === connectionId.value));
   let controller: AbortController | undefined;
@@ -71,7 +73,8 @@ export const useAssistantStore = defineStore('assistant', () => {
     session.value = { version: 1, id: crypto.randomUUID(), workspaceId: scope().id,
       title: '新会话', createdAt: now, updatedAt: now, revision: 0, messages: [],
       ...(connectionId.value ? { connectionId: connectionId.value } : {}),
-      ...(modelId.value ? { model: modelId.value } : {}) };
+      ...(modelId.value ? { model: modelId.value } : {}),
+      ...(connection.value?.kind === 'codex-cli' ? { reasoningEffort: reasoningEffort.value } : {}) };
     prompt.value = ''; error.value = '';
     replyTarget.value = null;
   }
@@ -100,6 +103,13 @@ export const useAssistantStore = defineStore('assistant', () => {
     if (!connectionId.value && !session.value?.connectionId)
       connectionId.value = connections.value.length === 1 ? connections.value[0].id : '';
   }
+  async function refreshModels() {
+    if (busy.value || applying.value || loading.value) return;
+    modelsLoading.value = true; modelsError.value = '';
+    try { await reloadConnections(); await reloadModels(); }
+    catch (reason) { modelsError.value = reason instanceof Error ? reason.message : String(reason); }
+    finally { modelsLoading.value = false; }
+  }
   async function reloadModels() {
     modelController?.abort();
     models.value = []; modelsError.value = ''; modelsLoading.value = false;
@@ -118,16 +128,29 @@ export const useAssistantStore = defineStore('assistant', () => {
       if (!abort.signal.aborted && modelController === abort) modelsError.value = String(reason);
     } finally { if (modelController === abort) { modelsLoading.value = false; modelController = undefined; } }
   }
+  async function checkConnection(id: string, signal: AbortSignal) {
+    signal.throwIfAborted();
+    if (!transport) throw new Error('当前运行环境未提供助手连接配置');
+    if (!connections.value.some(item => item.id === id)) throw new Error('模型连接已移除');
+    const values = await transport.models(id, signal);
+    signal.throwIfAborted();
+    if (!Array.isArray(values) || values.length > 1000 || values.some(value => !isAssistantModelId(value)))
+      throw new Error('模型列表格式无效');
+    return new Set(values).size;
+  }
   async function selectConnection(id: string, reset = false) {
     if (busy.value || applying.value || loading.value) return;
     if (!connections.value.some(item => item.id === id)) throw new Error('模型连接已移除');
     if (id === connectionId.value && !reset) return;
     connectionId.value = id; modelId.value = '';
+    reasoningEffort.value = connection.value?.reasoningEffort ?? 'medium';
     // Connection settings are personal and can be edited from the standalone
     // settings window, where no workspace conversation is loaded.
     if (!session.value && workspace.workspace) newSession();
     if (session.value) {
       session.value.connectionId = id; delete session.value.model;
+      if (connection.value?.kind === 'codex-cli') session.value.reasoningEffort = reasoningEffort.value;
+      else delete session.value.reasoningEffort;
       await persist();
     }
   }
@@ -144,16 +167,29 @@ export const useAssistantStore = defineStore('assistant', () => {
     connectionId.value = target?.connectionId ?? (connections.value.length === 1 ? connections.value[0].id : '');
     const previous = target ? [...target.messages].reverse().find(message => message.role === 'assistant' && message.model)?.model : undefined;
     modelId.value = target?.model ?? (isAssistantModelId(previous) ? previous : '');
+    reasoningEffort.value = target?.reasoningEffort ?? connection.value?.reasoningEffort ?? (target ? 'cli-default' : 'medium');
+  }
+  async function selectReasoningEffort(value: AssistantReasoningSelection) {
+    if (busy.value || applying.value || loading.value) return;
+    if (connection.value?.kind !== 'codex-cli') throw new Error('当前连接不支持选择推理强度');
+    if (!isAssistantReasoningSelection(value)) throw new Error('推理强度无效');
+    if (!session.value) newSession();
+    reasoningEffort.value = value;
+    session.value!.reasoningEffort = value;
+    session.value!.connectionId = connectionId.value;
+    await persist();
   }
   async function saveConnection(config: Omit<AssistantConnection, 'hasKey'>, key?: string) {
     if (!transport || busy.value || applying.value || loading.value) throw new Error('请先等待当前任务完成');
     const previous = connections.value.find(item => item.id === config.id);
+    if (!canConfigure || config.managed || previous?.managed) throw new Error('此模型连接由平台管理员配置');
     await transport.saveConnection(config, key);
     await reloadConnections(); await selectConnection(config.id, previous?.endpoint !== config.endpoint ||
       (previous?.kind ?? 'api') !== (config.kind ?? 'api') || previous?.cliPath !== config.cliPath);
   }
   async function removeConnection(id: string) {
     if (!transport || busy.value || applying.value || loading.value) throw new Error('请先等待当前任务完成');
+    if (!canConfigure || connections.value.find(item => item.id === id)?.managed) throw new Error('此模型连接由平台管理员配置');
     await transport.removeConnection(id);
     await reloadConnections();
   }
@@ -176,8 +212,11 @@ export const useAssistantStore = defineStore('assistant', () => {
     const expected = scope();
     const epoch = generation;
     const config = { ...connection.value };
+    const objectContext = workspace.capabilities.features.objectReferences;
     const model = modelId.value;
+    const effort = config.kind === 'codex-cli' ? reasoningEffort.value : undefined;
     target.connectionId = config.id; target.model = model;
+    if (effort !== undefined) target.reasoningEffort = effort;
     const question = prompt.value.trim();
     if (question.length > 20_000) { error.value = '问题超过 20,000 字，请缩短后发送'; return; }
     busy.value = true; error.value = ''; progress.value = '正在读取参考文档';
@@ -208,12 +247,11 @@ export const useAssistantStore = defineStore('assistant', () => {
       }
       abort.signal.throwIfAborted();
       if (epoch !== generation) return;
-      const history = target.messages.slice(-16).filter(message => message.state !== 'failed' && message.state !== 'cancelled')
-        .map(message => ({ role: message.role, content: message.content }));
+      const history = assistantHistory(target.messages);
       const now = Date.now();
       target.messages.push({ id: crypto.randomUUID(), role: 'user', content: question, createdAt: now });
       reply = { id: crypto.randomUUID(), role: 'assistant', content: '', createdAt: now, sources,
-        proposals: [], rules: rules.map(rule => rule.path), state: 'running', model };
+        attachedSourceIds: sources.map(source => source.id), proposals: [], toolResults: [], rules: rules.map(rule => rule.path), state: 'running', model };
       target.messages.push(reply);
       // Use the reactive instance for streaming; the plain object pushed above is not reactive.
       reply = target.messages[target.messages.length - 1];
@@ -221,21 +259,29 @@ export const useAssistantStore = defineStore('assistant', () => {
       target.updatedAt = now; prompt.value = '';
       await persist(target);
       let structureSnapshot: Awaited<ReturnType<typeof workspace.assistantStructures>> | undefined;
-      reply.usage = await runAssistant({ transport, connectionId: config.id, model, tools: config.tools,
+      let structureChanged = false;
+      reply.usage = await runAssistant({ transport, connectionId: config.id, model, reasoningEffort: effort, tools: config.tools,
         workspaceId: expected.id, runId: reply.id, sources: reply.sources!, history, rules, prompt: question, signal: abort.signal,
-        ...(allowSearch.value && allowStructures.value ? { references: (identity: import('@tano/protocol').ReferenceIdentity) => workspace.assistantReferenceContext(expected, identity) } : {}),
-        ...(allowSearch.value && allowStructures.value ? { tasks: async (query: import('./tasks').TaskQuery) => {
-          structureSnapshot ??= await workspace.assistantStructures(expected);
-          return workspace.assistantTaskQuery(expected, query, structureSnapshot);
-        } } : {}),
-        ...(allowStructures.value ? { structures: {
-          read: async () => {
-            structureSnapshot ??= await workspace.assistantStructures(expected);
-            return { targets: structureSnapshot.targets, relations: structureSnapshot.relations, relationTypes: structureSnapshot.relationTypes };
+        execute: async (proposal: AssistantProposal) => {
+          const result = await executeChange(reply!.proposals!.find(item => item.id === proposal.id)!, target, expected, abort.signal);
+          if (result.written === true) structureChanged = true;
+          return result;
+        },
+        ...(objectContext ? {
+          references: (identity: import('@tano/protocol').ReferenceIdentity) => workspace.assistantReferenceContext(expected, identity),
+          tasks: async (query: import('./tasks').TaskQuery) => {
+            if (!structureSnapshot || structureChanged) { structureSnapshot = await workspace.assistantStructures(expected); structureChanged = false; }
+            return workspace.assistantTaskQuery(expected, query, structureSnapshot);
           },
-          propose: (call: import('@tano/protocol').AssistantToolCall) => workspace.proposeAssistantStructure(expected, reply!.id, call, structureSnapshot),
-        } } : {}),
-        ...(allowSearch.value ? { lookup: {
+          structures: {
+            read: async () => {
+              if (!structureSnapshot || structureChanged) { structureSnapshot = await workspace.assistantStructures(expected); structureChanged = false; }
+              return { targets: structureSnapshot.targets, relations: structureSnapshot.relations, relationTypes: structureSnapshot.relationTypes };
+            },
+            propose: (call: import('@tano/protocol').AssistantToolCall) => workspace.proposeAssistantStructure(expected, reply!.id, call, structureSnapshot),
+          },
+        } : {}),
+        lookup: {
           search: async (query: string) => {
             if (workspace.workspace?.id !== expected.id || workspace.workspace.path !== expected.path || workspace.assistantEpoch !== expected.epoch) throw new Error('工作区已切换');
             const hits = await workspace.search(query);
@@ -243,13 +289,14 @@ export const useAssistantStore = defineStore('assistant', () => {
               .slice(0, 20).map(hit => ({ fileId: hit.id, path: hit.path, excerpt: hit.excerpt }));
           },
           read: (fileId: string) => workspace.assistantSnapshot(expected, fileId),
-        } } : {}),
+        },
         delta: text => {
           if (epoch !== generation) return;
           if (text.trim() && firstContentMs === undefined) firstContentMs = Math.round(performance.now() - startedAt);
           reply!.content += text;
         },
         proposal: proposal => { if (epoch === generation) reply!.proposals!.push(proposal); },
+        toolResult: result => { if (epoch === generation) reply!.toolResults!.push(result); },
         progress: text => { if (epoch === generation) progress.value = text; },
       });
       reply.state = 'completed';
@@ -258,7 +305,7 @@ export const useAssistantStore = defineStore('assistant', () => {
       const cancelled = abort.signal.aborted;
       if (reply) {
         reply.state = cancelled ? 'cancelled' : 'failed';
-        reply.error = cancelled ? '已停止生成，已有建议仍可审阅' : String(reason);
+        reply.error = cancelled ? '已停止，已完成的修改保留在变更清单中，未完成的操作不会继续执行' : String(reason);
       } else if (epoch === generation) error.value = String(reason);
     } finally {
       if (reply && epoch === generation) {
@@ -269,6 +316,67 @@ export const useAssistantStore = defineStore('assistant', () => {
       }
       if (epoch === generation) { busy.value = false; progress.value = ''; controller = undefined; }
     }
+  }
+  async function executeChange(proposal: AssistantProposal, target: AssistantSession, expected: ReturnType<typeof scope>, signal: AbortSignal): Promise<AssistantExecutionResult> {
+    let submitted = false;
+    applying.value = true;
+    const assertCurrent = () => {
+      signal.throwIfAborted();
+      if (workspace.workspace?.id !== expected.id || workspace.workspace.path !== expected.path || workspace.assistantEpoch !== expected.epoch)
+        throw new Error('工作区已切换，停止执行');
+      if (proposal.fileId && managed(proposal.fileId)) throw new Error('此文档正由协作会话管理，暂时不能直接修改');
+    };
+    try {
+      assertCurrent();
+      if (target.messages.some(message => message.proposals?.some(item => item.id !== proposal.id &&
+          ['unknown', 'applying'].includes(item.status) && (item.path === proposal.path || !!proposal.fileId && item.fileId === proposal.fileId))))
+        throw new Error('此目标有结果待核对的操作，请先核对，不自动重试');
+      progress.value = `正在执行 · ${proposal.path}`;
+      const preview = await workspace.reviewAssistantProposal(expected, proposal, undefined, true, signal);
+      if (preview.status === 'saved') {
+        proposal.applied = preview.applied; proposal.status = 'applied';
+      } else {
+        proposal.preview = preview.preview;
+        if (preview.status !== 'preview' || !preview.preview) {
+          proposal.status = preview.status === 'conflict' ? 'conflicted' : 'ready';
+          throw new Error('修改存在冲突或文档已变化，已暂停此项操作，请核对原文与建议');
+        }
+        proposal.status = 'applying';
+        await persist(target); // A crash must leave a durable intent, never an invisible write.
+        assertCurrent();
+        submitted = true;
+        const result = await workspace.reviewAssistantProposal(expected, proposal, proposal.preview, true, signal);
+        if (result.status === 'saved') {
+          proposal.applied = result.applied; proposal.status = 'applied'; proposal.error = undefined;
+        } else {
+          proposal.preview = result.preview;
+          proposal.status = result.status === 'conflict' ? 'conflicted' : 'ready';
+          proposal.error = '执行前文档发生变化，已暂停此项操作，请核对后处理';
+        }
+      }
+      await persist(target);
+    } catch (reason) {
+      if (proposal.applied) {
+        proposal.status = 'applied';
+        proposal.error = `修改已完成，记录或刷新失败：${String(reason)}`;
+      } else {
+        if (proposal.status === 'applying') proposal.status = submitted ? 'unknown' : 'ready';
+        proposal.error = String(reason);
+      }
+      try { await persist(target); } catch { /* Preserve the in-memory outcome; never retry the write. */ }
+    } finally { applying.value = false; }
+    const written = proposal.status === 'applied' ? true : proposal.status === 'unknown' ? null : false;
+    const result: AssistantExecutionResult = { status: proposal.status, written, ...(proposal.error ? { error: proposal.error } : {}) };
+    if (written && proposal.applied) {
+      result.fileId = proposal.applied.fileId;
+      result.path = proposal.preview?.destination ?? proposal.preview?.path ?? proposal.path;
+      // Return committed bytes as a new immutable source; never widen an original selection.
+      if (['edit', 'create', 'rename', 'move'].includes(proposal.kind) && !target.messages.some(message => message.id === proposal.runId &&
+          message.sources?.some(source => source.fileId === proposal.fileId && source.selection)))
+        result.source = { id: '', workspaceId: expected.id, fileId: result.fileId, path: result.path,
+          content: proposal.applied.after, hash: proposal.applied.hash, origin: 'disk' };
+    }
+    return result;
   }
   async function review(proposal: AssistantProposal, apply = false) {
     if (busy.value || applying.value || !transport) return;
@@ -333,6 +441,21 @@ export const useAssistantStore = defineStore('assistant', () => {
       const expected = scope();
       if (expected.id !== proposal.workspaceId) throw new Error('工作区已切换');
       const current = await runtime.adapter.refresh();
+      if (current.id !== expected.id || current.path !== expected.path) throw new Error('工作区已切换');
+      if (['delete', 'rename', 'move'].includes(proposal.kind)) {
+        const file = current.files.find(file => file.id === proposal.fileId);
+        if (!file) throw new Error('原文件已不存在，无法确认是否由此次操作移除；请核对回收站，保留此记录');
+        const disk = await runtime.adapter.read(file.path);
+        if (proposal.kind !== 'delete' && file.path === proposal.preview.destination && disk.hash === proposal.preview.diskHash) {
+          proposal.applied = { before: proposal.preview.before, after: disk.content, hash: disk.hash, fileId: file.id };
+          proposal.status = 'applied'; proposal.error = undefined;
+        } else if (file.path === proposal.preview.path && disk.hash === proposal.preview.diskHash) {
+          proposal.status = 'ready'; proposal.preview = undefined; proposal.error = '未发现此次文件操作，请重新审阅';
+        } else throw new Error('文件位置或内容已变化，请人工核对；不自动重试');
+        await persist(target);
+        if (target?.external && proposal.id === target.id) await transport?.recordExternalResult?.(target);
+        return;
+      }
       const file = current.files.find(file => proposal.kind === 'edit' ? file.id === proposal.fileId : file.path === proposal.path);
       if (!file || current.id !== expected.id || current.path !== expected.path) throw new Error('原目标不存在，请保留建议并核对工作区');
       const disk = await runtime.adapter.read(file.path);
@@ -355,13 +478,16 @@ export const useAssistantStore = defineStore('assistant', () => {
     catch (reason) { error.value = String(reason); }
   }
   async function undo(proposal: AssistantProposal) {
-    if (!proposal.applied || applying.value || busy.value || ['object', 'relation'].includes(proposal.kind)) return;
+    if (!proposal.applied || applying.value || busy.value || !['edit', 'create'].includes(proposal.kind)) return;
     const reply = session.value?.messages.find(message => message.id === proposal.runId);
     if (!reply) return;
     const reversed: AssistantProposal = { id: crypto.randomUUID(), runId: reply.id, workspaceId: proposal.workspaceId,
       kind: 'edit', fileId: proposal.applied.fileId, path: proposal.path, base: proposal.applied.after,
       content: proposal.applied.before, reason: `撤回内容：${proposal.reason}`, status: 'ready' };
-    reply.proposals!.push(reversed); await review(reversed);
+    reply.proposals!.push(reversed);
+    const current = reply.proposals!.at(-1)!;
+    current.execution = 'direct';
+    await executeChange(current, session.value!, scope(), new AbortController().signal);
   }
   async function deleteSession(id: string) {
     if (!transport || busy.value || applying.value) return;
@@ -378,7 +504,6 @@ export const useAssistantStore = defineStore('assistant', () => {
     restoreModelSelection(session.value);
     files.value = []; selection.value = null; prompt.value = ''; error.value = '';
     replyTarget.value = null;
-    allowStructures.value = false;
   }
   async function loadExternal() {
     if (!transport?.loadExternalSessions || busy.value || applying.value || loading.value) return;
@@ -401,12 +526,11 @@ export const useAssistantStore = defineStore('assistant', () => {
   watch(() => workspace.workspace ? `${workspace.workspace.id}:${workspace.workspace.path}:${workspace.assistantEpoch}` : '', async key => {
     stop(); modelController?.abort(); const epoch = ++generation;
     if (displayMode.value === 'fullscreen') setDisplayMode('sidebar');
-    busy.value = false; prompt.value = ''; files.value = []; selection.value = null; session.value = null; sessions.value = []; allowSearch.value = false;
+    busy.value = false; prompt.value = ''; files.value = []; selection.value = null; session.value = null; sessions.value = [];
     replyTarget.value = null;
     connectionId.value = ''; modelId.value = ''; models.value = []; modelsError.value = ''; modelsLoading.value = false;
     if (!key || !transport) return;
     externalSessions.value = [];
-    allowStructures.value = false;
     const expected = scope(); loading.value = true; error.value = '';
     try {
       await reloadConnections();
@@ -428,7 +552,7 @@ export const useAssistantStore = defineStore('assistant', () => {
   });
   watch([connection, opened], () => { void reloadModels(); });
   onScopeDispose(() => { stop(); modelController?.abort(); });
-  return { available, demo, opened, displayMode, fullscreenTabId, fullscreenPaneId, isFullscreenTab, setDisplayMode, loading, busy, applying, connections, connectionId, connection, modelId, models, modelsLoading, modelsError, reloadModels, selectModel, selectConnection, sessions, session, externalSessions, loadExternal, importExternal,
-    files, selection, prompt, error, progress, allowSearch, allowStructures, replyTarget, open, stop, settle, send, newSession, selectSession, deleteSession, review, verify,
-    undo, reject, publishSuggestions, saveConnection, removeConnection, reloadConnections, setManaged: (check: (id: string) => boolean) => { managed = check; } };
+  return { available, demo, canConfigure, opened, displayMode, fullscreenTabId, fullscreenPaneId, isFullscreenTab, setDisplayMode, loading, busy, applying, connections, connectionId, connection, modelId, models, modelsLoading, modelsError, reloadModels, refreshModels, selectModel, selectConnection, sessions, session, externalSessions, loadExternal, importExternal,
+    files, selection, prompt, error, progress, reasoningEffort, selectReasoningEffort, replyTarget, open, stop, settle, send, newSession, selectSession, deleteSession, review, verify,
+    undo, reject, publishSuggestions, saveConnection, removeConnection, reloadConnections, checkConnection, setManaged: (check: (id: string) => boolean) => { managed = check; } };
 });

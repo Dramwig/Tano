@@ -7,6 +7,7 @@ import type { ObjectStorage } from './workspace-objects';
 import type { CommentAuthor } from './workspace-comments';
 import type { AttachmentService } from './attachments';
 import type { SettingsPageId } from './settings-window';
+import type { PluginRuntimeServices } from './plugins/host';
 
 export interface WorkbenchActions {
   closeMenus(): void;
@@ -18,6 +19,8 @@ export interface EditingSession {
   readonly active: { key: string; readOnly: boolean; extension?: EditorExtension } | null;
   readonly activeBusy: boolean;
   isManaging(id: string): boolean;
+  /** Apply through the live editor transaction when a plugin edits a managed document. */
+  applyPluginEdit?(id: string, before: string, after: string): Promise<string | void>;
   flush(): Promise<unknown>;
   suspendAll(): Promise<void>;
   dispose(): Promise<void>;
@@ -31,6 +34,7 @@ export interface SettingsPageContext {
 /** Components receive SettingsPageContext props, including in a separate settings window. */
 export interface SettingsPage {
   id: string; label: string; group: string; terms: string; component: Component;
+  icon?: Component;
 }
 /** Only this metadata enters the tab store; components and business state stay in the overlay. */
 export interface WorkbenchViewTab {
@@ -60,7 +64,10 @@ export interface WorkbenchObjectDetailsProps {
 }
 export interface WorkbenchExtensions {
   editing: EditingSession;
-  /** workspace-menu-layout can wrap the built-in workspace actions through its default slot. */
+  /**
+   * workspace-menu-layout can wrap built-in workspace actions through its default slot.
+   * plugin-publishing receives WorkbenchActions in the plugin center's My submissions view.
+   */
   regions: Record<string, Component>;
   views?: readonly WorkbenchView[];
   /** Receives WorkbenchObjectDetailsProps for a saved workspace object. */
@@ -75,9 +82,12 @@ export interface WorkbenchExtensions {
 }
 export interface WorkbenchRuntime {
   adapter: WorkspaceAdapter;
+  /** Absolute, localized documentation root supplied by the product host. */
+  documentationBaseUrl?: string;
   attachments?: AttachmentService;
   personalPlans?: ObjectStorage;
   assistant?: AssistantTransport;
+  plugins?: PluginRuntimeServices;
   native: boolean;
   mobile: boolean;
   extensions?: () => WorkbenchExtensions;

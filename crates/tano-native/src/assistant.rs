@@ -98,6 +98,8 @@ pub struct Connection {
     kind: crate::assistant_cli::Kind,
     #[serde(default)]
     cli_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<crate::assistant_cli::ReasoningEffort>,
     endpoint: String,
     #[serde(default)]
     protocol: Protocol,
@@ -257,7 +259,7 @@ fn authenticate(
     }
 }
 
-fn valid_model_id(model: &str) -> bool {
+pub(crate) fn valid_model_id(model: &str) -> bool {
     !model.is_empty()
         && model.trim() == model
         && model.encode_utf16().count() <= 200
@@ -294,12 +296,6 @@ pub async fn assistant_models(
 ) -> Result<Vec<String>, String> {
     valid_id(&request_id)?;
     let config = load_connection(&app, &connection_id)?;
-    if config.config.kind != crate::assistant_cli::Kind::Api {
-        crate::assistant_cli::resolve(config.config.kind, &config.config.cli_path)?;
-        return Ok(crate::assistant_cli::models(config.config.kind));
-    }
-    let url = service_endpoint(&config.config.endpoint, "models")?;
-    let request = authenticate(http_client(Duration::from_secs(30))?.get(url), &config)?;
     let owner = format!("{}:{request_id}", window.label());
     let mut cancelled = state
         .requests
@@ -307,6 +303,16 @@ pub async fn assistant_models(
         .map_err(|_| "助手运行正忙")?
         .start(&owner)?;
     let result = async {
+        if config.config.kind != crate::assistant_cli::Kind::Api {
+            return crate::assistant_cli::models(
+                config.config.kind,
+                &config.config.cli_path,
+                &assistant_dir(&app)?,
+                cancelled,
+            ).await;
+        }
+        let url = service_endpoint(&config.config.endpoint, "models")?;
+        let request = authenticate(http_client(Duration::from_secs(30))?.get(url), &config)?;
         let mut response = tokio::select! {
             _ = cancelled.changed() => return Err("已取消读取模型列表".into()),
             response = request.send() => response.map_err(|_| "模型列表读取失败或超时，请检查网络与服务地址")?,
@@ -343,7 +349,7 @@ pub async fn assistant_models(
 
 #[tauri::command]
 pub fn assistant_protocol_version() -> u32 {
-    7
+    11
 }
 
 #[tauri::command]
@@ -490,6 +496,22 @@ fn request_body(config: &Connection, request: Value) -> Result<Value, String> {
     let mut body = match config.protocol {
         Protocol::ChatCompletions => {
             let mut messages = messages.clone();
+            // Several compatible services accept only one leading system message.
+            // Preserve every instruction in order, without promoting later messages
+            // (or document/tool data) into the system role.
+            let system_count = messages
+                .iter()
+                .take_while(|message| message["role"] == "system" && message["content"].is_string())
+                .count();
+            if system_count > 1 {
+                let content = messages[..system_count]
+                    .iter()
+                    .map(|message| message["content"].as_str().unwrap())
+                    .collect::<Vec<_>>()
+                    .join("\n\n");
+                messages[0]["content"] = json!(content);
+                messages.drain(1..system_count);
+            }
             for message in &mut messages {
                 if let Some(message) = message.as_object_mut() {
                     message.remove("responseItems");
@@ -540,13 +562,16 @@ fn request_body(config: &Connection, request: Value) -> Result<Value, String> {
     if let Some(tools) = request.get("tools") {
         let tools = tools.as_array().ok_or("模型工具无效")?;
         if !config.tools
-            || tools.len() > 12
+            || tools.len() > 25
             || tools.iter().any(|tool| {
                 !matches!(
                     tool.pointer("/function/name").and_then(Value::as_str),
                     Some(
                         "propose_edit"
                             | "propose_create"
+                            | "propose_delete"
+                            | "propose_rename"
+                            | "propose_move"
                             | "search_documents"
                             | "read_document"
                             | "read_workspace_objects"
@@ -557,6 +582,16 @@ fn request_body(config: &Connection, request: Value) -> Result<Value, String> {
                             | "propose_assignment"
                             | "propose_relation_change"
                             | "query_tasks"
+                            | "edit_document"
+                            | "create_document"
+                            | "delete_document"
+                            | "rename_document"
+                            | "move_document"
+                            | "create_event"
+                            | "create_relation"
+                            | "update_task"
+                            | "update_assignment"
+                            | "change_relation"
                     )
                 )
             })
@@ -583,6 +618,24 @@ fn provider_error(status: u16, bytes: &[u8]) -> String {
     api::ProviderError::parse(status, bytes).display()
 }
 
+fn requested_reasoning_effort(
+    config: &Connection,
+    request: &Value,
+) -> Result<Option<crate::assistant_cli::ReasoningEffort>, String> {
+    let Some(value) = request.get("reasoningEffort") else {
+        return Ok(config.reasoning_effort);
+    };
+    if config.kind != crate::assistant_cli::Kind::CodexCli {
+        return Err("当前连接不支持选择推理强度".into());
+    }
+    if value.as_str() == Some("cli-default") {
+        return Ok(None);
+    }
+    serde_json::from_value(value.clone())
+        .map(Some)
+        .map_err(|_| "推理强度无效".into())
+}
+
 #[tauri::command]
 pub async fn assistant_request(
     app: tauri::AppHandle,
@@ -596,6 +649,7 @@ pub async fn assistant_request(
     valid_id(&request_id)?;
     let config = load_connection(&app, &connection_id)?;
     if config.config.kind != crate::assistant_cli::Kind::Api {
+        let reasoning_effort = requested_reasoning_effort(&config.config, &request)?;
         let mut validation = config.config.clone();
         validation.protocol = Protocol::ChatCompletions;
         let body = request_body(&validation, request)?;
@@ -608,6 +662,7 @@ pub async fn assistant_request(
         let result = crate::assistant_cli::run(
             config.config.kind,
             &config.config.cli_path,
+            reasoning_effort,
             &assistant_dir(&app)?,
             body,
             cancelled,
@@ -1000,9 +1055,8 @@ pub fn assistant_session_delete(
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[tokio::test]
-    #[ignore = "opt-in authenticated provider diagnostic; sends only a synthetic prompt"]
-    async fn configured_provider_diagnostic() {
+
+    fn diagnostic_connection() -> (StoredConnection, String) {
         let directory = std::env::var("TANO_ASSISTANT_DIAGNOSTIC_DATA")
             .expect("explicit assistant data directory required");
         let connection_id = std::env::var("TANO_ASSISTANT_DIAGNOSTIC_CONNECTION")
@@ -1014,7 +1068,124 @@ mod tests {
             .into_iter()
             .find(|entry| entry.config.id == connection_id)
             .expect("selected connection not found");
-        let body = request_body(&config.config, json!({"model": model, "messages": [{"role": "user", "content": "Reply only OK. This is a connection diagnostic."}]})).unwrap();
+        (config, model)
+    }
+
+    #[tokio::test]
+    #[ignore = "opt-in authenticated tool round trip; synthetic data, no workspace writes"]
+    async fn configured_provider_tool_round_trip() {
+        let (config, model) = diagnostic_connection();
+        let mut request = json!({"model":model, "messages":[
+            {"role":"system", "content":"You are the Tano workspace assistant."},
+            {"role":"system", "content":"Use the read_document tool before answering any question about a document."},
+            {"role":"system", "content":"After the tool receipt, reply with exactly the document content and no other words. Do not repeat tool calls."},
+            {"role":"user", "content":"Read document fixture and reply with its content."}
+        ], "tools":[{"type":"function", "function":{"name":"read_document", "description":"Read the requested document", "parameters":{"type":"object", "properties":{"fileId":{"type":"string"}}, "required":["fileId"], "additionalProperties":false}}}]});
+        let client = http_client(Duration::from_secs(120)).unwrap();
+        let mut profile = api::Profile::for_request(&config.config, &request, None);
+        let (_sender, mut cancelled) = watch::channel(false);
+        for round in 0..2 {
+            let response = api::open_stream(
+                &client,
+                &config,
+                &request,
+                &mut profile,
+                &mut cancelled,
+                |kind| {
+                    println!("Provider adaptation: {kind}");
+                    Ok(())
+                },
+            )
+            .await
+            .unwrap();
+            let bytes = response.bytes().await.unwrap();
+            assert!(bytes.len() <= 4_000_000);
+            let text = std::str::from_utf8(&bytes).unwrap();
+            let mut content = String::new();
+            let mut calls = std::collections::BTreeMap::<u64, Value>::new();
+            let mut done = false;
+            let mut finish = String::new();
+            for data in text
+                .lines()
+                .filter_map(|line| line.strip_prefix("data:").map(str::trim))
+            {
+                if data == "[DONE]" {
+                    done = true;
+                    continue;
+                }
+                let frame: Value = serde_json::from_str(data).unwrap();
+                assert!(
+                    frame.get("error").is_none(),
+                    "provider returned a stream error"
+                );
+                let choice = &frame["choices"][0];
+                if let Some(reason) = choice["finish_reason"].as_str() {
+                    finish = reason.into();
+                }
+                if let Some(delta) = choice["delta"]["content"].as_str() {
+                    content.push_str(delta);
+                }
+                for delta in choice["delta"]["tool_calls"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                {
+                    let call = calls.entry(delta["index"].as_u64().unwrap()).or_insert_with(|| json!({"id":"", "type":"function", "function":{"name":"", "arguments":""}}));
+                    for path in ["/id", "/function/name", "/function/arguments"] {
+                        if let Some(part) = delta.pointer(path).and_then(Value::as_str) {
+                            let value = call.pointer_mut(path).unwrap();
+                            *value = json!(format!("{}{part}", value.as_str().unwrap()));
+                        }
+                    }
+                }
+            }
+            assert!(done, "provider stream did not complete");
+            if round == 0 {
+                assert_eq!(finish, "tool_calls");
+                assert_eq!(calls.len(), 1);
+                let call = calls.into_values().next().unwrap();
+                assert_eq!(call["function"]["name"], "read_document");
+                assert_eq!(
+                    serde_json::from_str::<Value>(call["function"]["arguments"].as_str().unwrap())
+                        .unwrap(),
+                    json!({"fileId":"fixture"})
+                );
+                let messages = request["messages"].as_array_mut().unwrap();
+                messages.push(
+                    json!({"role":"assistant", "content":content, "tool_calls":[call.clone()]}),
+                );
+                messages.push(
+                    json!({"role":"tool", "tool_call_id":call["id"], "content":"TANO_API_OK"}),
+                );
+            } else {
+                assert_eq!(finish, "stop");
+                assert!(calls.is_empty());
+                assert!(
+                    content.contains("TANO_API_OK"),
+                    "provider did not use the synthetic receipt"
+                );
+            }
+            println!("Provider round {} completed", round + 1);
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "opt-in authenticated provider diagnostic; sends only a synthetic prompt"]
+    async fn configured_provider_diagnostic() {
+        let (mut config, model) = diagnostic_connection();
+        if let Ok(protocol) = std::env::var("TANO_ASSISTANT_DIAGNOSTIC_PROTOCOL") {
+            config.config.protocol = serde_json::from_value(json!(protocol)).unwrap();
+        }
+        let mut request = json!({"model": model, "messages": [
+            {"role": "system", "content": "You are the Tano workspace assistant."},
+            {"role": "system", "content": "Use only supplied reference snapshots."},
+            {"role": "system", "content": "Propose edits for user review; never write directly."},
+            {"role": "user", "content": "Reply only OK. This is a connection diagnostic."}
+        ]});
+        if std::env::var_os("TANO_ASSISTANT_DIAGNOSTIC_TOOLS").is_some() {
+            request["tools"] = json!([{"type": "function", "function": {"name": "read_document", "description": "Read a reference document", "parameters": {"type": "object", "properties": {"fileId": {"type": "string"}}, "required": ["fileId"]}}}]);
+        }
+        let body = request_body(&config.config, request).unwrap();
         let response = authenticate(
             http_client(Duration::from_secs(30))
                 .unwrap()
@@ -1032,7 +1203,10 @@ mod tests {
         }
         let bytes = response.bytes().await.unwrap();
         assert!(bytes.len() <= 32_768, "diagnostic error body too large");
-        let value: Value = serde_json::from_slice(&bytes).expect("provider error is not JSON");
+        let Ok(value) = serde_json::from_slice::<Value>(&bytes) else {
+            println!("Provider returned a non-JSON error body");
+            return;
+        };
         let secret = config
             .credential
             .as_ref()
@@ -1040,7 +1214,9 @@ mod tests {
             .unwrap_or_default();
         for field in ["type", "code", "param", "message"] {
             if let Some(text) = value
-                .pointer(&format!("/error/{field}"))
+                .get("error")
+                .unwrap_or(&value)
+                .get(field)
                 .and_then(Value::as_str)
             {
                 let text = if secret.is_empty() {
@@ -1104,6 +1280,7 @@ mod tests {
             name: "test".into(),
             kind: crate::assistant_cli::Kind::Api,
             cli_path: String::new(),
+            reasoning_effort: None,
             endpoint: "https://example.com/v1".into(),
             protocol: Protocol::ChatCompletions,
             auto_adapt: true,
@@ -1144,6 +1321,51 @@ mod tests {
         }
     }
     #[test]
+    fn reasoning_override_round_trips_without_changing_legacy_connections() {
+        let legacy = json!({"id":"connection-test","name":"Codex","kind":"codex-cli","endpoint":"","tools":false,"maxOutputTokens":4096});
+        let connection: Connection = serde_json::from_value(legacy.clone()).unwrap();
+        assert_eq!(connection.reasoning_effort, None);
+        assert!(serde_json::to_value(connection)
+            .unwrap()
+            .get("reasoningEffort")
+            .is_none());
+        let mut configured = legacy;
+        configured["reasoningEffort"] = json!("low");
+        let connection: Connection = serde_json::from_value(configured.clone()).unwrap();
+        assert_eq!(
+            serde_json::to_value(connection).unwrap()["reasoningEffort"],
+            "low"
+        );
+        configured["reasoningEffort"] = json!("unsupported");
+        assert!(serde_json::from_value::<Connection>(configured).is_err());
+    }
+
+    #[test]
+    fn conversation_reasoning_takes_precedence_and_can_explicitly_inherit_cli() {
+        use crate::assistant_cli::{Kind, ReasoningEffort};
+        let mut config: Connection = serde_json::from_value(json!({"id":"connection-test","name":"Codex","kind":"codex-cli","endpoint":"","tools":false,"maxOutputTokens":4096,"reasoningEffort":"high"})).unwrap();
+        assert_eq!(
+            requested_reasoning_effort(&config, &json!({})).unwrap(),
+            Some(ReasoningEffort::High)
+        );
+        assert_eq!(
+            requested_reasoning_effort(&config, &json!({"reasoningEffort":"low"})).unwrap(),
+            Some(ReasoningEffort::Low)
+        );
+        assert_eq!(
+            requested_reasoning_effort(&config, &json!({"reasoningEffort":"cli-default"})).unwrap(),
+            None
+        );
+        for value in [json!("invalid"), json!(null), json!({}), json!(1)] {
+            assert!(
+                requested_reasoning_effort(&config, &json!({"reasoningEffort":value})).is_err()
+            );
+        }
+        config.kind = Kind::ClaudeCli;
+        assert!(requested_reasoning_effort(&config, &json!({"reasoningEffort":"low"})).is_err());
+    }
+
+    #[test]
     fn atomic_data_replacement_and_corrupt_connections_are_preserved() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("connections.json");
@@ -1155,6 +1377,7 @@ mod tests {
                 name: "fixture".into(),
                 kind: crate::assistant_cli::Kind::Api,
                 cli_path: String::new(),
+                reasoning_effort: None,
                 endpoint: "http://127.0.0.1:1441/v1".into(),
                 protocol: Protocol::ChatCompletions,
                 auto_adapt: true,
@@ -1191,6 +1414,9 @@ mod tests {
         let names = [
             "propose_edit",
             "propose_create",
+            "propose_delete",
+            "propose_rename",
+            "propose_move",
             "search_documents",
             "read_document",
             "read_workspace_objects",
@@ -1201,6 +1427,16 @@ mod tests {
             "propose_assignment",
             "propose_relation_change",
             "query_tasks",
+            "edit_document",
+            "create_document",
+            "delete_document",
+            "rename_document",
+            "move_document",
+            "create_event",
+            "create_relation",
+            "update_task",
+            "update_assignment",
+            "change_relation",
         ];
         for protocol in ["responses", "chat-completions"] {
             let config: Connection =
@@ -1221,14 +1457,53 @@ mod tests {
                     .as_array()
                     .unwrap()
                     .len(),
-                12
+                25
             );
             let mut forbidden = request;
             forbidden["tools"][10]["function"]["name"] = json!("execute_shell");
             assert!(request_body(&config, forbidden).is_err());
         }
-        assert_eq!(assistant_protocol_version(), 7);
+        assert_eq!(assistant_protocol_version(), 11);
     }
+    #[test]
+    fn chat_combines_only_leading_system_messages_and_preserves_tool_receipts() {
+        let config: Connection = serde_json::from_value(json!({
+            "id":"1735eb4e-b089-42e4-b1e2-1d92d4992063", "name":"fixture",
+            "endpoint":"https://example.com/v1", "protocol":"chat-completions",
+            "tools":true, "maxOutputTokens":4096
+        }))
+        .unwrap();
+        let request = json!({"model":"chosen-model", "messages":[
+            {"role":"system", "content":"workspace instructions"},
+            {"role":"system", "content":"current time"},
+            {"role":"system", "content":"workspace rules"},
+            {"role":"user", "content":"document data"},
+            {"role":"assistant", "content":null, "tool_calls":[{"id":"call-one", "type":"function", "function":{"name":"read_document", "arguments":"{}"}}]},
+            {"role":"tool", "tool_call_id":"call-one", "content":"receipt"},
+            {"role":"system", "content":"later instruction"}
+        ]});
+        let original = request.clone();
+        let body = request_body(&config, request.clone()).unwrap();
+        assert_eq!(
+            body["messages"][0],
+            json!({"role":"system", "content":"workspace instructions\n\ncurrent time\n\nworkspace rules"})
+        );
+        assert_eq!(
+            &body["messages"].as_array().unwrap()[1..],
+            &original["messages"].as_array().unwrap()[3..]
+        );
+        assert_eq!(body["model"], original["model"]);
+        assert_eq!(body["max_completion_tokens"], 4096);
+        assert_eq!(request, original);
+        let mut responses = config.clone();
+        responses.protocol = Protocol::Responses;
+        let response_body = request_body(&responses, original).unwrap();
+        assert_eq!(
+            response_body["instructions"],
+            "workspace instructions\n\ncurrent time\n\nworkspace rules\n\nlater instruction"
+        );
+    }
+
     #[test]
     fn responses_requests_preserve_reasoning_and_use_flat_tools() {
         let config: Connection = serde_json::from_value(json!({"id": uuid::Uuid::new_v4().to_string(), "name": "test", "endpoint": "https://example.com/v1", "protocol": "responses", "tools": true, "maxOutputTokens": 2048})).unwrap();

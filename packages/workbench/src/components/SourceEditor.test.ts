@@ -34,6 +34,16 @@ async function mountSource(content: string) {
   return { value, editor, readonly, changed, view: EditorView.findFromDOM(root.querySelector('.cm-editor')!)! };
 }
 
+it('restores a backward mode selection without changing Markdown or undo history', async () => {
+  const { editor, view, value, changed } = await mountSource('第一行\r\n第二行 **文字**\r\n');
+  editor.value!.restoreModeSelection({ anchor: 12, head: 5 });
+  expect(editor.value!.captureModeSelection()).toEqual({ anchor: 12, head: 5 });
+  expect(view.hasFocus).toBe(true);
+  expect(value.value).toBe('第一行\r\n第二行 **文字**\r\n');
+  expect(changed).not.toHaveBeenCalled();
+  expect(editor.value!.canUndo()).toBe(false);
+});
+
 it('indents and outdents source with Tab without moving focus to page buttons', async () => {
   const { value, editor, view, readonly } = await mountSource('正文');
   view.focus();
@@ -60,6 +70,20 @@ it('indents and outdents source with Tab without moving focus to page buttons', 
   pressTab();
   pressTab(true);
   expect(value.value).toBe('正文');
+});
+
+it('applies a plugin edit as one undo step and rejects stale or read-only edits', async () => {
+  const { value, editor, readonly } = await mountSource('# Before\n');
+  editor.value!.applyPluginEdit('# Before\n', '# After\n');
+  await nextTick();
+  expect(value.value).toBe('# After\n');
+  expect(() => editor.value!.applyPluginEdit('# Before\n', '# Lost\n')).toThrow('变化');
+  expect(editor.value!.undoLastChange()).toBe(true);
+  await nextTick();
+  expect(value.value).toBe('# Before\n');
+  readonly.value = true;
+  await nextTick();
+  expect(() => editor.value!.applyPluginEdit('# Before\n', '# Lost\n')).toThrow();
 });
 
 it('maps a backward selection through external changes without making them undoable', async () => {

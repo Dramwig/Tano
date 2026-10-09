@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, disposePinia, setActivePinia } from 'pinia';
 import { reactive } from 'vue';
 import type { AssistantProposal, AssistantSession, AssistantTransport, WorkspaceAdapter } from '@tano/protocol';
-import { configureWorkbench } from '../runtime';
+import { parseAssistantSession } from '@tano/protocol';
+import { configureWorkbench, useWorkbenchRuntime } from '../runtime';
 import { useAssistantStore } from './store';
 
 const fixture = vi.hoisted(() => ({ workspace: null as any }));
@@ -22,6 +23,7 @@ describe('assistant session coordination', () => {
   beforeEach(() => {
     history = [];
     fixture.workspace = reactive({ workspace: { id: 'workspace', path: 'local', files: [] }, assistantEpoch: 1,
+      capabilities: { features: { objectReferences: true } },
       activeId: 'abc123', tabs: [{ id: 'abc123' }, { id: 'other' }],
       panes: [{ id: 'pane', tabs: ['abc123', 'other'], activeId: 'abc123' }], createBlankTab: vi.fn(),
       assistantRules: vi.fn(async () => []), assistantSnapshot: vi.fn(), search: vi.fn(),
@@ -40,10 +42,65 @@ describe('assistant session coordination', () => {
     await vi.waitFor(() => expect(store.loading).toBe(false));
     return store;
   }
+  it('persists failed tool receipts and sends actual proposal state in the next conversation turn', async () => {
+    const store = await ready(); await store.selectModel('test');
+    let round = 0;
+    vi.mocked(transport.request).mockImplementation(async (_id, request, _signal, chunk) => {
+      round++;
+      if (round === 3) {
+        const previous = JSON.parse(request.messages.find(item => item.role === 'assistant')!.content!);
+        expect(previous.answer).toContain('已提交');
+        expect(previous.execution).toMatchObject({ proposals: [], tools: [{ name: 'propose_create', status: 'failed', error: expect.stringContaining('路径') }] });
+      }
+      const delta = round === 1 ? { tool_calls: [{ index: 0, id: 'invalid-create', type: 'function',
+        function: { name: 'propose_create', arguments: JSON.stringify({ path: '../test.md', content: '# Test', reason: 'test' }) } }] }
+        : { content: round === 2 ? '已提交创建建议' : '上一轮没有生成建议' };
+      chunk(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`));
+    });
+    store.prompt = '创建 test.md'; await store.send();
+    const saved = parseAssistantSession(JSON.parse(JSON.stringify(vi.mocked(transport.saveSession).mock.calls.at(-1)![0])));
+    expect(saved.messages.at(-1)?.proposals).toEqual([]);
+    expect(saved.messages.at(-1)?.toolResults).toEqual([{ name: 'propose_create', status: 'failed', error: expect.stringContaining('路径') }]);
+    store.prompt = '建议在哪'; await store.send();
+    expect(round).toBe(3);
+    expect(fixture.workspace.reviewAssistantProposal).not.toHaveBeenCalled();
+  });
+  it('checks a connection independently of the selected conversation and without generating content', async () => {
+    const store = await ready();
+    store.connections.push({ ...connection, id: 'second' });
+    store.modelId = 'chosen'; store.models = ['cached']; store.modelsError = 'previous';
+    const currentSession = store.session;
+    vi.mocked(transport.models).mockResolvedValue(['one', 'one', 'two']);
+    const controller = new AbortController();
+    expect(await store.checkConnection('second', controller.signal)).toBe(2);
+    expect(transport.models).toHaveBeenCalledWith('second', controller.signal);
+    expect(store.connectionId).toBe(connection.id);
+    expect(store.modelId).toBe('chosen');
+    expect(store.models).toEqual(['cached']);
+    expect(store.modelsError).toBe('previous');
+    expect(store.session).toBe(currentSession);
+    expect(transport.request).not.toHaveBeenCalled();
+    expect(transport.saveSession).not.toHaveBeenCalled();
+  });
+  it('rejects missing, malformed, failed, and cancelled connectivity checks', async () => {
+    const store = await ready();
+    const controller = new AbortController();
+    await expect(store.checkConnection('removed', controller.signal)).rejects.toThrow('已移除');
+    expect(transport.models).not.toHaveBeenCalled();
+    vi.mocked(transport.models).mockResolvedValueOnce([' invalid ']);
+    await expect(store.checkConnection(connection.id, controller.signal)).rejects.toThrow('模型列表格式无效');
+    vi.mocked(transport.models).mockRejectedValueOnce(new Error('网络失败'));
+    await expect(store.checkConnection(connection.id, controller.signal)).rejects.toThrow('网络失败');
+    vi.mocked(transport.models).mockImplementationOnce(async () => { controller.abort(); return ['one']; });
+    await expect(store.checkConnection(connection.id, controller.signal)).rejects.toThrow();
+    vi.mocked(transport.models).mockClear();
+    await expect(store.checkConnection(connection.id, controller.signal)).rejects.toThrow();
+    expect(transport.models).not.toHaveBeenCalled();
+  });
   it('changes display modes during a run without changing the conversation, draft or access', async () => {
     const store = await ready(); store.open();
     const current = store.session;
-    store.prompt = 'draft'; store.files = ['abc123']; store.allowSearch = true; store.busy = true;
+    store.prompt = 'draft'; store.files = ['abc123']; store.busy = true;
     store.setDisplayMode('floating');
     expect(store.displayMode).toBe('floating');
     store.setDisplayMode('fullscreen');
@@ -58,7 +115,6 @@ describe('assistant session coordination', () => {
     expect(store.session).toBe(current);
     expect(store.prompt).toBe('draft');
     expect(store.files).toEqual(['abc123']);
-    expect(store.allowSearch).toBe(true);
     expect(store.busy).toBe(true);
     expect(transport.request).not.toHaveBeenCalled();
   });
@@ -119,6 +175,24 @@ describe('assistant session coordination', () => {
     expect(item.status).toBe('unknown');
     await store.review(item, true);
     expect(fixture.workspace.reviewAssistantProposal).toHaveBeenCalledTimes(1);
+  });
+  it('verifies path changes using stable identity, and never infers successful deletion from absence', async () => {
+    const store = await ready();
+    const item: AssistantProposal = { ...proposal(), kind: 'rename', destination: 'next.md', status: 'unknown',
+      preview: { before: 'old', after: 'old', path: 'note.md', destination: 'next.md', diskHash: 'old' } };
+    const adapter = useWorkbenchRuntime().adapter;
+    adapter.refresh = vi.fn(async () => ({ id: 'workspace', name: 'workspace', path: 'local', files: [
+      { id: 'abc123', path: 'next.md', name: 'next.md', kind: 'file' as const, size: 3, modified: 1 },
+    ] }));
+    adapter.read = vi.fn(async () => ({ content: 'old', hash: 'old', modified: 1 }));
+    await store.verify(item);
+    expect(item.status).toBe('applied'); expect(item.applied?.fileId).toBe('abc123');
+    const removed: AssistantProposal = { ...proposal(), kind: 'delete', content: '', status: 'unknown' };
+    vi.mocked(adapter.refresh).mockResolvedValue({ id: 'workspace', name: 'workspace', path: 'local', files: [] });
+    await store.verify(removed);
+    expect(removed.status).toBe('unknown'); expect(store.error).toContain('无法确认');
+    await store.review(removed, true);
+    expect(fixture.workspace.reviewAssistantProposal).not.toHaveBeenCalled();
   });
   it('deletes using the loaded revision and retains local history on concurrent changes', async () => {
     const restored = session(); history.push(restored);
@@ -198,6 +272,34 @@ describe('assistant session coordination', () => {
     expect(transport.request).not.toHaveBeenCalled();
     expect(transport.saveSession).not.toHaveBeenCalled();
   });
+  it('persists only the initially attached source IDs when tools read more documents', async () => {
+    const store = await ready(); await store.selectModel('test');
+    fixture.workspace.assistantSnapshot.mockImplementation(async (_scope: unknown, fileId: string) => ({
+      id: '', workspaceId: 'workspace', fileId, path: `${fileId}.md`, content: '文档正文', hash: 'hash', origin: 'disk',
+    }));
+    store.files = ['attached'];
+    let requests = 0;
+    vi.mocked(transport.request).mockImplementation(async (_id, _request, _signal, chunk) => {
+      const delta = requests++ % 2 === 0 ? { tool_calls: [{ index: 0, id: 'read-more', type: 'function',
+        function: { name: 'read_document', arguments: JSON.stringify({ fileId: 'retrieved' }) } }] } : { content: '回答[来源:S1]' };
+      chunk(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`));
+    });
+    store.prompt = '你好'; await store.send();
+    const saved = parseAssistantSession(JSON.parse(JSON.stringify(vi.mocked(transport.saveSession).mock.calls.at(-1)![0])));
+    expect(saved.messages.at(-1)?.sources?.map(source => source.fileId)).toEqual(['attached', 'retrieved']);
+    expect(saved.messages.at(-1)?.attachedSourceIds).toEqual(['S1']);
+    store.files = []; store.prompt = '继续'; await store.send();
+    expect(store.session!.messages.at(-1)?.sources?.map(source => source.fileId)).toEqual(['retrieved']);
+    expect(store.session!.messages.at(-1)?.attachedSourceIds).toEqual([]);
+    expect(store.session!.messages[1]!.attachedSourceIds).toEqual(['S1']);
+  });
+  it('keeps document search available when workspace object features are disabled', async () => {
+    fixture.workspace.capabilities.features.objectReferences = false;
+    const store = await ready(); await store.selectModel('test'); store.prompt = '总结工作区'; await store.send();
+    const names = vi.mocked(transport.request).mock.calls[0][1].tools!.map(tool => tool.function.name);
+    expect(names).toContain('search_documents'); expect(names).toContain('read_document');
+    expect(names).not.toContain('read_workspace_objects'); expect(names).not.toContain('query_tasks');
+  });
   it('persists models separately for conversations and restores them after reopening', async () => {
     const store = await ready();
     await store.selectModel('test'); const first = store.session!.id;
@@ -210,6 +312,53 @@ describe('assistant session coordination', () => {
     await vi.waitFor(() => expect(store.loading).toBe(false));
     store.selectSession(first); expect(store.modelId).toBe('test');
     store.selectSession(second); expect(store.modelId).toBe('other');
+  });
+  it('persists reasoning per conversation, restores it, and validates saved selections', async () => {
+    vi.mocked(transport.connections).mockResolvedValue([{ ...connection, kind: 'codex-cli', reasoningEffort: 'high' }]);
+    const store = await ready();
+    expect(store.reasoningEffort).toBe('high');
+    await store.selectReasoningEffort('low'); const first = store.session!.id;
+    store.newSession(); await store.selectReasoningEffort('cli-default'); const second = store.session!.id;
+    store.selectSession(first); expect(store.reasoningEffort).toBe('low');
+    store.selectSession(second); expect(store.reasoningEffort).toBe('cli-default');
+    expect(transport.saveConnection).not.toHaveBeenCalled();
+    history = JSON.parse(JSON.stringify(store.sessions));
+    fixture.workspace.assistantEpoch++;
+    await vi.waitFor(() => expect(transport.loadSessions).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(store.loading).toBe(false));
+    store.selectSession(first); expect(store.reasoningEffort).toBe('low');
+    store.selectSession(second); expect(store.reasoningEffort).toBe('cli-default');
+    expect(() => parseAssistantSession({ ...session(), reasoningEffort: 'invalid' })).toThrow('助手会话格式无效');
+  });
+  it('sends the current conversation effort and locks it during generation', async () => {
+    vi.mocked(transport.connections).mockResolvedValue([{ ...connection, kind: 'codex-cli', reasoningEffort: 'high' }]);
+    const store = await ready(); await store.selectModel('test'); await store.selectReasoningEffort('low');
+    vi.mocked(transport.request).mockImplementation(async (_id, request, signal) => {
+      expect(request.reasoningEffort).toBe('low');
+      await new Promise<void>((_resolve, reject) => signal.addEventListener('abort', () => reject(new Error('stopped')), { once: true }));
+    });
+    store.prompt = 'question'; const sending = store.send();
+    await vi.waitFor(() => expect(transport.request).toHaveBeenCalled());
+    await store.selectReasoningEffort('high'); expect(store.reasoningEffort).toBe('low');
+    await store.settle(); await sending;
+    expect(store.session!.reasoningEffort).toBe('low');
+  });
+  it('defaults new Codex chats to medium and keeps old chats without a choice on CLI settings', async () => {
+    vi.mocked(transport.connections).mockResolvedValue([{ ...connection, kind: 'codex-cli' }]);
+    const store = await ready(); expect(store.reasoningEffort).toBe('medium');
+    store.sessions.push({ ...session(), connectionId: connection.id });
+    store.selectSession(store.sessions.at(-1)!.id); expect(store.reasoningEffort).toBe('cli-default');
+    store.connections.push({ ...connection, id: 'api' });
+    await store.selectConnection('api');
+    expect(store.session!.reasoningEffort).toBeUndefined();
+    await expect(store.selectReasoningEffort('low')).rejects.toThrow('不支持');
+    await store.selectModel('test');
+    vi.mocked(transport.request).mockImplementation(async (_id, request, _signal, chunk) => {
+      expect(request).not.toHaveProperty('reasoningEffort');
+      chunk(new TextEncoder().encode('data: {"choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'));
+    });
+    store.prompt = 'question'; await store.send();
+    expect(transport.request).toHaveBeenCalled();
   });
   it('uses the selected model and locks selection throughout generation', async () => {
     const store = await ready(); await store.selectModel('other');

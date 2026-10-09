@@ -6,6 +6,7 @@ type KeyboardShortcutEvent = Pick<
 export const shortcutDefinitions = [
   { id: 'toggleSidebar', label: '收起或展开侧栏', group: '工作台', default: 'Mod+B', scope: '编辑区外' },
   { id: 'findDocument', label: '查找文档', group: '工作台', default: 'Mod+K' },
+  { id: 'commandPalette', label: '打开命令中心', group: '工作台', default: 'Mod+Shift+P' },
   { id: 'openDocument', label: '打开文档', group: '工作台', default: 'Mod+O' },
   { id: 'newDocument', label: '新建文档', group: '工作台', default: 'Mod+N' },
   { id: 'save', label: '立即保存', group: '工作台', default: 'Mod+S' },
@@ -77,6 +78,9 @@ export function parseShortcutBindings(value: unknown): ShortcutBindings {
       if (binding && validForAction(id, binding)) bindings[id] = binding;
     }
   }
+  // Do not let a newly introduced default erase a pre-existing custom binding.
+  if (!Object.hasOwn(input, 'commandPalette') && shortcutDefinitions.some(({ id }) =>
+    id !== 'commandPalette' && Object.hasOwn(input, id) && bindings[id] === bindings.commandPalette)) bindings.commandPalette = null;
   // Invalid saved conflicts must never route one key press to several actions.
   const conflicting = shortcutDefinitions.filter(({ id }) => bindings[id] !== null &&
     shortcutDefinitions.some(other => other.id !== id && bindings[other.id] === bindings[id]));

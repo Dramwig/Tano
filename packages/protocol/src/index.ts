@@ -6,6 +6,7 @@ export * from './object-types';
 export * from './short-id';
 export * from './relations';
 export * from './plugins';
+export * from './extensions';
 export * from './workspace-paths';
 export * from './comments';
 export * from './suggestions';
@@ -31,6 +32,8 @@ export interface Workspace {
   newlyCreated?: boolean;
   /** True only when the current user may delete this workspace. */
   canDelete?: boolean;
+  /** Supplied by the authority owning workspace membership, never by portable files. */
+  canManagePlugins?: boolean;
 }
 
 export class WorkspaceAccessRevokedError extends Error {
@@ -50,6 +53,16 @@ export type WriteResult =
   | { status: 'saved'; snapshot: FileSnapshot }
   | { status: 'conflict'; snapshot: FileSnapshot }
   | { status: 'missing' };
+
+/** Compare identity and content at the filesystem boundary before moving/deleting a document. */
+export interface FileChangeRequest {
+  workspaceId: string;
+  fileId: string;
+  path: string;
+  expectedHash: string;
+  /** Omitted for deletion. Saved returns the source snapshot, including for deletion. */
+  destination?: string;
+}
 
 export interface WorkspaceAdapter {
   readonly mode: 'desktop' | 'demo' | 'web';
@@ -71,6 +84,7 @@ export interface WorkspaceAdapter {
   move(from: string, to: string, kind: FileEntry['kind']): Promise<void>;
   duplicate?(workspaceId: string, path: string): Promise<string>;
   remove(path: string): Promise<void>;
+  changeFile?(request: FileChangeRequest): Promise<WriteResult>;
   reveal(): Promise<void>;
   watch(callback: () => void): Promise<() => void>;
 }
@@ -118,5 +132,8 @@ export interface WorkspaceSplit {
 export type WorkspaceLayout = WorkspacePane | WorkspaceSplit;
 
 export * from './paths';
+export * from './plugin-catalog';
+export * from './plugin-connections';
+export * from './plugin-automations';
 export * from './task-review';
 export * from './task-repeat';

@@ -5,12 +5,14 @@ import type { App } from 'vue';
 import PageSearch from './PageSearch.vue';
 import { defaultShortcutBindings } from '../shortcuts';
 import type { ShortcutBindings } from '../shortcuts';
+import { readHelpCompleted } from '../help-checklist';
 
 let app: App | undefined;
 let root: HTMLDivElement;
 afterEach(() => {
   app?.unmount();
   root?.remove();
+  localStorage.clear();
 });
 
 async function mountSearch(shortcuts: ShortcutBindings = defaultShortcutBindings) {
@@ -54,11 +56,14 @@ it('does not replace while Enter confirms an IME candidate', async () => {
     new KeyboardEvent('keydown', { key: 'Enter', keyCode: 229, bubbles: true, cancelable: true }),
   );
   expect(editor.replaceSearch).not.toHaveBeenCalled();
+  expect(readHelpCompleted()).not.toContain('page-replace');
   replacement.dispatchEvent(
     new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
   );
   await nextTick();
   expect(editor.replaceSearch).toHaveBeenCalledWith('同页', '一起', 0);
+  expect(readHelpCompleted()).toContain('page-find');
+  expect(readHelpCompleted()).toContain('page-replace');
 });
 
 it('disables replacement controls for readonly documents while keeping search available', async () => {

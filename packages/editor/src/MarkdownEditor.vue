@@ -52,6 +52,8 @@ import {
 } from './math';
 import { mathSourcePreviewView, sourceBlockStyle } from './math-source-preview';
 import { splitFrontmatter } from './syntax';
+import { markdownPositionMap } from './mode-selection';
+import type { ModeSelection } from './mode-selection';
 import {
   frontmatterProperties,
   frontmatterValue,
@@ -86,6 +88,7 @@ import { safeResourceUrl } from './enhanced-markdown';
 import { featureLevel, commandEnabled } from './document-model';
 import { activeInlineSourceRange, emptyFencedCodeBodyOffset, liveMarkdown } from './live-markdown';
 import { liveInlineSource, liveSource } from './live-source';
+import { nestedEmphasisRemark } from './nested-emphasis';
 import { sourceStyleRanges } from './source-highlight';
 import { configureMarkdownRuntime, defaultCapabilities, defaultEditorPreferences } from './runtime';
 import type { WorkspaceCapabilities, EditorPreferences } from './runtime';
@@ -1142,6 +1145,15 @@ function serializableDocument(state: EditorState) {
     : state.doc;
 }
 
+function retainsInlineSource(doc: Node) {
+  let retained = false;
+  doc.descendants(node => {
+    if (node.type.name === 'tano_live_source_inline') retained = true;
+    return !retained;
+  });
+  return retained;
+}
+
 function finishLocalSourceTransaction(ctx: Ctx, state: EditorState) {
   if (!localSource) return;
   const current = findCurrentSource(state);
@@ -1168,6 +1180,7 @@ function finishLocalSourceTransaction(ctx: Ctx, state: EditorState) {
     }
     const normalized = ctx.get(serializerCtx)(parsed).replace(/\n+$/, '');
     if (normalized !== raw.replace(/\n+$/, '')) return;
+    if (retainsInlineSource(parsed)) return;
     if (session.kind === 'inline') {
       if (parsed.childCount !== 1 || parsed.firstChild?.type.name !== 'paragraph') return;
       replacement = parsed.firstChild.content;
@@ -1319,34 +1332,37 @@ function enterRenderedHeading(view: EditorView) {
 }
 
 function restoreOrphanSource(ctx: Ctx, state: EditorState) {
-  let orphan: { node: Node; pos: number } | undefined;
+  let restored: Transaction | null = null;
   state.doc.descendants((node, pos) => {
+    if (restored) return false;
     if (
       (node.type.name === 'tano_live_source_inline' ||
         (node.type.name === 'tano_live_source' && node.attrs.origin === 'heading')) &&
       node.attrs.id !== localSource?.id
     ) {
-      orphan = { node, pos };
+      if (node.attrs.origin === 'footnote_definition') {
+        restored = state.tr.delete(pos, pos + node.nodeSize).setMeta('addToHistory', false);
+        return false;
+      }
+      const raw = node.textContent;
+      const parsed = ctx.get(parserCtx)(raw);
+      if (!parsed?.childCount || retainsInlineSource(parsed)) return false;
+      // An inactive source field has the same lossless-conversion requirement
+      // as the active field. Otherwise the next unrelated edit discards syntax.
+      if (ctx.get(serializerCtx)(parsed).replace(/\n+$/, '') !== raw.replace(/\n+$/, '')) return false;
+      const replacement = node.type.name === 'tano_live_source_inline'
+        ? parsed.childCount === 1 && parsed.firstChild?.type.name === 'paragraph'
+          ? parsed.firstChild.content
+          : null
+        : parsed.firstChild?.type.name === 'heading'
+          ? Array.from({ length: parsed.childCount }, (_, index) => parsed.child(index))
+          : null;
+      if (replacement) restored = state.tr.replaceWith(pos, pos + node.nodeSize, replacement)
+        .setMeta('addToHistory', false);
       return false;
     }
   });
-  if (!orphan) return null;
-  if (orphan.node.attrs.origin === 'footnote_definition')
-    return state.tr.delete(orphan.pos, orphan.pos + orphan.node.nodeSize)
-      .setMeta('addToHistory', false);
-  const parsed = ctx.get(parserCtx)(orphan.node.textContent);
-  if (!parsed?.childCount) return null;
-  const replacement = orphan.node.type.name === 'tano_live_source_inline'
-    ? parsed.childCount === 1 && parsed.firstChild?.type.name === 'paragraph'
-      ? parsed.firstChild.content
-      : null
-    : parsed.firstChild?.type.name === 'heading'
-      ? Array.from({ length: parsed.childCount }, (_, index) => parsed.child(index))
-      : null;
-  if (!replacement) return null;
-  return state.tr
-    .replaceWith(orphan.pos, orphan.pos + orphan.node.nodeSize, replacement)
-    .setMeta('addToHistory', false);
+  return restored;
 }
 
 function toggleSourceSyntax(view: EditorView, name: 'bold' | 'italic' | 'code') {
@@ -1404,6 +1420,40 @@ function toggleSourceSyntax(view: EditorView, name: 'bold' | 'italic' | 'code') 
     tr.insertText(`${delimiter}${selected}${delimiter}`, from, to);
     tr.setSelection(TextSelection.create(tr.doc, from + size, from + size + selected.length));
   }
+  view.dispatch(tr);
+  return true;
+}
+
+function insertPartialEmphasisSource(ctx: Ctx, view: EditorView, from: number, to: number, text: string) {
+  if (text !== '*' || props.readonly || props.revealMarkdown === false ||
+      (localSource && findCurrentSource(view.state))) return false;
+  const { state } = view;
+  const $from = state.doc.resolve(from), $to = state.doc.resolve(to);
+  if (!$from.sameParent($to) || $from.parent.type.spec.code) return false;
+  const { node, offset } = $from.parent.childBefore($from.parentOffset);
+  if (!node?.isText || node.marks.length || $to.parentOffset > offset + node.nodeSize) return false;
+  const cursor = $from.parentOffset - offset;
+  const after = $to.parentOffset - offset;
+  const candidate = node.text!.slice(0, cursor) + text + node.text!.slice(after);
+  const range = sourceStyleRanges(candidate).find(range =>
+    range.style === 'emphasis' && range.to === cursor + 1 &&
+    range.from > 0 && candidate[range.from - 1] === '*');
+  if (!range) return false;
+  let start = range.from;
+  while (start > 0 && candidate[start - 1] === '*') start--;
+  // An explicitly escaped star is literal content, not part of the opener.
+  if ((/\\+$/.exec(candidate.slice(0, start))?.[0].length ?? 0) % 2) return false;
+  const position = $from.start() + offset + start;
+  const source = candidate.slice(start, range.to);
+  const id = sourceId();
+  localSource = {
+    kind: 'inline', id,
+    original: $from.parent.cut(offset + start, $to.parentOffset).content,
+    initial: node.text!.slice(start, after),
+  };
+  const tr = state.tr.replaceWith(position, to,
+    liveInlineSource.type(ctx).create({ id }, state.schema.text(source)));
+  tr.setSelection(TextSelection.create(tr.doc, position + 1 + source.length));
   view.dispatch(tr);
   return true;
 }
@@ -1552,7 +1602,8 @@ const bridge = $prose(
       props: {
         handleTextInput(view, from, to, text) {
           return insertEmptyCodeSourceText(view, from, to, text) ||
-            fillEmptyRenderedCodeLine(view, from, to, text);
+            fillEmptyRenderedCodeLine(view, from, to, text) ||
+            insertPartialEmphasisSource(ctx, view, from, to, text);
         },
         handlePaste(view, event) {
           if (event.clipboardData?.files.length) return false;
@@ -2146,6 +2197,7 @@ onMounted(async () => {
       .use(rawBlocks)
       .use(liveSource)
       .use(liveInlineSource)
+      .use(nestedEmphasisRemark)
       .use(inlineMath)
       .use(blockMath)
       .use(inlineMathInput)
@@ -2815,7 +2867,79 @@ function replaceSearch(query: string, replacement: string, index: number | 'all'
     .findIndex(match => match.from >= selected[0]!.from + replacement.length);
   return { replaced: selected.length, index: Math.max(0, next) };
 }
+function applyPluginEdit(before: string, after: string) {
+  if (!editor || props.readonly || props.modelValue !== before) throw new Error('编辑器内容已变化，请重新读取文档');
+  const next = splitFrontmatter(after);
+  if (next.prefix !== splitFrontmatter(before).prefix) throw new Error('当前编辑器的插件事务暂不支持修改文档属性');
+  editor.action(ctx => {
+    const view = ctx.get(editorViewCtx);
+    const parsed = ctx.get(parserCtx)(next.body);
+    if (!parsed) throw new Error('插件生成的 Markdown 无法解析');
+    const from = view.state.doc.content.findDiffStart(parsed.content);
+    if (from === null) return;
+    const end = view.state.doc.content.findDiffEnd(parsed.content)!;
+    const overlap = from - Math.min(end.a, end.b);
+    if (overlap > 0) { end.a += overlap; end.b += overlap; }
+    view.dispatch(closeHistory(view.state.tr).replace(from, end.a, parsed.slice(from, end.b)));
+    view.dispatch(closeHistory(view.state.tr));
+  });
+}
+let restoredModeSelection: { source: ModeSelection; selection: Selection; doc: Node; markdown: string } | undefined;
+function captureModeSelection(): ModeSelection | null {
+  if (!editor || !bridgeView) return null;
+  const { doc, selection } = bridgeView.state;
+  const restored = restoredModeSelection;
+  // Syntax-only positions (for example inside a closing delimiter) can have no
+  // rendered equivalent. Retain the exact source offset until the user moves.
+  if (restored && restored.markdown === lastValue && restored.doc.eq(doc) && restored.selection.eq(selection))
+    return { ...restored.source };
+  return editor.action(ctx => {
+    const map = markdownPositionMap(doc, lastValue, node => frontmatter.prefix + ctx.get(serializerCtx)(node));
+    return { anchor: map.toSource(selection.anchor), head: map.toSource(selection.head) };
+  });
+}
+function restoreModeSelection(selection: ModeSelection, focus = true) {
+  if (!editor || !bridgeView || disposed) return;
+  editor.action(ctx => {
+    const view = bridgeView!;
+    const restore = () => {
+      const map = markdownPositionMap(view.state.doc, lastValue, node => frontmatter.prefix + ctx.get(serializerCtx)(node));
+      const anchor = Selection.near(view.state.doc.resolve(map.toProse(selection.anchor)));
+      const head = Selection.near(view.state.doc.resolve(map.toProse(selection.head)));
+      const next = anchor instanceof TextSelection && head instanceof TextSelection
+        ? TextSelection.create(view.state.doc, anchor.head, head.head) : head;
+      view.dispatch(view.state.tr.setSelection(next).setMeta('addToHistory', false)
+        .setMeta('tanoKeepNodeView', true).setMeta('tanoRevealPosition', next.head));
+    };
+    applying = true;
+    try {
+      restore();
+      if (focus) {
+        view.focus();
+        if (!props.readonly && props.revealMarkdown !== false && selection.anchor === selection.head) {
+          const tr = selectedSourceTransaction(ctx, view.state);
+          if (tr) { view.dispatch(tr); restore(); }
+        }
+      }
+    } finally { applying = false; }
+    const dom = view.domAtPos(view.state.selection.head).node;
+    const element = dom instanceof HTMLElement ? dom : dom.parentElement;
+    element?.dispatchEvent(new Event('tano-reveal-search', { bubbles: true }));
+    for (let parent = element; parent && parent !== view.dom; parent = parent.parentElement)
+      if (parent instanceof HTMLDetailsElement) parent.open = true;
+    restoredModeSelection = { source: { ...selection }, selection: view.state.selection, doc: view.state.doc, markdown: lastValue };
+  });
+}
+function modeCursorTop() {
+  if (!bridgeView || disposed) return null;
+  const selection = bridgeView.state.selection;
+  return bridgeView.coordsAtPos(selection instanceof NodeSelection ? selection.from : selection.head).top;
+}
 defineExpose({
+  captureModeSelection,
+  restoreModeSelection,
+  modeCursorTop,
+  applyPluginEdit,
   search,
   replaceSearch,
   searchSelection,

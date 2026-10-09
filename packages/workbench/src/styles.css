@@ -1,4 +1,5 @@
 @import '@fontsource-variable/inter/wght.css';
+@import '@fontsource-variable/inter/wght-italic.css';
 
 @font-face {
   font-family: Literata;
@@ -2390,15 +2391,20 @@ button:hover {
 .tano-block-drop-line[hidden] {
   display: none;
 }
-.tano-prose {
-  outline: none;
-  white-space: pre-wrap;
-  color: var(--text);
+.tano-prose,
+.source-editor {
   font-family: var(
     --tano-prose-font-family,
     'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif
   );
   font-variant-numeric: tabular-nums;
+  /* Keep Markdown punctuation stable: Inter substitutes a lower, larger * beside digits. */
+  font-variant-ligatures: no-contextual;
+}
+.tano-prose {
+  outline: none;
+  white-space: pre-wrap;
+  color: var(--text);
   font-size: var(--tano-prose-font-size, 16px);
   line-height: 1.8;
   min-height: 350px;
@@ -2936,7 +2942,8 @@ button:hover {
   cursor: pointer;
 }
 .tano-table-menu-item > span { display: flex; flex: none; }
-.tano-table-menu-item:is(:hover, :focus-visible) { background: var(--hover); outline: none; }
+.tano-table-menu-item:not(:disabled):is(:hover, :focus-visible) { background: var(--hover); outline: none; }
+.tano-table-menu-item:disabled { color: var(--muted); cursor: default; }
 .tano-table-menu-item.is-danger { color: var(--danger, #c44040); }
 .tano-table-menu-item > .tano-table-menu-trailing { margin-left: auto; }
 .tano-table-alignment { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding-bottom: 4px; margin-bottom: 3px; border-bottom: 1px solid var(--line); }
@@ -3311,7 +3318,6 @@ button:hover {
   flex-shrink: 0;
   background: transparent;
   color: var(--text);
-  font-family: 'Cascadia Code', Consolas, 'Microsoft YaHei', monospace;
   font-size: var(--tano-source-font-size, 14px);
   line-height: calc(var(--tano-source-font-size, 14px) * 1.928571);
   tab-size: 2;
@@ -3349,13 +3355,6 @@ button:hover {
 .source-editor .cm-source-heading {
   color: var(--syntax-red);
   font-weight: 700;
-  font-family:
-    'Inter Variable',
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    'Microsoft YaHei',
-    sans-serif;
 }
 .source-editor .cm-source-heading-1 {
   font-size: calc(var(--tano-source-font-size, 14px) * 2.285714);

@@ -328,3 +328,80 @@ it('selects the entire range after a plain click followed by Shift click', async
   expect(root.querySelectorAll('.tree-row.multi-selected')).toHaveLength(3);
   expect(open).toHaveBeenCalledTimes(1);
 });
+
+async function mountRename(renameEntry: (file: FileEntry, name: string) => Promise<void>) {
+  const renamingId = ref<string | undefined>('document');
+  const open = vi.fn();
+  root = document.createElement('div');
+  document.body.append(root);
+  app = createApp({
+    setup: () => () => h(FileTree, {
+      entries,
+      renamingId: renamingId.value,
+      renameEntry,
+      canDrag: () => true,
+      onOpen: open,
+      onRenameFinished: () => { renamingId.value = undefined; },
+    }),
+  });
+  app.mount(root);
+  await nextTick();
+  return { input: root.querySelector<HTMLInputElement>('.tree-rename-input')!, open };
+}
+
+it('edits a nested filename in place and cancels without opening or renaming it', async () => {
+  const rename = vi.fn(async () => {});
+  const { input, open } = await mountRename(rename);
+  expect(document.activeElement).toBe(input);
+  expect(input.value.slice(input.selectionStart!, input.selectionEnd!)).toBe('计划');
+  expect(input.closest('button')).toBeNull();
+  expect(input.closest('.tree-row')?.getAttribute('draggable')).toBe('false');
+  input.click();
+  input.value = '取消的名称.md';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await nextTick();
+  expect(root!.querySelector('.tree-rename-input')).toBeNull();
+  expect(document.activeElement?.getAttribute('data-entry-id')).toBe('document');
+  expect(rename).not.toHaveBeenCalled();
+  expect(open).not.toHaveBeenCalled();
+});
+
+it('waits for Chinese composition and submits only once across Enter and blur', async () => {
+  let resolve!: () => void;
+  const rename = vi.fn(() => new Promise<void>((done) => { resolve = done; }));
+  const { input } = await mountRename(rename);
+  input.value = '新的计划.md';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('compositionstart', { bubbles: true }));
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  expect(rename).not.toHaveBeenCalled();
+  input.dispatchEvent(new Event('compositionend', { bubbles: true }));
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  input.dispatchEvent(new FocusEvent('blur'));
+  await nextTick();
+  expect(rename).toHaveBeenCalledExactlyOnceWith(entries[1], '新的计划.md');
+  expect(input.readOnly).toBe(true);
+  resolve();
+  await vi.waitFor(() => expect(root!.querySelector('.tree-rename-input')).toBeNull());
+  expect(document.activeElement?.getAttribute('data-entry-id')).toBe('document');
+});
+
+it('keeps a failed rename editable in place and retries on blur', async () => {
+  const rename = vi.fn()
+    .mockRejectedValueOnce(new Error('已经存在一个同名文件'))
+    .mockResolvedValueOnce(undefined);
+  const { input } = await mountRename(rename);
+  input.value = '已有名称.md';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.blur();
+  await vi.waitFor(() => expect(root!.querySelector('[role="alert"]')?.textContent).toBe('已经存在一个同名文件'));
+  expect(document.activeElement).toBe(input);
+  expect(input.value).toBe('已有名称.md');
+  input.value = '可用名称.md';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.blur();
+  await vi.waitFor(() => expect(root!.querySelector('.tree-rename-input')).toBeNull());
+  expect(rename).toHaveBeenCalledTimes(2);
+  expect(rename).toHaveBeenLastCalledWith(entries[1], '可用名称.md');
+});

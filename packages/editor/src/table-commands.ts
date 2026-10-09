@@ -6,7 +6,7 @@ import type { TableColor } from '@tano/protocol';
 
 export type TableAxis = 'row' | 'column';
 export interface TableTarget { pos: number; axis: TableAxis; index: number }
-export type TableAction = 'before' | 'after' | 'duplicate' | 'clear' | 'delete' | 'color' | 'textColor' | 'alignLeft' | 'alignCenter' | 'alignRight';
+export type TableAction = 'before' | 'after' | 'duplicate' | 'clear' | 'delete' | 'color' | 'textColor' | 'alignLeft' | 'alignCenter' | 'alignRight' | 'restoreAutoWidth';
 
 export function tableLineSelection(doc: Node, target: TableTarget): CellSelection | null {
   const table = doc.nodeAt(target.pos);
@@ -28,6 +28,15 @@ export function tableLineAction(state: EditorState, target: TableTarget, action:
   const selection = tableLineSelection(state.doc, target);
   if (!selection) return null;
   const table = state.doc.nodeAt(target.pos)!;
+  if (action === 'restoreAutoWidth') {
+    if (table.attrs.autoWidth) return null;
+    const tr = closeHistory(state.tr).setNodeMarkup(target.pos, undefined, { ...table.attrs, autoWidth: true });
+    // Capture every fixed column in this undo step before automatic fitting changes
+    // their presentation widths. Undo must restore the exact previous layout.
+    for (const offset of new Set(TableMap.get(table).map))
+      tr.setNodeMarkup(target.pos + 1 + offset, undefined, table.nodeAt(offset)!.attrs);
+    return tr.setMeta('tanoBlockContextSelect', true);
+  }
   const rows: Node[][] = [];
   table.forEach(row => {
     const cells: Node[] = [];

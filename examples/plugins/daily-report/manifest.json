@@ -1,0 +1,16 @@
+{
+  "manifestVersion": 2,
+  "apiVersion": 1,
+  "id": "daily-report",
+  "name": "工作区日报",
+  "version": "1.0.0",
+  "description": "在后台将任务进展和最近更新文档保存为新的 Markdown 日报。",
+  "objectTypes": [],
+  "relationTypes": [],
+  "permissions": ["documents.read", "documents.write", "objects.read"],
+  "networkOrigins": [],
+  "nativeCommands": [],
+  "commands": [],
+  "views": [],
+  "automations": [{ "id": "daily", "label": "生成工作区日报" }]
+}

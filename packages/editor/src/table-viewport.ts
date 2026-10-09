@@ -1,7 +1,8 @@
 import type { Node } from '@milkdown/kit/prose/model';
 import { Plugin } from '@milkdown/kit/prose/state';
-import { TableView } from '@milkdown/kit/prose/tables';
+import { columnResizingPluginKey, TableMap, TableView } from '@milkdown/kit/prose/tables';
 import type { EditorView, ViewMutationRecord } from '@milkdown/kit/prose/view';
+import { defaultTableColumnWidth } from '@tano/protocol';
 import { animate } from 'motion/mini';
 
 const viewports = new WeakMap<EditorView, Set<TableViewport>>();
@@ -13,6 +14,7 @@ export class TableViewport extends TableView {
   private wrapper: HTMLDivElement;
   private frame: number | undefined;
   private observer: ResizeObserver | undefined;
+  private observedParent: HTMLElement | undefined;
   private surface: HTMLElement;
   private scrollbar: HTMLDivElement;
   private thumb: HTMLDivElement;
@@ -73,6 +75,11 @@ export class TableViewport extends TableView {
     const prose = this.view.dom.getBoundingClientRect();
     const surface = this.surface.getBoundingClientRect();
     const parent = this.dom.parentElement!;
+    if (this.observer && this.observedParent !== parent) {
+      if (this.observedParent) this.observer.unobserve(this.observedParent);
+      this.observer.observe(parent);
+      this.observedParent = parent;
+    }
     const container = parent.getBoundingClientRect();
     const style = getComputedStyle(parent);
     const inset = (value: string) => Number.parseFloat(value) || 0;
@@ -80,6 +87,7 @@ export class TableViewport extends TableView {
     const insetRight = inset(style.paddingRight) + inset(style.borderRightWidth);
     const originLeft = parent === this.view.dom ? prose.left : container.left + insetLeft;
     const baseWidth = parent === this.view.dom ? prose.width : Math.max(0, container.width - insetLeft - insetRight);
+    this.fitColumns(baseWidth);
     // Reserve the review gutter only for annotations belonging to this table.
     const annotated = !!this.table.querySelector('[data-comment-id], [data-suggestion-id]');
     const contentWidth = this.table.getBoundingClientRect().width;
@@ -98,6 +106,31 @@ export class TableViewport extends TableView {
     this.dom.classList.toggle('has-comments', annotated);
     this.edges();
     this.dom.dispatchEvent(new Event('tano-table-layout', { bubbles: true }));
+  }
+
+  private fitColumns(containerWidth: number) {
+    if (!this.node.attrs.autoWidth || containerWidth <= 0 || columnResizingPluginKey.getState(this.view.state)?.dragging ||
+        this.view.dom.parentElement?.classList.contains('tano-table-dragging')) return;
+    const map = TableMap.get(this.node);
+    const style = getComputedStyle(this.table);
+    const borders = (Number.parseFloat(style.borderLeftWidth) || 0) + (Number.parseFloat(style.borderRightWidth) || 0);
+    const total = Math.max(map.width * defaultTableColumnWidth, Math.floor(containerWidth - borders));
+    const width = Math.floor(total / map.width);
+    const remainder = total % map.width;
+    const resolved = this.view.state.doc.resolve(this.view.posAtDOM(this.contentDOM, 0));
+    let depth = resolved.depth;
+    while (depth > 0 && resolved.node(depth).type.name !== 'table') depth--;
+    if (!depth) return;
+    const start = resolved.start(depth);
+    const tr = this.view.state.tr;
+    for (const offset of new Set(map.map)) {
+      const cell = this.node.nodeAt(offset)!;
+      const column = map.colCount(offset);
+      const colwidth = Array.from({ length: cell.attrs.colspan }, (_, i) => width + (column + i < remainder ? 1 : 0));
+      if (JSON.stringify(cell.attrs.colwidth) !== JSON.stringify(colwidth))
+        tr.setNodeMarkup(start + offset, undefined, { ...cell.attrs, colwidth });
+    }
+    if (tr.docChanged) this.view.dispatch(tr.setMeta('addToHistory', false));
   }
 
   private applyLayout(annotated: boolean, targets: { element: HTMLElement; styles: ViewportStyles }[]) {

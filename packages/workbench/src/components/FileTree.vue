@@ -10,6 +10,7 @@ import {
   Bot,
 } from 'lucide-vue-next';
 import { isMarkdown, parentPath, isWorkspaceInternalPath, type FileEntry } from '@tano/protocol';
+import FileTreeRename from './FileTreeRename.vue';
 
 const props = withDefaults(
   defineProps<{
@@ -21,6 +22,8 @@ const props = withDefaults(
     draggedId?: string;
     dropTarget?: string | null;
     canDrag?: (file: FileEntry) => boolean;
+    renamingId?: string;
+    renameEntry?: (file: FileEntry, name: string) => Promise<void>;
   }>(),
   {
     parent: '',
@@ -41,6 +44,7 @@ const emit = defineEmits<{
   dragOver: [folder: string, event: DragEvent];
   dragLeave: [folder: string, event: DragEvent];
   drop: [folder: string, event: DragEvent];
+  renameFinished: [file: FileEntry];
 }>();
 const collapsed = ref(new Set<string>());
 const expanded = ref(new Set<string>());
@@ -111,6 +115,7 @@ function keyboardContext(file: FileEntry, event: KeyboardEvent) {
   emit('context', file, event);
 }
 function clickEntry(file: FileEntry, event: MouseEvent) {
+  if (file.id === props.renamingId) return;
   emit('select', file, event);
   if (event.shiftKey || event.ctrlKey || event.metaKey) {
     return;
@@ -131,7 +136,8 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
     @drop="emit('drop', parent, $event)"
   >
     <li v-for="file in children" :key="file.id">
-      <button
+      <component
+        :is="file.id === renamingId ? 'div' : 'button'"
         class="tree-row"
         role="treeitem"
         :class="{
@@ -142,7 +148,7 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
           'drop-target': file.kind === 'directory' && file.path === dropTarget,
           attachment: file.kind === 'file' && !isMarkdown(file.path),
         }"
-        :draggable="canDrag?.(file) ?? false"
+        :draggable="file.id !== renamingId && (canDrag?.(file) ?? false)"
         :style="{ paddingLeft: `${4 + depth * 17}px` }"
         :title="file.path"
         :data-entry-id="file.id"
@@ -185,9 +191,15 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
             class="tree-chevron"
           />
         </span>
-        <span class="tree-label">{{ file.name.replace(/\.(md|markdown)$/i, '') }}</span>
+        <FileTreeRename
+          v-if="file.id === renamingId && renameEntry"
+          :file="file"
+          :rename="renameEntry"
+          @finish="emit('renameFinished', file)"
+        />
+        <span v-else class="tree-label">{{ file.name.replace(/\.(md|markdown)$/i, '') }}</span>
         <span v-if="file.name === 'AGENTS.md'" class="agent-file-dot" />
-      </button>
+      </component>
       <FileTree
         v-if="file.kind === 'directory' && !isCollapsed(file.path)"
         :entries="entries"
@@ -198,6 +210,8 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
         :dragged-id="draggedId"
         :drop-target="dropTarget"
         :can-drag="canDrag"
+        :renaming-id="renamingId"
+        :rename-entry="renameEntry"
         @open="emit('open', $event)"
         @select="(entry, event) => emit('select', entry, event)"
         @context="(entry, event) => emit('context', entry, event)"
@@ -207,6 +221,7 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
         @drag-over="(folder, event) => emit('dragOver', folder, event)"
         @drag-leave="(folder, event) => emit('dragLeave', folder, event)"
         @drop="(folder, event) => emit('drop', folder, event)"
+        @rename-finished="emit('renameFinished', $event)"
       />
     </li>
   </ul>

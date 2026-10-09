@@ -5,11 +5,14 @@ export * from './text-merge';
 type Edit = { start: number; end: number; lines: string[] };
 const lines = (text: string) => text.match(/[^\n]*\n|[^\n]+$/g) ?? [];
 
-function edits(base: string[], next: string[]): Edit[] {
+export interface MarkdownMergeLimits { timeout: number; maxEditLength: number }
+function edits(base: string[], next: string[], limits?: MarkdownMergeLimits): Edit[] | null {
   const result: Edit[] = [];
   let position = 0;
   let pending: Edit | undefined;
-  for (const part of diffArrays(base, next)) {
+  const parts = limits ? diffArrays(base, next, limits) : diffArrays(base, next);
+  if (!parts) return null;
+  for (const part of parts) {
     if (!part.added && !part.removed) {
       if (pending) result.push(pending);
       pending = undefined;
@@ -31,12 +34,14 @@ export function mergeMarkdown(
   base: string,
   ours: string,
   theirs: string,
+  limits?: MarkdownMergeLimits,
 ): { clean: boolean; content: string } {
   if (ours === theirs || theirs === base) return { clean: true, content: ours };
   if (ours === base) return { clean: true, content: theirs };
   const original = lines(base);
-  const left = edits(original, lines(ours));
-  const right = edits(original, lines(theirs));
+  const left = edits(original, lines(ours), limits);
+  const right = edits(original, lines(theirs), limits);
+  if (!left || !right) return { clean: false, content: ours };
   const combined = [...left];
   for (const b of right) {
     let duplicate = false;

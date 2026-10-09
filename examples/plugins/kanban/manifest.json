@@ -1,0 +1,15 @@
+{
+  "manifestVersion": 2,
+  "apiVersion": 1,
+  "id": "kanban",
+  "name": "任务看板",
+  "version": "1.0.0",
+  "description": "使用 Vue 自定义界面管理工作区任务，支持拖拽和键盘移动。",
+  "objectTypes": [],
+  "relationTypes": [],
+  "permissions": ["objects.read", "objects.write", "ui"],
+  "networkOrigins": [],
+  "nativeCommands": [],
+  "commands": [{ "id": "open", "label": "打开任务看板", "menus": ["workspace"] }],
+  "views": [{ "id": "board", "label": "任务看板", "location": "tab" }]
+}

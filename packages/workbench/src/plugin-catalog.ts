@@ -1,8 +1,8 @@
-import { bundledObjectPlugins, type ObjectPluginManifest } from '@tano/protocol';
+import { bundledObjectPlugins, type PluginManifest } from '@tano/protocol';
 
 /** Catalog metadata is separate from the portable plugin manifest. */
 export interface PluginCatalogEntry {
-  manifest: ObjectPluginManifest;
+  manifest: PluginManifest;
   category: { id: string; label: string };
 }
 

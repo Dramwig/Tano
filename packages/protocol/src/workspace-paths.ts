@@ -1,4 +1,5 @@
 import { validatePath } from './paths';
+import { workspacePluginPath } from './extensions';
 
 export const workspaceDataDirectory = '.tano';
 export const objectDirectory = '.tano/objects';
@@ -25,6 +26,7 @@ export function isWorkspaceDataPath(path: string) {
   return (
     path === workspaceCapabilityPath ||
     path === workspaceSettingsPath ||
+    path === workspacePluginPath ||
     path === workspaceRelationPath ||
     path === assistantRulesPath ||
     isTemplatePath(path) ||

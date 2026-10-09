@@ -146,6 +146,7 @@
 }
 .catalog-navigation {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
@@ -153,6 +154,7 @@
 }
 .center-nav {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 5px;
 }
@@ -576,3 +578,6 @@
     animation: none !important;
   }
 }
+.plugin-policy { display: grid; gap: 12px; }
+.plugin-policy label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
+.plugin-policy select, .plugin-policy input, .plugin-policy textarea { padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text); font: inherit; }

@@ -1,16 +1,28 @@
-export const ASSISTANT_PROTOCOL_VERSION = 7;
+export const ASSISTANT_PROTOCOL_VERSION = 11;
+
+
+export type AssistantReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
+export type AssistantReasoningSelection = AssistantReasoningEffort | 'cli-default';
+
+export function isAssistantReasoningSelection(value: unknown): value is AssistantReasoningSelection {
+  return typeof value === 'string' && ['cli-default', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(value);
+}
 
 export interface AssistantConnection {
   id: string;
   name: string;
   kind?: 'api' | 'codex-cli' | 'claude-cli';
   cliPath?: string;
+  /** Legacy connection default, used when restoring a conversation without its own selection. */
+  reasoningEffort?: AssistantReasoningEffort;
   endpoint: string;
   protocol?: 'chat-completions' | 'responses';
   autoAdapt?: boolean;
   tools: boolean;
   maxOutputTokens: number;
   hasKey: boolean;
+  /** Configured by the hosting application. */
+  managed?: boolean;
 }
 
 export interface AssistantSource {
@@ -30,23 +42,35 @@ export interface AssistantPreview {
   after: string;
   diskHash: string | null;
   path: string;
+  destination?: string;
 }
 export interface AssistantProposal {
   id: string;
   runId: string;
   workspaceId: string;
-  kind: 'edit' | 'create' | 'object' | 'relation';
+  kind: 'edit' | 'create' | 'delete' | 'rename' | 'move' | 'object' | 'relation';
   fileId?: string;
   path: string;
+  destination?: string;
   base: string;
   content: string;
   reason: string;
   status: AssistantProposalStatus;
+  /** Omitted on legacy and manually reviewed proposals. */
+  execution?: 'direct';
   preview?: AssistantPreview;
   applied?: { before: string; after: string; hash: string; fileId: string };
   error?: string;
   /** Once published, per-edit review belongs to the portable document records. */
   suggestionGroupId?: string;
+}
+
+/** Application-recorded receipts; never inferred from the model's answer. */
+export interface AssistantToolResult {
+  name: string;
+  status: 'succeeded' | 'failed';
+  proposalId?: string;
+  error?: string;
 }
 
 export interface AssistantMessage {
@@ -55,7 +79,10 @@ export interface AssistantMessage {
   content: string;
   createdAt: number;
   sources?: AssistantSource[];
+  /** Initial source IDs attached to the preceding user message; later tool reads are excluded. */
+  attachedSourceIds?: string[];
   proposals?: AssistantProposal[];
+  toolResults?: AssistantToolResult[];
   usage?: { input: number; output: number };
   state?: 'running' | 'completed' | 'cancelled' | 'failed' | 'interrupted';
   error?: string;
@@ -76,6 +103,7 @@ export interface AssistantSession {
   connectionId?: string;
   model?: string;
   external?: boolean;
+  reasoningEffort?: AssistantReasoningSelection;
 }
 
 export interface AssistantToolCall {
@@ -93,10 +121,12 @@ export interface AssistantWireMessage {
 }
 export interface AssistantRequest {
   model: string;
+  reasoningEffort?: AssistantReasoningSelection;
   messages: AssistantWireMessage[];
   tools?: { type: 'function'; function: { name: string; description: string; parameters: Record<string, unknown> } }[];
 }
 export interface AssistantTransport {
+  canConfigure?: boolean;
   connections(): Promise<AssistantConnection[]>;
   models(connectionId: string, signal: AbortSignal): Promise<string[]>;
   saveConnection(connection: Omit<AssistantConnection, 'hasKey'>, key?: string): Promise<void>;
@@ -125,6 +155,7 @@ export function parseAssistantSession(value: unknown): AssistantSession {
       !Number.isSafeInteger(session.revision) || session.revision < 0 ||
       (session.connectionId !== undefined && (!text(session.connectionId, 80) || !session.connectionId.trim())) ||
       (session.model !== undefined && !isAssistantModelId(session.model)) ||
+      (session.reasoningEffort !== undefined && !isAssistantReasoningSelection(session.reasoningEffort)) ||
       !Array.isArray(session.messages) || session.messages.length > 300 || (session.external !== undefined && typeof session.external !== 'boolean'))
     throw new Error('助手会话格式无效，原记录已保留');
   const ids = new Set<string>();
@@ -134,6 +165,9 @@ export function parseAssistantSession(value: unknown): AssistantSession {
         !Number.isFinite(message.createdAt) ||
         (message.state && !['running', 'completed', 'cancelled', 'failed', 'interrupted'].includes(message.state)) ||
         (message.sources && (!Array.isArray(message.sources) || message.sources.length > 30)) ||
+        (message.attachedSourceIds !== undefined && (message.role !== 'assistant' || !Array.isArray(message.attachedSourceIds) ||
+          message.attachedSourceIds.length > 20 || new Set(message.attachedSourceIds).size !== message.attachedSourceIds.length ||
+          message.attachedSourceIds.some(id => !text(id, 80) || !message.sources?.some(source => source?.id === id)))) ||
         (message.proposals && (!Array.isArray(message.proposals) || message.proposals.length > 30)) ||
         (message.timing !== undefined && (!message.timing || Array.isArray(message.timing) || !Number.isFinite(message.timing.totalMs) || message.timing.totalMs < 0 ||
           (message.timing.firstContentMs !== undefined && (!Number.isFinite(message.timing.firstContentMs) ||
@@ -141,6 +175,14 @@ export function parseAssistantSession(value: unknown): AssistantSession {
         (message.rules && (!Array.isArray(message.rules) || message.rules.length > 2 || message.rules.some(path => !text(path, 220)))))
       throw new Error('助手消息格式无效，原记录已保留');
     ids.add(message.id);
+    if (message.toolResults !== undefined) {
+      if (message.role !== 'assistant' || !Array.isArray(message.toolResults) || message.toolResults.length > 160 ||
+          message.toolResults.some(result => !result || !text(result.name, 80) || !result.name ||
+            !['succeeded', 'failed'].includes(result.status) ||
+            (result.status === 'failed' ? !text(result.error, 2000) || !result.error : result.error !== undefined) ||
+            (result.proposalId !== undefined && (!text(result.proposalId, 80) || !message.proposals?.some(proposal => proposal?.id === result.proposalId)))))
+        throw new Error('助手工具回执格式无效，原记录已保留');
+    }
     for (const source of message.sources ?? []) {
       if (!source || source.workspaceId !== session.workspaceId || !text(source.id, 80) ||
           !text(source.fileId, 80) || !text(source.path, 220) || !text(source.content, 512_000) ||
@@ -153,12 +195,15 @@ export function parseAssistantSession(value: unknown): AssistantSession {
     }
     for (const proposal of message.proposals ?? []) {
       if (!proposal || proposal.workspaceId !== session.workspaceId || !text(proposal.id, 80) ||
-          !text(proposal.runId, 80) || !['edit', 'create', 'object', 'relation'].includes(proposal.kind) ||
+          !text(proposal.runId, 80) || !['edit', 'create', 'delete', 'rename', 'move', 'object', 'relation'].includes(proposal.kind) ||
           !['ready', 'applying', 'applied', 'rejected', 'conflicted', 'unknown'].includes(proposal.status) ||
+          (proposal.execution !== undefined && proposal.execution !== 'direct') ||
           !text(proposal.path, 220) || !text(proposal.base, 512_000) || !text(proposal.content, 512_000) ||
-          !text(proposal.reason, 4000) || (proposal.suggestionGroupId !== undefined && !text(proposal.suggestionGroupId, 80)) || ((proposal.kind === 'edit' || (proposal.kind === 'object' && proposal.base !== '')) && !text(proposal.fileId, 80)) ||
+          !text(proposal.reason, 4000) || (proposal.suggestionGroupId !== undefined && (proposal.kind !== 'edit' || !text(proposal.suggestionGroupId, 80))) || ((['edit', 'delete', 'rename', 'move'].includes(proposal.kind) || (proposal.kind === 'object' && proposal.base !== '')) && !text(proposal.fileId, 80)) ||
+          (['rename', 'move'].includes(proposal.kind) ? !text(proposal.destination, 220) || !proposal.destination : proposal.destination !== undefined) ||
           (proposal.preview && (!text(proposal.preview.before, 512_000) ||
             !text(proposal.preview.after, 512_000) || !text(proposal.preview.path, 220) ||
+            (proposal.preview.destination !== undefined && (!['rename', 'move'].includes(proposal.kind) || !text(proposal.preview.destination, 220))) ||
             (proposal.preview.diskHash !== null && !text(proposal.preview.diskHash, 128)))) ||
           (proposal.applied && (!text(proposal.applied.before, 512_000) ||
             !text(proposal.applied.after, 512_000) || !text(proposal.applied.hash, 128) ||
@@ -166,5 +211,8 @@ export function parseAssistantSession(value: unknown): AssistantSession {
         throw new Error('助手修改记录格式无效，原记录已保留');
     }
   }
-  return structuredClone(session);
+  const parsed = structuredClone(session) as AssistantSession & { executionMode?: unknown };
+  // Old conversation mode choices must not override the user's current request.
+  delete parsed.executionMode;
+  return parsed;
 }

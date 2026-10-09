@@ -7,11 +7,12 @@ import { columnResizingPluginKey } from '@milkdown/kit/prose/tables';
 import type { TableLayout } from '@tano/protocol';
 import MarkdownEditor from './MarkdownEditor.vue';
 import { matchTableLayout, tablesInDocument } from './table-layout';
+import { tableLineAction } from './table-commands';
 
 vi.mock('mermaid', () => ({ default: { initialize: vi.fn(), render: vi.fn() } }));
 let app: App | undefined;
 let root: HTMLDivElement;
-afterEach(() => { app?.unmount(); root?.remove(); });
+afterEach(() => { app?.unmount(); root?.remove(); vi.restoreAllMocks(); });
 const markdown = '前文\n\n| A | B |\n| --- | --- |\n| 甲 | 乙 |\n\n后文\n';
 
 async function mount(source = markdown, saved: TableLayout[] = [], readonly = false) {
@@ -74,7 +75,7 @@ it('renders fixed pixel widths, commits the drag once, and leaves Markdown byte-
 it('restores widths on reopen in a read-only document and finds the table after an independent external insertion', async () => {
   const first = await mount();
   const table = tablesInDocument(first.view.state.doc)[0]!.layout;
-  const saved = [{ ...table, widths: [80, 210] }];
+  const saved = [{ ...table, autoWidth: undefined, widths: [80, 210] }];
   app!.unmount(); root.remove();
   const source = '| X | Y |\n| --- | --- |\n| 1 | 2 |\n\n' + markdown;
   const reopened = await mount(source, saved, true);
@@ -97,8 +98,96 @@ it('persists only customized tables when an untouched table is inserted before t
   const table = tablesInDocument(first.view.state.doc)[0]!.layout;
   app!.unmount(); root.remove();
   const source = '| X | Y |\n| --- | --- |\n| 1 | 2 |\n\n' + markdown;
-  const restored = await mount(source, [{ ...table, widths: [80, 210] }]);
+  const restored = await mount(source, [{ ...table, autoWidth: undefined, widths: [80, 210] }]);
   expect(restored.layouts.value).toHaveLength(1);
   expect(restored.layouts.value[0]!.id).toBe(table.id);
   expect(restored.layouts.value[0]!.widths).toEqual([80, 210]);
+});
+
+function containerWidth(initial: number) {
+  let width = initial;
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    return new DOMRect(0, 0, this.tagName === 'TABLE' ? Number.parseFloat(this.style.width) || 0 : width, 200);
+  });
+  return (next: number) => { width = next; window.dispatchEvent(new Event('resize')); };
+}
+
+it('fits default columns to the container without saving layouts, changing Markdown or adding undo entries', async () => {
+  const resize = containerWidth(781);
+  const { view, editor, value, changes } = await mount();
+  const widths = () => tablesInDocument(view.state.doc)[0]!.layout.widths;
+  await vi.waitFor(() => expect(widths()).toEqual([391, 390]));
+  expect(root.querySelector('table')!.style.width).toBe('781px');
+  resize(500);
+  await vi.waitFor(() => expect(widths()).toEqual([250, 250]));
+  resize(240);
+  await vi.waitFor(() => expect(widths()).toEqual([160, 160]));
+  expect(changes).toEqual([]);
+  expect(value.value).toBe(markdown);
+  expect(editor.value!.canUndo()).toBe(false);
+});
+
+it('starts a resize at the displayed width, preserves fixed widths across window changes, and restores automatic fitting on undo', async () => {
+  const resize = containerWidth(780);
+  const { view, editor, changes, value } = await mount();
+  await vi.waitFor(() => expect(root.querySelector('table')!.style.width).toBe('780px'));
+  const { node, pos } = tablesInDocument(view.state.doc)[0]!;
+  view.dispatch(view.state.tr.setMeta(columnResizingPluginKey, { setHandle: pos + 2 }));
+  root.querySelector('th')!.dispatchEvent(new MouseEvent('mousedown', { clientX: 390, bubbles: true, cancelable: true }));
+  expect(columnResizingPluginKey.getState(view.state)!.dragging).toEqual({ startX: 390, startWidth: 390 });
+  window.dispatchEvent(new MouseEvent('mouseup', { clientX: 490 }));
+  await vi.waitFor(() => expect(changes.at(-1)![0]!.widths).toEqual([490, 390]));
+  expect(tablesInDocument(view.state.doc)[0]!.node.attrs.autoWidth).toBe(false);
+  resize(500);
+  await nextTick();
+  expect(root.querySelector('table')!.style.width).toBe('880px');
+  expect(editor.value!.undoLastChange()).toBe(true);
+  await vi.waitFor(() => expect(root.querySelector('table')!.style.width).toBe('500px'));
+  expect(tablesInDocument(view.state.doc)[0]!.node.attrs.autoWidth).toBe(true);
+  expect(editor.value!.redoLastChange()).toBe(true);
+  await vi.waitFor(() => expect(root.querySelector('table')!.style.width).toBe('880px'));
+  expect(value.value).toBe(markdown);
+  expect(node.attrs.autoWidth).toBe(true);
+});
+
+it('retains automatic fitting for color-only layouts and does not save viewport measurements', async () => {
+  const resize = containerWidth(780);
+  const first = await mount();
+  const table = tablesInDocument(first.view.state.doc)[0]!.layout;
+  app!.unmount(); root.remove();
+  const saved: TableLayout[] = [{ id: table.id, widths: [160, 160], autoWidth: true, backgrounds: [['green', null], [null, null]], anchor: table.anchor }];
+  const { view, changes } = await mount(markdown, saved);
+  await vi.waitFor(() => expect(root.querySelector('table')!.style.width).toBe('780px'));
+  resize(500);
+  await vi.waitFor(() => expect(root.querySelector('table')!.style.width).toBe('500px'));
+  expect(tablesInDocument(view.state.doc)[0]!.layout.backgrounds).toEqual(saved[0]!.backgrounds);
+  expect(changes).toEqual([]);
+});
+
+it('restores automatic width after reopening, keeps it on reopen, and undoes to the original fixed widths after resizing', async () => {
+  const resize = containerWidth(780);
+  const first = await mount();
+  const table = tablesInDocument(first.view.state.doc)[0]!.layout;
+  app!.unmount(); root.remove();
+  const fixed: TableLayout[] = [{ ...table, autoWidth: undefined, widths: [800, 160] }];
+  const { view, editor, value, layouts } = await mount(markdown, fixed);
+  const pos = tablesInDocument(view.state.doc)[0]!.pos;
+  view.dispatch(tableLineAction(view.state, { pos, axis: 'column', index: 0 }, 'restoreAutoWidth')!);
+  await vi.waitFor(() => expect(root.querySelector('table')!.style.width).toBe('780px'));
+  resize(500);
+  await vi.waitFor(() => expect(root.querySelector('table')!.style.width).toBe('500px'));
+  expect(editor.value!.undoLastChange()).toBe(true);
+  await vi.waitFor(() => expect(tablesInDocument(view.state.doc)[0]!.layout.widths).toEqual([800, 160]));
+  expect(tablesInDocument(view.state.doc)[0]!.node.attrs.autoWidth).toBe(false);
+  expect(editor.value!.redoLastChange()).toBe(true);
+  await vi.waitFor(() => expect(root.querySelector('table')!.style.width).toBe('500px'));
+  expect(value.value).toBe(markdown);
+  const saved = JSON.parse(JSON.stringify(layouts.value)) as TableLayout[];
+  expect(saved[0]!.autoWidth).toBe(true);
+  app!.unmount(); root.remove();
+  resize(780);
+  const reopened = await mount(markdown, saved);
+  await vi.waitFor(() => expect(root.querySelector('table')!.style.width).toBe('780px'));
+  expect(reopened.changes).toEqual([]);
+  expect(tableLineAction(reopened.view.state, { pos, axis: 'row', index: 0 }, 'restoreAutoWidth')).toBeNull();
 });

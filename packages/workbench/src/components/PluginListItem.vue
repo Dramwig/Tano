@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { LoaderCircle, MoreHorizontal, Plus } from 'lucide-vue-next';
-import type { ObjectPluginManifest } from '@tano/protocol';
+import type { PluginManifest } from '@tano/protocol';
 import PluginIcon from './PluginIcon.vue';
 
 defineProps<{
-  plugin: ObjectPluginManifest;
+  plugin: PluginManifest;
   installed?: boolean;
   enabled?: boolean;
   showState?: boolean;

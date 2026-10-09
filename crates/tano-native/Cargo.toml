@@ -25,7 +25,8 @@ tauri-plugin-fs = "2"
 tauri = { version = "2", features = ["devtools"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form"] }
 keyring = { version = "3.6.3", features = ["windows-native", "apple-native", "sync-secret-service", "crypto-rust"] }
-tokio = { version = "1", features = ["sync", "macros", "process", "io-util", "time"] }
+time = { version = "0.3", features = ["formatting"] }
+tokio = { version = "1", features = ["sync", "macros", "process", "io-util", "time", "net"] }
 toml = "0.9"
 tauri-plugin-updater = "2"
 trash = "5"

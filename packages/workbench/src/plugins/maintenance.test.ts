@@ -1,0 +1,66 @@
+// @vitest-environment jsdom
+import { beforeEach, expect, it, vi } from 'vitest';
+import { ObjectTypeRegistry, canonicalPluginJson, parsePluginPackage, parsePluginPolicy, pluginCacheLimit, pluginPackageLimit } from '@tano/protocol';
+import { DemoAdapter } from '../adapter';
+import { WorkspacePluginHost } from '../workspace-plugins';
+import { PluginPackageCache } from './packages';
+import { PluginCacheStorage } from './cache-storage';
+import { PluginExecutionHost, type PluginRuntimeState } from './host';
+import { documentOverviewPlugin } from './example';
+beforeEach(() => localStorage.clear());
+it('keeps rollback references in shared policy without granting the old or new code device authorization', async () => {
+  const adapter = new DemoAdapter({ files: {} }), owner = new WorkspacePluginHost(new ObjectTypeRegistry());
+  let workspace = await adapter.open(); await owner.loadWorkspace(adapter, workspace);
+  const old = documentOverviewPlugin, updated = { ...old, manifest: { ...old.manifest, version: '2.0.0' }, source: `${old.source}\n// v2` };
+  await owner.changeWorkspace(adapter, workspace, { install: old.manifest, package: old }, () => {});
+  workspace = await adapter.refresh(); const first = (await owner.loadWorkspace(adapter, workspace))[0]!;
+  owner.authorize(workspace.id, old.manifest.id, first.rule!.integrity);
+  await owner.changeWorkspace(adapter, workspace, { install: updated.manifest, package: updated }, () => {});
+  workspace = await adapter.refresh(); const second = (await owner.loadWorkspace(adapter, workspace))[0]!;
+  expect(second.rule!.history?.[0]?.integrity).toBe(first.rule!.integrity); expect(second.authorized).toBe(false);
+  owner.authorize(workspace.id, old.manifest.id, second.rule!.integrity);
+  await owner.changeWorkspace(adapter, workspace, { install: old.manifest, package: old }, () => {});
+  workspace = await adapter.refresh(); const rollback = (await owner.loadWorkspace(adapter, workspace))[0]!;
+  expect(rollback.rule!.integrity).toBe(first.rule!.integrity); expect(rollback.rule!.history).toHaveLength(1);
+  expect(rollback.rule!.history![0]!.integrity).toBe(second.rule!.integrity); expect(rollback.authorized).toBe(false);
+  await expect(owner.changeWorkspace(adapter, workspace, { id: old.manifest.id, forgetVersion: first.rule!.integrity! }, () => {})).rejects.toThrow('历史版本');
+  await owner.changeWorkspace(adapter, workspace, { id: old.manifest.id, forgetVersion: second.rule!.integrity! }, () => {});
+  workspace = await adapter.refresh(); const pruned = (await owner.loadWorkspace(adapter, workspace))[0]!;
+  expect(pruned.rule!.history).toEqual([]); expect(pruned.rule!.integrity).toBe(first.rule!.integrity);
+  await expect(owner.changeWorkspace(adapter, { ...workspace, canManagePlugins: false }, { install: updated.manifest, package: updated }, () => {})).rejects.toThrow('管理员');
+  owner.dispose();
+});
+it('rejects invalid history, enforces byte limits and preserves old package hashes', async () => {
+  const rule = { manifest: documentOverviewPlugin.manifest, integrity: 'a'.repeat(64), mode: 'recommended', settings: {} };
+  expect(() => parsePluginPolicy(JSON.stringify({ version: 1, plugins: [{ ...rule, history: [{ ...rule, recordedAt: 'bad' }] }] }))).toThrow();
+  expect(() => parsePluginPackage(JSON.stringify({ ...documentOverviewPlugin, source: '中'.repeat(Math.ceil(pluginPackageLimit / 3)) }))).toThrow('4 MiB');
+  const cache = new PluginPackageCache(), integrity = await cache.put(documentOverviewPlugin);
+  expect(canonicalPluginJson(await cache.get(integrity))).toBe(canonicalPluginJson(parsePluginPackage(JSON.stringify(documentOverviewPlugin))));
+});
+it('accounts concurrent cache writes, enforces the total quota atomically and only removes the selected package', async () => {
+  const cache = new PluginCacheStorage(localStorage);
+  const row = (integrity: string, bytes: number) => ({ integrity, bytes, pluginId: 'test', version: '1', savedAt: new Date().toISOString() });
+  await Promise.all([cache.put(row('a', pluginCacheLimit - 10), 'first'), cache.put(row('b', 5), 'second')]);
+  expect(await cache.entries()).toHaveLength(2);
+  await expect(cache.put(row('c', 6), 'overflow')).rejects.toThrow('64 MiB');
+  expect(await cache.get('c')).toBeNull(); expect(await cache.get('a')).toBe('first');
+  await cache.remove('b'); expect(await cache.get('b')).toBeNull(); expect(await cache.get('a')).toBe('first');
+});
+it('bounds runtime logs, preserves them across reloads, clears them at workspace changes and measures UTF-8 state bytes', async () => {
+  const pkg = { ...documentOverviewPlugin, manifest: { ...documentOverviewPlugin.manifest, permissions: ['storage'] as const } };
+  const normalized = parsePluginPackage(JSON.stringify(pkg)), cache = new PluginPackageCache(), integrity = await cache.put(normalized);
+  let receive: ((message: unknown) => void) | undefined; const send = vi.fn(); let states: PluginRuntimeState[] = [];
+  const host = new PluginExecutionHost({ call: vi.fn() }, value => { states = value; }, {}, localStorage, (_source, callback) => { receive = callback; return { send, dispose() {} }; });
+  const workspace = { id: 'one', name: 'one', path: '/one', files: [] }, install = { manifest: normalized.manifest, enabled: true, authorized: true, rule: { manifest: normalized.manifest, mode: 'required' as const, settings: {}, integrity } };
+  host.sync(workspace, [install]); await vi.waitFor(() => expect(states[0]?.status).toBe('loading'));
+  await vi.waitFor(() => expect(receive).toBeDefined());
+  receive!({ type: 'ready' });
+  for (let i = 0; i < 110; i++) receive!({ type: 'log', level: 'warn', message: `entry-${i}` });
+  expect(states[0]?.logs).toHaveLength(100); expect(states[0]?.logs?.[0]?.message).toBe('entry-10');
+  receive!({ type: 'call', id: 1, method: 'storage.set', params: { key: 'value', value: '中'.repeat(90000) } });
+  await vi.waitFor(() => expect(send).toHaveBeenCalledWith(expect.objectContaining({ id: 1, error: expect.any(String) })));
+  expect(host.storageUsage('one', pkg.manifest.id).used).toBe(2);
+  host.invalidate(pkg.manifest.id); host.sync(workspace, [install]); expect(states[0]?.logs).toHaveLength(100);
+  host.clearLogs(pkg.manifest.id); expect(states[0]?.logs).toEqual([]);
+  host.sync({ ...workspace, id: 'two' }, []); expect(states).toEqual([]); host.dispose();
+});

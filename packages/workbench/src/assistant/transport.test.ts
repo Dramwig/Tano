@@ -18,7 +18,9 @@ describe('native assistant protocol compatibility', () => {
   });
   it('blocks incompatible native versions', async () => {
     invoke.mockResolvedValue(ASSISTANT_PROTOCOL_VERSION + 1);
-    await expect(nativeAssistantTransport().saveConnection(connection)).rejects.toThrow('版本不一致');
+    await expect(nativeAssistantTransport().saveConnection(connection)).rejects.toThrow(
+      `版本不一致（前端协议 ${ASSISTANT_PROTOCOL_VERSION}，桌面后端协议 ${ASSISTANT_PROTOCOL_VERSION + 1}）`,
+    );
     expect(invoke).toHaveBeenCalledTimes(1);
   });
   it('checks once and saves connections without a model on a compatible backend', async () => {

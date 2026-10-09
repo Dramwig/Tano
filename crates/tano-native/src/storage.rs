@@ -55,7 +55,7 @@ fn modified(metadata: &fs::Metadata) -> u64 {
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
 }
-fn is_markdown(path: &Path) -> bool {
+pub(crate) fn is_markdown(path: &Path) -> bool {
     path.extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown"))
 }
@@ -73,6 +73,7 @@ pub fn is_workspace_data_path(relative: &str) -> bool {
         path,
         "capabilities.json"
             | "settings.tano.json"
+            | "plugins.tano.json"
             | "relations.tano-relations.json"
             | "rules/assistant.md"
     ) || (path.starts_with("objects/") && path.ends_with(".tano.json"))
@@ -1621,6 +1622,23 @@ mod tests {
             read(&path).unwrap().content,
             "{\"version\":1,\"name\":\"B\"}"
         );
+    }
+    #[test]
+    fn plugin_rules_are_portable_and_conflict_checked() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(temp.path()).unwrap();
+        let relative = ".tano/plugins.tano.json";
+        assert!(is_workspace_data_path(relative));
+        assert!(!is_workspace_data_path(".tano/plugins/main.js"));
+        let path = ensure_file_parent(&root, relative).unwrap();
+        create(&path, "{\"version\":1,\"plugins\":[]}").unwrap();
+        let base = read(&path).unwrap();
+        fs::write(&path, "external rules").unwrap();
+        assert!(matches!(
+            write(&path, "new rules", &base.hash).unwrap(),
+            WriteResult::Conflict { .. }
+        ));
+        assert_eq!(read(&path).unwrap().content, "external rules");
     }
     #[test]
     fn workspace_objects_use_conflict_checked_writes() {

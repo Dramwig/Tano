@@ -37,6 +37,9 @@ import type { SyncKind } from '../plan-sync/types';
 import PlanDateField from './PlanDateField.vue';
 import { writePlanDate } from '../plan-date';
 import type { PlanDateValue } from '../plan-date';
+import { taskReview } from '@tano/protocol';
+import type { WorkspaceObject } from '@tano/protocol';
+import PlanEventContextMenu from './PlanEventContextMenu.vue';
 
 const props = withDefaults(defineProps<{ date: Date; active?: boolean }>(), { active: true });
 const listRoot = ref<HTMLElement>();
@@ -120,6 +123,48 @@ const unfinished = computed(() => events.value.filter(record => !isEventComplete
 const completed = computed(() => events.value.filter(isEventCompleted));
 const completedExpanded = ref(false);
 const completedListId = useId();
+const contextMenuId = `plan-event-menu-${useId()}`;
+const context = ref<{ key: string; x: number; y: number }>();
+let contextTrigger: HTMLElement | null = null;
+const contextRecord = computed(() => events.value.find(record => planKey(record) === context.value?.key));
+function restoreContextFocus(trigger = contextTrigger) {
+  void nextTick(() => {
+    const target = trigger?.isConnected && !trigger.closest('[inert]') ? trigger
+      : listRoot.value?.querySelector<HTMLElement>('.plan-event-detail, .plan-completed-toggle');
+    target?.focus({ preventScroll: true });
+  });
+}
+function closeContextMenu(restoreFocus = false) {
+  context.value = undefined;
+  if (restoreFocus) restoreContextFocus();
+}
+function openContextMenu(record: ObjectRecord, event: MouseEvent | KeyboardEvent) {
+  const row = event.currentTarget as HTMLElement;
+  contextTrigger = row.querySelector<HTMLElement>('.plan-event-detail');
+  const rect = row.getBoundingClientRect();
+  viewOpen.value = false;
+  context.value = {
+    key: planKey(record),
+    x: event instanceof MouseEvent ? event.clientX : rect.left + 24,
+    y: event instanceof MouseEvent ? event.clientY : rect.bottom,
+  };
+}
+async function contextAction(action: 'details' | 'complete' | 'archive') {
+  const record = contextRecord.value;
+  const trigger = contextTrigger;
+  closeContextMenu();
+  if (!record) return;
+  if (action === 'details') {
+    trigger?.focus({ preventScroll: true });
+    emit('select-event', planKey(record));
+    return;
+  }
+  if (action === 'complete') await completeEvent(record, !isEventCompleted(record));
+  else await updateEvent(record, { archived: true });
+  if (props.active) restoreContextFocus(trigger);
+}
+watch(() => [props.active, plans.view, selected.value, store.workspace?.id, completedExpanded.value], () => closeContextMenu());
+watch(contextRecord, record => { if (!record) closeContextMenu(); });
 const days = computed(() =>
   Array.from({ length: TOTAL_WEEKS * 7 }, (_, index) => offsetDays(start.value, index)).map(
     (date) => ({
@@ -294,14 +339,14 @@ async function saveEvent() {
     if (store.workspace?.id === workspaceId) saving.value = false;
   }
 }
-async function updateEvent(record: ObjectRecord, properties: Record<string, unknown>) {
+async function updateEvent(record: ObjectRecord, change: Partial<Pick<WorkspaceObject, 'properties' | 'archived'>>) {
   const workspaceId = store.workspace?.id;
   const key = planKey(record);
   if (!plans.canEdit(record) || pending.value.includes(key)) return;
   pending.value.push(key);
   error.value = '';
   try {
-    await plans.update(record, { ...record.object, properties });
+    await plans.update(record, { ...record.object, ...change });
   } catch (cause) {
     if (record.source?.scope === 'personal' || store.workspace?.id === workspaceId) error.value = String(cause);
   } finally {
@@ -310,10 +355,12 @@ async function updateEvent(record: ObjectRecord, properties: Record<string, unkn
 }
 function completeEvent(record: ObjectRecord, completed: boolean) {
   if (!isCheckableEvent(record)) return;
+  const review = taskReview(record.object);
+  if (review && review.state !== 'approved') return;
   const properties = { ...record.object.properties, completed };
   if (record.object.type === 'task')
     Object.assign(properties, { status: completed ? 'done' : 'todo' });
-  return updateEvent(record, properties);
+  return updateEvent(record, { properties });
 }
 
 async function resetScroll(date: Date) {
@@ -707,6 +754,9 @@ onBeforeUnmount(() => {
         :disabled="false"
         :can-edit="plans.canEdit"
         :pending="pending"
+        :context-key="context?.key"
+        :context-menu-id="contextMenuId"
+        @context="openContextMenu"
         @select="emit('select-event', $event)"
         @complete="completeEvent"
       >
@@ -739,6 +789,9 @@ onBeforeUnmount(() => {
         :disabled="false"
         :can-edit="plans.canEdit"
         :pending="pending"
+        :context-key="context?.key"
+        :context-menu-id="contextMenuId"
+        @context="openContextMenu"
         @select="emit('select-event', $event)"
         @complete="completeEvent"
       >
@@ -772,6 +825,9 @@ onBeforeUnmount(() => {
             :disabled="false"
             :can-edit="plans.canEdit"
             :pending="pending"
+            :context-key="context?.key"
+            :context-menu-id="contextMenuId"
+            @context="openContextMenu"
             @select="emit('select-event', $event)"
             @complete="completeEvent"
           >
@@ -784,6 +840,15 @@ onBeforeUnmount(() => {
         </template>
       </div>
     </section>
+    <PlanEventContextMenu
+      v-if="context && contextRecord"
+      :id="contextMenuId"
+      :record="contextRecord"
+      :position="context"
+      :disabled="!plans.canEdit(contextRecord) || pending.includes(context.key)"
+      @action="contextAction"
+      @close="closeContextMenu"
+    />
   </div>
 </template>
 

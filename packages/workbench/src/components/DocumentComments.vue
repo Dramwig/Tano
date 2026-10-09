@@ -9,6 +9,7 @@ import type { CommentAnchor, CommentFile, CommentKind, CommentMessage, CommentMe
 import type { CommentGeometry } from '@tano/editor/comment-projection';
 import { useWorkbenchRuntime } from '../runtime';
 import { useWorkspaceStore } from '../stores/workspace';
+import { recordHelpCompleted } from '../help-checklist';
 import type { OpenDocument } from '../stores/workspace';
 import { loadCommentFile, saveCommentChange } from '../workspace-comments';
 import type { CommentAuthor, CommentChange, CommentMessageEdit, CommentMessageRemoval } from '../workspace-comments';
@@ -264,6 +265,10 @@ async function saveAnchors() {
 const activeAnnotations = computed(() => (annotations.value?.threads ?? [])
   .filter(thread => !thread.detached && working.value[thread.id]));
 const pendingAnnotations = computed(() => activeAnnotations.value.filter(thread => !thread.resolved));
+const pendingDiscussions = computed(() => (discussions.value?.threads ?? []).filter(thread => !thread.resolved));
+watch(() => discussions.value?.threads.some(thread => thread.id === discussionReply.value?.threadId && thread.resolved), resolved => {
+  if (resolved) discussionReply.value = undefined;
+});
 const openBlock = computed(() => layout.value.blocks.find(block => block.key === openBlockKey.value));
 const openThreads = computed(() => {
   const ids = !layout.value.rail && !selected.value
@@ -573,6 +578,7 @@ async function start(kind: CommentKind, mentions: CommentMention[] = [], draftId
     const next = await saveCommentChange(adapter, kind, fileId,
       { type: 'start', id, body, author: props.author, anchor, mentions });
     if (epoch !== documentEpoch) return;
+    recordHelpCompleted(kind === 'annotation' ? 'annotation' : 'comment');
     if (kind === 'annotation') {
       annotations.value = next;
       working.value = { ...working.value, [id]: anchor ?? null };
@@ -607,6 +613,8 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
   try {
     const next = await saveCommentChange(adapter, kind, props.document.id, change);
     if (epoch !== documentEpoch) return false;
+    if (change.type === 'reply') recordHelpCompleted('reply-comment');
+    if (change.type === 'resolve' && change.resolved) recordHelpCompleted('resolve-comment');
     if (kind === 'annotation') { annotations.value = next; publish(); }
     else discussions.value = next;
     return true;
@@ -659,16 +667,17 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
       </div>
       <p v-if="error && !layout.rail" class="comment-error" role="alert">{{ error }}</p>
     </div>
-    <header class="document-discussion-header"><h2>文档讨论</h2><span v-if="discussions?.threads.length">{{ discussions.threads.reduce((total, thread) => total + thread.messages.length, 0) }}</span></header>
+    <header class="document-discussion-header"><h2>文档讨论</h2><span v-if="pendingDiscussions.length">{{ pendingDiscussions.reduce((total, thread) => total + thread.messages.length, 0) }}</span></header>
     <p v-if="error && !popupVisible" class="comment-error" role="alert">{{ error }}</p>
     <p v-if="loading && !discussions" class="discussion-loading">正在读取讨论...</p>
     <div class="document-discussion-messages">
-      <CommentConversation v-for="thread in discussions?.threads ?? []" :key="thread.id"
+      <CommentConversation v-for="thread in pendingDiscussions" :key="thread.id"
         :ref="value => value ? conversations.set(thread.id, value as InstanceType<typeof CommentConversation>) : conversations.delete(thread.id)"
         :thread="thread" :readonly="readonly" :busy="busy" :author-id="author.id" :author-name="author.name"
         :assistant="assistant" @assistant="emit('assistant', { kind: 'discussion', thread })"
         @reply-request="beginDiscussionReply(thread.id, $event)"
-        @edit="editMessage('discussion', thread.id, $event)" @remove="removeMessage('discussion', thread.id, $event)" />
+        @edit="editMessage('discussion', thread.id, $event)" @remove="removeMessage('discussion', thread.id, $event)"
+        @resolve="change('discussion', thread.id, 'resolve', '', $event)" />
     </div>
     <div v-if="!readonly" class="document-discussion-compose">
       <div v-if="discussionReply" class="discussion-reply-target" role="status">

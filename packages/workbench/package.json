@@ -6,6 +6,10 @@
   "exports": {
     ".": "./src/App.vue",
     "./runtime": "./src/runtime.ts",
+    "./plugin-sdk": "./src/plugin-sdk.ts",
+    "./plugins/data": "./src/plugin-data.ts",
+    "./plugins/catalog": "./src/plugins/catalog.ts",
+    "./plugins/native": "./src/plugins/native.ts",
     "./adapter": "./src/adapter.ts",
     "./markdown-demo": "./src/markdown-demo.ts",
     "./markdown-demo-routes": "./src/markdown-demo-routes.ts",

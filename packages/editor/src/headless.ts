@@ -32,6 +32,7 @@ import { wikiLink, wikiLinkRemark } from './wiki-link';
 import { rawBlocks } from './raw-block';
 import { references } from './references';
 import { liveSource, liveInlineSource } from './live-source';
+import { nestedEmphasisRemark } from './nested-emphasis';
 import { enhanced } from './enhanced';
 import { splitFrontmatter, unsupportedMarkdown } from './syntax';
 import { projectCommentText } from './comment-projection';
@@ -93,6 +94,7 @@ export async function createHeadlessMarkdown(policy: WorkspaceCapabilities = def
     ...rawBlocks,
     ...liveSource,
     ...liveInlineSource,
+    ...nestedEmphasisRemark,
   ];
   const runners = plugins.map((plugin) => plugin(ctx));
   const cleanups = await Promise.all(runners.map((run) => run()));

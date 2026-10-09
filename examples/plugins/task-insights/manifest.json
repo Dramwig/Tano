@@ -1,0 +1,15 @@
+{
+  "manifestVersion": 2,
+  "apiVersion": 1,
+  "id": "task-insights",
+  "name": "任务统计",
+  "version": "1.0.0",
+  "description": "使用 React 和 Chart.js 查看工作区任务统计，支持搜索、状态筛选与实时刷新。",
+  "objectTypes": [],
+  "relationTypes": [],
+  "permissions": ["objects.read", "ui"],
+  "networkOrigins": [],
+  "nativeCommands": [],
+  "commands": [{ "id": "open", "label": "打开任务统计", "menus": ["workspace"] }],
+  "views": [{ "id": "dashboard", "label": "任务统计", "location": "tab" }]
+}

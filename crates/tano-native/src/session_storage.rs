@@ -189,11 +189,33 @@ fn path(app_data: &Path, workspace_id: &str) -> Result<PathBuf, String> {
     fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
     Ok(directory.join(format!("{workspace_id}.json")))
 }
+fn plugin_tab(id: &str) -> bool {
+    let Some((plugin, view)) = id.strip_prefix("plugin:").and_then(|id| id.split_once(':')) else {
+        return false;
+    };
+    let key = |value: &str, max: usize, dots: bool| {
+        !value.is_empty()
+            && value.len() <= max
+            && value.as_bytes()[0].is_ascii_lowercase()
+            && value.bytes().all(|byte| {
+                byte.is_ascii_lowercase()
+                    || byte.is_ascii_digit()
+                    || byte == b'-'
+                    || (dots && byte == b'.')
+            })
+    };
+    key(plugin, 40, false) && key(view, 80, true)
+}
 fn validate(session: &WorkspaceSession) -> Result<(), String> {
     if session.version != 1
         || session.documents.len() > 200
         || session.tabs.len() > 200
-        || session.active_id.len() > 100
+        || session.active_id.len()
+            > if plugin_tab(&session.active_id) {
+                128
+            } else {
+                100
+            }
     {
         return Err("会话格式不支持或标签数量超过 200".into());
     }
@@ -224,10 +246,13 @@ fn validate(session: &WorkspaceSession) -> Result<(), String> {
     let mut tab_ids = std::collections::HashSet::new();
     if session.tabs.iter().any(|id| {
         id.is_empty()
-            || id.len() > 100
+            || id.len() > if plugin_tab(id) { 128 } else { 100 }
             || !tab_ids.insert(id)
             || (!id.starts_with("blank:")
                 && id != "view:graph"
+                && id != "view:plugins"
+                && id != "view:calendar"
+                && !plugin_tab(id)
                 && !id.strip_prefix("attachment:").is_some_and(|file_id| {
                     !file_id.is_empty()
                         && file_id.bytes().all(|byte| {
@@ -583,6 +608,41 @@ mod tests {
         assert_eq!(restored.documents.len(), 1);
         saved.tabs.push("attachment:".into());
         assert!(validate(&saved).is_err());
+    }
+    #[test]
+    fn restores_plugin_tabs_without_losing_document_recovery() {
+        let data = tempfile::tempdir().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut saved = session();
+        let long = format!("plugin:{}:{}", "a".repeat(40), "b".repeat(80));
+        saved.tabs.extend([
+            "view:plugins".into(),
+            "view:calendar".into(),
+            "plugin:git-inspector:changes".into(),
+            long.clone(),
+        ]);
+        saved.active_id = long.clone();
+        save(data.path(), &id, &saved).unwrap();
+        let restored = load(data.path(), &id).unwrap().unwrap();
+        assert_eq!(restored.tabs, saved.tabs);
+        assert_eq!(restored.active_id, saved.active_id);
+        assert_eq!(
+            restored.documents[0].draft.as_ref().unwrap().content,
+            "unsaved human edit"
+        );
+        for invalid in [
+            "plugin:git:../secret",
+            "plugin:git:",
+            "plugin:git:extra:part",
+            "plugin:Git:changes",
+            "plugin:git:1bad",
+        ] {
+            assert!(!plugin_tab(invalid));
+            saved.tabs.push(invalid.into());
+            assert!(validate(&saved).is_err());
+            saved.tabs.pop();
+        }
+        assert!(!plugin_tab(&format!("{long}x")));
     }
     #[test]
     fn rejects_invalid_base_before_replacing_recovery_file() {

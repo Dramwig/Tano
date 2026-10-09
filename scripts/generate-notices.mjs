@@ -34,6 +34,7 @@ for (const pkg of metadata.packages.filter(p => p.source).sort((a,b) => a.id.loc
 }
 const text = sections.join('\n\n' + '='.repeat(78) + '\n\n') + '\n';
 const iconNotices = await Promise.all([
+  ['Lobe Icons @lobehub/icons-static-svg 1.95.1 (bundled model SVGs)', 'https://github.com/lobehub/lobe-icons', 'packages/workbench/src/assets/model-icons/lobehub'],
   ['Material Icon Theme 5.38.1 (bundled SVGs)', 'https://github.com/material-extensions/vscode-material-icon-theme', 'packages/editor/src/language-icons/material'],
   ['Devicon 7330accdbc47e2dc0c19789a48533c4a3c50fe58 (bundled SVGs)', 'https://github.com/devicons/devicon', 'packages/editor/src/language-icons/devicon'],
   ['Phosphor Icons 2b75f3ad12b420c9504ef05df8d2564a28f8500e (bundled duotone SVGs)', 'https://github.com/phosphor-icons/core', 'packages/editor/src/callout-icons/phosphor'],

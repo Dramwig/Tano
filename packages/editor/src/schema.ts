@@ -1,11 +1,39 @@
 import type { Ctx } from '@milkdown/kit/ctx';
+import { remarkStringifyOptionsCtx } from '@milkdown/kit/core';
 import type { DOMOutputSpec } from '@milkdown/kit/prose/model';
 import { blockquoteSchema, imageSchema } from '@milkdown/kit/preset/commonmark';
 import { tableCellSchema, tableHeaderSchema, tableSchema } from '@milkdown/kit/preset/gfm';
+import { defaultHandlers } from 'mdast-util-to-markdown';
 import { calloutMarker } from './callout';
 
 /** Shared by the desktop view and server codec to keep their Markdown schema identical. */
 export function configureMarkdownSchema(ctx: Ctx) {
+  ctx.update(remarkStringifyOptionsCtx, (options) => {
+    const text = options.handlers?.text ?? defaultHandlers.text;
+    return {
+      ...options,
+      handlers: {
+        ...options.handlers,
+        text(node, parent, state, info) {
+          // Keep literal stars inside a mark distinct from its delimiters.
+          // Outside the mark, extra stars are valid: **text* is * + emphasis.
+          if ((parent?.type === 'emphasis' || parent?.type === 'strong') &&
+              ((node.value.startsWith('*') && info.before.endsWith('*')) ||
+               (node.value.endsWith('*') && info.after.startsWith('*'))))
+            return text(node, parent, state, info);
+          // Keep typed Markdown delimiters intact, including incomplete * / **.
+          // Delegate all other escaping and whitespace handling to the existing handler.
+          const unsafe = state.unsafe;
+          state.unsafe = unsafe.filter((pattern) => pattern.character !== '*');
+          try {
+            return text(node, parent, state, info);
+          } finally {
+            state.unsafe = unsafe;
+          }
+        },
+      },
+    };
+  });
   // GFM commonly puts the marker and first body line in one paragraph. Keep
   // the marker separate so body commands can move/convert that line safely.
   ctx.update(blockquoteSchema.key, (previous) => (inner) => {
@@ -40,7 +68,7 @@ export function configureMarkdownSchema(ctx: Ctx) {
   });
   ctx.update(tableSchema.key, (previous) => (inner) => {
     const schema = previous(inner);
-    return { ...schema, attrs: { ...schema.attrs, layoutId: { default: null } } };
+    return { ...schema, attrs: { ...schema.attrs, layoutId: { default: null }, autoWidth: { default: true } } };
   });
   // Yjs omits null attributes. A Markdown column with unspecified alignment must
   // remain unspecified when it is rehydrated from its XML fragment.

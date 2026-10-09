@@ -29,7 +29,10 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' tano-asset: http://tano-asset.localhost https: data: blob:; connect-src ipc: http://ipc.localhost tano-asset: http://tano-asset.localhost https: wss: http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-src 'none'"
+      "dangerousDisableAssetCspModification": [
+        "style-src"
+      ],
+      "csp": "default-src 'self'; script-src 'self' 'sha256-HqAH3w25zKsq8qlxnq/FqwEwwxm4jFIT+lkTXMahrdU=' 'sha256-5xF74IlJ//+nV7veKIEjdcmV2wCIynPnBwcARC0YBdA=' 'sha256-P5ZdN4WrfG4W8bRc6EVq4b3kO6ADXLEDtdOYQg0IEzE=' blob:; worker-src blob:; style-src 'self' 'unsafe-inline'; img-src 'self' tano-asset: http://tano-asset.localhost https: data: blob:; connect-src ipc: http://ipc.localhost tano-asset: http://tano-asset.localhost https: wss: http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-src 'self' blob:"
     }
   },
   "bundle": {

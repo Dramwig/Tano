@@ -9,6 +9,76 @@ const encode = (frames: unknown[]) => new TextEncoder().encode(frames.map(frame 
 const responseFrames = (frames: unknown[]) => new TextEncoder().encode(frames.map(frame => `data: ${JSON.stringify(frame)}\r\n\r\n`).join(''));
 
 describe('assistant streaming and proposals', () => {
+  it('creates file operation proposals only from full snapshots and validates destination paths', () => {
+    for (const [name, destination, kind] of [['propose_delete', undefined, 'delete'], ['propose_rename', 'renamed.md', 'rename'], ['propose_move', 'notes/note.md', 'move']] as const) {
+      const args = { sourceId: 'S1', reason: '用户要求', ...(destination ? { destination } : {}) };
+      expect(proposalFromTool(call(name, args), [source], 'workspace', 'run')).toMatchObject({
+        kind, fileId: source.fileId, path: source.path, base: source.content, content: kind === 'delete' ? '' : source.content,
+        ...(destination ? { destination } : {}), status: 'ready',
+      });
+      expect(() => proposalFromTool(call(name, args), [{ ...source, selection: { text: '片段' } }], 'workspace', 'run')).toThrow('完整文档');
+      expect(() => proposalFromTool(call(name, args), [], 'workspace', 'run')).toThrow('已提供');
+    }
+    for (const destination of ['../outside.md', '.tano/rules/assistant.md', 'note.txt', 'note.md'])
+      expect(() => proposalFromTool(call('propose_rename', { sourceId: 'S1', destination, reason: 'test' }), [source], 'workspace', 'run')).toThrow();
+    expect(() => proposalFromTool(call('propose_rename', { sourceId: 'S1', destination: 'folder/new.md', reason: 'test' }), [source], 'workspace', 'run')).toThrow('跨目录');
+    expect(() => proposalFromTool(call('propose_delete', { sourceId: 'S1', path: 'other.md', reason: 'test' }), [source], 'workspace', 'run')).toThrow('参数');
+  });
+  it('requires real tool receipts for proposals and records failures before a corrected retry', async () => {
+    const requests: AssistantRequest[] = [], proposals: unknown[] = [], receipts: unknown[] = [];
+    const transport = { async request(_id, request, _signal, chunk) {
+      requests.push(structuredClone(request));
+      const round = requests.length;
+      chunk(encode([{ choices: [{ index: 0, delta: round < 3
+        ? { tool_calls: [{ index: 0, ...call('propose_create', { path: round === 1 ? '../test.md' : 'test.md', content: '# Test', reason: 'test' }), id: `call-${round}` }] }
+        : { content: '已生成建议，等待审阅。' }, finish_reason: round < 3 ? 'tool_calls' : 'stop' }] }]));
+    } } as AssistantTransport;
+    await runAssistant({ transport, connectionId: 'test', model: 'test', tools: true, workspaceId: 'workspace', runId: 'run', sources: [], history: [], prompt: '创建 test.md',
+      signal: new AbortController().signal, delta: () => {}, progress: () => {}, proposal: item => proposals.push(item), toolResult: item => receipts.push(item) });
+    expect(proposals).toHaveLength(1);
+    expect(receipts).toEqual([{ name: 'propose_create', status: 'failed', error: expect.stringContaining('路径') },
+      { name: 'propose_create', status: 'succeeded', proposalId: (proposals[0] as { id: string }).id }]);
+    expect(JSON.parse(requests[1].messages.at(-1)!.content!)).toMatchObject({ written: false, error: expect.stringContaining('路径') });
+    expect(JSON.parse(requests[2].messages.at(-1)!.content!)).toMatchObject({ written: false, status: 'awaiting_review' });
+    expect(requests[0].messages.filter(item => item.role === 'system').map(item => item.content).join('\n')).toContain('不能只描述计划或口头承诺');
+  });
+
+  it.each([true, false])('does not turn a textual success claim into a proposal (tools=%s)', async tools => {
+    const proposal = vi.fn(), toolResult = vi.fn();
+    const transport = { request: vi.fn(async (_id, request, _signal, chunk) => {
+      if (!tools) {
+        expect(request.tools).toBeUndefined();
+        expect(request.messages.some((item: { content: string }) => item.content?.includes('当前连接未启用工具调用'))).toBe(true);
+      }
+      chunk(encode([{ choices: [{ index: 0, delta: { content: '我已经提出了创建 test.md 文档的建议。' }, finish_reason: 'stop' }] }]));
+    }) } as unknown as AssistantTransport;
+    await runAssistant({ transport, connectionId: 'test', model: 'test', tools, workspaceId: 'workspace', runId: 'run', sources: [], history: [], prompt: '创建 test.md',
+      signal: new AbortController().signal, delta: () => {}, progress: () => {}, proposal, toolResult });
+    expect(proposal).not.toHaveBeenCalled(); expect(toolResult).not.toHaveBeenCalled();
+    expect(transport.request).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows CLI progress and partial text before completion without executing partial tool calls', async () => {
+    const changed = vi.fn(), progress = vi.fn(), proposal = vi.fn();
+    let complete!: () => void;
+    const transport = { request: async (_id: string, _request: AssistantRequest, _signal: AbortSignal, chunk: (bytes: Uint8Array) => void) => {
+      chunk(responseFrames([
+        ...['starting', 'connecting', 'thinking', 'retrying', 'generating', 'toString', 'private'].map(kind => ({ type: 'tano.progress', kind })),
+        { choices: [{ index: 0, delta: { content: '先显示的正文' } }] },
+      ]));
+      await new Promise<void>(resolve => { complete = resolve; });
+      throw new Error('CLI 响应中断');
+    } } as unknown as AssistantTransport;
+    const run = runAssistant({ transport, connectionId: 'cli', model: 'test', tools: true, workspaceId: 'workspace', runId: 'run',
+      sources: [], history: [], prompt: '摘要', signal: new AbortController().signal, delta: changed, progress, proposal });
+    await vi.waitFor(() => expect(changed).toHaveBeenCalledWith('先显示的正文'));
+    expect(progress.mock.calls.map(([text]) => text)).toContain('连接中断，正在重试');
+    expect(progress).not.toHaveBeenCalledWith('private');
+    expect(proposal).not.toHaveBeenCalled();
+    complete();
+    await expect(run).rejects.toThrow('CLI 响应中断');
+    expect(proposal).not.toHaveBeenCalled();
+  });
   it('reports compatibility progress separately from model output and still requires completion', () => {
     const changed = vi.fn(), progress = vi.fn();
     const stream = new AssistantStream(changed, progress);
@@ -162,10 +232,11 @@ describe('assistant streaming and proposals', () => {
       chunk(encode(requests.length === 1 ? [{ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, ...call('propose_edit', { sourceId: 'S1', oldText: '论证一。', newText: '新论证。', reason: 'test' }) }] } }] }]
         : [{ choices: [{ index: 0, delta: { content: '请审阅修改。' }, finish_reason: 'stop' }] }]));
     } } as AssistantTransport;
-    await runAssistant({ transport, connectionId: 'test', model: 'test', tools: true, workspaceId: 'workspace', runId: 'run', sources: [source], history: [], prompt: '修改', signal: new AbortController().signal,
+    await runAssistant({ transport, connectionId: 'test', model: 'test', reasoningEffort: 'low', tools: true, workspaceId: 'workspace', runId: 'run', sources: [source], history: [], prompt: '修改', signal: new AbortController().signal,
       delta: text => { answer += text; }, proposal: proposal => proposals.push(proposal), progress: () => {} });
     expect(proposals).toHaveLength(1); expect(answer).toContain('请审阅');
     expect(requests.map(request => request.model)).toEqual(['test', 'test']);
+    expect(requests.map(request => request.reasoningEffort)).toEqual(['low', 'low']);
     expect(JSON.parse(requests[1].messages.at(-1)!.content!)).toMatchObject({ written: false, status: 'awaiting_review' });
   });
   it('does not execute tools after cancellation or an unfinished response', async () => {

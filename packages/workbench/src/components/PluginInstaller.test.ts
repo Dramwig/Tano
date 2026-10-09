@@ -17,6 +17,7 @@ let pinia: ReturnType<typeof createPinia>;
 const showModal = HTMLDialogElement.prototype.showModal;
 const close = HTMLDialogElement.prototype.close;
 const catalogOverride = shallowRef<readonly PluginCatalogEntry[]>();
+const publishingAvailable = shallowRef(false);
 
 beforeEach(async () => {
   // jsdom does not implement the native dialog top layer.
@@ -28,6 +29,7 @@ beforeEach(async () => {
   };
   localStorage.clear();
   catalogOverride.value = undefined;
+  publishingAvailable.value = false;
   pinia = createPinia();
   configureWorkbench(pinia, { adapter: new DemoAdapter(), native: false, mobile: false });
   setActivePinia(pinia);
@@ -35,7 +37,8 @@ beforeEach(async () => {
   await store.openWorkspace();
   root = document.createElement('div');
   document.body.append(root);
-  app = createApp(() => h(PluginInstaller, { catalog: catalogOverride.value }));
+  app = createApp(() => h(PluginInstaller, { catalog: catalogOverride.value }, publishingAvailable.value
+    ? { publishing: () => h('textarea', { 'aria-label': '投稿草稿' }) } : undefined));
   app.use(pinia);
   app.mount(root);
 });
@@ -56,6 +59,32 @@ function button(label: string) {
       element.textContent?.trim() === label || element.getAttribute('aria-label') === label,
   )!;
 }
+
+it('offers publishing only when the product provides it and preserves drafts while browsing plugins', async () => {
+  expect(button('我的投稿')).toBeUndefined();
+  button('社区目录').click();
+  await nextTick();
+  expect(button('发布插件')).toBeUndefined();
+  publishingAvailable.value = true;
+  await nextTick();
+  expect(root.querySelector('[aria-label="投稿草稿"]')).toBeNull();
+  button('发布插件').click();
+  await nextTick();
+  expect(button('我的投稿').getAttribute('aria-pressed')).toBe('true');
+  expect(button('导入插件')).toBeUndefined();
+  expect(root.querySelector('.catalog-filter')).toBeNull();
+  expect(root.querySelector('.center-footer')).toBeNull();
+  const draft = root.querySelector<HTMLTextAreaElement>('[aria-label="投稿草稿"]')!;
+  draft.value = '未提交的新版本说明';
+  button('社区目录').click();
+  await nextTick();
+  expect(draft.parentElement?.style.display).toBe('none');
+  button('我的投稿').click();
+  await nextTick();
+  expect(root.querySelector('[aria-label="投稿草稿"]')).toBe(draft);
+  expect(draft.value).toBe('未提交的新版本说明');
+  expect(draft.parentElement?.style.display).not.toBe('none');
+});
 
 it('installs a plugin and preserves its objects when disabled and re-enabled', async () => {
   button('安装研究工作台').click();
@@ -201,11 +230,11 @@ it('clears an earlier preview when a newly selected file cannot be imported', as
   await nextTick();
   expect(root.querySelector('.plugin-preview')).not.toBeNull();
   const file = root.querySelector<HTMLInputElement>('input[type="file"]')!;
-  Object.defineProperty(file, 'files', { value: [{ size: 256 * 1024 + 1 }] });
+  Object.defineProperty(file, 'files', { value: [{ size: 4 * 1024 * 1024 + 1 }] });
   file.dispatchEvent(new Event('change'));
   await nextTick();
   expect(root.querySelector('.plugin-preview')).toBeNull();
-  expect(root.querySelector('[role="alert"]')?.textContent).toContain('不能超过 256 KB');
+  expect(root.querySelector('[role="alert"]')?.textContent).toContain('不能超过 4 MiB');
 });
 
 it('browses a large catalog in batches and searches across unloaded entries', async () => {

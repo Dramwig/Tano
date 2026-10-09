@@ -50,13 +50,153 @@ async function mountEmptyConversation(fullscreenTarget?: string | Ref<HTMLElemen
   return { workspace, assistant };
 }
 
+it('selects reasoning beside the model, restores focus, and hides it for other connections', async () => {
+  const { assistant } = await mountEmptyConversation();
+  expect(root.querySelector('[aria-label="选择推理强度"]')).toBeNull();
+  assistant.connections[0].kind = 'codex-cli';
+  assistant.reasoningEffort = 'medium';
+  await nextTick();
+  const trigger = root.querySelector<HTMLButtonElement>('[aria-label="选择推理强度"]')!;
+  expect(trigger.closest('.assistant-composer')).not.toBeNull();
+  expect(trigger.textContent?.trim()).toBe('中');
+  trigger.click(); await nextTick();
+  const menu = root.querySelector('#assistant-reasoning-options')!;
+  expect(menu.querySelector('[aria-label="中"]')!.getAttribute('aria-checked')).toBe('true');
+  menu.querySelector<HTMLButtonElement>('[aria-label="低"]')!.click();
+  await vi.waitFor(() => expect(root.querySelector('#assistant-reasoning-options')).toBeNull());
+  expect(assistant.reasoningEffort).toBe('low');
+  expect(assistant.session!.reasoningEffort).toBe('low');
+  expect(document.activeElement).toBe(trigger);
+  trigger.click(); await nextTick();
+  root.querySelector('#assistant-reasoning-options')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await nextTick(); expect(document.activeElement).toBe(trigger);
+  assistant.busy = true; await nextTick(); expect(trigger.disabled).toBe(true);
+  assistant.busy = false; assistant.connections[0].kind = 'claude-cli'; await nextTick();
+  expect(root.querySelector('[aria-label="选择推理强度"]')).toBeNull();
+});
+
+it('shows actual proposal absence and failed receipts even when the answer claims success', async () => {
+  const { assistant, workspace } = await mountEmptyConversation();
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
+  Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+  assistant.session!.messages = [{ id: 'reply', role: 'assistant', createdAt: 1, state: 'completed',
+    content: '我已经提出了创建 test.md 的建议，请采纳。', proposals: [],
+    toolResults: [{ name: 'propose_create', status: 'failed', error: '新文档路径或正文无效' }] }];
+  await nextTick();
+  expect(root.querySelector('.assistant-result-notice')?.textContent).toContain('本轮未生成修改建议，未写入文件');
+  expect(root.querySelector('.assistant-proposal')).toBeNull();
+  const failures = root.querySelector<HTMLDetailsElement>('.assistant-tool-errors')!;
+  failures.querySelector('summary')!.click();
+  expect(failures.open).toBe(true);
+  expect(failures.textContent).toContain('创建文档建议：新文档路径或正文无效');
+  assistant.session!.messages[0].proposals!.push({ id: 'real-proposal', runId: 'reply', workspaceId: workspace.workspace!.id,
+    kind: 'create', path: 'test.md', content: '# Test', base: '', reason: '测试', status: 'ready' });
+  await nextTick();
+  expect(root.querySelector('.assistant-result-notice')).toBeNull();
+  expect(root.querySelector('.assistant-change-list')?.textContent).toContain('1 个文件 · 1 项操作');
+  root.querySelector<HTMLElement>('.assistant-file-change summary')!.click();
+  await vi.waitFor(() => expect(root.querySelector('.assistant-proposal')).not.toBeNull());
+  expect(root.querySelector('.assistant-proposal')?.textContent).toContain('新增 · test.md');
+  expect(root.querySelector('.assistant-proposal')?.textContent).toContain('查看差异');
+});
+
+it('renders Markdown as answer chunks arrive and keeps the same view when generation completes', async () => {
+  const { assistant } = await mountEmptyConversation();
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
+  Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+  assistant.session!.messages = [
+    { id: 'question', role: 'user', content: '**总结**', createdAt: 1 },
+    { id: 'streaming-answer', role: 'assistant', content: '', createdAt: 1, state: 'running' },
+  ];
+  await nextTick();
+  const message = assistant.session!.messages[1]!;
+  const reply = root.querySelector('.assistant-message-assistant')!;
+  expect(reply.querySelector('.assistant-answer')).toBeNull();
+  message.content = '## 文档总结\n\n**主要内容**\n\n- 数学公式';
+  await nextTick();
+  // More content can arrive while the editor is still initializing.
+  message.content += '\n- 代码示例';
+  await vi.waitFor(() => {
+    expect(reply.querySelector('h2')?.textContent).toBe('文档总结');
+    expect(reply.querySelector('strong')?.textContent).toBe('主要内容');
+    expect(reply.querySelectorAll('li')).toHaveLength(2);
+  });
+  const view = reply.querySelector('.ProseMirror')!;
+  expect(view.getAttribute('contenteditable')).toBe('false');
+  expect(root.querySelector('.assistant-message-user .assistant-message-text')?.textContent).toBe('**总结**');
+  expect(reply.querySelector('.assistant-message-actions')).toBeNull();
+  message.content += '\n\n公式：$a^2+b^2=c^2$\n\n```js\nconst answer =';
+  await vi.waitFor(() => {
+    expect(reply.querySelector('.katex')).not.toBeNull();
+    expect(reply.querySelector('pre')?.textContent).toContain('const answer =');
+  });
+  message.content += ' 42;\n```\n\n**生成完成**';
+  await vi.waitFor(() => {
+    expect(reply.querySelector('pre')?.textContent).toContain('const answer = 42;');
+    expect([...view.querySelectorAll('strong')].at(-1)?.textContent).toBe('生成完成');
+  });
+  expect(message.state).toBe('running');
+  expect(reply.querySelector('.ProseMirror')).toBe(view);
+  message.state = 'completed';
+  await nextTick();
+  expect(reply.querySelector('.ProseMirror')).toBe(view);
+  expect(reply.querySelector('[aria-label="复制助手回答"]')).not.toBeNull();
+});
+
+it('keeps a partially streamed Markdown answer rendered after interruption', async () => {
+  const { assistant } = await mountEmptyConversation();
+  assistant.session!.messages = [{ id: 'partial-answer', role: 'assistant',
+    content: '## 已生成内容\n\n```text\n尚未写完', createdAt: 1, state: 'running' }];
+  await vi.waitFor(() => expect(root.querySelector('.assistant-answer h2')?.textContent).toBe('已生成内容'));
+  const view = root.querySelector('.assistant-answer .ProseMirror');
+  assistant.session!.messages[0]!.state = 'interrupted';
+  await nextTick();
+  expect(root.querySelector('.assistant-answer .ProseMirror')).toBe(view);
+  expect(root.querySelector('.assistant-answer pre')?.textContent).toContain('尚未写完');
+  expect(root.querySelector('.assistant-message-error')?.textContent).toContain('已中断');
+});
+
+it('shows sent documents above the user bubble while keeping retrieved sources and answer links with the reply', async () => {
+  const { workspace, assistant } = await mountEmptyConversation();
+  const source = await workspace.assistantSnapshot({ id: workspace.workspace!.id, path: workspace.workspace!.path }, workspace.active!.id);
+  source.id = 'S1';
+  const retrieved = { ...source, id: 'S2', fileId: 'other-file', path: '检索结果.md' };
+  assistant.session!.messages = [
+    { id: 'question', role: 'user', content: '你好', createdAt: 1 },
+    { id: 'answer', role: 'assistant', content: '', createdAt: 1, state: 'running', sources: [source, retrieved], attachedSourceIds: ['S1'] },
+  ];
+  await nextTick();
+  const user = root.querySelector('.assistant-message-user')!;
+  const reply = root.querySelector('.assistant-message-assistant')!;
+  expect(user.querySelector('.assistant-message-text')!.previousElementSibling).toBe(user.querySelector('.assistant-attachments'));
+  expect(user.querySelector('.assistant-attachments')!.textContent).toBe(source.path);
+  expect(reply.querySelector('.assistant-citations')!.textContent).toBe('S2 · 检索结果.md');
+  assistant.files = []; await nextTick();
+  expect(user.querySelector('.assistant-attachments')!.textContent).toBe(source.path);
+  const open = vi.spyOn(workspace, 'openFileInNewTab').mockResolvedValue();
+  user.querySelector<HTMLButtonElement>('.assistant-attachments button')!.click();
+  await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+  assistant.session!.messages[1]!.content = '参见[来源:S1]。';
+  await vi.waitFor(() => expect(reply.querySelector('.assistant-answer a')).not.toBeNull());
+  reply.querySelector<HTMLAnchorElement>('.assistant-answer a')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }));
+  await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(2));
+  // Older saved conversations still place their reference cards above the prompt.
+  delete assistant.session!.messages[1]!.attachedSourceIds;
+  await nextTick();
+  expect(user.querySelectorAll('.assistant-attachments button')).toHaveLength(2);
+  expect(reply.querySelector('.assistant-citations')).toBeNull();
+  assistant.session!.messages[1]!.attachedSourceIds = [];
+  await nextTick();
+  expect(user.querySelector('.assistant-attachments')).toBeNull();
+  expect(reply.querySelectorAll('.assistant-citations button')).toHaveLength(2);
+});
+
 it('moves the same conversation between sidebar, floating and the current tab with a keyboard-accessible mode menu', async () => {
   const { workspace, assistant } = await mountEmptyConversation('#assistant-test-fullscreen');
   const host = document.createElement('div'); host.id = 'assistant-test-fullscreen'; root.append(host);
   const originalPanel = root.querySelector('.assistant-panel');
   const originalInput = root.querySelector('textarea');
   assistant.prompt = '未发送的草稿';
-  assistant.allowSearch = true;
   const files = [...assistant.files];
   await nextTick();
   const choose = async (mode: string) => {
@@ -91,10 +231,9 @@ it('moves the same conversation between sidebar, floating and the current tab wi
   expect(originalPanel!.parentElement).toBe(host);
   await choose('侧栏');
   expect(assistant.files).toEqual(files);
-  expect(assistant.allowSearch).toBe(true);
 });
 
-it('opens model recovery after a provider error without sending or changing the draft and permissions', async () => {
+it('opens model recovery after a provider error without sending or changing the draft and references', async () => {
   const { assistant } = await mountEmptyConversation();
   const message = { id: 'failed-answer', role: 'assistant' as const, content: '', createdAt: 1,
     state: 'failed' as const, error: '模型服务返回 HTTP 403；服务要求通过标准 Codex 客户端使用此模型' };
@@ -108,8 +247,6 @@ it('opens model recovery after a provider error without sending or changing the 
   expect(assistant.session.messages).toHaveLength(1);
   expect(assistant.prompt).toBe('保留草稿');
   expect(assistant.files).toEqual(files);
-  expect(assistant.allowSearch).toBe(false);
-  expect(assistant.allowStructures).toBe(false);
   assistant.busy = true; await nextTick();
   expect(root.querySelector<HTMLButtonElement>('.assistant-recovery-actions button')!.disabled).toBe(true);
   assistant.busy = false;
@@ -135,21 +272,19 @@ it('restores the same fullscreen conversation when a compact pane replaces its h
   expect(assistant.displayMode).toBe('fullscreen');
 });
 
-it('prepares a starter draft with the current document without sending or granting workspace access', async () => {
+it('prepares a starter draft with the current document without sending', async () => {
   const { workspace, assistant } = await mountEmptyConversation();
   root.querySelector<HTMLButtonElement>('.assistant-starters button')!.click();
   await nextTick();
   expect(assistant.prompt).toContain('请总结这篇笔记');
   expect(assistant.files).toEqual([workspace.active!.id]);
   expect(assistant.session!.messages).toHaveLength(0);
-  expect(assistant.allowSearch).toBe(false);
-  expect(assistant.allowStructures).toBe(false);
   expect(document.activeElement).toBe(root.querySelector('textarea'));
   root.querySelector<HTMLButtonElement>('.assistant-starters button')!.click();
   expect(assistant.files).toHaveLength(1);
 });
 
-it('selects a model in the composer and keeps permissions when its menu is dismissed', async () => {
+it('selects a model in the composer and dismisses menus without losing focus', async () => {
   const { assistant } = await mountEmptyConversation();
   await vi.waitFor(() => expect(assistant.modelsLoading).toBe(false));
   expect(root.querySelector('.assistant-model-option')).toBeNull();
@@ -161,14 +296,9 @@ it('selects a model in the composer and keeps permissions when its menu is dismi
   await vi.waitFor(() => expect(root.querySelector('#assistant-model-options')).toBeNull());
   expect(assistant.modelId).toBe(assistant.models[0]);
   expect(root.querySelector('.assistant-compose-model')!.textContent).toContain(assistant.modelId);
-  root.querySelector<HTMLButtonElement>('[aria-label="工作区访问权限"]')!.click(); await nextTick();
-  root.querySelector<HTMLButtonElement>('[role="radio"]:nth-child(2)')!.click(); await nextTick();
-  expect(root.querySelector('#assistant-permission-options')).toBeNull();
-  root.querySelector<HTMLButtonElement>('[aria-label="工作区访问权限"]')!.click(); await nextTick();
+  root.querySelector<HTMLButtonElement>('[aria-label="选择助手模型"]')!.click(); await nextTick();
   root.querySelector('textarea')!.dispatchEvent(new Event('pointerdown', { bubbles: true })); await nextTick();
-  expect(root.querySelector('#assistant-permission-options')).toBeNull();
-  expect(assistant.allowSearch).toBe(true);
-  expect(root.querySelector('.assistant-granted')).not.toBeNull();
+  expect(root.querySelector('#assistant-model-options')).toBeNull();
   root.querySelector<HTMLButtonElement>('[aria-label="助手更多选项"]')!.click(); await nextTick();
   root.querySelector('#assistant-more-options')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await nextTick();
   expect(root.querySelector('#assistant-more-options')).toBeNull();
@@ -185,6 +315,9 @@ it('switches the connection from its list and returns to model selection', async
   assistant.connections.push(connection);
   await assistant.selectModel('模拟响应');
   root.querySelector<HTMLButtonElement>('[aria-label="选择助手模型"]')!.click(); await nextTick();
+  root.querySelector<HTMLButtonElement>('[aria-label="搜索模型列表"]')!.click(); await nextTick();
+  const search = root.querySelector<HTMLInputElement>('[aria-label="搜索模型"]')!;
+  search.value = 'previous-model'; search.dispatchEvent(new Event('input')); await nextTick();
   root.querySelector<HTMLButtonElement>('[aria-label="选择模型连接"]')!.click(); await nextTick();
   const connections = root.querySelectorAll<HTMLButtonElement>('#assistant-model-options .assistant-detail-option');
   connections[1]!.click();
@@ -192,6 +325,9 @@ it('switches the connection from its list and returns to model selection', async
   expect(assistant.connectionId).toBe(connection.id);
   expect(assistant.modelId).toBe('');
   expect(root.querySelector('.assistant-connection-option')!.textContent).toContain('备用连接');
+  expect(root.querySelector('[aria-label="搜索模型"]')).toBeNull();
+  root.querySelector<HTMLButtonElement>('[aria-label="搜索模型列表"]')!.click(); await nextTick();
+  expect(root.querySelector<HTMLInputElement>('[aria-label="搜索模型"]')!.value).toBe('');
   expect(root.querySelector('#assistant-model-options')).not.toBeNull();
 });
 
@@ -202,10 +338,25 @@ it('searches all discovered models, preserves a custom selection and accepts man
   await assistant.selectModel('custom-model');
   root.querySelector<HTMLButtonElement>('[aria-label="选择助手模型"]')!.click(); await nextTick();
   expect(root.querySelector('[aria-label="使用模型 custom-model"]')!.getAttribute('aria-pressed')).toBe('true');
-  root.querySelector<HTMLButtonElement>('[aria-label="查看全部模型"]')!.click(); await nextTick();
-  const search = root.querySelector<HTMLInputElement>('[aria-label="搜索模型"]')!;
+  expect(root.querySelectorAll('.assistant-model-option')).toHaveLength(6);
+  expect(root.querySelector('[aria-label="查看全部模型"]')).toBeNull();
+  expect(root.querySelector('[aria-label="搜索模型"]')).toBeNull();
+  const searchToggle = root.querySelector<HTMLButtonElement>('[aria-label="搜索模型列表"]')!;
+  expect(searchToggle.getAttribute('aria-expanded')).toBe('false');
+  searchToggle.click(); await nextTick();
+  let search = root.querySelector<HTMLInputElement>('[aria-label="搜索模型"]')!;
+  expect(document.activeElement).toBe(search);
+  expect(searchToggle.getAttribute('aria-expanded')).toBe('true');
   search.value = 'ECHO'; search.dispatchEvent(new Event('input')); await nextTick();
   expect(root.querySelectorAll('.assistant-model-option')).toHaveLength(1);
+  searchToggle.click(); await nextTick();
+  expect(root.querySelector('[aria-label="搜索模型"]')).toBeNull();
+  expect(root.querySelectorAll('.assistant-model-option')).toHaveLength(6);
+  expect(document.activeElement).toBe(searchToggle);
+  searchToggle.click(); await nextTick();
+  search = root.querySelector<HTMLInputElement>('[aria-label="搜索模型"]')!;
+  expect(search.value).toBe('');
+  search.value = 'ECHO'; search.dispatchEvent(new Event('input')); await nextTick();
   root.querySelector<HTMLButtonElement>('[aria-label="使用模型 echo"]')!.click();
   await vi.waitFor(() => expect(root.querySelector('#assistant-model-options')).toBeNull());
   expect(assistant.modelId).toBe('echo');
@@ -219,13 +370,9 @@ it('searches all discovered models, preserves a custom selection and accepts man
   expect(assistant.session!.model).toBe('manual-model');
 });
 
-it('uses an inline reference picker and changes only the selected workspace access flags', async () => {
+it('uses an inline reference picker to attach a document', async () => {
   const { workspace, assistant } = await mountEmptyConversation();
   root.querySelector<HTMLButtonElement>('[aria-label="添加内容"]')!.click(); await nextTick();
-  const toggle = root.querySelector<HTMLInputElement>('[aria-label="允许检索当前工作区"]')!;
-  toggle.checked = true; toggle.dispatchEvent(new Event('change')); await nextTick();
-  expect(assistant.allowSearch).toBe(true);
-  expect(assistant.allowStructures).toBe(false);
   root.querySelector<HTMLButtonElement>('#assistant-add-options > button')!.click(); await nextTick();
   const search = root.querySelector<HTMLInputElement>('[aria-label="搜索参考文档"]')!;
   search.value = workspace.active!.path; search.dispatchEvent(new Event('input')); await nextTick();
@@ -236,14 +383,7 @@ it('uses an inline reference picker and changes only the selected workspace acce
   root.querySelector<HTMLButtonElement>('[aria-label="完成参考文档选择"]')!.click(); await nextTick();
   expect(root.querySelector('#assistant-add-options')).toBeNull();
   expect(root.querySelector('.assistant-context')!.textContent).toContain(workspace.active!.path);
-  root.querySelector<HTMLButtonElement>('[aria-label="工作区访问权限"]')!.click(); await nextTick();
-  root.querySelector<HTMLButtonElement>('[role="radio"]:nth-child(3)')!.click(); await nextTick();
-  expect(assistant.allowStructures).toBe(true);
-  expect(assistant.allowSearch).toBe(true);
-  root.querySelector<HTMLButtonElement>('[aria-label="工作区访问权限"]')!.click(); await nextTick();
-  root.querySelector<HTMLButtonElement>('[role="radio"]:nth-child(1)')!.click(); await nextTick();
-  expect(assistant.allowStructures).toBe(false);
-  expect(assistant.allowSearch).toBe(false);
+
 });
 
 it('groups and searches recent sessions in the title menu while keeping the conversation visible', async () => {

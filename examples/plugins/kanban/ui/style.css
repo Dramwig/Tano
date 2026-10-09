@@ -1,0 +1,28 @@
+:root { font: 14px/1.6 system-ui, sans-serif; color: #263d36; background: #f8faf8; color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { padding: 24px; max-width: 1100px; margin: auto; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+.eyebrow { color: #44836b; font-size: 11px; letter-spacing: .1em; }
+h1 { margin: 5px 0; font-size: 24px; }
+p { margin: 6px 0; color: #738078; }
+.progress { min-width: 140px; font-size: 12px; color: #486254; }
+progress { display: block; margin-top: 8px; width: 100%; accent-color: #257657; height: 7px; }
+form { display: flex; gap: 10px; margin-bottom: 24px; }
+input { flex: 1; min-width: 0; padding: 10px 14px; border: 1px solid #d9e2dc; border-radius: 7px; font: inherit; }
+button { border: 0; border-radius: 7px; padding: 10px 16px; background: #27654b; color: white; font: inherit; cursor: pointer; }
+button.secondary { background: #e8efea; color: #385648; }
+button:disabled { opacity: .55; cursor: default; }
+.lanes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.lane { padding: 15px; min-height: 310px; border: 1px solid #e0e6e1; border-radius: 10px; background: #f0f4f0; }
+.lane.doing { background: #eef3f6; }
+.lane.done { background: #eef5ef; }
+h2 { display: flex; justify-content: space-between; font-size: 14px; margin: 0 0 18px; }
+h2 span { color: #7b8b80; font-weight: 400; }
+article { background: white; border: 1px solid #e0e5e0; border-radius: 7px; box-shadow: 0 2px 3px #263d3606; padding: 15px; margin-bottom: 10px; cursor: grab; overflow-wrap: anywhere; }
+article strong { display: block; margin-bottom: 15px; font-size: 13px; }
+select { border: 0; border-radius: 4px; font: inherit; font-size: 11px; padding: 4px; background: #f0f4f0; color: #506557; }
+.empty { padding: 36px 0; text-align: center; font-size: 12px; color: #99a49b; }
+[role=alert] { color: #a23434; margin: 12px 0; }
+:focus-visible { outline: 2px solid #43866b; outline-offset: 3px; }
+@media (max-width: 520px) { main { padding: 14px; } header { display: block; } .progress { margin-top: 12px; } .lanes { grid-template-columns: 1fr; } .lane { min-height: 130px; } }

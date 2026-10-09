@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, CornerDownLeft, Repeat2, X } from 'lucide-vue-next'
 import type { PageSearchEditor } from '@tano/editor/search';
 import { defaultShortcutBindings, matchesShortcut, shortcutLabel } from '../shortcuts';
 import type { ShortcutBindings } from '../shortcuts';
+import { recordHelpCompleted } from '../help-checklist';
 
 const props = defineProps<{
   editor?: PageSearchEditor;
@@ -26,6 +27,7 @@ const notice = ref('');
 
 function refresh(scroll: boolean) {
   count.value = props.editor?.search(query.value, index.value, scroll) ?? 0;
+  if (scroll && query.value.trim() && count.value > 0) recordHelpCompleted('page-find');
   const clamped = Math.max(0, Math.min(index.value, count.value - 1));
   if (clamped !== index.value) {
     index.value = clamped;
@@ -58,6 +60,7 @@ async function replaceMatch(all = false) {
   );
   index.value = result.index;
   notice.value = result.replaced ? `已替换 ${result.replaced} 处` : '';
+  if (result.replaced > 0 && query.value !== replacement.value) recordHelpCompleted('page-replace');
   await nextTick();
   refresh(true);
 }
@@ -207,7 +210,7 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
 <style scoped>
 .page-search {
   position: absolute;
-  top: 102px;
+  top: calc(var(--topbar-height, 44px) + 4px);
   right: 20px;
   z-index: 25;
   width: min(300px, calc(100% - 32px));
@@ -329,7 +332,6 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
 }
 @media (max-width: 700px) {
   .page-search {
-    top: 66px;
     right: 16px;
   }
 }

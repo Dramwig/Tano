@@ -11,6 +11,7 @@ import type { VisualFontChoice } from './editor-font';
 import type { ToolbarMode } from './toolbar-preference';
 import type { ShortcutBindings } from './shortcuts';
 import type { UpdateCandidate, UpdatePhase, UpdateProgress, UpdateStatus } from './updates/controller';
+import type { PluginSettingsPage, PluginInteraction } from './plugins/workbench';
 
 /** Built-in pages and IDs registered by a product's settings extension. */
 export type SettingsPageId = 'preferences' | 'appearance' | 'editing' | 'shortcuts' | 'assistant' | 'workspace' | 'about' | (string & {});
@@ -36,6 +37,7 @@ export interface SettingsValues {
 }
 
 export interface SettingsSnapshot extends SettingsValues, SettingsPageContext {
+  pluginPages?: PluginSettingsPage[];
   workspaceSettings: WorkspaceSettings;
   workspacePages: { id: string; path: string }[];
   workspaceSettingsError: string;
@@ -61,6 +63,7 @@ export interface SettingsSnapshot extends SettingsValues, SettingsPageContext {
 }
 
 export type SettingsCommand =
+  | { type: 'plugin-invoke'; requestId: string; interaction: PluginInteraction }
   | { type: 'ready' }
   | { type: 'change'; key: keyof SettingsValues; value: SettingsValues[keyof SettingsValues] }
   | { type: 'assistant-refresh' }
@@ -76,6 +79,7 @@ export const SETTINGS_COMMAND = 'tano-settings-command';
 export const SETTINGS_STATE = 'tano-settings-state';
 export const SETTINGS_NAVIGATE = 'tano-settings-navigate';
 export const SETTINGS_RENDERED = 'tano-settings-rendered';
+export const SETTINGS_PLUGIN_RESULT = 'tano-settings-plugin-result';
 
 export function settingsWindowLabel() {
   return `settings-${getCurrentWindow().label}`;

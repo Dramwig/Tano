@@ -11,7 +11,7 @@ export const tableLayoutKey = new PluginKey('tanoTableLayout');
 
 function content(node: Node): string {
   return JSON.stringify(node.toJSON(), (key, value) =>
-    key === 'colwidth' || key === 'layoutId' || key === 'background' || key === 'foreground' ? undefined : value);
+    key === 'colwidth' || key === 'layoutId' || key === 'autoWidth' || key === 'background' || key === 'foreground' ? undefined : value);
 }
 
 export function sameMarkdownContent(before: Node, after: Node) {
@@ -19,7 +19,7 @@ export function sameMarkdownContent(before: Node, after: Node) {
   if (before.type !== after.type || before.childCount !== after.childCount ||
       before.text !== after.text || !Mark.sameSet(before.marks, after.marks)) return false;
   const attrs = (node: Node) => {
-    const { colwidth: _width, layoutId: _id, background: _background, foreground: _foreground, ...rest } = node.attrs;
+    const { colwidth: _width, layoutId: _id, autoWidth: _auto, background: _background, foreground: _foreground, ...rest } = node.attrs;
     return JSON.stringify(rest);
   };
   if (attrs(before) !== attrs(after)) return false;
@@ -51,6 +51,7 @@ export function tablesInDocument(doc: Node) {
     });
     if (widths.length) tables.push({ node, pos, layout: {
       id: node.attrs.layoutId ?? '', widths,
+      ...(node.attrs.autoWidth ? { autoWidth: true as const } : {}),
       ...(backgrounds.some(row => row.some(Boolean)) ? { backgrounds } : {}),
       ...(foregrounds.some(row => row.some(Boolean)) ? { foregrounds } : {}),
       anchor: {
@@ -93,7 +94,23 @@ export function tableLayouts(
   return new Plugin({
     key: tableLayoutKey,
     filterTransaction(tr, state) {
-      if (tr.docChanged && columnResizingPluginKey.getState(state)?.dragging) closeHistory(tr);
+      const resizing = columnResizingPluginKey.getState(state);
+      if (tr.docChanged && resizing?.dragging) {
+        closeHistory(tr);
+        // Commit the mode switch with the resize so undo restores automatic fitting.
+        const cell = state.doc.resolve(resizing.activeHandle);
+        const pos = tr.mapping.map(cell.before(-1));
+        const table = tr.doc.nodeAt(pos);
+        if (table?.type.name === 'table' && table.attrs.autoWidth) {
+          tr.setNodeMarkup(pos, undefined, { ...table.attrs, autoWidth: false });
+          // Include the other columns in the same undo step. Their automatic widths
+          // may change after undo; redo must still restore the original fixed table.
+          for (const offset of new Set(TableMap.get(table).map)) {
+            const cell = table.nodeAt(offset)!;
+            tr.setNodeMarkup(pos + 1 + offset, undefined, cell.attrs);
+          }
+        }
+      }
       return true;
     },
     appendTransaction(transactions, _previous, state) {
@@ -114,9 +131,10 @@ export function tableLayouts(
           ? table.layout.id : matched && !used.has(matched.id) ? matched.id : crypto.randomUUID();
         used.add(id);
         orphaned = orphaned.filter(item => item.id !== id);
-        if (table.node.attrs.layoutId !== id)
-          tr.setNodeMarkup(table.pos, undefined, { ...table.node.attrs, layoutId: id });
         const restoring = matched && (supplied || table.node.attrs.layoutId !== id);
+        const autoWidth = restoring ? matched.autoWidth === true : table.node.attrs.autoWidth;
+        if (table.node.attrs.layoutId !== id || table.node.attrs.autoWidth !== autoWidth)
+          tr.setNodeMarkup(table.pos, undefined, { ...table.node.attrs, layoutId: id, autoWidth });
         const widths = restoring ? matched.widths : table.layout.widths;
         const map = TableMap.get(table.node);
         for (const offset of new Set(map.map)) {
@@ -142,10 +160,12 @@ export function tableLayouts(
           if (previous.doc.eq(view.state.doc) && !finishedDrag) return;
           const tables = tablesInDocument(view.state.doc).map(item => item.layout);
           if (tables.some(table => !table.id)) return;
-          if (tables.some(table => table.backgrounds || table.foregrounds || table.widths.some(width => width !== defaultTableColumnWidth))) publishing = true;
+          if (tables.some(table => table.backgrounds || table.foregrounds || !table.autoWidth)) publishing = true;
           if (!publishing || readonly() || columnResizingPluginKey.getState(view.state)?.dragging) return;
           const customized = tables.filter(table => saved.some(item => item.id === table.id) ||
-            table.backgrounds || table.foregrounds || table.widths.some(width => width !== defaultTableColumnWidth));
+            table.backgrounds || table.foregrounds || !table.autoWidth)
+            // Container measurements are presentation state, never portable layout changes.
+            .map(table => table.autoWidth ? { ...table, widths: table.widths.map(() => defaultTableColumnWidth) } : table);
           const next = [...customized, ...orphaned];
           const serialized = JSON.stringify(next);
           if (serialized === lastPublished || serialized === JSON.stringify(saved)) return;

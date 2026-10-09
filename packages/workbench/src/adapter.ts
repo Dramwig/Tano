@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { open as chooseDirectory } from '@tauri-apps/plugin-dialog';
 import type {
   FileEntry,
+  FileChangeRequest,
   FileSnapshot,
   Workspace,
   WorkspaceAdapter,
@@ -21,6 +22,7 @@ import {
   isWorkspaceInternalPath,
   newShortId,
   isObjectPath,
+  isMarkdown,
   parseObject,
 } from '@tano/protocol';
 import { demoFiles } from './demo';
@@ -228,6 +230,23 @@ export class DemoAdapter implements WorkspaceAdapter {
       throw e;
     }
   }
+  async changeFile(request: FileChangeRequest): Promise<WriteResult> {
+    const workspace = await this.refresh();
+    if (workspace.id !== request.workspaceId) throw new Error('工作区已切换');
+    if (validatePath(request.path) || !isMarkdown(request.path) ||
+        (request.destination !== undefined && (validatePath(request.destination) || !isMarkdown(request.destination))))
+      throw new Error('只能操作普通 Markdown 文档');
+    const file = this.files[request.path];
+    if (!file) return { status: 'missing' };
+    if (file.id !== request.fileId) throw new Error('文件身份已变化，请重新审阅');
+    const snapshot = await this.read(request.path);
+    if (snapshot.hash !== request.expectedHash) return { status: 'conflict', snapshot };
+    // Hashing yields: verify the in-memory source again immediately before mutation.
+    if (this.files[request.path] !== file || file.content !== snapshot.content) throw new Error('文件已变化，请重新审阅');
+    if (request.destination !== undefined) await this.rename(request.path, request.destination);
+    else await this.remove(request.path, { id: file.id, content: snapshot.content });
+    return { status: 'saved', snapshot };
+  }
   async rename(from: string, to: string) {
     this.check(from);
     this.check(to);
@@ -286,9 +305,11 @@ export class DemoAdapter implements WorkspaceAdapter {
       throw error;
     }
   }
-  async remove(path: string) {
+  async remove(path: string, expected?: { id: string; content: string }) {
     this.check(path);
     await this.rememberIds();
+    if (expected && (this.files[path]?.id !== expected.id || this.files[path]?.content !== expected.content))
+      throw new Error('文件已变化，请重新审阅');
     const previousFiles = this.files;
     const previousFolders = this.folders;
     const directory = this.folders.includes(path);
@@ -366,6 +387,7 @@ export class NativeAdapter implements WorkspaceAdapter {
   duplicate = (workspaceId: string, path: string) =>
     invoke<string>('duplicate_workspace_entry', { workspaceId, path });
   remove = (path: string) => invoke<void>('remove_document', { path });
+  changeFile = (request: FileChangeRequest) => invoke<WriteResult>('change_assistant_file', { request });
   reveal = () => invoke<void>('reveal_workspace');
   async watch(callback: () => void) {
     return listen('workspace-changed', callback);

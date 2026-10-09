@@ -75,7 +75,7 @@ it('rejects conflicts and bindings that interfere with typing', () => {
 });
 
 it('persists bindings and disabled actions in device preferences', () => {
-  const bindings = { ...defaultShortcutBindings, findDocument: 'Mod+Shift+P', save: null };
+  const bindings = { ...defaultShortcutBindings, findDocument: 'Mod+Shift+J', save: null };
   saveShortcutBindings(bindings);
   expect(readShortcutBindings()).toEqual(bindings);
   expect(matchesShortcut(shortcut('s', { ctrlKey: true }), 'save', readShortcutBindings())).toBe(false);
@@ -91,6 +91,13 @@ it('recovers from corrupt preferences and disables ambiguous saved conflicts', (
   const conflicting = parseShortcutBindings({ save: 'Mod+K' });
   expect(conflicting.save).toBeNull();
   expect(conflicting.findDocument).toBeNull();
+});
+
+it('preserves an existing custom shortcut when upgrading to the command palette', () => {
+  const upgraded = parseShortcutBindings({ findDocument: 'Mod+Shift+P' });
+  expect(upgraded.findDocument).toBe('Mod+Shift+P');
+  expect(upgraded.commandPalette).toBeNull();
+  expect(matchesShortcut(shortcut('p', { ctrlKey: true, shiftKey: true }), 'commandPalette')).toBe(true);
 });
 
 it('keeps preferences usable when device storage is unavailable', () => {

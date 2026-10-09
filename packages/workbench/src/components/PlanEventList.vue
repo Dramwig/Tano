@@ -2,6 +2,7 @@
 import { onBeforeUnmount, ref, TransitionGroup, watch } from 'vue';
 import { animate } from 'motion/mini';
 import { CalendarDays } from 'lucide-vue-next';
+import { taskReview } from '@tano/protocol';
 import type { ObjectRecord } from '../workspace-objects';
 import { hasEventTime, isCheckableEvent, isEventCompleted, localDayKey } from '../calendar';
 import { planKey, planSourceLabel } from '../personal-plans';
@@ -14,15 +15,24 @@ const props = defineProps<{
   pending: string[];
   canEdit?: (record: ObjectRecord) => boolean;
   showDate?: boolean;
+  contextKey?: string;
+  contextMenuId?: string;
 }>();
 const emit = defineEmits<{
   select: [id: string];
   complete: [record: ObjectRecord, completed: boolean];
+  context: [record: ObjectRecord, event: MouseEvent | KeyboardEvent];
 }>();
 const completionFeedback = ref<Record<string, boolean>>({});
 const leavingCount = ref(0);
 const leavingAnimations = new Map<Element, ReturnType<typeof animate>>();
 const enteringAnimations = new Map<Element, ReturnType<typeof animate>>();
+function contextKeydown(record: ObjectRecord, event: KeyboardEvent) {
+  if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  emit('context', record, event);
+}
 watch(() => [...props.pending], pending => {
   for (const key of Object.keys(completionFeedback.value)) {
     if (!pending.includes(key)) delete completionFeedback.value[key];
@@ -31,18 +41,24 @@ watch(() => [...props.pending], pending => {
 function visualCompleted(record: ObjectRecord) {
   return completionFeedback.value[planKey(record)] ?? isEventCompleted(record);
 }
+function completionLocked(record: ObjectRecord) {
+  const review = taskReview(record.object);
+  return !!review && review.state !== 'approved';
+}
 function complete(record: ObjectRecord, event: Event) {
   const input = event.target as HTMLInputElement;
   const completed = input.checked;
   // Reflect persisted state until the hash-checked write succeeds, including on failure.
   input.checked = isEventCompleted(record);
   const key = planKey(record);
-  if (props.disabled || props.canEdit?.(record) === false || props.pending.includes(key)) return;
+  if (props.disabled || props.canEdit?.(record) === false || completionLocked(record) || props.pending.includes(key)) return;
   completionFeedback.value[key] = completed;
   emit('complete', record, completed);
 }
 function cancelEnter(element: Element) {
-  enteringAnimations.get(element)?.stop();
+  // Cancellation must also work after the list becomes hidden or detached.
+  // stop() commits WAAPI styles, which throws for an element that is not rendered.
+  enteringAnimations.get(element)?.cancel();
   enteringAnimations.delete(element);
 }
 function enterRow(element: Element, done: () => void) {
@@ -81,7 +97,7 @@ function leaveRow(element: Element, done: () => void) {
   const finish = () => {
     if (leavingAnimations.get(row) !== animation) return;
     leavingAnimations.delete(row);
-    animation.stop();
+    animation.cancel();
     leavingCount.value = Math.max(0, leavingCount.value - 1);
     done();
   };
@@ -90,14 +106,14 @@ function leaveRow(element: Element, done: () => void) {
 function cancelLeave(element: Element) {
   const animation = leavingAnimations.get(element);
   leavingAnimations.delete(element);
-  if (animation) { animation.stop(); leavingCount.value = Math.max(0, leavingCount.value - 1); }
+  if (animation) { animation.cancel(); leavingCount.value = Math.max(0, leavingCount.value - 1); }
   (element as HTMLElement).style.removeProperty('pointer-events');
   (element as HTMLElement).style.removeProperty('opacity');
   element.removeAttribute('inert');
 }
 onBeforeUnmount(() => {
-  for (const animation of leavingAnimations.values()) animation.stop();
-  for (const animation of enteringAnimations.values()) animation.stop();
+  for (const animation of leavingAnimations.values()) animation.cancel();
+  for (const animation of enteringAnimations.values()) animation.cancel();
   leavingAnimations.clear();
   enteringAnimations.clear();
 });
@@ -132,19 +148,21 @@ function eventTime(record: ObjectRecord, day: Date) {
       v-for="record in records"
       :key="planKey(record)"
       :data-plan-layout="planKey(record)"
-      :class="{ completed: visualCompleted(record) }"
+      :class="{ completed: visualCompleted(record), 'context-target': contextKey === planKey(record) }"
       :aria-busy="pending.includes(planKey(record))"
       :data-completion-transition="completionFeedback[planKey(record)] !== undefined || undefined"
+      @contextmenu.prevent="emit('context', record, $event)"
+      @keydown="contextKeydown(record, $event)"
     >
       <label
         v-if="isCheckableEvent(record)"
         class="plan-completion-control"
-        :class="{ 'is-completed': visualCompleted(record), 'is-readonly': disabled || canEdit?.(record) === false }"
+        :class="{ 'is-completed': visualCompleted(record), 'is-readonly': disabled || canEdit?.(record) === false || completionLocked(record) }"
       >
         <input
           type="checkbox"
           :checked="isEventCompleted(record)"
-          :disabled="disabled || canEdit?.(record) === false || pending.includes(planKey(record))"
+          :disabled="disabled || canEdit?.(record) === false || completionLocked(record) || pending.includes(planKey(record))"
           :aria-label="`${isEventCompleted(record) ? '标记未完成' : '完成'}：${record.object.name}`"
           @change="complete(record, $event)"
         />
@@ -161,7 +179,14 @@ function eventTime(record: ObjectRecord, day: Date) {
         </svg>
       </label>
       <CalendarDays v-else :size="15" class="plan-event-icon" aria-hidden="true" />
-      <button type="button" class="plan-event-detail" @click="emit('select', planKey(record))">
+      <button
+        type="button"
+        class="plan-event-detail"
+        aria-haspopup="menu"
+        :aria-expanded="contextKey === planKey(record)"
+        :aria-controls="contextKey === planKey(record) ? contextMenuId : undefined"
+        @click="emit('select', planKey(record))"
+      >
         <strong><span class="plan-event-title">{{ record.object.name }}</span></strong>
         <small
           >{{ planSourceLabel(record) }} · {{ isEventCompleted(record) ? '已完成 · ' : '' }}{{ eventTime(record, date) }}{{ record.object.properties.due ? ` · 截止 ${record.object.properties.due}` : '' }}</small
@@ -187,7 +212,8 @@ function eventTime(record: ObjectRecord, day: Date) {
   padding: 8px 5px;
   border-radius: 6px;
 }
-.plan-events li:hover {
+.plan-events li:hover,
+.plan-events li.context-target {
   background: var(--hover);
 }
 .plan-completion-control {

@@ -123,7 +123,25 @@ export function activeInlineSourceRange(state: Pick<EditorState, 'selection'>, p
   const spans = activeMarkSpans(state, preferredMark);
   if (!spans.length) return null;
   const chosen = spans.sort((a, b) => a.to - a.from - (b.to - b.from))[0]!;
-  return { from: chosen.from, to: chosen.to };
+  const parent = state.selection.$from.parent;
+  const start = state.selection.$from.start();
+  const content = parent.cut(chosen.from - start, chosen.to - start);
+  let hasAsteriskMark = false;
+  content.forEach(node => {
+    if (node.marks.some(mark => ['strong', 'emphasis'].includes(mark.type.name) && mark.attrs.marker === '*'))
+      hasAsteriskMark = true;
+  });
+  let { from, to } = chosen;
+  if (hasAsteriskMark) parent.forEach((node, offset) => {
+    if (!node.isText || node.marks.length) return;
+    // Reveal the complete delimiter run so **text* can become **text** with
+    // one more keystroke, including after saving and reopening the document.
+    if (start + offset + node.nodeSize === chosen.from)
+      from -= /\*+$/.exec(node.text!)?.[0].length ?? 0;
+    if (start + offset === chosen.to)
+      to += /^\*+/.exec(node.text!)?.[0].length ?? 0;
+  });
+  return { from, to };
 }
 
 /** Position between adjacent fences, used when the user starts typing a body line. */

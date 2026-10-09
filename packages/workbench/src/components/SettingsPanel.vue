@@ -21,6 +21,8 @@ import {
   X,
 } from 'lucide-vue-next';
 import type { SettingsPage, SettingsPageContext } from '../runtime';
+import type { PluginSettingsPage, PluginInteraction } from '../plugins/workbench';
+import PluginSurface from './PluginSurface.vue';
 import UpdatePanel from './UpdatePanel.vue';
 import AssistantSettings from './AssistantSettings.vue';
 import {
@@ -41,6 +43,7 @@ import WorkspaceDeletionSettings from './WorkspaceDeletionSettings.vue';
 import ShortcutSettings from './ShortcutSettings.vue';
 import { defaultShortcutBindings } from '../shortcuts';
 import type { ShortcutBindings } from '../shortcuts';
+import { useHelpPreferences } from '../help-guidance';
 
 type Page = string;
 type Action =
@@ -60,6 +63,8 @@ const props = defineProps<{
   activeFile?: SettingsPageContext['activeFile'];
   windowed?: boolean;
   extraPages?: SettingsPage[];
+  pluginPages?: PluginSettingsPage[];
+  executePlugin?: (interaction: PluginInteraction) => Promise<void>;
   mode: 'demo' | 'web' | 'local';
   native: boolean;
   mobile: boolean;
@@ -110,6 +115,7 @@ const emit = defineEmits<{
   'workspace-delete': [workspaceId: string];
 }>();
 const rules = computed(() => props.capabilities ?? defaultCapabilities);
+const { preferences: helpPreferences, setEnabled: setHelpEnabled } = useHelpPreferences();
 const display = computed(() => props.editorPreferences ?? defaultEditorPreferences);
 function displayOptionActive(key: keyof EditorPreferences) {
   return display.value[key] && (key !== 'previewMathWhileEditing' || props.revealMarkdown);
@@ -145,7 +151,7 @@ const pages = [
     label: '外观设置',
     group: '个人偏好',
     icon: Palette,
-    terms: '外观 主题 白天 黑夜 深色 浅色 跟随系统 字体 系统字体 衬线字体 等宽字体 Mono Maple 自定义字体 字号 字体大小 页面内标题 属性 文档属性 显示目录 文档大纲 目录位置 左侧 右侧',
+    terms: '外观 主题 白天 黑夜 深色 浅色 跟随系统 字体 系统字体 衬线字体 等宽字体 Mono Maple 自定义字体 字号 字体大小 页面内标题 属性 文档属性 显示目录 文档大纲 目录位置 左侧 右侧 帮助 上手 引导 气泡 偶尔显示使用提示',
   },
   {
     id: 'editing',
@@ -193,13 +199,14 @@ const pages = [
 ] as const;
 const visiblePages = computed(() => {
   const query = search.value.trim().toLocaleLowerCase();
-  return [...pages, ...(props.extraPages ?? []).map(item => ({ ...item, icon: UserRound }))].filter(
+  return [...pages, ...(props.extraPages ?? []).map(item => ({ ...item, icon: item.icon ?? UserRound })),
+    ...(props.pluginPages ?? []).map(item => ({ id: item.view.key, label: item.view.label, group: '插件设置', terms: item.view.pluginName, icon: UserRound }))].filter(
     (item) =>
       `${item.group} ${item.label} ${item.terms}`.toLocaleLowerCase().includes(query),
   );
 });
 const navigationGroups = computed(() =>
-  ['个人偏好', '工作区设置', '帮助']
+  ['个人偏好', '工作区设置', '插件设置', '帮助']
     .map((label) => ({ label, pages: visiblePages.value.filter((item) => item.group === label) }))
     .filter((group) => group.pages.length),
 );
@@ -628,6 +635,22 @@ function customFontInput(event: Event) {
               </div>
             </div>
           </section>
+          <section v-if="page === 'appearance'" class="settings-section" aria-label="使用提示">
+            <h3>使用提示</h3>
+            <div class="settings-card">
+              <div class="settings-row">
+                <div>
+                  <strong>偶尔显示使用提示</strong>
+                  <p>在你停下来时，在帮助按钮上方显示简短的用法提示。关闭后仍可手动查看帮助。</p>
+                </div>
+                <button type="button" class="settings-switch" :class="{ on: helpPreferences.enabled }"
+                  role="switch" :aria-checked="helpPreferences.enabled" aria-label="偶尔显示使用提示"
+                  @click="setHelpEnabled(!helpPreferences.enabled)">
+                  <span />
+                </button>
+              </div>
+            </div>
+          </section>
         </div>
 
         <AssistantSettings v-else-if="page === 'assistant'" @changed="emit('assistant-changed')" />
@@ -844,6 +867,14 @@ function customFontInput(event: Event) {
           <ShortcutSettings :bindings="shortcuts ?? defaultShortcutBindings" @change="emit('update:shortcuts', $event)" />
         </div>
 
+        <PluginSurface
+          v-else-if="pluginPages?.some(item => item.view.key === page) && executePlugin"
+          :key="page"
+          :view="pluginPages.find(item => item.view.key === page)!.view"
+          :workspace-id="pluginPages.find(item => item.view.key === page)!.workspaceId"
+          :runtime="pluginPages.find(item => item.view.key === page)!.runtime"
+          :execute="executePlugin"
+        />
         <component
           v-else-if="extraPages?.some(item => item.id === page)"
           :is="extraPages?.find(item => item.id === page)?.component"

@@ -18,6 +18,7 @@ import type { CommentAnchor, ReferenceIdentity } from '@tano/protocol';
 import type { SuggestionDecorations } from '@tano/protocol';
 import type { CommentGeometry } from '@tano/editor/comment-projection';
 import { sourceStyleRanges } from '@tano/editor/source-highlight';
+import type { ModeSelection } from '@tano/editor/mode-selection';
 import { splitFrontmatter } from '@tano/editor/syntax';
 import { referenceInsertionPoint } from '@tano/editor/document-links';
 import { textSearchRanges } from '@tano/editor/search';
@@ -45,6 +46,7 @@ const props = defineProps<{
   suggestionMarks?: SuggestionDecorations;
 }>();
 const emit = defineEmits<{
+  ready: [];
   'update:modelValue': [value: string];
   files: [files: File[], requireImage: boolean, position: number];
   selectionChange: [selected: boolean];
@@ -142,6 +144,7 @@ onMounted(() => {
       ],
     }),
   });
+  emit('ready');
 });
 
 onBeforeUnmount(() => { view?.destroy(); view = undefined; });
@@ -324,7 +327,29 @@ function replaceSearch(query: string, replacement: string, index: number | 'all'
     .findIndex(match => match.from >= selected[0]!.from + replacement.length);
   return { replaced: selected.length, index: Math.max(0, next) };
 }
+function captureModeSelection(): ModeSelection | null {
+  if (!view) return null;
+  const { anchor, head } = view.state.selection.main;
+  return { anchor, head };
+}
+function restoreModeSelection(selection: ModeSelection, focus = true) {
+  if (!view) return;
+  const clamp = (position: number) => Math.max(0, Math.min(position, view!.state.doc.length));
+  const anchor = clamp(selection.anchor), head = clamp(selection.head);
+  view.dispatch({
+    selection: { anchor, head },
+    effects: EditorView.scrollIntoView(head, { y: 'nearest' }),
+  });
+  if (focus) view.focus();
+}
 defineExpose({
+  captureModeSelection,
+  restoreModeSelection,
+  modeCursorTop: () => view?.coordsAtPos(view.state.selection.main.head)?.top ?? null,
+  applyPluginEdit: (before: string, after: string) => {
+    if (!view || props.readonly || view.state.doc.toString() !== before) throw new Error('编辑器内容已变化，请重新读取文档');
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: after }, annotations: isolateHistory.of('full') });
+  },
   search,
   replaceSearch,
   searchSelection: () => view ? view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to) : '',

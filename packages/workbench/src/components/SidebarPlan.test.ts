@@ -12,7 +12,7 @@ import { usePlanStore } from '../stores/plans';
 import { BrowserPersonalPlans } from '../personal-plans';
 import { animate } from 'motion/mini';
 
-vi.mock('motion/mini', () => ({ animate: vi.fn(() => ({ stop: vi.fn(), finished: Promise.resolve() })) }));
+vi.mock('motion/mini', () => ({ animate: vi.fn(() => ({ stop: vi.fn(), cancel: vi.fn(), finished: Promise.resolve() })) }));
 
 let app: App;
 let root: HTMLElement;
@@ -545,7 +545,7 @@ it('persists completion immediately while keeping the source row visible until i
   let finishFade!: () => void;
   const finished = new Promise<void>(resolve => { finishFade = resolve; });
   row.animate = vi.fn();
-  vi.mocked(animate).mockReturnValueOnce({ finished, stop: vi.fn() } as unknown as ReturnType<typeof animate>);
+  vi.mocked(animate).mockReturnValueOnce({ finished, stop: vi.fn(), cancel: vi.fn() } as unknown as ReturnType<typeof animate>);
   control<HTMLInputElement>('完成：动画完成前保留事项').click();
   await vi.waitFor(() => expect(store.objects[0]!.object.properties.completed).toBe(true));
   expect(JSON.parse(store.objects[0]!.snapshot.content).properties.completed).toBe(true);

@@ -24,6 +24,36 @@ afterEach(async () => {
   await nextTick();
 });
 
+it('preserves source carets and backward selections across mode restoration without edits', async () => {
+  const markdown = '---\ntitle: Example\n---\n\n# 标题\n\n第一段重复\n\n第二段 **加粗文字**\n';
+  const { editor, value, errors } = await mount(markdown);
+  const position = markdown.indexOf('加粗文字') + 2;
+  editor.value!.restoreModeSelection({ anchor: position, head: position });
+  expect(editor.value!.captureModeSelection()).toEqual({ anchor: position, head: position });
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  expect(view.hasFocus()).toBe(true);
+  expect(view.state.selection.$head.parent.textContent).toContain('**加粗文字**');
+  expect(view.state.doc.textBetween(view.state.selection.head - 2, view.state.selection.head)).toBe('加粗');
+  expect(value.value).toBe(markdown);
+  expect(editor.value!.canUndo()).toBe(false);
+  const selection = { anchor: position, head: markdown.indexOf('第一段') + 1 };
+  editor.value!.restoreModeSelection(selection);
+  expect(editor.value!.captureModeSelection()).toEqual(selection);
+  expect(view.state.selection.anchor).toBeGreaterThan(view.state.selection.head);
+  expect(value.value).toBe(markdown);
+  expect(errors).toEqual([]);
+});
+
+it('maps a moved prose caret back to its new source position', async () => {
+  const markdown = '重复文字\n\n重复文字\n';
+  const { editor } = await mount(markdown);
+  editor.value!.restoreModeSelection({ anchor: 2, head: 2 });
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  const position = view.state.doc.firstChild!.nodeSize + 3;
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, position)));
+  expect(editor.value!.captureModeSelection()).toEqual({ anchor: 8, head: 8 });
+});
+
 it('searches across formatting in readonly prose without editing or moving the caret', async () => {
   const { value, editor, readonly, errors } = await mount('同**页** 同页\n\n其他正文\n');
   readonly.value = true;
@@ -179,6 +209,179 @@ async function mountPanel(content: string) {
   await nextTick();
   return result;
 }
+
+it.each(['*', '**', '正文*', '正文**', '2 * 3', '*.md'])(
+  'saves keyboard-entered asterisks without adding escapes: %s', async (text) => {
+    const { value, editor, errors } = await mount('');
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    view.focus();
+    let typed = '';
+    for (const character of text) {
+      const { from, to } = view.state.selection;
+      const handled = view.someProp('handleTextInput', handler =>
+        handler(view, from, to, character, () => view.state.tr.insertText(character, from, to)));
+      if (!handled) view.dispatch(view.state.tr.insertText(character, from, to));
+      typed += character;
+      expect(value.value).not.toContain('\\*');
+      if (!/\s$/.test(typed)) expect(value.value).toBe(`${typed}\n`);
+    }
+    view.dom.blur();
+    await nextTick();
+    expect(value.value).toBe(`${text}\n`);
+    expect(errors).toEqual([]);
+  },
+);
+
+it.each([
+  ['*斜体*', 'emphasis', '*斜体*\n'],
+  ['**粗体**', 'strong', '**粗体**\n'],
+  ['* 项目', 'bullet_list', '* 项目\n'],
+])('keeps Markdown input rules working for %s', async (text, type, expected) => {
+  const { value, editor, errors } = await mount('');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.focus();
+  for (const character of text) {
+    const { from, to } = view.state.selection;
+    const handled = view.someProp('handleTextInput', handler =>
+      handler(view, from, to, character, () => view.state.tr.insertText(character, from, to)));
+    if (!handled) view.dispatch(view.state.tr.insertText(character, from, to));
+    expect(value.value).not.toContain('\\*');
+  }
+  expect(value.value).toBe(expected);
+  view.dom.blur();
+  await nextTick();
+  expect(type === 'bullet_list'
+    ? view.state.doc.firstChild!.type.name === type
+    : view.state.doc.firstChild!.firstChild!.marks.some(mark => mark.type.name === type)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+it.each(['**123123*', '***123123*'])(
+  'previews partial emphasis while typing and promotes it when another star closes bold: %s', async text => {
+    const { value, editor, errors } = await mount('');
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    const type = (text: string) => {
+      for (const character of text) {
+        const { from, to } = view.state.selection;
+        const handled = view.someProp('handleTextInput', handler =>
+          handler(view, from, to, character, () => view.state.tr.insertText(character, from, to)));
+        if (!handled) view.dispatch(view.state.tr.insertText(character, from, to));
+      }
+    };
+    view.focus();
+    type(text);
+    expect(root.querySelector('[data-tano-live-inline-source]')?.textContent).toBe(text);
+    expect(root.querySelector('.tano-live-source-emphasis')?.textContent).toBe('123123');
+    expect(value.value).toBe(`${text}\n`);
+    type('*');
+    expect(root.querySelector('.tano-live-source-strong')?.textContent).toBe('123123');
+    expect(value.value).toBe(`${text}*\n`);
+    view.dom.blur();
+    await nextTick();
+    expect(root.querySelector('strong')?.textContent).toBe('123123');
+    expect(value.value).toBe(`${text}*\n`);
+    expect(errors).toEqual([]);
+  },
+);
+
+it('reveals all stars when resuming partial emphasis from a saved document', async () => {
+  const { value, editor, errors } = await mount('**123123*\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  expect(root.querySelector('em')?.textContent).toBe('123123');
+  view.focus();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 4)));
+  await nextTick();
+  expect(root.querySelector('[data-tano-live-inline-source]')?.textContent).toBe('**123123*');
+  const end = view.state.selection.$from.end();
+  view.dispatch(view.state.tr.insertText('*', end));
+  expect(root.querySelector('.tano-live-source-strong')?.textContent).toBe('123123');
+  view.dom.blur();
+  await nextTick();
+  expect(root.querySelector('strong')?.textContent).toBe('123123');
+  expect(value.value).toBe('**123123**\n');
+  expect(errors).toEqual([]);
+});
+
+it('keeps four-star delimiters after blur and subsequent document transactions', async () => {
+  const { value, editor, errors } = await mount('');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.focus();
+  for (const character of '****test****') {
+    const { from, to } = view.state.selection;
+    const handled = view.someProp('handleTextInput', handler =>
+      handler(view, from, to, character, () => view.state.tr.insertText(character, from, to)));
+    if (!handled) view.dispatch(view.state.tr.insertText(character, from, to));
+  }
+  expect(value.value).toBe('****test****\n');
+  view.dom.blur();
+  await nextTick();
+  expect(value.value).toBe('****test****\n');
+  view.dispatch(view.state.tr.insert(view.state.doc.content.size,
+    view.state.schema.nodes.paragraph!.create(null, view.state.schema.text('下一段'))));
+  await nextTick();
+  expect(value.value).toBe('****test****\n\n下一段\n');
+  view.dispatch(view.state.tr.insertText('继续', view.state.doc.content.size - 1));
+  await nextTick();
+  expect(value.value).toBe('****test****\n\n下一段继续\n');
+  expect(errors).toEqual([]);
+});
+
+it('preserves four-star source after reopening and editing another paragraph', async () => {
+  const source = '****test****\n\n下一段\n';
+  const { value, editor, revealMarkdown, errors } = await mount(source);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.dispatch(view.state.tr.insertText('继续', view.state.doc.content.size - 1));
+  await nextTick();
+  expect(value.value).toBe('****test****\n\n下一段继续\n');
+  revealMarkdown.value = false;
+  await nextTick();
+  revealMarkdown.value = true;
+  await nextTick();
+  expect(value.value).toBe('****test****\n\n下一段继续\n');
+  expect(errors).toEqual([]);
+});
+
+it('can edit one retained emphasis field back to normal bold without changing its sibling', async () => {
+  const { value, editor, errors } = await mount('****first**** 和 ****second****\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  const first = view.state.doc.firstChild!.firstChild!;
+  const secondPosition = 1 + first.nodeSize + ' 和 '.length;
+  view.focus();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, secondPosition + 5)));
+  root.querySelectorAll('[data-tano-live-inline-source]')[1]!
+    .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+  const second = view.state.doc.nodeAt(secondPosition)!;
+  view.dispatch(view.state.tr.insertText('**edited**', secondPosition + 1, secondPosition + second.nodeSize - 1));
+  view.dom.blur();
+  await nextTick();
+  expect(value.value).toBe('****first**** 和 **edited**\n');
+  expect(root.querySelector('strong')?.textContent).toBe('edited');
+  expect(editor.value!.undoLastChange()).toBe(true);
+  await nextTick();
+  expect(value.value).toBe('****first**** 和 ****second****\n');
+  expect(errors).toEqual([]);
+});
+
+it('can undo partial emphasis and enter its closing star again', async () => {
+  const { value, editor, errors } = await mount('**123123\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.focus();
+  view.dispatch(view.state.tr.setSelection(TextSelection.atEnd(view.state.doc)));
+  const typeStar = () => {
+    const { from, to } = view.state.selection;
+    const handled = view.someProp('handleTextInput', handler =>
+      handler(view, from, to, '*', () => view.state.tr.insertText('*', from, to)));
+    if (!handled) view.dispatch(view.state.tr.insertText('*', from, to));
+  };
+  typeStar();
+  expect(root.querySelector('.tano-live-source-emphasis')?.textContent).toBe('123123');
+  expect(editor.value!.undoLastChange()).toBe(true);
+  expect(value.value).toBe('**123123\n');
+  typeStar();
+  expect(root.querySelector('.tano-live-source-emphasis')?.textContent).toBe('123123');
+  expect(value.value).toBe('**123123*\n');
+  expect(errors).toEqual([]);
+});
 
 it.each(['正文\n', '- 第一个项目\n', '```ts\nconst value = 1;\n```\n'])(
   'keeps unhandled Tab and Shift-Tab inside prose: %s', async (source) => {
@@ -2253,7 +2456,7 @@ it('opens only an Alt-clicked wiki link as editable inline source', async () => 
   expect(errors).toEqual([]);
 });
 
-it('keeps unfinished Markdown markers editable after the inline source loses focus', async () => {
+it('renders partial emphasis after the inline source loses focus without escaping the extra star', async () => {
   const { value, errors } = await mount('1231 **124234**\n');
   const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
   prose.focus();
@@ -2268,8 +2471,10 @@ it('keeps unfinished Markdown markers editable after the inline source loses foc
   await vi.waitFor(() => expect(value.value).toContain('1231 **124234*'));
   prose.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
   await nextTick();
-  expect(prose.querySelector('span[data-tano-live-inline-source]')?.textContent).toBe('**124234*');
-  expect(prose.querySelector('p')?.firstChild?.textContent).toBe('1231 ');
+  expect(prose.querySelector('span[data-tano-live-inline-source]')).toBeNull();
+  expect(prose.querySelector('em')?.textContent).toBe('124234');
+  expect(prose.querySelector('p')?.firstChild?.textContent).toBe('1231 *');
+  expect(value.value).toBe('1231 **124234*\n');
   expect(errors).toEqual([]);
 });
 

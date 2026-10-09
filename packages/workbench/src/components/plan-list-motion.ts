@@ -13,7 +13,10 @@ export function createPlanListMotion(root: HTMLElement) {
   let disposed = false;
 
   function clear(element: HTMLElement, layout: Layout) {
-    layout.motion?.stop();
+    // A plugin can update tasks while this sidebar is hidden. WAAPI cannot commit
+    // the current animation styles for a hidden/detached target; just cancel it.
+    if (!element.isConnected || !element.getClientRects().length) layout.motion?.cancel();
+    else layout.motion?.stop();
     element.style.removeProperty('translate');
   }
 

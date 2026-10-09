@@ -8,7 +8,7 @@ let root: HTMLElement;
 let controller: ReturnType<typeof createPlanListMotion>;
 let resized: () => void;
 let shown = true;
-const animations: { stop: ReturnType<typeof vi.fn>; finish: () => void }[] = [];
+const animations: { stop: ReturnType<typeof vi.fn>; cancel: ReturnType<typeof vi.fn>; finish: () => void }[] = [];
 
 beforeEach(() => {
   shown = true;
@@ -22,9 +22,9 @@ beforeEach(() => {
   vi.mocked(animate).mockReset().mockImplementation(() => {
     let finish!: () => void;
     const finished = new Promise<void>(resolve => { finish = resolve; });
-    const stop = vi.fn();
-    animations.push({ stop, finish });
-    return { finished, stop } as unknown as ReturnType<typeof animate>;
+    const stop = vi.fn(), cancel = vi.fn();
+    animations.push({ stop, cancel, finish });
+    return { finished, stop, cancel } as unknown as ReturnType<typeof animate>;
   });
   root = document.createElement('div');
   root.getBoundingClientRect = () => new DOMRect(20, 80, 230, 600);
@@ -146,4 +146,16 @@ it('stops active motion on disposal and ignores later observer callbacks', () =>
   vi.mocked(animate).mockClear();
   resized();
   expect(animate).not.toHaveBeenCalled();
+});
+
+it.each(['hidden', 'detached'])('cancels an active animation when a plugin update leaves its target %s', kind => {
+  const row = item('task', 100);
+  controller = createPlanListMotion(root);
+  row.position.y = 0; controller.update();
+  animations[0]!.stop.mockImplementation(() => { throw new DOMException('Target element is not rendered', 'InvalidStateError'); });
+  if (kind === 'hidden') shown = false;
+  else row.element.remove();
+  expect(() => controller.update()).not.toThrow();
+  expect(animations[0]!.cancel).toHaveBeenCalledOnce();
+  expect(animations[0]!.stop).not.toHaveBeenCalled();
 });

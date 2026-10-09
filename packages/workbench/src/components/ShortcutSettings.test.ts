@@ -30,9 +30,9 @@ async function record(label: string, key: string, options: KeyboardEventInit) {
 
 it('records a new binding and updates the displayed shortcut', async () => {
   const bindings = mountSettings();
-  await record('查找文档', 'p', { ctrlKey: true, shiftKey: true });
-  expect(bindings.value.findDocument).toBe('Mod+Shift+P');
-  expect(button('设置查找文档快捷键').textContent).toBe('Ctrl+Shift+P');
+  await record('查找文档', 'j', { ctrlKey: true, shiftKey: true });
+  expect(bindings.value.findDocument).toBe('Mod+Shift+J');
+  expect(button('设置查找文档快捷键').textContent).toBe('Ctrl+Shift+J');
   expect(button('设置查找文档快捷键').getAttribute('aria-pressed')).toBe('false');
 });
 
@@ -43,6 +43,8 @@ it('keeps the previous value and explains conflicts while recording', async () =
   expect(root.querySelector('[role="alert"]')!.textContent).toContain('立即保存');
   expect(button('设置查找文档快捷键').getAttribute('aria-pressed')).toBe('true');
   await record('查找文档', 'p', { ctrlKey: true, shiftKey: true });
+  expect(root.querySelector('[role="alert"]')!.textContent).toContain('打开命令中心');
+  await record('查找文档', 'j', { ctrlKey: true, shiftKey: true });
   expect(root.querySelector('[role="alert"]')).toBeNull();
 });
 
@@ -71,7 +73,7 @@ it('clears, restores individual bindings, and restores all defaults', async () =
   [...root.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent?.includes('恢复全部默认'))!.click();
   await nextTick();
   expect(bindings.value).toEqual(defaultShortcutBindings);
-  await record('查找文档', 'p', { ctrlKey: true, shiftKey: true });
+  await record('查找文档', 'j', { ctrlKey: true, shiftKey: true });
   button('恢复查找文档默认快捷键').click(); await nextTick();
   expect(bindings.value.findDocument).toBe('Mod+K');
 });

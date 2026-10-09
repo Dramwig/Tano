@@ -10,6 +10,7 @@ import type { SettingsPageContext } from '../runtime';
 import { defaultWorkspaceSettings } from '../workspace-settings';
 import type { WorkspaceSettingsPatch } from '../workspace-settings';
 import type { ToolbarMode } from '../toolbar-preference';
+import { helpPreferenceKey, readHelpPreferences, useHelpPreferences } from '../help-guidance';
 
 vi.mock('./UpdatePanel.vue', () => ({
   default: { template: '<div class="update-panel-stub">应用更新</div>' },
@@ -52,6 +53,7 @@ async function openPage(label: string) {
 }
 
 beforeEach(() => {
+  localStorage.removeItem(helpPreferenceKey);
   revealUpdates = [];
   preferenceUpdates = [];
   capabilityUpdates = [];
@@ -140,6 +142,39 @@ it('moves shortcuts out of About into a searchable preference page', async () =>
   const input = root.querySelector<HTMLInputElement>('[aria-label="搜索设置"]')!;
   input.value = '快捷键'; input.dispatchEvent(new Event('input')); await nextTick();
   expect([...root.querySelectorAll('.settings-nav-items button')].map(item => item.textContent?.trim())).toEqual(['快捷键']);
+});
+
+it('keeps the searchable usage hint switch in appearance settings and preserves hint history', async () => {
+  const saved = { ...readHelpPreferences(), seen: ['graph'], count: 1, day: '2026-10-8', lastShown: 1000, snoozedUntil: 5000 };
+  localStorage.setItem(helpPreferenceKey, JSON.stringify(saved));
+  const input = root.querySelector<HTMLInputElement>('[aria-label="搜索设置"]')!;
+  input.value = '使用提示'; input.dispatchEvent(new Event('input')); await nextTick();
+  expect(root.querySelector('#settings-title')?.textContent).toBe('外观设置');
+  const toggle = root.querySelector<HTMLButtonElement>('[aria-label="偶尔显示使用提示"]')!;
+  expect(toggle.getAttribute('aria-checked')).toBe('true');
+  toggle.click(); await nextTick();
+  expect(toggle.getAttribute('aria-checked')).toBe('false');
+  expect(readHelpPreferences()).toEqual({ ...saved, enabled: false });
+  toggle.click(); await nextTick();
+  expect(readHelpPreferences()).toEqual({ ...saved, enabled: true });
+});
+
+it('reflects opt-out from a help bubble and preferences changed in another window', async () => {
+  await openPage('外观设置');
+  let preferences!: ReturnType<typeof useHelpPreferences>;
+  const host = document.createElement('div'); document.body.append(host);
+  const preferenceApp = createApp({ setup() { preferences = useHelpPreferences(); return () => null; } });
+  preferenceApp.mount(host);
+  try {
+    const toggle = root.querySelector<HTMLButtonElement>('[aria-label="偶尔显示使用提示"]')!;
+    preferences.setEnabled(false); await nextTick();
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    toggle.click(); await nextTick();
+    expect(preferences.preferences.value.enabled).toBe(true);
+    localStorage.setItem(helpPreferenceKey, JSON.stringify({ ...readHelpPreferences(), enabled: false }));
+    window.dispatchEvent(new StorageEvent('storage', { key: helpPreferenceKey })); await nextTick();
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+  } finally { preferenceApp.unmount(); host.remove(); }
 });
 
 it('offers workspace bullet markers under Markdown output and disables them without write access', async () => {

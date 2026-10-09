@@ -4,6 +4,7 @@ mod assets;
 mod assistant;
 #[cfg(desktop)]
 mod assistant_cli;
+mod assistant_files;
 pub mod identity_manifest;
 mod mobile_storage;
 #[cfg(test)]
@@ -11,6 +12,24 @@ mod performance;
 mod personal_plans;
 #[cfg(desktop)]
 mod plan_connections;
+#[cfg(desktop)]
+mod plugin_connection_http;
+#[cfg(desktop)]
+mod plugin_connection_types;
+#[cfg(desktop)]
+mod plugin_connection_vault;
+#[cfg(desktop)]
+mod plugin_connections;
+#[cfg(desktop)]
+mod plugin_git;
+#[cfg(desktop)]
+mod plugin_native;
+#[cfg(desktop)]
+mod plugin_oauth;
+#[cfg(desktop)]
+mod plugin_oauth_loopback;
+#[cfg(desktop)]
+mod plugin_oauth_types;
 mod search;
 mod session_storage;
 pub mod storage;
@@ -36,6 +55,14 @@ pub struct Session {
 #[derive(Default)]
 pub struct AppState {
     session: Mutex<Option<Session>>,
+}
+
+fn workspace_switch_blocked(app: &tauri::AppHandle) -> bool {
+    // Settings are prewarmed and follow the main window's workspace snapshot. Only
+    // independent content windows must be closed before replacing the shared session.
+    app.webview_windows()
+        .keys()
+        .any(|label| label != "main" && !label.starts_with("settings-"))
 }
 
 fn workspace_lock_directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -129,9 +156,10 @@ fn close_workspace(
         .as_ref()
         .is_some_and(|session| session.id == workspace_id)
     {
-        if app.webview_windows().len() > 1 {
+        if workspace_switch_blocked(&app) {
             return Err("请先关闭此工作区的独立窗口，再退出工作区".into());
         }
+        stop_workspace_plugin_calls(&app);
         guard.take();
     }
     Ok(())
@@ -162,8 +190,18 @@ fn unregister_workspace(
         &session.root,
         &session.id,
     )?;
+    stop_workspace_plugin_calls(&app);
     guard.take();
     Ok(())
+}
+
+fn stop_workspace_plugin_calls(_app: &tauri::AppHandle) {
+    // Cancel at the transition itself, so switching away and back between polling
+    // ticks cannot revive a previous workspace's request or account login.
+    #[cfg(desktop)]
+    if let Some(state) = _app.try_state::<plugin_native::PluginNativeState>() {
+        state.stop_workspace();
+    }
 }
 
 fn open_workspace_blocking(
@@ -184,7 +222,7 @@ fn open_workspace_blocking(
             identity_manifest::require(&root, &session.id)?;
             return storage::scan(&root, &session.id, &cache_path(&app)?);
         }
-        if app.webview_windows().len() > 1 {
+        if workspace_switch_blocked(&app) {
             return Err("请先关闭此工作区的独立窗口，再切换工作区".into());
         }
     }
@@ -243,6 +281,7 @@ fn open_workspace_blocking(
         Some(lock) => lock,
         None => guard.take().ok_or("工作区会话已关闭")?._lock,
     };
+    stop_workspace_plugin_calls(&app);
     *guard = Some(Session {
         root_key: storage::native_key(&root),
         root,
@@ -702,6 +741,27 @@ fn remove_document(
 }
 
 #[tauri::command]
+fn change_assistant_file(
+    request: assistant_files::FileChangeRequest,
+    app: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<storage::WriteResult, String> {
+    with_session(state, |s| {
+        assistant_files::change(&s.root, &s.id, &cache_path(&app)?, &request, |target| {
+            #[cfg(desktop)]
+            {
+                trash::delete(target).map_err(|error| error.to_string())
+            }
+            #[cfg(mobile)]
+            {
+                let _ = target;
+                mobile_storage::recycle(&app_data(&app)?, &s.root, &s.id, &request.path)
+            }
+        })
+    })
+}
+
+#[tauri::command]
 fn reveal_workspace(state: State<AppState>) -> Result<(), String> {
     #[cfg(mobile)]
     {
@@ -892,6 +952,10 @@ pub fn configure_with_commands(
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     #[cfg(desktop)]
     let builder = builder.manage(assistant::AssistantState::default());
+    #[cfg(desktop)]
+    let builder = builder.manage(plugin_native::PluginNativeState::default());
+    #[cfg(desktop)]
+    let builder = builder.manage(plugin_oauth::PluginOAuthState::default());
     builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -903,6 +967,9 @@ pub fn configure_with_commands(
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 window
                     .state::<assistant::AssistantState>()
+                    .stop_window(window.label());
+                window
+                    .state::<plugin_native::PluginNativeState>()
                     .stop_window(window.label());
             }
         })
@@ -920,6 +987,31 @@ pub fn configure_with_commands(
                 .expect("static response")
         })
         .invoke_handler(move |invoke| {
+            #[cfg(desktop)]
+            if invoke.message.command().starts_with("plugin_connections_") {
+                let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                    plugin_connections::plugin_connections_list,
+                    plugin_connections::plugin_connections_save,
+                    plugin_connections::plugin_connections_remove,
+                    plugin_connections::plugin_connections_request,
+                    plugin_oauth::plugin_connections_oauth_providers,
+                    plugin_oauth::plugin_connections_oauth_start,
+                    plugin_oauth::plugin_connections_oauth_status,
+                    plugin_oauth::plugin_connections_oauth_cancel,
+                ];
+                return handler(invoke);
+            }
+            #[cfg(desktop)]
+            if matches!(
+                invoke.message.command(),
+                "plugin_native_request" | "plugin_native_cancel"
+            ) {
+                let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                    plugin_native::plugin_native_request,
+                    plugin_native::plugin_native_cancel,
+                ];
+                return handler(invoke);
+            }
             #[cfg(desktop)]
             if invoke.message.command() == "open_devtools" {
                 let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool =
@@ -1005,6 +1097,7 @@ pub fn configure_with_commands(
                     rename_document,
                     move_entry,
                     remove_document,
+                    change_assistant_file,
                     reveal_workspace,
                     open_workspace_entry,
                     workspace_entry_path,

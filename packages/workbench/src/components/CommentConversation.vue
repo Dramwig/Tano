@@ -19,6 +19,7 @@ const emit = defineEmits<{
 }>();
 const reply = ref('');
 const replyComposer = ref<InstanceType<typeof CommentComposer>>();
+const resolveLabel = computed(() => `${props.thread.resolved ? '重新打开' : '完成'}${props.local ? '批注' : '讨论'}`);
 const hiddenReplies = computed(() => Math.max(0, props.thread.messages.length - 2));
 const replyTargets = computed(() => {
   const messages = new Map(props.thread.messages.map(message => [message.id, message]));
@@ -163,10 +164,10 @@ watch(() => props.thread.messages, messages => {
           </div>
           <slot v-if="index === 0 && $slots['first-tools']" name="first-tools" />
           <div v-else-if="!readonly && editing?.id !== message.id && (!local || index === 0 || message.authorId === authorId)" class="comment-message-tools review-card-tools" :class="{ 'is-open': menuMessage?.id === message.id }" role="group" aria-label="评论操作">
-            <button v-if="!local" type="button" :disabled="busy" aria-label="回复评论" title="回复" @click="emit('reply-request', message)"><Reply :size="15" /></button>
-            <button v-if="local && index === 0" type="button" :disabled="busy" :aria-label="thread.resolved ? '重新打开批注' : '完成批注'" :title="thread.resolved ? '重新打开批注' : '完成批注'" @click="emit('resolve', !thread.resolved)">
+            <button v-if="index === 0" type="button" :disabled="busy" :aria-label="resolveLabel" :title="resolveLabel" @click="emit('resolve', !thread.resolved)">
               <RotateCcw v-if="thread.resolved" :size="15" /><Check v-else :size="15" />
             </button>
+            <button v-if="!local" type="button" :disabled="busy" aria-label="回复评论" title="回复" @click="emit('reply-request', message)"><Reply :size="15" /></button>
             <button v-if="message.authorId === authorId || (index === 0 && assistant)" type="button" :disabled="busy" aria-label="更多评论操作" title="更多" aria-haspopup="menu" :aria-expanded="menuMessage?.id === message.id" @click="openMenu($event, message)"><MoreHorizontal :size="17" /></button>
           </div>
         </div>

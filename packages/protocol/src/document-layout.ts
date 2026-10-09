@@ -6,6 +6,8 @@ export type TableColor = typeof tableColors[number];
 export interface TableLayout {
   id: string;
   widths: number[];
+  /** Color-only layouts keep fitting the container; omitted means fixed pixel widths. */
+  autoWidth?: true;
   backgrounds?: (TableColor | null)[][];
   foregrounds?: (TableColor | null)[][];
   anchor: { content: string; before: string; after: string };
@@ -32,6 +34,7 @@ export function parseDocumentLayout(content: string, fileId: string): DocumentLa
   for (const table of file.tables) {
     if (!table || typeof table.id !== 'string' || !/^[0-9a-z-]{8,80}$/i.test(table.id) ||
         ids.has(table.id) || !Array.isArray(table.widths) || !table.widths.length ||
+        (table.autoWidth !== undefined && table.autoWidth !== true) ||
         table.widths.length > 1000 || table.widths.some(width =>
           !Number.isInteger(width) || width < minimumTableColumnWidth || width > 100_000) ||
         !table.anchor || typeof table.anchor.content !== 'string' || table.anchor.content.length > 8_000_000 ||

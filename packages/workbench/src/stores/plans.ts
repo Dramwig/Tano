@@ -7,6 +7,7 @@ import { BrowserPersonalPlans, NativePersonalPlans, PERSONAL_PLANS_KEY } from '.
 import { loadObjects, saveObject } from '../workspace-objects';
 import type { ObjectRecord } from '../workspace-objects';
 import { useWorkspaceStore } from './workspace';
+import { recordHelpPlanEdit } from '../help-checklist';
 
 export type PlanScope = 'workspace' | 'personal';
 export const usePlanStore = defineStore('plans', () => {
@@ -113,6 +114,7 @@ export const usePlanStore = defineStore('plans', () => {
         source: { scope: 'personal', id: personalId.value, name: '个人' },
       };
       personal.value = [...personal.value, record];
+      recordHelpPlanEdit(undefined, object);
       return record;
     });
   }
@@ -129,6 +131,7 @@ export const usePlanStore = defineStore('plans', () => {
       personal.value = personal.value.map((item) =>
         item.object.id === saved.object.id ? saved : item,
       );
+      recordHelpPlanEdit(record.object, value);
       return saved;
     });
   }

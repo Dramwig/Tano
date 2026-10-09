@@ -57,7 +57,7 @@ const frozenStripWidth = ref<number>();
 const pointerInsideTabList = ref(false);
 const title = (path: string) => basename(path).replace(/\.(md|markdown)$/i, '');
 const tabLabel = (tab: DocumentTab) => props.assistantTab?.id === tab.id ? props.assistantTab.title
-  : tab.graph ? '关系图谱' : tab.plugins ? '插件' : tab.calendar ? '计划' : tab.view ? tab.view.label : tab.blank ? '新标签页' : title(tab.path);
+  : tab.graph ? '关系图谱' : tab.plugins ? '插件' : tab.calendar ? '计划' : tab.pluginView ? tab.pluginView.label : tab.view ? tab.view.label : tab.blank ? '新标签页' : title(tab.path);
 const draggingId = ref('');
 const outgoingId = ref('');
 const dragPreview = ref<{
@@ -926,6 +926,7 @@ async function onTabKeydown(event: KeyboardEvent) {
           <GitFork v-else-if="doc.graph" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <Puzzle v-else-if="doc.plugins" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <CalendarDays v-else-if="doc.calendar" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
+          <Puzzle v-else-if="doc.pluginView" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <component :is="doc.view.icon" v-else-if="doc.view" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <FileText v-else-if="!doc.blank" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <span class="desktop-tab-label">{{ tabLabel(doc) }}</span>
@@ -983,7 +984,7 @@ async function onTabKeydown(event: KeyboardEvent) {
       <template v-if="contextMenu.tabId">
         <button v-if="paneId" type="button" role="menuitem" @click="contextAction('split-right')"><PanelRightClose :size="15" />向右分屏</button>
         <button v-if="paneId" type="button" role="menuitem" @click="contextAction('split-bottom')"><PanelRightClose :size="15" />向下分屏</button>
-        <button v-if="detachable" type="button" role="menuitem" :disabled="!!paneTabs.find(tab => tab.id === contextMenu?.tabId)?.view && !paneTabs.find(tab => tab.id === contextMenu?.tabId)?.view?.detachable" @click="contextAction('detach')">
+        <button v-if="detachable" type="button" role="menuitem" :disabled="!!paneTabs.find(tab => tab.id === contextMenu?.tabId)?.pluginView || (!!paneTabs.find(tab => tab.id === contextMenu?.tabId)?.view && !paneTabs.find(tab => tab.id === contextMenu?.tabId)?.view?.detachable)" @click="contextAction('detach')">
           <ExternalLink :size="15" />在新窗口中打开
         </button>
         <button type="button" role="menuitem" @click="contextAction('close')">

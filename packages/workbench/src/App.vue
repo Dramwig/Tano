@@ -75,6 +75,8 @@ import type { EditorPreferences } from '@tano/editor/runtime';
 import { defaultSelectionContext } from '@tano/editor/document-model';
 import type { EditorSelectionContext } from '@tano/editor/document-model';
 import SourceEditor from './components/SourceEditor.vue';
+import { captureModeViewport, restoreModeViewport } from './editor-mode';
+import type { ModeViewport } from './editor-mode';
 import AttachmentPreview from './components/AttachmentPreview.vue';
 import PageSearch from './components/PageSearch.vue';
 import EmptyEditor from './components/EmptyEditor.vue';
@@ -98,6 +100,7 @@ import type { CommentAnchor } from '@tano/protocol';
 import { unsupportedMarkdown } from '@tano/editor/syntax';
 import {
   basename,
+  parentPath,
   isMarkdown,
   validatePath,
   isWorkspaceInternalPath,
@@ -152,10 +155,19 @@ import { planKey } from './personal-plans';
 import SidebarPlan from './components/SidebarPlan.vue';
 import SidebarNavigation from './components/SidebarNavigation.vue';
 import WorkspaceSidebar from './components/WorkspaceSidebar.vue';
+import HelpLauncher from './components/HelpLauncher.vue';
+import type { HelpAvailability, HelpContext } from './help-content';
+import { recordHelpCompleted } from './help-checklist';
 import WorkspaceSwitcher from './components/WorkspaceSwitcher.vue';
 import ButtonVisibilityGroup from './components/ButtonVisibilityGroup.vue';
 import CalendarView from './components/CalendarView.vue';
 import PluginInstaller from './components/PluginInstaller.vue';
+import PluginView from './components/PluginView.vue';
+import PluginSidebar from './components/PluginSidebar.vue';
+import PluginMenu from './components/PluginMenu.vue';
+import CommandPalette from './components/CommandPalette.vue';
+import { pluginShortcutCommand } from './plugins/workbench';
+import { SETTINGS_PLUGIN_RESULT } from './settings-window';
 import { isObjectPath, referenceMarkdown, referenceUrl, resolveReference } from '@tano/protocol';
 import type { ReferenceIdentity, ReferenceTarget } from '@tano/protocol';
 import { sloganParts, welcomeSlogans } from './welcome-slogans';
@@ -227,17 +239,20 @@ usePlanSyncStore();
 const tabsEnabled = native;
 const desktopTabsEnabled = native && !mobile;
 const detachedWindow = desktopTabsEnabled && !!detachedTabRequest();
+const workbenchTabsEnabled = computed(() => desktopTabsEnabled || store.tabs.some(tab => !!tab.pluginView));
 const welcomeSlogan = welcomeSlogans[Math.floor(Math.random() * welcomeSlogans.length)];
 const welcomeSloganParts = sloganParts(welcomeSlogan);
 const localNative = native && !store.isWeb;
 const attachments =
   useWorkbenchRuntime().attachments ?? (localNative ? nativeAttachments : undefined);
 const workspaceAdapter = useWorkbenchRuntime().adapter;
+const documentationBaseUrl = useWorkbenchRuntime().documentationBaseUrl;
 const extensions = useWorkbenchRuntime().extensions?.() ?? createLocalExtensions();
 const extensionViews = extensions.views ?? [];
 const sidebarNavigationItems = computed(() => [
   { id: 'repository', label: '仓库' },
   { id: 'plan', label: '计划' },
+  { id: 'plugin-views', label: '插件工作台' },
   ...extensionViews
     .filter((view) => view.sidebar)
     .map((view) => ({ id: view.id, label: view.label })),
@@ -248,6 +263,7 @@ const sidebarHeaderItems = computed(() => [
     .map((view) => ({ id: view.id, label: view.label })),
   { id: 'graph', label: '关系图谱' },
   { id: 'plugins', label: '插件' },
+  { id: 'commands', label: '命令中心' },
 ]);
 const documentToolItems = [
   { id: 'markdown-reveal', label: '光标展开源码' },
@@ -337,6 +353,8 @@ const historyPage = ref<'versions' | 'updates'>('versions');
 const agentPanel = ref(false);
 const recyclePanel = ref(false);
 const sidebarView = ref('repository');
+watch(() => store.activePluginSidebar, key => { if (key) { sidebarView.value = 'plugin-views'; sidebar.value = true; } });
+watch(() => store.pluginSettingsRequest, request => { if (request) openSettings(request.key); });
 const calendarDate = ref(new Date());
 const calendarMode = ref<CalendarViewMode>('week');
 const calendarModeOpen = ref(false);
@@ -440,6 +458,8 @@ function initializePageHistory() {
 
 function currentPageRoute() {
   const currentWorkspace = workspace.value;
+  const pluginView = store.pluginViews.find(view => view.key === activeId.value && view.location === 'tab');
+  if (currentWorkspace && pluginView) return pageRoutePath(currentWorkspace.id, pluginView.key);
   const currentFile = currentWorkspace?.files.find(
     (file) => file.id === activeId.value && file.kind === 'file' && isMarkdown(file.path),
   );
@@ -496,6 +516,10 @@ async function applyPageRoute() {
     if (workspace.value?.id !== route.workspaceId) await store.openWorkspace(route.workspaceId);
     if (workspace.value?.id !== route.workspaceId) {
       store.report('链接中的工作区不存在或你已失去访问权限');
+    } else if (route.fileId.startsWith('plugin:')) {
+      const view = store.pluginViews.find(view => view.key === route.fileId && view.location === 'tab');
+      if (view) store.openPluginView(view.pluginId, view.id);
+      else store.report('链接中的插件视图尚未安装或已停用');
     } else {
       const file = workspace.value.files.find(
         (entry) => entry.id === route.fileId && entry.kind === 'file' && isMarkdown(entry.path),
@@ -732,10 +756,24 @@ watch(
 const hoverOutline = window.matchMedia('(hover: hover)').matches;
 const sourceModes = shallowReactive<Record<string, boolean>>({});
 const paneSource = (id: string) => sourceModes[id] ?? defaultSource.value;
+const pendingModeViewports = new Map<string, { fileId: string; source: boolean; viewport: ModeViewport }>();
+function setPaneSource(id: string, value: boolean, previous = paneSource(id)) {
+  if (previous === value) return;
+  for (const pane of store.panes.filter(pane => pane.activeId === id)) {
+    const target = previous ? paneSourceEditors.get(pane.id) : paneEditors.get(pane.id);
+    const scroll = paneScrolls.get(pane.id);
+    const pending = pendingModeViewports.get(pane.id);
+    const viewport = (target && scroll ? captureModeViewport(target, scroll) : null)
+      ?? (pending?.fileId === id ? pending.viewport : null);
+    if (viewport) pendingModeViewports.set(pane.id, { fileId: id, source: value, viewport });
+  }
+  sourceModes[id] = value;
+  if (store.documents.some(doc => doc.id === id)) recordHelpCompleted('source');
+}
 const source = computed({
   get: () => paneSource(store.activeId),
   set: (value) => {
-    sourceModes[store.activeId] = value;
+    setPaneSource(store.activeId, value);
   },
 });
 const pageLocked = ref(false);
@@ -884,14 +922,25 @@ const managedFilePaths = computed(
       .map((entry) => entry.path) ?? [],
 );
 let fileContextTrigger: HTMLElement | null = null;
+const treeRename = ref<{ fileId: string; workspaceId: string } | null>(null);
+watch(() => workspace.value?.id, () => { treeRename.value = null; });
 const settingsPanel = ref(false);
+const commandPaletteOpened = ref(false);
+const workbenchCommands = computed(() => [
+  { id: 'workbench.save', label: '立即保存', run: () => store.flush() },
+  { id: 'workbench.search', label: '查找文档', run: () => showModal('search') },
+  { id: 'workbench.new', label: '新建文档', run: () => createNewDocument() },
+  { id: 'workbench.plugins', label: '打开插件中心', run: () => store.openPluginsTab() },
+  { id: 'workbench.settings', label: '打开设置', run: () => openSettings() },
+]);
 const settingsPage = ref<SettingsPageId>('appearance');
-watch(defaultSource, (value) => {
+watch(defaultSource, (value, previous) => {
   savePreference('defaultSource', value);
-  if (!editing.active && !editing.activeBusy) source.value = value;
+  if (!editing.active && !editing.activeBusy)
+    setPaneSource(store.activeId, value, sourceModes[store.activeId] ?? previous);
 });
 watch(revealMarkdown, (value) => savePreference('revealMarkdown', value));
-const modal = ref<'' | 'newTab' | 'rename' | 'search' | 'delete' | 'saveAs'>('');
+const modal = ref<'' | 'newTab' | 'search' | 'delete' | 'saveAs'>('');
 const modalTarget = ref<FileEntry | null>(null);
 const modalDeleteEntries = ref<FileEntry[]>([]);
 const modalDeleteContents = ref<FileEntry[]>([]);
@@ -1210,6 +1259,16 @@ const paneSelections = shallowReactive<Record<string, EditorSelectionContext>>({
 const paneScrolls = shallowReactive(new Map<string, HTMLElement>());
 const paneEditorScrolls = shallowReactive(new Map<string, HTMLElement>());
 const paneSourceEditors = shallowReactive(new Map<string, InstanceType<typeof SourceEditor>>());
+store.setPluginEditor(async (fileId, before, after) => {
+  const pane = store.panes.find(item => item.activeId === fileId);
+  if (!pane) return false;
+  const target = paneSource(fileId) ? paneSourceEditors.get(pane.id) : paneEditors.get(pane.id);
+  if (!target) return false;
+  target.applyPluginEdit(before, after);
+  await nextTick();
+  return true;
+});
+onBeforeUnmount(() => store.setPluginEditor());
 const paneSearches = new Map<string, InstanceType<typeof PageSearch>>();
 const paneSearchRevisions = shallowReactive<Record<string, number>>({});
 function setPaneSearch(id: string, value: unknown) {
@@ -1224,6 +1283,22 @@ function openPaneSearch(id = store.activePaneId, replace = false) {
 const documentScroll = computed(() => paneScrolls.get(store.activePaneId));
 const editorScroll = computed(() => paneEditorScrolls.get(store.activePaneId));
 const sourceEditor = computed(() => paneSourceEditors.get(store.activePaneId));
+async function paneEditorReady(paneId: string, fileId: string, sourceMode: boolean) {
+  await nextTick();
+  paneSearchRevisions[paneId] = (paneSearchRevisions[paneId] ?? 0) + 1;
+  const pending = pendingModeViewports.get(paneId);
+  const target = sourceMode ? paneSourceEditors.get(paneId) : paneEditors.get(paneId);
+  const scroll = paneScrolls.get(paneId);
+  if (!pending || pending.fileId !== fileId || pending.source !== sourceMode || !target || !scroll) return;
+  const current = () => pendingModeViewports.get(paneId) === pending && paneSource(fileId) === sourceMode
+    && store.panes.some(pane => pane.id === paneId && pane.activeId === fileId)
+    && (sourceMode ? paneSourceEditors.get(paneId) : paneEditors.get(paneId)) === target;
+  try {
+    await restoreModeViewport(target, scroll, pending.viewport, paneId === store.activePaneId, current);
+  } finally {
+    if (pendingModeViewports.get(paneId) === pending) pendingModeViewports.delete(paneId);
+  }
+}
 function setPaneElement(kind: 'scroll' | 'editor' | 'source', id: string, value: unknown) {
   if (kind === 'source') {
     if (value) paneSourceEditors.set(id, value as InstanceType<typeof SourceEditor>);
@@ -1632,6 +1707,36 @@ function directoryHasManagedFile(file: FileEntry) {
     managedFilePaths.value.some((path) => path.startsWith(`${file.path}/`))
   );
 }
+function startTreeRename(file: FileEntry) {
+  if (
+    !workspace.value || fileMutationDisabled(file) || directoryHasManagedFile(file) ||
+    (store.isWeb && file.kind !== 'file')
+  ) return;
+  closeFileContextMenu();
+  treeRename.value = { fileId: file.id, workspaceId: workspace.value.id };
+}
+function finishTreeRename(file: FileEntry) {
+  if (treeRename.value?.fileId === file.id) treeRename.value = null;
+}
+async function renameTreeEntry(file: FileEntry, name: string) {
+  if (treeRename.value?.workspaceId !== workspace.value?.id)
+    throw new Error('工作区已切换，请重新选择后重试');
+  const current = workspace.value?.files.find((entry) => entry.id === file.id);
+  if (!current || current.path !== file.path)
+    throw new Error('文件位置已变化，请按 Esc 取消后重新选择');
+  if (fileMutationDisabled(current) || directoryHasManagedFile(current))
+    throw new Error('当前条目暂时无法重命名，请检查权限或实时协作状态');
+  name = name.trim().normalize('NFC');
+  if (!name) throw new Error('请填写一个名称');
+  if (/[\/\\]/.test(name)) throw new Error('名称不能包含路径分隔符');
+  if (file.kind === 'file' && isMarkdown(file.path) && !isMarkdown(name))
+    name += file.name.match(/\.(md|markdown)$/i)?.[0] ?? '.md';
+  const folder = parentPath(file.path);
+  const path = `${folder ? `${folder}/` : ''}${name}`;
+  const error = validatePath(path);
+  if (error) throw new Error(error);
+  if (path !== file.path) await store.renameEntry(file, path);
+}
 function fileDeleteDisabled(file: FileEntry) {
   return (
     fileMutationDisabled(file) ||
@@ -1827,7 +1932,7 @@ async function fileContextAction(
     await createNewEntry(action, file.path);
     return;
   }
-  showModal(action, file);
+  if (action === 'rename') startTreeRename(file);
 }
 function fileContextKeydown(event: KeyboardEvent) {
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
@@ -2047,6 +2152,11 @@ const searchResults = computed(() => {
 function searchResultLocation(path: string) {
   return [workspace.value?.name ?? '工作区', ...path.split('/').slice(0, -1)].join(' › ');
 }
+async function openSearchResult(file: FileEntry) {
+  modal.value = '';
+  await store.openFile(file);
+  if (store.active?.id === file.id) recordHelpCompleted('find');
+}
 function searchHighlightParts(text: string) {
   const query = input.value.trim();
   if (!query) return [{ text, matched: false }];
@@ -2064,12 +2174,6 @@ function searchHighlightParts(text: string) {
 const modalTitle = computed(() => {
   const titles = {
     newTab: '打开文件',
-    rename:
-      modalTarget.value?.kind === 'directory'
-        ? '重命名文件夹'
-        : modalTarget.value && !isMarkdown(modalTarget.value.path)
-          ? '重命名文件'
-          : '重命名文档',
     search: '找到那一页',
     delete: `${store.isDemo ? '删除' : store.isWeb ? '删除在线文档' : mobile ? '移入手机回收站' : '移入回收站'}${modalDeleteEntries.value.length > 1 ? ` · ${modalDeleteEntries.value.length} 项` : ''}`,
     saveAs: '另存为新文档',
@@ -2078,7 +2182,7 @@ const modalTitle = computed(() => {
 });
 
 function showModal(kind: Exclude<typeof modal.value, ''>, target?: FileEntry) {
-  if (store.busy || (workspace.value?.readOnly && ['rename', 'delete', 'saveAs'].includes(kind)))
+  if (store.busy || (workspace.value?.readOnly && ['delete', 'saveAs'].includes(kind)))
     return;
   menu.value = false;
   workspaceMenu.value = false;
@@ -2098,15 +2202,12 @@ function showModal(kind: Exclude<typeof modal.value, ''>, target?: FileEntry) {
   modalDeleteWorkspaceId.value = kind === 'delete' ? workspace.value?.id : undefined;
   modalError.value = '';
   input.value =
-    kind === 'rename'
-      ? (target?.path ?? active.value?.path ?? '')
-      : kind === 'saveAs'
-        ? (active.value?.path.replace(/\.(md|markdown)$/i, '-副本.md') ?? '')
-        : '';
+    kind === 'saveAs'
+      ? (active.value?.path.replace(/\.(md|markdown)$/i, '-副本.md') ?? '')
+      : '';
   modal.value = kind;
   void nextTick(() => {
     inputEl.value?.focus();
-    if (kind === 'rename') inputEl.value?.select();
   });
 }
 async function removeDocuments(entries: FileEntry[]) {
@@ -2296,6 +2397,10 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
     settled?.();
     return;
   }
+  if (tab.pluginView) {
+    store.report('插件视图绑定当前窗口的运行实例，可以在当前窗口分屏。');
+    settled?.(); return;
+  }
   if (tab.view && !tab.view.detachable) {
     store.report(tab.view.detachBlockedMessage ?? '此视图保留在当前窗口，暂不支持移到其他窗口。');
     settled?.();
@@ -2411,6 +2516,7 @@ async function exportWorkspace(workspaceId: string) {
   } finally { workspaceExporting.value = false; }
 }
 const settingsSnapshot = computed<SettingsSnapshot>(() => ({
+  pluginPages: store.pluginSettingsPages,
   workspace: workspace.value
     ? {
         id: workspace.value.id,
@@ -2486,6 +2592,13 @@ function openSettings(page: SettingsPageId = 'appearance') {
   settingsPanel.value = true;
 }
 function handleSettingsCommand(command: SettingsCommand) {
+  if (command.type === 'plugin-invoke') {
+    void store.interactWithPlugin(command.interaction).then(
+      () => emitTo(settingsWindowLabel(), SETTINGS_PLUGIN_RESULT, { requestId: command.requestId }),
+      error => emitTo(settingsWindowLabel(), SETTINGS_PLUGIN_RESULT, { requestId: command.requestId, error: String(error) }),
+    ).catch(store.report);
+    return;
+  }
   if (command.type === 'workspace-delete') {
     void deleteWorkspace(command.workspaceId);
     return;
@@ -2642,7 +2755,7 @@ async function submitModal() {
     const kind = modal.value;
     if (
       modalTarget.value &&
-      (kind === 'rename' || kind === 'delete') &&
+      kind === 'delete' &&
       editing.isManaging(modalTarget.value.id)
     )
       throw new Error('请先结束此文档的实时协作');
@@ -2657,21 +2770,11 @@ async function submitModal() {
       selectActiveFileInTree();
     } else {
       let path = input.value.trim();
-      if (
-        !(
-          kind === 'rename' &&
-          modalTarget.value &&
-          (modalTarget.value.kind === 'directory' || !isMarkdown(modalTarget.value.path))
-        ) &&
-        !isMarkdown(path)
-      )
-        path += '.md';
+      if (!isMarkdown(path)) path += '.md';
       const error = validatePath(path);
       if (error) throw new Error(error);
       if (!input.value.trim()) throw new Error('请填写一个名称');
-      if (kind === 'rename' && modalTarget.value) await store.renameEntry(modalTarget.value, path);
-      else if (kind === 'rename' && active.value) await store.rename(active.value, path);
-      else if (kind === 'saveAs' && active.value) await store.saveCopy(active.value, path);
+      if (kind === 'saveAs' && active.value) await store.saveCopy(active.value, path);
     }
     modal.value = '';
   } catch (e) {
@@ -2716,25 +2819,32 @@ async function exportDocument(format: DocumentExportFormat) {
     const filename = exportFilename(doc.path, format);
     if (localNative) {
       const { saveDocumentExport } = await import('./native-document-export');
-      await saveDocumentExport(blob, filename, format);
+      if (!(await saveDocumentExport(blob, filename, format))) return;
     } else downloadExport(blob, filename);
+    recordHelpCompleted('export-document');
   } catch (reason) {
     store.report(reason);
   } finally {
     exportBusy.value = false;
   }
 }
-function jumpToHeading(index: number) {
+function jumpToHeading(index: number, userInitiated = false) {
+  if (!outline.value[index]) return;
   activeHeading.value = index;
   if (source.value) {
+    if (!sourceEditor.value) return;
     const toolbarHeight = documentScroll.value?.querySelector('.editor-toolbar')?.clientHeight ?? 0;
-    sourceEditor.value?.jumpToLine(outline.value[index].line, toolbarHeight);
-  } else
-    editorScroll.value
+    sourceEditor.value.jumpToLine(outline.value[index].line, toolbarHeight);
+  } else {
+    const heading = editorScroll.value
       ?.querySelectorAll(
         '.tano-prose h1, .tano-prose h2, .tano-prose h3, .tano-prose h4, .tano-prose h5, .tano-prose h6',
       )
-      [index]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      [index];
+    if (!heading) return;
+    heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  if (userInitiated) recordHelpCompleted('reading');
 }
 function toggleSidebar() {
   if (detachedWindow) return;
@@ -2742,13 +2852,19 @@ function toggleSidebar() {
   workspaceMenu.value = false;
 }
 function handleWorkbenchShortcut(event: KeyboardEvent) {
-  if (event.defaultPrevented || importPanel.value || settingsPanel.value || updateLock.value || modal.value) return;
+  if (event.defaultPrevented || importPanel.value || settingsPanel.value || commandPaletteOpened.value || updateLock.value || modal.value) return;
   let action: (() => void) | undefined;
   if (!detachedWindow && workspace.value && isSidebarToggleShortcut(event, shortcuts.value)) action = toggleSidebar;
   else if (matchesShortcut(event, 'save', shortcuts.value)) action = () => { void store.flush(); };
   else if (matchesShortcut(event, 'findDocument', shortcuts.value)) action = () => showModal('search');
   else if (workspace.value && matchesShortcut(event, 'openDocument', shortcuts.value)) action = () => showModal('newTab');
   else if (workspace.value && matchesShortcut(event, 'newDocument', shortcuts.value)) action = () => { void createNewDocument(); };
+  else if (workspace.value && matchesShortcut(event, 'commandPalette', shortcuts.value)) action = () => { commandPaletteOpened.value = true; };
+  if (!action && workspace.value) {
+    const command = pluginShortcutCommand(event, store.pluginCommands, shortcuts.value);
+    if (command) action = () => { void store.interactWithPlugin({ workspaceId: workspace.value!.id, pluginId: command.pluginId,
+      instanceId: command.instanceId, kind: 'command', name: command.id, payload: { workspaceId: workspace.value!.id, fileId: store.active?.id } }).catch(store.report); };
+  }
   if (!action) return;
   event.preventDefault();
   event.stopPropagation();
@@ -2758,6 +2874,7 @@ function handlePageSearchShortcut(event: KeyboardEvent) {
   if (
     importPanel.value ||
     settingsPanel.value ||
+    commandPaletteOpened.value ||
     updateLock.value ||
     modal.value ||
     event.isComposing ||
@@ -2824,7 +2941,7 @@ function keydown(event: KeyboardEvent) {
         !directoryHasManagedFile(file) &&
         (!store.isWeb || file.kind === 'file')
       )
-        showModal('rename', file);
+        startTreeRename(file);
       return;
     }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
@@ -3061,6 +3178,34 @@ watch(activeId, () => {
   activeHeading.value = 0;
   void nextTick(scheduleActiveHeading);
 });
+const helpContext = computed<HelpContext>(() => {
+  if (activeId.value === GRAPH_TAB_ID) return 'graph';
+  if (activeId.value === PLUGINS_TAB_ID) return 'plugins';
+  if (activeId.value === CALENDAR_TAB_ID || sidebarView.value === 'plan') return 'plan';
+  if (!active.value) return 'welcome';
+  if (editorReadonly.value) return 'reading';
+  if (source.value) return 'source';
+  return active.value.content.trim() ? 'document' : 'empty-document';
+});
+const helpAvailability = computed<HelpAvailability>(() => ({
+  'document-write': !!active.value && !editorReadonly.value,
+  'workspace-write': !!workspace.value && !workspace.value.readOnly,
+  plans: plans.personalWritable || plans.workspaceWritable,
+  comments: !!active.value && !editorReadonly.value,
+  templates: !!workspace.value && !workspace.value.readOnly,
+  import: !!workspace.value && !workspace.value.readOnly,
+  duplicate: !!workspace.value && !workspace.value.readOnly && !!workspaceAdapter.duplicate,
+}));
+const helpBlocked = computed(() => !!(
+  activeExtensionView.value || activeId.value.startsWith('attachment:') ||
+  (assistant.opened && assistant.displayMode === 'fullscreen') ||
+  busy.value || fatal.value || store.pending || active.value?.conflict || active.value?.error ||
+  workspaceMenu.value || menu.value || modal.value || settingsPanel.value ||
+  importPanel.value || templateDialog.value || agentPanel.value || objectPanel.value ||
+  selectedDiff.value || selectionTodo.value || recyclePanel.value || referenceGraphOpened.value ||
+  fileContextMenu.value || directoryContextMenu.value || pageContextMenu.value || outlineContextMenu.value ||
+  resizingSidebar.value || draggedEntry.value || updateLock.value
+));
 </script>
 
 <template>
@@ -3172,6 +3317,7 @@ watch(activeId, () => {
             >
               <Puzzle :size="17" :stroke-width="1.6" />
             </button>
+            <button v-if="isVisible('commands')" type="button" class="icon-button" aria-label="打开命令中心" :title="`命令中心 · ${shortcutHint('commandPalette')}`" @click="commandPaletteOpened = true"><Search :size="17" /></button>
           </ButtonVisibilityGroup>
         </div>
         <SidebarNavigation
@@ -3221,7 +3367,12 @@ watch(activeId, () => {
               <span :aria-hidden="sidebarView !== view.id">{{ view.label }}</span>
             </button>
           </template>
+          <button v-if="isVisible('plugin-views') && (store.pluginViews.length || store.pluginCommands.length)" type="button" class="sidebar-navigation-button"
+            aria-label="插件工作台" title="插件工作台" :aria-pressed="sidebarView === 'plugin-views'" @click="sidebarView = 'plugin-views'">
+            <Puzzle :size="17" /><span :aria-hidden="sidebarView !== 'plugin-views'">扩展</span>
+          </button>
         </SidebarNavigation>
+        <PluginSidebar v-if="sidebarView === 'plugin-views'" />
         <div
           v-show="sidebarView === 'repository'"
           id="sidebar-repository-panel"
@@ -3277,6 +3428,8 @@ watch(activeId, () => {
               :dragged-id="draggedEntry?.file.id"
               :drop-target="dropFolder"
               :can-drag="canDragEntry"
+              :renaming-id="treeRename?.fileId"
+              :rename-entry="renameTreeEntry"
               @open="openTreeEntry"
               @select="selectFileTreeEntry"
               @context="openFileContextMenu"
@@ -3286,6 +3439,7 @@ watch(activeId, () => {
               @drag-over="fileDragOver"
               @drag-leave="fileDragLeave"
               @drop="fileDrop"
+              @rename-finished="finishTreeRename"
             />
             <div
               v-if="!noteCount"
@@ -3327,6 +3481,7 @@ watch(activeId, () => {
             :style="{ left: `${fileContextMenu.x}px`, top: `${fileContextMenu.y}px` }"
             @keydown="fileContextKeydown"
           >
+            <PluginMenu v-if="!multipleContextEntries && fileContextMenu.file.kind === 'file'" location="file" :file-id="fileContextMenu.file.id" @selected="closeFileContextMenu()" />
             <template v-if="multipleContextEntries">
               <div class="file-context-count" role="presentation">
                 已选中 {{ contextEntries.length }} 个条目
@@ -3547,6 +3702,7 @@ watch(activeId, () => {
                   <LogOut :size="16" />
                 </button>
               </div>
+              <PluginMenu location="workspace" @selected="workspaceMenu = false" />
               <component
                 :is="extensions.regions['workspace-menu-layout'] ?? 'div'"
                 :actions="extensions.regions['workspace-menu-layout'] ? extensionActions : undefined"
@@ -3702,14 +3858,18 @@ watch(activeId, () => {
             v-if="extensions.regions['sidebar-footer']"
             :actions="extensionActions"
           />
-          <button
-            class="icon-button sidebar-help"
-            aria-label="帮助与快捷键"
-            title="帮助与快捷键"
-            @click="openSettings('about')"
-          >
-            <CircleHelp :size="17" />
-          </button>
+          <HelpLauncher
+            :context="helpContext"
+            :availability="helpAvailability"
+            :available="sidebar && !!workspace && !detachedWindow"
+            :blocked="helpBlocked"
+            :scope="`${workspace?.id}:${activeId}`"
+            :documentation-base-url="documentationBaseUrl"
+            :native="native"
+            @open="workspaceMenu = false; menu = false"
+            @settings="openSettings"
+            @documentation="openExternalUrl($event).catch(store.report)"
+          />
         </div>
         <div
           v-if="!mobile"
@@ -3740,7 +3900,7 @@ watch(activeId, () => {
         :anchor="referenceGraphAnchor"
         @open="openReference"
       />
-      <div v-if="workspace && compactPanes && tabsEnabled" class="workspace-tabbar">
+      <div v-if="workspace && compactPanes && (tabsEnabled || workbenchTabsEnabled)" class="workspace-tabbar">
         <DesktopTabs
           :file-drag="tabFileDrag"
           :assistant-tab="assistantTab"
@@ -3753,8 +3913,8 @@ watch(activeId, () => {
       <WorkspacePanes
         v-if="workspace"
         :compact="compactPanes"
-        :tabs-enabled="desktopTabsEnabled"
-        :class="{ 'workspace-native-tabs': desktopTabsEnabled && !compactPanes }"
+        :tabs-enabled="workbenchTabsEnabled"
+        :class="{ 'workspace-native-tabs': workbenchTabsEnabled && !compactPanes }"
       >
         <template #tabs="{ pane, rect }">
           <div v-if="!compactPanes" class="workspace-tabbar" :data-tab-pane-id="pane.id">
@@ -3892,6 +4052,7 @@ watch(activeId, () => {
                   <LockKeyhole v-if="workspace?.readOnly" :size="14" />
                   {{ workspaceStatusLabel }}
                 </span>
+                <template v-if="tab?.pluginView"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">{{ tab.pluginView.label }}</span></template>
                 <template v-if="pane.activeId === PLUGINS_TAB_ID"
                   ><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current"
                     >插件</span
@@ -4097,7 +4258,7 @@ watch(activeId, () => {
                             ? '返回编辑'
                             : '切换源码模式'
                       "
-                      @click="sourceModes[pane.activeId] = !paneSource(pane.activeId)"
+                      @click="setPaneSource(pane.activeId, !paneSource(pane.activeId))"
                     >
                       <Code2 :size="17" />
                     </button>
@@ -4118,6 +4279,7 @@ watch(activeId, () => {
                       class="dropdown compact-action-menu document-dropdown"
                       @keydown="documentMenuKeydown"
                     >
+                      <PluginMenu location="document" :file-id="active.id" @selected="menu = false" />
                       <button type="button"
                         :disabled="suggestionModeBusy || (!documentSuggestions.get(active.id)?.mode && (paneReadonly(active) || editing.isManaging(active.id) || editing.activeBusy)) || documentSuggestions.get(active.id)?.loading || documentSuggestions.get(active.id)?.reviewing"
                         @click="toggleSuggestionMode(active.id)">
@@ -4294,6 +4456,7 @@ watch(activeId, () => {
               />
             </template>
 
+            <PluginView v-if="tab?.pluginView" :view-key="tab.pluginView.key" />
             <main
               v-if="workspace && pane.tabs.includes(PLUGINS_TAB_ID)"
               v-show="pane.activeId === PLUGINS_TAB_ID"
@@ -4306,7 +4469,11 @@ watch(activeId, () => {
                 <p v-else-if="workspace.readOnly" class="tool-level-notice">
                   此工作区为只读，无法修改对象和关系。
                 </p>
-                <PluginInstaller @objects="showObjects()" />
+                <PluginInstaller @objects="showObjects()">
+                  <template v-if="extensions.regions['plugin-publishing']" #publishing>
+                    <component :is="extensions.regions['plugin-publishing']" :actions="extensionActions" />
+                  </template>
+                </PluginInstaller>
               </div>
             </main>
 
@@ -4404,7 +4571,7 @@ watch(activeId, () => {
                             :aria-label="paneSource(pane.activeId) ? '返回编辑' : '切换源码模式'"
                             :aria-pressed="paneSource(pane.activeId)"
                             :title="paneSource(pane.activeId) ? '返回编辑' : '切换源码模式'"
-                            @click="sourceModes[pane.activeId] = !paneSource(pane.activeId)"
+                            @click="setPaneSource(pane.activeId, !paneSource(pane.activeId))"
                           >
                             <Code2 :size="17" />
                           </button>
@@ -4515,6 +4682,7 @@ watch(activeId, () => {
                         :readonly="suggestions.readonly"
                         :local-native="!!attachments && !suggestions.suggesting"
                         :comment-anchors="commentAnchors[active.id]"
+                        @ready="paneEditorReady(pane.id, active!.id, true)"
                         @selection-change="paneSourceSelections[pane.id] = $event"
                         @update:model-value="suggestions.edit($event)"
                         @files="
@@ -4553,9 +4721,7 @@ watch(activeId, () => {
                         @update:model-value="suggestions.edit($event)"
                         @table-layout-change="!suggestions.suggesting && store.editTableLayout(active!.id, $event)"
                         @error="store.report"
-                        @ready="
-                          paneSearchRevisions[pane.id] = (paneSearchRevisions[pane.id] ?? 0) + 1
-                        "
+                        @ready="paneEditorReady(pane.id, active!.id, false)"
                         @search-change="
                           paneSearchRevisions[pane.id] = (paneSearchRevisions[pane.id] ?? 0) + 1
                         "
@@ -4564,7 +4730,7 @@ watch(activeId, () => {
                         "
                         @open-wiki-link="openWikiLink"
                         @open-reference="openReference"
-                        @edit-source="sourceModes[pane.activeId] = true"
+                        @edit-source="setPaneSource(pane.activeId, true)"
                         @selection-change="paneSelections[pane.id] = $event"
                       />
                       <DocumentComments
@@ -4609,6 +4775,7 @@ watch(activeId, () => {
                 pane.activeId !== GRAPH_TAB_ID &&
                 pane.activeId !== PLUGINS_TAB_ID &&
                 pane.activeId !== CALENDAR_TAB_ID &&
+                !tab?.pluginView &&
                 !extensionViews.find((view) => view.id === pane.activeId)
               "
               class="workspace-no-tabs"
@@ -4681,7 +4848,7 @@ watch(activeId, () => {
                     aria-label="搜索当前文档标题"
                     placeholder="搜索标题"
                     autocomplete="off"
-                    @keydown.enter="visibleOutline[0] && jumpToHeading(visibleOutline[0].index)"
+                    @keydown.enter="visibleOutline[0] && jumpToHeading(visibleOutline[0].index, true)"
                     @keydown.esc.stop.prevent="toggleOutlineSearch"
                   />
                 </div>
@@ -4698,7 +4865,7 @@ watch(activeId, () => {
                     }"
                     :aria-label="`跳转到${heading.text}`"
                     :aria-current="activeHeading === index ? 'location' : undefined"
-                    @click="jumpToHeading(index)"
+                    @click="jumpToHeading(index, true)"
                   >
                     <span class="outline-marker" aria-hidden="true" />
                     <span class="outline-text">{{ heading.text }}</span>
@@ -5018,10 +5185,13 @@ watch(activeId, () => {
         :actions="viewActions[view.id]"
       />
     </template>
+    <CommandPalette v-if="commandPaletteOpened && workspace" :commands="workbenchCommands" @close="commandPaletteOpened = false" />
     <SettingsPanel
       v-if="settingsPanel"
       :workspace="workspace"
       :extra-pages="extensions.settingsPages"
+      :plugin-pages="store.pluginSettingsPages"
+      :execute-plugin="store.interactWithPlugin"
       :workspace-settings="store.workspaceSettings"
       :workspace-pages="settingsSnapshot.workspacePages"
       :workspace-settings-error="store.workspaceSettingsError"
@@ -5124,7 +5294,7 @@ watch(activeId, () => {
               inputmode="search"
               aria-label="搜索文档名称和正文"
               placeholder="搜索文件名、路径或正文…"
-              @keydown.enter="searchResults[0] && (store.openFile(searchResults[0]), (modal = ''))"
+              @keydown.enter="searchResults[0] && openSearchResult(searchResults[0])"
             /><button type="button" aria-label="关闭搜索" title="关闭搜索" @click="modal = ''">
               <X :size="18" />
             </button>
@@ -5133,10 +5303,7 @@ watch(activeId, () => {
             <button
               v-for="file in searchResults"
               :key="file.id"
-              @click="
-                store.openFile(file);
-                modal = '';
-              "
+              @click="openSearchResult(file)"
             >
               <span class="search-result-breadcrumb"
                 ><span class="search-result-location"
@@ -5199,29 +5366,17 @@ watch(activeId, () => {
           ><template v-else
             ><p class="modal-description">
               {{
-                modal === 'rename'
-                  ? '更换名称，文件的身份保持不变。'
-                  : modal === 'saveAs'
-                    ? '把当前编辑内容保存为独立的 Markdown 文件。'
-                    : '从一个名字开始，把想法留在这一页。'
+                modal === 'saveAs'
+                  ? '把当前编辑内容保存为独立的 Markdown 文件。'
+                  : '从一个名字开始，把想法留在这一页。'
               }}
             </p>
-            <label for="file-name">{{
-              modal === 'rename' && modalTarget?.kind === 'directory'
-                ? '文件夹路径'
-                : modal === 'rename' && modalTarget && !isMarkdown(modalTarget.path)
-                  ? '文件路径'
-                  : '文档路径'
-            }}</label
+            <label for="file-name">文档路径</label
             ><input
               id="file-name"
               ref="inputEl"
               v-model="input"
-              :placeholder="
-                modal === 'rename' && modalTarget?.kind === 'directory'
-                  ? '例如：灵感'
-                  : '例如：我的新想法.md'
-              "
+              placeholder="例如：我的新想法.md"
               autocomplete="off"
               maxlength="220"
             />
@@ -5252,9 +5407,7 @@ watch(activeId, () => {
                   ? '正在处理…'
                   : modal === 'delete'
                     ? '确认移除'
-                    : modal === 'rename'
-                      ? '保存名称'
-                      : '创建文档'
+                    : '创建文档'
               }}<ArrowRight v-if="!modalBusy" :size="16" />
             </button>
           </div>

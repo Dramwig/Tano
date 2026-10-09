@@ -10,6 +10,8 @@ The unmodified [ICAL.js](https://github.com/kewisch/ical.js/tree/v2.2.1) parser 
 
 The Maple Mono NF font uses the SIL Open Font License in `apps/client/public/MAPLE-MONO-LICENSE.txt`.
 
+The assistant model picker bundles 18 unmodified SVGs from [Lobe Icons](https://github.com/lobehub/lobe-icons), distributed under MIT. The license, package version, integrity hash, and asset paths are retained in [packages/workbench/src/assets/model-icons/](packages/workbench/src/assets/model-icons/README.md) and the generated client distribution notices.
+
 The code block language picker bundles SVGs from [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme) and [Devicon](https://github.com/devicons/devicon). Both sets are distributed under MIT; their license texts and source versions are recorded in `packages/editor/src/language-icons/`.
 
 Callout titles bundle five duotone SVGs from [Phosphor Icons](https://github.com/phosphor-icons/core), distributed under MIT. The license text, pinned source revision, and asset paths are recorded in [packages/editor/src/callout-icons/](packages/editor/src/callout-icons/README.md).

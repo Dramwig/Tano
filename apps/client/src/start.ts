@@ -8,6 +8,8 @@ import { initializePlatform, mobile } from '@tano/workbench/platform';
 import { applyTheme, readThemePreference } from '@tano/workbench/theme';
 import '@tano/workbench/styles.css';
 import { settingsWindowRequest } from '@tano/workbench/settings-window';
+import { HttpPluginCatalog } from '@tano/workbench/plugins/catalog';
+import { createNativePluginConnections, createNativePluginServices } from '@tano/workbench/plugins/native';
 
 export async function start() {
   applyTheme(readThemePreference());
@@ -24,7 +26,10 @@ export async function start() {
   const locale = markdownDemoLocaleFromPath(window.location.pathname) ?? 'zh-cn';
   const extensions = createLocalExtensions();
   const storage = native ? { adapter: new NativeAdapter() } : createMarkdownDemo(locale);
-  const pinia = configureWorkbench(createPinia(), { ...storage, native, mobile, extensions: () => extensions });
+  const catalogUrl = import.meta.env.VITE_TANO_PLUGIN_CATALOG_URL?.trim();
+  const plugins = { ...(catalogUrl ? { catalog: new HttpPluginCatalog(catalogUrl) } : {}),
+    ...(native && !mobile ? { native: createNativePluginServices(), connections: createNativePluginConnections() } : {}) };
+  const pinia = configureWorkbench(createPinia(), { ...storage, native, mobile, plugins, extensions: () => extensions });
   document.documentElement.lang = !native && locale === 'en-us' ? 'en-US' : 'zh-CN';
   document.title = native ? 'Tano / 同页 — 本地工作区' : locale === 'en-us' ? 'Tano — English Markdown demo' : 'Tano / 同页 — 中文 Markdown 演示';
   const app = native && !mobile && !settingsRoute

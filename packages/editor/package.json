@@ -11,6 +11,7 @@
     "./document-links": "./src/document-links.ts",
     "./runtime": "./src/runtime.ts",
     "./source-highlight": "./src/source-highlight.ts",
+    "./mode-selection": "./src/mode-selection.ts",
     "./headless": "./src/headless.ts",
     "./comment-projection": "./src/comment-projection.ts",
     "./comment-anchors": "./src/comment-anchors.ts",

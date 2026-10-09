@@ -1,5 +1,5 @@
 import { h, render } from 'vue';
-import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronRight, Copy, Eraser, GripHorizontal, GripVertical, PaintRoller, Plus, Trash2 } from 'lucide-vue-next';
+import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronRight, Copy, Eraser, GripHorizontal, GripVertical, PaintRoller, Plus, RotateCcw, Trash2 } from 'lucide-vue-next';
 import type { Component } from 'vue';
 import { Plugin, PluginKey, TextSelection } from '@milkdown/kit/prose/state';
 import type { Node as ProseNode } from '@milkdown/kit/prose/model';
@@ -399,6 +399,24 @@ export function tableControls(readonly: () => boolean) {
           alignment.addEventListener('pointerenter', deferCloseColors);
           items.append(alignment);
         }
+        const automatic = !!view.state.doc.nodeAt(selected.pos)?.attrs.autoWidth;
+        const restoreWidth = document.createElement('button');
+        restoreWidth.type = 'button';
+        restoreWidth.className = 'tano-table-menu-item';
+        restoreWidth.setAttribute('role', 'menuitem');
+        restoreWidth.disabled = automatic;
+        restoreWidth.title = automatic ? '整张表已使用自动宽度' : '恢复整张表的自动宽度';
+        restoreWidth.append(icon(RotateCcw), document.createTextNode('恢复自动宽度'));
+        if (automatic) {
+          const check = icon(Check);
+          check.className = 'tano-table-menu-trailing';
+          restoreWidth.append(check);
+        }
+        restoreWidth.addEventListener('pointerenter', deferCloseColors);
+        restoreWidth.addEventListener('click', () => run('restoreAutoWidth'));
+        const divider = document.createElement('div');
+        divider.className = 'menu-divider';
+        divider.setAttribute('role', 'separator');
         const actions: { label: string; action: TableAction; icon: Component }[] = [
           { label: '颜色', action: 'color', icon: PaintRoller },
           { label: column ? '向左插入列' : '向上插入行', action: 'before', icon: column ? ArrowLeft : ArrowUp },
@@ -429,6 +447,7 @@ export function tableControls(readonly: () => boolean) {
           });
           items.append(button);
         }
+        items.append(divider, restoreWidth);
       };
       const open = (target: TableTarget) => {
         close();
@@ -559,7 +578,7 @@ export function tableControls(readonly: () => boolean) {
           grip?.focus({ preventScroll: true });
           event.preventDefault(); event.stopPropagation();
         } else if (!menu.hidden && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
-          const buttons = [...(palette.hidden ? items : palette).querySelectorAll<HTMLButtonElement>('button:not([hidden])')];
+          const buttons = [...(palette.hidden ? items : palette).querySelectorAll<HTMLButtonElement>('button:not([hidden]):not(:disabled)')];
           const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
           const step = event.key === 'ArrowDown' ? 1 : -1;
           const next = index < 0 ? (step === 1 ? 0 : buttons.length - 1) : (index + step + buttons.length) % buttons.length;

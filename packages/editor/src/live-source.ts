@@ -33,7 +33,7 @@ export const liveSource = $nodeSchema('tano_live_source', () => ({
   },
 }));
 
-/** An editable Markdown fragment that occupies only one formatted inline field. */
+/** An editable Markdown field, also used for syntax that marks cannot represent losslessly. */
 export const liveInlineSource = $nodeSchema('tano_live_source_inline', () => ({
   inline: true,
   group: 'inline',
@@ -53,8 +53,12 @@ export const liveInlineSource = $nodeSchema('tano_live_source_inline', () => ({
     0,
   ],
   parseMarkdown: {
-    match: () => false,
-    runner: () => undefined,
+    match: (node) => node.type === 'tanoNestedEmphasisSource',
+    runner: (state, node, type) => {
+      state.addNode(type, {
+        id: `nested-emphasis-${node.position?.start.offset}-${node.position?.end.offset}`,
+      }, [state.schema.text(String(node.value))]);
+    },
   },
   toMarkdown: {
     match: (node) => node.type.name === 'tano_live_source_inline',

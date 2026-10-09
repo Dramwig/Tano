@@ -6,13 +6,14 @@ import SettingsPanel from './SettingsPanel.vue';
 import UpdatePanel from './UpdatePanel.vue';
 import { useWorkbenchRuntime } from '../runtime';
 import {
-  SETTINGS_COMMAND, SETTINGS_NAVIGATE, SETTINGS_RENDERED, SETTINGS_STATE, settingsWindowRequest,
+  SETTINGS_COMMAND, SETTINGS_NAVIGATE, SETTINGS_RENDERED, SETTINGS_STATE, SETTINGS_PLUGIN_RESULT, settingsWindowRequest,
 } from '../settings-window';
 import type {
   SettingsAction, SettingsCommand, SettingsPageId, SettingsSnapshot, SettingsValues,
 } from '../settings-window';
 import type { CapabilityPatch } from '../workspace-capabilities';
 import { applyTheme } from '../theme';
+import type { PluginInteraction } from '../plugins/workbench';
 
 const request = settingsWindowRequest()!;
 const extensions = useWorkbenchRuntime().extensions?.();
@@ -22,6 +23,16 @@ const error = ref('');
 const unlisten: Array<() => void> = [];
 let mounted = false;
 let rendered = false;
+const pluginCalls = new Map<string, { resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+function executePlugin(interaction: PluginInteraction) {
+  const requestId = crypto.randomUUID();
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => { pluginCalls.delete(requestId); reject(new Error('插件操作未返回，请检查工作台状态')); }, 35000);
+    pluginCalls.set(requestId, { resolve, reject, timer });
+    void emitTo(request.opener, SETTINGS_COMMAND, { type: 'plugin-invoke', requestId, interaction } satisfies SettingsCommand)
+      .catch(error => { clearTimeout(timer); pluginCalls.delete(requestId); reject(error); });
+  });
+}
 
 async function send(command: SettingsCommand) {
   try {
@@ -71,10 +82,20 @@ onMounted(async () => {
   });
   if (!mounted) { navigationListener(); return; }
   unlisten.push(navigationListener);
+  const resultListener = await listen<{ requestId: string; error?: string }>(SETTINGS_PLUGIN_RESULT, event => {
+    const pending = pluginCalls.get(event.payload.requestId);
+    if (!pending) return;
+    clearTimeout(pending.timer); pluginCalls.delete(event.payload.requestId);
+    if (event.payload.error) pending.reject(new Error(event.payload.error)); else pending.resolve();
+  });
+  if (!mounted) { resultListener(); return; }
+  unlisten.push(resultListener);
   await send({ type: 'ready' });
 });
 
 onBeforeUnmount(() => {
+  for (const pending of pluginCalls.values()) { clearTimeout(pending.timer); pending.reject(new Error('设置窗口已关闭')); }
+  pluginCalls.clear();
   mounted = false;
   for (const stop of unlisten) stop();
   void extensions?.disconnect().catch(() => {});
@@ -99,6 +120,8 @@ onBeforeUnmount(() => {
     :workspace-deletion-error="snapshot.workspaceDeletionError"
     :active-file="snapshot.activeFile"
     :extra-pages="extensions?.settingsPages"
+    :plugin-pages="snapshot.pluginPages"
+    :execute-plugin="executePlugin"
     :mode="snapshot.mode"
     :native="true"
     :mobile="false"

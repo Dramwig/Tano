@@ -207,7 +207,7 @@ it('clears every selected cell even when content lengths change and removes the 
 
 it('moves rows and columns with the existing table engine, preserving widths, colors, and header roles', async () => {
   const first = await mount();
-  const saved = [{ ...tablesInDocument(first.view.state.doc)[0]!.layout, widths: [80, 210, 320] }];
+  const saved = [{ ...tablesInDocument(first.view.state.doc)[0]!.layout, autoWidth: undefined, widths: [80, 210, 320] }];
   app!.unmount(); root.remove();
   const { view } = await mount(markdown, saved);
   view.dispatch(tableLineAction(view.state, { pos: 0, axis: 'column', index: 0 }, 'color', 'blue')!);
@@ -351,7 +351,7 @@ it('opens all line actions with keyboard navigation and cancels a pending gestur
   expect(menu.hidden).toBe(false);
   expect((view.state.selection as CellSelection).isColSelection()).toBe(true);
   expect(menu.querySelector('input')).toBeNull();
-  expect(menu.querySelectorAll('[role=menuitem]')).toHaveLength(6);
+  expect(menu.querySelectorAll('[role=menuitem]')).toHaveLength(7);
   expect(document.activeElement).toBe(menu);
   document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
   expect(document.activeElement!.getAttribute('aria-label')).toBe('左对齐');
@@ -362,7 +362,7 @@ it('opens all line actions with keyboard navigation and cancels a pending gestur
   document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
   expect(document.activeElement!.getAttribute('aria-label')).toBe('右对齐');
   document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-  expect(document.activeElement).toBe(menu.querySelector('[role=menuitem]'));
+  expect(document.activeElement).toBe(menu.querySelector('[role=menuitem]:not(:disabled)'));
   document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
   const palette = menu.querySelector<HTMLElement>('.tano-table-color-menu')!;
   expect(palette.hidden).toBe(false);
@@ -372,7 +372,7 @@ it('opens all line actions with keyboard navigation and cancels a pending gestur
   document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   expect(palette.hidden).toBe(true);
   expect(menu.hidden).toBe(false);
-  expect(document.activeElement).toBe(menu.querySelector('[role=menuitem]'));
+  expect(document.activeElement).toBe(menu.querySelector('[role=menuitem]:not(:disabled)'));
   document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
   expect(document.activeElement!.getAttribute('aria-label')).toBe('右对齐');
   for (let i = 0; i < 3; i++)
@@ -392,6 +392,45 @@ it('opens all line actions with keyboard navigation and cancels a pending gestur
   pointer('pointermove', root);
 });
 
+it.each(['row', 'column'] as const)('restores the whole table width from the %s menu while preserving colors, alignment and Markdown', async axis => {
+  const source = markdown.replace('| --- | --- | --- |', '| --- | :---: | --- |');
+  const first = await mount(source);
+  const table = tablesInDocument(first.view.state.doc)[0]!.layout;
+  app!.unmount(); root.remove();
+  const backgrounds: TableLayout['backgrounds'] = [['blue', null, null], [null, 'yellow', null], [null, null, null]];
+  const foregrounds: TableLayout['foregrounds'] = [[null, null, null], ['pink', null, null], [null, null, null]];
+  const { view, value, layouts } = await mount(source, [{ ...table, autoWidth: undefined, widths: [80, 210, 320], backgrounds, foregrounds }]);
+  const openMenu = () => {
+    measureInsertionTable();
+    root.querySelectorAll('tr')[1]!.children[1]!.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 340, clientY: 160 }));
+    root.querySelector<HTMLButtonElement>(`.tano-table-grip.is-${axis}`)!.click();
+    const menu = root.querySelector<HTMLElement>('.tano-table-menu')!;
+    const button = [...menu.querySelectorAll<HTMLButtonElement>('[role=menuitem]')].find(item => item.textContent === '恢复自动宽度')!;
+    expect(button.previousElementSibling?.getAttribute('role')).toBe('separator');
+    expect(button.parentElement!.lastElementChild).toBe(button);
+    return { menu, button };
+  };
+  const { menu, button } = openMenu();
+  expect(button.disabled).toBe(false);
+  expect(button.title).toBe('恢复整张表的自动宽度');
+  button.click();
+  expect(menu.hidden).toBe(true);
+  await nextTick();
+  const restored = tablesInDocument(view.state.doc)[0]!;
+  expect(restored.node.attrs.autoWidth).toBe(true);
+  expect(restored.layout.backgrounds).toEqual(backgrounds);
+  expect(restored.layout.foregrounds).toEqual(foregrounds);
+  restored.node.forEach(row => expect(row.child(1).attrs.alignment).toBe('center'));
+  expect(value.value).toBe(source);
+  expect(layouts.value[0]!.autoWidth).toBe(true);
+  const automatic = openMenu();
+  expect(automatic.button.disabled).toBe(true);
+  expect(automatic.button.title).toBe('整张表已使用自动宽度');
+  expect(automatic.button.querySelector('.tano-table-menu-trailing')).not.toBeNull();
+  automatic.menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  expect(document.activeElement).toBe(automatic.menu.querySelector('button:not(:disabled)'));
+});
+
 it.each(['row', 'column'] as const)('waits for an arrow key before focusing a keyboard-opened %s menu item', async axis => {
   await mount();
   measureInsertionTable();
@@ -401,7 +440,7 @@ it.each(['row', 'column'] as const)('waits for an arrow key before focusing a ke
   grip.click();
   const menu = root.querySelector<HTMLElement>('.tano-table-menu')!;
   const buttons = [...menu.querySelectorAll<HTMLButtonElement>('button')]
-    .filter(button => !button.closest('.tano-table-color-menu'));
+    .filter(button => !button.disabled && !button.closest('.tano-table-color-menu'));
   expect(menu.hidden).toBe(false);
   expect(document.activeElement).toBe(menu);
   menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
@@ -412,7 +451,7 @@ it.each(['row', 'column'] as const)('waits for an arrow key before focusing a ke
   grip.click();
   expect(document.activeElement).toBe(menu);
   menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-  expect(document.activeElement).toBe(menu.querySelector('button'));
+  expect(document.activeElement).toBe(menu.querySelector('button:not(:disabled)'));
 });
 
 it.each(['row', 'column'] as const)('keeps a clipped %s preview independent of wide-table gutters and minimum width', async axis => {

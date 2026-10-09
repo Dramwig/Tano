@@ -5,6 +5,7 @@ import { localDayKey } from '../calendar';
 import { builtinTemplates, nameTemplate, renderTemplate, templateVariables } from '../workspace-templates';
 import type { DocumentTemplate } from '../workspace-templates';
 import { useWorkspaceStore } from '../stores/workspace';
+import { recordHelpCompleted } from '../help-checklist';
 const props = defineProps<{ source?: string }>();
 const emit = defineEmits<{ close: [] }>();
 const store = useWorkspaceStore(), workspaceId = store.workspace!.id;
@@ -38,7 +39,11 @@ async function save(copy = false) {
 async function create() {
   if (disabled.value || !rendered.value) return;
   busy.value = true; error.value = '';
-  try { await store.create(targetPath.value.trim(), false, rendered.value, workspaceId); emit('close'); }
+  try {
+    await store.create(targetPath.value.trim(), false, rendered.value, workspaceId);
+    recordHelpCompleted('use-template');
+    emit('close');
+  }
   catch (reason) { error.value = String(reason); }
   finally { busy.value = false; }
 }

@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { AlignLeft, ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRight, ChevronsRight, CircleCheck, Copy, Cpu, createLucideIcon, FilePlus2, FileText, History, Languages, LoaderCircle, MessageCircle, MessageCirclePlus, Minus, MoreHorizontal, Paperclip, Pencil, Plug, Plus, RefreshCw, Reply, Search, Settings2, ShieldCheck, Square, Terminal, Trash2, Undo2, X } from 'lucide-vue-next';
+import { AlignLeft, ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRight, ChevronsRight, CircleCheck, Copy, Cpu, createLucideIcon, FilePlus2, FileText, History, Languages, LoaderCircle, MessageCircle, MessageCirclePlus, Minus, MoreHorizontal, Paperclip, Pencil, Plug, Plus, RefreshCw, Reply, Search, Settings2, Square, Terminal, Trash2, Undo2, X } from 'lucide-vue-next';
 import MarkdownEditor from '@tano/editor';
-import type { AssistantMessage, AssistantProposal, AssistantSource, ReferenceIdentity } from '@tano/protocol';
+import type { AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSource, ReferenceIdentity } from '@tano/protocol';
 import { useAssistantStore } from '../assistant/store';
+import { assistantResultNotice, assistantToolLabel } from '../assistant/results';
 import type { AssistantDisplayMode } from '../assistant/store';
 import { useWorkspaceStore } from '../stores/workspace';
-import ChangeDiff from './ChangeDiff.vue';
-import TaskProposalPreview from './TaskProposalPreview.vue';
+import AssistantChangeList from './AssistantChangeList.vue';
+import AssistantModelIcon from './AssistantModelIcon.vue';
+import AssistantGenerationHint from './AssistantGenerationHint.vue';
 
 const assistant = useAssistantStore();
 const workspace = useWorkspaceStore();
@@ -28,9 +30,8 @@ const deleting = ref<string>();
 const exportMessage = ref<AssistantMessage>();
 const exportPath = ref('助手结果.md');
 const visibleMessages = ref(30);
-const proposalChecks = ref<Record<string, boolean>>({});
 const panel = ref<HTMLElement>();
-const popover = ref<'model' | 'permissions' | 'add' | 'history' | 'more' | 'mode' | null>(null);
+const popover = ref<'model' | 'reasoning' | 'add' | 'history' | 'more' | 'mode' | null>(null);
 function displayIcon(name: string, region: { x: string; y: string; width: string; height: string }) {
   return createLucideIcon(name, [
     ['rect', { x: '2', y: '4', width: '20', height: '16', rx: '2', key: 'frame' }],
@@ -49,8 +50,9 @@ const floatingStyle = computed(() => assistant.displayMode === 'floating' && flo
   width: `${floatingRect.value.width}px`, height: `${floatingRect.value.height}px`, right: 'auto', bottom: 'auto',
 } : {});
 let floatingGesture: { pointer: number; target: HTMLElement; x: number; y: number; rect: NonNullable<typeof floatingRect.value> } | undefined;
-const modelView = ref<'main' | 'all' | 'connections' | 'manual'>('main');
+const modelView = ref<'main' | 'connections' | 'manual'>('main');
 const modelQuery = ref('');
+const searchingModels = ref(false);
 const addView = ref<'main' | 'sources'>('main');
 const historyQuery = ref('');
 const searchingHistory = ref(false);
@@ -62,18 +64,22 @@ let composerObserver: ResizeObserver | undefined;
 const title = computed(() => assistant.session?.messages.length ? assistant.session.title : '新助手会话');
 const modelLabel = computed(() => assistant.modelId === 'cli-default' ? 'CLI 默认模型' : assistant.modelId || '选择模型');
 const controlsLocked = computed(() => assistant.busy || assistant.applying || assistant.loading);
-const permissionChoices = [
-  { id: 'references', label: '仅参考文档', short: '仅参考', detail: '读取已添加的文档与工作区约定', search: false, structures: false },
-  { id: 'notes', label: '检索工作区笔记', short: '检索笔记', detail: '可搜索和读取当前工作区的 Markdown 文档', search: true, structures: false },
-  { id: 'workspace', label: '完整工作区上下文', short: '工作区', detail: '可检索笔记、读取对象，提出任务与关系建议', search: true, structures: true },
-] as const;
-const permission = computed(() => permissionChoices.find(choice => choice.search === assistant.allowSearch && choice.structures === assistant.allowStructures));
+const reasoningChoices: { id: AssistantReasoningSelection; label: string; short: string; detail: string }[] = [
+  { id: 'low', label: '低', short: '低', detail: '日常问答，优先速度' },
+  { id: 'medium', label: '中', short: '中', detail: '平衡速度与质量' },
+  { id: 'high', label: '高', short: '高', detail: '复杂分析' },
+  { id: 'xhigh', label: '很高', short: '很高', detail: '更深入推理' },
+  { id: 'max', label: '最高', short: '最高', detail: '更多推理，更长等待' },
+  { id: 'ultra', label: '极高', short: '极高', detail: '更多推理，更长等待' },
+  { id: 'cli-default', label: '沿用 CLI 设置', short: '默认', detail: '使用本机 Codex 的推理配置' },
+];
+const reasoningLabel = computed(() => reasoningChoices.find(choice => choice.id === assistant.reasoningEffort)?.short ?? '默认');
 const modelOptions = computed(() => {
   const models = [...assistant.models];
   if (assistant.modelId && !models.includes(assistant.modelId)) models.unshift(assistant.modelId);
   return models;
 });
-const listedModels = computed(() => modelView.value === 'all' ? modelOptions.value.filter(id => id.toLocaleLowerCase().includes(modelQuery.value.toLocaleLowerCase())) : modelOptions.value.slice(0, 5));
+const listedModels = computed(() => modelOptions.value.filter(id => id.toLocaleLowerCase().includes(modelQuery.value.toLocaleLowerCase())));
 const historyGroups = computed(() => {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
@@ -86,20 +92,40 @@ const historyGroups = computed(() => {
 });
 const starters = [
   { label: '总结这篇笔记', icon: AlignLeft, prompt: '请总结这篇笔记，提炼核心观点与重点。' },
-  { label: '润色这篇笔记', icon: Pencil, prompt: '请润色这篇笔记，保留原意，让表达更清晰自然。先给出修改建议。' },
+  { label: '润色这篇笔记', icon: Pencil, prompt: '请直接润色这篇笔记，保留原意，让表达更清晰自然。' },
   { label: '翻译成英文', icon: Languages, prompt: '请将这篇笔记翻译成英文，保留原有的 Markdown 格式。' },
   { label: '提取待办事项', icon: CircleCheck, prompt: '请从这篇笔记中提取待办事项，列出行动、负责人和截止时间；未明确的信息请标为待确认。' },
 ];
 const sourceFiles = computed(() => workspace.workspace?.files.filter(file => file.kind === 'file' && /\.(?:md|markdown)$/i.test(file.path) &&
   !file.path.startsWith('.tano/') && file.path.toLocaleLowerCase().includes(query.value.toLocaleLowerCase())).slice(0, 100) ?? []);
 const displayed = computed(() => assistant.session?.messages.slice(-visibleMessages.value) ?? []);
-const statusLabels = { ready: '待审阅', applying: '正在保存', applied: '已应用', rejected: '已放弃', conflicted: '存在冲突', unknown: '结果待核对' };
+const messageSources = computed(() => {
+  const messages = assistant.session?.messages ?? [];
+  const sourcesByMessage = new Map<string, AssistantSource[]>();
+  for (const [index, message] of messages.entries()) {
+    const sources = message.sources ?? [];
+    const previous = messages[index - 1];
+    if (message.role !== 'assistant' || previous?.role !== 'user') {
+      sourcesByMessage.set(message.id, sources);
+      continue;
+    }
+    // Older conversations kept all reference documents on the reply without attachment IDs.
+    const attached = new Set(message.attachedSourceIds ?? sources.map(source => source.id));
+    sourcesByMessage.set(previous.id, [...(previous.sources ?? []), ...sources.filter(source => attached.has(source.id))]);
+    sourcesByMessage.set(message.id, sources.filter(source => !attached.has(source.id)));
+  }
+  return sourcesByMessage;
+});
 async function changeConnection(id: string) {
   try { await assistant.selectConnection(id); modelView.value = 'main'; }
   catch (error) { assistant.error = String(error); }
 }
 async function changeModel(id: string) {
   try { await assistant.selectModel(id); closePopover(true); }
+  catch (error) { assistant.error = String(error); }
+}
+async function changeReasoning(value: AssistantReasoningSelection) {
+  try { await assistant.selectReasoningEffort(value); closePopover(true); }
   catch (error) { assistant.error = String(error); }
 }
 function inputModel() {
@@ -114,9 +140,10 @@ function setModelView(view: 'main' | 'connections') {
   modelView.value = view;
   void nextTick(() => panel.value?.querySelector<HTMLButtonElement>('#assistant-model-options [data-menu-item]:not(:disabled)')?.focus());
 }
-function showAllModels() {
-  modelView.value = 'all';
-  void nextTick(() => panel.value?.querySelector<HTMLInputElement>('[aria-label="搜索模型"]')?.focus());
+function searchModels() {
+  searchingModels.value = !searchingModels.value;
+  if (!searchingModels.value) modelQuery.value = '';
+  void nextTick(() => panel.value?.querySelector<HTMLElement>(searchingModels.value ? '#assistant-model-search' : '[aria-label="搜索模型列表"]')?.focus());
 }
 function toggleSource(id: string) {
   if (assistant.busy) return;
@@ -177,7 +204,7 @@ function sendKey(event: KeyboardEvent) {
 function togglePopover(kind: NonNullable<typeof popover.value>, event: MouseEvent) {
   popoverTrigger = event.currentTarget as HTMLButtonElement;
   if (popover.value === kind) { closePopover(true); return; }
-  modelView.value = 'main'; modelQuery.value = ''; addView.value = 'main'; query.value = '';
+  modelView.value = 'main'; modelQuery.value = ''; searchingModels.value = false; addView.value = 'main'; query.value = '';
   historyQuery.value = ''; searchingHistory.value = false;
   popover.value = kind;
   void nextTick(() => {
@@ -243,11 +270,6 @@ function searchHistory() {
   if (!searchingHistory.value) historyQuery.value = '';
   void nextTick(() => panel.value?.querySelector<HTMLInputElement>('[aria-label="搜索助手会话"]')?.focus());
 }
-function selectPermission(choice: typeof permissionChoices[number]) {
-  if (controlsLocked.value) return;
-  assistant.allowSearch = choice.search; assistant.allowStructures = choice.structures;
-  closePopover(true);
-}
 function openSources() {
   addView.value = 'sources';
   void nextTick(() => panel.value?.querySelector<HTMLInputElement>('[aria-label="搜索参考文档"]')?.focus());
@@ -288,7 +310,7 @@ function resizeInput() {
   updateMenuPosition();
 }
 function updateMenuPosition() {
-  if (!['model', 'permissions', 'add'].includes(popover.value ?? '') || !popoverTrigger) return;
+  if (!['model', 'reasoning', 'add'].includes(popover.value ?? '') || !popoverTrigger) return;
   const element = panel.value;
   const composer = element?.querySelector('.assistant-composer-area');
   const menu = composer?.querySelector('.assistant-popover');
@@ -296,7 +318,7 @@ function updateMenuPosition() {
   const composerBounds = composer.getBoundingClientRect();
   const triggerBounds = popoverTrigger.getBoundingClientRect();
   const menuWidth = menu.getBoundingClientRect().width;
-  const desiredLeft = popover.value === 'model' ? triggerBounds.right - composerBounds.left - menuWidth : triggerBounds.left - composerBounds.left;
+  const desiredLeft = ['model', 'reasoning'].includes(popover.value ?? '') ? triggerBounds.right - composerBounds.left - menuWidth : triggerBounds.left - composerBounds.left;
   menuPosition.value = {
     left: `${Math.max(0, Math.min(desiredLeft, composerBounds.width - menuWidth))}px`,
     bottom: `${composerBounds.bottom - triggerBounds.top + 8}px`,
@@ -353,9 +375,12 @@ watch(() => [assistant.displayMode, props.fullscreenTarget], () => {
   endFloatingGesture();
   void nextTick(() => { resized(); resizeInput(); textarea.value?.focus(); });
 }, { flush: 'post' });
-watch(() => [assistant.session?.id, assistant.connectionId], () => { modelView.value = 'main'; });
+watch(() => [assistant.session?.id, assistant.connectionId], () => { modelView.value = 'main'; modelQuery.value = ''; searchingModels.value = false; });
 watch(() => assistant.session?.id, () => { visibleMessages.value = 30; void nextTick(scrollToLatest); });
-watch(() => assistant.session?.messages.map(message => message.content.length).join(','), () => {
+watch(() => [controlsLocked.value, assistant.connection?.kind], () => {
+  if (popover.value === 'reasoning' && (controlsLocked.value || assistant.connection?.kind !== 'codex-cli')) closePopover();
+});
+watch(() => [assistant.session?.messages.map(message => message.content.length).join(','), assistant.busy, assistant.applying, assistant.progress], () => {
   const element = messages.value;
   if (element && element.scrollHeight - element.scrollTop - element.clientHeight < 160)
     void nextTick(scrollToLatest);
@@ -438,32 +463,24 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
         <button v-if="(assistant.session?.messages.length ?? 0) > visibleMessages" class="assistant-text-action" @click="visibleMessages += 30">查看较早消息</button>
         <div v-if="displayed.length" class="assistant-conversation-meta">同页助手 · {{ messageTime(displayed[0]!.createdAt) }}</div>
         <article v-for="message in displayed" :key="message.id" class="assistant-message" :class="`assistant-message-${message.role}`" :aria-label="message.role === 'user' ? '你的消息' : '助手回答'">
-          <div v-if="message.role === 'user' || message.state === 'running'" class="assistant-message-text">{{ message.content }}</div>
+          <div v-if="message.role === 'user' && messageSources.get(message.id)?.length" class="assistant-citations assistant-attachments" aria-label="已发送的参考文档"><button v-for="source in messageSources.get(message.id)" :key="source.id" :title="source.path" @click="openSource(source)"><FileText :size="12" />{{ source.path }}</button></div>
+          <div v-if="message.role === 'user'" class="assistant-message-text">{{ message.content }}</div>
           <div v-else-if="message.content" class="assistant-answer"><MarkdownEditor :model-value="answerMarkdown(message)" :document-id="`assistant-${message.id}`" :reference-targets="assistant.session?.workspaceId === workspace.workspace?.id ? workspace.referenceTargets : []" readonly :reveal-markdown="false" open-links-on-tap :resolve-image="() => null" @open-link="sourceLink(message, $event)" @open-reference="openAnswerReference" @ready="answerReady" @error="notice = $event" /></div>
           <p v-if="message.error || message.state === 'interrupted'" class="assistant-message-error">{{ message.error ?? '上次运行已中断；不会自动恢复执行' }}</p>
+          <p v-if="assistantResultNotice(message)" class="assistant-result-notice" role="status" aria-label="实际执行结果">{{ assistantResultNotice(message) }}</p>
+          <details v-if="message.toolResults?.some(result => result.status === 'failed')" class="assistant-tool-errors">
+            <summary>工具执行记录：{{ message.toolResults.filter(result => result.status === 'failed').length }} 次失败</summary>
+            <p v-for="(result, index) in message.toolResults.filter(result => result.status === 'failed')" :key="index">{{ assistantToolLabel(result.name) }}：{{ result.error }}</p>
+          </details>
           <div v-if="message.state === 'failed' && message.error?.includes('模型服务返回 HTTP')" class="assistant-recovery-actions">
             <button type="button" class="assistant-text-action" :disabled="controlsLocked" @click="chooseRecoveryModel"><Cpu :size="13" />切换模型</button>
             <button v-if="!assistant.demo" type="button" class="assistant-text-action" :disabled="controlsLocked" @click="closePopover(); emit('openSettings')"><Plug :size="13" />模型连接</button>
           </div>
-          <div v-if="message.sources?.length" class="assistant-citations"><button v-for="source in message.sources" :key="source.id" :title="source.path" @click="openSource(source)"><FileText :size="12" />{{ source.id }} · {{ source.path }}</button></div>
+          <div v-if="message.role === 'assistant' && messageSources.get(message.id)?.length" class="assistant-citations"><button v-for="source in messageSources.get(message.id)" :key="source.id" :title="source.path" @click="openSource(source)"><FileText :size="12" />{{ source.id }} · {{ source.path }}</button></div>
           <small v-if="message.rules?.length" class="assistant-rules">工作区约定：{{ message.rules.join('、') }}</small>
-          <section v-for="proposal in message.proposals" :key="proposal.id" class="assistant-proposal" :aria-label="`修改建议 ${proposal.path}`">
-            <div class="assistant-proposal-heading"><strong>{{ proposal.kind === 'object' ? (proposal.base ? '修改任务' : '工作区事件') : proposal.kind === 'relation' ? '维护关系' : proposal.kind === 'create' ? '新建' : '修改' }} · {{ proposal.preview?.path ?? proposal.path }}</strong><small>{{ statusLabels[proposal.status] }}</small></div>
-            <p>{{ proposal.reason }}</p>
-            <TaskProposalPreview :proposal="proposal" @open-reference="openAnswerReference" @ready="proposalChecks[proposal.id] = $event" />
-            <p v-if="proposal.error" class="assistant-message-error">{{ proposal.error }}</p>
-            <ChangeDiff v-if="proposal.preview" :before="proposal.preview.before" :after="proposal.preview.after" />
-            <div class="assistant-proposal-actions">
-              <button v-if="proposal.kind === 'edit' && ['ready', 'conflicted'].includes(proposal.status)" class="secondary-button" :disabled="assistant.busy || assistant.applying" @click="assistant.publishSuggestions(proposal)"><Pencil :size="14" />{{ proposal.suggestionGroupId ? '打开文档建议' : '在文档中逐项审阅' }}</button>
-              <template v-if="!proposal.suggestionGroupId && ['ready', 'conflicted'].includes(proposal.status)">
-                <button class="secondary-button" :disabled="assistant.busy || assistant.applying" @click="assistant.review(proposal)"><Search :size="14" />查看差异</button>
-                <button v-if="proposal.preview && proposal.status === 'ready'" class="primary-button" :disabled="assistant.busy || assistant.applying || proposalChecks[proposal.id] === false" @click="assistant.review(proposal, true)"><Check :size="14" />应用修改</button>
-                <button class="icon-button" title="放弃建议" aria-label="放弃修改建议" :disabled="assistant.busy || assistant.applying" @click="assistant.reject(proposal)"><X :size="15" /></button>
-              </template>
-              <button v-if="proposal.status === 'unknown'" class="secondary-button" :disabled="assistant.applying" @click="assistant.verify(proposal)"><Search :size="14" />核对写入结果</button>
-              <button v-if="proposal.status === 'applied' && !['object', 'relation'].includes(proposal.kind)" class="assistant-text-action" :disabled="assistant.busy || assistant.applying" @click="assistant.undo(proposal)"><Undo2 :size="14" />撤回内容</button>
-            </div>
-          </section>
+          <AssistantChangeList v-if="message.proposals?.length" :proposals="message.proposals" :busy="assistant.busy || assistant.applying"
+            @review="assistant.review" @reject="assistant.reject" @verify="assistant.verify" @undo="assistant.undo"
+            @suggestions="assistant.publishSuggestions" @open-reference="openAnswerReference" />
           <div v-if="message.role === 'assistant' && message.state !== 'running'" class="assistant-message-actions">
             <button class="icon-button" title="复制回答" aria-label="复制助手回答" @click="copy(message)"><Copy :size="14" /></button>
             <button v-if="assistant.replyTarget" class="icon-button" :title="`填写回复草稿：${assistant.replyTarget.label}`" aria-label="将助手回答填入回复草稿" :disabled="assistant.busy || assistant.applying || !message.content" @click="draftReply(message)"><Reply :size="14" /></button>
@@ -472,6 +489,10 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
             <small v-if="message.timing"><template v-if="message.timing.firstContentMs !== undefined">首段 {{ (message.timing.firstContentMs / 1000).toFixed(1) }} 秒 · </template>用时 {{ (message.timing.totalMs / 1000).toFixed(1) }} 秒</small>
           </div>
         </article>
+        <div v-if="assistant.busy || assistant.applying" class="assistant-progress">
+          <span class="assistant-progress-status" role="status"><LoaderCircle :size="14" class="spinning" /><span>{{ assistant.applying ? '正在处理修改' : assistant.progress }}</span></span>
+          <AssistantGenerationHint v-if="assistant.busy && !assistant.applying" :connection-kind="assistant.connection?.kind" />
+        </div>
       </div>
       <button v-if="showLatest" class="assistant-jump-latest" title="回到最新消息" aria-label="滚动到最新消息" @click="scrollToLatest"><ArrowDown :size="20" /></button>
       </div>
@@ -480,16 +501,16 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
         <div v-if="popover === 'model'" id="assistant-model-options" class="assistant-popover assistant-model-menu" :style="menuPosition" aria-label="模型选择">
           <div class="assistant-popover-heading">
             <button v-if="modelView !== 'main'" class="icon-button" title="返回模型列表" aria-label="返回模型列表" @click="setModelView('main')"><ArrowLeft :size="16" /></button>
-            <span>{{ modelView === 'connections' ? '模型连接' : modelView === 'all' ? '全部模型' : modelView === 'manual' ? '指定模型' : '选择模型' }}</span>
-            <button v-if="modelView === 'main' || modelView === 'all'" class="icon-button" aria-label="刷新模型列表" title="刷新模型列表" :disabled="assistant.modelsLoading || controlsLocked || !assistant.connection" @click="assistant.reloadModels()"><LoaderCircle v-if="assistant.modelsLoading" :size="15" class="spinning" /><RefreshCw v-else :size="15" /></button>
-            <button class="icon-button" title="关闭模型选择" aria-label="关闭模型选择" @click="closePopover(true)"><X :size="15" /></button>
+            <span>{{ modelView === 'connections' ? '模型连接' : modelView === 'manual' ? '指定模型' : '选择模型' }}</span>
+            <button v-if="modelView === 'main'" class="icon-button" :class="{ selected: searchingModels }" aria-label="搜索模型列表" :title="searchingModels ? '收起搜索' : '搜索模型'" :aria-expanded="searchingModels" aria-controls="assistant-model-search" @click="searchModels"><Search :size="15" /></button>
+            <button v-if="modelView === 'main'" class="icon-button" aria-label="刷新模型列表" title="刷新模型列表" :disabled="assistant.modelsLoading || controlsLocked" @click="assistant.refreshModels()"><LoaderCircle v-if="assistant.modelsLoading" :size="15" class="spinning" /><RefreshCw v-else :size="15" /></button>
           </div>
           <template v-if="modelView === 'connections'">
             <div class="assistant-menu-scroll panel-scrollbar">
-              <button v-for="connection in assistant.connections" :key="connection.id" class="assistant-menu-item assistant-detail-option" :class="{ selected: assistant.connectionId === connection.id }" :aria-pressed="assistant.connectionId === connection.id" :disabled="controlsLocked" data-menu-item @click="changeConnection(connection.id)"><Plug v-if="!connection.kind || connection.kind === 'api'" :size="17" /><Terminal v-else :size="17" /><span class="assistant-menu-label"><span>{{ connection.name }}</span><small>{{ connection.kind === 'codex-cli' ? 'Codex CLI' : connection.kind === 'claude-cli' ? 'Claude CLI' : 'API 连接' }}</small></span><Check v-if="assistant.connectionId === connection.id" :size="16" class="assistant-menu-check" /></button>
+              <button v-for="connection in assistant.connections" :key="connection.id" class="assistant-menu-item assistant-detail-option" :class="{ selected: assistant.connectionId === connection.id }" :aria-pressed="assistant.connectionId === connection.id" :disabled="controlsLocked" data-menu-item @click="changeConnection(connection.id)"><Plug v-if="!connection.kind || connection.kind === 'api'" :size="17" /><Terminal v-else :size="17" /><span class="assistant-menu-label"><span>{{ connection.name }}</span><small>{{ connection.managed ? '平台提供' : connection.kind === 'codex-cli' ? 'Codex CLI' : connection.kind === 'claude-cli' ? 'Claude CLI' : 'API 连接' }}</small></span><Check v-if="assistant.connectionId === connection.id" :size="16" class="assistant-menu-check" /></button>
             </div>
-            <div v-if="!assistant.demo" class="assistant-menu-divider" />
-            <button v-if="!assistant.demo" class="assistant-menu-item" data-menu-item @click="closePopover(); emit('openSettings')"><Plus :size="17" /><span class="assistant-menu-label">添加模型连接</span></button>
+            <div v-if="!assistant.demo && assistant.canConfigure !== false" class="assistant-menu-divider" />
+            <button v-if="!assistant.demo && assistant.canConfigure !== false" class="assistant-menu-item" data-menu-item @click="closePopover(); emit('openSettings')"><Plus :size="17" /><span class="assistant-menu-label">添加模型连接</span></button>
           </template>
           <template v-else-if="modelView === 'manual'">
             <form class="assistant-manual-model" @submit.prevent="changeModel(manualModelId)">
@@ -498,39 +519,26 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
             </form>
           </template>
           <template v-else>
-            <button v-if="modelView === 'main'" class="assistant-menu-item assistant-detail-option assistant-connection-option" aria-label="选择模型连接" :disabled="controlsLocked" data-menu-item @click="setModelView('connections')"><Plug :size="17" /><span class="assistant-menu-label"><span>{{ assistant.connection?.name ?? (assistant.connectionId ? '连接已移除' : '选择模型连接') }}</span><small>{{ assistant.connection?.kind === 'codex-cli' ? 'Codex CLI' : assistant.connection?.kind === 'claude-cli' ? 'Claude CLI' : assistant.demo ? '浏览器模拟' : '模型连接' }}</small></span><ChevronRight :size="16" /></button>
-            <div v-if="modelView === 'main'" class="assistant-menu-divider" />
-            <label v-if="modelView === 'all'" class="assistant-menu-search"><Search :size="15" /><input v-model="modelQuery" aria-label="搜索模型" placeholder="搜索模型" /></label>
-            <div class="assistant-menu-scroll panel-scrollbar" aria-label="可用模型">
-              <p v-if="modelView === 'main' && listedModels.length" class="assistant-menu-caption">可用模型</p>
-              <button v-for="model in listedModels" :key="model" class="assistant-menu-item assistant-model-option" :class="{ selected: assistant.modelId === model }" :title="model" :aria-label="`使用模型 ${model}`" :aria-pressed="assistant.modelId === model" :disabled="controlsLocked" data-menu-item @click="changeModel(model)"><Terminal v-if="model === 'cli-default'" :size="16" /><Cpu v-else :size="16" /><span class="assistant-menu-label">{{ model === 'cli-default' ? 'CLI 默认模型' : model }}</span><span v-if="!assistant.models.includes(model)" class="assistant-menu-badge">自定义</span><Check v-if="assistant.modelId === model" :size="16" class="assistant-menu-check" /></button>
+            <button class="assistant-menu-item assistant-detail-option assistant-connection-option" aria-label="选择模型连接" :disabled="controlsLocked" data-menu-item @click="setModelView('connections')"><Plug :size="17" /><span class="assistant-menu-label"><span>{{ assistant.connection?.name ?? (assistant.connectionId ? '连接已移除' : '选择模型连接') }}</span><small>{{ assistant.connection?.kind === 'codex-cli' ? 'Codex CLI' : assistant.connection?.kind === 'claude-cli' ? 'Claude CLI' : assistant.demo ? '浏览器模拟' : '模型连接' }}</small></span><ChevronRight :size="16" /></button>
+            <div class="assistant-menu-divider" />
+            <label v-if="searchingModels" class="assistant-menu-search"><Search :size="15" /><input id="assistant-model-search" v-model="modelQuery" aria-label="搜索模型" placeholder="搜索模型" /></label>
+            <div class="assistant-menu-scroll panel-scrollbar" aria-label="模型列表">
+              <button v-for="model in listedModels" :key="model" class="assistant-menu-item assistant-model-option" :class="{ selected: assistant.modelId === model }" :title="model" :aria-label="`使用模型 ${model}`" :aria-pressed="assistant.modelId === model" :disabled="controlsLocked" data-menu-item @click="changeModel(model)"><AssistantModelIcon :model="model" /><span class="assistant-menu-label">{{ model === 'cli-default' ? 'CLI 默认模型' : model }}</span><span v-if="!assistant.models.includes(model)" class="assistant-menu-badge">自定义</span><Check v-if="assistant.modelId === model" :size="16" class="assistant-menu-check" /></button>
               <p v-if="assistant.modelsLoading && !listedModels.length" class="assistant-menu-empty"><LoaderCircle :size="15" class="spinning" />正在读取模型</p>
               <p v-else-if="!listedModels.length" class="assistant-menu-empty">{{ modelQuery ? '没有找到匹配的模型' : assistant.connection ? '暂无可用模型' : '请选择模型连接' }}</p>
             </div>
             <p v-if="assistant.modelsError" class="assistant-model-error" role="alert">{{ assistant.modelsError }}</p>
             <div class="assistant-menu-divider" />
-            <button v-if="modelView === 'main' && modelOptions.length > 5" class="assistant-menu-item" aria-label="查看全部模型" data-menu-item @click="showAllModels"><span class="assistant-menu-label">其他模型</span><span class="assistant-menu-count">{{ modelOptions.length }}</span><ChevronRight :size="16" /></button>
-            <button v-if="assistant.connection" class="assistant-menu-item" aria-label="手动指定对话模型" :disabled="controlsLocked" data-menu-item @click="inputModel"><Pencil :size="16" /><span class="assistant-menu-label">手动指定模型</span></button>
-            <button v-if="!assistant.connections.length && !assistant.demo" class="assistant-menu-item" data-menu-item @click="closePopover(); emit('openSettings')"><Plus :size="16" /><span class="assistant-menu-label">添加模型连接</span></button>
+            <button v-if="assistant.connection && !assistant.connection.managed" class="assistant-menu-item" aria-label="手动指定对话模型" :disabled="controlsLocked" data-menu-item @click="inputModel"><Pencil :size="16" /><span class="assistant-menu-label">手动指定模型</span></button>
+            <button v-if="!assistant.connections.length && !assistant.demo && assistant.canConfigure !== false" class="assistant-menu-item" data-menu-item @click="closePopover(); emit('openSettings')"><Plus :size="16" /><span class="assistant-menu-label">添加模型连接</span></button>
           </template>
-        </div>
-        <div v-if="popover === 'permissions'" id="assistant-permission-options" class="assistant-popover assistant-permissions-menu" :style="menuPosition" aria-label="工作区访问权限">
-          <div class="assistant-popover-heading"><span>助手可以访问哪些内容？</span><button class="icon-button" title="关闭访问权限" aria-label="关闭访问权限" @click="closePopover(true)"><X :size="15" /></button></div>
-          <div role="radiogroup" aria-label="工作区访问范围">
-            <template v-for="choice in permissionChoices" :key="choice.id">
-              <button v-if="!choice.structures || workspace.capabilities.features.objectReferences" role="radio" :aria-checked="permission?.id === choice.id" class="assistant-menu-item assistant-detail-option assistant-permission-option" :class="{ selected: permission?.id === choice.id }" :disabled="controlsLocked" data-menu-item @click="selectPermission(choice)"><span class="assistant-menu-label"><span>{{ choice.label }}</span><small>{{ choice.detail }}</small></span><Check v-if="permission?.id === choice.id" :size="17" class="assistant-menu-check" /></button>
-            </template>
-          </div>
-          <div class="assistant-menu-divider" />
-          <p class="assistant-permission-note"><ShieldCheck :size="13" />修改建议由你审阅后应用</p>
         </div>
         <div v-if="popover === 'add'" id="assistant-add-options" class="assistant-popover assistant-add-menu" :style="menuPosition" :aria-label="addView === 'sources' ? '选择参考文档' : '添加内容'">
           <template v-if="addView === 'main'">
             <button class="assistant-menu-item" data-menu-item :disabled="controlsLocked" @click="openSources"><Paperclip :size="18" /><span class="assistant-menu-label">添加参考文档</span><ChevronRight :size="15" /></button>
             <button class="assistant-menu-item" data-menu-item :disabled="controlsLocked || !workspace.active" @click="addCurrentNote"><FileText :size="18" /><span class="assistant-menu-label">引用当前笔记</span><Check v-if="workspace.active && assistant.files.includes(workspace.active.id)" :size="16" class="assistant-menu-check" /></button>
-            <label class="assistant-menu-item assistant-menu-toggle"><Search :size="18" /><span class="assistant-menu-label">检索工作区</span><input v-model="assistant.allowSearch" role="switch" type="checkbox" aria-label="允许检索当前工作区" :aria-checked="assistant.allowSearch" :disabled="controlsLocked" /><span class="assistant-switch" aria-hidden="true" /></label>
             <div class="assistant-menu-divider" />
-            <button class="assistant-menu-item" :disabled="assistant.demo || controlsLocked" data-menu-item @click="closePopover(); emit('openSettings')"><Plug :size="18" /><span class="assistant-menu-label">添加模型连接</span><span v-if="assistant.demo" class="assistant-menu-badge">桌面版</span></button>
+            <button class="assistant-menu-item" :disabled="assistant.demo || assistant.canConfigure === false || controlsLocked" data-menu-item @click="closePopover(); emit('openSettings')"><Plug :size="18" /><span class="assistant-menu-label">添加模型连接</span><span v-if="assistant.demo" class="assistant-menu-badge">桌面版</span></button>
           </template>
           <template v-else>
             <div class="assistant-popover-heading"><button class="icon-button" aria-label="返回添加内容" title="返回" @click="addView = 'main'"><ArrowLeft :size="16" /></button><span>参考文档</span><small>{{ assistant.files.length }} / 20</small><button class="icon-button" aria-label="完成参考文档选择" title="完成" @click="closePopover(true)"><Check :size="16" /></button></div>
@@ -541,8 +549,14 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
             </div>
           </template>
         </div>
+        <div v-if="popover === 'reasoning' && assistant.connection?.kind === 'codex-cli'" id="assistant-reasoning-options" class="assistant-popover assistant-reasoning-menu" :style="menuPosition" role="dialog" aria-label="当前对话的推理强度">
+          <div class="assistant-menu-heading"><span>推理强度</span></div>
+          <div role="radiogroup" aria-label="推理强度">
+            <button v-for="choice in reasoningChoices" :key="choice.id" type="button" role="radio" :aria-label="choice.label" :aria-checked="assistant.reasoningEffort === choice.id" class="assistant-menu-item assistant-detail-option" :class="{ selected: assistant.reasoningEffort === choice.id }" :disabled="controlsLocked" data-menu-item @click="changeReasoning(choice.id)"><span class="assistant-menu-label"><span>{{ choice.label }}</span><small>{{ choice.detail }}</small></span><Check v-if="assistant.reasoningEffort === choice.id" :size="16" /></button>
+          </div>
+          <p class="assistant-menu-help">用于当前对话。可用强度取决于所选模型。</p>
+        </div>
       <form class="assistant-composer" @submit.prevent="closePopover(); assistant.send()">
-        <div v-if="assistant.busy || assistant.applying" class="assistant-progress" role="status"><LoaderCircle :size="14" class="spinning" />{{ assistant.applying ? '正在处理修改' : assistant.progress }}</div>
         <div v-if="assistant.files.length || assistant.selection" class="assistant-contexts">
           <button v-for="id in assistant.files" :key="id" type="button" class="assistant-context" :disabled="assistant.busy" :title="`移除参考：${workspace.workspace?.files.find(file => file.id === id)?.path ?? id}`" @click="toggleSource(id)"><FileText :size="13" /><span>{{ workspace.workspace?.files.find(file => file.id === id)?.name ?? '已移除文档' }}</span><X :size="12" /></button>
           <div v-if="assistant.selection" class="assistant-selection"><span>{{ assistant.selection.text }}</span><button type="button" class="icon-button" aria-label="清除助手选区" title="清除选区" :disabled="assistant.busy" @click="assistant.selection = null"><X :size="13" /></button></div>
@@ -550,8 +564,8 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
         <textarea ref="textarea" v-model="assistant.prompt" rows="2" maxlength="20000" aria-label="给助手的任务" placeholder="问问同页助手…" @keydown="sendKey" />
         <div class="assistant-compose-actions">
           <button type="button" class="icon-button assistant-compose-tool" title="添加内容" aria-label="添加内容" :disabled="controlsLocked" :aria-expanded="popover === 'add'" aria-controls="assistant-add-options" data-assistant-popover @click="togglePopover('add', $event)"><Plus :size="20" /></button>
-          <button type="button" class="assistant-compose-permission" :class="{ 'assistant-granted': assistant.allowSearch || assistant.allowStructures }" title="工作区访问权限" aria-label="工作区访问权限" :aria-expanded="popover === 'permissions'" aria-controls="assistant-permission-options" data-assistant-popover @click="togglePopover('permissions', $event)"><span>{{ permission?.short ?? '自定义' }}</span></button>
           <button type="button" class="assistant-compose-model" :title="`${assistant.connection?.name ?? '模型连接'} · ${modelLabel}`" aria-label="选择助手模型" :aria-expanded="popover === 'model'" aria-controls="assistant-model-options" data-assistant-popover @click="togglePopover('model', $event)"><span>{{ modelLabel }}</span><ChevronDown :size="13" /></button>
+          <button v-if="assistant.connection?.kind === 'codex-cli'" type="button" class="assistant-compose-reasoning" :title="`推理强度：${reasoningLabel}`" aria-label="选择推理强度" :disabled="controlsLocked" :aria-expanded="popover === 'reasoning'" aria-controls="assistant-reasoning-options" data-assistant-popover @click="togglePopover('reasoning', $event)"><span>{{ reasoningLabel }}</span><ChevronDown :size="12" /></button>
           <button v-if="assistant.busy" type="button" class="icon-button assistant-stop" aria-label="停止助手生成" title="停止生成" @click="assistant.stop()"><Square :size="16" /></button><button v-else class="primary-button assistant-send" aria-label="发送给助手" title="发送" :disabled="!assistant.prompt.trim() || !assistant.connection || !assistant.modelId || assistant.loading || assistant.applying"><ArrowUp :size="18" /></button>
         </div>
       </form>
@@ -583,9 +597,9 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
 .assistant-more-menu > button { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 26px; padding: 4px 7px; border-radius: 6px; font-size: 12px; line-height: 16px; text-align: left; }
 .assistant-more-menu > button > svg { width: 14px; height: 14px; }
 .assistant-more-menu > button:hover { background: var(--surface); }
-.assistant-model-menu, .assistant-permissions-menu, .assistant-add-menu { z-index: 70; max-height: min(440px, var(--assistant-menu-max-height)); overflow: auto; }
+.assistant-model-menu, .assistant-add-menu { z-index: 70; max-height: min(440px, var(--assistant-menu-max-height)); overflow: auto; }
 .assistant-model-menu { width: min(332px, 100%); }
-.assistant-permissions-menu { width: min(380px, 100%); }
+.assistant-reasoning-menu { z-index: 70; width: min(270px, 100%); max-height: min(440px, var(--assistant-menu-max-height)); overflow: auto; }
 .assistant-add-menu { width: min(306px, 100%); }
 .assistant-history-menu { top: calc(100% + 2px); left: 12px; width: min(360px, calc(100% - 24px)); max-height: min(440px, calc(100dvh - 90px)); overflow: auto; }
 .assistant-model-menu, .assistant-add-menu, .assistant-history-menu { display: flex; flex-direction: column; overflow: hidden; }
@@ -603,7 +617,7 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
 .assistant-menu-count { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .assistant-menu-badge { flex-shrink: 0; padding: 2px 4px; border-radius: 3px; color: var(--muted); background: var(--hover); font-size: 10px; line-height: 1.2; }
 .assistant-menu-divider { height: 1px; margin: 3px -6px; background: var(--line); }
-.assistant-menu-caption, .assistant-history-group h3 { margin: 0; padding: 4px 7px 3px; color: var(--muted); font-size: 11px; font-weight: 500; }
+.assistant-history-group h3 { margin: 0; padding: 4px 7px 3px; color: var(--muted); font-size: 11px; font-weight: 500; }
 .assistant-menu-scroll { flex: 1 1 auto; max-height: 258px; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .assistant-menu-empty { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0; padding: 16px 7px; color: var(--muted); font-size: 12px; }
 .assistant-detail-option { align-items: flex-start; }
@@ -611,27 +625,17 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
 .assistant-detail-option .assistant-menu-label { display: grid; gap: 2px; }
 .assistant-detail-option .assistant-menu-label > span { overflow: hidden; text-overflow: ellipsis; }
 .assistant-detail-option small { color: var(--muted); font-size: 11px; line-height: 16px; font-weight: 400; }
-.assistant-permission-option .assistant-menu-label { white-space: normal; overflow: visible; }
-.assistant-permission-note { display: flex; align-items: center; gap: 6px; margin: 5px 7px 4px; color: var(--muted); font-size: 11px; }
-.assistant-permission-note svg { flex-shrink: 0; }
 .assistant-model-error { margin: 4px 7px; color: var(--danger); font-size: 11px; overflow-wrap: anywhere; }
 .assistant-menu-search { display: flex; align-items: center; gap: 6px; margin: 2px 7px 4px; padding: 4px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
 .assistant-menu-search input { width: 100%; min-width: 0; border: 0; padding: 0; background: transparent; color: var(--text); font-size: 12px; }
 .assistant-menu-search svg { flex-shrink: 0; width: 14px; height: 14px; }
+.assistant-model-menu .assistant-menu-search { margin: 3px 7px 6px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.assistant-model-menu .assistant-menu-search input { outline: none; box-shadow: none; }
 .assistant-manual-model { display: grid; gap: 6px; padding: 4px 7px 6px; font-size: 12px; }
 .assistant-manual-model > div { display: flex; align-items: center; gap: 5px; }
 .assistant-manual-model input { flex: 1; width: 100%; min-width: 0; padding: 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); color: var(--text); }
 .assistant-session-option small { flex-shrink: 0; color: var(--muted); font-size: 11px; }
 .assistant-history-group + .assistant-history-group { margin-top: 3px; }
-.assistant-menu-toggle { position: relative; cursor: pointer; }
-.assistant-menu-toggle input { position: absolute; right: 9px; width: 30px; height: 18px; opacity: 0; cursor: pointer; }
-.assistant-switch { flex: 0 0 30px; width: 30px; height: 18px; padding: 2px; border-radius: 10px; background: var(--switch-off); pointer-events: none; transition: background 120ms ease; }
-.assistant-switch::after { content: ''; display: block; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 12%); transition: transform 120ms ease; }
-.assistant-menu-toggle input:checked + .assistant-switch { background: var(--green-fill); }
-.assistant-menu-toggle input:checked + .assistant-switch::after { transform: translateX(12px); }
-.assistant-menu-toggle input:focus-visible + .assistant-switch { outline: 2px solid var(--green); outline-offset: 2px; }
-.assistant-menu-toggle:has(input:disabled) { cursor: default; opacity: 0.45; }
-.assistant-menu-toggle input:disabled { cursor: default; }
 .assistant-contexts { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; max-height: 116px; overflow: auto; padding: 0 0 8px; }
 .assistant-text-action { display: inline-flex; align-items: center; gap: 5px; border: 0; padding: 5px 0; color: var(--text-secondary); background: transparent; font-size: 12px; }
 .assistant-text-action:hover { color: var(--green); }
@@ -671,19 +675,21 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
 .assistant-citations button { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--green); font-size: 11px; text-align: left; overflow-wrap: anywhere; }
 .assistant-citations button:hover { background: var(--accent); }
 .assistant-citations svg { flex-shrink: 0; }
+.assistant-attachments { justify-content: flex-end; max-width: 88%; margin: 0 0 8px; }
 .assistant-rules { display: block; margin-top: 9px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
-.assistant-proposal { margin-top: 14px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: var(--surface); }
-.assistant-proposal-heading { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; font-size: 12px; }
-.assistant-proposal-heading strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.assistant-proposal-heading small { color: var(--muted); }
-.assistant-proposal > p { font-size: 12px; line-height: 1.6; margin: 8px 0; }
-.assistant-proposal :deep(.change-diff) { max-height: 280px; overflow: auto; }
-.assistant-proposal :deep(.diff-line) { font-size: 10px; }
+.assistant-result-notice, .assistant-tool-errors { margin: 10px 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.assistant-result-notice { padding: 8px 10px; border-left: 2px solid var(--line); background: var(--surface); }
+.assistant-tool-errors summary { cursor: pointer; }
+.assistant-tool-errors p { overflow-wrap: anywhere; }
 .assistant-proposal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
-.assistant-proposal-actions button { min-height: 29px; font-size: 11px; padding: 5px 8px; }
+.assistant-proposal-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 5px 8px; font-size: 11px; line-height: 16px; }
+.assistant-proposal-actions .icon-button { padding: 0; }
 .assistant-message-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 11px; color: var(--muted); }
 .assistant-message-actions .icon-button { width: 28px; height: 28px; border-radius: 8px; }
-.assistant-message-actions small { max-width: 100%; margin-left: auto; font-size: 10px; overflow-wrap: anywhere; }
+.assistant-message-actions small { max-width: 100%; margin-left: auto; font-size: 10px; overflow-wrap: anywhere; opacity: 0; transition: opacity 120ms ease; }
+.assistant-message-assistant:hover .assistant-message-actions small,
+.assistant-message-assistant:has(:focus-visible) .assistant-message-actions small { opacity: 1; }
+@media (hover: none) { .assistant-message-actions small { opacity: 1; } }
 .assistant-jump-latest { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--text); color: var(--paper); box-shadow: 0 3px 10px rgb(0 0 0 / 12%); }
 .assistant-jump-latest:hover { color: var(--paper); background: var(--text-secondary); }
 .assistant-composer-area { position: relative; flex: 0 0 auto; min-width: 0; margin: 4px 18px 18px; }
@@ -695,19 +701,21 @@ watch(() => assistant.session?.messages.map(message => message.content.length).j
 .assistant-composer textarea:focus { outline: none; }
 .assistant-compose-actions { display: flex; align-items: center; gap: 3px; min-height: 30px; margin-top: 7px; }
 .assistant-compose-tool { flex: 0 0 28px; width: 28px; height: 28px; border-radius: 6px; color: var(--assistant-composer-muted); }
-.assistant-compose-permission { min-width: 0; max-width: 100px; padding: 6px 9px; border-radius: 6px; color: var(--assistant-composer-muted); font-size: 12px; white-space: nowrap; }
-.assistant-compose-permission.assistant-granted { color: var(--green); }
-.assistant-compose-permission:hover, .assistant-compose-permission[aria-expanded='true'], .assistant-compose-tool[aria-expanded='true'] { background: var(--surface); }
-.assistant-compose-permission:not(.assistant-granted):hover, .assistant-compose-permission:not(.assistant-granted)[aria-expanded='true'], .assistant-compose-tool:hover, .assistant-compose-tool[aria-expanded='true'] { color: var(--text-secondary); }
+.assistant-compose-tool[aria-expanded='true'] { background: var(--surface); }
+.assistant-compose-tool:hover, .assistant-compose-tool[aria-expanded='true'] { color: var(--text-secondary); }
 .assistant-compose-model { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 52%; margin-left: auto; padding: 6px 7px; border-radius: 6px; color: var(--assistant-composer-muted); font-size: 12px; }
 .assistant-compose-model span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .assistant-compose-model svg { flex-shrink: 0; }
 .assistant-compose-model:hover, .assistant-compose-model[aria-expanded='true'] { background: var(--surface); color: var(--text-secondary); }
+.assistant-compose-reasoning { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; padding: 6px; border-radius: 6px; color: var(--assistant-composer-muted); font-size: 12px; white-space: nowrap; }
+.assistant-compose-reasoning:hover:not(:disabled), .assistant-compose-reasoning[aria-expanded='true'] { background: var(--surface); color: var(--text-secondary); }
 .assistant-send, .assistant-stop { display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; min-height: 30px; padding: 0; margin-left: 4px; border-radius: 50%; }
 .assistant-send { background: var(--text); color: var(--paper); }
 .assistant-send:hover:not(:disabled) { background: var(--text-secondary); }
 .assistant-send:disabled { background: color-mix(in srgb, var(--surface) 55%, var(--paper)); color: color-mix(in srgb, var(--control-border) 60%, var(--paper)); opacity: 1; }
-.assistant-progress { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; color: var(--muted); font-size: 11px; }
+.assistant-progress { display: flex; flex-shrink: 0; align-items: flex-start; gap: 16px; margin: 12px 0 6px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.assistant-progress-status { display: flex; align-items: center; gap: 5px; min-width: 0; max-width: 50%; overflow-wrap: anywhere; }
+.assistant-progress-status svg { flex-shrink: 0; }
 .assistant-recovery-actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 4px 0 10px; }
 .assistant-history { flex: 1; overflow: auto; padding: 20px; }
 .assistant-history-row { display: flex; gap: 6px; align-items: center; border-bottom: 1px solid var(--line); }
