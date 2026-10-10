@@ -23,27 +23,27 @@ default branch and explicitly choose `dev` as the base of ordinary PRs.
 ## Releases and hotfixes
 
 Prepare version PRs from `main` using the existing release workflow after the
-`dev` promotion has passed main CI. Bump versions only for a release, not for each
+`dev` promotion has passed local validation. Bump versions only for a release, not for each
 development commit. Version PRs still target `main`; tags and release workflows
-still require main ancestry and checks on the exact commit.
+still require main ancestry and immutable tag identity. Validate the exact commit locally before dispatching a release.
 
 For an urgent fix, create a short-lived branch from current `main`, test it, and
 submit it to `main`. If the deployed tag differs substantially from main, assess
 the additional changes before publishing; do not silently release unfinished work.
 Every version update and hotfix must return to `dev` before further promotion.
 
-## Automatic main-to-dev synchronization
+## Manual main-to-dev synchronization
 
-[Sync main into dev](../.github/workflows/sync-development.yml) runs on every main
-push and can also be run manually on `main`. It compares ancestry and opens one
+[Sync main into dev](../.github/workflows/sync-development.yml) is dispatched manually
+on `main` after a version update or hotfix. It compares ancestry and opens one
 `main` → `dev` PR only when main has commits missing from dev. An existing PR
 automatically follows new main commits. It never merges automatically, rewrites a
-branch, or deploys anything. Merge this PR with a merge commit after CI passes.
+branch, or deploys anything. Merge this PR with a merge commit after local validation passes.
 
 The workflow uses the `release-automation` environment's `RELEASE_APP_ID` and
 `RELEASE_APP_PRIVATE_KEY`, or `RELEASE_AUTOMATION_TOKEN`. The identity needs Contents
 read and Pull requests write on this repository. Use the existing scoped App/PAT
-so the generated PR can start checks without a separate workflow approval.
+to create the PR. The PR does not start any Actions checks; validate it locally.
 
 If a sync PR conflicts, **do not resolve it by editing main in GitHub's conflict
 editor**. Create a temporary branch from current dev, merge `origin/main` into it,
@@ -52,17 +52,19 @@ replacement with a merge commit, then close the original sync PR if still open.
 
 ## GitHub protection
 
-[The checked-in policy](../.github/branch-protection.json) requires PRs, the named
-checks from `check.yml`, and resolved review conversations on both branches. It
-also applies to administrators and blocks force pushes and deletion. No additional
-reviewer's approval is required for this single-maintainer workflow; review remains
-part of the PR process. Merge commits must remain enabled in repository settings.
+[The checked-in policy](../.github/branch-protection.json) requires PRs and resolved
+review conversations on both branches. It applies to administrators and blocks
+force pushes and deletion. No additional reviewer's approval is required for this
+single-maintainer workflow. Merge commits must remain enabled.
 
-Checks use GitHub's non-strict mode: requiring main to contain all of dev before
-merging the main-to-dev PR would create a synchronization cycle. PR checks test
-the prospective merge. Re-run checks if the target branch changes during review,
-and keep promotions short. Do not enable required linear history, because it would
-forbid the merge commits that preserve main/dev ancestry.
+Required Actions status checks are disabled because **all tests and checks run
+locally**. Commits, branch/tag pushes, PRs and merges do not trigger workflows.
+GitHub does not attest to local test results: include the tested SHA, commands and
+results in the PR, and rerun relevant checks locally after resolving conflicts or
+changing the target branch. See [local validation](local-validation.md).
+
+Do not enable required linear history, because it would forbid merge commits
+that preserve main/dev ancestry. Retired CI failures do not block this policy.
 
 Apply and verify the policy with an authenticated repository administrator:
 

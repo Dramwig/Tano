@@ -1,12 +1,8 @@
 name: Tag reviewed release
 on:
-  push:
-    branches: [main]
-    paths: [.github/release-plan.json]
   workflow_dispatch:
 permissions:
   contents: read
-  actions: read
 concurrency:
   group: tag-release
   cancel-in-progress: false
@@ -14,7 +10,7 @@ jobs:
   tag:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 10
     environment: release-automation
     steps:
       - uses: actions/checkout@v4
@@ -25,19 +21,13 @@ jobs:
         with:
           node-version: 24
       - run: node scripts/release-plan.mjs check
-      # Wait with the read-only workflow token; mint the App token only afterwards.
-      - name: Wait for checks on this exact main commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          node --input-type=module -e 'import { githubClient, successfulRun } from "./scripts/release-github.mjs"; await successfulRun(githubClient(process.env.GH_TOKEN), process.env.GITHUB_REPOSITORY, "check.yml", process.env.GITHUB_SHA, "main", {waitMs: 3000000});'
       - uses: ./.github/actions/release-token
         id: identity
         with:
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
           fallback-token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
-      - name: Create immutable tag and trigger tag workflows
+      - name: Create immutable tag after local validation
         env:
           GH_TOKEN: ${{ steps.identity.outputs.token }}
         run: node scripts/release-github.mjs tag

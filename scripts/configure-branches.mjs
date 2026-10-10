@@ -7,15 +7,15 @@ import { githubClient, repositoryName } from './release-github.mjs';
 
 function protectionSettings(value) {
   return {
-    required_status_checks: value.required_status_checks && {
+    required_status_checks: value.required_status_checks ? {
       strict: value.required_status_checks.strict,
       contexts: [...value.required_status_checks.contexts].sort(),
-    },
+    } : null,
     enforce_admins: value.enforce_admins?.enabled ?? value.enforce_admins,
     required_pull_request_reviews: value.required_pull_request_reviews && Object.fromEntries(
       ['dismiss_stale_reviews', 'require_code_owner_reviews', 'required_approving_review_count', 'require_last_push_approval']
         .map((key) => [key, value.required_pull_request_reviews[key]])),
-    restrictions: value.restrictions,
+    restrictions: value.restrictions ?? null,
     ...Object.fromEntries(['required_linear_history', 'allow_force_pushes', 'allow_deletions', 'required_conversation_resolution']
       .map((key) => [key, value[key]?.enabled ?? value[key]])),
   };
@@ -31,6 +31,14 @@ export function matchesProtection(actual, expected) {
     .some((actors) => actors && Object.values(actors).some((value) => Array.isArray(value) && value.length)))
     return false;
   return JSON.stringify(protectionSettings(actual)) === JSON.stringify(protectionSettings(expected));
+}
+
+export async function verifyReadBack(read, matches, label, { sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (matches(await read())) return;
+    if (attempt < 4) await sleep(1000);
+  }
+  throw new Error(`${label} read-back failed`);
 }
 
 export async function configureBranches(api, repository, policy, { apply = false } = {}) {
@@ -54,16 +62,15 @@ export async function configureBranches(api, repository, policy, { apply = false
   for (const entry of branches) {
     const path = `${root}/branches/${entry.branch}/protection`;
     if (entry.state === 'missing') await api(path, { method: 'PUT', body: policy.settings });
-    if (!matchesProtection(await api(path), policy.settings))
-      throw new Error(`Protection read-back failed for ${entry.branch}`);
+    await verifyReadBack(() => api(path), actual => matchesProtection(actual, policy.settings),
+      `Protection for ${entry.branch}`);
     entry.state = 'verified';
   }
   // Protect both long-lived branches before enabling automatic task-branch deletion.
   if (Object.entries(policy.repository).some(([key, value]) => repo[key] !== value))
     await api(root, { method: 'PATCH', body: policy.repository });
-  const verified = await api(root);
-  if (Object.entries(policy.repository).some(([key, value]) => verified[key] !== value))
-    throw new Error('Repository merge settings read-back failed');
+  await verifyReadBack(() => api(root), actual => Object.entries(policy.repository)
+    .every(([key, value]) => actual[key] === value), 'Repository merge settings');
   return { applied: true, branches, repository: policy.repository };
 }
 

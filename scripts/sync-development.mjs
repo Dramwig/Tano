@@ -27,7 +27,7 @@ export async function syncDevelopment(api, repository, { checkOnly = false } = {
       '',
       '**Merge with a merge commit. Do not squash or rebase this long-lived branch.**',
       'This PR follows main automatically; later main pushes do not create duplicate PRs.',
-      'Required checks must pass. This workflow never merges, force-pushes or rewrites either branch.',
+      'Run local validation on the proposed merge and record the tested SHA and results before merging. This workflow never merges, force-pushes or rewrites either branch.',
       '',
       'If there are conflicts, resolve them on a temporary branch created from dev, merge main into',
       'that branch, and submit it to dev. Do not use the conflict editor to commit changes onto main.',

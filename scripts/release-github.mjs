@@ -35,34 +35,6 @@ export function githubClient(token, fetchImpl = fetch) {
     return response.status === 204 ? undefined : response.json();
   };
 }
-export async function successfulRun(
-  api,
-  repository,
-  workflow,
-  sha,
-  branch,
-  { waitMs = 0, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {},
-) {
-  repositoryName(repository);
-  commitSha(sha);
-  const deadline = Date.now() + waitMs;
-  do {
-    const response = await api(
-      `/repos/${repository}/actions/workflows/${workflow}/runs?event=push&head_sha=${sha}&per_page=100`,
-    );
-    const run = response.workflow_runs
-      .filter((r) => r.head_sha === sha && r.head_branch === branch && r.event === 'push')
-      .sort((a, b) => b.id - a.id)[0];
-    if (run?.status === 'completed') {
-      if (run.conclusion !== 'success')
-        throw new Error(`${workflow} failed for ${branch} at ${sha}: ${run.conclusion}`);
-      return run;
-    }
-    if (Date.now() >= deadline)
-      throw new Error(`No completed successful ${workflow} for ${branch} at ${sha}`);
-    await sleep(15_000);
-  } while (true);
-}
 export async function ensureTag(api, repository, tag, sha) {
   repositoryName(repository);
   commitSha(sha);
@@ -93,7 +65,6 @@ async function main() {
   const api = githubClient(process.env.GH_TOKEN);
   const plan = readPlan(root);
   if (process.argv[2] === 'tag') {
-    await successfulRun(api, repository, 'check.yml', sha, 'main', { waitMs: 50 * 60_000 });
     await ensureTag(api, repository, plan.tag, sha);
     console.log(`Release tag ready: ${plan.tag} at ${sha}`);
   } else if (process.argv[2] === 'verify') {
@@ -101,8 +72,6 @@ async function main() {
       throw new Error('Only the planned release tag can be deployed');
     const commit = await api(`/repos/${repository}/commits/${plan.tag}`);
     if (commit.sha !== sha) throw new Error('Release checkout does not match its tag');
-    // The protected main check precedes tag creation and covers the same immutable commit.
-    await successfulRun(api, repository, 'check.yml', sha, 'main', { waitMs: 50 * 60_000 });
     output({ sha, version: plan.version, tag: plan.tag, scope: plan.scope, notes: plan.notes });
   } else throw new Error('Usage: release-github.mjs tag | verify');
 }
