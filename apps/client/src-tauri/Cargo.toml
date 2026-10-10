@@ -1,6 +1,6 @@
 [package]
 name = "tano"
-version = "0.1.0"
+version = "0.2.0"
 description = "Tano — Humans and agents, on the same page."
 authors = ["Tano"]
 edition = "2021"
