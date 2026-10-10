@@ -1,0 +1,153 @@
+/* Dark surfaces rise in brightness: chrome < page < card < floating controls.
+   Keep decorative seams quiet and reserve stronger borders for interaction. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --sidebar: #191b1d;
+  --paper: #1e2022;
+  --surface: #272a2d;
+  --surface-raised: #2b2e31;
+  --hover: #32363a;
+  --line: #303336;
+  --line-strong: #3e4449;
+  --control-border: #6b747c;
+  --scrollbar-thumb: #4b5157;
+  --scrollbar-thumb-hover: #666e76;
+  --text: #d5d9dc;
+  --text-secondary: #b0b6bb;
+  --muted: #98a0a6;
+  --green: #91b8a1;
+  --green-hover: #adcdb9;
+  --green-fill: #386b50;
+  --green-fill-hover: #44785d;
+  --accent: #2b3a32;
+  --block-selection: #35483d;
+  --selection: #3b5344;
+  --switch-off: #50575e;
+  --danger: #d9a099;
+  --danger-bg: #3a2c2c;
+  --warning: #cdb482;
+  --warning-bg: #353125;
+  --warning-border: #5b5039;
+  --syntax-purple: #b4a2cb;
+  --syntax-red: #d49aa5;
+  --syntax-blue: #9ab4d0;
+  --syntax-orange: #c5a783;
+  --syntax-teal: #91b9b0;
+  --syntax-green: #a6bb91;
+  --highlight-bg: #4a422c;
+  --suggestion-color: #a1bad4;
+  --diff-add-bg: #293a30;
+  --diff-remove-bg: #3c2e30;
+  --quote-border: #50575e;
+  --task-border: var(--control-border);
+  --table-tint: 16%;
+  --table-text-gray: #b0b6bb;
+  --table-text-brown: #c1a58e;
+  --table-text-orange: #d0ad85;
+  --table-text-yellow: #cabb83;
+  --table-text-green: #a1bca5;
+  --table-text-blue: #a0bad4;
+  --table-text-purple: #bba9d0;
+  --table-text-pink: #cba4bc;
+  --table-text-red: #d3a0a0;
+  --graph-edge: #444b51;
+  --graph-node: #a0a8ae;
+  --graph-orphan: #6e777f;
+  --overlay-shadow: 0 8px 28px #00000038, 0 2px 8px #00000024;
+  --dialog-shadow: 0 24px 80px #00000052, 0 4px 16px #00000029;
+}
+
+/* Floating surfaces must remain legible over both the page and selected text. */
+:root[data-theme='dark'] :is(
+  .dropdown, .tano-slash-menu, .tano-code-language-menu, .tano-editor-panel,
+  .selection-format-toolbar, .page-search, .assistant-popover, .command-palette,
+  .annotation-popup, .comment-people, .calendar-day-popover, .plan-date-menu,
+  .breadcrumb-menu, .reference-graph-popover, .plan-scope-menu,
+  .workspace-icon-picker, .help-popover, .help-submenu, .help-bubble, .help-preview
+) {
+  background: var(--surface-raised);
+  border-color: var(--line-strong);
+  box-shadow: var(--overlay-shadow);
+}
+:root[data-theme='dark'] :is(.search-input-wrap, .search-results) {
+  background: var(--surface-raised);
+  box-shadow: var(--overlay-shadow);
+}
+:root[data-theme='dark'] :is(
+  .modal, .settings-dialog, .object-panel, .import-dialog, .plan-detail-panel,
+  .plan-connections, .assistant-connection-dialog, .assistant-panel-floating,
+  .plugin-dialog, .new-tab-picker, .personal-plan-dialog, .document-history-dialog,
+  .selection-todo-dialog
+) {
+  border-color: var(--line-strong);
+  box-shadow: var(--dialog-shadow);
+}
+:root[data-theme='dark'] :is(
+  .modal-backdrop, .object-panel-backdrop, .plan-detail-backdrop,
+  .plan-connections-backdrop, .selection-todo-backdrop, .new-tab-backdrop
+) {
+  background: #00000066;
+}
+:root[data-theme='dark'] dialog::backdrop { background: #00000066; }
+:root[data-theme='dark'] :is(.settings-nav, .document-history-nav) { background: var(--sidebar); }
+:root[data-theme='dark'] .review-card {
+  background: var(--surface);
+  border-color: var(--line-strong);
+}
+:root[data-theme='dark'] .review-card.is-expanded { box-shadow: var(--overlay-shadow); }
+
+/* Input and review surfaces have a visible resting state without a bright frame. */
+:root[data-theme='dark'] .assistant-composer {
+  --assistant-composer-muted: var(--muted);
+  --assistant-composer-placeholder: var(--muted);
+  --assistant-composer-line: var(--line-strong);
+  background: var(--surface);
+  box-shadow: none;
+}
+:root[data-theme='dark'] .assistant-composer:focus-within {
+  border-color: color-mix(in srgb, var(--green) 65%, var(--line-strong));
+}
+:root[data-theme='dark'] .assistant-question-card {
+  background: var(--surface);
+  border-color: var(--line-strong);
+  box-shadow: none;
+}
+:root[data-theme='dark'] .comment-composer textarea::placeholder,
+:root[data-theme='dark'] .assistant-generation-hint,
+:root[data-theme='dark'] .tano-prose.ProseMirror-focused .tano-empty-block::before,
+:root[data-theme='dark'] .tano-prose .tano-empty-block-persistent::before,
+:root[data-theme='dark'] .math-block .math-preview-empty,
+:root[data-theme='dark'] .tano-mermaid-preview-empty,
+:root[data-theme='dark'] .tano-block-handle {
+  color: var(--muted);
+}
+:root[data-theme='dark'] .assistant-send:disabled {
+  background: var(--hover);
+  color: var(--control-border);
+}
+:root[data-theme='dark'] .assistant-context { border-color: var(--line-strong); }
+:root[data-theme='dark'] :is(.assistant-compose-model, .assistant-compose-tool, .assistant-compose-reasoning):is(:hover, [aria-expanded='true']) {
+  background: var(--hover);
+}
+
+/* Search and annotations keep their amber identity without a luminous yellow fill. */
+:root[data-theme='dark'] :is(.tano-comment-mark, .cm-comment-mark) {
+  background: #cdb48224;
+  text-decoration-color: var(--warning);
+}
+:root[data-theme='dark'] :is(.tano-comment-mark, .cm-comment-mark):hover {
+  background: #cdb48238;
+}
+:root[data-theme='dark'] .tano-search-match { background: #51472e; }
+:root[data-theme='dark'] .tano-search-current {
+  background: #645335;
+  box-shadow: 0 0 0 1px #a48b58;
+}
+:root[data-theme='dark'] .comment-quote { border-left-color: var(--warning-border); }
+:root[data-theme='dark'] .comment-edit-cancel { background: var(--hover); color: var(--text); }
+:root[data-theme='dark'] .comment-edit-confirm { background: var(--green-fill); }
+:root[data-theme='dark'] .comment-edit-actions button:focus-visible { outline-color: var(--green); }
+:root[data-theme='dark'] :is(.comment-error, .suggestion-error, .connection-error) { color: var(--danger); }
+:root[data-theme='dark'] .selection-todo-dialog [role='alert'] { color: var(--danger); }
+:root[data-theme='dark'] .connection-error { background: var(--danger-bg); }
+:root[data-theme='dark'] .suggestion-warning { color: var(--warning); }

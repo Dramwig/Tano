@@ -1139,6 +1139,21 @@ describe('workspace file reconciliation', () => {
     expect(store.active!.path).toBe('新建文档 2.md');
   });
 
+  it('opens a confirmed creation without waiting for a second workspace refresh', async () => {
+    const create = backend.create.bind(backend);
+    const refresh = backend.refresh.bind(backend);
+    vi.spyOn(fixture.adapter!, 'create').mockImplementation(async (path, content) => {
+      await create(path, content);
+      return refresh();
+    });
+    const listing = vi.spyOn(backend, 'refresh').mockResolvedValueOnce(await refresh())
+      .mockRejectedValue(new Error('unnecessary refresh unavailable'));
+    await store.createUntitledDocument();
+    expect(store.active!.path).toBe('新建文档.md');
+    expect(store.active!.content).toBe('');
+    expect(listing).toHaveBeenCalledOnce();
+  });
+
   it('creates untitled entries in the selected folder and rejects a missing parent', async () => {
     await backend.createFolder('资料');
     await store.createUntitledDocument('资料');

@@ -2,7 +2,7 @@ import type { AssistantProposalStatus, AssistantRequest, AssistantSource } from 
 
 /** Direct tools share validation with proposals; their receipts come from completed storage operations. */
 export const directTools: Record<string, { proposal: string; description: string }> = {
-  edit_document: { proposal: 'propose_edit', description: '按用户明确指令直接修改已读取的 Markdown。oldText 必须唯一；保留选区边界。冲突时暂停，只有 written=true 才表示已保存。' },
+  edit_document: { proposal: 'propose_edit', description: '按用户明确指令直接修改已读取的 Markdown。oldText 必须唯一；仅完整来源内容为空字符串时可用空 oldText 初始化。保留选区边界。冲突时暂停，只有 written=true 才表示已保存。' },
   create_document: { proposal: 'propose_create', description: '按用户明确指令直接创建 Markdown 文档。父目录须存在，禁止覆盖同名文件。' },
   delete_document: { proposal: 'propose_delete', description: '仅在用户明确要求删除时直接删除完整文档。读取后内容或路径变化则暂停；桌面文件进入回收站。' },
   rename_document: { proposal: 'propose_rename', description: '按用户明确指令直接重命名完整文档。destination 为同一目录下的新路径；保留身份和内容，禁止覆盖。' },

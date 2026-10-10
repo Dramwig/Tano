@@ -100,6 +100,7 @@ beforeEach(() => {
         toolbarMode: toolbarMode.value,
         showPageTitle: showPageTitle.value,
         showDocumentProperties: showDocumentProperties.value,
+        showDocumentDiscussion: true,
         showOutline: true,
         outlineOnLeft: outlineOnLeft.value,
         visualFontSize: visualFontSize.value,

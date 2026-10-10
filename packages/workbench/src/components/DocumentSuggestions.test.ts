@@ -401,5 +401,5 @@ it('places suggestions in the annotation gutter, avoids comments, and falls back
   width = 1100;
   window.dispatchEvent(new Event('resize'));
   await vi.waitFor(() => expect(root.querySelector('.suggestion-rail.is-inline')).toBeNull());
-  expect(root.querySelector<HTMLElement>('.suggestion-card')!.style.top).toBe('');
+  await vi.waitFor(() => expect(root.querySelector<HTMLElement>('.suggestion-card')!.style.top).toBe(''));
 });

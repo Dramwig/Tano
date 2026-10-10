@@ -2124,9 +2124,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     writable();
     if (expectedWorkspaceId && workspace.value?.id !== expectedWorkspaceId)
       throw new Error('工作空间已切换，请在原工作空间中恢复历史内容');
-    if (folder) await adapter.createFolder(path);
-    else await adapter.create(path, content ?? '');
-    workspace.value = await adapter.refresh();
+    const created = folder
+      ? await adapter.createFolder(path)
+      : await adapter.create(path, content ?? '');
+    workspace.value = created ?? await adapter.refresh();
     activity(folder ? '文件夹已创建' : '文档已创建', path, 'file');
     const file = workspace.value.files.find((f) => f.path === path);
     if (file?.kind === 'directory' && folder) recordHelpCompleted('create-folder');

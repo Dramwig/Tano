@@ -42,6 +42,99 @@ describe('assistant session coordination', () => {
     await vi.waitFor(() => expect(store.loading).toBe(false));
     return store;
   }
+  it('sends the exact draft starter and lets the model respond without a fixed questionnaire', async () => {
+    fixture.workspace.documents = [{ id: 'abc123', content: '', path: 'note.md' }];
+    fixture.workspace.assistantSnapshot.mockResolvedValue({ id: 'S1', workspaceId: 'workspace', fileId: 'abc123', path: 'note.md', content: '', hash: 'empty', origin: 'disk' });
+    vi.mocked(transport.request).mockImplementation(async (_id, _request, _signal, chunk) => {
+      chunk(new TextEncoder().encode('data: {"choices":[{"index":0,"delta":{"content":"我会先整理已有资料。"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'));
+    });
+    const store = await ready(); await store.selectModel('test');
+    const previous = store.session!.id;
+    store.files = ['unrelated']; store.selection = { fileId: 'unrelated', text: 'old' };
+    await store.startDocumentDraft('abc123');
+    expect(store.session!.id).not.toBe(previous);
+    expect(store.modelId).toBe('test');
+    expect(store.files).toEqual(['abc123']);
+    expect(store.selection).toBeNull();
+    expect(store.displayMode).toBe('floating');
+    expect(store.opened).toBe(true);
+    expect(store.session!.messages[0].content).toBe('开始草稿');
+    expect(store.session!.messages[1].content).toBe('我会先整理已有资料。');
+    expect(store.pendingUserInput).toBeNull();
+    expect(transport.request).toHaveBeenCalledOnce();
+  });
+  it('keeps the draft starter ready to send when no model is selected', async () => {
+    fixture.workspace.documents = [{ id: 'abc123', content: '', path: 'note.md' }];
+    const store = await ready(); await store.startDocumentDraft('abc123');
+    expect(store.error).toContain('选择模型');
+    expect(store.prompt).toBe('开始草稿');
+    expect(transport.request).not.toHaveBeenCalled();
+  });
+  function askTwoQuestions() {
+    vi.mocked(transport.request).mockImplementation(async (_id, request, _signal, chunk) => {
+      const delta = request.messages.at(-1)?.role === 'tool' ? { content: '根据你的回答继续。' }
+        : { content: '先确认两个问题。', tool_calls: [{ index: 0, id: 'questions', type: 'function', function: { name: 'ask_user', arguments: JSON.stringify({ questions: [
+          { id: 'deadline', question: '什么时候交付？' }, { id: 'scope', question: '范围是什么？', options: ['全部', '第一阶段'] },
+        ] }) } }] };
+      chunk(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`));
+    });
+  }
+  it('waits for real answers, persists skipped questions and resumes the same model tool call', async () => {
+    askTwoQuestions();
+    const store = await ready(); await store.selectModel('test'); store.prompt = '帮我安排项目';
+    const run = store.send();
+    await vi.waitFor(() => expect(store.pendingUserInput).not.toBeNull());
+    const pending = store.pendingUserInput!;
+    expect(pending.request.questions.map(question => question.id)).toEqual(['deadline', 'scope']);
+    expect(store.busy).toBe(true); expect(transport.request).toHaveBeenCalledOnce();
+    pending.values[0] = '下周五'; pending.step = 1;
+    store.opened = false; store.open();
+    expect(store.pendingUserInput!.values[0]).toBe('下周五');
+    await store.submitUserInput('wrong-id'); expect(transport.request).toHaveBeenCalledOnce();
+    await store.submitUserInput(pending.request.id); await run;
+    expect(store.pendingUserInput).toBeNull(); expect(store.busy).toBe(false);
+    expect(transport.request).toHaveBeenCalledTimes(2);
+    const receipt = vi.mocked(transport.request).mock.calls[1][1].messages.find(message => message.role === 'tool');
+    expect(receipt?.tool_call_id).toBe('questions');
+    expect(JSON.parse(receipt!.content!)).toEqual({ status: 'answered', answers: [
+      { questionId: 'deadline', answer: '下周五' }, { questionId: 'scope', answer: null },
+    ] });
+    const saved = parseAssistantSession(JSON.parse(JSON.stringify(store.session)));
+    expect(saved.messages[1].userInputs![0].status).toBe('answered');
+    expect(saved.messages[1].content).toContain('根据你的回答继续');
+  });
+  it('retains answers after a persistence failure and accepts a single successful retry', async () => {
+    askTwoQuestions();
+    const store = await ready(); await store.selectModel('test'); store.prompt = '安排项目';
+    const run = store.send(); await vi.waitFor(() => expect(store.pendingUserInput).not.toBeNull());
+    const pending = store.pendingUserInput!; pending.values[0] = '明天';
+    vi.mocked(transport.saveSession).mockRejectedValueOnce(new Error('磁盘忙'));
+    await store.submitUserInput(pending.request.id);
+    expect(store.error).toContain('回答保存失败'); expect(pending.request.status).toBe('pending');
+    expect(pending.values[0]).toBe('明天'); expect(transport.request).toHaveBeenCalledOnce();
+    await store.submitUserInput(pending.request.id); await run;
+    expect(transport.request).toHaveBeenCalledTimes(2);
+  });
+  it.each(['stop', 'workspace'])('cancels pending input on %s without continuing or accepting stale answers', async action => {
+    askTwoQuestions();
+    const store = await ready(); await store.selectModel('test'); store.prompt = '安排项目';
+    const run = store.send(); await vi.waitFor(() => expect(store.pendingUserInput).not.toBeNull());
+    const pending = store.pendingUserInput!;
+    if (action === 'stop') store.stop();
+    else fixture.workspace.assistantEpoch++;
+    await run; await store.submitUserInput(pending.request.id);
+    expect(store.pendingUserInput).toBeNull(); expect(pending.request.status).toBe('cancelled');
+    expect(transport.request).toHaveBeenCalledOnce();
+  });
+  it('restores unfinished question records as interrupted without replaying a tool call', async () => {
+    history = [{ ...session(), messages: [{ id: 'reply', role: 'assistant', content: '请补充', createdAt: 1, state: 'running',
+      userInputs: [{ id: 'ask', contentOffset: 3, questions: [{ id: 'topic', question: '主题？' }], status: 'pending' }] }] }];
+    const store = await ready();
+    expect(store.session!.messages[0].state).toBe('interrupted');
+    expect(store.session!.messages[0].userInputs![0].status).toBe('cancelled');
+    expect(store.pendingUserInput).toBeNull();
+    expect(transport.request).not.toHaveBeenCalled();
+  });
   it('persists failed tool receipts and sends actual proposal state in the next conversation turn', async () => {
     const store = await ready(); await store.selectModel('test');
     let round = 0;

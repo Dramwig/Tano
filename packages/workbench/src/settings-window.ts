@@ -29,6 +29,7 @@ export interface SettingsValues {
   shortcuts: ShortcutBindings;
   showPageTitle: boolean;
   showDocumentProperties: boolean;
+  showDocumentDiscussion: boolean;
   showOutline: boolean;
   outlineOnLeft: boolean;
   visualFontSize: number;

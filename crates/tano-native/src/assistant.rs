@@ -349,7 +349,7 @@ pub async fn assistant_models(
 
 #[tauri::command]
 pub fn assistant_protocol_version() -> u32 {
-    11
+    12
 }
 
 #[tauri::command]
@@ -562,12 +562,13 @@ fn request_body(config: &Connection, request: Value) -> Result<Value, String> {
     if let Some(tools) = request.get("tools") {
         let tools = tools.as_array().ok_or("模型工具无效")?;
         if !config.tools
-            || tools.len() > 25
+            || tools.len() > 26
             || tools.iter().any(|tool| {
                 !matches!(
                     tool.pointer("/function/name").and_then(Value::as_str),
                     Some(
                         "propose_edit"
+                            | "ask_user"
                             | "propose_create"
                             | "propose_delete"
                             | "propose_rename"
@@ -1412,6 +1413,7 @@ mod tests {
     #[test]
     fn authorizes_task_follow_up_tools_for_both_api_protocols() {
         let names = [
+            "ask_user",
             "propose_edit",
             "propose_create",
             "propose_delete",
@@ -1457,13 +1459,13 @@ mod tests {
                     .as_array()
                     .unwrap()
                     .len(),
-                25
+                26
             );
             let mut forbidden = request;
             forbidden["tools"][10]["function"]["name"] = json!("execute_shell");
             assert!(request_body(&config, forbidden).is_err());
         }
-        assert_eq!(assistant_protocol_version(), 11);
+        assert_eq!(assistant_protocol_version(), 12);
     }
     #[test]
     fn chat_combines_only_leading_system_messages_and_preserves_tool_receipts() {

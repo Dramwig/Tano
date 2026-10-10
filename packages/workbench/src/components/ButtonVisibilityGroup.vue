@@ -62,7 +62,7 @@ function openMenu(event: MouseEvent | KeyboardEvent) {
   event.preventDefault();
   emit('open');
   returnFocus =
-    event.target instanceof HTMLElement
+    event.target instanceof Element
       ? (event.target.closest('button') ?? navigation.value ?? null)
       : (navigation.value ?? null);
   const rect = navigation.value!.getBoundingClientRect();

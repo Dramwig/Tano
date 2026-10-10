@@ -1,6 +1,7 @@
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { defineStore } from 'pinia';
-import { isAssistantModelId, isAssistantReasoningSelection, parseAssistantSession } from '@tano/protocol';
+import { isAssistantModelId, isAssistantReasoningSelection, parseAssistantSession, parseAssistantAnswers } from '@tano/protocol';
+import type { AssistantQuestion, AssistantQuestionAnswer, AssistantUserInput } from '@tano/protocol';
 import type { AssistantConnection, AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSession, AssistantSource } from '@tano/protocol';
 import type { AssistantExecutionResult } from './execution';
 import { useWorkspaceStore } from '../stores/workspace';
@@ -44,6 +45,8 @@ export const useAssistantStore = defineStore('assistant', () => {
   const files = ref<string[]>([]);
   const selection = ref<{ fileId: string; text: string; from?: number; to?: number } | null>(null);
   const prompt = ref(''), error = ref(''), progress = ref('');
+  const pendingUserInput = ref<{ request: AssistantUserInput; step: number; values: string[]; submitting: boolean } | null>(null);
+  let answerUserInput: ((id: string, answers: AssistantQuestionAnswer[]) => Promise<void>) | undefined;
   const replyTarget = shallowRef<{ label: string; draft: (body: string) => Promise<void> } | null>(null);
   const connection = computed(() => connections.value.find(item => item.id === connectionId.value));
   let controller: AbortController | undefined;
@@ -202,6 +205,64 @@ export const useAssistantStore = defineStore('assistant', () => {
       selection.value = selected ? { fileId, ...selected } : null;
     }
   }
+  async function startDocumentDraft(fileId: string) {
+    if (!available || busy.value || applying.value || loading.value || managed(fileId)) return;
+    const doc = workspace.documents.find(item => item.id === fileId);
+    if (!doc || workspace.workspace?.files.find(file => file.id === fileId)?.readOnly || workspace.workspace?.readOnly || doc.missing || doc.conflict || doc.error) return;
+    newSession();
+    files.value = [fileId]; selection.value = null;
+    setDisplayMode('floating');
+    open(fileId);
+    prompt.value = '开始草稿';
+    await send();
+  }
+  async function askUser(questions: AssistantQuestion[], target: AssistantSession, reply: AssistantMessage, signal: AbortSignal) {
+    signal.throwIfAborted();
+    if ((reply.userInputs?.length ?? 0) >= 8) throw new Error('本轮提问次数已达上限，请在下一条消息继续');
+    reply.userInputs ??= [];
+    reply.userInputs.push({ id: crypto.randomUUID(), questions, status: 'pending', contentOffset: reply.content.length });
+    const request = reply.userInputs.at(-1)!;
+    try { await persist(target); signal.throwIfAborted(); }
+    catch (reason) { request.status = 'cancelled'; throw reason; }
+    return new Promise<AssistantQuestionAnswer[]>((resolve, reject) => {
+      const clear = () => {
+        signal.removeEventListener('abort', cancel);
+        if (pendingUserInput.value?.request.id === request.id) { pendingUserInput.value = null; answerUserInput = undefined; }
+      };
+      const cancel = () => {
+        request.status = 'cancelled'; delete request.answers;
+        clear(); reject(signal.reason ?? new DOMException('已停止', 'AbortError'));
+      };
+      pendingUserInput.value = { request, step: 0, values: questions.map(() => ''), submitting: false };
+      signal.addEventListener('abort', cancel, { once: true });
+      answerUserInput = async (id, answers) => {
+        const pending = pendingUserInput.value;
+        if (id !== request.id || pending?.request.id !== id || pending.submitting || signal.aborted || session.value?.id !== target.id) return;
+        pending.submitting = true;
+        request.answers = answers; request.status = 'answered';
+        try {
+          await persist(target); signal.throwIfAborted();
+          error.value = ''; clear(); resolve(answers);
+        } catch (reason) {
+          if (signal.aborted) return;
+          request.status = 'pending'; delete request.answers;
+          pending.submitting = false;
+          error.value = `回答保存失败，请重试：${String(reason)}`;
+        }
+      };
+      if (signal.aborted) cancel();
+    });
+  }
+  async function submitUserInput(id: string) {
+    const pending = pendingUserInput.value;
+    if (!pending || pending.request.id !== id || pending.submitting || !answerUserInput) return;
+    try {
+      const answers = parseAssistantAnswers(pending.request.questions.map((question, index) => ({
+        questionId: question.id, answer: pending.values[index]?.trim() || null,
+      })), pending.request.questions);
+      await answerUserInput(id, answers);
+    } catch (reason) { error.value = String(reason); }
+  }
   async function send() {
     if (!transport || busy.value || applying.value || loading.value || !prompt.value.trim()) return;
     if (!connection.value) { error.value = '请先配置模型连接'; return; }
@@ -262,6 +323,7 @@ export const useAssistantStore = defineStore('assistant', () => {
       let structureChanged = false;
       reply.usage = await runAssistant({ transport, connectionId: config.id, model, reasoningEffort: effort, tools: config.tools,
         workspaceId: expected.id, runId: reply.id, sources: reply.sources!, history, rules, prompt: question, signal: abort.signal,
+        askUser: questions => askUser(questions, target, reply!, abort.signal),
         execute: async (proposal: AssistantProposal) => {
           const result = await executeChange(reply!.proposals!.find(item => item.id === proposal.id)!, target, expected, abort.signal);
           if (result.written === true) structureChanged = true;
@@ -538,6 +600,7 @@ export const useAssistantStore = defineStore('assistant', () => {
       if (epoch !== generation) return;
       for (const target of loaded) for (const message of target.messages) {
         if (message.state === 'running') message.state = 'interrupted';
+        for (const input of message.userInputs ?? []) if (input.status === 'pending') input.status = 'cancelled';
         for (const proposal of message.proposals ?? []) if (proposal.status === 'applying') proposal.status = 'unknown';
       }
       sessions.value = loaded.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -553,6 +616,6 @@ export const useAssistantStore = defineStore('assistant', () => {
   watch([connection, opened], () => { void reloadModels(); });
   onScopeDispose(() => { stop(); modelController?.abort(); });
   return { available, demo, canConfigure, opened, displayMode, fullscreenTabId, fullscreenPaneId, isFullscreenTab, setDisplayMode, loading, busy, applying, connections, connectionId, connection, modelId, models, modelsLoading, modelsError, reloadModels, refreshModels, selectModel, selectConnection, sessions, session, externalSessions, loadExternal, importExternal,
-    files, selection, prompt, error, progress, reasoningEffort, selectReasoningEffort, replyTarget, open, stop, settle, send, newSession, selectSession, deleteSession, review, verify,
+    files, selection, prompt, error, progress, pendingUserInput, startDocumentDraft, submitUserInput, reasoningEffort, selectReasoningEffort, replyTarget, open, stop, settle, send, newSession, selectSession, deleteSession, review, verify,
     undo, reject, publishSuggestions, saveConnection, removeConnection, reloadConnections, checkConnection, setManaged: (check: (id: string) => boolean) => { managed = check; } };
 });

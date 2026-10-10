@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch, type Component } from 'vue';
 import { ArrowLeft, BookOpen, Check, ChevronRight, File, FileText, FolderOpen, LockKeyhole } from 'lucide-vue-next';
 import { basename, isMarkdown, isWorkspaceInternalPath, parentPath, type FileEntry } from '@tano/protocol';
 import { butterflyPerchDirective, useButterflyController, type ButterflyPerch } from '../assistant/butterfly-vue';
@@ -11,11 +11,12 @@ const props = defineProps<{
   workspaceName: string;
   entries: FileEntry[];
   path?: string;
+  pages?: { id: string; label: string; icon?: Component; current?: boolean; disabled?: boolean }[];
   demoLabel?: string | null;
   readOnly?: boolean;
   perch?: ButterflyPerch;
 }>();
-const emit = defineEmits<{ open: [file: FileEntry] }>();
+const emit = defineEmits<{ open: [file: FileEntry]; navigate: [id: string] }>();
 const menuId = useId();
 const root = ref<HTMLElement>();
 const menu = ref<HTMLElement>();
@@ -161,6 +162,16 @@ onBeforeUnmount(() => {
       <span class="breadcrumb-workspace-label">{{ demoLabel || workspaceName }}</span>
     </button>
     <slot />
+    <template v-for="page in pages" :key="page.id">
+      <ChevronRight :size="12" class="breadcrumb-separator" aria-hidden="true" />
+      <component :is="page.current ? 'span' : 'button'" class="breadcrumb-trigger breadcrumb-page"
+        :class="{ 'breadcrumb-current': page.current }" :type="page.current ? undefined : 'button'"
+        :aria-current="page.current ? 'page' : undefined" :disabled="page.current ? undefined : page.disabled"
+        :title="page.label" @click="!page.current && !page.disabled && emit('navigate', page.id)">
+        <component :is="page.icon" v-if="page.icon" :size="14" aria-hidden="true" />
+        <span>{{ page.label }}</span>
+      </component>
+    </template>
     <template v-for="part in parts" :key="part.path">
       <ChevronRight :size="12" class="breadcrumb-separator" aria-hidden="true" />
       <button type="button" class="breadcrumb-trigger" :class="{ 'breadcrumb-current': part.current }"
@@ -217,7 +228,7 @@ onBeforeUnmount(() => {
 .breadcrumb > .breadcrumb-current { color: var(--text); }
 .breadcrumb-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .breadcrumb-trigger > svg, .breadcrumb-separator { flex-shrink: 0; }
-.breadcrumb-trigger:hover, .breadcrumb-trigger[aria-expanded='true'] { background: var(--hover); }
+button.breadcrumb-trigger:hover, .breadcrumb-trigger[aria-expanded='true'] { background: var(--hover); }
 .breadcrumb-trigger:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
 .breadcrumb-menu {
   position: fixed;
@@ -257,7 +268,7 @@ onBeforeUnmount(() => {
 @media (max-width: 700px) {
   .breadcrumb > .breadcrumb-workspace { flex-shrink: 0; }
   .breadcrumb-workspace:not(.breadcrumb-demo-badge) .breadcrumb-workspace-label { display: none; }
-  .breadcrumb > .breadcrumb-trigger:not(.breadcrumb-workspace):not(.breadcrumb-current),
+  .breadcrumb > .breadcrumb-trigger:not(.breadcrumb-workspace):not(.breadcrumb-current):not(.breadcrumb-page),
   .breadcrumb > .breadcrumb-separator { display: none; }
   .breadcrumb > .breadcrumb-separator:last-of-type { display: block; }
 }

@@ -94,7 +94,7 @@ defineExpose({ focus });
 .comment-composer-field:focus-within { border-color: var(--green); }
 textarea { width: 100%; min-width: 0; min-height: 36px; max-height: 160px; resize: none; border: 0; padding: 8px 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 13px; line-height: 20px; box-sizing: border-box; }
 textarea::placeholder { color: color-mix(in srgb, var(--muted) 55%, var(--paper)); opacity: 1; }
-.comment-send { display: grid; place-items: center; width: 26px; height: 26px; flex: none; margin-bottom: 5px; padding: 0; border: 0; border-radius: 50%; background: var(--green); color: white; cursor: pointer; }
+.comment-send { display: grid; place-items: center; width: 26px; height: 26px; flex: none; margin-bottom: 5px; padding: 0; border: 0; border-radius: 50%; background: var(--green-fill); color: white; cursor: pointer; }
 .comment-send:disabled { background: var(--line); color: var(--muted); cursor: default; }
 .comment-send:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
 .comment-composer .comment-send, .comment-composer .comment-mention { visibility: hidden; }

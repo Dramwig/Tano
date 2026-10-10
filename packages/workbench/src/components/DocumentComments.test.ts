@@ -402,6 +402,7 @@ it('uses one bottom composer for discussions and replies, preserving drafts on c
   });
   app.use(pinia).mount(root);
   await expect.poll(() => root!.querySelectorAll('.comment-conversation').length).toBe(2);
+  expect(root.querySelector<HTMLElement>('.document-discussion')?.style.display).not.toBe('none');
   const field = root.querySelector<HTMLTextAreaElement>('.document-discussion-compose textarea')!;
   const write = async (value: string) => {
     field.value = value;
@@ -472,6 +473,7 @@ it('uses one bottom composer for discussions and replies, preserving drafts on c
   expect(field.value).toBe('');
   expect(field.getAttribute('aria-label')).toBe('添加评论');
   expect(root.querySelector('.discussion-reply-target')).toBeNull();
+  expect(root.querySelector<HTMLElement>('.document-discussion')?.style.display).toBe('none');
 });
 
 it('creates, replies to, resolves and detaches local annotations independently of document discussions', async () => {
@@ -507,6 +509,9 @@ it('creates, replies to, resolves and detaches local annotations independently o
   app.mount(root);
   root.querySelector('main')!.getBoundingClientRect = () => new DOMRect(0, 0, 800, 900);
   await expect.poll(() => root!.textContent?.includes('文档讨论')).toBe(true);
+  const discussion = root.querySelector<HTMLElement>('.document-discussion')!;
+  discussion.scrollIntoView = vi.fn();
+  expect(discussion.style.display).toBe('none');
   const click = (label: string) => {
     const button = [...document.querySelectorAll('button')].find(item => item.textContent?.trim() === label || item.getAttribute('aria-label') === label);
     expect(button, label).toBeTruthy();
@@ -564,10 +569,19 @@ it('creates, replies to, resolves and detaches local annotations independently o
   expect(root.querySelector('[aria-label="添加批注"]')).toBeNull();
   readonly.value = false;
   await nextTick();
+  expect(discussion.style.display).toBe('none');
+  await comments.value?.showDiscussion();
+  expect(discussion.style.display).not.toBe('none');
+  expect(document.activeElement?.getAttribute('aria-label')).toBe('添加评论');
+  root.querySelector<HTMLButtonElement>('[aria-label="关闭讨论输入"]')!.click();
+  await nextTick();
+  expect(discussion.style.display).toBe('none');
+  await comments.value?.showDiscussion();
   write('添加评论', '整体方案可行');
   await nextTick();
   root.querySelector<HTMLButtonElement>('[aria-label="发表添加评论"]')!.click();
   await expect.poll(async () => (await loadCommentFile(adapter, 'discussion', openDocument.id)).file.threads.length).toBe(1);
+  expect(discussion.style.display).not.toBe('none');
   expect((await loadCommentFile(adapter, 'annotation', openDocument.id)).file.threads[0]?.anchor).toBeDefined();
   expect((await loadCommentFile(adapter, 'discussion', openDocument.id)).file.threads[0]?.anchor).toBeUndefined();
   if (!root.querySelector('.annotation-popup')) {
@@ -637,4 +651,5 @@ it('creates, replies to, resolves and detaches local annotations independently o
   await nextTick();
   click('确认删除');
   await expect.poll(async () => (await loadCommentFile(adapter, 'discussion', openDocument.id)).file.threads).toEqual([]);
+  await expect.poll(() => discussion.style.display).toBe('none');
 });

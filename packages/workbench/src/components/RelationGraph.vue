@@ -559,7 +559,7 @@ onBeforeUnmount(() => {
   outline-offset: -2px;
 }
 .graph-edges line {
-  stroke: #c5ccd1;
+  stroke: var(--graph-edge, #c5ccd1);
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
   transition:
@@ -582,11 +582,11 @@ onBeforeUnmount(() => {
   fill: transparent;
 }
 .graph-node-dot {
-  fill: #626971;
+  fill: var(--graph-node, #626971);
   transition: fill 120ms;
 }
 .graph-node.orphan .graph-node-dot {
-  fill: #b2b8be;
+  fill: var(--graph-orphan, #b2b8be);
 }
 .graph-node-halo {
   fill: var(--green);

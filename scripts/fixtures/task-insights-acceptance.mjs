@@ -66,7 +66,7 @@ export async function acceptTaskInsights(page, expect, canonical, screenshotPath
   const runtime = await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').pluginRuntime.find(row => row.id === 'task-insights'));
   expect(runtime.status).toBe('running');
   expect(runtime.logs.filter(row => row.level === 'error')).toEqual([]);
-  await page.getByRole('button', { name: '打开插件标签页', exact: true }).click();
+  await page.getByRole('region', { name: '插件工作台', exact: true }).getByRole('button', { name: '管理插件', exact: true }).click();
   await page.getByRole('button', { name: /^已安装/ }).click();
   await page.getByRole('button', { name: '查看任务统计详情', exact: true }).click();
   await page.getByRole('button', { name: '停用插件', exact: true }).click();
