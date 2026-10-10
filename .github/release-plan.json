@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "kind": "core",
+  "version": "0.2.0",
+  "tag": "core-v0.2.0",
+  "scope": "core",
+  "notes": ".github/releases/core-v0.2.0.md"
+}
