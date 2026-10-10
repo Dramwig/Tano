@@ -1,5 +1,10 @@
 # Core release automation
 
+Development follows the [branching policy](branching.md): feature PRs target `dev`,
+and tested work is promoted to `main` with a merge commit before preparing a release.
+Version PRs still target `main`. The main-to-dev workflow then opens a synchronization
+PR so the next development cycle keeps the released versions and hotfixes.
+
 The public repository owns the MIT Core version and its `core-vX.Y.Z` tags. Official Product versions, production deployment and official installer publication are managed in the private repository. A public Product `vA.B.C` tag points to its pinned Core commit; the private tag with the same name points to the Product commit.
 
 ## Prepare and publish Core
@@ -8,7 +13,7 @@ The public repository owns the MIT Core version and its `core-vX.Y.Z` tags. Offi
 2. Review the version PR, especially compatibility changes and release notes. Merge it after checks pass.
 3. **Tag reviewed release** waits for `check.yml` on the exact merged `main` commit and creates an immutable tag. It never retargets an existing tag.
 4. The Core tag runs checks and native builds. **Export verified Core** runs only after the successful tag check, verifies main ancestry and tag identity, exports a clean distribution and uploads a 30-day transport artifact.
-5. If a consumer is configured, the export workflow sends `core-released` with the tag and SHA. The consumer independently verifies the tag and CI, regenerates the distribution and creates a synchronization PR. Its committed vendored snapshot is the durable copy; an expiring Actions artifact is not a dependency source.
+5. If a consumer is configured, the export workflow sends `core-released` with the tag and SHA. The consumer independently verifies the tag and CI, regenerates the distribution and creates a synchronization PR targeting its `dev` integration branch. Promote the tested consumer changes to its `main` before preparing a Product release. Its committed vendored snapshot is the durable copy; an expiring Actions artifact is not a dependency source.
 
 For local preparation, `node scripts/release-plan.mjs prepare patch core` updates files without committing or tagging. Direct `npm run version:set -- X.Y.Z` and `npm run core:export` remain available.
 

@@ -1,0 +1,41 @@
+name: Sync main into dev
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pull-requests: read
+concurrency:
+  group: sync-main-into-dev
+  cancel-in-progress: false
+jobs:
+  sync:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release-automation
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check whether a synchronization PR is needed
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/sync-development.mjs --check
+      - uses: ./.github/actions/release-token
+        if: steps.plan.outputs.needed == 'true'
+        id: identity
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          fallback-token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+      - name: Open or reuse the history-preserving synchronization PR
+        if: steps.plan.outputs.needed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.identity.outputs.token }}
+        run: node scripts/sync-development.mjs

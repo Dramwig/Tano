@@ -2,6 +2,14 @@
 
 Run `npm run check` before submitting a change. For native storage changes, also run `npm run test:native` and format the affected Rust crates as described in `AGENTS.md`.
 
+## Branches
+
+Start ordinary task branches from `dev` and submit their PRs to `dev`. Promote tested
+integration work from `dev` to `main` with a merge commit. Version PRs and urgent
+hotfixes target `main`; merge the automated main-to-dev PR afterwards. Keep `main`
+as the default branch. Read [the branching policy](docs/branching.md) for conflict
+handling, branch cleanup, required checks, and release boundaries.
+
 ## Commit messages
 
 Use the Conventional Commit form `type(scope): imperative summary`. Write the subject in English, in the imperative, without a final period. Choose a short scope for the affected area, such as `editor`, `workbench`, `native`, `mcp`, `docs`, `ci`, or `repo`.

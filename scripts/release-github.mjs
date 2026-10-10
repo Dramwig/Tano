@@ -5,7 +5,8 @@ import { pathToFileURL } from 'node:url';
 import { output, readPlan } from './release-plan.mjs';
 
 export function repositoryName(value) {
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value ?? ''))
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value ?? '') ||
+    value.split('/').some((part) => part === '.' || part === '..'))
     throw new Error('Invalid GitHub repository');
   return value;
 }

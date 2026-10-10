@@ -31,5 +31,8 @@ Tano — Humans and agents, on the same page.
 
 ## Commits
 
+- Follow [docs/branching.md](docs/branching.md): start normal task branches from `dev`, target `dev` in feature PRs, and promote tested `dev` to `main` with a merge commit.
+- Version PRs and urgent hotfixes target `main`; merge the generated `main` to `dev` synchronization PR with a merge commit. Never squash/rebase long-lived branches or force-push/delete them.
+
 - Follow the Conventional Commit format and the examples in [CONTRIBUTING.md](CONTRIBUTING.md) for every new commit.
 - Give substantial changes a body that explains the behavior, reason, and important implementation details. Keep follow-up fixes in the same logical commit before merging.
