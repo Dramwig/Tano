@@ -1,0 +1,53 @@
+name: Prepare Core release PR
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: patch, minor, major, or an exact stable version (current version allowed for the first tag)
+        type: string
+        default: patch
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: release-automation
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Update versions and draft release notes
+        id: plan
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: node scripts/release-plan.mjs prepare "$REQUESTED_VERSION" core
+      - run: npm run version:check && npm run docs:check
+      - uses: ./.github/actions/release-token
+        id: identity
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          fallback-token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ steps.identity.outputs.token }}
+          branch: ${{ steps.plan.outputs.branch }}
+          base: main
+          title: 'chore(release): prepare ${{ steps.plan.outputs.tag }}'
+          commit-message: |
+            chore(release): prepare ${{ steps.plan.outputs.tag }}
+
+            Align Core package, Tauri and Cargo versions and record the release
+            plan and notes. The tag is created only after the merged commit passes CI.
+          body-path: ${{ steps.plan.outputs.notes }}

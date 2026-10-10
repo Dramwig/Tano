@@ -1,0 +1,43 @@
+name: Release automation identity
+description: Use a scoped GitHub App token, or an explicitly configured automation PAT
+inputs:
+  app-id:
+    description: GitHub App ID
+    required: false
+  private-key:
+    description: GitHub App private key
+    required: false
+  fallback-token:
+    description: Fine-grained automation PAT (never the default GITHUB_TOKEN)
+    required: false
+  repositories:
+    description: Comma-separated repositories belonging to the current owner
+    required: false
+    default: ''
+outputs:
+  token:
+    description: Short-lived App token or configured PAT
+    value: ${{ steps.app.outputs.token || inputs.fallback-token }}
+runs:
+  using: composite
+  steps:
+    - name: Require an automation identity
+      shell: bash
+      env:
+        APP_ID: ${{ inputs.app-id }}
+        APP_KEY: ${{ inputs.private-key }}
+        FALLBACK_TOKEN: ${{ inputs.fallback-token }}
+      run: |
+        if [[ -n "$APP_ID" ]]; then
+          test -n "$APP_KEY" || { echo 'RELEASE_APP_PRIVATE_KEY is required'; exit 1; }
+        else
+          test -n "$FALLBACK_TOKEN" || { echo 'Configure RELEASE_APP_ID/RELEASE_APP_PRIVATE_KEY or RELEASE_AUTOMATION_TOKEN'; exit 1; }
+        fi
+    - uses: actions/create-github-app-token@v2
+      id: app
+      if: inputs.app-id != ''
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ inputs.repositories || github.event.repository.name }}

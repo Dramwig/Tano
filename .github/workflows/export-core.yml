@@ -1,0 +1,63 @@
+name: Export verified Core
+on:
+  workflow_run:
+    workflows: [Tano checks]
+    types: [completed]
+permissions:
+  contents: read
+concurrency:
+  group: core-export-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+jobs:
+  export:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      startsWith(github.event.workflow_run.head_branch, 'core-v')
+    runs-on: ubuntu-24.04
+    environment: release-automation
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Verify tag, main ancestry and clean source
+        env:
+          CORE_TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          node scripts/version.mjs check --tag "$CORE_TAG"
+          test "$(git rev-parse "$CORE_TAG^{commit}")" = "$(git rev-parse HEAD)"
+          git merge-base --is-ancestor HEAD origin/main
+          test -z "$(git status --porcelain)"
+      - run: npm ci && npm run core:export
+      - name: Reject generated source drift
+        run: node --input-type=module -e 'import fs from "node:fs"; if(JSON.parse(fs.readFileSync("artifacts/core/core-manifest.json")).dirty) throw Error("Core export is dirty");'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.workflow_run.head_branch }}
+          path: artifacts/core/
+          if-no-files-found: error
+          retention-days: 30
+      - uses: ./.github/actions/release-token
+        id: identity
+        if: vars.CORE_CONSUMER_REPOSITORY != ''
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          fallback-token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+          repositories: ${{ vars.CORE_CONSUMER_REPOSITORY }}
+      - name: Notify the configured Core consumer
+        if: vars.CORE_CONSUMER_REPOSITORY != ''
+        env:
+          GH_TOKEN: ${{ steps.identity.outputs.token }}
+          CONSUMER: ${{ github.repository_owner }}/${{ vars.CORE_CONSUMER_REPOSITORY }}
+          CORE_TAG: ${{ github.event.workflow_run.head_branch }}
+          CORE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          node --input-type=module -e 'import { githubClient, repositoryName } from "./scripts/release-github.mjs"; await githubClient(process.env.GH_TOKEN)(`/repos/${repositoryName(process.env.CONSUMER)}/dispatches`, {method:"POST", body:{event_type:"core-released",client_payload:{tag:process.env.CORE_TAG,sha:process.env.CORE_SHA}}});'

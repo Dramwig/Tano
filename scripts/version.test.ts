@@ -2,16 +2,22 @@ import { copyFile, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
+// @ts-expect-error Release tooling runs directly in Node.
+import { prepareRelease, readPlan } from './release-plan.mjs';
 // @ts-expect-error Release tooling runs directly in Node without a TypeScript build.
 import { checkVersions, setVersions } from './version.mjs';
 
 it('updates application manifests, workspace dependencies and both native lockfiles together', async () => {
   const root = await mkdtemp(join(tmpdir(), 'tano-version-'));
   const files = [
-    'package.json', 'package-lock.json',
+    'package.json',
+    'package-lock.json',
     'apps/client/src-tauri/tauri.conf.json',
-    'apps/client/src-tauri/Cargo.toml', 'apps/client/src-tauri/Cargo.lock',
-    'crates/tano-native/Cargo.toml', 'crates/tano-native/Cargo.lock',
+    'apps/client/src-tauri/Cargo.toml',
+    'apps/client/src-tauri/Cargo.lock',
+    'crates/tano-native/Cargo.toml',
+    'crates/tano-native/Cargo.lock',
   ];
   for (const parent of ['apps', 'packages']) {
     for (const entry of await readdir(parent, { withFileTypes: true })) {
@@ -20,7 +26,9 @@ it('updates application manifests, workspace dependencies and both native lockfi
       try {
         await readFile(file);
         files.push(file);
-      } catch { /* Standalone protocol packages are independently versioned. */ }
+      } catch {
+        /* Standalone protocol packages are independently versioned. */
+      }
     }
   }
   try {
@@ -32,7 +40,9 @@ it('updates application manifests, workspace dependencies and both native lockfi
     expect(checkVersions(root)).toBe(initial);
     const originals = await Promise.all(files.map((file) => readFile(join(root, file), 'utf8')));
     expect(setVersions(root, initial)).toBe(initial);
-    expect(await Promise.all(files.map((file) => readFile(join(root, file), 'utf8')))).toEqual(originals);
+    expect(await Promise.all(files.map((file) => readFile(join(root, file), 'utf8')))).toEqual(
+      originals,
+    );
     expect(setVersions(root, '1.2.3')).toBe('1.2.3');
     expect(checkVersions(root, 'core-v1.2.3')).toBe('1.2.3');
     const client = JSON.parse(await readFile(join(root, 'apps/client/package.json'), 'utf8'));
@@ -46,6 +56,27 @@ it('updates application manifests, workspace dependencies and both native lockfi
     client.version = '1.2.4';
     await writeFile(join(root, 'apps/client/package.json'), JSON.stringify(client));
     expect(() => checkVersions(root)).toThrow('apps/client');
+    setVersions(root, '1.2.3');
+    await mkdir(join(root, 'scripts'));
+    await copyFile('scripts/version.mjs', join(root, 'scripts/version.mjs'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'pipe' });
+    git('init');
+    git('add', '.');
+    git(
+      '-c',
+      'user.name=Release Test',
+      '-c',
+      'user.email=release@example.test',
+      'commit',
+      '-m',
+      'chore: release fixture',
+    );
+    git('tag', 'core-v1.2.3');
+    await prepareRelease(root, 'patch', 'core');
+    expect(checkVersions(root, 'core-v1.2.4')).toBe('1.2.4');
+    expect(readPlan(root)).toMatchObject({ version: '1.2.4', tag: 'core-v1.2.4', scope: 'core' });
+    git('tag', 'core-v1.2.4');
+    await expect(prepareRelease(root, '1.2.4', 'core')).rejects.toThrow('already exists');
   } finally {
     await rm(root, { recursive: true, force: true });
   }
