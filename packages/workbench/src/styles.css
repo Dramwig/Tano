@@ -934,6 +934,7 @@ button:hover {
   border-radius: 50%;
 }
 .document-scroll-shell {
+  position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
@@ -2053,6 +2054,9 @@ button:hover {
 }
 .editor-scroll:focus {
   outline: none;
+}
+.document-scroll-shell.has-assistant-launcher .editor-scroll {
+  padding-bottom: calc(108px + env(safe-area-inset-bottom, 0px));
 }
 .editor-scroll.width-unlimited .milkdown-host,
 .editor-scroll.width-unlimited .source-editor,

@@ -104,6 +104,7 @@ import { parseReferenceUrl, referenceUrl, resolveReference } from '@tano/protoco
 import type { ReferenceTarget, ReferenceIdentity } from '@tano/protocol';
 import type { CommentAnchor } from '@tano/protocol';
 import { commentSpansForSelection, projectCommentText, proseRangesForCommentSpans } from './comment-projection';
+import { captureVisualAnchor, visualAnchorPlugin, visualSelection } from './visual-anchor';
 import { columnResizing } from '@milkdown/kit/prose/tables';
 import { defaultTableColumnWidth, minimumTableColumnWidth } from '@tano/protocol';
 import type { TableLayout } from '@tano/protocol';
@@ -2227,6 +2228,7 @@ onMounted(async () => {
       )
       .use(bridge)
       .use(commentMarks)
+      .use($prose(visualAnchorPlugin))
       .use($prose(() => suggestionMarks(() => props.suggestionMarks)))
       .use($prose(() => pageSearchPlugin(() => emit('searchChange'))));
     editor = await instance.create();
@@ -2936,6 +2938,8 @@ function modeCursorTop() {
   return bridgeView.coordsAtPos(selection instanceof NodeSelection ? selection.from : selection.head).top;
 }
 defineExpose({
+  captureVisualAnchor: () => bridgeView && !disposed ? captureVisualAnchor(bridgeView) : null,
+  visualSelection: () => bridgeView && !disposed ? visualSelection(bridgeView) : null,
   captureModeSelection,
   restoreModeSelection,
   modeCursorTop,

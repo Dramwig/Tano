@@ -1,6 +1,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { helpContextTopic, helpTopics } from './help-content';
 import type { HelpContext, HelpTopic, HelpTopicId } from './help-content';
+import { subscribeUserActivity } from './user-activity';
 
 export const helpPreferenceKey = 'tano.preference.helpGuidance.v1';
 export const helpTiming = {
@@ -93,13 +94,16 @@ export function useHelpGuidance(options: {
   const hint = ref<HelpTopic>();
   const started = Date.now();
   let contextSince = started;
-  let lastActivity = started;
+  let quietSince = started;
   let shownAt = 0;
   let sessionCount = 0;
-  let pointerDown = false;
-  let composing = false;
-  let focused = document.hasFocus();
-  let timer: ReturnType<typeof setInterval> | undefined;
+  let activity: ReturnType<typeof subscribeUserActivity> | undefined;
+
+  function scheduleCheck() {
+    if (options.available() && !options.blocked() && preferences.value.enabled &&
+      (hint.value || sessionCount < helpTiming.dailyLimit)) activity?.schedule(1000);
+    else activity?.cancel();
+  }
 
   function dismiss(snooze = false) {
     hint.value = undefined;
@@ -110,7 +114,8 @@ export function useHelpGuidance(options: {
   }
   watch(() => preferences.value.enabled, () => {
     dismiss();
-    lastActivity = Date.now();
+    quietSince = Date.now();
+    scheduleCheck();
   }, { flush: 'sync' });
   function readTopic(id: HelpTopicId) {
     if (!preferences.value.seen.includes(id)) preferences.value.seen.push(id);
@@ -119,31 +124,37 @@ export function useHelpGuidance(options: {
   }
   function resetContext() {
     dismiss();
-    contextSince = lastActivity = Date.now();
+    contextSince = quietSince = Date.now();
+    scheduleCheck();
   }
   watch([options.context, options.scope, options.available, options.blocked], resetContext);
 
   function tick() {
     const now = Date.now();
-    const obstructed = options.blocked() || !options.available() || document.hidden || !focused ||
-      [...document.querySelectorAll<HTMLElement>(
+    if (!activity?.canRun || options.blocked() || !options.available()) { dismiss(); quietSince = now; return; }
+    const lastActivity = Math.max(quietSince, activity.lastActivity);
+    // Cheap eligibility checks precede layout reads, including while the user is typing.
+    if (!hint.value) {
+      if (!preferences.value.enabled || options.interacting() ||
+        now - started < helpTiming.warmup || now - contextSince < helpTiming.dwell ||
+        now - lastActivity < helpTiming.quiet || sessionCount >= helpTiming.dailyLimit) return;
+      refresh();
+      const state = preferences.value;
+      if (!state.enabled || now < state.snoozedUntil ||
+        (state.lastShown && now - state.lastShown < helpTiming.cooldown) ||
+        (state.day === localDay(now) && state.count >= helpTiming.dailyLimit)) return;
+    }
+    const obstructed = [...document.querySelectorAll<HTMLElement>(
         '[role="dialog"], [role="menu"], [aria-modal="true"], .modal-backdrop, .tano-editor-panel',
       )].some(element => !element.closest('[hidden], [aria-hidden="true"], [inert]') &&
         element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden');
-    if (obstructed) { dismiss(); lastActivity = now; return; }
+    if (obstructed) { dismiss(); quietSince = now; return; }
     if (hint.value) {
       if (options.interacting()) shownAt = now;
       else if (now - shownAt >= helpTiming.duration) dismiss();
       return;
     }
-    if (!preferences.value.enabled || pointerDown || composing || options.interacting() ||
-      now - started < helpTiming.warmup || now - contextSince < helpTiming.dwell ||
-      now - lastActivity < helpTiming.quiet || sessionCount >= helpTiming.dailyLimit) return;
-    refresh();
     const state = preferences.value;
-    if (!state.enabled || now < state.snoozedUntil ||
-      (state.lastShown && now - state.lastShown < helpTiming.cooldown) ||
-      (state.day === localDay(now) && state.count >= helpTiming.dailyLimit)) return;
     const contextual = helpContextTopic(options.context());
     const topic = !state.seen.includes(contextual.id) ? contextual :
       now - lastActivity >= helpTiming.idle && !state.seen.includes('find') ? helpTopics.find : undefined;
@@ -156,35 +167,20 @@ export function useHelpGuidance(options: {
     save();
     hint.value = topic;
   }
-  function activity(event: Event) {
-    lastActivity = Date.now();
-    if (event.type === 'pointerdown') pointerDown = true;
-    if (event.type === 'compositionstart') composing = true;
-    if (event.type === 'compositionend') composing = false;
+  function dismissOnActivity(event: Event) {
+    if (!hint.value) return;
     const inside = (event.target instanceof Element) && event.target.closest('[data-help-surface]');
     if (!inside && ['keydown', 'input', 'pointerdown', 'wheel', 'compositionstart'].includes(event.type)) dismiss();
   }
-  function releasePointer() { pointerDown = false; lastActivity = Date.now(); }
-  function blur() { focused = false; pointerDown = composing = false; resetContext(); }
-  function focus() { focused = true; resetContext(); }
-  const events = ['keydown', 'input', 'pointerdown', 'pointermove', 'wheel', 'compositionstart', 'compositionend'];
   onMounted(() => {
-    timer = setInterval(tick, 1000);
-    for (const event of events) window.addEventListener(event, activity, { passive: true, capture: true });
-    window.addEventListener('pointerup', releasePointer, true);
-    window.addEventListener('pointercancel', releasePointer, true);
-    window.addEventListener('blur', blur);
-    window.addEventListener('focus', focus);
-    document.addEventListener('visibilitychange', resetContext);
+    activity = subscribeUserActivity({
+      onDeadline: () => { tick(); scheduleCheck(); },
+      onActivity: dismissOnActivity,
+      onSuspend: resetContext,
+      onResume: resetContext,
+    });
+    scheduleCheck();
   });
-  onBeforeUnmount(() => {
-    clearInterval(timer);
-    for (const event of events) window.removeEventListener(event, activity, true);
-    window.removeEventListener('pointerup', releasePointer, true);
-    window.removeEventListener('pointercancel', releasePointer, true);
-    window.removeEventListener('blur', blur);
-    window.removeEventListener('focus', focus);
-    document.removeEventListener('visibilitychange', resetContext);
-  });
+  onBeforeUnmount(() => activity?.dispose());
   return { hint, preferences, dismiss, setEnabled, readTopic };
 }

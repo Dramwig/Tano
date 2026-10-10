@@ -10,6 +10,7 @@ import { useWorkspaceStore } from '../stores/workspace';
 import AssistantChangeList from './AssistantChangeList.vue';
 import AssistantModelIcon from './AssistantModelIcon.vue';
 import AssistantGenerationHint from './AssistantGenerationHint.vue';
+import AssistantButterfly from './AssistantButterfly.vue';
 
 const assistant = useAssistantStore();
 const workspace = useWorkspaceStore();
@@ -454,7 +455,7 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
       <div ref="messages" class="assistant-messages panel-scrollbar" role="log" aria-label="助手对话" @scroll="updateScroll">
         <p v-if="assistant.loading" class="assistant-empty"><LoaderCircle :size="16" class="spinning" />正在读取会话</p>
         <div v-else-if="!assistant.session?.messages.length" class="assistant-welcome">
-          <div class="assistant-welcome-mark"><img :src="'/favicon-green.svg?v=3'" alt="同页助手" /></div>
+          <div class="assistant-welcome-mark"><AssistantButterfly class="assistant-welcome-butterfly" label="同页助手" /></div>
           <h3>今天想从哪里开始？</h3>
           <div class="assistant-starters">
             <button v-for="starter in starters" :key="starter.label" :disabled="assistant.busy || assistant.applying || !workspace.active" @click="preparePrompt(starter.prompt)"><component :is="starter.icon" :size="18" /><span>{{ starter.label }}</span></button>
@@ -650,7 +651,7 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
 .assistant-empty { margin: auto; padding: 30px 12px; color: var(--muted); font-size: 13px; text-align: center; }
 .assistant-welcome { flex-shrink: 0; margin-top: auto; padding: 30px 0 0; }
 .assistant-welcome-mark { display: grid; place-items: center; width: 54px; height: 54px; margin-bottom: 18px; border: 1px solid var(--line); border-radius: 50%; background: var(--paper); box-shadow: 0 4px 12px rgb(0 0 0 / 6%); }
-.assistant-welcome-mark img { width: 30px; height: 30px; }
+.assistant-welcome-butterfly { width: 30px; height: 30px; }
 .assistant-welcome h3 { margin: 0 0 17px; font-size: 19px; line-height: 1.5; font-weight: 600; }
 .assistant-starters { display: grid; gap: 1px; }
 .assistant-starters button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 38px; padding: 7px 8px; margin-left: -8px; border-radius: 6px; color: var(--text-secondary); text-align: left; font-size: 14px; }
@@ -735,7 +736,7 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
 .assistant-panel-floating .assistant-messages { padding: 12px 24px 16px; }
 .assistant-panel-floating .assistant-welcome { padding-top: 24px; }
 .assistant-panel-floating .assistant-welcome-mark { width: 48px; height: 48px; margin-bottom: 16px; border: 0; box-shadow: none; }
-.assistant-panel-floating .assistant-welcome-mark img { width: 36px; height: 36px; }
+.assistant-panel-floating .assistant-welcome-butterfly { width: 36px; height: 36px; }
 .assistant-panel-floating .assistant-welcome h3 { margin-bottom: 12px; font-size: 17px; }
 .assistant-panel-floating .assistant-starters button { min-height: 35px; gap: 10px; font-size: 13px; }
 .assistant-panel-floating .assistant-conversation-meta { padding-bottom: 12px; }
