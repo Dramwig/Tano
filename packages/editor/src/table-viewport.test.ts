@@ -131,7 +131,7 @@ it('expands only wide tables, reserves the comment gutter, and tracks each scrol
   await nextTick();
   await vi.waitFor(() => expect(viewport.style.width).toBe('1280px'));
   wrapper.dispatchEvent(new Event('scroll'));
-  expect(root.querySelector<HTMLElement>('.tano-block-handle[data-block-index="1"]')!.style.transform).toBe('translateX(-48px)');
+  await vi.waitFor(() => expect(root.querySelector<HTMLElement>('.tano-block-handle[data-block-index="1"]')!.style.transform).toBe('translateX(-48px)'));
   tableWidth = 320;
   resize();
   await vi.waitFor(() => expect(viewport.style.width).toBe('780px'));

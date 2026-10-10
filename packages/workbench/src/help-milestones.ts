@@ -1,17 +1,13 @@
-import { unified } from 'unified';
-import remarkParse from 'remark-parse';
-import remarkGfm from 'remark-gfm';
-import { splitFrontmatter } from '@tano/editor/syntax';
+import { documentLinkDetails, parseDocumentMarkdown } from '@tano/editor/document-links';
 import { validEventDate, validEventTime } from '@tano/protocol';
 import type { WorkspaceObject } from '@tano/protocol';
 import type { Root, RootContent } from 'mdast';
 import type { HelpChecklistId } from './help-content';
 
-const parser = unified().use(remarkParse).use(remarkGfm);
 export const markdownMilestones = ['heading', 'bold', 'italic', 'bullet-list', 'ordered-list', 'todo-list',
   'quote', 'code-block', 'inline-code', 'table', 'divider', 'external-link', 'image', 'footnote'] as const;
 
-function featureCounts(content: string) {
+function featureCounts(tree: Root) {
   const counts = new Map<HelpChecklistId, number>();
   const add = (id: HelpChecklistId) => counts.set(id, (counts.get(id) ?? 0) + 1);
   const references = new Set<string>(), definitions = new Set<string>();
@@ -35,13 +31,28 @@ function featureCounts(content: string) {
     if ('children' in node) for (const child of node.children) visit(child);
   }
   // Parse syntax, not examples inside code/HTML or frontmatter delimiters.
-  visit(parser.parse(splitFrontmatter(content).body));
+  visit(tree);
   counts.set('footnote', [...references].filter(id => definitions.has(id)).length);
   return counts;
 }
 
+// Retain only small derived summaries for the last two revisions, not their ASTs.
+// Exact content keys also invalidate the baseline after remote edits or switching files.
+const snapshots = new Map<string, { counts: ReturnType<typeof featureCounts>; links: ReturnType<typeof documentLinkDetails> }>();
+export function helpMarkdownSnapshot(content: string) {
+  let snapshot = snapshots.get(content);
+  if (!snapshot) {
+    const parsed = parseDocumentMarkdown(content);
+    snapshot = { counts: featureCounts(parsed.tree), links: documentLinkDetails(content, parsed) };
+  }
+  snapshots.delete(content);
+  snapshots.set(content, snapshot);
+  if (snapshots.size > 2) snapshots.delete(snapshots.keys().next().value!);
+  return snapshot;
+}
+
 export function newMarkdownMilestones(before: string, after: string): HelpChecklistId[] {
-  const previous = featureCounts(before), current = featureCounts(after);
+  const previous = helpMarkdownSnapshot(before).counts, current = helpMarkdownSnapshot(after).counts;
   return markdownMilestones.filter(id => (current.get(id) ?? 0) > (previous.get(id) ?? 0));
 }
 

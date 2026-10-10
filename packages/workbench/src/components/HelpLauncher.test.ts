@@ -6,6 +6,7 @@ import HelpLauncher from './HelpLauncher.vue';
 import { helpPreferenceKey, helpTiming, readHelpPreferences, useHelpPreferences } from '../help-guidance';
 import { helpChecklist, type HelpContext } from '../help-content';
 import { helpChecklistKey, readHelpCompleted, recordHelpCompleted } from '../help-checklist';
+import { createButterflyIdleTrigger } from '../assistant/butterfly-idle';
 
 let app: App | undefined;
 let root: HTMLElement;
@@ -348,6 +349,34 @@ describe('hover onboarding checklist', () => {
 });
 
 describe('restrained contextual hints', () => {
+  it('shares its activity clock with the butterfly and retains the egg when tips are disabled', async () => {
+    const listeners = vi.spyOn(window, 'addEventListener');
+    const { preferenceControl } = await mount();
+    const onIdle = vi.fn(); const documentIdentity = {};
+    const butterfly = createButterflyIdleTrigger({
+      selection: () => ({ scope: 'workspace:doc', from: 1, to: 6, document: documentIdentity }),
+      enabled: () => true, onIdle,
+    });
+    try {
+      expect(listeners.mock.calls.filter(([name]) => name === 'pointermove')).toHaveLength(1);
+      expect(vi.getTimerCount()).toBe(1);
+      await time(25_000); event('pointermove');
+      await time(5000); expect(onIdle).not.toHaveBeenCalled();
+      preferenceControl.setEnabled(false); await nextTick();
+      await time(25_000); expect(onIdle).toHaveBeenCalledOnce(); expect(find('.help-bubble')).toBeNull();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { butterfly.dispose(); }
+  });
+
+  it('skips obstruction layout queries while typing or tips are disabled', async () => {
+    const { preferenceControl } = await mount();
+    const queries = vi.spyOn(document, 'querySelectorAll');
+    for (let index = 0; index < 60; index++) { event('input'); await time(1000); }
+    expect(queries).not.toHaveBeenCalled();
+    preferenceControl.setEnabled(false); await nextTick();
+    await time(helpTiming.idle); expect(queries).not.toHaveBeenCalled(); expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('waits for a quiet moment, never takes editor focus, hides on timeout and does not repeat a topic', async () => {
     const { props } = await mount('source');
     const input = document.createElement('textarea'); document.body.append(input); input.focus();

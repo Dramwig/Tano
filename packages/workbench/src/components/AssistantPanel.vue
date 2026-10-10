@@ -4,12 +4,13 @@ import { AlignLeft, ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRi
 import MarkdownEditor from '@tano/editor';
 import type { AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSource, ReferenceIdentity } from '@tano/protocol';
 import { useAssistantStore } from '../assistant/store';
-import { assistantResultNotice, assistantToolLabel } from '../assistant/results';
+import { assistantToolLabel } from '../assistant/results';
 import type { AssistantDisplayMode } from '../assistant/store';
 import { useWorkspaceStore } from '../stores/workspace';
 import AssistantChangeList from './AssistantChangeList.vue';
 import AssistantModelIcon from './AssistantModelIcon.vue';
 import AssistantGenerationHint from './AssistantGenerationHint.vue';
+import AssistantButterfly from './AssistantButterfly.vue';
 
 const assistant = useAssistantStore();
 const workspace = useWorkspaceStore();
@@ -359,7 +360,7 @@ onMounted(() => {
     const composer = panel.value?.querySelector('.assistant-composer-area');
     if (composer) composerObserver.observe(composer);
   }
-  void nextTick(() => { resizeInput(); scrollToLatest(); });
+  void nextTick(() => { resizeInput(); scrollToLatest(); textarea.value?.focus(); });
 });
 onBeforeUnmount(() => {
   endFloatingGesture();
@@ -454,7 +455,7 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
       <div ref="messages" class="assistant-messages panel-scrollbar" role="log" aria-label="助手对话" @scroll="updateScroll">
         <p v-if="assistant.loading" class="assistant-empty"><LoaderCircle :size="16" class="spinning" />正在读取会话</p>
         <div v-else-if="!assistant.session?.messages.length" class="assistant-welcome">
-          <div class="assistant-welcome-mark"><img :src="'/favicon-green.svg?v=3'" alt="同页助手" /></div>
+          <div class="assistant-welcome-mark"><AssistantButterfly class="assistant-welcome-butterfly" label="同页助手" /></div>
           <h3>今天想从哪里开始？</h3>
           <div class="assistant-starters">
             <button v-for="starter in starters" :key="starter.label" :disabled="assistant.busy || assistant.applying || !workspace.active" @click="preparePrompt(starter.prompt)"><component :is="starter.icon" :size="18" /><span>{{ starter.label }}</span></button>
@@ -467,7 +468,6 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
           <div v-if="message.role === 'user'" class="assistant-message-text">{{ message.content }}</div>
           <div v-else-if="message.content" class="assistant-answer"><MarkdownEditor :model-value="answerMarkdown(message)" :document-id="`assistant-${message.id}`" :reference-targets="assistant.session?.workspaceId === workspace.workspace?.id ? workspace.referenceTargets : []" readonly :reveal-markdown="false" open-links-on-tap :resolve-image="() => null" @open-link="sourceLink(message, $event)" @open-reference="openAnswerReference" @ready="answerReady" @error="notice = $event" /></div>
           <p v-if="message.error || message.state === 'interrupted'" class="assistant-message-error">{{ message.error ?? '上次运行已中断；不会自动恢复执行' }}</p>
-          <p v-if="assistantResultNotice(message)" class="assistant-result-notice" role="status" aria-label="实际执行结果">{{ assistantResultNotice(message) }}</p>
           <details v-if="message.toolResults?.some(result => result.status === 'failed')" class="assistant-tool-errors">
             <summary>工具执行记录：{{ message.toolResults.filter(result => result.status === 'failed').length }} 次失败</summary>
             <p v-for="(result, index) in message.toolResults.filter(result => result.status === 'failed')" :key="index">{{ assistantToolLabel(result.name) }}：{{ result.error }}</p>
@@ -564,8 +564,8 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
         <textarea ref="textarea" v-model="assistant.prompt" rows="2" maxlength="20000" aria-label="给助手的任务" placeholder="问问同页助手…" @keydown="sendKey" />
         <div class="assistant-compose-actions">
           <button type="button" class="icon-button assistant-compose-tool" title="添加内容" aria-label="添加内容" :disabled="controlsLocked" :aria-expanded="popover === 'add'" aria-controls="assistant-add-options" data-assistant-popover @click="togglePopover('add', $event)"><Plus :size="20" /></button>
-          <button type="button" class="assistant-compose-model" :title="`${assistant.connection?.name ?? '模型连接'} · ${modelLabel}`" aria-label="选择助手模型" :aria-expanded="popover === 'model'" aria-controls="assistant-model-options" data-assistant-popover @click="togglePopover('model', $event)"><span>{{ modelLabel }}</span><ChevronDown :size="13" /></button>
-          <button v-if="assistant.connection?.kind === 'codex-cli'" type="button" class="assistant-compose-reasoning" :title="`推理强度：${reasoningLabel}`" aria-label="选择推理强度" :disabled="controlsLocked" :aria-expanded="popover === 'reasoning'" aria-controls="assistant-reasoning-options" data-assistant-popover @click="togglePopover('reasoning', $event)"><span>{{ reasoningLabel }}</span><ChevronDown :size="12" /></button>
+          <button type="button" class="assistant-compose-model" :title="`${assistant.connection?.name ?? '模型连接'} · ${modelLabel}`" aria-label="选择助手模型" :aria-expanded="popover === 'model'" aria-controls="assistant-model-options" data-assistant-popover @click="togglePopover('model', $event)"><span>{{ modelLabel }}</span></button>
+          <button v-if="assistant.connection?.kind === 'codex-cli'" type="button" class="assistant-compose-reasoning" :title="`推理强度：${reasoningLabel}`" aria-label="选择推理强度" :disabled="controlsLocked" :aria-expanded="popover === 'reasoning'" aria-controls="assistant-reasoning-options" data-assistant-popover @click="togglePopover('reasoning', $event)"><span>{{ reasoningLabel }}</span></button>
           <button v-if="assistant.busy" type="button" class="icon-button assistant-stop" aria-label="停止助手生成" title="停止生成" @click="assistant.stop()"><Square :size="16" /></button><button v-else class="primary-button assistant-send" aria-label="发送给助手" title="发送" :disabled="!assistant.prompt.trim() || !assistant.connection || !assistant.modelId || assistant.loading || assistant.applying"><ArrowUp :size="18" /></button>
         </div>
       </form>
@@ -650,7 +650,7 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
 .assistant-empty { margin: auto; padding: 30px 12px; color: var(--muted); font-size: 13px; text-align: center; }
 .assistant-welcome { flex-shrink: 0; margin-top: auto; padding: 30px 0 0; }
 .assistant-welcome-mark { display: grid; place-items: center; width: 54px; height: 54px; margin-bottom: 18px; border: 1px solid var(--line); border-radius: 50%; background: var(--paper); box-shadow: 0 4px 12px rgb(0 0 0 / 6%); }
-.assistant-welcome-mark img { width: 30px; height: 30px; }
+.assistant-welcome-butterfly { width: 30px; height: 30px; }
 .assistant-welcome h3 { margin: 0 0 17px; font-size: 19px; line-height: 1.5; font-weight: 600; }
 .assistant-starters { display: grid; gap: 1px; }
 .assistant-starters button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 38px; padding: 7px 8px; margin-left: -8px; border-radius: 6px; color: var(--text-secondary); text-align: left; font-size: 14px; }
@@ -677,8 +677,7 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
 .assistant-citations svg { flex-shrink: 0; }
 .assistant-attachments { justify-content: flex-end; max-width: 88%; margin: 0 0 8px; }
 .assistant-rules { display: block; margin-top: 9px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
-.assistant-result-notice, .assistant-tool-errors { margin: 10px 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
-.assistant-result-notice { padding: 8px 10px; border-left: 2px solid var(--line); background: var(--surface); }
+.assistant-tool-errors { margin: 10px 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
 .assistant-tool-errors summary { cursor: pointer; }
 .assistant-tool-errors p { overflow-wrap: anywhere; }
 .assistant-proposal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
@@ -699,15 +698,14 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
 .assistant-composer textarea { display: block; width: 100%; resize: none; min-height: 52px; max-height: 168px; border: 0; background: transparent; color: var(--text); padding: 0; font: inherit; font-size: 14px; line-height: 1.65; }
 .assistant-composer textarea::placeholder { color: var(--assistant-composer-placeholder); opacity: 1; }
 .assistant-composer textarea:focus { outline: none; }
-.assistant-compose-actions { display: flex; align-items: center; gap: 3px; min-height: 30px; margin-top: 7px; }
+.assistant-compose-actions { display: flex; align-items: center; gap: 1px; min-height: 30px; margin-top: 7px; }
 .assistant-compose-tool { flex: 0 0 28px; width: 28px; height: 28px; border-radius: 6px; color: var(--assistant-composer-muted); }
 .assistant-compose-tool[aria-expanded='true'] { background: var(--surface); }
 .assistant-compose-tool:hover, .assistant-compose-tool[aria-expanded='true'] { color: var(--text-secondary); }
-.assistant-compose-model { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 52%; margin-left: auto; padding: 6px 7px; border-radius: 6px; color: var(--assistant-composer-muted); font-size: 12px; }
+.assistant-compose-model { display: inline-flex; align-items: center; min-width: 0; max-width: 52%; margin-left: auto; padding: 6px 5px; border-radius: 10px; color: var(--assistant-composer-muted); font-size: 12px; }
 .assistant-compose-model span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.assistant-compose-model svg { flex-shrink: 0; }
 .assistant-compose-model:hover, .assistant-compose-model[aria-expanded='true'] { background: var(--surface); color: var(--text-secondary); }
-.assistant-compose-reasoning { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; padding: 6px; border-radius: 6px; color: var(--assistant-composer-muted); font-size: 12px; white-space: nowrap; }
+.assistant-compose-reasoning { display: inline-flex; align-items: center; flex-shrink: 0; padding: 6px 4px; border-radius: 10px; color: var(--assistant-composer-muted); font-size: 12px; white-space: nowrap; }
 .assistant-compose-reasoning:hover:not(:disabled), .assistant-compose-reasoning[aria-expanded='true'] { background: var(--surface); color: var(--text-secondary); }
 .assistant-send, .assistant-stop { display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; min-height: 30px; padding: 0; margin-left: 4px; border-radius: 50%; }
 .assistant-send { background: var(--text); color: var(--paper); }
@@ -735,7 +733,7 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
 .assistant-panel-floating .assistant-messages { padding: 12px 24px 16px; }
 .assistant-panel-floating .assistant-welcome { padding-top: 24px; }
 .assistant-panel-floating .assistant-welcome-mark { width: 48px; height: 48px; margin-bottom: 16px; border: 0; box-shadow: none; }
-.assistant-panel-floating .assistant-welcome-mark img { width: 36px; height: 36px; }
+.assistant-panel-floating .assistant-welcome-butterfly { width: 36px; height: 36px; }
 .assistant-panel-floating .assistant-welcome h3 { margin-bottom: 12px; font-size: 17px; }
 .assistant-panel-floating .assistant-starters button { min-height: 35px; gap: 10px; font-size: 13px; }
 .assistant-panel-floating .assistant-conversation-meta { padding-bottom: 12px; }

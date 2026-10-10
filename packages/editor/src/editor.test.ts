@@ -284,6 +284,121 @@ it.each(['**123123*', '***123123*'])(
   },
 );
 
+it.each([' ', '继续', ' 12321 321312'])(
+  'renders completed bold when typing outside its delimiters: %j', async tail => {
+    const { value, editor, errors } = await mount('123213\n\n');
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    view.focus();
+    view.dispatch(view.state.tr.insert(view.state.doc.content.size,
+      view.state.schema.nodes.paragraph!.create()));
+    view.dispatch(view.state.tr.setSelection(TextSelection.atEnd(view.state.doc)));
+    for (const character of `**34234**${tail}`) {
+      const { from, to } = view.state.selection;
+      const handled = view.someProp('handleTextInput', handler =>
+        handler(view, from, to, character, () => view.state.tr.insertText(character, from, to)));
+      if (!handled) view.dispatch(view.state.tr.insertText(character, from, to));
+    }
+    expect(root.querySelector('[data-tano-live-inline-source]')).toBeNull();
+    expect(root.querySelector('strong')?.textContent).toBe('34234');
+    expect(view.state.selection.$from.parent.type.name).toBe('paragraph');
+    expect(view.state.selection.$from.parentOffset).toBe('34234'.length + tail.length);
+    view.dispatch(view.state.tr.insertText('Z'));
+    expect(root.querySelector('strong')?.textContent).toBe('34234');
+    expect(value.value).toBe(`123213\n\n**34234**${tail}Z\n`);
+    expect(errors).toEqual([]);
+  },
+);
+
+it.each([
+  ['**粗体**', 'strong'],
+  ['*斜体*', 'em'],
+  ['~~删除~~', 'del'],
+  ['`代码`', 'code'],
+  ['[链接](https://example.com/)', 'a'],
+])('renders an edited %s field when the caret enters its surrounding plain text', async (syntax, tag) => {
+  const { value, editor, errors } = await mount(`之前 ${syntax} 之后\n`);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
+  view.focus();
+  placeCaret(prose.querySelector(tag)!, 1);
+  await nextTick();
+  const source = prose.querySelector('[data-tano-live-inline-source]')!;
+  expect(source.textContent).toBe(syntax);
+  const end = view.state.selection.$from.end();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, end)));
+  view.dispatch(view.state.tr.insertText(' 新文字'));
+  expect(prose.querySelector('[data-tano-live-inline-source]')).toBeNull();
+  expect(prose.querySelector(tag)).not.toBeNull();
+  view.dispatch(view.state.tr.insertText('Z'));
+  expect(value.value).toBe(`之前 ${syntax} 新文字Z 之后\n`);
+  expect(editor.value!.undoLastChange()).toBe(true);
+  expect(value.value).toBe(`之前 ${syntax} 新文字 之后\n`);
+  expect(editor.value!.undoLastChange()).toBe(true);
+  expect(value.value).toBe(`之前 ${syntax} 之后\n`);
+  expect(editor.value!.redoLastChange()).toBe(true);
+  expect(value.value).toBe(`之前 ${syntax} 新文字 之后\n`);
+  expect(editor.value!.redoLastChange()).toBe(true);
+  expect(value.value).toBe(`之前 ${syntax} 新文字Z 之后\n`);
+  expect(errors).toEqual([]);
+});
+
+it.each(['before', 'after'])(
+  'renders inline syntax as soon as the caret moves to plain text %s it', async side => {
+    const { value, editor, errors } = await mount('**粗体**\n');
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    view.focus();
+    placeCaret(root.querySelector('strong')!, 1);
+    await nextTick();
+    const start = view.state.selection.$from.start();
+    const end = view.state.selection.$from.end();
+    // Keep the caret inside the bold syntax while surrounding text changes.
+    view.dispatch(view.state.tr.insertText('普通文字', side === 'before' ? start : end));
+    expect(root.querySelector('[data-tano-live-inline-source]')).not.toBeNull();
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc,
+      (side === 'before' ? start : end) + 2)));
+    expect(root.querySelector('[data-tano-live-inline-source]')).toBeNull();
+    expect(root.querySelector('strong')?.textContent).toBe('粗体');
+    view.dispatch(view.state.tr.insertText('Z'));
+    expect(value.value).toBe(side === 'before'
+      ? '普通Z文字**粗体**\n' : '**粗体**普通Z文字\n');
+    expect(errors).toEqual([]);
+  },
+);
+
+it('preserves surrounding Markdown escapes when leaving a completed inline field', async () => {
+  const { value, editor, errors } = await mount('**粗体**\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.focus();
+  placeCaret(root.querySelector('strong')!, 1);
+  await nextTick();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc,
+    view.state.selection.$from.end())));
+  view.dispatch(view.state.tr.insertText(' \\*原文'));
+  expect(value.value).toBe('**粗体** \\*原文\n');
+  expect(errors).toEqual([]);
+});
+
+it('waits for Chinese composition to finish before rendering completed inline syntax', async () => {
+  const { value, editor, errors } = await mount('**粗体**\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.focus();
+  placeCaret(root.querySelector('strong')!, 1);
+  await nextTick();
+  const end = view.state.selection.$from.end();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, end)));
+  view.dom.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+  expect(view.composing).toBe(true);
+  view.dispatch(view.state.tr.insertText('中文'));
+  expect(root.querySelector('[data-tano-live-inline-source]')?.textContent).toBe('**粗体**中文');
+  view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '中文' }));
+  await nextTick();
+  expect(root.querySelector('[data-tano-live-inline-source]')).toBeNull();
+  expect(root.querySelector('strong')?.textContent).toBe('粗体');
+  view.dispatch(view.state.tr.insertText('继续'));
+  expect(value.value).toBe('**粗体**中文继续\n');
+  expect(errors).toEqual([]);
+});
+
 it('reveals all stars when resuming partial emphasis from a saved document', async () => {
   const { value, editor, errors } = await mount('**123123*\n');
   const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
@@ -764,7 +879,7 @@ it('folds headings and list item children without changing Markdown, and can be 
 
   preferences.value = { ...defaultEditorPreferences, folding: false };
   await nextTick();
-  expect(buttons().every((button) => button.hidden)).toBe(true);
+  await vi.waitFor(() => expect(buttons().every((button) => button.hidden)).toBe(true));
   expect(prose.children[1]?.classList.contains('tano-folded-heading-content')).toBe(false);
   expect(prose.querySelector('li > ul')?.classList.contains('tano-folded-list-content')).toBe(false);
   expect(value.value).toBe(source);
@@ -798,13 +913,13 @@ it('folds only an ordered item’s children, keeps sibling numbering, and suppor
   expect(items[2]!.querySelector('ul')?.classList.contains('tano-folded-list-content')).toBe(true);
   buttons()[0]!.click();
   expect(items[2]!.querySelector('ol')?.classList.contains('tano-folded-list-content')).toBe(true);
-  expect(buttons()[1]!.hidden).toBe(true);
+  await vi.waitFor(() => expect(buttons()[1]!.hidden).toBe(true));
   expect(items).toHaveLength(5);
   expect(items.filter(item => item.className || item.querySelector(':scope > p')?.className)).toEqual([]);
   buttons()[0]!.click();
   expect(items[2]!.querySelector('ol')?.classList.contains('tano-folded-list-content')).toBe(false);
   expect(items[2]!.querySelector('ul')?.classList.contains('tano-folded-list-content')).toBe(true);
-  expect(buttons()[1]!.hidden).toBe(false);
+  await vi.waitFor(() => expect(buttons()[1]!.hidden).toBe(false));
   editor.value!.search('Grandchild');
   expect(prose.querySelector('.tano-folded-list-content')).toBeNull();
   expect(value.value).toBe(source);
@@ -2825,12 +2940,12 @@ describe('Markdown editor round trips', () => {
     const saved = value.value;
     root.querySelector<HTMLButtonElement>('[aria-label="展开或收起折叠块"]')!.click();
     await nextTick();
-    expect(handles()[1]!.hidden).toBe(true);
+    await vi.waitFor(() => expect(handles()[1]!.hidden).toBe(true));
     expect(handles()[0]!.hidden).toBe(false);
     expect(value.value).toBe(saved);
     root.querySelector<HTMLButtonElement>('[aria-label="添加子块"]')!.click();
     await nextTick();
-    expect(handles()[1]!.hidden).toBe(false);
+    await vi.waitFor(() => expect(handles()[1]!.hidden).toBe(false));
     expect(root.querySelectorAll('.tano-toggle p')).toHaveLength(1);
     expect(errors).toEqual([]);
   });
@@ -3500,7 +3615,7 @@ describe('Markdown editor round trips', () => {
       vi.spyOn(handle, 'getBoundingClientRect').mockImplementation(() =>
         new DOMRect(100 + Number.parseFloat(handle.style.left), Number.parseFloat(handle.style.top), 18, 24));
     window.dispatchEvent(new Event('resize'));
-    expect(group.getBoundingClientRect().right).toBeLessThan(child.getBoundingClientRect().left);
+    await vi.waitFor(() => expect(group.getBoundingClientRect().right).toBeLessThan(child.getBoundingClientRect().left));
     const hover = (target: Element, x: number, y = 112) =>
       target.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: x, clientY: y }));
     hover(paragraphs[0]!, 120);
@@ -3517,7 +3632,7 @@ describe('Markdown editor round trips', () => {
 
     pane.mockReturnValue(new DOMRect(80, 0, 800, 600));
     window.dispatchEvent(new Event('resize'));
-    expect(group.getBoundingClientRect().left).toBeGreaterThanOrEqual(84);
+    await vi.waitFor(() => expect(group.getBoundingClientRect().left).toBeGreaterThanOrEqual(84));
     expect(child.getBoundingClientRect().left).toBeGreaterThanOrEqual(84);
     expect(group.getBoundingClientRect().bottom).toBeLessThan(child.getBoundingClientRect().top);
     hover(paragraphs[0]!, 120);

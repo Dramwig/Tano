@@ -8,11 +8,14 @@ import { configureWorkbench } from './runtime';
 import { useWorkspaceStore } from './stores/workspace';
 import { usePlanStore } from './stores/plans';
 import { helpChecklistKey, readHelpCompleted, recordHelpCompleted } from './help-checklist';
+import { markdownMilestones } from './help-milestones';
+import * as documentLinks from '@tano/editor/document-links';
 
 let pinia: ReturnType<typeof createPinia>;
 let adapter: DemoAdapter;
 let personal: BrowserPersonalPlans;
 beforeEach(async () => {
+  vi.useFakeTimers();
   localStorage.clear();
   vi.stubGlobal('navigator', { locks: { request: (_name: string, run: () => unknown) => run() } });
   adapter = new DemoAdapter(); personal = new BrowserPersonalPlans();
@@ -24,7 +27,7 @@ beforeEach(async () => {
   await adapter.create('target.md', '# Target\n');
   await adapter.create('another.md', '# Another\n');
 });
-afterEach(() => { disposePinia(pinia); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { disposePinia(pinia); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 async function workspace() {
   const store = useWorkspaceStore(); await store.openWorkspace();
   const file = (path: string) => store.workspace!.files.find(item => item.path === path)!;
@@ -36,6 +39,7 @@ it('does not count startup, restored content, external edits, or failed opening 
   expect(readHelpCompleted()).toEqual([]);
   await store.refresh();
   store.receiveDocument(store.activeId, '# External edit\n\n[[another]]');
+  await vi.advanceTimersByTimeAsync(32);
   expect(readHelpCompleted()).toEqual([]);
   const read = vi.spyOn(adapter, 'read').mockRejectedValue(new Error('unavailable'));
   await store.openFile(file('another.md'));
@@ -44,8 +48,10 @@ it('does not count startup, restored content, external edits, or failed opening 
   await store.openFile(file('source.md'));
   expect(readHelpCompleted()).toEqual(['welcome']);
   store.receiveDocument(store.activeId, 'Remote text\n\n[[target]]');
+  await vi.advanceTimersByTimeAsync(32);
   expect(readHelpCompleted()).toEqual(['welcome']);
   store.editDocument(store.activeId, 'Native remote change\n\n[[another]]', { origin: 'remote' });
+  await vi.advanceTimersByTimeAsync(32);
   expect(readHelpCompleted()).toEqual(['welcome']);
 });
 
@@ -53,8 +59,10 @@ it('counts a local collaboration transaction while ignoring room hydration and o
   const { store, file } = await workspace();
   await store.openFile(file('source.md'));
   store.receiveDocument(store.activeId, '# From a collaborator\n\n[[target]]');
+  await vi.advanceTimersByTimeAsync(32);
   expect(readHelpCompleted()).toEqual(['welcome']);
   store.receiveDocument(store.activeId, '# My addition\n\n[[another]]', { origin: 'local' });
+  await vi.advanceTimersByTimeAsync(32);
   expect(readHelpCompleted()).toEqual(['welcome', 'empty-document', 'document']);
 });
 
@@ -62,16 +70,22 @@ it('records accepted writing and only newly inserted links to another existing d
   const { store, file } = await workspace();
   await store.openFile(file('source.md'));
   store.editDocument(store.activeId, store.active!.content);
+  await vi.advanceTimersByTimeAsync(32);
   expect(readHelpCompleted()).toEqual(['welcome']);
   store.editDocument(store.activeId, 'My text\n\n[[target]]\n');
+  await vi.advanceTimersByTimeAsync(32);
   expect(readHelpCompleted()).toEqual(['welcome', 'empty-document']);
   store.editDocument(store.activeId, 'My text\n\n[[target]]\n[[missing]]\n[[source]]\n');
+  await vi.advanceTimersByTimeAsync(32);
   expect(readHelpCompleted()).not.toContain('document');
   store.editDocument(store.activeId, store.active!.content + '\n```md\n[[another]]\n```\n');
+  await vi.advanceTimersByTimeAsync(32);
   expect(readHelpCompleted()).not.toContain('document');
   store.editDocument(store.activeId, store.active!.content + '\n[[another]]\n');
+  await vi.advanceTimersByTimeAsync(32);
   expect(readHelpCompleted()).toEqual(['welcome', 'empty-document', 'code-block', 'document']);
   store.editDocument(store.activeId, '');
+  await vi.advanceTimersByTimeAsync(32);
   expect(readHelpCompleted()).toContain('document');
 });
 
@@ -82,6 +96,7 @@ it.each(['wiki', 'markdown', 'identity'])('recognizes a valid %s document refere
   const link = kind === 'wiki' ? '[[target]]' : kind === 'markdown' ? '[Target](target.md)' :
     `[Target](${referenceUrl({ type: 'document', id: target.id })})`;
   store.editDocument(store.activeId, link);
+  await vi.advanceTimersByTimeAsync(32);
   expect(readHelpCompleted()).toEqual(['welcome', 'empty-document', 'create-document', 'document']);
 });
 
@@ -89,13 +104,16 @@ it('ignores rejected read-only edits and whitespace-only writing', async () => {
   const { store, file } = await workspace();
   await store.create('blank.md');
   store.editDocument(store.activeId, '\n \n');
+  await vi.advanceTimersByTimeAsync(32);
   expect(readHelpCompleted()).toEqual(['welcome', 'create-document']);
   store.workspace!.readOnly = true;
   store.editDocument(store.activeId, 'Cannot write\n\n[[target]]');
+  await vi.advanceTimersByTimeAsync(32);
   expect(readHelpCompleted()).toEqual(['welcome', 'create-document']);
   store.workspace!.readOnly = false;
   file('blank.md').readOnly = true;
   store.editDocument(store.activeId, 'Cannot write here either');
+  await vi.advanceTimersByTimeAsync(32);
   expect(readHelpCompleted()).toEqual(['welcome', 'create-document']);
 });
 
@@ -187,9 +205,12 @@ it('does not treat opening remote formatted content as performing Markdown opera
   await store.openFile(file('source.md'));
   const remote = '# 标题\n\n**重点**\n\n- 列表\n\n普通正文';
   store.receiveDocument(store.activeId, remote);
+  await vi.advanceTimersByTimeAsync(32);
   store.editDocument(store.activeId, remote.replace('普通正文', '我的正文'));
+  await vi.advanceTimersByTimeAsync(32);
   expect(readHelpCompleted()).toEqual(['welcome', 'empty-document']);
   store.editDocument(store.activeId, store.active!.content + '\n\n## 新标题\n\n**新重点**');
+  await vi.advanceTimersByTimeAsync(32);
   expect(readHelpCompleted()).toEqual(['welcome', 'empty-document', 'heading', 'bold']);
 });
 
@@ -211,4 +232,33 @@ it('keeps independent completion markers and avoids writing them again', () => {
   recordHelpCompleted('welcome');
   expect(set.mock.calls.map(([key]) => key)).toEqual([helpChecklistKey + '.welcome', helpChecklistKey + '.plan']);
   expect(readHelpCompleted()).toEqual(['welcome', 'plan']);
+});
+
+it('shares syntax analysis between guidance checks and reuses only an exact edit baseline', async () => {
+  const { store, file } = await workspace();
+  await store.openFile(file('source.md'));
+  store.receiveDocument(store.activeId, '缓存验证起点');
+  await vi.advanceTimersByTimeAsync(32);
+  const parse = vi.spyOn(documentLinks, 'parseDocumentMarkdown');
+  store.editDocument(store.activeId, '缓存验证起点 **重点**');
+  expect(parse).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(32);
+  expect(parse).toHaveBeenCalledTimes(2);
+  expect(readHelpCompleted()).toContain('bold');
+  parse.mockClear();
+  store.editDocument(store.activeId, '缓存验证起点 **重点** 继续输入');
+  await vi.advanceTimersByTimeAsync(32);
+  expect(parse).toHaveBeenCalledTimes(1);
+  store.receiveDocument(store.activeId, '# 远程标题\n\n远程正文');
+  await vi.advanceTimersByTimeAsync(32);
+  parse.mockClear();
+  store.editDocument(store.activeId, '# 远程标题\n\n本地正文');
+  await vi.advanceTimersByTimeAsync(32);
+  expect(parse).toHaveBeenCalledTimes(2);
+  expect(readHelpCompleted()).not.toContain('heading');
+  recordHelpCompleted(...markdownMilestones, 'document');
+  parse.mockClear();
+  store.editDocument(store.activeId, '# 远程标题\n\n继续本地输入');
+  await vi.advanceTimersByTimeAsync(32);
+  expect(parse).not.toHaveBeenCalled();
 });

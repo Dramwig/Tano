@@ -12,6 +12,8 @@
 [![Tauri 2](https://img.shields.io/badge/built%20with-Tauri%202-orange.svg)](https://tauri.app/)
 [![Node.js 24.12+](https://img.shields.io/badge/Node.js-24.12%2B-339933.svg)](https://nodejs.org/)
 
+### 🌐 The Official Website: [tano.page](https://tano.page)
+
 [English](README.md) | [中文](README_ZH.md) | 日本語 | [Deutsch](README_DE.md)
 
 [クイックスタート](#クイックスタート) · [機能](#機能) · [ドキュメント](docs/ja/README.md) · [開発](#開発)

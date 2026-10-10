@@ -82,6 +82,7 @@ import PageSearch from './components/PageSearch.vue';
 import EmptyEditor from './components/EmptyEditor.vue';
 import MarkdownRevealToggle from './components/MarkdownRevealToggle.vue';
 import DocumentTitle from './components/DocumentTitle.vue';
+import WorkspaceBreadcrumb from './components/WorkspaceBreadcrumb.vue';
 import DocumentScrollbar from './components/DocumentScrollbar.vue';
 import DocumentExportMenu from './components/DocumentExportMenu.vue';
 import type { ImportRecord } from './components/ImportPanel.vue';
@@ -133,6 +134,11 @@ import { parseToolbarMode, toolbarPreferenceKey } from './toolbar-preference';
 import DocumentHistoryPanel from './components/DocumentHistoryPanel.vue';
 import AgentPanel from './components/AgentPanel.vue';
 import AssistantPanel from './components/AssistantPanel.vue';
+import AssistantLauncher from './components/AssistantLauncher.vue';
+import AssistantButterflyLayer from './components/AssistantButterflyLayer.vue';
+import { butterflyScope } from './assistant/butterfly';
+import { createButterflyIdleTrigger } from './assistant/butterfly-idle';
+import { butterflyPerchDirective, provideButterflyController } from './assistant/butterfly-vue';
 import { useAssistantStore } from './assistant/store';
 import DiffDialog from './components/DiffDialog.vue';
 import { handleMobileVisibility } from './mobile-lifecycle';
@@ -221,6 +227,13 @@ async function toggleSuggestionMode(fileId: string) {
   finally { suggestionModeBusy.value = false; }
 }
 const assistant = useAssistantStore();
+const butterfly = provideButterflyController();
+const vButterflyPerch = butterflyPerchDirective(butterfly);
+const paneButterflyScope = (paneId: string, fileId: string) => butterflyScope(store.workspace?.id ?? '', paneId, fileId);
+watch(() => [store.workspace?.id, store.activePaneId, store.activeId, assistant.available, assistant.opened, store.documents.length], () => {
+  butterfly.setContext(paneButterflyScope(store.activePaneId, store.activeId),
+    assistant.available && !assistant.opened && store.documents.some(doc => doc.id === store.activeId));
+}, { immediate: true });
 const assistantHosts = shallowReactive(new Map<string, HTMLElement>());
 function setAssistantHost(paneId: string, value: unknown) {
   if (value) assistantHosts.set(paneId, value as HTMLElement);
@@ -302,7 +315,6 @@ function topbarVisibilityItems(tabId: string, hasDocument: boolean, activePane: 
     ...(tabId.startsWith('attachment:') && attachments
       ? [{ id: 'attachment-export', label: '导出附件' }]
       : []),
-    ...(workspace.value && assistant.available ? [{ id: 'assistant', label: 'Tano 助手' }] : []),
     ...(hasDocument ? documentToolItems : []),
   ];
 }
@@ -988,6 +1000,17 @@ const modalError = ref('');
 const modalBusy = ref(false);
 const inputEl = ref<HTMLInputElement>();
 const paneEditors = shallowReactive(new Map<string, InstanceType<typeof MarkdownEditor>>());
+function captureButterflyTextTarget(paneId: string, fileId: string) {
+  if (paneSource(fileId)) return null;
+  const anchor = paneEditors.get(paneId)?.captureVisualAnchor();
+  if (!anchor) return null;
+  const scope = paneButterflyScope(paneId, fileId), id = `text:${scope}:${crypto.randomUUID()}`;
+  const registration = butterfly.registerTarget({ id, scope, label: '所选文字', kind: 'text', temporary: true,
+    element: () => anchor.element, rects: anchor.getRects, onDispose: anchor.dispose,
+    available: () => !paneSource(fileId) && store.panes.some(pane => pane.id === paneId && pane.activeId === fileId),
+  });
+  return { id, dispose: registration.dispose };
+}
 const selectionTodo = shallowRef<SelectionTodoSession>();
 const paneSourceSelections = shallowReactive<Record<string, boolean>>({});
 function beginSelectionTodo(paneId: string, fileId: string) {
@@ -1256,6 +1279,25 @@ function assetPreview(target: ReferenceTarget) {
     : null;
 }
 const paneSelections = shallowReactive<Record<string, EditorSelectionContext>>({});
+let butterflyIdle: ReturnType<typeof createButterflyIdleTrigger> | undefined;
+onMounted(() => {
+  butterflyIdle = createButterflyIdleTrigger({
+    selection: () => {
+      if (paneSource(store.activeId)) return null;
+      const selection = paneEditors.get(store.activePaneId)?.visualSelection();
+      return selection ? { ...selection, scope: paneButterflyScope(store.activePaneId, store.activeId) } : null;
+    },
+    enabled: () => butterfly.state.enabled && butterfly.state.phase === 'docked' && !assistant.busy && !assistant.applying,
+    onIdle: () => {
+      const target = captureButterflyTextTarget(store.activePaneId, store.activeId);
+      if (target) void butterfly.flyTo(target.id);
+    },
+  });
+});
+watch(() => [butterfly.state.scope, butterfly.state.enabled, butterfly.state.phase, assistant.busy, assistant.applying,
+  paneSource(store.activeId), paneEditors.get(store.activePaneId), paneSelections[store.activePaneId]],
+() => butterflyIdle?.refresh(), { flush: 'post' });
+onBeforeUnmount(() => butterflyIdle?.dispose());
 const paneScrolls = shallowReactive(new Map<string, HTMLElement>());
 const paneEditorScrolls = shallowReactive(new Map<string, HTMLElement>());
 const paneSourceEditors = shallowReactive(new Map<string, InstanceType<typeof SourceEditor>>());
@@ -3242,6 +3284,7 @@ const helpBlocked = computed(() => !!(
       'workspace-empty': !workspace,
     }"
   >
+    <AssistantButterflyLayer :controller="butterfly" />
     <Transition name="sidebar-dismiss">
       <button
         v-if="workspace && sidebar && !detachedWindow"
@@ -4033,25 +4076,21 @@ const helpBlocked = computed(() => !!(
                   <ArrowRight :size="16" :stroke-width="1.6" />
                 </button>
               </div>
-              <nav
+              <WorkspaceBreadcrumb
+                :perch="{ id: `breadcrumb:${paneButterflyScope(pane.id, pane.activeId)}`, scope: paneButterflyScope(pane.id, pane.activeId), label: '面包屑', kind: 'component' }"
                 v-if="
                   isVisible('breadcrumb') &&
                   pane.activeId !== CALENDAR_TAB_ID &&
                   pane.activeId !== GRAPH_TAB_ID
                 "
-                class="breadcrumb"
-                aria-label="当前位置"
+                :workspace-id="workspace?.id"
+                :workspace-name="workspace?.name ?? 'Tano'"
+                :entries="workspace?.files ?? []"
+                :path="tab?.path"
+                :demo-label="store.isDemo && isVisible('workspace-status') ? workspaceStatusLabel : undefined"
+                :read-only="workspace?.readOnly"
+                @open="(file) => { store.focusPane(pane.id); openEntry(file); }"
               >
-                <span v-if="!store.isDemo" class="breadcrumb-workspace"
-                  ><BookOpen :size="14" />{{ workspace?.name ?? 'Tano' }}</span
-                ><span
-                  v-if="store.isDemo && isVisible('workspace-status')"
-                  class="demo-badge breadcrumb-demo-badge"
-                  title="浏览器演示 · 数据仅保存在本浏览器"
-                >
-                  <LockKeyhole v-if="workspace?.readOnly" :size="14" />
-                  {{ workspaceStatusLabel }}
-                </span>
                 <template v-if="tab?.pluginView"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">{{ tab.pluginView.label }}</span></template>
                 <template v-if="pane.activeId === PLUGINS_TAB_ID"
                   ><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current"
@@ -4064,23 +4103,8 @@ const helpBlocked = computed(() => !!(
                     class="breadcrumb-current"
                     >{{ view.label }}</span
                   ></template
-                ><template
-                  v-for="(part, index) in tab?.path ? tab.path.split('/') : []"
-                  :key="index"
-                  ><ChevronRight :size="12" /><component
-                    :is="index === tab!.path.split('/').length - 1 ? FileText : FolderOpen"
-                    :size="14"
-                  /><span
-                    :class="{ 'breadcrumb-current': index === tab!.path.split('/').length - 1 }"
-                    :title="part"
-                    >{{
-                      index === tab!.path.split('/').length - 1 && active
-                        ? part.replace(/\.(md|markdown)$/i, '')
-                        : part
-                    }}</span
-                  ></template
                 >
-              </nav>
+              </WorkspaceBreadcrumb>
               <div class="topbar-right">
                 <button
                   v-if="tab?.attachment && attachments && isVisible('attachment-export')"
@@ -4217,19 +4241,6 @@ const helpBlocked = computed(() => !!(
                     :disabled="suggestionModeBusy || documentSuggestions.get(active.id)?.reviewing"
                     @click="toggleSuggestionMode(active.id)"><X :size="14" /></button>
                 </div>
-                <button
-                  v-if="workspace && assistant.available && isVisible('assistant')"
-                  type="button"
-                  class="icon-button"
-                  :class="{ active: assistant.opened }"
-                  aria-label="打开 Tano 助手"
-                  title="打开 Tano 助手"
-                  :aria-expanded="assistant.opened"
-                  @mousedown.prevent
-                  @click="openAssistant(pane.id, pane.activeId)"
-                >
-                  <Bot :size="17" />
-                </button>
                 <template v-if="active">
                   <div
                     v-if="documentToolItems.some((item) => isVisible(item.id))"
@@ -4267,6 +4278,7 @@ const helpBlocked = computed(() => !!(
                     <button
                       class="icon-button"
                       aria-label="文档操作"
+                      v-butterfly-perch="{ id: `document-actions:${paneButterflyScope(pane.id, pane.activeId)}`, scope: paneButterflyScope(pane.id, pane.activeId), label: '文档操作按钮', kind: 'component' }"
                       :aria-expanded="menu && pane.id === store.activePaneId"
                       @click="toggleDocumentMenu"
                       @keydown="documentMenuTriggerKeydown"
@@ -4491,7 +4503,7 @@ const helpBlocked = computed(() => !!(
                 :readonly="paneReadonly(active!)"
                 :revision="paneSearchRevisions[pane.id]"
               />
-              <div :key="active.id" class="document-scroll-shell">
+              <div :key="active.id" class="document-scroll-shell" :class="{ 'has-assistant-launcher': assistant.available }">
                 <div
                   :id="`document-scroll-${pane.id}`"
                   :ref="(el) => setPaneElement('scroll', pane.id, el)"
@@ -4653,6 +4665,7 @@ const helpBlocked = computed(() => !!(
                       @contextmenu="openPageContextMenu"
                     >
                       <DocumentSuggestions v-slot="suggestions" :document="active" :readonly="paneReadonly(active!)"
+                        :source="paneSource(pane.activeId)"
                         :managed="!!editing.active" :author="extensions.commentAuthor?.() ?? { id: 'local', name: '本机用户' }">
                       <DocumentTitle
                         v-if="workspace && showPageTitle"
@@ -4753,6 +4766,12 @@ const helpBlocked = computed(() => !!(
                   </main>
                 </div>
                 <DocumentScrollbar v-if="!mobile" :scroll-element="paneScrolls.get(pane.id)" />
+                <AssistantLauncher
+                  v-if="assistant.available && !assistant.opened"
+                  :scope="paneButterflyScope(pane.id, active!.id)"
+                  :busy="assistant.busy || assistant.applying"
+                  @open="openAssistant(pane.id, active!.id)"
+                />
               </div>
             </template>
 

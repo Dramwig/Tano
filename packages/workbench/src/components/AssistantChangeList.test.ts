@@ -19,7 +19,6 @@ it('groups file operations within one turn, expands differences lazily, and rout
   expect(root.querySelectorAll('.assistant-change-list')).toHaveLength(1);
   expect(root.querySelectorAll('.assistant-file-change')).toHaveLength(3);
   expect(root.textContent).toContain('3 个文件 · 4 项操作');
-  expect(root.textContent).toContain('新增 1 · 修改 1 · 删除 1 · 重命名 1');
   expect(root.querySelector('.change-diff')).toBeNull();
   root.querySelector<HTMLElement>('summary')!.click();
   await vi.waitFor(() => expect(root.querySelectorAll('.assistant-proposal')).toHaveLength(2));
@@ -32,7 +31,7 @@ it('groups file operations within one turn, expands differences lazily, and rout
   const deletion = [...root.querySelectorAll('button')].find(button => button.textContent === '删除文件')!;
   deletion.click(); expect(review).toHaveBeenLastCalledWith(proposals[2], true);
   proposals[2].status = 'applied'; await nextTick();
-  expect(root.querySelectorAll('summary')[1].textContent).toContain('已应用');
+  expect(root.querySelectorAll('summary')[1].querySelector('small')).toBeNull();
   expect([...root.querySelectorAll('button')].some(button => button.textContent === '删除文件')).toBe(false);
   expect([...root.querySelectorAll('button')].some(button => button.textContent === '撤回内容')).toBe(false);
 });

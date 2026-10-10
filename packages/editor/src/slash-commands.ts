@@ -278,12 +278,7 @@ export function slashCommands(options: {
       list.id = `tano-slash-${crypto.randomUUID()}`;
       list.setAttribute('role', 'listbox');
       list.setAttribute('aria-label', '块类型搜索结果');
-      const footer = document.createElement('button');
-      footer.type = 'button';
-      footer.className = 'tano-slash-footer';
-      footer.textContent = '↑↓ 选择 · Enter 确认 · Esc 关闭';
-      footer.setAttribute('aria-label', '关闭块类型菜单');
-      menu.append(title, list, footer);
+      menu.append(title, list);
       view.dom.ownerDocument.body.append(menu);
       let matches: SlashItem[] = [];
       let active = 0;
@@ -520,10 +515,6 @@ export function slashCommands(options: {
           close();
           view.focus();
         }
-      };
-      footer.onclick = () => {
-        close();
-        view.focus();
       };
       const outside = (event: PointerEvent) => {
         if (!menu.contains(event.target as Node)) close();

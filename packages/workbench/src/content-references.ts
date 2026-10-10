@@ -1,6 +1,6 @@
 import { parseReferenceUrl, referenceKey, resolveWorkspaceReference } from '@tano/protocol';
 import type { ReferenceIdentity, ReferenceTarget } from '@tano/protocol';
-import { documentLinkDetails } from '@tano/editor/document-links';
+import { documentLinkDetails, type DocumentLinkDetail } from '@tano/editor/document-links';
 import { resolveWikiLink } from './wiki-links';
 
 export interface ContentReference {
@@ -15,7 +15,8 @@ export interface ContentReference {
 export interface ReferenceContext { outgoing: ContentReference[]; incoming: ContentReference[]; errors: string[] }
 
 /** A rebuildable directed index. Content is authoritative; no duplicate relation rows are persisted. */
-export function contentReferences(targets: readonly ReferenceTarget[], contents: ReadonlyMap<string, string>): ContentReference[] {
+export function contentReferences(targets: readonly ReferenceTarget[], contents: ReadonlyMap<string, string>,
+  readLinks: (content: string) => readonly DocumentLinkDetail[] = documentLinkDetails): ContentReference[] {
   const counts = new Map<string, number>();
   for (const target of targets) counts.set(referenceKey(target), (counts.get(referenceKey(target)) ?? 0) + 1);
   const byKey = new Map(targets.filter(target => counts.get(referenceKey(target)) === 1).map(target => [referenceKey(target), target]));
@@ -27,7 +28,7 @@ export function contentReferences(targets: readonly ReferenceTarget[], contents:
     const content = contents.get(referenceKey(source));
     if (content === undefined) continue;
     const seen = new Set<string>();
-    for (const link of documentLinkDetails(content)) {
+    for (const link of readLinks(content)) {
       let identity = parseReferenceUrl(link.target);
       if (!identity && link.kind === 'wiki') {
         const resolved = resolveWikiLink(documents, source.path, link.target);

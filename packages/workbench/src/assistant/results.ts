@@ -20,12 +20,6 @@ export function assistantHistory(messages: readonly AssistantMessage[]): Assista
     } }) });
 }
 
-export function assistantResultNotice(message: AssistantMessage) {
-  if (message.role !== 'assistant' || message.state === 'running') return '';
-  if (!message.proposals?.length) return '本轮未生成修改建议，未写入文件。';
-  return '';
-}
-
 const toolLabels: Record<string, string> = {
   propose_create: '创建文档建议', propose_edit: '修改文档建议',
   propose_delete: '删除文档建议', propose_rename: '重命名文档建议', propose_move: '移动文档建议',

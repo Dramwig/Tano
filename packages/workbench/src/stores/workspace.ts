@@ -65,7 +65,8 @@ import type { SuggestionState } from '../workspace-suggestions';
 import type { DocumentSuggestion } from '@tano/protocol';
 import { locateSuggestion } from '../document-suggestions';
 import { addWorkspaceWelcome, workspaceWelcomePath } from '../workspace-welcome';
-import { recordHelpCompleted, recordHelpDocumentEdit, recordHelpPlanEdit } from '../help-checklist';
+import { recordHelpCompleted, recordHelpPlanEdit } from '../help-checklist';
+import { createHelpEditQueue } from '../help-edit-queue';
 
 export interface OpenDocument {
   id: string;
@@ -101,6 +102,8 @@ export interface Activity {
 }
 
 export const useWorkspaceStore = defineStore('workspace', () => {
+  const helpEdits = createHelpEditQueue();
+  onScopeDispose(helpEdits.dispose);
   const runtime = useWorkbenchRuntime();
   const { adapter, mobile } = runtime;
   const views = shallowRef<ReadonlyMap<string, WorkbenchViewTab>>(new Map());
@@ -1960,7 +1963,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     saveTimer = setTimeout(() => {
       void flush();
     }, 600);
-    if (options.origin !== 'remote') recordHelpDocumentEdit(id, before, content, referenceTargets.value);
+    if (options.origin !== 'remote') helpEdits.record(id, before, content, referenceTargets.value);
   }
   function receiveDocument(id: string, content: string, options: { origin?: 'local' | 'remote' } = {}) {
     const doc = documents.value.find((document) => document.id === id);
@@ -1969,7 +1972,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     doc.content = content;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => { void flush(); }, 600);
-    if (options.origin === 'local') recordHelpDocumentEdit(id, before, content, referenceTargets.value);
+    if (options.origin === 'local') helpEdits.record(id, before, content, referenceTargets.value);
   }
   async function hydrateDocumentLayout(doc: OpenDocument) {
     if (!workspace.value || !/^[0-9a-f]{6}$/.test(doc.id)) return;
@@ -2474,6 +2477,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
   function dispose() {
+    helpEdits.dispose();
     pluginDeveloper.stop();
     clearTimeout(pluginEventTimer);
     pluginExecutor.dispose();

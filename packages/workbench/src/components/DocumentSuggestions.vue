@@ -10,10 +10,11 @@ import CommentConversation from './CommentConversation.vue';
 import ReviewCard from './ReviewCard.vue';
 import type { CommentMessageEdit, CommentMessageRemoval } from '../workspace-comments';
 import { useSuggestionStore } from '../stores/suggestions';
+import { subscribeBackgroundRefresh } from '../background-refresh';
 import type { OpenDocument } from '../stores/workspace';
 import { preserveSuggestedSource } from '../document-suggestions';
 
-const props = defineProps<{ document: OpenDocument; readonly: boolean; author: { id: string; name: string }; managed?: boolean }>();
+const props = defineProps<{ document: OpenDocument; readonly: boolean; author: { id: string; name: string }; managed?: boolean; source?: boolean }>();
 const store = useSuggestionStore();
 const session = computed(() => store.get(props.document.id));
 const projection = computed(() => store.projection(props.document.id));
@@ -28,17 +29,43 @@ const reviewOwner = {};
 onBeforeUpdate(() => captureReviewRail(reviewOwner));
 const railLayout = ref({ inline: false, left: 0 });
 const anchorQuotes = ref<Record<string, string>>({});
-const richMarks = ref<SuggestionDecorations>({ text: '', ranges: [] });
-const sourceMarks = computed<SuggestionDecorations>(() => ({
-  text: content.value,
-  ranges: suggesting.value ? projection.value.ranges : projection.value.ranges.map(range => ({
+const emptyMarks: SuggestionDecorations = { text: '', ranges: [] };
+const richMarks = ref<SuggestionDecorations>(emptyMarks);
+const sourceMarks = computed<SuggestionDecorations>(() => {
+  if (!projection.value.ranges.length) return emptyMarks;
+  return { text: content.value, ranges: suggesting.value ? projection.value.ranges : projection.value.ranges.map(range => ({
     id: range.id, from: range.baseFrom, to: range.baseTo, removed: '', inserted: range.text,
-  })),
-}));
+  })) };
+});
 const visible = computed(() => (session.value?.records ?? []).filter(item => item.status === 'pending' || item.status === 'applying'));
 let parser: ReturnType<typeof createHeadlessMarkdown> | undefined;
+// Reuse projections on polling/replies. Bound retained source and derived text.
+const projections = new Map<string, string>();
+let projectionSize = 0;
+async function project(text: string) {
+  const cached = projections.get(text);
+  if (cached !== undefined) return cached;
+  const codec = await (parser ??= createHeadlessMarkdown());
+  const ready = projections.get(text);
+  if (ready !== undefined) return ready;
+  const result = codec.projectComments(text);
+  if (!projections.has(text)) {
+    projections.set(text, result);
+    projectionSize += text.length + result.length;
+    while (projections.size > 32 || projectionSize > 1_000_000) {
+      const first = projections.keys().next().value!;
+      projectionSize -= first.length + projections.get(first)!.length;
+      projections.delete(first);
+    }
+  }
+  return result;
+}
+function publishMarks(marks: SuggestionDecorations) {
+  if (!marks.ranges.length) { richMarks.value = emptyMarks; return; }
+  if (marks.text !== richMarks.value.text || JSON.stringify(marks.ranges) !== JSON.stringify(richMarks.value.ranges))
+    richMarks.value = marks;
+}
 let generation = 0;
-let timer: ReturnType<typeof setInterval> | undefined;
 let observer: ResizeObserver | undefined;
 let mutations: MutationObserver | undefined;
 let frame = 0;
@@ -93,37 +120,46 @@ onMounted(() => {
 });
 watch([richMarks, visible, selected], () => { void nextTick(alignCards); }, { deep: true });
 let anchorGeneration = 0;
-watch(visible, async records => {
+watch([visible, () => props.source], async ([records, source]) => {
   const revision = ++anchorGeneration;
+  if (!records.length) { anchorQuotes.value = {}; return; }
   try {
-    const codec = await (parser ??= createHeadlessMarkdown());
-    const quotes = Object.fromEntries(records.map(item => [item.id,
-      codec.projectComments(item.base.slice(item.from, item.to > item.from ? item.to : item.from + 80)).replace(/\s/g, '').slice(0, 24)]));
+    const quotes: Record<string, string> = {};
+    for (const item of records) {
+      if (revision !== anchorGeneration) return;
+      const fragment = item.base.slice(item.from, item.to > item.from ? item.to : item.from + 80);
+      quotes[item.id] = (source ? fragment : await project(fragment)).replace(/\s/g, '').slice(0, 24);
+    }
     if (revision === anchorGeneration) { anchorQuotes.value = quotes; void nextTick(alignCards); }
   } catch { /* Inline marks remain the primary anchor when a fragment cannot be parsed. */ }
 }, { immediate: true, deep: true });
-watch(() => props.document.id, () => { void store.load(props.document.id); }, { immediate: true });
+watch(() => props.document.id, () => {
+  generation++; anchorGeneration++; projections.clear(); projectionSize = 0;
+  void store.load(props.document.id);
+}, { immediate: true });
 watch(() => props.managed, managed => { if (managed && session.value) session.value.mode = false; });
-timer = setInterval(() => { void store.load(props.document.id, true); }, 4000);
-watch(sourceMarks, async snapshot => {
+const stopPolling = subscribeBackgroundRefresh(() => store.load(props.document.id, true));
+watch([sourceMarks, () => props.source], async ([snapshot, source]) => {
   const revision = ++generation;
+  if (source || !snapshot.ranges.length) { publishMarks(emptyMarks); return; }
   try {
-    const codec = await (parser ??= createHeadlessMarkdown());
-    const text = codec.projectComments(snapshot.text);
-    const ranges = snapshot.ranges.map(range => {
+    const text = await project(snapshot.text);
+    const ranges: SuggestionDecorations['ranges'] = [];
+    for (const range of snapshot.ranges) {
+      if (revision !== generation) return;
       const without = snapshot.text.slice(0, range.from) + (range.inserted ?? range.removed) + snapshot.text.slice(range.to);
-      const original = codec.projectComments(without);
+      const original = await project(without);
       let from = 0, to = text.length, oldTo = original.length;
       while (from < to && from < oldTo && text[from] === original[from]) from++;
       while (to > from && oldTo > from && text[to - 1] === original[oldTo - 1]) { to--; oldTo--; }
-      return range.inserted === undefined
+      ranges.push(range.inserted === undefined
         ? { id: range.id, from, to, removed: original.slice(from, oldTo) }
-        : { id: range.id, from, to, removed: '', inserted: original.slice(from, oldTo) };
-    });
-    if (revision === generation) richMarks.value = { text, ranges };
-  } catch { if (revision === generation) richMarks.value = { text: '', ranges: [] }; }
+        : { id: range.id, from, to, removed: '', inserted: original.slice(from, oldTo) });
+    }
+    if (revision === generation) publishMarks({ text, ranges });
+  } catch { if (revision === generation) publishMarks(emptyMarks); }
 }, { immediate: true });
-onBeforeUnmount(() => { removeReviewRail(reviewOwner); generation++; anchorGeneration++; clearInterval(timer); cancelAnimationFrame(frame); observer?.disconnect(); mutations?.disconnect(); window.removeEventListener('resize', alignCards); window.removeEventListener('pointerdown', outsidePointer, true); window.removeEventListener('keydown', escapeCard); host.value?.removeEventListener('tano-table-layout', alignCards); void parser?.then(codec => codec.destroy()); });
+onBeforeUnmount(() => { removeReviewRail(reviewOwner); generation++; anchorGeneration++; stopPolling(); cancelAnimationFrame(frame); observer?.disconnect(); mutations?.disconnect(); window.removeEventListener('resize', alignCards); window.removeEventListener('pointerdown', outsidePointer, true); window.removeEventListener('keydown', escapeCard); host.value?.removeEventListener('tano-table-layout', alignCards); void parser?.then(codec => codec.destroy()); });
 function outsidePointer(event: PointerEvent) {
   if (event.target instanceof Element && !event.target.closest('.suggestion-card, .comment-more-menu, [data-suggestion-id]')) selected.value = '';
 }
