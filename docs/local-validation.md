@@ -12,9 +12,12 @@ No Git hook is installed and no background test runner is started automatically.
    TypeScript, unit/integration tests, production builds and documentation links.
 3. Run the additional commands below for affected areas. Tests requiring a native
    platform run locally on that platform; record unavailable checks honestly.
-4. Record the tested commit SHA, commands, results and any platform limitations in
-   the PR. Branch protection requires a PR and resolved conversations, but no
-   remote status checks. A successful manual package build is not a test result.
+4. Record the tested revision, commands, results and any platform limitations in
+   the commit body or an optional PR. For checks before a commit, record the base
+   SHA and that the staged working tree was tested. Ordinary pushes to main/dev
+   are allowed; force pushes and branch deletion remain blocked. If using a PR,
+   resolve its review conversations. There are no remote required checks.
+   A successful manual package build is not a test result.
 
 | Area | Additional local validation |
 | --- | --- |
@@ -34,7 +37,8 @@ They package, release or create synchronization PRs, and do not execute test sui
 Release-time source identity, tag/version matching, package hashes, signing and
 clean Core export guards remain part of the requested operation.
 
-Run **Sync main into dev** manually when needed; it never merges the PR itself.
+Normally merge main into dev locally with `git merge --no-ff main` and push dev.
+**Sync main into dev** is an optional manual PR helper; it never merges the PR itself.
 Run **Export reviewed Core** manually for an immutable Core tag; then request the consumer sync manually.
 Creating a version PR or tag no longer starts the next workflow. Follow the manual
 sequence in [release automation](release-automation.md). Manually running a build

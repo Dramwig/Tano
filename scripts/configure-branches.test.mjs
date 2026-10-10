@@ -47,7 +47,10 @@ describe('branch protection setup', () => {
   });
   it('does not partially apply or weaken a different existing policy', async () => {
     const stricter = structuredClone(policy.settings);
-    stricter.required_pull_request_reviews.required_approving_review_count = 2;
+    stricter.required_pull_request_reviews = {
+      dismiss_stale_reviews: true, require_code_owner_reviews: false,
+      required_approving_review_count: 2, require_last_push_approval: false,
+    };
     const f = fixture({ dev: stricter });
     await expect(configureBranches(f.api, 'owner/repo', policy, { apply: true })).rejects.toThrow('differs');
     expect(f.calls.every(([, options]) => !options.method)).toBe(true);
@@ -58,6 +61,8 @@ describe('branch protection setup', () => {
       response[key] = { enabled: response[key] };
     // GitHub omits status checks when local validation is used.
     delete response.required_status_checks;
+    // GitHub also omits review requirements when ordinary pushes are allowed.
+    delete response.required_pull_request_reviews;
     // Personal repositories omit restrictions entirely when no restriction is set.
     delete response.restrictions;
     expect(matchesProtection(response, policy.settings)).toBe(true);
