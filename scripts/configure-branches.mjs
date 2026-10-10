@@ -12,9 +12,9 @@ function protectionSettings(value) {
       contexts: [...value.required_status_checks.contexts].sort(),
     } : null,
     enforce_admins: value.enforce_admins?.enabled ?? value.enforce_admins,
-    required_pull_request_reviews: value.required_pull_request_reviews && Object.fromEntries(
+    required_pull_request_reviews: value.required_pull_request_reviews ? Object.fromEntries(
       ['dismiss_stale_reviews', 'require_code_owner_reviews', 'required_approving_review_count', 'require_last_push_approval']
-        .map((key) => [key, value.required_pull_request_reviews[key]])),
+        .map((key) => [key, value.required_pull_request_reviews[key]])) : null,
     restrictions: value.restrictions ?? null,
     ...Object.fromEntries(['required_linear_history', 'allow_force_pushes', 'allow_deletions', 'required_conversation_resolution']
       .map((key) => [key, value[key]?.enabled ?? value[key]])),

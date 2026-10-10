@@ -11,23 +11,26 @@ with the same name points to the Product commit.
 
 ## Prepare and publish Core
 
-1. Validate the proposed release locally, promote tested dev to main with a merge
-   commit, then manually run **Prepare Core release PR** on main. Choose patch,
-   minor, major or an exact stable version. It aligns npm/Tauri/Cargo versions and
-   locks, and drafts release notes. Local preparation is also available with
-   `node scripts/release-plan.mjs prepare patch core`.
-2. Review and locally validate the version PR, merge it, and validate the resulting
-   main commit. Record commands, results and the tested SHA in the PR.
+1. Validate the proposed release locally and promote dev to main with
+   `git merge --no-ff dev`. Prepare versions locally on main with
+   `node scripts/release-plan.mjs prepare patch core` (minor, major or an exact
+   stable version also work). This aligns npm/Tauri/Cargo versions and locks and
+   drafts release notes. **Prepare Core release PR** remains an optional helper.
+2. Review and locally validate the version changes, then commit and push main
+   normally. Record commands, results and the tested revision in the commit body
+   or an optional PR. When using a release branch, merge with `--no-ff`.
 3. Manually run **Tag reviewed release** on main. It validates the release plan
    and creates an immutable tag; it neither runs tests nor waits for retired CI.
 4. Manually run **Export reviewed Core**, supplying that Core tag. It checks tag
    identity, main ancestry and clean source, then exports the distribution and
    uploads a 30-day transport artifact. It does not dispatch a consumer workflow.
-5. In the consumer, manually run **Sync reviewed Core** with the same tag. Validate
-   its PR locally before merging into dev. The committed snapshot is the durable
-   copy; the expiring Actions artifact is not a dependency source.
-6. Manually run **Sync main into dev** to open the synchronization PR, then validate
-   and merge it with a merge commit. PR creation and merging do not start Actions.
+5. In the consumer, sync the intended tagged Core source locally using
+   `npm run core:sync`, validate and commit the snapshot to dev. Alternatively use
+   **Sync reviewed Core** as an optional PR helper. The committed snapshot is the
+   durable copy; the expiring Actions artifact is not a dependency source.
+6. Synchronize main into dev locally with `git merge --no-ff main` and push dev.
+   **Sync main into dev** remains an optional manual PR helper. Neither path starts
+   Actions or requires a PR to update the protected branches.
 
 Android and Apple preview builds are manual-only and build without running tests.
 Local `npm run version:set -- X.Y.Z` and `npm run core:export` remain available.

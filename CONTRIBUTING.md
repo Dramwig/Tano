@@ -4,15 +4,19 @@ Run `npm run check` before submitting a change. For native storage changes, also
 
 All tests and checks run locally; GitHub Actions only runs explicitly requested
 packaging, release or synchronization jobs. Record local validation and the tested
-commit in the PR. See [local validation](docs/local-validation.md).
+revision in the commit body or an optional PR. See [local validation](docs/local-validation.md).
 
 ## Branches
 
-Start ordinary task branches from `dev` and submit their PRs to `dev`. Promote tested
-integration work from `dev` to `main` with a merge commit. Version PRs and urgent
-hotfixes target `main`; manually open and merge the main-to-dev PR afterwards. Keep `main`
-as the default branch. Read [the branching policy](docs/branching.md) for conflict
-handling, branch cleanup, local validation, and release boundaries.
+PRs are optional. After local validation, ordinary `git commit` and `git push`
+may update `dev` or `main` directly. Integrate normal development into `dev`
+first; keep `main` releasable. Task branches remain useful for isolated work.
+
+Use `git merge --no-ff` for every merge between branches, including task branches,
+`dev` to `main`, and `main` back to `dev` after version updates or hotfixes.
+If using a PR, choose **Create a merge commit**. Never force-push, delete or rewrite
+either long-lived branch. See [the branching policy](docs/branching.md) and
+[release automation](docs/release-automation.md).
 
 ## Commit messages
 
