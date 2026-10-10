@@ -75,7 +75,7 @@ it('selects reasoning beside the model, restores focus, and hides it for other c
   expect(root.querySelector('[aria-label="选择推理强度"]')).toBeNull();
 });
 
-it('shows actual proposal absence and failed receipts even when the answer claims success', async () => {
+it('hides the notice for absent proposals while preserving failed receipts and actual proposals', async () => {
   const { assistant, workspace } = await mountEmptyConversation();
   Range.prototype.getBoundingClientRect = () => new DOMRect();
   Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
@@ -83,7 +83,7 @@ it('shows actual proposal absence and failed receipts even when the answer claim
     content: '我已经提出了创建 test.md 的建议，请采纳。', proposals: [],
     toolResults: [{ name: 'propose_create', status: 'failed', error: '新文档路径或正文无效' }] }];
   await nextTick();
-  expect(root.querySelector('.assistant-result-notice')?.textContent).toContain('本轮未生成修改建议，未写入文件');
+  expect(root.querySelector('.assistant-result-notice')).toBeNull();
   expect(root.querySelector('.assistant-proposal')).toBeNull();
   const failures = root.querySelector<HTMLDetailsElement>('.assistant-tool-errors')!;
   failures.querySelector('summary')!.click();

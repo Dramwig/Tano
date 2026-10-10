@@ -43,9 +43,9 @@ const blockLabel: Record<string, string> = {
 };
 
 /** List items fold their own continuation; list containers never fold sibling items. */
-function foldingTree(doc: ProseMirrorNode) {
+function foldingTree(doc: ProseMirrorNode, tree = blockTree(doc)) {
   const entries: Pick<ReturnType<typeof blockTree>[number], 'node' | 'pos' | 'parent' | 'index'>[] =
-    blockTree(doc).filter(({ node }) => node.type.name === 'heading');
+    tree.filter(({ node }) => node.type.name === 'heading');
   doc.descendants((node, pos, parent, index) => {
     if (node.type.name === 'list_item' && node.childCount > 1 && parent)
       entries.push({ node, pos, parent, index });
@@ -159,9 +159,10 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       decorations(state) {
         if (!folding()) return DecorationSet.empty;
         const folded = foldingKey.getState(state) ?? new Set<string>();
+        if (!folded.size) return DecorationSet.empty;
         const hidden = new Set<number>();
         const tree = blockTree(state.doc);
-        const foldTargets = foldingTree(state.doc);
+        const foldTargets = foldingTree(state.doc, tree);
         foldTargets.forEach(({ node, pos, parent, index }) => {
           if (!folded.has(`${pos}:${node.type.name}:${node.textContent.slice(0, 80)}`)) return;
           if (node.type.name === 'heading') {
@@ -226,8 +227,11 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       const handles: HTMLButtonElement[] = [];
       const foldButtons: HTMLButtonElement[] = [];
       let entries = blockTree(view.state.doc);
-      let foldEntries = foldingTree(view.state.doc);
+      let foldEntries = foldingTree(view.state.doc, entries);
       let positions: number[] = [];
+      let indexedDoc: ProseMirrorNode | undefined;
+      let layoutFrame: number | undefined;
+      let destroyed = false;
 
       function blockKey(index: number) {
         const { node, pos } = foldEntries[index]!;
@@ -345,15 +349,12 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
         return closest;
       }
 
-      function layout() {
-        if (readonly() && !folding()) {
-          clearDrag();
-          controls.hidden = true;
-          return;
-        }
-        controls.hidden = false;
+      // Keep interaction targets current even while their geometry waits for a frame.
+      function syncControls() {
+        if (indexedDoc === view.state.doc) return;
+        indexedDoc = view.state.doc;
         entries = blockTree(view.state.doc);
-        foldEntries = foldingTree(view.state.doc);
+        foldEntries = foldingTree(view.state.doc, entries);
         const count = entries.length;
         positions = entries.map(({ pos }) => pos);
         while (handles.length > count) handles.pop()!.remove();
@@ -383,18 +384,13 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
           controls.append(button);
           foldButtons.push(button);
         }
-        const top = host.getBoundingClientRect().top;
-        const hostLeft = host.getBoundingClientRect().left;
-        const pane = hoverSurface.getBoundingClientRect();
-        const gutterLeft = pane.width > 0 ? pane.left + 4 : -Infinity;
         for (let index = 0; index < count; index++) {
           const handle = handles[index];
           const element = blockElement(index);
-          const rect = blockRect(index);
           handle.classList.toggle('is-column-child', !!element?.parentElement?.closest('.tano-columns'));
           handle.classList.toggle('is-columns', entries[index]!.node.type.name === 'tano_columns');
-          handle.style.left = rect && handle.classList.contains('is-column-child')
-            ? `${Math.max(-36, gutterLeft - rect.left)}px` : '';
+          if (!handle.classList.contains('is-column-child') && !handle.classList.contains('is-columns'))
+            handle.style.left = '';
           const type = blockType(entries[index]!.node);
           const kind =
             blockTypes.find((item) => item.type === type)?.label ??
@@ -409,63 +405,137 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
             `点击选中第 ${index + 1} 个${kind.endsWith('块') ? kind : `${kind}块`}，拖动调整顺序`,
           );
           handle.title = `${kind}；点击选中；拖动换位；Alt+↑/↓ 同级排序；Alt+←/→ 移出/移入容器`;
-          if (element && rect)
-            handle.style.top = `${firstLineCenter(element, rect) - top - (handle.offsetHeight || 24) / 2}px`;
-          handle.hidden = readonly() || !rect;
-          const table = element?.matches('.tano-table-viewport:not(.has-comments)') ? element.querySelector('table') : null;
-          handle.style.transform = table ? `translateX(${table.getBoundingClientRect().left - hostLeft}px)`
-            : rect && entries[index]!.depth > 0 ? `translateX(${rect.left - hostLeft}px)` : '';
-          handle.style.clipPath = '';
-          if (table) {
-            const pane = hoverSurface.getBoundingClientRect();
-            const bounds = handle.getBoundingClientRect();
-            if (pane.width > 0 && bounds.width > 0)
-              handle.style.clipPath = `inset(0 ${Math.max(0, bounds.right - pane.right)}px 0 ${Math.max(0, pane.left - bounds.left)}px)`;
-          }
         }
+        if (hoveredIndex != null && hoveredIndex >= count) hoveredIndex = null;
+        if (hoveredFoldIndex != null && hoveredFoldIndex >= foldEntries.length) hoveredFoldIndex = null;
+      }
+
+      function scheduleLayout() {
+        if (destroyed || layoutFrame !== undefined) return;
+        layoutFrame = requestAnimationFrame(() => {
+          layoutFrame = undefined;
+          layout();
+        });
+      }
+
+      function flushLayout() {
+        if (layoutFrame === undefined) return;
+        cancelAnimationFrame(layoutFrame);
+        layoutFrame = undefined;
+        layout();
+      }
+
+      function layout() {
+        if (destroyed) return;
+        syncControls();
+        const readOnly = readonly(), canFold = folding();
+        if (readOnly && !canFold) {
+          clearDrag();
+          controls.hidden = true;
+          return;
+        }
+        controls.hidden = false;
+        const count = entries.length;
+        const hostRect = host.getBoundingClientRect();
+        const top = hostRect.top, hostLeft = hostRect.left;
+        const pane = hoverSurface.getBoundingClientRect();
+        const gutterLeft = pane.width > 0 ? pane.left + 4 : -Infinity;
+        const visibleTop = Math.max(0, pane.top) - 160;
+        const visibleBottom = Math.min(window.innerHeight, pane.bottom) + 160;
+        const visible = (rect: DOMRect | null) => !!rect &&
+          (pane.height <= 0 || (rect.bottom >= visibleTop && rect.top <= visibleBottom));
+        // Read geometry once, before touching any control's styles. Headings share
+        // their first-line measurement between the drag handle and fold button.
+        const rects = new Map<Element, DOMRect | null>();
+        const centers = new Map<Element, number>();
+        const measure = (element: Element | null) => {
+          if (!element) return null;
+          if (!rects.has(element)) rects.set(element,
+            element.closest('[hidden], .tano-folded-heading-content, .tano-folded-list-content')
+              ? null : element.getBoundingClientRect());
+          return rects.get(element)!;
+        };
+        const center = (element: Element, rect: DOMRect) => {
+          if (!centers.has(element)) centers.set(element, firstLineCenter(element, rect));
+          return centers.get(element)!;
+        };
+        const blocks = entries.map((entry, index) => {
+          const handle = handles[index]!;
+          const element = blockElement(index), rect = measure(element);
+          if (readOnly || !visible(rect)) return { rect, left: null, x: 0, y: top, width: 0,
+            hidden: true, transform: '', clipPath: '' };
+          const columnChild = handle.classList.contains('is-column-child');
+          const isColumns = entry.node.type.name === 'tano_columns';
+          const style = getComputedStyle(handle);
+          const bounds = handle.getBoundingClientRect();
+          const width = bounds.width || Number.parseFloat(style.width) || (columnChild || isColumns ? 18 : 36);
+          const height = bounds.height || Number.parseFloat(style.height) || 24;
+          const left = rect && columnChild ? Math.max(-36, gutterLeft - rect.left) : null;
+          const table = element?.matches('.tano-table-viewport:not(.has-comments)') ? element.querySelector('table') : null;
+          const translation = table && rect ? (measure(table)?.left ?? hostLeft) - hostLeft
+            : rect && entry.depth > 0 ? rect.left - hostLeft : 0;
+          const y = element && rect ? center(element, rect) - height / 2 : top;
+          const x = hostLeft + translation + (left ?? (isColumns ? -60 : Number.parseFloat(style.left) || -36));
+          return { rect, left, x, y, width, hidden: readOnly || !rect,
+            transform: table || (rect && entry.depth > 0) ? `translateX(${translation}px)` : '',
+            clipPath: table && pane.width > 0
+              ? `inset(0 ${Math.max(0, x + width - pane.right)}px 0 ${Math.max(0, pane.left - x)}px)` : '' };
+        });
         // Place outer column controls beyond the first column's controls. If the
-        // viewport has no spare gutter, stack them above the row instead.
+        // viewport has no spare gutter, stack them above the row instead. Use the
+        // proposed bounds, so nested columns need no write/read layout round trips.
         for (let index = count - 1; index >= 0; index--) {
           const entry = entries[index]!;
           if (entry.node.type.name !== 'tano_columns') continue;
-          const rect = blockRect(index);
-          if (!rect) continue;
+          const block = blocks[index]!, rect = block.rect;
+          if (!rect || block.hidden) continue;
           let left = rect.left - 60;
           let above = rect.top - 28;
           for (let child = index + 1; child < count && entries[child]!.pos < entry.pos + entry.node.nodeSize; child++) {
-            const childRect = blockRect(child);
-            if (!childRect || childRect.left > rect.left + 1) continue;
-            const bounds = handles[child]!.getBoundingClientRect();
-            if (bounds.width === 0) continue;
-            left = Math.min(left, bounds.left - 24);
-            above = Math.min(above, bounds.top - 28);
+            const childBlock = blocks[child]!;
+            if (!childBlock.rect || childBlock.rect.left > rect.left + 1 || childBlock.hidden) continue;
+            left = Math.min(left, childBlock.x - 24);
+            above = Math.min(above, childBlock.y - 28);
           }
           const stacked = left < gutterLeft;
           const anchor = entry.depth > 0 ? rect.left : hostLeft;
-          handles[index]!.style.left = `${(stacked ? Math.max(gutterLeft, rect.left - 36) : left) - anchor}px`;
-          if (stacked) handles[index]!.style.top = `${above - top}px`;
+          block.x = stacked ? Math.max(gutterLeft, rect.left - 36) : left;
+          block.left = block.x - anchor;
+          if (stacked) block.y = above;
         }
-        for (let index = 0; index < foldEntries.length; index++) {
+        const folded = foldingKey.getState(view.state) ?? new Set<string>();
+        const folds = foldEntries.map((_, index) => {
           const element = foldElement(index);
-          const rect = foldRect(index);
+          const measured = measure(element);
+          const rect = canFold && visible(measured) ? measured : null;
+          return { hidden: !rect || !canFold, isFolded: folded.has(blockKey(index)),
+            top: element && rect ? center(element, rect) - top - (foldButtons[index]!.offsetHeight || 24) / 2 : null,
+            left: element && rect ? foldLeft(index, element, rect) - hostLeft - 18 : null };
+        });
+        // Apply all writes together; no geometry reads belong below this point.
+        blocks.forEach((block, index) => {
+          const handle = handles[index]!;
+          if (block.hidden) { handle.hidden = true; return; }
+          handle.style.left = block.left === null ? '' : `${block.left}px`;
+          handle.style.top = `${block.y - top}px`;
+          handle.hidden = block.hidden;
+          handle.style.transform = block.transform;
+          handle.style.clipPath = block.clipPath;
+        });
+        folds.forEach(({ hidden, isFolded, top, left }, index) => {
           const foldButton = foldButtons[index];
-          const canFold = folding();
-          const isFolded = (foldingKey.getState(view.state) ?? new Set()).has(blockKey(index));
-          foldButton.textContent = isFolded ? '▸' : '▾';
-          foldButton.hidden = !rect || !canFold;
+          const glyph = isFolded ? '▸' : '▾';
+          if (foldButton.textContent !== glyph) foldButton.textContent = glyph;
+          foldButton.hidden = hidden;
           foldButton.classList.toggle('is-folded', isFolded);
           foldButton.classList.toggle('is-visible', index === hoveredFoldIndex || isFolded);
           foldButton.dataset.blockPos = String(foldEntries[index]!.pos);
           foldButton.setAttribute('aria-hidden', String(!canFold));
           foldButton.setAttribute('aria-label', isFolded ? '展开内容' : '折叠内容');
           foldButton.title = isFolded ? '展开内容' : '折叠内容';
-          if (element && rect)
-            foldButton.style.top = `${firstLineCenter(element, rect) - top - (foldButton.offsetHeight || 24) / 2}px`;
-          if (element && rect)
-            foldButton.style.left = `${foldLeft(index, element, rect) - hostLeft - 18}px`;
-        }
-        if (hoveredIndex != null && hoveredIndex >= count) hoveredIndex = null;
-        if (hoveredFoldIndex != null && hoveredFoldIndex >= foldEntries.length) hoveredFoldIndex = null;
+          if (top !== null) foldButton.style.top = `${top}px`;
+          if (left !== null) foldButton.style.left = `${left}px`;
+        });
         showHoveredHandle();
       }
 
@@ -475,7 +545,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       }
 
       function onTableScroll(event: Event) {
-        if (event.target instanceof Element && event.target.matches('.tableWrapper')) layout();
+        if (event.target instanceof Element && event.target.matches('.tableWrapper')) scheduleLayout();
       }
 
       function clearDragVisuals() {
@@ -571,6 +641,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       }
 
       function onHandleClick(event: MouseEvent) {
+        flushLayout();
         if (suppressClick) {
           suppressClick = false;
           event.preventDefault();
@@ -587,6 +658,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       }
 
       function onFoldClick(event: MouseEvent) {
+        flushLayout();
         const button = (event.target as Element).closest<HTMLButtonElement>('.tano-fold-toggle');
         if (!button || !folding()) return;
         const index = foldButtons.indexOf(button);
@@ -702,6 +774,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       }
 
       function onPointerDown(event: PointerEvent) {
+        flushLayout();
         const handle = (event.target as Element).closest<HTMLButtonElement>('.tano-block-handle');
         if (!handle || readonly() || event.button !== 0) return;
         pendingPointer = {
@@ -797,6 +870,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
         if (!transaction) return;
         event.preventDefault();
         view.dispatch(transaction.scrollIntoView());
+        flushLayout();
         handles[positions.indexOf(view.state.selection.from)]?.focus();
       }
 
@@ -808,8 +882,9 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       view.dom.addEventListener('beforeinput', onEditorInput, true);
       view.dom.addEventListener('compositionstart', onEditorInput, true);
       view.dom.addEventListener('scroll', onTableScroll, true);
-      view.dom.addEventListener('tano-table-layout', layout);
-      view.dom.addEventListener('tano-block-layout', layout);
+      window.addEventListener('scroll', scheduleLayout, true);
+      view.dom.addEventListener('tano-table-layout', scheduleLayout);
+      view.dom.addEventListener('tano-block-layout', scheduleLayout);
       hoverSurface.addEventListener('mouseover', onHover);
       hoverSurface.addEventListener('mousemove', onHover);
       hoverSurface.addEventListener('mouseleave', onHoverLeave);
@@ -819,9 +894,9 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       window.addEventListener('pointercancel', onPointerCancel, true);
       window.addEventListener('keydown', onDragKeyDown, true);
       window.addEventListener('blur', clearDrag);
-      const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(layout);
+      const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleLayout);
       observer?.observe(view.dom);
-      window.addEventListener('resize', layout);
+      window.addEventListener('resize', scheduleLayout);
       layout();
 
       return {
@@ -830,13 +905,16 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
           if (startingDoc && !startingDoc.eq(view.state.doc)) {
             clearDrag();
           }
-          layout();
+          syncControls();
+          scheduleLayout();
         },
         destroy() {
+          destroyed = true;
+          if (layoutFrame !== undefined) cancelAnimationFrame(layoutFrame);
           clearDrag();
           if (clickResetTimer != null) clearTimeout(clickResetTimer);
           observer?.disconnect();
-          window.removeEventListener('resize', layout);
+          window.removeEventListener('resize', scheduleLayout);
           window.removeEventListener('pointermove', onPointerMove, true);
           window.removeEventListener('pointerup', onPointerUp, true);
           window.removeEventListener('pointercancel', onPointerCancel, true);
@@ -850,8 +928,9 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
           view.dom.removeEventListener('beforeinput', onEditorInput, true);
           view.dom.removeEventListener('compositionstart', onEditorInput, true);
           view.dom.removeEventListener('scroll', onTableScroll, true);
-          view.dom.removeEventListener('tano-table-layout', layout);
-          view.dom.removeEventListener('tano-block-layout', layout);
+          window.removeEventListener('scroll', scheduleLayout, true);
+          view.dom.removeEventListener('tano-table-layout', scheduleLayout);
+          view.dom.removeEventListener('tano-block-layout', scheduleLayout);
           hoverSurface.removeEventListener('mouseover', onHover);
           hoverSurface.removeEventListener('mousemove', onHover);
           hoverSurface.removeEventListener('mouseleave', onHoverLeave);

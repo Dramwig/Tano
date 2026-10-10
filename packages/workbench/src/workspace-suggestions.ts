@@ -1,10 +1,11 @@
 import { parseSuggestionFile, suggestionDataPath } from '@tano/protocol';
+import { refreshWorkspace } from './background-refresh';
 import type { CommentMessage, DocumentSuggestion, FileSnapshot, SuggestionFile, WorkspaceAdapter } from '@tano/protocol';
 
 export interface SuggestionState { file: SuggestionFile; base: FileSnapshot | null }
 
 export async function loadSuggestions(adapter: WorkspaceAdapter, workspaceId: string, fileId: string): Promise<SuggestionState> {
-  const workspace = await adapter.refresh();
+  const workspace = await refreshWorkspace(adapter);
   if (workspace.id !== workspaceId) throw new Error('工作区已切换');
   const path = suggestionDataPath(fileId);
   if (!workspace.files.some(file => file.path === path))

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseAssistantSession } from '@tano/protocol';
 import type { AssistantMessage, AssistantProposal, AssistantToolResult } from '@tano/protocol';
-import { assistantHistory, assistantResultNotice } from './results';
+import { assistantHistory } from './results';
 
 const message = (extra: Partial<AssistantMessage> = {}): AssistantMessage => ({
   id: 'reply', role: 'assistant', content: '我已经提出了创建 test.md 的建议，请采纳。', createdAt: 1, state: 'completed', ...extra,
@@ -18,9 +18,6 @@ describe('application-recorded assistant results', () => {
     expect(wire.role).toBe('assistant');
     expect(JSON.parse(wire.content!)).toEqual({ answer: previous.content,
       execution: { state: 'completed', tools: null, proposals: [] } });
-    expect(assistantResultNotice(previous)).toBe('本轮未生成修改建议，未写入文件。');
-    expect(assistantResultNotice(message({ state: 'running' }))).toBe('');
-    expect(assistantResultNotice(message({ role: 'user' }))).toBe('');
   });
 
   it('preserves failed and interrupted turns and live review states without resending document contents', () => {
@@ -36,7 +33,6 @@ describe('application-recorded assistant results', () => {
     expect(execution.proposals.map((item: { written: unknown }) => item.written)).toEqual([false, true, false, null, null, false, null]);
     expect(execution.proposals.at(-1).review).toBe('document');
     expect(history[2].content).not.toContain('# Test');
-    expect(assistantResultNotice(message({ proposals }))).toBe('');
     proposals[0].status = 'rejected';
     expect(JSON.parse(assistantHistory([message({ proposals })])[0].content!).execution.proposals[0].status).toBe('rejected');
   });

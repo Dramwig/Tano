@@ -12,6 +12,7 @@ import { useWorkspaceStore } from '../stores/workspace';
 import { recordHelpCompleted } from '../help-checklist';
 import type { OpenDocument } from '../stores/workspace';
 import { loadCommentFile, saveCommentChange } from '../workspace-comments';
+import { refreshWorkspace, subscribeBackgroundRefresh } from '../background-refresh';
 import type { CommentAuthor, CommentChange, CommentMessageEdit, CommentMessageRemoval } from '../workspace-comments';
 import CommentComposer from './CommentComposer.vue';
 import CommentConversation from './CommentConversation.vue';
@@ -37,7 +38,6 @@ const workspace = useWorkspaceStore();
 const annotations = ref<CommentFile>();
 const discussions = ref<CommentFile>();
 const working = ref<Record<string, CommentAnchor | null>>({});
-const projection = ref<{ source: string; prose: string }>();
 const loading = ref(false);
 const busy = ref(false);
 const error = ref('');
@@ -68,14 +68,16 @@ let generation = 0;
 let projectionTask: Promise<void> = Promise.resolve();
 let documentEpoch = 0;
 let contentRevision = 0;
-let poll: ReturnType<typeof setInterval> | undefined;
+let stopPolling: (() => void) | undefined;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
-const parserPromise = createHeadlessMarkdown();
+let parserPromise: ReturnType<typeof createHeadlessMarkdown> | undefined;
+const projections = new Map<string, Promise<string>>();
+let publishedAnnotations: string | undefined;
 onBeforeUnmount(() => {
   if (annotations.value) void saveAnchors();
   generation++;
   documentEpoch++;
-  clearInterval(poll);
+  stopPolling?.();
   clearTimeout(saveTimer);
   cancelAnimationFrame(layoutFrame);
   resizeObserver?.disconnect();
@@ -88,7 +90,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('tano:open-comment', openComment);
   props.editorElement?.removeEventListener('click', markClicked);
   props.editorElement?.removeEventListener('tano-table-layout', scheduleLayout);
-  void parserPromise.then(parser => parser.destroy());
+  void parserPromise?.then(parser => parser.destroy());
 });
 
 onBeforeUpdate(() => captureReviewRail(reviewOwner));
@@ -100,14 +102,37 @@ function publish() {
     return !thread.detached && !thread.resolved && anchor ? [{ id: thread.id, anchor }] : [];
   });
   for (const draft of drafts.value) if (draft.anchor) anchors.push({ id: draft.id, anchor: draft.anchor });
-  emit('annotations', anchors);
+  const snapshot = JSON.stringify(anchors);
+  if (snapshot !== publishedAnnotations) {
+    publishedAnnotations = snapshot;
+    emit('annotations', anchors);
+  }
   scheduleLayout();
 }
 watch(() => drafts.value.map(draft => ({ id: draft.id, anchor: draft.anchor })), publish, { deep: true });
 
-async function project(content: string) {
-  const parser = await parserPromise;
-  return { source: content, prose: parser.projectComments(content) };
+async function project(content: string, basis: CommentAnchor['basis']) {
+  if (basis === 'source') return content;
+  let projection = projections.get(content);
+  if (!projection) {
+    parserPromise ??= createHeadlessMarkdown();
+    projection = parserPromise.then(parser => parser.projectComments(content));
+    projections.set(content, projection);
+    // Keep the before/after pair for sequential edits and unchanged polling.
+    if (projections.size > 2) projections.delete(projections.keys().next().value!);
+    void projection.catch(() => {
+      if (projections.get(content) === projection) projections.delete(content);
+    });
+  }
+  return projection;
+}
+
+async function projectChange(before: string, after: string, anchors: readonly CommentAnchor[]) {
+  const texts = new Map<CommentAnchor['basis'], { before: string; after: string }>();
+  for (const basis of new Set(anchors.map(anchor => anchor.basis))) {
+    texts.set(basis, { before: await project(before, basis), after: await project(after, basis) });
+  }
+  return texts;
 }
 
 async function load() {
@@ -116,31 +141,33 @@ async function load() {
   loading.value = true;
   error.value = '';
   try {
+    const snapshot = await refreshWorkspace(adapter);
+    if (request !== generation || snapshot.id !== props.workspaceId) return;
     const [annotationFile, discussionFile] = await Promise.all([
-      loadCommentFile(adapter, 'annotation', props.document.id),
-      loadCommentFile(adapter, 'discussion', props.document.id),
+      loadCommentFile(adapter, 'annotation', props.document.id, snapshot),
+      loadCommentFile(adapter, 'discussion', props.document.id, snapshot),
     ]);
+    if (request !== generation) return;
     const baseContent = props.document.base.content;
     const baseHash = props.document.base.hash;
-    const base = await project(baseContent);
     const currentContent = props.document.content;
-    const current = currentContent === baseContent ? base : await project(currentContent);
-    if (request !== generation || props.document.base.hash !== baseHash) return;
     const firstLoad = !annotations.value;
     const previousWorking = working.value;
     const previousThreads = new Map(annotations.value?.threads.map(thread => [thread.id, thread]));
+    const canResolve = (thread: CommentThread) => !thread.detached && thread.anchor?.baseHash === baseHash &&
+      !(firstLoad && contentRevision > 0) &&
+      !(previousWorking[thread.id] === null && previousThreads.get(thread.id)?.anchor?.baseHash === thread.anchor.baseHash);
+    const texts = await projectChange(baseContent, currentContent,
+      annotationFile.file.threads.filter(canResolve).map(thread => thread.anchor!));
+    if (request !== generation || props.document.base.hash !== baseHash) return;
     annotations.value = annotationFile.file;
     discussions.value = discussionFile.file;
-    projection.value = current;
     working.value = Object.fromEntries(annotationFile.file.threads.map(thread => {
-      if (thread.detached || !thread.anchor || thread.anchor.baseHash !== baseHash ||
-          props.document.content !== currentContent || revision !== contentRevision ||
-          (firstLoad && contentRevision > 0) ||
-          (previousWorking[thread.id] === null &&
-            previousThreads.get(thread.id)?.anchor?.baseHash === thread.anchor.baseHash)) return [thread.id, null];
-      const resolved = resolveCommentAnchor(thread.anchor, base[thread.anchor.basis]);
-      return [thread.id, resolved && current !== base
-        ? rebaseCommentAnchor(resolved, base[resolved.basis], current[resolved.basis]) : resolved];
+      if (!canResolve(thread) || props.document.content !== currentContent || revision !== contentRevision) return [thread.id, null];
+      const text = texts.get(thread.anchor!.basis)!;
+      const resolved = resolveCommentAnchor(thread.anchor!, text.before);
+      return [thread.id, resolved && currentContent !== baseContent
+        ? rebaseCommentAnchor(resolved, text.before, text.after) : resolved];
     }));
     publish();
     if (annotationFile.file.threads.some(thread => !thread.detached && thread.anchor &&
@@ -157,7 +184,7 @@ watch(() => [props.workspaceId, props.document.id], () => {
   contentRevision = 0;
   annotations.value = undefined;
   discussions.value = undefined;
-  projection.value = undefined;
+  projections.clear();
   working.value = {};
   activeDraftId.value = undefined;
   drafts.value = [];
@@ -167,26 +194,33 @@ watch(() => [props.workspaceId, props.document.id], () => {
   publish();
   void load();
 }, { immediate: true });
-watch(() => props.document.content, (content) => {
+watch(() => props.document.content, (content, before) => {
   contentRevision++;
+  // Discussions and detached annotations have no text positions to maintain.
+  // Capture existing IDs now so queued edits cannot move a newly created draft.
+  const threadIds = (annotations.value?.threads ?? [])
+    .filter(thread => !thread.detached && working.value[thread.id]).map(thread => thread.id);
+  const trackedDrafts = drafts.value.filter(draft => draft.anchor);
+  if (!threadIds.length && !trackedDrafts.length) return;
   const epoch = documentEpoch;
   projectionTask = projectionTask.then(async () => {
     if (epoch !== documentEpoch) return;
-    const next = await project(content);
+    const anchors = [...threadIds.map(id => working.value[id]), ...trackedDrafts.map(draft => draft.anchor)]
+      .filter((anchor): anchor is CommentAnchor => !!anchor);
+    if (!anchors.length) return;
+    const texts = await projectChange(before, content, anchors);
     if (epoch !== documentEpoch) return;
-    const previous = projection.value;
-    projection.value = next;
-    if (!previous || !annotations.value) return;
     const updated = { ...working.value };
-    for (const thread of annotations.value.threads) {
-      const anchor = updated[thread.id];
-      if (!anchor || thread.detached) continue;
-      updated[thread.id] = rebaseCommentAnchor(anchor, previous[anchor.basis], next[anchor.basis]);
+    for (const id of threadIds) {
+      const anchor = updated[id];
+      if (!anchor) continue;
+      const text = texts.get(anchor.basis)!;
+      updated[id] = rebaseCommentAnchor(anchor, text.before, text.after);
     }
     working.value = updated;
-    for (const draft of drafts.value) if (draft.anchor) {
-      const anchor = rebaseCommentAnchor(draft.anchor,
-        previous[draft.anchor.basis], next[draft.anchor.basis]);
+    for (const draft of trackedDrafts) if (draft.anchor && drafts.value.includes(draft)) {
+      const text = texts.get(draft.anchor.basis)!;
+      const anchor = rebaseCommentAnchor(draft.anchor, text.before, text.after);
       draft.anchor = anchor ?? undefined;
       if (!anchor) error.value = '选中的内容已删除，请重新选择批注位置';
     }
@@ -209,11 +243,11 @@ onMounted(() => {
   window.addEventListener('resize', scheduleLayout);
   window.addEventListener('pointerdown', outsidePointer, true);
   window.addEventListener('keydown', escapePopup);
-  poll = setInterval(() => {
+  stopPolling = subscribeBackgroundRefresh(() => {
     if (!busy.value && !loading.value && props.document.content === props.document.base.content &&
         !(annotations.value?.threads.some(thread => working.value[thread.id] && thread.anchor && !thread.detached &&
-          thread.anchor.baseHash !== props.document.base.hash))) void load();
-  }, 5000);
+          thread.anchor.baseHash !== props.document.base.hash))) return load();
+  });
   scheduleLayout();
 });
 watch(() => props.editorElement, (element, previous) => {
@@ -315,7 +349,7 @@ function updateLayout() {
   const anchors = activeAnnotations.value.filter(thread => !thread.resolved)
     .map(thread => ({ id: thread.id, anchor: working.value[thread.id]! }));
   for (const draft of drafts.value) if (draft.anchor) anchors.push({ id: draft.id, anchor: draft.anchor });
-  const geometry = props.geometry(anchors);
+  const geometry = anchors.length ? props.geometry(anchors) : null;
   if (!geometry) { removeReviewRail(reviewOwner); if (layout.value.blocks.length || layout.value.rail) layout.value = { ...layout.value, blocks: [], rail: false }; return; }
   const bounds = parent.getBoundingClientRect();
   const blocks: typeof layout.value.blocks = [];
@@ -566,9 +600,10 @@ async function start(kind: CommentKind, mentions: CommentMention[] = [], draftId
     await projectionTask;
     if (epoch !== documentEpoch) return;
     if (kind === 'annotation') {
-      const current = await project(props.document.content);
+      if (!draft?.anchor) throw new Error('选中的内容已经变化，请重新选择批注位置');
+      const current = await project(props.document.content, draft.anchor.basis);
       if (!draft?.anchor || !draft.anchor.spans.every(span =>
-        current[draft.anchor!.basis].slice(span.from, span.to) === span.text))
+        current.slice(span.from, span.to) === span.text))
         throw new Error('选中的内容已经变化，请重新选择批注位置');
     }
     const id = crypto.randomUUID();

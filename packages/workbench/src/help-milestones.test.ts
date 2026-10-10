@@ -21,6 +21,8 @@ it('does not credit existing syntax, plain text edits, code examples or incomple
   expect(newMarkdownMilestones('', '---\ntitle: 示例\n---\n正文')).toEqual([]);
   expect(newMarkdownMilestones('', '说明[^a]')).not.toContain('footnote');
   expect(newMarkdownMilestones('', '[内部](other.md)')).not.toContain('external-link');
+  expect(newMarkdownMilestones('', '$**公式中的星号**$\n\n$$\n# 公式示例\n$$')).toEqual([]);
+  expect(newMarkdownMilestones('', '+++\ntitle = "**示例**"\n+++\n正文')).toEqual([]);
 });
 
 it('only credits changed plan fields, not pre-existing completion or dates', () => {

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import * as headless from '@tano/editor/headless';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createApp, h, nextTick, ref } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
@@ -37,7 +38,7 @@ async function mount(content = 'Hello world\n', source = false) {
   const editor = ref<InstanceType<typeof MarkdownEditor>>();
   const sourceEditor = ref<InstanceType<typeof SourceEditor>>();
   root = document.createElement('div'); root.className = 'editor-scroll'; document.body.append(root);
-  app = createApp(() => h(DocumentSuggestions, { document: workspace.active!, readonly: false, author: { id: 'local', name: '本机用户' } }, {
+  app = createApp(() => h(DocumentSuggestions, { source, document: workspace.active!, readonly: false, author: { id: 'local', name: '本机用户' } }, {
     default: (slot: any) => source ? h(SourceEditor, { ref: sourceEditor, key: slot.viewKey, modelValue: slot.content,
       readonly: slot.readonly, localNative: false, suggestionMarks: slot.sourceMarks, 'onUpdate:modelValue': slot.edit }) : h(MarkdownEditor, { ref: editor, key: slot.viewKey, documentId: file.id,
       modelValue: slot.content, readonly: slot.readonly, revealMarkdown: !slot.suggesting, suggestionMarks: slot.richMarks, transformChange: slot.transformChange, 'onUpdate:modelValue': slot.edit }),
@@ -50,6 +51,52 @@ async function mount(content = 'Hello world\n', source = false) {
   await vi.waitFor(() => expect(source ? root.querySelector('.cm-editor') : editor.value?.withContext(ctx => ctx.get(editorViewCtx))).toBeTruthy());
   return { adapter, file, editor, sourceEditor, suggestions };
 }
+
+it('does not create a parser for empty suggestions during editing or polling', async () => {
+  const parser = vi.spyOn(headless, 'createHeadlessMarkdown');
+  const { file, suggestions } = await mount();
+  await suggestions.toggle(file.id);
+  workspace.editDocument(file.id, 'New ordinary text\n');
+  await nextTick();
+  await suggestions.load(file.id, true);
+  await nextTick();
+  expect(parser).not.toHaveBeenCalled();
+});
+
+it('does not project source suggestions', async () => {
+  const create = headless.createHeadlessMarkdown;
+  const parsed = vi.fn();
+  const parser = vi.spyOn(headless, 'createHeadlessMarkdown').mockImplementation(async () => {
+    const codec = await create();
+    const project = codec.projectComments;
+    vi.spyOn(codec, 'projectComments').mockImplementation(text => { parsed(text); return project(text); });
+    return codec;
+  });
+  const { file, suggestions } = await mount('Hello world\n', true);
+  suggestions.edit(file.id, 'Hello new world\n', { id: 'local', name: '本机用户' });
+  await suggestions.flush(); await nextTick();
+  await vi.waitFor(() => expect(root.querySelector('.suggestion-card')).not.toBeNull());
+  expect(parser).not.toHaveBeenCalled();
+});
+
+it('reuses rich projections when polling the same suggestions', async () => {
+  const create = headless.createHeadlessMarkdown;
+  const parsed = vi.fn();
+  vi.spyOn(headless, 'createHeadlessMarkdown').mockImplementation(async () => {
+    const codec = await create(), project = codec.projectComments;
+    vi.spyOn(codec, 'projectComments').mockImplementation(text => { parsed(text); return project(text); });
+    return codec;
+  });
+  const { file, editor, suggestions } = await mount();
+  editor.value!.withContext(ctx => { const view = ctx.get(editorViewCtx); view.dispatch(view.state.tr.insertText('new ', 7)); });
+  await suggestions.flush();
+  await vi.waitFor(() => expect(root.querySelector('.tano-suggestion-insert')).not.toBeNull());
+  expect(parsed).toHaveBeenCalled();
+  parsed.mockClear();
+  await suggestions.load(file.id, true); await nextTick();
+  await suggestions.load(file.id, true); await nextTick();
+  expect(parsed).not.toHaveBeenCalled();
+});
 
 it('typing in the rich editor creates an inline suggestion and accepting writes exactly that change', async () => {
   const { adapter, file, editor, suggestions } = await mount();

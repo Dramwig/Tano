@@ -36,6 +36,7 @@ import {
   undoDepth,
 } from '@milkdown/kit/prose/history';
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
+import { createDocumentDecorations } from './document-decorations';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { Fragment } from '@milkdown/kit/prose/model';
 import type { Mark, Node } from '@milkdown/kit/prose/model';
@@ -1155,6 +1156,43 @@ function retainsInlineSource(doc: Node) {
   return retained;
 }
 
+function finishInlineSourceOutsideSyntax(ctx: Ctx, state: EditorState) {
+  if (localSource?.kind !== 'inline' || bridgeView?.composing ||
+      !(state.selection instanceof TextSelection) || !state.selection.empty) return null;
+  const current = findCurrentSource(state);
+  if (!current || state.selection.$from.parent !== current.node) return null;
+  const raw = current.node.textContent;
+  const ranges = sourceStyleRanges(raw);
+  if (!ranges.length) return null;
+  const from = Math.min(...ranges.map(range => range.from));
+  const to = Math.max(...ranges.map(range => range.to));
+  const offset = state.selection.from - current.pos - 1;
+  // Continued typing extends the temporary source node. Its DOM boundary no
+  // longer tells us whether the caret has left the actual Markdown syntax.
+  if (offset >= from && offset <= to) return null;
+  const syntax = raw.slice(from, to);
+  const parsed = ctx.get(parserCtx)(syntax);
+  if (parsed?.childCount !== 1 || parsed.firstChild?.type.name !== 'paragraph' ||
+      retainsInlineSource(parsed) ||
+      ctx.get(serializerCtx)(parsed).replace(/\n+$/, '') !== syntax) return null;
+  const text = (value: string) => value ? Fragment.from(state.schema.text(value)) : Fragment.empty;
+  // Keep surrounding text (especially a newly typed space) out of the parser:
+  // trimming it would lose input and move the caret back into the formatted run.
+  const replacement = text(raw.slice(0, from))
+    .append(parsed.firstChild.content).append(text(raw.slice(to)));
+  const document = state.schema.nodes.doc!.create(null,
+    state.schema.nodes.paragraph!.create(null, replacement));
+  if (ctx.get(serializerCtx)(document).trimEnd() !== raw.trimEnd()) return null;
+  const tr = state.tr.replaceWith(current.pos, current.pos + current.node.nodeSize, replacement);
+  const position = current.pos + (offset < from
+    ? offset
+    : from + parsed.firstChild.content.size + offset - to);
+  tr.setSelection(TextSelection.create(tr.doc, position));
+  tr.setStoredMarks([]);
+  localSource = undefined;
+  return tr;
+}
+
 function finishLocalSourceTransaction(ctx: Ctx, state: EditorState) {
   if (!localSource) return;
   const current = findCurrentSource(state);
@@ -1461,6 +1499,7 @@ function insertPartialEmphasisSource(ctx: Ctx, view: EditorView, from: number, t
 
 // Capture every transaction synchronously: a debounced editor listener loses the
 // final keystrokes when a tab is closed or switched before its debounce fires.
+const documentDecorations = createDocumentDecorations();
 const bridge = $prose(
   (ctx) =>
     new Plugin({
@@ -1491,6 +1530,8 @@ const bridge = $prose(
           if (restoredSource) return restoredSource;
         }
         if (localSource) {
+          const finishedInline = finishInlineSourceOutsideSyntax(ctx, state);
+          if (finishedInline) return finishedInline;
           const current = findCurrentSource(state);
           if (
             !current ||
@@ -1617,8 +1658,9 @@ const bridge = $prose(
           return true;
         },
         decorations: (state) => {
+          const decorated = documentDecorations(state, `${runtimeRevision}:${props.readonly}:${props.revealMarkdown}`, (block, start) => {
           const decorations: Decoration[] = [];
-          state.doc.descendants((node, pos) => {
+          const visit = (node: Node, pos: number) => {
             if (
               node.type.name === 'tano_live_source_inline' &&
               inlineSourceDestination(ctx, node.textContent)
@@ -1700,8 +1742,13 @@ const bridge = $prose(
                   : {}),
               }),
             );
+          };
+          visit(block, start);
+          block.descendants((node, pos) => visit(node, start + pos + 1));
+          return decorations;
           });
-          return (uploads.getState(state) ?? DecorationSet.empty).add(state.doc, decorations);
+          const placeholders = uploads.getState(state);
+          return placeholders && placeholders !== DecorationSet.empty ? decorated.add(state.doc, placeholders.find()) : decorated;
         },
         handleDOMEvents: {
           mousedown(view, event) {
@@ -1760,6 +1807,13 @@ const bridge = $prose(
           },
           blur(view) {
             finishLocalSource(ctx, view);
+            return false;
+          },
+          compositionend(view) {
+            queueMicrotask(() => {
+              if (!disposed && !view.isDestroyed && localSource)
+                view.dispatch(view.state.tr);
+            });
             return false;
           },
           paste(view, event) {
@@ -2810,7 +2864,7 @@ function focusComment(anchor: CommentAnchor) {
   return true;
 }
 function commentGeometry(anchors = props.commentAnchors ?? []): CommentGeometry | null {
-  if (!bridgeView) return null;
+  if (!bridgeView || !anchors.length) return null;
   const { doc } = bridgeView.state;
   const text = projectCommentText(doc).text;
   const blocks = new Map<number, { key: string; ids: string[]; top: number; bottom: number }>();

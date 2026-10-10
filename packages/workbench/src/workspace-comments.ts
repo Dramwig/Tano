@@ -11,6 +11,7 @@ import type {
   CommentMention,
   CommentThread,
   WorkspaceAdapter,
+  Workspace,
 } from '@tano/protocol';
 
 export interface CommentAuthor { id: string; name: string }
@@ -88,9 +89,9 @@ export function applyCommentChange(file: CommentFile, change: CommentChange): Co
   return parseCommentFile(JSON.stringify(next), next.kind, next.fileId);
 }
 
-export async function loadCommentFile(adapter: WorkspaceAdapter, kind: CommentKind, fileId: string) {
+export async function loadCommentFile(adapter: WorkspaceAdapter, kind: CommentKind, fileId: string, workspaceSnapshot?: Workspace) {
   const path = commentDataPath(kind, fileId);
-  const workspace = await adapter.refresh();
+  const workspace = workspaceSnapshot ?? await adapter.refresh();
   if (!workspace.files.some(file => file.kind === 'file' && file.path === path))
     return { file: emptyCommentFile(kind, fileId), hash: null as string | null };
   const snapshot = await adapter.read(path);

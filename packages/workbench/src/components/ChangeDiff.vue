@@ -20,7 +20,7 @@ const diff = computed(() => markdownDiff(props.before, props.after));
       内容过大或差异过于复杂，请查看原文。为保持界面响应，此处不展开逐行差异。
     </p>
     <p v-else-if="before === after" class="panel-hint">内容相同。</p>
-    <div v-else class="diff-lines" tabindex="0" aria-label="逐行差异，可滚动">
+    <div v-else class="diff-lines panel-scrollbar" tabindex="0" aria-label="逐行差异，可滚动">
       <div v-for="(row, index) in diff.rows" :key="index" class="diff-line" :class="row.kind">
         <span class="diff-number">{{ row.before ?? '' }}</span
         ><span class="diff-number">{{ row.after ?? '' }}</span>

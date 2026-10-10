@@ -3,7 +3,7 @@ import type { ReferenceTarget, WorkspaceObject } from '@tano/protocol';
 import { referenceKey } from '@tano/protocol';
 import { contentReferences } from './content-references';
 import { helpChecklist, selectHelpLesson, type HelpAvailability, type HelpChecklistId, type HelpContext, type HelpLessonCursor } from './help-content';
-import { markdownMilestones, newMarkdownMilestones, planMilestones } from './help-milestones';
+import { helpMarkdownSnapshot, markdownMilestones, newMarkdownMilestones, planMilestones } from './help-milestones';
 
 // Automatic milestones do not inherit the old manually checked v1 progress.
 export const helpChecklistKey = 'tano.preference.helpChecklist.v2';
@@ -66,7 +66,8 @@ export function recordHelpDocumentEdit(id: string, before: string, after: string
   const source = targets.find(target => target.type === 'document' && target.id === id);
   if (!source) return;
   try {
-    const links = (content: string) => contentReferences(targets, new Map([[referenceKey(source), content]]))
+    const links = (content: string) => contentReferences(targets, new Map([[referenceKey(source), content]]),
+      content => helpMarkdownSnapshot(content).links)
       .filter(edge => edge.target.type === 'document' && edge.target.id !== id && !edge.missing && !edge.archived)
       .map(edge => referenceKey(edge.target));
     const previous = new Set(links(before));

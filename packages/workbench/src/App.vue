@@ -82,6 +82,7 @@ import PageSearch from './components/PageSearch.vue';
 import EmptyEditor from './components/EmptyEditor.vue';
 import MarkdownRevealToggle from './components/MarkdownRevealToggle.vue';
 import DocumentTitle from './components/DocumentTitle.vue';
+import WorkspaceBreadcrumb from './components/WorkspaceBreadcrumb.vue';
 import DocumentScrollbar from './components/DocumentScrollbar.vue';
 import DocumentExportMenu from './components/DocumentExportMenu.vue';
 import type { ImportRecord } from './components/ImportPanel.vue';
@@ -4075,25 +4076,21 @@ const helpBlocked = computed(() => !!(
                   <ArrowRight :size="16" :stroke-width="1.6" />
                 </button>
               </div>
-              <nav
+              <WorkspaceBreadcrumb
+                :perch="{ id: `breadcrumb:${paneButterflyScope(pane.id, pane.activeId)}`, scope: paneButterflyScope(pane.id, pane.activeId), label: '面包屑', kind: 'component' }"
                 v-if="
                   isVisible('breadcrumb') &&
                   pane.activeId !== CALENDAR_TAB_ID &&
                   pane.activeId !== GRAPH_TAB_ID
                 "
-                class="breadcrumb"
-                aria-label="当前位置"
+                :workspace-id="workspace?.id"
+                :workspace-name="workspace?.name ?? 'Tano'"
+                :entries="workspace?.files ?? []"
+                :path="tab?.path"
+                :demo-label="store.isDemo && isVisible('workspace-status') ? workspaceStatusLabel : undefined"
+                :read-only="workspace?.readOnly"
+                @open="(file) => { store.focusPane(pane.id); openEntry(file); }"
               >
-                <span v-if="!store.isDemo" class="breadcrumb-workspace"
-                  ><BookOpen :size="14" />{{ workspace?.name ?? 'Tano' }}</span
-                ><span
-                  v-if="store.isDemo && isVisible('workspace-status')"
-                  class="demo-badge breadcrumb-demo-badge"
-                  title="浏览器演示 · 数据仅保存在本浏览器"
-                >
-                  <LockKeyhole v-if="workspace?.readOnly" :size="14" />
-                  {{ workspaceStatusLabel }}
-                </span>
                 <template v-if="tab?.pluginView"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">{{ tab.pluginView.label }}</span></template>
                 <template v-if="pane.activeId === PLUGINS_TAB_ID"
                   ><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current"
@@ -4106,24 +4103,8 @@ const helpBlocked = computed(() => !!(
                     class="breadcrumb-current"
                     >{{ view.label }}</span
                   ></template
-                ><template
-                  v-for="(part, index) in tab?.path ? tab.path.split('/') : []"
-                  :key="index"
-                  ><ChevronRight :size="12" /><component
-                    :is="index === tab!.path.split('/').length - 1 ? FileText : FolderOpen"
-                    :size="14"
-                  /><span
-                    :class="{ 'breadcrumb-current': index === tab!.path.split('/').length - 1 }"
-                    v-butterfly-perch="index === tab!.path.split('/').length - 1 ? { id: 'breadcrumb:' + paneButterflyScope(pane.id, pane.activeId), scope: paneButterflyScope(pane.id, pane.activeId), label: '面包屑', kind: 'component' } : undefined"
-                    :title="part"
-                    >{{
-                      index === tab!.path.split('/').length - 1 && active
-                        ? part.replace(/\.(md|markdown)$/i, '')
-                        : part
-                    }}</span
-                  ></template
                 >
-              </nav>
+              </WorkspaceBreadcrumb>
               <div class="topbar-right">
                 <button
                   v-if="tab?.attachment && attachments && isVisible('attachment-export')"
@@ -4684,6 +4665,7 @@ const helpBlocked = computed(() => !!(
                       @contextmenu="openPageContextMenu"
                     >
                       <DocumentSuggestions v-slot="suggestions" :document="active" :readonly="paneReadonly(active!)"
+                        :source="paneSource(pane.activeId)"
                         :managed="!!editing.active" :author="extensions.commentAuthor?.() ?? { id: 'local', name: '本机用户' }">
                       <DocumentTitle
                         v-if="workspace && showPageTitle"

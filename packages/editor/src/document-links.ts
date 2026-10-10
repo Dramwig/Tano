@@ -20,6 +20,13 @@ export interface DocumentLinkDetail extends DocumentLink {
 
 const parser = unified().use(remarkParse).use(remarkGfm).use(remarkMathSyntax);
 
+/** A syntax snapshot that consumers can share without parsing the same revision again. */
+export function parseDocumentMarkdown(markdown: string) {
+  const { body } = splitFrontmatter(markdown);
+  const source = body.replace(/^\uFEFF?\+\+\+\r?\n[\s\S]*?\r?\n\+\+\+(?:\r?\n|$)/, '');
+  return { source, tree: parser.parse(source), offset: markdown.length - source.length };
+}
+
 /** Source-mode references must be inserted outside code, math, metadata and existing links. */
 export function referenceInsertionPoint(markdown: string, position: number) {
   const { body } = splitFrontmatter(markdown);
@@ -62,12 +69,9 @@ export function documentLinks(markdown: string): DocumentLink[] {
   return documentLinkDetails(markdown).map(({ kind, target }) => ({ kind, target }));
 }
 
-export function documentLinkDetails(markdown: string): DocumentLinkDetail[] {
-  const { body } = splitFrontmatter(markdown);
-  const source = body.replace(/^\uFEFF?\+\+\+\r?\n[\s\S]*?\r?\n\+\+\+(?:\r?\n|$)/, '');
-  const tree = parser.parse(source);
+export function documentLinkDetails(markdown: string, parsed = parseDocumentMarkdown(markdown)): DocumentLinkDetail[] {
+  const { source, tree, offset } = parsed;
   const definitions = new Map<string, string>();
-  const offset = markdown.length - source.length;
   const result: DocumentLinkDetail[] = [];
   const label = (node: Nodes): string => 'value' in node && typeof node.value === 'string'
     ? node.value : 'children' in node ? node.children.map(label).join('') : '';
