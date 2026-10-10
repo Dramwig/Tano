@@ -298,6 +298,9 @@ mod tests {
                         Err(error) => panic!("fixture request did not arrive: {error}"),
                     }
                 };
+                // Windows can inherit the listener's nonblocking mode. Only
+                // accept is polled; request reads must wait for the client.
+                socket.set_nonblocking(false).unwrap();
                 socket
                     .set_read_timeout(Some(Duration::from_secs(5)))
                     .unwrap();

@@ -60,4 +60,6 @@ jobs:
           CORE_TAG: ${{ github.event.workflow_run.head_branch }}
           CORE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
+          # JavaScript template interpolation is intentionally not expanded by Bash.
+          # shellcheck disable=SC2016
           node --input-type=module -e 'import { githubClient, repositoryName } from "./scripts/release-github.mjs"; await githubClient(process.env.GH_TOKEN)(`/repos/${repositoryName(process.env.CONSUMER)}/dispatches`, {method:"POST", body:{event_type:"core-released",client_payload:{tag:process.env.CORE_TAG,sha:process.env.CORE_SHA}}});'

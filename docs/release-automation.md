@@ -25,6 +25,26 @@ To notify the official consumer, set `CORE_CONSUMER_REPOSITORY=Tano-cloud` (repo
 
 The default `GITHUB_TOKEN` is deliberately not used to push release tags or PR branches: events it creates generally do not start another Actions workflow. See [GitHub workflow triggering](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
 
+### Bootstrap the automation App
+
+1. Register a private GitHub App owned by the repository owner. Disable webhooks;
+   these workflows mint installation tokens and do not need a webhook server.
+2. Grant only repository Contents and Pull requests read/write, and Actions read.
+   Install it on `Tano` and its configured consumer only. Do not grant Administration
+   or a branch-protection bypass. Contents write also permits repository dispatch.
+3. Generate a private key, store it outside the checkout, and upload it to the
+   `release-automation` environment of each installation repository as
+   `RELEASE_APP_PRIVATE_KEY`. Set `RELEASE_APP_ID` there to the App ID, not its client
+   ID or installation ID. Never put the key or a token in a commit, PR, or log.
+4. After a main change is missing from dev, run **Sync main into dev** on main.
+   Verify that the App opens the PR and that its required checks start. An
+   up-to-date no-op run does not verify the credential or write permissions.
+
+Use a new key before revoking an old one when rotating credentials. An App token
+is limited to the repositories requested by the local `release-token` action;
+the action revokes it when the job finishes. Production platform credentials
+are configured separately in the consumer repository.
+
 ## Failures and retry
 
 - A failed main check prevents tagging; a failed tag check prevents export and consumer notification.

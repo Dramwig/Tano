@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { configureBranches, matchesProtection } from './configure-branches.mjs';
+import { configureBranches, matchesProtection, verifyReadBack } from './configure-branches.mjs';
 
 const policy = JSON.parse(readFileSync(new URL('../.github/branch-protection.json', import.meta.url), 'utf8'));
 
@@ -22,6 +22,16 @@ function fixture(initial = {}) {
 }
 
 describe('branch protection setup', () => {
+  it('retries briefly for GitHub propagation but rejects persistent mismatches', async () => {
+    let reads = 0;
+    const sleep = async () => {};
+    await verifyReadBack(async () => ++reads >= 2, value => value, 'Settings', { sleep });
+    expect(reads).toBe(2);
+    reads = 0;
+    await expect(verifyReadBack(async () => { reads++; return false; }, value => value,
+      'Settings', { sleep })).rejects.toThrow('Settings read-back failed');
+    expect(reads).toBe(5);
+  });
   it('previews missing protection without writing', async () => {
     const f = fixture();
     expect((await configureBranches(f.api, 'owner/repo', policy)).branches.map(b => b.state)).toEqual(['missing', 'missing']);
@@ -47,6 +57,8 @@ describe('branch protection setup', () => {
     for (const key of ['enforce_admins', 'required_linear_history', 'allow_force_pushes', 'allow_deletions', 'required_conversation_resolution'])
       response[key] = { enabled: response[key] };
     response.required_status_checks.contexts.reverse();
+    // Personal repositories omit restrictions entirely when no restriction is set.
+    delete response.restrictions;
     expect(matchesProtection(response, policy.settings)).toBe(true);
     expect(matchesProtection({ ...response, required_signatures: { enabled: true } }, policy.settings)).toBe(false);
   });

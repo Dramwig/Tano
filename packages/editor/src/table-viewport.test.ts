@@ -31,10 +31,12 @@ it('keeps a wide nested table within its toggle content width', async () => {
     'onUpdate:modelValue': changes,
   }) });
   app.mount(root);
-  await vi.waitFor(() => expect(root.querySelector<HTMLElement>('.tano-toggle .tano-table-viewport')?.style.width).toBe('400px'));
+  // Wait for asynchronous editor creation and its first layout frame; the
+  // default one-second polling deadline can expire on a busy Windows runner.
+  await vi.waitFor(() => expect(root.querySelector<HTMLElement>('.tano-toggle .tano-table-viewport')?.style.width).toBe('400px'), { timeout: 5_000 });
   expect(root.querySelector<HTMLElement>('.tano-table-viewport')!.style.marginLeft).toBe('0px');
   expect(changes).not.toHaveBeenCalled();
-});
+}, 10_000);
 
 it('expands only wide tables, reserves the comment gutter, and tracks each scrollable edge without changing Markdown', async () => {
   const source = 'Before\n\n| A | B |\n| --- | --- |\n| alpha | beta |\n\nAfter\n';

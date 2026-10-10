@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   macos-desktop:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,7 +30,7 @@ jobs:
           if-no-files-found: error
 
   ios-simulator:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -42,11 +42,12 @@ jobs:
           targets: aarch64-apple-ios-sim
       - run: npm ci
       - run: npm run check
+      - run: sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
       - run: xcodebuild -version
       - run: npm run ios:init
       - run: npm run ios:build -- --target aarch64-sim --debug
       - uses: actions/upload-artifact@v4
         with:
           name: tano-ios-aarch64-simulator-app
-          path: apps/client/src-tauri/gen/apple/build/Build/Products/Debug-iphonesimulator/*.app
+          path: apps/client/src-tauri/gen/apple/build/arm64-sim/*.app
           if-no-files-found: error
