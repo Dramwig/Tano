@@ -7,10 +7,10 @@ import { githubClient, repositoryName } from './release-github.mjs';
 
 function protectionSettings(value) {
   return {
-    required_status_checks: value.required_status_checks && {
+    required_status_checks: value.required_status_checks ? {
       strict: value.required_status_checks.strict,
       contexts: [...value.required_status_checks.contexts].sort(),
-    },
+    } : null,
     enforce_admins: value.enforce_admins?.enabled ?? value.enforce_admins,
     required_pull_request_reviews: value.required_pull_request_reviews && Object.fromEntries(
       ['dismiss_stale_reviews', 'require_code_owner_reviews', 'required_approving_review_count', 'require_last_push_approval']

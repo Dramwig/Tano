@@ -32,7 +32,7 @@ jobs:
         env:
           REQUESTED_VERSION: ${{ inputs.version }}
         run: node scripts/release-plan.mjs prepare "$REQUESTED_VERSION" core
-      - run: npm run version:check && npm run docs:check
+      - run: npm run version:check
       - uses: ./.github/actions/release-token
         id: identity
         with:
@@ -49,5 +49,5 @@ jobs:
             chore(release): prepare ${{ steps.plan.outputs.tag }}
 
             Align Core package, Tauri and Cargo versions and record the release
-            plan and notes. The tag is created only after the merged commit passes CI.
+            plan and notes. Run local checks on the merged commit before manually creating its tag.
           body-path: ${{ steps.plan.outputs.notes }}

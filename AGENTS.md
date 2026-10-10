@@ -22,6 +22,8 @@ Tano — Humans and agents, on the same page.
 
 ## Development
 
+- Run all tests and checks locally before committing or merging, and record the commands, results and tested commit in the PR. GitHub Actions is manual-only for packaging, release and synchronization; never add commit/PR-triggered CI or run test suites there. See [docs/local-validation.md](docs/local-validation.md).
+
 - `npm install`, `npm run dev` for the browser demo; `npm run desktop` for the real desktop filesystem.
 - `npm run check` for TypeScript, merge/store tests, and production build.
 - `npm run docs:check` to verify relative Markdown documentation links independently.
@@ -32,7 +34,7 @@ Tano — Humans and agents, on the same page.
 ## Commits
 
 - Follow [docs/branching.md](docs/branching.md): start normal task branches from `dev`, target `dev` in feature PRs, and promote tested `dev` to `main` with a merge commit.
-- Version PRs and urgent hotfixes target `main`; merge the generated `main` to `dev` synchronization PR with a merge commit. Never squash/rebase long-lived branches or force-push/delete them.
+- Version PRs and urgent hotfixes target `main`; manually open and merge the `main` to `dev` synchronization PR with a merge commit. Never squash/rebase long-lived branches or force-push/delete them.
 
 - Follow the Conventional Commit format and the examples in [CONTRIBUTING.md](CONTRIBUTING.md) for every new commit.
 - Give substantial changes a body that explains the behavior, reason, and important implementation details. Keep follow-up fixes in the same logical commit before merging.

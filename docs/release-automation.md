@@ -1,55 +1,63 @@
 # Core release automation
 
-Development follows the [branching policy](branching.md): feature PRs target `dev`,
-and tested work is promoted to `main` with a merge commit before preparing a release.
-Version PRs still target `main`. The main-to-dev workflow then opens a synchronization
-PR so the next development cycle keeps the released versions and hotfixes.
+All tests and checks run [locally](local-validation.md). GitHub Actions has no
+commit, push, tag, PR or workflow-completion triggers. Remaining operations must
+be dispatched manually. Development follows the [branching policy](branching.md).
 
-The public repository owns the MIT Core version and its `core-vX.Y.Z` tags. Official Product versions, production deployment and official installer publication are managed in the private repository. A public Product `vA.B.C` tag points to its pinned Core commit; the private tag with the same name points to the Product commit.
+The MIT repository owns Core versions and `core-vX.Y.Z` tags. Official Product
+versions, deployment and installer publication belong to the private repository.
+A public Product `vA.B.C` tag points to its pinned Core commit; the private tag
+with the same name points to the Product commit.
 
 ## Prepare and publish Core
 
-1. Run **Prepare Core release PR** on `main`. Choose `patch`, `minor`, `major`, or an exact stable version. For the first tag only, the current version can be used. The workflow calls the existing version setter, updates npm/Tauri/Cargo versions and lockfiles, and drafts `.github/releases/core-vX.Y.Z.md`.
-2. Review the version PR, especially compatibility changes and release notes. Merge it after checks pass.
-3. **Tag reviewed release** waits for `check.yml` on the exact merged `main` commit and creates an immutable tag. It never retargets an existing tag.
-4. The Core tag runs checks and native builds. **Export verified Core** runs only after the successful tag check, verifies main ancestry and tag identity, exports a clean distribution and uploads a 30-day transport artifact.
-5. If a consumer is configured, the export workflow sends `core-released` with the tag and SHA. The consumer independently verifies the tag and CI, regenerates the distribution and creates a synchronization PR targeting its `dev` integration branch. Promote the tested consumer changes to its `main` before preparing a Product release. Its committed vendored snapshot is the durable copy; an expiring Actions artifact is not a dependency source.
+1. Validate the proposed release locally, promote tested dev to main with a merge
+   commit, then manually run **Prepare Core release PR** on main. Choose patch,
+   minor, major or an exact stable version. It aligns npm/Tauri/Cargo versions and
+   locks, and drafts release notes. Local preparation is also available with
+   `node scripts/release-plan.mjs prepare patch core`.
+2. Review and locally validate the version PR, merge it, and validate the resulting
+   main commit. Record commands, results and the tested SHA in the PR.
+3. Manually run **Tag reviewed release** on main. It validates the release plan
+   and creates an immutable tag; it neither runs tests nor waits for retired CI.
+4. Manually run **Export reviewed Core**, supplying that Core tag. It checks tag
+   identity, main ancestry and clean source, then exports the distribution and
+   uploads a 30-day transport artifact. It does not dispatch a consumer workflow.
+5. In the consumer, manually run **Sync reviewed Core** with the same tag. Validate
+   its PR locally before merging into dev. The committed snapshot is the durable
+   copy; the expiring Actions artifact is not a dependency source.
+6. Manually run **Sync main into dev** to open the synchronization PR, then validate
+   and merge it with a merge commit. PR creation and merging do not start Actions.
 
-For local preparation, `node scripts/release-plan.mjs prepare patch core` updates files without committing or tagging. Direct `npm run version:set -- X.Y.Z` and `npm run core:export` remain available.
+Android and Apple preview builds are manual-only and build without running tests.
+Local `npm run version:set -- X.Y.Z` and `npm run core:export` remain available.
 
 ## GitHub configuration
 
-Create the `release-automation` environment. Configure `RELEASE_APP_ID` as a variable and `RELEASE_APP_PRIVATE_KEY` as a secret. The GitHub App needs Contents read/write and Actions read on this repository, plus Pull requests read/write for version PRs. An explicit fine-grained `RELEASE_AUTOMATION_TOKEN` can be used instead.
+Version/tag/synchronization operations use the `release-automation` environment:
+`RELEASE_APP_ID` is a variable and `RELEASE_APP_PRIVATE_KEY` is a secret. An
+explicit fine-grained `RELEASE_AUTOMATION_TOKEN` can be used instead.
 
-To notify the official consumer, set `CORE_CONSUMER_REPOSITORY=Tano-cloud` (repository name, same owner). Install the App on that repository with permission to create a repository dispatch. Its own workflow identity needs permission to create its synchronization PR. Keep these credentials out of PR/fork workflows. Protect `main`, release environments and immutable release tags according to the maintainer's policy.
+Register a private GitHub App, disable webhooks and install it only on Tano and
+its intended consumer. Repository Contents and Pull requests read/write are
+sufficient for these operations; no Administration or protection bypass is needed.
+Store the generated private key outside the checkout and never print it or put
+it in Git. Use the App ID, not its Client ID or Installation ID. Do not reuse a
+human CLI token as an automation secret. App credentials are not yet implied by
+the existence of these files; configure them before manually using write jobs.
 
-The default `GITHUB_TOKEN` is deliberately not used to push release tags or PR branches: events it creates generally do not start another Actions workflow. See [GitHub workflow triggering](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
+To verify write access, manually dispatch **Sync main into dev** when main has a
+commit missing from dev and verify the PR author. A no-op with equal branches
+cannot prove write permissions. The PR is tested locally and starts no CI.
+Rotate keys by installing and validating the replacement before revoking the old
+key. Production credentials remain separately managed by the consumer.
 
-### Bootstrap the automation App
+## Retry
 
-1. Register a private GitHub App owned by the repository owner. Disable webhooks;
-   these workflows mint installation tokens and do not need a webhook server.
-2. Grant only repository Contents and Pull requests read/write, and Actions read.
-   Install it on `Tano` and its configured consumer only. Do not grant Administration
-   or a branch-protection bypass. Contents write also permits repository dispatch.
-3. Generate a private key, store it outside the checkout, and upload it to the
-   `release-automation` environment of each installation repository as
-   `RELEASE_APP_PRIVATE_KEY`. Set `RELEASE_APP_ID` there to the App ID, not its client
-   ID or installation ID. Never put the key or a token in a commit, PR, or log.
-4. After a main change is missing from dev, run **Sync main into dev** on main.
-   Verify that the App opens the PR and that its required checks start. An
-   up-to-date no-op run does not verify the credential or write permissions.
-
-Use a new key before revoking an old one when rotating credentials. An App token
-is limited to the repositories requested by the local `release-token` action;
-the action revokes it when the job finishes. Production platform credentials
-are configured separately in the consumer repository.
-
-## Failures and retry
-
-- A failed main check prevents tagging; a failed tag check prevents export and consumer notification.
-- Rerun a failed export/notification after fixing configuration. An identical tag and commit can be processed again; changed content requires a new version.
-- If the tag workflow was skipped or a required App permission was missing, run it manually on `main` after its checks succeed.
-- Stable releases only are supported. Pre-release channels require separate tag validation and update feeds before use.
-
-The workflow files are checked with actionlint in `check.yml`. Release tooling tests cover version bounds, tag immutability, exact-commit checks and authentication failures.
+- Failed local validation must be fixed before dispatching a release. GitHub has
+  no required test statuses and cannot certify local validation.
+- A failed export can be manually retried for the same immutable tag. Changed
+  source requires a new version; existing tags are never retargeted.
+- Creating a tag does not build or publish anything automatically. Dispatch each
+  desired follow-up explicitly.
+- Stable releases only are supported. Prereleases require separate channels.
