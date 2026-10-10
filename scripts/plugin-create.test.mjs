@@ -25,4 +25,5 @@ it.each(['vanilla', 'vue', 'react'])('creates a typechecked, portable, independe
     if (!resolve(directory).startsWith(artifacts + sep)) throw new Error('Unexpected test directory');
     await rm(directory, { recursive: true, force: true });
   }
-});
+// This integration test starts tsc and bundles a real plugin, including React/Vue.
+}, 30_000);

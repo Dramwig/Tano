@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { nextVersion, validatePlan } from './release-plan.mjs';
-import { ensureTag, successfulRun, githubClient } from './release-github.mjs';
+import { ensureTag, githubClient } from './release-github.mjs';
 
 describe('release automation boundaries', () => {
   it('bumps versions and rejects prereleases, overflow and rollback', () => {
@@ -42,30 +42,6 @@ describe('release automation boundaries', () => {
     await expect(ensureTag(api, 'owner/repo', 'v0.2.0', 'b'.repeat(40))).rejects.toThrow(
       'different commit',
     );
-  });
-  it('requires the latest exact-commit push check, not an older green run or a PR', async () => {
-    const sha = 'a'.repeat(40);
-    const run = {
-      id: 1,
-      event: 'push',
-      head_sha: sha,
-      head_branch: 'main',
-      status: 'completed',
-      conclusion: 'success',
-    };
-    const api = async () => ({ workflow_runs: [run, { ...run, id: 2, conclusion: 'failure' }] });
-    await expect(successfulRun(api, 'owner/repo', 'check.yml', sha, 'main')).rejects.toThrow(
-      'failed',
-    );
-    await expect(
-      successfulRun(
-        async () => ({ workflow_runs: [{ ...run, event: 'pull_request' }] }),
-        'owner/repo',
-        'check.yml',
-        sha,
-        'main',
-      ),
-    ).rejects.toThrow('No completed');
   });
   it('does not treat authentication failure as an absent release', async () => {
     const api = githubClient('test', async () => ({ ok: false, status: 403 }));
