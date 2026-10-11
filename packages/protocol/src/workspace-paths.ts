@@ -32,7 +32,7 @@ export function isWorkspaceDataPath(path: string) {
     isTemplatePath(path) ||
     (path.startsWith('.tano/conflicts/') && path.endsWith('.json')) ||
     (path.startsWith(`${objectDirectory}/`) && path.endsWith('.tano.json')) ||
-    /^\.tano\/(?:annotations|discussions|document-layout|suggestions)\/[0-9a-f]{6}\.tano\.json$/.test(path)
+    /^\.tano\/(?:annotations|discussions|document-layout|suggestions|tables)\/[0-9a-f]{6}\.tano\.json$/.test(path)
   );
 }
 

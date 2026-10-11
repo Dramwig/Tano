@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ArrowLeft, ArrowRight, Bot, CalendarDays, FileText, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, SquarePen, ExternalLink, Bug } from 'lucide-vue-next';
-import { basename, isMarkdown } from '@tano/protocol';
+import { basename, isMarkdown, isDataTableFilePath } from '@tano/protocol';
 import { invoke } from '@tauri-apps/api/core';
 import { cursorPosition, getCurrentWindow } from '@tauri-apps/api/window';
 import { emit as broadcast, emitTo, listen } from '@tauri-apps/api/event';
@@ -14,6 +14,7 @@ import { mobile, nativeOs } from '../platform';
 import { useWorkspaceStore } from '../stores/workspace';
 import type { DocumentTab } from '../stores/workspace';
 import ButtonVisibilityGroup from './ButtonVisibilityGroup.vue';
+import { Table2 } from 'lucide-vue-next';
 
 const store = useWorkspaceStore();
 const navigationItems = [
@@ -57,7 +58,7 @@ const frozenStripWidth = ref<number>();
 const pointerInsideTabList = ref(false);
 const title = (path: string) => basename(path).replace(/\.(md|markdown)$/i, '');
 const tabLabel = (tab: DocumentTab) => props.assistantTab?.id === tab.id ? props.assistantTab.title
-  : tab.graph ? '关系图谱' : tab.plugins ? '插件' : tab.calendar ? '计划' : tab.pluginView ? tab.pluginView.label : tab.view ? tab.view.label : tab.blank ? '新标签页' : title(tab.path);
+  : tab.dataTable ? tab.dataTable.name : tab.graph ? '关系图谱' : tab.plugins ? '插件' : tab.calendar ? '计划' : tab.pluginView ? tab.pluginView.label : tab.view ? tab.view.label : tab.blank ? '新标签页' : title(tab.path);
 const draggingId = ref('');
 const outgoingId = ref('');
 const dragPreview = ref<{
@@ -79,7 +80,7 @@ const dockSlotIndex = computed(() => fileSlot.value?.index ?? paneSlot.value ?? 
 const draggedFiles = computed(() => {
   if (!props.fileDrag || props.fileDrag.workspaceId !== store.workspace?.id || store.busy) return [];
   const files = props.fileDrag.ids.map((id) => store.workspace!.files.find((file) => file.id === id));
-  return files.every((file) => file?.kind === 'file' && isMarkdown(file.path)) ? files : [];
+  return files.every((file) => file?.kind === 'file' && (isMarkdown(file.path) || isDataTableFilePath(file.path))) ? files : [];
 });
 let fileScrollFrame = 0;
 let incomingHoverAt = 0;
@@ -926,12 +927,13 @@ async function onTabKeydown(event: KeyboardEvent) {
           <GitFork v-else-if="doc.graph" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <Puzzle v-else-if="doc.plugins" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <CalendarDays v-else-if="doc.calendar" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
+          <Table2 v-else-if="doc.dataTable" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <Puzzle v-else-if="doc.pluginView" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <component :is="doc.view.icon" v-else-if="doc.view" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <FileText v-else-if="!doc.blank" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <span class="desktop-tab-label">{{ tabLabel(doc) }}</span>
           <span
-            v-if="doc.document && store.dirty(doc.document)"
+            v-if="doc.dataTable?.dirty || doc.document && store.dirty(doc.document)"
             class="desktop-tab-dirty"
             aria-label="有未保存的修改"
           />

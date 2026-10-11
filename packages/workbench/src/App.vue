@@ -69,6 +69,7 @@ import {
   Redo2,
   ArrowDownToLine,
   Files,
+  Table2,
 } from 'lucide-vue-next';
 import MarkdownEditor from '@tano/editor';
 import { defaultEditorPreferences } from '@tano/editor/runtime';
@@ -170,6 +171,9 @@ import { recordHelpCompleted } from './help-checklist';
 import WorkspaceSwitcher from './components/WorkspaceSwitcher.vue';
 import ButtonVisibilityGroup from './components/ButtonVisibilityGroup.vue';
 import CalendarView from './components/CalendarView.vue';
+const DataTablePage = defineAsyncComponent(() => import('./components/DataTablePage.vue'));
+import { isTableTab, TABLES_TAB_ID } from './data-tables';
+import { isDataTableFilePath } from '@tano/protocol';
 import PluginInstaller from './components/PluginInstaller.vue';
 import PluginView from './components/PluginView.vue';
 import PluginSidebar from './components/PluginSidebar.vue';
@@ -495,6 +499,7 @@ function initializePageHistory() {
 
 function currentPageRoute() {
   const currentWorkspace = workspace.value;
+  if (currentWorkspace && isTableTab(activeId.value)) return pageRoutePath(currentWorkspace.id, activeId.value);
   const pluginView = store.pluginViews.find(view => view.key === activeId.value && view.location === 'tab');
   if (currentWorkspace && pluginView) return pageRoutePath(currentWorkspace.id, pluginView.key);
   const currentFile = currentWorkspace?.files.find(
@@ -553,6 +558,8 @@ async function applyPageRoute() {
     if (workspace.value?.id !== route.workspaceId) await store.openWorkspace(route.workspaceId);
     if (workspace.value?.id !== route.workspaceId) {
       store.report('链接中的工作区不存在或你已失去访问权限');
+    } else if (isTableTab(route.fileId)) {
+      await store.openDataTable(route.fileId === TABLES_TAB_ID ? undefined : route.fileId.slice(6));
     } else if (route.fileId.startsWith('plugin:')) {
       const view = store.pluginViews.find(view => view.key === route.fileId && view.location === 'tab');
       if (view) store.openPluginView(view.pluginId, view.id);
@@ -925,7 +932,7 @@ watch(
   },
 );
 function selectActiveFileInTree() {
-  const id = activeId.value;
+  const id = activeId.value.startsWith('table:') ? activeId.value.slice(6) : activeId.value;
   const available = !!id && workspace.value?.files.some((file) => file.id === id);
   selectedEntryIds.value = available ? new Set([id]) : new Set();
   selectionAnchorId.value = available ? id : null;
@@ -974,6 +981,8 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
     { id: 'workbench.search', category: '文档', label: '查找文档', shortcut: shortcuts.value.findDocument, available: !busy.value, run: () => showModal('search') },
     { id: 'workbench.open', category: '文档', label: '打开文档', shortcut: shortcuts.value.openDocument, available: !busy.value, run: () => showModal('newTab') },
     { id: 'workbench.new', category: '文档', label: '新建文档', shortcut: shortcuts.value.newDocument, available: writableWorkspace, run: createNewDocument },
+    { id: 'workbench.table.new', category: '数据表', label: '新建数据表', keywords: 'table spreadsheet 表格', available: writableWorkspace, run: () => store.createDataTable().catch(store.report) },
+    { id: 'workbench.table.parts', category: '数据表', label: '新建配件选择表', available: writableWorkspace, run: () => store.createDataTable('parts').catch(store.report) },
     { id: 'workbench.save', category: '文档', label: '立即保存', shortcut: shortcuts.value.save, available: hasDocument && !busy.value && !updateLock.value, run: () => store.flush() },
     { id: 'workbench.saveAs', category: '文档', label: '另存副本', available: standardEditor && writableWorkspace, run: () => showModal('saveAs') },
     { id: 'workbench.folder', category: '文档', label: '新建文件夹', available: writableWorkspace, run: () => createNewEntry('folder') },
@@ -1645,7 +1654,7 @@ async function openEntry(file: FileEntry, newTab = false) {
     else store.report('对象文件不可用，请在工作区对象面板检查格式或重复 ID');
     return;
   }
-  if (isMarkdown(file.path)) {
+  if (isMarkdown(file.path) || isDataTableFilePath(file.path)) {
     if (newTab) await store.openFileInNewTab(file);
     else await store.openFile(file);
     if (store.activePaneId === templatePaneId.value && store.activeId === file.id) templateLibraryOpen.value = false;
@@ -1757,7 +1766,7 @@ function openDirectoryContextMenu(parent: string, event: MouseEvent) {
     contextMenu.focus({ preventScroll: true });
   });
 }
-function directoryContextAction(action: 'document' | 'folder') {
+function directoryContextAction(action: 'document' | 'folder' | 'table') {
   const parent = directoryContextMenu.value?.parent ?? '';
   closeDirectoryContextMenu();
   const target = parent
@@ -1881,6 +1890,7 @@ async function renameTreeEntry(file: FileEntry, name: string) {
   if (/[\/\\]/.test(name)) throw new Error('名称不能包含路径分隔符');
   if (file.kind === 'file' && isMarkdown(file.path) && !isMarkdown(name))
     name += file.name.match(/\.(md|markdown)$/i)?.[0] ?? '.md';
+  if (isDataTableFilePath(file.path) && !/\.table\.json$/i.test(name)) name += '.table.json';
   const folder = parentPath(file.path);
   const path = `${folder ? `${folder}/` : ''}${name}`;
   const error = validatePath(path);
@@ -1989,6 +1999,7 @@ async function fileContextAction(
     | 'open-new-tab'
     | 'document'
     | 'folder'
+    | 'table'
     | 'rename'
     | 'delete'
     | 'copy'
@@ -2078,7 +2089,7 @@ async function fileContextAction(
     await removeDocument(file);
     return;
   }
-  if (action === 'document' || action === 'folder') {
+  if (action === 'document' || action === 'folder' || action === 'table') {
     await createNewEntry(action, file.path);
     return;
   }
@@ -2257,7 +2268,7 @@ watch([() => outline.value.length, source], () => void nextTick(scheduleActiveHe
   flush: 'post',
 });
 const noteCount = computed(
-  () => workspace.value?.files.filter((f) => f.kind === 'file' && isMarkdown(f.path)).length ?? 0,
+  () => workspace.value?.files.filter((f) => f.kind === 'file' && !isWorkspaceInternalPath(f.path) && (isMarkdown(f.path) || isDataTableFilePath(f.path))).length ?? 0,
 );
 const searchHits = ref<SearchHit[]>([]);
 const searching = ref(false);
@@ -2384,7 +2395,7 @@ async function removeDocument(target?: FileEntry) {
 async function createNewDocument() {
   await createNewEntry('document');
 }
-async function createNewEntry(kind: 'document' | 'folder', parent = '') {
+async function createNewEntry(kind: 'document' | 'folder' | 'table', parent = '') {
   if (store.busy || workspace.value?.readOnly || updateLock.value) return;
   menu.value = false;
   workspaceMenu.value = false;
@@ -2394,6 +2405,11 @@ async function createNewEntry(kind: 'document' | 'folder', parent = '') {
   try {
     if (kind === 'folder') {
       await store.createUntitledFolder(parent);
+      return;
+    }
+    if (kind === 'table') {
+      await store.createDataTable('blank', parent);
+      if (window.innerWidth <= 700) sidebar.value = false;
       return;
     }
     await store.createUntitledDocument(parent);
@@ -2461,6 +2477,9 @@ async function acceptTabTransfer(request: TabTransferRequest) {
     } else if (request.tabId === CALENDAR_TAB_ID) {
       created = priorIndex < 0;
       store.openCalendarTab();
+    } else if (isTableTab(request.tabId)) {
+      created = priorIndex < 0;
+      await store.openDataTable(request.tabId === TABLES_TAB_ID ? undefined : request.tabId.slice(6));
     } else if (extensionViews.some((view) => view.id === request.tabId)) {
       const view = extensionViews.find((view) => view.id === request.tabId)!;
       if (!view.detachable)
@@ -3322,7 +3341,8 @@ onBeforeUnmount(() => {
 watch(activeId, () => {
   closePageContextMenu();
   closeOutlineContextMenu();
-  if (!pendingTreeOpenIds.has(activeId.value) || !selectedEntryIds.value.has(activeId.value))
+  const treeId = activeId.value.startsWith('table:') ? activeId.value.slice(6) : activeId.value;
+  if (!pendingTreeOpenIds.has(treeId) || !selectedEntryIds.value.has(treeId))
     selectActiveFileInTree();
   historyPanel.value = false;
   panel.value = 'outline';
@@ -3695,6 +3715,9 @@ const helpBlocked = computed(() => !!(
                 >
                   <FileText :size="15" />在此新建文档
                 </button>
+                <button role="menuitem" :disabled="fileMutationDisabled(fileContextMenu.file)" @click="fileContextAction('table')">
+                  <Table2 :size="15" />在此新建数据表
+                </button>
                 <button
                   v-if="!store.isWeb"
                   role="menuitem"
@@ -3717,16 +3740,16 @@ const helpBlocked = computed(() => !!(
               </template>
               <template v-else>
                 <button
-                  v-if="isMarkdown(fileContextMenu.file.path) || attachments"
+                  v-if="isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path) || attachments"
                   role="menuitem"
                   @click="fileContextAction('open')"
                 >
                   <FileText :size="15" />{{
-                    isMarkdown(fileContextMenu.file.path) ? '打开文档' : '打开附件'
+                    isDataTableFilePath(fileContextMenu.file.path) ? '打开数据表' : isMarkdown(fileContextMenu.file.path) ? '打开文档' : '打开附件'
                   }}
                 </button>
                 <button
-                  v-if="tabsEnabled && isMarkdown(fileContextMenu.file.path)"
+                  v-if="tabsEnabled && (isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path))"
                   role="menuitem"
                   @click="fileContextAction('open-new-tab')"
                 >
@@ -3741,7 +3764,7 @@ const helpBlocked = computed(() => !!(
                   <Pencil :size="15" />重命名文档
                 </button>
                 <button
-                  v-else-if="attachments"
+                  v-else-if="attachments || isDataTableFilePath(fileContextMenu.file.path)"
                   role="menuitem"
                   :disabled="fileMutationDisabled(fileContextMenu.file)"
                   @click="fileContextAction('rename')"
@@ -3810,6 +3833,9 @@ const helpBlocked = computed(() => !!(
               @click="directoryContextAction('document')"
             >
               <FileText :size="15" />新建文档
+            </button>
+            <button role="menuitem" :disabled="!workspace || workspace.readOnly || busy" @click="directoryContextAction('table')">
+              <Table2 :size="15" />新建数据表
             </button>
             <button
               v-if="!store.isWeb"
@@ -4289,6 +4315,10 @@ const helpBlocked = computed(() => !!(
                   class="graph-toolbar-host"
                 />
                 <div
+                  v-if="isTableTab(pane.activeId)"
+                  :id="`data-table-controls-${pane.id}`"
+                />
+                <div
                   v-if="
                     pane.activeId === CALENDAR_TAB_ID &&
                     calendarToolItems.some((item) => isVisible(item.id))
@@ -4590,6 +4620,12 @@ const helpBlocked = computed(() => !!(
               />
             </KeepAlive>
 
+            <DataTablePage
+              v-if="workspace && isTableTab(pane.activeId)"
+              :key="`${workspace.id}:${pane.activeId}`"
+              :table-id="pane.activeId.slice(6)"
+              :controls-target="detachedWindow ? undefined : `#data-table-controls-${pane.id}`"
+            />
             <CalendarView
               v-if="workspace && pane.activeId === CALENDAR_TAB_ID"
               :date="calendarDate"
@@ -4945,6 +4981,7 @@ const helpBlocked = computed(() => !!(
                 pane.activeId !== GRAPH_TAB_ID &&
                 pane.activeId !== PLUGINS_TAB_ID &&
                 pane.activeId !== CALENDAR_TAB_ID &&
+                !isTableTab(pane.activeId) &&
                 !tab?.pluginView &&
                 !extensionViews.find((view) => view.id === pane.activeId)
               "
@@ -5433,7 +5470,7 @@ const helpBlocked = computed(() => !!(
       </button>
     </div>
 
-    <NewTabPicker v-if="modal === 'newTab'" @close="modal = ''" @new-document="createNewDocument" />
+    <NewTabPicker v-if="modal === 'newTab'" @close="modal = ''" @new-document="createNewDocument" @new-table="createNewEntry('table')" />
     <div
       v-if="modal && modal !== 'newTab'"
       class="modal-backdrop"

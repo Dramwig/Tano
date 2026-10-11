@@ -11,6 +11,7 @@ export * from './workspace-paths';
 export * from './comments';
 export * from './suggestions';
 export * from './document-layout';
+export * from './data-tables';
 
 export interface FileEntry {
   id: string;
@@ -114,6 +115,13 @@ export interface WorkspaceSession {
   documents: SessionDocument[];
   tabs?: string[];
   layout?: WorkspaceLayout;
+  dataTables?: {
+    id: string;
+    fileId?: string;
+    path?: string;
+    content: string;
+    base: FileSnapshot;
+  }[];
 }
 
 export interface WorkspacePane {

@@ -24,6 +24,7 @@ import {
   isObjectPath,
   isMarkdown,
   parseObject,
+  isDataTablePath,
 } from '@tano/protocol';
 import { demoFiles } from './demo';
 
@@ -94,7 +95,34 @@ export class DemoAdapter implements WorkspaceAdapter {
     // Seeded demos need stable file IDs even before their first edit or session save.
     if (options.files && !saved?.files) this.persist();
   }
-  private persist() {
+  private isTableStorage(path: string) {
+    return isDataTablePath(path) || path.startsWith('.tano/conflicts/table-');
+  }
+  private syncTableFiles() {
+    const stored = localStorage.getItem(this.storageKey);
+    if (!stored) return;
+    const data = JSON.parse(stored) as { files: DemoFiles; folders: string[] };
+    if (!data.files || !Array.isArray(data.folders)) throw new Error('浏览器工作区数据损坏，原内容已保留');
+    for (const path of Object.keys(this.files)) if (this.isTableStorage(path)) delete this.files[path];
+    for (const [path, file] of Object.entries(data.files)) if (this.isTableStorage(path)) this.files[path] = file;
+    this.folders = data.folders;
+  }
+  private persist(tablePath?: string) {
+    const stored = localStorage.getItem(this.storageKey);
+    const data = stored ? JSON.parse(stored) as { files: DemoFiles; folders: string[] } : null;
+    if (data) {
+      if (!data.files || !Array.isArray(data.folders)) throw new Error('浏览器工作区数据损坏，原内容已保留');
+      if (tablePath) {
+        // A table transaction patches just its own file, retaining concurrent document edits.
+        data.files[tablePath] = this.files[tablePath];
+        localStorage.setItem(this.storageKey, JSON.stringify(data));
+        this.files = data.files; this.folders = data.folders;
+        return;
+      }
+      // Ordinary demo writes must never replace another tab's newer structured table.
+      for (const path of Object.keys(this.files)) if (this.isTableStorage(path)) delete this.files[path];
+      for (const [path, file] of Object.entries(data.files)) if (this.isTableStorage(path)) this.files[path] = file;
+    }
     localStorage.setItem(this.storageKey, JSON.stringify({ files: this.files, folders: this.folders }));
   }
   private async rememberIds(occupied: string[] = [], allocate = false) {
@@ -142,6 +170,7 @@ export class DemoAdapter implements WorkspaceAdapter {
     localStorage.setItem(`${this.storageKey}.session.${workspaceId}`, JSON.stringify(session));
   }
   async refresh(): Promise<Workspace> {
+    this.syncTableFiles();
     await this.rememberIds();
     const files: FileEntry[] = Object.entries(this.files).map(([path, file]) => ({
       id: file.id,
@@ -170,6 +199,7 @@ export class DemoAdapter implements WorkspaceAdapter {
   }
   async read(path: string): Promise<FileSnapshot> {
     this.check(path);
+    if (this.isTableStorage(path)) this.syncTableFiles();
     const file = this.files[path];
     if (!file) throw new Error('文件已不存在');
     return { content: file.content, hash: await sha256(file.content), modified: file.modified };
@@ -188,6 +218,19 @@ export class DemoAdapter implements WorkspaceAdapter {
   }
   async write(path: string, content: string, expectedHash: string): Promise<WriteResult> {
     this.check(path);
+    if (this.isTableStorage(path)) {
+      if (!navigator.locks) throw new Error('此浏览器不支持安全的数据表写入，请使用支持 Web Locks 的浏览器');
+      return navigator.locks.request(`${this.storageKey}.tables`, async () => {
+        this.syncTableFiles();
+        if (!this.files[path]) return { status: 'missing' };
+        const current = await this.read(path);
+        if (current.hash !== expectedHash) return { status: 'conflict', snapshot: current };
+        const previous = this.files[path];
+        this.files[path] = { ...previous, content, modified: Date.now() };
+        try { this.persist(path); } catch (error) { this.files[path] = previous; throw error; }
+        return { status: 'saved', snapshot: { content, hash: await sha256(content), modified: this.files[path].modified } };
+      });
+    }
     if (!this.files[path]) return { status: 'missing' };
     const current = await this.read(path);
     if (current.hash !== expectedHash) return { status: 'conflict', snapshot: current };
@@ -203,6 +246,18 @@ export class DemoAdapter implements WorkspaceAdapter {
   }
   async create(path: string, content: string) {
     this.check(path);
+    if (this.isTableStorage(path)) {
+      if (!navigator.locks) throw new Error('此浏览器不支持安全的数据表写入，请使用支持 Web Locks 的浏览器');
+      return navigator.locks.request(`${this.storageKey}.tables`, async () => {
+        this.syncTableFiles();
+        if (this.has(path)) throw new Error('同名文件或文件夹已经存在');
+        if (!isWorkspaceDataPath(path) && parentPath(path) && !this.folders.includes(parentPath(path)))
+          throw new Error('目标文件夹不存在，请先创建文件夹');
+        const id = await this.reserveObjectId();
+        this.files[path] = { id, content, modified: Date.now() };
+        try { this.persist(path); } catch (error) { delete this.files[path]; throw error; }
+      });
+    }
     if (this.has(path)) throw new Error('同名文件或文件夹已经存在');
     if (!isWorkspaceDataPath(path) && parentPath(path) && !this.folders.includes(parentPath(path)))
       throw new Error('目标文件夹不存在，请先创建文件夹');
@@ -248,26 +303,35 @@ export class DemoAdapter implements WorkspaceAdapter {
     return { status: 'saved', snapshot };
   }
   async rename(from: string, to: string) {
-    this.check(from);
-    this.check(to);
-    if (!this.files[from]) throw new Error('文件不存在');
-    if (this.has(to)) throw new Error('目标名称已经存在');
-    if (!isWorkspaceDataPath(to) && parentPath(to) && !this.folders.includes(parentPath(to)))
-      throw new Error('目标文件夹不存在');
-    const previous = this.files[from];
-    this.files[to] = previous;
-    delete this.files[from];
-    try {
-      this.persist();
-    } catch (e) {
-      this.files[from] = previous;
-      delete this.files[to];
-      throw e;
-    }
+    await this.move(from, to, 'file');
+  }
+  /** File-tree mutations share the table-write lock, including moves of containing folders. */
+  private async changeEntries(change: () => void | Promise<void>) {
+    const run = async () => {
+      const stored = localStorage.getItem(this.storageKey);
+      if (stored) {
+        const data = JSON.parse(stored) as { files: DemoFiles; folders: string[] };
+        if (!data.files || !Array.isArray(data.folders)) throw new Error('浏览器工作区数据损坏，原内容已保留');
+        this.files = data.files; this.folders = data.folders;
+      }
+      const beforeFiles = { ...this.files }, beforeFolders = [...this.folders];
+      try {
+        await change();
+        localStorage.setItem(this.storageKey, JSON.stringify({ files: this.files, folders: this.folders }));
+      } catch (error) {
+        this.files = beforeFiles; this.folders = beforeFolders;
+        throw error;
+      }
+    };
+    if (navigator.locks) return navigator.locks.request(`${this.storageKey}.tables`, run);
+    if (Object.keys(this.files).some(path => this.isTableStorage(path)))
+      throw new Error('此浏览器不支持安全的数据表写入，请使用支持 Web Locks 的浏览器');
+    return run();
   }
   async move(from: string, to: string, kind: FileEntry['kind']) {
     this.check(from);
     this.check(to);
+    return this.changeEntries(() => {
     const isFolder = kind === 'directory';
     if (isFolder ? !this.folders.includes(from) : !this.files[from])
       throw new Error('文件已不存在');
@@ -297,17 +361,12 @@ export class DemoAdapter implements WorkspaceAdapter {
       ]),
     );
     this.folders = previousFolders.map((path) => (moving(path) ? relocated(path) : path));
-    try {
-      this.persist();
-    } catch (error) {
-      this.files = previousFiles;
-      this.folders = previousFolders;
-      throw error;
-    }
+    });
   }
   async remove(path: string, expected?: { id: string; content: string }) {
     this.check(path);
     await this.rememberIds();
+    return this.changeEntries(() => {
     if (expected && (this.files[path]?.id !== expected.id || this.files[path]?.content !== expected.content))
       throw new Error('文件已变化，请重新审阅');
     const previousFiles = this.files;
@@ -320,13 +379,7 @@ export class DemoAdapter implements WorkspaceAdapter {
       Object.entries(this.files).filter(([entry]) => !removing(entry)),
     );
     this.folders = this.folders.filter((entry) => !removing(entry));
-    try {
-      this.persist();
-    } catch (e) {
-      this.files = previousFiles;
-      this.folders = previousFolders;
-      throw e;
-    }
+    });
   }
   async reveal() {
     throw new Error('请运行桌面版以打开真实工作文件夹');

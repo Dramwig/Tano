@@ -59,6 +59,13 @@ pub(crate) fn is_markdown(path: &Path) -> bool {
     path.extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown"))
 }
+pub(crate) fn is_data_table(path: &Path) -> bool {
+    path.file_name().is_some_and(|name| {
+        name.to_string_lossy()
+            .to_ascii_lowercase()
+            .ends_with(".table.json")
+    })
+}
 
 /// Existing components must be plain filesystem entries inside the selected root.
 pub fn resolve(root: &Path, relative: &str, must_exist: bool) -> Result<PathBuf, String> {
@@ -91,6 +98,7 @@ pub fn is_workspace_data_path(relative: &str) -> bool {
             "discussions/",
             "document-layout/",
             "suggestions/",
+            "tables/",
         ]
         .iter()
         .any(|prefix| {
@@ -120,6 +128,7 @@ pub fn is_workspace_data_directory(relative: &str) -> bool {
             | "discussions"
             | "document-layout"
             | "suggestions"
+            | "tables"
             | "rules"
             | "templates"
     ) || path.starts_with("objects/")
@@ -699,13 +708,14 @@ pub fn scan(root: &Path, id: &str, cache: &Path) -> Result<Workspace, String> {
 
 pub fn read(path: &Path) -> Result<Snapshot, String> {
     if !is_markdown(path)
+        && !is_data_table(path)
         && path.file_name().is_none_or(|name| {
             name != "capabilities.json"
                 && !name.to_string_lossy().ends_with(".tano.json")
                 && !name.to_string_lossy().ends_with(".tano-relations.json")
         })
     {
-        return Err("当前版本仅编辑 Markdown 文档".into());
+        return Err("当前版本仅编辑 Markdown 文档和数据表".into());
     }
     let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
     if metadata.len() > MAX_DOCUMENT_BYTES {
@@ -739,13 +749,14 @@ pub fn create_atomic(path: &Path, content: &[u8]) -> Result<(), String> {
 
 pub fn create(path: &Path, content: &str) -> Result<(), String> {
     if !is_markdown(path)
+        && !is_data_table(path)
         && path.file_name().is_none_or(|name| {
             name != "capabilities.json"
                 && !name.to_string_lossy().ends_with(".tano.json")
                 && !name.to_string_lossy().ends_with(".tano-relations.json")
         })
     {
-        return Err("请使用 .md 或 .markdown 扩展名".into());
+        return Err("请使用 .md、.markdown 或 .table.json 扩展名".into());
     }
     if content.len() as u64 > MAX_DOCUMENT_BYTES {
         return Err("文档不能超过 8 MB".into());
@@ -851,8 +862,8 @@ pub fn rename(
 ) -> Result<(), String> {
     let source = resolve(root, from, true)?;
     let destination = resolve(root, to, false)?;
-    if !source.is_file() || !is_markdown(&destination) {
-        return Err("只能重命名 Markdown 文件".into());
+    if !source.is_file() || !(is_markdown(&destination) || is_data_table(&destination)) {
+        return Err("只能重命名 Markdown 文件和数据表".into());
     }
     move_entry(root, workspace_id, from, to, cache)
 }
@@ -958,7 +969,9 @@ pub fn duplicate_entry(root: &Path, from: &str) -> Result<String, String> {
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or("文件名包含无法复制的字符")?;
-    let (stem, extension) = if metadata.is_file() {
+    let (stem, extension) = if metadata.is_file() && is_data_table(&source) {
+        name.split_at(name.len() - ".table.json".len())
+    } else if metadata.is_file() {
         match name.rfind('.') {
             Some(dot) if dot > 0 => (&name[..dot], &name[dot..]),
             _ => (name, ""),
@@ -1532,6 +1545,94 @@ mod tests {
         assert_eq!(fs::read_to_string(&old).unwrap(), "invalid JSON");
         assert_eq!(fs::read(root.join(".tano/config.json")).unwrap(), config);
         assert!(resolve_storage(&root, ".tano/config.json", true).is_err());
+    }
+
+    #[test]
+    fn data_tables_are_portable_and_use_compared_writes() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(temp.path()).unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let id = workspace_identity(&root).unwrap();
+        let relative = ".tano/tables/a0b1c2.tano.json";
+        let path = ensure_file_parent(&root, relative).unwrap();
+        create(&path, r#"{"version":1,"id":"a0b1c2","rows":[]}"#).unwrap();
+        let base = read(&path).unwrap();
+        let scanned = scan(&root, &id, &cache.path().join("index.sqlite")).unwrap();
+        assert!(scanned.files.iter().any(|entry| entry.path == relative));
+        fs::write(&path, "external table").unwrap();
+        assert!(matches!(
+            write(&path, "local table", &base.hash).unwrap(),
+            WriteResult::Conflict { .. }
+        ));
+        assert_eq!(read(&path).unwrap().content, "external table");
+        for invalid in [
+            ".tano/tables/not-an-id.tano.json",
+            ".tano/tables/../config.json",
+            ".tano/tables/ABCDEF.tano.json",
+        ] {
+            assert!(resolve_storage(&root, invalid, false).is_err());
+        }
+    }
+
+    #[test]
+    fn visible_data_tables_move_duplicate_and_save_as_ordinary_workspace_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(temp.path()).unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let db = cache.path().join("index.sqlite");
+        let workspace_id = workspace_identity(&root).unwrap();
+        fs::create_dir(root.join("研究")).unwrap();
+        let source = resolve(&root, "研究/候选.table.json", false).unwrap();
+        create(&source, r#"{"version":1,"id":"a0b1c2","rows":[]}"#).unwrap();
+        let scanned = scan(&root, &workspace_id, &db).unwrap();
+        let file_id = scanned
+            .files
+            .iter()
+            .find(|file| file.path == "研究/候选.table.json")
+            .unwrap()
+            .id
+            .clone();
+        rename(
+            &root,
+            &workspace_id,
+            "研究/候选.table.json",
+            "研究/改名.table.json",
+            &db,
+        )
+        .unwrap();
+        move_entry(&root, &workspace_id, "研究", "归档", &db).unwrap();
+        let moved = scan(&root, &workspace_id, &db).unwrap();
+        assert_eq!(
+            moved
+                .files
+                .iter()
+                .find(|file| file.path == "归档/改名.table.json")
+                .unwrap()
+                .id,
+            file_id
+        );
+        let path = resolve(&root, "归档/改名.table.json", true).unwrap();
+        let base = read(&path).unwrap();
+        assert!(matches!(
+            write(&path, "changed", &base.hash).unwrap(),
+            WriteResult::Saved { .. }
+        ));
+        assert!(matches!(
+            write(&path, "stale", &base.hash).unwrap(),
+            WriteResult::Conflict { .. }
+        ));
+        assert_eq!(
+            duplicate_entry(&root, "归档/改名.table.json").unwrap(),
+            "归档/改名 副本.table.json"
+        );
+        assert_eq!(
+            read(&root.join("归档/改名 副本.table.json"))
+                .unwrap()
+                .content,
+            "changed"
+        );
+        assert!(!source.exists());
+        assert!(resolve(&root, "../outside.table.json", false).is_err());
     }
 
     #[test]

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch, type Component } from 'vue';
-import { ArrowLeft, BookOpen, Check, ChevronRight, File, FileText, FolderOpen, LockKeyhole } from 'lucide-vue-next';
-import { basename, isMarkdown, isWorkspaceInternalPath, parentPath, type FileEntry } from '@tano/protocol';
+import { ArrowLeft, BookOpen, Check, ChevronRight, File, FileText, Table2, FolderOpen, LockKeyhole } from 'lucide-vue-next';
+import { basename, isMarkdown, isDataTableFilePath, isWorkspaceInternalPath, parentPath, type FileEntry } from '@tano/protocol';
 import { butterflyPerchDirective, useButterflyController, type ButterflyPerch } from '../assistant/butterfly-vue';
 
 const vButterflyPerch = butterflyPerchDirective(useButterflyController());
@@ -35,8 +35,8 @@ const children = computed(() => props.entries
   .sort((a, b) => a.kind !== b.kind ? (a.kind === 'directory' ? -1 : 1)
     : a.name.localeCompare(b.name, 'zh-CN', { numeric: true })));
 const folderLabel = computed(() => folder.value ? basename(folder.value) : props.workspaceName);
-const fileLabel = (entry: FileEntry) => entry.kind === 'file' && isMarkdown(entry.path)
-  ? entry.name.replace(/\.(md|markdown)$/i, '') : entry.name;
+const fileLabel = (entry: FileEntry) => entry.kind === 'file' && (isMarkdown(entry.path) || isDataTableFilePath(entry.path))
+  ? entry.name.replace(/(\.table\.json|\.(md|markdown))$/i, '') : entry.name;
 
 function close(restoreFocus = false) {
   opened.value = false;
@@ -183,8 +183,8 @@ onBeforeUnmount(() => {
         @keydown.down.prevent.stop="show($event, part.path, part.current ? parentPath(part.path) : part.path)"
         @keydown.up.prevent.stop="show($event, part.path, part.current ? parentPath(part.path) : part.path)"
         @keydown.esc.stop.prevent="close(true)">
-        <component :is="part.current ? (isMarkdown(part.path) ? FileText : File) : FolderOpen" :size="14" />
-        <span>{{ part.current && isMarkdown(part.path) ? part.name.replace(/\.(md|markdown)$/i, '') : part.name }}</span>
+        <component :is="part.current ? (isDataTableFilePath(part.path) ? Table2 : isMarkdown(part.path) ? FileText : File) : FolderOpen" :size="14" />
+        <span>{{ part.current && (isMarkdown(part.path) || isDataTableFilePath(part.path)) ? part.name.replace(/(\.table\.json|\.(md|markdown))$/i, '') : part.name }}</span>
       </button>
     </template>
   </nav>
@@ -200,7 +200,7 @@ onBeforeUnmount(() => {
         <button v-for="entry in children" :key="entry.id" type="button" class="breadcrumb-menu-entry"
           :class="{ 'is-current': entry.path === path }" role="menuitem" :data-path="entry.path"
           :title="entry.name" :aria-current="entry.path === path ? 'page' : undefined" @click="choose(entry)">
-          <component :is="entry.kind === 'directory' ? FolderOpen : isMarkdown(entry.path) ? FileText : File" :size="17" :stroke-width="1.6" />
+          <component :is="entry.kind === 'directory' ? FolderOpen : isDataTableFilePath(entry.path) ? Table2 : isMarkdown(entry.path) ? FileText : File" :size="17" :stroke-width="1.6" />
           <span>{{ fileLabel(entry) }}</span>
           <ChevronRight v-if="entry.kind === 'directory'" :size="14" class="breadcrumb-menu-trailing" />
           <Check v-else-if="entry.path === path" :size="14" class="breadcrumb-menu-trailing" />
