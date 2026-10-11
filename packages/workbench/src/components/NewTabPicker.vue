@@ -9,12 +9,13 @@ import {
   FileText,
   Search,
   X,
+  Table2,
 } from 'lucide-vue-next';
-import { basename, isMarkdown, isWorkspaceInternalPath } from '@tano/protocol';
+import { basename, isMarkdown, isDataTableFilePath, isWorkspaceInternalPath } from '@tano/protocol';
 import type { FileEntry } from '@tano/protocol';
 import { useWorkspaceStore } from '../stores/workspace';
 
-const emit = defineEmits<{ close: []; 'new-document': [] }>();
+const emit = defineEmits<{ close: []; 'new-document': []; 'new-table': [] }>();
 const store = useWorkspaceStore();
 const query = ref('');
 const input = ref<HTMLInputElement>();
@@ -23,15 +24,17 @@ const selected = ref(0);
 const opening = ref(false);
 const error = ref('');
 const previousFocus = document.activeElement as HTMLElement | null;
-const title = (path: string) => basename(path).replace(/\.(md|markdown)$/i, '');
-const openIds = computed(() => new Set(store.documents.map((doc) => doc.id)));
+const title = (path: string) => basename(path).replace(/(\.table\.json|\.(md|markdown))$/i, '');
+const openIds = computed(
+  () => new Set(store.tabs.map((tab) => (tab.id.startsWith('table:') ? tab.id.slice(6) : tab.id))),
+);
 const matches = computed(() => {
   const terms = query.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   return (store.workspace?.files ?? [])
     .filter(
       (file) =>
         file.kind === 'file' &&
-        isMarkdown(file.path) &&
+        (isMarkdown(file.path) || isDataTableFilePath(file.path)) &&
         !isWorkspaceInternalPath(file.path) &&
         terms.every((term) => file.path.toLocaleLowerCase().includes(term)),
     )
@@ -45,6 +48,7 @@ const matches = computed(() => {
 type Choice = { id: string; label: string; group: string; file?: FileEntry };
 const choices = computed<Choice[]>(() => [
   ...(!store.workspace?.readOnly ? [{ id: 'create', label: '新建文档', group: '' }] : []),
+  ...(!store.workspace?.readOnly ? [{ id: 'create-table', label: '新建数据表', group: '' }] : []),
   ...matches.value.slice(0, 60).map((file) => ({
     id: `file-${file.id}`,
     label: title(file.path),
@@ -54,8 +58,12 @@ const choices = computed<Choice[]>(() => [
 ]);
 
 watch([query, choices], () => {
-  selected.value =
-    query.value.trim() && choices.value[0]?.id === 'create' && choices.value.length > 1 ? 1 : 0;
+  selected.value = query.value.trim()
+    ? Math.max(
+        0,
+        choices.value.findIndex((choice) => !!choice.file),
+      )
+    : 0;
 });
 watch(
   () => store.workspace?.id,
@@ -68,6 +76,10 @@ onBeforeUnmount(() => {
 
 async function choose(choice: Choice) {
   if (opening.value || store.busy) return;
+  if (choice.id === 'create-table') {
+    emit('new-table');
+    return;
+  }
   if (!choice.file) {
     emit('new-document');
     return;
@@ -75,9 +87,15 @@ async function choose(choice: Choice) {
   opening.value = true;
   error.value = '';
   try {
-    await store.openFile(choice.file);
-    if (store.activeId === choice.file.id) emit('close');
-    else error.value = store.fatal || '无法打开这篇文档，请重试。';
+    if (choice.file) await store.openFile(choice.file);
+    if (
+      store.activeId ===
+      (choice.file && isDataTableFilePath(choice.file.path)
+        ? `table:${choice.file.id}`
+        : choice.file?.id)
+    )
+      emit('close');
+    else error.value = store.fatal || '无法打开此内容，请重试。';
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : String(cause);
   } finally {
@@ -167,7 +185,18 @@ async function onSearchKeydown(event: KeyboardEvent) {
               @focus="selected = index"
               @click="choose(choice)"
             >
-              <component :is="choice.file ? FileText : FilePlus2" :size="18" :stroke-width="1.6" />
+              <component
+                :is="
+                  (choice.file && isDataTableFilePath(choice.file.path)) ||
+                  choice.id === 'create-table'
+                    ? Table2
+                    : choice.file
+                      ? FileText
+                      : FilePlus2
+                "
+                :size="18"
+                :stroke-width="1.6"
+              />
               <span class="new-tab-choice-title">{{ choice.label }}</span>
               <span v-if="choice.file" class="new-tab-choice-path">{{
                 choice.file.path.includes('/')

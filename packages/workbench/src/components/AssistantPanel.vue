@@ -4,13 +4,14 @@ import { AlignLeft, ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRi
 import MarkdownEditor from '@tano/editor';
 import type { AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSource, ReferenceIdentity } from '@tano/protocol';
 import { useAssistantStore } from '../assistant/store';
-import { assistantToolLabel } from '../assistant/results';
+import { assistantToolLabel, assistantMessageParts } from '../assistant/results';
 import type { AssistantDisplayMode } from '../assistant/store';
 import { useWorkspaceStore } from '../stores/workspace';
 import AssistantChangeList from './AssistantChangeList.vue';
 import AssistantModelIcon from './AssistantModelIcon.vue';
 import AssistantGenerationHint from './AssistantGenerationHint.vue';
 import AssistantButterfly from './AssistantButterfly.vue';
+import AssistantQuestionCard from './AssistantQuestionCard.vue';
 
 const assistant = useAssistantStore();
 const workspace = useWorkspaceStore();
@@ -369,6 +370,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', resized);
 });
 watch(() => assistant.prompt, () => { void nextTick(resizeInput); });
+watch(() => assistant.pendingUserInput?.request.id, (id, previous) => {
+  if (id) closePopover();
+  void nextTick(() => { scrollToLatest(); resizeInput(); if (!id && previous) textarea.value?.focus({ preventScroll: true }); });
+});
 watch(() => [assistant.files.length, assistant.selection?.text], () => { void nextTick(updateMenuPosition); });
 watch(section, () => { closePopover(); void nextTick(() => { resizeInput(); scrollToLatest(); }); });
 watch(() => assistant.opened, open => { if (open) void nextTick(() => textarea.value?.focus()); });
@@ -398,7 +403,8 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
         <button class="assistant-title" :title="title" aria-label="打开助手会话记录" :aria-expanded="popover === 'history'" aria-controls="assistant-history-options" data-assistant-popover @click="togglePopover('history', $event)"><span>{{ title }}</span><ChevronDown :size="16" /></button>
       </h2>
       <template v-if="section === 'conversation'">
-        <button class="icon-button" title="新建会话" aria-label="新建助手会话" :disabled="assistant.busy || assistant.applying" @click="startNewSession"><MessageCirclePlus :size="18" /></button>
+        <button v-if="assistant.pendingUserInput" class="icon-button" title="停止询问" aria-label="停止助手生成" @click="assistant.stop()"><Square :size="16" /></button>
+        <button v-else class="icon-button" title="新建会话" aria-label="新建助手会话" :disabled="assistant.busy || assistant.applying" @click="startNewSession"><MessageCirclePlus :size="18" /></button>
       </template>
       <button class="icon-button assistant-display-mode" title="切换助手显示模式" aria-label="切换助手显示模式" :aria-expanded="popover === 'mode'" aria-controls="assistant-display-options" data-assistant-popover @click="togglePopover('mode', $event)"><component :is="displayModeIcon" :size="18" :stroke-width="1.5" /></button>
       <div v-if="popover === 'mode'" id="assistant-display-options" class="assistant-popover assistant-mode-menu" role="menu" aria-label="助手显示模式">
@@ -466,7 +472,10 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
         <article v-for="message in displayed" :key="message.id" class="assistant-message" :class="`assistant-message-${message.role}`" :aria-label="message.role === 'user' ? '你的消息' : '助手回答'">
           <div v-if="message.role === 'user' && messageSources.get(message.id)?.length" class="assistant-citations assistant-attachments" aria-label="已发送的参考文档"><button v-for="source in messageSources.get(message.id)" :key="source.id" :title="source.path" @click="openSource(source)"><FileText :size="12" />{{ source.path }}</button></div>
           <div v-if="message.role === 'user'" class="assistant-message-text">{{ message.content }}</div>
-          <div v-else-if="message.content" class="assistant-answer"><MarkdownEditor :model-value="answerMarkdown(message)" :document-id="`assistant-${message.id}`" :reference-targets="assistant.session?.workspaceId === workspace.workspace?.id ? workspace.referenceTargets : []" readonly :reveal-markdown="false" open-links-on-tap :resolve-image="() => null" @open-link="sourceLink(message, $event)" @open-reference="openAnswerReference" @ready="answerReady" @error="notice = $event" /></div>
+          <template v-else v-for="(part, index) in assistantMessageParts(message)" :key="`${message.id}:${index}`">
+            <template v-if="part.kind === 'input'"><AssistantQuestionCard v-if="part.input.id !== assistant.pendingUserInput?.request.id" :request="part.input" /></template>
+            <div v-else-if="part.content.trim()" class="assistant-answer"><MarkdownEditor :model-value="answerMarkdown({ ...message, content: part.content })" :document-id="`assistant-${message.id}-${index}`" :reference-targets="assistant.session?.workspaceId === workspace.workspace?.id ? workspace.referenceTargets : []" readonly :reveal-markdown="false" open-links-on-tap :resolve-image="() => null" @open-link="sourceLink(message, $event)" @open-reference="openAnswerReference" @ready="answerReady" @error="notice = $event" /></div>
+          </template>
           <p v-if="message.error || message.state === 'interrupted'" class="assistant-message-error">{{ message.error ?? '上次运行已中断；不会自动恢复执行' }}</p>
           <details v-if="message.toolResults?.some(result => result.status === 'failed')" class="assistant-tool-errors">
             <summary>工具执行记录：{{ message.toolResults.filter(result => result.status === 'failed').length }} 次失败</summary>
@@ -485,19 +494,25 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
             <button class="icon-button" title="复制回答" aria-label="复制助手回答" @click="copy(message)"><Copy :size="14" /></button>
             <button v-if="assistant.replyTarget" class="icon-button" :title="`填写回复草稿：${assistant.replyTarget.label}`" aria-label="将助手回答填入回复草稿" :disabled="assistant.busy || assistant.applying || !message.content" @click="draftReply(message)"><Reply :size="14" /></button>
             <button class="icon-button" title="保存为文档" aria-label="将助手回答保存为文档" :disabled="assistant.busy || assistant.applying || !message.content" @click="exportMessage = message"><FilePlus2 :size="14" /></button>
-            <small v-if="message.usage && (message.usage.input || message.usage.output)">{{ message.usage.input }} 输入 / {{ message.usage.output }} 输出 token</small>
-            <small v-if="message.timing"><template v-if="message.timing.firstContentMs !== undefined">首段 {{ (message.timing.firstContentMs / 1000).toFixed(1) }} 秒 · </template>用时 {{ (message.timing.totalMs / 1000).toFixed(1) }} 秒</small>
+            <small v-if="message.usage && (message.usage.input || message.usage.output) || message.timing" class="assistant-message-stats" aria-label="回答统计">
+              <span v-if="message.usage && (message.usage.input || message.usage.output)" class="assistant-stat-group" title="输入与输出的 token 用量">
+                <span>输入 {{ message.usage.input.toLocaleString('zh-CN') }}</span><span aria-hidden="true">·</span><span>输出 {{ message.usage.output.toLocaleString('zh-CN') }} token</span>
+              </span>
+              <span v-if="message.timing" class="assistant-stat-group">
+                <template v-if="message.timing.firstContentMs !== undefined"><span>首段 {{ (message.timing.firstContentMs / 1000).toFixed(1) }} 秒</span><span aria-hidden="true">·</span></template><span>总计 {{ (message.timing.totalMs / 1000).toFixed(1) }} 秒</span>
+              </span>
+            </small>
           </div>
         </article>
         <div v-if="assistant.busy || assistant.applying" class="assistant-progress">
-          <span class="assistant-progress-status" role="status"><LoaderCircle :size="14" class="spinning" /><span>{{ assistant.applying ? '正在处理修改' : assistant.progress }}</span></span>
-          <AssistantGenerationHint v-if="assistant.busy && !assistant.applying" :connection-kind="assistant.connection?.kind" />
+          <span class="assistant-progress-status" role="status"><LoaderCircle v-if="!assistant.pendingUserInput" :size="14" class="spinning" /><span>{{ assistant.applying ? '正在处理修改' : assistant.progress }}</span></span>
+          <AssistantGenerationHint v-if="assistant.busy && !assistant.applying && !assistant.pendingUserInput" :connection-kind="assistant.connection?.kind" />
         </div>
       </div>
       <button v-if="showLatest" class="assistant-jump-latest" title="回到最新消息" aria-label="滚动到最新消息" @click="scrollToLatest"><ArrowDown :size="20" /></button>
       </div>
       <form v-if="exportMessage" class="assistant-export" @submit.prevent="exportAnswer"><label>文档路径<input v-model="exportPath" required maxlength="220" /></label><button class="secondary-button" type="button" @click="exportMessage = undefined">取消</button><button class="primary-button"><FilePlus2 :size="14" />生成保存建议</button></form>
-      <div class="assistant-composer-area">
+      <div class="assistant-composer-area" :class="{ 'assistant-composer-area-question': assistant.pendingUserInput }">
         <div v-if="popover === 'model'" id="assistant-model-options" class="assistant-popover assistant-model-menu" :style="menuPosition" aria-label="模型选择">
           <div class="assistant-popover-heading">
             <button v-if="modelView !== 'main'" class="icon-button" title="返回模型列表" aria-label="返回模型列表" @click="setModelView('main')"><ArrowLeft :size="16" /></button>
@@ -556,7 +571,8 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
           </div>
           <p class="assistant-menu-help">用于当前对话。可用强度取决于所选模型。</p>
         </div>
-      <form class="assistant-composer" @submit.prevent="closePopover(); assistant.send()">
+      <AssistantQuestionCard v-if="assistant.pendingUserInput" :key="assistant.pendingUserInput.request.id" :request="assistant.pendingUserInput.request" />
+      <form v-else class="assistant-composer" @submit.prevent="closePopover(); assistant.send()">
         <div v-if="assistant.files.length || assistant.selection" class="assistant-contexts">
           <button v-for="id in assistant.files" :key="id" type="button" class="assistant-context" :disabled="assistant.busy" :title="`移除参考：${workspace.workspace?.files.find(file => file.id === id)?.path ?? id}`" @click="toggleSource(id)"><FileText :size="13" /><span>{{ workspace.workspace?.files.find(file => file.id === id)?.name ?? '已移除文档' }}</span><X :size="12" /></button>
           <div v-if="assistant.selection" class="assistant-selection"><span>{{ assistant.selection.text }}</span><button type="button" class="icon-button" aria-label="清除助手选区" title="清除选区" :disabled="assistant.busy" @click="assistant.selection = null"><X :size="13" /></button></div>
@@ -685,13 +701,15 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
 .assistant-proposal-actions .icon-button { padding: 0; }
 .assistant-message-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 11px; color: var(--muted); }
 .assistant-message-actions .icon-button { width: 28px; height: 28px; border-radius: 8px; }
-.assistant-message-actions small { max-width: 100%; margin-left: auto; font-size: 10px; overflow-wrap: anywhere; opacity: 0; transition: opacity 120ms ease; }
-.assistant-message-assistant:hover .assistant-message-actions small,
-.assistant-message-assistant:has(:focus-visible) .assistant-message-actions small { opacity: 1; }
-@media (hover: none) { .assistant-message-actions small { opacity: 1; } }
+.assistant-message-stats { flex: 1 1 240px; min-width: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 2px 12px; margin-left: auto; font-size: 11px; line-height: 18px; font-variant-numeric: tabular-nums; opacity: 0; transition: opacity 120ms ease; }
+.assistant-stat-group { display: inline-flex; align-items: baseline; gap: 4px; white-space: nowrap; }
+.assistant-message-assistant:hover .assistant-message-stats,
+.assistant-message-assistant:has(:focus-visible) .assistant-message-stats { opacity: 1; }
+@media (hover: none) { .assistant-message-stats { opacity: 1; } }
 .assistant-jump-latest { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--text); color: var(--paper); box-shadow: 0 3px 10px rgb(0 0 0 / 12%); }
 .assistant-jump-latest:hover { color: var(--paper); background: var(--text-secondary); }
 .assistant-composer-area { position: relative; flex: 0 0 auto; min-width: 0; margin: 4px 18px 18px; }
+.assistant-composer-area-question { display: flex; flex-direction: column; flex-shrink: 1; min-height: 0; max-height: min(60%, 460px); }
 .assistant-composer { --assistant-composer-muted: color-mix(in srgb, var(--muted) 80%, var(--paper)); --assistant-composer-placeholder: color-mix(in srgb, var(--muted) 45%, var(--paper)); --assistant-composer-line: color-mix(in srgb, var(--line) 65%, var(--paper)); padding: 12px 12px 9px; border: 1px solid var(--assistant-composer-line); border-radius: 18px; background: var(--paper); box-shadow: 0 2px 6px rgb(0 0 0 / 2%); transition: border-color 120ms ease; }
 .assistant-composer:focus-within { border-color: color-mix(in srgb, var(--line) 90%, var(--paper)); }
 :global(:root[data-theme='dark'] .assistant-composer) { --assistant-composer-placeholder: var(--assistant-composer-muted); }

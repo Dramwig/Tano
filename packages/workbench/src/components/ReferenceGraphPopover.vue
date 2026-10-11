@@ -988,7 +988,7 @@ onBeforeUnmount(() => {
   outline-offset: -2px;
 }
 .reference-graph-edges path {
-  stroke: #c5ccd1;
+  stroke: var(--graph-edge, #c5ccd1);
   fill: none;
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
@@ -1012,14 +1012,14 @@ onBeforeUnmount(() => {
   fill: transparent;
 }
 .reference-graph-node-dot {
-  fill: #626971;
+  fill: var(--graph-node, #626971);
   transition: fill 120ms;
 }
 .reference-graph-node.reference-graph-center .reference-graph-node-dot {
   fill: var(--green);
 }
 .reference-graph-node.orphan .reference-graph-node-dot {
-  fill: #b2b8be;
+  fill: var(--graph-orphan, #b2b8be);
 }
 .reference-graph-node-halo {
   fill: var(--green);

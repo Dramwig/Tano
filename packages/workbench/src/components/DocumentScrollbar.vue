@@ -132,10 +132,10 @@ onBeforeUnmount(() => finish());
 <style scoped>
 .document-scrollbar { position: relative; flex: 0 0 12px; width: 12px; min-height: 0; }
 .document-scrollbar-track { position: absolute; inset: 0; touch-action: none; user-select: none; }
-.document-scrollbar-thumb { position: absolute; top: 0; left: 2px; width: 8px; border-radius: 6px; background: var(--control-border); }
+.document-scrollbar-thumb { position: absolute; top: 0; left: 2px; width: 8px; border-radius: 6px; background: var(--scrollbar-thumb, var(--control-border)); }
 .document-scrollbar-track:hover .document-scrollbar-thumb,
 .document-scrollbar-track:focus-visible .document-scrollbar-thumb,
-.document-scrollbar.is-dragging .document-scrollbar-thumb { background: var(--muted); }
+.document-scrollbar.is-dragging .document-scrollbar-thumb { background: var(--scrollbar-thumb-hover, var(--muted)); }
 .document-scrollbar-track:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
 @media (forced-colors: active) {
   .document-scrollbar-thumb { background: ButtonText; }

@@ -6,10 +6,17 @@ import {
   Folder,
   FolderOpen,
   FileText,
+  Table2,
   File,
   Bot,
 } from 'lucide-vue-next';
-import { isMarkdown, parentPath, isWorkspaceInternalPath, type FileEntry } from '@tano/protocol';
+import {
+  isDataTableFilePath,
+  isMarkdown,
+  parentPath,
+  isWorkspaceInternalPath,
+  type FileEntry,
+} from '@tano/protocol';
 import FileTreeRename from './FileTreeRename.vue';
 
 const props = withDefaults(
@@ -146,7 +153,8 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
           'context-target': file.id === contextSelected,
           dragging: file.id === draggedId,
           'drop-target': file.kind === 'directory' && file.path === dropTarget,
-          attachment: file.kind === 'file' && !isMarkdown(file.path),
+          attachment:
+            file.kind === 'file' && !isMarkdown(file.path) && !isDataTableFilePath(file.path),
         }"
         :draggable="file.id !== renamingId && (canDrag?.(file) ?? false)"
         :style="{ paddingLeft: `${4 + depth * 17}px` }"
@@ -174,11 +182,13 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
                 ? isCollapsed(file.path)
                   ? Folder
                   : FolderOpen
-                : file.name === 'AGENTS.md'
-                  ? Bot
-                  : isMarkdown(file.path)
-                    ? FileText
-                    : File
+                : isDataTableFilePath(file.path)
+                  ? Table2
+                  : file.name === 'AGENTS.md'
+                    ? Bot
+                    : isMarkdown(file.path)
+                      ? FileText
+                      : File
             "
             :size="16"
             :stroke-width="1.6"
@@ -197,7 +207,9 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
           :rename="renameEntry"
           @finish="emit('renameFinished', file)"
         />
-        <span v-else class="tree-label">{{ file.name.replace(/\.(md|markdown)$/i, '') }}</span>
+        <span v-else class="tree-label">{{
+          file.name.replace(/(\.table\.json|\.(md|markdown))$/i, '')
+        }}</span>
         <span v-if="file.name === 'AGENTS.md'" class="agent-file-dot" />
       </component>
       <FileTree

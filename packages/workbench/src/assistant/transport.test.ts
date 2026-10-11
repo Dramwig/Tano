@@ -1,11 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ASSISTANT_PROTOCOL_VERSION } from '@tano/protocol';
-import { nativeAssistantTransport } from './transport';
-import { AssistantStream } from './engine';
+import { demoAssistantTransport, nativeAssistantTransport } from './transport';
+import { AssistantStream, runAssistant } from './engine';
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke, Channel: class { onmessage?: unknown } }));
 const connection = { id: 'connection', name: 'test', endpoint: 'https://example.com/v1', tools: true, maxOutputTokens: 4096 };
+
+describe('draft clarification in the browser demo', () => {
+  it('keeps the document unchanged when the topic is skipped', async () => {
+    const proposal = vi.fn(), execute = vi.fn();
+    let text = '';
+    await runAssistant({ transport: demoAssistantTransport(), connectionId: 'demo', model: '模拟响应', tools: true,
+      workspaceId: 'workspace', runId: 'run', history: [], prompt: '开始草稿', signal: new AbortController().signal,
+      sources: [{ id: 'S1', workspaceId: 'workspace', fileId: 'abc123', path: '新建文档 3.md', content: '', hash: 'empty', origin: 'draft' }],
+      delta: value => { text += value; }, progress: () => {}, proposal, execute,
+      askUser: async questions => questions.map(question => ({ questionId: question.id, answer: question.id === 'format' ? '完整草稿' : null })),
+    });
+    expect(proposal).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+    expect(text).toContain('还不知道这篇文档要写什么');
+  });
+});
 
 describe('native assistant protocol compatibility', () => {
   beforeEach(() => { invoke.mockReset(); });

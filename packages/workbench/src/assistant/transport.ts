@@ -1,4 +1,5 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
+import { splitFrontmatter } from '@tano/editor/syntax';
 import { ASSISTANT_PROTOCOL_VERSION, parseAssistantSession } from '@tano/protocol';
 import type { AssistantConnection, AssistantRequest, AssistantSession, AssistantSource, AssistantTransport } from '@tano/protocol';
 
@@ -117,7 +118,29 @@ export function demoAssistantTransport(): AssistantTransport {
       const question = sourceMessage.slice(0, sourceMessage.indexOf(separator));
       const direct = request.tools?.some(tool => tool.function.name === 'edit_document') && !/建议|方案|先.*看|不要|暂不|仅分析|suggest|proposal|do not|don't/i.test(question);
       const frames: unknown[] = [];
-      if (!toolResponse && request.tools && source && /改|整理|润色|建议|测试/.test(sourceMessage.slice(0, sourceMessage.indexOf(separator)))) {
+      const answeredQuestions = toolResponse && request.messages.some(message => message.tool_calls?.some(call => call.id === last.tool_call_id && call.function.name === 'ask_user'));
+      if (!toolResponse && question.trim() === '开始草稿' && request.tools?.some(tool => tool.function.name === 'ask_user')) {
+        frames.push({ choices: [{ index: 0, delta: { content: '我会先了解这篇文档的目标，再根据你的回答安排内容。你也可以跳过暂时不确定的问题。' } }] });
+        frames.push({ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: 'demo_questions', type: 'function', function: {
+          name: 'ask_user', arguments: JSON.stringify({ questions: [
+            { id: 'topic', question: '这篇文档想写什么？' },
+            { id: 'audience', question: '这篇文档写给谁看？', options: ['自己', '团队', '客户'] },
+            { id: 'goal', question: '你希望读者了解什么，或采取什么行动？' },
+            { id: 'format', question: '你想要完整草稿，还是先看大纲？', options: ['完整草稿', '先看大纲'] },
+            { id: 'context', question: '有哪些笔记、资料或要求需要参考？' },
+          ] }),
+        } }] } }] });
+      }
+      if (answeredQuestions && source && !splitFrontmatter(source.content).body.trim()) {
+        const answers = JSON.parse(last.content ?? '{}').answers as { questionId: string; answer: string | null }[] | undefined;
+        const topic = answers?.find(item => item.questionId === 'topic')?.answer;
+        if (!topic) frames.push({ choices: [{ index: 0, delta: { content: '还不知道这篇文档要写什么，文档保持空白。你可以随时告诉我主题，我再继续起草。' } }] });
+        else frames.push({ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: 'demo_draft', type: 'function', function: {
+          name: direct ? 'edit_document' : 'propose_edit', arguments: JSON.stringify({ sourceId: source.id, oldText: source.content,
+            newText: `${splitFrontmatter(source.content).prefix}## 草稿（浏览器演示）\n\n主题：${topic}\n\n## 主要内容\n\n待补充\n\n## 下一步\n\n- [ ] 补充具体信息\n\n> 这是模拟草稿，用于演示询问用户后继续执行。\n`, reason: '根据用户回答演示初始化当前文档。' }),
+        } }] } }] });
+      }
+      if (!frames.length && !toolResponse && request.tools && source && /改|整理|润色|建议|测试/.test(sourceMessage.slice(0, sourceMessage.indexOf(separator)))) {
         const original = source.selection?.from !== undefined ? source.content.slice(source.selection.from, source.selection.to)
           : source.content.split('\n').find(line => line.trim() && !line.startsWith('#') && source.content.indexOf(line) === source.content.lastIndexOf(line));
         if (original) {

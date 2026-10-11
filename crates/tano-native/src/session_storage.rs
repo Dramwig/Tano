@@ -25,6 +25,8 @@ pub struct WorkspaceSession {
     active_id: String,
     documents: Vec<SessionDocument>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    data_tables: Vec<SessionTableDraft>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     tabs: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     layout: Option<serde_json::Value>,
@@ -35,6 +37,17 @@ pub struct SessionDocument {
     path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     draft: Option<Draft>,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionTableDraft {
+    id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    file_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+    content: String,
+    base: DraftBase,
 }
 #[derive(Serialize, Deserialize)]
 pub struct Draft {
@@ -209,6 +222,7 @@ fn plugin_tab(id: &str) -> bool {
 fn validate(session: &WorkspaceSession) -> Result<(), String> {
     if session.version != 1
         || session.documents.len() > 200
+        || session.data_tables.len() > 200
         || session.tabs.len() > 200
         || session.active_id.len()
             > if plugin_tab(&session.active_id) {
@@ -244,6 +258,31 @@ fn validate(session: &WorkspaceSession) -> Result<(), String> {
         }
     }
     let mut tab_ids = std::collections::HashSet::new();
+    let mut table_ids = std::collections::HashSet::new();
+    for table in &session.data_tables {
+        if table.id.len() != 6
+            || !table
+                .id
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+            || table.file_id.as_ref().is_some_and(|id| {
+                id.len() != 6
+                    || !id
+                        .bytes()
+                        .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+            })
+            || table.path.as_ref().is_some_and(|path| {
+                storage::validate_relative_path(path, storage::is_workspace_data_path(path))
+                    .is_err()
+            })
+            || !table_ids.insert(table.file_id.as_ref().unwrap_or(&table.id))
+            || table.content.len() > 8 * 1024 * 1024
+            || table.base.content.len() > 8 * 1024 * 1024
+            || storage::hash(table.base.content.as_bytes()) != table.base.hash
+        {
+            return Err("数据表恢复草稿身份或基线无效".into());
+        }
+    }
     if session.tabs.iter().any(|id| {
         id.is_empty()
             || id.len() > if plugin_tab(id) { 128 } else { 100 }
@@ -252,6 +291,13 @@ fn validate(session: &WorkspaceSession) -> Result<(), String> {
                 && id != "view:graph"
                 && id != "view:plugins"
                 && id != "view:calendar"
+                && id != "tables"
+                && !id.strip_prefix("table:").is_some_and(|table_id| {
+                    table_id.len() == 6
+                        && table_id
+                            .bytes()
+                            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+                })
                 && !plugin_tab(id)
                 && !id.strip_prefix("attachment:").is_some_and(|file_id| {
                     !file_id.is_empty()
@@ -529,6 +575,7 @@ mod tests {
                     },
                 }),
             }],
+            data_tables: vec![],
             tabs: vec!["file-id".into(), "blank:test".into()],
             layout: None,
         }
@@ -609,6 +656,41 @@ mod tests {
         saved.tabs.push("attachment:".into());
         assert!(validate(&saved).is_err());
     }
+    #[test]
+    fn restores_table_tabs_and_validated_table_drafts() {
+        let data = tempfile::tempdir().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut saved = session();
+        saved.tabs.extend(["tables".into(), "table:a12345".into()]);
+        saved.active_id = "table:a12345".into();
+        let content = r#"{"version":1,"id":"a12345","rows":[]}"#;
+        saved.data_tables.push(SessionTableDraft {
+            id: "a12345".into(),
+            file_id: Some("b12345".into()),
+            path: Some("研究/候选.table.json".into()),
+            content: "unsaved table draft".into(),
+            base: DraftBase {
+                content: content.into(),
+                hash: storage::hash(content.as_bytes()),
+                modified: 1,
+            },
+        });
+        save(data.path(), &id, &saved).unwrap();
+        let restored = load(data.path(), &id).unwrap().unwrap();
+        assert_eq!(restored.active_id, "table:a12345");
+        assert_eq!(restored.data_tables[0].content, "unsaved table draft");
+        assert_eq!(restored.data_tables[0].file_id.as_deref(), Some("b12345"));
+        assert_eq!(
+            restored.data_tables[0].path.as_deref(),
+            Some("研究/候选.table.json")
+        );
+        saved.data_tables[0].base.hash = "stale".into();
+        assert!(validate(&saved).is_err());
+        saved.data_tables.clear();
+        saved.tabs.push("table:../secret".into());
+        assert!(validate(&saved).is_err());
+    }
+
     #[test]
     fn restores_plugin_tabs_without_losing_document_recovery() {
         let data = tempfile::tempdir().unwrap();

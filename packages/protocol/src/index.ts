@@ -11,6 +11,7 @@ export * from './workspace-paths';
 export * from './comments';
 export * from './suggestions';
 export * from './document-layout';
+export * from './data-tables';
 
 export interface FileEntry {
   id: string;
@@ -78,7 +79,8 @@ export interface WorkspaceAdapter {
   search?(workspaceId: string, query: string): Promise<SearchHit[]>;
   read(path: string): Promise<FileSnapshot>;
   write(path: string, content: string, expectedHash: string): Promise<WriteResult>;
-  create(path: string, content: string): Promise<void>;
+  /** May return the workspace including the confirmed creation to avoid a redundant refresh. */
+  create(path: string, content: string): Promise<void | Workspace>;
   createFolder(path: string): Promise<void>;
   rename(from: string, to: string): Promise<void>;
   move(from: string, to: string, kind: FileEntry['kind']): Promise<void>;
@@ -113,6 +115,13 @@ export interface WorkspaceSession {
   documents: SessionDocument[];
   tabs?: string[];
   layout?: WorkspaceLayout;
+  dataTables?: {
+    id: string;
+    fileId?: string;
+    path?: string;
+    content: string;
+    base: FileSnapshot;
+  }[];
 }
 
 export interface WorkspacePane {

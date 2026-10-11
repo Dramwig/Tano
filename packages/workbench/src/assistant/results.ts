@@ -1,10 +1,32 @@
-import type { AssistantMessage, AssistantWireMessage } from '@tano/protocol';
+import type { AssistantMessage, AssistantUserInput, AssistantWireMessage } from '@tano/protocol';
+
+export function assistantMessageParts(message: AssistantMessage) {
+  const parts: ({ kind: 'text'; content: string } | { kind: 'input'; input: AssistantUserInput })[] = [];
+  let offset = 0;
+  for (const input of message.userInputs ?? []) {
+    if (input.contentOffset > offset) parts.push({ kind: 'text', content: message.content.slice(offset, input.contentOffset) });
+    parts.push({ kind: 'input', input });
+    offset = input.contentOffset;
+  }
+  if (offset < message.content.length) parts.push({ kind: 'text', content: message.content.slice(offset) });
+  return parts;
+}
 
 /** Keep the model's prose separate from the application's current review state. */
 export function assistantHistory(messages: readonly AssistantMessage[]): AssistantWireMessage[] {
-  return messages.slice(-16).map(message => message.role === 'user'
-    ? { role: 'user', content: message.content }
-    : { role: 'assistant', content: JSON.stringify({ answer: message.content, execution: {
+  return messages.slice(-16).flatMap<AssistantWireMessage>(message => {
+    if (message.role === 'user') return [{ role: 'user', content: message.content }];
+    const history: AssistantWireMessage[] = [];
+    for (const part of assistantMessageParts(message)) {
+      if (part.kind === 'text') history.push({ role: 'assistant', content: part.content });
+      else if (part.input.status === 'answered') history.push({ role: 'user', content: JSON.stringify({
+        questions: part.input.questions, answers: part.input.answers,
+      }) });
+    }
+    // Include actual operation receipts even when a message only asked questions.
+    const last = history.at(-1);
+    const answer = last?.role === 'assistant' ? history.pop()!.content : '';
+    history.push({ role: 'assistant', content: JSON.stringify({ answer, execution: {
       state: message.state ?? 'unknown',
       ...(message.error ? { error: message.error.slice(0, 2000) } : {}),
       // Null distinguishes old conversations without receipts from a verified empty list.
@@ -18,9 +40,12 @@ export function assistantHistory(messages: readonly AssistantMessage[]): Assista
           ? null : proposal.status === 'applied',
       })),
     } }) });
+    return history;
+  });
 }
 
 const toolLabels: Record<string, string> = {
+  ask_user: '询问用户',
   propose_create: '创建文档建议', propose_edit: '修改文档建议',
   propose_delete: '删除文档建议', propose_rename: '重命名文档建议', propose_move: '移动文档建议',
   edit_document: '修改文档', create_document: '创建文档', delete_document: '删除文档', rename_document: '重命名文档', move_document: '移动文档',

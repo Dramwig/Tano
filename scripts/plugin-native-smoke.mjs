@@ -87,6 +87,7 @@ try {
   await acceptTaskInsights(page, expect, insights.canonical, join(artifacts, 'plugin-react-native.png'));
   console.log('React/Chart.js native acceptance passed: pagination, canvas, filters, events and cleanup.');
   const { canonical, integrity } = await buildPlugin(join(root, 'examples/plugins/git-inspector'));
+  await page.getByRole('button', { name: '仓库', exact: true }).click();
   await page.getByRole('button', { name: '打开插件标签页', exact: true }).click();
   await page.getByRole('button', { name: '导入插件', exact: true }).click();
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(canonical);
@@ -107,6 +108,7 @@ try {
   await expect(view.locator('pre')).toContainText('+native git smoke extra', { timeout: 15000 });
   await page.screenshot({ path: join(artifacts, 'plugin-native-webview.png') });
   expect(await readFile(join(workspace, '.git/index'))).toEqual(indexBefore);
+  await page.getByRole('button', { name: '仓库', exact: true }).click();
   await page.getByRole('button', { name: '打开插件标签页', exact: true }).click();
   const importer = await buildPlugin(join(root, 'examples/plugins/github-importer'));
   await page.getByRole('button', { name: '导入插件', exact: true }).click();
@@ -150,6 +152,7 @@ try {
     await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$pinia?._s.has('workspace'));
     await open(workspace);
     await page.waitForFunction(id => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$pinia?._s.get('workspace')?.workspace?.id === id, identity);
+    await page.getByRole('button', { name: '仓库', exact: true }).click();
     await page.getByRole('button', { name: '打开插件标签页', exact: true }).click();
     await expandConnections();
     await connection.getByLabel('连接插件', { exact: true }).selectOption('github-importer');

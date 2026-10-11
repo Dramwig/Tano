@@ -9,6 +9,54 @@ const encode = (frames: unknown[]) => new TextEncoder().encode(frames.map(frame 
 const responseFrames = (frames: unknown[]) => new TextEncoder().encode(frames.map(frame => `data: ${JSON.stringify(frame)}\r\n\r\n`).join(''));
 
 describe('assistant streaming and proposals', () => {
+  it('waits for model-selected questions and defers same-batch edits until the model sees the answers', async () => {
+    const questions = [{ id: 'scope', question: '先处理哪一节？', options: ['第一节', '第二节'] }];
+    let answer!: (value: { questionId: string; answer: string | null }[]) => void;
+    const askUser = vi.fn(() => new Promise<{ questionId: string; answer: string | null }[]>(resolve => { answer = resolve; }));
+    const execute = vi.fn(async () => ({ status: 'applied' as const, written: true }));
+    const requests: AssistantRequest[] = [];
+    const transport = { request: vi.fn(async (_id, request, _signal, chunk) => {
+      requests.push(structuredClone(request));
+      chunk(encode([{ choices: [{ index: 0, delta: requests.length === 1 ? {
+        content: '请确定范围。', tool_calls: [
+          { index: 0, ...call('ask_user', { questions }), id: 'ask' },
+          { index: 1, ...call('edit_document', { sourceId: 'S1', oldText: '论证一。', newText: '改写一。', reason: '按回答处理' }), id: 'edit' },
+        ],
+      } : { content: '已按回答暂停修改。' }, finish_reason: 'stop' }] }]));
+    }) } as unknown as AssistantTransport;
+    const run = runAssistant({ transport, connectionId: 'test', model: 'test', tools: true, workspaceId: 'workspace', runId: 'run',
+      sources: [source], history: [], prompt: '处理文档', signal: new AbortController().signal,
+      delta: () => {}, progress: () => {}, proposal: () => {}, askUser, execute });
+    await vi.waitFor(() => expect(askUser).toHaveBeenCalledWith(questions));
+    expect(execute).not.toHaveBeenCalled(); expect(requests).toHaveLength(1);
+    expect(requests[0].tools?.some(tool => tool.function.name === 'ask_user')).toBe(true);
+    answer([{ questionId: 'scope', answer: '先别修改' }]); await run;
+    expect(execute).not.toHaveBeenCalled();
+    const result = requests[1].messages.find(message => message.tool_call_id === 'ask');
+    expect(JSON.parse(result!.content!)).toEqual({ status: 'answered', answers: [{ questionId: 'scope', answer: '先别修改' }] });
+    expect(JSON.parse(requests[1].messages.find(message => message.tool_call_id === 'edit')!.content!).written).toBe(false);
+  });
+  it('rejects malformed questions without showing a form or inventing answers', async () => {
+    const askUser = vi.fn(), toolResult = vi.fn(); let round = 0;
+    const transport = { request: vi.fn(async (_id, _request, _signal, chunk) => {
+      chunk(encode([{ choices: [{ index: 0, delta: ++round === 1 ? { tool_calls: [{ index: 0, ...call('ask_user', { questions: [
+        { id: 'same', question: 'A' }, { id: 'same', question: 'B' },
+      ] }) }] } : { content: '问题格式无效。' }, finish_reason: 'stop' }] }]));
+    }) } as unknown as AssistantTransport;
+    await runAssistant({ transport, connectionId: 'test', model: 'test', tools: true, workspaceId: 'workspace', runId: 'run', sources: [], history: [],
+      prompt: '询问我', signal: new AbortController().signal, delta: () => {}, progress: () => {}, proposal: () => {}, askUser, toolResult });
+    expect(askUser).not.toHaveBeenCalled();
+    expect(toolResult).toHaveBeenCalledWith(expect.objectContaining({ name: 'ask_user', status: 'failed' }));
+  });
+  it('initializes a completely empty source while rejecting ambiguous empty replacements elsewhere', () => {
+    const tool = call('propose_edit', { sourceId: 'S1', oldText: '', newText: '## 草稿\n\n正文\n', reason: '初始化' });
+    expect(proposalFromTool(tool, [{ ...source, content: '' }], 'workspace', 'run')).toMatchObject({
+      kind: 'edit', fileId: source.fileId, base: '', content: '## 草稿\n\n正文\n',
+    });
+    for (const content of ['已有正文', '\n', '---\ntitle: 标题\n---\n'])
+      expect(() => proposalFromTool(tool, [{ ...source, content }], 'workspace', 'run')).toThrow('不唯一');
+    expect(() => proposalFromTool(tool, [{ ...source, content: '', selection: { text: '', from: 0, to: 0 } }], 'workspace', 'run')).toThrow('不唯一');
+  });
   it('creates file operation proposals only from full snapshots and validates destination paths', () => {
     for (const [name, destination, kind] of [['propose_delete', undefined, 'delete'], ['propose_rename', 'renamed.md', 'rename'], ['propose_move', 'notes/note.md', 'move']] as const) {
       const args = { sourceId: 'S1', reason: '用户要求', ...(destination ? { destination } : {}) };

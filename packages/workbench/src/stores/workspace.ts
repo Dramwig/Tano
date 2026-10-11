@@ -67,6 +67,9 @@ import { locateSuggestion } from '../document-suggestions';
 import { addWorkspaceWelcome, workspaceWelcomePath } from '../workspace-welcome';
 import { recordHelpCompleted, recordHelpPlanEdit } from '../help-checklist';
 import { createHelpEditQueue } from '../help-edit-queue';
+import { createDataTableController } from '../data-table-controller';
+import { isTableTab, TABLES_TAB_ID, tableTabId } from '../data-tables';
+import { isDataTableFilePath, dataTableName } from '@tano/protocol';
 
 export interface OpenDocument {
   id: string;
@@ -91,6 +94,7 @@ export interface DocumentTab {
   document?: OpenDocument;
   attachmentPreview: boolean;
   attachment?: FileEntry;
+  dataTable?: { name: string; dirty: boolean };
 }
 export interface Activity {
   id: string;
@@ -107,8 +111,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const runtime = useWorkbenchRuntime();
   const { adapter, mobile } = runtime;
   const views = shallowRef<ReadonlyMap<string, WorkbenchViewTab>>(new Map());
-  const isNavigationPage = (id: string) => id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID;
-  const isBuiltinTab = (id: string) => id.startsWith('blank:') || id.startsWith('attachment:') || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || id === CALENDAR_TAB_ID;
+  const isNavigationPage = (id: string) => id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || isTableTab(id);
+  const isBuiltinTab = (id: string) => id.startsWith('blank:') || id.startsWith('attachment:') || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || id === CALENDAR_TAB_ID || isTableTab(id);
   const isUtilityTab = (id: string) => isBuiltinTab(id) || views.value.has(id) || pluginViews.value.some(view => view.key === id && view.location === 'tab');
   function registerViews(definitions: readonly WorkbenchViewTab[]) {
     const next = new Map<string, WorkbenchViewTab>();
@@ -123,6 +127,31 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     views.value = next;
   }
   const workspace = ref<Workspace | null>(null);
+  const dataTables = createDataTableController({ adapter, workspace: () => workspace.value, serial,
+    refresh: async () => { workspace.value = await adapter.refresh(); } });
+  function dataTableFileId(id: string) {
+    if (workspace.value?.files.some(file => file.id === id && isDataTableFilePath(file.path))) return id;
+    // Resolve previously shared links, whose suffix was the table's embedded identity.
+    return dataTables.records.value.find(record => record.table.id === id)?.fileId ?? id;
+  }
+  async function openDataTable(id?: string, options?: { newTab?: boolean; historyIndex?: number }) {
+    if (!id) { createBlankTab(); return; }
+    await openPageTab(tableTabId(dataTableFileId(id)), options);
+  }
+  async function createDataTable(template: 'blank' | 'parts' = 'blank', parent = '') {
+    const id = await dataTables.create(template, undefined, parent);
+    await openDataTable(id);
+    return id;
+  }
+  async function renameDataTable(id: string, name: string) {
+    const file = workspace.value?.files.find(file => file.id === id && isDataTableFilePath(file.path));
+    if (!file) throw new Error('数据表文件已不存在');
+    const path = `${parentPath(file.path) ? `${parentPath(file.path)}/` : ''}${name.trim().normalize('NFC')}.table.json`;
+    if (!name.trim() || /[\\/]/.test(name)) throw new Error('请输入有效的文件名称');
+    const error = validatePath(path);
+    if (error) throw new Error(error);
+    if (path !== file.path) await renameEntry(file, path);
+  }
   const workspaceSettings = ref({ ...defaultWorkspaceSettings });
   const workspaceSettingsError = ref('');
   const workspaceSettingsSaving = ref(false);
@@ -812,7 +841,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const document = documents.value.find((doc) => doc.id === id);
       const attachmentPreview = id.startsWith('attachment:');
       const attachment = attachmentPreview ? workspace.value?.files.find(file => file.id === id.slice('attachment:'.length) && file.kind === 'file') : undefined;
-      return { id, path: document?.path ?? attachment?.path ?? (attachmentPreview ? '附件不可用' : ''), blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, view: views.value.get(id), pluginView: pluginViews.value.find(view => view.key === id && view.location === 'tab'), document, attachmentPreview, attachment };
+      const table = dataTables.records.value.find(record => tableTabId(record.fileId) === id);
+      const tableFile = isTableTab(id) ? workspace.value?.files.find(file => file.id === id.slice(6)) : undefined;
+      const tablePath = tableFile?.path ?? table?.path;
+      return { id, path: document?.path ?? attachment?.path ?? tablePath ?? (attachmentPreview ? '附件不可用' : ''), blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, view: views.value.get(id), pluginView: pluginViews.value.find(view => view.key === id && view.location === 'tab'), document, attachmentPreview, attachment,
+        ...(isTableTab(id) ? { dataTable: { name: tablePath ? dataTableName(tablePath) : '数据表不可用', dirty: !!table && dataTables.dirty(table) } } : {}) };
     }),
   );
   type TabNavigation = { entries: string[]; index: number };
@@ -923,7 +956,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const layoutPending = (doc: OpenDocument) => !!doc.tableLayout && layoutDirty(doc.tableLayout) &&
     doc.tableLayout.conflict?.draft !== JSON.stringify(doc.tableLayout.file);
   const suggestionPersistence = shallowRef<{ flush: () => Promise<void>; pending: () => boolean }>();
-  const pending = computed(() => !!suggestionPersistence.value?.pending() || documents.value.some((d) => (dirty(d) || layoutPending(d)) && !d.conflict));
+  const pending = computed(() => dataTables.records.value.some(dataTables.dirty) || !!suggestionPersistence.value?.pending() || documents.value.some((d) => (dirty(d) || layoutPending(d)) && !d.conflict));
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   let watchTimer: ReturnType<typeof setTimeout> | undefined;
   let pollTimer: ReturnType<typeof setInterval> | undefined;
@@ -948,6 +981,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         activeId: activeId.value,
         tabs: [...tabIds.value],
         layout: JSON.parse(JSON.stringify(layout.value)) as WorkspaceLayout,
+        dataTables: dataTables.drafts(),
         documents: documents.value.map((doc) => ({
           id: doc.id,
           path: doc.path,
@@ -971,7 +1005,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       journalWriting = false;
     })();
   }
-  const stopSessionWatch = watch([documents, tabIds, activeId, layout], queueSession, {
+  const stopSessionWatch = watch([documents, tabIds, activeId, layout, dataTables.records], queueSession, {
     deep: true,
     flush: 'sync',
   });
@@ -1103,6 +1137,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         workspaceSettings.value = { ...defaultWorkspaceSettings };
         workspaceSettingsError.value = '';
         workspace.value = next;
+        await dataTables.reload();
         await refreshWorkspaceSettings();
         assistantEpoch.value++;
         assistantApplied.clear();
@@ -1147,6 +1182,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           if (detachedTabId === GRAPH_TAB_ID) await openGraphTab({ newTab: true });
           else if (detachedTabId === PLUGINS_TAB_ID) await openPluginsTab({ newTab: true });
           else if (detachedTabId === CALENDAR_TAB_ID) openCalendarTab();
+          else if (isTableTab(detachedTabId)) await openPageTab(detachedTabId, { newTab: true });
           else if (views.value.has(detachedTabId)) {
             if (!views.value.get(detachedTabId)?.detachable) throw new Error('此扩展视图不支持移到其他窗口');
             openViewTab(detachedTabId);
@@ -1237,6 +1273,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         pluginHost.dispose();
         pluginExecutor.dispose();
         workspace.value = null;
+        dataTables.reset();
         workspaceSettingsScope = '';
         workspaceSettingsBase = null;
         workspaceSettings.value = { ...defaultWorkspaceSettings };
@@ -1277,7 +1314,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
   async function restoreSession(saved: WorkspaceSession) {
+    await dataTables.restore(saved.dataTables ?? []);
     const remapped = new Map<string, string>();
+    for (const id of saved.tabs ?? [])
+      if (isTableTab(id) && id !== TABLES_TAB_ID) remapped.set(id, tableTabId(dataTableFileId(id.slice(6))));
     for (const tab of saved.documents) {
       const file =
         workspace.value!.files.find((entry) => entry.id === tab.id) ??
@@ -1317,7 +1357,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
     const restored = saved.tabs
       ?.map((id) => remapped.get(id) ?? id)
-      .filter((id) => isUtilityTab(id) || documents.value.some((doc) => doc.id === id));
+      .filter((id) => id !== TABLES_TAB_ID && (isUtilityTab(id) || documents.value.some((doc) => doc.id === id)));
     tabIds.value = [...new Set([...(restored ?? []), ...documents.value.map((doc) => doc.id)])];
     const restoredActive = remapped.get(saved.activeId) ?? saved.activeId;
     layout.value = restoreLayout(saved.layout, tabIds.value, remapped);
@@ -1374,6 +1414,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activeId.value = id;
   }
   async function openInternal(file: FileEntry, replaceId?: string) {
+    if (file.kind === 'file' && isDataTableFilePath(file.path)) {
+      activateTab(tableTabId(file.id), replaceId);
+      return;
+    }
     if (!isMarkdown(file.path) || file.kind !== 'file') return;
     let doc = documents.value.find((d) => d.id === file.id);
     if (!doc) {
@@ -1391,6 +1435,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activateTab(doc.id, replaceId, doc);
   }
   async function prepareTabReplacement(id?: string) {
+    if (id && isTableTab(id) && !(await flush())) {
+      report('此数据表尚未保存，请先处理保存错误。');
+      return false;
+    }
     if (suggestionPersistence.value?.pending() && !(await flush())) return false;
     const current = documents.value.find((doc) => doc.id === id);
     if (!current) return true;
@@ -1415,6 +1463,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function openFile(file: FileEntry, options?: { historyIndex?: number }) {
     try {
+      if (file.kind === 'file' && isDataTableFilePath(file.path)) return openDataTable(file.id, options);
       if (!isMarkdown(file.path) || file.kind !== 'file') return;
       const replaceId = isUtilityTab(activeId.value) && !activeId.value.startsWith('blank:') && !isNavigationPage(activeId.value)
         ? undefined : activeId.value;
@@ -1432,6 +1481,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function openFileInNewTab(file: FileEntry) {
     try {
+      if (file.kind === 'file' && isDataTableFilePath(file.path)) return openDataTable(file.id, { newTab: true });
       await serial(() => openInternal(file));
       if (activeId.value === file.id) ensureTabNavigation(file.id, file.id);
       if (active.value?.id === file.id) recordHelpCompleted('welcome');
@@ -1440,7 +1490,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
   function openAttachmentInNewTab(file: FileEntry) {
-    if (!workspace.value || file.kind !== 'file' || isMarkdown(file.path) ||
+    if (!workspace.value || file.kind !== 'file' || isMarkdown(file.path) || isDataTableFilePath(file.path) ||
         !workspace.value.files.some(entry => entry.id === file.id && entry.path === file.path)) return;
     const id = `attachment:${file.id}`;
     if (!tabIds.value.includes(id)) tabIds.value.push(id);
@@ -1453,17 +1503,18 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       await serial(async () => {
         if (workspace.value?.id !== workspaceId) return;
         const files = [...new Set(ids)].map((id) => workspace.value!.files.find((file) => file.id === id));
-        if (!files.length || files.some((file) => !file || file.kind !== 'file' || !isMarkdown(file.path))) return;
+        if (!files.length || files.some((file) => !file || file.kind !== 'file' || !(isMarkdown(file.path) || isDataTableFilePath(file.path)))) return;
         // Keep a stable neighbor while reads are pending and already-open tabs move.
-        const moving = new Set(ids);
+        const moving = new Set(files.map(file => isDataTableFilePath(file!.path) ? tableTabId(file!.id) : file!.id));
         const following = tabIds.value.slice(Math.max(0, index)).filter((id) => !moving.has(id));
         for (const file of files) {
           await openInternal(file!);
           if (active.value?.id === file!.id) recordHelpCompleted('welcome');
-          ensureTabNavigation(file!.id, file!.id);
+          const id = isDataTableFilePath(file!.path) ? tableTabId(file!.id) : file!.id;
+          ensureTabNavigation(id, id);
           const target = following.find((id) => tabIds.value.includes(id));
-          if (target) moveDocument(file!.id, target, 'before');
-          else placeTab(file!.id, tabIds.value.length);
+          if (target) moveDocument(id, target, 'before');
+          else placeTab(id, tabIds.value.length);
         }
       });
     } catch (error) {
@@ -2074,8 +2125,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     catch (error) { report(error); return false; }
     clearTimeout(saveTimer);
     const saved = await serial(async () => {
+      const tablesSaved = await dataTables.persistAll();
       for (const doc of documents.value) { await saveInternal(doc); await saveTableLayout(doc); }
-      return documents.value.every((doc) => (!dirty(doc) || !!doc.conflict) &&
+      return tablesSaved && documents.value.every((doc) => (!dirty(doc) || !!doc.conflict) &&
         !layoutPending(doc));
     });
     await journalTask;
@@ -2092,6 +2144,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         await refreshCapabilities();
         await refreshWorkspaceSettings();
         await refreshObjects();
+        await dataTables.reload();
         for (const doc of documents.value) {
           const entry = workspace.value.files.find((f) => f.id === doc.id);
           if (!entry) {
@@ -2124,9 +2177,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     writable();
     if (expectedWorkspaceId && workspace.value?.id !== expectedWorkspaceId)
       throw new Error('工作空间已切换，请在原工作空间中恢复历史内容');
-    if (folder) await adapter.createFolder(path);
-    else await adapter.create(path, content ?? '');
-    workspace.value = await adapter.refresh();
+    const created = folder
+      ? await adapter.createFolder(path)
+      : await adapter.create(path, content ?? '');
+    workspace.value = created ?? await adapter.refresh();
     activity(folder ? '文件夹已创建' : '文档已创建', path, 'file');
     const file = workspace.value.files.find((f) => f.path === path);
     if (file?.kind === 'directory' && folder) recordHelpCompleted('create-folder');
@@ -2216,6 +2270,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       if (file.kind === 'file' && isMarkdown(file.path)) await adapter.rename(file.path, path);
       else await adapter.move(file.path, path, file.kind);
       workspace.value = await adapter.refresh();
+      await dataTables.reload();
       for (const doc of documents.value.filter((entry) => affectedIds.has(entry.id))) {
         const current = workspace.value.files.find((entry) => entry.id === doc.id);
         if (!current) {
@@ -2254,6 +2309,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       }
       try {
         workspace.value = await adapter.refresh();
+        await dataTables.reload();
         for (const doc of documents.value.filter((entry) => movedIds.has(entry.id))) {
           const current = workspace.value.files.find((entry) => entry.id === doc.id);
           if (!current) {
@@ -2301,6 +2357,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       }
       workspace.value = await adapter.refresh();
       if (duplicateError) throw duplicateError;
+      await dataTables.reload();
       if (!destination) throw new Error('创建副本没有返回目标路径');
       activity('已创建副本', `${file.path} → ${destination}`, 'file');
       if (file.kind === 'file' && isMarkdown(file.path)) recordHelpCompleted('duplicate-document');
@@ -2381,12 +2438,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         );
         const previousTabIds = [...tabIds.value];
         const remainingIds = new Set(documents.value.map((doc) => doc.id));
-        tabIds.value = tabIds.value.filter((id) => isUtilityTab(id) || remainingIds.has(id));
+        const removedTableIds = new Set(workspace.value.files.filter(entry => isDataTableFilePath(entry.path) && (entry.path === file.path || (file.kind === 'directory' && entry.path.startsWith(`${file.path}/`)))).map(entry => tableTabId(entry.id)));
+        tabIds.value = tabIds.value.filter((id) => !removedTableIds.has(id) && (isUtilityTab(id) || remainingIds.has(id)));
         for (const tabId of previousTabIds)
           if (!tabIds.value.includes(tabId)) removeTabNavigation(tabId);
         if (activeId.value && !tabIds.value.includes(activeId.value))
           activeId.value = tabIds.value.at(-1) ?? '';
         workspace.value = await adapter.refresh();
+        await dataTables.reload();
         activity(
           isDemo ? '演示条目已删除' : isWeb ? '在线文档已删除' : '条目已移入回收站',
           file.path,
@@ -2422,6 +2481,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     tabIds.value = reordered;
   }
   async function close(id: string) {
+    if (isTableTab(id) && !(await flush())) { report('数据表尚有未保存的修改，请先处理保存错误。'); return; }
     const pane = panes.value.find(pane => pane.tabs.includes(id));
     const nextTab = () => panes.value.find(item => item.id === pane?.id)?.activeId ?? tabIds.value.at(-1) ?? '';
     if (isUtilityTab(id)) {
@@ -2502,6 +2562,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     });
   }
   return {
+    dataTableRecords: dataTables.records,
+    dataTableErrors: dataTables.errors,
+    editDataTable: dataTables.edit,
+    undoDataTable: dataTables.undo,
+    retryDataTable: dataTables.retry,
+    discardDataTable: dataTables.discard,
+    copyDataTable: async (source: import('@tano/protocol').DataTable, parent = '') => { const id = await dataTables.create('blank', source, parent); await openDataTable(id); },
+    createDataTable,
+    renameDataTable,
+    openDataTable,
     layout,
     panes,
     activePaneId,

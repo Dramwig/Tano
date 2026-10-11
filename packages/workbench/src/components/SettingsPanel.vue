@@ -77,6 +77,7 @@ const props = defineProps<{
   shortcuts?: ShortcutBindings;
   showPageTitle: boolean;
   showDocumentProperties: boolean;
+  showDocumentDiscussion: boolean;
   showOutline: boolean;
   outlineOnLeft?: boolean;
   visualFontSize: number;
@@ -101,6 +102,7 @@ const emit = defineEmits<{
   'update:shortcuts': [value: ShortcutBindings];
   'update:showPageTitle': [value: boolean];
   'update:showDocumentProperties': [value: boolean];
+  'update:showDocumentDiscussion': [value: boolean];
   'update:showOutline': [value: boolean];
   'update:outlineOnLeft': [value: boolean];
   'update:visualFontSize': [value: number];
@@ -151,7 +153,7 @@ const pages = [
     label: '外观设置',
     group: '个人偏好',
     icon: Palette,
-    terms: '外观 主题 白天 黑夜 深色 浅色 跟随系统 字体 系统字体 衬线字体 等宽字体 Mono Maple 自定义字体 字号 字体大小 页面内标题 属性 文档属性 显示目录 文档大纲 目录位置 左侧 右侧 帮助 上手 引导 气泡 偶尔显示使用提示',
+    terms: '外观 主题 白天 黑夜 深色 浅色 跟随系统 字体 系统字体 衬线字体 等宽字体 Mono Maple 自定义字体 字号 字体大小 页面内标题 属性 文档属性 文档讨论 评论 显示目录 文档大纲 目录位置 左侧 右侧 帮助 上手 引导 气泡 偶尔显示使用提示',
   },
   {
     id: 'editing',
@@ -596,6 +598,23 @@ function customFontInput(event: Event) {
                   :aria-checked="showDocumentProperties"
                   aria-label="文档属性"
                   @click="emit('update:showDocumentProperties', !showDocumentProperties)"
+                >
+                  <span />
+                </button>
+              </div>
+              <div class="settings-row">
+                <div>
+                  <strong>文档讨论</strong>
+                  <p>有讨论时在文档底部显示，没有讨论时自动隐藏。</p>
+                </div>
+                <button
+                  type="button"
+                  class="settings-switch"
+                  :class="{ on: showDocumentDiscussion }"
+                  role="switch"
+                  :aria-checked="showDocumentDiscussion"
+                  aria-label="文档讨论"
+                  @click="emit('update:showDocumentDiscussion', !showDocumentDiscussion)"
                 >
                   <span />
                 </button>

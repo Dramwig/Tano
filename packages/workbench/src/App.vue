@@ -45,6 +45,7 @@ import {
   Pencil,
   Trash2,
   Bot,
+  MessageSquare,
   MessageSquareDiff,
   ExternalLink,
   CheckCheck,
@@ -68,6 +69,7 @@ import {
   Redo2,
   ArrowDownToLine,
   Files,
+  Table2,
 } from 'lucide-vue-next';
 import MarkdownEditor from '@tano/editor';
 import { defaultEditorPreferences } from '@tano/editor/runtime';
@@ -80,6 +82,8 @@ import type { ModeViewport } from './editor-mode';
 import AttachmentPreview from './components/AttachmentPreview.vue';
 import PageSearch from './components/PageSearch.vue';
 import EmptyEditor from './components/EmptyEditor.vue';
+import DocumentStarter from './components/DocumentStarter.vue';
+import { documentStarter, templateStarterBody } from './document-starters';
 import MarkdownRevealToggle from './components/MarkdownRevealToggle.vue';
 import DocumentTitle from './components/DocumentTitle.vue';
 import WorkspaceBreadcrumb from './components/WorkspaceBreadcrumb.vue';
@@ -87,7 +91,7 @@ import DocumentScrollbar from './components/DocumentScrollbar.vue';
 import DocumentExportMenu from './components/DocumentExportMenu.vue';
 import type { ImportRecord } from './components/ImportPanel.vue';
 const ImportPanel = defineAsyncComponent(() => import('./components/ImportPanel.vue'));
-const TemplateDialog = defineAsyncComponent(() => import('./components/TemplateDialog.vue'));
+const TemplateLibrary = defineAsyncComponent(() => import('./components/TemplateLibrary.vue'));
 import { downloadExport, exportFilename, renderDocumentExport } from './document-export';
 import type { DocumentExportFormat } from './document-export';
 import DocumentComments from './components/DocumentComments.vue';
@@ -167,11 +171,16 @@ import { recordHelpCompleted } from './help-checklist';
 import WorkspaceSwitcher from './components/WorkspaceSwitcher.vue';
 import ButtonVisibilityGroup from './components/ButtonVisibilityGroup.vue';
 import CalendarView from './components/CalendarView.vue';
+const DataTablePage = defineAsyncComponent(() => import('./components/DataTablePage.vue'));
+import { isTableTab, TABLES_TAB_ID } from './data-tables';
+import { isDataTableFilePath } from '@tano/protocol';
 import PluginInstaller from './components/PluginInstaller.vue';
 import PluginView from './components/PluginView.vue';
 import PluginSidebar from './components/PluginSidebar.vue';
 import PluginMenu from './components/PluginMenu.vue';
 import CommandPalette from './components/CommandPalette.vue';
+import { editorPaletteCommands } from './command-palette';
+import type { WorkbenchCommand } from './command-palette';
 import { pluginShortcutCommand } from './plugins/workbench';
 import { SETTINGS_PLUGIN_RESULT } from './settings-window';
 import { isObjectPath, referenceMarkdown, referenceUrl, resolveReference } from '@tano/protocol';
@@ -275,8 +284,12 @@ const sidebarHeaderItems = computed(() => [
     .filter((view) => view.header)
     .map((view) => ({ id: view.id, label: view.label })),
   { id: 'graph', label: '关系图谱' },
-  { id: 'plugins', label: '插件' },
   { id: 'commands', label: '命令中心' },
+]);
+const repositoryActionItems = computed(() => [
+  { id: 'search', label: '查找文档' },
+  ...(store.workspaceSettings.showPlugins ? [{ id: 'plugins', label: '插件' }] : []),
+  { id: 'create', label: '新建文档' },
 ]);
 const documentToolItems = [
   { id: 'markdown-reveal', label: '光标展开源码' },
@@ -354,7 +367,23 @@ const updates = useUpdatesStore();
 const updateLock = computed(() => ['downloading', 'installing'].includes(updates.state.phase));
 const historyPanel = ref(false);
 const importPanel = ref(false);
-const templateDialog = ref(false);
+const templateLibraryOpen = ref(false);
+const templatePaneId = ref('');
+const templateSource = ref('');
+const templateInitialization = shallowRef<{ title: string; apply: (content: string) => void }>();
+watch(templateLibraryOpen, opened => { if (!opened) templateInitialization.value = undefined; });
+watch(() => [store.workspace?.id, store.workspace?.path, store.panes.find(pane => pane.id === templatePaneId.value)?.activeId], () => {
+  templateLibraryOpen.value = false;
+});
+function openTemplateLibrary() {
+  menu.value = false;
+  workspaceMenu.value = false;
+  templatePaneId.value = store.activePaneId;
+  templateSource.value = store.active?.content ?? '';
+  templateInitialization.value = undefined;
+  // Let the captured pane settle before showing the page; the editor stays mounted.
+  void nextTick(() => { templateLibraryOpen.value = true; });
+}
 const importRecords = ref<ImportRecord[]>([]);
 function openImport() {
   menu.value = false;
@@ -470,6 +499,7 @@ function initializePageHistory() {
 
 function currentPageRoute() {
   const currentWorkspace = workspace.value;
+  if (currentWorkspace && isTableTab(activeId.value)) return pageRoutePath(currentWorkspace.id, activeId.value);
   const pluginView = store.pluginViews.find(view => view.key === activeId.value && view.location === 'tab');
   if (currentWorkspace && pluginView) return pageRoutePath(currentWorkspace.id, pluginView.key);
   const currentFile = currentWorkspace?.files.find(
@@ -528,6 +558,8 @@ async function applyPageRoute() {
     if (workspace.value?.id !== route.workspaceId) await store.openWorkspace(route.workspaceId);
     if (workspace.value?.id !== route.workspaceId) {
       store.report('链接中的工作区不存在或你已失去访问权限');
+    } else if (isTableTab(route.fileId)) {
+      await store.openDataTable(route.fileId === TABLES_TAB_ID ? undefined : route.fileId.slice(6));
     } else if (route.fileId.startsWith('plugin:')) {
       const view = store.pluginViews.find(view => view.key === route.fileId && view.location === 'tab');
       if (view) store.openPluginView(view.pluginId, view.id);
@@ -726,6 +758,8 @@ const showPageTitle = ref(readPreference('showPageTitle', true));
 watch(showPageTitle, (value) => savePreference('showPageTitle', value));
 const showDocumentProperties = ref(readPreference('showDocumentProperties', true));
 watch(showDocumentProperties, (value) => savePreference('showDocumentProperties', value));
+const showDocumentDiscussion = ref(readPreference('showDocumentDiscussion', true));
+watch(showDocumentDiscussion, (value) => savePreference('showDocumentDiscussion', value));
 const limitPageWidth = computed(() => {
   const documentId = active.value?.id;
   return !documentId || store.capabilities.pageWidthLimits[documentId] !== false;
@@ -898,7 +932,7 @@ watch(
   },
 );
 function selectActiveFileInTree() {
-  const id = activeId.value;
+  const id = activeId.value.startsWith('table:') ? activeId.value.slice(6) : activeId.value;
   const available = !!id && workspace.value?.files.some((file) => file.id === id);
   selectedEntryIds.value = available ? new Set([id]) : new Set();
   selectionAnchorId.value = available ? id : null;
@@ -938,13 +972,54 @@ const treeRename = ref<{ fileId: string; workspaceId: string } | null>(null);
 watch(() => workspace.value?.id, () => { treeRename.value = null; });
 const settingsPanel = ref(false);
 const commandPaletteOpened = ref(false);
-const workbenchCommands = computed(() => [
-  { id: 'workbench.save', label: '立即保存', run: () => store.flush() },
-  { id: 'workbench.search', label: '查找文档', run: () => showModal('search') },
-  { id: 'workbench.new', label: '新建文档', run: () => createNewDocument() },
-  { id: 'workbench.plugins', label: '打开插件中心', run: () => store.openPluginsTab() },
-  { id: 'workbench.settings', label: '打开设置', run: () => openSettings() },
-]);
+const workbenchCommands = computed<WorkbenchCommand[]>(() => {
+  const hasDocument = !!active.value;
+  const writableWorkspace = !!workspace.value && !workspace.value.readOnly && !busy.value && !updateLock.value;
+  const standardEditor = hasDocument && !editing.active && !editing.activeBusy;
+  const editable = standardEditor && !editorReadonly.value && !active.value?.missing;
+  return [
+    { id: 'workbench.search', category: '文档', label: '查找文档', shortcut: shortcuts.value.findDocument, available: !busy.value, run: () => showModal('search') },
+    { id: 'workbench.open', category: '文档', label: '打开文档', shortcut: shortcuts.value.openDocument, available: !busy.value, run: () => showModal('newTab') },
+    { id: 'workbench.new', category: '文档', label: '新建文档', shortcut: shortcuts.value.newDocument, available: writableWorkspace, run: createNewDocument },
+    { id: 'workbench.table.new', category: '数据表', label: '新建数据表', keywords: 'table spreadsheet 表格', available: writableWorkspace, run: () => store.createDataTable().catch(store.report) },
+    { id: 'workbench.table.parts', category: '数据表', label: '新建配件选择表', available: writableWorkspace, run: () => store.createDataTable('parts').catch(store.report) },
+    { id: 'workbench.save', category: '文档', label: '立即保存', shortcut: shortcuts.value.save, available: hasDocument && !busy.value && !updateLock.value, run: () => store.flush() },
+    { id: 'workbench.saveAs', category: '文档', label: '另存副本', available: standardEditor && writableWorkspace, run: () => showModal('saveAs') },
+    { id: 'workbench.folder', category: '文档', label: '新建文件夹', available: writableWorkspace, run: () => createNewEntry('folder') },
+    { id: 'workbench.import', category: '文档', label: '导入文档', available: writableWorkspace, run: openImport },
+    { id: 'workbench.templates', category: '文档', label: '文档模板', available: writableWorkspace, run: openTemplateLibrary },
+    ...(['markdown', 'docx', 'pdf', 'html', 'png'] as const).map(format => ({
+      id: `workbench.export.${format}`, category: '导出', label: ({ markdown: 'Markdown', docx: 'Word', pdf: 'PDF', html: 'HTML', png: '图片' })[format],
+      keywords: format, available: hasDocument && !exportBusy.value, run: () => exportDocument(format),
+    })),
+    { id: 'workbench.find', category: '编辑', label: '页内搜索', shortcut: shortcuts.value.pageSearch, available: standardEditor, run: () => openPaneSearch() },
+    { id: 'workbench.replace', category: '编辑', label: '查找与替换', shortcut: shortcuts.value.pageReplace, available: editable, run: () => openPaneSearch(store.activePaneId, true) },
+    { id: 'workbench.undo', category: '编辑', label: '撤销', available: editable && documentUndoAvailable.value, run: undoDocument },
+    { id: 'workbench.redo', category: '编辑', label: '重做', available: editable && documentRedoAvailable.value, run: redoDocument },
+    ...editorPaletteCommands({ editable: editable && !!editor.value, source: source.value,
+      context: paneSelections[store.activePaneId] ?? defaultSelectionContext, features: store.capabilities.features,
+      run: (name, value) => editor.value?.command(name, value) }),
+    { id: 'workbench.source', category: '视图', label: source.value ? '返回可视化编辑' : '切换源码模式', available: standardEditor, keywords: 'Markdown source', run: () => { source.value = !source.value; } },
+    { id: 'workbench.reading', category: '视图', label: pageLocked.value ? '退出阅读模式' : '进入阅读模式', available: hasDocument, keywords: '锁定页面 解锁', run: togglePageLock },
+    { id: 'workbench.width', category: '视图', label: limitPageWidth.value ? '展开页面全宽' : '限制页面宽度', available: hasDocument && pageWidthWritable.value, run: () => setLimitPageWidth(!limitPageWidth.value) },
+    { id: 'workbench.outline', category: '视图', label: showOutline.value ? '隐藏文档目录' : '显示文档目录', available: hasDocument, keywords: '大纲', run: () => { showOutline.value = !showOutline.value; } },
+    { id: 'workbench.properties', category: '视图', label: showDocumentProperties.value ? '隐藏文档属性' : '显示文档属性', available: hasDocument, run: () => { showDocumentProperties.value = !showDocumentProperties.value; } },
+    { id: 'workbench.discussion', category: '文档', label: '发起讨论', keywords: '文档讨论 评论', available: editable, run: openDocumentDiscussion },
+    { id: 'workbench.sidebar', category: '视图', label: sidebar.value ? '收起侧栏' : '展开侧栏', shortcut: shortcuts.value.toggleSidebar, available: !detachedWindow, run: toggleSidebar },
+    { id: 'workbench.repository', category: '工作区', label: '打开仓库', available: !detachedWindow, run: () => { sidebar.value = true; sidebarView.value = 'repository'; } },
+    { id: 'workbench.plan', category: '工作区', label: '打开计划', available: !detachedWindow && store.workspaceSettings.showPlan, run: () => { sidebar.value = true; sidebarView.value = 'plan'; } },
+    { id: 'workbench.calendar', category: '工作区', label: '打开日历', available: store.workspaceSettings.showPlan, run: () => openCalendar() },
+    { id: 'workbench.graph', category: '工作区', label: '打开关系图谱', available: store.workspaceSettings.showGraph, run: () => store.openGraphTab() },
+    { id: 'workbench.plugins', category: '工作区', label: '打开插件中心', available: store.workspaceSettings.showPlugins, run: () => store.openPluginsTab() },
+    { id: 'workbench.updates', category: '历史', label: '文档更新历史', available: hasDocument, run: () => { historyPage.value = 'updates'; historyPanel.value = true; } },
+    { id: 'workbench.versions', category: '历史', label: '文档版本历史', available: hasDocument && !!extensions.historyEnabled, run: () => { historyPage.value = 'versions'; historyPanel.value = true; } },
+    { id: 'workbench.settings', category: '设置', label: '外观设置', keywords: '打开设置', run: () => openSettings() },
+    { id: 'workbench.settings.editing', category: '设置', label: '编辑设置', run: () => openSettings('editing') },
+    { id: 'workbench.settings.shortcuts', category: '设置', label: '快捷键', run: () => openSettings('shortcuts') },
+    { id: 'workbench.settings.workspace', category: '设置', label: '工作区设置', run: () => openSettings('workspace') },
+    { id: 'workbench.settings.about', category: '设置', label: '关于同页', run: () => openSettings('about') },
+  ];
+});
 const settingsPage = ref<SettingsPageId>('appearance');
 watch(defaultSource, (value, previous) => {
   savePreference('defaultSource', value);
@@ -1107,6 +1182,40 @@ function openAssistant(paneId = store.activePaneId, fileId = store.activeId) {
     store.documents.some((doc) => doc.id === fileId) ? fileId : undefined,
     text ? { text, ...(span ? { from: span.from, to: span.to } : {}) } : undefined,
   );
+  if (window.innerWidth < 1100) sidebar.value = false;
+}
+function initializeDocument(paneId: string, fileId: string, content: string, expected: string) {
+  const doc = store.documents.find(item => item.id === fileId);
+  if (!doc || paneReadonly(doc) || doc.missing || doc.conflict || doc.error || editing.isManaging(fileId) ||
+      store.panes.find(pane => pane.id === paneId)?.activeId !== fileId || paneSource(fileId) ||
+      doc.content !== expected || !paneEditors.get(paneId)?.initializeBody(content, expected))
+    throw new Error('文档内容或编辑状态已变化，请回到空白文档后重试。现有内容已保留。');
+  store.focusPane(paneId);
+  recordHelpCompleted('use-template');
+}
+function quickInitialize(paneId: string, fileId: string, kind: 'meeting' | 'weekly' | 'todo') {
+  const doc = store.documents.find(item => item.id === fileId);
+  if (!doc) return;
+  try { initializeDocument(paneId, fileId, documentStarter(kind, workspace.value?.name ?? ''), doc.content); }
+  catch (reason) { store.report(reason); }
+}
+function chooseInitialTemplate(paneId: string, fileId: string) {
+  const doc = store.documents.find(item => item.id === fileId);
+  if (!doc) return;
+  store.focusPane(paneId);
+  openTemplateLibrary();
+  const expected = doc.content, workspaceId = workspace.value?.id;
+  templateInitialization.value = {
+    title: basename(doc.path).replace(/\.(md|markdown)$/i, ''),
+    apply(content) {
+      if (workspace.value?.id !== workspaceId) throw new Error('工作区已切换');
+      initializeDocument(paneId, fileId, templateStarterBody(content), expected);
+    },
+  };
+}
+function startDocumentDraft(paneId: string, fileId: string) {
+  store.focusPane(paneId);
+  assistant.startDocumentDraft(fileId);
   if (window.innerWidth < 1100) sidebar.value = false;
 }
 function discussWithAssistant(
@@ -1366,6 +1475,13 @@ function paneReadonly(doc: OpenDocument) {
 }
 const documentUndoAvailable = ref(false);
 const documentRedoAvailable = ref(false);
+function refreshDocumentHistoryAvailability() {
+  documentUndoAvailable.value = !editorReadonly.value &&
+    (source.value ? !!sourceEditor.value?.canUndo() : !!editor.value?.canUndo());
+  documentRedoAvailable.value = !editorReadonly.value &&
+    (source.value ? !!sourceEditor.value?.canRedo() : !!editor.value?.canRedo());
+}
+watch(commandPaletteOpened, opened => { if (opened) refreshDocumentHistoryAvailability(); });
 function showReferenceGraph(paneId: string, document: OpenDocument) {
   referenceGraphTarget.value = { id: document.id, path: document.path };
   referenceGraphAnchor.value = paneScrolls.get(paneId);
@@ -1383,12 +1499,7 @@ async function toggleDocumentMenu(event: MouseEvent) {
     return;
   }
   await nextTick();
-  documentUndoAvailable.value =
-    !editorReadonly.value &&
-    (source.value ? !!sourceEditor.value?.canUndo() : !!editor.value?.canUndo());
-  documentRedoAvailable.value =
-    !editorReadonly.value &&
-    (source.value ? !!sourceEditor.value?.canRedo() : !!editor.value?.canRedo());
+  refreshDocumentHistoryAvailability();
 }
 function documentMenuTriggerKeydown(event: KeyboardEvent) {
   if (!menu.value || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
@@ -1543,9 +1654,10 @@ async function openEntry(file: FileEntry, newTab = false) {
     else store.report('对象文件不可用，请在工作区对象面板检查格式或重复 ID');
     return;
   }
-  if (isMarkdown(file.path)) {
+  if (isMarkdown(file.path) || isDataTableFilePath(file.path)) {
     if (newTab) await store.openFileInNewTab(file);
     else await store.openFile(file);
+    if (store.activePaneId === templatePaneId.value && store.activeId === file.id) templateLibraryOpen.value = false;
     if (window.innerWidth <= 700) sidebar.value = false;
     return;
   }
@@ -1654,7 +1766,7 @@ function openDirectoryContextMenu(parent: string, event: MouseEvent) {
     contextMenu.focus({ preventScroll: true });
   });
 }
-function directoryContextAction(action: 'document' | 'folder') {
+function directoryContextAction(action: 'document' | 'folder' | 'table') {
   const parent = directoryContextMenu.value?.parent ?? '';
   closeDirectoryContextMenu();
   const target = parent
@@ -1700,6 +1812,11 @@ function openPageContextMenu(event: MouseEvent) {
     };
     element.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
   });
+}
+function openDocumentDiscussion() {
+  menu.value = false;
+  closePageContextMenu();
+  return paneComments.get(store.activePaneId)?.showDiscussion();
 }
 function togglePageOption(option: 'width' | 'title' | 'properties' | 'outline') {
   if (option === 'width') setLimitPageWidth(!limitPageWidth.value);
@@ -1773,6 +1890,7 @@ async function renameTreeEntry(file: FileEntry, name: string) {
   if (/[\/\\]/.test(name)) throw new Error('名称不能包含路径分隔符');
   if (file.kind === 'file' && isMarkdown(file.path) && !isMarkdown(name))
     name += file.name.match(/\.(md|markdown)$/i)?.[0] ?? '.md';
+  if (isDataTableFilePath(file.path) && !/\.table\.json$/i.test(name)) name += '.table.json';
   const folder = parentPath(file.path);
   const path = `${folder ? `${folder}/` : ''}${name}`;
   const error = validatePath(path);
@@ -1881,6 +1999,7 @@ async function fileContextAction(
     | 'open-new-tab'
     | 'document'
     | 'folder'
+    | 'table'
     | 'rename'
     | 'delete'
     | 'copy'
@@ -1970,7 +2089,7 @@ async function fileContextAction(
     await removeDocument(file);
     return;
   }
-  if (action === 'document' || action === 'folder') {
+  if (action === 'document' || action === 'folder' || action === 'table') {
     await createNewEntry(action, file.path);
     return;
   }
@@ -2149,7 +2268,7 @@ watch([() => outline.value.length, source], () => void nextTick(scheduleActiveHe
   flush: 'post',
 });
 const noteCount = computed(
-  () => workspace.value?.files.filter((f) => f.kind === 'file' && isMarkdown(f.path)).length ?? 0,
+  () => workspace.value?.files.filter((f) => f.kind === 'file' && !isWorkspaceInternalPath(f.path) && (isMarkdown(f.path) || isDataTableFilePath(f.path))).length ?? 0,
 );
 const searchHits = ref<SearchHit[]>([]);
 const searching = ref(false);
@@ -2276,7 +2395,7 @@ async function removeDocument(target?: FileEntry) {
 async function createNewDocument() {
   await createNewEntry('document');
 }
-async function createNewEntry(kind: 'document' | 'folder', parent = '') {
+async function createNewEntry(kind: 'document' | 'folder' | 'table', parent = '') {
   if (store.busy || workspace.value?.readOnly || updateLock.value) return;
   menu.value = false;
   workspaceMenu.value = false;
@@ -2286,6 +2405,11 @@ async function createNewEntry(kind: 'document' | 'folder', parent = '') {
   try {
     if (kind === 'folder') {
       await store.createUntitledFolder(parent);
+      return;
+    }
+    if (kind === 'table') {
+      await store.createDataTable('blank', parent);
+      if (window.innerWidth <= 700) sidebar.value = false;
       return;
     }
     await store.createUntitledDocument(parent);
@@ -2353,6 +2477,9 @@ async function acceptTabTransfer(request: TabTransferRequest) {
     } else if (request.tabId === CALENDAR_TAB_ID) {
       created = priorIndex < 0;
       store.openCalendarTab();
+    } else if (isTableTab(request.tabId)) {
+      created = priorIndex < 0;
+      await store.openDataTable(request.tabId === TABLES_TAB_ID ? undefined : request.tabId.slice(6));
     } else if (extensionViews.some((view) => view.id === request.tabId)) {
       const view = extensionViews.find((view) => view.id === request.tabId)!;
       if (!view.detachable)
@@ -2588,6 +2715,7 @@ const settingsSnapshot = computed<SettingsSnapshot>(() => ({
   shortcuts: shortcuts.value,
   showPageTitle: showPageTitle.value,
   showDocumentProperties: showDocumentProperties.value,
+  showDocumentDiscussion: showDocumentDiscussion.value,
   showOutline: showOutline.value,
   outlineOnLeft: outlineOnLeft.value,
   visualFontSize: visualFontSize.value,
@@ -2710,6 +2838,9 @@ function handleSettingsCommand(command: SettingsCommand) {
       break;
     case 'showDocumentProperties':
       showDocumentProperties.value = command.value as boolean;
+      break;
+    case 'showDocumentDiscussion':
+      showDocumentDiscussion.value = command.value as boolean;
       break;
     case 'showOutline':
       showOutline.value = command.value as boolean;
@@ -3210,7 +3341,8 @@ onBeforeUnmount(() => {
 watch(activeId, () => {
   closePageContextMenu();
   closeOutlineContextMenu();
-  if (!pendingTreeOpenIds.has(activeId.value) || !selectedEntryIds.value.has(activeId.value))
+  const treeId = activeId.value.startsWith('table:') ? activeId.value.slice(6) : activeId.value;
+  if (!pendingTreeOpenIds.has(treeId) || !selectedEntryIds.value.has(treeId))
     selectActiveFileInTree();
   historyPanel.value = false;
   panel.value = 'outline';
@@ -3243,7 +3375,7 @@ const helpBlocked = computed(() => !!(
   (assistant.opened && assistant.displayMode === 'fullscreen') ||
   busy.value || fatal.value || store.pending || active.value?.conflict || active.value?.error ||
   workspaceMenu.value || menu.value || modal.value || settingsPanel.value ||
-  importPanel.value || templateDialog.value || agentPanel.value || objectPanel.value ||
+  importPanel.value || templateLibraryOpen.value || agentPanel.value || objectPanel.value ||
   selectedDiff.value || selectionTodo.value || recyclePanel.value || referenceGraphOpened.value ||
   fileContextMenu.value || directoryContextMenu.value || pageContextMenu.value || outlineContextMenu.value ||
   resizingSidebar.value || draggedEntry.value || updateLock.value
@@ -3349,17 +3481,6 @@ const helpBlocked = computed(() => !!(
             >
               <GitFork :size="17" :stroke-width="1.6" />
             </button>
-            <button
-              v-if="store.workspaceSettings.showPlugins && isVisible('plugins')"
-              type="button"
-              class="icon-button"
-              aria-label="打开插件标签页"
-              title="插件"
-              :aria-pressed="activeId === PLUGINS_TAB_ID"
-              @click="store.openPluginsTab()"
-            >
-              <Puzzle :size="17" :stroke-width="1.6" />
-            </button>
             <button v-if="isVisible('commands')" type="button" class="icon-button" aria-label="打开命令中心" :title="`命令中心 · ${shortcutHint('commandPalette')}`" @click="commandPaletteOpened = true"><Search :size="17" /></button>
           </ButtonVisibilityGroup>
         </div>
@@ -3434,8 +3555,18 @@ const helpBlocked = computed(() => !!(
               :active="sidebar && sidebarView === 'repository' && !workspaceMenu && !modal && !settingsPanel"
               @open="closeButtonVisibilityMenus"
             />
-            <div>
+            <ButtonVisibilityGroup
+              v-slot="{ isVisible }"
+              :items="repositoryActionItems"
+              :active="sidebar && sidebarView === 'repository'"
+              preference-key="tano.preference.repositoryHiddenActions"
+              group-class="repository-actions"
+              label="工作区按钮"
+              menu-label="工作区按钮显示设置"
+              @open="closeButtonVisibilityMenus"
+            >
               <button
+                v-if="isVisible('search')"
                 type="button"
                 class="icon-button"
                 aria-label="查找文档"
@@ -3445,6 +3576,18 @@ const helpBlocked = computed(() => !!(
                 <Search :size="15" :stroke-width="1.6" />
               </button>
               <button
+                v-if="store.workspaceSettings.showPlugins && isVisible('plugins')"
+                type="button"
+                class="icon-button"
+                aria-label="打开插件标签页"
+                title="工作区插件"
+                :aria-pressed="activeId === PLUGINS_TAB_ID"
+                @click="store.openPluginsTab()"
+              >
+                <Puzzle :size="15" :stroke-width="1.6" />
+              </button>
+              <button
+                v-if="isVisible('create')"
                 class="icon-button"
                 aria-label="新建文档"
                 :title="`新建文档 · ${shortcutHint('newDocument')}`"
@@ -3453,7 +3596,7 @@ const helpBlocked = computed(() => !!(
               >
                 <SquarePen :size="15" :stroke-width="1.6" />
               </button>
-            </div>
+            </ButtonVisibilityGroup>
           </div>
           <div
             class="tree-scroll"
@@ -3572,6 +3715,9 @@ const helpBlocked = computed(() => !!(
                 >
                   <FileText :size="15" />在此新建文档
                 </button>
+                <button role="menuitem" :disabled="fileMutationDisabled(fileContextMenu.file)" @click="fileContextAction('table')">
+                  <Table2 :size="15" />在此新建数据表
+                </button>
                 <button
                   v-if="!store.isWeb"
                   role="menuitem"
@@ -3594,16 +3740,16 @@ const helpBlocked = computed(() => !!(
               </template>
               <template v-else>
                 <button
-                  v-if="isMarkdown(fileContextMenu.file.path) || attachments"
+                  v-if="isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path) || attachments"
                   role="menuitem"
                   @click="fileContextAction('open')"
                 >
                   <FileText :size="15" />{{
-                    isMarkdown(fileContextMenu.file.path) ? '打开文档' : '打开附件'
+                    isDataTableFilePath(fileContextMenu.file.path) ? '打开数据表' : isMarkdown(fileContextMenu.file.path) ? '打开文档' : '打开附件'
                   }}
                 </button>
                 <button
-                  v-if="tabsEnabled && isMarkdown(fileContextMenu.file.path)"
+                  v-if="tabsEnabled && (isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path))"
                   role="menuitem"
                   @click="fileContextAction('open-new-tab')"
                 >
@@ -3618,7 +3764,7 @@ const helpBlocked = computed(() => !!(
                   <Pencil :size="15" />重命名文档
                 </button>
                 <button
-                  v-else-if="attachments"
+                  v-else-if="attachments || isDataTableFilePath(fileContextMenu.file.path)"
                   role="menuitem"
                   :disabled="fileMutationDisabled(fileContextMenu.file)"
                   @click="fileContextAction('rename')"
@@ -3687,6 +3833,9 @@ const helpBlocked = computed(() => !!(
               @click="directoryContextAction('document')"
             >
               <FileText :size="15" />新建文档
+            </button>
+            <button role="menuitem" :disabled="!workspace || workspace.readOnly || busy" @click="directoryContextAction('table')">
+              <Table2 :size="15" />新建数据表
             </button>
             <button
               v-if="!store.isWeb"
@@ -3765,7 +3914,7 @@ const helpBlocked = computed(() => !!(
                 :disabled="workspace.readOnly || busy"
                 @click="
                   workspaceMenu = false;
-                  templateDialog = true;
+                  openTemplateLibrary();
                 "
               >
                 <Files :size="16" />文档模板
@@ -4014,13 +4163,28 @@ const helpBlocked = computed(() => !!(
           />
         </template>
         <template #default="{ pane, document: active, tab }">
+          <TemplateLibrary
+            v-if="templateLibraryOpen && pane.id === templatePaneId && workspace"
+            :key="workspace.id"
+            :source="templateSource"
+            :initialize="templateInitialization"
+            :demo-label="store.isDemo ? workspaceStatusLabel : undefined"
+            @close="templateLibraryOpen = false"
+            @open-file="(file) => { store.focusPane(pane.id); openEntry(file); }"
+          >
+            <template #navigation>
+              <div v-if="!sidebar && !(native && !mobile && workspace)" class="topbar-navigation">
+                <button type="button" class="icon-button" aria-label="展开侧栏" :title="`展开侧栏 · ${shortcutHint('toggleSidebar')}`" @click="toggleSidebar"><PanelLeftOpen :size="18" /></button>
+              </div>
+            </template>
+          </TemplateLibrary>
           <div
             :id="`assistant-fullscreen-${pane.id}`"
             :ref="(el) => setAssistantHost(pane.id, el)"
-            v-show="assistant.isFullscreenTab(pane.activeId)"
+            v-show="assistant.isFullscreenTab(pane.activeId) && !(templateLibraryOpen && pane.id === templatePaneId)"
             class="assistant-fullscreen-host"
           />
-          <div v-show="!assistant.isFullscreenTab(pane.activeId)" class="workspace-page-content">
+          <div v-show="!assistant.isFullscreenTab(pane.activeId) && !(templateLibraryOpen && pane.id === templatePaneId)" class="workspace-page-content">
             <ButtonVisibilityGroup
               v-if="!detachedWindow"
               v-slot="{ isVisible }"
@@ -4149,6 +4313,10 @@ const helpBlocked = computed(() => !!(
                   :id="`graph-controls-${pane.id}`"
                   v-show="pane.activeId === GRAPH_TAB_ID"
                   class="graph-toolbar-host"
+                />
+                <div
+                  v-if="isTableTab(pane.activeId)"
+                  :id="`data-table-controls-${pane.id}`"
                 />
                 <div
                   v-if="
@@ -4293,6 +4461,11 @@ const helpBlocked = computed(() => !!(
                     >
                       <PluginMenu location="document" :file-id="active.id" @selected="menu = false" />
                       <button type="button"
+                        :disabled="editorReadonly || !!editing.active || editing.activeBusy || !paneComments.has(store.activePaneId)"
+                        @click="openDocumentDiscussion">
+                        <MessageSquare :size="15" />发起讨论
+                      </button>
+                      <button type="button"
                         :disabled="suggestionModeBusy || (!documentSuggestions.get(active.id)?.mode && (paneReadonly(active) || editing.isManaging(active.id) || editing.activeBusy)) || documentSuggestions.get(active.id)?.loading || documentSuggestions.get(active.id)?.reviewing"
                         @click="toggleSuggestionMode(active.id)">
                         <MessageSquareDiff :size="15" />{{ documentSuggestions.get(active.id)?.mode ? '退出建议模式' : '建议编辑' }}
@@ -4429,7 +4602,7 @@ const helpBlocked = computed(() => !!(
                       <button
                         type="button"
                         :disabled="workspace?.readOnly || busy"
-                        @click="templateDialog = true"
+                        @click="openTemplateLibrary"
                       >
                         <Files :size="15" />文档模板
                       </button>
@@ -4447,6 +4620,12 @@ const helpBlocked = computed(() => !!(
               />
             </KeepAlive>
 
+            <DataTablePage
+              v-if="workspace && isTableTab(pane.activeId)"
+              :key="`${workspace.id}:${pane.activeId}`"
+              :table-id="pane.activeId.slice(6)"
+              :controls-target="detachedWindow ? undefined : `#data-table-controls-${pane.id}`"
+            />
             <CalendarView
               v-if="workspace && pane.activeId === CALENDAR_TAB_ID"
               :date="calendarDate"
@@ -4745,9 +4924,17 @@ const helpBlocked = computed(() => !!(
                         @open-reference="openReference"
                         @edit-source="setPaneSource(pane.activeId, true)"
                         @selection-change="paneSelections[pane.id] = $event"
-                      />
+                      >
+                        <template v-if="!suggestions.suggesting && !active.missing && !active.conflict && !active.error" #empty-document>
+                          <DocumentStarter :assistant="assistant.available" :assistant-busy="assistant.busy || assistant.applying || assistant.loading"
+                            @draft="startDocumentDraft(pane.id, active!.id)"
+                            @initialize="quickInitialize(pane.id, active!.id, $event)"
+                            @template="chooseInitialTemplate(pane.id, active!.id)" />
+                        </template>
+                      </MarkdownEditor>
                       <DocumentComments
                         v-if="workspace"
+                        v-model:discussion-visible="showDocumentDiscussion"
                         :ref="(el) => setPaneComments(pane.id, el)"
                         :workspace-id="workspace.id"
                         :document="active"
@@ -4794,6 +4981,7 @@ const helpBlocked = computed(() => !!(
                 pane.activeId !== GRAPH_TAB_ID &&
                 pane.activeId !== PLUGINS_TAB_ID &&
                 pane.activeId !== CALENDAR_TAB_ID &&
+                !isTableTab(pane.activeId) &&
                 !tab?.pluginView &&
                 !extensionViews.find((view) => view.id === pane.activeId)
               "
@@ -5071,6 +5259,14 @@ const helpBlocked = computed(() => !!(
             />
           </button>
           <button
+            type="button"
+            role="menuitem"
+            :disabled="editorReadonly || !!editing.active || editing.activeBusy || !paneComments.has(store.activePaneId)"
+            @click="openDocumentDiscussion"
+          >
+            <MessageSquare :size="15" />发起讨论
+          </button>
+          <button
             v-if="!detachedWindow"
             type="button"
             role="menuitemcheckbox"
@@ -5119,12 +5315,6 @@ const helpBlocked = computed(() => !!(
       :records="importRecords"
       @close="importPanel = false"
       @completed="importRecords.unshift($event)"
-    />
-    <TemplateDialog
-      v-if="templateDialog && workspace"
-      :key="workspace.id"
-      :source="store.active?.content"
-      @close="templateDialog = false"
     />
     <component
       :is="extensions.regions['sync-dialog']"
@@ -5237,6 +5427,7 @@ const helpBlocked = computed(() => !!(
       :shortcuts="shortcuts"
       :show-page-title="showPageTitle"
       :show-document-properties="showDocumentProperties"
+      :show-document-discussion="showDocumentDiscussion"
       :show-outline="showOutline"
       :outline-on-left="outlineOnLeft"
       :visual-font-size="visualFontSize"
@@ -5261,6 +5452,7 @@ const helpBlocked = computed(() => !!(
       @update:shortcuts="shortcuts = $event"
       @update:show-page-title="showPageTitle = $event"
       @update:show-document-properties="showDocumentProperties = $event"
+      @update:show-document-discussion="showDocumentDiscussion = $event"
       @update:show-outline="showOutline = $event"
       @update:outline-on-left="outlineOnLeft = $event"
       @update:visual-font-size="visualFontSize = $event"
@@ -5278,7 +5470,7 @@ const helpBlocked = computed(() => !!(
       </button>
     </div>
 
-    <NewTabPicker v-if="modal === 'newTab'" @close="modal = ''" @new-document="createNewDocument" />
+    <NewTabPicker v-if="modal === 'newTab'" @close="modal = ''" @new-document="createNewDocument" @new-table="createNewEntry('table')" />
     <div
       v-if="modal && modal !== 'newTab'"
       class="modal-backdrop"

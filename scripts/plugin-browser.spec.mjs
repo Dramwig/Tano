@@ -706,6 +706,11 @@ test('uses plugin tabs, sidebar, settings, menus, palette and shortcuts, then re
   await expect(sidebar.getByText('示例命令 2 工作区', { exact: true })).toBeVisible();
   await page.keyboard.press('ControlOrMeta+Shift+P');
   await page.getByRole('combobox', { name: '搜索命令' }).fill('打开示例看板');
+  await expect(page.getByRole('option', { selected: true })).toHaveCount(0);
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog', { name: '命令中心' })).toBeVisible();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('option', { selected: true })).toContainText('打开示例看板');
   await page.keyboard.press('Enter');
   await expect(page.getByRole('dialog', { name: '命令中心' })).not.toBeVisible();
   await expect(page.getByRole('heading', { name: '看板已经就绪' })).toBeVisible();
@@ -722,7 +727,7 @@ test('uses plugin tabs, sidebar, settings, menus, palette and shortcuts, then re
   await page.getByRole('menuitem', { name: /运行示例命令/ }).click();
   await page.getByRole('button', { name: '插件工作台', exact: true }).click();
   await expect(sidebar.getByText('示例命令 4 文档', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '打开插件标签页', exact: true }).click();
+  await sidebar.getByRole('button', { name: '管理插件', exact: true }).click();
   await page.getByRole('button', { name: /^已安装/ }).click();
   await page.getByRole('button', { name: '查看工作台示例详情' }).click();
   await page.getByRole('button', { name: '停用插件', exact: true }).click();

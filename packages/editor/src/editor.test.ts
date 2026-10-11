@@ -181,7 +181,7 @@ async function mount(
             if (newTab) openedNewTabLinks.push(href);
           },
           onSelectionChange: () => { selectionChanges++; },
-        }),
+        }, { 'empty-document': () => h('div', { class: 'test-document-starter' }, '开始使用') }),
     ),
   );
   app.mount(root);
@@ -202,6 +202,43 @@ async function mount(
     selectionChangeCount: () => selectionChanges,
   };
 }
+
+it('offers initialization only for one empty paragraph, reacting to edits and undo', async () => {
+  const { editor, value, readonly } = await mount('---\ntitle: 已有标题\nowner: Alice\n---\n\n');
+  const starter = () => root.querySelector('.test-document-starter');
+  expect(starter()).not.toBeNull();
+  const original = value.value;
+  expect(editor.value!.initializeBody('## 议题\n\n- [ ] 待办\n', original)).toBe(true);
+  await nextTick();
+  expect(starter()).toBeNull();
+  expect(value.value).toContain('title: 已有标题\nowner: Alice');
+  expect(value.value).toContain('## 议题');
+  expect(editor.value!.initializeBody('替换正文', value.value)).toBe(false);
+  editor.value!.undoLastChange(); await nextTick();
+  expect(starter()).not.toBeNull();
+  expect(splitFrontmatter(value.value).body.trim()).toBe('');
+  readonly.value = true; await nextTick();
+  expect(starter()).toBeNull();
+  expect(editor.value!.initializeBody('只读写入', value.value)).toBe(false);
+});
+
+it('does not treat empty structured blocks, attachments or multiple paragraphs as a new document', async () => {
+  const { editor, value } = await mount('');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, [view.state.schema.nodes.paragraph!.create(), view.state.schema.nodes.paragraph!.create()]));
+  await nextTick();
+  expect(root.querySelector('.test-document-starter')).toBeNull();
+  for (const markdown of ['# 标题\n', '>\n', '- [ ] \n', '```\n\n```\n', '![图片](assets/image.png)\n', '正文\n']) {
+    value.value = markdown; await nextTick();
+    expect(root.querySelector('.test-document-starter'), markdown).toBeNull();
+    expect(editor.value!.initializeBody('新内容', markdown)).toBe(false);
+  }
+  value.value = ''; await nextTick();
+  expect(root.querySelector('.test-document-starter')).not.toBeNull();
+  value.value = '外部新内容'; await nextTick();
+  expect(editor.value!.initializeBody('模板', '')).toBe(false);
+  expect(value.value).toBe('外部新内容');
+});
 
 async function mountPanel(content: string) {
   const result = await mount(content);
@@ -1929,6 +1966,65 @@ it('uses the heading style when switching directly from fenced code source to a 
   expect(source.style.marginTop).toBe('34px');
   expect(source.style.backgroundColor).toBe('rgb(255, 255, 255)');
   expect(value.value).toBe(content);
+  expect(errors).toEqual([]);
+});
+
+it.each(['234234', '**234234**'])(
+  'starts an empty paragraph after typing %s and pressing Enter', async text => {
+    const { value, editor, errors } = await mount('124242342\n\n');
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    view.focus();
+    view.dispatch(view.state.tr.insert(view.state.doc.content.size,
+      view.state.schema.nodes.paragraph!.create()));
+    view.dispatch(view.state.tr.setSelection(TextSelection.atEnd(view.state.doc)));
+    for (const character of text) {
+      const { from, to } = view.state.selection;
+      const handled = view.someProp('handleTextInput', handler =>
+        handler(view, from, to, character, () => view.state.tr.insertText(character, from, to)));
+      if (!handled) view.dispatch(view.state.tr.insertText(character, from, to));
+    }
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    view.dom.dispatchEvent(enter);
+    await nextTick();
+
+    expect(enter.defaultPrevented).toBe(true);
+    expect(view.state.doc.childCount).toBe(3);
+    expect(view.state.selection.$from.parent.type.name).toBe('paragraph');
+    expect(view.state.selection.$from.parent.content.size).toBe(0);
+    expect(view.dom.lastElementChild?.getAttribute('data-placeholder')).toBe("输入 '/' 搜索并切换块类型");
+    expect(value.value).toBe(`124242342\n\n${text}\n\n`);
+    view.dispatch(view.state.tr.insertText('正文'));
+    expect(view.state.doc.lastChild!.firstChild!.marks).toEqual([]);
+    expect(value.value).toBe(`124242342\n\n${text}\n\n正文\n`);
+    expect(errors).toEqual([]);
+  },
+);
+
+it.each([
+  ['', '**Before**\n\n**After** tail\n'],
+  ['> ', '> **Before**\n>\n> **After** tail\n'],
+  ['* ', '* **Before**\n* **After** tail\n'],
+])('splits live inline formatting in a %s paragraph and preserves undo/redo', async (prefix, expected) => {
+  const content = `${prefix}**BeforeAfter** tail\n`;
+  const { value, editor, errors } = await mount(content);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.focus();
+  placeCaret(view.dom.querySelector('strong')!, 6);
+  await nextTick();
+  expect(view.state.selection.$from.parent.type.name).toBe('tano_live_source_inline');
+  view.dom.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await nextTick();
+
+  expect(value.value).toBe(expected);
+  expect(view.state.selection.$from.parent.type.name).toBe('paragraph');
+  expect(view.state.selection.$from.parentOffset).toBe(0);
+  expect(view.dom.querySelector('[data-tano-live-inline-source]')).toBeNull();
+  expect(editor.value!.undoLastChange()).toBe(true);
+  await nextTick();
+  expect(value.value).toBe(content);
+  expect(editor.value!.redoLastChange()).toBe(true);
+  await nextTick();
+  expect(value.value).toBe(expected);
   expect(errors).toEqual([]);
 });
 

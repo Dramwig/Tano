@@ -18,7 +18,7 @@ import CommentComposer from './CommentComposer.vue';
 import CommentConversation from './CommentConversation.vue';
 import ReviewCard from './ReviewCard.vue';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   workspaceId: string;
   document: OpenDocument;
   readonly: boolean;
@@ -28,10 +28,12 @@ const props = defineProps<{
   editorElement?: HTMLElement;
   geometry: (anchors?: readonly { id: string; anchor: CommentAnchor }[]) => CommentGeometry | null;
   assistant?: boolean;
-}>();
+  discussionVisible?: boolean;
+}>(), { discussionVisible: true });
 const emit = defineEmits<{
   annotations: [value: { id: string; anchor: CommentAnchor }[]];
   assistant: [request: { kind: CommentKind; thread: CommentThread; quote?: string }];
+  'update:discussionVisible': [value: boolean];
 }>();
 const adapter = useWorkbenchRuntime().adapter;
 const workspace = useWorkspaceStore();
@@ -45,9 +47,11 @@ const drafts = ref<{ id: string; anchor?: CommentAnchor; body: string }[]>([]);
 const activeDraftId = ref<string>();
 const activeDraft = computed(() => drafts.value.find(draft => draft.id === activeDraftId.value));
 const discussionDraft = ref('');
+const discussionRequested = ref(false);
 const discussionReply = ref<{ threadId: string; message: CommentMessage }>();
 const selected = computed(() => activeDraft.value?.anchor);
 const section = ref<HTMLElement>();
+const discussionSection = ref<HTMLElement>();
 const popup = ref<HTMLElement>();
 const composers = new Map<string, InstanceType<typeof CommentComposer>>();
 const discussionComposer = ref<InstanceType<typeof CommentComposer>>();
@@ -189,6 +193,7 @@ watch(() => [props.workspaceId, props.document.id], () => {
   activeDraftId.value = undefined;
   drafts.value = [];
   discussionDraft.value = '';
+  discussionRequested.value = false;
   discussionReply.value = undefined;
   closePopup();
   publish();
@@ -300,6 +305,12 @@ const activeAnnotations = computed(() => (annotations.value?.threads ?? [])
   .filter(thread => !thread.detached && working.value[thread.id]));
 const pendingAnnotations = computed(() => activeAnnotations.value.filter(thread => !thread.resolved));
 const pendingDiscussions = computed(() => (discussions.value?.threads ?? []).filter(thread => !thread.resolved));
+const discussionShown = computed(() => props.discussionVisible && (
+  pendingDiscussions.value.length > 0 || discussionRequested.value || !!discussionDraft.value || !!discussionReply.value
+));
+watch(() => pendingDiscussions.value.length, count => {
+  if (count) discussionRequested.value = false;
+});
 watch(() => discussions.value?.threads.some(thread => thread.id === discussionReply.value?.threadId && thread.resolved), resolved => {
   if (resolved) discussionReply.value = undefined;
 });
@@ -487,8 +498,19 @@ function markClicked(event: MouseEvent) {
     void nextTick(() => conversations.get(id)?.focusReply());
   }
 }
-function showDiscussion() {
-  section.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+async function showDiscussion() {
+  discussionRequested.value = pendingDiscussions.value.length === 0;
+  emit('update:discussionVisible', true);
+  await nextTick();
+  discussionSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  await discussionComposer.value?.focus();
+}
+function dismissEmptyDiscussion() {
+  if (busy.value || pendingDiscussions.value.length || discussionDraft.value.trim()) return;
+  discussionRequested.value = false;
+  discussionDraft.value = '';
+  discussionReply.value = undefined;
+  error.value = '';
 }
 async function openComment(event: Event) {
   const target = (event as CustomEvent<{ fileId: string; threadId: string; kind: CommentKind }>).detail;
@@ -500,6 +522,8 @@ async function openComment(event: Event) {
     const anchor = working.value[target.threadId];
     if (anchor) props.focusAnchor(anchor);
     updateLayout();
+  } else {
+    emit('update:discussionVisible', true);
   }
   await nextTick();
   if (target.kind === 'annotation' && !layout.value.rail) {
@@ -516,7 +540,7 @@ async function beginAnnotation() {
   const selection = props.captureSelection();
   if (!selection || !selection.spans.length) {
     error.value = '请先选择文字，或将光标放在要批注的块中';
-    showDiscussion();
+    await showDiscussion();
     return;
   }
   try {
@@ -563,6 +587,8 @@ async function beginDiscussionReply(threadId: string, message: CommentMessage) {
   if (busy.value || props.readonly) return;
   discussionReply.value = { threadId, message };
   error.value = '';
+  emit('update:discussionVisible', true);
+  await nextTick();
   await discussionComposer.value?.focus();
 }
 async function cancelDiscussionReply() {
@@ -621,7 +647,7 @@ async function start(kind: CommentKind, mentions: CommentMention[] = [], draftId
       drafts.value = drafts.value.filter(item => item.id !== draftId);
       if (activeDraftId.value === draftId) activeDraftId.value = undefined;
       publish();
-    } else { discussions.value = next; discussionDraft.value = ''; }
+    } else { discussions.value = next; discussionDraft.value = ''; discussionRequested.value = false; }
   } catch (reason) { error.value = reason instanceof Error ? reason.message : String(reason); }
   finally { busy.value = false; }
 }
@@ -662,7 +688,7 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
 </script>
 
 <template>
-  <section ref="section" class="document-discussion" aria-label="文档讨论">
+  <div ref="section" class="document-review">
     <button v-for="block in layout.rail ? [] : layout.blocks.filter(item => count(item.ids))" :key="block.key" type="button"
       class="annotation-count" :class="{ 'is-open': openBlockKey === block.key && popupVisible }"
       :style="{ left: `${layout.buttonLeft}px`, top: `${block.top + 2}px` }"
@@ -702,35 +728,45 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
       </div>
       <p v-if="error && !layout.rail" class="comment-error" role="alert">{{ error }}</p>
     </div>
-    <header class="document-discussion-header"><h2>文档讨论</h2><span v-if="pendingDiscussions.length">{{ pendingDiscussions.reduce((total, thread) => total + thread.messages.length, 0) }}</span></header>
-    <p v-if="error && !popupVisible" class="comment-error" role="alert">{{ error }}</p>
-    <p v-if="loading && !discussions" class="discussion-loading">正在读取讨论...</p>
-    <div class="document-discussion-messages">
-      <CommentConversation v-for="thread in pendingDiscussions" :key="thread.id"
-        :ref="value => value ? conversations.set(thread.id, value as InstanceType<typeof CommentConversation>) : conversations.delete(thread.id)"
-        :thread="thread" :readonly="readonly" :busy="busy" :author-id="author.id" :author-name="author.name"
-        :assistant="assistant" @assistant="emit('assistant', { kind: 'discussion', thread })"
-        @reply-request="beginDiscussionReply(thread.id, $event)"
-        @edit="editMessage('discussion', thread.id, $event)" @remove="removeMessage('discussion', thread.id, $event)"
-        @resolve="change('discussion', thread.id, 'resolve', '', $event)" />
-    </div>
-    <div v-if="!readonly" class="document-discussion-compose">
-      <div v-if="discussionReply" class="discussion-reply-target" role="status">
-        <Reply :size="14" aria-hidden="true" />
-        <span :title="`回复 ${discussionReply.message.authorName}：${discussionReply.message.body}`">回复 {{ discussionReply.message.authorName }}：{{ discussionReply.message.body }}</span>
-        <button type="button" aria-label="取消回复" title="取消回复" :disabled="busy" @click="cancelDiscussionReply"><X :size="14" /></button>
+    <p v-if="error && !popupVisible && !discussionShown" class="comment-error" role="alert">{{ error }}</p>
+    <section v-show="discussionShown" ref="discussionSection" class="document-discussion" aria-label="文档讨论">
+      <header class="document-discussion-header">
+        <h2>文档讨论</h2><span v-if="pendingDiscussions.length">{{ pendingDiscussions.reduce((total, thread) => total + thread.messages.length, 0) }}</span>
+        <button v-if="!pendingDiscussions.length && !discussionDraft.trim()" type="button" class="discussion-dismiss"
+          aria-label="关闭讨论输入" title="关闭讨论输入" :disabled="busy" @click="dismissEmptyDiscussion"><X :size="16" /></button>
+      </header>
+      <p v-if="error && !popupVisible" class="comment-error" role="alert">{{ error }}</p>
+      <p v-if="loading && !discussions" class="discussion-loading">正在读取讨论...</p>
+      <div class="document-discussion-messages">
+        <CommentConversation v-for="thread in pendingDiscussions" :key="thread.id"
+          :ref="value => value ? conversations.set(thread.id, value as InstanceType<typeof CommentConversation>) : conversations.delete(thread.id)"
+          :thread="thread" :readonly="readonly" :busy="busy" :author-id="author.id" :author-name="author.name"
+          :assistant="assistant" @assistant="emit('assistant', { kind: 'discussion', thread })"
+          @reply-request="beginDiscussionReply(thread.id, $event)"
+          @edit="editMessage('discussion', thread.id, $event)" @remove="removeMessage('discussion', thread.id, $event)"
+          @resolve="change('discussion', thread.id, 'resolve', '', $event)" />
       </div>
-      <CommentComposer ref="discussionComposer" v-model="discussionDraft" :author-name="author.name"
-        :label="discussionReply ? '回复评论' : '添加评论'" :busy="busy" compact @submit="submitDiscussion" />
-    </div>
-  </section>
+      <div v-if="!readonly" class="document-discussion-compose">
+        <div v-if="discussionReply" class="discussion-reply-target" role="status">
+          <Reply :size="14" aria-hidden="true" />
+          <span :title="`回复 ${discussionReply.message.authorName}：${discussionReply.message.body}`">回复 {{ discussionReply.message.authorName }}：{{ discussionReply.message.body }}</span>
+          <button type="button" aria-label="取消回复" title="取消回复" :disabled="busy" @click="cancelDiscussionReply"><X :size="14" /></button>
+        </div>
+        <CommentComposer ref="discussionComposer" v-model="discussionDraft" :author-name="author.name"
+          :label="discussionReply ? '回复评论' : '添加评论'" :busy="busy" compact @submit="submitDiscussion" />
+      </div>
+    </section>
+  </div>
 </template>
 
 <style scoped>
-.document-discussion { max-width: 780px; margin: 48px auto 0; padding-top: 24px; color: var(--text); font-family: 'Inter Variable', 'Microsoft YaHei', sans-serif; }
+.document-review { color: var(--text); font-family: 'Inter Variable', 'Microsoft YaHei', sans-serif; }
+.document-discussion { max-width: 780px; margin: 48px auto 0; padding-top: 24px; }
 .document-discussion-header { display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px; }
 .document-discussion-header h2 { font-size: 19px; font-weight: 500; line-height: 28px; margin: 0; }
 .document-discussion-header > span { color: var(--muted); font-size: 13px; }
+.discussion-dismiss { display: grid; place-items: center; margin-left: auto; padding: 4px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
+.discussion-dismiss:hover { background: var(--hover); color: var(--text); }
 .document-discussion-compose { margin-top: 16px; }
 .document-discussion-compose :deep(.comment-composer) { gap: 12px; }
 .document-discussion-compose :deep(.comment-avatar) { width: 32px; height: 32px; }

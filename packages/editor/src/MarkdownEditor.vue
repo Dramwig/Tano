@@ -39,6 +39,7 @@ import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
 import { createDocumentDecorations } from './document-decorations';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { Fragment } from '@milkdown/kit/prose/model';
+import { canSplit } from '@milkdown/kit/prose/transform';
 import type { Mark, Node } from '@milkdown/kit/prose/model';
 import type { Ctx } from '@milkdown/kit/ctx';
 import { prism } from '@milkdown/plugin-prism';
@@ -162,6 +163,26 @@ const policy = () => props.capabilities ?? defaultCapabilities;
 const referencesEnabled = () => props.referenceTargets !== undefined && commandEnabled('reference', props.enabledLevels, policy().features);
 const preferences = () => props.preferences ?? defaultEditorPreferences;
 const root = ref<HTMLElement>();
+const emptyDocument = ref(false);
+function isEmptyDocument(doc: Node) {
+  return doc.childCount === 1 && doc.firstChild?.type.name === 'paragraph' && doc.firstChild.content.size === 0;
+}
+/** Initialize only the unchanged empty body, through normal editing and undo. */
+function initializeBody(markdown: string, expected: string) {
+  if (!editor || !bridgeView || disposed || props.readonly || props.extension ||
+      props.modelValue !== expected || lastValue !== expected || !isEmptyDocument(bridgeView.state.doc)) return false;
+  return editor.action(ctx => {
+    const doc = ctx.get(parserCtx)(markdown);
+    if (!doc || isEmptyDocument(doc)) return false;
+    const view = ctx.get(editorViewCtx);
+    const tr = closeHistory(view.state.tr).replaceWith(0, view.state.doc.content.size, doc.content);
+    tr.setSelection(TextSelection.atStart(tr.doc));
+    view.dispatch(tr.scrollIntoView());
+    view.dispatch(closeHistory(view.state.tr));
+    view.focus();
+    return true;
+  });
+}
 function preventEditorTabNavigation(event: KeyboardEvent) {
   if (event.key !== 'Tab' || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
   const target = event.target;
@@ -1299,7 +1320,7 @@ function enterHeadingSource(ctx: Ctx, view: EditorView) {
   return true;
 }
 
-function enterInlineSourceHeading(ctx: Ctx, view: EditorView) {
+function enterInlineSourceTextblock(ctx: Ctx, view: EditorView) {
   const current = currentSource(view);
   const selection = view.state.selection;
   if (
@@ -1308,8 +1329,9 @@ function enterInlineSourceHeading(ctx: Ctx, view: EditorView) {
     !(selection instanceof TextSelection) ||
     selection.$from.parent.type.name !== 'tano_live_source_inline'
   ) return false;
-  const headingDepth = selection.$from.depth - 1;
-  if (headingDepth < 1 || selection.$from.node(headingDepth).type.name !== 'heading') return false;
+  const blockDepth = selection.$from.depth - 1;
+  if (blockDepth < 1 || !['heading', 'paragraph'].includes(selection.$from.node(blockDepth).type.name))
+    return false;
   const raw = current.node.textContent;
   const marker = '\uE000';
   if (raw.includes(marker)) return false;
@@ -1327,19 +1349,20 @@ function enterInlineSourceHeading(ctx: Ctx, view: EditorView) {
   });
   if (splitAt === undefined) return false;
 
-  const heading = selection.$from.node(headingDepth);
-  const headingPos = selection.$from.before(headingDepth);
-  const inlineOffset = current.pos - headingPos - 1;
-  const left = heading.copy(
-    heading.content.cut(0, inlineOffset).append(inline.content.cut(0, splitAt)),
-  );
-  const right = view.state.schema.nodes.paragraph!.create(
-    null,
-    inline.content.cut(splitAt + marker.length)
-      .append(heading.content.cut(inlineOffset + current.node.nodeSize)),
-  );
-  const tr = view.state.tr.replaceWith(headingPos, headingPos + heading.nodeSize, [left, right]);
-  tr.setSelection(TextSelection.create(tr.doc, headingPos + left.nodeSize + 1));
+  // Inline source fields are code nodes, so the base Enter command would insert
+  // a literal newline. Restore the formatted content and split its text block
+  // in one transaction, including the list item when this is a list paragraph.
+  const tr = view.state.tr.replaceWith(current.pos, current.pos + current.node.nodeSize,
+    inline.content.cut(0, splitAt).append(inline.content.cut(splitAt + marker.length)));
+  const splitPos = current.pos + splitAt;
+  const block = selection.$from.node(blockDepth);
+  const splitDepth = block.type.name === 'paragraph' &&
+    selection.$from.node(blockDepth - 1).type.name === 'list_item' ? 2 : 1;
+  const types = block.type.name === 'heading' ? [{ type: view.state.schema.nodes.paragraph! }] : undefined;
+  if (!canSplit(tr.doc, splitPos, splitDepth, types)) return false;
+  tr.split(splitPos, splitDepth, types);
+  tr.setSelection(TextSelection.create(tr.doc, splitPos + splitDepth * 2));
+  tr.scrollIntoView();
   localSource = undefined;
   transitioningSource = true;
   try {
@@ -1576,9 +1599,11 @@ const bridge = $prose(
       },
       view: (view) => {
         bridgeView = view;
+        emptyDocument.value = isEmptyDocument(view.state.doc);
         emit('selectionChange', selectionContext(view.state));
         return {
           update(view, previous) {
+            emptyDocument.value = isEmptyDocument(view.state.doc);
             if (blockMenu.value && !previous.doc.eq(view.state.doc)) closeBlockMenu(false);
             const activated = sourceActivationPending;
             sourceActivationPending = false;
@@ -1776,7 +1801,7 @@ const bridge = $prose(
               event.key === 'Enter' &&
               !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey &&
               !event.isComposing && !view.composing && !props.readonly &&
-              ((source && (enterHeadingSource(ctx, view) || enterInlineSourceHeading(ctx, view))) ||
+              ((source && (enterHeadingSource(ctx, view) || enterInlineSourceTextblock(ctx, view))) ||
                 enterRenderedHeading(view))
             ) {
               event.preventDefault();
@@ -2992,6 +3017,7 @@ function modeCursorTop() {
   return bridgeView.coordsAtPos(selection instanceof NodeSelection ? selection.from : selection.head).top;
 }
 defineExpose({
+  initializeBody,
   captureVisualAnchor: () => bridgeView && !disposed ? captureVisualAnchor(bridgeView) : null,
   visualSelection: () => bridgeView && !disposed ? visualSelection(bridgeView) : null,
   captureModeSelection,
@@ -3169,6 +3195,7 @@ onBeforeUnmount(() => {
     @contextmenu="openBlockMenu"
     @keydown="preventEditorTabNavigation"
   />
+  <slot v-if="emptyDocument && !readonly && !extension" name="empty-document" />
   <Teleport to="body">
     <div
       v-if="linkPanel"

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
-import type { FileEntry } from '@tano/protocol';
+import { isDataTableFilePath, type FileEntry } from '@tano/protocol';
 
 const props = defineProps<{
   file: FileEntry;
@@ -16,10 +16,16 @@ const error = ref('');
 const errorId = useId();
 const composing = ref(false);
 let finished = false;
-onBeforeUnmount(() => { finished = true; });
+onBeforeUnmount(() => {
+  finished = true;
+});
 onMounted(() => {
   input.value?.focus({ preventScroll: true });
-  const extension = file.kind === 'file' ? file.name.lastIndexOf('.') : -1;
+  const extension = isDataTableFilePath(file.path)
+    ? file.name.length - '.table.json'.length
+    : file.kind === 'file'
+      ? file.name.lastIndexOf('.')
+      : -1;
   input.value?.setSelectionRange(0, extension > 0 ? extension : file.name.length);
   if (input.value) input.value.scrollLeft = 0;
 });
@@ -69,7 +75,13 @@ function compositionEnd() {
 </script>
 
 <template>
-  <span class="tree-rename-field" :aria-busy="saving" @click.stop @contextmenu.stop @keydown.stop="keydown">
+  <span
+    class="tree-rename-field"
+    :aria-busy="saving"
+    @click.stop
+    @contextmenu.stop
+    @keydown.stop="keydown"
+  >
     <input
       ref="input"
       v-model="draft"
