@@ -19,6 +19,9 @@ export interface EditingSession {
   readonly active: { key: string; readOnly: boolean; extension?: EditorExtension } | null;
   readonly activeBusy: boolean;
   isManaging(id: string): boolean;
+  /** Hosts with automatic sessions can safely hand off file mutations. */
+  canMutateFile?(id: string): boolean;
+  withFileMutation?<T>(ids: string[], mutation: () => Promise<T>): Promise<T>;
   /** Apply through the live editor transaction when a plugin edits a managed document. */
   applyPluginEdit?(id: string, before: string, after: string): Promise<string | void>;
   flush(): Promise<unknown>;
