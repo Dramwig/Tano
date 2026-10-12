@@ -781,6 +781,69 @@ describe('workspace file reconciliation', () => {
     await store.openFileInNewTab(store.workspace!.files.find((entry) => entry.path === 'other.md')!);
     expect(store.tabs.map((tab) => tab.path)).toEqual(['note.md', 'other.md']);
   });
+  it('displays a cached document without waiting for a background workspace refresh', async () => {
+    await backend.create('cached.md', 'Cached body');
+    await store.refresh();
+    const file = store.workspace!.files.find(file => file.path === 'cached.md')!;
+    fixture.adapter!.readCached = path => path === file.path
+      ? { content: 'Cached body', hash: 'Cached body', modified: 0 } : undefined;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const refresh = backend.refresh.bind(backend);
+    const scanning = vi.spyOn(backend, 'refresh').mockImplementationOnce(async () => { await gate; return refresh(); });
+    const pending = store.refresh();
+    try {
+      await vi.waitFor(() => expect(scanning).toHaveBeenCalled());
+      const read = vi.spyOn(backend, 'read');
+      await store.openFile(file);
+      expect(store.active?.content).toBe('Cached body');
+      expect(read).not.toHaveBeenCalled();
+      store.edit('Local edit while scan is running');
+    } finally { release(); await pending; }
+    expect(store.active?.content).toBe('Local edit while scan is running');
+    await store.flush();
+    expect(backend.files.get(file.path)?.content).toBe('Local edit while scan is running');
+  });
+  it('starts read ahead before waiting for the previous document to close', async () => {
+    await backend.create('next.md', 'Next');
+    await store.refresh();
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const close = vi.fn(() => gate);
+    store.setDocumentLifecycle({ beforeSwitch: async () => {}, beforeCloseDocument: close });
+    const prefetch = fixture.adapter!.prefetch = vi.fn(async () => {});
+    const opening = store.openFile(store.workspace!.files.find(file => file.path === 'next.md')!);
+    try {
+      expect(prefetch).toHaveBeenCalledWith('next.md');
+      expect(close).toHaveBeenCalledWith('note-id');
+      expect(store.active?.path).toBe('note.md');
+    } finally { release(); await opening; }
+    expect(store.active?.path).toBe('next.md');
+  });
+  it('does not let an earlier slow read replace the most recently selected cached document', async () => {
+    await backend.create('slow.md', 'Slow');
+    await backend.create('fast.md', 'Fast');
+    await store.refresh();
+    fixture.adapter!.readCached = path => path === 'fast.md'
+      ? { content: 'Fast', hash: 'Fast', modified: 0 } : undefined;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const read = backend.read.bind(backend);
+    const started = vi.fn();
+    vi.spyOn(backend, 'read').mockImplementation(async path => {
+      if (path === 'slow.md') { started(); await gate; }
+      return read(path);
+    });
+    const opening = store.openFile(store.workspace!.files.find(file => file.path === 'slow.md')!);
+    try {
+      await vi.waitFor(() => expect(started).toHaveBeenCalled());
+      await store.openFile(store.workspace!.files.find(file => file.path === 'fast.md')!);
+      expect(store.active?.path).toBe('fast.md');
+    } finally { release(); await opening; }
+    expect(store.active?.path).toBe('fast.md');
+    expect(store.tabs).toHaveLength(1);
+    expect(store.documents.map(doc => doc.path)).toEqual(['fast.md']);
+  });
   it('opens dropped files at the requested slot without replacing tabs or writing files', async () => {
     await backend.create('second.md', 'second');
     await backend.create('third.md', 'third');

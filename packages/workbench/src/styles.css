@@ -1101,7 +1101,7 @@ button:hover {
 }
 .tano-enhanced-header input:focus {
   outline: 1px solid var(--green);
-  background: var(--bg);
+  background: var(--paper);
 }
 .tano-enhanced-header button {
   border: 0;
@@ -3716,6 +3716,24 @@ button:hover {
   font-size: 12px;
   color: var(--muted);
 }
+.creation-status {
+  margin: 8px 24px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.file-mutation-status {
+  position: fixed;
+  right: 84px;
+  bottom: 20px;
+  z-index: 100;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 12px;
+  pointer-events: none;
+}
 .conflict-banner {
   display: flex;
   gap: 10px;
@@ -5664,3 +5682,12 @@ div.tano-feature-source {
 .suggestion-mode-badge button:hover { background: var(--suggestion-bg); opacity: 1; }
 .suggestion-mode-badge button:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
 .suggestion-mode-badge button:disabled { opacity: .4; }
+/* Keep the table launcher anchored to its pane while the grid scrolls. */
+.data-table-assistant-page {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}

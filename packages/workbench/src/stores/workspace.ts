@@ -8,17 +8,18 @@ import type {
   WorkspaceLayout,
   RecentWorkspace,
 } from '@tano/protocol';
-import { basename, parentPath, isMarkdown, pathKey, objectDirectory, validatePath, assistantRulesPath, isWorkspaceInternalPath } from '@tano/protocol';
+import { basename, parentPath, isMarkdown, pathKey, objectDirectory, validatePath, assistantRulesPath, isWorkspaceInternalPath, workspaceSettingsPath } from '@tano/protocol';
 import { mergeMarkdown } from '@tano/markdown';
 import { useWorkbenchRuntime } from '../runtime';
 import type { WorkbenchViewTab } from '../runtime';
 import { planFileMove } from '../file-move';
+import { optimisticFiles, type FileMutationPreview } from '../optimistic-files';
 import { topLevelEntries } from '../file-selection';
 import { defaultCapabilities } from '@tano/editor/runtime';
 import { loadCapabilities, saveCapabilityPatch } from '../workspace-capabilities';
 import type { CapabilityPatch } from '../workspace-capabilities';
 import { defaultWorkspaceSettings, loadWorkspaceSettings, saveWorkspaceSettingsPatch } from '../workspace-settings';
-import type { WorkspaceSettingsPatch } from '../workspace-settings';
+import type { WorkspaceSettings, WorkspaceSettingsPatch } from '../workspace-settings';
 import { loadObjects, saveObject, mergeObject } from '../workspace-objects';
 import type { ObjectRecord } from '../workspace-objects';
 import { assetTargets, documentTargets, parseObject, objectTypeRegistry, validateObjectProperties } from '@tano/protocol';
@@ -46,10 +47,13 @@ import { CALENDAR_TAB_ID } from '../calendar';
 import { dockLayout, layoutPanes, newPane, reconcileLayout, restoreLayout } from '../pane-layout';
 import type { PaneDrop } from '../pane-layout';
 import { DocumentLayoutConflict, loadDocumentLayout, layoutDirty, saveDocumentLayout } from '../workspace-document-layout';
+import { documentLayoutPath, parseDocumentLayout } from '@tano/protocol';
 import type { DocumentLayoutState } from '../workspace-document-layout';
 import type { TableLayout } from '@tano/protocol';
 import type { AssistantProposal, AssistantPreview, AssistantSource, AssistantToolCall } from '@tano/protocol';
 import { assistantHash } from '../assistant/hash';
+import { isAssistantFile, validateAssistantContent, validAssistantDestination } from '../assistant/files';
+import { assistantTableContent, reviewAssistantTable } from '../assistant/data-tables';
 import { structureProposal, mergeStructureRelations, validateTaskUpdate } from '../assistant/structures';
 import { parseTaskQuery, possibleDuplicateTasks, queryTasks } from '../assistant/tasks';
 import type { TaskQuery } from '../assistant/tasks';
@@ -77,6 +81,7 @@ export interface OpenDocument {
   content: string;
   base: FileSnapshot;
   saving: boolean;
+  creating?: boolean;
   missing: boolean;
   conflict?: { copyPath: string; disk: FileSnapshot };
   error?: string;
@@ -127,6 +132,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     views.value = next;
   }
   const workspace = ref<Workspace | null>(null);
+  const fileMutations = optimisticFiles(() => workspace.value, report);
+  const visibleWorkspace = computed({ get: () => fileMutations.workspace.value, set: (value) => { workspace.value = value; } });
+  function displayPath(file: Pick<FileEntry, 'id' | 'path'>) {
+    return visibleWorkspace.value?.files.find(entry => entry.id === file.id)?.path ?? file.path;
+  }
   const dataTables = createDataTableController({ adapter, workspace: () => workspace.value, serial,
     refresh: async () => { workspace.value = await adapter.refresh(); } });
   function dataTableFileId(id: string) {
@@ -153,6 +163,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (path !== file.path) await renameEntry(file, path);
   }
   const workspaceSettings = ref({ ...defaultWorkspaceSettings });
+  const pendingWorkspaceIcon = ref<{ workspaceId: string; value: string }>();
+  const visibleWorkspaceSettings = computed(() => {
+    const pending = pendingWorkspaceIcon.value;
+    return pending && pending.workspaceId === workspace.value?.id
+      ? { ...workspaceSettings.value, icon: pending.value }
+      : workspaceSettings.value;
+  });
   const workspaceSettingsError = ref('');
   const workspaceSettingsSaving = ref(false);
   let workspaceSettingsBase: FileSnapshot | null = null;
@@ -164,19 +181,22 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (current?.id === workspaceSettingsScope && workspaceSettings.value.name)
       current.name = workspaceSettings.value.name;
   }, { flush: 'sync' });
+  function applyWorkspaceSettings(current: Workspace, loaded: { snapshot: FileSnapshot | null; settings: WorkspaceSettings }) {
+    workspaceSettingsScope = current.id;
+    workspaceSettingsBase = loaded.snapshot;
+    workspaceSettings.value = loaded.settings;
+    workspaceSettingsError.value = '';
+    current.name = loaded.settings.name || workspaceDefaultName;
+    workspaceNames.set(current.id, current.name);
+    recent.value = recent.value.map(item => ({ ...item, name: workspaceNames.get(item.id) ?? item.name,
+      ...(item.id === current.id ? { icon: loaded.settings.icon } : {}) }));
+  }
   async function refreshWorkspaceSettings() {
     const current = workspace.value;
     if (!current) return;
     try {
       const loaded = await loadWorkspaceSettings(adapter, current);
-      workspaceSettingsScope = current.id;
-      workspaceSettingsBase = loaded.snapshot;
-      workspaceSettings.value = loaded.settings;
-      workspaceSettingsError.value = '';
-      current.name = loaded.settings.name || workspaceDefaultName;
-      workspaceNames.set(current.id, current.name);
-      recent.value = recent.value.map(item => ({ ...item, name: workspaceNames.get(item.id) ?? item.name,
-        ...(item.id === current.id ? { icon: loaded.settings.icon } : {}) }));
+      applyWorkspaceSettings(current, loaded);
     } catch (error) {
       workspaceSettingsError.value = `无法读取工作区设置：${String(error)}。原文件已保留。`;
     }
@@ -184,19 +204,33 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function updateWorkspaceSettings(workspaceId: string, patch: WorkspaceSettingsPatch) {
     if (workspaceSettingsSaving.value || workspaceSettingsError.value) return;
     workspaceSettingsSaving.value = true;
+    // Preview before joining the filesystem queue; keep the persisted base intact
+    // so refreshes and failed writes can still reconcile against the actual file.
+    if (patch.key === 'icon' && workspace.value?.id === workspaceId && !workspace.value.readOnly && canManageSettings.value)
+      pendingWorkspaceIcon.value = { workspaceId, value: patch.value };
     try {
       await serial(async () => {
         if (workspace.value?.id !== workspaceId) throw new Error('工作区已切换，请重新打开设置');
         writable();
+        if (!canManageSettings.value) throw new Error('只有工作区所有者和管理者可以修改工作区设置');
         if (patch.key === 'homePageId' && patch.value && !workspace.value.files.some(file => file.id === patch.value && file.kind === 'file' && isMarkdown(file.path) && !isWorkspaceInternalPath(file.path)))
           throw new Error('默认页面已不存在，请重新选择');
         const saved = await saveWorkspaceSettingsPatch(adapter, workspaceSettingsBase, patch);
-        workspaceSettingsBase = saved.snapshot;
-        workspaceSettings.value = saved.settings;
-        workspace.value = await adapter.refresh();
-        await refreshWorkspaceSettings();
+        // Use the acknowledged state, including a newly created settings file.
+        // Legacy adapters only need a scan when they cannot return that new entry.
+        if (saved.workspace) workspace.value = saved.workspace;
+        else if (!workspace.value.files.some(file => file.path === workspaceSettingsPath))
+          workspace.value = await adapter.refresh();
+        applyWorkspaceSettings(workspace.value, saved);
+        const entry = workspace.value.files.find(file => file.path === workspaceSettingsPath);
+        if (entry) {
+          entry.size = new TextEncoder().encode(saved.snapshot.content).length;
+          entry.modified = saved.snapshot.modified;
+        }
+        pendingWorkspaceIcon.value = undefined;
       });
     } catch (error) {
+      pendingWorkspaceIcon.value = undefined;
       report(error);
       if (workspace.value?.id === workspaceId) {
         await serial(async () => {
@@ -207,6 +241,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         if (workspace.value?.id === workspaceId) workspaceSettingsError.value = String(error);
       }
     } finally {
+      pendingWorkspaceIcon.value = undefined;
       workspaceSettingsSaving.value = false;
     }
   }
@@ -225,6 +260,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const pluginRuntime = shallowRef<PluginRuntimeState[]>([]);
   const pluginQueryPager = new PluginQueryPager();
   const pluginExecutor = new PluginExecutionHost({ call: pluginCall }, states => { pluginRuntime.value = states; }, runtime.plugins);
+  const canManageSettings = computed(() => !!workspace.value && !workspace.value.readOnly &&
+    (workspace.value.canManageSettings ?? adapter.mode !== 'web'));
   const canManagePlugins = computed(() => !!workspace.value && canManageWorkspacePlugins(adapter, workspace.value));
   const pluginStorageChanged = (event: StorageEvent) => {
     if (event.key?.startsWith('tano.object-plugins.v1.') || event.key?.startsWith('tano.plugin-')) scheduleRefresh();
@@ -715,6 +752,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       await serial(async () => {
         if (workspace.value?.id !== workspaceId) throw new Error('工作区已切换，请重试');
         writable();
+        if (!canManageSettings.value) throw new Error('只有工作区所有者和管理者可以修改工作区设置');
         const saved = await saveCapabilityPatch(adapter, base, patch);
         capabilityBase = saved.snapshot;
         capabilities.value = saved.capabilities;
@@ -761,6 +799,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }, { immediate: true });
   const tabIds = ref<string[]>([]);
   const activeId = ref('');
+  let activationRevision = 0;
+  watch(activeId, () => { activationRevision++; }, { flush: 'sync' });
   watch(pluginViews, definitions => {
     const keys = new Set(definitions.filter(view => view.location === 'tab').map(view => view.key));
     const remaining = tabIds.value.filter(id => !id.startsWith('plugin:') || keys.has(id));
@@ -843,8 +883,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const attachment = attachmentPreview ? workspace.value?.files.find(file => file.id === id.slice('attachment:'.length) && file.kind === 'file') : undefined;
       const table = dataTables.records.value.find(record => tableTabId(record.fileId) === id);
       const tableFile = isTableTab(id) ? workspace.value?.files.find(file => file.id === id.slice(6)) : undefined;
-      const tablePath = tableFile?.path ?? table?.path;
-      return { id, path: document?.path ?? attachment?.path ?? tablePath ?? (attachmentPreview ? '附件不可用' : ''), blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, view: views.value.get(id), pluginView: pluginViews.value.find(view => view.key === id && view.location === 'tab'), document, attachmentPreview, attachment,
+      const tablePath = tableFile ? displayPath(tableFile) : table?.path;
+      return { id, path: document ? displayPath(document) : attachment ? displayPath(attachment) : tableFile ? displayPath(tableFile) : tablePath ?? (attachmentPreview ? '附件不可用' : ''), blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, view: views.value.get(id), pluginView: pluginViews.value.find(view => view.key === id && view.location === 'tab'), document, attachmentPreview, attachment,
         ...(isTableTab(id) ? { dataTable: { name: tablePath ? dataTableName(tablePath) : '数据表不可用', dirty: !!table && dataTables.dirty(table) } } : {}) };
     }),
   );
@@ -952,11 +992,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const detachedWorkspacePath = detachedTabId
     ? new URLSearchParams(window.location.search).get('workspacePath')
     : null;
-  const dirty = (doc: OpenDocument) => doc.content !== doc.base.content;
+  const dirty = (doc: OpenDocument) => !!doc.creating || doc.content !== doc.base.content;
   const layoutPending = (doc: OpenDocument) => !!doc.tableLayout && layoutDirty(doc.tableLayout) &&
     doc.tableLayout.conflict?.draft !== JSON.stringify(doc.tableLayout.file);
   const suggestionPersistence = shallowRef<{ flush: () => Promise<void>; pending: () => boolean }>();
-  const pending = computed(() => dataTables.records.value.some(dataTables.dirty) || !!suggestionPersistence.value?.pending() || documents.value.some((d) => (dirty(d) || layoutPending(d)) && !d.conflict));
+  const pending = computed(() => fileMutations.pending.value || dataTables.records.value.some(dataTables.dirty) || !!suggestionPersistence.value?.pending() || documents.value.some((d) => (dirty(d) || layoutPending(d)) && !d.conflict));
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   let watchTimer: ReturnType<typeof setTimeout> | undefined;
   let pollTimer: ReturnType<typeof setInterval> | undefined;
@@ -964,6 +1004,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   let refreshRunning = false;
   let refreshPending = false;
   let chain: Promise<unknown> = Promise.resolve();
+  let creationChain: Promise<unknown> = Promise.resolve();
+  let creationRevision = 0;
+  const creationTasks = new Map<string, Promise<boolean>>();
+  let disposed = false;
   let sessionReady = false;
   let sessionBlocked = false;
   let pendingSession: { id: string; payload: WorkspaceSession } | undefined;
@@ -972,6 +1016,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   let beforeSwitch: (() => Promise<void>) | undefined;
   let afterSwitch: (() => Promise<void>) | undefined;
   let beforeCloseDocument: ((id: string) => Promise<void>) | undefined;
+  let fileOpenRevision = 0;
   function queueSession() {
     if (detachedTabId || !sessionReady || sessionBlocked || !workspace.value || !adapter.saveSession) return;
     pendingSession = {
@@ -1339,16 +1384,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         content: tab.draft.content,
         base: tab.draft.base,
         saving: false,
+        creating: file?.pendingCreation,
         missing: !file,
       };
-      await hydrateDocumentLayout(doc);
+      if (!doc.creating) await hydrateDocumentLayout(doc);
       documents.value.push(doc);
       remapped.set(tab.id, doc.id);
       activity('已恢复未保存草稿', doc.path, 'file');
       if (file) {
         try {
-          await reconcile(doc, await adapter.read(file.path));
-          await saveInternal(doc);
+          if (!doc.creating) await reconcile(doc, await adapter.read(file.path));
+          await saveInternal(documents.value.find(item => item.id === doc.id)!);
         } catch (error) {
           doc.error = String(error);
           report(error);
@@ -1413,7 +1459,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
     activeId.value = id;
   }
-  async function openInternal(file: FileEntry, replaceId?: string) {
+  async function openInternal(file: FileEntry, replaceId?: string, current = () => true) {
+    // The tree may already show a pending rename; storage still uses its
+    // confirmed path until the background mutation completes.
+    file = workspace.value?.files.find(entry => entry.id === file.id) ?? file;
     if (file.kind === 'file' && isDataTableFilePath(file.path)) {
       activateTab(tableTabId(file.id), replaceId);
       return;
@@ -1428,11 +1477,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         content: snapshot.content,
         base: snapshot,
         saving: false,
+        creating: file.pendingCreation,
         missing: false,
       };
-      await hydrateDocumentLayout(doc);
+      if (!doc.creating) await hydrateDocumentLayout(doc);
     }
+    if (!current()) return;
     activateTab(doc.id, replaceId, doc);
+    const opened = documents.value.find(item => item.id === doc!.id)!;
+    if (opened.creating) void confirmCreation(opened).then(confirmed => {
+      if (confirmed && !disposed && dirty(opened)) void flush();
+    });
   }
   async function prepareTabReplacement(id?: string) {
     if (id && isTableTab(id) && !(await flush())) {
@@ -1461,22 +1516,72 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
     return true;
   }
+  function prefetchFile(file: FileEntry) {
+    if (!adapter.prefetch || busy.value || disposed || file.kind !== 'file' || !isMarkdown(file.path)) return;
+    const entry = workspace.value?.files.find(entry => entry.id === file.id);
+    if (!entry || entry.pendingCreation) return;
+    // This is only a hint. Opening still reports real read errors and validates
+    // the current version; hovering must never surface an error banner.
+    void adapter.prefetch(entry.path).catch(() => {});
+    if (/^[0-9a-f]{6}$/.test(entry.id)) {
+      const path = documentLayoutPath(entry.id);
+      if (workspace.value?.files.some(file => file.path === path))
+        void adapter.prefetch(path).catch(() => {});
+    }
+  }
+  function openCached(file: FileEntry, replaceId?: string) {
+    if (fileMutations.pending.value) return false;
+    const existing = documents.value.find(doc => doc.id === file.id);
+    if (existing) { activateTab(existing.id, replaceId, existing); return true; }
+    const entry = workspace.value?.files.find(entry => entry.id === file.id);
+    if (!entry || entry.pendingCreation) return false;
+    const snapshot = adapter.readCached?.(entry.path);
+    if (!snapshot) return false;
+    const doc: OpenDocument = { id: entry.id, path: entry.path, content: snapshot.content,
+      base: snapshot, saving: false, missing: false };
+    if (/^[0-9a-f]{6}$/.test(entry.id)) {
+      const path = documentLayoutPath(entry.id);
+      const exists = workspace.value!.files.some(file => file.path === path);
+      const base = exists ? adapter.readCached?.(path) : null;
+      if (exists && !base) return false;
+      try {
+        doc.tableLayout = { base: base ?? null, file: base ? parseDocumentLayout(base.content, entry.id)
+          : { version: 1, fileId: entry.id, tables: [] } };
+      } catch { return false; } // The ordinary loader reports malformed layouts.
+    }
+    // Cache lookup and activation are synchronous. A background workspace scan
+    // can reconcile later; it must not make displaying known bytes wait on I/O.
+    activateTab(doc.id, replaceId, doc);
+    return true;
+  }
   async function openFile(file: FileEntry, options?: { historyIndex?: number }) {
+    const creationAtRequest = creationRevision;
+    const request = ++fileOpenRevision;
+    const epoch = assistantEpoch.value, activation = activationRevision;
+    const workspaceId = workspace.value?.id;
+    const current = () => !disposed && !busy.value && request === fileOpenRevision &&
+      creationAtRequest === creationRevision && epoch === assistantEpoch.value &&
+      workspaceId === workspace.value?.id && activation === activationRevision;
     try {
       if (file.kind === 'file' && isDataTableFilePath(file.path)) return openDataTable(file.id, options);
       if (!isMarkdown(file.path) || file.kind !== 'file') return;
       const replaceId = isUtilityTab(activeId.value) && !activeId.value.startsWith('blank:') && !isNavigationPage(activeId.value)
         ? undefined : activeId.value;
       const wasOpen = documents.value.some((doc) => doc.id === file.id);
+      prefetchFile(file);
       if (!wasOpen && !(await prepareTabReplacement(replaceId))) return;
-      await serial(() => openInternal(file, activeId.value === replaceId ? replaceId : undefined));
+      if (!current()) return;
+      if (!openCached(file, replaceId)) await serial(async () => {
+        if (!current()) return;
+        await openInternal(file, replaceId, current);
+      });
       if (!wasOpen && replaceId && activeId.value === file.id)
         recordTabNavigation(replaceId, file.id, options?.historyIndex);
       else if (!replaceId && activeId.value === file.id)
         ensureTabNavigation(file.id, file.id);
       if (active.value?.id === file.id) recordHelpCompleted('welcome');
     } catch (e) {
-      report(e);
+      if (current()) report(e);
     }
   }
   async function openFileInNewTab(file: FileEntry) {
@@ -1775,15 +1880,42 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       requireAssistantWorkspace(scope);
       const refreshed = await adapter.refresh();
       if (refreshed.id !== scope.id || refreshed.path !== scope.path) throw new Error('工作区身份已变化');
-      const file = refreshed.files.find(file => file.id === fileId && file.kind === 'file' && isMarkdown(file.path) && !isWorkspaceInternalPath(file.path));
+      const file = refreshed.files.find(file => file.id === fileId && file.kind === 'file' && isAssistantFile(file.path));
       if (!file) throw new Error('参考文档已移除');
       const disk = await adapter.read(file.path);
       const doc = documents.value.find(doc => doc.id === fileId);
       if (doc?.conflict || doc?.missing) throw new Error('请先处理参考文档的冲突或缺失');
-      const content = doc?.content ?? disk.content;
+      const content = isDataTableFilePath(file.path)
+        ? assistantTableContent(disk, dataTables.records.value.find(state => state.fileId === fileId))
+        : doc?.content ?? disk.content;
       if (content.length > 512_000) throw new Error('参考文档过大，请使用较小文档');
       return { id: '', workspaceId: scope.id, fileId, path: file.path, content,
-        hash: await assistantHash(content), origin: doc && content !== disk.content ? 'draft' : 'disk' };
+        hash: await assistantHash(content), origin: content !== disk.content ? 'draft' : 'disk' };
+    });
+  }
+  async function assistantSearch(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }, query: string) {
+    return serial(async () => {
+      requireAssistantWorkspace(scope);
+      const hits = await adapter.search?.(scope.id, query) ?? [];
+      const refreshed = await adapter.refresh();
+      requireAssistantWorkspace(scope);
+      if (refreshed.id !== scope.id || refreshed.path !== scope.path) throw new Error('工作区身份已变化');
+      const result = hits.filter(hit => refreshed.files.some(file => file.id === hit.id && isMarkdown(file.path) && isAssistantFile(file.path)))
+        .map(hit => ({ fileId: hit.id, path: hit.path, excerpt: hit.excerpt }));
+      const needle = query.trim().toLocaleLowerCase();
+      if (!needle) for (const file of refreshed.files.filter(file => file.kind === 'file' && isMarkdown(file.path) && isAssistantFile(file.path)))
+        result.push({ fileId: file.id, path: file.path, excerpt: '' });
+      for (const file of refreshed.files.filter(file => file.kind === 'file' && isDataTableFilePath(file.path) && isAssistantFile(file.path))) {
+        if (result.some(hit => hit.fileId === file.id)) continue;
+        const state = dataTables.records.value.find(state => state.fileId === file.id);
+        let text = '';
+        try { text = assistantTableContent(await adapter.read(file.path), state); }
+        catch { /* Invalid tables remain discoverable by path, never treated as valid content. */ }
+        const index = text.toLocaleLowerCase().indexOf(needle);
+        if (!needle || file.path.toLocaleLowerCase().includes(needle) || index >= 0)
+          result.push({ fileId: file.id, path: file.path, excerpt: text.slice(Math.max(0, index - 40), Math.max(0, index - 40) + 240) });
+      }
+      return result.slice(0, 20);
     });
   }
   async function reviewAssistantProposal(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }, proposal: AssistantProposal,
@@ -1804,7 +1936,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const refreshed = await adapter.refresh();
       if (refreshed.id !== scope.id || refreshed.path !== scope.path) throw new Error('工作区身份已变化');
       workspace.value = refreshed;
-      if (proposal.kind === 'edit' && proposal.fileId && /^[0-9a-f]{6}$/.test(proposal.fileId)) {
+      if (proposal.kind === 'edit' && isMarkdown(proposal.path) && proposal.fileId && /^[0-9a-f]{6}$/.test(proposal.fileId)) {
         const published = await loadSuggestions(adapter, scope.id, proposal.fileId);
         if (published.file.suggestions.some(item => item.groupId === proposal.id))
           throw new Error('此提案已转为文档建议，请在文档中逐项审阅，不能再次整篇应用');
@@ -1821,16 +1953,19 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         if (!adapter.changeFile) throw new Error('当前工作区暂不支持文件操作建议');
         const file = refreshed.files.find(file => file.id === proposal.fileId && file.kind === 'file');
         if (!file) throw new Error('目标文档已删除或身份变化');
-        if (file.readOnly || validatePath(file.path) || !isMarkdown(file.path)) throw new Error('目标文档只读或路径无效');
+        if (file.readOnly || !isAssistantFile(file.path)) throw new Error('目标文件只读或路径无效');
         const destination = proposal.destination;
         if (proposal.kind !== 'delete') {
-          if (!destination || validatePath(destination) || !isMarkdown(destination) || file.path === destination)
+          if (!destination || !validAssistantDestination(file.path, destination) || file.path === destination)
             throw new Error('目标文档路径无效或已位于目标位置，请核对文件');
           if (refreshed.files.some(entry => pathKey(entry.path) === pathKey(destination))) throw new Error('目标名称已经存在');
           const parent = parentPath(destination);
           if (parent && !refreshed.files.some(entry => entry.path === parent && entry.kind === 'directory')) throw new Error('目标文件夹不存在');
         } else if (destination !== undefined) throw new Error('删除建议不能包含目标路径');
         const doc = documents.value.find(doc => doc.id === file.id);
+        const table = dataTables.records.value.find(state => state.fileId === file.id);
+        const tablePending = () => table && (dataTables.dirty(table) || table.error || table.unavailable || table.saving);
+        if (tablePending()) throw new Error('请先保存数据表并处理冲突，再审阅文件操作');
         if (doc && (dirty(doc) || doc.conflict || doc.missing || doc.saving || layoutPending(doc)))
           throw new Error('请先保存文档并处理冲突，再审阅文件操作');
         const disk = await adapter.read(file.path);
@@ -1841,6 +1976,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         if (!accepted) return { status: 'preview' as const, preview };
         if (JSON.stringify(preview) !== JSON.stringify(accepted)) return { status: 'stale' as const, preview };
         writable();
+        if (tablePending()) throw new Error('数据表已变化，请先保存后重新审阅');
         // Read can yield while a user types. Never remove a newly changed draft.
         if (doc && (dirty(doc) || doc.conflict || doc.missing || doc.saving || layoutPending(doc))) throw new Error('文档已变化，请先保存后重新审阅');
         signal?.throwIfAborted();
@@ -1853,6 +1989,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           hash: changed.snapshot.hash, fileId: file.id };
         assistantApplied.set(proposal.id, receipt);
         if (proposal.kind === 'delete') {
+          const tableTab = tableTabId(file.id);
+          if (table && dataTables.dirty(table)) table.unavailable = true;
+          else if (isDataTableFilePath(file.path)) {
+            dataTables.records.value = dataTables.records.value.filter(state => state.fileId !== file.id);
+            tabIds.value = tabIds.value.filter(id => id !== tableTab);
+            removeTabNavigation(tableTab);
+            if (activeId.value === tableTab) activeId.value = tabIds.value.at(-1) ?? '';
+          }
           if (doc && (dirty(doc) || layoutPending(doc))) doc.missing = true; // Preserve input received during the native operation for Save Copy.
           else {
             documents.value = documents.value.filter(item => item.id !== file.id);
@@ -1865,6 +2009,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         proposal.applied = receipt;
         proposal.status = 'applied';
         workspace.value = await adapter.refresh();
+        if (isDataTableFilePath(file.path)) await dataTables.reload();
         activity('助手文件变更已应用', destination ? `${file.path} → ${destination}` : file.path, 'file');
         return { status: 'saved' as const, applied: receipt };
       }
@@ -1873,14 +2018,27 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       let path = proposal.path;
       let current = '';
       if (proposal.kind === 'create') {
-        if (!isMarkdown(path) || validatePath(path)) throw new Error('新文档路径无效');
+        if (proposal.base !== '') throw new Error('新建文件不能包含已有内容基线');
+        validateAssistantContent(path, proposal.content);
         if (refreshed.files.some(file => pathKey(file.path) === pathKey(path))) throw new Error('同名文件已存在，请调整建议路径');
+        if (parentPath(path) && !refreshed.files.some(file => file.kind === 'directory' && file.path === parentPath(path))) throw new Error('目标文件夹不存在');
       } else {
-        const file = refreshed.files.find(file => file.id === proposal.fileId && file.kind === 'file' && isMarkdown(file.path));
+        const file = refreshed.files.find(file => file.id === proposal.fileId && file.kind === 'file' && isAssistantFile(file.path));
         if (!file) throw new Error('目标文档已删除或身份变化');
         if (file.readOnly) throw new Error('目标文档只读');
         path = file.path;
         disk = await adapter.read(path);
+        validateAssistantContent(path, proposal.content, proposal.base);
+        if (isDataTableFilePath(path)) {
+          const result = await reviewAssistantTable({ adapter, proposal, path, disk, accepted, writable, signal,
+            state: dataTables.records.value.find(state => state.fileId === file.id) });
+          if (result.status === 'saved') {
+            assistantApplied.set(proposal.id, { signature, ...result.applied });
+            activity('助手数据表修改已应用', path, 'save', { before: result.applied.before, after: result.applied.after });
+            await dataTables.reload();
+          }
+          return result;
+        }
         doc = documents.value.find(doc => doc.id === file.id);
         if (doc?.conflict || doc?.missing) throw new Error('请先处理文档已有的冲突或缺失');
         const reconciled = doc ? mergeMarkdown(doc.base.content, doc.content, disk.content) : { clean: true, content: disk.content };
@@ -1934,6 +2092,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         }
         const receipt = { signature, before: preview.before, after: result.content, hash: result.hash, fileId };
         assistantApplied.set(proposal.id, receipt);
+        if (isDataTableFilePath(path)) await dataTables.reload();
         activity('助手修改已应用', path, 'save', { before: preview.before, after: result.content });
         return { status: 'saved' as const, applied: receipt };
       } finally { if (doc) doc.saving = false; }
@@ -2009,7 +2168,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (!doc || doc.conflict || workspace.value?.readOnly || workspace.value?.files.find(file => file.id === id)?.readOnly) return;
     const before = doc.content;
     doc.content = content;
-    doc.error = undefined;
+    if (!doc.creating) doc.error = undefined;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       void flush();
@@ -2090,6 +2249,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
   async function saveInternal(doc: OpenDocument) {
+    if (doc.creating && !(await confirmCreation(doc))) return;
     if (!dirty(doc) || doc.conflict || doc.missing) return;
     doc.saving = true;
     try {
@@ -2121,6 +2281,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
   async function flush(): Promise<boolean> {
+    await fileMutations.flush();
+    return flushDocuments();
+  }
+  async function flushDocuments(): Promise<boolean> {
+    await creationChain;
     try { await suggestionPersistence.value?.flush(); }
     catch (error) { report(error); return false; }
     clearTimeout(saveTimer);
@@ -2146,6 +2311,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         await refreshObjects();
         await dataTables.reload();
         for (const doc of documents.value) {
+          if (doc.creating) continue;
           const entry = workspace.value.files.find((f) => f.id === doc.id);
           if (!entry) {
             if (!doc.missing) activity('文件已在外部移除', doc.path, 'external');
@@ -2193,19 +2359,75 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       else ensureTabNavigation(file.id, file.id);
     }
   }
+  function confirmCreation(doc: OpenDocument): Promise<boolean> {
+    const workspaceId = workspace.value?.id;
+    if (!doc.creating || !workspaceId || !adapter.commitCreate) return Promise.resolve(!doc.creating);
+    const key = `${workspaceId}:${doc.id}`;
+    const pending = creationTasks.get(key);
+    if (pending) return pending;
+    doc.saving = true;
+    doc.error = undefined;
+    const task = (async () => {
+      try {
+        const confirmed = await adapter.commitCreate!(doc.id);
+        if (disposed || workspace.value?.id !== workspaceId || !documents.value.includes(doc)) return false;
+        doc.path = confirmed.file.path;
+        doc.base = confirmed.snapshot;
+        doc.creating = false;
+        workspace.value.files = workspace.value.files.map(file => file.id === doc.id ? confirmed.file : file);
+        activity('文档已创建', doc.path, 'file');
+        recordHelpCompleted('create-document');
+        await hydrateDocumentLayout(doc);
+        return true;
+      } catch (error) {
+        if (!disposed && workspace.value?.id === workspaceId) {
+          doc.error = `创建未完成：${error instanceof Error ? error.message : String(error)}。草稿已保留，可重试或另存副本。`;
+        }
+        return false;
+      } finally {
+        doc.saving = false;
+        creationTasks.delete(key);
+      }
+    })();
+    creationTasks.set(key, task);
+    return task;
+  }
+  async function stageDocument(path: string, content = '', expectedWorkspaceId?: string) {
+    writable();
+    if (busy.value || !workspace.value) throw new Error('工作区正在切换，请稍后重试');
+    if (expectedWorkspaceId && workspace.value.id !== expectedWorkspaceId) throw new Error('工作区已切换');
+    const staged = await adapter.stageCreate!(path, content);
+    creationRevision++;
+    workspace.value = staged.workspace;
+    const replaceId = activeId.value.startsWith('blank:') ? activeId.value : undefined;
+    await openInternal(staged.file, replaceId);
+    const doc = documents.value.find(item => item.id === staged.file.id)!;
+    if (replaceId) recordTabNavigation(replaceId, doc.id);
+    else ensureTabNavigation(doc.id, doc.id);
+  }
+  function stageSerial(task: () => Promise<void>) {
+    // Only local preparation is serialized. Remote confirmation never blocks the
+    // next click, even while an autosave is waiting for another creation.
+    const next = creationChain.then(task, task);
+    creationChain = next.catch(() => {});
+    return next;
+  }
   async function create(
     path: string,
     folder = false,
     content?: string,
     expectedWorkspaceId?: string,
   ) {
+    if (!folder && isMarkdown(path) && adapter.stageCreate && adapter.commitCreate)
+      return stageSerial(() => stageDocument(path, content, expectedWorkspaceId));
     await serial(() => createInternal(path, folder, content, expectedWorkspaceId));
   }
   async function createUntitledEntry(parent: string, folder: boolean) {
-    await serial(async () => {
+    const optimistic = !folder && !!adapter.stageCreate && !!adapter.commitCreate;
+    await (optimistic ? stageSerial : serial)(async () => {
       writable();
       if (!workspace.value) throw new Error('请先打开一个工作空间');
-      workspace.value = await adapter.refresh();
+      if (!optimistic) workspace.value = await adapter.refresh();
       if (parent && !workspace.value.files.some((file) => file.kind === 'directory' && file.path === parent))
         throw new Error('目标文件夹不存在，请重新选择后重试');
       const paths = new Set(workspace.value.files.map((file) => pathKey(file.path)));
@@ -2213,7 +2435,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const extension = folder ? '' : '.md';
       let path = `${prefix}${extension}`;
       for (let index = 2; paths.has(pathKey(path)); index++) path = `${prefix} ${index}${extension}`;
-      await createInternal(path, folder);
+      if (optimistic) await stageDocument(path);
+      else await createInternal(path, folder);
     });
   }
   async function createUntitledDocument(parent = '') {
@@ -2243,11 +2466,78 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function createUntitledFolder(parent = '') {
     await createUntitledEntry(parent, true);
   }
-  async function renameEntry(file: Pick<FileEntry, 'id' | 'path' | 'kind'>, path: string) {
+  function prepareFileMutation(files: Pick<FileEntry, 'id' | 'path' | 'kind'>[], expectedWorkspaceId?: string) {
     writable();
-    if (isWeb && file.kind !== 'file')
-      throw new Error('在线工作区暂不支持重命名文件夹');
-    if (!(await flush())) throw new Error('请先处理未保存的修改');
+    const current = visibleWorkspace.value;
+    if (!current || busy.value || (expectedWorkspaceId && current.id !== expectedWorkspaceId))
+      throw new Error('工作空间已切换或正在加载，请重新选择文件');
+    for (const file of files) {
+      const entry = current.files.find(item => item.id === file.id && item.path === file.path);
+      if (!entry) throw new Error('文件位置已变化，请重新选择文件');
+      if (entry.readOnly) throw new Error('你对此条目只有阅读权限');
+    }
+    const affected = current.files.filter(entry => files.some(file => entry.id === file.id ||
+      (file.kind === 'directory' && entry.path.startsWith(`${file.path}/`))));
+    const ids = new Set(affected.map(file => file.id));
+    if (affected.some(file => file.readOnly)) throw new Error('所选范围内有只读条目');
+    if (documents.value.some(doc => ids.has(doc.id) && (doc.conflict || doc.missing)))
+      throw new Error('请先处理所选文档的冲突或缺失');
+    const preview: FileMutationPreview = { workspaceId: current.id, paths: new Map(),
+      expected: new Map(workspace.value!.files.filter(file => ids.has(file.id)).map(file => [file.id, { ...file }])) };
+    return { current, affected, preview };
+  }
+  function confirmedEntry(file: Pick<FileEntry, 'id' | 'path' | 'kind'>, affected: FileEntry[]) {
+    if (file.kind === 'file') {
+      const current = workspace.value?.files.find(entry => entry.id === file.id);
+      if (!current) throw new Error('文件已不存在，请刷新工作区');
+      return current;
+    }
+    // Online folders have path-based virtual IDs. Follow a descendant's stable
+    // identity when an earlier queued folder move has already been confirmed.
+    const child = affected.find(entry => entry.kind === 'file' && entry.path.startsWith(`${file.path}/`));
+    const current = child && workspace.value?.files.find(entry => entry.id === child.id);
+    const path = current && child ? current.path.slice(0, -child.path.slice(file.path.length).length) : file.path;
+    const entry = workspace.value?.files.find(entry => entry.kind === 'directory' && entry.path === path);
+    if (!entry) throw new Error('文件夹已不存在，请刷新工作区');
+    return entry;
+  }
+  async function confirmFileMutation(scope: string, run: () => Promise<void>) {
+    if (disposed || workspace.value?.id !== scope) throw new Error('工作区已切换');
+    try { await run(); }
+    catch (error) {
+      // A response can fail after the server committed. Recover its actual state
+      // without replacing editor content or a newer optimistic presentation.
+      try {
+        const refreshed = await adapter.refresh();
+        if (!disposed && workspace.value?.id === scope && refreshed.id === scope) {
+          workspace.value = refreshed;
+          for (const doc of documents.value) {
+            const file = refreshed.files.find(file => file.id === doc.id);
+            if (file) doc.path = file.path;
+          }
+        }
+      } catch { /* Keep the last confirmed state and the user's draft. */ }
+      throw error;
+    }
+  }
+  async function renameEntry(file: Pick<FileEntry, 'id' | 'path' | 'kind'>, path: string) {
+    if (!isWeb) return renameEntryConfirmed(file, path);
+    if (file.kind !== 'file') throw new Error('在线工作区暂不支持重命名文件夹');
+    const invalid = validatePath(path);
+    if (invalid) throw new Error(invalid);
+    const { current, affected, preview } = prepareFileMutation([file]);
+    if (current.files.some(entry => entry.id !== file.id && pathKey(entry.path) === pathKey(path)))
+      throw new Error('已经存在一个同名文件');
+    if (file.path === path) return;
+    preview.paths.set(file.id, path);
+    fileMutations.enqueue('重命名', preview, () => confirmFileMutation(preview.workspaceId,
+      () => renameEntryConfirmed(confirmedEntry(file, affected), path)));
+  }
+  async function renameEntryConfirmed(file: Pick<FileEntry, 'id' | 'path' | 'kind'>, path: string) {
+    writable();
+    const creating = documents.value.some(doc => doc.id === file.id && doc.creating);
+    if (!(await flushDocuments())) throw new Error('请先处理未保存的修改');
+    if (creating) file = workspace.value?.files.find(entry => entry.id === file.id) ?? file;
     await serial(async () => {
       workspace.value = await adapter.refresh();
       if (!workspace.value?.files.some((entry) => entry.id === file.id && entry.path === file.path))
@@ -2286,11 +2576,22 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     });
   }
   async function rename(doc: OpenDocument, path: string) {
-    return renameEntry({ id: doc.id, path: doc.path, kind: 'file' }, path);
+    return renameEntry({ id: doc.id, path: displayPath(doc), kind: 'file' }, path);
   }
   async function moveEntry(file: FileEntry, folder: string, expectedWorkspaceId?: string) {
+    if (!isWeb) return moveEntryConfirmed(file, folder, expectedWorkspaceId);
+    const { current, affected, preview } = prepareFileMutation([file], expectedWorkspaceId);
+    const plan = planFileMove(file, folder, current.files);
+    for (const item of plan.moved) preview.paths.set(item.entry.id, item.path);
+    fileMutations.enqueue('移动', preview, () => confirmFileMutation(preview.workspaceId, async () => {
+      const entry = confirmedEntry(file, affected);
+      // Keep the destination selected at click time, including its filename.
+      await renameEntryConfirmed(entry, plan.destination);
+    }));
+  }
+  async function moveEntryConfirmed(file: FileEntry, folder: string, expectedWorkspaceId?: string) {
     writable();
-    if (!(await flush())) throw new Error('请先处理未保存的修改');
+    if (!(await flushDocuments())) throw new Error('请先处理未保存的修改');
     await serial(async () => {
       if (!workspace.value || (expectedWorkspaceId && workspace.value.id !== expectedWorkspaceId))
         throw new Error('工作空间已切换，请重新拖动');
@@ -2377,6 +2678,47 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     expectedWorkspaceId?: string,
     expectedContents?: FileEntry[],
   ) {
+    if (!isWeb) return removeEntriesConfirmed(files, expectedWorkspaceId, expectedContents);
+    if (!files.length) return;
+    if (files.some(file => file.kind !== 'file')) throw new Error('在线工作区暂不支持移除文件夹');
+    const { affected, preview } = prepareFileMutation(files, expectedWorkspaceId);
+    // Preserve the confirmation dialog's snapshot, rather than silently deleting
+    // an external edit which arrived while the dialog was open.
+    if (expectedContents) for (const file of affected) {
+      const expected = expectedContents.find(entry => entry.id === file.id);
+      if (!expected || expected.modified !== file.modified || expected.size !== file.size)
+        throw new Error('所选条目内容已变化，请核对后重试');
+    }
+    const ids = new Set(affected.map(file => file.id));
+    const removedTabs = tabIds.value.map((id, index) => ({ id, index })).filter(({ id }) =>
+      ids.has(id) || (isTableTab(id) && ids.has(id.slice(6))) || (id.startsWith('attachment:') && ids.has(id.slice(11))));
+    const removedIds = new Set(removedTabs.map(tab => tab.id));
+    const previousActive = activeId.value;
+    tabIds.value = tabIds.value.filter(id => !removedIds.has(id));
+    if (removedIds.has(activeId.value)) activeId.value = tabIds.value.at(-1) ?? '';
+    const fallbackActive = activeId.value;
+    const activationAtRemoval = activationRevision;
+    for (const file of affected) preview.paths.set(file.id, null);
+    fileMutations.enqueue('删除', preview, () => confirmFileMutation(preview.workspaceId, async () => {
+      const current = files.map(file => confirmedEntry(file, affected));
+      const expected = current.map(file => ({ ...(preview.expected.get(file.id) ?? file), path: file.path }));
+      await removeEntriesConfirmed(current, preview.workspaceId, expected);
+    }), () => {
+      if (disposed) return;
+      for (const tab of removedTabs) {
+        const id = tab.id.replace(/^(table:|attachment:)/, '');
+        if (workspace.value?.files.some(file => file.id === id) && !tabIds.value.includes(tab.id))
+          tabIds.value.splice(Math.min(tab.index, tabIds.value.length), 0, tab.id);
+      }
+      if (activationRevision === activationAtRemoval && activeId.value === fallbackActive && tabIds.value.includes(previousActive))
+        activeId.value = previousActive;
+    });
+  }
+  async function removeEntriesConfirmed(
+    files: Pick<FileEntry, 'id' | 'path' | 'kind'>[],
+    expectedWorkspaceId?: string,
+    expectedContents?: FileEntry[],
+  ) {
     writable();
     if (!files.length) return;
     if (files.some((file) => isWeb && file.kind !== 'file'))
@@ -2386,7 +2728,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const locallyModified = new Set(
       documents.value.filter((doc) => dirty(doc)).map((doc) => doc.id),
     );
-    if (!(await flush())) throw new Error('请先处理未保存的修改');
+    const creating = new Set(documents.value.filter(doc => doc.creating).map(doc => doc.id));
+    if (!(await flushDocuments())) throw new Error('请先处理未保存的修改');
+    files = files.map(file => creating.has(file.id)
+      ? workspace.value?.files.find(entry => entry.id === file.id) ?? file : file);
+    expectedContents = expectedContents?.map(file => creating.has(file.id)
+      ? workspace.value?.files.find(entry => entry.id === file.id) ?? file : file);
     await serial(async () => {
       workspace.value = await adapter.refresh();
       if (!workspace.value || (expectedWorkspaceId && workspace.value.id !== expectedWorkspaceId))
@@ -2458,7 +2805,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return removeEntries([file]);
   }
   async function remove(doc: OpenDocument) {
-    return removeEntry({ id: doc.id, path: doc.path, kind: 'file' });
+    return removeEntry({ id: doc.id, path: displayPath(doc), kind: 'file' });
   }
   function moveDocument(id: string, targetId: string, side: 'before' | 'after') {
     if (id === targetId) return;
@@ -2537,6 +2884,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
   function dispose() {
+    disposed = true;
     helpEdits.dispose();
     pluginDeveloper.stop();
     clearTimeout(pluginEventTimer);
@@ -2583,6 +2931,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     installedPlugins,
     pluginRuntime,
     canManagePlugins,
+    canManageSettings,
     authorizePlugin,
     restartPlugin,
     rollbackPlugin,
@@ -2655,12 +3004,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     capabilityError,
     capabilitySaving,
     updateCapabilities,
-    workspaceSettings,
+    workspaceSettings: visibleWorkspaceSettings,
     workspaceSettingsError,
     workspaceSettingsSaving,
     updateWorkspaceSettings,
     reloadWorkspaceSettings,
-    workspace,
+    workspace: visibleWorkspace,
+    displayPath,
+    fileMutationPending: fileMutations.pending,
     documents,
     tabs,
     activeId,
@@ -2686,6 +3037,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     deleteWorkspace,
     createWorkspace,
     openFile,
+    prefetchFile,
     openFileInNewTab,
     openAttachmentInNewTab,
     openFilesInNewTabsAt,
@@ -2704,6 +3056,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openViewTab,
     readGraphDocument,
     assistantSnapshot,
+    assistantSearch,
     assistantRules,
     assistantStructures,
     proposeAssistantStructure,

@@ -450,11 +450,18 @@ function editProperty(name: string | null, focus: 'name' | 'value' | false = 'va
   editingPropertyBase = current ? JSON.stringify(current) : null;
   propertyError.value = '';
   void nextTick(() => {
+    if (name === null && frontmatterPanel.value) frontmatterPanel.value.open = true;
     if (focus) frontmatterPanel.value?.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
       `.frontmatter-row-editor ${name === null || focus === 'name' ? '[aria-label="属性名"]' : '[aria-label="属性值"]'}`,
     )?.focus();
     activatingProperty = false;
   });
+}
+async function addDocumentProperty() {
+  if (props.readonly || !props.showDocumentProperties || properties.value === null) return;
+  editProperty(null);
+  await nextTick();
+  frontmatterPanel.value?.scrollIntoView?.({ block: 'nearest' });
 }
 function finishProperty() {
   editingProperty.value = undefined;
@@ -3017,6 +3024,7 @@ function modeCursorTop() {
   return bridgeView.coordsAtPos(selection instanceof NodeSelection ? selection.from : selection.head).top;
 }
 defineExpose({
+  addDocumentProperty,
   initializeBody,
   captureVisualAnchor: () => bridgeView && !disposed ? captureVisualAnchor(bridgeView) : null,
   visualSelection: () => bridgeView && !disposed ? visualSelection(bridgeView) : null,
@@ -3061,7 +3069,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <details v-if="showDocumentProperties" ref="frontmatterPanel" class="frontmatter-panel">
+  <details v-if="showDocumentProperties && (properties === null || properties.length > 0 || editingProperty !== undefined)" ref="frontmatterPanel" class="frontmatter-panel">
     <summary class="frontmatter-heading">
       <svg class="frontmatter-chevron" viewBox="0 0 16 16" fill="none" aria-hidden="true">
         <path

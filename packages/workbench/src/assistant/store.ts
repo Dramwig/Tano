@@ -1,6 +1,6 @@
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { defineStore } from 'pinia';
-import { isAssistantModelId, isAssistantReasoningSelection, parseAssistantSession, parseAssistantAnswers } from '@tano/protocol';
+import { isAssistantModelId, isAssistantReasoningSelection, parseAssistantSession, parseAssistantAnswers, isDataTableFilePath } from '@tano/protocol';
 import type { AssistantQuestion, AssistantQuestionAnswer, AssistantUserInput } from '@tano/protocol';
 import type { AssistantConnection, AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSession, AssistantSource } from '@tano/protocol';
 import type { AssistantExecutionResult } from './execution';
@@ -344,12 +344,7 @@ export const useAssistantStore = defineStore('assistant', () => {
           },
         } : {}),
         lookup: {
-          search: async (query: string) => {
-            if (workspace.workspace?.id !== expected.id || workspace.workspace.path !== expected.path || workspace.assistantEpoch !== expected.epoch) throw new Error('工作区已切换');
-            const hits = await workspace.search(query);
-            return hits.filter(hit => workspace.workspace?.files.some(file => file.id === hit.id && /\.(md|markdown)$/i.test(file.path) && !file.path.startsWith('.tano/')))
-              .slice(0, 20).map(hit => ({ fileId: hit.id, path: hit.path, excerpt: hit.excerpt }));
-          },
+          search: (query: string) => workspace.assistantSearch(expected, query),
           read: (fileId: string) => workspace.assistantSnapshot(expected, fileId),
         },
         delta: text => {
@@ -484,6 +479,7 @@ export const useAssistantStore = defineStore('assistant', () => {
   }
   async function publishSuggestions(proposal: AssistantProposal) {
     if (busy.value || applying.value || proposal.kind !== 'edit' || !['ready', 'conflicted'].includes(proposal.status)) return;
+    if (isDataTableFilePath(proposal.path)) { error.value = '数据表修改请在助手中查看差异并应用'; return; }
     if (proposal.fileId && managed(proposal.fileId)) { error.value = '此文档正由协作会话管理，暂不支持建议模式'; return; }
     applying.value = true;
     const target = session.value;
@@ -541,6 +537,7 @@ export const useAssistantStore = defineStore('assistant', () => {
   }
   async function undo(proposal: AssistantProposal) {
     if (!proposal.applied || applying.value || busy.value || !['edit', 'create'].includes(proposal.kind)) return;
+    if (proposal.kind === 'create' && isDataTableFilePath(proposal.path)) return;
     const reply = session.value?.messages.find(message => message.id === proposal.runId);
     if (!reply) return;
     const reversed: AssistantProposal = { id: crypto.randomUUID(), runId: reply.id, workspaceId: proposal.workspaceId,

@@ -59,7 +59,9 @@ export async function loadWorkspaceSettings(adapter: WorkspaceAdapter, workspace
 }
 
 /** Compare against the value the user saw; merge edits to other fields with a fresh hash. */
-export async function saveWorkspaceSettingsPatch(adapter: WorkspaceAdapter, base: FileSnapshot | null, patch: WorkspaceSettingsPatch) {
+export async function saveWorkspaceSettingsPatch(adapter: WorkspaceAdapter, base: FileSnapshot | null, patch: WorkspaceSettingsPatch): Promise<{
+  snapshot: FileSnapshot; settings: WorkspaceSettings; workspace?: Workspace;
+}> {
   if (!Object.hasOwn(defaultWorkspaceSettings, patch.key) || patch.key === ('version' as string)) throw new Error('未知工作区设置');
   const desired = parseWorkspaceSettings(JSON.stringify({ ...defaultWorkspaceSettings, [patch.key]: patch.value }))[patch.key];
   let current = base;
@@ -74,13 +76,14 @@ export async function saveWorkspaceSettingsPatch(adapter: WorkspaceAdapter, base
       if (result.status === 'missing') throw new Error('工作区设置已被移除，请刷新后重试');
       current = result.snapshot;
     } else {
-      try { await adapter.create(workspaceSettingsPath, content); }
+      let workspace: void | Workspace;
+      try { workspace = await adapter.create(workspaceSettingsPath, content); }
       catch (error) {
         try { current = await adapter.read(workspaceSettingsPath); } catch { throw error; }
         continue;
       }
       const snapshot = await adapter.read(workspaceSettingsPath);
-      return { snapshot, settings: parseWorkspaceSettings(snapshot.content) };
+      return { snapshot, settings: parseWorkspaceSettings(snapshot.content), ...(workspace ? { workspace } : {}) };
     }
   }
   throw new Error('工作区设置正在被其他程序修改，请稍后重试');

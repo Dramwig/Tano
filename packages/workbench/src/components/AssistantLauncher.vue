@@ -4,7 +4,7 @@ import AssistantButterfly from './AssistantButterfly.vue';
 import { butterflyPerchDirective, useButterflyController } from '../assistant/butterfly-vue';
 import type { ButterflyPerch } from '../assistant/butterfly-vue';
 
-const props = defineProps<{ busy?: boolean; scope?: string }>();
+const props = defineProps<{ busy?: boolean; scope?: string; contextLabel?: string }>();
 const emit = defineEmits<{ open: [] }>();
 const controller = useButterflyController();
 const vButterflyPerch = butterflyPerchDirective(controller);
@@ -12,7 +12,7 @@ const home = computed<ButterflyPerch | undefined>(() => props.scope ? ({ id: `ho
   label: '圆球', kind: 'home', placement: { edge: 'center' } }) : undefined);
 const away = computed(() => controller?.state.visible && controller.state.homeId === home.value?.id);
 const hintId = useId();
-const hint = computed(() => away.value ? '点此返回 · Esc 也可返回' : props.busy ? '正在忙，点开看看进展' : '聊聊这篇文档');
+const hint = computed(() => away.value ? '点此返回 · Esc 也可返回' : props.busy ? '正在忙，点开看看进展' : props.contextLabel ?? '聊聊这篇文档');
 const butterflyMark = ref<InstanceType<typeof AssistantButterfly>>();
 function greet(event: PointerEvent) {
   if (event.pointerType !== 'touch' && !away.value) butterflyMark.value?.flutter();

@@ -8,7 +8,7 @@ import type { PageTitleSource } from '../page-title-source';
 import WorkspaceIconPicker from './WorkspaceIconPicker.vue';
 
 const props = defineProps<{
-  workspace: (Pick<Workspace, 'name' | 'path' | 'readOnly'> & { id?: string }) | null;
+  workspace: (Pick<Workspace, 'name' | 'path' | 'readOnly' | 'canManageSettings'> & { id?: string }) | null;
   settings?: WorkspaceSettings;
   pages?: { id: string; path: string }[];
   mode: 'demo' | 'web' | 'local';
@@ -23,7 +23,8 @@ const emit = defineEmits<{
   export: [workspaceId: string];
 }>();
 const settings = computed(() => props.settings ?? defaultWorkspaceSettings);
-const disabled = computed(() => !props.workspace?.id || props.workspace.readOnly || props.saving || !!props.error);
+const canManage = computed(() => props.workspace?.canManageSettings ?? props.mode !== 'web');
+const disabled = computed(() => !props.workspace?.id || props.workspace.readOnly || !canManage.value || props.saving || !!props.error);
 const name = ref(props.workspace?.name ?? '');
 const nameBase = ref(settings.value.name);
 const nameDirty = ref(false);
@@ -102,6 +103,7 @@ const sidebarOptions = [
     <button v-if="error" type="button" class="settings-button" @click="reload">重新读取设置</button>
   </p>
   <p v-if="!workspace || workspace.readOnly" class="settings-local-note">{{ !workspace ? '打开工作区后即可设置。' : '当前工作区为只读，可以查看设置和导出内容。' }}</p>
+  <p v-else-if="!canManage" class="settings-local-note">只有工作区所有者和管理者可以修改工作区设置。</p>
   <section class="settings-section" aria-label="工作区设置">
     <h3>工作区设置</h3>
     <div class="settings-card">

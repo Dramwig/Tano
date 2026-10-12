@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import { Check, ChevronRight, FileText, Pencil, Search, Undo2, X } from 'lucide-vue-next';
 import type { AssistantProposal, ReferenceIdentity } from '@tano/protocol';
+import { isDataTableFilePath } from '@tano/protocol';
 import ChangeDiff from './ChangeDiff.vue';
 import TaskProposalPreview from './TaskProposalPreview.vue';
 
@@ -16,7 +17,8 @@ const expanded = ref<Record<string, boolean>>({});
 const statuses = { ready: '', applying: '正在应用', applied: '', rejected: '已放弃', conflicted: '存在冲突', unknown: '结果待核对' };
 const labels = { create: '新增', edit: '修改', delete: '删除', rename: '重命名', move: '移动', object: '任务', relation: '关系' };
 const isFile = (proposal: AssistantProposal) => !['object', 'relation'].includes(proposal.kind);
-const canUndo = (proposal: AssistantProposal) => proposal.status === 'applied' && ['edit', 'create'].includes(proposal.kind);
+const canUndo = (proposal: AssistantProposal) => proposal.status === 'applied' &&
+  (proposal.kind === 'edit' || proposal.kind === 'create' && !isDataTableFilePath(proposal.path));
 const groups = computed(() => {
   const result = new Map<string, { key: string; file: boolean; proposals: AssistantProposal[] }>();
   for (const proposal of props.proposals) {
@@ -65,7 +67,7 @@ const groupStatus = (proposals: AssistantProposal[]) => [...new Set(proposals.ma
           <ChangeDiff v-else :before="proposal.applied?.before ?? proposal.preview?.before ?? proposal.base" :after="proposal.applied?.after ?? proposal.preview?.after ?? proposal.content"
             :before-label="proposal.kind === 'create' ? '尚未创建' : '修改前'" :after-label="proposal.kind === 'delete' ? '文件删除' : '修改后'" />
           <div v-if="['ready', 'conflicted', 'unknown'].includes(proposal.status)" class="assistant-proposal-actions">
-            <button v-if="proposal.kind === 'edit' && ['ready', 'conflicted'].includes(proposal.status)" class="secondary-button" :disabled="busy" @click="emit('suggestions', proposal)"><Pencil :size="14" />{{ proposal.suggestionGroupId ? '打开文档建议' : '在文档中逐项审阅' }}</button>
+            <button v-if="proposal.kind === 'edit' && !isDataTableFilePath(proposal.path) && ['ready', 'conflicted'].includes(proposal.status)" class="secondary-button" :disabled="busy" @click="emit('suggestions', proposal)"><Pencil :size="14" />{{ proposal.suggestionGroupId ? '打开文档建议' : '在文档中逐项审阅' }}</button>
             <template v-if="!proposal.suggestionGroupId && ['ready', 'conflicted'].includes(proposal.status)">
               <button class="secondary-button" :disabled="busy" @click="emit('review', proposal)"><Search :size="14" />查看差异</button>
               <button v-if="proposal.preview && proposal.status === 'ready'" class="primary-button" :class="{ destructive: proposal.kind === 'delete' }" :disabled="busy || checks[proposal.id] === false" @click="emit('review', proposal, true)"><Check :size="14" />{{ proposal.kind === 'delete' ? '删除文件' : proposal.kind === 'rename' ? '应用重命名' : proposal.kind === 'move' ? '应用移动' : '应用修改' }}</button>

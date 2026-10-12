@@ -102,7 +102,8 @@ import { selectionTodoSession } from './selection-todo';
 import type { SelectionTodoSession } from './selection-todo';
 import { documentLinks } from '@tano/editor/document-links';
 import type { CommentAnchor } from '@tano/protocol';
-import { unsupportedMarkdown } from '@tano/editor/syntax';
+import { splitFrontmatter, unsupportedMarkdown } from '@tano/editor/syntax';
+import { frontmatterProperties } from '@tano/editor/frontmatter-display';
 import {
   basename,
   parentPath,
@@ -241,7 +242,7 @@ const vButterflyPerch = butterflyPerchDirective(butterfly);
 const paneButterflyScope = (paneId: string, fileId: string) => butterflyScope(store.workspace?.id ?? '', paneId, fileId);
 watch(() => [store.workspace?.id, store.activePaneId, store.activeId, assistant.available, assistant.opened, store.documents.length], () => {
   butterfly.setContext(paneButterflyScope(store.activePaneId, store.activeId),
-    assistant.available && !assistant.opened && store.documents.some(doc => doc.id === store.activeId));
+    assistant.available && !assistant.opened && (isTableTab(store.activeId) || store.documents.some(doc => doc.id === store.activeId)));
 }, { immediate: true });
 const assistantHosts = shallowReactive(new Map<string, HTMLElement>());
 function setAssistantHost(paneId: string, value: unknown) {
@@ -472,6 +473,7 @@ const pageRouteIndex = ref(0);
 const pageRouteMax = ref(0);
 let pageRouteReady = false;
 let applyingPageRoute = false;
+let initialPageRouteSuperseded = false;
 
 function routeStateIndex() {
   const value = (window.history.state as Record<string, unknown> | null)?.[pageRouteStateKey];
@@ -569,7 +571,7 @@ async function applyPageRoute() {
         (entry) => entry.id === route.fileId && entry.kind === 'file' && isMarkdown(entry.path),
       );
       if (!file) store.report('链接中的文档不存在或已被删除');
-      else await store.openFile(file);
+      else if (activeId.value !== file.id) await store.openFile(file);
     }
   } finally {
     applyingPageRoute = false;
@@ -859,7 +861,7 @@ async function renameDocumentTitle(workspaceId: string, id: string, from: string
   if (updateLock.value || store.busy || workspace.value.readOnly || sessionBlocksFileMutation(id))
     throw new Error('当前文档暂时无法重命名');
   const doc = store.documents.find((entry) => entry.id === id);
-  if (!doc || doc.path !== from) throw new Error('文件位置已变化，请重新输入标题');
+  if (!doc || store.displayPath(doc) !== from) throw new Error('文件位置已变化，请重新输入标题');
   await withFileMutation([id], () => store.rename(doc, to));
 }
 function sessionBlocksFileMutation(id: string) {
@@ -1181,7 +1183,8 @@ function capturePaneCommentSelection(paneId: string, fileId: string) {
     : null;
 }
 function openAssistant(paneId = store.activePaneId, fileId = store.activeId) {
-  const selected = paneSource(fileId)
+  const tableId = isTableTab(fileId) ? fileId.slice(6) : undefined;
+  const selected = tableId ? null : paneSource(fileId)
     ? paneSourceEditors.get(paneId)?.assistantSelection()
     : paneSelections[paneId]?.textSelected
       ? capturePaneCommentSelection(paneId, fileId)
@@ -1190,7 +1193,7 @@ function openAssistant(paneId = store.activePaneId, fileId = store.activeId) {
   const span = paneSource(fileId) && selected?.spans.length === 1 ? selected.spans[0] : undefined;
   store.focusPane(paneId);
   assistant.open(
-    store.documents.some((doc) => doc.id === fileId) ? fileId : undefined,
+    tableId ?? (store.documents.some((doc) => doc.id === fileId) ? fileId : undefined),
     text ? { text, ...(span ? { from: span.from, to: span.to } : {}) } : undefined,
   );
   if (window.innerWidth < 1100) sidebar.value = false;
@@ -1829,6 +1832,25 @@ function openDocumentDiscussion() {
   closePageContextMenu();
   return paneComments.get(store.activePaneId)?.showDiscussion();
 }
+const canAddDocumentProperty = computed(() => {
+  const document = active.value;
+  if (!document || editorReadonly.value || editing.active || editing.activeBusy) return false;
+  const prefix = splitFrontmatter(document.content).prefix;
+  return !prefix || frontmatterProperties(prefix) !== null;
+});
+async function addDocumentProperty() {
+  if (!canAddDocumentProperty.value) return;
+  const fileId = store.activeId;
+  const paneId = store.activePaneId;
+  closePageContextMenu();
+  showDocumentProperties.value = true;
+  setPaneSource(fileId, false);
+  // The property input is the destination; restoring the prose caret would dismiss its draft.
+  pendingModeViewports.delete(paneId);
+  await nextTick();
+  if (store.activeId === fileId && store.activePaneId === paneId)
+    await paneEditors.get(paneId)?.addDocumentProperty();
+}
 function togglePageOption(option: 'width' | 'title' | 'properties' | 'outline') {
   if (option === 'width') setLimitPageWidth(!limitPageWidth.value);
   if (option === 'title') showPageTitle.value = !showPageTitle.value;
@@ -2410,6 +2432,7 @@ async function createNewDocument() {
 }
 async function createNewEntry(kind: 'document' | 'folder' | 'table', parent = '') {
   if (store.busy || workspace.value?.readOnly || updateLock.value) return;
+  if (webPageRouting && !pageRouteReady) initialPageRouteSuperseded = true;
   menu.value = false;
   workspaceMenu.value = false;
   fileContextMenu.value = null;
@@ -2706,6 +2729,7 @@ const settingsSnapshot = computed<SettingsSnapshot>(() => ({
         path: workspace.value.path,
         readOnly: workspace.value.readOnly,
         canDelete: workspace.value.canDelete,
+        canManageSettings: workspace.value.canManageSettings,
       }
     : null,
   activeFile: store.active ? { id: store.active.id, path: store.active.path } : null,
@@ -3260,7 +3284,7 @@ onMounted(async () => {
   else await store.initialize(initialPageRoute?.workspaceId ?? props.initialWorkspace);
   if (webPageRouting) {
     pageRouteReady = true;
-    if (props.createWorkspace) writePageRoute(true);
+    if (props.createWorkspace || initialPageRouteSuperseded) writePageRoute(true);
     else await applyPageRoute();
   }
   if (native && !mobile) {
@@ -3631,6 +3655,7 @@ const helpBlocked = computed(() => !!(
               :rename-entry="renameTreeEntry"
               @open="openTreeEntry"
               @select="selectFileTreeEntry"
+              @prefetch="store.prefetchFile"
               @context="openFileContextMenu"
               @context-blank="openDirectoryContextMenu"
               @drag-start="fileDragStart"
@@ -4633,12 +4658,20 @@ const helpBlocked = computed(() => !!(
               />
             </KeepAlive>
 
-            <DataTablePage
-              v-if="workspace && isTableTab(pane.activeId)"
-              :key="`${workspace.id}:${pane.activeId}`"
-              :table-id="pane.activeId.slice(6)"
-              :controls-target="detachedWindow ? undefined : `#data-table-controls-${pane.id}`"
-            />
+            <div v-if="workspace && isTableTab(pane.activeId)" class="data-table-assistant-page">
+              <DataTablePage
+                :key="`${workspace.id}:${pane.activeId}`"
+                :table-id="pane.activeId.slice(6)"
+                :controls-target="detachedWindow ? undefined : `#data-table-controls-${pane.id}`"
+              />
+              <AssistantLauncher
+                v-if="assistant.available && !assistant.opened"
+                :scope="paneButterflyScope(pane.id, pane.activeId)"
+                context-label="聊聊这张数据表"
+                :busy="assistant.busy || assistant.applying"
+                @open="openAssistant(pane.id, pane.activeId)"
+              />
+            </div>
             <CalendarView
               v-if="workspace && pane.activeId === CALENDAR_TAB_ID"
               :date="calendarDate"
@@ -4788,6 +4821,9 @@ const helpBlocked = computed(() => !!(
                       v-if="pane.id === store.activePaneId && extensions.regions['editing-panel']"
                       :actions="extensionActions"
                     />
+                    <p v-if="active.creating && !active.error" class="creation-status" role="status">
+                      正在创建… 可以继续编辑
+                    </p>
                     <div v-if="active.conflict" class="conflict-banner" role="alert">
                       <AlertTriangle :size="19" />
                       <div>
@@ -4824,7 +4860,7 @@ const helpBlocked = computed(() => !!(
                       <AlertTriangle :size="19" />
                       <div>
                         <strong>{{
-                          active.missing ? '文件已在工作文件夹中移除' : '这次保存没有完成'
+                          active.missing ? '文件已在工作文件夹中移除' : active.creating ? '文档尚未创建成功' : '这次保存没有完成'
                         }}</strong>
                         <p>
                           {{
@@ -4864,7 +4900,7 @@ const helpBlocked = computed(() => !!(
                         :key="`${workspace.id}:${active.id}`"
                         :workspace-id="workspace.id"
                         :document-id="active.id"
-                        :path="active.path"
+                        :path="store.displayPath(active)"
                         :title-source="store.workspaceSettings.pageTitleSource"
                         :model-value="suggestions.content"
                         :files="workspace.files"
@@ -5274,6 +5310,14 @@ const helpBlocked = computed(() => !!(
           <button
             type="button"
             role="menuitem"
+            :disabled="!canAddDocumentProperty"
+            @click="addDocumentProperty"
+          >
+            <Plus :size="15" />添加文档属性
+          </button>
+          <button
+            type="button"
+            role="menuitem"
             :disabled="editorReadonly || !!editing.active || editing.activeBusy || !paneComments.has(store.activePaneId)"
             @click="openDocumentDiscussion"
           >
@@ -5476,6 +5520,7 @@ const helpBlocked = computed(() => !!(
         <component v-if="extensions.regions['workspace-members-export']" :is="extensions.regions['workspace-members-export']" :workspace="workspace" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" />
       </template>
     </SettingsPanel>
+    <div v-if="store.fileMutationPending" class="file-mutation-status" role="status">正在同步更改…</div>
     <div v-if="fatal || store.sessionError" class="error-toast" role="alert">
       <AlertTriangle :size="18" /><span>{{ fatal || store.sessionError }}</span
       ><button v-if="fatal" class="icon-button" aria-label="关闭通知" @click="fatal = ''">

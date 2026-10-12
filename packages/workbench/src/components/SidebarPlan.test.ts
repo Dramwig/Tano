@@ -254,6 +254,43 @@ async function choosePrecision(label: '全天事件' | '精确时间') {
   expect(buttons[0]!.textContent).toBe(label === '全天事件' ? '切换为精确时间' : '切换为全天事件');
 }
 
+it.each(['workspace', 'personal'] as const)('uses independent timed-event and unscheduled-task presets in %s', async scope => {
+  usePlanStore().view = scope;
+  date.value = new Date(2026, 9, 2);
+  await nextTick();
+  control<HTMLButtonElement>('为 10 月 2 日 添加事件').click();
+  await nextTick();
+  expect(document.querySelector<HTMLInputElement>('.plan-checkable input')!.checked).toBe(false);
+  expect(control<HTMLButtonElement>('时间安排').textContent).toContain('时间段');
+  expect([...document.querySelectorAll<HTMLInputElement>('input[type=datetime-local]')].map(input => input.value))
+    .toEqual(['2026-10-02T09:00', '2026-10-02T10:00']);
+  const name = control<HTMLInputElement>('事件名称');
+  name.value = '项目讨论';
+  name.dispatchEvent(new Event('input', { bubbles: true }));
+  await nextTick();
+  submit();
+  const records = () => scope === 'personal' ? usePlanStore().personal : store.objects;
+  await vi.waitFor(() => expect(records()).toHaveLength(1));
+  expect(records()[0]!.object.properties).toEqual({
+    checkable: false, completed: false,
+    start: new Date('2026-10-02T09:00').toISOString(),
+    end: new Date('2026-10-02T10:00').toISOString(),
+  });
+  expect(section('当天安排').textContent).toContain('项目讨论');
+  expect(section('当天安排').querySelector('input[type=checkbox]')).toBeNull();
+
+  await quickAdd('整理资料');
+  expect(document.querySelector<HTMLInputElement>('.plan-checkable input')!.checked).toBe(true);
+  expect(control<HTMLButtonElement>('时间安排').textContent).toContain('未安排');
+  expect(document.querySelector('.plan-date-inputs')).toBeNull();
+  submit();
+  await vi.waitFor(() => expect(records()).toHaveLength(2));
+  expect(records().find(record => record.object.name === '整理资料')!.object.properties)
+    .toEqual({ checkable: true, completed: false });
+  expect(section('未安排任务').textContent).toContain('整理资料');
+  expect(section('当天安排').textContent).not.toContain('整理资料');
+});
+
 it('creates, completes, reopens and opens one persisted event while the sidebar reflects date changes', async () => {
   const completedToggle = control<HTMLButtonElement>('已完成');
   const completedPanel = document.getElementById(completedToggle.getAttribute('aria-controls')!)!;
@@ -568,7 +605,7 @@ it('opens a separate panel with the selected date and returns keyboard focus whe
   expect(root.contains(panel)).toBe(false);
   expect(root.querySelector('form')).toBeNull();
   expect(document.activeElement).toBe(control<HTMLInputElement>('事件名称'));
-  expect(panel.querySelector<HTMLInputElement>('input[type=date]')!.value).toBe('2026-09-29');
+  expect(panel.querySelector<HTMLInputElement>('input[type=datetime-local]')!.value).toBe('2026-09-29T09:00');
   const first = control<HTMLButtonElement>('保存到');
   first.focus();
   first.dispatchEvent(

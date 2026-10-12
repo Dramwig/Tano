@@ -27,6 +27,7 @@ import {
   isDataTablePath,
 } from '@tano/protocol';
 import { demoFiles } from './demo';
+import { isAssistantFile, validAssistantDestination } from './assistant/files';
 
 export const native = isTauri();
 import { mobile } from './platform';
@@ -288,19 +289,28 @@ export class DemoAdapter implements WorkspaceAdapter {
   async changeFile(request: FileChangeRequest): Promise<WriteResult> {
     const workspace = await this.refresh();
     if (workspace.id !== request.workspaceId) throw new Error('工作区已切换');
-    if (validatePath(request.path) || !isMarkdown(request.path) ||
-        (request.destination !== undefined && (validatePath(request.destination) || !isMarkdown(request.destination))))
-      throw new Error('只能操作普通 Markdown 文档');
-    const file = this.files[request.path];
-    if (!file) return { status: 'missing' };
-    if (file.id !== request.fileId) throw new Error('文件身份已变化，请重新审阅');
-    const snapshot = await this.read(request.path);
-    if (snapshot.hash !== request.expectedHash) return { status: 'conflict', snapshot };
-    // Hashing yields: verify the in-memory source again immediately before mutation.
-    if (this.files[request.path] !== file || file.content !== snapshot.content) throw new Error('文件已变化，请重新审阅');
-    if (request.destination !== undefined) await this.rename(request.path, request.destination);
-    else await this.remove(request.path, { id: file.id, content: snapshot.content });
-    return { status: 'saved', snapshot };
+    if (!isAssistantFile(request.path) ||
+        (request.destination !== undefined && !validAssistantDestination(request.path, request.destination)))
+      throw new Error('只能操作普通 Markdown 文档或数据表，并保留文件类型');
+    await this.rememberIds();
+    let result: WriteResult = { status: 'missing' };
+    await this.changeEntries(async () => {
+      const file = this.files[request.path];
+      if (!file) return;
+      if (file.id !== request.fileId) throw new Error('文件身份已变化，请重新审阅');
+      const snapshot = await this.read(request.path);
+      if (snapshot.hash !== request.expectedHash) { result = { status: 'conflict', snapshot }; return; }
+      if (this.files[request.path]?.id !== file.id || this.files[request.path]?.content !== snapshot.content) throw new Error('文件已变化，请重新审阅');
+      const destination = request.destination;
+      if (destination !== undefined) {
+        if (this.has(destination)) throw new Error('目标名称已经存在');
+        if (parentPath(destination) && !this.folders.includes(parentPath(destination))) throw new Error('目标文件夹不存在');
+        this.files[destination] = file;
+      }
+      delete this.files[request.path];
+      result = { status: 'saved', snapshot };
+    });
+    return result;
   }
   async rename(from: string, to: string) {
     await this.move(from, to, 'file');
