@@ -1,8 +1,8 @@
 {
   "format": 1,
   "kind": "core",
-  "version": "0.3.1",
-  "tag": "core-v0.3.1",
+  "version": "0.3.2",
+  "tag": "core-v0.3.2",
   "scope": "core",
-  "notes": ".github/releases/core-v0.3.1.md"
+  "notes": ".github/releases/core-v0.3.2.md"
 }

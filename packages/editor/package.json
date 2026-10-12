@@ -1,6 +1,6 @@
 {
   "name": "@tano/editor",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "type": "module",
   "exports": {
@@ -21,7 +21,7 @@
   "dependencies": {
     "@milkdown/kit": "^7.22.1",
     "@milkdown/plugin-prism": "^7.22.1",
-    "@tano/protocol": "^0.3.1",
+    "@tano/protocol": "^0.3.2",
     "dompurify": "^3.4.16",
     "diff": "^8.0.2",
     "katex": "^0.18.7",
