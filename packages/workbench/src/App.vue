@@ -304,7 +304,7 @@ const workspaceStatusLabel = computed(() =>
     ? '只读权限'
     : store.isDemo
       ? '浏览器演示'
-      : store.isWeb
+      : store.isWeb && native
         ? '在线工作区'
         : null,
 );
