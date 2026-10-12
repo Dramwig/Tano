@@ -856,11 +856,22 @@ const editorReadonly = computed(
 );
 async function renameDocumentTitle(workspaceId: string, id: string, from: string, to: string) {
   if (workspace.value?.id !== workspaceId) throw new Error('工作空间已切换，请重新打开文档后重试');
-  if (updateLock.value || store.busy || workspace.value.readOnly || editing.isManaging(id))
+  if (updateLock.value || store.busy || workspace.value.readOnly || sessionBlocksFileMutation(id))
     throw new Error('当前文档暂时无法重命名');
   const doc = store.documents.find((entry) => entry.id === id);
   if (!doc || doc.path !== from) throw new Error('文件位置已变化，请重新输入标题');
-  await store.rename(doc, to);
+  await withFileMutation([id], () => store.rename(doc, to));
+}
+function sessionBlocksFileMutation(id: string) {
+  return editing.canMutateFile ? !editing.canMutateFile(id) : editing.isManaging(id);
+}
+function withFileMutation<T>(ids: string[], mutation: () => Promise<T>): Promise<T> {
+  return editing.withFileMutation ? editing.withFileMutation(ids, mutation) : mutation();
+}
+function fileMutationIds(entries: FileEntry[]): string[] {
+  return (workspace.value?.files ?? []).filter(file => file.kind === 'file' && entries.some(entry =>
+    entry.id === file.id || (entry.kind === 'directory' && file.path.startsWith(`${entry.path}/`)),
+  )).map(file => file.id);
 }
 watch(
   () => editing.active?.key,
@@ -964,7 +975,7 @@ const treeFiles = computed(() => {
 const managedFilePaths = computed(
   () =>
     workspace.value?.files
-      .filter((entry) => entry.kind === 'file' && editing.isManaging(entry.id))
+      .filter((entry) => entry.kind === 'file' && sessionBlocksFileMutation(entry.id))
       .map((entry) => entry.path) ?? [],
 );
 let fileContextTrigger: HTMLElement | null = null;
@@ -1857,7 +1868,7 @@ function fileMutationDisabled(file: FileEntry) {
     !!file.readOnly ||
     store.busy ||
     updateLock.value ||
-    editing.isManaging(file.id)
+    sessionBlocksFileMutation(file.id)
   );
 }
 function directoryHasManagedFile(file: FileEntry) {
@@ -1895,7 +1906,7 @@ async function renameTreeEntry(file: FileEntry, name: string) {
   const path = `${folder ? `${folder}/` : ''}${name}`;
   const error = validatePath(path);
   if (error) throw new Error(error);
-  if (path !== file.path) await store.renameEntry(file, path);
+  if (path !== file.path) await withFileMutation(fileMutationIds([file]), () => store.renameEntry(file, path));
 }
 function fileDeleteDisabled(file: FileEntry) {
   return (
@@ -1917,7 +1928,7 @@ function canDragEntry(file: FileEntry) {
     return false;
   return file.kind === 'directory'
     ? !managedFilePaths.value.some((path) => path.startsWith(`${file.path}/`))
-    : !editing.isManaging(file.id);
+    : !sessionBlocksFileMutation(file.id);
 }
 function planDropIn(folder: string): FileMovePreview[] | null {
   const drag = draggedEntry.value;
@@ -1985,7 +1996,9 @@ async function fileDrop(folder: string, event: DragEvent) {
   moveBusy.value = true;
   optimisticFileMove.value = { workspaceId: drag.workspaceId, changes: preview };
   try {
-    for (const entry of entries) await store.moveEntry(entry, folder, drag.workspaceId);
+    await withFileMutation(fileMutationIds(entries), async () => {
+      for (const entry of entries) await store.moveEntry(entry, folder, drag.workspaceId);
+    });
   } catch (error) {
     store.report(error);
   } finally {
@@ -2386,7 +2399,7 @@ async function removeDocuments(entries: FileEntry[]) {
   }
 }
 async function removeDocument(target?: FileEntry) {
-  if (!target && (editorReadonly.value || !!editing.active || editing.activeBusy)) return;
+  if (!target && (editorReadonly.value || sessionBlocksFileMutation(activeId.value) || editing.activeBusy)) return;
   const entries = target
     ? [target]
     : (workspace.value?.files.filter((file) => file.id === activeId.value) ?? []);
@@ -2929,17 +2942,17 @@ async function submitModal() {
     if (
       modalTarget.value &&
       kind === 'delete' &&
-      editing.isManaging(modalTarget.value.id)
+      sessionBlocksFileMutation(modalTarget.value.id)
     )
       throw new Error('请先结束此文档的实时协作');
     if (kind === 'delete') {
       if (modalDeleteEntries.value.some(fileDeleteDisabled))
         throw new Error('所选条目中有无法移除的文件，请检查权限或实时协作状态');
-      await store.removeEntries(
+      await withFileMutation(fileMutationIds(modalDeleteEntries.value), () => store.removeEntries(
         modalDeleteEntries.value,
         modalDeleteWorkspaceId.value,
         modalDeleteContents.value,
-      );
+      ));
       selectActiveFileInTree();
     } else {
       let path = input.value.trim();
@@ -4496,7 +4509,7 @@ const helpBlocked = computed(() => !!(
                         class="danger-text"
                         :disabled="
                           editorReadonly ||
-                          editing.isManaging(pane.activeId) ||
+                          sessionBlocksFileMutation(pane.activeId) ||
                           (pane.id === store.activePaneId && editing.activeBusy)
                         "
                         @click="removeDocument()"
@@ -4859,7 +4872,7 @@ const helpBlocked = computed(() => !!(
                           suggestions.readonly ||
                           suggestions.suggesting ||
                           active.missing ||
-                          !!editing.active ||
+                          sessionBlocksFileMutation(active.id) ||
                           editing.activeBusy
                         "
                         :rename="renameDocumentTitle"
