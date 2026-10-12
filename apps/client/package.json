@@ -1,6 +1,6 @@
 {
   "name": "@tano/client",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,7 +13,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@tano/workbench": "0.3.0",
+    "@tano/workbench": "0.3.1",
     "@tauri-apps/api": "^2.8.0",
     "pinia": "^3.0.3"
   },
