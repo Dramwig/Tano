@@ -21,6 +21,8 @@ export interface FileEntry {
   size: number;
   modified: number;
   readOnly?: boolean;
+  /** Local draft; the authority has not yet confirmed creation. */
+  pendingCreation?: boolean;
 }
 
 export interface Workspace {
@@ -35,6 +37,8 @@ export interface Workspace {
   canDelete?: boolean;
   /** Supplied by the authority owning workspace membership, never by portable files. */
   canManagePlugins?: boolean;
+  /** Supplied by the authority; content editing alone does not grant settings access. */
+  canManageSettings?: boolean;
 }
 
 export class WorkspaceAccessRevokedError extends Error {
@@ -78,9 +82,17 @@ export interface WorkspaceAdapter {
   refresh(): Promise<Workspace>;
   search?(workspaceId: string, query: string): Promise<SearchHit[]>;
   read(path: string): Promise<FileSnapshot>;
+  /** Optional version-checked, synchronous cache. Never returns speculative content. */
+  readCached?(path: string): FileSnapshot | undefined;
+  /** Best-effort read ahead; implementations bound speculative network work. */
+  prefetch?(path: string): Promise<void>;
   write(path: string, content: string, expectedHash: string): Promise<WriteResult>;
   /** May return the workspace including the confirmed creation to avoid a redundant refresh. */
   create(path: string, content: string): Promise<void | Workspace>;
+  /** Persist a recoverable local draft without waiting for the remote authority. */
+  stageCreate?(path: string, content: string): Promise<{ workspace: Workspace; file: FileEntry }>;
+  /** Confirm the staged request, reusing its durable identity and idempotency key on retry. */
+  commitCreate?(id: string): Promise<{ file: FileEntry; snapshot: FileSnapshot }>;
   createFolder(path: string): Promise<void>;
   rename(from: string, to: string): Promise<void>;
   move(from: string, to: string, kind: FileEntry['kind']): Promise<void>;

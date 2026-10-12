@@ -32,6 +32,21 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+it('requests read ahead for nested documents on pointer entry and keyboard focus without opening them', async () => {
+  root = document.createElement('div');
+  document.body.append(root);
+  const prefetch = vi.fn(), open = vi.fn();
+  app = createApp(FileTree, { entries, onPrefetch: prefetch, onOpen: open });
+  app.mount(root);
+  await nextTick();
+  const row = root.querySelector<HTMLButtonElement>('[title="项目/计划.md"]')!;
+  row.dispatchEvent(new Event('pointerenter'));
+  row.focus();
+  expect(prefetch).toHaveBeenCalledTimes(2);
+  expect(prefetch).toHaveBeenCalledWith(entries[1]);
+  expect(open).not.toHaveBeenCalled();
+});
+
 it('emits the exact folder or nested file on right click and keyboard context menu', async () => {
   const context = vi.fn();
   const open = vi.fn();

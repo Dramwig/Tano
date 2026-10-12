@@ -43,6 +43,7 @@ const props = withDefaults(
 );
 const emit = defineEmits<{
   open: [file: FileEntry];
+  prefetch: [file: FileEntry];
   select: [file: FileEntry, event: MouseEvent];
   context: [file: FileEntry, event: MouseEvent | KeyboardEvent];
   contextBlank: [parent: string, event: MouseEvent];
@@ -163,6 +164,8 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
         :aria-selected="selectedIds.has(file.id)"
         :aria-expanded="file.kind === 'directory' ? !isCollapsed(file.path) : undefined"
         @click="clickEntry(file, $event)"
+        @pointerenter="emit('prefetch', file)"
+        @focus="emit('prefetch', file)"
         @contextmenu.prevent="emit('context', file, $event)"
         @keydown="keyboardContext(file, $event)"
         @dragstart="emit('dragStart', file, $event)"
@@ -225,6 +228,7 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
         :renaming-id="renamingId"
         :rename-entry="renameEntry"
         @open="emit('open', $event)"
+        @prefetch="emit('prefetch', $event)"
         @select="(entry, event) => emit('select', entry, event)"
         @context="(entry, event) => emit('context', entry, event)"
         @context-blank="(folder, event) => emit('contextBlank', folder, event)"

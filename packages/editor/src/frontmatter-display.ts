@@ -32,9 +32,9 @@ export function frontmatterProperties(prefix: string): FrontmatterProperty[] | n
   try {
     const parsed = frontmatterDocument(prefix);
     if (!parsed) return null;
-    const { source, document } = parsed;
+    const { document } = parsed;
     const data: unknown = document.toJS({ maxAliasCount: 100 });
-    if (data === null) return source.trim() ? null : [];
+    if (data === null) return [];
     if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
     const sourceOrder = new Map(
       isMap(document.contents)
@@ -137,6 +137,12 @@ export function updateFrontmatterProperty(
   const serialized = serializeProperty('value', value, kind).slice('value:'.length).replace(/\n$/, '').replace(/\n/g, lineEnding);
   if (oldName === null) {
     const key = serializeProperty(trimmedName, value, kind).replace(/\n/g, lineEnding);
+    if (isMap(parsed.document.contents) && parsed.document.contents.flow && items.length === 0) {
+      const range = parsed.document.contents.range;
+      if (!range) throw new Error('此属性需要在源码中添加');
+      return initial.slice(0, parsed.start + range[0]) + key.slice(0, -lineEnding.length)
+        + initial.slice(parsed.start + range[1]) + body;
+    }
     return initial.slice(0, parsed.end) + key + initial.slice(parsed.end) + body;
   }
   const pair = items.find((item) => isScalar(item.key) && String(item.key.value) === oldName);

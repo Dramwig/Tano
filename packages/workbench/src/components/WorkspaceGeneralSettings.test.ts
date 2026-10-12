@@ -7,7 +7,7 @@ import { defaultWorkspaceSettings } from '../workspace-settings';
 let app: App;
 let root: HTMLDivElement;
 afterEach(() => { app?.unmount(); root?.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
-function mount(readOnly = false) {
+function mount(readOnly = false, canManageSettings = true) {
   const workspaceId = ref('ws');
   const settings = ref({ ...defaultWorkspaceSettings });
   const error = ref('');
@@ -15,7 +15,7 @@ function mount(readOnly = false) {
   const exportContent = vi.fn();
   root = document.createElement('div'); document.body.append(root);
   app = createApp(defineComponent(() => () => h(WorkspaceGeneralSettings, {
-    workspace: { id: workspaceId.value, name: settings.value.name || '原名称', path: '', readOnly }, settings: settings.value,
+    workspace: { id: workspaceId.value, name: settings.value.name || '原名称', path: '', readOnly, canManageSettings }, settings: settings.value,
     mode: 'web', pages: [{ id: 'a00001', path: '首页.md' }], onChange: change, onExport: exportContent,
     error: error.value, onReload: () => { error.value = ''; },
   })));
@@ -30,6 +30,15 @@ async function pasteImage(file: File) {
   document.querySelector('.workspace-icon-picker-upload')!.dispatchEvent(event);
   await nextTick();
 }
+
+it('disables workspace administration for content editors without making their workspace read-only', () => {
+  const { change } = mount(false, false);
+  expect(root.querySelector<HTMLInputElement>('[aria-label="工作区名称"]')!.disabled).toBe(true);
+  expect(root.querySelector<HTMLButtonElement>('[aria-label="选择工作区图标"]')!.disabled).toBe(true);
+  expect(root.textContent).toContain('只有工作区所有者和管理者');
+  root.querySelector<HTMLFormElement>('form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+  expect(change).not.toHaveBeenCalled();
+});
 function mockImage(decode = vi.fn().mockResolvedValue(undefined)) {
   const drawImage = vi.fn();
   vi.stubGlobal('Image', class { src = ''; naturalWidth = 200; naturalHeight = 100; decode = decode; });

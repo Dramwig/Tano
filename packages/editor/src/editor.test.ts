@@ -3917,6 +3917,58 @@ describe('Markdown editor round trips', () => {
     } finally { rectangles.mockRestore(); }
   });
 
+  it.each(['Body\n', '---\n---\n\nBody\n', '---\n# keep this comment\n---\n\nBody\n', '---\n{}\n---\n\nBody\n'])('keeps empty properties hidden until the first property is requested: %j', async content => {
+    const { value, editor, errors } = await mount(content);
+    expect(root.querySelector('.frontmatter-panel')).toBeNull();
+    await editor.value!.addDocumentProperty();
+    const panel = root.querySelector<HTMLDetailsElement>('.frontmatter-panel')!;
+    const name = panel.querySelector<HTMLInputElement>('[aria-label="属性名"]')!;
+    expect(panel.open).toBe(true);
+    expect(document.activeElement).toBe(name);
+    expect(value.value).toBe(content);
+    name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await nextTick();
+    expect(root.querySelector('.frontmatter-panel')).toBeNull();
+    expect(value.value).toBe(content);
+    expect(errors).toEqual([]);
+  });
+
+  it.each(['Body\n', '---\n# keep this comment\n---\n\nBody\n', '---\n{}\n---\n\nBody\n'])('writes the first property and hides the panel after deleting the last one: %j', async content => {
+    const { value, editor, errors } = await mount(content);
+    await editor.value!.addDocumentProperty();
+    const panel = root.querySelector<HTMLDetailsElement>('.frontmatter-panel')!;
+    const name = panel.querySelector<HTMLInputElement>('[aria-label="属性名"]')!;
+    name.value = 'status';
+    name.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+    const input = panel.querySelector<HTMLInputElement>('[aria-label="属性值"]')!;
+    input.value = 'draft';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+    expect(value.value).toContain('status: draft\n');
+    expect(splitFrontmatter(value.value).body).toBe(splitFrontmatter(content).body);
+    if (content.includes('# keep this comment')) expect(value.value).toContain('# keep this comment\n');
+    panel.querySelector<HTMLButtonElement>('[aria-label="切换 status 的类型"]')!.click();
+    await nextTick();
+    panel.querySelector<HTMLButtonElement>('.frontmatter-type-delete')!.click();
+    await nextTick();
+    expect(root.querySelector('.frontmatter-panel')).toBeNull();
+    expect(splitFrontmatter(value.value).body).toBe(splitFrontmatter(content).body);
+    if (content.includes('# keep this comment')) expect(value.value).toContain('# keep this comment\n');
+    await editor.value!.addDocumentProperty();
+    expect(root.querySelector<HTMLDetailsElement>('.frontmatter-panel')?.open).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  it('keeps the first-property entry inactive for readonly documents', async () => {
+    const { value, editor, readonly } = await mount('Body\n');
+    readonly.value = true;
+    await nextTick();
+    await editor.value!.addDocumentProperty();
+    expect(root.querySelector('.frontmatter-panel')).toBeNull();
+    expect(value.value).toBe('Body\n');
+  });
+
   it('shows frontmatter as collapsible property rows without changing the Markdown', async () => {
     const content =
       '---\ntype: reference\nstatus: active\ndomains: [meta, docs]\ncreated: 2026/05/11\n---\n\nBody\n';

@@ -203,6 +203,17 @@ it('shows registration-only deletion in local workspace settings and omits it fr
   expect(root.querySelector('.workspace-deletion-settings')).toBeNull();
 });
 
+it('requires management access for shared document rules while keeping personal preferences available', async () => {
+  workspaceMode.value = 'web';
+  hostWorkspace.value = { id: 'online', name: '在线', path: '', readOnly: false, canManageSettings: false };
+  await openPage('文档能力');
+  const select = root.querySelector<HTMLSelectElement>('select[aria-label="无序列表标记"]')!;
+  expect(select.disabled).toBe(true);
+  expect(root.textContent).toContain('只有工作区所有者和管理者');
+  hostWorkspace.value = { ...hostWorkspace.value, canManageSettings: true }; await nextTick();
+  expect(select.disabled).toBe(false);
+});
+
 it('passes host workspace identity and file context to extension pages and clears them when the host changes', async () => {
   workspaceMode.value = 'web';
   hostWorkspace.value = { id: 'online-workspace', name: '在线', path: 'web' };

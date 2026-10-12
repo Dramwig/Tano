@@ -4,6 +4,7 @@ import { AlignLeft, ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRi
 import MarkdownEditor from '@tano/editor';
 import type { AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSource, ReferenceIdentity } from '@tano/protocol';
 import { useAssistantStore } from '../assistant/store';
+import { isAssistantFile } from '../assistant/files';
 import { assistantToolLabel, assistantMessageParts } from '../assistant/results';
 import type { AssistantDisplayMode } from '../assistant/store';
 import { useWorkspaceStore } from '../stores/workspace';
@@ -26,6 +27,7 @@ const section = ref<'conversation' | 'history'>('conversation');
 const query = ref('');
 const textarea = ref<HTMLTextAreaElement>();
 const messages = ref<HTMLElement>();
+const welcomeButterfly = ref<InstanceType<typeof AssistantButterfly>>();
 const notice = ref('');
 const manualModelId = ref('');
 const deleting = ref<string>();
@@ -98,8 +100,8 @@ const starters = [
   { label: '翻译成英文', icon: Languages, prompt: '请将这篇笔记翻译成英文，保留原有的 Markdown 格式。' },
   { label: '提取待办事项', icon: CircleCheck, prompt: '请从这篇笔记中提取待办事项，列出行动、负责人和截止时间；未明确的信息请标为待确认。' },
 ];
-const sourceFiles = computed(() => workspace.workspace?.files.filter(file => file.kind === 'file' && /\.(?:md|markdown)$/i.test(file.path) &&
-  !file.path.startsWith('.tano/') && file.path.toLocaleLowerCase().includes(query.value.toLocaleLowerCase())).slice(0, 100) ?? []);
+const sourceFiles = computed(() => workspace.workspace?.files.filter(file => file.kind === 'file' && isAssistantFile(file.path) &&
+  file.path.toLocaleLowerCase().includes(query.value.toLocaleLowerCase())).slice(0, 100) ?? []);
 const displayed = computed(() => assistant.session?.messages.slice(-visibleMessages.value) ?? []);
 const messageSources = computed(() => {
   const messages = assistant.session?.messages ?? [];
@@ -461,7 +463,10 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
       <div ref="messages" class="assistant-messages panel-scrollbar" role="log" aria-label="助手对话" @scroll="updateScroll">
         <p v-if="assistant.loading" class="assistant-empty"><LoaderCircle :size="16" class="spinning" />正在读取会话</p>
         <div v-else-if="!assistant.session?.messages.length" class="assistant-welcome">
-          <div class="assistant-welcome-mark"><AssistantButterfly class="assistant-welcome-butterfly" label="同页助手" /></div>
+          <!-- Reserved for platform AI settings; currently greets with a flutter. -->
+          <button type="button" class="assistant-welcome-mark" aria-label="同页 AI 设置（即将推出）" title="同页 AI 设置（即将推出）" @click="welcomeButterfly?.flutter()">
+            <AssistantButterfly ref="welcomeButterfly" class="assistant-welcome-butterfly" />
+          </button>
           <h3>今天想从哪里开始？</h3>
           <div class="assistant-starters">
             <button v-for="starter in starters" :key="starter.label" :disabled="assistant.busy || assistant.applying || !workspace.active" @click="preparePrompt(starter.prompt)"><component :is="starter.icon" :size="18" /><span>{{ starter.label }}</span></button>
@@ -560,7 +565,7 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
             <label class="assistant-menu-search"><Search :size="15" /><input v-model="query" aria-label="搜索参考文档" placeholder="搜索文档路径" /></label>
             <div class="assistant-menu-scroll panel-scrollbar">
               <button v-for="file in sourceFiles" :key="file.id" class="assistant-menu-item assistant-source-option" :class="{ selected: assistant.files.includes(file.id) }" :aria-pressed="assistant.files.includes(file.id)" :title="file.path" :disabled="controlsLocked" data-menu-item @click="toggleSource(file.id)"><FileText :size="16" /><span class="assistant-menu-label">{{ file.path }}</span><Check v-if="assistant.files.includes(file.id)" :size="16" class="assistant-menu-check" /></button>
-              <p v-if="!sourceFiles.length" class="assistant-menu-empty">{{ query ? '没有找到匹配的文档' : '暂无 Markdown 文档' }}</p>
+              <p v-if="!sourceFiles.length" class="assistant-menu-empty">{{ query ? '没有找到匹配的文档或数据表' : '暂无 Markdown 文档或数据表' }}</p>
             </div>
           </template>
         </div>
@@ -665,7 +670,9 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
 .assistant-messages { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: auto; overscroll-behavior: contain; padding: 12px 26px 18px; }
 .assistant-empty { margin: auto; padding: 30px 12px; color: var(--muted); font-size: 13px; text-align: center; }
 .assistant-welcome { flex-shrink: 0; margin-top: auto; padding: 30px 0 0; }
-.assistant-welcome-mark { display: grid; place-items: center; width: 54px; height: 54px; margin-bottom: 18px; border: 1px solid var(--line); border-radius: 50%; background: var(--paper); box-shadow: 0 4px 12px rgb(0 0 0 / 6%); }
+.assistant-welcome-mark { display: grid; place-items: center; width: 54px; height: 54px; padding: 0; margin-bottom: 18px; border: 1px solid var(--line); border-radius: 50%; background: var(--paper); box-shadow: 0 4px 12px rgb(0 0 0 / 6%); cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.assistant-welcome-mark:focus-visible { outline: 2px solid var(--green); outline-offset: 4px; }
+@media (hover: hover) { .assistant-welcome-mark:hover { border-color: var(--control-border); box-shadow: 0 4px 16px rgb(0 0 0 / 9%); } }
 .assistant-welcome-butterfly { width: 30px; height: 30px; }
 .assistant-welcome h3 { margin: 0 0 17px; font-size: 19px; line-height: 1.5; font-weight: 600; }
 .assistant-starters { display: grid; gap: 1px; }

@@ -1,6 +1,6 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { splitFrontmatter } from '@tano/editor/syntax';
-import { ASSISTANT_PROTOCOL_VERSION, parseAssistantSession } from '@tano/protocol';
+import { ASSISTANT_PROTOCOL_VERSION, parseAssistantSession, isDataTableFilePath, parseDataTable } from '@tano/protocol';
 import type { AssistantConnection, AssistantRequest, AssistantSession, AssistantSource, AssistantTransport } from '@tano/protocol';
 
 export function nativeAssistantTransport(): AssistantTransport {
@@ -140,7 +140,17 @@ export function demoAssistantTransport(): AssistantTransport {
             newText: `${splitFrontmatter(source.content).prefix}## 草稿（浏览器演示）\n\n主题：${topic}\n\n## 主要内容\n\n待补充\n\n## 下一步\n\n- [ ] 补充具体信息\n\n> 这是模拟草稿，用于演示询问用户后继续执行。\n`, reason: '根据用户回答演示初始化当前文档。' }),
         } }] } }] });
       }
-      if (!frames.length && !toolResponse && request.tools && source && /改|整理|润色|建议|测试/.test(sourceMessage.slice(0, sourceMessage.indexOf(separator)))) {
+      if (!frames.length && !toolResponse && request.tools && source && isDataTableFilePath(source.path) && /添加|新增|改|整理|建议|测试/.test(question)) {
+        const table = parseDataTable(source.content);
+        const field = table.fields.find(field => field.type === 'text');
+        table.rows.push({ id: `demo_${crypto.randomUUID().slice(0, 8)}`, values: field ? { [field.id]: '模拟记录' } : {} });
+        frames.push({ choices: [{ index: 0, delta: { content: '浏览器演示将添加一条模拟记录，用于验证数据表编辑。[来源:S1]' } }] });
+        frames.push({ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: 'demo_table_edit', type: 'function', function: {
+          name: direct ? 'edit_document' : 'propose_edit', arguments: JSON.stringify({ sourceId: source.id, oldText: source.content,
+            newText: JSON.stringify(table, null, 2) + '\n', reason: '浏览器模拟数据表编辑，添加一条模拟记录。' }),
+        } }] } }] });
+      }
+      if (!frames.length && !toolResponse && request.tools && source && !isDataTableFilePath(source.path) && /改|整理|润色|建议|测试/.test(sourceMessage.slice(0, sourceMessage.indexOf(separator)))) {
         const original = source.selection?.from !== undefined ? source.content.slice(source.selection.from, source.selection.to)
           : source.content.split('\n').find(line => line.trim() && !line.startsWith('#') && source.content.indexOf(line) === source.content.lastIndexOf(line));
         if (original) {

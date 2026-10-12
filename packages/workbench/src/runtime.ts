@@ -31,7 +31,7 @@ export interface EditingSession {
 /** Host metadata shared with settings pages; no document content or window-local store. */
 export interface SettingsPageContext {
   mode: 'demo' | 'web' | 'local';
-  workspace: Pick<Workspace, 'id' | 'name' | 'path' | 'readOnly' | 'canDelete'> | null;
+  workspace: Pick<Workspace, 'id' | 'name' | 'path' | 'readOnly' | 'canDelete' | 'canManageSettings'> | null;
   activeFile: Pick<FileEntry, 'id' | 'path'> | null;
 }
 /** Components receive SettingsPageContext props, including in a separate settings window. */

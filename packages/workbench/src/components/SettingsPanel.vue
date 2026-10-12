@@ -126,6 +126,7 @@ const rulesDisabled = computed(
   () =>
     !props.workspace ||
     props.workspace.readOnly ||
+    !(props.workspace.canManageSettings ?? props.mode !== 'web') ||
     props.capabilitySaving ||
     !!props.capabilityError,
 );
@@ -686,11 +687,11 @@ function customFontInput(event: Event) {
             <h3>内容扩展<span class="settings-scope">工作区共享</span></h3>
             <p class="settings-section-description">关闭后显示原始内容，已有文档会保留。</p>
             <p v-if="capabilityError" class="settings-notice" role="alert">{{ capabilityError }}</p>
-            <p v-else-if="!workspace || workspace.readOnly" class="settings-notice">
+            <p v-else-if="!workspace || workspace.readOnly || !(workspace.canManageSettings ?? mode !== 'web')" class="settings-notice">
               {{
                 !workspace
                   ? '打开工作区后即可调整文档能力。'
-                  : '当前工作区为只读，无法更改文档能力。'
+                  : '只有工作区所有者和管理者可以更改文档能力。'
               }}
             </p>
             <div class="settings-card">

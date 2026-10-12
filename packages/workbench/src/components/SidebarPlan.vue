@@ -243,7 +243,7 @@ function dismissPickers(event: MouseEvent | FocusEvent) {
   if (!(event.target instanceof Node)) return;
   if (!scopePicker.value?.contains(event.target)) scopeOpen.value = false;
 }
-async function addEvent(schedule: 'none' | 'date') {
+async function addEvent(kind: 'event' | 'task') {
   if (cannotAdd.value || saving.value) return;
   viewOpen.value = false;
   if (!draft.value) {
@@ -252,8 +252,10 @@ async function addEvent(schedule: 'none' | 'date') {
       scope: plans.defaultScope,
       workspaceId: store.workspace?.id,
       name: '',
-      checkable: true,
-      planDate: { date: schedule === 'none' ? '' : selected.value, time: '', end: '' },
+      checkable: kind === 'task',
+      planDate: kind === 'task'
+        ? { date: '', time: '', end: '' }
+        : { date: selected.value, time: '09:00', end: `${selected.value}T10:00` },
     };
   }
   error.value = '';
@@ -743,7 +745,7 @@ onBeforeUnmount(() => {
           class="plan-add"
           :aria-label="`为 ${selectedTitle} 添加事件`"
           :disabled="cannotAdd || saving"
-          @click="addEvent('date')"
+          @click="addEvent('event')"
         >
           <Plus :size="14" />
         </button>
@@ -778,7 +780,7 @@ onBeforeUnmount(() => {
           class="plan-add"
           aria-label="添加未安排任务"
           :disabled="cannotAdd || saving"
-          @click="addEvent('none')"
+          @click="addEvent('task')"
         >
           <Plus :size="14" />
         </button>
