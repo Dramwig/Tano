@@ -1,17 +1,25 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
-import { Search, Upload, X } from 'lucide-vue-next';
+import { Search, Upload } from 'lucide-vue-next';
 import WorkspaceIcon from './WorkspaceIcon.vue';
 import { filterWorkspaceIconGroups, workspaceBuiltinIconGroups, workspaceEmojiGroups } from '../workspace-icons';
 
-const props = defineProps<{ icon: string; mode: 'demo' | 'web' | 'local'; disabled?: boolean }>();
-const emit = defineEmits<{ select: [value: string]; upload: []; pasteImage: [file: File] }>();
+const props = withDefaults(defineProps<{
+  icon: string;
+  mode: 'demo' | 'web' | 'local';
+  disabled?: boolean;
+  label?: string;
+  triggerClass?: string;
+  align?: 'start' | 'end';
+}>(), { label: '工作区图标', align: 'end' });
+const emit = defineEmits<{ select: [value: string]; upload: []; pasteImage: [file: File]; 'update:open': [value: boolean] }>();
 const pickerId = useId();
 const trigger = ref<HTMLButtonElement>();
 const panel = ref<HTMLElement>();
 const searchInput = ref<HTMLInputElement>();
 const scrollArea = ref<HTMLElement>();
 const open = ref(false);
+watch(open, value => emit('update:open', value), { flush: 'sync' });
 const tabs = [
   { id: 'emoji', label: '表情符号' },
   { id: 'icons', label: '图标' },
@@ -73,7 +81,7 @@ function place() {
       ? rect.top - height - 8
       : Math.max(8, window.innerHeight - height - 8);
   position.value = {
-    left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)),
+    left: Math.max(8, Math.min(props.align === 'start' ? rect.left : rect.right - width, window.innerWidth - width - 8)),
     top, width, maxHeight,
   };
 }
@@ -187,14 +195,14 @@ onBeforeUnmount(() => {
 
 <template>
   <button
-    ref="trigger" type="button" class="settings-button workspace-icon-preview"
-    aria-label="选择工作区图标" aria-haspopup="dialog" :aria-expanded="open"
+    ref="trigger" type="button" class="settings-button workspace-icon-preview" :class="triggerClass"
+    :aria-label="`选择${label}`" :title="`选择${label}`" aria-haspopup="dialog" :aria-expanded="open"
     :aria-controls="pickerId" :disabled="disabled" @click="toggle"
-  ><WorkspaceIcon :icon="icon" :mode="mode" :size="28" /></button>
+  ><slot name="preview"><WorkspaceIcon :icon="icon" :mode="mode" :size="28" /></slot></button>
   <Teleport to="body">
     <section
       v-if="open" :id="pickerId" ref="panel" class="workspace-icon-picker" role="dialog"
-      aria-label="工作区图标" :style="{
+      :aria-label="label" :style="{
         left: `${position.left}px`, top: `${position.top}px`, width: `${position.width}px`, maxHeight: `${position.maxHeight}px`,
       }" @keydown="keydown" @paste="pasteImage"
     >
@@ -207,7 +215,6 @@ onBeforeUnmount(() => {
           >{{ item.label }}</button>
         </div>
         <button type="button" class="workspace-icon-picker-remove" :disabled="disabled || !icon" @click="select('')">移除</button>
-        <button type="button" class="workspace-icon-picker-close" aria-label="关闭图标选择器" @click="close(true)"><X :size="15" /></button>
       </header>
       <div :id="`${pickerId}-content`" class="workspace-icon-picker-content" role="tabpanel" :aria-labelledby="`${pickerId}-${tab}-tab`">
         <template v-if="tab !== 'upload'">
@@ -236,7 +243,7 @@ onBeforeUnmount(() => {
         </template>
         <div v-else class="workspace-icon-picker-upload" tabindex="-1" @pointerdown="focusUpload">
           <div class="workspace-icon-picker-upload-symbol" aria-hidden="true"><Upload :size="24" /></div>
-          <p class="workspace-icon-picker-upload-title">上传工作区图标</p>
+          <p class="workspace-icon-picker-upload-title">上传{{ label }}</p>
           <div class="workspace-icon-picker-upload-actions">
             <button type="button" class="settings-button" :disabled="disabled" @click="upload">选择图片</button>
             <p class="workspace-icon-picker-upload-paste">或按 <kbd>Ctrl+V</kbd> 粘贴图片</p>
@@ -257,8 +264,6 @@ onBeforeUnmount(() => {
 .workspace-icon-picker-tabs button[aria-selected='true']::after { position: absolute; right: 0; bottom: 0; left: 0; height: 2px; background: var(--text); content: ''; }
 .workspace-icon-picker-remove { margin-left: auto; padding: 4px 6px; color: var(--muted); font-size: 12px; }
 .workspace-icon-picker-remove:disabled { opacity: .4; cursor: default; }
-.workspace-icon-picker-close { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border-radius: 4px; color: var(--muted); }
-.workspace-icon-picker-close:hover { background: var(--hover); }
 .workspace-icon-picker-content { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .workspace-icon-picker-search { display: flex; align-items: center; gap: 6px; flex: none; margin: 10px 10px 4px; padding: 5px 8px; border: 1px solid var(--control-border); border-radius: 6px; color: var(--muted); }
 .workspace-icon-picker-search:focus-within { outline: 2px solid var(--text); outline-offset: 1px; }

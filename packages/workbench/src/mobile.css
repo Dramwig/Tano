@@ -1,0 +1,133 @@
+/* Layout capabilities are independent of the native storage platform. */
+:root.touch-layout {
+  --sidebar-width: 280px;
+  --app-safe-top: env(safe-area-inset-top, 0px);
+  --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --app-safe-left: env(safe-area-inset-left, 0px);
+  --app-safe-right: env(safe-area-inset-right, 0px);
+}
+.touch-layout .app-shell {
+  top: var(--app-viewport-top, 0px);
+  height: var(--app-viewport-height, 100dvh);
+  min-height: 0;
+  padding: var(--app-safe-top) var(--app-safe-right) var(--app-safe-bottom) var(--app-safe-left);
+}
+.touch-layout .sidebar { top: auto; bottom: auto; }
+.touch-layout button { touch-action: manipulation; }
+.touch-layout .sidebar-brand-slot .brand { visibility: hidden; }
+.touch-layout .sidebar-brand-slot .sidebar-toggle { opacity: 1; pointer-events: auto; }
+.touch-layout .sidebar-navigation { overflow-x: auto; flex-shrink: 0; }
+.touch-layout .tree-row { -webkit-touch-callout: none; }
+.touch-layout .sidebar-resize-handle { width: 12px; right: -6px; }
+.touch-layout .topbar { padding-inline: 8px; gap: 4px; }
+.touch-layout .topbar-right,
+.touch-layout .document-tool-buttons { gap: 0; }
+.touch-layout .breadcrumb { flex: 1; gap: 4px; }
+.touch-layout .breadcrumb-current { min-width: 0; }
+.touch-layout .document-layout { overscroll-behavior: contain; scroll-padding-block: 24px; }
+.touch-layout .editor-scroll { --document-inset-start: 24px; --document-inset-end: 24px; }
+.touch-layout .tano-prose { overflow-wrap: anywhere; }
+.touch-layout .tano-table-viewport { touch-action: pan-x pan-y; }
+.touch-layout .desktop-tab-switch { touch-action: pan-x; }
+.touch-layout .desktop-tab-list { overflow-x: auto; overscroll-behavior-x: contain; }
+.touch-layout .editor-toolbar { height: auto; min-height: 44px; flex-shrink: 0; flex-wrap: wrap; }
+.touch-layout .editor-toolbar .format-actions { min-width: 0; flex-wrap: wrap; }
+.touch-layout .editor-toolbar .document-actions { flex-shrink: 0; }
+.touch-layout .contextual-toolbar .inline-actions { flex-wrap: wrap; }
+/* 16px controls avoid iOS focus zoom without disabling accessibility zoom. */
+.touch-layout input:not([type='checkbox']):not([type='radio']):not(.document-title-input),
+.touch-layout textarea,
+.touch-layout select { font-size: max(16px, 1em); }
+.touch-layout .inspector { --inspector-top: 60px; max-height: calc(100% - 72px); }
+.touch-layout .inspector-surface { max-height: inherit; }
+.touch-layout .modal-backdrop,
+.touch-layout .modal-backdrop.settings-backdrop,
+.touch-layout .object-panel-backdrop {
+  top: var(--app-viewport-top, 0px);
+  bottom: auto;
+  height: var(--app-viewport-height, 100dvh);
+  padding: max(12px, var(--app-safe-top)) max(12px, var(--app-safe-right)) max(12px, var(--app-safe-bottom)) max(12px, var(--app-safe-left));
+  overflow-y: auto;
+}
+.touch-layout .modal,
+.touch-layout .object-panel { max-height: 100%; overflow-y: auto; }
+.touch-layout .modal.search-modal { display: flex; flex-direction: column; overflow: hidden; }
+.touch-layout .search-results { min-height: 0; overflow-y: auto; }
+.touch-layout .settings-dialog { height: 100%; max-height: 760px; }
+:root.touch-layout .import-dialog {
+  top: calc(var(--app-viewport-top, 0px) + max(12px, var(--app-safe-top)));
+  bottom: auto;
+  margin-block: 0;
+  max-width: calc(100% - var(--app-safe-left) - var(--app-safe-right) - 24px);
+  height: min(800px, calc(var(--app-viewport-height, 100dvh) - max(12px, var(--app-safe-top)) - max(12px, var(--app-safe-bottom))));
+}
+.touch-layout .assistant-panel-floating {
+  top: calc(var(--app-viewport-top, 0px) + var(--app-safe-top) + 12px);
+  bottom: auto;
+  right: max(12px, var(--app-safe-right));
+  max-height: calc(var(--app-viewport-height, 100dvh) - var(--app-safe-top) - var(--app-safe-bottom) - 24px);
+}
+.touch-layout .welcome { overflow-y: auto; padding: 24px 16px; }
+
+/* Same drawer on phones in either orientation and tablets in split view. */
+.compact-layout .sidebar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 40;
+  width: min(320px, calc(100% - 48px));
+  box-shadow: 15px 0 40px #1f232815;
+}
+.touch-layout.compact-layout .sidebar {
+  top: var(--app-safe-top);
+  bottom: var(--app-safe-bottom);
+  left: var(--app-safe-left);
+  width: min(320px, calc(100% - 48px - var(--app-safe-left) - var(--app-safe-right)));
+}
+.compact-layout .sidebar-dismiss {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 39;
+  background: #1f232840;
+}
+.compact-layout .app-shell:not(.sidebar-hidden) .main-column { margin-left: 0; min-width: 0; width: 100%; }
+.compact-layout .sidebar-resize-handle { display: none; }
+.compact-layout .breadcrumb-workspace { display: none; }
+.compact-layout .assistant-panel:not(.assistant-panel-fullscreen) {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+}
+.touch-layout.compact-layout .assistant-panel-floating {
+  position: fixed;
+  top: calc(var(--app-viewport-top, 0px) + var(--app-safe-top));
+  left: var(--app-safe-left);
+  right: var(--app-safe-right);
+  bottom: auto;
+  width: auto;
+  height: calc(var(--app-viewport-height, 100dvh) - var(--app-safe-top) - var(--app-safe-bottom));
+}
+@media (max-width: 480px) {
+  .touch-layout .topbar { flex-wrap: wrap; height: auto; min-height: var(--topbar-height); }
+  .touch-layout .breadcrumb { flex-basis: 80px; }
+  .touch-layout .breadcrumb-demo-badge { font-size: 11px; gap: 3px; }
+  .touch-layout .topbar-right { margin-left: 0; }
+  .touch-layout .document-scroll-shell .editor-scroll { --document-inset-start: 20px; --document-inset-end: 20px; }
+  .touch-layout .settings-content { padding-inline: 16px; }
+  .touch-layout .settings-nav { padding: 12px 12px 8px; }
+  .touch-layout .settings-dialog { border-radius: 10px; }
+}
+@media (max-height: 500px) {
+  .touch-layout .settings-nav-foot,
+  .touch-layout .settings-nav-group { display: none; }
+  .touch-layout .settings-nav { padding-block: 8px; }
+  .touch-layout .settings-nav-scroll { padding-block: 4px; }
+  .touch-layout .settings-content { padding-block: 16px; }
+}

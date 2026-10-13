@@ -2,11 +2,33 @@ package app.tano.local
 
 import android.os.Bundle
 import android.view.View
+import android.webkit.WebView
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : TauriActivity() {
+  override val handleBackNavigation = false
+
+  override fun onWebViewCreate(webView: WebView) {
+    super.onWebViewCreate(webView)
+    onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+      override fun handleOnBackPressed() {
+        if (ViewCompat.getRootWindowInsets(webView)?.isVisible(WindowInsetsCompat.Type.ime()) == true) {
+          WindowInsetsControllerCompat(window, webView).hide(WindowInsetsCompat.Type.ime())
+          return
+        }
+        webView.evaluateJavascript(
+          "window.dispatchEvent(new Event('tano:back', { cancelable: true }))"
+        ) { unhandled ->
+          if (unhandled == "true" || unhandled == "null") moveTaskToBack(true)
+        }
+      }
+    })
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)

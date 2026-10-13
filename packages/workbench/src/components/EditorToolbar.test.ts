@@ -244,7 +244,7 @@ it('treats a cross-paragraph range and code text as block selections without mov
   expect(root.querySelector('.math-editor-panel:not([hidden])')).not.toBeNull();
   expect(context.value.level).toBe('block');
   expect(context.value.activeInline).not.toContain('InlineMath');
-});
+}, 20_000); // The first rendered formula loads the math module on a cold test worker.
 
 it('keeps read-only and source modes non-editable and closes stale menus', async () => {
   const { readonly, source, value, editor } = await mount('正文\n');

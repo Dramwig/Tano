@@ -16,6 +16,18 @@ beforeEach(() => {
 });
 afterEach(() => { useWorkspaceStore().dispose(); disposePinia(pinia); });
 
+it('can read document metadata by stable identity after a rename while preserving explicit path guards', async () => {
+  await adapter.open();
+  await adapter.create('icon.md', '---\nicon: 🌿\n---\n正文\n');
+  const store = useWorkspaceStore(); await store.openWorkspace();
+  const file = store.workspace!.files.find(file => file.path === 'icon.md')!;
+  const scope = { id: store.workspace!.id, path: store.workspace!.path };
+  await adapter.rename('icon.md', 'renamed.md'); await store.refresh();
+  expect(await store.readGraphDocument(scope, { id: file.id })).toContain('icon: 🌿');
+  await expect(store.readGraphDocument(scope, file)).rejects.toThrow('文档已移动或删除');
+  await expect(store.readGraphDocument({ ...scope, id: 'another workspace' }, { id: file.id })).rejects.toThrow('工作区已切换');
+});
+
 it('queries unopened documents and task descriptions, then sees external changes and unsaved document drafts', async () => {
   await adapter.open();
   await adapter.create('context.md', 'Task context');

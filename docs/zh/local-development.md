@@ -1,5 +1,7 @@
 # 本地开发
 
+Android、iOS 和平板适配的构建步骤、键盘/安全区行为及本机验收见[手机与平板开发](../mobile.md)。
+
 [English](../local-development.md) | 中文 | [日本語](../ja/local-development.md) | [Deutsch](../de/local-development.md) | [文档目录](README.md)
 
 安装 Node.js 24.12+、npm 和 Rust stable。桌面开发还需要当前平台的 [Tauri 2 系统依赖](https://v2.tauri.app/start/prerequisites/)。Windows 需要 C++ Build Tools、Windows SDK 和 WebView2；可用 `powershell -File scripts/check-desktop.ps1` 检查本机环境。

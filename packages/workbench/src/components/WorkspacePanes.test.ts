@@ -37,19 +37,33 @@ async function mountPanes(side: 'right' | 'bottom' = 'right', sharedTabs = false
   return { id: layout.id, mounted };
 }
 
-it('omits tab strips when tabs are disabled by the runtime', async () => {
+it('shows only the active page without tabs or split controls while retaining saved drafts and layout', async () => {
   await mountPanes('right', true);
   app?.unmount();
   root.innerHTML = '';
   app = createApp({ render: () => h(WorkspacePanes, { tabsEnabled: false }, {
     tabs: ({ pane }: any) => h('div', { class: 'workspace-tabbar', 'data-tab-pane-id': pane.id }),
-    default: () => h('textarea', { value: 'document' }),
+    default: ({ pane }: any) => h('textarea', { value: pane.activeId }),
   }) });
   app.mount(root);
   await nextTick();
   expect(root.querySelector('.workspace-pane-tabbars')).toBeNull();
   expect(root.querySelectorAll('.workspace-tabbar')).toHaveLength(0);
   expect(root.querySelectorAll('.workspace-pane-external-tabs')).toHaveLength(0);
+  expect(root.querySelectorAll('.workspace-pane')).toHaveLength(1);
+  expect(root.querySelector('.pane-divider, .pane-dock-preview, .workspace-panes-multiple')).toBeNull();
+  expect(root.querySelector<HTMLElement>('.workspace-pane')!.style.width).toBe('100%');
+  const savedLayout = JSON.stringify(fixture.store.layout);
+  const documents = fixture.store.documents;
+  const next = fixture.store.panes.find((pane: any) => pane.id !== fixture.store.activePaneId);
+  fixture.store.activePaneId = next.id;
+  fixture.store.paneDrop = { paneId: next.id, side: 'right' };
+  await nextTick();
+  expect(root.querySelectorAll('.workspace-pane')).toHaveLength(1);
+  expect(root.querySelector('textarea')!.value).toBe(next.activeId);
+  expect(root.querySelector('.pane-dock-preview')).toBeNull();
+  expect(JSON.stringify(fixture.store.layout)).toBe(savedLayout);
+  expect(fixture.store.documents).toBe(documents);
 });
 
 it.each(['right', 'bottom'] as const)('keeps top tabs above the assistant in a %s split without remounting editors', async side => {

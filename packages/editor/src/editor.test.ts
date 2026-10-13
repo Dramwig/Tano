@@ -3926,6 +3926,9 @@ describe('Markdown editor round trips', () => {
     expect(panel.open).toBe(true);
     expect(document.activeElement).toBe(name);
     expect(value.value).toBe(content);
+    // A real key event arrives in a later task; Vue ignores bubbled events
+    // timestamped in the same millisecond as the newly mounted row listener.
+    await new Promise(resolve => setTimeout(resolve, 1));
     name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     await nextTick();
     expect(root.querySelector('.frontmatter-panel')).toBeNull();

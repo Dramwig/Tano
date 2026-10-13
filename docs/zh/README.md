@@ -7,6 +7,7 @@ Tano 是本地 Markdown 工作区。可以从[本地开发](local-development.md
 | 指南 | 主题 |
 | --- | --- |
 | [本地开发](local-development.md) | 环境要求、启动与检查 |
+| [手机与平板开发](../mobile.md) | Android、iPhone/iPad、响应式布局与本机验证 |
 | [架构](architecture.md) | 存储分层与工作区身份 |
 | [数据表](data-tables.md) | 独立记录、类型字段、视图、公式、CSV 与冲突恢复 |
 | [插件开发与工作区管理](../plugins.md) | 跨端插件、管理员规则、SDK 与开发工具 |

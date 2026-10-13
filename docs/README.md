@@ -7,6 +7,7 @@ Tano is a local Markdown workspace. Start with [local development](local-develop
 | Guide | Topic |
 | --- | --- |
 | [Local development](local-development.md) | Requirements, setup, and checks |
+| [Mobile development](mobile.md) | Android, iPhone/iPad, adaptive layout and local device checks |
 | [Architecture](architecture.md) | Storage layers and workspace identity |
 | [Cloud Extension API](cloud-extension.md) | Optional overlay contract and repository boundary |
 | [Plugins](plugins.md) | Plugin SDK, shared workspace rules, permissions, and development tools |

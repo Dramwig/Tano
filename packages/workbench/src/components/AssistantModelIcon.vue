@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Cpu, Terminal } from 'lucide-vue-next';
+import { Terminal } from 'lucide-vue-next';
 import { modelIcon } from '../assistant/model-icons';
 
 const props = withDefaults(defineProps<{ model: string; size?: number }>(), { size: 16 });
@@ -12,7 +12,6 @@ const icon = computed(() => modelIcon(props.model));
     <!-- Only bundled, reviewed SVGs enter v-html; model names never become markup. -->
     <span v-if="icon" class="assistant-model-brand-svg" v-html="icon.svg" />
     <Terminal v-else-if="model === 'cli-default'" :size="size" />
-    <Cpu v-else :size="size" />
   </span>
 </template>
 

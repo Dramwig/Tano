@@ -5,10 +5,8 @@ import {
   ChevronDown,
   Folder,
   FolderOpen,
-  FileText,
   Table2,
   File,
-  Bot,
 } from 'lucide-vue-next';
 import {
   isDataTableFilePath,
@@ -18,10 +16,13 @@ import {
   type FileEntry,
 } from '@tano/protocol';
 import FileTreeRename from './FileTreeRename.vue';
+import DocumentFileIcon from './DocumentFileIcon.vue';
 
 const props = withDefaults(
   defineProps<{
     entries: FileEntry[];
+    documentIcons?: Readonly<Record<string, string>>;
+    loadDocumentIcon?: (file: FileEntry, signal: AbortSignal) => Promise<string>;
     parent?: string;
     depth?: number;
     selectedIds?: ReadonlySet<string>;
@@ -116,13 +117,58 @@ watch(
     if (!draggedId) cancelHoverExpand();
   },
 );
-onBeforeUnmount(cancelHoverExpand);
+let touchHold: { pointer: number; x: number; y: number; timer: ReturnType<typeof setTimeout> } | undefined;
+let touchFileId: string | undefined;
+let heldFileId: string | undefined;
+function cancelTouchHold() {
+  if (touchHold) clearTimeout(touchHold.timer);
+  touchHold = undefined;
+  window.removeEventListener('scroll', cancelTouchHold, true);
+}
+function startTouchHold(file: FileEntry, event: PointerEvent) {
+  cancelTouchHold();
+  heldFileId = undefined;
+  touchFileId = event.pointerType === 'touch' ? file.id : undefined;
+  if (!touchFileId || !event.isPrimary || event.button !== 0 || file.id === props.renamingId) return;
+  const target = event.currentTarget as HTMLElement;
+  const { clientX: x, clientY: y, pointerId: pointer } = event;
+  touchHold = { pointer, x, y, timer: setTimeout(() => {
+    if (!target.isConnected || file.id === props.renamingId || !props.entries.some(entry => entry.id === file.id)) {
+      cancelTouchHold();
+      return;
+    }
+    // Dispatch on the row so menu positioning and focus restoration keep their
+    // normal context-menu target on both Android and iOS.
+    target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 2 }));
+  }, 550) };
+  window.addEventListener('scroll', cancelTouchHold, true);
+}
+function moveTouchHold(event: PointerEvent) {
+  if (touchHold && (event.pointerId !== touchHold.pointer ||
+      Math.hypot(event.clientX - touchHold.x, event.clientY - touchHold.y) > 10)) cancelTouchHold();
+}
+function contextEntry(file: FileEntry, event: MouseEvent) {
+  cancelTouchHold();
+  if (heldFileId === file.id) return; // Some WebViews also emit their own long-press event.
+  if (touchFileId === file.id) heldFileId = file.id;
+  emit('context', file, event);
+}
+onBeforeUnmount(() => { cancelHoverExpand(); cancelTouchHold(); });
 function keyboardContext(file: FileEntry, event: KeyboardEvent) {
   if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
   event.preventDefault();
   emit('context', file, event);
 }
+function suppressHeldClick(file: FileEntry, event: MouseEvent) {
+  if (heldFileId === file.id && event.detail !== 0) {
+    event.preventDefault();
+    event.stopPropagation();
+    return true;
+  }
+  return false;
+}
 function clickEntry(file: FileEntry, event: MouseEvent) {
+  if (suppressHeldClick(file, event)) return;
   if (file.id === props.renamingId) return;
   emit('select', file, event);
   if (event.shiftKey || event.ctrlKey || event.metaKey) {
@@ -164,9 +210,15 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
         :aria-selected="selectedIds.has(file.id)"
         :aria-expanded="file.kind === 'directory' ? !isCollapsed(file.path) : undefined"
         @click="clickEntry(file, $event)"
+        @mousedown="suppressHeldClick(file, $event)"
+        @pointerdown="startTouchHold(file, $event)"
+        @pointermove="moveTouchHold"
+        @pointerup="cancelTouchHold"
+        @pointercancel="cancelTouchHold"
+        @pointerleave="cancelTouchHold"
         @pointerenter="emit('prefetch', file)"
         @focus="emit('prefetch', file)"
-        @contextmenu.prevent="emit('context', file, $event)"
+        @contextmenu.prevent="contextEntry(file, $event)"
         @keydown="keyboardContext(file, $event)"
         @dragstart="emit('dragStart', file, $event)"
         @dragend="emit('dragEnd')"
@@ -179,7 +231,11 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
           :class="{ 'tree-icon-expandable': file.kind === 'directory' }"
           aria-hidden="true"
         >
-          <component
+          <DocumentFileIcon
+            v-if="file.kind === 'file' && isMarkdown(file.path)"
+            :file="file" :icon="documentIcons?.[file.id]" :load="loadDocumentIcon"
+          />
+          <component v-else
             :is="
               file.kind === 'directory'
                 ? isCollapsed(file.path)
@@ -187,11 +243,7 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
                   : FolderOpen
                 : isDataTableFilePath(file.path)
                   ? Table2
-                  : file.name === 'AGENTS.md'
-                    ? Bot
-                    : isMarkdown(file.path)
-                      ? FileText
-                      : File
+                  : File
             "
             :size="16"
             :stroke-width="1.6"
@@ -218,6 +270,8 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
       <FileTree
         v-if="file.kind === 'directory' && !isCollapsed(file.path)"
         :entries="entries"
+        :document-icons="documentIcons"
+        :load-document-icon="loadDocumentIcon"
         :parent="file.path"
         :depth="depth + 1"
         :selected-ids="selectedIds"

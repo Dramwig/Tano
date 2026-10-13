@@ -69,6 +69,7 @@ import type { SuggestionState } from '../workspace-suggestions';
 import type { DocumentSuggestion } from '@tano/protocol';
 import { locateSuggestion } from '../document-suggestions';
 import { addWorkspaceWelcome, workspaceWelcomePath } from '../workspace-welcome';
+import { readStartupWorkspace, rememberStartupWorkspace } from '../workspace-startup';
 import { recordHelpCompleted, recordHelpPlanEdit } from '../help-checklist';
 import { createHelpEditQueue } from '../help-edit-queue';
 import { createDataTableController } from '../data-table-controller';
@@ -992,6 +993,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const detachedWorkspacePath = detachedTabId
     ? new URLSearchParams(window.location.search).get('workspacePath')
     : null;
+  const remembersStartupWorkspace = !isDemo && !isWeb && !detachedTabId;
   const dirty = (doc: OpenDocument) => !!doc.creating || doc.content !== doc.base.content;
   const layoutPending = (doc: OpenDocument) => !!doc.tableLayout && layoutDirty(doc.tableLayout) &&
     doc.tableLayout.conflict?.draft !== JSON.stringify(doc.tableLayout.file);
@@ -1124,16 +1126,26 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       if (isWeb) await refreshWorkspaces();
     } else if (requestedWorkspace) {
       await openWorkspace(requestedWorkspace);
-    } else if (adapter.recent) await refreshWorkspaces();
+    } else if (adapter.recent && await refreshWorkspaces()) {
+      const savedId = readStartupWorkspace();
+      const previous = savedId === undefined
+        ? recent.value.reduce<RecentWorkspace | undefined>((latest, item) =>
+          !latest || item.openedAt > latest.openedAt ? item : latest, undefined)
+        : recent.value.find(item => item.id === savedId);
+      if (previous) await openWorkspace(previous.path);
+      else if (savedId) rememberStartupWorkspace(null);
+    }
   }
   async function refreshWorkspaces() {
-    if (!adapter.recent) return;
+    if (!adapter.recent) return false;
     try {
       recent.value = await adapter.recent();
       recent.value = recent.value.map(item => ({ ...item, name: workspaceNames.get(item.id) ?? item.name,
         ...(item.id === workspaceSettingsScope ? { icon: workspaceSettings.value.icon } : {}) }));
+      return true;
     } catch (error) {
       report(error);
+      return false;
     }
   }
   function writable() {
@@ -1182,6 +1194,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         workspaceSettings.value = { ...defaultWorkspaceSettings };
         workspaceSettingsError.value = '';
         workspace.value = next;
+        if (remembersStartupWorkspace) rememberStartupWorkspace(next.id);
         await dataTables.reload();
         await refreshWorkspaceSettings();
         assistantEpoch.value++;
@@ -1313,6 +1326,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         await journalTask;
         if (deleteId !== undefined) await adapter.deleteWorkspace!(deleteId);
         else if (!detachedTabId) await adapter.close?.(current.id);
+        if (remembersStartupWorkspace) rememberStartupWorkspace(null);
         sessionReady = false;
         stopWatching();
         pluginHost.dispose();
@@ -1686,11 +1700,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   // Serialize adapter reads with workspace switches. The graph never writes
   // content, and open drafts take precedence over the filesystem snapshot.
-  function readGraphDocument(expectedWorkspace: Pick<Workspace, 'id' | 'path'>, file: Pick<FileEntry, 'id' | 'path'>) {
+  function readGraphDocument(expectedWorkspace: Pick<Workspace, 'id' | 'path'>, file: Pick<FileEntry, 'id'> & Partial<Pick<FileEntry, 'path'>>) {
     return serial(async () => {
       if (workspace.value?.id !== expectedWorkspace.id || workspace.value.path !== expectedWorkspace.path)
         throw new Error('工作区已切换');
-      const entry = workspace.value.files.find(entry => entry.id === file.id && entry.path === file.path);
+      const entry = workspace.value.files.find(entry => entry.id === file.id && (file.path === undefined || entry.path === file.path));
       if (!entry || entry.kind !== 'file' || !isMarkdown(entry.path)) throw new Error('文档已移动或删除');
       const draft = documents.value.find(doc => doc.id === file.id);
       if (draft) return draft.content;

@@ -33,7 +33,7 @@ async function safeRead(path) {
   return readFile(path);
 }
 for (const path of paths) bytes.set(path, await safeRead(join(workspace, path)));
-const image = await safeRead(join(workspace, 'assets/test-image.png'));
+const image = await safeRead(join(workspace, 'en-US/assets/test-image.png'));
 for (const path of imagePaths) bytes.set(path, image);
 
 // Validate actual Markdown links and definitions; examples inside code are not links.

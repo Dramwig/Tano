@@ -6,6 +6,7 @@ import { defaultWorkspaceSettings } from '../workspace-settings';
 import type { WorkspaceSettings, WorkspaceSettingsPatch } from '../workspace-settings';
 import type { PageTitleSource } from '../page-title-source';
 import WorkspaceIconPicker from './WorkspaceIconPicker.vue';
+import { iconImage } from '../icon-image';
 
 const props = defineProps<{
   workspace: (Pick<Workspace, 'name' | 'path' | 'readOnly' | 'canManageSettings'> & { id?: string }) | null;
@@ -70,19 +71,7 @@ async function uploadImage(file: File) {
   const previous = settings.value.icon;
   localError.value = '';
   try {
-    if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type) || file.size > 2 * 1024 * 1024)
-      throw new Error('请选择不超过 2 MB 的 PNG、JPEG、WebP 或 GIF 图片。');
-    const url = URL.createObjectURL(file);
-    let value: string;
-    try {
-      const image = new Image(); image.src = url; await image.decode();
-      const canvas = document.createElement('canvas'); canvas.width = 96; canvas.height = 96;
-      const context = canvas.getContext('2d');
-      if (!context) throw new Error('无法处理图片，请使用表情符号。');
-      const side = Math.min(image.naturalWidth, image.naturalHeight);
-      context.drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) / 2, side, side, 0, 0, 96, 96);
-      value = canvas.toDataURL('image/png');
-    } finally { URL.revokeObjectURL(url); }
+    const value = await iconImage(file);
     if (props.workspace?.id === workspaceId) change({ key: 'icon', value, previous });
   } catch (error) { if (props.workspace?.id === workspaceId) localError.value = String(error instanceof Error ? error.message : error); }
 }

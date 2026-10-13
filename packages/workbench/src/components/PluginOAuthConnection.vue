@@ -12,6 +12,7 @@ const available = computed(() => providers.value.filter(item => item.origin === 
 const selected = computed(() => available.value.find(item => item.id === providerId.value));
 const flow = ref<PluginOAuthFlow>(), busy = ref(false), error = ref(''), status = ref('');
 let controller = new AbortController(), timer: ReturnType<typeof setTimeout> | undefined;
+let providersController = new AbortController();
 let pending: { workspace: string; id: string } | undefined;
 function reset() {
   controller.abort(); controller = new AbortController(); clearTimeout(timer);
@@ -19,9 +20,10 @@ function reset() {
   pending = undefined; flow.value = undefined; busy.value = false; error.value = ''; status.value = '';
 }
 watch(() => store.workspace?.id, async workspace => {
+  providersController.abort(); providersController = new AbortController();
   reset(); providers.value = [];
   if (!workspace || !oauth) return;
-  const signal = controller.signal;
+  const signal = providersController.signal;
   try { const values = await oauth.providers(workspace, signal); if (!signal.aborted) providers.value = values; }
   catch (reason) { if (!signal.aborted) error.value = String(reason); }
 }, { immediate: true });
@@ -62,7 +64,7 @@ function open(event: MouseEvent) {
   event.preventDefault(); void openExternalUrl(flow.value.authorizationUrl).catch(reason => { error.value = String(reason); });
 }
 function cancel() { reset(); status.value = '已取消等待。若连接刚刚完成，请在连接列表中撤销。'; }
-onScopeDispose(reset);
+onScopeDispose(() => { providersController.abort(); reset(); });
 </script>
 <template>
   <fieldset v-if="oauth && (available.length || error)" class="plugin-oauth">

@@ -14,6 +14,8 @@ import { mobile, nativeOs } from '../platform';
 import { useWorkspaceStore } from '../stores/workspace';
 import type { DocumentTab } from '../stores/workspace';
 import ButtonVisibilityGroup from './ButtonVisibilityGroup.vue';
+import WorkspaceIcon from './WorkspaceIcon.vue';
+import { appearanceText } from '../document-appearance';
 import { Table2 } from 'lucide-vue-next';
 
 const store = useWorkspaceStore();
@@ -30,6 +32,9 @@ const props = defineProps<{
 const paneTabs = computed(() => props.paneId
   ? store.tabs.filter(tab => store.panes.find(pane => pane.id === props.paneId)?.tabs.includes(tab.id))
   : store.tabs);
+const documentIcons = computed(() => Object.fromEntries(
+  paneTabs.value.map(tab => [tab.id, appearanceText(tab.document?.content ?? '', 'icon')]),
+));
 const selectedId = computed(() => props.paneId
   ? store.panes.find(pane => pane.id === props.paneId)?.activeId ?? '' : store.activeId);
 const paneSlot = computed(() => store.paneDrop?.paneId === props.paneId ? store.paneDrop?.index : undefined);
@@ -62,6 +67,7 @@ const tabLabel = (tab: DocumentTab) => props.assistantTab?.id === tab.id ? props
 const draggingId = ref('');
 const outgoingId = ref('');
 const dragPreview = ref<{
+  id: string;
   path: string;
   dirty: boolean;
   left: number;
@@ -312,6 +318,8 @@ function scrollWhileDragging() {
 }
 
 function startDrag(event: PointerEvent, id: string) {
+  // A touch gesture scrolls the strip; mouse/trackpad dragging still docks tabs.
+  if (event.pointerType === 'touch') return;
   if (nativeTabDrag) return;
   if (event.button !== 0 || !event.isPrimary || gesture) return;
   const element = event.currentTarget as HTMLElement;
@@ -348,6 +356,7 @@ function moveDrag(event: PointerEvent) {
     scrollFrame = requestAnimationFrame(scrollWhileDragging);
   }
   dragPreview.value = {
+    id: gesture.id,
     path: gesture.path,
     dirty: gesture.dirty,
     left: gesture.x - gesture.grabX,
@@ -930,6 +939,9 @@ async function onTabKeydown(event: KeyboardEvent) {
           <Table2 v-else-if="doc.dataTable" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <Puzzle v-else-if="doc.pluginView" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <component :is="doc.view.icon" v-else-if="doc.view" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
+          <span v-else-if="!doc.blank && documentIcons[doc.id]" class="desktop-tab-icon desktop-tab-document-icon" aria-hidden="true">
+            <WorkspaceIcon :icon="documentIcons[doc.id]" :size="15" />
+          </span>
           <FileText v-else-if="!doc.blank" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <span class="desktop-tab-label">{{ tabLabel(doc) }}</span>
           <span
@@ -1053,7 +1065,10 @@ async function onTabKeydown(event: KeyboardEvent) {
       }"
       aria-hidden="true"
     >
-      <FileText class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
+      <span v-if="documentIcons[dragPreview.id]" class="desktop-tab-icon desktop-tab-document-icon">
+        <WorkspaceIcon :icon="documentIcons[dragPreview.id]" :size="15" />
+      </span>
+      <FileText v-else class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
       <span class="desktop-tab-label">{{ title(dragPreview.path) }}</span>
       <span v-if="dragPreview.dirty" class="desktop-tab-dirty" />
     </div>
@@ -1294,6 +1309,14 @@ async function onTabKeydown(event: KeyboardEvent) {
 .desktop-tab-icon {
   flex: 0 0 15px;
   color: var(--muted);
+}
+.desktop-tab-document-icon {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  overflow: hidden;
+  border-radius: 3px;
 }
 .desktop-tab-active .desktop-tab-icon {
   color: var(--green);
