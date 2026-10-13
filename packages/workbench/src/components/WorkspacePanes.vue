@@ -9,6 +9,8 @@ const props = withDefaults(defineProps<{ compact?: boolean; tabsEnabled?: boolea
 });
 const store = useWorkspaceStore();
 const showTabs = computed(() => props.tabsEnabled);
+// Retain saved layouts and drafts, but expose only the active page without tabs.
+const singlePane = computed(() => props.compact || !showTabs.value);
 const host = ref<HTMLElement>();
 const contentWidth = ref<number>();
 let resizeObserver: ResizeObserver | undefined;
@@ -19,19 +21,19 @@ onMounted(() => {
 });
 const committed = computed(() => layoutGeometry(store.layout));
 const geometry = computed(() => {
-  if (props.compact || !store.detachingTabId) return committed.value;
+  if (singlePane.value || !store.detachingTabId) return committed.value;
   const remaining = mapLayout(store.layout, pane =>
     pane.tabs.length === 1 && pane.tabs[0] === store.detachingTabId ? null : pane);
   // The last pane of a window stays visible until the transfer is acknowledged.
   return remaining ? layoutGeometry(remaining) : committed.value;
 });
-const visible = computed(() => props.compact
+const visible = computed(() => singlePane.value
   ? geometry.value.panes.filter(({ pane }) => pane.id === store.activePaneId)
     .map(item => ({ ...item, rect: { left: 0, top: 0, width: 1, height: 1 } }))
   : geometry.value.panes);
 const preview = computed(() => {
   const drop = store.paneDrop;
-  if (props.compact || !drop || drop.side === 'center') return;
+  if (singlePane.value || !drop || drop.side === 'center') return;
   const target = visible.value.find(({ pane }) => pane.id === drop.paneId);
   return target ? panePreviewRects(target.rect, drop.side) : undefined;
 });
@@ -42,7 +44,7 @@ const tabbarPanes = computed(() => [
   })),
   // Keep departing editors mounted to flush drafts and restore on failure.
   // No hidden-pane geometry participates in hit tests or visible dividers.
-  ...(!props.compact ? committed.value.panes.filter(item => !visible.value.some(({ pane }) => pane.id === item.pane.id))
+  ...(!singlePane.value ? committed.value.panes.filter(item => !visible.value.some(({ pane }) => pane.id === item.pane.id))
     .map(item => ({ ...item, hidden: true })) : []),
 ]);
 const displayed = computed(() => tabbarPanes.value.map(item => ({
@@ -109,7 +111,7 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
 
 <template>
   <div class="workspace-layout">
-    <div v-if="!compact && showTabs && $slots.tabs" class="workspace-pane-tabbars">
+    <div v-if="!singlePane && showTabs && $slots.tabs" class="workspace-pane-tabbars">
       <div v-for="{ pane, rect, hidden } in tabbarPanes.filter(item => item.rect.top === 0)" :key="pane.id"
         v-show="!hidden" class="workspace-pane-tabbar" :inert="hidden"
         :class="{ 'workspace-pane-top-right': rect.left + rect.width >= 1 - 1e-6 }"
@@ -119,18 +121,18 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
       </div>
     </div>
     <div class="workspace-body">
-      <div ref="host" class="workspace-panes" :class="{ 'workspace-panes-multiple': !compact && (visible.length > 1 || !!preview), 'workspace-panes-resizing': isResizing }">
+      <div ref="host" class="workspace-panes" :class="{ 'workspace-panes-multiple': !singlePane && (visible.length > 1 || !!preview), 'workspace-panes-resizing': isResizing }">
         <!-- Hit regions keep their committed bounds while the visible pane makes
              room for the preview, so a stationary edge drag cannot oscillate. -->
         <div v-for="{ pane, rect } in visible" :key="`hit:${pane.id}`" class="pane-dock-region"
           :data-dock-pane-id="pane.id" :style="rectStyle(rect)" aria-hidden="true" />
         <section
           v-for="{ pane, rect, hidden, topTabbar } in displayed" :key="pane.id" v-show="!hidden" class="workspace-pane" :inert="hidden"
-          :class="{ 'workspace-pane-active': !hidden && pane.id === visibleActivePaneId, 'workspace-pane-top': rect.top === 0, 'workspace-pane-external-tabs': !compact && showTabs && topTabbar && !!$slots.tabs }"
+          :class="{ 'workspace-pane-active': !hidden && pane.id === visibleActivePaneId, 'workspace-pane-top': rect.top === 0, 'workspace-pane-external-tabs': !singlePane && showTabs && topTabbar && !!$slots.tabs }"
           :data-pane-id="pane.id" :style="rectStyle(rect)" :aria-label="showTabs ? '文档标签组' : '文档内容'"
           @pointerdown.capture="focusPaneFromPointer($event, pane.id)" @focusin="store.focusPane(pane.id)"
         >
-          <slot v-if="!compact && showTabs && !topTabbar" name="tabs" :pane="pane" :rect="rect" />
+          <slot v-if="!singlePane && showTabs && !topTabbar" name="tabs" :pane="pane" :rect="rect" />
           <slot :pane="pane" :rect="rect" :document="store.documents.find(doc => doc.id === pane.activeId)"
             :tab="store.tabs.find(tab => tab.id === pane.activeId)" />
         </section>
@@ -138,7 +140,7 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
           :style="rectStyle(preview.preview)" aria-hidden="true">
           <span>{{ ({ center: '合并到标签组', left: '向左分屏', right: '向右分屏', top: '向上分屏', bottom: '向下分屏' })[store.paneDrop.side] }}</span>
         </div>
-        <template v-if="!compact">
+        <template v-if="!singlePane">
           <div v-for="divider in geometry.dividers" :key="divider.id" class="pane-divider"
             :class="`pane-divider-${divider.axis}`" :style="rectStyle(divider.rect)"
             role="separator" tabindex="0" :aria-label="divider.axis === 'horizontal' ? '调整左右分屏大小' : '调整上下分屏大小'"
@@ -184,7 +186,12 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
 .pane-dock-region { position: absolute; pointer-events: none; }
 .pane-dock-preview { position: absolute; z-index: 20; pointer-events: none; border-radius: 7px; background: color-mix(in srgb, var(--green) 20%, var(--paper)); display: grid; place-items: center; }
 .pane-dock-preview span { padding: 6px 10px; border-radius: 6px; background: var(--paper); color: var(--green); font-size: 12px; }
-.workspace-panes-multiple :deep(.editor-scroll) { padding: 28px clamp(18px, 5cqw, 60px) 50px; }
+.workspace-panes-multiple :deep(.editor-scroll) {
+  --document-inset-start: clamp(18px, 5cqw, 60px);
+  --document-inset-end: clamp(18px, 5cqw, 60px);
+  padding: 28px var(--document-inset-end) 50px var(--document-inset-start);
+}
+.workspace-panes-multiple :deep(.editor-scroll:has(.document-cover)) { padding-top: 0; }
 .workspace-panes-multiple :deep(.document-title-input) { font-size: clamp(24px, 5cqw, 36px); }
 .workspace-panes-multiple :deep(.editor-toolbar) { height: auto; min-height: 44px; flex-wrap: wrap; padding: 6px 10px; white-space: nowrap; }
 .workspace-panes-multiple :deep(.editor-toolbar > *) { flex-shrink: 0; }

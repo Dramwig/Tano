@@ -5,6 +5,7 @@ import type { FileEntry } from '@tano/protocol';
 import { splitFrontmatter } from '@tano/editor/syntax';
 import { frontmatterValue, updateFrontmatterProperty } from '@tano/editor/frontmatter-display';
 import type { PageTitleSource } from '../page-title-source';
+import DocumentAppearance from './DocumentAppearance.vue';
 
 const props = withDefaults(defineProps<{
   workspaceId: string;
@@ -14,11 +15,16 @@ const props = withDefaults(defineProps<{
   modelValue?: string;
   files: FileEntry[];
   readonly: boolean;
+  mode?: 'demo' | 'web' | 'local';
+  resolveImage?: (reference: string) => string | null;
+  uploadCover?: (file: File) => Promise<{ url: string }>;
+  resourceRevision?: string | number;
   rename: (workspaceId: string, id: string, from: string, to: string) => Promise<void>;
 }>(), { titleSource: 'frontmatter-first', modelValue: '' });
 const emit = defineEmits<{
   enter: [workspaceId: string, documentId: string];
   'update:modelValue': [value: string];
+  comment: [];
 }>();
 let disposed = false;
 onBeforeUnmount(() => { disposed = true; });
@@ -138,6 +144,10 @@ async function keydown(event: KeyboardEvent) {
 
 <template>
   <div class="document-title" :aria-busy="saving">
+    <DocumentAppearance :model-value="modelValue" :readonly="readonly || saving" :mode="mode"
+      :resolve-image="resolveImage" :upload-cover="uploadCover" :resource-revision="resourceRevision"
+      @update:model-value="emit('update:modelValue', $event)" @comment="emit('comment')" />
+    <div class="document-title-content">
     <input
       class="document-title-input"
       :value="draft"
@@ -155,5 +165,6 @@ async function keydown(event: KeyboardEvent) {
       @compositionend="composing = false"
     />
     <div v-if="error" :id="errorId" class="document-title-error" role="alert">{{ error }}</div>
+    </div>
   </div>
 </template>

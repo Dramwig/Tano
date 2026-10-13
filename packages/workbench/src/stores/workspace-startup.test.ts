@@ -1,14 +1,22 @@
 // @vitest-environment jsdom
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import type { RecentWorkspace } from '@tano/protocol';
 import { createPinia, disposePinia, setActivePinia } from 'pinia';
 import { DemoAdapter } from '../adapter';
 import { configureWorkbench } from '../runtime';
 import { useWorkspaceStore } from './workspace';
 import { workspaceWelcomeContent, workspaceWelcomePath } from '../workspace-welcome';
+import { readStartupWorkspace, rememberStartupWorkspace, startupWorkspaceKey } from '../workspace-startup';
 
 let pinia: ReturnType<typeof createPinia>;
 let store: ReturnType<typeof useWorkspaceStore>;
-afterEach(() => { store?.dispose(); if (pinia) disposePinia(pinia); });
+beforeEach(() => localStorage.clear());
+afterEach(async () => {
+  await store?.dispose();
+  if (pinia) disposePinia(pinia);
+  vi.restoreAllMocks();
+  window.history.replaceState(null, '', '/');
+});
 
 it('opens a requested local workspace at startup instead of asking for another folder', async () => {
   const adapter = new DemoAdapter();
@@ -22,7 +30,7 @@ it('opens a requested local workspace at startup instead of asking for another f
   expect(store.workspace).not.toBeNull();
 });
 
-it('keeps ordinary local startup at the workspace picker until a folder is selected', async () => {
+it('keeps first local startup at the workspace picker until a folder is selected', async () => {
   const adapter = new DemoAdapter();
   Object.defineProperty(adapter, 'mode', { value: 'desktop' });
   const open = vi.spyOn(adapter, 'open');
@@ -32,6 +40,177 @@ it('keeps ordinary local startup at the workspace picker until a folder is selec
   await store.initialize();
   expect(open).not.toHaveBeenCalled();
   expect(store.workspace).toBeNull();
+});
+
+const olderWorkspace = { id: 'older', name: '旧仓库', path: 'C:\\旧仓库', openedAt: 1 };
+const lastWorkspace = { id: 'last', name: '上次仓库', path: 'C:\\上次仓库', openedAt: 2 };
+
+function localWorkspace(history: RecentWorkspace[] = [olderWorkspace, lastWorkspace]) {
+  const adapter = new DemoAdapter({ files: { 'README.md': '# 首页', '笔记.md': '# 笔记' }, storageKey: `startup-${crypto.randomUUID()}` });
+  Object.defineProperty(adapter, 'mode', { value: 'desktop' });
+  const local = Object.assign(adapter, {
+    recent: vi.fn(async () => history),
+    open: vi.fn(async (path?: string) => {
+      const selected = history.find(item => item.path === path);
+      if (!selected) throw new Error('工作区不存在');
+      return { ...await adapter.refresh(), ...selected, canDelete: true };
+    }),
+    deleteWorkspace: vi.fn(async (id: string) => { history = history.filter(item => item.id !== id); }),
+    close: vi.fn(async () => {}),
+  });
+  mountStore(local);
+  return local;
+}
+
+function mountStore(adapter: DemoAdapter) {
+  pinia = configureWorkbench(createPinia(), { adapter, native: false, mobile: false });
+  setActivePinia(pinia);
+  store = useWorkspaceStore();
+}
+
+async function restart(adapter: DemoAdapter) {
+  await store.dispose();
+  disposePinia(pinia);
+  mountStore(adapter);
+  await store.initialize();
+}
+
+it('migrates existing installs to the most recently opened local workspace and restores its active document', async () => {
+  const adapter = localWorkspace();
+  await store.initialize();
+  expect(adapter.open).toHaveBeenCalledExactlyOnceWith(lastWorkspace.path);
+  expect(store.workspace?.id).toBe(lastWorkspace.id);
+  const note = store.workspace!.files.find(file => file.path === '笔记.md')!;
+  await store.openFileInNewTab(note);
+  await store.flush();
+  const tabs = store.tabs.map(tab => tab.id);
+  await restart(adapter);
+  expect(store.tabs.map(tab => tab.id)).toEqual(tabs);
+  expect(store.active?.path).toBe('笔记.md');
+});
+
+it('remembers a successful switch even when another workspace has a newer history timestamp', async () => {
+  const adapter = localWorkspace();
+  await store.initialize();
+  await store.openWorkspace(olderWorkspace.path);
+  await restart(adapter);
+  expect(adapter.open).toHaveBeenLastCalledWith(olderWorkspace.path);
+  expect(store.workspace?.id).toBe(olderWorkspace.id);
+});
+
+it('uses the current registered path for the remembered workspace ID', async () => {
+  rememberStartupWorkspace(lastWorkspace.id);
+  const adapter = localWorkspace([{ ...lastWorkspace, path: 'D:\\已移动的仓库' }]);
+  await store.initialize();
+  expect(adapter.open).toHaveBeenCalledExactlyOnceWith('D:\\已移动的仓库');
+});
+
+it('gives an explicitly requested workspace priority over startup memory', async () => {
+  rememberStartupWorkspace(lastWorkspace.id);
+  const adapter = localWorkspace();
+  await store.initialize(olderWorkspace.path);
+  expect(adapter.open).toHaveBeenCalledExactlyOnceWith(olderWorkspace.path);
+  expect(readStartupWorkspace()).toBe(olderWorkspace.id);
+});
+
+it.each(['delete', 'leave'])('stays at the picker after a successful %s, including the next launch', async action => {
+  const adapter = localWorkspace();
+  await store.initialize();
+  expect(await (action === 'delete' ? store.deleteWorkspace(lastWorkspace.id) : store.leaveWorkspace())).toBe(true);
+  expect(store.workspace).toBeNull();
+  expect(readStartupWorkspace()).toBeNull();
+  adapter.open.mockClear();
+  await restart(adapter);
+  expect(adapter.open).not.toHaveBeenCalled();
+  expect(store.workspace).toBeNull();
+  expect(store.recent.some(item => item.id === olderWorkspace.id)).toBe(true);
+  await store.openWorkspace(olderWorkspace.path);
+  await restart(adapter);
+  expect(store.workspace?.id).toBe(olderWorkspace.id);
+});
+
+it('keeps startup memory when deletion fails', async () => {
+  const adapter = localWorkspace();
+  await store.initialize();
+  adapter.deleteWorkspace.mockRejectedValueOnce(new Error('删除失败'));
+  expect(await store.deleteWorkspace(lastWorkspace.id)).toBe(false);
+  expect(readStartupWorkspace()).toBe(lastWorkspace.id);
+  expect(store.workspace?.id).toBe(lastWorkspace.id);
+});
+
+it('does not replace the remembered workspace when switching fails', async () => {
+  const adapter = localWorkspace();
+  await store.initialize();
+  adapter.open.mockRejectedValueOnce(new Error('权限不足'));
+  await store.openWorkspace(olderWorkspace.path);
+  expect(readStartupWorkspace()).toBe(lastWorkspace.id);
+  expect(store.workspace?.id).toBe(lastWorkspace.id);
+});
+
+it('shows the picker instead of opening another repository when the remembered workspace was removed', async () => {
+  rememberStartupWorkspace(lastWorkspace.id);
+  const adapter = localWorkspace([olderWorkspace]);
+  await store.initialize();
+  expect(adapter.open).not.toHaveBeenCalled();
+  expect(store.workspace).toBeNull();
+  expect(readStartupWorkspace()).toBeNull();
+  await restart(adapter);
+  expect(adapter.open).not.toHaveBeenCalled();
+});
+
+it('leaves a failed automatic open recoverable at the picker', async () => {
+  rememberStartupWorkspace(lastWorkspace.id);
+  const adapter = localWorkspace();
+  adapter.open.mockRejectedValueOnce(new Error('权限不足'));
+  await store.initialize();
+  expect(store.workspace).toBeNull();
+  expect(store.busy).toBe(false);
+  expect(store.fatal).toBe('权限不足');
+  expect(readStartupWorkspace()).toBe(lastWorkspace.id);
+  await store.openWorkspace(lastWorkspace.path);
+  expect(store.workspace?.id).toBe(lastWorkspace.id);
+  expect(store.fatal).toBe('');
+});
+
+it('does not use stale history or open a folder dialog when recent history fails to load', async () => {
+  const adapter = localWorkspace();
+  store.recent = [lastWorkspace];
+  adapter.recent.mockRejectedValueOnce(new Error('无法读取历史记录'));
+  await store.initialize();
+  expect(adapter.open).not.toHaveBeenCalled();
+  expect(store.fatal).toBe('无法读取历史记录');
+});
+
+it('keeps detached windows from replacing the main window startup selection', async () => {
+  rememberStartupWorkspace(lastWorkspace.id);
+  window.history.replaceState(null, '', `/?detachedTab=blank:test&workspacePath=${encodeURIComponent(olderWorkspace.path)}`);
+  const adapter = localWorkspace();
+  await store.initialize();
+  expect(adapter.open).toHaveBeenCalledExactlyOnceWith(olderWorkspace.path);
+  expect(store.tabs.map(tab => tab.id)).toEqual([expect.stringMatching(/^blank:/)]);
+  expect(readStartupWorkspace()).toBe(lastWorkspace.id);
+  await store.leaveWorkspace();
+  expect(readStartupWorkspace()).toBe(lastWorkspace.id);
+});
+
+it('recovers invalid device preferences through recent history', async () => {
+  localStorage.setItem(startupWorkspaceKey, '{broken');
+  const adapter = localWorkspace();
+  await store.initialize();
+  expect(store.workspace?.id).toBe(lastWorkspace.id);
+  expect(readStartupWorkspace()).toBe(lastWorkspace.id);
+});
+
+it('does not block opening a workspace when the startup preference cannot be saved', async () => {
+  const adapter = localWorkspace();
+  const setItem = Storage.prototype.setItem;
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+    if (key === startupWorkspaceKey) throw new Error('存储不可用');
+    setItem.call(this, key, value);
+  });
+  await store.initialize();
+  expect(store.workspace?.id).toBe(lastWorkspace.id);
+  expect(store.fatal).toBe('');
 });
 
 function emptyWorkspace(mode: 'desktop' | 'web' = 'web') {

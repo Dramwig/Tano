@@ -655,7 +655,7 @@ test('round-trips form values and document writes through the real worker SDK', 
   await expect(page.getByText('已创建：自定义标题', { exact: true })).toBeVisible();
 });
 
-test('uses plugin tabs, sidebar, settings, menus, palette and shortcuts, then removes disabled entries', async ({ page }) => {
+test('uses plugin pages without desktop tabs, sidebar, settings, menus, palette and shortcuts, then removes disabled entries', async ({ page }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(String(error)));
   await page.goto(origin);
@@ -686,10 +686,10 @@ test('uses plugin tabs, sidebar, settings, menus, palette and shortcuts, then re
   await page.getByRole('button', { name: '插件工作台', exact: true }).click();
   const sidebar = page.getByRole('region', { name: '插件工作台', exact: true });
   await sidebar.getByRole('button', { name: /^示例看板/ }).click();
-  await expect(page.getByRole('tab', { name: /示例看板/ })).toBeVisible();
+  await expect(page.locator('.workspace-tabbar')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '看板已经就绪' })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('tab', { name: /示例看板/ })).toBeVisible();
+  await expect(page.locator('.workspace-tabbar')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '看板已经就绪' })).toBeVisible();
   await page.getByRole('button', { name: '插件工作台', exact: true }).click();
   await sidebar.getByRole('button', { name: /^示例摘要/ }).click();

@@ -142,7 +142,7 @@ it('keeps the upload panel open after opening or canceling file selection and al
   button.click(); await nextTick();
   expect(choose).toHaveBeenCalledTimes(2);
   Object.defineProperty(input, 'files', { value: [new File(['image'], 'selected.png', { type: 'image/png' })] });
-  input.dispatchEvent(new Event('change')); await nextTick();
+  input.dispatchEvent(new Event('change')); await nextTick(); await nextTick();
   expect(change).toHaveBeenCalledExactlyOnceWith('ws', { key: 'icon', value: 'data:image/png;base64,aW1hZ2U=', previous: '' });
 });
 

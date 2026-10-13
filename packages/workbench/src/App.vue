@@ -86,6 +86,8 @@ import DocumentStarter from './components/DocumentStarter.vue';
 import { documentStarter, templateStarterBody } from './document-starters';
 import MarkdownRevealToggle from './components/MarkdownRevealToggle.vue';
 import DocumentTitle from './components/DocumentTitle.vue';
+import { appearanceText } from './document-appearance';
+import { useDocumentFavicon } from './document-favicon';
 import WorkspaceBreadcrumb from './components/WorkspaceBreadcrumb.vue';
 import DocumentScrollbar from './components/DocumentScrollbar.vue';
 import DocumentExportMenu from './components/DocumentExportMenu.vue';
@@ -147,7 +149,9 @@ import { butterflyPerchDirective, provideButterflyController } from './assistant
 import { useAssistantStore } from './assistant/store';
 import DiffDialog from './components/DiffDialog.vue';
 import { handleMobileVisibility } from './mobile-lifecycle';
+import { useViewport } from './viewport';
 import { useWorkspaceStore } from './stores/workspace';
+import { retainWorkbenchSession } from './workbench-session';
 import { useSuggestionStore } from './stores/suggestions';
 import { useWorkbenchRuntime, createLocalExtensions } from './runtime';
 import type { WorkbenchActions } from './runtime';
@@ -226,6 +230,7 @@ import type { SettingsCommand, SettingsPageId, SettingsSnapshot } from './settin
 
 const props = defineProps<{ initialWorkspace?: string; createWorkspace?: boolean }>();
 const store = useWorkspaceStore();
+const startupPending = ref(true);
 const documentSuggestions = useSuggestionStore();
 const suggestionModeBusy = ref(false);
 async function toggleSuggestionMode(fileId: string) {
@@ -259,10 +264,10 @@ const assistantTab = computed(() =>
 );
 const plans = usePlanStore();
 usePlanSyncStore();
-const tabsEnabled = native;
-const desktopTabsEnabled = native && !mobile;
-const detachedWindow = desktopTabsEnabled && !!detachedTabRequest();
-const workbenchTabsEnabled = computed(() => desktopTabsEnabled || store.tabs.some(tab => !!tab.pluginView));
+// Document tabs belong to the desktop app. Mobile and web use page navigation.
+const tabsEnabled = native && !mobile;
+const { width: viewportWidth, touch: touchLayout, compact: compactPanes } = useViewport(mobile);
+const detachedWindow = tabsEnabled && !!detachedTabRequest();
 const welcomeSlogan = welcomeSlogans[Math.floor(Math.random() * welcomeSlogans.length)];
 const welcomeSloganParts = sloganParts(welcomeSlogan);
 const localNative = native && !store.isWeb;
@@ -342,7 +347,7 @@ const viewActions = Object.fromEntries(
     {
       open: () => {
         openExtensionView(view.id);
-        if (window.innerWidth <= 700) sidebar.value = false;
+        if (compactPanes.value) sidebar.value = false;
       },
       showSidebar: () => {
         sidebarView.value = view.id;
@@ -352,6 +357,13 @@ const viewActions = Object.fromEntries(
   ]),
 );
 const editing = extensions.editing;
+const workbenchSession = retainWorkbenchSession(store, () => {
+  void extensions.disconnect().catch(store.report);
+  assistant.stop();
+  void editing.dispose().catch(store.report);
+  store.dispose();
+});
+let unmounted = false;
 assistant.setManaged((id) => editing.isManaging(id));
 const extensionActions: WorkbenchActions = {
   closeMenus: () => {
@@ -431,10 +443,12 @@ function openCalendar(date?: Date) {
   sidebarView.value = 'plan';
   if (date) calendarDate.value = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   store.openCalendarTab();
+  if (compactPanes.value) sidebar.value = false;
 }
 function openExtensionView(id: string) {
   sidebarView.value = extensionViews.find((view) => view.id === id)?.sidebar ? id : 'repository';
   store.openViewTab(id);
+  if (compactPanes.value) sidebar.value = false;
 }
 const selectedDiff = ref<{
   title: string;
@@ -466,6 +480,7 @@ watch(
   },
 );
 const { workspace, active, activeId, activities, fatal, busy } = storeToRefs(store);
+if (!native) useDocumentFavicon(() => workspace.value && active.value ? appearanceText(active.value.content, 'icon') : '');
 const webPageRouting = !native && (store.isDemo || store.isWeb);
 const initialPageRoute = webPageRouting ? parsePageRoute(window.location.pathname) : null;
 const pageRouteStateKey = '__tanoPageRoute';
@@ -533,12 +548,14 @@ function writePageRoute(replace: boolean) {
 }
 
 function canNavigatePage(direction: -1 | 1) {
+  if (native) return store.canNavigateHistory(direction);
   if (!webPageRouting || busy.value) return false;
   return direction < 0 ? pageRouteIndex.value > 0 : pageRouteIndex.value < pageRouteMax.value;
 }
 
 function navigatePage(direction: -1 | 1) {
   if (!canNavigatePage(direction)) return;
+  if (native) { void store.navigateHistory(direction); return; }
   window.history[direction < 0 ? 'back' : 'forward']();
 }
 
@@ -590,10 +607,9 @@ watch(activeId, (id) => {
   else if (extensionViews.some((view) => view.id === sidebarView.value))
     sidebarView.value = 'repository';
 });
-const sidebar = ref(!detachedWindow && window.innerWidth > 700);
+const sidebar = ref(!detachedWindow && !compactPanes.value);
 const mainColumn = ref<HTMLElement>();
-const viewportWidth = ref(window.innerWidth);
-const compactPanes = computed(() => mobile || viewportWidth.value <= 700);
+watch(compactPanes, (compact) => { if (compact) sidebar.value = false; });
 const sidebarWidth = ref<number | null>(null);
 const resizingSidebar = ref(false);
 const SIDEBAR_MIN_WIDTH = 180;
@@ -683,7 +699,7 @@ function currentSidebarWidth() {
   return document.querySelector<HTMLElement>('.sidebar')?.getBoundingClientRect().width ?? 230;
 }
 function startSidebarResize(event: PointerEvent) {
-  if (mobile || event.button !== 0) return;
+  if (compactPanes.value || event.button !== 0) return;
   event.preventDefault();
   const handle = event.currentTarget as HTMLElement;
   handle.focus();
@@ -704,7 +720,7 @@ function finishSidebarResize(event: PointerEvent) {
   if (sidebarWidth.value !== null) saveTextPreference('sidebarWidth', String(sidebarWidth.value));
 }
 function resizeSidebarWithKeyboard(event: KeyboardEvent) {
-  if (mobile) return;
+  if (compactPanes.value) return;
   const width = sidebarWidth.value ?? currentSidebarWidth();
   const nextWidth =
     event.key === 'ArrowLeft'
@@ -884,6 +900,8 @@ watch(
 const syntaxIssues = computed(() => unsupportedMarkdown(active.value?.content ?? ''));
 const panel = ref<'outline' | 'activity'>('outline');
 const showOutline = ref(readPreference('showOutline', true));
+const touchOutlineOpen = ref(false);
+watch(activeId, () => { touchOutlineOpen.value = false; });
 const outlineOnLeft = ref(readPreference('outlineOnLeft', false));
 const outlinePinned = ref(readPreference('outlinePinned', false));
 const outlineSearchOpen = ref(false);
@@ -974,6 +992,21 @@ const treeFiles = computed(() => {
     ? applyFileMovePreview(files, preview.changes)
     : files;
 });
+const treeDocumentIcons = computed(() => Object.fromEntries(
+  store.documents.map(doc => [doc.id, appearanceText(doc.content, 'icon')]),
+));
+let documentIconReads: Promise<void> = Promise.resolve();
+function loadTreeDocumentIcon(file: FileEntry, signal: AbortSignal): Promise<string> {
+  const expected = workspace.value && { id: workspace.value.id, path: workspace.value.path };
+  // Join the filesystem queue one read at a time so sidebar work cannot hold up opening a page.
+  const read = documentIconReads.then(async () => {
+    if (signal.aborted || !expected || workspace.value?.id !== expected.id || workspace.value.path !== expected.path) return '';
+    const content = await store.readGraphDocument(expected, { id: file.id });
+    return appearanceText(content, 'icon');
+  });
+  documentIconReads = read.then(() => {}, () => {});
+  return read;
+}
 const managedFilePaths = computed(
   () =>
     workspace.value?.files
@@ -1101,6 +1134,13 @@ function captureButterflyTextTarget(paneId: string, fileId: string) {
 }
 const selectionTodo = shallowRef<SelectionTodoSession>();
 const paneSourceSelections = shallowReactive<Record<string, boolean>>({});
+function showSourceTodo(paneId: string, doc: OpenDocument) {
+  return paneSource(doc.id) &&
+    !!paneSourceSelections[paneId] &&
+    store.capabilities.features.objectReferences &&
+    !paneReadonly(doc) &&
+    !editing.isManaging(doc.id);
+}
 function beginSelectionTodo(paneId: string, fileId: string) {
   const scope = workspace.value;
   const doc = store.documents.find((doc) => doc.id === fileId);
@@ -1200,7 +1240,8 @@ function openAssistant(paneId = store.activePaneId, fileId = store.activeId) {
 }
 function initializeDocument(paneId: string, fileId: string, content: string, expected: string) {
   const doc = store.documents.find(item => item.id === fileId);
-  if (!doc || paneReadonly(doc) || doc.missing || doc.conflict || doc.error || editing.isManaging(fileId) ||
+  if (!doc || paneReadonly(doc) || doc.missing || doc.conflict || doc.error ||
+      (editing.isManaging(fileId) && (fileId !== store.activeId || !editing.active?.extension)) ||
       store.panes.find(pane => pane.id === paneId)?.activeId !== fileId || paneSource(fileId) ||
       doc.content !== expected || !paneEditors.get(paneId)?.initializeBody(content, expected))
     throw new Error('文档内容或编辑状态已变化，请回到空白文档后重试。现有内容已保留。');
@@ -1442,7 +1483,7 @@ function setPaneSearch(id: string, value: unknown) {
 }
 function openPaneSearch(id = store.activePaneId, replace = false) {
   menu.value = false;
-  if (window.innerWidth <= 700) sidebar.value = false;
+  if (compactPanes.value) sidebar.value = false;
   void paneSearches.get(id)?.open(replace);
 }
 const documentScroll = computed(() => paneScrolls.get(store.activePaneId));
@@ -1467,7 +1508,10 @@ async function paneEditorReady(paneId: string, fileId: string, sourceMode: boole
 function setPaneElement(kind: 'scroll' | 'editor' | 'source', id: string, value: unknown) {
   if (kind === 'source') {
     if (value) paneSourceEditors.set(id, value as InstanceType<typeof SourceEditor>);
-    else paneSourceEditors.delete(id);
+    else {
+      paneSourceEditors.delete(id);
+      delete paneSourceSelections[id];
+    }
   } else {
     const map = kind === 'scroll' ? paneScrolls : paneEditorScrolls;
     if (value) map.set(id, value as HTMLElement);
@@ -1584,6 +1628,12 @@ function insertBlockBelowTitle(workspaceId: string, documentId: string) {
   else editor.value?.insertBlockAtStart();
 }
 const activeHeading = ref(0);
+const outlineCoverBottom = ref(0);
+const outlinePosition = computed(() => {
+  if (!outlineCoverBottom.value) return undefined;
+  const top = `max(var(--inspector-top), ${outlineCoverBottom.value}px)`;
+  return { top, maxHeight: `calc(100% - ${top} - 12px)` };
+});
 let headingFrame: number | undefined;
 async function dragPaneWindow(event: MouseEvent) {
   if (event.button !== 0 || event.detail !== 1) return;
@@ -1672,12 +1722,12 @@ async function openEntry(file: FileEntry, newTab = false) {
     if (newTab) await store.openFileInNewTab(file);
     else await store.openFile(file);
     if (store.activePaneId === templatePaneId.value && store.activeId === file.id) templateLibraryOpen.value = false;
-    if (window.innerWidth <= 700) sidebar.value = false;
+    if (compactPanes.value) sidebar.value = false;
     return;
   }
   if (newTab) {
     store.openAttachmentInNewTab(file);
-    if (window.innerWidth <= 700) sidebar.value = false;
+    if (compactPanes.value) sidebar.value = false;
     return;
   }
   if (workspace.value && attachments) {
@@ -2281,6 +2331,12 @@ function outlineContextKeydown(event: KeyboardEvent) {
 }
 function updateActiveHeading() {
   const container = documentScroll.value;
+  const cover = container?.querySelector<HTMLElement>('.document-cover');
+  const pane = container?.closest<HTMLElement>('.workspace-pane');
+  // Measure in the inspector's containing pane, including partially scrolled covers.
+  outlineCoverBottom.value = cover && pane
+    ? Math.max(0, cover.getBoundingClientRect().bottom - pane.getBoundingClientRect().top + 16)
+    : 0;
   const items = editorScroll.value?.querySelectorAll<HTMLElement>(
     '.tano-prose h1, .tano-prose h2, .tano-prose h3, .tano-prose h4, .tano-prose h5, .tano-prose h6',
   );
@@ -2302,6 +2358,17 @@ function scheduleActiveHeading() {
 watch([() => outline.value.length, source], () => void nextTick(scheduleActiveHeading), {
   flush: 'post',
 });
+watch([documentScroll, showPageTitle], ([container], _, cleanup) => {
+  scheduleActiveHeading();
+  if (!container) return;
+  // A cover can be added or removed without changing the outline. Also follow
+  // window/sidebar/split resizing and title or toolbar layout changes.
+  const observer = new ResizeObserver(scheduleActiveHeading);
+  observer.observe(container);
+  for (const element of container.querySelectorAll('.document-main, .document-title'))
+    observer.observe(element);
+  cleanup(() => observer.disconnect());
+}, { flush: 'post' });
 const noteCount = computed(
   () => workspace.value?.files.filter((f) => f.kind === 'file' && !isWorkspaceInternalPath(f.path) && (isMarkdown(f.path) || isDataTableFilePath(f.path))).length ?? 0,
 );
@@ -2445,11 +2512,11 @@ async function createNewEntry(kind: 'document' | 'folder' | 'table', parent = ''
     }
     if (kind === 'table') {
       await store.createDataTable('blank', parent);
-      if (window.innerWidth <= 700) sidebar.value = false;
+      if (compactPanes.value) sidebar.value = false;
       return;
     }
     await store.createUntitledDocument(parent);
-    if (window.innerWidth <= 700) sidebar.value = false;
+    if (compactPanes.value) sidebar.value = false;
     await nextTick();
     for (let attempt = 0; attempt < 10; attempt++) {
       const target = source.value
@@ -3040,6 +3107,7 @@ async function exportDocument(format: DocumentExportFormat) {
 }
 function jumpToHeading(index: number, userInitiated = false) {
   if (!outline.value[index]) return;
+  if (userInitiated && touchLayout.value) touchOutlineOpen.value = false;
   activeHeading.value = index;
   if (source.value) {
     if (!sourceEditor.value) return;
@@ -3179,7 +3247,7 @@ function keydown(event: KeyboardEvent) {
     modal.value = '';
     menu.value = false;
     workspaceMenu.value = false;
-    if (window.innerWidth <= 700) sidebar.value = false;
+    if (compactPanes.value) sidebar.value = false;
   }
   if (event.key === 'Tab' && modal.value) {
     const targets = [
@@ -3203,6 +3271,34 @@ function beforeUnload(event: BeforeUnloadEvent) {
     event.preventDefault();
     event.returnValue = '';
   }
+}
+function mobileBack(event: Event) {
+  // Android's system back first dismisses the current surface, then navigates.
+  // Keep in-flight mutations mounted until their normal completion path runs.
+  const dialog = document.querySelector<HTMLDialogElement>('dialog[open]');
+  if (dialog) {
+    event.preventDefault();
+    dialog.dispatchEvent(new Event('cancel', { cancelable: true }));
+    return;
+  }
+  const layer = [agentPanel, objectPanel, recyclePanel, historyPanel, referenceGraphOpened, commandPaletteOpened, templateLibraryOpen, touchOutlineOpen].find(opened => opened.value);
+  const dismiss = modalBusy.value || updateLock.value || busy.value ? () => {}
+    : fileContextMenu.value ? () => closeFileContextMenu(true)
+    : directoryContextMenu.value ? closeDirectoryContextMenu
+    : pageContextMenu.value ? closePageContextMenu
+    : outlineContextMenu.value ? closeOutlineContextMenu
+    : menu.value ? () => { menu.value = false; }
+    : workspaceMenu.value ? () => { workspaceMenu.value = false; }
+    : modal.value ? () => { modal.value = ''; }
+    : settingsPanel.value ? () => { settingsPanel.value = false; }
+    : importPanel.value ? () => { importPanel.value = false; }
+    : selectedDiff.value ? () => { selectedDiff.value = undefined; }
+    : selectionTodo.value ? () => { selectionTodo.value = undefined; }
+    : layer ? () => { layer.value = false; }
+    : compactPanes.value && sidebar.value ? () => { sidebar.value = false; }
+    : assistant.opened ? () => { assistant.opened = false; }
+    : canNavigatePage(-1) ? () => navigatePage(-1) : undefined;
+  if (dismiss) { event.preventDefault(); dismiss(); }
 }
 async function mobileVisibility() {
   try {
@@ -3276,12 +3372,20 @@ onMounted(async () => {
   window.addEventListener('resize', closeOutlineContextMenu);
   if (!detachedWindow) window.addEventListener('resize', constrainSidebarToViewport);
   document.addEventListener('visibilitychange', mobileVisibility);
+  window.addEventListener('tano:back', mobileBack);
   if (webPageRouting) {
     initializePageHistory();
     window.addEventListener('popstate', handlePagePopState);
   }
-  if (props.createWorkspace) await createNewWorkspace();
-  else await store.initialize(initialPageRoute?.workspaceId ?? props.initialWorkspace);
+  try {
+    await workbenchSession.initialize(async () => {
+      if (props.createWorkspace) await createNewWorkspace();
+      else await store.initialize(initialPageRoute?.workspaceId ?? props.initialWorkspace);
+    });
+  } finally {
+    startupPending.value = false;
+  }
+  if (unmounted) return;
   if (webPageRouting) {
     pageRouteReady = true;
     if (props.createWorkspace || initialPageRouteSuperseded) writePageRoute(true);
@@ -3343,11 +3447,10 @@ onMounted(async () => {
   }
 });
 onBeforeUnmount(() => {
+  unmounted = true;
   document.documentElement.style.removeProperty('--sidebar-width');
   if (headingFrame !== undefined) cancelAnimationFrame(headingFrame);
-  void extensions.disconnect().catch(store.report);
-  assistant.stop();
-  void editing.dispose().catch(store.report);
+  workbenchSession.release();
   window.removeEventListener('keydown', handleWorkbenchShortcut, true);
   window.removeEventListener('keydown', keydown);
   window.removeEventListener('keydown', handlePageSearchShortcut, true);
@@ -3365,6 +3468,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', constrainSidebarToViewport);
   window.removeEventListener('popstate', handlePagePopState);
   document.removeEventListener('visibilitychange', mobileVisibility);
+  window.removeEventListener('tano:back', mobileBack);
   unlistenClose?.();
   unlistenWatchError?.();
   unlistenTabTransfer?.();
@@ -3373,7 +3477,6 @@ onBeforeUnmount(() => {
   if (settingsPrewarmTimer !== undefined) window.clearTimeout(settingsPrewarmTimer);
   for (const pending of transferRollback.values()) clearTimeout(pending.timer);
   transferRollback.clear();
-  store.dispose();
 });
 watch(activeId, () => {
   closePageContextMenu();
@@ -3456,7 +3559,7 @@ const helpBlocked = computed(() => !!(
     <AssistantButterflyLayer :controller="butterfly" />
     <Transition name="sidebar-dismiss">
       <button
-        v-if="workspace && sidebar && !detachedWindow"
+        v-if="workspace && sidebar && !detachedWindow && compactPanes"
         class="sidebar-dismiss"
         aria-label="收起侧栏"
         @click="toggleSidebar"
@@ -3468,6 +3571,7 @@ const helpBlocked = computed(() => !!(
       :open="sidebar"
       :compact="compactPanes"
       :content-element="mainColumn"
+      @dismiss="sidebar = false"
     >
         <div class="sidebar-header">
           <div class="sidebar-brand-slot">
@@ -3646,6 +3750,8 @@ const helpBlocked = computed(() => !!(
             <FileTree
               v-if="workspace"
               :entries="treeFiles"
+              :document-icons="treeDocumentIcons"
+              :load-document-icon="loadTreeDocumentIcon"
               :selected-ids="selectedEntryIds"
               :context-selected="fileContextMenu?.file.id"
               :dragged-id="draggedEntry?.file.id"
@@ -4102,7 +4208,7 @@ const helpBlocked = computed(() => !!(
           />
         </div>
         <div
-          v-if="!mobile"
+          v-if="!compactPanes"
           class="sidebar-resize-handle"
           role="separator"
           aria-label="调整侧栏宽度"
@@ -4120,7 +4226,7 @@ const helpBlocked = computed(() => !!(
         />
     </WorkspaceSidebar>
 
-    <div ref="mainColumn" class="main-column">
+    <div ref="mainColumn" class="main-column" :inert="compactPanes && sidebar && !!workspace || undefined">
       <ReferenceGraphPopover
         v-if="referenceGraphTarget"
         v-model:opened="referenceGraphOpened"
@@ -4130,7 +4236,7 @@ const helpBlocked = computed(() => !!(
         :anchor="referenceGraphAnchor"
         @open="openReference"
       />
-      <div v-if="workspace && compactPanes && (tabsEnabled || workbenchTabsEnabled)" class="workspace-tabbar">
+      <div v-if="workspace && compactPanes && tabsEnabled" class="workspace-tabbar">
         <DesktopTabs
           :file-drag="tabFileDrag"
           :assistant-tab="assistantTab"
@@ -4143,8 +4249,8 @@ const helpBlocked = computed(() => !!(
       <WorkspacePanes
         v-if="workspace"
         :compact="compactPanes"
-        :tabs-enabled="workbenchTabsEnabled"
-        :class="{ 'workspace-native-tabs': workbenchTabsEnabled && !compactPanes }"
+        :tabs-enabled="tabsEnabled"
+        :class="{ 'workspace-native-tabs': tabsEnabled && !compactPanes }"
       >
         <template #tabs="{ pane, rect }">
           <div v-if="!compactPanes" class="workspace-tabbar" :data-tab-pane-id="pane.id">
@@ -4194,6 +4300,7 @@ const helpBlocked = computed(() => !!(
         <template #sidebar>
           <AssistantPanel
             v-if="assistant.available && assistant.opened"
+            :compact="compactPanes"
             :open-sources-in-new-tab="tabsEnabled"
             :fullscreen-target="assistantHosts.get(assistant.fullscreenPaneId ?? '')"
             @open-reference="openReference"
@@ -4308,6 +4415,11 @@ const helpBlocked = computed(() => !!(
                 >
               </WorkspaceBreadcrumb>
               <div class="topbar-right">
+                <button v-if="active && touchLayout && showOutline" type="button" class="icon-button"
+                  aria-label="文档大纲" :aria-expanded="touchOutlineOpen"
+                  @click="panel = 'outline'; touchOutlineOpen = !touchOutlineOpen">
+                  <List :size="18" />
+                </button>
                 <button
                   v-if="tab?.attachment && attachments && isVisible('attachment-export')"
                   type="button"
@@ -4764,21 +4876,13 @@ const helpBlocked = computed(() => !!(
                       :disabled="paneReadonly(active!)"
                       @command="(name, value) => paneEditors.get(pane.id)?.command(name, value)"
                     >
-                      <template v-if="detachedWindow || paneSource(pane.activeId)" #trailing>
+                      <template v-if="detachedWindow || showSourceTodo(pane.id, active!)" #trailing>
                         <button
-                          v-if="
-                            paneSource(pane.activeId) &&
-                            store.capabilities.features.objectReferences
-                          "
+                          v-if="showSourceTodo(pane.id, active!)"
                           type="button"
                           class="icon-button"
                           aria-label="从选区创建 Todo"
                           title="从选区创建 Todo"
-                          :disabled="
-                            paneReadonly(active!) ||
-                            !paneSourceSelections[pane.id] ||
-                            editing.isManaging(active!.id)
-                          "
                           @mousedown.prevent
                           @click="beginSelectionTodo(pane.id, active!.id)"
                         >
@@ -4904,6 +5008,10 @@ const helpBlocked = computed(() => !!(
                         :title-source="store.workspaceSettings.pageTitleSource"
                         :model-value="suggestions.content"
                         :files="workspace.files"
+                        :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'"
+                        :resolve-image="(reference) => attachments ? attachments.imageUrl(workspace, active!.path, reference) : safeRemoteImage(reference)"
+                        :upload-cover="attachments && !store.isDemo ? (file) => uploadFile(file, true, active) : undefined"
+                        :resource-revision="resourceRevision"
                         :readonly="
                           suggestions.readonly ||
                           suggestions.suggesting ||
@@ -4914,6 +5022,7 @@ const helpBlocked = computed(() => !!(
                         :rename="renameDocumentTitle"
                         @update:model-value="suggestions.edit($event)"
                         @enter="insertBlockBelowTitle"
+                        @comment="paneComments.get(pane.id)?.showDiscussion()"
                       />
                       <SourceEditor :suggestion-marks="suggestions.sourceMarks"
                         v-if="paneSource(pane.activeId)"
@@ -4937,7 +5046,7 @@ const helpBlocked = computed(() => !!(
                         :ref="(el) => setPaneEditor(pane.id, el)"
                         :document-id="active.id"
                         :readonly="suggestions.readonly"
-                        :open-links-on-tap="mobile"
+                        :open-links-on-tap="touchLayout"
                         :reveal-markdown="suggestions.suggesting ? false : revealMarkdown"
                         :show-document-properties="showDocumentProperties"
                         :capabilities="store.capabilities"
@@ -5001,7 +5110,7 @@ const helpBlocked = computed(() => !!(
                     </div>
                   </main>
                 </div>
-                <DocumentScrollbar v-if="!mobile" :scroll-element="paneScrolls.get(pane.id)" />
+                <DocumentScrollbar v-if="!touchLayout" :scroll-element="paneScrolls.get(pane.id)" />
                 <AssistantLauncher
                   v-if="assistant.available && !assistant.opened"
                   :scope="paneButterflyScope(pane.id, active!.id)"
@@ -5050,14 +5159,15 @@ const helpBlocked = computed(() => !!(
                 !(assistant.opened && assistant.displayMode === 'sidebar') &&
                 !detachedWindow &&
                 pane.id === store.activePaneId &&
-                (panel !== 'outline' || showOutline)
+                (panel !== 'outline' || (showOutline && (!touchLayout || touchOutlineOpen)))
               "
               class="inspector"
+              :style="panel === 'outline' ? outlinePosition : undefined"
               :class="{
                 'inspector-outline': panel === 'outline',
                 'inspector-outline-left': panel === 'outline' && outlineOnLeft,
                 'inspector-hover-outline':
-                  panel === 'outline' && hoverOutline && !outlinePinned && !outlineSearchOpen,
+                  panel === 'outline' && !touchLayout && hoverOutline && !outlinePinned && !outlineSearchOpen,
                 'inspector-activity': panel === 'activity',
               }"
               :aria-label="panel === 'outline' ? '文档目录' : '文档动态'"
@@ -5072,6 +5182,8 @@ const helpBlocked = computed(() => !!(
                 </div>
                 <div v-if="panel === 'outline'" class="outline-controls">
                   <span>文档大纲</span>
+                  <button v-if="touchLayout" type="button" class="outline-control" aria-label="关闭文档大纲"
+                    @click="touchOutlineOpen = false"><X :size="18" /></button>
                   <button
                     class="outline-control"
                     type="button"
@@ -5186,7 +5298,10 @@ const helpBlocked = computed(() => !!(
           </div>
         </template>
       </WorkspacePanes>
-      <main v-else-if="!workspace" class="welcome">
+      <main v-else-if="startupPending" class="workspace-startup" role="status" aria-busy="true">
+        正在打开工作区…
+      </main>
+      <main v-else class="welcome">
         <div class="welcome-mark"><img src="/favicon-green.svg?v=3" alt="Tano 标志" /></div>
         <h1>
           <span

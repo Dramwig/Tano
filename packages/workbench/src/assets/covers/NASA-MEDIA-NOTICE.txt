@@ -1,0 +1,21 @@
+NASA archive photographs and observational images
+
+The 20 nasa-* image presets were retrieved from the NASA Image and Video Library
+on 2026-10-13. Individual source IDs, URLs, credits, dates, processing descriptions,
+rights references, and asset hashes are recorded in catalog.json and NOTICE.txt.
+
+Usage guidance:
+https://www.nasa.gov/nasa-brand-center/images-and-media/
+https://www.jpl.nasa.gov/jpl-image-use-policy/
+
+These images are used as an attributed image collection under the NASA media
+guidelines. They are not relicensed under Tano's MIT license or the CC0 text
+bundled for the museum images. Preserve each image's complete credit when reusing
+it. NASA/JPL and the credited contributors do not endorse Tano or its users.
+NASA branding, third-party copyrighted material, and identifiable persons have
+separate restrictions; the linked policies govern subsequent uses.
+
+Tano resizes and WebP-encodes the selected photographs and telescope/spacecraft
+observations without additional color changes or generated content. Composites,
+false-color observations, and panoramas retain the source processing and are
+identified in the catalog and display titles. The cover viewport may crop them.

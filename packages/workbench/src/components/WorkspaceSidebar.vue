@@ -1,11 +1,47 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, watch } from 'vue';
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
 
 const props = defineProps<{
   open: boolean;
   compact: boolean;
   contentElement?: HTMLElement;
 }>();
+const emit = defineEmits<{ dismiss: [] }>();
+const drawer = ref<HTMLElement>();
+let returnFocus: HTMLElement | null = null;
+function focusable() {
+  return [...(drawer.value?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), a[href], [tabindex="0"]') ?? [])]
+    .filter(element => element.getClientRects().length && !element.closest('[inert], [aria-hidden="true"]'));
+}
+function drawerKeydown(event: KeyboardEvent) {
+  if (!props.compact) return;
+  if (event.key === 'Escape' && !event.defaultPrevented && !(event.target as HTMLElement)?.closest('[role="menu"]')) {
+    event.preventDefault();
+    event.stopPropagation();
+    emit('dismiss');
+  }
+  if (event.key !== 'Tab') return;
+  const elements = focusable();
+  const first = elements[0], last = elements.at(-1);
+  if (!first || (event.shiftKey && document.activeElement === first) || (!event.shiftKey && document.activeElement === last)) {
+    event.preventDefault();
+    (event.shiftKey ? last : first)?.focus();
+  }
+}
+watch(() => props.open && props.compact, async (modal, previous, cleanup) => {
+  let cancelled = false;
+  cleanup(() => { cancelled = true; });
+  if (modal) returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  await nextTick();
+  if (cancelled) return;
+  if (modal) (focusable()[0] ?? drawer.value)?.focus({ preventScroll: true });
+  else if (previous) {
+    // The opener is conditionally rendered, so reopening content may create a new node.
+    const target = returnFocus?.isConnected ? returnFocus
+      : props.contentElement?.querySelector<HTMLElement>('[aria-label="展开侧栏"]');
+    target?.focus({ preventScroll: true });
+  }
+}, { immediate: true });
 let motion: Animation | undefined;
 
 function cancelMotion() {
@@ -43,7 +79,8 @@ onBeforeUnmount(cancelMotion);
 
 <template>
   <Transition name="sidebar">
-    <aside v-show="open" class="sidebar" aria-label="工作区侧栏"
+    <aside ref="drawer" v-show="open" class="sidebar" aria-label="工作区侧栏" tabindex="-1"
+      :role="compact ? 'dialog' : undefined" :aria-modal="compact && open || undefined" @keydown="drawerKeydown"
       :inert="!open || undefined" :aria-hidden="!open">
       <slot />
     </aside>

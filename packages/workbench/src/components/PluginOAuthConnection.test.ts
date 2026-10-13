@@ -47,3 +47,18 @@ it('revokes a pending flow when the plugin version or requested scope changes', 
   t.input.integrity = 'b'.repeat(64); await nextTick();
   expect(oauth.cancel).toHaveBeenCalledWith('workspace-one', t.flow.id, expect.any(AbortSignal)); expect(root.querySelector('a')).toBeNull();
 });
+it('keeps loading providers while the connection form changes and cancels on workspace changes', async () => {
+  const t = await mount();
+  let finish!: (value: Awaited<ReturnType<PluginOAuthHost['providers']>>) => void;
+  oauth.providers = vi.fn<PluginOAuthHost['providers']>(() => new Promise(resolve => { finish = resolve; }));
+  store.workspace = { id: 'workspace-two' }; await nextTick();
+  const signal = vi.mocked(oauth.providers).mock.calls[0]![1];
+  t.input.pathPrefix = '/v2/'; await nextTick();
+  expect(signal.aborted).toBe(false);
+  finish([{ id: 'service', label: '示例服务', origin: 'https://api.example.com', scopes: ['read'] }]);
+  await vi.waitFor(() => expect(root.textContent).toContain('使用账号登录'));
+  store.workspace = { id: 'workspace-three' }; await nextTick();
+  expect(signal.aborted).toBe(true);
+  app!.unmount(); app = undefined;
+  expect(vi.mocked(oauth.providers).mock.calls[1]![1].aborted).toBe(true);
+});

@@ -44,8 +44,9 @@ pub fn create(data: &Path, name: &str) -> Result<PathBuf, String> {
     let root = workspace_root(data)?;
     let path = storage::resolve(&root, name, false)?;
     fs::create_dir(&path).map_err(|e| format!("无法创建手机空间（名称可能已存在）：{e}"))?;
-    storage::workspace_identity(&path)?;
-    storage::create(&path.join("README.md"), "# 同一页，随身带走\n\n这是保存在手机中的 Markdown 工作空间。离线也可以写作。\n\n在「文件同步」中连接自己的 Tano 服务，与电脑共享文档。\n")?;
+    // Let open_workspace create identity and the first manifest together. A
+    // pre-created config without a manifest is correctly treated as data loss.
+    storage::create(&path.join("README.md"), "# 同一页，随身带走\n\n这是保存在这台设备中的 Markdown 工作空间。手机和平板离线也可以写作。\n\n当前本地版不提供网络同步。请通过导入和导出传递文档，并在卸载应用前备份工作空间。\n")?;
     Ok(path)
 }
 pub fn default_workspace(data: &Path) -> Result<PathBuf, String> {
@@ -158,6 +159,32 @@ pub fn recover(data: &Path, root: &Path, workspace: &str, id: &str) -> Result<St
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn new_mobile_workspace_uses_normal_identity_bootstrap_and_reopens() {
+        let temporary = tempfile::tempdir().unwrap();
+        let data = temporary.path();
+        let root = create(data, "Mobile").unwrap();
+        let cache = data.join("index.sqlite");
+        assert!(storage::existing_workspace_identity(&root)
+            .unwrap()
+            .is_none());
+        let id = crate::workspace_identity::identity_for_open(data, &root, None, &cache).unwrap();
+        let opened = storage::scan(&root, &id, &cache).unwrap();
+        crate::workspace_identity::register_identity(data, &root, &id).unwrap();
+        crate::identity_manifest::require(&root, &id).unwrap();
+        let reopened_id =
+            crate::workspace_identity::identity_for_open(data, &root, None, &cache).unwrap();
+        assert_eq!(id, reopened_id);
+        let reopened = storage::scan(&root, &id, &cache).unwrap();
+        assert_eq!(opened.files[0].id, reopened.files[0].id);
+        assert!(!root.join("index.sqlite").exists());
+        fs::remove_file(root.join(".tano/identities.json")).unwrap();
+        assert!(crate::workspace_identity::identity_for_open(data, &root, None, &cache).is_err());
+        assert_eq!(
+            storage::existing_workspace_identity(&root).unwrap(),
+            Some(id)
+        );
+    }
     #[test]
     fn sandbox_reopen_and_recycle_preserve_markdown_and_isolate_workspaces() {
         let temporary = tempfile::tempdir().unwrap();

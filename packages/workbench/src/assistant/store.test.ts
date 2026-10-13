@@ -42,13 +42,14 @@ describe('assistant session coordination', () => {
     await vi.waitFor(() => expect(store.loading).toBe(false));
     return store;
   }
-  it('sends the exact draft starter and lets the model respond without a fixed questionnaire', async () => {
+  it.each([false, true])('starts a draft conversation without a fixed questionnaire (managed: %s)', async managed => {
     fixture.workspace.documents = [{ id: 'abc123', content: '', path: 'note.md' }];
     fixture.workspace.assistantSnapshot.mockResolvedValue({ id: 'S1', workspaceId: 'workspace', fileId: 'abc123', path: 'note.md', content: '', hash: 'empty', origin: 'disk' });
     vi.mocked(transport.request).mockImplementation(async (_id, _request, _signal, chunk) => {
       chunk(new TextEncoder().encode('data: {"choices":[{"index":0,"delta":{"content":"我会先整理已有资料。"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'));
     });
     const store = await ready(); await store.selectModel('test');
+    store.setManaged(() => managed);
     const previous = store.session!.id;
     store.files = ['unrelated']; store.selection = { fileId: 'unrelated', text: 'old' };
     await store.startDocumentDraft('abc123');

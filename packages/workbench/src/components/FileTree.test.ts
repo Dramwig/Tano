@@ -32,6 +32,21 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+it('shows and updates document icons in nested folders without replacing folder icons', async () => {
+  const documentIcons = ref<Record<string, string>>({ document: '🚀' });
+  root = document.createElement('div'); document.body.append(root);
+  app = createApp({ render: () => h(FileTree, { entries, documentIcons: documentIcons.value }) });
+  app.mount(root); await nextTick();
+  const row = root.querySelector('[title="项目/计划.md"]')!;
+  expect(row.querySelector('.workspace-emoji-icon')?.getAttribute('data-emoji')).toBe('🚀');
+  expect(root.querySelector('[title="项目"] [class*="lucide-folder-open"]')).not.toBeNull();
+  documentIcons.value.document = 'icon:book'; await nextTick();
+  expect(row.querySelector('[class*="lucide-book"]')).not.toBeNull();
+  documentIcons.value.document = ''; await nextTick();
+  expect(row.querySelector('[class*="lucide-file-text"]')).not.toBeNull();
+  expect(row.querySelector('.workspace-emoji-icon, .workspace-default-icon')).toBeNull();
+});
+
 it('requests read ahead for nested documents on pointer entry and keyboard focus without opening them', async () => {
   root = document.createElement('div');
   document.body.append(root);
@@ -92,6 +107,59 @@ it('emits the containing directory when a tree gap is right clicked', async () =
   const nestedTree = root.querySelector<HTMLElement>('ul[role="group"]')!;
   nestedTree.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
   expect(contextBlank).toHaveBeenLastCalledWith('项目', expect.any(MouseEvent));
+});
+
+it('opens a nested file menu on long press once and consumes the release click', async () => {
+  vi.useFakeTimers();
+  const context = vi.fn(), open = vi.fn();
+  root = document.createElement('div');
+  document.body.append(root);
+  app = createApp(FileTree, { entries, onContext: context, onOpen: open });
+  app.mount(root);
+  await nextTick();
+  const file = root.querySelector<HTMLButtonElement>('[title="项目/计划.md"]')!;
+  const press = () => file.dispatchEvent(new PointerEvent('pointerdown', {
+    bubbles: true, pointerType: 'touch', pointerId: 1, isPrimary: true, button: 0, clientX: 40, clientY: 60,
+  }));
+  press();
+  vi.advanceTimersByTime(550);
+  expect(context).toHaveBeenCalledWith(entries[1], expect.any(MouseEvent));
+  expect(context.mock.calls[0][1]).toMatchObject({ clientX: 40, clientY: 60 });
+  file.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  file.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 }));
+  const mouseDown = new MouseEvent('mousedown', { bubbles: true, cancelable: true, detail: 1 });
+  file.dispatchEvent(mouseDown);
+  expect(mouseDown.defaultPrevented).toBe(true);
+  const click = new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 });
+  file.dispatchEvent(click);
+  expect(context).toHaveBeenCalledTimes(1);
+  expect(click.defaultPrevented).toBe(true);
+  expect(open).not.toHaveBeenCalled();
+  expect(root.querySelector('.tree-entry-menu')).toBeNull();
+  // A later ordinary tap still opens the file.
+  press();
+  file.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 }));
+  file.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+  expect(open).toHaveBeenCalledWith(entries[1]);
+});
+
+it.each(['move', 'scroll', 'release', 'cancel', 'unmount', 'mouse'])('does not open a long-press menu after %s', async reason => {
+  vi.useFakeTimers();
+  const context = vi.fn();
+  root = document.createElement('div'); document.body.append(root);
+  app = createApp(FileTree, { entries, onContext: context });
+  app.mount(root); await nextTick();
+  const file = root.querySelector<HTMLButtonElement>('[title="项目/计划.md"]')!;
+  file.dispatchEvent(new PointerEvent('pointerdown', {
+    bubbles: true, pointerType: reason === 'mouse' ? 'mouse' : 'touch', pointerId: 1, isPrimary: true, button: 0, clientX: 40, clientY: 60,
+  }));
+  if (reason === 'move') file.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, clientX: 40, clientY: 80 }));
+  if (reason === 'scroll') root.dispatchEvent(new Event('scroll'));
+  if (reason === 'release') file.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1 }));
+  if (reason === 'cancel') file.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 }));
+  if (reason === 'unmount') { app.unmount(); app = undefined; }
+  vi.advanceTimersByTime(600);
+  expect(context).not.toHaveBeenCalled();
 });
 
 it('exposes draggable rows and forwards a nested file drop to its folder', async () => {

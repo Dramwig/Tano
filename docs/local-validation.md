@@ -24,6 +24,7 @@ No Git hook is installed and no background test runner is started automatically.
 | Native/desktop | `npm run test:native`; Rust formatting checks; `npm run desktop:build` and a local launch |
 | MCP | `npm run mcp:smoke` |
 | Android | `npm run test:android` with a local SDK, emulator/device and required Rust targets; `npm run android:build -- --debug --apk --target aarch64 --ci` |
+| Mobile/tablet UI | `npm run test:mobile:browser`; native keyboard, rotation, split view and back/lifecycle checks in [mobile development](mobile.md) |
 | Apple | Build and exercise macOS/iOS on a local Mac with Xcode |
 | Workflow edits | Run `actionlint` locally |
 | Browser plugins | `npm run test:plugins:browser` (install Playwright Chromium locally first) |

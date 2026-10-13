@@ -169,17 +169,29 @@ function isEmptyDocument(doc: Node) {
 }
 /** Initialize only the unchanged empty body, through normal editing and undo. */
 function initializeBody(markdown: string, expected: string) {
-  if (!editor || !bridgeView || disposed || props.readonly || props.extension ||
+  if (!editor || !bridgeView || disposed || props.readonly ||
       props.modelValue !== expected || lastValue !== expected || !isEmptyDocument(bridgeView.state.doc)) return false;
   return editor.action(ctx => {
     const doc = ctx.get(parserCtx)(markdown);
     if (!doc || isEmptyDocument(doc)) return false;
     const view = ctx.get(editorViewCtx);
-    const tr = closeHistory(view.state.tr).replaceWith(0, view.state.doc.content.size, doc.content);
-    tr.setSelection(TextSelection.atStart(tr.doc));
-    view.dispatch(tr.scrollIntoView());
-    view.dispatch(closeHistory(view.state.tr));
-    view.focus();
+    props.extension?.stopHistoryCapture?.(ctx);
+    try {
+      if (props.extension) {
+        // The host records the semantic edit before view-only normalization can
+        // mark its appended transactions as excluded from collaborative undo.
+        props.extension.apply(ctx, splitFrontmatter(expected).prefix + markdown, { addToHistory: true });
+        view.dispatch(view.state.tr.setSelection(TextSelection.atStart(view.state.doc)).scrollIntoView());
+      } else {
+        const tr = closeHistory(view.state.tr).replaceWith(0, view.state.doc.content.size, doc.content);
+        tr.setSelection(TextSelection.atStart(tr.doc));
+        view.dispatch(tr.scrollIntoView());
+        view.dispatch(closeHistory(view.state.tr));
+      }
+      view.focus();
+    } finally {
+      props.extension?.stopHistoryCapture?.(ctx);
+    }
     return true;
   });
 }
@@ -3203,7 +3215,7 @@ onBeforeUnmount(() => {
     @contextmenu="openBlockMenu"
     @keydown="preventEditorTabNavigation"
   />
-  <slot v-if="emptyDocument && !readonly && !extension" name="empty-document" />
+  <slot v-if="emptyDocument && !readonly" name="empty-document" />
   <Teleport to="body">
     <div
       v-if="linkPanel"

@@ -17,5 +17,5 @@ The package omits its license file; the retained license is from upstream revisi
 
 Tano imports only these local assets and inherits the surrounding text color for
 light and dark themes. No icon CDN or runtime package is required. Model family
-aliases live in [model-icons.ts](../../assistant/model-icons.ts); unfamiliar IDs use
-the generic model icon, and `cli-default` keeps the terminal icon.
+aliases live in [model-icons.ts](../../assistant/model-icons.ts); unfamiliar IDs keep
+an empty icon slot so model labels align, and `cli-default` keeps the terminal icon.

@@ -1,6 +1,7 @@
 @import '@fontsource-variable/inter/wght.css';
 @import '@fontsource-variable/inter/wght-italic.css';
 @import './dark-theme.css';
+@import './mobile.css';
 
 @font-face {
   font-family: Literata;
@@ -2028,11 +2029,13 @@ button:hover {
   color: var(--danger);
 }
 .editor-scroll {
+  --document-inset-start: clamp(32px, 4.5vw, 80px);
+  --document-inset-end: max(64px, clamp(32px, 4.5vw, 80px));
   flex: 1;
   min-width: 0;
-  padding: 40px clamp(32px, 4.5vw, 80px) 60px;
-  padding-right: max(64px, clamp(32px, 4.5vw, 80px));
+  padding: 40px var(--document-inset-end) 60px var(--document-inset-start);
 }
+.document-main > .editor-scroll:has(.document-cover) { padding-top: 0; }
 .editor-scroll:focus {
   outline: none;
 }
@@ -2065,7 +2068,8 @@ button:hover {
 }
 .editor-scroll.width-unlimited .milkdown-host,
 .editor-scroll.width-unlimited .source-editor,
-.editor-scroll.width-unlimited .document-title,
+.editor-scroll.width-unlimited .document-title-content,
+.editor-scroll.width-unlimited .document-appearance-content,
 .editor-scroll.width-unlimited .document-references,
 .editor-scroll.width-unlimited .frontmatter-panel,
 .editor-scroll.width-unlimited .document-discussion {
@@ -2083,8 +2087,13 @@ button:hover {
 .document-title {
   position: relative;
   width: 100%;
-  max-width: 780px;
   margin: 0 auto 40px;
+}
+.document-title-content,
+.document-appearance-content {
+  position: relative;
+  max-width: 780px;
+  margin: 0 auto;
 }
 .document-title-input {
   display: block;
@@ -3878,6 +3887,13 @@ button:hover {
 @media (max-width: 700px) and (pointer: coarse) {
   .editor-empty-actions button { min-height: 44px; }
 }
+.workspace-startup {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 13px;
+}
 .welcome {
   flex: 1;
   min-height: 0;
@@ -4273,8 +4289,9 @@ button:hover {
     gap: 4px;
   }
   .editor-scroll {
-    padding: 32px 35px;
-    padding-right: 64px;
+    --document-inset-start: 35px;
+    --document-inset-end: 64px;
+    padding-block: 32px;
   }
   .tano-prose h1,
   .tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='1'] {
@@ -4289,8 +4306,8 @@ button:hover {
 }
 @media (max-width: 1000px) {
   .editor-scroll {
-    padding: 35px 45px;
-    padding-right: 64px;
+    --document-inset-start: 45px;
+    padding-block: 35px;
   }
   .brand .version-pill {
     display: none;
@@ -4349,8 +4366,8 @@ button:hover {
     gap: 3px;
   }
   .editor-scroll {
-    padding: 27px 24px;
-    padding-right: 64px;
+    --document-inset-start: 24px;
+    padding-block: 27px;
   }
   .tano-block-handle {
     left: -24px;
@@ -4394,70 +4411,6 @@ button:hover {
   }
 }
 
-.native-mobile .app-shell {
-  min-height: 0;
-  padding-top: env(safe-area-inset-top, 0px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-  padding-left: env(safe-area-inset-left, 0px);
-  padding-right: env(safe-area-inset-right, 0px);
-}
-.native-mobile .sidebar {
-  top: env(safe-area-inset-top, 0px);
-  bottom: env(safe-area-inset-bottom, 0px);
-}
-.native-mobile .editor-toolbar {
-  overflow: visible;
-  flex-shrink: 0;
-}
-.native-mobile .format-actions {
-  flex: 1;
-  min-width: 0;
-  overflow-x: auto;
-}
-.native-mobile .document-actions {
-  flex-shrink: 0;
-}
-.native-mobile .editor-toolbar button {
-  min-width: 40px;
-  min-height: 44px;
-}
-.native-mobile .contextual-toolbar {
-  height: auto;
-  min-height: 44px;
-  flex-wrap: wrap;
-}
-.native-mobile .contextual-toolbar .format-actions {
-  overflow: visible;
-  flex: 0 1 auto;
-}
-.native-mobile .contextual-toolbar .inline-actions {
-  flex-wrap: wrap;
-}
-.native-mobile .tano-prose {
-  font-size: var(--tano-prose-font-size, 16px);
-}
-.native-mobile .modal-backdrop {
-  padding-top: max(env(safe-area-inset-top, 0px), 12px);
-  padding-bottom: max(env(safe-area-inset-bottom, 0px), 12px);
-  overflow-y: auto;
-}
-.native-mobile .modal {
-  max-height: calc(100dvh - 40px);
-  overflow-y: auto;
-}
-.native-mobile .search-modal {
-  max-height: calc(100dvh - 24px);
-  overflow: visible;
-}
-.native-mobile input,
-.native-mobile textarea,
-.native-mobile select {
-  font-size: 16px;
-}
-.native-mobile .welcome {
-  overflow-y: auto;
-  padding: 24px 16px;
-}
 @media (prefers-reduced-motion: reduce) {
   * {
     scroll-behavior: auto !important;

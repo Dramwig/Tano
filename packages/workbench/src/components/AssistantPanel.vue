@@ -16,7 +16,7 @@ import AssistantQuestionCard from './AssistantQuestionCard.vue';
 
 const assistant = useAssistantStore();
 const workspace = useWorkspaceStore();
-const props = withDefaults(defineProps<{ openSourcesInNewTab?: boolean; fullscreenTarget?: string | HTMLElement }>(), {
+const props = withDefaults(defineProps<{ compact?: boolean; openSourcesInNewTab?: boolean; fullscreenTarget?: string | HTMLElement }>(), {
   openSourcesInNewTab: true,
 });
 const emit = defineEmits<{ openReference: [identity: ReferenceIdentity]; openSettings: [] }>();
@@ -49,7 +49,7 @@ const displayModes = [
 ] as const;
 const displayModeIcon = computed(() => displayModes.find(mode => mode.id === assistant.displayMode)!.icon);
 const floatingRect = ref<{ left: number; top: number; width: number; height: number }>();
-const floatingStyle = computed(() => assistant.displayMode === 'floating' && floatingRect.value ? {
+const floatingStyle = computed(() => !props.compact && assistant.displayMode === 'floating' && floatingRect.value ? {
   left: `${floatingRect.value.left}px`, top: `${floatingRect.value.top}px`,
   width: `${floatingRect.value.width}px`, height: `${floatingRect.value.height}px`, right: 'auto', bottom: 'auto',
 } : {});
@@ -227,7 +227,7 @@ function selectDisplayMode(mode: AssistantDisplayMode) {
   assistant.setDisplayMode(mode);
 }
 function startFloatingGesture(event: PointerEvent) {
-  if (assistant.displayMode !== 'floating' || event.button !== 0 || !panel.value ||
+  if (props.compact || assistant.displayMode !== 'floating' || event.button !== 0 || !panel.value ||
     (event.target as Element).closest('button, input, .assistant-popover')) return;
   const { left, top, width, height } = panel.value.getBoundingClientRect();
   const target = event.currentTarget as HTMLElement;

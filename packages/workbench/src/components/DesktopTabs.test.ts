@@ -121,6 +121,26 @@ it('labels the fullscreen assistant tab and restores the document label when its
   expect(tab.querySelector('.lucide-file-text-icon')).not.toBeNull();
 });
 
+it('shows each document icon from its current draft and restores the default when removed', async () => {
+  fixture.store.tabs[0].document.content = '---\nicon: 🌿\n---\n第一篇\n';
+  fixture.store.tabs[1].document.content = '---\nicon: icon:book\n---\n第二篇\n';
+  await nextTick();
+  expect(buttons[0].querySelector('.workspace-emoji-icon')?.getAttribute('data-emoji')).toBe('🌿');
+  expect(buttons[1].querySelector('.lucide-book-open-icon')).not.toBeNull();
+  expect(buttons[2].querySelector('.lucide-file-text-icon')).not.toBeNull();
+  fixture.store.tabs[1].document.content = '---\nicon: 😗\n---\n第二篇\n';
+  await nextTick();
+  expect(buttons[1].querySelector('.workspace-emoji-icon')?.getAttribute('data-emoji')).toBe('😗');
+  fixture.store.tabs[1].document.content = '---\nicon: data:image/png;base64,aGVsbG8=\n---\n第二篇\n';
+  await nextTick();
+  expect(buttons[1].querySelector('.desktop-tab-document-icon img')?.getAttribute('src')).toBe('data:image/png;base64,aGVsbG8=');
+  fixture.store.tabs[1].document.content = '第二篇\n';
+  await nextTick();
+  expect(buttons[1].querySelector('.desktop-tab-document-icon')).toBeNull();
+  expect(buttons[1].querySelector('.lucide-file-text-icon')).not.toBeNull();
+  expect(buttons[0].querySelector('.workspace-emoji-icon')?.getAttribute('data-emoji')).toBe('🌿');
+});
+
 it('renders extension labels and icons and prevents detaching window-local views', async () => {
   app.unmount();
   fixture.store.tabs.push({
@@ -422,6 +442,8 @@ it.each([390, 410])('shows one pane insertion marker on either side of the same 
 });
 
 it('shows the dragged tab under the pointer, including outside the strip, and removes it on cancel', async () => {
+  fixture.store.tabs[0].document.content = '---\nicon: 🌿\n---\n第一篇\n';
+  await nextTick();
   pointer(buttons[0], 'pointerdown', 80);
   pointer(buttons[0], 'pointermove', 82);
   await nextTick();
@@ -430,6 +452,7 @@ it('shows the dragged tab under the pointer, including outside the strip, and re
   pointer(buttons[0], 'pointermove', 260, 20);
   await nextTick();
   const preview = document.body.querySelector<HTMLElement>('.desktop-tab-drag-preview')!;
+  expect(preview.querySelector('.workspace-emoji-icon')?.getAttribute('data-emoji')).toBe('🌿');
   expect(preview.textContent).toContain('a');
   expect(preview.style.left).toBe('180px');
   expect(preview.style.top).toBe('2px');

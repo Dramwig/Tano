@@ -206,7 +206,7 @@ export const useAssistantStore = defineStore('assistant', () => {
     }
   }
   async function startDocumentDraft(fileId: string) {
-    if (!available || busy.value || applying.value || loading.value || managed(fileId)) return;
+    if (!available || busy.value || applying.value || loading.value) return;
     const doc = workspace.documents.find(item => item.id === fileId);
     if (!doc || workspace.workspace?.files.find(file => file.id === fileId)?.readOnly || workspace.workspace?.readOnly || doc.missing || doc.conflict || doc.error) return;
     newSession();
