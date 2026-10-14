@@ -820,7 +820,7 @@ watch(
 const hoverOutline = window.matchMedia('(hover: hover)').matches;
 const sourceModes = shallowReactive<Record<string, boolean>>({});
 const paneSource = (id: string) => sourceModes[id] ?? defaultSource.value;
-const pendingModeViewports = new Map<string, { fileId: string; source: boolean; viewport: ModeViewport }>();
+const pendingModeViewports = new Map<string, { fileId: string; source: boolean; viewport: ModeViewport; focus?: boolean }>();
 function setPaneSource(id: string, value: boolean, previous = paneSource(id)) {
   if (previous === value) return;
   for (const pane of store.panes.filter(pane => pane.activeId === id)) {
@@ -892,9 +892,16 @@ function fileMutationIds(entries: FileEntry[]): string[] {
   )).map(file => file.id);
 }
 watch(
-  () => editing.active?.key,
-  (epoch) => {
-    if (epoch) source.value = false;
+  () => [store.activeId, editing.active?.key] as const,
+  ([id, epoch], [previousId, previousEpoch]) => {
+    if (id === previousId && epoch !== previousEpoch && !paneSource(id)) {
+      const paneId = store.activePaneId;
+      const target = paneEditors.get(paneId), scroll = paneScrolls.get(paneId);
+      const viewport = target && scroll ? captureModeViewport(target, scroll) : null;
+      if (viewport) pendingModeViewports.set(paneId, { fileId: id, source: false, viewport,
+        focus: !!scroll?.contains(document.activeElement) && !!document.activeElement?.closest('.ProseMirror') });
+    }
+    if (epoch && epoch !== 'local') source.value = false;
   },
 );
 const syntaxIssues = computed(() => unsupportedMarkdown(active.value?.content ?? ''));
@@ -1500,7 +1507,7 @@ async function paneEditorReady(paneId: string, fileId: string, sourceMode: boole
     && store.panes.some(pane => pane.id === paneId && pane.activeId === fileId)
     && (sourceMode ? paneSourceEditors.get(paneId) : paneEditors.get(paneId)) === target;
   try {
-    await restoreModeViewport(target, scroll, pending.viewport, paneId === store.activePaneId, current);
+    await restoreModeViewport(target, scroll, pending.viewport, pending.focus ?? paneId === store.activePaneId, current);
   } finally {
     if (pendingModeViewports.get(paneId) === pending) pendingModeViewports.delete(paneId);
   }
