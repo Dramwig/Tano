@@ -237,6 +237,7 @@ onBeforeUnmount(() => {
       </button>
       <button type="button" class="document-title-action" @click="emit('comment')"><MessageSquare :size="15" aria-hidden="true" /><span>添加评论</span></button>
     </div>
+    <div v-else class="document-title-actions document-title-actions-placeholder" aria-hidden="true"></div>
     <input ref="iconInput" hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" aria-label="上传文档图标" :disabled="disabled" @change="fileChanged('icon', $event)" />
     <input ref="coverInput" hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" aria-label="上传文档封面" :disabled="disabled" @change="fileChanged('cover', $event)" />
     <p v-if="error && !coverOpen" class="document-appearance-error" role="alert">{{ error }}</p>
@@ -294,6 +295,7 @@ onBeforeUnmount(() => {
 <style>
 .document-appearance { position: relative; }
 .document-title-actions { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; min-height: 30px; margin: 0 -6px 6px; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+.document-title-actions-placeholder { visibility: hidden; }
 .document-title:has(.document-title-content:hover, .document-appearance-content:hover) .document-title-actions,
 .document-title:has(.document-title-actions :focus-visible, .document-page-icon :focus-visible) .document-title-actions,
 .document-appearance.is-open .document-title-actions { opacity: 1; pointer-events: auto; }
