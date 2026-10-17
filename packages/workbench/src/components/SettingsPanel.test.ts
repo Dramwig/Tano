@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createApp, defineComponent, h, nextTick, ref } from 'vue';
 import type { App } from 'vue';
 import SettingsPanel from './SettingsPanel.vue';
-import { defaultCapabilities } from '@tano/editor/runtime';
+import { defaultCapabilities, defaultEditorPreferences } from '@tano/editor/runtime';
 import type { EditorPreferences } from '@tano/editor/runtime';
 import type { CapabilityPatch } from '../workspace-capabilities';
 import type { SettingsPageContext } from '../runtime';
@@ -20,6 +20,7 @@ let app: App;
 let root: HTMLDivElement;
 let revealUpdates: boolean[];
 let preferenceUpdates: EditorPreferences[];
+const editorPreferences = ref<EditorPreferences>({ ...defaultEditorPreferences });
 let capabilityUpdates: CapabilityPatch[];
 let capabilities = ref(structuredClone(defaultCapabilities));
 let revealMarkdown = ref(true);
@@ -59,6 +60,7 @@ beforeEach(() => {
   capabilityUpdates = [];
   capabilities = ref(structuredClone(defaultCapabilities));
   revealMarkdown = ref(true);
+  editorPreferences.value = { ...defaultEditorPreferences };
   theme = ref('system');
   visualFontChoice = ref('system');
   customFontName = ref('');
@@ -87,6 +89,7 @@ beforeEach(() => {
         workspaceDeletionSupported: true,
         activeFile: hostFile.value,
         capabilities: capabilities.value,
+        editorPreferences: editorPreferences.value,
         onCapability: (patch: CapabilityPatch) => capabilityUpdates.push(patch),
         mode: workspaceMode.value,
         extraPages: [{ id: 'extra', label: '扩展设置', group: '个人偏好', terms: '', component: ExtraSettings }],
@@ -116,7 +119,7 @@ beforeEach(() => {
         'onUpdate:showPageTitle': (value: boolean) => { showPageTitle.value = value; },
         'onUpdate:showDocumentProperties': (value: boolean) => { showDocumentProperties.value = value; },
         'onUpdate:outlineOnLeft': (value: boolean) => { outlineOnLeft.value = value; },
-        'onUpdate:editorPreferences': (value: EditorPreferences) => preferenceUpdates.push(value),
+        'onUpdate:editorPreferences': (value: EditorPreferences) => { preferenceUpdates.push(value); editorPreferences.value = value; },
         'onUpdate:visualFontSize': (value: number) => { visualFontSize.value = value; },
         'onUpdate:sourceFontSize': (value: number) => { sourceFontSize.value = value; },
       }),
@@ -442,4 +445,30 @@ it('separates appearance and editing controls', async () => {
   expect(root.querySelector('select[aria-label="主题"]')).toBeNull();
   expect(root.querySelector('select[aria-label="默认编辑模式"]')).not.toBeNull();
   expect(root.querySelector('[aria-label="页面内标题"]')).toBeNull();
+});
+
+it('configures individual selection wrappers and disables them with the master switch', async () => {
+  await openPage('编辑设置');
+  const control = (label: string) => root.querySelector<HTMLButtonElement>('[role="switch"][aria-label="' + label + '"]')!;
+  expect(control('输入符号包裹选区').getAttribute('aria-checked')).toBe('true');
+  expect(control('高亮').getAttribute('aria-checked')).toBe('true');
+  expect(control('上标（扩展）').getAttribute('aria-checked')).toBe('false');
+  expect(control('中文 ￥ 映射为 $').getAttribute('aria-checked')).toBe('false');
+  control('中文 ￥ 映射为 $').click();
+  await nextTick();
+  expect(editorPreferences.value.selectionWrapping?.yenToDollar).toBe(true);
+  control('上标（扩展）').click();
+  await nextTick();
+  expect(editorPreferences.value.selectionWrapping?.superscript).toBe(true);
+  control('高亮').click();
+  await nextTick();
+  expect(editorPreferences.value.selectionWrapping?.highlight).toBe(false);
+  control('输入符号包裹选区').click();
+  await nextTick();
+  expect(control('上标（扩展）').disabled).toBe(true);
+  expect(editorPreferences.value.selectionWrapping?.enabled).toBe(false);
+  control('输入符号包裹选区').click();
+  await nextTick();
+  expect(control('上标（扩展）').getAttribute('aria-checked')).toBe('true');
+  expect(control('高亮').getAttribute('aria-checked')).toBe('false');
 });

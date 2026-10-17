@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
+  ArrowRight,
   BookOpen,
   Bot,
   CircleHelp,
@@ -29,6 +30,8 @@ import {
   featureDefinitions,
   defaultCapabilities,
   defaultEditorPreferences,
+  normalizeSelectionWrapping,
+  selectionWrappingOptions,
 } from '@tano/editor/runtime';
 import type { WorkspaceCapabilities, EditorPreferences } from '@tano/editor/runtime';
 import type { CapabilityPatch } from '../workspace-capabilities';
@@ -119,6 +122,15 @@ const emit = defineEmits<{
 const rules = computed(() => props.capabilities ?? defaultCapabilities);
 const { preferences: helpPreferences, setEnabled: setHelpEnabled } = useHelpPreferences();
 const display = computed(() => props.editorPreferences ?? defaultEditorPreferences);
+const wrapping = computed(() => normalizeSelectionWrapping(display.value.selectionWrapping));
+const wrappingOptions = selectionWrappingOptions.map(option => {
+  const [input, output] = option.example.split('；')[0]!.split(' → ');
+  const [opening, closing] = output!.split('文字');
+  return { ...option, input, opening, closing };
+});
+function setWrapping(key: keyof typeof wrapping.value, enabled: boolean) {
+  emit('update:editorPreferences', { ...display.value, selectionWrapping: { ...wrapping.value, [key]: enabled } });
+}
 function displayOptionActive(key: keyof EditorPreferences) {
   return display.value[key] && (key !== 'previewMathWhileEditing' || props.revealMarkdown);
 }
@@ -161,7 +173,7 @@ const pages = [
     label: '编辑设置',
     group: '个人偏好',
     icon: PencilLine,
-    terms: '编辑器 Markdown 源码 默认编辑模式 光标 语法 展开 编辑 Reveal 数学 公式 KaTeX 标题 列表 折叠 工具栏 选区 顶部 固定 胶囊',
+    terms: '编辑器 Markdown 源码 默认编辑模式 光标 语法 展开 编辑 Reveal 数学 公式 KaTeX 标题 列表 折叠 工具栏 选区 顶部 固定 胶囊 符号 包裹 自动配对 斜体 粗体 删除线 高亮 代码 上标 下标 下划线 注释',
   },
   {
     id: 'shortcuts',
@@ -565,6 +577,35 @@ function customFontInput(event: Event) {
                 </button>
               </div>
             </div>
+          </section>
+          <section v-if="page === 'editing'" class="settings-section" aria-label="选区符号包裹">
+            <h3>选区符号包裹</h3>
+            <div class="settings-card">
+              <div class="settings-row">
+                <div>
+                  <strong>输入符号包裹选区</strong>
+                  <p>选中文字后输入符号，自动补齐两端。可视化与源码模式通用。</p>
+                </div>
+                <button type="button" class="settings-switch" role="switch" aria-label="输入符号包裹选区"
+                  :class="{ on: wrapping.enabled }" :aria-checked="wrapping.enabled"
+                  @click="setWrapping('enabled', !wrapping.enabled)"><span /></button>
+              </div>
+              <div v-for="option in wrappingOptions" :key="option.key" class="settings-row settings-row-compact"
+                :class="{ 'is-disabled': !wrapping.enabled }">
+                <div class="settings-inline-copy">
+                  <strong>{{ option.label }}</strong>
+                  <span class="settings-inline-example" :title="option.example" :aria-label="option.example">
+                    <kbd aria-hidden="true">{{ option.input }}</kbd>
+                    <ArrowRight :size="12" aria-hidden="true" />
+                    <code aria-hidden="true"><span>{{ option.opening }}</span>文字<span>{{ option.closing }}</span></code>
+                  </span>
+                </div>
+                <button type="button" class="settings-switch" role="switch" :aria-label="option.label"
+                  :class="{ on: wrapping[option.key] }" :aria-checked="wrapping[option.key]" :disabled="!wrapping.enabled"
+                  @click="setWrapping(option.key, !wrapping[option.key])"><span /></button>
+              </div>
+            </div>
+            <p class="settings-local-note">设置仅影响当前设备。扩展语法默认关闭，其他 Markdown 应用可能不支持。</p>
           </section>
           <section v-if="page === 'appearance'" class="settings-section" aria-label="内容显示">
             <h3>内容显示</h3>
@@ -1441,6 +1482,40 @@ function customFontInput(event: Event) {
   font-size: 12px;
   line-height: 1.7;
 }
+.settings-inline-copy {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  column-gap: 16px;
+  row-gap: 3px;
+}
+.settings-inline-example {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.settings-inline-example kbd,
+.settings-inline-example code {
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper);
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+  white-space: nowrap;
+}
+.settings-inline-example kbd {
+  min-width: 24px;
+  text-align: center;
+  color: var(--text-secondary);
+  box-shadow: 0 1px 0 var(--line);
+}
+.settings-inline-example code { color: var(--text-secondary); }
+.settings-inline-example code span {
+  color: var(--green);
+  font-weight: 500;
+}
 .settings-row-compact {
   min-height: 57px;
   padding: 16px 0;
@@ -1763,4 +1838,5 @@ function customFontInput(event: Event) {
 .settings-windowed .settings-close {
   z-index: 2;
 }
+
 </style>

@@ -6,6 +6,19 @@ const example =
   '**粗体**、*斜体*、~~删除线~~、`代码`、<u>下划线</u>、x<sup>2</sup>、H<sub>2</sub>O、<mark>高亮</mark>、<span style="color: #db2777">粉色</span>。\n';
 
 describe('portable Markdown text styles', () => {
+  it('round trips selection wrapping extensions and their nested formatting', async () => {
+    const codec = await createHeadlessMarkdown();
+    try {
+      for (const source of ['==高亮==', '^上标^', '~下标~', '++下划线++', '%%注释 **原文**%%',
+        '==普通 **粗体**==', '==代码 `a==b`==', '==普通 ~下标~==', '~~删除线~~']) {
+        const normalized = codec.normalize(`前 ${source} 后\n`);
+        expect(normalized).toBe(`前 ${source} 后\n`);
+        expect(codec.normalize(normalized)).toBe(normalized);
+      }
+      expect(codec.normalize('`==字面量==` $x^2$\n')).toBe('`==字面量==` $x^2$\n');
+      expect(codec.normalize('\\^普通\\^\n')).not.toContain('<sup>');
+    } finally { await codec.destroy(); }
+  });
   it('keeps editor-generated empty paragraphs in rich text mode', async () => {
     const input = '# 新建文档 8\n\n<br />\n\n<br />\n\n正文\n';
     expect(unsupportedMarkdown(input)).toEqual([]);

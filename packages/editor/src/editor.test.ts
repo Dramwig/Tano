@@ -6,7 +6,7 @@ import { editorViewCtx, parserCtx } from '@milkdown/kit/core';
 import { TextSelection } from '@milkdown/kit/prose/state';
 import MarkdownEditor from './MarkdownEditor.vue';
 import { splitFrontmatter, unsupportedMarkdown } from './syntax';
-import { defaultCapabilities, defaultEditorPreferences } from './runtime';
+import { defaultCapabilities, defaultEditorPreferences, defaultSelectionWrapping } from './runtime';
 
 vi.mock('mermaid', () => ({
   default: {
@@ -268,6 +268,38 @@ it.each(['*', '**', '正文*', '正文**', '2 * 3', '*.md'])(
     expect(errors).toEqual([]);
   },
 );
+
+it.each([
+  ['*', '123 *312* 321\n'],
+  ['$', '123 $312$ 321\n'],
+  ['_', '123 _312_ 321\n'],
+  ['**', '123 **312** 321\n'],
+  ['__', '123 __312__ 321\n'],
+  ['~', '123 ~~312~~ 321\n'],
+  ['=', '123 ==312== 321\n'],
+  ['`', '123 `312` 321\n'],
+])('wraps a selected inline field with %s delimiters', async (delimiter, expected) => {
+  const { value, editor, errors } = await mount('123 312 321\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.focus();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 5, 8)));
+  const { from, to } = view.state.selection;
+  const handled = view.someProp('handleTextInput', handler =>
+    handler(view, from, to, delimiter, () => view.state.tr.insertText(delimiter, from, to)));
+  expect(handled).toBe(true);
+  await nextTick();
+  expect(value.value).toBe(expected);
+  expect(view.state.doc.textBetween(view.state.selection.from, view.state.selection.to)).toBe('312');
+  const source = root.querySelector<HTMLElement>('[data-tano-live-inline-source]');
+  if (delimiter === '$') {
+    expect(source?.textContent).toContain('$312$');
+    expect(root.querySelector('.tano-live-math-preview')).not.toBeNull();
+  } else {
+    expect(source?.textContent).toBe(expected.trim().slice(4, -4));
+    expect(root.querySelector('.tano-live-math-preview')).toBeNull();
+  }
+  expect(errors).toEqual([]);
+});
 
 it.each([
   ['*斜体*', 'emphasis', '*斜体*\n'],
@@ -4412,3 +4444,97 @@ describe('Markdown editor round trips', () => {
     expect(errors).toEqual([]);
   });
 });
+
+function wrapInput(view: import('@milkdown/kit/prose/view').EditorView, key: string) {
+  const { from, to } = view.state.selection;
+  return view.someProp('handleTextInput', handler =>
+    handler(view, from, to, key, () => view.state.tr.insertText(key, from, to)));
+}
+
+it('maps full-width yuan to an inline formula with preview and preserves the formula on blur', async () => {
+  const { value, editor, preferences, capabilities } = await mount('x_1\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.focus();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 4)));
+  expect(wrapInput(view, '￥')).toBeFalsy();
+  preferences.value.selectionWrapping = { ...defaultSelectionWrapping, yenToDollar: true };
+  capabilities.value.features.math = false;
+  await nextTick();
+  expect(wrapInput(view, '￥')).toBeFalsy();
+  capabilities.value.features.math = true;
+  await nextTick();
+  expect(wrapInput(view, '￥')).toBe(true);
+  expect(value.value).toBe('$x_1$\n');
+  expect(view.state.doc.textBetween(view.state.selection.from, view.state.selection.to)).toBe('x_1');
+  expect(root.querySelector('.tano-live-math-preview')).not.toBeNull();
+  view.dom.blur();
+  await nextTick();
+  expect(value.value).toBe('$x_1$\n');
+});
+
+it('upgrades retained backward selections to bold and undoes the wrapper', async () => {
+  const { value, editor } = await mount('前 文字 后\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.focus();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 5, 3)));
+  expect(wrapInput(view, '*')).toBe(true);
+  expect(wrapInput(view, '*')).toBe(true);
+  expect(value.value).toBe('前 **文字** 后\n');
+  expect(view.state.doc.textBetween(view.state.selection.from, view.state.selection.to)).toBe('文字');
+  expect(view.state.selection.anchor).toBeGreaterThan(view.state.selection.head);
+  expect(editor.value!.undoLastChange()).toBe(true);
+  expect(value.value).toBe('前 文字 后\n');
+});
+
+it.each([['^', '^文字^', 'sup'], ['~', '~文字~', 'sub'], ['+', '++文字++', 'u'], ['%', '%%文字%%', '[data-tano-comment]']])(
+  'renders and preserves the optional %s extension after leaving the field', async (key, expected, tag) => {
+    const { value, editor } = await mount('前 文字 后\n', undefined, defaultCapabilities, {
+      ...defaultEditorPreferences, selectionWrapping: { ...defaultSelectionWrapping, superscript: true, subscript: true, underline: true, comment: true },
+    });
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    view.focus();
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3, 5)));
+    expect(wrapInput(view, key)).toBe(true);
+    view.dom.blur();
+    await nextTick();
+    expect(value.value).toBe('前 ' + expected + ' 后\n');
+    expect(root.querySelector(tag)?.textContent).toBe('文字');
+  });
+
+it('honors live preference changes and wraps in rendered editing mode', async () => {
+  const { value, editor, preferences, revealMarkdown } = await mount('文字\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  preferences.value.selectionWrapping = { ...defaultSelectionWrapping, enabled: false };
+  await nextTick();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 3)));
+  expect(wrapInput(view, '*')).toBeFalsy();
+  preferences.value.selectionWrapping.enabled = true;
+  revealMarkdown.value = false;
+  await nextTick();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 3)));
+  expect(wrapInput(view, '=')).toBe(true);
+  expect(value.value).toBe('==文字==\n');
+  expect(root.querySelector('mark')?.textContent).toBe('文字');
+});
+
+it('does not wrap cross-block selections or selections inside code and math', async () => {
+  const { editor } = await mount('第一段\n\n第二段\n\n`code` $x+1$\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 8)));
+  expect(wrapInput(view, '*')).toBeFalsy();
+  editor.value!.restoreModeSelection({ anchor: 13, head: 15 });
+  expect(wrapInput(view, '*')).toBeFalsy();
+});
+
+it.each([['*', '**文字**\n'], ['_', '__文字__\n'], ['~', '~~文字~~\n'], ['=', '==文字==\n']])(
+  'keeps repeated %s wrapping consistent when source reveal is disabled', async (key, expected) => {
+    const { value, editor, revealMarkdown } = await mount('文字\n', undefined, defaultCapabilities, {
+      ...defaultEditorPreferences, selectionWrapping: { ...defaultSelectionWrapping, subscript: true },
+    });
+    revealMarkdown.value = false;
+    await nextTick();
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 3)));
+    for (let press = 0; press < 3; press++) expect(wrapInput(view, key)).toBe(true);
+    expect(value.value).toBe(expected);
+  });

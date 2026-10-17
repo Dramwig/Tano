@@ -63,6 +63,7 @@ const visibleMarks = new Set([
   'subscript',
   'highlight',
   'text_color',
+  'inline_comment',
 ]);
 
 interface Span {
@@ -200,7 +201,11 @@ function editableSourceStyles(state: EditorState): Decoration[] {
             ? /^[*_]$/.test(source[from] ?? '')
               ? 1
               : 0
-            : style === 'delete' && source.slice(from, from + 2) === '~~'
+              : ['highlight', 'underline', 'inline_comment'].includes(style)
+                ? 2
+                : ['superscript', 'subscript'].includes(style)
+                  ? 1
+              : style === 'delete' && source.slice(from, from + 2) === '~~'
               ? 2
               : 0;
       if (!delimiter || source.slice(to - delimiter, to) !== source.slice(from, from + delimiter))

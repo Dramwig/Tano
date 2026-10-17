@@ -5,13 +5,14 @@ import type { TextStyle } from './text-style-markdown';
 
 function styleMark(name: TextStyle, tag: string, excludes?: string) {
   return $markSchema(name, () => ({
+    attrs: { delimiter: { default: null } },
     ...(excludes ? { excludes } : {}),
     parseDOM: [{ tag }],
     toDOM: (): DOMOutputSpec => [tag, 0],
     parseMarkdown: {
       match: (node) => node.type === 'tanoTextStyle' && node.style === name,
       runner: (state, node, markType) => {
-        state.openMark(markType);
+        state.openMark(markType, { delimiter: node.delimiter ?? null });
         state.next(node.children);
         state.closeMark(markType);
       },
@@ -19,7 +20,7 @@ function styleMark(name: TextStyle, tag: string, excludes?: string) {
     toMarkdown: {
       match: (mark) => mark.type.name === name,
       runner: (state, mark) => {
-        state.withMark(mark, 'tanoTextStyle', undefined, { style: name });
+        state.withMark(mark, 'tanoTextStyle', undefined, { style: name, delimiter: mark.attrs.delimiter });
       },
     },
   }));
@@ -29,6 +30,20 @@ export const underline = styleMark('underline', 'u');
 export const superscript = styleMark('superscript', 'sup', 'superscript subscript');
 export const subscript = styleMark('subscript', 'sub', 'subscript superscript');
 export const highlight = styleMark('highlight', 'mark');
+export const inlineComment = $markSchema('inline_comment', () => ({
+  attrs: { delimiter: { default: '%%' } },
+  excludes: '_',
+  parseDOM: [{ tag: 'span[data-tano-comment]' }],
+  toDOM: () => ['span', { 'data-tano-comment': '', title: 'Markdown 注释' }, 0],
+  parseMarkdown: {
+    match: node => node.type === 'tanoTextStyle' && node.style === 'inline_comment',
+    runner: (state, node, type) => { state.openMark(type); state.next(node.children); state.closeMark(type); },
+  },
+  toMarkdown: {
+    match: mark => mark.type.name === 'inline_comment',
+    runner: (state, mark) => { state.withMark(mark, 'tanoTextStyle', undefined, { style: 'inline_comment', delimiter: '%%' }); },
+  },
+}));
 export const textColor = $markSchema('text_color', () => ({
   attrs: {
     color: {
@@ -80,4 +95,5 @@ export const textStyles = [
   subscript,
   highlight,
   textColor,
+  inlineComment,
 ].flat();

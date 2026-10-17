@@ -92,7 +92,7 @@ import { activeInlineSourceRange, emptyFencedCodeBodyOffset, liveMarkdown } from
 import { liveInlineSource, liveSource } from './live-source';
 import { nestedEmphasisRemark } from './nested-emphasis';
 import { sourceStyleRanges } from './source-highlight';
-import { configureMarkdownRuntime, defaultCapabilities, defaultEditorPreferences } from './runtime';
+import { configureMarkdownRuntime, defaultCapabilities, defaultEditorPreferences, selectionWrap } from './runtime';
 import type { WorkspaceCapabilities, EditorPreferences } from './runtime';
 import { runtimeViews, mermaidView } from './runtime-views';
 import { footnoteNumbers, jumpToFootnote } from './footnotes';
@@ -703,6 +703,72 @@ function fillEmptyRenderedCodeLine(view: EditorView, from: number, to: number, t
   return true;
 }
 
+function wrapSelectedInlineSource(ctx: Ctx, view: EditorView, from: number, to: number, text: string) {
+  if (props.readonly || view.composing || from === to) return false;
+  const state = view.state;
+  const $from = state.doc.resolve(from), $to = state.doc.resolve(to);
+  const live = $from.parent.type.name === 'tano_live_source_inline';
+  if (!$from.sameParent($to) || !$from.parent.inlineContent ||
+      ($from.parent.type.spec.code && !live)) return false;
+  if (live && ($from.parent.attrs.origin === 'math_inline' ||
+      sourceStyleRanges($from.parent.textContent).some(range =>
+        ['code', 'math'].includes(range.style) && range.from < $to.parentOffset && range.to > $from.parentOffset))) return false;
+  let protectedContent = false;
+  state.doc.nodesBetween(from, to, node => {
+    if (node.isInline && ((!node.isText && node.type.name !== 'tano_live_source_inline') ||
+        node.marks.some(mark => mark.type.spec.code))) protectedContent = true;
+  });
+  if (protectedContent) return false;
+  const selected = state.doc.textBetween(from, to);
+  const wrap = selectionWrap(selected, text, preferences().selectionWrapping,
+    $from.parent.textContent.slice(0, $from.parentOffset), $to.parent.textContent.slice($to.parentOffset));
+  if (!wrap || (wrap.prefix === '$' && !policy().features.math)) return false;
+  if (!wrap.prefix) return true;
+  const backward = state.selection.anchor > state.selection.head;
+  if (live) {
+    const tr = state.tr.insertText(wrap.suffix, to).insertText(wrap.prefix, from);
+    tr.setSelection(TextSelection.create(tr.doc,
+      (backward ? to : from) + wrap.prefix.length, (backward ? from : to) + wrap.prefix.length));
+    view.dispatch(tr);
+    return true;
+  }
+  const original = $from.parent.cut(from - $from.start(), to - $from.start()).content;
+  if (props.revealMarkdown === false) {
+    const markName = ({ '*': 'strong', '**': 'strong', '_': 'strong', '__': 'strong',
+      '~': wrap.prefix === '~' && preferences().selectionWrapping?.strike === false ? 'subscript' : 'strike_through', '~~': 'strike_through',
+      '=': 'highlight', '==': 'highlight', '^': 'superscript', '+': 'underline', '%': 'inline_comment',
+    } as Record<string, string>)[text];
+    let alreadyWrapped = !!markName;
+    original.forEach(node => { alreadyWrapped &&= node.marks.some(mark => mark.type.name === markName); });
+    if (alreadyWrapped) return true;
+  }
+  const paragraph = state.schema.nodes.paragraph!.create(null, original);
+  const selectedSource = wrap.literal ? selected : ctx.get(serializerCtx)(state.schema.nodes.doc!.create(null, [paragraph]))
+    .replace(/\n+$/, '');
+  if (!selectedSource || /[\r\n]/.test(selectedSource)) return false;
+  const source = wrap.prefix + selectedSource + wrap.suffix;
+  if (props.revealMarkdown === false) {
+    const parsed = ctx.get(parserCtx)(source)?.firstChild;
+    if (!parsed || parsed.type.name !== 'paragraph') return false;
+    const tr = state.tr.replaceWith(from, to, parsed.content);
+    tr.setSelection(TextSelection.create(tr.doc, backward ? from + parsed.content.size : from,
+      backward ? from : from + parsed.content.size));
+    view.dispatch(tr);
+    return true;
+  }
+  const id = sourceId();
+  const node = liveInlineSource.type(ctx).create(
+    { id, origin: wrap.prefix === '$' ? 'math_inline' : '' }, state.schema.text(source),
+  );
+  const selectionFrom = from + 1 + wrap.prefix.length;
+  const selectionTo = selectionFrom + selectedSource.length;
+  localSource = { kind: 'inline', id, original, initial: selectedSource };
+  const tr = state.tr.replaceWith(from, to, node);
+  tr.setSelection(TextSelection.create(tr.doc, backward ? selectionTo : selectionFrom, backward ? selectionFrom : selectionTo));
+  view.dispatch(tr);
+  return true;
+}
+
 type InlineSourceDestination =
   | { kind: 'wiki'; target: string }
   | { kind: 'reference'; identity: ReferenceIdentity }
@@ -782,7 +848,7 @@ function markAtCaret(view: EditorView, event?: MouseEvent | KeyboardEvent) {
     : view.dom.ownerDocument.getSelection()?.anchorNode;
   const element = anchor instanceof Element ? anchor : anchor?.parentElement;
   if (!element || !view.dom.contains(element)) return undefined;
-  const marked = element.closest('strong, em, code, del, u, sup, sub, mark, span[style], a');
+  const marked = element.closest('strong, em, code, del, u, sup, sub, mark, span[style], span[data-tano-comment], a');
   if (!marked || !view.dom.contains(marked)) return undefined;
   const names: Record<string, string> = {
     strong: 'strong',
@@ -793,7 +859,7 @@ function markAtCaret(view: EditorView, event?: MouseEvent | KeyboardEvent) {
     sup: 'superscript',
     sub: 'subscript',
     mark: 'highlight',
-    span: 'text_color',
+    span: marked.hasAttribute('data-tano-comment') ? 'inline_comment' : 'text_color',
     a: 'link',
   };
   return names[marked.tagName.toLowerCase()];
@@ -1689,6 +1755,7 @@ const bridge = $prose(
         handleTextInput(view, from, to, text) {
           return insertEmptyCodeSourceText(view, from, to, text) ||
             fillEmptyRenderedCodeLine(view, from, to, text) ||
+            wrapSelectedInlineSource(ctx, view, from, to, text) ||
             insertPartialEmphasisSource(ctx, view, from, to, text);
         },
         handlePaste(view, event) {
