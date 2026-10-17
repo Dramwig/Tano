@@ -33,6 +33,9 @@ Tano — Humans and agents, on the same page.
 
 ## Commits
 
+- After completing a requested Git commit/push/merge workflow, agents must automatically run `npm run cache:clean -- -Apply` on Windows in each affected repository, without asking again. Wait until all validation, packaging, deployment and acceptance work in that workflow has finished. Read-only Git commands do not trigger cleanup. This is an agent workflow rule, not a Git hook; see [docs/local-validation.md](docs/local-validation.md).
+- Only clean the script's allowlisted Rust cache subdirectories and Android build intermediates. Preserve source, uncommitted work, `node_modules/`, `vendor/`, installer bundles, exported Core packages, release evidence, backups and local service state. If a build is active or a safety check fails, defer cleanup and report why; never force it. Report recycled bytes separately from reclaimed disk space. On other platforms, report that this Windows cleanup command is unavailable rather than substituting broad deletion commands.
+
 - Follow [docs/branching.md](docs/branching.md): PRs are optional; normal pushes to `main` and `dev` are allowed after local validation. Integrate ordinary work into `dev` before promoting it to `main`.
 - Use `git merge --no-ff` when merging between branches, including task branches and `main`/`dev`, to preserve a merge record. Never squash/rebase long-lived branches or force-push/delete them. Version updates and hotfixes made on `main` must be merged back into `dev` the same way.
 

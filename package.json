@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "dev": "npm run dev -w @tano/client",
+    "cache:clean": "pwsh -NoProfile -File scripts/clean-build-cache.ps1",
     "build": "npm run build -w @tano/client",
     "desktop": "node scripts/dev-desktop.mjs",
     "desktop:build": "npm run tauri -w @tano/client -- build",
