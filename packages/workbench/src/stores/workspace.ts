@@ -1217,15 +1217,21 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         workspaceSettingsError.value = '';
         workspace.value = next;
         if (remembersStartupWorkspace) rememberStartupWorkspace(next.id);
-        await dataTables.reload();
-        await refreshWorkspaceSettings();
-        assistantEpoch.value++;
-        assistantApplied.clear();
         objects.value = []; objectErrors.value = [];
-        await refreshObjects();
         capabilityBase = null;
         capabilities.value = structuredClone(defaultCapabilities);
-        await refreshCapabilities();
+        await dataTables.reload();
+        // These reads all use the committed workspace snapshot and do not
+        // depend on one another. Keep the switch responsive by sharing the
+        // network and filesystem wait instead of paying for three serial
+        // round trips on every online workspace change.
+        await Promise.all([
+          refreshWorkspaceSettings(),
+          refreshObjects(),
+          refreshCapabilities(),
+        ]);
+        assistantEpoch.value++;
+        assistantApplied.clear();
         documents.value = [];
         tabIds.value = [];
         activeId.value = '';
