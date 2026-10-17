@@ -8,6 +8,14 @@ function styled(markdown: string, style: string) {
 }
 
 describe('source Markdown styling', () => {
+  it('uses the same extension syntax and offsets as the rich editor', () => {
+    const text = '==普通 **粗体**== ~下标~ ^上标^ ++下划线++ %%注释%%';
+    expect(styled(text, 'highlight')).toEqual(['==普通 **粗体**==']);
+    expect(styled(text, 'strong')).toEqual(['**粗体**']);
+    expect(styled(text, 'subscript')).toEqual(['~下标~']);
+    expect(styled(text, 'delete')).toEqual([]);
+    expect(styled(text, 'inline_comment')).toEqual(['%%注释%%']);
+  });
   it('styles delimiters together with formatted text, including nested marks', () => {
     const text = '**123 *abc*** and ~~old~~ and `**literal**`';
     expect(styled(text, 'strong')).toEqual(['**123 *abc***']);

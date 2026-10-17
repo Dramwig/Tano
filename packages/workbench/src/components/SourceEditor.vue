@@ -21,6 +21,8 @@ import { sourceStyleRanges } from '@tano/editor/source-highlight';
 import type { ModeSelection } from '@tano/editor/mode-selection';
 import { splitFrontmatter } from '@tano/editor/syntax';
 import { referenceInsertionPoint } from '@tano/editor/document-links';
+import { selectionWrap } from '@tano/editor/runtime';
+import type { EditorPreferences } from '@tano/editor/runtime';
 import { textSearchRanges } from '@tano/editor/search';
 
 const setPageSearch = StateEffect.define<{ query: string; index: number }>();
@@ -40,6 +42,7 @@ const pageSearch = StateField.define({
 
 const props = defineProps<{
   modelValue: string;
+  preferences?: EditorPreferences;
   readonly: boolean;
   localNative: boolean;
   commentAnchors?: readonly { id: string; anchor: CommentAnchor }[];
@@ -116,6 +119,39 @@ function fileHandler(event: Event, files: FileList | null | undefined, requireIm
   return true;
 }
 
+function wrapSelectedSourceField(event: KeyboardEvent, current: EditorView) {
+  if (event.ctrlKey || event.metaKey || event.altKey ||
+      event.isComposing) return false;
+  if (!wrapSourceSelection(current, event.key)) return false;
+  event.preventDefault();
+  return true;
+}
+
+function wrapSourceSelection(current: EditorView, text: string) {
+  if (props.readonly || current.composing) return false;
+  const selection = current.state.selection.main;
+  if (selection.empty || current.state.selection.ranges.length !== 1) return false;
+  const selected = current.state.sliceDoc(selection.from, selection.to);
+  if (!selected || /[\r\n]/.test(selected)) return false;
+  // A Markdown block field is line-scoped in source mode. Do not add syntax
+  // around a selection that crosses into another field or block.
+  const fromLine = current.state.doc.lineAt(selection.from).number;
+  const toLine = current.state.doc.lineAt(selection.to - 1).number;
+  if (fromLine !== toLine) return false;
+  const source = current.state.doc.toString();
+  if (sourceStyleRanges(source).some(range => ['code', 'math', 'frontmatter', 'html'].includes(range.style) &&
+      range.from < selection.to && range.to > selection.from)) return false;
+  const wrap = selectionWrap(selected, text, props.preferences?.selectionWrapping,
+    source.slice(0, selection.from), source.slice(selection.to));
+  if (!wrap) return false;
+  if (wrap.prefix) current.dispatch({
+    changes: { from: selection.from, to: selection.to, insert: wrap.prefix + selected + wrap.suffix },
+    selection: { anchor: selection.anchor + wrap.prefix.length, head: selection.head + wrap.prefix.length },
+    userEvent: 'input.type',
+  });
+  return true;
+}
+
 onMounted(() => {
   view = new EditorView({
     parent: host.value,
@@ -132,7 +168,12 @@ onMounted(() => {
         ]),
         sourceStyles,
         pageSearch,
+        // Full-width punctuation may arrive as text input without a matching keydown.
+        EditorView.inputHandler.of((current, from, to, text) =>
+          text === '￥' && from === current.state.selection.main.from &&
+          to === current.state.selection.main.to && wrapSourceSelection(current, text)),
         EditorView.domEventHandlers({
+          keydown: (event, current) => wrapSelectedSourceField(event, current),
           paste: (event) => fileHandler(event, event.clipboardData?.files, true),
           drop: (event) => fileHandler(event, event.dataTransfer?.files, false),
         }),

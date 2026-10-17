@@ -40,6 +40,33 @@ manual reload follows the same boundary. Check that startup errors and a stalled
 frontend offer recovery, and late imports cannot overwrite it. Report time to first content
 separately from time to an interactive workbench.
 
+## After completing Git work
+
+Agents automatically clean build caches once at the end of a requested
+commit/push/merge workflow in every affected repository. Finish all validation,
+packaging, deployment and acceptance first; do not clear caches between those
+steps. Read-only commands such as `git status`, `git diff` and `git log` do not
+trigger cleanup. This is an agent workflow requirement, not an installed Git
+hook, so manually running Git outside an agent does not invoke it.
+
+On Windows with PowerShell 7, preview with `npm run cache:clean`, then apply with
+`npm run cache:clean -- -Apply`. The [cleanup script](../scripts/clean-build-cache.ps1)
+moves only allowlisted Rust `incremental`, `deps`, `build` and `.fingerprint`
+directories and Android `app/build/intermediates` to the Recycle Bin. It checks
+the repository boundary, tracked files, directory links and active build
+processes before changing anything. If blocked, defer cleanup and report the
+reason. If Windows prevents moving a cache container, recycle its children and
+leave the empty container; report any files that remain. Do not change access
+permissions or stop unrelated processes. Other platforms require a separately
+reviewed cleanup implementation.
+
+Keep dependencies, vendor snapshots, installers, Core exports, release evidence,
+backups and local service state. Never use `git clean -fdx` or remove entire
+`target/` or `artifacts/` trees for this step. The next native build will be slower.
+Report the amount recycled; it is not reclaimed disk space until those items
+are permanently removed from the Recycle Bin. Do not empty unrelated recycled
+files automatically.
+
 ## GitHub Actions
 
 The former `check.yml` has been removed. Remaining workflows are manual

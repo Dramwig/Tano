@@ -4,6 +4,7 @@ import { createApp, h, nextTick, ref } from 'vue';
 import type { App } from 'vue';
 import { EditorView } from '@codemirror/view';
 import SourceEditor from './SourceEditor.vue';
+import { defaultEditorPreferences, defaultSelectionWrapping } from '@tano/editor/runtime';
 
 let app: App | undefined;
 let root: HTMLDivElement;
@@ -22,16 +23,17 @@ async function mountSource(content: string) {
   const value = ref(content);
   const editor = ref<InstanceType<typeof SourceEditor>>();
   const readonly = ref(false);
+  const preferences = ref({ ...defaultEditorPreferences, selectionWrapping: { ...defaultSelectionWrapping } });
   const changed = vi.fn((next: string) => (value.value = next));
   app = createApp({
     render: () => h(SourceEditor, {
-      ref: editor, modelValue: value.value, readonly: readonly.value, localNative: false,
+      ref: editor, preferences: preferences.value, modelValue: value.value, readonly: readonly.value, localNative: false,
       'onUpdate:modelValue': changed,
     }),
   });
   app.mount(root);
   await nextTick();
-  return { value, editor, readonly, changed, view: EditorView.findFromDOM(root.querySelector('.cm-editor')!)! };
+  return { value, editor, readonly, preferences, changed, view: EditorView.findFromDOM(root.querySelector('.cm-editor')!)! };
 }
 
 it('restores a backward mode selection without changing Markdown or undo history', async () => {
@@ -70,6 +72,23 @@ it('indents and outdents source with Tab without moving focus to page buttons', 
   pressTab();
   pressTab(true);
   expect(value.value).toBe('正文');
+});
+
+it.each([
+  ['1231 231231 3123\n', '1231 *231231* 3123\n'],
+  ['1231*231231*3123\n', '1231**231231**3123\n'],
+  ['1231 231231 3123\n', '1231 $231231$ 3123\n'],
+])('wraps a selected source field with Markdown delimiters when typing a delimiter: %s', async (source, expected) => {
+  const { value, view } = await mountSource(source);
+  view.dispatch({ selection: { anchor: 5, head: 11 } });
+  const delimiter = expected.includes('$') ? '$' : '*';
+  const event = new KeyboardEvent('keydown', { key: delimiter, bubbles: true, cancelable: true });
+  view.contentDOM.dispatchEvent(event);
+  await nextTick();
+  expect(event.defaultPrevented).toBe(true);
+  expect(value.value).toBe(expected);
+  expect(view.state.selection.main.from).toBe(6);
+  expect(view.state.selection.main.to).toBe(12);
 });
 
 it('applies a plugin edit as one undo step and rejects stale or read-only edits', async () => {
@@ -265,4 +284,81 @@ it('shows raw Markdown with bold delimiters and keeps edits in source form', asy
   expect(editor.value!.undoLastChange()).toBe(true);
   await nextTick();
   expect(value.value).toBe(original);
+});
+
+function typeSymbol(view: EditorView, key: string, extra: KeyboardEventInit = {}) {
+  const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...extra });
+  view.contentDOM.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+it.each(['keyboard', 'text input'])('maps full-width yuan in source via %s when enabled', async method => {
+  const { value, view, preferences, editor } = await mountSource('x_1');
+  view.dispatch({ selection: { anchor: 3, head: 0 } });
+  const input = () => method === 'keyboard' ? typeSymbol(view, '￥') :
+    view.state.facet(EditorView.inputHandler).some(handler => handler(view, 0, 3, '￥', () => view.state.update({ changes: { from: 0, to: 3, insert: '￥' } })));
+  expect(input()).toBe(false);
+  preferences.value.selectionWrapping.yenToDollar = true;
+  await nextTick();
+  expect(input()).toBe(true);
+  expect(value.value).toBe('$x_1$');
+  expect(view.state.selection.main.anchor).toBe(4);
+  expect(view.state.selection.main.head).toBe(1);
+  expect(editor.value!.undoLastChange()).toBe(true);
+  expect(value.value).toBe('x_1');
+});
+
+it.each([['_', '_'], ['~', '~~'], ['=', '=='], ['`', '`']])('wraps source with %s and preserves backward selections and undo', async (key, delimiter) => {
+  const { value, view, editor } = await mountSource('前 文字 后');
+  view.dispatch({ selection: { anchor: 4, head: 2 } });
+  expect(typeSymbol(view, key)).toBe(true);
+  expect(value.value).toBe('前 ' + delimiter + '文字' + delimiter + ' 后');
+  expect(view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to)).toBe('文字');
+  expect(view.state.selection.main.anchor).toBeGreaterThan(view.state.selection.main.head);
+  expect(editor.value!.undoLastChange()).toBe(true);
+  expect(value.value).toBe('前 文字 后');
+});
+
+it('upgrades emphasis and does not nest repeated double markers', async () => {
+  const { value, view } = await mountSource('文字');
+  view.dispatch({ selection: { anchor: 0, head: 2 } });
+  expect(typeSymbol(view, '*')).toBe(true);
+  expect(typeSymbol(view, '*')).toBe(true);
+  expect(value.value).toBe('**文字**');
+  expect(typeSymbol(view, '*')).toBe(true);
+  expect(value.value).toBe('**文字**');
+});
+
+it('applies preference changes immediately, including extensions and the master switch', async () => {
+  const { value, view, preferences } = await mountSource('文字');
+  view.dispatch({ selection: { anchor: 0, head: 2 } });
+  expect(typeSymbol(view, '^')).toBe(false);
+  preferences.value.selectionWrapping.superscript = true;
+  await nextTick();
+  expect(typeSymbol(view, '^')).toBe(true);
+  expect(value.value).toBe('^文字^');
+  preferences.value.selectionWrapping.enabled = false;
+  await nextTick();
+  expect(typeSymbol(view, '*')).toBe(false);
+  expect(value.value).toBe('^文字^');
+});
+
+it.each([
+  ['第一行\n第二行', 0, 6], ['`code`', 1, 5], ['$x+1$', 1, 4],
+  ['```js\ncode\n```', 6, 10], ['文字', 1, 1],
+])('keeps protected source selections unchanged: %s', async (source, anchor, head) => {
+  const { value, view } = await mountSource(source);
+  view.dispatch({ selection: { anchor, head } });
+  expect(typeSymbol(view, '*')).toBe(false);
+  expect(value.value).toBe(source);
+});
+
+it('does not intercept composing, modified, or read-only input', async () => {
+  const { view, readonly } = await mountSource('文字');
+  view.dispatch({ selection: { anchor: 0, head: 2 } });
+  for (const extra of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }, { isComposing: true }])
+    expect(typeSymbol(view, '*', extra)).toBe(false);
+  readonly.value = true;
+  await nextTick();
+  expect(typeSymbol(view, '*')).toBe(false);
 });

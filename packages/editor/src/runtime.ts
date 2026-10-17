@@ -1,5 +1,8 @@
 import type { Ctx } from '@milkdown/kit/ctx';
 import { isShortId } from '@tano/protocol';
+import type { SelectionWrappingPreferences } from './selection-wrapping';
+export { selectionWrap, selectionWrappingOptions, defaultSelectionWrapping, normalizeSelectionWrapping } from './selection-wrapping';
+export type { SelectionWrappingPreferences } from './selection-wrapping';
 export { workspaceCapabilityPath as capabilityPath } from '@tano/protocol';
 
 export const featureDefinitions = [
@@ -30,6 +33,7 @@ export interface WorkspaceCapabilities {
 export interface EditorPreferences {
   previewMathWhileEditing: boolean;
   folding: boolean;
+  selectionWrapping?: SelectionWrappingPreferences;
 }
 export const defaultCapabilities: WorkspaceCapabilities = {
   version: 1,

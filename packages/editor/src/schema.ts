@@ -2,12 +2,13 @@ import type { Ctx } from '@milkdown/kit/ctx';
 import { remarkStringifyOptionsCtx } from '@milkdown/kit/core';
 import type { DOMOutputSpec } from '@milkdown/kit/prose/model';
 import { blockquoteSchema, imageSchema } from '@milkdown/kit/preset/commonmark';
-import { tableCellSchema, tableHeaderSchema, tableSchema } from '@milkdown/kit/preset/gfm';
+import { tableCellSchema, tableHeaderSchema, tableSchema, remarkGFMPlugin } from '@milkdown/kit/preset/gfm';
 import { defaultHandlers } from 'mdast-util-to-markdown';
 import { calloutMarker } from './callout';
 
 /** Shared by the desktop view and server codec to keep their Markdown schema identical. */
 export function configureMarkdownSchema(ctx: Ctx) {
+  ctx.update(remarkGFMPlugin.options.key, options => ({ ...options, singleTilde: false }));
   ctx.update(remarkStringifyOptionsCtx, (options) => {
     const text = options.handlers?.text ?? defaultHandlers.text;
     return {

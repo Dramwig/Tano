@@ -1,4 +1,5 @@
 import { unified } from 'unified';
+import { styleDelimiters, styleDelimiterConstruct } from './style-delimiters';
 import type { Plugin } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
@@ -6,11 +7,12 @@ import { remarkMathSyntax as remarkMath } from './math-markdown';
 import type { Html, Nodes, Parent, PhrasingContent, Root } from 'mdast';
 import type { Handle } from 'mdast-util-to-markdown';
 
-export type TextStyle = 'underline' | 'superscript' | 'subscript' | 'highlight' | 'text_color';
+export type TextStyle = 'underline' | 'superscript' | 'subscript' | 'highlight' | 'text_color' | 'inline_comment';
 interface TextStyleNode extends Parent {
   type: 'tanoTextStyle';
   style: TextStyle;
   color?: string;
+  delimiter?: string;
   children: PhrasingContent[];
 }
 declare module 'mdast' {
@@ -28,6 +30,7 @@ const tags: Record<TextStyle, string> = {
   subscript: 'sub',
   highlight: 'mark',
   text_color: 'span',
+  inline_comment: 'span',
 };
 
 export function normalizeTextColor(value: string): string | null {
@@ -148,6 +151,15 @@ function groupRawHtml(node: Nodes, source: string) {
 const serializeStyle: Handle & { peek?: () => string } = (node, _parent, state, info) => {
   const style = node as TextStyleNode;
   const tag = tags[style.style];
+  const delimiter = style.delimiter;
+  if (style.style === 'inline_comment') return `%%${style.children.map(child => 'value' in child ? child.value : '').join('')}%%`;
+  if (delimiter && styleDelimiters[delimiter as keyof typeof styleDelimiters] === style.style) {
+    const tracker = state.createTracker(info);
+    tracker.move(delimiter);
+    return delimiter + state.containerPhrasing(style, {
+      ...tracker.current(), before: delimiter, after: delimiter,
+    }) + delimiter;
+  }
   const color = style.color && normalizeTextColor(style.color);
   const open =
     style.style === 'text_color' && color ? `<span style="color: ${color}">` : `<${tag}>`;
@@ -162,6 +174,42 @@ serializeStyle.peek = () => '<';
 
 export const remarkTextStyles: Plugin<[], Root> = function () {
   const data = this.data();
+  (data.micromarkExtensions ??= []).push({ text: Object.fromEntries(
+    Object.keys(styleDelimiters).map(delimiter => [delimiter.charCodeAt(0), styleDelimiterConstruct(delimiter)]),
+  ) });
+  (data.fromMarkdownExtensions ??= []).push({
+    enter: {
+      tanoStyleDelimited(token) {
+        this.enter({ type: 'tanoTextStyle', style: 'highlight', children: [] }, token);
+      },
+    },
+    exit: {
+      tanoStyleDelimited(token) {
+        const node = this.stack.at(-1) as TextStyleNode;
+        const raw = this.sliceSerialize(token);
+        const delimiter = Object.keys(styleDelimiters).find(value => raw.startsWith(value))!;
+        node.style = styleDelimiters[delimiter as keyof typeof styleDelimiters];
+        node.delimiter = delimiter;
+        const body = raw.slice(delimiter.length, -delimiter.length);
+        const parsed = delimiter === '%%' ? null : inlineStyleParser.runSync(inlineStyleParser.parse(body), body).children[0];
+        node.children = parsed?.type === 'paragraph' ? parsed.children : [{ type: 'text', value: body }];
+        // Nested parsers report offsets relative to the body. Milkdown's marker
+        // plugin reads the original file at these positions to preserve * vs _.
+        const shift = (child: Nodes) => {
+          if ('position' in child && child.position) {
+            for (const point of [child.position.start, child.position.end]) {
+              if (point.offset !== undefined) point.offset += token.start.offset + delimiter.length;
+              if (point.line === 1) point.column += token.start.column - 1 + delimiter.length;
+              point.line += token.start.line - 1;
+            }
+          }
+          if ('children' in child) child.children.forEach(shift);
+        };
+        node.children.forEach(shift);
+        this.exit(token);
+      },
+    },
+  });
   const extensions = data.toMarkdownExtensions ?? (data.toMarkdownExtensions = []);
   extensions.push({ handlers: { tanoTextStyle: serializeStyle } });
   return (tree, file) => {
@@ -171,6 +219,7 @@ export const remarkTextStyles: Plugin<[], Root> = function () {
 };
 
 const styleParser = unified().use(remarkParse).use(remarkGfm).use(remarkMath);
+const inlineStyleParser = unified().use(remarkParse).use(remarkGfm, { singleTilde: false }).use(remarkMath).use(remarkTextStyles);
 
 /** Check which HTML cannot enter the current real-time collaboration codec. */
 export function hasUnsupportedHtml(markdown: string): boolean {

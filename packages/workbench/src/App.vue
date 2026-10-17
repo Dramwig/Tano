@@ -72,7 +72,7 @@ import {
   Table2,
 } from 'lucide-vue-next';
 const MarkdownEditor = defineAsyncComponent(() => import('@tano/editor'));
-import { defaultEditorPreferences } from '@tano/editor/runtime';
+import { defaultEditorPreferences, normalizeSelectionWrapping } from '@tano/editor/runtime';
 import type { EditorPreferences } from '@tano/editor/runtime';
 import { defaultSelectionContext } from '@tano/editor/selection-context';
 import type { EditorSelectionContext } from '@tano/editor/selection-context';
@@ -800,18 +800,24 @@ try {
 } catch {
   // Device storage may be unavailable in restricted browser contexts.
 }
+function readSelectionWrapping() {
+  try { return normalizeSelectionWrapping(JSON.parse(readTextPreference('selectionWrapping') || 'null')); }
+  catch { return normalizeSelectionWrapping(); }
+}
 const editorPreferences = ref<EditorPreferences>({
   previewMathWhileEditing: readPreference(
     'previewMathWhileEditing',
     defaultEditorPreferences.previewMathWhileEditing,
   ),
   folding: readPreference('folding', defaultEditorPreferences.folding),
+  selectionWrapping: readSelectionWrapping(),
 });
 watch(
   editorPreferences,
   (preferences) => {
-    for (const key of Object.keys(preferences) as (keyof EditorPreferences)[])
-      savePreference(key, preferences[key]);
+    savePreference('previewMathWhileEditing', preferences.previewMathWhileEditing);
+    savePreference('folding', preferences.folding);
+    saveTextPreference('selectionWrapping', JSON.stringify(normalizeSelectionWrapping(preferences.selectionWrapping)));
   },
   { deep: true },
 );
@@ -5282,7 +5288,7 @@ const helpBlocked = computed(() => !!(
                         @enter="insertBlockBelowTitle"
                         @comment="paneComments.get(pane.id)?.showDiscussion()"
                       />
-                      <SourceEditor :suggestion-marks="suggestions.sourceMarks"
+                      <SourceEditor :preferences="editorPreferences" :suggestion-marks="suggestions.sourceMarks"
                         v-if="paneSource(pane.activeId)"
                         :key="`${active.id}:${suggestions.viewKey}`"
                         :ref="(el) => setPaneElement('source', pane.id, el)"

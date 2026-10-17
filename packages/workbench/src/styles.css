@@ -5680,3 +5680,24 @@ div.tano-feature-source {
   min-height: 0;
   flex-direction: column;
 }
+.tano-prose [data-tano-comment] {
+  opacity: 0.55;
+  text-decoration: underline dotted;
+}
+.tano-prose[contenteditable="false"] [data-tano-comment] {
+  display: none;
+}
+@media print {
+  [data-tano-comment] { display: none !important; }
+}
+
+.source-editor .cm-source-highlight,
+.tano-prose .tano-live-source-highlight { background: #fde04766; }
+.source-editor .cm-source-underline,
+.tano-prose .tano-live-source-underline { text-decoration: underline; }
+.source-editor .cm-source-superscript,
+.tano-prose .tano-live-source-superscript { vertical-align: super; font-size: 0.85em; }
+.source-editor .cm-source-subscript,
+.tano-prose .tano-live-source-subscript { vertical-align: sub; font-size: 0.85em; }
+.source-editor .cm-source-inline_comment,
+.tano-prose .tano-live-source-inline_comment { opacity: 0.55; }
