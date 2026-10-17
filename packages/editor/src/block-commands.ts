@@ -4,6 +4,7 @@ import { NodeSelection, TextSelection } from '@milkdown/kit/prose/state';
 import type { Command } from '@milkdown/kit/prose/state';
 import { canTransformBlock, selectedBlocks } from './document-model';
 import { safeResourceUrl } from './enhanced-markdown';
+import { BlockRangeSelection } from './block-selection';
 
 export const blockCommandNames = new Set([
   'paragraph',
@@ -36,6 +37,25 @@ function paragraphs(node: Node, schema: Schema): Node[] {
 /** Keep block conversions and insertions atomic, undoable, and independent of Vue. */
 export function blockCommand(name: string, value?: string, currentTextblock = false): Command {
   return (state, dispatch) => {
+    const selection = state.selection;
+    if (selection instanceof BlockRangeSelection && selection.ranges.length > 1 &&
+      !['toggle', 'tabs', 'columns', 'file', 'embed', 'image', 'horizontal-rule', 'math-block', 'table'].includes(name)) {
+      const tr = state.tr;
+      // Run each contiguous group independently so conversions cannot replace
+      // unselected gaps. Accumulate every step in the same undo transaction.
+      for (const range of [...selection.ranges].reverse()) {
+        const positions = selection.blocks.filter(block => block.pos >= range.$from.pos && block.pos < range.$to.pos)
+          .map(block => tr.mapping.map(block.pos, 1));
+        let current = state.apply(tr);
+        current = current.apply(current.tr.setSelection(BlockRangeSelection.fromBlocks(current.doc, positions)!));
+        if (!blockCommand(name, value)(current, result => {
+          for (const step of result.steps) tr.step(step);
+          tr.setSelection(result.selection.getBookmark().resolve(tr.doc));
+        })) return false;
+      }
+      dispatch?.(tr.scrollIntoView());
+      return true;
+    }
     const blocks =
       currentTextblock && state.selection instanceof TextSelection && state.selection.$from.depth
         ? [{ node: state.selection.$from.parent, pos: state.selection.$from.before() }]

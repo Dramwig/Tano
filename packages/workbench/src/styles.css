@@ -3296,18 +3296,20 @@ button:hover {
   border-top: 1px solid var(--line);
   margin: 31px 0;
 }
-.tano-prose .ProseMirror-selectednode {
+.tano-prose .ProseMirror-selectednode,
+.tano-prose .tano-block-selected {
   outline: none;
   border-radius: 4px;
   background-color: var(--block-selection);
   box-shadow: 0 0 0 4px var(--block-selection);
 }
 /* A table's scroll viewport includes page gutters; highlight only its cells. */
-.tano-prose .tano-table-viewport.ProseMirror-selectednode {
+.tano-prose .tano-table-viewport.ProseMirror-selectednode,
+.tano-prose .tano-table-viewport.tano-block-selected {
   background-color: transparent;
   box-shadow: none;
 }
-.tano-prose .tano-table-viewport.ProseMirror-selectednode:not(.tano-block-drag-source) > .tableWrapper > table > tbody > tr > :is(th, td) {
+.tano-prose .tano-table-viewport:is(.ProseMirror-selectednode, .tano-block-selected):not(.tano-block-drag-source) > .tableWrapper > table > tbody > tr > :is(th, td) {
   box-shadow: inset 0 0 0 100vmax var(--block-selection);
 }
 .tano-prose .tano-math.ProseMirror-selectednode.tano-editor-active,
@@ -3315,10 +3317,21 @@ button:hover {
   background-color: transparent;
   box-shadow: none;
 }
+.tano-prose.ProseMirror-hideselection ::selection,
 .tano-prose .ProseMirror-selectednode::selection,
-.tano-prose .ProseMirror-selectednode ::selection {
+.tano-prose .ProseMirror-selectednode ::selection,
+.tano-prose .tano-block-selected::selection,
+.tano-prose .tano-block-selected ::selection {
   background: transparent;
 }
+.tano-block-selection-box {
+  position: fixed;
+  z-index: 90;
+  pointer-events: none;
+  border: none;
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+}
+.tano-block-selection-box[hidden] { display: none; }
 .tano-prose .tano-block-drag-source {
   opacity: 0.3;
   background-color: transparent;

@@ -1156,7 +1156,7 @@ it('clears a selected column block when pressing document space outside it witho
   expect(errors).toEqual([]);
 });
 
-it('preserves block selection for its contents, controls, right clicks and modified clicks', async () => {
+it('preserves block selection for controls, right clicks and modified clicks', async () => {
   const { editor, errors } = await mount('Selected **content**\n\nOutside\n');
   const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
   const handle = root.querySelector<HTMLButtonElement>('.tano-block-handle')!;
@@ -1164,7 +1164,6 @@ it('preserves block selection for its contents, controls, right clicks and modif
   const selected = view.state.selection;
   const surface = view.dom.parentElement!.parentElement!;
   for (const [target, options] of [
-    [view.dom.querySelector('strong')!, {}],
     [handle, {}],
     [surface, { button: 2 }],
     [surface, { shiftKey: true }],
@@ -1172,6 +1171,26 @@ it('preserves block selection for its contents, controls, right clicks and modif
     target.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, ...options }));
     expect(view.state.selection.eq(selected)).toBe(true);
   }
+  expect(errors).toEqual([]);
+});
+
+it('releases a selected block on text pointerdown without preventing native text selection', async () => {
+  const content = 'Selected **content**\n\nOutside\n';
+  const { editor, value, errors } = await mount(content);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  root.querySelector<HTMLButtonElement>('.tano-block-handle')!.click();
+  await nextTick();
+  expect(root.querySelector('.ProseMirror-selectednode')).not.toBeNull();
+  expect(document.querySelector('.block-context-menu')).not.toBeNull();
+  const press = new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 });
+  view.dom.querySelector('strong')!.dispatchEvent(press);
+  await nextTick();
+  expect(press.defaultPrevented).toBe(false);
+  expect(view.state.selection).toBeInstanceOf(TextSelection);
+  expect(root.querySelector('.ProseMirror-selectednode')).toBeNull();
+  expect(document.querySelector('.block-context-menu')).toBeNull();
+  expect(value.value).toBe(content);
+  expect(editor.value!.canUndo()).toBe(false);
   expect(errors).toEqual([]);
 });
 
@@ -3797,6 +3816,41 @@ describe('Markdown editor round trips', () => {
     expect(errors).toEqual([]);
   });
 
+  it.each([
+    { left: 320, top: 100, x: 122, y: 100 },
+    { left: 12, top: 100, x: 38, y: 100 },
+    { left: 320, top: 750, x: 122, y: 352 },
+  ])('selects a block and opens its handle menu within the viewport at $left, $top', async ({ left, top, x, y }) => {
+    const content = 'First paragraph.\n\n- [ ] One\n- [ ] Two\n';
+    const { value, editor, errors } = await mount(content);
+    const handle = root.querySelectorAll<HTMLButtonElement>('.tano-block-handle')[1]!;
+    const rect = vi.spyOn(handle, 'getBoundingClientRect').mockReturnValue(new DOMRect(left, top, 18, 24));
+    const width = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(190);
+    const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(408);
+    try {
+      handle.click();
+      await nextTick();
+      await nextTick();
+      const menu = document.querySelector<HTMLElement>('.block-context-menu')!;
+      expect(root.querySelector('ul')?.classList.contains('ProseMirror-selectednode')).toBe(true);
+      expect(handle.getAttribute('aria-haspopup')).toBe('menu');
+      expect(menu.style.left).toBe(`${x}px`);
+      expect(menu.style.top).toBe(`${y}px`);
+      expect(menu.contains(document.activeElement)).toBe(true);
+      menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      await nextTick();
+      expect(document.querySelector('.block-context-menu')).toBeNull();
+      expect(root.querySelector('ul')?.classList.contains('ProseMirror-selectednode')).toBe(true);
+      expect(value.value).toBe(content);
+      expect(editor.value!.canUndo()).toBe(false);
+      expect(errors).toEqual([]);
+    } finally {
+      rect.mockRestore();
+      width.mockRestore();
+      height.mockRestore();
+    }
+  });
+
   it('opens the block menu from the gutter handle and duplicates only that block', async () => {
     const { value, errors } = await mount('First paragraph.\n\nSecond paragraph.\n');
     const handle = root.querySelectorAll<HTMLButtonElement>('.tano-block-handle')[1]!;
@@ -3812,6 +3866,70 @@ describe('Markdown editor round trips', () => {
     await nextTick();
     expect(value.value).toBe('First paragraph.\n\nSecond paragraph.\n\nSecond paragraph.\n');
     expect(document.querySelector('.block-context-menu')).toBeNull();
+    expect(errors).toEqual([]);
+  });
+
+  it.each([
+    ['paragraph', 'Text with **bold** and [link](https://example.com).'],
+    ['heading', '## Heading'],
+    ['list', '- One\n- Two'],
+    ['table', '| Name | Value |\n| --- | --- |\n| A | 1 |'],
+    ['quote', '> Quoted **text**'],
+    ['toggle', '<details>\n<summary>Details</summary>\n\nBody\n\n</details>'],
+  ])('temporarily reveals an entire %s from the block menu without changing Markdown or undo', async (_kind, block) => {
+    const content = `${block}\n\nOutside.\n`;
+    const { editor, value, revealMarkdown, errors } = await mount(content);
+    revealMarkdown.value = false;
+    await nextTick();
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    const original = view.state.doc;
+    root.querySelector('.tano-block-handle')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    await nextTick();
+    [...document.querySelectorAll<HTMLButtonElement>('.block-context-menu button')]
+      .find(button => button.textContent?.includes('临时显示 Markdown 源码'))!.click();
+    await nextTick();
+    const source = root.querySelector<HTMLElement>('pre[data-tano-live-source]')!;
+    expect(source).not.toBeNull();
+    expect(source.textContent).not.toContain('Outside.');
+    expect(view.state.doc.childCount).toBe(2);
+    expect(view.state.doc.firstChild!.type.name).toBe('tano_live_source');
+    expect(document.querySelector('.block-context-menu')).toBeNull();
+    expect(value.value).toBe(content);
+    expect(editor.value!.canUndo()).toBe(false);
+    source.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    expect(root.querySelector('pre[data-tano-live-source]')).toBe(source);
+    // An unfocusable blank area must dismiss the view even without a blur event.
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    await nextTick();
+    expect(root.querySelector('pre[data-tano-live-source]')).toBeNull();
+    expect(view.state.doc.eq(original)).toBe(true);
+    expect(value.value).toBe(content);
+    expect(editor.value!.canUndo()).toBe(false);
+    expect(errors).toEqual([]);
+  });
+
+  it('edits a nested block in temporary source and restores it when selecting another block', async () => {
+    const { editor, value, errors } = await mount('> Child **bold**\n\nOutside.\n');
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    root.querySelector('blockquote > p')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    await nextTick();
+    [...document.querySelectorAll<HTMLButtonElement>('.block-context-menu button')]
+      .find(button => button.textContent?.includes('临时显示 Markdown 源码'))!.click();
+    await nextTick();
+    expect(root.querySelector('blockquote pre[data-tano-live-source]')?.textContent).toBe('Child **bold**');
+    const from = view.state.selection.$from.start();
+    view.dispatch(view.state.tr.insertText('Updated', from, from + 'Child'.length));
+    await nextTick();
+    view.dispatch(view.state.tr.setSelection(TextSelection.atEnd(view.state.doc)));
+    await nextTick();
+    expect(root.querySelector('pre[data-tano-live-source]')).toBeNull();
+    expect(root.querySelector('blockquote > p')?.textContent).toBe('Updated bold');
+    expect(root.querySelector('blockquote strong')?.textContent).toBe('bold');
+    expect(value.value).toContain('> Updated **bold**');
+    expect(value.value).toContain('Outside.');
+    expect(editor.value!.undoLastChange()).toBe(true);
+    await nextTick();
+    expect(value.value).toContain('Child **bold**');
     expect(errors).toEqual([]);
   });
 
@@ -3900,6 +4018,7 @@ describe('Markdown editor round trips', () => {
       expect(root.querySelector('.tano-block-drag-source')).toBeNull();
       expect(root.querySelector('.tano-block-drag-preview')).toBeNull();
       expect(root.querySelector('.ProseMirror-selectednode')).toBeNull();
+      expect(document.querySelector('.block-context-menu')).toBeNull();
       handles[0].click(); // An intentional click still selects the moved block.
       expect(root.querySelector('.ProseMirror-selectednode')?.textContent).toContain(text);
       expect(editor.value!.undoLastChange()).toBe(true);

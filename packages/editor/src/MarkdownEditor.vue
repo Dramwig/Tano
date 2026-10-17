@@ -375,9 +375,11 @@ let applying = false;
 let runtimeRevision = 0;
 let transitioningSource = false;
 let sourceActivationPending = false;
+let selectingWithPointer = false;
+function endPointerSelection() { selectingWithPointer = false; }
 let bridgeView: EditorView | undefined;
 let localSource:
-  | { kind: 'block'; id: string; original: Node; initial: string; style: Record<string, string> | null }
+  | { kind: 'block'; id: string; original: Node; initial: string; style: Record<string, string> | null; dismissOnOutside?: boolean }
   | { kind: 'inline'; id: string; original: Fragment; initial: string }
   | { kind: 'footnote-label'; id: string; initial: string; createdParagraph: boolean }
   | undefined;
@@ -1650,7 +1652,7 @@ const bridge = $prose(
           const finished = finishLocalSourceTransaction(ctx, state);
           if (!finished) return null;
           const next =
-            bridgeView?.hasFocus() &&
+            bridgeView?.hasFocus() && !selectingWithPointer &&
             !transactions.some((transaction) => transaction.getMeta('tanoBlockContextSelect')) &&
             !props.readonly && props.revealMarkdown !== false
               ? selectedSourceTransaction(ctx, state, finished.tr)
@@ -1667,6 +1669,7 @@ const bridge = $prose(
         if (
           !bridgeView?.hasFocus() ||
           transitioningSource ||
+          selectingWithPointer ||
           applying ||
           disposed ||
           props.readonly ||
@@ -1863,6 +1866,7 @@ const bridge = $prose(
         },
         handleDOMEvents: {
           mousedown(view, event) {
+            if (event.button === 0) selectingWithPointer = true;
             if (
               event.button === 0 &&
               (event.ctrlKey || event.metaKey) &&
@@ -1961,6 +1965,11 @@ const bridge = $prose(
             return true;
           },
           click(_view, event) {
+            endPointerSelection();
+            // A native drag also ends with a click. Keep its text range instead
+            // of replacing the heading/link/code DOM with an editable source.
+            if (_view.state.selection instanceof TextSelection && !_view.state.selection.empty &&
+                event.button === 0 && !event.ctrlKey && !event.metaKey) return false;
             if (jumpToFootnote(_view, event)) {
               event.preventDefault();
               return true;
@@ -2321,6 +2330,9 @@ const commentMarks = $prose(() => new Plugin({
 }));
 
 onMounted(async () => {
+  window.addEventListener('mouseup', endPointerSelection);
+  window.addEventListener('blur', endPointerSelection);
+  window.addEventListener('pointerdown', dismissBlockSourceOnPointer, true);
   window.addEventListener('pointerdown', dismissBlockMenuOnPointer, true);
   window.addEventListener('contextmenu', dismissBlockMenuOnContext);
   window.addEventListener('scroll', dismissBlockMenuOnScroll, true);
@@ -2380,7 +2392,7 @@ onMounted(async () => {
           ),
         ),
       )
-      .use($prose(() => blockControls(() => !!props.readonly, () => preferences().folding, () => commandEnabled('columns', props.enabledLevels, policy().features))))
+      .use($prose(() => blockControls(() => !!props.readonly, () => preferences().folding, () => commandEnabled('columns', props.enabledLevels, policy().features), openBlockMenu)))
       .use($prose(() => emptyBlockDeletion(() => !!props.readonly)))
       .use(
         $prose(() =>
@@ -2692,7 +2704,7 @@ function blockIndexFromEvent(view: EditorView, target: EventTarget | null): numb
   return null;
 }
 
-function openBlockMenu(event: MouseEvent) {
+function openBlockMenu(event: MouseEvent, anchor?: HTMLElement) {
   if (!editor || props.readonly || disposed) return;
   editor.action((ctx) => {
     const view = ctx.get(editorViewCtx);
@@ -2730,13 +2742,19 @@ function openBlockMenu(event: MouseEvent) {
       y: Math.max(8, event.clientY),
       doc: view.state.doc,
     };
+    const openedMenu = blockMenu.value;
     void nextTick(() => {
       const menu = blockMenuElement.value;
-      if (!menu || !blockMenu.value) return;
+      if (!menu || blockMenu.value !== openedMenu) return;
+      const bounds = anchor?.getBoundingClientRect();
+      // Handle clicks open beside the block; right clicks stay at the pointer.
+      const left = bounds ? bounds.left - menu.offsetWidth - 8 : openedMenu.x;
+      const x = bounds && left < 8 ? bounds.right + 8 : left;
+      const y = bounds?.top ?? openedMenu.y;
       blockMenu.value = {
-        ...blockMenu.value,
-        x: Math.min(blockMenu.value.x, Math.max(8, window.innerWidth - menu.offsetWidth - 8)),
-        y: Math.min(blockMenu.value.y, Math.max(8, window.innerHeight - menu.offsetHeight - 8)),
+        ...openedMenu,
+        x: Math.max(8, Math.min(x, window.innerWidth - menu.offsetWidth - 8)),
+        y: Math.max(8, Math.min(y, window.innerHeight - menu.offsetHeight - 8)),
       };
       menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
     });
@@ -2794,7 +2812,19 @@ async function blockMenuAction(action: string) {
     if (!view.state.doc.eq(current.doc)) return;
     const { doc, schema } = view.state;
     const { node, pos, parent } = blockTree(doc)[current.index]!;
-    if (action === 'duplicate') {
+    if (action === 'source') {
+      const tr = blockNodeSourceTransaction(ctx, view.state, { node, pos }, view.state.tr);
+      if (localSource?.kind === 'block') localSource.dismissOnOutside = true;
+      // Revealing syntax is a view change, including when automatic reveal is off.
+      applying = true;
+      transitioningSource = true;
+      try {
+        view.dispatch(tr.scrollIntoView());
+      } finally {
+        applying = false;
+        transitioningSource = false;
+      }
+    } else if (action === 'duplicate') {
       const insertPos = pos + node.nodeSize;
       const tr = view.state.tr.insert(insertPos, node);
       tr.setSelection(NodeSelection.create(tr.doc, insertPos));
@@ -2832,6 +2862,17 @@ function onBlockMenuKeydown(event: KeyboardEvent) {
     : current < 0 ? (event.key === 'ArrowDown' ? 0 : items.length - 1)
       : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
   items[next]?.focus();
+}
+
+function dismissBlockSourceOnPointer(event: PointerEvent) {
+  if (!editor || disposed || localSource?.kind !== 'block' || !localSource.dismissOnOutside) return;
+  editor.action(ctx => {
+    const view = ctx.get(editorViewCtx);
+    const source = currentSource(view);
+    const dom = source && view.nodeDOM(source.pos);
+    if (dom instanceof globalThis.Node && event.target instanceof globalThis.Node && dom.contains(event.target)) return;
+    finishLocalSource(ctx, view);
+  });
 }
 
 function dismissBlockMenuOnPointer(event: PointerEvent) {
@@ -3135,6 +3176,9 @@ onBeforeUnmount(() => {
 
   closeLinkPanel();
   stopOtherLinkPanel?.();
+  window.removeEventListener('mouseup', endPointerSelection);
+  window.removeEventListener('blur', endPointerSelection);
+  window.removeEventListener('pointerdown', dismissBlockSourceOnPointer, true);
   window.removeEventListener('pointerdown', dismissBlockMenuOnPointer, true);
   window.removeEventListener('contextmenu', dismissBlockMenuOnContext);
   window.removeEventListener('scroll', dismissBlockMenuOnScroll, true);
@@ -3319,6 +3363,7 @@ onBeforeUnmount(() => {
     >
       <div class="block-context-heading" role="presentation">块操作</div>
       <button role="menuitem" type="button" @click="blockMenuAction('copy')"><span aria-hidden="true">⧉</span>复制 Markdown</button>
+      <button role="menuitem" type="button" @click="blockMenuAction('source')"><Braces :size="15" aria-hidden="true" />临时显示 Markdown 源码</button>
       <button role="menuitem" type="button" @click="blockMenuAction('duplicate')"><span aria-hidden="true">▣</span>创建副本</button>
       <div class="menu-divider" role="separator" />
       <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('paragraph')" @click="blockMenuAction('paragraph')"><span aria-hidden="true">¶</span>转为正文</button>

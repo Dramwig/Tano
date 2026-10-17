@@ -1,10 +1,12 @@
-import { NodeSelection, Plugin, PluginKey, TextSelection } from '@milkdown/kit/prose/state';
+import { NodeSelection, Plugin, PluginKey, Selection, TextSelection } from '@milkdown/kit/prose/state';
 import type { EditorState, Transaction } from '@milkdown/kit/prose/state';
 import type { Node as ProseMirrorNode } from '@milkdown/kit/prose/model';
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
 import { blockType, blockTypes, featureLevel } from './document-model';
 import { blockTree, moveBlockTo, moveBlockBeside, moveBlockSibling, indentBlock, outdentBlock } from './block-tree';
 import { closeHistory } from '@milkdown/kit/prose/history';
+import { moveBlocksTo } from './block-tree';
+import { BlockRangeSelection } from './block-selection';
 
 /** Move one top-level Markdown block in a single, undoable editor transaction. */
 export function moveBlock(
@@ -116,8 +118,14 @@ function firstLineCenter(element: Element, block: DOMRect): number {
 }
 
 /** A gutter beside the document, outside contenteditable and Markdown serialization. */
-export function blockControls(readonly: () => boolean, folding: () => boolean = () => true, columns: () => boolean = () => true) {
+export function blockControls(
+  readonly: () => boolean,
+  folding: () => boolean = () => true,
+  columns: () => boolean = () => true,
+  openMenu?: (event: MouseEvent, handle: HTMLButtonElement) => void,
+) {
   const foldingKey = new PluginKey<Set<string>>('tano-folding');
+  let dragDecoration: { doc: ProseMirrorNode; positions: number[] } | null = null;
   return new Plugin({
     key: foldingKey,
     state: {
@@ -150,6 +158,15 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       },
     },
     props: {
+      createSelectionBetween(view, $anchor, $head) {
+        const selected = view.state.selection;
+        if (!(selected instanceof BlockRangeSelection)) return null;
+        // Browsers normalize block-boundary DOM ranges to their first/last text
+        // positions. Reading that same range must not discard whole-block mode.
+        const text = TextSelection.between(selected.$anchor, selected.$head);
+        return ($anchor.pos === selected.anchor && $head.pos === selected.head) ||
+          ($anchor.pos === text.anchor && $head.pos === text.head) ? selected : null;
+      },
       handleClickOn(_view, _pos, node, _nodePos, event, direct) {
         // Leaf blocks have no text caret, so ProseMirror selects the whole node on click.
         // Whole-block selection is reserved for the gutter handle and context menu.
@@ -157,9 +174,17 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
           (node.isAtom || (event.target instanceof Element && !!event.target.closest('.tano-mermaid')));
       },
       decorations(state) {
-        if (!folding()) return DecorationSet.empty;
+        const decorations: Decoration[] = state.selection instanceof BlockRangeSelection
+          ? state.selection.blocks.map(({ pos, node }) => Decoration.node(pos, pos + node.nodeSize, { class: 'tano-block-selected' })) : [];
+        if (dragDecoration?.doc.eq(state.doc)) {
+          for (const pos of dragDecoration.positions) {
+            const node = state.doc.nodeAt(pos);
+            if (node) decorations.push(Decoration.node(pos, pos + node.nodeSize, { class: 'tano-block-drag-source' }));
+          }
+        }
+        if (!folding()) return DecorationSet.create(state.doc, decorations);
         const folded = foldingKey.getState(state) ?? new Set<string>();
-        if (!folded.size) return DecorationSet.empty;
+        if (!folded.size) return DecorationSet.create(state.doc, decorations);
         const hidden = new Set<number>();
         const tree = blockTree(state.doc);
         const foldTargets = foldingTree(state.doc, tree);
@@ -177,7 +202,6 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
             }
           }
         });
-        const decorations: Decoration[] = [];
         tree.forEach(({ node, pos: offset }) => {
           if (hidden.has(offset))
             decorations.push(Decoration.node(offset, offset + node.nodeSize, { class: 'tano-folded-heading-content' }));
@@ -210,7 +234,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       let sourceIndex: number | null = null;
       let startingDoc: EditorState['doc'] | null = null;
       let dragging = false;
-      let draggedElement: Element | null = null;
+      let sourcePositions: number[] = [];
       let dragPreview: HTMLElement | null = null;
       let pendingPointer: {
         id: number;
@@ -232,6 +256,14 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       let indexedDoc: ProseMirrorNode | undefined;
       let layoutFrame: number | undefined;
       let destroyed = false;
+      const marqueeBox = document.createElement('div');
+      marqueeBox.className = 'tano-block-selection-box';
+      marqueeBox.hidden = true;
+      marqueeBox.setAttribute('aria-hidden', 'true');
+      host.append(marqueeBox);
+      let marquee: { id: number; x: number; y: number; active: boolean; state: EditorState } | null = null;
+      let suppressMarqueeClick = false;
+      let marqueeClickTimer: number | undefined;
 
       function blockKey(index: number) {
         const { node, pos } = foldEntries[index]!;
@@ -402,9 +434,10 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
           handle.dataset.blockDepth = String(entries[index]!.depth);
           handle.setAttribute(
             'aria-label',
-            `点击选中第 ${index + 1} 个${kind.endsWith('块') ? kind : `${kind}块`}，拖动调整顺序`,
+            `点击选中第 ${index + 1} 个${kind.endsWith('块') ? kind : `${kind}块`}${openMenu ? '并打开菜单' : ''}，拖动调整顺序`,
           );
-          handle.title = `${kind}；点击选中；拖动换位；Alt+↑/↓ 同级排序；Alt+←/→ 移出/移入容器`;
+          handle.title = `${kind}；点击选中${openMenu ? '并打开菜单' : ''}；Shift+点击连续多选；Ctrl/Cmd+点击增减选择；拖动换位；Alt+↑/↓ 同级排序；Alt+←/→ 移出/移入容器`;
+          if (openMenu) handle.setAttribute('aria-haspopup', 'menu');
         }
         if (hoveredIndex != null && hoveredIndex >= count) hoveredIndex = null;
         if (hoveredFoldIndex != null && hoveredFoldIndex >= foldEntries.length) hoveredFoldIndex = null;
@@ -550,21 +583,23 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
 
       function clearDragVisuals() {
         removeDragPreview();
-        draggedElement?.classList.remove('tano-block-drag-source');
-        draggedElement = null;
         marker.hidden = true;
         host.classList.remove('tano-block-dragging');
       }
 
       function clearDrag() {
+        const refresh = dragDecoration?.doc.eq(view.state.doc);
+        dragDecoration = null;
         clearDragVisuals();
         dragging = false;
         pendingPointer = null;
         sourceIndex = null;
+        sourcePositions = [];
         startingDoc = null;
         hoveredIndex = null;
         hoveredFoldIndex = null;
         showHoveredHandle();
+        if (refresh && !destroyed) view.dispatch(view.state.tr.setMeta('addToHistory', false));
       }
 
       function onHover(event: MouseEvent) {
@@ -615,19 +650,29 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
         const { selection, doc } = view.state;
         const target = event.target;
         if (event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey ||
-          view.composing || view.dragging || pendingPointer ||
-          !(selection instanceof NodeSelection) || !selection.node.isBlock ||
+          view.composing || view.dragging || pendingPointer || marquee ||
+          !((selection instanceof NodeSelection && selection.node.isBlock) || selection instanceof BlockRangeSelection) ||
           !(target instanceof Element)) return;
         // Keep the selection available to block actions and floating editor controls.
         if (target.closest('.tano-block-controls, .tano-editor-panel, [role="menu"], button, input, textarea, select')) return;
-        const selectedDOM = view.nodeDOM(selection.from);
-        if (selectedDOM?.contains(target)) return;
+        const selectedDOM = selection instanceof BlockRangeSelection
+          ? selection.blocks.map(block => view.nodeDOM(block.pos)).find(dom => dom?.contains(target))
+          : view.nodeDOM(selection.from);
+        if (selectedDOM?.contains(target) && ((selection instanceof NodeSelection && selection.node.isAtom) ||
+          target.closest('[contenteditable]')?.getAttribute('contenteditable') === 'false')) return;
+        // Clear whole-block selection before ProseMirror's mousedown handler can
+        // treat the selected node as draggable. Native dragging then selects text.
         // Backgrounds and noneditable previews do not update ProseMirror's selection.
         // Let the subsequent native click still place the caret or start a new selection.
         const caret = TextSelection.findFrom(selection.$from, 1, true) ??
           TextSelection.findFrom(doc.resolve(selection.to), -1, true);
-        if (caret) view.dispatch(view.state.tr.setSelection(caret)
-          .setMeta('addToHistory', false).setMeta('tanoKeepNodeView', true));
+        if (caret) {
+          view.dispatch(view.state.tr.setSelection(caret)
+            .setMeta('addToHistory', false).setMeta('tanoKeepNodeView', true));
+          // The menu owns focus, so dispatch alone leaves the old DOM range in
+          // place. Sync it before native mousedown can drag that entire range.
+          if (selectedDOM?.contains(target)) view.focus();
+        }
       }
 
       function onEditorKeyDown(event: KeyboardEvent) {
@@ -653,8 +698,36 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
         const pos = positions[index];
         if (pos == null) return;
         event.preventDefault();
+        if (event.ctrlKey || event.metaKey) {
+          const { selection: current, doc } = view.state;
+          const positions = current instanceof BlockRangeSelection ? current.blocks.map(block => block.pos)
+            : current instanceof NodeSelection && current.node.isBlock ? [current.from] : [];
+          const selection = BlockRangeSelection.toggleBlock(doc, positions, pos,
+            current instanceof BlockRangeSelection ? current.anchorBlock : positions[0]);
+          const caret = TextSelection.findFrom(doc.resolve(pos), 1, true) ?? TextSelection.findFrom(doc.resolve(pos), -1, true);
+          view.dispatch(view.state.tr.setSelection(selection ?? caret ?? Selection.near(doc.resolve(pos)))
+            .setMeta('addToHistory', false).setMeta('tanoKeepNodeView', true));
+          view.focus();
+          return;
+        }
+        if (event.shiftKey) {
+          const current = view.state.selection;
+          const anchor = current instanceof BlockRangeSelection ? current.anchorBlock
+            : current instanceof NodeSelection ? current.from
+              : entries.find(entry => entry.pos <= current.from && current.from < entry.pos + entry.node.nodeSize)?.pos;
+          const selection = BlockRangeSelection.betweenBlocks(view.state.doc, anchor ?? pos, pos);
+          if (selection) view.dispatch(view.state.tr.setSelection(selection).setMeta('addToHistory', false));
+          view.focus();
+          return;
+        }
+        if (view.state.selection instanceof BlockRangeSelection &&
+          view.state.selection.blocks.some(block => block.pos === pos)) {
+          view.focus();
+          return;
+        }
         view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));
         view.focus();
+        openMenu?.(event, handle);
       }
 
       function onFoldClick(event: MouseEvent) {
@@ -672,10 +745,12 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       function findInsertion(x: number, y: number) {
         let parentPos = -1;
         let depth = 0;
-        const source = sourceIndex == null ? null : entries[sourceIndex];
         // The horizontal inset chooses the parent. A container header remains a sibling target.
         for (const entry of entries) {
-          if (entry.parentPos < 0 || (source && entry.parentPos >= source.pos && entry.parentPos < source.pos + source.node.nodeSize)) continue;
+          if (entry.parentPos < 0 || sourcePositions.some(pos => {
+            const node = view.state.doc.nodeAt(pos);
+            return node && entry.parentPos >= pos && entry.parentPos < pos + node.nodeSize;
+          })) continue;
           const dom = view.nodeDOM(entry.parentPos);
           const content = dom instanceof Element
             ? dom.matches('blockquote') ? dom : dom.querySelector(':scope > .tano-enhanced-content')
@@ -701,7 +776,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
 
       function findDropTarget(x: number, y: number) {
         const source = sourceIndex == null ? null : entries[sourceIndex];
-        if (source && columns() && window.innerWidth > 640) {
+        if (source && sourcePositions.length === 1 && columns() && window.innerWidth > 640) {
           // Prefer the deepest visible block. Top/bottom edges keep ordinary vertical sorting.
           for (let index = entries.length - 1; index >= 0; index--) {
             const target = entries[index]!;
@@ -731,7 +806,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
           marker.style.height = `${target.rect.height}px`;
           return;
         }
-        marker.hidden = !source || target.y == null || !moveBlockTo(view.state, source.pos, target.parentPos, target.index);
+        marker.hidden = !source || target.y == null || !moveBlocksTo(view.state, sourcePositions, target.parentPos, target.index);
         if (marker.hidden) return;
         marker.style.height = '2px';
         marker.style.top = `${target.y! - hostRect.top}px`;
@@ -744,6 +819,9 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
         if (!element) return;
         dragging = true;
         sourceIndex = index;
+        const selection = view.state.selection;
+        sourcePositions = selection instanceof BlockRangeSelection && selection.blocks.some(block => block.pos === positions[index])
+          ? selection.blocks.map(block => block.pos) : [positions[index]!];
         startingDoc = view.state.doc;
         // Keep the preview outside contenteditable so it cannot enter Markdown.
         const preview = document.createElement('div');
@@ -752,20 +830,23 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
         preview.inert = true;
         preview.style.width = `${element.getBoundingClientRect().width}px`;
         preview.style.fontSize = getComputedStyle(view.dom).fontSize;
-        const copy = element.cloneNode(true) as HTMLElement;
-        for (const item of [copy, ...copy.querySelectorAll('*')]) {
-          item.removeAttribute('id');
-          item.removeAttribute('contenteditable');
-          item.classList.remove('ProseMirror-selectednode', 'tano-block-drag-source');
+        const draggedElements = sourcePositions.map(pos => view.nodeDOM(pos)).filter((node): node is Element => node instanceof Element);
+        for (const element of draggedElements) {
+          const copy = element.cloneNode(true) as HTMLElement;
+          for (const item of [copy, ...copy.querySelectorAll('*')]) {
+            item.removeAttribute('id');
+            item.removeAttribute('contenteditable');
+            item.classList.remove('ProseMirror-selectednode', 'tano-block-selected', 'tano-block-drag-source');
+          }
+          copy.querySelectorAll('.tano-column-controls').forEach(element => element.remove());
+          preview.append(copy);
         }
-        copy.querySelectorAll('.tano-column-controls').forEach(element => element.remove());
-        preview.append(copy);
         host.append(preview);
         dragPreview = preview;
         movePreview(x, y);
-        draggedElement = element;
-        element.classList.add('tano-block-drag-source');
+        dragDecoration = { doc: view.state.doc, positions: sourcePositions };
         host.classList.add('tano-block-dragging');
+        view.dispatch(view.state.tr.setMeta('addToHistory', false));
         showHoveredHandle();
       }
 
@@ -777,6 +858,9 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
         flushLayout();
         const handle = (event.target as Element).closest<HTMLButtonElement>('.tano-block-handle');
         if (!handle || readonly() || event.button !== 0) return;
+        // Keep the custom range focused; native button focus would turn its DOM
+        // range into a text selection before the grouped drag starts.
+        if (view.state.selection instanceof BlockRangeSelection) event.preventDefault();
         pendingPointer = {
           id: event.pointerId,
           index: Number(handle.dataset.blockIndex),
@@ -787,7 +871,64 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
         handle.setPointerCapture?.(event.pointerId);
       }
 
+      function startMarquee(event: PointerEvent) {
+        if (readonly() || event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || view.composing ||
+          !(event.target instanceof Element) ||
+          event.target.closest('button, input, textarea, select, a, .document-cover, .tano-block-controls, .tano-editor-panel, [role="menu"]')) return;
+        const rect = view.dom.getBoundingClientRect();
+        // The left gutter includes the space beside the document title. Only
+        // editor block entries participate in hit testing, never the page title.
+        const surface = hoverSurface.getBoundingClientRect();
+        if (event.clientX >= rect.left || event.clientY < surface.top || event.clientY > rect.bottom + 12) return;
+        flushLayout();
+        marquee = { id: event.pointerId, x: event.clientX, y: event.clientY, active: false, state: view.state };
+        event.preventDefault();
+      }
+
+      function moveMarquee(event: PointerEvent) {
+        const current = marquee;
+        if (!current || current.id !== event.pointerId) return;
+        if (readonly() || !current.state.doc.eq(view.state.doc)) { cancelMarquee(); return; }
+        if (!current.active && Math.hypot(event.clientX - current.x, event.clientY - current.y) < 5) return;
+        current.active = true;
+        event.preventDefault();
+        const top = Math.min(current.y, event.clientY), bottom = Math.max(current.y, event.clientY);
+        const left = Math.min(current.x, event.clientX), right = Math.max(current.x, event.clientX);
+        const hits = entries.filter((entry, index) => {
+          if (entry.parentPos !== -1) return false;
+          const rect = blockRect(index);
+          return rect && rect.height > 0 && rect.bottom > top && rect.top < bottom && right >= rect.left - 60 && left < rect.right;
+        });
+        marqueeBox.hidden = false;
+        Object.assign(marqueeBox.style, { left: `${left}px`, top: `${top}px`, width: `${right - left}px`, height: `${bottom - top}px` });
+        if (!hits.length) {
+          if (!view.state.selection.eq(current.state.selection))
+            view.dispatch(view.state.tr.setSelection(current.state.selection).setMeta('addToHistory', false).setMeta('tanoKeepNodeView', true));
+          return;
+        }
+        const first = hits[0]!.pos, last = hits.at(-1)!.pos;
+        const selection = BlockRangeSelection.betweenBlocks(view.state.doc,
+          event.clientY >= current.y ? first : last, event.clientY >= current.y ? last : first)!;
+        if (!selection.eq(view.state.selection)) view.dispatch(view.state.tr.setSelection(selection).setMeta('addToHistory', false));
+      }
+
+      function cancelMarquee() {
+        const current = marquee;
+        marquee = null;
+        marqueeBox.hidden = true;
+        if (current?.active && current.state.doc.eq(view.state.doc) && !view.state.selection.eq(current.state.selection))
+          view.dispatch(view.state.tr.setSelection(current.state.selection).setMeta('addToHistory', false).setMeta('tanoKeepNodeView', true));
+      }
+
+      function onMarqueeClick(event: MouseEvent) {
+        if (!suppressMarqueeClick) return;
+        suppressMarqueeClick = false;
+        event.preventDefault();
+        event.stopPropagation();
+      }
+
       function onPointerMove(event: PointerEvent) {
+        if (marquee) { moveMarquee(event); return; }
         const pending = pendingPointer;
         if (!pending || event.pointerId !== pending.id) return;
         if (readonly() || !pending.doc.eq(view.state.doc)) {
@@ -806,6 +947,22 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       }
 
       function onPointerUp(event: PointerEvent) {
+        if (marquee?.id === event.pointerId) {
+          const active = marquee.active;
+          marquee = null;
+          marqueeBox.hidden = true;
+          if (active) {
+            event.preventDefault();
+            suppressMarqueeClick = true;
+            marqueeClickTimer = window.setTimeout(() => { suppressMarqueeClick = false; }, 0);
+            view.focus();
+          } else {
+            // Gutter pointerdown defers dismissal so a drag can retain its
+            // starting selection. A release below the drag threshold is a click.
+            dismissBlockSelection(event);
+          }
+          return;
+        }
         const pending = pendingPointer;
         if (!pending || event.pointerId !== pending.id) return;
         const wasDragging = dragging;
@@ -828,10 +985,11 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
           const target = findDropTarget(event.clientX, event.clientY);
           const transaction = target.kind === 'column'
             ? moveBlockBeside(view.state, entries[sourceIndex]!.pos, target.pos, target.side)
-            : moveBlockTo(view.state, entries[sourceIndex]!.pos, target.parentPos, target.index, false);
+            : moveBlocksTo(view.state, sourcePositions, target.parentPos, target.index);
           if (transaction) {
             view.dispatch(closeHistory(transaction.scrollIntoView()));
             view.dispatch(closeHistory(view.state.tr));
+            view.focus();
           }
         }
         if (wasDragging) {
@@ -847,10 +1005,24 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       }
 
       function onPointerCancel(event: PointerEvent) {
+        if (marquee?.id === event.pointerId) cancelMarquee();
         if (pendingPointer?.id === event.pointerId) clearDrag();
       }
 
       function onDragKeyDown(event: KeyboardEvent) {
+        if (event.key === 'Escape' && marquee) {
+          event.preventDefault();
+          event.stopPropagation();
+          cancelMarquee();
+          return;
+        }
+        if (event.key === 'Escape' && !pendingPointer && view.state.selection instanceof BlockRangeSelection) {
+          const caret = TextSelection.findFrom(view.state.selection.$from, 1, true);
+          if (caret) view.dispatch(view.state.tr.setSelection(caret)
+            .setMeta('addToHistory', false).setMeta('tanoKeepNodeView', true));
+          event.preventDefault();
+          return;
+        }
         if (event.key !== 'Escape' || !pendingPointer) return;
         event.preventDefault();
         event.stopPropagation();
@@ -888,12 +1060,15 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
       hoverSurface.addEventListener('mouseover', onHover);
       hoverSurface.addEventListener('mousemove', onHover);
       hoverSurface.addEventListener('mouseleave', onHoverLeave);
+      hoverSurface.addEventListener('pointerdown', startMarquee, true);
       hoverSurface.addEventListener('pointerdown', dismissBlockSelection, true);
+      hoverSurface.addEventListener('click', onMarqueeClick, true);
       window.addEventListener('pointermove', onPointerMove, true);
       window.addEventListener('pointerup', onPointerUp, true);
       window.addEventListener('pointercancel', onPointerCancel, true);
       window.addEventListener('keydown', onDragKeyDown, true);
       window.addEventListener('blur', clearDrag);
+      window.addEventListener('blur', cancelMarquee);
       const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleLayout);
       observer?.observe(view.dom);
       window.addEventListener('resize', scheduleLayout);
@@ -906,12 +1081,17 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
             clearDrag();
           }
           syncControls();
+          if (marquee && !marquee.state.doc.eq(view.state.doc)) cancelMarquee();
+          showHoveredHandle();
           scheduleLayout();
         },
         destroy() {
           destroyed = true;
           if (layoutFrame !== undefined) cancelAnimationFrame(layoutFrame);
           clearDrag();
+          marquee = null;
+          marqueeBox.remove();
+          if (marqueeClickTimer !== undefined) clearTimeout(marqueeClickTimer);
           if (clickResetTimer != null) clearTimeout(clickResetTimer);
           observer?.disconnect();
           window.removeEventListener('resize', scheduleLayout);
@@ -920,6 +1100,7 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
           window.removeEventListener('pointercancel', onPointerCancel, true);
           window.removeEventListener('keydown', onDragKeyDown, true);
           window.removeEventListener('blur', clearDrag);
+          window.removeEventListener('blur', cancelMarquee);
           controls.removeEventListener('pointerdown', onPointerDown);
           controls.removeEventListener('keydown', onKeyDown);
           controls.removeEventListener('click', onHandleClick);
@@ -935,6 +1116,8 @@ export function blockControls(readonly: () => boolean, folding: () => boolean = 
           hoverSurface.removeEventListener('mousemove', onHover);
           hoverSurface.removeEventListener('mouseleave', onHoverLeave);
           hoverSurface.removeEventListener('pointerdown', dismissBlockSelection, true);
+          hoverSurface.removeEventListener('pointerdown', startMarquee, true);
+          hoverSurface.removeEventListener('click', onMarqueeClick, true);
           controls.remove();
         },
       };

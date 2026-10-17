@@ -3,6 +3,7 @@ import { NodeSelection, TextSelection } from '@milkdown/kit/prose/state';
 import type { EditorState } from '@milkdown/kit/prose/state';
 import { sourceStyleRanges } from './source-highlight';
 import { isBlockContainer } from './block-tree';
+import { BlockRangeSelection } from './block-selection';
 import { blockContentStart } from './callout';
 
 // Preserve the editor API while allowing the workbench to load metadata without ProseMirror.
@@ -68,6 +69,7 @@ export function blockType(node: Node): BlockType {
 
 /** Blocks are selected explicitly by handles, or implicitly by a caret / a cross-block range. */
 export function selectedBlocks(state: EditorState) {
+  if (state.selection instanceof BlockRangeSelection) return state.selection.blocks;
   const { from, to, empty } = state.selection;
   const blocks: { node: Node; pos: number }[] = [];
   let parent = state.doc,
