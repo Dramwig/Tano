@@ -14,6 +14,7 @@ import {
 import { basename, isMarkdown, isDataTableFilePath, isWorkspaceInternalPath } from '@tano/protocol';
 import type { FileEntry } from '@tano/protocol';
 import { useWorkspaceStore } from '../stores/workspace';
+import { tableFileId } from '../data-tables';
 
 const emit = defineEmits<{ close: []; 'new-document': []; 'new-table': [] }>();
 const store = useWorkspaceStore();
@@ -26,7 +27,7 @@ const error = ref('');
 const previousFocus = document.activeElement as HTMLElement | null;
 const title = (path: string) => basename(path).replace(/(\.table\.json|\.(md|markdown))$/i, '');
 const openIds = computed(
-  () => new Set(store.tabs.map((tab) => (tab.id.startsWith('table:') ? tab.id.slice(6) : tab.id))),
+  () => new Set(store.tabs.map((tab) => (tab.id.startsWith('table:') ? tableFileId(tab.id) : tab.id))),
 );
 const matches = computed(() => {
   const terms = query.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);

@@ -8,6 +8,9 @@ const props = withDefaults(defineProps<{ compact?: boolean; tabsEnabled?: boolea
   tabsEnabled: true,
 });
 const store = useWorkspaceStore();
+const documentForTab = (id: string) => typeof store.documentForTab === 'function'
+  ? store.documentForTab(id)
+  : store.documents.find(doc => doc.id === id);
 const showTabs = computed(() => props.tabsEnabled);
 // Retain saved layouts and drafts, but expose only the active page without tabs.
 const singlePane = computed(() => props.compact || !showTabs.value);
@@ -133,7 +136,7 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
           @pointerdown.capture="focusPaneFromPointer($event, pane.id)" @focusin="store.focusPane(pane.id)"
         >
           <slot v-if="!singlePane && showTabs && !topTabbar" name="tabs" :pane="pane" :rect="rect" />
-          <slot :pane="pane" :rect="rect" :document="store.documents.find(doc => doc.id === pane.activeId)"
+          <slot :pane="pane" :rect="rect" :document="documentForTab(pane.activeId)"
             :tab="store.tabs.find(tab => tab.id === pane.activeId)" />
         </section>
         <div v-if="preview && store.paneDrop" class="pane-dock-preview" :class="`pane-dock-${store.paneDrop.side}`"

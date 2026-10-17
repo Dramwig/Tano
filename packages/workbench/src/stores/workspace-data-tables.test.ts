@@ -78,6 +78,21 @@ it('opens tables dropped on the tab strip alongside Markdown without editing JSO
   expect(store.documents.map((doc) => doc.id)).not.toContain(id);
 });
 
+it('opens a second tab when a data table is already open', async () => {
+  const id = await store.createDataTable('blank', '项目');
+  const file = store.workspace!.files.find(entry => entry.id === id)!;
+  await store.openFileInNewTab(file);
+  expect(store.tabs).toHaveLength(2);
+  expect(store.tabs.map(tab => tab.path)).toEqual([
+    '项目/未命名数据表.table.json',
+    '项目/未命名数据表.table.json',
+  ]);
+  expect(store.activeId).toMatch(new RegExp(`^table:${id}:`));
+  await store.close(store.activeId);
+  expect(store.tabs).toHaveLength(1);
+  expect(store.activeId).toBe(`table:${id}`);
+});
+
 it('closes the file tab when an invalid table is removed', async () => {
   await adapter.create('损坏.table.json', '{broken');
   await store.refresh();

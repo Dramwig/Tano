@@ -10,6 +10,44 @@ function file(name: string, source: string | Uint8Array) {
   return value;
 }
 
+it('imports Workflowy OPML hierarchy, rich text, notes and completion while removing scripts', async () => {
+  const result = await prepareImport([file('Outline.opml', '<opml version="2.0"><head><title>Tasks</title></head><body><outline text="&lt;b&gt;Project&lt;/b&gt;"><outline text="Done" _complete="true" _note="&lt;p&gt;Line one&lt;/p&gt;&lt;p&gt;Line two&lt;/p&gt;"/><outline text="&lt;script&gt;alert(1)&lt;/script&gt;Next" _complete="false"/></outline></body></opml>')]);
+  expect(result.issues).toEqual([]);
+  expect(result.pages[0].path).toBe('Outline.md');
+  expect(result.pages[0].content).toContain('# Tasks\n\n- **Project**\n  - [x] Done\n    Line one\n    \n    Line two\n  - [ ] Next');
+  expect(result.pages[0].content).not.toMatch(/script|alert/);
+  const invalid = await prepareImport([file('invalid.opml', '<opml><body><outline></body>')]);
+  expect(invalid.pages).toEqual([]);
+  expect(invalid.issues[0].message).toContain('XML');
+});
+
+function workbook(sheet: string) {
+  return zipSync({
+    'xl/workbook.xml': strToU8('<workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Board" r:id="rId1"/><sheet name="Empty" r:id="rId2"/></sheets></workbook>'),
+    'xl/_rels/workbook.xml.rels': strToU8('<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="/xl/worksheets/sheet2.xml"/></Relationships>'),
+    'xl/sharedStrings.xml': strToU8('<sst><si><t>Task</t></si><si><r><t>Build</t></r><r><t> app</t></r></si></sst>'),
+    'xl/worksheets/sheet1.xml': strToU8(sheet),
+    'xl/worksheets/sheet2.xml': strToU8('<worksheet><sheetData/></worksheet>'),
+  });
+}
+
+it('imports Monday Excel sheets with shared strings, sparse cells and cached values', async () => {
+  const result = await prepareImport([file('Monday.xlsx', workbook('<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="inlineStr"><is><t>Status</t></is></c><c r="C1" t="inlineStr"><is><t>Count</t></is></c></row><row r="2"><c r="A2" t="s"><v>1</v></c><c r="C2"><f>1+2</f><v>3</v></c></row><row r="3"><c r="A3" t="inlineStr"><is><t>Next | task</t></is></c><c r="B3" t="b"><v>1</v></c><c r="C3"><f>1+1</f></c></row></sheetData></worksheet>'))]);
+  expect(result.pages).toHaveLength(1);
+  expect(result.pages[0].path).toBe('Monday/1-Board.md');
+  expect(result.pages[0].content).toContain('| Task | Status | Count |');
+  expect(result.pages[0].content).toContain('| Build app |  | 3 |');
+  expect(result.pages[0].content).toContain('| Next \\| task | TRUE |  |');
+  expect(result.issues.map(issue => issue.message).join('\n')).toContain('公式未保存计算结果');
+  expect(result.issues.map(issue => issue.message).join('\n')).toContain('空工作表');
+});
+
+it('rejects Excel sheets exceeding the column limit before allocating sparse rows', async () => {
+  const result = await prepareImport([file('wide.xlsx', workbook('<worksheet><sheetData><row><c r="XFD1"><v>1</v></c></row></sheetData></worksheet>'))]);
+  expect(result.pages).toEqual([]);
+  expect(result.issues[0].message).toContain('200 列');
+});
+
 it('preserves Markdown, decodes UTF-16, parses quoted CSV, and sanitizes HTML', async () => {
   const result = await prepareImport([
     file('note.md', '# Note\r\n\r\n- [ ] Task'),

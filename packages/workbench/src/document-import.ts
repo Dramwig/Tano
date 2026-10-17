@@ -6,7 +6,7 @@ export interface ImportPage { sourcePath: string; path: string; content: string 
 export interface ImportAsset { sourcePath: string; file: File }
 export interface ImportIssue { name: string; message: string }
 export interface PreparedImport { pages: ImportPage[]; assets: ImportAsset[]; issues: ImportIssue[] }
-export const importAccept = '.md,.markdown,.txt,.log,.csv,.tsv,.html,.htm,.docx,.pdf,.epub,.zip,.enex,.json';
+export const importAccept = '.md,.markdown,.txt,.log,.csv,.tsv,.xlsx,.opml,.html,.htm,.docx,.pdf,.epub,.zip,.enex,.json';
 export const importLimits = { fileBytes: 50 * 1024 * 1024, totalBytes: 100 * 1024 * 1024, entries: 2000 };
 const documentExtensions = new Set(importAccept.split(',').map(value => value.slice(1)));
 const extension = (path: string) => path.split('.').at(-1)?.toLowerCase() ?? '';
@@ -81,15 +81,19 @@ async function htmlMarkdown(source: string, sourcePath: string, assets: ImportAs
 
 function cell(value: unknown) { return String(value ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>'); }
 
+function tableMarkdown(rows: string[][]) {
+  if (!rows.length) throw new Error('表格为空');
+  const width = rows.reduce((width, row) => Math.max(width, row.length), 0);
+  if (width > 200 || rows.length > 20000) throw new Error('表格不能超过 200 列或 20,000 行');
+  const row = (values: string[]) => `| ${Array.from({ length: width }, (_, index) => cell(values[index])).join(' | ')} |`;
+  return [row(rows[0]), `| ${Array(width).fill('---').join(' | ')} |`, ...rows.slice(1).map(row)].join('\n') + '\n';
+}
+
 async function csvMarkdown(source: string, delimiter: string) {
   const { default: Papa } = await import('papaparse');
   const result = Papa.parse<string[]>(source, { delimiter, skipEmptyLines: 'greedy' });
   if (result.errors.length) throw new Error(`表格格式无效：${result.errors[0].message}`);
-  if (!result.data.length) throw new Error('表格为空');
-  const width = result.data.reduce((width, row) => Math.max(width, row.length), 0);
-  if (width > 200 || result.data.length > 20000) throw new Error('表格不能超过 200 列或 20,000 行');
-  const row = (values: string[]) => `| ${Array.from({ length: width }, (_, index) => cell(values[index])).join(' | ')} |`;
-  return [row(result.data[0]), `| ${Array(width).fill('---').join(' | ')} |`, ...result.data.slice(1).map(row)].join('\n') + '\n';
+  return tableMarkdown(result.data);
 }
 
 async function archive(bytes: Uint8Array) {
@@ -110,6 +114,78 @@ async function archive(bytes: Uint8Array) {
   }, (failure, result) => failure ? reject(new Error('无法解压文件，请检查 ZIP 是否损坏或加密')) : resolve(result)));
   if (error) throw new Error(error);
   return files;
+}
+
+async function xlsxPages(bytes: Uint8Array, sourcePath: string, issues: ImportIssue[]) {
+  const entries = await archive(bytes);
+  if (!entries['xl/workbook.xml'] || !entries['xl/_rels/workbook.xml.rels']) throw new Error('Excel 文件缺少工作簿信息');
+  const workbook = xmlDocument(decode(entries['xl/workbook.xml']));
+  const relationships = xmlDocument(decode(entries['xl/_rels/workbook.xml.rels']));
+  const targets = new Map([...relationships.getElementsByTagName('Relationship')]
+    .filter(item => item.getAttribute('TargetMode') !== 'External')
+    .map(item => [item.getAttribute('Id'), item.getAttribute('Target') ?? '']));
+  const strings = entries['xl/sharedStrings.xml']
+    ? [...xmlDocument(decode(entries['xl/sharedStrings.xml'])).getElementsByTagName('si')]
+      .map(item => [...item.getElementsByTagName('t')].map(text => text.textContent ?? '').join('')) : [];
+  const prefix = sourcePath.replace(/\.[^.]+$/, '');
+  const pages: ImportPage[] = [];
+  for (const [index, sheet] of [...workbook.getElementsByTagName('sheet')].entries()) {
+    const target = targets.get(sheet.getAttribute('r:id'));
+    const path = target?.startsWith('/xl/') ? target.slice(1) : `xl/${target}`;
+    if (!target || !validSourcePath(path) || !entries[path]) throw new Error('Excel 工作表路径无效或文件缺失');
+    const rows: string[][] = [];
+    let uncachedFormula = false;
+    for (const row of xmlDocument(decode(entries[path])).getElementsByTagName('row')) {
+      const values: string[] = [];
+      for (const item of row.getElementsByTagName('c')) {
+        const reference = item.getAttribute('r')?.match(/^([A-Z]+)[1-9]\d*$/);
+        if (!reference) throw new Error('Excel 单元格地址无效');
+        let column = 0;
+        for (const letter of reference[1]) column = column * 26 + letter.charCodeAt(0) - 64;
+        if (column > 200) throw new Error('表格不能超过 200 列或 20,000 行');
+        const value = item.getElementsByTagName('v')[0]?.textContent ?? '';
+        const type = item.getAttribute('t');
+        values[column - 1] = type === 's' ? strings[Number(value)] ?? ''
+          : type === 'inlineStr' ? [...item.getElementsByTagName('t')].map(text => text.textContent ?? '').join('')
+          : type === 'b' ? (value === '1' ? 'TRUE' : 'FALSE') : value;
+        if (item.getElementsByTagName('f').length && !item.getElementsByTagName('v').length) uncachedFormula = true;
+      }
+      if (values.some(value => value.trim())) rows.push(values);
+      if (rows.length > 20000) throw new Error('表格不能超过 200 列或 20,000 行');
+    }
+    const name = sheet.getAttribute('name') || `工作表 ${index + 1}`;
+    if (!rows.length) { issues.push({ name: sourcePath, message: `已跳过空工作表「${name}」` }); continue; }
+    const pagePath = `${prefix}/${index + 1}-${importName(name)}.md`;
+    pages.push({ sourcePath: pagePath, path: importPagePath(pagePath), content: `# ${name.replace(/[\r\n]/g, ' ')}\n\n${tableMarkdown(rows)}` });
+    if (uncachedFormula) issues.push({ name: sourcePath, message: `工作表「${name}」有公式未保存计算结果，对应单元格留空；请先在 Excel 中计算并保存后重新导入` });
+  }
+  issues.push({ name: sourcePath, message: 'Excel 按单元格保存值导入；不保留样式、合并单元格、图表和公式，日期可能显示为序列值' });
+  return pages;
+}
+
+async function opmlMarkdown(source: string, sourcePath: string, assets: ImportAsset[]) {
+  const doc = xmlDocument(source);
+  const body = doc.querySelector('opml > body');
+  if (!body) throw new Error('OPML 文件缺少大纲内容');
+  const title = doc.querySelector('head > title')?.textContent?.trim();
+  const lines = title ? [`# ${title.replace(/[\r\n]/g, ' ')}\n`] : [];
+  let count = 0;
+  async function visit(parent: Element, depth: number) {
+    if (depth > 100) throw new Error('OPML 层级不能超过 100 层');
+    for (const node of parent.children) {
+      if (node.tagName !== 'outline') continue;
+      if (++count > 20000) throw new Error('OPML 大纲不能超过 20,000 项');
+      const text = (await htmlMarkdown(node.getAttribute('text') ?? '', sourcePath, assets)).trim();
+      const completed = node.getAttribute('_complete');
+      lines.push(`${'  '.repeat(depth)}- ${completed === 'true' ? '[x] ' : completed === 'false' ? '[ ] ' : ''}${text.replace(/\n/g, `\n${'  '.repeat(depth + 1)}`)}`);
+      const note = node.getAttribute('_note');
+      if (note) lines.push((await htmlMarkdown(note, sourcePath, assets)).trim().split('\n').map(line => `${'  '.repeat(depth + 1)}${line}`).join('\n'));
+      await visit(node, depth + 1);
+    }
+  }
+  await visit(body, 0);
+  if (!count) throw new Error('OPML 文件中没有大纲条目');
+  return lines.join('\n') + '\n';
 }
 
 async function pdfMarkdown(bytes: Uint8Array) {
@@ -262,13 +338,15 @@ export async function prepareImport(files: readonly File[], progress?: (name: st
     if (ext === 'epub') { result.pages.push(...await epubPages(bytes, path, result.assets)); return; }
     if (ext === 'enex') { result.pages.push(...await enexPages(decode(bytes), path, result.assets)); return; }
     if (ext === 'json') { result.pages.push(...jsonPages(decode(bytes), path)); return; }
+    if (ext === 'xlsx') { result.pages.push(...await xlsxPages(bytes, path, result.issues)); return; }
     let content: string;
     if (ext === 'docx') {
       const mammoth = await import('mammoth/mammoth.browser');
       const converted = await mammoth.convertToHtml({ arrayBuffer: bytes.slice().buffer as ArrayBuffer });
       content = await htmlMarkdown(converted.value, path, result.assets);
       for (const warning of converted.messages) result.issues.push({ name: path, message: warning.message });
-    } else if (ext === 'pdf') content = await pdfMarkdown(bytes);
+    } else if (ext === 'opml') content = await opmlMarkdown(decode(bytes), path, result.assets);
+    else if (ext === 'pdf') content = await pdfMarkdown(bytes);
     else if (ext === 'html' || ext === 'htm') content = await htmlMarkdown(decode(bytes), path, result.assets);
     else if (ext === 'csv' || ext === 'tsv') content = await csvMarkdown(decode(bytes), ext === 'tsv' ? '\t' : '');
     else content = decode(bytes).replace(/\r\n/g, '\n');

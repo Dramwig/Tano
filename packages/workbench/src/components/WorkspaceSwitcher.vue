@@ -2,12 +2,17 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { Check, ChevronDown, ExternalLink } from 'lucide-vue-next';
 import WorkspaceIcon from './WorkspaceIcon.vue';
+import type { RecentWorkspace } from '@tano/protocol';
+type WorkspaceEntry = Pick<RecentWorkspace, 'id' | 'name' | 'path' | 'icon'>;
 import { useWorkspaceStore } from '../stores/workspace';
 import { native } from '../adapter';
 import { mobile } from '../platform';
 
 const props = defineProps<{ active: boolean }>();
-const emit = defineEmits<{ open: [] }>();
+const emit = defineEmits<{
+  open: [];
+  context: [item: WorkspaceEntry, event: MouseEvent];
+}>();
 const store = useWorkspaceStore();
 const menuId = useId();
 const trigger = ref<HTMLButtonElement>();
@@ -157,6 +162,8 @@ onBeforeUnmount(() => {
         :aria-checked="item.id === store.workspace?.id"
         :title="showPathTooltip ? item.path : item.name"
         :disabled="store.busy"
+        @mousedown.right.stop.prevent="emit('context', item, $event)"
+        @contextmenu.stop.prevent="emit('context', item, $event)"
         @click="select(item.id, item.path)"
       >
         <span class="repository-workspace-icon"><WorkspaceIcon :icon="item.id === store.workspace?.id ? store.workspaceSettings.icon : item.icon" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" :size="15" /></span>

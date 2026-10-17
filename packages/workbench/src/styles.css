@@ -1938,6 +1938,14 @@ button:hover {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+.workspace-entry-context-menu {
+  width: 190px;
+  z-index: 120;
+}
+.workspace-entry-context-check {
+  margin-left: auto;
+  color: var(--green);
+}
 .sidebar-popover button,
 .sidebar-popover .workspace-list-empty,
 .sidebar-popover .local-note strong,
@@ -1976,6 +1984,17 @@ button:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 16px;
+}
+.workspace-menu-summary-text strong,
+.workspace-menu-summary-text small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.workspace-menu-summary-text small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
 }
 .workspace-dropdown .workspace-menu-exit {
   flex: 0 0 28px;
@@ -4485,6 +4504,23 @@ button:hover {
 }
 .recent-spaces button:hover {
   background: var(--hover);
+}
+.recent-spaces-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 4px;
+}
+.recent-spaces .recent-open-button {
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+.recent-spaces .recent-open-button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .recent-spaces .recent-workspace-details {
   display: grid;

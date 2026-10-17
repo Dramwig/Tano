@@ -1,5 +1,7 @@
 # Local development
 
+For third-party account imports, see [OAuth application configuration](account-import.md).
+
 English | [中文](zh/local-development.md) | [日本語](ja/local-development.md) | [Deutsch](de/local-development.md) | [Documentation](README.md)
 
 Install Node.js 24.12+, npm, and Rust stable. Desktop development also needs the [Tauri 2 system prerequisites](https://v2.tauri.app/start/prerequisites/). On Windows, these include C++ Build Tools, the Windows SDK, and WebView2; `powershell -File scripts/check-desktop.ps1` checks the local setup.
@@ -12,6 +14,8 @@ npm run desktop
 ```
 
 On Windows, you can also double-click `local-desktop.bat`. It checks the Node.js version and desktop toolchain and runs `npm install --no-audit --no-fund` before every launch, so added or changed dependencies are synchronized even when `node_modules` already exists. Dependencies that already match the lockfile are reused.
+
+This starts the Vite + Tauri development app. The main window stays hidden until the workbench mounts, including after Vite reloads; dependency and compilation progress remains in the terminal. Frontend startup failures or a 30-second timeout reveal a recovery screen with a reload button. Late initialization results cannot replace that recovery screen.
 
 Both Windows launchers check the Node.js version before installing dependencies, and the repository's npm configuration rejects incompatible versions. If the version check fails, run `node -v` and `where.exe node` to inspect the active version and path. With nvm-windows, install and switch to Node.js 24.12+, then reopen the terminal or launcher.
 

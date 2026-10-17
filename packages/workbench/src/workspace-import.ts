@@ -70,34 +70,51 @@ export interface ImportReceipt {
   issues: ImportIssue[];
 }
 
+export type ImportDestination = 'new' | 'existing' | 'root';
+
 export async function writeWorkspaceImport(
   adapter: WorkspaceAdapter,
   prepared: PreparedImport,
   folderName: string,
   expectedWorkspaceId: string,
   options: {
+    destination?: ImportDestination;
     importAsset?: (file: File, documentPath: string) => Promise<string>;
     progress?: (done: number, total: number) => void;
   } = {},
 ): Promise<ImportReceipt> {
   if (!prepared.pages.length) throw new Error('没有可导入的页面');
-  if (folderName.includes('/') || validatePath(folderName) || folderName.length > 40) throw new Error('请输入不超过 40 个字符的有效文件夹名称');
+  const destination = options.destination ?? 'new';
+  if (destination === 'root' && folderName) throw new Error('根目录导入不应包含文件夹名称');
+  if (destination !== 'root' && (!folderName || validatePath(folderName) || (destination === 'new' && (folderName.includes('/') || folderName.length > 40))))
+    throw new Error(destination === 'existing' ? '请选择有效的已有文件夹' : '请输入不超过 40 个字符的有效文件夹名称');
   const workspace = await adapter.refresh();
   if (workspace.id !== expectedWorkspaceId) throw new Error('工作区已切换，请重新选择导入文件');
   if (workspace.readOnly) throw new Error('你在此工作区只有阅读权限');
   const occupied = new Set(workspace.files.map(file => pathKey(file.path)));
-  let folder = folderName;
-  for (let index = 2; occupied.has(pathKey(folder)); index++) folder = `${folderName} ${index}`;
-  const paths = prepared.pages.map(page => `${folder}/${page.path}`);
+  let folder = destination === 'root' ? '' : folderName;
+  if (destination === 'existing') {
+    const existing = workspace.files.find(file => file.kind === 'directory' && pathKey(file.path) === pathKey(folderName));
+    if (!existing) throw new Error('目标文件夹不存在，请先刷新工作区');
+    folder = existing.path;
+  } else if (destination === 'new') {
+    for (let index = 2; occupied.has(pathKey(folder)); index++) folder = `${folderName} ${index}`;
+  }
+  const paths = prepared.pages.map(page => folder ? `${folder}/${page.path}` : page.path);
   if (paths.some(path => validatePath(path))) throw new Error('导入路径无效，请缩短文件夹或文件名称');
   if (new Set(paths.map(pathKey)).size !== paths.length) throw new Error('导入列表包含重复路径');
   const mapping = new Map(prepared.pages.map((page, index) => [pathKey(page.sourcePath), paths[index]]));
-  const receipt: ImportReceipt = { folder, paths: [], issues: [] };
-  // Reserve a new folder before writing; every adapter.create must refuse existing files.
-  await adapter.createFolder(folder);
-  const directories = new Set([folder]);
+  const receipt: ImportReceipt = { folder: folder || '根目录', paths: [], issues: [] };
+  // Online workspaces derive folders from document paths instead of storing directory entries.
+  // Local adapters still reserve the destination folder before writing.
+  const virtualFolders = adapter.mode === 'web';
+  if (!virtualFolders && destination === 'new') await adapter.createFolder(folder);
+  const directories = new Set(folder ? [folder] : []);
   async function ensureParent(path: string) {
-    const parts = parentPath(path).split('/');
+    if (virtualFolders) return;
+    const parent = parentPath(path);
+    if (!parent) return;
+    const parts = parent.split('/');
     for (let index = 1; index <= parts.length; index++) {
       const directory = parts.slice(0, index).join('/');
       if (directories.has(directory)) continue;

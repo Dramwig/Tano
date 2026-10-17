@@ -2,23 +2,113 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import html from '../index.html?raw';
 
-const start = vi.fn<() => Promise<void>>();
+const start = vi.fn<(signal?: AbortSignal) => Promise<void>>();
+const nativeStartup = vi.hoisted(() => ({ native: false, reveal: vi.fn() }));
+vi.mock('@tauri-apps/api/core', () => ({
+  isTauri: () => nativeStartup.native,
+  invoke: nativeStartup.reveal,
+}));
 
 beforeEach(() => {
   vi.resetModules();
   vi.useFakeTimers();
   start.mockReset();
+  nativeStartup.native = false;
+  nativeStartup.reveal.mockReset().mockResolvedValue(undefined);
   vi.doMock('./start', () => ({ start }));
   vi.spyOn(console, 'error').mockImplementation(() => {});
+  localStorage.clear();
+  delete document.documentElement.dataset.theme;
   document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML;
 });
 
 afterEach(() => {
   vi.doUnmock('./start');
+  vi.doUnmock('@tauri-apps/api/window');
   vi.clearAllTimers();
   vi.useRealTimers();
   vi.restoreAllMocks();
   document.body.replaceChildren();
+  localStorage.clear();
+  delete document.documentElement.dataset.theme;
+  document.documentElement.style.removeProperty('color-scheme');
+});
+
+it('keeps the native window hidden until the workbench mounts, even with suspended frames', async () => {
+  nativeStartup.native = true;
+  vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(123);
+  let mounted!: () => void;
+  start.mockImplementation(() => new Promise<void>(resolve => {
+    mounted = () => {
+      document.getElementById('app')!.textContent = 'mounted workbench';
+      resolve();
+    };
+  }));
+  nativeStartup.reveal.mockImplementation(async () => {
+    expect(document.getElementById('app')?.textContent).toBe('mounted workbench');
+  });
+  await import('./main');
+  await vi.waitFor(() => expect(start).toHaveBeenCalledOnce());
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(nativeStartup.reveal).not.toHaveBeenCalled();
+  mounted();
+  await vi.waitFor(() => expect(nativeStartup.reveal).toHaveBeenCalledExactlyOnceWith('startup_ready'));
+  expect(window.requestAnimationFrame).not.toHaveBeenCalled();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it('shows recovery after native initialization fails, with the recovery DOM already in place', async () => {
+  nativeStartup.native = true;
+  start.mockRejectedValue(new Error('Native initialization failed'));
+  nativeStartup.reveal.mockImplementation(async () => {
+    expect(document.getElementById('tano-startup-status')?.textContent).toBe('无法打开同页');
+    expect(document.getElementById('tano-startup-retry')?.hidden).toBe(false);
+  });
+  await import('./main');
+  await vi.waitFor(() => expect(nativeStartup.reveal).toHaveBeenCalledExactlyOnceWith('startup_ready'));
+});
+
+it('aborts a stalled native startup and reveals recovery instead of staying hidden forever', async () => {
+  nativeStartup.native = true;
+  start.mockImplementation(() => new Promise(() => {}));
+  await import('./main');
+  await vi.waitFor(() => expect(start).toHaveBeenCalledOnce());
+  const signal = start.mock.calls[0][0]!;
+  await vi.advanceTimersByTimeAsync(29_000);
+  expect(nativeStartup.reveal).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(signal.aborted).toBe(true);
+  expect(document.getElementById('tano-startup-detail')?.textContent).toContain('打开同页超时');
+  expect(nativeStartup.reveal).toHaveBeenCalledExactlyOnceWith('startup_ready');
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it('does not mount a late workbench import over native timeout recovery', async () => {
+  nativeStartup.native = true;
+  let loaded!: () => void;
+  vi.doMock('./start', async () => {
+    await new Promise<void>(resolve => { loaded = resolve; });
+    return { start };
+  });
+  await import('./main');
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect(document.getElementById('tano-startup-detail')?.textContent).toContain('打开同页超时');
+  loaded();
+  await vi.advanceTimersByTimeAsync(1);
+  expect(start).not.toHaveBeenCalled();
+  expect(document.getElementById('tano-startup-retry')?.hidden).toBe(false);
+});
+
+it.each(['main', 'settings-main'])('reveals recovery only for the main window when startup fails in %s', async label => {
+  nativeStartup.native = true;
+  nativeStartup.reveal.mockRejectedValue(new Error('Startup reveal failed'));
+  const show = vi.fn().mockResolvedValue(undefined);
+  vi.doMock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ label, show }) }));
+  await import('./main');
+  await vi.waitFor(() => expect(document.getElementById('tano-startup-status')?.textContent).toBe('无法打开同页'));
+  expect(start).toHaveBeenCalledOnce();
+  if (label === 'main') await vi.waitFor(() => expect(show).toHaveBeenCalledOnce());
+  else expect(show).not.toHaveBeenCalled();
 });
 
 it('keeps a visible startup state while the workbench loads and offers a retry if it stalls', async () => {
@@ -29,6 +119,15 @@ it('keeps a visible startup state while the workbench loads and offers a retry i
   await vi.advanceTimersByTimeAsync(15_000);
   expect(document.getElementById('tano-startup-status')?.textContent).toContain('正在加载工作台');
   expect(document.getElementById('tano-startup-retry')?.hidden).toBe(false);
+});
+
+it.each(['light', 'dark'])('applies the saved %s theme while workbench loading is still pending', async theme => {
+  localStorage.setItem('tano.preference.theme', theme);
+  start.mockImplementation(() => new Promise(() => {}));
+  await import('./main');
+  expect(document.documentElement.dataset.theme).toBe(theme);
+  expect(document.documentElement.style.colorScheme).toBe(theme);
+  expect(document.getElementById('tano-startup')?.getAttribute('aria-busy')).toBe('true');
 });
 
 it('preserves the mounted workbench and clears the slow-start timer after success', async () => {

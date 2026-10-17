@@ -9,7 +9,12 @@ import type {
 } from '@tano/protocol';
 export const TABLES_TAB_ID = 'tables';
 export const tableTabId = (id: string) => `table:${id}`;
-export const isTableTab = (id: string) => id === TABLES_TAB_ID || /^table:[0-9a-f]{6}$/.test(id);
+// A table may be opened more than once from the file context menu.  Keep the
+// file id at the start of the tab id so routes and persisted table state still
+// resolve to the same table, while the optional suffix gives each tab its own
+// identity.
+export const tableFileId = (id: string) => id.slice(6).split(':', 1)[0] ?? '';
+export const isTableTab = (id: string) => id === TABLES_TAB_ID || /^table:[0-9a-f]{6}(?::[a-z0-9-]+)?$/.test(id);
 export const tableItemId = () => crypto.randomUUID().replaceAll('-', '');
 export const copyTable = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 export function newDataView(name = '全部记录'): DataView {

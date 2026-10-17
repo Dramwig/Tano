@@ -65,6 +65,31 @@ it('rejects stale workspace, invalid destination, and read-only permission befor
   expect(createFolder).not.toHaveBeenCalled();
 });
 
+it('imports into the workspace root or an existing folder without creating another folder', async () => {
+  const rootReceipt = await writeWorkspaceImport(adapter, prepared, '', 'demo', { destination: 'root' });
+  expect(rootReceipt.folder).toBe('根目录');
+  expect(rootReceipt.paths).toEqual(['A.md', 'folder/B.md']);
+  await adapter.createFolder('Notes');
+  const existingReceipt = await writeWorkspaceImport(adapter, prepared, 'Notes', 'demo', { destination: 'existing' });
+  expect(existingReceipt.folder).toBe('Notes');
+  expect(existingReceipt.paths).toEqual(['Notes/A.md', 'Notes/folder/B.md']);
+});
+
+it('writes nested paths directly for online workspaces with virtual folders', async () => {
+  const createFolder = vi.fn(async () => { throw new Error('在线工作区不支持显式文件夹'); });
+  const create = vi.fn(async (_path: string, _content: string) => {});
+  const adapter = {
+    mode: 'web',
+    refresh: async () => ({ id: 'web', name: '在线', path: '', readOnly: false, files: [] }),
+    createFolder,
+    create,
+  } as unknown as import('@tano/protocol').WorkspaceAdapter;
+  const receipt = await writeWorkspaceImport(adapter, prepared, 'Import', 'web');
+  expect(createFolder).not.toHaveBeenCalled();
+  expect(create.mock.calls.map(([path]) => path)).toEqual(['Import/A.md', 'Import/folder/B.md']);
+  expect(receipt.paths).toEqual(['Import/A.md', 'Import/folder/B.md']);
+});
+
 it('uses the attachment service and remaps images to the saved workspace attachment', async () => {
   const importAsset = vi.fn(async () => 'attachments/image.png');
   const receipt = await writeWorkspaceImport(adapter, { pages: [{ sourcePath: 'A.md', path: 'A.md', content: '![Image](img.png)' }],
