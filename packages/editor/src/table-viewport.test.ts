@@ -112,7 +112,8 @@ it('expands only wide tables, reserves the comment gutter, and tracks each scrol
   wrapper.dispatchEvent(new Event('scroll'));
   expect(viewport.classList.contains('can-scroll-left')).toBe(true);
   expect(viewport.classList.contains('can-scroll-right')).toBe(true);
-  expect(root.querySelector<HTMLElement>('.tano-block-handle[data-block-index="1"]')!.style.transform).toBe('');
+  // Handle placement follows the viewport's layout on a separate animation frame.
+  await vi.waitFor(() => expect(root.querySelector<HTMLElement>('.tano-block-handle[data-block-index="1"]')!.style.transform).toBe(''));
   wrapper.scrollLeft = 820;
   wrapper.dispatchEvent(new Event('scroll'));
   expect(viewport.classList.contains('can-scroll-right')).toBe(false);
@@ -123,7 +124,7 @@ it('expands only wide tables, reserves the comment gutter, and tracks each scrol
   scrollbar.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
   expect(wrapper.scrollLeft).toBe(0);
   wrapper.dispatchEvent(new Event('scroll'));
-  expect(root.querySelector<HTMLElement>('.tano-block-handle[data-block-index="1"]')!.style.transform).toBe('');
+  await vi.waitFor(() => expect(root.querySelector<HTMLElement>('.tano-block-handle[data-block-index="1"]')!.style.transform).toBe(''));
   scrollbar.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
   expect(wrapper.scrollLeft).toBe(48);
 

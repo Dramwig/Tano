@@ -48,6 +48,7 @@ import {
   MessageSquare,
   MessageSquareDiff,
   ExternalLink,
+  Link,
   CheckCheck,
   Copy,
   LoaderCircle,
@@ -55,7 +56,6 @@ import {
   Puzzle,
   GitFork,
   CalendarDays,
-  Globe2,
   LogOut,
   Settings2,
   SquarePen,
@@ -71,12 +71,12 @@ import {
   Files,
   Table2,
 } from 'lucide-vue-next';
-import MarkdownEditor from '@tano/editor';
+const MarkdownEditor = defineAsyncComponent(() => import('@tano/editor'));
 import { defaultEditorPreferences } from '@tano/editor/runtime';
 import type { EditorPreferences } from '@tano/editor/runtime';
-import { defaultSelectionContext } from '@tano/editor/document-model';
-import type { EditorSelectionContext } from '@tano/editor/document-model';
-import SourceEditor from './components/SourceEditor.vue';
+import { defaultSelectionContext } from '@tano/editor/selection-context';
+import type { EditorSelectionContext } from '@tano/editor/selection-context';
+const SourceEditor = defineAsyncComponent(() => import('./components/SourceEditor.vue'));
 import { captureModeViewport, restoreModeViewport } from './editor-mode';
 import type { ModeViewport } from './editor-mode';
 import AttachmentPreview from './components/AttachmentPreview.vue';
@@ -94,12 +94,11 @@ import DocumentExportMenu from './components/DocumentExportMenu.vue';
 import type { ImportRecord } from './components/ImportPanel.vue';
 const ImportPanel = defineAsyncComponent(() => import('./components/ImportPanel.vue'));
 const TemplateLibrary = defineAsyncComponent(() => import('./components/TemplateLibrary.vue'));
-import { downloadExport, exportFilename, renderDocumentExport } from './document-export';
 import type { DocumentExportFormat } from './document-export';
-import DocumentComments from './components/DocumentComments.vue';
-import DocumentSuggestions from './components/DocumentSuggestions.vue';
+const DocumentComments = defineAsyncComponent(() => import('./components/DocumentComments.vue'));
+const DocumentSuggestions = defineAsyncComponent(() => import('./components/DocumentSuggestions.vue'));
 import ReferenceGraphPopover from './components/ReferenceGraphPopover.vue';
-import SelectionTodoDialog from './components/SelectionTodoDialog.vue';
+const SelectionTodoDialog = defineAsyncComponent(() => import('./components/SelectionTodoDialog.vue'));
 import { selectionTodoSession } from './selection-todo';
 import type { SelectionTodoSession } from './selection-todo';
 import { documentLinks } from '@tano/editor/document-links';
@@ -116,7 +115,8 @@ import {
   relativeWorkspaceReference,
   safeRemoteImage,
 } from '@tano/protocol';
-import type { FileEntry, SearchHit } from '@tano/protocol';
+import type { FileEntry, RecentWorkspace, SearchHit } from '@tano/protocol';
+type WorkspaceEntry = Pick<RecentWorkspace, 'id' | 'name' | 'path' | 'icon'>;
 import {
   nativeAttachments,
   exportAttachment,
@@ -136,18 +136,18 @@ import { CALENDAR_TAB_ID, calendarPeriodTitle, shiftCalendarDate } from './calen
 import type { CalendarViewMode } from './calendar';
 const RelationGraph = defineAsyncComponent(() => import('./components/RelationGraph.vue'));
 import NewTabPicker from './components/NewTabPicker.vue';
-import EditorTools from './components/EditorTools.vue';
+const EditorTools = defineAsyncComponent(() => import('./components/EditorTools.vue'));
 import { parseToolbarMode, toolbarPreferenceKey } from './toolbar-preference';
-import DocumentHistoryPanel from './components/DocumentHistoryPanel.vue';
-import AgentPanel from './components/AgentPanel.vue';
-import AssistantPanel from './components/AssistantPanel.vue';
+const DocumentHistoryPanel = defineAsyncComponent(() => import('./components/DocumentHistoryPanel.vue'));
+const AgentPanel = defineAsyncComponent(() => import('./components/AgentPanel.vue'));
+const AssistantPanel = defineAsyncComponent(() => import('./components/AssistantPanel.vue'));
 import AssistantLauncher from './components/AssistantLauncher.vue';
 import AssistantButterflyLayer from './components/AssistantButterflyLayer.vue';
 import { butterflyScope } from './assistant/butterfly';
 import { createButterflyIdleTrigger } from './assistant/butterfly-idle';
 import { butterflyPerchDirective, provideButterflyController } from './assistant/butterfly-vue';
 import { useAssistantStore } from './assistant/store';
-import DiffDialog from './components/DiffDialog.vue';
+const DiffDialog = defineAsyncComponent(() => import('./components/DiffDialog.vue'));
 import { handleMobileVisibility } from './mobile-lifecycle';
 import { useViewport } from './viewport';
 import { useWorkspaceStore } from './stores/workspace';
@@ -157,17 +157,18 @@ import { useWorkbenchRuntime, createLocalExtensions } from './runtime';
 import type { WorkbenchActions } from './runtime';
 import { native } from './adapter';
 import { mobile } from './platform';
-import MobileRecycle from './components/MobileRecycle.vue';
-import SettingsPanel from './components/SettingsPanel.vue';
+const MobileRecycle = defineAsyncComponent(() => import('./components/MobileRecycle.vue'));
+const SettingsPanel = defineAsyncComponent(() => import('./components/SettingsPanel.vue'));
 import WorkspaceIcon from './components/WorkspaceIcon.vue';
+import WorkspaceMenuLayout from './components/WorkspaceMenuLayout.vue';
 import { workspaceArchive, workspaceArchiveName } from './workspace-export';
-import ObjectPanel from './components/ObjectPanel.vue';
-import PlanDetailPanel from './components/PlanDetailPanel.vue';
+const ObjectPanel = defineAsyncComponent(() => import('./components/ObjectPanel.vue'));
+const PlanDetailPanel = defineAsyncComponent(() => import('./components/PlanDetailPanel.vue'));
 import type { ObjectRecord } from './workspace-objects';
 import { usePlanStore } from './stores/plans';
 import { usePlanSyncStore } from './stores/plan-sync';
 import { planKey } from './personal-plans';
-import SidebarPlan from './components/SidebarPlan.vue';
+const SidebarPlan = defineAsyncComponent(() => import('./components/SidebarPlan.vue'));
 import SidebarNavigation from './components/SidebarNavigation.vue';
 import WorkspaceSidebar from './components/WorkspaceSidebar.vue';
 import HelpLauncher from './components/HelpLauncher.vue';
@@ -175,11 +176,11 @@ import type { HelpAvailability, HelpContext } from './help-content';
 import { recordHelpCompleted } from './help-checklist';
 import WorkspaceSwitcher from './components/WorkspaceSwitcher.vue';
 import ButtonVisibilityGroup from './components/ButtonVisibilityGroup.vue';
-import CalendarView from './components/CalendarView.vue';
+const CalendarView = defineAsyncComponent(() => import('./components/CalendarView.vue'));
 const DataTablePage = defineAsyncComponent(() => import('./components/DataTablePage.vue'));
-import { isTableTab, TABLES_TAB_ID } from './data-tables';
+import { isTableTab, TABLES_TAB_ID, tableFileId } from './data-tables';
 import { isDataTableFilePath } from '@tano/protocol';
-import PluginInstaller from './components/PluginInstaller.vue';
+const PluginInstaller = defineAsyncComponent(() => import('./components/PluginInstaller.vue'));
 import PluginView from './components/PluginView.vue';
 import PluginSidebar from './components/PluginSidebar.vue';
 import PluginMenu from './components/PluginMenu.vue';
@@ -211,7 +212,7 @@ import {
 import type { TabTransferRequest, TabTransferRollback, TabTransferResult } from './tab-docking';
 import { selectTreeEntry, topLevelEntries } from './file-selection';
 import { isBlankPageTarget } from './page-context-menu';
-import { pageRoutePath, parsePageRoute } from './web-navigation';
+import { pageRoutePath, pageRouteUrl, parsePageRoute } from './web-navigation';
 import { applyTheme, readThemePreference, saveThemePreference } from './theme';
 import type { ThemePreference } from './theme';
 import { parseVisualFontChoice, sanitizeCustomFontName, visualFontFamily } from './editor-font';
@@ -247,7 +248,7 @@ const vButterflyPerch = butterflyPerchDirective(butterfly);
 const paneButterflyScope = (paneId: string, fileId: string) => butterflyScope(store.workspace?.id ?? '', paneId, fileId);
 watch(() => [store.workspace?.id, store.activePaneId, store.activeId, assistant.available, assistant.opened, store.documents.length], () => {
   butterfly.setContext(paneButterflyScope(store.activePaneId, store.activeId),
-    assistant.available && !assistant.opened && (isTableTab(store.activeId) || store.documents.some(doc => doc.id === store.activeId)));
+    assistant.available && !assistant.opened && (isTableTab(store.activeId) || !!store.documentForTab(store.activeId)));
 }, { immediate: true });
 const assistantHosts = shallowReactive(new Map<string, HTMLElement>());
 function setAssistantHost(paneId: string, value: unknown) {
@@ -303,16 +304,13 @@ const documentToolItems = [
 ];
 const topbarItems = [
   { id: 'breadcrumb', label: '面包屑' },
-  { id: 'workspace-status', label: '工作区状态', separatorBefore: true },
 ];
 const workspaceStatusLabel = computed(() =>
   store.workspace?.readOnly
     ? '只读权限'
     : store.isDemo
       ? '浏览器演示'
-      : store.isWeb && native
-        ? '在线工作区'
-        : null,
+      : null,
 );
 const calendarToolItems = [
   { id: 'calendar-period', label: '日历日期' },
@@ -578,7 +576,7 @@ async function applyPageRoute() {
     if (workspace.value?.id !== route.workspaceId) {
       store.report('链接中的工作区不存在或你已失去访问权限');
     } else if (isTableTab(route.fileId)) {
-      await store.openDataTable(route.fileId === TABLES_TAB_ID ? undefined : route.fileId.slice(6));
+      await store.openDataTable(route.fileId === TABLES_TAB_ID ? undefined : tableFileId(route.fileId));
     } else if (route.fileId.startsWith('plugin:')) {
       const view = store.pluginViews.find(view => view.key === route.fileId && view.location === 'tab');
       if (view) store.openPluginView(view.pluginId, view.id);
@@ -832,7 +830,7 @@ function setPaneSource(id: string, value: boolean, previous = paneSource(id)) {
     if (viewport) pendingModeViewports.set(pane.id, { fileId: id, source: value, viewport });
   }
   sourceModes[id] = value;
-  if (store.documents.some(doc => doc.id === id)) recordHelpCompleted('source');
+  if (store.documentForTab(id)) recordHelpCompleted('source');
 }
 const source = computed({
   get: () => paneSource(store.activeId),
@@ -876,12 +874,13 @@ async function renameDocumentTitle(workspaceId: string, id: string, from: string
   if (workspace.value?.id !== workspaceId) throw new Error('工作空间已切换，请重新打开文档后重试');
   if (updateLock.value || store.busy || workspace.value.readOnly || sessionBlocksFileMutation(id))
     throw new Error('当前文档暂时无法重命名');
-  const doc = store.documents.find((entry) => entry.id === id);
+  const doc = store.documentForTab(id);
   if (!doc || store.displayPath(doc) !== from) throw new Error('文件位置已变化，请重新输入标题');
   await withFileMutation([id], () => store.rename(doc, to));
 }
 function sessionBlocksFileMutation(id: string) {
-  return editing.canMutateFile ? !editing.canMutateFile(id) : editing.isManaging(id);
+  const documentId = store.documentForTab(id)?.id ?? id;
+  return editing.canMutateFile ? !editing.canMutateFile(documentId) : editing.isManaging(documentId);
 }
 function withFileMutation<T>(ids: string[], mutation: () => Promise<T>): Promise<T> {
   return editing.withFileMutation ? editing.withFileMutation(ids, mutation) : mutation();
@@ -938,6 +937,9 @@ const exportBusy = ref(false);
 const documentMenuButton = ref<HTMLButtonElement>();
 const documentMenuElement = ref<HTMLElement>();
 const workspaceMenu = ref(false);
+const workspaceEntryContextMenu = ref<{ item: WorkspaceEntry; x: number; y: number } | null>(null);
+const workspaceEntryContextMenuElement = ref<HTMLElement>();
+let workspaceEntryContextTrigger: HTMLElement | null = null;
 const fileContextMenu = ref<{ file: FileEntry; x: number; y: number } | null>(null);
 const directoryContextMenu = ref<{ parent: string; x: number; y: number } | null>(null);
 const pageContextMenu = ref<{ x: number; y: number } | null>(null);
@@ -970,7 +972,7 @@ watch(
   },
 );
 function selectActiveFileInTree() {
-  const id = activeId.value.startsWith('table:') ? activeId.value.slice(6) : activeId.value;
+  const id = activeId.value.startsWith('table:') ? tableFileId(activeId.value) : activeId.value;
   const available = !!id && workspace.value?.files.some((file) => file.id === id);
   selectedEntryIds.value = available ? new Set([id]) : new Set();
   selectionAnchorId.value = available ? id : null;
@@ -1022,7 +1024,10 @@ const managedFilePaths = computed(
 );
 let fileContextTrigger: HTMLElement | null = null;
 const treeRename = ref<{ fileId: string; workspaceId: string } | null>(null);
-watch(() => workspace.value?.id, () => { treeRename.value = null; });
+watch(() => workspace.value?.id, () => {
+  treeRename.value = null;
+  closeWorkspaceEntryContextMenu();
+});
 const settingsPanel = ref(false);
 const commandPaletteOpened = ref(false);
 const workbenchCommands = computed<WorkbenchCommand[]>(() => {
@@ -1150,7 +1155,7 @@ function showSourceTodo(paneId: string, doc: OpenDocument) {
 }
 function beginSelectionTodo(paneId: string, fileId: string) {
   const scope = workspace.value;
-  const doc = store.documents.find((doc) => doc.id === fileId);
+  const doc = store.documentForTab(fileId);
   if (
     !scope ||
     !doc ||
@@ -1177,7 +1182,7 @@ function beginSelectionTodo(paneId: string, fileId: string) {
   function originalDocument() {
     if (workspace.value?.id !== expected.id || workspace.value.path !== expected.path)
       throw new Error('工作区已切换，请返回原工作区后重试');
-    const original = store.documents.find((doc) => doc.id === fileId);
+    const original = store.documentForTab(fileId);
     if (
       !original ||
       paneReadonly(original) ||
@@ -1230,7 +1235,7 @@ function capturePaneCommentSelection(paneId: string, fileId: string) {
     : null;
 }
 function openAssistant(paneId = store.activePaneId, fileId = store.activeId) {
-  const tableId = isTableTab(fileId) ? fileId.slice(6) : undefined;
+  const tableId = isTableTab(fileId) ? tableFileId(fileId) : undefined;
   const selected = tableId ? null : paneSource(fileId)
     ? paneSourceEditors.get(paneId)?.assistantSelection()
     : paneSelections[paneId]?.textSelected
@@ -1240,15 +1245,15 @@ function openAssistant(paneId = store.activePaneId, fileId = store.activeId) {
   const span = paneSource(fileId) && selected?.spans.length === 1 ? selected.spans[0] : undefined;
   store.focusPane(paneId);
   assistant.open(
-    tableId ?? (store.documents.some((doc) => doc.id === fileId) ? fileId : undefined),
+    tableId ?? (store.documentForTab(fileId) ? store.documentForTab(fileId)?.id : undefined),
     text ? { text, ...(span ? { from: span.from, to: span.to } : {}) } : undefined,
   );
   if (window.innerWidth < 1100) sidebar.value = false;
 }
 function initializeDocument(paneId: string, fileId: string, content: string, expected: string) {
-  const doc = store.documents.find(item => item.id === fileId);
+  const doc = store.documentForTab(fileId);
   if (!doc || paneReadonly(doc) || doc.missing || doc.conflict || doc.error ||
-      (editing.isManaging(fileId) && (fileId !== store.activeId || !editing.active?.extension)) ||
+      (editing.isManaging(doc.id) && (doc.id !== store.active?.id || !editing.active?.extension)) ||
       store.panes.find(pane => pane.id === paneId)?.activeId !== fileId || paneSource(fileId) ||
       doc.content !== expected || !paneEditors.get(paneId)?.initializeBody(content, expected))
     throw new Error('文档内容或编辑状态已变化，请回到空白文档后重试。现有内容已保留。');
@@ -1256,13 +1261,13 @@ function initializeDocument(paneId: string, fileId: string, content: string, exp
   recordHelpCompleted('use-template');
 }
 function quickInitialize(paneId: string, fileId: string, kind: 'meeting' | 'weekly' | 'todo') {
-  const doc = store.documents.find(item => item.id === fileId);
+  const doc = store.documentForTab(fileId);
   if (!doc) return;
   try { initializeDocument(paneId, fileId, documentStarter(kind, workspace.value?.name ?? ''), doc.content); }
   catch (reason) { store.report(reason); }
 }
 function chooseInitialTemplate(paneId: string, fileId: string) {
-  const doc = store.documents.find(item => item.id === fileId);
+  const doc = store.documentForTab(fileId);
   if (!doc) return;
   store.focusPane(paneId);
   openTemplateLibrary();
@@ -1335,6 +1340,9 @@ function setPaneEditor(id: string, value: unknown) {
   else paneEditors.delete(id);
 }
 const objectPanel = ref(false);
+// Keep drafts across close/reopen, but don't load the panel until it is first requested.
+const objectPanelMounted = ref(false);
+watch(objectPanel, open => { if (open) objectPanelMounted.value = true; }, { flush: 'sync' });
 const selectedObjectId = ref<string>();
 const selectedPersonal = ref(false);
 const planDetail = shallowRef<ObjectRecord>();
@@ -1532,7 +1540,7 @@ function paneReadonly(doc: OpenDocument) {
     !!workspace.value?.readOnly ||
     !!workspace.value?.files.find((file) => file.id === doc.id)?.readOnly ||
     !!doc.conflict ||
-    (doc.id === store.activeId
+    (doc.id === store.active?.id
       ? editorReadonly.value
       : readPreference(pageLockPreferenceKey(workspace.value?.id ?? '', doc.id), false) ||
         editing.isManaging(doc.id))
@@ -1761,6 +1769,81 @@ function closeFileContextMenu(restoreFocus = false) {
 function closeDirectoryContextMenu() {
   directoryContextMenu.value = null;
 }
+function closeWorkspaceEntryContextMenu(restoreFocus = false) {
+  workspaceEntryContextMenu.value = null;
+  if (restoreFocus)
+    void nextTick(() => workspaceEntryContextTrigger?.focus({ preventScroll: true }));
+}
+function openWorkspaceEntryContextMenu(item: WorkspaceEntry, event: MouseEvent) {
+  event.preventDefault();
+  closeFileContextMenu();
+  closeDirectoryContextMenu();
+  closePageContextMenu();
+  closeOutlineContextMenu();
+  workspaceEntryContextTrigger = event.currentTarget as HTMLElement | null;
+  workspaceEntryContextMenu.value = {
+    item,
+    x: Math.max(8, event.clientX),
+    y: Math.max(8, event.clientY),
+  };
+  void nextTick(() => {
+    const contextMenu = document.querySelector<HTMLElement>('.workspace-entry-context-menu');
+    if (!contextMenu || !workspaceEntryContextMenu.value) return;
+    workspaceEntryContextMenu.value.x = Math.max(
+      8,
+      Math.min(workspaceEntryContextMenu.value.x, window.innerWidth - contextMenu.offsetWidth - 8),
+    );
+    workspaceEntryContextMenu.value.y = Math.max(
+      8,
+      Math.min(workspaceEntryContextMenu.value.y, window.innerHeight - contextMenu.offsetHeight - 8),
+    );
+    contextMenu.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+  });
+}
+function workspaceDropdownContextMenu(event: MouseEvent) {
+  const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-workspace-entry-id]');
+  const id = target?.dataset.workspaceEntryId;
+  const item = id ? store.recent.find((entry) => entry.id === id) : undefined;
+  if (item) openWorkspaceEntryContextMenu(item, event);
+}
+function workspaceEntryContextKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeWorkspaceEntryContextMenu(true);
+    return;
+  }
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+  const items = [
+    ...(workspaceEntryContextMenuElement.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []),
+  ];
+  if (!items.length) return;
+  event.preventDefault();
+  const current = items.indexOf(document.activeElement as HTMLButtonElement);
+  const next =
+    event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? items.length - 1
+        : current < 0
+          ? event.key === 'ArrowDown'
+            ? 0
+            : items.length - 1
+          : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+  items[next]?.focus({ preventScroll: true });
+}
+function workspaceEntryContextAction(action: 'open' | 'leave' | 'reveal') {
+  const item = workspaceEntryContextMenu.value?.item;
+  if (!item) return;
+  closeWorkspaceEntryContextMenu();
+  if (action === 'open') {
+    workspaceMenu.value = false;
+    if (item.id !== workspace.value?.id) void store.openWorkspace(item.path);
+  } else if (action === 'leave') {
+    void leaveWorkspace();
+  } else if (action === 'reveal') {
+    void store.reveal();
+  }
+}
 function selectFileTreeEntry(file: FileEntry, event: MouseEvent) {
   const visibleIds = [
     ...document.querySelectorAll<HTMLElement>('.tree-scroll .tree-row[data-entry-id]'),
@@ -1837,14 +1920,72 @@ function openDirectoryContextMenu(parent: string, event: MouseEvent) {
     contextMenu.focus({ preventScroll: true });
   });
 }
-function directoryContextAction(action: 'document' | 'folder' | 'table') {
+async function directoryContextAction(
+  action: 'document' | 'folder' | 'table' | 'import' | 'duplicate' | 'copy' | 'rename' | 'delete',
+) {
   const parent = directoryContextMenu.value?.parent ?? '';
-  closeDirectoryContextMenu();
   const target = parent
     ? workspace.value?.files.find((entry) => entry.kind === 'directory' && entry.path === parent)
     : undefined;
+  closeDirectoryContextMenu();
+  if (action === 'import') {
+    openImport();
+    return;
+  }
   if (parent && !target) return;
+  if (action === 'copy') {
+    if (!parent) return;
+    try {
+      await navigator.clipboard.writeText(parent);
+    } catch (error) {
+      store.report(error);
+    }
+    return;
+  }
+  if (action === 'duplicate') {
+    if (!target || !canDuplicateEntry(target) || fileMutationDisabled(target)) return;
+    try {
+      await store.duplicateEntry(target, workspace.value?.id);
+    } catch (error) {
+      store.report(error);
+    }
+    return;
+  }
+  if (action === 'rename') {
+    if (!target || fileMutationDisabled(target) || directoryHasManagedFile(target)) return;
+    startTreeRename(target);
+    return;
+  }
+  if (action === 'delete') {
+    if (!target || fileDeleteDisabled(target)) return;
+    void removeDocument(target);
+    return;
+  }
   void createNewEntry(action, parent);
+}
+function directoryContextRenameDisabled() {
+  const target = directoryContextMenu.value?.parent
+    ? workspace.value?.files.find(
+        (entry) => entry.kind === 'directory' && entry.path === directoryContextMenu.value?.parent,
+      )
+    : undefined;
+  return !target || fileMutationDisabled(target) || directoryHasManagedFile(target);
+}
+function directoryContextDuplicateDisabled() {
+  const target = directoryContextMenu.value?.parent
+    ? workspace.value?.files.find(
+        (entry) => entry.kind === 'directory' && entry.path === directoryContextMenu.value?.parent,
+      )
+    : undefined;
+  return !target || !canDuplicateEntry(target) || fileMutationDisabled(target);
+}
+function directoryContextDeleteDisabled() {
+  const target = directoryContextMenu.value?.parent
+    ? workspace.value?.files.find(
+        (entry) => entry.kind === 'directory' && entry.path === directoryContextMenu.value?.parent,
+      )
+    : undefined;
+  return !target || fileDeleteDisabled(target);
 }
 function closePageContextMenu() {
   pageContextMenu.value = null;
@@ -1950,6 +2091,9 @@ function fileMutationDisabled(file: FileEntry) {
     sessionBlocksFileMutation(file.id)
   );
 }
+function canDuplicateEntry(file: FileEntry) {
+  return !mobile && !!workspaceAdapter.duplicate && (localNative || store.isWeb);
+}
 function directoryHasManagedFile(file: FileEntry) {
   return (
     file.kind === 'directory' &&
@@ -1958,8 +2102,7 @@ function directoryHasManagedFile(file: FileEntry) {
 }
 function startTreeRename(file: FileEntry) {
   if (
-    !workspace.value || fileMutationDisabled(file) || directoryHasManagedFile(file) ||
-    (store.isWeb && file.kind !== 'file')
+    !workspace.value || fileMutationDisabled(file) || directoryHasManagedFile(file)
   ) return;
   closeFileContextMenu();
   treeRename.value = { fileId: file.id, workspaceId: workspace.value.id };
@@ -1990,7 +2133,6 @@ async function renameTreeEntry(file: FileEntry, name: string) {
 function fileDeleteDisabled(file: FileEntry) {
   return (
     fileMutationDisabled(file) ||
-    (store.isWeb && file.kind !== 'file') ||
     (mobile && file.kind === 'directory') ||
     directoryHasManagedFile(file)
   );
@@ -2095,6 +2237,7 @@ async function fileContextAction(
     | 'rename'
     | 'delete'
     | 'copy'
+    | 'copy-link'
     | 'copy-full-path'
     | 'duplicate'
     | 'open-default'
@@ -2161,6 +2304,17 @@ async function fileContextAction(
     }
     return;
   }
+  if (action === 'copy-link') {
+    if (!store.isWeb || !workspace.value || file.kind !== 'file' ||
+      (!isMarkdown(file.path) && !isDataTableFilePath(file.path))) return;
+    try {
+      await navigator.clipboard.writeText(pageRouteUrl(window.location.href, workspace.value.id, file.id));
+      fileContextTrigger?.focus({ preventScroll: true });
+    } catch (error) {
+      store.report(error);
+    }
+    return;
+  }
   if (
     fileMutationDisabled(file) ||
     (action === 'delete' && fileDeleteDisabled(file)) ||
@@ -2168,7 +2322,7 @@ async function fileContextAction(
   )
     return;
   if (action === 'duplicate') {
-    if (!localNative || mobile) return;
+    if (!canDuplicateEntry(file)) return;
     try {
       await store.duplicateEntry(file, workspace.value?.id);
     } catch (error) {
@@ -2176,7 +2330,6 @@ async function fileContextAction(
     }
     return;
   }
-  if (action === 'folder' && store.isWeb) return;
   if (action === 'delete') {
     await removeDocument(file);
     return;
@@ -2466,7 +2619,7 @@ function showModal(kind: Exclude<typeof modal.value, ''>, target?: FileEntry) {
         ? [...selectedEntries.value]
         : target
           ? [target]
-          : (workspace.value?.files.filter((file) => file.id === activeId.value) ?? [])
+          : (active.value ? [workspace.value?.files.find((file) => file.id === active.value?.id)].filter((file): file is FileEntry => !!file) : [])
       : [];
   modalDeleteContents.value = kind === 'delete' ? [...(workspace.value?.files ?? [])] : [];
   modalDeleteWorkspaceId.value = kind === 'delete' ? workspace.value?.id : undefined;
@@ -2495,10 +2648,10 @@ async function removeDocuments(entries: FileEntry[]) {
   }
 }
 async function removeDocument(target?: FileEntry) {
-  if (!target && (editorReadonly.value || sessionBlocksFileMutation(activeId.value) || editing.activeBusy)) return;
+  if (!target && (editorReadonly.value || sessionBlocksFileMutation(active.value?.id ?? activeId.value) || editing.activeBusy)) return;
   const entries = target
     ? [target]
-    : (workspace.value?.files.filter((file) => file.id === activeId.value) ?? []);
+    : (active.value ? [workspace.value?.files.find((file) => file.id === active.value?.id)].filter((file): file is FileEntry => !!file) : []);
   await removeDocuments(entries);
 }
 async function createNewDocument() {
@@ -2589,7 +2742,7 @@ async function acceptTabTransfer(request: TabTransferRequest) {
       store.openCalendarTab();
     } else if (isTableTab(request.tabId)) {
       created = priorIndex < 0;
-      await store.openDataTable(request.tabId === TABLES_TAB_ID ? undefined : request.tabId.slice(6));
+      await store.openDataTable(request.tabId === TABLES_TAB_ID ? undefined : tableFileId(request.tabId));
     } else if (extensionViews.some((view) => view.id === request.tabId)) {
       const view = extensionViews.find((view) => view.id === request.tabId)!;
       if (!view.detachable)
@@ -2789,7 +2942,10 @@ async function exportWorkspace(workspaceId: string) {
     if (native) {
       const { saveDocumentExport } = await import('./native-document-export');
       await saveDocumentExport(blob, filename, 'zip');
-    } else downloadExport(blob, filename);
+    } else {
+      const { downloadExport } = await import('./document-export');
+      downloadExport(blob, filename);
+    }
   } catch (error) {
     workspaceExportError.value = String(error instanceof Error ? error.message : error);
   } finally { workspaceExporting.value = false; }
@@ -2982,8 +3138,12 @@ function settingsAction(
 }
 function toggleWorkspaceMenu() {
   workspaceMenu.value = !workspaceMenu.value;
+  if (!workspaceMenu.value) closeWorkspaceEntryContextMenu();
   if (workspaceMenu.value && store.isWeb) void store.refreshWorkspaces();
 }
+watch(workspaceMenu, (opened) => {
+  if (!opened) closeWorkspaceEntryContextMenu();
+});
 async function createNewWorkspace() {
   if (store.busy) return;
   menu.value = false;
@@ -3099,6 +3259,7 @@ async function exportDocument(format: DocumentExportFormat) {
   menu.value = false;
   exportBusy.value = true;
   try {
+    const { downloadExport, exportFilename, renderDocumentExport } = await import('./document-export');
     const blob = await renderDocumentExport(options, format);
     const filename = exportFilename(doc.path, format);
     if (localNative) {
@@ -3292,6 +3453,7 @@ function mobileBack(event: Event) {
   const dismiss = modalBusy.value || updateLock.value || busy.value ? () => {}
     : fileContextMenu.value ? () => closeFileContextMenu(true)
     : directoryContextMenu.value ? closeDirectoryContextMenu
+    : workspaceEntryContextMenu.value ? closeWorkspaceEntryContextMenu
     : pageContextMenu.value ? closePageContextMenu
     : outlineContextMenu.value ? closeOutlineContextMenu
     : menu.value ? () => { menu.value = false; }
@@ -3327,6 +3489,7 @@ function outsideClick(event: MouseEvent) {
   if (!target.closest('.calendar-view-picker')) calendarModeOpen.value = false;
   if (!target.closest('.file-context-menu')) closeFileContextMenu();
   if (!target.closest('.directory-context-menu')) closeDirectoryContextMenu();
+  if (!target.closest('.workspace-entry-context-menu')) closeWorkspaceEntryContextMenu();
   if (!target.closest('.page-context-menu')) closePageContextMenu();
   if (!target.closest('.outline-context-menu')) closeOutlineContextMenu();
   if (!target.closest('.dropdown, .menu-wrap, .sidebar-bottom')) {
@@ -3341,6 +3504,8 @@ function outsideContextMenu(event: MouseEvent) {
   if (!(event.target as HTMLElement).closest('.tree-row')) closeFileContextMenu();
   if (!event.defaultPrevented && !(event.target as HTMLElement).closest('.directory-context-menu'))
     closeDirectoryContextMenu();
+  if (!event.defaultPrevented && !(event.target as HTMLElement).closest('.workspace-entry-context-menu'))
+    closeWorkspaceEntryContextMenu();
   if (!event.defaultPrevented) {
     closePageContextMenu();
     closeOutlineContextMenu();
@@ -3424,7 +3589,7 @@ onMounted(async () => {
     void updates.initialize();
     settingsPrewarmTimer = window.setTimeout(() => {
       void prewarmSettingsWindow().catch(() => {});
-    }, 800);
+    }, 5000);
   }
   if (native) {
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
@@ -3488,7 +3653,7 @@ onBeforeUnmount(() => {
 watch(activeId, () => {
   closePageContextMenu();
   closeOutlineContextMenu();
-  const treeId = activeId.value.startsWith('table:') ? activeId.value.slice(6) : activeId.value;
+  const treeId = activeId.value.startsWith('table:') ? tableFileId(activeId.value) : activeId.value;
   if (!pendingTreeOpenIds.has(treeId) || !selectedEntryIds.value.has(treeId))
     selectActiveFileInTree();
   historyPanel.value = false;
@@ -3702,6 +3867,7 @@ const helpBlocked = computed(() => !!(
               v-else
               :active="sidebar && sidebarView === 'repository' && !workspaceMenu && !modal && !settingsPanel"
               @open="closeButtonVisibilityMenus"
+              @context="openWorkspaceEntryContextMenu"
             />
             <ButtonVisibilityGroup
               v-slot="{ isVisible }"
@@ -3824,7 +3990,7 @@ const helpBlocked = computed(() => !!(
                 已选中 {{ contextEntries.length }} 个条目
               </div>
               <button
-                v-if="localNative && !mobile"
+                v-if="!mobile && localNative"
                 role="menuitem"
                 :disabled="selectionDeleteDisabled"
                 @click="fileContextAction('duplicate')"
@@ -3870,7 +4036,6 @@ const helpBlocked = computed(() => !!(
                   <Table2 :size="15" />在此新建数据表
                 </button>
                 <button
-                  v-if="!store.isWeb"
                   role="menuitem"
                   :disabled="fileMutationDisabled(fileContextMenu.file)"
                   @click="fileContextAction('folder')"
@@ -3878,7 +4043,6 @@ const helpBlocked = computed(() => !!(
                   <FolderPlus :size="15" />在此新建文件夹
                 </button>
                 <button
-                  v-if="!store.isWeb"
                   role="menuitem"
                   :disabled="
                     fileMutationDisabled(fileContextMenu.file) ||
@@ -3924,7 +4088,7 @@ const helpBlocked = computed(() => !!(
                 </button>
               </template>
               <button
-                v-if="localNative && !mobile"
+                v-if="canDuplicateEntry(fileContextMenu.file)"
                 role="menuitem"
                 :disabled="fileMutationDisabled(fileContextMenu.file)"
                 @click="fileContextAction('duplicate')"
@@ -3933,6 +4097,13 @@ const helpBlocked = computed(() => !!(
               </button>
               <button role="menuitem" @click="fileContextAction('copy')">
                 <Copy :size="15" />复制相对路径
+              </button>
+              <button
+                v-if="store.isWeb && fileContextMenu.file.kind === 'file' && (isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path))"
+                role="menuitem"
+                @click="fileContextAction('copy-link')"
+              >
+                <Link :size="15" />复制链接
               </button>
               <button
                 v-if="localNative && !mobile"
@@ -3961,7 +4132,13 @@ const helpBlocked = computed(() => !!(
                   @click="fileContextAction('delete')"
                 >
                   <Trash2 :size="15" />{{
-                    store.isDemo ? '删除' : store.isWeb ? '删除在线文档' : '移入回收站'
+                    store.isDemo
+                      ? '删除'
+                      : store.isWeb
+                        ? fileContextMenu.file.kind === 'directory'
+                          ? '删除在线文件夹'
+                          : '删除在线文档'
+                        : '移入回收站'
                   }}
                 </button>
               </template>
@@ -3989,13 +4166,88 @@ const helpBlocked = computed(() => !!(
               <Table2 :size="15" />新建数据表
             </button>
             <button
-              v-if="!store.isWeb"
               role="menuitem"
               :disabled="!workspace || workspace.readOnly || busy"
               @click="directoryContextAction('folder')"
             >
               <FolderPlus :size="15" />新建文件夹
             </button>
+            <button
+              v-if="!directoryContextMenu.parent"
+              role="menuitem"
+              :disabled="!workspace || workspace.readOnly || busy"
+              @click="directoryContextAction('import')"
+            >
+              <ArrowDownToLine :size="15" />导入
+            </button>
+            <template v-if="directoryContextMenu.parent">
+              <button
+                role="menuitem"
+                :disabled="directoryContextDuplicateDisabled()"
+                @click="directoryContextAction('duplicate')"
+              >
+                <Copy :size="15" />创建副本
+              </button>
+              <button role="menuitem" @click="directoryContextAction('copy')">
+                <Copy :size="15" />复制相对路径
+              </button>
+              <div class="menu-divider" role="separator" />
+              <button
+                role="menuitem"
+                :disabled="directoryContextRenameDisabled()"
+                @click="directoryContextAction('rename')"
+              >
+                <Pencil :size="15" />重命名文件夹
+              </button>
+              <button
+                class="danger-text"
+                role="menuitem"
+                :disabled="directoryContextDeleteDisabled()"
+                @click="directoryContextAction('delete')"
+              >
+                <Trash2 :size="15" />{{
+                  store.isDemo ? '删除文件夹' : store.isWeb ? '删除在线文件夹' : '将文件夹移入回收站'
+                }}
+              </button>
+            </template>
+          </div>
+        </Teleport>
+        <Teleport to="body">
+          <div
+            v-if="workspaceEntryContextMenu"
+            ref="workspaceEntryContextMenuElement"
+            class="dropdown compact-action-menu file-context-menu workspace-entry-context-menu"
+            role="menu"
+            tabindex="-1"
+            :aria-label="`${workspaceEntryContextMenu.item.name} 工作区操作`"
+            :style="{ left: `${workspaceEntryContextMenu.x}px`, top: `${workspaceEntryContextMenu.y}px` }"
+            @keydown="workspaceEntryContextKeydown"
+          >
+            <button
+              role="menuitem"
+              :disabled="busy"
+              @click="workspaceEntryContextAction('open')"
+            >
+              <FolderOpen :size="15" />打开工作区
+              <Check
+                v-if="workspaceEntryContextMenu.item.id === workspace?.id"
+                class="workspace-entry-context-check"
+                :size="14"
+              />
+            </button>
+            <template v-if="workspaceEntryContextMenu.item.id === workspace?.id">
+              <button
+                v-if="localNative && !mobile"
+                role="menuitem"
+                :disabled="busy"
+                @click="workspaceEntryContextAction('reveal')"
+              >
+                <ExternalLink :size="15" />在资源管理器中显示
+              </button>
+              <button v-if="!store.isWeb" role="menuitem" :disabled="busy" @click="workspaceEntryContextAction('leave')">
+                <LogOut :size="15" />退出当前工作区
+              </button>
+            </template>
           </div>
         </Teleport>
         <div class="sidebar-bottom">
@@ -4007,6 +4259,7 @@ const helpBlocked = computed(() => !!(
               aria-label="切换工作区"
               :title="workspace?.name ?? '选择工作区'"
               @click="toggleWorkspaceMenu"
+              @contextmenu.stop.prevent="toggleWorkspaceMenu"
             >
               <span class="workspace-avatar"><WorkspaceIcon :icon="store.workspaceSettings.icon" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" :size="15" /></span>
               <span class="workspace-picker-text"
@@ -4018,6 +4271,7 @@ const helpBlocked = computed(() => !!(
               v-if="workspaceMenu"
               id="workspace-menu"
               class="dropdown compact-action-menu sidebar-popover workspace-dropdown"
+              @contextmenu.stop.prevent="workspaceDropdownContextMenu"
             >
               <div class="workspace-menu-summary">
                 <span class="workspace-menu-avatar"><WorkspaceIcon :icon="store.workspaceSettings.icon" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" :size="16" /></span>
@@ -4047,21 +4301,27 @@ const helpBlocked = computed(() => !!(
               </div>
               <PluginMenu location="workspace" @selected="workspaceMenu = false" />
               <component
-                :is="extensions.regions['workspace-menu-layout'] ?? 'div'"
-                :actions="extensions.regions['workspace-menu-layout'] ? extensionActions : undefined"
+                :is="extensions.regions['workspace-menu-layout'] ?? WorkspaceMenuLayout"
+                :actions="extensionActions"
               >
-              <div v-if="!extensions.regions['workspace-menu-layout']" class="menu-divider" />
+              <template v-if="extensions.regions['workspace-settings']" #settings>
               <component
                 :is="extensions.regions['workspace-settings']"
-                v-if="extensions.regions['workspace-settings']"
                 :actions="extensionActions"
               />
-              <button v-else-if="!extensions.regions['workspace-menu-layout']" @click="openSettings()"><Settings2 :size="16" />设置</button>
-              <button v-if="workspace" :disabled="workspace.readOnly || busy" @click="openImport">
+              </template>
+              <template #default>
+              <component
+                :is="extensions.regions['workspace-settings']"
+                v-if="extensions.regions['workspace-menu-layout'] && extensions.regions['workspace-settings']"
+                :actions="extensionActions"
+              />
+              <button v-if="workspace" role="menuitem" :disabled="workspace.readOnly || busy" @click="openImport">
                 <ArrowDownToLine :size="16" />导入
               </button>
               <button
                 v-if="workspace"
+                role="menuitem"
                 :disabled="workspace.readOnly || busy"
                 @click="
                   workspaceMenu = false;
@@ -4070,8 +4330,8 @@ const helpBlocked = computed(() => !!(
               >
                 <Files :size="16" />文档模板
               </button>
-              <button @click="showObjects()"><Users :size="16" />工作区对象 · Level 2</button>
-              <button @click="openSettings('about')">
+              <button role="menuitem" @click="showObjects()"><Users :size="16" />工作区对象</button>
+              <button role="menuitem" @click="openSettings('about')">
                 <CircleHelp :size="16" />关于 Tano / 同页{{
                   updates.state.candidate ? ' · 有新版本' : ''
                 }}
@@ -4098,6 +4358,7 @@ const helpBlocked = computed(() => !!(
               />
               <button
                 v-if="mobile && workspace"
+                role="menuitem"
                 @click="
                   workspaceMenu = false;
                   recyclePanel = true;
@@ -4107,6 +4368,7 @@ const helpBlocked = computed(() => !!(
               </button>
               <button
                 v-if="workspace"
+                role="menuitem"
                 @click="
                   workspaceMenu = false;
                   agentPanel = true;
@@ -4126,12 +4388,14 @@ const helpBlocked = computed(() => !!(
               />
               <button
                 v-if="extensions.regions['workspace-menu-layout'] && !store.isWeb && workspace"
+                role="menuitem"
                 :disabled="busy"
                 @click="leaveWorkspace"
               >
                 <LogOut :size="16" />退出当前工作区
               </button>
-              <template v-if="!extensions.regions['workspace-menu-layout']">
+              </template>
+              <template #workspaces>
               <component
                 v-if="extensions.regions['workspace-menu']"
                 :is="extensions.regions['workspace-menu']"
@@ -4181,6 +4445,9 @@ const helpBlocked = computed(() => !!(
                     :title="item.path"
                     :disabled="busy"
                     :aria-current="item.id === workspace?.id ? 'true' : undefined"
+                    :data-workspace-entry-id="item.id"
+                    @mousedown.right.stop.prevent="openWorkspaceEntryContextMenu(item, $event)"
+                    @contextmenu.stop.prevent="openWorkspaceEntryContextMenu(item, $event)"
                     @click="
                       workspaceMenu = false;
                       store.openWorkspace(item.path);
@@ -4403,7 +4670,7 @@ const helpBlocked = computed(() => !!(
                 :workspace-name="workspace?.name ?? 'Tano'"
                 :entries="workspace?.files ?? []"
                 :path="tab?.path"
-                :demo-label="store.isDemo && isVisible('workspace-status') ? workspaceStatusLabel : undefined"
+                :demo-label="store.isDemo ? workspaceStatusLabel : undefined"
                 :read-only="workspace?.readOnly"
                 @open="(file) => { store.focusPane(pane.id); openEntry(file); }"
               >
@@ -4452,7 +4719,6 @@ const helpBlocked = computed(() => !!(
                 />
                 <span
                   v-if="
-                    isVisible('workspace-status') &&
                     workspaceStatusLabel &&
                     (!store.isDemo ||
                       !isVisible('breadcrumb') ||
@@ -4463,7 +4729,6 @@ const helpBlocked = computed(() => !!(
                   :title="store.isDemo ? '浏览器演示 · 数据仅保存在本浏览器' : undefined"
                 >
                   <LockKeyhole v-if="workspace?.readOnly" :size="14" />
-                  <Globe2 v-else-if="store.isWeb" :size="14" />
                   {{ workspaceStatusLabel }}
                 </span>
                 <div
@@ -4749,20 +5014,6 @@ const helpBlocked = computed(() => !!(
                       </button>
                       <div class="menu-divider" role="separator" />
                       <DocumentExportMenu :disabled="exportBusy" @select="exportDocument" />
-                      <button
-                        type="button"
-                        :disabled="workspace?.readOnly || busy"
-                        @click="openImport"
-                      >
-                        <ArrowDownToLine :size="15" />导入
-                      </button>
-                      <button
-                        type="button"
-                        :disabled="workspace?.readOnly || busy"
-                        @click="openTemplateLibrary"
-                      >
-                        <Files :size="15" />文档模板
-                      </button>
                     </div>
                   </div>
                 </template>
@@ -4780,7 +5031,7 @@ const helpBlocked = computed(() => !!(
             <div v-if="workspace && isTableTab(pane.activeId)" class="data-table-assistant-page">
               <DataTablePage
                 :key="`${workspace.id}:${pane.activeId}`"
-                :table-id="pane.activeId.slice(6)"
+                :table-id="tableFileId(pane.activeId)"
                 :controls-target="detachedWindow ? undefined : `#data-table-controls-${pane.id}`"
               />
               <AssistantLauncher
@@ -5049,7 +5300,7 @@ const helpBlocked = computed(() => !!(
                       />
                       <MarkdownEditor :suggestion-marks="suggestions.richMarks" :transform-change="suggestions.transformChange"
                         v-else
-                        :key="`${active.id}:${suggestions.viewKey}:${active.id === store.activeId ? (editing.active?.key ?? 'local') : 'local'}`"
+                        :key="`${active.id}:${suggestions.viewKey}:${active.id === store.active?.id ? (editing.active?.key ?? 'local') : 'local'}`"
                         :ref="(el) => setPaneEditor(pane.id, el)"
                         :document-id="active.id"
                         :readonly="suggestions.readonly"
@@ -5060,7 +5311,7 @@ const helpBlocked = computed(() => !!(
                         :reference-targets="store.referenceTargets"
                         :preferences="editorPreferences"
                         :extension="
-                          active.id === store.activeId ? editing.active?.extension : undefined
+                          active.id === store.active?.id ? editing.active?.extension : undefined
                         "
                         :model-value="suggestions.content"
                         :table-layouts="active.tableLayout?.file.tables"
@@ -5327,8 +5578,9 @@ const helpBlocked = computed(() => !!(
                 : '打开一个文件夹，让你的 Markdown 成为共同的语言。'
           }}
         </p>
-        <div class="welcome-actions">
+        <div v-if="store.isWeb || mobile || extensions.regions['welcome-login']" class="welcome-actions">
           <button
+            v-if="store.isWeb || mobile"
             class="primary-button"
             :disabled="busy"
             @click="store.isWeb ? createNewWorkspace() : store.openWorkspace()"
@@ -5355,15 +5607,30 @@ const helpBlocked = computed(() => !!(
           :actions="extensionActions"
         />
         <div
-          v-else-if="store.recent.length"
+          v-else-if="store.recent.length || (!store.isWeb && !mobile)"
           class="recent-spaces"
           aria-label="最近工作空间"
         >
-          <span class="recent-label">最新打开仓库</span>
+          <div class="recent-spaces-header">
+            <span class="recent-label">最新打开仓库</span>
+            <button
+              v-if="!store.isWeb && !mobile"
+              type="button"
+              class="recent-open-button"
+              :disabled="busy"
+              :aria-label="busy ? '正在打开…' : '打开本地仓库'"
+              :title="busy ? '正在打开…' : '打开本地仓库'"
+              @click="store.openWorkspace()"
+            >
+              <Plus :size="18" aria-hidden="true" />
+            </button>
+          </div>
           <button
             v-for="item in store.recent.slice(0, 4)"
             :key="item.id"
             :disabled="busy"
+            @mousedown.right.stop.prevent="openWorkspaceEntryContextMenu(item, $event)"
+            @contextmenu.stop.prevent="openWorkspaceEntryContextMenu(item, $event)"
             @click="store.openWorkspace(item.path)"
           >
             <span class="workspace-list-avatar">
@@ -5533,6 +5800,7 @@ const helpBlocked = computed(() => !!(
     />
     <input ref="assetInput" type="file" multiple hidden @change="importObjectAssets" />
     <ObjectPanel
+      v-if="objectPanelMounted"
       v-show="objectPanel"
       :open="objectPanel"
       :selected-id="selectedObjectId"

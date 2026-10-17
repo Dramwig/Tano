@@ -1,5 +1,7 @@
 # 本地开发
 
+第三方账号连接的 OAuth 应用、回调地址和令牌配置见[第三方账号导入](account-import.md)。
+
 Android、iOS 和平板适配的构建步骤、键盘/安全区行为及本机验收见[手机与平板开发](../mobile.md)。
 
 [English](../local-development.md) | 中文 | [日本語](../ja/local-development.md) | [Deutsch](../de/local-development.md) | [文档目录](README.md)
@@ -14,6 +16,8 @@ npm run desktop
 ```
 
 Windows 也可以双击 `local-desktop.bat`。脚本会检查 Node.js 版本和桌面工具链，并在每次启动前运行 `npm install --no-audit --no-fund`；即使已有 `node_modules`，也会同步新增或变更的依赖，复用已符合锁文件的包。
+
+此入口启动的是 Vite + Tauri 开发版。主窗口会在工作台挂载完成后显示；启动前的依赖检查和编译进度显示在终端中。Vite 重新加载页面时也会暂时隐藏主窗口，待工作台再次挂载后恢复显示。前端加载失败或超过 30 秒会显示带“重新加载”按钮的恢复界面；迟到的初始化结果不会覆盖恢复界面。
 
 两个 Windows 启动脚本都会在安装依赖前检查 Node.js 版本，仓库的 npm 配置也会拒绝不兼容的版本。如果遇到版本错误，先运行 `node -v` 和 `where.exe node` 检查当前版本及路径；使用 nvm-windows 时，安装并切换到 Node.js 24.12+，然后重新打开终端或启动脚本。
 

@@ -1,5 +1,4 @@
 import { invoke } from '@tauri-apps/api/core';
-import { parseCalendar, writeCalendar } from './ical';
 import type { Account, Collection, ItemValue, RemoteAdapter, RemoteItem, SyncKind } from './types';
 export interface Response { status: number; body: string; etag: string; url: string }
 export type Transport = (path: string, method?: string, body?: string, headers?: Record<string, string>) => Promise<Response>;
@@ -89,6 +88,7 @@ function caldav(account: Account, kind: SyncKind, transport: Transport): RemoteA
   const resource = (href: string, base: string) => new URL(href, base).href;
   async function read(path: string, wanted?: string) {
     const response = check(await transport(path));
+    const { parseCalendar } = await import('./ical');
     const parsed = parseCalendar(response.body, kind);
     if (parsed.warnings.length && !parsed.items.length) throw new Error(parsed.warnings.join('；'));
     const item = parsed.items.find(i => !wanted || i.id === wanted);
@@ -123,6 +123,7 @@ function caldav(account: Account, kind: SyncKind, transport: Transport): RemoteA
     async list(collection) {
       const query = `<?xml version="1.0" encoding="utf-8"?><c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:getetag/><c:calendar-data/></d:prop><c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="${componentType}"/></c:comp-filter></c:filter></c:calendar-query>`;
       const response = check(await transport(collection, 'REPORT', query, { Depth: '1', 'Content-Type': 'application/xml; charset=utf-8' }));
+      const { parseCalendar } = await import('./ical');
       const result: RemoteItem[] = [];
       for (const resourceNode of elements(xml(response.body), DAV, 'response')) {
         const href = resource(textOf(resourceNode, DAV, 'href'), response.url);
@@ -137,6 +138,7 @@ function caldav(account: Account, kind: SyncKind, transport: Transport): RemoteA
     },
     async write(_collection, item, value) {
       if (!item.version || !item.raw) throw new Error('远端缺少版本或原文，无法安全写入');
+      const { parseCalendar, writeCalendar } = await import('./ical');
       const uid = parseCalendar(item.raw, kind).items[0]?.id;
       if (!uid) throw new Error('远端缺少事项 UID');
       check(await transport(item.id, 'PUT', writeCalendar(value, kind, uid, item.raw), { 'If-Match': item.version, 'Content-Type': 'text/calendar; charset=utf-8' }));
@@ -147,6 +149,7 @@ function caldav(account: Account, kind: SyncKind, transport: Transport): RemoteA
       const existing = await transport(path);
       if (existing.status === 200) return read(path);
       if (existing.status !== 404) check(existing);
+      const { writeCalendar } = await import('./ical');
       check(await transport(path, 'PUT', writeCalendar(value, kind, `${operationId}@tano`), { 'If-None-Match': '*', 'Content-Type': 'text/calendar; charset=utf-8' }));
       return read(path);
     },

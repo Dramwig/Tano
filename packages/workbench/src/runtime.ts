@@ -8,6 +8,7 @@ import type { CommentAuthor } from './workspace-comments';
 import type { AttachmentService } from './attachments';
 import type { SettingsPageId } from './settings-window';
 import type { PluginRuntimeServices } from './plugins/host';
+import type { ImportAccountHost } from './account-import/types';
 
 export interface WorkbenchActions {
   closeMenus(): void;
@@ -91,6 +92,8 @@ export interface WorkbenchRuntime {
   personalPlans?: ObjectStorage;
   assistant?: AssistantTransport;
   plugins?: PluginRuntimeServices;
+  /** Optional account-import backend; desktop uses its native credential boundary by default. */
+  accountImports?: ImportAccountHost;
   native: boolean;
   mobile: boolean;
   extensions?: () => WorkbenchExtensions;

@@ -11,6 +11,7 @@
     <title>Tano / 同页</title>
     <link rel="icon" type="image/svg+xml" href="/favicon-green.svg?v=3" />
     <style>
+      :root { color-scheme: light; background: #f7f7f2; }
       body { margin: 0; }
       .tano-startup {
         box-sizing: border-box;
@@ -42,10 +43,15 @@
       .tano-startup button:hover { background: #e9ece4; }
       .tano-startup [hidden] { display: none; }
       @media (prefers-color-scheme: dark) {
-        .tano-startup { background: #1d201c; color: #e6e9e0; }
-        .tano-startup-detail { color: #f0a59d; }
-        .tano-startup button:hover { background: #30362c; }
+        :root:not([data-theme="light"]) { color-scheme: dark; background: #1d201c; }
+        :root:not([data-theme="light"]) .tano-startup { background: #1d201c; color: #e6e9e0; }
+        :root:not([data-theme="light"]) .tano-startup-detail { color: #f0a59d; }
+        :root:not([data-theme="light"]) .tano-startup button:hover { background: #30362c; }
       }
+      :root[data-theme="dark"] { color-scheme: dark; background: #1d201c; }
+      :root[data-theme="dark"] .tano-startup { background: #1d201c; color: #e6e9e0; }
+      :root[data-theme="dark"] .tano-startup-detail { color: #f0a59d; }
+      :root[data-theme="dark"] .tano-startup button:hover { background: #30362c; }
     </style>
   </head>
   <body>

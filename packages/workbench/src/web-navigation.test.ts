@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pageRoutePath, parsePageRoute } from './web-navigation';
+import { pageRoutePath, pageRouteUrl, parsePageRoute } from './web-navigation';
 
 describe('web page navigation', () => {
   it('parses workspace and file identities', () => {
@@ -10,6 +10,11 @@ describe('web page navigation', () => {
     const path = pageRoutePath('workspace/id', 'file?name');
     expect(path).toBe('/p/workspace%2Fid/file%3Fname');
     expect(parsePageRoute(path)).toEqual({ workspaceId: 'workspace/id', fileId: 'file?name' });
+  });
+
+  it('builds a shareable URL while preserving the current origin and query', () => {
+    expect(pageRouteUrl('https://tano.example/app?session=abc#heading', 'workspace/id', 'file?name'))
+      .toBe('https://tano.example/p/workspace%2Fid/file%3Fname?session=abc');
   });
 
   it('preserves the namespace of plugin tabs in browser history and reload links', () => {

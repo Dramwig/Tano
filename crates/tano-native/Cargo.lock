@@ -4247,6 +4247,7 @@ name = "tano-native"
 version = "0.5.1"
 dependencies = [
  "base64 0.22.1",
+ "hmac",
  "keyring",
  "libc",
  "notify",
@@ -4255,6 +4256,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "sha1",
  "sha2",
  "tauri",
  "tauri-plugin-dialog",

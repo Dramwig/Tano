@@ -781,6 +781,21 @@ describe('workspace file reconciliation', () => {
     await store.openFileInNewTab(store.workspace!.files.find((entry) => entry.path === 'other.md')!);
     expect(store.tabs.map((tab) => tab.path)).toEqual(['note.md', 'other.md']);
   });
+  it('opens another tab when the requested document is already open', async () => {
+    const note = store.workspace!.files.find((entry) => entry.path === 'note.md')!;
+    const firstId = store.activeId;
+    await store.openFileInNewTab(note);
+
+    expect(store.tabs).toHaveLength(2);
+    expect(store.tabs.map((tab) => tab.path)).toEqual(['note.md', 'note.md']);
+    expect(store.activeId).not.toBe(firstId);
+    expect(store.active?.id).toBe(note.id);
+    expect(store.tabs.every((tab) => tab.document?.id === note.id)).toBe(true);
+
+    await store.close(store.activeId);
+    expect(store.tabs).toHaveLength(1);
+    expect(store.active?.id).toBe(note.id);
+  });
   it('displays a cached document without waiting for a background workspace refresh', async () => {
     await backend.create('cached.md', 'Cached body');
     await store.refresh();

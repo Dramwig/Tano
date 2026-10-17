@@ -34,6 +34,7 @@ try {
 
   console.log('正在启动同页桌面开发版。首次编译 Rust 可能需要较长时间。');
   console.log('请保留此窗口，关闭窗口即可停止桌面开发服务。');
+  console.log('工作台加载完成后会自动显示主窗口；加载期间请查看此处的编译进度。');
   run(
     process.execPath,
     [resolve(root, 'scripts/dev-desktop.mjs')],

@@ -1,31 +1,33 @@
-import { createApp } from 'vue';
+import { createApp, nextTick } from 'vue';
 import { createPinia } from 'pinia';
 import { configureWorkbench, createLocalExtensions } from '@tano/workbench/runtime';
 import { NativeAdapter, native } from '@tano/workbench/adapter';
-import { createMarkdownDemo } from '@tano/workbench/markdown-demo';
 import { markdownDemoLocaleFromPath } from '@tano/workbench/markdown-demo-routes';
 import { initializePlatform, mobile } from '@tano/workbench/platform';
-import { applyTheme, readThemePreference } from '@tano/workbench/theme';
 import '@tano/workbench/styles.css';
 import { settingsWindowRequest } from '@tano/workbench/settings-window';
 import { HttpPluginCatalog } from '@tano/workbench/plugins/catalog';
 import { createNativePluginConnections, createNativePluginServices } from '@tano/workbench/plugins/native';
 
-export async function start() {
-  applyTheme(readThemePreference());
+export async function start(signal?: AbortSignal) {
   const settingsRoute = native && !!settingsWindowRequest();
-  const [view, desktopFrame] = await Promise.all([
+  const [view, desktopFrame, storage] = await Promise.all([
     settingsRoute
       ? import('@tano/workbench/components/SettingsWindow.vue')
       : import('@tano/workbench'),
     native && !settingsRoute
       ? import('@tano/workbench/components/DesktopWindow.vue')
       : null,
+    native
+      ? { adapter: new NativeAdapter() }
+      : import('@tano/workbench/markdown-demo').then(({ createMarkdownDemo }) =>
+        createMarkdownDemo(markdownDemoLocaleFromPath(window.location.pathname) ?? 'zh-cn')),
     initializePlatform(),
   ]);
+  // A timed-out startup must not replace the recovery UI when imports finish late.
+  signal?.throwIfAborted();
   const locale = markdownDemoLocaleFromPath(window.location.pathname) ?? 'zh-cn';
   const extensions = createLocalExtensions();
-  const storage = native ? { adapter: new NativeAdapter() } : createMarkdownDemo(locale);
   const catalogUrl = import.meta.env.VITE_TANO_PLUGIN_CATALOG_URL?.trim();
   const plugins = { ...(catalogUrl ? { catalog: new HttpPluginCatalog(catalogUrl) } : {}),
     ...(native && !mobile ? { native: createNativePluginServices(), connections: createNativePluginConnections() } : {}) };
@@ -36,4 +38,5 @@ export async function start() {
     ? createApp(desktopFrame!.default, { view: view.default })
     : createApp(view.default);
   app.use(pinia).mount('#app');
+  await nextTick();
 }

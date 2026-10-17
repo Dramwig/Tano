@@ -73,7 +73,7 @@ import { readStartupWorkspace, rememberStartupWorkspace } from '../workspace-sta
 import { recordHelpCompleted, recordHelpPlanEdit } from '../help-checklist';
 import { createHelpEditQueue } from '../help-edit-queue';
 import { createDataTableController } from '../data-table-controller';
-import { isTableTab, TABLES_TAB_ID, tableTabId } from '../data-tables';
+import { isTableTab, TABLES_TAB_ID, tableFileId, tableTabId } from '../data-tables';
 import { isDataTableFilePath, dataTableName } from '@tano/protocol';
 
 export interface OpenDocument {
@@ -799,6 +799,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }, 150);
   }, { immediate: true });
   const tabIds = ref<string[]>([]);
+  // Most tabs use the file/page id directly.  A context-menu "open in new
+  // tab" request can target an already open file, though, so those additional
+  // tab instances need an id of their own while continuing to share the open
+  // document and its draft.
+  const tabAliases = ref(new Map<string, string>());
   const activeId = ref('');
   let activationRevision = 0;
   watch(activeId, () => { activationRevision++; }, { flush: 'sync' });
@@ -876,17 +881,32 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     resize(layout.value);
   }
   const busy = ref(false);
-  const active = computed(() => documents.value.find((d) => d.id === activeId.value));
+  const tabTarget = (id: string) => tabAliases.value.get(id) ?? id;
+  function newTabAlias(target: string) {
+    const id = isTableTab(target)
+      ? `${target}:${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`
+      : `tab:${crypto.randomUUID()}`;
+    tabAliases.value = new Map(tabAliases.value).set(id, target);
+    return id;
+  }
+  function removeTabAlias(id: string) {
+    if (!tabAliases.value.has(id)) return;
+    const next = new Map(tabAliases.value);
+    next.delete(id);
+    tabAliases.value = next;
+  }
+  const active = computed(() => documents.value.find((d) => d.id === tabTarget(activeId.value)));
   const tabs = computed<DocumentTab[]>(() =>
     tabIds.value.map((id) => {
-      const document = documents.value.find((doc) => doc.id === id);
+      const targetId = tabTarget(id);
+      const document = documents.value.find((doc) => doc.id === targetId);
       const attachmentPreview = id.startsWith('attachment:');
       const attachment = attachmentPreview ? workspace.value?.files.find(file => file.id === id.slice('attachment:'.length) && file.kind === 'file') : undefined;
-      const table = dataTables.records.value.find(record => tableTabId(record.fileId) === id);
-      const tableFile = isTableTab(id) ? workspace.value?.files.find(file => file.id === id.slice(6)) : undefined;
+      const table = dataTables.records.value.find(record => tableTabId(record.fileId) === targetId);
+      const tableFile = isTableTab(targetId) ? workspace.value?.files.find(file => file.id === tableFileId(targetId)) : undefined;
       const tablePath = tableFile ? displayPath(tableFile) : table?.path;
       return { id, path: document ? displayPath(document) : attachment ? displayPath(attachment) : tableFile ? displayPath(tableFile) : tablePath ?? (attachmentPreview ? '附件不可用' : ''), blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, view: views.value.get(id), pluginView: pluginViews.value.find(view => view.key === id && view.location === 'tab'), document, attachmentPreview, attachment,
-        ...(isTableTab(id) ? { dataTable: { name: tablePath ? dataTableName(tablePath) : '数据表不可用', dirty: !!table && dataTables.dirty(table) } } : {}) };
+        ...(isTableTab(targetId) ? { dataTable: { name: tablePath ? dataTableName(tablePath) : '数据表不可用', dirty: !!table && dataTables.dirty(table) } } : {}) };
     }),
   );
   type TabNavigation = { entries: string[]; index: number };
@@ -1026,7 +1046,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       payload: {
         version: 1,
         activeId: activeId.value,
-        tabs: [...tabIds.value],
+        // Alias tabs are a live UI detail.  Persist one canonical tab per
+        // document so a restart cannot restore an id whose alias map is gone.
+        tabs: [...new Set(tabIds.value.map(tabTarget))],
         layout: JSON.parse(JSON.stringify(layout.value)) as WorkspaceLayout,
         dataTables: dataTables.drafts(),
         documents: documents.value.map((doc) => ({
@@ -1341,6 +1363,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         assistantApplied.clear();
         documents.value = [];
         tabIds.value = [];
+        tabAliases.value = new Map();
         activeId.value = '';
         resetTabNavigation();
         objects.value = []; objectErrors.value = [];
@@ -1374,9 +1397,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function restoreSession(saved: WorkspaceSession) {
     await dataTables.restore(saved.dataTables ?? []);
+    tabAliases.value = new Map();
     const remapped = new Map<string, string>();
     for (const id of saved.tabs ?? [])
-      if (isTableTab(id) && id !== TABLES_TAB_ID) remapped.set(id, tableTabId(dataTableFileId(id.slice(6))));
+      if (isTableTab(id) && id !== TABLES_TAB_ID) remapped.set(id, tableTabId(dataTableFileId(tableFileId(id))));
     for (const tab of saved.documents) {
       const file =
         workspace.value!.files.find((entry) => entry.id === tab.id) ??
@@ -1450,7 +1474,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           ];
         }
         const byId = new Map(documents.value.map((entry) => [entry.id, entry]));
-        documents.value = reordered.flatMap((id) => byId.get(id) ?? []);
+        const ordered = reordered.map(tabTarget).filter((id, index, all) => all.indexOf(id) === index)
+          .map(id => byId.get(id)).filter((doc): doc is OpenDocument => !!doc);
+        documents.value = [...ordered, ...documents.value.filter(doc => !ordered.includes(doc))];
         tabIds.value = reordered;
       }
     } else {
@@ -1509,7 +1535,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return false;
     }
     if (suggestionPersistence.value?.pending() && !(await flush())) return false;
-    const current = documents.value.find((doc) => doc.id === id);
+    const current = documents.value.find((doc) => doc.id === tabTarget(id ?? ''));
     if (!current) return true;
     if ((dirty(current) || layoutPending(current)) && !(await flush())) {
       report('此文档尚未保存，请先处理保存错误。');
@@ -1600,9 +1626,30 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function openFileInNewTab(file: FileEntry) {
     try {
-      if (file.kind === 'file' && isDataTableFilePath(file.path)) return openDataTable(file.id, { newTab: true });
-      await serial(() => openInternal(file));
-      if (activeId.value === file.id) ensureTabNavigation(file.id, file.id);
+      await serial(async () => {
+        if (file.kind === 'file' && isDataTableFilePath(file.path)) {
+          const target = tableTabId(dataTableFileId(file.id));
+          if (tabIds.value.includes(target)) {
+            const alias = newTabAlias(target);
+            tabIds.value.push(alias);
+            activeId.value = alias;
+            ensureTabNavigation(alias, target);
+            touchNavigation();
+          } else await openDataTable(file.id, { newTab: true });
+          return;
+        }
+        const target = file.id;
+        if (tabIds.value.includes(target)) {
+          const alias = newTabAlias(target);
+          tabIds.value.push(alias);
+          activeId.value = alias;
+          ensureTabNavigation(alias, target);
+          touchNavigation();
+          return;
+        }
+        await openInternal(file);
+        if (activeId.value === file.id) ensureTabNavigation(file.id, file.id);
+      });
       if (active.value?.id === file.id) recordHelpCompleted('welcome');
     } catch (error) {
       report(error);
@@ -2007,16 +2054,18 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           if (table && dataTables.dirty(table)) table.unavailable = true;
           else if (isDataTableFilePath(file.path)) {
             dataTables.records.value = dataTables.records.value.filter(state => state.fileId !== file.id);
-            tabIds.value = tabIds.value.filter(id => id !== tableTab);
+            tabIds.value = tabIds.value.filter(id => tabTarget(id) !== tableTab);
+            for (const id of [...tabAliases.value.keys()]) if (tabTarget(id) === tableTab) { removeTabAlias(id); removeTabNavigation(id); }
             removeTabNavigation(tableTab);
-            if (activeId.value === tableTab) activeId.value = tabIds.value.at(-1) ?? '';
+            if (!tabIds.value.includes(activeId.value)) activeId.value = tabIds.value.at(-1) ?? '';
           }
           if (doc && (dirty(doc) || layoutPending(doc))) doc.missing = true; // Preserve input received during the native operation for Save Copy.
           else {
             documents.value = documents.value.filter(item => item.id !== file.id);
-            tabIds.value = tabIds.value.filter(id => id !== file.id);
+            tabIds.value = tabIds.value.filter(id => tabTarget(id) !== file.id);
+            for (const id of [...tabAliases.value.keys()]) if (tabTarget(id) === file.id) { removeTabAlias(id); removeTabNavigation(id); }
             removeTabNavigation(file.id);
-            if (activeId.value === file.id) activeId.value = tabIds.value.at(-1) ?? '';
+            if (!tabIds.value.includes(activeId.value)) activeId.value = tabIds.value.at(-1) ?? '';
           }
         } else if (doc) doc.path = destination!;
         // Record success before refresh so a failed refresh cannot cause a destructive retry.
@@ -2536,7 +2585,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function renameEntry(file: Pick<FileEntry, 'id' | 'path' | 'kind'>, path: string) {
     if (!isWeb) return renameEntryConfirmed(file, path);
-    if (file.kind !== 'file') throw new Error('在线工作区暂不支持重命名文件夹');
     const invalid = validatePath(path);
     if (invalid) throw new Error(invalid);
     const { current, affected, preview } = prepareFileMutation([file]);
@@ -2684,7 +2732,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     await create(path, false, content);
     if (doc.missing && doc.content === content) {
       documents.value = documents.value.filter((d) => d.id !== doc.id);
-      tabIds.value = tabIds.value.filter((id) => id !== doc.id);
+      tabIds.value = tabIds.value.filter((id) => tabTarget(id) !== doc.id);
+      for (const id of [...tabAliases.value.keys()]) if (tabTarget(id) === doc.id) { removeTabAlias(id); removeTabNavigation(id); }
+      if (!tabIds.value.includes(activeId.value)) activeId.value = tabIds.value.at(-1) ?? '';
     }
   }
   async function removeEntries(
@@ -2694,7 +2744,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   ) {
     if (!isWeb) return removeEntriesConfirmed(files, expectedWorkspaceId, expectedContents);
     if (!files.length) return;
-    if (files.some(file => file.kind !== 'file')) throw new Error('在线工作区暂不支持移除文件夹');
     const { affected, preview } = prepareFileMutation(files, expectedWorkspaceId);
     // Preserve the confirmation dialog's snapshot, rather than silently deleting
     // an external edit which arrived while the dialog was open.
@@ -2705,7 +2754,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
     const ids = new Set(affected.map(file => file.id));
     const removedTabs = tabIds.value.map((id, index) => ({ id, index })).filter(({ id }) =>
-      ids.has(id) || (isTableTab(id) && ids.has(id.slice(6))) || (id.startsWith('attachment:') && ids.has(id.slice(11))));
+      ids.has(tabTarget(id)) || (isTableTab(id) && ids.has(tableFileId(id))) || (id.startsWith('attachment:') && ids.has(id.slice(11))));
     const removedIds = new Set(removedTabs.map(tab => tab.id));
     const previousActive = activeId.value;
     tabIds.value = tabIds.value.filter(id => !removedIds.has(id));
@@ -2735,8 +2784,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   ) {
     writable();
     if (!files.length) return;
-    if (files.some((file) => isWeb && file.kind !== 'file'))
-      throw new Error('在线工作区暂不支持移除文件夹');
     if (files.some((file) => mobile && file.kind === 'directory'))
       throw new Error('手机回收站暂不支持文件夹');
     const locallyModified = new Set(
@@ -2800,15 +2847,21 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         const previousTabIds = [...tabIds.value];
         const remainingIds = new Set(documents.value.map((doc) => doc.id));
         const removedTableIds = new Set(workspace.value.files.filter(entry => isDataTableFilePath(entry.path) && (entry.path === file.path || (file.kind === 'directory' && entry.path.startsWith(`${file.path}/`)))).map(entry => tableTabId(entry.id)));
-        tabIds.value = tabIds.value.filter((id) => !removedTableIds.has(id) && (isUtilityTab(id) || remainingIds.has(id)));
+        tabIds.value = tabIds.value.filter((id) => !removedTableIds.has(tabTarget(id)) && (isUtilityTab(id) || remainingIds.has(tabTarget(id))));
         for (const tabId of previousTabIds)
-          if (!tabIds.value.includes(tabId)) removeTabNavigation(tabId);
+          if (!tabIds.value.includes(tabId)) { removeTabAlias(tabId); removeTabNavigation(tabId); }
         if (activeId.value && !tabIds.value.includes(activeId.value))
           activeId.value = tabIds.value.at(-1) ?? '';
         workspace.value = await adapter.refresh();
         await dataTables.reload();
         activity(
-          isDemo ? '演示条目已删除' : isWeb ? '在线文档已删除' : '条目已移入回收站',
+          isDemo
+            ? '演示条目已删除'
+            : isWeb
+              ? file.kind === 'directory'
+                ? '在线文件夹已删除'
+                : '在线文档已删除'
+              : '条目已移入回收站',
           file.path,
           'file',
         );
@@ -2829,7 +2882,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     reordered.splice(targetIndex + (side === 'after' ? 1 : 0), 0, id);
     if (reordered.every((tabId, index) => tabId === tabIds.value[index])) return;
     const byId = new Map(documents.value.map((doc) => [doc.id, doc]));
-    documents.value = reordered.flatMap((tabId) => byId.get(tabId) ?? []);
+    const ordered = reordered.map(tabTarget).filter((id, index, all) => all.indexOf(id) === index)
+      .map(id => byId.get(id)).filter((doc): doc is OpenDocument => !!doc);
+    documents.value = [...ordered, ...documents.value.filter(doc => !ordered.includes(doc))];
     tabIds.value = reordered;
   }
   function placeTab(id: string, index: number) {
@@ -2838,34 +2893,43 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     reordered.splice(Math.max(0, Math.min(index, reordered.length)), 0, id);
     if (reordered.every((tabId, position) => tabId === tabIds.value[position])) return;
     const byId = new Map(documents.value.map((doc) => [doc.id, doc]));
-    documents.value = reordered.flatMap((tabId) => byId.get(tabId) ?? []);
+    const ordered = reordered.map(tabTarget).filter((id, index, all) => all.indexOf(id) === index)
+      .map(id => byId.get(id)).filter((doc): doc is OpenDocument => !!doc);
+    documents.value = [...ordered, ...documents.value.filter(doc => !ordered.includes(doc))];
     tabIds.value = reordered;
   }
   async function close(id: string) {
     if (isTableTab(id) && !(await flush())) { report('数据表尚有未保存的修改，请先处理保存错误。'); return; }
     const pane = panes.value.find(pane => pane.tabs.includes(id));
-    const nextTab = () => panes.value.find(item => item.id === pane?.id)?.activeId ?? tabIds.value.at(-1) ?? '';
+    const nextTab = () => {
+      const candidate = panes.value.find(item => item.id === pane?.id)?.tabs.find(tabId => tabId !== id && tabIds.value.includes(tabId));
+      return candidate ?? tabIds.value.find(tabId => tabId !== id) ?? '';
+    };
     if (isUtilityTab(id)) {
       tabIds.value = tabIds.value.filter((tabId) => tabId !== id);
+      removeTabAlias(id);
       removeTabNavigation(id);
       if (activeId.value === id) activeId.value = nextTab();
       return;
     }
     if (!(await flush())) { report('此文档尚有未保存的修改或建议，请先处理保存错误。'); return; }
     try {
-      await beforeCloseDocument?.(id);
+      await beforeCloseDocument?.(tabTarget(id));
     } catch (error) {
       report(error);
       return;
     }
-    const doc = documents.value.find((d) => d.id === id);
+    const target = tabTarget(id);
+    const doc = documents.value.find((d) => d.id === target);
     if (doc && ((dirty(doc) && !doc.conflict) || layoutPending(doc))) {
       report('此文档尚未保存，请先另存副本或解决保存错误。');
       return;
     }
-    documents.value = documents.value.filter((d) => d.id !== id);
     tabIds.value = tabIds.value.filter((tabId) => tabId !== id);
+    removeTabAlias(id);
     removeTabNavigation(id);
+    if (!tabIds.value.some(tabId => tabTarget(tabId) === target))
+      documents.value = documents.value.filter((d) => d.id !== target);
     if (activeId.value === id) activeId.value = nextTab();
   }
   async function resolveConflict(doc: OpenDocument, openCopy: boolean) {
@@ -3027,6 +3091,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     displayPath,
     fileMutationPending: fileMutations.pending,
     documents,
+    documentForTab: (id: string) => documents.value.find(doc => doc.id === tabTarget(id)),
     tabs,
     activeId,
     active,

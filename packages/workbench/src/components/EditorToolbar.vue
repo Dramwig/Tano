@@ -26,8 +26,8 @@ import {
   wrappingCommands,
   commandEnabled,
   featureLevel,
-} from '@tano/editor/document-model';
-import type { EditorSelectionContext } from '@tano/editor/document-model';
+} from '@tano/editor/selection-context';
+import type { EditorSelectionContext } from '@tano/editor/selection-context';
 import type { DocumentFeatures } from '@tano/editor/runtime';
 import TextStyleMenu from './TextStyleMenu.vue';
 

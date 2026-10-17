@@ -1,5 +1,5 @@
-import { blockTypes, commandEnabled, inlineTypes, insertionCommands, wrappingCommands } from '@tano/editor/document-model';
-import type { EditorSelectionContext } from '@tano/editor/document-model';
+import { blockTypes, commandEnabled, inlineTypes, insertionCommands, wrappingCommands } from '@tano/editor/selection-context';
+import type { EditorSelectionContext } from '@tano/editor/selection-context';
 import type { DocumentFeatures } from '@tano/editor/runtime';
 
 export interface WorkbenchCommand {

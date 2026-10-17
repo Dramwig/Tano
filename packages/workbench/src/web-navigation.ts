@@ -23,3 +23,10 @@ export function parsePageRoute(pathname: string): PageRoute | null {
 export function pageRoutePath(workspaceId: string, fileId: string) {
   return `/p/${encodeURIComponent(workspaceId)}/${encodeURIComponent(fileId)}`;
 }
+
+export function pageRouteUrl(base: string | URL, workspaceId: string, fileId: string) {
+  const url = new URL(base);
+  url.pathname = pageRoutePath(workspaceId, fileId);
+  url.hash = '';
+  return url.href;
+}

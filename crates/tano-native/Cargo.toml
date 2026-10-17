@@ -24,6 +24,8 @@ tauri-plugin-fs = "2"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri = { version = "2", features = ["devtools"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form"] }
+hmac = "0.12"
+sha1 = "0.10"
 keyring = { version = "3.6.3", features = ["windows-native", "apple-native", "sync-secret-service", "crypto-rust"] }
 time = { version = "0.3", features = ["formatting"] }
 tokio = { version = "1", features = ["sync", "macros", "process", "io-util", "time", "net"] }

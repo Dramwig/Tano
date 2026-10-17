@@ -16,6 +16,9 @@ export default defineConfig({
   ],
   server: {
     host: process.env.TAURI_DEV_HOST || '127.0.0.1', port: 43841, strictPort: true,
+    // Transform the startup path while Tauri compiles, rather than making the
+    // first WebView navigation wait for the entire workbench module waterfall.
+    warmup: { clientFiles: ['./src/main.ts', './src/start.ts', '../../packages/workbench/src/App.vue'] },
     watch: {
       // Tauri watches native sources itself; Rust build artifacts can be locked on Windows.
       ignored: ['**/src-tauri/**'],
@@ -27,14 +30,11 @@ export default defineConfig({
     target: 'es2022',
     rollupOptions: {
       output: {
-        manualChunks: {
-          editor: [
-            '@milkdown/kit/core',
-            '@milkdown/kit/preset/commonmark',
-            '@milkdown/kit/preset/gfm',
-            '@milkdown/kit/plugin/history',
-            '@milkdown/kit/plugin/clipboard',
-          ],
+        // Shared Markdown parsers also serve the workspace picker. Do not pull the
+        // entire editor into startup just because it shares those dependencies.
+        onlyExplicitManualChunks: true,
+        manualChunks(id) {
+          if (id.replaceAll('\\', '/').includes('/node_modules/@milkdown/')) return 'editor';
         },
       },
     },

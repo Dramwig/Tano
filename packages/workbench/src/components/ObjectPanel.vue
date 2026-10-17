@@ -119,6 +119,7 @@ watch(
       panel.value?.focus();
     } else if (previousFocus?.isConnected) previousFocus.focus();
   },
+  { immediate: true },
 );
 function trapFocus(event: KeyboardEvent) {
   if (event.key !== 'Tab' || !panel.value) return;

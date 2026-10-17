@@ -6,6 +6,10 @@ mod assistant;
 mod assistant_cli;
 mod assistant_files;
 pub mod identity_manifest;
+#[cfg(desktop)]
+mod import_connections;
+#[cfg(desktop)]
+mod import_oauth;
 mod mobile_storage;
 #[cfg(test)]
 mod performance;
@@ -1055,6 +1059,26 @@ pub fn configure_with_commands(
                     plan_connections::plan_remote_request,
                     plan_connections::plan_sync_state_read,
                     plan_connections::plan_sync_state_write,
+                ];
+                return handler(invoke);
+            }
+            #[cfg(desktop)]
+            if matches!(
+                invoke.message.command(),
+                "import_capabilities"
+                    | "import_accounts"
+                    | "import_connect"
+                    | "import_cancel"
+                    | "import_disconnect"
+                    | "import_request"
+            ) {
+                let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                    import_connections::import_capabilities,
+                    import_connections::import_accounts,
+                    import_connections::import_connect,
+                    import_connections::import_cancel,
+                    import_connections::import_disconnect,
+                    import_connections::import_request
                 ];
                 return handler(invoke);
             }
