@@ -4,7 +4,7 @@ import { reactive } from 'vue';
 import type { AssistantProposal, AssistantSession, AssistantTransport, WorkspaceAdapter } from '@tano/protocol';
 import { parseAssistantSession } from '@tano/protocol';
 import { configureWorkbench, useWorkbenchRuntime } from '../runtime';
-import { useAssistantStore } from './store';
+import { useAssistantStore, useInlineAssistantStore } from './store';
 
 const fixture = vi.hoisted(() => ({ workspace: null as any }));
 vi.mock('../stores/workspace', () => ({ useWorkspaceStore: () => fixture.workspace }));
@@ -42,6 +42,56 @@ describe('assistant session coordination', () => {
     await vi.waitFor(() => expect(store.loading).toBe(false));
     return store;
   }
+  it.each(['inline', 'panel'] as const)('runs inline and panel requests concurrently and stops only %s', async stopped => {
+    const panel = await ready();
+    const inline = useInlineAssistantStore();
+    await vi.waitFor(() => expect(inline.loading).toBe(false));
+    await panel.selectModel('test'); await inline.selectModel('other');
+    const requests = new Map<string, { signal: AbortSignal; finish: () => void }>();
+    vi.mocked(transport.request).mockImplementation(async (_id, request, signal, chunk) => {
+      chunk(new TextEncoder().encode(`data: ${JSON.stringify({ type: 'tano.progress', kind: request.model === 'test' ? 'thinking' : 'validating' })}\n\n`));
+      await new Promise<void>((resolve, reject) => {
+        const abort = () => reject(signal.reason);
+        signal.addEventListener('abort', abort, { once: true });
+        requests.set(request.model, { signal, finish: () => { signal.removeEventListener('abort', abort); resolve(); } });
+      });
+      chunk(new TextEncoder().encode('data: {"choices":[{"index":0,"delta":{"content":"完成"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'));
+    });
+    panel.open(); panel.prompt = '侧栏任务';
+    const panelRun = panel.send();
+    await vi.waitFor(() => expect(requests.has('test')).toBe(true));
+    inline.newSession(); inline.prompt = '选区任务';
+    const inlineRun = inline.send();
+    await vi.waitFor(() => expect(requests.size).toBe(2));
+    expect(panel.busy && inline.busy).toBe(true);
+    expect(panel.opened).toBe(true); expect(inline.opened).toBe(false);
+    expect(panel.progress).toBe('正在思考'); expect(inline.progress).toBe('正在核对回答');
+    expect(panel.session!.id).not.toBe(inline.session!.id);
+    expect(panel.session!.messages[0].content).toBe('侧栏任务');
+    expect(inline.session!.messages[0].content).toBe('选区任务');
+    expect(vi.mocked(transport.request).mock.calls[1][1].tools?.some(tool => tool.function.name === 'ask_user')).toBe(false);
+    const cancelled = stopped === 'inline' ? inline : panel;
+    const remaining = stopped === 'inline' ? panel : inline;
+    cancelled.stop();
+    await (stopped === 'inline' ? inlineRun : panelRun);
+    expect(cancelled.session!.messages.at(-1)!.state).toBe('cancelled');
+    expect(remaining.busy).toBe(true);
+    const remainingRequest = requests.get(stopped === 'inline' ? 'test' : 'other')!;
+    expect(remainingRequest.signal.aborted).toBe(false);
+    remainingRequest.finish(); await Promise.all([panelRun, inlineRun]);
+    expect(remaining.session!.messages.at(-1)!.state).toBe('completed');
+    expect(panel.sessions.every(item => item.id !== inline.session!.id)).toBe(true);
+  });
+  it('starts the inline runner independently of restored conversation history', async () => {
+    const restored = { ...session(), connectionId: connection.id, model: 'test' };
+    history.push(restored);
+    const panel = await ready(); const inline = useInlineAssistantStore();
+    await vi.waitFor(() => expect(inline.loading).toBe(false));
+    expect(panel.session!.id).toBe(restored.id);
+    expect(inline.session!.id).not.toBe(restored.id);
+    expect(inline.session!.messages).toEqual([]);
+    expect(transport.loadSessions).toHaveBeenCalledOnce();
+  });
   it.each([false, true])('starts a draft conversation without a fixed questionnaire (managed: %s)', async managed => {
     fixture.workspace.documents = [{ id: 'abc123', content: '', path: 'note.md' }];
     fixture.workspace.assistantSnapshot.mockResolvedValue({ id: 'S1', workspaceId: 'workspace', fileId: 'abc123', path: 'note.md', content: '', hash: 'empty', origin: 'disk' });

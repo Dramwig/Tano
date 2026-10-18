@@ -184,7 +184,7 @@ onMounted(async () => {
           <div class="template-detail-layout" :class="{ 'is-preview': mode === 'preview' }">
             <div class="template-document-stage" :class="`tone-${templateInfo(selected).tone}`">
               <div class="template-document-paper" aria-label="模板内容预览">
-                <MarkdownEditor :key="selected.id" :model-value="preview" :document-id="`template-preview-${workspaceId}-${selected.id}`" readonly :preferences="{ folding: false, previewMathWhileEditing: true }" :show-document-properties="false" :reveal-markdown="false" :resolve-image="() => null" @error="error = $event" />
+                <MarkdownEditor :key="selected.id" :model-value="preview" :document-id="`template-preview-${workspaceId}-${selected.id}`" readonly :preferences="{ folding: false, previewMathWhileEditing: true, blankBlockAiShortcut: false }" :show-document-properties="false" :reveal-markdown="false" :resolve-image="() => null" @error="error = $event" />
               </div>
             </div>
             <aside v-if="mode === 'detail'" class="template-detail-sidebar" aria-label="使用模板">

@@ -33,6 +33,8 @@ export interface WorkspaceCapabilities {
 export interface EditorPreferences {
   previewMathWhileEditing: boolean;
   folding: boolean;
+  /** Pressing Space in an empty paragraph opens the one-shot AI composer. */
+  blankBlockAiShortcut: boolean;
   selectionWrapping?: SelectionWrappingPreferences;
 }
 export const defaultCapabilities: WorkspaceCapabilities = {
@@ -48,6 +50,7 @@ export const defaultCapabilities: WorkspaceCapabilities = {
 export const defaultEditorPreferences: EditorPreferences = {
   previewMathWhileEditing: true,
   folding: true,
+  blankBlockAiShortcut: true,
 };
 
 /** Validate portable policy without discarding unknown fields from newer clients. */

@@ -154,6 +154,7 @@ async function mount(
   const openedLinks: string[] = [];
   const openedNewTabLinks: string[] = [];
   let selectionChanges = 0;
+  let blankBlockAi = 0;
   Range.prototype.getBoundingClientRect = () => new DOMRect();
   Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
   app = createApp(
@@ -181,6 +182,7 @@ async function mount(
             if (newTab) openedNewTabLinks.push(href);
           },
           onSelectionChange: () => { selectionChanges++; },
+          onBlankBlockAi: () => { blankBlockAi++; },
         }, { 'empty-document': () => h('div', { class: 'test-document-starter' }, '开始使用') }),
     ),
   );
@@ -200,8 +202,38 @@ async function mount(
     capabilities,
     preferences,
     selectionChangeCount: () => selectionChanges,
+    blankBlockAiCount: () => blankBlockAi,
   };
 }
+
+it('opens the lightweight AI shortcut from an empty paragraph without inserting a space', async () => {
+  const { editor, value, preferences, blankBlockAiCount } = await mount('已有内容\n\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  const paragraph = view.state.schema.nodes.paragraph!;
+  view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, [
+    paragraph.create(null, view.state.schema.text('已有内容')),
+    paragraph.create(),
+  ]));
+  let blankPosition = -1;
+  view.state.doc.descendants((node, pos) => {
+    if (blankPosition < 0 && node.type.name === 'paragraph' && node.content.size === 0) blankPosition = pos;
+  });
+  expect(blankPosition).toBeGreaterThanOrEqual(0);
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, blankPosition + 1)));
+  expect(view.state.selection.$from.parent.type.name).toBe('paragraph');
+  expect(view.state.selection.$from.parent.content.size).toBe(0);
+  view.focus();
+  view.dom.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+  await nextTick();
+  expect(blankBlockAiCount()).toBe(1);
+  expect(value.value).toBe('已有内容\n\n');
+  preferences.value = { ...preferences.value, blankBlockAiShortcut: false };
+  await nextTick();
+  view.dom.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+  await nextTick();
+  expect(blankBlockAiCount()).toBe(1);
+  expect(value.value).toBe('已有内容\n\n');
+});
 
 it('offers initialization only for one empty paragraph, reacting to edits and undo', async () => {
   const { editor, value, readonly } = await mount('---\ntitle: 已有标题\nowner: Alice\n---\n\n');
@@ -2042,7 +2074,7 @@ it.each(['234234', '**234234**'])(
     expect(view.state.doc.childCount).toBe(3);
     expect(view.state.selection.$from.parent.type.name).toBe('paragraph');
     expect(view.state.selection.$from.parent.content.size).toBe(0);
-    expect(view.dom.lastElementChild?.getAttribute('data-placeholder')).toBe("输入 '/' 搜索并切换块类型");
+    expect(view.dom.lastElementChild?.getAttribute('data-placeholder')).toBe("输入 '/' 搜索并切换块类型，或按 space（空格）启用 AI");
     expect(value.value).toBe(`124242342\n\n${text}\n\n`);
     view.dispatch(view.state.tr.insertText('正文'));
     expect(view.state.doc.lastChild!.firstChild!.marks).toEqual([]);

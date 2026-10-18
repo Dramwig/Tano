@@ -22,6 +22,7 @@ const props = defineProps<{
   mode?: Exclude<ToolbarMode, 'fixed'>;
   dragging?: boolean;
   assistant?: boolean;
+  assistantDisabled?: boolean;
   annotation?: boolean;
   todo?: boolean;
   shortcuts?: ShortcutBindings;
@@ -398,6 +399,7 @@ onBeforeUnmount(() => {
           :vertical="vertical"
           :dragging="dragging"
           :assistant="assistant"
+          :assistant-disabled="assistantDisabled"
           :annotation="annotation"
           :todo="todo"
           @todo="visible && emit('todo')"

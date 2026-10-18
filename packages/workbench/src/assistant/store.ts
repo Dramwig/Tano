@@ -13,7 +13,11 @@ import { useSuggestionStore } from '../stores/suggestions';
 
 export type AssistantDisplayMode = 'sidebar' | 'floating' | 'fullscreen';
 
-export const useAssistantStore = defineStore('assistant', () => {
+export const useAssistantStore = defineStore('assistant', () => createAssistantState());
+export const useInlineAssistantStore = defineStore('inline-assistant', () => createAssistantState(true));
+
+/** Separate task controllers and sessions, with the same guarded execution path. */
+function createAssistantState(inline = false) {
   const workspace = useWorkspaceStore();
   const runtime = useWorkbenchRuntime();
   const transport = runtime.assistant ?? (runtime.native && !runtime.mobile && runtime.adapter.mode === 'desktop'
@@ -294,7 +298,7 @@ export const useAssistantStore = defineStore('assistant', () => {
         source.id = `S${sources.length + 1}`;
         if (selection.value?.fileId === id) {
           const selected = { text: selection.value.text, from: selection.value.from, to: selection.value.to };
-          if (selected.from !== undefined && source.content.slice(selected.from, selected.to) !== selected.text)
+          if (selected.from !== undefined && source.content.slice(selected.from, selected.to).replace(/\r\n?/g, '\n') !== selected.text.replace(/\r\n?/g, '\n'))
             throw new Error('选区内容已变化，请重新选择后发送');
           if (selected.from === undefined) {
             const from = source.content.indexOf(selected.text);
@@ -323,7 +327,7 @@ export const useAssistantStore = defineStore('assistant', () => {
       let structureChanged = false;
       reply.usage = await runAssistant({ transport, connectionId: config.id, model, reasoningEffort: effort, tools: config.tools,
         workspaceId: expected.id, runId: reply.id, sources: reply.sources!, history, rules, prompt: question, signal: abort.signal,
-        askUser: questions => askUser(questions, target, reply!, abort.signal),
+        ...(inline ? {} : { askUser: (questions: AssistantQuestion[]) => askUser(questions, target, reply!, abort.signal) }),
         execute: async (proposal: AssistantProposal) => {
           const result = await executeChange(reply!.proposals!.find(item => item.id === proposal.id)!, target, expected, abort.signal);
           if (result.written === true) structureChanged = true;
@@ -593,7 +597,7 @@ export const useAssistantStore = defineStore('assistant', () => {
     const expected = scope(); loading.value = true; error.value = '';
     try {
       await reloadConnections();
-      const loaded = await transport.loadSessions(expected.id);
+      const loaded = inline ? [] : await transport.loadSessions(expected.id);
       if (epoch !== generation) return;
       for (const target of loaded) for (const message of target.messages) {
         if (message.state === 'running') message.state = 'interrupted';
@@ -615,4 +619,4 @@ export const useAssistantStore = defineStore('assistant', () => {
   return { available, demo, canConfigure, opened, displayMode, fullscreenTabId, fullscreenPaneId, isFullscreenTab, setDisplayMode, loading, busy, applying, connections, connectionId, connection, modelId, models, modelsLoading, modelsError, reloadModels, refreshModels, selectModel, selectConnection, sessions, session, externalSessions, loadExternal, importExternal,
     files, selection, prompt, error, progress, pendingUserInput, startDocumentDraft, submitUserInput, reasoningEffort, selectReasoningEffort, replyTarget, open, stop, settle, send, newSession, selectSession, deleteSession, review, verify,
     undo, reject, publishSuggestions, saveConnection, removeConnection, reloadConnections, checkConnection, setManaged: (check: (id: string) => boolean) => { managed = check; } };
-});
+}

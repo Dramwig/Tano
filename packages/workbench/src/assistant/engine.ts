@@ -214,9 +214,10 @@ export function proposalFromTool(call: AssistantToolCall, sources: readonly Assi
   if (source.selection && source.selection.from === undefined)
     throw new Error('可见选区无法唯一映射到源码，请切换源码模式重新选择，或清除选区后修改整篇');
   const old = values.oldText as string, replacement = values.newText as string;
-  const start = source.content.indexOf(old);
+  const emptySelection = old === '' && replacement.length > 0 && source.content.length > 0 && source.selection?.from !== undefined && source.selection.to === source.selection.from;
+  const start = emptySelection ? source.selection!.from! : source.content.indexOf(old);
   const initializesEmptyDocument = old === '' && source.content === '' && !source.selection && replacement.length > 0;
-  if (!initializesEmptyDocument && (!old || start < 0 || source.content.indexOf(old, start + 1) >= 0)) throw new Error('原片段不存在或不唯一，请携带更多原始上下文');
+  if (!initializesEmptyDocument && !emptySelection && (!old || start < 0 || source.content.indexOf(old, start + 1) >= 0)) throw new Error('原片段不存在或不唯一，请携带更多原始上下文');
   if (source.selection?.from !== undefined && (start < source.selection.from || start + old.length > source.selection.to!))
     throw new Error('修改超出了用户选定的源码范围');
   const content = source.content.slice(0, start) + replacement + source.content.slice(start + old.length);

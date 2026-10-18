@@ -131,6 +131,7 @@ export function slashCommands(options: {
   readonly: () => boolean;
   levels: () => readonly number[] | undefined;
   features?: () => DocumentFeatures;
+  aiShortcut?: () => boolean;
 }) {
   const session = new PluginKey<ReturnType<typeof slashQuery>>('tano-slash-session');
   let refresh = () => {};
@@ -236,7 +237,9 @@ export function slashCommands(options: {
               const { selection } = state;
               if (!(selection instanceof TextSelection) || !selection.empty ||
                   selection.$from.depth === 0 || selection.$from.before() !== pos) return;
-              placeholder = "输入 '/' 搜索并切换块类型";
+              placeholder = options.aiShortcut?.()
+                ? "输入 '/' 搜索并切换块类型，或按 space（空格）启用 AI"
+                : "输入 '/' 搜索并切换块类型";
               persistent = false;
             }
           }

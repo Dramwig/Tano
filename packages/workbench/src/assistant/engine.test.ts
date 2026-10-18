@@ -55,6 +55,9 @@ describe('assistant streaming and proposals', () => {
     });
     for (const content of ['已有正文', '\n', '---\ntitle: 标题\n---\n'])
       expect(() => proposalFromTool(tool, [{ ...source, content }], 'workspace', 'run')).toThrow('不唯一');
+    expect(proposalFromTool(tool, [{ ...source, content: '已有正文', selection: { text: '', from: 2, to: 2 } }], 'workspace', 'run')).toMatchObject({
+      content: '已有## 草稿\n\n正文\n正文',
+    });
     expect(() => proposalFromTool(tool, [{ ...source, content: '', selection: { text: '', from: 0, to: 0 } }], 'workspace', 'run')).toThrow('不唯一');
   });
   it('creates file operation proposals only from full snapshots and validates destination paths', () => {

@@ -23,6 +23,7 @@ const props = defineProps<{
   disabled?: boolean;
   source?: boolean;
   assistant?: boolean;
+  assistantDisabled?: boolean;
   annotation?: boolean;
   todo?: boolean;
   shortcuts?: ShortcutBindings;
@@ -157,6 +158,7 @@ async function changeMode(mode: ToolbarMode) {
     :source="source"
     :dragging="!!drag"
     :assistant="assistant"
+    :assistant-disabled="assistantDisabled"
     :annotation="annotation"
     :todo="todo"
     @todo="emit('todo')"
@@ -200,6 +202,7 @@ async function changeMode(mode: ToolbarMode) {
       :mode="mode"
       :dragging="!!drag"
       :assistant="assistant"
+      :assistant-disabled="assistantDisabled"
       :annotation="annotation"
       :todo="todo"
       @todo="emit('todo')"
@@ -235,6 +238,7 @@ async function changeMode(mode: ToolbarMode) {
             :disabled="disabled"
             :source="source"
             :assistant="assistant"
+            :assistant-disabled="assistantDisabled"
             :annotation="annotation"
             :todo="todo"
           >

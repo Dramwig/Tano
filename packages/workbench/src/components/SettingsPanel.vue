@@ -578,6 +578,31 @@ function customFontInput(event: Event) {
               </div>
             </div>
           </section>
+          <section v-if="page === 'editing'" class="settings-section" aria-label="AI 功能">
+            <h3>AI 功能</h3>
+            <div class="settings-card">
+              <div class="settings-row">
+                <div>
+                  <strong>空白块按空格启动 AI</strong>
+                  <p>在空白 block 中按空格，直接展开一次性 AI 编辑输入框。</p>
+                </div>
+                <button
+                  type="button"
+                  class="settings-switch"
+                  :class="{ on: displayOptionActive('blankBlockAiShortcut') }"
+                  role="switch"
+                  :aria-checked="displayOptionActive('blankBlockAiShortcut')"
+                  aria-label="空白块按空格启动 AI"
+                  @click="emit('update:editorPreferences', {
+                    ...display,
+                    blankBlockAiShortcut: !display.blankBlockAiShortcut,
+                  })"
+                >
+                  <span />
+                </button>
+              </div>
+            </div>
+          </section>
           <section v-if="page === 'editing'" class="settings-section" aria-label="选区符号包裹">
             <h3>选区符号包裹</h3>
             <div class="settings-card">

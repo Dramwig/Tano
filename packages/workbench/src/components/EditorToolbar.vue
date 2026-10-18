@@ -41,6 +41,7 @@ const props = defineProps<{
   vertical?: boolean;
   dragging?: boolean;
   assistant?: boolean;
+  assistantDisabled?: boolean;
   annotation?: boolean;
   todo?: boolean;
 }>();
@@ -445,7 +446,16 @@ function enableEnteringActions(element: Element) {
       @mousedown.prevent
       @click="emit('annotation')"
     ><MessageSquare :size="17" /></button>
-    <button v-if="assistant" type="button" class="icon-button" aria-label="打开 Tano 助手" title="与助手讨论" @mousedown.prevent @click="emit('assistant')"><Bot :size="16" /></button>
+    <button
+      v-if="assistant"
+      type="button"
+      class="icon-button"
+      aria-label="打开 Tano 助手"
+      :title="assistantDisabled ? '助手正在处理中' : '与助手讨论'"
+      :disabled="disabled || assistantDisabled"
+      @mousedown.prevent
+      @click="emit('assistant')"
+    ><Bot :size="16" /></button>
   </div>
 </template>
 

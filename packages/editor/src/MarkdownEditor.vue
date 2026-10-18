@@ -106,7 +106,7 @@ import { parseReferenceUrl, referenceUrl, resolveReference } from '@tano/protoco
 import type { ReferenceTarget, ReferenceIdentity } from '@tano/protocol';
 import type { CommentAnchor } from '@tano/protocol';
 import { commentSpansForSelection, projectCommentText, proseRangesForCommentSpans } from './comment-projection';
-import { captureVisualAnchor, visualAnchorPlugin, visualSelection } from './visual-anchor';
+import { captureCaretAnchor, captureVisualAnchor, visualAnchorPlugin, visualSelection } from './visual-anchor';
 import { columnResizing } from '@milkdown/kit/prose/tables';
 import { defaultTableColumnWidth, minimumTableColumnWidth } from '@tano/protocol';
 import type { TableLayout } from '@tano/protocol';
@@ -155,6 +155,7 @@ const emit = defineEmits<{
   openReference: [identity: ReferenceIdentity];
   editSource: [];
   selectionChange: [context: EditorSelectionContext];
+  blankBlockAi: [];
   tableLayoutChange: [tables: TableLayout[]];
   ready: [];
   searchChange: [];
@@ -1880,6 +1881,20 @@ const bridge = $prose(
             return false;
           },
           keydown(view, event) {
+            if (
+              event.key === ' ' &&
+              !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey &&
+              !event.isComposing && !view.composing && !props.readonly &&
+              preferences().blankBlockAiShortcut &&
+              view.state.selection instanceof TextSelection && view.state.selection.empty &&
+              view.state.selection.$from.parent.type.name === 'paragraph' &&
+              view.state.selection.$from.parent.content.size === 0
+            ) {
+              event.preventDefault();
+              event.stopPropagation();
+              emit('blankBlockAi');
+              return true;
+            }
             const source = currentSource(view);
             if (event.key === 'ArrowLeft' && !event.shiftKey && !event.ctrlKey &&
                 !event.metaKey && !event.altKey && !event.isComposing && !view.composing &&
@@ -2400,6 +2415,7 @@ onMounted(async () => {
             readonly: () => !!props.readonly,
             levels: () => props.enabledLevels,
             features: () => policy().features,
+            aiShortcut: () => preferences().blankBlockAiShortcut,
           }),
         ),
       )
@@ -2983,6 +2999,30 @@ function commentSelection() {
   const spans = commentSpansForSelection(doc, range);
   return spans.length ? { text: projectCommentText(doc).text, spans } : null;
 }
+/** Capture a real rich-text selection with source offsets for guarded assistant edits. */
+function assistantSelection() {
+  const view = bridgeView;
+  if (!view || !(view.state.selection instanceof TextSelection) || view.state.selection.empty) return null;
+  const { doc, selection } = view.state;
+  const spans = commentSpansForSelection(doc, selection);
+  if (!spans.length) return null;
+  return editor!.action(ctx => {
+    const map = markdownPositionMap(doc, lastValue, node => frontmatter.prefix + ctx.get(serializerCtx)(node));
+    const from = map.toSource(selection.from), to = map.toSource(selection.to);
+    return { text: lastValue.slice(from, to), from, to, spans };
+  });
+}
+function assistantBlankBlockSelection() {
+  const view = bridgeView;
+  if (!view || props.readonly || !(view.state.selection instanceof TextSelection) || !view.state.selection.empty ||
+      view.state.selection.$from.parent.type.name !== 'paragraph' || view.state.selection.$from.parent.content.size !== 0)
+    return null;
+  return editor!.action(ctx => {
+    const map = markdownPositionMap(view.state.doc, lastValue, node => frontmatter.prefix + ctx.get(serializerCtx)(node));
+    const offset = map.toSource(view.state.selection.from);
+    return { text: '', from: offset, to: offset };
+  });
+}
 function captureTodoSelection() {
   const view = bridgeView;
   if (!view || props.readonly || props.extension || !(view.state.selection instanceof TextSelection) || view.state.selection.empty || !view.state.selection.$to.parent.isTextblock) return null;
@@ -3146,7 +3186,8 @@ function modeCursorTop() {
 defineExpose({
   addDocumentProperty,
   initializeBody,
-  captureVisualAnchor: () => bridgeView && !disposed ? captureVisualAnchor(bridgeView) : null,
+  captureVisualAnchor: (options?: { highlight?: boolean }) => bridgeView && !disposed ? captureVisualAnchor(bridgeView, options) : null,
+  captureBlankBlockAnchor: () => bridgeView && !disposed ? captureCaretAnchor(bridgeView) : null,
   visualSelection: () => bridgeView && !disposed ? visualSelection(bridgeView) : null,
   captureModeSelection,
   restoreModeSelection,
@@ -3160,6 +3201,8 @@ defineExpose({
   importFiles,
   withContext,
   commentSelection,
+  assistantSelection,
+  assistantBlankBlockSelection,
   captureTodoSelection,
   focusComment,
   commentGeometry,

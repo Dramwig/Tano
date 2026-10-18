@@ -146,7 +146,8 @@ import AssistantButterflyLayer from './components/AssistantButterflyLayer.vue';
 import { butterflyScope } from './assistant/butterfly';
 import { createButterflyIdleTrigger } from './assistant/butterfly-idle';
 import { butterflyPerchDirective, provideButterflyController } from './assistant/butterfly-vue';
-import { useAssistantStore } from './assistant/store';
+import { useAssistantStore, useInlineAssistantStore } from './assistant/store';
+import { inlineAssistantResult } from './assistant/inline-result';
 const DiffDialog = defineAsyncComponent(() => import('./components/DiffDialog.vue'));
 import { handleMobileVisibility } from './mobile-lifecycle';
 import { useViewport } from './viewport';
@@ -176,6 +177,8 @@ import type { HelpAvailability, HelpContext } from './help-content';
 import { recordHelpCompleted } from './help-checklist';
 import WorkspaceSwitcher from './components/WorkspaceSwitcher.vue';
 import ButtonVisibilityGroup from './components/ButtonVisibilityGroup.vue';
+import InlineAssistantInput from './components/InlineAssistantInput.vue';
+import type { InlineAssistantAnchor } from './components/InlineAssistantInput.vue';
 const CalendarView = defineAsyncComponent(() => import('./components/CalendarView.vue'));
 const DataTablePage = defineAsyncComponent(() => import('./components/DataTablePage.vue'));
 import { isTableTab, TABLES_TAB_ID, tableFileId } from './data-tables';
@@ -243,6 +246,7 @@ async function toggleSuggestionMode(fileId: string) {
   finally { suggestionModeBusy.value = false; }
 }
 const assistant = useAssistantStore();
+const inlineRunner = useInlineAssistantStore();
 const butterfly = provideButterflyController();
 const vButterflyPerch = butterflyPerchDirective(butterfly);
 const paneButterflyScope = (paneId: string, fileId: string) => butterflyScope(store.workspace?.id ?? '', paneId, fileId);
@@ -358,11 +362,13 @@ const editing = extensions.editing;
 const workbenchSession = retainWorkbenchSession(store, () => {
   void extensions.disconnect().catch(store.report);
   assistant.stop();
+  inlineRunner.stop();
   void editing.dispose().catch(store.report);
   store.dispose();
 });
 let unmounted = false;
 assistant.setManaged((id) => editing.isManaging(id));
+inlineRunner.setManaged((id) => editing.isManaging(id));
 const extensionActions: WorkbenchActions = {
   closeMenus: () => {
     workspaceMenu.value = false;
@@ -810,6 +816,7 @@ const editorPreferences = ref<EditorPreferences>({
     defaultEditorPreferences.previewMathWhileEditing,
   ),
   folding: readPreference('folding', defaultEditorPreferences.folding),
+  blankBlockAiShortcut: readPreference('blankBlockAiShortcut', defaultEditorPreferences.blankBlockAiShortcut),
   selectionWrapping: readSelectionWrapping(),
 });
 watch(
@@ -817,6 +824,7 @@ watch(
   (preferences) => {
     savePreference('previewMathWhileEditing', preferences.previewMathWhileEditing);
     savePreference('folding', preferences.folding);
+    savePreference('blankBlockAiShortcut', preferences.blankBlockAiShortcut);
     saveTextPreference('selectionWrapping', JSON.stringify(normalizeSelectionWrapping(preferences.selectionWrapping)));
   },
   { deep: true },
@@ -1139,6 +1147,126 @@ const modalError = ref('');
 const modalBusy = ref(false);
 const inputEl = ref<HTMLInputElement>();
 const paneEditors = shallowReactive(new Map<string, InstanceType<typeof MarkdownEditor>>());
+type InlineAssistantTarget = {
+  paneId: string;
+  fileId: string;
+  text: string;
+  sourceSelection: { text: string; from?: number; to?: number };
+  anchor: InlineAssistantAnchor;
+  blankBlock?: boolean;
+};
+type AssistantEditorSelection = { text: string; spans: { from: number; to: number; text: string }[]; from?: number; to?: number };
+const inlineAssistant = shallowRef<InlineAssistantTarget>();
+const inlineAssistantPrompt = ref('');
+const inlineAssistantState = ref<'input' | 'loading' | 'completed' | 'response' | 'error'>('input');
+const inlineAssistantError = ref('');
+const inlineAssistantMessage = ref('');
+let inlineAssistantProposal: import('@tano/protocol').AssistantProposal | undefined;
+watch(() => [store.activePaneId, store.activeId, store.workspace?.id, store.workspace?.path], ([paneId, fileId, workspaceId, workspacePath], previous) => {
+  if (inlineAssistant.value && (inlineAssistant.value.paneId !== paneId || inlineAssistant.value.fileId !== fileId ||
+      workspaceId !== previous[2] || workspacePath !== previous[3]))
+    closeInlineAssistant();
+});
+/** The page owns one lightweight AI task. Keep a running task attached to its card. */
+function assistantTaskActive() {
+  return inlineAssistantState.value === 'loading' || inlineRunner.busy || inlineRunner.applying;
+}
+function closeInlineAssistant() {
+  inlineAssistant.value?.anchor.dispose();
+  inlineAssistant.value = undefined;
+  inlineAssistantPrompt.value = '';
+  inlineAssistantError.value = '';
+  inlineAssistantState.value = 'input';
+  inlineAssistantMessage.value = '';
+  inlineAssistantProposal = undefined;
+}
+function openInlineAssistant(paneId: string, fileId: string, text: string, sourceSelection: { text: string; from?: number; to?: number } = { text }, options: { anchor?: InlineAssistantAnchor; blankBlock?: boolean } = {}) {
+  if (assistantTaskActive()) {
+    options.anchor?.dispose();
+    return;
+  }
+  const anchor = options.anchor ?? paneEditors.get(paneId)?.captureVisualAnchor({ highlight: true });
+  if (!anchor || (!text.trim() && !options.blankBlock) || !assistant.connection || !assistant.modelId) {
+    anchor?.dispose();
+    return openAssistant(paneId, fileId, { forcePanel: true });
+  }
+  closeInlineAssistant();
+  inlineAssistant.value = { paneId, fileId, text, sourceSelection, anchor, ...(options.blankBlock ? { blankBlock: true } : {}) };
+  inlineAssistantState.value = 'input';
+  void nextTick(() => document.querySelector<HTMLInputElement>('[aria-label="输入助手任务"]')?.focus());
+}
+async function submitInlineAssistant() {
+  const target = inlineAssistant.value;
+  const request = inlineAssistantPrompt.value.trim();
+  if (!target || !request || inlineAssistantState.value !== 'input') return;
+  inlineAssistantState.value = 'loading';
+  inlineAssistantError.value = '';
+  try {
+    // Keep this one-shot path out of the visible conversation while reusing the
+    // same guarded direct-edit execution and conflict checks as the full panel.
+    const wholeEmptyDocument = target.blankBlock && target.sourceSelection.from === undefined && target.sourceSelection.to === undefined;
+    if (inlineRunner.loading) throw new Error('助手正在初始化，请稍后重试');
+    inlineRunner.connections = assistant.connections.map(connection => ({ ...connection }));
+    inlineRunner.connectionId = assistant.connectionId;
+    inlineRunner.modelId = assistant.modelId;
+    inlineRunner.reasoningEffort = assistant.reasoningEffort;
+    inlineRunner.newSession();
+    inlineRunner.files = [target.fileId];
+    inlineRunner.selection = wholeEmptyDocument ? null : { fileId: target.fileId, ...target.sourceSelection };
+    inlineRunner.prompt = target.blankBlock
+      ? `请按处理要求在当前空白 block 的插入位置生成内容。要求明确时使用 edit_document 完成写入，oldText 为空字符串，newText 填入要插入的 Markdown 内容；要求不明确时说明还需要补充什么，不要猜测或修改。\n处理要求：${request}`
+      : `请按处理要求处理选中的内容。修改要求明确时使用 edit_document 完成写入，不要只给建议；普通问答正常回复，要求不明确时说明还需要补充什么，不要猜测或修改。\n处理要求：${request}`;
+    const previousReplyId = inlineRunner.session?.messages.at(-1)?.id;
+    await inlineRunner.send();
+    if (inlineAssistant.value !== target) return;
+    const reply = inlineRunner.session?.messages.at(-1);
+    const result = inlineAssistantResult(reply && reply.id !== previousReplyId && reply.role === 'assistant' ? reply : undefined, inlineRunner.error);
+    inlineAssistantProposal = result.proposal;
+    inlineAssistantMessage.value = result.message;
+    inlineAssistantError.value = result.state === 'error' ? result.message : '';
+    inlineAssistantState.value = result.state;
+  } catch (error) {
+    if (inlineAssistant.value !== target) return;
+    inlineAssistantError.value = error instanceof Error ? error.message : String(error);
+    inlineAssistantState.value = 'error';
+  }
+}
+function openBlankBlockAssistant(paneId: string, fileId: string) {
+  if (!assistant.available) return;
+  const editor = paneEditors.get(paneId) as unknown as {
+    assistantBlankBlockSelection?: () => { text: string; from?: number; to?: number } | null;
+    captureBlankBlockAnchor?: () => InlineAssistantAnchor | null;
+  } | undefined;
+  const selection = editor?.assistantBlankBlockSelection?.();
+  const anchor = editor?.captureBlankBlockAnchor?.();
+  if (!selection || selection.from === undefined || !anchor) {
+    anchor?.dispose();
+    return;
+  }
+  const document = store.documentForTab(fileId);
+  const target = document?.content === '' ? { text: '' } : selection;
+  openInlineAssistant(paneId, fileId, '', target, { anchor, blankBlock: true });
+}
+async function undoInlineAssistant() {
+  if (inlineAssistantProposal) await inlineRunner.undo(inlineAssistantProposal);
+  closeInlineAssistant();
+}
+function continueInlineConversation() {
+  const target = inlineAssistant.value;
+  if (!target) return;
+  const completedSession = inlineRunner.session;
+  if (completedSession && !inlineRunner.busy && !inlineRunner.applying) {
+    // Transfer a snapshot only after the independent run has finished saving.
+    const snapshot = JSON.parse(JSON.stringify(completedSession));
+    const index = assistant.sessions.findIndex(session => session.id === completedSession.id);
+    if (index < 0) assistant.sessions.unshift(snapshot);
+    else assistant.sessions[index] = snapshot;
+    if (!assistant.busy && !assistant.applying) assistant.selectSession(completedSession.id);
+    else store.report('选区任务已加入会话列表，当前会话结束后可切换继续。');
+  }
+  openAssistant(target.paneId, target.fileId, { forcePanel: true });
+  closeInlineAssistant();
+}
 function captureButterflyTextTarget(paneId: string, fileId: string) {
   if (paneSource(fileId)) return null;
   const anchor = paneEditors.get(paneId)?.captureVisualAnchor();
@@ -1240,19 +1368,26 @@ function capturePaneCommentSelection(paneId: string, fileId: string) {
     ? { ...selection, basis: paneSource(fileId) ? ('source' as const) : ('prose' as const) }
     : null;
 }
-function openAssistant(paneId = store.activePaneId, fileId = store.activeId) {
+function openAssistant(paneId = store.activePaneId, fileId = store.activeId, options: { forcePanel?: boolean } = {}) {
+  const forcePanel = options.forcePanel;
   const tableId = isTableTab(fileId) ? tableFileId(fileId) : undefined;
-  const selected = tableId ? null : paneSource(fileId)
+  const selected: AssistantEditorSelection | null = (forcePanel || tableId ? null : paneSource(fileId)
     ? paneSourceEditors.get(paneId)?.assistantSelection()
-    : paneSelections[paneId]?.textSelected
-      ? capturePaneCommentSelection(paneId, fileId)
-      : null;
+      : paneSelections[paneId]?.textSelected
+        ? (paneEditors.get(paneId) as unknown as { assistantSelection?: () => AssistantEditorSelection | null })?.assistantSelection?.() ?? null
+        : null) ?? null;
   const text = selected?.spans.map((span) => span.text).join('\n');
+  if (!forcePanel && !tableId && text) {
+    openInlineAssistant(paneId, fileId, text, selected?.from !== undefined
+      ? { text: selected.text, from: selected.from, to: selected.to }
+      : { text });
+    return;
+  }
   const span = paneSource(fileId) && selected?.spans.length === 1 ? selected.spans[0] : undefined;
   store.focusPane(paneId);
   assistant.open(
     tableId ?? (store.documentForTab(fileId) ? store.documentForTab(fileId)?.id : undefined),
-    text ? { text, ...(span ? { from: span.from, to: span.to } : {}) } : undefined,
+    text ? { text: selected?.text ?? text, ...(span ? { from: span.from, to: span.to } : selected?.from !== undefined ? { from: selected.from, to: selected.to } : {}) } : undefined,
   );
   if (window.innerWidth < 1100) sidebar.value = false;
 }
@@ -3614,6 +3749,7 @@ onMounted(async () => {
         try {
           if (await store.flush()) {
             await assistant.settle();
+            await inlineRunner.settle();
             await editing.suspendAll();
             await closeSettingsWindow();
             await getCurrentWindow().destroy();
@@ -5045,7 +5181,7 @@ const helpBlocked = computed(() => !!(
                 :scope="paneButterflyScope(pane.id, pane.activeId)"
                 context-label="聊聊这张数据表"
                 :busy="assistant.busy || assistant.applying"
-                @open="openAssistant(pane.id, pane.activeId)"
+                @open="openAssistant(pane.id, pane.activeId, { forcePanel: true })"
               />
             </div>
             <CalendarView
@@ -5123,6 +5259,7 @@ const helpBlocked = computed(() => !!(
                       :shortcuts="shortcuts"
                       v-model:mode="toolbarMode"
                       :assistant="assistant.available"
+                        :assistant-disabled="assistantTaskActive()"
                       @assistant="openAssistant(pane.id, active!.id)"
                       annotation
                       :todo="
@@ -5346,6 +5483,7 @@ const helpBlocked = computed(() => !!(
                         @open-reference="openReference"
                         @edit-source="setPaneSource(pane.activeId, true)"
                         @selection-change="paneSelections[pane.id] = $event"
+                        @blank-block-ai="openBlankBlockAssistant(pane.id, active!.id)"
                       >
                         <template v-if="!suggestions.suggesting && !active.missing && !active.conflict && !active.error" #empty-document>
                           <DocumentStarter :assistant="assistant.available" :assistant-busy="assistant.busy || assistant.applying || assistant.loading"
@@ -5379,7 +5517,7 @@ const helpBlocked = computed(() => !!(
                   v-if="assistant.available && !assistant.opened"
                   :scope="paneButterflyScope(pane.id, active!.id)"
                   :busy="assistant.busy || assistant.applying"
-                  @open="openAssistant(pane.id, active!.id)"
+                  @open="openAssistant(pane.id, active!.id, { forcePanel: true })"
                 />
               </div>
             </template>
@@ -5654,6 +5792,21 @@ const helpBlocked = computed(() => !!(
           </button>
         </div>
       </main>
+      <InlineAssistantInput
+        v-if="inlineAssistant"
+        :anchor="inlineAssistant.anchor"
+        v-model:value="inlineAssistantPrompt"
+        :state="inlineAssistantState"
+        :progress="inlineRunner.applying ? '正在处理修改' : inlineRunner.progress"
+        :error="inlineAssistantError"
+        :message="inlineAssistantMessage"
+        :placeholder="inlineAssistant.blankBlock ? '描述你想生成的内容…' : undefined"
+        @submit="submitInlineAssistant"
+        @stop="inlineRunner.stop()"
+        @conversation="continueInlineConversation"
+        @undo="undoInlineAssistant"
+        @close="closeInlineAssistant"
+      />
 
       <Teleport to="body">
         <div

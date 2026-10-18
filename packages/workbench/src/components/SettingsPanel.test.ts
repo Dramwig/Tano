@@ -290,13 +290,15 @@ it('shows the formula preview setting and emits its change', async () => {
   const content = root.querySelector<HTMLElement>('section[aria-label="编辑行为"]')!;
   expect(content.textContent).toContain('编辑时预览公式');
   expect(content.textContent).toContain('标题与列表折叠');
+  const ai = root.querySelector<HTMLElement>('section[aria-label="AI 功能"]')!;
+  expect(ai.textContent).toContain('空白块按空格启动 AI');
   expect(content.textContent).not.toContain('渲染数学公式');
   expect(content.textContent).not.toContain('同时显示公式源码');
   expect(content.querySelectorAll('[role="switch"]')).toHaveLength(2);
   const preview = content.querySelector<HTMLButtonElement>('[aria-label="编辑时预览公式"]')!;
   expect(preview.getAttribute('aria-checked')).toBe('true');
   preview.click();
-  expect(preferenceUpdates).toEqual([{ previewMathWhileEditing: false, folding: true }]);
+  expect(preferenceUpdates).toEqual([{ previewMathWhileEditing: false, folding: true, blankBlockAiShortcut: true }]);
 });
 
 it.each(['页面内标题', '文档属性'])('keeps the %s preference in sync with its current value', async (label) => {
