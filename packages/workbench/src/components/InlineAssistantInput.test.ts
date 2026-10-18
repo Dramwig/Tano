@@ -53,3 +53,26 @@ it('expands a long single-paragraph reply after loading without relying on ancho
   expect(document.querySelector('.inline-assistant-message')?.textContent).toBe(text);
   expect(document.querySelector('[aria-label="展开回复"]')).not.toBeNull();
 });
+
+it('fades only content beyond the scroll edges and keeps the first and last lines clear', async () => {
+  mount('第一段说明。\n\n最后一段说明。');
+  await vi.waitFor(() => expect(document.querySelector('.inline-assistant-response .ProseMirror')).not.toBeNull());
+  const response = document.querySelector<HTMLElement>('.inline-assistant-response')!;
+  let contentHeight = 600;
+  Object.defineProperties(response, {
+    scrollHeight: { get: () => contentHeight },
+    clientHeight: { get: () => 240 },
+  });
+  const scrollTo = (top: number) => {
+    response.scrollTop = top;
+    response.dispatchEvent(new Event('scroll'));
+    return [response.style.getPropertyValue('--response-top-fade-strength'),
+      response.style.getPropertyValue('--response-bottom-fade-strength')];
+  };
+  expect(scrollTo(0)).toEqual(['0', '1']);
+  expect(scrollTo(14)).toEqual(['0.5', '1']);
+  expect(scrollTo(100)).toEqual(['1', '1']);
+  expect(scrollTo(360)).toEqual(['1', '0']);
+  contentHeight = 240;
+  expect(scrollTo(0)).toEqual(['0', '0']);
+});

@@ -31,6 +31,7 @@ const emit = defineEmits<{
 const input = ref<HTMLInputElement>();
 const shell = ref<HTMLElement>();
 const preview = ref<HTMLElement>();
+const response = ref<HTMLElement>();
 const responseId = useId();
 const expanded = ref(false);
 const renderFailed = ref(false);
@@ -45,6 +46,7 @@ let frame = 0;
 let lastRect: DOMRect | undefined;
 
 function position() {
+  updateResponseMask();
   const rects = props.anchor.getRects();
   const current = rects.at(-1) ?? lastRect;
   if (!current || !shell.value) return;
@@ -54,6 +56,13 @@ function position() {
   const top = Math.min(current.bottom + 8, window.innerHeight - shell.value.getBoundingClientRect().height - 12);
   style.value = { left: `${left}px`, top: `${Math.max(12, top)}px`, width: `${width}px` };
   measurePreview();
+}
+function updateResponseMask() {
+  const element = response.value;
+  if (!element) return;
+  const remaining = Math.max(0, element.scrollHeight - element.clientHeight - element.scrollTop - 1);
+  element.style.setProperty('--response-top-fade-strength', String(Math.min(1, Math.max(0, element.scrollTop) / 28)));
+  element.style.setProperty('--response-bottom-fade-strength', String(Math.min(1, remaining / 12)));
 }
 function measurePreview() {
   if (preview.value && preview.value.clientWidth > 0 &&
@@ -89,6 +98,11 @@ watch(preview, (element, previous) => {
   if (element) resizeObserver?.observe(element);
   void nextTick(measurePreview);
 }, { flush: 'post' });
+watch(response, (element, previous) => {
+  if (previous) resizeObserver?.unobserve(previous);
+  if (element) resizeObserver?.observe(element);
+  schedule();
+}, { flush: 'post' });
 watch(expanded, () => { void nextTick(schedule); });
 onMounted(() => {
   schedule();
@@ -96,6 +110,7 @@ onMounted(() => {
     resizeObserver = new ResizeObserver(() => { measurePreview(); schedule(); });
     if (shell.value) resizeObserver.observe(shell.value);
     if (preview.value) resizeObserver.observe(preview.value);
+    if (response.value) resizeObserver.observe(response.value);
   }
   if (props.state === 'input') void nextTick(() => input.value?.focus());
   document.addEventListener('pointerdown', handleOutsidePointerDown, true);
@@ -130,7 +145,7 @@ onBeforeUnmount(() => {
       </div>
       <div v-else class="inline-assistant-state inline-assistant-complete" :class="{ 'inline-assistant-expanded': expanded }">
         <AssistantButterfly :size="22" motion="none" />
-        <div v-if="expanded" :id="responseId" class="inline-assistant-response panel-scrollbar" tabindex="0" aria-label="助手回复">
+        <div v-if="expanded" :id="responseId" ref="response" class="inline-assistant-response panel-scrollbar" tabindex="0" aria-label="助手回复" @scroll.passive="updateResponseMask">
           <div v-if="state === 'error' || renderFailed" class="inline-assistant-response-text">{{ resultText }}</div>
           <MarkdownEditor v-else :model-value="resultText" :document-id="responseId" readonly :reveal-markdown="false" :resolve-image="() => null"
             open-links-on-tap @open-link="emit('conversation')" @ready="schedule" @error="renderFailed = true" />
@@ -208,12 +223,35 @@ onBeforeUnmount(() => {
 .inline-assistant-thinking-dots i { display: block; width: 3px; height: 3px; border-radius: 50%; background: currentColor; opacity: .35; animation: inline-assistant-thinking-dot 1.1s ease-in-out infinite; }
 .inline-assistant-thinking-dots i:nth-child(2) { animation-delay: .14s; }
 .inline-assistant-thinking-dots i:nth-child(3) { animation-delay: .28s; }
-.inline-assistant-complete { gap: 8px; }
+.inline-assistant-complete { gap: 10px; line-height: 22px; }
 .inline-assistant-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; }
-.inline-assistant-expanded { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: start; padding-block: 12px 6px; gap: 10px; }
-.inline-assistant-response { min-width: 0; max-height: min(240px, calc(100dvh - 112px)); margin-right: -12px; padding-right: 12px; overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere; line-height: 1.7; }
+.inline-assistant-expanded { --response-top-fade: 28px; display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: start; padding-block: 0 6px; gap: 0 10px; }
+.inline-assistant-expanded > .assistant-butterfly { margin-top: 12px; }
+.inline-assistant-response {
+  --response-edge-fade: 12px;
+  --response-top-fade-strength: 0;
+  --response-bottom-fade-strength: 0;
+  --response-mask: linear-gradient(to bottom,
+    rgba(0, 0, 0, calc(1 - var(--response-top-fade-strength))) 4px,
+    rgba(0, 0, 0, calc(1 - var(--response-top-fade-strength) * .85)) 10px,
+    rgba(0, 0, 0, calc(1 - var(--response-top-fade-strength) * .4)) 20px,
+    #000 var(--response-top-fade),
+    #000 calc(100% - var(--response-edge-fade)),
+    rgba(0, 0, 0, calc(1 - var(--response-bottom-fade-strength))));
+  min-width: 0;
+  max-height: min(240px, calc(100dvh - 112px));
+  margin-right: -12px;
+  /* Fade overflowing content without reserving extra space at either edge. */
+  padding: 12px 12px 0 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
+  line-height: inherit;
+  -webkit-mask-image: var(--response-mask);
+  mask-image: var(--response-mask);
+}
 .inline-assistant-response-text { white-space: pre-wrap; }
-.inline-assistant-response .ProseMirror { min-height: 0; padding: 0; font-size: 13px; line-height: 1.7; }
+.inline-assistant-response .ProseMirror { min-height: 0; padding: 0; font: inherit; }
 .inline-assistant-response .frontmatter-panel { display: none; }
 .inline-assistant-response p { margin: 0 0 10px; }
 .inline-assistant-response .ProseMirror > :last-child { margin-bottom: 0; }
