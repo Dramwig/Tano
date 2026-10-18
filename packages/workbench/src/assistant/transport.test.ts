@@ -8,11 +8,39 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke, Channel: class { onmessage?: un
 const connection = { id: 'connection', name: 'test', endpoint: 'https://example.com/v1', tools: true, maxOutputTokens: 4096 };
 
 describe('draft clarification in the browser demo', () => {
+  it('uses English clarification and receipts while leaving an unknown topic unwritten', async () => {
+    const proposal = vi.fn(), execute = vi.fn();
+    let text = '';
+    await runAssistant({ transport: demoAssistantTransport(), connectionId: 'demo', model: '模拟响应', tools: true,
+      locale: 'en-US', workspaceId: 'workspace', runId: 'run', history: [], prompt: 'Start a draft', signal: new AbortController().signal,
+      sources: [{ id: 'S1', workspaceId: 'workspace', fileId: 'abc123', path: '新建文档.md', content: '', hash: 'empty', origin: 'draft' }],
+      delta: value => { text += value; }, progress: () => {}, proposal, execute,
+      askUser: async questions => {
+        expect(questions[0].question).toBe('What should this document be about?');
+        expect(questions[1].options).toEqual(['Myself', 'Team', 'Clients']);
+        return questions.map(question => ({ questionId: question.id, answer: null }));
+      },
+    });
+    expect(proposal).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+    expect(text).toContain('The topic is still unknown');
+  });
+
+  it('keeps original source text and citation IDs in an English simulated response', async () => {
+    let text = '';
+    await runAssistant({ transport: demoAssistantTransport(), connectionId: 'demo', model: '模拟响应', tools: false,
+      locale: 'en-US', workspaceId: 'workspace', runId: 'run', history: [], prompt: 'Summarize', signal: new AbortController().signal,
+      sources: [{ id: 'S1', workspaceId: 'workspace', fileId: 'abc123', path: '中文名字.md', content: '中文原文和 English {0}', hash: 'hash', origin: 'draft' }],
+      delta: value => { text += value; }, progress: () => {}, proposal: () => {},
+    });
+    expect(text).toBe('Simulated browser response: read “中文名字.md”.\n\n中文原文和 English {0}\n\n[来源:S1]');
+  });
+
   it('keeps the document unchanged when the topic is skipped', async () => {
     const proposal = vi.fn(), execute = vi.fn();
     let text = '';
     await runAssistant({ transport: demoAssistantTransport(), connectionId: 'demo', model: '模拟响应', tools: true,
-      workspaceId: 'workspace', runId: 'run', history: [], prompt: '开始草稿', signal: new AbortController().signal,
+      workspaceId: 'workspace', runId: 'run', history: [], prompt: 'Start a draft', signal: new AbortController().signal,
       sources: [{ id: 'S1', workspaceId: 'workspace', fileId: 'abc123', path: '新建文档 3.md', content: '', hash: 'empty', origin: 'draft' }],
       delta: value => { text += value; }, progress: () => {}, proposal, execute,
       askUser: async questions => questions.map(question => ({ questionId: question.id, answer: question.id === 'format' ? '完整草稿' : null })),

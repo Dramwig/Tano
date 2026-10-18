@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { localizedDataFieldTypes as dataFieldTypes } from '../ui-labels';
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { CSSProperties } from 'vue';
 import {
@@ -23,7 +25,7 @@ import {
   WrapText,
   X,
 } from 'lucide-vue-next';
-import { dataFieldTypes } from '@tano/protocol';
+import { } from '@tano/protocol';
 import type {
   DataAggregate,
   DataField,
@@ -83,13 +85,13 @@ function optionTrigger() {
 const hasOptions = computed(() => ['select', 'multiselect'].includes(props.field.type));
 const hasData = computed(() => props.table.rows.some((row) => row.values[props.field.id] != null));
 const aggregates: { value: DataAggregate; label: string }[] = [
-  { value: 'none', label: '不汇总' },
-  { value: 'count', label: '记录数' },
-  { value: 'filled', label: '非空数' },
-  { value: 'sum', label: '求和' },
-  { value: 'average', label: '平均值' },
-  { value: 'min', label: '最小值' },
-  { value: 'max', label: '最大值' },
+  { value: 'none', get label() { return t('不汇总'); } },
+  { value: 'count', get label() { return t('记录数'); } },
+  { value: 'filled', get label() { return t('非空数'); } },
+  { value: 'sum', get label() { return t('求和'); } },
+  { value: 'average', get label() { return t('平均值'); } },
+  { value: 'min', get label() { return t('最小值'); } },
+  { value: 'max', get label() { return t('最大值'); } },
 ];
 const visibleAggregates = computed(() =>
   aggregates.filter(
@@ -181,7 +183,7 @@ function apply(operation: (table: DataTable, field: DataField, view: DataView) =
   error.value = props.commit((table) => {
     const field = table.fields.find((item) => item.id === props.field.id);
     const view = table.views.find((item) => item.id === props.view.id);
-    if (!field || !view) throw new Error('字段或视图已变更，请重新打开菜单');
+    if (!field || !view) throw new Error(t('字段或视图已变更，请重新打开菜单'));
     operation(table, field, view);
   });
   return !error.value;
@@ -190,12 +192,12 @@ function rename() {
   if (name.value.trim() === nameBase.value) return;
   if (
     apply((table, field) => {
-      if (field.name !== nameBase.value) throw new Error('字段名称已被外部修改，请重新打开菜单');
+      if (field.name !== nameBase.value) throw new Error(t('字段名称已被外部修改，请重新打开菜单'));
       if (
         !name.value.trim() ||
         table.fields.some((item) => item.id !== field.id && item.name === name.value.trim())
       )
-        throw new Error('请输入不重复的字段名称');
+        throw new Error(t('请输入不重复的字段名称'));
       field.name = name.value.trim();
     })
   )
@@ -213,7 +215,7 @@ function changeType(type: DataFieldType) {
   if (
     apply((table, field) => {
       if (table.rows.some((row) => row.values[field.id] != null))
-        throw new Error('此字段已有数据，请新建目标类型的字段');
+        throw new Error(t('此字段已有数据，请新建目标类型的字段'));
       field.type = type;
       delete field.formula;
       if (['select', 'multiselect'].includes(type)) field.options ??= [];
@@ -229,7 +231,7 @@ function addOption() {
   const value = newOption.value.trim();
   if (
     apply((_table, field) => {
-      if (!value || field.options?.includes(value)) throw new Error('请输入不重复的选项名称');
+      if (!value || field.options?.includes(value)) throw new Error(t('请输入不重复的选项名称'));
       field.options = [...(field.options ?? []), value];
     })
   )
@@ -246,7 +248,7 @@ function colorOption(color: DataOptionColor) {
   if (option.value === undefined) return;
   const value = option.value;
   apply((_table, field) => {
-    if (!field.options?.includes(value)) throw new Error('选项已变更，请重新打开菜单');
+    if (!field.options?.includes(value)) throw new Error(t('选项已变更，请重新打开菜单'));
     field.optionColors = { ...field.optionColors, [value]: color };
   });
 }
@@ -273,7 +275,7 @@ function dropOption(target: string) {
   apply((_table, field) => {
     const from = field.options?.indexOf(source) ?? -1,
       to = field.options?.indexOf(target) ?? -1;
-    if (from < 0 || to < 0 || !field.options) throw new Error('选项已变更，请重新排序');
+    if (from < 0 || to < 0 || !field.options) throw new Error(t('选项已变更，请重新排序'));
     field.options.splice(to, 0, ...field.options.splice(from, 1));
   });
 }
@@ -304,9 +306,9 @@ function duplicate() {
       const next = copyTable(field);
       next.id = tableItemId();
       let count = 1;
-      next.name = `${field.name} 副本`;
+      next.name = t('{0} 副本', [field.name]);
       while (table.fields.some((item) => item.name === next.name))
-        next.name = `${field.name} 副本 ${++count}`;
+        next.name = t('{0} 副本 {1}', [field.name, ++count]);
       table.fields.splice(table.fields.indexOf(field) + 1, 0, next);
       for (const row of table.rows)
         if (row.values[field.id] !== undefined)
@@ -393,41 +395,41 @@ onBeforeUnmount(() => {
         :class="{ 'field-menu-covered': narrow && panel }"
         :style="rootStyle"
         role="dialog"
-        :aria-label="`${field.name} 属性菜单`"
+        :aria-label="t('{0} 属性菜单', [field.name])"
       >
         <div class="field-name">
           <component :is="dataFieldIcons[field.type]" :size="15" /><input
             v-model="name"
-            aria-label="字段名称"
+            :aria-label="t('字段名称')"
             maxlength="200"
             :disabled="readonly"
             @change="rename"
             @keydown.enter="rename"
-          /><button aria-label="关闭属性菜单" @click="emit('close')"><X :size="13" /></button>
+          /><button :aria-label="t('关闭属性菜单')" @click="emit('close')"><X :size="13" /></button>
         </div>
         <button
           :disabled="readonly"
           :class="{ active: panel === 'properties' }"
           @click="hasOptions ? openPanel('properties', $event) : emit('edit')"
         >
-          <SlidersHorizontal :size="15" />编辑属性<ChevronRight class="trailing" :size="13" />
+          <SlidersHorizontal :size="15" />{{ t('编辑属性') }}<ChevronRight class="trailing" :size="13" />
         </button>
         <button
           :disabled="readonly"
           :class="{ active: panel === 'types' }"
           @click="openPanel('types', $event)"
         >
-          <component :is="dataFieldIcons[field.type]" :size="15" />更改类型<span class="hint">{{
+          <component :is="dataFieldIcons[field.type]" :size="15" />{{ t('更改类型') }}<span class="hint">{{
             dataFieldTypes[field.type]
           }}</span
           ><ChevronRight :size="13" />
         </button>
         <hr />
         <button :disabled="readonly" @click="emit('filter')">
-          <Filter :size="15" />筛选<span
+          <Filter :size="15" />{{ t('筛选') }}<span
             v-if="view.filters.some((item) => item.field === field.id)"
             class="hint"
-            >已设置</span
+            >{{ t('已设置') }}</span
           >
         </button>
         <button
@@ -435,7 +437,7 @@ onBeforeUnmount(() => {
           :class="{ active: panel === 'sort' }"
           @click="openPanel('sort', $event)"
         >
-          <ArrowDownUp :size="15" />排序<ChevronRight class="trailing" :size="13" />
+          <ArrowDownUp :size="15" />{{ t('排序') }}<ChevronRight class="trailing" :size="13" />
         </button>
         <button
           :disabled="readonly"
@@ -445,7 +447,7 @@ onBeforeUnmount(() => {
             })
           "
         >
-          <Group :size="15" />按此列分组<Check
+          <Group :size="15" />{{ t('按此列分组') }}<Check
             v-if="view.groupBy === field.id"
             class="trailing"
             :size="13"
@@ -456,7 +458,7 @@ onBeforeUnmount(() => {
           :class="{ active: panel === 'aggregate' }"
           @click="openPanel('aggregate', $event)"
         >
-          <Sigma :size="15" />计算<ChevronRight class="trailing" :size="13" />
+          <Sigma :size="15" />{{ t('计算') }}<ChevronRight class="trailing" :size="13" />
         </button>
         <button
           :disabled="readonly"
@@ -466,13 +468,13 @@ onBeforeUnmount(() => {
             })
           "
         >
-          <Pin :size="15" />冻结首列<Check v-if="view.freeze" class="trailing" :size="13" />
+          <Pin :size="15" />{{ t('冻结首列') }}<Check v-if="view.freeze" class="trailing" :size="13" />
         </button>
         <button
           :disabled="readonly || table.fields.length - view.hiddenFields.length <= 1"
           @click="apply((_table, field, view) => view.hiddenFields.push(field.id)) && emit('close')"
         >
-          <EyeOff :size="15" />隐藏此列
+          <EyeOff :size="15" />{{ t('隐藏此列') }}
         </button>
         <button
           :disabled="readonly"
@@ -485,7 +487,7 @@ onBeforeUnmount(() => {
             })
           "
         >
-          <WrapText :size="15" />此列内容换行<Check
+          <WrapText :size="15" />{{ t('此列内容换行') }}<Check
             v-if="view.fieldWrap?.[field.id] ?? view.wrap"
             class="trailing"
             :size="13"
@@ -493,18 +495,18 @@ onBeforeUnmount(() => {
         </button>
         <hr />
         <button :disabled="readonly" @click="emit('insert', 'left')">
-          <ArrowLeft :size="15" />在左侧插入
+          <ArrowLeft :size="15" />{{ t('在左侧插入') }}
         </button>
         <button :disabled="readonly" @click="emit('insert', 'right')">
-          <ArrowRight :size="15" />在右侧插入
+          <ArrowRight :size="15" />{{ t('在右侧插入') }}
         </button>
-        <button :disabled="readonly" @click="duplicate"><Copy :size="15" />创建属性副本</button>
+        <button :disabled="readonly" @click="duplicate"><Copy :size="15" />{{ t('创建属性副本') }}</button>
         <button
           class="danger"
           :disabled="readonly || table.fields.length <= 1"
           @click="emit('remove')"
         >
-          <Trash2 :size="15" />删除属性
+          <Trash2 :size="15" />{{ t('删除属性') }}
         </button>
         <p v-if="error && !panel" role="alert">{{ error }}</p>
       </section>
@@ -516,11 +518,11 @@ onBeforeUnmount(() => {
         :class="{ 'field-menu-covered': narrow && option !== undefined }"
         :style="secondaryStyle"
         role="dialog"
-        aria-label="属性设置"
+        :aria-label="t('属性设置')"
       >
-        <button class="panel-back" @click="backPanel"><ChevronLeft :size="14" />返回</button>
+        <button class="panel-back" @click="backPanel"><ChevronLeft :size="14" />{{ t('返回') }}</button>
         <template v-if="panel === 'properties'">
-          <div class="section-label"><span>选项</span><span>手动排序</span></div>
+          <div class="section-label"><span>{{ t('选项') }}</span><span>{{ t('手动排序') }}</span></div>
           <div
             v-for="(item, index) in field.options"
             :key="item"
@@ -539,7 +541,7 @@ onBeforeUnmount(() => {
             <button
               class="option-choice"
               :data-option="item"
-              :aria-label="`编辑选项 ${item}`"
+              :aria-label="t('编辑选项 {0}', [item])"
               @click="openOption(item, $event)"
             >
               <span class="option-tag" :style="optionStyle(field, item)">{{ item }}</span
@@ -547,7 +549,7 @@ onBeforeUnmount(() => {
             </button>
             <button
               class="option-move"
-              :aria-label="`上移 ${item}`"
+              :aria-label="t('上移 {0}', [item])"
               :disabled="index === 0"
               @click="moveOption(item, -1)"
             >
@@ -555,7 +557,7 @@ onBeforeUnmount(() => {
             </button>
             <button
               class="option-move"
-              :aria-label="`下移 ${item}`"
+              :aria-label="t('下移 {0}', [item])"
               :disabled="index === (field.options?.length ?? 0) - 1"
               @click="moveOption(item, 1)"
             >
@@ -565,16 +567,16 @@ onBeforeUnmount(() => {
           <form class="option-add" @submit.prevent="addOption">
             <input
               v-model="newOption"
-              aria-label="新选项名称"
-              placeholder="添加选项…"
+              :aria-label="t('新选项名称')"
+              :placeholder="t('添加选项…')"
               maxlength="2000"
-            /><button aria-label="添加选项" :disabled="!newOption.trim()">
+            /><button :aria-label="t('添加选项')" :disabled="!newOption.trim()">
               <Plus :size="15" />
             </button>
           </form>
         </template>
         <template v-else-if="panel === 'types'">
-          <div class="section-label">属性类型</div>
+          <div class="section-label">{{ t('属性类型') }}</div>
           <button
             v-for="(label, type) in dataFieldTypes"
             :key="type"
@@ -584,30 +586,30 @@ onBeforeUnmount(() => {
             <component :is="dataFieldIcons[type]" :size="15" />{{ label
             }}<Check v-if="field.type === type" class="trailing" :size="13" />
           </button>
-          <p v-if="hasData" class="note">此列已有数据。转换类型请先新建一列。</p>
+          <p v-if="hasData" class="note">{{ t('此列已有数据。转换类型请先新建一列。') }}</p>
         </template>
         <template v-else-if="panel === 'sort'">
           <div class="section-label">{{ field.name }}</div>
           <button @click="sort('asc')">
-            <ArrowUp :size="15" />升序<Check
+            <ArrowUp :size="15" />{{ t('升序') }}<Check
               v-if="view.sorts.some((item) => item.field === field.id && item.direction === 'asc')"
               class="trailing"
               :size="13"
             />
           </button>
           <button @click="sort('desc')">
-            <ArrowDown :size="15" />降序<Check
+            <ArrowDown :size="15" />{{ t('降序') }}<Check
               v-if="view.sorts.some((item) => item.field === field.id && item.direction === 'desc')"
               class="trailing"
               :size="13"
             />
           </button>
           <button v-if="view.sorts.some((item) => item.field === field.id)" @click="sort()">
-            <X :size="15" />移除此列排序
+            <X :size="15" />{{ t('移除此列排序') }}
           </button>
         </template>
         <template v-else-if="panel === 'aggregate'">
-          <div class="section-label">列底部计算</div>
+          <div class="section-label">{{ t('列底部计算') }}</div>
           <button
             v-for="item in visibleAggregates"
             :key="item.value"
@@ -634,24 +636,24 @@ onBeforeUnmount(() => {
         class="field-menu field-option-menu panel-scrollbar"
         :style="tertiaryStyle"
         role="dialog"
-        aria-label="选项设置"
+        :aria-label="t('选项设置')"
       >
-        <button class="panel-back" @click="backOption"><ChevronLeft :size="14" />返回选项</button>
+        <button class="panel-back" @click="backOption"><ChevronLeft :size="14" />{{ t('返回选项') }}</button>
         <input
           v-model="optionName"
           class="option-name"
-          aria-label="选项名称"
+          :aria-label="t('选项名称')"
           maxlength="2000"
           @change="renameOption"
           @keydown.enter="renameOption"
         />
-        <button class="danger" @click="deleteOption"><Trash2 :size="14" />删除选项</button>
+        <button class="danger" @click="deleteOption"><Trash2 :size="14" />{{ t('删除选项') }}</button>
         <hr />
-        <div class="section-label">颜色</div>
+        <div class="section-label">{{ t('颜色') }}</div>
         <button
           v-for="color in optionPalette"
           :key="color.value"
-          :aria-label="`选项颜色：${color.label}`"
+          :aria-label="t('选项颜色：{0}', [t(color.label)])"
           @click="colorOption(color.value)"
         >
           <span
@@ -660,7 +662,7 @@ onBeforeUnmount(() => {
               background: `color-mix(in srgb, ${color.color} 24%, var(--paper))`,
               borderColor: `color-mix(in srgb, ${color.color} 35%, var(--paper))`,
             }"
-          />{{ color.label
+          />{{ t(color.label)
           }}<Check
             v-if="(field.optionColors?.[option] ?? 'default') === color.value"
             class="trailing"
@@ -668,7 +670,7 @@ onBeforeUnmount(() => {
           />
         </button>
         <p v-if="table.fields.some((item) => item.formula?.includes(`[${field.id}]`))" class="note">
-          重命名会更新记录和精确筛选。公式中的选项文字需另行修改。
+          {{ t('重命名会更新记录和精确筛选。公式中的选项文字需另行修改。') }}
         </p>
         <p v-if="error" role="alert">{{ error }}</p>
       </section>

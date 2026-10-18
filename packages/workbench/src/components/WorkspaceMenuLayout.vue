@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 import { ChevronRight, MoreHorizontal, Settings2 } from 'lucide-vue-next';
 import type { WorkbenchActions } from '../runtime';
@@ -98,17 +99,17 @@ onBeforeUnmount(() => {
   <div class="workspace-menu-layout">
     <div class="menu-divider" />
     <slot name="settings">
-      <button type="button" @click="props.actions.openSettings()"><Settings2 :size="16" />设置</button>
+      <button type="button" @click="props.actions.openSettings()"><Settings2 :size="16" />{{ t('设置') }}</button>
     </slot>
     <button ref="trigger" type="button" class="workspace-more-trigger"
       aria-haspopup="menu" :aria-expanded="opened" :aria-controls="opened ? menuId : undefined"
       @click="opened ? close(true) : show()" @keydown="triggerKeydown">
-      <MoreHorizontal :size="16" /><span>更多操作</span><ChevronRight :size="13" />
+      <MoreHorizontal :size="16" /><span>{{ t('更多操作') }}</span><ChevronRight :size="13" />
     </button>
     <Teleport to="body">
       <div v-if="opened" :id="menuId" ref="panel"
         class="dropdown compact-action-menu workspace-more-menu"
-        role="menu" aria-label="更多工作区操作" tabindex="-1"
+        role="menu" :aria-label="t('更多工作区操作')" tabindex="-1"
         :style="{ ...position, visibility: position ? 'visible' : 'hidden' }"
         @keydown="keydown" @click="selected"><slot /></div>
     </Teleport>

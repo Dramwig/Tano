@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiLocale } from '../i18n';
 import { onBeforeUnmount, ref, TransitionGroup, watch } from 'vue';
 import { animate } from 'motion/mini';
 import { CalendarDays } from 'lucide-vue-next';
@@ -120,15 +121,15 @@ onBeforeUnmount(() => {
 function eventTime(record: ObjectRecord, day: Date) {
   if (props.showDate) {
     const { date, time, end } = readPlanDate(record.object.properties);
-    if (!date) return '未安排';
-    const start = `${date}${time ? ` ${time}` : ' · 全天'}`;
+    if (!date) return t('未安排');
+    const start = `${date}${time ? ` ${time}` : t(' · 全天')}`;
     return end ? `${start} – ${end.replace('T', ' ')}` : start;
   }
-  if (record.object.properties.allDay === true) return '全天';
-  if (!hasEventTime(record)) return record.object.properties.date ? '当天' : '未安排';
+  if (record.object.properties.allDay === true) return t('全天');
+  if (!hasEventTime(record)) return record.object.properties.date ? t('当天') : t('未安排');
   const format = (value: unknown) => {
     const date = new Date(String(value));
-    const time = date.toLocaleTimeString('zh-CN', {
+    const time = date.toLocaleTimeString(uiLocale.value, {
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
@@ -163,7 +164,7 @@ function eventTime(record: ObjectRecord, day: Date) {
           type="checkbox"
           :checked="isEventCompleted(record)"
           :disabled="disabled || canEdit?.(record) === false || completionLocked(record) || pending.includes(planKey(record))"
-          :aria-label="`${isEventCompleted(record) ? '标记未完成' : '完成'}：${record.object.name}`"
+          :aria-label="`${isEventCompleted(record) ? t('标记未完成') : t('完成')}：${record.object.name}`"
           @change="complete(record, $event)"
         />
         <svg
@@ -189,7 +190,7 @@ function eventTime(record: ObjectRecord, day: Date) {
       >
         <strong><span class="plan-event-title">{{ record.object.name }}</span></strong>
         <small
-          >{{ planSourceLabel(record) }} · {{ isEventCompleted(record) ? '已完成 · ' : '' }}{{ eventTime(record, date) }}{{ record.object.properties.due ? ` · 截止 ${record.object.properties.due}` : '' }}</small
+          >{{ planSourceLabel(record) }} · {{ isEventCompleted(record) ? t('已完成 · ') : '' }}{{ eventTime(record, date) }}{{ record.object.properties.due ? t(' · 截止 {0}', [record.object.properties.due]) : '' }}</small
         >
       </button>
     </li>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, ref } from 'vue';
 import { Pencil, RotateCcw, Trash2 } from 'lucide-vue-next';
 import {
@@ -11,7 +12,7 @@ const props = defineProps<{ bindings: ShortcutBindings }>();
 const emit = defineEmits<{ change: [bindings: ShortcutBindings] }>();
 const recording = ref<ShortcutId | null>(null);
 const error = ref('');
-const groups = computed(() => ['工作台', '页内搜索', '编辑器'].map(label => ({
+const groups = computed(() => [t('工作台'), t('页内搜索'), t('编辑器')].map(label => ({
   label, items: shortcutDefinitions.filter(item => item.group === label),
 })));
 
@@ -43,11 +44,11 @@ function resetAll() { cancel(); emit('change', { ...defaultShortcutBindings }); 
 <template>
   <div class="shortcut-settings">
     <div class="shortcut-settings-actions">
-      <p>点击组合键或铅笔图标修改，按 Esc 取消。修改立即生效并保存在当前设备。</p>
-      <button type="button" class="shortcut-reset-all" @click="resetAll"><RotateCcw :size="13" :stroke-width="1.5" />恢复全部默认</button>
+      <p>{{ t('点击组合键或铅笔图标修改，按 Esc 取消。修改立即生效并保存在当前设备。') }}</p>
+      <button type="button" class="shortcut-reset-all" @click="resetAll"><RotateCcw :size="13" :stroke-width="1.5" />{{ t('恢复全部默认') }}</button>
     </div>
     <p v-if="error" class="settings-notice shortcut-settings-error" role="alert">{{ error }}</p>
-    <section v-for="group in groups" :key="group.label" class="settings-section" :aria-label="group.label + '快捷键'">
+    <section v-for="group in groups" :key="group.label" class="settings-section" :aria-label="group.label + t('快捷键')">
       <h3>{{ group.label }}</h3>
       <div class="shortcut-settings-card">
         <div v-for="item in group.items" :key="item.id" class="shortcut-settings-row">
@@ -60,17 +61,17 @@ function resetAll() { cancel(); emit('change', { ...defaultShortcutBindings }); 
               type="button"
               class="shortcut-record"
               :class="{ 'is-recording': recording === item.id }"
-              :aria-label="`设置${item.label}快捷键`"
+              :aria-label="t('设置{0}快捷键', [item.label])"
               :aria-pressed="recording === item.id"
-              title="修改快捷键"
+              :title="t('修改快捷键')"
               @click="start(item.id)"
               @keydown="capture($event, item.id)"
               @blur="recording === item.id && cancel()"
-            ><kbd>{{ recording === item.id ? '请按下快捷键…' : shortcutLabel(bindings[item.id]).replaceAll(' + ', '+') }}</kbd><Pencil :size="13" :stroke-width="1.5" /></button>
+            ><kbd>{{ recording === item.id ? t('请按下快捷键…') : shortcutLabel(bindings[item.id]).replaceAll(' + ', '+') }}</kbd><Pencil :size="13" :stroke-width="1.5" /></button>
           </div>
           <div class="shortcut-settings-row-actions">
-            <button v-if="bindings[item.id] !== item.default" type="button" class="shortcut-icon-button" :aria-label="`恢复${item.label}默认快捷键`" title="恢复默认" @click="reset(item.id)"><RotateCcw :size="14" :stroke-width="1.5" /></button>
-            <button type="button" class="shortcut-icon-button shortcut-clear" :disabled="!bindings[item.id]" :aria-label="`清除${item.label}快捷键`" title="清除快捷键" @click="clear(item.id)"><Trash2 :size="14" :stroke-width="1.5" /></button>
+            <button v-if="bindings[item.id] !== item.default" type="button" class="shortcut-icon-button" :aria-label="t('恢复{0}默认快捷键', [item.label])" :title="t('恢复默认')" @click="reset(item.id)"><RotateCcw :size="14" :stroke-width="1.5" /></button>
+            <button type="button" class="shortcut-icon-button shortcut-clear" :disabled="!bindings[item.id]" :aria-label="t('清除{0}快捷键', [item.label])" :title="t('清除快捷键')" @click="clear(item.id)"><Trash2 :size="14" :stroke-width="1.5" /></button>
           </div>
         </div>
       </div>

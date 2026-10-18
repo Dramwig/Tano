@@ -5,6 +5,8 @@ import type { AssistantProposal, AssistantSession, AssistantTransport, Workspace
 import { parseAssistantSession } from '@tano/protocol';
 import { configureWorkbench, useWorkbenchRuntime } from '../runtime';
 import { useAssistantStore, useInlineAssistantStore } from './store';
+import { setUiLocale } from '../i18n';
+import { assistantLanguagePolicy, assistantTaskPrompts } from './language';
 
 const fixture = vi.hoisted(() => ({ workspace: null as any }));
 vi.mock('../stores/workspace', () => ({ useWorkspaceStore: () => fixture.workspace }));
@@ -42,6 +44,51 @@ describe('assistant session coordination', () => {
     await vi.waitFor(() => expect(store.loading).toBe(false));
     return store;
   }
+  it.each(['inline', 'panel'] as const)('distinguishes built-in and user-entered English prompts in %s', async mode => {
+    const store = mode === 'inline' ? useInlineAssistantStore() : await ready();
+    await vi.waitFor(() => expect(store.loading).toBe(false));
+    await store.selectModel('test');
+    vi.mocked(transport.request).mockImplementation(async (_id, _request, _signal, chunk) => {
+      chunk(new TextEncoder().encode('data: {"choices":[{"index":0,"delta":{"content":"answer"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'));
+    });
+    const prompt = assistantTaskPrompts.starters.summary;
+    store.setBuiltInPrompt(prompt);
+    await store.send();
+    expect(vi.mocked(transport.request).mock.calls[0][1].messages[0].content).toContain(assistantTaskPrompts.inputOrigin.builtin);
+    store.prompt = prompt;
+    await store.send();
+    expect(vi.mocked(transport.request).mock.calls[1][1].messages[0].content).toContain(assistantTaskPrompts.inputOrigin.user);
+    store.setBuiltInPrompt(prompt);
+    store.prompt = '用户编辑过的任务';
+    store.prompt = prompt;
+    await store.send();
+    expect(vi.mocked(transport.request).mock.calls[2][1].messages[0].content).toContain(assistantTaskPrompts.inputOrigin.user);
+  });
+  it.each([
+    { mode: 'inline', initial: 'en-US', next: 'zh-CN' }, { mode: 'panel', initial: 'en-US', next: 'zh-CN' },
+    { mode: 'inline', initial: 'zh-CN', next: 'en-US' }, { mode: 'panel', initial: 'zh-CN', next: 'en-US' },
+  ] as const)('captures the $mode language before async preparation when switching $initial to $next', async ({ mode, initial, next }) => {
+    vi.stubGlobal('window', new EventTarget());
+    vi.stubGlobal('document', { documentElement: { lang: '' } });
+    try {
+      const store = mode === 'inline' ? useInlineAssistantStore() : await ready();
+      await vi.waitFor(() => expect(store.loading).toBe(false));
+      await store.selectModel('test');
+      vi.mocked(transport.request).mockImplementation(async (_id, _request, _signal, chunk) => {
+        chunk(new TextEncoder().encode('data: {"choices":[{"index":0,"delta":{"content":"回答原文"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'));
+      });
+      setUiLocale(initial);
+      fixture.workspace.assistantRules.mockImplementationOnce(async () => { setUiLocale(next); return []; });
+      store.prompt = '请用日语回答：東京';
+      await store.send();
+      expect(vi.mocked(transport.request).mock.calls[0][1].messages[0].content).toContain(assistantLanguagePolicy(initial));
+      expect(store.session!.messages[0].content).toBe('请用日语回答：東京');
+      expect(store.session!.messages[1].content).toBe('回答原文');
+      store.prompt = '下一轮';
+      await store.send();
+      expect(vi.mocked(transport.request).mock.calls[1][1].messages[0].content).toContain(assistantLanguagePolicy(next));
+    } finally { setUiLocale('zh-CN'); vi.unstubAllGlobals(); }
+  });
   it.each(['inline', 'panel'] as const)('runs inline and panel requests concurrently and stops only %s', async stopped => {
     const panel = await ready();
     const inline = useInlineAssistantStore();
@@ -71,10 +118,10 @@ describe('assistant session coordination', () => {
     expect(inline.session!.messages[0].content).toBe('选区任务');
     const panelSystem = vi.mocked(transport.request).mock.calls[0][1].messages.filter(message => message.role === 'system').map(message => message.content).join('\n');
     const inlineSystem = vi.mocked(transport.request).mock.calls[1][1].messages.filter(message => message.role === 'system').map(message => message.content).join('\n');
-    expect(panelSystem).toContain('当前是侧栏模式');
-    expect(panelSystem).not.toContain('当前是行内模式');
-    expect(inlineSystem).toContain('当前是行内模式');
-    expect(inlineSystem).not.toContain('当前是侧栏模式');
+    expect(panelSystem).toContain('The current mode is sidebar');
+    expect(panelSystem).not.toContain('The current mode is inline');
+    expect(inlineSystem).toContain('The current mode is inline');
+    expect(inlineSystem).not.toContain('The current mode is sidebar');
     expect(vi.mocked(transport.request).mock.calls[1][1].tools?.some(tool => tool.function.name === 'ask_user')).toBe(false);
     const cancelled = stopped === 'inline' ? inline : panel;
     const remaining = stopped === 'inline' ? panel : inline;
@@ -115,7 +162,7 @@ describe('assistant session coordination', () => {
     expect(store.selection).toBeNull();
     expect(store.displayMode).toBe('floating');
     expect(store.opened).toBe(true);
-    expect(store.session!.messages[0].content).toBe('开始草稿');
+    expect(store.session!.messages[0].content).toBe('Start a draft');
     expect(store.session!.messages[1].content).toBe('我会先整理已有资料。');
     expect(store.pendingUserInput).toBeNull();
     expect(transport.request).toHaveBeenCalledOnce();
@@ -124,7 +171,7 @@ describe('assistant session coordination', () => {
     fixture.workspace.documents = [{ id: 'abc123', content: '', path: 'note.md' }];
     const store = await ready(); await store.startDocumentDraft('abc123');
     expect(store.error).toContain('选择模型');
-    expect(store.prompt).toBe('开始草稿');
+    expect(store.prompt).toBe('Start a draft');
     expect(transport.request).not.toHaveBeenCalled();
   });
   function askTwoQuestions() {

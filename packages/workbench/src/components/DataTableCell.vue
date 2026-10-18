@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
 import type { CSSProperties } from 'vue';
 import type { DataField, DataValue, FileEntry } from '@tano/protocol';
@@ -210,7 +211,7 @@ function toggle(value: string) {
     class="data-calculated"
     :class="{ 'data-cell-error': error }"
     :title="error || dataValueText(value)"
-    >{{ error ? '#错误' : dataValueText(value) }}</span
+    >{{ error ? t('#错误') : dataValueText(value) }}</span
   >
   <input
     v-else-if="field.type === 'checkbox'"
@@ -240,12 +241,12 @@ function toggle(value: string) {
           :title="item"
           ><span class="data-tag-text">{{
             field.type === 'attachment'
-              ? (files.find((file) => file.id === item)?.name ?? '附件不可用')
+              ? (files.find((file) => file.id === item)?.name ?? t('附件不可用'))
               : item
           }}</span></span
         ></template
       ><span v-else class="data-cell-empty">{{
-        field.type === 'attachment' ? '添加附件' : '选择…'
+        field.type === 'attachment' ? t('添加附件') : t('选择…')
       }}</span>
     </summary>
     <div
@@ -267,8 +268,8 @@ function toggle(value: string) {
               v-if="!readonly"
               type="button"
               class="data-current-clear"
-              aria-label="清除选择"
-              title="清除选择"
+              :aria-label="t('清除选择')"
+              :title="t('清除选择')"
               @click="selectOption(null)"
             >
               <X :size="10" />
@@ -279,7 +280,7 @@ function toggle(value: string) {
             v-model="optionQuery"
             class="data-option-search"
             role="combobox"
-            :aria-label="`搜索或创建${field.name}选项`"
+            :aria-label="t('搜索或创建{0}选项', [field.name])"
             :aria-controls="optionListId"
             :aria-activedescendant="optionCount ? `${optionListId}-${activeOption}` : undefined"
             aria-expanded="true"
@@ -288,8 +289,8 @@ function toggle(value: string) {
               field.type === 'select' && selected.length
                 ? ''
                 : readonly
-                  ? '搜索选项…'
-                  : '搜索或创建选项…'
+                  ? t('搜索选项…')
+                  : t('搜索或创建选项…')
             "
             :maxlength="2000"
             autocomplete="off"
@@ -298,13 +299,13 @@ function toggle(value: string) {
           />
         </div>
         <p v-if="field.type !== 'select'" class="data-option-hint">
-          {{ readonly ? '选择一个选项' : '选择或创建一个选项' }}
+          {{ readonly ? t('选择一个选项') : t('选择或创建一个选项') }}
         </p>
         <div
           :id="optionListId"
           class="data-option-list panel-scrollbar"
           role="listbox"
-          :aria-label="`${field.name}选项`"
+          :aria-label="t('{0}选项', [field.name])"
           :aria-multiselectable="field.type === 'multiselect'"
         >
           <button
@@ -340,7 +341,7 @@ function toggle(value: string) {
             class="data-option-row"
             :class="{ active: activeOption === matchingOptions.length }"
             role="option"
-            :aria-label="`创建选项 ${optionName}`"
+            :aria-label="t('创建选项 {0}', [optionName])"
             :aria-selected="false"
             :data-option-index="matchingOptions.length"
             tabindex="-1"
@@ -348,7 +349,7 @@ function toggle(value: string) {
             @mousedown.prevent
             @click="createOption"
           >
-            <span>创建</span>
+            <span>{{ t('创建') }}</span>
             <span
               class="data-tag"
               :class="{ 'data-single-tag': field.type === 'select' }"
@@ -358,7 +359,7 @@ function toggle(value: string) {
             >
           </button>
           <p v-if="!optionCount && (readonly || optionName)" class="data-popover-empty">
-            没有匹配的选项
+            {{ t('没有匹配的选项') }}
           </p>
         </div>
         <button
@@ -367,7 +368,7 @@ function toggle(value: string) {
           class="data-option-edit"
           @click="editField"
         >
-          <SlidersHorizontal :size="13" />编辑属性
+          <SlidersHorizontal :size="13" />{{ t('编辑属性') }}
         </button>
         <p v-if="optionError" class="data-option-error" role="alert">{{ optionError }}</p>
       </template>
@@ -380,12 +381,12 @@ function toggle(value: string) {
               :disabled="readonly"
               @change="toggle(file.id)"
             /><Paperclip :size="12" />{{ file.path }}</label
-          ><button type="button" :aria-label="`打开 ${file.name}`" @click="emit('open', file.id)">
+          ><button type="button" :aria-label="t('打开 {0}', [file.name])" @click="emit('open', file.id)">
             <ExternalLink :size="13" />
           </button>
         </div>
         <label v-if="canUpload && !readonly" class="data-upload"
-          >上传附件<input
+          >{{ t('上传附件') }}<input
             type="file"
             @change="
               ($event.target as HTMLInputElement).files?.[0] &&
@@ -394,7 +395,7 @@ function toggle(value: string) {
             "
         /></label>
         <p v-if="!attachments.length" class="data-popover-empty">
-          可关联工作区文件，原文件会保留。
+          {{ t('可关联工作区文件，原文件会保留。') }}
         </p></template
       >
     </div>
@@ -437,7 +438,7 @@ function toggle(value: string) {
       v-if="field.type === 'url' && typeof value === 'string' && /^https?:\/\//i.test(value)"
       type="button"
       class="data-link-open"
-      :aria-label="`打开链接 ${field.name}`"
+      :aria-label="t('打开链接 {0}', [field.name])"
       @click="emit('link', value)"
     >
       <ExternalLink :size="12" />

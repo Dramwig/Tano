@@ -8,10 +8,11 @@ import { DemoAdapter } from '../adapter';
 import { useWorkspaceStore } from '../stores/workspace';
 import { useAssistantStore } from '../assistant/store';
 import AssistantPanel from './AssistantPanel.vue';
+import { setUiLocale } from '../i18n';
 let app: ReturnType<typeof createApp> | undefined;
 let pinia: ReturnType<typeof createPinia>;
 let root: HTMLDivElement;
-afterEach(() => { app?.unmount(); root?.remove(); useWorkspaceStore(pinia).dispose(); disposePinia(pinia); vi.unstubAllGlobals(); });
+afterEach(() => { setUiLocale('zh-CN'); app?.unmount(); root?.remove(); useWorkspaceStore(pinia).dispose(); disposePinia(pinia); vi.unstubAllGlobals(); });
 it('opens task evidence from an assistant report and disables references in a different workspace', async () => {
   localStorage.clear();
   pinia = configureWorkbench(createPinia(), { adapter: new DemoAdapter(), native: false, mobile: false });
@@ -49,6 +50,21 @@ async function mountEmptyConversation(fullscreenTarget?: string | Ref<HTMLElemen
   await nextTick();
   return { workspace, assistant };
 }
+
+it('switches built-in prompt language and offers explicit translation targets without rewriting a draft', async () => {
+  const { assistant } = await mountEmptyConversation();
+  setUiLocale('en-US'); await nextTick();
+  const buttons = () => [...root.querySelectorAll<HTMLButtonElement>('.assistant-starters button')];
+  expect(buttons().map(button => button.textContent)).toContain('Translate to English');
+  buttons().find(button => button.textContent === 'Translate to Chinese')!.click();
+  expect(assistant.prompt).toBe('Translate this note into Simplified Chinese and preserve its Markdown formatting.');
+  assistant.prompt = '用户草稿 {0}: please answer in Japanese';
+  setUiLocale('zh-CN'); await nextTick();
+  expect(assistant.prompt).toBe('用户草稿 {0}: please answer in Japanese');
+  expect(buttons().map(button => button.textContent)).toContain('翻译成中文');
+  buttons().find(button => button.textContent === '翻译成中文')!.click();
+  expect(assistant.prompt).toBe('Translate this note into Simplified Chinese and preserve its Markdown formatting.');
+});
 
 it('selects reasoning beside the model, restores focus, and hides it for other connections', async () => {
   const { assistant } = await mountEmptyConversation();
@@ -276,7 +292,7 @@ it('prepares a starter draft with the current document without sending', async (
   const { workspace, assistant } = await mountEmptyConversation();
   root.querySelector<HTMLButtonElement>('.assistant-starters button')!.click();
   await nextTick();
-  expect(assistant.prompt).toContain('请总结这篇笔记');
+  expect(assistant.prompt).toBe('Summarize this note and extract its key ideas and main points.');
   expect(assistant.files).toEqual([workspace.active!.id]);
   expect(assistant.session!.messages).toHaveLength(0);
   expect(document.activeElement).toBe(root.querySelector('textarea'));

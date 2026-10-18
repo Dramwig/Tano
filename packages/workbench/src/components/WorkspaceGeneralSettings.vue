@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, ref, watch } from 'vue';
 import { Check, Copy, Download } from 'lucide-vue-next';
 import type { Workspace } from '@tano/protocol';
@@ -53,7 +54,7 @@ function change(patch: WorkspaceSettingsPatch) {
 }
 function saveName() {
   const value = name.value.trim();
-  if (!value || [...value].length > 65) { localError.value = '请输入 1–65 个字符的工作区名称。'; return; }
+  if (!value || [...value].length > 65) { localError.value = t('请输入 1–65 个字符的工作区名称。'); return; }
   if (value === props.workspace?.name) return;
   change({ key: 'name', value, previous: nameBase.value });
 }
@@ -77,74 +78,74 @@ async function uploadImage(file: File) {
 }
 async function copyId() {
   try { await navigator.clipboard.writeText(props.workspace!.id!); copied.value = true; }
-  catch { localError.value = '无法复制，请选中工作区 ID 手动复制。'; }
+  catch { localError.value = t('无法复制，请选中工作区 ID 手动复制。'); }
 }
 const sidebarOptions = [
-  { key: 'showPlan', label: '显示计划', description: '在侧栏显示计划与日历入口。' },
-  { key: 'showGraph', label: '显示关系图谱', description: '在侧栏顶部显示关系图谱入口。' },
-  { key: 'showPlugins', label: '显示插件', description: '在侧栏顶部显示插件管理入口。' },
-  { key: 'showCollaborationViews', label: '显示协作应用', description: '在在线工作区侧栏显示聊天、收件箱等协作入口。' },
+  { key: 'showPlan', get label() { return t('显示计划'); }, get description() { return t('在侧栏显示计划与日历入口。'); } },
+  { key: 'showGraph', get label() { return t('显示关系图谱'); }, get description() { return t('在侧栏顶部显示关系图谱入口。'); } },
+  { key: 'showPlugins', get label() { return t('显示插件'); }, get description() { return t('在侧栏顶部显示插件管理入口。'); } },
+  { key: 'showCollaborationViews', get label() { return t('显示协作应用'); }, get description() { return t('在在线工作区侧栏显示聊天、收件箱等协作入口。'); } },
 ] as const;
 </script>
 
 <template>
   <p v-if="error || localError" class="settings-notice" role="alert">{{ error || localError }}
-    <button v-if="error" type="button" class="settings-button" @click="reload">重新读取设置</button>
+    <button v-if="error" type="button" class="settings-button" @click="reload">{{ t('重新读取设置') }}</button>
   </p>
-  <p v-if="!workspace || workspace.readOnly" class="settings-local-note">{{ !workspace ? '打开工作区后即可设置。' : '当前工作区为只读，可以查看设置和导出内容。' }}</p>
-  <p v-else-if="!canManage" class="settings-local-note">只有工作区所有者和管理者可以修改工作区设置。</p>
-  <section class="settings-section" aria-label="工作区设置">
-    <h3>工作区设置</h3>
+  <p v-if="!workspace || workspace.readOnly" class="settings-local-note">{{ !workspace ? t('打开工作区后即可设置。') : t('当前工作区为只读，可以查看设置和导出内容。') }}</p>
+  <p v-else-if="!canManage" class="settings-local-note">{{ t('只有工作区所有者和管理者可以修改工作区设置。') }}</p>
+  <section class="settings-section" :aria-label="t('工作区设置')">
+    <h3>{{ t('工作区设置') }}</h3>
     <div class="settings-card">
       <form class="settings-row settings-row-with-controls" @submit.prevent="saveName">
         <div>
-          <strong><label for="workspace-setting-name">工作区名称</label></strong>
-          <p>最多 65 个字符，显示在侧栏和工作区菜单中。</p>
-          <p v-if="nameDirty && settings.name !== nameBase">工作区当前名称：{{ workspace?.name }}。重新读取设置后可再次保存你的草稿。</p>
+          <strong><label for="workspace-setting-name">{{ t('工作区名称') }}</label></strong>
+          <p>{{ t('最多 65 个字符，显示在侧栏和工作区菜单中。') }}</p>
+          <p v-if="nameDirty && settings.name !== nameBase">{{ t('工作区当前名称：{0}。重新读取设置后可再次保存你的草稿。', [workspace?.name]) }}</p>
         </div>
         <div class="settings-controls workspace-name-control">
-          <input id="workspace-setting-name" v-model="name" class="settings-input" aria-label="工作区名称" :disabled="disabled" @input="nameDirty = true" />
-          <button class="settings-button" type="submit" :disabled="disabled || !nameDirty">{{ saving ? '保存中…' : '保存' }}</button>
+          <input id="workspace-setting-name" v-model="name" class="settings-input" :aria-label="t('工作区名称')" :disabled="disabled" @input="nameDirty = true" />
+          <button class="settings-button" type="submit" :disabled="disabled || !nameDirty">{{ saving ? t('保存中…') : t('保存') }}</button>
         </div>
       </form>
       <div class="settings-row settings-row-with-controls">
-        <div><strong>图标</strong><p>选择内置图标、表情符号或上传图片，显示在侧栏和工作区菜单中。</p></div>
+        <div><strong>{{ t('图标') }}</strong><p>{{ t('选择内置图标、表情符号或上传图片，显示在侧栏和工作区菜单中。') }}</p></div>
         <div class="workspace-icon-setting">
           <div class="settings-controls workspace-icon-controls">
             <WorkspaceIconPicker :key="workspace?.id" :icon="settings.icon" :mode="mode" :disabled="disabled" @select="pickIcon" @upload="imageInput?.click()" @paste-image="uploadImage" />
-            <input ref="imageInput" hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" aria-label="上传工作区图标" :disabled="disabled" @change="uploadIcon" />
+            <input ref="imageInput" hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" :aria-label="t('上传工作区图标')" :disabled="disabled" @change="uploadIcon" />
           </div>
         </div>
       </div>
       <div class="settings-row">
-        <div><strong>默认打开页面</strong><p>首次打开时进入此页面；已有会话会恢复上次打开的标签页。</p></div>
-        <select aria-label="默认打开页面" :value="settings.homePageId" :disabled="disabled" @change="change({ key: 'homePageId', value: ($event.target as HTMLSelectElement).value, previous: settings.homePageId })">
-          <option value="">自动选择</option>
-          <option v-if="settings.homePageId && !pages?.some(page => page.id === settings.homePageId)" :value="settings.homePageId" disabled>原页面已移除（请重新选择）</option>
+        <div><strong>{{ t('默认打开页面') }}</strong><p>{{ t('首次打开时进入此页面；已有会话会恢复上次打开的标签页。') }}</p></div>
+        <select :aria-label="t('默认打开页面')" :value="settings.homePageId" :disabled="disabled" @change="change({ key: 'homePageId', value: ($event.target as HTMLSelectElement).value, previous: settings.homePageId })">
+          <option value="">{{ t('自动选择') }}</option>
+          <option v-if="settings.homePageId && !pages?.some(page => page.id === settings.homePageId)" :value="settings.homePageId" disabled>{{ t('原页面已移除（请重新选择）') }}</option>
           <option v-for="page in pages" :key="page.id" :value="page.id">{{ page.path }}</option>
         </select>
       </div>
       <div class="settings-row">
         <div>
-          <strong>页面标题来源</strong>
-          <p>适用于当前工作区的所有页面。仅“YAML title 优先”在字段为空或无效时使用文件名。</p>
+          <strong>{{ t('页面标题来源') }}</strong>
+          <p>{{ t('适用于当前工作区的所有页面。仅“YAML title 优先”在字段为空或无效时使用文件名。') }}</p>
         </div>
         <select
           :value="settings.pageTitleSource"
-          aria-label="页面标题来源"
+          :aria-label="t('页面标题来源')"
           :disabled="disabled"
           @change="change({ key: 'pageTitleSource', value: ($event.target as HTMLSelectElement).value as PageTitleSource, previous: settings.pageTitleSource })"
         >
-          <option value="filename">文件名</option>
+          <option value="filename">{{ t('文件名') }}</option>
           <option value="frontmatter">YAML title</option>
-          <option value="frontmatter-first">YAML title 优先</option>
+          <option value="frontmatter-first">{{ t('YAML title 优先') }}</option>
         </select>
       </div>
     </div>
-    <p class="settings-local-note">名称点击保存，其余修改即时保存。{{ mode === 'demo' ? '演示数据仅保存在当前浏览器。' : '' }}<span v-if="saving" role="status">正在保存…</span></p>
+    <p class="settings-local-note">{{ t('名称点击保存，其余修改即时保存。') }}{{ mode === 'demo' ? t('演示数据仅保存在当前浏览器。') : '' }}<span v-if="saving" role="status">{{ t('正在保存…') }}</span></p>
   </section>
-  <section class="settings-section" aria-label="侧栏">
-    <h3>侧栏</h3>
+  <section class="settings-section" :aria-label="t('侧栏')">
+    <h3>{{ t('侧栏') }}</h3>
     <div class="settings-card">
       <template v-for="option in sidebarOptions" :key="option.key">
         <div v-if="option.key !== 'showCollaborationViews' || mode === 'web'" class="settings-row">
@@ -154,31 +155,31 @@ const sidebarOptions = [
       </template>
     </div>
   </section>
-  <section class="settings-section" aria-label="导出">
-    <h3>导出</h3>
+  <section class="settings-section" :aria-label="t('导出')">
+    <h3>{{ t('导出') }}</h3>
     <div class="settings-card">
-      <div class="settings-row"><div><strong>工作区内容</strong><p>将已保存的 Markdown、附件和工作区设置导出为 ZIP，保留文件夹结构。</p></div><button type="button" class="settings-button" :disabled="!workspace?.id || exporting" @click="emit('export', workspace!.id!)"><Download :size="14" />{{ exporting ? '导出中…' : '导出' }}</button></div>
+      <div class="settings-row"><div><strong>{{ t('工作区内容') }}</strong><p>{{ t('将已保存的 Markdown、附件和工作区设置导出为 ZIP，保留文件夹结构。') }}</p></div><button type="button" class="settings-button" :disabled="!workspace?.id || exporting" @click="emit('export', workspace!.id!)"><Download :size="14" />{{ exporting ? t('导出中…') : t('导出') }}</button></div>
       <slot name="members-export" />
     </div>
     <p v-if="exportError" class="settings-notice" role="alert">{{ exportError }}</p>
   </section>
-  <section class="settings-section" aria-label="浏览统计">
-    <h3>浏览统计</h3>
+  <section class="settings-section" :aria-label="t('浏览统计')">
+    <h3>{{ t('浏览统计') }}</h3>
     <div class="settings-card">
-      <div class="settings-row is-disabled"><div><strong>保存并显示页面浏览统计 <span class="settings-scope">尚未开放</span></strong><p>页面浏览量统计尚未实现，当前不会收集浏览数据。</p></div><button type="button" class="settings-switch" role="switch" aria-label="保存并显示页面浏览统计" aria-checked="false" disabled><span /></button></div>
+      <div class="settings-row is-disabled"><div><strong>{{ t('保存并显示页面浏览统计') }} <span class="settings-scope">{{ t('尚未开放') }}</span></strong><p>{{ t('页面浏览量统计尚未实现，当前不会收集浏览数据。') }}</p></div><button type="button" class="settings-switch" role="switch" :aria-label="t('保存并显示页面浏览统计')" aria-checked="false" disabled><span /></button></div>
     </div>
   </section>
-  <section class="settings-section" aria-label="人物">
-    <h3>人物</h3>
+  <section class="settings-section" :aria-label="t('人物')">
+    <h3>{{ t('人物') }}</h3>
     <div class="settings-card">
-      <div class="settings-row"><div><strong>人物目录</strong><p>在工作区对象列表中显示人物；关闭后仍可通过已有引用访问人物。</p></div><button type="button" class="settings-switch" :class="{ on: settings.showPeopleDirectory }" role="switch" aria-label="人物目录" :aria-checked="settings.showPeopleDirectory" :disabled="disabled" @click="change({ key: 'showPeopleDirectory', value: !settings.showPeopleDirectory, previous: settings.showPeopleDirectory })"><span /></button></div>
-      <div v-for="label in ['在人物资料中显示近期活动', '人物悬浮卡片']" :key="label" class="settings-row is-disabled"><div><strong>{{ label }} <span class="settings-scope">尚未开放</span></strong><p>{{ label === '人物悬浮卡片' ? '悬停时展示人物资料的卡片尚未实现。' : '人物的编辑与评论活动展示尚未实现。' }}</p></div><button type="button" class="settings-switch" role="switch" :aria-label="label" aria-checked="false" disabled><span /></button></div>
+      <div class="settings-row"><div><strong>{{ t('人物目录') }}</strong><p>{{ t('在工作区对象列表中显示人物；关闭后仍可通过已有引用访问人物。') }}</p></div><button type="button" class="settings-switch" :class="{ on: settings.showPeopleDirectory }" role="switch" :aria-label="t('人物目录')" :aria-checked="settings.showPeopleDirectory" :disabled="disabled" @click="change({ key: 'showPeopleDirectory', value: !settings.showPeopleDirectory, previous: settings.showPeopleDirectory })"><span /></button></div>
+      <div v-for="label in ['在人物资料中显示近期活动', '人物悬浮卡片']" :key="label" class="settings-row is-disabled"><div><strong>{{ t(label) }} <span class="settings-scope">{{ t('尚未开放') }}</span></strong><p>{{ label === '人物悬浮卡片' ? t('悬停时展示人物资料的卡片尚未实现。') : t('人物的编辑与评论活动展示尚未实现。') }}</p></div><button type="button" class="settings-switch" role="switch" :aria-label="t(label)" aria-checked="false" disabled><span /></button></div>
     </div>
   </section>
-  <section v-if="workspace?.id" class="settings-section" aria-label="工作区 ID">
-    <h3>工作区 ID</h3>
+  <section v-if="workspace?.id" class="settings-section" :aria-label="t('工作区 ID')">
+    <h3>{{ t('工作区 ID') }}</h3>
     <div class="settings-card">
-      <div class="settings-row settings-row-with-controls"><div><strong>工作区 ID</strong></div><div class="settings-controls workspace-id-control"><code>{{ workspace.id }}</code><button type="button" class="settings-button" :aria-label="copied ? '已复制工作区 ID' : '复制工作区 ID'" @click="copyId"><Check v-if="copied" :size="14" /><Copy v-else :size="14" /></button></div></div>
+      <div class="settings-row settings-row-with-controls"><div><strong>{{ t('工作区 ID') }}</strong></div><div class="settings-controls workspace-id-control"><code>{{ workspace.id }}</code><button type="button" class="settings-button" :aria-label="copied ? t('已复制工作区 ID') : t('复制工作区 ID')" @click="copyId"><Check v-if="copied" :size="14" /><Copy v-else :size="14" /></button></div></div>
     </div>
   </section>
 </template>

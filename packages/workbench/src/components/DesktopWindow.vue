@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import type { Component } from 'vue';
 import { Minus, X } from 'lucide-vue-next';
@@ -45,20 +46,20 @@ async function toggleMaximize() {
       <div id="desktop-window-tab-slot" class="desktop-window-tab-slot" />
       <div
         class="desktop-window-drag"
-        title="拖动窗口"
+        :title="t('拖动窗口')"
         @mousedown="drag"
         @dblclick="toggleMaximize"
       >
         <img src="/favicon-green.svg?v=3" alt="" draggable="false" />
       </div>
-      <div class="desktop-window-actions" aria-label="窗口控制">
-        <button type="button" aria-label="最小化" title="最小化" @click="appWindow.minimize()">
+      <div class="desktop-window-actions" :aria-label="t('窗口控制')">
+        <button type="button" :aria-label="t('最小化')" :title="t('最小化')" @click="appWindow.minimize()">
           <Minus :size="15" :stroke-width="1.6" />
         </button>
         <button
           type="button"
-          :aria-label="maximized ? '还原窗口' : '最大化'"
-          :title="maximized ? '还原窗口' : '最大化'"
+          :aria-label="maximized ? t('还原窗口') : t('最大化')"
+          :title="maximized ? t('还原窗口') : t('最大化')"
           @click="toggleMaximize"
         >
           <span
@@ -69,8 +70,8 @@ async function toggleMaximize() {
         <button
           class="desktop-window-close"
           type="button"
-          aria-label="关闭窗口"
-          title="关闭窗口"
+          :aria-label="t('关闭窗口')"
+          :title="t('关闭窗口')"
           @click="appWindow.close()"
         >
           <X :size="16" :stroke-width="1.5" />

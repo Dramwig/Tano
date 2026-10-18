@@ -15,6 +15,8 @@
     "./markdown-demo-routes": "./src/markdown-demo-routes.ts",
     "./platform": "./src/platform.ts",
     "./theme": "./src/theme.ts",
+    "./i18n": "./src/i18n.ts",
+    "./locale": "./src/locale.ts",
     "./settings-window": "./src/settings-window.ts",
     "./*": "./src/*"
   },

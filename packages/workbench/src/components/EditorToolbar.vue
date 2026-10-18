@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   Bold,
@@ -64,10 +65,10 @@ const icons = {
   Mention: AtSign,
 };
 const availableBlocks = computed(() =>
-  blockTypes.filter((item) => commandEnabled(item.command, props.enabledLevels, props.features)),
+  blockTypes.map(item => ({ ...item, label: t(item.label) })).filter((item) => commandEnabled(item.command, props.enabledLevels, props.features)),
 );
 const availableInline = computed(() =>
-  inlineTypes.filter((item) => commandEnabled(item.command, props.enabledLevels, props.features)),
+  inlineTypes.map(item => ({ ...item, label: t(item.label) })).filter((item) => commandEnabled(item.command, props.enabledLevels, props.features)),
 );
 const primaryInline = computed(() =>
   props.compact
@@ -83,36 +84,33 @@ const extraInline = computed(() =>
       : ['reference', 'mention'].includes(item.command),
   ),
 );
-const blockLabel = computed(() =>
-  props.context.multiple
-    ? '多个块'
-    : (blockTypes.find((item) => item.type === props.context.block)?.label ??
-      (props.context.block === 'FootnoteDefinition'
-        ? '脚注定义'
-        : props.context.block === 'LocalSource'
-          ? '局部源码'
-          : '当前块')),
-);
+const blockLabel = computed(() => {
+  if (props.context.multiple) return t('多个块');
+  const block = blockTypes.find(item => item.type === props.context.block);
+  if (block) return t(block.label);
+  return props.context.block === 'FootnoteDefinition' ? t('脚注定义')
+    : props.context.block === 'LocalSource' ? t('局部源码') : t('当前块');
+});
 const formLabel = computed(
   () =>
     ({
-      link: '链接地址',
-      mention: '文档名称或路径',
-      image: '图片地址',
-      footnote: '脚注内容',
-      file: '附件地址',
-      embed: '嵌入地址',
+      link: t('链接地址'),
+      mention: t('文档名称或路径'),
+      image: t('图片地址'),
+      footnote: t('脚注内容'),
+      file: t('附件地址'),
+      embed: t('嵌入地址'),
     })[form.value ?? 'link'],
 );
 const formHint = computed(
   () =>
     ({
-      link: '填写网址或工作空间内的相对路径；留空可移除链接。',
-      mention: '提及工作空间内的文档，例如：项目/计划。',
-      image: '填写 HTTPS 地址或相对路径，例如：assets/图片.png。',
-      footnote: '在所选文字后添加引用，脚注内容放在文档末尾。',
-      file: '填写工作空间内的相对路径或 HTTPS 地址；也可拖入文件导入附件。',
-      embed: '填写图片、音视频或文件地址。无法内嵌的资源显示可打开的链接卡片。',
+      link: t('填写网址或工作空间内的相对路径；留空可移除链接。'),
+      mention: t('提及工作空间内的文档，例如：项目/计划。'),
+      image: t('填写 HTTPS 地址或相对路径，例如：assets/图片.png。'),
+      footnote: t('在所选文字后添加引用，脚注内容放在文档末尾。'),
+      file: t('填写工作空间内的相对路径或 HTTPS 地址；也可拖入文件导入附件。'),
+      embed: t('填写图片、音视频或文件地址。无法内嵌的资源显示可打开的链接卡片。'),
     })[form.value ?? 'link'],
 );
 function close() {
@@ -143,18 +141,18 @@ function submit() {
   const command = form.value;
   const trimmed = value.value.trim();
   if (command !== 'link' && !trimmed) {
-    error.value = `请填写${formLabel.value}`;
+    error.value = t('请填写{0}', [formLabel.value]);
     return;
   }
   if (
     (command === 'image' || command === 'link' || command === 'file' || command === 'embed') &&
     /^(?!https?:|mailto:|tel:)[a-z][\w+.-]*:/i.test(trimmed)
   ) {
-    error.value = '请使用网页地址或工作空间内的相对路径';
+    error.value = t('请使用网页地址或工作空间内的相对路径');
     return;
   }
   if (command === 'mention' && /[\[\]\r\n|]/.test(trimmed)) {
-    error.value = '文档名称不能包含方括号、竖线或换行';
+    error.value = t('文档名称不能包含方括号、竖线或换行');
     return;
   }
   close();
@@ -188,15 +186,15 @@ function enableEnteringActions(element: Element) {
     role="toolbar"
     :aria-orientation="vertical ? 'vertical' : 'horizontal'"
     :aria-label="
-      source ? 'Markdown 源码' : context.level === 'block' ? '块级编辑工具' : '行内文字工具'
+      source ? t('Markdown 源码') : context.level === 'block' ? t('块级编辑工具') : t('行内文字工具')
     "
     @keydown.esc.stop.prevent="escape"
   >
     <slot name="leading" />
-    <template v-if="source"><span class="document-type">Markdown 源码</span></template>
+    <template v-if="source"><span class="document-type">{{ t('Markdown 源码') }}</span></template>
     <template v-else>
       <span v-if="!compact" class="selection-level"
-        >{{ context.level === 'block' ? '块级' : '文字'
+        >{{ context.level === 'block' ? t('块级') : t('文字')
         }}<small>{{ context.level === 'block' ? 'Block' : 'Text' }}</small></span
       >
       <span v-if="!compact" class="toolbar-divider" />
@@ -206,7 +204,7 @@ function enableEnteringActions(element: Element) {
             ref="trigger"
             type="button"
             class="block-type-trigger"
-            aria-label="块级类型"
+            :aria-label="t('块级类型')"
             :title="vertical ? blockLabel : undefined"
             :aria-expanded="open"
             :disabled="disabled"
@@ -223,15 +221,15 @@ function enableEnteringActions(element: Element) {
           <div
             v-if="open && !disabled"
             class="dropdown compact-action-menu block-type-menu"
-            aria-label="Block Level 选项"
+            :aria-label="t('Block Level 选项')"
           >
-            <div class="toolbar-menu-label">块类型 · ＋ 插入新块</div>
-            <div v-if="compact" class="heading-levels" aria-label="标题级别">
+            <div class="toolbar-menu-label">{{ t('块类型 · ＋ 插入新块') }}</div>
+            <div v-if="compact" class="heading-levels" :aria-label="t('标题级别')">
               <button
                 v-for="level in 4"
                 :key="level"
                 type="button"
-                :aria-label="`${level} 级标题`"
+                :aria-label="t('{0} 级标题', [level])"
                 :aria-pressed="context.block === 'Heading' && context.headingLevel === level"
                 :disabled="disabled || !context.canTransform"
                 @mousedown.prevent
@@ -250,10 +248,10 @@ function enableEnteringActions(element: Element) {
               :aria-pressed="context.block === item.type"
               :title="
                 insertionCommands.has(item.command)
-                  ? '在当前块后插入，空段落会替换'
+                  ? t('在当前块后插入，空段落会替换')
                   : item.command === 'mermaid'
-                    ? '转换为 Mermaid 代码块'
-                    : '转换当前块'
+                    ? t('转换为 Mermaid 代码块')
+                    : t('转换当前块')
               "
               @mousedown.prevent
               @click="run(item.command)"
@@ -263,26 +261,26 @@ function enableEnteringActions(element: Element) {
                 }}<small v-if="!compact">{{ item.type }} · Level {{ item.level }}</small></span
               ><Plus v-if="insertionCommands.has(item.command)" :size="13" />
             </button>
-            <select v-if="compact && context.block === 'Callout'" aria-label="提示块类型"
+            <select v-if="compact && context.block === 'Callout'" :aria-label="t('提示块类型')"
               :disabled="disabled || !commandEnabled('callout', enabledLevels, features)"
               @change="run('callout', ($event.target as HTMLSelectElement).value)">
-              <option disabled selected value="">提示类型</option>
-              <option value="NOTE">备注</option><option value="TIP">提示</option>
-              <option value="IMPORTANT">重要</option><option value="WARNING">警告</option>
-              <option value="CAUTION">注意</option>
+              <option disabled selected value="">{{ t('提示类型') }}</option>
+              <option value="NOTE">{{ t('备注') }}</option><option value="TIP">{{ t('提示') }}</option>
+              <option value="IMPORTANT">{{ t('重要') }}</option><option value="WARNING">{{ t('警告') }}</option>
+              <option value="CAUTION">{{ t('注意') }}</option>
             </select>
           </div>
         </div>
         <div
           v-if="context.block === 'Heading' && !compact"
           class="heading-levels"
-          aria-label="标题级别"
+          :aria-label="t('标题级别')"
         >
           <button
             v-for="level in 4"
             :key="level"
             type="button"
-            :aria-label="`${level} 级标题`"
+            :aria-label="t('{0} 级标题', [level])"
             :aria-pressed="context.headingLevel === level"
             :disabled="disabled"
             @mousedown.prevent
@@ -294,10 +292,10 @@ function enableEnteringActions(element: Element) {
         <template v-else-if="!compact">
           <button
             v-for="item in [
-              { name: 'heading', label: '标题', icon: Heading2 },
-              { name: 'list', label: '无序列表', icon: List },
-              { name: 'todo-list', label: '待办列表', icon: ListTodo },
-              { name: 'quote', label: '引用', icon: Quote },
+              { name: 'heading', label: t('标题'), icon: Heading2 },
+              { name: 'list', label: t('无序列表'), icon: List },
+              { name: 'todo-list', label: t('待办列表'), icon: ListTodo },
+              { name: 'quote', label: t('引用'), icon: Quote },
             ]"
             :key="item.name"
             type="button"
@@ -379,8 +377,8 @@ function enableEnteringActions(element: Element) {
         v-if="!compact && context.level === 'block' && commandEnabled('reference', enabledLevels, features)"
         type="button"
         class="icon-button"
-        aria-label="引用对象或文档"
-        title="@ 引用对象或文档 · Level 2"
+        :aria-label="t('引用对象或文档')"
+        :title="t('@ 引用对象或文档 · Level 2')"
         :disabled="disabled"
         @mousedown.prevent
         @click="run('reference')"
@@ -391,8 +389,8 @@ function enableEnteringActions(element: Element) {
         v-if="!compact && context.level === 'block' && commandEnabled('mention', enabledLevels, features)"
         type="button"
         class="icon-button"
-        aria-label="提及文档"
-        title="提及文档或附件 · Level 1"
+        :aria-label="t('提及文档')"
+        :title="t('提及文档或附件 · Level 1')"
         :disabled="disabled"
         @mousedown.prevent
         @click="run('mention')"
@@ -401,16 +399,16 @@ function enableEnteringActions(element: Element) {
       </button>
       <select
         v-if="!compact && context.block === 'Callout'"
-        aria-label="提示块类型"
+        :aria-label="t('提示块类型')"
         :disabled="disabled || !commandEnabled('callout', enabledLevels, features)"
         @change="run('callout', ($event.target as HTMLSelectElement).value)"
       >
-        <option disabled selected value="">提示类型</option>
-        <option value="NOTE">备注</option>
-        <option value="TIP">提示</option>
-        <option value="IMPORTANT">重要</option>
-        <option value="WARNING">警告</option>
-        <option value="CAUTION">注意</option>
+        <option disabled selected value="">{{ t('提示类型') }}</option>
+        <option value="NOTE">{{ t('备注') }}</option>
+        <option value="TIP">{{ t('提示') }}</option>
+        <option value="IMPORTANT">{{ t('重要') }}</option>
+        <option value="WARNING">{{ t('警告') }}</option>
+        <option value="CAUTION">{{ t('注意') }}</option>
       </select>
       <form
         v-if="form && !disabled"
@@ -426,8 +424,8 @@ function enableEnteringActions(element: Element) {
         <p v-if="error" class="danger-text" role="alert">{{ error }}</p>
         <div>
           <button type="submit" class="primary-button">
-            {{ form === 'link' && !value.trim() ? '移除链接' : '应用' }}</button
-          ><button type="button" class="icon-button" aria-label="取消" @click="escape">
+            {{ form === 'link' && !value.trim() ? t('移除链接') : t('应用') }}</button
+          ><button type="button" class="icon-button" :aria-label="t('取消')" @click="escape">
             <X :size="16" />
           </button>
         </div>
@@ -435,13 +433,13 @@ function enableEnteringActions(element: Element) {
     </template>
     <slot name="trailing" />
     <span v-if="(annotation && !source) || assistant || todo" class="toolbar-divider toolbar-group-divider" aria-hidden="true" />
-    <button v-if="todo && !source" type="button" class="icon-button" aria-label="从选区创建 Todo" title="从选区创建 Todo" :disabled="disabled || !context.textSelected" @mousedown.prevent @click="emit('todo')"><ListTodo :size="17" /></button>
+    <button v-if="todo && !source" type="button" class="icon-button" :aria-label="t('从选区创建 Todo')" :title="t('从选区创建 Todo')" :disabled="disabled || !context.textSelected" @mousedown.prevent @click="emit('todo')"><ListTodo :size="17" /></button>
     <button
       v-if="annotation && !source"
       type="button"
       class="icon-button annotation-create-button"
-      aria-label="添加局部批注"
-      title="批注所选文字或当前块"
+      :aria-label="t('添加局部批注')"
+      :title="t('批注所选文字或当前块')"
       :disabled="disabled"
       @mousedown.prevent
       @click="emit('annotation')"
@@ -450,8 +448,8 @@ function enableEnteringActions(element: Element) {
       v-if="assistant"
       type="button"
       class="icon-button"
-      aria-label="打开 Tano 助手"
-      :title="assistantDisabled ? '助手正在处理中' : '与助手讨论'"
+      :aria-label="t('打开 Tano 助手')"
+      :title="assistantDisabled ? t('助手正在处理中') : t('与助手讨论')"
       :disabled="disabled || assistantDisabled"
       @mousedown.prevent
       @click="emit('assistant')"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiLocale } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, ref, useId, watch } from 'vue';
 import {
   CalendarDays,
@@ -60,14 +61,14 @@ const viewMenu = ref<HTMLElement>();
 const viewMenuPosition = ref({ left: '0px', top: '0px' });
 const viewOpen = ref(false);
 watch(() => props.active, (active) => { if (!active) viewOpen.value = false; });
-const viewLabel = computed(() => ({ workspace: '工作区', personal: '个人', all: '全部' })[plans.view]);
+const viewLabel = computed(() => ({ workspace: t('工作区'), personal: t('个人'), all: t('全部') })[plans.view]);
 const personalIssue = computed(() => !!plans.loadError || !!plans.errors.length);
-const personalIssueTitle = computed(() => plans.requiresDesktopRestart ? '个人计划需更新桌面程序' : '个人计划暂时无法读取');
+const personalIssueTitle = computed(() => plans.requiresDesktopRestart ? t('个人计划需更新桌面程序') : t('个人计划暂时无法读取'));
 const personalConnectionCount = computed(() => sync.connections.filter(c => c.scope === 'personal').length);
 const viewOptions = computed(() => [
-  { value: 'workspace' as const, label: '工作区', icon: FolderOpen, detail: store.workspace?.name ?? '尚未打开工作区', disabled: !store.workspace },
-  { value: 'personal' as const, label: '个人', icon: UserRound, detail: personalIssue.value ? personalIssueTitle.value : personalNative ? personalConnectionCount.value ? `本设备 · ${personalConnectionCount.value} 个同步连接` : '本设备 · 未连接同步服务' : '仅当前浏览器 · 未同步', disabled: false },
-  { value: 'all' as const, label: '全部', icon: Layers3, detail: '个人 + 当前工作区', disabled: !store.workspace },
+  { value: 'workspace' as const, get label() { return t('工作区'); }, icon: FolderOpen, detail: store.workspace?.name ?? t('尚未打开工作区'), disabled: !store.workspace },
+  { value: 'personal' as const, get label() { return t('个人'); }, icon: UserRound, detail: personalIssue.value ? personalIssueTitle.value : personalNative ? personalConnectionCount.value ? t('本设备 · {0} 个同步连接', [personalConnectionCount.value]) : t('本设备 · 未连接同步服务') : t('仅当前浏览器 · 未同步'), disabled: false },
+  { value: 'all' as const, get label() { return t('全部'); }, icon: Layers3, get detail() { return t('个人 + 当前工作区'); }, disabled: !store.workspace },
 ]);
 async function toggleViewMenu() {
   viewOpen.value = !viewOpen.value;
@@ -178,10 +179,10 @@ const selectedDate = computed(() => new Date(`${selected.value}T00:00:00`));
 const agenda = computed(() => plannedEventsOnDay(events.value, selectedDate.value));
 const unscheduled = computed(() => unscheduledTasks(unfinished.value));
 const monthTitle = computed(
-  () => `${month.value.getFullYear()} 年 ${month.value.getMonth() + 1} 月`,
+  () => t('{0} 年 {1} 月', [month.value.getFullYear(), month.value.getMonth() + 1]),
 );
 const selectedTitle = computed(
-  () => `${selectedDate.value.getMonth() + 1} 月 ${selectedDate.value.getDate()} 日`,
+  () => t('{0} 月 {1} 日', [selectedDate.value.getMonth() + 1, selectedDate.value.getDate()]),
 );
 const readonly = computed(() => (draft.value?.scope ?? plans.defaultScope) === 'personal'
   ? !plans.personalWritable : !plans.workspaceWritable);
@@ -204,8 +205,8 @@ interface EventDraft {
 }
 const draft = ref<EventDraft>();
 const scopeDescription = computed(() => draft.value?.scope === 'personal'
-  ? (personalNative ? '仅保存在这台设备，不随工作区分享。' : '仅保存在当前浏览器，不随工作区分享。')
-  : `保存在 ${store.workspace?.name ?? '当前工作区'}，随工作区一起携带。`);
+  ? (personalNative ? t('仅保存在这台设备，不随工作区分享。') : t('仅保存在当前浏览器，不随工作区分享。'))
+  : t('保存在 {0}，随工作区一起携带。', [store.workspace?.name ?? '当前工作区']));
 async function toggleScope() {
   scopeOpen.value = !scopeOpen.value;
   if (!scopeOpen.value) return;
@@ -548,18 +549,18 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="listRoot" class="sidebar-calendar" role="region" aria-label="计划侧栏">
+  <div ref="listRoot" class="sidebar-calendar" role="region" :aria-label="t('计划侧栏')">
     <div ref="viewPicker" class="sidebar-calendar-heading">
       <div class="sidebar-calendar-month">
-        <span :title="monthTitle"><span class="sidebar-calendar-year">{{ month.getFullYear() }} 年 </span>{{ month.getMonth() + 1 }} 月</span>
-        <button ref="viewTrigger" type="button" class="plan-view-trigger" aria-label="计划范围" aria-haspopup="menu" aria-controls="plan-view-menu" :aria-expanded="viewOpen" :title="viewOptions.find(option => option.value === plans.view)?.detail" @click="toggleViewMenu" @keydown.down.prevent="viewOpen || toggleViewMenu()">
+        <span :title="monthTitle"><template v-if="uiLocale === 'en-US'">{{ month.toLocaleDateString(uiLocale, { month: 'short', year: 'numeric' }) }}</template><template v-else><span class="sidebar-calendar-year">{{ month.getFullYear() }} 年 </span>{{ month.getMonth() + 1 }} 月</template></span>
+        <button ref="viewTrigger" type="button" class="plan-view-trigger" :aria-label="t('计划范围')" aria-haspopup="menu" aria-controls="plan-view-menu" :aria-expanded="viewOpen" :title="viewOptions.find(option => option.value === plans.view)?.detail" @click="toggleViewMenu" @keydown.down.prevent="viewOpen || toggleViewMenu()">
           <span>{{ viewLabel }}</span><ChevronDown :size="12" aria-hidden="true" />
         </button>
-        <button type="button" class="sidebar-calendar-today" aria-label="回到今天" @click="goToToday">今天</button>
+        <button type="button" class="sidebar-calendar-today" :aria-label="t('回到今天')" @click="goToToday">{{ t('今天') }}</button>
       </div>
       <Teleport to="body">
-        <div v-if="viewOpen" id="plan-view-menu" ref="viewMenu" class="plan-scope-menu plan-view-menu" :style="viewMenuPosition" role="menu" aria-label="查看计划" @keydown="onPickerKeydown($event, viewMenu)" @keydown.esc.stop.prevent="closeViewMenu()">
-          <span class="plan-scope-menu-heading">查看计划</span>
+        <div v-if="viewOpen" id="plan-view-menu" ref="viewMenu" class="plan-scope-menu plan-view-menu" :style="viewMenuPosition" role="menu" :aria-label="t('查看计划')" @keydown="onPickerKeydown($event, viewMenu)" @keydown.esc.stop.prevent="closeViewMenu()">
+          <span class="plan-scope-menu-heading">{{ t('查看计划') }}</span>
           <button v-for="option in viewOptions" :key="option.value" type="button" role="menuitemradio" :aria-label="option.label" :aria-checked="plans.view === option.value" :disabled="option.disabled" @click="chooseView(option.value)">
             <component :is="option.icon" :size="16" aria-hidden="true" />
             <span><strong>{{ option.label }}</strong><small :title="option.detail">{{ option.detail }}</small></span>
@@ -567,32 +568,32 @@ onBeforeUnmount(() => {
             <CircleAlert v-else-if="option.value === 'personal' && personalIssue" :size="14" class="plan-issue-icon" aria-hidden="true" />
           </button>
           <div class="plan-connections-menu">
-            <button type="button" role="menuitem" @click="openConnections('calendar')"><Cloud :size="15" /><span>日历同步与导入</span></button>
-            <button type="button" role="menuitem" @click="openConnections('todo')"><ListTodo :size="15" /><span>Todo 同步与导入</span></button>
+            <button type="button" role="menuitem" @click="openConnections('calendar')"><Cloud :size="15" /><span>{{ t('日历同步与导入') }}</span></button>
+            <button type="button" role="menuitem" @click="openConnections('todo')"><ListTodo :size="15" /><span>{{ t('Todo 同步与导入') }}</span></button>
           </div>
-          <p v-if="store.isDemo" class="plan-view-footnote">浏览器演示 · 数据仅保存在本浏览器</p>
+          <p v-if="store.isDemo" class="plan-view-footnote">{{ t('浏览器演示 · 数据仅保存在本浏览器') }}</p>
         </div>
       </Teleport>
     </div>
     <PlanConnectionsDialog v-if="connectionKind" :initial-kind="connectionKind" @close="closeConnections" />
     <p v-if="plans.view !== 'personal' && !store.capabilities.features.objectReferences" class="plan-storage-note">
-      事件编辑需在工作区设置中启用对象功能。
+      {{ t('事件编辑需在工作区设置中启用对象功能。') }}
     </p>
     <details v-if="plans.view !== 'workspace' && personalIssue" class="plan-load-notice" role="status">
       <summary><CircleAlert :size="13" aria-hidden="true" /><span>{{ personalIssueTitle }}</span><ChevronDown :size="12" aria-hidden="true" /></summary>
-      <p>{{ plans.loadError || '部分个人事项格式有误，原文件已保留。请修复后重试。' }}</p>
+      <p>{{ plans.loadError || t('部分个人事项格式有误，原文件已保留。请修复后重试。') }}</p>
       <p v-for="issue in plans.errors" :key="issue">{{ issue }}</p>
-      <button type="button" @click="plans.refreshPersonal()">重试</button>
+      <button type="button" @click="plans.refreshPersonal()">{{ t('重试') }}</button>
     </details>
     <div class="sidebar-calendar-weekdays" aria-hidden="true">
-      <span v-for="day in ['一', '二', '三', '四', '五', '六', '日']" :key="day">{{ day }}</span>
+      <span v-for="(day, index) in (uiLocale === 'en-US' ? ['M', 'T', 'W', 'T', 'F', 'S', 'S'] : ['一', '二', '三', '四', '五', '六', '日'])" :key="index">{{ day }}</span>
     </div>
     <div
       ref="viewport"
       class="sidebar-calendar-scroll"
       :class="{ dragging: draggingCalendar }"
       role="region"
-      aria-label="连续日历，可上下滚动或拖动"
+      :aria-label="t('连续日历，可上下滚动或拖动')"
       tabindex="0"
       :style="{ '--week-height': `${WEEK_HEIGHT}px`, height: `${VISIBLE_WEEKS * WEEK_HEIGHT}px` }"
       @scroll.passive="onScroll"
@@ -616,13 +617,13 @@ onBeforeUnmount(() => {
           }"
           :data-date="day.key"
           :tabindex="day.key === focused ? 0 : -1"
-          :aria-label="`${day.key}，${day.count} 个事件`"
+          :aria-label="t('{0}，{1} 个事件', [day.key, day.count])"
           :aria-pressed="day.key === selected"
           @click="chooseDay(day.date)"
           @keydown="onDayKeydown($event, day.date)"
         >
           <span>{{
-            day.date.getDate() === 1 ? `${day.date.getMonth() + 1}月` : day.date.getDate()
+            day.date.getDate() === 1 ? t('{0}月', [day.date.getMonth() + 1]) : day.date.getDate()
           }}</span>
           <i v-if="day.count" class="sidebar-calendar-event-dot" aria-hidden="true" />
         </button>
@@ -635,7 +636,7 @@ onBeforeUnmount(() => {
           class="modal plan-create-panel"
           role="dialog"
           aria-modal="true"
-          aria-label="新建事件"
+          :aria-label="t('新建事件')"
           :aria-busy="saving"
           tabindex="-1"
           @keydown.stop="onCreateKeydown"
@@ -643,14 +644,14 @@ onBeforeUnmount(() => {
           @focusin="dismissPickers"
         >
           <header>
-            <h2>新建事件</h2>
+            <h2>{{ t('新建事件') }}</h2>
             <div class="plan-create-header-actions">
               <div ref="scopePicker" class="plan-scope-picker">
                 <button
                   ref="scopeTrigger"
                   type="button"
                   class="plan-scope-trigger"
-                  aria-label="保存到"
+                  :aria-label="t('保存到')"
                   :title="scopeDescription"
                   aria-haspopup="menu"
                   aria-controls="plan-create-scope-menu"
@@ -660,7 +661,7 @@ onBeforeUnmount(() => {
                   @keydown.down.prevent="scopeOpen || toggleScope()"
                 >
                   <component :is="draft.scope === 'personal' ? UserRound : FolderOpen" :size="14" aria-hidden="true" />
-                  <span>{{ draft.scope === 'personal' ? '个人' : '工作区' }}</span>
+                  <span>{{ draft.scope === 'personal' ? t('个人') : t('工作区') }}</span>
                   <ChevronDown :size="13" aria-hidden="true" />
                 </button>
                 <div
@@ -668,32 +669,32 @@ onBeforeUnmount(() => {
                   id="plan-create-scope-menu"
                   class="plan-scope-menu"
                   role="menu"
-                  aria-label="保存位置"
+                  :aria-label="t('保存位置')"
                   @keydown="onPickerKeydown($event, scopePicker)"
                   @keydown.esc.stop.prevent="closeScope"
                 >
-                  <span class="plan-scope-menu-heading">保存到</span>
-                  <button type="button" role="menuitemradio" aria-label="工作区" :aria-checked="draft.scope === 'workspace'" :disabled="!plans.workspaceWritable" @click="chooseScope('workspace')">
+                  <span class="plan-scope-menu-heading">{{ t('保存到') }}</span>
+                  <button type="button" role="menuitemradio" :aria-label="t('工作区')" :aria-checked="draft.scope === 'workspace'" :disabled="!plans.workspaceWritable" @click="chooseScope('workspace')">
                     <FolderOpen :size="17" aria-hidden="true" />
-                    <span><strong>工作区</strong><small>{{ store.workspace?.name ?? '尚未打开工作区' }}</small></span>
+                    <span><strong>{{ t('工作区') }}</strong><small>{{ store.workspace?.name ?? t('尚未打开工作区') }}</small></span>
                     <Check v-if="draft.scope === 'workspace'" :size="15" aria-hidden="true" />
                   </button>
-                  <button type="button" role="menuitemradio" aria-label="个人" :aria-checked="draft.scope === 'personal'" :disabled="!plans.personalWritable" @click="chooseScope('personal')">
+                  <button type="button" role="menuitemradio" :aria-label="t('个人')" :aria-checked="draft.scope === 'personal'" :disabled="!plans.personalWritable" @click="chooseScope('personal')">
                     <UserRound :size="17" aria-hidden="true" />
-                    <span><strong>个人</strong><small>{{ personalNative ? '仅这台设备，不随工作区分享' : '仅当前浏览器，不随工作区分享' }}</small></span>
+                    <span><strong>{{ t('个人') }}</strong><small>{{ personalNative ? t('仅这台设备，不随工作区分享') : t('仅当前浏览器，不随工作区分享') }}</small></span>
                     <Check v-if="draft.scope === 'personal'" :size="15" aria-hidden="true" />
                   </button>
                 </div>
               </div>
             </div>
           </header>
-          <form class="plan-create" aria-label="新建事件" @submit.prevent="saveEvent">
+          <form class="plan-create" :aria-label="t('新建事件')" @submit.prevent="saveEvent">
             <input
               ref="nameInput"
               v-model="draft.name"
               class="plan-create-title"
-              aria-label="事件名称"
-              placeholder="记下一件事…"
+              :aria-label="t('事件名称')"
+              :placeholder="t('记下一件事…')"
               autocomplete="off"
               required
               maxlength="200"
@@ -717,16 +718,16 @@ onBeforeUnmount(() => {
                   :stroke-width="1.8"
                   aria-hidden="true"
                 />
-                <span>需要完成</span>
+                <span>{{ t('需要完成') }}</span>
               </label>
               </template>
             </PlanDateField>
             <p v-if="error" class="plan-error" role="alert">{{ error }}</p>
             <div class="plan-create-actions">
-              <span class="plan-create-hint" aria-hidden="true">Esc 取消 · Enter 创建</span>
-              <button type="button" :disabled="saving" @click="closeCreate">取消</button
+              <span class="plan-create-hint" aria-hidden="true">{{ t('Esc 取消 · Enter 创建') }}</span>
+              <button type="button" :disabled="saving" @click="closeCreate">{{ t('取消') }}</button
               ><button type="submit" :disabled="saving || readonly || !draft.name.trim()">
-                {{ saving ? '保存中…' : '创建' }}
+                {{ saving ? t('保存中…') : t('创建') }}
               </button>
             </div>
           </form>
@@ -734,7 +735,7 @@ onBeforeUnmount(() => {
       </div>
     </Teleport>
     <p v-if="error && !draft" class="plan-error" role="alert">{{ error }}</p>
-    <section class="sidebar-calendar-agenda" aria-label="当天安排">
+    <section class="sidebar-calendar-agenda" :aria-label="t('当天安排')">
       <div class="plan-section-heading" data-plan-layout="agenda-heading">
         <h3>
           {{ selectedTitle }}
@@ -743,7 +744,7 @@ onBeforeUnmount(() => {
         <button
           type="button"
           class="plan-add"
-          :aria-label="`为 ${selectedTitle} 添加事件`"
+          :aria-label="t('为 {0} 添加事件', [selectedTitle])"
           :disabled="cannotAdd || saving"
           @click="addEvent('event')"
         >
@@ -764,21 +765,21 @@ onBeforeUnmount(() => {
       >
         <template #empty>
           <p class="sidebar-calendar-empty" data-plan-layout="agenda-empty">
-            <CalendarDays :size="15" />{{ plans.view === 'personal' && personalIssue ? '个人事项尚未加载' : '这一天没有安排' }}
+            <CalendarDays :size="15" />{{ plans.view === 'personal' && personalIssue ? t('个人事项尚未加载') : t('这一天没有安排') }}
           </p>
         </template>
       </PlanEventList>
     </section>
-    <section class="sidebar-calendar-agenda plan-unscheduled" aria-label="未安排任务">
+    <section class="sidebar-calendar-agenda plan-unscheduled" :aria-label="t('未安排任务')">
       <div class="plan-section-heading" data-plan-layout="unscheduled-heading">
         <h3>
-          未安排
+          {{ t('未安排') }}
           <small>{{ unscheduled.length }}</small>
         </h3>
         <button
           type="button"
           class="plan-add"
-          aria-label="添加未安排任务"
+          :aria-label="t('添加未安排任务')"
           :disabled="cannotAdd || saving"
           @click="addEvent('task')"
         >
@@ -799,22 +800,22 @@ onBeforeUnmount(() => {
       >
         <template #empty>
           <p class="sidebar-calendar-empty" data-plan-layout="unscheduled-empty">
-            <ListTodo :size="15" />{{ plans.view === 'personal' && personalIssue ? '个人事项尚未加载' : '没有未安排的任务' }}
+            <ListTodo :size="15" />{{ plans.view === 'personal' && personalIssue ? t('个人事项尚未加载') : t('没有未安排的任务') }}
           </p>
         </template>
       </PlanEventList>
     </section>
-    <section class="sidebar-calendar-agenda plan-completed" aria-label="已完成任务">
+    <section class="sidebar-calendar-agenda plan-completed" :aria-label="t('已完成任务')">
       <h3 class="plan-completed-heading" data-plan-layout="completed-heading">
         <button
           type="button"
           class="plan-completed-toggle"
-          aria-label="已完成"
+          :aria-label="t('已完成')"
           :aria-expanded="completedExpanded"
           :aria-controls="completedListId"
           @click="completedExpanded = !completedExpanded"
         >
-          <span>已完成 <small>{{ completed.length }}</small></span>
+          <span>{{ t('已完成') }} <small>{{ completed.length }}</small></span>
           <ChevronDown :size="14" aria-hidden="true" />
         </button>
       </h3>
@@ -835,7 +836,7 @@ onBeforeUnmount(() => {
           >
             <template #empty>
               <p class="sidebar-calendar-empty" data-plan-layout="completed-empty">
-                <CircleCheck :size="15" />{{ plans.view === 'personal' && personalIssue ? '个人事项尚未加载' : '没有已完成的任务' }}
+                <CircleCheck :size="15" />{{ plans.view === 'personal' && personalIssue ? t('个人事项尚未加载') : t('没有已完成的任务') }}
               </p>
             </template>
           </PlanEventList>

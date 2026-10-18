@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Ellipsis } from 'lucide-vue-next';
 import type { EditorSelectionContext } from '@tano/editor/document-model';
@@ -54,10 +55,10 @@ const { drag, start, cancel } = useToolbarDrag(
 const previewPanel = ref<HTMLElement>();
 const previewStatus = computed(() => {
   const target = drag.value?.target;
-  if (!target) return '当前位置无法放置工具栏，松开或按 Esc 取消';
+  if (!target) return t('当前位置无法放置工具栏，松开或按 Esc 取消');
   if (target === 'selection')
-    return props.context.textSelected ? '松开后随选区显示' : '松开后收起，选中文字时显示';
-  return `松开后${toolbarModeLabels[target]}`;
+    return props.context.textSelected ? t('松开后随选区显示') : t('松开后收起，选中文字时显示');
+  return t('松开后{0}', [t(toolbarModeLabels[target])]);
 });
 const previewDocked = computed(
   () =>
@@ -173,8 +174,8 @@ async function changeMode(mode: ToolbarMode) {
           ref="menuTrigger"
           type="button"
           class="icon-button"
-          aria-label="更多"
-          title="更多"
+          :aria-label="t('更多')"
+          :title="t('更多')"
           :aria-expanded="menuOpen"
           @mousedown.prevent
           @click="menuOpen = !menuOpen"
@@ -248,7 +249,7 @@ async function changeMode(mode: ToolbarMode) {
             </template>
             <template v-if="drag.target === 'fixed'" #trailing>
               <div class="menu-wrap">
-                <button type="button" class="icon-button" aria-label="更多">
+                <button type="button" class="icon-button" :aria-label="t('更多')">
                   <Ellipsis :size="17" />
                 </button>
               </div>

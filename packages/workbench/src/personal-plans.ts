@@ -3,6 +3,7 @@ import { newShortId, parseObject, validateObjectProperties } from '@tano/protoco
 import type { FileSnapshot, Workspace, WriteResult } from '@tano/protocol';
 import { sha256 } from './adapter';
 import type { ObjectRecord, ObjectStorage } from './workspace-objects';
+import { t } from './i18n';
 
 export const PERSONAL_PLANS_KEY = 'tano.personal-plans.v1';
 export const planKey = (record: ObjectRecord) =>
@@ -10,7 +11,7 @@ export const planKey = (record: ObjectRecord) =>
     ? `personal:${record.source.id}:${record.object.id}`
     : record.object.id;
 export const planSourceLabel = (record: ObjectRecord) =>
-  record.source?.scope === 'personal' ? '个人' : (record.source?.name ?? '工作区');
+  record.source?.scope === 'personal' ? t('个人') : (record.source?.name ?? t('工作区'));
 
 function checkPath(path: string) {
   if (!/^\.tano\/objects\/[0-9a-f]{6}\.tano\.json$/.test(path))

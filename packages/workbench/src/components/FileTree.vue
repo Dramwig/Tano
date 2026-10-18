@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import {
   ChevronRight,
@@ -183,7 +184,7 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
   <ul
     class="file-tree"
     :role="depth === 0 ? 'tree' : 'group'"
-    :aria-label="depth === 0 ? '文件和文件夹' : undefined"
+    :aria-label="depth === 0 ? t('文件和文件夹') : undefined"
     @contextmenu.self.stop.prevent="emit('contextBlank', parent, $event)"
     @dragover="treeDragOver"
     @dragleave="emit('dragLeave', parent, $event)"

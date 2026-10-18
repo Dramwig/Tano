@@ -1,6 +1,7 @@
 import { blockTypes, commandEnabled, inlineTypes, insertionCommands, wrappingCommands } from '@tano/editor/selection-context';
 import type { EditorSelectionContext } from '@tano/editor/selection-context';
 import type { DocumentFeatures } from '@tano/editor/runtime';
+import { t } from './i18n';
 
 export interface WorkbenchCommand {
   id: string;
@@ -41,24 +42,24 @@ export function editorPaletteCommands(options: {
     if (formCommands.has(item.command) || !commandEnabled(item.command, undefined, features)) return [];
     if (!context.canTransform && !insertionCommands.has(item.command) && !wrappingCommands.has(item.command)) return [];
     if (item.command === 'heading') return Array.from({ length: 6 }, (_, index) => ({
-      id: `editor.heading.${index + 1}`, category: '格式', label: `转换为 ${index + 1} 级标题`,
+      id: `editor.heading.${index + 1}`, category: t('格式'), label: t('转换为 {0} 级标题', [index + 1]),
       keywords: `heading h${index + 1} 标题${index + 1}`,
       run: () => run('heading', String(index + 1)),
     }));
     const insert = insertionCommands.has(item.command);
-    return [{ id: `editor.${item.command}`, category: insert ? '插入' : '格式',
-      label: insert ? item.label : `转换为${item.label}`, keywords: item.type,
+    return [{ id: `editor.${item.command}`, category: insert ? t('插入') : t('格式'),
+      label: insert ? t(item.label) : t('转换为{0}', [t(item.label)]), keywords: item.type,
       run: () => run(item.command) }];
   });
   const inline = inlineTypes.filter(item => !formCommands.has(item.command)
     && commandEnabled(item.command, undefined, features)
     && (!context.inlineSource || ['bold', 'italic', 'code'].includes(item.command))
     && (context.canStyleText || !['bold', 'italic', 'code'].includes(item.command)))
-    .map(item => ({ id: `editor.${item.command}`, category: '格式', label: item.label,
+    .map(item => ({ id: `editor.${item.command}`, category: t('格式'), label: t(item.label),
       keywords: item.type, run: () => run(item.command) }));
   const styles = context.canStyleText && !context.inlineSource
     ? extraStyles.filter(item => commandEnabled(item.command, undefined, features))
-      .map(item => ({ id: `editor.${item.command}`, category: '格式', label: item.label, run: () => run(item.command) }))
+      .map(item => ({ id: `editor.${item.command}`, category: t('格式'), label: t(item.label), run: () => run(item.command) }))
     : [];
   return [...blocks, ...inline, ...styles];
 }

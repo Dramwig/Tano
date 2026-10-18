@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, ref, watch } from 'vue';
 import type { AssistantConnection } from '@tano/protocol';
 
@@ -6,13 +7,13 @@ const props = defineProps<{ connectionKind?: AssistantConnection['kind'] }>();
 const index = ref(0);
 const hints = computed(() => [
   props.connectionKind === 'codex-cli'
-    ? 'Codex CLI 可能需要较长时间，请耐心等待。'
+    ? t('Codex CLI 可能需要较长时间，请耐心等待。')
     : props.connectionKind === 'claude-cli'
-      ? 'Claude CLI 可能需要较长时间，请耐心等待。'
-      : '复杂问题可能需要更多时间，请耐心等待。',
-  '参考文档越多，整理和生成可能需要更久。',
-  '可以继续浏览笔记，稍后回来查看回答。',
-  '想调整问题时，可以先停止生成。',
+      ? t('Claude CLI 可能需要较长时间，请耐心等待。')
+      : t('复杂问题可能需要更多时间，请耐心等待。'),
+  t('参考文档越多，整理和生成可能需要更久。'),
+  t('可以继续浏览笔记，稍后回来查看回答。'),
+  t('想调整问题时，可以先停止生成。'),
 ]);
 
 watch(() => props.connectionKind, (_kind, _previous, onCleanup) => {

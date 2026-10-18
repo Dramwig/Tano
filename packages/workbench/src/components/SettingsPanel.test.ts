@@ -11,6 +11,8 @@ import { defaultWorkspaceSettings } from '../workspace-settings';
 import type { WorkspaceSettingsPatch } from '../workspace-settings';
 import type { ToolbarMode } from '../toolbar-preference';
 import { helpPreferenceKey, readHelpPreferences, useHelpPreferences } from '../help-guidance';
+import { setUiLocale } from '../i18n';
+import { localePreferenceKey, readUiLocale } from '../locale';
 
 vi.mock('./UpdatePanel.vue', () => ({
   default: { template: '<div class="update-panel-stub">应用更新</div>' },
@@ -54,6 +56,7 @@ async function openPage(label: string) {
 }
 
 beforeEach(() => {
+  setUiLocale('zh-CN');
   localStorage.removeItem(helpPreferenceKey);
   revealUpdates = [];
   preferenceUpdates = [];
@@ -414,6 +417,8 @@ it('disables formula preview when Markdown reveal is off and restores its saved 
 afterEach(() => {
   app.unmount();
   root.remove();
+  setUiLocale('zh-CN');
+  localStorage.removeItem(localePreferenceKey);
 });
 
 it('opens directly on the complete about page', () => {
@@ -473,4 +478,37 @@ it('configures individual selection wrappers and disables them with the master s
   await nextTick();
   expect(control('上标（扩展）').getAttribute('aria-checked')).toBe('true');
   expect(control('高亮').getAttribute('aria-checked')).toBe('false');
+});
+
+it('switches open pages immediately, keeps workspace content and searches English settings', async () => {
+  hostWorkspace.value = { id: 'test', name: '主题', path: '/notes' };
+  await openPage('外观设置');
+  const language = root.querySelector<HTMLSelectElement>('select[aria-label="界面语言"]')!;
+  language.value = 'en-US';
+  language.dispatchEvent(new Event('change'));
+  await nextTick();
+  expect(readUiLocale()).toBe('en-US');
+  expect(document.documentElement.lang).toBe('en-US');
+  expect(root.querySelector('h2')?.textContent).toBe('Appearance');
+  expect(root.querySelector('select[aria-label="Theme"]')).not.toBeNull();
+  expect(root.querySelector('.settings-nav-foot')?.textContent).toContain('主题');
+  await openPage('Keyboard shortcuts');
+  expect(root.querySelectorAll('.shortcut-settings-row')).toHaveLength(14);
+  expect(root.textContent).toContain('Save now');
+  await openPage('Document capabilities');
+  expect(root.textContent).toContain('Math formulas');
+  const search = root.querySelector<HTMLInputElement>('[aria-label="Search settings"]')!;
+  search.value = 'language';
+  search.dispatchEvent(new Event('input'));
+  await nextTick();
+  expect(root.querySelector('h2')?.textContent).toBe('Appearance');
+  search.value = '';
+  search.dispatchEvent(new Event('input'));
+  await nextTick();
+  const englishLanguage = root.querySelector<HTMLSelectElement>('select[aria-label="Language"]')!;
+  englishLanguage.value = 'zh-CN';
+  englishLanguage.dispatchEvent(new Event('change'));
+  await nextTick();
+  expect(root.querySelector('h2')?.textContent).toBe('外观设置');
+  expect(root.querySelector('select[aria-label="主题"]')).not.toBeNull();
 });

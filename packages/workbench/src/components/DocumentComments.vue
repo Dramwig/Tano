@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import './review-card.css';
 import { computed, nextTick, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, ref, watch } from 'vue';
 import { captureReviewRail, updateReviewRail, removeReviewRail } from './review-rail';
@@ -227,7 +228,7 @@ watch(() => props.document.content, (content, before) => {
       const text = texts.get(draft.anchor.basis)!;
       const anchor = rebaseCommentAnchor(draft.anchor, text.before, text.after);
       draft.anchor = anchor ?? undefined;
-      if (!anchor) error.value = '选中的内容已删除，请重新选择批注位置';
+      if (!anchor) error.value = t('选中的内容已删除，请重新选择批注位置');
     }
     publish();
     scheduleAnchorSave();
@@ -539,7 +540,7 @@ async function beginAnnotation() {
   error.value = '';
   const selection = props.captureSelection();
   if (!selection || !selection.spans.length) {
-    error.value = '请先选择文字，或将光标放在要批注的块中';
+    error.value = t('请先选择文字，或将光标放在要批注的块中');
     await showDiscussion();
     return;
   }
@@ -562,21 +563,21 @@ async function beginAnnotation() {
   } catch (reason) { error.value = reason instanceof Error ? reason.message : String(reason); }
 }
 async function assistantReply(kind: CommentKind, threadId: string, body: string) {
-  if (props.readonly || busy.value) throw new Error('讨论当前无法填写回复');
+  if (props.readonly || busy.value) throw new Error(t('讨论当前无法填写回复'));
   const thread = (kind === 'annotation' ? annotations.value : discussions.value)?.threads.find(thread => thread.id === threadId);
-  if (!thread) throw new Error('原讨论已移除');
-  if (body.length > 20_000) throw new Error('回答超过评论长度限制，请先缩短回答');
+  if (!thread) throw new Error(t('原讨论已移除'));
+  if (body.length > 20_000) throw new Error(t('回答超过评论长度限制，请先缩短回答'));
   if (kind === 'annotation') {
-    if (!working.value[threadId]) throw new Error('原批注位置已变化，请重新打开批注');
+    if (!working.value[threadId]) throw new Error(t('原批注位置已变化，请重新打开批注'));
     const block = layout.value.blocks.find(block => block.ids.includes(threadId));
-    if (!block) throw new Error('无法定位原批注');
+    if (!block) throw new Error(t('无法定位原批注'));
     openIds.value = [threadId]; openBlockKey.value = block.key; popupCollapsed.value = false;
     await nextTick();
     const conversation = conversations.get(threadId);
-    if (!conversation) throw new Error('请重新打开原批注');
+    if (!conversation) throw new Error(t('请重新打开原批注'));
     conversation.setReply(body);
   } else {
-    if (discussionDraft.value.trim()) throw new Error('讨论回复已有草稿，请先发布或清除');
+    if (discussionDraft.value.trim()) throw new Error(t('讨论回复已有草稿，请先发布或清除'));
     await beginDiscussionReply(threadId, thread.messages[0]);
     discussionDraft.value = body;
   }
@@ -616,21 +617,21 @@ async function start(kind: CommentKind, mentions: CommentMention[] = [], draftId
   const epoch = documentEpoch;
   const fileId = props.document.id;
   const draft = kind === 'annotation' ? drafts.value.find(draft => draft.id === draftId) : undefined;
-  if (kind === 'annotation' && !draft?.anchor) { error.value = '请重新选择批注位置'; return; }
+  if (kind === 'annotation' && !draft?.anchor) { error.value = t('请重新选择批注位置'); return; }
   const body = (kind === 'annotation' ? draft!.body : discussionDraft.value).trim();
-  if (!body) { error.value = '请输入评论内容'; return; }
+  if (!body) { error.value = t('请输入评论内容'); return; }
   busy.value = true;
   error.value = '';
   try {
-    if (!(await workspace.flush())) throw new Error('正文尚未保存，请先处理保存错误');
+    if (!(await workspace.flush())) throw new Error(t('正文尚未保存，请先处理保存错误'));
     await projectionTask;
     if (epoch !== documentEpoch) return;
     if (kind === 'annotation') {
-      if (!draft?.anchor) throw new Error('选中的内容已经变化，请重新选择批注位置');
+      if (!draft?.anchor) throw new Error(t('选中的内容已经变化，请重新选择批注位置'));
       const current = await project(props.document.content, draft.anchor.basis);
       if (!draft?.anchor || !draft.anchor.spans.every(span =>
         current.slice(span.from, span.to) === span.text))
-        throw new Error('选中的内容已经变化，请重新选择批注位置');
+        throw new Error(t('选中的内容已经变化，请重新选择批注位置'));
     }
     const id = crypto.randomUUID();
     const anchor = draft?.anchor && kind === 'annotation'
@@ -692,17 +693,17 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
     <button v-for="block in layout.rail ? [] : layout.blocks.filter(item => count(item.ids))" :key="block.key" type="button"
       class="annotation-count" :class="{ 'is-open': openBlockKey === block.key && popupVisible }"
       :style="{ left: `${layout.buttonLeft}px`, top: `${block.top + 2}px` }"
-      :aria-label="`查看 ${count(block.ids)} 条局部批注`" :title="`${count(block.ids)} 条局部批注`"
+      :aria-label="t('查看 {0} 条局部批注', [count(block.ids)])" :title="t('{0} 条局部批注', [count(block.ids)])"
       :aria-expanded="openBlockKey === block.key && popupVisible" @mousedown.prevent @click="openBlockComments(block.key, block.ids)">
       <MessageSquare :size="15" /><span>{{ count(block.ids) }}</span>
     </button>
     <div v-if="annotationMounted" v-show="layout.rail || popupVisible" ref="popup" :class="layout.rail ? 'annotation-rail' : 'annotation-popup'"
-      :role="layout.rail ? 'region' : 'dialog'" aria-label="局部批注"
+      :role="layout.rail ? 'region' : 'dialog'" :aria-label="t('局部批注')"
       :style="{ top: `${layout.rail ? 0 : popupTop}px`, left: `${layout.rail ? layout.railLeft : layout.popupLeft}px`, width: `${layout.rail ? railWidth : layout.popupWidth}px` }">
       <div :class="{ 'annotation-popup-content panel-scrollbar': !layout.rail }">
         <ReviewCard v-for="thread in visibleThreads" :key="thread.id" :ref="value => setAnnotationCard(thread.id, value)"
           class="annotation-thread" :class="{ 'annotation-card': layout.rail }" :framed="layout.rail"
-          :expanded="threadExpanded(thread.id)" :label="layout.rail ? `批注：${thread.messages[0]?.body}` : undefined"
+          :expanded="threadExpanded(thread.id)" :label="layout.rail ? t('批注：{0}', [thread.messages[0]?.body]) : undefined"
           @activate="selectThread(thread.id, true)">
           <div class="annotation-card-content">
             <CommentConversation
@@ -718,10 +719,10 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
         </ReviewCard>
         <ReviewCard v-for="draft in drafts" :key="draft.id" :ref="value => setAnnotationCard(draft.id, value)" :data-annotation-draft="draft.id"
           class="annotation-draft" :class="{ 'annotation-card': layout.rail }" :framed="layout.rail" :expanded="activeDraftId === draft.id"
-          label="批注草稿" @activate="selectDraft(draft.id)">
+          :label="t('批注草稿')" @activate="selectDraft(draft.id)">
           <div class="annotation-card-content">
             <CommentComposer v-if="!readonly" :ref="value => value ? composers.set(draft.id, value as InstanceType<typeof CommentComposer>) : composers.delete(draft.id)" v-model="draft.body" :author-name="author.name"
-              label="添加批注" :busy="busy" compact @submit="start('annotation', $event, draft.id)" @focusin="activeDraftId = draft.id; openIds = []" @focusout="annotationFocusout(draft.id)" />
+              :label="t('添加批注')" :busy="busy" compact @submit="start('annotation', $event, draft.id)" @focusin="activeDraftId = draft.id; openIds = []" @focusout="annotationFocusout(draft.id)" />
             <p v-if="layout.rail && error" class="comment-error" role="alert">{{ error }}</p>
           </div>
         </ReviewCard>
@@ -729,14 +730,14 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
       <p v-if="error && !layout.rail" class="comment-error" role="alert">{{ error }}</p>
     </div>
     <p v-if="error && !popupVisible && !discussionShown" class="comment-error" role="alert">{{ error }}</p>
-    <section v-show="discussionShown" ref="discussionSection" class="document-discussion" aria-label="文档讨论">
+    <section v-show="discussionShown" ref="discussionSection" class="document-discussion" :aria-label="t('文档讨论')">
       <header class="document-discussion-header">
-        <h2>文档讨论</h2><span v-if="pendingDiscussions.length">{{ pendingDiscussions.reduce((total, thread) => total + thread.messages.length, 0) }}</span>
+        <h2>{{ t('文档讨论') }}</h2><span v-if="pendingDiscussions.length">{{ pendingDiscussions.reduce((total, thread) => total + thread.messages.length, 0) }}</span>
         <button v-if="!pendingDiscussions.length && !discussionDraft.trim()" type="button" class="discussion-dismiss"
-          aria-label="关闭讨论输入" title="关闭讨论输入" :disabled="busy" @click="dismissEmptyDiscussion"><X :size="16" /></button>
+          :aria-label="t('关闭讨论输入')" :title="t('关闭讨论输入')" :disabled="busy" @click="dismissEmptyDiscussion"><X :size="16" /></button>
       </header>
       <p v-if="error && !popupVisible" class="comment-error" role="alert">{{ error }}</p>
-      <p v-if="loading && !discussions" class="discussion-loading">正在读取讨论...</p>
+      <p v-if="loading && !discussions" class="discussion-loading">{{ t('正在读取讨论...') }}</p>
       <div class="document-discussion-messages">
         <CommentConversation v-for="thread in pendingDiscussions" :key="thread.id"
           :ref="value => value ? conversations.set(thread.id, value as InstanceType<typeof CommentConversation>) : conversations.delete(thread.id)"
@@ -749,11 +750,11 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
       <div v-if="!readonly" class="document-discussion-compose">
         <div v-if="discussionReply" class="discussion-reply-target" role="status">
           <Reply :size="14" aria-hidden="true" />
-          <span :title="`回复 ${discussionReply.message.authorName}：${discussionReply.message.body}`">回复 {{ discussionReply.message.authorName }}：{{ discussionReply.message.body }}</span>
-          <button type="button" aria-label="取消回复" title="取消回复" :disabled="busy" @click="cancelDiscussionReply"><X :size="14" /></button>
+          <span :title="t('回复 {0}：{1}', [discussionReply.message.authorName, discussionReply.message.body])">{{ t('回复') }} {{ discussionReply.message.authorName }}：{{ discussionReply.message.body }}</span>
+          <button type="button" :aria-label="t('取消回复')" :title="t('取消回复')" :disabled="busy" @click="cancelDiscussionReply"><X :size="14" /></button>
         </div>
         <CommentComposer ref="discussionComposer" v-model="discussionDraft" :author-name="author.name"
-          :label="discussionReply ? '回复评论' : '添加评论'" :busy="busy" compact @submit="submitDiscussion" />
+          :label="discussionReply ? t('回复评论') : t('添加评论')" :busy="busy" compact @submit="submitDiscussion" />
       </div>
     </section>
   </div>

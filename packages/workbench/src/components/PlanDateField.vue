@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue';
 import { CalendarDays, Check, ChevronDown, Clock3, ListTodo } from 'lucide-vue-next';
 import type { PlanDateValue } from '../plan-date';
@@ -20,13 +21,13 @@ const pickerOpen = ref(false);
 const pickerId = useId();
 const mode = computed(() => !props.modelValue.date ? 'none' : props.modelValue.end ? 'range' : 'date');
 const options = computed(() => [
-  ...(!props.required ? [{ value: 'none', label: '未安排', icon: ListTodo }] : []),
-  { value: 'date', label: '计划日期', icon: CalendarDays },
-  { value: 'range', label: '时间段', icon: Clock3 },
+  ...(!props.required ? [{ value: 'none', get label() { return t('未安排'); }, icon: ListTodo }] : []),
+  { value: 'date', get label() { return t('计划日期'); }, icon: CalendarDays },
+  { value: 'range', get label() { return t('时间段'); }, icon: Clock3 },
 ]);
-const label = computed(() => options.value.find(option => option.value === mode.value)?.label ?? '未安排');
+const label = computed(() => options.value.find(option => option.value === mode.value)?.label ?? t('未安排'));
 const startValue = computed(() => `${props.modelValue.date}T${props.modelValue.time}`);
-const precisionLabel = computed(() => props.modelValue.time ? '切换为全天事件' : '切换为精确时间');
+const precisionLabel = computed(() => props.modelValue.time ? t('切换为全天事件') : t('切换为精确时间'));
 let lastTime = '09:00';
 let lastEndTime = '10:00';
 let lastDate = '';
@@ -127,10 +128,10 @@ watch(() => props.disabled, disabled => { if (disabled) pickerOpen.value = false
     <div class="plan-date-heading">
       <slot name="leading" />
       <div ref="picker" class="plan-date-picker" :class="{ 'with-leading': !!$slots.leading }" @keydown.esc="pickerEscape">
-        <button ref="timeAction" type="button" class="plan-schedule-trigger" aria-label="时间安排" aria-haspopup="menu" :aria-controls="pickerId" :aria-expanded="pickerOpen" :disabled="disabled" @click="togglePicker" @keydown.down.prevent="pickerOpen || togglePicker()">
+        <button ref="timeAction" type="button" class="plan-schedule-trigger" :aria-label="t('时间安排')" aria-haspopup="menu" :aria-controls="pickerId" :aria-expanded="pickerOpen" :disabled="disabled" @click="togglePicker" @keydown.down.prevent="pickerOpen || togglePicker()">
           <CalendarDays :size="22" :stroke-width="1.8" aria-hidden="true" /><span>{{ label }}</span><ChevronDown :size="16" aria-hidden="true" />
         </button>
-        <div v-if="pickerOpen" :id="pickerId" class="plan-date-menu" role="menu" aria-label="时间安排" @keydown="pickerKeydown">
+        <div v-if="pickerOpen" :id="pickerId" class="plan-date-menu" role="menu" :aria-label="t('时间安排')" @keydown="pickerKeydown">
           <button v-for="option in options" :key="option.value" type="button" role="menuitemradio" :aria-checked="mode === option.value" @click="chooseSchedule(option.value)"><component :is="option.icon" :size="17" aria-hidden="true" /><span>{{ option.label }}</span><Check v-if="mode === option.value" :size="16" aria-hidden="true" /></button>
         </div>
       </div>
@@ -139,7 +140,7 @@ watch(() => props.disabled, disabled => { if (disabled) pickerOpen.value = false
     <div v-if="mode !== 'none'" class="plan-date-inputs">
       <div class="plan-date-input">
         <div class="plan-date-label" :class="{ 'compact-single-label': compact && mode !== 'range' }">
-          <label :for="dateId">{{ mode === 'range' ? (modelValue.time ? '开始时间' : '开始日期') : '计划日期' }}</label>
+          <label :for="dateId">{{ mode === 'range' ? (modelValue.time ? t('开始时间') : t('开始日期')) : t('计划日期') }}</label>
           <button v-if="mode === 'date' && !compact" type="button" class="plan-date-precision" :disabled="disabled" @click="toggleTime">{{ precisionLabel }}</button>
         </div>
         <input v-if="!modelValue.time" :id="dateId" type="date" :value="modelValue.date" required :disabled="disabled" @input="updateDate" />
@@ -147,7 +148,7 @@ watch(() => props.disabled, disabled => { if (disabled) pickerOpen.value = false
       </div>
       <div v-if="mode === 'range'" class="plan-date-input">
         <div class="plan-date-label">
-          <label :for="endId">{{ modelValue.time ? '结束时间' : '结束日期' }}</label>
+          <label :for="endId">{{ modelValue.time ? t('结束时间') : t('结束日期') }}</label>
           <button v-if="!compact" type="button" class="plan-date-precision" :disabled="disabled" @click="toggleTime">{{ precisionLabel }}</button>
         </div>
         <input :id="endId" :type="modelValue.time ? 'datetime-local' : 'date'" :value="modelValue.end" :min="modelValue.time ? startValue : modelValue.date" required :disabled="disabled" @input="update({ end: ($event.target as HTMLInputElement).value })" />

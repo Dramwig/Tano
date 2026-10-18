@@ -6,7 +6,8 @@ const app = vi.hoisted(() => ({
   tick: vi.fn<() => Promise<void>>(),
   platform: vi.fn<() => Promise<void>>(),
 }));
-vi.mock('vue', () => ({
+vi.mock('vue', async importOriginal => ({
+  ...await importOriginal<typeof import('vue')>(),
   createApp: () => ({ use: () => ({ mount: app.mount }) }),
   nextTick: app.tick,
 }));

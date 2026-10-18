@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 import { ArrowDownToLine, ChevronRight, Code2, FileText, Image, FileType } from 'lucide-vue-next';
 import type { DocumentExportFormat } from '../document-export';
@@ -16,7 +17,7 @@ const formats = [
   { id: 'docx', label: 'Word', icon: WordFileIcon },
   { id: 'pdf', label: 'PDF', icon: FileType },
   { id: 'html', label: 'HTML', icon: Code2 },
-  { id: 'png', label: '图片', icon: Image },
+  { id: 'png', get label() { return t('图片'); }, icon: Image },
 ] as const;
 let closeTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -85,15 +86,15 @@ onBeforeUnmount(() => {
 
 <template>
   <button ref="trigger" type="button" class="document-export-trigger" :disabled="disabled"
-    :title="disabled ? '正在导出' : '导出文档'" :aria-busy="disabled"
+    :title="disabled ? t('正在导出') : t('导出文档')" :aria-busy="disabled"
     aria-haspopup="menu" :aria-expanded="open" :aria-controls="open ? panelId : undefined"
     @pointerenter="!disabled && show()" @pointerleave="scheduleClose"
     @click="show(true)" @keydown="triggerKeydown">
-    <ArrowDownToLine :size="15" />导出<ChevronRight class="document-export-chevron" :size="14" />
+    <ArrowDownToLine :size="15" />{{ t('导出') }}<ChevronRight class="document-export-chevron" :size="14" />
   </button>
   <Teleport to="body">
     <div v-if="open" :id="panelId" ref="panel" class="dropdown compact-action-menu document-export-menu"
-      :style="position" role="menu" aria-label="导出格式" tabindex="-1"
+      :style="position" role="menu" :aria-label="t('导出格式')" tabindex="-1"
       @pointerenter="cancelClose" @pointerleave="scheduleClose" @keydown="panelKeydown">
       <button v-for="format in formats" :key="format.id" type="button" role="menuitem"
         @click="select(format.id)"><component :is="format.icon" :size="15" />{{ format.label }}</button>

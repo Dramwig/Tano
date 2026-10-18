@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { X } from 'lucide-vue-next';
 import ChangeDiff from './ChangeDiff.vue';
@@ -38,12 +39,12 @@ function keydown(event: KeyboardEvent) {
       class="modal diff-modal"
       role="dialog"
       aria-modal="true"
-      aria-label="文档修改差异"
+      :aria-label="t('文档修改差异')"
       @keydown="keydown"
     >
       <div class="modal-heading">
         <h2>{{ title }}</h2>
-        <button ref="closeButton" class="icon-button" aria-label="关闭差异" @click="emit('close')">
+        <button ref="closeButton" class="icon-button" :aria-label="t('关闭差异')" @click="emit('close')">
           <X :size="19" />
         </button>
       </div>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { GripVertical } from 'lucide-vue-next';
 const emit = defineEmits<{ start: [event: PointerEvent] }>();
 </script>
@@ -7,8 +8,8 @@ const emit = defineEmits<{ start: [event: PointerEvent] }>();
   <button
     type="button"
     class="icon-button toolbar-drag-handle"
-    aria-label="拖动工具栏"
-    title="拖动以调整工具栏位置，也可使用更多菜单切换"
+    :aria-label="t('拖动工具栏')"
+    :title="t('拖动以调整工具栏位置，也可使用更多菜单切换')"
     @pointerdown.prevent.stop="emit('start', $event)"
     @mousedown.prevent
     @click.stop

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { nextTick, onMounted, onUnmounted, ref } from 'vue';
 import SidebarPlan from './SidebarPlan.vue';
 defineProps<{ date: Date }>();
@@ -47,13 +48,13 @@ function keyboard(event: KeyboardEvent) {
       class="personal-plan-dialog"
       role="dialog"
       aria-modal="true"
-      aria-label="个人计划"
+      :aria-label="t('个人计划')"
       tabindex="-1"
       @keydown="keyboard"
     >
       <header>
-        <strong>个人计划</strong
-        ><button aria-label="关闭个人计划" @click="emit('close')">关闭</button>
+        <strong>{{ t('个人计划') }}</strong
+        ><button :aria-label="t('关闭个人计划')" @click="emit('close')">{{ t('关闭') }}</button>
       </header>
       <SidebarPlan
         :date="date"

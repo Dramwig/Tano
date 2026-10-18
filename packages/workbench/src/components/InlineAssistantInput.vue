@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { Check, ChevronDown, ChevronRight, ChevronUp, MessageCircle, MoreHorizontal, Square, ThumbsDown, ThumbsUp, Undo2, X } from 'lucide-vue-next';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import MarkdownEditor from '@tano/editor';
@@ -18,7 +19,7 @@ const props = withDefaults(defineProps<{
   progress?: string;
   error?: string;
   placeholder?: string;
-}>(), { error: '', placeholder: '告诉助手如何处理所选内容…' });
+}>(), { error: '', get placeholder() { return t('告诉助手如何处理所选内容…'); } });
 const emit = defineEmits<{
   'update:value': [value: string];
   submit: [];
@@ -39,8 +40,8 @@ let expansionChosen = false;
 let resizeObserver: ResizeObserver | undefined;
 const style = ref<Record<string, string>>({});
 const busy = computed(() => props.state === 'loading');
-const progressText = computed(() => props.progress?.trim() || '正在准备');
-const resultText = computed(() => props.state === 'error' ? props.error : props.message || '我已完成更新。');
+const progressText = computed(() => props.progress?.trim() || t('正在准备'));
+const resultText = computed(() => props.state === 'error' ? props.error : props.message || t('我已完成更新。'));
 const canExpand = computed(() => !!resultText.value.trim());
 let frame = 0;
 let lastRect: DOMRect | undefined;
@@ -132,8 +133,8 @@ onBeforeUnmount(() => {
     <div ref="shell" class="inline-assistant" :class="{ 'inline-assistant-error': state === 'error' }" :style="style" role="status">
       <form v-if="state === 'input'" class="inline-assistant-input" @submit.prevent="submit">
         <AssistantButterfly :size="22" motion="none" />
-        <input ref="input" :value="value" maxlength="20000" aria-label="输入助手任务" :placeholder="placeholder" @input="emit('update:value', ($event.target as HTMLInputElement).value)" @keydown.esc.prevent="emit('close')" />
-        <button type="submit" class="inline-assistant-send" :disabled="!value.trim()" aria-label="发送给助手" title="发送"><ChevronRight :size="17" /></button>
+        <input ref="input" :value="value" maxlength="20000" :aria-label="t('输入助手任务')" :placeholder="placeholder" @input="emit('update:value', ($event.target as HTMLInputElement).value)" @keydown.esc.prevent="emit('close')" />
+        <button type="submit" class="inline-assistant-send" :disabled="!value.trim()" :aria-label="t('发送给助手')" :title="t('发送')"><ChevronRight :size="17" /></button>
       </form>
       <div v-else-if="busy" class="inline-assistant-state">
         <AssistantButterfly :size="22" motion="fly" />
@@ -141,11 +142,11 @@ onBeforeUnmount(() => {
           <span class="inline-assistant-thinking-text">{{ progressText }}</span>
           <span class="inline-assistant-thinking-dots" aria-hidden="true"><i /><i /><i /></span>
         </span>
-        <button type="button" class="inline-assistant-stop" aria-label="停止助手生成" title="停止生成" @click="emit('stop')"><Square :size="13" fill="currentColor" /></button>
+        <button type="button" class="inline-assistant-stop" :aria-label="t('停止助手生成')" :title="t('停止生成')" @click="emit('stop')"><Square :size="13" fill="currentColor" /></button>
       </div>
       <div v-else class="inline-assistant-state inline-assistant-complete" :class="{ 'inline-assistant-expanded': expanded }">
         <AssistantButterfly :size="22" motion="none" />
-        <div v-if="expanded" :id="responseId" ref="response" class="inline-assistant-response panel-scrollbar" tabindex="0" aria-label="助手回复" @scroll.passive="updateResponseMask">
+        <div v-if="expanded" :id="responseId" ref="response" class="inline-assistant-response panel-scrollbar" tabindex="0" :aria-label="t('助手回复')" @scroll.passive="updateResponseMask">
           <div v-if="state === 'error' || renderFailed" class="inline-assistant-response-text">{{ resultText }}</div>
           <MarkdownEditor v-else :model-value="resultText" :document-id="responseId" readonly :reveal-markdown="false" :resolve-image="() => null"
             open-links-on-tap @open-link="emit('conversation')" @ready="schedule" @error="renderFailed = true" />
@@ -153,20 +154,20 @@ onBeforeUnmount(() => {
         <span v-else :id="responseId" ref="preview" class="inline-assistant-message" :title="resultText">{{ resultText }}</span>
         <div class="inline-assistant-actions">
         <button v-if="canExpand" type="button" class="inline-assistant-action" :aria-expanded="expanded" :aria-controls="responseId"
-          :aria-label="expanded ? '收起回复' : '展开回复'" :title="expanded ? '收起回复' : '展开回复'" @click="toggleExpanded">
+          :aria-label="expanded ? t('收起回复') : t('展开回复')" :title="expanded ? t('收起回复') : t('展开回复')" @click="toggleExpanded">
           <ChevronUp v-if="expanded" :size="16" /><ChevronDown v-else :size="16" />
         </button>
         <template v-if="state === 'completed'">
-          <button type="button" class="inline-assistant-action" aria-label="有帮助" title="有帮助"><ThumbsUp :size="15" /></button>
-          <button type="button" class="inline-assistant-action" aria-label="没帮助" title="没帮助"><ThumbsDown :size="15" /></button>
-          <button type="button" class="inline-assistant-action" aria-label="查看修改" title="查看修改"><MoreHorizontal :size="16" /></button>
-          <button type="button" class="inline-assistant-conversation" @click="emit('conversation')"><MessageCircle :size="15" />对话</button>
-          <button type="button" class="inline-assistant-action" aria-label="撤销修改" title="撤销修改" @click="emit('undo')"><Undo2 :size="15" /></button>
-          <button type="button" class="inline-assistant-done" aria-label="关闭" title="关闭" @click="emit('close')"><Check :size="15" /></button>
+          <button type="button" class="inline-assistant-action" :aria-label="t('有帮助')" :title="t('有帮助')"><ThumbsUp :size="15" /></button>
+          <button type="button" class="inline-assistant-action" :aria-label="t('没帮助')" :title="t('没帮助')"><ThumbsDown :size="15" /></button>
+          <button type="button" class="inline-assistant-action" :aria-label="t('查看修改')" :title="t('查看修改')"><MoreHorizontal :size="16" /></button>
+          <button type="button" class="inline-assistant-conversation" @click="emit('conversation')"><MessageCircle :size="15" />{{ t('对话') }}</button>
+          <button type="button" class="inline-assistant-action" :aria-label="t('撤销修改')" :title="t('撤销修改')" @click="emit('undo')"><Undo2 :size="15" /></button>
+          <button type="button" class="inline-assistant-done" :aria-label="t('关闭')" :title="t('关闭')" @click="emit('close')"><Check :size="15" /></button>
         </template>
         <template v-else>
-          <button type="button" class="inline-assistant-conversation" @click="emit('conversation')"><MessageCircle :size="15" />对话</button>
-          <button type="button" class="inline-assistant-action" aria-label="关闭" title="关闭" @click="emit('close')"><X :size="15" /></button>
+          <button type="button" class="inline-assistant-conversation" @click="emit('conversation')"><MessageCircle :size="15" />{{ t('对话') }}</button>
+          <button type="button" class="inline-assistant-action" :aria-label="t('关闭')" :title="t('关闭')" @click="emit('close')"><X :size="15" /></button>
         </template>
         </div>
       </div>

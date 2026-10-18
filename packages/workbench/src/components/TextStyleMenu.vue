@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   Type,
@@ -18,20 +19,20 @@ const root = ref<HTMLElement>();
 const trigger = ref<HTMLButtonElement>();
 watch(() => props.dragging, () => { open.value = false; });
 const styles = [
-  { command: 'underline', name: '下划线', icon: Underline },
-  { command: 'strikethrough', name: '删除线', icon: Strikethrough },
-  { command: 'superscript', name: '上标', icon: Superscript },
-  { command: 'subscript', name: '下标', icon: Subscript },
-  { command: 'code', name: '行内代码', icon: Code },
-  { command: 'highlight', name: '高亮', icon: Highlighter },
+  { command: 'underline', get name() { return t('下划线'); }, icon: Underline },
+  { command: 'strikethrough', get name() { return t('删除线'); }, icon: Strikethrough },
+  { command: 'superscript', get name() { return t('上标'); }, icon: Superscript },
+  { command: 'subscript', get name() { return t('下标'); }, icon: Subscript },
+  { command: 'code', get name() { return t('行内代码'); }, icon: Code },
+  { command: 'highlight', get name() { return t('高亮'); }, icon: Highlighter },
 ];
 const colors = [
-  { name: '红色', value: '#dc2626' },
-  { name: '橙色', value: '#c2410c' },
-  { name: '绿色', value: '#15803d' },
-  { name: '蓝色', value: '#2563eb' },
-  { name: '紫色', value: '#7c3aed' },
-  { name: '粉色', value: '#db2777' },
+  { get name() { return t('红色'); }, value: '#dc2626' },
+  { get name() { return t('橙色'); }, value: '#c2410c' },
+  { get name() { return t('绿色'); }, value: '#15803d' },
+  { get name() { return t('蓝色'); }, value: '#2563eb' },
+  { get name() { return t('紫色'); }, value: '#7c3aed' },
+  { get name() { return t('粉色'); }, value: '#db2777' },
 ];
 function format(command: string, value?: string) {
   open.value = false;
@@ -53,8 +54,8 @@ onBeforeUnmount(() => window.removeEventListener('click', closeOutside));
     <button
       ref="trigger"
       class="icon-button"
-      :aria-label="more ? '更多格式' : '文字样式'"
-      :title="more ? '更多格式' : '文字样式与颜色'"
+      :aria-label="more ? t('更多格式') : t('文字样式')"
+      :title="more ? t('更多格式') : t('文字样式与颜色')"
       :aria-expanded="open && (!disabled || !!$slots.preferences)"
       :disabled="disabled && !$slots.preferences"
       @mousedown.prevent
@@ -79,13 +80,13 @@ onBeforeUnmount(() => window.removeEventListener('click', closeOutside));
             <component :is="style.icon" :size="16" />{{ style.name }}
           </button>
         </div>
-        <div class="text-style-label">文字颜色</div>
+        <div class="text-style-label">{{ t('文字颜色') }}</div>
         <div class="text-color-grid">
           <button
             v-for="color in colors"
             :key="color.value"
             :disabled="disabled"
-            :aria-label="`${color.name}文字`"
+            :aria-label="t('{0}文字', [color.name])"
             :title="color.name"
             @mousedown.prevent
             @click="format('text-color', color.value)"
@@ -94,7 +95,7 @@ onBeforeUnmount(() => window.removeEventListener('click', closeOutside));
           </button>
         </div>
         <button :disabled="disabled" @mousedown.prevent @click="format('text-color')">
-          恢复默认文字颜色
+          {{ t('恢复默认文字颜色') }}
         </button>
       </template>
       <div v-if="$slots.extra" class="extra-formats" @click="open = false">

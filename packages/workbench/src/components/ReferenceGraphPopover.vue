@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import {
   computed,
   nextTick,
@@ -67,10 +68,10 @@ const hoveredReferences = computed(() => {
   const references = [
     ...context.value.outgoing
       .filter((edge) => referenceKey(edge.source) === id)
-      .map((edge) => ({ direction: '引用', name: edge.name, excerpt: edge.excerpt })),
+      .map((edge) => ({ direction: t('引用'), name: edge.name, excerpt: edge.excerpt })),
     ...context.value.incoming
       .filter((edge) => referenceKey(edge.target) === id)
-      .map((edge) => ({ direction: '被引用', name: edge.source.name, excerpt: edge.excerpt })),
+      .map((edge) => ({ direction: t('被引用'), name: edge.source.name, excerpt: edge.excerpt })),
   ];
   return references.filter((reference, index) =>
     references.findIndex(
@@ -642,12 +643,12 @@ onBeforeUnmount(() => {
       :class="{ 'reference-graph-menu-trigger': props.variant === 'menu' }"
       aria-haspopup="dialog"
       :aria-expanded="opened"
-      aria-label="查看关系图谱"
-      title="查看关系图谱"
+      :aria-label="t('查看关系图谱')"
+      :title="t('查看关系图谱')"
       @click.stop="opened = true"
     >
       <GitFork :size="15" />
-      <span>查看关系图谱</span>
+      <span>{{ t('查看关系图谱') }}</span>
     </button>
   </div>
   <Teleport to="body">
@@ -658,7 +659,7 @@ onBeforeUnmount(() => {
       :class="{ 'is-moving': movingPanel }"
       :style="{ left: `${panelPosition.x}px`, top: `${panelPosition.y}px` }"
       role="dialog"
-      aria-label="当前文档关系图谱"
+      :aria-label="t('当前文档关系图谱')"
       :aria-description="props.label"
       tabindex="-1"
       @keydown.esc.stop="cancelPanelDrag"
@@ -666,8 +667,8 @@ onBeforeUnmount(() => {
       <button
         type="button"
         class="icon-button reference-graph-overlay-button reference-graph-drag-handle"
-        aria-label="移动关系图谱面板"
-        title="拖动移动面板，也可使用方向键"
+        :aria-label="t('移动关系图谱面板')"
+        :title="t('拖动移动面板，也可使用方向键')"
         @pointerdown="startPanelDrag"
         @pointermove="movePanel"
         @pointerup="endPanelDrag"
@@ -680,8 +681,8 @@ onBeforeUnmount(() => {
       <button
         type="button"
         class="icon-button reference-graph-overlay-button reference-graph-close"
-        aria-label="关闭关系图谱"
-        title="关闭"
+        :aria-label="t('关闭关系图谱')"
+        :title="t('关闭')"
         @click="close"
       >
         <X :size="16" />
@@ -692,10 +693,10 @@ onBeforeUnmount(() => {
         class="reference-graph-warning"
         role="status"
       >
-        {{ error ? `引用关系更新失败：${error}` : context.errors[0] }}
+        {{ error ? t('引用关系更新失败：{0}', [error]) : context.errors[0] }}
       </p>
       <div v-if="loading && !loaded" class="reference-graph-status" role="status">
-        正在读取引用关系…
+        {{ t('正在读取引用关系…') }}
       </div>
       <div
         v-else-if="!total && (error || context.errors.length)"
@@ -704,7 +705,7 @@ onBeforeUnmount(() => {
       >
         {{ error || context.errors[0] }}
       </div>
-      <div v-else-if="!total" class="reference-graph-status">当前文档还没有直接引用关系</div>
+      <div v-else-if="!total" class="reference-graph-status">{{ t('当前文档还没有直接引用关系') }}</div>
       <div v-else ref="graphHost" class="reference-graph-surface">
         <svg
           ref="viewport"
@@ -713,7 +714,7 @@ onBeforeUnmount(() => {
           :viewBox="`0 0 ${size.width} ${size.height}`"
           tabindex="0"
           role="group"
-          aria-label="当前文档关系网络，可拖动节点；滚轮缩放，0 键居中"
+          :aria-label="t('当前文档关系网络，可拖动节点；滚轮缩放，0 键居中')"
           @pointerdown="startGesture($event)"
           @pointermove="moveGesture"
           @pointerup="endGesture($event)"
@@ -773,7 +774,7 @@ onBeforeUnmount(() => {
               }"
               role="link"
               tabindex="0"
-              :aria-label="`${node.label}，${node.degree} 条引用关系`"
+              :aria-label="t('{0}，{1} 条引用关系', [node.label, node.degree])"
               @pointerdown.stop="startGesture($event, node)"
               @pointerenter="!gesture && (hovered = node.id)"
               @pointerleave="!gesture && (hovered = '')"
@@ -797,23 +798,23 @@ onBeforeUnmount(() => {
             </g>
           </g>
         </svg>
-        <div class="reference-graph-controls" role="group" aria-label="图谱操作">
+        <div class="reference-graph-controls" role="group" :aria-label="t('图谱操作')">
           <button
             class="icon-button"
-            title="布局设置"
-            aria-label="布局设置"
+            :title="t('布局设置')"
+            :aria-label="t('布局设置')"
             :aria-expanded="settings"
             @click="settings = !settings"
           >
             <Settings2 :size="16" />
           </button>
-          <button class="icon-button" title="放大" aria-label="放大图谱" @click="zoom(1.25)">
+          <button class="icon-button" :title="t('放大')" :aria-label="t('放大图谱')" @click="zoom(1.25)">
             <Plus :size="16" />
           </button>
-          <button class="icon-button" title="缩小" aria-label="缩小图谱" @click="zoom(0.8)">
+          <button class="icon-button" :title="t('缩小')" :aria-label="t('缩小图谱')" @click="zoom(0.8)">
             <Minus :size="16" />
           </button>
-          <button class="icon-button" title="适应窗口 · 0" aria-label="图谱居中" @click="fit">
+          <button class="icon-button" :title="t('适应窗口 · 0')" :aria-label="t('图谱居中')" @click="fit">
             <Focus :size="16" />
           </button>
         </div>
@@ -831,21 +832,21 @@ onBeforeUnmount(() => {
           >
             <span class="reference-graph-context-direction">{{ reference.direction }}</span>
             <span class="reference-graph-context-name">{{ reference.name }}</span>
-            <p>{{ reference.excerpt || '未找到可显示的上下文' }}</p>
+            <p>{{ reference.excerpt || t('未找到可显示的上下文') }}</p>
           </div>
           <span v-if="hoveredReferences.length > 4" class="reference-graph-context-more">
-            还有 {{ hoveredReferences.length - 4 }} 条引用
+            {{ t('还有') }} {{ hoveredReferences.length - 4 }} {{ t('条引用') }}
           </span>
         </aside>
-        <section v-if="settings" class="reference-graph-settings" aria-label="布局设置">
+        <section v-if="settings" class="reference-graph-settings" :aria-label="t('布局设置')">
           <header>
-            <strong>布局设置</strong>
-            <button class="icon-button" aria-label="关闭布局设置" @click="settings = false">
+            <strong>{{ t('布局设置') }}</strong>
+            <button class="icon-button" :aria-label="t('关闭布局设置')" @click="settings = false">
               <X :size="14" />
             </button>
           </header>
           <label
-            >向心力<input
+            >{{ t('向心力') }}<input
               v-model.number="physics.center"
               type="range"
               min="0.002"
@@ -853,7 +854,7 @@ onBeforeUnmount(() => {
               step="0.002"
           /></label>
           <label
-            >吸引力<input
+            >{{ t('吸引力') }}<input
               v-model.number="physics.attraction"
               type="range"
               min="0.02"
@@ -861,7 +862,7 @@ onBeforeUnmount(() => {
               step="0.01"
           /></label>
           <label
-            >斥力<input
+            >{{ t('斥力') }}<input
               v-model.number="physics.repulsion"
               type="range"
               min="0"
@@ -869,14 +870,14 @@ onBeforeUnmount(() => {
               step="20"
           /></label>
           <label
-            >连线长度<input
+            >{{ t('连线长度') }}<input
               v-model.number="physics.distance"
               type="range"
               min="50"
               max="240"
               step="5"
           /></label>
-          <button class="reference-graph-reset" @click="resetLayout">恢复默认布局</button>
+          <button class="reference-graph-reset" @click="resetLayout">{{ t('恢复默认布局') }}</button>
         </section>
       </div>
     </section>

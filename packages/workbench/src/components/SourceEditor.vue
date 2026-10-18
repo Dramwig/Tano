@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   defaultKeymap,
@@ -161,7 +162,7 @@ onMounted(() => {
         history(),
         keymap.of([{ ...indentWithTab, preventDefault: true }, ...defaultKeymap, ...historyKeymap]),
         EditorView.lineWrapping,
-        EditorView.contentAttributes.of({ 'aria-label': 'Markdown 源码', spellcheck: 'false' }),
+        EditorView.contentAttributes.of({ 'aria-label': t('Markdown 源码'), spellcheck: 'false' }),
         readonlyMode.of([
           EditorState.readOnly.of(props.readonly),
           EditorView.editable.of(!props.readonly),
@@ -388,7 +389,7 @@ defineExpose({
   restoreModeSelection,
   modeCursorTop: () => view?.coordsAtPos(view.state.selection.main.head)?.top ?? null,
   applyPluginEdit: (before: string, after: string) => {
-    if (!view || props.readonly || view.state.doc.toString() !== before) throw new Error('编辑器内容已变化，请重新读取文档');
+    if (!view || props.readonly || view.state.doc.toString() !== before) throw new Error(t('编辑器内容已变化，请重新读取文档'));
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: after }, annotations: isolateHistory.of('full') });
   },
   search,

@@ -1,19 +1,38 @@
 import { applyTheme, readThemePreference } from '@tano/workbench/theme';
+import { applyUiLocale, readUiLocale } from '@tano/workbench/locale';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { startupPaint } from './startup-paint';
 
 // Resolve the saved theme before loading Vue or any workbench dependencies.
 applyTheme(readThemePreference());
+const locale = readUiLocale();
+applyUiLocale(locale);
+// Keep startup recovery independent of Vue and the workbench message catalog.
+const startupText = locale === 'en-US' ? {
+  opening: 'Opening Tano...',
+  loading: 'Loading the workbench. The first launch may take a moment.',
+  retry: 'Reload',
+  failure: 'Unable to open Tano',
+  timeout: 'Opening Tano timed out after 30 seconds. Please reload.',
+} : {
+  opening: '正在打开同页...',
+  loading: '正在加载工作台，首次启动可能需要一些时间',
+  retry: '重新加载',
+  failure: '无法打开同页',
+  timeout: '打开同页超时，工作台加载已超过 30 秒，请重新加载。',
+};
 
 const root = document.getElementById('app')!;
 const startup = document.getElementById('tano-startup')!;
 const status = document.getElementById('tano-startup-status')!;
 const detail = document.getElementById('tano-startup-detail')!;
 const retry = document.getElementById('tano-startup-retry')!;
+status.textContent = startupText.opening;
+retry.textContent = startupText.retry;
 
 retry.addEventListener('click', () => window.location.reload());
 const slowStartup = window.setTimeout(() => {
-  status.textContent = '正在加载工作台，首次启动可能需要一些时间';
+  status.textContent = startupText.loading;
   retry.hidden = false;
 }, 15_000);
 
@@ -35,7 +54,7 @@ async function boot() {
         initialize(),
         new Promise<never>((_, reject) => {
           timeout = window.setTimeout(() => {
-            const error = new Error('打开同页超时，工作台加载已超过 30 秒，请重新加载。');
+            const error = new Error(startupText.timeout);
             controller.abort(error);
             reject(error);
           }, 30_000);
@@ -53,7 +72,7 @@ async function boot() {
 void boot().catch(async error => {
   console.error('无法初始化 Tano', error);
   startup.setAttribute('aria-busy', 'false');
-  status.textContent = '无法打开同页';
+  status.textContent = startupText.failure;
   detail.textContent = error instanceof Error ? error.message : String(error);
   detail.hidden = false;
   retry.hidden = false;

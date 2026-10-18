@@ -1,23 +1,24 @@
+import { t } from './i18n';
 type KeyboardShortcutEvent = Pick<
   KeyboardEvent,
   'altKey' | 'ctrlKey' | 'isComposing' | 'key' | 'metaKey' | 'repeat' | 'shiftKey'
 > & { target?: EventTarget | null; keyCode?: number; code?: string };
 
 export const shortcutDefinitions = [
-  { id: 'toggleSidebar', label: '收起或展开侧栏', group: '工作台', default: 'Mod+B', scope: '编辑区外' },
-  { id: 'findDocument', label: '查找文档', group: '工作台', default: 'Mod+K' },
-  { id: 'commandPalette', label: '打开命令中心', group: '工作台', default: 'Mod+Shift+P' },
-  { id: 'openDocument', label: '打开文档', group: '工作台', default: 'Mod+O' },
-  { id: 'newDocument', label: '新建文档', group: '工作台', default: 'Mod+N' },
-  { id: 'save', label: '立即保存', group: '工作台', default: 'Mod+S' },
-  { id: 'pageSearch', label: '页内搜索', group: '页内搜索', default: 'Mod+F' },
-  { id: 'pageReplace', label: '查找与替换', group: '页内搜索', default: 'Mod+H' },
-  { id: 'nextMatch', label: '下一个匹配', group: '页内搜索', default: 'Enter', scope: '搜索输入框中' },
-  { id: 'previousMatch', label: '上一个匹配', group: '页内搜索', default: 'Shift+Enter', scope: '搜索输入框中' },
-  { id: 'nextMatchFromEditor', label: '下一个匹配（编辑区）', group: '页内搜索', default: 'Mod+G', scope: '搜索打开时' },
-  { id: 'previousMatchFromEditor', label: '上一个匹配（编辑区）', group: '页内搜索', default: 'Mod+Shift+G', scope: '搜索打开时' },
-  { id: 'closeSearch', label: '关闭页内搜索', group: '页内搜索', default: 'Escape', scope: '搜索打开时' },
-  { id: 'focusToolbar', label: '聚焦选区工具栏', group: '编辑器', default: 'Alt+F10', scope: '工具栏显示时' },
+  { id: 'toggleSidebar', get label() { return t('收起或展开侧栏'); }, get group() { return t('工作台'); }, default: 'Mod+B', get scope() { return t('编辑区外'); } },
+  { id: 'findDocument', get label() { return t('查找文档'); }, get group() { return t('工作台'); }, default: 'Mod+K' },
+  { id: 'commandPalette', get label() { return t('打开命令中心'); }, get group() { return t('工作台'); }, default: 'Mod+Shift+P' },
+  { id: 'openDocument', get label() { return t('打开文档'); }, get group() { return t('工作台'); }, default: 'Mod+O' },
+  { id: 'newDocument', get label() { return t('新建文档'); }, get group() { return t('工作台'); }, default: 'Mod+N' },
+  { id: 'save', get label() { return t('立即保存'); }, get group() { return t('工作台'); }, default: 'Mod+S' },
+  { id: 'pageSearch', get label() { return t('页内搜索'); }, get group() { return t('页内搜索'); }, default: 'Mod+F' },
+  { id: 'pageReplace', get label() { return t('查找与替换'); }, get group() { return t('页内搜索'); }, default: 'Mod+H' },
+  { id: 'nextMatch', get label() { return t('下一个匹配'); }, get group() { return t('页内搜索'); }, default: 'Enter', get scope() { return t('搜索输入框中'); } },
+  { id: 'previousMatch', get label() { return t('上一个匹配'); }, get group() { return t('页内搜索'); }, default: 'Shift+Enter', get scope() { return t('搜索输入框中'); } },
+  { id: 'nextMatchFromEditor', get label() { return t('下一个匹配（编辑区）'); }, get group() { return t('页内搜索'); }, default: 'Mod+G', get scope() { return t('搜索打开时'); } },
+  { id: 'previousMatchFromEditor', get label() { return t('上一个匹配（编辑区）'); }, get group() { return t('页内搜索'); }, default: 'Mod+Shift+G', get scope() { return t('搜索打开时'); } },
+  { id: 'closeSearch', get label() { return t('关闭页内搜索'); }, get group() { return t('页内搜索'); }, default: 'Escape', get scope() { return t('搜索打开时'); } },
+  { id: 'focusToolbar', get label() { return t('聚焦选区工具栏'); }, get group() { return t('编辑器'); }, default: 'Alt+F10', get scope() { return t('工具栏显示时'); } },
 ] as const;
 
 export type ShortcutId = typeof shortcutDefinitions[number]['id'];
@@ -62,9 +63,9 @@ function validForAction(id: ShortcutId, binding: string) {
 
 export function shortcutBindingError(id: ShortcutId, binding: string, bindings: ShortcutBindings) {
   if (parseBinding(binding) !== binding || !validForAction(id, binding))
-    return '请使用 Ctrl / ⌘、Alt 组合键或功能键，避免影响正常输入。';
+    return t('请使用 Ctrl / ⌘、Alt 组合键或功能键，避免影响正常输入。');
   const conflict = shortcutDefinitions.find(item => item.id !== id && bindings[item.id] === binding);
-  return conflict ? `此快捷键已用于“${conflict.label}”，请先修改或清除该快捷键。` : '';
+  return conflict ? t('此快捷键已用于“{0}”，请先修改或清除该快捷键。', [conflict.label]) : '';
 }
 
 export function parseShortcutBindings(value: unknown): ShortcutBindings {
@@ -107,8 +108,8 @@ export function shortcutAriaLabel(binding: string | null | undefined) {
 }
 
 export function shortcutLabel(binding: string | null | undefined) {
-  if (!binding) return '未设置';
-  return binding.split('+').map(key => key === 'Mod' ? (isMac() ? '⌘' : 'Ctrl') : key === 'Escape' ? 'Esc' : key === 'Space' ? '空格' : key).join(' + ');
+  if (!binding) return t('未设置');
+  return binding.split('+').map(key => key === 'Mod' ? (isMac() ? '⌘' : 'Ctrl') : key === 'Escape' ? 'Esc' : key === 'Space' ? t('空格') : key).join(' + ');
 }
 
 export function matchesShortcut(event: KeyboardShortcutEvent, id: ShortcutId, bindings = defaultShortcutBindings) {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, ref, watch } from 'vue';
 import type { PluginViewNode as ViewNode } from '@tano/protocol';
 import type { PluginRuntimeState } from '../plugins/host';
@@ -38,13 +39,13 @@ async function action(action: string) {
 </script>
 <template>
   <section class="plugin-surface" :aria-label="`${view.pluginName} · ${view.label}`">
-    <header><div><h2>{{ view.label }}</h2><span>{{ view.pluginName }}</span></div><span>{{ runtime ? { loading: '加载中', running: '运行中', blocked: '等待授权', error: '已停止' }[runtime.status] : '未运行' }}</span></header>
+    <header><div><h2>{{ view.label }}</h2><span>{{ view.pluginName }}</span></div><span>{{ runtime ? { loading: t('加载中'), running: t('运行中'), blocked: t('等待授权'), error: t('已停止') }[runtime.status] : t('未运行') }}</span></header>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="runtime?.message" :role="runtime.status === 'error' ? 'alert' : 'status'">{{ runtime.message }}</p>
     <PluginCustomView v-if="custom && runtime?.status === 'running'" :bundle="custom.bundle" :state="custom.state" :workspace-id="workspaceId" :plugin-id="view.pluginId" :instance-id="runtime.instanceId" :view-id="view.id" :execute="execute" />
     <PluginViewNode v-else-if="tree" :node="tree" :values="values" :disabled="pending || runtime?.status !== 'running'"
       @input="(key, value) => values[key] = value" @action="action" />
-    <p v-else class="empty">{{ runtime?.status === 'blocked' ? '请在插件中心查看权限并授权此版本。' : '插件尚未提供此视图内容。' }}</p>
+    <p v-else class="empty">{{ runtime?.status === 'blocked' ? t('请在插件中心查看权限并授权此版本。') : t('插件尚未提供此视图内容。') }}</p>
   </section>
 </template>
 <style scoped>

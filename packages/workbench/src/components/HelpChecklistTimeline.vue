@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed } from 'vue';
 import { ArrowUpRight, Check } from 'lucide-vue-next';
 import { helpChecklist, helpDocumentationUrl, type HelpChecklistId, type HelpContext, type HelpAvailability, type HelpTopicId } from '../help-content';
@@ -21,12 +22,12 @@ const docsUrl = (topic?: HelpTopicId) => helpDocumentationUrl(props.documentatio
 
 <template>
   <div class="help-checklist">
-    <div class="help-preview-heading"><span :id="headingId">{{ lesson ? `上手 · ${lesson.label}` : '上手指引' }}</span><span>{{ totalDone }}/{{ helpChecklist.length }} 已完成</span></div>
-    <section v-if="lesson" class="help-current-stage" :aria-label="`当前阶段：${lesson.label}`">
+    <div class="help-preview-heading"><span :id="headingId">{{ lesson ? t('上手 · {0}', [lesson.label]) : t('上手指引') }}</span><span>{{ totalDone }}/{{ helpChecklist.length }} {{ t('已完成') }}</span></div>
+    <section v-if="lesson" class="help-current-stage" :aria-label="t('当前阶段：{0}', [lesson.label])">
       <ol class="help-timeline" :aria-label="lesson.label">
         <li v-for="step in lesson.visible" :key="step.id"
           :class="{ 'is-complete': completed.includes(step.id), 'is-next': nextStep === step.id }">
-          <span class="help-step-status" role="img" :aria-label="`${step.label}：${completed.includes(step.id) ? '已完成' : '未完成'}`">
+          <span class="help-step-status" role="img" :aria-label="`${step.label}：${completed.includes(step.id) ? t('已完成') : t('未完成')}`">
             <span class="help-step-marker" aria-hidden="true"><Check v-if="completed.includes(step.id)" :size="9" :stroke-width="2.5" /></span>
           </span>
           <div class="help-step-content">

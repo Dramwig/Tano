@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiLocale } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useId } from 'vue';
 import { animate } from 'motion/mini';
 import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Check, CheckCircle2, ChevronRight, CircleAlert, FileText,
@@ -63,35 +64,35 @@ const busy = computed(() => processing.value || saving.value);
 const records = computed(() => props.records.filter(record => record.workspaceId === workspaceId).sort((left, right) => right.time - left.time));
 const issues = computed(() => prepared.value?.issues ?? []);
 const formats = [
-  { name: '文本与 Markdown', detail: 'MD · Markdown · TXT · LOG', accept: '.md,.markdown,.txt,.log', icon: markdownIcon },
-  { name: 'CSV 与 TSV', detail: 'CSV · TSV', accept: '.csv,.tsv', icon: tableIcon },
-  { name: 'PDF', detail: 'PDF 文本提取', accept: '.pdf', icon: pdfIcon },
+  { get name() { return t('文本与 Markdown'); }, detail: 'MD · Markdown · TXT · LOG', accept: '.md,.markdown,.txt,.log', icon: markdownIcon },
+  { get name() { return t('CSV 与 TSV'); }, detail: 'CSV · TSV', accept: '.csv,.tsv', icon: tableIcon },
+  { name: 'PDF', get detail() { return t('PDF 文本提取'); }, accept: '.pdf', icon: pdfIcon },
   { name: 'HTML', detail: 'HTML · HTM', accept: '.html,.htm', icon: htmlIcon },
   { name: 'Word', detail: 'DOCX', accept: '.docx', icon: wordIcon },
-  { name: 'EPUB', detail: 'EPUB 电子书', accept: '.epub', icon: epubIcon },
-  { name: 'ZIP', detail: '文档、目录与附件', accept: '.zip', icon: zipIcon },
-  { name: 'JSON', detail: 'Trello · Roam Research 导出', accept: '.json', icon: jsonIcon },
+  { name: 'EPUB', get detail() { return t('EPUB 电子书'); }, accept: '.epub', icon: epubIcon },
+  { name: 'ZIP', get detail() { return t('文档、目录与附件'); }, accept: '.zip', icon: zipIcon },
+  { name: 'JSON', get detail() { return t('Trello · Roam Research 导出'); }, accept: '.json', icon: jsonIcon },
 ];
 const providers = [
   { id: 'notion', name: 'Notion', detail: 'Markdown / CSV / HTML · ZIP', accept: '.zip,.md,.markdown,.csv,.html', icon: notionIcon, color: 'var(--text)' },
   { id: 'obsidian', name: 'Obsidian', detail: 'Markdown · Vault ZIP', accept: '.zip,.md,.markdown', icon: obsidianIcon, color: '#7c3aed' },
   { id: 'confluence', name: 'Confluence', detail: 'HTML · ZIP', accept: '.zip,.html,.htm', icon: confluenceIcon, color: '#0052cc' },
-  { id: 'evernote', name: 'Evernote', detail: 'ENEX 笔记导出', accept: '.enex', icon: evernoteIcon, color: '#00a82d' },
-  { id: 'trello', name: 'Trello', detail: 'JSON 看板导出', accept: '.json', icon: trelloIcon, color: '#0052cc' },
-  { id: 'roam', name: 'Roam Research', detail: 'JSON 页面导出', accept: '.json', icon: roamResearchIcon, color: 'var(--text)' },
-  { id: 'asana', name: 'Asana', detail: 'CSV 项目与任务导出', accept: '.csv', icon: asanaIcon, color: '#f06a6a' },
-  { id: 'workflowy', name: 'Workflowy', detail: 'OPML 大纲 · 文本', accept: '.opml,.txt', icon: workflowyIcon, color: '#3978b8' },
-  { id: 'jira', name: 'Jira', detail: 'CSV 问题与项目导出', accept: '.csv', icon: jiraIcon, color: '#0052cc' },
-  { id: 'monday', name: 'Monday.com', detail: 'Excel 看板导出 · CSV', accept: '.xlsx,.csv', icon: mondayIcon, color: '#6161ff' },
-  { id: 'quip', name: 'Quip', detail: 'Word · HTML 文档导出', accept: '.docx,.html,.htm', icon: quipIcon, color: '#f27557' },
-  { id: 'google-docs', name: 'Google Docs', detail: 'Word · HTML / ZIP · 文本', accept: '.docx,.html,.htm,.zip,.txt,.md', icon: googleDocsIcon, color: '#4285f4' },
+  { id: 'evernote', name: 'Evernote', get detail() { return t('ENEX 笔记导出'); }, accept: '.enex', icon: evernoteIcon, color: '#00a82d' },
+  { id: 'trello', name: 'Trello', get detail() { return t('JSON 看板导出'); }, accept: '.json', icon: trelloIcon, color: '#0052cc' },
+  { id: 'roam', name: 'Roam Research', get detail() { return t('JSON 页面导出'); }, accept: '.json', icon: roamResearchIcon, color: 'var(--text)' },
+  { id: 'asana', name: 'Asana', get detail() { return t('CSV 项目与任务导出'); }, accept: '.csv', icon: asanaIcon, color: '#f06a6a' },
+  { id: 'workflowy', name: 'Workflowy', get detail() { return t('OPML 大纲 · 文本'); }, accept: '.opml,.txt', icon: workflowyIcon, color: '#3978b8' },
+  { id: 'jira', name: 'Jira', get detail() { return t('CSV 问题与项目导出'); }, accept: '.csv', icon: jiraIcon, color: '#0052cc' },
+  { id: 'monday', name: 'Monday.com', get detail() { return t('Excel 看板导出 · CSV'); }, accept: '.xlsx,.csv', icon: mondayIcon, color: '#6161ff' },
+  { id: 'quip', name: 'Quip', get detail() { return t('Word · HTML 文档导出'); }, accept: '.docx,.html,.htm', icon: quipIcon, color: '#f27557' },
+  { id: 'google-docs', name: 'Google Docs', get detail() { return t('Word · HTML / ZIP · 文本'); }, accept: '.docx,.html,.htm,.zip,.txt,.md', icon: googleDocsIcon, color: '#4285f4' },
 ] satisfies { id: ImportProviderId; name: string; detail: string; accept: string; icon: string; color: string }[];
 const selectedProvider = shallowRef<typeof providers[number]>();
 const destinationFolders = computed(() => (store.workspace?.files ?? [])
   .filter(file => file.kind === 'directory' && !isWorkspaceInternalPath(file.path))
   .sort((left, right) => left.path.localeCompare(right.path, 'zh-CN')));
 const canImport = computed(() => !!prepared.value?.pages.length && !busy.value && !store.workspace?.readOnly);
-const detailTitle = computed(() => historyOpen.value ? '导入历史' : prepared.value ? `导入 ${sourceLabel.value || '文件'}` : selectedProvider.value ? `导入 ${selectedProvider.value.name}` : '导入');
+const detailTitle = computed(() => historyOpen.value ? t('导入历史') : prepared.value ? t('导入 {0}', [sourceLabel.value || '文件']) : selectedProvider.value ? t('导入 {0}', [selectedProvider.value.name]) : t('导入'));
 const importEntries = computed(() => {
   if (!prepared.value) return [];
   const filePaths = new Set([...prepared.value.pages.map(page => page.sourcePath), ...prepared.value.assets.map(asset => asset.sourcePath), ...prepared.value.issues.map(issue => issue.name)]);
@@ -161,7 +162,7 @@ async function addFiles(incoming: File[]) {
     captureDialogHeight();
     prepared.value = result;
     void animateDialogHeight();
-    if (!result.pages.length && !result.issues.length) error.value = '所选文件中没有可导入的文档';
+    if (!result.pages.length && !result.issues.length) error.value = t('所选文件中没有可导入的文档');
   } catch (reason) { if (generation === version) error.value = reason instanceof Error ? reason.message : String(reason); }
   finally { if (generation === version) { processing.value = false; progressName.value = ''; } }
 }
@@ -213,7 +214,7 @@ async function openRecord(record: ImportRecord) {
 async function openImportedPage(path: string) {
   const file = store.workspace?.files.find(file => file.path === path);
   if (file) { await store.openFile(file); emit('close'); }
-  else error.value = '导入的文件已被移动或删除';
+  else error.value = t('导入的文件已被移动或删除');
 }
 function openHistory() { error.value = ''; historyOpen.value = true; }
 function back() {
@@ -252,45 +253,45 @@ const issueText = (issue: ImportIssue) => `${issue.name}：${issue.message}`;
       <div class="import-main">
         <header class="import-heading" :class="{ 'import-heading-detail': prepared }">
           <div class="import-heading-main">
-            <button v-if="historyOpen || prepared || selectedProvider" class="import-back-button" type="button" title="返回导入来源" aria-label="返回导入来源" :disabled="saving" @click="back"><ArrowLeft :size="18" /></button>
+            <button v-if="historyOpen || prepared || selectedProvider" class="import-back-button" type="button" :title="t('返回导入来源')" :aria-label="t('返回导入来源')" :disabled="saving" @click="back"><ArrowLeft :size="18" /></button>
             <div><h2 :id="titleId">{{ detailTitle }}</h2></div>
           </div>
           <div class="import-heading-actions">
-            <button v-if="!historyOpen && !prepared && !selectedProvider" class="import-history-button" type="button" :disabled="busy" @click="openHistory"><History :size="16" />导入历史<span v-if="records.length">{{ records.length }}</span></button>
-            <button class="import-icon-button" type="button" title="关闭导入面板" aria-label="关闭导入面板" :disabled="saving" @click="close"><X :size="19" /></button>
+            <button v-if="!historyOpen && !prepared && !selectedProvider" class="import-history-button" type="button" :disabled="busy" @click="openHistory"><History :size="16" />{{ t('导入历史') }}<span v-if="records.length">{{ records.length }}</span></button>
+            <button class="import-icon-button" type="button" :title="t('关闭导入面板')" :aria-label="t('关闭导入面板')" :disabled="saving" @click="close"><X :size="19" /></button>
           </div>
         </header>
         <div class="import-scroll panel-scrollbar">
-          <section v-if="historyOpen" class="import-history" aria-label="导入历史">
-            <p class="import-history-description">当前工作区 · 本次会话的导入记录</p>
+          <section v-if="historyOpen" class="import-history" :aria-label="t('导入历史')">
+            <p class="import-history-description">{{ t('当前工作区 · 本次会话的导入记录') }}</p>
             <p v-if="error" class="import-alert" role="alert"><CircleAlert :size="16" />{{ error }}</p>
-            <div v-if="!records.length" class="import-history-empty"><History :size="30" /><h3>暂无导入记录</h3><p>导入完成后，可在这里查看结果和提示。</p><button class="import-secondary" type="button" @click="back">去导入</button></div>
-            <article v-for="record in records" :key="record.id" class="import-record" aria-label="导入记录">
+            <div v-if="!records.length" class="import-history-empty"><History :size="30" /><h3>{{ t('暂无导入记录') }}</h3><p>{{ t('导入完成后，可在这里查看结果和提示。') }}</p><button class="import-secondary" type="button" @click="back">{{ t('去导入') }}</button></div>
+            <article v-for="record in records" :key="record.id" class="import-record" :aria-label="t('导入记录')">
               <div class="import-record-heading"><CheckCircle2 v-if="record.paths.length" :size="20" class="import-tone-green" /><CircleAlert v-else :size="20" class="import-tone-red" />
-                <div><strong>{{ record.folder }}</strong><small>{{ new Date(record.time).toLocaleString('zh-CN') }}</small></div>
-                <button class="import-icon-button" :disabled="!record.paths.length" title="打开导入的页面" aria-label="打开导入的页面" @click="openRecord(record)"><ArrowUpFromLine :size="17" /></button></div>
-              <p>{{ record.sourceCount }} 个来源文件 · {{ record.paths.length }} 个页面已导入</p>
-              <details v-if="record.paths.length" class="import-record-pages"><summary>已导入的页面（{{ record.paths.length }}）</summary><ul><li v-for="path in record.paths" :key="path"><button type="button" :title="path" @click="openImportedPage(path)"><FileText :size="14" /><span>{{ path }}</span></button></li></ul></details>
-              <details v-if="record.issues.length" class="import-issues"><summary><CircleAlert :size="14" />{{ record.issues.length }} 条提示</summary><p v-for="(issue, index) in record.issues" :key="index">{{ issueText(issue) }}</p></details>
+                <div><strong>{{ record.folder }}</strong><small>{{ new Date(record.time).toLocaleString(uiLocale) }}</small></div>
+                <button class="import-icon-button" :disabled="!record.paths.length" :title="t('打开导入的页面')" :aria-label="t('打开导入的页面')" @click="openRecord(record)"><ArrowUpFromLine :size="17" /></button></div>
+              <p>{{ record.sourceCount }} {{ t('个来源文件 ·') }} {{ record.paths.length }} {{ t('个页面已导入') }}</p>
+              <details v-if="record.paths.length" class="import-record-pages"><summary>{{ t('已导入的页面（') }}{{ record.paths.length }}）</summary><ul><li v-for="path in record.paths" :key="path"><button type="button" :title="path" @click="openImportedPage(path)"><FileText :size="14" /><span>{{ path }}</span></button></li></ul></details>
+              <details v-if="record.issues.length" class="import-issues"><summary><CircleAlert :size="14" />{{ record.issues.length }} {{ t('条提示') }}</summary><p v-for="(issue, index) in record.issues" :key="index">{{ issueText(issue) }}</p></details>
             </article>
           </section>
           <template v-else-if="prepared">
-            <div class="import-detail" aria-label="导入详情">
+            <div class="import-detail" :aria-label="t('导入详情')">
               <p v-if="error" class="import-alert" role="alert"><CircleAlert :size="16" />{{ error }}</p>
-              <section class="import-detail-card" aria-label="导入目录">
+              <section class="import-detail-card" :aria-label="t('导入目录')">
                 <div v-if="importEntries.length" class="import-directory-list panel-scrollbar">
                   <div v-for="entry in importEntries" :key="`${entry.kind}:${entry.path}`" class="import-directory-entry" :class="{ 'import-directory-folder': entry.kind === 'folder' }" :style="{ paddingLeft: `${entry.depth * 18}px` }">
-                    <Folder v-if="entry.kind === 'folder'" :size="15" /><FileText v-else :size="15" /><span :title="entry.path">{{ entry.name }}</span><small v-if="entry.kind === 'folder'">文件夹</small><Check v-else :size="14" />
+                    <Folder v-if="entry.kind === 'folder'" :size="15" /><FileText v-else :size="15" /><span :title="entry.path">{{ entry.name }}</span><small v-if="entry.kind === 'folder'">{{ t('文件夹') }}</small><Check v-else :size="14" />
                   </div>
                 </div>
-                <details v-if="issues.length" class="import-issues"><summary><CircleAlert :size="14" />{{ issues.length }} 条提示</summary><p v-for="(issue, index) in issues" :key="index">{{ issueText(issue) }}</p></details>
+                <details v-if="issues.length" class="import-issues"><summary><CircleAlert :size="14" />{{ issues.length }} {{ t('条提示') }}</summary><p v-for="(issue, index) in issues" :key="index">{{ issueText(issue) }}</p></details>
               </section>
-              <label class="import-destination"><Folder :size="19" /><span><strong>导入位置</strong><small>{{ destinationFolder ? `页面会保存到「${destinationFolder}」` : '页面会直接保存到工作区根目录' }}</small></span><select v-model="destinationFolder" aria-label="导入位置" :disabled="saving"><option value="">工作区根目录</option><option v-for="folder in destinationFolders" :key="folder.path" :value="folder.path">{{ folder.path }}</option></select></label>
-              <div v-if="saving" class="import-progress" role="status" aria-live="polite"><div class="import-progress-heading"><span>正在导入</span><strong>{{ progressCount }}/{{ prepared.pages.length }}</strong></div><div class="import-progress-track"><span :style="{ width: `${prepared.pages.length ? (progressCount / prepared.pages.length) * 100 : 0}%` }" /></div></div>
+              <label class="import-destination"><Folder :size="19" /><span><strong>{{ t('导入位置') }}</strong><small>{{ destinationFolder ? t('页面会保存到「{0}」', [destinationFolder]) : t('页面会直接保存到工作区根目录') }}</small></span><select v-model="destinationFolder" :aria-label="t('导入位置')" :disabled="saving"><option value="">{{ t('工作区根目录') }}</option><option v-for="folder in destinationFolders" :key="folder.path" :value="folder.path">{{ folder.path }}</option></select></label>
+              <div v-if="saving" class="import-progress" role="status" aria-live="polite"><div class="import-progress-heading"><span>{{ t('正在导入') }}</span><strong>{{ progressCount }}/{{ prepared.pages.length }}</strong></div><div class="import-progress-track"><span :style="{ width: `${prepared.pages.length ? (progressCount / prepared.pages.length) * 100 : 0}%` }" /></div></div>
             </div>
           </template>
           <template v-else>
-            <p v-if="store.workspace?.readOnly" class="import-alert"><CircleAlert :size="16" />当前工作区只有阅读权限</p>
+            <p v-if="store.workspace?.readOnly" class="import-alert"><CircleAlert :size="16" />{{ t('当前工作区只有阅读权限') }}</p>
             <p v-if="error" class="import-alert" role="alert"><CircleAlert :size="16" />{{ error }}</p>
               <input ref="input" type="file" multiple hidden :accept="accept" @change="selected" />
               <ImportAccountStep v-if="selectedProvider" :key="selectedProvider.id" :provider="selectedProvider" @file="choose(selectedProvider.accept, selectedProvider.name)" @prepared="accountPrepared" />
@@ -298,27 +299,27 @@ const issueText = (issue: ImportIssue) => `${issue.name}：${issue.message}`;
               <button class="import-dropzone" :class="{ dragging: dragActive }" :disabled="busy || store.workspace?.readOnly"
                 @click="choose()" @dragover.prevent="dragActive = true" @dragleave.prevent="dragActive = false" @drop.prevent="dropped">
                 <LoaderCircle v-if="processing" :size="30" class="import-spinning" /><UploadCloud v-else :size="30" />
-                <strong>{{ processing ? '正在解析文件' : '选择文件或拖放到此处' }}</strong>
+                <strong>{{ processing ? t('正在解析文件') : t('选择文件或拖放到此处') }}</strong>
                 <span v-if="processing" class="import-current-file">{{ progressName }}</span>
                 <span v-else>ZIP、Markdown、PDF、Word、CSV、HTML、EPUB</span>
-                <small>单文件 ≤ 50 MiB · 每批 ≤ 100 MiB</small>
+                <small>{{ t('单文件 ≤ 50 MiB · 每批 ≤ 100 MiB') }}</small>
               </button>
               <section class="import-section">
-                <div class="import-section-heading"><h3>文件导入</h3><span>保存为 Markdown</span></div>
+                <div class="import-section-heading"><h3>{{ t('文件导入') }}</h3><span>{{ t('保存为 Markdown') }}</span></div>
                 <div class="import-grid"><button v-for="format in formats" :key="format.name" class="import-source" :disabled="busy || store.workspace?.readOnly" @click="choose(format.accept, format.name)">
                   <span class="import-file-icon" aria-hidden="true" v-html="format.icon" /><span><strong>{{ format.name }}</strong><small>{{ format.detail }}</small></span><ChevronRight :size="14" /></button></div>
               </section>
               <section class="import-section">
-                <div class="import-section-heading"><h3>第三方应用</h3><span>连接账号或导入文件</span></div>
+                <div class="import-section-heading"><h3>{{ t('第三方应用') }}</h3><span>{{ t('连接账号或导入文件') }}</span></div>
                 <div class="import-grid"><button v-for="provider in providers" :key="provider.name" class="import-source" :disabled="busy || store.workspace?.readOnly" @click="openProvider(provider)">
-                  <span class="import-provider-icon" :style="{ color: provider.color }" aria-hidden="true" v-html="provider.icon" /><span><strong>{{ provider.name }}</strong><small>{{ provider.id === 'obsidian' ? '本地仓库 · 导出文件' : '连接账号 · 导出文件' }}</small></span><ChevronRight :size="14" /></button></div>
+                  <span class="import-provider-icon" :style="{ color: provider.color }" aria-hidden="true" v-html="provider.icon" /><span><strong>{{ provider.name }}</strong><small>{{ provider.id === 'obsidian' ? t('本地仓库 · 导出文件') : t('连接账号 · 导出文件') }}</small></span><ChevronRight :size="14" /></button></div>
               </section>
               </template>
           </template>
         </div>
         <footer v-if="prepared" class="import-footer import-detail-footer">
-          <button class="import-secondary" type="button" :disabled="saving" @click="clear">重新选择</button>
-          <button class="import-submit" :disabled="!canImport" @click="importFiles"><LoaderCircle v-if="saving" :size="16" class="import-spinning" /><ArrowDownToLine v-else :size="16" />{{ saving ? `导入中 ${progressCount}/${prepared.pages.length}` : `开始导入 ${prepared.pages.length} 个页面` }}</button>
+          <button class="import-secondary" type="button" :disabled="saving" @click="clear">{{ t('重新选择') }}</button>
+          <button class="import-submit" :disabled="!canImport" @click="importFiles"><LoaderCircle v-if="saving" :size="16" class="import-spinning" /><ArrowDownToLine v-else :size="16" />{{ saving ? t('导入中 {0}/{1}', [progressCount, prepared.pages.length]) : t('开始导入 {0} 个页面', [prepared.pages.length]) }}</button>
         </footer>
       </div>
     </dialog>

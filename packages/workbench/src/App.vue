@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from './i18n';
+import { assistantDiscussionPrompt } from './assistant/language';
 import {
   computed,
   defineAsyncComponent,
@@ -263,7 +265,7 @@ const assistantTab = computed(() =>
   assistant.opened && assistant.displayMode === 'fullscreen'
     ? {
         id: assistant.fullscreenTabId,
-        title: assistant.session?.messages.length ? assistant.session.title : 'Tano 助手',
+        title: assistant.session?.messages.length ? assistant.session.title : t('Tano 助手'),
       }
     : undefined,
 );
@@ -283,9 +285,9 @@ const documentationBaseUrl = useWorkbenchRuntime().documentationBaseUrl;
 const extensions = useWorkbenchRuntime().extensions?.() ?? createLocalExtensions();
 const extensionViews = extensions.views ?? [];
 const sidebarNavigationItems = computed(() => [
-  { id: 'repository', label: '仓库' },
-  { id: 'plan', label: '计划' },
-  { id: 'plugin-views', label: '插件工作台' },
+  { id: 'repository', get label() { return t('仓库'); } },
+  { id: 'plan', get label() { return t('计划'); } },
+  { id: 'plugin-views', get label() { return t('插件工作台'); } },
   ...extensionViews
     .filter((view) => view.sidebar)
     .map((view) => ({ id: view.id, label: view.label })),
@@ -294,35 +296,35 @@ const sidebarHeaderItems = computed(() => [
   ...extensionViews
     .filter((view) => view.header)
     .map((view) => ({ id: view.id, label: view.label })),
-  { id: 'graph', label: '关系图谱' },
-  { id: 'commands', label: '命令中心' },
+  { id: 'graph', get label() { return t('关系图谱'); } },
+  { id: 'commands', get label() { return t('命令中心'); } },
 ]);
 const repositoryActionItems = computed(() => [
-  { id: 'search', label: '查找文档' },
-  ...(store.workspaceSettings.showPlugins ? [{ id: 'plugins', label: '插件' }] : []),
-  { id: 'create', label: '新建文档' },
+  { id: 'search', get label() { return t('查找文档'); } },
+  ...(store.workspaceSettings.showPlugins ? [{ id: 'plugins', get label() { return t('插件'); } }] : []),
+  { id: 'create', get label() { return t('新建文档'); } },
 ]);
 const documentToolItems = [
-  { id: 'markdown-reveal', label: '光标展开源码' },
-  { id: 'source-mode', label: '源码模式' },
+  { id: 'markdown-reveal', get label() { return t('光标展开源码'); } },
+  { id: 'source-mode', get label() { return t('源码模式'); } },
 ];
 const topbarItems = [
-  { id: 'breadcrumb', label: '面包屑' },
+  { id: 'breadcrumb', get label() { return t('面包屑'); } },
 ];
 const workspaceStatusLabel = computed(() =>
   store.workspace?.readOnly
-    ? '只读权限'
+    ? t('只读权限')
     : store.isDemo
-      ? '浏览器演示'
+      ? t('浏览器演示')
       : null,
 );
 const calendarToolItems = [
-  { id: 'calendar-period', label: '日历日期' },
-  { id: 'calendar-today', label: '今天' },
-  { id: 'calendar-previous', label: '上一时段' },
-  { id: 'calendar-next', label: '下一时段' },
-  { id: 'calendar-mode', label: '日历视图' },
-  { id: 'calendar-events', label: '管理事件' },
+  { id: 'calendar-period', get label() { return t('日历日期'); } },
+  { id: 'calendar-today', get label() { return t('今天'); } },
+  { id: 'calendar-previous', get label() { return t('上一时段'); } },
+  { id: 'calendar-next', get label() { return t('下一时段'); } },
+  { id: 'calendar-mode', get label() { return t('日历视图'); } },
+  { id: 'calendar-events', get label() { return t('管理事件'); } },
 ];
 function topbarVisibilityItems(tabId: string, hasDocument: boolean, activePane: boolean) {
   return [
@@ -330,11 +332,11 @@ function topbarVisibilityItems(tabId: string, hasDocument: boolean, activePane: 
       (item) => item.id !== 'breadcrumb' || (tabId !== CALENDAR_TAB_ID && tabId !== GRAPH_TAB_ID),
     ),
     ...(activePane && extensions.regions['editing-status']
-      ? [{ id: 'editing-status', label: '同步状态' }]
+      ? [{ id: 'editing-status', get label() { return t('同步状态'); } }]
       : []),
     ...(tabId === CALENDAR_TAB_ID ? calendarToolItems : []),
     ...(tabId.startsWith('attachment:') && attachments
-      ? [{ id: 'attachment-export', label: '导出附件' }]
+      ? [{ id: 'attachment-export', get label() { return t('导出附件'); } }]
       : []),
     ...(hasDocument ? documentToolItems : []),
   ];
@@ -417,15 +419,15 @@ const calendarDate = ref(new Date());
 const calendarMode = ref<CalendarViewMode>('week');
 const calendarModeOpen = ref(false);
 const calendarModeOptions: { mode: CalendarViewMode; label: string }[] = [
-  { mode: 'day', label: '日' },
-  { mode: 'four-days', label: '4 天' },
-  { mode: 'week', label: '周' },
-  { mode: 'month', label: '月' },
-  { mode: 'year', label: '年' },
-  { mode: 'agenda', label: '日程' },
+  { mode: 'day', get label() { return t('日'); } },
+  { mode: 'four-days', get label() { return t('4 天'); } },
+  { mode: 'week', get label() { return t('周'); } },
+  { mode: 'month', get label() { return t('月'); } },
+  { mode: 'year', get label() { return t('年'); } },
+  { mode: 'agenda', get label() { return t('日程'); } },
 ];
 const calendarModeLabel = computed(
-  () => calendarModeOptions.find((option) => option.mode === calendarMode.value)?.label ?? '周',
+  () => calendarModeOptions.find((option) => option.mode === calendarMode.value)?.label ?? t('周'),
 );
 const calendarPeriod = computed(() => calendarPeriodTitle(calendarDate.value, calendarMode.value));
 function moveCalendarPeriod(offset: number) {
@@ -580,18 +582,18 @@ async function applyPageRoute() {
   try {
     if (workspace.value?.id !== route.workspaceId) await store.openWorkspace(route.workspaceId);
     if (workspace.value?.id !== route.workspaceId) {
-      store.report('链接中的工作区不存在或你已失去访问权限');
+      store.report(t('链接中的工作区不存在或你已失去访问权限'));
     } else if (isTableTab(route.fileId)) {
       await store.openDataTable(route.fileId === TABLES_TAB_ID ? undefined : tableFileId(route.fileId));
     } else if (route.fileId.startsWith('plugin:')) {
       const view = store.pluginViews.find(view => view.key === route.fileId && view.location === 'tab');
       if (view) store.openPluginView(view.pluginId, view.id);
-      else store.report('链接中的插件视图尚未安装或已停用');
+      else store.report(t('链接中的插件视图尚未安装或已停用'));
     } else {
       const file = workspace.value.files.find(
         (entry) => entry.id === route.fileId && entry.kind === 'file' && isMarkdown(entry.path),
       );
-      if (!file) store.report('链接中的文档不存在或已被删除');
+      if (!file) store.report(t('链接中的文档不存在或已被删除'));
       else if (activeId.value !== file.id) await store.openFile(file);
     }
   } finally {
@@ -885,11 +887,11 @@ const editorReadonly = computed(
     !!editing.active?.readOnly,
 );
 async function renameDocumentTitle(workspaceId: string, id: string, from: string, to: string) {
-  if (workspace.value?.id !== workspaceId) throw new Error('工作空间已切换，请重新打开文档后重试');
+  if (workspace.value?.id !== workspaceId) throw new Error(t('工作空间已切换，请重新打开文档后重试'));
   if (updateLock.value || store.busy || workspace.value.readOnly || sessionBlocksFileMutation(id))
-    throw new Error('当前文档暂时无法重命名');
+    throw new Error(t('当前文档暂时无法重命名'));
   const doc = store.documentForTab(id);
-  if (!doc || store.displayPath(doc) !== from) throw new Error('文件位置已变化，请重新输入标题');
+  if (!doc || store.displayPath(doc) !== from) throw new Error(t('文件位置已变化，请重新输入标题'));
   await withFileMutation([id], () => store.rename(doc, to));
 }
 function sessionBlocksFileMutation(id: string) {
@@ -1050,46 +1052,46 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
   const standardEditor = hasDocument && !editing.active && !editing.activeBusy;
   const editable = standardEditor && !editorReadonly.value && !active.value?.missing;
   return [
-    { id: 'workbench.search', category: '文档', label: '查找文档', shortcut: shortcuts.value.findDocument, available: !busy.value, run: () => showModal('search') },
-    { id: 'workbench.open', category: '文档', label: '打开文档', shortcut: shortcuts.value.openDocument, available: !busy.value, run: () => showModal('newTab') },
-    { id: 'workbench.new', category: '文档', label: '新建文档', shortcut: shortcuts.value.newDocument, available: writableWorkspace, run: createNewDocument },
-    { id: 'workbench.table.new', category: '数据表', label: '新建数据表', keywords: 'table spreadsheet 表格', available: writableWorkspace, run: () => store.createDataTable().catch(store.report) },
-    { id: 'workbench.table.parts', category: '数据表', label: '新建配件选择表', available: writableWorkspace, run: () => store.createDataTable('parts').catch(store.report) },
-    { id: 'workbench.save', category: '文档', label: '立即保存', shortcut: shortcuts.value.save, available: hasDocument && !busy.value && !updateLock.value, run: () => store.flush() },
-    { id: 'workbench.saveAs', category: '文档', label: '另存副本', available: standardEditor && writableWorkspace, run: () => showModal('saveAs') },
-    { id: 'workbench.folder', category: '文档', label: '新建文件夹', available: writableWorkspace, run: () => createNewEntry('folder') },
-    { id: 'workbench.import', category: '文档', label: '导入文档', available: writableWorkspace, run: openImport },
-    { id: 'workbench.templates', category: '文档', label: '文档模板', available: writableWorkspace, run: openTemplateLibrary },
+    { id: 'workbench.search', category: t('文档'), get label() { return t('查找文档'); }, shortcut: shortcuts.value.findDocument, available: !busy.value, run: () => showModal('search') },
+    { id: 'workbench.open', category: t('文档'), get label() { return t('打开文档'); }, shortcut: shortcuts.value.openDocument, available: !busy.value, run: () => showModal('newTab') },
+    { id: 'workbench.new', category: t('文档'), get label() { return t('新建文档'); }, shortcut: shortcuts.value.newDocument, available: writableWorkspace, run: createNewDocument },
+    { id: 'workbench.table.new', category: t('数据表'), get label() { return t('新建数据表'); }, keywords: t('table spreadsheet 表格'), available: writableWorkspace, run: () => store.createDataTable().catch(store.report) },
+    { id: 'workbench.table.parts', category: t('数据表'), get label() { return t('新建配件选择表'); }, available: writableWorkspace, run: () => store.createDataTable('parts').catch(store.report) },
+    { id: 'workbench.save', category: t('文档'), get label() { return t('立即保存'); }, shortcut: shortcuts.value.save, available: hasDocument && !busy.value && !updateLock.value, run: () => store.flush() },
+    { id: 'workbench.saveAs', category: t('文档'), get label() { return t('另存副本'); }, available: standardEditor && writableWorkspace, run: () => showModal('saveAs') },
+    { id: 'workbench.folder', category: t('文档'), get label() { return t('新建文件夹'); }, available: writableWorkspace, run: () => createNewEntry('folder') },
+    { id: 'workbench.import', category: t('文档'), get label() { return t('导入文档'); }, available: writableWorkspace, run: openImport },
+    { id: 'workbench.templates', category: t('文档'), get label() { return t('文档模板'); }, available: writableWorkspace, run: openTemplateLibrary },
     ...(['markdown', 'docx', 'pdf', 'html', 'png'] as const).map(format => ({
-      id: `workbench.export.${format}`, category: '导出', label: ({ markdown: 'Markdown', docx: 'Word', pdf: 'PDF', html: 'HTML', png: '图片' })[format],
+      id: `workbench.export.${format}`, category: t('导出'), label: ({ markdown: 'Markdown', docx: 'Word', pdf: 'PDF', html: 'HTML', png: t('图片') })[format],
       keywords: format, available: hasDocument && !exportBusy.value, run: () => exportDocument(format),
     })),
-    { id: 'workbench.find', category: '编辑', label: '页内搜索', shortcut: shortcuts.value.pageSearch, available: standardEditor, run: () => openPaneSearch() },
-    { id: 'workbench.replace', category: '编辑', label: '查找与替换', shortcut: shortcuts.value.pageReplace, available: editable, run: () => openPaneSearch(store.activePaneId, true) },
-    { id: 'workbench.undo', category: '编辑', label: '撤销', available: editable && documentUndoAvailable.value, run: undoDocument },
-    { id: 'workbench.redo', category: '编辑', label: '重做', available: editable && documentRedoAvailable.value, run: redoDocument },
+    { id: 'workbench.find', category: t('编辑'), get label() { return t('页内搜索'); }, shortcut: shortcuts.value.pageSearch, available: standardEditor, run: () => openPaneSearch() },
+    { id: 'workbench.replace', category: t('编辑'), get label() { return t('查找与替换'); }, shortcut: shortcuts.value.pageReplace, available: editable, run: () => openPaneSearch(store.activePaneId, true) },
+    { id: 'workbench.undo', category: t('编辑'), get label() { return t('撤销'); }, available: editable && documentUndoAvailable.value, run: undoDocument },
+    { id: 'workbench.redo', category: t('编辑'), get label() { return t('重做'); }, available: editable && documentRedoAvailable.value, run: redoDocument },
     ...editorPaletteCommands({ editable: editable && !!editor.value, source: source.value,
       context: paneSelections[store.activePaneId] ?? defaultSelectionContext, features: store.capabilities.features,
       run: (name, value) => editor.value?.command(name, value) }),
-    { id: 'workbench.source', category: '视图', label: source.value ? '返回可视化编辑' : '切换源码模式', available: standardEditor, keywords: 'Markdown source', run: () => { source.value = !source.value; } },
-    { id: 'workbench.reading', category: '视图', label: pageLocked.value ? '退出阅读模式' : '进入阅读模式', available: hasDocument, keywords: '锁定页面 解锁', run: togglePageLock },
-    { id: 'workbench.width', category: '视图', label: limitPageWidth.value ? '展开页面全宽' : '限制页面宽度', available: hasDocument && pageWidthWritable.value, run: () => setLimitPageWidth(!limitPageWidth.value) },
-    { id: 'workbench.outline', category: '视图', label: showOutline.value ? '隐藏文档目录' : '显示文档目录', available: hasDocument, keywords: '大纲', run: () => { showOutline.value = !showOutline.value; } },
-    { id: 'workbench.properties', category: '视图', label: showDocumentProperties.value ? '隐藏文档属性' : '显示文档属性', available: hasDocument, run: () => { showDocumentProperties.value = !showDocumentProperties.value; } },
-    { id: 'workbench.discussion', category: '文档', label: '发起讨论', keywords: '文档讨论 评论', available: editable, run: openDocumentDiscussion },
-    { id: 'workbench.sidebar', category: '视图', label: sidebar.value ? '收起侧栏' : '展开侧栏', shortcut: shortcuts.value.toggleSidebar, available: !detachedWindow, run: toggleSidebar },
-    { id: 'workbench.repository', category: '工作区', label: '打开仓库', available: !detachedWindow, run: () => { sidebar.value = true; sidebarView.value = 'repository'; } },
-    { id: 'workbench.plan', category: '工作区', label: '打开计划', available: !detachedWindow && store.workspaceSettings.showPlan, run: () => { sidebar.value = true; sidebarView.value = 'plan'; } },
-    { id: 'workbench.calendar', category: '工作区', label: '打开日历', available: store.workspaceSettings.showPlan, run: () => openCalendar() },
-    { id: 'workbench.graph', category: '工作区', label: '打开关系图谱', available: store.workspaceSettings.showGraph, run: () => store.openGraphTab() },
-    { id: 'workbench.plugins', category: '工作区', label: '打开插件中心', available: store.workspaceSettings.showPlugins, run: () => store.openPluginsTab() },
-    { id: 'workbench.updates', category: '历史', label: '文档更新历史', available: hasDocument, run: () => { historyPage.value = 'updates'; historyPanel.value = true; } },
-    { id: 'workbench.versions', category: '历史', label: '文档版本历史', available: hasDocument && !!extensions.historyEnabled, run: () => { historyPage.value = 'versions'; historyPanel.value = true; } },
-    { id: 'workbench.settings', category: '设置', label: '外观设置', keywords: '打开设置', run: () => openSettings() },
-    { id: 'workbench.settings.editing', category: '设置', label: '编辑设置', run: () => openSettings('editing') },
-    { id: 'workbench.settings.shortcuts', category: '设置', label: '快捷键', run: () => openSettings('shortcuts') },
-    { id: 'workbench.settings.workspace', category: '设置', label: '工作区设置', run: () => openSettings('workspace') },
-    { id: 'workbench.settings.about', category: '设置', label: '关于同页', run: () => openSettings('about') },
+    { id: 'workbench.source', category: t('视图'), label: source.value ? t('返回可视化编辑') : t('切换源码模式'), available: standardEditor, keywords: 'Markdown source', run: () => { source.value = !source.value; } },
+    { id: 'workbench.reading', category: t('视图'), label: pageLocked.value ? t('退出阅读模式') : t('进入阅读模式'), available: hasDocument, keywords: t('锁定页面 解锁'), run: togglePageLock },
+    { id: 'workbench.width', category: t('视图'), label: limitPageWidth.value ? t('展开页面全宽') : t('限制页面宽度'), available: hasDocument && pageWidthWritable.value, run: () => setLimitPageWidth(!limitPageWidth.value) },
+    { id: 'workbench.outline', category: t('视图'), label: showOutline.value ? t('隐藏文档目录') : t('显示文档目录'), available: hasDocument, keywords: t('大纲'), run: () => { showOutline.value = !showOutline.value; } },
+    { id: 'workbench.properties', category: t('视图'), label: showDocumentProperties.value ? t('隐藏文档属性') : t('显示文档属性'), available: hasDocument, run: () => { showDocumentProperties.value = !showDocumentProperties.value; } },
+    { id: 'workbench.discussion', category: t('文档'), get label() { return t('发起讨论'); }, keywords: t('文档讨论 评论'), available: editable, run: openDocumentDiscussion },
+    { id: 'workbench.sidebar', category: t('视图'), label: sidebar.value ? t('收起侧栏') : t('展开侧栏'), shortcut: shortcuts.value.toggleSidebar, available: !detachedWindow, run: toggleSidebar },
+    { id: 'workbench.repository', category: t('工作区'), get label() { return t('打开仓库'); }, available: !detachedWindow, run: () => { sidebar.value = true; sidebarView.value = 'repository'; } },
+    { id: 'workbench.plan', category: t('工作区'), get label() { return t('打开计划'); }, available: !detachedWindow && store.workspaceSettings.showPlan, run: () => { sidebar.value = true; sidebarView.value = 'plan'; } },
+    { id: 'workbench.calendar', category: t('工作区'), get label() { return t('打开日历'); }, available: store.workspaceSettings.showPlan, run: () => openCalendar() },
+    { id: 'workbench.graph', category: t('工作区'), get label() { return t('打开关系图谱'); }, available: store.workspaceSettings.showGraph, run: () => store.openGraphTab() },
+    { id: 'workbench.plugins', category: t('工作区'), get label() { return t('打开插件中心'); }, available: store.workspaceSettings.showPlugins, run: () => store.openPluginsTab() },
+    { id: 'workbench.updates', category: t('历史'), get label() { return t('文档更新历史'); }, available: hasDocument, run: () => { historyPage.value = 'updates'; historyPanel.value = true; } },
+    { id: 'workbench.versions', category: t('历史'), get label() { return t('文档版本历史'); }, available: hasDocument && !!extensions.historyEnabled, run: () => { historyPage.value = 'versions'; historyPanel.value = true; } },
+    { id: 'workbench.settings', category: t('设置'), get label() { return t('外观设置'); }, keywords: t('打开设置'), run: () => openSettings() },
+    { id: 'workbench.settings.editing', category: t('设置'), get label() { return t('编辑设置'); }, run: () => openSettings('editing') },
+    { id: 'workbench.settings.shortcuts', category: t('设置'), get label() { return t('快捷键'); }, run: () => openSettings('shortcuts') },
+    { id: 'workbench.settings.workspace', category: t('设置'), get label() { return t('工作区设置'); }, run: () => openSettings('workspace') },
+    { id: 'workbench.settings.about', category: t('设置'), get label() { return t('关于同页'); }, run: () => openSettings('about') },
   ];
 });
 const settingsPage = ref<SettingsPageId>('appearance');
@@ -1138,8 +1140,8 @@ watch(
     );
     modalDeleteContents.value = [...files];
     modalError.value = modalDeleteEntries.value.length
-      ? '目录已自动更新，请核对所选条目后再次确认。'
-      : '所选条目已移除，目录已自动更新。请关闭此窗口后重新选择。';
+      ? t('目录已自动更新，请核对所选条目后再次确认。')
+      : t('所选条目已移除，目录已自动更新。请关闭此窗口后重新选择。');
   },
 );
 const input = ref('');
@@ -1193,7 +1195,7 @@ function openInlineAssistant(paneId: string, fileId: string, text: string, sourc
   closeInlineAssistant();
   inlineAssistant.value = { paneId, fileId, text, sourceSelection, anchor, ...(options.blankBlock ? { blankBlock: true } : {}) };
   inlineAssistantState.value = 'input';
-  void nextTick(() => document.querySelector<HTMLInputElement>('[aria-label="输入助手任务"]')?.focus());
+  void nextTick(() => document.querySelector<HTMLInputElement>(`[aria-label="${t('输入助手任务')}"]`)?.focus());
 }
 async function submitInlineAssistant() {
   const target = inlineAssistant.value;
@@ -1205,7 +1207,7 @@ async function submitInlineAssistant() {
     // Keep this one-shot path out of the visible conversation while reusing the
     // same guarded direct-edit execution and conflict checks as the full panel.
     const wholeEmptyDocument = target.blankBlock && target.sourceSelection.from === undefined && target.sourceSelection.to === undefined;
-    if (inlineRunner.loading) throw new Error('助手正在初始化，请稍后重试');
+    if (inlineRunner.loading) throw new Error(t('助手正在初始化，请稍后重试'));
     inlineRunner.connections = assistant.connections.map(connection => ({ ...connection }));
     inlineRunner.connectionId = assistant.connectionId;
     inlineRunner.modelId = assistant.modelId;
@@ -1260,7 +1262,7 @@ function continueInlineConversation() {
     if (index < 0) assistant.sessions.unshift(snapshot);
     else assistant.sessions[index] = snapshot;
     if (!assistant.busy && !assistant.applying) assistant.selectSession(completedSession.id);
-    else store.report('选区任务已加入会话列表，当前会话结束后可切换继续。');
+    else store.report(t('选区任务已加入会话列表，当前会话结束后可切换继续。'));
   }
   openAssistant(target.paneId, target.fileId, { forcePanel: true });
   closeInlineAssistant();
@@ -1270,7 +1272,7 @@ function captureButterflyTextTarget(paneId: string, fileId: string) {
   const anchor = paneEditors.get(paneId)?.captureVisualAnchor();
   if (!anchor) return null;
   const scope = paneButterflyScope(paneId, fileId), id = `text:${scope}:${crypto.randomUUID()}`;
-  const registration = butterfly.registerTarget({ id, scope, label: '所选文字', kind: 'text', temporary: true,
+  const registration = butterfly.registerTarget({ id, scope, get label() { return t('所选文字'); }, kind: 'text', temporary: true,
     element: () => anchor.element, rects: anchor.getRects, onDispose: anchor.dispose,
     available: () => !paneSource(fileId) && store.panes.some(pane => pane.id === paneId && pane.activeId === fileId),
   });
@@ -1300,7 +1302,7 @@ function beginSelectionTodo(paneId: string, fileId: string) {
     paneSource(fileId) ? paneSourceEditors.get(paneId) : paneEditors.get(paneId)
   )?.captureTodoSelection();
   if (!captured) {
-    store.report('请先选择要创建 Todo 的文字');
+    store.report(t('请先选择要创建 Todo 的文字'));
     return;
   }
   const expected = { id: scope.id, path: scope.path, content: doc.content };
@@ -1313,7 +1315,7 @@ function beginSelectionTodo(paneId: string, fileId: string) {
   };
   function originalDocument() {
     if (workspace.value?.id !== expected.id || workspace.value.path !== expected.path)
-      throw new Error('工作区已切换，请返回原工作区后重试');
+      throw new Error(t('工作区已切换，请返回原工作区后重试'));
     const original = store.documentForTab(fileId);
     if (
       !original ||
@@ -1322,13 +1324,13 @@ function beginSelectionTodo(paneId: string, fileId: string) {
       editing.isManaging(fileId) ||
       !store.capabilities.features.objectReferences
     )
-      throw new Error('原文档已关闭或不可编辑，请重新打开原文档');
+      throw new Error(t('原文档已关闭或不可编辑，请重新打开原文档'));
     return original;
   }
   selectionTodo.value = selectionTodoSession(captured.text, source, {
     create: (draft) => {
       if (originalDocument().content !== expected.content)
-        throw new Error('原文已变化，请重新选择文字');
+        throw new Error(t('原文已变化，请重新选择文字'));
       return store.createObject(draft);
     },
     insert: async (record, append) => {
@@ -1345,14 +1347,14 @@ function beginSelectionTodo(paneId: string, fileId: string) {
           original.content !== expected.content ||
           !captured.insert(record.object, record.object.name)
         )
-          throw new Error('原文或选区已变化，任务已保留；可在原文末尾插入引用');
+          throw new Error(t('原文或选区已变化，任务已保留；可在原文末尾插入引用'));
       }
       await nextTick();
       if (!documentLinks(original.content).some((link) => link.target === url))
-        throw new Error('任务已保留，当前选区不能插入引用；可在原文末尾插入引用');
+        throw new Error(t('任务已保留，当前选区不能插入引用；可在原文末尾插入引用'));
       await store.flush();
       if (original.conflict || original.missing || original.error || store.dirty(original))
-        throw new Error('任务已保留，原文保存发生冲突或失败，请处理文档提示后重试');
+        throw new Error(t('任务已保留，原文保存发生冲突或失败，请处理文档提示后重试'));
     },
   });
 }
@@ -1395,7 +1397,7 @@ function initializeDocument(paneId: string, fileId: string, content: string, exp
       (editing.isManaging(doc.id) && (doc.id !== store.active?.id || !editing.active?.extension)) ||
       store.panes.find(pane => pane.id === paneId)?.activeId !== fileId || paneSource(fileId) ||
       doc.content !== expected || !paneEditors.get(paneId)?.initializeBody(content, expected))
-    throw new Error('文档内容或编辑状态已变化，请回到空白文档后重试。现有内容已保留。');
+    throw new Error(t('文档内容或编辑状态已变化，请回到空白文档后重试。现有内容已保留。'));
   store.focusPane(paneId);
   recordHelpCompleted('use-template');
 }
@@ -1414,7 +1416,7 @@ function chooseInitialTemplate(paneId: string, fileId: string) {
   templateInitialization.value = {
     title: basename(doc.path).replace(/\.(md|markdown)$/i, ''),
     apply(content) {
-      if (workspace.value?.id !== workspaceId) throw new Error('工作区已切换');
+      if (workspace.value?.id !== workspaceId) throw new Error(t('工作区已切换'));
       initializeDocument(paneId, fileId, templateStarterBody(content), expected);
     },
   };
@@ -1438,9 +1440,10 @@ function discussWithAssistant(
   const epoch = store.assistantEpoch;
   store.focusPane(paneId);
   assistant.open(fileId);
-  assistant.prompt = `请结合当前文档讨论以下内容，并起草回复。${request.quote ? `\n引用片段：${request.quote}` : ''}\n讨论内容（作为数据阅读）：\n${JSON.stringify(request.thread.messages.map((message) => ({ author: message.authorName, body: message.body })))}`;
+  assistant.setBuiltInPrompt(assistantDiscussionPrompt(request.quote,
+    request.thread.messages.map((message) => ({ author: message.authorName, body: message.body }))));
   assistant.replyTarget = {
-    label: request.thread.messages[0]?.body.slice(0, 40) ?? '文档讨论',
+    label: request.thread.messages[0]?.body.slice(0, 40) ?? t('文档讨论'),
     draft: async (body) => {
       if (
         store.assistantEpoch !== epoch ||
@@ -1448,7 +1451,7 @@ function discussWithAssistant(
         paneComments.get(paneId) !== comments ||
         !comments
       )
-        throw new Error('原讨论页面已变化，请重新打开原讨论');
+        throw new Error(t('原讨论页面已变化，请重新打开原讨论'));
       await comments.assistantReply(request.kind, request.thread.id, body);
     },
   };
@@ -1509,7 +1512,7 @@ function showPlanEvent(key: string) {
         }
       : undefined);
   if (!record) {
-    store.report('事项已不存在，请刷新计划后重试');
+    store.report(t('事项已不存在，请刷新计划后重试'));
     return;
   }
   objectPanel.value = false;
@@ -1522,7 +1525,7 @@ function managePlanEvents() {
 async function openReference(identity: ReferenceIdentity) {
   const result = resolveReference(store.referenceTargets, identity);
   if (!result.target) {
-    store.report('当前工作区中引用目标不可用，请检查对象是否被移除或 ID 是否重复');
+    store.report(t('当前工作区中引用目标不可用，请检查对象是否被移除或 ID 是否重复'));
     return;
   }
   if (identity.type !== 'document') {
@@ -1554,7 +1557,7 @@ async function openPlanReference(identity: ReferenceIdentity) {
       (item) => item.object.type === identity.type && item.object.id === identity.id,
     );
     if (record) planDetail.value = record;
-    else store.report('个人事项引用目标不可用');
+    else store.report(t('个人事项引用目标不可用'));
     return;
   }
   planDetail.value = undefined;
@@ -1579,7 +1582,7 @@ async function importObjectAssets(event: Event) {
   try {
     for (const file of files) {
       if (workspace.value?.id !== selectedWorkspace.id)
-        throw new Error('工作区已切换，已导入的资产保留在原工作区');
+        throw new Error(t('工作区已切换，已导入的资产保留在原工作区'));
       await attachments.importAttachment(selectedWorkspace.id, '', file, false);
     }
   } catch (error) {
@@ -1808,7 +1811,7 @@ const resourceRevision = computed(
 );
 async function uploadFile(file: File, requireImage: boolean, doc = active.value) {
   const currentWorkspace = workspace.value;
-  if (!attachments || !currentWorkspace || !doc) throw new Error('当前工作区不支持导入附件');
+  if (!attachments || !currentWorkspace || !doc) throw new Error(t('当前工作区不支持导入附件'));
   const result = await attachments.importAttachment(
     currentWorkspace.id,
     doc.path,
@@ -1819,13 +1822,13 @@ async function uploadFile(file: File, requireImage: boolean, doc = active.value)
     workspace.value?.id !== currentWorkspace.id ||
     !store.documents.some((item) => item.id === doc.id)
   )
-    throw new Error('附件已保存到原工作空间的 assets；文档已切换，请重新插入链接');
+    throw new Error(t('附件已保存到原工作空间的 assets；文档已切换，请重新插入链接'));
   await store.refresh();
   if (
     workspace.value?.id !== currentWorkspace.id ||
     !store.documents.some((item) => item.id === doc.id)
   )
-    throw new Error('附件已导入，原文档已关闭');
+    throw new Error(t('附件已导入，原文档已关闭'));
   return { ...result, url: relativeWorkspaceReference(doc.path, result.path) };
 }
 async function insertSourceFiles(
@@ -1869,7 +1872,7 @@ async function openEntry(file: FileEntry, newTab = false) {
   if (isObjectPath(file.path)) {
     const record = store.objects.find((item) => item.path === file.path);
     if (record) showObjects(record.object.id);
-    else store.report('对象文件不可用，请在工作区对象面板检查格式或重复 ID');
+    else store.report(t('对象文件不可用，请在工作区对象面板检查格式或重复 ID'));
     return;
   }
   if (isMarkdown(file.path) || isDataTableFilePath(file.path)) {
@@ -1890,7 +1893,7 @@ async function openEntry(file: FileEntry, newTab = false) {
     } catch (error) {
       store.report(error);
     }
-  } else store.report('当前存储适配器不支持直接打开附件');
+  } else store.report(t('当前存储适配器不支持直接打开附件'));
 }
 async function openTreeEntry(file: FileEntry) {
   pendingTreeOpenIds.add(file.id);
@@ -2251,15 +2254,15 @@ function finishTreeRename(file: FileEntry) {
 }
 async function renameTreeEntry(file: FileEntry, name: string) {
   if (treeRename.value?.workspaceId !== workspace.value?.id)
-    throw new Error('工作区已切换，请重新选择后重试');
+    throw new Error(t('工作区已切换，请重新选择后重试'));
   const current = workspace.value?.files.find((entry) => entry.id === file.id);
   if (!current || current.path !== file.path)
-    throw new Error('文件位置已变化，请按 Esc 取消后重新选择');
+    throw new Error(t('文件位置已变化，请按 Esc 取消后重新选择'));
   if (fileMutationDisabled(current) || directoryHasManagedFile(current))
-    throw new Error('当前条目暂时无法重命名，请检查权限或实时协作状态');
+    throw new Error(t('当前条目暂时无法重命名，请检查权限或实时协作状态'));
   name = name.trim().normalize('NFC');
-  if (!name) throw new Error('请填写一个名称');
-  if (/[\/\\]/.test(name)) throw new Error('名称不能包含路径分隔符');
+  if (!name) throw new Error(t('请填写一个名称'));
+  if (/[\/\\]/.test(name)) throw new Error(t('名称不能包含路径分隔符'));
   if (file.kind === 'file' && isMarkdown(file.path) && !isMarkdown(name))
     name += file.name.match(/\.(md|markdown)$/i)?.[0] ?? '.md';
   if (isDataTableFilePath(file.path) && !/\.table\.json$/i.test(name)) name += '.table.json';
@@ -2513,7 +2516,7 @@ async function openDocumentLink(
   const path = resolveWorkspaceReference(documentPath, reference);
   const file = workspace.value.files.find((entry) => entry.path === path && entry.kind === 'file');
   if (file) await openEntry(file, newTab);
-  else store.report('此链接不在当前工作空间；请复制链接到浏览器打开');
+  else store.report(t('此链接不在当前工作空间；请复制链接到浏览器打开'));
 }
 async function openWikiLink(target: string) {
   if (!workspace.value || !active.value) return;
@@ -2521,10 +2524,10 @@ async function openWikiLink(target: string) {
   if ('error' in result) {
     store.report(
       result.error === 'ambiguous'
-        ? '有多篇同名文档，请在双向链接中写明文件夹路径'
+        ? t('有多篇同名文档，请在双向链接中写明文件夹路径')
         : result.error === 'invalid'
-          ? '双向链接目标无效'
-          : '当前工作空间中找不到这篇文档',
+          ? t('双向链接目标无效')
+          : t('当前工作空间中找不到这篇文档'),
     );
     return;
   }
@@ -2537,7 +2540,7 @@ async function openWikiLink(target: string) {
     (heading) => heading.text.toLocaleLowerCase() === requested,
   );
   if (index < 0) {
-    store.report('目标文档中找不到这个标题');
+    store.report(t('目标文档中找不到这个标题'));
     return;
   }
   for (let attempt = 0; attempt < 10; attempt++) {
@@ -2552,7 +2555,7 @@ async function openWikiLink(target: string) {
     }
     await new Promise((resolve) => setTimeout(resolve, 30));
   }
-  store.report('文档已打开，但暂时无法定位到标题');
+  store.report(t('文档已打开，但暂时无法定位到标题'));
 }
 const outline = computed(() => headings(active.value?.content ?? ''));
 const visibleOutline = computed(() => {
@@ -2712,7 +2715,7 @@ const searchResults = computed(() => {
   });
 });
 function searchResultLocation(path: string) {
-  return [workspace.value?.name ?? '工作区', ...path.split('/').slice(0, -1)].join(' › ');
+  return [workspace.value?.name ?? t('工作区'), ...path.split('/').slice(0, -1)].join(' › ');
 }
 async function openSearchResult(file: FileEntry) {
   modal.value = '';
@@ -2735,10 +2738,10 @@ function searchHighlightParts(text: string) {
 }
 const modalTitle = computed(() => {
   const titles = {
-    newTab: '打开文件',
-    search: '找到那一页',
-    delete: `${store.isDemo ? '删除' : store.isWeb ? '删除在线文档' : mobile ? '移入手机回收站' : '移入回收站'}${modalDeleteEntries.value.length > 1 ? ` · ${modalDeleteEntries.value.length} 项` : ''}`,
-    saveAs: '另存为新文档',
+    newTab: t('打开文件'),
+    search: t('找到那一页'),
+    delete: `${store.isDemo ? t('删除') : store.isWeb ? t('删除在线文档') : mobile ? t('移入手机回收站') : t('移入回收站')}${modalDeleteEntries.value.length > 1 ? t(' · {0} 项', [modalDeleteEntries.value.length]) : ''}`,
+    saveAs: t('另存为新文档'),
   };
   return modal.value ? titles[modal.value] : '';
 });
@@ -2860,10 +2863,10 @@ async function acceptTabTransfer(request: TabTransferRequest) {
       workspace.value.id !== request.workspaceId ||
       store.busy
     )
-      throw new Error('目标窗口当前无法接收这个标签页');
+      throw new Error(t('目标窗口当前无法接收这个标签页'));
     if (request.drop) {
       if (!store.panes.some((pane) => pane.id === request.drop!.paneId))
-        throw new Error('目标分栏已关闭，请重新拖入');
+        throw new Error(t('目标分栏已关闭，请重新拖入'));
       store.focusPane(request.drop.paneId);
     }
     if (request.tabId.startsWith('blank:')) {
@@ -2885,22 +2888,22 @@ async function acceptTabTransfer(request: TabTransferRequest) {
     } else if (extensionViews.some((view) => view.id === request.tabId)) {
       const view = extensionViews.find((view) => view.id === request.tabId)!;
       if (!view.detachable)
-        throw new Error(view.detachBlockedMessage ?? '此扩展视图不支持移到其他窗口');
+        throw new Error(view.detachBlockedMessage ?? t('此扩展视图不支持移到其他窗口'));
       created = priorIndex < 0;
       store.openViewTab(view.id);
     } else if (priorIndex < 0) {
       const file = workspace.value.files.find(
         (entry) => entry.id === request.tabId && entry.kind === 'file',
       );
-      if (!file) throw new Error('目标窗口找不到拖入的文档');
+      if (!file) throw new Error(t('目标窗口找不到拖入的文档'));
       await store.openFileInNewTab(file);
       created = true;
     }
     if (!store.tabs.some((tab) => tab.id === actualId))
-      throw new Error('目标窗口未能打开拖入的标签页');
+      throw new Error(t('目标窗口未能打开拖入的标签页'));
     if (request.drop) {
       if (!store.panes.some((pane) => pane.id === request.drop!.paneId))
-        throw new Error('目标分栏已关闭，请重新拖入');
+        throw new Error(t('目标分栏已关闭，请重新拖入'));
       undoDock = store.dockTab(actualId, request.drop);
     } else {
       const index =
@@ -2964,21 +2967,21 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
     return;
   }
   if (tab.attachmentPreview) {
-    store.report('附件预览暂不支持移到其他窗口。');
+    store.report(t('附件预览暂不支持移到其他窗口。'));
     settled?.();
     return;
   }
   if (tab.pluginView) {
-    store.report('插件视图绑定当前窗口的运行实例，可以在当前窗口分屏。');
+    store.report(t('插件视图绑定当前窗口的运行实例，可以在当前窗口分屏。'));
     settled?.(); return;
   }
   if (tab.view && !tab.view.detachable) {
-    store.report(tab.view.detachBlockedMessage ?? '此视图保留在当前窗口，暂不支持移到其他窗口。');
+    store.report(tab.view.detachBlockedMessage ?? t('此视图保留在当前窗口，暂不支持移到其他窗口。'));
     settled?.();
     return;
   }
   if (tab.document?.conflict || tab.document?.missing) {
-    store.report('请先处理文档冲突或缺失，再拖出标签页。');
+    store.report(t('请先处理文档冲突或缺失，再拖出标签页。'));
     settled?.();
     return;
   }
@@ -2988,7 +2991,7 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
   if (!drop?.insideSourceWindow) store.detachingTabId = id;
   try {
     await editing.flush();
-    if (!(await store.flush())) throw new Error('还有未保存的修改，请先处理保存错误。');
+    if (!(await store.flush())) throw new Error(t('还有未保存的修改，请先处理保存错误。'));
     const dock = drop
       ? await findTabDockTarget(workspace.value.id, id, {
           x: drop.x,
@@ -3010,7 +3013,7 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
         await emitTo(dock.targetLabel, TAB_TRANSFER_ROLLBACK, {
           requestId: transfer.requestId,
         } satisfies TabTransferRollback);
-        throw new Error('原标签页未能关闭，已取消跨窗口移动');
+        throw new Error(t('原标签页未能关闭，已取消跨窗口移动'));
       }
       if (detachedWindow && !store.tabs.length) {
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
@@ -3019,17 +3022,17 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
       return;
     }
     const title = tab.graph
-      ? '关系图谱'
+      ? t('关系图谱')
       : tab.plugins
-        ? '插件'
+        ? t('插件')
         : tab.blank
-          ? '新标签页'
+          ? t('新标签页')
           : basename(tab.path).replace(/\.(md|markdown)$/i, '');
     const detached = await createDetachedTabWindow(workspace.value.path, id, title, drop);
     await store.close(id);
     if (store.tabs.some((item) => item.id === id)) {
       await detached.destroy();
-      throw new Error('原标签页未能关闭，已取消拖出。');
+      throw new Error(t('原标签页未能关闭，已取消拖出。'));
     }
   } catch (error) {
     store.report(error);
@@ -3049,9 +3052,9 @@ async function deleteWorkspace(workspaceId: string) {
   workspaceDeleting.value = true;
   workspaceDeletionError.value = '';
   try {
-    if (workspace.value?.id !== workspaceId) throw new Error('工作区已切换，请重新确认删除');
+    if (workspace.value?.id !== workspaceId) throw new Error(t('工作区已切换，请重新确认删除'));
     await editing.flush();
-    if (!await store.deleteWorkspace(workspaceId)) throw new Error(store.fatal || '无法删除工作区，请稍后重试');
+    if (!await store.deleteWorkspace(workspaceId)) throw new Error(store.fatal || t('无法删除工作区，请稍后重试'));
     settingsPanel.value = false;
     workspaceMenu.value = false;
     if (native && !mobile) await closeSettingsWindow();
@@ -3066,12 +3069,12 @@ async function exportWorkspace(workspaceId: string) {
   workspaceExporting.value = true;
   workspaceExportError.value = '';
   const assertCurrent = () => {
-    if (workspace.value?.id !== workspaceId) throw new Error('工作区已切换，请重新导出');
+    if (workspace.value?.id !== workspaceId) throw new Error(t('工作区已切换，请重新导出'));
   };
   try {
     assertCurrent();
     await editing.flush();
-    if (!await store.flush()) throw new Error('还有未保存的修改，请处理保存错误后再导出');
+    if (!await store.flush()) throw new Error(t('还有未保存的修改，请处理保存错误后再导出'));
     assertCurrent();
     await store.refresh();
     assertCurrent();
@@ -3319,7 +3322,7 @@ async function returnHome(event: MouseEvent) {
   returningHome = true;
   try {
     if (!(await store.flush())) {
-      store.report('还有未保存的修改，请保存或另存副本后再返回首页。');
+      store.report(t('还有未保存的修改，请保存或另存副本后再返回首页。'));
       return;
     }
     await editing.flush();
@@ -3341,10 +3344,10 @@ async function submitModal() {
       kind === 'delete' &&
       sessionBlocksFileMutation(modalTarget.value.id)
     )
-      throw new Error('请先结束此文档的实时协作');
+      throw new Error(t('请先结束此文档的实时协作'));
     if (kind === 'delete') {
       if (modalDeleteEntries.value.some(fileDeleteDisabled))
-        throw new Error('所选条目中有无法移除的文件，请检查权限或实时协作状态');
+        throw new Error(t('所选条目中有无法移除的文件，请检查权限或实时协作状态'));
       await withFileMutation(fileMutationIds(modalDeleteEntries.value), () => store.removeEntries(
         modalDeleteEntries.value,
         modalDeleteWorkspaceId.value,
@@ -3356,7 +3359,7 @@ async function submitModal() {
       if (!isMarkdown(path)) path += '.md';
       const error = validatePath(path);
       if (error) throw new Error(error);
-      if (!input.value.trim()) throw new Error('请填写一个名称');
+      if (!input.value.trim()) throw new Error(t('请填写一个名称'));
       if (kind === 'saveAs' && active.value) await store.saveCopy(active.value, path);
     }
     modal.value = '';
@@ -3722,7 +3725,7 @@ onMounted(async () => {
       store.workspace?.path === detachedRequest.workspacePath &&
       store.tabs.length === 1 &&
       (detachedRequest.tabId.startsWith('blank:') || store.tabs[0]?.id === detachedRequest.tabId);
-    await reportDetachedReady(opened ? undefined : '独立窗口未能打开所选标签页');
+    await reportDetachedReady(opened ? undefined : t('独立窗口未能打开所选标签页'));
   }
   if (native && !mobile && !detachedWindow) {
     void updates.initialize();
@@ -3734,7 +3737,7 @@ onMounted(async () => {
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
     if (localNative)
       unlistenWatchError = await listen<string>('workspace-watch-error', (event) =>
-        store.report(`文件监听遇到错误：${event.payload}。目录仍会定期自动检查。`),
+        store.report(t('文件监听遇到错误：{0}。目录仍会定期自动检查。', [event.payload])),
       );
     if (!mobile)
       unlistenClose = await getCurrentWindow().onCloseRequested(async (event) => {
@@ -3751,7 +3754,7 @@ onMounted(async () => {
             await editing.suspendAll();
             await closeSettingsWindow();
             await getCurrentWindow().destroy();
-          } else store.report('还有未保存的内容，窗口已保留。请先保存或另存副本。');
+          } else store.report(t('还有未保存的内容，窗口已保留。请先保存或另存副本。'));
         } catch (error) {
           store.report(error);
         }
@@ -3841,8 +3844,8 @@ const helpBlocked = computed(() => !!(
       :class="{ 'desktop-sidebar-toggle-hidden': sidebar }"
       class="desktop-sidebar-toggle"
       type="button"
-      aria-label="展开侧栏"
-      :title="`展开侧栏 · ${shortcutHint('toggleSidebar')}`"
+      :aria-label="t('展开侧栏')"
+      :title="t('展开侧栏 · {0}', [shortcutHint('toggleSidebar')])"
       :aria-hidden="sidebar"
       :tabindex="sidebar ? -1 : 0"
       :disabled="sidebar"
@@ -3873,7 +3876,7 @@ const helpBlocked = computed(() => !!(
       <button
         v-if="workspace && sidebar && !detachedWindow && compactPanes"
         class="sidebar-dismiss"
-        aria-label="收起侧栏"
+        :aria-label="t('收起侧栏')"
         @click="toggleSidebar"
       />
     </Transition>
@@ -3891,7 +3894,7 @@ const helpBlocked = computed(() => !!(
               :is="native ? 'div' : 'a'"
               class="brand"
               :href="native ? undefined : '/'"
-              :aria-label="native ? undefined : '返回同页首页'"
+              :aria-label="native ? undefined : t('返回同页首页')"
               @click="returnHome"
             >
               <img src="/favicon-green.svg?v=3" alt="" />
@@ -3899,8 +3902,8 @@ const helpBlocked = computed(() => !!(
             <button
               type="button"
               class="icon-button sidebar-toggle"
-              aria-label="收起侧栏"
-              :title="`收起侧栏 · ${shortcutHint('toggleSidebar')}`"
+              :aria-label="t('收起侧栏')"
+              :title="t('收起侧栏 · {0}', [shortcutHint('toggleSidebar')])"
               @click="toggleSidebar"
             >
               <PanelLeftClose :size="17" :stroke-width="1.6" />
@@ -3912,8 +3915,8 @@ const helpBlocked = computed(() => !!(
             :active="sidebar"
             preference-key="tano.preference.sidebarHiddenHeaderActions"
             group-class="sidebar-header-actions"
-            label="侧栏顶部按钮"
-            menu-label="侧栏顶部按钮显示设置"
+            :label="t('侧栏顶部按钮')"
+            :menu-label="t('侧栏顶部按钮显示设置')"
             @open="closeButtonVisibilityMenus"
           >
             <template v-for="view in extensionViews" :key="`header-${view.id}`">
@@ -3927,14 +3930,14 @@ const helpBlocked = computed(() => !!(
               v-if="store.workspaceSettings.showGraph && isVisible('graph')"
               type="button"
               class="icon-button"
-              aria-label="打开关系图谱"
-              title="关系图谱"
+              :aria-label="t('打开关系图谱')"
+              :title="t('关系图谱')"
               :aria-pressed="activeId === GRAPH_TAB_ID"
               @click="store.openGraphTab()"
             >
               <GitFork :size="17" :stroke-width="1.6" />
             </button>
-            <button v-if="isVisible('commands')" type="button" class="icon-button" aria-label="打开命令中心" :title="`命令中心 · ${shortcutHint('commandPalette')}`" @click="commandPaletteOpened = true"><Search :size="17" /></button>
+            <button v-if="isVisible('commands')" type="button" class="icon-button" :aria-label="t('打开命令中心')" :title="t('命令中心 · {0}', [shortcutHint('commandPalette')])" @click="commandPaletteOpened = true"><Search :size="17" /></button>
           </ButtonVisibilityGroup>
         </div>
         <SidebarNavigation
@@ -3947,27 +3950,27 @@ const helpBlocked = computed(() => !!(
             v-if="isVisible('repository')"
             type="button"
             class="sidebar-navigation-button"
-            aria-label="仓库"
-            title="仓库"
+            :aria-label="t('仓库')"
+            :title="t('仓库')"
             aria-controls="sidebar-repository-panel"
             :aria-pressed="sidebarView === 'repository'"
             @click="sidebarView = 'repository'"
           >
             <FolderOpen :size="17" :stroke-width="1.8" aria-hidden="true" />
-            <span :aria-hidden="sidebarView !== 'repository'">仓库</span>
+            <span :aria-hidden="sidebarView !== 'repository'">{{ t('仓库') }}</span>
           </button>
           <button
             v-if="store.workspaceSettings.showPlan && isVisible('plan')"
             type="button"
             class="sidebar-navigation-button"
-            aria-label="计划"
-            title="计划"
+            :aria-label="t('计划')"
+            :title="t('计划')"
             aria-controls="sidebar-plan-panel"
             :aria-pressed="sidebarView === 'plan'"
             @click="openCalendar()"
           >
             <CalendarDays :size="18" :stroke-width="1.6" aria-hidden="true" />
-            <span :aria-hidden="sidebarView !== 'plan'">计划</span>
+            <span :aria-hidden="sidebarView !== 'plan'">{{ t('计划') }}</span>
           </button>
           <template v-for="view in extensionViews" :key="view.id">
             <button
@@ -3985,8 +3988,8 @@ const helpBlocked = computed(() => !!(
             </button>
           </template>
           <button v-if="isVisible('plugin-views') && (store.pluginViews.length || store.pluginCommands.length)" type="button" class="sidebar-navigation-button"
-            aria-label="插件工作台" title="插件工作台" :aria-pressed="sidebarView === 'plugin-views'" @click="sidebarView = 'plugin-views'">
-            <Puzzle :size="17" /><span :aria-hidden="sidebarView !== 'plugin-views'">扩展</span>
+            :aria-label="t('插件工作台')" :title="t('插件工作台')" :aria-pressed="sidebarView === 'plugin-views'" @click="sidebarView = 'plugin-views'">
+            <Puzzle :size="17" /><span :aria-hidden="sidebarView !== 'plugin-views'">{{ t('扩展') }}</span>
           </button>
         </SidebarNavigation>
         <PluginSidebar v-if="sidebarView === 'plugin-views'" />
@@ -4002,7 +4005,7 @@ const helpBlocked = computed(() => !!(
             @dragleave="fileDragLeave('', $event)"
             @drop="fileDrop('', $event)"
           >
-            <span v-if="draggedEntry">放到工作区根目录</span>
+            <span v-if="draggedEntry">{{ t('放到工作区根目录') }}</span>
             <WorkspaceSwitcher
               v-else
               :active="sidebar && sidebarView === 'repository' && !workspaceMenu && !modal && !settingsPanel"
@@ -4015,16 +4018,16 @@ const helpBlocked = computed(() => !!(
               :active="sidebar && sidebarView === 'repository'"
               preference-key="tano.preference.repositoryHiddenActions"
               group-class="repository-actions"
-              label="工作区按钮"
-              menu-label="工作区按钮显示设置"
+              :label="t('工作区按钮')"
+              :menu-label="t('工作区按钮显示设置')"
               @open="closeButtonVisibilityMenus"
             >
               <button
                 v-if="isVisible('search')"
                 type="button"
                 class="icon-button"
-                aria-label="查找文档"
-                :title="`查找文档 · ${shortcutHint('findDocument')}`"
+                :aria-label="t('查找文档')"
+                :title="t('查找文档 · {0}', [shortcutHint('findDocument')])"
                 @click="showModal('search')"
               >
                 <Search :size="15" :stroke-width="1.6" />
@@ -4033,8 +4036,8 @@ const helpBlocked = computed(() => !!(
                 v-if="store.workspaceSettings.showPlugins && isVisible('plugins')"
                 type="button"
                 class="icon-button"
-                aria-label="打开插件标签页"
-                title="工作区插件"
+                :aria-label="t('打开插件标签页')"
+                :title="t('工作区插件')"
                 :aria-pressed="activeId === PLUGINS_TAB_ID"
                 @click="store.openPluginsTab()"
               >
@@ -4043,8 +4046,8 @@ const helpBlocked = computed(() => !!(
               <button
                 v-if="isVisible('create')"
                 class="icon-button"
-                aria-label="新建文档"
-                :title="`新建文档 · ${shortcutHint('newDocument')}`"
+                :aria-label="t('新建文档')"
+                :title="t('新建文档 · {0}', [shortcutHint('newDocument')])"
                 :disabled="!workspace || workspace.readOnly || busy"
                 @click="createNewDocument"
               >
@@ -4089,7 +4092,7 @@ const helpBlocked = computed(() => !!(
               class="tree-empty"
               @contextmenu.prevent="openDirectoryContextMenu('', $event)"
             >
-              你的下一页，<br />从一个新文档开始。
+              {{ t('你的下一页，') }}<br />{{ t('从一个新文档开始。') }}
             </div>
           </div>
         </div>
@@ -4118,8 +4121,8 @@ const helpBlocked = computed(() => !!(
             tabindex="-1"
             :aria-label="
               multipleContextEntries
-                ? `${contextEntries.length} 个条目操作`
-                : `${fileContextMenu.file.name} 操作`
+                ? t('{0} 个条目操作', [contextEntries.length])
+                : t('{0} 操作', [fileContextMenu.file.name])
             "
             :style="{ left: `${fileContextMenu.x}px`, top: `${fileContextMenu.y}px` }"
             @keydown="fileContextKeydown"
@@ -4127,7 +4130,7 @@ const helpBlocked = computed(() => !!(
             <PluginMenu v-if="!multipleContextEntries && fileContextMenu.file.kind === 'file'" location="file" :file-id="fileContextMenu.file.id" @selected="closeFileContextMenu()" />
             <template v-if="multipleContextEntries">
               <div class="file-context-count" role="presentation">
-                已选中 {{ contextEntries.length }} 个条目
+                {{ t('已选中') }} {{ contextEntries.length }} {{ t('个条目') }}
               </div>
               <button
                 v-if="!mobile && localNative"
@@ -4135,17 +4138,17 @@ const helpBlocked = computed(() => !!(
                 :disabled="selectionDeleteDisabled"
                 @click="fileContextAction('duplicate')"
               >
-                <Copy :size="15" />为所选条目创建副本
+                <Copy :size="15" />{{ t('为所选条目创建副本') }}
               </button>
               <button role="menuitem" @click="fileContextAction('copy')">
-                <Copy :size="15" />复制相对路径
+                <Copy :size="15" />{{ t('复制相对路径') }}
               </button>
               <button
                 v-if="localNative && !mobile"
                 role="menuitem"
                 @click="fileContextAction('copy-full-path')"
               >
-                <Copy :size="15" />复制完整路径
+                <Copy :size="15" />{{ t('复制完整路径') }}
               </button>
               <div class="menu-divider" role="separator" />
               <button
@@ -4156,10 +4159,10 @@ const helpBlocked = computed(() => !!(
               >
                 <Trash2 :size="15" />{{
                   store.isDemo
-                    ? '删除所选条目'
+                    ? t('删除所选条目')
                     : store.isWeb
-                      ? '删除所选文档'
-                      : '将所选条目移入回收站'
+                      ? t('删除所选文档')
+                      : t('将所选条目移入回收站')
                 }}
               </button>
             </template>
@@ -4170,17 +4173,17 @@ const helpBlocked = computed(() => !!(
                   :disabled="fileMutationDisabled(fileContextMenu.file)"
                   @click="fileContextAction('document')"
                 >
-                  <FileText :size="15" />在此新建文档
+                  <FileText :size="15" />{{ t('在此新建文档') }}
                 </button>
                 <button role="menuitem" :disabled="fileMutationDisabled(fileContextMenu.file)" @click="fileContextAction('table')">
-                  <Table2 :size="15" />在此新建数据表
+                  <Table2 :size="15" />{{ t('在此新建数据表') }}
                 </button>
                 <button
                   role="menuitem"
                   :disabled="fileMutationDisabled(fileContextMenu.file)"
                   @click="fileContextAction('folder')"
                 >
-                  <FolderPlus :size="15" />在此新建文件夹
+                  <FolderPlus :size="15" />{{ t('在此新建文件夹') }}
                 </button>
                 <button
                   role="menuitem"
@@ -4190,7 +4193,7 @@ const helpBlocked = computed(() => !!(
                   "
                   @click="fileContextAction('rename')"
                 >
-                  <Pencil :size="15" />重命名文件夹
+                  <Pencil :size="15" />{{ t('重命名文件夹') }}
                 </button>
               </template>
               <template v-else>
@@ -4200,7 +4203,7 @@ const helpBlocked = computed(() => !!(
                   @click="fileContextAction('open')"
                 >
                   <FileText :size="15" />{{
-                    isDataTableFilePath(fileContextMenu.file.path) ? '打开数据表' : isMarkdown(fileContextMenu.file.path) ? '打开文档' : '打开附件'
+                    isDataTableFilePath(fileContextMenu.file.path) ? t('打开数据表') : isMarkdown(fileContextMenu.file.path) ? t('打开文档') : t('打开附件')
                   }}
                 </button>
                 <button
@@ -4208,7 +4211,7 @@ const helpBlocked = computed(() => !!(
                   role="menuitem"
                   @click="fileContextAction('open-new-tab')"
                 >
-                  <ExternalLink :size="15" />在新标签页中打开
+                  <ExternalLink :size="15" />{{ t('在新标签页中打开') }}
                 </button>
                 <button
                   v-if="isMarkdown(fileContextMenu.file.path)"
@@ -4216,7 +4219,7 @@ const helpBlocked = computed(() => !!(
                   :disabled="fileMutationDisabled(fileContextMenu.file)"
                   @click="fileContextAction('rename')"
                 >
-                  <Pencil :size="15" />重命名文档
+                  <Pencil :size="15" />{{ t('重命名文档') }}
                 </button>
                 <button
                   v-else-if="attachments || isDataTableFilePath(fileContextMenu.file.path)"
@@ -4224,7 +4227,7 @@ const helpBlocked = computed(() => !!(
                   :disabled="fileMutationDisabled(fileContextMenu.file)"
                   @click="fileContextAction('rename')"
                 >
-                  <Pencil :size="15" />重命名文件
+                  <Pencil :size="15" />{{ t('重命名文件') }}
                 </button>
               </template>
               <button
@@ -4233,17 +4236,17 @@ const helpBlocked = computed(() => !!(
                 :disabled="fileMutationDisabled(fileContextMenu.file)"
                 @click="fileContextAction('duplicate')"
               >
-                <Copy :size="15" />创建副本
+                <Copy :size="15" />{{ t('创建副本') }}
               </button>
               <button role="menuitem" @click="fileContextAction('copy')">
-                <Copy :size="15" />复制相对路径
+                <Copy :size="15" />{{ t('复制相对路径') }}
               </button>
               <button
                 v-if="store.isWeb && fileContextMenu.file.kind === 'file' && (isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path))"
                 role="menuitem"
                 @click="fileContextAction('copy-link')"
               >
-                <Link :size="15" />复制链接
+                <Link :size="15" />{{ t('复制链接') }}
               </button>
               <button
                 v-if="localNative && !mobile"
@@ -4251,16 +4254,16 @@ const helpBlocked = computed(() => !!(
                 @click="fileContextAction('copy-full-path')"
               >
                 <Copy :size="15" />{{
-                  fileContextMenu.file.kind === 'directory' ? '复制文件夹路径' : '复制文件路径'
+                  fileContextMenu.file.kind === 'directory' ? t('复制文件夹路径') : t('复制文件路径')
                 }}
               </button>
               <template v-if="localNative && !mobile">
                 <div class="menu-divider" role="separator" />
                 <button role="menuitem" @click="fileContextAction('open-default')">
-                  <ArrowUpRight :size="15" />使用默认应用打开
+                  <ArrowUpRight :size="15" />{{ t('使用默认应用打开') }}
                 </button>
                 <button role="menuitem" @click="fileContextAction('reveal-entry')">
-                  <ArrowUpRight :size="15" />在系统资源管理器中显示
+                  <ArrowUpRight :size="15" />{{ t('在系统资源管理器中显示') }}
                 </button>
               </template>
               <template v-if="!fileDeleteDisabled(fileContextMenu.file) || !store.isWeb">
@@ -4273,12 +4276,12 @@ const helpBlocked = computed(() => !!(
                 >
                   <Trash2 :size="15" />{{
                     store.isDemo
-                      ? '删除'
+                      ? t('删除')
                       : store.isWeb
                         ? fileContextMenu.file.kind === 'directory'
-                          ? '删除在线文件夹'
-                          : '删除在线文档'
-                        : '移入回收站'
+                          ? t('删除在线文件夹')
+                          : t('删除在线文档')
+                        : t('移入回收站')
                   }}
                 </button>
               </template>
@@ -4291,7 +4294,7 @@ const helpBlocked = computed(() => !!(
             class="dropdown compact-action-menu file-context-menu directory-context-menu"
             role="menu"
             tabindex="-1"
-            aria-label="目录操作"
+            :aria-label="t('目录操作')"
             :style="{ left: `${directoryContextMenu.x}px`, top: `${directoryContextMenu.y}px` }"
             @keydown="fileContextKeydown"
           >
@@ -4300,17 +4303,17 @@ const helpBlocked = computed(() => !!(
               :disabled="!workspace || workspace.readOnly || busy"
               @click="directoryContextAction('document')"
             >
-              <FileText :size="15" />新建文档
+              <FileText :size="15" />{{ t('新建文档') }}
             </button>
             <button role="menuitem" :disabled="!workspace || workspace.readOnly || busy" @click="directoryContextAction('table')">
-              <Table2 :size="15" />新建数据表
+              <Table2 :size="15" />{{ t('新建数据表') }}
             </button>
             <button
               role="menuitem"
               :disabled="!workspace || workspace.readOnly || busy"
               @click="directoryContextAction('folder')"
             >
-              <FolderPlus :size="15" />新建文件夹
+              <FolderPlus :size="15" />{{ t('新建文件夹') }}
             </button>
             <button
               v-if="!directoryContextMenu.parent"
@@ -4318,7 +4321,7 @@ const helpBlocked = computed(() => !!(
               :disabled="!workspace || workspace.readOnly || busy"
               @click="directoryContextAction('import')"
             >
-              <ArrowDownToLine :size="15" />导入
+              <ArrowDownToLine :size="15" />{{ t('导入') }}
             </button>
             <template v-if="directoryContextMenu.parent">
               <button
@@ -4326,10 +4329,10 @@ const helpBlocked = computed(() => !!(
                 :disabled="directoryContextDuplicateDisabled()"
                 @click="directoryContextAction('duplicate')"
               >
-                <Copy :size="15" />创建副本
+                <Copy :size="15" />{{ t('创建副本') }}
               </button>
               <button role="menuitem" @click="directoryContextAction('copy')">
-                <Copy :size="15" />复制相对路径
+                <Copy :size="15" />{{ t('复制相对路径') }}
               </button>
               <div class="menu-divider" role="separator" />
               <button
@@ -4337,7 +4340,7 @@ const helpBlocked = computed(() => !!(
                 :disabled="directoryContextRenameDisabled()"
                 @click="directoryContextAction('rename')"
               >
-                <Pencil :size="15" />重命名文件夹
+                <Pencil :size="15" />{{ t('重命名文件夹') }}
               </button>
               <button
                 class="danger-text"
@@ -4346,7 +4349,7 @@ const helpBlocked = computed(() => !!(
                 @click="directoryContextAction('delete')"
               >
                 <Trash2 :size="15" />{{
-                  store.isDemo ? '删除文件夹' : store.isWeb ? '删除在线文件夹' : '将文件夹移入回收站'
+                  store.isDemo ? t('删除文件夹') : store.isWeb ? t('删除在线文件夹') : t('将文件夹移入回收站')
                 }}
               </button>
             </template>
@@ -4359,7 +4362,7 @@ const helpBlocked = computed(() => !!(
             class="dropdown compact-action-menu file-context-menu workspace-entry-context-menu"
             role="menu"
             tabindex="-1"
-            :aria-label="`${workspaceEntryContextMenu.item.name} 工作区操作`"
+            :aria-label="t('{0} 工作区操作', [workspaceEntryContextMenu.item.name])"
             :style="{ left: `${workspaceEntryContextMenu.x}px`, top: `${workspaceEntryContextMenu.y}px` }"
             @keydown="workspaceEntryContextKeydown"
           >
@@ -4368,7 +4371,7 @@ const helpBlocked = computed(() => !!(
               :disabled="busy"
               @click="workspaceEntryContextAction('open')"
             >
-              <FolderOpen :size="15" />打开工作区
+              <FolderOpen :size="15" />{{ t('打开工作区') }}
               <Check
                 v-if="workspaceEntryContextMenu.item.id === workspace?.id"
                 class="workspace-entry-context-check"
@@ -4382,10 +4385,10 @@ const helpBlocked = computed(() => !!(
                 :disabled="busy"
                 @click="workspaceEntryContextAction('reveal')"
               >
-                <ExternalLink :size="15" />在资源管理器中显示
+                <ExternalLink :size="15" />{{ t('在资源管理器中显示') }}
               </button>
               <button v-if="!store.isWeb" role="menuitem" :disabled="busy" @click="workspaceEntryContextAction('leave')">
-                <LogOut :size="15" />退出当前工作区
+                <LogOut :size="15" />{{ t('退出当前工作区') }}
               </button>
             </template>
           </div>
@@ -4396,14 +4399,14 @@ const helpBlocked = computed(() => !!(
               class="workspace-picker"
               :aria-expanded="workspaceMenu"
               aria-controls="workspace-menu"
-              aria-label="切换工作区"
-              :title="workspace?.name ?? '选择工作区'"
+              :aria-label="t('切换工作区')"
+              :title="workspace?.name ?? t('选择工作区')"
               @click="toggleWorkspaceMenu"
               @contextmenu.stop.prevent="toggleWorkspaceMenu"
             >
               <span class="workspace-avatar"><WorkspaceIcon :icon="store.workspaceSettings.icon" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" :size="15" /></span>
               <span class="workspace-picker-text"
-                ><strong>{{ workspace?.name ?? '选择工作区' }}</strong></span
+                ><strong>{{ workspace?.name ?? t('选择工作区') }}</strong></span
               >
               <component :is="workspaceMenu ? ChevronUp : ChevronDown" :size="12" />
             </button>
@@ -4416,23 +4419,23 @@ const helpBlocked = computed(() => !!(
               <div class="workspace-menu-summary">
                 <span class="workspace-menu-avatar"><WorkspaceIcon :icon="store.workspaceSettings.icon" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" :size="16" /></span>
                 <span class="workspace-menu-summary-text">
-                  <strong>{{ workspace?.name ?? '选择工作区' }}</strong>
+                  <strong>{{ workspace?.name ?? t('选择工作区') }}</strong>
                   <small>{{
                     store.isDemo
-                      ? '浏览器演示'
+                      ? t('浏览器演示')
                       : store.isWeb
                         ? workspace?.readOnly
-                          ? '在线工作区 · 只读'
-                          : '在线工作区'
-                        : '本地工作区'
+                          ? t('在线工作区 · 只读')
+                          : t('在线工作区')
+                        : t('本地工作区')
                   }}</small>
                 </span>
                 <button
                   v-if="!store.isWeb && workspace && !extensions.regions['workspace-menu-layout']"
                   class="workspace-menu-exit"
                   type="button"
-                  aria-label="退出当前工作区"
-                  title="退出当前工作区"
+                  :aria-label="t('退出当前工作区')"
+                  :title="t('退出当前工作区')"
                   :disabled="busy"
                   @click="leaveWorkspace"
                 >
@@ -4457,7 +4460,7 @@ const helpBlocked = computed(() => !!(
                 :actions="extensionActions"
               />
               <button v-if="workspace" role="menuitem" :disabled="workspace.readOnly || busy" @click="openImport">
-                <ArrowDownToLine :size="16" />导入
+                <ArrowDownToLine :size="16" />{{ t('导入') }}
               </button>
               <button
                 v-if="workspace"
@@ -4468,12 +4471,12 @@ const helpBlocked = computed(() => !!(
                   openTemplateLibrary();
                 "
               >
-                <Files :size="16" />文档模板
+                <Files :size="16" />{{ t('文档模板') }}
               </button>
-              <button role="menuitem" @click="showObjects()"><Users :size="16" />工作区对象</button>
+              <button role="menuitem" @click="showObjects()"><Users :size="16" />{{ t('工作区对象') }}</button>
               <button role="menuitem" @click="openSettings('about')">
-                <CircleHelp :size="16" />关于 Tano / 同页{{
-                  updates.state.candidate ? ' · 有新版本' : ''
+                <CircleHelp :size="16" />{{ t('关于 Tano / 同页') }}{{
+                  updates.state.candidate ? t(' · 有新版本') : ''
                 }}
               </button>
               <div v-if="extensions.regions['account-note']" class="menu-divider" />
@@ -4504,7 +4507,7 @@ const helpBlocked = computed(() => !!(
                   recyclePanel = true;
                 "
               >
-                <Trash2 :size="16" />手机回收站
+                <Trash2 :size="16" />{{ t('手机回收站') }}
               </button>
               <button
                 v-if="workspace"
@@ -4514,7 +4517,7 @@ const helpBlocked = computed(() => !!(
                   agentPanel = true;
                 "
               >
-                <Bot :size="16" />与 Agent 一起工作
+                <Bot :size="16" />{{ t('与 Agent 一起工作') }}
               </button>
               <component
                 :is="extensions.regions['workspace-history']"
@@ -4532,7 +4535,7 @@ const helpBlocked = computed(() => !!(
                 :disabled="busy"
                 @click="leaveWorkspace"
               >
-                <LogOut :size="16" />退出当前工作区
+                <LogOut :size="16" />{{ t('退出当前工作区') }}
               </button>
               </template>
               <template #workspaces>
@@ -4550,7 +4553,7 @@ const helpBlocked = computed(() => !!(
                     store.isDemo ? openSettings('about') : store.openWorkspace();
                   "
                 >
-                  <FolderOpen :size="16" />{{ store.isDemo ? '了解演示存储' : '打开默认手机空间' }}
+                  <FolderOpen :size="16" />{{ store.isDemo ? t('了解演示存储') : t('打开默认手机空间') }}
                 </button>
                 <component
                   :is="extensions.regions['local-menu-login']"
@@ -4558,18 +4561,18 @@ const helpBlocked = computed(() => !!(
                   :actions="extensionActions"
                 />
                 <button v-if="mobile" :disabled="busy" @click="createNewWorkspace">
-                  <FolderPlus :size="16" />新建手机空间
+                  <FolderPlus :size="16" />{{ t('新建手机空间') }}
                 </button>
                 <template v-if="store.recent.length || (!store.isDemo && !mobile)">
                   <div class="menu-divider" />
                   <div class="workspace-recent-heading">
-                    <span class="recent-label">{{ store.isDemo ? '最近工作空间' : '本地工作区' }}</span>
+                    <span class="recent-label">{{ store.isDemo ? t('最近工作空间') : t('本地工作区') }}</span>
                     <button
                       v-if="!store.isDemo && !mobile"
                       type="button"
                       class="workspace-recent-open"
-                      aria-label="打开新的本地文件夹"
-                      title="打开新的本地文件夹"
+                      :aria-label="t('打开新的本地文件夹')"
+                      :title="t('打开新的本地文件夹')"
                       :disabled="busy"
                       @click="
                         workspaceMenu = false;
@@ -4625,7 +4628,7 @@ const helpBlocked = computed(() => !!(
           v-if="!compactPanes"
           class="sidebar-resize-handle"
           role="separator"
-          aria-label="调整侧栏宽度"
+          :aria-label="t('调整侧栏宽度')"
           aria-orientation="vertical"
           :aria-valuenow="sidebarWidth ?? defaultSidebarWidth()"
           :aria-valuemin="SIDEBAR_MIN_WIDTH"
@@ -4679,8 +4682,8 @@ const helpBlocked = computed(() => !!(
               "
               class="desktop-sidebar-toggle"
               type="button"
-              aria-label="展开侧栏"
-              :title="`展开侧栏 · ${shortcutHint('toggleSidebar')}`"
+              :aria-label="t('展开侧栏')"
+              :title="t('展开侧栏 · {0}', [shortcutHint('toggleSidebar')])"
               @click="toggleSidebar"
             >
               <PanelLeftOpen :size="17" />
@@ -4705,7 +4708,7 @@ const helpBlocked = computed(() => !!(
               v-if="native && !mobile"
               v-show="rect.top === 0"
               class="workspace-window-drag"
-              title="拖动窗口"
+              :title="t('拖动窗口')"
               @mousedown="dragPaneWindow"
               @dblclick="maximizePaneWindow"
             />
@@ -4733,7 +4736,7 @@ const helpBlocked = computed(() => !!(
           >
             <template #navigation>
               <div v-if="!sidebar && !(native && !mobile && workspace)" class="topbar-navigation">
-                <button type="button" class="icon-button" aria-label="展开侧栏" :title="`展开侧栏 · ${shortcutHint('toggleSidebar')}`" @click="toggleSidebar"><PanelLeftOpen :size="18" /></button>
+                <button type="button" class="icon-button" :aria-label="t('展开侧栏')" :title="t('展开侧栏 · {0}', [shortcutHint('toggleSidebar')])" @click="toggleSidebar"><PanelLeftOpen :size="18" /></button>
               </div>
             </template>
           </TemplateLibrary>
@@ -4753,8 +4756,8 @@ const helpBlocked = computed(() => !!(
               preference-key="tano.preference.documentHiddenTools"
               tag="header"
               :group-class="pane.activeId === GRAPH_TAB_ID ? 'topbar graph-topbar' : 'topbar'"
-              :label="pane.activeId === GRAPH_TAB_ID ? '图谱顶部栏' : '文档顶部栏'"
-              menu-label="顶部栏显示设置"
+              :label="pane.activeId === GRAPH_TAB_ID ? t('图谱顶部栏') : t('文档顶部栏')"
+              :menu-label="t('顶部栏显示设置')"
               @open="closeButtonVisibilityMenus"
             >
               <div
@@ -4764,14 +4767,14 @@ const helpBlocked = computed(() => !!(
                 "
                 class="topbar-navigation"
                 role="group"
-                :aria-label="pane.activeId === GRAPH_TAB_ID ? '图谱导航' : '文档导航'"
+                :aria-label="pane.activeId === GRAPH_TAB_ID ? t('图谱导航') : t('文档导航')"
               >
                 <button
                   v-if="!sidebar && !(native && !mobile && workspace)"
                   type="button"
                   class="icon-button"
-                  aria-label="展开侧栏"
-                  :title="`展开侧栏 · ${shortcutHint('toggleSidebar')}`"
+                  :aria-label="t('展开侧栏')"
+                  :title="t('展开侧栏 · {0}', [shortcutHint('toggleSidebar')])"
                   @click="toggleSidebar"
                 >
                   <PanelLeftOpen :size="18" />
@@ -4780,8 +4783,8 @@ const helpBlocked = computed(() => !!(
                   v-if="native && !tabsEnabled && isVisible('back')"
                   type="button"
                   class="icon-button"
-                  aria-label="后退"
-                  title="后退"
+                  :aria-label="t('后退')"
+                  :title="t('后退')"
                   :disabled="!canNavigatePage(-1)"
                   @click="navigatePage(-1)"
                 >
@@ -4791,8 +4794,8 @@ const helpBlocked = computed(() => !!(
                   v-if="native && !tabsEnabled && isVisible('forward')"
                   type="button"
                   class="icon-button"
-                  aria-label="前进"
-                  title="前进"
+                  :aria-label="t('前进')"
+                  :title="t('前进')"
                   :disabled="!canNavigatePage(1)"
                   @click="navigatePage(1)"
                 >
@@ -4800,7 +4803,7 @@ const helpBlocked = computed(() => !!(
                 </button>
               </div>
               <WorkspaceBreadcrumb
-                :perch="{ id: `breadcrumb:${paneButterflyScope(pane.id, pane.activeId)}`, scope: paneButterflyScope(pane.id, pane.activeId), label: '面包屑', kind: 'component' }"
+                :perch="{ id: `breadcrumb:${paneButterflyScope(pane.id, pane.activeId)}`, scope: paneButterflyScope(pane.id, pane.activeId), label: t('面包屑'), kind: 'component' }"
                 v-if="
                   isVisible('breadcrumb') &&
                   pane.activeId !== CALENDAR_TAB_ID &&
@@ -4817,7 +4820,7 @@ const helpBlocked = computed(() => !!(
                 <template v-if="tab?.pluginView"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">{{ tab.pluginView.label }}</span></template>
                 <template v-if="pane.activeId === PLUGINS_TAB_ID"
                   ><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current"
-                    >插件</span
+                    >{{ t('插件') }}</span
                   ></template
                 ><template
                   v-for="view in extensionViews.filter((view) => view.id === pane.activeId)"
@@ -4830,7 +4833,7 @@ const helpBlocked = computed(() => !!(
               </WorkspaceBreadcrumb>
               <div class="topbar-right">
                 <button v-if="active && touchLayout && showOutline" type="button" class="icon-button"
-                  aria-label="文档大纲" :aria-expanded="touchOutlineOpen"
+                  :aria-label="t('文档大纲')" :aria-expanded="touchOutlineOpen"
                   @click="panel = 'outline'; touchOutlineOpen = !touchOutlineOpen">
                   <List :size="18" />
                 </button>
@@ -4838,15 +4841,15 @@ const helpBlocked = computed(() => !!(
                   v-if="tab?.attachment && attachments && isVisible('attachment-export')"
                   type="button"
                   class="topbar-attachment-action"
-                  aria-label="导出附件"
-                  title="导出附件副本"
+                  :aria-label="t('导出附件')"
+                  :title="t('导出附件副本')"
                   @click="
                     attachments
                       .exportAttachment(workspace!.id, tab.attachment.path)
                       .catch(store.report)
                   "
                 >
-                  <ArrowDownToLine :size="16" /><span>导出</span>
+                  <ArrowDownToLine :size="16" /><span>{{ t('导出') }}</span>
                 </button>
                 <component
                   :is="extensions.regions['editing-status']"
@@ -4866,7 +4869,7 @@ const helpBlocked = computed(() => !!(
                       pane.activeId === GRAPH_TAB_ID)
                   "
                   :class="store.isDemo ? 'demo-badge' : 'local-badge'"
-                  :title="store.isDemo ? '浏览器演示 · 数据仅保存在本浏览器' : undefined"
+                  :title="store.isDemo ? t('浏览器演示 · 数据仅保存在本浏览器') : undefined"
                 >
                   <LockKeyhole v-if="workspace?.readOnly" :size="14" />
                   {{ workspaceStatusLabel }}
@@ -4887,7 +4890,7 @@ const helpBlocked = computed(() => !!(
                   "
                   class="calendar-topbar-controls"
                   role="group"
-                  aria-label="日历导航"
+                  :aria-label="t('日历导航')"
                 >
                   <span v-if="isVisible('calendar-period')" class="calendar-topbar-period">{{
                     calendarPeriod
@@ -4898,14 +4901,14 @@ const helpBlocked = computed(() => !!(
                     class="calendar-topbar-today"
                     @click="calendarDate = new Date()"
                   >
-                    今天
+                    {{ t('今天') }}
                   </button>
                   <button
                     v-if="isVisible('calendar-previous')"
                     type="button"
                     class="icon-button"
-                    aria-label="上一时段"
-                    title="上一时段"
+                    :aria-label="t('上一时段')"
+                    :title="t('上一时段')"
                     @click="moveCalendarPeriod(-1)"
                   >
                     <ChevronLeft :size="17" />
@@ -4914,8 +4917,8 @@ const helpBlocked = computed(() => !!(
                     v-if="isVisible('calendar-next')"
                     type="button"
                     class="icon-button"
-                    aria-label="下一时段"
-                    title="下一时段"
+                    :aria-label="t('下一时段')"
+                    :title="t('下一时段')"
                     @click="moveCalendarPeriod(1)"
                   >
                     <ChevronRight :size="17" />
@@ -4928,8 +4931,8 @@ const helpBlocked = computed(() => !!(
                     <button
                       type="button"
                       class="calendar-topbar-mode"
-                      aria-label="切换日历视图"
-                      title="Ctrl + 滚轮：切换日历视图"
+                      :aria-label="t('切换日历视图')"
+                      :title="t('Ctrl + 滚轮：切换日历视图')"
                       aria-haspopup="menu"
                       :aria-expanded="calendarModeOpen"
                       @click="calendarModeOpen = !calendarModeOpen"
@@ -4940,7 +4943,7 @@ const helpBlocked = computed(() => !!(
                       v-if="calendarModeOpen"
                       class="calendar-view-menu"
                       role="menu"
-                      aria-label="日历视图"
+                      :aria-label="t('日历视图')"
                     >
                       <button
                         v-for="option in calendarModeOptions"
@@ -4958,16 +4961,16 @@ const helpBlocked = computed(() => !!(
                     v-if="isVisible('calendar-events')"
                     type="button"
                     class="calendar-topbar-events"
-                    title="查看和管理事件"
+                    :title="t('查看和管理事件')"
                     @click="managePlanEvents"
                   >
-                    <CalendarDays :size="15" />管理事件
+                    <CalendarDays :size="15" />{{ t('管理事件') }}
                   </button>
                 </div>
                 <div v-if="active && documentSuggestions.get(active.id)?.mode && !editing.isManaging(active.id)"
-                  class="suggestion-mode-badge" role="status" aria-label="建议模式已开启">
-                  <MessageSquareDiff :size="14" /><span>建议模式</span>
-                  <button type="button" aria-label="退出建议模式" title="退出建议模式"
+                  class="suggestion-mode-badge" role="status" :aria-label="t('建议模式已开启')">
+                  <MessageSquareDiff :size="14" /><span>{{ t('建议模式') }}</span>
+                  <button type="button" :aria-label="t('退出建议模式')" :title="t('退出建议模式')"
                     :disabled="suggestionModeBusy || documentSuggestions.get(active.id)?.reviewing"
                     @click="toggleSuggestionMode(active.id)"><X :size="14" /></button>
                 </div>
@@ -4990,14 +4993,14 @@ const helpBlocked = computed(() => !!(
                         editing.isManaging(pane.activeId) ||
                         (pane.id === store.activePaneId && editing.activeBusy)
                       "
-                      :aria-label="paneSource(pane.activeId) ? '返回编辑' : '切换源码模式'"
+                      :aria-label="paneSource(pane.activeId) ? t('返回编辑') : t('切换源码模式')"
                       :aria-pressed="paneSource(pane.activeId)"
                       :title="
                         editing.isManaging(pane.activeId)
-                          ? '当前编辑扩展不支持切换源码模式'
+                          ? t('当前编辑扩展不支持切换源码模式')
                           : paneSource(pane.activeId)
-                            ? '返回编辑'
-                            : '切换源码模式'
+                            ? t('返回编辑')
+                            : t('切换源码模式')
                       "
                       @click="setPaneSource(pane.activeId, !paneSource(pane.activeId))"
                     >
@@ -5007,8 +5010,8 @@ const helpBlocked = computed(() => !!(
                   <div class="menu-wrap">
                     <button
                       class="icon-button"
-                      aria-label="文档操作"
-                      v-butterfly-perch="{ id: `document-actions:${paneButterflyScope(pane.id, pane.activeId)}`, scope: paneButterflyScope(pane.id, pane.activeId), label: '文档操作按钮', kind: 'component' }"
+                      :aria-label="t('文档操作')"
+                      v-butterfly-perch="{ id: `document-actions:${paneButterflyScope(pane.id, pane.activeId)}`, scope: paneButterflyScope(pane.id, pane.activeId), label: t('文档操作按钮'), kind: 'component' }"
                       :aria-expanded="menu && pane.id === store.activePaneId"
                       @click="toggleDocumentMenu"
                       @keydown="documentMenuTriggerKeydown"
@@ -5025,26 +5028,26 @@ const helpBlocked = computed(() => !!(
                       <button type="button"
                         :disabled="editorReadonly || !!editing.active || editing.activeBusy || !paneComments.has(store.activePaneId)"
                         @click="openDocumentDiscussion">
-                        <MessageSquare :size="15" />发起讨论
+                        <MessageSquare :size="15" />{{ t('发起讨论') }}
                       </button>
                       <button type="button"
                         :disabled="suggestionModeBusy || (!documentSuggestions.get(active.id)?.mode && (paneReadonly(active) || editing.isManaging(active.id) || editing.activeBusy)) || documentSuggestions.get(active.id)?.loading || documentSuggestions.get(active.id)?.reviewing"
                         @click="toggleSuggestionMode(active.id)">
-                        <MessageSquareDiff :size="15" />{{ documentSuggestions.get(active.id)?.mode ? '退出建议模式' : '建议编辑' }}
+                        <MessageSquareDiff :size="15" />{{ documentSuggestions.get(active.id)?.mode ? t('退出建议模式') : t('建议编辑') }}
                       </button>
                       <button
                         type="button"
                         :disabled="editorReadonly || !documentUndoAvailable"
                         @click="undoDocument"
                       >
-                        <Undo2 :size="15" />撤销<span class="menu-shortcut">Ctrl Z</span>
+                        <Undo2 :size="15" />{{ t('撤销') }}<span class="menu-shortcut">Ctrl Z</span>
                       </button>
                       <button
                         type="button"
                         :disabled="editorReadonly || !documentRedoAvailable"
                         @click="redoDocument"
                       >
-                        <Redo2 :size="15" />重做<span class="menu-shortcut">Ctrl Y</span>
+                        <Redo2 :size="15" />{{ t('重做') }}<span class="menu-shortcut">Ctrl Y</span>
                       </button>
                       <button
                         @click="
@@ -5052,7 +5055,7 @@ const helpBlocked = computed(() => !!(
                           store.flush();
                         "
                       >
-                        <CheckCheck :size="15" />立即保存<span class="menu-shortcut">{{ shortcutHint('save') }}</span>
+                        <CheckCheck :size="15" />{{ t('立即保存') }}<span class="menu-shortcut">{{ shortcutHint('save') }}</span>
                       </button>
                       <button
                         class="danger-text"
@@ -5065,17 +5068,17 @@ const helpBlocked = computed(() => !!(
                       >
                         <Trash2 :size="15" />{{
                           store.isDemo
-                            ? '删除演示文档'
+                            ? t('删除演示文档')
                             : store.isWeb
-                              ? '删除在线文档'
-                              : '移入回收站'
+                              ? t('删除在线文档')
+                              : t('移入回收站')
                         }}
                       </button>
                       <button type="button" @click="openPaneSearch(pane.id)">
-                        <Search :size="15" />页内搜索<span class="menu-shortcut">{{ shortcutHint('pageSearch') }}</span>
+                        <Search :size="15" />{{ t('页内搜索') }}<span class="menu-shortcut">{{ shortcutHint('pageSearch') }}</span>
                       </button>
                       <button type="button" @click="openPaneSearch(pane.id, true)">
-                        <Repeat2 :size="15" />查找与替换<span class="menu-shortcut">{{ shortcutHint('pageReplace') }}</span>
+                        <Repeat2 :size="15" />{{ t('查找与替换') }}<span class="menu-shortcut">{{ shortcutHint('pageReplace') }}</span>
                       </button>
                       <button
                         type="button"
@@ -5083,7 +5086,7 @@ const helpBlocked = computed(() => !!(
                         :aria-expanded="referenceGraphOpened"
                         @click="showReferenceGraph(pane.id, active!)"
                       >
-                        <GitFork :size="15" />查看关系图谱
+                        <GitFork :size="15" />{{ t('查看关系图谱') }}
                       </button>
                       <div class="menu-divider" role="separator" />
                       <button
@@ -5092,10 +5095,10 @@ const helpBlocked = computed(() => !!(
                         role="switch"
                         :aria-checked="!limitPageWidth"
                         :disabled="!pageWidthWritable"
-                        title="切换页面内容宽度"
+                        :title="t('切换页面内容宽度')"
                         @click="setLimitPageWidth(!limitPageWidth)"
                       >
-                        <MoveHorizontal :size="15" />全宽<span
+                        <MoveHorizontal :size="15" />{{ t('全宽') }}<span
                           class="menu-switch"
                           :class="{ on: !limitPageWidth }"
                           aria-hidden="true"
@@ -5107,10 +5110,10 @@ const helpBlocked = computed(() => !!(
                         class="page-toggle-menu-item"
                         role="switch"
                         :aria-checked="showOutline"
-                        title="切换文档目录显示"
+                        :title="t('切换文档目录显示')"
                         @click="showOutline = !showOutline"
                       >
-                        <List :size="15" />显示目录<span
+                        <List :size="15" />{{ t('显示目录') }}<span
                           class="menu-switch"
                           :class="{ on: showOutline }"
                           aria-hidden="true"
@@ -5123,10 +5126,10 @@ const helpBlocked = computed(() => !!(
                         class="page-toggle-menu-item"
                         role="switch"
                         :aria-checked="pageLocked"
-                        :title="pageLocked ? '退出阅读模式' : '锁定后进入阅读模式'"
+                        :title="pageLocked ? t('退出阅读模式') : t('锁定后进入阅读模式')"
                         @click="togglePageLock"
                       >
-                        <LockKeyhole :size="15" />锁定页面<span
+                        <LockKeyhole :size="15" />{{ t('锁定页面') }}<span
                           class="menu-switch"
                           :class="{ on: pageLocked }"
                           aria-hidden="true"
@@ -5141,7 +5144,7 @@ const helpBlocked = computed(() => !!(
                           historyPanel = true;
                         "
                       >
-                        <Archive :size="15" />版本历史<span class="menu-beta">Beta</span>
+                        <Archive :size="15" />{{ t('版本历史') }}<span class="menu-beta">Beta</span>
                       </button>
                       <button
                         @click="
@@ -5150,7 +5153,7 @@ const helpBlocked = computed(() => !!(
                           historyPanel = true;
                         "
                       >
-                        <Clock3 :size="15" />更新历史
+                        <Clock3 :size="15" />{{ t('更新历史') }}
                       </button>
                       <div class="menu-divider" role="separator" />
                       <DocumentExportMenu :disabled="exportBusy" @select="exportDocument" />
@@ -5177,7 +5180,7 @@ const helpBlocked = computed(() => !!(
               <AssistantLauncher
                 v-if="assistant.available && !assistant.opened"
                 :scope="paneButterflyScope(pane.id, pane.activeId)"
-                context-label="聊聊这张数据表"
+                :context-label="t('聊聊这张数据表')"
                 :busy="assistant.busy || assistant.applying"
                 @open="openAssistant(pane.id, pane.activeId, { forcePanel: true })"
               />
@@ -5211,10 +5214,10 @@ const helpBlocked = computed(() => !!(
             >
               <div class="plugins-tab-content">
                 <p v-if="!store.capabilities.features.objectReferences" class="tool-level-notice">
-                  Level 2 已关闭，插件对象和关系暂时只读。可在工作区设置中重新启用。
+                  {{ t('Level 2 已关闭，插件对象和关系暂时只读。可在工作区设置中重新启用。') }}
                 </p>
                 <p v-else-if="workspace.readOnly" class="tool-level-notice">
-                  此工作区为只读，无法修改对象和关系。
+                  {{ t('此工作区为只读，无法修改对象和关系。') }}
                 </p>
                 <PluginInstaller @objects="showObjects()">
                   <template v-if="extensions.regions['plugin-publishing']" #publishing>
@@ -5280,8 +5283,8 @@ const helpBlocked = computed(() => !!(
                           v-if="showSourceTodo(pane.id, active!)"
                           type="button"
                           class="icon-button"
-                          aria-label="从选区创建 Todo"
-                          title="从选区创建 Todo"
+                          :aria-label="t('从选区创建 Todo')"
+                          :title="t('从选区创建 Todo')"
                           @mousedown.prevent
                           @click="beginSelectionTodo(pane.id, active!.id)"
                         >
@@ -5293,8 +5296,8 @@ const helpBlocked = computed(() => !!(
                           :items="documentToolItems"
                           preference-key="tano.preference.documentHiddenTools"
                           group-class="detached-editor-actions document-tool-buttons"
-                          label="文档工具"
-                          menu-label="文档工具按钮显示设置"
+                          :label="t('文档工具')"
+                          :menu-label="t('文档工具按钮显示设置')"
                           @open="closeButtonVisibilityMenus"
                         >
                           <MarkdownRevealToggle
@@ -5308,9 +5311,9 @@ const helpBlocked = computed(() => !!(
                             class="icon-button"
                             :class="{ active: paneSource(pane.activeId) }"
                             :disabled="!!editing.active || editing.activeBusy"
-                            :aria-label="paneSource(pane.activeId) ? '返回编辑' : '切换源码模式'"
+                            :aria-label="paneSource(pane.activeId) ? t('返回编辑') : t('切换源码模式')"
                             :aria-pressed="paneSource(pane.activeId)"
-                            :title="paneSource(pane.activeId) ? '返回编辑' : '切换源码模式'"
+                            :title="paneSource(pane.activeId) ? t('返回编辑') : t('切换源码模式')"
                             @click="setPaneSource(pane.activeId, !paneSource(pane.activeId))"
                           >
                             <Code2 :size="17" />
@@ -5325,20 +5328,19 @@ const helpBlocked = computed(() => !!(
                       :actions="extensionActions"
                     />
                     <p v-if="active.creating && !active.error" class="creation-status" role="status">
-                      正在创建… 可以继续编辑
+                      {{ t('正在创建… 可以继续编辑') }}
                     </p>
                     <div v-if="active.conflict" class="conflict-banner" role="alert">
                       <AlertTriangle :size="19" />
                       <div>
-                        <strong>这一页有两份新的想法</strong>
+                        <strong>{{ t('这一页有两份新的想法') }}</strong>
                         <p>
-                          外部修改与你的修改重叠。你的内容已保存为 conflict
-                          副本，原文件保留外部版本。
+                          {{ t('外部修改与你的修改重叠。你的内容已保存为 conflict 副本，原文件保留外部版本。') }}
                         </p>
                         <button @click="store.resolveConflict(active!, true)">
-                          打开我的副本 <ArrowUpRight :size="14" /></button
+                          {{ t('打开我的副本') }} <ArrowUpRight :size="14" /></button
                         ><button @click="store.resolveConflict(active!, false)">
-                          载入磁盘版本
+                          {{ t('载入磁盘版本') }}
                         </button>
                         <button
                           @click="
@@ -5346,12 +5348,12 @@ const helpBlocked = computed(() => !!(
                               title: active.path,
                               before: active.conflict.disk.content,
                               after: active.content,
-                              beforeLabel: '磁盘版本',
-                              afterLabel: '我的副本',
+                              beforeLabel: t('磁盘版本'),
+                              afterLabel: t('我的副本'),
                             }
                           "
                         >
-                          比较两个版本
+                          {{ t('比较两个版本') }}
                         </button>
                       </div>
                     </div>
@@ -5363,16 +5365,16 @@ const helpBlocked = computed(() => !!(
                       <AlertTriangle :size="19" />
                       <div>
                         <strong>{{
-                          active.missing ? '文件已在工作文件夹中移除' : active.creating ? '文档尚未创建成功' : '这次保存没有完成'
+                          active.missing ? t('文件已在工作文件夹中移除') : active.creating ? t('文档尚未创建成功') : t('这次保存没有完成')
                         }}</strong>
                         <p>
                           {{
-                            active.error ?? '编辑器中的内容仍然保留，你可以把它另存为一个新文档。'
+                            active.error ?? t('编辑器中的内容仍然保留，你可以把它另存为一个新文档。')
                           }}
                         </p>
                         <button @click="showModal('saveAs')">
-                          另存副本 <ArrowUpRight :size="14" /></button
-                        ><button v-if="!active.missing" @click="store.flush()">重试保存</button>
+                          {{ t('另存副本') }} <ArrowUpRight :size="14" /></button
+                        ><button v-if="!active.missing" @click="store.flush()">{{ t('重试保存') }}</button>
                       </div>
                     </div>
                     <div
@@ -5397,7 +5399,7 @@ const helpBlocked = computed(() => !!(
                     >
                       <DocumentSuggestions v-slot="suggestions" :document="active" :readonly="paneReadonly(active!)"
                         :source="paneSource(pane.activeId)"
-                        :managed="!!editing.active" :author="extensions.commentAuthor?.() ?? { id: 'local', name: '本机用户' }">
+                        :managed="!!editing.active" :author="extensions.commentAuthor?.() ?? { id: 'local', name: t('本机用户') }">
                       <DocumentTitle
                         v-if="workspace && showPageTitle"
                         :key="`${workspace.id}:${active.id}`"
@@ -5499,7 +5501,7 @@ const helpBlocked = computed(() => !!(
                         :assistant="assistant.available"
                         @assistant="discussWithAssistant(pane.id, active!.id, $event)"
                         :readonly="suggestions.readonly"
-                        :author="extensions.commentAuthor?.() ?? { id: 'local', name: '本机用户' }"
+                        :author="extensions.commentAuthor?.() ?? { id: 'local', name: t('本机用户') }"
                         :capture-selection="() => capturePaneCommentSelection(pane.id, active!.id)"
                         :focus-anchor="(anchor) => focusPaneComment(pane.id, active!.id, anchor)"
                         :editor-element="paneEditorScrolls.get(pane.id)"
@@ -5570,25 +5572,25 @@ const helpBlocked = computed(() => !!(
                   panel === 'outline' && !touchLayout && hoverOutline && !outlinePinned && !outlineSearchOpen,
                 'inspector-activity': panel === 'activity',
               }"
-              :aria-label="panel === 'outline' ? '文档目录' : '文档动态'"
+              :aria-label="panel === 'outline' ? t('文档目录') : t('文档动态')"
               @contextmenu="openOutlineContextMenu"
             >
               <div class="inspector-surface">
                 <div v-if="panel === 'activity'" class="inspector-tabs">
-                  <button @click="panel = 'outline'"><List :size="14" />大纲</button
+                  <button @click="panel = 'outline'"><List :size="14" />{{ t('大纲') }}</button
                   ><button class="active" @click="panel = 'activity'">
-                    <History :size="14" />动态
+                    <History :size="14" />{{ t('动态') }}
                   </button>
                 </div>
                 <div v-if="panel === 'outline'" class="outline-controls">
-                  <span>文档大纲</span>
-                  <button v-if="touchLayout" type="button" class="outline-control" aria-label="关闭文档大纲"
+                  <span>{{ t('文档大纲') }}</span>
+                  <button v-if="touchLayout" type="button" class="outline-control" :aria-label="t('关闭文档大纲')"
                     @click="touchOutlineOpen = false"><X :size="18" /></button>
                   <button
                     class="outline-control"
                     type="button"
-                    aria-label="搜索大纲标题"
-                    title="搜索大纲标题"
+                    :aria-label="t('搜索大纲标题')"
+                    :title="t('搜索大纲标题')"
                     :aria-expanded="outlineSearchOpen"
                     @click="toggleOutlineSearch"
                   >
@@ -5599,8 +5601,8 @@ const helpBlocked = computed(() => !!(
                     class="outline-control"
                     :class="{ active: outlinePinned }"
                     type="button"
-                    :aria-label="outlinePinned ? '取消固定大纲' : '固定大纲'"
-                    :title="outlinePinned ? '取消固定大纲' : '固定大纲'"
+                    :aria-label="outlinePinned ? t('取消固定大纲') : t('固定大纲')"
+                    :title="outlinePinned ? t('取消固定大纲') : t('固定大纲')"
                     :aria-pressed="outlinePinned"
                     @click="toggleOutlinePin"
                   >
@@ -5613,14 +5615,14 @@ const helpBlocked = computed(() => !!(
                     ref="outlineSearchInput"
                     v-model="outlineSearch"
                     type="search"
-                    aria-label="搜索当前文档标题"
-                    placeholder="搜索标题"
+                    :aria-label="t('搜索当前文档标题')"
+                    :placeholder="t('搜索标题')"
                     autocomplete="off"
                     @keydown.enter="visibleOutline[0] && jumpToHeading(visibleOutline[0].index, true)"
                     @keydown.esc.stop.prevent="toggleOutlineSearch"
                   />
                 </div>
-                <nav v-if="panel === 'outline'" class="outline" aria-label="文档大纲">
+                <nav v-if="panel === 'outline'" class="outline" :aria-label="t('文档大纲')">
                   <button
                     v-for="{ heading, index } in visibleOutline"
                     :key="index"
@@ -5631,7 +5633,7 @@ const helpBlocked = computed(() => !!(
                       '--outline-indent': `${Math.max(0, heading.level - 2) * 12}px`,
                       '--outline-marker-width': `${Math.max(9, 20 - heading.level * 2)}px`,
                     }"
-                    :aria-label="`跳转到${heading.text}`"
+                    :aria-label="t('跳转到{0}', [heading.text])"
                     :aria-current="activeHeading === index ? 'location' : undefined"
                     @click="jumpToHeading(index, true)"
                   >
@@ -5640,16 +5642,16 @@ const helpBlocked = computed(() => !!(
                   </button>
                   <p v-if="!outline.length" class="panel-empty">
                     <span class="outline-empty-marker" aria-hidden="true" />
-                    写下一个标题，<br />让思路有迹可循。
+                    {{ t('写下一个标题，') }}<br />{{ t('让思路有迹可循。') }}
                   </p>
                   <p v-else-if="!visibleOutline.length" class="outline-no-results" role="status">
-                    没有匹配的标题
+                    {{ t('没有匹配的标题') }}
                   </p>
                 </nav>
                 <div v-else class="activity-list">
-                  <p class="activity-explainer">这个会话中的文件变化。外部编辑者身份暂不可识别。</p>
+                  <p class="activity-explainer">{{ t('这个会话中的文件变化。外部编辑者身份暂不可识别。') }}</p>
                   <button v-if="localNative" class="secondary-button" @click="agentPanel = true">
-                    <Bot :size="14" />工作区指引与 MCP 活动
+                    <Bot :size="14" />{{ t('工作区指引与 MCP 活动') }}
                   </button>
                   <div v-for="item in activities" :key="item.id" class="activity-item">
                     <span class="activity-icon" :class="item.kind"
@@ -5673,7 +5675,7 @@ const helpBlocked = computed(() => !!(
                         class="activity-diff-button"
                         @click="selectedDiff = { title: item.detail, ...item.change }"
                       >
-                        查看差异
+                        {{ t('查看差异') }}
                       </button>
                       <time>{{
                         new Date(item.time).toLocaleTimeString('zh-CN', {
@@ -5687,10 +5689,10 @@ const helpBlocked = computed(() => !!(
                 <div v-if="panel === 'activity'" class="inspector-footer">
                   <span class="live-dot" />{{
                     store.isDemo
-                      ? '浏览器本地存储'
+                      ? t('浏览器本地存储')
                       : store.isWeb
-                        ? '定期检查服务器修改'
-                        : '正在监听工作文件夹'
+                        ? t('定期检查服务器修改')
+                        : t('正在监听工作文件夹')
                   }}
                 </div>
               </div>
@@ -5699,10 +5701,10 @@ const helpBlocked = computed(() => !!(
         </template>
       </WorkspacePanes>
       <main v-else-if="startupPending" class="workspace-startup" role="status" aria-busy="true">
-        正在打开工作区…
+        {{ t('正在打开工作区…') }}
       </main>
       <main v-else class="welcome">
-        <div class="welcome-mark"><img src="/favicon-green.svg?v=3" alt="Tano 标志" /></div>
+        <div class="welcome-mark"><img src="/favicon-green.svg?v=3" :alt="t('Tano 标志')" /></div>
         <h1>
           <span
             v-for="(part, index) in welcomeSloganParts"
@@ -5714,10 +5716,10 @@ const helpBlocked = computed(() => !!(
         <p>
           {{
             store.isWeb
-              ? '为不同的项目创建工作区，文档会自动保存到服务器。'
+              ? t('为不同的项目创建工作区，文档会自动保存到服务器。')
               : mobile
-                ? '把工作空间带在身边，离线也能继续写作。'
-                : '打开一个文件夹，让你的 Markdown 成为共同的语言。'
+                ? t('把工作空间带在身边，离线也能继续写作。')
+                : t('打开一个文件夹，让你的 Markdown 成为共同的语言。')
           }}
         </p>
         <div v-if="store.isWeb || mobile || extensions.regions['welcome-login']" class="welcome-actions">
@@ -5729,12 +5731,12 @@ const helpBlocked = computed(() => !!(
           >
             <FolderOpen :size="18" />{{
               busy
-                ? '正在打开…'
+                ? t('正在打开…')
                 : store.isWeb
-                  ? '创建工作区'
+                  ? t('创建工作区')
                   : mobile
-                    ? '打开手机工作空间'
-                    : '打开文件夹'
+                    ? t('打开手机工作空间')
+                    : t('打开文件夹')
             }}<ArrowRight :size="17" />
           </button>
           <component
@@ -5751,17 +5753,17 @@ const helpBlocked = computed(() => !!(
         <div
           v-else-if="store.recent.length || (!store.isWeb && !mobile)"
           class="recent-spaces"
-          aria-label="最近工作空间"
+          :aria-label="t('最近工作空间')"
         >
           <div class="recent-spaces-header">
-            <span class="recent-label">最新打开仓库</span>
+            <span class="recent-label">{{ t('最新打开仓库') }}</span>
             <button
               v-if="!store.isWeb && !mobile"
               type="button"
               class="recent-open-button"
               :disabled="busy"
-              :aria-label="busy ? '正在打开…' : '打开本地仓库'"
-              :title="busy ? '正在打开…' : '打开本地仓库'"
+              :aria-label="busy ? t('正在打开…') : t('打开本地仓库')"
+              :title="busy ? t('正在打开…') : t('打开本地仓库')"
               @click="store.openWorkspace()"
             >
               <Plus :size="18" aria-hidden="true" />
@@ -5784,7 +5786,7 @@ const helpBlocked = computed(() => !!(
             </span>
             <span class="recent-workspace-details">
               <strong>{{ item.name }}</strong>
-              <small>{{ store.isWeb ? '在线工作区' : mobile ? '保存在这台设备' : item.path }}</small>
+              <small>{{ store.isWeb ? t('在线工作区') : mobile ? t('保存在这台设备') : item.path }}</small>
             </span>
             <ArrowRight :size="14" />
           </button>
@@ -5795,10 +5797,10 @@ const helpBlocked = computed(() => !!(
         :anchor="inlineAssistant.anchor"
         v-model:value="inlineAssistantPrompt"
         :state="inlineAssistantState"
-        :progress="inlineRunner.applying ? '正在处理修改' : inlineRunner.progress"
+        :progress="inlineRunner.applying ? t('正在处理修改') : inlineRunner.progress"
         :error="inlineAssistantError"
         :message="inlineAssistantMessage"
-        :placeholder="inlineAssistant.blankBlock ? '描述你想生成的内容…' : undefined"
+        :placeholder="inlineAssistant.blankBlock ? t('描述你想生成的内容…') : undefined"
         @submit="submitInlineAssistant"
         @stop="inlineRunner.stop()"
         @conversation="continueInlineConversation"
@@ -5812,7 +5814,7 @@ const helpBlocked = computed(() => !!(
           ref="pageContextMenuElement"
           class="dropdown compact-action-menu page-context-menu"
           role="menu"
-          aria-label="页面显示选项"
+          :aria-label="t('页面显示选项')"
           :style="{ left: `${pageContextMenu.x}px`, top: `${pageContextMenu.y}px` }"
           @keydown="pageContextKeydown"
         >
@@ -5823,7 +5825,7 @@ const helpBlocked = computed(() => !!(
             :disabled="!pageWidthWritable"
             @click="togglePageOption('width')"
           >
-            <Ruler :size="15" />限制行宽<Check
+            <Ruler :size="15" />{{ t('限制行宽') }}<Check
               v-if="limitPageWidth"
               class="page-context-check"
               :size="14"
@@ -5835,7 +5837,7 @@ const helpBlocked = computed(() => !!(
             :aria-checked="showPageTitle"
             @click="togglePageOption('title')"
           >
-            <Heading1 :size="15" />页面内标题<Check
+            <Heading1 :size="15" />{{ t('页面内标题') }}<Check
               v-if="showPageTitle"
               class="page-context-check"
               :size="14"
@@ -5847,7 +5849,7 @@ const helpBlocked = computed(() => !!(
             :aria-checked="showDocumentProperties"
             @click="togglePageOption('properties')"
           >
-            <SlidersHorizontal :size="15" />文档属性<Check
+            <SlidersHorizontal :size="15" />{{ t('文档属性') }}<Check
               v-if="showDocumentProperties"
               class="page-context-check"
               :size="14"
@@ -5859,7 +5861,7 @@ const helpBlocked = computed(() => !!(
             :disabled="!canAddDocumentProperty"
             @click="addDocumentProperty"
           >
-            <Plus :size="15" />添加文档属性
+            <Plus :size="15" />{{ t('添加文档属性') }}
           </button>
           <button
             type="button"
@@ -5867,7 +5869,7 @@ const helpBlocked = computed(() => !!(
             :disabled="editorReadonly || !!editing.active || editing.activeBusy || !paneComments.has(store.activePaneId)"
             @click="openDocumentDiscussion"
           >
-            <MessageSquare :size="15" />发起讨论
+            <MessageSquare :size="15" />{{ t('发起讨论') }}
           </button>
           <button
             v-if="!detachedWindow"
@@ -5876,7 +5878,7 @@ const helpBlocked = computed(() => !!(
             :aria-checked="showOutline"
             @click="togglePageOption('outline')"
           >
-            <List :size="15" />显示目录<Check
+            <List :size="15" />{{ t('显示目录') }}<Check
               v-if="showOutline"
               class="page-context-check"
               :size="14"
@@ -5890,7 +5892,7 @@ const helpBlocked = computed(() => !!(
           ref="outlineContextMenuElement"
           class="dropdown compact-action-menu page-context-menu outline-context-menu"
           role="menu"
-          aria-label="目录显示选项"
+          :aria-label="t('目录显示选项')"
           tabindex="-1"
           :style="{ left: `${outlineContextMenu.x}px`, top: `${outlineContextMenu.y}px` }"
           @keydown="outlineContextKeydown"
@@ -5901,7 +5903,7 @@ const helpBlocked = computed(() => !!(
             :aria-checked="outlineOnLeft"
             @click="toggleOutlineSide"
           >
-            <PanelLeftOpen :size="15" />显示在左侧<Check
+            <PanelLeftOpen :size="15" />{{ t('显示在左侧') }}<Check
               v-if="outlineOnLeft"
               class="page-context-check"
               :size="14"
@@ -6067,10 +6069,10 @@ const helpBlocked = computed(() => !!(
         <component v-if="extensions.regions['workspace-members-export']" :is="extensions.regions['workspace-members-export']" :workspace="workspace" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" />
       </template>
     </SettingsPanel>
-    <div v-if="store.fileMutationPending" class="file-mutation-status" role="status">正在同步更改…</div>
+    <div v-if="store.fileMutationPending" class="file-mutation-status" role="status">{{ t('正在同步更改…') }}</div>
     <div v-if="fatal || store.sessionError" class="error-toast" role="alert">
       <AlertTriangle :size="18" /><span>{{ fatal || store.sessionError }}</span
-      ><button v-if="fatal" class="icon-button" aria-label="关闭通知" @click="fatal = ''">
+      ><button v-if="fatal" class="icon-button" :aria-label="t('关闭通知')" @click="fatal = ''">
         <X :size="16" />
       </button>
     </div>
@@ -6093,7 +6095,7 @@ const helpBlocked = computed(() => !!(
           <h2>{{ modalTitle }}</h2>
           <button
             class="icon-button"
-            aria-label="关闭弹窗"
+            :aria-label="t('关闭弹窗')"
             :disabled="modalBusy || updateLock"
             @click="modal = ''"
           >
@@ -6108,10 +6110,10 @@ const helpBlocked = computed(() => !!(
               type="text"
               role="searchbox"
               inputmode="search"
-              aria-label="搜索文档名称和正文"
-              placeholder="搜索文件名、路径或正文…"
+              :aria-label="t('搜索文档名称和正文')"
+              :placeholder="t('搜索文件名、路径或正文…')"
               @keydown.enter="searchResults[0] && openSearchResult(searchResults[0])"
-            /><button type="button" aria-label="关闭搜索" title="关闭搜索" @click="modal = ''">
+            /><button type="button" :aria-label="t('关闭搜索')" :title="t('关闭搜索')" @click="modal = ''">
               <X :size="18" />
             </button>
           </div>
@@ -6148,7 +6150,7 @@ const helpBlocked = computed(() => !!(
               >
             </button>
             <p v-if="!searchResults.length" class="panel-empty" role="status">
-              {{ searching ? '正在查找…' : searchError || '没有找到这篇文档，试试其他关键词。' }}
+              {{ searching ? t('正在查找…') : searchError || t('没有找到这篇文档，试试其他关键词。') }}
             </p>
           </div></template
         >
@@ -6157,12 +6159,12 @@ const helpBlocked = computed(() => !!(
             ><p class="modal-description">
               {{
                 store.isDemo
-                  ? '将删除浏览器中的演示文档，此操作无法在应用内撤销。'
+                  ? t('将删除浏览器中的演示文档，此操作无法在应用内撤销。')
                   : store.isWeb
-                    ? '将从在线工作区移除所选文件。服务端按配置保留版本历史。'
+                    ? t('将从在线工作区移除所选文件。服务端按配置保留版本历史。')
                     : mobile
-                      ? '文件将保留在手机回收站。可从工作空间菜单恢复副本。'
-                      : '文件将移入系统回收站，你可以在回收站中恢复。'
+                      ? t('文件将保留在手机回收站。可从工作空间菜单恢复副本。')
+                      : t('文件将移入系统回收站，你可以在回收站中恢复。')
               }}
             </p>
             <div class="delete-file">
@@ -6175,7 +6177,7 @@ const helpBlocked = computed(() => !!(
                   file.path
                 }}</span>
                 <span v-if="modalDeleteEntries.length > 6"
-                  >还有 {{ modalDeleteEntries.length - 6 }} 项…</span
+                  >{{ t('还有') }} {{ modalDeleteEntries.length - 6 }} {{ t('项…') }}</span
                 >
               </span>
             </div></template
@@ -6183,24 +6185,24 @@ const helpBlocked = computed(() => !!(
             ><p class="modal-description">
               {{
                 modal === 'saveAs'
-                  ? '把当前编辑内容保存为独立的 Markdown 文件。'
-                  : '从一个名字开始，把想法留在这一页。'
+                  ? t('把当前编辑内容保存为独立的 Markdown 文件。')
+                  : t('从一个名字开始，把想法留在这一页。')
               }}
             </p>
-            <label for="file-name">文档路径</label
+            <label for="file-name">{{ t('文档路径') }}</label
             ><input
               id="file-name"
               ref="inputEl"
               v-model="input"
-              placeholder="例如：我的新想法.md"
+              :placeholder="t('例如：我的新想法.md')"
               autocomplete="off"
               maxlength="220"
             />
             <p class="input-hint">
               {{
                 store.isWeb
-                  ? '可使用「项目/新想法.md」创建文档及所在目录。'
-                  : '相对于工作空间，可使用已有目录，例如「项目/新想法.md」。'
+                  ? t('可使用「项目/新想法.md」创建文档及所在目录。')
+                  : t('相对于工作空间，可使用已有目录，例如「项目/新想法.md」。')
               }}
             </p></template
           >
@@ -6212,7 +6214,7 @@ const helpBlocked = computed(() => !!(
               :disabled="modalBusy"
               @click="modal = ''"
             >
-              取消</button
+              {{ t('取消') }}</button
             ><button
               class="primary-button"
               :class="{ destructive: modal === 'delete' }"
@@ -6220,10 +6222,10 @@ const helpBlocked = computed(() => !!(
             >
               <LoaderCircle v-if="modalBusy" class="spinning" :size="16" />{{
                 modalBusy
-                  ? '正在处理…'
+                  ? t('正在处理…')
                   : modal === 'delete'
-                    ? '确认移除'
-                    : '创建文档'
+                    ? t('确认移除')
+                    : t('创建文档')
               }}<ArrowRight v-if="!modalBusy" :size="16" />
             </button>
           </div>

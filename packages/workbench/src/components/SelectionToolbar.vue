@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { animate } from 'motion/mini';
 import type { EditorSelectionContext } from '@tano/editor/document-model';
@@ -391,7 +392,7 @@ onBeforeUnmount(() => {
         class="selection-toolbar"
         :class="{ 'docked-toolbar': vertical, 'toolbar-being-dragged': dragging }"
         :data-dock="docked ? mode : undefined"
-        :aria-label="mode === 'left' ? '左侧工具栏' : mode === 'right' ? '右侧工具栏' : mode === 'bottom' ? '底部工具栏' : '选区工具栏'"
+        :aria-label="mode === 'left' ? t('左侧工具栏') : mode === 'right' ? t('右侧工具栏') : mode === 'bottom' ? t('底部工具栏') : t('选区工具栏')"
         :aria-keyshortcuts="[shortcutAriaLabel((shortcuts ?? defaultShortcutBindings).focusToolbar), 'Escape'].filter(Boolean).join(' ')"
       >
         <EditorToolbar

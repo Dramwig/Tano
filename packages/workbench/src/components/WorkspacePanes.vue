@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { layoutGeometry, mapLayout, panePreviewRects } from '../pane-layout';
 import type { LayoutRect } from '../pane-layout';
@@ -132,7 +133,7 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
         <section
           v-for="{ pane, rect, hidden, topTabbar } in displayed" :key="pane.id" v-show="!hidden" class="workspace-pane" :inert="hidden"
           :class="{ 'workspace-pane-active': !hidden && pane.id === visibleActivePaneId, 'workspace-pane-top': rect.top === 0, 'workspace-pane-external-tabs': !singlePane && showTabs && topTabbar && !!$slots.tabs }"
-          :data-pane-id="pane.id" :style="rectStyle(rect)" :aria-label="showTabs ? '文档标签组' : '文档内容'"
+          :data-pane-id="pane.id" :style="rectStyle(rect)" :aria-label="showTabs ? t('文档标签组') : t('文档内容')"
           @pointerdown.capture="focusPaneFromPointer($event, pane.id)" @focusin="store.focusPane(pane.id)"
         >
           <slot v-if="!singlePane && showTabs && !topTabbar" name="tabs" :pane="pane" :rect="rect" />
@@ -141,12 +142,12 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
         </section>
         <div v-if="preview && store.paneDrop" class="pane-dock-preview" :class="`pane-dock-${store.paneDrop.side}`"
           :style="rectStyle(preview.preview)" aria-hidden="true">
-          <span>{{ ({ center: '合并到标签组', left: '向左分屏', right: '向右分屏', top: '向上分屏', bottom: '向下分屏' })[store.paneDrop.side] }}</span>
+          <span>{{ ({ center: t('合并到标签组'), left: t('向左分屏'), right: t('向右分屏'), top: t('向上分屏'), bottom: t('向下分屏') })[store.paneDrop.side] }}</span>
         </div>
         <template v-if="!singlePane">
           <div v-for="divider in geometry.dividers" :key="divider.id" class="pane-divider"
             :class="`pane-divider-${divider.axis}`" :style="rectStyle(divider.rect)"
-            role="separator" tabindex="0" :aria-label="divider.axis === 'horizontal' ? '调整左右分屏大小' : '调整上下分屏大小'"
+            role="separator" tabindex="0" :aria-label="divider.axis === 'horizontal' ? t('调整左右分屏大小') : t('调整上下分屏大小')"
             :aria-orientation="divider.axis === 'horizontal' ? 'vertical' : 'horizontal'"
             :aria-valuenow="Math.round(divider.ratio * 100)" :aria-valuemin="10" :aria-valuemax="90"
             @pointerdown="startResize($event, divider)" @pointermove="moveResize" @pointerup="endResize"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { onMounted, onBeforeUnmount, ref, useId } from 'vue';
 import { X } from 'lucide-vue-next';
 defineProps<{ title: string; busy?: boolean }>();
@@ -39,7 +40,7 @@ function trapFocus(event: KeyboardEvent) {
       <button
         type="button"
         autofocus
-        aria-label="关闭插件窗口"
+        :aria-label="t('关闭插件窗口')"
         :disabled="busy"
         @click="emit('close')"
       >

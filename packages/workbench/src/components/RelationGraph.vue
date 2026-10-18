@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import {
   computed,
   onActivated,
@@ -360,7 +361,7 @@ onBeforeUnmount(() => {
     ref="host"
     class="relation-graph"
     :class="{ 'has-topbar': controlsTarget }"
-    aria-label="关系图谱"
+    :aria-label="t('关系图谱')"
   >
     <svg
       ref="viewport"
@@ -369,7 +370,7 @@ onBeforeUnmount(() => {
       :viewBox="`0 0 ${size.width} ${size.height}`"
       tabindex="0"
       role="group"
-      aria-label="文档关系网络，可拖动节点；方向键平移，加减键缩放，0 键居中"
+      :aria-label="t('文档关系网络，可拖动节点；方向键平移，加减键缩放，0 键居中')"
       @pointerdown="startGesture($event)"
       @pointermove="moveGesture"
       @pointerup="endGesture($event)"
@@ -411,7 +412,7 @@ onBeforeUnmount(() => {
           }"
           role="link"
           tabindex="0"
-          :aria-label="`打开文档：${node.label}，${node.degree} 条连线`"
+          :aria-label="t('打开文档：{0}，{1} 条连线', [node.label, node.degree])"
           @pointerdown.stop="startGesture($event, node)"
           @pointerenter="!gesture && (hovered = node.id)"
           @pointerleave="!gesture && (hovered = '')"
@@ -440,24 +441,24 @@ onBeforeUnmount(() => {
         class="graph-controls"
         :class="{ 'graph-controls-inline': controlsTarget }"
         role="group"
-        aria-label="图谱操作"
+        :aria-label="t('图谱操作')"
       >
         <button
           class="icon-button"
-          title="布局设置"
-          aria-label="布局设置"
+          :title="t('布局设置')"
+          :aria-label="t('布局设置')"
           :aria-expanded="settings"
           @click="settings = !settings"
         >
           <Settings2 :size="17" />
         </button>
-        <button class="icon-button" title="放大" aria-label="放大图谱" @click="zoom(1.25)">
+        <button class="icon-button" :title="t('放大')" :aria-label="t('放大图谱')" @click="zoom(1.25)">
           <Plus :size="17" />
         </button>
-        <button class="icon-button" title="缩小" aria-label="缩小图谱" @click="zoom(0.8)">
+        <button class="icon-button" :title="t('缩小')" :aria-label="t('缩小图谱')" @click="zoom(0.8)">
           <Minus :size="17" />
         </button>
-        <button class="icon-button" title="适应窗口 · 0" aria-label="图谱居中" @click="fit">
+        <button class="icon-button" :title="t('适应窗口 · 0')" :aria-label="t('图谱居中')" @click="fit">
           <Focus :size="17" />
         </button>
       </div>
@@ -465,59 +466,59 @@ onBeforeUnmount(() => {
     <section
       v-if="settings"
       class="graph-settings"
-      aria-label="布局设置"
+      :aria-label="t('布局设置')"
       @keydown.esc.stop="settings = false"
     >
       <header>
-        <strong>布局设置</strong
-        ><button class="icon-button" aria-label="关闭布局设置" @click="settings = false">
+        <strong>{{ t('布局设置') }}</strong
+        ><button class="icon-button" :aria-label="t('关闭布局设置')" @click="settings = false">
           <X :size="15" />
         </button>
       </header>
       <label
-        >向心力<input
+        >{{ t('向心力') }}<input
           v-model.number="physics.center"
-          aria-label="向心力"
+          :aria-label="t('向心力')"
           type="range"
           min="0.002"
           max="0.08"
           step="0.002"
       /></label>
       <label
-        >吸引力<input
+        >{{ t('吸引力') }}<input
           v-model.number="physics.attraction"
-          aria-label="吸引力"
+          :aria-label="t('吸引力')"
           type="range"
           min="0.02"
           max="0.4"
           step="0.01"
       /></label>
       <label
-        >斥力<input
+        >{{ t('斥力') }}<input
           v-model.number="physics.repulsion"
-          aria-label="斥力"
+          :aria-label="t('斥力')"
           type="range"
           min="0"
           max="1200"
           step="20"
       /></label>
       <label
-        >连线长度<input
+        >{{ t('连线长度') }}<input
           v-model.number="physics.distance"
-          aria-label="连线长度"
+          :aria-label="t('连线长度')"
           type="range"
           min="50"
           max="240"
           step="5"
       /></label>
       <button class="graph-reset" @click="Object.assign(physics, graphPhysics)">
-        恢复默认布局参数
+        {{ t('恢复默认布局参数') }}
       </button>
     </section>
     <div v-if="!loading && !nodes.length" class="graph-empty">
       <GitFork :size="32" />
-      <p>工作区还没有 Markdown 文档</p>
-      <span>创建文档后，即可在这里查看它们的关系。</span>
+      <p>{{ t('工作区还没有 Markdown 文档') }}</p>
+      <span>{{ t('创建文档后，即可在这里查看它们的关系。') }}</span>
     </div>
     <div
       v-if="failed.length || store.relationError"
@@ -525,11 +526,11 @@ onBeforeUnmount(() => {
       role="status"
       :title="failed.join('\n')"
     >
-      {{ failed.length ? `有 ${failed.length} 篇文档未能读取，图谱可能不完整。` : ''
+      {{ failed.length ? t('有 {0} 篇文档未能读取，图谱可能不完整。', [failed.length]) : ''
       }}{{ store.relationError }}
-      <button @click="refresh">重试</button>
+      <button @click="refresh">{{ t('重试') }}</button>
     </div>
-    <footer class="graph-help">拖动节点或空白处 · 滚轮缩放 · 点击节点打开文档</footer>
+    <footer class="graph-help">{{ t('拖动节点或空白处 · 滚轮缩放 · 点击节点打开文档') }}</footer>
   </main>
 </template>
 

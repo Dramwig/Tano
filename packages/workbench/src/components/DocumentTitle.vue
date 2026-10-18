@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
 import { basename, parentPath, pathKey, validatePath } from '@tano/protocol';
 import type { FileEntry } from '@tano/protocol';
@@ -61,14 +62,14 @@ const destination = computed(() => {
 const validation = computed(() => {
   if (!edited.value) return '';
   if (resolvedTitleSource.value !== titleSourceBase)
-    return '标题来源已改变，请按 Esc 重新载入后重试';
-  if (!draft.value.trim()) return '请输入文档标题';
+    return t('标题来源已改变，请按 Esc 重新载入后重试');
+  if (!draft.value.trim()) return t('请输入文档标题');
   if (resolvedTitleSource.value === 'frontmatter') return '';
-  if (/[\/\\]/.test(draft.value)) return '标题不能包含路径分隔符';
+  if (/[\/\\]/.test(draft.value)) return t('标题不能包含路径分隔符');
   const invalid = validatePath(destination.value);
   if (invalid) return invalid;
   if (props.files.some((file) => file.id !== props.documentId &&
-    pathKey(file.path) === pathKey(destination.value))) return '已经存在一个同名文件';
+    pathKey(file.path) === pathKey(destination.value))) return t('已经存在一个同名文件');
   return '';
 });
 const error = computed(() => validation.value || saveError.value);
@@ -102,16 +103,16 @@ async function commit(): Promise<boolean> {
   try {
     if (resolvedTitleSource.value === 'frontmatter') {
       if (JSON.stringify(yamlTitle.value) !== titleBase)
-        throw new Error('YAML title 已被修改，请按 Esc 重新载入后重试');
+        throw new Error(t('YAML title 已被修改，请按 Esc 重新载入后重试'));
       if (draft.value.trim() === title.value) { reset(); return true; }
       const { prefix } = splitFrontmatter(props.modelValue);
       if (!prefix && /^\uFEFF?(?:---|\+\+\+)\r?\n/.test(props.modelValue))
-        throw new Error('文档开头的属性无法解析，请在源码中修改');
+        throw new Error(t('文档开头的属性无法解析，请在源码中修改'));
       const markdown = updateFrontmatterProperty(
         props.modelValue, yamlTitle.value ? 'title' : null, 'title', 'text', draft.value.trim(),
       );
       if (frontmatterValue(splitFrontmatter(markdown).prefix, 'title')?.value !== draft.value.trim())
-        throw new Error('YAML title 无法更新，请在源码中修改');
+        throw new Error(t('YAML title 无法更新，请在源码中修改'));
       emit('update:modelValue', markdown);
       await nextTick();
     } else {
@@ -122,7 +123,7 @@ async function commit(): Promise<boolean> {
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
     saveError.value = /已经存在|已存在|already exists|同名/i.test(message)
-      ? '已经存在一个同名文件' : message;
+      ? t('已经存在一个同名文件') : message;
     return false;
   } finally {
     saving.value = false;
@@ -152,10 +153,10 @@ async function keydown(event: KeyboardEvent) {
       class="document-title-input"
       :value="draft"
       :readonly="readonly || saving"
-      aria-label="文档标题"
+      :aria-label="t('文档标题')"
       :aria-invalid="!!error"
       :aria-describedby="error ? errorId : undefined"
-      placeholder="未命名"
+      :placeholder="t('未命名')"
       autocomplete="off"
       spellcheck="false"
       @input="input"

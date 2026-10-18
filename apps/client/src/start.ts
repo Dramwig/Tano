@@ -1,5 +1,7 @@
 import { createApp, nextTick } from 'vue';
 import { createPinia } from 'pinia';
+import { initializeLocaleSync, t, uiLocale } from '@tano/workbench/i18n';
+import { watchEffect } from 'vue';
 import { configureWorkbench, createLocalExtensions } from '@tano/workbench/runtime';
 import { NativeAdapter, native } from '@tano/workbench/adapter';
 import { markdownDemoLocaleFromPath } from '@tano/workbench/markdown-demo-routes';
@@ -10,6 +12,7 @@ import { HttpPluginCatalog } from '@tano/workbench/plugins/catalog';
 import { createNativePluginConnections, createNativePluginServices } from '@tano/workbench/plugins/native';
 
 export async function start(signal?: AbortSignal) {
+  await initializeLocaleSync(native);
   const settingsRoute = native && !!settingsWindowRequest();
   const [view, desktopFrame, storage] = await Promise.all([
     settingsRoute
@@ -32,8 +35,12 @@ export async function start(signal?: AbortSignal) {
   const plugins = { ...(catalogUrl ? { catalog: new HttpPluginCatalog(catalogUrl) } : {}),
     ...(native && !mobile ? { native: createNativePluginServices(), connections: createNativePluginConnections() } : {}) };
   const pinia = configureWorkbench(createPinia(), { ...storage, native, mobile, plugins, extensions: () => extensions });
-  document.documentElement.lang = !native && locale === 'en-us' ? 'en-US' : 'zh-CN';
-  document.title = native ? 'Tano / 同页 — 本地工作区' : locale === 'en-us' ? 'Tano — English Markdown demo' : 'Tano / 同页 — 中文 Markdown 演示';
+  watchEffect(() => {
+    document.documentElement.lang = uiLocale.value;
+    document.title = native
+      ? t('Tano / 同页 — 本地工作区')
+      : locale === 'en-us' ? 'Tano — English Markdown demo' : 'Tano / 同页 — 中文 Markdown 演示';
+  });
   const app = native && !mobile && !settingsRoute
     ? createApp(desktopFrame!.default, { view: view.default })
     : createApp(view.default);

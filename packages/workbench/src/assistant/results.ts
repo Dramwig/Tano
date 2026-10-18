@@ -1,4 +1,6 @@
 import type { AssistantMessage, AssistantUserInput, AssistantWireMessage } from '@tano/protocol';
+import { uiLocale } from '../i18n';
+import { assistantCopy } from './language';
 
 export function assistantMessageParts(message: AssistantMessage) {
   const parts: ({ kind: 'text'; content: string } | { kind: 'input'; input: AssistantUserInput })[] = [];
@@ -44,17 +46,8 @@ export function assistantHistory(messages: readonly AssistantMessage[]): Assista
   });
 }
 
-const toolLabels: Record<string, string> = {
-  ask_user: '询问用户',
-  propose_create: '创建文档建议', propose_edit: '修改文档建议',
-  propose_delete: '删除文档建议', propose_rename: '重命名文档建议', propose_move: '移动文档建议',
-  edit_document: '修改文档', create_document: '创建文档', delete_document: '删除文档', rename_document: '重命名文档', move_document: '移动文档',
-  create_event: '创建事件', create_relation: '新增关系', update_task: '修改任务', update_assignment: '调整负责人', change_relation: '维护关系',
-  search_documents: '搜索文档', read_document: '读取文档',
-  read_workspace_objects: '读取工作区对象', read_reference_context: '读取引用', query_tasks: '查询任务',
-  propose_event: '创建事件建议', propose_relation: '创建关系建议',
-  propose_task_update: '修改任务建议', propose_assignment: '调整负责人建议', propose_relation_change: '维护关系建议',
-};
 export function assistantToolLabel(name: string) {
-  return Object.prototype.hasOwnProperty.call(toolLabels, name) ? toolLabels[name] : '工具调用';
+  const copy = assistantCopy(uiLocale.value);
+  const toolLabels: Record<string, string> = copy.tools;
+  return Object.prototype.hasOwnProperty.call(toolLabels, name) ? toolLabels[name] : copy.result.toolCall;
 }

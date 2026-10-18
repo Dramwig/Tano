@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, ref, watch } from 'vue';
 import type { FileEntry } from '@tano/protocol';
 import { basename } from '@tano/protocol';
@@ -28,35 +29,35 @@ watch(() => [props.file?.id, props.file?.path, props.file?.modified, props.url],
   loading.value = false;
   const file = props.file;
   if (!file || type.value !== 'text') return;
-  if (file.size > 2 * 1024 * 1024) { error.value = '文件较大，请导出后查看。'; return; }
+  if (file.size > 2 * 1024 * 1024) { error.value = t('文件较大，请导出后查看。'); return; }
   loading.value = true;
   try {
     let content: string;
     if (props.url) {
       const response = await fetch(props.url, { signal: controller.signal });
-      if (!response.ok) throw new Error('无法读取附件');
+      if (!response.ok) throw new Error(t('无法读取附件'));
       const bytes = await response.arrayBuffer();
-      if (bytes.byteLength > 2 * 1024 * 1024) throw new Error('文件较大，请导出后查看。');
+      if (bytes.byteLength > 2 * 1024 * 1024) throw new Error(t('文件较大，请导出后查看。'));
       content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
     } else content = (await adapter.read(file.path)).content;
     if (current) text.value = content;
   } catch (reason) {
-    if (current) error.value = reason instanceof Error ? reason.message : '无法读取附件';
+    if (current) error.value = reason instanceof Error ? reason.message : t('无法读取附件');
   } finally { if (current) loading.value = false; }
 }, { immediate: true });
 </script>
 
 <template>
-  <main class="attachment-preview" aria-label="附件预览">
-    <p v-if="!file" role="status">文件已移动或删除。</p>
-    <p v-else-if="loading" role="status">正在读取附件…</p>
+  <main class="attachment-preview" :aria-label="t('附件预览')">
+    <p v-if="!file" role="status">{{ t('文件已移动或删除。') }}</p>
+    <p v-else-if="loading" role="status">{{ t('正在读取附件…') }}</p>
     <p v-else-if="error" role="status">{{ error }}</p>
     <pre v-else-if="type === 'text'">{{ text }}</pre>
     <img v-else-if="type === 'image' && url && !failed" :src="url" :alt="basename(file.path)" @error="failed = true" />
     <video v-else-if="type === 'video' && url && !failed" :src="url" controls preload="metadata" @error="failed = true" />
     <audio v-else-if="type === 'audio' && url && !failed" :src="url" controls preload="metadata" @error="failed = true" />
     <iframe v-else-if="type === 'pdf' && url && !failed" :src="url" :title="basename(file.path)" sandbox="" @error="failed = true" />
-    <p v-else role="status">{{ failed ? '附件暂不可用，可导出后查看。' : '此文件暂不支持预览。' }}</p>
+    <p v-else role="status">{{ failed ? t('附件暂不可用，可导出后查看。') : t('此文件暂不支持预览。') }}</p>
   </main>
 </template>
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Archive, CircleCheck, FileText, Pencil, RotateCcw } from 'lucide-vue-next';
 import { taskReview } from '@tano/protocol';
@@ -83,29 +84,29 @@ onBeforeUnmount(() => {
       ref="menu"
       class="dropdown compact-action-menu plan-event-context-menu"
       role="menu"
-      :aria-label="`${record.object.name} 操作`"
+      :aria-label="t('{0} 操作', [record.object.name])"
       :style="{ left: `${position.x}px`, top: `${position.y}px` }"
       @contextmenu.stop.prevent
       @keydown.stop="keydown"
     >
       <button type="button" role="menuitem" @click="emit('action', 'details')">
         <FileText v-if="disabled" :size="14" /><Pencil v-else :size="14" />
-        {{ disabled ? '查看详情' : checkable ? '编辑任务' : '编辑事件' }}
+        {{ disabled ? t('查看详情') : checkable ? t('编辑任务') : t('编辑事件') }}
       </button>
       <button
         v-if="checkable"
         type="button"
         role="menuitem"
         :disabled="disabled || completionLocked"
-        :title="completionLocked ? '请先完成任务验收' : undefined"
+        :title="completionLocked ? t('请先完成任务验收') : undefined"
         @click="emit('action', 'complete')"
       >
         <RotateCcw v-if="completed" :size="14" /><CircleCheck v-else :size="14" />
-        {{ completed ? '标记未完成' : '标记完成' }}
+        {{ completed ? t('标记未完成') : t('标记完成') }}
       </button>
       <div class="menu-divider" role="separator" />
       <button type="button" role="menuitem" :disabled="disabled" @click="emit('action', 'archive')">
-        <Archive :size="14" />{{ checkable ? '归档任务' : '归档事件' }}
+        <Archive :size="14" />{{ checkable ? t('归档任务') : t('归档事件') }}
       </button>
     </div>
   </Teleport>

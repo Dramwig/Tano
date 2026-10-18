@@ -10,6 +10,8 @@ import { demoAssistantTransport, nativeAssistantTransport } from './transport';
 import { runAssistant } from './engine';
 import { assistantHistory } from './results';
 import { useSuggestionStore } from '../stores/suggestions';
+import { uiLocale } from '../i18n';
+import { assistantCopy, assistantTaskPrompts, formatAssistantText } from './language';
 
 export type AssistantDisplayMode = 'sidebar' | 'floating' | 'fullscreen';
 
@@ -49,6 +51,12 @@ function createAssistantState(inline = false) {
   const files = ref<string[]>([]);
   const selection = ref<{ fileId: string; text: string; from?: number; to?: number } | null>(null);
   const prompt = ref(''), error = ref(''), progress = ref('');
+  let builtInPrompt: string | undefined;
+  watch(prompt, value => { if (value !== builtInPrompt) builtInPrompt = undefined; }, { flush: 'sync' });
+  function setBuiltInPrompt(value: string) {
+    builtInPrompt = value;
+    prompt.value = value;
+  }
   const pendingUserInput = ref<{ request: AssistantUserInput; step: number; values: string[]; submitting: boolean } | null>(null);
   let answerUserInput: ((id: string, answers: AssistantQuestionAnswer[]) => Promise<void>) | undefined;
   const replyTarget = shallowRef<{ label: string; draft: (body: string) => Promise<void> } | null>(null);
@@ -217,7 +225,7 @@ function createAssistantState(inline = false) {
     files.value = [fileId]; selection.value = null;
     setDisplayMode('floating');
     open(fileId);
-    prompt.value = '开始草稿';
+    setBuiltInPrompt(assistantTaskPrompts.startDraft);
     await send();
   }
   async function askUser(questions: AssistantQuestion[], target: AssistantSession, reply: AssistantMessage, signal: AbortSignal) {
@@ -269,6 +277,8 @@ function createAssistantState(inline = false) {
   }
   async function send() {
     if (!transport || busy.value || applying.value || loading.value || !prompt.value.trim()) return;
+    const requestLocale = uiLocale.value;
+    const promptOrigin = prompt.value === builtInPrompt ? 'builtin' : 'user';
     if (!connection.value) { error.value = '请先配置模型连接'; return; }
     if (!isAssistantModelId(modelId.value)) { error.value = '请为当前对话选择模型'; return; }
     if (!session.value) newSession();
@@ -284,7 +294,7 @@ function createAssistantState(inline = false) {
     if (effort !== undefined) target.reasoningEffort = effort;
     const question = prompt.value.trim();
     if (question.length > 20_000) { error.value = '问题超过 20,000 字，请缩短后发送'; return; }
-    busy.value = true; error.value = ''; progress.value = '正在读取参考文档';
+    busy.value = true; error.value = ''; progress.value = assistantCopy(requestLocale).progress.reading;
     const startedAt = performance.now();
     let firstContentMs: number | undefined;
     const abort = new AbortController(); controller = abort;
@@ -326,7 +336,7 @@ function createAssistantState(inline = false) {
       let structureSnapshot: Awaited<ReturnType<typeof workspace.assistantStructures>> | undefined;
       let structureChanged = false;
       reply.usage = await runAssistant({ transport, connectionId: config.id, model, reasoningEffort: effort, tools: config.tools,
-        mode: inline ? 'inline' : 'sidebar',
+        mode: inline ? 'inline' : 'sidebar', locale: requestLocale, promptOrigin,
         workspaceId: expected.id, runId: reply.id, sources: reply.sources!, history, rules, prompt: question, signal: abort.signal,
         ...(inline ? {} : { askUser: (questions: AssistantQuestion[]) => askUser(questions, target, reply!, abort.signal) }),
         execute: async (proposal: AssistantProposal) => {
@@ -393,7 +403,7 @@ function createAssistantState(inline = false) {
       if (target.messages.some(message => message.proposals?.some(item => item.id !== proposal.id &&
           ['unknown', 'applying'].includes(item.status) && (item.path === proposal.path || !!proposal.fileId && item.fileId === proposal.fileId))))
         throw new Error('此目标有结果待核对的操作，请先核对，不自动重试');
-      progress.value = `正在执行 · ${proposal.path}`;
+      progress.value = formatAssistantText(assistantCopy(uiLocale.value).progress.executing, [proposal.path]);
       const preview = await workspace.reviewAssistantProposal(expected, proposal, undefined, true, signal);
       if (preview.status === 'saved') {
         proposal.applied = preview.applied; proposal.status = 'applied';
@@ -618,6 +628,6 @@ function createAssistantState(inline = false) {
   watch([connection, opened], () => { void reloadModels(); });
   onScopeDispose(() => { stop(); modelController?.abort(); });
   return { available, demo, canConfigure, opened, displayMode, fullscreenTabId, fullscreenPaneId, isFullscreenTab, setDisplayMode, loading, busy, applying, connections, connectionId, connection, modelId, models, modelsLoading, modelsError, reloadModels, refreshModels, selectModel, selectConnection, sessions, session, externalSessions, loadExternal, importExternal,
-    files, selection, prompt, error, progress, pendingUserInput, startDocumentDraft, submitUserInput, reasoningEffort, selectReasoningEffort, replyTarget, open, stop, settle, send, newSession, selectSession, deleteSession, review, verify,
+    files, selection, prompt, setBuiltInPrompt, error, progress, pendingUserInput, startDocumentDraft, submitUserInput, reasoningEffort, selectReasoningEffort, replyTarget, open, stop, settle, send, newSession, selectSession, deleteSession, review, verify,
     undo, reject, publishSuggestions, saveConnection, removeConnection, reloadConnections, checkConnection, setManaged: (check: (id: string) => boolean) => { managed = check; } };
 }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch, type Component } from 'vue';
 import { ArrowLeft, BookOpen, Check, ChevronRight, File, FileText, Table2, FolderOpen, LockKeyhole } from 'lucide-vue-next';
 import { basename, isMarkdown, isDataTableFilePath, isWorkspaceInternalPath, parentPath, type FileEntry } from '@tano/protocol';
@@ -150,11 +151,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <nav ref="root" class="breadcrumb" aria-label="当前位置">
+  <nav ref="root" class="breadcrumb" :aria-label="t('当前位置')">
     <button type="button" class="breadcrumb-trigger breadcrumb-workspace"
       :class="{ 'demo-badge breadcrumb-demo-badge': demoLabel }"
-      :disabled="!workspaceId" :title="demoLabel ? '浏览器演示 · 数据仅保存在本浏览器' : workspaceName"
-      :aria-label="`浏览工作区：${workspaceName}`" aria-haspopup="menu"
+      :disabled="!workspaceId" :title="demoLabel ? t('浏览器演示 · 数据仅保存在本浏览器') : workspaceName"
+      :aria-label="t('浏览工作区：{0}', [workspaceName])" aria-haspopup="menu"
       :aria-expanded="opened && anchorKey === 'workspace'" :aria-controls="opened && anchorKey === 'workspace' ? menuId : undefined"
       @click="show($event, 'workspace', '')" @keydown.down.prevent.stop="show($event, 'workspace', '')"
       @keydown.up.prevent.stop="show($event, 'workspace', '')" @keydown.esc.stop.prevent="close(true)">
@@ -176,7 +177,7 @@ onBeforeUnmount(() => {
       <ChevronRight :size="12" class="breadcrumb-separator" aria-hidden="true" />
       <button type="button" class="breadcrumb-trigger" :class="{ 'breadcrumb-current': part.current }"
         v-butterfly-perch="part.current ? perch : undefined"
-        :title="part.path" :aria-label="part.current ? `切换文件：${part.name}` : `浏览目录：${part.path}`"
+        :title="part.path" :aria-label="part.current ? t('切换文件：{0}', [part.name]) : t('浏览目录：{0}', [part.path])"
         :aria-current="part.current ? 'page' : undefined" aria-haspopup="menu"
         :aria-expanded="opened && anchorKey === part.path" :aria-controls="opened && anchorKey === part.path ? menuId : undefined"
         @click="show($event, part.path, part.current ? parentPath(part.path) : part.path)"
@@ -190,10 +191,10 @@ onBeforeUnmount(() => {
   </nav>
   <Teleport to="body">
     <div v-if="opened" :id="menuId" ref="menu" class="breadcrumb-menu" :style="position"
-      role="menu" :aria-label="`浏览目录：${folderLabel}`" tabindex="-1" @keydown="menuKeydown">
+      role="menu" :aria-label="t('浏览目录：{0}', [folderLabel])" tabindex="-1" @keydown="menuKeydown">
       <div class="breadcrumb-menu-heading">
         <button v-if="folder" type="button" class="breadcrumb-menu-back" role="menuitem"
-          aria-label="返回上级目录" title="返回上级目录" @click="goBack"><ArrowLeft :size="15" /></button>
+          :aria-label="t('返回上级目录')" :title="t('返回上级目录')" @click="goBack"><ArrowLeft :size="15" /></button>
         <span :title="folder || workspaceName">{{ folderLabel }}</span>
       </div>
       <div class="breadcrumb-menu-list panel-scrollbar">
@@ -205,7 +206,7 @@ onBeforeUnmount(() => {
           <ChevronRight v-if="entry.kind === 'directory'" :size="14" class="breadcrumb-menu-trailing" />
           <Check v-else-if="entry.path === path" :size="14" class="breadcrumb-menu-trailing" />
         </button>
-        <p v-if="!children.length" class="breadcrumb-menu-empty">此目录为空</p>
+        <p v-if="!children.length" class="breadcrumb-menu-empty">{{ t('此目录为空') }}</p>
       </div>
     </div>
   </Teleport>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useId, watch } from 'vue';
 import { Archive, CalendarDays, Check, Circle, CircleCheck, Copy, Flag, ListTodo, LoaderCircle, RotateCcw, Save, X } from 'lucide-vue-next';
 import type { ReferenceIdentity, ReferenceTarget, WorkspaceObject } from '@tano/protocol';
@@ -52,7 +53,7 @@ const dirty = computed(() => JSON.stringify(draft.value) !== JSON.stringify(base
 const checkable = computed(() => isCheckableEvent({ ...base.value, object: draft.value }));
 const completed = computed(() => isEventCompleted({ ...base.value, object: draft.value }));
 const completionLocked = computed(() => { const review = taskReview(draft.value); return !!review && review.state !== 'approved'; });
-const title = computed(() => checkable.value ? '任务详情' : '事件详情');
+const title = computed(() => checkable.value ? t('任务详情') : t('事件详情'));
 const planDate = computed(() => readPlanDate(draft.value.properties));
 const canCopy = computed(() => !busy.value && inScope.value && (personal ? plans.personalWritable : plans.workspaceWritable));
 const changedExternally = computed(() => latest.value && latest.value.snapshot.hash !== base.value.snapshot.hash);
@@ -125,13 +126,13 @@ async function openDescriptionLink(reference: string) {
   const path = resolveWorkspaceReference(base.value.path, reference);
   const target = inScope.value && !personal && store.referenceTargets.find(target => target.path === path);
   if (target) requestNavigation({ kind: 'reference', identity: target });
-  else error.value = '引用目标不可用';
+  else error.value = t('引用目标不可用');
 }
 function openDescriptionWiki(target: string) {
-  if (!inScope.value || personal || !store.workspace) { error.value = '引用目标不可用'; return; }
+  if (!inScope.value || personal || !store.workspace) { error.value = t('引用目标不可用'); return; }
   const resolved = resolveWikiLink(store.workspace.files, base.value.path, target);
   if ('file' in resolved) requestNavigation({ kind: 'reference', identity: { type: 'document', id: resolved.file.id } });
-  else error.value = '引用目标不可用';
+  else error.value = t('引用目标不可用');
 }
 async function save(copy = false) {
   if (copy ? !canCopy.value : disabled.value) return;
@@ -140,7 +141,7 @@ async function save(copy = false) {
     const value = clone(draft.value);
     value.name = value.name.trim();
     if (copy) {
-      value.name = `${value.name.slice(0, 180)}（副本）`;
+      value.name = t('{0}（副本）', [value.name.slice(0, 180)]);
       for (const key of ['syncConnection', 'syncRemoteId', 'syncReadOnly', 'deliveryReview']) delete value.properties[key];
       for (const key of ['repeat', 'repeatSourceId', 'repeatOccurrence']) delete value.properties[key];
       value.properties.syncConflictCopy = true;
@@ -160,7 +161,7 @@ async function reload() {
   try {
     if (personal) await plans.refreshPersonal();
     else await store.refresh();
-    if (!latest.value) throw new Error('事项已不存在，请保留当前内容为副本');
+    if (!latest.value) throw new Error(t('事项已不存在，请保留当前内容为副本'));
     accept(latest.value); pending.value = undefined;
   } catch (reason) { error.value = String(reason); }
   finally { busy.value = false; }
@@ -198,33 +199,33 @@ onBeforeUnmount(() => { nameResize?.disconnect(); if (previousFocus?.isConnected
   <div class="plan-detail-backdrop" @mousedown.self="requestNavigation({ kind: 'close' })">
     <form ref="panel" class="plan-detail-panel" role="dialog" aria-modal="true" :aria-label="title" tabindex="-1" @submit.prevent="save()" @keydown="keyboard">
       <header>
-        <div class="plan-detail-heading"><component :is="checkable ? ListTodo : CalendarDays" :size="18" /><h2>{{ title }}</h2><span>{{ personal ? '个人' : base.source?.name ?? store.workspace?.name }}</span></div>
+        <div class="plan-detail-heading"><component :is="checkable ? ListTodo : CalendarDays" :size="18" /><h2>{{ title }}</h2><span>{{ personal ? t('个人') : base.source?.name ?? store.workspace?.name }}</span></div>
         <div class="plan-detail-actions">
-          <button type="button" class="icon-button" :class="{ 'is-archived': draft.archived }" :aria-label="draft.archived ? '取消归档' : '归档'" :title="draft.archived ? '取消归档' : '归档'" :disabled="disabled" @click="draft.archived = !draft.archived"><Archive :size="17" /></button>
-          <button type="button" class="icon-button" :aria-label="`关闭${title}`" title="关闭" :disabled="busy" @click="requestNavigation({ kind: 'close' })"><X :size="18" /></button>
+          <button type="button" class="icon-button" :class="{ 'is-archived': draft.archived }" :aria-label="draft.archived ? t('取消归档') : t('归档')" :title="draft.archived ? t('取消归档') : t('归档')" :disabled="disabled" @click="draft.archived = !draft.archived"><Archive :size="17" /></button>
+          <button type="button" class="icon-button" :aria-label="t('关闭{0}', [title])" :title="t('关闭')" :disabled="busy" @click="requestNavigation({ kind: 'close' })"><X :size="18" /></button>
         </div>
       </header>
       <div class="plan-detail-content">
-        <p v-if="!inScope" class="detail-notice" role="alert">事项所属空间已切换，当前草稿仍保留。请返回原空间后保存。</p>
-        <p v-else-if="!latest" class="detail-notice" role="alert">事项已移除或身份不唯一，当前内容仍保留。</p>
-        <p v-else-if="latest.object.properties.syncReadOnly" class="detail-notice" role="status">此事项来自只读连接，请在来源应用中编辑。</p>
-        <p v-else-if="!plans.canEdit(latest)" class="detail-notice" role="status">当前事项只读。</p>
-        <p v-else-if="changedExternally" class="detail-notice" role="status">事项已被外部修改，保存时将尝试合并。</p>
-        <label class="detail-sr-only" :for="nameId">名称</label>
+        <p v-if="!inScope" class="detail-notice" role="alert">{{ t('事项所属空间已切换，当前草稿仍保留。请返回原空间后保存。') }}</p>
+        <p v-else-if="!latest" class="detail-notice" role="alert">{{ t('事项已移除或身份不唯一，当前内容仍保留。') }}</p>
+        <p v-else-if="latest.object.properties.syncReadOnly" class="detail-notice" role="status">{{ t('此事项来自只读连接，请在来源应用中编辑。') }}</p>
+        <p v-else-if="!plans.canEdit(latest)" class="detail-notice" role="status">{{ t('当前事项只读。') }}</p>
+        <p v-else-if="changedExternally" class="detail-notice" role="status">{{ t('事项已被外部修改，保存时将尝试合并。') }}</p>
+        <label class="detail-sr-only" :for="nameId">{{ t('名称') }}</label>
         <div class="plan-detail-name" :class="{ 'is-completed': completed && checkable }">
-          <label v-if="checkable" class="detail-completion" :class="{ 'is-disabled': disabled }" :title="completed ? '标记未完成' : '标记完成'">
-            <input type="checkbox" :checked="completed" aria-label="已完成" :disabled="disabled || completionLocked" @change="setCompleted(($event.target as HTMLInputElement).checked)" />
+          <label v-if="checkable" class="detail-completion" :class="{ 'is-disabled': disabled }" :title="completed ? t('标记未完成') : t('标记完成')">
+            <input type="checkbox" :checked="completed" :aria-label="t('已完成')" :disabled="disabled || completionLocked" @change="setCompleted(($event.target as HTMLInputElement).checked)" />
             <CircleCheck v-if="completed" :size="25" :stroke-width="1.6" /><Circle v-else :size="25" :stroke-width="1.6" />
           </label>
-          <textarea :id="nameId" ref="nameField" :value="draft.name" aria-label="名称" rows="1" maxlength="200" required :disabled="disabled" @input="updateName" @keydown="nameKeydown" />
+          <textarea :id="nameId" ref="nameField" :value="draft.name" :aria-label="t('名称')" rows="1" maxlength="200" required :disabled="disabled" @input="updateName" @keydown="nameKeydown" />
         </div>
         <div class="plan-detail-meta">
-          <span class="detail-status" :class="{ 'is-completed': completed && checkable }"><span class="detail-status-dot" />{{ draft.archived ? '已归档' : checkable ? completed ? '已完成' : '待完成' : '日程' }}</span>
-          <label v-if="draft.type === 'event'" class="detail-check"><input type="checkbox" :checked="checkable" :disabled="disabled" @change="setCheckable(($event.target as HTMLInputElement).checked)" />需要完成</label>
+          <span class="detail-status" :class="{ 'is-completed': completed && checkable }"><span class="detail-status-dot" />{{ draft.archived ? t('已归档') : checkable ? completed ? t('已完成') : t('待完成') : t('日程') }}</span>
+          <label v-if="draft.type === 'event'" class="detail-check"><input type="checkbox" :checked="checkable" :disabled="disabled" @change="setCheckable(($event.target as HTMLInputElement).checked)" />{{ t('需要完成') }}</label>
         </div>
         <div class="plan-detail-schedule">
           <PlanDateField :model-value="planDate" :disabled="disabled" compact @update:model-value="updatePlanDate" />
-          <div class="plan-detail-due"><label :for="dueId"><Flag :size="14" />截止日期</label><input :id="dueId" type="date" :value="draft.properties.due ?? ''" :disabled="disabled" @input="updateDue" /></div>
+          <div class="plan-detail-due"><label :for="dueId"><Flag :size="14" />{{ t('截止日期') }}</label><input :id="dueId" type="date" :value="draft.properties.due ?? ''" :disabled="disabled" @input="updateDue" /></div>
         </div>
         <DescriptionEditor v-model="draft.description" :disabled="disabled" :targets="previewTargets" preview @open-reference="requestNavigation({ kind: 'reference', identity: $event })" @open-link="openDescriptionLink" @open-wiki-link="openDescriptionWiki" />
         <TaskRepeatControls v-if="checkable && !personal && scopeId" :object="draft" :record="base" :workspace-id="scopeId" :disabled="disabled" :dirty="dirty" @change="value => { if (value === undefined) { delete draft.properties.repeat; delete draft.properties.repeatSourceId; delete draft.properties.repeatOccurrence; } else draft.properties.repeat = value; }" @open-record="emit('openRecord', $event)" />
@@ -232,18 +233,18 @@ onBeforeUnmount(() => { nameResize?.disconnect(); if (previousFocus?.isConnected
         <ReferenceConnections class="plan-detail-references" :identity="draft" :draft="draft.description" :local-targets="personalTargets" :active="inScope" @open="requestNavigation({ kind: 'reference', identity: $event })" />
         <p v-if="error" class="detail-error" role="alert">{{ error }}</p>
         <div v-if="saveFailed" class="plan-detail-recovery">
-          <button type="button" :disabled="!canCopy" @click="save(true)"><Copy :size="15" />另存副本</button>
-          <button type="button" :disabled="busy || !inScope" @click="reload"><RotateCcw :size="15" />放弃修改并重新读取</button>
+          <button type="button" :disabled="!canCopy" @click="save(true)"><Copy :size="15" />{{ t('另存副本') }}</button>
+          <button type="button" :disabled="busy || !inScope" @click="reload"><RotateCcw :size="15" />{{ t('放弃修改并重新读取') }}</button>
         </div>
       </div>
       <div v-if="pending" class="plan-detail-unsaved" role="alert">
-        <strong>有未保存的修改</strong>
-        <div><button type="button" :disabled="disabled || !draft.name.trim()" @click="save()">保存并继续</button><button type="button" :disabled="busy" @click="navigate(pending)">放弃修改</button><button type="button" :disabled="busy" @click="pending = undefined">继续编辑</button></div>
+        <strong>{{ t('有未保存的修改') }}</strong>
+        <div><button type="button" :disabled="disabled || !draft.name.trim()" @click="save()">{{ t('保存并继续') }}</button><button type="button" :disabled="busy" @click="navigate(pending)">{{ t('放弃修改') }}</button><button type="button" :disabled="busy" @click="pending = undefined">{{ t('继续编辑') }}</button></div>
       </div>
       <footer>
-        <span class="detail-save-state" :class="{ 'has-changes': dirty }" role="status"><LoaderCircle v-if="busy" :size="14" class="detail-spinner" /><Circle v-else-if="dirty" :size="12" /><Check v-else :size="14" />{{ busy ? '保存中' : dirty ? '有未保存的修改' : disabled ? '只读' : '已保存' }}</span>
-        <button type="button" class="detail-close" :disabled="busy" @click="requestNavigation({ kind: 'close' })">关闭</button>
-        <button type="submit" class="detail-save" :disabled="disabled || !dirty || !draft.name.trim()"><LoaderCircle v-if="busy" :size="16" class="detail-spinner" /><Save v-else :size="16" />保存</button>
+        <span class="detail-save-state" :class="{ 'has-changes': dirty }" role="status"><LoaderCircle v-if="busy" :size="14" class="detail-spinner" /><Circle v-else-if="dirty" :size="12" /><Check v-else :size="14" />{{ busy ? t('保存中') : dirty ? t('有未保存的修改') : disabled ? t('只读') : t('已保存') }}</span>
+        <button type="button" class="detail-close" :disabled="busy" @click="requestNavigation({ kind: 'close' })">{{ t('关闭') }}</button>
+        <button type="submit" class="detail-save" :disabled="disabled || !dirty || !draft.name.trim()"><LoaderCircle v-if="busy" :size="16" class="detail-spinner" /><Save v-else :size="16" />{{ t('保存') }}</button>
       </footer>
     </form>
   </div>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, ref, useId } from 'vue';
 import AssistantButterfly from './AssistantButterfly.vue';
 import { butterflyPerchDirective, useButterflyController } from '../assistant/butterfly-vue';
@@ -9,10 +10,10 @@ const emit = defineEmits<{ open: [] }>();
 const controller = useButterflyController();
 const vButterflyPerch = butterflyPerchDirective(controller);
 const home = computed<ButterflyPerch | undefined>(() => props.scope ? ({ id: `home:${props.scope}`, scope: props.scope,
-  label: '圆球', kind: 'home', placement: { edge: 'center' } }) : undefined);
+  get label() { return t('圆球'); }, kind: 'home', placement: { edge: 'center' } }) : undefined);
 const away = computed(() => controller?.state.visible && controller.state.homeId === home.value?.id);
 const hintId = useId();
-const hint = computed(() => away.value ? '点此返回 · Esc 也可返回' : props.busy ? '正在忙，点开看看进展' : props.contextLabel ?? '聊聊这篇文档');
+const hint = computed(() => away.value ? t('点此返回 · Esc 也可返回') : props.busy ? t('正在忙，点开看看进展') : props.contextLabel ?? t('聊聊这篇文档'));
 const butterflyMark = ref<InstanceType<typeof AssistantButterfly>>();
 function greet(event: PointerEvent) {
   if (event.pointerType !== 'touch' && !away.value) butterflyMark.value?.flutter();
@@ -24,14 +25,14 @@ function greet(event: PointerEvent) {
     v-butterfly-perch="home"
     type="button"
     class="assistant-launcher"
-    :aria-label="away ? '让蝴蝶回到圆球' : '打开同页助手'"
+    :aria-label="away ? t('让蝴蝶回到圆球') : t('打开同页助手')"
     :aria-describedby="hintId"
     @mousedown.prevent
     @pointerenter="greet"
     @click="away ? controller?.returnHome() : emit('open')"
   >
     <span :id="hintId" class="assistant-launcher-hint" role="tooltip">
-      <strong>同页助手</strong>
+      <strong>{{ t('同页助手') }}</strong>
       <span>{{ hint }}</span>
     </span>
     <AssistantButterfly ref="butterflyMark" class="assistant-launcher-mark" :class="{ 'is-away': away }" />

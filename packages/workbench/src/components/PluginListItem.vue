@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { LoaderCircle, MoreHorizontal, Plus } from 'lucide-vue-next';
 import type { PluginManifest } from '@tano/protocol';
 import PluginIcon from './PluginIcon.vue';
@@ -16,7 +17,7 @@ const emit = defineEmits<{ details: []; install: [] }>();
 
 <template>
   <article class="plugin-entry" :aria-label="plugin.name">
-    <button class="entry-main" :aria-label="`查看${plugin.name}详情`" @click="emit('details')">
+    <button class="entry-main" :aria-label="t('查看{0}详情', [plugin.name])" @click="emit('details')">
       <PluginIcon :id="plugin.id" compact />
       <span class="entry-copy">
         <strong :title="plugin.name">{{ plugin.name }}</strong>
@@ -24,13 +25,13 @@ const emit = defineEmits<{ details: []; install: [] }>();
       </span>
     </button>
     <span v-if="showState && installed" class="entry-state" :class="{ enabled }">{{
-      enabled ? '已启用' : '已停用'
+      enabled ? t('已启用') : t('已停用')
     }}</span>
     <button
       v-if="installed"
       class="entry-action"
-      :aria-label="`管理${plugin.name}`"
-      :title="`管理${plugin.name}`"
+      :aria-label="t('管理{0}', [plugin.name])"
+      :title="t('管理{0}', [plugin.name])"
       @click="emit('details')"
     >
       <MoreHorizontal :size="18" :stroke-width="1.6" />
@@ -39,8 +40,8 @@ const emit = defineEmits<{ details: []; install: [] }>();
       v-else
       class="entry-action"
       :disabled="busy"
-      :aria-label="`${pending ? '正在安装' : '安装'}${plugin.name}`"
-      :title="`安装${plugin.name}`"
+      :aria-label="`${pending ? t('正在安装') : t('安装')}${plugin.name}`"
+      :title="t('安装{0}', [plugin.name])"
       @click="emit('install')"
     >
       <LoaderCircle v-if="pending" class="entry-spinner" :size="17" /><Plus

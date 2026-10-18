@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiLocale, setUiLocale, uiSearchText } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   ArrowRight,
@@ -123,11 +124,11 @@ const rules = computed(() => props.capabilities ?? defaultCapabilities);
 const { preferences: helpPreferences, setEnabled: setHelpEnabled } = useHelpPreferences();
 const display = computed(() => props.editorPreferences ?? defaultEditorPreferences);
 const wrapping = computed(() => normalizeSelectionWrapping(display.value.selectionWrapping));
-const wrappingOptions = selectionWrappingOptions.map(option => {
+const wrappingOptions = computed(() => selectionWrappingOptions.map(option => {
   const [input, output] = option.example.split('；')[0]!.split(' → ');
   const [opening, closing] = output!.split('文字');
-  return { ...option, input, opening, closing };
-});
+  return { ...option, example: t(option.example), input: input?.replaceAll('文字', t('文字')), opening, closing };
+}));
 function setWrapping(key: keyof typeof wrapping.value, enabled: boolean) {
   emit('update:editorPreferences', { ...display.value, selectionWrapping: { ...wrapping.value, [key]: enabled } });
 }
@@ -145,13 +146,13 @@ const rulesDisabled = computed(
 const displayOptions = [
   {
     key: 'previewMathWhileEditing',
-    label: '编辑时预览公式',
-    description: '展开 Markdown 源码编辑公式时同步显示排版效果。',
+    get label() { return t('编辑时预览公式'); },
+    get description() { return t('展开 Markdown 源码编辑公式时同步显示排版效果。'); },
   },
   {
     key: 'folding',
-    label: '标题与列表折叠',
-    description: '显示折叠按钮，临时收起标题下的内容或列表项。',
+    get label() { return t('标题与列表折叠'); },
+    get description() { return t('显示折叠按钮，临时收起标题下的内容或列表项。'); },
   },
 ] as const;
 
@@ -163,73 +164,72 @@ const originalFocus = document.activeElement as HTMLElement | null;
 const pages = [
   {
     id: 'appearance',
-    label: '外观设置',
-    group: '个人偏好',
+    get label() { return t('外观设置'); },
+    get group() { return t('个人偏好'); },
     icon: Palette,
-    terms: '外观 主题 白天 黑夜 深色 浅色 跟随系统 字体 系统字体 衬线字体 等宽字体 Mono Maple 自定义字体 字号 字体大小 页面内标题 属性 文档属性 文档讨论 评论 显示目录 文档大纲 目录位置 左侧 右侧 帮助 上手 引导 气泡 偶尔显示使用提示',
+    get terms() { return uiSearchText('外观 主题 白天 黑夜 深色 浅色 跟随系统 字体 系统字体 衬线字体 等宽字体 Mono Maple 自定义字体 字号 字体大小 页面内标题 属性 文档属性 文档讨论 评论 显示目录 文档大纲 目录位置 左侧 右侧 帮助 上手 引导 气泡 偶尔显示使用提示'); },
   },
   {
     id: 'editing',
-    label: '编辑设置',
-    group: '个人偏好',
+    get label() { return t('编辑设置'); },
+    get group() { return t('个人偏好'); },
     icon: PencilLine,
-    terms: '编辑器 Markdown 源码 默认编辑模式 光标 语法 展开 编辑 Reveal 数学 公式 KaTeX 标题 列表 折叠 工具栏 选区 顶部 固定 胶囊 符号 包裹 自动配对 斜体 粗体 删除线 高亮 代码 上标 下标 下划线 注释',
+    get terms() { return uiSearchText('编辑器 Markdown 源码 默认编辑模式 光标 语法 展开 编辑 Reveal 数学 公式 KaTeX 标题 列表 折叠 工具栏 选区 顶部 固定 胶囊 符号 包裹 自动配对 斜体 粗体 删除线 高亮 代码 上标 下标 下划线 注释'); },
   },
   {
     id: 'shortcuts',
-    label: '快捷键',
-    group: '个人偏好',
+    get label() { return t('快捷键'); },
+    get group() { return t('个人偏好'); },
     icon: Keyboard,
-    terms: '键盘 快捷键 按键 组合键 热键 shortcut keybinding Ctrl Command 保存 搜索 查找 替换 侧栏 新建 默认',
+    get terms() { return uiSearchText('键盘 快捷键 按键 组合键 热键 shortcut keybinding Ctrl Command 保存 搜索 查找 替换 侧栏 新建 默认'); },
   },
   {
     id: 'assistant',
-    label: '助手设置',
-    group: '个人偏好',
+    get label() { return t('助手设置'); },
+    get group() { return t('个人偏好'); },
     icon: Bot,
-    terms: '助手 模型 连接 API 密钥 Codex CLI Claude CLI token 工具调用 个人设置',
+    get terms() { return uiSearchText('助手 模型 连接 API 密钥 Codex CLI Claude CLI token 工具调用 个人设置'); },
   },
   {
     id: 'workspace',
-    label: '工作区',
-    group: '工作区设置',
+    get label() { return t('工作区'); },
+    get group() { return t('工作区设置'); },
     icon: BookOpen,
-    terms: '文件夹 历史 回收站 Agent 存储 当前空间 名称 图标 表情 默认页面 首页 页面标题来源 文件名 YAML title 侧栏 计划 图谱 插件 导出 ZIP 浏览统计 人物 目录 活动 悬浮卡片 ID 删除',
+    get terms() { return uiSearchText('文件夹 历史 回收站 Agent 存储 当前空间 名称 图标 表情 默认页面 首页 页面标题来源 文件名 YAML title 侧栏 计划 图谱 插件 导出 ZIP 浏览统计 人物 目录 活动 悬浮卡片 ID 删除'); },
   },
   {
     id: 'documents',
-    label: '文档能力',
-    group: '工作区设置',
+    get label() { return t('文档能力'); },
+    get group() { return t('工作区设置'); },
     icon: FileText,
-    terms:
-      'Markdown 数学 公式 Math Mermaid Wiki Links 提示块 脚注 HTML 嵌入 对象 引用 折叠 标签页 分栏 附件 输出 语法 方言 无序列表 标记 Obsidian GitHub Pandoc CommonMark',
+    get terms() { return uiSearchText('Markdown 数学 公式 Math Mermaid Wiki Links 提示块 脚注 HTML 嵌入 对象 引用 折叠 标签页 分栏 附件 输出 语法 方言 无序列表 标记 Obsidian GitHub Pandoc CommonMark'); },
   },
   {
     id: 'about',
-    label: '关于同页',
-    group: '帮助',
+    get label() { return t('关于同页'); },
+    get group() { return t('帮助'); },
     icon: CircleHelp,
-    terms: '版本 更新 检查更新 Tano 存储 Markdown Agent',
+    get terms() { return uiSearchText('版本 更新 检查更新 Tano 存储 Markdown Agent'); },
   },
 ] as const;
 const visiblePages = computed(() => {
   const query = search.value.trim().toLocaleLowerCase();
-  return [...pages, ...(props.extraPages ?? []).map(item => ({ ...item, icon: item.icon ?? UserRound })),
-    ...(props.pluginPages ?? []).map(item => ({ id: item.view.key, label: item.view.label, group: '插件设置', terms: item.view.pluginName, icon: UserRound }))].filter(
+  return [...pages, ...(props.extraPages ?? []).map(item => ({ ...item, group: t(item.group), icon: item.icon ?? UserRound })),
+    ...(props.pluginPages ?? []).map(item => ({ id: item.view.key, label: item.view.label, get group() { return t('插件设置'); }, terms: item.view.pluginName, icon: UserRound }))].filter(
     (item) =>
       `${item.group} ${item.label} ${item.terms}`.toLocaleLowerCase().includes(query),
   );
 });
 const navigationGroups = computed(() =>
-  ['个人偏好', '工作区设置', '插件设置', '帮助']
+  [t('个人偏好'), t('工作区设置'), t('插件设置'), t('帮助')]
     .map((label) => ({ label, pages: visiblePages.value.filter((item) => item.group === label) }))
     .filter((group) => group.pages.length),
 );
 const workspacePage = computed(() => page.value === 'workspace' || page.value === 'documents');
 const scopeLabel = computed(() =>
   workspacePage.value
-    ? `工作区设置 · ${props.workspace?.name ?? '尚未打开工作区'}`
-    : '个人偏好 · 当前设备',
+    ? t('工作区设置 · {0}', [props.workspace?.name ?? t('尚未打开工作区')])
+    : t('个人偏好 · 当前设备'),
 );
 watch(visiblePages, (items) => {
   if (items.length && !items.some((item) => item.id === page.value)) page.value = items[0].id;
@@ -287,15 +287,15 @@ function customFontInput(event: Event) {
         aria-hidden="true"
         @mousedown="emit('drag-window', $event)"
       />
-      <aside class="settings-nav" aria-label="设置分类">
+      <aside class="settings-nav" :aria-label="t('设置分类')">
         <label class="settings-search">
           <Search :size="16" />
           <input
             ref="searchInput"
             v-model="search"
             type="search"
-            placeholder="搜索设置…"
-            aria-label="搜索设置"
+            :placeholder="t('搜索设置…')"
+            :aria-label="t('搜索设置')"
           />
         </label>
         <div class="settings-nav-scroll panel-scrollbar">
@@ -320,14 +320,14 @@ function customFontInput(event: Event) {
               </button>
             </div>
           </div>
-          <p v-if="!visiblePages.length" class="settings-search-empty">没有找到相关设置</p>
+          <p v-if="!visiblePages.length" class="settings-search-empty">{{ t('没有找到相关设置') }}</p>
         </div>
         <div class="settings-nav-foot">
           <span class="settings-workspace-icon"><WorkspaceIcon :icon="workspaceSettings?.icon" :mode="mode" :size="17" /></span>
           <div>
-            <span>{{ workspace?.name ?? '尚未打开工作区' }}</span>
+            <span>{{ workspace?.name ?? t('尚未打开工作区') }}</span>
             <small>{{
-              mode === 'demo' ? '浏览器演示' : mode === 'web' ? '在线工作区' : '本地工作区'
+              mode === 'demo' ? t('浏览器演示') : mode === 'web' ? t('在线工作区') : t('本地工作区')
             }}</small>
           </div>
         </div>
@@ -336,56 +336,67 @@ function customFontInput(event: Event) {
       <button
         class="settings-close"
         type="button"
-        aria-label="关闭设置"
-        title="关闭设置"
+        :aria-label="t('关闭设置')"
+        :title="t('关闭设置')"
         @click="emit('close')"
       >
         <X :size="18" />
       </button>
       <main ref="mainContent" class="settings-main panel-scrollbar">
         <div v-if="!visiblePages.length" class="settings-content">
-          <h2 id="settings-title">搜索设置</h2>
-          <p class="settings-lead">没有找到相关设置，请尝试其他关键词。</p>
+          <h2 id="settings-title">{{ t('搜索设置') }}</h2>
+          <p class="settings-lead">{{ t('没有找到相关设置，请尝试其他关键词。') }}</p>
         </div>
         <div v-else-if="page === 'appearance' || page === 'editing'" class="settings-content">
           <div class="settings-title-line">
-            <h2 id="settings-title">{{ page === 'appearance' ? '外观设置' : '编辑设置' }}</h2>
+            <h2 id="settings-title">{{ page === 'appearance' ? t('外观设置') : t('编辑设置') }}</h2>
             <div class="settings-page-scope" role="note" tabindex="0" :aria-label="scopeLabel">
               <Monitor :size="13" /><span>{{ scopeLabel }}</span>
             </div>
           </div>
-          <p class="settings-lead">适用于这台设备上的所有工作区，仅影响你的{{ page === 'appearance' ? '显示效果' : '编辑体验' }}。</p>
-          <section v-if="page === 'appearance'" class="settings-section" aria-label="外观">
-            <h3>外观</h3>
+          <p class="settings-lead">{{ page === 'appearance' ? t('适用于这台设备上的所有工作区，仅影响你的显示效果。') : t('适用于这台设备上的所有工作区，仅影响你的编辑体验。') }}</p>
+          <section v-if="page === 'appearance'" class="settings-section" :aria-label="t('外观')">
+            <h3>{{ t('外观') }}</h3>
             <div class="settings-card">
               <div class="settings-row">
                 <div>
-                  <strong>主题</strong>
-                  <p>选择应用外观，或随系统外观自动切换。</p>
+                  <strong>{{ t('界面语言') }}</strong>
+                  <p>{{ t('立即切换界面语言，仅保存在当前设备。') }}</p>
+                </div>
+                <select :value="uiLocale" :aria-label="t('界面语言')"
+                  @change="setUiLocale(($event.target as HTMLSelectElement).value)">
+                  <option value="zh-CN">简体中文</option>
+                  <option value="en-US">English</option>
+                </select>
+              </div>
+              <div class="settings-row">
+                <div>
+                  <strong>{{ t('主题') }}</strong>
+                  <p>{{ t('选择应用外观，或随系统外观自动切换。') }}</p>
                 </div>
                 <select
                   :value="theme"
-                  aria-label="主题"
+                  :aria-label="t('主题')"
                   @change="emit('update:theme', ($event.target as HTMLSelectElement).value as ThemePreference)"
                 >
-                  <option value="light">白天</option>
-                  <option value="dark">黑夜</option>
-                  <option value="system">跟随系统</option>
+                  <option value="light">{{ t('白天') }}</option>
+                  <option value="dark">{{ t('黑夜') }}</option>
+                  <option value="system">{{ t('跟随系统') }}</option>
                 </select>
               </div>
             </div>
           </section>
           <section v-if="page === 'editing'" class="settings-section" aria-labelledby="settings-editor">
-            <h3 id="settings-editor">编辑器</h3>
+            <h3 id="settings-editor">{{ t('编辑器') }}</h3>
             <div class="settings-card">
               <div class="settings-row">
                 <div>
-                  <strong>默认编辑模式</strong>
-                  <p>选择打开文档时使用的视图。</p>
+                  <strong>{{ t('默认编辑模式') }}</strong>
+                  <p>{{ t('选择打开文档时使用的视图。') }}</p>
                 </div>
                 <select
                   :value="defaultSource ? 'source' : 'visual'"
-                  aria-label="默认编辑模式"
+                  :aria-label="t('默认编辑模式')"
                   @change="
                     emit(
                       'update:defaultSource',
@@ -393,14 +404,14 @@ function customFontInput(event: Event) {
                     )
                   "
                 >
-                  <option value="visual">可视化编辑</option>
-                  <option value="source">Markdown 源码</option>
+                  <option value="visual">{{ t('可视化编辑') }}</option>
+                  <option value="source">{{ t('Markdown 源码') }}</option>
                 </select>
               </div>
               <div class="settings-row">
                 <div>
-                  <strong>光标进入时展开 Markdown 源码</strong>
-                  <p>类似 Typora、Obsidian 的实时预览：光标进入时显示 Markdown 语法，离开后恢复排版。</p>
+                  <strong>{{ t('光标进入时展开 Markdown 源码') }}</strong>
+                  <p>{{ t('类似 Typora、Obsidian 的实时预览：光标进入时显示 Markdown 语法，离开后恢复排版。') }}</p>
                 </div>
                 <button
                   type="button"
@@ -408,7 +419,7 @@ function customFontInput(event: Event) {
                   :class="{ on: revealMarkdown }"
                   role="switch"
                   :aria-checked="revealMarkdown"
-                  aria-label="光标进入时展开 Markdown 源码"
+                  :aria-label="t('光标进入时展开 Markdown 源码')"
                   @click="emit('update:revealMarkdown', !revealMarkdown)"
                 >
                   <span />
@@ -416,132 +427,132 @@ function customFontInput(event: Event) {
               </div>
             </div>
           </section>
-          <section v-if="page === 'appearance'" class="settings-section" aria-label="编辑字体与字号">
-            <h3>编辑字体与字号</h3>
+          <section v-if="page === 'appearance'" class="settings-section" :aria-label="t('编辑字体与字号')">
+            <h3>{{ t('编辑字体与字号') }}</h3>
             <div class="settings-card settings-font-card">
               <div class="settings-row">
                 <div>
-                  <strong>可视化编辑字体</strong>
-                  <p>选择内置字体，或使用本机已安装的字体。</p>
+                  <strong>{{ t('可视化编辑字体') }}</strong>
+                  <p>{{ t('选择内置字体，或使用本机已安装的字体。') }}</p>
                 </div>
                 <select
                   :value="visualFontChoice"
-                  aria-label="可视化编辑字体"
+                  :aria-label="t('可视化编辑字体')"
                   @change="emit('update:visualFontChoice', ($event.target as HTMLSelectElement).value as VisualFontChoice)"
                 >
-                  <option value="system">系统字体</option>
-                  <option value="serif">衬线字体</option>
-                  <option value="mono">等宽字体</option>
-                  <option value="custom">自定义字体</option>
+                  <option value="system">{{ t('系统字体') }}</option>
+                  <option value="serif">{{ t('衬线字体') }}</option>
+                  <option value="mono">{{ t('等宽字体') }}</option>
+                  <option value="custom">{{ t('自定义字体') }}</option>
                 </select>
               </div>
               <div v-if="visualFontChoice === 'custom'" class="settings-row settings-custom-font-row">
                 <div>
-                  <strong>字体名称</strong>
-                  <p>输入本机字体名称；未安装时会回退到系统字体。</p>
+                  <strong>{{ t('字体名称') }}</strong>
+                  <p>{{ t('输入本机字体名称；未安装时会回退到系统字体。') }}</p>
                 </div>
                 <input
                   :value="customFontName"
                   type="text"
                   maxlength="80"
                   autocomplete="off"
-                  aria-label="自定义字体名称"
-                  placeholder="例如：霞鹜文楷"
+                  :aria-label="t('自定义字体名称')"
+                  :placeholder="t('例如：霞鹜文楷')"
                   @input="customFontInput"
                 />
               </div>
               <div class="settings-row settings-font-row">
                 <div>
-                  <strong>可视化编辑字号</strong>
-                  <p>调整正文、标题和编辑中的内容大小。</p>
+                  <strong>{{ t('可视化编辑字号') }}</strong>
+                  <p>{{ t('调整正文、标题和编辑中的内容大小。') }}</p>
                 </div>
                 <div class="settings-font-controls">
                   <button
                     type="button"
-                    aria-label="减小可视化编辑字号"
+                    :aria-label="t('减小可视化编辑字号')"
                     :disabled="visualFontSize <= 12"
                     @click="emit('update:visualFontSize', visualFontSize - 1)"
                   ><Minus :size="15" :stroke-width="1.75" /></button>
-                  <output aria-label="可视化编辑字号">{{ visualFontSize }} px</output>
+                  <output :aria-label="t('可视化编辑字号')">{{ visualFontSize }} px</output>
                   <button
                     type="button"
-                    aria-label="增大可视化编辑字号"
+                    :aria-label="t('增大可视化编辑字号')"
                     :disabled="visualFontSize >= 24"
                     @click="emit('update:visualFontSize', visualFontSize + 1)"
                   ><Plus :size="15" :stroke-width="1.75" /></button>
                   <button
                     type="button"
                     class="settings-font-reset"
-                    aria-label="重置可视化编辑字号"
+                    :aria-label="t('重置可视化编辑字号')"
                     :disabled="visualFontSize === 16"
                     @click="emit('update:visualFontSize', 16)"
-                  >重置</button>
+                  >{{ t('重置') }}</button>
                 </div>
               </div>
               <div class="settings-row settings-font-row">
                 <div>
-                  <strong>Markdown 源码字号</strong>
-                  <p>调整源码视图中的文字大小。</p>
+                  <strong>{{ t('Markdown 源码字号') }}</strong>
+                  <p>{{ t('调整源码视图中的文字大小。') }}</p>
                 </div>
                 <div class="settings-font-controls">
                   <button
                     type="button"
-                    aria-label="减小 Markdown 源码字号"
+                    :aria-label="t('减小 Markdown 源码字号')"
                     :disabled="sourceFontSize <= 12"
                     @click="emit('update:sourceFontSize', sourceFontSize - 1)"
                   ><Minus :size="15" :stroke-width="1.75" /></button>
-                  <output aria-label="Markdown 源码字号">{{ sourceFontSize }} px</output>
+                  <output :aria-label="t('Markdown 源码字号')">{{ sourceFontSize }} px</output>
                   <button
                     type="button"
-                    aria-label="增大 Markdown 源码字号"
+                    :aria-label="t('增大 Markdown 源码字号')"
                     :disabled="sourceFontSize >= 24"
                     @click="emit('update:sourceFontSize', sourceFontSize + 1)"
                   ><Plus :size="15" :stroke-width="1.75" /></button>
                   <button
                     type="button"
                     class="settings-font-reset"
-                    aria-label="重置 Markdown 源码字号"
+                    :aria-label="t('重置 Markdown 源码字号')"
                     :disabled="sourceFontSize === 14"
                     @click="emit('update:sourceFontSize', 14)"
-                  >重置</button>
+                  >{{ t('重置') }}</button>
                 </div>
               </div>
-              <div class="settings-font-preview" aria-label="字体与字号预览">
+              <div class="settings-font-preview" :aria-label="t('字体与字号预览')">
                 <div class="settings-font-preview-samples">
-                  <div class="settings-font-preview-sample" role="group" aria-label="可视化编辑预览">
+                  <div class="settings-font-preview-sample" role="group" :aria-label="t('可视化编辑预览')">
                     <p
                       class="settings-visual-font-sample"
                       :style="{
                         fontFamily: visualFontFamily(visualFontChoice, customFontName),
                         fontSize: `${visualFontSize}px`,
                       }"
-                    >在同一页写下新的想法。<br />Tano 123</p>
+                    >{{ t('在同一页写下新的想法。') }}<br />Tano 123</p>
                   </div>
-                  <div class="settings-font-preview-sample" role="group" aria-label="Markdown 源码预览">
+                  <div class="settings-font-preview-sample" role="group" :aria-label="t('Markdown 源码预览')">
                     <p class="settings-source-font-sample" :style="{ fontSize: `${sourceFontSize}px` }">
-                      # 在同一页写下新的想法<br />Tano 123
+                      {{ t('# 在同一页写下新的想法') }}<br />Tano 123
                     </p>
                   </div>
                 </div>
               </div>
             </div>
-            <p class="settings-local-note">可视化字体仅影响可视化编辑和页面内标题；Markdown 源码保持等宽字体。</p>
+            <p class="settings-local-note">{{ t('可视化字体仅影响可视化编辑和页面内标题；Markdown 源码保持等宽字体。') }}</p>
           </section>
-          <section v-if="page === 'editing'" class="settings-section" aria-label="编辑行为">
-            <h3>编辑行为</h3>
+          <section v-if="page === 'editing'" class="settings-section" :aria-label="t('编辑行为')">
+            <h3>{{ t('编辑行为') }}</h3>
             <div class="settings-card">
               <div class="settings-row">
                 <div>
-                  <strong>编辑工具栏</strong>
-                  <p>随选区显示，或停靠在顶部、底部、左侧、右侧；也可拖动工具栏手柄调整。仅影响当前设备。</p>
+                  <strong>{{ t('编辑工具栏') }}</strong>
+                  <p>{{ t('随选区显示，或停靠在顶部、底部、左侧、右侧；也可拖动工具栏手柄调整。仅影响当前设备。') }}</p>
                 </div>
-                <select aria-label="编辑工具栏" :value="toolbarMode ?? 'selection'"
+                <select :aria-label="t('编辑工具栏')" :value="toolbarMode ?? 'selection'"
                   @change="emit('update:toolbarMode', ($event.target as HTMLSelectElement).value as ToolbarMode)">
-                  <option value="selection">随选区显示（默认）</option>
-                  <option value="fixed">固定在顶部</option>
-                  <option value="bottom">吸附在底部</option>
-                  <option value="left">靠左停靠</option>
-                  <option value="right">靠右停靠</option>
+                  <option value="selection">{{ t('随选区显示（默认）') }}</option>
+                  <option value="fixed">{{ t('固定在顶部') }}</option>
+                  <option value="bottom">{{ t('吸附在底部') }}</option>
+                  <option value="left">{{ t('靠左停靠') }}</option>
+                  <option value="right">{{ t('靠右停靠') }}</option>
                 </select>
               </div>
               <div
@@ -551,10 +562,10 @@ function customFontInput(event: Event) {
                 :class="{ 'is-disabled': option.key === 'previewMathWhileEditing' && !revealMarkdown }"
               >
                 <div>
-                  <strong>{{ option.label }}</strong>
+                  <strong>{{ t(option.label) }}</strong>
                   <p>{{
                     option.key === 'previewMathWhileEditing' && !revealMarkdown
-                      ? '仅控制 Markdown 源码展开时的预览；公式面板仍会实时渲染。'
+                      ? t('仅控制 Markdown 源码展开时的预览；公式面板仍会实时渲染。')
                       : option.description
                   }}</p>
                 </div>
@@ -578,13 +589,13 @@ function customFontInput(event: Event) {
               </div>
             </div>
           </section>
-          <section v-if="page === 'editing'" class="settings-section" aria-label="AI 功能">
-            <h3>AI 功能</h3>
+          <section v-if="page === 'editing'" class="settings-section" :aria-label="t('AI 功能')">
+            <h3>{{ t('AI 功能') }}</h3>
             <div class="settings-card">
               <div class="settings-row">
                 <div>
-                  <strong>空白块按空格启动 AI</strong>
-                  <p>在空白 block 中按空格，直接展开一次性 AI 编辑输入框。</p>
+                  <strong>{{ t('空白块按空格启动 AI') }}</strong>
+                  <p>{{ t('在空白 block 中按空格，直接展开一次性 AI 编辑输入框。') }}</p>
                 </div>
                 <button
                   type="button"
@@ -592,7 +603,7 @@ function customFontInput(event: Event) {
                   :class="{ on: displayOptionActive('blankBlockAiShortcut') }"
                   role="switch"
                   :aria-checked="displayOptionActive('blankBlockAiShortcut')"
-                  aria-label="空白块按空格启动 AI"
+                  :aria-label="t('空白块按空格启动 AI')"
                   @click="emit('update:editorPreferences', {
                     ...display,
                     blankBlockAiShortcut: !display.blankBlockAiShortcut,
@@ -603,42 +614,42 @@ function customFontInput(event: Event) {
               </div>
             </div>
           </section>
-          <section v-if="page === 'editing'" class="settings-section" aria-label="选区符号包裹">
-            <h3>选区符号包裹</h3>
+          <section v-if="page === 'editing'" class="settings-section" :aria-label="t('选区符号包裹')">
+            <h3>{{ t('选区符号包裹') }}</h3>
             <div class="settings-card">
               <div class="settings-row">
                 <div>
-                  <strong>输入符号包裹选区</strong>
-                  <p>选中文字后输入符号，自动补齐两端。可视化与源码模式通用。</p>
+                  <strong>{{ t('输入符号包裹选区') }}</strong>
+                  <p>{{ t('选中文字后输入符号，自动补齐两端。可视化与源码模式通用。') }}</p>
                 </div>
-                <button type="button" class="settings-switch" role="switch" aria-label="输入符号包裹选区"
+                <button type="button" class="settings-switch" role="switch" :aria-label="t('输入符号包裹选区')"
                   :class="{ on: wrapping.enabled }" :aria-checked="wrapping.enabled"
                   @click="setWrapping('enabled', !wrapping.enabled)"><span /></button>
               </div>
               <div v-for="option in wrappingOptions" :key="option.key" class="settings-row settings-row-compact"
                 :class="{ 'is-disabled': !wrapping.enabled }">
                 <div class="settings-inline-copy">
-                  <strong>{{ option.label }}</strong>
+                  <strong>{{ t(option.label) }}</strong>
                   <span class="settings-inline-example" :title="option.example" :aria-label="option.example">
                     <kbd aria-hidden="true">{{ option.input }}</kbd>
                     <ArrowRight :size="12" aria-hidden="true" />
-                    <code aria-hidden="true"><span>{{ option.opening }}</span>文字<span>{{ option.closing }}</span></code>
+                    <code aria-hidden="true"><span>{{ option.opening }}</span>{{ t('文字') }}<span>{{ option.closing }}</span></code>
                   </span>
                 </div>
-                <button type="button" class="settings-switch" role="switch" :aria-label="option.label"
+                <button type="button" class="settings-switch" role="switch" :aria-label="t(option.label)"
                   :class="{ on: wrapping[option.key] }" :aria-checked="wrapping[option.key]" :disabled="!wrapping.enabled"
                   @click="setWrapping(option.key, !wrapping[option.key])"><span /></button>
               </div>
             </div>
-            <p class="settings-local-note">设置仅影响当前设备。扩展语法默认关闭，其他 Markdown 应用可能不支持。</p>
+            <p class="settings-local-note">{{ t('设置仅影响当前设备。扩展语法默认关闭，其他 Markdown 应用可能不支持。') }}</p>
           </section>
-          <section v-if="page === 'appearance'" class="settings-section" aria-label="内容显示">
-            <h3>内容显示</h3>
+          <section v-if="page === 'appearance'" class="settings-section" :aria-label="t('内容显示')">
+            <h3>{{ t('内容显示') }}</h3>
             <div class="settings-card">
               <div class="settings-row">
                 <div>
-                  <strong>页面内标题</strong>
-                  <p>在编辑区顶部显示当前文档标题。</p>
+                  <strong>{{ t('页面内标题') }}</strong>
+                  <p>{{ t('在编辑区顶部显示当前文档标题。') }}</p>
                 </div>
                 <button
                   type="button"
@@ -646,7 +657,7 @@ function customFontInput(event: Event) {
                   :class="{ on: showPageTitle }"
                   role="switch"
                   :aria-checked="showPageTitle"
-                  aria-label="页面内标题"
+                  :aria-label="t('页面内标题')"
                   @click="emit('update:showPageTitle', !showPageTitle)"
                 >
                   <span />
@@ -654,8 +665,8 @@ function customFontInput(event: Event) {
               </div>
               <div class="settings-row">
                 <div>
-                  <strong>文档属性</strong>
-                  <p>在可视化编辑区显示文档属性。</p>
+                  <strong>{{ t('文档属性') }}</strong>
+                  <p>{{ t('在可视化编辑区显示文档属性。') }}</p>
                 </div>
                 <button
                   type="button"
@@ -663,7 +674,7 @@ function customFontInput(event: Event) {
                   :class="{ on: showDocumentProperties }"
                   role="switch"
                   :aria-checked="showDocumentProperties"
-                  aria-label="文档属性"
+                  :aria-label="t('文档属性')"
                   @click="emit('update:showDocumentProperties', !showDocumentProperties)"
                 >
                   <span />
@@ -671,8 +682,8 @@ function customFontInput(event: Event) {
               </div>
               <div class="settings-row">
                 <div>
-                  <strong>文档讨论</strong>
-                  <p>有讨论时在文档底部显示，没有讨论时自动隐藏。</p>
+                  <strong>{{ t('文档讨论') }}</strong>
+                  <p>{{ t('有讨论时在文档底部显示，没有讨论时自动隐藏。') }}</p>
                 </div>
                 <button
                   type="button"
@@ -680,7 +691,7 @@ function customFontInput(event: Event) {
                   :class="{ on: showDocumentDiscussion }"
                   role="switch"
                   :aria-checked="showDocumentDiscussion"
-                  aria-label="文档讨论"
+                  :aria-label="t('文档讨论')"
                   @click="emit('update:showDocumentDiscussion', !showDocumentDiscussion)"
                 >
                   <span />
@@ -688,7 +699,7 @@ function customFontInput(event: Event) {
               </div>
               <div class="settings-row">
                 <div>
-                  <strong>显示目录</strong>
+                  <strong>{{ t('显示目录') }}</strong>
                 </div>
                 <button
                   type="button"
@@ -696,7 +707,7 @@ function customFontInput(event: Event) {
                   :class="{ on: showOutline }"
                   role="switch"
                   :aria-checked="showOutline"
-                  aria-label="显示目录"
+                  :aria-label="t('显示目录')"
                   @click="emit('update:showOutline', !showOutline)"
                 >
                   <span />
@@ -704,8 +715,8 @@ function customFontInput(event: Event) {
               </div>
               <div class="settings-row">
                 <div>
-                  <strong>目录显示在左侧</strong>
-                  <p>将文档大纲放到编辑区左侧。</p>
+                  <strong>{{ t('目录显示在左侧') }}</strong>
+                  <p>{{ t('将文档大纲放到编辑区左侧。') }}</p>
                 </div>
                 <button
                   type="button"
@@ -713,7 +724,7 @@ function customFontInput(event: Event) {
                   :class="{ on: outlineOnLeft }"
                   role="switch"
                   :aria-checked="outlineOnLeft ?? false"
-                  aria-label="目录显示在左侧"
+                  :aria-label="t('目录显示在左侧')"
                   @click="emit('update:outlineOnLeft', !(outlineOnLeft ?? false))"
                 >
                   <span />
@@ -721,16 +732,16 @@ function customFontInput(event: Event) {
               </div>
             </div>
           </section>
-          <section v-if="page === 'appearance'" class="settings-section" aria-label="使用提示">
-            <h3>使用提示</h3>
+          <section v-if="page === 'appearance'" class="settings-section" :aria-label="t('使用提示')">
+            <h3>{{ t('使用提示') }}</h3>
             <div class="settings-card">
               <div class="settings-row">
                 <div>
-                  <strong>偶尔显示使用提示</strong>
-                  <p>在你停下来时，在帮助按钮上方显示简短的用法提示。关闭后仍可手动查看帮助。</p>
+                  <strong>{{ t('偶尔显示使用提示') }}</strong>
+                  <p>{{ t('在你停下来时，在帮助按钮上方显示简短的用法提示。关闭后仍可手动查看帮助。') }}</p>
                 </div>
                 <button type="button" class="settings-switch" :class="{ on: helpPreferences.enabled }"
-                  role="switch" :aria-checked="helpPreferences.enabled" aria-label="偶尔显示使用提示"
+                  role="switch" :aria-checked="helpPreferences.enabled" :aria-label="t('偶尔显示使用提示')"
                   @click="setHelpEnabled(!helpPreferences.enabled)">
                   <span />
                 </button>
@@ -743,21 +754,21 @@ function customFontInput(event: Event) {
 
         <div v-else-if="page === 'documents'" class="settings-content">
           <div class="settings-title-line">
-            <h2 id="settings-title">文档能力</h2>
+            <h2 id="settings-title">{{ t('文档能力') }}</h2>
             <div class="settings-page-scope" role="note" tabindex="0" :aria-label="scopeLabel">
               <BookOpen :size="13" /><span>{{ scopeLabel }}</span>
             </div>
           </div>
-          <p class="settings-lead">仅对当前工作区生效，文档能力与 Markdown 输出规则随空间共享。</p>
-          <section class="settings-section" aria-label="文档能力">
-            <h3>内容扩展<span class="settings-scope">工作区共享</span></h3>
-            <p class="settings-section-description">关闭后显示原始内容，已有文档会保留。</p>
+          <p class="settings-lead">{{ t('仅对当前工作区生效，文档能力与 Markdown 输出规则随空间共享。') }}</p>
+          <section class="settings-section" :aria-label="t('文档能力')">
+            <h3>{{ t('内容扩展') }}<span class="settings-scope">{{ t('工作区共享') }}</span></h3>
+            <p class="settings-section-description">{{ t('关闭后显示原始内容，已有文档会保留。') }}</p>
             <p v-if="capabilityError" class="settings-notice" role="alert">{{ capabilityError }}</p>
             <p v-else-if="!workspace || workspace.readOnly || !(workspace.canManageSettings ?? mode !== 'web')" class="settings-notice">
               {{
                 !workspace
-                  ? '打开工作区后即可调整文档能力。'
-                  : '只有工作区所有者和管理者可以更改文档能力。'
+                  ? t('打开工作区后即可调整文档能力。')
+                  : t('只有工作区所有者和管理者可以更改文档能力。')
               }}
             </p>
             <div class="settings-card">
@@ -766,7 +777,7 @@ function customFontInput(event: Event) {
                 :key="feature.key"
                 class="settings-row settings-row-compact"
               >
-                <strong>{{ feature.label }}</strong>
+                <strong>{{ t(feature.label) }}</strong>
                 <button
                   type="button"
                   class="settings-switch"
@@ -774,7 +785,7 @@ function customFontInput(event: Event) {
                   role="switch"
                   :disabled="rulesDisabled"
                   :aria-checked="rules.features[feature.key]"
-                  :aria-label="feature.label"
+                  :aria-label="t(feature.label)"
                   @click="
                     emit('capability', {
                       feature: feature.key,
@@ -786,23 +797,22 @@ function customFontInput(event: Event) {
                 </button>
               </div>
             </div>
-            <p class="settings-local-note">Kanban 与数据库块尚未实现；相关源码会保留。</p>
+            <p class="settings-local-note">{{ t('Kanban 与数据库块尚未实现；相关源码会保留。') }}</p>
           </section>
-          <section class="settings-section" aria-label="Markdown 输出">
-            <h3>Markdown 输出</h3>
+          <section class="settings-section" :aria-label="t('Markdown 输出')">
+            <h3>{{ t('Markdown 输出') }}</h3>
             <div class="settings-card">
               <div class="settings-row">
                 <div>
-                  <strong>Markdown 方言</strong>
+                  <strong>{{ t('Markdown 方言') }}</strong>
                   <p>
-                    决定新公式的默认写法：Pandoc 使用 LaTeX
-                    定界符，其余使用美元符号。解析始终兼容两种写法。
+                    {{ t('决定新公式的默认写法：Pandoc 使用 LaTeX 定界符，其余使用美元符号。解析始终兼容两种写法。') }}
                   </p>
                 </div>
                 <select
                   :value="rules.markdownDialect"
                   :disabled="rulesDisabled"
-                  aria-label="Markdown 方言"
+                  :aria-label="t('Markdown 方言')"
                   @change="
                     emit('capability', {
                       markdownDialect: ($event.target as HTMLSelectElement)
@@ -813,18 +823,18 @@ function customFontInput(event: Event) {
                   <option value="obsidian">Obsidian</option>
                   <option value="github">GitHub</option>
                   <option value="pandoc">Pandoc</option>
-                  <option value="commonmark">CommonMark + 扩展</option>
+                  <option value="commonmark">{{ t('CommonMark + 扩展') }}</option>
                 </select>
               </div>
               <div class="settings-row">
                 <div>
-                  <strong>公式输出语法</strong>
-                  <p>默认保留已有公式的原始定界符。选择统一语法后，在下一次编辑保存正文时应用。</p>
+                  <strong>{{ t('公式输出语法') }}</strong>
+                  <p>{{ t('默认保留已有公式的原始定界符。选择统一语法后，在下一次编辑保存正文时应用。') }}</p>
                 </div>
                 <select
                   :value="rules.mathSyntax"
                   :disabled="rulesDisabled"
-                  aria-label="公式输出语法"
+                  :aria-label="t('公式输出语法')"
                   @change="
                     emit('capability', {
                       mathSyntax: ($event.target as HTMLSelectElement)
@@ -832,20 +842,20 @@ function customFontInput(event: Event) {
                     })
                   "
                 >
-                  <option value="preserve">保留原始格式</option>
+                  <option value="preserve">{{ t('保留原始格式') }}</option>
                   <option value="dollar">Dollar：$ / $$</option>
                   <option value="latex">LaTeX：\( \) / \[ \]</option>
                 </select>
               </div>
               <div class="settings-row">
                 <div>
-                  <strong>无序列表标记</strong>
-                  <p>选择无序列表与待办列表的 Markdown 标记，在下一次编辑保存正文时应用。</p>
+                  <strong>{{ t('无序列表标记') }}</strong>
+                  <p>{{ t('选择无序列表与待办列表的 Markdown 标记，在下一次编辑保存正文时应用。') }}</p>
                 </div>
                 <select
                   :value="rules.bulletListMarker"
                   :disabled="rulesDisabled"
-                  aria-label="无序列表标记"
+                  :aria-label="t('无序列表标记')"
                   @change="
                     emit('capability', {
                       bulletListMarker: ($event.target as HTMLSelectElement)
@@ -864,12 +874,12 @@ function customFontInput(event: Event) {
 
         <div v-else-if="page === 'workspace'" class="settings-content">
           <div class="settings-title-line">
-            <h2 id="settings-title">工作区</h2>
+            <h2 id="settings-title">{{ t('工作区') }}</h2>
             <div class="settings-page-scope" role="note" tabindex="0" :aria-label="scopeLabel">
               <BookOpen :size="13" /><span>{{ scopeLabel }}</span>
             </div>
           </div>
-          <p class="settings-lead">管理工作区名称、图标、默认页面、页面标题来源、侧栏与内容导出。</p>
+          <p class="settings-lead">{{ t('管理工作区名称、图标、默认页面、页面标题来源、侧栏与内容导出。') }}</p>
           <WorkspaceGeneralSettings
             :key="workspace?.id"
             :workspace="workspace"
@@ -887,16 +897,16 @@ function customFontInput(event: Event) {
             <template #members-export><slot name="workspace-members-export" /></template>
           </WorkspaceGeneralSettings>
           <section class="settings-section" aria-labelledby="settings-current-workspace">
-            <h3 id="settings-current-workspace">当前空间</h3>
+            <h3 id="settings-current-workspace">{{ t('当前空间') }}</h3>
             <div class="settings-card settings-workspace-card">
               <div class="settings-info">
-                <strong>{{ workspace?.name ?? '尚未打开工作区' }}</strong
+                <strong>{{ workspace?.name ?? t('尚未打开工作区') }}</strong
                 ><span>{{
                   mode === 'demo'
-                    ? '浏览器演示 · 保存在当前浏览器'
+                    ? t('浏览器演示 · 保存在当前浏览器')
                     : mode === 'web'
-                      ? '在线工作区 · Markdown 保存在服务器'
-                      : '本地工作区 · Markdown 保存在文件夹'
+                      ? t('在线工作区 · Markdown 保存在服务器')
+                      : t('本地工作区 · Markdown 保存在文件夹')
                 }}</span
                 ><small v-if="workspace && mode === 'local'">{{ workspace.path }}</small>
               </div>
@@ -905,28 +915,28 @@ function customFontInput(event: Event) {
                   v-if="mode === 'local' && native && !mobile"
                   @click="emit('action', 'open-folder')"
                 >
-                  <FolderOpen :size="17" />打开工作文件夹
+                  <FolderOpen :size="17" />{{ t('打开工作文件夹') }}
                 </button>
                 <button
                   v-if="mode === 'local' && native && !mobile && workspace"
                   @click="emit('action', 'reveal')"
                 >
-                  <ExternalLink :size="17" />在资源管理器中显示
+                  <ExternalLink :size="17" />{{ t('在资源管理器中显示') }}
                 </button>
                 <button
                   v-if="mode === 'local' && native && workspace"
                   @click="emit('action', 'agent')"
                 >
-                  <Bot :size="17" />与 Agent 一起工作
+                  <Bot :size="17" />{{ t('与 Agent 一起工作') }}
                 </button>
                 <button
                   v-if="mode === 'local' && native && workspace && historyEnabled"
                   @click="emit('action', 'history')"
                 >
-                  <History :size="17" />空间版本历史
+                  <History :size="17" />{{ t('空间版本历史') }}
                 </button>
                 <button v-if="mobile && workspace" @click="emit('action', 'recycle')">
-                  <Trash2 :size="17" />手机回收站
+                  <Trash2 :size="17" />{{ t('手机回收站') }}
                 </button>
               </div>
             </div>
@@ -944,12 +954,12 @@ function customFontInput(event: Event) {
 
         <div v-else-if="page === 'shortcuts'" class="settings-content">
           <div class="settings-title-line">
-            <h2 id="settings-title">快捷键</h2>
+            <h2 id="settings-title">{{ t('快捷键') }}</h2>
             <div class="settings-page-scope" role="note" tabindex="0" :aria-label="scopeLabel">
               <UserRound :size="13" /><span>{{ scopeLabel }}</span>
             </div>
           </div>
-          <p class="settings-lead">为常用操作设置顺手的组合键。</p>
+          <p class="settings-lead">{{ t('为常用操作设置顺手的组合键。') }}</p>
           <ShortcutSettings :bindings="shortcuts ?? defaultShortcutBindings" @change="emit('update:shortcuts', $event)" />
         </div>
 
@@ -969,40 +979,40 @@ function customFontInput(event: Event) {
           :active-file="activeFile ?? null"
         />
         <div v-else class="settings-content settings-about">
-          <h2 id="settings-title">关于同页</h2>
-          <p class="settings-lead">了解同页与版本信息。</p>
+          <h2 id="settings-title">{{ t('关于同页') }}</h2>
+          <p class="settings-lead">{{ t('了解同页与版本信息。') }}</p>
           <div class="settings-card settings-brand-card">
             <div class="settings-about-brand">
               <img :src="'/favicon-green.svg?v=3'" alt="" />
-              <h3>Tano <span>/ 同页</span></h3>
+              <h3>Tano <span v-if="uiLocale === 'zh-CN'">/ 同页</span></h3>
               <div class="settings-brand-actions">
                 <span class="settings-version-pill">{{ version }}</span>
                 <slot v-if="native && !mobile" name="update-panel"><UpdatePanel /></slot>
               </div>
             </div>
             <p class="settings-about-slogan">Humans and agents, on the same page.</p>
-            <p class="settings-about-translation">人与 Agent，在同一页工作。</p>
+            <p v-if="uiLocale === 'zh-CN'" class="settings-about-translation">{{ t('人与 Agent，在同一页工作。') }}</p>
           </div>
 
           <section class="settings-section" aria-labelledby="settings-work-mode">
-            <h3 id="settings-work-mode">工作方式</h3>
+            <h3 id="settings-work-mode">{{ t('工作方式') }}</h3>
             <div class="settings-about-feature settings-card">
               <Monitor :size="21" />
               <div>
                 <strong>{{
                   mode === 'demo'
-                    ? '你正在体验浏览器演示版'
+                    ? t('你正在体验浏览器演示版')
                     : mode === 'web'
-                      ? '这是你的在线 Markdown 工作台'
-                      : '这是你的本地 Markdown 工作台'
+                      ? t('这是你的在线 Markdown 工作台')
+                      : t('这是你的本地 Markdown 工作台')
                 }}</strong>
                 <p>
                   {{
                     mode === 'demo'
-                      ? '演示修改保存在当前浏览器，不会写入电脑上的工作文件夹。启动桌面版，即可打开真实文件夹并监听外部修改。'
+                      ? t('演示修改保存在当前浏览器，不会写入电脑上的工作文件夹。启动桌面版，即可打开真实文件夹并监听外部修改。')
                       : mode === 'web'
-                        ? '文档由当前存储适配器保存。可用能力由产品入口提供。'
-                        : '文档保存为工作文件夹中的普通 .md 文件。Agent 和其他编辑器的修改会自动载入；冲突时保留双方内容。'
+                        ? t('文档由当前存储适配器保存。可用能力由产品入口提供。')
+                        : t('文档保存为工作文件夹中的普通 .md 文件。Agent 和其他编辑器的修改会自动载入；冲突时保留双方内容。')
                   }}
                 </p>
               </div>

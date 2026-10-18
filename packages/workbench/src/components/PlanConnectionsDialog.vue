@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiLocale } from '../i18n';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { CalendarDays, Check, Cloud, FileUp, ListTodo, RefreshCw, X, ArrowLeft, Plus, ChevronRight } from 'lucide-vue-next';
 import { invoke } from '@tauri-apps/api/core';
@@ -54,7 +55,7 @@ async function selectAccount(value: Account) {
   reset(); selectedWorkspaceId.value = workspace.workspace?.id;
   selectedProvider.value = value.provider; account.value = value;
   collections.value = await remoteAdapter(value, kind.value).collections();
-  if (!collections.value.length) throw new Error(kind.value === 'todo' ? '此账号未提供可用的任务清单，请确认服务支持 VTODO 或已有任务列表。' : '此账号没有可用日历，请核对访问权限。');
+  if (!collections.value.length) throw new Error(kind.value === 'todo' ? t('此账号未提供可用的任务清单，请确认服务支持 VTODO 或已有任务列表。') : t('此账号没有可用日历，请核对访问权限。'));
   collectionId.value = collections.value[0]!.id;
 }
 async function connect() {
@@ -73,21 +74,21 @@ async function connect() {
 async function enable() {
   await run(async () => {
     if (!account.value || !selectedCollection.value) return;
-    if (target.value === 'workspace' && !canWriteWorkspace.value) throw new Error('工作区已切换，请重新选择目标');
+    if (target.value === 'workspace' && !canWriteWorkspace.value) throw new Error(t('工作区已切换，请重新选择目标'));
     const connectionId = await sync.addConnection({
       accountId: account.value.id, kind: kind.value, collection: selectedCollection.value,
       scope: target.value, ...(target.value === 'workspace' ? { workspaceId: selectedWorkspaceId.value, workspaceName: workspace.workspace?.name } : {}),
       direction: selectedCollection.value.writable ? direction.value : 'pull', enabled: true,
       uploadNew: selectedCollection.value.writable && direction.value === 'both' && uploadNew.value,
     });
-    reset(); await sync.sync(connectionId); plans.view = target.value; message.value = '连接已启用，首次同步完成。';
+    reset(); await sync.sync(connectionId); plans.view = target.value; message.value = t('连接已启用，首次同步完成。');
   });
 }
 async function readFile(event: Event) {
   const selected = (event.target as HTMLInputElement).files?.[0];
   if (!selected) return;
   await run(async () => {
-    if (selected.size > 5_000_000) throw new Error('文件超过 5 MB，请分批导入');
+    if (selected.size > 5_000_000) throw new Error(t('文件超过 5 MB，请分批导入'));
     reset(); fileName.value = selected.name;
     preview.value = parseCalendar(await selected.text(), kind.value);
     selectedImports.value = new Set(preview.value.items.filter(i => !i.value.archived).map(i => i.id));
@@ -100,76 +101,76 @@ async function importFile() {
   await run(async () => {
     if (!preview.value) return;
     const result = await sync.importItems(preview.value.items.filter(i => selectedImports.value.has(i.id)), kind.value, target.value, selectedWorkspaceId.value);
-    preview.value = undefined; message.value = `已导入 ${result.imported} 条，跳过 ${result.skipped} 条重复或取消的事项。`;
+    preview.value = undefined; message.value = t('已导入 {0} 条，跳过 {1} 条重复或取消的事项。', [result.imported, result.skipped]);
   });
 }
-const accountName = (id: string) => sync.accounts.find(a => a.id === id)?.label || '账号不可用';
-const time = (value?: string) => value ? new Date(value).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '尚未同步';
+const accountName = (id: string) => sync.accounts.find(a => a.id === id)?.label || t('账号不可用');
+const time = (value?: string) => value ? new Date(value).toLocaleString(uiLocale.value, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : t('尚未同步');
 </script>
 
 <template>
   <Teleport to="body">
     <div class="plan-connections-backdrop" @mousedown.self="!working && emit('close')">
-      <section ref="panel" class="plan-connections" role="dialog" aria-modal="true" aria-label="日历与 Todo 连接" tabindex="-1" @keydown="keyboard">
-        <header><div><h2>日历与 Todo</h2><p>连接常用服务，或从文件导入事项。</p></div><button class="icon-button" aria-label="关闭同步设置" :disabled="working" @click="emit('close')"><X :size="18" /></button></header>
-        <nav class="connection-tabs" aria-label="同步类别">
-          <button :aria-pressed="kind === 'calendar'" :disabled="working" @click="kind = 'calendar'"><CalendarDays :size="16" />日历</button>
+      <section ref="panel" class="plan-connections" role="dialog" aria-modal="true" :aria-label="t('日历与 Todo 连接')" tabindex="-1" @keydown="keyboard">
+        <header><div><h2>{{ t('日历与 Todo') }}</h2><p>{{ t('连接常用服务，或从文件导入事项。') }}</p></div><button class="icon-button" :aria-label="t('关闭同步设置')" :disabled="working" @click="emit('close')"><X :size="18" /></button></header>
+        <nav class="connection-tabs" :aria-label="t('同步类别')">
+          <button :aria-pressed="kind === 'calendar'" :disabled="working" @click="kind = 'calendar'"><CalendarDays :size="16" />{{ t('日历') }}</button>
           <button :aria-pressed="kind === 'todo'" :disabled="working" @click="kind = 'todo'"><ListTodo :size="16" />Todo</button>
         </nav>
         <div class="connection-content">
           <p v-if="error || sync.loadError" class="connection-error" role="alert">{{ error || sync.loadError }}</p>
           <p v-if="message" class="connection-success" role="status"><Check :size="15" />{{ message }}</p>
           <template v-if="!selectedProvider && !preview">
-            <section v-if="shownConnections.length" class="connection-section" aria-label="已连接的清单">
-              <h3>已连接</h3>
+            <section v-if="shownConnections.length" class="connection-section" :aria-label="t('已连接的清单')">
+              <h3>{{ t('已连接') }}</h3>
               <article v-for="connection in shownConnections" :key="connection.id" class="connection-row">
-                <div class="connection-row-heading"><div><strong>{{ connection.collection.name }}</strong><p>{{ accountName(connection.accountId) }} · {{ connection.scope === 'personal' ? '个人' : connection.workspaceName }} · {{ connection.direction === 'both' ? '双向' : '仅接收' }}</p></div><label class="connection-switch"><input type="checkbox" :checked="connection.enabled" :disabled="!!sync.busy || working" :aria-label="`${connection.collection.name} 自动同步`" @change="run(() => sync.changeConnection(connection.id, ($event.target as HTMLInputElement).checked))" />自动同步</label></div>
+                <div class="connection-row-heading"><div><strong>{{ connection.collection.name }}</strong><p>{{ accountName(connection.accountId) }} · {{ connection.scope === 'personal' ? t('个人') : connection.workspaceName }} · {{ connection.direction === 'both' ? t('双向') : t('仅接收') }}</p></div><label class="connection-switch"><input type="checkbox" :checked="connection.enabled" :disabled="!!sync.busy || working" :aria-label="t('{0} 自动同步', [connection.collection.name])" @change="run(() => sync.changeConnection(connection.id, ($event.target as HTMLInputElement).checked))" />{{ t('自动同步') }}</label></div>
                 <p v-if="connection.error" class="connection-error">{{ connection.error }}</p>
-                <details v-if="connection.conflicts.length" class="connection-conflicts"><summary>{{ connection.conflicts.length }} 条冲突待处理</summary><article v-for="conflict in connection.conflicts" :key="conflict.remoteId"><strong>{{ conflict.local.name }}</strong><p>{{ conflict.reason }}</p><div class="conflict-versions"><div><small>本地</small><p>{{ conflict.local.name }}<br />{{ conflict.local.description }}<br />{{ conflict.local.start || conflict.local.date }} {{ conflict.local.completed ? '已完成' : '' }}</p></div><div><small>远端</small><p>{{ conflict.remote.name }}<br />{{ conflict.remote.description }}<br />{{ conflict.remote.start || conflict.remote.date }} {{ conflict.remote.completed ? '已完成' : '' }}</p></div></div><button :disabled="working || !!sync.busy" @click="run(() => sync.keepRemote(connection.id, conflict.remoteId))">保留本地副本并接收远端版本</button></article></details>
-                <footer><span>{{ connection.enabled ? '上次同步' : '已暂停' }} · {{ time(connection.lastSync) }}</span><div><button :disabled="working || !!sync.busy" @click="run(() => sync.sync(connection.id))"><RefreshCw :size="13" />{{ sync.busy === connection.id ? '同步中…' : '立即同步' }}</button><button :disabled="working || !!sync.busy" @click="run(() => sync.removeConnection(connection.id))">断开</button></div></footer>
+                <details v-if="connection.conflicts.length" class="connection-conflicts"><summary>{{ connection.conflicts.length }} {{ t('条冲突待处理') }}</summary><article v-for="conflict in connection.conflicts" :key="conflict.remoteId"><strong>{{ conflict.local.name }}</strong><p>{{ conflict.reason }}</p><div class="conflict-versions"><div><small>{{ t('本地') }}</small><p>{{ conflict.local.name }}<br />{{ conflict.local.description }}<br />{{ conflict.local.start || conflict.local.date }} {{ conflict.local.completed ? t('已完成') : '' }}</p></div><div><small>{{ t('远端') }}</small><p>{{ conflict.remote.name }}<br />{{ conflict.remote.description }}<br />{{ conflict.remote.start || conflict.remote.date }} {{ conflict.remote.completed ? t('已完成') : '' }}</p></div></div><button :disabled="working || !!sync.busy" @click="run(() => sync.keepRemote(connection.id, conflict.remoteId))">{{ t('保留本地副本并接收远端版本') }}</button></article></details>
+                <footer><span>{{ connection.enabled ? t('上次同步') : t('已暂停') }} · {{ time(connection.lastSync) }}</span><div><button :disabled="working || !!sync.busy" @click="run(() => sync.sync(connection.id))"><RefreshCw :size="13" />{{ sync.busy === connection.id ? t('同步中…') : t('立即同步') }}</button><button :disabled="working || !!sync.busy" @click="run(() => sync.removeConnection(connection.id))">{{ t('断开') }}</button></div></footer>
               </article>
-              <p class="connection-note">自动同步在应用打开时每 5 分钟进行。断开连接保留已下载的本地事项。</p>
+              <p class="connection-note">{{ t('自动同步在应用打开时每 5 分钟进行。断开连接保留已下载的本地事项。') }}</p>
             </section>
-            <section class="connection-import-row"><div class="connection-symbol"><FileUp :size="22" /></div><div><strong>从文件导入</strong><p>{{ kind === 'calendar' ? '导入 .ics 日历文件，先预览再保存。' : '导入 .ics 文件中的 VTODO 任务。' }}</p></div><button class="connection-outline" @click="file?.click()">选择文件</button></section>
-            <section class="connection-section"><h3>添加{{ kind === 'calendar' ? '日历' : '任务清单' }}</h3><p v-if="!sync.available" class="connection-note">账号同步在桌面版中使用。当前可导入文件，数据仅保存在{{ workspace.isDemo ? '此浏览器' : '当前设备' }}。</p><div class="connection-providers"><button v-for="p in providerChoices" :key="p.id" :disabled="!sync.available || working" @click="chooseProvider(p.id)"><Cloud :size="20" /><span>{{ p.name }}</span><Plus :size="15" /></button></div></section>
-            <section v-if="savedAccounts.length" class="connection-section"><h3>已授权账号</h3><div v-for="a in savedAccounts" :key="a.id" class="connection-account"><span>{{ a.label }}</span><button :disabled="working || !!sync.busy" @click="run(() => selectAccount(a))">选择清单<ChevronRight :size="13" /></button><button :disabled="working || !!sync.busy || sync.connections.some(c => c.accountId === a.id)" @click="run(() => sync.removeAccount(a.id))">移除授权</button></div></section>
+            <section class="connection-import-row"><div class="connection-symbol"><FileUp :size="22" /></div><div><strong>{{ t('从文件导入') }}</strong><p>{{ kind === 'calendar' ? t('导入 .ics 日历文件，先预览再保存。') : t('导入 .ics 文件中的 VTODO 任务。') }}</p></div><button class="connection-outline" @click="file?.click()">{{ t('选择文件') }}</button></section>
+            <section class="connection-section"><h3>{{ kind === 'calendar' ? t('添加日历') : t('添加任务清单') }}</h3><p v-if="!sync.available" class="connection-note">{{ t('账号同步在桌面版中使用。当前可导入文件，数据仅保存在{0}。', [workspace.isDemo ? t('此浏览器') : t('当前设备')]) }}</p><div class="connection-providers"><button v-for="p in providerChoices" :key="p.id" :disabled="!sync.available || working" @click="chooseProvider(p.id)"><Cloud :size="20" /><span>{{ p.name }}</span><Plus :size="15" /></button></div></section>
+            <section v-if="savedAccounts.length" class="connection-section"><h3>{{ t('已授权账号') }}</h3><div v-for="a in savedAccounts" :key="a.id" class="connection-account"><span>{{ a.label }}</span><button :disabled="working || !!sync.busy" @click="run(() => selectAccount(a))">{{ t('选择清单') }}<ChevronRight :size="13" /></button><button :disabled="working || !!sync.busy || sync.connections.some(c => c.accountId === a.id)" @click="run(() => sync.removeAccount(a.id))">{{ t('移除授权') }}</button></div></section>
           </template>
           <template v-else-if="preview">
-            <button class="connection-back" @click="reset"><ArrowLeft :size="14" />返回</button>
-            <h3>{{ fileName }}</h3><p class="connection-note">找到 {{ preview.items.length }} 条{{ kind === 'calendar' ? '日历事件' : '任务' }}。同一 UID 再次导入会跳过，文件导入不建立持续同步。</p>
-            <details v-if="preview.warnings.length || preview.ignored" class="connection-warnings"><summary>{{ preview.warnings.length }} 条提示 · {{ preview.ignored }} 条未纳入</summary><p v-for="warning in preview.warnings" :key="warning">{{ warning }}</p></details>
-            <label class="connection-check"><input type="checkbox" :checked="selectedImports.size === preview.items.length && preview.items.length > 0" @change="selectedImports = ($event.target as HTMLInputElement).checked ? new Set(preview.items.map(i => i.id)) : new Set()" />全选（已选 {{ selectedImports.size }} 条）</label>
-            <div class="connection-preview"><label v-for="item in preview.items" :key="item.id"><input type="checkbox" :checked="selectedImports.has(item.id)" @change="toggleImport(item.id, ($event.target as HTMLInputElement).checked)" /><span><strong>{{ item.value.name }}</strong><small>{{ item.value.allDay ? '全天 · ' : '' }}{{ item.value.date || (item.value.start ? new Date(item.value.start).toLocaleString('zh-CN') : '未安排') }}</small></span></label></div>
-            <label class="connection-field">保存到<select v-model="target" aria-label="保存到"><option value="personal">个人</option><option value="workspace" :disabled="!canWriteWorkspace">当前工作区 · {{ workspace.workspace?.name || '未打开' }}</option></select></label>
-            <div class="connection-form-footer"><button class="connection-primary" :disabled="working || !!sync.busy || !selectedImports.size || (target === 'workspace' && !canWriteWorkspace)" @click="importFile">{{ working ? '正在导入…' : `导入 ${selectedImports.size} 条` }}</button></div>
+            <button class="connection-back" @click="reset"><ArrowLeft :size="14" />{{ t('返回') }}</button>
+            <h3>{{ fileName }}</h3><p class="connection-note">{{ kind === 'calendar' ? t('找到 {0} 条日历事件。', [preview.items.length]) : t('找到 {0} 条任务。', [preview.items.length]) }} {{ t('同一 UID 再次导入会跳过，文件导入不建立持续同步。') }}</p>
+            <details v-if="preview.warnings.length || preview.ignored" class="connection-warnings"><summary>{{ preview.warnings.length }} {{ t('条提示 ·') }} {{ preview.ignored }} {{ t('条未纳入') }}</summary><p v-for="warning in preview.warnings" :key="warning">{{ warning }}</p></details>
+            <label class="connection-check"><input type="checkbox" :checked="selectedImports.size === preview.items.length && preview.items.length > 0" @change="selectedImports = ($event.target as HTMLInputElement).checked ? new Set(preview.items.map(i => i.id)) : new Set()" />{{ t('全选（已选') }} {{ selectedImports.size }} {{ t('条）') }}</label>
+            <div class="connection-preview"><label v-for="item in preview.items" :key="item.id"><input type="checkbox" :checked="selectedImports.has(item.id)" @change="toggleImport(item.id, ($event.target as HTMLInputElement).checked)" /><span><strong>{{ item.value.name }}</strong><small>{{ item.value.allDay ? t('全天 · ') : '' }}{{ item.value.date || (item.value.start ? new Date(item.value.start).toLocaleString(uiLocale) : t('未安排')) }}</small></span></label></div>
+            <label class="connection-field">{{ t('保存到') }}<select v-model="target" :aria-label="t('保存到')"><option value="personal">{{ t('个人') }}</option><option value="workspace" :disabled="!canWriteWorkspace">{{ t('当前工作区 ·') }} {{ workspace.workspace?.name || t('未打开') }}</option></select></label>
+            <div class="connection-form-footer"><button class="connection-primary" :disabled="working || !!sync.busy || !selectedImports.size || (target === 'workspace' && !canWriteWorkspace)" @click="importFile">{{ working ? t('正在导入…') : t('导入 {0} 条', [selectedImports.size]) }}</button></div>
           </template>
           <template v-else-if="provider">
-            <button class="connection-back" :disabled="working" @click="reset"><ArrowLeft :size="14" />返回</button>
-            <h3>连接 {{ provider.name }}</h3><p class="connection-note">{{ provider.hint }}</p>
+            <button class="connection-back" :disabled="working" @click="reset"><ArrowLeft :size="14" />{{ t('返回') }}</button>
+            <h3>{{ t('连接') }} {{ provider.name }}</h3><p class="connection-note">{{ provider.hint }}</p>
             <form v-if="!account" class="connection-form" @submit.prevent="connect">
-              <label class="connection-field">连接名称<input v-model="label" required maxlength="80" autocomplete="off" /></label>
+              <label class="connection-field">{{ t('连接名称') }}<input v-model="label" required maxlength="80" autocomplete="off" /></label>
               <template v-if="['google', 'microsoft'].includes(provider.id)">
-                <p class="connection-note">当前构建需要配置自己的 OAuth 应用。{{ provider.id === 'google' ? '使用 Google Cloud 的桌面应用客户端，并启用 Calendar API。' : '使用 Microsoft Entra 公共客户端，允许个人账号，配置桌面应用回调 http://localhost。' }}</p>
-                <label class="connection-field">应用 Client ID<input v-model="clientId" required autocomplete="off" /></label>
-                <label v-if="provider.id === 'google'" class="connection-field">Client Secret（若应用提供）<input v-model="clientSecret" type="password" autocomplete="off" /></label>
+                <p class="connection-note">{{ t('当前构建需要配置自己的 OAuth 应用。') }}{{ provider.id === 'google' ? t('使用 Google Cloud 的桌面应用客户端，并启用 Calendar API。') : t('使用 Microsoft Entra 公共客户端，允许个人账号，配置桌面应用回调 http://localhost。') }}</p>
+                <label class="connection-field">{{ t('应用 Client ID') }}<input v-model="clientId" required autocomplete="off" /></label>
+                <label v-if="provider.id === 'google'" class="connection-field">{{ t('Client Secret（若应用提供）') }}<input v-model="clientSecret" type="password" autocomplete="off" /></label>
               </template>
               <template v-else>
-                <template v-if="provider.id !== 'todoist'"><label class="connection-field">服务器<input v-model="server" type="url" required placeholder="https://calendar.example.com/" autocomplete="url" /></label><label class="connection-field">{{ provider.id === 'icloud' ? 'Apple 账号' : '用户名' }}<input v-model="username" required autocomplete="username" /></label></template>
-                <label class="connection-field">{{ provider.id === 'todoist' ? 'API Token' : provider.id === 'icloud' ? 'App 专用密码' : '密码 / 应用密码' }}<input v-model="password" type="password" required autocomplete="new-password" /></label>
+                <template v-if="provider.id !== 'todoist'"><label class="connection-field">{{ t('服务器') }}<input v-model="server" type="url" required placeholder="https://calendar.example.com/" autocomplete="url" /></label><label class="connection-field">{{ provider.id === 'icloud' ? t('Apple 账号') : t('用户名') }}<input v-model="username" required autocomplete="username" /></label></template>
+                <label class="connection-field">{{ provider.id === 'todoist' ? 'API Token' : provider.id === 'icloud' ? t('App 专用密码') : t('密码 / 应用密码') }}<input v-model="password" type="password" required autocomplete="new-password" /></label>
               </template>
-              <p class="connection-note">凭据保存在此设备的系统凭据库，不写入工作区文件。</p>
-              <div class="connection-form-footer"><span v-if="working">{{ ['google', 'microsoft'].includes(provider.id) ? '请在浏览器完成授权…' : '正在读取清单…' }}</span><button class="connection-primary" type="submit" :disabled="working || !!sync.busy">{{ ['google', 'microsoft'].includes(provider.id) ? '在浏览器中授权' : '连接并读取清单' }}</button></div>
+              <p class="connection-note">{{ t('凭据保存在此设备的系统凭据库，不写入工作区文件。') }}</p>
+              <div class="connection-form-footer"><span v-if="working">{{ ['google', 'microsoft'].includes(provider.id) ? t('请在浏览器完成授权…') : t('正在读取清单…') }}</span><button class="connection-primary" type="submit" :disabled="working || !!sync.busy">{{ ['google', 'microsoft'].includes(provider.id) ? t('在浏览器中授权') : t('连接并读取清单') }}</button></div>
             </form>
             <form v-else class="connection-form" @submit.prevent="enable">
-              <label class="connection-field">{{ kind === 'calendar' ? '选择日历' : '选择任务清单' }}<select v-model="collectionId" required><option v-for="c in collections" :key="c.id" :value="c.id">{{ c.name }}{{ c.writable ? '' : '（只读）' }}</option></select></label>
-              <label class="connection-field">保存到<select v-model="target" aria-label="保存到"><option value="personal">个人</option><option value="workspace" :disabled="!canWriteWorkspace">当前工作区 · {{ workspace.workspace?.name || '未打开' }}</option></select></label>
-              <fieldset class="connection-direction"><legend>同步方式</legend><label><input v-model="direction" type="radio" value="both" :disabled="!selectedCollection?.writable" />双向同步</label><label><input v-model="direction" type="radio" value="pull" />仅接收远端更新</label></fieldset>
-              <label v-if="direction === 'both' && selectedCollection?.writable" class="connection-check"><input v-model="uploadNew" type="checkbox" />同时上传此范围内尚未连接的{{ kind === 'calendar' ? '日历事件' : 'Todo' }}</label>
-              <p class="connection-note">{{ uploadNew ? '首次同步也会上传已有的本地事项。' : '默认只同步从此清单接收的事项，本地其他内容不会自动上传。' }}重复事项在来源应用编辑；删除或归档不会自动永久删除另一端内容。日历读取过去一年至未来两年。</p>
-              <div class="connection-form-footer"><button class="connection-primary" type="submit" :disabled="working || !!sync.busy || !selectedCollection || (target === 'workspace' && !canWriteWorkspace)">启用{{ kind === 'calendar' ? '日历' : 'Todo' }}同步</button></div>
+              <label class="connection-field">{{ kind === 'calendar' ? t('选择日历') : t('选择任务清单') }}<select v-model="collectionId" required><option v-for="c in collections" :key="c.id" :value="c.id">{{ c.name }}{{ c.writable ? '' : t('（只读）') }}</option></select></label>
+              <label class="connection-field">{{ t('保存到') }}<select v-model="target" :aria-label="t('保存到')"><option value="personal">{{ t('个人') }}</option><option value="workspace" :disabled="!canWriteWorkspace">{{ t('当前工作区 ·') }} {{ workspace.workspace?.name || t('未打开') }}</option></select></label>
+              <fieldset class="connection-direction"><legend>{{ t('同步方式') }}</legend><label><input v-model="direction" type="radio" value="both" :disabled="!selectedCollection?.writable" />{{ t('双向同步') }}</label><label><input v-model="direction" type="radio" value="pull" />{{ t('仅接收远端更新') }}</label></fieldset>
+              <label v-if="direction === 'both' && selectedCollection?.writable" class="connection-check"><input v-model="uploadNew" type="checkbox" />{{ t('同时上传此范围内尚未连接的{0}', [kind === 'calendar' ? t('日历事件') : 'Todo']) }}</label>
+              <p class="connection-note">{{ uploadNew ? t('首次同步也会上传已有的本地事项。') : t('默认只同步从此清单接收的事项，本地其他内容不会自动上传。') }}{{ t('重复事项在来源应用编辑；删除或归档不会自动永久删除另一端内容。日历读取过去一年至未来两年。') }}</p>
+              <div class="connection-form-footer"><button class="connection-primary" type="submit" :disabled="working || !!sync.busy || !selectedCollection || (target === 'workspace' && !canWriteWorkspace)">{{ kind === 'calendar' ? t('启用日历同步') : t('启用 Todo 同步') }}</button></div>
             </form>
           </template>
-          <input ref="file" type="file" accept=".ics,text/calendar" class="connection-file-input" aria-label="选择 iCalendar 文件" @change="readFile" />
+          <input ref="file" type="file" accept=".ics,text/calendar" class="connection-file-input" :aria-label="t('选择 iCalendar 文件')" @change="readFile" />
         </div>
       </section>
     </div>

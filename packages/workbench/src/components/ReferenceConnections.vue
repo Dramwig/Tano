@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { FileText, ListTodo } from 'lucide-vue-next';
 import { referenceKey, referenceTypeLabel } from '@tano/protocol';
@@ -48,13 +49,13 @@ onBeforeUnmount(() => { revision++; clearTimeout(timer); });
 </script>
 
 <template>
-  <section class="reference-connections" aria-label="双向引用" :aria-busy="loading">
+  <section class="reference-connections" :aria-label="t('双向引用')" :aria-busy="loading">
     <div v-for="direction in (['outgoing', 'incoming'] as const)" :key="direction" class="reference-direction">
-      <h3>{{ direction === 'outgoing' ? '引用了什么' : '被谁引用' }} <small>{{ context[direction].length }}</small></h3>
-      <p v-if="!context[direction].length">{{ loading ? '正在读取' : '暂无引用' }}</p>
+      <h3>{{ direction === 'outgoing' ? t('引用了什么') : t('被谁引用') }} <small>{{ context[direction].length }}</small></h3>
+      <p v-if="!context[direction].length">{{ loading ? t('正在读取') : t('暂无引用') }}</p>
       <button v-for="edge in context[direction]" :key="referenceKey(direction === 'outgoing' ? edge.target : edge.source)" type="button" :disabled="direction === 'outgoing' && edge.missing" @click="emit('open', direction === 'outgoing' ? edge.target : edge.source)">
         <component :is="(direction === 'outgoing' ? edge.target : edge.source).type === 'document' ? FileText : ListTodo" :size="16" />
-        <span><strong>{{ direction === 'outgoing' ? edge.name : edge.source.name }}</strong><small>{{ referenceTypeLabel((direction === 'outgoing' ? edge.target : edge.source).type) }}{{ direction === 'outgoing' && edge.missing ? ' · 已失效' : (direction === 'outgoing' ? edge.archived : edge.source.archived) ? ' · 已归档' : '' }}</small><small class="reference-excerpt">{{ edge.excerpt }}</small></span>
+        <span><strong>{{ direction === 'outgoing' ? edge.name : edge.source.name }}</strong><small>{{ referenceTypeLabel((direction === 'outgoing' ? edge.target : edge.source).type) }}{{ direction === 'outgoing' && edge.missing ? t(' · 已失效') : (direction === 'outgoing' ? edge.archived : edge.source.archived) ? t(' · 已归档') : '' }}</small><small class="reference-excerpt">{{ edge.excerpt }}</small></span>
       </button>
     </div>
     <p v-for="error in context.errors" :key="error" role="alert">{{ error }}</p>
