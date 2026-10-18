@@ -1,8 +1,9 @@
 import type { AssistantProposalStatus, AssistantRequest, AssistantSource } from '@tano/protocol';
+import { editDocumentRules } from './tool-rules';
 
 /** Direct tools share validation with proposals; their receipts come from completed storage operations. */
 export const directTools: Record<string, { proposal: string; description: string }> = {
-  edit_document: { proposal: 'propose_edit', description: '按用户明确指令直接修改已读取的 Markdown 或 .table.json 数据表。oldText 必须唯一，表格修改后须为合法 JSON 且保留表身份。仅完整来源为空时可用空 oldText 初始化。保留选区边界；冲突时暂停，只有 written=true 才表示已保存。' },
+  edit_document: { proposal: 'propose_edit', description: `按用户明确指令直接修改已读取的 Markdown 或 .table.json 数据表。\n${editDocumentRules}\n冲突时暂停，只有 written=true 才表示已保存。` },
   create_document: { proposal: 'propose_create', description: '按用户明确指令直接创建 Markdown 文档或 .table.json 数据表（content 为完整表结构 JSON）。父目录须存在，禁止覆盖同名文件。' },
   delete_document: { proposal: 'propose_delete', description: '仅在用户明确要求删除时直接删除完整 Markdown 或 .table.json 文件。读取后内容或路径变化则暂停；桌面文件进入回收站。' },
   rename_document: { proposal: 'propose_rename', description: '按用户明确指令直接重命名 Markdown 或 .table.json 文件。destination 为同目录新路径；保留文件类型、身份和内容，禁止覆盖。' },

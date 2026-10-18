@@ -69,6 +69,12 @@ describe('assistant session coordination', () => {
     expect(panel.session!.id).not.toBe(inline.session!.id);
     expect(panel.session!.messages[0].content).toBe('侧栏任务');
     expect(inline.session!.messages[0].content).toBe('选区任务');
+    const panelSystem = vi.mocked(transport.request).mock.calls[0][1].messages.filter(message => message.role === 'system').map(message => message.content).join('\n');
+    const inlineSystem = vi.mocked(transport.request).mock.calls[1][1].messages.filter(message => message.role === 'system').map(message => message.content).join('\n');
+    expect(panelSystem).toContain('当前是侧栏模式');
+    expect(panelSystem).not.toContain('当前是行内模式');
+    expect(inlineSystem).toContain('当前是行内模式');
+    expect(inlineSystem).not.toContain('当前是侧栏模式');
     expect(vi.mocked(transport.request).mock.calls[1][1].tools?.some(tool => tool.function.name === 'ask_user')).toBe(false);
     const cancelled = stopped === 'inline' ? inline : panel;
     const remaining = stopped === 'inline' ? panel : inline;

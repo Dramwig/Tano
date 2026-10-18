@@ -1213,9 +1213,7 @@ async function submitInlineAssistant() {
     inlineRunner.newSession();
     inlineRunner.files = [target.fileId];
     inlineRunner.selection = wholeEmptyDocument ? null : { fileId: target.fileId, ...target.sourceSelection };
-    inlineRunner.prompt = target.blankBlock
-      ? `请按处理要求在当前空白 block 的插入位置生成内容。要求明确时使用 edit_document 完成写入，oldText 为空字符串，newText 填入要插入的 Markdown 内容；要求不明确时说明还需要补充什么，不要猜测或修改。\n处理要求：${request}`
-      : `请按处理要求处理选中的内容。修改要求明确时使用 edit_document 完成写入，不要只给建议；普通问答正常回复，要求不明确时说明还需要补充什么，不要猜测或修改。\n处理要求：${request}`;
+    inlineRunner.prompt = request;
     const previousReplyId = inlineRunner.session?.messages.at(-1)?.id;
     await inlineRunner.send();
     if (inlineAssistant.value !== target) return;
