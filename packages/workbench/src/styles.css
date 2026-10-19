@@ -70,6 +70,7 @@
   --green-fill-hover: #176340;
   --accent: #eaf5ee;
   --block-selection: #e1f1e8;
+  --block-selection-overlay: color-mix(in srgb, var(--block-selection) 62%, transparent);
   --line: #e3e5e8;
   --control-border: #b9bfc8;
   --sidebar: #f9f8f7;
@@ -2457,8 +2458,17 @@ button:hover {
   font-variant-ligatures: no-contextual;
 }
 .tano-prose {
+  /* Block spacing contract
+     - text blocks use padding to place their text on the document rail;
+     - framed blocks use an inline margin to place their visible frame on the
+       same rail, then keep their own internal padding;
+     - nested blocks own their local spacing and must not inherit the outer
+       rail a second time.
+     Tables are laid out by TableViewport, so their horizontal position stays
+     under the viewport's dynamic layout instead of this contract. */
   --tano-block-padding-block: 2px;
   --tano-block-padding-inline: 8px;
+  --tano-block-frame-inset: var(--tano-block-padding-inline);
   outline: none;
   white-space: pre-wrap;
   color: var(--text);
@@ -2471,9 +2481,6 @@ button:hover {
 .tano-prose .tano-assistant-selection {
   background: color-mix(in srgb, var(--muted) 18%, transparent);
   border-radius: 2px;
-}
-.tano-prose > *:first-child {
-  margin-top: 0;
 }
 .tano-prose h1,
 .tano-prose h2,
@@ -2583,11 +2590,27 @@ button:hover {
 /* Keep the base quote style below block selection and drag feedback. */
 .tano-prose blockquote:where(:not(.tano-callout)) {
   margin: 16px 0;
-  border-left: 3px solid var(--quote-border, var(--text));
+  position: relative;
+  border-left: 0;
   background: transparent;
   border-radius: 0;
-  padding: 0 0 0 20px;
+  padding: 0 0 0 23px;
   color: var(--text);
+}
+.tano-prose blockquote:where(:not(.tano-callout))::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 3px;
+  background: var(--quote-border, var(--text));
+  pointer-events: none;
+}
+.tano-prose > blockquote:where(:not(.tano-callout)) {
+  /* Keep the top-level quote frame on the same content rail as text blocks.
+     Reduced inner padding preserves the quote text's existing position. */
+  margin-inline: var(--tano-block-frame-inset);
+  padding-inline-start: calc(23px - var(--tano-block-frame-inset));
 }
 .tano-prose blockquote p {
   margin: 8px 0;
@@ -2681,6 +2704,12 @@ button:hover {
   border-radius: 8px;
   overflow: auto;
   line-height: 1.7;
+}
+.tano-prose > pre {
+  /* Align the frame with text blocks while keeping code text and wrapping
+     stable after the frame moves in by the shared block inset. */
+  margin-inline: var(--tano-block-frame-inset);
+  padding-inline: calc(22px - var(--tano-block-frame-inset));
 }
 .tano-prose pre code {
   border: 0;
@@ -2857,6 +2886,20 @@ button:hover {
   margin-bottom: 16px;
 }
 .tano-table-viewport > .tableWrapper > table { margin-bottom: 16px; }
+
+/* A top-level framed block starts on the same rail as a paragraph or heading.
+   The selector intentionally stops at direct children so nested panels,
+   columns, tabs, and resources keep their own internal layout. TableViewport
+   is excluded because it owns horizontal width and margin compensation. */
+.tano-prose > :is(.tano-callout, .tano-enhanced, .tano-unsupported-block) {
+  margin-inline: var(--tano-block-frame-inset);
+}
+.tano-prose > :first-child {
+  margin-block-start: 0;
+}
+.tano-prose > :last-child {
+  margin-block-end: 0;
+}
 .tano-table-viewport.has-comments::before,
 .tano-table-viewport.has-comments::after {
   content: '';
@@ -3138,6 +3181,14 @@ button:hover {
   overflow: auto;
   overflow-wrap: normal;
 }
+.tano-prose > pre.tano-live-source-block {
+  margin-inline: var(--tano-block-frame-inset);
+  padding-inline: 0;
+}
+.tano-prose > pre.tano-live-source-block[data-source-kind='code_block'] {
+  margin-inline: var(--tano-block-frame-inset);
+  padding-inline: calc(22px - var(--tano-block-frame-inset));
+}
 .tano-prose pre.tano-live-source-block[data-source-kind='code_block'] code {
   /* The fence rows reuse the rendered block's vertical padding. */
   display: block;
@@ -3365,25 +3416,44 @@ button:hover {
   border-top: 1px solid var(--line);
   margin: 31px 0;
 }
+.tano-prose > hr {
+  margin-inline: var(--tano-block-frame-inset);
+}
 .tano-prose .ProseMirror-selectednode,
 .tano-prose .tano-block-selected {
   outline: none;
   border-radius: 4px;
-  background-color: var(--block-selection);
-  box-shadow: 0 0 0 4px var(--block-selection);
+  /* Paint the selection inside the block so its own surface remains visible
+     underneath and the highlight cannot expand beyond the block range. */
+  box-shadow: inset 0 0 0 100vmax var(--block-selection-overlay);
 }
 /* A table's scroll viewport includes page gutters; highlight only its cells. */
 .tano-prose .tano-table-viewport.ProseMirror-selectednode,
 .tano-prose .tano-table-viewport.tano-block-selected {
   background-color: transparent;
+  background-image: none;
   box-shadow: none;
 }
 .tano-prose .tano-table-viewport:is(.ProseMirror-selectednode, .tano-block-selected):not(.tano-block-drag-source) > .tableWrapper > table > tbody > tr > :is(th, td) {
-  box-shadow: inset 0 0 0 100vmax var(--block-selection);
+  box-shadow: inset 0 0 0 100vmax var(--block-selection-overlay);
+}
+/* Framed blocks use an inline margin to put their visible frame on the text
+   rail. Their exact selection outline covers that margin, so the highlight
+   represents the block range without a shadow or visual bleed. */
+.tano-prose > :is(
+  blockquote:where(:not(.tano-callout)),
+  pre,
+  .tano-callout,
+  .tano-enhanced,
+  .tano-unsupported-block,
+  hr
+):is(.ProseMirror-selectednode, .tano-block-selected) {
+  outline: var(--tano-block-frame-inset) solid var(--block-selection);
 }
 .tano-prose .tano-math.ProseMirror-selectednode.tano-editor-active,
 .tano-prose .tano-mermaid.ProseMirror-selectednode.tano-editor-active {
   background-color: transparent;
+  background-image: none;
   box-shadow: none;
 }
 .tano-prose.ProseMirror-hideselection ::selection,
