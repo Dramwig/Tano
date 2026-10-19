@@ -55,8 +55,8 @@ async function insert(target: ReferenceTarget) {
     <div class="description-heading">
       <label :for="descriptionId">{{ t('描述') }}</label>
       <div class="description-actions">
-        <button v-if="targets.some(target => target.type === 'document')" type="button" class="icon-button" :aria-label="t('插入文档引用')" :title="t('插入文档引用')" :disabled="disabled" :aria-expanded="picking" @mousedown.prevent @click="pick"><Link2 :size="15" /></button>
-        <button v-if="preview && !disabled" type="button" class="icon-button" :aria-label="editing ? t('完成描述编辑') : t('编辑描述')" :title="editing ? t('完成描述编辑') : t('编辑描述')" @click="editing ? (editing = false, picking = false) : edit()"><Check v-if="editing" :size="15" /><Pencil v-else :size="15" /></button>
+        <button v-if="targets.some(target => target.type === 'document')" type="button" class="icon-button" :aria-label="t('插入文档引用')" :data-tooltip="t('插入文档引用')" :disabled="disabled" :aria-expanded="picking" @mousedown.prevent @click="pick"><Link2 :size="15" /></button>
+        <button v-if="preview && !disabled" type="button" class="icon-button" :aria-label="editing ? t('完成描述编辑') : t('编辑描述')" :data-tooltip="editing ? t('完成描述编辑') : t('编辑描述')" @click="editing ? (editing = false, picking = false) : edit()"><Check v-if="editing" :size="15" /><Pencil v-else :size="15" /></button>
       </div>
     </div>
     <textarea v-if="editing" :id="descriptionId" ref="textarea" :value="modelValue" :disabled="disabled" rows="5" maxlength="20000" :aria-label="t('描述')" @input="emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)" />
@@ -65,7 +65,7 @@ async function insert(target: ReferenceTarget) {
       <span v-else class="description-empty">{{ disabled ? t('暂无描述') : t('添加描述') }}</span>
     </div>
     <div v-if="picking" class="description-picker" @keydown.esc.stop.prevent="picking = false; textarea?.focus()">
-      <div class="description-search"><input ref="searchInput" v-model="query" :aria-label="t('搜索引用文档')" :placeholder="t('搜索文档')" @keydown.enter.prevent="candidates[0] && insert(candidates[0])" /><button type="button" class="icon-button" :aria-label="t('关闭引用选择')" :title="t('关闭引用选择')" @click="picking = false; textarea?.focus()"><X :size="16" /></button></div>
+      <div class="description-search"><input ref="searchInput" v-model="query" :aria-label="t('搜索引用文档')" :placeholder="t('搜索文档')" @keydown.enter.prevent="candidates[0] && insert(candidates[0])" /><button type="button" class="icon-button" :aria-label="t('关闭引用选择')" :data-tooltip="t('关闭引用选择')" @click="picking = false; textarea?.focus()"><X :size="16" /></button></div>
       <div class="description-candidates">
         <button v-for="target in candidates" :key="target.id" type="button" @click="insert(target)"><FileText :size="16" /><span>{{ target.name }}<small>{{ target.path }}</small></span></button>
         <p v-if="!candidates.length">{{ t('没有匹配的文档') }}</p>

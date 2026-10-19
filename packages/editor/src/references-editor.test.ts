@@ -139,6 +139,36 @@ it('opens a core object target with Ctrl-click while Markdown reveal is enabled'
   expect(root.querySelector('[data-tano-live-inline-source]')).toBeNull();
   expect(value.value).toBe('[@Alice](object://person/a00001)\n');
 });
+it('opens an event from its card details and preserves the original timestamps and Markdown', async () => {
+  const source = '[Meeting](object://event/a00001 "tano:object-card")\n';
+  const { value, opened, candidates } = await mount(source, true, [{
+    workspace: 'ws', type: 'event', id: 'a00001', name: 'Meeting', path: '.tano/objects/a00001.tano.json',
+    description: 'Bring your notes',
+    properties: { start: '2026-09-26T10:00:00+08:00', end: '2026-09-26T11:00:00+08:00' },
+  }]);
+  const detail = root.querySelector<HTMLElement>('.tano-reference-detail')!;
+  expect(detail.title).toBe('2026-09-26T10:00:00+08:00 — 2026-09-26T11:00:00+08:00');
+  expect(detail.textContent).not.toContain('T10:00:00');
+  detail.click();
+  expect(opened).toEqual([{ type: 'event', id: 'a00001' }]);
+  expect(value.value).toBe(source);
+  candidates.value[0]!.properties = {};
+  await nextTick();
+  expect(detail.textContent).toBe('Bring your notes');
+  candidates.value[0]!.properties = { start: 'unrecognized date' };
+  await nextTick();
+  expect(detail.textContent).toBe('unrecognized date');
+});
+it('keeps an unavailable card readable and prevents opening its details', async () => {
+  const source = '[Missing](object://event/a00001 "tano:object-card")\n';
+  const { value, opened } = await mount(source, false, []);
+  const button = root.querySelector<HTMLButtonElement>('.tano-reference-card button')!;
+  expect(button.disabled).toBe(true);
+  expect(button.textContent).toContain('引用不可用');
+  button.click();
+  expect(opened).toEqual([]);
+  expect(value.value).toBe(source);
+});
 it('switches directly between core object reference sources', async () => {
   const source = '[@Alice](object://person/a00001) and [@Alice](object://project/b00002)\n';
   const { value, opened, errors } = await mount(source, true);

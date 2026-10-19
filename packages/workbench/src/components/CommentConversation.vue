@@ -165,11 +165,11 @@ watch(() => props.thread.messages, messages => {
           </div>
           <slot v-if="index === 0 && $slots['first-tools']" name="first-tools" />
           <div v-else-if="!readonly && editing?.id !== message.id && (!local || index === 0 || message.authorId === authorId)" class="comment-message-tools review-card-tools" :class="{ 'is-open': menuMessage?.id === message.id }" role="group" :aria-label="t('评论操作')">
-            <button v-if="index === 0" type="button" :disabled="busy" :aria-label="resolveLabel" :title="resolveLabel" @click="emit('resolve', !thread.resolved)">
+            <button v-if="index === 0" type="button" :disabled="busy" :aria-label="resolveLabel" :data-tooltip="resolveLabel" @click="emit('resolve', !thread.resolved)">
               <RotateCcw v-if="thread.resolved" :size="15" /><Check v-else :size="15" />
             </button>
-            <button v-if="!local" type="button" :disabled="busy" :aria-label="t('回复评论')" :title="t('回复')" @click="emit('reply-request', message)"><Reply :size="15" /></button>
-            <button v-if="message.authorId === authorId || (index === 0 && assistant)" type="button" :disabled="busy" :aria-label="t('更多评论操作')" :title="t('更多')" aria-haspopup="menu" :aria-expanded="menuMessage?.id === message.id" @click="openMenu($event, message)"><MoreHorizontal :size="17" /></button>
+            <button v-if="!local" type="button" :disabled="busy" :aria-label="t('回复评论')" :data-tooltip="t('回复')" @click="emit('reply-request', message)"><Reply :size="15" /></button>
+            <button v-if="message.authorId === authorId || (index === 0 && assistant)" type="button" :disabled="busy" :aria-label="t('更多评论操作')" :data-tooltip="t('更多')" aria-haspopup="menu" :aria-expanded="menuMessage?.id === message.id" @click="openMenu($event, message)"><MoreHorizontal :size="17" /></button>
           </div>
         </div>
         <blockquote v-if="index === 0 && quote" class="comment-quote">{{ quote }}</blockquote>
@@ -183,8 +183,8 @@ watch(() => props.thread.messages, messages => {
         <form v-else-if="editing?.id === message.id" class="comment-edit" @submit.prevent="saveEdit" @keydown="editKeydown">
           <textarea ref="editInput" v-model="editing.body" :aria-label="t('编辑评论')" rows="1" maxlength="20000" :readonly="busy" @input="resizeEdit" />
           <div class="comment-edit-actions" role="group" :aria-label="t('编辑操作')">
-            <button type="button" class="comment-edit-cancel" :aria-label="t('取消编辑')" :title="t('取消编辑')" :disabled="busy" @click="cancelEdit"><X :size="13" /></button>
-            <button type="submit" class="comment-edit-confirm" :aria-label="t('确认编辑')" :title="t('确认编辑')" :disabled="busy || !editing.body.trim()"><Check :size="13" /></button>
+            <button type="button" class="comment-edit-cancel" :aria-label="t('取消编辑')" :data-tooltip="t('取消编辑')" :disabled="busy" @click="cancelEdit"><X :size="13" /></button>
+            <button type="submit" class="comment-edit-confirm" :aria-label="t('确认编辑')" :data-tooltip="t('确认编辑')" :disabled="busy || !editing.body.trim()"><Check :size="13" /></button>
           </div>
         </form>
         <p v-else>{{ message.body }}</p>

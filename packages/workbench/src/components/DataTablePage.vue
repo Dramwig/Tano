@@ -725,7 +725,7 @@ const filterOperators = [
             ><button
               class="icon-button"
               :aria-label="t('撤销数据表修改')"
-              :title="t('撤销数据表修改')"
+              :data-tooltip="t('撤销数据表修改')"
               :disabled="readonly || !state.undo.length"
               @click="store.undoDataTable(tableId)"
             >
@@ -733,14 +733,14 @@ const filterOperators = [
             ><button
               class="icon-button"
               :aria-label="t('重做数据表修改')"
-              :title="t('重做数据表修改')"
+              :data-tooltip="t('重做数据表修改')"
               :disabled="readonly || !state.redo.length"
               @click="store.undoDataTable(tableId, true)"
             >
               <Redo2 :size="16" />
             </button>
             <details class="data-table-menu">
-              <summary class="icon-button" :aria-label="t('数据表操作')" :title="t('数据表操作')">
+              <summary class="icon-button" :aria-label="t('数据表操作')" :data-tooltip="t('数据表操作')">
                 <MoreHorizontal :size="19" />
               </summary>
               <div>
@@ -802,7 +802,7 @@ const filterOperators = [
               class="data-icon"
               :disabled="pageIndex === 0"
               :aria-label="t('上一页记录')"
-              :title="t('上一页记录')"
+              :data-tooltip="t('上一页记录')"
               @click="pageIndex--"
             >
               <ChevronLeft :size="15" />
@@ -812,7 +812,7 @@ const filterOperators = [
               class="data-icon"
               :disabled="pageIndex + 1 >= pageCount"
               :aria-label="t('下一页记录')"
-              :title="t('下一页记录')"
+              :data-tooltip="t('下一页记录')"
               @click="pageIndex++"
             >
               <ChevronRight :size="15" />

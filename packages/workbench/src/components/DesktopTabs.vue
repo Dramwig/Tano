@@ -857,7 +857,7 @@ async function onTabKeydown(event: KeyboardEvent) {
       type="button"
       class="icon-button"
       :aria-label="t('后退')"
-      :title="t('后退')"
+      :data-tooltip="t('后退')"
       :disabled="!store.canNavigateHistory(-1, selectedId)"
       @click="store.navigateHistory(-1, paneId)"
     >
@@ -868,7 +868,7 @@ async function onTabKeydown(event: KeyboardEvent) {
       type="button"
       class="icon-button"
       :aria-label="t('前进')"
-      :title="t('前进')"
+      :data-tooltip="t('前进')"
       :disabled="!store.canNavigateHistory(1, selectedId)"
       @click="store.navigateHistory(1, paneId)"
     >
@@ -927,7 +927,7 @@ async function onTabKeydown(event: KeyboardEvent) {
           role="tab"
           :aria-selected="doc.id === selectedId"
           :tabindex="doc.id === selectedId ? 0 : -1"
-          :title="assistantTab?.id === doc.id ? assistantTab.title : doc.blank || doc.graph || doc.plugins || doc.calendar || doc.view ? tabLabel(doc) : doc.path"
+          :data-tooltip="assistantTab?.id === doc.id ? assistantTab.title : doc.blank || doc.graph || doc.plugins || doc.calendar || doc.view ? tabLabel(doc) : doc.path"
           :draggable="nativeTabDrag"
           @pointerdown="startDrag($event, doc.id)"
           @dragstart.stop="startNativeDrag($event, doc.id)"
@@ -955,7 +955,7 @@ async function onTabKeydown(event: KeyboardEvent) {
           class="desktop-tab-close"
           type="button"
           :aria-label="t('关闭 {0}', [tabLabel(doc)])"
-          :title="t('关闭 {0}', [tabLabel(doc)])"
+          :data-tooltip="t('关闭 {0}', [tabLabel(doc)])"
           @click="closeTab(doc.id)"
         >
           <X :size="13" />
@@ -971,7 +971,7 @@ async function onTabKeydown(event: KeyboardEvent) {
       class="desktop-tab-add"
       type="button"
       :aria-label="t('新标签页')"
-      :title="t('新标签页')"
+      :data-tooltip="t('新标签页')"
       :disabled="!store.workspace || store.busy"
       @click="activatePane(); emit('new-tab')"
     >

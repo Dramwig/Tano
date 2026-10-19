@@ -51,19 +51,103 @@ async function mountEmptyConversation(fullscreenTarget?: string | Ref<HTMLElemen
   return { workspace, assistant };
 }
 
-it('switches built-in prompt language and offers explicit translation targets without rewriting a draft', async () => {
+it('offers one translation starter with explicit targets without rewriting a draft on locale change', async () => {
   const { assistant } = await mountEmptyConversation();
   setUiLocale('en-US'); await nextTick();
-  const buttons = () => [...root.querySelectorAll<HTMLButtonElement>('.assistant-starters button')];
-  expect(buttons().map(button => button.textContent)).toContain('Translate to English');
-  buttons().find(button => button.textContent === 'Translate to Chinese')!.click();
+  const buttons = () => [...root.querySelectorAll<HTMLButtonElement>('.assistant-starter > button')];
+  expect(buttons().map(button => button.textContent)).toEqual(['Summarize this note', 'Polish this note', 'Translate this note', 'Extract action items']);
+  buttons()[2]!.click(); await nextTick();
+  const targets = () => [...root.querySelectorAll<HTMLButtonElement>('#assistant-translation-options button')];
+  targets().find(button => button.textContent === 'Translate to Chinese')!.click();
   expect(assistant.prompt).toBe('Translate this note into Simplified Chinese and preserve its Markdown formatting.');
+  await nextTick();
+  expect(targets()).toHaveLength(0);
   assistant.prompt = '用户草稿 {0}: please answer in Japanese';
   setUiLocale('zh-CN'); await nextTick();
   expect(assistant.prompt).toBe('用户草稿 {0}: please answer in Japanese');
-  expect(buttons().map(button => button.textContent)).toContain('翻译成中文');
-  buttons().find(button => button.textContent === '翻译成中文')!.click();
-  expect(assistant.prompt).toBe('Translate this note into Simplified Chinese and preserve its Markdown formatting.');
+  expect(buttons().map(button => button.textContent)).toContain('翻译这篇笔记');
+  buttons()[2]!.click(); await nextTick();
+  expect(assistant.prompt).toBe('用户草稿 {0}: please answer in Japanese');
+  targets()[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await nextTick();
+  expect(targets()).toHaveLength(0);
+  expect(document.activeElement).toBe(buttons()[2]);
+  buttons()[2]!.click(); await nextTick();
+  targets().find(button => button.textContent === '翻译成英文')!.click();
+  expect(assistant.prompt).toBe('Translate this note into English and preserve its Markdown formatting.');
+});
+
+it.each(['zh-CN', 'en-US'] as const)('shows live work, collapses it on completion and copies only the final answer (%s)', async locale => {
+  const { assistant } = await mountEmptyConversation();
+  setUiLocale(locale);
+  const writeText = vi.fn(async () => {});
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  assistant.session!.messages = [{ id: 'activity-reply', role: 'assistant', createdAt: 1, state: 'running',
+    content: '先查资料。\n\n最终总结。', toolResults: [], activity: [
+      { kind: 'text', start: 0, end: 5, phase: 'working' },
+      { kind: 'tool', name: 'search_documents', status: 'running' },
+    ] }];
+  await nextTick();
+  const reply = assistant.session!.messages[0];
+  const process = root.querySelector<HTMLDetailsElement>('.assistant-process')!;
+  expect(process.open).toBe(true);
+  expect(process.textContent).toContain(locale === 'en-US' ? 'Running' : '执行中');
+  reply.toolResults!.push({ name: 'search_documents', status: 'succeeded' });
+  Object.assign(reply.activity![1], { status: 'succeeded', resultIndex: 0 });
+  reply.activity!.push({ kind: 'text', start: 7, end: 12, phase: 'pending' });
+  await vi.waitFor(() => expect(root.querySelector('.assistant-message-assistant > .assistant-answer')?.textContent).toContain('最终总结。'));
+  const answerView = root.querySelector('.assistant-message-assistant > .assistant-answer .ProseMirror');
+  Object.assign(reply.activity![2], { phase: 'answer' });
+  reply.state = 'completed'; await nextTick();
+  expect(process.open).toBe(false);
+  expect(root.querySelector('.assistant-message-assistant > .assistant-answer .ProseMirror')).toBe(answerView);
+  root.querySelector<HTMLButtonElement>(locale === 'en-US' ? '[aria-label="Copy assistant answer"]' : '[aria-label="复制助手回答"]')!.click();
+  expect(writeText).toHaveBeenCalledWith('最终总结。');
+  process.querySelector('summary')!.click(); await nextTick();
+  expect(process.open).toBe(true);
+  await vi.waitFor(() => expect(process.textContent).toContain('先查资料。'));
+  expect(process.textContent).toContain(locale === 'en-US' ? 'Completed' : '已完成');
+});
+
+it('keeps failure counts visible after folding and does not export intermediate commentary as an answer', async () => {
+  const { assistant } = await mountEmptyConversation();
+  assistant.session!.messages = [{ id: 'failed-work', role: 'assistant', createdAt: 1, state: 'failed',
+    content: '先查资料。', error: '连接中断', toolResults: [{ name: 'read_document', status: 'failed', error: '文档已移除' }], activity: [
+      { kind: 'text', start: 0, end: 5, phase: 'working' },
+      { kind: 'tool', name: 'read_document', status: 'failed', resultIndex: 0 },
+    ] }];
+  await nextTick();
+  expect(root.querySelector('.assistant-process summary')?.textContent).toContain('1 次失败');
+  expect(root.querySelector('.assistant-message-error')?.textContent).toContain('连接中断');
+  expect(root.querySelector<HTMLButtonElement>('[aria-label="复制助手回答"]')!.disabled).toBe(true);
+  expect(root.querySelector<HTMLButtonElement>('[aria-label="将助手回答保存为文档"]')!.disabled).toBe(true);
+  root.querySelector<HTMLElement>('.assistant-process summary')!.click(); await nextTick();
+  expect(root.querySelector('.assistant-tool-step-error')?.textContent).toBe('文档已移除');
+});
+
+it.each(['zh-CN', 'en-US'] as const)('keeps waiting work open and shows real partial results after interruption (%s)', async locale => {
+  const { assistant } = await mountEmptyConversation();
+  setUiLocale(locale);
+  assistant.session!.messages = [{ id: 'waiting-work', role: 'assistant', createdAt: 1, state: 'waiting',
+    content: 'Waiting for an answer.', activity: [{ kind: 'text', start: 0, end: 22, phase: 'working' }],
+    proposals: ['applied', 'ready', 'unknown'].map(status => ({ id: status, runId: 'waiting-work', workspaceId: assistant.session!.workspaceId,
+      kind: 'create', path: `${status}.md`, base: '', content: 'text', reason: 'test', status: status as 'applied' | 'ready' | 'unknown' })),
+  }];
+  await nextTick();
+  const process = root.querySelector<HTMLDetailsElement>('.assistant-process')!;
+  expect(process.open).toBe(true);
+  expect(process.querySelector('summary')?.textContent).toContain(locale === 'en-US' ? 'Waiting for your answer' : '等待你的回答');
+  expect(root.querySelector('.assistant-run-summary')).toBeNull();
+  expect(root.querySelector('[aria-label="Copy assistant answer"], [aria-label="复制助手回答"]')).toBeNull();
+  const reply = assistant.session!.messages[0];
+  reply.state = 'failed'; reply.termination = { reason: 'round_limit' };
+  await nextTick();
+  expect(process.open).toBe(false);
+  const summary = root.querySelector('.assistant-run-summary')!;
+  expect(summary.textContent).toContain(locale === 'en-US' ? 'Request round limit reached' : '已达到请求轮数上限');
+  expect([...summary.querySelectorAll('li')].map(item => item.textContent)).toEqual(['applied.md', 'ready.md', 'unknown.md']);
+  expect(root.querySelector('.assistant-message-assistant > .assistant-answer')).toBeNull();
+  expect(root.querySelector<HTMLButtonElement>('[aria-label="Copy assistant answer"], [aria-label="复制助手回答"]')!.disabled).toBe(true);
 });
 
 it('selects reasoning beside the model, restores focus, and hides it for other connections', async () => {
@@ -159,16 +243,18 @@ it('renders Markdown as answer chunks arrive and keeps the same view when genera
   expect(reply.querySelector('[aria-label="复制助手回答"]')).not.toBeNull();
 });
 
-it('keeps a partially streamed Markdown answer rendered after interruption', async () => {
+it('preserves partially streamed Markdown in the folded work log after interruption', async () => {
   const { assistant } = await mountEmptyConversation();
   assistant.session!.messages = [{ id: 'partial-answer', role: 'assistant',
     content: '## 已生成内容\n\n```text\n尚未写完', createdAt: 1, state: 'running' }];
   await vi.waitFor(() => expect(root.querySelector('.assistant-answer h2')?.textContent).toBe('已生成内容'));
-  const view = root.querySelector('.assistant-answer .ProseMirror');
   assistant.session!.messages[0]!.state = 'interrupted';
   await nextTick();
-  expect(root.querySelector('.assistant-answer .ProseMirror')).toBe(view);
-  expect(root.querySelector('.assistant-answer pre')?.textContent).toContain('尚未写完');
+  expect(root.querySelector('.assistant-message-assistant > .assistant-answer')).toBeNull();
+  const process = root.querySelector<HTMLDetailsElement>('.assistant-process')!;
+  expect(process.open).toBe(false);
+  process.querySelector('summary')!.click();
+  await vi.waitFor(() => expect(process.querySelector('.assistant-answer pre')?.textContent).toContain('尚未写完'));
   expect(root.querySelector('.assistant-message-error')?.textContent).toContain('已中断');
 });
 
@@ -177,6 +263,7 @@ it('shows sent documents above the user bubble while keeping retrieved sources a
   const source = await workspace.assistantSnapshot({ id: workspace.workspace!.id, path: workspace.workspace!.path }, workspace.active!.id);
   source.id = 'S1';
   const retrieved = { ...source, id: 'S2', fileId: 'other-file', path: '检索结果.md' };
+  source.selection = { text: '当时划选的文字' };
   assistant.session!.messages = [
     { id: 'question', role: 'user', content: '你好', createdAt: 1 },
     { id: 'answer', role: 'assistant', content: '', createdAt: 1, state: 'running', sources: [source, retrieved], attachedSourceIds: ['S1'] },
@@ -185,17 +272,30 @@ it('shows sent documents above the user bubble while keeping retrieved sources a
   const user = root.querySelector('.assistant-message-user')!;
   const reply = root.querySelector('.assistant-message-assistant')!;
   expect(user.querySelector('.assistant-message-text')!.previousElementSibling).toBe(user.querySelector('.assistant-attachments'));
-  expect(user.querySelector('.assistant-attachments')!.textContent).toBe(source.path);
+  expect(user.querySelector('.assistant-attachments')!.textContent).toBe(source.selection.text);
+  expect(user.querySelector('.assistant-sent-selection')!.textContent).toBe(source.selection.text);
   expect(reply.querySelector('.assistant-citations')!.textContent).toBe('S2 · 检索结果.md');
-  assistant.files = []; await nextTick();
-  expect(user.querySelector('.assistant-attachments')!.textContent).toBe(source.path);
-  const open = vi.spyOn(workspace, 'openFileInNewTab').mockResolvedValue();
+  assistant.files = [];
+  assistant.selection = { fileId: source.fileId, text: '后来划选的另一段文字' };
+  await nextTick();
+  expect(user.querySelector('.assistant-sent-selection')!.textContent).toBe(source.selection.text);
+  assistant.selection = null;
+  assistant.session = JSON.parse(JSON.stringify(assistant.session));
+  await nextTick();
+  expect(user.querySelector('.assistant-attachments')!.textContent).toBe(source.selection.text);
+  const open = vi.spyOn(workspace, 'openFileInNewTab');
+  const tabsBefore = workspace.tabs.map(tab => tab.id);
   user.querySelector<HTMLButtonElement>('.assistant-attachments button')!.click();
-  await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+  await nextTick();
+  expect(workspace.active?.id).toBe(source.fileId);
   assistant.session!.messages[1]!.content = '参见[来源:S1]。';
   await vi.waitFor(() => expect(reply.querySelector('.assistant-answer a')).not.toBeNull());
   reply.querySelector<HTMLAnchorElement>('.assistant-answer a')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }));
-  await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(2));
+  await nextTick();
+  user.querySelector<HTMLButtonElement>('.assistant-sent-selection')!.click();
+  await nextTick();
+  expect(open).not.toHaveBeenCalled();
+  expect(workspace.tabs.map(tab => tab.id)).toEqual(tabsBefore);
   // Older saved conversations still place their reference cards above the prompt.
   delete assistant.session!.messages[1]!.attachedSourceIds;
   await nextTick();

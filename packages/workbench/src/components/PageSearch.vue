@@ -3,7 +3,7 @@ import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { ArrowDown, ArrowUp, CornerDownLeft, Repeat2, X } from 'lucide-vue-next';
 import type { PageSearchEditor } from '@tano/editor/search';
-import { defaultShortcutBindings, matchesShortcut, shortcutLabel } from '../shortcuts';
+import { defaultShortcutBindings, matchesShortcut } from '../shortcuts';
 import type { ShortcutBindings } from '../shortcuts';
 import { recordHelpCompleted } from '../help-checklist';
 
@@ -142,7 +142,7 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
           type="button"
           :disabled="!count"
           :aria-label="t('上一个匹配')"
-          :title="t('上一个匹配 ({0})', [shortcutLabel(bindings.previousMatch)])"
+          :data-tooltip="t('上一个匹配')" :data-tooltip-shortcut="bindings.previousMatch"
           @click="navigate(-1)"
         >
           <ArrowUp :size="15" :stroke-width="1.7" />
@@ -151,7 +151,7 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
           type="button"
           :disabled="!count"
           :aria-label="t('下一个匹配')"
-          :title="t('下一个匹配 ({0})', [shortcutLabel(bindings.nextMatch)])"
+          :data-tooltip="t('下一个匹配')" :data-tooltip-shortcut="bindings.nextMatch"
           @click="navigate(1)"
         >
           <ArrowDown :size="15" :stroke-width="1.7" />
@@ -161,14 +161,14 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
           :class="{ active: replacing }"
           :aria-pressed="replacing"
           :aria-label="t('展开或收起替换')"
-          :title="t('替换 ({0})', [shortcutLabel(bindings.pageReplace)])"
+          :data-tooltip="t('替换')" :data-tooltip-shortcut="bindings.pageReplace"
           @click="toggleReplace"
         >
           <Repeat2 :size="15" :stroke-width="1.7" />
         </button>
       </template>
       <span v-else class="page-search-not-found" role="status" aria-live="polite">not found</span>
-      <button type="button" :aria-label="t('关闭页内搜索')" :title="t('关闭 ({0})', [shortcutLabel(bindings.closeSearch)])" @click="close">
+      <button type="button" :aria-label="t('关闭页内搜索')" :data-tooltip="t('关闭')" :data-tooltip-shortcut="bindings.closeSearch" @click="close">
         <X :size="15" :stroke-width="1.7" />
       </button>
     </div>

@@ -445,20 +445,20 @@ onBeforeUnmount(() => {
       >
         <button
           class="icon-button"
-          :title="t('布局设置')"
+          :data-tooltip="t('布局设置')"
           :aria-label="t('布局设置')"
           :aria-expanded="settings"
           @click="settings = !settings"
         >
           <Settings2 :size="17" />
         </button>
-        <button class="icon-button" :title="t('放大')" :aria-label="t('放大图谱')" @click="zoom(1.25)">
+        <button class="icon-button" :data-tooltip="t('放大')" :aria-label="t('放大图谱')" @click="zoom(1.25)">
           <Plus :size="17" />
         </button>
-        <button class="icon-button" :title="t('缩小')" :aria-label="t('缩小图谱')" @click="zoom(0.8)">
+        <button class="icon-button" :data-tooltip="t('缩小')" :aria-label="t('缩小图谱')" @click="zoom(0.8)">
           <Minus :size="17" />
         </button>
-        <button class="icon-button" :title="t('适应窗口 · 0')" :aria-label="t('图谱居中')" @click="fit">
+        <button class="icon-button" :data-tooltip="t('适应窗口 · 0')" :aria-label="t('图谱居中')" @click="fit">
           <Focus :size="17" />
         </button>
       </div>

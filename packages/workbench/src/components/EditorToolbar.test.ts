@@ -2,6 +2,8 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { createApp, defineComponent, h, nextTick, ref } from 'vue';
 import type { App } from 'vue';
+import { editorViewCtx } from '@milkdown/kit/core';
+import { TextSelection } from '@milkdown/kit/prose/state';
 import MarkdownEditor from '@tano/editor';
 import { defaultSelectionContext } from '@tano/editor/document-model';
 import type { EditorSelectionContext } from '@tano/editor/document-model';
@@ -114,6 +116,56 @@ it('switches between block and inline tools for handles, text, and a collapsed c
   await selectText(paragraph, 2, 2);
   expect(context.value.level).toBe('block');
   expect(value.value).toBe('# Heading\n\n正文文字\n');
+});
+
+it('marks the current text and background colors and follows resets and selection changes', async () => {
+  const { editor, context, value } = await mount('正文文字\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 3)));
+  await nextTick();
+  const openColors = async () => {
+    await click(button('文字样式'));
+    await click(button('文字颜色'));
+  };
+  await openColors();
+  expect(button('恢复默认文字颜色').getAttribute('aria-pressed')).toBe('true');
+  expect(button('恢复默认背景颜色').getAttribute('aria-pressed')).toBe('true');
+  await click(button('红色文字'));
+  await openColors();
+  expect(button('红色文字').getAttribute('aria-pressed')).toBe('true');
+  expect(button('恢复默认文字颜色').getAttribute('aria-pressed')).toBe('false');
+  await click(button('蓝色背景'));
+  await openColors();
+  expect(button('红色文字').getAttribute('aria-pressed')).toBe('true');
+  expect(button('蓝色背景').getAttribute('aria-pressed')).toBe('true');
+  await click(button('恢复默认背景颜色'));
+  await openColors();
+  expect(button('恢复默认背景颜色').getAttribute('aria-pressed')).toBe('true');
+  expect(button('红色文字').getAttribute('aria-pressed')).toBe('true');
+  const saved = value.value;
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3, 5)));
+  await nextTick();
+  expect(context.value.textColor).toBeNull();
+  expect(button('恢复默认文字颜色').getAttribute('aria-pressed')).toBe('true');
+  expect(button('红色文字').getAttribute('aria-pressed')).toBe('false');
+  expect(value.value).toBe(saved);
+});
+
+it('leaves mixed text colors unselected while marking the shared background color', async () => {
+  const source = '<span style="background-color: #e3f2fd">'
+    + '<span style="color: #dc2626">甲</span>乙<span style="color: #dc2626">丙</span></span>\n';
+  const { editor, context, value } = await mount(source);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 4)));
+  await nextTick();
+  await click(button('文字样式'));
+  await click(button('文字颜色'));
+  expect(context.value.textColor).toBeUndefined();
+  expect(context.value.backgroundColor).toBe('#e3f2fd');
+  expect(root.querySelectorAll('.text-color-grid:not(.background-color-grid) [aria-pressed="true"]')).toHaveLength(0);
+  expect(button('蓝色背景').getAttribute('aria-pressed')).toBe('true');
+  expect(button('恢复默认背景颜色').getAttribute('aria-pressed')).toBe('false');
+  expect(value.value).toBe(source);
 });
 
 it('uses inline tools for selected editable Markdown and applies the bold button', async () => {
@@ -260,8 +312,6 @@ it('keeps read-only and source modes non-editable and closes stale menus', async
   await nextTick();
   expect(button('块级类型')).toBeNull();
   expect(button('粗体')).toBeNull();
-  await click(button('更多'));
-  expect(button('随选区显示').disabled).toBe(false);
 });
 
 it('filters Level 1 tools and commands while keeping existing enhanced Markdown readable', async () => {
@@ -359,14 +409,13 @@ it('switches from the capsule menu to fixed mode and back without editing conten
   const { toolbarMode, value } = await mount('正文文字\n', 'selection');
   await selectText(root.querySelector('.ProseMirror p')!, 0, 2);
   await expectFloating();
-  await click(floatingButton('更多格式'));
+  await click(floatingButton('拖动工具栏'));
   await click(floatingButton('固定到顶部'));
   expect(toolbarMode.value).toBe('fixed');
   expect(document.querySelector('.selection-toolbar')).toBeNull();
   expect(root.querySelector('.editor-toolbar')).not.toBeNull();
   expect(button('粗体')).not.toBeNull();
-  expect(button('随选区显示')).toBeNull();
-  await click(button('更多'));
+  await click(button('拖动工具栏'));
   button('随选区显示').focus();
   await click(button('随选区显示'));
   expect(toolbarMode.value).toBe('selection');
@@ -397,7 +446,6 @@ it('previews a drop, commits only on release, and keeps text selected through to
   expect(document.querySelector('.toolbar-dock-preview')?.getAttribute('data-target')).toBe('fixed');
   const topPreview = document.querySelector<HTMLElement>('.toolbar-dock-preview')!;
   expect(topPreview.querySelector('.editor-toolbar')).not.toBeNull();
-  expect(topPreview.querySelector('button[aria-label="更多"]')).not.toBeNull();
   expect(topPreview.querySelector('[inert][aria-hidden="true"]')).not.toBeNull();
   expect(document.querySelector('.toolbar-drop-hint')).toBeNull();
   expect(topPreview.style.top).toBe('0px');
@@ -567,18 +615,18 @@ it('offers all other placements in the side menu while editing', async () => {
   await selectText(root.querySelector('.ProseMirror p')!, 0, 0);
   await expectFloating();
   expect(floatingButton('块级类型')).not.toBeNull();
-  await click(floatingButton('更多格式'));
+  await click(floatingButton('拖动工具栏'));
   expect(floatingButton('随选区显示')).not.toBeNull();
   expect(floatingButton('固定到顶部')).not.toBeNull();
   await click(floatingButton('吸附在底部'));
   expect(toolbarMode.value).toBe('bottom');
   await expectFloating();
-  await click(floatingButton('更多格式'));
+  await click(floatingButton('拖动工具栏'));
   expect(floatingButton('吸附在底部')).toBeNull();
   expect(floatingButton('靠左停靠')).not.toBeNull();
   await click(floatingButton('靠右停靠'));
   expect(toolbarMode.value).toBe('right');
-  await click(floatingButton('更多格式'));
+  await click(floatingButton('拖动工具栏'));
   expect(floatingButton('靠左停靠')).not.toBeNull();
   readonly.value = true;
   await nextTick();
@@ -588,6 +636,51 @@ it('offers all other placements in the side menu while editing', async () => {
   await nextTick();
   expect(document.querySelector('.selection-toolbar')).toBeNull();
   expect(value.value).toBe('正文文字\n');
+});
+
+it('opens placement options from the drag handle and switches mode', async () => {
+  const { toolbarMode } = await mount('正文文字\n', 'fixed');
+  await click(button('拖动工具栏'));
+  expect(button('靠左停靠')).not.toBeNull();
+  expect(button('靠右停靠')).not.toBeNull();
+  expect(button('吸附在底部')).not.toBeNull();
+  expect(button('随选区显示')).not.toBeNull();
+  await click(button('吸附在底部'));
+  expect(toolbarMode.value).toBe('bottom');
+});
+
+it('opens placement options after a real pointer tap without movement', async () => {
+  await mount('正文文字\n', 'fixed');
+  await pointer(button('拖动工具栏'), 'pointerdown', 40, 20);
+  await pointer(window, 'pointerup', 40, 20);
+  expect(button('靠左停靠')).not.toBeNull();
+});
+
+it.each(['left', 'right', 'bottom'] as const)('keeps the toolbar visible when switching from %s to fixed mode', async (mode) => {
+  const { toolbarMode } = await mount('正文文字\n', mode);
+  await selectText(root.querySelector('.ProseMirror p')!, 0, 2);
+  await expectFloating();
+  await click(floatingButton('拖动工具栏'));
+  await click(floatingButton('固定到顶部'));
+  expect(toolbarMode.value).toBe('fixed');
+  expect(root.querySelector('.editor-toolbar')).not.toBeNull();
+  expect(button('拖动工具栏')).not.toBeNull();
+});
+
+it('keeps the drag menu and formatting menus mutually exclusive', async () => {
+  await mount('正文文字\n', 'selection');
+  await selectText(root.querySelector('.ProseMirror p')!, 0, 2);
+  await expectFloating();
+  await click(floatingButton('拖动工具栏'));
+  const dockMenu = document.querySelector<HTMLElement>('.toolbar-dock-menu')!;
+  expect(dockMenu).not.toBeNull();
+  expect(dockMenu.classList.contains('compact-action-menu')).toBe(true);
+  await click(floatingButton('更多格式'));
+  expect(document.querySelector('.toolbar-dock-menu')).toBeNull();
+  expect(document.querySelector('.text-style-dropdown')).not.toBeNull();
+  await click(floatingButton('拖动工具栏'));
+  expect(document.querySelector('.text-style-dropdown')).toBeNull();
+  expect(document.querySelector('.toolbar-dock-menu')).not.toBeNull();
 });
 
 it('anchors the horizontal bottom toolbar and upward menus to its pane on scroll and resize', async () => {

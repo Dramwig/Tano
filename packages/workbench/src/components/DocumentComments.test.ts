@@ -563,7 +563,7 @@ it('creates, replies to, resolves and detaches local annotations independently o
   readonly.value = true;
   await nextTick();
   expect(root.querySelectorAll('textarea')).toHaveLength(0);
-  expect(root.querySelector('button[title="完成批注"]')).toBeNull();
+  expect(root.querySelector('button[data-tooltip="完成批注"]')).toBeNull();
   expect(root.querySelector('.annotation-count')?.textContent?.trim()).toBe('2');
   await comments.value?.beginAnnotation();
   expect(root.querySelector('[aria-label="添加批注"]')).toBeNull();

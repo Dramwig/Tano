@@ -13,7 +13,7 @@ import {
   undoDepth,
 } from '@codemirror/commands';
 import { Compartment, EditorState, StateEffect, StateField, Transaction } from '@codemirror/state';
-import { Decoration, EditorView, keymap, WidgetType } from '@codemirror/view';
+import { Decoration, EditorView, highlightActiveLineGutter, keymap, lineNumbers, WidgetType } from '@codemirror/view';
 import { referenceMarkdown } from '@tano/protocol';
 import type { CommentAnchor, ReferenceIdentity } from '@tano/protocol';
 import type { SuggestionDecorations } from '@tano/protocol';
@@ -27,6 +27,20 @@ import type { EditorPreferences } from '@tano/editor/runtime';
 import { textSearchRanges } from '@tano/editor/search';
 
 const setPageSearch = StateEffect.define<{ query: string; index: number }>();
+const setReferenceFlash = StateEffect.define<{ from: number; to: number } | null>();
+let referenceFlashTimer: ReturnType<typeof setTimeout> | undefined;
+const referenceFlash = StateField.define({
+  create: () => Decoration.none,
+  update(previous, tr) {
+    const request = tr.effects.find(effect => effect.is(setReferenceFlash));
+    if (request) {
+      const range = request.value;
+      return range ? Decoration.set([Decoration.mark({ class: 'tano-reference-flash' }).range(range.from, range.to)]) : Decoration.none;
+    }
+    return tr.docChanged ? Decoration.none : previous;
+  },
+  provide: field => EditorView.decorations.from(field),
+});
 const pageSearch = StateField.define({
   create: () => ({ query: '', index: 0, ranges: Decoration.none }),
   update(previous, tr) {
@@ -43,6 +57,7 @@ const pageSearch = StateField.define({
 
 const props = defineProps<{
   modelValue: string;
+  showAllLineNumbers?: boolean;
   preferences?: EditorPreferences;
   readonly: boolean;
   localNative: boolean;
@@ -161,6 +176,8 @@ onMounted(() => {
       extensions: [
         history(),
         keymap.of([{ ...indentWithTab, preventDefault: true }, ...defaultKeymap, ...historyKeymap]),
+        lineNumbers(),
+        highlightActiveLineGutter(),
         EditorView.lineWrapping,
         EditorView.contentAttributes.of({ 'aria-label': t('Markdown 源码'), spellcheck: 'false' }),
         readonlyMode.of([
@@ -169,6 +186,7 @@ onMounted(() => {
         ]),
         sourceStyles,
         pageSearch,
+        referenceFlash,
         // Full-width punctuation may arrive as text input without a matching keydown.
         EditorView.inputHandler.of((current, from, to, text) =>
           text === '￥' && from === current.state.selection.main.from &&
@@ -189,7 +207,7 @@ onMounted(() => {
   emit('ready');
 });
 
-onBeforeUnmount(() => { view?.destroy(); view = undefined; });
+onBeforeUnmount(() => { clearTimeout(referenceFlashTimer); view?.destroy(); view = undefined; });
 
 watch(
   () => props.modelValue,
@@ -384,9 +402,18 @@ function restoreModeSelection(selection: ModeSelection, focus = true) {
   });
   if (focus) view.focus();
 }
+function revealSourceRange(range: { from: number; to: number }) {
+  if (!view || range.from < 0 || range.to > view.state.doc.length || range.to <= range.from) return false;
+  clearTimeout(referenceFlashTimer);
+  view.dispatch({ effects: setReferenceFlash.of(null) });
+  view.dispatch({ effects: [setReferenceFlash.of(range), EditorView.scrollIntoView(range.from, { y: 'center' })] });
+  referenceFlashTimer = setTimeout(() => view?.dispatch({ effects: setReferenceFlash.of(null) }), 2400);
+  return true;
+}
 defineExpose({
   captureModeSelection,
   restoreModeSelection,
+  revealSourceRange,
   modeCursorTop: () => view?.coordsAtPos(view.state.selection.main.head)?.top ?? null,
   applyPluginEdit: (before: string, after: string) => {
     if (!view || props.readonly || view.state.doc.toString() !== before) throw new Error(t('编辑器内容已变化，请重新读取文档'));
@@ -413,5 +440,5 @@ defineExpose({
 </script>
 
 <template>
-  <div ref="host" class="source-editor" />
+  <div ref="host" class="source-editor" :class="{ 'show-all-line-numbers': showAllLineNumbers }" />
 </template>

@@ -13,7 +13,7 @@ defineEmits<{ 'update:modelValue': [value: boolean] }>();
     :aria-label="t('光标展开源码')"
     :aria-pressed="modelValue"
     :disabled="source"
-    :title="source
+    :data-tooltip="source
       ? t('当前为完整源码模式；返回编辑后可切换光标展开源码')
       : modelValue
         ? t('光标展开源码：已开启，点击关闭')

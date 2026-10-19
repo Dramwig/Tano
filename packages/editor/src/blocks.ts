@@ -3,7 +3,7 @@ import type { EditorState, Transaction } from '@milkdown/kit/prose/state';
 import type { Node as ProseMirrorNode } from '@milkdown/kit/prose/model';
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
 import { blockType, blockTypes, featureLevel } from './document-model';
-import { blockTree, moveBlockTo, moveBlockBeside, moveBlockSibling, indentBlock, outdentBlock } from './block-tree';
+import { blockTree, deleteBlocks, moveBlockTo, moveBlockBeside, moveBlockSibling, indentBlock, outdentBlock } from './block-tree';
 import { closeHistory } from '@milkdown/kit/prose/history';
 import { moveBlocksTo } from './block-tree';
 import { BlockRangeSelection } from './block-selection';
@@ -332,19 +332,29 @@ export function blockControls(
       }
 
       function foldLeft(index: number, element: Element, rect: DOMRect) {
-        return foldEntries[index]!.node.type.name === 'list_item'
+        const left = foldEntries[index]!.node.type.name === 'list_item'
           ? element.parentElement!.getBoundingClientRect().left : rect.left;
+        // The text inset leaves room for the fold button beside the drag icon.
+        return left + 8;
       }
 
       function foldIndexAt(target: EventTarget | null, x: number, y: number) {
         if (target instanceof Element) {
           const button = target.closest<HTMLButtonElement>('.tano-fold-toggle');
           if (button && controls.contains(button)) return foldButtons.indexOf(button);
-          if (view.dom.contains(target)) {
+          // Text content identifies its own item even when jsdom or a browser
+          // reports the surrounding list item's box for the pointer target.
+          const text = target.closest('p, h1, h2, h3, h4, h5, h6');
+          if (text && view.dom.contains(text)) {
             for (let index = foldEntries.length - 1; index >= 0; index--)
-              if (foldRect(index) && foldElement(index)?.contains(target)) return index;
-            return null;
+              if (foldElement(index) === text || foldElement(index) === text.parentElement) return index;
           }
+          // jsdom and detached/offscreen DOM can report empty rectangles. In
+          // that case there is no reliable coordinate hit to resolve.
+          if (view.dom.contains(target) && !foldEntries.some((_, index) => {
+            const rect = foldRect(index);
+            return !!rect && rect.width > 0 && rect.height > 0;
+          })) return null;
         }
         for (let index = foldEntries.length - 1; index >= 0; index--) {
           const rect = foldRect(index);
@@ -501,14 +511,14 @@ export function blockControls(
           const isColumns = entry.node.type.name === 'tano_columns';
           const style = getComputedStyle(handle);
           const bounds = handle.getBoundingClientRect();
-          const width = bounds.width || Number.parseFloat(style.width) || (columnChild || isColumns ? 18 : 36);
+          const width = bounds.width || Number.parseFloat(style.width) || (columnChild || isColumns ? 18 : 28);
           const height = bounds.height || Number.parseFloat(style.height) || 24;
-          const left = rect && columnChild ? Math.max(-36, gutterLeft - rect.left) : null;
+          const left = rect && columnChild ? Math.max(-28, gutterLeft - rect.left) : null;
           const table = element?.matches('.tano-table-viewport:not(.has-comments)') ? element.querySelector('table') : null;
           const translation = table && rect ? (measure(table)?.left ?? hostLeft) - hostLeft
             : rect && entry.depth > 0 ? rect.left - hostLeft : 0;
           const y = element && rect ? center(element, rect) - height / 2 : top;
-          const x = hostLeft + translation + (left ?? (isColumns ? -60 : Number.parseFloat(style.left) || -36));
+          const x = hostLeft + translation + (left ?? (isColumns ? -52 : Number.parseFloat(style.left) || -28));
           return { rect, left, x, y, width, hidden: readOnly || !rect,
             transform: table || (rect && entry.depth > 0) ? `translateX(${translation}px)` : '',
             clipPath: table && pane.width > 0
@@ -522,7 +532,7 @@ export function blockControls(
           if (entry.node.type.name !== 'tano_columns') continue;
           const block = blocks[index]!, rect = block.rect;
           if (!rect || block.hidden) continue;
-          let left = rect.left - 60;
+          let left = rect.left - 52;
           let above = rect.top - 28;
           for (let child = index + 1; child < count && entries[child]!.pos < entry.pos + entry.node.nodeSize; child++) {
             const childBlock = blocks[child]!;
@@ -532,7 +542,7 @@ export function blockControls(
           }
           const stacked = left < gutterLeft;
           const anchor = entry.depth > 0 ? rect.left : hostLeft;
-          block.x = stacked ? Math.max(gutterLeft, rect.left - 36) : left;
+          block.x = stacked ? Math.max(gutterLeft, rect.left - 28) : left;
           block.left = block.x - anchor;
           if (stacked) block.y = above;
         }
@@ -543,7 +553,7 @@ export function blockControls(
           const rect = canFold && visible(measured) ? measured : null;
           return { hidden: !rect || !canFold, isFolded: folded.has(blockKey(index)),
             top: element && rect ? center(element, rect) - top - (foldButtons[index]!.offsetHeight || 24) / 2 : null,
-            left: element && rect ? foldLeft(index, element, rect) - hostLeft - 18 : null };
+            left: element && rect ? foldLeft(index, element, rect) - hostLeft - (foldButtons[index]!.offsetWidth || 18) : null };
         });
         // Apply all writes together; no geometry reads belong below this point.
         blocks.forEach((block, index) => {
@@ -799,10 +809,17 @@ export function blockControls(
         const hostRect = host.getBoundingClientRect();
         marker.classList.toggle('is-column', target.kind === 'column');
         if (target.kind === 'column') {
+          const gap = 8;
+          const width = 3;
+          // A side drop creates a sibling column, so keep the entire marker
+          // outside the block (and clear of its selection highlight).
+          const left = target.side === 'left'
+            ? target.rect.left - gap - width
+            : target.rect.right + gap;
           marker.hidden = false;
           marker.style.top = `${target.rect.top - hostRect.top}px`;
-          marker.style.left = `${(target.side === 'left' ? target.rect.left : target.rect.right) - hostRect.left}px`;
-          marker.style.width = '3px';
+          marker.style.left = `${left - hostRect.left}px`;
+          marker.style.width = `${width}px`;
           marker.style.height = `${target.rect.height}px`;
           return;
         }
@@ -1010,6 +1027,27 @@ export function blockControls(
       }
 
       function onDragKeyDown(event: KeyboardEvent) {
+        if ((event.key === 'Backspace' || event.key === 'Delete') &&
+          !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey &&
+          !event.isComposing && !view.composing && !readonly()) {
+          const target = event.target;
+          const insideEditor = target === view.dom || target instanceof Node && view.dom.contains(target);
+          const insideBlockMenu = target instanceof Element && !!target.closest('.block-context-menu');
+          const selection = view.state.selection;
+          const positions = selection instanceof BlockRangeSelection
+            ? selection.blocks.map(block => block.pos)
+            : selection instanceof NodeSelection && selection.node.isBlock ? [selection.from] : [];
+          if ((insideEditor || insideBlockMenu) && positions.length) {
+            const transaction = deleteBlocks(view.state, positions);
+            if (transaction) {
+              event.preventDefault();
+              event.stopPropagation();
+              view.dispatch(transaction.scrollIntoView());
+              view.focus();
+              return;
+            }
+          }
+        }
         if (event.key === 'Escape' && marquee) {
           event.preventDefault();
           event.stopPropagation();

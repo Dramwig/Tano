@@ -47,7 +47,7 @@ function remove() {
   <section v-if="workspace" class="settings-section workspace-deletion-settings" :aria-label="t('删除工作区')">
     <h3>{{ t('删除工作区') }}</h3>
     <div class="settings-card">
-      <div class="settings-row settings-row-with-controls">
+        <div class="settings-row settings-row-with-controls" data-settings-key="workspace-delete">
         <div>
           <strong>{{ t('删除当前工作区') }}</strong>
           <p v-if="local">{{ t('仅删除本平台的本地仓库注册，从工作区列表中移除。磁盘上的文件夹、Markdown、附件和 .tano 数据均会保留，之后可重新打开文件夹。') }}</p>

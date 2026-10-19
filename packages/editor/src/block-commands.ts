@@ -5,6 +5,7 @@ import type { Command } from '@milkdown/kit/prose/state';
 import { canTransformBlock, selectedBlocks } from './document-model';
 import { safeResourceUrl } from './enhanced-markdown';
 import { BlockRangeSelection } from './block-selection';
+import { calloutMarker, isCalloutHeader } from './callout';
 
 export const blockCommandNames = new Set([
   'paragraph',
@@ -125,8 +126,8 @@ export function blockCommand(name: string, value?: string, currentTextblock = fa
             : [node],
         );
         if (name === 'callout' && value) {
-          if (!/^(NOTE|TIP|IMPORTANT|WARNING|CAUTION)$/i.test(value)) return false;
-          const marker = /^\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i.exec(
+          if (!/^(NOTE|TIP|IMPORTANT|WARNING|CAUTION|CUSTOM)$/i.test(value)) return false;
+          const marker = calloutMarker.exec(
             children[0]?.textContent ?? '',
           );
           if (marker && children[0]?.type.name === 'paragraph') {
@@ -141,12 +142,12 @@ export function blockCommand(name: string, value?: string, currentTextblock = fa
         }
         if (
           name === 'callout' &&
-          !/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i.test(children[0]?.textContent ?? '')
+          !calloutMarker.test(children[0]?.textContent ?? '')
         )
           children.unshift(paragraph.create(null, schema.text('[!NOTE]')));
         if (
           name === 'quote' &&
-          /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]$/i.test(children[0]?.textContent ?? '')
+          isCalloutHeader(children[0]?.textContent ?? '')
         )
           children.shift();
         replacement = [

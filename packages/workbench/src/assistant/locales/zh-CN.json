@@ -2,6 +2,7 @@
   "starters": {
     "summary": "总结这篇笔记",
     "polish": "润色这篇笔记",
+    "translate": "翻译这篇笔记",
     "translateEnglish": "翻译成英文",
     "translateChinese": "翻译成中文",
     "tasks": "提取待办事项"
@@ -92,5 +93,36 @@
     "read": "浏览器模拟回答：已读取「{0}」。",
     "noSources": "浏览器模拟回答：当前没有参考文档。"
   },
-  "chatAction": "对话"
+  "chatAction": "对话",
+  "activity": {
+    "title": "思考与执行过程",
+    "working": "正在思考与执行",
+    "calls": "{0} 次工具调用",
+    "failures": "{0} 次失败",
+    "running": "执行中",
+    "succeeded": "已完成",
+    "failed": "失败",
+    "interrupted": "已中断"
+  },
+  "run": {
+    "waiting": "等待你的回答",
+    "incomplete": "任务尚未确认全部完成，未获得完整的最终回答。",
+    "succeeded": "已完成 {0} 次工具调用",
+    "failed": "失败 {0} 次",
+    "interrupted": "中断 {0} 次",
+    "saved": "已保存的修改",
+    "review": "待审阅的建议",
+    "uncertain": "尚待核对的操作",
+    "reasons": {
+      "completed": "本次运行已结束",
+      "cancelled": "已停止",
+      "interrupted": "上次运行已中断",
+      "round_limit": "已达到请求轮数上限",
+      "no_progress": "已暂停：连续多轮未取得进展",
+      "output_limit": "回答达到输出上限",
+      "incomplete": "响应未完整返回",
+      "empty_response": "未收到最终回答",
+      "error": "本次运行未完成"
+    }
+  }
 }

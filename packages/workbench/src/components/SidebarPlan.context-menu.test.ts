@@ -307,7 +307,7 @@ it('does not let the context menu bypass a pending delivery review', async () =>
   };
   await open();
   expect(items()[1]!.disabled).toBe(true);
-  expect(items()[1]!.title).toContain('验收');
+  expect(items()[1]!.dataset.tooltip).toContain('验收');
   expect(root.querySelector<HTMLInputElement>('[aria-label="完成：整理资料"]')!.disabled).toBe(
     true,
   );

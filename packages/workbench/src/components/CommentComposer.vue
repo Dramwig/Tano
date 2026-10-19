@@ -71,8 +71,8 @@ defineExpose({ focus });
       <textarea ref="input" :value="modelValue" :aria-label="label" :placeholder="label" rows="1"
         maxlength="20000" @input="update" @keydown="keydown" />
       <button v-if="workspace.objects.some(item => item.object.type === 'person' && !item.object.archived)" type="button"
-        class="comment-mention" :title="t('提及人物')" :aria-label="t('提及人物')" :aria-expanded="choosing" :disabled="busy" @click="choosing = !choosing; mentionStart = null; query = ''"><AtSign :size="16" /></button>
-      <button type="submit" class="comment-send" :aria-label="t('发表{0}', [label])" :title="t('发表{0}', [label])"
+        class="comment-mention" :data-tooltip="t('提及人物')" :aria-label="t('提及人物')" :aria-expanded="choosing" :disabled="busy" @click="choosing = !choosing; mentionStart = null; query = ''"><AtSign :size="16" /></button>
+      <button type="submit" class="comment-send" :aria-label="t('发表{0}', [label])" :data-tooltip="t('发表{0}', [label])"
         :disabled="busy || !modelValue.trim()"><ArrowUp :size="16" /></button>
     </div>
     <div v-if="choosing" class="comment-people" role="dialog" :aria-label="t('提及人物')" @keydown.esc.stop="choosing = false">

@@ -45,7 +45,7 @@ import WorkspaceGeneralSettings from './WorkspaceGeneralSettings.vue';
 import WorkspaceIcon from './WorkspaceIcon.vue';
 import WorkspaceDeletionSettings from './WorkspaceDeletionSettings.vue';
 import ShortcutSettings from './ShortcutSettings.vue';
-import { defaultShortcutBindings } from '../shortcuts';
+import { defaultShortcutBindings, shortcutDefinitions } from '../shortcuts';
 import type { ShortcutBindings } from '../shortcuts';
 import { useHelpPreferences } from '../help-guidance';
 
@@ -212,12 +212,84 @@ const pages = [
     get terms() { return uiSearchText('版本 更新 检查更新 Tano 存储 Markdown Agent'); },
   },
 ] as const;
+
+type SettingSearchEntry = {
+  id: string;
+  page: Page;
+  label: string;
+  description?: string;
+  terms: string;
+};
+
+function settingSearchEntry(page: Page, id: string, label: string, description = '', extra = ''): SettingSearchEntry {
+  return {
+    id,
+    page,
+    label: t(label),
+    description: description ? t(description) : undefined,
+    terms: `${uiSearchText(label)} ${uiSearchText(description)} ${extra}`,
+  };
+}
+
+const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
+  settingSearchEntry('appearance', 'appearance-language', '界面语言', '立即切换界面语言，仅保存在当前设备。', 'language English 中文'),
+  settingSearchEntry('appearance', 'appearance-theme', '主题', '选择应用外观，或随系统外观自动切换。', 'theme light dark system 白天 黑夜 深色 浅色'),
+  settingSearchEntry('appearance', 'appearance-visual-font', '可视化编辑字体', '选择内置字体，或使用本机已安装的字体。', 'font system serif mono Maple custom'),
+  settingSearchEntry('appearance', 'appearance-custom-font', '字体名称', '输入本机字体名称；未安装时会回退到系统字体。', 'custom font'),
+  settingSearchEntry('appearance', 'appearance-visual-size', '可视化编辑字号', '调整正文、标题和编辑中的内容大小。', 'font size'),
+  settingSearchEntry('appearance', 'appearance-source-size', 'Markdown 源码字号', '调整源码视图中的文字大小。', 'source font size'),
+  settingSearchEntry('appearance', 'appearance-page-title', '页面内标题', '在编辑区顶部显示当前文档标题。', 'title'),
+  settingSearchEntry('appearance', 'appearance-properties', '文档属性', '在可视化编辑区显示文档属性。', 'properties frontmatter'),
+  settingSearchEntry('appearance', 'appearance-discussion', '文档讨论', '有讨论时在文档底部显示，没有讨论时自动隐藏。', 'comments discussion'),
+  settingSearchEntry('appearance', 'appearance-outline', '显示目录', '', 'outline table of contents'),
+  settingSearchEntry('appearance', 'appearance-outline-position', '目录显示在左侧', '将文档大纲放到编辑区左侧。', 'outline left right'),
+  settingSearchEntry('appearance', 'appearance-help', '偶尔显示使用提示', '在你停下来时，在帮助按钮上方显示简短的用法提示。关闭后仍可手动查看帮助。', 'help tips hints'),
+  settingSearchEntry('editing', 'editing-default-mode', '默认编辑模式', '选择打开文档时使用的视图。', 'editor visual Markdown source'),
+  settingSearchEntry('editing', 'editing-reveal-markdown', '光标进入时展开 Markdown 源码', '类似 Typora、Obsidian 的实时预览：光标进入时显示 Markdown 语法，离开后恢复排版。', 'live preview source syntax'),
+  settingSearchEntry('editing', 'editing-toolbar', '编辑工具栏', '随选区显示，或停靠在顶部、底部、左侧、右侧；也可拖动工具栏手柄调整。仅影响当前设备。', 'toolbar selection top bottom left right'),
+  settingSearchEntry('editing', 'editing-preview-math', '编辑时预览公式', '展开 Markdown 源码编辑公式时同步显示排版效果。', 'math formula preview'),
+  settingSearchEntry('editing', 'editing-folding', '标题与列表折叠', '显示折叠按钮，临时收起标题下的内容或列表项。', 'heading list folding collapse'),
+  settingSearchEntry('editing', 'editing-ai-shortcut', '空白块按空格启动 AI', '在空白 block 中按空格，直接展开一次性 AI 编辑输入框。', 'AI space block'),
+  settingSearchEntry('editing', 'editing-wrapping', '输入符号包裹选区', '选中文字后输入符号，自动补齐两端。可视化与源码模式通用。', 'selection wrapping symbols'),
+  ...selectionWrappingOptions.map(option => settingSearchEntry('editing', `editing-wrapping-${option.key}`, option.label, option.example, 'selection wrapping Markdown')),
+  ...shortcutDefinitions.map(item => settingSearchEntry('shortcuts', `shortcut-${item.id}`, item.label, 'scope' in item ? item.scope : '', 'shortcut keybinding keyboard')),
+  settingSearchEntry('assistant', 'assistant-connections', '模型连接', '管理助手使用的 API 或 CLI 连接。', 'assistant model connection API CLI'),
+  ...featureDefinitions.map(feature => settingSearchEntry('documents', `documents-${feature.key}`, feature.label, '', 'Markdown extension')),
+  settingSearchEntry('documents', 'documents-dialect', 'Markdown 方言', '决定新公式的默认写法：Pandoc 使用 LaTeX 定界符，其余使用美元符号。解析始终兼容两种写法。', 'dialect Obsidian GitHub Pandoc CommonMark'),
+  settingSearchEntry('documents', 'documents-math-syntax', '公式输出语法', '默认保留已有公式的原始定界符。选择统一语法后，在下一次编辑保存正文时应用。', 'math formula syntax LaTeX Dollar'),
+  settingSearchEntry('documents', 'documents-bullet-marker', '无序列表标记', '选择无序列表与待办列表的 Markdown 标记，在下一次编辑保存正文时应用。', 'bullet list marker'),
+  settingSearchEntry('workspace', 'workspace-name', '工作区名称', '最多 65 个字符，显示在侧栏和工作区菜单中。', 'workspace name'),
+  settingSearchEntry('workspace', 'workspace-icon', '图标', '选择内置图标、表情符号或上传图片，显示在侧栏和工作区菜单中。', 'workspace icon emoji'),
+  settingSearchEntry('workspace', 'workspace-home-page', '默认打开页面', '首次打开时进入此页面；已有会话会恢复上次打开的标签页。', 'home page default'),
+  settingSearchEntry('workspace', 'workspace-title-source', '页面标题来源', '适用于当前工作区的所有页面。仅“YAML title 优先”在字段为空或无效时使用文件名。', 'title source filename YAML'),
+  settingSearchEntry('workspace', 'workspace-show-plan', '显示计划', '在侧栏显示计划与日历入口。', 'sidebar plan calendar'),
+  settingSearchEntry('workspace', 'workspace-show-graph', '显示关系图谱', '在侧栏顶部显示关系图谱入口。', 'sidebar graph'),
+  settingSearchEntry('workspace', 'workspace-show-plugins', '显示插件', '在侧栏顶部显示插件管理入口。', 'sidebar plugins'),
+  settingSearchEntry('workspace', 'workspace-show-collaboration-views', '显示协作应用', '在在线工作区侧栏显示聊天、收件箱等协作入口。', 'sidebar collaboration chat inbox'),
+  settingSearchEntry('workspace', 'workspace-export', '工作区内容', '将已保存的 Markdown、附件和工作区设置导出为 ZIP，保留文件夹结构。', 'export ZIP backup'),
+  settingSearchEntry('workspace', 'workspace-page-views', '保存并显示页面浏览统计', '页面浏览量统计尚未实现，当前不会收集浏览数据。', 'analytics statistics views'),
+  settingSearchEntry('workspace', 'workspace-people', '人物目录', '在工作区对象列表中显示人物；关闭后仍可通过已有引用访问人物。', 'people directory'),
+  settingSearchEntry('workspace', 'workspace-id', '工作区 ID', '', 'workspace id identifier'),
+  settingSearchEntry('workspace', 'workspace-delete', '删除当前工作区', '移除当前设备上的工作区注册。', 'workspace delete remove'),
+  settingSearchEntry('about', 'about-updates', '版本与更新', '检查并安装同页更新。', 'version update'),
+]);
+const settingSearchMatches = computed(() => {
+  const query = search.value.trim().toLocaleLowerCase();
+  if (!query) return [];
+  return settingSearchEntries.value.filter(item => `${item.label} ${item.description ?? ''} ${item.terms}`.toLocaleLowerCase().includes(query));
+});
+const settingMatchesByPage = computed(() => {
+  const result = new Map<Page, SettingSearchEntry[]>();
+  for (const item of settingSearchMatches.value) result.set(item.page, [...(result.get(item.page) ?? []), item]);
+  return result;
+});
 const visiblePages = computed(() => {
   const query = search.value.trim().toLocaleLowerCase();
   return [...pages, ...(props.extraPages ?? []).map(item => ({ ...item, group: t(item.group), icon: item.icon ?? UserRound })),
     ...(props.pluginPages ?? []).map(item => ({ id: item.view.key, label: item.view.label, get group() { return t('插件设置'); }, terms: item.view.pluginName, icon: UserRound }))].filter(
     (item) =>
-      `${item.group} ${item.label} ${item.terms}`.toLocaleLowerCase().includes(query),
+      `${item.group} ${item.label} ${item.terms}`.toLocaleLowerCase().includes(query) ||
+      settingMatchesByPage.value.has(item.id),
   );
 });
 const navigationGroups = computed(() =>
@@ -231,6 +303,27 @@ const scopeLabel = computed(() =>
     ? t('工作区设置 · {0}', [props.workspace?.name ?? t('尚未打开工作区')])
     : t('个人偏好 · 当前设备'),
 );
+const focusedSetting = ref('');
+function focusSetting(id: string) {
+  focusedSetting.value = id;
+  const target = mainContent.value?.querySelector<HTMLElement>(`[data-settings-key="${id}"]`);
+  target?.classList.add('settings-search-target');
+  target?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  window.setTimeout(() => {
+    target?.classList.remove('settings-search-target');
+    if (focusedSetting.value === id) focusedSetting.value = '';
+  }, 1500);
+}
+function selectSetting(item: SettingSearchEntry) {
+  focusedSetting.value = item.id;
+  page.value = item.page;
+  void nextTick(() => focusSetting(item.id));
+}
+watch(search, value => {
+  if (!value.trim()) return;
+  const first = settingSearchMatches.value.find(item => item.page === page.value) ?? settingSearchMatches.value[0];
+  if (first) selectSetting(first);
+});
 watch(visiblePages, (items) => {
   if (items.length && !items.some((item) => item.id === page.value)) page.value = items[0].id;
 });
@@ -319,6 +412,20 @@ function customFontInput(event: Event) {
                 <component :is="item.icon" :size="16" :stroke-width="1.75" />{{ item.label }}
               </button>
             </div>
+            <template v-for="item in group.pages" :key="`${item.id}-search-results`">
+              <div v-if="search.trim() && settingMatchesByPage.has(item.id)" class="settings-nav-setting-results">
+                <button
+                  v-for="setting in settingMatchesByPage.get(item.id)"
+                  :key="setting.id"
+                  type="button"
+                  class="settings-nav-setting"
+                  :class="{ selected: focusedSetting === setting.id }"
+                  @click="selectSetting(setting)"
+                >
+                  <span>{{ setting.label }}</span>
+                </button>
+              </div>
+            </template>
           </div>
           <p v-if="!visiblePages.length" class="settings-search-empty">{{ t('没有找到相关设置') }}</p>
         </div>
@@ -337,7 +444,7 @@ function customFontInput(event: Event) {
         class="settings-close"
         type="button"
         :aria-label="t('关闭设置')"
-        :title="t('关闭设置')"
+        :data-tooltip="t('关闭设置')"
         @click="emit('close')"
       >
         <X :size="18" />
@@ -358,7 +465,7 @@ function customFontInput(event: Event) {
           <section v-if="page === 'appearance'" class="settings-section" :aria-label="t('外观')">
             <h3>{{ t('外观') }}</h3>
             <div class="settings-card">
-              <div class="settings-row">
+              <div class="settings-row" data-settings-key="appearance-language">
                 <div>
                   <strong>{{ t('界面语言') }}</strong>
                   <p>{{ t('立即切换界面语言，仅保存在当前设备。') }}</p>
@@ -369,7 +476,7 @@ function customFontInput(event: Event) {
                   <option value="en-US">English</option>
                 </select>
               </div>
-              <div class="settings-row">
+              <div class="settings-row" data-settings-key="appearance-theme">
                 <div>
                   <strong>{{ t('主题') }}</strong>
                   <p>{{ t('选择应用外观，或随系统外观自动切换。') }}</p>
@@ -389,7 +496,7 @@ function customFontInput(event: Event) {
           <section v-if="page === 'editing'" class="settings-section" aria-labelledby="settings-editor">
             <h3 id="settings-editor">{{ t('编辑器') }}</h3>
             <div class="settings-card">
-              <div class="settings-row">
+              <div class="settings-row" data-settings-key="editing-default-mode">
                 <div>
                   <strong>{{ t('默认编辑模式') }}</strong>
                   <p>{{ t('选择打开文档时使用的视图。') }}</p>
@@ -408,7 +515,7 @@ function customFontInput(event: Event) {
                   <option value="source">{{ t('Markdown 源码') }}</option>
                 </select>
               </div>
-              <div class="settings-row">
+              <div class="settings-row" data-settings-key="editing-reveal-markdown">
                 <div>
                   <strong>{{ t('光标进入时展开 Markdown 源码') }}</strong>
                   <p>{{ t('类似 Typora、Obsidian 的实时预览：光标进入时显示 Markdown 语法，离开后恢复排版。') }}</p>
@@ -427,10 +534,10 @@ function customFontInput(event: Event) {
               </div>
             </div>
           </section>
-          <section v-if="page === 'appearance'" class="settings-section" :aria-label="t('编辑字体与字号')">
+          <section v-if="page === 'appearance'" class="settings-section" data-settings-key="appearance-custom-font" :aria-label="t('编辑字体与字号')">
             <h3>{{ t('编辑字体与字号') }}</h3>
             <div class="settings-card settings-font-card">
-              <div class="settings-row">
+              <div class="settings-row" data-settings-key="appearance-visual-font">
                 <div>
                   <strong>{{ t('可视化编辑字体') }}</strong>
                   <p>{{ t('选择内置字体，或使用本机已安装的字体。') }}</p>
@@ -446,7 +553,7 @@ function customFontInput(event: Event) {
                   <option value="custom">{{ t('自定义字体') }}</option>
                 </select>
               </div>
-              <div v-if="visualFontChoice === 'custom'" class="settings-row settings-custom-font-row">
+              <div v-if="visualFontChoice === 'custom'" class="settings-row settings-custom-font-row" data-settings-key="appearance-custom-font">
                 <div>
                   <strong>{{ t('字体名称') }}</strong>
                   <p>{{ t('输入本机字体名称；未安装时会回退到系统字体。') }}</p>
@@ -461,7 +568,7 @@ function customFontInput(event: Event) {
                   @input="customFontInput"
                 />
               </div>
-              <div class="settings-row settings-font-row">
+              <div class="settings-row settings-font-row" data-settings-key="appearance-visual-size">
                 <div>
                   <strong>{{ t('可视化编辑字号') }}</strong>
                   <p>{{ t('调整正文、标题和编辑中的内容大小。') }}</p>
@@ -489,7 +596,7 @@ function customFontInput(event: Event) {
                   >{{ t('重置') }}</button>
                 </div>
               </div>
-              <div class="settings-row settings-font-row">
+              <div class="settings-row settings-font-row" data-settings-key="appearance-source-size">
                 <div>
                   <strong>{{ t('Markdown 源码字号') }}</strong>
                   <p>{{ t('调整源码视图中的文字大小。') }}</p>
@@ -541,7 +648,7 @@ function customFontInput(event: Event) {
           <section v-if="page === 'editing'" class="settings-section" :aria-label="t('编辑行为')">
             <h3>{{ t('编辑行为') }}</h3>
             <div class="settings-card">
-              <div class="settings-row">
+              <div class="settings-row" data-settings-key="editing-toolbar">
                 <div>
                   <strong>{{ t('编辑工具栏') }}</strong>
                   <p>{{ t('随选区显示，或停靠在顶部、底部、左侧、右侧；也可拖动工具栏手柄调整。仅影响当前设备。') }}</p>
@@ -559,6 +666,7 @@ function customFontInput(event: Event) {
                 v-for="option in displayOptions"
                 :key="option.key"
                 class="settings-row"
+                :data-settings-key="`editing-${option.key === 'previewMathWhileEditing' ? 'preview-math' : 'folding'}`"
                 :class="{ 'is-disabled': option.key === 'previewMathWhileEditing' && !revealMarkdown }"
               >
                 <div>
@@ -592,7 +700,7 @@ function customFontInput(event: Event) {
           <section v-if="page === 'editing'" class="settings-section" :aria-label="t('AI 功能')">
             <h3>{{ t('AI 功能') }}</h3>
             <div class="settings-card">
-              <div class="settings-row">
+              <div class="settings-row" data-settings-key="editing-ai-shortcut">
                 <div>
                   <strong>{{ t('空白块按空格启动 AI') }}</strong>
                   <p>{{ t('在空白 block 中按空格，直接展开一次性 AI 编辑输入框。') }}</p>
@@ -617,7 +725,7 @@ function customFontInput(event: Event) {
           <section v-if="page === 'editing'" class="settings-section" :aria-label="t('选区符号包裹')">
             <h3>{{ t('选区符号包裹') }}</h3>
             <div class="settings-card">
-              <div class="settings-row">
+              <div class="settings-row" data-settings-key="editing-wrapping">
                 <div>
                   <strong>{{ t('输入符号包裹选区') }}</strong>
                   <p>{{ t('选中文字后输入符号，自动补齐两端。可视化与源码模式通用。') }}</p>
@@ -627,6 +735,7 @@ function customFontInput(event: Event) {
                   @click="setWrapping('enabled', !wrapping.enabled)"><span /></button>
               </div>
               <div v-for="option in wrappingOptions" :key="option.key" class="settings-row settings-row-compact"
+                :data-settings-key="`editing-wrapping-${option.key}`"
                 :class="{ 'is-disabled': !wrapping.enabled }">
                 <div class="settings-inline-copy">
                   <strong>{{ t(option.label) }}</strong>
@@ -646,7 +755,7 @@ function customFontInput(event: Event) {
           <section v-if="page === 'appearance'" class="settings-section" :aria-label="t('内容显示')">
             <h3>{{ t('内容显示') }}</h3>
             <div class="settings-card">
-              <div class="settings-row">
+              <div class="settings-row" data-settings-key="appearance-page-title">
                 <div>
                   <strong>{{ t('页面内标题') }}</strong>
                   <p>{{ t('在编辑区顶部显示当前文档标题。') }}</p>
@@ -663,7 +772,7 @@ function customFontInput(event: Event) {
                   <span />
                 </button>
               </div>
-              <div class="settings-row">
+              <div class="settings-row" data-settings-key="appearance-properties">
                 <div>
                   <strong>{{ t('文档属性') }}</strong>
                   <p>{{ t('在可视化编辑区显示文档属性。') }}</p>
@@ -680,7 +789,7 @@ function customFontInput(event: Event) {
                   <span />
                 </button>
               </div>
-              <div class="settings-row">
+              <div class="settings-row" data-settings-key="appearance-discussion">
                 <div>
                   <strong>{{ t('文档讨论') }}</strong>
                   <p>{{ t('有讨论时在文档底部显示，没有讨论时自动隐藏。') }}</p>
@@ -697,7 +806,7 @@ function customFontInput(event: Event) {
                   <span />
                 </button>
               </div>
-              <div class="settings-row">
+              <div class="settings-row" data-settings-key="appearance-outline">
                 <div>
                   <strong>{{ t('显示目录') }}</strong>
                 </div>
@@ -713,7 +822,7 @@ function customFontInput(event: Event) {
                   <span />
                 </button>
               </div>
-              <div class="settings-row">
+              <div class="settings-row" data-settings-key="appearance-outline-position">
                 <div>
                   <strong>{{ t('目录显示在左侧') }}</strong>
                   <p>{{ t('将文档大纲放到编辑区左侧。') }}</p>
@@ -735,7 +844,7 @@ function customFontInput(event: Event) {
           <section v-if="page === 'appearance'" class="settings-section" :aria-label="t('使用提示')">
             <h3>{{ t('使用提示') }}</h3>
             <div class="settings-card">
-              <div class="settings-row">
+              <div class="settings-row" data-settings-key="appearance-help">
                 <div>
                   <strong>{{ t('偶尔显示使用提示') }}</strong>
                   <p>{{ t('在你停下来时，在帮助按钮上方显示简短的用法提示。关闭后仍可手动查看帮助。') }}</p>
@@ -776,6 +885,7 @@ function customFontInput(event: Event) {
                 v-for="feature in featureDefinitions"
                 :key="feature.key"
                 class="settings-row settings-row-compact"
+                :data-settings-key="`documents-${feature.key}`"
               >
                 <strong>{{ t(feature.label) }}</strong>
                 <button
@@ -802,7 +912,7 @@ function customFontInput(event: Event) {
           <section class="settings-section" :aria-label="t('Markdown 输出')">
             <h3>{{ t('Markdown 输出') }}</h3>
             <div class="settings-card">
-              <div class="settings-row">
+              <div class="settings-row" data-settings-key="documents-dialect">
                 <div>
                   <strong>{{ t('Markdown 方言') }}</strong>
                   <p>
@@ -826,7 +936,7 @@ function customFontInput(event: Event) {
                   <option value="commonmark">{{ t('CommonMark + 扩展') }}</option>
                 </select>
               </div>
-              <div class="settings-row">
+              <div class="settings-row" data-settings-key="documents-math-syntax">
                 <div>
                   <strong>{{ t('公式输出语法') }}</strong>
                   <p>{{ t('默认保留已有公式的原始定界符。选择统一语法后，在下一次编辑保存正文时应用。') }}</p>
@@ -847,7 +957,7 @@ function customFontInput(event: Event) {
                   <option value="latex">LaTeX：\( \) / \[ \]</option>
                 </select>
               </div>
-              <div class="settings-row">
+              <div class="settings-row" data-settings-key="documents-bullet-marker">
                 <div>
                   <strong>{{ t('无序列表标记') }}</strong>
                   <p>{{ t('选择无序列表与待办列表的 Markdown 标记，在下一次编辑保存正文时应用。') }}</p>
@@ -981,7 +1091,7 @@ function customFontInput(event: Event) {
         <div v-else class="settings-content settings-about">
           <h2 id="settings-title">{{ t('关于同页') }}</h2>
           <p class="settings-lead">{{ t('了解同页与版本信息。') }}</p>
-          <div class="settings-card settings-brand-card">
+          <div class="settings-card settings-brand-card" data-settings-key="about-updates">
             <div class="settings-about-brand">
               <img :src="'/favicon-green.svg?v=3'" alt="" />
               <h3>Tano <span v-if="uiLocale === 'zh-CN'">/ 同页</span></h3>
@@ -1130,6 +1240,45 @@ function customFontInput(event: Event) {
 }
 .settings-nav-scroll button.selected {
   background: var(--hover);
+}
+.settings-nav-setting-results {
+  margin: 1px 0 6px 24px;
+  border-left: 1px solid var(--line);
+}
+.settings-nav-setting {
+  min-height: 25px !important;
+  padding: 2px 8px !important;
+  color: var(--muted) !important;
+  font-size: 12px !important;
+}
+.settings-nav-setting:hover,
+.settings-nav-setting.selected {
+  color: var(--text) !important;
+  background: var(--surface) !important;
+}
+.settings-search-target {
+  position: relative;
+  isolation: isolate;
+}
+.settings-row.settings-search-target::before,
+.shortcut-settings-row.settings-search-target::before {
+  position: absolute;
+  inset: 0 -20px;
+  z-index: -1;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--green) 7%, transparent);
+  content: '';
+  pointer-events: none;
+  animation: settings-search-target 0.75s ease-in-out 2;
+}
+.shortcut-settings-row.settings-search-target::before {
+  inset-inline: -18px;
+}
+@keyframes settings-search-target {
+  0%, 100% { background: transparent; }
+  25% { background: color-mix(in srgb, var(--green) 6%, transparent); }
+  50% { background: color-mix(in srgb, var(--green) 11%, transparent); }
+  75% { background: color-mix(in srgb, var(--green) 6%, transparent); }
 }
 .settings-search-empty {
   margin: 10px;

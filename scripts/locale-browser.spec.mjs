@@ -8,8 +8,19 @@ for (const locale of ['zh-CN', 'en-US']) test(`uses English AI task prompts with
   const original = await editor.innerText();
   await page.locator('.assistant-launcher').first().click();
   const panel = page.locator('.assistant-panel');
-  await panel.getByRole('button', { name: locale === 'en-US' ? 'Translate to Chinese' : '翻译成中文', exact: true }).click();
+  await expect(panel.locator('.assistant-starter > button')).toHaveCount(4);
+  const translate = panel.getByRole('button', { name: locale === 'en-US' ? 'Translate this note' : '翻译这篇笔记', exact: true });
+  await translate.click();
+  await page.screenshot({ path: testInfo.outputPath(`translation-menu-${locale}.png`) });
+  await panel.getByRole('menuitem', { name: locale === 'en-US' ? 'Translate to Chinese' : '翻译成中文', exact: true }).click();
   await expect(panel.locator('textarea')).toHaveValue('Translate this note into Simplified Chinese and preserve its Markdown formatting.');
+  await expect(panel.locator('#assistant-translation-options')).toHaveCount(0);
+  await translate.click();
+  await page.keyboard.press('Escape');
+  await expect(translate).toBeFocused();
+  await translate.click();
+  await panel.getByRole('menuitem', { name: locale === 'en-US' ? 'Translate to English' : '翻译成英文', exact: true }).click();
+  await expect(panel.locator('textarea')).toHaveValue('Translate this note into English and preserve its Markdown formatting.');
   await panel.getByRole('button', { name: locale === 'en-US' ? 'Summarize this note' : '总结这篇笔记', exact: true }).click();
   await expect(panel.locator('textarea')).toHaveValue('Summarize this note and extract its key ideas and main points.');
   await panel.getByRole('button', { name: locale === 'en-US' ? 'Select assistant model' : '选择助手模型', exact: true }).click();
@@ -23,9 +34,12 @@ for (const locale of ['zh-CN', 'en-US']) test(`uses English AI task prompts with
 
 test('shows English startup recovery when the saved language is English and loading fails', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('tano.preference.locale', 'en-US'));
-  await page.route('**/src/start.ts', route => route.abort());
+  // Vite may serve the dynamic import without an extension or with a cache-busting query.
+  let blocked = false;
+  await page.route(/\/src\/start(?:\.ts)?(?:\?|$)/, route => { blocked = true; return route.abort(); });
   await page.goto('http://127.0.0.1:43845');
   await expect(page.getByRole('status')).toHaveText('Unable to open Tano');
+  expect(blocked).toBe(true);
   await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('lang', 'en-US');
 });

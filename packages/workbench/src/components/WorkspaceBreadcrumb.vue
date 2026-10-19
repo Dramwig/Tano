@@ -154,7 +154,7 @@ onBeforeUnmount(() => {
   <nav ref="root" class="breadcrumb" :aria-label="t('当前位置')">
     <button type="button" class="breadcrumb-trigger breadcrumb-workspace"
       :class="{ 'demo-badge breadcrumb-demo-badge': demoLabel }"
-      :disabled="!workspaceId" :title="demoLabel ? t('浏览器演示 · 数据仅保存在本浏览器') : workspaceName"
+      :disabled="!workspaceId" :data-tooltip="demoLabel ? t('浏览器演示 · 数据仅保存在本浏览器') : workspaceName"
       :aria-label="t('浏览工作区：{0}', [workspaceName])" aria-haspopup="menu"
       :aria-expanded="opened && anchorKey === 'workspace'" :aria-controls="opened && anchorKey === 'workspace' ? menuId : undefined"
       @click="show($event, 'workspace', '')" @keydown.down.prevent.stop="show($event, 'workspace', '')"
@@ -177,7 +177,7 @@ onBeforeUnmount(() => {
       <ChevronRight :size="12" class="breadcrumb-separator" aria-hidden="true" />
       <button type="button" class="breadcrumb-trigger" :class="{ 'breadcrumb-current': part.current }"
         v-butterfly-perch="part.current ? perch : undefined"
-        :title="part.path" :aria-label="part.current ? t('切换文件：{0}', [part.name]) : t('浏览目录：{0}', [part.path])"
+        :data-tooltip="part.path" :aria-label="part.current ? t('切换文件：{0}', [part.name]) : t('浏览目录：{0}', [part.path])"
         :aria-current="part.current ? 'page' : undefined" aria-haspopup="menu"
         :aria-expanded="opened && anchorKey === part.path" :aria-controls="opened && anchorKey === part.path ? menuId : undefined"
         @click="show($event, part.path, part.current ? parentPath(part.path) : part.path)"
@@ -194,13 +194,13 @@ onBeforeUnmount(() => {
       role="menu" :aria-label="t('浏览目录：{0}', [folderLabel])" tabindex="-1" @keydown="menuKeydown">
       <div class="breadcrumb-menu-heading">
         <button v-if="folder" type="button" class="breadcrumb-menu-back" role="menuitem"
-          :aria-label="t('返回上级目录')" :title="t('返回上级目录')" @click="goBack"><ArrowLeft :size="15" /></button>
+          :aria-label="t('返回上级目录')" :data-tooltip="t('返回上级目录')" @click="goBack"><ArrowLeft :size="15" /></button>
         <span :title="folder || workspaceName">{{ folderLabel }}</span>
       </div>
       <div class="breadcrumb-menu-list panel-scrollbar">
         <button v-for="entry in children" :key="entry.id" type="button" class="breadcrumb-menu-entry"
           :class="{ 'is-current': entry.path === path }" role="menuitem" :data-path="entry.path"
-          :title="entry.name" :aria-current="entry.path === path ? 'page' : undefined" @click="choose(entry)">
+          :data-tooltip="entry.name" :aria-current="entry.path === path ? 'page' : undefined" @click="choose(entry)">
           <component :is="entry.kind === 'directory' ? FolderOpen : isDataTableFilePath(entry.path) ? Table2 : isMarkdown(entry.path) ? FileText : File" :size="17" :stroke-width="1.6" />
           <span>{{ fileLabel(entry) }}</span>
           <ChevronRight v-if="entry.kind === 'directory'" :size="14" class="breadcrumb-menu-trailing" />

@@ -55,7 +55,7 @@ onBeforeUnmount(() => { dialog.value?.close(); if (before?.isConnected) before.f
     <div class="command-palette-body">
       <div class="command-search">
         <input ref="input" v-model="query" role="combobox" :aria-label="t('搜索命令')" aria-autocomplete="list" aria-controls="workbench-command-list" :aria-activedescendant="selected >= 0 && commands[selected] ? `workbench-command-${selected}` : undefined" aria-expanded="true" :placeholder="t('搜索命令…')" autocomplete="off" spellcheck="false" />
-        <button type="button" class="command-close" :aria-label="t('关闭命令中心')" :title="t('关闭 · Esc')" @click="emit('close')"><X :size="15" aria-hidden="true" /></button>
+        <button type="button" class="command-close" :aria-label="t('关闭命令中心')" :data-tooltip="t('关闭')" data-tooltip-shortcut="Escape" @click="emit('close')"><X :size="15" aria-hidden="true" /></button>
       </div>
       <div class="command-results panel-scrollbar">
         <div id="workbench-command-list" class="command-list" role="listbox" :aria-label="t('可用命令')">

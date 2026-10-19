@@ -31,7 +31,7 @@ const emit = defineEmits<{ details: []; install: [] }>();
       v-if="installed"
       class="entry-action"
       :aria-label="t('管理{0}', [plugin.name])"
-      :title="t('管理{0}', [plugin.name])"
+      :data-tooltip="t('管理{0}', [plugin.name])"
       @click="emit('details')"
     >
       <MoreHorizontal :size="18" :stroke-width="1.6" />
@@ -41,7 +41,7 @@ const emit = defineEmits<{ details: []; install: [] }>();
       class="entry-action"
       :disabled="busy"
       :aria-label="`${pending ? t('正在安装') : t('安装')}${plugin.name}`"
-      :title="t('安装{0}', [plugin.name])"
+      :data-tooltip="t('安装{0}', [plugin.name])"
       @click="emit('install')"
     >
       <LoaderCircle v-if="pending" class="entry-spinner" :size="17" /><Plus

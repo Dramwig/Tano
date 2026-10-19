@@ -228,9 +228,9 @@ async function removeReply(id: string, change: CommentMessageRemoval) {
             <div v-if="item.status === 'pending' || item.status === 'applying'" class="review-card-tools" role="group" :aria-label="t('建议操作')">
               <button type="button" :disabled="readonly || managed || session?.saving || session?.reviewing || projection.conflicts.includes(item.id)"
                 :aria-label="item.status === 'applying' ? t('核对写入结果') : session?.previews[item.id] ? t('接受更新后的建议') : t('接受建议')"
-                :title="item.status === 'applying' ? t('核对写入结果') : t('接受建议')" @click.stop="action(() => store.accept(document.id, item.id))"><Check :size="15" /></button>
+                :data-tooltip="item.status === 'applying' ? t('核对写入结果') : t('接受建议')" @click.stop="action(() => store.accept(document.id, item.id))"><Check :size="15" /></button>
               <button v-if="item.status === 'pending'" type="button" :disabled="readonly || managed || session?.saving || session?.reviewing"
-                :aria-label="t('拒绝建议')" :title="t('拒绝建议')"
+                :aria-label="t('拒绝建议')" :data-tooltip="t('拒绝建议')"
                 @click.stop="action(() => store.reject(document.id, item.id))"><X :size="15" /></button>
             </div>
             <span v-else>{{ item.status === 'accepted' ? t('已接受') : t('已拒绝／撤回') }}</span>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+import type { Component } from 'vue';
 import { AlignLeft, ArrowDownAZ, Braces, CalendarClock, CalendarDays, CheckSquare2, CircleHelp, Hash, List, Plus, Trash2 } from 'lucide-vue-next';
 import {
   Editor,
@@ -72,7 +73,7 @@ import { blockControls } from './blocks';
 import { blockTree, moveBlockSibling, indentBlock, outdentBlock, wrapBlockInToggle, deleteBlock } from './block-tree';
 import { emptyBlockDeletion } from './empty-block';
 import { slashCommands } from './slash-commands';
-import { textStyles, underline, superscript, subscript, highlight, textColor } from './text-styles';
+import { textStyles, underline, superscript, subscript, highlight, textColor, backgroundColor } from './text-styles';
 import { normalizeTextColor } from './text-style-markdown';
 import { wikiLink, wikiLinkInput, wikiLinkRemark } from './wiki-link';
 import { parseWikiLink } from './wiki-link-markdown';
@@ -83,7 +84,8 @@ import type { EditorSelectionContext } from './document-model';
 import { blockCommand, blockCommandNames } from './block-commands';
 import { createCalloutTitle } from './callout-title';
 import type { CalloutKind } from './callout-title';
-import { blockContentStart } from './callout';
+import { blockContentStart, calloutMarker } from './callout';
+import { customCalloutWidget } from './custom-callout-view';
 import { enhanced } from './enhanced';
 import { enhancedViews } from './enhanced-views';
 import { safeResourceUrl } from './enhanced-markdown';
@@ -144,6 +146,7 @@ const props = withDefaults(
     tableLayouts?: readonly TableLayout[];
     resolveImage?: (reference: string) => string | null;
     importFile?: (file: File, requireImage: boolean) => Promise<ImportedResource>;
+    customCalloutIcon?: Component;
   }>(),
   { revealMarkdown: true, showDocumentProperties: true },
 );
@@ -862,7 +865,8 @@ function markAtCaret(view: EditorView, event?: MouseEvent | KeyboardEvent) {
     sup: 'superscript',
     sub: 'subscript',
     mark: 'highlight',
-    span: marked.hasAttribute('data-tano-comment') ? 'inline_comment' : 'text_color',
+    span: marked.hasAttribute('data-tano-comment') ? 'inline_comment'
+      : (marked as HTMLElement).style.backgroundColor ? 'background_color' : 'text_color',
     a: 'link',
   };
   return names[marked.tagName.toLowerCase()];
@@ -1611,6 +1615,20 @@ function insertPartialEmphasisSource(ctx: Ctx, view: EditorView, from: number, t
 // Capture every transaction synchronously: a debounced editor listener loses the
 // final keystrokes when a tab is closed or switched before its debounce fires.
 const documentDecorations = createDocumentDecorations();
+const referenceFlashKey = new PluginKey<DecorationSet>('tano-reference-flash');
+let referenceFlashTimer: ReturnType<typeof setTimeout> | undefined;
+const referenceFlash = $prose(() => new Plugin<DecorationSet>({
+  key: referenceFlashKey,
+  state: {
+    init: () => DecorationSet.empty,
+    apply(tr, previous) {
+      const range = tr.getMeta(referenceFlashKey) as { from: number; to: number } | null | undefined;
+      if (range === null || tr.docChanged) return DecorationSet.empty;
+      return range ? DecorationSet.create(tr.doc, [Decoration.inline(range.from, range.to, { class: 'tano-reference-flash' })]) : previous;
+    },
+  },
+  props: { decorations: state => referenceFlashKey.getState(state) },
+}));
 const bridge = $prose(
   (ctx) =>
     new Plugin({
@@ -1814,7 +1832,7 @@ const bridge = $prose(
               node.firstChild?.firstChild?.type.name === 'tano_live_source_inline' &&
               node.firstChild.firstChild.attrs.origin === 'footnote_definition';
             if (type === 'Callout' && policy().features.callout) {
-              const marker = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i.exec(
+              const marker = calloutMarker.exec(
                 node.firstChild?.textContent ?? '',
               );
               if (marker && node.firstChild?.type.name === 'paragraph') {
@@ -1823,8 +1841,13 @@ const bridge = $prose(
                     class: 'tano-callout-marker',
                   }),
                 );
-                const label = createCalloutTitle(marker[1]!.toUpperCase() as CalloutKind);
-                decorations.push(Decoration.widget(pos + 1, label, { side: -1 }));
+                if (marker[1]!.toUpperCase().startsWith('CUSTOM')) {
+                  decorations.push(customCalloutWidget(pos, marker[0], !!props.readonly, props.customCalloutIcon,
+                    () => editor?.action(ctx => props.extension?.stopHistoryCapture?.(ctx))));
+                } else {
+                  const label = createCalloutTitle(marker[1]!.toUpperCase() as CalloutKind);
+                  decorations.push(Decoration.widget(pos + 1, label, { side: -1 }));
+                }
                 if (node.firstChild.textContent === marker[0])
                   decorations.push(
                     Decoration.node(pos + 1, pos + 1 + node.firstChild.nodeSize, {
@@ -1842,7 +1865,8 @@ const bridge = $prose(
                   ? {
                       class:
                         'tano-callout' +
-                        (props.revealMarkdown !== false &&
+                        (!/^\[!CUSTOM[:\]]/i.test(node.firstChild?.textContent ?? '') &&
+                        props.revealMarkdown !== false &&
                         !props.readonly &&
                         state.selection.empty &&
                         state.selection.from >= pos &&
@@ -1850,7 +1874,7 @@ const bridge = $prose(
                           ? ' tano-live-callout'
                           : ''),
                       'data-callout-kind':
-                        /^\[!([A-Z]+)\]/i
+                        /^\[!([A-Z]+)[:\]]/i
                           .exec(node.firstChild?.textContent ?? '')?.[1]
                           ?.toLowerCase() ?? 'note',
                     }
@@ -2421,6 +2445,7 @@ onMounted(async () => {
       )
       .use(bridge)
       .use(commentMarks)
+      .use(referenceFlash)
       .use($prose(visualAnchorPlugin))
       .use($prose(() => suggestionMarks(() => props.suggestionMarks)))
       .use($prose(() => pageSearchPlugin(() => emit('searchChange'))));
@@ -2567,14 +2592,19 @@ function command(name: string, value?: string) {
       const view = ctx.get(editorViewCtx);
       toggleMark(styles[name as keyof typeof styles].type(ctx))(view.state, view.dispatch);
     });
-  if (name === 'text-color')
+  if (name === 'text-color' || name === 'background-color')
     editor.action((ctx) => {
       const view = ctx.get(editorViewCtx);
-      const type = textColor.type(ctx);
+      const type = (name === 'text-color' ? textColor : backgroundColor).type(ctx);
       const color = value ? normalizeTextColor(value) : null;
       if (value && !color) return;
       const { from, to, empty } = view.state.selection;
       const transaction = view.state.tr;
+      if (name === 'background-color') {
+        const highlightType = highlight.type(ctx);
+        if (empty) transaction.removeStoredMark(highlightType);
+        else transaction.removeMark(from, to, highlightType);
+      }
       if (empty) {
         if (color) transaction.addStoredMark(type.create({ color }));
         else transaction.removeStoredMark(type);
@@ -3183,6 +3213,28 @@ function modeCursorTop() {
   const selection = bridgeView.state.selection;
   return bridgeView.coordsAtPos(selection instanceof NodeSelection ? selection.from : selection.head).top;
 }
+function revealSourceRange(range: { from: number; to: number }) {
+  if (!editor || !bridgeView || disposed || range.from < 0 || range.to > lastValue.length || range.to <= range.from) return false;
+  return editor.action(ctx => {
+    const view = bridgeView!;
+    const map = markdownPositionMap(view.state.doc, lastValue, node => frontmatter.prefix + ctx.get(serializerCtx)(node));
+    const from = map.toProse(range.from), to = map.toProse(range.to);
+    if (to <= from) return false;
+    clearTimeout(referenceFlashTimer);
+    // Removing the old decoration restarts the animation on repeated clicks.
+    view.dispatch(view.state.tr.setMeta(referenceFlashKey, null).setMeta('addToHistory', false));
+    view.dispatch(view.state.tr.setMeta(referenceFlashKey, { from, to }).setMeta('tanoRevealPosition', from).setMeta('addToHistory', false));
+    const element = view.dom.querySelector<HTMLElement>('.tano-reference-flash');
+    element?.dispatchEvent(new Event('tano-reveal-search', { bubbles: true }));
+    for (let parent = element; parent && parent !== view.dom; parent = parent.parentElement)
+      if (parent instanceof HTMLDetailsElement) parent.open = true;
+    element?.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+    referenceFlashTimer = setTimeout(() => {
+      if (!disposed && bridgeView === view) view.dispatch(view.state.tr.setMeta(referenceFlashKey, null).setMeta('addToHistory', false));
+    }, 2400);
+    return true;
+  });
+}
 defineExpose({
   addDocumentProperty,
   initializeBody,
@@ -3191,6 +3243,7 @@ defineExpose({
   visualSelection: () => bridgeView && !disposed ? visualSelection(bridgeView) : null,
   captureModeSelection,
   restoreModeSelection,
+  revealSourceRange,
   modeCursorTop,
   applyPluginEdit,
   search,
@@ -3214,6 +3267,7 @@ defineExpose({
   redoLastChange,
 });
 onBeforeUnmount(() => {
+  clearTimeout(referenceFlashTimer);
   disposed = true;
   blockMenu.value = null;
 

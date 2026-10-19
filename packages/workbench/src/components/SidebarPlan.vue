@@ -553,7 +553,7 @@ onBeforeUnmount(() => {
     <div ref="viewPicker" class="sidebar-calendar-heading">
       <div class="sidebar-calendar-month">
         <span :title="monthTitle"><template v-if="uiLocale === 'en-US'">{{ month.toLocaleDateString(uiLocale, { month: 'short', year: 'numeric' }) }}</template><template v-else><span class="sidebar-calendar-year">{{ month.getFullYear() }} 年 </span>{{ month.getMonth() + 1 }} 月</template></span>
-        <button ref="viewTrigger" type="button" class="plan-view-trigger" :aria-label="t('计划范围')" aria-haspopup="menu" aria-controls="plan-view-menu" :aria-expanded="viewOpen" :title="viewOptions.find(option => option.value === plans.view)?.detail" @click="toggleViewMenu" @keydown.down.prevent="viewOpen || toggleViewMenu()">
+        <button ref="viewTrigger" type="button" class="plan-view-trigger" :aria-label="t('计划范围')" aria-haspopup="menu" aria-controls="plan-view-menu" :aria-expanded="viewOpen" :data-tooltip="viewOptions.find(option => option.value === plans.view)?.detail" @click="toggleViewMenu" @keydown.down.prevent="viewOpen || toggleViewMenu()">
           <span>{{ viewLabel }}</span><ChevronDown :size="12" aria-hidden="true" />
         </button>
         <button type="button" class="sidebar-calendar-today" :aria-label="t('回到今天')" @click="goToToday">{{ t('今天') }}</button>
@@ -652,7 +652,7 @@ onBeforeUnmount(() => {
                   type="button"
                   class="plan-scope-trigger"
                   :aria-label="t('保存到')"
-                  :title="scopeDescription"
+                  :data-tooltip="scopeDescription"
                   aria-haspopup="menu"
                   aria-controls="plan-create-scope-menu"
                   :aria-expanded="scopeOpen"

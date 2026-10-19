@@ -53,13 +53,13 @@ async function toggleMaximize() {
         <img src="/favicon-green.svg?v=3" alt="" draggable="false" />
       </div>
       <div class="desktop-window-actions" :aria-label="t('窗口控制')">
-        <button type="button" :aria-label="t('最小化')" :title="t('最小化')" @click="appWindow.minimize()">
+        <button type="button" :aria-label="t('最小化')" :data-tooltip="t('最小化')" @click="appWindow.minimize()">
           <Minus :size="15" :stroke-width="1.6" />
         </button>
         <button
           type="button"
           :aria-label="maximized ? t('还原窗口') : t('最大化')"
-          :title="maximized ? t('还原窗口') : t('最大化')"
+          :data-tooltip="maximized ? t('还原窗口') : t('最大化')"
           @click="toggleMaximize"
         >
           <span
@@ -71,7 +71,7 @@ async function toggleMaximize() {
           class="desktop-window-close"
           type="button"
           :aria-label="t('关闭窗口')"
-          :title="t('关闭窗口')"
+          :data-tooltip="t('关闭窗口')"
           @click="appWindow.close()"
         >
           <X :size="16" :stroke-width="1.5" />

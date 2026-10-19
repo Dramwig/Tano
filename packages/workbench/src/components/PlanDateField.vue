@@ -135,7 +135,7 @@ watch(() => props.disabled, disabled => { if (disabled) pickerOpen.value = false
           <button v-for="option in options" :key="option.value" type="button" role="menuitemradio" :aria-checked="mode === option.value" @click="chooseSchedule(option.value)"><component :is="option.icon" :size="17" aria-hidden="true" /><span>{{ option.label }}</span><Check v-if="mode === option.value" :size="16" aria-hidden="true" /></button>
         </div>
       </div>
-      <button v-if="compact && mode !== 'none'" type="button" class="compact-precision" :aria-label="precisionLabel" :title="precisionLabel" :disabled="disabled" @click="toggleTime"><CalendarDays v-if="modelValue.time" :size="15" /><Clock3 v-else :size="15" /></button>
+      <button v-if="compact && mode !== 'none'" type="button" class="compact-precision" :aria-label="precisionLabel" :data-tooltip="precisionLabel" :disabled="disabled" @click="toggleTime"><CalendarDays v-if="modelValue.time" :size="15" /><Clock3 v-else :size="15" /></button>
     </div>
     <div v-if="mode !== 'none'" class="plan-date-inputs">
       <div class="plan-date-input">

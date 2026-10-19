@@ -98,7 +98,7 @@ onBeforeUnmount(() => {
         type="button"
         role="menuitem"
         :disabled="disabled || completionLocked"
-        :title="completionLocked ? t('请先完成任务验收') : undefined"
+        :data-tooltip="completionLocked ? t('请先完成任务验收') : undefined"
         @click="emit('action', 'complete')"
       >
         <RotateCcw v-if="completed" :size="14" /><CircleCheck v-else :size="14" />

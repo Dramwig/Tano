@@ -78,6 +78,10 @@ export interface EditorSelectionContext {
   headingLevel?: number;
   multiple: boolean;
   activeInline: InlineType[];
+  /** Common selection colors: null means default; undefined means mixed or unavailable. */
+  textColor?: string | null;
+  /** The legacy highlight mark is represented by 'highlight'. */
+  backgroundColor?: string | null;
   canTransform: boolean;
   canStyleText: boolean;
   inlineSource?: boolean;

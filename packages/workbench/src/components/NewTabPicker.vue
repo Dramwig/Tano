@@ -148,7 +148,7 @@ async function onSearchKeydown(event: KeyboardEvent) {
           <button
             class="icon-button"
             :aria-label="t('关闭打开文件面板')"
-            :title="t('关闭 · Esc')"
+            :data-tooltip="t('关闭 · Esc')"
             @click="emit('close')"
           >
             <X :size="17" />
@@ -182,7 +182,7 @@ async function onSearchKeydown(event: KeyboardEvent) {
               role="option"
               :aria-selected="selected === index"
               :disabled="opening || store.busy"
-              :title="choice.file?.path"
+              :data-tooltip="choice.file?.path"
               @pointermove="selected = index"
               @focus="selected = index"
               @click="choose(choice)"

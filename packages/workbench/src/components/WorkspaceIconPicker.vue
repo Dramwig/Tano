@@ -13,7 +13,8 @@ const props = withDefaults(defineProps<{
   label?: string;
   triggerClass?: string;
   align?: 'start' | 'end';
-}>(), { align: 'end' });
+  allowUpload?: boolean;
+}>(), { align: 'end', allowUpload: true });
 const label = computed(() => props.label ?? t('工作区图标'));
 const emit = defineEmits<{ select: [value: string]; upload: []; pasteImage: [file: File]; 'update:open': [value: boolean] }>();
 const pickerId = useId();
@@ -28,6 +29,7 @@ const tabs = [
   { id: 'icons', get label() { return t('图标'); } },
   { id: 'upload', get label() { return t('上传'); } },
 ] as const;
+const visibleTabs = computed(() => tabs.filter(item => props.allowUpload || item.id !== 'upload'));
 type Tab = typeof tabs[number]['id'];
 const tab = ref<Tab>('emoji');
 const query = ref('');
@@ -138,14 +140,15 @@ function changeTab(value: Tab) {
   void nextTick().then(place);
 }
 function tabKeydown(event: KeyboardEvent, current: Tab) {
-  let index = tabs.findIndex(item => item.id === current);
-  if (event.key === 'ArrowRight') index = (index + 1) % tabs.length;
-  else if (event.key === 'ArrowLeft') index = (index + tabs.length - 1) % tabs.length;
+  const choices = visibleTabs.value;
+  let index = choices.findIndex(item => item.id === current);
+  if (event.key === 'ArrowRight') index = (index + 1) % choices.length;
+  else if (event.key === 'ArrowLeft') index = (index + choices.length - 1) % choices.length;
   else if (event.key === 'Home') index = 0;
-  else if (event.key === 'End') index = tabs.length - 1;
+  else if (event.key === 'End') index = choices.length - 1;
   else return;
   event.preventDefault();
-  const value = tabs[index]!.id;
+  const value = choices[index]!.id;
   changeTab(value);
   panel.value?.querySelector<HTMLButtonElement>(`[data-tab="${value}"]`)?.focus();
 }
@@ -204,7 +207,7 @@ onBeforeUnmount(() => {
 <template>
   <button
     ref="trigger" type="button" class="settings-button workspace-icon-preview" :class="triggerClass"
-    :aria-label="t('选择{0}', [label])" :title="t('选择{0}', [label])" aria-haspopup="dialog" :aria-expanded="open"
+    :aria-label="t('选择{0}', [label])" :data-tooltip="t('选择{0}', [label])" aria-haspopup="dialog" :aria-expanded="open"
     :aria-controls="pickerId" :disabled="disabled" @click="toggle"
   ><slot name="preview"><WorkspaceIcon :icon="icon" :mode="mode" :size="28" /></slot></button>
   <Teleport to="body">
@@ -217,7 +220,7 @@ onBeforeUnmount(() => {
       <header class="workspace-icon-picker-header">
         <div class="workspace-icon-picker-tabs" role="tablist" :aria-label="t('图标类型')">
           <button
-            v-for="item in tabs" :id="`${pickerId}-${item.id}-tab`" :key="item.id" type="button"
+            v-for="item in visibleTabs" :id="`${pickerId}-${item.id}-tab`" :key="item.id" type="button"
             role="tab" :data-tab="item.id" :aria-selected="tab === item.id" :aria-controls="`${pickerId}-content`"
             :tabindex="tab === item.id ? 0 : -1" @click="changeTab(item.id)" @keydown="tabKeydown($event, item.id)"
           >{{ item.label }}</button>
@@ -233,7 +236,7 @@ onBeforeUnmount(() => {
               <div class="workspace-icon-picker-grid">
                 <button
                   v-for="choice in group.icons" :key="choice.value" type="button" data-icon-choice
-                  :data-icon-value="choice.value" :aria-label="t('使用图标：{0}', [choice.label])" :title="choice.label"
+                  :data-icon-value="choice.value" :aria-label="t('使用图标：{0}', [choice.label])" :data-tooltip="choice.label"
                   :aria-pressed="icon === choice.value" :tabindex="activeIcon === choice.value ? 0 : -1"
                   :disabled="disabled" @click="select(choice.value)" @focus="focusedIcon = choice.value"
                 ><WorkspaceIcon :icon="choice.value" :size="23" /></button>
@@ -243,7 +246,7 @@ onBeforeUnmount(() => {
           </div>
           <nav v-if="filteredGroups.length" class="workspace-icon-picker-categories" :aria-label="t('图标分类目录')">
             <button
-              v-for="group in filteredGroups" :key="group.id" type="button" :aria-label="group.label" :title="group.label"
+              v-for="group in filteredGroups" :key="group.id" type="button" :aria-label="group.label" :data-tooltip="group.label"
               :aria-controls="`${pickerId}-${group.id}`" :aria-current="currentCategory === group.id ? 'location' : undefined"
               @click="scrollToCategory(group.id)"
             ><WorkspaceIcon :icon="group.symbol" :size="18" /></button>

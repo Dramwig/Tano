@@ -1,18 +1,16 @@
 <script setup lang="ts">
 import { t } from '../i18n';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { Ellipsis } from 'lucide-vue-next';
+import { computed, nextTick, ref, watch } from 'vue';
 import type { EditorSelectionContext } from '@tano/editor/document-model';
 import type { DocumentFeatures } from '@tano/editor/runtime';
 import type { ToolbarMode } from '../toolbar-preference';
-import type { ShortcutBindings } from '../shortcuts';
 import { toolbarModeLabels } from '../toolbar-preference';
+import type { ShortcutBindings } from '../shortcuts';
 import { useToolbarDrag } from '../use-toolbar-drag';
 import { dockedToolbarPosition } from '../toolbar-docking';
 import EditorToolbar from './EditorToolbar.vue';
 import SelectionToolbar from './SelectionToolbar.vue';
 import ToolbarDragHandle from './ToolbarDragHandle.vue';
-import ToolbarModeOptions from './ToolbarModeOptions.vue';
 
 const props = defineProps<{
   mode: ToolbarMode;
@@ -36,9 +34,7 @@ const emit = defineEmits<{
   annotation: [];
   todo: [];
 }>();
-const menuOpen = ref(false);
-const menuRoot = ref<HTMLElement>();
-const menuTrigger = ref<HTMLButtonElement>();
+const handleMenuOpen = ref(false);
 function focusEditor() {
   if (props.active)
     props.editorElement
@@ -51,6 +47,7 @@ const { drag, start, cancel } = useToolbarDrag(
     void changeMode(mode);
   },
   focusEditor,
+  () => { handleMenuOpen.value = true; },
 );
 const previewPanel = ref<HTMLElement>();
 const previewStatus = computed(() => {
@@ -110,20 +107,13 @@ watch(
   { flush: 'post' },
 );
 function startDrag(event: PointerEvent) {
-  menuOpen.value = false;
+  handleMenuOpen.value = false;
   start(event);
-}
-function closeOutside(event: MouseEvent) {
-  if (!menuRoot.value?.contains(event.target as Node)) menuOpen.value = false;
-}
-function escapeMenu() {
-  menuOpen.value = false;
-  menuTrigger.value?.focus();
 }
 watch(
   () => [props.mode, props.source, props.disabled, props.editorElement],
   () => {
-    menuOpen.value = false;
+    handleMenuOpen.value = false;
     cancel();
   },
 );
@@ -131,15 +121,13 @@ watch(
   () => props.active,
   (active) => {
     if (!active) {
-      menuOpen.value = false;
+      handleMenuOpen.value = false;
       cancel();
     }
   },
 );
-onMounted(() => window.addEventListener('click', closeOutside));
-onBeforeUnmount(() => window.removeEventListener('click', closeOutside));
 async function changeMode(mode: ToolbarMode) {
-  menuOpen.value = false;
+  handleMenuOpen.value = false;
   emit('update:mode', mode);
   await nextTick();
   // The mode switch removes its own button; return keyboard focus to this editor.
@@ -167,25 +155,8 @@ async function changeMode(mode: ToolbarMode) {
     @annotation="emit('annotation')"
     @command="(name, value) => emit('command', name, value)"
   >
-    <template #leading><ToolbarDragHandle @start="startDrag" /></template>
+    <template #leading><ToolbarDragHandle v-model:open="handleMenuOpen" :mode="mode" @start="startDrag" @select="changeMode" /></template>
     <template #trailing>
-      <div ref="menuRoot" class="menu-wrap" @keydown.esc.stop.prevent="escapeMenu">
-        <button
-          ref="menuTrigger"
-          type="button"
-          class="icon-button"
-          :aria-label="t('更多')"
-          :title="t('更多')"
-          :aria-expanded="menuOpen"
-          @mousedown.prevent
-          @click="menuOpen = !menuOpen"
-        >
-          <Ellipsis :size="17" />
-        </button>
-        <div v-if="menuOpen" class="dropdown compact-action-menu toolbar-mode-menu">
-          <ToolbarModeOptions :mode="mode" @select="changeMode" />
-        </div>
-      </div>
       <slot name="trailing" />
     </template>
   </EditorToolbar>
@@ -211,8 +182,7 @@ async function changeMode(mode: ToolbarMode) {
       @annotation="emit('annotation')"
       @command="(name, value) => emit('command', name, value)"
     >
-      <template #leading><ToolbarDragHandle @start="startDrag" /></template>
-      <template #preferences><ToolbarModeOptions :mode="mode" @select="changeMode" /></template>
+      <template #leading><ToolbarDragHandle v-model:open="handleMenuOpen" :mode="mode" @start="startDrag" @select="changeMode" /></template>
     </SelectionToolbar>
   </template>
   <Teleport to="body">
@@ -244,17 +214,7 @@ async function changeMode(mode: ToolbarMode) {
             :todo="todo"
           >
             <template #leading><ToolbarDragHandle /></template>
-            <template v-if="drag.target !== 'fixed'" #preferences>
-              <ToolbarModeOptions :mode="drag.target ?? mode" />
-            </template>
-            <template v-if="drag.target === 'fixed'" #trailing>
-              <div class="menu-wrap">
-                <button type="button" class="icon-button" :aria-label="t('更多')">
-                  <Ellipsis :size="17" />
-                </button>
-              </div>
-              <slot name="trailing" />
-            </template>
+            <template v-if="drag.target === 'fixed'" #trailing><slot name="trailing" /></template>
           </EditorToolbar>
         </div>
       </div>
@@ -295,15 +255,7 @@ async function changeMode(mode: ToolbarMode) {
   clip-path: inset(50%);
   white-space: nowrap;
 }
-.toolbar-mode-menu {
-  top: calc(100% + 6px);
-  left: 0;
-}
 @media (max-width: 700px) {
-  .toolbar-mode-menu {
-    left: auto;
-    right: 0;
-  }
   .switchable-toolbar {
     height: auto;
     min-height: 44px;

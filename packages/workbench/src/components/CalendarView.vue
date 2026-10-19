@@ -424,7 +424,7 @@ watch(() => props.date, (date) => {
               :key="planKey(record)"
               type="button"
               class="calendar-view-date-event"
-              :title="`${planSourceLabel(record)} · ${record.object.name} · ${eventTime(record)}`"
+              :data-tooltip="`${planSourceLabel(record)} · ${record.object.name} · ${eventTime(record)}`"
               @click="emit('select-event', planKey(record))"
             >{{ record.object.name }}</button>
           </div>
@@ -442,7 +442,7 @@ watch(() => props.date, (date) => {
             class="calendar-view-event"
             :class="{ 'calendar-view-point': item.point }"
             :style="{ top: `${item.top}px`, height: `${item.height}px` }"
-            :title="`${planSourceLabel(item.record)} · ${item.record.object.name} · ${item.time}`"
+            :data-tooltip="`${planSourceLabel(item.record)} · ${item.record.object.name} · ${item.time}`"
             @click="emit('select-event', planKey(item.record))"
           >
             <strong>{{ item.record.object.name }}</strong>
@@ -480,7 +480,7 @@ watch(() => props.date, (date) => {
             :key="planKey(record)"
             type="button"
             class="calendar-month-event"
-            :title="`${planSourceLabel(record)} · ${record.object.name} · ${eventTime(record)}`"
+            :data-tooltip="`${planSourceLabel(record)} · ${record.object.name} · ${eventTime(record)}`"
             @click="emit('select-event', planKey(record))"
           >{{ planSourceLabel(record) }} · {{ eventTime(record) }} {{ record.object.name }}</button>
           <span v-if="dayRecords(day).length > 3" class="calendar-month-more">{{ t('另有 {0} 项', [dayRecords(day).length - 3]) }}</span>

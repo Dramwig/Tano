@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppTooltip from './AppTooltip.vue';
 import { t } from '../i18n';
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { emitTo, listen } from '@tauri-apps/api/event';
@@ -104,6 +105,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <AppTooltip />
   <div v-if="!snapshot" class="settings-window-loading" role="status">{{ t('正在打开设置…') }}</div>
   <SettingsPanel
     v-else

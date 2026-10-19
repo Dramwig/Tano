@@ -233,7 +233,8 @@ describe('assistant streaming and proposals', () => {
     ];
     const transport = { async request(_id, request, _signal, chunk) {
       requests.push(structuredClone(request));
-      chunk(responseFrames([{ type: 'response.completed', response: { status: 'completed', output: requests.length === 1 ? output : [] } }]));
+      chunk(responseFrames([{ type: 'response.completed', response: { status: 'completed', output: requests.length === 1 ? output
+        : [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: '建议已提交，等待审阅。' }] }] } }]));
     } } as AssistantTransport;
     let suggestions = 0;
     await runAssistant({ transport, connectionId: 'test', model: 'test', tools: true, workspaceId: 'workspace', runId: 'run', sources: [], history: [], prompt: '修改', signal: new AbortController().signal,

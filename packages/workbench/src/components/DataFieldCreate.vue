@@ -158,7 +158,7 @@ function keydown(event: KeyboardEvent) {
       class="field-create-trigger"
       type="button"
       :aria-label="t('添加属性')"
-      :title="t('添加属性')"
+      :data-tooltip="t('添加属性')"
       aria-haspopup="dialog"
       :aria-expanded="open"
       :disabled="readonly"
@@ -184,7 +184,7 @@ function keydown(event: KeyboardEvent) {
         class="field-create-cancel"
         type="button"
         :aria-label="t('取消添加属性')"
-        :title="t('取消')"
+        :data-tooltip="t('取消')"
         @click="close(true)"
       >
         <X :size="14" />

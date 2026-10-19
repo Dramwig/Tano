@@ -201,8 +201,8 @@ onBeforeUnmount(() => { nameResize?.disconnect(); if (previousFocus?.isConnected
       <header>
         <div class="plan-detail-heading"><component :is="checkable ? ListTodo : CalendarDays" :size="18" /><h2>{{ title }}</h2><span>{{ personal ? t('个人') : base.source?.name ?? store.workspace?.name }}</span></div>
         <div class="plan-detail-actions">
-          <button type="button" class="icon-button" :class="{ 'is-archived': draft.archived }" :aria-label="draft.archived ? t('取消归档') : t('归档')" :title="draft.archived ? t('取消归档') : t('归档')" :disabled="disabled" @click="draft.archived = !draft.archived"><Archive :size="17" /></button>
-          <button type="button" class="icon-button" :aria-label="t('关闭{0}', [title])" :title="t('关闭')" :disabled="busy" @click="requestNavigation({ kind: 'close' })"><X :size="18" /></button>
+          <button type="button" class="icon-button" :class="{ 'is-archived': draft.archived }" :aria-label="draft.archived ? t('取消归档') : t('归档')" :data-tooltip="draft.archived ? t('取消归档') : t('归档')" :disabled="disabled" @click="draft.archived = !draft.archived"><Archive :size="17" /></button>
+          <button type="button" class="icon-button" :aria-label="t('关闭{0}', [title])" :data-tooltip="t('关闭')" :disabled="busy" @click="requestNavigation({ kind: 'close' })"><X :size="18" /></button>
         </div>
       </header>
       <div class="plan-detail-content">

@@ -1,4 +1,12 @@
 import { t } from './i18n';
+
+// Formatting bindings supplied by the Milkdown CommonMark and GFM presets.
+export const formattingShortcuts: Readonly<Record<string, string>> = {
+  bold: 'Mod+B',
+  italic: 'Mod+I',
+  code: 'Mod+E',
+  strikethrough: 'Mod+Alt+X',
+};
 type KeyboardShortcutEvent = Pick<
   KeyboardEvent,
   'altKey' | 'ctrlKey' | 'isComposing' | 'key' | 'metaKey' | 'repeat' | 'shiftKey'

@@ -693,7 +693,7 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
     <button v-for="block in layout.rail ? [] : layout.blocks.filter(item => count(item.ids))" :key="block.key" type="button"
       class="annotation-count" :class="{ 'is-open': openBlockKey === block.key && popupVisible }"
       :style="{ left: `${layout.buttonLeft}px`, top: `${block.top + 2}px` }"
-      :aria-label="t('查看 {0} 条局部批注', [count(block.ids)])" :title="t('{0} 条局部批注', [count(block.ids)])"
+      :aria-label="t('查看 {0} 条局部批注', [count(block.ids)])" :data-tooltip="t('{0} 条局部批注', [count(block.ids)])"
       :aria-expanded="openBlockKey === block.key && popupVisible" @mousedown.prevent @click="openBlockComments(block.key, block.ids)">
       <MessageSquare :size="15" /><span>{{ count(block.ids) }}</span>
     </button>
@@ -734,7 +734,7 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
       <header class="document-discussion-header">
         <h2>{{ t('文档讨论') }}</h2><span v-if="pendingDiscussions.length">{{ pendingDiscussions.reduce((total, thread) => total + thread.messages.length, 0) }}</span>
         <button v-if="!pendingDiscussions.length && !discussionDraft.trim()" type="button" class="discussion-dismiss"
-          :aria-label="t('关闭讨论输入')" :title="t('关闭讨论输入')" :disabled="busy" @click="dismissEmptyDiscussion"><X :size="16" /></button>
+          :aria-label="t('关闭讨论输入')" :data-tooltip="t('关闭讨论输入')" :disabled="busy" @click="dismissEmptyDiscussion"><X :size="16" /></button>
       </header>
       <p v-if="error && !popupVisible" class="comment-error" role="alert">{{ error }}</p>
       <p v-if="loading && !discussions" class="discussion-loading">{{ t('正在读取讨论...') }}</p>
@@ -751,7 +751,7 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
         <div v-if="discussionReply" class="discussion-reply-target" role="status">
           <Reply :size="14" aria-hidden="true" />
           <span :title="t('回复 {0}：{1}', [discussionReply.message.authorName, discussionReply.message.body])">{{ t('回复') }} {{ discussionReply.message.authorName }}：{{ discussionReply.message.body }}</span>
-          <button type="button" :aria-label="t('取消回复')" :title="t('取消回复')" :disabled="busy" @click="cancelDiscussionReply"><X :size="14" /></button>
+          <button type="button" :aria-label="t('取消回复')" :data-tooltip="t('取消回复')" :disabled="busy" @click="cancelDiscussionReply"><X :size="14" /></button>
         </div>
         <CommentComposer ref="discussionComposer" v-model="discussionDraft" :author-name="author.name"
           :label="discussionReply ? t('回复评论') : t('添加评论')" :busy="busy" compact @submit="submitDiscussion" />

@@ -73,6 +73,14 @@ export interface AssistantToolResult {
   error?: string;
 }
 
+/** Ordered display events. Text ranges refer to content; tool outcomes refer to real receipts. */
+export type AssistantActivity =
+  | { kind: 'text'; start: number; end: number; phase: 'pending' | 'working' | 'answer' }
+  | { kind: 'tool'; name: string; status: 'running' | 'succeeded' | 'failed' | 'interrupted'; resultIndex?: number }
+  | { kind: 'input'; inputId: string };
+
+export type AssistantTerminationReason = 'completed' | 'cancelled' | 'interrupted' | 'round_limit' | 'no_progress' | 'output_limit' | 'incomplete' | 'empty_response' | 'error';
+
 export interface AssistantQuestion {
   id: string;
   question: string;
@@ -128,9 +136,12 @@ export interface AssistantMessage {
   attachedSourceIds?: string[];
   proposals?: AssistantProposal[];
   toolResults?: AssistantToolResult[];
+  activity?: AssistantActivity[];
   userInputs?: AssistantUserInput[];
   usage?: { input: number; output: number };
-  state?: 'running' | 'completed' | 'cancelled' | 'failed' | 'interrupted';
+  state?: 'running' | 'waiting' | 'completed' | 'cancelled' | 'failed' | 'interrupted';
+  /** Written only by the executor when the whole run ends, independently of text phase. */
+  termination?: { reason: AssistantTerminationReason };
   error?: string;
   model?: string;
   rules?: string[];
@@ -209,7 +220,11 @@ export function parseAssistantSession(value: unknown): AssistantSession {
     if (!message || !text(message.id, 80) || ids.has(message.id) ||
         !['user', 'assistant'].includes(message.role) || !text(message.content, 1_000_000) ||
         !Number.isFinite(message.createdAt) ||
-        (message.state && !['running', 'completed', 'cancelled', 'failed', 'interrupted'].includes(message.state)) ||
+        (message.state && !['running', 'waiting', 'completed', 'cancelled', 'failed', 'interrupted'].includes(message.state)) ||
+        (message.termination !== undefined && (!message.termination || message.role !== 'assistant' ||
+          !['completed', 'cancelled', 'interrupted', 'round_limit', 'no_progress', 'output_limit', 'incomplete', 'empty_response', 'error'].includes(message.termination.reason) ||
+          !['completed', 'cancelled', 'failed', 'interrupted'].includes(message.state ?? '') ||
+          (message.termination.reason === 'completed') !== (message.state === 'completed'))) ||
         (message.sources && (!Array.isArray(message.sources) || message.sources.length > 30)) ||
         (message.attachedSourceIds !== undefined && (message.role !== 'assistant' || !Array.isArray(message.attachedSourceIds) ||
           message.attachedSourceIds.length > 20 || new Set(message.attachedSourceIds).size !== message.attachedSourceIds.length ||
@@ -244,6 +259,41 @@ export function parseAssistantSession(value: unknown): AssistantSession {
             (result.status === 'failed' ? !text(result.error, 2000) || !result.error : result.error !== undefined) ||
             (result.proposalId !== undefined && (!text(result.proposalId, 80) || !message.proposals?.some(proposal => proposal?.id === result.proposalId)))))
         throw new Error('助手工具回执格式无效，原记录已保留');
+    }
+    if (message.activity !== undefined) {
+      if (message.role !== 'assistant' || !Array.isArray(message.activity) || message.activity.length > 200)
+        throw new Error('助手执行过程格式无效');
+      let end = 0;
+      let answered = false;
+      const receipts = new Set<number>();
+      const inputs = new Set<string>();
+      for (const item of message.activity) {
+        if (!item) throw new Error('助手执行过程顺序无效');
+        if (item.kind === 'text') {
+          if (!Number.isSafeInteger(item.start) || !Number.isSafeInteger(item.end) || item.start < end ||
+              item.end < item.start || item.end > message.content.length || !['pending', 'working', 'answer'].includes(item.phase))
+            throw new Error('助手执行过程正文范围无效');
+          if (answered && item.phase !== 'answer') throw new Error('助手执行过程顺序无效');
+          end = item.end;
+          answered = answered || item.phase === 'answer';
+        } else if (item.kind === 'tool') {
+          if (!text(item.name, 80) || !item.name || !['running', 'succeeded', 'failed', 'interrupted'].includes(item.status))
+            throw new Error('助手执行过程工具格式无效');
+          if (item.status === 'succeeded' || item.status === 'failed') {
+            const result = message.toolResults?.[item.resultIndex!];
+            if (!Number.isSafeInteger(item.resultIndex) || item.resultIndex! < 0 || receipts.has(item.resultIndex!) ||
+                !result || result.name !== item.name || result.status !== item.status)
+              throw new Error('助手执行过程与工具回执不一致');
+            receipts.add(item.resultIndex!);
+          } else if (item.resultIndex !== undefined) throw new Error('未完成的工具不能记录成功回执');
+        } else if (item.kind === 'input') {
+          if (!text(item.inputId, 80) || inputs.has(item.inputId) || !message.userInputs?.some(input => input.id === item.inputId))
+            throw new Error('助手执行过程提问记录无效');
+          inputs.add(item.inputId);
+        } else throw new Error('助手执行过程类型无效');
+      }
+      if (receipts.size !== (message.toolResults?.length ?? 0) || inputs.size !== (message.userInputs?.length ?? 0))
+        throw new Error('助手执行过程缺少回执或提问记录');
     }
     for (const source of message.sources ?? []) {
       if (!source || source.workspaceId !== session.workspaceId || !text(source.id, 80) ||

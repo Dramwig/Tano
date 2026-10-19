@@ -644,7 +644,7 @@ onBeforeUnmount(() => {
       aria-haspopup="dialog"
       :aria-expanded="opened"
       :aria-label="t('查看关系图谱')"
-      :title="t('查看关系图谱')"
+      :data-tooltip="t('查看关系图谱')"
       @click.stop="opened = true"
     >
       <GitFork :size="15" />
@@ -668,7 +668,7 @@ onBeforeUnmount(() => {
         type="button"
         class="icon-button reference-graph-overlay-button reference-graph-drag-handle"
         :aria-label="t('移动关系图谱面板')"
-        :title="t('拖动移动面板，也可使用方向键')"
+        :data-tooltip="t('拖动移动面板，也可使用方向键')"
         @pointerdown="startPanelDrag"
         @pointermove="movePanel"
         @pointerup="endPanelDrag"
@@ -682,7 +682,7 @@ onBeforeUnmount(() => {
         type="button"
         class="icon-button reference-graph-overlay-button reference-graph-close"
         :aria-label="t('关闭关系图谱')"
-        :title="t('关闭')"
+        :data-tooltip="t('关闭')"
         @click="close"
       >
         <X :size="16" />
@@ -801,20 +801,20 @@ onBeforeUnmount(() => {
         <div class="reference-graph-controls" role="group" :aria-label="t('图谱操作')">
           <button
             class="icon-button"
-            :title="t('布局设置')"
+            :data-tooltip="t('布局设置')"
             :aria-label="t('布局设置')"
             :aria-expanded="settings"
             @click="settings = !settings"
           >
             <Settings2 :size="16" />
           </button>
-          <button class="icon-button" :title="t('放大')" :aria-label="t('放大图谱')" @click="zoom(1.25)">
+          <button class="icon-button" :data-tooltip="t('放大')" :aria-label="t('放大图谱')" @click="zoom(1.25)">
             <Plus :size="16" />
           </button>
-          <button class="icon-button" :title="t('缩小')" :aria-label="t('缩小图谱')" @click="zoom(0.8)">
+          <button class="icon-button" :data-tooltip="t('缩小')" :aria-label="t('缩小图谱')" @click="zoom(0.8)">
             <Minus :size="16" />
           </button>
-          <button class="icon-button" :title="t('适应窗口 · 0')" :aria-label="t('图谱居中')" @click="fit">
+          <button class="icon-button" :data-tooltip="t('适应窗口 · 0')" :aria-label="t('图谱居中')" @click="fit">
             <Focus :size="16" />
           </button>
         </div>

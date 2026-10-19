@@ -364,6 +364,17 @@ it.each(['标题来源', 'YAML title', '文件名'])('finds the workspace title 
   expect(root.querySelector('[aria-label="页面标题来源"]')).not.toBeNull();
 });
 
+it('lists matching setting rows and opens the exact row from the search result', async () => {
+  const input = root.querySelector<HTMLInputElement>('[aria-label="搜索设置"]')!;
+  input.value = '主题'; input.dispatchEvent(new Event('input')); await nextTick();
+  expect(root.querySelector('#settings-title')?.textContent).toBe('外观设置');
+  expect([...root.querySelectorAll('.settings-nav-setting')].map(item => item.textContent?.trim())).toContain('主题');
+  expect(root.querySelector('[data-settings-key="appearance-theme"]')).not.toBeNull();
+  root.querySelector<HTMLButtonElement>('.settings-nav-setting')!.click();
+  await nextTick();
+  expect(root.querySelector('.settings-nav-setting.selected')?.textContent?.trim()).toBe('主题');
+});
+
 it('adjusts each editor font size independently and restores its default', async () => {
   await openPage('外观设置');
   const visualPreview = root.querySelector<HTMLElement>('.settings-visual-font-sample')!;

@@ -33,7 +33,7 @@ async function save(append = false) {
 <template>
   <div class="selection-todo-backdrop" @click.self="close">
     <form ref="panel" class="selection-todo-dialog" role="dialog" aria-modal="true" :aria-label="t('从选区创建 Todo')" @submit.prevent="save()" @keydown.esc.stop.prevent="close" @keydown="trapFocus">
-      <header><h2>{{ t('创建 Todo') }}</h2><button type="button" class="icon-button" :aria-label="t('关闭创建 Todo')" :title="t('关闭')" :disabled="busy" @click="close"><X :size="18" /></button></header>
+      <header><h2>{{ t('创建 Todo') }}</h2><button type="button" class="icon-button" :aria-label="t('关闭创建 Todo')" :data-tooltip="t('关闭')" :disabled="busy" @click="close"><X :size="18" /></button></header>
       <label>{{ t('名称') }}<input ref="input" v-model="name" maxlength="200" required :disabled="busy || !!createdId" /></label>
       <small>{{ session.source.name }}</small><blockquote>{{ session.text }}</blockquote>
       <p v-if="createdId" role="status">{{ t('任务已创建，原文引用尚未保存。') }}</p>

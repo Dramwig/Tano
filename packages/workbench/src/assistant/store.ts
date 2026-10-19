@@ -2,12 +2,14 @@ import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { defineStore } from 'pinia';
 import { isAssistantModelId, isAssistantReasoningSelection, parseAssistantSession, parseAssistantAnswers, isDataTableFilePath } from '@tano/protocol';
 import type { AssistantQuestion, AssistantQuestionAnswer, AssistantUserInput } from '@tano/protocol';
-import type { AssistantConnection, AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSession, AssistantSource } from '@tano/protocol';
+import type { AssistantActivity, AssistantConnection, AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSession, AssistantSource } from '@tano/protocol';
 import type { AssistantExecutionResult } from './execution';
 import { useWorkspaceStore } from '../stores/workspace';
 import { useWorkbenchRuntime } from '../runtime';
 import { demoAssistantTransport, nativeAssistantTransport } from './transport';
 import { runAssistant } from './engine';
+import { AssistantRunError } from './completion';
+import type { AssistantTextPhase } from './completion';
 import { assistantHistory } from './results';
 import { useSuggestionStore } from '../stores/suggestions';
 import { uiLocale } from '../i18n';
@@ -234,6 +236,8 @@ function createAssistantState(inline = false) {
     reply.userInputs ??= [];
     reply.userInputs.push({ id: crypto.randomUUID(), questions, status: 'pending', contentOffset: reply.content.length });
     const request = reply.userInputs.at(-1)!;
+    reply.state = 'waiting';
+    reply.activity?.push({ kind: 'input', inputId: request.id });
     try { await persist(target); signal.throwIfAborted(); }
     catch (reason) { request.status = 'cancelled'; throw reason; }
     return new Promise<AssistantQuestionAnswer[]>((resolve, reject) => {
@@ -254,6 +258,7 @@ function createAssistantState(inline = false) {
         request.answers = answers; request.status = 'answered';
         try {
           await persist(target); signal.throwIfAborted();
+          reply.state = 'running';
           error.value = ''; clear(); resolve(answers);
         } catch (reason) {
           if (signal.aborted) return;
@@ -326,7 +331,7 @@ function createAssistantState(inline = false) {
       const now = Date.now();
       target.messages.push({ id: crypto.randomUUID(), role: 'user', content: question, createdAt: now });
       reply = { id: crypto.randomUUID(), role: 'assistant', content: '', createdAt: now, sources,
-        attachedSourceIds: sources.map(source => source.id), proposals: [], toolResults: [], rules: rules.map(rule => rule.path), state: 'running', model };
+        attachedSourceIds: sources.map(source => source.id), proposals: [], toolResults: [], activity: [], rules: rules.map(rule => rule.path), state: 'running', model };
       target.messages.push(reply);
       // Use the reactive instance for streaming; the plain object pushed above is not reactive.
       reply = target.messages[target.messages.length - 1];
@@ -335,6 +340,10 @@ function createAssistantState(inline = false) {
       await persist(target);
       let structureSnapshot: Awaited<ReturnType<typeof workspace.assistantStructures>> | undefined;
       let structureChanged = false;
+      let responseActivity: Extract<AssistantActivity, { kind: 'text' }> | undefined;
+      let textPhase: AssistantTextPhase = 'pending';
+      let responseStart = 0, activityStart = 0, runCompleted = false;
+      let toolActivity: Extract<AssistantActivity, { kind: 'tool' }> | undefined;
       reply.usage = await runAssistant({ transport, connectionId: config.id, model, reasoningEffort: effort, tools: config.tools,
         mode: inline ? 'inline' : 'sidebar', locale: requestLocale, promptOrigin,
         workspaceId: expected.id, runId: reply.id, sources: reply.sources!, history, rules, prompt: question, signal: abort.signal,
@@ -365,22 +374,63 @@ function createAssistantState(inline = false) {
         delta: text => {
           if (epoch !== generation) return;
           if (text.trim() && firstContentMs === undefined) firstContentMs = Math.round(performance.now() - startedAt);
+          if (!responseActivity && !text.trim()) { reply!.content += text; return; }
+          if (!responseActivity || responseActivity.phase !== textPhase) {
+            reply!.activity!.push({ kind: 'text', start: reply!.content.length, end: reply!.content.length, phase: textPhase });
+            responseActivity = reply!.activity!.at(-1) as typeof responseActivity;
+          }
           reply!.content += text;
+          responseActivity!.end = reply!.content.length;
+        },
+        activity: event => {
+          if (epoch !== generation) return;
+          if (event.type === 'response-start') {
+            responseStart = reply!.content.length; activityStart = reply!.activity!.length;
+            responseActivity = undefined; textPhase = 'pending';
+          } else if (event.type === 'response-end') {
+            reply!.activity!.splice(activityStart, reply!.activity!.length - activityStart, ...event.segments
+              .filter(segment => segment.end > segment.start)
+              .map(segment => ({ kind: 'text' as const, start: responseStart + segment.start, end: responseStart + segment.end, phase: segment.phase })));
+            responseActivity = undefined; textPhase = 'working';
+          } else if (event.type === 'text-phase') {
+            textPhase = event.phase;
+          } else if (event.type === 'run-complete') {
+            runCompleted = true;
+          } else {
+            reply!.activity!.push({ kind: 'tool', name: event.name, status: 'running' });
+            toolActivity = reply!.activity!.at(-1) as typeof toolActivity;
+            progress.value = formatAssistantText(assistantCopy(requestLocale).progress.executing,
+              [(assistantCopy(requestLocale).tools as Record<string, string>)[event.name] ?? assistantCopy(requestLocale).result.toolCall]);
+          }
         },
         proposal: proposal => { if (epoch === generation) reply!.proposals!.push(proposal); },
-        toolResult: result => { if (epoch === generation) reply!.toolResults!.push(result); },
+        toolResult: result => {
+          if (epoch !== generation) return;
+          reply!.toolResults!.push(result);
+          if (toolActivity) {
+            toolActivity.status = result.status;
+            toolActivity.resultIndex = reply!.toolResults!.length - 1;
+            toolActivity = undefined;
+          }
+        },
         progress: text => { if (epoch === generation) progress.value = text; },
       });
+      abort.signal.throwIfAborted();
+      if (!runCompleted || reply.userInputs?.some(input => input.status === 'pending') || reply.activity?.some(item => item.kind === 'tool' && item.status === 'running'))
+        throw new AssistantRunError('incomplete', '助手运行尚未完成');
       reply.state = 'completed';
-      if (!reply.content.trim() && !reply.proposals?.length) reply.content = '模型没有返回正文。';
+      reply.termination = { reason: 'completed' };
     } catch (reason) {
       const cancelled = abort.signal.aborted;
       if (reply) {
         reply.state = cancelled ? 'cancelled' : 'failed';
+        reply.termination = { reason: cancelled ? 'cancelled' : reason instanceof AssistantRunError ? reason.reason : 'error' };
+        for (const item of reply.activity ?? []) if (item.kind === 'text') item.phase = 'working';
         reply.error = cancelled ? '已停止，已完成的修改保留在变更清单中，未完成的操作不会继续执行' : String(reason);
       } else if (epoch === generation) error.value = String(reason);
     } finally {
       if (reply && epoch === generation) {
+        for (const item of reply.activity ?? []) if (item.kind === 'tool' && item.status === 'running') item.status = 'interrupted';
         reply.timing = { totalMs: Math.round(performance.now() - startedAt),
           ...(firstContentMs === undefined ? {} : { firstContentMs }) };
         target.updatedAt = Date.now();
@@ -611,7 +661,11 @@ function createAssistantState(inline = false) {
       const loaded = inline ? [] : await transport.loadSessions(expected.id);
       if (epoch !== generation) return;
       for (const target of loaded) for (const message of target.messages) {
-        if (message.state === 'running') message.state = 'interrupted';
+        if (message.state === 'running' || message.state === 'waiting') {
+          message.state = 'interrupted'; message.termination = { reason: 'interrupted' };
+          for (const item of message.activity ?? []) if (item.kind === 'text') item.phase = 'working';
+        }
+        for (const item of message.activity ?? []) if (item.kind === 'tool' && item.status === 'running') item.status = 'interrupted';
         for (const input of message.userInputs ?? []) if (input.status === 'pending') input.status = 'cancelled';
         for (const proposal of message.proposals ?? []) if (proposal.status === 'applying') proposal.status = 'unknown';
       }

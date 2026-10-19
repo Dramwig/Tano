@@ -1,3 +1,5 @@
+import { AssistantRunError, AssistantTextDecoder, decodeAssistantText, responsePhase } from './completion';
+import type { AssistantTextPhase, AssistantTextSegment } from './completion';
 import { parentPath, parseAssistantQuestions, parseAssistantAnswers } from '@tano/protocol';
 import { isAssistantFile, validateAssistantContent, validAssistantDestination } from './files';
 import type { AssistantQuestion, AssistantQuestionAnswer } from '@tano/protocol';
@@ -14,7 +16,14 @@ import type { UiLocale } from '../locale';
 import { assistantCopy, assistantSourceSeparator, formatAssistantText } from './language';
 import type { AssistantPromptOrigin } from './language';
 
-export const assistantLimits = { contextBytes: 256_000, rounds: 8, proposals: 20, responseBytes: 1_000_000 };
+export const assistantLimits = { contextBytes: 256_000, rounds: 8, idleRounds: 3, proposals: 20, responseBytes: 1_000_000 };
+
+export type AssistantRunEvent =
+  | { type: 'response-start' }
+  | { type: 'response-end'; hasTools: boolean; continuing: boolean; segments: AssistantTextSegment[] }
+  | { type: 'text-phase'; phase: AssistantTextPhase }
+  | { type: 'run-complete' }
+  | { type: 'tool-start'; name: string };
 
 /** SSE boundaries and UTF-8 boundaries can both occur in the middle of a chunk. */
 export class AssistantStream {
@@ -24,12 +33,16 @@ export class AssistantStream {
   private responses = false;
   private responseCompleted = false;
   responseItems?: Record<string, unknown>[];
+  private decoders = new Map<string, AssistantTextDecoder>();
+  private nativePhases = new Map<string, AssistantTextPhase>();
+  segments: AssistantTextSegment[] = [];
+  endTurn: boolean | undefined;
   content = '';
   usage = { input: 0, output: 0 };
   done = false;
   finishReason: string | null = null;
   constructor(private changed: (text: string) => void, private progress?: (text: string) => void,
-    private locale: UiLocale = 'zh-CN') {}
+    private locale: UiLocale = 'zh-CN', private phaseChanged?: (phase: AssistantTextPhase) => void) {}
   push(bytes: Uint8Array) {
     this.pending += this.decoder.decode(bytes, { stream: true });
     if (this.pending.length > assistantLimits.responseBytes) throw new Error('模型单条响应超过大小限制');
@@ -76,11 +89,12 @@ export class AssistantStream {
       if (!choice) continue;
       if (choice.finish_reason) this.finishReason = choice.finish_reason;
       const delta = choice.delta ?? {};
+      const phase = responsePhase(delta.phase ?? choice.phase);
+      if (phase) this.nativePhases.set('chat', phase);
+      this.readEndTurn(delta.end_turn ?? choice.end_turn ?? value.end_turn);
       if (delta.refusal) throw new Error('模型拒绝了此请求');
       if (typeof delta.content === 'string') {
-        this.content += delta.content;
-        if (this.content.length > assistantLimits.responseBytes) throw new Error('模型正文超过大小限制');
-        this.changed(delta.content);
+        this.text(delta.content, 'chat');
       }
       for (const call of delta.tool_calls ?? []) {
         if (!Number.isInteger(call.index) || call.index < 0 || call.index >= assistantLimits.proposals)
@@ -95,34 +109,64 @@ export class AssistantStream {
       }
     }
   }
-  private append(text: string) {
+  private readEndTurn(value: unknown) {
+    if (value === undefined || value === null) return;
+    if (typeof value !== 'boolean') throw new AssistantRunError('incomplete', '模型结束标记格式无效');
+    this.endTurn = value;
+  }
+  private text(text: string, key: string) {
+    let decoder = this.decoders.get(key);
+    if (!decoder) { decoder = new AssistantTextDecoder((value, phase) => this.append(value, phase)); this.decoders.set(key, decoder); }
+    decoder.push(text, this.nativePhases.get(key));
+  }
+  private append(text: string, phase: AssistantTextPhase = 'pending') {
+    if (!text) return;
+    const start = this.content.length;
+    const previous = this.segments.at(-1);
+    if (previous?.phase === phase && previous.end === start) previous.end += text.length;
+    else this.segments.push({ start, end: start + text.length, phase });
+    this.phaseChanged?.(phase);
     this.content += text;
     if (this.content.length > assistantLimits.responseBytes) throw new Error('模型正文超过大小限制');
     this.changed(text);
   }
   private responseEvent(value: Record<string, any>) {
-    if (['error', 'response.failed', 'response.incomplete'].includes(value.type))
-      throw new Error(value.type === 'response.incomplete' ? '模型输出未完成，请提高输出上限或缩小任务后重试' : '模型服务未完成此响应');
+    if (value.type === 'response.incomplete')
+      throw new AssistantRunError(value.response?.incomplete_details?.reason === 'max_output_tokens' ? 'output_limit' : 'incomplete',
+        '模型输出未完成，请提高输出上限或缩小任务后重试');
+    if (['error', 'response.failed'].includes(value.type)) throw new Error('模型服务未完成此响应');
     if (value.type === 'response.refusal.delta' || value.type === 'response.refusal.done') throw new Error('模型拒绝了此请求');
+    const key = String(value.output_index ?? value.item_id ?? 'response');
+    if (value.type === 'response.output_item.added' || value.type === 'response.output_item.done') {
+      const phase = responsePhase(value.item?.phase);
+      if (phase) this.nativePhases.set(key, phase);
+    }
     if (value.type === 'response.output_text.delta') {
       if (typeof value.delta !== 'string') throw new Error('模型正文格式无效');
-      this.append(value.delta);
+      this.text(value.delta, key);
     }
     if (value.type !== 'response.completed') return;
     const response = value.response;
     if (!response || response.status !== 'completed' || !Array.isArray(response.output)) throw new Error('模型响应未完整结束');
     if (JSON.stringify(response.output).length > assistantLimits.responseBytes) throw new Error('模型响应超过大小限制');
+    for (const decoder of this.decoders.values()) decoder.finish();
+    this.readEndTurn(response.end_turn ?? value.end_turn);
     let text = '';
+    const segments: AssistantTextSegment[] = [];
     for (const item of response.output) {
       if (!item || typeof item !== 'object' || Array.isArray(item) || !['reasoning', 'message', 'function_call'].includes(item.type) ||
           (item.status !== undefined && item.status !== 'completed')) throw new Error('模型输出类型或状态不受支持');
       if (item.type === 'message') {
         if (item.role !== 'assistant' || !Array.isArray(item.content)) throw new Error('模型消息格式无效');
+        let raw = '';
         for (const part of item.content) {
           if (part.type === 'refusal') throw new Error('模型拒绝了此请求');
           if (part.type !== 'output_text' || typeof part.text !== 'string') throw new Error('模型正文格式无效');
-          text += part.text;
+          raw += part.text;
         }
+        const decoded = decodeAssistantText(raw, responsePhase(item.phase));
+        segments.push({ start: text.length, end: text.length + decoded.content.length, phase: decoded.phase });
+        text += decoded.content;
       }
       if (item.type === 'function_call') {
         if (this.calls.size >= assistantLimits.proposals || typeof item.call_id !== 'string' || typeof item.name !== 'string' ||
@@ -132,6 +176,7 @@ export class AssistantStream {
     }
     if (!text.startsWith(this.content)) throw new Error('模型正文与完整响应不一致');
     if (text.length > this.content.length) this.append(text.slice(this.content.length));
+    this.segments = segments;
     this.responseItems = response.output;
     if (response.usage) {
       this.usage = { input: response.usage.input_tokens, output: response.usage.output_tokens };
@@ -143,12 +188,21 @@ export class AssistantStream {
   }
   finish() {
     this.pending += this.decoder.decode();
-    if (!this.done || (this.responses && !this.responseCompleted) || this.pending.trim()) throw new Error('模型响应中断，未执行未完成的工具调用');
-    if (this.finishReason === 'length') throw new Error('模型输出达到上限，请缩小任务后重试');
-    if (this.finishReason === 'content_filter') throw new Error('模型服务未完成此响应');
+    if (!this.done || (this.responses && !this.responseCompleted) || this.pending.trim()) throw new AssistantRunError('incomplete', '模型响应中断，未执行未完成的工具调用');
+    for (const decoder of this.decoders.values()) decoder.finish();
+    if (this.finishReason === 'length') throw new AssistantRunError('output_limit', '模型输出达到上限，请缩小任务后重试');
+    if (this.finishReason && !['stop', 'tool_calls', 'function_call'].includes(this.finishReason)) throw new Error('模型服务未完成此响应');
     const calls = [...this.calls.values()];
     if (calls.some(call => !call.id || !call.function.name)) throw new Error('模型工具调用不完整');
     if (new Set(calls.map(call => call.id)).size !== calls.length) throw new Error('模型重复了工具调用标识');
+    const merged: AssistantTextSegment[] = [];
+    for (const segment of this.segments) {
+      const phase = this.responses ? segment.phase : this.nativePhases.get('chat') ?? segment.phase;
+      const previous = merged.at(-1);
+      if (previous?.phase === phase && previous.end === segment.start) previous.end = segment.end;
+      else merged.push({ ...segment, phase });
+    }
+    this.segments = merged;
     return calls;
   }
 }
@@ -245,6 +299,7 @@ export async function runAssistant(options: {
   execute?: (proposal: AssistantProposal) => Promise<AssistantExecutionResult>;
   askUser?: (questions: AssistantQuestion[]) => Promise<AssistantQuestionAnswer[]>;
   toolResult?: (result: AssistantToolResult) => void;
+  activity?: (event: AssistantRunEvent) => void;
   progress: (text: string) => void;
   rules?: { path: string; content: string }[];
   structures?: {
@@ -278,7 +333,7 @@ export async function runAssistant(options: {
     ...options.history,
     { role: 'user', content: `${options.prompt}\n${assistantSourceSeparator()}${JSON.stringify(options.sources)}` },
   ];
-  let input = 0, output = 0, count = 0;
+  let input = 0, output = 0, count = 0, idleRounds = 0;
   const seen = new Set<string>();
   const retiredSources = new Set<string>();
   const pausedTargets = new Set<string>();
@@ -317,7 +372,8 @@ export async function runAssistant(options: {
     options.signal.throwIfAborted();
     if (new TextEncoder().encode(JSON.stringify(messages)).length > 700_000) throw new Error('对话已超过上下文上限，请新建会话');
     options.progress(round ? formatAssistantText(copy.progress.round, [round + 1]) : copy.progress.generating);
-    const stream = new AssistantStream(options.delta, options.progress, locale);
+    options.activity?.({ type: 'response-start' });
+    const stream = new AssistantStream(options.delta, options.progress, locale, phase => options.activity?.({ type: 'text-phase', phase }));
     await options.transport.request(options.connectionId, { model: options.model, messages,
       ...(options.reasoningEffort !== undefined ? { reasoningEffort: options.reasoningEffort } : {}),
       ...(tools ? { tools } : {}) }, options.signal, bytes => {
@@ -325,14 +381,31 @@ export async function runAssistant(options: {
     });
     options.signal.throwIfAborted();
     const calls = stream.finish();
+    const last = stream.segments.filter(segment => stream.content.slice(segment.start, segment.end).trim()).at(-1);
+    const continuing = calls.length > 0 || stream.endTurn === false || last?.phase === 'working';
+    const segments = stream.segments.map(segment => ({ ...segment,
+      phase: continuing || segment.phase === 'working' ? 'working' as const : 'answer' as const }));
+    options.activity?.({ type: 'response-end', hasTools: calls.length > 0, continuing, segments });
     input += stream.usage.input; output += stream.usage.output;
-    if (!calls.length) return { input, output };
+    if (!continuing) {
+      if (!stream.content.trim()) throw new AssistantRunError('empty_response', '模型未返回最终回答');
+      options.activity?.({ type: 'run-complete' });
+      return { input, output };
+    }
+    if (!calls.length) {
+      messages.push({ role: 'assistant', content: stream.content || null, ...(stream.responseItems ? { responseItems: stream.responseItems } : {}) });
+      if (++idleRounds >= assistantLimits.idleRounds) throw new AssistantRunError('no_progress', '模型连续返回过程说明，尚未给出最终回答，已暂停');
+      options.delta('\n\n');
+      continue;
+    }
+    idleRounds = 0;
     if (!options.tools) throw new Error('此连接未启用工具调用');
     messages.push({ role: 'assistant', content: stream.content || null, tool_calls: calls, ...(stream.responseItems ? { responseItems: stream.responseItems } : {}) });
     const asksUser = calls.some(call => call.function.name === 'ask_user');
     let askedUser = false;
     for (const call of calls) {
       options.signal.throwIfAborted();
+      options.activity?.({ type: 'tool-start', name: call.function.name.slice(0, 80) });
       let result: unknown;
       let failure: string | undefined;
       let proposalId: string | undefined;
@@ -436,5 +509,5 @@ export async function runAssistant(options: {
     }
     options.delta('\n\n');
   }
-  throw new Error('已达到 8 轮工具调用上限，请查看本轮变更结果');
+  throw new AssistantRunError('round_limit', '已达到 8 轮请求上限，尚未取得最终回答，请查看已完成的操作');
 }

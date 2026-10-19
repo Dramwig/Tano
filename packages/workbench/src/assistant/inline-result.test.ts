@@ -15,6 +15,12 @@ it('keeps a successful clarification or text answer out of the failure state', (
   expect(inlineAssistantResult(reply())).toEqual({ state: 'response', message: '请补充具体的修改要求。' });
   expect(inlineAssistantResult(reply({ content: '  收到，测试正常。\n' }))).toEqual({ state: 'response', message: '收到，测试正常。' });
 });
+it('returns the final answer without intermediate tool commentary', () => {
+  expect(inlineAssistantResult(reply({ content: '准备修改。\n\n已完成。', proposals: [proposal()], activity: [
+    { kind: 'text', start: 0, end: 5, phase: 'working' },
+    { kind: 'text', start: 7, end: 11, phase: 'answer' },
+  ] })).message).toBe('已完成。');
+});
 it('distinguishes a pending suggestion from a saved edit', () => {
   expect(inlineAssistantResult(reply({ proposals: [proposal({ execution: undefined, status: 'ready' })] })))
     .toEqual({ state: 'response', message: '已生成修改建议，请在对话中审阅' });
@@ -42,4 +48,9 @@ it('reports cancellation and an empty response without claiming an update', () =
   expect(inlineAssistantResult(reply({ state: 'cancelled' }))).toEqual({ state: 'response', message: '已停止，未修改原文' });
   expect(inlineAssistantResult(reply({ state: 'cancelled', proposals: [proposal()] })).message).toBe('已停止，已完成的修改已保留');
   expect(inlineAssistantResult(reply({ content: '' })).state).toBe('response');
+});
+it('does not mark an interrupted run complete merely because an earlier edit was saved', () => {
+  const result = inlineAssistantResult(reply({ state: 'interrupted', termination: { reason: 'interrupted' }, proposals: [proposal()] }));
+  expect(result.state).toBe('error'); expect(result.message).toContain('部分修改已保存');
+  expect(result.message).toContain('上次运行已中断');
 });

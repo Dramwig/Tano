@@ -139,7 +139,7 @@ onBeforeUnmount(() => {
       </button>
       <button ref="more" type="button" class="document-starter-more" :class="{ 'is-overflowed': !overflow.length }"
         :aria-hidden="!overflow.length || undefined" :tabindex="overflow.length ? undefined : -1"
-        :aria-label="t('更多开始使用选项')" :title="t('更多')" aria-haspopup="menu" :aria-expanded="open" :aria-controls="open ? menuId : undefined"
+        :aria-label="t('更多开始使用选项')" :data-tooltip="t('更多')" aria-haspopup="menu" :aria-expanded="open" :aria-controls="open ? menuId : undefined"
         @click="open ? close(true) : show()" @keydown.down.prevent="show('first')" @keydown.up.prevent="show('last')" @keydown.esc.prevent="close(true)">
         <MoreHorizontal :size="18" />
       </button>

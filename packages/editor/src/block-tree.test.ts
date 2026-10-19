@@ -275,7 +275,7 @@ it('wraps a complete subtree in a toggle without flattening it', () => {
 
 const quoted = (body: string) => body.split('\n').map((line) => `> ${line}`).join('\n');
 
-it.each(['', '[!TIP]\n'])('exposes heterogeneous quote children without exposing the callout header: %s', (marker) => {
+it.each(['', '[!TIP]\n', '[!CUSTOM:🚀]\n'])('exposes heterogeneous quote children without exposing the callout header: %s', (marker) => {
   const state = stateFor(quoted(`${marker}First\n\n## Heading\n\n- item\n\n> Nested\n\n| A |\n| --- |\n| B |\n\n\`\`\`ts\nconst x = 1;\n\`\`\``));
   const entries = blockTree(state.doc);
   expect(entries.map(({ node }) => node.type.name)).toEqual([

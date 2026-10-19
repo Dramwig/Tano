@@ -45,7 +45,7 @@ const fields = computed(() => {
 
 <template>
   <div v-if="data" class="task-proposal-preview">
-    <div class="task-proposal-title"><strong>{{ proposal.base ? t('更新已有任务') : duplicates.length ? t('可能重复的新增任务') : t('新增任务') }}</strong><button v-if="proposal.base" type="button" :title="t('打开原任务')" @click="emit('openReference', data.after)"><ExternalLink :size="13" />{{ t('原任务') }}</button></div>
+    <div class="task-proposal-title"><strong>{{ proposal.base ? t('更新已有任务') : duplicates.length ? t('可能重复的新增任务') : t('新增任务') }}</strong><button v-if="proposal.base" type="button" :data-tooltip="t('打开原任务')" @click="emit('openReference', data.after)"><ExternalLink :size="13" />{{ t('原任务') }}</button></div>
     <dl><template v-for="field in fields" :key="field.label"><dt>{{ field.label }}</dt><dd><span>{{ field.old }}</span><ArrowRight :size="13" /><strong>{{ field.next }}</strong></dd></template></dl>
     <div v-if="duplicates.length" class="task-duplicates" role="status"><p>{{ t('可能重复') }}</p><button v-for="task in duplicates" :key="task.id" type="button" @click="emit('openReference', task)"><ExternalLink :size="13" />{{ task.name }} · {{ taskCompleted(task) ? t('已完成') : t('未完成') }}</button><label v-if="proposal.preview && proposal.status === 'ready'"><input v-model="confirmed" type="checkbox" />{{ t('仍然创建新任务') }}</label></div>
   </div>

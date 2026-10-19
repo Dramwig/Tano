@@ -1078,6 +1078,7 @@ it.each([
   ['下标', '<sub>2</sub>', 'sub'],
   ['高亮', '<mark>高亮</mark>', 'mark'],
   ['文字颜色', '<span style="color: #db2777">文字颜色</span>', 'span[style]'],
+  ['背景颜色', '<span style="background-color: #e3f2fd">背景颜色</span>', 'span[style]'],
 ])('reveals %s as editable Markdown as soon as the caret enters', async (_label, source, selector) => {
   const content = `Before ${source} after.\n`;
   const { value, errors } = await mount(content);
@@ -2249,6 +2250,38 @@ it('keeps a fenced code editor at the rendered text size without fixing its heig
   expect([...source.querySelectorAll('.tano-live-code-body')].map((span) => span.textContent).join(''))
     .toBe('let count = 1;');
   expect(source.style.overflow).toBe('');
+  expect(value.value).toBe(content);
+  expect(errors).toEqual([]);
+});
+
+it('keeps fenced code spacing stable when moving source focus between code blocks', async () => {
+  const content = '```ts\nlet first = 1;\n```\n\n```ts\nlet second = 2;\n```\n';
+  const { value, editor, errors } = await mount(content);
+  const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
+  const blocks = [...prose.querySelectorAll<HTMLElement>('pre.tano-code-block')];
+  const first = blocks[0]!;
+  for (const block of blocks) {
+    block.style.paddingTop = '19px';
+    block.style.paddingBottom = '19px';
+    block.style.paddingLeft = '22px';
+    block.style.paddingRight = '22px';
+    block.style.lineHeight = '27px';
+    block.querySelector<HTMLElement>('code')!.style.fontSize = '13px';
+  }
+  prose.focus();
+  placeCaret(first.querySelector('code')!, 1);
+  await nextTick();
+  const firstSource = prose.querySelector<HTMLElement>('pre[data-source-kind="code_block"]')!;
+  expect(firstSource.style.paddingTop).toBe('0px');
+  expect(firstSource.style.lineHeight).toBe('27px');
+
+  const view = editor.value!.withContext((ctx) => ctx.get(editorViewCtx));
+  const secondPos = view.state.doc.child(0)!.nodeSize;
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, secondPos + 2)));
+  await nextTick();
+  const secondSource = prose.querySelector<HTMLElement>('pre[data-source-kind="code_block"]')!;
+  expect(secondSource.style.paddingTop).toBe('0px');
+  expect(secondSource.style.lineHeight).toBe('27px');
   expect(value.value).toBe(content);
   expect(errors).toEqual([]);
 });
@@ -3901,6 +3934,23 @@ describe('Markdown editor round trips', () => {
     expect(errors).toEqual([]);
   });
 
+  it('deletes the selected block with Backspace while its handle menu has focus', async () => {
+    const { value, errors } = await mount('First paragraph.\n\nSecond paragraph.\n');
+    const handle = root.querySelectorAll<HTMLButtonElement>('.tano-block-handle')[1]!;
+    handle.click();
+    await nextTick();
+    const menu = document.querySelector<HTMLElement>('.block-context-menu')!;
+    const event = new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true });
+    menu.dispatchEvent(event);
+    await nextTick();
+    expect(event.defaultPrevented).toBe(true);
+    expect(root.querySelectorAll('.ProseMirror > *')).toHaveLength(1);
+    expect(root.querySelector('.ProseMirror')?.textContent).toBe('First paragraph.');
+    expect(document.querySelector('.block-context-menu')).toBeNull();
+    expect(value.value).toBe('First paragraph.\n');
+    expect(errors).toEqual([]);
+  });
+
   it.each([
     ['paragraph', 'Text with **bold** and [link](https://example.com).'],
     ['heading', '## Heading'],
@@ -4566,6 +4616,55 @@ describe('Markdown editor round trips', () => {
     expect(value.value).toContain('<u>下划线</u>');
     expect(value.value).toContain('<span style="color: #db2777">颜色</span>');
     expect(errors).toEqual([]);
+  });
+
+  it('applies and resets backgrounds independently of text colors and replaces highlight', async () => {
+    const { value, editor, errors } = await mount('正文文字\n');
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 3)));
+    editor.value!.command('text-color', '#db2777');
+    editor.value!.command('background-color', '#e3f2fd');
+    await nextTick();
+    expect(value.value).toContain('background-color: #e3f2fd');
+    expect(value.value).toContain('color: #db2777');
+    expect(view.state.doc.textContent).toBe('正文文字');
+    expect(view.state.doc.resolve(3).nodeAfter?.marks).toEqual([]);
+    expect(root.querySelector<HTMLElement>('span[style*="background-color"]')?.style.backgroundColor).toBe('rgb(227, 242, 253)');
+    const saved = value.value;
+    editor.value!.command('background-color', 'url(https://example.test)');
+    await nextTick();
+    expect(value.value).toBe(saved);
+    editor.value!.command('background-color');
+    await nextTick();
+    expect(value.value).not.toContain('background-color');
+    expect(value.value).toContain('color: #db2777');
+    editor.value!.command('background-color', '#fbf3db');
+    editor.value!.command('highlight');
+    await nextTick();
+    expect(value.value).toContain('<mark>');
+    expect(value.value).not.toContain('background-color');
+    editor.value!.command('background-color', '#e7f3ec');
+    await nextTick();
+    expect(value.value).not.toContain('<mark>');
+    expect(value.value).toContain('background-color: #e7f3ec');
+    expect(unsupportedMarkdown(value.value)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  it('undoes and redoes a background color change without changing the text', async () => {
+    const { value, editor } = await mount('正文文字\n');
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 3)));
+    editor.value!.command('background-color', '#e3f2fd');
+    await nextTick();
+    const colored = value.value;
+    expect(colored).toContain('background-color: #e3f2fd');
+    expect(editor.value!.undoLastChange()).toBe(true);
+    await nextTick();
+    expect(value.value).toBe('正文文字\n');
+    expect(editor.value!.redoLastChange()).toBe(true);
+    await nextTick();
+    expect(value.value).toBe(colored);
   });
 
   it('applies text styles from commands and serializes selected text without losing it', async () => {

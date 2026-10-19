@@ -29,7 +29,7 @@ onBeforeUnmount(() => window.removeEventListener('click', closeOutside));
       ref="trigger"
       class="icon-button"
       :aria-label="t('插入公式')"
-      :title="t('插入 LaTeX 公式')"
+      :data-tooltip="t('插入 LaTeX 公式')"
       :aria-expanded="open && !disabled"
       :disabled="disabled"
       @mousedown.prevent

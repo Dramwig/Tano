@@ -260,7 +260,7 @@ onBeforeUnmount(() => {
             <section v-for="group in documentCoverGroups" :key="group.id" class="document-cover-group" :aria-labelledby="`${coverPanelId}-${group.id}-heading`">
               <h4 :id="`${coverPanelId}-${group.id}-heading`">{{ group.label }}</h4>
               <div class="document-cover-presets" :class="{ 'document-cover-colors': group.id === 'colors' }">
-                <button v-for="item in group.covers" :key="item.value" type="button" :aria-label="t('使用封面：{0}', [item.label])" :title="coverCaption(item)"
+                <button v-for="item in group.covers" :key="item.value" type="button" :aria-label="t('使用封面：{0}', [item.label])" :data-tooltip="coverCaption(item)"
                   :class="{ 'is-specimen': item.presentation === 'specimen' }"
                   :aria-pressed="cover === item.value" :disabled="disabled" :style="{ background: item.background }" @click="selectCover(item.value)">
                   <img v-if="item.thumbnail" :src="item.thumbnail" :style="{ objectPosition: item.objectPosition }" alt="" loading="lazy" decoding="async" draggable="false" />
@@ -308,7 +308,7 @@ onBeforeUnmount(() => {
 .document-cover img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }
 .document-cover-unavailable { color: var(--muted); font-size: 13px; }
 .document-appearance.has-cover .document-appearance-content { padding-top: 24px; }
-.document-appearance.has-cover.has-icon .document-page-icon { position: relative; margin-top: -56px; margin-bottom: 22px; }
+.document-appearance.has-cover.has-icon .document-page-icon { position: relative; margin-top: -56px; margin-bottom: 12px; }
 .document-appearance.has-cover .document-appearance-content:not(:has(.document-title-actions)) { padding-bottom: 36px; }
 .document-page-icon { display: flex; align-items: center; width: 64px; height: 64px; margin-bottom: 10px; border-radius: 8px; }
 .settings-button.workspace-icon-preview.document-icon-trigger { width: 64px; height: 64px; padding: 4px; border: 0; border-radius: 8px; background: transparent; box-shadow: none; }

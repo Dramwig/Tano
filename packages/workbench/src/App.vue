@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { t } from './i18n';
+import AppTooltip from './components/AppTooltip.vue';
 import { assistantDiscussionPrompt } from './assistant/language';
+import { assistantSourceRange } from './assistant/source-selection';
+import type { AssistantSource } from '@tano/protocol';
 import {
   computed,
   defineAsyncComponent,
@@ -38,6 +41,7 @@ import {
   History,
   List,
   ListTodo,
+  ListOrdered,
   CircleHelp,
   ArrowLeft,
   ArrowRight,
@@ -74,6 +78,7 @@ import {
   Table2,
 } from 'lucide-vue-next';
 const MarkdownEditor = defineAsyncComponent(() => import('@tano/editor'));
+const CalloutIconPicker = defineAsyncComponent(() => import('./components/CalloutIconPicker.vue'));
 import { defaultEditorPreferences, normalizeSelectionWrapping } from '@tano/editor/runtime';
 import type { EditorPreferences } from '@tano/editor/runtime';
 import { defaultSelectionContext } from '@tano/editor/selection-context';
@@ -779,6 +784,8 @@ const sourceFontSize = ref(readFontSizePreference('sourceFontSize', 14));
 watch(visualFontSize, (value) => saveFontSizePreference('visualFontSize', value));
 watch(sourceFontSize, (value) => saveFontSizePreference('sourceFontSize', value));
 const showPageTitle = ref(readPreference('showPageTitle', true));
+const showAllLineNumbers = ref(readPreference('showAllLineNumbers', false));
+watch(showAllLineNumbers, (value) => savePreference('showAllLineNumbers', value));
 watch(showPageTitle, (value) => savePreference('showPageTitle', value));
 const showDocumentProperties = ref(readPreference('showDocumentProperties', true));
 watch(showDocumentProperties, (value) => savePreference('showDocumentProperties', value));
@@ -1156,6 +1163,7 @@ type InlineAssistantTarget = {
   sourceSelection: { text: string; from?: number; to?: number };
   anchor: InlineAssistantAnchor;
   blankBlock?: boolean;
+  sessionId?: string;
 };
 type AssistantEditorSelection = { text: string; spans: { from: number; to: number; text: string }[]; from?: number; to?: number };
 const inlineAssistant = shallowRef<InlineAssistantTarget>();
@@ -1213,6 +1221,7 @@ async function submitInlineAssistant() {
     inlineRunner.modelId = assistant.modelId;
     inlineRunner.reasoningEffort = assistant.reasoningEffort;
     inlineRunner.newSession();
+    target.sessionId = inlineRunner.session?.id;
     inlineRunner.files = [target.fileId];
     inlineRunner.selection = wholeEmptyDocument ? null : { fileId: target.fileId, ...target.sourceSelection };
     inlineRunner.prompt = request;
@@ -1255,16 +1264,24 @@ function continueInlineConversation() {
   const target = inlineAssistant.value;
   if (!target) return;
   const completedSession = inlineRunner.session;
-  if (completedSession && !inlineRunner.busy && !inlineRunner.applying) {
+  let capturedSelection: InlineAssistantTarget['sourceSelection'] | undefined;
+  if (completedSession && completedSession.id === target.sessionId && !inlineRunner.busy && !inlineRunner.applying) {
     // Transfer a snapshot only after the independent run has finished saving.
     const snapshot = JSON.parse(JSON.stringify(completedSession));
     const index = assistant.sessions.findIndex(session => session.id === completedSession.id);
     if (index < 0) assistant.sessions.unshift(snapshot);
     else assistant.sessions[index] = snapshot;
-    if (!assistant.busy && !assistant.applying) assistant.selectSession(completedSession.id);
+    if (!assistant.busy && !assistant.applying) {
+      assistant.selectSession(completedSession.id);
+      // The editor selection has already collapsed when focus moved to the
+      // inline input. Carry the original task scope through the panel handoff.
+      const selected = inlineRunner.selection;
+      if (selected?.fileId === target.fileId)
+        capturedSelection = { text: selected.text, from: selected.from, to: selected.to };
+    }
     else store.report(t('选区任务已加入会话列表，当前会话结束后可切换继续。'));
   }
-  openAssistant(target.paneId, target.fileId, { forcePanel: true });
+  openAssistant(target.paneId, target.fileId, { forcePanel: true, capturedSelection });
   closeInlineAssistant();
 }
 function captureButterflyTextTarget(paneId: string, fileId: string) {
@@ -1368,26 +1385,29 @@ function capturePaneCommentSelection(paneId: string, fileId: string) {
     ? { ...selection, basis: paneSource(fileId) ? ('source' as const) : ('prose' as const) }
     : null;
 }
-function openAssistant(paneId = store.activePaneId, fileId = store.activeId, options: { forcePanel?: boolean } = {}) {
+function openAssistant(paneId = store.activePaneId, fileId = store.activeId,
+  options: { forcePanel?: boolean; capturedSelection?: InlineAssistantTarget['sourceSelection'] } = {}) {
   const forcePanel = options.forcePanel;
   const tableId = isTableTab(fileId) ? tableFileId(fileId) : undefined;
-  const selected: AssistantEditorSelection | null = (forcePanel || tableId ? null : paneSource(fileId)
+  // forcePanel chooses the surface, not the context: the launcher still uses
+  // the current selection before the panel takes focus.
+  const selected: AssistantEditorSelection | null = (tableId ? null : paneSource(fileId)
     ? paneSourceEditors.get(paneId)?.assistantSelection()
       : paneSelections[paneId]?.textSelected
         ? (paneEditors.get(paneId) as unknown as { assistantSelection?: () => AssistantEditorSelection | null })?.assistantSelection?.() ?? null
         : null) ?? null;
   const text = selected?.spans.map((span) => span.text).join('\n');
+  const span = paneSource(fileId) && selected?.spans.length === 1 ? selected.spans[0] : undefined;
+  const taskSelection = text ? { text: span?.text ?? selected?.text ?? text,
+    ...(span ? { from: span.from, to: span.to } : selected?.from !== undefined ? { from: selected.from, to: selected.to } : {}) } : undefined;
   if (!forcePanel && !tableId && text) {
-    openInlineAssistant(paneId, fileId, text, selected?.from !== undefined
-      ? { text: selected.text, from: selected.from, to: selected.to }
-      : { text });
+    openInlineAssistant(paneId, fileId, text, taskSelection!);
     return;
   }
-  const span = paneSource(fileId) && selected?.spans.length === 1 ? selected.spans[0] : undefined;
   store.focusPane(paneId);
   assistant.open(
     tableId ?? (store.documentForTab(fileId) ? store.documentForTab(fileId)?.id : undefined),
-    text ? { text: selected?.text ?? text, ...(span ? { from: span.from, to: span.to } : selected?.from !== undefined ? { from: selected.from, to: selected.to } : {}) } : undefined,
+    options.capturedSelection ?? taskSelection,
   );
   if (window.innerWidth < 1100) sidebar.value = false;
 }
@@ -1646,13 +1666,33 @@ function openPaneSearch(id = store.activePaneId, replace = false) {
 const documentScroll = computed(() => paneScrolls.get(store.activePaneId));
 const editorScroll = computed(() => paneEditorScrolls.get(store.activePaneId));
 const sourceEditor = computed(() => paneSourceEditors.get(store.activePaneId));
+let pendingAssistantReveal: { workspaceId: string; paneId: string; tabId: string; fileId: string; from: number; to: number } | undefined;
+function revealPendingAssistantSelection() {
+  const pending = pendingAssistantReveal;
+  if (!pending) return;
+  if (store.workspace?.id !== pending.workspaceId || store.activePaneId !== pending.paneId || store.activeId !== pending.tabId || store.active?.id !== pending.fileId) {
+    pendingAssistantReveal = undefined;
+    return;
+  }
+  const target = paneSource(pending.tabId) ? paneSourceEditors.get(pending.paneId) : paneEditors.get(pending.paneId);
+  if (target?.revealSourceRange(pending)) pendingAssistantReveal = undefined;
+}
+async function revealAssistantSelection(source: AssistantSource) {
+  pendingAssistantReveal = undefined;
+  if (store.workspace?.id !== source.workspaceId || store.active?.id !== source.fileId) return;
+  const range = assistantSourceRange(store.active.content, source.selection);
+  if (!range) { store.report(t('引用原文已变化或无法唯一定位，请在文档中核对')); return; }
+  pendingAssistantReveal = { workspaceId: source.workspaceId, paneId: store.activePaneId, tabId: store.activeId, fileId: source.fileId, ...range };
+  await nextTick();
+  revealPendingAssistantSelection();
+}
 async function paneEditorReady(paneId: string, fileId: string, sourceMode: boolean) {
   await nextTick();
   paneSearchRevisions[paneId] = (paneSearchRevisions[paneId] ?? 0) + 1;
   const pending = pendingModeViewports.get(paneId);
   const target = sourceMode ? paneSourceEditors.get(paneId) : paneEditors.get(paneId);
   const scroll = paneScrolls.get(paneId);
-  if (!pending || pending.fileId !== fileId || pending.source !== sourceMode || !target || !scroll) return;
+  if (!pending || pending.fileId !== fileId || pending.source !== sourceMode || !target || !scroll) { revealPendingAssistantSelection(); return; }
   const current = () => pendingModeViewports.get(paneId) === pending && paneSource(fileId) === sourceMode
     && store.panes.some(pane => pane.id === paneId && pane.activeId === fileId)
     && (sourceMode ? paneSourceEditors.get(paneId) : paneEditors.get(paneId)) === target;
@@ -1660,6 +1700,7 @@ async function paneEditorReady(paneId: string, fileId: string, sourceMode: boole
     await restoreModeViewport(target, scroll, pending.viewport, pending.focus ?? paneId === store.activePaneId, current);
   } finally {
     if (pendingModeViewports.get(paneId) === pending) pendingModeViewports.delete(paneId);
+    revealPendingAssistantSelection();
   }
 }
 function setPaneElement(kind: 'scroll' | 'editor' | 'source', id: string, value: unknown) {
@@ -2191,11 +2232,12 @@ async function addDocumentProperty() {
   if (store.activeId === fileId && store.activePaneId === paneId)
     await paneEditors.get(paneId)?.addDocumentProperty();
 }
-function togglePageOption(option: 'width' | 'title' | 'properties' | 'outline') {
+function togglePageOption(option: 'width' | 'title' | 'properties' | 'outline' | 'lineNumbers') {
   if (option === 'width') setLimitPageWidth(!limitPageWidth.value);
   if (option === 'title') showPageTitle.value = !showPageTitle.value;
   if (option === 'properties') showDocumentProperties.value = !showDocumentProperties.value;
   if (option === 'outline') showOutline.value = !showOutline.value;
+  if (option === 'lineNumbers') showAllLineNumbers.value = !showAllLineNumbers.value;
   closePageContextMenu();
 }
 function pageContextKeydown(event: KeyboardEvent) {
@@ -3838,6 +3880,7 @@ const helpBlocked = computed(() => !!(
 </script>
 
 <template>
+  <AppTooltip />
   <Teleport v-if="native && !mobile && workspace && compactPanes" to="#desktop-window-tab-slot">
     <button
       v-if="!detachedWindow"
@@ -3845,7 +3888,7 @@ const helpBlocked = computed(() => !!(
       class="desktop-sidebar-toggle"
       type="button"
       :aria-label="t('展开侧栏')"
-      :title="t('展开侧栏 · {0}', [shortcutHint('toggleSidebar')])"
+      :data-tooltip="t('展开侧栏')" :data-tooltip-shortcut="shortcuts.toggleSidebar"
       :aria-hidden="sidebar"
       :tabindex="sidebar ? -1 : 0"
       :disabled="sidebar"
@@ -3903,7 +3946,7 @@ const helpBlocked = computed(() => !!(
               type="button"
               class="icon-button sidebar-toggle"
               :aria-label="t('收起侧栏')"
-              :title="t('收起侧栏 · {0}', [shortcutHint('toggleSidebar')])"
+              :data-tooltip="t('收起侧栏')" :data-tooltip-shortcut="shortcuts.toggleSidebar"
               @click="toggleSidebar"
             >
               <PanelLeftClose :size="17" :stroke-width="1.6" />
@@ -3931,13 +3974,13 @@ const helpBlocked = computed(() => !!(
               type="button"
               class="icon-button"
               :aria-label="t('打开关系图谱')"
-              :title="t('关系图谱')"
+              :data-tooltip="t('关系图谱')"
               :aria-pressed="activeId === GRAPH_TAB_ID"
               @click="store.openGraphTab()"
             >
               <GitFork :size="17" :stroke-width="1.6" />
             </button>
-            <button v-if="isVisible('commands')" type="button" class="icon-button" :aria-label="t('打开命令中心')" :title="t('命令中心 · {0}', [shortcutHint('commandPalette')])" @click="commandPaletteOpened = true"><Search :size="17" /></button>
+            <button v-if="isVisible('commands')" type="button" class="icon-button" :aria-label="t('打开命令中心')" :data-tooltip="t('命令中心')" :data-tooltip-shortcut="shortcuts.commandPalette" @click="commandPaletteOpened = true"><Search :size="17" /></button>
           </ButtonVisibilityGroup>
         </div>
         <SidebarNavigation
@@ -3951,7 +3994,7 @@ const helpBlocked = computed(() => !!(
             type="button"
             class="sidebar-navigation-button"
             :aria-label="t('仓库')"
-            :title="t('仓库')"
+            :data-tooltip="t('仓库')"
             aria-controls="sidebar-repository-panel"
             :aria-pressed="sidebarView === 'repository'"
             @click="sidebarView = 'repository'"
@@ -3964,7 +4007,7 @@ const helpBlocked = computed(() => !!(
             type="button"
             class="sidebar-navigation-button"
             :aria-label="t('计划')"
-            :title="t('计划')"
+            :data-tooltip="t('计划')"
             aria-controls="sidebar-plan-panel"
             :aria-pressed="sidebarView === 'plan'"
             @click="openCalendar()"
@@ -3978,7 +4021,7 @@ const helpBlocked = computed(() => !!(
               type="button"
               class="sidebar-navigation-button"
               :aria-label="view.label"
-              :title="view.label"
+              :data-tooltip="view.label"
               :aria-controls="`sidebar-${view.id}`"
               :aria-pressed="sidebarView === view.id"
               @click="openExtensionView(view.id)"
@@ -3988,7 +4031,7 @@ const helpBlocked = computed(() => !!(
             </button>
           </template>
           <button v-if="isVisible('plugin-views') && (store.pluginViews.length || store.pluginCommands.length)" type="button" class="sidebar-navigation-button"
-            :aria-label="t('插件工作台')" :title="t('插件工作台')" :aria-pressed="sidebarView === 'plugin-views'" @click="sidebarView = 'plugin-views'">
+            :aria-label="t('插件工作台')" :data-tooltip="t('插件工作台')" :aria-pressed="sidebarView === 'plugin-views'" @click="sidebarView = 'plugin-views'">
             <Puzzle :size="17" /><span :aria-hidden="sidebarView !== 'plugin-views'">{{ t('扩展') }}</span>
           </button>
         </SidebarNavigation>
@@ -4027,7 +4070,7 @@ const helpBlocked = computed(() => !!(
                 type="button"
                 class="icon-button"
                 :aria-label="t('查找文档')"
-                :title="t('查找文档 · {0}', [shortcutHint('findDocument')])"
+                :data-tooltip="t('查找文档')" :data-tooltip-shortcut="shortcuts.findDocument"
                 @click="showModal('search')"
               >
                 <Search :size="15" :stroke-width="1.6" />
@@ -4037,7 +4080,7 @@ const helpBlocked = computed(() => !!(
                 type="button"
                 class="icon-button"
                 :aria-label="t('打开插件标签页')"
-                :title="t('工作区插件')"
+                :data-tooltip="t('工作区插件')"
                 :aria-pressed="activeId === PLUGINS_TAB_ID"
                 @click="store.openPluginsTab()"
               >
@@ -4047,7 +4090,7 @@ const helpBlocked = computed(() => !!(
                 v-if="isVisible('create')"
                 class="icon-button"
                 :aria-label="t('新建文档')"
-                :title="t('新建文档 · {0}', [shortcutHint('newDocument')])"
+                :data-tooltip="t('新建文档')" :data-tooltip-shortcut="shortcuts.newDocument"
                 :disabled="!workspace || workspace.readOnly || busy"
                 @click="createNewDocument"
               >
@@ -4400,7 +4443,7 @@ const helpBlocked = computed(() => !!(
               :aria-expanded="workspaceMenu"
               aria-controls="workspace-menu"
               :aria-label="t('切换工作区')"
-              :title="workspace?.name ?? t('选择工作区')"
+              :data-tooltip="workspace?.name ?? t('选择工作区')"
               @click="toggleWorkspaceMenu"
               @contextmenu.stop.prevent="toggleWorkspaceMenu"
             >
@@ -4435,7 +4478,7 @@ const helpBlocked = computed(() => !!(
                   class="workspace-menu-exit"
                   type="button"
                   :aria-label="t('退出当前工作区')"
-                  :title="t('退出当前工作区')"
+                  :data-tooltip="t('退出当前工作区')"
                   :disabled="busy"
                   @click="leaveWorkspace"
                 >
@@ -4572,7 +4615,7 @@ const helpBlocked = computed(() => !!(
                       type="button"
                       class="workspace-recent-open"
                       :aria-label="t('打开新的本地文件夹')"
-                      :title="t('打开新的本地文件夹')"
+                      :data-tooltip="t('打开新的本地文件夹')"
                       :disabled="busy"
                       @click="
                         workspaceMenu = false;
@@ -4585,7 +4628,7 @@ const helpBlocked = computed(() => !!(
                   <button
                     v-for="item in store.recent.slice(0, 5)"
                     :key="item.id"
-                    :title="item.path"
+                    :data-tooltip="item.path"
                     :disabled="busy"
                     :aria-current="item.id === workspace?.id ? 'true' : undefined"
                     :data-workspace-entry-id="item.id"
@@ -4683,7 +4726,7 @@ const helpBlocked = computed(() => !!(
               class="desktop-sidebar-toggle"
               type="button"
               :aria-label="t('展开侧栏')"
-              :title="t('展开侧栏 · {0}', [shortcutHint('toggleSidebar')])"
+              :data-tooltip="t('展开侧栏')" :data-tooltip-shortcut="shortcuts.toggleSidebar"
               @click="toggleSidebar"
             >
               <PanelLeftOpen :size="17" />
@@ -4718,9 +4761,9 @@ const helpBlocked = computed(() => !!(
           <AssistantPanel
             v-if="assistant.available && assistant.opened"
             :compact="compactPanes"
-            :open-sources-in-new-tab="tabsEnabled"
             :fullscreen-target="assistantHosts.get(assistant.fullscreenPaneId ?? '')"
             @open-reference="openReference"
+            @reveal-selection="revealAssistantSelection"
             @open-settings="openSettings('assistant')"
           />
         </template>
@@ -4736,7 +4779,7 @@ const helpBlocked = computed(() => !!(
           >
             <template #navigation>
               <div v-if="!sidebar && !(native && !mobile && workspace)" class="topbar-navigation">
-                <button type="button" class="icon-button" :aria-label="t('展开侧栏')" :title="t('展开侧栏 · {0}', [shortcutHint('toggleSidebar')])" @click="toggleSidebar"><PanelLeftOpen :size="18" /></button>
+                <button type="button" class="icon-button" :aria-label="t('展开侧栏')" :data-tooltip="t('展开侧栏')" :data-tooltip-shortcut="shortcuts.toggleSidebar" @click="toggleSidebar"><PanelLeftOpen :size="18" /></button>
               </div>
             </template>
           </TemplateLibrary>
@@ -4774,7 +4817,7 @@ const helpBlocked = computed(() => !!(
                   type="button"
                   class="icon-button"
                   :aria-label="t('展开侧栏')"
-                  :title="t('展开侧栏 · {0}', [shortcutHint('toggleSidebar')])"
+                  :data-tooltip="t('展开侧栏')" :data-tooltip-shortcut="shortcuts.toggleSidebar"
                   @click="toggleSidebar"
                 >
                   <PanelLeftOpen :size="18" />
@@ -4784,7 +4827,7 @@ const helpBlocked = computed(() => !!(
                   type="button"
                   class="icon-button"
                   :aria-label="t('后退')"
-                  :title="t('后退')"
+                  :data-tooltip="t('后退')"
                   :disabled="!canNavigatePage(-1)"
                   @click="navigatePage(-1)"
                 >
@@ -4795,7 +4838,7 @@ const helpBlocked = computed(() => !!(
                   type="button"
                   class="icon-button"
                   :aria-label="t('前进')"
-                  :title="t('前进')"
+                  :data-tooltip="t('前进')"
                   :disabled="!canNavigatePage(1)"
                   @click="navigatePage(1)"
                 >
@@ -4842,7 +4885,7 @@ const helpBlocked = computed(() => !!(
                   type="button"
                   class="topbar-attachment-action"
                   :aria-label="t('导出附件')"
-                  :title="t('导出附件副本')"
+                  :data-tooltip="t('导出附件副本')"
                   @click="
                     attachments
                       .exportAttachment(workspace!.id, tab.attachment.path)
@@ -4908,7 +4951,7 @@ const helpBlocked = computed(() => !!(
                     type="button"
                     class="icon-button"
                     :aria-label="t('上一时段')"
-                    :title="t('上一时段')"
+                    :data-tooltip="t('上一时段')"
                     @click="moveCalendarPeriod(-1)"
                   >
                     <ChevronLeft :size="17" />
@@ -4918,7 +4961,7 @@ const helpBlocked = computed(() => !!(
                     type="button"
                     class="icon-button"
                     :aria-label="t('下一时段')"
-                    :title="t('下一时段')"
+                    :data-tooltip="t('下一时段')"
                     @click="moveCalendarPeriod(1)"
                   >
                     <ChevronRight :size="17" />
@@ -4932,7 +4975,7 @@ const helpBlocked = computed(() => !!(
                       type="button"
                       class="calendar-topbar-mode"
                       :aria-label="t('切换日历视图')"
-                      :title="t('Ctrl + 滚轮：切换日历视图')"
+                      :data-tooltip="t('Ctrl + 滚轮：切换日历视图')"
                       aria-haspopup="menu"
                       :aria-expanded="calendarModeOpen"
                       @click="calendarModeOpen = !calendarModeOpen"
@@ -4961,7 +5004,7 @@ const helpBlocked = computed(() => !!(
                     v-if="isVisible('calendar-events')"
                     type="button"
                     class="calendar-topbar-events"
-                    :title="t('查看和管理事件')"
+                    :data-tooltip="t('查看和管理事件')"
                     @click="managePlanEvents"
                   >
                     <CalendarDays :size="15" />{{ t('管理事件') }}
@@ -4970,7 +5013,7 @@ const helpBlocked = computed(() => !!(
                 <div v-if="active && documentSuggestions.get(active.id)?.mode && !editing.isManaging(active.id)"
                   class="suggestion-mode-badge" role="status" :aria-label="t('建议模式已开启')">
                   <MessageSquareDiff :size="14" /><span>{{ t('建议模式') }}</span>
-                  <button type="button" :aria-label="t('退出建议模式')" :title="t('退出建议模式')"
+                  <button type="button" :aria-label="t('退出建议模式')" :data-tooltip="t('退出建议模式')"
                     :disabled="suggestionModeBusy || documentSuggestions.get(active.id)?.reviewing"
                     @click="toggleSuggestionMode(active.id)"><X :size="14" /></button>
                 </div>
@@ -4995,7 +5038,7 @@ const helpBlocked = computed(() => !!(
                       "
                       :aria-label="paneSource(pane.activeId) ? t('返回编辑') : t('切换源码模式')"
                       :aria-pressed="paneSource(pane.activeId)"
-                      :title="
+                      :data-tooltip="
                         editing.isManaging(pane.activeId)
                           ? t('当前编辑扩展不支持切换源码模式')
                           : paneSource(pane.activeId)
@@ -5095,7 +5138,7 @@ const helpBlocked = computed(() => !!(
                         role="switch"
                         :aria-checked="!limitPageWidth"
                         :disabled="!pageWidthWritable"
-                        :title="t('切换页面内容宽度')"
+                        :data-tooltip="t('切换页面内容宽度')"
                         @click="setLimitPageWidth(!limitPageWidth)"
                       >
                         <MoveHorizontal :size="15" />{{ t('全宽') }}<span
@@ -5110,7 +5153,7 @@ const helpBlocked = computed(() => !!(
                         class="page-toggle-menu-item"
                         role="switch"
                         :aria-checked="showOutline"
-                        :title="t('切换文档目录显示')"
+                        :data-tooltip="t('切换文档目录显示')"
                         @click="showOutline = !showOutline"
                       >
                         <List :size="15" />{{ t('显示目录') }}<span
@@ -5126,7 +5169,7 @@ const helpBlocked = computed(() => !!(
                         class="page-toggle-menu-item"
                         role="switch"
                         :aria-checked="pageLocked"
-                        :title="pageLocked ? t('退出阅读模式') : t('锁定后进入阅读模式')"
+                        :data-tooltip="pageLocked ? t('退出阅读模式') : t('锁定后进入阅读模式')"
                         @click="togglePageLock"
                       >
                         <LockKeyhole :size="15" />{{ t('锁定页面') }}<span
@@ -5284,7 +5327,7 @@ const helpBlocked = computed(() => !!(
                           type="button"
                           class="icon-button"
                           :aria-label="t('从选区创建 Todo')"
-                          :title="t('从选区创建 Todo')"
+                          :data-tooltip="t('从选区创建 Todo')"
                           @mousedown.prevent
                           @click="beginSelectionTodo(pane.id, active!.id)"
                         >
@@ -5313,7 +5356,7 @@ const helpBlocked = computed(() => !!(
                             :disabled="!!editing.active || editing.activeBusy"
                             :aria-label="paneSource(pane.activeId) ? t('返回编辑') : t('切换源码模式')"
                             :aria-pressed="paneSource(pane.activeId)"
-                            :title="paneSource(pane.activeId) ? t('返回编辑') : t('切换源码模式')"
+                            :data-tooltip="paneSource(pane.activeId) ? t('返回编辑') : t('切换源码模式')"
                             @click="setPaneSource(pane.activeId, !paneSource(pane.activeId))"
                           >
                             <Code2 :size="17" />
@@ -5426,6 +5469,7 @@ const helpBlocked = computed(() => !!(
                         @comment="paneComments.get(pane.id)?.showDiscussion()"
                       />
                       <SourceEditor :preferences="editorPreferences" :suggestion-marks="suggestions.sourceMarks"
+                        :show-all-line-numbers="showAllLineNumbers"
                         v-if="paneSource(pane.activeId)"
                         :key="`${active.id}:${suggestions.viewKey}`"
                         :ref="(el) => setPaneElement('source', pane.id, el)"
@@ -5443,6 +5487,7 @@ const helpBlocked = computed(() => !!(
                       />
                       <MarkdownEditor :suggestion-marks="suggestions.richMarks" :transform-change="suggestions.transformChange"
                         v-else
+                        :custom-callout-icon="CalloutIconPicker"
                         :key="`${active.id}:${suggestions.viewKey}:${active.id === store.active?.id ? (editing.active?.key ?? 'local') : 'local'}`"
                         :ref="(el) => setPaneEditor(pane.id, el)"
                         :document-id="active.id"
@@ -5590,7 +5635,7 @@ const helpBlocked = computed(() => !!(
                     class="outline-control"
                     type="button"
                     :aria-label="t('搜索大纲标题')"
-                    :title="t('搜索大纲标题')"
+                    :data-tooltip="t('搜索大纲标题')"
                     :aria-expanded="outlineSearchOpen"
                     @click="toggleOutlineSearch"
                   >
@@ -5602,7 +5647,7 @@ const helpBlocked = computed(() => !!(
                     :class="{ active: outlinePinned }"
                     type="button"
                     :aria-label="outlinePinned ? t('取消固定大纲') : t('固定大纲')"
-                    :title="outlinePinned ? t('取消固定大纲') : t('固定大纲')"
+                    :data-tooltip="outlinePinned ? t('取消固定大纲') : t('固定大纲')"
                     :aria-pressed="outlinePinned"
                     @click="toggleOutlinePin"
                   >
@@ -5763,7 +5808,7 @@ const helpBlocked = computed(() => !!(
               class="recent-open-button"
               :disabled="busy"
               :aria-label="busy ? t('正在打开…') : t('打开本地仓库')"
-              :title="busy ? t('正在打开…') : t('打开本地仓库')"
+              :data-tooltip="busy ? t('正在打开…') : t('打开本地仓库')"
               @click="store.openWorkspace()"
             >
               <Plus :size="18" aria-hidden="true" />
@@ -5827,6 +5872,19 @@ const helpBlocked = computed(() => !!(
           >
             <Ruler :size="15" />{{ t('限制行宽') }}<Check
               v-if="limitPageWidth"
+              class="page-context-check"
+              :size="14"
+            />
+          </button>
+          <button
+            v-if="paneSource(store.activeId)"
+            type="button"
+            role="menuitemcheckbox"
+            :aria-checked="showAllLineNumbers"
+            @click="togglePageOption('lineNumbers')"
+          >
+            <ListOrdered :size="15" />{{ t('显示所有行号') }}<Check
+              v-if="showAllLineNumbers"
               class="page-context-check"
               :size="14"
             />
@@ -6113,7 +6171,7 @@ const helpBlocked = computed(() => !!(
               :aria-label="t('搜索文档名称和正文')"
               :placeholder="t('搜索文件名、路径或正文…')"
               @keydown.enter="searchResults[0] && openSearchResult(searchResults[0])"
-            /><button type="button" :aria-label="t('关闭搜索')" :title="t('关闭搜索')" @click="modal = ''">
+            /><button type="button" :aria-label="t('关闭搜索')" :data-tooltip="t('关闭搜索')" @click="modal = ''">
               <X :size="18" />
             </button>
           </div>

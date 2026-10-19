@@ -33,7 +33,7 @@ export function assistantSystemMessages(options: {
   rules?: { path: string; content: string }[];
 }): AssistantWireMessage[] {
   const names = new Set(options.tools.map(tool => tool.function.name));
-  const common = [...commonRules, assistantLanguagePolicy(options.locale ?? 'zh-CN', options.promptOrigin)];
+  const common = [...commonRules, assistantTaskPrompts.executionUpdates, assistantTaskPrompts.completionProtocol, assistantLanguagePolicy(options.locale ?? 'zh-CN', options.promptOrigin)];
   if (!names.size) common.push('当前连接未启用工具调用，无法读取额外工作区内容、修改或生成操作建议。用户要求操作文件时说明需在模型连接中开启“工具调用与文件操作”，不得声称已经操作。');
   else {
     common.push(names.has('edit_document')

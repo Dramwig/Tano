@@ -72,7 +72,7 @@ const groupStatus = (proposals: AssistantProposal[]) => [...new Set(proposals.ma
             <template v-if="!proposal.suggestionGroupId && ['ready', 'conflicted'].includes(proposal.status)">
               <button class="secondary-button" :disabled="busy" @click="emit('review', proposal)"><Search :size="14" />{{ t('查看差异') }}</button>
               <button v-if="proposal.preview && proposal.status === 'ready'" class="primary-button" :class="{ destructive: proposal.kind === 'delete' }" :disabled="busy || checks[proposal.id] === false" @click="emit('review', proposal, true)"><Check :size="14" />{{ proposal.kind === 'delete' ? t('删除文件') : proposal.kind === 'rename' ? t('应用重命名') : proposal.kind === 'move' ? t('应用移动') : t('应用修改') }}</button>
-              <button class="icon-button" :title="t('放弃建议')" :aria-label="t('放弃修改建议')" :disabled="busy" @click="emit('reject', proposal)"><X :size="15" /></button>
+              <button class="icon-button" :data-tooltip="t('放弃建议')" :aria-label="t('放弃修改建议')" :disabled="busy" @click="emit('reject', proposal)"><X :size="15" /></button>
             </template>
             <button v-if="proposal.status === 'unknown'" class="secondary-button" :disabled="busy" @click="emit('verify', proposal)"><Search :size="14" />{{ t('核对写入结果') }}</button>
           </div>

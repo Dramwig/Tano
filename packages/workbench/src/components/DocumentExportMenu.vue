@@ -86,7 +86,7 @@ onBeforeUnmount(() => {
 
 <template>
   <button ref="trigger" type="button" class="document-export-trigger" :disabled="disabled"
-    :title="disabled ? t('正在导出') : t('导出文档')" :aria-busy="disabled"
+    :data-tooltip="disabled ? t('正在导出') : t('导出文档')" :aria-busy="disabled"
     aria-haspopup="menu" :aria-expanded="open" :aria-controls="open ? panelId : undefined"
     @pointerenter="!disabled && show()" @pointerleave="scheduleClose"
     @click="show(true)" @keydown="triggerKeydown">

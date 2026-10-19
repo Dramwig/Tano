@@ -7,6 +7,7 @@ import { configureWorkbench, useWorkbenchRuntime } from '../runtime';
 import { useAssistantStore, useInlineAssistantStore } from './store';
 import { setUiLocale } from '../i18n';
 import { assistantLanguagePolicy, assistantTaskPrompts } from './language';
+import { assistantAnswerText, assistantDisplayParts } from './results';
 
 const fixture = vi.hoisted(() => ({ workspace: null as any }));
 vi.mock('../stores/workspace', () => ({ useWorkspaceStore: () => fixture.workspace }));
@@ -44,6 +45,121 @@ describe('assistant session coordination', () => {
     await vi.waitFor(() => expect(store.loading).toBe(false));
     return store;
   }
+  it.each(['inline', 'panel'] as const)('keeps progress-only %s requests running until the executor receives a final answer', async mode => {
+    const store = mode === 'inline' ? useInlineAssistantStore() : await ready();
+    await vi.waitFor(() => expect(store.loading).toBe(false));
+    await store.selectModel('test');
+    let finish!: () => void;
+    const gate = new Promise<void>(resolve => { finish = resolve; });
+    let requests = 0;
+    vi.mocked(transport.request).mockImplementation(async (_id, _request, _signal, chunk) => {
+      const first = ++requests === 1;
+      if (!first) await gate;
+      chunk(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {
+        content: first ? '[[tano:progress]]\n正在核对。' : '[[tano:final]]\n核对完成。',
+      }, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`));
+    });
+    store.prompt = '核对'; const sending = store.send();
+    await vi.waitFor(() => expect(requests).toBe(2));
+    const reply = store.session!.messages.at(-1)!;
+    expect(reply.state).toBe('running'); expect(reply.termination).toBeUndefined();
+    expect(store.busy).toBe(true); expect(assistantAnswerText(reply)).toBe('');
+    expect(assistantDisplayParts(reply).process).toHaveLength(1);
+    finish(); await sending;
+    expect(reply.state).toBe('completed'); expect(reply.termination?.reason).toBe('completed');
+    expect(assistantAnswerText(reply)).toBe('核对完成。'); expect(requests).toBe(2);
+    const saved = parseAssistantSession(JSON.parse(JSON.stringify(store.session!)));
+    expect(assistantAnswerText(saved.messages.at(-1)!)).toBe('核对完成。');
+  });
+  it.each(['cancel', 'disconnect'] as const)('preserves a real saved edit when the following answer ends with %s', async ending => {
+    const store = await ready(); await store.selectModel('test');
+    fixture.workspace.assistantSnapshot.mockResolvedValue({ id: '', workspaceId: 'workspace', fileId: 'abc123',
+      path: 'note.md', content: 'old', hash: 'old', origin: 'disk' });
+    store.files = ['abc123'];
+    let requests = 0;
+    vi.mocked(transport.request).mockImplementation(async (_id, _request, signal, chunk) => {
+      if (++requests === 1) {
+        chunk(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { tool_calls: [{ index: 0,
+          id: 'save', type: 'function', function: { name: 'edit_document', arguments: JSON.stringify({
+            sourceId: 'S1', oldText: 'old', newText: 'new', reason: 'requested edit',
+          }) } }] }, finish_reason: 'tool_calls' }] })}\n\ndata: [DONE]\n\n`));
+      } else {
+        chunk(new TextEncoder().encode('data: {"choices":[{"index":0,"delta":{"content":"[[tano:final]]\\n未完成的总结"}}]}\n\n'));
+        if (ending === 'cancel') await new Promise<void>((_resolve, reject) => signal.addEventListener('abort', () => reject(new Error('stopped')), { once: true }));
+      }
+    });
+    store.prompt = '将 old 改成 new'; const sending = store.send();
+    await vi.waitFor(() => expect(requests).toBe(2));
+    if (ending === 'cancel') store.stop();
+    await sending;
+    const reply = parseAssistantSession(JSON.parse(JSON.stringify(store.session!))).messages.at(-1)!;
+    expect(reply.termination?.reason).toBe(ending === 'cancel' ? 'cancelled' : 'incomplete');
+    expect(reply.proposals?.[0]).toMatchObject({ status: 'applied', applied: { after: 'new' } });
+    expect(reply.toolResults?.[0]).toMatchObject({ name: 'edit_document', status: 'succeeded' });
+    expect(assistantAnswerText(reply)).toBe('');
+    expect(assistantDisplayParts(reply).answer).toEqual([]);
+    expect(reply.content).toContain('未完成的总结');
+    expect(fixture.workspace.reviewAssistantProposal).toHaveBeenCalledOnce();
+  });
+  it.each(['no_progress', 'output_limit', 'empty_response'] as const)('persists %s as an unsuccessful run', async reason => {
+    const store = await ready(); await store.selectModel('test');
+    vi.mocked(transport.request).mockImplementation(async (_id, _request, _signal, chunk) => {
+      const content = reason === 'no_progress' ? '[[tano:progress]]\n仍在处理。' : reason === 'empty_response' ? '' : '[[tano:final]]\n未完成';
+      chunk(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content },
+        finish_reason: reason === 'output_limit' ? 'length' : 'stop' }] })}\n\ndata: [DONE]\n\n`));
+    });
+    store.prompt = '处理'; await store.send();
+    const reply = parseAssistantSession(JSON.parse(JSON.stringify(store.session!))).messages.at(-1)!;
+    expect(reply.state).toBe('failed'); expect(reply.termination?.reason).toBe(reason);
+    expect(assistantAnswerText(reply)).toBe(''); expect(assistantDisplayParts(reply).answer).toEqual([]);
+  });
+  it('streams updates, records real tool execution in order and persists only a distinct final answer', async () => {
+    const store = await ready(); await store.selectModel('test');
+    let finishModel!: () => void, finishSearch!: () => void;
+    const modelGate = new Promise<void>(resolve => { finishModel = resolve; });
+    fixture.workspace.assistantSearch = vi.fn(() => new Promise(resolve => { finishSearch = () => resolve([]); }));
+    let round = 0;
+    vi.mocked(transport.request).mockImplementation(async (_id, request, _signal, chunk) => {
+      const frame = (delta: unknown) => chunk(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta }] })}\n\n`));
+      if (++round === 1) {
+        frame({ content: '先搜索资料。' });
+        await modelGate;
+        frame({ tool_calls: [{ index: 0, id: 'search-one', type: 'function', function: { name: 'search_documents', arguments: '{"query":"资料"}' } }] });
+      } else {
+        expect(request.messages.at(-1)?.role).toBe('tool');
+        frame({ content: '没有找到相关资料。' });
+      }
+      chunk(new TextEncoder().encode('data: [DONE]\n\n'));
+    });
+    store.prompt = '查找资料';
+    const run = store.send();
+    await vi.waitFor(() => expect(store.session?.messages.at(-1)?.content).toBe('先搜索资料。'));
+    expect(fixture.workspace.assistantSearch).not.toHaveBeenCalled();
+    expect(store.busy).toBe(true);
+    finishModel();
+    await vi.waitFor(() => expect(fixture.workspace.assistantSearch).toHaveBeenCalledOnce());
+    const reply = store.session!.messages.at(-1)!;
+    expect(reply.activity?.map(item => item.kind)).toEqual(['text', 'tool']);
+    expect(reply.activity?.[1]).toMatchObject({ status: 'running' });
+    expect(reply.toolResults).toEqual([]);
+    expect(assistantAnswerText(reply)).toBe('');
+    expect(assistantDisplayParts(reply).process).toHaveLength(2);
+    finishSearch(); await run;
+    expect(reply.state).toBe('completed');
+    expect(reply.activity?.[1]).toMatchObject({ status: 'succeeded', resultIndex: 0 });
+    expect(assistantAnswerText(reply)).toBe('没有找到相关资料。');
+    const restored = parseAssistantSession(JSON.parse(JSON.stringify(vi.mocked(transport.saveSession).mock.calls.at(-1)![0])));
+    expect(assistantAnswerText(restored.messages.at(-1)!)).toBe('没有找到相关资料。');
+  });
+
+  it('marks restored in-flight tools as interrupted without replaying them', async () => {
+    history = [{ ...session(), messages: [{ id: 'reply', role: 'assistant', content: '', createdAt: 1, state: 'running',
+      activity: [{ kind: 'tool', name: 'read_document', status: 'running' }] }] }];
+    const store = await ready();
+    expect(store.session!.messages[0].activity?.[0]).toMatchObject({ status: 'interrupted' });
+    expect(store.session!.messages[0].state).toBe('interrupted');
+    expect(transport.request).not.toHaveBeenCalled();
+  });
   it.each(['inline', 'panel'] as const)('distinguishes built-in and user-entered English prompts in %s', async mode => {
     const store = mode === 'inline' ? useInlineAssistantStore() : await ready();
     await vi.waitFor(() => expect(store.loading).toBe(false));
@@ -190,7 +306,11 @@ describe('assistant session coordination', () => {
     await vi.waitFor(() => expect(store.pendingUserInput).not.toBeNull());
     const pending = store.pendingUserInput!;
     expect(pending.request.questions.map(question => question.id)).toEqual(['deadline', 'scope']);
+    expect(store.session!.messages.at(-1)?.activity?.map(item => item.kind)).toEqual(['text', 'tool', 'input']);
     expect(store.busy).toBe(true); expect(transport.request).toHaveBeenCalledOnce();
+    expect(store.session!.messages.at(-1)?.state).toBe('waiting');
+    expect(store.session!.messages.at(-1)?.termination).toBeUndefined();
+    expect(vi.mocked(transport.saveSession).mock.calls.at(-1)?.[0].messages.at(-1)?.state).toBe('waiting');
     pending.values[0] = '下周五'; pending.step = 1;
     store.opened = false; store.open();
     expect(store.pendingUserInput!.values[0]).toBe('下周五');
@@ -205,7 +325,10 @@ describe('assistant session coordination', () => {
     ] });
     const saved = parseAssistantSession(JSON.parse(JSON.stringify(store.session)));
     expect(saved.messages[1].userInputs![0].status).toBe('answered');
+    expect(saved.messages[1].state).toBe('completed');
+    expect(saved.messages[1].termination?.reason).toBe('completed');
     expect(saved.messages[1].content).toContain('根据你的回答继续');
+    expect(assistantAnswerText(saved.messages[1])).toBe('根据你的回答继续。');
   });
   it('retains answers after a persistence failure and accepts a single successful retry', async () => {
     askTwoQuestions();
@@ -228,13 +351,15 @@ describe('assistant session coordination', () => {
     else fixture.workspace.assistantEpoch++;
     await run; await store.submitUserInput(pending.request.id);
     expect(store.pendingUserInput).toBeNull(); expect(pending.request.status).toBe('cancelled');
+    if (action === 'stop') expect(store.session!.messages.at(-1)?.activity?.find(item => item.kind === 'tool')).toMatchObject({ status: 'interrupted' });
     expect(transport.request).toHaveBeenCalledOnce();
   });
-  it('restores unfinished question records as interrupted without replaying a tool call', async () => {
-    history = [{ ...session(), messages: [{ id: 'reply', role: 'assistant', content: '请补充', createdAt: 1, state: 'running',
+  it.each(['running', 'waiting'] as const)('restores %s question records as interrupted without replaying a tool call', async state => {
+    history = [{ ...session(), messages: [{ id: 'reply', role: 'assistant', content: '请补充', createdAt: 1, state,
       userInputs: [{ id: 'ask', contentOffset: 3, questions: [{ id: 'topic', question: '主题？' }], status: 'pending' }] }] }];
     const store = await ready();
     expect(store.session!.messages[0].state).toBe('interrupted');
+    expect(store.session!.messages[0].termination?.reason).toBe('interrupted');
     expect(store.session!.messages[0].userInputs![0].status).toBe('cancelled');
     expect(store.pendingUserInput).toBeNull();
     expect(transport.request).not.toHaveBeenCalled();

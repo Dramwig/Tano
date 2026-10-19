@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseAssistantSession, parseAssistantQuestions, parseAssistantAnswers } from '@tano/protocol';
 import type { AssistantMessage, AssistantProposal, AssistantToolResult } from '@tano/protocol';
-import { assistantHistory, assistantMessageParts } from './results';
+import { assistantHistory, assistantMessageParts, assistantDisplayParts, assistantAnswerText } from './results';
 
 const message = (extra: Partial<AssistantMessage> = {}): AssistantMessage => ({
   id: 'reply', role: 'assistant', content: '我已经提出了创建 test.md 的建议，请采纳。', createdAt: 1, state: 'completed', ...extra,
@@ -12,6 +12,51 @@ const proposal = (status: AssistantProposal['status']): AssistantProposal => ({
 });
 
 describe('application-recorded assistant results', () => {
+  it('validates termination separately from text phases and retains multiple final text spans', () => {
+    const parse = (value: AssistantMessage) => parseAssistantSession({ version: 1, id: 'session-test', workspaceId: 'workspace',
+      title: 'test', createdAt: 1, updatedAt: 1, revision: 0, messages: [value] });
+    const reply = message({ content: 'workpart1part2', termination: { reason: 'completed' }, activity: [
+      { kind: 'text', start: 0, end: 4, phase: 'working' },
+      { kind: 'text', start: 4, end: 9, phase: 'answer' },
+      { kind: 'text', start: 9, end: 14, phase: 'answer' },
+    ] });
+    expect(assistantAnswerText(parse(reply).messages[0])).toBe('part1\n\npart2');
+    for (const extra of [{ state: 'running' }, { state: 'waiting' }, { state: 'failed' }, { role: 'user' },
+      { termination: { reason: 'bogus' } }, { termination: { reason: 'round_limit' } }])
+      expect(() => parse({ ...reply, ...extra } as AssistantMessage)).toThrow('消息格式');
+    expect(parse(message({ state: 'waiting' })).messages[0].state).toBe('waiting');
+  });
+  it.each(['failed', 'cancelled', 'interrupted'] as const)('never exposes incomplete %s prose as a final answer, including legacy records', state => {
+    for (const activity of [undefined, [{ kind: 'text' as const, start: 0, end: 4, phase: 'answer' as const }]]) {
+      const reply = message({ state, content: 'part', activity });
+      expect(assistantAnswerText(reply)).toBe('');
+      expect(assistantDisplayParts(reply).answer).toEqual([]);
+      expect(assistantDisplayParts(reply).process).toHaveLength(1);
+    }
+  });
+  it('separates intermediate work from the final answer and validates persisted activity references', () => {
+    const reply = message({ content: '先查资料。\n\n最终总结。', toolResults: [{ name: 'search_documents', status: 'succeeded' }], activity: [
+      { kind: 'text', start: 0, end: 5, phase: 'working' },
+      { kind: 'tool', name: 'search_documents', status: 'succeeded', resultIndex: 0 },
+      { kind: 'text', start: 7, end: 12, phase: 'answer' },
+    ] });
+    const parse = (value: AssistantMessage) => parseAssistantSession({ version: 1, id: 'session-test', workspaceId: 'workspace',
+      title: 'test', createdAt: 1, updatedAt: 1, revision: 0, messages: [value] });
+    const restored = parse(JSON.parse(JSON.stringify(reply))).messages[0];
+    expect(assistantDisplayParts(restored).process.map(part => part.kind)).toEqual(['text', 'tool']);
+    expect(assistantAnswerText(restored)).toBe('最终总结。');
+    expect(assistantAnswerText(message())).toBe(message().content);
+    expect(assistantDisplayParts(message()).process).toEqual([]);
+    for (const activity of [
+      [{ kind: 'text', start: 0, end: 99, phase: 'working' }],
+      [{ kind: 'tool', name: 'search_documents', status: 'succeeded', resultIndex: 1 }],
+      [{ kind: 'tool', name: 'read_document', status: 'succeeded', resultIndex: 0 }],
+      [{ kind: 'tool', name: 'search_documents', status: 'failed', resultIndex: 0 }],
+      [{ kind: 'input', inputId: 'missing' }],
+      [reply.activity![2], reply.activity![0]],
+      [{ kind: 'text', start: 0, end: 4, phase: 'answer' }, { kind: 'text', start: 4, end: 9, phase: 'working' }],
+    ]) expect(() => parse({ ...reply, activity } as AssistantMessage)).toThrow('执行过程');
+  });
   it('keeps question answers between the preceding explanation and the continued response', () => {
     const input = { id: 'ask', contentOffset: 3, questions: [{ id: 'topic', question: '主题？' }, { id: 'reader', question: '读者？' }],
       answers: [{ questionId: 'topic', answer: '上线计划' }, { questionId: 'reader', answer: null }], status: 'answered' as const };

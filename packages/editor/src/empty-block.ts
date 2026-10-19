@@ -3,6 +3,7 @@ import type { Node } from '@milkdown/kit/prose/model';
 import { NodeSelection, Plugin, Selection, TextSelection } from '@milkdown/kit/prose/state';
 import type { EditorState, Transaction } from '@milkdown/kit/prose/state';
 import { closeHistory } from '@milkdown/kit/prose/history';
+import { isCalloutHeader } from './callout';
 
 function emptyBlock(node: Node): boolean {
   if (node.isTextblock) return node.content.size === 0;
@@ -34,7 +35,7 @@ function emptyBlock(node: Node): boolean {
       child.type.name === 'paragraph' &&
       child.childCount === 1 &&
       child.firstChild?.isText &&
-      /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]$/i.test(child.textContent)
+      isCalloutHeader(child.textContent)
     )
       return;
     if (!emptyBlock(child)) empty = false;

@@ -269,7 +269,7 @@ function toggle(value: string) {
               type="button"
               class="data-current-clear"
               :aria-label="t('清除选择')"
-              :title="t('清除选择')"
+              :data-tooltip="t('清除选择')"
               @click="selectOption(null)"
             >
               <X :size="10" />

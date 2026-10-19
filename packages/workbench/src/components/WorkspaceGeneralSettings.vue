@@ -97,7 +97,7 @@ const sidebarOptions = [
   <section class="settings-section" :aria-label="t('工作区设置')">
     <h3>{{ t('工作区设置') }}</h3>
     <div class="settings-card">
-      <form class="settings-row settings-row-with-controls" @submit.prevent="saveName">
+      <form class="settings-row settings-row-with-controls" data-settings-key="workspace-name" @submit.prevent="saveName">
         <div>
           <strong><label for="workspace-setting-name">{{ t('工作区名称') }}</label></strong>
           <p>{{ t('最多 65 个字符，显示在侧栏和工作区菜单中。') }}</p>
@@ -108,7 +108,7 @@ const sidebarOptions = [
           <button class="settings-button" type="submit" :disabled="disabled || !nameDirty">{{ saving ? t('保存中…') : t('保存') }}</button>
         </div>
       </form>
-      <div class="settings-row settings-row-with-controls">
+      <div class="settings-row settings-row-with-controls" data-settings-key="workspace-icon">
         <div><strong>{{ t('图标') }}</strong><p>{{ t('选择内置图标、表情符号或上传图片，显示在侧栏和工作区菜单中。') }}</p></div>
         <div class="workspace-icon-setting">
           <div class="settings-controls workspace-icon-controls">
@@ -117,7 +117,7 @@ const sidebarOptions = [
           </div>
         </div>
       </div>
-      <div class="settings-row">
+      <div class="settings-row" data-settings-key="workspace-home-page">
         <div><strong>{{ t('默认打开页面') }}</strong><p>{{ t('首次打开时进入此页面；已有会话会恢复上次打开的标签页。') }}</p></div>
         <select :aria-label="t('默认打开页面')" :value="settings.homePageId" :disabled="disabled" @change="change({ key: 'homePageId', value: ($event.target as HTMLSelectElement).value, previous: settings.homePageId })">
           <option value="">{{ t('自动选择') }}</option>
@@ -125,7 +125,7 @@ const sidebarOptions = [
           <option v-for="page in pages" :key="page.id" :value="page.id">{{ page.path }}</option>
         </select>
       </div>
-      <div class="settings-row">
+      <div class="settings-row" data-settings-key="workspace-title-source">
         <div>
           <strong>{{ t('页面标题来源') }}</strong>
           <p>{{ t('适用于当前工作区的所有页面。仅“YAML title 优先”在字段为空或无效时使用文件名。') }}</p>
@@ -148,7 +148,7 @@ const sidebarOptions = [
     <h3>{{ t('侧栏') }}</h3>
     <div class="settings-card">
       <template v-for="option in sidebarOptions" :key="option.key">
-        <div v-if="option.key !== 'showCollaborationViews' || mode === 'web'" class="settings-row">
+        <div v-if="option.key !== 'showCollaborationViews' || mode === 'web'" class="settings-row" :data-settings-key="`workspace-${option.key.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}`">
           <div><strong>{{ option.label }}</strong><p>{{ option.description }}</p></div>
           <button type="button" class="settings-switch" :class="{ on: settings[option.key] }" role="switch" :aria-label="option.label" :aria-checked="settings[option.key]" :disabled="disabled" @click="change({ key: option.key, value: !settings[option.key], previous: settings[option.key] })"><span /></button>
         </div>
@@ -158,7 +158,7 @@ const sidebarOptions = [
   <section class="settings-section" :aria-label="t('导出')">
     <h3>{{ t('导出') }}</h3>
     <div class="settings-card">
-      <div class="settings-row"><div><strong>{{ t('工作区内容') }}</strong><p>{{ t('将已保存的 Markdown、附件和工作区设置导出为 ZIP，保留文件夹结构。') }}</p></div><button type="button" class="settings-button" :disabled="!workspace?.id || exporting" @click="emit('export', workspace!.id!)"><Download :size="14" />{{ exporting ? t('导出中…') : t('导出') }}</button></div>
+      <div class="settings-row" data-settings-key="workspace-export"><div><strong>{{ t('工作区内容') }}</strong><p>{{ t('将已保存的 Markdown、附件和工作区设置导出为 ZIP，保留文件夹结构。') }}</p></div><button type="button" class="settings-button" :disabled="!workspace?.id || exporting" @click="emit('export', workspace!.id!)"><Download :size="14" />{{ exporting ? t('导出中…') : t('导出') }}</button></div>
       <slot name="members-export" />
     </div>
     <p v-if="exportError" class="settings-notice" role="alert">{{ exportError }}</p>
@@ -166,20 +166,20 @@ const sidebarOptions = [
   <section class="settings-section" :aria-label="t('浏览统计')">
     <h3>{{ t('浏览统计') }}</h3>
     <div class="settings-card">
-      <div class="settings-row is-disabled"><div><strong>{{ t('保存并显示页面浏览统计') }} <span class="settings-scope">{{ t('尚未开放') }}</span></strong><p>{{ t('页面浏览量统计尚未实现，当前不会收集浏览数据。') }}</p></div><button type="button" class="settings-switch" role="switch" :aria-label="t('保存并显示页面浏览统计')" aria-checked="false" disabled><span /></button></div>
+      <div class="settings-row is-disabled" data-settings-key="workspace-page-views"><div><strong>{{ t('保存并显示页面浏览统计') }} <span class="settings-scope">{{ t('尚未开放') }}</span></strong><p>{{ t('页面浏览量统计尚未实现，当前不会收集浏览数据。') }}</p></div><button type="button" class="settings-switch" role="switch" :aria-label="t('保存并显示页面浏览统计')" aria-checked="false" disabled><span /></button></div>
     </div>
   </section>
   <section class="settings-section" :aria-label="t('人物')">
     <h3>{{ t('人物') }}</h3>
     <div class="settings-card">
-      <div class="settings-row"><div><strong>{{ t('人物目录') }}</strong><p>{{ t('在工作区对象列表中显示人物；关闭后仍可通过已有引用访问人物。') }}</p></div><button type="button" class="settings-switch" :class="{ on: settings.showPeopleDirectory }" role="switch" :aria-label="t('人物目录')" :aria-checked="settings.showPeopleDirectory" :disabled="disabled" @click="change({ key: 'showPeopleDirectory', value: !settings.showPeopleDirectory, previous: settings.showPeopleDirectory })"><span /></button></div>
+      <div class="settings-row" data-settings-key="workspace-people"><div><strong>{{ t('人物目录') }}</strong><p>{{ t('在工作区对象列表中显示人物；关闭后仍可通过已有引用访问人物。') }}</p></div><button type="button" class="settings-switch" :class="{ on: settings.showPeopleDirectory }" role="switch" :aria-label="t('人物目录')" :aria-checked="settings.showPeopleDirectory" :disabled="disabled" @click="change({ key: 'showPeopleDirectory', value: !settings.showPeopleDirectory, previous: settings.showPeopleDirectory })"><span /></button></div>
       <div v-for="label in ['在人物资料中显示近期活动', '人物悬浮卡片']" :key="label" class="settings-row is-disabled"><div><strong>{{ t(label) }} <span class="settings-scope">{{ t('尚未开放') }}</span></strong><p>{{ label === '人物悬浮卡片' ? t('悬停时展示人物资料的卡片尚未实现。') : t('人物的编辑与评论活动展示尚未实现。') }}</p></div><button type="button" class="settings-switch" role="switch" :aria-label="t(label)" aria-checked="false" disabled><span /></button></div>
     </div>
   </section>
   <section v-if="workspace?.id" class="settings-section" :aria-label="t('工作区 ID')">
     <h3>{{ t('工作区 ID') }}</h3>
     <div class="settings-card">
-      <div class="settings-row settings-row-with-controls"><div><strong>{{ t('工作区 ID') }}</strong></div><div class="settings-controls workspace-id-control"><code>{{ workspace.id }}</code><button type="button" class="settings-button" :aria-label="copied ? t('已复制工作区 ID') : t('复制工作区 ID')" @click="copyId"><Check v-if="copied" :size="14" /><Copy v-else :size="14" /></button></div></div>
+      <div class="settings-row settings-row-with-controls" data-settings-key="workspace-id"><div><strong>{{ t('工作区 ID') }}</strong></div><div class="settings-controls workspace-id-control"><code>{{ workspace.id }}</code><button type="button" class="settings-button" :aria-label="copied ? t('已复制工作区 ID') : t('复制工作区 ID')" @click="copyId"><Check v-if="copied" :size="14" /><Copy v-else :size="14" /></button></div></div>
     </div>
   </section>
 </template>

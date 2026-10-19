@@ -253,12 +253,12 @@ const issueText = (issue: ImportIssue) => `${issue.name}：${issue.message}`;
       <div class="import-main">
         <header class="import-heading" :class="{ 'import-heading-detail': prepared }">
           <div class="import-heading-main">
-            <button v-if="historyOpen || prepared || selectedProvider" class="import-back-button" type="button" :title="t('返回导入来源')" :aria-label="t('返回导入来源')" :disabled="saving" @click="back"><ArrowLeft :size="18" /></button>
+            <button v-if="historyOpen || prepared || selectedProvider" class="import-back-button" type="button" :data-tooltip="t('返回导入来源')" :aria-label="t('返回导入来源')" :disabled="saving" @click="back"><ArrowLeft :size="18" /></button>
             <div><h2 :id="titleId">{{ detailTitle }}</h2></div>
           </div>
           <div class="import-heading-actions">
             <button v-if="!historyOpen && !prepared && !selectedProvider" class="import-history-button" type="button" :disabled="busy" @click="openHistory"><History :size="16" />{{ t('导入历史') }}<span v-if="records.length">{{ records.length }}</span></button>
-            <button class="import-icon-button" type="button" :title="t('关闭导入面板')" :aria-label="t('关闭导入面板')" :disabled="saving" @click="close"><X :size="19" /></button>
+            <button class="import-icon-button" type="button" :data-tooltip="t('关闭导入面板')" :aria-label="t('关闭导入面板')" :disabled="saving" @click="close"><X :size="19" /></button>
           </div>
         </header>
         <div class="import-scroll panel-scrollbar">
@@ -269,9 +269,9 @@ const issueText = (issue: ImportIssue) => `${issue.name}：${issue.message}`;
             <article v-for="record in records" :key="record.id" class="import-record" :aria-label="t('导入记录')">
               <div class="import-record-heading"><CheckCircle2 v-if="record.paths.length" :size="20" class="import-tone-green" /><CircleAlert v-else :size="20" class="import-tone-red" />
                 <div><strong>{{ record.folder }}</strong><small>{{ new Date(record.time).toLocaleString(uiLocale) }}</small></div>
-                <button class="import-icon-button" :disabled="!record.paths.length" :title="t('打开导入的页面')" :aria-label="t('打开导入的页面')" @click="openRecord(record)"><ArrowUpFromLine :size="17" /></button></div>
+                <button class="import-icon-button" :disabled="!record.paths.length" :data-tooltip="t('打开导入的页面')" :aria-label="t('打开导入的页面')" @click="openRecord(record)"><ArrowUpFromLine :size="17" /></button></div>
               <p>{{ record.sourceCount }} {{ t('个来源文件 ·') }} {{ record.paths.length }} {{ t('个页面已导入') }}</p>
-              <details v-if="record.paths.length" class="import-record-pages"><summary>{{ t('已导入的页面（') }}{{ record.paths.length }}）</summary><ul><li v-for="path in record.paths" :key="path"><button type="button" :title="path" @click="openImportedPage(path)"><FileText :size="14" /><span>{{ path }}</span></button></li></ul></details>
+              <details v-if="record.paths.length" class="import-record-pages"><summary>{{ t('已导入的页面（') }}{{ record.paths.length }}）</summary><ul><li v-for="path in record.paths" :key="path"><button type="button" :data-tooltip="path" @click="openImportedPage(path)"><FileText :size="14" /><span>{{ path }}</span></button></li></ul></details>
               <details v-if="record.issues.length" class="import-issues"><summary><CircleAlert :size="14" />{{ record.issues.length }} {{ t('条提示') }}</summary><p v-for="(issue, index) in record.issues" :key="index">{{ issueText(issue) }}</p></details>
             </article>
           </section>

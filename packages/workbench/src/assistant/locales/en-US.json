@@ -2,6 +2,7 @@
   "starters": {
     "summary": "Summarize this note",
     "polish": "Polish this note",
+    "translate": "Translate this note",
     "translateEnglish": "Translate to English",
     "translateChinese": "Translate to Chinese",
     "tasks": "Extract action items"
@@ -92,5 +93,36 @@
     "read": "Simulated browser response: read “{0}”.",
     "noSources": "Simulated browser response: no reference document is attached."
   },
-  "chatAction": "Chat"
+  "chatAction": "Chat",
+  "activity": {
+    "title": "Work details",
+    "working": "Working",
+    "calls": "Tool calls: {0}",
+    "failures": "{0} failed",
+    "running": "Running",
+    "succeeded": "Completed",
+    "failed": "Failed",
+    "interrupted": "Interrupted"
+  },
+  "run": {
+    "waiting": "Waiting for your answer",
+    "incomplete": "The task has not been confirmed complete. A complete final answer was not received.",
+    "succeeded": "Completed tool calls: {0}",
+    "failed": "Failed: {0}",
+    "interrupted": "Interrupted: {0}",
+    "saved": "Saved changes",
+    "review": "Suggestions awaiting review",
+    "uncertain": "Operations awaiting verification",
+    "reasons": {
+      "completed": "Run ended",
+      "cancelled": "Stopped",
+      "interrupted": "Previous run interrupted",
+      "round_limit": "Request round limit reached",
+      "no_progress": "Paused: no progress over consecutive rounds",
+      "output_limit": "Output limit reached",
+      "incomplete": "Response was incomplete",
+      "empty_response": "No final answer received",
+      "error": "Run did not complete"
+    }
+  }
 }

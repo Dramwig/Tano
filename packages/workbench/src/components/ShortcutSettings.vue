@@ -51,7 +51,7 @@ function resetAll() { cancel(); emit('change', { ...defaultShortcutBindings }); 
     <section v-for="group in groups" :key="group.label" class="settings-section" :aria-label="group.label + t('快捷键')">
       <h3>{{ group.label }}</h3>
       <div class="shortcut-settings-card">
-        <div v-for="item in group.items" :key="item.id" class="shortcut-settings-row">
+        <div v-for="item in group.items" :key="item.id" class="shortcut-settings-row" :data-settings-key="`shortcut-${item.id}`">
           <div class="shortcut-settings-name">
             <strong>{{ item.label }}</strong>
             <p v-if="'scope' in item">{{ item.scope }}</p>
@@ -63,15 +63,15 @@ function resetAll() { cancel(); emit('change', { ...defaultShortcutBindings }); 
               :class="{ 'is-recording': recording === item.id }"
               :aria-label="t('设置{0}快捷键', [item.label])"
               :aria-pressed="recording === item.id"
-              :title="t('修改快捷键')"
+              :data-tooltip="t('修改快捷键')"
               @click="start(item.id)"
               @keydown="capture($event, item.id)"
               @blur="recording === item.id && cancel()"
             ><kbd>{{ recording === item.id ? t('请按下快捷键…') : shortcutLabel(bindings[item.id]).replaceAll(' + ', '+') }}</kbd><Pencil :size="13" :stroke-width="1.5" /></button>
           </div>
           <div class="shortcut-settings-row-actions">
-            <button v-if="bindings[item.id] !== item.default" type="button" class="shortcut-icon-button" :aria-label="t('恢复{0}默认快捷键', [item.label])" :title="t('恢复默认')" @click="reset(item.id)"><RotateCcw :size="14" :stroke-width="1.5" /></button>
-            <button type="button" class="shortcut-icon-button shortcut-clear" :disabled="!bindings[item.id]" :aria-label="t('清除{0}快捷键', [item.label])" :title="t('清除快捷键')" @click="clear(item.id)"><Trash2 :size="14" :stroke-width="1.5" /></button>
+            <button v-if="bindings[item.id] !== item.default" type="button" class="shortcut-icon-button" :aria-label="t('恢复{0}默认快捷键', [item.label])" :data-tooltip="t('恢复默认')" @click="reset(item.id)"><RotateCcw :size="14" :stroke-width="1.5" /></button>
+            <button type="button" class="shortcut-icon-button shortcut-clear" :disabled="!bindings[item.id]" :aria-label="t('清除{0}快捷键', [item.label])" :data-tooltip="t('清除快捷键')" @click="clear(item.id)"><Trash2 :size="14" :stroke-width="1.5" /></button>
           </div>
         </div>
       </div>

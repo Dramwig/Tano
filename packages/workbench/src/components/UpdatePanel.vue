@@ -40,7 +40,7 @@ function activate() {
       class="update-button"
       :class="{ 'has-update': state.phase === 'available' || state.phase === 'ready' }"
       :disabled="state.busy"
-      :title="hint"
+      :data-tooltip="hint"
       @click="activate"
     >
       <LoaderCircle v-if="state.busy" :size="14" class="update-spinner" />

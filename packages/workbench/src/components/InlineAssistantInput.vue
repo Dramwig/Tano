@@ -134,7 +134,7 @@ onBeforeUnmount(() => {
       <form v-if="state === 'input'" class="inline-assistant-input" @submit.prevent="submit">
         <AssistantButterfly :size="22" motion="none" />
         <input ref="input" :value="value" maxlength="20000" :aria-label="t('输入助手任务')" :placeholder="placeholder" @input="emit('update:value', ($event.target as HTMLInputElement).value)" @keydown.esc.prevent="emit('close')" />
-        <button type="submit" class="inline-assistant-send" :disabled="!value.trim()" :aria-label="t('发送给助手')" :title="t('发送')"><ChevronRight :size="17" /></button>
+        <button type="submit" class="inline-assistant-send" :disabled="!value.trim()" :aria-label="t('发送给助手')" :data-tooltip="t('发送')"><ChevronRight :size="17" /></button>
       </form>
       <div v-else-if="busy" class="inline-assistant-state">
         <AssistantButterfly :size="22" motion="fly" />
@@ -142,7 +142,7 @@ onBeforeUnmount(() => {
           <span class="inline-assistant-thinking-text">{{ progressText }}</span>
           <span class="inline-assistant-thinking-dots" aria-hidden="true"><i /><i /><i /></span>
         </span>
-        <button type="button" class="inline-assistant-stop" :aria-label="t('停止助手生成')" :title="t('停止生成')" @click="emit('stop')"><Square :size="13" fill="currentColor" /></button>
+        <button type="button" class="inline-assistant-stop" :aria-label="t('停止助手生成')" :data-tooltip="t('停止生成')" @click="emit('stop')"><Square :size="13" fill="currentColor" /></button>
       </div>
       <div v-else class="inline-assistant-state inline-assistant-complete" :class="{ 'inline-assistant-expanded': expanded }">
         <AssistantButterfly :size="22" motion="none" />
@@ -154,20 +154,20 @@ onBeforeUnmount(() => {
         <span v-else :id="responseId" ref="preview" class="inline-assistant-message" :title="resultText">{{ resultText }}</span>
         <div class="inline-assistant-actions">
         <button v-if="canExpand" type="button" class="inline-assistant-action" :aria-expanded="expanded" :aria-controls="responseId"
-          :aria-label="expanded ? t('收起回复') : t('展开回复')" :title="expanded ? t('收起回复') : t('展开回复')" @click="toggleExpanded">
+          :aria-label="expanded ? t('收起回复') : t('展开回复')" :data-tooltip="expanded ? t('收起回复') : t('展开回复')" @click="toggleExpanded">
           <ChevronUp v-if="expanded" :size="16" /><ChevronDown v-else :size="16" />
         </button>
         <template v-if="state === 'completed'">
-          <button type="button" class="inline-assistant-action" :aria-label="t('有帮助')" :title="t('有帮助')"><ThumbsUp :size="15" /></button>
-          <button type="button" class="inline-assistant-action" :aria-label="t('没帮助')" :title="t('没帮助')"><ThumbsDown :size="15" /></button>
-          <button type="button" class="inline-assistant-action" :aria-label="t('查看修改')" :title="t('查看修改')"><MoreHorizontal :size="16" /></button>
+          <button type="button" class="inline-assistant-action" :aria-label="t('有帮助')" :data-tooltip="t('有帮助')"><ThumbsUp :size="15" /></button>
+          <button type="button" class="inline-assistant-action" :aria-label="t('没帮助')" :data-tooltip="t('没帮助')"><ThumbsDown :size="15" /></button>
+          <button type="button" class="inline-assistant-action" :aria-label="t('查看修改')" :data-tooltip="t('查看修改')"><MoreHorizontal :size="16" /></button>
           <button type="button" class="inline-assistant-conversation" @click="emit('conversation')"><MessageCircle :size="15" />{{ t('对话') }}</button>
-          <button type="button" class="inline-assistant-action" :aria-label="t('撤销修改')" :title="t('撤销修改')" @click="emit('undo')"><Undo2 :size="15" /></button>
-          <button type="button" class="inline-assistant-done" :aria-label="t('关闭')" :title="t('关闭')" @click="emit('close')"><Check :size="15" /></button>
+          <button type="button" class="inline-assistant-action" :aria-label="t('撤销修改')" :data-tooltip="t('撤销修改')" @click="emit('undo')"><Undo2 :size="15" /></button>
+          <button type="button" class="inline-assistant-done" :aria-label="t('关闭')" :data-tooltip="t('关闭')" @click="emit('close')"><Check :size="15" /></button>
         </template>
         <template v-else>
           <button type="button" class="inline-assistant-conversation" @click="emit('conversation')"><MessageCircle :size="15" />{{ t('对话') }}</button>
-          <button type="button" class="inline-assistant-action" :aria-label="t('关闭')" :title="t('关闭')" @click="emit('close')"><X :size="15" /></button>
+          <button type="button" class="inline-assistant-action" :aria-label="t('关闭')" :data-tooltip="t('关闭')" @click="emit('close')"><X :size="15" /></button>
         </template>
         </div>
       </div>

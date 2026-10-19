@@ -272,7 +272,7 @@ onBeforeUnmount(() => {
       <p class="settings-notice" role="status">{{ t('浏览器演示使用模拟连接，暂不支持修改模型连接。') }}</p>
     </template>
     <template v-else>
-      <section class="settings-section" aria-labelledby="assistant-connections-title">
+      <section class="settings-section" data-settings-key="assistant-connections" aria-labelledby="assistant-connections-title">
         <div class="assistant-connections-heading">
           <h3 id="assistant-connections-title">{{ t('模型连接') }}</h3>
           <button v-if="assistant.canConfigure !== false" ref="addButton" type="button" class="assistant-add-connection" aria-haspopup="dialog" @click="addConnection"><Plus :size="15" />{{ t('添加连接') }}</button>
@@ -290,7 +290,7 @@ onBeforeUnmount(() => {
                 :disabled="saving || assistant.busy || assistant.loading || testingId === connection.id"
                 v-if="!connection.managed"
                 :aria-label="t('删除连接 {0}', [connection.name])"
-                :title="t('删除模型连接')"
+                :data-tooltip="t('删除模型连接')"
                 aria-haspopup="dialog"
                 @click="confirmRemoval(connection, $event)"
               ><Trash2 :size="15" /></button>
@@ -298,7 +298,7 @@ onBeforeUnmount(() => {
                 type="button"
                 class="icon-button assistant-connection-more"
                 :aria-label="t('更多操作 {0}', [connection.name])"
-                :title="t('更多操作')"
+                :data-tooltip="t('更多操作')"
                 aria-haspopup="menu"
                 :aria-expanded="menuConnectionId === connection.id"
                 :aria-controls="menuConnectionId === connection.id ? 'assistant-connection-actions' : undefined"
@@ -337,7 +337,7 @@ onBeforeUnmount(() => {
       <form class="assistant-connection-form" :aria-busy="saving" @submit.prevent="saveConnection">
         <header class="assistant-form-heading">
           <h2 id="assistant-connection-editor-title">{{ assistant.connections.some(connection => connection.id === draft?.id) ? t('编辑连接') : t('新建连接') }}</h2>
-          <button type="button" class="assistant-close-form" :aria-label="t('关闭连接面板')" :title="t('关闭')" :disabled="saving" @click="closeEditor"><X :size="18" /></button>
+          <button type="button" class="assistant-close-form" :aria-label="t('关闭连接面板')" :data-tooltip="t('关闭')" :disabled="saving" @click="closeEditor"><X :size="18" /></button>
         </header>
         <div class="assistant-form-scroll">
           <fieldset :disabled="saving" class="assistant-form-fields">
@@ -352,7 +352,7 @@ onBeforeUnmount(() => {
                 <label for="assistant-api-key">{{ t('API 密钥') }}</label>
                 <div class="assistant-secret-input">
                   <input id="assistant-api-key" v-model="secret" :type="secretVisible ? 'text' : 'password'" maxlength="2000" autocomplete="new-password" autocapitalize="off" :spellcheck="false" :placeholder="hasSavedSecret && !secretEditing ? '••••••••••••••••••••••••••••••••' : ''" :title="hasSavedSecret && !secret ? t('已保存；留空保留当前密钥') : undefined" @focus="secretEditing = true" />
-                  <button type="button" class="assistant-secret-toggle" :aria-label="secretToggleLabel" :aria-pressed="secretVisible" aria-controls="assistant-api-key" :disabled="!secret" :title="!secret ? (hasSavedSecret ? t('已保存的密钥不回显，输入新密钥后可查看') : t('输入密钥后可查看')) : secretToggleLabel" @click="secretVisible = !secretVisible">
+                  <button type="button" class="assistant-secret-toggle" :aria-label="secretToggleLabel" :aria-pressed="secretVisible" aria-controls="assistant-api-key" :disabled="!secret" :data-tooltip="!secret ? (hasSavedSecret ? t('已保存的密钥不回显，输入新密钥后可查看') : t('输入密钥后可查看')) : secretToggleLabel" @click="secretVisible = !secretVisible">
                     <EyeOff v-if="secretVisible" :size="16" /><Eye v-else :size="16" />
                   </button>
                 </div>

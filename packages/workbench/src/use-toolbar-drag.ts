@@ -14,6 +14,7 @@ export function useToolbarDrag(
   editorElement: () => HTMLElement | undefined,
   commit: (mode: ToolbarMode) => void,
   focusEditor: () => void,
+  tap?: () => void,
 ) {
   const drag = shallowRef<ToolbarDrag | null>(null);
   let pending: {
@@ -88,6 +89,7 @@ export function useToolbarDrag(
     cleanup();
     if (current?.target) commit(current.target);
     else if (wasDragging) focusEditor();
+    else tap?.();
   }
 
   function start(event: PointerEvent) {

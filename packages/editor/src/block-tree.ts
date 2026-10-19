@@ -89,6 +89,30 @@ export function deleteBlock(state: EditorState, pos: number): Transaction | null
   return tr;
 }
 
+/** Delete explicit block roots in one undoable transaction. */
+export function deleteBlocks(state: EditorState, positions: readonly number[]): Transaction | null {
+  if (!positions.length) return null;
+  const entries = blockTree(state.doc);
+  const selected = positions
+    .map(pos => entries.find(entry => entry.pos === pos))
+    .filter((entry): entry is BlockEntry => !!entry)
+    .sort((a, b) => b.pos - a.pos);
+  if (selected.length !== positions.length) return null;
+
+  const tr = state.tr;
+  for (const original of selected) {
+    const pos = tr.mapping.map(original.pos, -1);
+    const source = blockTree(tr.doc).find(entry => entry.pos === pos);
+    if (!source) return null;
+    const columns = new Set<number>();
+    detachBlock(tr, source, -2, columns);
+    collapseColumns(tr, columns, tr.mapping.map(pos, -1));
+  }
+  const anchor = tr.mapping.map(Math.min(...positions), -1);
+  tr.setSelection(Selection.near(tr.doc.resolve(Math.min(anchor, tr.doc.content.size))));
+  return tr;
+}
+
 /** Move an entire subtree, including across containers, without ProseMirror fitting away content. */
 export function moveBlockTo(
   state: EditorState,

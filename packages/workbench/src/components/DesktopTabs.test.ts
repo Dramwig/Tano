@@ -112,11 +112,11 @@ it('labels the fullscreen assistant tab and restores the document label when its
   app = createApp(() => h(DesktopTabs, { assistantTab: assistantTab.value }));
   app.mount(root.querySelector('.desktop-window-tab-slot')!);
   const tab = root.querySelector<HTMLButtonElement>('[data-id="b"] [role="tab"]')!;
-  expect(tab.title).toBe('Tano 助手');
+  expect(tab.dataset.tooltip).toBe('Tano 助手');
   expect(tab.querySelector('.lucide-bot-icon')).not.toBeNull();
   expect(root.querySelector('[aria-label="关闭 Tano 助手"]')).not.toBeNull();
   assistantTab.value = undefined; await nextTick();
-  expect(tab.title).toBe('b.md');
+  expect(tab.dataset.tooltip).toBe('b.md');
   expect(tab.querySelector('.desktop-tab-label')!.textContent).toBe('b');
   expect(tab.querySelector('.lucide-file-text-icon')).not.toBeNull();
 });
@@ -150,7 +150,7 @@ it('renders extension labels and icons and prevents detaching window-local views
   fixture.store.activeId = 'view:sample';
   app = createApp(DesktopTabs, { detachable: true });
   app.mount(root.querySelector('.desktop-window-tab-slot')!);
-  const tab = root.querySelector<HTMLElement>('[role="tab"][title="扩展页面"]')!;
+  const tab = root.querySelector<HTMLElement>('[role="tab"][data-tooltip="扩展页面"]')!;
   expect(tab.getAttribute('aria-selected')).toBe('true');
   expect(tab.querySelector('[data-extension-icon]')).not.toBeNull();
   tab.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));

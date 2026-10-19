@@ -7,7 +7,7 @@ import type { DocumentFeatures } from '@tano/editor/runtime';
 import EditorToolbar from './EditorToolbar.vue';
 import { defaultShortcutBindings, matchesShortcut, shortcutAriaLabel } from '../shortcuts';
 import type { ShortcutBindings } from '../shortcuts';
-import { selectionToolbarPosition } from '../selection-toolbar-position';
+import { selectionToolbarPosition, type ToolbarRect } from '../selection-toolbar-position';
 import type { ToolbarMode } from '../toolbar-preference';
 import {
   dockedToolbarMenuPosition,
@@ -120,6 +120,25 @@ function dismissAndFocus() {
   if (!props.mode || props.mode === 'selection') dismiss();
   editor()?.focus();
 }
+function positionTextStyleMenu(bounds: ToolbarRect) {
+  const menu = panel.value?.querySelector<HTMLElement>('.text-style-dropdown');
+  if (!menu) return;
+  if (vertical.value) {
+    menu.style.removeProperty('left');
+    menu.style.removeProperty('right');
+    return;
+  }
+  const trigger = menu.closest('.menu-wrap')?.querySelector('button');
+  const parent = menu.offsetParent as HTMLElement | null;
+  if (!trigger || !parent) return;
+  // Anchor to More, while keeping the entire menu inside the document pane.
+  const left = Math.max(bounds.left, Math.min(
+    trigger.getBoundingClientRect().left,
+    bounds.right - menu.offsetWidth,
+  ));
+  menu.style.left = `${left - parent.getBoundingClientRect().left - parent.clientLeft}px`;
+  menu.style.right = 'auto';
+}
 function position() {
   const element = panel.value;
   const content = editor();
@@ -183,6 +202,7 @@ function position() {
       );
       menu.style.setProperty('--dock-menu-top', `${menuPosition.top}px`);
     }
+    positionTextStyleMenu(bounds);
     return;
   }
   if (!anchor || !content.contains(anchor.commonAncestorContainer)) return hide();
@@ -201,6 +221,7 @@ function position() {
   const availableHeight =
     result.menuSide === 'above' ? result.y - top - 6 : bottom - result.y - rect.height - 6;
   element.style.setProperty('--selection-menu-height', `${Math.max(0, availableHeight)}px`);
+  positionTextStyleMenu(bounds);
 }
 async function refresh() {
   if (!mounted || props.dragging) return;
@@ -413,7 +434,7 @@ onBeforeUnmount(() => {
           @command="(name, value) => visible && emit('command', name, value)"
         >
           <template #leading><slot name="leading" /></template>
-          <template #preferences><slot name="preferences" /></template>
+          <template v-if="$slots.preferences" #preferences><slot name="preferences" /></template>
         </EditorToolbar>
       </div>
     </Transition>
