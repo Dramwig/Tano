@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "id": "d4e5f6",
+  "type": "event",
+  "name": "AI Research",
+  "description": "围绕可复现实验组织论文、数据、代码和结果。\n\n关联材料：\n- [研究笔记](object://document/111111)\n- [研究论文](object://asset/222222)\n- [架构图](object://asset/333333)\n- [实验数据](object://asset/444444)\n- [实验元数据](object://asset/555555)\n- [训练脚本](object://asset/666666)",
+  "archived": false,
+  "properties": {
+    "checkable": true,
+    "completed": false,
+    "date": "2026-10-19"
+  }
+}

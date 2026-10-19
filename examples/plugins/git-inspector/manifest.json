@@ -9,7 +9,7 @@
   "relationTypes": [],
   "permissions": ["native", "ui"],
   "networkOrigins": [],
-  "nativeCommands": ["git.status", "git.diff"],
+  "nativeCommands": ["git.status", "git.diff", "git.log"],
   "commands": [{ "id": "open", "label": "打开 Git 变更", "menus": ["workspace"] }],
   "views": [{ "id": "changes", "label": "Git 变更", "location": "tab" }]
 }

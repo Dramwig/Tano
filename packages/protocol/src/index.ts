@@ -12,6 +12,7 @@ export * from './comments';
 export * from './suggestions';
 export * from './document-layout';
 export * from './data-tables';
+export * from './workspace-contract';
 
 export interface FileEntry {
   id: string;

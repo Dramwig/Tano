@@ -28,6 +28,7 @@ const props = defineProps<{
     updateObject: (record: ObjectRecord, value: WorkspaceObject, expectedId: string) => Promise<ObjectRecord>;
   };
   selectedId?: string;
+  selectedIdentity?: ReferenceIdentity;
   open: boolean;
   canOpenAsset?: boolean;
   canImportAsset?: boolean;
@@ -190,12 +191,15 @@ function select(record?: ObjectRecord) {
   drafts.set(key, current.value);
 }
 watch(
-  [scopeKey, () => props.selectedId, () => props.open],
-  ([workspaceId, , open], previous) => {
+  [scopeKey, () => props.selectedId, () => props.selectedIdentity, () => props.open],
+  ([workspaceId, , selectedIdentity, open], previous) => {
     if (!open && workspaceId === previous?.[0]) return;
     current.value = undefined;
     resourceId.value = undefined;
-    if (props.selectedId) {
+    if (selectedIdentity && ['document', 'asset'].includes(selectedIdentity.type)) {
+      const resource = store.referenceTargets.find((target) => target.type === selectedIdentity.type && target.id === selectedIdentity.id);
+      if (resource) selectResource(resource.id);
+    } else if (props.selectedId) {
       const record = records.value.find(({ object }) => object.id === props.selectedId);
       if (record) select(record);
       else resourceId.value = props.selectedId;

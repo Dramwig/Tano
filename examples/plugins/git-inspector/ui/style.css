@@ -10,6 +10,10 @@ section { margin-top: 16px; padding: 20px; border: 1px solid #dce1e9; border-rad
 table { width: 100%; border-collapse: collapse; text-align: left; } th { color: #657086; font-weight: 500; }
 th, td { padding: 10px 12px; border-bottom: 1px solid #edf0f5; } th:first-child, td:first-child { padding-left: 0; }
 .path { overflow-wrap: anywhere; } .actions { white-space: nowrap; } .actions button + button { margin-left: 8px; }
+.status-mark, .history-mark { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 6px; border-radius: 5px; font-weight: 700; font-size: 11px; }
+.status-M { color: #b26a00; background: #fff1c7; } .status-A { color: #16754a; background: #d9f5e5; } .status-D { color: #b33b32; background: #ffe0dd; }
+.status-untracked, .status-other { color: #5f6d83; background: #e8edf4; } .status-U { color: #a02f72; background: #f8d9ec; } .history-mark { color: #316de8; background: #e5edff; }
+.history-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; } .history-list li { display: flex; align-items: flex-start; gap: 8px; padding: 9px 0; border-bottom: 1px solid #edf0f5; } .history-list strong { display: block; font-weight: 600; } .history-list small { color: #657086; }
 button { padding: 6px 12px; border: 1px solid #cbd3df; border-radius: 7px; color: inherit; background: #f7f9fc; cursor: pointer; font: inherit; }
 button:disabled { opacity: .4; cursor: default; } button:focus-visible { outline: 2px solid #316de8; outline-offset: 2px; }
 [role=alert] { padding: 12px; border-radius: 8px; background: #fff0ee; color: #9a3025; overflow-wrap: anywhere; }

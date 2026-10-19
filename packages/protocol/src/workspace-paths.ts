@@ -10,6 +10,9 @@ export const annotationDirectory = '.tano/annotations';
 export const discussionDirectory = '.tano/discussions';
 export const assistantRulesPath = '.tano/rules/assistant.md';
 export const templateDirectory = '.tano/templates';
+export const workspaceViewDirectory = '.tano/views';
+export const isWorkspaceViewPath = (path: string) =>
+  /^\.tano\/views\/[a-zA-Z0-9_-]{1,64}\.tano\.json$/.test(path);
 export const isTemplatePath = (path: string) => /^\.tano\/templates\/[0-9a-f]{6}\.md$/.test(path);
 
 export function commentDataPath(kind: 'annotation' | 'discussion', fileId: string) {
@@ -30,6 +33,7 @@ export function isWorkspaceDataPath(path: string) {
     path === workspaceRelationPath ||
     path === assistantRulesPath ||
     isTemplatePath(path) ||
+    isWorkspaceViewPath(path) ||
     (path.startsWith('.tano/conflicts/') && path.endsWith('.json')) ||
     (path.startsWith(`${objectDirectory}/`) && path.endsWith('.tano.json')) ||
     /^\.tano\/(?:annotations|discussions|document-layout|suggestions|tables)\/[0-9a-f]{6}\.tano\.json$/.test(path)

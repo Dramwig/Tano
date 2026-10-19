@@ -25,6 +25,11 @@ pub struct QueryArgs {
     path: Option<String>,
     #[serde(default)]
     staged: bool,
+    #[serde(default = "default_log_limit")]
+    limit: usize,
+}
+fn default_log_limit() -> usize {
+    30
 }
 pub fn parse_args(command: &str, value: Value) -> Result<QueryArgs, String> {
     if command == "git.status" && value != json!({}) {
@@ -36,6 +41,14 @@ pub fn parse_args(command: &str, value: Value) -> Result<QueryArgs, String> {
             args.path.as_deref().ok_or("请选择一个文件")?,
             false,
         )?;
+    }
+    if command == "git.log" {
+        if let Some(path) = args.path.as_deref() {
+            crate::storage::validate_relative_path(path, false)?;
+        }
+        if !(1..=100).contains(&args.limit) {
+            return Err("Git 历史记录最多查询 100 条".into());
+        }
     }
     Ok(args)
 }
@@ -465,6 +478,32 @@ fn status(bytes: &[u8], branch: &Option<String>) -> Result<Value, String> {
     }
     Ok(json!({"branch":branch,"detached":branch.is_none(),"entries":entries}))
 }
+fn log(bytes: &[u8], path: Option<&str>) -> Result<Value, String> {
+    let text = std::str::from_utf8(bytes).map_err(|_| "Git 提交历史不是 UTF-8 文本")?;
+    let mut commits = Vec::new();
+    for record in text
+        .split('\u{1e}')
+        .filter(|record| !record.is_empty())
+        .map(|record| record.trim_end_matches(['\r', '\n']))
+    {
+        let fields: Vec<_> = record.split('\u{1f}').collect();
+        if fields.len() != 4 || fields.iter().any(|field| field.is_empty()) {
+            return Err("Git 提交历史格式无效".into());
+        }
+        let id = fields[0];
+        if id.len() != 40 && id.len() != 64 || !id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err("Git 提交标识无效".into());
+        }
+        commits.push(json!({
+            "id": id,
+            "shortId": &id[..7.min(id.len())],
+            "author": fields[1],
+            "date": fields[2],
+            "subject": fields[3],
+        }));
+    }
+    Ok(json!({"path": path, "commits": commits}))
+}
 pub async fn query(
     prepared: &Prepared,
     name: &str,
@@ -491,6 +530,22 @@ pub async fn query(
             "--no-renames",
         ]);
         status(&output(command, stopped).await?, &prepared.branch)?
+    } else if name == "git.log" {
+        command
+            .args([
+                "log",
+                "--no-decorate",
+                "--no-renames",
+                "--date=iso-strict",
+                "--format=%x1e%H%x1f%an%x1f%aI%x1f%s",
+                "--max-count",
+            ])
+            .arg(args.limit.to_string());
+        if let Some(path) = args.path.as_deref() {
+            crate::storage::validate_relative_path(path, false)?;
+            command.args(["--", path]);
+        }
+        log(&output(command, stopped).await?, args.path.as_deref())?
     } else {
         let path = args.path.as_deref().ok_or("请选择一个文件")?;
         // Missing/deleted files are allowed; no user path is interpreted as an option or pathspec.
@@ -558,6 +613,8 @@ mod tests {
         assert!(!config.contains("outside"));
         assert!(safe_config(b"core.autocrlf\ntrue\n[filter evil]\0").is_err());
         assert!(safe_config(b"extensions.refstorage\nreftable\0").is_err());
+        assert!(parse_args("git.log", json!({"limit": 0})).is_err());
+        assert!(parse_args("git.log", json!({"path": "../outside"})).is_err());
     }
     #[test]
     fn parses_unicode_spaces_and_rename_paths_without_splitting_names() {
@@ -647,6 +704,24 @@ mod tests {
         .await
         .unwrap();
         assert!(diff["patch"].as_str().unwrap().contains("+second"));
+        let history = query(
+            &prepared,
+            "git.log",
+            parse_args("git.log", json!({"limit": 10})).unwrap(),
+            &stopped,
+        )
+        .await
+        .unwrap();
+        assert_eq!(history["commits"][0]["subject"], "Initial");
+        let file_history = query(
+            &prepared,
+            "git.log",
+            parse_args("git.log", json!({"path": "note.md", "limit": 10})).unwrap(),
+            &stopped,
+        )
+        .await
+        .unwrap();
+        assert_eq!(file_history["path"], "note.md");
         let staged = query(
             &prepared,
             "git.diff",

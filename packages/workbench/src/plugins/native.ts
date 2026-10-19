@@ -18,7 +18,7 @@ export function createNativePluginServices(): NonNullable<PluginRuntimeServices[
       return result;
     } finally { context.signal.removeEventListener('abort', cancel); }
   }
-  return Object.fromEntries(['git.status', 'git.diff'].map(command => [command,
+  return Object.fromEntries(['git.status', 'git.diff', 'git.log'].map(command => [command,
     (args: unknown, context: PluginNativeContext) => request(command, args, context)]));
 }
 

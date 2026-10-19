@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "layer": "view",
+  "workspaceId": "6d2c1e7a-3a5e-4b7d-9c21-0f4e8a6b2d11",
+  "id": "ai-research",
+  "name": "AI Research 工作台",
+  "kind": "graph",
+  "sources": [
+    { "layer": "file", "fileId": "111111" },
+    { "layer": "file", "fileId": "222222" },
+    { "layer": "file", "fileId": "333333" },
+    { "layer": "file", "fileId": "444444" },
+    { "layer": "file", "fileId": "555555" },
+    { "layer": "file", "fileId": "666666" },
+    { "layer": "object", "type": "event", "id": "d4e5f6" }
+  ],
+  "query": "research event and its source files"
+}

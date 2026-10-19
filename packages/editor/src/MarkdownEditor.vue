@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { Component } from 'vue';
-import { AlignLeft, ArrowDownAZ, Braces, CalendarClock, CalendarDays, CheckSquare2, CircleHelp, Hash, List, Plus, Trash2 } from 'lucide-vue-next';
+import { AlignLeft, ArrowDownAZ, Braces, CalendarClock, CalendarDays, CheckSquare2, ChevronRight, CircleHelp, Hash, List, Plus, Repeat2, Trash2 } from 'lucide-vue-next';
 import {
   Editor,
   rootCtx,
@@ -368,6 +368,10 @@ function clearLinkModifier() {
 }
 const blockMenuElement = ref<HTMLElement>();
 const blockMenu = shallowRef<{ index: number; x: number; y: number; doc: Node } | null>(null);
+const blockConvertTrigger = ref<HTMLButtonElement>();
+const blockConvertElement = ref<HTMLElement>();
+const blockConvertMenu = shallowRef<{ x: number; y: number } | null>(null);
+let blockConvertCloseTimer: ReturnType<typeof setTimeout> | undefined;
 let selectionBeforeMenu: { selection: Selection; doc: Node } | null = null;
 let rightClickSelection: { selection: Selection; doc: Node } | null = null;
 let editor: Editor | undefined;
@@ -2709,6 +2713,7 @@ function command(name: string, value?: string) {
 
 function closeBlockMenu(restoreSelection = true) {
   const saved = selectionBeforeMenu;
+  closeBlockConvertMenu();
   blockMenu.value = null;
   selectionBeforeMenu = null;
   rightClickSelection = null;
@@ -2892,7 +2897,54 @@ async function blockMenuAction(action: string) {
   });
 }
 
+function closeBlockConvertMenu(restoreFocus = false) {
+  clearTimeout(blockConvertCloseTimer);
+  blockConvertCloseTimer = undefined;
+  blockConvertMenu.value = null;
+  if (restoreFocus) blockConvertTrigger.value?.focus();
+}
+
+function scheduleCloseBlockConvertMenu() {
+  clearTimeout(blockConvertCloseTimer);
+  blockConvertCloseTimer = setTimeout(() => {
+    closeBlockConvertMenu(!!blockConvertElement.value?.contains(document.activeElement));
+  }, 150);
+}
+
+function openBlockConvertMenu(focusFirst = false) {
+  clearTimeout(blockConvertCloseTimer);
+  if (!blockMenu.value) return;
+  blockConvertMenu.value ??= { x: blockMenu.value.x, y: blockMenu.value.y };
+  void nextTick(() => {
+    const trigger = blockConvertTrigger.value;
+    const submenu = blockConvertElement.value;
+    const menu = blockMenuElement.value;
+    if (!trigger || !submenu || !menu || !blockConvertMenu.value) return;
+    const bounds = menu.getBoundingClientRect();
+    const triggerBounds = trigger.getBoundingClientRect();
+    const x = bounds.right + submenu.offsetWidth <= window.innerWidth - 8
+      ? bounds.right - 1 : bounds.left - submenu.offsetWidth + 1;
+    blockConvertMenu.value = {
+      x: Math.max(8, Math.min(x, window.innerWidth - submenu.offsetWidth - 8)),
+      y: Math.max(8, Math.min(triggerBounds.top - 5, window.innerHeight - submenu.offsetHeight - 8)),
+    };
+    if (focusFirst) submenu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+  });
+}
+
 function onBlockMenuKeydown(event: KeyboardEvent) {
+  const inSubmenu = !!blockConvertElement.value?.contains(event.target as globalThis.Node);
+  if ((event.key === 'Escape' && blockConvertMenu.value) || (event.key === 'ArrowLeft' && inSubmenu)) {
+    event.preventDefault();
+    event.stopPropagation();
+    closeBlockConvertMenu(true);
+    return;
+  }
+  if (event.key === 'ArrowRight' && event.target === blockConvertTrigger.value) {
+    event.preventDefault();
+    openBlockConvertMenu(true);
+    return;
+  }
   if (event.key === 'Escape') {
     event.preventDefault();
     closeBlockMenu();
@@ -2900,13 +2952,16 @@ function onBlockMenuKeydown(event: KeyboardEvent) {
     return;
   }
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-  const items = [...(blockMenuElement.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
+  const menu = inSubmenu ? blockConvertElement.value : blockMenuElement.value;
+  const items = [...(menu?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])]
+    .filter(button => button.closest('[role="menu"]') === menu);
   if (!items.length) return;
   event.preventDefault();
   const current = items.indexOf(document.activeElement as HTMLButtonElement);
   const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
     : current < 0 ? (event.key === 'ArrowDown' ? 0 : items.length - 1)
       : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+  if (!inSubmenu) closeBlockConvertMenu();
   items[next]?.focus();
 }
 
@@ -3268,6 +3323,7 @@ defineExpose({
 });
 onBeforeUnmount(() => {
   clearTimeout(referenceFlashTimer);
+  closeBlockConvertMenu();
   disposed = true;
   blockMenu.value = null;
 
@@ -3463,10 +3519,15 @@ onBeforeUnmount(() => {
       <button role="menuitem" type="button" @click="blockMenuAction('source')"><Braces :size="15" aria-hidden="true" />临时显示 Markdown 源码</button>
       <button role="menuitem" type="button" @click="blockMenuAction('duplicate')"><span aria-hidden="true">▣</span>创建副本</button>
       <div class="menu-divider" role="separator" />
-      <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('paragraph')" @click="blockMenuAction('paragraph')"><span aria-hidden="true">¶</span>转为正文</button>
-      <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('heading')" @click="blockMenuAction('heading')"><span aria-hidden="true">H</span>转为标题</button>
-      <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('list')" @click="blockMenuAction('list')"><span aria-hidden="true">☷</span>转为列表</button>
-      <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('quote')" @click="blockMenuAction('quote')"><span aria-hidden="true">❝</span>转为引用</button>
+      <div class="block-convert-menu" role="presentation" @pointerenter="openBlockConvertMenu()" @pointerleave="scheduleCloseBlockConvertMenu">
+        <button ref="blockConvertTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu" @click="openBlockConvertMenu(true)"><Repeat2 :size="15" aria-hidden="true" />转换为<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
+        <div v-if="blockConvertMenu" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" aria-label="转换为" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
+          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('paragraph')" @click="blockMenuAction('paragraph')"><span aria-hidden="true">¶</span>转为正文</button>
+          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('heading')" @click="blockMenuAction('heading')"><span aria-hidden="true">H</span>转为标题</button>
+          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('list')" @click="blockMenuAction('list')"><span aria-hidden="true">☷</span>转为列表</button>
+          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('quote')" @click="blockMenuAction('quote')"><span aria-hidden="true">❝</span>转为引用</button>
+        </div>
+      </div>
       <button role="menuitem" type="button" :disabled="!commandEnabled('toggle', props.enabledLevels, policy().features)" @click="blockMenuAction('wrap-toggle')"><span aria-hidden="true">▸</span>放入新折叠块</button>
       <div class="menu-divider" role="separator" />
       <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('move-up')" @click="blockMenuAction('move-up')"><span aria-hidden="true">↑</span>上移块</button>

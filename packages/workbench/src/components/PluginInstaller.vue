@@ -77,6 +77,7 @@ const selectedInstallation = computed(
 );
 // Installed details always describe the actual local version, including imported updates.
 const detail = computed(() => selectedInstallation.value?.manifest ?? selected.value);
+const detailViews = computed(() => store.pluginViews.filter((view) => view.pluginId === detail.value?.id));
 const feedbackError = computed(() => error.value || store.pluginError);
 const hasDialog = computed(() => importing.value || !!selected.value);
 let importSequence = 0;
@@ -135,6 +136,10 @@ function clearFilters() {
   category.value = 'all';
   installedFilter.value = 'all';
   search.value?.focus();
+}
+function installFromCatalog(manifest: PluginManifest) {
+  const entry = props.catalog.find((item) => item.manifest.id === manifest.id);
+  void change({ install: manifest, ...(entry?.package ? { package: entry.package } : {}) });
 }
 function browse() {
   chooseView('discover');
@@ -369,7 +374,7 @@ async function importCachedPackage() {
           :busy="busy || !store.canManagePlugins"
           :pending="pending === plugin.id"
           @details="showDetails(plugin)"
-          @install="change({ install: plugin })"
+          @install="installFromCatalog(plugin)"
         />
       </div>
       <div v-else-if="view === 'installed' && !store.installedPlugins.length" class="pc-empty">
@@ -549,7 +554,13 @@ async function importCachedPackage() {
               @click="change({ id: detail.id, enabled: !selectedInstallation.enabled })"
             >
               {{ selectedInstallation.enabled ? t('停用插件') : t('启用插件') }}</button
-            ><button
+            ><template v-if="detailViews.length && !detail.objectTypes.length">
+              <button v-for="pluginView in detailViews" :key="pluginView.key" class="pc-button pc-primary" :disabled="busy"
+                @click="store.openPluginView(pluginView.pluginId, pluginView.id); closeDialog()">
+                {{ t('打开{0}', [pluginView.label]) }} <ArrowUpRight :size="15" />
+              </button>
+            </template><button
+              v-else
               class="pc-button pc-primary"
               :disabled="busy"
               @click="
@@ -562,7 +573,7 @@ async function importCachedPackage() {
             v-else
             class="pc-button pc-primary"
             :disabled="busy || !store.canManagePlugins"
-            @click="change({ install: detail })"
+            @click="installFromCatalog(detail)"
           >
             <Download v-if="!busy" :size="15" /><LoaderCircle v-else class="pc-spin" :size="15" />{{
               busy ? t('正在安装…') : t('安装插件')

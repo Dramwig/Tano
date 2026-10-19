@@ -1876,6 +1876,19 @@ button:hover {
 .block-context-menu button > svg {
   flex: 0 0 15px;
 }
+.block-context-menu .block-convert-chevron {
+  margin-left: auto;
+}
+.block-convert-menu > button[aria-expanded='true'] {
+  background: var(--hover);
+}
+.block-convert-submenu {
+  position: fixed;
+  z-index: 101;
+  width: 154px;
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+}
 .block-context-heading {
   padding: 5px 7px 4px;
   color: var(--muted);
@@ -1965,6 +1978,13 @@ button:hover {
   max-height: min(560px, calc(100dvh - 76px));
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+.workspace-view-menu-error {
+  margin: 6px 10px;
+  color: var(--warning);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 .workspace-entry-context-menu {
   width: 190px;

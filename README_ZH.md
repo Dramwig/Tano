@@ -6,7 +6,7 @@
 
 ### 人与 Agent，在同一页工作。
 
-**在本地 Markdown 工作区中写作、整理知识，并与 Agent 协作。**
+**一个服务人类与 AI Agent 的 File-Native Workspace。**
 
 [![MIT 许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![基于 Tauri 2](https://img.shields.io/badge/built%20with-Tauri%202-orange.svg)](https://tauri.app/)
@@ -22,7 +22,8 @@
 
 ## 功能
 
-- **文件由你掌握：** Markdown 和附件仍是普通工作区文件。身份、对象、关系和规则等可移植数据保存在 `.tano/`。
+- **文件由你掌握：** Markdown、PDF、图片、CSV、JSON、代码和附件仍是普通工作区文件。身份、对象、关系、视图和规则等可移植数据保存在 `.tano/`。
+- **同一个工作区模型：** File 是内容事实源，Object 提供稳定语义和关系，View 只做投影，不复制正文。
 - **集中工作的界面：** 在一个桌面应用中编辑和搜索笔记，管理对象与关系，并使用日历。
 - **保护外部修改：** 保存时对比基线 hash，合并独立修改；发生冲突时保留双方内容以供检查。
 - **本地 Agent 接入：** stdio MCP 服务支持列举、读取、创建和条件更新文档，并拒绝过期写入。
@@ -43,7 +44,7 @@ npm ci
 npm run desktop
 ```
 
-只想预览浏览器演示，可运行 `npm run dev` 并打开 `http://127.0.0.1:1420`。桌面与浏览器开发服务器使用同一端口，请分别运行。
+只想预览浏览器演示，可运行 `npm run dev` 并打开 `http://127.0.0.1:43841`。桌面开发使用 `43842`，端口被占用时会自动选择可用端口。
 
 ## 文档
 
@@ -52,6 +53,8 @@ npm run desktop
 | [文档首页](docs/zh/README.md) | 指南目录与阅读入口 |
 | [本地开发](docs/zh/local-development.md) | 环境、命令与应用数据 |
 | [架构](docs/zh/architecture.md) | 编辑器、存储、工作区格式及冲突处理 |
+| [产品规划](docs/zh/product-strategy.md) | File-Native Workspace 定位、竞争边界和交付顺序 |
+| [Workspace Contract v1](docs/zh/workspace-contract.md) | File、Object、View、稳定身份、来源和冲突规则 |
 | [Agent 工作流](docs/zh/agent-workflow.md) | 本地 MCP 配置与条件写入 |
 | [备份与恢复](docs/zh/backup-recovery.md) | 可移植数据、快照与恢复 |
 | [构建与发布](docs/zh/releases.md) | 桌面构建与签名更新 |

@@ -2,8 +2,8 @@
 
 Tano - Humans and agents, on the same page.
 
-This preview Rust library provides working helpers used by Tano's local
-Markdown workspace protocol. It is not the desktop application or a sync client.
+This preview Rust library provides working helpers used by Tano's local File-Native
+workspace protocol. It is not the desktop application or a sync client.
 
 ```rust
 use tano_page::{content_hash, is_short_id, is_workspace_data_path};

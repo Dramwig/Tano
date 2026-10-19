@@ -2,7 +2,7 @@
 
 Tano - Humans and agents, on the same page.
 
-This preview Python library provides working helpers for Tano's local Markdown
+This preview Python library provides working helpers for Tano's local File-Native
 workspace protocol. It is not the desktop application or a sync client.
 PyPI normalizes the distribution name `tano.page` to `tano-page`; import it as
 `tano_page`.

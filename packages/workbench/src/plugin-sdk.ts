@@ -34,6 +34,8 @@ export type TanoAutomationApi = Pick<TanoPluginApi, 'context' | 'objects' | 'rel
 export interface PluginGitEntry { path: string; index: string; worktree: string; originalPath: string | null }
 export interface PluginGitStatus { branch: string | null; detached: boolean; entries: PluginGitEntry[] }
 export interface PluginGitDiff { path: string; staged: boolean; patch: string }
+export interface PluginGitCommit { id: string; shortId: string; author: string; date: string; subject: string }
+export interface PluginGitLog { path: string | null; commits: PluginGitCommit[] }
 export type PluginChangeKind = 'created' | 'updated' | 'deleted';
 export type PluginEvent = { type: 'workspace.changed'; fileId?: string } | {
   type: 'documents.changed' | 'objects.changed' | 'relations.changed';
@@ -70,6 +72,7 @@ export interface TanoPluginApi {
   native: {
     invoke(command: 'git.status', args?: Record<string, never>): Promise<PluginGitStatus>;
     invoke(command: 'git.diff', args: { path: string; staged?: boolean }): Promise<PluginGitDiff>;
+    invoke(command: 'git.log', args?: { path?: string; limit?: number }): Promise<PluginGitLog>;
     invoke(command: string, args?: unknown): Promise<unknown>;
   };
   commands: { register(id: string, handler: (context?: { fileId?: string; workspaceId: string }) => void | Promise<void>): Promise<void> };

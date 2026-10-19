@@ -22,6 +22,8 @@ import { defaultWorkspaceSettings, loadWorkspaceSettings, saveWorkspaceSettingsP
 import type { WorkspaceSettings, WorkspaceSettingsPatch } from '../workspace-settings';
 import { loadObjects, saveObject, mergeObject } from '../workspace-objects';
 import type { ObjectRecord } from '../workspace-objects';
+import { loadWorkspaceViews } from '../workspace-views';
+import type { WorkspaceViewRecord } from '../workspace-views';
 import { assetTargets, documentTargets, parseObject, objectTypeRegistry, validateObjectProperties } from '@tano/protocol';
 import type { WorkspaceObject, ReferenceTarget } from '@tano/protocol';
 import { coreRelationTypes, newShortId, RelationIndex, referenceKey, relationKey, validateRelation, parseRelations, workspaceRelationPath, WorkspaceAccessRevokedError } from '@tano/protocol';
@@ -96,6 +98,7 @@ export interface DocumentTab {
   plugins: boolean;
   calendar: boolean;
   view?: WorkbenchViewTab;
+  workspaceView?: WorkspaceViewRecord;
   pluginView?: PluginWorkbenchView;
   document?: OpenDocument;
   attachmentPreview: boolean;
@@ -117,8 +120,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const runtime = useWorkbenchRuntime();
   const { adapter, mobile } = runtime;
   const views = shallowRef<ReadonlyMap<string, WorkbenchViewTab>>(new Map());
-  const isNavigationPage = (id: string) => id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || isTableTab(id);
-  const isBuiltinTab = (id: string) => id.startsWith('blank:') || id.startsWith('attachment:') || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || id === CALENDAR_TAB_ID || isTableTab(id);
+  const workspaceViewTabPrefix = 'workspace-view:';
+  const workspaceViewTabId = (id: string) => `${workspaceViewTabPrefix}${id}`;
+  const workspaceViewId = (id: string) => id.startsWith(workspaceViewTabPrefix) ? id.slice(workspaceViewTabPrefix.length) : undefined;
+  const isWorkspaceViewTab = (id: string) => !!workspaceViewId(id);
+  const hasWorkspaceViewTab = (id: string) => {
+    const viewId = workspaceViewId(id);
+    return viewId !== undefined && workspaceViews.value.some((record) => record.view.id === viewId);
+  };
+  const isNavigationPage = (id: string) => id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || isTableTab(id) || hasWorkspaceViewTab(id);
+  const isBuiltinTab = (id: string) => id.startsWith('blank:') || id.startsWith('attachment:') || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || id === CALENDAR_TAB_ID || isTableTab(id) || hasWorkspaceViewTab(id);
   const isUtilityTab = (id: string) => isBuiltinTab(id) || views.value.has(id) || pluginViews.value.some(view => view.key === id && view.location === 'tab');
   function registerViews(definitions: readonly WorkbenchViewTab[]) {
     const next = new Map<string, WorkbenchViewTab>();
@@ -133,6 +144,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     views.value = next;
   }
   const workspace = ref<Workspace | null>(null);
+  const workspaceViews = ref<WorkspaceViewRecord[]>([]);
+  const workspaceViewErrors = ref<string[]>([]);
   const fileMutations = optimisticFiles(() => workspace.value, report);
   const visibleWorkspace = computed({ get: () => fileMutations.workspace.value, set: (value) => { workspace.value = value; } });
   function displayPath(file: Pick<FileEntry, 'id' | 'path'>) {
@@ -367,6 +380,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
     const loaded = await loadObjects(adapter, workspace.value);
     objects.value = loaded.records; objectErrors.value = loaded.errors;
+    try {
+      const loadedViews = await loadWorkspaceViews(adapter, workspace.value);
+      workspaceViews.value = loadedViews.records;
+      workspaceViewErrors.value = loadedViews.errors;
+    } catch (error) {
+      workspaceViews.value = [];
+      workspaceViewErrors.value = [`无法读取工作区视图：${String(error)}`];
+    }
     try {
       const loadedRelations = await loadRelations(adapter, workspace.value);
       relationBase = loadedRelations.snapshot; relations.value = loadedRelations.file.relations;
@@ -817,6 +838,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (activeId.value.startsWith('plugin:') && !keys.has(activeId.value)) activeId.value = tabIds.value[0] ?? '';
     if (!definitions.some(view => view.location === 'sidebar' && view.key === activePluginSidebar.value)) activePluginSidebar.value = '';
   });
+  watch(workspaceViews, definitions => {
+    const keys = new Set(definitions.map((record) => workspaceViewTabId(record.view.id)));
+    const remaining = tabIds.value.filter((id) => !isWorkspaceViewTab(id) || keys.has(id));
+    if (remaining.length !== tabIds.value.length) {
+      for (const id of tabIds.value) if (!remaining.includes(id)) removeTabNavigation(id);
+      tabIds.value = remaining;
+      if (isWorkspaceViewTab(activeId.value) && !keys.has(activeId.value)) activeId.value = tabIds.value[0] ?? '';
+    }
+  });
   watch(() => workspace.value?.id, () => { activePluginSidebar.value = ''; pluginSettingsRequest.value = undefined; });
   const layout = ref<WorkspaceLayout>(newPane());
   const panes = computed(() => layoutPanes(layout.value));
@@ -905,7 +935,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const table = dataTables.records.value.find(record => tableTabId(record.fileId) === targetId);
       const tableFile = isTableTab(targetId) ? workspace.value?.files.find(file => file.id === tableFileId(targetId)) : undefined;
       const tablePath = tableFile ? displayPath(tableFile) : table?.path;
-      return { id, path: document ? displayPath(document) : attachment ? displayPath(attachment) : tableFile ? displayPath(tableFile) : tablePath ?? (attachmentPreview ? '附件不可用' : ''), blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, view: views.value.get(id), pluginView: pluginViews.value.find(view => view.key === id && view.location === 'tab'), document, attachmentPreview, attachment,
+      const workspaceView = workspaceViews.value.find(record => workspaceViewTabId(record.view.id) === targetId);
+      return { id, path: document ? displayPath(document) : attachment ? displayPath(attachment) : tableFile ? displayPath(tableFile) : workspaceView?.path ?? tablePath ?? (attachmentPreview ? '附件不可用' : ''), blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, view: views.value.get(id), workspaceView, pluginView: pluginViews.value.find(view => view.key === id && view.location === 'tab'), document, attachmentPreview, attachment,
         ...(isTableTab(targetId) ? { dataTable: { name: tablePath ? dataTableName(tablePath) : '数据表不可用', dirty: !!table && dataTables.dirty(table) } } : {}) };
     }),
   );
@@ -1218,6 +1249,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         workspace.value = next;
         if (remembersStartupWorkspace) rememberStartupWorkspace(next.id);
         objects.value = []; objectErrors.value = [];
+        workspaceViews.value = []; workspaceViewErrors.value = [];
         capabilityBase = null;
         capabilities.value = structuredClone(defaultCapabilities);
         await dataTables.reload();
@@ -1269,6 +1301,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           else if (detachedTabId === PLUGINS_TAB_ID) await openPluginsTab({ newTab: true });
           else if (detachedTabId === CALENDAR_TAB_ID) openCalendarTab();
           else if (isTableTab(detachedTabId)) await openPageTab(detachedTabId, { newTab: true });
+          else if (isWorkspaceViewTab(detachedTabId)) await openWorkspaceView(workspaceViewId(detachedTabId)!, { newTab: true });
           else if (views.value.has(detachedTabId)) {
             if (!views.value.get(detachedTabId)?.detachable) throw new Error('此扩展视图不支持移到其他窗口');
             openViewTab(detachedTabId);
@@ -1731,6 +1764,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function openGraphTab(options?: { newTab?: boolean; historyIndex?: number }) {
     await openPageTab(GRAPH_TAB_ID, options);
     if (workspace.value && activeId.value === GRAPH_TAB_ID) recordHelpCompleted('graph');
+  }
+  async function openWorkspaceView(id: string, options?: { newTab?: boolean; historyIndex?: number }) {
+    if (!workspaceViews.value.some((record) => record.view.id === id)) throw new Error('工作区视图已不存在，请刷新后重试');
+    await openPageTab(workspaceViewTabId(id), options);
   }
   async function openPluginsTab(options?: { newTab?: boolean; historyIndex?: number }) {
     await openPageTab(PLUGINS_TAB_ID, options);
@@ -3094,6 +3131,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     updateWorkspaceSettings,
     reloadWorkspaceSettings,
     workspace: visibleWorkspace,
+    workspaceViews,
+    workspaceViewErrors,
     displayPath,
     fileMutationPending: fileMutations.pending,
     documents,
@@ -3128,6 +3167,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openFilesInNewTabsAt,
     createBlankTab,
     openGraphTab,
+    openWorkspaceView,
     openPluginsTab,
     openCalendarTab,
     registerViews,

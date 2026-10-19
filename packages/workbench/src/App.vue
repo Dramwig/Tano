@@ -188,6 +188,7 @@ import InlineAssistantInput from './components/InlineAssistantInput.vue';
 import type { InlineAssistantAnchor } from './components/InlineAssistantInput.vue';
 const CalendarView = defineAsyncComponent(() => import('./components/CalendarView.vue'));
 const DataTablePage = defineAsyncComponent(() => import('./components/DataTablePage.vue'));
+const WorkspaceViewPage = defineAsyncComponent(() => import('./components/WorkspaceViewPage.vue'));
 import { isTableTab, TABLES_TAB_ID, tableFileId } from './data-tables';
 import { isDataTableFilePath } from '@tano/protocol';
 const PluginInstaller = defineAsyncComponent(() => import('./components/PluginInstaller.vue'));
@@ -1091,6 +1092,13 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
     { id: 'workbench.plan', category: t('工作区'), get label() { return t('打开计划'); }, available: !detachedWindow && store.workspaceSettings.showPlan, run: () => { sidebar.value = true; sidebarView.value = 'plan'; } },
     { id: 'workbench.calendar', category: t('工作区'), get label() { return t('打开日历'); }, available: store.workspaceSettings.showPlan, run: () => openCalendar() },
     { id: 'workbench.graph', category: t('工作区'), get label() { return t('打开关系图谱'); }, available: store.workspaceSettings.showGraph, run: () => store.openGraphTab() },
+    ...store.workspaceViews.map((record) => ({
+      id: `workbench.workspace-view.${record.view.id}`,
+      category: t('工作区'),
+      get label() { return t('打开视图：{0}', [record.view.name]); },
+      available: true,
+      run: () => store.openWorkspaceView(record.view.id).catch(store.report),
+    })),
     { id: 'workbench.plugins', category: t('工作区'), get label() { return t('打开插件中心'); }, available: store.workspaceSettings.showPlugins, run: () => store.openPluginsTab() },
     { id: 'workbench.updates', category: t('历史'), get label() { return t('文档更新历史'); }, available: hasDocument, run: () => { historyPage.value = 'updates'; historyPanel.value = true; } },
     { id: 'workbench.versions', category: t('历史'), get label() { return t('文档版本历史'); }, available: hasDocument && !!extensions.historyEnabled, run: () => { historyPage.value = 'versions'; historyPanel.value = true; } },
@@ -1506,11 +1514,21 @@ const objectPanel = ref(false);
 const objectPanelMounted = ref(false);
 watch(objectPanel, open => { if (open) objectPanelMounted.value = true; }, { flush: 'sync' });
 const selectedObjectId = ref<string>();
+const selectedResourceIdentity = shallowRef<ReferenceIdentity>();
 const selectedPersonal = ref(false);
 const planDetail = shallowRef<ObjectRecord>();
 function showObjects(id?: string) {
   selectedPersonal.value = false;
+  selectedResourceIdentity.value = undefined;
   selectedObjectId.value = id;
+  objectPanel.value = true;
+  workspaceMenu.value = false;
+}
+function showFileObject(identity: ReferenceIdentity) {
+  if (!['document', 'asset'].includes(identity.type)) return;
+  selectedPersonal.value = false;
+  selectedObjectId.value = undefined;
+  selectedResourceIdentity.value = identity;
   objectPanel.value = true;
   workspaceMenu.value = false;
 }
@@ -1550,6 +1568,7 @@ async function openReference(identity: ReferenceIdentity) {
   }
   if (identity.type !== 'document') {
     if (['event', 'task'].includes(identity.type)) showPlanEvent(identity.id);
+    else if (['document', 'asset'].includes(identity.type)) showFileObject(identity);
     else showObjects(identity.id);
     return;
   }
@@ -1569,6 +1588,13 @@ async function openObjectResource(identity: ReferenceIdentity) {
 async function openObjectReference(identity: ReferenceIdentity) {
   if (identity.type === 'document') objectPanel.value = false;
   await openReference(identity);
+}
+async function openWorkspaceViewSourceFile(file: FileEntry) {
+  if (isMarkdown(file.path) || isDataTableFilePath(file.path)) await openEntry(file);
+  else store.openAttachmentInNewTab(file);
+}
+function openWorkspaceViewSourceObject(identity: ReferenceIdentity) {
+  void openObjectReference(identity);
 }
 async function openPlanReference(identity: ReferenceIdentity) {
   const current = planDetail.value;
@@ -2425,6 +2451,7 @@ async function fileContextAction(
     | 'copy-full-path'
     | 'duplicate'
     | 'open-default'
+     | 'object'
     | 'reveal-entry',
 ) {
   const file = fileContextMenu.value?.file;
@@ -2463,6 +2490,13 @@ async function fileContextAction(
   }
   if (action === 'open' || action === 'open-new-tab') {
     await openEntry(file, action === 'open-new-tab');
+    return;
+  }
+  if (action === 'object') {
+    if (file.kind === 'file' && !isWorkspaceInternalPath(file.path)) showFileObject({
+      type: isMarkdown(file.path) ? 'document' : 'asset',
+      id: file.id,
+    });
     return;
   }
   if (action === 'open-default' || action === 'reveal-entry') {
@@ -2927,6 +2961,8 @@ async function acceptTabTransfer(request: TabTransferRequest) {
     } else if (isTableTab(request.tabId)) {
       created = priorIndex < 0;
       await store.openDataTable(request.tabId === TABLES_TAB_ID ? undefined : tableFileId(request.tabId));
+    } else if (request.tabId.startsWith('workspace-view:')) {
+      throw new Error(t('工作区视图暂不支持移到其他窗口'));
     } else if (extensionViews.some((view) => view.id === request.tabId)) {
       const view = extensionViews.find((view) => view.id === request.tabId)!;
       if (!view.detachable)
@@ -3015,6 +3051,10 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
   }
   if (tab.pluginView) {
     store.report(t('插件视图绑定当前窗口的运行实例，可以在当前窗口分屏。'));
+    settled?.(); return;
+  }
+  if (tab.workspaceView) {
+    store.report(t('工作区视图暂不支持移到其他窗口。'));
     settled?.(); return;
   }
   if (tab.view && !tab.view.detachable) {
@@ -4241,6 +4281,13 @@ const helpBlocked = computed(() => !!(
               </template>
               <template v-else>
                 <button
+                  v-if="!isWorkspaceInternalPath(fileContextMenu.file.path)"
+                  role="menuitem"
+                  @click="fileContextAction('object')"
+                >
+                  <Users :size="15" />{{ t('查看文件对象') }}
+                </button>
+                <button
                   v-if="isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path) || attachments"
                   role="menuitem"
                   @click="fileContextAction('open')"
@@ -4517,6 +4564,18 @@ const helpBlocked = computed(() => !!(
                 <Files :size="16" />{{ t('文档模板') }}
               </button>
               <button role="menuitem" @click="showObjects()"><Users :size="16" />{{ t('工作区对象') }}</button>
+              <template v-if="store.workspaceViews.length">
+                <div class="menu-divider" />
+                <button
+                  v-for="record in store.workspaceViews"
+                  :key="record.view.id"
+                  role="menuitem"
+                  @click="workspaceMenu = false; store.openWorkspaceView(record.view.id).catch(store.report)"
+                >
+                  <Table2 :size="16" />{{ t('打开视图：{0}', [record.view.name]) }}
+                </button>
+              </template>
+              <p v-for="error in store.workspaceViewErrors" :key="error" class="workspace-view-menu-error" role="alert">{{ error }}</p>
               <button role="menuitem" @click="openSettings('about')">
                 <CircleHelp :size="16" />{{ t('关于 Tano / 同页') }}{{
                   updates.state.candidate ? t(' · 有新版本') : ''
@@ -5228,6 +5287,13 @@ const helpBlocked = computed(() => !!(
                 @open="openAssistant(pane.id, pane.activeId, { forcePanel: true })"
               />
             </div>
+            <WorkspaceViewPage
+              v-if="workspace && tab?.workspaceView && pane.activeId === tab.id"
+              :key="`${workspace.id}:${tab.workspaceView.view.id}:${tab.workspaceView.snapshot.hash}`"
+              :view="tab.workspaceView.view"
+              @open-file="(file) => { store.focusPane(pane.id); void openWorkspaceViewSourceFile(file); }"
+              @open-object="(identity) => { store.focusPane(pane.id); openWorkspaceViewSourceObject(identity); }"
+            />
             <CalendarView
               v-if="workspace && pane.activeId === CALENDAR_TAB_ID"
               :date="calendarDate"
@@ -5587,6 +5653,7 @@ const helpBlocked = computed(() => !!(
                 pane.activeId !== PLUGINS_TAB_ID &&
                 pane.activeId !== CALENDAR_TAB_ID &&
                 !isTableTab(pane.activeId) &&
+                !tab?.workspaceView &&
                 !tab?.pluginView &&
                 !extensionViews.find((view) => view.id === pane.activeId)
               "
@@ -6021,6 +6088,7 @@ const helpBlocked = computed(() => !!(
       v-show="objectPanel"
       :open="objectPanel"
       :selected-id="selectedObjectId"
+      :selected-identity="selectedResourceIdentity"
       :personal="selectedPersonal ? plans.panel : undefined"
       :can-open-asset="!!attachments"
       :can-import-asset="!!attachments && !assetImportBusy"

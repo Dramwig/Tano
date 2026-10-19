@@ -1,0 +1,97 @@
+{
+  "format": 1,
+  "workspaceId": "6d2c1e7a-3a5e-4b7d-9c21-0f4e8a6b2d11",
+  "revision": 1,
+  "files": [
+    {
+      "path": ".tano/objects/d4e5f6.tano.json",
+      "id": "999999",
+      "hash": "f58d6fa9d9501f7240b0fe46fc4fcad20dba71810e2ce71f0bb0a569f7f8e7b7",
+      "version": 1,
+      "deleted": false
+    },
+    {
+      "path": ".tano/relations.tano-relations.json",
+      "id": "aaaaaa",
+      "hash": "9feb9716747be1586ced8ac1f8c869498a95a439b296ad9162ef3fea57686b07",
+      "version": 1,
+      "deleted": false
+    },
+    {
+      "path": ".tano/views/ai-research.tano.json",
+      "id": "bbbbbb",
+      "hash": "cd1d39d75533558c8aec2fa4cd6fd5b5ad25c1caeea4fbf04e71a02195e09c58",
+      "version": 1,
+      "deleted": false
+    },
+    {
+      "path": "README.md",
+      "id": "888888",
+      "hash": "dbc1179a198923148876f96851e904f2c7d3a092b5ddae30673cefaf325616ef",
+      "version": 1,
+      "deleted": false
+    },
+    {
+      "path": "assets/architecture.png",
+      "id": "333333",
+      "hash": "a9b6bfbb197824596cb49429815479d6571a29f8f2a5db2f159e5591bc54c73d",
+      "version": 1,
+      "deleted": false
+    },
+    {
+      "path": "code/train.py",
+      "id": "666666",
+      "hash": "6a75186ef0ce57e07df4e79eee6e052b75d8240ed736edbf02a9af612468516c",
+      "version": 1,
+      "deleted": false
+    },
+    {
+      "path": "data/experiments.csv",
+      "id": "444444",
+      "hash": "8b0f18043fdd49114e8c71f80b5ea14359c6fb4d39f882b3858f944d406d4779",
+      "version": 1,
+      "deleted": false
+    },
+    {
+      "path": "data/experiments.table.json",
+      "id": "777777",
+      "hash": "6ce2aa81f28da47abc7c6ca7c65879084927d387e608ecc31d78120c01b0f14a",
+      "version": 1,
+      "deleted": false
+    },
+    {
+      "path": "data/metadata.json",
+      "id": "555555",
+      "hash": "3df1876a9767d54db028dd938a4f19d62699100f9d095a02b0fbefcba99050d7",
+      "version": 1,
+      "deleted": false
+    },
+    {
+      "path": "papers/methods.pdf",
+      "id": "222222",
+      "hash": "acc074cb1c9b0c7b393b779901aa3e83eeee1f7876c0c83ae1af4320007421c0",
+      "version": 1,
+      "deleted": false
+    },
+    {
+      "path": "papers/research-note.md",
+      "id": "111111",
+      "hash": "1ea20668b97f439cc593a104eb48c17509e829dcb3d14e32f2968b02fb8bb78f",
+      "version": 1,
+      "deleted": false
+    }
+  ],
+  "reservedIds": [
+    "111111",
+    "222222",
+    "333333",
+    "444444",
+    "555555",
+    "666666",
+    "777777",
+    "888888",
+    "999999",
+    "aaaaaa",
+    "bbbbbb"
+  ]
+}

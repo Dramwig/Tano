@@ -14,6 +14,7 @@ it('allows only portable platform files through storage while keeping user paths
     '.tano/document-layout/a00001.tano.json',
     '.tano/rules/assistant.md',
     '.tano/templates/a00001.md',
+    '.tano/views/research.tano.json',
   ]) {
     expect(validateStoragePath(path), path).toBeNull();
     expect(validatePath(path), path).not.toBeNull();
@@ -32,6 +33,8 @@ it('allows only portable platform files through storage while keeping user paths
     '.tano/private.json',
     '.tano/templates/not-an-id.md',
     '.tano/templates/a00001.json',
+    '.tano/views/not-a-view.json',
+    '.tano/views/research.tano.json.bak',
     '.tano/templates/../secret.md',
     '.tano/rules/secrets.md',
     '.tano/rules/../assistant.md',

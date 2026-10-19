@@ -1,8 +1,9 @@
-import type { PluginGitStatus, PluginGitDiff, TanoPluginApi } from '@tano/workbench/plugin-sdk';
+import type { PluginGitStatus, PluginGitDiff, PluginGitLog, TanoPluginApi } from '@tano/workbench/plugin-sdk';
 
 export default async function activate(tano: TanoPluginApi) {
   let status: PluginGitStatus = { branch: null, detached: false, entries: [] };
-  let diff: (PluginGitDiff & { truncated: boolean }) | null = null, busy = false, error = '';
+  let diff: (PluginGitDiff & { truncated: boolean }) | null = null;
+  let history: PluginGitLog = { path: null, commits: [] }, busy = false, error = '';
   const render = () => {
     const entries = []; let bytes = 0;
     for (const entry of status.entries) {
@@ -10,7 +11,8 @@ export default async function activate(tano: TanoPluginApi) {
       if (bytes > 64 * 1024) break;
       entries.push({ ...entry });
     }
-    return tano.views.renderCustom('changes', { ...status, entries, total: status.entries.length, diff: diff ? { ...diff } : null, busy, error });
+    return tano.views.renderCustom('changes', { ...status, entries, total: status.entries.length,
+      diff: diff ? { ...diff } : null, history: { ...history, commits: history.commits.map(commit => ({ ...commit })) }, busy, error });
   };
   async function perform(action: () => Promise<void>) {
     if (busy) return;
@@ -18,7 +20,13 @@ export default async function activate(tano: TanoPluginApi) {
     try { await action(); } catch (cause) { error = String(cause).replace(/^(Error: )+/, ''); }
     finally { busy = false; await render(); }
   }
-  const refresh = () => perform(async () => { diff = null; status = await tano.native.invoke('git.status'); });
+  const refresh = () => perform(async () => {
+    diff = null;
+    [status, history] = await Promise.all([
+      tano.native.invoke('git.status'),
+      tano.native.invoke('git.log', { limit: 30 }),
+    ]);
+  });
   tano.views.onMessage('changes', async message => {
     if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error('Git 视图消息无效');
     if (message.type === 'refresh') await refresh();

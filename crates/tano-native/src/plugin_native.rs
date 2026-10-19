@@ -152,7 +152,10 @@ fn valid_request(request: &NativeRequest) -> Result<(), String> {
             .integrity
             .bytes()
             .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
-        || !matches!(request.command.as_str(), "git.status" | "git.diff")
+        || !matches!(
+            request.command.as_str(),
+            "git.status" | "git.diff" | "git.log"
+        )
     {
         return Err("插件本机请求无效".into());
     }

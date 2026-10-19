@@ -349,7 +349,7 @@ function enableEnteringActions(element: Element) {
           </button>
           <div
             v-if="open && !disabled"
-            class="dropdown compact-action-menu block-type-menu"
+            class="dropdown compact-action-menu block-type-menu panel-scrollbar"
             :aria-label="t('Block Level 选项')"
           >
             <template v-for="item in availableBlocks" :key="item.type">
@@ -399,7 +399,7 @@ function enableEnteringActions(element: Element) {
             </select>
           </div>
           <div v-if="open && headingsOpen && !disabled" :id="headingGroupId" ref="headingPanel"
-            class="heading-submenu compact-action-menu" role="group" :aria-label="t('标题级别')"
+            class="heading-submenu compact-action-menu panel-scrollbar" role="group" :aria-label="t('标题级别')"
             @keydown="headingPanelKey">
             <button v-for="(icon, index) in headingIcons" :key="index" type="button"
               :aria-pressed="context.block === 'Heading' && context.headingLevel === index + 1"
