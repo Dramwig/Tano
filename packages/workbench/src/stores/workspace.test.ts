@@ -144,9 +144,9 @@ describe('assistant proposal coordination', () => {
     return { id: crypto.randomUUID(), runId: 'run', workspaceId: 'test', kind: 'edit' as const,
       fileId: 'note-id', path: 'note.md', base: 'A\nB\nC\n', content, reason: 'test', status: 'ready' as const };
   }
-  it('reviews workspace events and applies them only after acceptance and capability checks', async () => {
+  it.each(['event', 'task', 'project', 'experiment', 'person'])('reviews workspace %s records only after acceptance and capability checks', async type => {
     store.capabilities.features.objectReferences = true;
-    const object = { version: 1, id: 'e00001', type: 'event', name: '审阅', description: '', archived: false, properties: { checkable: true, completed: false } };
+    const object = { version: 1, id: 'e00001', type, name: '审阅', description: '', archived: false, properties: type === 'event' ? { checkable: true, completed: false } : { status: '待处理' } };
     const suggested = { id: crypto.randomUUID(), runId: 'run', workspaceId: 'test', kind: 'object' as const,
       path: '.tano/objects/e00001.tano.json', base: '', content: JSON.stringify(object, null, 2) + '\n', reason: '后续任务', status: 'ready' as const };
     const reviewed = await store.reviewAssistantProposal(scope, suggested);

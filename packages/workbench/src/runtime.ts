@@ -78,6 +78,8 @@ export interface WorkbenchExtensions {
   objectDetails?: Component;
   commentAuthor?: () => CommentAuthor;
   settingsPages?: SettingsPage[];
+  /** Optional cloud backend configuration; system owns the common entry point. */
+  sync?: { readonly enabled: boolean; open(): void; disconnect(): Promise<void> };
   historyView?: Component;
   readonly historyEnabled?: boolean;
   refresh(): Promise<unknown>;

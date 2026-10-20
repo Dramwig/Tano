@@ -44,6 +44,15 @@ const record = (table: DataTable): DataTableRecord => ({
 });
 
 describe('portable tables and formulas', () => {
+  it('merges independent appearance changes and preserves conflicting edits', () => {
+    const base = fixture(), ours = copyTable(base), theirs = copyTable(base);
+    ours.icon = '🌿';
+    theirs.cover = 'tano:mist';
+    expect(mergeDataTable(base, ours, theirs)).toMatchObject({ icon: '🌿', cover: 'tano:mist' });
+    theirs.icon = '⭐';
+    expect(mergeDataTable(base, ours, theirs)).toBeNull();
+    expect(() => parseDataTable(JSON.stringify({ ...base, icon: 123 }))).toThrow('图标或封面');
+  });
   it('recognizes user table files in arbitrary directories without exposing internal data', () => {
     expect(isDataTableFilePath('研究/候选.TABLE.JSON')).toBe(true);
     expect(isDataTableFilePath('.tano/tables/a00001.tano.json')).toBe(false);

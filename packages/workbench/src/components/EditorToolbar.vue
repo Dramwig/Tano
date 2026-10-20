@@ -9,7 +9,6 @@ import {
   Sigma,
   AtSign,
   Superscript,
-  ChevronDown,
   ChevronRight,
   Check,
   Heading1,
@@ -336,6 +335,7 @@ function enableEnteringActions(element: Element) {
             ref="trigger"
             type="button"
             class="block-type-trigger"
+            :class="{ 'icon-button': vertical }"
             :aria-label="t('块级类型')"
             :data-tooltip="vertical ? blockLabel : undefined"
             :aria-expanded="open"
@@ -344,8 +344,7 @@ function enableEnteringActions(element: Element) {
             @click="toggleBlockMenu"
           >
             <component v-if="vertical" :is="context.block === 'Heading' ? Heading2 : Type" :size="17" />
-            <span v-else>{{ blockLabel }}</span><small v-if="!compact">Level {{ featureLevel(context.block) }}</small
-            ><ChevronDown :size="13" />
+            <span v-else>{{ blockLabel }}</span><small v-if="!compact">Level {{ featureLevel(context.block) }}</small>
           </button>
           <div
             v-if="open && !disabled"
@@ -755,9 +754,6 @@ function enableEnteringActions(element: Element) {
   padding: 0;
   justify-content: center;
   gap: 0;
-}
-.selection-format-toolbar[aria-orientation='vertical'] .block-type-trigger > svg:last-child {
-  width: 10px;
 }
 .selection-level {
   display: flex;

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { retiredSystemPlugin } from '../workspace-plugins';
 import { t } from '../i18n';
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { canonicalPluginJson, comparePluginVersions, type PluginCatalogRelease, type PluginReleaseCatalog } from '@tano/protocol';
@@ -18,7 +19,7 @@ const status = ref('');
 const visibleLimit = ref(24);
 let controller = new AbortController();
 let sequence = 0;
-const releases = computed(() => catalog.value?.releases ?? []);
+const releases = computed(() => (catalog.value?.releases ?? []).filter(release => !retiredSystemPlugin(release.manifest.id)));
 const sorted = (items: PluginCatalogRelease[]) => [...items].sort((a, b) => comparePluginVersions(b.manifest.version, a.manifest.version));
 const latest = computed(() => {
   const grouped = new Map<string, PluginCatalogRelease[]>();

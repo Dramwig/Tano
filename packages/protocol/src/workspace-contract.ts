@@ -3,6 +3,8 @@ import type { ReferenceIdentity } from './objects';
 import { isShortId } from './short-id';
 import { validObjectType } from './object-types';
 import { workspaceViewDirectory } from './workspace-paths';
+import { validateFileDatabaseQuery, type FileDatabaseQuery } from './file-database';
+import { validateObjectViewQuery, type ObjectViewQuery } from './view-engine';
 
 /**
  * Portable contract shared by the local workspace and future cloud adapters.
@@ -50,10 +52,13 @@ export interface WorkspaceViewDefinition {
   id: string;
   name: string;
   kind: WorkspaceViewKind;
-  /** Every rendered item must be traceable to one of these stable sources. */
+  /** Static sources. Dynamic database rows resolve stable IDs from the scoped File Registry. */
   sources: WorkspaceViewSource[];
   /** A display/query hint. It is never executable code. */
   query?: string;
+  /** Dynamic directory projection; source files are never imported or copied. */
+  database?: FileDatabaseQuery;
+  objectDatabase?: ObjectViewQuery;
 }
 
 const viewId = (value: unknown): value is string =>
@@ -127,6 +132,14 @@ export function parseWorkspaceView(content: string): WorkspaceViewDefinition {
     )
       throw new Error('工作区视图来源身份无效或重复');
     seen.add(key);
+  }
+  if (value.database !== undefined) {
+    if (value.kind !== 'files') throw new Error('文件数据库必须使用文件视图');
+    validateFileDatabaseQuery(value.database);
+  }
+  if (value.objectDatabase !== undefined) {
+    if (value.kind !== 'objects' || value.database) throw new Error('对象数据库必须使用对象视图');
+    validateObjectViewQuery(value.objectDatabase);
   }
   return value;
 }

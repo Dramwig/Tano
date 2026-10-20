@@ -163,7 +163,7 @@ test('runs the Git inspector through its real isolated UI, Worker and named nati
     expect(request.command).toBe('git.diff');
     return route.fulfill({ json: { path: request.args.path, staged: request.args.staged, patch: request.args.staged ? '+已暂存内容' : '+工作区内容' } });
   });
-  const { pkg } = await buildPlugin(resolve('examples/plugins/git-inspector'));
+  const { pkg } = await buildPlugin(resolve('scripts/fixtures/native-query-plugin'));
   await page.goto(origin);
   await page.evaluate(async ({ url, pkg }) => { window.nativeFixture = await (await import(url)).mountNative(pkg); },
     { url: `/@fs/${resolve('scripts/fixtures/plugin-native-browser.ts').replaceAll('\\', '/')}`, pkg });
@@ -178,7 +178,7 @@ test('runs the Git inspector through its real isolated UI, Worker and named nati
   await expect(view.getByText('+已暂存内容', { exact: true })).toBeVisible();
   const integrity = await page.evaluate(() => window.nativeFixture.integrity);
   expect(calls.filter(call => call.command === 'plugin_native_request').every(call => call.args.request.integrity === integrity
-    && call.args.request.workspaceId === '81c90c74-1c40-4d24-9440-bb51228e4563' && call.args.request.pluginId === 'git-inspector')).toBe(true);
+    && call.args.request.workspaceId === '81c90c74-1c40-4d24-9440-bb51228e4563' && call.args.request.pluginId === 'native-query-fixture')).toBe(true);
   await page.screenshot({ path: 'artifacts/plugin-native-preview.png' });
   await view.getByRole('button', { name: '刷新状态' }).click();
   await expect(view.getByRole('region', { name: 'Git 文件差异' })).toHaveCount(0);

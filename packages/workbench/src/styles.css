@@ -236,6 +236,10 @@ button:hover {
   cursor: col-resize;
   touch-action: none;
 }
+.sidebar-resize-handle:focus {
+  /* Focus alone must not leave a persistent highlight on the resize edge. */
+  outline: none;
+}
 .sidebar-resize-handle::after {
   content: '';
   position: absolute;
@@ -247,7 +251,6 @@ button:hover {
   transition: background 120ms ease;
 }
 .sidebar-resize-handle:hover::after,
-.sidebar-resize-handle:focus-visible::after,
 .sidebar-resizing .sidebar-resize-handle::after {
   background: var(--green);
 }

@@ -65,6 +65,11 @@ describe('workspace contract v1', () => {
     const fileRefs = [...entries.values()].map((entry) => ({ version: 1 as const, layer: 'file' as const, workspaceId: manifest.workspaceId, fileId: entry.id, path: entry.path, revision: { hash: entry.hash } }));
     const objectRef = { version: 1 as const, layer: 'object' as const, workspaceId: manifest.workspaceId, type: object.type, id: object.id, path: '.tano/objects/d4e5f6.tano.json', revision: { hash: entries.get('.tano/objects/d4e5f6.tano.json')!.hash } };
     expect(viewSources(view, fileRefs, [objectRef])).toHaveLength(view.sources.length);
-    expect(relations.relations).toHaveLength(6);
+    expect(relations.relations).toHaveLength(8);
+    const database = parseWorkspaceView(readFileSync(join(root, '.tano/views/object-database.tano.json'), 'utf8'));
+    expect(database.objectDatabase?.types).toEqual(['task', 'project', 'experiment']);
+    for (const entry of entries.values()) {
+      expect(createHash('sha256').update(readFileSync(join(root, entry.path))).digest('hex'), entry.path).toBe(entry.hash);
+    }
   });
 });

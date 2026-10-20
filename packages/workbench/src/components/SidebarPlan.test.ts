@@ -652,7 +652,7 @@ it('keeps workspace records read-only while allowing creation in the independent
     archived: false,
     properties: { status: 'todo' },
   });
-  expect(store.objects[0]!.object.type).toBe('event');
+  expect(store.objects[0]!.object.type).toBe('task');
   store.workspace!.readOnly = true;
   await nextTick();
   expect(control<HTMLButtonElement>('添加未安排任务').disabled).toBe(false);

@@ -31,7 +31,7 @@ import type {
   DataValue,
   DataView,
 } from '@tano/protocol';
-import { dataTableName, parentPath, validDataValue } from '@tano/protocol';
+import { dataTableName, parentPath, safeRemoteImage, validDataValue } from '@tano/protocol';
 import { useWorkspaceStore } from '../stores/workspace';
 import {
   aggregateData,
@@ -50,11 +50,18 @@ import {
 import { nativeAttachments, openExternalUrl } from '../attachments';
 import { useWorkbenchRuntime } from '../runtime';
 import DataTableCell from './DataTableCell.vue';
+import { startColumnPointerReorder, startRowPointerReorder } from '../data-table-drag-preview';
 import DataFieldMenu from './DataFieldMenu.vue';
 import DataFieldCreate from './DataFieldCreate.vue';
+import DocumentAppearance from './DocumentAppearance.vue';
+import DocumentComments from './DocumentComments.vue';
+import DocumentScrollbar from './DocumentScrollbar.vue';
+import { appearanceText } from '../document-appearance';
+import type { OpenDocument } from '../stores/workspace';
+import type { CommentAuthor } from '../workspace-comments';
 import { addDataField, createAndSelectDataOption, dataFieldIcons } from '../data-table-properties';
 
-const props = defineProps<{ tableId: string; controlsTarget?: string }>();
+const props = defineProps<{ tableId: string; controlsTarget?: string; commentAuthor?: CommentAuthor; touchLayout?: boolean }>();
 const store = useWorkspaceStore();
 const runtime = useWorkbenchRuntime();
 const attachmentService = runtime.attachments ?? (runtime.native ? nativeAttachments : undefined);
@@ -69,6 +76,34 @@ const state = computed(() =>
 const table = computed(() => state.value?.draft);
 const file = computed(() => store.workspace?.files.find((file) => file.id === props.tableId));
 const title = computed(() => dataTableName(file.value?.path ?? state.value?.path ?? t('数据表')));
+// Adapt structured metadata to the shared Markdown appearance controls.
+const appearance = computed(() => `---\nicon: ${JSON.stringify(table.value?.icon ?? '')}\ncover: ${JSON.stringify(table.value?.cover ?? '')}\n---\n`);
+function updateAppearance(markdown: string) {
+  change(table => {
+    for (const key of ['icon', 'cover'] as const) {
+      const value = appearanceText(markdown, key);
+      if (value) table[key] = value;
+      else delete table[key];
+    }
+  });
+}
+const comments = ref<InstanceType<typeof DocumentComments>>();
+const commentDocument = computed<OpenDocument | undefined>(() => state.value && ({
+  id: props.tableId, path: state.value.path, content: `${JSON.stringify(table.value, null, 2)}\n`,
+  base: state.value.snapshot, saving: state.value.saving, missing: !!state.value.unavailable,
+}));
+function resolveCover(reference: string) {
+  return attachmentService?.imageUrl(store.workspace, state.value?.path ?? '', reference) ?? safeRemoteImage(reference);
+}
+async function uploadCover(file: File) {
+  const workspaceId = store.workspace?.id;
+  const tableId = props.tableId;
+  if (!workspaceId || !attachmentService || readonly.value) throw new Error(t('当前数据表不可编辑'));
+  const added = await attachmentService.importAttachment(workspaceId, state.value!.path, file, true);
+  if (workspaceId !== store.workspace?.id || tableId !== props.tableId) throw new Error(t('工作区已切换'));
+  await store.refresh();
+  return added;
+}
 async function renameTitle(event: Event) {
   const input = event.target as HTMLInputElement;
   await run(() => store.renameDataTable(props.tableId, input.value));
@@ -464,6 +499,46 @@ function moveField(fieldId: string, offset: number) {
       table.fields.splice(to, 0, ...table.fields.splice(index, 1));
   });
 }
+const canReorderRows = computed(() => !readonly.value && !view.value?.sorts.length);
+let stopTableDrag: (() => void) | undefined;
+function endReorder() {
+  stopTableDrag?.();
+  stopTableDrag = undefined;
+}
+watch(() => props.tableId, endReorder);
+watch(viewId, endReorder);
+watch(readonly, endReorder);
+watch(canReorderRows, endReorder);
+onBeforeUnmount(endReorder);
+function startColumnDrag(event: PointerEvent, id: string) {
+  if (readonly.value || !root.value) return;
+  endReorder();
+  stopTableDrag = startColumnPointerReorder(root.value, id, event, target => {
+    change(table => {
+      const from = table.fields.findIndex(field => field.id === id);
+      if (from < 0 || !table.fields.some(field => field.id === target.id)) return;
+      const [field] = table.fields.splice(from, 1);
+      const to = table.fields.findIndex(field => field.id === target.id) + Number(target.after);
+      table.fields.splice(to, 0, field);
+    });
+  }, () => { fieldMenu.value = undefined; });
+}
+function startRowDrag(event: PointerEvent, id: string) {
+  if (!canReorderRows.value || !root.value) return;
+  endReorder();
+  stopTableDrag = startRowPointerReorder(root.value, id, event, target => {
+    if (!canReorderRows.value || !groups.value.some(group =>
+      group.rows.some(row => row.id === id) && group.rows.some(row => row.id === target.id))) return;
+    change(table => {
+      const from = table.rows.findIndex(row => row.id === id);
+      if (from < 0 || !table.rows.some(row => row.id === target.id)) return;
+      // Preserve hidden/filtered records and move only the dragged identity.
+      const [row] = table.rows.splice(from, 1);
+      const to = table.rows.findIndex(row => row.id === target.id) + Number(target.after);
+      table.rows.splice(to, 0, row);
+    });
+  }, () => { fieldMenu.value = undefined; });
+}
 function addView() {
   const next = newDataView(t('视图 {0}', [(table.value?.views.length ?? 0) + 1]));
   change((table) => table.views.push(next));
@@ -701,16 +776,22 @@ const filterOperators = [
 </script>
 
 <template>
+  <div class="data-page-layout">
   <section ref="root" class="data-page" :aria-label="t('数据表工作区')" @paste="paste" @keydown="keydown">
     <template v-if="table && view && state">
-      <header class="data-heading">
-        <Table2 :size="20" /><input
-          class="data-title"
+      <header class="data-heading document-title">
+        <DocumentAppearance :key="tableId" :model-value="appearance" :readonly="readonly || working"
+          :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'"
+          :resolve-image="resolveCover" :resource-revision="attachmentService?.revision"
+          :upload-cover="attachmentService && !store.isDemo ? uploadCover : undefined"
+          @update:model-value="updateAppearance" @comment="comments?.showDiscussion()" />
+        <div class="document-title-content"><input
+          class="document-title-input"
           :aria-label="t('数据表名称')"
           :readonly="readonly || working"
           :value="title"
           @change="renameTitle"
-        />
+        /></div>
         <Teleport :to="controlsTarget ?? 'body'" :disabled="!controlsTarget" defer>
           <div
             class="data-table-controls"
@@ -777,6 +858,18 @@ const filterOperators = [
         </button>
       </div>
       <div class="data-view-bar">
+        <div v-if="selectedRows.length" class="data-selection" role="group" :aria-label="t('已选择')">
+          <span role="status">{{ t('已选择') }} {{ selectedRows.length }} {{ t('条') }}</span>
+          <button :disabled="readonly" :aria-label="t('复制记录')" :data-tooltip="t('复制记录')" @click="duplicateRows(selectedRows)">
+            <Copy :size="16" />
+          </button>
+          <button :disabled="readonly" :aria-label="t('删除记录')" :data-tooltip="t('删除记录')" @click="deleteRows(selectedRows)">
+            <Trash2 :size="16" />
+          </button>
+          <button :aria-label="t('取消选择')" :data-tooltip="t('取消选择')" @click="selectedRows = []">
+            <X :size="16" />
+          </button>
+        </div>
         <div class="data-view-tabs panel-scrollbar" role="tablist" :aria-label="t('数据表视图')">
           <button
             v-for="item in table.views"
@@ -839,27 +932,19 @@ const filterOperators = [
           </button>
         </div>
       </div>
-      <div v-if="selectedRows.length" class="data-selection">
-        <span>{{ t('已选择') }} {{ selectedRows.length }} {{ t('条') }}</span
-        ><button :disabled="readonly" @click="duplicateRows(selectedRows)">
-          <Copy :size="13" />{{ t('复制记录') }}</button
-        ><button :disabled="readonly" @click="deleteRows(selectedRows)">
-          <Trash2 :size="13" />{{ t('删除记录') }}</button
-        ><button @click="selectedRows = []">{{ t('取消选择') }}</button>
-      </div>
       <div class="data-body">
-        <div class="data-grid-scroll panel-scrollbar">
+        <div class="data-grid-scroll">
           <table
             v-if="view.type === 'table'"
             class="data-grid"
             :class="{ 'data-frozen': view.freeze }"
             :style="{
-              width: `max(100%, ${fields.reduce((sum, field) => sum + width(field), 0) + 44 + (creatingField ? 240 : 60)}px)`,
+              width: `max(100%, ${fields.reduce((sum, field) => sum + width(field), 0) + (creatingField ? 240 : 60)}px)`,
             }"
             :aria-label="t('数据表记录')"
           >
             <colgroup>
-              <col style="width: 44px" />
+              <col style="width: 0" />
               <col
                 v-for="field in fields"
                 :key="field.id"
@@ -885,6 +970,8 @@ const filterOperators = [
                 >
                   <button
                     class="data-field-heading"
+                    :draggable="false"
+                    @pointerdown="startColumnDrag($event, field.id)"
                     :class="{ active: fieldMenu?.id === field.id }"
                     aria-haspopup="dialog"
                     :aria-expanded="fieldMenu?.id === field.id"
@@ -938,6 +1025,13 @@ const filterOperators = [
                 :class="{ selected: selectedRows.includes(row.id) }"
               >
                 <td class="data-row-tools">
+                  <button v-if="!readonly" class="data-row-drag" :draggable="false"
+                    :disabled="!canReorderRows"
+                    :aria-label="t('拖动调整行顺序')"
+                    :data-tooltip="canReorderRows ? t('拖动调整行顺序') : t('请先清除排序，再拖动调整行顺序')"
+                    @pointerdown="startRowDrag($event, row.id)">
+                    <GripVertical :size="14" />
+                  </button>
                   <input
                     v-model="selectedRows"
                     type="checkbox"
@@ -1002,7 +1096,7 @@ const filterOperators = [
             <tfoot v-if="hasAggregates">
               <tr>
                 <td />
-                <td v-for="field in fields" :key="field.id">
+                <td v-for="field in fields" :key="field.id" :data-field="field.id">
                   <div
                     v-if="(view.aggregates[field.id] ?? 'none') !== 'none'"
                     class="data-aggregate"
@@ -1059,6 +1153,12 @@ const filterOperators = [
               </div>
               <p v-if="!group.rows.length" class="data-empty">{{ t('没有符合条件的记录') }}</p>
             </section>
+          </div>
+          <div v-if="store.workspace && commentDocument" class="data-comments" @keydown.stop @paste.stop>
+            <DocumentComments :key="tableId" ref="comments" :workspace-id="store.workspace.id"
+              :document="commentDocument" :readonly="readonly"
+              :author="commentAuthor ?? { id: 'local', name: t('本机用户') }"
+              :capture-selection="() => null" :focus-anchor="() => {}" :geometry="() => null" />
           </div>
         </div>
         <aside v-if="settings" class="data-settings panel-scrollbar" :aria-label="t('视图设置')">
@@ -1440,16 +1540,25 @@ const filterOperators = [
       </section>
     </div>
   </section>
+  <DocumentScrollbar v-if="!touchLayout" :scroll-element="root" />
+  </div>
 </template>
 
 <style scoped>
+.data-page-layout {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  background: var(--paper);
+}
 .data-page {
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
   flex: 1;
-  overflow: hidden;
+  overflow: auto;
   background: var(--paper);
   color: var(--text);
   font-size: 13px;
@@ -1482,7 +1591,7 @@ const filterOperators = [
 .data-page .data-primary:hover {
   background: var(--green-fill-hover);
 }
-.data-page input,
+.data-page input:not(.document-title-input),
 .data-page select,
 .data-page textarea {
   font: inherit;
@@ -1585,24 +1694,19 @@ const filterOperators = [
   transform: rotate(180deg);
 }
 .data-heading {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 22px 28px 12px;
-}
-.data-heading > svg {
-  color: var(--green);
+  --document-inset-start: 28px;
+  --document-inset-end: 28px;
   flex: none;
+  padding: 22px var(--document-inset-end) 12px var(--document-inset-start);
+  margin-bottom: 40px;
 }
-.data-title {
-  font-size: 23px !important;
-  font-weight: 650 !important;
-  border: 0;
-  padding: 3px;
-  background: transparent;
-  min-width: 100px;
-  flex: 1;
-  width: 100%;
+.data-heading :deep(.document-title-content),
+.data-heading :deep(.document-appearance-content) {
+  max-width: none;
+}
+.data-page .document-title-input {
+  padding: 0;
+  font-size: clamp(28px, 3vw, 40px);
 }
 .data-save-state {
   color: var(--muted);
@@ -1620,6 +1724,8 @@ const filterOperators = [
   flex: none;
 }
 .data-view-bar {
+  position: relative;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1682,17 +1788,17 @@ const filterOperators = [
   padding: 0 4px;
 }
 .data-body {
-  flex: 1;
+  flex: 1 0 auto;
   display: flex;
-  min-height: 0;
+  min-height: 240px;
   min-width: 0;
   position: relative;
 }
 .data-grid-scroll {
   flex: 1;
   min-width: 0;
-  overflow: auto;
-  padding: 0 28px 24px;
+  overflow: visible;
+  padding: 0 28px 24px 48px;
 }
 .data-grid {
   border-collapse: separate;
@@ -1725,6 +1831,8 @@ const filterOperators = [
   color: var(--muted);
 }
 .data-field-heading {
+  cursor: grab;
+  touch-action: pan-y;
   width: 100%;
   justify-content: flex-start !important;
   padding: 8px 9px !important;
@@ -1766,17 +1874,81 @@ const filterOperators = [
   border-radius: 0 !important;
 }
 .data-column-resize:hover {
-  background: var(--green) !important;
+  background: transparent !important;
+}
+.data-column-resize::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.data-column-resize:hover::after {
+  background: var(--green);
 }
 .data-row-tools {
-  text-align: center !important;
-  width: 44px;
-  padding: 8px 0 !important;
-  background: var(--paper);
+  position: relative;
+  width: 0;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
 }
+.data-row-tools::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 48px;
+}
+.data-page .data-row-drag {
+  position: absolute;
+  right: 23px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  width: 20px;
+  height: 26px;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  cursor: grab;
+  color: var(--muted);
+}
+.data-grid tr:hover .data-row-drag,
+.data-grid tr:focus-within .data-row-drag,
+.data-grid tr.selected .data-row-drag {
+  opacity: 1;
+  pointer-events: auto;
+}
+.data-row-drag { touch-action: none; }
 .data-row-tools input {
+  position: absolute;
+  z-index: 1;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%);
   accent-color: var(--green);
   margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.data-grid tr:hover > .data-row-tools input,
+.data-grid tr:focus-within > .data-row-tools input,
+.data-row-tools input:checked,
+.data-row-tools input:indeterminate {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .data-page .data-row-drag,
+  .data-row-tools input {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 .data-frozen .data-row-tools {
   position: sticky;
@@ -1785,7 +1957,7 @@ const filterOperators = [
 }
 .data-frozen .data-first {
   position: sticky;
-  left: 44px;
+  left: 0;
   background: var(--paper);
   z-index: 3;
 }
@@ -1845,12 +2017,30 @@ const filterOperators = [
   font-size: 18px;
 }
 .data-selection {
+  position: absolute;
+  left: 28px;
+  bottom: calc(100% + 8px);
+  z-index: 5;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 5px 32px;
-  background: var(--accent);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--paper);
+  box-shadow: 0 3px 12px #00000012;
   font-size: 12px;
+  white-space: nowrap;
+}
+.data-selection > span {
+  padding: 0 12px;
+  color: var(--green);
+}
+.data-selection > button {
+  width: 36px;
+  height: 34px;
+  padding: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
 }
 .data-settings,
 .data-detail {
@@ -2122,11 +2312,10 @@ const filterOperators = [
 }
 @media (max-width: 760px) {
   .data-heading {
-    padding: 16px 12px;
+    --document-inset-start: 12px;
+    --document-inset-end: 12px;
+    padding: 16px var(--document-inset-end) 16px var(--document-inset-start);
     gap: 6px;
-  }
-  .data-title {
-    font-size: 18px !important;
   }
   .data-table-controls .data-save-state {
     display: none;
@@ -2140,7 +2329,7 @@ const filterOperators = [
     justify-content: space-between;
   }
   .data-grid-scroll {
-    padding: 0 12px 20px;
+    padding: 0 12px 20px 48px;
   }
   .data-settings,
   .data-detail {
@@ -2174,11 +2363,7 @@ const filterOperators = [
     font-size: 10px;
   }
   .data-selection {
-    padding: 5px 12px;
-    gap: 5px;
-  }
-  .data-selection button {
-    font-size: 11px;
+    left: 12px;
   }
 }
 </style>

@@ -74,7 +74,11 @@ fn recycle_root(data: &Path, workspace: &str) -> Result<PathBuf, String> {
 // command call site is compiled only for mobile targets.
 #[cfg_attr(not(mobile), allow(dead_code))]
 pub fn recycle(data: &Path, root: &Path, workspace: &str, path: &str) -> Result<(), String> {
-    let source = storage::resolve(root, path, true)?;
+    let source = if path.starts_with(".tano/objects/") {
+        storage::resolve_storage(root, path, true)?
+    } else {
+        storage::resolve(root, path, true)?
+    };
     if !source.is_file() {
         return Err("只能移除单个文件".into());
     }
@@ -135,6 +139,13 @@ pub fn recover(data: &Path, root: &Path, workspace: &str, id: &str) -> Result<St
     if fs::metadata(&content).map_err(|e| e.to_string())?.len() > 50 * 1024 * 1024 {
         return Err("文件超过 50 MiB".into());
     }
+    // Object identity is in its content. Restore only to its original portable
+    // location, refusing an existing file instead of creating duplicate IDs.
+    if record.path.starts_with(".tano/objects/") {
+        let target = storage::resolve_storage(root, &record.path, false)?;
+        storage::create_atomic(&target, &fs::read(content).map_err(|e| e.to_string())?)?;
+        return Ok(record.path);
+    }
     let original = Path::new(&record.path);
     let stem = original
         .file_stem()
@@ -159,6 +170,28 @@ pub fn recover(data: &Path, root: &Path, workspace: &str, id: &str) -> Result<St
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn object_recycle_restores_portable_path_without_overwriting() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().join("workspace");
+        fs::create_dir_all(root.join(".tano/objects")).unwrap();
+        let root = root.canonicalize().unwrap();
+        let workspace = uuid::Uuid::new_v4().to_string();
+        let path = ".tano/objects/abcdef.tano.json";
+        fs::write(root.join(path), "object content").unwrap();
+        recycle(temporary.path(), &root, &workspace, path).unwrap();
+        assert!(!root.join(path).exists());
+        let entries = recycled(temporary.path(), &workspace).unwrap();
+        assert_eq!(
+            recover(temporary.path(), &root, &workspace, &entries[0].id).unwrap(),
+            path
+        );
+        assert_eq!(
+            fs::read_to_string(root.join(path)).unwrap(),
+            "object content"
+        );
+        assert!(recover(temporary.path(), &root, &workspace, &entries[0].id).is_err());
+    }
     #[test]
     fn new_mobile_workspace_uses_normal_identity_bootstrap_and_reopens() {
         let temporary = tempfile::tempdir().unwrap();

@@ -25,8 +25,6 @@ mod plugin_connection_vault;
 #[cfg(desktop)]
 mod plugin_connections;
 #[cfg(desktop)]
-mod plugin_git;
-#[cfg(desktop)]
 mod plugin_native;
 #[cfg(desktop)]
 mod plugin_oauth;
@@ -38,8 +36,12 @@ mod search;
 mod session_storage;
 pub mod storage;
 mod updates;
+#[cfg(desktop)]
+mod workspace_git;
 mod workspace_identity;
 mod workspace_lock;
+#[cfg(desktop)]
+mod workspace_sync;
 
 use notify::{RecursiveMode, Watcher};
 use std::{
@@ -648,6 +650,35 @@ fn write_document(
 }
 
 #[tauri::command]
+fn create_agent_record(
+    path: String,
+    content: String,
+    app: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let object: serde_json::Value = serde_json::from_str(&content).map_err(|_| "对象 JSON 无效")?;
+    let id = object
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .ok_or("对象身份缺失")?;
+    if !storage::is_short_id(id)
+        || !(path == format!(".tano/objects/{id}.tano.json")
+            || (!path.starts_with('.') && path.ends_with(".table.json")))
+    {
+        return Err("对象路径无效".into());
+    }
+    with_session(state, |s| {
+        let target = storage::ensure_file_parent(&s.root, &path)?;
+        if target.exists() {
+            return Err("对象路径已存在".into());
+        }
+        identity_manifest::claim_external(&s.root, &s.id, &cache_path(&app)?, id)?;
+        // Failed publication deliberately keeps the ID reserved; never reuse an identity.
+        storage::create_atomic(&target, content.as_bytes())
+    })
+}
+
+#[tauri::command]
 fn reserve_reference_id(
     app: tauri::AppHandle,
     occupied: Vec<String>,
@@ -752,6 +783,27 @@ fn change_assistant_file(
 ) -> Result<storage::WriteResult, String> {
     with_session(state, |s| {
         assistant_files::change(&s.root, &s.id, &cache_path(&app)?, &request, |target| {
+            #[cfg(desktop)]
+            {
+                trash::delete(target).map_err(|error| error.to_string())
+            }
+            #[cfg(mobile)]
+            {
+                let _ = target;
+                mobile_storage::recycle(&app_data(&app)?, &s.root, &s.id, &request.path)
+            }
+        })
+    })
+}
+
+#[tauri::command]
+fn delete_workspace_object(
+    request: assistant_files::FileChangeRequest,
+    app: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<storage::WriteResult, String> {
+    with_session(state, |s| {
+        assistant_files::delete_object(&s.root, &s.id, &cache_path(&app)?, &request, |target| {
             #[cfg(desktop)]
             {
                 trash::delete(target).map_err(|error| error.to_string())
@@ -936,6 +988,26 @@ pub fn with_workspace_mutating_session<T>(
     with_workspace_session(workspace_id, state, f)
 }
 
+/// Called under the workspace session lock before a cloud adapter applies local files.
+pub fn assert_cloud_sync_available(data: &Path, workspace_id: &str) -> Result<(), String> {
+    let path = data
+        .join("workspace-sync")
+        .join(workspace_id)
+        .join("state.json");
+    let bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    };
+    let state: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|_| "同步配置损坏，已停止云端写入")?;
+    match state.get("backend") {
+        Some(serde_json::Value::Null) => Ok(()),
+        Some(serde_json::Value::String(backend)) if backend == "cloud" => Ok(()),
+        _ => Err("当前工作区由 Git 同步，已阻止云端文件写入".into()),
+    }
+}
+
 pub fn app_data(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let directory = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
@@ -991,6 +1063,19 @@ pub fn configure_with_commands(
                 .expect("static response")
         })
         .invoke_handler(move |invoke| {
+            #[cfg(desktop)]
+            if invoke.message.command() == "workspace_git_query" {
+                let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool =
+                    tauri::generate_handler![workspace_git::workspace_git_query];
+                return handler(invoke);
+            }
+            #[cfg(desktop)]
+            if invoke.message.command() == "workspace_sync" {
+                let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool =
+                    tauri::generate_handler![workspace_sync::workspace_sync];
+                return handler(invoke);
+            }
+
             #[cfg(desktop)]
             if invoke.message.command().starts_with("plugin_connections_") {
                 let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
@@ -1109,6 +1194,7 @@ pub fn configure_with_commands(
                     open_external_url,
                     refresh_workspace,
                     reserve_reference_id,
+                    create_agent_record,
                     personal_plans::personal_plans_list,
                     personal_plans::personal_plans_read,
                     personal_plans::personal_plans_reserve,
@@ -1122,6 +1208,7 @@ pub fn configure_with_commands(
                     move_entry,
                     remove_document,
                     change_assistant_file,
+                    delete_workspace_object,
                     reveal_workspace,
                     open_workspace_entry,
                     workspace_entry_path,

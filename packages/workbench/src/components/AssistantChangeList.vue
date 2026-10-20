@@ -16,7 +16,7 @@ const emit = defineEmits<{
 const checks = ref<Record<string, boolean>>({});
 const expanded = ref<Record<string, boolean>>({});
 const statuses = { ready: '', get applying() { return t('正在应用'); }, applied: '', get rejected() { return t('已放弃'); }, get conflicted() { return t('存在冲突'); }, get unknown() { return t('结果待核对'); } };
-const labels = { get create() { return t('新增'); }, get edit() { return t('修改'); }, get delete() { return t('删除'); }, get rename() { return t('重命名'); }, get move() { return t('移动'); }, get object() { return t('任务'); }, get relation() { return t('关系'); } };
+const labels = { get create() { return t('新增'); }, get edit() { return t('修改'); }, get delete() { return t('删除'); }, get rename() { return t('重命名'); }, get move() { return t('移动'); }, get object() { return t('对象'); }, get relation() { return t('关系'); } };
 const isFile = (proposal: AssistantProposal) => !['object', 'relation'].includes(proposal.kind);
 const canUndo = (proposal: AssistantProposal) => proposal.status === 'applied' &&
   (proposal.kind === 'edit' || proposal.kind === 'create' && !isDataTableFilePath(proposal.path));

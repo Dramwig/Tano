@@ -9,7 +9,6 @@ import { configureWorkbench } from '../runtime';
 import { useWorkspaceStore } from '../stores/workspace';
 import PluginInstaller from './PluginInstaller.vue';
 import { bundledPluginCatalog, type PluginCatalogEntry } from '../plugin-catalog';
-import { PluginPackageCache } from '../plugins/packages';
 
 let app: App;
 let root: HTMLElement;
@@ -144,31 +143,9 @@ it('combines category and object-type search and resets an empty result', async 
   expect(search.value).toBe('');
 });
 
-it.each(['list', 'details'])('installs the bundled Git inspector from %s without importing a file or authorizing code', async (entry) => {
-  if (entry === 'details') {
-    button('查看Git 变更详情').click();
-    await nextTick();
-    button('安装插件').click();
-  } else button('安装Git 变更').click();
-  await vi.waitFor(() => expect(store.installedPlugins.some(item => item.manifest.id === 'git-inspector')).toBe(true));
-  const installed = store.installedPlugins.find(item => item.manifest.id === 'git-inspector')!;
-  expect(installed.authorized).toBe(false);
-  expect(installed.rule?.integrity).toMatch(/^[a-f0-9]{64}$/);
-  const pkg = await new PluginPackageCache().get(installed.rule!.integrity!);
-  expect(pkg?.ui?.changes).toBeDefined();
-  expect(pkg?.manifest).toEqual(installed.manifest);
-  expect(store.pluginViews.some(view => view.pluginId === 'git-inspector')).toBe(true);
-  if (entry === 'list') {
-    button('查看Git 变更详情').click();
-    await nextTick();
-  }
-  button('授权此版本运行').click();
-  await vi.waitFor(() => expect(store.pluginRuntime.find(plugin => plugin.id === 'git-inspector')?.message)
-    .toBe('当前运行环境不提供此插件要求的本机能力'));
-  button('打开Git 变更').click();
-  await nextTick();
-  expect(store.activeId).toBe('plugin:git-inspector:changes');
-  expect(root.querySelector('dialog')).toBeNull();
+it('does not offer the retired Git plugin for installation', () => {
+  expect(bundledPluginCatalog.some(entry => entry.manifest.id === 'git-inspector')).toBe(false);
+  expect(root.textContent).not.toContain('安装Git 变更');
 });
 
 it('opens details, installs there, and shows the installed manifest version', async () => {

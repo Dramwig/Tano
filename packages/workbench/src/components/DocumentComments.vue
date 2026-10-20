@@ -184,7 +184,7 @@ async function load() {
   }
 }
 
-watch(() => [props.workspaceId, props.document.id], () => {
+watch([() => props.workspaceId, () => props.document.id], () => {
   documentEpoch++;
   contentRevision = 0;
   annotations.value = undefined;

@@ -519,7 +519,7 @@ function createAssistantState(inline = false) {
         await persist(target);
         submitting = true;
       }
-      const result = await workspace.reviewAssistantProposal(expected, proposal, acceptance);
+      const result = await workspace.reviewAssistantProposal(expected, proposal, acceptance, false, undefined, !!target?.external);
       if (result.status === 'saved') {
         proposal.status = 'applied'; proposal.applied = result.applied; proposal.error = undefined;
       } else {

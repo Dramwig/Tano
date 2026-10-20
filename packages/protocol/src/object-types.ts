@@ -21,7 +21,26 @@ export interface ObjectTypeDefinition {
   fields: readonly ObjectField[];
 }
 export const coreObjectTypes: readonly ObjectTypeDefinition[] = [
-  { type: 'task', label: '任务（旧版）', level: 2, category: 'core', storage: 'record', legacy: true, fields: [] },
+  {
+    type: 'task', label: '任务', level: 2, category: 'core', storage: 'record', fields: [
+      { key: 'status', label: '状态', type: 'text' },
+      { key: 'due', label: '截止日期', type: 'text' },
+      { key: 'priority', label: '优先级', type: 'number' },
+      { key: 'completed', label: '已完成', type: 'boolean' },
+    ],
+  },
+  { type: 'project', label: '项目', level: 2, category: 'core', storage: 'record', fields: [
+    { key: 'status', label: '状态', type: 'text' },
+    { key: 'goal', label: '项目目标', type: 'text' },
+    { key: 'due', label: '截止日期', type: 'text' },
+  ] },
+  { type: 'experiment', label: '实验', level: 2, category: 'core', storage: 'record', fields: [
+    { key: 'status', label: '状态', type: 'text' },
+    { key: 'hypothesis', label: '假设', type: 'text' },
+    { key: 'result', label: '实验结果', type: 'text' },
+    { key: 'metric', label: '指标', type: 'number' },
+    { key: 'runAt', label: '运行时间', type: 'datetime' },
+  ] },
   { type: 'person', label: '人物', level: 2, category: 'core', storage: 'record', fields: [] },
   { type: 'document', label: '文档', level: 2, category: 'core', storage: 'resource', fields: [] },
   {
@@ -51,12 +70,6 @@ export const validObjectType = (type: unknown): type is string =>
   typeof type === 'string' &&
   /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/.test(type) &&
   type.length <= 80;
-const retiredObjectTypes = new Map<string, ObjectTypeDefinition>([
-  ['project', Object.freeze({
-    type: 'project', label: '项目（旧版）', level: 2, category: 'core', storage: 'record',
-    legacy: true, retired: true, fields: Object.freeze([]),
-  })],
-]);
 export class ObjectTypeRegistry {
   private definitions = new Map(coreObjectTypes.map((definition) => [definition.type, definition]));
   private listeners = new Set<() => void>();
@@ -64,7 +77,7 @@ export class ObjectTypeRegistry {
     return [...this.definitions.values()];
   }
   get(type: string) {
-    return this.definitions.get(type) ?? retiredObjectTypes.get(type);
+    return this.definitions.get(type);
   }
   subscribe(listener: () => void) {
     this.listeners.add(listener);
@@ -117,7 +130,16 @@ export class ObjectTypeRegistry {
     };
   }
 }
-export const objectTypeRegistry = new ObjectTypeRegistry();
+/** Shared schema authority for object CRUD, relation endpoints and view fields. */
+export class SchemaRegistry extends ObjectTypeRegistry {
+  readonly version = 1;
+  validate(type: string, properties: Record<string, unknown>) {
+    validateObjectProperties(type, properties, this);
+  }
+}
+export const schemaRegistry = new SchemaRegistry();
+/** Compatibility name used by editor and plugin integrations. */
+export const objectTypeRegistry: ObjectTypeRegistry = schemaRegistry;
 export const registerObjectType = (
   input: Parameters<ObjectTypeRegistry['registerObjectType']>[0],
 ) => objectTypeRegistry.registerObjectType(input);
@@ -186,6 +208,7 @@ export function validateObjectProperties(
         `${field.label}格式无效${field.type === 'datetime' ? '，请使用带时区的日期时间' : ''}`,
       );
   }
+  if (['task', 'project'].includes(type) && properties.due !== undefined && properties.due !== '' && !validEventDate(properties.due)) throw new Error('截止日期格式无效，请使用 YYYY-MM-DD');
   if (type === 'event') {
     const hasStart = properties.start !== undefined && properties.start !== '';
     const hasEnd = properties.end !== undefined && properties.end !== '';

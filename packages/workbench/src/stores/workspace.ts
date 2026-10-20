@@ -1,5 +1,7 @@
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { defineStore } from 'pinia';
+import { FileRegistry, defaultFileDatabaseQuery, defaultObjectViewQuery, parseWorkspaceView, workspaceViewPath, type WorkspaceViewDefinition } from '@tano/protocol';
+import { loadFileMetadata, saveFileMetadata, markdownFileMetadata, type FileMetadataState } from '../file-metadata';
 import type {
   FileEntry,
   FileSnapshot,
@@ -144,8 +146,73 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     views.value = next;
   }
   const workspace = ref<Workspace | null>(null);
+  const fileRegistry = computed(() => workspace.value ? FileRegistry.from(workspace.value) : null);
+  function metadataTarget(id: string, scope: string) {
+    const current = workspace.value;
+    const file = fileRegistry.value?.get(id);
+    if (!current || current.id !== scope || !file || isWorkspaceInternalPath(file.path)) throw new Error('文件或工作区已变化');
+    return { current, file };
+  }
+  const readFileMetadata = (id: string, scope: string) => serial(async (): Promise<FileMetadataState> => {
+    const { current, file } = metadataTarget(id, scope);
+    if (isMarkdown(file.path)) {
+      const content = documents.value.find(doc => doc.id === id)?.content ?? (await adapter.read(file.path)).content;
+      return { file: markdownFileMetadata(id, content), base: null,
+        referenceCount: contentReferences(referenceTargets.value, new Map([[`document/${id}`, content]])).length };
+    }
+    return loadFileMetadata(adapter, current, id);
+  });
+  const updateFileMetadata = (state: FileMetadataState, scope: string) => serial(async () => {
+    const { current, file } = metadataTarget(state.file.fileId, scope);
+    if (isMarkdown(file.path)) throw new Error('请在文档属性中编辑 Markdown 属性');
+    if (current.readOnly || file.readOnly) throw new Error('你对此文件只有阅读权限');
+    const saved = await saveFileMetadata(adapter, state);
+    workspace.value = await adapter.refresh();
+    return saved;
+  });
   const workspaceViews = ref<WorkspaceViewRecord[]>([]);
   const workspaceViewErrors = ref<string[]>([]);
+  async function createObjectDatabase() {
+    const scope = workspace.value?.id;
+    const id = `objects-${crypto.randomUUID()}`;
+    await serial(async () => {
+      if (!scope || workspace.value?.id !== scope) throw new Error('工作区已切换');
+      writable();
+      if (!capabilities.value.features.objectReferences) throw new Error('Level 2 已关闭');
+      const view = parseWorkspaceView(JSON.stringify({ version: 1, layer: 'view', workspaceId: scope, id,
+        name: '对象数据库', kind: 'objects', sources: [], objectDatabase: defaultObjectViewQuery() }));
+      await adapter.create(workspaceViewPath(id), JSON.stringify(view, null, 2) + '\n');
+      workspace.value = await adapter.refresh(); await refreshObjects();
+    });
+    await openWorkspaceView(id, { newTab: true });
+  }
+  async function createFileDatabase(directory = '') {
+    const scope = workspace.value?.id;
+    const id = `files-${crypto.randomUUID()}`;
+    await serial(async () => {
+      if (!scope || workspace.value?.id !== scope) throw new Error('工作区已切换');
+      writable();
+      if (directory && !workspace.value.files.some(f => f.kind === 'directory' && f.path === directory)) throw new Error('目录已不存在');
+      const view = parseWorkspaceView(JSON.stringify({ version: 1, layer: 'view', workspaceId: scope, id,
+        name: `${directory ? basename(directory) : workspace.value.name} · 文件数据库`, kind: 'files', sources: [], database: defaultFileDatabaseQuery(directory) }));
+      await adapter.create(workspaceViewPath(id), JSON.stringify(view, null, 2) + '\n');
+      workspace.value = await adapter.refresh(); await refreshObjects();
+    });
+    await openWorkspaceView(id, { newTab: true });
+  }
+  const saveFileDatabase = (view: WorkspaceViewDefinition, base: FileSnapshot) => serial(async () => {
+    if (workspace.value?.id !== view.workspaceId) throw new Error('工作区已切换');
+    writable();
+    const checked = parseWorkspaceView(JSON.stringify(view));
+    const result = await adapter.write(workspaceViewPath(checked.id), JSON.stringify(checked, null, 2) + '\n', base.hash);
+    if (result.status !== 'saved') {
+      const copy = `.tano/conflicts/view-${checked.id}-${crypto.randomUUID()}.tano.json`;
+      await adapter.create(copy, JSON.stringify(checked, null, 2) + '\n');
+      throw new Error(`视图已被外部修改或删除，外部版本未覆盖；当前设置已保留在 ${copy}`);
+    }
+    workspace.value = await adapter.refresh(); await refreshObjects();
+    return result.snapshot;
+  });
   const fileMutations = optimisticFiles(() => workspace.value, report);
   const visibleWorkspace = computed({ get: () => fileMutations.workspace.value, set: (value) => { workspace.value = value; } });
   function displayPath(file: Pick<FileEntry, 'id' | 'path'>) {
@@ -642,12 +709,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return editRelation({ replace: { type, target, previous, next } }, workspaceId);
   }
   async function createObject(draft: Pick<WorkspaceObject, 'type' | 'name' | 'description' | 'properties' | 'archived'>) {
-    // New tasks use the event model. Existing task files retain their identity and references.
-    if (draft.type === 'task') draft = {
-      ...draft,
-      type: 'event',
-      properties: { ...draft.properties, checkable: true, completed: draft.properties.completed === true || ['done', 'completed'].includes(String(draft.properties.status)) },
-    };
     const workspaceId = workspace.value?.id;
     return serial(async () => {
       if (!workspaceId || workspace.value?.id !== workspaceId) throw new Error('工作区已切换');
@@ -679,6 +740,24 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       activity('对象已更新', `${saved.object.name} · ${saved.object.type}`, 'save');
       recordHelpPlanEdit(record.object, draft);
       return saved;
+    });
+  }
+  async function deleteObject(record: ObjectRecord, expectedWorkspace: string) {
+    return serial(async () => {
+      if (workspace.value?.id !== expectedWorkspace) throw new Error('工作区已切换');
+      writable();
+      if (!capabilities.value.features.objectReferences) throw new Error('Level 2 已关闭');
+      if (record.object.properties.syncReadOnly === true) throw new Error('此对象为只读');
+      if (!adapter.removeObjectFile) throw new Error('此存储适配器不支持安全删除对象');
+      const file = workspace.value.files.find(file => file.path === record.path);
+      if (!file || file.readOnly) throw new Error('对象已不存在或为只读');
+      const base = parseObject(record.snapshot.content);
+      if (base.id !== record.object.id || base.type !== record.object.type) throw new Error('对象身份不一致');
+      const result = await adapter.removeObjectFile({ workspaceId: expectedWorkspace, fileId: file.id, path: record.path, expectedHash: record.snapshot.hash });
+      if (result.status !== 'saved') throw new Error('对象已被外部修改或删除，请重新读取后重试');
+      // Preserve relation provenance. Missing endpoints remain explicit and can be removed separately.
+      workspace.value = await adapter.refresh(); await refreshObjects();
+      activity('对象已删除', record.object.name, 'file');
     });
   }
   async function templates(expectedWorkspace: string) {
@@ -1923,29 +2002,35 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         complete: errors.length === 0, errors };
     });
   }
-  async function reviewAssistantStructure(proposal: AssistantProposal, accepted?: AssistantPreview, automatic = false, signal?: AbortSignal) {
+  async function reviewAssistantStructure(proposal: AssistantProposal, accepted?: AssistantPreview, automatic = false, signal?: AbortSignal, external = false) {
     if (!capabilities.value.features.objectReferences) throw new Error('工作区对象能力未启用');
     await refreshObjects();
     if (objectErrors.value.length || relationError.value) throw new Error('请先处理工作区对象或关系记录错误');
     let disk: FileSnapshot | null = null;
     let content = proposal.content;
+    const validateAgentObject = (object: WorkspaceObject, base?: WorkspaceObject) => {
+      const definition = objectTypeRegistry.get(object.type);
+      if (!definition || definition.storage !== 'record' || definition.retired) throw new Error('对象类型不可编辑');
+      if (base && (base.id !== object.id || base.type !== object.type || base.properties.syncReadOnly === true)) throw new Error('对象身份不可修改或对象为只读');
+      validateObjectProperties(object.type, object.properties);
+    };
     if (proposal.kind === 'object') {
       const object = parseObject(content);
       if (proposal.base) {
         const base = parseObject(proposal.base);
-        validateTaskUpdate(base, object);
+        validateAgentObject(object, base);
         const file = workspace.value!.files.find(file => file.id === proposal.fileId && file.path === proposal.path);
         const record = objects.value.find(record => record.object.id === base.id && record.path === file?.path);
-        if (!file || !record) throw new Error('任务已删除、移动或身份变化');
+        if (!file || !record || file.readOnly) throw new Error('对象已删除、移动、只读或身份变化');
         disk = record.snapshot;
         const merged = mergeObject(base, object, record.object);
         if (!merged) return { status: 'conflict' as const, preview: { before: disk.content, after: content, diskHash: disk.hash, path: proposal.path } };
-        validateTaskUpdate(record.object, merged);
+        validateAgentObject(merged, record.object);
         content = JSON.stringify(merged, null, 2) + '\n';
       } else {
-        if (object.type !== 'event' || proposal.path !== `${objectDirectory}/${object.id}.tano.json` || object.archived)
-          throw new Error('助手只能建议新增工作区事件');
-        validateObjectProperties('event', object.properties);
+        if (proposal.path !== `${objectDirectory}/${object.id}.tano.json` || object.archived)
+          throw new Error('新增对象路径或归档状态无效');
+        validateAgentObject(object);
         if (automatic && object.properties.checkable === true && possibleDuplicateTasks(referenceTargets.value, object.name, object.id).length)
           throw new Error('发现可能重复的任务，已暂停创建，请核对后决定是否仍需新增');
         if (referenceTargets.value.some(target => target.id === object.id) || workspace.value!.files.some(file => file.path === proposal.path))
@@ -1971,6 +2056,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const written = await adapter.write(proposal.path, preview.after, disk.hash);
       if (written.status === 'missing') throw new Error('关系文件在保存前移除，请重新审阅');
       if (written.status !== 'saved') return { status: 'stale' as const, preview: undefined };
+     } else if (external && proposal.kind === 'object') {
+      if (!adapter.createAgentRecord) throw new Error('此宿主不支持安全创建外部对象提案');
+      await adapter.createAgentRecord(proposal.path, preview.after);
     } else await adapter.create(proposal.path, preview.after);
     workspace.value = await adapter.refresh();
     const file = workspace.value.files.find(file => file.path === proposal.path);
@@ -2023,15 +2111,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     });
   }
   async function reviewAssistantProposal(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }, proposal: AssistantProposal,
-    accepted?: AssistantPreview, automatic = false, signal?: AbortSignal) {
-    return serial(() => reviewAssistantProposalNow(scope, proposal, accepted, automatic, signal));
+    accepted?: AssistantPreview, automatic = false, signal?: AbortSignal, external = false) {
+    return serial(() => reviewAssistantProposalNow(scope, proposal, accepted, automatic, signal, external));
   }
   async function reviewAssistantProposalNow(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }, proposal: AssistantProposal,
-    accepted?: AssistantPreview, automatic = false, signal?: AbortSignal) {
+    accepted?: AssistantPreview, automatic = false, signal?: AbortSignal, external = false) {
       signal?.throwIfAborted();
       requireAssistantWorkspace(scope);
       if (proposal.workspaceId !== scope.id) throw new Error('建议不属于当前工作区');
-      const signature = JSON.stringify([scope, proposal.kind, proposal.fileId, proposal.path, proposal.destination, proposal.base, proposal.content]);
+      const signature = JSON.stringify([scope, proposal.kind, proposal.fileId, proposal.path, proposal.destination, proposal.base, proposal.content, external]);
       const applied = assistantApplied.get(proposal.id);
       if (applied) {
         if (applied.signature !== signature) throw new Error('同一操作标识不能对应不同建议');
@@ -2046,7 +2134,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           throw new Error('此提案已转为文档建议，请在文档中逐项审阅，不能再次整篇应用');
       }
       if (proposal.kind === 'object' || proposal.kind === 'relation') {
-        const result = await reviewAssistantStructure(proposal, accepted, automatic, signal);
+        const result = await reviewAssistantStructure(proposal, accepted, automatic, signal, external);
         if (result.status === 'saved') {
           assistantApplied.set(proposal.id, { signature, ...result.applied });
           activity('助手工作区建议已应用', proposal.path, 'save', { before: result.applied.before, after: result.applied.after });
@@ -2164,7 +2252,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         let result: FileSnapshot;
         let fileId: string;
         if (proposal.kind === 'create') {
-          await adapter.create(path, preview.after);
+          if (external && isDataTableFilePath(path)) {
+            if (!adapter.createAgentRecord) throw new Error('此宿主不支持安全创建外部数据表提案');
+            await adapter.createAgentRecord(path, preview.after);
+          } else await adapter.create(path, preview.after);
           workspace.value = await adapter.refresh();
           fileId = workspace.value.files.find(file => file.path === path)?.id ?? '';
           if (!fileId) throw new Error('文档可能已创建，请刷新核对');
@@ -3131,6 +3222,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     updateWorkspaceSettings,
     reloadWorkspaceSettings,
     workspace: visibleWorkspace,
+    fileRegistry, readFileMetadata, updateFileMetadata, createFileDatabase, saveFileDatabase, createObjectDatabase, deleteObject,
     workspaceViews,
     workspaceViewErrors,
     displayPath,

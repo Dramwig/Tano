@@ -1,3 +1,4 @@
+import { openWorkspaceSync } from '../workspace-sync';
 import { invoke } from '@tauri-apps/api/core';
 import { parsePluginConnectionInput, parsePluginConnectionRequest, pluginConnectionOrigin, type PluginConnectionProvider, type PluginConnection, type PluginOAuthFlow, type PluginOAuthProvider, type PluginOAuthStatus } from '@tano/protocol';
 import type { PluginNativeContext, PluginRuntimeServices } from './host';
@@ -18,8 +19,15 @@ export function createNativePluginServices(): NonNullable<PluginRuntimeServices[
       return result;
     } finally { context.signal.removeEventListener('abort', cancel); }
   }
-  return Object.fromEntries(['git.status', 'git.diff', 'git.log'].map(command => [command,
-    (args: unknown, context: PluginNativeContext) => request(command, args, context)]));
+  return { ...Object.fromEntries(['git.status', 'git.diff', 'git.log'].map(command => [command,
+    (args: unknown, context: PluginNativeContext) => request(command, args, context)])),
+    'sync.open': async (args: unknown, context: PluginNativeContext) => {
+      context.signal.throwIfAborted();
+      if (args !== undefined && JSON.stringify(args) !== '{}') throw new Error('同步入口不接受操作参数');
+      openWorkspaceSync(context.workspaceId);
+      return { opened: true };
+    },
+  };
 }
 
 /** OS-user credentials for a local desktop workspace, separate from cloud accounts. */

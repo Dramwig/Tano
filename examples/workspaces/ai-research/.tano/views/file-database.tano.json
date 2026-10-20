@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "layer": "view",
+  "workspaceId": "6d2c1e7a-3a5e-4b7d-9c21-0f4e8a6b2d11",
+  "id": "file-database",
+  "name": "研究文件数据库",
+  "kind": "files",
+  "sources": [],
+  "database": {
+    "directory": "",
+    "recursive": true,
+    "filters": [],
+    "sort": {
+      "field": "path",
+      "direction": "asc"
+    },
+    "groupBy": "property:status"
+  }
+}

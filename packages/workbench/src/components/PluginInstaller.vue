@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { retiredSystemPlugin } from '../workspace-plugins';
 import { t } from '../i18n';
 import { computed, nextTick, ref, watch } from 'vue';
 import {
@@ -88,7 +89,7 @@ function matches(plugin: PluginManifest) {
   return terms.includes(query.value.trim().toLocaleLowerCase());
 }
 const catalog = computed(() =>
-  props.catalog
+  props.catalog.filter(entry => !retiredSystemPlugin(entry.manifest.id))
     .filter(
       (entry) =>
         (category.value === 'all' || entry.category.id === category.value) &&

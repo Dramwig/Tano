@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "e10001",
+  "type": "project",
+  "name": "复现实验项目",
+  "description": "跨视图共享的示例记录",
+  "archived": false,
+  "properties": {
+    "status": "进行中",
+    "goal": "复现实验并记录对比结果"
+  }
+}

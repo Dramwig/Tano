@@ -15,6 +15,7 @@ import { useWorkbenchRuntime } from '../runtime';
 import PlanDateField from './PlanDateField.vue';
 import DescriptionEditor from './DescriptionEditor.vue';
 import ReferenceConnections from './ReferenceConnections.vue';
+import ObjectRelationEditor from './ObjectRelationEditor.vue';
 import { readPlanDate, writePlanDate } from '../plan-date';
 import type { PlanDateValue } from '../plan-date';
 
@@ -28,6 +29,7 @@ const props = defineProps<{
     updateObject: (record: ObjectRecord, value: WorkspaceObject, expectedId: string) => Promise<ObjectRecord>;
   };
   selectedId?: string;
+  initialType?: string;
   selectedIdentity?: ReferenceIdentity;
   open: boolean;
   canOpenAsset?: boolean;
@@ -56,6 +58,7 @@ function openLinked(identity: ReferenceIdentity) {
 }
 const objectErrors = computed(() => props.personal?.errors ?? store.objectErrors);
 interface Draft {
+  key: string;
   workspace: string;
   scope: string;
   record?: ObjectRecord;
@@ -111,6 +114,17 @@ const resources = computed(() =>
   ),
 );
 const busy = ref(false);
+const confirmDelete = ref(false);
+async function removeCurrent() {
+  const draft = current.value;
+  if (!draft?.record || props.personal || editDisabled.value) return;
+  busy.value = true;
+  try {
+    await store.deleteObject(draft.record, draft.workspace);
+    drafts.delete(`${draft.scope}:${draft.record.object.id}`);
+    current.value = undefined; confirmDelete.value = false;
+  } catch (reason) { draft.error = String(reason); } finally { busy.value = false; }
+}
 const panel = ref<HTMLElement>();
 let previousFocus: HTMLElement | null = null;
 watch(
@@ -160,10 +174,11 @@ const filtered = computed(() =>
   ),
 );
 function select(record?: ObjectRecord) {
+  confirmDelete.value = false;
   const workspace = scopeId.value;
   if (!workspace || busy.value) return;
   resourceId.value = undefined;
-  const key = `${scopeKey.value}:${record?.object.id ?? 'new'}`;
+  const key = `${scopeKey.value}:${record?.object.id ?? (props.initialType ? `new:${props.initialType}` : 'new')}`;
   let draft = drafts.get(key);
   if (!draft) {
     const value: WorkspaceObject = record
@@ -171,13 +186,14 @@ function select(record?: ObjectRecord) {
       : {
           version: 1,
           id: '',
-          type: props.personal ? 'event' : 'person',
+          type: props.personal ? 'event' : props.initialType ?? 'person',
           name: '',
           description: '',
           archived: false,
           properties: props.personal ? { checkable: true, completed: false } : {},
         };
     draft = {
+      key,
       workspace,
       scope: scopeKey.value,
       record,
@@ -191,7 +207,7 @@ function select(record?: ObjectRecord) {
   drafts.set(key, current.value);
 }
 watch(
-  [scopeKey, () => props.selectedId, () => props.selectedIdentity, () => props.open],
+  [scopeKey, () => props.selectedId, () => props.selectedIdentity, () => props.open, () => props.initialType],
   ([workspaceId, , selectedIdentity, open], previous) => {
     if (!open && workspaceId === previous?.[0]) return;
     current.value = undefined;
@@ -203,7 +219,7 @@ watch(
       const record = records.value.find(({ object }) => object.id === props.selectedId);
       if (record) select(record);
       else resourceId.value = props.selectedId;
-    }
+    } else if (props.initialType) select();
   },
   { immediate: true },
 );
@@ -222,7 +238,7 @@ async function save(copy = false) {
         ? await (props.personal ?? store).updateObject(draft.record, value, draft.workspace)
         : await (props.personal ?? store).createObject(value);
     if (current.value !== draft || scopeKey.value !== draft.scope) return;
-    drafts.delete(`${draft.scope}:${draft.record?.object.id ?? 'new'}`);
+    drafts.delete(draft.key);
     drafts.delete(`${draft.scope}:${saved.object.id}`);
     busy.value = false;
     select(saved);
@@ -286,7 +302,7 @@ function selectResource(id: string) {
 function resetDraft() {
   if (!current.value || busy.value) return;
   const record = records.value.find(({ object }) => object.id === current.value?.record?.object.id);
-  drafts.delete(`${current.value.scope}:${current.value.record?.object.id ?? 'new'}`);
+  drafts.delete(current.value.key);
   select(record);
 }
 const uri = computed(() =>
@@ -386,8 +402,9 @@ const uri = computed(() =>
               required
               maxlength="200"
           /></label>
-          <DescriptionEditor :key="`${current.scope}:${current.record?.object.id ?? 'new'}`" v-model="current.value.description" :disabled="editDisabled" :targets="personal ? [] : store.referenceTargets.filter(target => target.type !== 'document' || !target.path.startsWith('.tano/'))" />
+          <DescriptionEditor :key="`${current.scope}:${current.record?.object.id ?? (props.initialType ? `new:${props.initialType}` : 'new')}`" v-model="current.value.description" :disabled="editDisabled" :targets="personal ? [] : store.referenceTargets.filter(target => target.type !== 'document' || !target.path.startsWith('.tano/'))" />
           <ReferenceConnections :identity="current.value" :draft="current.value.description" :local-targets="personalTargets" :active="open" @open="openLinked" />
+          <ObjectRelationEditor v-if="current.record && !personal" :identity="current.record.object" :workspace-id="current.workspace" :disabled="editDisabled" @open="openLinked" />
           <component
             :is="objectDetails"
             v-if="objectDetails && !personal && current.record"
@@ -426,7 +443,7 @@ const uri = computed(() =>
                 :disabled="editDisabled || (current.value.type === 'event' && field.key === 'completed' && fieldValue({ key: 'checkable', label: '', type: 'boolean' }) !== true)"
                 @input="updateField(field, $event)"
             /></label>
-            <PlanDateField v-if="current.value.type === 'event'" :key="`${current.scope}:${current.record?.object.id ?? 'new'}`" class="object-plan-date" :model-value="planDate" :disabled="editDisabled" @update:model-value="updatePlanDate" />
+            <PlanDateField v-if="current.value.type === 'event'" :key="`${current.scope}:${current.record?.object.id ?? (props.initialType ? `new:${props.initialType}` : 'new')}`" class="object-plan-date" :model-value="planDate" :disabled="editDisabled" @update:model-value="updatePlanDate" />
             <small v-if="current.value.type === 'event'"
               >{{ t('计划日期可精确到某天或具体时刻，有起止时间时选择「时间段」。时间按本地时区输入。勾选「需要完成」即可作为任务。') }}</small
             >
@@ -456,6 +473,7 @@ const uri = computed(() =>
           ><small v-if="current.record">{{ current.record.path }}</small>
           <p v-if="current.error" role="alert">{{ current.error }}</p>
           <footer>
+            <button v-if="current.record && !personal" type="button" :disabled="editDisabled" @click="confirmDelete = !confirmDelete">{{ t('删除对象') }}</button>
             <button type="submit" :disabled="editDisabled">
               {{ busy ? t('保存中…') : t('保存对象') }}</button
             ><button
@@ -467,6 +485,10 @@ const uri = computed(() =>
               {{ t('另存副本') }}</button
             ><button type="button" :disabled="busy" @click="resetDraft">{{ t('放弃草稿并重新读取') }}</button>
           </footer>
+          <div v-if="confirmDelete" role="alert">
+            <p>{{ t('删除此对象后，已有关系会保留为缺失引用。确认删除？') }}</p>
+            <button type="button" :disabled="editDisabled" @click="removeCurrent">{{ t('确认删除对象') }}</button>
+          </div>
         </form>
         <div v-else-if="resource" class="object-panel-empty object-resource">
           <h3>{{ resource.name }}</h3>
@@ -512,7 +534,7 @@ const uri = computed(() =>
         <div v-else class="object-panel-empty">
           <h3>{{ t('让人与 Agent 引用同一个对象') }}</h3>
           <p>
-            {{ t('创建人物或事件。事件勾选「需要完成」即可作为任务。文档和资产自动从工作区文件索引。关闭面板后，未保存的草稿会保留在本次会话中。') }}
+            {{ t('创建任务、项目、实验、人物或事件。文档和资产自动从工作区文件索引。关闭面板后，未保存的草稿会保留在本次会话中。') }}
           </p>
           <p>
             {{ t('文件资源：') }}{{

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import WorkspaceSyncPanel from './components/WorkspaceSyncPanel.vue';
+import { createWorkspaceSync, syncEvent } from './workspace-sync';
 import { t } from './i18n';
 import AppTooltip from './components/AppTooltip.vue';
 import { assistantDiscussionPrompt } from './assistant/language';
@@ -87,6 +89,8 @@ const SourceEditor = defineAsyncComponent(() => import('./components/SourceEdito
 import { captureModeViewport, restoreModeViewport } from './editor-mode';
 import type { ModeViewport } from './editor-mode';
 import AttachmentPreview from './components/AttachmentPreview.vue';
+import FileMetadataPanel from './components/FileMetadataPanel.vue';
+import { fileHandlers } from '@tano/protocol';
 import PageSearch from './components/PageSearch.vue';
 import EmptyEditor from './components/EmptyEditor.vue';
 import DocumentStarter from './components/DocumentStarter.vue';
@@ -377,6 +381,19 @@ const workbenchSession = retainWorkbenchSession(store, () => {
 let unmounted = false;
 assistant.setManaged((id) => editing.isManaging(id));
 inlineRunner.setManaged((id) => editing.isManaging(id));
+const systemSyncPanel = ref(false);
+const workspaceSync = createWorkspaceSync(store, extensions);
+function openSystemSync(event?: Event) {
+  const id = (event as CustomEvent | undefined)?.detail?.workspaceId;
+  if (!native || mobile || !store.workspace || store.isWeb || (id && id !== store.workspace.id)) return;
+  workspaceMenu.value = false;
+  systemSyncPanel.value = true;
+  void workspaceSync.action('status');
+}
+let syncTimer: ReturnType<typeof setInterval> | undefined;
+onMounted(() => { window.addEventListener(syncEvent, openSystemSync); if (native && !mobile) syncTimer = setInterval(() => { void workspaceSync.tick(); }, 30_000); });
+onBeforeUnmount(() => { window.removeEventListener(syncEvent, openSystemSync); clearInterval(syncTimer); workspaceSync.reset(); });
+watch(() => store.workspace?.id, () => { systemSyncPanel.value = false; workspaceSync.reset(); });
 const extensionActions: WorkbenchActions = {
   closeMenus: () => {
     workspaceMenu.value = false;
@@ -965,6 +982,7 @@ const workspaceEntryContextMenu = ref<{ item: WorkspaceEntry; x: number; y: numb
 const workspaceEntryContextMenuElement = ref<HTMLElement>();
 let workspaceEntryContextTrigger: HTMLElement | null = null;
 const fileContextMenu = ref<{ file: FileEntry; x: number; y: number } | null>(null);
+const fileMetadataTarget = ref<{ fileId: string; workspaceId: string } | null>(null);
 const directoryContextMenu = ref<{ parent: string; x: number; y: number } | null>(null);
 const pageContextMenu = ref<{ x: number; y: number } | null>(null);
 const pageContextMenuElement = ref<HTMLElement>();
@@ -1099,6 +1117,7 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
       available: true,
       run: () => store.openWorkspaceView(record.view.id).catch(store.report),
     })),
+    { id: 'workbench.git', category: t('工作区'), label: 'Git 与同步', keywords: 'Git 状态 差异 提交 历史 同步', available: native && !mobile && !!workspace.value && !store.isWeb, run: () => openSystemSync() },
     { id: 'workbench.plugins', category: t('工作区'), get label() { return t('打开插件中心'); }, available: store.workspaceSettings.showPlugins, run: () => store.openPluginsTab() },
     { id: 'workbench.updates', category: t('历史'), get label() { return t('文档更新历史'); }, available: hasDocument, run: () => { historyPage.value = 'updates'; historyPanel.value = true; } },
     { id: 'workbench.versions', category: t('历史'), get label() { return t('文档版本历史'); }, available: hasDocument && !!extensions.historyEnabled, run: () => { historyPage.value = 'versions'; historyPanel.value = true; } },
@@ -1936,31 +1955,25 @@ async function insertSourceFiles(
 
 async function openEntry(file: FileEntry, newTab = false) {
   newTab = newTab && tabsEnabled;
+  const handler = fileHandlers.resolve(file.path);
   if (isObjectPath(file.path)) {
     const record = store.objects.find((item) => item.path === file.path);
     if (record) showObjects(record.object.id);
     else store.report(t('对象文件不可用，请在工作区对象面板检查格式或重复 ID'));
     return;
   }
-  if (isMarkdown(file.path) || isDataTableFilePath(file.path)) {
+  if (handler.preview === 'markdown' || handler.preview === 'table') {
     if (newTab) await store.openFileInNewTab(file);
     else await store.openFile(file);
     if (store.activePaneId === templatePaneId.value && store.activeId === file.id) templateLibraryOpen.value = false;
     if (compactPanes.value) sidebar.value = false;
     return;
   }
-  if (newTab) {
+  if (workspace.value) {
     store.openAttachmentInNewTab(file);
     if (compactPanes.value) sidebar.value = false;
     return;
   }
-  if (workspace.value && attachments) {
-    try {
-      await attachments.exportAttachment(workspace.value.id, file.path);
-    } catch (error) {
-      store.report(error);
-    }
-  } else store.report(t('当前存储适配器不支持直接打开附件'));
 }
 async function openTreeEntry(file: FileEntry) {
   pendingTreeOpenIds.add(file.id);
@@ -2130,7 +2143,7 @@ function openDirectoryContextMenu(parent: string, event: MouseEvent) {
   });
 }
 async function directoryContextAction(
-  action: 'document' | 'folder' | 'table' | 'import' | 'duplicate' | 'copy' | 'rename' | 'delete',
+  action: 'document' | 'folder' | 'table' | 'database' | 'import' | 'duplicate' | 'copy' | 'rename' | 'delete',
 ) {
   const parent = directoryContextMenu.value?.parent ?? '';
   const target = parent
@@ -2142,6 +2155,10 @@ async function directoryContextAction(
     return;
   }
   if (parent && !target) return;
+  if (action === 'database') {
+    try { await store.createFileDatabase(parent); } catch (error) { store.report(error); }
+    return;
+  }
   if (action === 'copy') {
     if (!parent) return;
     try {
@@ -2444,6 +2461,7 @@ async function fileContextAction(
     | 'document'
     | 'folder'
     | 'table'
+    | 'database'
     | 'rename'
     | 'delete'
     | 'copy'
@@ -2452,6 +2470,8 @@ async function fileContextAction(
     | 'duplicate'
     | 'open-default'
      | 'object'
+    | 'metadata'
+    | 'export'
     | 'reveal-entry',
 ) {
   const file = fileContextMenu.value?.file;
@@ -2497,6 +2517,19 @@ async function fileContextAction(
       type: isMarkdown(file.path) ? 'document' : 'asset',
       id: file.id,
     });
+    return;
+  }
+  if (action === 'metadata' && workspace.value) {
+    if (isMarkdown(file.path)) {
+      await store.openFile(file);
+      showDocumentProperties.value = true;
+      setPaneSource(file.id, false);
+    } else fileMetadataTarget.value = { fileId: file.id, workspaceId: workspace.value.id };
+    return;
+  }
+  if (action === 'export' && workspace.value && attachments) {
+    try { await attachments.exportAttachment(workspace.value.id, file.path); }
+    catch (error) { store.report(error); }
     return;
   }
   if (action === 'open-default' || action === 'reveal-entry') {
@@ -2550,6 +2583,10 @@ async function fileContextAction(
   }
   if (action === 'delete') {
     await removeDocument(file);
+    return;
+  }
+  if (action === 'database') {
+    try { await store.createFileDatabase(file.path); } catch (error) { store.report(error); }
     return;
   }
   if (action === 'document' || action === 'folder' || action === 'table') {
@@ -3955,6 +3992,7 @@ const helpBlocked = computed(() => !!(
     }"
   >
     <AssistantButterflyLayer :controller="butterfly" />
+    <Teleport to="body"><FileMetadataPanel v-if="fileMetadataTarget" v-bind="fileMetadataTarget" @close="fileMetadataTarget = null" /></Teleport>
     <Transition name="sidebar-dismiss">
       <button
         v-if="workspace && sidebar && !detachedWindow && compactPanes"
@@ -4261,6 +4299,9 @@ const helpBlocked = computed(() => !!(
                 <button role="menuitem" :disabled="fileMutationDisabled(fileContextMenu.file)" @click="fileContextAction('table')">
                   <Table2 :size="15" />{{ t('在此新建数据表') }}
                 </button>
+                <button role="menuitem" :disabled="fileMutationDisabled(fileContextMenu.file)" @click="fileContextAction('database')">
+                  <Table2 :size="15" />{{ t('以数据库视图管理此目录') }}
+                </button>
                 <button
                   role="menuitem"
                   :disabled="fileMutationDisabled(fileContextMenu.file)"
@@ -4286,6 +4327,12 @@ const helpBlocked = computed(() => !!(
                   @click="fileContextAction('object')"
                 >
                   <Users :size="15" />{{ t('查看文件对象') }}
+                </button>
+                <button v-if="!isWorkspaceInternalPath(fileContextMenu.file.path)" role="menuitem" @click="fileContextAction('metadata')">
+                  <FileText :size="15" />{{ t('文件属性') }}
+                </button>
+                <button v-if="attachments && !isWorkspaceInternalPath(fileContextMenu.file.path)" role="menuitem" @click="fileContextAction('export')">
+                  <ArrowUpRight :size="15" />{{ t('导出文件副本') }}
                 </button>
                 <button
                   v-if="isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path) || attachments"
@@ -4397,6 +4444,9 @@ const helpBlocked = computed(() => !!(
             </button>
             <button role="menuitem" :disabled="!workspace || workspace.readOnly || busy" @click="directoryContextAction('table')">
               <Table2 :size="15" />{{ t('新建数据表') }}
+            </button>
+            <button role="menuitem" :disabled="!workspace || workspace.readOnly || busy" @click="directoryContextAction('database')">
+              <Table2 :size="15" />{{ t('以数据库视图管理此目录') }}
             </button>
             <button
               role="menuitem"
@@ -4549,6 +4599,7 @@ const helpBlocked = computed(() => !!(
                 v-if="extensions.regions['workspace-menu-layout'] && extensions.regions['workspace-settings']"
                 :actions="extensionActions"
               />
+              <button v-if="workspace && native && !mobile && !store.isWeb" role="menuitem" @click="openSystemSync()"><RefreshCw :size="16" />Git 与同步</button>
               <button v-if="workspace" role="menuitem" :disabled="workspace.readOnly || busy" @click="openImport">
                 <ArrowDownToLine :size="16" />{{ t('导入') }}
               </button>
@@ -4564,6 +4615,7 @@ const helpBlocked = computed(() => !!(
                 <Files :size="16" />{{ t('文档模板') }}
               </button>
               <button role="menuitem" @click="showObjects()"><Users :size="16" />{{ t('工作区对象') }}</button>
+              <button role="menuitem" :disabled="!workspace || workspace.readOnly || busy || !store.capabilities.features.objectReferences" @click="workspaceMenu = false; store.createObjectDatabase().catch(store.report)"><Table2 :size="16" />{{ t('创建对象数据库视图') }}</button>
               <template v-if="store.workspaceViews.length">
                 <div class="menu-divider" />
                 <button
@@ -5277,6 +5329,8 @@ const helpBlocked = computed(() => !!(
               <DataTablePage
                 :key="`${workspace.id}:${pane.activeId}`"
                 :table-id="tableFileId(pane.activeId)"
+                :touch-layout="touchLayout"
+                :comment-author="extensions.commentAuthor?.() ?? { id: 'local', name: t('本机用户') }"
                 :controls-target="detachedWindow ? undefined : `#data-table-controls-${pane.id}`"
               />
               <AssistantLauncher
@@ -5289,9 +5343,10 @@ const helpBlocked = computed(() => !!(
             </div>
             <WorkspaceViewPage
               v-if="workspace && tab?.workspaceView && pane.activeId === tab.id"
-              :key="`${workspace.id}:${tab.workspaceView.view.id}:${tab.workspaceView.snapshot.hash}`"
+              :key="`${workspace.id}:${tab.workspaceView.view.id}:${tab.workspaceView.view.database || tab.workspaceView.view.objectDatabase ? '' : tab.workspaceView.snapshot.hash}`"
               :view="tab.workspaceView.view"
               @open-file="(file) => { store.focusPane(pane.id); void openWorkspaceViewSourceFile(file); }"
+              @edit-document-properties="async (file) => { store.focusPane(pane.id); await openWorkspaceViewSourceFile(file); showDocumentProperties = true; setPaneSource(file.id, false); }"
               @open-object="(identity) => { store.focusPane(pane.id); openWorkspaceViewSourceObject(identity); }"
             />
             <CalendarView
@@ -5636,6 +5691,7 @@ const helpBlocked = computed(() => !!(
             <AttachmentPreview
               v-else-if="workspace && pane.activeId.startsWith('attachment:')"
               :file="tab?.attachment"
+              :workspace-id="workspace.id"
               :url="
                 attachments && tab?.attachment
                   ? attachments.imageUrl(
@@ -6046,6 +6102,7 @@ const helpBlocked = computed(() => !!(
       @close="importPanel = false"
       @completed="importRecords.unshift($event)"
     />
+    <WorkspaceSyncPanel v-if="systemSyncPanel && workspace" :workspace-id="workspace.id" :controller="workspaceSync" :cloud="extensions.sync" @close="systemSyncPanel = false" />
     <component
       :is="extensions.regions['sync-dialog']"
       v-if="extensions.regions['sync-dialog']"

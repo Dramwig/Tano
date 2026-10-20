@@ -41,6 +41,24 @@ it('captures a configured focus shortcut before an editor can consume it', async
   expect(document.activeElement).toBe(editor);
 });
 
+it('hides every docked control when the pointer leaves the pane and restores them on return', async () => {
+  const editor = await mountToolbar(defaultShortcutBindings);
+  const toolbar = document.querySelector('.selection-toolbar')!;
+  toolbar.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+  expect(document.querySelector('.selection-toolbar')).not.toBeNull();
+  document.body.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+  await vi.waitFor(() => expect(document.querySelector('.selection-toolbar')).toBeNull());
+  // Selection or layout updates must not bring it back while the pointer is outside.
+  document.dispatchEvent(new Event('selectionchange'));
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  expect(document.querySelector('.selection-toolbar')).toBeNull();
+  expect(document.activeElement).toBe(editor);
+  editor.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+  await vi.waitFor(() => expect(document.querySelector('.selection-toolbar')).not.toBeNull());
+  editor.dispatchEvent(new MouseEvent('pointerout', { bubbles: true, relatedTarget: null }));
+  await vi.waitFor(() => expect(document.querySelector('.selection-toolbar')).toBeNull());
+});
+
 it('does not intercept recording in settings dialogs or disabled shortcuts', async () => {
   const editor = await mountToolbar(defaultShortcutBindings);
   const dialog = document.createElement('div'); dialog.setAttribute('role', 'dialog');

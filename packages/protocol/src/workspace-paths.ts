@@ -4,6 +4,7 @@ import { workspacePluginPath } from './extensions';
 export const workspaceDataDirectory = '.tano';
 export const objectDirectory = '.tano/objects';
 export const workspaceCapabilityPath = '.tano/capabilities.json';
+export const workspaceFolderRegistryPath = '.tano/folders.tano.json';
 export const workspaceSettingsPath = '.tano/settings.tano.json';
 export const workspaceRelationPath = '.tano/relations.tano-relations.json';
 export const annotationDirectory = '.tano/annotations';
@@ -28,6 +29,7 @@ export function isWorkspaceInternalPath(path: string) {
 export function isWorkspaceDataPath(path: string) {
   return (
     path === workspaceCapabilityPath ||
+    path === workspaceFolderRegistryPath ||
     path === workspaceSettingsPath ||
     path === workspacePluginPath ||
     path === workspaceRelationPath ||
@@ -36,7 +38,7 @@ export function isWorkspaceDataPath(path: string) {
     isWorkspaceViewPath(path) ||
     (path.startsWith('.tano/conflicts/') && path.endsWith('.json')) ||
     (path.startsWith(`${objectDirectory}/`) && path.endsWith('.tano.json')) ||
-    /^\.tano\/(?:annotations|discussions|document-layout|suggestions|tables)\/[0-9a-f]{6}\.tano\.json$/.test(path)
+    /^\.tano\/(?:annotations|discussions|document-layout|suggestions|tables|files)\/[0-9a-f]{6}\.tano\.json$/.test(path)
   );
 }
 

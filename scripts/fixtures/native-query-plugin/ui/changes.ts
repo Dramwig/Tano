@@ -34,6 +34,7 @@ export default function mount(tano: TanoPluginViewApi) {
   const canRead = (path: string) => !path.split('/').some(part => part.startsWith('.'));
   createApp({ render: () => h('main', [
     h('header', [h('div', [h('h1', 'Git 变更'), h('p', state.branch ? `当前分支 · ${state.branch}` : state.detached ? '当前处于分离 HEAD' : '本地仓库')]),
+      h('button', { onClick: () => send({ type: 'sync' }) }, '工作区同步'),
       h('button', { disabled: state.busy, onClick: () => send({ type: 'refresh' }) }, state.busy ? '正在查询…' : '刷新状态')]),
     h('p', { class: 'hint' }, '显示磁盘上已保存文件的状态。查询不运行自定义 Git 过滤器；未跟踪文件尚无 Git 差异。'),
     state.error ? h('p', { role: 'alert' }, state.error) : null,

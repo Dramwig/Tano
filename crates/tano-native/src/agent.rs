@@ -105,7 +105,7 @@ pub fn changes(
             return Err("Agent 活动格式不受支持".into());
         }
         if let Some(before) = &change.before_content {
-            if before.len() > 512 * 1024
+            if before.len() > 8 * 1024 * 1024
                 || change.before_hash.as_deref()
                     != Some(crate::storage::hash(before.as_bytes()).as_str())
             {
@@ -113,7 +113,7 @@ pub fn changes(
             }
         }
         if let Some(after) = &change.after_content {
-            if after.len() > 512 * 1024
+            if after.len() > 8 * 1024 * 1024
                 || change.after_hash != crate::storage::hash(after.as_bytes())
             {
                 return Err("Agent 活动的修改后内容校验失败".into());
@@ -218,6 +218,20 @@ mod tests {
                 .after_content
                 .as_deref(),
             Some("after")
+        );
+        let large = "x".repeat(600 * 1024);
+        db.execute(
+            "UPDATE agent_changes SET after_content=?1,after_hash=?2",
+            rusqlite::params![large, crate::storage::hash(large.as_bytes())],
+        )
+        .unwrap();
+        assert_eq!(
+            changes(&data, &id, temp.path(), Some("one")).unwrap()[0]
+                .after_content
+                .as_ref()
+                .unwrap()
+                .len(),
+            large.len()
         );
         db.execute("UPDATE agent_changes SET after_content='tampered'", [])
             .unwrap();

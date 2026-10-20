@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./code-preview": "./src/code-preview.ts",
     ".": "./src/MarkdownEditor.vue",
     "./syntax": "./src/syntax.ts",
     "./frontmatter-display": "./src/frontmatter-display.ts",

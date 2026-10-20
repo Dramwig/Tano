@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "id": "e10003",
+  "type": "experiment",
+  "name": "基线实验",
+  "description": "跨视图共享的示例记录",
+  "archived": false,
+  "properties": {
+    "status": "已完成",
+    "hypothesis": "固定随机种子可复现基线",
+    "result": "已保存指标与训练配置",
+    "metric": 0.92
+  }
+}

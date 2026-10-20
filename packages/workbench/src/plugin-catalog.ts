@@ -1,5 +1,4 @@
 import { bundledObjectPlugins, type PluginManifest, type PluginPackage } from '@tano/protocol';
-import { gitInspectorPlugin } from './plugins/git-inspector';
 
 /** Catalog metadata is separate from the portable plugin manifest. */
 export interface PluginCatalogEntry {
@@ -19,9 +18,4 @@ export const bundledPluginCatalog: readonly PluginCatalogEntry[] = [
     manifest,
     category: categories[manifest.id] ?? { id: 'tools', label: '其他工具' },
   })),
-  {
-    manifest: gitInspectorPlugin.manifest,
-    package: gitInspectorPlugin,
-    category: { id: 'tools', label: '其他工具' },
-  },
 ];

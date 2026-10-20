@@ -4,6 +4,9 @@ import { canManageWorkspacePlugins, loadPluginPolicy, savePluginRule } from './p
 import type { PluginPolicySnapshot } from './plugins/policy';
 import { PluginPackageCache, type PluginPackageRepository } from './plugins/packages';
 
+export const retiredSystemPlugin = (id: string) => id === 'git-inspector';
+const retiredMessage = 'Git 功能已内置，请从工作区菜单打开“Git 与同步”，无需安装或授权插件';
+
 export const PLUGINS_TAB_ID = 'view:plugins';
 
 export interface InstalledObjectPlugin {
@@ -84,17 +87,20 @@ export class WorkspacePluginHost {
     this.applied = serialized;
   }
   load(workspace: string) {
-    const plugins = this.read(workspace);
+    const plugins = this.read(workspace).filter(item => !retiredSystemPlugin(item.manifest.id));
     this.validate(plugins);
     this.apply(plugins);
     return plugins;
   }
   async change(workspace: string, change: PluginChange) {
+    const id = 'install' in change ? change.install.id : 'uninstall' in change ? change.uninstall : change.id;
+    if (retiredSystemPlugin(id) && !('uninstall' in change)) throw new Error(retiredMessage);
     const update = () => {
       const before = this.storage.getItem(keyFor(workspace));
       let plugins = this.read(workspace);
       if ('install' in change) {
         const manifest = parseObjectPlugin(JSON.stringify(change.install));
+        if (retiredSystemPlugin(manifest.id)) throw new Error(retiredMessage);
         plugins = [
           ...plugins.filter((item) => item.manifest.id !== manifest.id),
           { manifest, enabled: true },
@@ -112,8 +118,9 @@ export class WorkspacePluginHost {
       if (before !== this.storage.getItem(keyFor(workspace)))
         throw new Error('插件状态已在另一窗口改变，请重试');
       this.storage.setItem(keyFor(workspace), JSON.stringify({ version: 1, plugins }));
-      this.apply(plugins);
-      return plugins;
+      const active = plugins.filter(item => !retiredSystemPlugin(item.manifest.id));
+      this.apply(active);
+      return active;
     };
     return typeof navigator !== 'undefined' && navigator.locks
       ? navigator.locks.request(keyFor(workspace), update)
@@ -144,7 +151,7 @@ export class WorkspacePluginHost {
     this.shared = shared;
     if (!shared.snapshot) return this.load(workspace.id);
     const preferences = this.preferences(workspace.id);
-    const plugins = shared.policy.plugins.map(rule => ({ manifest: rule.manifest, rule,
+    const plugins = shared.policy.plugins.filter(rule => !retiredSystemPlugin(rule.manifest.id)).map(rule => ({ manifest: rule.manifest, rule,
       enabled: rule.mode === 'required' || (rule.mode !== 'disabled' && (preferences[rule.manifest.id]?.enabled ?? rule.mode === 'recommended')),
       authorized: rule.manifest.manifestVersion === 1 || preferences[rule.manifest.id]?.integrity === rule.integrity,
     }));
@@ -156,6 +163,7 @@ export class WorkspacePluginHost {
     assertCurrent: () => void, repository?: PluginPackageRepository) {
     if (this.workspaceId !== workspace.id || !this.shared) throw new Error('请先载入工作区插件规则');
     const id = 'install' in change ? change.install.id : 'uninstall' in change ? change.uninstall : change.id;
+    if (retiredSystemPlugin(id) && !('uninstall' in change)) throw new Error(retiredMessage);
     const rule = this.shared.policy.plugins.find(row => row.manifest.id === id);
     if ('enabled' in change && this.shared.snapshot) {
       if (!rule) throw new Error('插件已被卸载，请刷新后重试');

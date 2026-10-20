@@ -1,0 +1,4 @@
+name,model,dataset,accuracy,status
+RotMNIST-A,ResNet18,RotMNIST,96.7,done
+ColorMNIST-B,MLP,ColorMNIST,99.6,done
+Portraits-C,ViT,Portraits,,running

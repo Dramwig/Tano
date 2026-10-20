@@ -33,6 +33,20 @@ beforeEach(async () => {
 });
 afterEach(() => store.dispose());
 
+it('persists table appearance across undo, save and reopen', async () => {
+  const id = await store.createDataTable('blank', '项目');
+  store.editDataTable(id, table => { table.icon = '🌿'; table.cover = 'tano:mist'; });
+  store.undoDataTable(id);
+  expect(store.dataTableRecords.find(record => record.fileId === id)!.draft.icon).toBeUndefined();
+  store.undoDataTable(id, true);
+  expect(await store.flush()).toBe(true);
+  const file = store.workspace!.files.find(file => file.id === id)!;
+  expect(parseDataTable((await adapter.read(file.path)).content)).toMatchObject({ icon: '🌿', cover: 'tano:mist' });
+  await store.close(`table:${id}`);
+  await store.openFile(file);
+  expect(store.dataTableRecords.find(record => record.fileId === id)!.draft).toMatchObject({ icon: '🌿', cover: 'tano:mist' });
+});
+
 it('uses the ordinary file tree lifecycle for tables, retaining the open tab through moves', async () => {
   const id = await store.createDataTable('parts', '项目');
   expect(store.activeId).toBe(`table:${id}`);

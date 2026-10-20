@@ -226,7 +226,10 @@ export function createDataTableController(options: {
       copyTable(state.draft),
     );
     if (!next) throw new Error('其他修改与这一步重叠，无法撤销');
-    edit(id, (table) => Object.assign(table, next), false);
+    edit(id, (table) => {
+      for (const key of Object.keys(table)) if (!Object.hasOwn(next, key)) Reflect.deleteProperty(table, key);
+      Object.assign(table, next);
+    }, false);
     from.pop();
     to.push(action);
   }

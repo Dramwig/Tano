@@ -29,6 +29,7 @@ export default async function activate(tano: TanoPluginApi) {
   });
   tano.views.onMessage('changes', async message => {
     if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error('Git 视图消息无效');
+    if (message.type === 'sync') { await tano.native.invoke('sync.open'); return; }
     if (message.type === 'refresh') await refresh();
     else if (message.type === 'diff' && typeof message.path === 'string' && typeof message.staged === 'boolean') {
       const path = message.path, staged = message.staged;

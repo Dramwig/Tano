@@ -250,7 +250,7 @@ onBeforeUnmount(() => {
       </div>
       <div v-else-if="tab === 'changes'" class="agent-activity">
         <p class="panel-hint">
-          {{ t('本机 MCP 工具调用记录，保留最近 200 条。客户端名称由对方声明，不能证明人员或模型身份。普通外部改动可在工作动态查看。') }}
+          {{ t('显示最近 200 条 MCP 直接写入记录。完整记录保存在本机；审阅提案及结果可在助手会话查看。客户端名称由对方声明。') }}
         </p>
         <button class="secondary-button" :disabled="loading || !localMcp" @click="load">
           <RefreshCw :size="14" />{{ t('刷新记录') }}
@@ -293,7 +293,7 @@ onBeforeUnmount(() => {
                 :after="selected.afterContent"
               />
               <p v-else class="panel-hint">
-                {{ t('此记录仅保留内容校验值；超过 512 KiB 的版本不保存差异正文。') }}
+                {{ t('此历史记录仅保留内容校验值，未保存差异正文。') }}
               </p>
               <details>
                 <summary>{{ t('内容校验值') }}</summary>
@@ -306,10 +306,10 @@ onBeforeUnmount(() => {
       </div>
       <div v-else class="agent-mcp">
         <p>
-          {{ t('把配置加入支持 MCP 的 Agent 客户端，即可列出、读取、新建和条件修改本工作区中的 Markdown。') }}
+          {{ t('把配置加入支持 MCP 的 Agent 客户端，即可查询文件、对象和数据表，并提交跨文件修改提案。') }}
         </p>
         <p class="panel-hint">
-          {{ t('需要 Node.js 24.12 或更新版本。此连接通过本机标准输入输出运行，授予所选工作区的读写能力；无需启动同步服务器。安装器已包含 MCP 程序。') }}
+          {{ t('需要 Node.js 24.12 或更新版本。默认允许读取和提交提案，修改需在 Tano 中审阅采纳。安装器已包含本机 MCP 程序。') }}
         </p>
         <textarea
           readonly
@@ -323,7 +323,7 @@ onBeforeUnmount(() => {
           {{ t('缺少 MCP 程序，请重新构建或安装 Tano。') }}
         </p>
         <p class="panel-hint">
-          {{ t('写入需要先读取文件并携带 SHA-256。检测到新内容时会拒绝覆盖，Agent 需要重新读取并合并。') }}
+          {{ t('修改使用稳定文件 ID 和 SHA-256。可通过配置限制目录和对象类型；直接写入需显式启用 --access write。') }}
         </p>
       </div>
     </section>

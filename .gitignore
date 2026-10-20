@@ -16,6 +16,7 @@ apps/client/src-tauri/gen/android/app/src/main/assets/
 apps/client/src-tauri/gen/android/app/tauri.build.gradle.kts
 apps/client/src-tauri/gen/android/app/tauri.properties
 data/
+!examples/workspaces/ai-research/data/
 /markdown-test-workspace/.obsidian/
 /markdown-test-workspace/.tano/
 !/markdown-test-workspace/.tano/

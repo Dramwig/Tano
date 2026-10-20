@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { createApp, reactive, nextTick, defineComponent, h, ref } from 'vue';
 import type { App } from 'vue';
 import type { ObjectRecord } from '../workspace-objects';
-import { coreObjectTypes, validateObjectProperties } from '@tano/protocol';
+import { coreObjectTypes, coreRelationTypes, validateObjectProperties } from '@tano/protocol';
 const fixture = vi.hoisted(() => ({ store: null as unknown }));
 vi.mock('../stores/workspace', () => ({ useWorkspaceStore: () => fixture.store }));
 vi.mock('../runtime', () => ({ useWorkbenchRuntime: () => ({}) }));
@@ -13,12 +13,16 @@ afterEach(() => {
   app?.unmount();
   root?.remove();
 });
-function mountPanel(objects: ObjectRecord[] = [], selectedId?: string, visible = ref(true)) {
+function mountPanel(objects: ObjectRecord[] = [], selectedId?: string, visible = ref(true), initialType = ref<string>()) {
   const store = reactive({
     workspace: { id: 'ws', readOnly: false },
     capabilities: { features: { objectReferences: true } },
     workspaceSettings: { showPeopleDirectory: true },
     objectDefinitions: coreObjectTypes,
+    relationDefinitions: coreRelationTypes,
+    relations: [],
+    createRelation: vi.fn(),
+    removeRelation: vi.fn(),
     objects,
     objectErrors: [],
     getReferenceContext: vi.fn(async () => ({ outgoing: [], incoming: [], errors: [] })),
@@ -48,17 +52,34 @@ function mountPanel(objects: ObjectRecord[] = [], selectedId?: string, visible =
   fixture.store = store;
   root = document.createElement('div');
   document.body.append(root);
-  app = createApp(defineComponent(() => () => h(ObjectPanel, { open: visible.value, selectedId })));
+  app = createApp(defineComponent(() => () => h(ObjectPanel, { open: visible.value, selectedId, initialType: initialType.value })));
   app.mount(root);
   return store;
 }
-it('offers unified events instead of new legacy tasks and saves event timestamps with an offset', async () => {
+it('keeps unsaved typed drafts separate when reopening database creation controls', async () => {
+  const visible = ref(true), type = ref('task');
+  mountPanel([], undefined, visible, type);
+  const name = () => root.querySelector<HTMLInputElement>('input[maxlength="200"]')!;
+  name().value = 'Unsaved task';
+  name().dispatchEvent(new Event('input', { bubbles: true }));
+  visible.value = false; await nextTick();
+  type.value = 'project'; visible.value = true; await nextTick();
+  expect(name().value).toBe('');
+  expect(root.querySelector('select')!.value).toBe('project');
+  visible.value = false; await nextTick();
+  type.value = 'task'; visible.value = true; await nextTick();
+  expect(name().value).toBe('Unsaved task');
+});
+it('offers task, project and experiment schemas alongside events and saves offset timestamps', async () => {
   const store = mountPanel();
   Array.from(root.querySelectorAll('button'))
     .find((button) => button.textContent?.includes('新建对象'))!
     .click();
   await nextTick();
   expect(Array.from(root.querySelectorAll('option')).map((option) => option.value)).toEqual([
+    'task',
+    'project',
+    'experiment',
     'person',
     'event',
   ]);
@@ -146,34 +167,15 @@ it('shows a retired object read-only and preserves its original type and propert
   expect(root.textContent).toContain('object://dataset/d00001');
   expect(store.objects[0]!.object).toEqual(object);
 });
-it('shows historical projects read-only without offering project creation or duplication', async () => {
-  const object = {
-    version: 1 as const, id: 'd00001', type: 'project', name: '历史项目',
-    description: '项目说明', archived: false, properties: { custom: 42 },
-  };
-  const store = mountPanel([{ object, path: '.tano/objects/old.tano.json',
-    snapshot: { content: JSON.stringify(object), hash: 'h', modified: 1 } }], object.id);
-  expect(root.textContent).toContain('项目（旧版）');
-  expect(root.textContent).toContain('旧项目对象及已有引用只读保留');
+it('offers historical projects as editable records without changing their identity', async () => {
+  const object = { version: 1 as const, id: 'd00001', type: 'project', name: '历史项目', description: '项目说明', archived: false, properties: { custom: 42 } };
+  const store = mountPanel([{ object, path: '.tano/objects/old.tano.json', snapshot: { content: JSON.stringify(object), hash: 'h', modified: 1 } }], object.id);
   expect(root.textContent).toContain('object://project/d00001');
-  for (const input of root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('form input, form textarea'))
-    expect(input.disabled).toBe(true);
-  for (const button of root.querySelectorAll<HTMLButtonElement>('form footer button')) {
-    if (button.textContent?.includes('保存') || button.textContent?.includes('另存')) {
-      expect(button.disabled).toBe(true);
-      button.click();
-    }
-  }
-  expect(store.createObject).not.toHaveBeenCalled();
-  expect(store.updateObject).not.toHaveBeenCalled();
-  root.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-  await nextTick();
-  expect(store.updateObject).not.toHaveBeenCalled();
+  expect((root.querySelector('input[maxlength="200"]') as HTMLInputElement).disabled).toBe(false);
+  expect((root.querySelector('button[type=submit]') as HTMLButtonElement).disabled).toBe(false);
   expect(store.objects[0]!.object).toEqual(object);
-  [...root.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent?.includes('新建对象'))!.click();
-  await nextTick();
-  expect([...root.querySelectorAll('option')].map((option) => option.value)).toEqual(['person', 'event']);
 });
+
 it('shows resource metadata without offering a duplicate JSON record or binary edit form', () => {
   mountPanel([], 'f00001');
   expect(root.textContent).toContain('image/png');
@@ -198,6 +200,10 @@ it('retains an object draft across workspace scans and selects the saved object'
     workspaceSettings: { showPeopleDirectory: true },
     objects: [] as ObjectRecord[],
     objectDefinitions: coreObjectTypes,
+    relationDefinitions: coreRelationTypes,
+    relations: [],
+    createRelation: vi.fn(),
+    removeRelation: vi.fn(),
     referenceTargets: [],
     objectErrors: [],
     isDemo: true,

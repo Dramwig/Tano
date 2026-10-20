@@ -5,10 +5,13 @@ import { basename, isMarkdown } from '@tano/protocol';
 import type { FileEntry, ReferenceIdentity, WorkspaceViewDefinition } from '@tano/protocol';
 import { t } from '../i18n';
 import { useWorkspaceStore } from '../stores/workspace';
+import FileDatabasePage from './FileDatabasePage.vue';
+import ObjectDatabasePage from './ObjectDatabasePage.vue';
 
 const props = defineProps<{ view: WorkspaceViewDefinition }>();
 const emit = defineEmits<{
   'open-file': [file: FileEntry];
+  'edit-document-properties': [file: FileEntry];
   'open-object': [identity: ReferenceIdentity];
 }>();
 const store = useWorkspaceStore();
@@ -56,7 +59,9 @@ function fileIcon(row: (typeof sourceRows.value)[number]) {
 </script>
 
 <template>
-  <main class="workspace-view-page" :aria-label="view.name">
+  <FileDatabasePage v-if="view.database" :view="view" @open-file="emit('open-file', $event)" @edit-document-properties="emit('edit-document-properties', $event)" />
+  <ObjectDatabasePage v-else-if="view.objectDatabase" :view="view" @open-object="emit('open-object', $event)" />
+  <main v-else class="workspace-view-page" :aria-label="view.name">
     <header class="workspace-view-header">
       <div>
         <p class="workspace-view-kicker"><Table2 :size="15" />{{ kindLabel }}</p>

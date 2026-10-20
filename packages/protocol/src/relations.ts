@@ -11,8 +11,10 @@ export interface RelationTypeDefinition {
   plugin?: string;
 }
 export const coreRelationTypes: readonly RelationTypeDefinition[] = [
+  { type: 'member', label: '成员', sourceTypes: ['person'], targetTypes: ['project'], level: 2 },
+  { type: 'contains', label: '包含', sourceTypes: ['project'], targetTypes: ['task', 'experiment', 'document', 'asset'], level: 2 },
   { type: 'related', label: '关联', sourceTypes: ['*'], targetTypes: ['*'], level: 2 },
-  { type: 'assigned', label: '负责', sourceTypes: ['person'], targetTypes: ['event', 'task'], level: 2 },
+  { type: 'assigned', label: '负责', sourceTypes: ['person'], targetTypes: ['event', 'task', 'project', 'experiment'], level: 2 },
   { type: 'authored', label: '撰写', sourceTypes: ['person'], targetTypes: ['document'], level: 2 },
   { type: 'attends', label: '参加', sourceTypes: ['person'], targetTypes: ['event'], level: 2 },
   { type: 'attachment', label: '附有资产', sourceTypes: ['*'], targetTypes: ['asset'], level: 2 },

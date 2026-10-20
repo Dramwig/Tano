@@ -927,7 +927,7 @@ pub fn assistant_external_result(
             .to_string_lossy()
             .trim_start_matches("\\\\?\\")
             .to_string();
-        let changed = db.execute("UPDATE agent_proposals SET status=?1 WHERE id=?2 AND root=?3 COLLATE NOCASE AND root_key=?4", rusqlite::params![status, id, root, external_root_key(&session.root_key)?]).map_err(|_| "无法记录外部提案结果")?;
+        let changed = db.execute("UPDATE agent_proposals SET status=?1,body=?5 WHERE id=?2 AND root=?3 COLLATE NOCASE AND root_key=?4", rusqlite::params![status, id, root, external_root_key(&session.root_key)?, value.to_string()]).map_err(|_| "无法记录外部提案结果")?;
         if changed != 1 {
             return Err("外部提案已移除或工作区本机身份已变化".into());
         }

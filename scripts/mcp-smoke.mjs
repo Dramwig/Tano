@@ -25,7 +25,7 @@ let errors = '';
 const connections = Array.from({ length: 4 }, (_, index) => {
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [entry, '--workspace', root, '--data-dir', data],
+    args: [entry, '--workspace', root, '--data-dir', data, '--access', 'write'],
     cwd: directory,
     stderr: 'pipe',
   });
@@ -41,7 +41,7 @@ const client = connections[0].client;
 try {
   await Promise.all(connections.map(({ client, transport }) => client.connect(transport)));
   const tools = await client.listTools();
-  assert.equal(tools.tools.length, 8);
+  assert.equal(tools.tools.length, 18);
   const create = await client.callTool({
     name: 'tano_create_document',
     arguments: { path: 'Shared.md', content: '# Shared\n\nFirst\n' },

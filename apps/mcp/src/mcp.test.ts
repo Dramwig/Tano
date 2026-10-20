@@ -44,7 +44,7 @@ afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 function open() {
-  const store = new AgentWorkspace(root, data);
+  const store = new AgentWorkspace(root, data, { access: 'write', directories: [''], objectTypes: ['task', 'project', 'experiment', 'person', 'event'] });
   handles.push(store);
   return store;
 }
@@ -118,6 +118,7 @@ it('runs the MCP handshake, tool discovery and conditional writes with client-ch
   await client.connect(b);
   try {
     expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual([
+      'tano_gateway_capabilities', 'tano_query_files', 'tano_read_file', 'tano_query_objects', 'tano_query_table', 'tano_query_relations', 'tano_propose_changes', 'tano_get_operation', 'tano_list_activity', 'tano_read_activity',
       'tano_list_documents',
       'tano_read_document',
       'tano_write_document',
@@ -302,13 +303,13 @@ it('refuses writing if the audit preparation fails and preserves uncertain evide
   db.close();
 });
 
-it('bounds saved diff bodies while keeping full Markdown and exact hashes', () => {
+it('retains complete diff bodies and exact hashes for auditable writes', () => {
   const store = open(),
     large = 'a'.repeat(600 * 1024);
   store.change('large.md', large, null, 'client');
   const db = database();
   expect(db.prepare('SELECT after_content,after_hash FROM agent_changes').get()).toMatchObject({
-    after_content: null,
+    after_content: large,
     after_hash: hash(large),
   });
   expect(store.read('large.md').content).toBe(large);

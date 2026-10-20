@@ -24,6 +24,7 @@ import {
   isObjectPath,
   isMarkdown,
   parseObject,
+  parseDataTable,
   isDataTablePath,
 } from '@tano/protocol';
 import { demoFiles } from './demo';
@@ -99,13 +100,12 @@ export class DemoAdapter implements WorkspaceAdapter {
   private isTableStorage(path: string) {
     return isDataTablePath(path) || path.startsWith('.tano/conflicts/table-');
   }
-  private syncTableFiles() {
+  private syncFiles() {
     const stored = localStorage.getItem(this.storageKey);
     if (!stored) return;
     const data = JSON.parse(stored) as { files: DemoFiles; folders: string[] };
     if (!data.files || !Array.isArray(data.folders)) throw new Error('浏览器工作区数据损坏，原内容已保留');
-    for (const path of Object.keys(this.files)) if (this.isTableStorage(path)) delete this.files[path];
-    for (const [path, file] of Object.entries(data.files)) if (this.isTableStorage(path)) this.files[path] = file;
+    this.files = data.files;
     this.folders = data.folders;
   }
   private persist(tablePath?: string) {
@@ -149,6 +149,18 @@ export class DemoAdapter implements WorkspaceAdapter {
   async reserveObjectId(occupied: string[] = []) {
     return this.rememberIds(occupied, true);
   }
+  async createAgentRecord(path: string, content: string) {
+    this.check(path);
+    const object = isDataTablePath(path) && !isWorkspaceInternalPath(path) ? parseDataTable(content) : parseObject(content);
+    if (!(isDataTablePath(path) && !isWorkspaceInternalPath(path)) && path !== `.tano/objects/${object.id}.tano.json`) throw new Error('对象路径无效');
+    if (!navigator.locks) throw new Error('安全预留对象身份需要 Web Locks');
+    await navigator.locks.request(`${this.storageKey}.ids`, () => {
+      const used = new Set<string>(JSON.parse(localStorage.getItem(`${this.storageKey}.ids`) ?? '[]'));
+      if (used.has(object.id)) throw new Error('对象 ID 已被使用或预留，请重新生成建议');
+      used.add(object.id); localStorage.setItem(`${this.storageKey}.ids`, JSON.stringify([...used]));
+    });
+    await this.create(path, content);
+  }
   private check(path: string) {
     const error = validateStoragePath(path);
     if (error) throw new Error(error);
@@ -171,16 +183,17 @@ export class DemoAdapter implements WorkspaceAdapter {
     localStorage.setItem(`${this.storageKey}.session.${workspaceId}`, JSON.stringify(session));
   }
   async refresh(): Promise<Workspace> {
-    this.syncTableFiles();
+    this.syncFiles();
     await this.rememberIds();
-    const files: FileEntry[] = Object.entries(this.files).map(([path, file]) => ({
+    const files: FileEntry[] = await Promise.all(Object.entries(this.files).map(async ([path, file]) => ({
       id: file.id,
       path,
       name: basename(path),
-      kind: 'file',
+      kind: 'file' as const,
       size: new TextEncoder().encode(file.content).length,
       modified: file.modified,
-    }));
+      contentHash: await sha256(file.content),
+    })));
     for (const path of this.folders)
       files.push({
         id: `folder:${path}`,
@@ -200,7 +213,7 @@ export class DemoAdapter implements WorkspaceAdapter {
   }
   async read(path: string): Promise<FileSnapshot> {
     this.check(path);
-    if (this.isTableStorage(path)) this.syncTableFiles();
+    this.syncFiles();
     const file = this.files[path];
     if (!file) throw new Error('文件已不存在');
     return { content: file.content, hash: await sha256(file.content), modified: file.modified };
@@ -219,78 +232,49 @@ export class DemoAdapter implements WorkspaceAdapter {
   }
   async write(path: string, content: string, expectedHash: string): Promise<WriteResult> {
     this.check(path);
-    if (this.isTableStorage(path)) {
-      if (!navigator.locks) throw new Error('此浏览器不支持安全的数据表写入，请使用支持 Web Locks 的浏览器');
-      return navigator.locks.request(`${this.storageKey}.tables`, async () => {
-        this.syncTableFiles();
-        if (!this.files[path]) return { status: 'missing' };
-        const current = await this.read(path);
-        if (current.hash !== expectedHash) return { status: 'conflict', snapshot: current };
-        const previous = this.files[path];
-        this.files[path] = { ...previous, content, modified: Date.now() };
-        try { this.persist(path); } catch (error) { this.files[path] = previous; throw error; }
-        return { status: 'saved', snapshot: { content, hash: await sha256(content), modified: this.files[path].modified } };
-      });
-    }
-    if (!this.files[path]) return { status: 'missing' };
-    const current = await this.read(path);
-    if (current.hash !== expectedHash) return { status: 'conflict', snapshot: current };
-    const previous = this.files[path];
-    this.files[path] = { ...previous, content, modified: Date.now() };
-    try {
-      this.persist();
-    } catch (e) {
-      this.files[path] = previous;
-      throw e;
-    }
-    return { status: 'saved', snapshot: await this.read(path) };
+    let result: WriteResult = { status: 'missing' };
+    await this.changeEntries(async () => {
+      const file = this.files[path];
+      if (!file) return;
+      const snapshot = { content: file.content, hash: await sha256(file.content), modified: file.modified };
+      if (snapshot.hash !== expectedHash) { result = { status: 'conflict', snapshot }; return; }
+      const modified = Date.now();
+      this.files[path] = { ...file, content, modified };
+      result = { status: 'saved', snapshot: { content, hash: await sha256(content), modified } };
+    });
+    return result;
   }
   async create(path: string, content: string) {
     this.check(path);
-    if (this.isTableStorage(path)) {
-      if (!navigator.locks) throw new Error('此浏览器不支持安全的数据表写入，请使用支持 Web Locks 的浏览器');
-      return navigator.locks.request(`${this.storageKey}.tables`, async () => {
-        this.syncTableFiles();
-        if (this.has(path)) throw new Error('同名文件或文件夹已经存在');
-        if (!isWorkspaceDataPath(path) && parentPath(path) && !this.folders.includes(parentPath(path)))
-          throw new Error('目标文件夹不存在，请先创建文件夹');
-        const id = await this.reserveObjectId();
-        this.files[path] = { id, content, modified: Date.now() };
-        try { this.persist(path); } catch (error) { delete this.files[path]; throw error; }
-      });
-    }
-    if (this.has(path)) throw new Error('同名文件或文件夹已经存在');
-    if (!isWorkspaceDataPath(path) && parentPath(path) && !this.folders.includes(parentPath(path)))
-      throw new Error('目标文件夹不存在，请先创建文件夹');
     const id = await this.reserveObjectId();
-    if (this.has(path)) throw new Error('同名文件或文件夹已经存在');
-    this.files[path] = { id, content, modified: Date.now() };
-    try {
-      this.persist();
-    } catch (e) {
-      delete this.files[path];
-      throw e;
-    }
+    await this.changeEntries(() => {
+      if (this.has(path)) throw new Error('同名文件或文件夹已经存在');
+      if (!isWorkspaceDataPath(path) && parentPath(path) && !this.folders.includes(parentPath(path)))
+        throw new Error('目标文件夹不存在，请先创建文件夹');
+      this.files[path] = { id, content, modified: Date.now() };
+    });
   }
   async createFolder(path: string) {
     const error = validatePath(path);
     if (error) throw new Error(error);
+    return this.changeEntries(() => {
     if (this.has(path)) throw new Error('同名文件或文件夹已经存在');
     if (parentPath(path) && !this.folders.includes(parentPath(path)))
       throw new Error('父文件夹不存在');
     this.folders.push(path);
-    try {
-      this.persist();
-    } catch (e) {
-      this.folders.pop();
-      throw e;
-    }
+    });
   }
   async changeFile(request: FileChangeRequest): Promise<WriteResult> {
+    return this.changeChecked(request, false);
+  }
+  async removeObjectFile(request: FileChangeRequest): Promise<WriteResult> {
+    return this.changeChecked(request, true);
+  }
+  private async changeChecked(request: FileChangeRequest, objectDelete: boolean): Promise<WriteResult> {
     const workspace = await this.refresh();
     if (workspace.id !== request.workspaceId) throw new Error('工作区已切换');
-    if (!isAssistantFile(request.path) ||
-        (request.destination !== undefined && !validAssistantDestination(request.path, request.destination)))
+    if (objectDelete ? (!/^\.tano\/objects\/[^/]+\.tano\.json$/.test(request.path) || !!validateStoragePath(request.path) || request.destination !== undefined) :
+        (!isAssistantFile(request.path) || (request.destination !== undefined && !validAssistantDestination(request.path, request.destination))))
       throw new Error('只能操作普通 Markdown 文档或数据表，并保留文件类型');
     await this.rememberIds();
     let result: WriteResult = { status: 'missing' };
@@ -414,6 +398,7 @@ export class DemoAdapter implements WorkspaceAdapter {
 export class NativeAdapter implements WorkspaceAdapter {
   readonly mode = 'desktop' as const;
   reserveObjectId = (occupied: string[]) => invoke<string>('reserve_reference_id', { occupied });
+  createAgentRecord = (path: string, content: string) => invoke<void>('create_agent_record', { path, content });
   async open(savedPath?: string): Promise<Workspace | null> {
     if (mobile && !savedPath) return { ...await invoke<Workspace>('open_mobile_workspace', { name: null }), canDelete: true };
     const path =
@@ -451,6 +436,7 @@ export class NativeAdapter implements WorkspaceAdapter {
     invoke<string>('duplicate_workspace_entry', { workspaceId, path });
   remove = (path: string) => invoke<void>('remove_document', { path });
   changeFile = (request: FileChangeRequest) => invoke<WriteResult>('change_assistant_file', { request });
+  removeObjectFile = (request: FileChangeRequest) => invoke<WriteResult>('delete_workspace_object', { request });
   reveal = () => invoke<void>('reveal_workspace');
   async watch(callback: () => void) {
     return listen('workspace-changed', callback);

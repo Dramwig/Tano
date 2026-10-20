@@ -13,6 +13,20 @@ import type { PluginSandboxFactory } from './sandbox';
 beforeEach(() => localStorage.clear());
 const rule = (index = 0) => ({ manifest: bundledObjectPlugins[index]!, mode: 'recommended' as const, settings: {} });
 
+it('ignores a required retired Git rule while preserving portable policy bytes', async () => {
+  const adapter = new DemoAdapter({ files: {} });
+  const workspace = await adapter.open();
+  const base = await loadPluginPolicy(adapter, workspace);
+  const manifest = { ...bundledObjectPlugins[0]!, id: 'git-inspector', objectTypes: [], relationTypes: [] };
+  await savePluginRule(adapter, base, manifest.id, { manifest, mode: 'required', settings: {} }, () => {});
+  const before = (await adapter.read(workspacePluginPath)).content;
+  const host = new WorkspacePluginHost(new ObjectTypeRegistry());
+  expect(await host.loadWorkspace(adapter, await adapter.refresh())).toEqual([]);
+  expect((await adapter.read(workspacePluginPath)).content).toBe(before);
+  await expect(host.changeWorkspace(adapter, workspace, { id: manifest.id, enabled: true }, () => {})).rejects.toThrow('Git 功能已内置');
+  host.dispose();
+});
+
 it('rejects executable fields in old manifests, unknown permissions, tampered policy and unbounded views', () => {
   expect(() => parsePluginPackage(JSON.stringify({ ...bundledObjectPlugins[0], source: 'steal()' }))).toThrow();
   expect(() => parsePluginPackage(JSON.stringify({ ...documentOverviewPlugin, manifest: { ...documentOverviewPlugin.manifest, permissions: ['shell'] } }))).toThrow();

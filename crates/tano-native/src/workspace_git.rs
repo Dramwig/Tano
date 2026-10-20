@@ -1,4 +1,4 @@
-//! Read-only Git queries using private metadata and an allowlisted configuration.
+//! System Git inspection using private metadata and an allowlisted configuration.
 //! Original config, hooks, remotes, credential helpers and filters are never used by a query.
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -124,7 +124,15 @@ fn inspect_tree(
     }
     Ok(())
 }
-fn executable(root: &Path) -> Result<PathBuf, String> {
+pub(crate) fn validate_sync_paths(root: &Path) -> Result<(), String> {
+    let canonical = fs::canonicalize(root).map_err(|e| e.to_string())?;
+    let root = canonical.as_path();
+    let mut entries = 0;
+    let stopped = AtomicBool::new(false);
+    inspect_tree(root, root, &mut entries, &stopped, true)?;
+    inspect_tree(root, &root.join(".git"), &mut entries, &stopped, false)
+}
+pub(crate) fn executable(root: &Path) -> Result<PathBuf, String> {
     for directory in std::env::var_os("PATH")
         .map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
         .unwrap_or_default()
@@ -805,4 +813,53 @@ mod tests {
         cancel.await.unwrap();
         prepared.directory.close().unwrap();
     }
+}
+
+/// System inspection does not require a plugin installation, manifest or grant.
+#[tauri::command]
+pub async fn workspace_git_query(
+    app: tauri::AppHandle,
+    workspace_id: String,
+    kind: String,
+    args: Value,
+) -> Result<Value, String> {
+    use std::sync::{Arc, OnceLock};
+    use std::time::Duration;
+    use tauri::Manager;
+    static SLOTS: OnceLock<tokio::sync::Semaphore> = OnceLock::new();
+    let _permit = SLOTS
+        .get_or_init(|| tokio::sync::Semaphore::new(4))
+        .try_acquire()
+        .map_err(|_| "Git 查询正忙，请稍后重试")?;
+    let command = match kind.as_str() {
+        "status" => "git.status",
+        "diff" => "git.diff",
+        "log" => "git.log",
+        _ => return Err("未知 Git 查询".into()),
+    };
+    let args = parse_args(command, args)?;
+    let root = crate::with_workspace_session(&workspace_id, app.state(), |session| {
+        Ok(session.root.clone())
+    })?;
+    let cache = crate::app_data(&app)?.join("workspace-git");
+    let stopped = Arc::new(AtomicBool::new(false));
+    let work = async {
+        let directory = root.clone();
+        let stop = stopped.clone();
+        let prepared =
+            tauri::async_runtime::spawn_blocking(move || prepare(&directory, &cache, &stop))
+                .await
+                .map_err(|_| "无法准备 Git 查询")??;
+        query(&prepared, command, args, &stopped).await
+    };
+    let result = tokio::time::timeout(Duration::from_secs(15), work)
+        .await
+        .map_err(|_| "Git 查询超时".to_string());
+    stopped.store(true, Ordering::SeqCst);
+    crate::with_workspace_session(&workspace_id, app.state(), |session| {
+        if session.root != root {
+            return Err("工作区已切换，查询结果已丢弃".into());
+        }
+        result?
+    })
 }
