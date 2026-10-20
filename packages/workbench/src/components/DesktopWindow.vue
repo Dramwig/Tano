@@ -143,24 +143,20 @@ async function toggleMaximize() {
 .desktop-sidebar-toggle {
   display: grid;
   place-items: center;
-  flex: 0 0 38px;
-  width: 38px;
-  height: 100%;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 26px;
+  align-self: center;
+  margin-inline-start: 6px;
   overflow: hidden;
   padding: 0;
-  border-right: 1px solid var(--line);
-  border-radius: 0;
   color: var(--text-secondary);
-  transition: flex-basis 240ms ease, width 240ms ease, border-color 240ms ease;
+  transition: flex-basis 240ms ease, width 240ms ease, margin-inline-start 240ms ease;
 }
 .desktop-sidebar-toggle-hidden {
   flex-basis: 0;
   width: 0;
-  border-right-color: transparent;
-}
-.desktop-sidebar-toggle:hover {
-  background: color-mix(in srgb, var(--paper) 55%, var(--sidebar));
-  color: var(--text);
+  margin-inline-start: 0;
 }
 .desktop-window-drag {
   display: flex;

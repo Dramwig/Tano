@@ -31,10 +31,11 @@ export async function queryPluginData(method: string, params: Record<string, unk
     const revision = [context.revision ?? null, rows.map(row => [row.id, row.path, row.name, row.modified, row.size, metadata(row).readOnly]),
       method === 'documents.search' ? drafts.map(row => [row.id, row.content, !!row.conflict, row.missing]) : []];
     if (method === 'documents.query') return pager.page(scope, method, options as PluginPageOptions, revision, rows, async row => metadata(row), assertCurrent);
+    const draftsById = new Map(drafts.map(draft => [draft.id, draft]));
     const skipped: string[] = [];
     const pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'iu');
     const page = await pager.page(scope, method, options as PluginPageOptions, revision, rows, async row => {
-      const draft = drafts.find(draft => draft.id === row.id);
+      const draft = draftsById.get(row.id);
       if (draft?.conflict || draft?.missing || (!draft && row.size > 512000)) { skipped.push(row.id); return; }
       assertCurrent();
       const content = draft?.content ?? (await context.read(row.path)).content;

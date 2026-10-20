@@ -6,7 +6,6 @@ import {
   ChevronDown,
   Folder,
   FolderOpen,
-  Table2,
   File,
 } from 'lucide-vue-next';
 import {
@@ -233,8 +232,8 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
           aria-hidden="true"
         >
           <DocumentFileIcon
-            v-if="file.kind === 'file' && isMarkdown(file.path)"
-            :file="file" :icon="documentIcons?.[file.id]" :load="loadDocumentIcon"
+            v-if="file.kind === 'file' && (isMarkdown(file.path) || isDataTableFilePath(file.path))"
+            :file="file" :icon="documentIcons?.[file.id]" :load="isMarkdown(file.path) ? loadDocumentIcon : undefined"
           />
           <component v-else
             :is="
@@ -242,9 +241,7 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
                 ? isCollapsed(file.path)
                   ? Folder
                   : FolderOpen
-                : isDataTableFilePath(file.path)
-                  ? Table2
-                  : File
+                : File
             "
             :size="16"
             :stroke-width="1.6"

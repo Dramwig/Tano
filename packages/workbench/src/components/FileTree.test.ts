@@ -47,6 +47,27 @@ it('shows and updates document icons in nested folders without replacing folder 
   expect(row.querySelector('.workspace-emoji-icon, .workspace-default-icon')).toBeNull();
 });
 
+it('updates nested data table icons and restores the table fallback without reading them as Markdown', async () => {
+  const table: FileEntry = { id: 'table', path: '项目/计划.table.json', name: '计划.table.json', kind: 'file', size: 1, modified: 0 };
+  const documentIcons = ref<Record<string, string>>({ document: '' });
+  const loadDocumentIcon = vi.fn(async () => '🌿');
+  root = document.createElement('div'); document.body.append(root);
+  app = createApp({ render: () => h(FileTree, { entries: [...entries, table], documentIcons: documentIcons.value, loadDocumentIcon }) });
+  app.mount(root); await nextTick();
+  const row = root.querySelector('[title="项目/计划.table.json"]')!;
+  expect(row.querySelector('[class*="lucide-table"]')).not.toBeNull();
+  documentIcons.value.table = '😄'; await nextTick();
+  expect(row.querySelector('.workspace-emoji-icon')?.getAttribute('data-emoji')).toBe('😄');
+  documentIcons.value.table = 'icon:book'; await nextTick();
+  expect(row.querySelector('[class*="lucide-book"]')).not.toBeNull();
+  documentIcons.value.table = 'data:image/png;base64,aGVsbG8='; await nextTick();
+  expect(row.querySelector('img')?.getAttribute('src')).toBe(documentIcons.value.table);
+  documentIcons.value.table = ''; await nextTick();
+  expect(row.querySelector('[class*="lucide-table"]')).not.toBeNull();
+  expect(row.querySelector('.workspace-emoji-icon, img')).toBeNull();
+  expect(loadDocumentIcon).not.toHaveBeenCalled();
+});
+
 it('requests read ahead for nested documents on pointer entry and keyboard focus without opening them', async () => {
   root = document.createElement('div');
   document.body.append(root);

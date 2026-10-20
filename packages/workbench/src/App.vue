@@ -126,7 +126,8 @@ import {
   relativeWorkspaceReference,
   safeRemoteImage,
 } from '@tano/protocol';
-import type { FileEntry, RecentWorkspace, SearchHit } from '@tano/protocol';
+import type { FileEntry, RecentWorkspace } from '@tano/protocol';
+import { useWorkspaceSearch } from './workspace-search';
 type WorkspaceEntry = Pick<RecentWorkspace, 'id' | 'name' | 'path' | 'icon'>;
 import {
   nativeAttachments,
@@ -643,10 +644,20 @@ const sidebarWidth = ref<number | null>(null);
 const resizingSidebar = ref(false);
 const SIDEBAR_MIN_WIDTH = 180;
 const SIDEBAR_MAX_WIDTH = 480;
+const SIDEBAR_COLLAPSE_WIDTH = SIDEBAR_MIN_WIDTH - 80;
 let sidebarResizePointerId: number | null = null;
+let sidebarResizeCaptureElement: HTMLElement | null = null;
 let sidebarResizeStartX = 0;
 let sidebarResizeStartWidth = 0;
+let sidebarSnapRestoreWidth: number | null = null;
 let preferredSidebarWidth: number | null = null;
+watch(sidebar, (open) => {
+  // Restore on reopening so the closing animation keeps its current width.
+  if (open && sidebarSnapRestoreWidth !== null) {
+    setSidebarWidth(sidebarSnapRestoreWidth);
+    sidebarSnapRestoreWidth = null;
+  }
+});
 const theme = ref<ThemePreference>(readThemePreference());
 const systemThemeMedia = window.matchMedia?.('(prefers-color-scheme: dark)');
 const onSystemThemeChange = () => {
@@ -736,17 +747,33 @@ function startSidebarResize(event: PointerEvent) {
   sidebarResizeStartX = event.clientX;
   sidebarResizeStartWidth = currentSidebarWidth();
   resizingSidebar.value = true;
-  handle.setPointerCapture(event.pointerId);
+  // The shell stays visible after snapping the sidebar closed, so the same
+  // gesture can still expand it again before the pointer is released.
+  sidebarResizeCaptureElement = handle.closest<HTMLElement>('.app-shell')!;
+  sidebarResizeCaptureElement.setPointerCapture(event.pointerId);
 }
 function moveSidebarResize(event: PointerEvent) {
   if (event.pointerId !== sidebarResizePointerId) return;
-  setSidebarWidth(sidebarResizeStartWidth + event.clientX - sidebarResizeStartX);
+  const width = sidebarResizeStartWidth + event.clientX - sidebarResizeStartX;
+  if (width <= SIDEBAR_COLLAPSE_WIDTH) {
+    sidebarSnapRestoreWidth = sidebarResizeStartWidth;
+    sidebar.value = false;
+    workspaceMenu.value = false;
+  } else if (sidebar.value || width >= SIDEBAR_MIN_WIDTH) {
+    sidebarSnapRestoreWidth = null;
+    sidebar.value = true;
+    setSidebarWidth(width);
+  }
 }
 function finishSidebarResize(event: PointerEvent) {
   if (event.pointerId !== sidebarResizePointerId) return;
   sidebarResizePointerId = null;
   resizingSidebar.value = false;
-  if (sidebarWidth.value !== null) saveTextPreference('sidebarWidth', String(sidebarWidth.value));
+  if (sidebarResizeCaptureElement?.hasPointerCapture(event.pointerId))
+    sidebarResizeCaptureElement.releasePointerCapture(event.pointerId);
+  sidebarResizeCaptureElement = null;
+  const width = sidebarSnapRestoreWidth ?? sidebarWidth.value;
+  if (width !== null) saveTextPreference('sidebarWidth', String(width));
 }
 function resizeSidebarWithKeyboard(event: KeyboardEvent) {
   if (compactPanes.value) return;
@@ -1044,7 +1071,10 @@ const treeFiles = computed(() => {
     : files;
 });
 const treeDocumentIcons = computed(() => Object.fromEntries(
-  store.documents.map(doc => [doc.id, appearanceText(doc.content, 'icon')]),
+  [
+    ...store.documents.map(doc => [doc.id, appearanceText(doc.content, 'icon')]),
+    ...store.dataTableRecords.map(record => [record.fileId, record.draft.icon ?? '']),
+  ],
 ));
 let documentIconReads: Promise<void> = Promise.resolve();
 function loadTreeDocumentIcon(file: FileEntry, signal: AbortSignal): Promise<string> {
@@ -2787,29 +2817,11 @@ watch([documentScroll, showPageTitle], ([container], _, cleanup) => {
 const noteCount = computed(
   () => workspace.value?.files.filter((f) => f.kind === 'file' && !isWorkspaceInternalPath(f.path) && (isMarkdown(f.path) || isDataTableFilePath(f.path))).length ?? 0,
 );
-const searchHits = ref<SearchHit[]>([]);
-const searching = ref(false);
-const searchError = ref('');
-watch([input, modal, workspace], ([query, kind], _old, cleanup) => {
-  searchHits.value = [];
-  searchError.value = '';
-  searching.value = kind === 'search' && !!query.trim();
-  if (!searching.value) return;
-  let cancelled = false;
-  const timer = setTimeout(async () => {
-    try {
-      const results = await store.search(query);
-      if (!cancelled) searchHits.value = results;
-    } catch (error) {
-      if (!cancelled) searchError.value = String(error);
-    } finally {
-      if (!cancelled) searching.value = false;
-    }
-  }, 160);
-  cleanup(() => {
-    cancelled = true;
-    clearTimeout(timer);
-  });
+const { hits: searchHits, busy: searching, error: searchError } = useWorkspaceSearch({
+  query: input,
+  enabled: () => modal.value === 'search',
+  workspace,
+  search: (query, signal) => store.search(query, signal),
 });
 const searchResults = computed(() => {
   const files = workspace.value?.files.filter((f) => f.kind === 'file' && isMarkdown(f.path)) ?? [];
@@ -3962,7 +3974,7 @@ const helpBlocked = computed(() => !!(
     <button
       v-if="!detachedWindow"
       :class="{ 'desktop-sidebar-toggle-hidden': sidebar }"
-      class="desktop-sidebar-toggle"
+      class="desktop-sidebar-toggle icon-button"
       type="button"
       :aria-label="t('展开侧栏')"
       :data-tooltip="t('展开侧栏')" :data-tooltip-shortcut="shortcuts.toggleSidebar"
@@ -3971,7 +3983,7 @@ const helpBlocked = computed(() => !!(
       :disabled="sidebar"
       @click="toggleSidebar"
     >
-      <PanelLeftOpen :size="17" />
+      <PanelLeftOpen :size="16" :stroke-width="1.6" />
     </button>
     <DesktopTabs
       detachable
@@ -3984,6 +3996,10 @@ const helpBlocked = computed(() => !!(
   </Teleport>
   <div
     class="app-shell"
+    @pointermove="moveSidebarResize"
+    @pointerup="finishSidebarResize"
+    @pointercancel="finishSidebarResize"
+    @lostpointercapture="finishSidebarResize"
     :class="{
       'sidebar-hidden': detachedWindow || !sidebar || !workspace,
       'detached-window': detachedWindow,
@@ -4789,10 +4805,6 @@ const helpBlocked = computed(() => !!(
           :aria-valuemax="sidebarWidthLimit()"
           tabindex="0"
           @pointerdown="startSidebarResize"
-          @pointermove="moveSidebarResize"
-          @pointerup="finishSidebarResize"
-          @pointercancel="finishSidebarResize"
-          @lostpointercapture="finishSidebarResize"
           @keydown="resizeSidebarWithKeyboard"
         />
     </WorkspaceSidebar>
@@ -4834,13 +4846,13 @@ const helpBlocked = computed(() => !!(
                 rect.top === 0 &&
                 rect.left === 0
               "
-              class="desktop-sidebar-toggle"
+              class="desktop-sidebar-toggle icon-button"
               type="button"
               :aria-label="t('展开侧栏')"
               :data-tooltip="t('展开侧栏')" :data-tooltip-shortcut="shortcuts.toggleSidebar"
               @click="toggleSidebar"
             >
-              <PanelLeftOpen :size="17" />
+              <PanelLeftOpen :size="16" :stroke-width="1.6" />
             </button>
             <DesktopTabs
               :pane-id="pane.id"
@@ -4890,7 +4902,7 @@ const helpBlocked = computed(() => !!(
           >
             <template #navigation>
               <div v-if="!sidebar && !(native && !mobile && workspace)" class="topbar-navigation">
-                <button type="button" class="icon-button" :aria-label="t('展开侧栏')" :data-tooltip="t('展开侧栏')" :data-tooltip-shortcut="shortcuts.toggleSidebar" @click="toggleSidebar"><PanelLeftOpen :size="18" /></button>
+                <button type="button" class="icon-button" :aria-label="t('展开侧栏')" :data-tooltip="t('展开侧栏')" :data-tooltip-shortcut="shortcuts.toggleSidebar" @click="toggleSidebar"><PanelLeftOpen :size="16" :stroke-width="1.6" /></button>
               </div>
             </template>
           </TemplateLibrary>
@@ -4931,7 +4943,7 @@ const helpBlocked = computed(() => !!(
                   :data-tooltip="t('展开侧栏')" :data-tooltip-shortcut="shortcuts.toggleSidebar"
                   @click="toggleSidebar"
                 >
-                  <PanelLeftOpen :size="18" />
+                  <PanelLeftOpen :size="16" :stroke-width="1.6" />
                 </button>
                 <button
                   v-if="native && !tabsEnabled && isVisible('back')"

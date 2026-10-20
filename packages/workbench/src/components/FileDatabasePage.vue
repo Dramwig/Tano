@@ -37,7 +37,7 @@ function reload() {
   draft.value = JSON.parse(JSON.stringify(external.value.view)); base.value = external.value.snapshot; error.value = '';
 }
 watch(() => props.view, () => { if (!changed.value) reload(); });
-watch(() => [props.view.workspaceId, files.value.map(f => `${f.id}:${f.path}:${f.contentHash ?? f.modified}`).join(','), store.documents.map(doc => `${doc.id}:${doc.content}`).join('\n'), store.referenceRevision, store.workspace?.files.filter(f => f.path.startsWith('.tano/files/')).map(f => `${f.path}:${f.contentHash ?? f.modified}`).join(',')], async (_, _old, onCleanup) => {
+watch(() => [props.view.workspaceId, files.value.map(f => `${f.id}:${f.path}:${f.contentHash ?? f.modified}`).join(','), store.referenceRevision, store.workspace?.files.filter(f => f.path.startsWith('.tano/files/')).map(f => `${f.path}:${f.contentHash ?? f.modified}`).join(',')], async (_, _old, onCleanup) => {
   let current = true; onCleanup(() => { current = false; }); loading.value = true;
   const next: Record<string, FileMetadata> = {}; const failures: string[] = [];
   const counts: Record<string, number> = {};

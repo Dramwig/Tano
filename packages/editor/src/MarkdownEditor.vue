@@ -55,6 +55,7 @@ import {
 } from './math';
 import { mathSourcePreviewView, sourceBlockStyle } from './math-source-preview';
 import { splitFrontmatter } from './syntax';
+import { SuggestionChangeCodec } from './suggestion-codec';
 import { markdownPositionMap } from './mode-selection';
 import type { ModeSelection } from './mode-selection';
 import {
@@ -376,6 +377,7 @@ let selectionBeforeMenu: { selection: Selection; doc: Node } | null = null;
 let rightClickSelection: { selection: Selection; doc: Node } | null = null;
 let editor: Editor | undefined;
 let suggestionSerializer: ReturnType<typeof SerializerState.create> | undefined;
+const suggestionCodec = new SuggestionChangeCodec<Node>();
 let disposed = false;
 let unbindExtension: (() => void) | undefined;
 let lastValue = props.modelValue;
@@ -1751,16 +1753,12 @@ const bridge = $prose(
             let markdown = frontmatter.prefix + serialize(serializableDocument(view.state));
             if (props.transformChange) {
               try {
-                const baseline = ctx.get(parserCtx)(splitFrontmatter(lastValue).body);
-                if (!baseline) throw new Error('无法解析建议基线');
-                const before = frontmatter.prefix + serialize(baseline);
-                if (before === markdown) return;
-                const mapped = props.transformChange(lastValue, before, markdown);
-                const parsed = ctx.get(parserCtx)(splitFrontmatter(mapped).body);
-                const normalized = ctx.get(parserCtx)(splitFrontmatter(markdown).body);
-                if (!parsed || !normalized || ctx.get(serializerCtx)(parsed) !== ctx.get(serializerCtx)(normalized)) {
-                  throw new Error('此结构修改无法精确映射，请在源码模式重新编辑；原文和已有建议保留');
-                }
+                const mapped = suggestionCodec.map({
+                  previous: lastValue, current: markdown, prefix: frontmatter.prefix,
+                  parse: ctx.get(parserCtx), stableSerialize: serialize,
+                  serialize: ctx.get(serializerCtx), transform: props.transformChange,
+                });
+                if (mapped === undefined) return;
                 markdown = mapped;
               } catch (error) {
                 emit('error', String(error));
@@ -2537,6 +2535,7 @@ watch(() => props.readonly, () => {
   }
 });
 watch(() => props.documentId, () => {
+  suggestionCodec.clear();
   editingProperty.value = undefined;
   typeMenuProperty.value = undefined;
   if (blockMenu.value) closeBlockMenu(false);
@@ -2547,6 +2546,7 @@ watch(
   () =>
     editor?.action((ctx) => {
       runtimeRevision++;
+      suggestionCodec.clear();
       const view = ctx.get(editorViewCtx);
       view.setProps({ editable: () => !props.readonly });
       view.dispatch(view.state.tr.setMeta('addToHistory', false));
@@ -3322,6 +3322,7 @@ defineExpose({
   redoLastChange,
 });
 onBeforeUnmount(() => {
+  suggestionCodec.clear();
   clearTimeout(referenceFlashTimer);
   closeBlockConvertMenu();
   disposed = true;

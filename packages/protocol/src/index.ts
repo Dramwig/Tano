@@ -87,7 +87,7 @@ export interface WorkspaceAdapter {
   loadSession?(workspaceId: string): Promise<WorkspaceSession | null>;
   saveSession?(workspaceId: string, session: WorkspaceSession): Promise<void>;
   refresh(): Promise<Workspace>;
-  search?(workspaceId: string, query: string): Promise<SearchHit[]>;
+  search?(workspaceId: string, query: string, signal?: AbortSignal): Promise<SearchHit[]>;
   read(path: string): Promise<FileSnapshot>;
   /** Optional version-checked, synchronous cache. Never returns speculative content. */
   readCached?(path: string): FileSnapshot | undefined;

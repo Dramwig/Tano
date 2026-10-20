@@ -1,7 +1,8 @@
 import { configureWorkbench } from '../runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
-import { markRaw } from 'vue';
+import { markRaw, nextTick } from 'vue';
+import { PluginExecutionHost } from '../plugins/host';
 import type {
   WorkspaceAdapter,
   FileSnapshot,
@@ -263,6 +264,29 @@ describe('assistant proposal coordination', () => {
 });
 
 describe('workspace file reconciliation', () => {
+  it('invalidates references and notifies only the edited document without putting its body in revisions', async () => {
+    const notify = vi.spyOn(PluginExecutionHost.prototype, 'notify');
+    try {
+      await store.openFile(store.workspace!.files.find(file => file.id === 'note-id')!);
+      await new Promise(resolve => setTimeout(resolve, 180));
+      notify.mockClear();
+      const before = store.referenceRevision;
+      const body = 'unique-large-draft-marker\n'.repeat(10000);
+      store.edit(body);
+      await nextTick();
+      expect(store.referenceRevision).not.toBe(before);
+      expect(store.referenceRevision).not.toContain('unique-large-draft-marker');
+      expect(store.referenceRevision.length).toBeLessThan(10000);
+      expect(store.documentForTab('note-id')?.content).toBe(body);
+      await vi.waitFor(() => expect(notify).toHaveBeenCalledWith({
+        type: 'documents.changed', changes: [{ id: 'note-id', kind: 'updated' }],
+      }));
+      expect(notify).toHaveBeenCalledWith({ type: 'workspace.changed' });
+    } finally {
+      notify.mockRestore();
+    }
+  });
+
   it('opens attachments in a separate tab, preserves the source document, and follows file identity after rename', async () => {
     const note = store.workspace!.files.find(file => file.id === 'note-id')!;
     await store.openFileInNewTab(note);
@@ -1083,6 +1107,31 @@ describe('workspace file reconciliation', () => {
     await store.initialize();
     expect(store.documents.map((doc) => doc.path)).toEqual(['second.md', 'note.md']);
     expect(store.active!.path).toBe('note.md');
+  });
+  it('keeps saving responsive while a read-only search is waiting on the network', async () => {
+    let finish!: (hits: []) => void;
+    fixture.adapter!.search = vi.fn(() => new Promise<[]>(resolve => { finish = resolve; }));
+    const searching = store.search('pending remote search');
+    store.edit('save without waiting for search');
+    const flushed = vi.fn();
+    void store.flush().then(flushed);
+    await vi.waitFor(() => expect(flushed).toHaveBeenCalledWith(true));
+    expect(backend.files.get('note.md')!.content).toBe('save without waiting for search');
+    finish([]);
+    await searching;
+  });
+  it('does not rewrite recovery content for transient document status changes', async () => {
+    await store.flush();
+    const save = vi.spyOn(backend, 'saveSession');
+    store.active!.saving = true;
+    store.active!.error = 'temporary network failure';
+    store.active!.missing = true;
+    store.active!.saving = false;
+    await Promise.resolve();
+    expect(save).not.toHaveBeenCalled();
+    store.edit('recover this edit');
+    expect(save).toHaveBeenCalled();
+    expect(backend.session?.documents[0].draft?.content).toBe('recover this edit');
   });
   it('journals before autosave and merges recovered input with a newer external edit', async () => {
     store.edit('A\nB\nC\nhuman\n');

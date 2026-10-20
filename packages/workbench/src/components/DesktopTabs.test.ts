@@ -141,6 +141,29 @@ it('shows each document icon from its current draft and restores the default whe
   expect(buttons[0].querySelector('.workspace-emoji-icon')?.getAttribute('data-emoji')).toBe('🌿');
 });
 
+it('updates data table tab and drag preview icons and restores the table fallback', async () => {
+  fixture.store.tabs[0] = { id: 'a', path: '计划.table.json', blank: false, dataTable: { name: '计划', dirty: false } };
+  await nextTick();
+  expect(buttons[0].querySelector('[class*="lucide-table"]')).not.toBeNull();
+  fixture.store.tabs[0].dataTable.icon = '😄'; await nextTick();
+  expect(buttons[0].querySelector('.workspace-emoji-icon')?.getAttribute('data-emoji')).toBe('😄');
+  pointer(buttons[0], 'pointerdown', 80);
+  pointer(buttons[0], 'pointermove', 260, 20);
+  await nextTick();
+  const preview = document.body.querySelector('.desktop-tab-drag-preview')!;
+  expect(preview.querySelector('.workspace-emoji-icon')?.getAttribute('data-emoji')).toBe('😄');
+  fixture.store.tabs[0].dataTable.icon = 'icon:book'; await nextTick();
+  expect(buttons[0].querySelector('[class*="lucide-book"]')).not.toBeNull();
+  expect(preview.querySelector('[class*="lucide-book"]')).not.toBeNull();
+  fixture.store.tabs[0].dataTable.icon = 'data:image/png;base64,aGVsbG8='; await nextTick();
+  expect(buttons[0].querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,aGVsbG8=');
+  delete fixture.store.tabs[0].dataTable.icon; await nextTick();
+  expect(buttons[0].querySelector('[class*="lucide-table"]')).not.toBeNull();
+  expect(preview.querySelector('[class*="lucide-table"]')).not.toBeNull();
+  expect(buttons[0].querySelector('.desktop-tab-document-icon')).toBeNull();
+  pointer(buttons[0], 'pointercancel', 260, 20);
+});
+
 it('renders extension labels and icons and prevents detaching window-local views', async () => {
   app.unmount();
   fixture.store.tabs.push({

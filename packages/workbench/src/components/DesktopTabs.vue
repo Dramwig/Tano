@@ -34,7 +34,7 @@ const paneTabs = computed(() => props.paneId
   ? store.tabs.filter(tab => store.panes.find(pane => pane.id === props.paneId)?.tabs.includes(tab.id))
   : store.tabs);
 const documentIcons = computed(() => Object.fromEntries(
-  paneTabs.value.map(tab => [tab.id, appearanceText(tab.document?.content ?? '', 'icon')]),
+  paneTabs.value.map(tab => [tab.id, tab.dataTable ? tab.dataTable.icon ?? '' : appearanceText(tab.document?.content ?? '', 'icon')]),
 ));
 const selectedId = computed(() => props.paneId
   ? store.panes.find(pane => pane.id === props.paneId)?.activeId ?? '' : store.activeId);
@@ -937,12 +937,12 @@ async function onTabKeydown(event: KeyboardEvent) {
           <GitFork v-else-if="doc.graph" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <Puzzle v-else-if="doc.plugins" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <CalendarDays v-else-if="doc.calendar" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
-          <Table2 v-else-if="doc.dataTable" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <Puzzle v-else-if="doc.pluginView" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <component :is="doc.view.icon" v-else-if="doc.view" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <span v-else-if="!doc.blank && documentIcons[doc.id]" class="desktop-tab-icon desktop-tab-document-icon" aria-hidden="true">
             <WorkspaceIcon :icon="documentIcons[doc.id]" :size="15" />
           </span>
+          <Table2 v-else-if="doc.dataTable" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <FileText v-else-if="!doc.blank" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <span class="desktop-tab-label">{{ tabLabel(doc) }}</span>
           <span
@@ -1069,7 +1069,7 @@ async function onTabKeydown(event: KeyboardEvent) {
       <span v-if="documentIcons[dragPreview.id]" class="desktop-tab-icon desktop-tab-document-icon">
         <WorkspaceIcon :icon="documentIcons[dragPreview.id]" :size="15" />
       </span>
-      <FileText v-else class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
+      <component v-else :is="isDataTableFilePath(dragPreview.path) ? Table2 : FileText" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
       <span class="desktop-tab-label">{{ title(dragPreview.path) }}</span>
       <span v-if="dragPreview.dirty" class="desktop-tab-dirty" />
     </div>
@@ -1080,6 +1080,9 @@ async function onTabKeydown(event: KeyboardEvent) {
 .desktop-tab-navigation:has(.icon-button) {
   position: relative;
   padding-inline: 6px;
+}
+.desktop-sidebar-toggle:not(.desktop-sidebar-toggle-hidden) + .desktop-tab-navigation:has(.icon-button) {
+  padding-inline-start: 2px;
 }
 .desktop-tab-strip {
   display: flex;
@@ -1318,9 +1321,6 @@ async function onTabKeydown(event: KeyboardEvent) {
   height: 15px;
   overflow: hidden;
   border-radius: 3px;
-}
-.desktop-tab-active .desktop-tab-icon {
-  color: var(--green);
 }
 .desktop-tab-active .desktop-tab-label {
   font-weight: 500;
