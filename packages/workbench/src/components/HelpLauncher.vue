@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { ArrowUpRight, BookOpen, ChevronRight, CircleHelp, Compass, Keyboard, MoreHorizontal, X } from 'lucide-vue-next';
 import { helpDocumentationUrl } from '../help-content';
@@ -233,7 +234,7 @@ onBeforeUnmount(() => {
 <template>
   <button
     ref="trigger" type="button" class="icon-button sidebar-help" data-help-surface
-    aria-label="帮助与上手" aria-haspopup="dialog" :aria-expanded="opened || preview"
+    :aria-label="t('帮助与上手')" aria-haspopup="dialog" :aria-expanded="opened || preview"
     :aria-controls="opened ? `${id}-panel` : preview ? `${id}-preview` : undefined"
     :aria-describedby="preview ? `${id}-preview-title` : undefined"
     @click="opened ? close(true) : openHelp()"
@@ -245,7 +246,7 @@ onBeforeUnmount(() => {
 
   <Teleport to="body">
     <section v-if="preview && !opened && available" :id="`${id}-preview`" ref="previewPanel" data-help-surface
-      role="region" aria-label="上手指引" class="help-preview" :style="position"
+      role="region" :aria-label="t('上手指引')" class="help-preview" :style="position"
       @pointerenter="previewHovered = true; keepPreview()" @pointerleave="previewHovered = false; leavePreview()"
       @focusin="previewFocused = true; keepPreview()" @focusout="previewFocusOut">
       <HelpChecklistTimeline :heading-id="`${id}-preview-title`" :completed="completed" :context="context" :availability="availability" :documentation-base-url="documentationBaseUrl"
@@ -253,15 +254,15 @@ onBeforeUnmount(() => {
     </section>
 
     <section v-if="opened && available" :id="`${id}-panel`" ref="panel" data-help-surface
-      class="help-popover" :style="position" role="dialog" aria-modal="false" aria-label="帮助与上手"
+      class="help-popover" :style="position" role="dialog" aria-modal="false" :aria-label="t('帮助与上手')"
       @keydown="menuKeys" @scroll="closeMore()">
-        <div class="help-menu-heading">帮助与上手</div>
+        <div class="help-menu-heading">{{ t('帮助与上手') }}</div>
         <div class="help-main-links">
-          <a class="help-row" :href="docsUrl('welcome')" target="_blank" rel="noopener noreferrer" @click="followDocumentation($event, 'welcome')"><Compass :size="15" /><span>快速上手</span><ArrowUpRight :size="12" /></a>
-          <a class="help-row" :href="docsUrl()" target="_blank" rel="noopener noreferrer" @click="followDocumentation($event)"><BookOpen :size="15" /><span>使用指南</span><ArrowUpRight :size="12" /></a>
+          <a class="help-row" :href="docsUrl('welcome')" target="_blank" rel="noopener noreferrer" @click="followDocumentation($event, 'welcome')"><Compass :size="15" /><span>{{ t('快速上手') }}</span><ArrowUpRight :size="12" /></a>
+          <a class="help-row" :href="docsUrl()" target="_blank" rel="noopener noreferrer" @click="followDocumentation($event)"><BookOpen :size="15" /><span>{{ t('使用指南') }}</span><ArrowUpRight :size="12" /></a>
           <button ref="moreTrigger" class="help-row" aria-haspopup="menu" :aria-expanded="more"
             :aria-controls="more ? `${id}-more` : undefined" @click="more ? closeMore(true) : openMore()">
-            <MoreHorizontal :size="15" /><span>更多</span><ChevronRight :size="12" :class="{ 'help-chevron-left': more && moreOnLeft }" />
+            <MoreHorizontal :size="15" /><span>{{ t('更多') }}</span><ChevronRight :size="12" :class="{ 'help-chevron-left': more && moreOnLeft }" />
           </button>
         </div>
         <HelpChecklistTimeline class="help-menu-checklist" :completed="completed" :context="context" :availability="availability" :documentation-base-url="documentationBaseUrl"
@@ -269,19 +270,19 @@ onBeforeUnmount(() => {
     </section>
 
     <div v-if="opened && available && more" :id="`${id}-more`" ref="morePanel" data-help-surface
-      class="help-submenu" :style="morePosition" role="menu" aria-label="更多帮助选项" @keydown="moreKeys">
-      <button class="help-row" role="menuitem" @click="settings('shortcuts')"><Keyboard :size="15" /><span>键盘快捷键</span><ArrowUpRight :size="12" /></button>
-      <button class="help-row" role="menuitem" @click="settings('about')"><CircleHelp :size="15" /><span>关于同页</span></button>
+      class="help-submenu" :style="morePosition" role="menu" :aria-label="t('更多帮助选项')" @keydown="moreKeys">
+      <button class="help-row" role="menuitem" @click="settings('shortcuts')"><Keyboard :size="15" /><span>{{ t('键盘快捷键') }}</span><ArrowUpRight :size="12" /></button>
+      <button class="help-row" role="menuitem" @click="settings('about')"><CircleHelp :size="15" /><span>{{ t('关于同页') }}</span></button>
     </div>
 
-    <aside v-if="hint && available && !opened" ref="bubble" data-help-surface class="help-bubble" :style="position" aria-label="使用小提示"
+    <aside v-if="hint && available && !opened" ref="bubble" data-help-surface class="help-bubble" :style="position" :aria-label="t('使用小提示')"
       @pointerenter="bubbleHovered = true" @pointerleave="bubbleHovered = false"
       @focusin="bubbleFocused = true" @focusout="bubbleFocused = !!bubble?.contains($event.relatedTarget as Node)">
-      <div class="help-bubble-heading"><span>小提示</span><button class="help-close" aria-label="暂时不提示" @click="dismiss(true)"><X :size="14" /></button></div>
+      <div class="help-bubble-heading"><span>{{ t('小提示') }}</span><button class="help-close" :aria-label="t('暂时不提示')" @click="dismiss(true)"><X :size="14" /></button></div>
       <p role="status">{{ hint.hint }}</p>
       <div class="help-bubble-actions">
-        <a :href="docsUrl(hint.id)" target="_blank" rel="noopener noreferrer" @click="followDocumentation($event, hint.id)">了解用法 <ArrowUpRight :size="12" /></a>
-        <button @click="setEnabled(false)">不再提示</button>
+        <a :href="docsUrl(hint.id)" target="_blank" rel="noopener noreferrer" @click="followDocumentation($event, hint.id)">{{ t('了解用法') }} <ArrowUpRight :size="12" /></a>
+        <button @click="setEnabled(false)">{{ t('不再提示') }}</button>
       </div>
     </aside>
   </Teleport>

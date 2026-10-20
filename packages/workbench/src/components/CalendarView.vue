@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiLocale } from '../i18n';
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
 import { calendarEvents, eventsOnDay, hasEventTime, localDayKey, monthDays, plannedEventsOnDay, planningEvents, shiftCalendarDate, visibleCalendarDays, weekDays } from '../calendar';
 import type { CalendarViewMode } from '../calendar';
@@ -52,13 +53,15 @@ const agendaDates = computed(() => {
   return Array.from({ length }, (_, index) => new Date(year, month, index + 1))
     .filter(day => dayRecords(day).length > 0);
 });
-const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+const weekdays = computed(() => uiLocale.value === 'en-US'
+  ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  : ['一', '二', '三', '四', '五', '六', '日']);
 const hours = Array.from({ length: 24 }, (_, hour) => hour);
 const hourHeight = 56;
 const today = computed(() => localDayKey(new Date()));
 const viewLabel = computed(() => ({
-  day: '日视图', 'four-days': '4 天视图', week: '周视图',
-  month: '月视图', year: '年视图', agenda: '日程视图',
+  day: t('日视图'), 'four-days': t('4 天视图'), week: t('周视图'),
+  month: t('月视图'), year: t('年视图'), agenda: t('日程视图'),
 })[props.mode]);
 const monthKey = (date: Date) => `${date.getFullYear()}-${date.getMonth()}`;
 const weekKey = localDayKey;
@@ -320,14 +323,14 @@ function timedEvents(day: Date) {
   });
 }
 function eventTime(record: ObjectRecord) {
-  if (record.object.properties.allDay === true) return '全天';
-  if (!hasEventTime(record)) return '仅日期';
-  return new Date(String(record.object.properties.start)).toLocaleTimeString('zh-CN', {
+  if (record.object.properties.allDay === true) return t('全天');
+  if (!hasEventTime(record)) return t('仅日期');
+  return new Date(String(record.object.properties.start)).toLocaleTimeString(uiLocale.value, {
     hour: '2-digit', minute: '2-digit', hour12: false,
   });
 }
 function weekday(day: Date) {
-  return weekdays[(day.getDay() + 6) % 7];
+  return weekdays.value[(day.getDay() + 6) % 7];
 }
 async function positionTimeline() {
   await nextTick();
@@ -389,7 +392,7 @@ watch(() => props.date, (date) => {
     ref="scroll"
     class="calendar-view"
     :class="{ 'calendar-view-timeline': timeline, 'calendar-view-month': mode === 'month', 'calendar-view-year': mode === 'year' }"
-    :aria-label="`日历${viewLabel}`"
+    :aria-label="t('日历{0}', [viewLabel])"
     @scroll.passive="onCalendarScroll"
     @wheel="onCalendarWheel"
   >
@@ -410,18 +413,18 @@ watch(() => props.date, (date) => {
           class="calendar-view-day-heading"
           :class="{ today: localDayKey(day) === today }"
         >
-          <span>周{{ weekday(day) }}</span>
+          <span>{{ uiLocale === 'zh-CN' ? '周' : '' }}{{ weekday(day) }}</span>
           <strong>{{ day.getDate() }}</strong>
         </div>
         <template v-if="hasVisibleDateOnly">
-          <span class="calendar-view-date-label">全天</span>
+          <span class="calendar-view-date-label">{{ t('全天') }}</span>
           <div v-for="day in timelineDays" :key="`date-${localDayKey(day)}`" class="calendar-view-date-events">
             <button
               v-for="record in dateOnlyEvents(day)"
               :key="planKey(record)"
               type="button"
               class="calendar-view-date-event"
-              :title="`${planSourceLabel(record)} · ${record.object.name} · ${eventTime(record)}`"
+              :data-tooltip="`${planSourceLabel(record)} · ${record.object.name} · ${eventTime(record)}`"
               @click="emit('select-event', planKey(record))"
             >{{ record.object.name }}</button>
           </div>
@@ -439,7 +442,7 @@ watch(() => props.date, (date) => {
             class="calendar-view-event"
             :class="{ 'calendar-view-point': item.point }"
             :style="{ top: `${item.top}px`, height: `${item.height}px` }"
-            :title="`${planSourceLabel(item.record)} · ${item.record.object.name} · ${item.time}`"
+            :data-tooltip="`${planSourceLabel(item.record)} · ${item.record.object.name} · ${item.time}`"
             @click="emit('select-event', planKey(item.record))"
           >
             <strong>{{ item.record.object.name }}</strong>
@@ -451,7 +454,7 @@ watch(() => props.date, (date) => {
 
     <div v-else-if="mode === 'month'" class="calendar-month-view">
       <div class="calendar-month-weekdays" aria-hidden="true">
-        <span v-for="name in weekdays" :key="name">周{{ name }}</span>
+        <span v-for="name in weekdays" :key="name">{{ uiLocale === 'zh-CN' ? '周' : '' }}{{ name }}</span>
       </div>
       <div
         v-for="week in scrollingWeeks"
@@ -469,29 +472,29 @@ watch(() => props.date, (date) => {
             type="button"
             class="calendar-month-date"
             :class="{ today: localDayKey(day) === today, 'month-start': day.getDate() === 1 }"
-            :aria-label="`${localDayKey(day)}，查看日视图`"
+            :aria-label="t('{0}，查看日视图', [localDayKey(day)])"
             @click="emit('select-date', day)"
-          >{{ day.getDate() === 1 ? `${day.getMonth() + 1} 月 1 日` : day.getDate() }}</button>
+          >{{ day.getDate() === 1 ? t('{0} 月 1 日', [day.getMonth() + 1]) : day.getDate() }}</button>
           <button
             v-for="record in dayRecords(day).slice(0, 3)"
             :key="planKey(record)"
             type="button"
             class="calendar-month-event"
-            :title="`${planSourceLabel(record)} · ${record.object.name} · ${eventTime(record)}`"
+            :data-tooltip="`${planSourceLabel(record)} · ${record.object.name} · ${eventTime(record)}`"
             @click="emit('select-event', planKey(record))"
           >{{ planSourceLabel(record) }} · {{ eventTime(record) }} {{ record.object.name }}</button>
-          <span v-if="dayRecords(day).length > 3" class="calendar-month-more">另有 {{ dayRecords(day).length - 3 }} 项</span>
+          <span v-if="dayRecords(day).length > 3" class="calendar-month-more">{{ t('另有 {0} 项', [dayRecords(day).length - 3]) }}</span>
         </div>
       </div>
     </div>
 
     <div v-else-if="mode === 'year'" class="calendar-year-view">
       <section v-for="year in scrollingYears" :key="year" class="calendar-year-section" :data-year="year">
-        <h2 class="calendar-year-heading">{{ year }} 年</h2>
+        <h2 class="calendar-year-heading">{{ year }}{{ uiLocale === 'zh-CN' ? ' 年' : '' }}</h2>
         <div class="calendar-year-grid">
           <section v-for="month in monthsForYear(year)" :key="month.date.getMonth()" class="calendar-year-month">
             <button type="button" class="calendar-year-month-title" @click="emit('select-month', month.date)">
-              {{ month.date.getMonth() + 1 }} 月
+              {{ month.date.toLocaleDateString(uiLocale, { month: 'long' }) }}
             </button>
             <div class="calendar-year-weekdays" aria-hidden="true">
               <span v-for="name in weekdays" :key="name">{{ name }}</span>
@@ -503,7 +506,7 @@ watch(() => props.date, (date) => {
                   v-else
                   type="button"
                   :class="{ today: localDayKey(day) === today, selected: localDayKey(day) === yearDayKey }"
-                  :aria-label="`${localDayKey(day)}，${yearDayRecords(day).length} 个事件`"
+                  :aria-label="t('{0}，{1} 个事件', [localDayKey(day), yearDayRecords(day).length])"
                   aria-haspopup="dialog"
                   :aria-expanded="localDayKey(day) === yearDayKey"
                   :aria-controls="localDayKey(day) === yearDayKey ? dayPopoverId : undefined"
@@ -520,10 +523,10 @@ watch(() => props.date, (date) => {
     </div>
 
     <div v-else class="calendar-agenda-view">
-      <p v-if="!agendaDates.length" class="calendar-agenda-empty">本月没有日程</p>
+      <p v-if="!agendaDates.length" class="calendar-agenda-empty">{{ t('本月没有日程') }}</p>
       <section v-for="day in agendaDates" :key="localDayKey(day)" class="calendar-agenda-day">
         <time class="calendar-agenda-date" :datetime="localDayKey(day)">
-          {{ day.getMonth() + 1 }}月{{ day.getDate() }}日
+          {{ day.toLocaleDateString(uiLocale, { month: 'short', day: 'numeric' }) }}
         </time>
         <div class="calendar-agenda-events">
           <button

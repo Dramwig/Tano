@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { Sigma } from 'lucide-vue-next';
 
@@ -27,8 +28,8 @@ onBeforeUnmount(() => window.removeEventListener('click', closeOutside));
     <button
       ref="trigger"
       class="icon-button"
-      aria-label="插入公式"
-      title="插入 LaTeX 公式"
+      :aria-label="t('插入公式')"
+      :data-tooltip="t('插入 LaTeX 公式')"
       :aria-expanded="open && !disabled"
       :disabled="disabled"
       @mousedown.prevent
@@ -37,8 +38,8 @@ onBeforeUnmount(() => window.removeEventListener('click', closeOutside));
       <Sigma :size="17" />
     </button>
     <div v-if="open && !disabled" class="dropdown document-dropdown">
-      <button @mousedown.prevent @click="insert('math')">行内公式 · $…$</button>
-      <button @mousedown.prevent @click="insert('math-block')">公式块 · $$…$$</button>
+      <button @mousedown.prevent @click="insert('math')">{{ t('行内公式 · $…$') }}</button>
+      <button @mousedown.prevent @click="insert('math-block')">{{ t('公式块 · $$…$$') }}</button>
     </div>
   </div>
 </template>

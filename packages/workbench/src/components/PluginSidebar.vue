@@ -1,18 +1,19 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { useWorkspaceStore } from '../stores/workspace';
 import PluginView from './PluginView.vue';
 import PluginMenu from './PluginMenu.vue';
 const store = useWorkspaceStore();
-const labels = { panel: '插件中心', tab: '标签页', sidebar: '侧栏', settings: '设置' };
+const labels = { get panel() { return t('插件中心'); }, get tab() { return t('标签页'); }, get sidebar() { return t('侧栏'); }, get settings() { return t('设置'); } };
 </script>
 <template>
-  <section class="plugin-sidebar" aria-label="插件工作台">
-    <header><strong>插件工作台</strong><button @click="store.openPluginsTab()">管理插件</button></header>
-    <nav aria-label="插件视图">
+  <section class="plugin-sidebar" :aria-label="t('插件工作台')">
+    <header><strong>{{ t('插件工作台') }}</strong><button @click="store.openPluginsTab()">{{ t('管理插件') }}</button></header>
+    <nav :aria-label="t('插件视图')">
       <button v-for="view in store.pluginViews" :key="view.key" :aria-pressed="view.key === store.activePluginSidebar || view.key === store.activeId"
         @click="store.openPluginView(view.pluginId, view.id)"><span>{{ view.label }}</span><small>{{ view.pluginName }} · {{ labels[view.location ?? 'panel'] }}</small></button>
     </nav>
-    <p v-if="!store.pluginViews.length">安装插件后，可在这里打开扩展视图。</p>
+    <p v-if="!store.pluginViews.length">{{ t('安装插件后，可在这里打开扩展视图。') }}</p>
     <PluginMenu location="workspace" />
     <PluginView v-if="store.activePluginSidebar" :view-key="store.activePluginSidebar" />
   </section>

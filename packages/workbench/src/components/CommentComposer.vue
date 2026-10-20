@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, ref, watch } from 'vue';
 import { ArrowUp, AtSign, UserRound } from 'lucide-vue-next';
 import type { CommentMention } from '@tano/protocol';
@@ -70,14 +71,14 @@ defineExpose({ focus });
       <textarea ref="input" :value="modelValue" :aria-label="label" :placeholder="label" rows="1"
         maxlength="20000" @input="update" @keydown="keydown" />
       <button v-if="workspace.objects.some(item => item.object.type === 'person' && !item.object.archived)" type="button"
-        class="comment-mention" title="提及人物" aria-label="提及人物" :aria-expanded="choosing" :disabled="busy" @click="choosing = !choosing; mentionStart = null; query = ''"><AtSign :size="16" /></button>
-      <button type="submit" class="comment-send" :aria-label="`发表${label}`" :title="`发表${label}`"
+        class="comment-mention" :data-tooltip="t('提及人物')" :aria-label="t('提及人物')" :aria-expanded="choosing" :disabled="busy" @click="choosing = !choosing; mentionStart = null; query = ''"><AtSign :size="16" /></button>
+      <button type="submit" class="comment-send" :aria-label="t('发表{0}', [label])" :data-tooltip="t('发表{0}', [label])"
         :disabled="busy || !modelValue.trim()"><ArrowUp :size="16" /></button>
     </div>
-    <div v-if="choosing" class="comment-people" role="dialog" aria-label="提及人物" @keydown.esc.stop="choosing = false">
-      <input v-model="query" aria-label="搜索人物" placeholder="搜索人物" @keydown.enter.prevent />
+    <div v-if="choosing" class="comment-people" role="dialog" :aria-label="t('提及人物')" @keydown.esc.stop="choosing = false">
+      <input v-model="query" :aria-label="t('搜索人物')" :placeholder="t('搜索人物')" @keydown.enter.prevent />
       <button v-for="person in people" :key="person.id" type="button" @click="mention(person.id, person.name)"><UserRound :size="14" />{{ person.name }}</button>
-      <span v-if="!people.length">没有匹配的人物</span>
+      <span v-if="!people.length">{{ t('没有匹配的人物') }}</span>
     </div>
   </form>
 </template>

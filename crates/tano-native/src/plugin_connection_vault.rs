@@ -450,7 +450,7 @@ pub struct Store {
 impl Store {
     pub fn open(path: &Path) -> Result<Self, String> {
         let (data, hash) = if path.exists() {
-            let bytes = crate::plugin_git::read_bounded(path, 256 * 1024)?;
+            let bytes = crate::workspace_git::read_bounded(path, 256 * 1024)?;
             let hash = crate::storage::hash(&bytes);
             (
                 serde_json::from_slice::<Data>(&bytes).map_err(|_| "连接配置损坏，原文件已保留")?,

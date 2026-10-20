@@ -51,7 +51,7 @@ it('checks, downloads, and installs through the compact control and blocks click
   state.phase = 'available';
   await nextTick();
   expect(button().textContent).toContain('下载更新 1.2.4');
-  expect(button().title).toContain('修复与改进');
+  expect(button().dataset.tooltip).toContain('修复与改进');
   button().click();
   expect(mocks.download).toHaveBeenCalledOnce();
 
@@ -68,7 +68,7 @@ it('checks, downloads, and installs through the compact control and blocks click
   state.busy = false;
   await nextTick();
   expect(button().textContent).toContain('保存并安装 1.2.4');
-  expect(button().title).toContain('先保存文档');
+  expect(button().dataset.tooltip).toContain('先保存文档');
   button().click();
   expect(mocks.install).toHaveBeenCalledOnce();
 

@@ -17,7 +17,7 @@ function create(adapter: WorkspaceAdapter) {
 }
 it('keeps late reads and edits bound to their own workbench storage', async () => {
   localStorage.clear();
-  const firstAdapter = new DemoAdapter(), secondAdapter = new DemoAdapter();
+  const firstAdapter = new DemoAdapter({ storageKey: 'runtime-first' }), secondAdapter = new DemoAdapter({ storageKey: 'runtime-second' });
   await firstAdapter.create('isolation.md', 'first');
   await secondAdapter.create('isolation.md', 'second');
   const original = firstAdapter.refresh.bind(firstAdapter);

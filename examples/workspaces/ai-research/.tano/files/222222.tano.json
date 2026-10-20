@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "fileId": "222222",
+  "tags": [
+    "paper",
+    "research"
+  ],
+  "properties": {
+    "status": "to-read",
+    "project": "AI Research",
+    "owner": "研究组"
+  }
+}

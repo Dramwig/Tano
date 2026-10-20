@@ -1,0 +1,41 @@
+import { expect, test } from '@playwright/test';
+
+for (const width of [1280, 390]) test(`custom callout picker persists icons at ${width}px`, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width, height: 850 });
+  await page.goto('http://127.0.0.1:43845');
+  await page.locator('.ProseMirror').first().waitFor();
+  await page.evaluate(async () => {
+    const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace');
+    await store.create('自定义块.md', false, '# 自定义块\n\n> [!CUSTOM:💡]\n> **温馨提示：** 点击图标，选择你喜欢的表情或图标。\n>\n> - 保留列表和正文\n\n后续段落。\n');
+  });
+  const trigger = page.locator('.callout-icon-trigger');
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+  const picker = page.getByRole('dialog', { name: '自定义块图标', exact: true });
+  await expect(picker).toBeVisible();
+  await expect(picker.getByRole('tab', { name: '上传', exact: true })).toHaveCount(0);
+  const box = await picker.boundingBox();
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(width);
+  await page.screenshot({ path: testInfo.outputPath(`custom-callout-picker-${width}.png`) });
+  await picker.getByRole('textbox', { name: '筛选图标' }).fill('rocket');
+  await picker.locator('[data-icon-value="🚀"]').click();
+  await expect(trigger.locator('[data-emoji="🚀"]')).toBeVisible();
+  const content = () => page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').active.content);
+  await expect.poll(content).toContain('[!CUSTOM:🚀]');
+  expect(await content()).toContain('保留列表和正文');
+  await trigger.click();
+  await picker.getByRole('tab', { name: '图标', exact: true }).click();
+  await picker.getByRole('textbox', { name: '筛选图标' }).fill('star');
+  await picker.locator('[data-icon-value="icon:star"]').click();
+  await expect.poll(content).toContain('[!CUSTOM:icon:star]');
+  await page.getByRole('button', { name: '切换源码模式', exact: true }).click();
+  await expect(page.locator('.source-editor')).toContainText('[!CUSTOM:icon:star]');
+  await page.getByRole('button', { name: '返回编辑', exact: true }).click();
+  await expect(trigger.locator('svg')).toBeVisible();
+  expect(await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').flush())).toBe(true);
+  await page.reload();
+  await expect(trigger.locator('svg')).toBeVisible();
+  await expect.poll(content).toContain('[!CUSTOM:icon:star]');
+  await page.screenshot({ path: testInfo.outputPath(`custom-callout-${width}.png`) });
+});

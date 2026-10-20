@@ -1,0 +1,6 @@
+{
+  "project": "AI Research",
+  "description": "Ordinary JSON source data; File identity and user properties live in .tano/.",
+  "seed": 42,
+  "datasets": ["RotMNIST", "ColorMNIST", "Portraits"]
+}

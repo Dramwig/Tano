@@ -19,12 +19,43 @@ pub fn change(
     request: &FileChangeRequest,
     recycle: impl FnOnce(&Path) -> Result<(), String>,
 ) -> Result<storage::WriteResult, String> {
+    change_checked(root, workspace_id, cache, request, recycle, false)
+}
+
+pub fn delete_object(
+    root: &Path,
+    workspace_id: &str,
+    cache: &Path,
+    request: &FileChangeRequest,
+    recycle: impl FnOnce(&Path) -> Result<(), String>,
+) -> Result<storage::WriteResult, String> {
+    let name = request.path.strip_prefix(".tano/objects/");
+    if request.destination.is_some()
+        || !name.is_some_and(|name| !name.contains('/') && name.ends_with(".tano.json"))
+    {
+        return Err("对象删除路径无效".into());
+    }
+    change_checked(root, workspace_id, cache, request, recycle, true)
+}
+
+fn change_checked(
+    root: &Path,
+    workspace_id: &str,
+    cache: &Path,
+    request: &FileChangeRequest,
+    recycle: impl FnOnce(&Path) -> Result<(), String>,
+    object_delete: bool,
+) -> Result<storage::WriteResult, String> {
     if request.workspace_id != workspace_id {
         return Err("工作区已切换".into());
     }
     storage::assert_workspace_identity(root, workspace_id)?;
-    let source = storage::resolve(root, &request.path, false)?;
-    if !(storage::is_markdown(&source) || storage::is_data_table(&source)) {
+    let source = if object_delete {
+        storage::resolve_storage(root, &request.path, false)?
+    } else {
+        storage::resolve(root, &request.path, false)?
+    };
+    if !object_delete && !(storage::is_markdown(&source) || storage::is_data_table(&source)) {
         return Err("只能操作普通 Markdown 文档或数据表".into());
     }
     let workspace = storage::scan(root, workspace_id, cache)?;
@@ -73,6 +104,54 @@ pub fn change(
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn object_delete_checks_revision_identity_and_keeps_assistant_boundary() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(&root).unwrap();
+        let root = root.canonicalize().unwrap();
+        let cache = temp.path().join("cache.sqlite");
+        let id = storage::workspace_identity(&root).unwrap();
+        fs::create_dir_all(root.join(".tano/objects")).unwrap();
+        let path = ".tano/objects/aaaaaa.tano.json";
+        fs::write(root.join(path), "original").unwrap();
+        let workspace = storage::scan(&root, &id, &cache).unwrap();
+        let file = workspace
+            .files
+            .iter()
+            .find(|file| file.path == path)
+            .unwrap();
+        let mut request = FileChangeRequest {
+            workspace_id: id.clone(),
+            file_id: file.id.clone(),
+            path: path.into(),
+            expected_hash: storage::hash(b"original"),
+            destination: None,
+        };
+        assert!(change(&root, &id, &cache, &request, |_| panic!(
+            "assistant cannot delete objects"
+        ))
+        .is_err());
+        fs::write(root.join(path), "external").unwrap();
+        assert!(matches!(
+            delete_object(&root, &id, &cache, &request, |_| panic!("stale delete")).unwrap(),
+            storage::WriteResult::Conflict { .. }
+        ));
+        request.expected_hash = storage::hash(b"external");
+        let recycled = temp.path().join("recycled.json");
+        assert!(matches!(
+            delete_object(&root, &id, &cache, &request, |source| fs::rename(
+                source, &recycled
+            )
+            .map_err(|e| e.to_string()))
+            .unwrap(),
+            storage::WriteResult::Saved { .. }
+        ));
+        assert_eq!(fs::read_to_string(recycled).unwrap(), "external");
+        request.path = ".tano/relations.tano-relations.json".into();
+        assert!(delete_object(&root, &id, &cache, &request, |_| panic!("wrong path")).is_err());
+    }
 
     #[test]
     fn table_file_changes_keep_identity_and_refuse_stale_content_or_type_changes() {

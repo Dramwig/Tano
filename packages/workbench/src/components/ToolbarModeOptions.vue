@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { PanelBottom, PanelLeft, PanelRight, Pin, TextCursorInput } from 'lucide-vue-next';
 import { toolbarModeLabels } from '../toolbar-preference';
 import type { ToolbarMode } from '../toolbar-preference';
@@ -20,11 +21,11 @@ const options = [
     <button
       v-if="option.mode !== mode"
       type="button"
-      :aria-label="toolbarModeLabels[option.mode]"
+      :aria-label="t(toolbarModeLabels[option.mode])"
       @mousedown.prevent
       @click="emit('select', option.mode)"
     >
-      <component :is="option.icon" :size="16" />{{ toolbarModeLabels[option.mode] }}
+      <component :is="option.icon" :size="16" />{{ t(toolbarModeLabels[option.mode]) }}
     </button>
   </template>
 </template>

@@ -4,12 +4,16 @@ import { workspacePluginPath } from './extensions';
 export const workspaceDataDirectory = '.tano';
 export const objectDirectory = '.tano/objects';
 export const workspaceCapabilityPath = '.tano/capabilities.json';
+export const workspaceFolderRegistryPath = '.tano/folders.tano.json';
 export const workspaceSettingsPath = '.tano/settings.tano.json';
 export const workspaceRelationPath = '.tano/relations.tano-relations.json';
 export const annotationDirectory = '.tano/annotations';
 export const discussionDirectory = '.tano/discussions';
 export const assistantRulesPath = '.tano/rules/assistant.md';
 export const templateDirectory = '.tano/templates';
+export const workspaceViewDirectory = '.tano/views';
+export const isWorkspaceViewPath = (path: string) =>
+  /^\.tano\/views\/[a-zA-Z0-9_-]{1,64}\.tano\.json$/.test(path);
 export const isTemplatePath = (path: string) => /^\.tano\/templates\/[0-9a-f]{6}\.md$/.test(path);
 
 export function commentDataPath(kind: 'annotation' | 'discussion', fileId: string) {
@@ -25,14 +29,16 @@ export function isWorkspaceInternalPath(path: string) {
 export function isWorkspaceDataPath(path: string) {
   return (
     path === workspaceCapabilityPath ||
+    path === workspaceFolderRegistryPath ||
     path === workspaceSettingsPath ||
     path === workspacePluginPath ||
     path === workspaceRelationPath ||
     path === assistantRulesPath ||
     isTemplatePath(path) ||
+    isWorkspaceViewPath(path) ||
     (path.startsWith('.tano/conflicts/') && path.endsWith('.json')) ||
     (path.startsWith(`${objectDirectory}/`) && path.endsWith('.tano.json')) ||
-    /^\.tano\/(?:annotations|discussions|document-layout|suggestions|tables)\/[0-9a-f]{6}\.tano\.json$/.test(path)
+    /^\.tano\/(?:annotations|discussions|document-layout|suggestions|tables|files)\/[0-9a-f]{6}\.tano\.json$/.test(path)
   );
 }
 

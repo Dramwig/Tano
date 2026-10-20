@@ -2,15 +2,17 @@
 
 English | [中文](zh/README.md) | [日本語](ja/README.md) | [Deutsch](de/README.md) | [Project README](../README.md)
 
-Tano is a local Markdown workspace. Start with [local development](local-development.md) to run the desktop app or browser demo, then use the guides below for the workflow you need.
+Tano is a File-Native Workspace: real files remain the source of truth while people and agents work in the same workspace. Start with [local development](local-development.md) to run the desktop app or browser demo, then use the guides below for the workflow you need.
 
 | Guide | Topic |
 | --- | --- |
 | [Local development](local-development.md) | Requirements, setup, and checks |
+| [Windows context menus](windows-shell.md) | Optional installer menus and standalone Markdown files |
 | [Third-party account imports](account-import.md) | Provider applications, credentials, and import limits |
 | [Mobile development](mobile.md) | Android, iPhone/iPad, adaptive layout and local device checks |
 | [Architecture](architecture.md) | Storage layers and workspace identity |
 | [Cloud Extension API](cloud-extension.md) | Optional overlay contract and repository boundary |
+| [Git and version history](git.md) | Local Git inspection and the cloud history boundary |
 | [Plugins](plugins.md) | Plugin SDK, shared workspace rules, permissions, and development tools |
 | [Plugin API reference](plugin-api.md) | SDK methods, Vue/React starters, compatibility, and migration |
 | [Plugin catalogs](plugin-catalog.md) | Reviewed releases, immutable packages, self-hosted catalogs, and withdrawals |

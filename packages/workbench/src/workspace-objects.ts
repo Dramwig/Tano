@@ -44,51 +44,10 @@ export async function loadObjects(adapter: Pick<ObjectStorage, 'read'>, workspac
     if (count > 1) errors.push(`对象 ID ${id} 重复，引用已停用；请修复重复文件`);
   return { records: records.filter((record) => ids.get(record.object.id) === 1), errors };
 }
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-/** Merge independently edited fields. Identity/type are immutable, never inferred from a title. */
-export function mergeObject(
-  base: WorkspaceObject,
-  ours: WorkspaceObject,
-  theirs: WorkspaceObject,
-): WorkspaceObject | null {
-  if (
-    base.id !== ours.id ||
-    base.id !== theirs.id ||
-    base.type !== ours.type ||
-    base.type !== theirs.type
-  )
-    return null;
-  const merged = { ...theirs };
-  for (const key of ['name', 'description', 'archived', 'properties'] as const) {
-    if (key === 'properties') {
-      const result: Record<string, unknown> = Object.assign(Object.create(null), theirs.properties);
-      for (const field of new Set([
-        ...Object.keys(base.properties),
-        ...Object.keys(ours.properties),
-      ])) {
-        if (same(base.properties[field], ours.properties[field])) continue;
-        if (
-          !same(base.properties[field], theirs.properties[field]) &&
-          !same(ours.properties[field], theirs.properties[field])
-        )
-          return null;
-        if (Object.hasOwn(ours.properties, field)) result[field] = ours.properties[field];
-        else delete result[field];
-      }
-      merged.properties = result;
-    } else if (key === 'description') {
-      const description = mergeDescription(base.description, ours.description, theirs.description);
-      if (description === null) return null;
-      merged.description = description;
-    } else if (!same(base[key], ours[key])) {
-      if (!same(base[key], theirs[key]) && !same(ours[key], theirs[key])) return null;
-      Object.assign(merged, { [key]: ours[key] });
-    }
-  }
-  return parseObject(JSON.stringify(merged));
-}
+import { mergeWorkspaceObject } from '@tano/protocol';
+export const mergeObject = (base: WorkspaceObject, ours: WorkspaceObject, theirs: WorkspaceObject) => mergeWorkspaceObject(base, ours, theirs, mergeDescription);
 export async function saveObject(
-  adapter: Pick<ObjectStorage, 'write'>,
+  adapter: Pick<ObjectStorage, 'write'> & Partial<Pick<ObjectStorage, 'create'>>,
   record: ObjectRecord,
   draft: WorkspaceObject,
 ) {
@@ -97,7 +56,18 @@ export async function saveObject(
   let current = record.snapshot;
   for (let attempt = 0; attempt < 3; attempt++) {
     const merged = mergeObject(record.object, ours, parseObject(current.content));
-    if (!merged) throw new Error('对象已被外部修改且存在冲突；你的草稿仍保留，可另存为对象副本。');
+    if (!merged) {
+      if (adapter.create) {
+        const copy = `.tano/conflicts/object-${ours.id}-${crypto.randomUUID()}.tano.json`;
+        try {
+          await adapter.create(copy, JSON.stringify(ours, null, 2) + '\n');
+        } catch (reason) {
+          throw new Error(`对象已被外部修改且存在冲突；外部版本未覆盖，冲突副本未能保存，当前草稿仍保留：${String(reason)}`);
+        }
+        throw new Error(`对象已被外部修改且存在冲突；外部版本未覆盖，当前草稿已保留在 ${copy}`);
+      }
+      throw new Error('对象已被外部修改且存在冲突；你的草稿仍保留，可另存为对象副本。');
+    }
     validateObjectProperties(merged.type, merged.properties);
     const result = await adapter.write(
       record.path,

@@ -157,16 +157,20 @@ test('runs the Git inspector through its real isolated UI, Worker and named nati
     if (request.command === 'git.status') return route.fulfill({ json: { branch: 'main', detached: false, entries: [
       { path: '笔记.md', index: 'M', worktree: 'M', originalPath: null }, { path: '新笔记.md', index: '?', worktree: '?', originalPath: null },
     ] } });
+    if (request.command === 'git.log') return route.fulfill({ json: { path: null, commits: [
+      { id: '1234567890abcdef1234567890abcdef12345678', shortId: '1234567', author: 'Test', date: '2026-10-19T08:00:00+00:00', subject: '初始化笔记' },
+    ] } });
     expect(request.command).toBe('git.diff');
     return route.fulfill({ json: { path: request.args.path, staged: request.args.staged, patch: request.args.staged ? '+已暂存内容' : '+工作区内容' } });
   });
-  const { pkg } = await buildPlugin(resolve('examples/plugins/git-inspector'));
+  const { pkg } = await buildPlugin(resolve('scripts/fixtures/native-query-plugin'));
   await page.goto(origin);
   await page.evaluate(async ({ url, pkg }) => { window.nativeFixture = await (await import(url)).mountNative(pkg); },
     { url: `/@fs/${resolve('scripts/fixtures/plugin-native-browser.ts').replaceAll('\\', '/')}`, pkg });
   const view = page.frameLocator('#native-fixture iframe').frameLocator('iframe');
   await expect(view.getByRole('heading', { name: '2 项变更' })).toBeVisible();
   await expect(view.getByText('当前分支 · main')).toBeVisible();
+  await expect(view.getByText('初始化笔记', { exact: true })).toBeVisible();
   await expect(view.getByRole('button', { name: '查看 新笔记.md 工作区差异' })).toBeDisabled();
   await view.getByRole('button', { name: '查看 笔记.md 工作区差异', exact: true }).click();
   await expect(view.getByText('+工作区内容', { exact: true })).toBeVisible();
@@ -174,7 +178,7 @@ test('runs the Git inspector through its real isolated UI, Worker and named nati
   await expect(view.getByText('+已暂存内容', { exact: true })).toBeVisible();
   const integrity = await page.evaluate(() => window.nativeFixture.integrity);
   expect(calls.filter(call => call.command === 'plugin_native_request').every(call => call.args.request.integrity === integrity
-    && call.args.request.workspaceId === '81c90c74-1c40-4d24-9440-bb51228e4563' && call.args.request.pluginId === 'git-inspector')).toBe(true);
+    && call.args.request.workspaceId === '81c90c74-1c40-4d24-9440-bb51228e4563' && call.args.request.pluginId === 'native-query-fixture')).toBe(true);
   await page.screenshot({ path: 'artifacts/plugin-native-preview.png' });
   await view.getByRole('button', { name: '刷新状态' }).click();
   await expect(view.getByRole('region', { name: 'Git 文件差异' })).toHaveCount(0);

@@ -12,6 +12,9 @@ export * from './comments';
 export * from './suggestions';
 export * from './document-layout';
 export * from './data-tables';
+export * from './workspace-contract';
+export * from './file-core';
+export * from './file-metadata';
 
 export interface FileEntry {
   id: string;
@@ -20,6 +23,8 @@ export interface FileEntry {
   kind: 'file' | 'directory';
   size: number;
   modified: number;
+  /** Content hash supplied by the authority when available, never inferred from mtime. */
+  contentHash?: string;
   readOnly?: boolean;
   /** Local draft; the authority has not yet confirmed creation. */
   pendingCreation?: boolean;
@@ -72,6 +77,8 @@ export interface FileChangeRequest {
 export interface WorkspaceAdapter {
   readonly mode: 'desktop' | 'demo' | 'web';
   reserveObjectId?(occupied: string[]): Promise<string>;
+  /** Reserve an externally proposed, never-used object or table ID before exclusive creation. */
+  createAgentRecord?(path: string, content: string): Promise<void>;
   open(path?: string): Promise<Workspace | null>;
   close?(workspaceId: string): Promise<void>;
   createWorkspace?(name: string): Promise<Workspace>;
@@ -80,7 +87,7 @@ export interface WorkspaceAdapter {
   loadSession?(workspaceId: string): Promise<WorkspaceSession | null>;
   saveSession?(workspaceId: string, session: WorkspaceSession): Promise<void>;
   refresh(): Promise<Workspace>;
-  search?(workspaceId: string, query: string): Promise<SearchHit[]>;
+  search?(workspaceId: string, query: string, signal?: AbortSignal): Promise<SearchHit[]>;
   read(path: string): Promise<FileSnapshot>;
   /** Optional version-checked, synchronous cache. Never returns speculative content. */
   readCached?(path: string): FileSnapshot | undefined;
@@ -99,6 +106,8 @@ export interface WorkspaceAdapter {
   duplicate?(workspaceId: string, path: string): Promise<string>;
   remove(path: string): Promise<void>;
   changeFile?(request: FileChangeRequest): Promise<WriteResult>;
+  /** Object-only compare-and-delete. Keeps the assistant file boundary unchanged. */
+  removeObjectFile?(request: FileChangeRequest): Promise<WriteResult>;
   reveal(): Promise<void>;
   watch(callback: () => void): Promise<() => void>;
 }
@@ -158,3 +167,10 @@ export * from './plugin-connections';
 export * from './plugin-automations';
 export * from './task-review';
 export * from './task-repeat';
+export * from './file-database';
+export * from './view-engine';
+export * from './agent-gateway';
+
+export * from './data-table-query';
+
+export * from './structured-merge';

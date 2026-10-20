@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed } from 'vue';
 import type { PluginMenuLocation } from '@tano/protocol';
 import { useWorkspaceStore } from '../stores/workspace';
@@ -15,7 +16,7 @@ function run(key: string) {
 }
 </script>
 <template>
-  <div v-if="commands.length" class="plugin-menu" role="group" aria-label="插件命令">
+  <div v-if="commands.length" class="plugin-menu" role="group" :aria-label="t('插件命令')">
     <button v-for="command in commands" :key="command.key" type="button" role="menuitem" @click="run(command.key)">
       <span>{{ command.label }}</span><small>{{ command.pluginName }}</small>
     </button>

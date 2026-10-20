@@ -2,7 +2,7 @@
 
 English | [中文](zh/agent-workflow.md) | [日本語](ja/agent-workflow.md) | [Deutsch](de/agent-workflow.md) | [Documentation](README.md)
 
-Open a workspace folder in the desktop app first. Agents can edit its Markdown files directly, or use Tano's local stdio MCP server to list, read, create, and conditionally write documents.
+Open a workspace folder in the desktop app first. The local Agent Gateway queries files, objects and data tables using stable identities and revisions. Its default access allows reads and change proposals, reviewed in Tano before publication. Legacy direct Markdown writes require explicit `--access write`. See [Agent Gateway v1](zh/agent-gateway.md) for scoped configuration, the SDK, cross-file review and operation receipts.
 
 ```sh
 npm run mcp:build

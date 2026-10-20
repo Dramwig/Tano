@@ -6,7 +6,7 @@
 
 ### Humans and agents, on the same page.
 
-**A local Markdown workspace for writing, organizing knowledge, and working with agents.**
+**A File-Native Workspace for humans and AI agents.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Built with Tauri 2](https://img.shields.io/badge/built%20with-Tauri%202-orange.svg)](https://tauri.app/)
@@ -22,7 +22,8 @@ English | [中文](README_ZH.md) | [日本語](README_JA.md) | [Deutsch](README_
 
 ## Features
 
-- **Files you own:** Markdown and attachments remain ordinary workspace files. Portable Tano data, including identities, objects, relations, and rules, lives under `.tano/`.
+- **Files you own:** Markdown, PDF, images, CSV, JSON, code, and attachments remain ordinary workspace files. Portable Tano data, including identities, objects, relations, and views, lives under `.tano/`.
+- **One workspace model:** Files are the content source, Objects add stable semantics and relations, and Views project them without copying content.
 - **A focused workbench:** Edit and search notes, organize objects and relations, and use the calendar in one desktop app.
 - **External-edit protection:** Saves compare against a base hash, merge independent changes, and preserve both versions when edits conflict.
 - **Local agent access:** The stdio MCP server lets agents list, read, create, and conditionally update documents. Stale writes are rejected.

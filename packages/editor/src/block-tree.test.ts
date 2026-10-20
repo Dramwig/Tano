@@ -7,6 +7,7 @@ import {
   blockTree,
   indentBlock,
   moveBlockTo,
+  moveBlocksTo,
   moveBlockBeside,
   deleteBlock,
   moveBlockSibling,
@@ -42,6 +43,67 @@ function roundtrip(state: EditorState) {
 function paragraph(state: EditorState, text: string) {
   return blockTree(state.doc).find(entry => entry.node.type.name === 'paragraph' && entry.node.textContent === text)!;
 }
+
+it.each([0, 5])('moves heterogeneous sibling blocks together to index %s in one undo step', index => {
+  let state = stateFor(`Before\n\n## Heading\n\n${toggle('Details', 'Nested')}\n\n- item\n\nAfter`);
+  const original = state.doc;
+  const sources = blockTree(original).filter(entry => entry.parentPos === -1 && entry.index >= 1 && entry.index <= 3);
+  state = state.apply(moveBlocksTo(state, sources.map(entry => entry.pos), -1, index)!);
+  const nodes = state.doc.content.content;
+  const offset = index === 0 ? 0 : 2;
+  sources.forEach((source, i) => expect(nodes[offset + i]!.eq(source.node)).toBe(true));
+  expect(nodes.filter(node => node.type.name === 'paragraph').map(node => node.textContent)).toEqual(['Before', 'After']);
+  roundtrip(state);
+  expect(undo(state, tr => { state = state.apply(tr); })).toBe(true);
+  expect(state.doc.eq(original)).toBe(true);
+});
+
+it('moves all children between containers while retaining the empty source and rejects invalid groups and self drops', () => {
+  let state = stateFor(`${toggle('Source', 'A\n\nB')}\n\n${toggle('Target', 'C')}`);
+  const a = paragraph(state, 'A'), b = paragraph(state, 'B'), c = paragraph(state, 'C');
+  const source = blockTree(state.doc).find(entry => entry.node.attrs.title === 'Source')!;
+  const target = blockTree(state.doc).find(entry => entry.node.attrs.title === 'Target')!;
+  expect(moveBlocksTo(state, [source.pos, target.pos], source.pos, 0)).toBeNull();
+  expect(moveBlocksTo(state, [source.pos, a.pos], -1, 0)).toBeNull();
+  expect(moveBlocksTo(state, [a.pos, a.pos], -1, 0)).toBeNull();
+  expect(moveBlocksTo(state, [a.pos, b.pos], source.pos, 1)).toBeNull();
+  state = state.apply(moveBlocksTo(state, [a.pos, b.pos], target.pos, 1)!);
+  expect(state.doc.firstChild?.firstChild?.textContent).toBe('');
+  expect(state.doc.lastChild?.content.content.map(node => node.textContent)).toEqual(['C', 'A', 'B']);
+  roundtrip(state);
+});
+
+it.each([0, 2, 5])('moves nonadjacent blocks to index %s without moving the gaps and undoes atomically', index => {
+  let state = stateFor('Before\n\nA\n\nKeep\n\nC\n\nEnd');
+  const original = state.doc;
+  state = state.apply(moveBlocksTo(state, [paragraph(state, 'C').pos, paragraph(state, 'A').pos], -1, index)!);
+  expect(state.doc.content.content.map(node => node.textContent)).toEqual(index === 0
+    ? ['A', 'C', 'Before', 'Keep', 'End'] : index === 2
+      ? ['Before', 'A', 'C', 'Keep', 'End'] : ['Before', 'Keep', 'End', 'A', 'C']);
+  roundtrip(state);
+  undo(state, tr => { state = state.apply(tr); });
+  expect(state.doc.eq(original)).toBe(true);
+});
+
+it('moves nonadjacent roots across containers and cleans up multiple emptied columns', () => {
+  let state = stateFor(':::columns widths=20,30,50\n\n## One\n\nA\n\n## Two\n\nB\n\n## Three\n\nC\n\n:::\n\n> D\n\nOutside');
+  const original = state.doc;
+  state = state.apply(moveBlocksTo(state, ['A', 'C', 'D'].map(text => paragraph(state, text).pos), -1, 3)!);
+  expect(state.doc.content.content.map(node => node.textContent)).toEqual(['B', '', 'Outside', 'A', 'C', 'D']);
+  roundtrip(state);
+  undo(state, tr => { state = state.apply(tr); });
+  expect(state.doc.eq(original)).toBe(true);
+});
+
+it('moves an entire column body out as a group and safely collapses the remaining column', () => {
+  let state = stateFor(':::columns\n\n## One\n\nA\n\nB\n\n## Two\n\nC\n\n:::\n\nOutside');
+  const original = state.doc;
+  state = state.apply(moveBlocksTo(state, [paragraph(state, 'A').pos, paragraph(state, 'B').pos], -1, 2)!);
+  expect(state.doc.content.content.map(node => node.textContent)).toEqual(['C', 'Outside', 'A', 'B']);
+  roundtrip(state);
+  undo(state, tr => { state = state.apply(tr); });
+  expect(state.doc.eq(original)).toBe(true);
+});
 
 it.each(['left', 'right'] as const)('creates columns by moving a complete subtree to the %s of another block', side => {
   let state = stateFor(`Before\n\n${toggle('Moved', 'Nested body')}\n\nTarget\n\nAfter`);
@@ -213,7 +275,7 @@ it('wraps a complete subtree in a toggle without flattening it', () => {
 
 const quoted = (body: string) => body.split('\n').map((line) => `> ${line}`).join('\n');
 
-it.each(['', '[!TIP]\n'])('exposes heterogeneous quote children without exposing the callout header: %s', (marker) => {
+it.each(['', '[!TIP]\n', '[!CUSTOM:🚀]\n'])('exposes heterogeneous quote children without exposing the callout header: %s', (marker) => {
   const state = stateFor(quoted(`${marker}First\n\n## Heading\n\n- item\n\n> Nested\n\n| A |\n| --- |\n| B |\n\n\`\`\`ts\nconst x = 1;\n\`\`\``));
   const entries = blockTree(state.doc);
   expect(entries.map(({ node }) => node.type.name)).toEqual([

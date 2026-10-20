@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-import { AlignLeft, ArrowDownAZ, Braces, CalendarClock, CalendarDays, CheckSquare2, CircleHelp, Hash, List, Plus, Trash2 } from 'lucide-vue-next';
+import type { Component } from 'vue';
+import { AlignLeft, ArrowDownAZ, Braces, CalendarClock, CalendarDays, CheckSquare2, ChevronRight, CircleHelp, Hash, List, Plus, Repeat2, Trash2 } from 'lucide-vue-next';
 import {
   Editor,
   rootCtx,
@@ -54,6 +55,7 @@ import {
 } from './math';
 import { mathSourcePreviewView, sourceBlockStyle } from './math-source-preview';
 import { splitFrontmatter } from './syntax';
+import { SuggestionChangeCodec } from './suggestion-codec';
 import { markdownPositionMap } from './mode-selection';
 import type { ModeSelection } from './mode-selection';
 import {
@@ -72,7 +74,7 @@ import { blockControls } from './blocks';
 import { blockTree, moveBlockSibling, indentBlock, outdentBlock, wrapBlockInToggle, deleteBlock } from './block-tree';
 import { emptyBlockDeletion } from './empty-block';
 import { slashCommands } from './slash-commands';
-import { textStyles, underline, superscript, subscript, highlight, textColor } from './text-styles';
+import { textStyles, underline, superscript, subscript, highlight, textColor, backgroundColor } from './text-styles';
 import { normalizeTextColor } from './text-style-markdown';
 import { wikiLink, wikiLinkInput, wikiLinkRemark } from './wiki-link';
 import { parseWikiLink } from './wiki-link-markdown';
@@ -83,7 +85,8 @@ import type { EditorSelectionContext } from './document-model';
 import { blockCommand, blockCommandNames } from './block-commands';
 import { createCalloutTitle } from './callout-title';
 import type { CalloutKind } from './callout-title';
-import { blockContentStart } from './callout';
+import { blockContentStart, calloutMarker } from './callout';
+import { customCalloutWidget } from './custom-callout-view';
 import { enhanced } from './enhanced';
 import { enhancedViews } from './enhanced-views';
 import { safeResourceUrl } from './enhanced-markdown';
@@ -106,8 +109,10 @@ import { parseReferenceUrl, referenceUrl, resolveReference } from '@tano/protoco
 import type { ReferenceTarget, ReferenceIdentity } from '@tano/protocol';
 import type { CommentAnchor } from '@tano/protocol';
 import { commentSpansForSelection, projectCommentText, proseRangesForCommentSpans } from './comment-projection';
-import { captureVisualAnchor, visualAnchorPlugin, visualSelection } from './visual-anchor';
-import { columnResizing } from '@milkdown/kit/prose/tables';
+import { captureCaretAnchor, captureVisualAnchor, visualAnchorPlugin, visualSelection } from './visual-anchor';
+import { columnResizing, isInTable } from '@milkdown/kit/prose/tables';
+import { breakTableCell, nextTableRow } from './table-commands';
+import { tableBreaksRemark } from './table-markdown';
 import { defaultTableColumnWidth, minimumTableColumnWidth } from '@tano/protocol';
 import type { TableLayout } from '@tano/protocol';
 import { tableLayouts, tableLayoutKey, sameMarkdownContent } from './table-layout';
@@ -144,6 +149,7 @@ const props = withDefaults(
     tableLayouts?: readonly TableLayout[];
     resolveImage?: (reference: string) => string | null;
     importFile?: (file: File, requireImage: boolean) => Promise<ImportedResource>;
+    customCalloutIcon?: Component;
   }>(),
   { revealMarkdown: true, showDocumentProperties: true },
 );
@@ -155,6 +161,7 @@ const emit = defineEmits<{
   openReference: [identity: ReferenceIdentity];
   editSource: [];
   selectionChange: [context: EditorSelectionContext];
+  blankBlockAi: [];
   tableLayoutChange: [tables: TableLayout[]];
   ready: [];
   searchChange: [];
@@ -364,10 +371,15 @@ function clearLinkModifier() {
 }
 const blockMenuElement = ref<HTMLElement>();
 const blockMenu = shallowRef<{ index: number; x: number; y: number; doc: Node } | null>(null);
+const blockConvertTrigger = ref<HTMLButtonElement>();
+const blockConvertElement = ref<HTMLElement>();
+const blockConvertMenu = shallowRef<{ x: number; y: number } | null>(null);
+let blockConvertCloseTimer: ReturnType<typeof setTimeout> | undefined;
 let selectionBeforeMenu: { selection: Selection; doc: Node } | null = null;
 let rightClickSelection: { selection: Selection; doc: Node } | null = null;
 let editor: Editor | undefined;
 let suggestionSerializer: ReturnType<typeof SerializerState.create> | undefined;
+const suggestionCodec = new SuggestionChangeCodec<Node>();
 let disposed = false;
 let unbindExtension: (() => void) | undefined;
 let lastValue = props.modelValue;
@@ -375,9 +387,11 @@ let applying = false;
 let runtimeRevision = 0;
 let transitioningSource = false;
 let sourceActivationPending = false;
+let selectingWithPointer = false;
+function endPointerSelection() { selectingWithPointer = false; }
 let bridgeView: EditorView | undefined;
 let localSource:
-  | { kind: 'block'; id: string; original: Node; initial: string; style: Record<string, string> | null }
+  | { kind: 'block'; id: string; original: Node; initial: string; style: Record<string, string> | null; dismissOnOutside?: boolean }
   | { kind: 'inline'; id: string; original: Fragment; initial: string }
   | { kind: 'footnote-label'; id: string; initial: string; createdParagraph: boolean }
   | undefined;
@@ -859,7 +873,8 @@ function markAtCaret(view: EditorView, event?: MouseEvent | KeyboardEvent) {
     sup: 'superscript',
     sub: 'subscript',
     mark: 'highlight',
-    span: marked.hasAttribute('data-tano-comment') ? 'inline_comment' : 'text_color',
+    span: marked.hasAttribute('data-tano-comment') ? 'inline_comment'
+      : (marked as HTMLElement).style.backgroundColor ? 'background_color' : 'text_color',
     a: 'link',
   };
   return names[marked.tagName.toLowerCase()];
@@ -1405,7 +1420,7 @@ function enterHeadingSource(ctx: Ctx, view: EditorView) {
   return true;
 }
 
-function enterInlineSourceTextblock(ctx: Ctx, view: EditorView) {
+function enterInlineSourceTextblock(ctx: Ctx, view: EditorView, cellBreak = false) {
   const current = currentSource(view);
   const selection = view.state.selection;
   if (
@@ -1440,6 +1455,16 @@ function enterInlineSourceTextblock(ctx: Ctx, view: EditorView) {
   const tr = view.state.tr.replaceWith(current.pos, current.pos + current.node.nodeSize,
     inline.content.cut(0, splitAt).append(inline.content.cut(splitAt + marker.length)));
   const splitPos = current.pos + splitAt;
+  if (cellBreak) {
+    tr.insert(splitPos, view.state.schema.nodes.hardbreak!.create());
+    tr.setSelection(TextSelection.create(tr.doc, splitPos + 1));
+    tr.setStoredMarks([]);
+    localSource = undefined;
+    transitioningSource = true;
+    try { view.dispatch(tr.scrollIntoView()); }
+    finally { transitioningSource = false; }
+    return true;
+  }
   const block = selection.$from.node(blockDepth);
   const splitDepth = block.type.name === 'paragraph' &&
     selection.$from.node(blockDepth - 1).type.name === 'list_item' ? 2 : 1;
@@ -1608,6 +1633,20 @@ function insertPartialEmphasisSource(ctx: Ctx, view: EditorView, from: number, t
 // Capture every transaction synchronously: a debounced editor listener loses the
 // final keystrokes when a tab is closed or switched before its debounce fires.
 const documentDecorations = createDocumentDecorations();
+const referenceFlashKey = new PluginKey<DecorationSet>('tano-reference-flash');
+let referenceFlashTimer: ReturnType<typeof setTimeout> | undefined;
+const referenceFlash = $prose(() => new Plugin<DecorationSet>({
+  key: referenceFlashKey,
+  state: {
+    init: () => DecorationSet.empty,
+    apply(tr, previous) {
+      const range = tr.getMeta(referenceFlashKey) as { from: number; to: number } | null | undefined;
+      if (range === null || tr.docChanged) return DecorationSet.empty;
+      return range ? DecorationSet.create(tr.doc, [Decoration.inline(range.from, range.to, { class: 'tano-reference-flash' })]) : previous;
+    },
+  },
+  props: { decorations: state => referenceFlashKey.getState(state) },
+}));
 const bridge = $prose(
   (ctx) =>
     new Plugin({
@@ -1650,7 +1689,7 @@ const bridge = $prose(
           const finished = finishLocalSourceTransaction(ctx, state);
           if (!finished) return null;
           const next =
-            bridgeView?.hasFocus() &&
+            bridgeView?.hasFocus() && !selectingWithPointer &&
             !transactions.some((transaction) => transaction.getMeta('tanoBlockContextSelect')) &&
             !props.readonly && props.revealMarkdown !== false
               ? selectedSourceTransaction(ctx, state, finished.tr)
@@ -1667,6 +1706,7 @@ const bridge = $prose(
         if (
           !bridgeView?.hasFocus() ||
           transitioningSource ||
+          selectingWithPointer ||
           applying ||
           disposed ||
           props.readonly ||
@@ -1725,16 +1765,12 @@ const bridge = $prose(
             let markdown = frontmatter.prefix + serialize(serializableDocument(view.state));
             if (props.transformChange) {
               try {
-                const baseline = ctx.get(parserCtx)(splitFrontmatter(lastValue).body);
-                if (!baseline) throw new Error('无法解析建议基线');
-                const before = frontmatter.prefix + serialize(baseline);
-                if (before === markdown) return;
-                const mapped = props.transformChange(lastValue, before, markdown);
-                const parsed = ctx.get(parserCtx)(splitFrontmatter(mapped).body);
-                const normalized = ctx.get(parserCtx)(splitFrontmatter(markdown).body);
-                if (!parsed || !normalized || ctx.get(serializerCtx)(parsed) !== ctx.get(serializerCtx)(normalized)) {
-                  throw new Error('此结构修改无法精确映射，请在源码模式重新编辑；原文和已有建议保留');
-                }
+                const mapped = suggestionCodec.map({
+                  previous: lastValue, current: markdown, prefix: frontmatter.prefix,
+                  parse: ctx.get(parserCtx), stableSerialize: serialize,
+                  serialize: ctx.get(serializerCtx), transform: props.transformChange,
+                });
+                if (mapped === undefined) return;
                 markdown = mapped;
               } catch (error) {
                 emit('error', String(error));
@@ -1810,7 +1846,7 @@ const bridge = $prose(
               node.firstChild?.firstChild?.type.name === 'tano_live_source_inline' &&
               node.firstChild.firstChild.attrs.origin === 'footnote_definition';
             if (type === 'Callout' && policy().features.callout) {
-              const marker = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i.exec(
+              const marker = calloutMarker.exec(
                 node.firstChild?.textContent ?? '',
               );
               if (marker && node.firstChild?.type.name === 'paragraph') {
@@ -1819,8 +1855,13 @@ const bridge = $prose(
                     class: 'tano-callout-marker',
                   }),
                 );
-                const label = createCalloutTitle(marker[1]!.toUpperCase() as CalloutKind);
-                decorations.push(Decoration.widget(pos + 1, label, { side: -1 }));
+                if (marker[1]!.toUpperCase().startsWith('CUSTOM')) {
+                  decorations.push(customCalloutWidget(pos, marker[0], !!props.readonly, props.customCalloutIcon,
+                    () => editor?.action(ctx => props.extension?.stopHistoryCapture?.(ctx))));
+                } else {
+                  const label = createCalloutTitle(marker[1]!.toUpperCase() as CalloutKind);
+                  decorations.push(Decoration.widget(pos + 1, label, { side: -1 }));
+                }
                 if (node.firstChild.textContent === marker[0])
                   decorations.push(
                     Decoration.node(pos + 1, pos + 1 + node.firstChild.nodeSize, {
@@ -1838,7 +1879,8 @@ const bridge = $prose(
                   ? {
                       class:
                         'tano-callout' +
-                        (props.revealMarkdown !== false &&
+                        (!/^\[!CUSTOM[:\]]/i.test(node.firstChild?.textContent ?? '') &&
+                        props.revealMarkdown !== false &&
                         !props.readonly &&
                         state.selection.empty &&
                         state.selection.from >= pos &&
@@ -1846,7 +1888,7 @@ const bridge = $prose(
                           ? ' tano-live-callout'
                           : ''),
                       'data-callout-kind':
-                        /^\[!([A-Z]+)\]/i
+                        /^\[!([A-Z]+)[:\]]/i
                           .exec(node.firstChild?.textContent ?? '')?.[1]
                           ?.toLowerCase() ?? 'note',
                     }
@@ -1863,6 +1905,7 @@ const bridge = $prose(
         },
         handleDOMEvents: {
           mousedown(view, event) {
+            if (event.button === 0) selectingWithPointer = true;
             if (
               event.button === 0 &&
               (event.ctrlKey || event.metaKey) &&
@@ -1876,7 +1919,38 @@ const bridge = $prose(
             return false;
           },
           keydown(view, event) {
+            if (
+              event.key === ' ' &&
+              !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey &&
+              !event.isComposing && !view.composing && !props.readonly &&
+              preferences().blankBlockAiShortcut &&
+              view.state.selection instanceof TextSelection && view.state.selection.empty &&
+              view.state.selection.$from.parent.type.name === 'paragraph' &&
+              view.state.selection.$from.parent.content.size === 0
+            ) {
+              event.preventDefault();
+              event.stopPropagation();
+              emit('blankBlockAi');
+              return true;
+            }
             const source = currentSource(view);
+            if (event.key === 'Enter' && !event.altKey && isInTable(view.state)) {
+              // Let the IME confirm its candidate without falling through to table keymaps.
+              if (event.isComposing || event.keyCode === 229 || view.composing) return true;
+              event.preventDefault();
+              event.stopPropagation();
+              if (props.readonly) return true;
+              if (event.ctrlKey || event.metaKey || event.shiftKey) {
+                if (source && enterInlineSourceTextblock(ctx, view, true)) return true;
+                const tr = breakTableCell(view.state);
+                if (tr) view.dispatch(tr);
+              } else {
+                if (source) finishLocalSource(ctx, view);
+                const tr = nextTableRow(view.state);
+                if (tr) view.dispatch(tr);
+              }
+              return true;
+            }
             if (event.key === 'ArrowLeft' && !event.shiftKey && !event.ctrlKey &&
                 !event.metaKey && !event.altKey && !event.isComposing && !view.composing &&
                 enterFootnoteLabelFromCaret(ctx, view)) {
@@ -1961,6 +2035,11 @@ const bridge = $prose(
             return true;
           },
           click(_view, event) {
+            endPointerSelection();
+            // A native drag also ends with a click. Keep its text range instead
+            // of replacing the heading/link/code DOM with an editable source.
+            if (_view.state.selection instanceof TextSelection && !_view.state.selection.empty &&
+                event.button === 0 && !event.ctrlKey && !event.metaKey) return false;
             if (jumpToFootnote(_view, event)) {
               event.preventDefault();
               return true;
@@ -2321,6 +2400,9 @@ const commentMarks = $prose(() => new Plugin({
 }));
 
 onMounted(async () => {
+  window.addEventListener('mouseup', endPointerSelection);
+  window.addEventListener('blur', endPointerSelection);
+  window.addEventListener('pointerdown', dismissBlockSourceOnPointer, true);
   window.addEventListener('pointerdown', dismissBlockMenuOnPointer, true);
   window.addEventListener('contextmenu', dismissBlockMenuOnContext);
   window.addEventListener('scroll', dismissBlockMenuOnScroll, true);
@@ -2342,6 +2424,7 @@ onMounted(async () => {
           },
         }));
       })
+      .use(tableBreaksRemark)
       .use(commonmark)
       .use(codeBlankLinesRemark)
       .use(listMarkdown)
@@ -2380,7 +2463,7 @@ onMounted(async () => {
           ),
         ),
       )
-      .use($prose(() => blockControls(() => !!props.readonly, () => preferences().folding, () => commandEnabled('columns', props.enabledLevels, policy().features))))
+      .use($prose(() => blockControls(() => !!props.readonly, () => preferences().folding, () => commandEnabled('columns', props.enabledLevels, policy().features), openBlockMenu)))
       .use($prose(() => emptyBlockDeletion(() => !!props.readonly)))
       .use(
         $prose(() =>
@@ -2388,11 +2471,13 @@ onMounted(async () => {
             readonly: () => !!props.readonly,
             levels: () => props.enabledLevels,
             features: () => policy().features,
+            aiShortcut: () => preferences().blankBlockAiShortcut,
           }),
         ),
       )
       .use(bridge)
       .use(commentMarks)
+      .use(referenceFlash)
       .use($prose(visualAnchorPlugin))
       .use($prose(() => suggestionMarks(() => props.suggestionMarks)))
       .use($prose(() => pageSearchPlugin(() => emit('searchChange'))));
@@ -2480,6 +2565,7 @@ watch(() => props.readonly, () => {
   }
 });
 watch(() => props.documentId, () => {
+  suggestionCodec.clear();
   editingProperty.value = undefined;
   typeMenuProperty.value = undefined;
   if (blockMenu.value) closeBlockMenu(false);
@@ -2490,6 +2576,7 @@ watch(
   () =>
     editor?.action((ctx) => {
       runtimeRevision++;
+      suggestionCodec.clear();
       const view = ctx.get(editorViewCtx);
       view.setProps({ editable: () => !props.readonly });
       view.dispatch(view.state.tr.setMeta('addToHistory', false));
@@ -2539,14 +2626,19 @@ function command(name: string, value?: string) {
       const view = ctx.get(editorViewCtx);
       toggleMark(styles[name as keyof typeof styles].type(ctx))(view.state, view.dispatch);
     });
-  if (name === 'text-color')
+  if (name === 'text-color' || name === 'background-color')
     editor.action((ctx) => {
       const view = ctx.get(editorViewCtx);
-      const type = textColor.type(ctx);
+      const type = (name === 'text-color' ? textColor : backgroundColor).type(ctx);
       const color = value ? normalizeTextColor(value) : null;
       if (value && !color) return;
       const { from, to, empty } = view.state.selection;
       const transaction = view.state.tr;
+      if (name === 'background-color') {
+        const highlightType = highlight.type(ctx);
+        if (empty) transaction.removeStoredMark(highlightType);
+        else transaction.removeMark(from, to, highlightType);
+      }
       if (empty) {
         if (color) transaction.addStoredMark(type.create({ color }));
         else transaction.removeStoredMark(type);
@@ -2651,6 +2743,7 @@ function command(name: string, value?: string) {
 
 function closeBlockMenu(restoreSelection = true) {
   const saved = selectionBeforeMenu;
+  closeBlockConvertMenu();
   blockMenu.value = null;
   selectionBeforeMenu = null;
   rightClickSelection = null;
@@ -2692,7 +2785,7 @@ function blockIndexFromEvent(view: EditorView, target: EventTarget | null): numb
   return null;
 }
 
-function openBlockMenu(event: MouseEvent) {
+function openBlockMenu(event: MouseEvent, anchor?: HTMLElement) {
   if (!editor || props.readonly || disposed) return;
   editor.action((ctx) => {
     const view = ctx.get(editorViewCtx);
@@ -2730,13 +2823,19 @@ function openBlockMenu(event: MouseEvent) {
       y: Math.max(8, event.clientY),
       doc: view.state.doc,
     };
+    const openedMenu = blockMenu.value;
     void nextTick(() => {
       const menu = blockMenuElement.value;
-      if (!menu || !blockMenu.value) return;
+      if (!menu || blockMenu.value !== openedMenu) return;
+      const bounds = anchor?.getBoundingClientRect();
+      // Handle clicks open beside the block; right clicks stay at the pointer.
+      const left = bounds ? bounds.left - menu.offsetWidth - 8 : openedMenu.x;
+      const x = bounds && left < 8 ? bounds.right + 8 : left;
+      const y = bounds?.top ?? openedMenu.y;
       blockMenu.value = {
-        ...blockMenu.value,
-        x: Math.min(blockMenu.value.x, Math.max(8, window.innerWidth - menu.offsetWidth - 8)),
-        y: Math.min(blockMenu.value.y, Math.max(8, window.innerHeight - menu.offsetHeight - 8)),
+        ...openedMenu,
+        x: Math.max(8, Math.min(x, window.innerWidth - menu.offsetWidth - 8)),
+        y: Math.max(8, Math.min(y, window.innerHeight - menu.offsetHeight - 8)),
       };
       menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
     });
@@ -2794,7 +2893,19 @@ async function blockMenuAction(action: string) {
     if (!view.state.doc.eq(current.doc)) return;
     const { doc, schema } = view.state;
     const { node, pos, parent } = blockTree(doc)[current.index]!;
-    if (action === 'duplicate') {
+    if (action === 'source') {
+      const tr = blockNodeSourceTransaction(ctx, view.state, { node, pos }, view.state.tr);
+      if (localSource?.kind === 'block') localSource.dismissOnOutside = true;
+      // Revealing syntax is a view change, including when automatic reveal is off.
+      applying = true;
+      transitioningSource = true;
+      try {
+        view.dispatch(tr.scrollIntoView());
+      } finally {
+        applying = false;
+        transitioningSource = false;
+      }
+    } else if (action === 'duplicate') {
       const insertPos = pos + node.nodeSize;
       const tr = view.state.tr.insert(insertPos, node);
       tr.setSelection(NodeSelection.create(tr.doc, insertPos));
@@ -2816,7 +2927,54 @@ async function blockMenuAction(action: string) {
   });
 }
 
+function closeBlockConvertMenu(restoreFocus = false) {
+  clearTimeout(blockConvertCloseTimer);
+  blockConvertCloseTimer = undefined;
+  blockConvertMenu.value = null;
+  if (restoreFocus) blockConvertTrigger.value?.focus();
+}
+
+function scheduleCloseBlockConvertMenu() {
+  clearTimeout(blockConvertCloseTimer);
+  blockConvertCloseTimer = setTimeout(() => {
+    closeBlockConvertMenu(!!blockConvertElement.value?.contains(document.activeElement));
+  }, 150);
+}
+
+function openBlockConvertMenu(focusFirst = false) {
+  clearTimeout(blockConvertCloseTimer);
+  if (!blockMenu.value) return;
+  blockConvertMenu.value ??= { x: blockMenu.value.x, y: blockMenu.value.y };
+  void nextTick(() => {
+    const trigger = blockConvertTrigger.value;
+    const submenu = blockConvertElement.value;
+    const menu = blockMenuElement.value;
+    if (!trigger || !submenu || !menu || !blockConvertMenu.value) return;
+    const bounds = menu.getBoundingClientRect();
+    const triggerBounds = trigger.getBoundingClientRect();
+    const x = bounds.right + submenu.offsetWidth <= window.innerWidth - 8
+      ? bounds.right - 1 : bounds.left - submenu.offsetWidth + 1;
+    blockConvertMenu.value = {
+      x: Math.max(8, Math.min(x, window.innerWidth - submenu.offsetWidth - 8)),
+      y: Math.max(8, Math.min(triggerBounds.top - 5, window.innerHeight - submenu.offsetHeight - 8)),
+    };
+    if (focusFirst) submenu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+  });
+}
+
 function onBlockMenuKeydown(event: KeyboardEvent) {
+  const inSubmenu = !!blockConvertElement.value?.contains(event.target as globalThis.Node);
+  if ((event.key === 'Escape' && blockConvertMenu.value) || (event.key === 'ArrowLeft' && inSubmenu)) {
+    event.preventDefault();
+    event.stopPropagation();
+    closeBlockConvertMenu(true);
+    return;
+  }
+  if (event.key === 'ArrowRight' && event.target === blockConvertTrigger.value) {
+    event.preventDefault();
+    openBlockConvertMenu(true);
+    return;
+  }
   if (event.key === 'Escape') {
     event.preventDefault();
     closeBlockMenu();
@@ -2824,14 +2982,28 @@ function onBlockMenuKeydown(event: KeyboardEvent) {
     return;
   }
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-  const items = [...(blockMenuElement.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
+  const menu = inSubmenu ? blockConvertElement.value : blockMenuElement.value;
+  const items = [...(menu?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])]
+    .filter(button => button.closest('[role="menu"]') === menu);
   if (!items.length) return;
   event.preventDefault();
   const current = items.indexOf(document.activeElement as HTMLButtonElement);
   const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
     : current < 0 ? (event.key === 'ArrowDown' ? 0 : items.length - 1)
       : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+  if (!inSubmenu) closeBlockConvertMenu();
   items[next]?.focus();
+}
+
+function dismissBlockSourceOnPointer(event: PointerEvent) {
+  if (!editor || disposed || localSource?.kind !== 'block' || !localSource.dismissOnOutside) return;
+  editor.action(ctx => {
+    const view = ctx.get(editorViewCtx);
+    const source = currentSource(view);
+    const dom = source && view.nodeDOM(source.pos);
+    if (dom instanceof globalThis.Node && event.target instanceof globalThis.Node && dom.contains(event.target)) return;
+    finishLocalSource(ctx, view);
+  });
 }
 
 function dismissBlockMenuOnPointer(event: PointerEvent) {
@@ -2941,6 +3113,30 @@ function commentSelection() {
     ? TextSelection.create(doc, selection.$from.start(), selection.$from.end()) : selection;
   const spans = commentSpansForSelection(doc, range);
   return spans.length ? { text: projectCommentText(doc).text, spans } : null;
+}
+/** Capture a real rich-text selection with source offsets for guarded assistant edits. */
+function assistantSelection() {
+  const view = bridgeView;
+  if (!view || !(view.state.selection instanceof TextSelection) || view.state.selection.empty) return null;
+  const { doc, selection } = view.state;
+  const spans = commentSpansForSelection(doc, selection);
+  if (!spans.length) return null;
+  return editor!.action(ctx => {
+    const map = markdownPositionMap(doc, lastValue, node => frontmatter.prefix + ctx.get(serializerCtx)(node));
+    const from = map.toSource(selection.from), to = map.toSource(selection.to);
+    return { text: lastValue.slice(from, to), from, to, spans };
+  });
+}
+function assistantBlankBlockSelection() {
+  const view = bridgeView;
+  if (!view || props.readonly || !(view.state.selection instanceof TextSelection) || !view.state.selection.empty ||
+      view.state.selection.$from.parent.type.name !== 'paragraph' || view.state.selection.$from.parent.content.size !== 0)
+    return null;
+  return editor!.action(ctx => {
+    const map = markdownPositionMap(view.state.doc, lastValue, node => frontmatter.prefix + ctx.get(serializerCtx)(node));
+    const offset = map.toSource(view.state.selection.from);
+    return { text: '', from: offset, to: offset };
+  });
 }
 function captureTodoSelection() {
   const view = bridgeView;
@@ -3102,13 +3298,37 @@ function modeCursorTop() {
   const selection = bridgeView.state.selection;
   return bridgeView.coordsAtPos(selection instanceof NodeSelection ? selection.from : selection.head).top;
 }
+function revealSourceRange(range: { from: number; to: number }) {
+  if (!editor || !bridgeView || disposed || range.from < 0 || range.to > lastValue.length || range.to <= range.from) return false;
+  return editor.action(ctx => {
+    const view = bridgeView!;
+    const map = markdownPositionMap(view.state.doc, lastValue, node => frontmatter.prefix + ctx.get(serializerCtx)(node));
+    const from = map.toProse(range.from), to = map.toProse(range.to);
+    if (to <= from) return false;
+    clearTimeout(referenceFlashTimer);
+    // Removing the old decoration restarts the animation on repeated clicks.
+    view.dispatch(view.state.tr.setMeta(referenceFlashKey, null).setMeta('addToHistory', false));
+    view.dispatch(view.state.tr.setMeta(referenceFlashKey, { from, to }).setMeta('tanoRevealPosition', from).setMeta('addToHistory', false));
+    const element = view.dom.querySelector<HTMLElement>('.tano-reference-flash');
+    element?.dispatchEvent(new Event('tano-reveal-search', { bubbles: true }));
+    for (let parent = element; parent && parent !== view.dom; parent = parent.parentElement)
+      if (parent instanceof HTMLDetailsElement) parent.open = true;
+    element?.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+    referenceFlashTimer = setTimeout(() => {
+      if (!disposed && bridgeView === view) view.dispatch(view.state.tr.setMeta(referenceFlashKey, null).setMeta('addToHistory', false));
+    }, 2400);
+    return true;
+  });
+}
 defineExpose({
   addDocumentProperty,
   initializeBody,
-  captureVisualAnchor: () => bridgeView && !disposed ? captureVisualAnchor(bridgeView) : null,
+  captureVisualAnchor: (options?: { highlight?: boolean }) => bridgeView && !disposed ? captureVisualAnchor(bridgeView, options) : null,
+  captureBlankBlockAnchor: () => bridgeView && !disposed ? captureCaretAnchor(bridgeView) : null,
   visualSelection: () => bridgeView && !disposed ? visualSelection(bridgeView) : null,
   captureModeSelection,
   restoreModeSelection,
+  revealSourceRange,
   modeCursorTop,
   applyPluginEdit,
   search,
@@ -3119,6 +3339,8 @@ defineExpose({
   importFiles,
   withContext,
   commentSelection,
+  assistantSelection,
+  assistantBlankBlockSelection,
   captureTodoSelection,
   focusComment,
   commentGeometry,
@@ -3130,11 +3352,17 @@ defineExpose({
   redoLastChange,
 });
 onBeforeUnmount(() => {
+  suggestionCodec.clear();
+  clearTimeout(referenceFlashTimer);
+  closeBlockConvertMenu();
   disposed = true;
   blockMenu.value = null;
 
   closeLinkPanel();
   stopOtherLinkPanel?.();
+  window.removeEventListener('mouseup', endPointerSelection);
+  window.removeEventListener('blur', endPointerSelection);
+  window.removeEventListener('pointerdown', dismissBlockSourceOnPointer, true);
   window.removeEventListener('pointerdown', dismissBlockMenuOnPointer, true);
   window.removeEventListener('contextmenu', dismissBlockMenuOnContext);
   window.removeEventListener('scroll', dismissBlockMenuOnScroll, true);
@@ -3319,12 +3547,18 @@ onBeforeUnmount(() => {
     >
       <div class="block-context-heading" role="presentation">块操作</div>
       <button role="menuitem" type="button" @click="blockMenuAction('copy')"><span aria-hidden="true">⧉</span>复制 Markdown</button>
+      <button role="menuitem" type="button" @click="blockMenuAction('source')"><Braces :size="15" aria-hidden="true" />临时显示 Markdown 源码</button>
       <button role="menuitem" type="button" @click="blockMenuAction('duplicate')"><span aria-hidden="true">▣</span>创建副本</button>
       <div class="menu-divider" role="separator" />
-      <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('paragraph')" @click="blockMenuAction('paragraph')"><span aria-hidden="true">¶</span>转为正文</button>
-      <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('heading')" @click="blockMenuAction('heading')"><span aria-hidden="true">H</span>转为标题</button>
-      <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('list')" @click="blockMenuAction('list')"><span aria-hidden="true">☷</span>转为列表</button>
-      <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('quote')" @click="blockMenuAction('quote')"><span aria-hidden="true">❝</span>转为引用</button>
+      <div class="block-convert-menu" role="presentation" @pointerenter="openBlockConvertMenu()" @pointerleave="scheduleCloseBlockConvertMenu">
+        <button ref="blockConvertTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu" @click="openBlockConvertMenu(true)"><Repeat2 :size="15" aria-hidden="true" />转换为<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
+        <div v-if="blockConvertMenu" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" aria-label="转换为" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
+          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('paragraph')" @click="blockMenuAction('paragraph')"><span aria-hidden="true">¶</span>转为正文</button>
+          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('heading')" @click="blockMenuAction('heading')"><span aria-hidden="true">H</span>转为标题</button>
+          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('list')" @click="blockMenuAction('list')"><span aria-hidden="true">☷</span>转为列表</button>
+          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('quote')" @click="blockMenuAction('quote')"><span aria-hidden="true">❝</span>转为引用</button>
+        </div>
+      </div>
       <button role="menuitem" type="button" :disabled="!commandEnabled('toggle', props.enabledLevels, policy().features)" @click="blockMenuAction('wrap-toggle')"><span aria-hidden="true">▸</span>放入新折叠块</button>
       <div class="menu-divider" role="separator" />
       <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('move-up')" @click="blockMenuAction('move-up')"><span aria-hidden="true">↑</span>上移块</button>

@@ -63,6 +63,7 @@ const visibleMarks = new Set([
   'subscript',
   'highlight',
   'text_color',
+  'background_color',
   'inline_comment',
 ]);
 

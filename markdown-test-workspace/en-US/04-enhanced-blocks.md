@@ -2,7 +2,7 @@
 
 [简体中文](../zh-CN/04-增强块.md) · [Guide](00-getting-started.md)
 
-## Five callout types
+## Callouts and custom blocks
 
 > [!NOTE]
 > A regular note with **emphasis**.
@@ -18,6 +18,9 @@
 
 > [!CAUTION]
 > Proceed with caution.
+
+> [!CUSTOM:💡]
+> **Custom callout:** Click the icon to choose an emoji or a built-in icon.
 
 ## Toggle
 

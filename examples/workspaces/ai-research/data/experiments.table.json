@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "id": "c0ffee",
+  "name": "Experiments",
+  "archived": false,
+  "fields": [
+    { "id": "name", "name": "Experiment", "type": "text" },
+    { "id": "accuracy", "name": "Accuracy", "type": "number" },
+    { "id": "status", "name": "Status", "type": "select", "options": ["done", "running"] }
+  ],
+  "rows": [
+    { "id": "run1", "values": { "name": "RotMNIST-A", "accuracy": 96.7, "status": "done" } },
+    { "id": "run2", "values": { "name": "ColorMNIST-B", "accuracy": 99.6, "status": "done" } },
+    { "id": "run3", "values": { "name": "Portraits-C", "accuracy": null, "status": "running" } }
+  ],
+  "views": [
+    { "id": "table", "name": "All experiments", "type": "table", "filters": [], "sorts": [], "groupBy": "", "hiddenFields": [], "widths": {}, "aggregates": {}, "wrap": true, "freeze": false }
+  ]
+}

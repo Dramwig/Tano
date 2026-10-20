@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppTooltip from './AppTooltip.vue';
+import { t } from '../i18n';
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -27,7 +29,7 @@ const pluginCalls = new Map<string, { resolve: () => void; reject: (error: Error
 function executePlugin(interaction: PluginInteraction) {
   const requestId = crypto.randomUUID();
   return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => { pluginCalls.delete(requestId); reject(new Error('插件操作未返回，请检查工作台状态')); }, 35000);
+    const timer = setTimeout(() => { pluginCalls.delete(requestId); reject(new Error(t('插件操作未返回，请检查工作台状态'))); }, 35000);
     pluginCalls.set(requestId, { resolve, reject, timer });
     void emitTo(request.opener, SETTINGS_COMMAND, { type: 'plugin-invoke', requestId, interaction } satisfies SettingsCommand)
       .catch(error => { clearTimeout(timer); pluginCalls.delete(requestId); reject(error); });
@@ -38,7 +40,7 @@ async function send(command: SettingsCommand) {
   try {
     await emitTo(request.opener, SETTINGS_COMMAND, command);
   } catch (cause) {
-    error.value = `无法与工作台通信：${String(cause)}`;
+    error.value = t('无法与工作台通信：{0}', [String(cause)]);
   }
 }
 
@@ -94,7 +96,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
-  for (const pending of pluginCalls.values()) { clearTimeout(pending.timer); pending.reject(new Error('设置窗口已关闭')); }
+  for (const pending of pluginCalls.values()) { clearTimeout(pending.timer); pending.reject(new Error(t('设置窗口已关闭'))); }
   pluginCalls.clear();
   mounted = false;
   for (const stop of unlisten) stop();
@@ -103,7 +105,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-if="!snapshot" class="settings-window-loading" role="status">正在打开设置…</div>
+  <AppTooltip />
+  <div v-if="!snapshot" class="settings-window-loading" role="status">{{ t('正在打开设置…') }}</div>
   <SettingsPanel
     v-else
     :key="page"

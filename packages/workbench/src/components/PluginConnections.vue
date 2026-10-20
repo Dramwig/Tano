@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { pluginConnectionMethods, type PluginConnection, type PluginConnectionAuthentication, type PluginConnectionMethod } from '@tano/protocol';
 import { useWorkspaceStore } from '../stores/workspace';
@@ -32,10 +33,10 @@ function save() {
   const input = { pluginId: pluginId.value, origin: origin.value, integrity: installation.value?.rule?.integrity ?? '', methods: [...methods.value],
     pathPrefix: pathPrefix.value, authentication: authentication.value, ...(secret.value ? { secret: secret.value } : {}), ...(existing.value ? { version: existing.value.version } : {}) };
   secret.value = '';
-  void run(async (workspace, signal) => { await store.savePluginConnection(workspace, input, signal); await load(workspace, signal); if (!signal.aborted) status.value = '已保存，仅当前用户的此工作区与所选插件版本可使用。'; });
+  void run(async (workspace, signal) => { await store.savePluginConnection(workspace, input, signal); await load(workspace, signal); if (!signal.aborted) status.value = t('已保存，仅当前用户的此工作区与所选插件版本可使用。'); });
 }
 function remove(connection: PluginConnection) {
-  void run(async (workspace, signal) => { await store.removePluginConnection(workspace, connection.pluginId, connection.origin, connection.version, signal); await load(workspace, signal); if (!signal.aborted) status.value = '连接已撤销，后续调用需要重新配置。'; });
+  void run(async (workspace, signal) => { await store.removePluginConnection(workspace, connection.pluginId, connection.origin, connection.version, signal); await load(workspace, signal); if (!signal.aborted) status.value = t('连接已撤销，后续调用需要重新配置。'); });
 }
 watch(() => store.workspace?.id, () => {
   controller.abort(); controller = new AbortController(); entries.value = []; pluginId.value = ''; origin.value = ''; secret.value = ''; busy.value = false; error.value = ''; status.value = '';
@@ -44,36 +45,36 @@ watch(() => store.workspace?.id, () => {
 onScopeDispose(() => { controller.abort(); secret.value = ''; });
 </script>
 <template>
-  <details class="plugin-connections" aria-label="插件服务连接">
-    <summary>服务连接与凭据</summary>
-    <p v-if="!store.pluginConnectionStorageLabel">当前产品尚未配置插件凭据代理。</p>
+  <details class="plugin-connections" :aria-label="t('插件服务连接')">
+    <summary>{{ t('服务连接与凭据') }}</summary>
+    <p v-if="!store.pluginConnectionStorageLabel">{{ t('当前产品尚未配置插件凭据代理。') }}</p>
     <template v-else>
-      <p>{{ store.pluginConnectionStorageLabel }}。连接仅属于当前账号和工作区，不随共享规则分发；插件只能通过代理请求已授权的服务。</p>
+      <p>{{ store.pluginConnectionStorageLabel }}{{ t('。连接仅属于当前账号和工作区，不随共享规则分发；插件只能通过代理请求已授权的服务。') }}</p>
       <p v-if="error" role="alert">{{ error }}</p><p v-if="status" role="status">{{ status }}</p>
-      <button :disabled="busy" @click="run(load)">刷新服务连接</button>
+      <button :disabled="busy" @click="run(load)">{{ t('刷新服务连接') }}</button>
       <ul><li v-for="entry in entries" :key="`${entry.pluginId}:${entry.origin}`">
-        <strong>{{ entry.pluginId }}</strong> · {{ entry.origin }}{{ entry.pathPrefix }} · {{ entry.methods.join('、') }} · {{ entry.oauth ? '已连接账号' : '已保存密钥' }}
-        <span v-if="store.installedPlugins.find(plugin => plugin.manifest.id === entry.pluginId)?.rule?.integrity !== entry.integrity"> · 插件版本已变化，需重新授权连接</span>
-        <button :disabled="busy" :aria-label="`撤销 ${entry.pluginId} ${entry.origin} 连接`" @click="remove(entry)">撤销连接</button>
+        <strong>{{ entry.pluginId }}</strong> · {{ entry.origin }}{{ entry.pathPrefix }} · {{ entry.methods.join('、') }} · {{ entry.oauth ? t('已连接账号') : t('已保存密钥') }}
+        <span v-if="store.installedPlugins.find(plugin => plugin.manifest.id === entry.pluginId)?.rule?.integrity !== entry.integrity"> {{ t('· 插件版本已变化，需重新授权连接') }}</span>
+        <button :disabled="busy" :aria-label="t('撤销 {0} {1} 连接', [entry.pluginId, entry.origin])" @click="remove(entry)">{{ t('撤销连接') }}</button>
       </li></ul>
       <form v-if="plugins.length" autocomplete="off" @submit.prevent="save">
-        <label>插件<select v-model="pluginId" :disabled="busy" aria-label="连接插件"><option value="">选择插件</option><option v-for="plugin in plugins" :key="plugin.manifest.id" :value="plugin.manifest.id">{{ plugin.manifest.name }}</option></select></label>
+        <label>{{ t('插件') }}<select v-model="pluginId" :disabled="busy" :aria-label="t('连接插件')"><option value="">{{ t('选择插件') }}</option><option v-for="plugin in plugins" :key="plugin.manifest.id" :value="plugin.manifest.id">{{ plugin.manifest.name }}</option></select></label>
         <template v-if="installation">
-          <label>服务来源<select v-model="origin" :disabled="busy" aria-label="连接服务来源"><option v-for="item in origins" :key="item" :value="item">{{ item }}</option></select></label>
-          <p>授权版本：{{ installation.manifest.version }} · {{ installation.rule?.integrity?.slice(0, 12) }}</p>
-          <p v-if="!installation.enabled || !installation.authorized">先在插件详情启用并授权当前版本，再配置服务连接。</p>
-          <label>允许路径前缀<input v-model="pathPrefix" :disabled="busy" aria-label="连接允许路径" placeholder="/api/" /></label>
-          <fieldset><legend>允许的方法</legend><label v-for="method in pluginConnectionMethods" :key="method"><input v-model="methods" :value="method" type="checkbox" :disabled="busy" />{{ method }}</label></fieldset>
+          <label>{{ t('服务来源') }}<select v-model="origin" :disabled="busy" :aria-label="t('连接服务来源')"><option v-for="item in origins" :key="item" :value="item">{{ item }}</option></select></label>
+          <p>{{ t('授权版本：') }}{{ installation.manifest.version }} · {{ installation.rule?.integrity?.slice(0, 12) }}</p>
+          <p v-if="!installation.enabled || !installation.authorized">{{ t('先在插件详情启用并授权当前版本，再配置服务连接。') }}</p>
+          <label>{{ t('允许路径前缀') }}<input v-model="pathPrefix" :disabled="busy" :aria-label="t('连接允许路径')" placeholder="/api/" /></label>
+          <fieldset><legend>{{ t('允许的方法') }}</legend><label v-for="method in pluginConnectionMethods" :key="method"><input v-model="methods" :value="method" type="checkbox" :disabled="busy" />{{ method }}</label></fieldset>
           <PluginOAuthConnection :input="{ pluginId, origin, integrity: installation.rule?.integrity ?? '', methods, pathPrefix, ...(existing ? { version: existing.version } : {}) }"
             :enabled="!!(installation.enabled && installation.authorized && installation.rule?.integrity && methods.length && !busy)" @connected="run(load)" />
-          <label>认证方式<select v-model="authentication" :disabled="busy" aria-label="连接认证方式"><option value="bearer">Authorization: Bearer</option><option value="x-api-key">X-API-Key</option><option value="api-key">API-Key</option><option value="private-token">Private-Token</option></select></label>
-          <label>API 密钥<input v-model="secret" type="password" autocomplete="new-password" :disabled="busy" :placeholder="existing && !existing.oauth ? '留空沿用已保存的密钥' : '输入此服务的 API 密钥'" aria-label="插件服务密钥" /></label>
-          <p v-if="existing?.oauth">使用下方 API 密钥保存会替换当前账号连接；令牌不能作为普通密钥沿用。</p>
-          <p>只授权插件实际需要的方法和路径。写入请求可能修改第三方服务中的数据；撤销不能撤回已发送的请求。</p>
-          <button type="submit" :disabled="busy || !canSave">{{ existing ? '更新并授权当前版本' : '保存并授权此连接' }}</button>
+          <label>{{ t('认证方式') }}<select v-model="authentication" :disabled="busy" :aria-label="t('连接认证方式')"><option value="bearer">Authorization: Bearer</option><option value="x-api-key">X-API-Key</option><option value="api-key">API-Key</option><option value="private-token">Private-Token</option></select></label>
+          <label>{{ t('API 密钥') }}<input v-model="secret" type="password" autocomplete="new-password" :disabled="busy" :placeholder="existing && !existing.oauth ? t('留空沿用已保存的密钥') : t('输入此服务的 API 密钥')" :aria-label="t('插件服务密钥')" /></label>
+          <p v-if="existing?.oauth">{{ t('使用下方 API 密钥保存会替换当前账号连接；令牌不能作为普通密钥沿用。') }}</p>
+          <p>{{ t('只授权插件实际需要的方法和路径。写入请求可能修改第三方服务中的数据；撤销不能撤回已发送的请求。') }}</p>
+          <button type="submit" :disabled="busy || !canSave">{{ existing ? t('更新并授权当前版本') : t('保存并授权此连接') }}</button>
         </template>
       </form>
-      <p v-else>当前没有声明服务凭据权限的插件。</p>
+      <p v-else>{{ t('当前没有声明服务凭据权限的插件。') }}</p>
     </template>
   </details>
 </template>

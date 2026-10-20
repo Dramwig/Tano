@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { X } from 'lucide-vue-next';
 import { useWorkspaceStore } from '../stores/workspace';
@@ -16,11 +17,11 @@ const query = ref('');
 const selected = ref(-1);
 const before = document.activeElement as HTMLElement | null;
 const commands = computed(() => [
-  ...props.commands.map(command => ({ ...command, source: command.category ?? '同页', showSource: !!command.category })),
+  ...props.commands.map(command => ({ ...command, source: command.category ?? t('同页'), showSource: !!command.category })),
   ...store.pluginCommands.map(command => ({ id: command.key, label: command.label, source: command.pluginName, showSource: true, shortcut: command.shortcut,
     run: () => store.interactWithPlugin({ workspaceId: store.workspace!.id, pluginId: command.pluginId, instanceId: command.instanceId, kind: 'command', name: command.id,
       payload: { workspaceId: store.workspace!.id, fileId: store.active?.id } }) })),
-  ...store.pluginViews.map(view => ({ id: view.key + ':open', label: `打开${view.label}`, source: view.pluginName, showSource: true, shortcut: '', run: () => store.openPluginView(view.pluginId, view.id) })),
+  ...store.pluginViews.map(view => ({ id: view.key + ':open', label: t('打开{0}', [view.label]), source: view.pluginName, showSource: true, shortcut: '', run: () => store.openPluginView(view.pluginId, view.id) })),
 ].filter(command => matchesCommand(command, query.value)));
 watch(query, () => {
   selected.value = -1;
@@ -50,21 +51,21 @@ onMounted(() => { dialog.value?.showModal(); void nextTick(() => input.value?.fo
 onBeforeUnmount(() => { dialog.value?.close(); if (before?.isConnected) before.focus(); });
 </script>
 <template>
-  <dialog ref="dialog" class="command-palette" aria-label="命令中心" @cancel.prevent="emit('close')" @keydown="keydown" @click="event => { if (event.target === dialog) emit('close'); }">
+  <dialog ref="dialog" class="command-palette" :aria-label="t('命令中心')" @cancel.prevent="emit('close')" @keydown="keydown" @click="event => { if (event.target === dialog) emit('close'); }">
     <div class="command-palette-body">
       <div class="command-search">
-        <input ref="input" v-model="query" role="combobox" aria-label="搜索命令" aria-autocomplete="list" aria-controls="workbench-command-list" :aria-activedescendant="selected >= 0 && commands[selected] ? `workbench-command-${selected}` : undefined" aria-expanded="true" placeholder="搜索命令…" autocomplete="off" spellcheck="false" />
-        <button type="button" class="command-close" aria-label="关闭命令中心" title="关闭 · Esc" @click="emit('close')"><X :size="15" aria-hidden="true" /></button>
+        <input ref="input" v-model="query" role="combobox" :aria-label="t('搜索命令')" aria-autocomplete="list" aria-controls="workbench-command-list" :aria-activedescendant="selected >= 0 && commands[selected] ? `workbench-command-${selected}` : undefined" aria-expanded="true" :placeholder="t('搜索命令…')" autocomplete="off" spellcheck="false" />
+        <button type="button" class="command-close" :aria-label="t('关闭命令中心')" :data-tooltip="t('关闭')" data-tooltip-shortcut="Escape" @click="emit('close')"><X :size="15" aria-hidden="true" /></button>
       </div>
       <div class="command-results panel-scrollbar">
-        <div id="workbench-command-list" class="command-list" role="listbox" aria-label="可用命令">
+        <div id="workbench-command-list" class="command-list" role="listbox" :aria-label="t('可用命令')">
           <button v-for="(command, index) in commands" :id="`workbench-command-${index}`" :key="command.id" type="button" class="command-option" role="option" :aria-selected="index === selected" tabindex="-1"
             @pointermove="selected = index" @click="execute(index)">
             <span class="command-label" :title="command.showSource ? `${command.source}：${command.label}` : command.label"><template v-if="command.showSource">{{ command.source }}：</template>{{ command.label }}</span>
             <kbd v-if="command.shortcut" class="command-shortcut">{{ shortcutLabel(command.shortcut) }}</kbd>
           </button>
         </div>
-        <p v-if="!commands.length" class="command-empty" role="status">没有匹配的命令</p>
+        <p v-if="!commands.length" class="command-empty" role="status">{{ t('没有匹配的命令') }}</p>
       </div>
     </div>
   </dialog>

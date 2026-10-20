@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import type { Component } from 'vue';
 import { Minus, X } from 'lucide-vue-next';
@@ -45,20 +46,20 @@ async function toggleMaximize() {
       <div id="desktop-window-tab-slot" class="desktop-window-tab-slot" />
       <div
         class="desktop-window-drag"
-        title="拖动窗口"
+        :title="t('拖动窗口')"
         @mousedown="drag"
         @dblclick="toggleMaximize"
       >
         <img src="/favicon-green.svg?v=3" alt="" draggable="false" />
       </div>
-      <div class="desktop-window-actions" aria-label="窗口控制">
-        <button type="button" aria-label="最小化" title="最小化" @click="appWindow.minimize()">
+      <div class="desktop-window-actions" :aria-label="t('窗口控制')">
+        <button type="button" :aria-label="t('最小化')" :data-tooltip="t('最小化')" @click="appWindow.minimize()">
           <Minus :size="15" :stroke-width="1.6" />
         </button>
         <button
           type="button"
-          :aria-label="maximized ? '还原窗口' : '最大化'"
-          :title="maximized ? '还原窗口' : '最大化'"
+          :aria-label="maximized ? t('还原窗口') : t('最大化')"
+          :data-tooltip="maximized ? t('还原窗口') : t('最大化')"
           @click="toggleMaximize"
         >
           <span
@@ -69,8 +70,8 @@ async function toggleMaximize() {
         <button
           class="desktop-window-close"
           type="button"
-          aria-label="关闭窗口"
-          title="关闭窗口"
+          :aria-label="t('关闭窗口')"
+          :data-tooltip="t('关闭窗口')"
           @click="appWindow.close()"
         >
           <X :size="16" :stroke-width="1.5" />
@@ -142,24 +143,20 @@ async function toggleMaximize() {
 .desktop-sidebar-toggle {
   display: grid;
   place-items: center;
-  flex: 0 0 38px;
-  width: 38px;
-  height: 100%;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 26px;
+  align-self: center;
+  margin-inline-start: 6px;
   overflow: hidden;
   padding: 0;
-  border-right: 1px solid var(--line);
-  border-radius: 0;
   color: var(--text-secondary);
-  transition: flex-basis 240ms ease, width 240ms ease, border-color 240ms ease;
+  transition: flex-basis 240ms ease, width 240ms ease, margin-inline-start 240ms ease;
 }
 .desktop-sidebar-toggle-hidden {
   flex-basis: 0;
   width: 0;
-  border-right-color: transparent;
-}
-.desktop-sidebar-toggle:hover {
-  background: color-mix(in srgb, var(--paper) 55%, var(--sidebar));
-  color: var(--text);
+  margin-inline-start: 0;
 }
 .desktop-window-drag {
   display: flex;

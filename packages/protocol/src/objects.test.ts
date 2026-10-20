@@ -22,9 +22,9 @@ const targets: ReferenceTarget[] = [
   { workspace: 'ws', type: 'document', id: 'c72bb3', name: 'Alice', path: 'Alice.md' },
 ];
 it('disambiguates names by type and binds identity independently of name or path', () => {
-  expect(referenceCandidates(targets, '@Alice')).toEqual([targets[2], targets[0]]);
+  expect(referenceCandidates(targets, '@Alice')).toEqual([targets[2], targets[0], targets[1]]);
   expect(referenceCandidates(targets, '@person/Alice')).toEqual([targets[0]]);
-  expect(referenceCandidates(targets, 'project:Alice')).toEqual([]);
+  expect(referenceCandidates(targets, 'project:Alice')).toEqual([targets[1]]);
   const identity = parseReferenceUrl(referenceUrl(targets[0]!))!;
   expect(referenceUrl(targets[0]!)).toBe('object://person/a82f91');
   expect(identity).toEqual({ type: 'person', id: 'a82f91' });
@@ -54,9 +54,11 @@ it('accepts only six-digit local reference IDs, without legacy URL compatibility
     expect(parseReferenceUrl(`object://${type}/d00001`)).toEqual({ type, id: 'd00001' });
   }
 });
-it('ships core types without projects and preserves unregistered domain data without enabling it', () => {
+it('ships task, project and experiment core types and preserves unregistered domain data without enabling it', () => {
   expect(coreObjectTypes.map((type) => type.type)).toEqual([
     'task',
+    'project',
+    'experiment',
     'person',
     'document',
     'event',
@@ -86,13 +88,12 @@ it('ships core types without projects and preserves unregistered domain data wit
     expect(parseReferenceUrl(referenceUrl(target))).toEqual({ type, id: object.id });
   }
 });
-it('opens retired project identities without offering new references or allowing mutations', () => {
-  expect(objectTypeRegistry.list().some((type) => type.type === 'project')).toBe(false);
-  expect(objectTypeRegistry.get('project')).toMatchObject({ legacy: true, retired: true });
+it('keeps historical project identities editable and available for references', () => {
+  expect(objectTypeRegistry.list().some(type => type.type === 'project')).toBe(true);
   const project = targets[1]!;
   expect(resolveReference(targets, project).target).toEqual(project);
   expect(parseReferenceUrl(referenceUrl(project))).toEqual({ type: 'project', id: project.id });
-  expect(() => validateObjectProperties('project', { custom: 'retained' })).toThrow('项目对象已停用');
+  expect(() => validateObjectProperties('project', { custom: 'retained' })).not.toThrow();
 });
 it('registers namespaced plugin fields and unregisters without losing stored references', () => {
   const unregister = registerObjectType({
@@ -181,7 +182,7 @@ it('supports unscheduled, date-only and timed tasks using the same event type', 
     { checkable: true, start: '2026-10-01T10:00:00Z' },
     { date: '2026-10-01', start: '2026-10-01T10:00:00Z', end: '2026-10-01T11:00:00Z' },
   ]) expect(() => validateObjectProperties('event', properties)).toThrow();
-  expect(coreObjectTypes.find(type => type.type === 'task')?.legacy).toBe(true);
+  expect(coreObjectTypes.find(type => type.type === 'task')?.legacy).not.toBe(true);
 });
 it('derives Document and Asset metadata from file identity without storing content or following paths', () => {
   const files = [

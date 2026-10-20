@@ -63,7 +63,7 @@ pub fn read(root: &Path, workspace_id: &str) -> Result<Option<IdentityManifest>,
     Ok(Some(manifest))
 }
 
-fn validate(manifest: &IdentityManifest, workspace_id: &str) -> Result<(), String> {
+pub(crate) fn validate(manifest: &IdentityManifest, workspace_id: &str) -> Result<(), String> {
     if manifest.format != 1
         || manifest.workspace_id != workspace_id
         || manifest.revision == 0
@@ -312,6 +312,27 @@ pub fn reserve(
     publish(&transaction, root, workspace_id)?;
     transaction.commit().map_err(|e| e.to_string())?;
     Ok(id)
+}
+
+pub fn claim_external(
+    root: &Path,
+    workspace_id: &str,
+    cache: &Path,
+    id: &str,
+) -> Result<(), String> {
+    if !storage::is_short_id(id) {
+        return Err("对象身份无效".into());
+    }
+    let mut connection = storage::database(cache)?;
+    let transaction = connection
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
+    hydrate(&transaction, root, workspace_id)?;
+    if !storage::claim_reference_id(&transaction, workspace_id, id)? {
+        return Err("对象 ID 已被使用或预留，请重新生成建议".into());
+    }
+    publish(&transaction, root, workspace_id)?;
+    transaction.commit().map_err(|e| e.to_string())
 }
 
 #[derive(Serialize, Deserialize)]
@@ -707,6 +728,17 @@ mod tests {
         let id = storage::workspace_identity(&root).unwrap();
         let cache = data.path().join("index.sqlite");
         (directory, data, root, id, cache)
+    }
+
+    #[test]
+    fn external_identity_claims_never_reuse_reserved_ids_even_after_index_loss() {
+        let (_directory, _data, root, id, cache) = workspace();
+        storage::scan(&root, &id, &cache).unwrap();
+        claim_external(&root, &id, &cache, "f12345").unwrap();
+        assert!(claim_external(&root, &id, &cache, "f12345").is_err());
+        let fresh_cache = cache.with_file_name("fresh.sqlite");
+        assert!(claim_external(&root, &id, &fresh_cache, "f12345").is_err());
+        claim_external(&root, &id, &fresh_cache, "f12346").unwrap();
     }
 
     #[test]

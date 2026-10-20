@@ -55,11 +55,11 @@ it('creates events and references resources, but rejects retired and duplicate r
     name: 'test.pdf',
     mime: 'application/pdf',
   });
-  for (const type of ['project', 'dataset', 'database', 'asset', 'document'])
+  for (const type of ['dataset', 'database', 'asset', 'document'])
     await expect(store.createObject({ ...draft, type })).rejects.toThrow();
   expect(store.objects).toHaveLength(1);
 });
-it('keeps historical projects and relations readable without enabling mutations or new project relations', async () => {
+it('edits historical projects while retaining IDs, unknown fields and existing relations', async () => {
   const adapter = fixture.adapter as DemoAdapter;
   await adapter.open();
   const project = { version: 1, id: 'a00001', type: 'project', name: '历史项目',
@@ -77,19 +77,14 @@ it('keeps historical projects and relations readable without enabling mutations 
   const store = useWorkspaceStore();
   await store.openWorkspace();
   expect(store.objectErrors).toEqual([]);
-  expect(store.objectDefinitions.some((type) => type.type === 'project')).toBe(false);
-  expect(store.relationDefinitions.some((type) => ['member', 'contains'].includes(type.type))).toBe(false);
+  expect(store.objectDefinitions.some((type) => type.type === 'project')).toBe(true);
+  expect(store.relationDefinitions.some((type) => ['member', 'contains'].includes(type.type))).toBe(true);
   const record = store.objects[0]!;
   expect(record.object).toEqual(project);
   expect(resolveReference(store.referenceTargets, project).target).toMatchObject({ type: 'project', id: project.id });
   expect(store.relations).toEqual(oldRelations.relations);
-  const reserve = vi.spyOn(adapter, 'reserveObjectId');
-  await expect(store.createObject(project)).rejects.toThrow('项目对象已停用');
-  await expect(store.updateObject(record, { ...record.object, name: '不能修改' }, store.workspace!.id))
-    .rejects.toThrow('项目对象已停用');
-  expect(reserve).not.toHaveBeenCalled();
-  for (const type of ['member', 'contains', 'related'])
-    await expect(store.createRelation(type, { type: 'person', id: 'a00002' }, project)).rejects.toThrow();
+  const updated = await store.updateObject(record, { ...record.object, name: '更新项目' }, store.workspace!.id);
+  expect(updated.object).toEqual({ ...project, name: '更新项目' });
   const person = await store.createObject({ type: 'person', name: '负责人', description: '', archived: false, properties: {} });
   const event = await store.createObject({ type: 'event', name: '待办', description: '', archived: false,
     properties: { checkable: true, completed: false, due: '2026-10-08' } });
@@ -100,7 +95,7 @@ it('keeps historical projects and relations readable without enabling mutations 
   expect(JSON.parse((await adapter.read(relationPath)).content).extra).toBe('preserved');
   await store.refresh();
   expect(resolveReference(store.referenceTargets, project).target?.path).toBe(path);
-  expect((await adapter.read(path)).content).toBe(content);
+  expect(JSON.parse((await adapter.read(path)).content)).toEqual({ ...project, name: '更新项目' });
 });
 it('responds to plugin registration and removal while keeping unregistered records intact', async () => {
   const adapter = fixture.adapter as DemoAdapter;

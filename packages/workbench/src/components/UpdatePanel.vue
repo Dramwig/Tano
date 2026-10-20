@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed } from 'vue';
 import { Download, LoaderCircle, RefreshCw } from 'lucide-vue-next';
 import { useUpdatesStore } from '../stores/updates';
@@ -10,17 +11,17 @@ const state = computed(() => props.remoteState ?? updates.state);
 const downloaded = computed(() => (state.value.progress.downloaded / 1024 / 1024).toFixed(1));
 const label = computed(() => {
   switch (state.value.phase) {
-    case 'checking': return '正在检查更新';
-    case 'available': return `下载更新 ${state.value.candidate?.version ?? ''}`.trim();
-    case 'downloading': return '正在下载更新';
-    case 'ready': return `保存并安装 ${state.value.candidate?.version ?? ''}`.trim();
-    case 'installing': return '正在安装更新';
-    default: return '检查更新';
+    case 'checking': return t('正在检查更新');
+    case 'available': return t('下载更新 {0}', [state.value.candidate?.version ?? '']).trim();
+    case 'downloading': return t('正在下载更新');
+    case 'ready': return t('保存并安装 {0}', [state.value.candidate?.version ?? '']).trim();
+    case 'installing': return t('正在安装更新');
+    default: return t('检查更新');
   }
 });
 const hint = computed(() =>
   state.value.phase === 'ready'
-    ? '更新包已验证。安装会先保存文档，然后退出并重新打开 Tano；离线协作草稿保留在本机。'
+    ? t('更新包已验证。安装会先保存文档，然后退出并重新打开 Tano；离线协作草稿保留在本机。')
     : state.value.candidate?.notes || label.value,
 );
 function activate() {
@@ -39,7 +40,7 @@ function activate() {
       class="update-button"
       :class="{ 'has-update': state.phase === 'available' || state.phase === 'ready' }"
       :disabled="state.busy"
-      :title="hint"
+      :data-tooltip="hint"
       @click="activate"
     >
       <LoaderCircle v-if="state.busy" :size="14" class="update-spinner" />
@@ -47,9 +48,9 @@ function activate() {
       <RefreshCw v-else :size="14" />
       <span aria-live="polite">{{ label }}</span>
     </button>
-    <p v-if="state.phase === 'current'" role="status">当前已是最新版本。</p>
+    <p v-if="state.phase === 'current'" role="status">{{ t('当前已是最新版本。') }}</p>
     <p v-else-if="state.phase === 'downloading'" role="status">
-      正在下载并验证签名… {{ downloaded }} MiB
+      {{ t('正在下载并验证签名…') }} {{ downloaded }} MiB
     </p>
     <p v-if="state.error" class="update-error" role="alert">{{ state.error }}</p>
   </div>

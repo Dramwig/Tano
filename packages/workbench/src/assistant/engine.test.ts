@@ -55,6 +55,9 @@ describe('assistant streaming and proposals', () => {
     });
     for (const content of ['已有正文', '\n', '---\ntitle: 标题\n---\n'])
       expect(() => proposalFromTool(tool, [{ ...source, content }], 'workspace', 'run')).toThrow('不唯一');
+    expect(proposalFromTool(tool, [{ ...source, content: '已有正文', selection: { text: '', from: 2, to: 2 } }], 'workspace', 'run')).toMatchObject({
+      content: '已有## 草稿\n\n正文\n正文',
+    });
     expect(() => proposalFromTool(tool, [{ ...source, content: '', selection: { text: '', from: 0, to: 0 } }], 'workspace', 'run')).toThrow('不唯一');
   });
   it('creates file operation proposals only from full snapshots and validates destination paths', () => {
@@ -230,7 +233,8 @@ describe('assistant streaming and proposals', () => {
     ];
     const transport = { async request(_id, request, _signal, chunk) {
       requests.push(structuredClone(request));
-      chunk(responseFrames([{ type: 'response.completed', response: { status: 'completed', output: requests.length === 1 ? output : [] } }]));
+      chunk(responseFrames([{ type: 'response.completed', response: { status: 'completed', output: requests.length === 1 ? output
+        : [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: '建议已提交，等待审阅。' }] }] } }]));
     } } as AssistantTransport;
     let suggestions = 0;
     await runAssistant({ transport, connectionId: 'test', model: 'test', tools: true, workspaceId: 'workspace', runId: 'run', sources: [], history: [], prompt: '修改', signal: new AbortController().signal,

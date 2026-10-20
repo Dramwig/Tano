@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import './review-card.css';
 import { captureReviewRail, updateReviewRail, removeReviewRail } from './review-rail';
 import { computed, nextTick, onBeforeUnmount, onBeforeUpdate, onMounted, ref, watch } from 'vue';
@@ -198,12 +199,12 @@ async function removeReply(id: string, change: CommentMessageRemoval) {
 <template>
   <section ref="host" class="document-suggestions" @click="clicked">
     <div v-if="session?.saving" class="suggestion-toolbar">
-      <span role="status">正在保存建议…</span>
+      <span role="status">{{ t('正在保存建议…') }}</span>
     </div>
     <div v-if="session?.error" class="suggestion-error" role="alert">{{ session.error }}
-      <button type="button" @click="action(() => store.persist(session!))">重试保存</button>
-      <button type="button" @click="action(() => store.load(document.id, true))">重新载入</button>
-      <button type="button" :disabled="session.saving || session.reviewing" @click="action(() => store.preserveLocalCopy(document.id))">另存本机建议副本</button>
+      <button type="button" @click="action(() => store.persist(session!))">{{ t('重试保存') }}</button>
+      <button type="button" @click="action(() => store.load(document.id, true))">{{ t('重新载入') }}</button>
+      <button type="button" :disabled="session.saving || session.reviewing" @click="action(() => store.preserveLocalCopy(document.id))">{{ t('另存本机建议副本') }}</button>
     </div>
     <div class="suggestion-layout" :class="{ 'has-suggestions': visible.length }">
       <div class="suggestion-content">
@@ -212,9 +213,9 @@ async function removeReply(id: string, change: CommentMessageRemoval) {
           :transform-change="suggesting ? transformChange : undefined" />
       </div>
       <aside v-if="visible.length" class="suggestion-rail" :class="{ 'is-inline': railLayout.inline }"
-        :style="railLayout.inline ? { left: `${railLayout.left}px` } : undefined" aria-label="文档修改建议">
+        :style="railLayout.inline ? { left: `${railLayout.left}px` } : undefined" :aria-label="t('文档修改建议')">
         <ReviewCard v-for="item in visible" :key="item.id" :data-review-id="item.id" class="suggestion-card"
-          :expanded="selected === item.id" label="编辑建议" @activate="focus(item.id)">
+          :expanded="selected === item.id" :label="t('编辑建议')" @activate="focus(item.id)">
           <div class="review-card-content">
           <CommentConversation
             :ref="value => value ? conversations.set(item.id, value as InstanceType<typeof CommentConversation>) : conversations.delete(item.id)"
@@ -224,15 +225,15 @@ async function removeReply(id: string, change: CommentMessageRemoval) {
             @reply="(body, mentions) => reply(item.id, body, mentions)"
             @edit="editReply(item.id, $event)" @remove="removeReply(item.id, $event)">
           <template #first-tools>
-            <div v-if="item.status === 'pending' || item.status === 'applying'" class="review-card-tools" role="group" aria-label="建议操作">
+            <div v-if="item.status === 'pending' || item.status === 'applying'" class="review-card-tools" role="group" :aria-label="t('建议操作')">
               <button type="button" :disabled="readonly || managed || session?.saving || session?.reviewing || projection.conflicts.includes(item.id)"
-                :aria-label="item.status === 'applying' ? '核对写入结果' : session?.previews[item.id] ? '接受更新后的建议' : '接受建议'"
-                :title="item.status === 'applying' ? '核对写入结果' : '接受建议'" @click.stop="action(() => store.accept(document.id, item.id))"><Check :size="15" /></button>
+                :aria-label="item.status === 'applying' ? t('核对写入结果') : session?.previews[item.id] ? t('接受更新后的建议') : t('接受建议')"
+                :data-tooltip="item.status === 'applying' ? t('核对写入结果') : t('接受建议')" @click.stop="action(() => store.accept(document.id, item.id))"><Check :size="15" /></button>
               <button v-if="item.status === 'pending'" type="button" :disabled="readonly || managed || session?.saving || session?.reviewing"
-                aria-label="拒绝建议" title="拒绝建议"
+                :aria-label="t('拒绝建议')" :data-tooltip="t('拒绝建议')"
                 @click.stop="action(() => store.reject(document.id, item.id))"><X :size="15" /></button>
             </div>
-            <span v-else>{{ item.status === 'accepted' ? '已接受' : '已拒绝／撤回' }}</span>
+            <span v-else>{{ item.status === 'accepted' ? t('已接受') : t('已拒绝／撤回') }}</span>
           </template>
           <template #first-body>
           <p class="suggestion-change panel-scrollbar">
@@ -240,10 +241,10 @@ async function removeReply(id: string, change: CommentMessageRemoval) {
           </p>
           <template v-if="selected === item.id">
           <p v-if="item.reason">{{ item.reason }}</p>
-          <p v-if="projection.conflicts.includes(item.id)" class="suggestion-warning">原文已变化或建议重叠，需核对后重新提出。</p>
-          <p v-if="item.status === 'applying'" class="suggestion-warning">写入结果待核对，不会重复应用。请保留记录并核对正式正文。</p>
-          <details v-if="item.application && item.status === 'applying'"><summary>查看写入前后</summary><pre class="panel-scrollbar">{{ item.application.before }}</pre><pre class="panel-scrollbar">{{ item.application.after }}</pre></details>
-          <details v-if="session?.previews[item.id]" open><summary>正文有变化，请审阅后再次接受</summary>
+          <p v-if="projection.conflicts.includes(item.id)" class="suggestion-warning">{{ t('原文已变化或建议重叠，需核对后重新提出。') }}</p>
+          <p v-if="item.status === 'applying'" class="suggestion-warning">{{ t('写入结果待核对，不会重复应用。请保留记录并核对正式正文。') }}</p>
+          <details v-if="item.application && item.status === 'applying'"><summary>{{ t('查看写入前后') }}</summary><pre class="panel-scrollbar">{{ item.application.before }}</pre><pre class="panel-scrollbar">{{ item.application.after }}</pre></details>
+          <details v-if="session?.previews[item.id]" open><summary>{{ t('正文有变化，请审阅后再次接受') }}</summary>
             <pre class="panel-scrollbar">{{ session.previews[item.id]!.before }}</pre><pre class="panel-scrollbar">{{ session.previews[item.id]!.after }}</pre></details>
           </template>
           </template>

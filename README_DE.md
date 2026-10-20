@@ -6,7 +6,7 @@
 
 ### Menschen und Agenten arbeiten auf derselben Seite.
 
-**Ein lokaler Markdown-Arbeitsbereich zum Schreiben, Ordnen von Wissen und Arbeiten mit Agenten.**
+**Ein File-Native Workspace, in dem Menschen und KI-Agenten mit denselben echten Dateien arbeiten.**
 
 [![MIT-Lizenz](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Mit Tauri 2](https://img.shields.io/badge/built%20with-Tauri%202-orange.svg)](https://tauri.app/)
@@ -22,7 +22,7 @@
 
 ## Funktionen
 
-- **Eigene Dateien behalten:** Markdown und Anhänge bleiben gewöhnliche Dateien im Arbeitsbereich. Übertragbare Daten wie Identitäten, Objekte, Beziehungen und Regeln liegen unter `.tano/`.
+- **Eigene Dateien behalten:** Markdown, PDF, Bilder, CSV, JSON, Code und Anhänge bleiben gewöhnliche Dateien im Arbeitsbereich. Übertragbare Daten wie Identitäten, Objekte, Beziehungen, Ansichten und Regeln liegen unter `.tano/`.
 - **Eine Arbeitsoberfläche:** Notizen bearbeiten und durchsuchen, Objekte und Beziehungen ordnen und den Kalender nutzen.
 - **Externe Änderungen schützen:** Beim Speichern wird der Ausgangs-Hash geprüft. Unabhängige Änderungen werden zusammengeführt; bei Konflikten bleiben beide Fassungen erhalten.
 - **Lokaler Zugriff für Agenten:** Der stdio-MCP-Server kann Dokumente auflisten, lesen, erstellen und bedingt aktualisieren. Veraltete Schreibvorgänge werden abgewiesen.
@@ -43,7 +43,7 @@ npm ci
 npm run desktop
 ```
 
-Für eine reine Browservorschau `npm run dev` ausführen und `http://127.0.0.1:1420` öffnen. Beide Entwicklungsserver nutzen denselben Port und sollten einzeln gestartet werden.
+Für eine reine Browservorschau `npm run dev` ausführen und `http://127.0.0.1:43841` öffnen. Die Desktop-Entwicklung nutzt `43842` und wählt bei Belegung automatisch einen freien Port.
 
 ## Dokumentation
 

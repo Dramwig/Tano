@@ -1,11 +1,13 @@
 <script setup lang="ts">
+import { t, uiLocale } from '../i18n';
+import { assistantCopy, assistantTaskPrompts } from '../assistant/language';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { AlignLeft, ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRight, ChevronsRight, CircleCheck, Copy, Cpu, createLucideIcon, FilePlus2, FileText, History, Languages, LoaderCircle, MessageCircle, MessageCirclePlus, Minus, MoreHorizontal, Paperclip, Pencil, Plug, Plus, RefreshCw, Reply, Search, Settings2, Square, Terminal, Trash2, Undo2, X } from 'lucide-vue-next';
+import { AlignLeft, ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRight, ChevronsRight, CircleCheck, Copy, Cpu, createLucideIcon, FilePlus2, FileText, History, Languages, LoaderCircle, MessageCircle, MessageCirclePlus, Minus, MoreHorizontal, Paperclip, Pencil, Plug, Plus, RefreshCw, Reply, Quote, Search, Settings2, Square, Terminal, Trash2, Undo2, X } from 'lucide-vue-next';
 import MarkdownEditor from '@tano/editor';
 import type { AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSource, ReferenceIdentity } from '@tano/protocol';
 import { useAssistantStore } from '../assistant/store';
 import { isAssistantFile } from '../assistant/files';
-import { assistantToolLabel, assistantMessageParts } from '../assistant/results';
+import { assistantToolLabel, assistantAnswerText } from '../assistant/results';
 import type { AssistantDisplayMode } from '../assistant/store';
 import { useWorkspaceStore } from '../stores/workspace';
 import AssistantChangeList from './AssistantChangeList.vue';
@@ -13,13 +15,12 @@ import AssistantModelIcon from './AssistantModelIcon.vue';
 import AssistantGenerationHint from './AssistantGenerationHint.vue';
 import AssistantButterfly from './AssistantButterfly.vue';
 import AssistantQuestionCard from './AssistantQuestionCard.vue';
+import AssistantMessageBody from './AssistantMessageBody.vue';
 
 const assistant = useAssistantStore();
 const workspace = useWorkspaceStore();
-const props = withDefaults(defineProps<{ compact?: boolean; openSourcesInNewTab?: boolean; fullscreenTarget?: string | HTMLElement }>(), {
-  openSourcesInNewTab: true,
-});
-const emit = defineEmits<{ openReference: [identity: ReferenceIdentity]; openSettings: [] }>();
+const props = defineProps<{ compact?: boolean; fullscreenTarget?: string | HTMLElement }>();
+const emit = defineEmits<{ openReference: [identity: ReferenceIdentity]; revealSelection: [source: AssistantSource]; openSettings: [] }>();
 // Keep the destination while disabled so re-enabling Teleport updates its target.
 const teleportTarget = computed<string | HTMLElement>(previous => assistant.displayMode === 'sidebar' ? previous ?? 'body'
   : assistant.displayMode === 'fullscreen' ? props.fullscreenTarget ?? 'body' : 'body');
@@ -32,10 +33,10 @@ const notice = ref('');
 const manualModelId = ref('');
 const deleting = ref<string>();
 const exportMessage = ref<AssistantMessage>();
-const exportPath = ref('助手结果.md');
+const exportPath = ref(t('助手结果.md'));
 const visibleMessages = ref(30);
 const panel = ref<HTMLElement>();
-const popover = ref<'model' | 'reasoning' | 'add' | 'history' | 'more' | 'mode' | null>(null);
+const popover = ref<'model' | 'reasoning' | 'add' | 'history' | 'more' | 'mode' | 'translation' | null>(null);
 function displayIcon(name: string, region: { x: string; y: string; width: string; height: string }) {
   return createLucideIcon(name, [
     ['rect', { x: '2', y: '4', width: '20', height: '16', rx: '2', key: 'frame' }],
@@ -43,9 +44,9 @@ function displayIcon(name: string, region: { x: string; y: string; width: string
   ]);
 }
 const displayModes = [
-  { id: 'sidebar', label: '侧栏', icon: displayIcon('AssistantSidebar', { x: '15', y: '6', width: '5', height: '12' }) },
-  { id: 'floating', label: '浮动', icon: displayIcon('AssistantFloating', { x: '15', y: '12', width: '5', height: '6' }) },
-  { id: 'fullscreen', label: '全屏', icon: displayIcon('AssistantFullscreen', { x: '4', y: '6', width: '16', height: '12' }) },
+  { id: 'sidebar', get label() { return t('侧栏'); }, icon: displayIcon('AssistantSidebar', { x: '15', y: '6', width: '5', height: '12' }) },
+  { id: 'floating', get label() { return t('浮动'); }, icon: displayIcon('AssistantFloating', { x: '15', y: '12', width: '5', height: '6' }) },
+  { id: 'fullscreen', get label() { return t('全屏'); }, icon: displayIcon('AssistantFullscreen', { x: '4', y: '6', width: '16', height: '12' }) },
 ] as const;
 const displayModeIcon = computed(() => displayModes.find(mode => mode.id === assistant.displayMode)!.icon);
 const floatingRect = ref<{ left: number; top: number; width: number; height: number }>();
@@ -65,19 +66,19 @@ const menuPosition = ref({ left: '0px', bottom: '0px' });
 const showLatest = ref(false);
 let popoverTrigger: HTMLButtonElement | undefined;
 let composerObserver: ResizeObserver | undefined;
-const title = computed(() => assistant.session?.messages.length ? assistant.session.title : '新助手会话');
-const modelLabel = computed(() => assistant.modelId === 'cli-default' ? 'CLI 默认模型' : assistant.modelId || '选择模型');
+const title = computed(() => assistant.session?.messages.length ? assistant.session.title : t('新助手会话'));
+const modelLabel = computed(() => assistant.modelId === 'cli-default' ? t('CLI 默认模型') : assistant.modelId || t('选择模型'));
 const controlsLocked = computed(() => assistant.busy || assistant.applying || assistant.loading);
 const reasoningChoices: { id: AssistantReasoningSelection; label: string; short: string; detail: string }[] = [
-  { id: 'low', label: '低', short: '低', detail: '日常问答，优先速度' },
-  { id: 'medium', label: '中', short: '中', detail: '平衡速度与质量' },
-  { id: 'high', label: '高', short: '高', detail: '复杂分析' },
-  { id: 'xhigh', label: '很高', short: '很高', detail: '更深入推理' },
-  { id: 'max', label: '最高', short: '最高', detail: '更多推理，更长等待' },
-  { id: 'ultra', label: '极高', short: '极高', detail: '更多推理，更长等待' },
-  { id: 'cli-default', label: '沿用 CLI 设置', short: '默认', detail: '使用本机 Codex 的推理配置' },
+  { id: 'low', get label() { return t('低'); }, get short() { return t('低'); }, get detail() { return t('日常问答，优先速度'); } },
+  { id: 'medium', get label() { return t('中'); }, get short() { return t('中'); }, get detail() { return t('平衡速度与质量'); } },
+  { id: 'high', get label() { return t('高'); }, get short() { return t('高'); }, get detail() { return t('复杂分析'); } },
+  { id: 'xhigh', get label() { return t('很高'); }, get short() { return t('很高'); }, get detail() { return t('更深入推理'); } },
+  { id: 'max', get label() { return t('最高'); }, get short() { return t('最高'); }, get detail() { return t('更多推理，更长等待'); } },
+  { id: 'ultra', get label() { return t('极高'); }, get short() { return t('极高'); }, get detail() { return t('更多推理，更长等待'); } },
+  { id: 'cli-default', get label() { return t('沿用 CLI 设置'); }, get short() { return t('默认'); }, get detail() { return t('使用本机 Codex 的推理配置'); } },
 ];
-const reasoningLabel = computed(() => reasoningChoices.find(choice => choice.id === assistant.reasoningEffort)?.short ?? '默认');
+const reasoningLabel = computed(() => reasoningChoices.find(choice => choice.id === assistant.reasoningEffort)?.short ?? t('默认'));
 const modelOptions = computed(() => {
   const models = [...assistant.models];
   if (assistant.modelId && !models.includes(assistant.modelId)) models.unshift(assistant.modelId);
@@ -87,19 +88,31 @@ const listedModels = computed(() => modelOptions.value.filter(id => id.toLocaleL
 const historyGroups = computed(() => {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
-  const groups = [{ label: '今天', sessions: [] as typeof assistant.sessions }, { label: '昨天', sessions: [] as typeof assistant.sessions }, { label: '更早', sessions: [] as typeof assistant.sessions }];
+  const groups = [{ get label() { return t('今天'); }, sessions: [] as typeof assistant.sessions }, { get label() { return t('昨天'); }, sessions: [] as typeof assistant.sessions }, { get label() { return t('更早'); }, sessions: [] as typeof assistant.sessions }];
   for (const session of [...assistant.sessions].sort((a, b) => b.updatedAt - a.updatedAt)) {
     if (!session.title.toLocaleLowerCase().includes(historyQuery.value.toLocaleLowerCase())) continue;
     groups[session.updatedAt >= today.getTime() ? 0 : session.updatedAt >= yesterday.getTime() ? 1 : 2]!.sessions.push(session);
   }
   return groups.filter(group => group.sessions.length);
 });
-const starters = [
-  { label: '总结这篇笔记', icon: AlignLeft, prompt: '请总结这篇笔记，提炼核心观点与重点。' },
-  { label: '润色这篇笔记', icon: Pencil, prompt: '请直接润色这篇笔记，保留原意，让表达更清晰自然。' },
-  { label: '翻译成英文', icon: Languages, prompt: '请将这篇笔记翻译成英文，保留原有的 Markdown 格式。' },
-  { label: '提取待办事项', icon: CircleCheck, prompt: '请从这篇笔记中提取待办事项，列出行动、负责人和截止时间；未明确的信息请标为待确认。' },
-];
+const starters = computed(() => {
+  const copy = assistantCopy(uiLocale.value).starters;
+  const prompts = assistantTaskPrompts.starters;
+  return [
+    { label: copy.summary, prompt: prompts.summary, icon: AlignLeft },
+    { label: copy.polish, prompt: prompts.polish, icon: Pencil },
+    { label: copy.translate, prompt: null, icon: Languages },
+    { label: copy.tasks, prompt: prompts.tasks, icon: CircleCheck },
+  ];
+});
+const translationTargets = computed(() => {
+  const copy = assistantCopy(uiLocale.value).starters;
+  const prompts = assistantTaskPrompts.starters;
+  return [
+    { label: copy.translateEnglish, prompt: prompts.translateEnglish },
+    { label: copy.translateChinese, prompt: prompts.translateChinese },
+  ];
+});
 const sourceFiles = computed(() => workspace.workspace?.files.filter(file => file.kind === 'file' && isAssistantFile(file.path) &&
   file.path.toLocaleLowerCase().includes(query.value.toLocaleLowerCase())).slice(0, 100) ?? []);
 const displayed = computed(() => assistant.session?.messages.slice(-visibleMessages.value) ?? []);
@@ -134,11 +147,11 @@ async function changeReasoning(value: AssistantReasoningSelection) {
 }
 function inputModel() {
   manualModelId.value = assistant.modelId; modelView.value = 'manual';
-  void nextTick(() => panel.value?.querySelector<HTMLInputElement>('[aria-label="当前对话的模型 ID"]')?.focus());
+  void nextTick(() => panel.value?.querySelector<HTMLInputElement>(`[aria-label="${t('当前对话的模型 ID')}"]`)?.focus());
 }
 function chooseRecoveryModel() {
   closePopover();
-  panel.value?.querySelector<HTMLButtonElement>('[aria-label="选择助手模型"]')?.click();
+  panel.value?.querySelector<HTMLButtonElement>(`[aria-label="${t('选择助手模型')}"]`)?.click();
 }
 function setModelView(view: 'main' | 'connections') {
   modelView.value = view;
@@ -147,7 +160,7 @@ function setModelView(view: 'main' | 'connections') {
 function searchModels() {
   searchingModels.value = !searchingModels.value;
   if (!searchingModels.value) modelQuery.value = '';
-  void nextTick(() => panel.value?.querySelector<HTMLElement>(searchingModels.value ? '#assistant-model-search' : '[aria-label="搜索模型列表"]')?.focus());
+  void nextTick(() => panel.value?.querySelector<HTMLElement>(searchingModels.value ? '#assistant-model-search' : `[aria-label="${t('搜索模型列表')}"]`)?.focus());
 }
 function toggleSource(id: string) {
   if (assistant.busy) return;
@@ -155,50 +168,56 @@ function toggleSource(id: string) {
     assistant.files = assistant.files.filter(file => file !== id);
     if (assistant.selection?.fileId === id) assistant.selection = null;
   } else if (assistant.files.length < 20) assistant.files.push(id);
-  else notice.value = '一次最多选择 20 篇文档';
+  else notice.value = t('一次最多选择 20 篇文档');
 }
 async function openSource(source: AssistantSource) {
   notice.value = '';
   try {
-    if (!workspace.workspace || workspace.workspace.id !== source.workspaceId) throw new Error('请在原工作区打开引用');
+    if (!workspace.workspace || workspace.workspace.id !== source.workspaceId) throw new Error(t('请在原工作区打开引用'));
     const snapshot = await workspace.assistantSnapshot({ id: workspace.workspace.id, path: workspace.workspace.path }, source.fileId);
     const file = workspace.workspace.files.find(file => file.id === source.fileId);
-    if (!file) throw new Error('来源文档已移除');
-    if (props.openSourcesInNewTab) await workspace.openFileInNewTab({ ...file, path: snapshot.path });
-    else await workspace.openFile({ ...file, path: snapshot.path });
-    if (snapshot.hash !== source.hash) notice.value = '来源已更新；回答基于生成时的版本';
+    if (!file) throw new Error(t('来源文档已移除'));
+    if (workspace.active?.id !== file.id) {
+      const pane = workspace.panes.find(pane => pane.id === workspace.activePaneId);
+      const matches = workspace.tabs.filter(tab => tab.document?.id === file.id);
+      const existing = matches.find(tab => pane?.tabs.includes(tab.id)) ?? matches[0];
+      if (existing) workspace.activeId = existing.id;
+      else await workspace.openFile({ ...file, path: snapshot.path });
+    }
+    if (source.selection) emit('revealSelection', source);
+    if (snapshot.hash !== source.hash) notice.value = t('来源已更新；回答基于生成时的版本');
   } catch (error) { notice.value = String(error); }
 }
 function answerMarkdown(message: AssistantMessage) {
   return message.content.replace(/\[来源:(S\d+)\]/g, (_match, id: string) => message.sources?.some(source => source.id === id)
-    ? `[来源 ${id}](#assistant-source-${id})` : '（来源未提供）');
+    ? t('[来源 {0}](#assistant-source-{1})', [id, id]) : t('（来源未提供）'));
 }
 function sourceLink(message: AssistantMessage, reference: string) {
   const id = /^#assistant-source-(S\d+)$/.exec(reference)?.[1];
   const source = message.sources?.find(source => source.id === id);
   if (source) void openSource(source);
-  else notice.value = '此链接未关联本次提供的来源';
+  else notice.value = t('此链接未关联本次提供的来源');
 }
 function openAnswerReference(identity: ReferenceIdentity) {
-  if (assistant.session?.workspaceId !== workspace.workspace?.id) { notice.value = '请在原工作区打开引用'; return; }
+  if (assistant.session?.workspaceId !== workspace.workspace?.id) { notice.value = t('请在原工作区打开引用'); return; }
   emit('openReference', identity);
 }
 async function copy(message: AssistantMessage) {
-  try { await navigator.clipboard.writeText(message.content); notice.value = '已复制'; }
-  catch { notice.value = '无法访问剪贴板'; }
+  try { await navigator.clipboard.writeText(assistantAnswerText(message)); notice.value = t('已复制'); }
+  catch { notice.value = t('无法访问剪贴板'); }
 }
 async function draftReply(message: AssistantMessage) {
   try {
-    await assistant.replyTarget?.draft(message.content);
-    notice.value = '回答已填入回复草稿';
+    await assistant.replyTarget?.draft(assistantAnswerText(message));
+    notice.value = t('回答已填入回复草稿');
   } catch (error) { notice.value = String(error); }
 }
 async function exportAnswer() {
   const message = exportMessage.value;
-  if (!message || !workspace.workspace || assistant.applying || assistant.busy) return;
+  if (!message || !assistantAnswerText(message).trim() || !workspace.workspace || assistant.applying || assistant.busy) return;
   const proposal: AssistantProposal = { id: crypto.randomUUID(), runId: message.id,
-    workspaceId: workspace.workspace.id, kind: 'create', path: exportPath.value, base: '', content: message.content,
-    reason: '将助手回答保存为 Markdown 文档', status: 'ready' };
+    workspaceId: workspace.workspace.id, kind: 'create', path: exportPath.value, base: '', content: assistantAnswerText(message),
+    reason: t('将助手回答保存为 Markdown 文档'), status: 'ready' };
   message.proposals ??= []; message.proposals.push(proposal); exportMessage.value = undefined;
   await assistant.review(proposal);
 }
@@ -264,19 +283,19 @@ function selectHistory(id: string) {
 }
 function historyTime(timestamp: number) {
   const age = Math.max(0, Date.now() - timestamp);
-  if (age < 60_000) return '刚刚';
-  if (age < 3_600_000) return `${Math.floor(age / 60_000)} 分钟前`;
-  if (age < 86_400_000) return `${Math.floor(age / 3_600_000)} 小时前`;
-  return new Date(timestamp).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+  if (age < 60_000) return t('刚刚');
+  if (age < 3_600_000) return t('{0} 分钟前', [Math.floor(age / 60_000)]);
+  if (age < 86_400_000) return t('{0} 小时前', [Math.floor(age / 3_600_000)]);
+  return new Date(timestamp).toLocaleDateString(uiLocale.value, { month: 'numeric', day: 'numeric' });
 }
 function searchHistory() {
   searchingHistory.value = !searchingHistory.value;
   if (!searchingHistory.value) historyQuery.value = '';
-  void nextTick(() => panel.value?.querySelector<HTMLInputElement>('[aria-label="搜索助手会话"]')?.focus());
+  void nextTick(() => panel.value?.querySelector<HTMLInputElement>(`[aria-label="${t('搜索助手会话')}"]`)?.focus());
 }
 function openSources() {
   addView.value = 'sources';
-  void nextTick(() => panel.value?.querySelector<HTMLInputElement>('[aria-label="搜索参考文档"]')?.focus());
+  void nextTick(() => panel.value?.querySelector<HTMLInputElement>(`[aria-label="${t('搜索参考文档')}"]`)?.focus());
 }
 function addCurrentNote() {
   const id = workspace.active?.id;
@@ -298,12 +317,13 @@ function startNewSession() {
   void nextTick(() => textarea.value?.focus());
 }
 function preparePrompt(prompt: string) {
+  closePopover();
   const fileId = workspace.active?.id;
   if (fileId && !assistant.files.includes(fileId)) {
-    if (assistant.files.length >= 20) { notice.value = '一次最多选择 20 篇文档，请先移除一篇参考文档'; return; }
+    if (assistant.files.length >= 20) { notice.value = t('一次最多选择 20 篇文档，请先移除一篇参考文档'); return; }
     assistant.files.push(fileId);
   }
-  assistant.prompt = prompt;
+  assistant.setBuiltInPrompt(prompt);
   void nextTick(() => textarea.value?.focus());
 }
 function resizeInput() {
@@ -349,7 +369,7 @@ function scrollToLatest() {
   updateScroll();
 }
 function messageTime(timestamp: number) {
-  return new Date(timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  return new Date(timestamp).toLocaleTimeString(uiLocale.value, { hour: '2-digit', minute: '2-digit' });
 }
 function answerReady() {
   void nextTick(updateScroll);
@@ -388,7 +408,7 @@ watch(() => assistant.session?.id, () => { visibleMessages.value = 30; void next
 watch(() => [controlsLocked.value, assistant.connection?.kind], () => {
   if (popover.value === 'reasoning' && (controlsLocked.value || assistant.connection?.kind !== 'codex-cli')) closePopover();
 });
-watch(() => [assistant.session?.messages.map(message => message.content.length).join(','), assistant.busy, assistant.applying, assistant.progress], () => {
+watch(() => [assistant.session?.messages.map(message => `${message.content.length}:${message.activity?.length}`).join(','), assistant.busy, assistant.applying, assistant.progress], () => {
   const element = messages.value;
   if (element && element.scrollHeight - element.scrollTop - element.clientHeight < 160)
     void nextTick(scrollToLatest);
@@ -397,197 +417,207 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
 
 <template>
   <Teleport :to="teleportTarget" :disabled="assistant.displayMode === 'sidebar'">
-  <aside ref="panel" v-show="assistant.displayMode !== 'fullscreen' || !!fullscreenTarget" class="assistant-panel" :class="`assistant-panel-${assistant.displayMode}`" :style="{ '--assistant-menu-max-height': `${menuMaxHeight}px`, ...floatingStyle }" aria-label="Tano 助手" @keydown.esc="closePopover(true)" @keydown="menuKey">
+  <aside ref="panel" v-show="assistant.displayMode !== 'fullscreen' || !!fullscreenTarget" class="assistant-panel" :class="`assistant-panel-${assistant.displayMode}`" :style="{ '--assistant-menu-max-height': `${menuMaxHeight}px`, ...floatingStyle }" :aria-label="t('Tano 助手')" @keydown.esc="closePopover(true)" @keydown="menuKey">
     <header class="assistant-heading" @pointerdown="startFloatingGesture" @pointermove="moveFloatingGesture" @pointerup="endFloatingGesture" @pointercancel="endFloatingGesture" @lostpointercapture="endFloatingGesture">
-      <button v-if="section !== 'conversation'" class="icon-button" aria-label="返回助手对话" title="返回对话" @click="section = 'conversation'"><ArrowLeft :size="17" /></button>
-      <h2 v-if="section !== 'conversation'">会话记录</h2>
+      <button v-if="section !== 'conversation'" class="icon-button" :aria-label="t('返回助手对话')" :data-tooltip="t('返回对话')" @click="section = 'conversation'"><ArrowLeft :size="17" /></button>
+      <h2 v-if="section !== 'conversation'">{{ t('会话记录') }}</h2>
       <h2 v-else class="assistant-title-heading">
-        <button class="assistant-title" :title="title" aria-label="打开助手会话记录" :aria-expanded="popover === 'history'" aria-controls="assistant-history-options" data-assistant-popover @click="togglePopover('history', $event)"><span>{{ title }}</span><ChevronDown :size="16" /></button>
+        <button class="assistant-title" :data-tooltip="title" :aria-label="t('打开助手会话记录')" :aria-expanded="popover === 'history'" aria-controls="assistant-history-options" data-assistant-popover @click="togglePopover('history', $event)"><span>{{ title }}</span><ChevronDown :size="16" /></button>
       </h2>
       <template v-if="section === 'conversation'">
-        <button v-if="assistant.pendingUserInput" class="icon-button" title="停止询问" aria-label="停止助手生成" @click="assistant.stop()"><Square :size="16" /></button>
-        <button v-else class="icon-button" title="新建会话" aria-label="新建助手会话" :disabled="assistant.busy || assistant.applying" @click="startNewSession"><MessageCirclePlus :size="18" /></button>
+        <button v-if="assistant.pendingUserInput" class="icon-button" :data-tooltip="t('停止询问')" :aria-label="t('停止助手生成')" @click="assistant.stop()"><Square :size="16" /></button>
+        <button v-else class="icon-button" :data-tooltip="t('新建会话')" :aria-label="t('新建助手会话')" :disabled="assistant.busy || assistant.applying" @click="startNewSession"><MessageCirclePlus :size="18" /></button>
       </template>
-      <button class="icon-button assistant-display-mode" title="切换助手显示模式" aria-label="切换助手显示模式" :aria-expanded="popover === 'mode'" aria-controls="assistant-display-options" data-assistant-popover @click="togglePopover('mode', $event)"><component :is="displayModeIcon" :size="18" :stroke-width="1.5" /></button>
-      <div v-if="popover === 'mode'" id="assistant-display-options" class="assistant-popover assistant-mode-menu" role="menu" aria-label="助手显示模式">
+      <button class="icon-button assistant-display-mode" :data-tooltip="t('切换助手显示模式')" :aria-label="t('切换助手显示模式')" :aria-expanded="popover === 'mode'" aria-controls="assistant-display-options" data-assistant-popover @click="togglePopover('mode', $event)"><component :is="displayModeIcon" :size="18" :stroke-width="1.5" /></button>
+      <div v-if="popover === 'mode'" id="assistant-display-options" class="assistant-popover assistant-mode-menu" role="menu" :aria-label="t('助手显示模式')">
         <template v-for="mode in displayModes" :key="mode.id">
           <div v-if="mode.id === 'fullscreen'" class="assistant-menu-divider" role="separator" />
           <button class="assistant-menu-item" role="menuitemradio" :aria-checked="assistant.displayMode === mode.id" :class="{ selected: assistant.displayMode === mode.id }" data-menu-item @click="selectDisplayMode(mode.id)"><component :is="mode.icon" class="assistant-mode-icon" :size="16" :stroke-width="1.5" /><span class="assistant-menu-label">{{ mode.label }}</span><Check v-if="assistant.displayMode === mode.id" :size="14" class="assistant-menu-check" /></button>
         </template>
       </div>
       <template v-if="section === 'conversation'">
-        <button class="icon-button" title="更多选项" aria-label="助手更多选项" :aria-expanded="popover === 'more'" aria-controls="assistant-more-options" data-assistant-popover @click="togglePopover('more', $event)"><MoreHorizontal :size="19" /></button>
+        <button class="icon-button" :data-tooltip="t('更多选项')" :aria-label="t('助手更多选项')" :aria-expanded="popover === 'more'" aria-controls="assistant-more-options" data-assistant-popover @click="togglePopover('more', $event)"><MoreHorizontal :size="19" /></button>
         <div v-if="popover === 'more'" id="assistant-more-options" class="assistant-popover assistant-more-menu">
-          <button data-menu-item @click="openHistory"><History :size="16" />管理会话</button>
-          <button v-if="!assistant.demo" data-menu-item @click="closePopover(); emit('openSettings')"><Settings2 :size="16" />助手设置</button>
+          <button data-menu-item @click="openHistory"><History :size="16" />{{ t('管理会话') }}</button>
+          <button v-if="!assistant.demo" data-menu-item @click="closePopover(); emit('openSettings')"><Settings2 :size="16" />{{ t('助手设置') }}</button>
         </div>
       </template>
-      <button class="icon-button" title="收起助手" aria-label="收起助手" @click="assistant.opened = false"><ChevronsRight v-if="assistant.displayMode === 'sidebar'" :size="19" /><Minus v-else :size="17" /></button>
-      <div v-if="popover === 'history'" id="assistant-history-options" class="assistant-popover assistant-history-menu" role="dialog" aria-label="最近助手会话">
-        <div class="assistant-popover-heading"><span>会话记录</span><button class="icon-button" :class="{ selected: searchingHistory }" aria-label="搜索会话记录" title="搜索会话" @click="searchHistory"><Search :size="16" /></button></div>
-        <label v-if="searchingHistory" class="assistant-menu-search"><Search :size="15" /><input v-model="historyQuery" aria-label="搜索助手会话" placeholder="搜索会话" /></label>
+      <button class="icon-button" :data-tooltip="t('收起助手')" :aria-label="t('收起助手')" @click="assistant.opened = false"><ChevronsRight v-if="assistant.displayMode === 'sidebar'" :size="19" /><Minus v-else :size="17" /></button>
+      <div v-if="popover === 'history'" id="assistant-history-options" class="assistant-popover assistant-history-menu" role="dialog" :aria-label="t('最近助手会话')">
+        <div class="assistant-popover-heading"><span>{{ t('会话记录') }}</span><button class="icon-button" :class="{ selected: searchingHistory }" :aria-label="t('搜索会话记录')" :data-tooltip="t('搜索会话')" @click="searchHistory"><Search :size="16" /></button></div>
+        <label v-if="searchingHistory" class="assistant-menu-search"><Search :size="15" /><input v-model="historyQuery" :aria-label="t('搜索助手会话')" :placeholder="t('搜索会话')" /></label>
         <div class="assistant-menu-scroll panel-scrollbar">
           <section v-for="group in historyGroups" :key="group.label" class="assistant-history-group">
             <h3>{{ group.label }}</h3>
-            <button v-for="session in group.sessions" :key="session.id" class="assistant-menu-item assistant-session-option" :class="{ selected: assistant.session?.id === session.id }" :title="session.title" :aria-pressed="assistant.session?.id === session.id" :disabled="controlsLocked" data-menu-item @click="selectHistory(session.id)"><MessageCircle :size="17" /><span class="assistant-menu-label">{{ session.title }}</span><small>{{ historyTime(session.updatedAt) }}</small></button>
+            <button v-for="session in group.sessions" :key="session.id" class="assistant-menu-item assistant-session-option" :class="{ selected: assistant.session?.id === session.id }" :data-tooltip="session.title" :aria-pressed="assistant.session?.id === session.id" :disabled="controlsLocked" data-menu-item @click="selectHistory(session.id)"><MessageCircle :size="17" /><span class="assistant-menu-label">{{ session.title }}</span><small>{{ historyTime(session.updatedAt) }}</small></button>
           </section>
-          <p v-if="!historyGroups.length" class="assistant-menu-empty">{{ historyQuery ? '没有找到匹配的会话' : '暂无会话记录' }}</p>
+          <p v-if="!historyGroups.length" class="assistant-menu-empty">{{ historyQuery ? t('没有找到匹配的会话') : t('暂无会话记录') }}</p>
         </div>
         <div class="assistant-menu-divider" />
-        <button class="assistant-menu-item" data-menu-item @click="openHistory"><History :size="16" /><span class="assistant-menu-label">管理会话</span><span v-if="assistant.externalSessions.length" class="assistant-menu-count">{{ assistant.externalSessions.length }} 条外部提案</span><ChevronRight :size="15" /></button>
+        <button class="assistant-menu-item" data-menu-item @click="openHistory"><History :size="16" /><span class="assistant-menu-label">{{ t('管理会话') }}</span><span v-if="assistant.externalSessions.length" class="assistant-menu-count">{{ assistant.externalSessions.length }} {{ t('条外部提案') }}</span><ChevronRight :size="15" /></button>
       </div>
     </header>
-    <div v-if="assistant.demo" class="assistant-demo-label">浏览器演示 · 模型响应为模拟数据</div>
+    <div v-if="assistant.demo" class="assistant-demo-label">{{ t('浏览器演示 · 模型响应为模拟数据') }}</div>
     <p v-if="notice" class="assistant-notice" role="status">{{ notice }}</p>
     <p v-if="assistant.error" class="assistant-error" role="alert">{{ assistant.error }}</p>
 
     <div v-if="section === 'history'" class="assistant-history">
-      <div v-if="!assistant.demo" class="assistant-proposal-actions"><span>外部 MCP 提案</span><button class="icon-button" aria-label="刷新外部 MCP 提案" title="刷新提案" :disabled="assistant.busy || assistant.applying" @click="assistant.loadExternal()"><RefreshCw :size="15" /></button></div>
-      <div v-for="external in assistant.externalSessions" :key="external.id" class="assistant-history-row"><button :disabled="assistant.busy || assistant.applying" @click="assistant.importExternal(external).then(() => section = 'conversation').catch(error => assistant.error = String(error))"><strong>{{ external.title }}</strong><small>外部 Agent · 待审阅</small></button></div>
-      <p v-if="!assistant.sessions.length" class="assistant-empty">暂无会话记录</p>
+      <div v-if="!assistant.demo" class="assistant-proposal-actions"><span>{{ t('外部 MCP 提案') }}</span><button class="icon-button" :aria-label="t('刷新外部 MCP 提案')" :data-tooltip="t('刷新提案')" :disabled="assistant.busy || assistant.applying" @click="assistant.loadExternal()"><RefreshCw :size="15" /></button></div>
+      <div v-for="external in assistant.externalSessions" :key="external.id" class="assistant-history-row"><button :disabled="assistant.busy || assistant.applying" @click="assistant.importExternal(external).then(() => section = 'conversation').catch(error => assistant.error = String(error))"><strong>{{ external.title }}</strong><small>{{ t('外部 Agent · 待审阅') }}</small></button></div>
+      <p v-if="!assistant.sessions.length" class="assistant-empty">{{ t('暂无会话记录') }}</p>
       <div v-for="session in assistant.sessions" :key="session.id" class="assistant-history-row">
         <button :disabled="assistant.busy || assistant.applying" @click="assistant.selectSession(session.id); section = 'conversation'">
-          <strong>{{ session.title }}</strong><small>{{ new Date(session.updatedAt).toLocaleString('zh-CN') }}</small>
+          <strong>{{ session.title }}</strong><small>{{ new Date(session.updatedAt).toLocaleString(uiLocale) }}</small>
         </button>
-        <button class="icon-button" :disabled="assistant.busy || assistant.applying" :aria-label="`删除会话 ${session.title}`" title="删除会话" @click="deleting = session.id"><Trash2 :size="15" /></button>
+        <button class="icon-button" :disabled="assistant.busy || assistant.applying" :aria-label="t('删除会话 {0}', [session.title])" :data-tooltip="t('删除会话')" @click="deleting = session.id"><Trash2 :size="15" /></button>
       </div>
-      <div v-if="deleting" class="assistant-delete-confirm" role="alertdialog" aria-label="删除助手会话">
-        <p>删除这条会话及其修改记录？</p>
-        <button class="secondary-button" @click="deleting = undefined">取消</button>
-        <button class="primary-button destructive" @click="assistant.deleteSession(deleting).catch(error => assistant.error = String(error)); deleting = undefined">删除会话</button>
+      <div v-if="deleting" class="assistant-delete-confirm" role="alertdialog" :aria-label="t('删除助手会话')">
+        <p>{{ t('删除这条会话及其修改记录？') }}</p>
+        <button class="secondary-button" @click="deleting = undefined">{{ t('取消') }}</button>
+        <button class="primary-button destructive" @click="assistant.deleteSession(deleting).catch(error => assistant.error = String(error)); deleting = undefined">{{ t('删除会话') }}</button>
       </div>
     </div>
 
     <template v-else>
       <div class="assistant-transcript">
-      <div ref="messages" class="assistant-messages panel-scrollbar" role="log" aria-label="助手对话" @scroll="updateScroll">
-        <p v-if="assistant.loading" class="assistant-empty"><LoaderCircle :size="16" class="spinning" />正在读取会话</p>
+      <div ref="messages" class="assistant-messages panel-scrollbar" role="log" :aria-label="t('助手对话')" @scroll="updateScroll">
+        <p v-if="assistant.loading" class="assistant-empty"><LoaderCircle :size="16" class="spinning" />{{ t('正在读取会话') }}</p>
         <div v-else-if="!assistant.session?.messages.length" class="assistant-welcome">
           <!-- Reserved for platform AI settings; currently greets with a flutter. -->
-          <button type="button" class="assistant-welcome-mark" aria-label="同页 AI 设置（即将推出）" title="同页 AI 设置（即将推出）" @click="welcomeButterfly?.flutter()">
+          <button type="button" class="assistant-welcome-mark" :aria-label="t('同页 AI 设置（即将推出）')" :data-tooltip="t('同页 AI 设置（即将推出）')" @click="welcomeButterfly?.flutter()">
             <AssistantButterfly ref="welcomeButterfly" class="assistant-welcome-butterfly" />
           </button>
-          <h3>今天想从哪里开始？</h3>
+          <h3>{{ t('今天想从哪里开始？') }}</h3>
           <div class="assistant-starters">
-            <button v-for="starter in starters" :key="starter.label" :disabled="assistant.busy || assistant.applying || !workspace.active" @click="preparePrompt(starter.prompt)"><component :is="starter.icon" :size="18" /><span>{{ starter.label }}</span></button>
+            <div v-for="starter in starters" :key="starter.label" class="assistant-starter">
+              <button :disabled="controlsLocked || !workspace.active" :data-assistant-popover="starter.prompt === null ? '' : undefined" :aria-expanded="starter.prompt === null ? popover === 'translation' : undefined" :aria-controls="starter.prompt === null ? 'assistant-translation-options' : undefined" :aria-haspopup="starter.prompt === null ? 'menu' : undefined" @click="starter.prompt === null ? togglePopover('translation', $event) : preparePrompt(starter.prompt)"><component :is="starter.icon" :size="18" /><span>{{ starter.label }}</span><ChevronDown v-if="starter.prompt === null" :size="14" /></button>
+              <div v-if="starter.prompt === null && popover === 'translation'" id="assistant-translation-options" class="assistant-popover assistant-translation-menu" role="menu" :aria-label="starter.label">
+                <button v-for="target in translationTargets" :key="target.prompt" class="assistant-menu-item" role="menuitem" data-menu-item :disabled="controlsLocked || !workspace.active" @click="preparePrompt(target.prompt)">{{ target.label }}</button>
+              </div>
+            </div>
           </div>
         </div>
-        <button v-if="(assistant.session?.messages.length ?? 0) > visibleMessages" class="assistant-text-action" @click="visibleMessages += 30">查看较早消息</button>
-        <div v-if="displayed.length" class="assistant-conversation-meta">同页助手 · {{ messageTime(displayed[0]!.createdAt) }}</div>
-        <article v-for="message in displayed" :key="message.id" class="assistant-message" :class="`assistant-message-${message.role}`" :aria-label="message.role === 'user' ? '你的消息' : '助手回答'">
-          <div v-if="message.role === 'user' && messageSources.get(message.id)?.length" class="assistant-citations assistant-attachments" aria-label="已发送的参考文档"><button v-for="source in messageSources.get(message.id)" :key="source.id" :title="source.path" @click="openSource(source)"><FileText :size="12" />{{ source.path }}</button></div>
+        <button v-if="(assistant.session?.messages.length ?? 0) > visibleMessages" class="assistant-text-action" @click="visibleMessages += 30">{{ t('查看较早消息') }}</button>
+        <div v-if="displayed.length" class="assistant-conversation-meta">{{ t('同页助手 ·') }} {{ messageTime(displayed[0]!.createdAt) }}</div>
+        <article v-for="message in displayed" :key="message.id" class="assistant-message" :class="`assistant-message-${message.role}`" :aria-label="message.role === 'user' ? t('你的消息') : t('助手回答')">
+          <div v-if="message.role === 'user' && messageSources.get(message.id)?.length" class="assistant-citations assistant-attachments" :aria-label="t('已发送的引用')">
+            <template v-for="source in messageSources.get(message.id)" :key="source.id">
+              <button v-if="!source.selection" :data-tooltip="source.path" @click="openSource(source)"><FileText :size="12" />{{ source.path }}</button>
+              <button v-if="source.selection" class="assistant-sent-selection" :data-tooltip="`${source.path}\n${source.selection.text}`" :aria-label="t('引用文字：{0}', [source.selection.text])" @click="openSource(source)"><Quote :size="12" /><span>{{ source.selection.text }}</span></button>
+            </template>
+          </div>
           <div v-if="message.role === 'user'" class="assistant-message-text">{{ message.content }}</div>
-          <template v-else v-for="(part, index) in assistantMessageParts(message)" :key="`${message.id}:${index}`">
-            <template v-if="part.kind === 'input'"><AssistantQuestionCard v-if="part.input.id !== assistant.pendingUserInput?.request.id" :request="part.input" /></template>
-            <div v-else-if="part.content.trim()" class="assistant-answer"><MarkdownEditor :model-value="answerMarkdown({ ...message, content: part.content })" :document-id="`assistant-${message.id}-${index}`" :reference-targets="assistant.session?.workspaceId === workspace.workspace?.id ? workspace.referenceTargets : []" readonly :reveal-markdown="false" open-links-on-tap :resolve-image="() => null" @open-link="sourceLink(message, $event)" @open-reference="openAnswerReference" @ready="answerReady" @error="notice = $event" /></div>
-          </template>
-          <p v-if="message.error || message.state === 'interrupted'" class="assistant-message-error">{{ message.error ?? '上次运行已中断；不会自动恢复执行' }}</p>
-          <details v-if="message.toolResults?.some(result => result.status === 'failed')" class="assistant-tool-errors">
-            <summary>工具执行记录：{{ message.toolResults.filter(result => result.status === 'failed').length }} 次失败</summary>
+          <AssistantMessageBody v-else :message="message">
+            <template #input="{ input }"><AssistantQuestionCard v-if="input.id !== assistant.pendingUserInput?.request.id" :request="input" /></template>
+            <template #text="{ content, id }"><div class="assistant-answer"><MarkdownEditor :model-value="answerMarkdown({ ...message, content })" :document-id="`assistant-${message.id}-${id}`" :reference-targets="assistant.session?.workspaceId === workspace.workspace?.id ? workspace.referenceTargets : []" readonly :reveal-markdown="false" open-links-on-tap :resolve-image="() => null" @open-link="sourceLink(message, $event)" @open-reference="openAnswerReference" @ready="answerReady" @error="notice = $event" /></div></template>
+          </AssistantMessageBody>
+          <p v-if="message.error || message.state === 'interrupted'" class="assistant-message-error">{{ message.error ?? t('上次运行已中断；不会自动恢复执行') }}</p>
+          <details v-if="!message.activity && message.toolResults?.some(result => result.status === 'failed')" class="assistant-tool-errors">
+            <summary>{{ t('工具执行记录：') }}{{ message.toolResults.filter(result => result.status === 'failed').length }} {{ t('次失败') }}</summary>
             <p v-for="(result, index) in message.toolResults.filter(result => result.status === 'failed')" :key="index">{{ assistantToolLabel(result.name) }}：{{ result.error }}</p>
           </details>
-          <div v-if="message.state === 'failed' && message.error?.includes('模型服务返回 HTTP')" class="assistant-recovery-actions">
-            <button type="button" class="assistant-text-action" :disabled="controlsLocked" @click="chooseRecoveryModel"><Cpu :size="13" />切换模型</button>
-            <button v-if="!assistant.demo" type="button" class="assistant-text-action" :disabled="controlsLocked" @click="closePopover(); emit('openSettings')"><Plug :size="13" />模型连接</button>
+          <div v-if="message.state === 'failed' && message.error?.includes(t('模型服务返回 HTTP'))" class="assistant-recovery-actions">
+            <button type="button" class="assistant-text-action" :disabled="controlsLocked" @click="chooseRecoveryModel"><Cpu :size="13" />{{ t('切换模型') }}</button>
+            <button v-if="!assistant.demo" type="button" class="assistant-text-action" :disabled="controlsLocked" @click="closePopover(); emit('openSettings')"><Plug :size="13" />{{ t('模型连接') }}</button>
           </div>
-          <div v-if="message.role === 'assistant' && messageSources.get(message.id)?.length" class="assistant-citations"><button v-for="source in messageSources.get(message.id)" :key="source.id" :title="source.path" @click="openSource(source)"><FileText :size="12" />{{ source.id }} · {{ source.path }}</button></div>
-          <small v-if="message.rules?.length" class="assistant-rules">工作区约定：{{ message.rules.join('、') }}</small>
+          <div v-if="message.role === 'assistant' && messageSources.get(message.id)?.length" class="assistant-citations"><button v-for="source in messageSources.get(message.id)" :key="source.id" :data-tooltip="source.path" @click="openSource(source)"><FileText :size="12" />{{ source.id }} · {{ source.path }}</button></div>
+          <small v-if="message.rules?.length" class="assistant-rules">{{ t('工作区约定：') }}{{ message.rules.join('、') }}</small>
           <AssistantChangeList v-if="message.proposals?.length" :proposals="message.proposals" :busy="assistant.busy || assistant.applying"
             @review="assistant.review" @reject="assistant.reject" @verify="assistant.verify" @undo="assistant.undo"
             @suggestions="assistant.publishSuggestions" @open-reference="openAnswerReference" />
-          <div v-if="message.role === 'assistant' && message.state !== 'running'" class="assistant-message-actions">
-            <button class="icon-button" title="复制回答" aria-label="复制助手回答" @click="copy(message)"><Copy :size="14" /></button>
-            <button v-if="assistant.replyTarget" class="icon-button" :title="`填写回复草稿：${assistant.replyTarget.label}`" aria-label="将助手回答填入回复草稿" :disabled="assistant.busy || assistant.applying || !message.content" @click="draftReply(message)"><Reply :size="14" /></button>
-            <button class="icon-button" title="保存为文档" aria-label="将助手回答保存为文档" :disabled="assistant.busy || assistant.applying || !message.content" @click="exportMessage = message"><FilePlus2 :size="14" /></button>
-            <small v-if="message.usage && (message.usage.input || message.usage.output) || message.timing" class="assistant-message-stats" aria-label="回答统计">
-              <span v-if="message.usage && (message.usage.input || message.usage.output)" class="assistant-stat-group" title="输入与输出的 token 用量">
-                <span>输入 {{ message.usage.input.toLocaleString('zh-CN') }}</span><span aria-hidden="true">·</span><span>输出 {{ message.usage.output.toLocaleString('zh-CN') }} token</span>
+          <div v-if="message.role === 'assistant' && !['running', 'waiting'].includes(message.state ?? '')" class="assistant-message-actions">
+            <button class="icon-button" :data-tooltip="t('复制回答')" :aria-label="t('复制助手回答')" :disabled="!assistantAnswerText(message).trim()" @click="copy(message)"><Copy :size="14" /></button>
+            <button v-if="assistant.replyTarget" class="icon-button" :data-tooltip="t('填写回复草稿：{0}', [assistant.replyTarget.label])" :aria-label="t('将助手回答填入回复草稿')" :disabled="assistant.busy || assistant.applying || !assistantAnswerText(message).trim()" @click="draftReply(message)"><Reply :size="14" /></button>
+            <button class="icon-button" :data-tooltip="t('保存为文档')" :aria-label="t('将助手回答保存为文档')" :disabled="assistant.busy || assistant.applying || !assistantAnswerText(message).trim()" @click="exportMessage = message"><FilePlus2 :size="14" /></button>
+            <small v-if="message.usage && (message.usage.input || message.usage.output) || message.timing" class="assistant-message-stats" :aria-label="t('回答统计')">
+              <span v-if="message.usage && (message.usage.input || message.usage.output)" class="assistant-stat-group" :title="t('输入与输出的 token 用量')">
+                <span>{{ t('输入') }} {{ message.usage.input.toLocaleString(uiLocale) }}</span><span aria-hidden="true">·</span><span>{{ t('输出') }} {{ message.usage.output.toLocaleString(uiLocale) }} token</span>
               </span>
               <span v-if="message.timing" class="assistant-stat-group">
-                <template v-if="message.timing.firstContentMs !== undefined"><span>首段 {{ (message.timing.firstContentMs / 1000).toFixed(1) }} 秒</span><span aria-hidden="true">·</span></template><span>总计 {{ (message.timing.totalMs / 1000).toFixed(1) }} 秒</span>
+                <template v-if="message.timing.firstContentMs !== undefined"><span>{{ t('首段') }} {{ (message.timing.firstContentMs / 1000).toFixed(1) }} {{ t('秒') }}</span><span aria-hidden="true">·</span></template><span>{{ t('总计') }} {{ (message.timing.totalMs / 1000).toFixed(1) }} {{ t('秒') }}</span>
               </span>
             </small>
           </div>
         </article>
         <div v-if="assistant.busy || assistant.applying" class="assistant-progress">
-          <span class="assistant-progress-status" role="status"><LoaderCircle v-if="!assistant.pendingUserInput" :size="14" class="spinning" /><span>{{ assistant.applying ? '正在处理修改' : assistant.progress }}</span></span>
+          <span class="assistant-progress-status" role="status"><LoaderCircle v-if="!assistant.pendingUserInput" :size="14" class="spinning" /><span>{{ assistant.applying ? t('正在处理修改') : assistant.progress }}</span></span>
           <AssistantGenerationHint v-if="assistant.busy && !assistant.applying && !assistant.pendingUserInput" :connection-kind="assistant.connection?.kind" />
         </div>
       </div>
-      <button v-if="showLatest" class="assistant-jump-latest" title="回到最新消息" aria-label="滚动到最新消息" @click="scrollToLatest"><ArrowDown :size="20" /></button>
+      <button v-if="showLatest" class="assistant-jump-latest" :data-tooltip="t('回到最新消息')" :aria-label="t('滚动到最新消息')" @click="scrollToLatest"><ArrowDown :size="20" /></button>
       </div>
-      <form v-if="exportMessage" class="assistant-export" @submit.prevent="exportAnswer"><label>文档路径<input v-model="exportPath" required maxlength="220" /></label><button class="secondary-button" type="button" @click="exportMessage = undefined">取消</button><button class="primary-button"><FilePlus2 :size="14" />生成保存建议</button></form>
+      <form v-if="exportMessage" class="assistant-export" @submit.prevent="exportAnswer"><label>{{ t('文档路径') }}<input v-model="exportPath" required maxlength="220" /></label><button class="secondary-button" type="button" @click="exportMessage = undefined">{{ t('取消') }}</button><button class="primary-button"><FilePlus2 :size="14" />{{ t('生成保存建议') }}</button></form>
       <div class="assistant-composer-area" :class="{ 'assistant-composer-area-question': assistant.pendingUserInput }">
-        <div v-if="popover === 'model'" id="assistant-model-options" class="assistant-popover assistant-model-menu" :style="menuPosition" aria-label="模型选择">
+        <div v-if="popover === 'model'" id="assistant-model-options" class="assistant-popover assistant-model-menu" :style="menuPosition" :aria-label="t('模型选择')">
           <div class="assistant-popover-heading">
-            <button v-if="modelView !== 'main'" class="icon-button" title="返回模型列表" aria-label="返回模型列表" @click="setModelView('main')"><ArrowLeft :size="16" /></button>
-            <span>{{ modelView === 'connections' ? '模型连接' : modelView === 'manual' ? '指定模型' : '选择模型' }}</span>
-            <button v-if="modelView === 'main'" class="icon-button" :class="{ selected: searchingModels }" aria-label="搜索模型列表" :title="searchingModels ? '收起搜索' : '搜索模型'" :aria-expanded="searchingModels" aria-controls="assistant-model-search" @click="searchModels"><Search :size="15" /></button>
-            <button v-if="modelView === 'main'" class="icon-button" aria-label="刷新模型列表" title="刷新模型列表" :disabled="assistant.modelsLoading || controlsLocked" @click="assistant.refreshModels()"><LoaderCircle v-if="assistant.modelsLoading" :size="15" class="spinning" /><RefreshCw v-else :size="15" /></button>
+            <button v-if="modelView !== 'main'" class="icon-button" :data-tooltip="t('返回模型列表')" :aria-label="t('返回模型列表')" @click="setModelView('main')"><ArrowLeft :size="16" /></button>
+            <span>{{ modelView === 'connections' ? t('模型连接') : modelView === 'manual' ? t('指定模型') : t('选择模型') }}</span>
+            <button v-if="modelView === 'main'" class="icon-button" :class="{ selected: searchingModels }" :aria-label="t('搜索模型列表')" :data-tooltip="searchingModels ? t('收起搜索') : t('搜索模型')" :aria-expanded="searchingModels" aria-controls="assistant-model-search" @click="searchModels"><Search :size="15" /></button>
+            <button v-if="modelView === 'main'" class="icon-button" :aria-label="t('刷新模型列表')" :data-tooltip="t('刷新模型列表')" :disabled="assistant.modelsLoading || controlsLocked" @click="assistant.refreshModels()"><LoaderCircle v-if="assistant.modelsLoading" :size="15" class="spinning" /><RefreshCw v-else :size="15" /></button>
           </div>
           <template v-if="modelView === 'connections'">
             <div class="assistant-menu-scroll panel-scrollbar">
-              <button v-for="connection in assistant.connections" :key="connection.id" class="assistant-menu-item assistant-detail-option" :class="{ selected: assistant.connectionId === connection.id }" :aria-pressed="assistant.connectionId === connection.id" :disabled="controlsLocked" data-menu-item @click="changeConnection(connection.id)"><Plug v-if="!connection.kind || connection.kind === 'api'" :size="17" /><Terminal v-else :size="17" /><span class="assistant-menu-label"><span>{{ connection.name }}</span><small>{{ connection.managed ? '平台提供' : connection.kind === 'codex-cli' ? 'Codex CLI' : connection.kind === 'claude-cli' ? 'Claude CLI' : 'API 连接' }}</small></span><Check v-if="assistant.connectionId === connection.id" :size="16" class="assistant-menu-check" /></button>
+              <button v-for="connection in assistant.connections" :key="connection.id" class="assistant-menu-item assistant-detail-option" :class="{ selected: assistant.connectionId === connection.id }" :aria-pressed="assistant.connectionId === connection.id" :disabled="controlsLocked" data-menu-item @click="changeConnection(connection.id)"><Plug v-if="!connection.kind || connection.kind === 'api'" :size="17" /><Terminal v-else :size="17" /><span class="assistant-menu-label"><span>{{ connection.name }}</span><small>{{ connection.managed ? t('平台提供') : connection.kind === 'codex-cli' ? 'Codex CLI' : connection.kind === 'claude-cli' ? 'Claude CLI' : t('API 连接') }}</small></span><Check v-if="assistant.connectionId === connection.id" :size="16" class="assistant-menu-check" /></button>
             </div>
             <div v-if="!assistant.demo && assistant.canConfigure !== false" class="assistant-menu-divider" />
-            <button v-if="!assistant.demo && assistant.canConfigure !== false" class="assistant-menu-item" data-menu-item @click="closePopover(); emit('openSettings')"><Plus :size="17" /><span class="assistant-menu-label">添加模型连接</span></button>
+            <button v-if="!assistant.demo && assistant.canConfigure !== false" class="assistant-menu-item" data-menu-item @click="closePopover(); emit('openSettings')"><Plus :size="17" /><span class="assistant-menu-label">{{ t('添加模型连接') }}</span></button>
           </template>
           <template v-else-if="modelView === 'manual'">
             <form class="assistant-manual-model" @submit.prevent="changeModel(manualModelId)">
-              <label for="assistant-model-id">模型 ID</label>
-              <div><input id="assistant-model-id" v-model="manualModelId" aria-label="当前对话的模型 ID" placeholder="模型 ID" maxlength="200" autocomplete="off" :disabled="controlsLocked" /><button class="icon-button" aria-label="确认对话模型" title="确认模型" :disabled="!manualModelId.trim() || controlsLocked"><Check :size="16" /></button></div>
+              <label for="assistant-model-id">{{ t('模型 ID') }}</label>
+              <div><input id="assistant-model-id" v-model="manualModelId" :aria-label="t('当前对话的模型 ID')" :placeholder="t('模型 ID')" maxlength="200" autocomplete="off" :disabled="controlsLocked" /><button class="icon-button" :aria-label="t('确认对话模型')" :data-tooltip="t('确认模型')" :disabled="!manualModelId.trim() || controlsLocked"><Check :size="16" /></button></div>
             </form>
           </template>
           <template v-else>
-            <button class="assistant-menu-item assistant-detail-option assistant-connection-option" aria-label="选择模型连接" :disabled="controlsLocked" data-menu-item @click="setModelView('connections')"><Plug :size="17" /><span class="assistant-menu-label"><span>{{ assistant.connection?.name ?? (assistant.connectionId ? '连接已移除' : '选择模型连接') }}</span><small>{{ assistant.connection?.kind === 'codex-cli' ? 'Codex CLI' : assistant.connection?.kind === 'claude-cli' ? 'Claude CLI' : assistant.demo ? '浏览器模拟' : '模型连接' }}</small></span><ChevronRight :size="16" /></button>
+            <button class="assistant-menu-item assistant-detail-option assistant-connection-option" :aria-label="t('选择模型连接')" :disabled="controlsLocked" data-menu-item @click="setModelView('connections')"><Plug :size="17" /><span class="assistant-menu-label"><span>{{ assistant.connection?.name ?? (assistant.connectionId ? t('连接已移除') : t('选择模型连接')) }}</span><small>{{ assistant.connection?.kind === 'codex-cli' ? 'Codex CLI' : assistant.connection?.kind === 'claude-cli' ? 'Claude CLI' : assistant.demo ? t('浏览器模拟') : t('模型连接') }}</small></span><ChevronRight :size="16" /></button>
             <div class="assistant-menu-divider" />
-            <label v-if="searchingModels" class="assistant-menu-search"><Search :size="15" /><input id="assistant-model-search" v-model="modelQuery" aria-label="搜索模型" placeholder="搜索模型" /></label>
-            <div class="assistant-menu-scroll panel-scrollbar" aria-label="模型列表">
-              <button v-for="model in listedModels" :key="model" class="assistant-menu-item assistant-model-option" :class="{ selected: assistant.modelId === model }" :title="model" :aria-label="`使用模型 ${model}`" :aria-pressed="assistant.modelId === model" :disabled="controlsLocked" data-menu-item @click="changeModel(model)"><AssistantModelIcon :model="model" /><span class="assistant-menu-label">{{ model === 'cli-default' ? 'CLI 默认模型' : model }}</span><span v-if="!assistant.models.includes(model)" class="assistant-menu-badge">自定义</span><Check v-if="assistant.modelId === model" :size="16" class="assistant-menu-check" /></button>
-              <p v-if="assistant.modelsLoading && !listedModels.length" class="assistant-menu-empty"><LoaderCircle :size="15" class="spinning" />正在读取模型</p>
-              <p v-else-if="!listedModels.length" class="assistant-menu-empty">{{ modelQuery ? '没有找到匹配的模型' : assistant.connection ? '暂无可用模型' : '请选择模型连接' }}</p>
+            <label v-if="searchingModels" class="assistant-menu-search"><Search :size="15" /><input id="assistant-model-search" v-model="modelQuery" :aria-label="t('搜索模型')" :placeholder="t('搜索模型')" /></label>
+            <div class="assistant-menu-scroll panel-scrollbar" :aria-label="t('模型列表')">
+              <button v-for="model in listedModels" :key="model" class="assistant-menu-item assistant-model-option" :class="{ selected: assistant.modelId === model }" :data-tooltip="model" :aria-label="t('使用模型 {0}', [model])" :aria-pressed="assistant.modelId === model" :disabled="controlsLocked" data-menu-item @click="changeModel(model)"><AssistantModelIcon :model="model" /><span class="assistant-menu-label">{{ model === 'cli-default' ? t('CLI 默认模型') : model }}</span><span v-if="!assistant.models.includes(model)" class="assistant-menu-badge">{{ t('自定义') }}</span><Check v-if="assistant.modelId === model" :size="16" class="assistant-menu-check" /></button>
+              <p v-if="assistant.modelsLoading && !listedModels.length" class="assistant-menu-empty"><LoaderCircle :size="15" class="spinning" />{{ t('正在读取模型') }}</p>
+              <p v-else-if="!listedModels.length" class="assistant-menu-empty">{{ modelQuery ? t('没有找到匹配的模型') : assistant.connection ? t('暂无可用模型') : t('请选择模型连接') }}</p>
             </div>
             <p v-if="assistant.modelsError" class="assistant-model-error" role="alert">{{ assistant.modelsError }}</p>
             <div class="assistant-menu-divider" />
-            <button v-if="assistant.connection && !assistant.connection.managed" class="assistant-menu-item" aria-label="手动指定对话模型" :disabled="controlsLocked" data-menu-item @click="inputModel"><Pencil :size="16" /><span class="assistant-menu-label">手动指定模型</span></button>
-            <button v-if="!assistant.connections.length && !assistant.demo && assistant.canConfigure !== false" class="assistant-menu-item" data-menu-item @click="closePopover(); emit('openSettings')"><Plus :size="16" /><span class="assistant-menu-label">添加模型连接</span></button>
+            <button v-if="assistant.connection && !assistant.connection.managed" class="assistant-menu-item" :aria-label="t('手动指定对话模型')" :disabled="controlsLocked" data-menu-item @click="inputModel"><Pencil :size="16" /><span class="assistant-menu-label">{{ t('手动指定模型') }}</span></button>
+            <button v-if="!assistant.connections.length && !assistant.demo && assistant.canConfigure !== false" class="assistant-menu-item" data-menu-item @click="closePopover(); emit('openSettings')"><Plus :size="16" /><span class="assistant-menu-label">{{ t('添加模型连接') }}</span></button>
           </template>
         </div>
-        <div v-if="popover === 'add'" id="assistant-add-options" class="assistant-popover assistant-add-menu" :style="menuPosition" :aria-label="addView === 'sources' ? '选择参考文档' : '添加内容'">
+        <div v-if="popover === 'add'" id="assistant-add-options" class="assistant-popover assistant-add-menu" :style="menuPosition" :aria-label="addView === 'sources' ? t('选择参考文档') : t('添加内容')">
           <template v-if="addView === 'main'">
-            <button class="assistant-menu-item" data-menu-item :disabled="controlsLocked" @click="openSources"><Paperclip :size="18" /><span class="assistant-menu-label">添加参考文档</span><ChevronRight :size="15" /></button>
-            <button class="assistant-menu-item" data-menu-item :disabled="controlsLocked || !workspace.active" @click="addCurrentNote"><FileText :size="18" /><span class="assistant-menu-label">引用当前笔记</span><Check v-if="workspace.active && assistant.files.includes(workspace.active.id)" :size="16" class="assistant-menu-check" /></button>
+            <button class="assistant-menu-item" data-menu-item :disabled="controlsLocked" @click="openSources"><Paperclip :size="18" /><span class="assistant-menu-label">{{ t('添加参考文档') }}</span><ChevronRight :size="15" /></button>
+            <button class="assistant-menu-item" data-menu-item :disabled="controlsLocked || !workspace.active" @click="addCurrentNote"><FileText :size="18" /><span class="assistant-menu-label">{{ t('引用当前笔记') }}</span><Check v-if="workspace.active && assistant.files.includes(workspace.active.id)" :size="16" class="assistant-menu-check" /></button>
             <div class="assistant-menu-divider" />
-            <button class="assistant-menu-item" :disabled="assistant.demo || assistant.canConfigure === false || controlsLocked" data-menu-item @click="closePopover(); emit('openSettings')"><Plug :size="18" /><span class="assistant-menu-label">添加模型连接</span><span v-if="assistant.demo" class="assistant-menu-badge">桌面版</span></button>
+            <button class="assistant-menu-item" :disabled="assistant.demo || assistant.canConfigure === false || controlsLocked" data-menu-item @click="closePopover(); emit('openSettings')"><Plug :size="18" /><span class="assistant-menu-label">{{ t('添加模型连接') }}</span><span v-if="assistant.demo" class="assistant-menu-badge">{{ t('桌面版') }}</span></button>
           </template>
           <template v-else>
-            <div class="assistant-popover-heading"><button class="icon-button" aria-label="返回添加内容" title="返回" @click="addView = 'main'"><ArrowLeft :size="16" /></button><span>参考文档</span><small>{{ assistant.files.length }} / 20</small><button class="icon-button" aria-label="完成参考文档选择" title="完成" @click="closePopover(true)"><Check :size="16" /></button></div>
-            <label class="assistant-menu-search"><Search :size="15" /><input v-model="query" aria-label="搜索参考文档" placeholder="搜索文档路径" /></label>
+            <div class="assistant-popover-heading"><button class="icon-button" :aria-label="t('返回添加内容')" :data-tooltip="t('返回')" @click="addView = 'main'"><ArrowLeft :size="16" /></button><span>{{ t('参考文档') }}</span><small>{{ assistant.files.length }} / 20</small><button class="icon-button" :aria-label="t('完成参考文档选择')" :data-tooltip="t('完成')" @click="closePopover(true)"><Check :size="16" /></button></div>
+            <label class="assistant-menu-search"><Search :size="15" /><input v-model="query" :aria-label="t('搜索参考文档')" :placeholder="t('搜索文档路径')" /></label>
             <div class="assistant-menu-scroll panel-scrollbar">
-              <button v-for="file in sourceFiles" :key="file.id" class="assistant-menu-item assistant-source-option" :class="{ selected: assistant.files.includes(file.id) }" :aria-pressed="assistant.files.includes(file.id)" :title="file.path" :disabled="controlsLocked" data-menu-item @click="toggleSource(file.id)"><FileText :size="16" /><span class="assistant-menu-label">{{ file.path }}</span><Check v-if="assistant.files.includes(file.id)" :size="16" class="assistant-menu-check" /></button>
-              <p v-if="!sourceFiles.length" class="assistant-menu-empty">{{ query ? '没有找到匹配的文档或数据表' : '暂无 Markdown 文档或数据表' }}</p>
+              <button v-for="file in sourceFiles" :key="file.id" class="assistant-menu-item assistant-source-option" :class="{ selected: assistant.files.includes(file.id) }" :aria-pressed="assistant.files.includes(file.id)" :data-tooltip="file.path" :disabled="controlsLocked" data-menu-item @click="toggleSource(file.id)"><FileText :size="16" /><span class="assistant-menu-label">{{ file.path }}</span><Check v-if="assistant.files.includes(file.id)" :size="16" class="assistant-menu-check" /></button>
+              <p v-if="!sourceFiles.length" class="assistant-menu-empty">{{ query ? t('没有找到匹配的文档或数据表') : t('暂无 Markdown 文档或数据表') }}</p>
             </div>
           </template>
         </div>
-        <div v-if="popover === 'reasoning' && assistant.connection?.kind === 'codex-cli'" id="assistant-reasoning-options" class="assistant-popover assistant-reasoning-menu" :style="menuPosition" role="dialog" aria-label="当前对话的推理强度">
-          <div class="assistant-menu-heading"><span>推理强度</span></div>
-          <div role="radiogroup" aria-label="推理强度">
+        <div v-if="popover === 'reasoning' && assistant.connection?.kind === 'codex-cli'" id="assistant-reasoning-options" class="assistant-popover assistant-reasoning-menu" :style="menuPosition" role="dialog" :aria-label="t('当前对话的推理强度')">
+          <div class="assistant-menu-heading"><span>{{ t('推理强度') }}</span></div>
+          <div role="radiogroup" :aria-label="t('推理强度')">
             <button v-for="choice in reasoningChoices" :key="choice.id" type="button" role="radio" :aria-label="choice.label" :aria-checked="assistant.reasoningEffort === choice.id" class="assistant-menu-item assistant-detail-option" :class="{ selected: assistant.reasoningEffort === choice.id }" :disabled="controlsLocked" data-menu-item @click="changeReasoning(choice.id)"><span class="assistant-menu-label"><span>{{ choice.label }}</span><small>{{ choice.detail }}</small></span><Check v-if="assistant.reasoningEffort === choice.id" :size="16" /></button>
           </div>
-          <p class="assistant-menu-help">用于当前对话。可用强度取决于所选模型。</p>
+          <p class="assistant-menu-help">{{ t('用于当前对话。可用强度取决于所选模型。') }}</p>
         </div>
       <AssistantQuestionCard v-if="assistant.pendingUserInput" :key="assistant.pendingUserInput.request.id" :request="assistant.pendingUserInput.request" />
       <form v-else class="assistant-composer" @submit.prevent="closePopover(); assistant.send()">
         <div v-if="assistant.files.length || assistant.selection" class="assistant-contexts">
-          <button v-for="id in assistant.files" :key="id" type="button" class="assistant-context" :disabled="assistant.busy" :title="`移除参考：${workspace.workspace?.files.find(file => file.id === id)?.path ?? id}`" @click="toggleSource(id)"><FileText :size="13" /><span>{{ workspace.workspace?.files.find(file => file.id === id)?.name ?? '已移除文档' }}</span><X :size="12" /></button>
-          <div v-if="assistant.selection" class="assistant-selection"><span>{{ assistant.selection.text }}</span><button type="button" class="icon-button" aria-label="清除助手选区" title="清除选区" :disabled="assistant.busy" @click="assistant.selection = null"><X :size="13" /></button></div>
+          <button v-for="id in assistant.files.filter(id => id !== assistant.selection?.fileId)" :key="id" type="button" class="assistant-context" :disabled="assistant.busy" :data-tooltip="t('移除参考：{0}', [workspace.workspace?.files.find(file => file.id === id)?.path ?? id])" @click="toggleSource(id)"><FileText :size="13" /><span>{{ workspace.workspace?.files.find(file => file.id === id)?.name ?? t('已移除文档') }}</span><X :size="12" /></button>
+          <div v-if="assistant.selection" class="assistant-context assistant-selection" :title="`${workspace.workspace?.files.find(file => file.id === assistant.selection?.fileId)?.path ?? assistant.selection.fileId}\n${assistant.selection.text}`" :aria-label="t('引用文字：{0}', [assistant.selection.text])"><Quote :size="13" /><span>{{ assistant.selection.text }}</span><button type="button" class="icon-button" :aria-label="t('清除助手选区')" :data-tooltip="t('清除选区')" :disabled="assistant.busy" @click="assistant.selection = null"><X :size="13" /></button></div>
         </div>
-        <textarea ref="textarea" v-model="assistant.prompt" rows="2" maxlength="20000" aria-label="给助手的任务" placeholder="问问同页助手…" @keydown="sendKey" />
+        <textarea ref="textarea" v-model="assistant.prompt" rows="2" maxlength="20000" :aria-label="t('给助手的任务')" :placeholder="t('问问同页助手…')" @keydown="sendKey" />
         <div class="assistant-compose-actions">
-          <button type="button" class="icon-button assistant-compose-tool" title="添加内容" aria-label="添加内容" :disabled="controlsLocked" :aria-expanded="popover === 'add'" aria-controls="assistant-add-options" data-assistant-popover @click="togglePopover('add', $event)"><Plus :size="20" /></button>
-          <button type="button" class="assistant-compose-model" :title="`${assistant.connection?.name ?? '模型连接'} · ${modelLabel}`" aria-label="选择助手模型" :aria-expanded="popover === 'model'" aria-controls="assistant-model-options" data-assistant-popover @click="togglePopover('model', $event)"><span>{{ modelLabel }}</span></button>
-          <button v-if="assistant.connection?.kind === 'codex-cli'" type="button" class="assistant-compose-reasoning" :title="`推理强度：${reasoningLabel}`" aria-label="选择推理强度" :disabled="controlsLocked" :aria-expanded="popover === 'reasoning'" aria-controls="assistant-reasoning-options" data-assistant-popover @click="togglePopover('reasoning', $event)"><span>{{ reasoningLabel }}</span></button>
-          <button v-if="assistant.busy" type="button" class="icon-button assistant-stop" aria-label="停止助手生成" title="停止生成" @click="assistant.stop()"><Square :size="16" /></button><button v-else class="primary-button assistant-send" aria-label="发送给助手" title="发送" :disabled="!assistant.prompt.trim() || !assistant.connection || !assistant.modelId || assistant.loading || assistant.applying"><ArrowUp :size="18" /></button>
+          <button type="button" class="icon-button assistant-compose-tool" :data-tooltip="t('添加内容')" :aria-label="t('添加内容')" :disabled="controlsLocked" :aria-expanded="popover === 'add'" aria-controls="assistant-add-options" data-assistant-popover @click="togglePopover('add', $event)"><Plus :size="20" /></button>
+          <button type="button" class="assistant-compose-model" :data-tooltip="`${assistant.connection?.name ?? t('模型连接')} · ${modelLabel}`" :aria-label="t('选择助手模型')" :aria-expanded="popover === 'model'" aria-controls="assistant-model-options" data-assistant-popover @click="togglePopover('model', $event)"><span>{{ modelLabel }}</span></button>
+          <button v-if="assistant.connection?.kind === 'codex-cli'" type="button" class="assistant-compose-reasoning" :data-tooltip="t('推理强度：{0}', [reasoningLabel])" :aria-label="t('选择推理强度')" :disabled="controlsLocked" :aria-expanded="popover === 'reasoning'" aria-controls="assistant-reasoning-options" data-assistant-popover @click="togglePopover('reasoning', $event)"><span>{{ reasoningLabel }}</span></button>
+          <button v-if="assistant.busy" type="button" class="icon-button assistant-stop" :aria-label="t('停止助手生成')" :data-tooltip="t('停止生成')" @click="assistant.stop()"><Square :size="16" /></button><button v-else class="primary-button assistant-send" :aria-label="t('发送给助手')" :data-tooltip="t('发送')" :disabled="!assistant.prompt.trim() || !assistant.connection || !assistant.modelId || assistant.loading || assistant.applying"><ArrowUp :size="18" /></button>
         </div>
       </form>
       </div>
@@ -664,8 +694,8 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
 .assistant-context:hover { border-color: var(--line); background: var(--surface); color: var(--text-secondary); }
 .assistant-context span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .assistant-context svg { flex-shrink: 0; }
-.assistant-selection { display: flex; align-items: center; gap: 7px; width: 100%; border-left: 2px solid var(--green); padding: 4px 0 4px 10px; color: var(--muted); font-size: 12px; }
-.assistant-selection span { flex: 1; min-width: 0; max-height: 54px; overflow: auto; overflow-wrap: anywhere; }
+.assistant-selection .icon-button { flex-shrink: 0; width: 12px; height: 13px; min-width: 0; padding: 0; color: inherit; }
+.assistant-sent-selection span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .assistant-transcript { position: relative; flex: 1; min-height: 0; display: flex; }
 .assistant-messages { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: auto; overscroll-behavior: contain; padding: 12px 26px 18px; }
 .assistant-empty { margin: auto; padding: 30px 12px; color: var(--muted); font-size: 13px; text-align: center; }
@@ -676,7 +706,9 @@ watch(() => [assistant.session?.messages.map(message => message.content.length).
 .assistant-welcome-butterfly { width: 30px; height: 30px; }
 .assistant-welcome h3 { margin: 0 0 17px; font-size: 19px; line-height: 1.5; font-weight: 600; }
 .assistant-starters { display: grid; gap: 1px; }
-.assistant-starters button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 38px; padding: 7px 8px; margin-left: -8px; border-radius: 6px; color: var(--text-secondary); text-align: left; font-size: 14px; }
+.assistant-starter { position: relative; }
+.assistant-starter > button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 38px; padding: 7px 8px; margin-left: -8px; border-radius: 6px; color: var(--text-secondary); text-align: left; font-size: 14px; }
+.assistant-translation-menu { bottom: 100%; left: 22px; width: min(200px, calc(100% - 22px)); }
 .assistant-starters button svg { flex-shrink: 0; }
 .assistant-starters button:hover:not(:disabled) { background: var(--surface); color: var(--text); }
 .assistant-conversation-meta { flex: 0 0 auto; padding: 4px 0 18px; color: var(--muted); font-size: 11px; text-align: center; }

@@ -1,14 +1,15 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { CalendarDays, ClipboardList, LayoutTemplate, ListTodo, MoreHorizontal, Sparkles } from 'lucide-vue-next';
 const props = defineProps<{ assistant: boolean; assistantBusy: boolean }>();
 const emit = defineEmits<{ draft: []; template: []; initialize: [kind: 'meeting' | 'weekly' | 'todo'] }>();
 const allActions = [
-  { id: 'draft', label: 'AI 起草', icon: Sparkles },
-  { id: 'meeting', label: '会议纪要', icon: ClipboardList },
-  { id: 'todo', label: '待办清单', icon: ListTodo },
-  { id: 'weekly', label: '周报', icon: CalendarDays },
-  { id: 'template', label: '模板', icon: LayoutTemplate },
+  { id: 'draft', get label() { return t('AI 起草'); }, icon: Sparkles },
+  { id: 'meeting', get label() { return t('会议纪要'); }, icon: ClipboardList },
+  { id: 'todo', get label() { return t('待办清单'); }, icon: ListTodo },
+  { id: 'weekly', get label() { return t('周报'); }, icon: CalendarDays },
+  { id: 'template', get label() { return t('模板'); }, icon: LayoutTemplate },
 ] as const;
 type ActionId = typeof allActions[number]['id'];
 const actions = computed(() => allActions.filter(action => action.id !== 'draft' || props.assistant));
@@ -128,8 +129,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="document-starter" aria-label="开始使用文档">
-    <p>开始使用</p>
+  <section class="document-starter" :aria-label="t('开始使用文档')">
+    <p>{{ t('开始使用') }}</p>
     <div ref="row" class="document-starter-actions">
       <button v-for="(action, index) in actions" :key="action.id" type="button" :data-starter-action="action.id"
         :class="{ 'is-overflowed': index >= visibleCount }" :aria-hidden="index >= visibleCount || undefined"
@@ -138,7 +139,7 @@ onBeforeUnmount(() => {
       </button>
       <button ref="more" type="button" class="document-starter-more" :class="{ 'is-overflowed': !overflow.length }"
         :aria-hidden="!overflow.length || undefined" :tabindex="overflow.length ? undefined : -1"
-        aria-label="更多开始使用选项" title="更多" aria-haspopup="menu" :aria-expanded="open" :aria-controls="open ? menuId : undefined"
+        :aria-label="t('更多开始使用选项')" :data-tooltip="t('更多')" aria-haspopup="menu" :aria-expanded="open" :aria-controls="open ? menuId : undefined"
         @click="open ? close(true) : show()" @keydown.down.prevent="show('first')" @keydown.up.prevent="show('last')" @keydown.esc.prevent="close(true)">
         <MoreHorizontal :size="18" />
       </button>
@@ -146,7 +147,7 @@ onBeforeUnmount(() => {
   </section>
   <Teleport to="body">
     <div v-if="open" :id="menuId" ref="menu" class="dropdown compact-action-menu panel-scrollbar document-starter-menu"
-      role="menu" tabindex="-1" aria-label="更多开始使用选项" :style="position" @keydown.stop="menuKey">
+      role="menu" tabindex="-1" :aria-label="t('更多开始使用选项')" :style="position" @keydown.stop="menuKey">
       <button v-for="action in overflow" :key="action.id" type="button" role="menuitem"
         :disabled="action.id === 'draft' && assistantBusy" @click="activate(action.id)">
         <component :is="action.icon" :size="16" :class="{ 'document-starter-spark': action.id === 'draft' }" />{{ action.label }}

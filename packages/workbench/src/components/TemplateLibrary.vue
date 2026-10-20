@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, onMounted, ref } from 'vue';
 import { ArrowRight, Check, Eye, FilePlus2, FileText, Files, LayoutTemplate, Plus, Save, Search, X } from 'lucide-vue-next';
 import MarkdownEditor from '@tano/editor';
@@ -23,7 +24,8 @@ const mode = ref<'browse' | 'detail' | 'preview' | 'edit'>('browse');
 const busy = ref(false), loading = ref(true), error = ref(''), loadError = ref('');
 const body = ref(''), templateName = ref(''), editBase = ref<DocumentTemplate>();
 const targetPath = ref(''), values = ref<Record<string, string>>({});
-const labels: Record<string, string> = { title: '标题', date: '日期 / 周期', owner: '参与人 / 接手人', project: '项目 / 目录' };
+const labels: Record<string, string> = { get title() { return t('标题'); }, get date() { return t('日期 / 周期'); }, get owner() { return t('参与人 / 接手人'); }, get project() { return t('项目 / 目录'); } };
+const templateLabel = (template: DocumentTemplate) => template.path ? template.name : t(template.name);
 const order = ['meeting', 'weekly', 'project', 'todo', 'study', 'travel', 'handoff'];
 const builtins = [...builtinTemplates].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
 const visibleBuiltins = computed(() => filterTemplates(builtins, category.value, query.value));
@@ -38,13 +40,13 @@ const preview = computed(() => {
 });
 const disabled = computed(() => busy.value || store.workspace?.id !== workspaceId || store.workspace.readOnly);
 const canAdd = computed(() => !disabled.value && !!rendered.value && (!!props.initialize || !!targetPath.value.trim()));
-const addLabel = computed(() => props.initialize ? '添加到当前文档' : '添加到工作区');
+const addLabel = computed(() => props.initialize ? t('添加到当前文档') : t('添加到工作区'));
 const breadcrumbPages = computed(() => [
-  { id: 'browse', label: '模板库', icon: LayoutTemplate, current: mode.value === 'browse', disabled: busy.value },
+  { id: 'browse', get label() { return t('模板库'); }, icon: LayoutTemplate, current: mode.value === 'browse', disabled: busy.value },
   ...(selected.value && (mode.value === 'detail' || mode.value === 'preview')
-    ? [{ id: 'detail', label: selected.value.name, current: mode.value === 'detail', disabled: busy.value }] : []),
-  ...(mode.value === 'preview' ? [{ id: 'preview', label: '预览', current: true }] : []),
-  ...(mode.value === 'edit' ? [{ id: 'edit', label: editBase.value?.path ? '编辑模板' : '创建模板', current: true }] : []),
+    ? [{ id: 'detail', label: templateLabel(selected.value), current: mode.value === 'detail', disabled: busy.value }] : []),
+  ...(mode.value === 'preview' ? [{ id: 'preview', get label() { return t('预览'); }, current: true }] : []),
+  ...(mode.value === 'edit' ? [{ id: 'edit', label: editBase.value?.path ? t('编辑模板') : t('创建模板'), current: true }] : []),
 ]);
 let browseScroll = 0;
 
@@ -89,7 +91,7 @@ async function save(copy = false) {
     const path = await store.writeTemplate(nameTemplate(body.value, templateName.value), workspaceId, copy ? undefined : editBase.value);
     await load();
     const saved = custom.value.find(item => item.path === path);
-    if (!saved) throw new Error('模板已保存，但暂时无法重新读取，请从模板库重新打开。');
+    if (!saved) throw new Error(t('模板已保存，但暂时无法重新读取，请从模板库重新打开。'));
     choose(saved);
   } catch (reason) { error.value = reason instanceof Error ? reason.message : String(reason); }
   finally { busy.value = false; }
@@ -112,7 +114,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section ref="page" class="template-library" aria-label="模板库">
+  <section ref="page" class="template-library" :aria-label="t('模板库')">
     <header class="topbar template-library-nav">
       <slot name="navigation" />
       <div class="template-breadcrumb" :class="{ 'template-breadcrumb-preview': mode === 'preview' }"><WorkspaceBreadcrumb
@@ -120,94 +122,94 @@ onMounted(async () => {
         :entries="store.workspace?.files ?? []" :demo-label="demoLabel" :read-only="store.workspace?.readOnly"
         :pages="breadcrumbPages" @navigate="navigateBreadcrumb" @open="emit('openFile', $event)"
       /></div>
-      <button v-if="mode === 'browse'" class="template-button" :disabled="disabled" @click="edit(true)"><Plus :size="15" />创建模板</button>
-      <button v-else-if="mode === 'preview'" class="template-button template-button-primary" @click="navigate('detail')"><FilePlus2 :size="15" />使用模板</button>
+      <button v-if="mode === 'browse'" class="template-button" :disabled="disabled" @click="edit(true)"><Plus :size="15" />{{ t('创建模板') }}</button>
+      <button v-else-if="mode === 'preview'" class="template-button template-button-primary" @click="navigate('detail')"><FilePlus2 :size="15" />{{ t('使用模板') }}</button>
     </header>
 
     <div ref="scroller" class="template-library-scroll panel-scrollbar">
       <main class="template-library-content" :class="{ 'template-preview-content': mode === 'preview' }">
         <template v-if="mode === 'browse'">
           <div class="template-library-hero">
-            <div><h1 tabindex="-1">下一页，从这里开始。</h1><p>为工作、学习和生活，找到一个好用的起点。</p></div>
-            <div class="template-search"><Search :size="17" /><input v-model="query" aria-label="搜索模板" placeholder="搜索模板" type="search" /><button v-if="query" class="icon-button" aria-label="清空搜索" @click="query = ''"><X :size="15" /></button></div>
+            <div><h1 tabindex="-1">{{ t('下一页，从这里开始。') }}</h1><p>{{ t('为工作、学习和生活，找到一个好用的起点。') }}</p></div>
+            <div class="template-search"><Search :size="17" /><input v-model="query" :aria-label="t('搜索模板')" :placeholder="t('搜索模板')" type="search" /><button v-if="query" class="icon-button" :aria-label="t('清空搜索')" @click="query = ''"><X :size="15" /></button></div>
           </div>
-          <div class="template-categories" role="group" aria-label="模板分类">
+          <div class="template-categories" role="group" :aria-label="t('模板分类')">
               <button v-for="item in templateCategories" :key="item.id" :aria-pressed="category === item.id" :class="{ selected: category === item.id }" @click="category = item.id">{{ item.label }}</button>
           </div>
           <p v-if="loadError" class="template-error" role="alert">{{ loadError }}</p>
           <div v-if="category === 'all' && !query.trim()" class="template-collections">
             <button class="template-collection collection-work" @click="category = 'work'">
-              <div><strong>让工作，有条不紊。</strong><span>浏览工作模板<ArrowRight :size="15" /></span></div>
+              <div><strong>{{ t('让工作，有条不紊。') }}</strong><span>{{ t('浏览工作模板') }}<ArrowRight :size="15" /></span></div>
               <div class="template-collection-pages" aria-hidden="true"><TemplateThumbnail :template="builtins[2]!" /><TemplateThumbnail :template="builtins[0]!" /></div>
             </button>
             <button class="template-collection collection-life" @click="category = 'life'">
-              <div><strong>给生活，留一点空间。</strong><span>浏览生活模板<ArrowRight :size="15" /></span></div>
+              <div><strong>{{ t('给生活，留一点空间。') }}</strong><span>{{ t('浏览生活模板') }}<ArrowRight :size="15" /></span></div>
               <div class="template-collection-pages" aria-hidden="true"><TemplateThumbnail :template="builtins[5]!" /><TemplateThumbnail :template="builtins[3]!" /></div>
             </button>
           </div>
-          <section v-if="visibleBuiltins.length" class="template-section" aria-label="精选模板">
-            <div class="template-section-heading"><h2>{{ query.trim() ? '搜索结果' : category === 'all' ? '精选模板' : `${templateCategories.find(item => item.id === category)?.label}模板` }}</h2><span>{{ visibleBuiltins.length }} 个模板</span></div>
+          <section v-if="visibleBuiltins.length" class="template-section" :aria-label="t('精选模板')">
+            <div class="template-section-heading"><h2>{{ query.trim() ? t('搜索结果') : category === 'all' ? t('精选模板') : t('{0}模板', [templateCategories.find(item => item.id === category)?.label]) }}</h2><span>{{ visibleBuiltins.length }} {{ t('个模板') }}</span></div>
             <div class="template-grid">
-              <button v-for="item in visibleBuiltins" :key="item.id" class="template-card" :data-template-id="item.id" :aria-label="`查看${item.name}模板`" @click="choose(item)">
+              <button v-for="item in visibleBuiltins" :key="item.id" class="template-card" :data-template-id="item.id" :aria-label="t('查看{0}模板', [templateLabel(item)])" @click="choose(item)">
                 <TemplateThumbnail :template="item" />
-                <div class="template-card-caption"><FileText :size="17" /><div><strong>{{ item.name }}</strong><p>{{ templateInfo(item).description }}</p></div><span>内置</span></div>
+                <div class="template-card-caption"><FileText :size="17" /><div><strong>{{ templateLabel(item) }}</strong><p>{{ templateInfo(item).description }}</p></div><span>{{ t('内置') }}</span></div>
               </button>
             </div>
           </section>
-          <section v-if="(category === 'all' || category === 'custom') && (!query.trim() || visibleCustom.length)" class="template-section" aria-label="我的模板">
-            <div class="template-section-heading"><h2>我的模板</h2><span>当前工作区</span></div>
-            <p v-if="loading" role="status" class="template-empty">正在读取工作区模板…</p>
+          <section v-if="(category === 'all' || category === 'custom') && (!query.trim() || visibleCustom.length)" class="template-section" :aria-label="t('我的模板')">
+            <div class="template-section-heading"><h2>{{ t('我的模板') }}</h2><span>{{ t('当前工作区') }}</span></div>
+            <p v-if="loading" role="status" class="template-empty">{{ t('正在读取工作区模板…') }}</p>
             <div v-else-if="visibleCustom.length" class="template-grid">
-              <button v-for="item in visibleCustom" :key="item.id" class="template-card" :data-template-id="item.id" :aria-label="`查看${item.name}模板`" @click="choose(item)">
-                <TemplateThumbnail :template="item" /><div class="template-card-caption"><FileText :size="17" /><div><strong>{{ item.name }}</strong><p>{{ templateInfo(item).description }}</p></div><span>工作区</span></div>
+              <button v-for="item in visibleCustom" :key="item.id" class="template-card" :data-template-id="item.id" :aria-label="t('查看{0}模板', [templateLabel(item)])" @click="choose(item)">
+                <TemplateThumbnail :template="item" /><div class="template-card-caption"><FileText :size="17" /><div><strong>{{ templateLabel(item) }}</strong><p>{{ templateInfo(item).description }}</p></div><span>{{ t('工作区') }}</span></div>
               </button>
             </div>
-            <div v-else class="template-custom-empty"><Files :size="26" /><div><strong>把常用的内容，留作下一次的起点</strong><p>将文档保存为模板，在这个工作区重复使用。</p></div><button class="template-button" :disabled="disabled" @click="edit(true)"><Plus :size="15" />创建模板</button></div>
+            <div v-else class="template-custom-empty"><Files :size="26" /><div><strong>{{ t('把常用的内容，留作下一次的起点') }}</strong><p>{{ t('将文档保存为模板，在这个工作区重复使用。') }}</p></div><button class="template-button" :disabled="disabled" @click="edit(true)"><Plus :size="15" />{{ t('创建模板') }}</button></div>
           </section>
-          <div v-if="!visibleBuiltins.length && !visibleCustom.length && (query.trim() || !['all', 'custom'].includes(category))" class="template-no-results" role="status"><Search :size="28" /><h2>没有找到匹配的模板</h2><p>试试其他关键词，或查看全部模板。</p><button class="template-button" @click="query = ''; category = 'all'">查看全部模板</button></div>
-          <p class="template-library-note">内置模板与当前工作区模板 · 暂不支持在线模板市场</p>
+          <div v-if="!visibleBuiltins.length && !visibleCustom.length && (query.trim() || !['all', 'custom'].includes(category))" class="template-no-results" role="status"><Search :size="28" /><h2>{{ t('没有找到匹配的模板') }}</h2><p>{{ t('试试其他关键词，或查看全部模板。') }}</p><button class="template-button" @click="query = ''; category = 'all'">{{ t('查看全部模板') }}</button></div>
+          <p class="template-library-note">{{ t('内置模板与当前工作区模板 · 暂不支持在线模板市场') }}</p>
         </template>
 
         <template v-else-if="mode === 'edit'">
-          <div class="template-detail-heading"><h1 tabindex="-1">{{ editBase?.path ? '编辑模板' : '创建模板' }}</h1><p>保存常用的文档结构，让下一次开始更轻松。</p></div>
+          <div class="template-detail-heading"><h1 tabindex="-1">{{ editBase?.path ? t('编辑模板') : t('创建模板') }}</h1><p>{{ t('保存常用的文档结构，让下一次开始更轻松。') }}</p></div>
           <form class="template-edit-form" @submit.prevent="save()">
-            <label>模板名称<input v-model="templateName" required maxlength="100" :disabled="disabled" placeholder="例如：团队周报" /></label>
-            <label>模板 Markdown<textarea v-model="body" required rows="16" :disabled="disabled" spellcheck="false" /></label>
-            <p class="template-hint">使用双花括号定义填写字段，例如 <code v-text="'{{title}}'" /> 和 <code v-text="'{{date}}'" />。</p>
+            <label>{{ t('模板名称') }}<input v-model="templateName" required maxlength="100" :disabled="disabled" :placeholder="t('例如：团队周报')" /></label>
+            <label>{{ t('模板 Markdown') }}<textarea v-model="body" required rows="16" :disabled="disabled" spellcheck="false" /></label>
+            <p class="template-hint">{{ t('使用双花括号定义填写字段，例如') }} <code v-text="'{{title}}'" /> {{ t('和') }} <code v-text="'{{date}}'" />。</p>
             <p v-if="error" class="template-error" role="alert">{{ error }}</p>
-            <div class="template-edit-actions"><button class="template-button template-button-primary" type="submit" :disabled="disabled || !body.trim() || !templateName.trim()"><Save :size="15" />{{ busy ? '正在保存…' : '保存模板' }}</button><button v-if="editBase?.path" class="template-button" type="button" :disabled="disabled || !body.trim() || !templateName.trim()" @click="save(true)"><Plus :size="15" />另存模板</button><button class="template-button" type="button" :disabled="busy" @click="cancelEdit">取消</button></div>
+            <div class="template-edit-actions"><button class="template-button template-button-primary" type="submit" :disabled="disabled || !body.trim() || !templateName.trim()"><Save :size="15" />{{ busy ? t('正在保存…') : t('保存模板') }}</button><button v-if="editBase?.path" class="template-button" type="button" :disabled="disabled || !body.trim() || !templateName.trim()" @click="save(true)"><Plus :size="15" />{{ t('另存模板') }}</button><button class="template-button" type="button" :disabled="busy" @click="cancelEdit">{{ t('取消') }}</button></div>
           </form>
         </template>
 
         <template v-else-if="selected">
-          <div v-if="mode === 'preview'" class="template-detail-heading"><h1 tabindex="-1">{{ selected.name }}</h1><p>模板预览</p></div>
+          <div v-if="mode === 'preview'" class="template-detail-heading"><h1 tabindex="-1">{{ templateLabel(selected) }}</h1><p>{{ t('模板预览') }}</p></div>
           <div class="template-detail-layout" :class="{ 'is-preview': mode === 'preview' }">
             <div class="template-document-stage" :class="`tone-${templateInfo(selected).tone}`">
-              <div class="template-document-paper" aria-label="模板内容预览">
-                <MarkdownEditor :key="selected.id" :model-value="preview" :document-id="`template-preview-${workspaceId}-${selected.id}`" readonly :preferences="{ folding: false, previewMathWhileEditing: true }" :show-document-properties="false" :reveal-markdown="false" :resolve-image="() => null" @error="error = $event" />
+              <div class="template-document-paper" :aria-label="t('模板内容预览')">
+                <MarkdownEditor :key="selected.id" :model-value="preview" :document-id="`template-preview-${workspaceId}-${selected.id}`" readonly :preferences="{ folding: false, previewMathWhileEditing: true, blankBlockAiShortcut: false }" :show-document-properties="false" :reveal-markdown="false" :resolve-image="() => null" @error="error = $event" />
               </div>
             </div>
-            <aside v-if="mode === 'detail'" class="template-detail-sidebar" aria-label="使用模板">
-              <div class="template-detail-heading"><span class="template-detail-category">{{ templateCategories.find(item => item.id === templateInfo(selected!).category)?.label }}</span><h1 tabindex="-1">{{ selected.name }}</h1><p>{{ templateInfo(selected).description }}</p></div>
-              <div class="template-author"><FileText :size="19" />{{ selected.path ? '当前工作区 · 自定义模板' : '同页 · 内置模板' }}</div>
+            <aside v-if="mode === 'detail'" class="template-detail-sidebar" :aria-label="t('使用模板')">
+              <div class="template-detail-heading"><span class="template-detail-category">{{ templateCategories.find(item => item.id === templateInfo(selected!).category)?.label }}</span><h1 tabindex="-1">{{ templateLabel(selected) }}</h1><p>{{ templateInfo(selected).description }}</p></div>
+              <div class="template-author"><FileText :size="19" />{{ selected.path ? t('当前工作区 · 自定义模板') : t('同页 · 内置模板') }}</div>
               <form @submit.prevent="create">
-                <button type="submit" class="template-button template-button-primary template-wide" :disabled="!canAdd"><FilePlus2 :size="17" />{{ busy ? '正在添加…' : addLabel }}</button>
-                <button type="button" class="template-button template-wide" @click="navigate('preview')"><Eye :size="17" />预览模板</button>
-                <p v-if="initialize" class="template-target"><span>添加到「{{ initialize.title }}」，保留当前标题和文档属性。</span></p>
-                <p v-else class="template-target"><span>在当前工作区创建一篇新文档。</span></p>
+                <button type="submit" class="template-button template-button-primary template-wide" :disabled="!canAdd"><FilePlus2 :size="17" />{{ busy ? t('正在添加…') : addLabel }}</button>
+                <button type="button" class="template-button template-wide" @click="navigate('preview')"><Eye :size="17" />{{ t('预览模板') }}</button>
+                <p v-if="initialize" class="template-target"><span>{{ t('添加到「') }}{{ initialize.title }}{{ t('」，保留当前标题和文档属性。') }}</span></p>
+                <p v-else class="template-target"><span>{{ t('在当前工作区创建一篇新文档。') }}</span></p>
                 <div v-if="fields.length || !initialize" class="template-fields">
-                  <h2>填写模板信息</h2>
-                  <label v-for="key in fields" :key="key">{{ labels[key] ?? key }}<input v-model="values[key]" :aria-label="labels[key] ?? key" :disabled="disabled" required :placeholder="`填写${labels[key] ?? key}`" /></label>
-                  <label v-if="!initialize">新文档路径<input v-model="targetPath" required :disabled="disabled" /></label>
+                  <h2>{{ t('填写模板信息') }}</h2>
+                  <label v-for="key in fields" :key="key">{{ labels[key] ?? key }}<input v-model="values[key]" :aria-label="labels[key] ?? key" :disabled="disabled" required :placeholder="t('填写{0}', [labels[key] ?? key])" /></label>
+                  <label v-if="!initialize">{{ t('新文档路径') }}<input v-model="targetPath" required :disabled="disabled" /></label>
                 </div>
-                <p v-if="missing.length" class="template-hint">填写{{ missing.map(key => labels[key] ?? key).join('、') }}后即可添加。</p>
+                <p v-if="missing.length" class="template-hint">{{ t('填写') }}{{ missing.map(key => labels[key] ?? key).join('、') }}{{ t('后即可添加。') }}</p>
                 <p v-if="error" class="template-error" role="alert">{{ error }}</p>
               </form>
-              <div class="template-about"><h2>关于这个模板</h2><p><Check :size="14" />添加后可自由编辑内容</p><p><Check :size="14" />以 Markdown 文档保存在工作区</p></div>
-              <button class="template-customize" :disabled="disabled" @click="edit()">{{ selected.path ? '编辑模板' : '自定义这个模板' }}<ArrowRight :size="15" /></button>
+              <div class="template-about"><h2>{{ t('关于这个模板') }}</h2><p><Check :size="14" />{{ t('添加后可自由编辑内容') }}</p><p><Check :size="14" />{{ t('以 Markdown 文档保存在工作区') }}</p></div>
+              <button class="template-customize" :disabled="disabled" @click="edit()">{{ selected.path ? t('编辑模板') : t('自定义这个模板') }}<ArrowRight :size="15" /></button>
             </aside>
           </div>
-          <p v-if="mode === 'preview'" class="template-library-note">模板预览 · 只读，尚未添加到文档</p>
+          <p v-if="mode === 'preview'" class="template-library-note">{{ t('模板预览 · 只读，尚未添加到文档') }}</p>
         </template>
       </main>
     </div>

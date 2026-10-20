@@ -237,7 +237,7 @@ export const remarkEnhanced: Plugin<[], Root> = function () {
       blockquote: (node, parent, state, info) =>
         defaultHandlers
           .blockquote(node, parent, state, info)
-          .replace(/^> \\\[(!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION))\]/i, '> [$1]'),
+          .replace(/^> \\\[(!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION|CUSTOM(?::[^\]\s]+)?))\]/i, '> [$1]'),
     },
   });
   return (tree, file) => {

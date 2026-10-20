@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    io::Write,
+    io::{Read, Write},
     path::{Component, Path, PathBuf},
     time::UNIX_EPOCH,
 };
@@ -29,6 +29,8 @@ pub struct Entry {
     pub kind: String,
     pub(crate) size: u64,
     modified: u64,
+    #[serde(rename = "contentHash", skip_serializing_if = "Option::is_none")]
+    content_hash: Option<String>,
 }
 #[derive(Serialize, Debug)]
 pub struct Snapshot {
@@ -46,6 +48,19 @@ pub enum WriteResult {
 
 pub fn hash(content: &[u8]) -> String {
     format!("{:x}", Sha256::digest(content))
+}
+fn hash_path(path: &Path) -> Result<String, String> {
+    let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer).map_err(|e| e.to_string())?;
+        if read == 0 {
+            break;
+        }
+        digest.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", digest.finalize()))
 }
 fn modified(metadata: &fs::Metadata) -> u64 {
     metadata
@@ -80,10 +95,20 @@ pub fn is_workspace_data_path(relative: &str) -> bool {
         path,
         "capabilities.json"
             | "settings.tano.json"
+            | "folders.tano.json"
             | "plugins.tano.json"
             | "relations.tano-relations.json"
             | "rules/assistant.md"
     ) || (path.starts_with("objects/") && path.ends_with(".tano.json"))
+        || path.strip_prefix("views/").is_some_and(|name| {
+            name.strip_suffix(".tano.json").is_some_and(|id| {
+                !id.is_empty()
+                    && id.len() <= 64
+                    && id
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+            })
+        })
         || path.strip_prefix("templates/").is_some_and(|name| {
             name.strip_suffix(".md").is_some_and(|id| {
                 id.len() == 6
@@ -99,6 +124,7 @@ pub fn is_workspace_data_path(relative: &str) -> bool {
             "document-layout/",
             "suggestions/",
             "tables/",
+            "files/",
         ]
         .iter()
         .any(|prefix| {
@@ -131,6 +157,8 @@ pub fn is_workspace_data_directory(relative: &str) -> bool {
             | "tables"
             | "rules"
             | "templates"
+            | "views"
+            | "files"
     ) || path.starts_with("objects/")
         || path.starts_with("conflicts/")
 }
@@ -474,6 +502,7 @@ fn walk(
             }
         }
         entries.push(Entry {
+            content_hash: None,
             id: String::new(),
             path,
             name,
@@ -615,12 +644,11 @@ pub fn scan(root: &Path, id: &str, cache: &Path) -> Result<Workspace, String> {
     let mut unresolved_hashes = HashMap::new();
     let mut current_candidates_by_hash: HashMap<String, usize> = HashMap::new();
     if !missing_by_hash.is_empty() {
-        for entry in entries.iter().filter(|entry| {
-            entry.kind == "file"
-                && entry.size <= 50 * 1024 * 1024
-                && !identities.contains_key(&entry.path)
-        }) {
-            let digest = hash(&fs::read(root.join(&entry.path)).map_err(|e| e.to_string())?);
+        for entry in entries
+            .iter()
+            .filter(|entry| entry.kind == "file" && !identities.contains_key(&entry.path))
+        {
+            let digest = hash_path(&root.join(&entry.path))?;
             *current_candidates_by_hash
                 .entry(digest.clone())
                 .or_default() += 1;
@@ -658,7 +686,11 @@ pub fn scan(root: &Path, id: &str, cache: &Path) -> Result<Workspace, String> {
         } else {
             None
         };
-        let digest = bytes.as_ref().map(|bytes| hash(bytes)).unwrap_or_default();
+        let digest = match &bytes {
+            Some(bytes) => hash(bytes),
+            None => hash_path(&root.join(&entry.path))?,
+        };
+        entry.content_hash = (!digest.is_empty()).then(|| digest.clone());
         if unresolved_hashes
             .get(&entry.path)
             .is_some_and(|before| before != &digest)
@@ -1010,6 +1042,83 @@ mod cross_volume_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn file_core_portable_views_metadata_and_binary_revisions_survive_index_rebuild() {
+        let temp = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let db = cache.path().join("first.sqlite");
+        let id = workspace_identity(temp.path()).unwrap();
+        fs::write(temp.path().join("paper.pdf"), b"%PDF-1.7 first").unwrap();
+        let first = scan(temp.path(), &id, &db).unwrap();
+        let file_id = first.files[0].id.clone();
+        assert_eq!(first.files[0].content_hash, Some(hash(b"%PDF-1.7 first")));
+        fs::create_dir_all(temp.path().join(".tano/views")).unwrap();
+        fs::create_dir_all(temp.path().join(".tano/files")).unwrap();
+        let metadata = format!(".tano/files/{file_id}.tano.json");
+        let view = ".tano/views/research.tano.json";
+        create(
+            &resolve_storage(&fs::canonicalize(temp.path()).unwrap(), &metadata, false).unwrap(),
+            "{\"tags\":[\"paper\"]}",
+        )
+        .unwrap();
+        create(
+            &resolve_storage(&fs::canonicalize(temp.path()).unwrap(), view, false).unwrap(),
+            "{\"sources\":[]}",
+        )
+        .unwrap();
+        let base = read(&temp.path().join(&metadata)).unwrap();
+        fs::write(temp.path().join(&metadata), "{\"tags\":[\"external\"]}").unwrap();
+        assert!(matches!(
+            write(&temp.path().join(&metadata), "{}", &base.hash).unwrap(),
+            WriteResult::Conflict { .. }
+        ));
+        fs::rename(
+            temp.path().join("paper.pdf"),
+            temp.path().join("renamed.pdf"),
+        )
+        .unwrap();
+        fs::write(temp.path().join("renamed.pdf"), b"%PDF-1.7 changed").unwrap();
+        let next = scan(temp.path(), &id, &db).unwrap();
+        let file = next.files.iter().find(|file| file.id == file_id).unwrap();
+        assert_eq!(file.path, "renamed.pdf");
+        assert_eq!(file.content_hash, Some(hash(b"%PDF-1.7 changed")));
+        let rebuilt = scan(temp.path(), &id, &cache.path().join("rebuilt.sqlite")).unwrap();
+        assert_eq!(
+            rebuilt
+                .files
+                .iter()
+                .find(|file| file.path == "renamed.pdf")
+                .unwrap()
+                .id,
+            file_id
+        );
+        assert!(rebuilt.files.iter().any(|file| file.path == metadata));
+        assert!(rebuilt.files.iter().any(|file| file.path == view));
+        assert!(!is_workspace_data_path(".tano/views/../escape.tano.json"));
+        assert!(!is_workspace_data_path(".tano/files/not-an-id.tano.json"));
+    }
+
+    #[test]
+    fn large_binary_has_a_streamed_revision_and_content_move_identity() {
+        let temp = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let db = cache.path().join("cache.sqlite");
+        fs::File::create(temp.path().join("large.bin"))
+            .unwrap()
+            .set_len(51 * 1024 * 1024)
+            .unwrap();
+        let first = scan(temp.path(), "workspace", &db).unwrap();
+        assert_eq!(first.files[0].content_hash.as_ref().unwrap().len(), 64);
+        database(&db)
+            .unwrap()
+            .execute("UPDATE files SET native_key=''", [])
+            .unwrap();
+        fs::rename(temp.path().join("large.bin"), temp.path().join("moved.bin")).unwrap();
+        let after = scan(temp.path(), "workspace", &db).unwrap();
+        assert_eq!(first.files[0].id, after.files[0].id);
+        assert_eq!(first.files[0].content_hash, after.files[0].content_hash);
+    }
 
     #[test]
     fn display_path_handles_windows_local_and_unc_prefixes() {

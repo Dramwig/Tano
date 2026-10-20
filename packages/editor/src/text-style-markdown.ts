@@ -1,5 +1,6 @@
 import { unified } from 'unified';
 import { styleDelimiters, styleDelimiterConstruct } from './style-delimiters';
+import { transformTableBreaks } from './table-markdown';
 import type { Plugin } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
@@ -7,7 +8,7 @@ import { remarkMathSyntax as remarkMath } from './math-markdown';
 import type { Html, Nodes, Parent, PhrasingContent, Root } from 'mdast';
 import type { Handle } from 'mdast-util-to-markdown';
 
-export type TextStyle = 'underline' | 'superscript' | 'subscript' | 'highlight' | 'text_color' | 'inline_comment';
+export type TextStyle = 'underline' | 'superscript' | 'subscript' | 'highlight' | 'text_color' | 'background_color' | 'inline_comment';
 interface TextStyleNode extends Parent {
   type: 'tanoTextStyle';
   style: TextStyle;
@@ -30,6 +31,7 @@ const tags: Record<TextStyle, string> = {
   subscript: 'sub',
   highlight: 'mark',
   text_color: 'span',
+  background_color: 'span',
   inline_comment: 'span',
 };
 
@@ -49,15 +51,15 @@ function styleTag(value: string) {
   if (/^<\/span\s*>$/i.test(value))
     return { tag: 'span', style: 'text_color' as const, closing: true, color: undefined };
   const color =
-    /^<span\s+style\s*=\s*(["'])\s*color\s*:\s*(#[\da-f]{3}(?:[\da-f]{3})?)\s*;?\s*\1\s*>$/i.exec(
+    /^<span\s+style\s*=\s*(["'])\s*(color|background-color)\s*:\s*(#[\da-f]{3}(?:[\da-f]{3})?)\s*;?\s*\1\s*>$/i.exec(
       value,
     );
   return color
     ? {
         tag: 'span',
-        style: 'text_color' as const,
+        style: color[2].toLowerCase() === 'color' ? 'text_color' as const : 'background_color' as const,
         closing: false,
-        color: normalizeTextColor(color[2])!,
+        color: normalizeTextColor(color[3])!,
       }
     : null;
 }
@@ -162,7 +164,8 @@ const serializeStyle: Handle & { peek?: () => string } = (node, _parent, state, 
   }
   const color = style.color && normalizeTextColor(style.color);
   const open =
-    style.style === 'text_color' && color ? `<span style="color: ${color}">` : `<${tag}>`;
+    (style.style === 'text_color' || style.style === 'background_color') && color
+      ? `<span style="${style.style === 'text_color' ? 'color' : 'background-color'}: ${color}">` : `<${tag}>`;
   const close = `</${tag}>`;
   const tracker = state.createTracker(info);
   tracker.move(open);
@@ -213,6 +216,7 @@ export const remarkTextStyles: Plugin<[], Root> = function () {
   const extensions = data.toMarkdownExtensions ?? (data.toMarkdownExtensions = []);
   extensions.push({ handlers: { tanoTextStyle: serializeStyle } });
   return (tree, file) => {
+    transformTableBreaks(tree);
     transformStyles(tree);
     groupRawHtml(tree, String(file.value));
   };
@@ -225,6 +229,7 @@ const inlineStyleParser = unified().use(remarkParse).use(remarkGfm, { singleTild
 export function hasUnsupportedHtml(markdown: string): boolean {
   if (!markdown.includes('<')) return false;
   const tree = styleParser.parse(markdown);
+  transformTableBreaks(tree);
   transformStyles(tree);
   function containsHtml(node: Nodes, parent?: Nodes): boolean {
     if (node.type === 'html') {

@@ -162,7 +162,7 @@ const diff = await tano.native.invoke('git.diff', { path: '笔记.md', staged: f
 
 Git 可执行文件必须来自工作区外的系统 PATH，不能由插件指定。宿主复制最多 32 MiB Git 元数据到应用缓存，使用隔离的 Git 配置，不改写原索引；不运行配置中的辅助程序、过滤器、外部 diff、textconv 或 fsmonitor，不读取系统、全局及 include 配置。使用这些配置的仓库可能与普通 Git 显示不同。这里使用的禁用选项参考 [Git diff 官方说明](https://git-scm.com/docs/git-diff)。
 
-当前只支持根目录含普通 `.git` 目录的仓库，不支持链接工作树、共享对象库、稀疏检出、嵌套仓库、符号链接或额外 Git 存储扩展。路径检查最多 200000 个目录项、64 层；隐藏文件不开放正文差异读取，不提供任意命令、暂存、提交或网络操作。[Git 变更示例](../examples/plugins/git-inspector/README.md) 可直接打包安装，包含状态列表和差异预览。
+当前只支持根目录含普通 `.git` 目录的仓库，不支持链接工作树、共享对象库、稀疏检出、嵌套仓库、符号链接或额外 Git 存储扩展。路径检查最多 200000 个目录项、64 层；隐藏文件不开放正文差异读取，不提供任意命令、暂存、提交或网络操作。Git 状态、差异、历史与同步已成为[系统功能](git.md)，不再分发 Git 插件。
 
 ## 服务连接与凭据
 
@@ -325,3 +325,5 @@ export default async function run(tano: TanoAutomationApi, execution: PluginAuto
 Windows 上可运行 `npm run test:plugins:native`，使用真实 WebView2、生产 CSP、Rust 提供方和系统 Git 验收安装、授权、状态、差异、停用及工作区切换；用真实任务对象验收 React/Chart.js 的分页统计、图表交互、刷新及清理；使用合成密钥验收系统凭据保存、刷新后沿用与撤销；使用测试注册验证 OAuth 的 PKCE、本机回调错误状态、拒绝、取消和切换清理，不打开真实登录服务。测试构建独立身份的隐藏窗口，使用临时仓库和独立浏览器配置，结束后清理本次测试凭据、恢复测试应用的原有 OAuth 配置，并恢复普通发布构建配置。截图、结果和临时仓库保留在 `artifacts/`，测试应用状态位于 `app.tano.plugin-smoke` 的系统应用目录。此命令需要已安装 Rust、Git 和 WebView2，不属于普通网页检查。原生单元测试的 HTTPS 测试服务由 Node.js 启动，只信任专用测试 CA，不修改系统信任库；固定测试证书到期前需重新生成。
 
 公共 MIT 核心包含 SDK、格式、管理界面、运行时和开发工具。账户、在线包分发、云端权限与部署位于独立私有产品仓库。插件作者仍需遵循各自依赖的许可义务。
+
+系统提供统一的“工作区同步”入口，内置 Git 后端；Git 状态、差异和历史也在系统面板中，写入与网络操作由系统管理。见[Git 多端同步](zh/git-sync.md)。

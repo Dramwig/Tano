@@ -63,7 +63,7 @@ afterEach(() => {
 it('focuses search and groups open Markdown documents before recently modified files', async () => {
   await mount();
   expect(document.activeElement).toBe(input());
-  expect(options().map((row) => row.title)).toEqual([
+  expect(options().map((row) => row.dataset.tooltip ?? '')).toEqual([
     '',
     '',
     '项目/计划.md',
@@ -142,6 +142,6 @@ it('creates a data table and finds existing tables without turning them into doc
   expect(fixture.store.openFile).toHaveBeenCalledWith(
     expect.objectContaining({ id: 'abcdef', path: '项目/配件选择.table.json' }),
   );
-  expect(options()[2].title).toBe('项目/配件选择.table.json');
+  expect(options()[2].dataset.tooltip).toBe('项目/配件选择.table.json');
   expect(close).toHaveBeenCalledOnce();
 });

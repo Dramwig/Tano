@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiLocale } from '../i18n';
 import './review-card.css';
 import { relativeTime } from './review-time';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -19,7 +20,7 @@ const emit = defineEmits<{
 }>();
 const reply = ref('');
 const replyComposer = ref<InstanceType<typeof CommentComposer>>();
-const resolveLabel = computed(() => `${props.thread.resolved ? '重新打开' : '完成'}${props.local ? '批注' : '讨论'}`);
+const resolveLabel = computed(() => `${props.thread.resolved ? t('重新打开') : t('完成')}${props.local ? t('批注') : t('讨论')}`);
 const hiddenReplies = computed(() => Math.max(0, props.thread.messages.length - 2));
 const replyTargets = computed(() => {
   const messages = new Map(props.thread.messages.map(message => [message.id, message]));
@@ -43,7 +44,7 @@ function sendReply(mentions: CommentMention[] = []) {
 function clearReply() { reply.value = ''; }
 function finishEdit() { editing.value = undefined; }
 async function focusReply() { await replyComposer.value?.focus(); }
-defineExpose({ clearReply, finishEdit, focusReply, setReply: (body: string) => { if (reply.value.trim()) throw new Error('批注回复已有草稿，请先发布或清除'); reply.value = body; } });
+defineExpose({ clearReply, finishEdit, focusReply, setReply: (body: string) => { if (reply.value.trim()) throw new Error(t('批注回复已有草稿，请先发布或清除')); reply.value = body; } });
 
 async function openMenu(event: MouseEvent, message: CommentMessage) {
   if (menuMessage.value?.id === message.id) { closeMenu(); return; }
@@ -159,55 +160,55 @@ watch(() => props.thread.messages, messages => {
       <div class="comment-message-content">
         <div class="comment-message-header">
           <div class="comment-message-meta"><strong>{{ message.authorName }}</strong>
-            <time :datetime="new Date(message.createdAt).toISOString()" :title="new Date(message.createdAt).toLocaleString('zh-CN')">{{ relativeTime(message.createdAt) }}</time>
-            <span v-if="message.updatedAt" class="comment-edited" :title="new Date(message.updatedAt).toLocaleString('zh-CN')">已编辑</span>
+            <time :datetime="new Date(message.createdAt).toISOString()" :title="new Date(message.createdAt).toLocaleString(uiLocale)">{{ relativeTime(message.createdAt) }}</time>
+            <span v-if="message.updatedAt" class="comment-edited" :title="new Date(message.updatedAt).toLocaleString(uiLocale)">{{ t('已编辑') }}</span>
           </div>
           <slot v-if="index === 0 && $slots['first-tools']" name="first-tools" />
-          <div v-else-if="!readonly && editing?.id !== message.id && (!local || index === 0 || message.authorId === authorId)" class="comment-message-tools review-card-tools" :class="{ 'is-open': menuMessage?.id === message.id }" role="group" aria-label="评论操作">
-            <button v-if="index === 0" type="button" :disabled="busy" :aria-label="resolveLabel" :title="resolveLabel" @click="emit('resolve', !thread.resolved)">
+          <div v-else-if="!readonly && editing?.id !== message.id && (!local || index === 0 || message.authorId === authorId)" class="comment-message-tools review-card-tools" :class="{ 'is-open': menuMessage?.id === message.id }" role="group" :aria-label="t('评论操作')">
+            <button v-if="index === 0" type="button" :disabled="busy" :aria-label="resolveLabel" :data-tooltip="resolveLabel" @click="emit('resolve', !thread.resolved)">
               <RotateCcw v-if="thread.resolved" :size="15" /><Check v-else :size="15" />
             </button>
-            <button v-if="!local" type="button" :disabled="busy" aria-label="回复评论" title="回复" @click="emit('reply-request', message)"><Reply :size="15" /></button>
-            <button v-if="message.authorId === authorId || (index === 0 && assistant)" type="button" :disabled="busy" aria-label="更多评论操作" title="更多" aria-haspopup="menu" :aria-expanded="menuMessage?.id === message.id" @click="openMenu($event, message)"><MoreHorizontal :size="17" /></button>
+            <button v-if="!local" type="button" :disabled="busy" :aria-label="t('回复评论')" :data-tooltip="t('回复')" @click="emit('reply-request', message)"><Reply :size="15" /></button>
+            <button v-if="message.authorId === authorId || (index === 0 && assistant)" type="button" :disabled="busy" :aria-label="t('更多评论操作')" :data-tooltip="t('更多')" aria-haspopup="menu" :aria-expanded="menuMessage?.id === message.id" @click="openMenu($event, message)"><MoreHorizontal :size="17" /></button>
           </div>
         </div>
         <blockquote v-if="index === 0 && quote" class="comment-quote">{{ quote }}</blockquote>
         <div v-if="!local && index > 0 && replyTargets.has(message.id)" class="comment-reply-reference"
-          aria-label="回复目标" :title="`回复 ${replyTargets.get(message.id)?.authorName}：${replyTargets.get(message.id)?.body}`">
+          :aria-label="t('回复目标')" :title="t('回复 {0}：{1}', [replyTargets.get(message.id)?.authorName, replyTargets.get(message.id)?.body])">
           <Reply :size="12" aria-hidden="true" />
-          <span class="comment-reply-reference-author">回复 {{ replyTargets.get(message.id)?.authorName }}：</span>
+          <span class="comment-reply-reference-author">{{ t('回复') }} {{ replyTargets.get(message.id)?.authorName }}：</span>
           <span class="comment-reply-reference-body">{{ replyTargets.get(message.id)?.body }}</span>
         </div>
         <slot v-if="index === 0 && $slots['first-body']" name="first-body" :preview="preview" />
         <form v-else-if="editing?.id === message.id" class="comment-edit" @submit.prevent="saveEdit" @keydown="editKeydown">
-          <textarea ref="editInput" v-model="editing.body" aria-label="编辑评论" rows="1" maxlength="20000" :readonly="busy" @input="resizeEdit" />
-          <div class="comment-edit-actions" role="group" aria-label="编辑操作">
-            <button type="button" class="comment-edit-cancel" aria-label="取消编辑" title="取消编辑" :disabled="busy" @click="cancelEdit"><X :size="13" /></button>
-            <button type="submit" class="comment-edit-confirm" aria-label="确认编辑" title="确认编辑" :disabled="busy || !editing.body.trim()"><Check :size="13" /></button>
+          <textarea ref="editInput" v-model="editing.body" :aria-label="t('编辑评论')" rows="1" maxlength="20000" :readonly="busy" @input="resizeEdit" />
+          <div class="comment-edit-actions" role="group" :aria-label="t('编辑操作')">
+            <button type="button" class="comment-edit-cancel" :aria-label="t('取消编辑')" :data-tooltip="t('取消编辑')" :disabled="busy" @click="cancelEdit"><X :size="13" /></button>
+            <button type="submit" class="comment-edit-confirm" :aria-label="t('确认编辑')" :data-tooltip="t('确认编辑')" :disabled="busy || !editing.body.trim()"><Check :size="13" /></button>
           </div>
         </form>
         <p v-else>{{ message.body }}</p>
-        <button v-if="preview && index === 0 && hiddenReplies" type="button" class="comment-expand-replies" @click="emit('expand')">查看 {{ hiddenReplies }} 条回复</button>
+        <button v-if="preview && index === 0 && hiddenReplies" type="button" class="comment-expand-replies" @click="emit('expand')">{{ t('查看') }} {{ hiddenReplies }} {{ t('条回复') }}</button>
         <div v-if="index === 0 && thread.resolved" class="comment-message-actions">
-          <span>已完成</span>
+          <span>{{ t('已完成') }}</span>
         </div>
       </div>
     </div>
     <CommentComposer v-if="!readonly && local" v-show="!preview" ref="replyComposer" v-model="reply" :author-name="authorName"
-      label="添加回复" :busy="busy" compact class="comment-reply-composer" @submit="sendReply" />
+      :label="t('添加回复')" :busy="busy" compact class="comment-reply-composer" @submit="sendReply" />
   </article>
   <Teleport to="body">
-    <div v-if="menuMessage && !readonly" ref="menu" class="dropdown compact-action-menu comment-more-menu" :style="menuPosition" role="menu" aria-label="更多评论操作" @keydown.stop="menuKeydown">
+    <div v-if="menuMessage && !readonly" ref="menu" class="dropdown compact-action-menu comment-more-menu" :style="menuPosition" role="menu" :aria-label="t('更多评论操作')" @keydown.stop="menuKeydown">
       <template v-if="removal">
-        <p>{{ removal.expectedMessages ? (local ? '删除这条批注？' : '删除这条讨论？') : '删除这条回复？' }}<span v-if="removal.expectedMessages && removal.expectedMessages.length > 1">同时删除 {{ removal.expectedMessages.length - 1 }} 条回复</span></p>
-        <button type="button" role="menuitem" class="comment-delete-confirm danger-text" :disabled="busy" @click="removeMessage"><Trash2 :size="15" />确认删除</button>
-        <button type="button" role="menuitem" @click="closeMenu(true)">取消</button>
+        <p>{{ removal.expectedMessages ? (local ? t('删除这条批注？') : t('删除这条讨论？')) : t('删除这条回复？') }}<span v-if="removal.expectedMessages && removal.expectedMessages.length > 1">{{ t('同时删除') }} {{ removal.expectedMessages.length - 1 }} {{ t('条回复') }}</span></p>
+        <button type="button" role="menuitem" class="comment-delete-confirm danger-text" :disabled="busy" @click="removeMessage"><Trash2 :size="15" />{{ t('确认删除') }}</button>
+        <button type="button" role="menuitem" @click="closeMenu(true)">{{ t('取消') }}</button>
       </template>
       <template v-else>
-        <button v-if="assistant && menuMessage.id === thread.messages[0]?.id" type="button" role="menuitem" :disabled="busy" @click="inviteAssistant"><Bot :size="15" />请助手参与讨论</button>
-        <button v-if="menuMessage.authorId === authorId" type="button" role="menuitem" :disabled="busy" @click="editMessage"><Pencil :size="15" />编辑</button>
+        <button v-if="assistant && menuMessage.id === thread.messages[0]?.id" type="button" role="menuitem" :disabled="busy" @click="inviteAssistant"><Bot :size="15" />{{ t('请助手参与讨论') }}</button>
+        <button v-if="menuMessage.authorId === authorId" type="button" role="menuitem" :disabled="busy" @click="editMessage"><Pencil :size="15" />{{ t('编辑') }}</button>
         <div v-if="menuMessage.authorId === authorId" class="menu-divider" role="separator" />
-        <button v-if="menuMessage.authorId === authorId" type="button" role="menuitem" class="comment-menu-delete danger-text" :disabled="busy" @click="prepareRemoval"><Trash2 :size="15" />删除</button>
+        <button v-if="menuMessage.authorId === authorId" type="button" role="menuitem" class="comment-menu-delete danger-text" :disabled="busy" @click="prepareRemoval"><Trash2 :size="15" />{{ t('删除') }}</button>
       </template>
     </div>
   </Teleport>

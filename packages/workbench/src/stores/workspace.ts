@@ -1,5 +1,11 @@
-import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
+import { useDocumentIndex } from '../document-index';
+import { WorkspacePluginRuntime } from '../workspace-plugin-runtime';
+import { WorkspaceLifecycle } from '../workspace-lifecycle';
+import { useTabNavigation } from '../tab-navigation';
+import { computed, onScopeDispose, ref, shallowRef, watch, type ComputedRef } from 'vue';
 import { defineStore } from 'pinia';
+import { FileRegistry, defaultFileDatabaseQuery, defaultObjectViewQuery, parseWorkspaceView, workspaceViewPath, type WorkspaceViewDefinition } from '@tano/protocol';
+import { loadFileMetadata, saveFileMetadata, markdownFileMetadata, type FileMetadataState } from '../file-metadata';
 import type {
   FileEntry,
   FileSnapshot,
@@ -22,22 +28,21 @@ import { defaultWorkspaceSettings, loadWorkspaceSettings, saveWorkspaceSettingsP
 import type { WorkspaceSettings, WorkspaceSettingsPatch } from '../workspace-settings';
 import { loadObjects, saveObject, mergeObject } from '../workspace-objects';
 import type { ObjectRecord } from '../workspace-objects';
+import { loadWorkspaceViews } from '../workspace-views';
+import type { WorkspaceViewRecord } from '../workspace-views';
 import { assetTargets, documentTargets, parseObject, objectTypeRegistry, validateObjectProperties } from '@tano/protocol';
 import type { WorkspaceObject, ReferenceTarget } from '@tano/protocol';
 import { coreRelationTypes, newShortId, RelationIndex, referenceKey, relationKey, validateRelation, parseRelations, workspaceRelationPath, WorkspaceAccessRevokedError } from '@tano/protocol';
 import type { ReferenceIdentity, WorkspaceRelation } from '@tano/protocol';
-import { PLUGINS_TAB_ID, WorkspacePluginHost } from '../workspace-plugins';
-import type { InstalledObjectPlugin, PluginChange } from '../workspace-plugins';
-import { PluginExecutionHost, type PluginRuntimeState } from '../plugins/host';
+import { PLUGINS_TAB_ID } from '../workspace-plugins';
+import type { InstalledObjectPlugin } from '../workspace-plugins';
+import type { PluginRuntimeState } from '../plugins/host';
 import { canManageWorkspacePlugins } from '../plugins/policy';
-import { PluginPackageCache } from '../plugins/packages';
 import { PluginQueryPager, pluginChanges } from '../plugins/data';
 import { queryPluginData } from '../plugins/queries';
-import { PluginDevelopmentRunner, type PluginDevelopmentState } from '../plugins/development';
+import type { PluginDevelopmentState } from '../plugins/development';
 import { pluginWorkbenchViews, pluginWorkbenchCommands, pluginViewKey, type PluginWorkbenchView, type PluginInteraction } from '../plugins/workbench';
-import { pluginRecord, parsePluginPackage } from '@tano/protocol';
-import { parsePluginCatalog, type PluginCatalogRelease } from '@tano/protocol';
-import { verifyCatalogPackage } from '../plugins/catalog';
+import { pluginRecord } from '@tano/protocol';
 import { parsePluginConnectionInput, type PluginConnectionInput, type PluginOAuthInput } from '@tano/protocol';
 import { loadRelations, saveRelationChange } from '../workspace-relations';
 import type { RelationChange } from '../workspace-relations';
@@ -73,21 +78,12 @@ import { readStartupWorkspace, rememberStartupWorkspace } from '../workspace-sta
 import { recordHelpCompleted, recordHelpPlanEdit } from '../help-checklist';
 import { createHelpEditQueue } from '../help-edit-queue';
 import { createDataTableController } from '../data-table-controller';
+import { SessionJournal } from '../session-journal';
 import { isTableTab, TABLES_TAB_ID, tableFileId, tableTabId } from '../data-tables';
 import { isDataTableFilePath, dataTableName } from '@tano/protocol';
 
-export interface OpenDocument {
-  id: string;
-  path: string;
-  content: string;
-  base: FileSnapshot;
-  saving: boolean;
-  creating?: boolean;
-  missing: boolean;
-  conflict?: { copyPath: string; disk: FileSnapshot };
-  error?: string;
-  tableLayout?: DocumentLayoutState;
-}
+import { createDocumentSession, documentDirty as dirty, type OpenDocument } from '../document-session';
+export type { OpenDocument } from '../document-session';
 export interface DocumentTab {
   id: string;
   path: string;
@@ -96,11 +92,12 @@ export interface DocumentTab {
   plugins: boolean;
   calendar: boolean;
   view?: WorkbenchViewTab;
+  workspaceView?: WorkspaceViewRecord;
   pluginView?: PluginWorkbenchView;
   document?: OpenDocument;
   attachmentPreview: boolean;
   attachment?: FileEntry;
-  dataTable?: { name: string; dirty: boolean };
+  dataTable?: { name: string; dirty: boolean; icon?: string };
 }
 export interface Activity {
   id: string;
@@ -117,8 +114,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const runtime = useWorkbenchRuntime();
   const { adapter, mobile } = runtime;
   const views = shallowRef<ReadonlyMap<string, WorkbenchViewTab>>(new Map());
-  const isNavigationPage = (id: string) => id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || isTableTab(id);
-  const isBuiltinTab = (id: string) => id.startsWith('blank:') || id.startsWith('attachment:') || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || id === CALENDAR_TAB_ID || isTableTab(id);
+  const workspaceViewTabPrefix = 'workspace-view:';
+  const workspaceViewTabId = (id: string) => `${workspaceViewTabPrefix}${id}`;
+  const workspaceViewId = (id: string) => id.startsWith(workspaceViewTabPrefix) ? id.slice(workspaceViewTabPrefix.length) : undefined;
+  const isWorkspaceViewTab = (id: string) => !!workspaceViewId(id);
+  const hasWorkspaceViewTab = (id: string) => {
+    const viewId = workspaceViewId(id);
+    return viewId !== undefined && workspaceViews.value.some((record) => record.view.id === viewId);
+  };
+  const isNavigationPage = (id: string) => id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || isTableTab(id) || hasWorkspaceViewTab(id);
+  const isBuiltinTab = (id: string) => id.startsWith('blank:') || id.startsWith('attachment:') || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || id === CALENDAR_TAB_ID || isTableTab(id) || hasWorkspaceViewTab(id);
   const isUtilityTab = (id: string) => isBuiltinTab(id) || views.value.has(id) || pluginViews.value.some(view => view.key === id && view.location === 'tab');
   function registerViews(definitions: readonly WorkbenchViewTab[]) {
     const next = new Map<string, WorkbenchViewTab>();
@@ -133,6 +138,73 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     views.value = next;
   }
   const workspace = ref<Workspace | null>(null);
+  const fileRegistry = computed(() => workspace.value ? FileRegistry.from(workspace.value) : null);
+  function metadataTarget(id: string, scope: string) {
+    const current = workspace.value;
+    const file = fileRegistry.value?.get(id);
+    if (!current || current.id !== scope || !file || isWorkspaceInternalPath(file.path)) throw new Error('文件或工作区已变化');
+    return { current, file };
+  }
+  const readFileMetadata = (id: string, scope: string) => serial(async (): Promise<FileMetadataState> => {
+    const { current, file } = metadataTarget(id, scope);
+    if (isMarkdown(file.path)) {
+      const content = documentIndex.byId.value.get(id)?.content ?? (await adapter.read(file.path)).content;
+      return { file: markdownFileMetadata(id, content), base: null,
+        referenceCount: contentReferences(referenceTargets.value, new Map([[`document/${id}`, content]])).length };
+    }
+    return loadFileMetadata(adapter, current, id);
+  });
+  const updateFileMetadata = (state: FileMetadataState, scope: string) => serial(async () => {
+    const { current, file } = metadataTarget(state.file.fileId, scope);
+    if (isMarkdown(file.path)) throw new Error('请在文档属性中编辑 Markdown 属性');
+    if (current.readOnly || file.readOnly) throw new Error('你对此文件只有阅读权限');
+    const saved = await saveFileMetadata(adapter, state);
+    workspace.value = await adapter.refresh();
+    return saved;
+  });
+  const workspaceViews = ref<WorkspaceViewRecord[]>([]);
+  const workspaceViewErrors = ref<string[]>([]);
+  async function createObjectDatabase() {
+    const scope = workspace.value?.id;
+    const id = `objects-${crypto.randomUUID()}`;
+    await serial(async () => {
+      if (!scope || workspace.value?.id !== scope) throw new Error('工作区已切换');
+      writable();
+      if (!capabilities.value.features.objectReferences) throw new Error('Level 2 已关闭');
+      const view = parseWorkspaceView(JSON.stringify({ version: 1, layer: 'view', workspaceId: scope, id,
+        name: '对象数据库', kind: 'objects', sources: [], objectDatabase: defaultObjectViewQuery() }));
+      await adapter.create(workspaceViewPath(id), JSON.stringify(view, null, 2) + '\n');
+      workspace.value = await adapter.refresh(); await refreshObjects();
+    });
+    await openWorkspaceView(id, { newTab: true });
+  }
+  async function createFileDatabase(directory = '') {
+    const scope = workspace.value?.id;
+    const id = `files-${crypto.randomUUID()}`;
+    await serial(async () => {
+      if (!scope || workspace.value?.id !== scope) throw new Error('工作区已切换');
+      writable();
+      if (directory && !workspace.value.files.some(f => f.kind === 'directory' && f.path === directory)) throw new Error('目录已不存在');
+      const view = parseWorkspaceView(JSON.stringify({ version: 1, layer: 'view', workspaceId: scope, id,
+        name: `${directory ? basename(directory) : workspace.value.name} · 文件数据库`, kind: 'files', sources: [], database: defaultFileDatabaseQuery(directory) }));
+      await adapter.create(workspaceViewPath(id), JSON.stringify(view, null, 2) + '\n');
+      workspace.value = await adapter.refresh(); await refreshObjects();
+    });
+    await openWorkspaceView(id, { newTab: true });
+  }
+  const saveFileDatabase = (view: WorkspaceViewDefinition, base: FileSnapshot) => serial(async () => {
+    if (workspace.value?.id !== view.workspaceId) throw new Error('工作区已切换');
+    writable();
+    const checked = parseWorkspaceView(JSON.stringify(view));
+    const result = await adapter.write(workspaceViewPath(checked.id), JSON.stringify(checked, null, 2) + '\n', base.hash);
+    if (result.status !== 'saved') {
+      const copy = `.tano/conflicts/view-${checked.id}-${crypto.randomUUID()}.tano.json`;
+      await adapter.create(copy, JSON.stringify(checked, null, 2) + '\n');
+      throw new Error(`视图已被外部修改或删除，外部版本未覆盖；当前设置已保留在 ${copy}`);
+    }
+    workspace.value = await adapter.refresh(); await refreshObjects();
+    return result.snapshot;
+  });
   const fileMutations = optimisticFiles(() => workspace.value, report);
   const visibleWorkspace = computed({ get: () => fileMutations.workspace.value, set: (value) => { workspace.value = value; } });
   function displayPath(file: Pick<FileEntry, 'id' | 'path'>) {
@@ -256,11 +328,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const assistantEpoch = ref(0);
   const objects = ref<ObjectRecord[]>([]);
   const objectErrors = ref<string[]>([]);
-  const pluginHost = new WorkspacePluginHost(objectTypeRegistry, undefined, runtime.plugins?.principal);
   let pluginEditorEdit: ((id: string, before: string, after: string) => Promise<boolean>) | undefined;
   const pluginRuntime = shallowRef<PluginRuntimeState[]>([]);
   const pluginQueryPager = new PluginQueryPager();
-  const pluginExecutor = new PluginExecutionHost({ call: pluginCall }, states => { pluginRuntime.value = states; }, runtime.plugins);
   const canManageSettings = computed(() => !!workspace.value && !workspace.value.readOnly &&
     (workspace.value.canManageSettings ?? adapter.mode !== 'web'));
   const canManagePlugins = computed(() => !!workspace.value && canManageWorkspacePlugins(adapter, workspace.value));
@@ -271,29 +341,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   onScopeDispose(() => { if (typeof window !== 'undefined') window.removeEventListener('storage', pluginStorageChanged); });
   const installedPlugins = ref<InstalledObjectPlugin[]>([]);
   const pluginDevelopment = shallowRef<PluginDevelopmentState>({ pluginId: '', active: false, message: '' });
-  const pluginDeveloper = new PluginDevelopmentRunner({
-    snapshot(id) {
-      const installation = installedPlugins.value.find(plugin => plugin.manifest.id === id);
-      if (!workspace.value || installation?.manifest.manifestVersion !== 2 || !installation.rule?.integrity) return;
-      return { workspaceId: workspace.value.id, manifest: installation.manifest, integrity: installation.rule.integrity,
-        authorized: !!installation.authorized, enabled: installation.enabled, canManage: canManagePlugins.value };
-    },
-    apply: (pkg, integrity, previous, guards) => serial(async () => {
-      const assertSession = guards.beforeInstall;
-      assertSession(); workspace.value = await adapter.refresh(); await refreshObjects(); assertSession();
-      await pluginHost.changeWorkspace(adapter, workspace.value!, { install: pkg.manifest, package: pkg }, assertSession, runtime.plugins?.repository);
-      // Re-read authority before authorizing the newly installed bytes. The previous
-      // digest assertion remains valid until refreshObjects publishes the new rule.
-      assertSession(); workspace.value = await adapter.refresh();
-      if (workspace.value.id !== previous.workspaceId || !canManageWorkspacePlugins(adapter, workspace.value)) throw new Error('工作区或管理权限已变化');
-      await refreshObjects();
-      if (installedPlugins.value.find(plugin => plugin.manifest.id === pkg.manifest.id)?.rule?.integrity !== integrity) throw new Error('插件版本被另一操作更改，请重新连接开发服务');
-      guards.beforeAuthorize();
-      pluginHost.authorize(previous.workspaceId, pkg.manifest.id, integrity, previous.integrity);
-      await refreshObjects();
-    }),
-  }, state => { pluginDevelopment.value = state; });
-  onScopeDispose(() => pluginDeveloper.stop());
+  const pluginServices = new WorkspacePluginRuntime({
+    adapter, services: runtime.plugins, serial, refresh: refreshObjects, call: pluginCall,
+    workspace: () => workspace.value, setWorkspace: current => { workspace.value = current; },
+    installed: () => installedPlugins.value, canManage: () => canManagePlugins.value,
+    changed: states => { pluginRuntime.value = states; },
+    developmentChanged: state => { pluginDevelopment.value = state; },
+  });
+  const { policy: pluginHost, executor: pluginExecutor, developer: pluginDeveloper } = pluginServices;
+  onScopeDispose(() => pluginServices.dispose());
   const pluginViews = computed(() => pluginWorkbenchViews(installedPlugins.value));
   const pluginCommands = computed(() => pluginWorkbenchCommands(pluginRuntime.value));
   const activePluginSidebar = ref('');
@@ -322,7 +378,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const relations = ref<WorkspaceRelation[]>([]);
   const relationError = ref('');
   let relationBase: FileSnapshot | null = null;
-  onScopeDispose(() => { pluginExecutor.dispose(); pluginHost.dispose(); });
   const relationDefinitions = computed(() => [
     ...coreRelationTypes,
     ...installedPlugins.value.filter((item) => item.enabled).flatMap((item) => item.manifest.relationTypes),
@@ -343,7 +398,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   ] : []);
   const referenceRevision = computed(() => JSON.stringify([workspace.value?.id, workspace.value?.path,
     workspace.value?.files.map(file => [file.id, file.path, file.modified, file.size]),
-    documents.value.map(doc => [doc.id, doc.content]), objects.value.map(record => [record.object.id, record.object.description, record.object.name, record.object.archived])]));
+    documents.value.map(doc => [doc.id, documentIndex.revision(doc)]), objects.value.map(record => [record.object.id, record.object.description, record.object.name, record.object.archived])]));
   let pluginEventTimer: ReturnType<typeof setTimeout>;
   onScopeDispose(() => clearTimeout(pluginEventTimer));
   const referenceDocumentCache = new Map<string, { stamp: string; content: string }>();
@@ -368,6 +423,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const loaded = await loadObjects(adapter, workspace.value);
     objects.value = loaded.records; objectErrors.value = loaded.errors;
     try {
+      const loadedViews = await loadWorkspaceViews(adapter, workspace.value);
+      workspaceViews.value = loadedViews.records;
+      workspaceViewErrors.value = loadedViews.errors;
+    } catch (error) {
+      workspaceViews.value = [];
+      workspaceViewErrors.value = [`无法读取工作区视图：${String(error)}`];
+    }
+    try {
       const loadedRelations = await loadRelations(adapter, workspace.value);
       relationBase = loadedRelations.snapshot; relations.value = loadedRelations.file.relations;
       relationError.value = '';
@@ -375,75 +438,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       relations.value = []; relationBase = null;
       relationError.value = `无法读取关系：${String(error)}。原文件已保留，请修复后重试。`;
     }
-  }
-  async function changePlugin(change: PluginChange, expectedWorkspace: string) {
-    return serial(async () => {
-      if (workspace.value?.id !== expectedWorkspace) throw new Error('工作区已切换，请重试');
-      const assertCurrent = () => { if (workspace.value?.id !== expectedWorkspace) throw new Error('工作区已切换，请重试'); };
-      await pluginHost.changeWorkspace(adapter, workspace.value, change, assertCurrent, runtime.plugins?.repository);
-      workspace.value = await adapter.refresh();
-      await refreshObjects();
-    });
-  }
-  async function loadPluginCatalog(signal: AbortSignal) {
-    if (!runtime.plugins?.catalog) throw new Error('此产品尚未配置社区插件目录');
-    const value = await runtime.plugins.catalog.list(signal);
-    signal.throwIfAborted();
-    return parsePluginCatalog(JSON.stringify(value));
-  }
-  async function installCatalogRelease(release: PluginCatalogRelease, expectedWorkspace: string, signal: AbortSignal) {
-    const assertCurrent = () => {
-      signal.throwIfAborted();
-      if (workspace.value?.id !== expectedWorkspace || !canManagePlugins.value) throw new Error('工作区或管理权限已变化');
-    };
-    assertCurrent();
-    if (!runtime.plugins?.catalog || release.status !== 'published') throw new Error('此目录版本不可安装');
-    const downloaded = await runtime.plugins.catalog.download(release, signal);
-    assertCurrent();
-    const pkg = parsePluginPackage(JSON.stringify(downloaded.pkg));
-    await verifyCatalogPackage(release, pkg); assertCurrent();
-    return serial(async () => {
-      assertCurrent(); workspace.value = await adapter.refresh(); await refreshObjects(); assertCurrent();
-      await pluginHost.changeWorkspace(adapter, workspace.value!, { install: pkg.manifest, package: pkg, sourceUrl: downloaded.sourceUrl }, assertCurrent, runtime.plugins?.repository);
-      assertCurrent(); workspace.value = await adapter.refresh(); await refreshObjects();
-    });
-  }
-  async function authorizePlugin(id: string, integrity: string | undefined, expectedWorkspace: string) {
-    if (!integrity && workspace.value?.id === expectedWorkspace && pluginDevelopment.value.pluginId === id) pluginDeveloper.stop();
-    return serial(async () => {
-      if (workspace.value?.id !== expectedWorkspace) throw new Error('工作区已切换');
-      pluginHost.authorize(expectedWorkspace, id, integrity);
-      await refreshObjects();
-    });
-  }
-  async function cachePluginPackage(content: string) {
-    const pkg = parsePluginPackage(content);
-    const integrity = await new PluginPackageCache().put(pkg);
-    pluginExecutor.invalidate(pkg.manifest.id);
-    return integrity;
-  }
-  async function restartPlugin(id: string, expectedWorkspace: string) {
-    return serial(async () => {
-      if (workspace.value?.id !== expectedWorkspace) throw new Error('工作区已切换');
-      pluginExecutor.invalidate(id);
-      workspace.value = await adapter.refresh(); await refreshObjects();
-    });
-  }
-  async function rollbackPlugin(id: string, integrity: string, expectedWorkspace: string) {
-    return serial(async () => {
-      const assertCurrent = () => {
-        if (workspace.value?.id !== expectedWorkspace || !canManagePlugins.value) throw new Error('工作区或管理权限已变化');
-      };
-      assertCurrent();
-      workspace.value = await adapter.refresh(); await refreshObjects(); assertCurrent();
-      const rule = installedPlugins.value.find(plugin => plugin.manifest.id === id)?.rule;
-      const previous = rule?.history?.find(version => version.integrity === integrity);
-      if (!rule || !previous) throw new Error('此历史版本已不可用，请刷新后重试');
-      const pkg = await new PluginPackageCache().resolve(expectedWorkspace, { ...previous, mode: rule.mode, settings: rule.settings }, AbortSignal.timeout(15000), runtime.plugins?.repository);
-      assertCurrent();
-      await pluginHost.changeWorkspace(adapter, workspace.value!, { install: pkg.manifest, package: pkg, sourceUrl: previous.sourceUrl }, assertCurrent, runtime.plugins?.repository);
-      workspace.value = await adapter.refresh(); await refreshObjects();
-    });
   }
   async function pluginCall(method: string, params: Record<string, unknown>, assertInstance: () => void): Promise<unknown> {
     const expected = workspace.value?.id;
@@ -463,8 +457,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         read: path => adapter.read(path), assertCurrent,
       });
       const file = () => {
-        const entry = current.files.find(row => row.id === params.fileId && row.kind === 'file' && isMarkdown(row.path) && !isWorkspaceInternalPath(row.path));
-        if (!entry) throw new Error('文档不存在或不可访问');
+        const entry = fileRegistry.value?.get(String(params.fileId));
+        if (!entry || !isMarkdown(entry.path) || isWorkspaceInternalPath(entry.path)) throw new Error('文档不存在或不可访问');
         return entry;
       };
       const text = (value: unknown) => { if (typeof value !== 'string' || value.length > 512000) throw new Error('插件文档内容无效或过大'); return value; };
@@ -472,7 +466,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       if (method === 'documents.read') {
         const entry = file();
         const disk = await adapter.read(entry.path);
-        const doc = documents.value.find(row => row.id === entry.id);
+        const doc = documentIndex.byId.value.get(entry.id);
         if (doc?.conflict || doc?.missing) throw new Error('文档存在冲突，请先处理');
         const content = text(doc?.content ?? disk.content);
         return { id: entry.id, path: entry.path, content, hash: await assistantHash(content) };
@@ -493,7 +487,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         if (!isMarkdown(path) || validatePath(path)) throw new Error('新文档路径无效');
         assertCurrent(); await adapter.create(path, text(params.content));
         workspace.value = await adapter.refresh();
-        const entry = workspace.value.files.find(row => row.path === path)!;
+        const entry = fileRegistry.value?.at(path)!;
         return { id: entry.id, path };
       }
       if (method === 'documents.write') {
@@ -502,7 +496,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         if (!pluginRecord(params.base) || params.base.id !== entry.id) throw new Error('文档版本无效');
         const base = text(params.base.content), desired = text(params.content);
         const disk = await adapter.read(entry.path);
-        const doc = documents.value.find(row => row.id === entry.id);
+        const doc = documentIndex.byId.value.get(entry.id);
         if (doc?.conflict || doc?.missing) throw new Error('请先处理文档已有冲突');
         const live = doc ? mergeMarkdown(doc.base.content, doc.content, disk.content) : { clean: true, content: disk.content };
         const merged = mergeMarkdown(base, desired, live.content);
@@ -621,12 +615,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return editRelation({ replace: { type, target, previous, next } }, workspaceId);
   }
   async function createObject(draft: Pick<WorkspaceObject, 'type' | 'name' | 'description' | 'properties' | 'archived'>) {
-    // New tasks use the event model. Existing task files retain their identity and references.
-    if (draft.type === 'task') draft = {
-      ...draft,
-      type: 'event',
-      properties: { ...draft.properties, checkable: true, completed: draft.properties.completed === true || ['done', 'completed'].includes(String(draft.properties.status)) },
-    };
     const workspaceId = workspace.value?.id;
     return serial(async () => {
       if (!workspaceId || workspace.value?.id !== workspaceId) throw new Error('工作区已切换');
@@ -658,6 +646,24 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       activity('对象已更新', `${saved.object.name} · ${saved.object.type}`, 'save');
       recordHelpPlanEdit(record.object, draft);
       return saved;
+    });
+  }
+  async function deleteObject(record: ObjectRecord, expectedWorkspace: string) {
+    return serial(async () => {
+      if (workspace.value?.id !== expectedWorkspace) throw new Error('工作区已切换');
+      writable();
+      if (!capabilities.value.features.objectReferences) throw new Error('Level 2 已关闭');
+      if (record.object.properties.syncReadOnly === true) throw new Error('此对象为只读');
+      if (!adapter.removeObjectFile) throw new Error('此存储适配器不支持安全删除对象');
+      const file = fileRegistry.value?.at(record.path);
+      if (!file || file.readOnly) throw new Error('对象已不存在或为只读');
+      const base = parseObject(record.snapshot.content);
+      if (base.id !== record.object.id || base.type !== record.object.type) throw new Error('对象身份不一致');
+      const result = await adapter.removeObjectFile({ workspaceId: expectedWorkspace, fileId: file.id, path: record.path, expectedHash: record.snapshot.hash });
+      if (result.status !== 'saved') throw new Error('对象已被外部修改或删除，请重新读取后重试');
+      // Preserve relation provenance. Missing endpoints remain explicit and can be removed separately.
+      workspace.value = await adapter.refresh(); await refreshObjects();
+      activity('对象已删除', record.object.name, 'file');
     });
   }
   async function templates(expectedWorkspace: string) {
@@ -767,21 +773,22 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
   const documents = ref<OpenDocument[]>([]);
-  const pluginDataRevision = computed(() => JSON.stringify([
+  const documentIndex = useDocumentIndex(documents);
+  const pluginDataRevision = computed(() => [
     workspace.value?.id,
     workspace.value?.files.filter(file => file.kind === 'file' && isMarkdown(file.path) && !isWorkspaceInternalPath(file.path)).map(file => {
-      const draft = documents.value.find(doc => doc.id === file.id);
+      const draft = documentIndex.byId.value.get(file.id);
       return [file.id, JSON.stringify([file.path, file.size, file.modified, !!(workspace.value?.readOnly || file.readOnly),
-        draft && draft.content !== draft.base.content ? draft.content : '', !!draft?.conflict, !!draft?.missing])];
+        draft ? documentIndex.draftRevision(draft) : 0, !!draft?.conflict, !!draft?.missing])] as [string, string];
     }) ?? [],
-    objects.value.map(record => [record.object.id, record.snapshot.hash]),
-    relations.value.map(relation => [relation.id, JSON.stringify(relation)]),
-  ]));
+    objects.value.map(record => [record.object.id, record.snapshot.hash] as [string, string]),
+    relations.value.map(relation => [relation.id, JSON.stringify(relation)] as [string, string]),
+  ] as const);
   let pluginEventScope: string | undefined;
   let pluginPrevious = [new Map<string, string>(), new Map<string, string>(), new Map<string, string>()];
   watch(pluginDataRevision, revision => {
     clearTimeout(pluginEventTimer);
-    const [scope, ...values] = JSON.parse(revision) as [string | undefined, [string, string][], [string, string][], [string, string][]];
+    const [scope, ...values] = revision;
     const next = values.map(rows => new Map(rows));
     if (scope !== pluginEventScope) {
       pluginEventScope = scope; pluginPrevious = next; pluginQueryPager.clear(); pluginDeveloper.stop(); return;
@@ -816,6 +823,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
     if (activeId.value.startsWith('plugin:') && !keys.has(activeId.value)) activeId.value = tabIds.value[0] ?? '';
     if (!definitions.some(view => view.location === 'sidebar' && view.key === activePluginSidebar.value)) activePluginSidebar.value = '';
+  });
+  watch(workspaceViews, definitions => {
+    const keys = new Set(definitions.map((record) => workspaceViewTabId(record.view.id)));
+    const remaining = tabIds.value.filter((id) => !isWorkspaceViewTab(id) || keys.has(id));
+    if (remaining.length !== tabIds.value.length) {
+      for (const id of tabIds.value) if (!remaining.includes(id)) removeTabNavigation(id);
+      tabIds.value = remaining;
+      if (isWorkspaceViewTab(activeId.value) && !keys.has(activeId.value)) activeId.value = tabIds.value[0] ?? '';
+    }
   });
   watch(() => workspace.value?.id, () => { activePluginSidebar.value = ''; pluginSettingsRequest.value = undefined; });
   const layout = ref<WorkspaceLayout>(newPane());
@@ -895,111 +911,47 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     next.delete(id);
     tabAliases.value = next;
   }
-  const active = computed(() => documents.value.find((d) => d.id === tabTarget(activeId.value)));
+  const active = computed(() => documentIndex.byId.value.get(tabTarget(activeId.value)));
   const tabs = computed<DocumentTab[]>(() =>
     tabIds.value.map((id) => {
       const targetId = tabTarget(id);
-      const document = documents.value.find((doc) => doc.id === targetId);
+      const document = documentIndex.byId.value.get(targetId);
       const attachmentPreview = id.startsWith('attachment:');
-      const attachment = attachmentPreview ? workspace.value?.files.find(file => file.id === id.slice('attachment:'.length) && file.kind === 'file') : undefined;
+      const attachment = attachmentPreview ? fileRegistry.value?.get(id.slice('attachment:'.length)) : undefined;
       const table = dataTables.records.value.find(record => tableTabId(record.fileId) === targetId);
-      const tableFile = isTableTab(targetId) ? workspace.value?.files.find(file => file.id === tableFileId(targetId)) : undefined;
+      const tableFile = isTableTab(targetId) ? fileRegistry.value?.get(tableFileId(targetId)) : undefined;
       const tablePath = tableFile ? displayPath(tableFile) : table?.path;
-      return { id, path: document ? displayPath(document) : attachment ? displayPath(attachment) : tableFile ? displayPath(tableFile) : tablePath ?? (attachmentPreview ? '附件不可用' : ''), blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, view: views.value.get(id), pluginView: pluginViews.value.find(view => view.key === id && view.location === 'tab'), document, attachmentPreview, attachment,
-        ...(isTableTab(targetId) ? { dataTable: { name: tablePath ? dataTableName(tablePath) : '数据表不可用', dirty: !!table && dataTables.dirty(table) } } : {}) };
+      const workspaceView = workspaceViews.value.find(record => workspaceViewTabId(record.view.id) === targetId);
+      return { id, path: document ? displayPath(document) : attachment ? displayPath(attachment) : tableFile ? displayPath(tableFile) : workspaceView?.path ?? tablePath ?? (attachmentPreview ? '附件不可用' : ''), blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, view: views.value.get(id), workspaceView, pluginView: pluginViews.value.find(view => view.key === id && view.location === 'tab'), document, attachmentPreview, attachment,
+        ...(isTableTab(targetId) ? { dataTable: { name: tablePath ? dataTableName(tablePath) : '数据表不可用', dirty: !!table && dataTables.dirty(table), icon: table?.draft.icon } } : {}) };
     }),
   );
-  type TabNavigation = { entries: string[]; index: number };
-  const tabSlots = new Map<string, string>();
-  const tabNavigations = new Map<string, TabNavigation>();
-  const navigationRevision = ref(0);
-  const navigationBusy = ref(false);
-  function touchNavigation() {
-    navigationRevision.value++;
-  }
-  function ensureTabNavigation(tabId: string, initialId = tabId) {
-    let slot = tabSlots.get(tabId);
-    if (!slot) {
-      slot = crypto.randomUUID();
-      tabSlots.set(tabId, slot);
-    }
-    if (!tabNavigations.has(slot))
-      tabNavigations.set(slot, { entries: [initialId], index: 0 });
-    return tabNavigations.get(slot)!;
-  }
-  function resetTabNavigation() {
-    tabSlots.clear();
-    tabNavigations.clear();
-    touchNavigation();
-  }
-  function recordTabNavigation(fromId: string | undefined, toId: string, historyIndex?: number) {
-    const history = ensureTabNavigation(fromId ?? toId, fromId ?? toId);
-    const slot = tabSlots.get(fromId ?? toId)!;
-    if (fromId && fromId !== toId) {
-      tabSlots.delete(fromId);
-      tabSlots.set(toId, slot);
-    }
-    if (historyIndex === undefined) {
-      if (history.entries[history.index] !== toId)
-        history.entries = [...history.entries.slice(0, history.index + 1), toId].slice(-100);
-      history.index = history.entries.length - 1;
-    } else {
-      history.index = historyIndex;
-    }
-    touchNavigation();
-  }
-  function removeTabNavigation(tabId: string) {
-    const slot = tabSlots.get(tabId);
-    if (!slot) return;
-    tabSlots.delete(tabId);
-    tabNavigations.delete(slot);
-    touchNavigation();
-  }
-  watch(() => workspace.value?.id, () => {
-    resetTabNavigation();
-  }, { flush: 'sync' });
-  function activeNavigation(tabId = activeId.value) {
-    void navigationRevision.value;
-    return tabId ? ensureTabNavigation(tabId) : undefined;
-  }
-  function navigationDestination(direction: -1 | 1, tabId = activeId.value) {
-    const history = activeNavigation(tabId);
-    if (!history) return -1;
-    for (let index = history.index + direction;
-      index >= 0 && index < history.entries.length; index += direction) {
-      const id = history.entries[index];
-      if (isNavigationPage(id) || pluginViews.value.some(view => view.key === id && view.location === 'tab') || tabIds.value.includes(id) || workspace.value?.files.some((file) =>
-        file.id === id && file.kind === 'file' && isMarkdown(file.path))) return index;
-    }
-    return -1;
-  }
-  function canNavigateHistory(direction: -1 | 1, tabId = activeId.value) {
-    return !busy.value && !navigationBusy.value && navigationDestination(direction, tabId) >= 0;
-  }
-  const canGoBack = computed(() => canNavigateHistory(-1));
-  const canGoForward = computed(() => canNavigateHistory(1));
-  async function navigateHistory(direction: -1 | 1, paneId?: string) {
-    if (busy.value || navigationBusy.value) return;
-    if (paneId) {
-      if (!panes.value.some(pane => pane.id === paneId)) return;
-      focusPane(paneId);
-    }
-    const index = navigationDestination(direction);
-    if (index < 0) return;
-    const history = activeNavigation();
-    if (!history) return;
-    const id = history.entries[index];
-    navigationBusy.value = true;
-    try {
-      if (isNavigationPage(id) || pluginViews.value.some(view => view.key === id && view.location === 'tab')) await openPageTab(id, { historyIndex: index });
+  const {
+    ensure: ensureTabNavigation, reset: resetTabNavigation, record: recordTabNavigation,
+    remove: removeTabNavigation, touch: touchNavigation, canNavigate: canNavigateHistory,
+    navigate: navigateHistory, canGoBack, canGoForward,
+  } = useTabNavigation({
+    activeId: () => activeId.value,
+    busy: () => busy.value,
+    available: id => {
+      const file = fileRegistry.value?.get(id);
+      return isNavigationPage(id) || pluginViews.value.some(view => view.key === id && view.location === 'tab') ||
+        tabIds.value.includes(id) || !!(file && file.kind === 'file' && isMarkdown(file.path));
+    },
+    focusPane: id => {
+      if (!panes.value.some(pane => pane.id === id)) return false;
+      focusPane(id); return true;
+    },
+    open: async (id, historyIndex) => {
+      if (isNavigationPage(id) || pluginViews.value.some(view => view.key === id && view.location === 'tab'))
+        await openPageTab(id, { historyIndex });
       else {
-        const file = workspace.value?.files.find((entry) => entry.id === id);
-        if (file) await openFile(file, { historyIndex: index });
+        const file = fileRegistry.value?.get(id);
+        if (file) await openFile(file, { historyIndex });
       }
-    } finally {
-      navigationBusy.value = false;
-    }
-  }
+    },
+  });
+  watch(() => workspace.value?.id, resetTabNavigation, { flush: 'sync' });
   const activities = ref<Activity[]>([]);
   const notice = ref('');
   const fatal = ref('');
@@ -1014,17 +966,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     ? new URLSearchParams(window.location.search).get('workspacePath')
     : null;
   const remembersStartupWorkspace = !isDemo && !isWeb && !detachedTabId;
-  const dirty = (doc: OpenDocument) => !!doc.creating || doc.content !== doc.base.content;
+
   const layoutPending = (doc: OpenDocument) => !!doc.tableLayout && layoutDirty(doc.tableLayout) &&
     doc.tableLayout.conflict?.draft !== JSON.stringify(doc.tableLayout.file);
   const suggestionPersistence = shallowRef<{ flush: () => Promise<void>; pending: () => boolean }>();
   const pending = computed(() => fileMutations.pending.value || dataTables.records.value.some(dataTables.dirty) || !!suggestionPersistence.value?.pending() || documents.value.some((d) => (dirty(d) || layoutPending(d)) && !d.conflict));
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
-  let watchTimer: ReturnType<typeof setTimeout> | undefined;
-  let pollTimer: ReturnType<typeof setInterval> | undefined;
-  let unwatch: (() => void) | undefined;
-  let refreshRunning = false;
-  let refreshPending = false;
+
+
+
+
+
   let chain: Promise<unknown> = Promise.resolve();
   let creationChain: Promise<unknown> = Promise.resolve();
   let creationRevision = 0;
@@ -1032,50 +984,44 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   let disposed = false;
   let sessionReady = false;
   let sessionBlocked = false;
-  let pendingSession: { id: string; payload: WorkspaceSession } | undefined;
-  let journalTask: Promise<void> = Promise.resolve();
-  let journalWriting = false;
+  const journal = new SessionJournal(
+    (id, session) => adapter.saveSession!(id, session),
+    error => { sessionError.value = error === undefined ? '' :
+      `恢复草稿未写入：${String(error)}。文档仍会尝试正常保存。`; },
+  );
   let beforeSwitch: (() => Promise<void>) | undefined;
   let afterSwitch: (() => Promise<void>) | undefined;
   let beforeCloseDocument: ((id: string) => Promise<void>) | undefined;
   let fileOpenRevision = 0;
+  // Track only recoverable fields. Saving/error flags, undo stacks and plugin
+  // state must not traverse/rewrite every open document on the input path.
+  const recoveryDocuments = new WeakMap<OpenDocument, ComputedRef<WorkspaceSession['documents'][number]>>();
+  const sessionDocuments = computed(() => documents.value.map(doc => {
+    let snapshot = recoveryDocuments.get(doc);
+    if (!snapshot) {
+      snapshot = computed(() => ({
+        id: doc.id, path: doc.path,
+        ...(dirty(doc) ? { draft: { content: doc.content, base: { ...doc.base } } } : {}),
+      }));
+      recoveryDocuments.set(doc, snapshot);
+    }
+    return snapshot.value;
+  }));
+  const sessionTables = computed(() => dataTables.drafts());
+  const sessionLayout = computed(() => JSON.parse(JSON.stringify(layout.value)) as WorkspaceLayout);
+  const sessionPayload = computed<WorkspaceSession>(() => ({
+    version: 1,
+    activeId: activeId.value,
+    tabs: [...new Set(tabIds.value.map(tabTarget))],
+    layout: sessionLayout.value,
+    dataTables: sessionTables.value,
+    documents: sessionDocuments.value,
+  }));
   function queueSession() {
     if (detachedTabId || !sessionReady || sessionBlocked || !workspace.value || !adapter.saveSession) return;
-    pendingSession = {
-      id: workspace.value.id,
-      payload: {
-        version: 1,
-        activeId: activeId.value,
-        // Alias tabs are a live UI detail.  Persist one canonical tab per
-        // document so a restart cannot restore an id whose alias map is gone.
-        tabs: [...new Set(tabIds.value.map(tabTarget))],
-        layout: JSON.parse(JSON.stringify(layout.value)) as WorkspaceLayout,
-        dataTables: dataTables.drafts(),
-        documents: documents.value.map((doc) => ({
-          id: doc.id,
-          path: doc.path,
-          ...(dirty(doc) ? { draft: { content: doc.content, base: { ...doc.base } } } : {}),
-        })),
-      },
-    };
-    if (journalWriting) return;
-    journalWriting = true;
-    journalTask = (async () => {
-      while (pendingSession) {
-        const next = pendingSession;
-        pendingSession = undefined;
-        try {
-          await adapter.saveSession!(next.id, next.payload);
-          sessionError.value = '';
-        } catch (error) {
-          sessionError.value = `恢复草稿未写入：${String(error)}。文档仍会尝试正常保存。`;
-        }
-      }
-      journalWriting = false;
-    })();
+    journal.enqueue(workspace.value.id, sessionPayload.value);
   }
-  const stopSessionWatch = watch([documents, tabIds, activeId, layout, dataTables.records], queueSession, {
-    deep: true,
+  const stopSessionWatch = watch(sessionPayload, queueSession, {
     flush: 'sync',
   });
   function serial<T>(task: () => Promise<T>): Promise<T> {
@@ -1105,36 +1051,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   function report(error: unknown) {
     fatal.value = error instanceof Error ? error.message : String(error);
   }
-  function scheduleRefresh() {
-    if (!workspace.value) return;
-    refreshPending = true;
-    if (watchTimer || refreshRunning) return;
-    watchTimer = setTimeout(() => {
-      watchTimer = undefined;
-      refreshPending = false;
-      refreshRunning = true;
-      void refresh().finally(() => {
-        refreshRunning = false;
-        if (refreshPending) scheduleRefresh();
-      });
-    }, 150);
-  }
-  function refreshWhenVisible() {
-    if (document.visibilityState === 'visible') scheduleRefresh();
-  }
-  function stopWatching() {
-    unwatch?.();
-    unwatch = undefined;
-    clearTimeout(watchTimer);
-    watchTimer = undefined;
-    clearInterval(pollTimer);
-    pollTimer = undefined;
-    refreshPending = false;
-    if (!isDemo && !isWeb && !mobile) {
-      window.removeEventListener('focus', scheduleRefresh);
-      document.removeEventListener('visibilitychange', refreshWhenVisible);
-    }
-  }
+  const workspaceLifecycle = new WorkspaceLifecycle({
+    watch: changed => adapter.watch(changed), refresh, report,
+    available: () => !!workspace.value && !disposed,
+  }, !isDemo && !isWeb && !mobile);
+  onScopeDispose(() => workspaceLifecycle.stop());
+  function scheduleRefresh() { workspaceLifecycle.schedule(); }
+  function stopWatching() { workspaceLifecycle.stop(); }
   if (!isDemo && !isWeb && !mobile && typeof window !== 'undefined') {
     const refreshRecentOnFocus = () => { void refreshWorkspaces(); };
     window.addEventListener('focus', refreshRecentOnFocus);
@@ -1218,6 +1141,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         workspace.value = next;
         if (remembersStartupWorkspace) rememberStartupWorkspace(next.id);
         objects.value = []; objectErrors.value = [];
+        workspaceViews.value = []; workspaceViewErrors.value = [];
         capabilityBase = null;
         capabilities.value = structuredClone(defaultCapabilities);
         await dataTables.reload();
@@ -1239,16 +1163,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         activities.value = [];
         sessionError.value = '';
         sessionBlocked = false;
-        try {
-          unwatch = await adapter.watch(scheduleRefresh);
-        } catch (error) {
-          report(`文件监听未能启动：${String(error)}。目录将继续自动检查。`);
-        }
-        if (!isDemo && !isWeb && !mobile) {
-          pollTimer = setInterval(refreshWhenVisible, 5_000);
-          window.addEventListener('focus', scheduleRefresh);
-          document.addEventListener('visibilitychange', refreshWhenVisible);
-        }
+        await workspaceLifecycle.start();
         let saved: WorkspaceSession | null = null;
         if (!detachedTabId && adapter.loadSession) {
           try {
@@ -1269,6 +1184,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           else if (detachedTabId === PLUGINS_TAB_ID) await openPluginsTab({ newTab: true });
           else if (detachedTabId === CALENDAR_TAB_ID) openCalendarTab();
           else if (isTableTab(detachedTabId)) await openPageTab(detachedTabId, { newTab: true });
+          else if (isWorkspaceViewTab(detachedTabId)) await openWorkspaceView(workspaceViewId(detachedTabId)!, { newTab: true });
           else if (views.value.has(detachedTabId)) {
             if (!views.value.get(detachedTabId)?.detachable) throw new Error('此扩展视图不支持移到其他窗口');
             openViewTab(detachedTabId);
@@ -1351,7 +1267,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         const current = workspace.value;
         if (!current) return;
         queueSession();
-        await journalTask;
+        await journal.flush();
         if (deleteId !== undefined) await adapter.deleteWorkspace!(deleteId);
         else if (!detachedTabId) await adapter.close?.(current.id);
         if (remembersStartupWorkspace) rememberStartupWorkspace(null);
@@ -1409,8 +1325,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       if (isTableTab(id) && id !== TABLES_TAB_ID) remapped.set(id, tableTabId(dataTableFileId(tableFileId(id))));
     for (const tab of saved.documents) {
       const file =
-        workspace.value!.files.find((entry) => entry.id === tab.id) ??
-        workspace.value!.files.find((entry) => entry.path === tab.path && entry.kind === 'file');
+        fileRegistry.value?.get(tab.id) ??
+        fileRegistry.value?.at(tab.path);
       if (!tab.draft) {
         if (file) {
           try {
@@ -1438,7 +1354,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       if (file) {
         try {
           if (!doc.creating) await reconcile(doc, await adapter.read(file.path));
-          await saveInternal(documents.value.find(item => item.id === doc.id)!);
+          await saveInternal(documentIndex.byId.value.get(doc.id)!);
         } catch (error) {
           doc.error = String(error);
           report(error);
@@ -1514,7 +1430,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return;
     }
     if (!isMarkdown(file.path) || file.kind !== 'file') return;
-    let doc = documents.value.find((d) => d.id === file.id);
+    let doc = documentIndex.byId.value.get(file.id);
     if (!doc) {
       const snapshot = await adapter.read(file.path);
       doc = {
@@ -1530,7 +1446,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
     if (!current()) return;
     activateTab(doc.id, replaceId, doc);
-    const opened = documents.value.find(item => item.id === doc!.id)!;
+    const opened = documentIndex.byId.value.get(doc!.id)!;
     if (opened.creating) void confirmCreation(opened).then(confirmed => {
       if (confirmed && !disposed && dirty(opened)) void flush();
     });
@@ -1541,7 +1457,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return false;
     }
     if (suggestionPersistence.value?.pending() && !(await flush())) return false;
-    const current = documents.value.find((doc) => doc.id === tabTarget(id ?? ''));
+    const current = documentIndex.byId.value.get(tabTarget(id ?? ''));
     if (!current) return true;
     if ((dirty(current) || layoutPending(current)) && !(await flush())) {
       report('此文档尚未保存，请先处理保存错误。');
@@ -1564,22 +1480,22 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   function prefetchFile(file: FileEntry) {
     if (!adapter.prefetch || busy.value || disposed || file.kind !== 'file' || !isMarkdown(file.path)) return;
-    const entry = workspace.value?.files.find(entry => entry.id === file.id);
+    const entry = fileRegistry.value?.get(file.id);
     if (!entry || entry.pendingCreation) return;
     // This is only a hint. Opening still reports real read errors and validates
     // the current version; hovering must never surface an error banner.
     void adapter.prefetch(entry.path).catch(() => {});
     if (/^[0-9a-f]{6}$/.test(entry.id)) {
       const path = documentLayoutPath(entry.id);
-      if (workspace.value?.files.some(file => file.path === path))
+      if (fileRegistry.value?.at(path))
         void adapter.prefetch(path).catch(() => {});
     }
   }
   function openCached(file: FileEntry, replaceId?: string) {
     if (fileMutations.pending.value) return false;
-    const existing = documents.value.find(doc => doc.id === file.id);
+    const existing = documentIndex.byId.value.get(file.id);
     if (existing) { activateTab(existing.id, replaceId, existing); return true; }
-    const entry = workspace.value?.files.find(entry => entry.id === file.id);
+    const entry = fileRegistry.value?.get(file.id);
     if (!entry || entry.pendingCreation) return false;
     const snapshot = adapter.readCached?.(entry.path);
     if (!snapshot) return false;
@@ -1587,7 +1503,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       base: snapshot, saving: false, missing: false };
     if (/^[0-9a-f]{6}$/.test(entry.id)) {
       const path = documentLayoutPath(entry.id);
-      const exists = workspace.value!.files.some(file => file.path === path);
+      const exists = !!fileRegistry.value?.at(path);
       const base = exists ? adapter.readCached?.(path) : null;
       if (exists && !base) return false;
       try {
@@ -1732,6 +1648,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     await openPageTab(GRAPH_TAB_ID, options);
     if (workspace.value && activeId.value === GRAPH_TAB_ID) recordHelpCompleted('graph');
   }
+  async function openWorkspaceView(id: string, options?: { newTab?: boolean; historyIndex?: number }) {
+    if (!workspaceViews.value.some((record) => record.view.id === id)) throw new Error('工作区视图已不存在，请刷新后重试');
+    await openPageTab(workspaceViewTabId(id), options);
+  }
   async function openPluginsTab(options?: { newTab?: boolean; historyIndex?: number }) {
     await openPageTab(PLUGINS_TAB_ID, options);
     if (workspace.value && activeId.value === PLUGINS_TAB_ID) recordHelpCompleted('plugins');
@@ -1757,12 +1677,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return serial(async () => {
       if (workspace.value?.id !== expectedWorkspace.id || workspace.value.path !== expectedWorkspace.path)
         throw new Error('工作区已切换');
-      const entry = workspace.value.files.find(entry => entry.id === file.id && (file.path === undefined || entry.path === file.path));
-      if (!entry || entry.kind !== 'file' || !isMarkdown(entry.path)) throw new Error('文档已移动或删除');
-      const draft = documents.value.find(doc => doc.id === file.id);
+      const entry = fileRegistry.value?.get(file.id);
+      if (!entry || (file.path !== undefined && entry.path !== file.path) || entry.kind !== 'file' || !isMarkdown(entry.path)) throw new Error('文档已移动或删除');
+      const draft = documentIndex.byId.value.get(file.id);
       if (draft) return draft.content;
       const snapshot = await adapter.read(entry.path);
-      return documents.value.find(doc => doc.id === file.id)?.content ?? snapshot.content;
+      return documentIndex.byId.value.get(file.id)?.content ?? snapshot.content;
     });
   }
   function getReferenceContext(identity: ReferenceIdentity, draft?: string,
@@ -1783,7 +1703,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         const key = referenceKey(target);
         if (target.type !== 'document') { contents.set(key, target.description ?? ''); continue; }
         try {
-          const open = documents.value.find(doc => doc.id === target.id);
+          const open = documentIndex.byId.value.get(target.id);
           const stamp = JSON.stringify([expected.id, expected.path, target.path, target.modified, target.size]);
           const cached = referenceDocumentCache.get(target.id);
           const content = open?.content ?? (cached?.stamp === stamp ? cached.content : (await adapter.read(target.path)).content);
@@ -1820,7 +1740,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       for (const path of ['AGENTS.md', assistantRulesPath]) {
         if (!current.files.some(file => file.path === path && file.kind === 'file')) continue;
         const disk = await adapter.read(path);
-        const content = documents.value.find(doc => doc.path === path)?.content ?? disk.content;
+        const content = documentIndex.byPath.value.get(path)?.content ?? disk.content;
         if (new TextEncoder().encode(content).length > 32_000) throw new Error(`${path} 超过 32 KB，请缩短工作区助手规则`);
         rules.push({ path, content });
       }
@@ -1838,7 +1758,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return JSON.parse(JSON.stringify({ targets: referenceTargets.value.filter(target => !isWorkspaceInternalPath(target.path) || target.type !== 'document'),
         relationTypes: relationDefinitions.value, relations: relations.value, relationContent: relationBase?.content ?? '',
         objects: objects.value.map(record => ({ object: record.object, path: record.path, content: record.snapshot.content,
-          fileId: current.files.find(file => file.path === record.path)!.id })),
+          fileId: fileRegistry.value!.at(record.path)!.id })),
       })) as StructureSnapshot & { relations: WorkspaceRelation[] };
     });
   }
@@ -1877,7 +1797,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       for (const target of targets) {
         if (target.type !== 'document') { contents.set(referenceKey(target), target.description ?? ''); continue; }
         try {
-          const content = documents.value.find(doc => doc.id === target.id)?.content ?? (await adapter.read(target.path)).content;
+          const content = documentIndex.byId.value.get(target.id)?.content ?? (await adapter.read(target.path)).content;
           contents.set(referenceKey(target), content);
         } catch (error) { errors.push(`${target.path}：${String(error)}`); }
       }
@@ -1886,29 +1806,35 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         complete: errors.length === 0, errors };
     });
   }
-  async function reviewAssistantStructure(proposal: AssistantProposal, accepted?: AssistantPreview, automatic = false, signal?: AbortSignal) {
+  async function reviewAssistantStructure(proposal: AssistantProposal, accepted?: AssistantPreview, automatic = false, signal?: AbortSignal, external = false) {
     if (!capabilities.value.features.objectReferences) throw new Error('工作区对象能力未启用');
     await refreshObjects();
     if (objectErrors.value.length || relationError.value) throw new Error('请先处理工作区对象或关系记录错误');
     let disk: FileSnapshot | null = null;
     let content = proposal.content;
+    const validateAgentObject = (object: WorkspaceObject, base?: WorkspaceObject) => {
+      const definition = objectTypeRegistry.get(object.type);
+      if (!definition || definition.storage !== 'record' || definition.retired) throw new Error('对象类型不可编辑');
+      if (base && (base.id !== object.id || base.type !== object.type || base.properties.syncReadOnly === true)) throw new Error('对象身份不可修改或对象为只读');
+      validateObjectProperties(object.type, object.properties);
+    };
     if (proposal.kind === 'object') {
       const object = parseObject(content);
       if (proposal.base) {
         const base = parseObject(proposal.base);
-        validateTaskUpdate(base, object);
+        validateAgentObject(object, base);
         const file = workspace.value!.files.find(file => file.id === proposal.fileId && file.path === proposal.path);
         const record = objects.value.find(record => record.object.id === base.id && record.path === file?.path);
-        if (!file || !record) throw new Error('任务已删除、移动或身份变化');
+        if (!file || !record || file.readOnly) throw new Error('对象已删除、移动、只读或身份变化');
         disk = record.snapshot;
         const merged = mergeObject(base, object, record.object);
         if (!merged) return { status: 'conflict' as const, preview: { before: disk.content, after: content, diskHash: disk.hash, path: proposal.path } };
-        validateTaskUpdate(record.object, merged);
+        validateAgentObject(merged, record.object);
         content = JSON.stringify(merged, null, 2) + '\n';
       } else {
-        if (object.type !== 'event' || proposal.path !== `${objectDirectory}/${object.id}.tano.json` || object.archived)
-          throw new Error('助手只能建议新增工作区事件');
-        validateObjectProperties('event', object.properties);
+        if (proposal.path !== `${objectDirectory}/${object.id}.tano.json` || object.archived)
+          throw new Error('新增对象路径或归档状态无效');
+        validateAgentObject(object);
         if (automatic && object.properties.checkable === true && possibleDuplicateTasks(referenceTargets.value, object.name, object.id).length)
           throw new Error('发现可能重复的任务，已暂停创建，请核对后决定是否仍需新增');
         if (referenceTargets.value.some(target => target.id === object.id) || workspace.value!.files.some(file => file.path === proposal.path))
@@ -1934,9 +1860,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const written = await adapter.write(proposal.path, preview.after, disk.hash);
       if (written.status === 'missing') throw new Error('关系文件在保存前移除，请重新审阅');
       if (written.status !== 'saved') return { status: 'stale' as const, preview: undefined };
+     } else if (external && proposal.kind === 'object') {
+      if (!adapter.createAgentRecord) throw new Error('此宿主不支持安全创建外部对象提案');
+      await adapter.createAgentRecord(proposal.path, preview.after);
     } else await adapter.create(proposal.path, preview.after);
     workspace.value = await adapter.refresh();
-    const file = workspace.value.files.find(file => file.path === proposal.path);
+    const file = fileRegistry.value?.at(proposal.path);
     if (!file) throw new Error('工作区记录可能已保存，请刷新核对');
     const result = await adapter.read(proposal.path);
     await refreshObjects();
@@ -1950,7 +1879,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const file = refreshed.files.find(file => file.id === fileId && file.kind === 'file' && isAssistantFile(file.path));
       if (!file) throw new Error('参考文档已移除');
       const disk = await adapter.read(file.path);
-      const doc = documents.value.find(doc => doc.id === fileId);
+      const doc = documentIndex.byId.value.get(fileId);
       if (doc?.conflict || doc?.missing) throw new Error('请先处理参考文档的冲突或缺失');
       const content = isDataTableFilePath(file.path)
         ? assistantTableContent(disk, dataTables.records.value.find(state => state.fileId === fileId))
@@ -1986,15 +1915,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     });
   }
   async function reviewAssistantProposal(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }, proposal: AssistantProposal,
-    accepted?: AssistantPreview, automatic = false, signal?: AbortSignal) {
-    return serial(() => reviewAssistantProposalNow(scope, proposal, accepted, automatic, signal));
+    accepted?: AssistantPreview, automatic = false, signal?: AbortSignal, external = false) {
+    return serial(() => reviewAssistantProposalNow(scope, proposal, accepted, automatic, signal, external));
   }
   async function reviewAssistantProposalNow(scope: Pick<Workspace, 'id' | 'path'> & { epoch?: number }, proposal: AssistantProposal,
-    accepted?: AssistantPreview, automatic = false, signal?: AbortSignal) {
+    accepted?: AssistantPreview, automatic = false, signal?: AbortSignal, external = false) {
       signal?.throwIfAborted();
       requireAssistantWorkspace(scope);
       if (proposal.workspaceId !== scope.id) throw new Error('建议不属于当前工作区');
-      const signature = JSON.stringify([scope, proposal.kind, proposal.fileId, proposal.path, proposal.destination, proposal.base, proposal.content]);
+      const signature = JSON.stringify([scope, proposal.kind, proposal.fileId, proposal.path, proposal.destination, proposal.base, proposal.content, external]);
       const applied = assistantApplied.get(proposal.id);
       if (applied) {
         if (applied.signature !== signature) throw new Error('同一操作标识不能对应不同建议');
@@ -2009,7 +1938,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           throw new Error('此提案已转为文档建议，请在文档中逐项审阅，不能再次整篇应用');
       }
       if (proposal.kind === 'object' || proposal.kind === 'relation') {
-        const result = await reviewAssistantStructure(proposal, accepted, automatic, signal);
+        const result = await reviewAssistantStructure(proposal, accepted, automatic, signal, external);
         if (result.status === 'saved') {
           assistantApplied.set(proposal.id, { signature, ...result.applied });
           activity('助手工作区建议已应用', proposal.path, 'save', { before: result.applied.before, after: result.applied.after });
@@ -2029,7 +1958,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           const parent = parentPath(destination);
           if (parent && !refreshed.files.some(entry => entry.path === parent && entry.kind === 'directory')) throw new Error('目标文件夹不存在');
         } else if (destination !== undefined) throw new Error('删除建议不能包含目标路径');
-        const doc = documents.value.find(doc => doc.id === file.id);
+        const doc = documentIndex.byId.value.get(file.id);
         const table = dataTables.records.value.find(state => state.fileId === file.id);
         const tablePending = () => table && (dataTables.dirty(table) || table.error || table.unavailable || table.saving);
         if (tablePending()) throw new Error('请先保存数据表并处理冲突，再审阅文件操作');
@@ -2108,7 +2037,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           }
           return result;
         }
-        doc = documents.value.find(doc => doc.id === file.id);
+        doc = documentIndex.byId.value.get(file.id);
         if (doc?.conflict || doc?.missing) throw new Error('请先处理文档已有的冲突或缺失');
         const reconciled = doc ? mergeMarkdown(doc.base.content, doc.content, disk.content) : { clean: true, content: disk.content };
         if (!reconciled.clean) return { status: 'conflict' as const, preview: { before: doc!.content, after: proposal.content, diskHash: disk.hash, path } };
@@ -2127,9 +2056,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         let result: FileSnapshot;
         let fileId: string;
         if (proposal.kind === 'create') {
-          await adapter.create(path, preview.after);
+          if (external && isDataTableFilePath(path)) {
+            if (!adapter.createAgentRecord) throw new Error('此宿主不支持安全创建外部数据表提案');
+            await adapter.createAgentRecord(path, preview.after);
+          } else await adapter.create(path, preview.after);
           workspace.value = await adapter.refresh();
-          fileId = workspace.value.files.find(file => file.path === path)?.id ?? '';
+          fileId = fileRegistry.value?.at(path)?.id ?? '';
           if (!fileId) throw new Error('文档可能已创建，请刷新核对');
           result = await adapter.read(path);
         } else {
@@ -2177,7 +2109,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       requireAssistantWorkspace(scope);
       writable();
       if (state.file.workspaceId !== scope.id) throw new Error('建议不属于当前工作区');
-      const file = workspace.value?.files.find(file => file.id === state.file.fileId);
+      const file = fileRegistry.value?.get(state.file.fileId);
       if (!file || file.readOnly) throw new Error('目标文档已移除或只读');
       return saveSuggestions(adapter, state, records);
     });
@@ -2203,7 +2135,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         return { status: 'saved' as const, state: saved };
       }
       if (item.status !== 'pending') return { status: 'saved' as const, state: latest };
-      const doc = documents.value.find(doc => doc.id === state.file.fileId);
+      const doc = documentIndex.byId.value.get(state.file.fileId);
       if (doc?.conflict || doc?.missing) throw new Error('请先处理文档冲突或缺失');
       const merged = doc ? mergeMarkdown(doc.base.content, doc.content, disk.content) : { clean: true, content: disk.content };
       if (!merged.clean) throw new Error('外部修改与当前草稿冲突，原文和建议均已保留');
@@ -2233,8 +2165,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     });
   }
   function editDocument(id: string, content: string, options: { origin?: 'local' | 'remote' } = {}) {
-    const doc = documents.value.find((document) => document.id === id);
-    if (!doc || doc.conflict || workspace.value?.readOnly || workspace.value?.files.find(file => file.id === id)?.readOnly) return;
+    const doc = documentIndex.byId.value.get(id);
+    if (!doc || doc.conflict || workspace.value?.readOnly || fileRegistry.value?.get(id)?.readOnly) return;
     const before = doc.content;
     doc.content = content;
     if (!doc.creating) doc.error = undefined;
@@ -2245,7 +2177,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (options.origin !== 'remote') helpEdits.record(id, before, content, referenceTargets.value);
   }
   function receiveDocument(id: string, content: string, options: { origin?: 'local' | 'remote' } = {}) {
-    const doc = documents.value.find((document) => document.id === id);
+    const doc = documentIndex.byId.value.get(id);
     if (!doc || doc.conflict || doc.missing) return;
     const before = doc.content;
     doc.content = content;
@@ -2259,7 +2191,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     catch (error) { report(`无法读取表格布局，原文件已保留：${String(error)}`); }
   }
   function editTableLayout(id: string, tables: TableLayout[]) {
-    const doc = documents.value.find(item => item.id === id);
+    const doc = documentIndex.byId.value.get(id);
     if (!doc?.tableLayout || doc.conflict || doc.missing || workspace.value?.readOnly) return;
     doc.tableLayout.file = { ...doc.tableLayout.file, tables: JSON.parse(JSON.stringify(tables)) };
     doc.tableLayout.error = undefined;
@@ -2282,73 +2214,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       state.error = String(error); report(error);
     }
   }
-  async function reconcile(doc: OpenDocument, disk: FileSnapshot) {
-    if (doc.conflict) {
-      doc.conflict.disk = disk;
-      return;
-    }
-    if (disk.hash === doc.base.hash) return;
-    referenceDocumentCache.delete(doc.id);
-    const change = { before: doc.base.content, after: disk.content };
-    const merge = mergeMarkdown(doc.base.content, doc.content, disk.content);
-    if (merge.clean) {
-      doc.content = merge.content;
-      doc.base = disk;
-      doc.missing = false;
-      doc.error = undefined;
-      activity('外部修改已载入', doc.path, 'external', change);
-    } else {
-      const copyPath = doc.path.replace(
-        /\.(md|markdown)$/i,
-        `.conflict-${new Date().toISOString().replace(/[:.]/g, '-')}-${crypto.randomUUID().slice(0, 6)}.md`,
-      );
-      // Freeze editing before the asynchronous copy so further keystrokes cannot be lost.
-      doc.conflict = { copyPath, disk };
-      try {
-        await adapter.create(copyPath, doc.content);
-      } catch (error) {
-        doc.conflict = undefined;
-        throw error;
-      }
-      workspace.value = await adapter.refresh();
-      activity('修改发生冲突，已保留副本', copyPath, 'conflict', {
-        before: disk.content,
-        after: doc.content,
-      });
-    }
-  }
-  async function saveInternal(doc: OpenDocument) {
-    if (doc.creating && !(await confirmCreation(doc))) return;
-    if (!dirty(doc) || doc.conflict || doc.missing) return;
-    doc.saving = true;
-    try {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const content = doc.content;
-        const result = await adapter.write(doc.path, content, doc.base.hash);
-        if (result.status === 'saved') {
-          referenceDocumentCache.delete(doc.id);
-          const change = { before: doc.base.content, after: result.snapshot.content };
-          doc.base = result.snapshot;
-          doc.error = undefined;
-          activity('文档已保存', doc.path, 'save', change);
-          return;
-        }
-        if (result.status === 'missing') {
-          doc.missing = true;
-          doc.error = '文件已在外部删除，请另存副本';
-          return;
-        }
-        await reconcile(doc, result.snapshot);
-        if (doc.conflict || !dirty(doc)) return;
-      }
-      doc.error = '文件正在被频繁修改，自动保存已暂停。请稍后按 Ctrl + S 重试。';
-    } catch (error) {
-      doc.error = String(error);
-      report(error);
-    } finally {
-      doc.saving = false;
-    }
-  }
+  const { reconcile, save: saveInternal } = createDocumentSession({
+    adapter, confirmCreation, activity, report,
+    invalidate: id => { referenceDocumentCache.delete(id); },
+    refreshed: current => { workspace.value = current; },
+  });
   async function flush(): Promise<boolean> {
     await fileMutations.flush();
     return flushDocuments();
@@ -2364,7 +2234,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return tablesSaved && documents.value.every((doc) => (!dirty(doc) || !!doc.conflict) &&
         !layoutPending(doc));
     });
-    await journalTask;
+    await journal.flush();
     return saved;
   }
   async function refresh() {
@@ -2381,7 +2251,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         await dataTables.reload();
         for (const doc of documents.value) {
           if (doc.creating) continue;
-          const entry = workspace.value.files.find((f) => f.id === doc.id);
+          const entry = fileRegistry.value?.get(doc.id);
           if (!entry) {
             if (!doc.missing) activity('文件已在外部移除', doc.path, 'external');
             doc.missing = true;
@@ -2470,7 +2340,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     workspace.value = staged.workspace;
     const replaceId = activeId.value.startsWith('blank:') ? activeId.value : undefined;
     await openInternal(staged.file, replaceId);
-    const doc = documents.value.find(item => item.id === staged.file.id)!;
+    const doc = documentIndex.byId.value.get(staged.file.id)!;
     if (replaceId) recordTabNavigation(replaceId, doc.id);
     else ensureTabNavigation(doc.id, doc.id);
   }
@@ -2557,14 +2427,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   function confirmedEntry(file: Pick<FileEntry, 'id' | 'path' | 'kind'>, affected: FileEntry[]) {
     if (file.kind === 'file') {
-      const current = workspace.value?.files.find(entry => entry.id === file.id);
+      const current = fileRegistry.value?.get(file.id);
       if (!current) throw new Error('文件已不存在，请刷新工作区');
       return current;
     }
     // Online folders have path-based virtual IDs. Follow a descendant's stable
     // identity when an earlier queued folder move has already been confirmed.
     const child = affected.find(entry => entry.kind === 'file' && entry.path.startsWith(`${file.path}/`));
-    const current = child && workspace.value?.files.find(entry => entry.id === child.id);
+    const current = child && fileRegistry.value?.get(child.id);
     const path = current && child ? current.path.slice(0, -child.path.slice(file.path.length).length) : file.path;
     const entry = workspace.value?.files.find(entry => entry.kind === 'directory' && entry.path === path);
     if (!entry) throw new Error('文件夹已不存在，请刷新工作区');
@@ -2630,7 +2500,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       workspace.value = await adapter.refresh();
       await dataTables.reload();
       for (const doc of documents.value.filter((entry) => affectedIds.has(entry.id))) {
-        const current = workspace.value.files.find((entry) => entry.id === doc.id);
+        const current = fileRegistry.value?.get(doc.id);
         if (!current) {
           doc.missing = true;
           continue;
@@ -2680,7 +2550,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         workspace.value = await adapter.refresh();
         await dataTables.reload();
         for (const doc of documents.value.filter((entry) => movedIds.has(entry.id))) {
-          const current = workspace.value.files.find((entry) => entry.id === doc.id);
+          const current = fileRegistry.value?.get(doc.id);
           if (!current) {
             doc.missing = true;
             continue;
@@ -2926,7 +2796,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return;
     }
     const target = tabTarget(id);
-    const doc = documents.value.find((d) => d.id === target);
+    const doc = documentIndex.byId.value.get(target);
     if (doc && ((dirty(doc) && !doc.conflict) || layoutPending(doc))) {
       report('此文档尚未保存，请先另存副本或解决保存错误。');
       return;
@@ -2951,7 +2821,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       doc.error = undefined;
       if (openCopy) {
         workspace.value = await adapter.refresh();
-        const file = workspace.value.files.find((f) => f.path === copy);
+        const file = fileRegistry.value?.at(copy);
         if (file) {
           await openInternal(file);
           ensureTabNavigation(file.id, file.id);
@@ -2970,10 +2840,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   function dispose() {
     disposed = true;
     helpEdits.dispose();
-    pluginDeveloper.stop();
     clearTimeout(pluginEventTimer);
-    pluginExecutor.dispose();
-    pluginHost.dispose();
+    pluginServices.dispose();
     if (typeof window !== 'undefined') window.removeEventListener('storage', pluginStorageChanged);
     stopSessionWatch();
     stopWatching();
@@ -2981,7 +2849,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function preserveDraft(id: string, content: string) {
     return serial(async () => {
-      const doc = documents.value.find((document) => document.id === id);
+      const doc = documentIndex.byId.value.get(id);
       if (!doc || !workspace.value) throw new Error('原文档已关闭');
       const path = doc.path.replace(
         /\.(md|markdown)$/i,
@@ -3016,9 +2884,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     pluginRuntime,
     canManagePlugins,
     canManageSettings,
-    authorizePlugin,
-    restartPlugin,
-    rollbackPlugin,
+    authorizePlugin: pluginServices.authorizePlugin,
+    restartPlugin: pluginServices.restartPlugin,
+    rollbackPlugin: pluginServices.rollbackPlugin,
     pluginDevelopment,
     startPluginDevelopment: (id: string, url: string) => pluginDeveloper.start(id, url),
     stopPluginDevelopment: () => pluginDeveloper.stop(),
@@ -3056,8 +2924,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       await runtime.plugins.connections.remove(workspaceId, pluginId, origin, version, signal);
       signal.throwIfAborted();
     },
-    loadPluginCatalog,
-    installCatalogRelease,
+    loadPluginCatalog: pluginServices.loadPluginCatalog,
+    installCatalogRelease: pluginServices.installCatalogRelease,
     canRemovePluginPackage: !!runtime.plugins?.repository?.remove,
     removePluginPackage: (integrity: string, expectedWorkspace: string) => serial(async () => {
       if (workspace.value?.id !== expectedWorkspace || !canManagePlugins.value) throw new Error('工作区或管理权限已变化');
@@ -3071,10 +2939,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return usage;
     },
     clearPluginLogs: (id: string) => pluginExecutor.clearLogs(id),
-    cachePluginPackage,
+    cachePluginPackage: pluginServices.cachePluginPackage,
     setPluginEditor: (apply?: (id: string, before: string, after: string) => Promise<boolean>) => { pluginEditorEdit = apply; },
     pluginError,
-    changePlugin,
+    changePlugin: pluginServices.changePlugin,
     relations,
     relationError,
     relationDefinitions,
@@ -3094,10 +2962,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     updateWorkspaceSettings,
     reloadWorkspaceSettings,
     workspace: visibleWorkspace,
+    fileRegistry, readFileMetadata, updateFileMetadata, createFileDatabase, saveFileDatabase, createObjectDatabase, deleteObject,
+    workspaceViews,
+    workspaceViewErrors,
     displayPath,
     fileMutationPending: fileMutations.pending,
     documents,
-    documentForTab: (id: string) => documents.value.find(doc => doc.id === tabTarget(id)),
+    documentForTab: (id: string) => documentIndex.byId.value.get(tabTarget(id)),
     tabs,
     activeId,
     active,
@@ -3128,6 +2999,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openFilesInNewTabsAt,
     createBlankTab,
     openGraphTab,
+    openWorkspaceView,
     openPluginsTab,
     openCalendarTab,
     registerViews,
@@ -3168,12 +3040,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     },
     flush,
     refresh,
-    search: (query: string) =>
-      serial(() =>
-        workspace.value && adapter.search
-          ? adapter.search(workspace.value.id, query)
-          : Promise.resolve([]),
-      ),
+    search: async (query: string, signal?: AbortSignal) => {
+      const scope = workspace.value?.id;
+      if (!scope || !adapter.search || signal?.aborted) return [];
+      // Read-only search must not hold the mutation queue while remote files load.
+      const results = await adapter.search(scope, query, signal);
+      return workspace.value?.id === scope && !signal?.aborted ? results : [];
+    },
     create,
     importDocuments,
     createUntitledDocument,

@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { localizedDataFieldTypes as dataFieldTypes } from '../ui-labels';
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import type { CSSProperties } from 'vue';
 import { ArrowLeft, Plus, Search, X } from 'lucide-vue-next';
-import { dataFieldTypes } from '@tano/protocol';
 import type { DataFieldType } from '@tano/protocol';
 import { dataFieldIcons } from '../data-table-properties';
 
@@ -156,8 +157,8 @@ function keydown(event: KeyboardEvent) {
       v-if="!open"
       class="field-create-trigger"
       type="button"
-      aria-label="添加属性"
-      title="添加属性"
+      :aria-label="t('添加属性')"
+      :data-tooltip="t('添加属性')"
       aria-haspopup="dialog"
       :aria-expanded="open"
       :disabled="readonly"
@@ -171,8 +172,8 @@ function keydown(event: KeyboardEvent) {
         ref="input"
         v-model="name"
         class="field-create-name"
-        aria-label="新属性名称"
-        placeholder="输入属性名称…"
+        :aria-label="t('新属性名称')"
+        :placeholder="t('输入属性名称…')"
         maxlength="200"
         autocomplete="off"
         @input="error = ''"
@@ -182,8 +183,8 @@ function keydown(event: KeyboardEvent) {
       <button
         class="field-create-cancel"
         type="button"
-        aria-label="取消添加属性"
-        title="取消"
+        :aria-label="t('取消添加属性')"
+        :data-tooltip="t('取消')"
         @click="close(true)"
       >
         <X :size="14" />
@@ -197,15 +198,15 @@ function keydown(event: KeyboardEvent) {
       class="field-create-panel panel-scrollbar"
       :style="style"
       role="dialog"
-      aria-label="添加属性"
+      :aria-label="t('添加属性')"
       @keydown.stop="keydown"
     >
       <template v-if="!formulaStep">
         <label class="field-type-search">
           <Search :size="13" /><input
             v-model="query"
-            aria-label="搜索属性类型"
-            placeholder="选择属性类型"
+            :aria-label="t('搜索属性类型')"
+            :placeholder="t('选择属性类型')"
             @keydown.down.prevent="focusFirstType"
           />
         </label>
@@ -222,29 +223,29 @@ function keydown(event: KeyboardEvent) {
             }}</span>
           </button>
         </div>
-        <p v-if="!filteredTypes.length" class="field-create-hint">没有匹配的属性类型</p>
+        <p v-if="!filteredTypes.length" class="field-create-hint">{{ t('没有匹配的属性类型') }}</p>
       </template>
       <template v-else>
         <button class="field-formula-back" type="button" @click="back">
-          <ArrowLeft :size="14" />公式
+          <ArrowLeft :size="14" />{{ t('公式') }}
         </button>
         <textarea
           v-model="formula"
-          aria-label="新属性公式"
+          :aria-label="t('新属性公式')"
           rows="4"
-          placeholder="例如：[价格] * 2"
+          :placeholder="t('例如：[价格] * 2')"
           @input="error = ''"
           @keydown.ctrl.enter.prevent="submit('formula')"
           @keydown.meta.enter.prevent="submit('formula')"
         />
-        <p class="field-create-hint">用 [属性名称] 引用列，支持四则运算和 IF、SUM 等函数。</p>
+        <p class="field-create-hint">{{ t('用 [属性名称] 引用列，支持四则运算和 IF、SUM 等函数。') }}</p>
         <button
           class="field-create-submit"
           type="button"
           :disabled="!formula.trim()"
           @click="submit('formula')"
         >
-          创建公式属性
+          {{ t('创建公式属性') }}
         </button>
       </template>
       <p v-if="error" class="field-create-error" role="alert">{{ error }}</p>

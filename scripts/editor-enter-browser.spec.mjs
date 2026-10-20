@@ -31,7 +31,7 @@ for (const text of ['234234', '**234234**']) {
 
     const paragraphs = prose.locator(':scope > p');
     await expect(paragraphs).toHaveCount(3);
-    await expect(paragraphs.last()).toHaveAttribute('data-placeholder', "输入 '/' 搜索并切换块类型");
+    await expect(paragraphs.last()).toHaveAttribute('data-placeholder', "输入 '/' 搜索并切换块类型，或按 space（空格）启用 AI");
     await expect.poll(() => markdown(page)).toBe(`124242342\n\n${text}\n\n`);
     await expect(prose).toBeFocused();
     await page.keyboard.type('new body');

@@ -8,7 +8,7 @@ import { DemoAdapter } from '../adapter';
 import { configureWorkbench } from '../runtime';
 import { useWorkspaceStore } from '../stores/workspace';
 import PluginInstaller from './PluginInstaller.vue';
-import type { PluginCatalogEntry } from '../plugin-catalog';
+import { bundledPluginCatalog, type PluginCatalogEntry } from '../plugin-catalog';
 
 let app: App;
 let root: HTMLElement;
@@ -139,8 +139,13 @@ it('combines category and object-type search and resets an empty result', async 
   await nextTick();
   button('重置筛选').click();
   await nextTick();
-  expect(root.querySelectorAll('.plugin-entry')).toHaveLength(2);
+  expect(root.querySelectorAll('.plugin-entry')).toHaveLength(bundledPluginCatalog.length);
   expect(search.value).toBe('');
+});
+
+it('does not offer the retired Git plugin for installation', () => {
+  expect(bundledPluginCatalog.some(entry => entry.manifest.id === 'git-inspector')).toBe(false);
+  expect(root.textContent).not.toContain('安装Git 变更');
 });
 
 it('opens details, installs there, and shows the installed manifest version', async () => {

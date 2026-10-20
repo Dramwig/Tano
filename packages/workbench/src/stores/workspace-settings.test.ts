@@ -188,8 +188,8 @@ it('finishes an acknowledged settings edit without a full refresh or a second se
   const read = vi.spyOn(adapter, 'read');
   await store.updateWorkspaceSettings(workspaceId, { key: 'icon', value: '🌙', previous: '🌷' });
   expect(refresh).not.toHaveBeenCalled();
-  // DemoAdapter reads to compare the base and build its acknowledgement; no extra read.
-  expect(read).toHaveBeenCalledTimes(2);
+  // The adapter compares and acknowledges inside its storage transaction.
+  expect(read).not.toHaveBeenCalled();
   expect(store.workspaceSettingsError).toBe('');
   expect(store.workspaceSettingsSaving).toBe(false);
   expect(store.recent[0]?.icon).toBe('🌙');

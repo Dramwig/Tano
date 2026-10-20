@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, ref, watch } from 'vue';
-import { objectTypeRegistry, referenceTypeLabel, referenceUrl } from '@tano/protocol';
+import { objectTypeRegistry, referenceUrl } from '@tano/protocol';
+import { objectTypeLabel as referenceTypeLabel } from '../ui-labels';
 import type {
   WorkspaceObject,
   ReferenceIdentity,
@@ -13,6 +15,7 @@ import { useWorkbenchRuntime } from '../runtime';
 import PlanDateField from './PlanDateField.vue';
 import DescriptionEditor from './DescriptionEditor.vue';
 import ReferenceConnections from './ReferenceConnections.vue';
+import ObjectRelationEditor from './ObjectRelationEditor.vue';
 import { readPlanDate, writePlanDate } from '../plan-date';
 import type { PlanDateValue } from '../plan-date';
 
@@ -26,6 +29,8 @@ const props = defineProps<{
     updateObject: (record: ObjectRecord, value: WorkspaceObject, expectedId: string) => Promise<ObjectRecord>;
   };
   selectedId?: string;
+  initialType?: string;
+  selectedIdentity?: ReferenceIdentity;
   open: boolean;
   canOpenAsset?: boolean;
   canImportAsset?: boolean;
@@ -53,6 +58,7 @@ function openLinked(identity: ReferenceIdentity) {
 }
 const objectErrors = computed(() => props.personal?.errors ?? store.objectErrors);
 interface Draft {
+  key: string;
   workspace: string;
   scope: string;
   record?: ObjectRecord;
@@ -92,7 +98,7 @@ function updatePlanDate(value: PlanDateValue) {
   try {
     const properties = JSON.parse(current.value.json);
     if (!properties || typeof properties !== 'object' || Array.isArray(properties))
-      throw new Error('请先修正结构化属性 JSON');
+      throw new Error(t('请先修正结构化属性 JSON'));
     current.value.json = JSON.stringify(writePlanDate(properties, value), null, 2);
     current.value.error = '';
   } catch (error) { current.value.error = String(error); }
@@ -108,6 +114,17 @@ const resources = computed(() =>
   ),
 );
 const busy = ref(false);
+const confirmDelete = ref(false);
+async function removeCurrent() {
+  const draft = current.value;
+  if (!draft?.record || props.personal || editDisabled.value) return;
+  busy.value = true;
+  try {
+    await store.deleteObject(draft.record, draft.workspace);
+    drafts.delete(`${draft.scope}:${draft.record.object.id}`);
+    current.value = undefined; confirmDelete.value = false;
+  } catch (reason) { draft.error = String(reason); } finally { busy.value = false; }
+}
 const panel = ref<HTMLElement>();
 let previousFocus: HTMLElement | null = null;
 watch(
@@ -157,10 +174,11 @@ const filtered = computed(() =>
   ),
 );
 function select(record?: ObjectRecord) {
+  confirmDelete.value = false;
   const workspace = scopeId.value;
   if (!workspace || busy.value) return;
   resourceId.value = undefined;
-  const key = `${scopeKey.value}:${record?.object.id ?? 'new'}`;
+  const key = `${scopeKey.value}:${record?.object.id ?? (props.initialType ? `new:${props.initialType}` : 'new')}`;
   let draft = drafts.get(key);
   if (!draft) {
     const value: WorkspaceObject = record
@@ -168,13 +186,14 @@ function select(record?: ObjectRecord) {
       : {
           version: 1,
           id: '',
-          type: props.personal ? 'event' : 'person',
+          type: props.personal ? 'event' : props.initialType ?? 'person',
           name: '',
           description: '',
           archived: false,
           properties: props.personal ? { checkable: true, completed: false } : {},
         };
     draft = {
+      key,
       workspace,
       scope: scopeKey.value,
       record,
@@ -188,16 +207,19 @@ function select(record?: ObjectRecord) {
   drafts.set(key, current.value);
 }
 watch(
-  [scopeKey, () => props.selectedId, () => props.open],
-  ([workspaceId, , open], previous) => {
+  [scopeKey, () => props.selectedId, () => props.selectedIdentity, () => props.open, () => props.initialType],
+  ([workspaceId, , selectedIdentity, open], previous) => {
     if (!open && workspaceId === previous?.[0]) return;
     current.value = undefined;
     resourceId.value = undefined;
-    if (props.selectedId) {
+    if (selectedIdentity && ['document', 'asset'].includes(selectedIdentity.type)) {
+      const resource = store.referenceTargets.find((target) => target.type === selectedIdentity.type && target.id === selectedIdentity.id);
+      if (resource) selectResource(resource.id);
+    } else if (props.selectedId) {
       const record = records.value.find(({ object }) => object.id === props.selectedId);
       if (record) select(record);
       else resourceId.value = props.selectedId;
-    }
+    } else if (props.initialType) select();
   },
   { immediate: true },
 );
@@ -209,14 +231,14 @@ async function save(copy = false) {
   try {
     const properties = JSON.parse(draft.json);
     if (!properties || typeof properties !== 'object' || Array.isArray(properties))
-      throw new Error('属性必须是 JSON 对象');
+      throw new Error(t('属性必须是 JSON 对象'));
     const value = { ...draft.value, name: draft.value.name.trim(), properties };
     const saved =
       draft.record && !copy
         ? await (props.personal ?? store).updateObject(draft.record, value, draft.workspace)
         : await (props.personal ?? store).createObject(value);
     if (current.value !== draft || scopeKey.value !== draft.scope) return;
-    drafts.delete(`${draft.scope}:${draft.record?.object.id ?? 'new'}`);
+    drafts.delete(draft.key);
     drafts.delete(`${draft.scope}:${saved.object.id}`);
     busy.value = false;
     select(saved);
@@ -244,7 +266,7 @@ function updateField(field: ObjectField, event: Event) {
   try {
     const properties = JSON.parse(current.value.json);
     if (!properties || typeof properties !== 'object' || Array.isArray(properties))
-      throw new Error('请先修正结构化属性 JSON');
+      throw new Error(t('请先修正结构化属性 JSON'));
     const input = event.target as HTMLInputElement;
     if (field.type === 'boolean') {
       properties[field.key] = input.checked;
@@ -280,16 +302,16 @@ function selectResource(id: string) {
 function resetDraft() {
   if (!current.value || busy.value) return;
   const record = records.value.find(({ object }) => object.id === current.value?.record?.object.id);
-  drafts.delete(`${current.value.scope}:${current.value.record?.object.id ?? 'new'}`);
+  drafts.delete(current.value.key);
   select(record);
 }
 const uri = computed(() =>
-  props.personal && current.value?.record ? `个人事项 · ${current.value.value.id}` : current.value?.record
+  props.personal && current.value?.record ? t('个人事项 · {0}', [current.value.value.id]) : current.value?.record
     ? referenceUrl({
         type: current.value.value.type,
         id: current.value.value.id,
       })
-    : '保存后生成唯一 ID',
+    : t('保存后生成唯一 ID'),
 );
 </script>
 
@@ -301,30 +323,30 @@ const uri = computed(() =>
       tabindex="-1"
       role="dialog"
       aria-modal="true"
-      :aria-label="personal ? '个人事项' : '工作区对象'"
+      :aria-label="personal ? t('个人事项') : t('工作区对象')"
       @keydown.esc="emit('close')"
       @keydown="trapFocus"
     >
       <header>
         <div>
-          <h2>{{ personal ? '个人事项' : '工作区对象' }} <small v-if="!personal">Level 2 · 核心与插件对象</small></h2>
-          <p>{{ personal ? '个人计划独立保存，不随工作区分享；尚未开启跨设备同步。' : '内置事件、人物、文档和资产。需要完成的事件就是任务，也可为事件安排时间。' }}</p>
+          <h2>{{ personal ? t('个人事项') : t('工作区对象') }} <small v-if="!personal">{{ t('Level 2 · 核心与插件对象') }}</small></h2>
+          <p>{{ personal ? t('个人计划独立保存，不随工作区分享；尚未开启跨设备同步。') : t('内置事件、人物、文档和资产。需要完成的事件就是任务，也可为事件安排时间。') }}</p>
         </div>
-        <button :aria-label="personal ? '关闭个人事项' : '关闭工作区对象'" @click="emit('close')">关闭</button>
+        <button :aria-label="personal ? t('关闭个人事项') : t('关闭工作区对象')" @click="emit('close')">{{ t('关闭') }}</button>
       </header>
       <p v-if="!personal && !store.capabilities.features.objectReferences" class="object-notice">
-        Level 2 已关闭。现有对象和引用仍保留，可在工作区设置中重新启用。
+        {{ t('Level 2 已关闭。现有对象和引用仍保留，可在工作区设置中重新启用。') }}
       </p>
-      <p v-if="store.isDemo" class="object-notice">浏览器演示存储：对象保存在当前浏览器中。</p>
+      <p v-if="store.isDemo" class="object-notice">{{ t('浏览器演示存储：对象保存在当前浏览器中。') }}</p>
       <p v-for="error in objectErrors" :key="error" role="alert">{{ error }}</p>
       <div class="object-panel-body">
         <aside>
-          <input v-model="search" :aria-label="personal ? '搜索个人事项' : '搜索工作区对象'" placeholder="搜索对象" />
-          <button :disabled="disabled" @click="select()">{{ personal ? '＋ 新建个人事件' : '＋ 新建对象' }}</button>
+          <input v-model="search" :aria-label="personal ? t('搜索个人事项') : t('搜索工作区对象')" :placeholder="t('搜索对象')" />
+          <button :disabled="disabled" @click="select()">{{ personal ? t('＋ 新建个人事件') : t('＋ 新建对象') }}</button>
           <div v-if="!personal" class="object-resource-actions">
-            <button :disabled="disabled" @click="emit('createDocument')">新建文档</button
+            <button :disabled="disabled" @click="emit('createDocument')">{{ t('新建文档') }}</button
             ><button v-if="canImportAsset" :disabled="disabled" @click="emit('importAsset')">
-              导入资产
+              {{ t('导入资产') }}
             </button>
           </div>
           <button
@@ -342,11 +364,11 @@ const uri = computed(() =>
                   ?.category === 'core'
                   && !personal
                   ? 'Level 2-A'
-                  : personal ? '个人' : objectTypeRegistry.get(record.object.type)?.retired ? '旧版记录' : '插件对象'
-              }}{{ record.object.archived ? ' · 已归档' : '' }}</small
+                  : personal ? t('个人') : objectTypeRegistry.get(record.object.type)?.retired ? t('旧版记录') : t('插件对象')
+              }}{{ record.object.archived ? t(' · 已归档') : '' }}</small
             >
           </button>
-          <small v-if="resources.length">文件资源 · Level 2-A</small>
+          <small v-if="resources.length">{{ t('文件资源 · Level 2-A') }}</small>
           <button
             v-for="target in resources"
             :key="`${target.type}:${target.id}`"
@@ -358,30 +380,31 @@ const uri = computed(() =>
             ><small>{{ referenceTypeLabel(target.type) }} · {{ target.path }}</small>
           </button>
           <p v-if="!filtered.length && !resources.length">
-            暂无对象。创建后，在文档中输入 @ 或 [[ 选择引用。
+            {{ t('暂无对象。创建后，在文档中输入 @ 或 [[ 选择引用。') }}
           </p>
         </aside>
         <form v-if="current" @submit.prevent="save()">
           <label
-            >类别 · {{ personal ? '个人' : retired ? '旧版记录' : definition?.category === 'plugin' ? '插件对象' : 'Level 2-A'
+            >{{ t('类别 ·') }} {{ personal ? t('个人') : retired ? t('旧版记录') : definition?.category === 'plugin' ? t('插件对象') : 'Level 2-A'
             }}<select v-model="current.value.type" :disabled="disabled || !!current.record">
               <option v-if="!definition" :value="current.value.type">
                 {{ referenceTypeLabel(current.value.type) }}
               </option>
               <option v-for="type in selectableTypes" :key="type.type" :value="type.type">
-                {{ type.label }}
+                {{ type.category === 'core' ? t(type.label) : type.label }}
               </option>
             </select></label
           >
           <label
-            >名称<input
+            >{{ t('名称') }}<input
               v-model="current.value.name"
               :disabled="editDisabled"
               required
               maxlength="200"
           /></label>
-          <DescriptionEditor :key="`${current.scope}:${current.record?.object.id ?? 'new'}`" v-model="current.value.description" :disabled="editDisabled" :targets="personal ? [] : store.referenceTargets.filter(target => target.type !== 'document' || !target.path.startsWith('.tano/'))" />
+          <DescriptionEditor :key="`${current.scope}:${current.record?.object.id ?? (props.initialType ? `new:${props.initialType}` : 'new')}`" v-model="current.value.description" :disabled="editDisabled" :targets="personal ? [] : store.referenceTargets.filter(target => target.type !== 'document' || !target.path.startsWith('.tano/'))" />
           <ReferenceConnections :identity="current.value" :draft="current.value.description" :local-targets="personalTargets" :active="open" @open="openLinked" />
+          <ObjectRelationEditor v-if="current.record && !personal" :identity="current.record.object" :workspace-id="current.workspace" :disabled="editDisabled" @open="openLinked" />
           <component
             :is="objectDetails"
             v-if="objectDetails && !personal && current.record"
@@ -392,15 +415,15 @@ const uri = computed(() =>
             @open-reference="openLinked"
           />
           <p v-if="retired" class="object-notice">
-            项目由工作区文件夹和 Markdown 文档承载。旧项目对象及已有引用只读保留，不再创建、编辑或另存为项目对象。
+            {{ t('项目由工作区文件夹和 Markdown 文档承载。旧项目对象及已有引用只读保留，不再创建、编辑或另存为项目对象。') }}
           </p>
           <p v-else-if="!definition" class="object-notice">
-            此类型不属于内置核心对象，且未注册对应插件。文件和既有引用已保留，当前只读，不参与引用推荐。
+            {{ t('此类型不属于内置核心对象，且未注册对应插件。文件和既有引用已保留，当前只读，不参与引用推荐。') }}
           </p>
-          <p v-if="current.record?.object.properties.syncReadOnly" class="object-notice">此事项来自只读连接或重复日程系列，请在来源应用中编辑；更新会在同步后显示。</p>
+          <p v-if="current.record?.object.properties.syncReadOnly" class="object-notice">{{ t('此事项来自只读连接或重复日程系列，请在来源应用中编辑；更新会在同步后显示。') }}</p>
           <div v-if="definition?.fields.length" class="object-fields">
             <label v-for="field in visibleFields" :key="field.key"
-              >{{ field.label }}{{ field.required ? ' *' : ''
+              >{{ definition?.category === 'core' ? t(field.label) : field.label }}{{ field.required ? ' *' : ''
               }}<input
                 :type="
                   current.value.type === 'event' && field.key === 'date'
@@ -420,51 +443,56 @@ const uri = computed(() =>
                 :disabled="editDisabled || (current.value.type === 'event' && field.key === 'completed' && fieldValue({ key: 'checkable', label: '', type: 'boolean' }) !== true)"
                 @input="updateField(field, $event)"
             /></label>
-            <PlanDateField v-if="current.value.type === 'event'" :key="`${current.scope}:${current.record?.object.id ?? 'new'}`" class="object-plan-date" :model-value="planDate" :disabled="editDisabled" @update:model-value="updatePlanDate" />
+            <PlanDateField v-if="current.value.type === 'event'" :key="`${current.scope}:${current.record?.object.id ?? (props.initialType ? `new:${props.initialType}` : 'new')}`" class="object-plan-date" :model-value="planDate" :disabled="editDisabled" @update:model-value="updatePlanDate" />
             <small v-if="current.value.type === 'event'"
-              >计划日期可精确到某天或具体时刻，有起止时间时选择「时间段」。时间按本地时区输入。勾选「需要完成」即可作为任务。</small
+              >{{ t('计划日期可精确到某天或具体时刻，有起止时间时选择「时间段」。时间按本地时区输入。勾选「需要完成」即可作为任务。') }}</small
             >
           </div>
           <p v-if="current.value.type === 'person' && !objectDetails" class="object-notice">
-            人物是工作区记录，不代表登录账号或访问权限。
+            {{ t('人物是工作区记录，不代表登录账号或访问权限。') }}
           </p>
           <label class="object-archive"
             ><input
               v-model="current.value.archived"
               type="checkbox"
               :disabled="editDisabled"
-            />{{ personal ? '归档（从计划中隐藏）' : '归档（保留已有引用，停止推荐）' }}</label
+            />{{ personal ? t('归档（从计划中隐藏）') : t('归档（保留已有引用，停止推荐）') }}</label
           >
           <details>
-            <summary>结构化属性（JSON）</summary>
+            <summary>{{ t('结构化属性（JSON）') }}</summary>
             <label
-              >属性<textarea
+              >{{ t('属性') }}<textarea
                 v-model="current.json"
                 :disabled="editDisabled"
                 rows="6"
                 spellcheck="false"
               /></label
-            ><small>事件可补充 owner、deadline 等属性；截止日期不等同于计划执行时间。</small>
+            ><small>{{ t('事件可补充 owner、deadline 等属性；截止日期不等同于计划执行时间。') }}</small>
           </details>
           <code class="object-identity">{{ uri }}</code
           ><small v-if="current.record">{{ current.record.path }}</small>
           <p v-if="current.error" role="alert">{{ current.error }}</p>
           <footer>
+            <button v-if="current.record && !personal" type="button" :disabled="editDisabled" @click="confirmDelete = !confirmDelete">{{ t('删除对象') }}</button>
             <button type="submit" :disabled="editDisabled">
-              {{ busy ? '保存中…' : '保存对象' }}</button
+              {{ busy ? t('保存中…') : t('保存对象') }}</button
             ><button
               v-if="current.record"
               type="button"
               :disabled="editDisabled"
               @click="save(true)"
             >
-              另存副本</button
-            ><button type="button" :disabled="busy" @click="resetDraft">放弃草稿并重新读取</button>
+              {{ t('另存副本') }}</button
+            ><button type="button" :disabled="busy" @click="resetDraft">{{ t('放弃草稿并重新读取') }}</button>
           </footer>
+          <div v-if="confirmDelete" role="alert">
+            <p>{{ t('删除此对象后，已有关系会保留为缺失引用。确认删除？') }}</p>
+            <button type="button" :disabled="editDisabled" @click="removeCurrent">{{ t('确认删除对象') }}</button>
+          </div>
         </form>
         <div v-else-if="resource" class="object-panel-empty object-resource">
           <h3>{{ resource.name }}</h3>
-          <p>{{ referenceTypeLabel(resource.type) }} · Level 2-A · 文件资源</p>
+          <p>{{ referenceTypeLabel(resource.type) }} {{ t('· Level 2-A · 文件资源') }}</p>
           <img
             v-if="previewUrl"
             class="object-asset-preview"
@@ -472,13 +500,13 @@ const uri = computed(() =>
             :alt="resource.name"
           />
           <dl>
-            <dt>路径</dt>
+            <dt>{{ t('路径') }}</dt>
             <dd>{{ resource.path }}</dd>
-            <dt>类型（按扩展名）</dt>
+            <dt>{{ t('类型（按扩展名）') }}</dt>
             <dd>{{ resource.mime }}</dd>
-            <dt>大小</dt>
-            <dd>{{ resource.size }} 字节</dd>
-            <dt>修改时间</dt>
+            <dt>{{ t('大小') }}</dt>
+            <dd>{{ resource.size }} {{ t('字节') }}</dd>
+            <dt>{{ t('修改时间') }}</dt>
             <dd>{{ new Date(resource.modified ?? 0).toLocaleString() }}</dd>
           </dl>
           <code class="object-identity">{{ referenceUrl(resource) }}</code>
@@ -486,8 +514,8 @@ const uri = computed(() =>
           <p>
             {{
               resource.type === 'document'
-                ? '正文仍保存在 Markdown 文件中；这里仅展示文件身份和元数据。'
-                : '原始文件保存在工作区；移动或重命名跟随文件 ID，不重复保存文件内容。'
+                ? t('正文仍保存在 Markdown 文件中；这里仅展示文件身份和元数据。')
+                : t('原始文件保存在工作区；移动或重命名跟随文件 ID，不重复保存文件内容。')
             }}
           </p>
           <button
@@ -497,23 +525,23 @@ const uri = computed(() =>
             "
             @click="emit('openResource', resource)"
           >
-            {{ resource.type === 'document' ? '打开文档' : '导出资产副本' }}
+            {{ resource.type === 'document' ? t('打开文档') : t('导出资产副本') }}
           </button>
           <p v-if="resource.type === 'asset' && !canOpenAsset">
-            当前模式仅展示资产元数据；打开或导出本地文件请使用桌面版。
+            {{ t('当前模式仅展示资产元数据；打开或导出本地文件请使用桌面版。') }}
           </p>
         </div>
         <div v-else class="object-panel-empty">
-          <h3>让人与 Agent 引用同一个对象</h3>
+          <h3>{{ t('让人与 Agent 引用同一个对象') }}</h3>
           <p>
-            创建人物或事件。事件勾选「需要完成」即可作为任务。文档和资产自动从工作区文件索引。关闭面板后，未保存的草稿会保留在本次会话中。
+            {{ t('创建任务、项目、实验、人物或事件。文档和资产自动从工作区文件索引。关闭面板后，未保存的草稿会保留在本次会话中。') }}
           </p>
           <p>
-            文件资源：{{
-              resourceTypes.map((type) => type.label).join('、')
-            }}。Paper、Dataset、代码仓库等领域类型由插件注册，不默认内置。
+            {{ t('文件资源：') }}{{
+              resourceTypes.map((type) => type.category === 'core' ? t(type.label) : type.label).join(' / ')
+            }}{{ t('。Paper、Dataset、代码仓库等领域类型由插件注册，不默认内置。') }}
           </p>
-          <p>在文档输入 @person:名称 可限定类型；使用 / 菜单的“对象引用”插入卡片。</p>
+          <p>{{ t('在文档输入 @person:名称 可限定类型；使用 / 菜单的“对象引用”插入卡片。') }}</p>
         </div>
       </div>
     </section>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiLocale } from '../i18n';
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import {
   AlertTriangle,
@@ -71,10 +72,10 @@ onBeforeUnmount(() => originalFocus?.focus());
       aria-labelledby="document-history-title"
       @keydown="keydown"
     >
-      <aside class="document-history-nav" aria-label="历史记录分类">
+      <aside class="document-history-nav" :aria-label="t('历史记录分类')">
         <div class="document-history-brand">
           <History :size="18" />
-          <span id="document-history-title">历史记录</span>
+          <span id="document-history-title">{{ t('历史记录') }}</span>
         </div>
         <nav>
           <button
@@ -84,7 +85,7 @@ onBeforeUnmount(() => originalFocus?.focus());
             @click="page = 'versions'"
           >
             <Archive :size="17" />
-            <span>版本历史</span>
+            <span>{{ t('版本历史') }}</span>
             <small>Beta</small>
           </button>
           <button
@@ -93,7 +94,7 @@ onBeforeUnmount(() => originalFocus?.focus());
             @click="page = 'updates'"
           >
             <Clock3 :size="17" />
-            <span>更新历史</span>
+            <span>{{ t('更新历史') }}</span>
           </button>
         </nav>
         <p class="document-history-path" :title="path">{{ path }}</p>
@@ -102,7 +103,7 @@ onBeforeUnmount(() => originalFocus?.focus());
       <main class="document-history-main">
         <button
           class="icon-button document-history-close"
-          aria-label="关闭历史记录"
+          :aria-label="t('关闭历史记录')"
           @click="emit('close')"
         >
           <X :size="19" />
@@ -110,8 +111,8 @@ onBeforeUnmount(() => originalFocus?.focus());
 
         <template v-if="page === 'versions'">
           <header class="document-history-heading">
-            <p>文档历史</p>
-            <h2>版本历史 <span>Beta</span></h2>
+            <p>{{ t('文档历史') }}</p>
+            <h2>{{ t('版本历史') }} <span>Beta</span></h2>
           </header>
           <div class="document-history-content">
             <component
@@ -125,19 +126,19 @@ onBeforeUnmount(() => originalFocus?.focus());
             />
             <div v-else class="version-history-unavailable">
               <Archive :size="30" />
-              <strong>版本历史尚不可用</strong>
-              <p>当前产品未配置文档版本服务；本地工作区可使用备份与恢复。</p>
+              <strong>{{ t('版本历史尚不可用') }}</strong>
+              <p>{{ t('当前产品未配置文档版本服务；本地工作区可使用备份与恢复。') }}</p>
             </div>
           </div>
         </template>
 
         <template v-else>
           <header class="document-history-heading">
-            <p>当前工作区</p>
-            <h2>更新历史</h2>
+            <p>{{ t('当前工作区') }}</p>
+            <h2>{{ t('更新历史') }}</h2>
           </header>
           <div class="update-history-content">
-            <p class="update-history-note">本次打开工作区后的文件更新。</p>
+            <p class="update-history-note">{{ t('本次打开工作区后的文件更新。') }}</p>
             <div v-if="activities.length" class="update-history-list">
               <article v-for="item in activities" :key="item.id" class="update-history-item">
                 <span class="update-history-icon" :class="item.kind">
@@ -162,18 +163,18 @@ onBeforeUnmount(() => originalFocus?.focus());
                     class="update-history-diff"
                     @click="emit('diff', { title: item.detail, ...item.change })"
                   >
-                    查看差异
+                    {{ t('查看差异') }}
                   </button>
                   <time :datetime="new Date(item.time).toISOString()">
-                    {{ new Date(item.time).toLocaleString('zh-CN') }}
+                    {{ new Date(item.time).toLocaleString(uiLocale) }}
                   </time>
                 </div>
               </article>
             </div>
             <div v-else class="update-history-empty">
               <Clock3 :size="28" />
-              <strong>暂无更新记录</strong>
-              <p>保存、外部修改和冲突记录会显示在这里。</p>
+              <strong>{{ t('暂无更新记录') }}</strong>
+              <p>{{ t('保存、外部修改和冲突记录会显示在这里。') }}</p>
             </div>
           </div>
         </template>

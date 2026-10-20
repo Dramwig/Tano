@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { Check, ChevronDown, ExternalLink } from 'lucide-vue-next';
 import WorkspaceIcon from './WorkspaceIcon.vue';
@@ -125,8 +126,8 @@ onBeforeUnmount(() => {
     ref="trigger"
     type="button"
     class="repository-switcher-trigger"
-    :title="store.workspace?.name"
-    :aria-label="`切换仓库：${store.workspace?.name ?? '仓库'}`"
+    :data-tooltip="store.workspace?.name"
+    :aria-label="t('切换仓库：{0}', [store.workspace?.name ?? t('仓库')])"
     aria-haspopup="menu"
     :aria-expanded="!!position"
     :aria-controls="menuId"
@@ -135,7 +136,7 @@ onBeforeUnmount(() => {
     @keydown.down.prevent="open"
     @keydown.up.prevent="open"
   >
-    <span>{{ store.workspace?.name ?? '仓库' }}</span>
+    <span>{{ store.workspace?.name ?? t('仓库') }}</span>
     <ChevronDown :size="12" :class="{ expanded: position }" aria-hidden="true" />
   </button>
   <Teleport to="body">
@@ -145,7 +146,7 @@ onBeforeUnmount(() => {
       ref="menuElement"
       class="dropdown compact-action-menu repository-switcher-menu"
       role="menu"
-      aria-label="切换仓库"
+      :aria-label="t('切换仓库')"
       :style="{
         left: `${position.left}px`,
         top: `${position.top}px`,
@@ -160,7 +161,7 @@ onBeforeUnmount(() => {
         type="button"
         role="menuitemradio"
         :aria-checked="item.id === store.workspace?.id"
-        :title="showPathTooltip ? item.path : item.name"
+        :data-tooltip="showPathTooltip ? item.path : item.name"
         :disabled="store.busy"
         @mousedown.right.stop.prevent="emit('context', item, $event)"
         @contextmenu.stop.prevent="emit('context', item, $event)"
@@ -169,7 +170,7 @@ onBeforeUnmount(() => {
         <span class="repository-workspace-icon"><WorkspaceIcon :icon="item.id === store.workspace?.id ? store.workspaceSettings.icon : item.icon" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" :size="15" /></span>
         <span class="repository-switcher-details">
           <span>{{ item.name }}</span>
-          <small v-if="store.isDemo">浏览器演示</small>
+          <small v-if="store.isDemo">{{ t('浏览器演示') }}</small>
         </span>
         <Check v-if="item.id === store.workspace?.id" :size="14" aria-hidden="true" />
       </button>
@@ -177,7 +178,7 @@ onBeforeUnmount(() => {
         <div class="menu-divider" role="separator" />
         <button type="button" role="menuitem" :disabled="store.busy" @click="reveal">
           <ExternalLink :size="15" aria-hidden="true" />
-          <span>在资源管理器中显示</span>
+          <span>{{ t('在资源管理器中显示') }}</span>
         </button>
       </template>
     </div>

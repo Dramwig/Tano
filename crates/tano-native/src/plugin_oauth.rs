@@ -72,7 +72,7 @@ pub fn providers(app: &tauri::AppHandle) -> Result<Vec<Provider>, String> {
     if !path.try_exists().map_err(|_| "无法读取本机 OAuth 配置")? {
         return Ok(vec![]);
     }
-    Ok(Providers::parse(&crate::plugin_git::read_bounded(&path, 64 * 1024)?)?.providers)
+    Ok(Providers::parse(&crate::workspace_git::read_bounded(&path, 64 * 1024)?)?.providers)
 }
 fn provider(
     app: &tauri::AppHandle,

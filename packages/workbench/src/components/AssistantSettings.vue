@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Bot, Check, Eye, EyeOff, LoaderCircle, MoreHorizontal, Pencil, Plus, Trash2, Wifi, X } from 'lucide-vue-next';
 import type { AssistantConnection } from '@tano/protocol';
@@ -47,7 +48,7 @@ const draft = ref<ConnectionDraft | null>(null);
 
 const editing = computed(() => draft.value !== null);
 const hasSavedSecret = computed(() => assistant.connections.some(connection => connection.id === draft.value?.id && connection.hasKey));
-const secretToggleLabel = computed(() => secretVisible.value ? '隐藏 API 密钥' : '显示 API 密钥');
+const secretToggleLabel = computed(() => secretVisible.value ? t('隐藏 API 密钥') : t('显示 API 密钥'));
 const menuConnection = computed(() => assistant.connections.find(connection => connection.id === menuConnectionId.value));
 
 function closeMenu(restoreFocus = false) {
@@ -98,17 +99,17 @@ async function checkConnection(connection: AssistantConnection) {
   checkController = controller;
   testingId.value = connection.id;
   error.value = '';
-  notice.value = `正在检测「${connection.name}」…`;
+  notice.value = t('正在检测「{0}」…', [connection.name]);
   try {
     const count = await assistant.checkConnection(connection.id, controller.signal);
     if (controller.signal.aborted) return;
-    notice.value = connection.managed ? `平台已开放 ${count} 个模型，可在助手中选择使用。` : connection.kind && connection.kind !== 'api'
-      ? `「${connection.name}」的 CLI 可执行文件可用；登录状态与模型连通需在会话中确认。`
-      : `「${connection.name}」连接成功，已读取 ${count} 个模型。检测范围为模型列表接口，模型调用权限需在会话中确认。`;
+    notice.value = connection.managed ? t('平台已开放 {0} 个模型，可在助手中选择使用。', [count]) : connection.kind && connection.kind !== 'api'
+      ? t('「{0}」的 CLI 可执行文件可用；登录状态与模型连通需在会话中确认。', [connection.name])
+      : t('「{0}」连接成功，已读取 {1} 个模型。检测范围为模型列表接口，模型调用权限需在会话中确认。', [connection.name, count]);
   } catch (cause) {
     if (controller.signal.aborted) return;
     notice.value = '';
-    error.value = `「${connection.name}」检测失败：${cause instanceof Error ? cause.message : String(cause)}`;
+    error.value = t('「{0}」检测失败：{1}', [connection.name, cause instanceof Error ? cause.message : String(cause)]);
   } finally {
     if (checkController === controller) { testingId.value = ''; checkController = undefined; }
   }
@@ -189,7 +190,7 @@ async function saveConnection() {
     );
     saving.value = false;
     closeEditor();
-    notice.value = '模型连接已保存';
+    notice.value = t('模型连接已保存');
     emit('changed');
   } catch (cause) {
     error.value = String(cause);
@@ -257,47 +258,47 @@ onBeforeUnmount(() => {
 <template>
   <div class="settings-content assistant-settings-page">
     <div class="settings-title-line">
-      <h2 id="settings-title">助手设置</h2>
-      <div class="settings-page-scope" role="note" tabindex="0" aria-label="个人偏好 · 当前设备">
-        <Bot :size="13" /><span>个人偏好 · 当前设备</span>
+      <h2 id="settings-title">{{ t('助手设置') }}</h2>
+      <div class="settings-page-scope" role="note" tabindex="0" :aria-label="t('个人偏好 · 当前设备')">
+        <Bot :size="13" /><span>{{ t('个人偏好 · 当前设备') }}</span>
       </div>
     </div>
-    <p class="settings-lead">查看可用模型连接。个人连接仅对你生效，平台提供的连接由管理员维护。</p>
+    <p class="settings-lead">{{ t('查看可用模型连接。个人连接仅对你生效，平台提供的连接由管理员维护。') }}</p>
 
     <template v-if="!assistant.available">
-      <p class="settings-notice" role="status">当前运行环境未提供助手连接配置。</p>
+      <p class="settings-notice" role="status">{{ t('当前运行环境未提供助手连接配置。') }}</p>
     </template>
     <template v-else-if="assistant.demo">
-      <p class="settings-notice" role="status">浏览器演示使用模拟连接，暂不支持修改模型连接。</p>
+      <p class="settings-notice" role="status">{{ t('浏览器演示使用模拟连接，暂不支持修改模型连接。') }}</p>
     </template>
     <template v-else>
-      <section class="settings-section" aria-labelledby="assistant-connections-title">
+      <section class="settings-section" data-settings-key="assistant-connections" aria-labelledby="assistant-connections-title">
         <div class="assistant-connections-heading">
-          <h3 id="assistant-connections-title">模型连接</h3>
-          <button v-if="assistant.canConfigure !== false" ref="addButton" type="button" class="assistant-add-connection" aria-haspopup="dialog" @click="addConnection"><Plus :size="15" />添加连接</button>
+          <h3 id="assistant-connections-title">{{ t('模型连接') }}</h3>
+          <button v-if="assistant.canConfigure !== false" ref="addButton" type="button" class="assistant-add-connection" aria-haspopup="dialog" @click="addConnection"><Plus :size="15" />{{ t('添加连接') }}</button>
         </div>
         <div class="settings-card assistant-settings-card">
           <div class="assistant-connection-list">
             <div v-for="connection in assistant.connections" :key="connection.id">
               <button type="button" aria-haspopup="dialog" :disabled="connection.managed || testingId === connection.id" @click="editConnection(connection)">
                 <strong>{{ connection.name }}</strong>
-                <small>{{ connection.managed ? '平台提供，登录后即可使用' : connection.kind === 'codex-cli' ? 'Codex CLI' : connection.kind === 'claude-cli' ? 'Claude CLI' : connection.endpoint }}</small>
+                <small>{{ connection.managed ? t('平台提供，登录后即可使用') : connection.kind === 'codex-cli' ? 'Codex CLI' : connection.kind === 'claude-cli' ? 'Claude CLI' : connection.endpoint }}</small>
               </button>
               <button
                 type="button"
                 class="icon-button"
                 :disabled="saving || assistant.busy || assistant.loading || testingId === connection.id"
                 v-if="!connection.managed"
-                :aria-label="`删除连接 ${connection.name}`"
-                title="删除模型连接"
+                :aria-label="t('删除连接 {0}', [connection.name])"
+                :data-tooltip="t('删除模型连接')"
                 aria-haspopup="dialog"
                 @click="confirmRemoval(connection, $event)"
               ><Trash2 :size="15" /></button>
               <button
                 type="button"
                 class="icon-button assistant-connection-more"
-                :aria-label="`更多操作 ${connection.name}`"
-                title="更多操作"
+                :aria-label="t('更多操作 {0}', [connection.name])"
+                :data-tooltip="t('更多操作')"
                 aria-haspopup="menu"
                 :aria-expanded="menuConnectionId === connection.id"
                 :aria-controls="menuConnectionId === connection.id ? 'assistant-connection-actions' : undefined"
@@ -305,7 +306,7 @@ onBeforeUnmount(() => {
                 @keydown.down.prevent="toggleMenu(connection, $event)"
               ><LoaderCircle v-if="testingId === connection.id" :size="15" class="spinning" /><MoreHorizontal v-else :size="17" /></button>
             </div>
-            <p v-if="!assistant.connections.length" class="assistant-settings-empty">{{ assistant.canConfigure !== false ? '还没有模型连接，请先添加一个连接。' : '平台暂未开放模型，请稍后刷新。' }}</p>
+            <p v-if="!assistant.connections.length" class="assistant-settings-empty">{{ assistant.canConfigure !== false ? t('还没有模型连接，请先添加一个连接。') : t('平台暂未开放模型，请稍后刷新。') }}</p>
           </div>
         </div>
         <p v-if="!editing && !pendingDeletion && error" class="form-error" role="alert">{{ error }}</p>
@@ -317,55 +318,55 @@ onBeforeUnmount(() => {
   <Teleport to="body">
     <dialog v-if="pendingDeletion" ref="deletionDialog" class="assistant-connection-dialog assistant-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="assistant-delete-title" aria-describedby="assistant-delete-description" @cancel.prevent="closeDeletion" @keydown.stop>
       <form class="assistant-connection-form" :aria-busy="removing" @submit.prevent="removeConnection">
-        <header class="assistant-form-heading"><h2 id="assistant-delete-title">删除模型连接</h2></header>
+        <header class="assistant-form-heading"><h2 id="assistant-delete-title">{{ t('删除模型连接') }}</h2></header>
         <div class="assistant-form-scroll">
-          <p id="assistant-delete-description">确定删除「{{ pendingDeletion.name }}」吗？删除后如需使用，需要重新添加。</p>
+          <p id="assistant-delete-description">{{ t('确定删除「{0}」吗？删除后如需使用，需要重新添加。', [pendingDeletion.name]) }}</p>
           <p v-if="error" class="form-error" role="alert">{{ error }}</p>
         </div>
         <footer class="assistant-form-actions">
-          <button ref="cancelDeletionButton" type="button" class="secondary-button" :disabled="removing" @click="closeDeletion">取消</button>
-          <button type="submit" class="secondary-button assistant-delete-button" :disabled="removing || assistant.busy || assistant.loading"><LoaderCircle v-if="removing" :size="15" class="spinning" />{{ removing ? '删除中…' : '确认删除' }}</button>
+          <button ref="cancelDeletionButton" type="button" class="secondary-button" :disabled="removing" @click="closeDeletion">{{ t('取消') }}</button>
+          <button type="submit" class="secondary-button assistant-delete-button" :disabled="removing || assistant.busy || assistant.loading"><LoaderCircle v-if="removing" :size="15" class="spinning" />{{ removing ? t('删除中…') : t('确认删除') }}</button>
         </footer>
       </form>
     </dialog>
-    <div v-if="menuConnection" id="assistant-connection-actions" ref="menu" class="dropdown compact-action-menu assistant-connection-menu" role="menu" tabindex="-1" :aria-label="`${menuConnection.name} 操作`" :style="menuPosition" @keydown.stop="menuKey">
-      <button type="button" role="menuitem" :disabled="!!testingId || saving" @click="checkConnection(menuConnection)"><Wifi :size="15" />{{ testingId === menuConnection.id ? '正在检测…' : menuConnection.managed ? '刷新模型名单' : '检测连通' }}</button>
-      <button v-if="!menuConnection.managed" type="button" role="menuitem" :disabled="saving || assistant.busy || assistant.loading || testingId === menuConnection.id" @click="editConnection(menuConnection)"><Pencil :size="15" />编辑连接</button>
+    <div v-if="menuConnection" id="assistant-connection-actions" ref="menu" class="dropdown compact-action-menu assistant-connection-menu" role="menu" tabindex="-1" :aria-label="t('{0} 操作', [menuConnection.name])" :style="menuPosition" @keydown.stop="menuKey">
+      <button type="button" role="menuitem" :disabled="!!testingId || saving" @click="checkConnection(menuConnection)"><Wifi :size="15" />{{ testingId === menuConnection.id ? t('正在检测…') : menuConnection.managed ? t('刷新模型名单') : t('检测连通') }}</button>
+      <button v-if="!menuConnection.managed" type="button" role="menuitem" :disabled="saving || assistant.busy || assistant.loading || testingId === menuConnection.id" @click="editConnection(menuConnection)"><Pencil :size="15" />{{ t('编辑连接') }}</button>
     </div>
     <dialog v-if="draft" ref="editor" class="assistant-connection-dialog" aria-labelledby="assistant-connection-editor-title" @cancel.prevent="closeEditor" @keydown.stop>
       <form class="assistant-connection-form" :aria-busy="saving" @submit.prevent="saveConnection">
         <header class="assistant-form-heading">
-          <h2 id="assistant-connection-editor-title">{{ assistant.connections.some(connection => connection.id === draft?.id) ? '编辑连接' : '新建连接' }}</h2>
-          <button type="button" class="assistant-close-form" aria-label="关闭连接面板" title="关闭" :disabled="saving" @click="closeEditor"><X :size="18" /></button>
+          <h2 id="assistant-connection-editor-title">{{ assistant.connections.some(connection => connection.id === draft?.id) ? t('编辑连接') : t('新建连接') }}</h2>
+          <button type="button" class="assistant-close-form" :aria-label="t('关闭连接面板')" :data-tooltip="t('关闭')" :disabled="saving" @click="closeEditor"><X :size="18" /></button>
         </header>
         <div class="assistant-form-scroll">
           <fieldset :disabled="saving" class="assistant-form-fields">
-            <label>连接名称<input ref="nameInput" v-model="draft.name" required maxlength="120" autocomplete="off" /></label>
-            <label>连接方式<select v-model="draft.kind" @change="resetSecret"><option value="api">API</option><option value="codex-cli">Codex CLI</option><option value="claude-cli">Claude CLI</option></select></label>
+            <label>{{ t('连接名称') }}<input ref="nameInput" v-model="draft.name" required maxlength="120" autocomplete="off" /></label>
+            <label>{{ t('连接方式') }}<select v-model="draft.kind" @change="resetSecret"><option value="api">API</option><option value="codex-cli">Codex CLI</option><option value="claude-cli">Claude CLI</option></select></label>
             <template v-if="draft.kind === 'api'">
-              <label>API 服务地址<input v-model="draft.endpoint" required type="url" maxlength="2000" autocomplete="off" /></label>
-              <label>首选接口协议<select v-model="draft.protocol"><option value="responses">Responses</option><option value="chat-completions">Chat Completions</option></select></label>
-              <label class="assistant-settings-checkbox"><input v-model="draft.autoAdapt" type="checkbox" />自动适配接口与参数</label>
-              <p v-if="draft.autoAdapt" class="settings-notice">服务明确拒绝接口或兼容参数时，使用同一模型自动调整。模型权限受限时可改选模型或添加 Codex CLI 连接。</p>
+              <label>{{ t('API 服务地址') }}<input v-model="draft.endpoint" required type="url" maxlength="2000" autocomplete="off" /></label>
+              <label>{{ t('首选接口协议') }}<select v-model="draft.protocol"><option value="responses">Responses</option><option value="chat-completions">Chat Completions</option></select></label>
+              <label class="assistant-settings-checkbox"><input v-model="draft.autoAdapt" type="checkbox" />{{ t('自动适配接口与参数') }}</label>
+              <p v-if="draft.autoAdapt" class="settings-notice">{{ t('服务明确拒绝接口或兼容参数时，使用同一模型自动调整。模型权限受限时可改选模型或添加 Codex CLI 连接。') }}</p>
               <div class="assistant-secret-field">
-                <label for="assistant-api-key">API 密钥</label>
+                <label for="assistant-api-key">{{ t('API 密钥') }}</label>
                 <div class="assistant-secret-input">
-                  <input id="assistant-api-key" v-model="secret" :type="secretVisible ? 'text' : 'password'" maxlength="2000" autocomplete="new-password" autocapitalize="off" :spellcheck="false" :placeholder="hasSavedSecret && !secretEditing ? '••••••••••••••••••••••••••••••••' : ''" :title="hasSavedSecret && !secret ? '已保存；留空保留当前密钥' : undefined" @focus="secretEditing = true" />
-                  <button type="button" class="assistant-secret-toggle" :aria-label="secretToggleLabel" :aria-pressed="secretVisible" aria-controls="assistant-api-key" :disabled="!secret" :title="!secret ? (hasSavedSecret ? '已保存的密钥不回显，输入新密钥后可查看' : '输入密钥后可查看') : secretToggleLabel" @click="secretVisible = !secretVisible">
+                  <input id="assistant-api-key" v-model="secret" :type="secretVisible ? 'text' : 'password'" maxlength="2000" autocomplete="new-password" autocapitalize="off" :spellcheck="false" :placeholder="hasSavedSecret && !secretEditing ? '••••••••••••••••••••••••••••••••' : ''" :title="hasSavedSecret && !secret ? t('已保存；留空保留当前密钥') : undefined" @focus="secretEditing = true" />
+                  <button type="button" class="assistant-secret-toggle" :aria-label="secretToggleLabel" :aria-pressed="secretVisible" aria-controls="assistant-api-key" :disabled="!secret" :data-tooltip="!secret ? (hasSavedSecret ? t('已保存的密钥不回显，输入新密钥后可查看') : t('输入密钥后可查看')) : secretToggleLabel" @click="secretVisible = !secretVisible">
                     <EyeOff v-if="secretVisible" :size="16" /><Eye v-else :size="16" />
                   </button>
                 </div>
               </div>
             </template>
-            <label v-else>CLI 可执行文件路径<input v-model="draft.cliPath" maxlength="2000" autocomplete="off" placeholder="留空自动查找" /></label>
-            <label class="assistant-settings-checkbox"><input v-model="draft.tools" type="checkbox" />工具调用与文件操作</label>
-            <label v-if="draft.kind === 'api'">最大输出 token<input v-model.number="draft.maxOutputTokens" type="number" min="256" max="32768" required /></label>
+            <label v-else>{{ t('CLI 可执行文件路径') }}<input v-model="draft.cliPath" maxlength="2000" autocomplete="off" :placeholder="t('留空自动查找')" /></label>
+            <label class="assistant-settings-checkbox"><input v-model="draft.tools" type="checkbox" />{{ t('工具调用与文件操作') }}</label>
+            <label v-if="draft.kind === 'api'">{{ t('最大输出 token') }}<input v-model.number="draft.maxOutputTokens" type="number" min="256" max="32768" required /></label>
           </fieldset>
           <p v-if="error" class="form-error" role="alert">{{ error }}</p>
         </div>
         <footer class="assistant-form-actions">
-          <button type="button" class="secondary-button" :disabled="saving" @click="closeEditor">取消</button>
-          <button type="submit" class="primary-button" :disabled="saving || assistant.busy || assistant.loading"><LoaderCircle v-if="saving" :size="15" class="spinning" /><Check v-else :size="15" />{{ saving ? '正在保存…' : '保存连接' }}</button>
+          <button type="button" class="secondary-button" :disabled="saving" @click="closeEditor">{{ t('取消') }}</button>
+          <button type="submit" class="primary-button" :disabled="saving || assistant.busy || assistant.loading"><LoaderCircle v-if="saving" :size="15" class="spinning" /><Check v-else :size="15" />{{ saving ? t('正在保存…') : t('保存连接') }}</button>
         </footer>
       </form>
     </dialog>

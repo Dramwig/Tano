@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiLocale } from '../i18n';
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { X } from 'lucide-vue-next';
 import { hasEventTime, isEventCompleted, localDayKey } from '../calendar';
@@ -52,11 +53,11 @@ function select(record: ObjectRecord) {
   emit('select-event', planKey(record));
 }
 function eventTime(record: ObjectRecord) {
-  if (record.object.properties.allDay === true) return '全天';
-  if (!hasEventTime(record)) return '当天';
+  if (record.object.properties.allDay === true) return t('全天');
+  if (!hasEventTime(record)) return t('当天');
   const format = (value: unknown) => {
     const date = new Date(String(value));
-    const time = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const time = date.toLocaleTimeString(uiLocale.value, { hour: '2-digit', minute: '2-digit', hour12: false });
     return `${localDayKey(date) === localDayKey(props.date) ? '' : `${date.getMonth() + 1}/${date.getDate()} `}${time}`;
   };
   return Date.parse(String(record.object.properties.start)) === Date.parse(String(record.object.properties.end))
@@ -89,7 +90,7 @@ watch(() => props.date, focusPanel);
       ref="panel"
       class="calendar-day-popover"
       role="dialog"
-      :aria-label="`${localDayKey(date)} 的活动`"
+      :aria-label="t('{0} 的活动', [localDayKey(date)])"
       tabindex="-1"
       :style="position"
       @keydown.esc.stop.prevent="close(true)"
@@ -97,10 +98,10 @@ watch(() => props.date, focusPanel);
       <header class="calendar-day-popover-heading">
         <strong>{{ date.getDate() }}</strong>
         <div>
-          <span>{{ date.getMonth() + 1 }} 月 · {{ date.toLocaleDateString('zh-CN', { weekday: 'short' }) }}</span>
-          <small>{{ records.length ? `${records.length} 项活动` : '当天活动' }}</small>
+          <span>{{ date.toLocaleDateString(uiLocale, { month: 'short', weekday: 'short' }) }}</span>
+          <small>{{ records.length ? t('{0} 项活动', [records.length]) : t('当天活动') }}</small>
         </div>
-        <button type="button" class="calendar-day-popover-close" aria-label="关闭当天活动" @click="close(true)">
+        <button type="button" class="calendar-day-popover-close" :aria-label="t('关闭当天活动')" @click="close(true)">
           <X :size="17" aria-hidden="true" />
         </button>
       </header>
@@ -108,11 +109,11 @@ watch(() => props.date, focusPanel);
         <li v-for="record in records" :key="planKey(record)">
           <button type="button" :class="{ completed: isEventCompleted(record) }" @click="select(record)">
             <strong>{{ record.object.name }}</strong>
-            <small><time>{{ eventTime(record) }}</time> · {{ planSourceLabel(record) }}{{ isEventCompleted(record) ? ' · 已完成' : '' }}</small>
+            <small><time>{{ eventTime(record) }}</time> · {{ planSourceLabel(record) }}{{ isEventCompleted(record) ? t(' · 已完成') : '' }}</small>
           </button>
         </li>
       </ul>
-      <p v-else class="calendar-day-popover-empty">这一天没有安排活动。</p>
+      <p v-else class="calendar-day-popover-empty">{{ t('这一天没有安排活动。') }}</p>
     </section>
   </Teleport>
 </template>

@@ -86,23 +86,23 @@ try {
   const insights = await buildPlugin(join(root, 'examples/plugins/task-insights'));
   await acceptTaskInsights(page, expect, insights.canonical, join(artifacts, 'plugin-react-native.png'));
   console.log('React/Chart.js native acceptance passed: pagination, canvas, filters, events and cleanup.');
-  const { canonical, integrity } = await buildPlugin(join(root, 'examples/plugins/git-inspector'));
+  const { canonical, integrity } = await buildPlugin(join(root, 'scripts/fixtures/native-query-plugin'));
   await page.getByRole('button', { name: '仓库', exact: true }).click();
   await page.getByRole('button', { name: '打开插件标签页', exact: true }).click();
   await page.getByRole('button', { name: '导入插件', exact: true }).click();
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(canonical);
   await page.getByRole('button', { name: '检查清单' }).click();
   await page.getByRole('button', { name: '安装此插件', exact: true }).click();
-  await page.getByRole('button', { name: '查看Git 变更详情', exact: true }).click();
+  await page.getByRole('button', { name: '查看本机查询测试详情', exact: true }).click();
   await page.getByRole('button', { name: '授权此版本运行', exact: true }).click();
   await page.getByRole('button', { name: '关闭插件窗口', exact: true }).click();
   await page.getByRole('button', { name: '插件工作台', exact: true }).click();
   await page.getByRole('region', { name: '插件工作台', exact: true }).getByRole('button', { name: /^Git 变更/ }).click();
-  const view = page.getByRole('region', { name: 'Git 变更 · Git 变更', exact: true }).frameLocator('iframe[title="插件界面隔离容器"]').frameLocator('iframe');
+  const view = page.getByRole('region', { name: '本机查询测试 · Git 变更', exact: true }).frameLocator('iframe[title="插件界面隔离容器"]').frameLocator('iframe');
   await expect(view.getByRole('heading', { name: 'Git 变更', exact: true })).toBeVisible({ timeout: 15000 });
   await expect(view.getByRole('heading', { name: 'Git 变更', exact: true })).toHaveCSS('font-size', '24px');
   await expect.poll(() => page.evaluate(workspaceId => window.__TAURI_INTERNALS__.invoke('load_session', { workspaceId }).then(session => session?.tabs ?? []), identity))
-    .toContain('plugin:git-inspector:changes');
+    .toContain('plugin:native-query-fixture:changes');
   expect(await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').sessionError)).toBe('');
   await view.getByRole('button', { name: '查看 note.md 工作区差异', exact: true }).click();
   await expect(view.locator('pre')).toContainText('+native git smoke extra', { timeout: 15000 });
@@ -209,7 +209,7 @@ try {
     }
   }
   await page.getByRole('button', { name: /^已安装/ }).click();
-  await page.getByRole('button', { name: '查看Git 变更详情', exact: true }).click();
+  await page.getByRole('button', { name: '查看本机查询测试详情', exact: true }).click();
   await page.getByRole('button', { name: '停用插件', exact: true }).click();
   await page.getByRole('button', { name: '关闭插件窗口', exact: true }).click();
   await expect(page.getByRole('tab', { name: /Git 变更/ })).toHaveCount(0);
@@ -222,7 +222,7 @@ try {
   expect(['failed', 'cancelled']).toContain(switchedStatus.status);
   expect(await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').workspace?.id)).not.toBe(identity);
   const denied = await page.evaluate(async ({ workspaceId, integrity }) => {
-    try { await window.__TAURI_INTERNALS__.invoke('plugin_native_request', { request: { requestId: crypto.randomUUID(), workspaceId, pluginId: 'git-inspector', integrity, command: 'git.status', args: {} } }); return ''; }
+    try { await window.__TAURI_INTERNALS__.invoke('plugin_native_request', { request: { requestId: crypto.randomUUID(), workspaceId, pluginId: 'native-query-fixture', integrity, command: 'git.status', args: {} } }); return ''; }
     catch (error) { return String(error); }
   }, { workspaceId: identity, integrity });
   expect(denied).toContain('已切换'); expect(errors).toEqual([]);

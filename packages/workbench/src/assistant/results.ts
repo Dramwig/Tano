@@ -1,4 +1,6 @@
-import type { AssistantMessage, AssistantUserInput, AssistantWireMessage } from '@tano/protocol';
+import type { AssistantActivity, AssistantMessage, AssistantToolResult, AssistantUserInput, AssistantWireMessage } from '@tano/protocol';
+import { uiLocale } from '../i18n';
+import { assistantCopy } from './language';
 
 export function assistantMessageParts(message: AssistantMessage) {
   const parts: ({ kind: 'text'; content: string } | { kind: 'input'; input: AssistantUserInput })[] = [];
@@ -10,6 +12,42 @@ export function assistantMessageParts(message: AssistantMessage) {
   }
   if (offset < message.content.length) parts.push({ kind: 'text', content: message.content.slice(offset) });
   return parts;
+}
+
+export type AssistantDisplayPart =
+  | { kind: 'text'; content: string; key: string }
+  | { kind: 'input'; input: AssistantUserInput; key: string }
+  | { kind: 'tool'; tool: Extract<AssistantActivity, { kind: 'tool' }>; result?: AssistantToolResult; key: string };
+
+export function assistantDisplayParts(message: AssistantMessage) {
+  const process: AssistantDisplayPart[] = [], answer: AssistantDisplayPart[] = [];
+  const unfinished = !!message.state && ['failed', 'cancelled', 'interrupted'].includes(message.state);
+  if (!message.activity) {
+    (unfinished ? process : answer).push(...assistantMessageParts(message).map((part, index) => ({ ...part, key: `legacy-${index}` })));
+    return { process, answer };
+  }
+  for (const [index, item] of message.activity.entries()) {
+    const key = `activity-${index}`;
+    if (item.kind === 'text') {
+      const content = message.content.slice(item.start, item.end);
+      const live = message.state === 'running' || message.state === 'waiting';
+      if (content.trim()) (unfinished || item.phase === 'working' || (item.phase === 'pending' && !live) ? process : answer).push({ kind: 'text', content, key });
+    } else if (item.kind === 'tool') {
+      process.push({ kind: 'tool', tool: item, key, result: message.toolResults?.[item.resultIndex!] });
+    } else {
+      const input = message.userInputs?.find(input => input.id === item.inputId);
+      if (input) process.push({ kind: 'input', input, key });
+    }
+  }
+  return { process, answer };
+}
+
+/** Copy/export only the final (or currently streaming) answer, never the work log. */
+export function assistantAnswerText(message: AssistantMessage): string {
+  if (message.state && !['running', 'waiting', 'completed'].includes(message.state)) return '';
+  if (!message.activity) return message.content;
+  return message.activity.filter(item => item.kind === 'text' && item.phase === 'answer')
+    .map(item => item.kind === 'text' ? message.content.slice(item.start, item.end) : '').join('\n\n');
 }
 
 /** Keep the model's prose separate from the application's current review state. */
@@ -28,6 +66,7 @@ export function assistantHistory(messages: readonly AssistantMessage[]): Assista
     const answer = last?.role === 'assistant' ? history.pop()!.content : '';
     history.push({ role: 'assistant', content: JSON.stringify({ answer, execution: {
       state: message.state ?? 'unknown',
+      ...(message.termination ? { termination: message.termination.reason } : {}),
       ...(message.error ? { error: message.error.slice(0, 2000) } : {}),
       // Null distinguishes old conversations without receipts from a verified empty list.
       tools: message.toolResults ?? null,
@@ -44,17 +83,8 @@ export function assistantHistory(messages: readonly AssistantMessage[]): Assista
   });
 }
 
-const toolLabels: Record<string, string> = {
-  ask_user: '询问用户',
-  propose_create: '创建文档建议', propose_edit: '修改文档建议',
-  propose_delete: '删除文档建议', propose_rename: '重命名文档建议', propose_move: '移动文档建议',
-  edit_document: '修改文档', create_document: '创建文档', delete_document: '删除文档', rename_document: '重命名文档', move_document: '移动文档',
-  create_event: '创建事件', create_relation: '新增关系', update_task: '修改任务', update_assignment: '调整负责人', change_relation: '维护关系',
-  search_documents: '搜索文档', read_document: '读取文档',
-  read_workspace_objects: '读取工作区对象', read_reference_context: '读取引用', query_tasks: '查询任务',
-  propose_event: '创建事件建议', propose_relation: '创建关系建议',
-  propose_task_update: '修改任务建议', propose_assignment: '调整负责人建议', propose_relation_change: '维护关系建议',
-};
 export function assistantToolLabel(name: string) {
-  return Object.prototype.hasOwnProperty.call(toolLabels, name) ? toolLabels[name] : '工具调用';
+  const copy = assistantCopy(uiLocale.value);
+  const toolLabels: Record<string, string> = copy.tools;
+  return Object.prototype.hasOwnProperty.call(toolLabels, name) ? toolLabels[name] : copy.result.toolCall;
 }

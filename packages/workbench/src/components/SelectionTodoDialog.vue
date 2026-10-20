@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { nextTick, onMounted, onBeforeUnmount, ref } from 'vue';
 import { X } from 'lucide-vue-next';
 import type { SelectionTodoSession } from '../selection-todo';
@@ -31,13 +32,13 @@ async function save(append = false) {
 
 <template>
   <div class="selection-todo-backdrop" @click.self="close">
-    <form ref="panel" class="selection-todo-dialog" role="dialog" aria-modal="true" aria-label="从选区创建 Todo" @submit.prevent="save()" @keydown.esc.stop.prevent="close" @keydown="trapFocus">
-      <header><h2>创建 Todo</h2><button type="button" class="icon-button" aria-label="关闭创建 Todo" title="关闭" :disabled="busy" @click="close"><X :size="18" /></button></header>
-      <label>名称<input ref="input" v-model="name" maxlength="200" required :disabled="busy || !!createdId" /></label>
+    <form ref="panel" class="selection-todo-dialog" role="dialog" aria-modal="true" :aria-label="t('从选区创建 Todo')" @submit.prevent="save()" @keydown.esc.stop.prevent="close" @keydown="trapFocus">
+      <header><h2>{{ t('创建 Todo') }}</h2><button type="button" class="icon-button" :aria-label="t('关闭创建 Todo')" :data-tooltip="t('关闭')" :disabled="busy" @click="close"><X :size="18" /></button></header>
+      <label>{{ t('名称') }}<input ref="input" v-model="name" maxlength="200" required :disabled="busy || !!createdId" /></label>
       <small>{{ session.source.name }}</small><blockquote>{{ session.text }}</blockquote>
-      <p v-if="createdId" role="status">任务已创建，原文引用尚未保存。</p>
+      <p v-if="createdId" role="status">{{ t('任务已创建，原文引用尚未保存。') }}</p>
       <p v-if="error" role="alert">{{ error }}</p>
-      <footer><button type="submit" class="primary-button" :disabled="busy || !name.trim()">{{ busy ? '保存中' : createdId ? '重试插入引用' : '创建' }}</button><button v-if="createdId" type="button" :disabled="busy" @click="save(true)">在原文末尾插入引用</button><button v-if="createdId" type="button" :disabled="busy" @click="emit('openTask', createdId)">打开任务</button></footer>
+      <footer><button type="submit" class="primary-button" :disabled="busy || !name.trim()">{{ busy ? t('保存中') : createdId ? t('重试插入引用') : t('创建') }}</button><button v-if="createdId" type="button" :disabled="busy" @click="save(true)">{{ t('在原文末尾插入引用') }}</button><button v-if="createdId" type="button" :disabled="busy" @click="emit('openTask', createdId)">{{ t('打开任务') }}</button></footer>
     </form>
   </div>
 </template>

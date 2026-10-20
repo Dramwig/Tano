@@ -6,6 +6,22 @@ const example =
   '**粗体**、*斜体*、~~删除线~~、`代码`、<u>下划线</u>、x<sup>2</sup>、H<sub>2</sub>O、<mark>高亮</mark>、<span style="color: #db2777">粉色</span>。\n';
 
 describe('portable Markdown text styles', () => {
+  it('round trips background colors with text colors and nested formatting', async () => {
+    const codec = await createHeadlessMarkdown();
+    const input = '# <span style="background-color: #abc">标题</span>\n\n'
+      + '<span style="color: #db2777"><span style="background-color: #e3f2fd">**彩色文字**</span></span>\n\n'
+      + '| 列 |\n| - |\n| <span style="background-color: #faebdd">单元格</span> |\n';
+    try {
+      expect(unsupportedMarkdown(input)).toEqual([]);
+      const normalized = codec.normalize(input);
+      expect(normalized).toContain('background-color: #aabbcc');
+      expect(normalized).toContain('background-color: #e3f2fd');
+      expect(normalized).toContain('color: #db2777');
+      expect(normalized).toContain('**<span style="color: #db2777"><span style="background-color: #e3f2fd">彩色文字</span></span>**');
+      expect(normalized).toContain('background-color: #faebdd');
+      expect(codec.normalize(normalized)).toBe(normalized);
+    } finally { await codec.destroy(); }
+  });
   it('round trips selection wrapping extensions and their nested formatting', async () => {
     const codec = await createHeadlessMarkdown();
     try {
@@ -78,6 +94,9 @@ describe('portable Markdown text styles', () => {
     '<u onclick="alert(1)">文字</u>',
     '<span style="color: red; background:url(https://example.test)">文字</span>',
     '<span style="color: #abc" onmouseover="alert(1)">文字</span>',
+    '<span style="background-color: url(https://example.test)">文字</span>',
+    '<span style="background-color: #abc; position: fixed">文字</span>',
+    '<span style="background-color: #abc" onclick="alert(1)">文字</span>',
     '<mark id="custom">文字</mark>',
     '<u>未闭合',
     '<u><mark>错误嵌套</u></mark>',

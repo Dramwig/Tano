@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { ArrowDown, ArrowUp, CornerDownLeft, Repeat2, X } from 'lucide-vue-next';
 import type { PageSearchEditor } from '@tano/editor/search';
-import { defaultShortcutBindings, matchesShortcut, shortcutLabel } from '../shortcuts';
+import { defaultShortcutBindings, matchesShortcut } from '../shortcuts';
 import type { ShortcutBindings } from '../shortcuts';
 import { recordHelpCompleted } from '../help-checklist';
 
@@ -59,7 +60,7 @@ async function replaceMatch(all = false) {
     all ? 'all' : index.value,
   );
   index.value = result.index;
-  notice.value = result.replaced ? `已替换 ${result.replaced} 处` : '';
+  notice.value = result.replaced ? t('已替换 {0} 处', [result.replaced]) : '';
   if (result.replaced > 0 && query.value !== replacement.value) recordHelpCompleted('page-replace');
   await nextTick();
   refresh(true);
@@ -121,15 +122,15 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
     v-if="opened"
     class="page-search"
     role="search"
-    aria-label="页内搜索"
+    :aria-label="t('页内搜索')"
     @keydown.stop="keydown"
   >
     <div class="page-search-row">
       <input
         ref="input"
         v-model="query"
-        aria-label="在当前页面中查找"
-        placeholder="在页面中查找"
+        :aria-label="t('在当前页面中查找')"
+        :placeholder="t('在页面中查找')"
         autocomplete="off"
         spellcheck="false"
       />
@@ -140,8 +141,8 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
         <button
           type="button"
           :disabled="!count"
-          aria-label="上一个匹配"
-          :title="`上一个匹配 (${shortcutLabel(bindings.previousMatch)})`"
+          :aria-label="t('上一个匹配')"
+          :data-tooltip="t('上一个匹配')" :data-tooltip-shortcut="bindings.previousMatch"
           @click="navigate(-1)"
         >
           <ArrowUp :size="15" :stroke-width="1.7" />
@@ -149,8 +150,8 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
         <button
           type="button"
           :disabled="!count"
-          aria-label="下一个匹配"
-          :title="`下一个匹配 (${shortcutLabel(bindings.nextMatch)})`"
+          :aria-label="t('下一个匹配')"
+          :data-tooltip="t('下一个匹配')" :data-tooltip-shortcut="bindings.nextMatch"
           @click="navigate(1)"
         >
           <ArrowDown :size="15" :stroke-width="1.7" />
@@ -159,15 +160,15 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
           type="button"
           :class="{ active: replacing }"
           :aria-pressed="replacing"
-          aria-label="展开或收起替换"
-          :title="`替换 (${shortcutLabel(bindings.pageReplace)})`"
+          :aria-label="t('展开或收起替换')"
+          :data-tooltip="t('替换')" :data-tooltip-shortcut="bindings.pageReplace"
           @click="toggleReplace"
         >
           <Repeat2 :size="15" :stroke-width="1.7" />
         </button>
       </template>
       <span v-else class="page-search-not-found" role="status" aria-live="polite">not found</span>
-      <button type="button" aria-label="关闭页内搜索" :title="`关闭 (${shortcutLabel(bindings.closeSearch)})`" @click="close">
+      <button type="button" :aria-label="t('关闭页内搜索')" :data-tooltip="t('关闭')" :data-tooltip-shortcut="bindings.closeSearch" @click="close">
         <X :size="15" :stroke-width="1.7" />
       </button>
     </div>
@@ -175,8 +176,8 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
       <input
         ref="replacementInput"
         v-model="replacement"
-        aria-label="替换为"
-        placeholder="替换为…"
+        :aria-label="t('替换为')"
+        :placeholder="t('替换为…')"
         :disabled="readonly"
         autocomplete="off"
         spellcheck="false"
@@ -184,7 +185,7 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
       />
       <div class="page-search-replace-actions">
         <span class="page-search-notice" role="status" aria-live="polite">{{
-          readonly ? '当前文档为只读' : notice
+          readonly ? t('当前文档为只读') : notice
         }}</span>
         <button
           type="button"
@@ -192,7 +193,7 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
           :disabled="readonly || !count"
           @click="replaceMatch(true)"
         >
-          全部替换
+          {{ t('全部替换') }}
         </button>
         <button
           type="button"
@@ -200,7 +201,7 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
           :disabled="readonly || !count"
           @click="replaceMatch()"
         >
-          替换<CornerDownLeft :size="14" />
+          {{ t('替换') }}<CornerDownLeft :size="14" />
         </button>
       </div>
     </div>

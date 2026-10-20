@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "id": "e10002",
+  "type": "task",
+  "name": "核对训练配置",
+  "description": "跨视图共享的示例记录",
+  "archived": false,
+  "properties": {
+    "status": "待处理",
+    "priority": 1,
+    "completed": false
+  }
+}

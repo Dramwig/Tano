@@ -2,14 +2,17 @@
 
 [English](../README.md) | 中文 | [日本語](../ja/README.md) | [Deutsch](../de/README.md) | [项目 README](../../README_ZH.md)
 
-Tano 是本地 Markdown 工作区。可以从[本地开发](local-development.md)开始运行桌面应用或浏览器演示，再按需要阅读下面的指南。
+Tano 是一个以真实文件为内容源、让人与 Agent 在同一页工作的 File-Native Workspace。可以从[本地开发](local-development.md)开始运行桌面应用或浏览器演示，再按需要阅读下面的指南。
 
 | 指南 | 主题 |
 | --- | --- |
 | [本地开发](local-development.md) | 环境要求、启动与检查 |
+| [Windows 右键打开](../windows-shell.md) | 安装时可选的右键菜单、文件夹工作区与独立 Markdown 文件 |
 | [第三方账号导入](account-import.md) | OAuth 应用配置、连接方式与导入范围 |
 | [手机与平板开发](../mobile.md) | Android、iPhone/iPad、响应式布局与本机验证 |
 | [架构](architecture.md) | 存储分层与工作区身份 |
+| [Workspace Contract v1](workspace-contract.md) | File、Object、View、稳定身份、来源和冲突规则 |
+| [产品规划：File-Native Workspace](product-strategy.md) | 产品定位、竞争边界、当前状态和交付顺序 |
 | [数据表](data-tables.md) | 独立记录、类型字段、视图、公式、CSV 与冲突恢复 |
 | [插件开发与工作区管理](../plugins.md) | 跨端插件、管理员规则、SDK 与开发工具 |
 | [插件 API 参考](../plugin-api.md) | SDK 方法、Vue/React 模板、兼容性与迁移 |

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { localizedDataFieldTypes as dataFieldTypes } from '../ui-labels';
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import {
   Plus,
@@ -29,7 +31,7 @@ import type {
   DataValue,
   DataView,
 } from '@tano/protocol';
-import { dataFieldTypes, dataTableName, parentPath, validDataValue } from '@tano/protocol';
+import { dataTableName, parentPath, safeRemoteImage, validDataValue } from '@tano/protocol';
 import { useWorkspaceStore } from '../stores/workspace';
 import {
   aggregateData,
@@ -48,11 +50,18 @@ import {
 import { nativeAttachments, openExternalUrl } from '../attachments';
 import { useWorkbenchRuntime } from '../runtime';
 import DataTableCell from './DataTableCell.vue';
+import { startColumnPointerReorder, startRowPointerReorder } from '../data-table-drag-preview';
 import DataFieldMenu from './DataFieldMenu.vue';
 import DataFieldCreate from './DataFieldCreate.vue';
+import DocumentAppearance from './DocumentAppearance.vue';
+import DocumentComments from './DocumentComments.vue';
+import DocumentScrollbar from './DocumentScrollbar.vue';
+import { appearanceText } from '../document-appearance';
+import type { OpenDocument } from '../stores/workspace';
+import type { CommentAuthor } from '../workspace-comments';
 import { addDataField, createAndSelectDataOption, dataFieldIcons } from '../data-table-properties';
 
-const props = defineProps<{ tableId: string; controlsTarget?: string }>();
+const props = defineProps<{ tableId: string; controlsTarget?: string; commentAuthor?: CommentAuthor; touchLayout?: boolean }>();
 const store = useWorkspaceStore();
 const runtime = useWorkbenchRuntime();
 const attachmentService = runtime.attachments ?? (runtime.native ? nativeAttachments : undefined);
@@ -66,7 +75,35 @@ const state = computed(() =>
 );
 const table = computed(() => state.value?.draft);
 const file = computed(() => store.workspace?.files.find((file) => file.id === props.tableId));
-const title = computed(() => dataTableName(file.value?.path ?? state.value?.path ?? '数据表'));
+const title = computed(() => dataTableName(file.value?.path ?? state.value?.path ?? t('数据表')));
+// Adapt structured metadata to the shared Markdown appearance controls.
+const appearance = computed(() => `---\nicon: ${JSON.stringify(table.value?.icon ?? '')}\ncover: ${JSON.stringify(table.value?.cover ?? '')}\n---\n`);
+function updateAppearance(markdown: string) {
+  change(table => {
+    for (const key of ['icon', 'cover'] as const) {
+      const value = appearanceText(markdown, key);
+      if (value) table[key] = value;
+      else delete table[key];
+    }
+  });
+}
+const comments = ref<InstanceType<typeof DocumentComments>>();
+const commentDocument = computed<OpenDocument | undefined>(() => state.value && ({
+  id: props.tableId, path: state.value.path, content: `${JSON.stringify(table.value, null, 2)}\n`,
+  base: state.value.snapshot, saving: state.value.saving, missing: !!state.value.unavailable,
+}));
+function resolveCover(reference: string) {
+  return attachmentService?.imageUrl(store.workspace, state.value?.path ?? '', reference) ?? safeRemoteImage(reference);
+}
+async function uploadCover(file: File) {
+  const workspaceId = store.workspace?.id;
+  const tableId = props.tableId;
+  if (!workspaceId || !attachmentService || readonly.value) throw new Error(t('当前数据表不可编辑'));
+  const added = await attachmentService.importAttachment(workspaceId, state.value!.path, file, true);
+  if (workspaceId !== store.workspace?.id || tableId !== props.tableId) throw new Error(t('工作区已切换'));
+  await store.refresh();
+  return added;
+}
 async function renameTitle(event: Event) {
   const input = event.target as HTMLInputElement;
   await run(() => store.renameDataTable(props.tableId, input.value));
@@ -97,7 +134,7 @@ const menuField = computed(() =>
 const fieldInsert = ref<{ id: string; side: 'left' | 'right' }>();
 const creatingField = ref(false);
 function createField(name: string, type: DataFieldType, formula?: string) {
-  if (readonly.value) return '当前数据表不可编辑';
+  if (readonly.value) return t('当前数据表不可编辑');
   let id = '';
   try {
     store.editDataTable(props.tableId, (table) => {
@@ -186,7 +223,7 @@ const allGroups = computed(() => {
   const groups = new Map<string, DataRow[]>();
   for (const row of rows.value) {
     const value = view.value?.groupBy ? evaluate.value!(row, view.value.groupBy).value : '';
-    const key = view.value?.groupBy ? dataValueText(value) || '未分组' : '';
+    const key = view.value?.groupBy ? dataValueText(value) || t('未分组') : '';
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(row);
   }
@@ -221,12 +258,12 @@ const saved = computed(
 );
 const aggregateLabels: Record<DataAggregate, string> = {
   none: '',
-  count: '计数',
-  filled: '非空数',
-  sum: '求和',
-  average: '平均值',
-  min: '最小值',
-  max: '最大值',
+  get count() { return t('计数'); },
+  get filled() { return t('非空数'); },
+  get sum() { return t('求和'); },
+  get average() { return t('平均值'); },
+  get min() { return t('最小值'); },
+  get max() { return t('最大值'); },
 };
 const hasAggregates = computed(() =>
   fields.value.some((field) => (view.value?.aggregates[field.id] ?? 'none') !== 'none'),
@@ -281,20 +318,20 @@ async function run(operation: () => Promise<unknown>) {
 function setCell(rowId: string, fieldId: string, value: DataValue, expected: DataValue) {
   change((table) => {
     const row = table.rows.find((row) => row.id === rowId);
-    if (!row) throw new Error('记录已移除');
+    if (!row) throw new Error(t('记录已移除'));
     const current = row.values[fieldId] ?? null;
     if (
       JSON.stringify(current) !== JSON.stringify(expected) &&
       JSON.stringify(current) !== JSON.stringify(value)
     )
       throw new Error(
-        `此单元格已被外部修改。你的输入为「${dataValueText(value)}」，请核对后重新填写。`,
+        t('此单元格已被外部修改。你的输入为「{0}」，请核对后重新填写。', [dataValueText(value)]),
       );
     row.values[fieldId] = value;
   });
 }
 function createCellOption(rowId: string, fieldId: string, name: string, expected: DataValue) {
-  if (readonly.value) return '当前数据表不可编辑';
+  if (readonly.value) return t('当前数据表不可编辑');
   try {
     store.editDataTable(props.tableId, (table) =>
       createAndSelectDataOption(table, rowId, fieldId, name, expected),
@@ -327,7 +364,7 @@ async function addRow() {
     target.scrollIntoView({ block: 'nearest' });
   } else {
     detailId.value = id;
-    message.value = '新记录已创建；填写符合当前筛选条件的字段后会显示在视图中。';
+    message.value = t('新记录已创建；填写符合当前筛选条件的字段后会显示在视图中。');
   }
 }
 function duplicateRows(ids: string[]) {
@@ -341,8 +378,8 @@ function duplicateRows(ids: string[]) {
 }
 function deleteRows(ids: string[]) {
   confirmAction.value = {
-    title: `删除 ${ids.length} 条记录？`,
-    detail: '关联文档和附件会保留。删除后可以撤销。',
+    title: t('删除 {0} 条记录？', [ids.length]),
+    get detail() { return t('关联文档和附件会保留。删除后可以撤销。'); },
     run: () => {
       change((table) => {
         table.rows = table.rows.filter((row) => !ids.includes(row.id));
@@ -369,7 +406,7 @@ function saveField() {
     !field.name ||
     table.value.fields.some((item) => item.id !== field.id && item.name === field.name)
   ) {
-    fieldError.value = '请输入不重复的字段名称';
+    fieldError.value = t('请输入不重复的字段名称');
     return;
   }
   if (['select', 'multiselect'].includes(field.type))
@@ -404,24 +441,24 @@ function saveField() {
         (row) => row.values[field.id] !== undefined && row.values[field.id] !== null,
       )
     )
-      throw new Error('此字段已有数据。请新建目标类型的字段，再复制或转换数据。');
+      throw new Error(t('此字段已有数据。请新建目标类型的字段，再复制或转换数据。'));
     if (
       table.value.rows.some(
         (row) => row.values[field.id] !== undefined && !validDataValue(field, row.values[field.id]),
       )
     )
-      throw new Error('选项仍被记录使用，请先修改这些记录再移除选项。');
+      throw new Error(t('选项仍被记录使用，请先修改这些记录再移除选项。'));
     change((table) => {
       const index = table.fields.findIndex((item) => item.id === field.id);
       if (
         fieldBase.value &&
         JSON.stringify(table.fields[index]) !== JSON.stringify(fieldBase.value)
       )
-        throw new Error('字段已被外部修改，请重新打开设置；当前输入仍保留');
+        throw new Error(t('字段已被外部修改，请重新打开设置；当前输入仍保留'));
       if (index >= 0) table.fields[index] = field;
       else if (fieldInsert.value) {
         const position = table.fields.findIndex((item) => item.id === fieldInsert.value!.id);
-        if (position < 0) throw new Error('相邻字段已移除，请重新选择插入位置');
+        if (position < 0) throw new Error(t('相邻字段已移除，请重新选择插入位置'));
         table.fields.splice(position + (fieldInsert.value.side === 'right' ? 1 : 0), 0, field);
       } else table.fields.push(field);
     });
@@ -433,11 +470,11 @@ function saveField() {
 }
 function removeField(field: DataField) {
   confirmAction.value = {
-    title: `删除「${field.name}」字段？`,
-    detail: '此列所有单元格和相关筛选将移除；引用此列的公式会显示错误。可以撤销。',
+    title: t('删除「{0}」字段？', [field.name]),
+    get detail() { return t('此列所有单元格和相关筛选将移除；引用此列的公式会显示错误。可以撤销。'); },
     run: () => {
       change((table) => {
-        if (table.fields.length === 1) throw new Error('至少保留一个字段');
+        if (table.fields.length === 1) throw new Error(t('至少保留一个字段'));
         table.fields = table.fields.filter((item) => item.id !== field.id);
         for (const row of table.rows) delete row.values[field.id];
         for (const view of table.views) {
@@ -462,15 +499,55 @@ function moveField(fieldId: string, offset: number) {
       table.fields.splice(to, 0, ...table.fields.splice(index, 1));
   });
 }
+const canReorderRows = computed(() => !readonly.value && !view.value?.sorts.length);
+let stopTableDrag: (() => void) | undefined;
+function endReorder() {
+  stopTableDrag?.();
+  stopTableDrag = undefined;
+}
+watch(() => props.tableId, endReorder);
+watch(viewId, endReorder);
+watch(readonly, endReorder);
+watch(canReorderRows, endReorder);
+onBeforeUnmount(endReorder);
+function startColumnDrag(event: PointerEvent, id: string) {
+  if (readonly.value || !root.value) return;
+  endReorder();
+  stopTableDrag = startColumnPointerReorder(root.value, id, event, target => {
+    change(table => {
+      const from = table.fields.findIndex(field => field.id === id);
+      if (from < 0 || !table.fields.some(field => field.id === target.id)) return;
+      const [field] = table.fields.splice(from, 1);
+      const to = table.fields.findIndex(field => field.id === target.id) + Number(target.after);
+      table.fields.splice(to, 0, field);
+    });
+  }, () => { fieldMenu.value = undefined; });
+}
+function startRowDrag(event: PointerEvent, id: string) {
+  if (!canReorderRows.value || !root.value) return;
+  endReorder();
+  stopTableDrag = startRowPointerReorder(root.value, id, event, target => {
+    if (!canReorderRows.value || !groups.value.some(group =>
+      group.rows.some(row => row.id === id) && group.rows.some(row => row.id === target.id))) return;
+    change(table => {
+      const from = table.rows.findIndex(row => row.id === id);
+      if (from < 0 || !table.rows.some(row => row.id === target.id)) return;
+      // Preserve hidden/filtered records and move only the dragged identity.
+      const [row] = table.rows.splice(from, 1);
+      const to = table.rows.findIndex(row => row.id === target.id) + Number(target.after);
+      table.rows.splice(to, 0, row);
+    });
+  }, () => { fieldMenu.value = undefined; });
+}
 function addView() {
-  const next = newDataView(`视图 ${(table.value?.views.length ?? 0) + 1}`);
+  const next = newDataView(t('视图 {0}', [(table.value?.views.length ?? 0) + 1]));
   change((table) => table.views.push(next));
   viewId.value = next.id;
   settings.value = true;
 }
 function duplicateView() {
   if (!view.value) return;
-  const next = { ...copyTable(view.value), id: tableItemId(), name: `${view.value.name} 副本` };
+  const next = { ...copyTable(view.value), id: tableItemId(), name: t('{0} 副本', [view.value.name]) };
   change((table) => table.views.push(next));
   viewId.value = next.id;
 }
@@ -625,7 +702,7 @@ async function chooseImport(event: Event) {
   input.value = '';
   if (!file) return;
   if (file.size > 10 * 1024 * 1024) {
-    message.value = 'CSV 文件需小于 10 MiB';
+    message.value = t('CSV 文件需小于 10 MiB');
     return;
   }
   try {
@@ -639,10 +716,10 @@ function importCsv() {
   if (!table.value || importText.value === undefined) return;
   try {
     const grid = parseDelimited(importText.value);
-    if (grid.length < 2) throw new Error('CSV 需要表头和至少一条记录');
+    if (grid.length < 2) throw new Error(t('CSV 需要表头和至少一条记录'));
     const names = grid.shift()!.map((name) => name.trim());
     if (names.some((name) => !name) || new Set(names).size !== names.length)
-      throw new Error('表头名称不能为空或重复');
+      throw new Error(t('表头名称不能为空或重复'));
     const next = copyTable(table.value);
     const columns = names.map((name) => {
       const existing = next.fields.find((field) => field.name === name);
@@ -655,7 +732,7 @@ function importCsv() {
     change((table) => Object.assign(table, result));
     if (!message.value) {
       importText.value = undefined;
-      message.value = `已导入 ${grid.length} 条记录`;
+      message.value = t('已导入 {0} 条记录', [grid.length]);
     } else importError.value = message.value;
   } catch (error) {
     importError.value = String(error);
@@ -665,7 +742,7 @@ function openAttachment(id: string) {
   const file = store.workspace?.files.find((file) => file.id === id);
   if (file && /\.(md|markdown)$/i.test(file.path)) void store.openFileInNewTab(file);
   else if (file) store.openAttachmentInNewTab(file);
-  else message.value = '附件已移除或不可访问';
+  else message.value = t('附件已移除或不可访问');
 }
 async function uploadAttachment(rowId: string, fieldId: string, file: File) {
   const workspaceId = store.workspace?.id,
@@ -674,77 +751,83 @@ async function uploadAttachment(rowId: string, fieldId: string, file: File) {
   await run(async () => {
     const added = await attachmentService.importAttachment(workspaceId, '', file, false);
     if (store.workspace?.id !== workspaceId)
-      throw new Error('工作区已切换，上传的附件保留在原工作区');
+      throw new Error(t('工作区已切换，上传的附件保留在原工作区'));
     await store.refresh();
-    if (store.workspace?.id !== workspaceId) throw new Error('工作区已切换');
+    if (store.workspace?.id !== workspaceId) throw new Error(t('工作区已切换'));
     const entry = store.workspace.files.find((entry) => entry.path === added.path);
-    if (!entry) throw new Error('附件已上传，但暂未找到文件，请刷新后关联');
+    if (!entry) throw new Error(t('附件已上传，但暂未找到文件，请刷新后关联'));
     store.editDataTable(tableId, (table) => {
       const row = table.rows.find((row) => row.id === rowId);
-      if (!row) throw new Error('记录已移除，上传的附件仍在工作区');
+      if (!row) throw new Error(t('记录已移除，上传的附件仍在工作区'));
       const previous = row.values[fieldId];
       row.values[fieldId] = [...new Set([...(Array.isArray(previous) ? previous : []), entry.id])];
     });
   });
 }
 const filterOperators = [
-  { id: 'eq', label: '等于' },
-  { id: 'ne', label: '不等于' },
-  { id: 'contains', label: '包含' },
-  { id: 'gt', label: '大于' },
-  { id: 'lt', label: '小于' },
-  { id: 'empty', label: '为空' },
-  { id: 'notEmpty', label: '不为空' },
+  { id: 'eq', get label() { return t('等于'); } },
+  { id: 'ne', get label() { return t('不等于'); } },
+  { id: 'contains', get label() { return t('包含'); } },
+  { id: 'gt', get label() { return t('大于'); } },
+  { id: 'lt', get label() { return t('小于'); } },
+  { id: 'empty', get label() { return t('为空'); } },
+  { id: 'notEmpty', get label() { return t('不为空'); } },
 ];
 </script>
 
 <template>
-  <section ref="root" class="data-page" aria-label="数据表工作区" @paste="paste" @keydown="keydown">
+  <div class="data-page-layout">
+  <section ref="root" class="data-page" :aria-label="t('数据表工作区')" @paste="paste" @keydown="keydown">
     <template v-if="table && view && state">
-      <header class="data-heading">
-        <Table2 :size="20" /><input
-          class="data-title"
-          aria-label="数据表名称"
+      <header class="data-heading document-title">
+        <DocumentAppearance :key="tableId" :model-value="appearance" :readonly="readonly || working"
+          :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'"
+          :resolve-image="resolveCover" :resource-revision="attachmentService?.revision"
+          :upload-cover="attachmentService && !store.isDemo ? uploadCover : undefined"
+          @update:model-value="updateAppearance" @comment="comments?.showDiscussion()" />
+        <div class="document-title-content"><input
+          class="document-title-input"
+          :aria-label="t('数据表名称')"
           :readonly="readonly || working"
           :value="title"
           @change="renameTitle"
-        />
+        /></div>
         <Teleport :to="controlsTarget ?? 'body'" :disabled="!controlsTarget" defer>
           <div
             class="data-table-controls"
             role="group"
-            aria-label="数据表工具"
+            :aria-label="t('数据表工具')"
             @keydown.stop="keydown"
           >
             <span class="data-save-state">{{
-              state.saving ? '保存中…' : state.error ? '保存暂停' : saved ? '已保存' : '未保存'
+              state.saving ? t('保存中…') : state.error ? t('保存暂停') : saved ? t('已保存') : t('未保存')
             }}</span
-            ><span v-if="store.workspace?.readOnly" class="data-save-state">只读</span
+            ><span v-if="store.workspace?.readOnly" class="data-save-state">{{ t('只读') }}</span
             ><button
               class="icon-button"
-              aria-label="撤销数据表修改"
-              title="撤销数据表修改"
+              :aria-label="t('撤销数据表修改')"
+              :data-tooltip="t('撤销数据表修改')"
               :disabled="readonly || !state.undo.length"
               @click="store.undoDataTable(tableId)"
             >
               <Undo2 :size="16" /></button
             ><button
               class="icon-button"
-              aria-label="重做数据表修改"
-              title="重做数据表修改"
+              :aria-label="t('重做数据表修改')"
+              :data-tooltip="t('重做数据表修改')"
               :disabled="readonly || !state.redo.length"
               @click="store.undoDataTable(tableId, true)"
             >
               <Redo2 :size="16" />
             </button>
             <details class="data-table-menu">
-              <summary class="icon-button" aria-label="数据表操作" title="数据表操作">
+              <summary class="icon-button" :aria-label="t('数据表操作')" :data-tooltip="t('数据表操作')">
                 <MoreHorizontal :size="19" />
               </summary>
               <div>
-                <button @click="download"><Download :size="14" />导出当前视图 CSV</button
+                <button @click="download"><Download :size="14" />{{ t('导出当前视图 CSV') }}</button
                 ><button :disabled="readonly" @click="fileInput?.click()">
-                  <Upload :size="14" />导入 CSV</button
+                  <Upload :size="14" />{{ t('导入 CSV') }}</button
                 ><button
                   :disabled="store.workspace?.readOnly || working"
                   @click="
@@ -753,7 +836,7 @@ const filterOperators = [
                     )
                   "
                 >
-                  <Copy :size="14" />另存副本
+                  <Copy :size="14" />{{ t('另存副本') }}
                 </button>
               </div>
             </details>
@@ -761,21 +844,33 @@ const filterOperators = [
         </Teleport>
       </header>
       <div v-if="state.error || state.unavailable" class="data-notice" role="alert">
-        <span>{{ state.error || '数据表已被移除或格式无效，当前内容仍保留。' }}</span
-        ><button @click="run(() => store.retryDataTable(tableId!))">重试保存</button
+        <span>{{ state.error || t('数据表已被移除或格式无效，当前内容仍保留。') }}</span
+        ><button @click="run(() => store.retryDataTable(tableId!))">{{ t('重试保存') }}</button
         ><button
           @click="
             run(() => store.copyDataTable({ ...table!, name: title }, parentPath(state!.path)))
           "
           :disabled="store.workspace?.readOnly"
         >
-          另存副本</button
+          {{ t('另存副本') }}</button
         ><button @click="run(() => store.discardDataTable(tableId!))">
-          保留恢复文件并重新载入
+          {{ t('保留恢复文件并重新载入') }}
         </button>
       </div>
       <div class="data-view-bar">
-        <div class="data-view-tabs panel-scrollbar" role="tablist" aria-label="数据表视图">
+        <div v-if="selectedRows.length" class="data-selection" role="group" :aria-label="t('已选择')">
+          <span role="status">{{ t('已选择') }} {{ selectedRows.length }} {{ t('条') }}</span>
+          <button :disabled="readonly" :aria-label="t('复制记录')" :data-tooltip="t('复制记录')" @click="duplicateRows(selectedRows)">
+            <Copy :size="16" />
+          </button>
+          <button :disabled="readonly" :aria-label="t('删除记录')" :data-tooltip="t('删除记录')" @click="deleteRows(selectedRows)">
+            <Trash2 :size="16" />
+          </button>
+          <button :aria-label="t('取消选择')" :data-tooltip="t('取消选择')" @click="selectedRows = []">
+            <X :size="16" />
+          </button>
+        </div>
+        <div class="data-view-tabs panel-scrollbar" role="tablist" :aria-label="t('数据表视图')">
           <button
             v-for="item in table.views"
             :key="item.id"
@@ -790,17 +885,17 @@ const filterOperators = [
               :is="item.type === 'cards' ? LayoutGrid : item.type === 'board' ? Columns3 : Table2"
               :size="14"
             />{{ item.name }}</button
-          ><button v-if="!readonly" class="data-icon" aria-label="新增视图" @click="addView">
+          ><button v-if="!readonly" class="data-icon" :aria-label="t('新增视图')" @click="addView">
             <Plus :size="14" />
           </button>
         </div>
         <div class="data-tools">
-          <nav v-if="pageCount > 1" class="data-pagination" aria-label="记录分页">
+          <nav v-if="pageCount > 1" class="data-pagination" :aria-label="t('记录分页')">
             <button
               class="data-icon"
               :disabled="pageIndex === 0"
-              aria-label="上一页记录"
-              title="上一页记录"
+              :aria-label="t('上一页记录')"
+              :data-tooltip="t('上一页记录')"
               @click="pageIndex--"
             >
               <ChevronLeft :size="15" />
@@ -809,8 +904,8 @@ const filterOperators = [
             <button
               class="data-icon"
               :disabled="pageIndex + 1 >= pageCount"
-              aria-label="下一页记录"
-              title="下一页记录"
+              :aria-label="t('下一页记录')"
+              :data-tooltip="t('下一页记录')"
               @click="pageIndex++"
             >
               <ChevronRight :size="15" />
@@ -819,10 +914,10 @@ const filterOperators = [
           <label class="data-search"
             ><Search :size="14" /><input
               v-model="query"
-              aria-label="搜索记录"
-              placeholder="搜索记录" /></label
+              :aria-label="t('搜索记录')"
+              :placeholder="t('搜索记录')" /></label
           ><button :class="{ active: settings }" @click="settings = !settings">
-            <SlidersHorizontal :size="14" />视图设置<span
+            <SlidersHorizontal :size="14" />{{ t('视图设置') }}<span
               v-if="view.filters.length"
               class="data-filter-count"
               >{{ view.filters.length }}</span
@@ -833,31 +928,23 @@ const filterOperators = [
             :disabled="readonly"
             @click="addRow"
           >
-            <Plus :size="14" />新记录
+            <Plus :size="14" />{{ t('新记录') }}
           </button>
         </div>
       </div>
-      <div v-if="selectedRows.length" class="data-selection">
-        <span>已选择 {{ selectedRows.length }} 条</span
-        ><button :disabled="readonly" @click="duplicateRows(selectedRows)">
-          <Copy :size="13" />复制记录</button
-        ><button :disabled="readonly" @click="deleteRows(selectedRows)">
-          <Trash2 :size="13" />删除记录</button
-        ><button @click="selectedRows = []">取消选择</button>
-      </div>
       <div class="data-body">
-        <div class="data-grid-scroll panel-scrollbar">
+        <div class="data-grid-scroll">
           <table
             v-if="view.type === 'table'"
             class="data-grid"
             :class="{ 'data-frozen': view.freeze }"
             :style="{
-              width: `max(100%, ${fields.reduce((sum, field) => sum + width(field), 0) + 44 + (creatingField ? 240 : 60)}px)`,
+              width: `max(100%, ${fields.reduce((sum, field) => sum + width(field), 0) + (creatingField ? 240 : 60)}px)`,
             }"
-            aria-label="数据表记录"
+            :aria-label="t('数据表记录')"
           >
             <colgroup>
-              <col style="width: 44px" />
+              <col style="width: 0" />
               <col
                 v-for="field in fields"
                 :key="field.id"
@@ -870,7 +957,7 @@ const filterOperators = [
                 <th class="data-row-tools">
                   <input
                     type="checkbox"
-                    aria-label="选择当前页记录"
+                    :aria-label="t('选择当前页记录')"
                     :checked="allSelected"
                     @change="selectedRows = allSelected ? [] : pageRows.map((row) => row.id)"
                   />
@@ -883,6 +970,8 @@ const filterOperators = [
                 >
                   <button
                     class="data-field-heading"
+                    :draggable="false"
+                    @pointerdown="startColumnDrag($event, field.id)"
                     :class="{ active: fieldMenu?.id === field.id }"
                     aria-haspopup="dialog"
                     :aria-expanded="fieldMenu?.id === field.id"
@@ -898,7 +987,7 @@ const filterOperators = [
                   ><button
                     v-if="!readonly"
                     class="data-column-resize"
-                    :aria-label="`调整 ${field.name} 列宽`"
+                    :aria-label="t('调整 {0} 列宽', [field.name])"
                     @pointerdown="resize($event, field)"
                     @keydown.left.prevent="
                       changeView((view) => {
@@ -926,7 +1015,7 @@ const filterOperators = [
               <tr v-if="group.label" class="data-group-row">
                 <td :colspan="fields.length + 2">
                   <strong>{{ group.label }}</strong
-                  ><span>{{ group.rows.length }} 条</span>
+                  ><span>{{ group.rows.length }} {{ t('条') }}</span>
                 </td>
               </tr>
               <tr
@@ -936,11 +1025,18 @@ const filterOperators = [
                 :class="{ selected: selectedRows.includes(row.id) }"
               >
                 <td class="data-row-tools">
+                  <button v-if="!readonly" class="data-row-drag" :draggable="false"
+                    :disabled="!canReorderRows"
+                    :aria-label="t('拖动调整行顺序')"
+                    :data-tooltip="canReorderRows ? t('拖动调整行顺序') : t('请先清除排序，再拖动调整行顺序')"
+                    @pointerdown="startRowDrag($event, row.id)">
+                    <GripVertical :size="14" />
+                  </button>
                   <input
                     v-model="selectedRows"
                     type="checkbox"
                     :value="row.id"
-                    :aria-label="`选择记录 ${dataValueText(evaluate!(row, table.fields[0].id).value) || row.id}`"
+                    :aria-label="t('选择记录 {0}', [dataValueText(evaluate!(row, table.fields[0].id).value) || row.id])"
                   />
                 </td>
                 <td
@@ -971,10 +1067,10 @@ const filterOperators = [
                 <td>
                   <button
                     class="data-row-open"
-                    :aria-label="`展开记录 ${dataValueText(evaluate!(row, table.fields[0].id).value) || row.id}`"
+                    :aria-label="t('展开记录 {0}', [dataValueText(evaluate!(row, table.fields[0].id).value) || row.id])"
                     @click="detailId = row.id"
                   >
-                    展开
+                    {{ t('展开') }}
                   </button>
                 </td>
               </tr>
@@ -984,15 +1080,15 @@ const filterOperators = [
                 <td :colspan="fields.length + 2" class="data-empty">
                   {{
                     table.rows.length
-                      ? '没有符合当前筛选条件的记录'
-                      : '从第一条记录开始，也可以直接粘贴多行多列数据'
+                      ? t('没有符合当前筛选条件的记录')
+                      : t('从第一条记录开始，也可以直接粘贴多行多列数据')
                   }}
                 </td>
               </tr>
               <tr>
                 <td :colspan="fields.length + 2" class="data-add-record-cell">
                   <button class="data-add-row" :disabled="readonly" @click="addRow">
-                    <Plus :size="12" />添加记录
+                    <Plus :size="12" />{{ t('添加记录') }}
                   </button>
                 </td>
               </tr>
@@ -1000,11 +1096,11 @@ const filterOperators = [
             <tfoot v-if="hasAggregates">
               <tr>
                 <td />
-                <td v-for="field in fields" :key="field.id">
+                <td v-for="field in fields" :key="field.id" :data-field="field.id">
                   <div
                     v-if="(view.aggregates[field.id] ?? 'none') !== 'none'"
                     class="data-aggregate"
-                    :aria-label="`${field.name} 汇总`"
+                    :aria-label="t('{0} 汇总', [field.name])"
                   >
                     <span>{{ aggregateLabels[view.aggregates[field.id]!] }}</span>
                     <span class="data-aggregate-value">{{
@@ -1019,7 +1115,7 @@ const filterOperators = [
           <div v-else class="data-card-groups" :class="{ 'data-board': view.type === 'board' }">
             <section v-for="group in groups" :key="group.label">
               <h3 v-if="group.label || view.type === 'board'">
-                {{ group.label || '全部记录' }} <span>{{ group.rows.length }}</span>
+                {{ group.label || t('全部记录') }} <span>{{ group.rows.length }}</span>
               </h3>
               <div class="data-cards">
                 <button
@@ -1029,7 +1125,7 @@ const filterOperators = [
                   @click="detailId = row.id"
                 >
                   <strong>{{
-                    dataValueText(evaluate!(row, table.fields[0].id).value) || '未命名记录'
+                    dataValueText(evaluate!(row, table.fields[0].id).value) || t('未命名记录')
                   }}</strong>
                   <dl>
                     <template
@@ -1039,13 +1135,13 @@ const filterOperators = [
                       <dd>
                         {{
                           evaluate!(row, field.id).error
-                            ? '#错误'
+                            ? t('#错误')
                             : field.type === 'attachment'
                               ? ((row.values[field.id] as string[]) || [])
                                   .map(
                                     (id) =>
                                       store.workspace?.files.find((file) => file.id === id)?.name ??
-                                      '附件不可用',
+                                      t('附件不可用'),
                                   )
                                   .join('、')
                               : dataValueText(evaluate!(row, field.id).value) || '—'
@@ -1055,20 +1151,26 @@ const filterOperators = [
                   </dl>
                 </button>
               </div>
-              <p v-if="!group.rows.length" class="data-empty">没有符合条件的记录</p>
+              <p v-if="!group.rows.length" class="data-empty">{{ t('没有符合条件的记录') }}</p>
             </section>
           </div>
+          <div v-if="store.workspace && commentDocument" class="data-comments" @keydown.stop @paste.stop>
+            <DocumentComments :key="tableId" ref="comments" :workspace-id="store.workspace.id"
+              :document="commentDocument" :readonly="readonly"
+              :author="commentAuthor ?? { id: 'local', name: t('本机用户') }"
+              :capture-selection="() => null" :focus-anchor="() => {}" :geometry="() => null" />
+          </div>
         </div>
-        <aside v-if="settings" class="data-settings panel-scrollbar" aria-label="视图设置">
+        <aside v-if="settings" class="data-settings panel-scrollbar" :aria-label="t('视图设置')">
           <header>
-            <strong>视图设置</strong
-            ><button class="data-icon" aria-label="关闭视图设置" @click="settings = false">
+            <strong>{{ t('视图设置') }}</strong
+            ><button class="data-icon" :aria-label="t('关闭视图设置')" @click="settings = false">
               <X :size="16" />
             </button>
           </header>
           <fieldset :disabled="readonly">
             <label
-              >视图名称<input
+              >{{ t('视图名称') }}<input
                 :value="view.name"
                 @change="
                   changeView((view) => {
@@ -1076,8 +1178,8 @@ const filterOperators = [
                   })
                 " /></label
             ><label
-              >显示方式<select
-                aria-label="显示方式"
+              >{{ t('显示方式') }}<select
+                :aria-label="t('显示方式')"
                 :value="view.type"
                 @change="
                   changeView((view) => {
@@ -1085,13 +1187,13 @@ const filterOperators = [
                   })
                 "
               >
-                <option value="table">表格</option>
-                <option value="cards">卡片</option>
-                <option value="board">看板</option>
+                <option value="table">{{ t('表格') }}</option>
+                <option value="cards">{{ t('卡片') }}</option>
+                <option value="board">{{ t('看板') }}</option>
               </select></label
             ><label
-              >分组<select
-                aria-label="分组字段"
+              >{{ t('分组') }}<select
+                :aria-label="t('分组字段')"
                 :value="view.groupBy"
                 @change="
                   changeView((view) => {
@@ -1099,7 +1201,7 @@ const filterOperators = [
                   })
                 "
               >
-                <option value="">不分组</option>
+                <option value="">{{ t('不分组') }}</option>
                 <option v-for="field in table.fields" :key="field.id" :value="field.id">
                   {{ field.name }}
                 </option>
@@ -1114,7 +1216,7 @@ const filterOperators = [
                     delete view.fieldWrap;
                   })
                 "
-              />单元格自动换行</label
+              />{{ t('单元格自动换行') }}</label
             ><label class="data-check-label"
               ><input
                 type="checkbox"
@@ -1124,12 +1226,12 @@ const filterOperators = [
                     view.freeze = !view.freeze;
                   })
                 "
-              />冻结第一列</label
+              />{{ t('冻结第一列') }}</label
             >
-            <h4>排序</h4>
+            <h4>{{ t('排序') }}</h4>
             <div v-for="(sort, index) in view.sorts" :key="index" class="data-rule">
               <select
-                aria-label="排序字段"
+                :aria-label="t('排序字段')"
                 :value="sort.field"
                 @change="
                   changeView((view) => {
@@ -1141,7 +1243,7 @@ const filterOperators = [
                   {{ field.name }}
                 </option></select
               ><select
-                aria-label="排序方向"
+                :aria-label="t('排序方向')"
                 :value="sort.direction"
                 @change="
                   changeView((view) => {
@@ -1150,10 +1252,10 @@ const filterOperators = [
                   })
                 "
               >
-                <option value="asc">升序</option>
-                <option value="desc">降序</option></select
+                <option value="asc">{{ t('升序') }}</option>
+                <option value="desc">{{ t('降序') }}</option></select
               ><button
-                aria-label="移除排序"
+                :aria-label="t('移除排序')"
                 @click="
                   changeView((view) => {
                     view.sorts.splice(index, 1);
@@ -1170,13 +1272,13 @@ const filterOperators = [
                 )
               "
             >
-              <Plus :size="13" />添加排序
+              <Plus :size="13" />{{ t('添加排序') }}
             </button>
-            <h4>筛选 · 满足全部条件</h4>
+            <h4>{{ t('筛选 · 满足全部条件') }}</h4>
             <div v-for="(filter, index) in view.filters" :key="filter.id" class="data-filter-rule">
               <div class="data-rule">
                 <select
-                  aria-label="筛选字段"
+                  :aria-label="t('筛选字段')"
                   :value="filter.field"
                   @change="
                     changeView((view) => {
@@ -1188,7 +1290,7 @@ const filterOperators = [
                     {{ field.name }}
                   </option></select
                 ><select
-                  aria-label="筛选条件"
+                  :aria-label="t('筛选条件')"
                   :value="filter.operator"
                   @change="
                     changeView((view) => {
@@ -1201,7 +1303,7 @@ const filterOperators = [
                     {{ op.label }}
                   </option></select
                 ><button
-                  aria-label="移除筛选"
+                  :aria-label="t('移除筛选')"
                   @click="
                     changeView((view) => {
                       view.filters.splice(index, 1);
@@ -1213,9 +1315,9 @@ const filterOperators = [
               </div>
               <input
                 v-if="!['empty', 'notEmpty'].includes(filter.operator)"
-                aria-label="筛选值"
+                :aria-label="t('筛选值')"
                 :value="filter.value"
-                placeholder="输入匹配值"
+                :placeholder="t('输入匹配值')"
                 @change="
                   changeView((view) => {
                     view.filters[index].value = ($event.target as HTMLInputElement).value;
@@ -1235,9 +1337,9 @@ const filterOperators = [
                 )
               "
             >
-              <Plus :size="13" />添加筛选
+              <Plus :size="13" />{{ t('添加筛选') }}
             </button>
-            <h4>显示字段</h4>
+            <h4>{{ t('显示字段') }}</h4>
             <label v-for="field in table.fields" :key="field.id" class="data-check-label"
               ><input
                 type="checkbox"
@@ -1252,15 +1354,15 @@ const filterOperators = [
               />{{ field.name }}</label
             >
             <div class="data-settings-footer">
-              <button @click="duplicateView">复制视图</button
-              ><button :disabled="table.views.length < 2" @click="removeView">删除视图</button>
+              <button @click="duplicateView">{{ t('复制视图') }}</button
+              ><button :disabled="table.views.length < 2" @click="removeView">{{ t('删除视图') }}</button>
             </div>
           </fieldset>
         </aside>
-        <aside v-if="detail" class="data-detail panel-scrollbar" aria-label="记录详情">
+        <aside v-if="detail" class="data-detail panel-scrollbar" :aria-label="t('记录详情')">
           <header>
-            <strong>记录详情</strong
-            ><button class="data-icon" aria-label="关闭记录详情" @click="detailId = ''">
+            <strong>{{ t('记录详情') }}</strong
+            ><button class="data-icon" :aria-label="t('关闭记录详情')" @click="detailId = ''">
               <X :size="16" />
             </button>
           </header>
@@ -1287,23 +1389,23 @@ const filterOperators = [
           </div>
           <footer>
             <button :disabled="readonly" @click="duplicateRows([detail.id])">
-              <Copy :size="14" />复制记录</button
+              <Copy :size="14" />{{ t('复制记录') }}</button
             ><button :disabled="readonly" @click="deleteRows([detail.id])">
-              <Trash2 :size="14" />删除记录
+              <Trash2 :size="14" />{{ t('删除记录') }}
             </button>
           </footer>
         </aside>
       </div>
     </template>
     <div v-else class="data-empty">
-      <h2>数据表不可用</h2>
-      <p>它可能已被移除，或文件格式需要修复。</p>
+      <h2>{{ t('数据表不可用') }}</h2>
+      <p>{{ t('它可能已被移除，或文件格式需要修复。') }}</p>
       <p v-for="error in store.dataTableErrors" :key="error">{{ error }}</p>
-      <button @click="run(() => store.refresh())">重新载入</button>
+      <button @click="run(() => store.refresh())">{{ t('重新载入') }}</button>
     </div>
     <p v-if="message" class="data-notice" role="status">
       {{ message
-      }}<button class="data-icon" aria-label="关闭提示" @click="message = ''">
+      }}<button class="data-icon" :aria-label="t('关闭提示')" @click="message = ''">
         <X :size="14" />
       </button>
     </p>
@@ -1331,63 +1433,62 @@ const filterOperators = [
         class="data-modal panel-scrollbar"
         role="dialog"
         aria-modal="true"
-        aria-label="字段设置"
+        :aria-label="t('字段设置')"
       >
         <header>
-          <h2>字段设置</h2>
-          <button class="data-icon" aria-label="关闭字段设置" @click="fieldDraft = undefined">
+          <h2>{{ t('字段设置') }}</h2>
+          <button class="data-icon" :aria-label="t('关闭字段设置')" @click="fieldDraft = undefined">
             <X :size="17" />
           </button>
         </header>
         <fieldset :disabled="readonly">
           <label
-            >字段名称<input
+            >{{ t('字段名称') }}<input
               v-model="fieldDraft.name"
-              aria-label="字段名称"
+              :aria-label="t('字段名称')"
               maxlength="200"
               autofocus /></label
           ><label
-            >字段类型<select v-model="fieldDraft.type" aria-label="字段类型">
+            >{{ t('字段类型') }}<select v-model="fieldDraft.type" :aria-label="t('字段类型')">
               <option v-for="(label, type) in dataFieldTypes" :key="type" :value="type">
                 {{ label }}
               </option>
             </select></label
           ><label v-if="['select', 'multiselect'].includes(fieldDraft.type)"
-            >选项（每行一个）<textarea
+            >{{ t('选项（每行一个）') }}<textarea
               v-model="fieldOptions"
-              aria-label="字段选项"
+              :aria-label="t('字段选项')"
               rows="5"
             /></label
           ><label v-if="fieldDraft.type === 'formula'"
-            >公式<textarea
+            >{{ t('公式') }}<textarea
               v-model="fieldDraft.formula"
-              aria-label="字段公式"
+              :aria-label="t('字段公式')"
               rows="4"
-              placeholder='IF([状态] = "选择", [价格], 0)'
+              :placeholder="t('IF([状态] = \u0022选择\u0022, [价格], 0)')"
             /><small
-              >用 [字段名称] 引用列。支持 + − *
-              /、比较、IF、ROUND、ABS、MIN、MAX、SUM、AND、OR、NOT。</small
+              >{{ t('用 [字段名称] 引用列。支持 + − * /、比较、IF、ROUND、ABS、MIN、MAX、SUM、AND、OR、NOT。') }}</small
             ></label
           >
           <div
             v-if="table?.fields.some((field) => field.id === fieldDraft!.id)"
             class="data-field-actions"
           >
-            <button @click="moveField(fieldDraft.id, -1)">左移一列</button
-            ><button @click="moveField(fieldDraft.id, 1)">右移一列</button
+            <button @click="moveField(fieldDraft.id, -1)">{{ t('左移一列') }}</button
+            ><button @click="moveField(fieldDraft.id, 1)">{{ t('右移一列') }}</button
             ><button
               :disabled="table.fields.length === 1"
               class="data-danger"
               @click="removeField(fieldDraft)"
             >
-              删除字段
+              {{ t('删除字段') }}
             </button>
           </div>
         </fieldset>
         <p v-if="fieldError" class="data-field-error" role="alert">{{ fieldError }}</p>
         <footer>
-          <button @click="fieldDraft = undefined">取消</button
-          ><button class="data-primary" :disabled="readonly" @click="saveField">保存字段</button>
+          <button @click="fieldDraft = undefined">{{ t('取消') }}</button
+          ><button class="data-primary" :disabled="readonly" @click="saveField">{{ t('保存字段') }}</button>
         </footer>
       </section>
     </div>
@@ -1396,22 +1497,22 @@ const filterOperators = [
         class="data-modal panel-scrollbar"
         role="dialog"
         aria-modal="true"
-        aria-label="导入 CSV"
+        :aria-label="t('导入 CSV')"
       >
         <header>
-          <h2>导入 CSV</h2>
-          <button class="data-icon" aria-label="关闭导入" @click="importText = undefined">
+          <h2>{{ t('导入 CSV') }}</h2>
+          <button class="data-icon" :aria-label="t('关闭导入')" @click="importText = undefined">
             <X :size="17" />
           </button>
         </header>
         <p>
-          首行作为字段名称。同名字段按原类型读取，新字段使用文本类型。记录追加到表尾，公式列重新计算。
+          {{ t('首行作为字段名称。同名字段按原类型读取，新字段使用文本类型。记录追加到表尾，公式列重新计算。') }}
         </p>
         <pre>{{ importText.slice(0, 600) }}</pre>
         <p v-if="importError" role="alert" class="data-field-error">{{ importError }}</p>
         <footer>
-          <button @click="importText = undefined">取消</button
-          ><button class="data-primary" :disabled="readonly" @click="importCsv">导入记录</button>
+          <button @click="importText = undefined">{{ t('取消') }}</button
+          ><button class="data-primary" :disabled="readonly" @click="importCsv">{{ t('导入记录') }}</button>
         </footer>
       </section>
     </div>
@@ -1425,7 +1526,7 @@ const filterOperators = [
         <h2>{{ confirmAction.title }}</h2>
         <p>{{ confirmAction.detail }}</p>
         <footer>
-          <button @click="confirmAction = undefined">取消</button
+          <button @click="confirmAction = undefined">{{ t('取消') }}</button
           ><button
             class="data-primary"
             @click="
@@ -1433,22 +1534,31 @@ const filterOperators = [
               confirmAction = undefined;
             "
           >
-            确认
+            {{ t('确认') }}
           </button>
         </footer>
       </section>
     </div>
   </section>
+  <DocumentScrollbar v-if="!touchLayout" :scroll-element="root" />
+  </div>
 </template>
 
 <style scoped>
+.data-page-layout {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  background: var(--paper);
+}
 .data-page {
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
   flex: 1;
-  overflow: hidden;
+  overflow: auto;
   background: var(--paper);
   color: var(--text);
   font-size: 13px;
@@ -1481,7 +1591,7 @@ const filterOperators = [
 .data-page .data-primary:hover {
   background: var(--green-fill-hover);
 }
-.data-page input,
+.data-page input:not(.document-title-input),
 .data-page select,
 .data-page textarea {
   font: inherit;
@@ -1584,24 +1694,19 @@ const filterOperators = [
   transform: rotate(180deg);
 }
 .data-heading {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 22px 28px 12px;
-}
-.data-heading > svg {
-  color: var(--green);
+  --document-inset-start: 28px;
+  --document-inset-end: 28px;
   flex: none;
+  padding: 22px var(--document-inset-end) 12px var(--document-inset-start);
+  margin-bottom: 40px;
 }
-.data-title {
-  font-size: 23px !important;
-  font-weight: 650 !important;
-  border: 0;
-  padding: 3px;
-  background: transparent;
-  min-width: 100px;
-  flex: 1;
-  width: 100%;
+.data-heading :deep(.document-title-content),
+.data-heading :deep(.document-appearance-content) {
+  max-width: none;
+}
+.data-page .document-title-input {
+  padding: 0;
+  font-size: clamp(28px, 3vw, 40px);
 }
 .data-save-state {
   color: var(--muted);
@@ -1619,6 +1724,8 @@ const filterOperators = [
   flex: none;
 }
 .data-view-bar {
+  position: relative;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1681,17 +1788,17 @@ const filterOperators = [
   padding: 0 4px;
 }
 .data-body {
-  flex: 1;
+  flex: 1 0 auto;
   display: flex;
-  min-height: 0;
+  min-height: 240px;
   min-width: 0;
   position: relative;
 }
 .data-grid-scroll {
   flex: 1;
   min-width: 0;
-  overflow: auto;
-  padding: 0 28px 24px;
+  overflow: visible;
+  padding: 0 28px 24px 48px;
 }
 .data-grid {
   border-collapse: separate;
@@ -1724,6 +1831,8 @@ const filterOperators = [
   color: var(--muted);
 }
 .data-field-heading {
+  cursor: grab;
+  touch-action: pan-y;
   width: 100%;
   justify-content: flex-start !important;
   padding: 8px 9px !important;
@@ -1765,17 +1874,81 @@ const filterOperators = [
   border-radius: 0 !important;
 }
 .data-column-resize:hover {
-  background: var(--green) !important;
+  background: transparent !important;
+}
+.data-column-resize::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.data-column-resize:hover::after {
+  background: var(--green);
 }
 .data-row-tools {
-  text-align: center !important;
-  width: 44px;
-  padding: 8px 0 !important;
-  background: var(--paper);
+  position: relative;
+  width: 0;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
 }
+.data-row-tools::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 48px;
+}
+.data-page .data-row-drag {
+  position: absolute;
+  right: 23px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  width: 20px;
+  height: 26px;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  cursor: grab;
+  color: var(--muted);
+}
+.data-grid tr:hover .data-row-drag,
+.data-grid tr:focus-within .data-row-drag,
+.data-grid tr.selected .data-row-drag {
+  opacity: 1;
+  pointer-events: auto;
+}
+.data-row-drag { touch-action: none; }
 .data-row-tools input {
+  position: absolute;
+  z-index: 1;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%);
   accent-color: var(--green);
   margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.data-grid tr:hover > .data-row-tools input,
+.data-grid tr:focus-within > .data-row-tools input,
+.data-row-tools input:checked,
+.data-row-tools input:indeterminate {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .data-page .data-row-drag,
+  .data-row-tools input {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 .data-frozen .data-row-tools {
   position: sticky;
@@ -1784,7 +1957,7 @@ const filterOperators = [
 }
 .data-frozen .data-first {
   position: sticky;
-  left: 44px;
+  left: 0;
   background: var(--paper);
   z-index: 3;
 }
@@ -1844,12 +2017,30 @@ const filterOperators = [
   font-size: 18px;
 }
 .data-selection {
+  position: absolute;
+  left: 28px;
+  bottom: calc(100% + 8px);
+  z-index: 5;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 5px 32px;
-  background: var(--accent);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--paper);
+  box-shadow: 0 3px 12px #00000012;
   font-size: 12px;
+  white-space: nowrap;
+}
+.data-selection > span {
+  padding: 0 12px;
+  color: var(--green);
+}
+.data-selection > button {
+  width: 36px;
+  height: 34px;
+  padding: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
 }
 .data-settings,
 .data-detail {
@@ -2121,11 +2312,10 @@ const filterOperators = [
 }
 @media (max-width: 760px) {
   .data-heading {
-    padding: 16px 12px;
+    --document-inset-start: 12px;
+    --document-inset-end: 12px;
+    padding: 16px var(--document-inset-end) 16px var(--document-inset-start);
     gap: 6px;
-  }
-  .data-title {
-    font-size: 18px !important;
   }
   .data-table-controls .data-save-state {
     display: none;
@@ -2139,7 +2329,7 @@ const filterOperators = [
     justify-content: space-between;
   }
   .data-grid-scroll {
-    padding: 0 12px 20px;
+    padding: 0 12px 20px 48px;
   }
   .data-settings,
   .data-detail {
@@ -2173,11 +2363,7 @@ const filterOperators = [
     font-size: 10px;
   }
   .data-selection {
-    padding: 5px 12px;
-    gap: 5px;
-  }
-  .data-selection button {
-    font-size: 11px;
+    left: 12px;
   }
 }
 </style>

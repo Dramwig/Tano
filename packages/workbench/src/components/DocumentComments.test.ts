@@ -21,6 +21,30 @@ afterEach(async () => {
   await nextTick();
 });
 
+it('keeps a discussion draft when the same file receives a new document snapshot', async () => {
+  const adapter = new DemoAdapter();
+  const pinia = configureWorkbench(createPinia(), { adapter, native: false, mobile: false });
+  setActivePinia(pinia);
+  const documentState = ref<OpenDocument>({ id: 'a0b1c2', path: '表.table.json', content: '{}',
+    base: { content: '{}', hash: await sha256('{}'), modified: 1 }, saving: false, missing: false });
+  const comments = ref<InstanceType<typeof DocumentComments>>();
+  root = document.createElement('div'); document.body.append(root);
+  app = createApp(() => h(DocumentComments, { ref: comments, workspaceId: 'demo',
+    document: documentState.value, readonly: false, author: { id: 'local', name: '本机用户' },
+    captureSelection: () => null, focusAnchor: () => {}, geometry: () => null }));
+  app.use(pinia).mount(root);
+  root.querySelector<HTMLElement>('.document-discussion')!.scrollIntoView = vi.fn();
+  await comments.value!.showDiscussion();
+  const field = root.querySelector<HTMLTextAreaElement>('[aria-label="添加评论"]')!;
+  field.value = '保留数据表评论草稿';
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+  await nextTick();
+  documentState.value = { ...documentState.value, saving: true };
+  await nextTick();
+  expect(field.value).toBe('保留数据表评论草稿');
+  expect(root.querySelector<HTMLElement>('.document-discussion')!.style.display).not.toBe('none');
+});
+
 it.each([800, 1600])('focuses the annotation composer on first toolbar activation (pane width: %s)', async width => {
   const adapter = new DemoAdapter();
   const pinia = configureWorkbench(createPinia(), { adapter, native: false, mobile: false });
@@ -563,7 +587,7 @@ it('creates, replies to, resolves and detaches local annotations independently o
   readonly.value = true;
   await nextTick();
   expect(root.querySelectorAll('textarea')).toHaveLength(0);
-  expect(root.querySelector('button[title="完成批注"]')).toBeNull();
+  expect(root.querySelector('button[data-tooltip="完成批注"]')).toBeNull();
   expect(root.querySelector('.annotation-count')?.textContent?.trim()).toBe('2');
   await comments.value?.beginAnnotation();
   expect(root.querySelector('[aria-label="添加批注"]')).toBeNull();

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { Bot, FileText } from 'lucide-vue-next';
+import { Bot, FileText, Table2 } from 'lucide-vue-next';
+import { isDataTableFilePath } from '@tano/protocol';
 import type { FileEntry } from '@tano/protocol';
 import WorkspaceIcon from './WorkspaceIcon.vue';
 
@@ -47,7 +48,7 @@ onBeforeUnmount(() => observer?.disconnect());
 <template>
   <span ref="host" class="document-file-icon" aria-hidden="true">
     <WorkspaceIcon v-if="currentIcon" :icon="currentIcon" :size="16" />
-    <component v-else :is="file.name === 'AGENTS.md' ? Bot : FileText" :size="16" :stroke-width="1.6" />
+    <component v-else :is="isDataTableFilePath(file.path) ? Table2 : file.name === 'AGENTS.md' ? Bot : FileText" :size="16" :stroke-width="1.6" />
   </span>
 </template>
 

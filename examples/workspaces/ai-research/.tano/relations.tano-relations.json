@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "relations": [
+    {
+      "id": "a1b2d3",
+      "type": "related",
+      "source": {
+        "type": "event",
+        "id": "d4e5f6"
+      },
+      "target": {
+        "type": "document",
+        "id": "111111"
+      }
+    },
+    {
+      "id": "a1b2e3",
+      "type": "attachment",
+      "source": {
+        "type": "event",
+        "id": "d4e5f6"
+      },
+      "target": {
+        "type": "asset",
+        "id": "222222"
+      }
+    },
+    {
+      "id": "a1b2f3",
+      "type": "attachment",
+      "source": {
+        "type": "event",
+        "id": "d4e5f6"
+      },
+      "target": {
+        "type": "asset",
+        "id": "333333"
+      }
+    },
+    {
+      "id": "a1b2a3",
+      "type": "attachment",
+      "source": {
+        "type": "event",
+        "id": "d4e5f6"
+      },
+      "target": {
+        "type": "asset",
+        "id": "444444"
+      }
+    },
+    {
+      "id": "a1b2b3",
+      "type": "attachment",
+      "source": {
+        "type": "event",
+        "id": "d4e5f6"
+      },
+      "target": {
+        "type": "asset",
+        "id": "555555"
+      }
+    },
+    {
+      "id": "a1b2c4",
+      "type": "attachment",
+      "source": {
+        "type": "event",
+        "id": "d4e5f6"
+      },
+      "target": {
+        "type": "asset",
+        "id": "666666"
+      }
+    },
+    {
+      "id": "e20001",
+      "type": "contains",
+      "source": {
+        "type": "project",
+        "id": "e10001"
+      },
+      "target": {
+        "type": "task",
+        "id": "e10002"
+      }
+    },
+    {
+      "id": "e20002",
+      "type": "contains",
+      "source": {
+        "type": "project",
+        "id": "e10001"
+      },
+      "target": {
+        "type": "experiment",
+        "id": "e10003"
+      }
+    }
+  ]
+}

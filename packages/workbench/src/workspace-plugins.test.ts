@@ -11,6 +11,15 @@ beforeEach(() => {
 afterEach(() => {
   host.dispose();
 });
+it('retires legacy Git installation without deleting its saved record', async () => {
+  const manifest = { ...bundledObjectPlugins[0]!, id: 'git-inspector', objectTypes: [], relationTypes: [] };
+  const raw = JSON.stringify({ version: 1, plugins: [{ manifest, enabled: true }] });
+  localStorage.setItem('tano.object-plugins.v1.one', raw);
+  expect(host.load('one')).toEqual([]);
+  expect(localStorage.getItem('tano.object-plugins.v1.one')).toBe(raw);
+  await expect(host.change('one', { install: manifest })).rejects.toThrow('Git 功能已内置');
+  await expect(host.change('one', { id: manifest.id, enabled: true })).rejects.toThrow('Git 功能已内置');
+});
 it('installs, restores after restart, scopes by workspace, disables, and uninstalls declarations', async () => {
   await host.change('one', { install: bundledObjectPlugins[0]! });
   expect(registry.get('research.dataset')).toBeDefined();

@@ -9,6 +9,8 @@ const schema = new Schema({ nodes: {
   doc: { content: 'block+' },
   paragraph: { content: 'text*', group: 'block', toDOM: () => ['p', 0] },
   heading: { content: 'text*', group: 'block', attrs: { level: { default: 1 } }, toDOM: () => ['h1', 0] },
+  bullet_list: { content: 'list_item+', group: 'block', toDOM: () => ['ul', 0] },
+  list_item: { content: 'paragraph bullet_list?', toDOM: () => ['li', 0] },
   text: { group: 'inline' },
 } });
 let view: EditorView;
@@ -102,6 +104,42 @@ it('keeps folding correct across consecutive clicks before a frame is painted', 
   paint();
   expect(root.querySelector<HTMLButtonElement>('.tano-block-handle')!.hidden).toBe(false);
   expect(view.state.doc.textContent).toBe('TitleFirstSecond');
+});
+
+it('resolves a nested list fold control from the parent item gutter', () => {
+  const paragraph = (text: string) => schema.nodes.paragraph!.create(null, schema.text(text));
+  const nested = schema.nodes.bullet_list!.create(null, [
+    schema.nodes.list_item!.create(null, [paragraph('Child'), schema.nodes.bullet_list!.create(null, [
+      schema.nodes.list_item!.create(null, paragraph('Grandchild')),
+    ])]),
+  ]);
+  const list = schema.nodes.bullet_list!.create(null, [
+    schema.nodes.list_item!.create(null, [paragraph('Parent'), nested]),
+  ]);
+  view.destroy();
+  root.replaceChildren();
+  const host = document.createElement('div');
+  root.append(host);
+  view = new EditorView(host, { state: EditorState.create({ schema, doc: schema.node('doc', null, list), plugins: [blockControls(() => false)] }) });
+  const surface = root;
+  Object.defineProperty(surface, 'getBoundingClientRect', { value: () => new DOMRect(0, 0, 500, 400) });
+  Object.defineProperty(host, 'getBoundingClientRect', { value: () => new DOMRect(100, 100, 400, 120) });
+  const items = [...view.dom.querySelectorAll('li')];
+  const lists = [...view.dom.querySelectorAll('ul')];
+  Object.defineProperty(items[0]!, 'getBoundingClientRect', { value: () => new DOMRect(140, 100, 360, 72) });
+  Object.defineProperty(items[1]!, 'getBoundingClientRect', { value: () => new DOMRect(180, 124, 320, 48) });
+  Object.defineProperty(lists[0]!, 'getBoundingClientRect', { value: () => new DOMRect(100, 100, 400, 72) });
+  Object.defineProperty(lists[1]!, 'getBoundingClientRect', { value: () => new DOMRect(140, 124, 360, 48) });
+  window.dispatchEvent(new Event('resize'));
+  paint();
+  const buttons = [...root.querySelectorAll<HTMLButtonElement>('.tano-fold-toggle')];
+  expect(buttons).toHaveLength(2);
+  // The pointer is over the parent item's DOM gutter while aligned with the child.
+  items[0]!.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 150, clientY: 130 }));
+  expect(buttons[0]!.classList.contains('is-visible')).toBe(false);
+  expect(buttons[1]!.classList.contains('is-visible')).toBe(true);
+  buttons[1]!.click();
+  expect(items[1]!.querySelector(':scope > ul')?.classList.contains('tano-folded-list-content')).toBe(true);
 });
 
 it('skips offscreen control measurements and restores controls on scrolling into view', () => {

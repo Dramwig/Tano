@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { animate } from 'motion/mini';
 import type { EditorSelectionContext } from '@tano/editor/document-model';
@@ -6,7 +7,7 @@ import type { DocumentFeatures } from '@tano/editor/runtime';
 import EditorToolbar from './EditorToolbar.vue';
 import { defaultShortcutBindings, matchesShortcut, shortcutAriaLabel } from '../shortcuts';
 import type { ShortcutBindings } from '../shortcuts';
-import { selectionToolbarPosition } from '../selection-toolbar-position';
+import { selectionToolbarPosition, type ToolbarRect } from '../selection-toolbar-position';
 import type { ToolbarMode } from '../toolbar-preference';
 import {
   dockedToolbarMenuPosition,
@@ -22,6 +23,7 @@ const props = defineProps<{
   mode?: Exclude<ToolbarMode, 'fixed'>;
   dragging?: boolean;
   assistant?: boolean;
+  assistantDisabled?: boolean;
   annotation?: boolean;
   todo?: boolean;
   shortcuts?: ShortcutBindings;
@@ -36,6 +38,7 @@ let dismissed: Range | null = null;
 let pointerSelecting = false;
 let composing = false;
 let windowBlurred = false;
+let pointerOutsidePane = false;
 let frame = 0;
 let resizeObserver: ResizeObserver | undefined;
 let menuObserver: MutationObserver | undefined;
@@ -118,6 +121,25 @@ function dismissAndFocus() {
   if (!props.mode || props.mode === 'selection') dismiss();
   editor()?.focus();
 }
+function positionTextStyleMenu(bounds: ToolbarRect) {
+  const menu = panel.value?.querySelector<HTMLElement>('.text-style-dropdown');
+  if (!menu) return;
+  if (vertical.value) {
+    menu.style.removeProperty('left');
+    menu.style.removeProperty('right');
+    return;
+  }
+  const trigger = menu.closest('.menu-wrap')?.querySelector('button');
+  const parent = menu.offsetParent as HTMLElement | null;
+  if (!trigger || !parent) return;
+  // Anchor to More, while keeping the entire menu inside the document pane.
+  const left = Math.max(bounds.left, Math.min(
+    trigger.getBoundingClientRect().left,
+    bounds.right - menu.offsetWidth,
+  ));
+  menu.style.left = `${left - parent.getBoundingClientRect().left - parent.clientLeft}px`;
+  menu.style.right = 'auto';
+}
 function position() {
   const element = panel.value;
   const content = editor();
@@ -181,6 +203,7 @@ function position() {
       );
       menu.style.setProperty('--dock-menu-top', `${menuPosition.top}px`);
     }
+    positionTextStyleMenu(bounds);
     return;
   }
   if (!anchor || !content.contains(anchor.commonAncestorContainer)) return hide();
@@ -199,6 +222,7 @@ function position() {
   const availableHeight =
     result.menuSide === 'above' ? result.y - top - 6 : bottom - result.y - rect.height - 6;
   element.style.setProperty('--selection-menu-height', `${Math.max(0, availableHeight)}px`);
+  positionTextStyleMenu(bounds);
 }
 async function refresh() {
   if (!mounted || props.dragging) return;
@@ -206,6 +230,7 @@ async function refresh() {
   const content = editor();
   if (docked.value) {
     if (
+      pointerOutsidePane ||
       !content ||
       (!content.contains(document.activeElement) &&
         !(visible.value && panel.value?.contains(document.activeElement)))
@@ -259,6 +284,26 @@ function pointerDown(event: PointerEvent) {
 }
 function pointerUp() {
   pointerSelecting = false;
+  schedule();
+}
+function pointerOver(event: PointerEvent) {
+  if (!docked.value || props.dragging || event.pointerType === 'touch') return;
+  const target = event.target as Node | null;
+  const pane = props.editorElement?.closest('.document-layout') ?? props.editorElement;
+  const outside = !pane?.contains(target) && !panel.value?.contains(target);
+  if (outside === pointerOutsidePane) return;
+  pointerOutsidePane = outside;
+  if (outside) hide();
+  else schedule();
+}
+function pointerOut(event: PointerEvent) {
+  if (event.relatedTarget || !docked.value || props.dragging || event.pointerType === 'touch') return;
+  pointerOutsidePane = true;
+  hide();
+}
+function focusIn(event: FocusEvent) {
+  // Keyboard navigation back into the editor also restores its docked controls.
+  if (editor()?.contains(event.target as Node)) pointerOutsidePane = false;
   schedule();
 }
 function keydown(event: KeyboardEvent) {
@@ -330,7 +375,9 @@ onMounted(() => {
   document.addEventListener('pointerdown', pointerDown, true);
   document.addEventListener('pointerup', pointerUp);
   document.addEventListener('pointercancel', pointerUp);
-  document.addEventListener('focusin', schedule);
+  document.addEventListener('pointerover', pointerOver);
+  document.addEventListener('pointerout', pointerOut);
+  document.addEventListener('focusin', focusIn);
   document.addEventListener('focusout', schedule);
   document.addEventListener('keydown', keydown);
   document.addEventListener('keydown', focusShortcut, true);
@@ -359,7 +406,9 @@ onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', pointerDown, true);
   document.removeEventListener('pointerup', pointerUp);
   document.removeEventListener('pointercancel', pointerUp);
-  document.removeEventListener('focusin', schedule);
+  document.removeEventListener('pointerover', pointerOver);
+  document.removeEventListener('pointerout', pointerOut);
+  document.removeEventListener('focusin', focusIn);
   document.removeEventListener('focusout', schedule);
   document.removeEventListener('keydown', keydown);
   document.removeEventListener('keydown', focusShortcut, true);
@@ -390,7 +439,7 @@ onBeforeUnmount(() => {
         class="selection-toolbar"
         :class="{ 'docked-toolbar': vertical, 'toolbar-being-dragged': dragging }"
         :data-dock="docked ? mode : undefined"
-        :aria-label="mode === 'left' ? '左侧工具栏' : mode === 'right' ? '右侧工具栏' : mode === 'bottom' ? '底部工具栏' : '选区工具栏'"
+        :aria-label="mode === 'left' ? t('左侧工具栏') : mode === 'right' ? t('右侧工具栏') : mode === 'bottom' ? t('底部工具栏') : t('选区工具栏')"
         :aria-keyshortcuts="[shortcutAriaLabel((shortcuts ?? defaultShortcutBindings).focusToolbar), 'Escape'].filter(Boolean).join(' ')"
       >
         <EditorToolbar
@@ -398,6 +447,7 @@ onBeforeUnmount(() => {
           :vertical="vertical"
           :dragging="dragging"
           :assistant="assistant"
+          :assistant-disabled="assistantDisabled"
           :annotation="annotation"
           :todo="todo"
           @todo="visible && emit('todo')"
@@ -410,7 +460,7 @@ onBeforeUnmount(() => {
           @command="(name, value) => visible && emit('command', name, value)"
         >
           <template #leading><slot name="leading" /></template>
-          <template #preferences><slot name="preferences" /></template>
+          <template v-if="$slots.preferences" #preferences><slot name="preferences" /></template>
         </EditorToolbar>
       </div>
     </Transition>

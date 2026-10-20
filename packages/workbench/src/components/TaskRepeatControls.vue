@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, ref } from 'vue';
 import { CalendarPlus, Repeat2 } from 'lucide-vue-next';
 import { parseTaskRepeat } from '@tano/protocol';
@@ -24,7 +25,7 @@ function update(key: string, value: unknown) {
 }
 async function prepare() {
   busy.value = true; error.value = '';
-  try { preview.value = await store.repeatPreview(props.record, props.workspaceId); if (!preview.value) error.value = '重复规则已结束'; }
+  try { preview.value = await store.repeatPreview(props.record, props.workspaceId); if (!preview.value) error.value = t('重复规则已结束'); }
   catch (reason) { error.value = String(reason); }
   finally { busy.value = false; }
 }
@@ -35,13 +36,13 @@ async function create() {
   catch (reason) { error.value = String(reason); }
   finally { busy.value = false; }
 }
-const people = computed(() => preview.value?.relations.filter(row => row.type === 'assigned').map(row => store.objects.find(item => item.object.id === row.source.id)?.object.name ?? '不可用').join('、') || '未分配');
+const people = computed(() => preview.value?.relations.filter(row => row.type === 'assigned').map(row => store.objects.find(item => item.object.id === row.source.id)?.object.name ?? t('不可用')).join('、') || t('未分配'));
 </script>
 <template>
-  <section class="task-repeat" aria-label="重复任务">
-    <label><Repeat2 :size="14" />重复<select :value="rule?.frequency ?? ''" :disabled="disabled || busy || !!object.properties.repeatSourceId" @change="update('frequency', ($event.target as HTMLSelectElement).value)"><option value="">不重复</option><option value="daily">每天</option><option value="weekly">每周</option><option value="monthly">每月</option></select></label>
-    <template v-if="rule"><label>间隔<input type="number" min="1" max="99" :value="rule.interval" :disabled="disabled || busy || !!object.properties.repeatSourceId" @change="update('interval', Number(($event.target as HTMLInputElement).value))" /></label><label>结束日期<input type="date" :value="rule.until ?? ''" :disabled="disabled || busy || !!object.properties.repeatSourceId" @change="update('until', ($event.target as HTMLInputElement).value || undefined)" /></label><button type="button" :disabled="disabled || dirty || busy || object.properties.completed !== true" @click="prepare"><CalendarPlus :size="14" />预览下一次</button></template>
-    <div v-if="preview" class="repeat-preview"><strong>{{ preview.object.name }}</strong><span>下一次：{{ preview.object.properties.date ?? preview.object.properties.due }}</span><span>负责人：{{ people }}</span><span>关联：{{ preview.relations.length }} 项</span><div><button type="button" :disabled="disabled || dirty || busy" @click="create">确认创建下一次</button><button type="button" :disabled="busy" @click="preview = undefined">取消</button></div></div>
+  <section class="task-repeat" :aria-label="t('重复任务')">
+    <label><Repeat2 :size="14" />{{ t('重复') }}<select :value="rule?.frequency ?? ''" :disabled="disabled || busy || !!object.properties.repeatSourceId" @change="update('frequency', ($event.target as HTMLSelectElement).value)"><option value="">{{ t('不重复') }}</option><option value="daily">{{ t('每天') }}</option><option value="weekly">{{ t('每周') }}</option><option value="monthly">{{ t('每月') }}</option></select></label>
+    <template v-if="rule"><label>{{ t('间隔') }}<input type="number" min="1" max="99" :value="rule.interval" :disabled="disabled || busy || !!object.properties.repeatSourceId" @change="update('interval', Number(($event.target as HTMLInputElement).value))" /></label><label>{{ t('结束日期') }}<input type="date" :value="rule.until ?? ''" :disabled="disabled || busy || !!object.properties.repeatSourceId" @change="update('until', ($event.target as HTMLInputElement).value || undefined)" /></label><button type="button" :disabled="disabled || dirty || busy || object.properties.completed !== true" @click="prepare"><CalendarPlus :size="14" />{{ t('预览下一次') }}</button></template>
+    <div v-if="preview" class="repeat-preview"><strong>{{ preview.object.name }}</strong><span>{{ t('下一次：') }}{{ preview.object.properties.date ?? preview.object.properties.due }}</span><span>{{ t('负责人：') }}{{ people }}</span><span>{{ t('关联：') }}{{ preview.relations.length }} {{ t('项') }}</span><div><button type="button" :disabled="disabled || dirty || busy" @click="create">{{ t('确认创建下一次') }}</button><button type="button" :disabled="busy" @click="preview = undefined">{{ t('取消') }}</button></div></div>
     <p v-if="error" role="alert">{{ error }}</p>
   </section>
 </template>

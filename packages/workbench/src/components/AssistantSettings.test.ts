@@ -362,7 +362,7 @@ it('reveals only the entered key and resets visibility when cleared or reopened'
 it('shows platform connections without personal editing actions', async () => {
   assistant.canConfigure = false; assistant.connections = [{ ...connection, name: '同页官方', managed: true }];
   await nextTick(); expect(button('添加连接')).toBeUndefined();
-  expect(root.querySelector('button[title="删除模型连接"]')).toBeNull();
+  expect(root.querySelector('button[data-tooltip="删除模型连接"]')).toBeNull();
   root.querySelector<HTMLButtonElement>('.assistant-connection-more')!.click(); await nextTick();
   expect(button('编辑连接')).toBeUndefined(); button('刷新模型名单').click();
   await vi.waitFor(() => expect(root.textContent).toContain('平台已开放 2 个模型'));

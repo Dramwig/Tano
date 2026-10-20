@@ -1,9 +1,12 @@
+#[cfg(desktop)]
+mod shell_open;
+
 #[tauri::command]
 fn startup_ready(window: tauri::WebviewWindow) -> Result<(), String> {
     #[cfg(debug_assertions)]
     eprintln!("[startup] frontend ready: {}", window.label());
     #[cfg(desktop)]
-    if window.label() == "main" {
+    if window.label() == "main" || window.label().starts_with("file-") {
         window.show().map_err(|error| error.to_string())?;
     }
     #[cfg(mobile)]
@@ -15,19 +18,70 @@ fn startup_ready(window: tauri::WebviewWindow) -> Result<(), String> {
 pub fn run() {
     let mut context = tauri::generate_context!();
     #[cfg(desktop)]
+    let shell = shell_open::prepare(&mut context);
+    #[cfg(desktop)]
     for window in &mut context.config_mut().app.windows {
         // Only the frontend may reveal this window after mounting the workbench.
-        if window.label == "main" {
+        if window.label == "main" || window.label.starts_with("file-") {
             window.visible = false;
             #[cfg(debug_assertions)]
             eprintln!("[startup] main window starts hidden");
         }
     }
-    tano_native::configure_with_commands(
-        tauri::Builder::default(),
+    let builder = tauri::Builder::default();
+    #[cfg(desktop)]
+    let builder = builder
+        .manage(shell)
+        .plugin(tauri_plugin_single_instance::init(shell_open::receive));
+    #[cfg(desktop)]
+    let builder = tano_native::configure_with_commands(
+        builder,
+        &[
+            "startup_ready",
+            "shell_take_workspace",
+            "standalone_read",
+            "standalone_write",
+            "standalone_copy",
+        ],
+        tauri::generate_handler![
+            startup_ready,
+            shell_open::shell_take_workspace,
+            shell_open::standalone_read,
+            shell_open::standalone_write,
+            shell_open::standalone_copy
+        ],
+    );
+    #[cfg(mobile)]
+    let builder = tano_native::configure_with_commands(
+        builder,
         &["startup_ready"],
         tauri::generate_handler![startup_ready],
-    )
-    .run(context)
-    .expect("error while running Tano Local");
+    );
+    builder
+        .on_page_load(|webview, payload| {
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "[startup] page load: {} {:?}",
+                webview.label(),
+                payload.event()
+            );
+            #[cfg(desktop)]
+            if (webview.label() == "main" || webview.label().starts_with("file-"))
+                && payload.event() == tauri::webview::PageLoadEvent::Started
+            {
+                // Vite dependency discovery and retry can reload an already visible
+                // WebView. Keep the same readiness boundary on every navigation.
+                // This hook receives a Webview, not a WebviewWindow. Hiding the
+                // child WebView would leave it invisible when the host is shown.
+                if let Err(error) = webview.window().hide() {
+                    eprintln!("Unable to hide the loading main window: {error}");
+                }
+                #[cfg(debug_assertions)]
+                eprintln!("[startup] navigation hidden");
+            }
+            #[cfg(mobile)]
+            let _ = (webview, payload);
+        })
+        .run(context)
+        .expect("error while running Tano Local");
 }

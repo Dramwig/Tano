@@ -111,10 +111,12 @@ await tano.documents.edit(fileId, [{ from: document.content.length,
 | `connections.request(origin, request)` | `{ status,body,contentType }`，body 为字符串 | `connections`、已声明来源和个人独立授权 |
 | `native.invoke('git.status')` | `{ branch,detached,entries }` | `native`、对应命令声明、本地宿主支持 |
 | `native.invoke('git.diff', { path,staged? })` | `{ path,staged,patch }` | 同上，只读差异 |
+| `native.invoke('git.log', { path?,limit? })` | `{ path,commits }` | 同上，只读历史 |
+| `native.invoke('sync.open')` | `{ opened:true }` | `native`、命令声明；仅打开系统同步面板，不执行写入 |
 
 状态键为字母开头、最长 80 字符的小写 ID，可含数字、点和连字符。业务内容存文档或对象；storage 不跨设备同步。连接 request 为 `{ path,method?,body? }`，方法限 GET/POST/PUT/PATCH/DELETE、正文为 JSON，受用户授权的方法及路径前缀限制。插件不能读密钥、列出连接、发起 OAuth 或替用户授权。
 
-`native.invoke(command,args?)` 的通用类型签名供宿主扩展，不表示任意系统命令可用。当前只实现上述 Git 读取；entry 为 `{ path,index,worktree,originalPath }`，不跟随工作区外符号链接。
+`native.invoke(command,args?)` 的通用类型签名供宿主扩展，不表示任意系统命令可用。当前提供上述 Git 读取与系统同步入口；entry 为 `{ path,index,worktree,originalPath }`，不跟随工作区外符号链接。
 
 ## 视图与 UI 桥接
 

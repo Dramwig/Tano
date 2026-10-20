@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 import { isDataTableFilePath, type FileEntry } from '@tano/protocol';
 
@@ -86,7 +87,7 @@ function compositionEnd() {
       ref="input"
       v-model="draft"
       class="tree-rename-input"
-      :aria-label="file.kind === 'directory' ? '文件夹名称' : '文件名称'"
+      :aria-label="file.kind === 'directory' ? t('文件夹名称') : t('文件名称')"
       :aria-invalid="!!error"
       :aria-describedby="error ? errorId : undefined"
       :readonly="saving"

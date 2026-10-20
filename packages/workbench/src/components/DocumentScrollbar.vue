@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 const props = defineProps<{ scrollElement?: HTMLElement }>();
@@ -108,7 +109,7 @@ onBeforeUnmount(() => finish());
       ref="track"
       class="document-scrollbar-track"
       role="scrollbar"
-      aria-label="文档滚动条"
+      :aria-label="t('文档滚动条')"
       aria-orientation="vertical"
       :aria-controls="scrollElement?.id"
       :aria-valuemin="0"

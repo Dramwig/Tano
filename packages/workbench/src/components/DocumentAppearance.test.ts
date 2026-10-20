@@ -58,11 +58,11 @@ it('selects bundled art, saves a portable preset ID, and restores it from Markdo
   const { state } = await mount();
   await click('添加封面');
   expect([...document.querySelectorAll('.document-cover-group h4')].map(heading => heading.textContent))
-    .toEqual(['颜色和渐变', '复古纹样', '水果水彩标本', '中国古画', '风景与光影', '花园与阳光', '浮世绘', '花卉与静物']);
+    .toEqual(['颜色和渐变', '复古纹样', '中国古画', '风景与光影', '花园与阳光', '浮世绘', '花卉与静物']);
   const artworks = documentCoverGroups.flatMap(group => group.covers).filter(item => item.image);
   expect(artworks.map(item => item.value)).toEqual(coverCatalog.gallery.artworkIds);
-  expect(document.querySelectorAll('.document-cover-presets img')).toHaveLength(38);
-  expect(new Set(artworks.map(item => item.value)).size).toBe(38);
+  expect(document.querySelectorAll('.document-cover-presets img')).toHaveLength(34);
+  expect(new Set(artworks.map(item => item.value)).size).toBe(34);
   await click('使用封面：睡莲');
   expect(appearanceText(state.modelValue, 'cover')).toBe('tano:cma-136510');
   expect(state.modelValue).not.toContain('.webp');
@@ -88,7 +88,7 @@ it('selects curated scrolls and flowers without offering retired covers', async 
   expect(document.querySelector('[aria-label="使用封面：千里江山图·局部二"]')?.getAttribute('aria-pressed')).toBe('true');
   update.mockClear();
   expect(document.querySelector('[aria-label="使用封面：盛开的杏花"]')).not.toBeNull();
-  expect(document.querySelectorAll('.document-cover-group')).toHaveLength(8);
+  expect(document.querySelectorAll('.document-cover-group')).toHaveLength(7);
   expect(document.querySelector('[aria-label="使用封面：神奈川冲浪里"]')).toBeNull();
   expect(document.querySelector('[aria-label="使用封面：蓝色弹珠·地球"]')).toBeNull();
   expect(document.querySelector('[aria-label="使用封面：春日花束"]')).toBeNull();
@@ -103,7 +103,7 @@ it('restores every retired preset without rewriting existing Markdown', async ()
   const { state, update } = await mount();
   const visible = new Set(coverCatalog.gallery.artworkIds);
   const retired = coverCatalog.groups.flatMap(group => group.artworks.map(artwork => artwork.id)).filter(id => !visible.has(id));
-  expect(retired).toHaveLength(57);
+  expect(retired).toHaveLength(61);
   for (const id of retired) {
     const saved = `---\ncover: ${id}\n---\n正文\n`;
     state.modelValue = saved; await nextTick();
@@ -148,29 +148,18 @@ it('offers two Qingming focal points on the same panorama without changing the c
   expect(documentCoverPreset('tano:commons-4490842-7')!.image).toBe(documentCoverPreset('tano:commons-4490842-8')!.image);
 });
 
-it('restores complete fruit specimens on paper backgrounds and resets presentation for other covers', async () => {
+it('keeps retired USDA fruit IDs compatible while hiding them from the default picker', async () => {
   const { state } = await mount();
   await click('添加封面');
-  const fruits = documentCoverGroups.find(group => group.id === 'fruit-watercolors')!.covers;
-  expect(fruits).toHaveLength(4);
-  for (const fruit of fruits) {
-    const preview = document.querySelector<HTMLButtonElement>(`[aria-label="使用封面：${fruit.label}"]`)!;
-    expect(preview.classList.contains('is-specimen')).toBe(true);
-    expect(preview.style.background).not.toBe('');
-    await click(`使用封面：${fruit.label}`);
-    expect(appearanceText(state.modelValue, 'cover')).toBe(fruit.value);
-    const cover = root.querySelector<HTMLElement>('.document-cover')!;
-    expect(cover.classList.contains('is-specimen')).toBe(true);
-    expect(cover.style.background).toBe(preview.style.background);
-    const saved = state.modelValue;
-    state.modelValue = '# 正文\n'; await nextTick();
-    state.modelValue = saved; await nextTick();
-    expect(root.querySelector('.document-cover.is-specimen img')?.getAttribute('src')).toBe(fruit.image);
-    await click('更换封面');
-  }
-  await click('使用封面：柳枝纹');
-  expect(root.querySelector('.document-cover.is-specimen')).toBeNull();
-  expect(root.querySelector<HTMLElement>('.document-cover')!.style.background).toBe('');
+  expect(documentCoverGroups.find(group => group.id === 'fruit-watercolors')).toBeUndefined();
+  expect(document.querySelector('[aria-label="使用封面：樱桃·Riga"]')).toBeNull();
+  expect(documentCoverPreset('tano:commons-43036055')?.image).toBeTruthy();
+  expect(documentCoverPreset('tano:commons-43036187')?.image).toBeTruthy();
+  expect(documentCoverPreset('tano:commons-43155668')?.image).toBeTruthy();
+  expect(documentCoverPreset('tano:commons-42929959')?.image).toBeTruthy();
+  state.modelValue = '---\ncover: tano:commons-43036055\n---\n正文\n'; await nextTick();
+  expect(root.querySelector('.document-cover.is-specimen')).not.toBeNull();
+  expect(root.querySelector('.document-cover img')?.getAttribute('src')).toBe(documentCoverPreset('tano:commons-43036055')!.image);
   state.modelValue = '---\ncover: https://example.com/cover.png\n---\n正文\n'; await nextTick();
   expect(root.querySelector('.document-cover.is-specimen')).toBeNull();
 });

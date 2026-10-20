@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, ref, watch } from 'vue';
 import type { PluginPackageUsage } from '@tano/protocol';
 import { useWorkspaceStore } from '../stores/workspace';
@@ -24,27 +25,27 @@ async function run(integrity?: string) {
   try {
     if (integrity) await store.removePluginPackage(integrity, workspace);
     await load(current);
-    if (current === generation) status.value = integrity ? '已回收云端版本' : '云端容量已刷新';
+    if (current === generation) status.value = integrity ? t('已回收云端版本') : t('云端容量已刷新');
   } catch (cause) { if (current === generation) error.value = String(cause); }
   finally { if (current === generation) pending.value = false; }
 }
 </script>
 <template>
   <details v-if="store.pluginRepositoryAvailable && store.canManagePlugins" class="plugin-repository-storage">
-    <summary>工作区云端包存储</summary>
+    <summary>{{ t('工作区云端包存储') }}</summary>
     <p v-if="error" role="alert">{{ error }}</p><p v-if="status" role="status">{{ status }}</p>
-    <button :disabled="pending" @click="run()">刷新云端容量</button>
+    <button :disabled="pending" @click="run()">{{ t('刷新云端容量') }}</button>
     <template v-if="usage">
-      <p>已用 {{ size(usage.used) }} / {{ size(usage.limit) }} · {{ usage.entries.length }} / {{ usage.entryLimit }} 个版本</p>
-      <p>容量包括所有插件和未完成上传的预留空间。当前及历史引用的版本受保护；回收其他版本不会删除工作区内容。</p>
-      <p>未完成上传的预留需等待两分钟，之后刷新列表即可回收。</p>
+      <p>{{ t('已用') }} {{ size(usage.used) }} / {{ size(usage.limit) }} · {{ usage.entries.length }} / {{ usage.entryLimit }} {{ t('个版本') }}</p>
+      <p>{{ t('容量包括所有插件和未完成上传的预留空间。当前及历史引用的版本受保护；回收其他版本不会删除工作区内容。') }}</p>
+      <p>{{ t('未完成上传的预留需等待两分钟，之后刷新列表即可回收。') }}</p>
       <ul><li v-for="entry in entries" :key="entry.integrity">
         <strong>{{ entry.pluginId }}</strong> · {{ entry.version }} · {{ size(entry.bytes) }} · <code>{{ entry.integrity.slice(0, 12) }}</code>
-        <span>{{ entry.state === 'pending' ? '上传未完成，可重新导入相同版本重试' : entry.state === 'deleting' ? '回收中，可重试' : entry.pinned ? '当前或历史版本' : '未被规则引用' }}</span>
+        <span>{{ entry.state === 'pending' ? t('上传未完成，可重新导入相同版本重试') : entry.state === 'deleting' ? t('回收中，可重试') : entry.pinned ? t('当前或历史版本') : t('未被规则引用') }}</span>
         <button v-if="store.canRemovePluginPackage" :disabled="pending || !entry.removable"
-          :aria-label="`回收 ${entry.pluginId} ${entry.version} ${entry.integrity.slice(0, 8)}`" @click="run(entry.integrity)">回收此版本</button>
+          :aria-label="t('回收 {0} {1} {2}', [entry.pluginId, entry.version, entry.integrity.slice(0, 8)])" @click="run(entry.integrity)">{{ t('回收此版本') }}</button>
       </li></ul>
-      <p v-if="!entries.length">暂无云端包记录。</p>
+      <p v-if="!entries.length">{{ t('暂无云端包记录。') }}</p>
     </template>
   </details>
 </template>

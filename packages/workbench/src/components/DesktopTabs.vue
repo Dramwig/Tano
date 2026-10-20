@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ArrowLeft, ArrowRight, Bot, CalendarDays, FileText, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, SquarePen, ExternalLink, Bug } from 'lucide-vue-next';
 import { basename, isMarkdown, isDataTableFilePath } from '@tano/protocol';
@@ -20,8 +21,8 @@ import { Table2 } from 'lucide-vue-next';
 
 const store = useWorkspaceStore();
 const navigationItems = [
-  { id: 'back', label: '后退' },
-  { id: 'forward', label: '前进' },
+  { id: 'back', get label() { return t('后退'); } },
+  { id: 'forward', get label() { return t('前进'); } },
 ];
 const props = defineProps<{
   detachable?: boolean;
@@ -33,7 +34,7 @@ const paneTabs = computed(() => props.paneId
   ? store.tabs.filter(tab => store.panes.find(pane => pane.id === props.paneId)?.tabs.includes(tab.id))
   : store.tabs);
 const documentIcons = computed(() => Object.fromEntries(
-  paneTabs.value.map(tab => [tab.id, appearanceText(tab.document?.content ?? '', 'icon')]),
+  paneTabs.value.map(tab => [tab.id, tab.dataTable ? tab.dataTable.icon ?? '' : appearanceText(tab.document?.content ?? '', 'icon')]),
 ));
 const selectedId = computed(() => props.paneId
   ? store.panes.find(pane => pane.id === props.paneId)?.activeId ?? '' : store.activeId);
@@ -63,7 +64,7 @@ const frozenStripWidth = ref<number>();
 const pointerInsideTabList = ref(false);
 const title = (path: string) => basename(path).replace(/\.(md|markdown)$/i, '');
 const tabLabel = (tab: DocumentTab) => props.assistantTab?.id === tab.id ? props.assistantTab.title
-  : tab.dataTable ? tab.dataTable.name : tab.graph ? '关系图谱' : tab.plugins ? '插件' : tab.calendar ? '计划' : tab.pluginView ? tab.pluginView.label : tab.view ? tab.view.label : tab.blank ? '新标签页' : title(tab.path);
+  : tab.dataTable ? tab.dataTable.name : tab.workspaceView ? tab.workspaceView.view.name : tab.graph ? t('关系图谱') : tab.plugins ? t('插件') : tab.calendar ? t('计划') : tab.pluginView ? tab.pluginView.label : tab.view ? tab.view.label : tab.blank ? t('新标签页') : title(tab.path);
 const draggingId = ref('');
 const outgoingId = ref('');
 const dragPreview = ref<{
@@ -847,16 +848,16 @@ async function onTabKeydown(event: KeyboardEvent) {
     :items="navigationItems"
     preference-key="tano.preference.documentHiddenTools"
     group-class="topbar-navigation desktop-tab-navigation"
-    label="标签页导航"
-    menu-label="导航按钮显示设置"
+    :label="t('标签页导航')"
+    :menu-label="t('导航按钮显示设置')"
     @open="contextMenu = undefined"
   >
     <button
       v-if="isVisible('back')"
       type="button"
       class="icon-button"
-      aria-label="后退"
-      title="后退"
+      :aria-label="t('后退')"
+      :data-tooltip="t('后退')"
       :disabled="!store.canNavigateHistory(-1, selectedId)"
       @click="store.navigateHistory(-1, paneId)"
     >
@@ -866,8 +867,8 @@ async function onTabKeydown(event: KeyboardEvent) {
       v-if="isVisible('forward')"
       type="button"
       class="icon-button"
-      aria-label="前进"
-      title="前进"
+      :aria-label="t('前进')"
+      :data-tooltip="t('前进')"
       :disabled="!store.canNavigateHistory(1, selectedId)"
       @click="store.navigateHistory(1, paneId)"
     >
@@ -883,7 +884,7 @@ async function onTabKeydown(event: KeyboardEvent) {
       '--desktop-tab-count': paneTabs.length,
       width: frozenStripWidth === undefined ? undefined : `${frozenStripWidth}px`,
     }"
-    aria-label="文档标签页"
+    :aria-label="t('文档标签页')"
     @wheel="onTabWheel"
   >
     <div
@@ -891,7 +892,7 @@ async function onTabKeydown(event: KeyboardEvent) {
       class="desktop-tab-list"
       :class="{ 'desktop-tab-list-dragging': draggingId }"
       role="tablist"
-      aria-label="已打开的文档"
+      :aria-label="t('已打开的文档')"
       @keydown="onTabKeydown"
       @pointermove="moveDrag"
       @pointerenter="onTabListPointerEnter"
@@ -926,7 +927,7 @@ async function onTabKeydown(event: KeyboardEvent) {
           role="tab"
           :aria-selected="doc.id === selectedId"
           :tabindex="doc.id === selectedId ? 0 : -1"
-          :title="assistantTab?.id === doc.id ? assistantTab.title : doc.blank || doc.graph || doc.plugins || doc.calendar || doc.view ? tabLabel(doc) : doc.path"
+          :data-tooltip="assistantTab?.id === doc.id ? assistantTab.title : doc.blank || doc.graph || doc.plugins || doc.calendar || doc.view ? tabLabel(doc) : doc.path"
           :draggable="nativeTabDrag"
           @pointerdown="startDrag($event, doc.id)"
           @dragstart.stop="startNativeDrag($event, doc.id)"
@@ -936,25 +937,25 @@ async function onTabKeydown(event: KeyboardEvent) {
           <GitFork v-else-if="doc.graph" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <Puzzle v-else-if="doc.plugins" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <CalendarDays v-else-if="doc.calendar" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
-          <Table2 v-else-if="doc.dataTable" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <Puzzle v-else-if="doc.pluginView" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <component :is="doc.view.icon" v-else-if="doc.view" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <span v-else-if="!doc.blank && documentIcons[doc.id]" class="desktop-tab-icon desktop-tab-document-icon" aria-hidden="true">
             <WorkspaceIcon :icon="documentIcons[doc.id]" :size="15" />
           </span>
+          <Table2 v-else-if="doc.dataTable" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <FileText v-else-if="!doc.blank" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <span class="desktop-tab-label">{{ tabLabel(doc) }}</span>
           <span
             v-if="doc.dataTable?.dirty || doc.document && store.dirty(doc.document)"
             class="desktop-tab-dirty"
-            aria-label="有未保存的修改"
+            :aria-label="t('有未保存的修改')"
           />
         </button>
         <button
           class="desktop-tab-close"
           type="button"
-          :aria-label="`关闭 ${tabLabel(doc)}`"
-          :title="`关闭 ${tabLabel(doc)}`"
+          :aria-label="t('关闭 {0}', [tabLabel(doc)])"
+          :data-tooltip="t('关闭 {0}', [tabLabel(doc)])"
           @click="closeTab(doc.id)"
         >
           <X :size="13" />
@@ -969,8 +970,8 @@ async function onTabKeydown(event: KeyboardEvent) {
     <button
       class="desktop-tab-add"
       type="button"
-      aria-label="新标签页"
-      title="新标签页"
+      :aria-label="t('新标签页')"
+      :data-tooltip="t('新标签页')"
       :disabled="!store.workspace || store.busy"
       @click="activatePane(); emit('new-tab')"
     >
@@ -984,25 +985,25 @@ async function onTabKeydown(event: KeyboardEvent) {
       :style="fileHintStyle"
       role="status"
     >
-      <strong>{{ draggedFiles.length === 1 ? title(draggedFiles[0]!.path) : `${draggedFiles.length} 个文档` }}</strong>
-      <span>在此处作为新标签页打开</span>
+      <strong>{{ draggedFiles.length === 1 ? title(draggedFiles[0]!.path) : t('{0} 个文档', [draggedFiles.length]) }}</strong>
+      <span>{{ t('在此处作为新标签页打开') }}</span>
     </div>
     <div
       v-if="contextMenu"
       ref="contextMenuElement"
       class="dropdown compact-action-menu desktop-tab-context-menu"
       role="menu"
-      :aria-label="contextMenu.tabId ? '标签页操作' : '标签栏操作'"
+      :aria-label="contextMenu.tabId ? t('标签页操作') : t('标签栏操作')"
       :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
     >
       <template v-if="contextMenu.tabId">
-        <button v-if="paneId" type="button" role="menuitem" @click="contextAction('split-right')"><PanelRightClose :size="15" />向右分屏</button>
-        <button v-if="paneId" type="button" role="menuitem" @click="contextAction('split-bottom')"><PanelRightClose :size="15" />向下分屏</button>
-        <button v-if="detachable" type="button" role="menuitem" :disabled="!!paneTabs.find(tab => tab.id === contextMenu?.tabId)?.pluginView || (!!paneTabs.find(tab => tab.id === contextMenu?.tabId)?.view && !paneTabs.find(tab => tab.id === contextMenu?.tabId)?.view?.detachable)" @click="contextAction('detach')">
-          <ExternalLink :size="15" />在新窗口中打开
+        <button v-if="paneId" type="button" role="menuitem" @click="contextAction('split-right')"><PanelRightClose :size="15" />{{ t('向右分屏') }}</button>
+        <button v-if="paneId" type="button" role="menuitem" @click="contextAction('split-bottom')"><PanelRightClose :size="15" />{{ t('向下分屏') }}</button>
+        <button v-if="detachable" type="button" role="menuitem" :disabled="!!paneTabs.find(tab => tab.id === contextMenu?.tabId)?.workspaceView || !!paneTabs.find(tab => tab.id === contextMenu?.tabId)?.pluginView || (!!paneTabs.find(tab => tab.id === contextMenu?.tabId)?.view && !paneTabs.find(tab => tab.id === contextMenu?.tabId)?.view?.detachable)" @click="contextAction('detach')">
+          <ExternalLink :size="15" />{{ t('在新窗口中打开') }}
         </button>
         <button type="button" role="menuitem" @click="contextAction('close')">
-          <X :size="15" />关闭标签页
+          <X :size="15" />{{ t('关闭标签页') }}
         </button>
         <button
           type="button"
@@ -1010,7 +1011,7 @@ async function onTabKeydown(event: KeyboardEvent) {
           :disabled="paneTabs.length <= 1"
           @click="contextAction('close-others')"
         >
-          <XCircle :size="15" />关闭其他标签页
+          <XCircle :size="15" />{{ t('关闭其他标签页') }}
         </button>
         <button
           type="button"
@@ -1020,12 +1021,12 @@ async function onTabKeydown(event: KeyboardEvent) {
           "
           @click="contextAction('close-right')"
         >
-          <PanelRightClose :size="15" />关闭右侧标签页
+          <PanelRightClose :size="15" />{{ t('关闭右侧标签页') }}
         </button>
       </template>
       <template v-else>
         <button type="button" role="menuitem" @click="contextAction('new-tab')">
-          <Plus :size="15" />新建标签页
+          <Plus :size="15" />{{ t('新建标签页') }}
         </button>
         <button
           type="button"
@@ -1033,7 +1034,7 @@ async function onTabKeydown(event: KeyboardEvent) {
           :disabled="store.workspace?.readOnly || store.busy"
           @click="contextAction('new-document')"
         >
-          <SquarePen :size="15" />新建文档
+          <SquarePen :size="15" />{{ t('新建文档') }}
         </button>
         <div class="menu-divider" role="separator" />
         <button
@@ -1042,12 +1043,12 @@ async function onTabKeydown(event: KeyboardEvent) {
           :disabled="!paneTabs.length"
           @click="contextAction('close-all')"
         >
-          <XCircle :size="15" />关闭全部标签页
+          <XCircle :size="15" />{{ t('关闭全部标签页') }}
         </button>
         <template v-if="nativeOs && !mobile">
           <div class="menu-divider" role="separator" />
           <button type="button" role="menuitem" @click="contextAction('open-devtools')">
-            <Bug :size="15" />打开调试窗口
+            <Bug :size="15" />{{ t('打开调试窗口') }}
           </button>
         </template>
       </template>
@@ -1068,7 +1069,7 @@ async function onTabKeydown(event: KeyboardEvent) {
       <span v-if="documentIcons[dragPreview.id]" class="desktop-tab-icon desktop-tab-document-icon">
         <WorkspaceIcon :icon="documentIcons[dragPreview.id]" :size="15" />
       </span>
-      <FileText v-else class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
+      <component v-else :is="isDataTableFilePath(dragPreview.path) ? Table2 : FileText" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
       <span class="desktop-tab-label">{{ title(dragPreview.path) }}</span>
       <span v-if="dragPreview.dirty" class="desktop-tab-dirty" />
     </div>
@@ -1079,6 +1080,9 @@ async function onTabKeydown(event: KeyboardEvent) {
 .desktop-tab-navigation:has(.icon-button) {
   position: relative;
   padding-inline: 6px;
+}
+.desktop-sidebar-toggle:not(.desktop-sidebar-toggle-hidden) + .desktop-tab-navigation:has(.icon-button) {
+  padding-inline-start: 2px;
 }
 .desktop-tab-strip {
   display: flex;
@@ -1317,9 +1321,6 @@ async function onTabKeydown(event: KeyboardEvent) {
   height: 15px;
   overflow: hidden;
   border-radius: 3px;
-}
-.desktop-tab-active .desktop-tab-icon {
-  color: var(--green);
 }
 .desktop-tab-active .desktop-tab-label {
   font-weight: 500;

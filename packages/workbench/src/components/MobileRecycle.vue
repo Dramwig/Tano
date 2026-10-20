@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { onMounted, onBeforeUnmount, ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { Trash2, X, RotateCcw } from 'lucide-vue-next';
@@ -37,7 +38,7 @@ async function recover(id: string) {
   try {
     const path = await invoke<string>('mobile_recover', { workspaceId: props.workspaceId, id });
     if (disposed) return;
-    notice.value = `已恢复副本：${path}`;
+    notice.value = t('已恢复副本：{0}', [path]);
     if (store.workspace?.id === props.workspaceId) await store.refresh();
   } catch (reason) {
     if (!disposed) error.value = String(reason);
@@ -67,32 +68,32 @@ onBeforeUnmount(() => {
       class="modal mobile-recycle"
       role="dialog"
       aria-modal="true"
-      aria-label="手机回收站"
+      :aria-label="t('手机回收站')"
       @keydown.esc.stop="emit('close')"
       @keydown="trap"
     >
       <header>
-        <h2><Trash2 :size="20" />手机回收站</h2>
+        <h2><Trash2 :size="20" />{{ t('手机回收站') }}</h2>
         <button
           ref="closeButton"
           class="icon-button"
-          aria-label="关闭回收站"
+          :aria-label="t('关闭回收站')"
           @click="emit('close')"
         >
           <X :size="20" />
         </button>
       </header>
-      <p>本机移除的文件保留在这里。恢复会在当前空间创建新副本；卸载应用会移除这些本地数据。</p>
+      <p>{{ t('本机移除的文件保留在这里。恢复会在当前空间创建新副本；卸载应用会移除这些本地数据。') }}</p>
       <p v-if="error" role="alert">{{ error }}</p>
       <p v-if="notice" role="status">{{ notice }}</p>
       <div v-for="item in records" :key="item.id" class="recycle-entry">
         <span
           >{{ item.path }}<small>{{ new Date(item.deletedAt).toLocaleString() }}</small></span
         ><button class="secondary-button" :disabled="busy" @click="recover(item.id)">
-          <RotateCcw :size="15" />恢复副本
+          <RotateCcw :size="15" />{{ t('恢复副本') }}
         </button>
       </div>
-      <p v-if="!records.length && !error">暂无本机回收文件</p>
+      <p v-if="!records.length && !error">{{ t('暂无本机回收文件') }}</p>
     </section>
   </div>
 </template>

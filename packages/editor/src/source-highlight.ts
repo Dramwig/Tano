@@ -60,7 +60,7 @@ export function sourceStyleRanges(markdown: string): SourceStyleRange[] {
       const to = base + end;
       switch (node.type) {
         case 'tanoTextStyle':
-          if (node.style !== 'text_color') add(from, to, node.style);
+          if (node.style !== 'text_color' && node.style !== 'background_color') add(from, to, node.style);
           break;
         case 'heading':
           add(from, to, 'heading');

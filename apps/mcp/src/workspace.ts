@@ -10,6 +10,7 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  readSync,
   readdirSync,
   realpathSync,
   renameSync,
@@ -17,7 +18,9 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { isMarkdown, validatePath, parseAssistantSession } from '@tano/protocol';
+import { isMarkdown, validatePath, validateStoragePath, parseAssistantSession, fileHandlers, parseObject, parseRelations, parseDataTable, isDataTableFilePath, validateObjectProperties, defaultObjectViewQuery, viewEngine, dataEvaluator, dataViewRows, AGENT_GATEWAY_VERSION, parseFileMetadata, emptyFileMetadata, queryFileDatabase, defaultFileDatabaseQuery } from '@tano/protocol';
+import { markdownFileMetadata } from '@tano/protocol/markdown-file-metadata';
+import type { AgentGatewayPolicy, GatewayBatch, ObjectViewQuery, AssistantProposal, FileDatabaseQuery } from '@tano/protocol';
 
 const maxBytes = 8 * 1024 ** 2;
 const previewBytes = 512 * 1024;
@@ -125,7 +128,10 @@ export class AgentWorkspace {
   readonly instanceId: string;
   private db: DatabaseSync;
   private rootIdentity: { dev: bigint; ino: bigint };
-  constructor(root: string, dataDirectory: string) {
+  readonly policy: AgentGatewayPolicy;
+  constructor(root: string, dataDirectory: string, policy: AgentGatewayPolicy = { access: 'review', directories: [''], objectTypes: ['task', 'project', 'experiment', 'person', 'event'] }) {
+    if (!['read', 'review', 'write'].includes(policy.access) || !Array.isArray(policy.directories) || policy.directories.some(path => path !== '' && !!validatePath(`${path}/scope.md`)) || !Array.isArray(policy.objectTypes) || policy.objectTypes.some(type => !/^[a-z][a-z0-9.-]{0,79}$/.test(type))) throw new Error('Agent 授权范围无效');
+    this.policy = Object.freeze({ ...policy, directories: Object.freeze([...policy.directories]) as unknown as string[], objectTypes: Object.freeze([...policy.objectTypes]) as unknown as string[] });
     if (lstatSync(root).isSymbolicLink()) throw new Error('工作区不能是符号链接');
     this.root = realpathSync(root);
     this.rootIdentity = lstatSync(this.root, { bigint: true });
@@ -147,6 +153,7 @@ export class AgentWorkspace {
       throw new Error('活动缓存必须位于工作区之外');
     this.instanceId = loadInstanceId(directory, this.id);
     this.db = openActivityDatabase(join(directory, `${this.id}.sqlite`));
+    this.db.exec('CREATE TABLE IF NOT EXISTS gateway_operations (id TEXT PRIMARY KEY, root TEXT NOT NULL, root_key TEXT NOT NULL, fingerprint TEXT NOT NULL, items TEXT NOT NULL, created_at INTEGER NOT NULL)');
   }
   close() {
     this.db.close();
@@ -167,6 +174,17 @@ export class AgentWorkspace {
     const invalid = validatePath(path);
     if (invalid) throw new Error(invalid);
     if (!isMarkdown(path)) throw new Error('MCP 只读写 Markdown 文档');
+    this.authorizePath(path);
+    return this.resourceTarget(path, mustExist);
+  }
+  private authorizePath(path: string) {
+    if (!path.startsWith('.tano/') && !this.policy.directories.some(prefix => !prefix || path.startsWith(`${prefix}/`))) throw new Error('文件不在 Agent 授权范围');
+  }
+  private resourceTarget(path: string, mustExist = true) {
+    const internal = /^\.tano\/objects\/.+\.tano\.json$/.test(path) || path === '.tano/relations.tano-relations.json' || /^\.tano\/files\/[a-f0-9]{6}\.tano\.json$/.test(path);
+    const invalid = internal ? validateStoragePath(path) : validatePath(path);
+    if (invalid) throw new Error(invalid);
+    this.authorizePath(path);
     this.assertWorkspace();
     let current = this.root;
     const parts = path.split('/');
@@ -180,10 +198,10 @@ export class AgentWorkspace {
       } catch (error) {
         if (
           !mustExist &&
-          i === parts.length - 1 &&
+          (i === parts.length - 1 || internal) &&
           (error as NodeJS.ErrnoException).code === 'ENOENT'
         )
-          return current;
+          return join(this.root, path);
         throw error;
       }
     }
@@ -207,6 +225,176 @@ export class AgentWorkspace {
       throw new Error('文档尚未有稳定身份，请在 Tano 中刷新工作区后重新读取');
     return { ...snapshot, workspaceId: this.id, fileId: entries[0].id as string };
   }
+  capabilities() {
+    return { version: AGENT_GATEWAY_VERSION, workspaceId: this.id, policy: this.policy, review: 'Tano desktop', batchAtomic: false,
+      resources: ['files', 'objects', 'tables', 'relations'], writes: 'Reviewed proposals; explicit write access additionally enables legacy Markdown CAS writes' };
+  }
+  private manifest() {
+    this.assertWorkspace();
+    const path = join(this.root, '.tano/identities.json');
+    const stat = lstatSync(path);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 16 * 1024 ** 2) throw new Error('身份清单无效');
+    const value = JSON.parse(readFileSync(path, 'utf8'));
+    if (value.format !== 1 || value.workspaceId !== this.id || !Array.isArray(value.files)) throw new Error('身份清单无效');
+    const files = value.files.filter((file: { deleted?: boolean }) => !file.deleted) as { path: string; id: string }[];
+    if (files.some(file => typeof file.path !== 'string' || !/^[a-f0-9]{6}$/.test(file.id)) || new Set(files.map(file => file.id)).size !== files.length || new Set(files.map(file => file.path)).size !== files.length) throw new Error('身份清单包含重复或无效身份');
+    return files;
+  }
+  private page<T>(rows: T[], offset: number, limit: number) {
+    if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error('分页参数无效');
+    return { items: rows.slice(offset, offset + limit), total: rows.length, nextOffset: offset + limit < rows.length ? offset + limit : null };
+  }
+  queryFiles(query = '', offset = 0, limit = 100, database: FileDatabaseQuery = defaultFileDatabaseQuery()) {
+    if (typeof query !== 'string' || query.length > 200) throw new Error('文件查询无效');
+    const errors: { path: string; error: string }[] = [];
+    const rows = this.manifest().filter(file => !file.path.startsWith('.') && this.policy.directories.some(prefix => !prefix || file.path.startsWith(`${prefix}/`)) && file.path.toLowerCase().includes(query.toLowerCase())).flatMap(file => {
+      try {
+        const target = this.resourceTarget(file.path), stat = lstatSync(target);
+        const markdown = isMarkdown(file.path);
+        if (markdown && stat.size > maxBytes) throw new Error('Markdown 属性读取超过 8 MiB');
+        const fd = openSync(target, 'r'); const digest = createHash('sha256'); const buffer = Buffer.alloc(64 * 1024);
+        const chunks: Buffer[] = []; let total = 0;
+        try {
+          let size;
+          while ((size = readSync(fd, buffer, 0, buffer.length, null)) > 0) {
+            digest.update(buffer.subarray(0, size));
+            if (markdown) {
+              total += size;
+              if (total > maxBytes) throw new Error('Markdown 属性读取超过 8 MiB');
+              chunks.push(Buffer.from(buffer.subarray(0, size)));
+            }
+          }
+        } finally { closeSync(fd); }
+        let metadataContent: string | null = null;
+        let metadata;
+        if (markdown) metadata = markdownFileMetadata(file.id, text(Buffer.concat(chunks)));
+        else {
+          const metadataPath = this.resourceTarget('.tano/files/' + file.id + '.tano.json', false);
+          if (existsSync(metadataPath) && lstatSync(metadataPath).size > previewBytes) throw new Error('文件元数据超过大小限制');
+          metadataContent = existsSync(metadataPath) ? text(readFileSync(metadataPath)) : null;
+          metadata = metadataContent === null ? emptyFileMetadata(file.id) : parseFileMetadata(metadataContent, file.id);
+        }
+        return [{ workspaceId: this.id, fileId: file.id, path: file.path, sha256: digest.digest('hex'), size: stat.size, modified: stat.mtimeMs, handler: fileHandlers.resolve(file.path).id, metadata, metadataHash: metadataContent === null ? null : hash(metadataContent) }];
+      } catch (error) { errors.push({ path: file.path, error: String(error) }); return []; }
+    });
+    const filtered = queryFileDatabase(rows.map(row => ({ file: { ...row, id: row.fileId, name: row.path.split('/').at(-1)!, kind: 'file' as const, mimeType: fileHandlers.resolve(row.path).mimeType, handlerId: row.handler }, metadata: row.metadata })), database);
+    return { ...this.page(filtered.map(row => rows.find(item => item.fileId === row.file.id)!), offset, limit), complete: !errors.length, errors, identitySource: '.tano/identities.json' };
+  }
+  readFile(fileId: string) {
+    if (!/^[a-f0-9]{6}$/.test(fileId)) throw new Error('File ID 无效');
+    const file = this.manifest().find(file => file.id === fileId);
+    if (!file) throw new Error('File ID 不存在，请刷新工作区');
+    const target = this.resourceTarget(file.path);
+    if (lstatSync(target).size > maxBytes) throw new Error('读取超过 8 MiB');
+    const bytes = readFileSync(target); if (bytes.length > maxBytes) throw new Error('读取超过 8 MiB');
+    const revision = { workspaceId: this.id, fileId, path: file.path, sha256: hash(bytes) };
+    if (file.path.startsWith('.tano/objects/')) {
+      const object = parseObject(text(bytes));
+      if (!this.policy.objectTypes.includes(object.type)) throw new Error('对象类型未授权');
+      return { ...revision, encoding: 'utf8' as const, content: text(bytes) };
+    }
+    if (file.path.startsWith('.tano/')) throw new Error('请使用授权关系查询');
+    const handler = fileHandlers.resolve(file.path);
+    const binary = ['binary', 'image', 'pdf', 'audio', 'video'].includes(handler.preview);
+    return { ...revision, encoding: binary ? 'base64' as const : 'utf8' as const, content: binary ? bytes.toString('base64') : text(bytes) };
+  }
+  queryObjects(query: ObjectViewQuery = defaultObjectViewQuery(), offset = 0, limit = 100) {
+    const records = this.manifest().filter(file => /^\.tano\/objects\/.+\.tano\.json$/.test(file.path)).flatMap(file => {
+      const target = this.resourceTarget(file.path); if (lstatSync(target).size > maxBytes) throw new Error('对象超过 8 MiB');
+      const content = text(readFileSync(target)), object = parseObject(content);
+      return this.policy.objectTypes.includes(object.type) ? [{ workspaceId: this.id, fileId: file.id, path: file.path, sha256: hash(content), object }] : [];
+    });
+    const projection = viewEngine.query(records.map(record => record.object), query, this.queryRelations().relations);
+    return this.page(projection.rows.map(object => records.find(record => record.object === object)!), offset, limit);
+  }
+  queryRelations() {
+    const path = '.tano/relations.tano-relations.json';
+    const target = this.resourceTarget(path, false);
+    if (!existsSync(target)) return { workspaceId: this.id, sha256: null, relations: [] };
+    if (lstatSync(target).size > maxBytes) throw new Error('关系超过 8 MiB');
+    const content = text(readFileSync(target));
+    const files = this.manifest();
+    const allowed = (endpoint: { type: string; id: string }) => ['document', 'asset'].includes(endpoint.type)
+      ? files.some(file => file.id === endpoint.id && !file.path.startsWith('.') && this.policy.directories.some(prefix => !prefix || file.path.startsWith(`${prefix}/`)))
+      : this.policy.objectTypes.includes(endpoint.type);
+    return { workspaceId: this.id, sha256: hash(content), relations: parseRelations(content).relations.filter(edge => allowed(edge.source) && allowed(edge.target)) };
+  }
+  queryTable(fileId: string, viewId?: string, offset = 0, limit = 100) {
+    const snapshot = this.readFile(fileId);
+    if (!isDataTableFilePath(snapshot.path) || snapshot.encoding !== 'utf8') throw new Error('目标不是数据表');
+    const table = parseDataTable(snapshot.content), view = viewId ? table.views.find(view => view.id === viewId) : table.views[0];
+    if (!view) throw new Error('数据表视图不存在');
+    const evaluate = dataEvaluator(table), rows = dataViewRows(table, view, '', evaluate);
+    const { content: _, ...revision } = snapshot;
+    return { ...revision, tableId: table.id, name: table.name, fields: table.fields, view,
+      ...this.page(rows.map(row => ({ ...row, computed: Object.fromEntries(table.fields.map(field => [field.id, evaluate(row, field.id)])) })), offset, limit) };
+  }
+  proposeChanges(batch: GatewayBatch, client: string) {
+    this.assertWorkspace();
+    if (this.policy.access === 'read') throw new Error('Agent 只有读取权限');
+    if (!uuid.test(batch.operationId) || !Array.isArray(batch.edits) || !batch.edits.length || batch.edits.length > 20 || Buffer.byteLength(JSON.stringify(batch)) > 1_000_000) throw new Error('跨文件提案格式或大小无效');
+    const fingerprint = hash(JSON.stringify(batch)), rootKey = `${this.rootIdentity.dev}:${this.rootIdentity.ino}`;
+    const existing = this.db.prepare('SELECT fingerprint FROM gateway_operations WHERE id=? AND root=? AND root_key=?').get(batch.operationId, this.root, rootKey) as { fingerprint: string } | undefined;
+    if (existing) { if (existing.fingerprint !== fingerprint) throw new Error('同一操作标识不能对应不同建议'); return this.operation(batch.operationId); }
+    const paths = new Set<string>();
+    const sessions = batch.edits.map(edit => {
+      if (!edit || typeof edit.path !== 'string' || paths.has(edit.path.toLowerCase()) || typeof edit.content !== 'string' || text(Buffer.from(edit.content)) !== edit.content || Buffer.byteLength(edit.content) > previewBytes || typeof edit.reason !== 'string' || !edit.reason.trim() || edit.reason.length > 4000 || (edit.expectedHash !== null && !/^[a-f0-9]{64}$/.test(edit.expectedHash))) throw new Error('建议内容、路径或 revision 无效');
+      paths.add(edit.path.toLowerCase()); this.resourceTarget(edit.path, edit.expectedHash !== null);
+      const before = edit.expectedHash === null ? null : this.readFile(edit.fileId ?? '');
+      if (before && (before.path !== edit.path || before.sha256 !== edit.expectedHash || before.encoding !== 'utf8')) throw new Error('身份或 revision 已变化，请重新读取');
+      if (!before && (edit.fileId !== undefined || existsSync(join(this.root, edit.path)))) throw new Error('新建路径已存在或 File ID 无效');
+      let kind: AssistantProposal['kind'] = before ? 'edit' : 'create';
+      if (edit.path.startsWith('.tano/objects/')) {
+        const object = parseObject(edit.content); validateObjectProperties(object.type, object.properties);
+        if (!this.policy.objectTypes.includes(object.type) || (!before && edit.path !== `.tano/objects/${object.id}.tano.json`)) throw new Error('对象类型或路径未授权');
+        if (before) { const base = parseObject(before.content); if (base.id !== object.id || base.type !== object.type) throw new Error('对象身份不能改变'); }
+        kind = 'object';
+      } else if (isDataTableFilePath(edit.path)) parseDataTable(edit.content, before ? parseDataTable(before.content).id : undefined);
+      else if (!isMarkdown(edit.path)) throw new Error('此格式当前仅支持查询；可提交 Markdown、对象或数据表修改');
+      const id = randomUUID(), now = Date.now();
+      return parseAssistantSession({ version: 1, external: true, id, workspaceId: this.id, title: `[${batch.operationId.slice(0, 8)}] ${edit.reason.slice(0, 40)}`, revision: 0, createdAt: now, updatedAt: now,
+        messages: [{ id, role: 'assistant', content: `跨文件操作 ${batch.operationId} · ${client.slice(0, 120)}（客户端自报名称）。逐项审阅，非原子事务。`, createdAt: now, state: 'completed',
+          proposals: [{ id, runId: batch.operationId, workspaceId: this.id, kind, path: edit.path, ...(before ? { fileId: before.fileId } : {}), base: before?.content ?? '', content: edit.content, reason: edit.reason, status: 'ready' }] }] });
+    });
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const session of sessions) this.db.prepare('INSERT INTO agent_proposals(id,root,root_key,fingerprint,body) VALUES(?,?,?,?,?)').run(session.id, this.root, rootKey, fingerprint, JSON.stringify(session));
+      this.db.prepare('INSERT INTO gateway_operations VALUES(?,?,?,?,?,?)').run(batch.operationId, this.root, rootKey, fingerprint, JSON.stringify(sessions.map(session => session.id)), Date.now());
+      this.db.exec('COMMIT');
+    } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+    return this.operation(batch.operationId);
+  }
+  operation(operationId: string) {
+    this.assertWorkspace();
+    const record = this.db.prepare('SELECT items FROM gateway_operations WHERE id=? AND root=? AND root_key=?').get(operationId, this.root, `${this.rootIdentity.dev}:${this.rootIdentity.ino}`) as { items: string } | undefined;
+    if (!record) throw new Error('操作不存在于当前工作区');
+    const ids: unknown = JSON.parse(record.items);
+    if (!Array.isArray(ids) || !ids.length || ids.length > 20 || ids.some(id => typeof id !== 'string' || !uuid.test(id)) || new Set(ids).size !== ids.length) throw new Error('操作记录损坏，请保留记录并核对');
+    const items = (ids as string[]).map(id => {
+      const row = this.db.prepare('SELECT status,body FROM agent_proposals WHERE id=?').get(id) as { status: string; body: string };
+      const session = parseAssistantSession(JSON.parse(row.body)), proposal = session.messages[0].proposals![0];
+      this.authorizePath(proposal.path);
+      if (proposal.kind === 'object' && !this.policy.objectTypes.includes(parseObject(proposal.content).type)) throw new Error('对象类型未授权');
+      const verified = row.status === 'applied' && proposal.status === 'applied' && proposal.applied && hash(proposal.applied.after) === proposal.applied.hash;
+      return { proposalId: id, status: row.status === 'ready' ? 'awaiting_review' : row.status === 'applied' && !verified ? 'unknown' : row.status, written: !!verified, proposal };
+    });
+    return { operationId, atomic: false as const, written: items.every(item => item.written), items };
+  }
+  activity(offset = 0, limit = 100) {
+    this.assertWorkspace();
+    const operations = this.db.prepare('SELECT id,created_at FROM gateway_operations WHERE root=? AND root_key=? ORDER BY created_at DESC').all(this.root, `${this.rootIdentity.dev}:${this.rootIdentity.ino}`);
+    const writes = this.db.prepare('SELECT id,path,status,before_hash,after_hash,created_at,error FROM agent_changes WHERE root=? ORDER BY created_at DESC').all(this.root).filter(row => this.policy.directories.some(prefix => !prefix || String(row.path).startsWith(`${prefix}/`)));
+    const page = this.page([...operations.map(row => ({ ...row, id: String(row.id), created_at: Number(row.created_at), kind: 'proposal_batch' })), ...writes.map(row => ({ ...row, id: String(row.id), created_at: Number(row.created_at), kind: 'direct_write' }))].sort((a, b) => b.created_at - a.created_at), offset, limit);
+    return page;
+  }
+  activityDetail(id: string) {
+    this.assertWorkspace();
+    if (!uuid.test(id)) throw new Error('活动标识无效');
+    const row = this.db.prepare('SELECT id,path,status,before_hash,after_hash,before_content,after_content,created_at,error FROM agent_changes WHERE id=? AND root=?').get(id, this.root);
+    if (!row) throw new Error('活动不存在于当前工作区');
+    this.authorizePath(String(row.path));
+    return row;
+  }
   rules() {
     this.assertWorkspace();
     const rules: { path: string; content: string }[] = [];
@@ -229,6 +417,7 @@ export class AgentWorkspace {
     return { workspaceId: this.id, rules };
   }
   propose(operationId: string, path: string, content: string, expectedHash: string | null, reason: string, client: string) {
+    if (this.policy.access === 'read') throw new Error('Agent 只有读取权限');
     this.assertWorkspace();
     if (!uuid.test(operationId) || !reason.trim() || reason.length > 4000 || Buffer.byteLength(content) > previewBytes || text(Buffer.from(content)) !== content)
       throw new Error('建议身份、正文或理由无效');
@@ -300,6 +489,7 @@ export class AgentWorkspace {
     return files.sort((a, b) => a.path.localeCompare(b.path));
   }
   change(path: string, content: string, expectedHash: string | null, client: string) {
+    if (this.policy.access !== 'write') throw new Error('Agent 未获直接写入权限，请提交提案供审阅');
     const bytes = Buffer.from(content);
     if (text(bytes) !== content) throw new Error('正文包含无效 Unicode 字符');
     if (bytes.length > maxBytes) throw new Error('文档超过 8 MiB');
@@ -329,8 +519,8 @@ export class AgentWorkspace {
         Date.now(),
         before?.sha256 ?? null,
         afterHash,
-        before && Buffer.byteLength(before.content) <= previewBytes ? before.content : null,
-        bytes.length <= previewBytes ? content : null,
+        before?.content ?? null,
+        content,
       );
     let temporary: string | undefined;
     let changed = false;
@@ -363,11 +553,6 @@ export class AgentWorkspace {
       temporary = undefined;
       this.db.prepare("UPDATE agent_changes SET status='applied' WHERE id=?").run(id);
       this.db.exec('COMMIT');
-      this.db
-        .prepare(
-          "DELETE FROM agent_changes WHERE status!='prepared' AND id NOT IN (SELECT id FROM agent_changes ORDER BY created_at DESC LIMIT 200)",
-        )
-        .run();
       return { path, sha256: afterHash, changed: true, activityId: id };
     } catch (error) {
       try {

@@ -71,7 +71,7 @@ it('uses named IPC, propagates cancellation, and refuses late results', async ()
   finish({ patch: 'late' }); await pending;
   await expect(services['git.status']!({}, context)).rejects.toThrow();
   expect(invoke).toHaveBeenCalledTimes(2);
-  expect(Object.keys(services)).toEqual(['git.status', 'git.diff']);
+  expect(Object.keys(services)).toEqual(['git.status', 'git.diff', 'git.log', 'sync.open']);
 });
 
 it('binds native calls to the authorized package, denies undeclared commands, and cancels on workspace switch', async () => {

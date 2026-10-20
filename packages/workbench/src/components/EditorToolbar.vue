@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { t } from '../i18n';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import {
   Bold,
   Italic,
@@ -8,11 +9,29 @@ import {
   Sigma,
   AtSign,
   Superscript,
-  ChevronDown,
+  ChevronRight,
+  Check,
+  Heading1,
   Heading2,
+  Heading3,
+  Heading4,
+  Heading,
   List,
+  ListOrdered,
   Quote,
   ListTodo,
+  FileSymlink,
+  Image,
+  Table,
+  Workflow,
+  Info,
+  ListCollapse,
+  Paperclip,
+  PanelsTopLeft,
+  PanelTop,
+  Columns2,
+  Minus,
+  SquareSigma,
   Plus,
   Type,
   Bot,
@@ -30,6 +49,8 @@ import {
 import type { EditorSelectionContext } from '@tano/editor/selection-context';
 import type { DocumentFeatures } from '@tano/editor/runtime';
 import TextStyleMenu from './TextStyleMenu.vue';
+import { formattingShortcuts } from '../shortcuts';
+import { announceToolbarMenuOpen, isAnotherToolbarMenu, toolbarMenuOpenEvent } from '../toolbar-menu';
 
 const props = defineProps<{
   context: EditorSelectionContext;
@@ -41,6 +62,7 @@ const props = defineProps<{
   vertical?: boolean;
   dragging?: boolean;
   assistant?: boolean;
+  assistantDisabled?: boolean;
   annotation?: boolean;
   todo?: boolean;
 }>();
@@ -49,6 +71,69 @@ const root = ref<HTMLElement>();
 const trigger = ref<HTMLButtonElement>();
 const input = ref<HTMLInputElement>();
 const open = ref(false);
+const headingsOpen = ref(false);
+const headingPanel = ref<HTMLElement>();
+const headingGroupId = useId();
+const headingIcons = [Heading1, Heading2, Heading3, Heading4];
+watch(open, () => { headingsOpen.value = false; });
+function headingTrigger() {
+  return root.value?.querySelector<HTMLButtonElement>('[data-heading-trigger]');
+}
+async function openHeadings(focus = false) {
+  const button = headingTrigger();
+  if (!button || button.disabled) return;
+  headingsOpen.value = true;
+  await nextTick();
+  const panel = headingPanel.value;
+  const menu = button.closest('.block-type-menu');
+  if (!panel || !menu) return;
+  const anchor = button.getBoundingClientRect();
+  const bounds = menu.getBoundingClientRect();
+  const parentElement = panel.offsetParent as HTMLElement;
+  const parent = parentElement.getBoundingClientRect();
+  const width = panel.offsetWidth;
+  const right = bounds.right + 4;
+  const left = bounds.left - width - 4;
+  const x = right + width <= window.innerWidth - 8 ? right
+    : left >= 8 ? left : Math.max(8, window.innerWidth - width - 8);
+  const y = Math.max(8, Math.min(anchor.top, window.innerHeight - panel.offsetHeight - 8));
+  panel.style.left = `${x - parent.left - parentElement.clientLeft}px`;
+  panel.style.top = `${y - parent.top - parentElement.clientTop}px`;
+  if (focus) (panel.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')
+    ?? panel.querySelector<HTMLButtonElement>('button'))?.focus();
+}
+function closeHeadings(focus = false) {
+  headingsOpen.value = false;
+  if (focus) headingTrigger()?.focus();
+}
+function headingPanelKey(event: KeyboardEvent) {
+  if (event.key === 'Escape' || event.key === 'ArrowLeft') {
+    event.preventDefault();
+    event.stopPropagation();
+    closeHeadings(true);
+  } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    const buttons = [...headingPanel.value!.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+    const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    buttons[(index + (event.key === 'ArrowDown' ? 1 : buttons.length - 1)) % buttons.length]?.focus();
+  }
+}
+function closeHeadingOnViewportChange() { closeHeadings(); }
+function closeOtherMenu(event: Event) {
+  if (!isAnotherToolbarMenu(event, root.value)) return;
+  close();
+  headingsOpen.value = false;
+}
+onMounted(() => {
+  window.addEventListener('resize', closeHeadingOnViewportChange);
+  window.addEventListener('scroll', closeHeadingOnViewportChange, true);
+  window.addEventListener(toolbarMenuOpenEvent, closeOtherMenu);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', closeHeadingOnViewportChange);
+  window.removeEventListener('scroll', closeHeadingOnViewportChange, true);
+  window.removeEventListener(toolbarMenuOpenEvent, closeOtherMenu);
+});
 const form = ref<'link' | 'mention' | 'image' | 'footnote' | 'file' | 'embed' | null>(null);
 const value = ref('');
 const error = ref('');
@@ -62,11 +147,47 @@ const icons = {
   FootnoteReference: Superscript,
   Mention: AtSign,
 };
-const availableBlocks = computed(() =>
-  blockTypes.filter((item) => commandEnabled(item.command, props.enabledLevels, props.features)),
+const blockIcons = {
+  ObjectReference: FileSymlink,
+  Heading,
+  Paragraph: Type,
+  Quote,
+  BulletList: List,
+  OrderedList: ListOrdered,
+  TodoList: ListTodo,
+  CodeBlock: Code,
+  ImageBlock: Image,
+  Table,
+  MermaidBlock: Workflow,
+  Callout: Info,
+  Toggle: ListCollapse,
+  FileBlock: Paperclip,
+  Embed: PanelTop,
+  Tabs: PanelsTopLeft,
+  Columns: Columns2,
+  HorizontalRule: Minus,
+  MathBlock: SquareSigma,
+};
+const blockMenuGroups = [
+  ['Paragraph', 'Heading'],
+  ['BulletList', 'OrderedList', 'TodoList', 'Quote', 'Callout'],
+  ['ImageBlock', 'FileBlock', 'Embed', 'ObjectReference'],
+  ['Table', 'CodeBlock', 'MermaidBlock', 'MathBlock'],
+  ['Toggle', 'Tabs', 'Columns', 'HorizontalRule'],
+] satisfies (typeof blockTypes)[number]['type'][][];
+const availableBlocks = computed(() => blockMenuGroups
+  .map(types => types
+    .map(type => blockTypes.find(item => item.type === type)!)
+    .filter(item => commandEnabled(item.command, props.enabledLevels, props.features)))
+  .filter(items => items.length > 0)
+  .flatMap((items, groupIndex) => items.map((item, index) => ({
+    ...item,
+    label: t(item.label),
+    separatorBefore: groupIndex > 0 && index === 0,
+  }))),
 );
 const availableInline = computed(() =>
-  inlineTypes.filter((item) => commandEnabled(item.command, props.enabledLevels, props.features)),
+  inlineTypes.map(item => ({ ...item, label: t(item.label) })).filter((item) => commandEnabled(item.command, props.enabledLevels, props.features)),
 );
 const primaryInline = computed(() =>
   props.compact
@@ -78,40 +199,37 @@ const primaryInline = computed(() =>
 const extraInline = computed(() =>
   availableInline.value.filter(
     (item) => props.context.level === 'inline'
-      ? !['bold', 'italic', 'code', 'link'].includes(item.command)
+      ? !['bold', 'italic', 'code', 'link', 'math'].includes(item.command)
       : ['reference', 'mention'].includes(item.command),
   ),
 );
-const blockLabel = computed(() =>
-  props.context.multiple
-    ? '多个块'
-    : (blockTypes.find((item) => item.type === props.context.block)?.label ??
-      (props.context.block === 'FootnoteDefinition'
-        ? '脚注定义'
-        : props.context.block === 'LocalSource'
-          ? '局部源码'
-          : '当前块')),
-);
+const blockLabel = computed(() => {
+  if (props.context.multiple) return t('多个块');
+  const block = blockTypes.find(item => item.type === props.context.block);
+  if (block) return t(block.label);
+  return props.context.block === 'FootnoteDefinition' ? t('脚注定义')
+    : props.context.block === 'LocalSource' ? t('局部源码') : t('当前块');
+});
 const formLabel = computed(
   () =>
     ({
-      link: '链接地址',
-      mention: '文档名称或路径',
-      image: '图片地址',
-      footnote: '脚注内容',
-      file: '附件地址',
-      embed: '嵌入地址',
+      link: t('链接地址'),
+      mention: t('文档名称或路径'),
+      image: t('图片地址'),
+      footnote: t('脚注内容'),
+      file: t('附件地址'),
+      embed: t('嵌入地址'),
     })[form.value ?? 'link'],
 );
 const formHint = computed(
   () =>
     ({
-      link: '填写网址或工作空间内的相对路径；留空可移除链接。',
-      mention: '提及工作空间内的文档，例如：项目/计划。',
-      image: '填写 HTTPS 地址或相对路径，例如：assets/图片.png。',
-      footnote: '在所选文字后添加引用，脚注内容放在文档末尾。',
-      file: '填写工作空间内的相对路径或 HTTPS 地址；也可拖入文件导入附件。',
-      embed: '填写图片、音视频或文件地址。无法内嵌的资源显示可打开的链接卡片。',
+      link: t('填写网址或工作空间内的相对路径；留空可移除链接。'),
+      mention: t('提及工作空间内的文档，例如：项目/计划。'),
+      image: t('填写 HTTPS 地址或相对路径，例如：assets/图片.png。'),
+      footnote: t('在所选文字后添加引用，脚注内容放在文档末尾。'),
+      file: t('填写工作空间内的相对路径或 HTTPS 地址；也可拖入文件导入附件。'),
+      embed: t('填写图片、音视频或文件地址。无法内嵌的资源显示可打开的链接卡片。'),
     })[form.value ?? 'link'],
 );
 function close() {
@@ -121,7 +239,19 @@ function close() {
 }
 watch(() => [props.context.level, props.context.block, props.disabled, props.source, props.dragging], close);
 function outside(event: MouseEvent) {
-  if (!root.value?.contains(event.target as Node)) close();
+  // A menu action can unmount its button before the click reaches window.
+  // The original event path still identifies it as a toolbar click.
+  if (!root.value || !event.composedPath().includes(root.value)) close();
+}
+function toggleBlockMenu() {
+  if (open.value) {
+    open.value = false;
+    form.value = null;
+    return;
+  }
+  announceToolbarMenuOpen(root.value);
+  open.value = true;
+  form.value = null;
 }
 onMounted(() => window.addEventListener('click', outside));
 onBeforeUnmount(() => window.removeEventListener('click', outside));
@@ -142,18 +272,18 @@ function submit() {
   const command = form.value;
   const trimmed = value.value.trim();
   if (command !== 'link' && !trimmed) {
-    error.value = `请填写${formLabel.value}`;
+    error.value = t('请填写{0}', [formLabel.value]);
     return;
   }
   if (
     (command === 'image' || command === 'link' || command === 'file' || command === 'embed') &&
     /^(?!https?:|mailto:|tel:)[a-z][\w+.-]*:/i.test(trimmed)
   ) {
-    error.value = '请使用网页地址或工作空间内的相对路径';
+    error.value = t('请使用网页地址或工作空间内的相对路径');
     return;
   }
   if (command === 'mention' && /[\[\]\r\n|]/.test(trimmed)) {
-    error.value = '文档名称不能包含方括号、竖线或换行';
+    error.value = t('文档名称不能包含方括号、竖线或换行');
     return;
   }
   close();
@@ -187,15 +317,15 @@ function enableEnteringActions(element: Element) {
     role="toolbar"
     :aria-orientation="vertical ? 'vertical' : 'horizontal'"
     :aria-label="
-      source ? 'Markdown 源码' : context.level === 'block' ? '块级编辑工具' : '行内文字工具'
+      source ? t('Markdown 源码') : context.level === 'block' ? t('块级编辑工具') : t('行内文字工具')
     "
     @keydown.esc.stop.prevent="escape"
   >
     <slot name="leading" />
-    <template v-if="source"><span class="document-type">Markdown 源码</span></template>
+    <template v-if="source"><span class="document-type">{{ t('Markdown 源码') }}</span></template>
     <template v-else>
       <span v-if="!compact" class="selection-level"
-        >{{ context.level === 'block' ? '块级' : '文字'
+        >{{ context.level === 'block' ? t('块级') : t('文字')
         }}<small>{{ context.level === 'block' ? 'Block' : 'Text' }}</small></span
       >
       <span v-if="!compact" class="toolbar-divider" />
@@ -205,83 +335,92 @@ function enableEnteringActions(element: Element) {
             ref="trigger"
             type="button"
             class="block-type-trigger"
-            aria-label="块级类型"
-            :title="vertical ? blockLabel : undefined"
+            :class="{ 'icon-button': vertical }"
+            :aria-label="t('块级类型')"
+            :data-tooltip="vertical ? blockLabel : undefined"
             :aria-expanded="open"
             :disabled="disabled"
             @mousedown.prevent
-            @click="
-              open = !open;
-              form = null;
-            "
+            @click="toggleBlockMenu"
           >
             <component v-if="vertical" :is="context.block === 'Heading' ? Heading2 : Type" :size="17" />
-            <span v-else>{{ blockLabel }}</span><small v-if="!compact">Level {{ featureLevel(context.block) }}</small
-            ><ChevronDown :size="13" />
+            <span v-else>{{ blockLabel }}</span><small v-if="!compact">Level {{ featureLevel(context.block) }}</small>
           </button>
           <div
             v-if="open && !disabled"
-            class="dropdown compact-action-menu block-type-menu"
-            aria-label="Block Level 选项"
+            class="dropdown compact-action-menu block-type-menu panel-scrollbar"
+            :aria-label="t('Block Level 选项')"
           >
-            <div class="toolbar-menu-label">块类型 · ＋ 插入新块</div>
-            <div v-if="compact" class="heading-levels" aria-label="标题级别">
+            <template v-for="item in availableBlocks" :key="item.type">
+              <div v-if="item.separatorBefore" class="menu-divider" role="separator" />
               <button
-                v-for="level in 4"
-                :key="level"
+                :data-feature-level="item.level"
+                :data-heading-trigger="item.type === 'Heading' ? '' : undefined"
                 type="button"
-                :aria-label="`${level} 级标题`"
-                :aria-pressed="context.block === 'Heading' && context.headingLevel === level"
-                :disabled="disabled || !context.canTransform"
+                :disabled="!context.canTransform && !insertionCommands.has(item.command) && !wrappingCommands.has(item.command)"
+                :class="{ 'is-current': context.block === item.type }"
+                :aria-pressed="item.type === 'Heading' ? undefined : context.block === item.type"
+                :aria-expanded="item.type === 'Heading' ? headingsOpen : undefined"
+                :aria-controls="item.type === 'Heading' ? headingGroupId : undefined"
+                :data-tooltip="
+                  item.type === 'Heading' ? t('标题级别') : insertionCommands.has(item.command)
+                    ? t('在当前块后插入，空段落会替换')
+                    : item.command === 'mermaid'
+                      ? t('转换为 Mermaid 代码块')
+                      : t('转换当前块')
+                "
                 @mousedown.prevent
-                @click="run('heading', String(level))"
+                @pointerenter="item.type === 'Heading' ? ($event.pointerType === 'mouse' && openHeadings()) : closeHeadings()"
+                @keydown.right="item.type === 'Heading' && ($event.preventDefault(), openHeadings(true))"
+                @click="item.type === 'Heading' ? openHeadings($event.detail === 0) : run(item.command)"
               >
-                H{{ level }}
+                <component :is="blockIcons[item.type]" class="block-type-icon" :size="16" aria-hidden="true" />
+                <span class="block-type-label"
+                  >{{ item.label
+                  }}<small v-if="!compact">{{ item.type }} · Level {{ item.level }}</small></span
+                ><ChevronRight v-if="item.type === 'Heading'" :size="14" aria-hidden="true" />
+                <Plus v-else-if="insertionCommands.has(item.command)" :size="13" aria-hidden="true" />
               </button>
-            </div>
-            <button
-              v-for="item in availableBlocks"
-              :key="item.type"
-              :data-feature-level="item.level"
-              type="button"
-              :disabled="!context.canTransform && !insertionCommands.has(item.command) && !wrappingCommands.has(item.command)"
-              :class="{ 'is-current': context.block === item.type }"
-              :aria-pressed="context.block === item.type"
-              :title="
-                insertionCommands.has(item.command)
-                  ? '在当前块后插入，空段落会替换'
-                  : item.command === 'mermaid'
-                    ? '转换为 Mermaid 代码块'
-                    : '转换当前块'
-              "
-              @mousedown.prevent
-              @click="run(item.command)"
-            >
-              <span
-                >{{ item.label
-                }}<small v-if="!compact">{{ item.type }} · Level {{ item.level }}</small></span
-              ><Plus v-if="insertionCommands.has(item.command)" :size="13" />
-            </button>
-            <select v-if="compact && context.block === 'Callout'" aria-label="提示块类型"
+              <button v-if="item.type === 'Callout'" type="button" data-feature-level="1"
+                @mousedown.prevent @click="run('callout', 'CUSTOM')">
+                <span class="block-type-icon" aria-hidden="true">💡</span>
+                <span class="block-type-label">{{ t('自定义块') }}</span>
+              </button>
+            </template>
+            <select v-if="compact && context.block === 'Callout'" :aria-label="t('提示块类型')"
               :disabled="disabled || !commandEnabled('callout', enabledLevels, features)"
               @change="run('callout', ($event.target as HTMLSelectElement).value)">
-              <option disabled selected value="">提示类型</option>
-              <option value="NOTE">备注</option><option value="TIP">提示</option>
-              <option value="IMPORTANT">重要</option><option value="WARNING">警告</option>
-              <option value="CAUTION">注意</option>
+              <option disabled selected value="">{{ t('提示类型') }}</option>
+              <option value="NOTE">{{ t('备注') }}</option><option value="TIP">{{ t('提示') }}</option>
+              <option value="IMPORTANT">{{ t('重要') }}</option><option value="WARNING">{{ t('警告') }}</option>
+              <option value="CAUTION">{{ t('注意') }}</option>
+              <option value="CUSTOM">{{ t('自定义块') }}</option>
             </select>
+          </div>
+          <div v-if="open && headingsOpen && !disabled" :id="headingGroupId" ref="headingPanel"
+            class="heading-submenu compact-action-menu panel-scrollbar" role="group" :aria-label="t('标题级别')"
+            @keydown="headingPanelKey">
+            <button v-for="(icon, index) in headingIcons" :key="index" type="button"
+              :aria-pressed="context.block === 'Heading' && context.headingLevel === index + 1"
+              :disabled="disabled || !context.canTransform"
+              @mousedown.prevent
+              @click="run('heading', String(index + 1))">
+              <component :is="icon" class="block-type-icon" :size="16" aria-hidden="true" />
+              <span class="block-type-label">{{ t('{0} 级标题', [index + 1]) }}</span>
+              <Check v-if="context.block === 'Heading' && context.headingLevel === index + 1" :size="14" aria-hidden="true" />
+            </button>
           </div>
         </div>
         <div
           v-if="context.block === 'Heading' && !compact"
           class="heading-levels"
-          aria-label="标题级别"
+          :aria-label="t('标题级别')"
         >
           <button
             v-for="level in 4"
             :key="level"
             type="button"
-            :aria-label="`${level} 级标题`"
+            :aria-label="t('{0} 级标题', [level])"
             :aria-pressed="context.headingLevel === level"
             :disabled="disabled"
             @mousedown.prevent
@@ -293,16 +432,16 @@ function enableEnteringActions(element: Element) {
         <template v-else-if="!compact">
           <button
             v-for="item in [
-              { name: 'heading', label: '标题', icon: Heading2 },
-              { name: 'list', label: '无序列表', icon: List },
-              { name: 'todo-list', label: '待办列表', icon: ListTodo },
-              { name: 'quote', label: '引用', icon: Quote },
+              { name: 'heading', label: t('标题'), icon: Heading2 },
+              { name: 'list', label: t('无序列表'), icon: List },
+              { name: 'todo-list', label: t('待办列表'), icon: ListTodo },
+              { name: 'quote', label: t('引用'), icon: Quote },
             ]"
             :key="item.name"
             type="button"
             class="icon-button block-shortcut"
             :aria-label="item.label"
-            :title="item.label"
+            :data-tooltip="item.label"
             :disabled="disabled || !context.canTransform"
             @mousedown.prevent
             @click="run(item.name)"
@@ -333,7 +472,8 @@ function enableEnteringActions(element: Element) {
               class="icon-button"
               :class="{ active: context.activeInline.includes(item.type) }"
               :aria-label="item.label"
-              :title="compact ? item.label : `${item.label} · ${item.type} · Level ${item.level}`"
+              :data-tooltip="item.label"
+              :data-tooltip-shortcut="formattingShortcuts[item.command]"
               :data-feature-level="item.level"
               :aria-pressed="context.activeInline.includes(item.type)"
               :disabled="
@@ -352,9 +492,12 @@ function enableEnteringActions(element: Element) {
       <TextStyleMenu
         v-if="context.level === 'inline' || compact"
         :more="compact"
+        :inline-math="compact && commandEnabled('math', enabledLevels, features)"
+        :text-color="context.textColor"
+        :background-color="context.backgroundColor"
         :dragging="dragging"
         :hide-formats="context.level !== 'inline'"
-        :disabled="disabled || !context.canStyleText || context.inlineSource"
+        :disabled="disabled || (context.level === 'inline' && (!context.canStyleText || context.inlineSource))"
         @format="(name, color) => emit('command', name, color)"
       >
         <template v-if="compact && $slots.preferences" #preferences>
@@ -378,8 +521,8 @@ function enableEnteringActions(element: Element) {
         v-if="!compact && context.level === 'block' && commandEnabled('reference', enabledLevels, features)"
         type="button"
         class="icon-button"
-        aria-label="引用对象或文档"
-        title="@ 引用对象或文档 · Level 2"
+        :aria-label="t('引用对象或文档')"
+        :data-tooltip="t('@ 引用对象或文档 · Level 2')"
         :disabled="disabled"
         @mousedown.prevent
         @click="run('reference')"
@@ -390,8 +533,8 @@ function enableEnteringActions(element: Element) {
         v-if="!compact && context.level === 'block' && commandEnabled('mention', enabledLevels, features)"
         type="button"
         class="icon-button"
-        aria-label="提及文档"
-        title="提及文档或附件 · Level 1"
+        :aria-label="t('提及文档')"
+        :data-tooltip="t('提及文档或附件 · Level 1')"
         :disabled="disabled"
         @mousedown.prevent
         @click="run('mention')"
@@ -400,16 +543,17 @@ function enableEnteringActions(element: Element) {
       </button>
       <select
         v-if="!compact && context.block === 'Callout'"
-        aria-label="提示块类型"
+        :aria-label="t('提示块类型')"
         :disabled="disabled || !commandEnabled('callout', enabledLevels, features)"
         @change="run('callout', ($event.target as HTMLSelectElement).value)"
       >
-        <option disabled selected value="">提示类型</option>
-        <option value="NOTE">备注</option>
-        <option value="TIP">提示</option>
-        <option value="IMPORTANT">重要</option>
-        <option value="WARNING">警告</option>
-        <option value="CAUTION">注意</option>
+        <option disabled selected value="">{{ t('提示类型') }}</option>
+        <option value="NOTE">{{ t('备注') }}</option>
+        <option value="TIP">{{ t('提示') }}</option>
+        <option value="IMPORTANT">{{ t('重要') }}</option>
+        <option value="WARNING">{{ t('警告') }}</option>
+        <option value="CAUTION">{{ t('注意') }}</option>
+        <option value="CUSTOM">{{ t('自定义块') }}</option>
       </select>
       <form
         v-if="form && !disabled"
@@ -425,8 +569,8 @@ function enableEnteringActions(element: Element) {
         <p v-if="error" class="danger-text" role="alert">{{ error }}</p>
         <div>
           <button type="submit" class="primary-button">
-            {{ form === 'link' && !value.trim() ? '移除链接' : '应用' }}</button
-          ><button type="button" class="icon-button" aria-label="取消" @click="escape">
+            {{ form === 'link' && !value.trim() ? t('移除链接') : t('应用') }}</button
+          ><button type="button" class="icon-button" :aria-label="t('取消')" @click="escape">
             <X :size="16" />
           </button>
         </div>
@@ -434,24 +578,72 @@ function enableEnteringActions(element: Element) {
     </template>
     <slot name="trailing" />
     <span v-if="(annotation && !source) || assistant || todo" class="toolbar-divider toolbar-group-divider" aria-hidden="true" />
-    <button v-if="todo && !source" type="button" class="icon-button" aria-label="从选区创建 Todo" title="从选区创建 Todo" :disabled="disabled || !context.textSelected" @mousedown.prevent @click="emit('todo')"><ListTodo :size="17" /></button>
+    <button v-if="todo && !source" type="button" class="icon-button" :aria-label="t('从选区创建 Todo')" :data-tooltip="t('从选区创建 Todo')" :disabled="disabled || !context.textSelected" @mousedown.prevent @click="emit('todo')"><ListTodo :size="17" /></button>
     <button
       v-if="annotation && !source"
       type="button"
       class="icon-button annotation-create-button"
-      aria-label="添加局部批注"
-      title="批注所选文字或当前块"
+      :aria-label="t('添加局部批注')"
+      :data-tooltip="t('批注所选文字或当前块')"
       :disabled="disabled"
       @mousedown.prevent
       @click="emit('annotation')"
     ><MessageSquare :size="17" /></button>
-    <button v-if="assistant" type="button" class="icon-button" aria-label="打开 Tano 助手" title="与助手讨论" @mousedown.prevent @click="emit('assistant')"><Bot :size="16" /></button>
+    <button
+      v-if="assistant"
+      type="button"
+      class="icon-button"
+      :aria-label="t('打开 Tano 助手')"
+      :data-tooltip="assistantDisabled ? t('助手正在处理中') : t('与助手讨论')"
+      :disabled="disabled || assistantDisabled"
+      @mousedown.prevent
+      @click="emit('assistant')"
+    ><Bot :size="16" /></button>
   </div>
 </template>
 
 <style scoped>
 .contextual-toolbar {
+  --editor-tool-radius: 5px;
+  position: relative;
   justify-content: flex-start;
+}
+.contextual-toolbar.editor-toolbar {
+  /* The generic contextual toolbar rule must not cancel the fixed toolbar's
+     sticky positioning when the docking mode switches to the top edge. */
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+.contextual-toolbar :deep(.icon-button:not(.toolbar-drag-handle)) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+  border-radius: var(--editor-tool-radius);
+  color: var(--text-secondary);
+  background: transparent;
+}
+.contextual-toolbar :deep(.icon-button:not(.toolbar-drag-handle) > svg) {
+  width: 17px;
+  height: 17px;
+}
+.contextual-toolbar :deep(.icon-button:not(.toolbar-drag-handle):is(:hover, :focus-visible):not(:disabled)) {
+  background: var(--hover);
+  color: var(--text);
+}
+.contextual-toolbar :deep(.icon-button:not(.toolbar-drag-handle):focus-visible) {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.contextual-toolbar :deep(.icon-button:not(.toolbar-drag-handle)[aria-pressed='true']) {
+  color: var(--green);
+  background: var(--accent);
 }
 .contextual-toolbar .toolbar-group-divider {
   display: block;
@@ -467,6 +659,7 @@ function enableEnteringActions(element: Element) {
   margin: 3px 0;
 }
 .selection-format-toolbar {
+  --editor-tool-radius: 50%;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -486,11 +679,6 @@ function enableEnteringActions(element: Element) {
 }
 .selection-format-toolbar .format-actions {
   gap: 2px;
-}
-.selection-format-toolbar .icon-button:not(.toolbar-drag-handle) {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
 }
 .selection-format-toolbar :deep(.menu-wrap) {
   position: static;
@@ -567,9 +755,6 @@ function enableEnteringActions(element: Element) {
   justify-content: center;
   gap: 0;
 }
-.selection-format-toolbar[aria-orientation='vertical'] .block-type-trigger > svg:last-child {
-  width: 10px;
-}
 .selection-level {
   display: flex;
   align-items: baseline;
@@ -606,18 +791,49 @@ function enableEnteringActions(element: Element) {
   max-height: min(620px, 70vh);
   overflow-y: auto;
 }
-.block-type-menu button {
-  justify-content: space-between;
+.block-type-menu > button,
+.heading-submenu > button {
+  justify-content: flex-start;
+  min-height: 30px;
+  padding: 6px 9px;
+  gap: 10px;
+}
+.block-type-menu .block-type-icon,
+.heading-submenu .block-type-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+.block-type-label {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+.block-type-menu > button > svg:last-child:not(.block-type-icon),
+.heading-submenu > button > svg:last-child:not(.block-type-icon) {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.heading-submenu {
+  position: absolute;
+  z-index: 31;
+  width: 168px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  background: var(--paper);
+}
+.heading-submenu > button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+.heading-submenu > button:hover {
+  background: var(--hover);
 }
 .block-type-menu small {
   margin-left: 8px;
   color: var(--muted);
   font-size: 10px;
-}
-.toolbar-menu-label {
-  color: var(--muted);
-  font-size: 11px;
-  padding: 5px 7px 4px;
 }
 .is-current,
 button[aria-pressed='true'] {
@@ -687,9 +903,6 @@ button[aria-pressed='true'] {
   }
   .inline-actions {
     gap: 1px;
-  }
-  .inline-actions .icon-button {
-    width: 27px;
   }
   .toolbar-input-panel {
     left: 12px;

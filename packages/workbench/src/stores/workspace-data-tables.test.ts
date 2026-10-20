@@ -33,6 +33,24 @@ beforeEach(async () => {
 });
 afterEach(() => store.dispose());
 
+it('persists table appearance across undo, save and reopen', async () => {
+  const id = await store.createDataTable('blank', '项目');
+  store.editDataTable(id, table => { table.icon = '🌿'; table.cover = 'tano:mist'; });
+  expect(store.tabs.find(tab => tab.id === `table:${id}`)?.dataTable?.icon).toBe('🌿');
+  store.undoDataTable(id);
+  expect(store.dataTableRecords.find(record => record.fileId === id)!.draft.icon).toBeUndefined();
+  expect(store.tabs.find(tab => tab.id === `table:${id}`)?.dataTable?.icon).toBeUndefined();
+  store.undoDataTable(id, true);
+  expect(store.tabs.find(tab => tab.id === `table:${id}`)?.dataTable?.icon).toBe('🌿');
+  expect(await store.flush()).toBe(true);
+  const file = store.workspace!.files.find(file => file.id === id)!;
+  expect(parseDataTable((await adapter.read(file.path)).content)).toMatchObject({ icon: '🌿', cover: 'tano:mist' });
+  await store.close(`table:${id}`);
+  await store.openFile(file);
+  expect(store.dataTableRecords.find(record => record.fileId === id)!.draft).toMatchObject({ icon: '🌿', cover: 'tano:mist' });
+  expect(store.tabs.find(tab => tab.id === `table:${id}`)?.dataTable?.icon).toBe('🌿');
+});
+
 it('uses the ordinary file tree lifecycle for tables, retaining the open tab through moves', async () => {
   const id = await store.createDataTable('parts', '项目');
   expect(store.activeId).toBe(`table:${id}`);
@@ -88,6 +106,8 @@ it('opens a second tab when a data table is already open', async () => {
     '项目/未命名数据表.table.json',
   ]);
   expect(store.activeId).toMatch(new RegExp(`^table:${id}:`));
+  store.editDataTable(id, table => { table.icon = '😄'; });
+  expect(store.tabs.map(tab => tab.dataTable?.icon)).toEqual(['😄', '😄']);
   await store.close(store.activeId);
   expect(store.tabs).toHaveLength(1);
   expect(store.activeId).toBe(`table:${id}`);

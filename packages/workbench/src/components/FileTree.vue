@@ -1,11 +1,11 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import {
   ChevronRight,
   ChevronDown,
   Folder,
   FolderOpen,
-  Table2,
   File,
 } from 'lucide-vue-next';
 import {
@@ -183,7 +183,7 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
   <ul
     class="file-tree"
     :role="depth === 0 ? 'tree' : 'group'"
-    :aria-label="depth === 0 ? '文件和文件夹' : undefined"
+    :aria-label="depth === 0 ? t('文件和文件夹') : undefined"
     @contextmenu.self.stop.prevent="emit('contextBlank', parent, $event)"
     @dragover="treeDragOver"
     @dragleave="emit('dragLeave', parent, $event)"
@@ -232,8 +232,8 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
           aria-hidden="true"
         >
           <DocumentFileIcon
-            v-if="file.kind === 'file' && isMarkdown(file.path)"
-            :file="file" :icon="documentIcons?.[file.id]" :load="loadDocumentIcon"
+            v-if="file.kind === 'file' && (isMarkdown(file.path) || isDataTableFilePath(file.path))"
+            :file="file" :icon="documentIcons?.[file.id]" :load="isMarkdown(file.path) ? loadDocumentIcon : undefined"
           />
           <component v-else
             :is="
@@ -241,9 +241,7 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
                 ? isCollapsed(file.path)
                   ? Folder
                   : FolderOpen
-                : isDataTableFilePath(file.path)
-                  ? Table2
-                  : File
+                : File
             "
             :size="16"
             :stroke-width="1.6"

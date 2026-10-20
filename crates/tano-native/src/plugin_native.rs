@@ -152,7 +152,10 @@ fn valid_request(request: &NativeRequest) -> Result<(), String> {
             .integrity
             .bytes()
             .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
-        || !matches!(request.command.as_str(), "git.status" | "git.diff")
+        || !matches!(
+            request.command.as_str(),
+            "git.status" | "git.diff" | "git.log"
+        )
     {
         return Err("插件本机请求无效".into());
     }
@@ -177,7 +180,7 @@ pub(crate) fn policy_for(
     capability: &str,
 ) -> Result<String, String> {
     let path = crate::storage::resolve_storage(root, ".tano/plugins.tano.json", true)?;
-    let content = crate::plugin_git::read_bounded(&path, 2 * 1024 * 1024)?;
+    let content = crate::workspace_git::read_bounded(&path, 2 * 1024 * 1024)?;
     let value: Value = serde_json::from_slice(&content).map_err(|_| "插件规则损坏")?;
     let plugins = value
         .get("plugins")
@@ -232,7 +235,7 @@ pub async fn plugin_native_request(
     request: NativeRequest,
 ) -> Result<Value, String> {
     valid_request(&request)?;
-    let args = crate::plugin_git::parse_args(&request.command, request.args.clone())?;
+    let args = crate::workspace_git::parse_args(&request.command, request.args.clone())?;
     let initial = authorize(&app, &request)?;
     let key = format!("{}:{}", window.label(), request.request_id);
     let state = app.state::<PluginNativeState>();
@@ -247,7 +250,7 @@ pub async fn plugin_native_request(
         let directory = crate::app_data(&app)?.join("plugin-native");
         let stop = stopped.clone();
         let mut prepare = tauri::async_runtime::spawn_blocking(move || {
-            crate::plugin_git::prepare(&root, &directory, &stop)
+            crate::workspace_git::prepare(&root, &directory, &stop)
         });
         let mut ticker = tokio::time::interval(Duration::from_millis(250));
         let timeout = tokio::time::sleep(Duration::from_secs(15));
@@ -269,7 +272,7 @@ pub async fn plugin_native_request(
             }
         };
         check()?;
-        let mut run = Box::pin(crate::plugin_git::query(&prepared, &request.command, args, &stopped));
+        let mut run = Box::pin(crate::workspace_git::query(&prepared, &request.command, args, &stopped));
         loop {
             tokio::select! {
                 result = &mut run => { let result = result?; check()?; return Ok(result); },

@@ -1,4 +1,5 @@
 import type { Node } from '@milkdown/kit/prose/model';
+import { TextSelection } from '@milkdown/kit/prose/state';
 import type { EditorState, Transaction } from '@milkdown/kit/prose/state';
 import { CellSelection, TableMap, moveTableColumn, moveTableRow } from '@milkdown/kit/prose/tables';
 import { closeHistory } from '@milkdown/kit/prose/history';
@@ -7,6 +8,47 @@ import type { TableColor } from '@tano/protocol';
 export type TableAxis = 'row' | 'column';
 export interface TableTarget { pos: number; axis: TableAxis; index: number }
 export type TableAction = 'before' | 'after' | 'duplicate' | 'clear' | 'delete' | 'color' | 'textColor' | 'alignLeft' | 'alignCenter' | 'alignRight' | 'restoreAutoWidth';
+
+/** Enter moves vertically; the last row grows without copying cell content or colors. */
+export function nextTableRow(state: EditorState): Transaction | null {
+  const { selection } = state;
+  if (!(selection instanceof TextSelection)) return null;
+  const { $from, $to } = selection;
+  const cellDepth = $from.depth - 1;
+  if (cellDepth < 1 || !['cell', 'header_cell'].includes($from.node(cellDepth).type.spec.tableRole ?? '') ||
+      $to.depth < cellDepth || $from.node(cellDepth) !== $to.node(cellDepth)) return null;
+  const tableDepth = cellDepth - 2;
+  const table = $from.node(tableDepth);
+  const start = $from.start(tableDepth);
+  const map = TableMap.get(table);
+  const rect = map.findCell($from.before(cellDepth) - start);
+  const tr = state.tr;
+  if (rect.bottom < map.height) {
+    const pos = start + map.positionAt(rect.bottom, rect.left, table);
+    return tr.setSelection(TextSelection.near(tr.doc.resolve(pos + 1))).scrollIntoView();
+  }
+  // Markdown tables have no merged cells. Do not mutate an imported merged table.
+  if (table.content.content.some(row => row.content.content.some(cell => cell.attrs.rowspan !== 1 || cell.attrs.colspan !== 1)))
+    return null;
+  const cells = Array.from({ length: map.width }, (_, col) => {
+    const header = table.nodeAt(map.map[col]!)!;
+    return state.schema.nodes.table_cell!.createAndFill({ alignment: header.attrs.alignment, colwidth: header.attrs.colwidth })!;
+  });
+  const row = state.schema.nodes.table_row!.createChecked(null, cells);
+  const end = $from.end(tableDepth);
+  closeHistory(tr).insert(end, row);
+  const pos = end + 1 + cells.slice(0, rect.left).reduce((size, cell) => size + cell.nodeSize, 0);
+  return tr.setSelection(TextSelection.near(tr.doc.resolve(pos + 1))).scrollIntoView();
+}
+
+export function breakTableCell(state: EditorState): Transaction | null {
+  const { selection } = state;
+  if (!(selection instanceof TextSelection) || !selection.$from.sameParent(selection.$to) ||
+      selection.$from.parent.type.name !== 'paragraph' ||
+      !['cell', 'header_cell'].includes(selection.$from.node(-1).type.spec.tableRole ?? '')) return null;
+  // Avoid the commonmark hardbreak command: it filters tables and turns a second break into a paragraph.
+  return state.tr.replaceSelectionWith(state.schema.nodes.hardbreak!.create(), false).scrollIntoView();
+}
 
 export function tableLineSelection(doc: Node, target: TableTarget): CellSelection | null {
   const table = doc.nodeAt(target.pos);

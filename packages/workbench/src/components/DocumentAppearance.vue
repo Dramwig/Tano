@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { ImagePlus, Link, MessageSquare, Smile, Upload } from 'lucide-vue-next';
 import { safeRemoteImage } from '@tano/protocol';
@@ -27,9 +28,9 @@ const coverPanel = ref<HTMLElement>();
 const coverPanelId = useId();
 const coverLinkInput = ref<HTMLInputElement>();
 const coverTabs = [
-  { id: 'gallery', label: '画廊' },
-  { id: 'upload', label: '上传' },
-  { id: 'link', label: '链接' },
+  { id: 'gallery', get label() { return t('画廊'); } },
+  { id: 'upload', get label() { return t('上传'); } },
+  { id: 'link', get label() { return t('链接'); } },
 ] as const;
 type CoverTab = typeof coverTabs[number]['id'];
 const coverTab = ref<CoverTab>('gallery');
@@ -65,7 +66,7 @@ function capture(key: AppearanceProperty) {
 function save(key: AppearanceProperty, value: string, previous = bases[key]) {
   if (props.readonly || disposed) return false;
   try {
-    if (previous === undefined) throw new Error('请重新打开选择器后重试');
+    if (previous === undefined) throw new Error(t('请重新打开选择器后重试'));
     emit('update:modelValue', updateAppearance(props.modelValue, key, value, previous));
     error.value = '';
     return true;
@@ -138,7 +139,7 @@ function coverTabKeydown(event: KeyboardEvent, current: CoverTab) {
 function submitCoverLink() {
   if (disabled.value) return;
   const url = safeRemoteImage(coverLink.value.trim());
-  if (!url) { error.value = '请输入有效的 HTTPS 图片链接'; return; }
+  if (!url) { error.value = t('请输入有效的 HTTPS 图片链接'); return; }
   selectCover(url);
 }
 function pasteCover(event: ClipboardEvent) {
@@ -156,7 +157,7 @@ async function uploadImage(key: AppearanceProperty, file: File) {
   error.value = '';
   try {
     if (key === 'cover' && (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type) || file.size > 10 * 1024 * 1024))
-      throw new Error('请选择不超过 10 MB 的 PNG、JPEG、WebP 或 GIF 图片。');
+      throw new Error(t('请选择不超过 10 MB 的 PNG、JPEG、WebP 或 GIF 图片。'));
     const value = key === 'icon' ? await iconImage(file)
       : props.uploadCover ? (await props.uploadCover(file)).url : await embeddedCoverImage(file);
     if (save(key, value, previous) && key === 'cover') {
@@ -211,55 +212,55 @@ onBeforeUnmount(() => {
 <template>
   <div class="document-appearance" :class="{ 'is-open': iconOpen || coverOpen || busy, 'has-cover': !!cover, 'has-icon': !!icon }">
     <div v-if="cover" class="document-cover" :class="{ 'is-specimen': coverPreset?.presentation === 'specimen' }" :style="coverPreset ? { background: coverPreset.background } : undefined">
-      <img v-if="coverUrl && !imageFailed" :src="coverUrl" alt="文档封面" :title="coverPreset ? coverCaption(coverPreset) : undefined" :style="{ objectPosition: coverPreset?.objectPosition }" @error="imageFailed = true" />
-      <span v-else-if="!coverPreset || coverPreset.image" class="document-cover-unavailable">封面图片无法显示</span>
+      <img v-if="coverUrl && !imageFailed" :src="coverUrl" :alt="t('文档封面')" :title="coverPreset ? coverCaption(coverPreset) : undefined" :style="{ objectPosition: coverPreset?.objectPosition }" @error="imageFailed = true" />
+      <span v-else-if="!coverPreset || coverPreset.image" class="document-cover-unavailable">{{ t('封面图片无法显示') }}</span>
     </div>
     <button v-if="!readonly && cover" ref="changeCoverTrigger" type="button" class="document-title-action document-cover-trigger" :disabled="disabled" aria-haspopup="dialog"
       :aria-expanded="coverOpen" :aria-controls="coverPanelId" @click="toggleCover">
-      <ImagePlus :size="15" aria-hidden="true" /><span>更换封面</span>
+      <ImagePlus :size="15" aria-hidden="true" /><span>{{ t('更换封面') }}</span>
     </button>
     <div class="document-appearance-content">
     <div v-if="icon" class="document-page-icon">
-      <WorkspaceIconPicker v-if="!readonly" :icon="icon" :mode="mode" label="文档图标" align="start" trigger-class="document-icon-trigger"
+      <WorkspaceIconPicker v-if="!readonly" :icon="icon" :mode="mode" :label="t('文档图标')" align="start" trigger-class="document-icon-trigger"
         :disabled="disabled" @update:open="iconOpened" @select="save('icon', $event)" @upload="iconInput?.click()" @paste-image="uploadImage('icon', $event)">
         <template #preview><WorkspaceIcon :icon="icon" :size="56" /></template>
       </WorkspaceIconPicker>
       <WorkspaceIcon v-else :icon="icon" :size="56" />
     </div>
-    <div v-if="!readonly" class="document-title-actions" role="group" aria-label="文档外观与评论">
-      <WorkspaceIconPicker v-if="!icon" :icon="icon" :mode="mode" label="文档图标" align="start" trigger-class="document-title-action"
+    <div v-if="!readonly" class="document-title-actions" role="group" :aria-label="t('文档外观与评论')">
+      <WorkspaceIconPicker v-if="!icon" :icon="icon" :mode="mode" :label="t('文档图标')" align="start" trigger-class="document-title-action"
         :disabled="disabled" @update:open="iconOpened" @select="save('icon', $event)" @upload="iconInput?.click()" @paste-image="uploadImage('icon', $event)">
-        <template #preview><Smile :size="15" aria-hidden="true" /><span>添加图标</span></template>
+        <template #preview><Smile :size="15" aria-hidden="true" /><span>{{ t('添加图标') }}</span></template>
       </WorkspaceIconPicker>
       <button v-if="!cover" ref="addCoverTrigger" type="button" class="document-title-action" :disabled="disabled" aria-haspopup="dialog"
         :aria-expanded="coverOpen" :aria-controls="coverPanelId" @click="toggleCover">
-        <ImagePlus :size="15" aria-hidden="true" /><span>添加封面</span>
+        <ImagePlus :size="15" aria-hidden="true" /><span>{{ t('添加封面') }}</span>
       </button>
-      <button type="button" class="document-title-action" @click="emit('comment')"><MessageSquare :size="15" aria-hidden="true" /><span>添加评论</span></button>
+      <button type="button" class="document-title-action" @click="emit('comment')"><MessageSquare :size="15" aria-hidden="true" /><span>{{ t('添加评论') }}</span></button>
     </div>
     <div v-else class="document-title-actions document-title-actions-placeholder" aria-hidden="true"></div>
-    <input ref="iconInput" hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" aria-label="上传文档图标" :disabled="disabled" @change="fileChanged('icon', $event)" />
-    <input ref="coverInput" hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" aria-label="上传文档封面" :disabled="disabled" @change="fileChanged('cover', $event)" />
+    <input ref="iconInput" hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" :aria-label="t('上传文档图标')" :disabled="disabled" @change="fileChanged('icon', $event)" />
+    <input ref="coverInput" hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" :aria-label="t('上传文档封面')" :disabled="disabled" @change="fileChanged('cover', $event)" />
     <p v-if="error && !coverOpen" class="document-appearance-error" role="alert">{{ error }}</p>
     </div>
     <Teleport to="body">
-      <section v-if="coverOpen" :id="coverPanelId" ref="coverPanel" class="workspace-icon-picker document-cover-picker" role="dialog" aria-label="文档封面"
+      <section v-if="coverOpen" :id="coverPanelId" ref="coverPanel" class="workspace-icon-picker document-cover-picker" role="dialog" :aria-label="t('文档封面')"
         :style="{ left: `${coverPosition.left}px`, top: `${coverPosition.top}px`, width: `${coverPosition.width}px`, maxHeight: `${coverPosition.maxHeight}px` }"
         :aria-busy="busy" @keydown="coverKeydown" @paste="pasteCover">
         <header class="workspace-icon-picker-header">
-          <div class="workspace-icon-picker-tabs" role="tablist" aria-label="封面来源">
+          <div class="workspace-icon-picker-tabs" role="tablist" :aria-label="t('封面来源')">
             <button v-for="item in coverTabs" :id="`${coverPanelId}-${item.id}-tab`" :key="item.id" type="button" role="tab" :data-tab="item.id"
               :aria-selected="coverTab === item.id" :aria-controls="`${coverPanelId}-content`" :tabindex="coverTab === item.id ? 0 : -1"
               @click="changeCoverTab(item.id)" @keydown="coverTabKeydown($event, item.id)">{{ item.label }}</button>
           </div>
-          <button type="button" class="workspace-icon-picker-remove" aria-label="移除封面" :disabled="disabled || !cover" @click="selectCover('')">移除</button>
+          <button type="button" class="workspace-icon-picker-remove" :aria-label="t('移除封面')" :disabled="disabled || !cover" @click="selectCover('')">{{ t('移除') }}</button>
         </header>
         <div :id="`${coverPanelId}-content`" class="document-cover-picker-content" role="tabpanel" :aria-labelledby="`${coverPanelId}-${coverTab}-tab`">
           <div v-if="coverTab === 'gallery'" class="document-cover-gallery">
             <section v-for="group in documentCoverGroups" :key="group.id" class="document-cover-group" :aria-labelledby="`${coverPanelId}-${group.id}-heading`">
               <h4 :id="`${coverPanelId}-${group.id}-heading`">{{ group.label }}</h4>
               <div class="document-cover-presets" :class="{ 'document-cover-colors': group.id === 'colors' }">
-                <button v-for="item in group.covers" :key="item.value" type="button" :aria-label="`使用封面：${item.label}`" :title="coverCaption(item)"
+                <button v-for="item in group.covers" :key="item.value" type="button" :aria-label="t('使用封面：{0}', [item.label])" :data-tooltip="coverCaption(item)"
                   :class="{ 'is-specimen': item.presentation === 'specimen' }"
                   :aria-pressed="cover === item.value" :disabled="disabled" :style="{ background: item.background }" @click="selectCover(item.value)">
                   <img v-if="item.thumbnail" :src="item.thumbnail" :style="{ objectPosition: item.objectPosition }" alt="" loading="lazy" decoding="async" draggable="false" />
@@ -270,20 +271,20 @@ onBeforeUnmount(() => {
           <div v-else-if="coverTab === 'upload'" class="workspace-icon-picker-upload document-cover-upload" tabindex="-1"
             @pointerdown="($event.currentTarget as HTMLElement).focus({ preventScroll: true })">
             <div class="workspace-icon-picker-upload-symbol" aria-hidden="true"><Upload :size="24" /></div>
-            <p class="workspace-icon-picker-upload-title">上传封面图片</p>
+            <p class="workspace-icon-picker-upload-title">{{ t('上传封面图片') }}</p>
             <div class="workspace-icon-picker-upload-actions">
-              <button type="button" class="settings-button" :disabled="disabled" @click="coverInput?.click()">{{ busy ? '正在上传…' : '选择图片' }}</button>
-              <p class="workspace-icon-picker-upload-paste">或按 <kbd>Ctrl+V</kbd> 粘贴图片</p>
+              <button type="button" class="settings-button" :disabled="disabled" @click="coverInput?.click()">{{ busy ? t('正在上传…') : t('选择图片') }}</button>
+              <p class="workspace-icon-picker-upload-paste">{{ t('或按') }} <kbd>Ctrl+V</kbd> {{ t('粘贴图片') }}</p>
             </div>
-            <p class="document-cover-hint">支持 PNG、JPEG、WebP、GIF，最大 10 MB</p>
+            <p class="document-cover-hint">{{ t('支持 PNG、JPEG、WebP、GIF，最大 10 MB') }}</p>
           </div>
           <form v-else class="document-cover-link" @submit.prevent="submitCoverLink">
-            <label :for="`${coverPanelId}-url`">图片链接</label>
+            <label :for="`${coverPanelId}-url`">{{ t('图片链接') }}</label>
             <div class="document-cover-link-field"><Link :size="16" aria-hidden="true" /><input :id="`${coverPanelId}-url`" ref="coverLinkInput" v-model="coverLink"
-              type="text" inputmode="url" placeholder="粘贴 HTTPS 图片链接…" autocomplete="off" :disabled="disabled" :aria-invalid="!!error"
+              type="text" inputmode="url" :placeholder="t('粘贴 HTTPS 图片链接…')" autocomplete="off" :disabled="disabled" :aria-invalid="!!error"
               :aria-describedby="error ? `${coverPanelId}-error` : undefined" @input="error = ''" /></div>
-            <button type="submit" class="settings-button" :disabled="disabled || !coverLink.trim()">应用封面</button>
-            <p class="document-cover-hint">使用可公开访问的 HTTPS 图片链接</p>
+            <button type="submit" class="settings-button" :disabled="disabled || !coverLink.trim()">{{ t('应用封面') }}</button>
+            <p class="document-cover-hint">{{ t('使用可公开访问的 HTTPS 图片链接') }}</p>
           </form>
           <p v-if="error" :id="`${coverPanelId}-error`" class="document-appearance-error" role="alert">{{ error }}</p>
         </div>
@@ -307,7 +308,7 @@ onBeforeUnmount(() => {
 .document-cover img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }
 .document-cover-unavailable { color: var(--muted); font-size: 13px; }
 .document-appearance.has-cover .document-appearance-content { padding-top: 24px; }
-.document-appearance.has-cover.has-icon .document-page-icon { position: relative; margin-top: -56px; margin-bottom: 22px; }
+.document-appearance.has-cover.has-icon .document-page-icon { position: relative; margin-top: -56px; margin-bottom: 12px; }
 .document-appearance.has-cover .document-appearance-content:not(:has(.document-title-actions)) { padding-bottom: 36px; }
 .document-page-icon { display: flex; align-items: center; width: 64px; height: 64px; margin-bottom: 10px; border-radius: 8px; }
 .settings-button.workspace-icon-preview.document-icon-trigger { width: 64px; height: 64px; padding: 4px; border: 0; border-radius: 8px; background: transparent; box-shadow: none; }

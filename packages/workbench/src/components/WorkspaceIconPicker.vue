@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t, uiLocale } from '../i18n';
+import englishIconLabels from '../locales/icon-labels-en.json';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { Search, Upload } from 'lucide-vue-next';
 import WorkspaceIcon from './WorkspaceIcon.vue';
@@ -11,7 +13,9 @@ const props = withDefaults(defineProps<{
   label?: string;
   triggerClass?: string;
   align?: 'start' | 'end';
-}>(), { label: '工作区图标', align: 'end' });
+  allowUpload?: boolean;
+}>(), { align: 'end', allowUpload: true });
+const label = computed(() => props.label ?? t('工作区图标'));
 const emit = defineEmits<{ select: [value: string]; upload: []; pasteImage: [file: File]; 'update:open': [value: boolean] }>();
 const pickerId = useId();
 const trigger = ref<HTMLButtonElement>();
@@ -21,17 +25,23 @@ const scrollArea = ref<HTMLElement>();
 const open = ref(false);
 watch(open, value => emit('update:open', value), { flush: 'sync' });
 const tabs = [
-  { id: 'emoji', label: '表情符号' },
-  { id: 'icons', label: '图标' },
-  { id: 'upload', label: '上传' },
+  { id: 'emoji', get label() { return t('表情符号'); } },
+  { id: 'icons', get label() { return t('图标'); } },
+  { id: 'upload', get label() { return t('上传'); } },
 ] as const;
+const visibleTabs = computed(() => tabs.filter(item => props.allowUpload || item.id !== 'upload'));
 type Tab = typeof tabs[number]['id'];
 const tab = ref<Tab>('emoji');
 const query = ref('');
 const currentCategory = ref('');
 const focusedIcon = ref('');
 const position = ref({ left: 8, top: 8, width: 392, maxHeight: 440 });
-const groups = computed(() => tab.value === 'icons' ? workspaceBuiltinIconGroups : workspaceEmojiGroups);
+const groups = computed(() => (tab.value === 'icons' ? workspaceBuiltinIconGroups : workspaceEmojiGroups).map(group => ({
+  ...group, label: t(group.label),
+  icons: group.icons.map(icon => ({ ...icon,
+    label: uiLocale.value === 'en-US' ? (englishIconLabels as Record<string, string>)[icon.value] ?? icon.value : icon.label,
+  })),
+})));
 const filteredGroups = computed(() => filterWorkspaceIconGroups(groups.value, query.value));
 const activeIcon = computed(() => {
   const choices = filteredGroups.value.flatMap(group => group.icons);
@@ -130,14 +140,15 @@ function changeTab(value: Tab) {
   void nextTick().then(place);
 }
 function tabKeydown(event: KeyboardEvent, current: Tab) {
-  let index = tabs.findIndex(item => item.id === current);
-  if (event.key === 'ArrowRight') index = (index + 1) % tabs.length;
-  else if (event.key === 'ArrowLeft') index = (index + tabs.length - 1) % tabs.length;
+  const choices = visibleTabs.value;
+  let index = choices.findIndex(item => item.id === current);
+  if (event.key === 'ArrowRight') index = (index + 1) % choices.length;
+  else if (event.key === 'ArrowLeft') index = (index + choices.length - 1) % choices.length;
   else if (event.key === 'Home') index = 0;
-  else if (event.key === 'End') index = tabs.length - 1;
+  else if (event.key === 'End') index = choices.length - 1;
   else return;
   event.preventDefault();
-  const value = tabs[index]!.id;
+  const value = choices[index]!.id;
   changeTab(value);
   panel.value?.querySelector<HTMLButtonElement>(`[data-tab="${value}"]`)?.focus();
 }
@@ -196,7 +207,7 @@ onBeforeUnmount(() => {
 <template>
   <button
     ref="trigger" type="button" class="settings-button workspace-icon-preview" :class="triggerClass"
-    :aria-label="`选择${label}`" :title="`选择${label}`" aria-haspopup="dialog" :aria-expanded="open"
+    :aria-label="t('选择{0}', [label])" :data-tooltip="t('选择{0}', [label])" aria-haspopup="dialog" :aria-expanded="open"
     :aria-controls="pickerId" :disabled="disabled" @click="toggle"
   ><slot name="preview"><WorkspaceIcon :icon="icon" :mode="mode" :size="28" /></slot></button>
   <Teleport to="body">
@@ -207,35 +218,35 @@ onBeforeUnmount(() => {
       }" @keydown="keydown" @paste="pasteImage"
     >
       <header class="workspace-icon-picker-header">
-        <div class="workspace-icon-picker-tabs" role="tablist" aria-label="图标类型">
+        <div class="workspace-icon-picker-tabs" role="tablist" :aria-label="t('图标类型')">
           <button
-            v-for="item in tabs" :id="`${pickerId}-${item.id}-tab`" :key="item.id" type="button"
+            v-for="item in visibleTabs" :id="`${pickerId}-${item.id}-tab`" :key="item.id" type="button"
             role="tab" :data-tab="item.id" :aria-selected="tab === item.id" :aria-controls="`${pickerId}-content`"
             :tabindex="tab === item.id ? 0 : -1" @click="changeTab(item.id)" @keydown="tabKeydown($event, item.id)"
           >{{ item.label }}</button>
         </div>
-        <button type="button" class="workspace-icon-picker-remove" :disabled="disabled || !icon" @click="select('')">移除</button>
+        <button type="button" class="workspace-icon-picker-remove" :disabled="disabled || !icon" @click="select('')">{{ t('移除') }}</button>
       </header>
       <div :id="`${pickerId}-content`" class="workspace-icon-picker-content" role="tabpanel" :aria-labelledby="`${pickerId}-${tab}-tab`">
         <template v-if="tab !== 'upload'">
-          <label class="workspace-icon-picker-search"><Search :size="15" aria-hidden="true" /><input ref="searchInput" v-model="query" aria-label="筛选图标" placeholder="筛选…" /></label>
+          <label class="workspace-icon-picker-search"><Search :size="15" aria-hidden="true" /><input ref="searchInput" v-model="query" :aria-label="t('筛选图标')" :placeholder="t('筛选…')" /></label>
           <div ref="scrollArea" class="workspace-icon-picker-scroll" @scroll="syncCategory">
             <section v-for="group in filteredGroups" :id="`${pickerId}-${group.id}`" :key="group.id" class="workspace-icon-picker-group" :data-category="group.id" :aria-label="group.label">
               <h4>{{ group.label }}</h4>
               <div class="workspace-icon-picker-grid">
                 <button
                   v-for="choice in group.icons" :key="choice.value" type="button" data-icon-choice
-                  :data-icon-value="choice.value" :aria-label="`使用图标：${choice.label}`" :title="choice.label"
+                  :data-icon-value="choice.value" :aria-label="t('使用图标：{0}', [choice.label])" :data-tooltip="choice.label"
                   :aria-pressed="icon === choice.value" :tabindex="activeIcon === choice.value ? 0 : -1"
                   :disabled="disabled" @click="select(choice.value)" @focus="focusedIcon = choice.value"
                 ><WorkspaceIcon :icon="choice.value" :size="23" /></button>
               </div>
             </section>
-            <p v-if="!filteredGroups.length" class="workspace-icon-picker-empty" role="status">没有找到匹配的图标</p>
+            <p v-if="!filteredGroups.length" class="workspace-icon-picker-empty" role="status">{{ t('没有找到匹配的图标') }}</p>
           </div>
-          <nav v-if="filteredGroups.length" class="workspace-icon-picker-categories" aria-label="图标分类目录">
+          <nav v-if="filteredGroups.length" class="workspace-icon-picker-categories" :aria-label="t('图标分类目录')">
             <button
-              v-for="group in filteredGroups" :key="group.id" type="button" :aria-label="group.label" :title="group.label"
+              v-for="group in filteredGroups" :key="group.id" type="button" :aria-label="group.label" :data-tooltip="group.label"
               :aria-controls="`${pickerId}-${group.id}`" :aria-current="currentCategory === group.id ? 'location' : undefined"
               @click="scrollToCategory(group.id)"
             ><WorkspaceIcon :icon="group.symbol" :size="18" /></button>
@@ -243,10 +254,10 @@ onBeforeUnmount(() => {
         </template>
         <div v-else class="workspace-icon-picker-upload" tabindex="-1" @pointerdown="focusUpload">
           <div class="workspace-icon-picker-upload-symbol" aria-hidden="true"><Upload :size="24" /></div>
-          <p class="workspace-icon-picker-upload-title">上传{{ label }}</p>
+          <p class="workspace-icon-picker-upload-title">{{ t('上传{0}', [label]) }}</p>
           <div class="workspace-icon-picker-upload-actions">
-            <button type="button" class="settings-button" :disabled="disabled" @click="upload">选择图片</button>
-            <p class="workspace-icon-picker-upload-paste">或按 <kbd>Ctrl+V</kbd> 粘贴图片</p>
+            <button type="button" class="settings-button" :disabled="disabled" @click="upload">{{ t('选择图片') }}</button>
+            <p class="workspace-icon-picker-upload-paste">{{ t('或按') }} <kbd>Ctrl+V</kbd> {{ t('粘贴图片') }}</p>
           </div>
         </div>
       </div>

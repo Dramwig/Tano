@@ -63,6 +63,8 @@ export interface DataTable {
   id: string;
   name: string;
   archived: boolean;
+  icon?: string;
+  cover?: string;
   fields: DataField[];
   rows: DataRow[];
   views: DataView[];
@@ -171,6 +173,8 @@ export function parseDataTable(content: string, expectedId?: string): DataTable 
     typeof table.archived !== 'boolean'
   )
     fail('版本、身份或名称');
+  if (['icon', 'cover'].some(key => table[key as 'icon' | 'cover'] !== undefined &&
+    typeof table[key as 'icon' | 'cover'] !== 'string')) fail('图标或封面');
   if (
     !Array.isArray(table.fields) ||
     !table.fields.length ||

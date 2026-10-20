@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   ArrowDown,
@@ -48,13 +49,13 @@ const matches = computed(() => {
 });
 type Choice = { id: string; label: string; group: string; file?: FileEntry };
 const choices = computed<Choice[]>(() => [
-  ...(!store.workspace?.readOnly ? [{ id: 'create', label: '新建文档', group: '' }] : []),
-  ...(!store.workspace?.readOnly ? [{ id: 'create-table', label: '新建数据表', group: '' }] : []),
+  ...(!store.workspace?.readOnly ? [{ id: 'create', get label() { return t('新建文档'); }, group: '' }] : []),
+  ...(!store.workspace?.readOnly ? [{ id: 'create-table', get label() { return t('新建数据表'); }, group: '' }] : []),
   ...matches.value.slice(0, 60).map((file) => ({
     id: `file-${file.id}`,
     label: title(file.path),
     file,
-    group: query.value.trim() ? '搜索结果' : openIds.value.has(file.id) ? '已打开' : '最近修改',
+    group: query.value.trim() ? t('搜索结果') : openIds.value.has(file.id) ? t('已打开') : t('最近修改'),
   })),
 ]);
 
@@ -96,7 +97,7 @@ async function choose(choice: Choice) {
         : choice.file?.id)
     )
       emit('close');
-    else error.value = store.fatal || '无法打开此内容，请重试。';
+    else error.value = store.fatal || t('无法打开此内容，请重试。');
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : String(cause);
   } finally {
@@ -129,14 +130,14 @@ async function onSearchKeydown(event: KeyboardEvent) {
       @mousedown.self="emit('close')"
       @keydown.esc.stop.prevent="emit('close')"
     >
-      <section class="modal new-tab-picker" role="dialog" aria-modal="true" aria-label="打开文件">
+      <section class="modal new-tab-picker" role="dialog" aria-modal="true" :aria-label="t('打开文件')">
         <div class="new-tab-search">
           <Search :size="21" :stroke-width="1.6" />
           <input
             ref="input"
             v-model="query"
-            placeholder="在当前标签页中打开…"
-            aria-label="搜索文档标题或路径"
+            :placeholder="t('在当前标签页中打开…')"
+            :aria-label="t('搜索文档标题或路径')"
             role="combobox"
             aria-autocomplete="list"
             aria-expanded="true"
@@ -146,8 +147,8 @@ async function onSearchKeydown(event: KeyboardEvent) {
           />
           <button
             class="icon-button"
-            aria-label="关闭打开文件面板"
-            title="关闭 · Esc"
+            :aria-label="t('关闭打开文件面板')"
+            :data-tooltip="t('关闭 · Esc')"
             @click="emit('close')"
           >
             <X :size="17" />
@@ -155,14 +156,14 @@ async function onSearchKeydown(event: KeyboardEvent) {
         </div>
         <div class="new-tab-context">
           <BookOpen :size="14" /><span>{{ store.workspace?.name }}</span
-          ><i />按标题或路径搜索
+          ><i />{{ t('按标题或路径搜索') }}
         </div>
         <div
           id="new-tab-choices"
           ref="list"
           class="new-tab-choices"
           role="listbox"
-          aria-label="选择要打开的文档"
+          :aria-label="t('选择要打开的文档')"
           :aria-busy="opening"
         >
           <template v-for="(choice, index) in choices" :key="choice.id">
@@ -181,7 +182,7 @@ async function onSearchKeydown(event: KeyboardEvent) {
               role="option"
               :aria-selected="selected === index"
               :disabled="opening || store.busy"
-              :title="choice.file?.path"
+              :data-tooltip="choice.file?.path"
               @pointermove="selected = index"
               @focus="selected = index"
               @click="choose(choice)"
@@ -205,29 +206,29 @@ async function onSearchKeydown(event: KeyboardEvent) {
                   : store.workspace?.name
               }}</span>
               <span v-if="choice.file && openIds.has(choice.file.id)" class="new-tab-open-label"
-                >已打开</span
+                >{{ t('已打开') }}</span
               >
               <CornerDownLeft v-if="selected === index" class="new-tab-enter" :size="14" />
             </button>
           </template>
           <div v-if="!matches.length" class="new-tab-empty">
             <Search :size="26" :stroke-width="1.3" />
-            <p>{{ query.trim() ? '没有找到匹配的文档' : '工作区里还没有文档' }}</p>
+            <p>{{ query.trim() ? t('没有找到匹配的文档') : t('工作区里还没有文档') }}</p>
             <span>{{
               query.trim()
-                ? '试试其他标题或文件夹名称'
+                ? t('试试其他标题或文件夹名称')
                 : store.workspace?.readOnly
-                  ? '这是一个只读工作区'
-                  : '从新建一篇文档开始'
+                  ? t('这是一个只读工作区')
+                  : t('从新建一篇文档开始')
             }}</span>
           </div>
         </div>
         <p v-if="error" class="new-tab-error" role="alert">{{ error }}</p>
         <footer class="new-tab-footer">
-          <span><ArrowUp :size="12" /><ArrowDown :size="12" />选择</span
-          ><span><CornerDownLeft :size="13" />打开</span><span>Esc 关闭</span
+          <span><ArrowUp :size="12" /><ArrowDown :size="12" />{{ t('选择') }}</span
+          ><span><CornerDownLeft :size="13" />{{ t('打开') }}</span><span>{{ t('Esc 关闭') }}</span
           ><span class="new-tab-count">{{
-            opening ? '正在打开…' : `${Math.min(matches.length, 60)} / ${matches.length} 篇文档`
+            opening ? t('正在打开…') : t('{0} / {1} 篇文档', [Math.min(matches.length, 60), matches.length])
           }}</span>
         </footer>
       </section>

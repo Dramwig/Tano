@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, ref, watch } from 'vue';
 import { ArrowRight, ExternalLink } from 'lucide-vue-next';
 import { parseObject } from '@tano/protocol';
@@ -26,17 +27,17 @@ watch(() => JSON.stringify([duplicates.value.map(target => [target.id, target.na
 watch([duplicates, confirmed], () => emit('ready', !duplicates.value.length || confirmed.value), { immediate: true });
 function planned(properties: Record<string, unknown>) {
   const value = readPlanDate(properties);
-  return value.date ? `${value.date}${value.time ? ` ${value.time}` : ''}${value.end ? ` 至 ${value.end}` : ''}` : '未安排';
+  return value.date ? `${value.date}${value.time ? ` ${value.time}` : ''}${value.end ? t(' 至 {0}', [value.end]) : ''}` : t('未安排');
 }
 const fields = computed(() => {
   if (!data.value) return [];
   const { before, after } = data.value;
-  const status = (object: typeof after) => taskCompleted({ ...object, workspace: '', path: '' }) ? '已完成' : '待处理';
+  const status = (object: typeof after) => taskCompleted({ ...object, workspace: '', path: '' }) ? t('已完成') : t('待处理');
   const values = [
-    ['名称', before?.name ?? '未创建', after.name],
-    ['计划日期', before ? planned(before.properties) : '未安排', planned(after.properties)],
-    ['截止日期', String(before?.properties.due ?? '未设置'), String(after.properties.due ?? '未设置')],
-    ['状态', before ? status(before) : '未创建', status(after)],
+    [t('名称'), before?.name ?? t('未创建'), after.name],
+    [t('计划日期'), before ? planned(before.properties) : t('未安排'), planned(after.properties)],
+    [t('截止日期'), String(before?.properties.due ?? t('未设置')), String(after.properties.due ?? t('未设置'))],
+    [t('状态'), before ? status(before) : t('未创建'), status(after)],
   ];
   return values.filter(([, old, next]) => !before || old !== next).map(([label, old, next]) => ({ label, old, next }));
 });
@@ -44,9 +45,9 @@ const fields = computed(() => {
 
 <template>
   <div v-if="data" class="task-proposal-preview">
-    <div class="task-proposal-title"><strong>{{ proposal.base ? '更新已有任务' : duplicates.length ? '可能重复的新增任务' : '新增任务' }}</strong><button v-if="proposal.base" type="button" title="打开原任务" @click="emit('openReference', data.after)"><ExternalLink :size="13" />原任务</button></div>
+    <div class="task-proposal-title"><strong>{{ proposal.base ? t('更新已有任务') : duplicates.length ? t('可能重复的新增任务') : t('新增任务') }}</strong><button v-if="proposal.base" type="button" :data-tooltip="t('打开原任务')" @click="emit('openReference', data.after)"><ExternalLink :size="13" />{{ t('原任务') }}</button></div>
     <dl><template v-for="field in fields" :key="field.label"><dt>{{ field.label }}</dt><dd><span>{{ field.old }}</span><ArrowRight :size="13" /><strong>{{ field.next }}</strong></dd></template></dl>
-    <div v-if="duplicates.length" class="task-duplicates" role="status"><p>可能重复</p><button v-for="task in duplicates" :key="task.id" type="button" @click="emit('openReference', task)"><ExternalLink :size="13" />{{ task.name }} · {{ taskCompleted(task) ? '已完成' : '未完成' }}</button><label v-if="proposal.preview && proposal.status === 'ready'"><input v-model="confirmed" type="checkbox" />仍然创建新任务</label></div>
+    <div v-if="duplicates.length" class="task-duplicates" role="status"><p>{{ t('可能重复') }}</p><button v-for="task in duplicates" :key="task.id" type="button" @click="emit('openReference', task)"><ExternalLink :size="13" />{{ task.name }} · {{ taskCompleted(task) ? t('已完成') : t('未完成') }}</button><label v-if="proposal.preview && proposal.status === 'ready'"><input v-model="confirmed" type="checkbox" />{{ t('仍然创建新任务') }}</label></div>
   </div>
 </template>
 

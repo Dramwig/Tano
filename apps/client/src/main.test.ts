@@ -99,6 +99,22 @@ it('does not mount a late workbench import over native timeout recovery', async 
   expect(document.getElementById('tano-startup-retry')?.hidden).toBe(false);
 });
 
+it('uses the saved English preference for startup, slow loading and timeout recovery', async () => {
+  nativeStartup.native = true;
+  localStorage.setItem('tano.preference.locale', 'en-US');
+  start.mockImplementation(() => new Promise(() => {}));
+  await import('./main');
+  expect(document.documentElement.lang).toBe('en-US');
+  expect(document.getElementById('tano-startup-status')?.textContent).toBe('Opening Tano...');
+  expect(document.getElementById('tano-startup-retry')?.textContent).toBe('Reload');
+  await vi.advanceTimersByTimeAsync(15_000);
+  expect(document.getElementById('tano-startup-status')?.textContent).toContain('Loading the workbench');
+  await vi.advanceTimersByTimeAsync(15_000);
+  expect(document.getElementById('tano-startup-status')?.textContent).toBe('Unable to open Tano');
+  expect(document.getElementById('tano-startup-detail')?.textContent).toContain('timed out after 30 seconds');
+  expect(nativeStartup.reveal).toHaveBeenCalledExactlyOnceWith('startup_ready');
+});
+
 it.each(['main', 'settings-main'])('reveals recovery only for the main window when startup fails in %s', async label => {
   nativeStartup.native = true;
   nativeStartup.reveal.mockRejectedValue(new Error('Startup reveal failed'));

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, getCurrentInstance, nextTick, ref, watch } from 'vue';
 import { Check, FileText, Link2, Pencil, X } from 'lucide-vue-next';
 import MarkdownEditor from '@tano/editor';
@@ -41,7 +42,7 @@ async function insert(target: ReferenceTarget) {
   if (props.disabled || !props.targets.some(item => item.type === target.type && item.id === target.id && item.workspace === target.workspace && !item.archived)) return;
   const link = referenceMarkdown(target, target.name);
   const value = props.modelValue.slice(0, range.from) + link + props.modelValue.slice(range.to);
-  if (value.length > 20000) { error.value = '描述不能超过 20000 字符'; return; }
+  if (value.length > 20000) { error.value = t('描述不能超过 20000 字符'); return; }
   emit('update:modelValue', value);
   picking.value = false;
   await nextTick();
@@ -52,22 +53,22 @@ async function insert(target: ReferenceTarget) {
 <template>
   <div class="description-editor" :class="{ 'with-preview': preview, 'is-editing': editing }">
     <div class="description-heading">
-      <label :for="descriptionId">描述</label>
+      <label :for="descriptionId">{{ t('描述') }}</label>
       <div class="description-actions">
-        <button v-if="targets.some(target => target.type === 'document')" type="button" class="icon-button" aria-label="插入文档引用" title="插入文档引用" :disabled="disabled" :aria-expanded="picking" @mousedown.prevent @click="pick"><Link2 :size="15" /></button>
-        <button v-if="preview && !disabled" type="button" class="icon-button" :aria-label="editing ? '完成描述编辑' : '编辑描述'" :title="editing ? '完成描述编辑' : '编辑描述'" @click="editing ? (editing = false, picking = false) : edit()"><Check v-if="editing" :size="15" /><Pencil v-else :size="15" /></button>
+        <button v-if="targets.some(target => target.type === 'document')" type="button" class="icon-button" :aria-label="t('插入文档引用')" :data-tooltip="t('插入文档引用')" :disabled="disabled" :aria-expanded="picking" @mousedown.prevent @click="pick"><Link2 :size="15" /></button>
+        <button v-if="preview && !disabled" type="button" class="icon-button" :aria-label="editing ? t('完成描述编辑') : t('编辑描述')" :data-tooltip="editing ? t('完成描述编辑') : t('编辑描述')" @click="editing ? (editing = false, picking = false) : edit()"><Check v-if="editing" :size="15" /><Pencil v-else :size="15" /></button>
       </div>
     </div>
-    <textarea v-if="editing" :id="descriptionId" ref="textarea" :value="modelValue" :disabled="disabled" rows="5" maxlength="20000" aria-label="描述" @input="emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)" />
-    <div v-else class="description-preview" :tabindex="disabled ? undefined : 0" role="group" aria-label="描述内容" @click="previewClicked" @keydown.enter.self.prevent="edit()">
+    <textarea v-if="editing" :id="descriptionId" ref="textarea" :value="modelValue" :disabled="disabled" rows="5" maxlength="20000" :aria-label="t('描述')" @input="emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)" />
+    <div v-else class="description-preview" :tabindex="disabled ? undefined : 0" role="group" :aria-label="t('描述内容')" @click="previewClicked" @keydown.enter.self.prevent="edit()">
       <MarkdownEditor v-if="modelValue.trim()" :model-value="modelValue" :document-id="descriptionId" :reference-targets="targets" readonly :reveal-markdown="false" open-links-on-tap :resolve-image="() => null" @open-reference="emit('openReference', $event)" @open-link="emit('openLink', $event)" @open-wiki-link="emit('openWikiLink', $event)" @error="error = $event" />
-      <span v-else class="description-empty">{{ disabled ? '暂无描述' : '添加描述' }}</span>
+      <span v-else class="description-empty">{{ disabled ? t('暂无描述') : t('添加描述') }}</span>
     </div>
     <div v-if="picking" class="description-picker" @keydown.esc.stop.prevent="picking = false; textarea?.focus()">
-      <div class="description-search"><input ref="searchInput" v-model="query" aria-label="搜索引用文档" placeholder="搜索文档" @keydown.enter.prevent="candidates[0] && insert(candidates[0])" /><button type="button" class="icon-button" aria-label="关闭引用选择" title="关闭引用选择" @click="picking = false; textarea?.focus()"><X :size="16" /></button></div>
+      <div class="description-search"><input ref="searchInput" v-model="query" :aria-label="t('搜索引用文档')" :placeholder="t('搜索文档')" @keydown.enter.prevent="candidates[0] && insert(candidates[0])" /><button type="button" class="icon-button" :aria-label="t('关闭引用选择')" :data-tooltip="t('关闭引用选择')" @click="picking = false; textarea?.focus()"><X :size="16" /></button></div>
       <div class="description-candidates">
         <button v-for="target in candidates" :key="target.id" type="button" @click="insert(target)"><FileText :size="16" /><span>{{ target.name }}<small>{{ target.path }}</small></span></button>
-        <p v-if="!candidates.length">没有匹配的文档</p>
+        <p v-if="!candidates.length">{{ t('没有匹配的文档') }}</p>
       </div>
     </div>
     <p v-if="error" role="alert">{{ error }}</p>

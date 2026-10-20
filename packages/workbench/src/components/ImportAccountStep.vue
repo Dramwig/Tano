@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 import { Check, ChevronRight, Globe2, LoaderCircle, Unplug } from 'lucide-vue-next';
 import { useWorkbenchRuntime } from '../runtime';
@@ -94,44 +95,44 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); void cancel(); toke
 <template>
   <div class="account-import" :aria-busy="working">
     <div class="account-import-brand" :style="{ color: provider.color }" aria-hidden="true" v-html="provider.icon" />
-    <h3>导入 {{ provider.name }}</h3>
-    <p>连接账号，选择想要导入的内容，预览后保存到工作区。</p>
-    <div class="account-import-tabs" role="tablist" aria-label="导入方式">
-      <button type="button" role="tab" :aria-selected="mode === 'account'" :disabled="working || provider.id === 'obsidian'" @click="mode = 'account'"><Globe2 :size="16" />通过账号导入</button>
-      <button type="button" role="tab" :aria-selected="mode === 'file'" :disabled="working" @click="mode = 'file'">通过文件导入</button>
+    <h3>{{ t('导入') }} {{ provider.name }}</h3>
+    <p>{{ t('连接账号，选择想要导入的内容，预览后保存到工作区。') }}</p>
+    <div class="account-import-tabs" role="tablist" :aria-label="t('导入方式')">
+      <button type="button" role="tab" :aria-selected="mode === 'account'" :disabled="working || provider.id === 'obsidian'" @click="mode = 'account'"><Globe2 :size="16" />{{ t('通过账号导入') }}</button>
+      <button type="button" role="tab" :aria-selected="mode === 'file'" :disabled="working" @click="mode = 'file'">{{ t('通过文件导入') }}</button>
     </div>
     <p v-if="error" class="account-import-error" role="alert">{{ error }}</p>
     <div v-if="mode === 'file'" class="account-import-file">
-      <p v-if="provider.id === 'obsidian'">Obsidian 没有公开的账号内容 API。请选择本地仓库的 Markdown 或 Vault ZIP。</p>
-      <p v-else>在 {{ provider.name }} 导出文件，然后选择文件导入。</p>
+      <p v-if="provider.id === 'obsidian'">{{ t('Obsidian 没有公开的账号内容 API。请选择本地仓库的 Markdown 或 Vault ZIP。') }}</p>
+      <p v-else>{{ t('在') }} {{ provider.name }} {{ t('导出文件，然后选择文件导入。') }}</p>
       <small>{{ provider.detail }}</small>
-      <button class="account-import-primary" type="button" @click="emit('file')">选择导出文件<ChevronRight :size="16" /></button>
+      <button class="account-import-primary" type="button" @click="emit('file')">{{ t('选择导出文件') }}<ChevronRight :size="16" /></button>
     </div>
     <template v-else>
-      <p v-if="!host" class="account-import-note">当前客户端尚未接入账号授权服务。请使用桌面版连接账号，或切换到文件导入。</p>
+      <p v-if="!host" class="account-import-note">{{ t('当前客户端尚未接入账号授权服务。请使用桌面版连接账号，或切换到文件导入。') }}</p>
       <template v-else>
-        <label v-if="accounts.length">选择账号<select v-model="accountId" :disabled="working" @change="changeAccount"><option value="">连接其他账号</option><option v-for="item in accounts" :key="item.id" :value="item.id">{{ item.label }}</option></select></label>
+        <label v-if="accounts.length">{{ t('选择账号') }}<select v-model="accountId" :disabled="working" @change="changeAccount"><option value="">{{ t('连接其他账号') }}</option><option v-for="item in accounts" :key="item.id" :value="item.id">{{ item.label }}</option></select></label>
         <template v-if="!account">
-          <label>连接名称<input v-model="label" :placeholder="provider.name" :disabled="working" maxlength="200" /></label>
-          <p v-if="capability && !capability.oauth && !['workflowy', 'roam'].includes(provider.id)" class="account-import-note">此平台的浏览器授权尚未配置。<template v-if="capability.token">你也可以使用该平台提供的 API 令牌连接。</template></p>
-          <label v-if="capability?.oauth && capability.token" class="account-import-toggle"><input v-model="useToken" type="checkbox" :disabled="working" />使用 API 令牌</label>
+          <label>{{ t('连接名称') }}<input v-model="label" :placeholder="provider.name" :disabled="working" maxlength="200" /></label>
+          <p v-if="capability && !capability.oauth && !['workflowy', 'roam'].includes(provider.id)" class="account-import-note">{{ t('此平台的浏览器授权尚未配置。') }}<template v-if="capability.token">{{ t('你也可以使用该平台提供的 API 令牌连接。') }}</template></p>
+          <label v-if="capability?.oauth && capability.token" class="account-import-toggle"><input v-model="useToken" type="checkbox" :disabled="working" />{{ t('使用 API 令牌') }}</label>
           <template v-if="useToken && capability?.token">
-            <label v-if="provider.id === 'roam'">Graph 名称<input v-model="context" autocomplete="off" :disabled="working" /></label>
-            <label v-if="provider.id === 'evernote'">NoteStore URL（可选）<input v-model="context" placeholder="由 Evernote 开发者页面提供" autocomplete="off" :disabled="working" /></label>
-            <label v-if="provider.id === 'trello'">应用 API Key<input v-model="apiKey" autocomplete="off" :disabled="working" /></label>
-            <label>API 令牌<input v-model="token" type="password" autocomplete="off" spellcheck="false" :disabled="working" /></label>
+            <label v-if="provider.id === 'roam'">{{ t('Graph 名称') }}<input v-model="context" autocomplete="off" :disabled="working" /></label>
+            <label v-if="provider.id === 'evernote'">{{ t('NoteStore URL（可选）') }}<input v-model="context" :placeholder="t('由 Evernote 开发者页面提供')" autocomplete="off" :disabled="working" /></label>
+            <label v-if="provider.id === 'trello'">{{ t('应用 API Key') }}<input v-model="apiKey" autocomplete="off" :disabled="working" /></label>
+            <label>{{ t('API 令牌') }}<input v-model="token" type="password" autocomplete="off" spellcheck="false" :disabled="working" /></label>
           </template>
-          <button class="account-import-primary" type="button" :disabled="working || !capability || (useToken ? !capability.token || !token.trim() : !capability.oauth)" @click="connect"><LoaderCircle v-if="connecting" :size="16" class="account-import-spin" /><Globe2 v-else :size="16" />{{ connecting ? '等待浏览器授权或连接结果…' : `连接 ${provider.name} 账号` }}</button>
-          <button v-if="connecting" class="account-import-cancel" type="button" @click="cancel">取消连接</button>
+          <button class="account-import-primary" type="button" :disabled="working || !capability || (useToken ? !capability.token || !token.trim() : !capability.oauth)" @click="connect"><LoaderCircle v-if="connecting" :size="16" class="account-import-spin" /><Globe2 v-else :size="16" />{{ connecting ? t('等待浏览器授权或连接结果…') : t('连接 {0} 账号', [provider.name]) }}</button>
+          <button v-if="connecting" class="account-import-cancel" type="button" @click="cancel">{{ t('取消连接') }}</button>
         </template>
         <template v-else>
-          <div class="account-import-connected"><span><Check :size="16" />已连接 {{ account.label }}</span><button type="button" :disabled="working" @click="disconnect"><Unplug :size="14" />断开连接</button></div>
-          <div class="account-import-resource-heading"><strong>选择导入内容</strong><button type="button" :disabled="working || !resources.length" @click="selected = selected.length === resources.length ? [] : resources.map(item => item.id)">{{ selected.length === resources.length && resources.length ? '取消全选' : '全选' }}</button></div>
-          <div class="account-import-resources panel-scrollbar"><label v-for="item in resources" :key="item.id"><input v-model="selected" type="checkbox" :value="item.id" :disabled="working" /><span>{{ item.name }}</span></label><p v-if="!resources.length && !working">账号中没有可读取的内容。请检查应用授权范围或共享页面后重试。</p></div>
-          <button class="account-import-primary" type="button" :disabled="working || !selected.length" @click="prepare"><LoaderCircle v-if="working" :size="16" class="account-import-spin" />{{ working ? '正在读取内容…' : `继续，预览 ${selected.length} 项内容` }}</button>
+          <div class="account-import-connected"><span><Check :size="16" />{{ t('已连接') }} {{ account.label }}</span><button type="button" :disabled="working" @click="disconnect"><Unplug :size="14" />{{ t('断开连接') }}</button></div>
+          <div class="account-import-resource-heading"><strong>{{ t('选择导入内容') }}</strong><button type="button" :disabled="working || !resources.length" @click="selected = selected.length === resources.length ? [] : resources.map(item => item.id)">{{ selected.length === resources.length && resources.length ? t('取消全选') : t('全选') }}</button></div>
+          <div class="account-import-resources panel-scrollbar"><label v-for="item in resources" :key="item.id"><input v-model="selected" type="checkbox" :value="item.id" :disabled="working" /><span>{{ item.name }}</span></label><p v-if="!resources.length && !working">{{ t('账号中没有可读取的内容。请检查应用授权范围或共享页面后重试。') }}</p></div>
+          <button class="account-import-primary" type="button" :disabled="working || !selected.length" @click="prepare"><LoaderCircle v-if="working" :size="16" class="account-import-spin" />{{ working ? t('正在读取内容…') : t('继续，预览 {0} 项内容', [selected.length]) }}</button>
         </template>
-        <p v-if="working && !connecting" role="status">{{ progress || '正在读取账号内容…' }}</p>
-        <small class="account-import-note">连接仅在本次桌面会话中保留。导入只读取内容，不会修改第三方账号。</small>
+        <p v-if="working && !connecting" role="status">{{ progress || t('正在读取账号内容…') }}</p>
+        <small class="account-import-note">{{ t('连接仅在本次桌面会话中保留。导入只读取内容，不会修改第三方账号。') }}</small>
       </template>
     </template>
   </div>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
 
 const props = defineProps<{
@@ -38,7 +39,7 @@ watch(() => props.open && props.compact, async (modal, previous, cleanup) => {
   else if (previous) {
     // The opener is conditionally rendered, so reopening content may create a new node.
     const target = returnFocus?.isConnected ? returnFocus
-      : props.contentElement?.querySelector<HTMLElement>('[aria-label="展开侧栏"]');
+      : props.contentElement?.querySelector<HTMLElement>(`[aria-label="${t('展开侧栏')}"]`);
     target?.focus({ preventScroll: true });
   }
 }, { immediate: true });
@@ -79,7 +80,7 @@ onBeforeUnmount(cancelMotion);
 
 <template>
   <Transition name="sidebar">
-    <aside ref="drawer" v-show="open" class="sidebar" aria-label="工作区侧栏" tabindex="-1"
+    <aside ref="drawer" v-show="open" class="sidebar" :aria-label="t('工作区侧栏')" tabindex="-1"
       :role="compact ? 'dialog' : undefined" :aria-modal="compact && open || undefined" @keydown="drawerKeydown"
       :inert="!open || undefined" :aria-hidden="!open">
       <slot />

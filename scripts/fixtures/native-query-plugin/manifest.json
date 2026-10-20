@@ -1,0 +1,37 @@
+{
+  "manifestVersion": 2,
+  "apiVersion": 1,
+  "id": "native-query-fixture",
+  "name": "本机查询测试",
+  "version": "1.1.0",
+  "description": "仅用于插件权限与隔离回归测试，不随产品分发。",
+  "objectTypes": [],
+  "relationTypes": [],
+  "permissions": [
+    "native",
+    "ui"
+  ],
+  "networkOrigins": [],
+  "nativeCommands": [
+    "git.status",
+    "git.diff",
+    "git.log",
+    "sync.open"
+  ],
+  "commands": [
+    {
+      "id": "open",
+      "label": "打开 Git 变更",
+      "menus": [
+        "workspace"
+      ]
+    }
+  ],
+  "views": [
+    {
+      "id": "changes",
+      "label": "Git 变更",
+      "location": "tab"
+    }
+  ]
+}

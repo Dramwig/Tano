@@ -3,7 +3,8 @@ import { NodeSelection, TextSelection } from '@milkdown/kit/prose/state';
 import type { EditorState } from '@milkdown/kit/prose/state';
 import { sourceStyleRanges } from './source-highlight';
 import { isBlockContainer } from './block-tree';
-import { blockContentStart } from './callout';
+import { BlockRangeSelection } from './block-selection';
+import { blockContentStart, calloutMarker } from './callout';
 
 // Preserve the editor API while allowing the workbench to load metadata without ProseMirror.
 export * from './selection-context';
@@ -37,7 +38,7 @@ export function blockType(node: Node): BlockType {
     case 'image':
       return 'ImageBlock';
     case 'blockquote':
-      return /^\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?:\s|$)/i.test(
+      return calloutMarker.test(
         node.firstChild?.textContent ?? '',
       )
         ? 'Callout'
@@ -68,6 +69,7 @@ export function blockType(node: Node): BlockType {
 
 /** Blocks are selected explicitly by handles, or implicitly by a caret / a cross-block range. */
 export function selectedBlocks(state: EditorState) {
+  if (state.selection instanceof BlockRangeSelection) return state.selection.blocks;
   const { from, to, empty } = state.selection;
   const blocks: { node: Node; pos: number }[] = [];
   let parent = state.doc,
@@ -134,9 +136,16 @@ export function selectionContext(state: EditorState): EditorSelectionContext {
   const active = new Set<InlineType>();
   let commonMarks: Set<InlineType> | undefined;
   let canStyleText = false;
+  let textColor: string | null | undefined;
+  let backgroundColor: string | null | undefined;
   if (inline)
     state.doc.nodesBetween(selection.from, selection.to, (node) => {
       if (node.isText) {
+        const text = node.marks.find(mark => mark.type.name === 'text_color')?.attrs.color ?? null;
+        const background = node.marks.find(mark => mark.type.name === 'background_color')?.attrs.color
+          ?? (node.marks.some(mark => mark.type.name === 'highlight') ? 'highlight' : null);
+        textColor = !canStyleText || textColor === text ? text : undefined;
+        backgroundColor = !canStyleText || backgroundColor === background ? background : undefined;
         canStyleText = true;
         const marks = new Set(
           node.marks.flatMap((mark) =>
@@ -173,6 +182,8 @@ export function selectionContext(state: EditorState): EditorSelectionContext {
     headingLevel: node?.type.name === 'heading' ? Number(node.attrs.level) : undefined,
     multiple: blocks.length > 1,
     activeInline: [...active],
+    textColor: inlineSource ? undefined : textColor,
+    backgroundColor: inlineSource ? undefined : backgroundColor,
     canTransform:
       !inlineSource && blocks.length > 0 && blocks.every(({ node }) => canTransformBlock(node)),
     canStyleText,

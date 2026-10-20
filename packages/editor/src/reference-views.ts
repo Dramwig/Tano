@@ -1,7 +1,27 @@
-import { watch } from 'vue';
+import { h, render as renderIcon, watch, type Component } from 'vue';
+import { ArrowUpRight, Box, CalendarDays, Circle, CircleCheck, FileText, Folder, Link2Off, Paperclip, UserRound } from 'lucide-vue-next';
 import type { EditorView, NodeViewConstructor } from '@milkdown/kit/prose/view';
 import { parseReferenceUrl, resolveReference, referenceTypeLabel } from '@tano/protocol';
 import type { ReferenceTarget, ReferenceIdentity } from '@tano/protocol';
+
+const referenceIcons: Record<string, Component> = {
+  person: UserRound, event: CalendarDays, task: CircleCheck,
+  project: Folder, document: FileText, asset: Paperclip,
+};
+
+function eventDetail(target: ReferenceTarget) {
+  const values = [target.properties?.start, target.properties?.end]
+    .filter((value): value is string => typeof value === 'string' && !!value.trim());
+  if (!values.length) return '';
+  const dates = values.map(value => new Date(value));
+  if (dates.some(date => !Number.isFinite(date.getTime()))) return values.join(' — ');
+  const formatter = new Intl.DateTimeFormat(document.documentElement.lang || 'zh-CN', {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+  return dates.length === 2 && dates[0]! <= dates[1]!
+    ? formatter.formatRange(dates[0]!, dates[1]!)
+    : dates.map(date => formatter.format(date)).join(' — ');
+}
 
 export function referenceViews(
   targets: () => readonly ReferenceTarget[],
@@ -26,10 +46,27 @@ export function referenceViews(
         button.type = 'button';
         const label = document.createElement('span'),
           badge = document.createElement('small');
+        label.className = 'tano-reference-label';
+        badge.className = 'tano-reference-badge';
+        const icon = document.createElement('span');
+        icon.className = 'tano-reference-icon';
+        icon.setAttribute('aria-hidden', 'true');
         const detail = document.createElement('small');
-        button.append(label, badge);
+        detail.className = 'tano-reference-detail';
+        const arrow = document.createElement('span');
+        arrow.className = 'tano-reference-arrow';
+        arrow.setAttribute('aria-hidden', 'true');
+        if (block) {
+          const body = document.createElement('span');
+          body.className = 'tano-reference-body';
+          const heading = document.createElement('span');
+          heading.className = 'tano-reference-heading';
+          heading.append(label, badge);
+          body.append(heading, detail);
+          renderIcon(h(ArrowUpRight, { size: 16, strokeWidth: 1.7 }), arrow);
+          button.append(icon, body, arrow);
+        } else button.append(icon, label, badge);
         dom.append(button);
-        if (block) dom.append(detail);
         button.onmousedown = (event) => {
           if (canEditSource() && !event.ctrlKey && !event.metaKey && !event.altKey)
             event.preventDefault();
@@ -51,27 +88,35 @@ export function referenceViews(
           const target = 'target' in result ? result.target : undefined;
           const missing = !target;
           dom.classList.toggle('is-missing', missing);
+          dom.classList.toggle('is-disabled', !enabled());
           label.textContent = enabled()
             ? `${block ? '' : '@'}${target?.name ?? current.attrs.label}`
             : `[${block ? '' : '@'}${current.attrs.label}](${current.attrs.url}${block ? ' "tano:object-card"' : ''})`;
           button.disabled = (!enabled() || missing) && !canEditSource();
           const task = target && (target.type === 'task' || (target.type === 'event' && target.properties?.checkable === true));
           const completed = target?.properties?.completed === true || ['done', 'completed'].includes(String(target?.properties?.status));
+          dom.dataset.referenceType = task ? 'task' : identity?.type ?? '';
+          dom.classList.toggle('is-completed', !!task && completed);
+          renderIcon(h(missing ? Link2Off : task ? completed ? CircleCheck : Circle : referenceIcons[target.type] ?? Box, {
+            size: block ? 21 : 14, strokeWidth: 1.7,
+          }), icon);
           badge.textContent = !enabled()
             ? 'Level 2 已关闭'
             : missing
               ? '引用不可用'
               : `${task ? `任务 · ${completed ? '已完成' : '未完成'}` : referenceTypeLabel(target.type)}${target.archived ? ' · 已归档' : ''}`;
           detail.textContent =
-            (target?.type === 'event'
-              ? `${String(target.properties?.start ?? '')} — ${String(target.properties?.end ?? '')}`
-              : '') ||
+            (target?.type === 'event' ? eventDetail(target) : '') ||
             (target?.type === 'asset'
               ? `${target.mime} · ${target.size} 字节 · ${target.path}`
               : '') ||
             target?.description ||
             target?.path ||
-            '目标已移除、ID 重复或类型插件未启用；原始 ID 已保留';
+            (missing ? '目标已移除、ID 重复或类型插件未启用；原始 ID 已保留' : '');
+          detail.hidden = !detail.textContent;
+          detail.title = target?.type === 'event'
+            ? [target.properties?.start, target.properties?.end].filter(Boolean).join(' — ')
+            : detail.textContent ?? '';
           button.title = `${referenceTypeLabel(identity?.type ?? '')} · ${current.attrs.url}${canEditSource() ? ' · 点击编辑 Markdown，Ctrl/⌘ 点击打开' : ''}`;
           button.setAttribute(
             'aria-label',
@@ -94,6 +139,8 @@ export function referenceViews(
           stopEvent: (event) => button.contains(event.target as globalThis.Node),
           destroy() {
             stop();
+            renderIcon(null, icon);
+            if (block) renderIcon(null, arrow);
             button.onmousedown = null;
             button.onclick = null;
           },

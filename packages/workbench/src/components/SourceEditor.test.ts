@@ -286,6 +286,17 @@ it('shows raw Markdown with bold delimiters and keeps edits in source form', asy
   expect(value.value).toBe(original);
 });
 
+it('tracks the source line number at the selection head', async () => {
+  const { view } = await mountSource('第一行\n第二行\n第三行');
+  const numbers = [...root.querySelectorAll<HTMLElement>('.cm-lineNumbers .cm-gutterElement:not([style*="visibility: hidden"])')];
+  expect(numbers.map(number => number.textContent)).toEqual(['1', '2', '3']);
+  expect(numbers[0]?.classList.contains('cm-activeLineGutter')).toBe(true);
+  view.dispatch({ selection: { anchor: 4 } });
+  const updated = [...root.querySelectorAll<HTMLElement>('.cm-lineNumbers .cm-gutterElement:not([style*="visibility: hidden"])')];
+  expect(updated[1]?.classList.contains('cm-activeLineGutter')).toBe(true);
+  expect(updated[0]?.classList.contains('cm-activeLineGutter')).toBe(false);
+});
+
 function typeSymbol(view: EditorView, key: string, extra: KeyboardEventInit = {}) {
   const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...extra });
   view.contentDOM.dispatchEvent(event);

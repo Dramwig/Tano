@@ -70,6 +70,7 @@
   --green-fill-hover: #176340;
   --accent: #eaf5ee;
   --block-selection: #e1f1e8;
+  --block-selection-overlay: color-mix(in srgb, var(--block-selection) 62%, transparent);
   --line: #e3e5e8;
   --control-border: #b9bfc8;
   --sidebar: #f9f8f7;
@@ -235,6 +236,10 @@ button:hover {
   cursor: col-resize;
   touch-action: none;
 }
+.sidebar-resize-handle:focus {
+  /* Focus alone must not leave a persistent highlight on the resize edge. */
+  outline: none;
+}
 .sidebar-resize-handle::after {
   content: '';
   position: absolute;
@@ -246,7 +251,6 @@ button:hover {
   transition: background 120ms ease;
 }
 .sidebar-resize-handle:hover::after,
-.sidebar-resize-handle:focus-visible::after,
 .sidebar-resizing .sidebar-resize-handle::after {
   background: var(--green);
 }
@@ -753,7 +757,7 @@ button:hover {
   flex-shrink: 0;
 }
 .topbar-navigation .icon-button {
-  width: 26px;
+  width: 28px;
   height: 26px;
 }
 .topbar-navigation .icon-button:disabled:hover {
@@ -950,6 +954,12 @@ button:hover {
 .tano-comment-mark:hover, .cm-comment-mark:hover { background: color-mix(in srgb, #f4d35e 38%, transparent); }
 .tano-search-match { background: color-mix(in srgb, #f4d35e 48%, transparent); border-radius: 2px; }
 .tano-search-current { background: color-mix(in srgb, #eea82b 72%, var(--paper)); box-shadow: 0 0 0 1px #c79027; }
+.tano-reference-flash { border-radius: 3px; background: color-mix(in srgb, var(--green) 28%, transparent); animation: tano-reference-pulse 800ms ease-in-out 3; }
+@keyframes tano-reference-pulse {
+  0%, 100% { background-color: color-mix(in srgb, var(--green) 12%, transparent); }
+  50% { background-color: color-mix(in srgb, var(--green) 38%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 24%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) { .tano-reference-flash { animation: none; } }
 .document-main {
   position: relative;
   flex: 1;
@@ -1027,6 +1037,26 @@ button:hover {
 }
 .tano-prose .tano-callout[data-callout-kind='caution'] {
   --callout-color: var(--danger);
+}
+.tano-prose .tano-callout[data-callout-kind='custom'] {
+  --callout-color: var(--text-secondary);
+  border-left: 0;
+  padding: 16px 18px 16px 48px;
+  min-height: 60px;
+  color: var(--text);
+  display: flow-root;
+}
+.tano-prose .tano-custom-callout-icon {
+  float: left;
+  margin: 0 0 0 -33px;
+  width: 26px;
+  min-height: 28px;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 28px;
+}
+.tano-prose .tano-callout[data-callout-kind='custom'] > .tano-callout-marker-paragraph + * {
+  margin-top: 0;
 }
 .tano-prose .tano-callout > :first-child {
   margin-top: 0;
@@ -1654,9 +1684,10 @@ button:hover {
 .tano-prose dl[data-type='footnote_definition'] {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
+  /* Align the number with the first text line, including paragraph padding. */
+  align-items: baseline;
   gap: 10px;
   margin: 22px 0 0;
-  border-top: 1px solid var(--line);
   padding-top: 10px;
   font-size: 14px;
   line-height: 1.65;
@@ -1848,6 +1879,19 @@ button:hover {
 .block-context-menu button > svg {
   flex: 0 0 15px;
 }
+.block-context-menu .block-convert-chevron {
+  margin-left: auto;
+}
+.block-convert-menu > button[aria-expanded='true'] {
+  background: var(--hover);
+}
+.block-convert-submenu {
+  position: fixed;
+  z-index: 101;
+  width: 154px;
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+}
 .block-context-heading {
   padding: 5px 7px 4px;
   color: var(--muted);
@@ -1937,6 +1981,13 @@ button:hover {
   max-height: min(560px, calc(100dvh - 76px));
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+.workspace-view-menu-error {
+  margin: 6px 10px;
+  color: var(--warning);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 .workspace-entry-context-menu {
   width: 190px;
@@ -2171,9 +2222,9 @@ button:hover {
 .tano-prose .tano-empty-block-persistent::before {
   content: attr(data-placeholder);
   position: absolute;
-  top: 0;
-  left: 0;
-  max-width: 100%;
+  top: var(--tano-text-padding-block, 0px);
+  left: var(--tano-text-padding-inline, 0px);
+  max-width: calc(100% - 2 * var(--tano-text-padding-inline, 0px));
   color: color-mix(in srgb, var(--muted) 40%, var(--paper));
   font-size: inherit;
   font-weight: inherit;
@@ -2310,8 +2361,8 @@ button:hover {
 }
 .tano-block-handle {
   position: absolute;
-  left: -36px;
-  width: 36px;
+  left: -28px;
+  width: 28px;
   height: 24px;
   display: flex;
   align-items: center;
@@ -2342,7 +2393,7 @@ button:hover {
   width: 18px;
 }
 .tano-block-handle.is-columns {
-  left: -60px;
+  left: -52px;
   width: 18px;
 }
 .tano-block-handle.is-visible,
@@ -2430,6 +2481,17 @@ button:hover {
   font-variant-ligatures: no-contextual;
 }
 .tano-prose {
+  /* Block spacing contract
+     - text blocks use padding to place their text on the document rail;
+     - framed blocks use an inline margin to place their visible frame on the
+       same rail, then keep their own internal padding;
+     - nested blocks own their local spacing and must not inherit the outer
+       rail a second time.
+     Tables are laid out by TableViewport, so their horizontal position stays
+     under the viewport's dynamic layout instead of this contract. */
+  --tano-block-padding-block: 2px;
+  --tano-block-padding-inline: 8px;
+  --tano-block-frame-inset: var(--tano-block-padding-inline);
   outline: none;
   white-space: pre-wrap;
   color: var(--text);
@@ -2439,8 +2501,9 @@ button:hover {
   overflow-wrap: anywhere;
   padding-bottom: 8px;
 }
-.tano-prose > *:first-child {
-  margin-top: 0;
+.tano-prose .tano-assistant-selection {
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  border-radius: 2px;
 }
 .tano-prose h1,
 .tano-prose h2,
@@ -2477,7 +2540,21 @@ button:hover {
   font-weight: 600;
 }
 .tano-prose p {
-  margin: 13px 0;
+  margin: 8px 0;
+}
+/* Text blocks own their inset; list items and table cells already supply theirs.
+   Keep semantic ProseMirror nodes instead of adding editable wrapper elements. */
+.tano-prose :is(p, h1, h2, h3, h4, h5, h6) {
+  --tano-text-padding-block: var(--tano-block-padding-block);
+  --tano-text-padding-inline: var(--tano-block-padding-inline);
+  padding: var(--tano-text-padding-block) var(--tano-text-padding-inline);
+}
+.tano-prose :is(li, th, td) > :is(p, h1, h2, h3, h4, h5, h6) {
+  --tano-text-padding-block: 0px;
+  --tano-text-padding-inline: 0px;
+}
+.tano-prose blockquote > :is(p, h1, h2, h3, h4, h5, h6) {
+  --tano-text-padding-block: 0px;
 }
 .tano-prose .tano-html-node {
   white-space: normal;
@@ -2533,13 +2610,30 @@ button:hover {
   margin: 26px 0;
   font-size: inherit;
 }
-.tano-prose blockquote:not(.tano-callout) {
+/* Keep the base quote style below block selection and drag feedback. */
+.tano-prose blockquote:where(:not(.tano-callout)) {
   margin: 16px 0;
-  border-left: 3px solid var(--quote-border, var(--text));
+  position: relative;
+  border-left: 0;
   background: transparent;
   border-radius: 0;
-  padding: 0 0 0 20px;
+  padding: 0 0 0 23px;
   color: var(--text);
+}
+.tano-prose blockquote:where(:not(.tano-callout))::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 3px;
+  background: var(--quote-border, var(--text));
+  pointer-events: none;
+}
+.tano-prose > blockquote:where(:not(.tano-callout)) {
+  /* Keep the top-level quote frame on the same content rail as text blocks.
+     Reduced inner padding preserves the quote text's existing position. */
+  margin-inline: var(--tano-block-frame-inset);
+  padding-inline-start: calc(23px - var(--tano-block-frame-inset));
 }
 .tano-prose blockquote p {
   margin: 8px 0;
@@ -2561,7 +2655,8 @@ button:hover {
 }
 .tano-prose ul,
 .tano-prose ol {
-  padding-left: 23px;
+  padding-left: calc(23px + var(--tano-block-padding-inline));
+  padding-right: var(--tano-block-padding-inline);
 }
 .tano-prose li {
   padding-left: 4px;
@@ -2574,9 +2669,23 @@ button:hover {
   color: var(--text-secondary);
 }
 .tano-prose li[data-item-type='task'] {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   list-style: none;
   position: relative;
   padding-left: 3px;
+}
+.tano-prose li[data-item-type='task'] > input[type='checkbox'] {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.tano-prose li[data-item-type='task'] > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.tano-prose li[data-item-type='task'] > div > :is(p, h1, h2, h3, h4, h5, h6) {
+  padding: 0;
 }
 .tano-prose li[data-item-type='task']:before {
   content: '';
@@ -2618,6 +2727,12 @@ button:hover {
   border-radius: 8px;
   overflow: auto;
   line-height: 1.7;
+}
+.tano-prose > pre {
+  /* Align the frame with text blocks while keeping code text and wrapping
+     stable after the frame moves in by the shared block inset. */
+  margin-inline: var(--tano-block-frame-inset);
+  padding-inline: calc(22px - var(--tano-block-frame-inset));
 }
 .tano-prose pre code {
   border: 0;
@@ -2742,6 +2857,9 @@ button:hover {
 /* The table paints the continuous rounded outline; cells paint each divider once. */
 .tano-prose table tr > :last-child { border-right: 0; }
 .tano-prose table > :is(tbody, tfoot):last-child > tr:last-child > :is(th, td) { border-bottom: 0; }
+.tano-prose .selectedCell {
+  box-shadow: inset 0 0 0 100vmax var(--block-selection-overlay);
+}
 .tano-prose .selectedCell:after {
   content: none;
 }
@@ -2794,6 +2912,20 @@ button:hover {
   margin-bottom: 16px;
 }
 .tano-table-viewport > .tableWrapper > table { margin-bottom: 16px; }
+
+/* A top-level framed block starts on the same rail as a paragraph or heading.
+   The selector intentionally stops at direct children so nested panels,
+   columns, tabs, and resources keep their own internal layout. TableViewport
+   is excluded because it owns horizontal width and margin compensation. */
+.tano-prose > :is(.tano-callout, .tano-enhanced, .tano-unsupported-block) {
+  margin-inline: var(--tano-block-frame-inset);
+}
+.tano-prose > :first-child {
+  margin-block-start: 0;
+}
+.tano-prose > :last-child {
+  margin-block-end: 0;
+}
 .tano-table-viewport.has-comments::before,
 .tano-table-viewport.has-comments::after {
   content: '';
@@ -2916,7 +3048,7 @@ button:hover {
 .tano-table-controls.is-dragging .tano-table-grip::before { display: none; }
 .tano-table-grip:is(:hover, :focus-visible, .is-selected) > span,
 .tano-table-controls.is-dragging .tano-table-grip > span { display: flex; }
-.tano-table-grip.is-selected > span { background: var(--green-fill); color: white; }
+.tano-table-grip.is-selected > span { background: var(--surface); color: var(--text); }
 .tano-table-grip:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; border-radius: 4px; }
 .tano-table-controls.is-dragging .tano-table-grip { cursor: grabbing; }
 .tano-table-controls.is-dragging .tano-table-grip:not(.is-selected) { visibility: hidden; }
@@ -2930,7 +3062,7 @@ button:hover {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  outline: var(--tano-table-stroke-width, 3px) solid var(--green);
+  outline: 1px solid var(--line);
   background: transparent;
   pointer-events: none;
   user-select: none;
@@ -2943,7 +3075,7 @@ button:hover {
   position: fixed;
   z-index: 12;
   box-sizing: border-box;
-  border: var(--tano-table-stroke-width, 3px) solid var(--green);
+  border-radius: 4px;
   pointer-events: none;
 }
 .tano-table-line-drop { position: fixed; z-index: 42; background: var(--green); pointer-events: none; }
@@ -3047,8 +3179,8 @@ button:hover {
 
 .tano-prose pre.tano-live-source-block {
   min-height: 1em;
-  margin: 13px 0;
-  padding: 0;
+  margin: 8px 0;
+  padding: var(--tano-block-padding-block) var(--tano-block-padding-inline);
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -3075,13 +3207,27 @@ button:hover {
   overflow: auto;
   overflow-wrap: normal;
 }
+.tano-prose > pre.tano-live-source-block {
+  margin-inline: var(--tano-block-frame-inset);
+  padding-inline: 0;
+}
+.tano-prose > pre.tano-live-source-block[data-source-kind='code_block'] {
+  margin-inline: var(--tano-block-frame-inset);
+  padding-inline: calc(22px - var(--tano-block-frame-inset));
+}
 .tano-prose pre.tano-live-source-block[data-source-kind='code_block'] code {
   /* The fence rows reuse the rendered block's vertical padding. */
   display: block;
   line-height: var(--tano-code-fence-line-height, 19px);
 }
 .tano-prose pre.tano-live-source-block[data-source-kind='code_block'] .tano-live-code-body {
-  line-height: var(--tano-code-body-line-height, 27.2px);
+  /* The editable body is wrapped in a decoration span. Chromium rounds its
+     line boxes one 1/64px step taller than the original inline code rows;
+     subtract that step so entering/leaving source mode keeps block geometry.
+  */
+  position: relative;
+  top: 1px;
+  line-height: calc(var(--tano-code-body-line-height, 27.2px) - 0.015625px);
 }
 .tano-prose pre.tano-live-source-block[data-source-kind='heading'] {
   color: var(--text);
@@ -3296,29 +3442,61 @@ button:hover {
   border-top: 1px solid var(--line);
   margin: 31px 0;
 }
-.tano-prose .ProseMirror-selectednode {
+.tano-prose > hr {
+  margin-inline: var(--tano-block-frame-inset);
+}
+.tano-prose .ProseMirror-selectednode,
+.tano-prose .tano-block-selected {
   outline: none;
   border-radius: 4px;
-  background-color: var(--block-selection);
-  box-shadow: 0 0 0 4px var(--block-selection);
+  /* Paint the selection inside the block so its own surface remains visible
+     underneath and the highlight cannot expand beyond the block range. */
+  box-shadow: inset 0 0 0 100vmax var(--block-selection-overlay);
 }
 /* A table's scroll viewport includes page gutters; highlight only its cells. */
-.tano-prose .tano-table-viewport.ProseMirror-selectednode {
+.tano-prose .tano-table-viewport.ProseMirror-selectednode,
+.tano-prose .tano-table-viewport.tano-block-selected {
   background-color: transparent;
+  background-image: none;
   box-shadow: none;
 }
-.tano-prose .tano-table-viewport.ProseMirror-selectednode:not(.tano-block-drag-source) > .tableWrapper > table > tbody > tr > :is(th, td) {
-  box-shadow: inset 0 0 0 100vmax var(--block-selection);
+.tano-prose .tano-table-viewport:is(.ProseMirror-selectednode, .tano-block-selected):not(.tano-block-drag-source) > .tableWrapper > table > tbody > tr > :is(th, td) {
+  box-shadow: inset 0 0 0 100vmax var(--block-selection-overlay);
+}
+/* Framed blocks use an inline margin to put their visible frame on the text
+   rail. Their exact selection outline covers that margin, so the highlight
+   represents the block range without a shadow or visual bleed. */
+.tano-prose > :is(
+  blockquote:where(:not(.tano-callout)),
+  pre,
+  .tano-callout,
+  .tano-enhanced,
+  .tano-unsupported-block,
+  hr
+):is(.ProseMirror-selectednode, .tano-block-selected) {
+  outline: var(--tano-block-frame-inset) solid var(--block-selection);
 }
 .tano-prose .tano-math.ProseMirror-selectednode.tano-editor-active,
 .tano-prose .tano-mermaid.ProseMirror-selectednode.tano-editor-active {
   background-color: transparent;
+  background-image: none;
   box-shadow: none;
 }
+.tano-prose.ProseMirror-hideselection ::selection,
 .tano-prose .ProseMirror-selectednode::selection,
-.tano-prose .ProseMirror-selectednode ::selection {
+.tano-prose .ProseMirror-selectednode ::selection,
+.tano-prose .tano-block-selected::selection,
+.tano-prose .tano-block-selected ::selection {
   background: transparent;
 }
+.tano-block-selection-box {
+  position: fixed;
+  z-index: 90;
+  pointer-events: none;
+  border: none;
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+}
+.tano-block-selection-box[hidden] { display: none; }
 .tano-prose .tano-block-drag-source {
   opacity: 0.3;
   background-color: transparent;
@@ -3361,6 +3539,22 @@ button:hover {
   font-size: inherit;
   line-height: inherit;
   tab-size: inherit;
+}
+.source-editor .cm-gutters {
+  border: 0;
+  background: transparent;
+}
+.source-editor .cm-lineNumbers .cm-gutterElement {
+  padding: 0 10px 0 0;
+  color: var(--muted);
+}
+.source-editor .cm-lineNumbers .cm-activeLineGutter {
+  background: transparent;
+  color: var(--muted);
+}
+/* Keep the gutter width stable as the caret moves or all numbers are toggled. */
+.source-editor:not(.show-all-line-numbers) .cm-lineNumbers .cm-gutterElement:not(.cm-activeLineGutter) {
+  color: transparent;
 }
 .source-editor .cm-content {
   min-height: calc(100vh - 290px);
@@ -4392,6 +4586,14 @@ button:hover {
     left: -24px;
     width: 24px;
   }
+  /* Fit both controls in the narrow gutter plus the block's text inset. */
+  .tano-block-handle-icon {
+    width: 16px;
+    flex-basis: 16px;
+  }
+  .tano-fold-toggle {
+    width: 16px;
+  }
   .editor-toolbar {
     padding: 0 12px 0 8px;
   }
@@ -4443,8 +4645,9 @@ button:hover {
 }
 .tano-prose li[data-item-type='task'] > input {
   position: absolute;
-  left: -21px;
-  top: 8px;
+  left: -19px;
+  top: 50%;
+  transform: translateY(-50%);
   margin: 0;
   width: 14px;
   height: 14px;
@@ -5416,38 +5619,162 @@ div.tano-feature-source {
   display: none;
 }
 
+.tano-reference,
+.tano-reference-card {
+  --reference-color: var(--green);
+}
+:is(.tano-reference, .tano-reference-card)[data-reference-type='person'] {
+  --reference-color: var(--syntax-purple);
+}
+:is(.tano-reference, .tano-reference-card)[data-reference-type='event'] {
+  --reference-color: var(--syntax-blue);
+}
+:is(.tano-reference, .tano-reference-card)[data-reference-type='project'] {
+  --reference-color: var(--syntax-orange);
+}
+:is(.tano-reference, .tano-reference-card)[data-reference-type='asset'] {
+  --reference-color: var(--syntax-teal);
+}
 .tano-reference button,
 .tano-reference-card button {
-  color: var(--green);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 2px 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--reference-color) 18%, var(--line));
   font: inherit;
+  text-align: start;
   cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
-.tano-reference small,
-.tano-reference-card small {
-  margin-left: 8px;
+.tano-reference {
+  display: inline;
+}
+.tano-reference button {
+  vertical-align: baseline;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--reference-color) 6%, var(--paper));
+  line-height: 1.5;
+  font-size: 0.9em;
+}
+.tano-reference-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.tano-reference .tano-reference-label {
+  color: var(--reference-color);
+}
+.tano-reference-icon,
+.tano-reference-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--reference-color);
+}
+.tano-reference-badge {
+  flex-shrink: 0;
   color: var(--muted);
   font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
 }
-.tano-reference.is-missing button,
-.tano-reference-card.is-missing button {
-  color: var(--danger);
-  border-style: dashed;
+.tano-reference .tano-reference-badge {
+  padding-inline-start: 6px;
+  border-inline-start: 1px solid color-mix(in srgb, var(--reference-color) 18%, transparent);
 }
 .tano-reference-card {
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
   margin: 14px 0;
-  background: var(--surface);
 }
-.tano-reference-card > small {
+.tano-reference-card button {
+  display: flex;
+  width: 100%;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: linear-gradient(110deg, color-mix(in srgb, var(--reference-color) 4%, var(--paper)), var(--paper));
+  box-shadow: 0 2px 5px color-mix(in srgb, var(--text) 3%, transparent);
+}
+.tano-reference-card .tano-reference-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--reference-color) 10%, var(--paper));
+}
+.tano-reference-body {
+  flex: 1;
+  min-width: 0;
+}
+.tano-reference-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  line-height: 1.5;
+}
+.tano-reference-card .tano-reference-label {
+  font-weight: 600;
+}
+.tano-reference-card .tano-reference-badge {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--reference-color) 7%, var(--paper));
+  color: var(--reference-color);
+}
+.tano-reference-detail {
   display: block;
-  margin: 8px 0 0;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tano-reference-detail[hidden] {
+  display: none;
+}
+.tano-reference-arrow {
+  color: var(--muted);
+}
+:is(.tano-reference, .tano-reference-card) button:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--reference-color) 45%, var(--line));
+  background: color-mix(in srgb, var(--reference-color) 8%, var(--paper));
+}
+:is(.tano-reference, .tano-reference-card) button:focus-visible {
+  outline: 2px solid var(--reference-color);
+  outline-offset: 3px;
+}
+:is(.tano-reference, .tano-reference-card).is-completed .tano-reference-label {
+  color: var(--muted);
+}
+:is(.tano-reference, .tano-reference-card).is-missing {
+  --reference-color: var(--danger);
+}
+:is(.tano-reference, .tano-reference-card).is-missing button {
+  border-style: dashed;
+  opacity: 1;
+}
+:is(.tano-reference, .tano-reference-card).is-disabled button {
+  opacity: 0.65;
+}
+:is(.tano-reference-card.is-missing, .tano-reference-card.is-disabled) .tano-reference-arrow {
+  visibility: hidden;
+}
+@media (max-width: 600px) {
+  .tano-reference-card button {
+    gap: 10px;
+    padding: 12px;
+  }
+  .tano-reference-card .tano-reference-icon {
+    width: 36px;
+    height: 36px;
+  }
+  .tano-reference .tano-reference-badge {
+    flex-shrink: 1;
+    min-width: 0;
+  }
 }
 .tano-reference-picker {
   position: fixed;

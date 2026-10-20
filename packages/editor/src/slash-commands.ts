@@ -7,6 +7,7 @@ import { blockType, blockTypes, commandEnabled } from './document-model';
 import type { DocumentFeatures } from './runtime';
 import { safeResourceUrl } from './enhanced-markdown';
 import { referencePickerKey } from './reference-picker';
+import { isCalloutHeader } from './callout';
 
 interface SlashItem {
   command: string;
@@ -56,6 +57,10 @@ const items: SlashItem[] = blockTypes.flatMap<SlashItem>((item) =>
         },
       ],
 );
+items.splice(items.findIndex(item => item.command === 'callout') + 1, 0, {
+  command: 'callout', value: 'CUSTOM', label: '自定义块', englishLabel: 'Custom Callout',
+  keywords: 'custom callout emoji icon 自定义 图标 表情 提示', icon: '💡',
+});
 // Keep the most common empty-block action first.
 items.unshift(
   items.splice(
@@ -118,7 +123,7 @@ export function applySlashCommand(
       if (
         cursor === undefined &&
         child.isTextblock &&
-        !/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]$/.test(child.textContent)
+        !isCalloutHeader(child.textContent)
       )
         cursor = start + offset + 2;
     });
@@ -131,6 +136,7 @@ export function slashCommands(options: {
   readonly: () => boolean;
   levels: () => readonly number[] | undefined;
   features?: () => DocumentFeatures;
+  aiShortcut?: () => boolean;
 }) {
   const session = new PluginKey<ReturnType<typeof slashQuery>>('tano-slash-session');
   let refresh = () => {};
@@ -236,7 +242,9 @@ export function slashCommands(options: {
               const { selection } = state;
               if (!(selection instanceof TextSelection) || !selection.empty ||
                   selection.$from.depth === 0 || selection.$from.before() !== pos) return;
-              placeholder = "输入 '/' 搜索并切换块类型";
+              placeholder = options.aiShortcut?.()
+                ? "输入 '/' 搜索并切换块类型，或按 space（空格）启用 AI"
+                : "输入 '/' 搜索并切换块类型";
               persistent = false;
             }
           }

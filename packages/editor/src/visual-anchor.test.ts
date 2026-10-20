@@ -52,3 +52,16 @@ it('reads fresh DOM rectangles and safely releases an anchor after editor destru
     view.destroy(); expect(anchor.getRects()).toEqual([]); expect(() => anchor.dispose()).not.toThrow();
   } finally { if (!view.isDestroyed) view.destroy(); root.remove(); Range.prototype.getClientRects = original; }
 });
+it('renders an optional temporary selection marker without changing document content', () => {
+  const root = document.createElement('div'); document.body.append(root);
+  const doc = schema.node('doc', null, [schema.node('paragraph', null, [schema.text('hello butterfly')])]);
+  const view = new EditorView(root, { state: EditorState.create({ doc, selection: TextSelection.create(doc, 7, 16), plugins: [visualAnchorPlugin()] }) });
+  try {
+    const anchor = captureVisualAnchor(view, { highlight: true })!;
+    expect(view.dom.querySelector('.tano-assistant-selection')).not.toBeNull();
+    expect([...visualAnchorKey.getState(view.state)!.values()]).toEqual([{ from: 7, to: 16, highlight: true }]);
+    expect(view.state.doc.eq(doc)).toBe(true);
+    anchor.dispose();
+    expect(view.dom.querySelector('.tano-assistant-selection')).toBeNull();
+  } finally { view.destroy(); root.remove(); }
+});

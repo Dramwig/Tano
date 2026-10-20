@@ -31,9 +31,8 @@ export interface PluginAutomationExecution {
 export type TanoAutomationApi = Pick<TanoPluginApi, 'context' | 'objects' | 'relations' | 'network' | 'connections'> & {
   documents: Omit<TanoPluginApi['documents'], 'open'>;
 };
-export interface PluginGitEntry { path: string; index: string; worktree: string; originalPath: string | null }
-export interface PluginGitStatus { branch: string | null; detached: boolean; entries: PluginGitEntry[] }
-export interface PluginGitDiff { path: string; staged: boolean; patch: string }
+export type { GitEntry as PluginGitEntry, GitStatus as PluginGitStatus, GitDiff as PluginGitDiff, GitCommit as PluginGitCommit, GitLog as PluginGitLog } from './workspace-git';
+import type { GitStatus as PluginGitStatus, GitDiff as PluginGitDiff, GitLog as PluginGitLog } from './workspace-git';
 export type PluginChangeKind = 'created' | 'updated' | 'deleted';
 export type PluginEvent = { type: 'workspace.changed'; fileId?: string } | {
   type: 'documents.changed' | 'objects.changed' | 'relations.changed';
@@ -68,8 +67,11 @@ export interface TanoPluginApi {
   /** Host injects the current user's separately granted credential; keys never enter the SDK. */
   connections: { request(origin: string, request: PluginConnectionRequest): Promise<PluginConnectionResponse> };
   native: {
+    /** Opens the system UI; does not grant commit or network authority. */
+    invoke(command: 'sync.open', args?: Record<string, never>): Promise<{ opened: boolean }>;
     invoke(command: 'git.status', args?: Record<string, never>): Promise<PluginGitStatus>;
     invoke(command: 'git.diff', args: { path: string; staged?: boolean }): Promise<PluginGitDiff>;
+    invoke(command: 'git.log', args?: { path?: string; limit?: number }): Promise<PluginGitLog>;
     invoke(command: string, args?: unknown): Promise<unknown>;
   };
   commands: { register(id: string, handler: (context?: { fileId?: string; workspaceId: string }) => void | Promise<void>): Promise<void> };

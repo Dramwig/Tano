@@ -299,6 +299,13 @@ fn validate(session: &WorkspaceSession) -> Result<(), String> {
                             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
                 })
                 && !plugin_tab(id)
+                && !id.strip_prefix("workspace-view:").is_some_and(|view_id| {
+                    !view_id.is_empty()
+                        && view_id.len() <= 64
+                        && view_id.bytes().all(|byte| {
+                            byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_'
+                        })
+                })
                 && !id.strip_prefix("attachment:").is_some_and(|file_id| {
                     !file_id.is_empty()
                         && file_id.bytes().all(|byte| {
@@ -655,6 +662,23 @@ mod tests {
         assert_eq!(restored.documents.len(), 1);
         saved.tabs.push("attachment:".into());
         assert!(validate(&saved).is_err());
+    }
+    #[test]
+    fn restores_workspace_database_views_and_rejects_invalid_view_ids() {
+        let data = tempfile::tempdir().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut saved = session();
+        saved.tabs.push("workspace-view:files-example_1".into());
+        saved.active_id = "workspace-view:files-example_1".into();
+        save(data.path(), &id, &saved).unwrap();
+        let restored = load(data.path(), &id).unwrap().unwrap();
+        assert_eq!(restored.active_id, "workspace-view:files-example_1");
+        assert_eq!(restored.documents.len(), 1);
+        for suffix in ["".to_string(), "../outside".to_string(), "x".repeat(65)] {
+            saved.tabs.push(format!("workspace-view:{suffix}"));
+            assert!(validate(&saved).is_err());
+            saved.tabs.pop();
+        }
     }
     #[test]
     fn restores_table_tabs_and_validated_table_drafts() {
