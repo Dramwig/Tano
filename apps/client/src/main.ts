@@ -84,7 +84,7 @@ void boot().catch(async error => {
       // Keep recovery reachable if the host's reveal command itself failed.
       await import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
         const appWindow = getCurrentWindow();
-        if (appWindow.label === 'main') await appWindow.show();
+        if (appWindow.label === 'main' || appWindow.label.startsWith('file-')) await appWindow.show();
       }).catch(error => console.error('无法显示启动恢复界面', error));
     }
   }

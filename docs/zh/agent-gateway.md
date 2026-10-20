@@ -29,6 +29,8 @@ Node.js 24.12+；使用桌面 MCP 面板提供的工作区与应用数据路径�
 
 查询使用宿主维护的身份清单。文件目录查询明确返回错误及完整性标记，未注册文件需要先在 Tano 中刷新。分页每页最多 200 项；数据表公式求值和视图排序与界面共用实现，不执行任意 JavaScript。
 
+Markdown 标签与属性从当前源文件的 YAML frontmatter 投影，与界面共用解析逻辑，忽略旧旁路属性；其 `metadataHash` 为 `null`，使用同次读取的文件 `sha256` 核对来源。其他格式继续读取 `.tano/files/<fileId>.tano.json`，并返回旁路文件的 `metadataHash`。Markdown 属性读取上限为 8 MiB；文件超限、无法解码或读取失败时，返回对应错误并将 `complete` 标为 `false`，不能据此声称筛选没有匹配文件。
+
 ## 提案、差异与回执
 
 调用 `tano_propose_changes`，提供 UUID `operationId` 和 `edits`。每项包含 `path`、`content`、`reason`、`expectedHash`；已有资源还必须提供读取时的 `fileId`，新建资源的 `expectedHash` 为 `null`。支持 Markdown、对象 JSON 和普通 `.table.json` 数据表；其他格式当前提供查询与读取。对象类型和字段使用 Schema Registry 校验。

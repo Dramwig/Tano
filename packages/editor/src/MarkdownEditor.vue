@@ -110,7 +110,9 @@ import type { ReferenceTarget, ReferenceIdentity } from '@tano/protocol';
 import type { CommentAnchor } from '@tano/protocol';
 import { commentSpansForSelection, projectCommentText, proseRangesForCommentSpans } from './comment-projection';
 import { captureCaretAnchor, captureVisualAnchor, visualAnchorPlugin, visualSelection } from './visual-anchor';
-import { columnResizing } from '@milkdown/kit/prose/tables';
+import { columnResizing, isInTable } from '@milkdown/kit/prose/tables';
+import { breakTableCell, nextTableRow } from './table-commands';
+import { tableBreaksRemark } from './table-markdown';
 import { defaultTableColumnWidth, minimumTableColumnWidth } from '@tano/protocol';
 import type { TableLayout } from '@tano/protocol';
 import { tableLayouts, tableLayoutKey, sameMarkdownContent } from './table-layout';
@@ -1418,7 +1420,7 @@ function enterHeadingSource(ctx: Ctx, view: EditorView) {
   return true;
 }
 
-function enterInlineSourceTextblock(ctx: Ctx, view: EditorView) {
+function enterInlineSourceTextblock(ctx: Ctx, view: EditorView, cellBreak = false) {
   const current = currentSource(view);
   const selection = view.state.selection;
   if (
@@ -1453,6 +1455,16 @@ function enterInlineSourceTextblock(ctx: Ctx, view: EditorView) {
   const tr = view.state.tr.replaceWith(current.pos, current.pos + current.node.nodeSize,
     inline.content.cut(0, splitAt).append(inline.content.cut(splitAt + marker.length)));
   const splitPos = current.pos + splitAt;
+  if (cellBreak) {
+    tr.insert(splitPos, view.state.schema.nodes.hardbreak!.create());
+    tr.setSelection(TextSelection.create(tr.doc, splitPos + 1));
+    tr.setStoredMarks([]);
+    localSource = undefined;
+    transitioningSource = true;
+    try { view.dispatch(tr.scrollIntoView()); }
+    finally { transitioningSource = false; }
+    return true;
+  }
   const block = selection.$from.node(blockDepth);
   const splitDepth = block.type.name === 'paragraph' &&
     selection.$from.node(blockDepth - 1).type.name === 'list_item' ? 2 : 1;
@@ -1922,6 +1934,23 @@ const bridge = $prose(
               return true;
             }
             const source = currentSource(view);
+            if (event.key === 'Enter' && !event.altKey && isInTable(view.state)) {
+              // Let the IME confirm its candidate without falling through to table keymaps.
+              if (event.isComposing || event.keyCode === 229 || view.composing) return true;
+              event.preventDefault();
+              event.stopPropagation();
+              if (props.readonly) return true;
+              if (event.ctrlKey || event.metaKey || event.shiftKey) {
+                if (source && enterInlineSourceTextblock(ctx, view, true)) return true;
+                const tr = breakTableCell(view.state);
+                if (tr) view.dispatch(tr);
+              } else {
+                if (source) finishLocalSource(ctx, view);
+                const tr = nextTableRow(view.state);
+                if (tr) view.dispatch(tr);
+              }
+              return true;
+            }
             if (event.key === 'ArrowLeft' && !event.shiftKey && !event.ctrlKey &&
                 !event.metaKey && !event.altKey && !event.isComposing && !view.composing &&
                 enterFootnoteLabelFromCaret(ctx, view)) {
@@ -2395,6 +2424,7 @@ onMounted(async () => {
           },
         }));
       })
+      .use(tableBreaksRemark)
       .use(commonmark)
       .use(codeBlankLinesRemark)
       .use(listMarkdown)

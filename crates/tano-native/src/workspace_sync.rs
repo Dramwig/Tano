@@ -399,13 +399,49 @@ fn merge_identities(
             ));
         }
     }
+    // Resolve locations by stable ID before combining path records. Otherwise a
+    // one-sided move retains the unchanged side's old path as a second live ID.
+    let active = |manifest: &IdentityManifest| -> BTreeMap<String, String> {
+        manifest
+            .files
+            .iter()
+            .filter(|file| !file.deleted)
+            .map(|file| (file.id.clone(), file.path.clone()))
+            .collect()
+    };
+    let base_paths = active(base);
+    let our_paths = active(ours);
+    let their_paths = active(theirs);
+    let mut obsolete_ours = HashSet::new();
+    let mut obsolete_theirs = HashSet::new();
+    for (id, old_path) in &base_paths {
+        match (our_paths.get(id), their_paths.get(id)) {
+            (Some(left), Some(right)) if left != right => {
+                if left == old_path {
+                    obsolete_ours.insert(left.clone());
+                } else if right == old_path {
+                    obsolete_theirs.insert(right.clone());
+                } else {
+                    return Err(format!("文件 ID {id} 并发重命名，已暂停同步并保留两端历史"));
+                }
+            }
+            (Some(path), None) | (None, Some(path)) if path != old_path => {
+                return Err(format!("删除与重命名冲突：{old_path}；已保留两端历史"));
+            }
+            _ => {}
+        }
+    }
     let mut merged = ours.clone();
     let mut files: BTreeMap<String, _> = ours
         .files
         .iter()
+        .filter(|file| !obsolete_ours.contains(&file.path))
         .map(|f| (f.path.clone(), f.clone()))
         .collect();
     for right in &theirs.files {
+        if obsolete_theirs.contains(&right.path) {
+            continue;
+        }
         if let Some(left) = files.get(&right.path) {
             if left.id != right.id {
                 return Err(format!("同名文件身份冲突：{}；已保留两端历史", right.path));
@@ -696,6 +732,104 @@ mod tests {
         );
     }
     #[test]
+    fn real_two_device_sync_preserves_one_sided_rename_and_independent_edit() {
+        // Exercise both merge directions, then a fast-forward and a no-op retry.
+        for rename_on_remote in [false, true] {
+            let temp = tempfile::tempdir().unwrap();
+            let a = temp.path().join("a");
+            let b = temp.path().join("b");
+            let remote = temp.path().join("remote.git");
+            let ca = temp.path().join("ca");
+            let cb = temp.path().join("cb");
+            fs::create_dir_all(&a).unwrap();
+            seed(&a);
+            fs::write(a.join("other.md"), "base\n").unwrap();
+            let mut manifest = identity_manifest::read(&a, ID).unwrap().unwrap();
+            let mut other = manifest.files[0].clone();
+            other.id = "a00002".into();
+            other.path = "other.md".into();
+            manifest.files.push(other);
+            manifest.reserved_ids.push("a00002".into());
+            let save_manifest = |root: &Path, manifest: &IdentityManifest| {
+                fs::write(
+                    root.join(".tano/identities.json"),
+                    serde_json::to_vec_pretty(manifest).unwrap(),
+                )
+                .unwrap();
+            };
+            save_manifest(&a, &manifest);
+            git(
+                temp.path(),
+                &[
+                    "init",
+                    "--bare",
+                    "--initial-branch=main",
+                    remote.to_str().unwrap(),
+                ],
+            );
+            execute(&a, &ca, request("configure", Some(&remote))).unwrap();
+            assert_eq!(
+                execute(&a, &ca, request("run", None)).unwrap().message,
+                "文件已同步"
+            );
+            git(
+                temp.path(),
+                &["clone", remote.to_str().unwrap(), b.to_str().unwrap()],
+            );
+            execute(&b, &cb, request("configure", Some(&remote))).unwrap();
+            let (renaming, editing) = if rename_on_remote { (&a, &b) } else { (&b, &a) };
+            fs::rename(renaming.join("note.md"), renaming.join("renamed.md")).unwrap();
+            let mut renamed = manifest.clone();
+            renamed.files[0].path = "renamed.md".into();
+            renamed.revision += 1;
+            save_manifest(renaming, &renamed);
+            fs::write(editing.join("other.md"), "independent edit\n").unwrap();
+            let mut edited = manifest.clone();
+            edited.files[1].hash = crate::storage::hash(b"independent edit\n");
+            edited.files[1].version += 1;
+            edited.revision += 1;
+            save_manifest(editing, &edited);
+            assert_eq!(
+                execute(&a, &ca, request("run", None)).unwrap().message,
+                "文件已同步"
+            );
+            assert_eq!(
+                execute(&b, &cb, request("run", None)).unwrap().message,
+                "文件已同步"
+            );
+            assert_eq!(
+                execute(&a, &ca, request("run", None)).unwrap().message,
+                "文件已同步"
+            );
+            for root in [&a, &b] {
+                assert!(!root.join("note.md").exists());
+                assert_eq!(
+                    fs::read_to_string(root.join("renamed.md")).unwrap(),
+                    "first\n\nmiddle\n\nlast\n"
+                );
+                assert_eq!(
+                    fs::read_to_string(root.join("other.md")).unwrap(),
+                    "independent edit\n"
+                );
+                let merged = identity_manifest::read(root, ID).unwrap().unwrap();
+                let active: Vec<_> = merged
+                    .files
+                    .iter()
+                    .filter(|file| !file.deleted && file.id == "a00001")
+                    .collect();
+                assert_eq!(active.len(), 1);
+                assert_eq!(active[0].path, "renamed.md");
+                let head = git(root, &["rev-parse", "HEAD"]);
+                let cache = if root == &a { &ca } else { &cb };
+                assert_eq!(
+                    execute(root, cache, request("run", None)).unwrap().message,
+                    "文件已同步"
+                );
+                assert_eq!(git(root, &["rev-parse", "HEAD"]), head);
+            }
+        }
+    }
+    #[test]
     fn backend_selection_is_durable_and_exclusive() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("root");
@@ -740,6 +874,40 @@ mod tests {
         };
         assert!(engine.guard().unwrap_err().contains("filter.evil.clean"));
         assert!(!temp.path().join("should-not-run").exists());
+    }
+    #[test]
+    fn merges_one_sided_renames_by_identity_and_rejects_divergent_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        seed(temp.path());
+        let base = identity_manifest::read(temp.path(), ID).unwrap().unwrap();
+        let mut renamed = base.clone();
+        renamed.files[0].path = "renamed.md".into();
+        for (left, right) in [(&renamed, &base), (&base, &renamed)] {
+            let merged = merge_identities(&base, left, right).unwrap();
+            assert_eq!(merged.files.len(), 1);
+            assert_eq!(merged.files[0].path, "renamed.md");
+            assert_eq!(merged.files[0].id, base.files[0].id);
+        }
+        let mut edited = base.clone();
+        edited.files[0].hash = "a".repeat(64);
+        edited.files[0].version += 1;
+        assert_eq!(
+            merge_identities(&base, &renamed, &edited).unwrap().files[0].path,
+            "renamed.md"
+        );
+        assert_eq!(
+            merge_identities(&base, &edited, &renamed).unwrap().files[0].path,
+            "renamed.md"
+        );
+        assert!(merge_identities(&base, &renamed, &renamed).is_ok());
+        let mut divergent = base.clone();
+        divergent.files[0].path = "other.md".into();
+        assert!(merge_identities(&base, &renamed, &divergent).is_err());
+        let mut deleted = base.clone();
+        deleted.files[0].deleted = true;
+        for (left, right) in [(&renamed, &deleted), (&deleted, &renamed)] {
+            assert!(merge_identities(&base, left, right).is_err());
+        }
     }
     #[test]
     fn merges_independent_identity_allocations_but_rejects_reserved_collisions() {

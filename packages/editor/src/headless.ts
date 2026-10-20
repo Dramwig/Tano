@@ -25,6 +25,7 @@ import {
 import { schema as gfmSchema, remarkGFMPlugin } from '@milkdown/kit/preset/gfm';
 import { mathRemark, inlineMath, blockMath } from './math';
 import { configureMarkdownSchema } from './schema';
+import { tableBreaksRemark } from './table-markdown';
 import { codeBlankLinesRemark } from './code-blank-lines';
 import { listMarkdown } from './list-markdown';
 import { textStyles } from './text-styles';
@@ -72,6 +73,7 @@ export async function createHeadlessMarkdown(policy: WorkspaceCapabilities = def
     serializer,
     init(Editor.make()),
     config(configureMarkdownSchema),
+    ...tableBreaksRemark,
     ...commonmarkSchema,
     ...codeBlankLinesRemark,
     ...listMarkdown,

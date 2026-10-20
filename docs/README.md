@@ -7,6 +7,7 @@ Tano is a File-Native Workspace: real files remain the source of truth while peo
 | Guide | Topic |
 | --- | --- |
 | [Local development](local-development.md) | Requirements, setup, and checks |
+| [Windows context menus](windows-shell.md) | Optional installer menus and standalone Markdown files |
 | [Third-party account imports](account-import.md) | Provider applications, credentials, and import limits |
 | [Mobile development](mobile.md) | Android, iPhone/iPad, adaptive layout and local device checks |
 | [Architecture](architecture.md) | Storage layers and workspace identity |

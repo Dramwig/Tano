@@ -36,9 +36,9 @@ Editor table identities survive in-session edits and moves. On reopen or externa
 
 ## Project organization
 
-Projects are organized with ordinary workspace folders and Markdown documents. A project overview is a user document and uses its existing stable document ID; folder paths organize files, not project identities or permissions. There is no built-in `project` object or project-specific `member` / `contains` relationship. Workspace membership and access control remain separate from content organization.
+Projects can use ordinary workspace folders and Markdown documents, as well as the built-in `project` object with status, goal and due-date properties. Overview documents and project objects have their own stable identities; folder paths organize files rather than define identity or permissions. The `member` relation connects people to projects, while `contains` connects projects to tasks, experiments, documents or assets. Content relations do not grant workspace access.
 
-Historical `project` JSON files, IDs, properties, and relations are preserved without automatic conversion. Existing `object://project/<id>` links still open a read-only compatibility record. Projects are excluded from new object creation, copies, reference suggestions, and new relation endpoints. Task/event records, calendar synchronization, and person responsibility relations retain their existing model.
+Project records live in `.tano/objects/` and share creation, property editing, copying, references and relation flows with other built-in records. Existing project files, IDs and `object://project/<id>` references remain usable without migration; older records are not restricted to read-only compatibility. Writes still require workspace permission and a matching base hash. Task/event records, calendar synchronization, and person responsibility relations retain their existing model.
 
 ## Planning events
 

@@ -1,5 +1,6 @@
 import { unified } from 'unified';
 import { styleDelimiters, styleDelimiterConstruct } from './style-delimiters';
+import { transformTableBreaks } from './table-markdown';
 import type { Plugin } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
@@ -215,6 +216,7 @@ export const remarkTextStyles: Plugin<[], Root> = function () {
   const extensions = data.toMarkdownExtensions ?? (data.toMarkdownExtensions = []);
   extensions.push({ handlers: { tanoTextStyle: serializeStyle } });
   return (tree, file) => {
+    transformTableBreaks(tree);
     transformStyles(tree);
     groupRawHtml(tree, String(file.value));
   };
@@ -227,6 +229,7 @@ const inlineStyleParser = unified().use(remarkParse).use(remarkGfm, { singleTild
 export function hasUnsupportedHtml(markdown: string): boolean {
   if (!markdown.includes('<')) return false;
   const tree = styleParser.parse(markdown);
+  transformTableBreaks(tree);
   transformStyles(tree);
   function containsHtml(node: Nodes, parent?: Nodes): boolean {
     if (node.type === 'html') {

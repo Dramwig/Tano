@@ -38,6 +38,32 @@ it('refuses hidden configuration and duplicate identities instead of inventing r
   manifest.files.push({ path: 'other.md', id: '111111', deleted: false }); writeFileSync(path, JSON.stringify(manifest));
   expect(() => store.readFile('111111')).toThrow('重复');
 });
+it('queries Markdown frontmatter through MCP with the same typed properties as the workbench', async () => {
+  const snapshot = store.readFile('111111');
+  writeFileSync(join(root, snapshot.path), '---\nowner: Alice\n状态: Review\nenabled: false\ncount: 0\nempty: null\ntags: [paper, review, paper]\n---\n# Overview\n');
+  // Legacy sidecars must not shadow Markdown source properties.
+  writeFileSync(join(root, '.tano/files/111111.tano.json'), JSON.stringify({ version: 1, fileId: '111111', properties: { owner: 'Bob' }, tags: ['stale'] }));
+  const server = createAgentServer(store), client = new Client({ name: 'frontmatter-test', version: '1' });
+  const [a, b] = InMemoryTransport.createLinkedPair(); await server.connect(a); await client.connect(b);
+  try {
+    const sdk = AgentGatewayClient.fromMcp(client);
+    const result = await sdk.files('', 0, 100, { ...defaultFileDatabaseQuery(), filters: [{ field: 'property:owner', operator: 'equals', value: 'Alice' }] });
+    expect(result).toMatchObject({ complete: true, total: 1, items: [{ fileId: '111111', metadataHash: null,
+      metadata: { properties: { owner: 'Alice', status: 'Review', enabled: false, count: 0, empty: null }, tags: ['paper', 'review'] } }] });
+    expect(result.items[0]!.sha256).toBe(hash(readFileSync(join(root, snapshot.path))));
+  } finally { await client.close(); await server.close(); }
+});
+it('reports unreadable Markdown metadata as an incomplete query', () => {
+  const snapshot = store.readFile('111111');
+  writeFileSync(join(root, snapshot.path), Buffer.from([0xff, 0xfe]));
+  expect(store.queryFiles('', 0, 100, { ...defaultFileDatabaseQuery(), filters: [{ field: 'property:owner', operator: 'equals', value: 'Alice' }] }))
+    .toMatchObject({ complete: false, total: 0, errors: [{ path: snapshot.path, error: expect.any(String) }] });
+});
+it('bounds Markdown metadata reads and reports oversized sources as incomplete', () => {
+  const snapshot = store.readFile('111111');
+  writeFileSync(join(root, snapshot.path), Buffer.alloc(8 * 1024 ** 2 + 1, 'a'));
+  expect(store.queryFiles()).toMatchObject({ complete: false, errors: [{ path: snapshot.path, error: expect.stringContaining('8 MiB') }] });
+});
 it('queues a cross-resource batch atomically, keeps source bytes and returns per-item outcomes', () => {
   const snapshots = ['111111', 'e30001', '777777'].map(id => store.readFile(id));
   const operationId = randomUUID();

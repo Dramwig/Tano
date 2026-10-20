@@ -19,6 +19,7 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { isMarkdown, validatePath, validateStoragePath, parseAssistantSession, fileHandlers, parseObject, parseRelations, parseDataTable, isDataTableFilePath, validateObjectProperties, defaultObjectViewQuery, viewEngine, dataEvaluator, dataViewRows, AGENT_GATEWAY_VERSION, parseFileMetadata, emptyFileMetadata, queryFileDatabase, defaultFileDatabaseQuery } from '@tano/protocol';
+import { markdownFileMetadata } from '@tano/protocol/markdown-file-metadata';
 import type { AgentGatewayPolicy, GatewayBatch, ObjectViewQuery, AssistantProposal, FileDatabaseQuery } from '@tano/protocol';
 
 const maxBytes = 8 * 1024 ** 2;
@@ -249,12 +250,30 @@ export class AgentWorkspace {
     const rows = this.manifest().filter(file => !file.path.startsWith('.') && this.policy.directories.some(prefix => !prefix || file.path.startsWith(`${prefix}/`)) && file.path.toLowerCase().includes(query.toLowerCase())).flatMap(file => {
       try {
         const target = this.resourceTarget(file.path), stat = lstatSync(target);
+        const markdown = isMarkdown(file.path);
+        if (markdown && stat.size > maxBytes) throw new Error('Markdown 属性读取超过 8 MiB');
         const fd = openSync(target, 'r'); const digest = createHash('sha256'); const buffer = Buffer.alloc(64 * 1024);
-        try { let size; while ((size = readSync(fd, buffer, 0, buffer.length, null)) > 0) digest.update(buffer.subarray(0, size)); } finally { closeSync(fd); }
-        const metadataPath = this.resourceTarget('.tano/files/' + file.id + '.tano.json', false);
-        if (existsSync(metadataPath) && lstatSync(metadataPath).size > previewBytes) throw new Error('文件元数据超过大小限制');
-        const metadataContent = existsSync(metadataPath) ? text(readFileSync(metadataPath)) : null;
-        const metadata = metadataContent === null ? emptyFileMetadata(file.id) : parseFileMetadata(metadataContent, file.id);
+        const chunks: Buffer[] = []; let total = 0;
+        try {
+          let size;
+          while ((size = readSync(fd, buffer, 0, buffer.length, null)) > 0) {
+            digest.update(buffer.subarray(0, size));
+            if (markdown) {
+              total += size;
+              if (total > maxBytes) throw new Error('Markdown 属性读取超过 8 MiB');
+              chunks.push(Buffer.from(buffer.subarray(0, size)));
+            }
+          }
+        } finally { closeSync(fd); }
+        let metadataContent: string | null = null;
+        let metadata;
+        if (markdown) metadata = markdownFileMetadata(file.id, text(Buffer.concat(chunks)));
+        else {
+          const metadataPath = this.resourceTarget('.tano/files/' + file.id + '.tano.json', false);
+          if (existsSync(metadataPath) && lstatSync(metadataPath).size > previewBytes) throw new Error('文件元数据超过大小限制');
+          metadataContent = existsSync(metadataPath) ? text(readFileSync(metadataPath)) : null;
+          metadata = metadataContent === null ? emptyFileMetadata(file.id) : parseFileMetadata(metadataContent, file.id);
+        }
         return [{ workspaceId: this.id, fileId: file.id, path: file.path, sha256: digest.digest('hex'), size: stat.size, modified: stat.mtimeMs, handler: fileHandlers.resolve(file.path).id, metadata, metadataHash: metadataContent === null ? null : hash(metadataContent) }];
       } catch (error) { errors.push({ path: file.path, error: String(error) }); return []; }
     });

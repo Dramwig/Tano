@@ -236,6 +236,7 @@ export function blockControls(
       let dragging = false;
       let sourcePositions: number[] = [];
       let dragPreview: HTMLElement | null = null;
+      let dragPreviewOffset = { x: 0, y: 0 };
       let pendingPointer: {
         id: number;
         index: number;
@@ -834,6 +835,7 @@ export function blockControls(
       function beginPointerDrag(index: number, x: number, y: number) {
         const element = blockElement(index);
         if (!element) return;
+        const sourceRect = element.getBoundingClientRect();
         dragging = true;
         sourceIndex = index;
         const selection = view.state.selection;
@@ -859,6 +861,14 @@ export function blockControls(
           preview.append(copy);
         }
         host.append(preview);
+        // Anchor the grabbed block, even when it is in the middle of a group.
+        // Measure its clone to include preview padding and collapsed margins.
+        const copyRect = preview.children[draggedElements.indexOf(element)]!.getBoundingClientRect();
+        const previewRect = preview.getBoundingClientRect();
+        dragPreviewOffset = {
+          x: x - sourceRect.left + copyRect.left - previewRect.left,
+          y: y - sourceRect.top + copyRect.top - previewRect.top,
+        };
         dragPreview = preview;
         movePreview(x, y);
         dragDecoration = { doc: view.state.doc, positions: sourcePositions };
@@ -868,7 +878,7 @@ export function blockControls(
       }
 
       function movePreview(x: number, y: number) {
-        if (dragPreview) dragPreview.style.transform = `translate3d(${x + 16}px, ${y + 16}px, 0)`;
+        if (dragPreview) dragPreview.style.transform = `translate3d(${x - dragPreviewOffset.x}px, ${y - dragPreviewOffset.y}px, 0)`;
       }
 
       function onPointerDown(event: PointerEvent) {
@@ -955,7 +965,7 @@ export function blockControls(
         if (!dragging) {
           const distance = Math.hypot(event.clientX - pending.x, event.clientY - pending.y);
           if (distance < 5) return;
-          beginPointerDrag(pending.index, event.clientX, event.clientY);
+          beginPointerDrag(pending.index, pending.x, pending.y);
         }
         if (!dragging) return;
         event.preventDefault();

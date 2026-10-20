@@ -246,6 +246,7 @@ import {
 import type { SettingsCommand, SettingsPageId, SettingsSnapshot } from './settings-window';
 
 const props = defineProps<{ initialWorkspace?: string; createWorkspace?: boolean }>();
+const emit = defineEmits<{ ready: [] }>();
 const store = useWorkspaceStore();
 const startupPending = ref(true);
 const documentSuggestions = useSuggestionStore();
@@ -3831,6 +3832,7 @@ onMounted(async () => {
     startupPending.value = false;
   }
   if (unmounted) return;
+  emit('ready');
   if (webPageRouting) {
     pageRouteReady = true;
     if (props.createWorkspace || initialPageRouteSuperseded) writePageRoute(true);

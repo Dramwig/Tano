@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, copyFile, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -98,8 +98,27 @@ try {
   } finally {
     db.close();
   }
+  const markdown = '---\nowner: Alice\n状态: Review\ncount: 0\nenabled: false\ntags: [paper, review]\n---\n# Shared\n';
+  await writeFile(join(root, 'Shared.md'), markdown);
+  const sha256 = createHash('sha256').update(markdown).digest('hex');
+  await writeFile(join(root, '.tano/identities.json'), JSON.stringify({
+    format: 1, workspaceId, revision: 1, reservedIds: ['abc123'],
+    files: [{ id: 'abc123', path: 'Shared.md', hash: sha256, version: 1, deleted: false }],
+  }));
+  const query = await client.callTool({ name: 'tano_query_files', arguments: { database: {
+    directory: '', recursive: true, filters: [{ field: 'property:owner', operator: 'equals', value: 'Alice' }],
+    sort: { field: 'path', direction: 'asc' }, groupBy: '',
+  } } });
+  assert.notEqual(query.isError, true);
+  const files = JSON.parse(query.content[0].text);
+  assert.equal(files.complete, true);
+  assert.equal(files.total, 1);
+  assert.equal(files.items[0].sha256, sha256);
+  assert.equal(files.items[0].metadataHash, null);
+  assert.deepEqual(files.items[0].metadata.properties, { owner: 'Alice', '状态': 'Review', status: 'Review', count: 0, enabled: false });
+  assert.deepEqual(files.items[0].metadata.tags, ['paper', 'review']);
   console.log(
-    'PASS standalone MCP: 4 concurrent clients, shared durable identity, stdio handshake, tools, create/read/conditional write, stale-write and path rejection',
+    'PASS standalone MCP: 4 concurrent clients, shared durable identity, stdio handshake, tools, create/read/conditional write, stale-write and path rejection, Markdown frontmatter filtering',
   );
   console.log(`Bundle: ${bundle}`);
 } catch (error) {

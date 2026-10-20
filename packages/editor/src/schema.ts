@@ -15,6 +15,10 @@ export function configureMarkdownSchema(ctx: Ctx) {
       ...options,
       handlers: {
         ...options.handlers,
+        // A physical newline would end the Markdown table row. Keep cell breaks portable.
+        break(node, parent, state, info) {
+          return state.stack.includes('tableCell') ? '<br />' : defaultHandlers.break(node, parent, state, info);
+        },
         text(node, parent, state, info) {
           // Keep literal stars inside a mark distinct from its delimiters.
           // Outside the mark, extra stars are valid: **text* is * + emphasis.
@@ -79,6 +83,16 @@ export function configureMarkdownSchema(ctx: Ctx) {
       return {
         ...schema,
         attrs: { ...schema.attrs, alignment: { ...schema.attrs?.alignment, default: null }, background: { default: null }, foreground: { default: null } },
+        toMarkdown: {
+          ...schema.toMarkdown,
+          runner(state, node) {
+            // Cell content is one paragraph. Bypass the paragraph serializer,
+            // which intentionally drops a trailing hardbreak in ordinary prose.
+            state.openNode('tableCell');
+            if (node.firstChild) state.next(node.firstChild.content);
+            state.closeNode();
+          },
+        },
         toDOM(node) {
           const output = schema.toDOM!(node) as [string, Record<string, unknown>, ...DOMOutputSpec[]];
           return [output[0], { ...output[1], 'data-tano-table-color': node.attrs.background, 'data-tano-table-text-color': node.attrs.foreground }, ...output.slice(2)] as DOMOutputSpec;

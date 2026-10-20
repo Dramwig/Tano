@@ -5,10 +5,12 @@ const app = vi.hoisted(() => ({
   mount: vi.fn(),
   tick: vi.fn<() => Promise<void>>(),
   platform: vi.fn<() => Promise<void>>(),
+  create: vi.fn(),
+  windowLabel: 'main',
 }));
 vi.mock('vue', async importOriginal => ({
   ...await importOriginal<typeof import('vue')>(),
-  createApp: () => ({ use: () => ({ mount: app.mount }) }),
+  createApp: (...args: unknown[]) => { app.create(...args); return { use: () => ({ mount: app.mount }) }; },
   nextTick: app.tick,
 }));
 vi.mock('pinia', () => ({ createPinia: () => ({}) }));
@@ -17,19 +19,35 @@ vi.mock('@tano/workbench/runtime', () => ({
 }));
 vi.mock('@tano/workbench/adapter', () => ({ native: true, NativeAdapter: class {} }));
 vi.mock('@tano/workbench/platform', () => ({ mobile: false, initializePlatform: app.platform }));
+vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ label: app.windowLabel }) }));
 vi.mock('@tano/workbench/styles.css', () => ({}));
 vi.mock('@tano/workbench/settings-window', () => ({ settingsWindowRequest: () => undefined }));
 vi.mock('@tano/workbench/plugins/catalog', () => ({ HttpPluginCatalog: class {} }));
 vi.mock('@tano/workbench/plugins/native', () => ({
   createNativePluginServices: () => ({}), createNativePluginConnections: () => ({}),
 }));
-vi.mock('@tano/workbench', () => ({ default: {} }));
+vi.mock('@tano/workbench', () => ({ default: { name: 'Workbench' } }));
+vi.mock('./WorkspaceShell.vue', () => ({ default: { name: 'WorkspaceShell' } }));
+vi.mock('./StandaloneFile.vue', () => ({ default: { name: 'StandaloneFile' } }));
 vi.mock('@tano/workbench/components/DesktopWindow.vue', () => ({ default: {} }));
 
 beforeEach(() => {
   app.mount.mockReset();
   app.tick.mockReset().mockResolvedValue(undefined);
   app.platform.mockReset().mockResolvedValue(undefined);
+  app.create.mockReset();
+  app.windowLabel = 'main';
+});
+
+it.each([
+  ['main', 'WorkspaceShell'],
+  ['file-test', 'StandaloneFile'],
+  ['detached-test', 'Workbench'],
+])('routes %s to %s without consuming another window’s shell queue', async (label, view) => {
+  app.windowLabel = label;
+  const { start } = await import('./start');
+  await start();
+  expect(app.create).toHaveBeenCalledWith(expect.anything(), { view: { name: view } });
 });
 
 it('signals native readiness only after the mounted workbench has flushed DOM updates', async () => {

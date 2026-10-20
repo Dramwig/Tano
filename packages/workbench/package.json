@@ -18,6 +18,7 @@
     "./i18n": "./src/i18n.ts",
     "./locale": "./src/locale.ts",
     "./settings-window": "./src/settings-window.ts",
+    "./stores/workspace": "./src/stores/workspace.ts",
     "./*": "./src/*"
   },
   "dependencies": {

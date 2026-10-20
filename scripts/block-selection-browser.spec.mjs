@@ -184,6 +184,67 @@ async function selectGroup(page, method) {
   await expect(prose.locator('.tano-block-selected')).toHaveCount(3);
 }
 
+for (const [kind, block] of [
+  ['paragraph', 'Dragged paragraph.'],
+  ['multiline paragraph', 'Dragged paragraph with enough words to wrap across several lines. '.repeat(12)],
+  ['heading', '### Dragged heading'],
+  ['quote', '> Dragged quote.'],
+  ['table', '| Name | Value |\n| --- | --- |\n| A | 1 |'],
+]) {
+  test(`${kind} drag preview preserves the initial pointer offset`, async ({ page }) => {
+    const markdown = `Before.\n\n${block}\n\n## Last selected\n\nAfter.\n`;
+    const prose = await openGroupDocument(page, markdown);
+    const handle = await (await hoverGroupHandle(page, 1)).boundingBox();
+    const source = await prose.locator(':scope > *').nth(1).boundingBox();
+    const start = { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 };
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    const copy = page.locator('.tano-block-drag-preview > *').first();
+    for (const [dx, dy] of [[8, 6], [100, 80], [-10, 35]]) {
+      await page.mouse.move(start.x + dx, start.y + dy);
+      await expect(copy).toBeVisible();
+      const preview = await copy.boundingBox();
+      expect(preview.x - source.x).toBeCloseTo(dx, 0);
+      expect(preview.y - source.y).toBeCloseTo(dy, 0);
+      expect(await groupContent(page)).toBe(markdown);
+    }
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await expect(page.locator('.tano-block-drag-preview')).toHaveCount(0);
+    expect(await groupContent(page)).toBe(markdown);
+  });
+}
+
+for (const method of ['Shift', 'Control']) {
+  test(`${method} group drag preserves the pointer offset of the grabbed block`, async ({ page }) => {
+    const prose = await openGroupDocument(page);
+    if (method === 'Shift') await selectGroup(page, method);
+    else {
+      await clickGroupHandle(page, 1);
+      await clickGroupHandle(page, 3, ['Control']);
+    }
+    const index = method === 'Shift' ? 2 : 3;
+    const handle = await (await hoverGroupHandle(page, index)).boundingBox();
+    const source = await prose.locator(':scope > *').nth(index).boundingBox();
+    const start = { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 };
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    const copy = page.locator('.tano-block-drag-preview > *').nth(1);
+    for (const [dx, dy] of [[8, 6], [100, 80], [-10, 35]]) {
+      await page.mouse.move(start.x + dx, start.y + dy);
+      await expect(copy).toBeVisible();
+      const preview = await copy.boundingBox();
+      expect(preview.x - source.x).toBeCloseTo(dx, 0);
+      expect(preview.y - source.y).toBeCloseTo(dy, 0);
+      expect(await groupContent(page)).toBe(groupMarkdown);
+    }
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await expect(page.locator('.tano-block-drag-preview')).toHaveCount(0);
+    expect(await groupContent(page)).toBe(groupMarkdown);
+  });
+}
+
 for (const method of ['Shift', 'rectangle']) {
   test(`${method} selects heterogeneous blocks and drags them together in one undo step`, async ({ page }) => {
     const prose = await openGroupDocument(page);

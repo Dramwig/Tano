@@ -66,9 +66,9 @@ pub struct AppState {
 fn workspace_switch_blocked(app: &tauri::AppHandle) -> bool {
     // Settings are prewarmed and follow the main window's workspace snapshot. Only
     // independent content windows must be closed before replacing the shared session.
-    app.webview_windows()
-        .keys()
-        .any(|label| label != "main" && !label.starts_with("settings-"))
+    app.webview_windows().keys().any(|label| {
+        label != "main" && !label.starts_with("settings-") && !label.starts_with("file-")
+    })
 }
 
 fn workspace_lock_directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
