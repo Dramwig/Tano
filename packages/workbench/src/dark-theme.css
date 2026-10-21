@@ -2,12 +2,12 @@
    Keep decorative seams quiet and reserve stronger borders for interaction. */
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --sidebar: #191b1d;
+  --sidebar: #1a1c1e;
   --paper: #1e2022;
-  --surface: #272a2d;
+  --surface: #26282b;
   --surface-raised: #2b2e31;
-  --hover: #32363a;
-  --line: #303336;
+  --hover: #303438;
+  --line: #2c2f32;
   --line-strong: #3e4449;
   --control-border: #6b747c;
   --scrollbar-thumb: #4b5157;

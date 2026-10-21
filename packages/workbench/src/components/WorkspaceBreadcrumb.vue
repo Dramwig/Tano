@@ -4,13 +4,17 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch, type
 import { ArrowLeft, BookOpen, Check, ChevronRight, File, FileText, Table2, FolderOpen, LockKeyhole } from 'lucide-vue-next';
 import { basename, isMarkdown, isDataTableFilePath, isWorkspaceInternalPath, parentPath, type FileEntry } from '@tano/protocol';
 import { butterflyPerchDirective, useButterflyController, type ButterflyPerch } from '../assistant/butterfly-vue';
+import DocumentFileIcon from './DocumentFileIcon.vue';
 
 const vButterflyPerch = butterflyPerchDirective(useButterflyController());
 
 const props = defineProps<{
   workspaceId?: string;
   workspaceName: string;
+  hideWorkspace?: boolean;
   entries: FileEntry[];
+  documentIcons?: Readonly<Record<string, string>>;
+  loadDocumentIcon?: (file: FileEntry, signal: AbortSignal) => Promise<string>;
   path?: string;
   pages?: { id: string; label: string; icon?: Component; current?: boolean; disabled?: boolean }[];
   demoLabel?: string | null;
@@ -26,6 +30,7 @@ const anchorKey = ref('');
 const folder = ref('');
 const position = ref({ left: '0px', top: '0px' });
 let trigger: HTMLButtonElement | undefined;
+const currentFile = computed(() => props.entries.find(entry => entry.kind === 'file' && entry.path === props.path));
 const parts = computed(() => (props.path ?? '').split('/').filter(Boolean).map((name, index, all) => ({
   name,
   path: all.slice(0, index + 1).join('/'),
@@ -152,7 +157,7 @@ onBeforeUnmount(() => {
 
 <template>
   <nav ref="root" class="breadcrumb" :aria-label="t('当前位置')">
-    <button type="button" class="breadcrumb-trigger breadcrumb-workspace"
+    <button v-if="!hideWorkspace" type="button" class="breadcrumb-trigger breadcrumb-workspace"
       :class="{ 'demo-badge breadcrumb-demo-badge': demoLabel }"
       :disabled="!workspaceId" :data-tooltip="demoLabel ? t('浏览器演示 · 数据仅保存在本浏览器') : workspaceName"
       :aria-label="t('浏览工作区：{0}', [workspaceName])" aria-haspopup="menu"
@@ -163,8 +168,8 @@ onBeforeUnmount(() => {
       <span class="breadcrumb-workspace-label">{{ demoLabel || workspaceName }}</span>
     </button>
     <slot />
-    <template v-for="page in pages" :key="page.id">
-      <ChevronRight :size="12" class="breadcrumb-separator" aria-hidden="true" />
+    <template v-for="(page, index) in pages" :key="page.id">
+      <ChevronRight v-if="!hideWorkspace || index > 0" :size="12" class="breadcrumb-separator" aria-hidden="true" />
       <component :is="page.current ? 'span' : 'button'" class="breadcrumb-trigger breadcrumb-page"
         :class="{ 'breadcrumb-current': page.current }" :type="page.current ? undefined : 'button'"
         :aria-current="page.current ? 'page' : undefined" :disabled="page.current ? undefined : page.disabled"
@@ -173,8 +178,8 @@ onBeforeUnmount(() => {
         <span>{{ page.label }}</span>
       </component>
     </template>
-    <template v-for="part in parts" :key="part.path">
-      <ChevronRight :size="12" class="breadcrumb-separator" aria-hidden="true" />
+    <template v-for="(part, index) in parts" :key="part.path">
+      <ChevronRight v-if="!hideWorkspace || index > 0 || pages?.length" :size="12" class="breadcrumb-separator" aria-hidden="true" />
       <button type="button" class="breadcrumb-trigger" :class="{ 'breadcrumb-current': part.current }"
         v-butterfly-perch="part.current ? perch : undefined"
         :data-tooltip="part.path" :aria-label="part.current ? t('切换文件：{0}', [part.name]) : t('浏览目录：{0}', [part.path])"
@@ -184,10 +189,17 @@ onBeforeUnmount(() => {
         @keydown.down.prevent.stop="show($event, part.path, part.current ? parentPath(part.path) : part.path)"
         @keydown.up.prevent.stop="show($event, part.path, part.current ? parentPath(part.path) : part.path)"
         @keydown.esc.stop.prevent="close(true)">
-        <component :is="part.current ? (isDataTableFilePath(part.path) ? Table2 : isMarkdown(part.path) ? FileText : File) : FolderOpen" :size="14" />
+        <DocumentFileIcon
+          v-if="part.current && currentFile && (isMarkdown(part.path) || isDataTableFilePath(part.path))"
+          :key="`${workspaceId}:${currentFile.id}`"
+          :file="currentFile" :icon="documentIcons?.[currentFile.id]"
+          :load="isMarkdown(part.path) ? loadDocumentIcon : undefined"
+        />
+        <component v-else :is="part.current ? (isDataTableFilePath(part.path) ? Table2 : isMarkdown(part.path) ? FileText : File) : FolderOpen" :size="14" />
         <span>{{ part.current && (isMarkdown(part.path) || isDataTableFilePath(part.path)) ? part.name.replace(/(\.table\.json|\.(md|markdown))$/i, '') : part.name }}</span>
       </button>
     </template>
+    <slot name="status" />
   </nav>
   <Teleport to="body">
     <div v-if="opened" :id="menuId" ref="menu" class="breadcrumb-menu" :style="position"
@@ -201,7 +213,12 @@ onBeforeUnmount(() => {
         <button v-for="entry in children" :key="entry.id" type="button" class="breadcrumb-menu-entry"
           :class="{ 'is-current': entry.path === path }" role="menuitem" :data-path="entry.path"
           :data-tooltip="entry.name" :aria-current="entry.path === path ? 'page' : undefined" @click="choose(entry)">
-          <component :is="entry.kind === 'directory' ? FolderOpen : isDataTableFilePath(entry.path) ? Table2 : isMarkdown(entry.path) ? FileText : File" :size="17" :stroke-width="1.6" />
+          <DocumentFileIcon
+            v-if="entry.kind === 'file' && (isMarkdown(entry.path) || isDataTableFilePath(entry.path))"
+            :file="entry" :icon="documentIcons?.[entry.id]"
+            :load="isMarkdown(entry.path) ? loadDocumentIcon : undefined"
+          />
+          <component v-else :is="entry.kind === 'directory' ? FolderOpen : File" :size="17" :stroke-width="1.6" />
           <span>{{ fileLabel(entry) }}</span>
           <ChevronRight v-if="entry.kind === 'directory'" :size="14" class="breadcrumb-menu-trailing" />
           <Check v-else-if="entry.path === path" :size="14" class="breadcrumb-menu-trailing" />
@@ -229,6 +246,7 @@ onBeforeUnmount(() => {
 .breadcrumb > .breadcrumb-current { color: var(--text); }
 .breadcrumb-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .breadcrumb-trigger > svg, .breadcrumb-separator { flex-shrink: 0; }
+.breadcrumb-trigger > .document-file-icon, .breadcrumb-menu-entry > .document-file-icon { flex-shrink: 0; }
 button.breadcrumb-trigger:hover, .breadcrumb-trigger[aria-expanded='true'] { background: var(--hover); }
 .breadcrumb-trigger:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
 .breadcrumb-menu {

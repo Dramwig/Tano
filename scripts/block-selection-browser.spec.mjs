@@ -287,6 +287,32 @@ for (const method of ['Shift', 'rectangle', 'Control', 'single']) {
   });
 }
 
+for (const backward of [false, true]) {
+  test(`marquee requires actual block overlap${backward ? ' when dragging upward' : ''}`, async ({ page }) => {
+    const prose = await openGroupDocument(page);
+    const first = await prose.locator(':scope > p').filter({ hasText: 'First selected.' }).boundingBox();
+    const last = await prose.locator(':scope > h2').boundingBox();
+    const startY = backward ? last.y + last.height - 1 : first.y + 1;
+    const endY = backward ? first.y + 1 : last.y + last.height - 1;
+    await page.mouse.move(first.x - 80, startY);
+    await page.mouse.down();
+    // Match a narrow rectangle wholly in the gutter, then approach the edge.
+    for (const gap of [50, 1, 0]) {
+      await page.mouse.move(first.x - gap, endY, { steps: 10 });
+      await expect(page.locator('.tano-block-selection-box')).toBeVisible();
+      await expect(prose.locator('.tano-block-selected, .ProseMirror-selectednode')).toHaveCount(0);
+    }
+    await page.mouse.move(first.x + 100, endY, { steps: 10 });
+    await expect(prose.locator('.tano-block-selected')).toHaveCount(3);
+    // Moving back out removes the transient block selection.
+    await page.mouse.move(first.x - 1, endY, { steps: 10 });
+    await expect(prose.locator('.tano-block-selected, .ProseMirror-selectednode')).toHaveCount(0);
+    await page.mouse.up();
+    await expect(page.locator('.tano-block-selection-box')).toBeHidden();
+    expect(await groupContent(page)).toBe(groupMarkdown);
+  });
+}
+
 for (const cover of [false, true]) {
   test(`marquee starts beside the page title and selects only body blocks${cover ? ' with a cover' : ''}`, async ({ page }) => {
     const markdown = (cover ? '---\ncover: tano:sky\n---\n' : '') + groupMarkdown;

@@ -9,6 +9,7 @@ import type { AttachmentService } from './attachments';
 import type { SettingsPageId } from './settings-window';
 import type { PluginRuntimeServices } from './plugins/host';
 import type { ImportAccountHost } from './account-import/types';
+import type { DocumentSyncStatus } from './document-status';
 
 export interface WorkbenchActions {
   closeMenus(): void;
@@ -68,6 +69,8 @@ export interface WorkbenchObjectDetailsProps {
 }
 export interface WorkbenchExtensions {
   editing: EditingSession;
+  /** Per-document persistence state, supplied by hosts that synchronize content. */
+  documentStatus?(id: string): DocumentSyncStatus | undefined;
   /**
    * workspace-menu-layout can wrap built-in workspace actions through its default slot.
    * plugin-publishing receives WorkbenchActions in the plugin center's My submissions view.

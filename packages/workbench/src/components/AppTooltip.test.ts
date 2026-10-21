@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { createApp, nextTick, type App } from 'vue';
+import { createApp, h, nextTick, type App } from 'vue';
 import AppTooltip from './AppTooltip.vue';
+import WorkspaceBreadcrumb from './WorkspaceBreadcrumb.vue';
 
 let app: App | undefined;
 let root: HTMLElement;
@@ -74,4 +75,41 @@ it('does not show a tooltip for touch input or a hidden control', async () => {
   button.hidden = true;
   button.dispatchEvent(new FocusEvent('focusin', { bubbles: true })); await flush();
   expect(hint()).toBeNull();
+});
+
+it('does not reopen hints when a pointer selection restores breadcrumb focus', async () => {
+  const navigationRoot = document.createElement('div');
+  document.body.append(navigationRoot);
+  const navigation = createApp({ render: () => h(WorkspaceBreadcrumb, {
+    workspaceId: 'workspace', workspaceName: 'Workspace', path: 'folder/old.md',
+    entries: [
+      { id: 'folder', path: 'folder', name: 'folder', kind: 'directory', size: 0, modified: 0 },
+      { id: 'new', path: 'folder/new.md', name: 'new.md', kind: 'file', size: 0, modified: 0 },
+    ],
+  }) });
+  navigation.mount(navigationRoot);
+  try {
+    const trigger = navigationRoot.querySelector<HTMLButtonElement>('[data-tooltip="folder"]')!;
+    trigger.getClientRects = button.getClientRects;
+    trigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    trigger.click(); await flush();
+    const row = document.querySelector<HTMLButtonElement>('[data-path="folder/new.md"]')!;
+    row.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    row.click(); await flush();
+    expect(document.activeElement).toBe(trigger);
+    expect(document.querySelector('.breadcrumb-menu')).toBeNull();
+    await vi.advanceTimersByTimeAsync(300); await flush();
+    expect(hint()).toBeNull();
+
+    trigger.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(250); await flush();
+    expect(hint()?.textContent).toBe('folder');
+    trigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    trigger.blur();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));
+    trigger.focus(); await flush();
+    expect(hint()?.textContent).toBe('folder');
+  } finally {
+    navigation.unmount(); navigationRoot.remove();
+  }
 });

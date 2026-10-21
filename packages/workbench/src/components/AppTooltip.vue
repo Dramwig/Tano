@@ -14,6 +14,7 @@ let anchor: HTMLElement | null = null;
 let pending: HTMLElement | null = null;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let observer: MutationObserver | undefined;
+let keyboardFocus = true;
 
 function cancelTimer() { clearTimeout(timer); timer = undefined; }
 function hide() {
@@ -75,6 +76,9 @@ function enter(event: PointerEvent | FocusEvent) {
   if (!(target instanceof Element)) return;
   const button = target.closest<HTMLElement>('[data-tooltip]');
   if (!button) return;
+  // Menus restore focus after selection, even when the pointer is elsewhere.
+  // Only keyboard focus should open a hint without an actual pointer hover.
+  if (event.type === 'focusin' && !keyboardFocus) return;
   if (anchor === button) { cancelTimer(); return; }
   if (pending === button) return;
   hide();
@@ -92,8 +96,12 @@ function leave(event: MouseEvent | FocusEvent) {
   // Allow moving onto the hint to read a long description.
   timer = setTimeout(hide, 100);
 }
-function escape(event: KeyboardEvent) { if (event.key === 'Escape') hide(); }
+function escape(event: KeyboardEvent) {
+  keyboardFocus = true;
+  if (event.key === 'Escape') hide();
+}
 function dismiss(event: Event) {
+  if (event.type === 'pointerdown') keyboardFocus = false;
   if (event.target instanceof Node && tooltip.value?.contains(event.target)) return;
   hide();
 }

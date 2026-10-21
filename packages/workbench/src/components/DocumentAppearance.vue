@@ -295,7 +295,7 @@ onBeforeUnmount(() => {
 
 <style>
 .document-appearance { position: relative; }
-.document-title-actions { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; min-height: 30px; margin: 0 -6px 6px; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+.document-title-actions { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; min-height: 30px; margin: 0 var(--tano-block-padding-inline) 6px; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
 .document-title-actions-placeholder { visibility: hidden; }
 .document-title:has(.document-title-content:hover, .document-appearance-content:hover) .document-title-actions,
 .document-title:has(.document-title-actions :focus-visible, .document-page-icon :focus-visible) .document-title-actions,

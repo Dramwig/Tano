@@ -6,6 +6,36 @@ import { columnsView } from './columns-view';
 
 let tabsId = 0;
 
+function tabActionIcon(kind: 'add' | 'more'): SVGSVGElement {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('width', '16');
+  svg.setAttribute('height', '16');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  svg.style.display = 'block';
+  if (kind === 'add') {
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', 'M8 4v8M4 8h8');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '1.25');
+    path.setAttribute('stroke-linecap', 'round');
+    svg.append(path);
+  } else {
+    for (const x of [3, 8, 13]) {
+      const dot = document.createElementNS(ns, 'circle');
+      dot.setAttribute('cx', String(x));
+      dot.setAttribute('cy', '8');
+      dot.setAttribute('r', '1');
+      dot.setAttribute('fill', 'currentColor');
+      svg.append(dot);
+    }
+  }
+  return svg;
+}
+
 /** Presentation state (expanded toggle / active tab) stays out of Markdown and Yjs. */
 export function enhancedViews(
   readonly: () => boolean,
@@ -35,7 +65,7 @@ export function enhancedViews(
       const panelMenu = document.createElement('details');
       panelMenu.className = 'tano-panel-menu';
       const panelMenuTrigger = document.createElement('summary');
-      panelMenuTrigger.textContent = '⋯';
+      panelMenuTrigger.append(tabActionIcon('more'));
       panelMenuTrigger.setAttribute('aria-label', '标签页操作');
       panelMenuTrigger.title = '标签页操作';
       const panelActions = document.createElement('div');
@@ -152,7 +182,7 @@ export function enhancedViews(
         const add = document.createElement('button');
         add.type = 'button';
         add.className = 'tano-add-panel';
-        add.textContent = '+';
+        add.append(tabActionIcon('add'));
         add.setAttribute('aria-label', '添加标签页');
         add.title = '添加标签页';
         add.onclick = () => {

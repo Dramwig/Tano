@@ -71,15 +71,15 @@
   --accent: #eaf5ee;
   --block-selection: #e1f1e8;
   --block-selection-overlay: color-mix(in srgb, var(--block-selection) 62%, transparent);
-  --line: #e3e5e8;
-  --control-border: #b9bfc8;
-  --sidebar: #f9f8f7;
+  --line: #edeeef;
+  --control-border: #c7ccd2;
+  --sidebar: #fbfafa;
   --sidebar-width: 230px;
   --workbench-tabbar-height: 36px;
   --workbench-topbar-height: 44px;
   --paper: #ffffff;
-  --surface: #f5f6f7;
-  --hover: #ebedef;
+  --surface: #f7f7f8;
+  --hover: #eff0f1;
   --danger: #ab3e35;
   --danger-bg: #fcf1e8;
   --warning: #805c20;
@@ -376,9 +376,9 @@ button:hover {
   font-size: 12px;
   letter-spacing: 0.6px;
   background: var(--surface);
-  border: 1px solid var(--line);
-  color: var(--text-secondary);
-  padding: 3px 5px;
+  border: 0;
+  color: var(--muted);
+  padding: 3px 6px;
   border-radius: 4px;
   margin-left: auto;
 }
@@ -706,7 +706,7 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
+  padding: 0 28px;
   gap: 15px;
 }
 .workspace-tabbar {
@@ -744,10 +744,11 @@ button:hover {
 .breadcrumb {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   min-width: 0;
   color: var(--muted);
   font-size: 13px;
+  letter-spacing: 0.1px;
   white-space: nowrap;
   overflow: hidden;
 }
@@ -1235,12 +1236,15 @@ button:hover {
   gap: 8px;
 }
 .tano-prose .tano-tabs {
+  --tano-tabs-header-height: 44px;
   position: relative;
   border: 0;
   border-radius: 0;
   overflow: visible;
 }
 .tano-tabs > .tano-enhanced-header {
+  box-sizing: content-box;
+  height: var(--tano-tabs-header-height);
   flex-wrap: nowrap;
   gap: 8px;
   padding: 0 36px 0 0;
@@ -1268,7 +1272,7 @@ button:hover {
 }
 .tano-tabs > .tano-enhanced-content > .tano-panel > .tano-enhanced-header {
   position: absolute;
-  top: 6px;
+  top: calc((var(--tano-tabs-header-height) - 28px) / 2);
   right: 0;
   padding: 0;
   background: transparent;
@@ -2080,11 +2084,11 @@ button:hover {
   --tano-block-padding-inline: 8px;
 }
 .editor-scroll {
-  --document-inset-start: clamp(32px, 4.5vw, 80px);
-  --document-inset-end: max(64px, clamp(32px, 4.5vw, 80px));
+  --document-inset-start: clamp(32px, 5vw, 96px);
+  --document-inset-end: max(64px, clamp(32px, 5vw, 96px));
   flex: 1;
   min-width: 0;
-  padding: 40px var(--document-inset-end) 60px var(--document-inset-start);
+  padding: 48px var(--document-inset-end) 60px var(--document-inset-start);
 }
 .document-main > .editor-scroll:has(.document-cover) { padding-top: 0; }
 .editor-scroll:focus {
@@ -2138,7 +2142,7 @@ button:hover {
 .document-title {
   position: relative;
   width: 100%;
-  margin: 0 auto 40px;
+  margin: 0 auto 48px;
 }
 .document-title-content,
 .document-appearance-content {
@@ -2163,10 +2167,10 @@ button:hover {
   color: var(--text);
   font: inherit;
   font-family: var(--tano-prose-font-family, inherit);
-  font-size: clamp(28px, 3vw, 40px);
+  font-size: clamp(28px, 2.4vw, 36px);
   font-weight: 700;
   line-height: 1.35;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.02em;
   text-align: left;
   text-overflow: ellipsis;
 }
@@ -2527,28 +2531,30 @@ button:hover {
   font-weight: 700;
   line-height: 1.4;
   letter-spacing: -0.5px;
-  margin-bottom: 24px;
+  margin-top: 40px;
+  margin-bottom: 26px;
 }
 .tano-prose h2 {
   font-size: calc(var(--tano-prose-font-size, 16px) * 1.5);
   font-weight: 600;
-  margin-top: 34px;
-  margin-bottom: 13px;
+  margin-top: 42px;
+  margin-bottom: 15px;
   letter-spacing: 0.2px;
 }
 .tano-prose h3 {
   font-size: calc(var(--tano-prose-font-size, 16px) * 1.1875);
-  margin-top: 27px;
+  margin-top: 32px;
+  margin-bottom: 13px;
   font-weight: 600;
 }
 .tano-prose h4 {
   font-size: calc(var(--tano-prose-font-size, 16px) * 1.125);
-  margin-top: 22px;
+  margin-top: 26px;
   margin-bottom: 13px;
   font-weight: 600;
 }
 .tano-prose p {
-  margin: 8px 0;
+  margin: 10px 0;
 }
 /* Text blocks own their inset; list items and table cells already supply theirs.
    Keep semantic ProseMirror nodes instead of adding editable wrapper elements. */
@@ -2620,7 +2626,7 @@ button:hover {
 }
 /* Keep the base quote style below block selection and drag feedback. */
 .tano-prose blockquote:where(:not(.tano-callout)) {
-  margin: 16px 0;
+  margin: 20px 0;
   position: relative;
   border-left: 0;
   background: transparent;
@@ -2723,7 +2729,7 @@ button:hover {
   font-family: 'Cascadia Code', 'Consolas', monospace;
   background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: 4px;
   font-size: 0.85em;
   padding: 2px 5px;
@@ -2731,7 +2737,7 @@ button:hover {
 .tano-prose pre {
   background: var(--surface);
   padding: 19px 22px;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: 8px;
   overflow: auto;
   line-height: 1.7;
@@ -2846,16 +2852,15 @@ button:hover {
   border: 0;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
-  padding: 9px 13px;
+  padding: 8px 13px;
   text-align: left;
   vertical-align: top;
   position: relative;
 }
 .tano-prose th {
-  background: var(--paper);
-  font-weight: normal;
-  color: var(--text);
+  font-weight: inherit;
 }
+.tano-prose th,
 .tano-prose td {
   color: var(--text);
 }
@@ -3207,7 +3212,7 @@ button:hover {
 .tano-prose pre.tano-live-source-block[data-source-kind='code_block'] {
   margin: 1em 0;
   padding: 0 22px;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: 8px;
   background: var(--surface);
   font: 0.85em/1.7 'Cascadia Code', 'Consolas', monospace;
@@ -3448,7 +3453,7 @@ button:hover {
 .tano-prose hr {
   border: 0;
   border-top: 1px solid var(--line);
-  margin: 31px 0;
+  margin: 36px 0;
 }
 .tano-prose > hr {
   margin-inline: var(--tano-block-frame-inset);

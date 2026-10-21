@@ -13,12 +13,13 @@ export function systemSync(workspaceId: string, action: 'status' | 'configure' |
 export function createWorkspaceSync(store: ReturnType<typeof useWorkspaceStore>, extensions: WorkbenchExtensions) {
   const state = ref<WorkspaceSyncState>({ backend: null, lastSynced: null, message: '', conflicts: [] });
   const busy = ref(false), error = ref('');
+  const operation = ref<'status' | 'configure' | 'run' | 'disable'>();
   let generation = 0;
   async function action(kind: 'status' | 'configure' | 'run' | 'disable', remote?: string) {
     const id = store.workspace?.id;
     if (!id || store.isWeb || store.isDemo || busy.value) return;
     const current = generation;
-    busy.value = true; error.value = '';
+    busy.value = true; operation.value = kind; error.value = '';
     try {
       if (kind === 'disable' && extensions.sync?.enabled) await extensions.sync.disconnect();
       if (kind === 'configure' || kind === 'run') {
@@ -32,7 +33,7 @@ export function createWorkspaceSync(store: ReturnType<typeof useWorkspaceStore>,
       state.value = result;
       if (kind === 'run') await store.refresh();
     } catch (reason) { if (current === generation) error.value = String(reason).replace(/^Error: /, ''); }
-    finally { busy.value = false; }
+    finally { busy.value = false; operation.value = undefined; }
   }
   function reset() { generation++; state.value = { backend: null, lastSynced: null, message: '', conflicts: [] }; error.value = ''; }
   async function tick() {
@@ -40,6 +41,6 @@ export function createWorkspaceSync(store: ReturnType<typeof useWorkspaceStore>,
     await action('status');
     if (state.value.backend === 'git' && !state.value.conflicts.length && !extensions.editing.active) await action('run');
   }
-  return { state, busy, error, action, reset, tick };
+  return { state, busy, operation, error, action, reset, tick };
 }
 export type WorkspaceSyncController = ReturnType<typeof createWorkspaceSync>;

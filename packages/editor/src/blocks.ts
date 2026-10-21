@@ -924,7 +924,8 @@ export function blockControls(
         const hits = entries.filter((entry, index) => {
           if (entry.parentPos !== -1) return false;
           const rect = blockRect(index);
-          return rect && rect.height > 0 && rect.bottom > top && rect.top < bottom && right >= rect.left - 60 && left < rect.right;
+          // The gutter can start a marquee, but only actual block overlap selects it.
+          return rect && rect.height > 0 && rect.bottom > top && rect.top < bottom && right > rect.left && left < rect.right;
         });
         marqueeBox.hidden = false;
         Object.assign(marqueeBox.style, { left: `${left}px`, top: `${top}px`, width: `${right - left}px`, height: `${bottom - top}px` });

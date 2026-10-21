@@ -24,7 +24,7 @@ import {
 } from '@milkdown/kit/preset/commonmark';
 import { gfm, toggleStrikethroughCommand } from '@milkdown/kit/preset/gfm';
 import { toggleMark } from '@milkdown/kit/prose/commands';
-import { history } from '@milkdown/kit/plugin/history';
+import { history, historyProviderPlugin } from '@milkdown/kit/plugin/history';
 import { clipboard } from '@milkdown/kit/plugin/clipboard';
 import { callCommand, $prose } from '@milkdown/kit/utils';
 import { Plugin, PluginKey, NodeSelection, Selection, TextSelection } from '@milkdown/kit/prose/state';
@@ -131,6 +131,7 @@ interface ImportedResource {
 const props = withDefaults(
   defineProps<{
     modelValue: string;
+    contentRevision?: string;
     documentId: string;
     referenceTargets?: readonly ReferenceTarget[];
     readonly?: boolean;
@@ -2544,7 +2545,20 @@ function applyContent(value: string) {
     applying = false;
   }
 }
-watch(() => props.modelValue, applyContent);
+watch(() => [props.modelValue, props.contentRevision] as const, ([value, revision], [, previousRevision]) => {
+  applyContent(value);
+  if (revision !== previousRevision && editor && !props.extension?.ownsHistory) {
+    // A suggestion projection is a different editing context. Clear only undo
+    // state, keeping the EditorView, node views, selection and layout mounted.
+    editor.action(ctx => {
+      const view = ctx.get(editorViewCtx);
+      const provider = historyProviderPlugin.key()?.get(view.state);
+      const plugins = view.state.plugins;
+      view.updateState(view.state.reconfigure({ plugins: plugins.filter(plugin => plugin !== provider) })
+        .reconfigure({ plugins }));
+    });
+  }
+});
 watch(() => props.suggestionMarks, () => {
   if (bridgeView && !disposed) bridgeView.dispatch(bridgeView.state.tr.setMeta('addToHistory', false));
 });

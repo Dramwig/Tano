@@ -57,6 +57,7 @@ const pageSearch = StateField.define({
 
 const props = defineProps<{
   modelValue: string;
+  contentRevision?: string;
   showAllLineNumbers?: boolean;
   preferences?: EditorPreferences;
   readonly: boolean;
@@ -73,6 +74,7 @@ const emit = defineEmits<{
 
 const host = ref<HTMLElement>();
 const readonlyMode = new Compartment();
+const undoHistory = new Compartment();
 const refreshCommentMarks = StateEffect.define<void>();
 let view: EditorView | undefined;
 let applyingModel = false;
@@ -174,7 +176,7 @@ onMounted(() => {
     state: EditorState.create({
       doc: props.modelValue,
       extensions: [
-        history(),
+        undoHistory.of(history()),
         keymap.of([{ ...indentWithTab, preventDefault: true }, ...defaultKeymap, ...historyKeymap]),
         lineNumbers(),
         highlightActiveLineGutter(),
@@ -209,9 +211,15 @@ onMounted(() => {
 
 onBeforeUnmount(() => { clearTimeout(referenceFlashTimer); view?.destroy(); view = undefined; });
 
+watch(() => props.contentRevision, () => {
+  if (!view) return;
+  // Remove and reattach just the history field; do not recreate CodeMirror.
+  view.dispatch({ effects: undoHistory.reconfigure([]) });
+  view.dispatch({ effects: undoHistory.reconfigure(history()) });
+});
 watch(
-  () => props.modelValue,
-  (value) => {
+  () => [props.modelValue, props.contentRevision] as const,
+  ([value]) => {
     if (!view) return;
     const previous = view.state.doc.toString();
     const next = view.state.toText(value).toString();

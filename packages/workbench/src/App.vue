@@ -99,6 +99,8 @@ import DocumentTitle from './components/DocumentTitle.vue';
 import { appearanceText } from './document-appearance';
 import { useDocumentFavicon } from './document-favicon';
 import WorkspaceBreadcrumb from './components/WorkspaceBreadcrumb.vue';
+import DocumentStatus from './components/DocumentStatus.vue';
+import { documentStatusItems, type DocumentSyncStatus } from './document-status';
 import DocumentScrollbar from './components/DocumentScrollbar.vue';
 import DocumentExportMenu from './components/DocumentExportMenu.vue';
 import type { ImportRecord } from './components/ImportPanel.vue';
@@ -343,6 +345,7 @@ function topbarVisibilityItems(tabId: string, hasDocument: boolean, activePane: 
     ...topbarItems.filter(
       (item) => item.id !== 'breadcrumb' || (tabId !== CALENDAR_TAB_ID && tabId !== GRAPH_TAB_ID),
     ),
+    ...(hasDocument ? [{ id: 'document-status', get label() { return t('文章状态'); } }] : []),
     ...(activePane && extensions.regions['editing-status']
       ? [{ id: 'editing-status', get label() { return t('同步状态'); } }]
       : []),
@@ -351,7 +354,7 @@ function topbarVisibilityItems(tabId: string, hasDocument: boolean, activePane: 
       ? [{ id: 'attachment-export', get label() { return t('导出附件'); } }]
       : []),
     ...(hasDocument ? documentToolItems : []),
-  ];
+  ].map((item, index, items) => ({ ...item, separatorBefore: items[index - 1]?.id === 'document-status' }));
 }
 store.registerViews(extensionViews);
 const activeExtensionView = computed(() =>
@@ -1812,6 +1815,21 @@ function paneReadonly(doc: OpenDocument) {
       : readPreference(pageLockPreferenceKey(workspace.value?.id ?? '', doc.id), false) ||
         editing.isManaging(doc.id))
   );
+}
+function paneDocumentStatus(doc: OpenDocument) {
+  const locked = doc.id === store.active?.id ? pageLocked.value
+    : readPreference(pageLockPreferenceKey(workspace.value?.id ?? '', doc.id), false);
+  let sync: DocumentSyncStatus | undefined = extensions.documentStatus?.(doc.id);
+  if (!sync && workspaceSync.state.value.backend === 'git') {
+    if (workspaceSync.state.value.conflicts.includes(doc.path)) sync = { kind: 'error', detail: t('当前文章存在 Git 同步冲突。') };
+    else if (workspaceSync.error.value) sync = { kind: 'error', detail: workspaceSync.error.value };
+    else if (workspaceSync.operation.value === 'run') sync = { kind: 'syncing', detail: t('工作区正在进行 Git 同步。') };
+  }
+  return documentStatusItems({ document: doc, locked,
+    preview: updateLock.value || !!workspace.value?.readOnly || !!workspace.value?.files.find(file => file.id === doc.id)?.readOnly,
+    sync,
+    storage: store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local',
+  });
 }
 const documentUndoAvailable = ref(false);
 const documentRedoAvailable = ref(false);
@@ -4974,12 +4992,18 @@ const helpBlocked = computed(() => !!(
                 "
                 :workspace-id="workspace?.id"
                 :workspace-name="workspace?.name ?? 'Tano'"
+                :hide-workspace="!!tab?.path"
                 :entries="workspace?.files ?? []"
+                :document-icons="treeDocumentIcons"
+                :load-document-icon="loadTreeDocumentIcon"
                 :path="tab?.path"
                 :demo-label="store.isDemo ? workspaceStatusLabel : undefined"
                 :read-only="workspace?.readOnly"
                 @open="(file) => { store.focusPane(pane.id); openEntry(file); }"
               >
+                <template #status>
+                  <DocumentStatus v-if="active && isVisible('document-status')" :document-key="`${workspace?.id}:${active.id}`" :items="paneDocumentStatus(active)" />
+                </template>
                 <template v-if="tab?.pluginView"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">{{ tab.pluginView.label }}</span></template>
                 <template v-if="pane.activeId === PLUGINS_TAB_ID"
                   ><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current"
@@ -4994,6 +5018,8 @@ const helpBlocked = computed(() => !!(
                   ></template
                 >
               </WorkspaceBreadcrumb>
+              <DocumentStatus v-if="active && !isVisible('breadcrumb') && isVisible('document-status')"
+                :document-key="`${workspace?.id}:${active.id}`" :items="paneDocumentStatus(active)" />
               <div class="topbar-right">
                 <button v-if="active && touchLayout && showOutline" type="button" class="icon-button"
                   :aria-label="t('文档大纲')" :aria-expanded="touchOutlineOpen"
@@ -5188,15 +5214,11 @@ const helpBlocked = computed(() => !!(
                       @keydown="documentMenuKeydown"
                     >
                       <PluginMenu location="document" :file-id="active.id" @selected="menu = false" />
-                      <button type="button"
-                        :disabled="editorReadonly || !!editing.active || editing.activeBusy || !paneComments.has(store.activePaneId)"
-                        @click="openDocumentDiscussion">
-                        <MessageSquare :size="15" />{{ t('发起讨论') }}
+                      <button type="button" @click="openPaneSearch(pane.id)">
+                        <Search :size="15" />{{ t('页内搜索') }}<span class="menu-shortcut">{{ shortcutHint('pageSearch') }}</span>
                       </button>
-                      <button type="button"
-                        :disabled="suggestionModeBusy || (!documentSuggestions.get(active.id)?.mode && (paneReadonly(active) || editing.isManaging(active.id) || editing.activeBusy)) || documentSuggestions.get(active.id)?.loading || documentSuggestions.get(active.id)?.reviewing"
-                        @click="toggleSuggestionMode(active.id)">
-                        <MessageSquareDiff :size="15" />{{ documentSuggestions.get(active.id)?.mode ? t('退出建议模式') : t('建议编辑') }}
+                      <button type="button" @click="openPaneSearch(pane.id, true)">
+                        <Repeat2 :size="15" />{{ t('查找与替换') }}<span class="menu-shortcut">{{ shortcutHint('pageReplace') }}</span>
                       </button>
                       <button
                         type="button"
@@ -5220,29 +5242,18 @@ const helpBlocked = computed(() => !!(
                       >
                         <CheckCheck :size="15" />{{ t('立即保存') }}<span class="menu-shortcut">{{ shortcutHint('save') }}</span>
                       </button>
-                      <button
-                        class="danger-text"
-                        :disabled="
-                          editorReadonly ||
-                          sessionBlocksFileMutation(pane.activeId) ||
-                          (pane.id === store.activePaneId && editing.activeBusy)
-                        "
-                        @click="removeDocument()"
-                      >
-                        <Trash2 :size="15" />{{
-                          store.isDemo
-                            ? t('删除演示文档')
-                            : store.isWeb
-                              ? t('删除在线文档')
-                              : t('移入回收站')
-                        }}
+                      <div class="menu-divider" role="separator" />
+                      <button type="button"
+                        :disabled="editorReadonly || !!editing.active || editing.activeBusy || !paneComments.has(store.activePaneId)"
+                        @click="openDocumentDiscussion">
+                        <MessageSquare :size="15" />{{ t('发起讨论') }}
                       </button>
-                      <button type="button" @click="openPaneSearch(pane.id)">
-                        <Search :size="15" />{{ t('页内搜索') }}<span class="menu-shortcut">{{ shortcutHint('pageSearch') }}</span>
+                      <button type="button"
+                        :disabled="suggestionModeBusy || (!documentSuggestions.get(active.id)?.mode && (paneReadonly(active) || editing.isManaging(active.id) || editing.activeBusy)) || documentSuggestions.get(active.id)?.loading || documentSuggestions.get(active.id)?.reviewing"
+                        @click="toggleSuggestionMode(active.id)">
+                        <MessageSquareDiff :size="15" />{{ documentSuggestions.get(active.id)?.mode ? t('退出建议模式') : t('建议编辑') }}
                       </button>
-                      <button type="button" @click="openPaneSearch(pane.id, true)">
-                        <Repeat2 :size="15" />{{ t('查找与替换') }}<span class="menu-shortcut">{{ shortcutHint('pageReplace') }}</span>
-                      </button>
+                      <div class="menu-divider" role="separator" />
                       <button
                         type="button"
                         aria-haspopup="dialog"
@@ -5251,7 +5262,6 @@ const helpBlocked = computed(() => !!(
                       >
                         <GitFork :size="15" />{{ t('查看关系图谱') }}
                       </button>
-                      <div class="menu-divider" role="separator" />
                       <button
                         type="button"
                         class="page-toggle-menu-item"
@@ -5283,7 +5293,6 @@ const helpBlocked = computed(() => !!(
                           ><span
                         /></span>
                       </button>
-                      <div class="menu-divider" role="separator" />
                       <button
                         type="button"
                         class="page-toggle-menu-item"
@@ -5318,8 +5327,25 @@ const helpBlocked = computed(() => !!(
                       >
                         <Clock3 :size="15" />{{ t('更新历史') }}
                       </button>
-                      <div class="menu-divider" role="separator" />
                       <DocumentExportMenu :disabled="exportBusy" @select="exportDocument" />
+                      <div class="menu-divider" role="separator" />
+                      <button
+                        class="danger-text"
+                        :disabled="
+                          editorReadonly ||
+                          sessionBlocksFileMutation(pane.activeId) ||
+                          (pane.id === store.activePaneId && editing.activeBusy)
+                        "
+                        @click="removeDocument()"
+                      >
+                        <Trash2 :size="15" />{{
+                          store.isDemo
+                            ? t('删除演示文档')
+                            : store.isWeb
+                              ? t('删除在线文档')
+                              : t('移入回收站')
+                        }}
+                      </button>
                     </div>
                   </div>
                 </template>
@@ -5601,7 +5627,8 @@ const helpBlocked = computed(() => !!(
                       <SourceEditor :preferences="editorPreferences" :suggestion-marks="suggestions.sourceMarks"
                         :show-all-line-numbers="showAllLineNumbers"
                         v-if="paneSource(pane.activeId)"
-                        :key="`${active.id}:${suggestions.viewKey}`"
+                        :key="active.id"
+                        :content-revision="suggestions.viewKey"
                         :ref="(el) => setPaneElement('source', pane.id, el)"
                         :model-value="suggestions.content"
                         :readonly="suggestions.readonly"
@@ -5618,7 +5645,8 @@ const helpBlocked = computed(() => !!(
                       <MarkdownEditor :suggestion-marks="suggestions.richMarks" :transform-change="suggestions.transformChange"
                         v-else
                         :custom-callout-icon="CalloutIconPicker"
-                        :key="`${active.id}:${suggestions.viewKey}:${active.id === store.active?.id ? (editing.active?.key ?? 'local') : 'local'}`"
+                        :content-revision="suggestions.viewKey"
+                        :key="`${active.id}:${active.id === store.active?.id ? (editing.active?.key ?? 'local') : 'local'}`"
                         :ref="(el) => setPaneEditor(pane.id, el)"
                         :document-id="active.id"
                         :readonly="suggestions.readonly"
