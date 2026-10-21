@@ -904,8 +904,10 @@ describe('workspace file reconciliation', () => {
     const opening = store.openFile(store.workspace!.files.find(file => file.path === 'slow.md')!);
     try {
       await vi.waitFor(() => expect(started).toHaveBeenCalled());
+      expect(store.openingDocuments[store.activePaneId]?.tabId).toBe(store.activeId);
       await store.openFile(store.workspace!.files.find(file => file.path === 'fast.md')!);
       expect(store.active?.path).toBe('fast.md');
+      expect(store.openingDocuments[store.activePaneId]).toBeUndefined();
     } finally { release(); await opening; }
     expect(store.active?.path).toBe('fast.md');
     expect(store.tabs).toHaveLength(1);

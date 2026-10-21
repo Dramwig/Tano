@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t } from '../i18n';
 import {
   computed,
@@ -579,6 +580,7 @@ onBeforeUnmount(() => {
         {{ t('恢复默认布局参数') }}
       </button>
     </section>
+    <LoadingSkeleton v-if="loading && !nodes.length" :rows="6" />
     <div v-if="!loading && !nodes.length" class="graph-empty">
       <GitFork :size="32" />
       <p>{{ t('工作区还没有 Markdown 文档') }}</p>

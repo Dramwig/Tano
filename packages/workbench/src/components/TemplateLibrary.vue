@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t } from '../i18n';
 import { computed, nextTick, onMounted, ref } from 'vue';
 import { ArrowRight, Check, Eye, FilePlus2, FileText, Files, LayoutTemplate, Plus, Save, Search, X } from 'lucide-vue-next';
@@ -158,7 +159,7 @@ onMounted(async () => {
           </section>
           <section v-if="(category === 'all' || category === 'custom') && (!query.trim() || visibleCustom.length)" class="template-section" :aria-label="t('我的模板')">
             <div class="template-section-heading"><h2>{{ t('我的模板') }}</h2><span>{{ t('当前工作区') }}</span></div>
-            <p v-if="loading" role="status" class="template-empty">{{ t('正在读取工作区模板…') }}</p>
+            <LoadingSkeleton v-if="loading && !visibleCustom.length" :rows="4" />
             <div v-else-if="visibleCustom.length" class="template-grid">
               <button v-for="item in visibleCustom" :key="item.id" class="template-card" :data-template-id="item.id" :aria-label="t('查看{0}模板', [templateLabel(item)])" @click="choose(item)">
                 <TemplateThumbnail :template="item" /><div class="template-card-caption"><FileText :size="17" /><div><strong>{{ templateLabel(item) }}</strong><p>{{ templateInfo(item).description }}</p></div><span>{{ t('工作区') }}</span></div>

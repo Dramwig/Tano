@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t, uiLocale } from '../i18n';
 import { assistantCopy, assistantTaskPrompts } from '../assistant/language';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -481,7 +482,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
     <template v-else>
       <div class="assistant-transcript">
       <div ref="messages" class="assistant-messages panel-scrollbar" role="log" :aria-label="t('助手对话')" @scroll="updateScroll">
-        <p v-if="assistant.loading" class="assistant-empty"><LoaderCircle :size="16" class="spinning" />{{ t('正在读取会话') }}</p>
+        <LoadingSkeleton v-if="assistant.loading && !assistant.session?.messages.length" :rows="5" />
         <div v-else-if="!assistant.session?.messages.length" class="assistant-welcome">
           <!-- Reserved for platform AI settings; currently greets with a flutter. -->
           <button type="button" class="assistant-welcome-mark" :aria-label="t('同页 AI 设置（即将推出）')" :data-tooltip="t('同页 AI 设置（即将推出）')" @click="welcomeButterfly?.flutter()">
@@ -574,7 +575,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
             <label v-if="searchingModels" class="assistant-menu-search"><Search :size="15" /><input id="assistant-model-search" v-model="modelQuery" :aria-label="t('搜索模型')" :placeholder="t('搜索模型')" /></label>
             <div class="assistant-menu-scroll panel-scrollbar" :aria-label="t('模型列表')">
               <button v-for="model in listedModels" :key="model" class="assistant-menu-item assistant-model-option" :class="{ selected: assistant.modelId === model }" :data-tooltip="model" :aria-label="t('使用模型 {0}', [model])" :aria-pressed="assistant.modelId === model" :disabled="controlsLocked" data-menu-item @click="changeModel(model)"><AssistantModelIcon :model="model" /><span class="assistant-menu-label">{{ model === 'cli-default' ? t('CLI 默认模型') : model }}</span><span v-if="!assistant.models.includes(model)" class="assistant-menu-badge">{{ t('自定义') }}</span><Check v-if="assistant.modelId === model" :size="16" class="assistant-menu-check" /></button>
-              <p v-if="assistant.modelsLoading && !listedModels.length" class="assistant-menu-empty"><LoaderCircle :size="15" class="spinning" />{{ t('正在读取模型') }}</p>
+              <LoadingSkeleton v-if="assistant.modelsLoading && !listedModels.length" :rows="3" />
               <p v-else-if="!listedModels.length" class="assistant-menu-empty">{{ modelQuery ? t('没有找到匹配的模型') : assistant.connection ? t('暂无可用模型') : t('请选择模型连接') }}</p>
             </div>
             <p v-if="assistant.modelsError" class="assistant-model-error" role="alert">{{ assistant.modelsError }}</p>

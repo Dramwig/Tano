@@ -14,8 +14,6 @@
 }
 .touch-layout .sidebar { top: auto; bottom: auto; }
 .touch-layout button { touch-action: manipulation; }
-.touch-layout .sidebar-brand-slot .brand { visibility: hidden; }
-.touch-layout .sidebar-brand-slot .sidebar-toggle { opacity: 1; pointer-events: auto; }
 .touch-layout .sidebar-navigation { overflow-x: auto; flex-shrink: 0; }
 .touch-layout .tree-row { -webkit-touch-callout: none; }
 .touch-layout .sidebar-resize-handle { width: 12px; right: -6px; }

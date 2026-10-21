@@ -29,7 +29,6 @@ import {
   Plus,
   FolderPlus,
   FolderOpen,
-  PanelLeftClose,
   PanelLeftOpen,
   FileText,
   X,
@@ -79,13 +78,13 @@ import {
   Files,
   Table2,
 } from 'lucide-vue-next';
-const MarkdownEditor = defineAsyncComponent(() => import('@tano/editor'));
+const MarkdownEditor = loadingComponent(() => import('@tano/editor'), 'editor');
 const CalloutIconPicker = defineAsyncComponent(() => import('./components/CalloutIconPicker.vue'));
 import { defaultEditorPreferences, normalizeSelectionWrapping } from '@tano/editor/runtime';
 import type { EditorPreferences } from '@tano/editor/runtime';
 import { defaultSelectionContext } from '@tano/editor/selection-context';
 import type { EditorSelectionContext } from '@tano/editor/selection-context';
-const SourceEditor = defineAsyncComponent(() => import('./components/SourceEditor.vue'));
+const SourceEditor = loadingComponent(() => import('./components/SourceEditor.vue'), 'editor');
 import { captureModeViewport, restoreModeViewport } from './editor-mode';
 import type { ModeViewport } from './editor-mode';
 import AttachmentPreview from './components/AttachmentPreview.vue';
@@ -104,10 +103,11 @@ import DocumentScrollbar from './components/DocumentScrollbar.vue';
 import DocumentExportMenu from './components/DocumentExportMenu.vue';
 import type { ImportRecord } from './components/ImportPanel.vue';
 const ImportPanel = defineAsyncComponent(() => import('./components/ImportPanel.vue'));
-const TemplateLibrary = defineAsyncComponent(() => import('./components/TemplateLibrary.vue'));
+const TemplateLibrary = loadingComponent(() => import('./components/TemplateLibrary.vue'), 'document');
 import type { DocumentExportFormat } from './document-export';
+// Discussion and annotation surfaces decide their own visibility and loading state.
 const DocumentComments = defineAsyncComponent(() => import('./components/DocumentComments.vue'));
-const DocumentSuggestions = defineAsyncComponent(() => import('./components/DocumentSuggestions.vue'));
+const DocumentSuggestions = loadingComponent(() => import('./components/DocumentSuggestions.vue'), 'document');
 import ReferenceGraphPopover from './components/ReferenceGraphPopover.vue';
 const SelectionTodoDialog = defineAsyncComponent(() => import('./components/SelectionTodoDialog.vue'));
 import { selectionTodoSession } from './selection-todo';
@@ -146,13 +146,13 @@ import { GRAPH_TAB_ID } from './document-graph';
 import { PLUGINS_TAB_ID } from './workspace-plugins';
 import { CALENDAR_TAB_ID, calendarPeriodTitle, shiftCalendarDate } from './calendar';
 import type { CalendarViewMode } from './calendar';
-const RelationGraph = defineAsyncComponent(() => import('./components/RelationGraph.vue'));
+const RelationGraph = loadingComponent(() => import('./components/RelationGraph.vue'), 'document');
 import NewTabPicker from './components/NewTabPicker.vue';
 const EditorTools = defineAsyncComponent(() => import('./components/EditorTools.vue'));
 import { parseToolbarMode, toolbarPreferenceKey } from './toolbar-preference';
-const DocumentHistoryPanel = defineAsyncComponent(() => import('./components/DocumentHistoryPanel.vue'));
-const AgentPanel = defineAsyncComponent(() => import('./components/AgentPanel.vue'));
-const AssistantPanel = defineAsyncComponent(() => import('./components/AssistantPanel.vue'));
+const DocumentHistoryPanel = loadingComponent(() => import('./components/DocumentHistoryPanel.vue'));
+const AgentPanel = loadingComponent(() => import('./components/AgentPanel.vue'));
+const AssistantPanel = loadingComponent(() => import('./components/AssistantPanel.vue'));
 import AssistantLauncher from './components/AssistantLauncher.vue';
 import AssistantButterflyLayer from './components/AssistantButterflyLayer.vue';
 import { butterflyScope } from './assistant/butterfly';
@@ -181,7 +181,7 @@ import type { ObjectRecord } from './workspace-objects';
 import { usePlanStore } from './stores/plans';
 import { usePlanSyncStore } from './stores/plan-sync';
 import { planKey } from './personal-plans';
-const SidebarPlan = defineAsyncComponent(() => import('./components/SidebarPlan.vue'));
+const SidebarPlan = loadingComponent(() => import('./components/SidebarPlan.vue'));
 import SidebarNavigation from './components/SidebarNavigation.vue';
 import WorkspaceSidebar from './components/WorkspaceSidebar.vue';
 import HelpLauncher from './components/HelpLauncher.vue';
@@ -191,9 +191,9 @@ import WorkspaceSwitcher from './components/WorkspaceSwitcher.vue';
 import ButtonVisibilityGroup from './components/ButtonVisibilityGroup.vue';
 import InlineAssistantInput from './components/InlineAssistantInput.vue';
 import type { InlineAssistantAnchor } from './components/InlineAssistantInput.vue';
-const CalendarView = defineAsyncComponent(() => import('./components/CalendarView.vue'));
-const DataTablePage = defineAsyncComponent(() => import('./components/DataTablePage.vue'));
-const WorkspaceViewPage = defineAsyncComponent(() => import('./components/WorkspaceViewPage.vue'));
+const CalendarView = loadingComponent(() => import('./components/CalendarView.vue'), 'document');
+const DataTablePage = loadingComponent(() => import('./components/DataTablePage.vue'), 'document');
+const WorkspaceViewPage = loadingComponent(() => import('./components/WorkspaceViewPage.vue'), 'document');
 import { isTableTab, TABLES_TAB_ID, tableFileId } from './data-tables';
 import { isDataTableFilePath } from '@tano/protocol';
 const PluginInstaller = defineAsyncComponent(() => import('./components/PluginInstaller.vue'));
@@ -207,7 +207,9 @@ import { pluginShortcutCommand } from './plugins/workbench';
 import { SETTINGS_PLUGIN_RESULT } from './settings-window';
 import { isObjectPath, referenceMarkdown, referenceUrl, resolveReference } from '@tano/protocol';
 import type { ReferenceIdentity, ReferenceTarget } from '@tano/protocol';
-import { sloganParts, welcomeSlogans } from './welcome-slogans';
+import WorkspaceDashboard from './components/WorkspaceDashboard.vue';
+import LoadingSkeleton from './components/LoadingSkeleton.vue';
+import { loadingComponent } from './loading-component';
 import { useUpdatesStore } from './stores/updates';
 import { resolveWikiLink } from './wiki-links';
 import { applyFileMovePreview, planFileMovePreview, type FileMovePreview } from './file-move';
@@ -287,8 +289,6 @@ usePlanSyncStore();
 const tabsEnabled = native && !mobile;
 const { width: viewportWidth, touch: touchLayout, compact: compactPanes } = useViewport(mobile);
 const detachedWindow = tabsEnabled && !!detachedTabRequest();
-const welcomeSlogan = welcomeSlogans[Math.floor(Math.random() * welcomeSlogans.length)];
-const welcomeSloganParts = sloganParts(welcomeSlogan);
 const localNative = native && !store.isWeb;
 const attachments =
   useWorkbenchRuntime().attachments ?? (localNative ? nativeAttachments : undefined);
@@ -559,7 +559,8 @@ function currentPageRoute() {
 }
 
 function writePageRoute(replace: boolean) {
-  const path = currentPageRoute();
+  const path = currentPageRoute() ??
+    (!workspace.value && parsePageRoute(window.location.pathname) ? '/' : null);
   if (!webPageRouting || !path) return;
   const url = new URL(window.location.href);
   if (url.pathname === path) return;
@@ -594,12 +595,17 @@ watch([() => workspace.value?.id, activeId], () => {
   if (pageRouteReady && !applyingPageRoute) writePageRoute(false);
 });
 
-async function applyPageRoute() {
+async function applyPageRoute(fromHistory = false) {
   if (!webPageRouting) return;
   const route = parsePageRoute(window.location.pathname);
   pageRouteIndex.value = routeStateIndex();
   pageRouteMax.value = Math.max(pageRouteMax.value, pageRouteIndex.value);
   if (!route) {
+    if (fromHistory && window.location.pathname === '/' && workspace.value) {
+      applyingPageRoute = true;
+      try { await leaveWorkspace(); }
+      finally { applyingPageRoute = false; }
+    }
     writePageRoute(true);
     return;
   }
@@ -628,7 +634,7 @@ async function applyPageRoute() {
 }
 
 function handlePagePopState() {
-  void applyPageRoute().catch(store.report);
+  void applyPageRoute(true).catch(store.report);
 }
 
 watch(activeId, (id) => {
@@ -1551,12 +1557,14 @@ function paneCommentGeometry(
   );
 }
 function setPaneComments(paneId: string, value: unknown) {
-  if (value) paneComments.set(paneId, value as InstanceType<typeof DocumentComments>);
+  if (value && typeof (value as { showDiscussion?: unknown }).showDiscussion === 'function') paneComments.set(paneId, value as InstanceType<typeof DocumentComments>);
   else paneComments.delete(paneId);
 }
 const editor = computed(() => paneEditors.get(store.activePaneId));
 function setPaneEditor(id: string, value: unknown) {
-  if (value) paneEditors.set(id, value as InstanceType<typeof MarkdownEditor>);
+  // Async component refs may briefly point at their loading placeholder.
+  // Only publish the editor after its exposed API is available.
+  if (value && typeof (value as { visualSelection?: unknown }).visualSelection === 'function') paneEditors.set(id, value as InstanceType<typeof MarkdownEditor>);
   else paneEditors.delete(id);
 }
 const objectPanel = ref(false);
@@ -1781,7 +1789,7 @@ async function paneEditorReady(paneId: string, fileId: string, sourceMode: boole
 }
 function setPaneElement(kind: 'scroll' | 'editor' | 'source', id: string, value: unknown) {
   if (kind === 'source') {
-    if (value) paneSourceEditors.set(id, value as InstanceType<typeof SourceEditor>);
+    if (value && typeof (value as { commentSelection?: unknown }).commentSelection === 'function') paneSourceEditors.set(id, value as InstanceType<typeof SourceEditor>);
     else {
       paneSourceEditors.delete(id);
       delete paneSourceSelections[id];
@@ -4038,15 +4046,6 @@ const helpBlocked = computed(() => !!(
             >
               <img src="/favicon-green.svg?v=3" alt="" />
             </component>
-            <button
-              type="button"
-              class="icon-button sidebar-toggle"
-              :aria-label="t('收起侧栏')"
-              :data-tooltip="t('收起侧栏')" :data-tooltip-shortcut="shortcuts.toggleSidebar"
-              @click="toggleSidebar"
-            >
-              <PanelLeftClose :size="17" :stroke-width="1.6" />
-            </button>
           </div>
           <ButtonVisibilityGroup
             v-slot="{ isVisible }"
@@ -4589,7 +4588,7 @@ const helpBlocked = computed(() => !!(
                   }}</small>
                 </span>
                 <button
-                  v-if="!store.isWeb && workspace"
+                  v-if="workspace"
                   class="workspace-menu-exit"
                   type="button"
                   :aria-label="t('退出当前工作区')"
@@ -4728,7 +4727,10 @@ const helpBlocked = computed(() => !!(
                   <FolderPlus :size="16" />{{ t('新建手机空间') }}
                 </button>
                 <template v-if="store.recent.length || (!store.isDemo && !mobile)">
-                  <div class="menu-divider" />
+                  <div
+                    v-if="store.isDemo || mobile || extensions.regions['local-menu-login']"
+                    class="menu-divider"
+                  />
                   <div class="workspace-recent-heading">
                     <span class="recent-label">{{ store.isDemo ? t('最近工作空间') : t('本地工作区') }}</span>
                     <button
@@ -4885,6 +4887,7 @@ const helpBlocked = computed(() => !!(
           />
         </template>
         <template #default="{ pane, document: active, tab }">
+          <LoadingSkeleton v-if="store.openingDocuments[pane.id]?.tabId === pane.activeId" variant="document" :rows="10" class="pane-loading-skeleton" />
           <TemplateLibrary
             v-if="templateLibraryOpen && pane.id === templatePaneId && workspace"
             :key="workspace.id"
@@ -5721,7 +5724,8 @@ const helpBlocked = computed(() => !!(
               "
               class="workspace-no-tabs"
             >
-              <EmptyEditor
+              <LoadingSkeleton v-if="busy || startupPending" variant="document" :rows="10" />
+              <EmptyEditor v-else
                 :create-disabled="busy || workspace.readOnly || updateLock"
                 @create="createNewDocument"
                 @open="showModal('newTab')"
@@ -5874,98 +5878,27 @@ const helpBlocked = computed(() => !!(
           </div>
         </template>
       </WorkspacePanes>
-      <main v-else-if="startupPending" class="workspace-startup" role="status" aria-busy="true">
-        {{ t('正在打开工作区…') }}
-      </main>
-      <main v-else class="welcome">
-        <div class="welcome-mark"><img src="/favicon-green.svg?v=3" :alt="t('Tano 标志')" /></div>
-        <h1>
-          <span
-            v-for="(part, index) in welcomeSloganParts"
-            :key="index"
-            :class="{ 'welcome-latin': part.latin }"
-            >{{ part.text }}</span
-          >
-        </h1>
-        <p>
-          {{
-            store.isWeb
-              ? t('为不同的项目创建工作区，文档会自动保存到服务器。')
-              : mobile
-                ? t('把工作空间带在身边，离线也能继续写作。')
-                : t('打开一个文件夹，让你的 Markdown 成为共同的语言。')
-          }}
-        </p>
-        <div v-if="store.isWeb || mobile || extensions.regions['welcome-login']" class="welcome-actions">
-          <button
-            v-if="store.isWeb || mobile"
-            class="primary-button"
-            :disabled="busy"
-            @click="store.isWeb ? createNewWorkspace() : store.openWorkspace()"
-          >
-            <FolderOpen :size="18" />{{
-              busy
-                ? t('正在打开…')
-                : store.isWeb
-                  ? t('创建工作区')
-                  : mobile
-                    ? t('打开手机工作空间')
-                    : t('打开文件夹')
-            }}<ArrowRight :size="17" />
+      <LoadingSkeleton v-else-if="startupPending" variant="shell" />
+      <component
+        :is="extensions.regions['workspace-dashboard']"
+        v-else-if="extensions.regions['workspace-dashboard']"
+        :actions="extensionActions"
+      />
+      <WorkspaceDashboard
+        v-else
+        :workspaces="store.recent.map(item => ({ ...item, source: store.isDemo ? 'demo' as const : store.isWeb ? 'cloud' as const : 'local' as const }))"
+        :busy="busy"
+        :demo="store.isDemo"
+        @open="store.openWorkspace($event.path)"
+        @settings="openSettings()"
+      >
+        <template #actions>
+          <button class="primary-button" :disabled="busy" @click="store.isWeb || mobile ? createNewWorkspace() : store.openWorkspace()">
+            <Plus :size="17" />{{ store.isWeb || mobile ? t('创建工作区') : store.isDemo ? t('打开演示工作区') : t('打开文件夹') }}
           </button>
-          <component
-            :is="extensions.regions['welcome-login']"
-            v-if="extensions.regions['welcome-login']"
-            :actions="extensionActions"
-          />
-        </div>
-        <component
-          :is="extensions.regions['welcome-recent']"
-          v-if="extensions.regions['welcome-recent']"
-          :actions="extensionActions"
-        />
-        <div
-          v-else-if="store.recent.length || (!store.isWeb && !mobile)"
-          class="recent-spaces"
-          :aria-label="t('最近工作空间')"
-        >
-          <div class="recent-spaces-header">
-            <span class="recent-label">{{ t('最新打开仓库') }}</span>
-            <button
-              v-if="!store.isWeb && !mobile"
-              type="button"
-              class="recent-open-button"
-              :disabled="busy"
-              :aria-label="busy ? t('正在打开…') : t('打开本地仓库')"
-              :data-tooltip="busy ? t('正在打开…') : t('打开本地仓库')"
-              @click="store.openWorkspace()"
-            >
-              <Plus :size="18" aria-hidden="true" />
-            </button>
-          </div>
-          <button
-            v-for="item in store.recent.slice(0, 4)"
-            :key="item.id"
-            :disabled="busy"
-            @mousedown.right.stop.prevent="openWorkspaceEntryContextMenu(item, $event)"
-            @contextmenu.stop.prevent="openWorkspaceEntryContextMenu(item, $event)"
-            @click="store.openWorkspace(item.path)"
-          >
-            <span class="workspace-list-avatar">
-              <WorkspaceIcon
-                :icon="item.icon"
-                :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'"
-                :size="16"
-              />
-            </span>
-            <span class="recent-workspace-details">
-              <strong>{{ item.name }}</strong>
-              <small>{{ store.isWeb ? t('在线工作区') : mobile ? t('保存在这台设备') : item.path }}</small>
-            </span>
-            <ArrowRight :size="14" />
-          </button>
-        </div>
-      </main>
+          <component :is="extensions.regions['welcome-login']" v-if="extensions.regions['welcome-login']" :actions="extensionActions" />
+        </template>
+      </WorkspaceDashboard>
       <InlineAssistantInput
         v-if="inlineAssistant"
         :anchor="inlineAssistant.anchor"

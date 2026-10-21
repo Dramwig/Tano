@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t } from '../i18n';
 import { computed, ref, watch } from 'vue';
 import type { FileEntry } from '@tano/protocol';
@@ -75,7 +76,7 @@ watch([() => props.workspaceId, () => props.file?.id, () => props.file?.path, ()
 <template>
   <main class="attachment-preview" :aria-label="t('附件预览')">
     <p v-if="!file" role="status">{{ t('文件已移动或删除。') }}</p>
-    <p v-else-if="loading" role="status">{{ t('正在读取附件…') }}</p>
+    <LoadingSkeleton v-else-if="loading" variant="document" :rows="8" />
     <p v-else-if="error" role="status">{{ error }}</p>
     <template v-else-if="type === 'csv' && csv">
       <p v-if="csv.error" role="alert">{{ csv.error }}</p>

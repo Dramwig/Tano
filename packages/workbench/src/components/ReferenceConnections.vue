@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t } from '../i18n';
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { FileText, ListTodo } from 'lucide-vue-next';
@@ -52,7 +53,7 @@ onBeforeUnmount(() => { revision++; clearTimeout(timer); });
   <section class="reference-connections" :aria-label="t('双向引用')" :aria-busy="loading">
     <div v-for="direction in (['outgoing', 'incoming'] as const)" :key="direction" class="reference-direction">
       <h3>{{ direction === 'outgoing' ? t('引用了什么') : t('被谁引用') }} <small>{{ context[direction].length }}</small></h3>
-      <p v-if="!context[direction].length">{{ loading ? t('正在读取') : t('暂无引用') }}</p>
+      <LoadingSkeleton v-if="loading && !context[direction].length" :rows="2" /><p v-else-if="!context[direction].length">{{ t('暂无引用') }}</p>
       <button v-for="edge in context[direction]" :key="referenceKey(direction === 'outgoing' ? edge.target : edge.source)" type="button" :disabled="direction === 'outgoing' && edge.missing" @click="emit('open', direction === 'outgoing' ? edge.target : edge.source)">
         <component :is="(direction === 'outgoing' ? edge.target : edge.source).type === 'document' ? FileText : ListTodo" :size="16" />
         <span><strong>{{ direction === 'outgoing' ? edge.name : edge.source.name }}</strong><small>{{ referenceTypeLabel((direction === 'outgoing' ? edge.target : edge.source).type) }}{{ direction === 'outgoing' && edge.missing ? t(' · 已失效') : (direction === 'outgoing' ? edge.archived : edge.source.archived) ? t(' · 已归档') : '' }}</small><small class="reference-excerpt">{{ edge.excerpt }}</small></span>

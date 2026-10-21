@@ -342,9 +342,10 @@ button:hover {
   opacity: 1;
 }
 .sidebar-brand-slot {
-  position: relative;
-  flex: 0 0 30px;
-  width: 30px;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 0;
   height: 30px;
 }
 .brand {
@@ -370,30 +371,6 @@ button:hover {
 .brand > img {
   width: 22px;
   height: 22px;
-}
-.sidebar-brand-slot .sidebar-toggle {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  pointer-events: none;
-}
-.sidebar-brand-slot:hover .brand,
-.sidebar-brand-slot:has(.sidebar-toggle:focus-visible) .brand {
-  opacity: 0;
-}
-.sidebar-brand-slot:hover .sidebar-toggle,
-.sidebar-brand-slot .sidebar-toggle:focus-visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-@media (hover: none) {
-  .sidebar-brand-slot .brand {
-    visibility: hidden;
-  }
-  .sidebar-brand-slot .sidebar-toggle {
-    opacity: 1;
-    pointer-events: auto;
-  }
 }
 .version-pill {
   font-size: 12px;
@@ -2098,6 +2075,10 @@ button:hover {
 .dropdown .danger-text {
   color: var(--danger);
 }
+.editor-scroll,
+.tano-prose {
+  --tano-block-padding-inline: 8px;
+}
 .editor-scroll {
   --document-inset-start: clamp(32px, 4.5vw, 80px);
   --document-inset-end: max(64px, clamp(32px, 4.5vw, 80px));
@@ -2164,6 +2145,11 @@ button:hover {
   position: relative;
   max-width: 780px;
   margin: 0 auto;
+}
+.document-title-content,
+.frontmatter-panel {
+  /* Align document metadata with the content inside text blocks. */
+  padding-inline: var(--tano-block-padding-inline);
 }
 .document-title-input,
 .document-title-mirror {
@@ -2513,7 +2499,6 @@ button:hover {
      Tables are laid out by TableViewport, so their horizontal position stays
      under the viewport's dynamic layout instead of this contract. */
   --tano-block-padding-block: 2px;
-  --tano-block-padding-inline: 8px;
   --tano-block-frame-inset: var(--tano-block-padding-inline);
   outline: none;
   white-space: pre-wrap;
@@ -4123,13 +4108,7 @@ button:hover {
 @media (max-width: 700px) and (pointer: coarse) {
   .editor-empty-actions button { min-height: 44px; }
 }
-.workspace-startup {
-  flex: 1;
-  display: grid;
-  place-items: center;
-  color: var(--muted);
-  font-size: 13px;
-}
+.pane-loading-skeleton { position: absolute; inset: var(--topbar-height, 44px) 0 0; z-index: 20; overflow: hidden; background: var(--paper); }
 .welcome {
   flex: 1;
   min-height: 0;

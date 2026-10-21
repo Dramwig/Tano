@@ -72,6 +72,8 @@ async function boot() {
 void boot().catch(async error => {
   console.error('无法初始化 Tano', error);
   startup.setAttribute('aria-busy', 'false');
+  startup.querySelector('.tano-skeleton-shell')?.remove();
+  status.classList.remove('tano-skeleton-status');
   status.textContent = startupText.failure;
   detail.textContent = error instanceof Error ? error.message : String(error);
   detail.hidden = false;

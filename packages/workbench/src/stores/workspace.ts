@@ -897,6 +897,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     resize(layout.value);
   }
   const busy = ref(false);
+  const openingDocuments = ref<Record<string, { request: number; tabId: string }>>({});
   const tabTarget = (id: string) => tabAliases.value.get(id) ?? id;
   function newTabAlias(target: string) {
     const id = isTableTab(target)
@@ -1139,6 +1140,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         workspaceSettings.value = { ...defaultWorkspaceSettings };
         workspaceSettingsError.value = '';
         workspace.value = next;
+        // The new file tree can render immediately; old documents must not
+        // appear under it while this workspace's metadata/session is loading.
+        documents.value = [];
+        tabIds.value = [];
+        activeId.value = '';
+        openingDocuments.value = {};
+        resetTabNavigation();
         if (remembersStartupWorkspace) rememberStartupWorkspace(next.id);
         objects.value = []; objectErrors.value = [];
         workspaceViews.value = []; workspaceViewErrors.value = [];
@@ -1156,10 +1164,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         ]);
         assistantEpoch.value++;
         assistantApplied.clear();
-        documents.value = [];
-        tabIds.value = [];
-        activeId.value = '';
-        resetTabNavigation();
         activities.value = [];
         sessionError.value = '';
         sessionBlocked = false;
@@ -1519,6 +1523,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function openFile(file: FileEntry, options?: { historyIndex?: number }) {
     const creationAtRequest = creationRevision;
     const request = ++fileOpenRevision;
+    const paneId = activePaneId.value;
     const epoch = assistantEpoch.value, activation = activationRevision;
     const workspaceId = workspace.value?.id;
     const current = () => !disposed && !busy.value && request === fileOpenRevision &&
@@ -1533,6 +1538,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       prefetchFile(file);
       if (!wasOpen && !(await prepareTabReplacement(replaceId))) return;
       if (!current()) return;
+      if (!wasOpen) openingDocuments.value[paneId] = { request, tabId: activeId.value };
       if (!openCached(file, replaceId)) await serial(async () => {
         if (!current()) return;
         await openInternal(file, replaceId, current);
@@ -1544,6 +1550,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       if (active.value?.id === file.id) recordHelpCompleted('welcome');
     } catch (e) {
       if (current()) report(e);
+    } finally {
+      if (openingDocuments.value[paneId]?.request === request) delete openingDocuments.value[paneId];
     }
   }
   async function openFileInNewTab(file: FileEntry) {
@@ -2980,6 +2988,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     notice,
     fatal,
     busy,
+    openingDocuments,
     recent,
     sessionError,
     isDemo,

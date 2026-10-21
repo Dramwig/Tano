@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue';
 import { retiredSystemPlugin } from '../workspace-plugins';
 import { t } from '../i18n';
 import { computed, onScopeDispose, ref, watch } from 'vue';
@@ -89,6 +90,7 @@ onScopeDispose(() => controller.abort());
       <p v-if="!selected && error" class="pc-feedback error" role="alert">{{ error }}</p>
       <label class="community-search">{{ t('搜索社区插件') }}<input v-model="query" type="search" :placeholder="t('名称、插件 ID 或发布者')" /></label>
       <ul class="community-list">
+        <li v-if="loading && !latest.length"><LoadingSkeleton :rows="5" /></li>
         <li v-for="release in latest.slice(0, visibleLimit)" :key="release.manifest.id">
           <div><strong>{{ release.manifest.name }}</strong><span> {{ release.manifest.version }} · {{ publisher(release) }}</span><p>{{ release.manifest.description }}</p>
             <span v-if="release.status === 'withdrawn'">{{ t('已撤回') }}</span>
