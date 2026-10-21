@@ -3513,7 +3513,7 @@ async function exportDocument(format: DocumentExportFormat) {
     currentWorkspace = workspace.value;
   if (!doc || exportBusy.value) return;
   const title = showPageTitle.value
-    ? editorScroll.value?.querySelector<HTMLInputElement>('.document-title-input')?.value
+    ? editorScroll.value?.querySelector<HTMLTextAreaElement>('.document-title-wrap textarea')?.value
     : undefined;
   const options = {
     id: doc.id,
@@ -4589,7 +4589,7 @@ const helpBlocked = computed(() => !!(
                   }}</small>
                 </span>
                 <button
-                  v-if="!store.isWeb && workspace && !extensions.regions['workspace-menu-layout']"
+                  v-if="!store.isWeb && workspace"
                   class="workspace-menu-exit"
                   type="button"
                   :aria-label="t('退出当前工作区')"
@@ -4701,14 +4701,6 @@ const helpBlocked = computed(() => !!(
                 v-if="extensions.regions['sign-out']"
                 :actions="extensionActions"
               />
-              <button
-                v-if="extensions.regions['workspace-menu-layout'] && !store.isWeb && workspace"
-                role="menuitem"
-                :disabled="busy"
-                @click="leaveWorkspace"
-              >
-                <LogOut :size="16" />{{ t('退出当前工作区') }}
-              </button>
               </template>
               <template #workspaces>
               <component

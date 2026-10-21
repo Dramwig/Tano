@@ -196,7 +196,8 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
   padding: 28px var(--document-inset-end) 50px var(--document-inset-start);
 }
 .workspace-panes-multiple :deep(.editor-scroll:has(.document-cover)) { padding-top: 0; }
-.workspace-panes-multiple :deep(.document-title-input) { font-size: clamp(24px, 5cqw, 36px); }
+.workspace-panes-multiple :deep(.document-title-input),
+.workspace-panes-multiple :deep(.document-title-mirror) { font-size: clamp(24px, 5cqw, 36px); }
 .workspace-panes-multiple :deep(.editor-toolbar) { height: auto; min-height: 44px; flex-wrap: wrap; padding: 6px 10px; white-space: nowrap; }
 .workspace-panes-multiple :deep(.editor-toolbar > *) { flex-shrink: 0; }
 .workspace-panes-multiple :deep(.blank-tab-actions) { white-space: normal; }

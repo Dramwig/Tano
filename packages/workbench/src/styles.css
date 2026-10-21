@@ -2165,7 +2165,8 @@ button:hover {
   max-width: 780px;
   margin: 0 auto;
 }
-.document-title-input {
+.document-title-input,
+.document-title-mirror {
   display: block;
   width: 100%;
   padding: 0;
@@ -2186,6 +2187,28 @@ button:hover {
 .document-title-input::placeholder {
   color: var(--muted);
   opacity: 0.45;
+}
+.document-title-wrap {
+  display: grid;
+  min-width: 0;
+}
+.document-title-wrap > .document-title-input,
+.document-title-wrap > .document-title-mirror {
+  grid-area: 1 / 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+.document-title-wrap > textarea {
+  height: 100%;
+  min-height: 0;
+  resize: none;
+  overflow: hidden;
+}
+.document-title-mirror {
+  visibility: hidden;
+  pointer-events: none;
 }
 .document-title-input:focus-visible {
   outline: none;

@@ -12,12 +12,12 @@ export interface LayoutEdge {
   target: LayoutNode;
 }
 
-// Shared physics defaults: weak gravity keeps clusters together while springs,
+// Shared physics defaults: gravity keeps clusters together while springs,
 // charge and collision leave enough room to read titles and drag individual nodes.
 export const graphPhysics = Object.freeze({
-  center: 0.018,
+  center: 0.042,
   attraction: 0.2,
-  repulsion: 420,
+  repulsion: 140,
   distance: 130,
   damping: 0.32,
   collision: 26,
@@ -91,7 +91,13 @@ export function createGraphLayout(
   const simulation = forceSimulation(nodes)
     .force('center-x', forceX(0).strength(physics.center))
     .force('center-y', forceY(0).strength(physics.center))
-    .force('repulsion', forceManyBody().strength(-physics.repulsion).distanceMin(12))
+    .force(
+      'repulsion',
+      // Far-away nodes contribute little to the visible layout. Capping the
+      // interaction radius keeps the Barnes-Hut traversal cheap on large
+      // workspaces while preserving local clustering.
+      forceManyBody().strength(-physics.repulsion).distanceMin(12).distanceMax(900),
+    )
     .force(
       'links',
       forceLink<LayoutNode, LayoutEdge>(edges)
@@ -101,7 +107,9 @@ export function createGraphLayout(
     )
     .force(
       'collision',
-      forceCollide<LayoutNode>((node) => nodeRadius(node) + graphPhysics.collision).iterations(2),
+      forceCollide<LayoutNode>((node) => nodeRadius(node) + graphPhysics.collision).iterations(
+        nodes.length > 300 ? 1 : 2,
+      ),
     )
     .velocityDecay(graphPhysics.damping)
     .alphaDecay(0.025)
