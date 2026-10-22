@@ -88,7 +88,7 @@ const groupStatus = (proposals: AssistantProposal[]) => [...new Set(proposals.ma
 .change-list-heading { display: flex; flex: 1; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; min-width: 0; }
 .change-list-heading > span, .change-file-status { color: var(--muted); font-size: 11px; }
 .change-undo-action { display: inline-flex; flex-shrink: 0; align-items: center; gap: 5px; margin-left: auto; border: 0; padding: 0; color: var(--text-secondary); background: transparent; font-size: 11px; line-height: 18px; }
-.change-undo-action:hover:not(:disabled) { color: var(--green); }
+.change-undo-action:hover:not(:disabled) { color: var(--text-secondary); }
 .assistant-file-change { border-top: 1px solid var(--line); }
 summary { display: flex; gap: 7px; align-items: center; padding: 11px 12px; cursor: pointer; list-style: none; }
 summary::-webkit-details-marker { display: none; }

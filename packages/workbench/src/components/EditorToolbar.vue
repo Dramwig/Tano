@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
+import { animate } from 'motion/mini';
 import {
   Bold,
   Italic,
@@ -44,7 +45,6 @@ import {
   insertionCommands,
   wrappingCommands,
   commandEnabled,
-  featureLevel,
 } from '@tano/editor/selection-context';
 import type { EditorSelectionContext } from '@tano/editor/selection-context';
 import type { DocumentFeatures } from '@tano/editor/runtime';
@@ -59,6 +59,7 @@ const props = defineProps<{
   enabledLevels?: readonly number[];
   features?: DocumentFeatures;
   compact?: boolean;
+  compactActions?: boolean;
   vertical?: boolean;
   dragging?: boolean;
   assistant?: boolean;
@@ -189,8 +190,9 @@ const availableBlocks = computed(() => blockMenuGroups
 const availableInline = computed(() =>
   inlineTypes.map(item => ({ ...item, label: t(item.label) })).filter((item) => commandEnabled(item.command, props.enabledLevels, props.features)),
 );
+const useCompactActions = computed(() => props.compact || props.compactActions);
 const primaryInline = computed(() =>
-  props.compact
+  useCompactActions.value
     ? availableInline.value.filter((item) =>
         ['bold', 'italic', 'code', 'link'].includes(item.command),
       )
@@ -210,6 +212,45 @@ const blockLabel = computed(() => {
   return props.context.block === 'FootnoteDefinition' ? t('脚注定义')
     : props.context.block === 'LocalSource' ? t('局部源码') : t('当前块');
 });
+const blockIcon = computed(() => {
+  if (props.context.block === 'Heading')
+    return headingIcons[(props.context.headingLevel ?? 2) - 1] ?? Heading;
+  return blockIcons[props.context.block as keyof typeof blockIcons] ?? Type;
+});
+const blockContent = ref<HTMLElement>();
+let blockMotionVersion = 0;
+let blockWidthMotion: ReturnType<typeof animate> | undefined;
+let blockContentMotion: ReturnType<typeof animate> | undefined;
+function stopBlockMotion() {
+  blockWidthMotion?.cancel();
+  blockContentMotion?.cancel();
+  blockWidthMotion = undefined;
+  blockContentMotion = undefined;
+  trigger.value?.style.removeProperty('width');
+}
+watch([blockLabel, blockIcon, () => props.compact], async () => {
+  const version = ++blockMotionVersion;
+  const button = trigger.value;
+  const from = button?.getBoundingClientRect().width ?? 0;
+  stopBlockMotion();
+  await nextTick();
+  if (version !== blockMotionVersion || !button?.isConnected || button !== trigger.value) return;
+  const content = blockContent.value;
+  if (!content || !from || typeof button.animate !== 'function' ||
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const to = button.getBoundingClientRect().width;
+  if (Math.abs(to - from) > 0.5) {
+    blockWidthMotion = animate(button, { width: [from, to] }, {
+      duration: 0.2, ease: [0.22, 1, 0.36, 1],
+    });
+  }
+  blockContentMotion = animate(content, {
+    opacity: [0.35, 1], transform: ['translateY(2px)', 'translateY(0px)'],
+  }, { duration: 0.2, ease: [0.22, 1, 0.36, 1] });
+  await blockContentMotion.finished;
+  if (version === blockMotionVersion) stopBlockMotion();
+});
+onBeforeUnmount(() => { ++blockMotionVersion; stopBlockMotion(); });
 const formLabel = computed(
   () =>
     ({
@@ -306,6 +347,43 @@ function enableEnteringActions(element: Element) {
   element.removeAttribute('inert');
   element.removeAttribute('aria-hidden');
 }
+const actionMotions = new Map<HTMLElement, ReturnType<typeof animate>>();
+function clearActionMotion(element: Element) {
+  const host = element as HTMLElement;
+  actionMotions.get(host)?.cancel();
+  actionMotions.delete(host);
+  for (const property of ['width', 'height', 'opacity', 'overflow', 'margin-inline-end', 'margin-block-end'])
+    host.style.removeProperty(property);
+}
+function animateActions(element: Element, done: () => void, entering: boolean) {
+  const host = element as HTMLElement;
+  const axis = props.vertical ? 'height' : 'width';
+  const margin = props.vertical ? 'marginBlockEnd' : 'marginInlineEnd';
+  const previous = host.getBoundingClientRect()[axis];
+  const interrupted = actionMotions.has(host);
+  clearActionMotion(host);
+  if (entering) enableEnteringActions(host);
+  else disableLeavingActions(host);
+  if (typeof host.animate !== 'function' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    done();
+    return;
+  }
+  const size = host.getBoundingClientRect()[axis];
+  const gap = parseFloat(getComputedStyle(root.value!).gap) || 0;
+  host.style.overflow = 'hidden';
+  const animation = animate(host, {
+    [axis]: [entering && !interrupted ? 0 : previous, entering ? size : 0],
+    [margin]: [entering ? -gap : 0, entering ? 0 : -gap],
+    opacity: entering ? [0, 1] : [1, 0],
+  }, { duration: 0.2, ease: [0.22, 1, 0.36, 1] });
+  actionMotions.set(host, animation);
+  void animation.finished.then(() => {
+    if (actionMotions.get(host) !== animation) return;
+    done();
+    clearActionMotion(host);
+  });
+}
+onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionMotion(element); });
 </script>
 
 <template>
@@ -324,27 +402,24 @@ function enableEnteringActions(element: Element) {
     <slot name="leading" />
     <template v-if="source"><span class="document-type">{{ t('Markdown 源码') }}</span></template>
     <template v-else>
-      <span v-if="!compact" class="selection-level"
-        >{{ context.level === 'block' ? t('块级') : t('文字')
-        }}<small>{{ context.level === 'block' ? 'Block' : 'Text' }}</small></span
-      >
-      <span v-if="!compact" class="toolbar-divider" />
-      <div v-if="context.level === 'block' || compact" class="format-actions">
+      <div v-if="context.level === 'block' || useCompactActions" class="format-actions">
         <div class="menu-wrap">
           <button
             ref="trigger"
             type="button"
             class="block-type-trigger"
-            :class="{ 'icon-button': vertical }"
+            :class="{ 'icon-button': compact }"
             :aria-label="t('块级类型')"
-            :data-tooltip="vertical ? blockLabel : undefined"
+            :data-tooltip="compact ? blockLabel : undefined"
             :aria-expanded="open"
             :disabled="disabled"
             @mousedown.prevent
             @click="toggleBlockMenu"
           >
-            <component v-if="vertical" :is="context.block === 'Heading' ? Heading2 : Type" :size="17" />
-            <span v-else>{{ blockLabel }}</span><small v-if="!compact">Level {{ featureLevel(context.block) }}</small>
+            <span ref="blockContent" class="block-type-content">
+              <component :is="blockIcon" :size="17" aria-hidden="true" />
+              <span v-if="!compact">{{ blockLabel }}</span>
+            </span>
           </button>
           <div
             v-if="open && !disabled"
@@ -412,7 +487,7 @@ function enableEnteringActions(element: Element) {
           </div>
         </div>
         <div
-          v-if="context.block === 'Heading' && !compact"
+          v-if="context.block === 'Heading' && !useCompactActions"
           class="heading-levels"
           :aria-label="t('标题级别')"
         >
@@ -429,7 +504,7 @@ function enableEnteringActions(element: Element) {
             H{{ level }}
           </button>
         </div>
-        <template v-else-if="!compact">
+        <template v-else-if="!useCompactActions">
           <button
             v-for="item in [
               { name: 'heading', label: t('标题'), icon: Heading2 },
@@ -451,16 +526,18 @@ function enableEnteringActions(element: Element) {
         </template>
       </div>
       <!-- Keep side buttons mounted so an interrupted transition can reverse in place. -->
+      <span v-if="!compact && (context.level === 'block' || useCompactActions)" class="toolbar-divider" aria-hidden="true" />
       <Transition
-        name="inline-tools"
-        :css="compact && vertical"
+        :css="false"
+        @enter="(element, done) => animateActions(element, done, true)"
+        @leave="(element, done) => animateActions(element, done, false)"
+        @enter-cancelled="clearActionMotion"
         @before-enter="enableEnteringActions"
         @before-leave="disableLeavingActions"
         @leave-cancelled="enableEnteringActions"
       >
         <div
-          v-if="context.level === 'inline' || (compact && vertical)"
-          v-show="context.level === 'inline'"
+          v-if="context.level === 'inline'"
           class="inline-tools"
         >
           <div class="format-actions inline-actions">
@@ -490,9 +567,9 @@ function enableEnteringActions(element: Element) {
         </div>
       </Transition>
       <TextStyleMenu
-        v-if="context.level === 'inline' || compact"
-        :more="compact"
-        :inline-math="compact && commandEnabled('math', enabledLevels, features)"
+        v-if="context.level === 'inline' || useCompactActions"
+        :more="useCompactActions"
+        :inline-math="useCompactActions && commandEnabled('math', enabledLevels, features)"
         :text-color="context.textColor"
         :background-color="context.backgroundColor"
         :dragging="dragging"
@@ -503,7 +580,7 @@ function enableEnteringActions(element: Element) {
         <template v-if="compact && $slots.preferences" #preferences>
           <slot name="preferences" />
         </template>
-        <template v-if="compact && extraInline.length" #extra>
+        <template v-if="useCompactActions && extraInline.length" #extra>
           <button
             v-for="item in extraInline"
             :key="item.type"
@@ -518,7 +595,7 @@ function enableEnteringActions(element: Element) {
         </template>
       </TextStyleMenu>
       <button
-        v-if="!compact && context.level === 'block' && commandEnabled('reference', enabledLevels, features)"
+        v-if="!useCompactActions && context.level === 'block' && commandEnabled('reference', enabledLevels, features)"
         type="button"
         class="icon-button"
         :aria-label="t('引用对象或文档')"
@@ -530,7 +607,7 @@ function enableEnteringActions(element: Element) {
         <AtSign :size="17" />
       </button>
       <button
-        v-if="!compact && context.level === 'block' && commandEnabled('mention', enabledLevels, features)"
+        v-if="!useCompactActions && context.level === 'block' && commandEnabled('mention', enabledLevels, features)"
         type="button"
         class="icon-button"
         :aria-label="t('提及文档')"
@@ -642,8 +719,9 @@ function enableEnteringActions(element: Element) {
   outline-offset: 2px;
 }
 .contextual-toolbar :deep(.icon-button:not(.toolbar-drag-handle)[aria-pressed='true']) {
-  color: var(--green);
-  background: var(--accent);
+  color: var(--text);
+  background: var(--hover);
+  font-weight: 500;
 }
 .contextual-toolbar .toolbar-group-divider {
   display: block;
@@ -709,44 +787,17 @@ function enableEnteringActions(element: Element) {
   flex-direction: column;
 }
 .inline-tools {
-  display: contents;
-}
-.selection-format-toolbar[aria-orientation='vertical'] .inline-tools {
-  display: grid;
-  grid-template-rows: 1fr;
-  margin-block: 0;
-}
-.selection-format-toolbar[aria-orientation='vertical'] .inline-actions {
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
   min-height: 0;
 }
-.selection-format-toolbar[aria-orientation='vertical'] .inline-actions > button {
+.inline-actions {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+.inline-actions > button {
   flex-shrink: 0;
-}
-.selection-format-toolbar[aria-orientation='vertical'] .inline-tools-enter-active,
-.selection-format-toolbar[aria-orientation='vertical'] .inline-tools-leave-active {
-  transition:
-    grid-template-rows 240ms cubic-bezier(0.22, 1, 0.36, 1),
-    margin-block 240ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 180ms ease,
-    transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-.inline-tools-enter-active .inline-actions,
-.inline-tools-leave-active .inline-actions {
-  overflow: hidden;
-}
-.selection-format-toolbar[aria-orientation='vertical'] .inline-tools-enter-from,
-.selection-format-toolbar[aria-orientation='vertical'] .inline-tools-leave-to {
-  grid-template-rows: 0fr;
-  /* Cancel the extra flex gap while the button group has no height. */
-  margin-block: -2px;
-  opacity: 0;
-  transform: translateY(-4px);
-}
-@media (prefers-reduced-motion: reduce) {
-  .inline-tools-enter-active,
-  .inline-tools-leave-active {
-    transition: none !important;
-  }
 }
 .selection-format-toolbar[aria-orientation='vertical'] .block-type-trigger {
   width: 30px;
@@ -770,9 +821,9 @@ function enableEnteringActions(element: Element) {
 .block-type-trigger {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-width: 95px;
-  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  justify-content: flex-start;
   padding: 5px 8px;
   border: 0;
   border-radius: 5px;
@@ -783,6 +834,13 @@ function enableEnteringActions(element: Element) {
 }
 .block-type-trigger:hover {
   background: var(--accent);
+}
+.block-type-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .block-type-menu {
   top: calc(100% + 7px);
@@ -837,8 +895,9 @@ function enableEnteringActions(element: Element) {
 }
 .is-current,
 button[aria-pressed='true'] {
-  color: var(--green);
-  background: var(--accent);
+  color: var(--text);
+  background: var(--hover);
+  font-weight: 500;
 }
 .heading-levels {
   display: flex;
@@ -853,8 +912,9 @@ button[aria-pressed='true'] {
   font-size: 11px;
 }
 .heading-levels button[aria-pressed='true'] {
-  background: var(--accent);
-  color: var(--green);
+  background: var(--hover);
+  color: var(--text);
+  font-weight: 500;
 }
 .toolbar-input-panel {
   position: absolute;

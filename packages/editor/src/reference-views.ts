@@ -65,7 +65,7 @@ export function referenceViews(
           body.append(heading, detail);
           renderIcon(h(ArrowUpRight, { size: 16, strokeWidth: 1.7 }), arrow);
           button.append(icon, body, arrow);
-        } else button.append(icon, label, badge);
+        } else button.append(icon, label);
         dom.append(button);
         button.onmousedown = (event) => {
           if (canEditSource() && !event.ctrlKey && !event.metaKey && !event.altKey)
@@ -90,8 +90,14 @@ export function referenceViews(
           dom.classList.toggle('is-missing', missing);
           dom.classList.toggle('is-disabled', !enabled());
           label.textContent = enabled()
-            ? `${block ? '' : '@'}${target?.name ?? current.attrs.label}`
+            ? `${target?.name ?? current.attrs.label}`
             : `[${block ? '' : '@'}${current.attrs.label}](${current.attrs.url}${block ? ' "tano:object-card"' : ''})`;
+          if (enabled() && !block) {
+            const prefix = document.createElement('span');
+            prefix.className = 'tano-reference-prefix';
+            prefix.textContent = '@';
+            label.prepend(prefix);
+          }
           button.disabled = (!enabled() || missing) && !canEditSource();
           const task = target && (target.type === 'task' || (target.type === 'event' && target.properties?.checkable === true));
           const completed = target?.properties?.completed === true || ['done', 'completed'].includes(String(target?.properties?.status));
@@ -114,10 +120,14 @@ export function referenceViews(
             target?.path ||
             (missing ? '目标已移除、ID 重复或类型插件未启用；原始 ID 已保留' : '');
           detail.hidden = !detail.textContent;
-          detail.title = target?.type === 'event'
+          detail.dataset.tooltip = target?.type === 'event'
             ? [target.properties?.start, target.properties?.end].filter(Boolean).join(' — ')
             : detail.textContent ?? '';
-          button.title = `${referenceTypeLabel(identity?.type ?? '')} · ${current.attrs.url}${canEditSource() ? ' · 点击编辑 Markdown，Ctrl/⌘ 点击打开' : ''}`;
+          if (block) {
+            button.dataset.tooltip = `${referenceTypeLabel(identity?.type ?? '')} · ${current.attrs.url}`;
+          } else {
+            button.dataset.tooltip = badge.textContent ?? '';
+          }
           button.setAttribute(
             'aria-label',
             canEditSource()

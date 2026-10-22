@@ -12,8 +12,8 @@ import {
   undo,
   undoDepth,
 } from '@codemirror/commands';
-import { Compartment, EditorState, StateEffect, StateField, Transaction } from '@codemirror/state';
-import { Decoration, EditorView, highlightActiveLineGutter, keymap, lineNumbers, WidgetType } from '@codemirror/view';
+import { Compartment, EditorState, RangeSet, StateEffect, StateField, Transaction } from '@codemirror/state';
+import { Decoration, EditorView, GutterMarker, gutterLineClass, highlightActiveLineGutter, keymap, lineNumbers, WidgetType } from '@codemirror/view';
 import { referenceMarkdown } from '@tano/protocol';
 import type { CommentAnchor, ReferenceIdentity } from '@tano/protocol';
 import type { SuggestionDecorations } from '@tano/protocol';
@@ -78,6 +78,21 @@ const undoHistory = new Compartment();
 const refreshCommentMarks = StateEffect.define<void>();
 let view: EditorView | undefined;
 let applyingModel = false;
+
+class HeadingLineNumber extends GutterMarker {
+  readonly elementClass: string;
+  constructor(readonly level: string) {
+    super();
+    this.elementClass = `cm-source-${level}-gutter`;
+  }
+  eq(other: HeadingLineNumber) { return this.level === other.level; }
+}
+const headingLineNumbers = gutterLineClass.compute(['doc'], state => {
+  const markdown = state.doc.toString();
+  return RangeSet.of(sourceStyleRanges(markdown)
+    .filter(range => /^heading-[1-6]$/.test(range.style))
+    .map(({ from, style }) => new HeadingLineNumber(style).range(state.doc.lineAt(from).from)), true);
+});
 
 const sourceStyles = StateField.define({
   create(state) {
@@ -180,6 +195,7 @@ onMounted(() => {
         keymap.of([{ ...indentWithTab, preventDefault: true }, ...defaultKeymap, ...historyKeymap]),
         lineNumbers(),
         highlightActiveLineGutter(),
+        headingLineNumbers,
         EditorView.lineWrapping,
         EditorView.contentAttributes.of({ 'aria-label': t('Markdown 源码'), spellcheck: 'false' }),
         readonlyMode.of([

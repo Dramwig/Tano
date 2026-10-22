@@ -10,6 +10,7 @@
   --line: #2c2f32;
   --line-strong: #3e4449;
   --control-border: #6b747c;
+  /* Scrollbar uses fixed neutral gray for consistency across themes */
   --scrollbar-thumb: #4b5157;
   --scrollbar-thumb-hover: #666e76;
   --text: #d5d9dc;
@@ -19,6 +20,9 @@
   --green-hover: #adcdb9;
   --green-fill: #386b50;
   --green-fill-hover: #44785d;
+  /* Neutral selection states — no green unless it's a true action */
+  --selected: #303438;
+  --selected-text: var(--text);
   --accent: #2b3a32;
   --block-selection: #35483d;
   --selection: #3b5344;
@@ -146,7 +150,7 @@
 :root[data-theme='dark'] .comment-quote { border-left-color: var(--warning-border); }
 :root[data-theme='dark'] .comment-edit-cancel { background: var(--hover); color: var(--text); }
 :root[data-theme='dark'] .comment-edit-confirm { background: var(--green-fill); }
-:root[data-theme='dark'] .comment-edit-actions button:focus-visible { outline-color: var(--green); }
+:root[data-theme='dark'] .comment-edit-actions button:focus-visible { outline-color: var(--text-secondary); }
 :root[data-theme='dark'] :is(.comment-error, .suggestion-error, .connection-error) { color: var(--danger); }
 :root[data-theme='dark'] .selection-todo-dialog [role='alert'] { color: var(--danger); }
 :root[data-theme='dark'] .connection-error { background: var(--danger-bg); }

@@ -690,7 +690,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 .assistant-history-group + .assistant-history-group { margin-top: 3px; }
 .assistant-contexts { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; max-height: 116px; overflow: auto; padding: 0 0 8px; }
 .assistant-text-action { display: inline-flex; align-items: center; gap: 5px; border: 0; padding: 5px 0; color: var(--text-secondary); background: transparent; font-size: 12px; }
-.assistant-text-action:hover { color: var(--green); }
+.assistant-text-action:hover { color: var(--text); }
 .assistant-context { display: inline-flex; align-items: center; gap: 5px; max-width: min(220px, 100%); padding: 4px 7px; border: 1px solid var(--assistant-composer-line); border-radius: 5px; color: var(--assistant-composer-muted); background: color-mix(in srgb, var(--surface) 55%, var(--paper)); font-size: 11px; }
 .assistant-context:hover { border-color: var(--line); background: var(--surface); color: var(--text-secondary); }
 .assistant-context span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -728,8 +728,8 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 .assistant-answer :deep(li) { margin: 5px 0; }
 .assistant-message-error { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; color: var(--danger); }
 .assistant-citations { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
-.assistant-citations button { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--green); font-size: 11px; text-align: left; overflow-wrap: anywhere; }
-.assistant-citations button:hover { background: var(--accent); }
+.assistant-citations button { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 11px; text-align: left; overflow-wrap: anywhere; }
+.assistant-citations button:hover { background: var(--hover); }
 .assistant-citations svg { flex-shrink: 0; }
 .assistant-attachments { justify-content: flex-end; max-width: 88%; margin: 0 0 8px; }
 .assistant-rules { display: block; margin-top: 9px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }

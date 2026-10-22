@@ -36,6 +36,29 @@ it('supports delegated hover on disabled controls and preserves existing descrip
   expect(hint()).toBeNull();
   expect(button.getAttribute('aria-describedby')).toBe('existing');
 });
+it('shares editor link hints, updates Wiki targets, and hides hints while editing Wiki source', async () => {
+  const prose = document.createElement('div');
+  prose.className = 'tano-prose';
+  const link = document.createElement('a');
+  link.href = '#';
+  link.textContent = 'Target';
+  link.getClientRects = button.getClientRects;
+  prose.append(link);
+  document.body.append(prose);
+  try {
+    link.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(250); await flush();
+    expect(hint()?.textContent).toBe('Ctrl/⌘ + 点击跳转');
+    link.className = 'tano-wiki-link';
+    link.dataset.markdownSource = '[[Target]]';
+    await flush();
+    expect(hint()?.textContent).toBe('[[Target]] · Ctrl/⌘ + 点击跳转');
+    link.classList.add('tano-live-wiki');
+    await flush();
+    expect(hint()).toBeNull();
+    expect(link.hasAttribute('aria-describedby')).toBe(false);
+  } finally { prose.remove(); }
+});
 it('updates active hints and removes them when a dynamic button is removed', async () => {
   button.focus(); await flush();
   expect(hint()).not.toBeNull();

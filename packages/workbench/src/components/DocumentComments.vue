@@ -763,7 +763,7 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
 
 <style scoped>
 .document-review { color: var(--text); font-family: 'Inter Variable', 'Microsoft YaHei', sans-serif; }
-.document-discussion { box-sizing: border-box; max-width: 780px; margin: 48px auto 0; padding: 24px var(--tano-block-padding-inline, 8px) 0; }
+.document-discussion { box-sizing: border-box; max-width: var(--tano-content-measure, 780px); margin: 48px auto 0; padding: 24px var(--tano-block-padding-inline, 8px) 0; }
 .document-discussion :deep(.tano-skeleton-list) { padding-inline: 0; }
 .document-discussion-header { display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px; }
 .document-discussion-header h2 { font-size: 19px; font-weight: 500; line-height: 28px; margin: 0; }

@@ -1152,7 +1152,7 @@ async function onTabKeydown(event: KeyboardEvent) {
   left: 0;
   width: 2px;
   border-radius: 1px;
-  background: var(--green);
+  background: var(--text);
   pointer-events: none;
 }
 .desktop-tab-context-menu {
@@ -1187,7 +1187,7 @@ async function onTabKeydown(event: KeyboardEvent) {
   bottom: 6px;
   width: 2px;
   border-radius: 1px;
-  background: var(--green);
+  background: var(--text);
   pointer-events: none;
 }
 .desktop-tab-drop-before::after,
@@ -1335,7 +1335,7 @@ async function onTabKeydown(event: KeyboardEvent) {
   height: 6px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: var(--green);
+  background: var(--text);
 }
 .desktop-tab-close,
 .desktop-tab-add {

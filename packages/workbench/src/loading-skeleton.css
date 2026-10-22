@@ -19,7 +19,7 @@
 .tano-skeleton-document { box-sizing: border-box; width: min(100%, 860px); margin: 0 auto; padding: 48px 32px; display: grid; align-content: start; gap: 22px; }
 .tano-skeleton-document .tano-skeleton-bar:first-child { width: 45%; height: 32px; margin-bottom: 24px; }
 .tano-skeleton-document .tano-skeleton-bar:nth-child(4n) { width: 72%; margin-bottom: 20px; }
-.tano-skeleton-editor { box-sizing: border-box; width: 100%; max-width: 780px; margin: 0 auto; padding: 8px var(--tano-block-padding-inline, 8px); display: grid; align-content: start; gap: 18px; }
+.tano-skeleton-editor { box-sizing: border-box; width: 100%; max-width: var(--tano-content-measure, 780px); margin: 0 auto; padding: 8px var(--tano-block-padding-inline, 8px); display: grid; align-content: start; gap: 18px; }
 .tano-skeleton-editor .tano-skeleton-bar:nth-child(4n) { width: 72%; margin-bottom: 18px; }
 .tano-skeleton-editor .tano-skeleton-bar:last-child { width: 56%; }
 .editor-scroll.width-unlimited .tano-skeleton-editor { max-width: none; }

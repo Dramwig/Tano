@@ -138,6 +138,7 @@ async function changeMode(mode: ToolbarMode) {
 <template>
   <EditorToolbar
     v-if="mode === 'fixed'"
+    compact-actions
     class="switchable-toolbar"
     :class="{ 'toolbar-being-dragged': drag }"
     :context="context"
@@ -201,6 +202,7 @@ async function changeMode(mode: ToolbarMode) {
         <div aria-hidden="true" inert>
           <EditorToolbar
             :compact="drag.target !== 'fixed'"
+            compact-actions
             :vertical="previewVertical"
             :class="{ 'switchable-toolbar': drag.target === 'fixed' }"
             :context="context"
@@ -243,6 +245,15 @@ async function changeMode(mode: ToolbarMode) {
 }
 .toolbar-preview-split :deep(.editor-toolbar > *) {
   flex-shrink: 0;
+}
+@media (pointer: fine) and (min-width: 701px) {
+  /* The preview is teleported outside WorkspacePanes, so mirror its compact
+     fixed-toolbar spacing to keep the controls stationary on release. */
+  .toolbar-drag-preview[data-target='fixed'] :deep(.editor-toolbar) {
+    height: auto;
+    min-height: 33px;
+    padding-block: 0 3px;
+  }
 }
 .toolbar-preview-inactive {
   opacity: 0.55;

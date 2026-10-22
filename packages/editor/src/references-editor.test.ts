@@ -147,7 +147,11 @@ it('opens an event from its card details and preserves the original timestamps a
     properties: { start: '2026-09-26T10:00:00+08:00', end: '2026-09-26T11:00:00+08:00' },
   }]);
   const detail = root.querySelector<HTMLElement>('.tano-reference-detail')!;
-  expect(detail.title).toBe('2026-09-26T10:00:00+08:00 — 2026-09-26T11:00:00+08:00');
+  expect(detail.dataset.tooltip).toBe('2026-09-26T10:00:00+08:00 — 2026-09-26T11:00:00+08:00');
+  expect(detail.hasAttribute('title')).toBe(false);
+  const button = root.querySelector<HTMLButtonElement>('.tano-reference-card button')!;
+  expect(button.dataset.tooltip).toBe('事件 · object://event/a00001');
+  expect(button.hasAttribute('title')).toBe(false);
   expect(detail.textContent).not.toContain('T10:00:00');
   detail.click();
   expect(opened).toEqual([{ type: 'event', id: 'a00001' }]);
@@ -199,12 +203,12 @@ it('updates display after rename without rewriting Markdown and preserves unavai
   expect(value.value).toBe(source);
   capabilities.value.features.objectReferences = false;
   await nextTick();
-  expect(root.textContent).toContain('Level 2 已关闭');
+  expect(root.querySelector<HTMLButtonElement>('.tano-reference button')?.dataset.tooltip).toBe('Level 2 已关闭');
   expect(value.value).toBe(source);
   candidates.value = [targets[1]!];
   capabilities.value.features.objectReferences = true;
   await nextTick();
-  expect(root.textContent).toContain('引用不可用');
+  expect(root.querySelector<HTMLButtonElement>('.tano-reference button')?.dataset.tooltip).toBe('引用不可用');
   expect(value.value).toBe(source);
   expect(errors).toEqual([]);
 });
@@ -223,7 +227,8 @@ it('keeps removed domain references visible and inert without enabling them as c
   await nextTick();
   const button = root.querySelector('.tano-reference button') as HTMLButtonElement;
   expect(button.disabled).toBe(true);
-  expect(button.textContent).toContain('引用不可用');
+  expect(button.dataset.tooltip).toBe('引用不可用');
+  expect(button.querySelector('.tano-reference-badge')).toBeNull();
   button.click();
   expect(opened).toEqual([]);
   expect(value.value).toBe(source);

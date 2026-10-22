@@ -139,7 +139,7 @@ th { color: var(--muted); font-weight: 400; white-space: nowrap; background: var
 tbody tr:hover { background: var(--sidebar); }
 td small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
 .file-link { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; justify-content: flex-start; padding: 0; border: 0; background: transparent; color: var(--text); text-align: left; }
-.file-link:hover { color: var(--green); text-decoration: underline; background: transparent !important; }
+.file-link:hover { color: var(--text); text-decoration: underline; background: transparent !important; }
 .row-properties { color: var(--muted); padding: 5px; }
 h2 { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; margin: 18px 0 8px; }
 h2 small { color: var(--muted); font-size: 11px; font-weight: 400; }

@@ -68,15 +68,22 @@
   --green-hover: #176340;
   --green-fill: #1f7a52;
   --green-fill-hover: #176340;
+  /* Neutral selection states — no green unless it's a true action */
+  --selected: #e8eaed;
+  --selected-text: var(--text);
   --accent: #eaf5ee;
   --block-selection: #e1f1e8;
   --block-selection-overlay: color-mix(in srgb, var(--block-selection) 62%, transparent);
   --line: #edeeef;
   --control-border: #c7ccd2;
-  --sidebar: #fbfafa;
+  --sidebar: #f7f7f7;
   --sidebar-width: 230px;
   --workbench-tabbar-height: 36px;
   --workbench-topbar-height: 44px;
+  /* Reading measure shared by the body, title, frontmatter, references,
+     comments, suggestions and loading skeleton so every document section
+     stays on one rail. */
+  --tano-content-measure: 700px;
   --paper: #ffffff;
   --surface: #f7f7f8;
   --hover: #eff0f1;
@@ -97,6 +104,7 @@
   --suggestion-bg: color-mix(in srgb, var(--suggestion-color) 12%, transparent);
   --diff-add-bg: #eaf5e7;
   --diff-remove-bg: #fcefea;
+  --quote-border: #d1d5da;
 }
 * {
   box-sizing: border-box;
@@ -143,7 +151,7 @@ button {
     color 0.15s;
 }
 a {
-  color: var(--green);
+  color: #4a5568;
 }
 ::selection {
   background: var(--selection, var(--accent));
@@ -166,18 +174,19 @@ svg {
   scrollbar-width: auto;
 }
 .panel-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 .panel-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
 .panel-scrollbar::-webkit-scrollbar-thumb {
-  border-radius: 6px;
-  background: var(--scrollbar-thumb, var(--control-border));
+  border-radius: 8px;
+  background: #d1d5da;
+  transition: background 0.15s;
 }
 .panel-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover, var(--muted));
+  background: #9ca3af;
 }
 .panel-scrollbar::-webkit-scrollbar-corner {
   background: transparent;
@@ -190,7 +199,7 @@ svg {
 @supports (-moz-appearance: none) {
   .panel-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: var(--scrollbar-thumb, var(--control-border)) transparent;
+    scrollbar-color: #d1d5da transparent;
   }
 }
 button:hover {
@@ -212,7 +221,7 @@ button:hover {
   width: var(--sidebar-width);
   flex: 0 0 var(--sidebar-width);
   background: var(--sidebar);
-  border-right: 1px solid var(--line);
+  border-right: 0;
   display: flex;
   flex-direction: column;
   padding: 0 7px;
@@ -362,10 +371,10 @@ button:hover {
   text-decoration: none;
 }
 .brand[href]:hover {
-  color: var(--green);
+  color: var(--text-secondary);
 }
 .brand[href]:focus-visible {
-  outline: 2px solid var(--green);
+  outline: 2px solid var(--text-secondary);
   outline-offset: 3px;
 }
 .brand > img {
@@ -398,7 +407,7 @@ button:hover {
 }
 .workspace-current {
   background: var(--hover);
-  color: var(--green);
+  color: var(--text);
 }
 .workspace-list-empty {
   font-size: 12px;
@@ -478,11 +487,12 @@ button:hover {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted);
-  padding: 0 0 0 4px;
-  margin-bottom: 4px;
-  font-weight: 600;
+  padding: 0 0 0 5px;
+  margin-bottom: 5px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
 }
 .section-label > span {
   min-width: 0;
@@ -551,12 +561,12 @@ button:hover {
 }
 .tree-row {
   cursor: default;
-  height: 30px;
+  height: 28px;
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  border-radius: 6px;
+  border-radius: 5px;
   color: var(--text-secondary);
   text-align: left;
   position: relative;
@@ -577,14 +587,16 @@ button:hover {
   box-shadow: inset 0 0 0 1px var(--green);
 }
 .tree-row.selected {
-  background: var(--hover);
+  background: var(--selected);
   color: var(--text);
+  font-weight: 500;
 }
 .tree-row.selected.multi-selected {
-  background: var(--accent);
+  background: var(--selected);
 }
 .tree-row.selected.drop-target {
   background: var(--accent);
+  color: var(--green);
 }
 .tree-row:focus-visible {
   outline: none;
@@ -646,8 +658,8 @@ button:hover {
   gap: 3px;
   flex-shrink: 0;
   margin: 0 -7px;
-  border-top: 1px solid var(--line);
-  padding: 8px 5px;
+  border-top: 0;
+  padding: 6px 5px;
   background: var(--sidebar);
 }
 .sidebar-bottom > .icon-button {
@@ -725,6 +737,7 @@ button:hover {
   bottom: 0;
   left: 0;
   border-bottom: 1px solid var(--line);
+  opacity: 0.7;
   pointer-events: none;
 }
 .topbar-navigation {
@@ -878,7 +891,7 @@ button:hover {
 }
 .calendar-view-menu button:hover,
 .calendar-view-menu button:focus-visible { background: var(--hover); }
-.calendar-view-menu button[aria-checked='true'] { color: var(--green); font-weight: 600; }
+.calendar-view-menu button[aria-checked='true'] { color: var(--text); font-weight: 600; }
 @media (max-width: 900px) {
   .calendar-topbar-period { display: none; }
 }
@@ -1185,7 +1198,7 @@ button:hover {
   font-size: 18px;
 }
 .tano-toggle > .tano-enhanced-header > button:focus-visible {
-  outline: 2px solid var(--green);
+  outline: 2px solid var(--text-secondary);
   outline-offset: 2px;
 }
 .tano-toggle > .tano-enhanced-header > .tano-add-child {
@@ -1632,8 +1645,8 @@ button:hover {
   }
 }
 .tano-file-mention {
-  color: var(--green);
-  background: var(--accent);
+  color: #4a5568;
+  background: #e8eaed;
   border-radius: 3px;
   padding: 1px 3px;
 }
@@ -1647,7 +1660,7 @@ button:hover {
   }
 }
 .tano-prose sup[data-type='footnote_reference'] {
-  color: var(--green);
+  color: #4a5568;
   padding: 0 1px;
 }
 .tano-prose sup[data-type='footnote_reference'][data-footnote-number] {
@@ -1712,8 +1725,9 @@ button:hover {
   margin: 0;
 }
 .source-mode-button.active {
-  color: var(--green);
-  background: var(--accent);
+  color: var(--text);
+  background: var(--hover);
+  font-weight: 500;
 }
 .menu-wrap {
   position: relative;
@@ -1976,7 +1990,7 @@ button:hover {
 }
 .workspace-entry-context-check {
   margin-left: auto;
-  color: var(--green);
+  color: var(--text);
 }
 .sidebar-popover button,
 .sidebar-popover .workspace-list-empty,
@@ -2132,7 +2146,7 @@ button:hover {
 }
 .milkdown-host,
 .source-editor {
-  max-width: 780px;
+  max-width: var(--tano-content-measure);
   margin: 0 auto;
 }
 .milkdown-host {
@@ -2147,7 +2161,7 @@ button:hover {
 .document-title-content,
 .document-appearance-content {
   position: relative;
-  max-width: 780px;
+  max-width: var(--tano-content-measure);
   margin: 0 auto;
 }
 .document-title-content,
@@ -2266,8 +2280,8 @@ button:hover {
   background: var(--paper);
   color: var(--text);
   box-shadow:
-    0 8px 24px #00000014,
-    0 2px 6px #00000008;
+    0 12px 32px rgba(0, 0, 0, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.04);
   font-size: 13px;
   line-height: 1.5;
   overflow: hidden;
@@ -2293,7 +2307,7 @@ button:hover {
 }
 .tano-slash-results::-webkit-scrollbar,
 .tano-code-language-results::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
 }
 .tano-slash-results::-webkit-scrollbar-track,
 .tano-code-language-results::-webkit-scrollbar-track {
@@ -2301,8 +2315,8 @@ button:hover {
 }
 .tano-slash-results::-webkit-scrollbar-thumb,
 .tano-code-language-results::-webkit-scrollbar-thumb {
-  border-radius: 6px;
-  background: var(--scrollbar-thumb, var(--control-border));
+  border-radius: 8px;
+  background: #d1d5da;
 }
 .tano-slash-results::-webkit-scrollbar-button,
 .tano-code-language-results::-webkit-scrollbar-button {
@@ -2360,8 +2374,8 @@ button:hover {
 .tano-slash-form button {
   padding: 6px;
   border-radius: 5px;
-  background: var(--accent);
-  color: var(--green);
+  background: var(--hover);
+  color: var(--text);
 }
 .tano-slash-form small {
   color: var(--danger);
@@ -2455,12 +2469,12 @@ button:hover {
 }
 .tano-fold-toggle:hover {
   background: transparent;
-  color: var(--green);
+  color: var(--text-secondary);
 }
 .tano-fold-toggle.is-folded {
   opacity: 1;
   pointer-events: auto;
-  color: var(--green);
+  color: var(--text-secondary);
 }
 .tano-fold-toggle[hidden] {
   display: none;
@@ -2632,7 +2646,7 @@ button:hover {
   background: transparent;
   border-radius: 0;
   padding: 0 0 0 23px;
-  color: var(--text);
+  color: var(--text-secondary);
 }
 .tano-prose blockquote:where(:not(.tano-callout))::before {
   content: '';
@@ -2640,7 +2654,7 @@ button:hover {
   inset-block: 0;
   inset-inline-start: 0;
   width: 3px;
-  background: var(--quote-border, var(--text));
+  background: var(--quote-border);
   pointer-events: none;
 }
 .tano-prose > blockquote:where(:not(.tano-callout)) {
@@ -2673,8 +2687,8 @@ button:hover {
   padding-right: var(--tano-block-padding-inline);
 }
 .tano-prose li {
-  padding-left: 4px;
-  margin: 5px 0;
+  padding-left: 2px;
+  margin: 3px 0;
 }
 .tano-prose li p {
   margin: 0;
@@ -2705,10 +2719,10 @@ button:hover {
   content: '';
   position: absolute;
   left: -19px;
-  top: 9px;
+  top: 8px;
   width: 12px;
   height: 12px;
-  border: 1px solid var(--task-border, var(--line));
+  border: 1px solid var(--line);
   border-radius: 3px;
   background: var(--surface);
 }
@@ -2919,7 +2933,7 @@ button:hover {
 .tano-table-scroll-thumb:hover,
 .tano-table-scrollbar.is-dragging .tano-table-scroll-thumb { background: var(--scrollbar-thumb-hover, var(--muted)); }
 .tano-table-scrollbar.is-dragging .tano-table-scroll-thumb { cursor: grabbing; }
-.tano-table-scrollbar:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.tano-table-scrollbar:focus-visible { outline: 2px solid var(--text-secondary); outline-offset: 2px; }
 .tano-table-viewport {
   position: relative;
   margin-bottom: 16px;
@@ -3007,7 +3021,7 @@ button:hover {
   pointer-events: none;
 }
 .tano-table-insert:is(:hover, :focus-visible) > span { display: flex; }
-.tano-table-insert:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.tano-table-insert:focus-visible { outline: 2px solid var(--text-secondary); outline-offset: 2px; }
 /* Split the shared corner hit area without moving the visible control. */
 .tano-table-insert.is-corner { pointer-events: none; }
 .tano-table-insert.is-corner:is(:hover, :focus-visible) { z-index: 17; }
@@ -3062,7 +3076,7 @@ button:hover {
 .tano-table-grip:is(:hover, :focus-visible, .is-selected) > span,
 .tano-table-controls.is-dragging .tano-table-grip > span { display: flex; }
 .tano-table-grip.is-selected > span { background: var(--surface); color: var(--text); }
-.tano-table-grip:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; border-radius: 4px; }
+.tano-table-grip:focus-visible { outline: 2px solid var(--text-secondary); outline-offset: 1px; border-radius: 4px; }
 .tano-table-controls.is-dragging .tano-table-grip { cursor: grabbing; }
 .tano-table-controls.is-dragging .tano-table-grip:not(.is-selected) { visibility: hidden; }
 .tano-table-dragging .selectedCell { opacity: 0.3; }
@@ -3123,8 +3137,8 @@ button:hover {
 .compact-action-menu .tano-table-alignment-option { display: flex; align-items: center; justify-content: center; height: 26px; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; }
 .tano-table-alignment-option > span { display: flex; }
 .tano-table-alignment-option:is(:hover, :focus-visible) { background: var(--hover); outline: none; }
-.compact-action-menu .tano-table-alignment-option[aria-checked='true'] { background: var(--accent); color: var(--green); }
-.compact-action-menu .tano-table-alignment-option:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+.compact-action-menu .tano-table-alignment-option[aria-checked='true'] { background: var(--hover); color: var(--text); }
+.compact-action-menu .tano-table-alignment-option:focus-visible { outline: 2px solid var(--text-secondary); outline-offset: -2px; }
 .tano-editor-panel.tano-table-color-menu { z-index: 61; }
 .tano-table-color-back[hidden] { display: none; }
 .tano-table-color-back { margin-bottom: 4px; }
@@ -3154,7 +3168,7 @@ button:hover {
   border-radius: 6px;
 }
 .tano-prose a {
-  color: var(--green);
+  color: #4a5568;
   text-decoration-color: currentColor;
   text-underline-offset: 3px;
 }
@@ -3164,30 +3178,6 @@ button:hover {
 .tano-prose .tano-live-source-inline,
 .tano-prose a.tano-live-wiki {
   cursor: text;
-}
-.tano-prose a[href],
-.tano-prose .tano-reference:not(.is-missing) button:not(:disabled) {
-  position: relative;
-}
-.tano-prose a[href]:not(.tano-live-wiki):hover::after,
-.tano-prose .tano-reference:not(.is-missing) button:not(:disabled):hover::after {
-  content: 'Ctrl/⌘ + 点击跳转';
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 7px);
-  z-index: 5;
-  padding: 4px 7px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  background: var(--paper);
-  color: var(--text);
-  box-shadow: 0 4px 14px #00000018;
-  font:
-    12px 'Cascadia Code',
-    Consolas,
-    monospace;
-  white-space: nowrap;
-  pointer-events: none;
 }
 
 .tano-prose pre.tano-live-source-block {
@@ -3385,9 +3375,6 @@ button:hover {
   content: '📄 ';
   text-decoration: none;
 }
-.tano-prose .tano-wiki-link:not(.tano-live-wiki):hover::after {
-  content: attr(data-markdown-source) ' · Ctrl/⌘ + 点击跳转';
-}
 .tano-editor-panel {
   position: absolute;
   z-index: 100;
@@ -3554,12 +3541,35 @@ button:hover {
   tab-size: inherit;
 }
 .source-editor .cm-gutters {
+  /* Keep line numbers outside the text measure, including when digits grow.
+     Override CodeMirror's inline sticky positioning: the page scrolls here. */
+  position: absolute !important;
+  left: var(--tano-block-padding-inline);
+  top: 0;
+  transform: translateX(-100%);
   border: 0;
   background: transparent;
+}
+.source-editor .cm-line {
+  padding-inline: var(--tano-block-padding-inline);
 }
 .source-editor .cm-lineNumbers .cm-gutterElement {
   padding: 0 10px 0 0;
   color: var(--muted);
+}
+/* Center on the heading's first visual row, not its full wrapped block.
+   CodeMirror still measures each complete block to position subsequent numbers. */
+.source-editor .cm-lineNumbers .cm-source-heading-1-gutter {
+  padding-top: calc(4px + var(--tano-source-font-size, 14px) * (2.285714 * 1.4 - 1.928571) / 2);
+}
+.source-editor .cm-lineNumbers .cm-source-heading-2-gutter {
+  padding-top: calc(3px + var(--tano-source-font-size, 14px) * (1.714286 * 1.45 - 1.928571) / 2);
+}
+.source-editor .cm-lineNumbers .cm-source-heading-3-gutter {
+  padding-top: calc(3px + var(--tano-source-font-size, 14px) * (1.357143 * 1.5 - 1.928571) / 2);
+}
+.source-editor .cm-lineNumbers .cm-source-heading-4-gutter {
+  padding-top: calc(var(--tano-source-font-size, 14px) * (1.285714 * 1.55 - 1.928571) / 2);
 }
 .source-editor .cm-lineNumbers .cm-activeLineGutter {
   background: transparent;
@@ -3572,7 +3582,7 @@ button:hover {
 .source-editor .cm-content {
   min-height: calc(100vh - 290px);
   padding: 0;
-  caret-color: var(--green);
+  caret-color: #4a5568;
 }
 .source-editor .cm-focused {
   outline: none;
@@ -3643,9 +3653,9 @@ button:hover {
   background: var(--surface);
 }
 .source-editor .cm-source-link {
-  color: var(--green);
+  color: #4a5568;
   text-decoration: underline;
-  text-decoration-color: #1f7a5266;
+  text-decoration-color: rgba(74, 85, 104, 0.4);
 }
 .source-editor .cm-source-image,
 .source-editor .cm-source-math {
@@ -3749,7 +3759,7 @@ button:hover {
   position: relative;
 }
 .inspector-tabs button.active {
-  color: var(--green);
+  color: var(--text);
   font-weight: 600;
 }
 .inspector-tabs button.active:after {
@@ -3786,7 +3796,7 @@ button:hover {
 }
 .outline-control:hover,
 .outline-control.active {
-  color: var(--green);
+  color: var(--text);
   background: var(--hover);
 }
 .outline-search {
@@ -3838,7 +3848,8 @@ button:hover {
   color: var(--text-secondary);
 }
 .outline .outline-active {
-  color: var(--green);
+  color: var(--text);
+  font-weight: 500;
 }
 .outline-text {
   min-width: 0;
@@ -4458,8 +4469,8 @@ button:hover {
 }
 .search-results mark {
   border-radius: 2px;
-  background: var(--accent);
-  color: var(--green);
+  background: #fef3c7;
+  color: var(--text);
   font-weight: 600;
 }
 .panel-empty {
@@ -4658,7 +4669,7 @@ button:hover {
   margin: 0;
   width: 14px;
   height: 14px;
-  accent-color: var(--green);
+  accent-color: #4a5568;
   cursor: pointer;
 }
 @media (max-width: 700px) {
@@ -4983,7 +4994,7 @@ button:hover {
   display: none;
 }
 .frontmatter-panel {
-  max-width: 780px;
+  max-width: var(--tano-content-measure);
   margin: 0 auto 26px;
   color: var(--text);
   font-size: 14px;
@@ -5018,7 +5029,7 @@ button:hover {
   transform: rotate(90deg);
 }
 .frontmatter-heading:hover .frontmatter-chevron {
-  color: var(--green);
+  color: var(--text-secondary);
 }
 .frontmatter-order-toggle {
   display: grid;
@@ -5035,7 +5046,7 @@ button:hover {
 }
 .frontmatter-order-toggle:hover {
   background: var(--hover);
-  color: var(--green);
+  color: var(--text);
 }
 @media (hover: hover) {
   .frontmatter-order-toggle {
@@ -5079,7 +5090,7 @@ button:hover {
 .frontmatter-property-type:hover,
 .frontmatter-property-type[aria-expanded="true"] {
   background: var(--hover);
-  color: var(--green);
+  color: var(--text);
 }
 .frontmatter-property-name {
   color: var(--text-secondary);
@@ -5193,7 +5204,8 @@ button:hover {
   background: var(--hover);
 }
 .frontmatter-type-menu button[aria-checked="true"] {
-  color: var(--green);
+  color: var(--text);
+  font-weight: 500;
 }
 .frontmatter-type-menu .frontmatter-type-delete {
   margin-top: 5px;
@@ -5231,7 +5243,7 @@ button:hover {
   transform: translateX(-1px);
 }
 .frontmatter-add:hover {
-  color: var(--green);
+  color: var(--text-secondary);
 }
 @media (max-width: 640px) {
   .frontmatter-property {
@@ -5309,8 +5321,9 @@ button:hover {
   gap: 6px;
 }
 .agent-tabs button.active {
-  background: var(--accent);
-  color: var(--green);
+  background: var(--hover);
+  color: var(--text);
+  font-weight: 500;
 }
 .agent-tabs .agent-terminal {
   margin-left: auto;
@@ -5486,7 +5499,7 @@ button:hover {
 }
 .activity-diff-button {
   display: block;
-  color: var(--green);
+  color: #4a5568;
   font-size: 12px;
   margin: 6px 0;
   text-decoration: underline;
@@ -5673,6 +5686,12 @@ div.tano-feature-source {
 .tano-reference .tano-reference-label {
   color: var(--reference-color);
 }
+.tano-reference-prefix {
+  /* The @ descender puts its visual center below the adjacent name. */
+  position: relative;
+  top: -0.1em;
+  margin-inline-end: 0.08em;
+}
 .tano-reference-icon,
 .tano-reference-arrow {
   display: inline-flex;
@@ -5687,10 +5706,6 @@ div.tano-feature-source {
   font-size: 11px;
   font-weight: 400;
   line-height: 1.5;
-}
-.tano-reference .tano-reference-badge {
-  padding-inline-start: 6px;
-  border-inline-start: 1px solid color-mix(in srgb, var(--reference-color) 18%, transparent);
 }
 .tano-reference-card {
   margin: 14px 0;
@@ -5777,10 +5792,6 @@ div.tano-feature-source {
   .tano-reference-card .tano-reference-icon {
     width: 36px;
     height: 36px;
-  }
-  .tano-reference .tano-reference-badge {
-    flex-shrink: 1;
-    min-width: 0;
   }
 }
 .tano-reference-picker {

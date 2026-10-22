@@ -260,7 +260,7 @@ async function removeReply(id: string, change: CommentMessageRemoval) {
 .document-suggestions { min-width: 0; }
 .suggestion-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 16px; font-size: 12px; color: var(--muted); }
 .suggestion-content { min-width: 0; }
-.suggestion-rail { display: flex; flex-direction: column; gap: 12px; min-width: 0; max-width: 780px; margin: 24px auto; }
+.suggestion-rail { display: flex; flex-direction: column; gap: 12px; min-width: 0; max-width: var(--tano-content-measure, 780px); margin: 24px auto; }
 .suggestion-rail.is-inline { position: absolute; top: 0; z-index: 4; width: 320px; margin: 0; }
 .suggestion-rail.is-inline .suggestion-card { position: absolute; }
 .suggestion-card { font-size: 13px; color: var(--text); overflow-wrap: anywhere; }

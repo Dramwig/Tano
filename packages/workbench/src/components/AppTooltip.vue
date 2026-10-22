@@ -4,6 +4,14 @@ import { shortcutLabel } from '../shortcuts';
 
 // Mount once per workbench. Delegation also covers menus teleported to body.
 // Controls opt in with data-tooltip and optional data-tooltip-shortcut (Mod+I).
+// Rendered editor links share this hint without changing their Markdown content.
+const editorLinkSelector = '.tano-prose a[href]:not(.tano-live-wiki)';
+function tooltipLabel(element: HTMLElement) {
+  if (element.dataset.tooltip !== undefined) return element.dataset.tooltip;
+  if (!element.matches(editorLinkSelector)) return '';
+  const source = element.classList.contains('tano-wiki-link') ? element.dataset.markdownSource : '';
+  return `${source ? `${source} · ` : ''}Ctrl/⌘ + 点击跳转`;
+}
 const id = useId();
 const tooltip = ref<HTMLElement>();
 const portal = ref<HTMLElement | string>('body');
@@ -30,7 +38,7 @@ function hide() {
   ready.value = false;
 }
 function usable(button: HTMLElement) {
-  return button.isConnected && !button.closest('[inert], [hidden], [aria-hidden="true"]') && !!button.dataset.tooltip;
+  return button.isConnected && !button.closest('[inert], [hidden], [aria-hidden="true"]') && !!tooltipLabel(button);
 }
 async function place() {
   const button = anchor;
@@ -57,7 +65,7 @@ async function place() {
 function update() {
   if (!anchor) return;
   if (!usable(anchor)) return hide();
-  label.value = anchor.dataset.tooltip ?? '';
+  label.value = tooltipLabel(anchor);
   shortcut.value = anchor.dataset.tooltipShortcut ? shortcutLabel(anchor.dataset.tooltipShortcut) : '';
   void place();
 }
@@ -74,7 +82,7 @@ function enter(event: PointerEvent | FocusEvent) {
   if ('pointerType' in event && event.pointerType === 'touch') return;
   const target = event.target;
   if (!(target instanceof Element)) return;
-  const button = target.closest<HTMLElement>('[data-tooltip]');
+  const button = target.closest<HTMLElement>(`[data-tooltip], ${editorLinkSelector}`);
   if (!button) return;
   // Menus restore focus after selection, even when the pointer is elsewhere.
   // Only keyboard focus should open a hint without an actual pointer hover.
@@ -124,7 +132,7 @@ onMounted(() => {
   window.visualViewport?.addEventListener('scroll', hide);
   observer = new MutationObserver(() => { if (anchor) update(); });
   observer.observe(document.body, { childList: true, subtree: true, attributes: true,
-    attributeFilter: ['data-tooltip', 'data-tooltip-shortcut', 'hidden', 'inert', 'aria-hidden', 'open'] });
+    attributeFilter: ['data-tooltip', 'data-tooltip-shortcut', 'data-markdown-source', 'href', 'class', 'hidden', 'inert', 'aria-hidden', 'open'] });
 });
 onBeforeUnmount(() => {
   hide();

@@ -29,7 +29,7 @@ it('opens task evidence from an assistant report and disables references in a di
   await vi.waitFor(() => expect(root.querySelector('.tano-reference button')).not.toBeNull());
   root.querySelector<HTMLButtonElement>('.tano-reference button')!.click();
   expect(opened).toHaveBeenCalledWith({ type: 'event', id: task.object.id });
-  expect(root.querySelector('.tano-reference')!.textContent).toContain('已完成');
+  expect(root.querySelector<HTMLButtonElement>('.tano-reference button')!.dataset.tooltip).toContain('已完成');
   assistant.session.workspaceId = 'another-workspace'; await nextTick();
   expect(root.querySelector<HTMLButtonElement>('.tano-reference button')!.disabled).toBe(true);
 });

@@ -297,6 +297,17 @@ it('tracks the source line number at the selection head', async () => {
   expect(updated[0]?.classList.contains('cm-activeLineGutter')).toBe(false);
 });
 
+it('updates heading gutter alignment when source syntax changes', async () => {
+  const { view } = await mountSource('# 标题\n正文\n```\n# 代码\n```');
+  const headingNumbers = () => [...root.querySelectorAll('.cm-source-heading-1-gutter')];
+  expect(headingNumbers().map(element => element.textContent)).toEqual(['1']);
+  view.dispatch({ changes: { from: 0, to: 2, insert: '## ' } });
+  expect(headingNumbers()).toHaveLength(0);
+  expect(root.querySelector('.cm-source-heading-2-gutter')?.textContent).toBe('1');
+  view.dispatch({ changes: { from: 0, to: 3, insert: '' } });
+  expect(root.querySelector('.cm-source-heading-2-gutter')).toBeNull();
+});
+
 function typeSymbol(view: EditorView, key: string, extra: KeyboardEventInit = {}) {
   const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...extra });
   view.contentDOM.dispatchEvent(event);

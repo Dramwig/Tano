@@ -65,7 +65,7 @@ onBeforeUnmount(() => { revision++; clearTimeout(timer); });
 
 <style scoped>
 .reference-connections { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 16px; min-width: 0; }
-.document-references { max-width: 780px; margin: 32px auto 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 24px; }
+.document-references { max-width: var(--tano-content-measure, 780px); margin: 32px auto 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 24px; }
 .document-references .reference-direction + .reference-direction { margin-top: 0; }
 .document-references [role=alert] { grid-column: 1 / -1; }
 .reference-direction + .reference-direction { margin-top: 14px; }
