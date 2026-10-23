@@ -17,16 +17,12 @@ const trigger = ref<HTMLButtonElement>();
 function close() {
   if (props.open) emit('update:open', false);
 }
-function toggle() {
+function toggle(event: MouseEvent) {
   if (!props.mode) return;
-  // A real pointer tap is opened from pointerup as well. Do not let a
-  // compatibility click immediately close that menu in WebViews.
-  if (props.open) return;
-  emit('update:open', true);
-}
-function pointerup(event: PointerEvent) {
-  // useToolbarDrag prevents the event when it is committing a real drag.
-  if (!event.defaultPrevented && props.mode && !props.open) toggle();
+  // Pointer taps are owned by useToolbarDrag, which verifies where the gesture
+  // began. A release over a newly shown handle must not open the menu.
+  if (event.detail !== 0) return;
+  emit('update:open', !props.open);
 }
 function outside(event: MouseEvent) {
   if (!root.value?.contains(event.target as Node)) close();
@@ -49,6 +45,7 @@ onMounted(() => {
   window.addEventListener(toolbarMenuOpenEvent, closeOtherMenu);
 });
 onBeforeUnmount(() => {
+  close();
   window.removeEventListener('click', outside);
   window.removeEventListener(toolbarMenuOpenEvent, closeOtherMenu);
 });
@@ -65,7 +62,6 @@ onBeforeUnmount(() => {
       :aria-expanded="mode ? open : undefined"
       :aria-haspopup="mode ? 'menu' : undefined"
       @pointerdown.prevent.stop="emit('start', $event)"
-      @pointerup="pointerup"
       @mousedown.prevent
       @click.stop="toggle"
     >

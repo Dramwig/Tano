@@ -272,6 +272,9 @@ function schedule() {
 function pointerDown(event: PointerEvent) {
   const target = event.target as Node | null;
   if (panel.value?.contains(target)) return;
+  // A desktop WebView can regain input without delivering window.focus.
+  // Direct interaction with the editor must release the stale blur latch.
+  if (editor()?.contains(target)) windowBlurred = false;
   if (docked.value) {
     if (!editor()?.contains(target)) hide();
     return;
@@ -303,7 +306,10 @@ function pointerOut(event: PointerEvent) {
 }
 function focusIn(event: FocusEvent) {
   // Keyboard navigation back into the editor also restores its docked controls.
-  if (editor()?.contains(event.target as Node)) pointerOutsidePane = false;
+  if (editor()?.contains(event.target as Node)) {
+    windowBlurred = false;
+    pointerOutsidePane = false;
+  }
   schedule();
 }
 function keydown(event: KeyboardEvent) {

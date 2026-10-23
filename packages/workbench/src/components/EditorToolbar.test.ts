@@ -681,6 +681,30 @@ it('opens placement options after a real pointer tap without movement', async ()
   expect(button('靠左停靠')).not.toBeNull();
 });
 
+it('does not open placement options for a pointer release that started elsewhere', async () => {
+  await mount('正文文字\n', 'fixed');
+  const handle = button('拖动工具栏')!;
+  await pointer(handle, 'pointerup', 40, 20);
+  handle.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+  await nextTick();
+  expect(document.querySelector('.toolbar-dock-menu')).toBeNull();
+});
+
+it('forgets the open docking menu when the selection toolbar disappears', async () => {
+  await mount('正文文字\n', 'selection');
+  const paragraph = root.querySelector('.ProseMirror p')!;
+  await selectText(paragraph, 0, 2);
+  await expectFloating();
+  await click(floatingButton('拖动工具栏'));
+  expect(document.querySelector('.toolbar-dock-menu')).not.toBeNull();
+  window.dispatchEvent(new Event('blur'));
+  await vi.waitFor(() => expect(document.querySelector('.selection-toolbar')).toBeNull());
+  window.dispatchEvent(new Event('focus'));
+  await selectText(paragraph, 1, 3);
+  await expectFloating();
+  expect(document.querySelector('.toolbar-dock-menu')).toBeNull();
+});
+
 it.each(['left', 'right', 'bottom'] as const)('keeps the toolbar visible when switching from %s to fixed mode', async (mode) => {
   const { toolbarMode } = await mount('正文文字\n', mode);
   await selectText(root.querySelector('.ProseMirror p')!, 0, 2);

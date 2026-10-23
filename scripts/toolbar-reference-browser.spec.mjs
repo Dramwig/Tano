@@ -3,6 +3,24 @@ import { expect, test } from '@playwright/test';
 const selected = '选中文字';
 const markdown = `# 工具栏测试\n\n前文${selected}后文。\n`;
 
+test('restores selection toolbar on editor input when window focus was not delivered', async ({ page }) => {
+  const toolbar = await prepare(page);
+  await toolbar.getByRole('button', { name: '更多格式', exact: true }).click();
+  // Model a desktop WebView returning input without the matching window.focus.
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await expect(toolbar).toBeHidden();
+  const paragraph = page.locator('.ProseMirror p').first();
+  const box = await paragraph.boundingBox();
+  await page.mouse.move(box.x + 1, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 100, box.y + box.height / 2, { steps: 10 });
+  await page.mouse.up();
+  await expect(toolbar).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).not.toBe('');
+  await toolbar.getByRole('button', { name: '更多格式', exact: true }).click();
+  await expect(toolbar.getByRole('button', { name: '脚注引用', exact: true })).toBeVisible();
+});
+
 async function prepare(page, mode = 'selection') {
   await page.addInitScript(mode => {
     localStorage.setItem('tano.preference.locale', 'zh-CN');

@@ -67,7 +67,6 @@ import {
   Settings2,
   SquarePen,
   Pin,
-  Ruler,
   Space,
   Heading1,
   SlidersHorizontal,
@@ -2329,6 +2328,7 @@ async function addDocumentProperty() {
   if (!canAddDocumentProperty.value) return;
   const fileId = store.activeId;
   const paneId = store.activePaneId;
+  menu.value = false;
   closePageContextMenu();
   showDocumentProperties.value = true;
   setPaneSource(fileId, false);
@@ -2338,8 +2338,7 @@ async function addDocumentProperty() {
   if (store.activeId === fileId && store.activePaneId === paneId)
     await paneEditors.get(paneId)?.addDocumentProperty();
 }
-function togglePageOption(option: 'width' | 'title' | 'properties' | 'outline' | 'lineNumbers' | 'autoSpacing') {
-  if (option === 'width') setLimitPageWidth(!limitPageWidth.value);
+function togglePageOption(option: 'title' | 'properties' | 'outline' | 'lineNumbers' | 'autoSpacing') {
   if (option === 'autoSpacing') editorPreferences.value = { ...editorPreferences.value, autoSpacing: !editorPreferences.value.autoSpacing };
   if (option === 'title') showPageTitle.value = !showPageTitle.value;
   if (option === 'properties') showDocumentProperties.value = !showDocumentProperties.value;
@@ -5251,6 +5250,9 @@ const helpBlocked = computed(() => !!(
                         <CheckCheck :size="15" />{{ t('立即保存') }}<span class="menu-shortcut">{{ shortcutHint('save') }}</span>
                       </button>
                       <div class="menu-divider" role="separator" />
+                      <button type="button" :disabled="!canAddDocumentProperty" @click="addDocumentProperty">
+                        <Plus :size="15" />{{ t('添加文档属性') }}
+                      </button>
                       <button type="button"
                         :disabled="editorReadonly || !!editing.active || editing.activeBusy || !paneComments.has(store.activePaneId)"
                         @click="openDocumentDiscussion">
@@ -5282,21 +5284,6 @@ const helpBlocked = computed(() => !!(
                         <MoveHorizontal :size="15" />{{ t('全宽') }}<span
                           class="menu-switch"
                           :class="{ on: !limitPageWidth }"
-                          aria-hidden="true"
-                          ><span
-                        /></span>
-                      </button>
-                      <button
-                        type="button"
-                        class="page-toggle-menu-item"
-                        role="switch"
-                        :aria-checked="showOutline"
-                        :data-tooltip="t('切换文档目录显示')"
-                        @click="showOutline = !showOutline"
-                      >
-                        <List :size="15" />{{ t('显示目录') }}<span
-                          class="menu-switch"
-                          :class="{ on: showOutline }"
                           aria-hidden="true"
                           ><span
                         /></span>
@@ -5844,7 +5831,7 @@ const helpBlocked = computed(() => !!(
                       'outline-active': activeHeading === index,
                     }"
                     :style="{
-                      '--outline-indent': `${Math.max(0, heading.level - 2) * 12}px`,
+                      '--outline-indent': `${Math.max(0, heading.level - 1) * 12}px`,
                       '--outline-marker-width': `${Math.max(9, 20 - heading.level * 2)}px`,
                     }"
                     :aria-label="t('跳转到{0}', [heading.text])"
@@ -5964,19 +5951,6 @@ const helpBlocked = computed(() => !!(
           <button
             type="button"
             role="menuitemcheckbox"
-            :aria-checked="limitPageWidth"
-            :disabled="!pageWidthWritable"
-            @click="togglePageOption('width')"
-          >
-            <Ruler :size="15" />{{ t('限制行宽') }}<Check
-              v-if="limitPageWidth"
-              class="page-context-check"
-              :size="14"
-            />
-          </button>
-          <button
-            type="button"
-            role="menuitemcheckbox"
             :aria-checked="editorPreferences.autoSpacing ?? false"
             @click="togglePageOption('autoSpacing')"
           >
@@ -6036,23 +6010,6 @@ const helpBlocked = computed(() => !!(
               class="page-context-check"
               :size="14"
             />
-          </button>
-          <div class="menu-divider" role="separator" />
-          <button
-            type="button"
-            role="menuitem"
-            :disabled="!canAddDocumentProperty"
-            @click="addDocumentProperty"
-          >
-            <Plus :size="15" />{{ t('添加文档属性') }}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            :disabled="editorReadonly || !!editing.active || editing.activeBusy || !paneComments.has(store.activePaneId)"
-            @click="openDocumentDiscussion"
-          >
-            <MessageSquare :size="15" />{{ t('发起讨论') }}
           </button>
         </div>
       </Teleport>

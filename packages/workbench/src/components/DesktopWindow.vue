@@ -119,7 +119,7 @@ async function toggleMaximize() {
   right: 0;
   bottom: 0;
   left: 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 0;
   pointer-events: none;
 }
 .desktop-window:has(.app-shell.workspace-empty) .desktop-window-titlebar::after,
@@ -279,6 +279,17 @@ async function toggleMaximize() {
 }
 .workspace-native-tabs .workspace-pane-top-right > .workspace-tabbar {
   padding-right: 138px;
+}
+/* Round the document surface below its tab strip without clipping menus. */
+.workspace-native-tabs .workspace-pane::after {
+  content: '';
+  position: absolute;
+  top: var(--workspace-pane-tabbar-height);
+  left: 0;
+  width: 8px;
+  height: 8px;
+  background: radial-gradient(circle at bottom right, transparent 8px, var(--sidebar) 8.5px);
+  pointer-events: none;
 }
 .workspace-window-drag {
   flex: 1 0 24px;

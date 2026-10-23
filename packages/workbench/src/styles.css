@@ -227,7 +227,8 @@ button:hover {
 }
 .sidebar {
   position: relative;
-  z-index: 1;
+  /* Keep the resize edge above the editor toolbar's stacking context (3). */
+  z-index: 4;
   width: var(--sidebar-width);
   flex: 0 0 var(--sidebar-width);
   background: var(--sidebar);
@@ -760,15 +761,13 @@ button:hover {
   flex-shrink: 0;
   background: var(--sidebar);
 }
-/* Draw the track separator once, above inactive tab backgrounds. Active tabs
-   cover it so the document surface stays connected at the rounded corners. */
 .workspace-tabbar::after {
   content: '';
   position: absolute;
   right: 0;
   bottom: 0;
   left: 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 0;
   opacity: 0.7;
   pointer-events: none;
 }
@@ -1101,7 +1100,7 @@ button:hover {
   font-weight: 600;
   font-size: 14px;
   margin-bottom: 6px;
-  color: var(--text);
+  color: var(--callout-color, var(--text));
 }
 .tano-prose .tano-callout-icon {
   display: block;
