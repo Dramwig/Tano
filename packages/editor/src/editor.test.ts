@@ -2,8 +2,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApp, defineComponent, h, nextTick, ref } from 'vue';
 import type { App } from 'vue';
-import { editorViewCtx, parserCtx } from '@milkdown/kit/core';
-import { TextSelection } from '@milkdown/kit/prose/state';
+import { editorViewCtx, parserCtx, serializerCtx } from '@milkdown/kit/core';
+import { NodeSelection, TextSelection } from '@milkdown/kit/prose/state';
+import { BlockRangeSelection } from './block-selection';
+import { blockTree } from './block-tree';
 import MarkdownEditor from './MarkdownEditor.vue';
 import { splitFrontmatter, unsupportedMarkdown } from './syntax';
 import { defaultCapabilities, defaultEditorPreferences, defaultSelectionWrapping } from './runtime';
@@ -22,6 +24,56 @@ afterEach(async () => {
   app = undefined;
   root?.remove();
   await nextTick();
+});
+
+it.each(['ctrlKey', 'metaKey'] as const)('%s+A expands block selection one level at a time and resets at a new caret', async modifier => {
+  const markdown = 'Before\n\n> Outer\n>\n> > Inner A\n> >\n> > Inner B\n>\n> Tail\n\nAfter';
+  const { editor, value, errors } = await mount(markdown);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  const inner = blockTree(view.state.doc).find(block => block.node.textContent === 'Inner A')!;
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, inner.pos + 3)));
+  view.focus();
+  const scrollToSelection = vi.fn(() => true);
+  view.setProps({ handleScrollToSelection: scrollToSelection });
+  const press = () => {
+    const event = new KeyboardEvent('keydown', { key: 'a', [modifier]: true, bubbles: true, cancelable: true });
+    view.dom.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  };
+  press();
+  expect(view.state.selection).toBeInstanceOf(TextSelection);
+  expect(view.state.doc.textBetween(view.state.selection.from, view.state.selection.to)).toBe('Inner A');
+  for (const expected of [['Inner A', 'Inner B'], ['Outer', 'Inner AInner B', 'Tail'], ['Before', 'OuterInner AInner BTail', 'After']]) {
+    press();
+    expect((view.state.selection as BlockRangeSelection).blocks.map(block => block.node.textContent)).toEqual(expected);
+    expect(view.dom.querySelectorAll('.tano-block-selected')).toHaveLength(expected.length);
+  }
+  const all = view.state.selection;
+  press();
+  expect(view.state.selection.eq(all)).toBe(true);
+  expect(scrollToSelection).not.toHaveBeenCalled();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3)));
+  press();
+  expect(view.state.doc.textBetween(view.state.selection.from, view.state.selection.to)).toBe('Before');
+  expect(value.value).toBe(markdown);
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+it.each(['# Heading words', '```js\nconst x = 1;\n```'])('keeps %s selected when expanding out of live Markdown', async block => {
+  const { editor, value, errors } = await mount(block + '\n\nAfter\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.focus();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3)));
+  expect(view.state.doc.firstChild!.type.name).toBe('tano_live_source');
+  for (let i = 0; i < 2; i++)
+    view.dom.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true, cancelable: true }));
+  expect(view.state.selection).toBeInstanceOf(BlockRangeSelection);
+  expect((view.state.selection as BlockRangeSelection).blocks).toHaveLength(2);
+  expect(view.state.doc.firstChild!.type.name).toBe(block.startsWith('#') ? 'heading' : 'code_block');
+  expect(value.value).toBe(block + '\n\nAfter\n');
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(errors).toEqual([]);
 });
 
 it('preserves source carets and backward selections across mode restoration without edits', async () => {
@@ -130,6 +182,31 @@ it('supports deleting matches and skips newly inserted matches after single repl
   await nextTick();
   expect(value.value).toBe('find find find\n');
 });
+it('toggles visual spacing without changing Markdown, selection, history or copied content', async () => {
+  const source = '中文Word与2026年，公式$x$与[[中文引用]]相邻。\n\n`代码A中1`\n';
+  const { value, preferences, editor, errors } = await mount(source);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  const before = view.state.doc.toJSON();
+  const selection = view.state.selection;
+  expect(root.querySelector('.tano-auto-space-before')).toBeNull();
+  preferences.value = { ...preferences.value, autoSpacing: true };
+  await nextTick();
+  expect(root.querySelectorAll('.tano-auto-space-before')).toHaveLength(8);
+  expect(root.querySelector('code .tano-auto-space-before')).toBeNull();
+  expect(view.state.doc.toJSON()).toEqual(before);
+  expect(view.state.selection.eq(selection)).toBe(true);
+  expect(value.value).toBe(source);
+  expect(editor.value!.canUndo()).toBe(false);
+  // Clipboard serialization uses the unchanged document slice, not display margins.
+  expect(view.state.doc.textBetween(0, view.state.doc.content.size)).toContain('中文Word与2026年');
+  preferences.value = { ...preferences.value, autoSpacing: false };
+  await nextTick();
+  expect(root.querySelector('.tano-auto-space-before')).toBeNull();
+  expect(value.value).toBe(source);
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(errors).toEqual([]);
+});
+
 async function mount(
   content: string,
   importer?: (
@@ -2803,6 +2880,80 @@ it('renders partial emphasis after the inline source loses focus without escapin
   expect(prose.querySelector('p')?.firstChild?.textContent).toBe('1231 *');
   expect(value.value).toBe('1231 **124234*\n');
   expect(errors).toEqual([]);
+});
+
+describe('ArrowDown below the last block', () => {
+  function down(prose: HTMLElement, options: KeyboardEventInit = {}) {
+    const event = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true, ...options });
+    prose.dispatchEvent(event);
+    return event;
+  }
+
+  it.each(['正文', '# 标题', '- 列表内容', '> 引用', '```\ncode\n```', '---'])
+    ('appends and focuses a plain paragraph after %s, with undo', async content => {
+      const { editor, errors, value } = await mount(content);
+      const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+      const prose = view.dom;
+      const before = view.state.doc;
+      const markdown = editor.value!.withContext(ctx => ctx.get(serializerCtx)(before));
+      const selection = content === '---'
+        ? NodeSelection.create(before, 0)
+        : TextSelection.atEnd(before);
+      view.dispatch(view.state.tr.setSelection(selection));
+      view.focus();
+      vi.spyOn(view, 'endOfTextblock').mockReturnValue(true);
+      expect(down(prose).defaultPrevented).toBe(true);
+      expect(view.state.doc.childCount).toBe(before.childCount + 1);
+      expect(view.state.doc.lastChild?.type.name).toBe('paragraph');
+      expect(view.state.doc.lastChild?.content.size).toBe(0);
+      expect(view.state.selection.from).toBe(view.state.doc.content.size - 1);
+      expect(view.state.storedMarks ?? view.state.selection.$from.marks()).toEqual([]);
+      expect(document.activeElement).toBe(prose);
+      down(prose);
+      expect(view.state.doc.childCount).toBe(before.childCount + 1);
+      expect(editor.value!.undoLastChange()).toBe(true);
+      expect(view.state.doc.childCount).toBe(before.childCount);
+      expect(value.value).toBe(markdown);
+      expect(errors).toEqual([]);
+    });
+
+  it('preserves normal movement within wrapped text and earlier nested blocks', async () => {
+    const { editor } = await mount('前文\n\n- 第一项\n- 第二项');
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    const before = view.state.doc;
+    const end = vi.spyOn(view, 'endOfTextblock').mockReturnValue(true);
+    const positions: number[] = [];
+    before.descendants((node, pos) => { if (node.isTextblock) positions.push(pos + 1); });
+    for (const position of positions.slice(0, -1)) {
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(before, position)));
+      down(view.dom);
+      expect(view.state.doc.eq(before)).toBe(true);
+    }
+    view.dispatch(view.state.tr.setSelection(TextSelection.atEnd(before)));
+    end.mockReturnValue(false);
+    down(view.dom);
+    expect(view.state.doc.eq(before)).toBe(true);
+  });
+
+  it('ignores modifiers, IME, ranges, readonly mode and existing empty paragraphs', async () => {
+    const { editor, readonly } = await mount('正文');
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    const before = view.state.doc;
+    vi.spyOn(view, 'endOfTextblock').mockReturnValue(true);
+    view.dispatch(view.state.tr.setSelection(TextSelection.atEnd(before)));
+    for (const options of [{ shiftKey: true }, { ctrlKey: true }, { metaKey: true }, { altKey: true }, { isComposing: true }, { keyCode: 229 }]) {
+      down(view.dom, options);
+      expect(view.state.doc.eq(before)).toBe(true);
+    }
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(before, 1, 2)));
+    down(view.dom);
+    expect(view.state.doc.eq(before)).toBe(true);
+    view.dispatch(view.state.tr.setSelection(TextSelection.atEnd(before)));
+    readonly.value = true;
+    await nextTick();
+    down(view.dom);
+    expect(view.state.doc.eq(before)).toBe(true);
+  });
 });
 
 describe('click below the last block', () => {

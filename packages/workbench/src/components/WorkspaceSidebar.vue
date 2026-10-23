@@ -61,13 +61,14 @@ watch(() => props.open, async (_, __, cleanup) => {
   if (cancelled || !content || left === undefined || props.compact ||
     typeof content.animate !== 'function' ||
     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-  // Vue has applied the final width. Animate only the position, so editors,
-  // tables and pane observers don't have to reflow on every animation frame.
+  // Keep the right edge anchored while the left edge moves. Translating the
+  // whole column also moves right-aligned actions and the assistant launcher.
+  // A layout margin lets the flex width and centered document follow the edge.
   const offset = left - content.getBoundingClientRect().left;
   if (Math.abs(offset) < 1) return;
   const animation = content.animate([
-    { transform: `translateX(${offset}px)` },
-    { transform: 'translateX(0)' },
+    { marginLeft: `${offset}px` },
+    { marginLeft: '0px' },
   ], { duration: 200, easing: 'cubic-bezier(0.2, 0, 0, 1)' });
   motion = animation;
   animation.onfinish = () => {

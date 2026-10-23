@@ -28,7 +28,7 @@ const canRead = (path: string) => !path.split('/').some(part => part.startsWith(
   </section>
 </template>
 <style scoped>
-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; } p, small { color: var(--muted, #64748b); } h3 { font-size: 14px; margin: 20px 0 10px; } .git-table-scroll { overflow-x: auto; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; } p, small { color: var(--muted, #787774); } h3 { font-size: 14px; margin: 20px 0 10px; } .git-table-scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; } th, td { padding: 9px 8px; border-bottom: 1px solid var(--border, #ddd); } td:first-child { overflow-wrap: anywhere; min-width: 140px; } .git-diff-actions { white-space: nowrap; } .git-diff-actions button + button { margin-left: 6px; }
-pre { overflow: auto; max-height: 280px; padding: 12px; border: 1px solid var(--border, #ddd); border-radius: 8px; font: 12px/1.6 monospace; } ol { list-style: none; padding: 0; } li { padding: 10px 0; border-bottom: 1px solid var(--border, #ddd); } small { display: block; margin-top: 4px; } [role=alert] { color: var(--danger, #c33); }
+pre { overflow: auto; max-height: 280px; padding: 12px; border: 1px solid var(--border, #ddd); border-radius: 8px; font: 12px/1.6 var(--font-mono); } ol { list-style: none; padding: 0; } li { padding: 10px 0; border-bottom: 1px solid var(--border, #ddd); } small { display: block; margin-top: 4px; } [role=alert] { color: var(--danger, #c33); }
 </style>

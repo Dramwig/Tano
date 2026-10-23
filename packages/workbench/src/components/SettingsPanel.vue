@@ -232,6 +232,7 @@ function settingSearchEntry(page: Page, id: string, label: string, description =
 }
 
 const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
+  settingSearchEntry('appearance', 'appearance-auto-spacing', '正文自动间距', '在中文与英文、数字、行内公式及引用之间自动留白，仅影响显示，不修改原文。', 'spacing typography 中英文 数字 公式 引用 空格 排版'),
   settingSearchEntry('appearance', 'appearance-language', '界面语言', '立即切换界面语言，仅保存在当前设备。', 'language English 中文'),
   settingSearchEntry('appearance', 'appearance-theme', '主题', '选择应用外观，或随系统外观自动切换。', 'theme light dark system 白天 黑夜 深色 浅色'),
   settingSearchEntry('appearance', 'appearance-visual-font', '可视化编辑字体', '选择内置字体，或使用本机已安装的字体。', 'font system serif mono Maple custom'),
@@ -636,14 +637,17 @@ function customFontInput(event: Event) {
                     >{{ t('在同一页写下新的想法。') }}<br />Tano 123</p>
                   </div>
                   <div class="settings-font-preview-sample" role="group" :aria-label="t('Markdown 源码预览')">
-                    <p class="settings-source-font-sample" :style="{ fontSize: `${sourceFontSize}px` }">
+                    <p class="settings-source-font-sample" :style="{
+                      fontFamily: visualFontFamily(visualFontChoice, customFontName),
+                      fontSize: `${sourceFontSize}px`,
+                    }">
                       {{ t('# 在同一页写下新的想法') }}<br />Tano 123
                     </p>
                   </div>
                 </div>
               </div>
             </div>
-            <p class="settings-local-note">{{ t('可视化字体仅影响可视化编辑和页面内标题；Markdown 源码保持等宽字体。') }}</p>
+            <p class="settings-local-note">{{ t('所选字体应用于可视化编辑、Markdown 源码和页面内标题；两种编辑模式的字号可分别调整。') }}</p>
           </section>
           <section v-if="page === 'editing'" class="settings-section" :aria-label="t('编辑行为')">
             <h3>{{ t('编辑行为') }}</h3>
@@ -755,6 +759,17 @@ function customFontInput(event: Event) {
           <section v-if="page === 'appearance'" class="settings-section" :aria-label="t('内容显示')">
             <h3>{{ t('内容显示') }}</h3>
             <div class="settings-card">
+              <div class="settings-row" data-settings-key="appearance-auto-spacing">
+                <div>
+                  <strong>{{ t('正文自动间距') }}</strong>
+                  <p>{{ t('在中文与英文、数字、行内公式及引用之间自动留白，仅影响显示，不修改原文。') }}</p>
+                </div>
+                <button type="button" class="settings-switch" :class="{ on: display.autoSpacing }"
+                  role="switch" :aria-checked="display.autoSpacing ?? false" :aria-label="t('正文自动间距')"
+                  @click="emit('update:editorPreferences', { ...display, autoSpacing: !display.autoSpacing })">
+                  <span />
+                </button>
+              </div>
               <div class="settings-row" data-settings-key="appearance-page-title">
                 <div>
                   <strong>{{ t('页面内标题') }}</strong>
@@ -1562,10 +1577,14 @@ function customFontInput(event: Event) {
 .settings-font-preview p {
   margin: 0;
   color: var(--text);
-  line-height: 1.7;
+  font-variant-numeric: tabular-nums;
+  font-variant-ligatures: no-contextual;
 }
-.settings-source-font-sample {
-  font-family: 'Cascadia Code', Consolas, 'Microsoft YaHei', monospace;
+.settings-font-preview .settings-visual-font-sample {
+  line-height: 1.6;
+}
+.settings-font-preview .settings-source-font-sample {
+  line-height: 1.928571;
 }
 .settings-font-controls {
   display: flex;
@@ -1686,7 +1705,7 @@ function customFontInput(event: Event) {
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--paper);
-  font: 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+  font: 11px/1.5 var(--font-mono);
   white-space: nowrap;
 }
 .settings-inline-example kbd {

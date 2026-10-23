@@ -68,6 +68,7 @@ import {
   SquarePen,
   Pin,
   Ruler,
+  Space,
   Heading1,
   SlidersHorizontal,
   LockKeyhole,
@@ -264,6 +265,9 @@ async function toggleSuggestionMode(fileId: string) {
   finally { suggestionModeBusy.value = false; }
 }
 const assistant = useAssistantStore();
+// Keep the panel mounted until its closing transition releases the layout space.
+const assistantPanelMounted = ref(assistant.opened);
+watch(() => assistant.opened, open => { if (open) assistantPanelMounted.value = true; });
 const inlineRunner = useInlineAssistantStore();
 const butterfly = provideButterflyController();
 const vButterflyPerch = butterflyPerchDirective(butterfly);
@@ -737,7 +741,7 @@ function sidebarWidthLimit() {
   );
 }
 function defaultSidebarWidth() {
-  return viewportWidth.value >= 1600 ? 245 : viewportWidth.value <= 1180 ? 210 : 230;
+  return viewportWidth.value >= 1600 ? 264 : viewportWidth.value <= 1180 ? 232 : 252;
 }
 function setSidebarWidth(width: number, preservePreference = false) {
   const requestedWidth = Math.round(width);
@@ -746,7 +750,7 @@ function setSidebarWidth(width: number, preservePreference = false) {
   document.documentElement.style.setProperty('--sidebar-width', `${sidebarWidth.value}px`);
 }
 function currentSidebarWidth() {
-  return document.querySelector<HTMLElement>('.sidebar')?.getBoundingClientRect().width ?? 230;
+  return document.querySelector<HTMLElement>('.sidebar')?.getBoundingClientRect().width ?? defaultSidebarWidth();
 }
 function startSidebarResize(event: PointerEvent) {
   if (compactPanes.value || event.button !== 0) return;
@@ -875,6 +879,7 @@ function readSelectionWrapping() {
   catch { return normalizeSelectionWrapping(); }
 }
 const editorPreferences = ref<EditorPreferences>({
+  autoSpacing: readPreference('autoSpacing', defaultEditorPreferences.autoSpacing ?? false),
   previewMathWhileEditing: readPreference(
     'previewMathWhileEditing',
     defaultEditorPreferences.previewMathWhileEditing,
@@ -886,6 +891,7 @@ const editorPreferences = ref<EditorPreferences>({
 watch(
   editorPreferences,
   (preferences) => {
+    savePreference('autoSpacing', preferences.autoSpacing ?? false);
     savePreference('previewMathWhileEditing', preferences.previewMathWhileEditing);
     savePreference('folding', preferences.folding);
     savePreference('blankBlockAiShortcut', preferences.blankBlockAiShortcut);
@@ -2332,8 +2338,9 @@ async function addDocumentProperty() {
   if (store.activeId === fileId && store.activePaneId === paneId)
     await paneEditors.get(paneId)?.addDocumentProperty();
 }
-function togglePageOption(option: 'width' | 'title' | 'properties' | 'outline' | 'lineNumbers') {
+function togglePageOption(option: 'width' | 'title' | 'properties' | 'outline' | 'lineNumbers' | 'autoSpacing') {
   if (option === 'width') setLimitPageWidth(!limitPageWidth.value);
+  if (option === 'autoSpacing') editorPreferences.value = { ...editorPreferences.value, autoSpacing: !editorPreferences.value.autoSpacing };
   if (option === 'title') showPageTitle.value = !showPageTitle.value;
   if (option === 'properties') showDocumentProperties.value = !showDocumentProperties.value;
   if (option === 'outline') showOutline.value = !showOutline.value;
@@ -4896,12 +4903,13 @@ const helpBlocked = computed(() => !!(
         </template>
         <template #sidebar>
           <AssistantPanel
-            v-if="assistant.available && assistant.opened"
+            v-if="assistant.available && assistantPanelMounted"
             :compact="compactPanes"
             :fullscreen-target="assistantHosts.get(assistant.fullscreenPaneId ?? '')"
             @open-reference="openReference"
             @reveal-selection="revealAssistantSelection"
             @open-settings="openSettings('assistant')"
+            @closed="assistantPanelMounted = assistant.opened"
           />
         </template>
         <template #default="{ pane, document: active, tab }">
@@ -5967,18 +5975,18 @@ const helpBlocked = computed(() => !!(
             />
           </button>
           <button
-            v-if="paneSource(store.activeId)"
             type="button"
             role="menuitemcheckbox"
-            :aria-checked="showAllLineNumbers"
-            @click="togglePageOption('lineNumbers')"
+            :aria-checked="editorPreferences.autoSpacing ?? false"
+            @click="togglePageOption('autoSpacing')"
           >
-            <ListOrdered :size="15" />{{ t('显示所有行号') }}<Check
-              v-if="showAllLineNumbers"
+            <Space :size="15" />{{ t('正文自动间距') }}<Check
+              v-if="editorPreferences.autoSpacing"
               class="page-context-check"
               :size="14"
             />
           </button>
+          <div class="menu-divider" role="separator" />
           <button
             type="button"
             role="menuitemcheckbox"
@@ -6004,6 +6012,33 @@ const helpBlocked = computed(() => !!(
             />
           </button>
           <button
+            v-if="!detachedWindow"
+            type="button"
+            role="menuitemcheckbox"
+            :aria-checked="showOutline"
+            @click="togglePageOption('outline')"
+          >
+            <List :size="15" />{{ t('显示目录') }}<Check
+              v-if="showOutline"
+              class="page-context-check"
+              :size="14"
+            />
+          </button>
+          <button
+            v-if="paneSource(store.activeId)"
+            type="button"
+            role="menuitemcheckbox"
+            :aria-checked="showAllLineNumbers"
+            @click="togglePageOption('lineNumbers')"
+          >
+            <ListOrdered :size="15" />{{ t('显示所有行号') }}<Check
+              v-if="showAllLineNumbers"
+              class="page-context-check"
+              :size="14"
+            />
+          </button>
+          <div class="menu-divider" role="separator" />
+          <button
             type="button"
             role="menuitem"
             :disabled="!canAddDocumentProperty"
@@ -6018,19 +6053,6 @@ const helpBlocked = computed(() => !!(
             @click="openDocumentDiscussion"
           >
             <MessageSquare :size="15" />{{ t('发起讨论') }}
-          </button>
-          <button
-            v-if="!detachedWindow"
-            type="button"
-            role="menuitemcheckbox"
-            :aria-checked="showOutline"
-            @click="togglePageOption('outline')"
-          >
-            <List :size="15" />{{ t('显示目录') }}<Check
-              v-if="showOutline"
-              class="page-context-check"
-              :size="14"
-            />
           </button>
         </div>
       </Teleport>

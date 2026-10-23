@@ -55,7 +55,7 @@ defineExpose({ flutter });
 .assistant-butterfly {
   display: block;
   flex: none;
-  color: var(--text, #24272b);
+  color: var(--text, #37352f);
   user-select: none;
   pointer-events: none;
   transform-box: border-box;

@@ -737,20 +737,22 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
   margin: 3px 0;
 }
 .selection-format-toolbar {
-  --editor-tool-radius: 50%;
+  --editor-tool-radius: 5px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-  padding: 5px 8px;
+  padding: 5px 6px;
   min-height: 42px;
-  border: 1px solid var(--line);
-  border-radius: 24px;
+  border: 0;
+  border-radius: 10px;
   color: var(--text);
   background: var(--paper);
+  /* Ring + near + far layers: a crisp edge without a visible border line. */
   box-shadow:
-    0 5px 24px #1f23281a,
-    0 1px 4px #1f23280d;
+    0 0 0 1px rgba(15, 15, 15, 0.05),
+    0 3px 6px rgba(15, 15, 15, 0.08),
+    0 9px 24px rgba(15, 15, 15, 0.12);
 }
 .selection-format-toolbar .block-type-trigger {
   min-width: 0;
@@ -926,7 +928,7 @@ button[aria-pressed='true'] {
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 8px;
-  box-shadow: 0 10px 35px #1f232818;
+  box-shadow: 0 10px 35px #0f0f0f18;
 }
 .toolbar-input-panel label {
   display: grid;

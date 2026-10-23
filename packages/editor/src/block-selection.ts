@@ -1,4 +1,4 @@
-import { Selection, SelectionRange } from '@milkdown/kit/prose/state';
+import { NodeSelection, Selection, SelectionRange, TextSelection } from '@milkdown/kit/prose/state';
 import { Fragment, Slice } from '@milkdown/kit/prose/model';
 import type { SelectionBookmark } from '@milkdown/kit/prose/state';
 import type { Node } from '@milkdown/kit/prose/model';
@@ -97,3 +97,45 @@ class BlockRangeBookmark implements SelectionBookmark {
 }
 
 Selection.jsonID('tano-block-range', BlockRangeSelection);
+
+/** Expand through the portable block tree, not schema-only list/cell/panel wrappers. */
+export function expandBlockSelection(doc: Node, selection: Selection): Selection | null {
+  const tree = blockTree(doc);
+  if (!tree.length) return null;
+  const deepestFirst = [...tree].reverse();
+  const siblings = (parentPos: number) => tree.filter(block => block.parentPos === parentPos);
+  const contains = (block: BlockEntry, from: number, to: number) =>
+    block.pos <= from && to <= block.pos + block.node.nodeSize;
+  let scope: BlockEntry | undefined;
+
+  if (selection instanceof BlockRangeSelection) {
+    const first = selection.blocks[0]!;
+    const group = siblings(first.parentPos);
+    if (selection.blocks.every(block => block.parentPos === first.parentPos)) {
+      if (group.length !== selection.blocks.length)
+        return BlockRangeSelection.fromBlocks(doc, group.map(block => block.pos));
+      // A complete sibling group grows to its owning block's sibling group.
+      scope = deepestFirst.find(block => block.pos < first.pos && contains(block, selection.from, selection.to));
+      if (!scope) return BlockRangeSelection.fromBlocks(doc, siblings(-1).map(block => block.pos));
+    }
+  } else {
+    scope = deepestFirst.find(block => contains(block, selection.from, selection.to));
+    if (scope) {
+      if (scope.node.isTextblock) {
+        if (!scope.node.content.size) return BlockRangeSelection.fromBlocks(doc, [scope.pos]);
+        const content = TextSelection.create(doc, scope.pos + 1, scope.pos + scope.node.nodeSize - 1);
+        if (selection.empty || selection.from !== content.from || selection.to !== content.to) return content;
+      } else if (!(selection instanceof NodeSelection && selection.from === scope.pos)) {
+        return BlockRangeSelection.fromBlocks(doc, [scope.pos]);
+      }
+    }
+  }
+
+  // A selection spanning several branches expands to their common container's children.
+  if (!scope) {
+    const container = deepestFirst.find(block => contains(block, selection.from, selection.to));
+    const children = container && siblings(container.pos);
+    if (children?.length) return BlockRangeSelection.fromBlocks(doc, children.map(block => block.pos));
+  }
+  return BlockRangeSelection.fromBlocks(doc, siblings(scope?.parentPos ?? -1).map(block => block.pos));
+}

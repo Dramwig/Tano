@@ -31,6 +31,8 @@ export interface WorkspaceCapabilities {
   pageWidthLimits: Record<string, boolean>;
 }
 export interface EditorPreferences {
+  /** Device-local visual spacing; never inserts characters into Markdown. */
+  autoSpacing?: boolean;
   previewMathWhileEditing: boolean;
   folding: boolean;
   /** Pressing Space in an empty paragraph opens the one-shot AI composer. */
@@ -48,6 +50,7 @@ export const defaultCapabilities: WorkspaceCapabilities = {
   pageWidthLimits: {},
 };
 export const defaultEditorPreferences: EditorPreferences = {
+  autoSpacing: false,
   previewMathWhileEditing: true,
   folding: true,
   blankBlockAiShortcut: true,

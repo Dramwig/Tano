@@ -948,7 +948,7 @@ onBeforeUnmount(() => {
 .plan-create-backdrop {
   z-index: 90;
   padding: max(24px, 26vh) 20px 24px;
-  background: #1f23282b;
+  background: #0f0f0f2b;
   backdrop-filter: none;
 }
 .plan-create-panel {
@@ -956,7 +956,7 @@ onBeforeUnmount(() => {
   padding: 22px 28px 24px;
   border-radius: 14px;
   border-color: color-mix(in srgb, var(--line) 55%, transparent);
-  box-shadow: 0 18px 60px #1f232824;
+  box-shadow: 0 18px 60px #0f0f0f24;
 }
 .plan-create-panel > header {
   margin-bottom: 24px;
@@ -998,7 +998,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--paper);
-  box-shadow: 0 8px 28px #1f232820;
+  box-shadow: 0 8px 28px #0f0f0f20;
 }
 .plan-scope-menu-heading {
   display: block;

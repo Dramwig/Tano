@@ -10,6 +10,11 @@ it('keeps system, serif, and mono as supported presets', () => {
   expect(visualFontFamily('mono', '')).toContain('Maple Mono NF');
 });
 
+it('names explicit CJK fallbacks in system and mono presets', () => {
+  expect(visualFontFamily('system', '')).toContain("'Microsoft YaHei UI'");
+  expect(visualFontFamily('mono', '')).toMatch(/'Sarasa Mono SC'.*'Microsoft YaHei UI'/);
+});
+
 it('quotes a custom font and retains a system fallback', () => {
   expect(sanitizeCustomFontName('霞鹜文楷; color: red')).toBe('霞鹜文楷 color red');
   expect(visualFontFamily('custom', '霞鹜文楷')).toMatch(/^"霞鹜文楷", .*sans-serif$/);

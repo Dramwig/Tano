@@ -95,7 +95,7 @@ watch([() => props.workspaceId, () => props.file?.id, () => props.file?.path, ()
 
 <style scoped>
 .attachment-preview { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 24px; color: var(--text); }
-pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 14px/1.7 Consolas, monospace; }
+pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 14px/1.7 var(--font-mono); }
 table { border-collapse: collapse; font-size: 13px; } th, td { border: 1px solid var(--line); padding: 6px 12px; text-align: left; white-space: pre-wrap; min-width: 50px; max-width: 400px; overflow-wrap: anywhere; } th { color: var(--muted); font-weight: normal; }
 .token.comment { color: var(--muted); } .token.keyword, .token.boolean { color: #a35ac9; } .token.string { color: #418450; } .token.number, .token.function { color: #387bb2; }
 img, video { display: block; max-width: 100%; max-height: 100%; margin: 0 auto; object-fit: contain; }

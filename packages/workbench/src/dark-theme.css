@@ -2,31 +2,31 @@
    Keep decorative seams quiet and reserve stronger borders for interaction. */
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --sidebar: #1a1c1e;
-  --paper: #1e2022;
-  --surface: #26282b;
-  --surface-raised: #2b2e31;
-  --hover: #303438;
-  --line: #2c2f32;
-  --line-strong: #3e4449;
-  --control-border: #6b747c;
+  --sidebar: #1b1b1a;
+  --paper: #1f1f1e;
+  --surface: #272726;
+  --surface-raised: #2c2c2b;
+  --hover: #323231;
+  --line: #2e2e2d;
+  --line-strong: #424240;
+  --control-border: #6f6e6b;
   /* Scrollbar uses fixed neutral gray for consistency across themes */
-  --scrollbar-thumb: #4b5157;
-  --scrollbar-thumb-hover: #666e76;
-  --text: #d5d9dc;
-  --text-secondary: #b0b6bb;
-  --muted: #98a0a6;
+  --scrollbar-thumb: #4f4e4b;
+  --scrollbar-thumb-hover: #6b6a66;
+  --text: #d8d7d4;
+  --text-secondary: #b2b1ad;
+  --muted: #9b9a96;
   --green: #91b8a1;
   --green-hover: #adcdb9;
   --green-fill: #386b50;
   --green-fill-hover: #44785d;
   /* Neutral selection states — no green unless it's a true action */
-  --selected: #303438;
+  --selected: #323231;
   --selected-text: var(--text);
   --accent: #2b3a32;
   --block-selection: #35483d;
   --selection: #3b5344;
-  --switch-off: #50575e;
+  --switch-off: #56554f;
   --danger: #d9a099;
   --danger-bg: #3a2c2c;
   --warning: #cdb482;
@@ -42,10 +42,10 @@
   --suggestion-color: #a1bad4;
   --diff-add-bg: #293a30;
   --diff-remove-bg: #3c2e30;
-  --quote-border: #50575e;
+  --quote-border: #56554f;
   --task-border: var(--control-border);
   --table-tint: 16%;
-  --table-text-gray: #b0b6bb;
+  --table-text-gray: #b5b3ae;
   --table-text-brown: #c1a58e;
   --table-text-orange: #d0ad85;
   --table-text-yellow: #cabb83;
@@ -54,9 +54,9 @@
   --table-text-purple: #bba9d0;
   --table-text-pink: #cba4bc;
   --table-text-red: #d3a0a0;
-  --graph-edge: #444b51;
-  --graph-node: #a0a8ae;
-  --graph-orphan: #6e777f;
+  --graph-edge: #4a4946;
+  --graph-node: #a8a6a1;
+  --graph-orphan: #75736e;
   --overlay-shadow: 0 8px 28px #00000038, 0 2px 8px #00000024;
   --dialog-shadow: 0 24px 80px #00000052, 0 4px 16px #00000029;
 }

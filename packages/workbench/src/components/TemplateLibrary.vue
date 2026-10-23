@@ -318,7 +318,7 @@ onMounted(async () => {
 .is-preview .template-document-paper { padding: 44px 54px 60px; }
 .is-preview .template-document-paper :deep(.ProseMirror) { font-size: 15px; }
 .template-edit-form { display: grid; gap: 20px; max-width: 760px; }
-.template-edit-form textarea { resize: vertical; min-height: 280px; font-family: 'Maple Mono NF', monospace; font-size: 12px; line-height: 1.8; }
+.template-edit-form textarea { resize: vertical; min-height: 280px; font-family: var(--font-mono); font-size: 12px; line-height: 1.8; }
 .template-edit-form .template-hint { margin-top: -10px !important; }
 .template-edit-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .template-error { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--danger); font-size: 12px; padding: 12px 0; }

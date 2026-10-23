@@ -139,6 +139,20 @@ it('shows the Markdown reveal switch enabled and emits a change', async () => {
   expect(revealUpdates).toEqual([false]);
 });
 
+it('toggles automatic text spacing in appearance without changing other editor preferences', async () => {
+  await openPage('外观设置');
+  const toggle = root.querySelector<HTMLButtonElement>('[role="switch"][aria-label="正文自动间距"]')!;
+  expect(toggle.getAttribute('aria-checked')).toBe('false');
+  const previous = { ...editorPreferences.value };
+  toggle.click();
+  await nextTick();
+  expect(editorPreferences.value).toEqual({ ...previous, autoSpacing: true });
+  expect(toggle.getAttribute('aria-checked')).toBe('true');
+  toggle.click();
+  await nextTick();
+  expect(editorPreferences.value).toEqual({ ...previous, autoSpacing: false });
+});
+
 it('moves shortcuts out of About into a searchable preference page', async () => {
   expect(root.querySelector('.shortcut-settings')).toBeNull();
   expect(root.querySelector('.settings-about')!.textContent).not.toContain('键盘快捷键');
@@ -272,11 +286,15 @@ it('offers system, serif, mono, and a custom local font with a live preview', as
   await nextTick();
   expect(visualFontChoice.value).toBe('serif');
   expect(root.querySelector<HTMLElement>('.settings-visual-font-sample')?.style.fontFamily).toContain('Georgia');
+  expect(root.querySelector<HTMLElement>('.settings-source-font-sample')?.style.fontFamily)
+    .toBe(root.querySelector<HTMLElement>('.settings-visual-font-sample')?.style.fontFamily);
   select.value = 'mono';
   select.dispatchEvent(new Event('change'));
   await nextTick();
   expect(visualFontChoice.value).toBe('mono');
   expect(root.querySelector<HTMLElement>('.settings-visual-font-sample')?.style.fontFamily).toContain('Maple Mono NF');
+  expect(root.querySelector<HTMLElement>('.settings-source-font-sample')?.style.fontFamily)
+    .toBe(root.querySelector<HTMLElement>('.settings-visual-font-sample')?.style.fontFamily);
   select.value = 'custom';
   select.dispatchEvent(new Event('change'));
   await nextTick();
@@ -286,6 +304,8 @@ it('offers system, serif, mono, and a custom local font with a live preview', as
   await nextTick();
   expect(customFontName.value).toBe('霞鹜文楷');
   expect(root.querySelector<HTMLElement>('.settings-visual-font-sample')?.style.fontFamily).toContain('霞鹜文楷');
+  expect(root.querySelector<HTMLElement>('.settings-source-font-sample')?.style.fontFamily)
+    .toBe(root.querySelector<HTMLElement>('.settings-visual-font-sample')?.style.fontFamily);
 });
 
 it('shows the formula preview setting and emits its change', async () => {
@@ -301,7 +321,7 @@ it('shows the formula preview setting and emits its change', async () => {
   const preview = content.querySelector<HTMLButtonElement>('[aria-label="编辑时预览公式"]')!;
   expect(preview.getAttribute('aria-checked')).toBe('true');
   preview.click();
-  expect(preferenceUpdates).toEqual([{ previewMathWhileEditing: false, folding: true, blankBlockAiShortcut: true }]);
+  expect(preferenceUpdates).toEqual([{ ...defaultEditorPreferences, previewMathWhileEditing: false }]);
 });
 
 it.each(['页面内标题', '文档属性'])('keeps the %s preference in sync with its current value', async (label) => {

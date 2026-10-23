@@ -1,5 +1,3 @@
-@import '@fontsource-variable/inter/wght.css';
-@import '@fontsource-variable/inter/wght-italic.css';
 @import './dark-theme.css';
 @import './mobile.css';
 
@@ -53,31 +51,43 @@
 
 :root {
   color-scheme: light;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  /* One family for chrome and prose: Latin uses the platform UI face and CJK
+     falls back to the platform Chinese face, so mixed lines share a baseline
+     and weight instead of pairing Inter with Microsoft YaHei. */
+  --font-cjk-sans: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans SC', 'Source Han Sans SC';
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI',
+    var(--font-cjk-sans), ui-sans-serif, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  /* Code and source views: Latin mono first, then a CJK face so Chinese in
+     comments/strings never lands on SimSun or MS Gothic. */
+  --font-mono: 'SFMono-Regular', Menlo, 'Cascadia Code', Consolas, 'Maple Mono NF CN',
+    'Sarasa Mono SC', 'Noto Sans Mono CJK SC', var(--font-cjk-sans), ui-monospace, monospace;
+  font-family: var(--font-ui);
   color: var(--text);
   background: var(--paper);
   font-size: 14px;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  /* Neutral surfaces keep reading primary; green identifies actions and selection. */
-  --text: #24272b;
-  --text-secondary: #51565f;
-  --muted: #676d77;
+  /* Neutral surfaces keep reading primary; green identifies actions and selection.
+     Every neutral shares one warm base (55 53 47) so text, seams and hover
+     fills read as one family against the warm sidebar. */
+  --text: #37352f;
+  --text-secondary: #5f5e5b;
+  --muted: #787774;
   --green: #1f7a52;
   --green-hover: #176340;
   --green-fill: #1f7a52;
   --green-fill-hover: #176340;
   /* Neutral selection states — no green unless it's a true action */
-  --selected: #e8eaed;
+  --selected: #ebeae8;
   --selected-text: var(--text);
   --accent: #eaf5ee;
   --block-selection: #e1f1e8;
   --block-selection-overlay: color-mix(in srgb, var(--block-selection) 62%, transparent);
-  --line: #edeeef;
-  --control-border: #c7ccd2;
-  --sidebar: #f7f7f7;
-  --sidebar-width: 230px;
+  --line: #ebebea;
+  --control-border: #d3d2ce;
+  --sidebar: #f8f8f7;
+  --sidebar-width: 252px;
   --workbench-tabbar-height: 36px;
   --workbench-topbar-height: 44px;
   /* Reading measure shared by the body, title, frontmatter, references,
@@ -85,14 +95,14 @@
      stays on one rail. */
   --tano-content-measure: 700px;
   --paper: #ffffff;
-  --surface: #f7f7f8;
-  --hover: #eff0f1;
+  --surface: #f7f7f5;
+  --hover: #efefed;
   --danger: #ab3e35;
   --danger-bg: #fcf1e8;
   --warning: #805c20;
   --warning-bg: #faf0df;
   --warning-border: #e6d3b1;
-  --switch-off: #c7cbd1;
+  --switch-off: #cfcecb;
   --syntax-purple: #8653a8;
   --syntax-red: #cf3156;
   --syntax-blue: #1766ba;
@@ -104,7 +114,7 @@
   --suggestion-bg: color-mix(in srgb, var(--suggestion-color) 12%, transparent);
   --diff-add-bg: #eaf5e7;
   --diff-remove-bg: #fcefea;
-  --quote-border: #d1d5da;
+  --quote-border: #d3d2ce;
 }
 * {
   box-sizing: border-box;
@@ -151,7 +161,7 @@ button {
     color 0.15s;
 }
 a {
-  color: #4a5568;
+  color: #5f5e5b;
 }
 ::selection {
   background: var(--selection, var(--accent));
@@ -182,11 +192,11 @@ svg {
 }
 .panel-scrollbar::-webkit-scrollbar-thumb {
   border-radius: 8px;
-  background: #d1d5da;
+  background: #d3d2ce;
   transition: background 0.15s;
 }
 .panel-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: #a5a39e;
 }
 .panel-scrollbar::-webkit-scrollbar-corner {
   background: transparent;
@@ -199,7 +209,7 @@ svg {
 @supports (-moz-appearance: none) {
   .panel-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: #d1d5da transparent;
+    scrollbar-color: #d3d2ce transparent;
   }
 }
 button:hover {
@@ -472,7 +482,7 @@ button:hover {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  margin: 6px -7px 0 0;
+  margin: 10px -7px 0 0;
   padding: 0 7px 0 0;
 }
 .agent-file-dot {
@@ -487,12 +497,12 @@ button:hover {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   padding: 0 0 0 5px;
-  margin-bottom: 5px;
+  margin-bottom: 8px;
   font-weight: 500;
-  letter-spacing: 0.3px;
+  letter-spacing: 0;
 }
 .section-label > span {
   min-width: 0;
@@ -518,6 +528,17 @@ button:hover {
 .section-label > .repository-actions {
   min-width: 24px;
   min-height: 24px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .section-label > .repository-actions {
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+  .section-label:hover > .repository-actions,
+  .section-label:focus-within > .repository-actions,
+  .section-label:has([aria-expanded='true']) > .repository-actions {
+    opacity: 1;
+  }
 }
 .icon-button {
   height: 30px;
@@ -561,16 +582,17 @@ button:hover {
 }
 .tree-row {
   cursor: default;
-  height: 28px;
+  height: 32px;
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  border-radius: 5px;
+  border-radius: 6px;
   color: var(--text-secondary);
   text-align: left;
   position: relative;
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 20px;
   padding-right: 10px;
   margin: 1px 0;
   user-select: none;
@@ -619,6 +641,13 @@ button:hover {
   flex: 0 0 16px;
   display: grid;
   place-items: center;
+  /* Line icons recede so labels carry the tree; emoji icons keep their color. */
+  color: var(--muted);
+  opacity: 0.85;
+}
+.tree-row.selected .tree-icon,
+.tree-row:hover .tree-icon {
+  opacity: 1;
 }
 .tree-icon > svg {
   grid-area: 1 / 1;
@@ -639,6 +668,9 @@ button:hover {
   visibility: visible;
 }
 .tree-row.attachment {
+  color: var(--text-secondary);
+}
+.tree-row.attachment .tree-icon {
   color: var(--muted);
 }
 .tree-row.attachment.selected {
@@ -1087,7 +1119,8 @@ button:hover {
 }
 .tano-prose.ProseMirror-focused .tano-live-callout > p:first-of-type > .tano-callout-marker {
   display: block;
-  margin-bottom: 8px;
+  /* Match the preview title so revealing Markdown does not move the body. */
+  margin-bottom: 6px;
   font-size: 14px;
   font-weight: 600;
   color: var(--text);
@@ -1645,7 +1678,7 @@ button:hover {
   }
 }
 .tano-file-mention {
-  color: #4a5568;
+  color: #5f5e5b;
   background: #e8eaed;
   border-radius: 3px;
   padding: 1px 3px;
@@ -1660,7 +1693,7 @@ button:hover {
   }
 }
 .tano-prose sup[data-type='footnote_reference'] {
-  color: #4a5568;
+  color: #5f5e5b;
   padding: 0 1px;
 }
 .tano-prose sup[data-type='footnote_reference'][data-footnote-number] {
@@ -1738,7 +1771,7 @@ button:hover {
   width: 218px;
   background: var(--paper);
   border: 1px solid var(--line);
-  box-shadow: 0 10px 35px #1f232818;
+  box-shadow: 0 10px 35px #0f0f0f18;
   border-radius: 8px;
   padding: 6px;
 }
@@ -1942,14 +1975,14 @@ button:hover {
   left: -10000px;
   width: 800px;
   background: #ffffff;
-  color: #24272b;
+  color: #37352f;
 }
 .document-export-content {
   box-sizing: border-box;
   width: 800px;
   padding: 24px;
   background: #ffffff;
-  color: #24272b;
+  color: #37352f;
 }
 .document-export-content .tano-prose {
   min-height: 0;
@@ -2156,7 +2189,7 @@ button:hover {
 .document-title {
   position: relative;
   width: 100%;
-  margin: 0 auto 48px;
+  margin: 0 auto 24px;
 }
 .document-title-content,
 .document-appearance-content {
@@ -2181,10 +2214,10 @@ button:hover {
   color: var(--text);
   font: inherit;
   font-family: var(--tano-prose-font-family, inherit);
-  font-size: clamp(28px, 2.4vw, 36px);
+  font-size: clamp(30px, 3vw, 40px);
   font-weight: 700;
-  line-height: 1.35;
-  letter-spacing: -0.02em;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
   text-align: left;
   text-overflow: ellipsis;
 }
@@ -2200,6 +2233,9 @@ button:hover {
 .document-title-wrap > .document-title-mirror {
   grid-area: 1 / 1;
   min-width: 0;
+  /* Serif ascenders/descenders can extend past the line box. Keep the mirror
+     and textarea padding identical so auto-sizing includes that ink space. */
+  padding-block: 0.15em;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   text-overflow: clip;
@@ -2316,7 +2352,7 @@ button:hover {
 .tano-slash-results::-webkit-scrollbar-thumb,
 .tano-code-language-results::-webkit-scrollbar-thumb {
   border-radius: 8px;
-  background: #d1d5da;
+  background: #d3d2ce;
 }
 .tano-slash-results::-webkit-scrollbar-button,
 .tano-code-language-results::-webkit-scrollbar-button {
@@ -2499,12 +2535,9 @@ button:hover {
 }
 .tano-prose,
 .source-editor {
-  font-family: var(
-    --tano-prose-font-family,
-    'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif
-  );
+  font-family: var(--tano-prose-font-family, var(--font-ui));
   font-variant-numeric: tabular-nums;
-  /* Keep Markdown punctuation stable: Inter substitutes a lower, larger * beside digits. */
+  /* Keep Markdown punctuation stable beside digits in every preset font. */
   font-variant-ligatures: no-contextual;
 }
 .tano-prose {
@@ -2522,7 +2555,9 @@ button:hover {
   white-space: pre-wrap;
   color: var(--text);
   font-size: var(--tano-prose-font-size, 16px);
-  line-height: 1.8;
+  /* Notion reads at 1.5; CJK glyphs fill the em box, so 1.6 keeps the same
+     visual density for mixed Chinese/Latin paragraphs. */
+  line-height: 1.6;
   min-height: 350px;
   overflow-wrap: anywhere;
   padding-bottom: 8px;
@@ -2541,34 +2576,39 @@ button:hover {
   scroll-margin-top: 69px;
 }
 .tano-prose h1 {
-  font-size: calc(var(--tano-prose-font-size, 16px) * 2);
-  font-weight: 700;
-  line-height: 1.4;
-  letter-spacing: -0.5px;
-  margin-top: 40px;
-  margin-bottom: 26px;
+  font-size: calc(var(--tano-prose-font-size, 16px) * 1.875);
+  /* YaHei bold renders heavy at display sizes; 600 matches Notion's blocks. */
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin-top: 32px;
+  margin-bottom: 8px;
 }
 .tano-prose h2 {
   font-size: calc(var(--tano-prose-font-size, 16px) * 1.5);
   font-weight: 600;
-  margin-top: 42px;
-  margin-bottom: 15px;
-  letter-spacing: 0.2px;
+  line-height: 1.3;
+  margin-top: 28px;
+  margin-bottom: 6px;
+  letter-spacing: -0.005em;
 }
 .tano-prose h3 {
-  font-size: calc(var(--tano-prose-font-size, 16px) * 1.1875);
-  margin-top: 32px;
-  margin-bottom: 13px;
+  font-size: calc(var(--tano-prose-font-size, 16px) * 1.25);
+  line-height: 1.35;
+  margin-top: 20px;
+  margin-bottom: 4px;
   font-weight: 600;
 }
 .tano-prose h4 {
   font-size: calc(var(--tano-prose-font-size, 16px) * 1.125);
-  margin-top: 26px;
-  margin-bottom: 13px;
+  line-height: 1.4;
+  margin-top: 16px;
+  margin-bottom: 4px;
   font-weight: 600;
 }
+/* Keep related text together; heading margins separate sections. */
 .tano-prose p {
-  margin: 10px 0;
+  margin: 4px 0;
 }
 /* Text blocks own their inset; list items and table cells already supply theirs.
    Keep semantic ProseMirror nodes instead of adding editable wrapper elements. */
@@ -2601,7 +2641,7 @@ button:hover {
 }
 .tano-prose .tano-html-fallback {
   padding: 2px 5px;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 .tano-prose p:has(.tano-html-fallback),
 .tano-prose li:has(.tano-html-fallback) {
@@ -2635,12 +2675,12 @@ button:hover {
   font-synthesis: style;
 }
 .tano-prose blockquote {
-  margin: 26px 0;
+  margin: 12px 0;
   font-size: inherit;
 }
 /* Keep the base quote style below block selection and drag feedback. */
 .tano-prose blockquote:where(:not(.tano-callout)) {
-  margin: 20px 0;
+  margin: 12px 0;
   position: relative;
   border-left: 0;
   background: transparent;
@@ -2664,7 +2704,7 @@ button:hover {
   padding-inline-start: calc(23px - var(--tano-block-frame-inset));
 }
 .tano-prose blockquote p {
-  margin: 8px 0;
+  margin: 4px 0;
 }
 .tano-prose blockquote:not(.tano-callout) > :first-child {
   margin-top: 0;
@@ -2683,6 +2723,7 @@ button:hover {
 }
 .tano-prose ul,
 .tano-prose ol {
+  margin: 4px 0;
   padding-left: calc(23px + var(--tano-block-padding-inline));
   padding-right: var(--tano-block-padding-inline);
 }
@@ -2691,6 +2732,9 @@ button:hover {
   margin: 3px 0;
 }
 .tano-prose li p {
+  margin: 0;
+}
+.tano-prose li :is(ul, ol) {
   margin: 0;
 }
 .tano-prose li::marker {
@@ -2719,7 +2763,7 @@ button:hover {
   content: '';
   position: absolute;
   left: -19px;
-  top: 8px;
+  top: calc(0.825em - 6px);
   width: 12px;
   height: 12px;
   border: 1px solid var(--line);
@@ -2740,9 +2784,9 @@ button:hover {
   color: var(--muted);
 }
 .tano-prose code {
-  font-family: 'Cascadia Code', 'Consolas', monospace;
-  background: var(--surface);
-  color: var(--text);
+  font-family: var(--font-mono);
+  background: color-mix(in srgb, var(--muted) 15%, transparent);
+  color: var(--syntax-red);
   border: 0;
   border-radius: 4px;
   font-size: 0.85em;
@@ -2766,6 +2810,7 @@ button:hover {
   border: 0;
   background: none;
   padding: 0;
+  color: inherit;
 }
 .tano-prose pre.tano-code-block {
   position: relative;
@@ -2793,7 +2838,7 @@ button:hover {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.4;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font-family: var(--font-ui);
   outline: none;
   z-index: 1;
 }
@@ -3168,7 +3213,7 @@ button:hover {
   border-radius: 6px;
 }
 .tano-prose a {
-  color: #4a5568;
+  color: #5f5e5b;
   text-decoration-color: currentColor;
   text-underline-offset: 3px;
 }
@@ -3182,14 +3227,14 @@ button:hover {
 
 .tano-prose pre.tano-live-source-block {
   min-height: 1em;
-  margin: 8px 0;
+  margin: 4px 0;
   padding: var(--tano-block-padding-block) var(--tano-block-padding-inline);
   border: 0;
   border-radius: 0;
   background: transparent;
   color: var(--text);
   font: inherit;
-  line-height: 1.8;
+  line-height: inherit;
   white-space: pre-wrap;
   overflow: visible;
   overflow-wrap: anywhere;
@@ -3205,7 +3250,7 @@ button:hover {
   border: 0;
   border-radius: 8px;
   background: var(--surface);
-  font: 0.85em/1.7 'Cascadia Code', 'Consolas', monospace;
+  font: 0.85em/1.7 var(--font-mono);
   white-space: pre;
   overflow: auto;
   overflow-wrap: normal;
@@ -3234,30 +3279,33 @@ button:hover {
 }
 .tano-prose pre.tano-live-source-block[data-source-kind='heading'] {
   color: var(--text);
-  line-height: 1.8;
+  line-height: 1.65;
 }
 .tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='1'] {
-  font-size: calc(var(--tano-prose-font-size, 16px) * 2);
+  font-size: calc(var(--tano-prose-font-size, 16px) * 1.875);
   font-weight: 700;
-  line-height: 1.4;
-  letter-spacing: -0.5px;
-  margin: 0.67em 0 24px;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin: 32px 0 8px;
 }
 .tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='2'] {
   font-size: calc(var(--tano-prose-font-size, 16px) * 1.5);
   font-weight: 600;
-  letter-spacing: 0.2px;
-  margin: 34px 0 13px;
+  line-height: 1.3;
+  letter-spacing: -0.005em;
+  margin: 28px 0 6px;
 }
 .tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='3'] {
-  font-size: calc(var(--tano-prose-font-size, 16px) * 1.1875);
+  font-size: calc(var(--tano-prose-font-size, 16px) * 1.25);
   font-weight: 600;
-  margin: 27px 0 1em;
+  line-height: 1.35;
+  margin: 20px 0 4px;
 }
 .tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='4'] {
   font-size: calc(var(--tano-prose-font-size, 16px) * 1.125);
   font-weight: 600;
-  margin: 22px 0 13px;
+  line-height: 1.4;
+  margin: 16px 0 4px;
 }
 .tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='5'] {
   font-size: 0.83em;
@@ -3423,7 +3471,7 @@ button:hover {
   outline-color: var(--green);
   color: var(--text);
   background: var(--paper);
-  font: 13px/1.4 Consolas, monospace;
+  font: 13px/1.4 var(--font-mono);
   user-select: text;
 }
 .tano-prose.ProseMirror-focused .tano-live-wiki {
@@ -3431,10 +3479,7 @@ button:hover {
 }
 .tano-prose.ProseMirror-focused .tano-live-wiki::before {
   content: attr(data-markdown-source);
-  font:
-    14px 'Cascadia Code',
-    Consolas,
-    monospace;
+  font: 14px var(--font-mono);
   color: var(--text);
 }
 .tano-prose hr {
@@ -3452,6 +3497,33 @@ button:hover {
   /* Paint the selection inside the block so its own surface remains visible
      underneath and the highlight cannot expand beyond the block range. */
   box-shadow: inset 0 0 0 100vmax var(--block-selection-overlay);
+}
+/* Paint the divider's selection as its own rounded rectangle: an expanded
+   outline also expands the corner radius and makes a one-pixel rule a pill. */
+.tano-prose hr:is(.ProseMirror-selectednode, .tano-block-selected) {
+  position: relative;
+  overflow: visible;
+  border-top-color: var(--green);
+  box-shadow: none;
+}
+.tano-prose hr:is(.ProseMirror-selectednode, .tano-block-selected)::before {
+  content: '';
+  position: absolute;
+  inset: calc(-1px - var(--tano-block-frame-inset)) 0 calc(-1 * var(--tano-block-frame-inset));
+  border-radius: inherit;
+  background: var(--block-selection-overlay);
+  pointer-events: none;
+}
+.tano-prose > hr:is(.ProseMirror-selectednode, .tano-block-selected)::before {
+  inset-inline: calc(-1 * var(--tano-block-frame-inset));
+}
+.tano-prose hr:is(.ProseMirror-selectednode, .tano-block-selected)::after {
+  content: '';
+  position: absolute;
+  inset: -1px 0 auto;
+  height: 1px;
+  background: var(--green);
+  pointer-events: none;
 }
 /* A table's scroll viewport includes page gutters; highlight only its cells. */
 .tano-prose .tano-table-viewport.ProseMirror-selectednode,
@@ -3471,8 +3543,7 @@ button:hover {
   pre,
   .tano-callout,
   .tano-enhanced,
-  .tano-unsupported-block,
-  hr
+  .tano-unsupported-block
 ):is(.ProseMirror-selectednode, .tano-block-selected) {
   outline: var(--tano-block-frame-inset) solid var(--block-selection);
 }
@@ -3582,7 +3653,7 @@ button:hover {
 .source-editor .cm-content {
   min-height: calc(100vh - 290px);
   padding: 0;
-  caret-color: #4a5568;
+  caret-color: #5f5e5b;
 }
 .source-editor .cm-focused {
   outline: none;
@@ -3653,7 +3724,7 @@ button:hover {
   background: var(--surface);
 }
 .source-editor .cm-source-link {
-  color: #4a5568;
+  color: #5f5e5b;
   text-decoration: underline;
   text-decoration-color: rgba(74, 85, 104, 0.4);
 }
@@ -3683,7 +3754,7 @@ button:hover {
   overflow-y: auto;
   scrollbar-width: none;
   background: var(--paper);
-  box-shadow: 0 12px 28px #1f232810;
+  box-shadow: 0 12px 28px #0f0f0f10;
 }
 .inspector:is(:hover, :focus-within) {
   scrollbar-width: thin;
@@ -3723,7 +3794,7 @@ button:hover {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 16px 10px;
-  box-shadow: 0 12px 28px #1f232810;
+  box-shadow: 0 12px 28px #0f0f0f10;
   pointer-events: auto;
   overscroll-behavior: contain;
 }
@@ -4141,7 +4212,7 @@ button:hover {
 .welcome-mark img {
   height: 64px;
   width: 64px;
-  filter: drop-shadow(0 12px 17px #1f232820);
+  filter: drop-shadow(0 12px 17px #0f0f0f20);
 }
 .eyebrow {
   font-size: 12px;
@@ -4150,12 +4221,7 @@ button:hover {
   margin: 29px 0 11px;
 }
 .welcome h1 {
-  font-family:
-    'Microsoft YaHei',
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    sans-serif;
+  font-family: var(--font-ui);
   font-size: 32px;
   font-weight: 600;
   color: var(--text);
@@ -4231,7 +4297,7 @@ button:hover {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: #1f232835;
+  background: #0f0f0f35;
   backdrop-filter: blur(2px);
   display: flex;
   align-items: flex-start;
@@ -4246,7 +4312,7 @@ button:hover {
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 10px;
-  box-shadow: 0 25px 90px #1f232828;
+  box-shadow: 0 25px 90px #0f0f0f28;
   padding: 24px;
 }
 .modal > header {
@@ -4401,10 +4467,10 @@ button:hover {
 }
 .search-results::-webkit-scrollbar-thumb {
   border-radius: 6px;
-  background: var(--scrollbar-thumb, #c4c8ce);
+  background: var(--scrollbar-thumb, #cfceca);
 }
 .search-results::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover, #aeb4bb);
+  background: var(--scrollbar-thumb-hover, #b5b4b0);
 }
 .search-results::-webkit-scrollbar-button {
   display: none;
@@ -4414,7 +4480,7 @@ button:hover {
 @supports (-moz-appearance: none) {
   .search-results {
     scrollbar-width: thin;
-    scrollbar-color: var(--scrollbar-thumb, #c4c8ce) transparent;
+    scrollbar-color: var(--scrollbar-thumb, #cfceca) transparent;
   }
 }
 .search-results button {
@@ -4490,7 +4556,7 @@ button:hover {
 }
 @media (min-width: 1600px) {
   :root {
-    --sidebar-width: 245px;
+    --sidebar-width: 264px;
   }
   .inspector {
     --inspector-width: 250px;
@@ -4504,7 +4570,7 @@ button:hover {
 }
 @media (max-width: 1180px) {
   :root {
-    --sidebar-width: 210px;
+    --sidebar-width: 232px;
   }
   .version-pill {
     font-size: 12px;
@@ -4556,7 +4622,7 @@ button:hover {
     position: absolute;
     inset: 0;
     z-index: 39;
-    background: #1f232820;
+    background: #0f0f0f20;
   }
   .sidebar-dismiss-enter-active,
   .sidebar-dismiss-leave-active {
@@ -4575,7 +4641,7 @@ button:hover {
     top: 0;
     bottom: 0;
     z-index: 40;
-    box-shadow: 15px 0 40px #1f232815;
+    box-shadow: 15px 0 40px #0f0f0f15;
   }
   .main-column {
     width: 100%;
@@ -4669,7 +4735,7 @@ button:hover {
   margin: 0;
   width: 14px;
   height: 14px;
-  accent-color: #4a5568;
+  accent-color: #5f5e5b;
   cursor: pointer;
 }
 @media (max-width: 700px) {
@@ -4790,7 +4856,7 @@ button:hover {
   border: 1px dashed var(--warning-border);
   border-radius: 6px;
   color: var(--warning);
-  font: 12px/1.7 system-ui;
+  font: 12px/1.7 var(--font-ui);
 }
 .tano-image-caption {
   display: block;
@@ -4825,7 +4891,7 @@ button:hover {
   outline: none;
   background: var(--paper);
   color: var(--text);
-  font: 13px/1.5 Consolas, monospace;
+  font: 13px/1.5 var(--font-mono);
   user-select: text;
 }
 .tano-image-editor-panel input:focus {
@@ -4917,7 +4983,7 @@ button:hover {
   tab-size: 4;
   pointer-events: none;
   color: var(--text);
-  font: 14px/1.5 Consolas, monospace;
+  font: 14px/1.5 var(--font-mono);
 }
 .tano-math textarea {
   position: relative;
@@ -4940,9 +5006,7 @@ button:hover {
   color: transparent;
   caret-color: var(--text);
   background: transparent;
-  font:
-    14px/1.5 Consolas,
-    monospace;
+  font: 14px/1.5 var(--font-mono);
 }
 .math-editor-panel textarea::-webkit-scrollbar,
 .tano-mermaid-editor-panel textarea::-webkit-scrollbar {
@@ -4960,7 +5024,7 @@ button:hover {
 }
 .math-editor-panel:hover textarea::-webkit-scrollbar-thumb,
 .tano-mermaid-editor-panel:hover textarea::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb-hover, #aeb4bb);
+  background: var(--scrollbar-thumb-hover, #b5b4b0);
 }
 .math-editor-panel textarea::-webkit-scrollbar-button,
 .tano-mermaid-editor-panel textarea::-webkit-scrollbar-button {
@@ -4976,7 +5040,7 @@ button:hover {
   }
   .math-editor-panel:hover textarea,
   .tano-mermaid-editor-panel:hover textarea {
-    scrollbar-color: var(--scrollbar-thumb-hover, #aeb4bb) transparent;
+    scrollbar-color: var(--scrollbar-thumb-hover, #b5b4b0) transparent;
   }
 }
 .tano-math textarea:placeholder-shown {
@@ -4995,12 +5059,12 @@ button:hover {
 }
 .frontmatter-panel {
   max-width: var(--tano-content-measure);
-  margin: 0 auto 26px;
+  margin: 0 auto 20px;
   color: var(--text);
   font-size: 14px;
 }
 .document-title:has(+ .frontmatter-panel) {
-  margin-bottom: 22px;
+  margin-bottom: 12px;
 }
 .frontmatter-heading {
   display: flex;
@@ -5009,8 +5073,9 @@ button:hover {
   width: fit-content;
   min-height: 30px;
   list-style: none;
-  font-size: 15px;
-  font-weight: 600;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 400;
   cursor: pointer;
 }
 .frontmatter-heading::-webkit-details-marker {
@@ -5217,9 +5282,7 @@ button:hover {
   margin: 0 0 8px 25px;
   overflow: auto;
   white-space: pre-wrap;
-  font:
-    12px/1.7 Consolas,
-    monospace;
+  font: 12px/1.7 var(--font-mono);
   color: var(--text-secondary);
 }
 .frontmatter-add {
@@ -5354,10 +5417,7 @@ button:hover {
 }
 .agent-preview {
   min-height: 240px;
-  font:
-    12px/1.8 'Cascadia Code',
-    Consolas,
-    monospace;
+  font: 12px/1.8 var(--font-mono);
   tab-size: 2;
 }
 .agent-existing {
@@ -5452,10 +5512,7 @@ button:hover {
 .diff-lines {
   overflow: auto;
   max-height: 60vh;
-  font:
-    12px/1.75 'Cascadia Code',
-    Consolas,
-    monospace;
+  font: 12px/1.75 var(--font-mono);
   padding: 8px 0 0;
   background: var(--paper);
 }
@@ -5499,7 +5556,7 @@ button:hover {
 }
 .activity-diff-button {
   display: block;
-  color: #4a5568;
+  color: #5f5e5b;
   font-size: 12px;
   margin: 6px 0;
   text-decoration: underline;
@@ -5518,6 +5575,14 @@ button:hover {
 }
 
 /* Rendering preferences never change the underlying Markdown nodes. */
+.tano-prose {
+  /* Spacing is owned by editor decorations, consistently across WebViews. */
+  text-autospace: no-autospace;
+}
+.tano-prose .tano-auto-space-before {
+  margin-inline-start: 0.25em;
+}
+
 .tano-feature-source {
   color: var(--text-secondary);
   background: var(--surface);
@@ -5599,7 +5664,7 @@ div.tano-feature-source {
   tab-size: 4;
   pointer-events: none;
   color: var(--text);
-  font: 14px/1.5 Consolas, monospace;
+  font: 14px/1.5 var(--font-mono);
 }
 .tano-mermaid-editor-panel textarea {
   position: relative;
@@ -5622,7 +5687,7 @@ div.tano-feature-source {
   color: transparent;
   caret-color: var(--text);
   background: transparent;
-  font: 14px/1.5 Consolas, monospace;
+  font: 14px/1.5 var(--font-mono);
 }
 .tano-mermaid-editor-panel textarea:placeholder-shown {
   min-width: min(28ch, calc(100vw - 54px));

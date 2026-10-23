@@ -38,6 +38,7 @@ import {
 } from '@milkdown/kit/prose/history';
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
 import { createDocumentDecorations } from './document-decorations';
+import { autoSpacing } from './auto-spacing';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { Fragment } from '@milkdown/kit/prose/model';
 import { canSplit } from '@milkdown/kit/prose/transform';
@@ -71,6 +72,7 @@ import { configureMarkdownSchema } from './schema';
 import { listMarkdown } from './list-markdown';
 import { codeBlankLinesRemark } from './code-blank-lines';
 import { blockControls } from './blocks';
+import { BlockRangeSelection, expandBlockSelection } from './block-selection';
 import { blockTree, moveBlockSibling, indentBlock, outdentBlock, wrapBlockInToggle, deleteBlock } from './block-tree';
 import { emptyBlockDeletion } from './empty-block';
 import { slashCommands } from './slash-commands';
@@ -1355,6 +1357,19 @@ function finishLocalSourceTransaction(ctx: Ctx, state: EditorState) {
     current.pos + current.node.nodeSize,
     replacement,
   );
+  if (state.selection instanceof BlockRangeSelection) {
+    // Finishing live Markdown replaces its temporary node. Keep that block (and
+    // any blocks parsed from it) selected instead of treating it as a deletion.
+    const ranges = state.selection.blocks.map(block => ({
+      from: tr.mapping.map(block.pos, -1),
+      to: tr.mapping.map(block.pos + block.node.nodeSize, 1),
+    }));
+    const positions = blockTree(tr.doc).filter(block => ranges.some(range =>
+      block.pos >= range.from && block.pos + block.node.nodeSize <= range.to)).map(block => block.pos);
+    const selection = BlockRangeSelection.fromBlocks(tr.doc, positions,
+      tr.mapping.map(state.selection.anchorBlock, -1), tr.mapping.map(state.selection.headBlock, -1));
+    if (selection) tr.setSelection(selection);
+  }
   if (raw === session.initial) tr.setMeta('addToHistory', false);
   return { tr, unchanged: raw === session.initial };
 }
@@ -1904,6 +1919,26 @@ const bridge = $prose(
           const placeholders = uploads.getState(state);
           return placeholders && placeholders !== DecorationSet.empty ? decorated.add(state.doc, placeholders.find()) : decorated;
         },
+        handleKeyDown(view, event) {
+          if (event.key !== 'ArrowDown' || event.shiftKey || event.ctrlKey || event.metaKey ||
+              event.altKey || event.isComposing || event.keyCode === 229 || view.composing ||
+              props.readonly || !view.editable) return false;
+          const { doc, selection } = view.state;
+          if (selection instanceof TextSelection) {
+            if (!selection.empty) return false;
+            const { $head } = selection;
+            // Stay within wrapped lines and nested blocks until there is no next line/block.
+            for (let depth = 0; depth < $head.depth; depth++) {
+              if ($head.index(depth) !== $head.node(depth).childCount - 1) return false;
+            }
+            if (!view.endOfTextblock('down')) return false;
+          } else if (!(selection instanceof NodeSelection) || selection.to !== doc.content.size) {
+            return false;
+          }
+          if (doc.lastChild?.eq(view.state.schema.nodes.paragraph!.create())) return false;
+          moveToTrailingParagraph(view);
+          return true;
+        },
         handleDOMEvents: {
           mousedown(view, event) {
             if (event.button === 0) selectingWithPointer = true;
@@ -1920,6 +1955,19 @@ const bridge = $prose(
             return false;
           },
           keydown(view, event) {
+            if (event.key.toLowerCase() === 'a' && (event.ctrlKey || event.metaKey) &&
+                !event.shiftKey && !event.altKey && !event.isComposing && event.keyCode !== 229 && !view.composing &&
+                !(event.target instanceof Element && event.target.closest('input, textarea, [contenteditable="false"]'))) {
+              const selection = expandBlockSelection(view.state.doc, view.state.selection);
+              if (selection) {
+                event.preventDefault();
+                event.stopPropagation();
+                // Expanding the scope must preserve the reader's viewport,
+                // even when the new selection ends far outside the screen.
+                view.dispatch(view.state.tr.setSelection(selection));
+                return true;
+              }
+            }
             if (
               event.key === ' ' &&
               !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey &&
@@ -2435,6 +2483,7 @@ onMounted(async () => {
       .use($prose(() => tableControls(() => !!props.readonly)))
       .use($prose(tableViewports))
       .use($prose(footnoteNumbers))
+      .use($prose(() => autoSpacing(() => preferences().autoSpacing === true)))
       .use(textStyles)
       .use(wikiLinkRemark)
       .use(wikiLink)
@@ -3072,7 +3121,7 @@ function focusTrailingParagraph(event: MouseEvent) {
       !event.target.contains(view.dom)
     )
       return;
-    const { doc, schema } = view.state;
+    const { doc } = view.state;
     const last = doc.lastChild;
     if (!last) return;
     const lastDOM = view.nodeDOM(doc.content.size - last.nodeSize);
@@ -3080,15 +3129,21 @@ function focusTrailingParagraph(event: MouseEvent) {
       return;
 
     event.preventDefault();
-    const paragraph = schema.nodes.paragraph!.create();
-    const reuse = last.eq(paragraph);
-    const tr = view.state.tr;
-    const position = reuse ? doc.content.size - last.nodeSize + 1 : doc.content.size + 1;
-    if (!reuse) tr.insert(doc.content.size, paragraph);
-    tr.setSelection(TextSelection.create(tr.doc, position)).setStoredMarks([]);
-    view.dispatch((reuse ? tr : closeHistory(tr)).scrollIntoView());
-    view.focus();
+    moveToTrailingParagraph(view);
   });
+}
+function moveToTrailingParagraph(view: EditorView) {
+  const { doc, schema } = view.state;
+  const paragraph = schema.nodes.paragraph!.create();
+  const last = doc.lastChild;
+  if (!last) return;
+  const reuse = last.eq(paragraph);
+  const tr = view.state.tr;
+  const position = reuse ? doc.content.size - last.nodeSize + 1 : doc.content.size + 1;
+  if (!reuse) tr.insert(doc.content.size, paragraph);
+  tr.setSelection(TextSelection.create(tr.doc, position)).setStoredMarks([]);
+  view.dispatch((reuse ? tr : closeHistory(tr)).scrollIntoView());
+  view.focus();
 }
 function canUndo() {
   if (!editor || props.readonly || props.extension?.ownsHistory) return false;

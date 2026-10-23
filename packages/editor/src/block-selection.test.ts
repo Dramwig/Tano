@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { parserCtx } from '@milkdown/kit/core';
-import { EditorState, Selection } from '@milkdown/kit/prose/state';
+import { EditorState, NodeSelection, Selection, TextSelection } from '@milkdown/kit/prose/state';
 import { createHeadlessMarkdown } from './headless';
-import { BlockRangeSelection } from './block-selection';
+import { BlockRangeSelection, expandBlockSelection } from './block-selection';
 import { blockTree } from './block-tree';
 import { selectedBlocks } from './document-model';
 import { blockCommand } from './block-commands';
@@ -10,6 +10,64 @@ import { blockCommand } from './block-commands';
 let codec: Awaited<ReturnType<typeof createHeadlessMarkdown>>;
 beforeAll(async () => { codec = await createHeadlessMarkdown(); });
 afterAll(async () => { await codec.destroy(); });
+
+it('expands from text through each containing block group and stays at the document roots', () => {
+  const doc = codec.withContext(ctx => ctx.get(parserCtx)('Before\n\n> Outer\n>\n> > Inner A\n> >\n> > Inner B\n>\n> Tail\n\nAfter')!);
+  const tree = blockTree(doc);
+  const inner = tree.find(block => block.node.textContent === 'Inner A')!;
+  let selection: Selection = TextSelection.create(doc, inner.pos + 3);
+  selection = expandBlockSelection(doc, selection)!;
+  expect(selection).toBeInstanceOf(TextSelection);
+  expect(doc.textBetween(selection.from, selection.to)).toBe('Inner A');
+  for (const texts of [['Inner A', 'Inner B'], ['Outer', 'Inner AInner B', 'Tail'], ['Before', 'OuterInner AInner BTail', 'After']]) {
+    selection = expandBlockSelection(doc, selection)!;
+    expect((selection as BlockRangeSelection).blocks.map(block => block.node.textContent)).toEqual(texts);
+  }
+  expect(expandBlockSelection(doc, selection)!.eq(selection)).toBe(true);
+  const reset = expandBlockSelection(doc, TextSelection.create(doc, inner.pos + 2))!;
+  expect(reset).toBeInstanceOf(TextSelection);
+  expect(doc.textBetween(reset.from, reset.to)).toBe('Inner A');
+});
+
+it.each(['- A\n- B', '| A |\n| --- |\n| B |', '***'])('selects %s as one block before its siblings', markdown => {
+  const doc = codec.withContext(ctx => ctx.get(parserCtx)(`${markdown}\n\nAfter`)!);
+  const first = doc.firstChild!;
+  const initial = first.isLeaf ? NodeSelection.create(doc, 0) : TextSelection.near(doc.resolve(1));
+  const selected = expandBlockSelection(doc, initial)! as BlockRangeSelection;
+  expect(selected.blocks).toHaveLength(first.isLeaf ? 2 : 1);
+  expect((expandBlockSelection(doc, selected) as BlockRangeSelection).blocks).toHaveLength(2);
+});
+
+it('handles empty blocks, single-child containers and backwards text selections without getting stuck', () => {
+  const doc = codec.withContext(ctx => ctx.get(parserCtx)('> > Only\n\nAfter')!);
+  const inner = blockTree(doc).find(block => block.node.textContent === 'Only' && block.node.isTextblock)!;
+  let selection: Selection = TextSelection.create(doc, inner.pos + 5, inner.pos + 1);
+  for (let i = 0; i < 3; i++) selection = expandBlockSelection(doc, selection)!;
+  expect((selection as BlockRangeSelection).blocks.map(block => block.parentPos)).toEqual([-1, -1]);
+  const emptyDoc = doc.type.create(null, [doc.type.schema.nodes.paragraph!.create(), doc.lastChild!]);
+  selection = expandBlockSelection(emptyDoc, TextSelection.create(emptyDoc, 1))!;
+  expect((selection as BlockRangeSelection).blocks).toHaveLength(1);
+  expect((expandBlockSelection(emptyDoc, selection) as BlockRangeSelection).blocks).toHaveLength(2);
+});
+
+it.each(['columns', 'tabs'])('skips structural %s panels while growing out of their content', kind => {
+  const doc = codec.withContext(ctx => ctx.get(parserCtx)(`:::${kind}\n\n## One\n\nA\n\nB\n\n## Two\n\nC\n\n:::\n\nOutside`)!);
+  const a = blockTree(doc).find(block => block.node.textContent === 'A')!;
+  let selection: Selection = TextSelection.create(doc, a.pos + 1);
+  selection = expandBlockSelection(doc, selection)!;
+  selection = expandBlockSelection(doc, selection)!;
+  expect((selection as BlockRangeSelection).blocks.map(block => block.node.textContent)).toEqual(['A', 'B']);
+  selection = expandBlockSelection(doc, selection)!;
+  expect((selection as BlockRangeSelection).blocks.map(block => block.node.type.name)).toEqual([`tano_${kind}`, 'paragraph']);
+});
+
+it('fills disjoint sibling selections and excludes callout metadata from body groups', () => {
+  const doc = codec.withContext(ctx => ctx.get(parserCtx)('> [!NOTE]\n>\n> A\n>\n> B\n>\n> C\n\nOutside')!);
+  const children = blockTree(doc).filter(block => block.parentPos === 0);
+  expect(children.map(block => block.node.textContent)).toEqual(['A', 'B', 'C']);
+  const selection = BlockRangeSelection.fromBlocks(doc, [children[0]!.pos, children[2]!.pos])!;
+  expect((expandBlockSelection(doc, selection) as BlockRangeSelection).blocks.map(block => block.node.textContent)).toEqual(['A', 'B', 'C']);
+});
 
 it('selects only sibling roots, round-trips backward selection and maps it through edits', () => {
   const doc = codec.withContext(ctx => ctx.get(parserCtx)('Before\n\n> A\n>\n> B\n\nAfter')!);

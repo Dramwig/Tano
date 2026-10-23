@@ -21,7 +21,10 @@ import AssistantMessageBody from './AssistantMessageBody.vue';
 const assistant = useAssistantStore();
 const workspace = useWorkspaceStore();
 const props = defineProps<{ compact?: boolean; fullscreenTarget?: string | HTMLElement }>();
-const emit = defineEmits<{ openReference: [identity: ReferenceIdentity]; revealSelection: [source: AssistantSource]; openSettings: [] }>();
+const emit = defineEmits<{ openReference: [identity: ReferenceIdentity]; revealSelection: [source: AssistantSource]; openSettings: []; closed: [] }>();
+function afterPanelLeave() {
+  if (!assistant.opened) emit('closed');
+}
 // Keep the destination while disabled so re-enabling Teleport updates its target.
 const teleportTarget = computed<string | HTMLElement>(previous => assistant.displayMode === 'sidebar' ? previous ?? 'body'
   : assistant.displayMode === 'fullscreen' ? props.fullscreenTarget ?? 'body' : 'body');
@@ -376,6 +379,8 @@ function answerReady() {
   void nextTick(updateScroll);
 }
 onMounted(() => {
+  // An async panel may finish loading after the user has already closed it.
+  if (!assistant.opened) { emit('closed'); return; }
   window.addEventListener('pointerdown', outsidePopover);
   window.addEventListener('resize', resized);
   if (typeof ResizeObserver !== 'undefined') {
@@ -384,7 +389,7 @@ onMounted(() => {
     const composer = panel.value?.querySelector('.assistant-composer-area');
     if (composer) composerObserver.observe(composer);
   }
-  void nextTick(() => { resizeInput(); scrollToLatest(); textarea.value?.focus(); });
+  void nextTick(() => { resizeInput(); scrollToLatest(); textarea.value?.focus({ preventScroll: true }); });
 });
 onBeforeUnmount(() => {
   endFloatingGesture();
@@ -399,10 +404,13 @@ watch(() => assistant.pendingUserInput?.request.id, (id, previous) => {
 });
 watch(() => [assistant.files.length, assistant.selection?.text], () => { void nextTick(updateMenuPosition); });
 watch(section, () => { closePopover(); void nextTick(() => { resizeInput(); scrollToLatest(); }); });
-watch(() => assistant.opened, open => { if (open) void nextTick(() => textarea.value?.focus()); });
+watch(() => assistant.opened, open => {
+  if (open) void nextTick(() => textarea.value?.focus({ preventScroll: true }));
+  else { closePopover(); endFloatingGesture(); }
+});
 watch(() => [assistant.displayMode, props.fullscreenTarget], () => {
   endFloatingGesture();
-  void nextTick(() => { resized(); resizeInput(); textarea.value?.focus(); });
+  void nextTick(() => { resized(); resizeInput(); if (assistant.opened) textarea.value?.focus({ preventScroll: true }); });
 }, { flush: 'post' });
 watch(() => [assistant.session?.id, assistant.connectionId], () => { modelView.value = 'main'; modelQuery.value = ''; searchingModels.value = false; });
 watch(() => assistant.session?.id, () => { visibleMessages.value = 30; void nextTick(scrollToLatest); });
@@ -418,7 +426,8 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 
 <template>
   <Teleport :to="teleportTarget" :disabled="assistant.displayMode === 'sidebar'">
-  <aside ref="panel" v-show="assistant.displayMode !== 'fullscreen' || !!fullscreenTarget" class="assistant-panel" :class="`assistant-panel-${assistant.displayMode}`" :style="{ '--assistant-menu-max-height': `${menuMaxHeight}px`, ...floatingStyle }" :aria-label="t('Tano 助手')" @keydown.esc="closePopover(true)" @keydown="menuKey">
+  <Transition name="assistant-sidebar" :css="assistant.displayMode === 'sidebar'" appear @after-leave="afterPanelLeave">
+  <aside ref="panel" v-show="assistant.opened && (assistant.displayMode !== 'fullscreen' || !!fullscreenTarget)" class="assistant-panel" :class="[`assistant-panel-${assistant.displayMode}`, { 'assistant-panel-compact': compact }]" :style="{ '--assistant-menu-max-height': `${menuMaxHeight}px`, ...floatingStyle }" :inert="!assistant.opened || undefined" :aria-hidden="!assistant.opened || undefined" :aria-label="t('Tano 助手')" @keydown.esc="closePopover(true)" @keydown="menuKey">
     <header class="assistant-heading" @pointerdown="startFloatingGesture" @pointermove="moveFloatingGesture" @pointerup="endFloatingGesture" @pointercancel="endFloatingGesture" @lostpointercapture="endFloatingGesture">
       <button v-if="section !== 'conversation'" class="icon-button" :aria-label="t('返回助手对话')" :data-tooltip="t('返回对话')" @click="section = 'conversation'"><ArrowLeft :size="17" /></button>
       <h2 v-if="section !== 'conversation'">{{ t('会话记录') }}</h2>
@@ -624,11 +633,35 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
       </div>
     </template>
   </aside>
+  </Transition>
   </Teleport>
 </template>
 
 <style scoped>
-.assistant-panel { flex: 0 1 clamp(360px, 32vw, 480px); width: clamp(360px, 32vw, 480px); min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--paper); color: var(--text); }
+.assistant-panel { --assistant-sidebar-width: clamp(360px, 32vw, 480px); flex: 0 1 var(--assistant-sidebar-width); width: var(--assistant-sidebar-width); min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--paper); color: var(--text); }
+/* Slide a full-width conversation into view while its margin gives the editor
+   the same amount of space back. Messages do not rewrap during the slide. */
+.assistant-panel-sidebar.assistant-sidebar-enter-active,
+.assistant-panel-sidebar.assistant-sidebar-leave-active {
+  transition: margin-right 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+.assistant-panel-sidebar.assistant-sidebar-enter-from,
+.assistant-panel-sidebar.assistant-sidebar-leave-to {
+  margin-right: calc(-1 * var(--assistant-sidebar-width));
+}
+.assistant-panel-sidebar.assistant-panel-compact.assistant-sidebar-enter-active,
+.assistant-panel-sidebar.assistant-panel-compact.assistant-sidebar-leave-active {
+  transition-property: transform;
+}
+.assistant-panel-sidebar.assistant-panel-compact.assistant-sidebar-enter-from,
+.assistant-panel-sidebar.assistant-panel-compact.assistant-sidebar-leave-to {
+  margin-right: 0;
+  transform: translateX(100%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .assistant-panel-sidebar.assistant-sidebar-enter-active,
+  .assistant-panel-sidebar.assistant-sidebar-leave-active { transition: none; }
+}
 .assistant-heading { position: relative; display: flex; flex: 0 0 auto; align-items: center; gap: 3px; min-height: 54px; padding: 8px 16px; background: var(--paper); }
 .assistant-heading h2 { flex: 1; min-width: 0; font-size: 14px; font-weight: 500; margin: 0; }
 .assistant-heading .icon-button { flex: 0 0 30px; width: 30px; height: 30px; border-radius: 6px; color: var(--text-secondary); }
@@ -782,7 +815,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 .assistant-export { display: flex; flex-wrap: wrap; gap: 8px; }
 .assistant-export label { flex-basis: 100%; }
 .assistant-export input { width: 100%; min-width: 0; margin-top: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); background: var(--paper); }
-@media (max-width: 1100px) { .assistant-panel { flex-basis: 360px; width: 360px; } }
+@media (max-width: 1100px) { .assistant-panel { --assistant-sidebar-width: 360px; } }
 @media (max-width: 700px) { .assistant-panel { position: absolute; inset: 0; z-index: 45; width: 100%; border-left: 0; } .assistant-composer-area { margin: 4px 14px 14px; } .assistant-messages { padding-left: 22px; padding-right: 22px; } }
 .assistant-panel-floating { position: fixed; inset: auto 24px 24px auto; z-index: 50; flex: none; width: min(460px, calc(100vw - 32px)); height: min(520px, calc(100dvh - 80px)); border: 1px solid var(--line); border-radius: 24px; box-shadow: 0 4px 8px rgb(0 0 0 / 3%), 0 12px 32px rgb(0 0 0 / 8%); overflow: hidden; }
 .assistant-panel-floating .assistant-heading { min-height: 48px; padding: 8px 12px; cursor: move; touch-action: none; user-select: none; }

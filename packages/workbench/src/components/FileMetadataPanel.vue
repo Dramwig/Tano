@@ -111,6 +111,6 @@ async function save() {
 .file-metadata-scroll { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 24px; }
 .heading { display: flex; justify-content: space-between; align-items: center; }
 dl { display: grid; grid-template-columns: 80px 1fr; gap: 8px; font-size: 13px; } dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; }
-label { display: grid; gap: 6px; margin: 12px 0; } input, textarea { width: 100%; box-sizing: border-box; background: var(--paper); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px; } textarea { font: 13px/1.5 monospace; }
+label { display: grid; gap: 6px; margin: 12px 0; } input, textarea { width: 100%; box-sizing: border-box; background: var(--paper); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px; } textarea { font: 13px/1.5 var(--font-mono); }
 button { padding: 6px 12px; } [role=alert] { color: var(--danger, #b33); overflow-wrap: anywhere; }
 </style>
