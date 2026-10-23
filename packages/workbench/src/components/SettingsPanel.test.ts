@@ -19,6 +19,36 @@ vi.mock('./UpdatePanel.vue', () => ({
 }));
 
 let app: App;
+const tabbed = ref(false);
+const openedTabs: string[] = [];
+
+it('opens the selected settings page as a tab only from the top of the panel', async () => {
+  const main = root.querySelector<HTMLElement>('.settings-main')!;
+  expect(root.querySelector('.settings-open-tab')).not.toBeNull();
+  main.scrollTop = 80;
+  main.dispatchEvent(new Event('scroll'));
+  await nextTick();
+  expect(root.querySelector('.settings-open-tab')).toBeNull();
+  main.scrollTop = 0;
+  main.dispatchEvent(new Event('scroll'));
+  await nextTick();
+  await openPage('快捷键');
+  root.querySelector<HTMLButtonElement>('.settings-open-tab')!.click();
+  expect(openedTabs).toEqual(['shortcuts']);
+});
+
+it('renders tab settings without modal controls or trapping Escape', async () => {
+  tabbed.value = true;
+  await nextTick();
+  expect(root.querySelector('[role="dialog"]')).toBeNull();
+  expect(root.querySelector('[role="region"]')).not.toBeNull();
+  expect(root.querySelector('.settings-close')).toBeNull();
+  const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+  const propagated = vi.fn();
+  root.addEventListener('keydown', propagated, { once: true });
+  root.querySelector('.settings-dialog')!.dispatchEvent(event);
+  expect(propagated).toHaveBeenCalledOnce();
+});
 let root: HTMLDivElement;
 let revealUpdates: boolean[];
 let preferenceUpdates: EditorPreferences[];
@@ -56,6 +86,8 @@ async function openPage(label: string) {
 }
 
 beforeEach(() => {
+  tabbed.value = false;
+  openedTabs.length = 0;
   setUiLocale('zh-CN');
   localStorage.removeItem(helpPreferenceKey);
   revealUpdates = [];
@@ -83,6 +115,9 @@ beforeEach(() => {
   app = createApp(
     defineComponent(() => () =>
       h(SettingsPanel, {
+        tabbed: tabbed.value,
+        canOpenTab: true,
+        'onOpen-tab': (page: string) => openedTabs.push(page),
         workspace: hostWorkspace.value,
         workspaceSettings: workspaceSettings.value,
         'onWorkspace-setting': (workspaceId: string, patch: WorkspaceSettingsPatch) => {

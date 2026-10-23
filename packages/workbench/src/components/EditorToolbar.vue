@@ -655,7 +655,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
     </template>
     <slot name="trailing" />
     <span v-if="(annotation && !source) || assistant || todo" class="toolbar-divider toolbar-group-divider" aria-hidden="true" />
-    <button v-if="todo && !source" type="button" class="icon-button" :aria-label="t('从选区创建 Todo')" :data-tooltip="t('从选区创建 Todo')" :disabled="disabled || !context.textSelected" @mousedown.prevent @click="emit('todo')"><ListTodo :size="17" /></button>
+    <button v-if="todo && !source" type="button" class="icon-button" :aria-label="t('从选区创建任务或事件')" :data-tooltip="t('从选区创建任务或事件')" :disabled="disabled || !context.textSelected" @mousedown.prevent @click="emit('todo')"><ListTodo :size="17" /></button>
     <button
       v-if="annotation && !source"
       type="button"

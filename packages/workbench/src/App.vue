@@ -29,6 +29,7 @@ import {
   Plus,
   FolderPlus,
   FolderOpen,
+  Box,
   PanelLeftOpen,
   FileText,
   X,
@@ -112,9 +113,9 @@ const DocumentComments = defineAsyncComponent(() => import('./components/Documen
 const DocumentSuggestions = loadingComponent(() => import('./components/DocumentSuggestions.vue'), 'document');
 import ReferenceGraphPopover from './components/ReferenceGraphPopover.vue';
 const SelectionTodoDialog = defineAsyncComponent(() => import('./components/SelectionTodoDialog.vue'));
-import { selectionTodoSession } from './selection-todo';
+import { planDocumentSource, selectionTodoSession } from './selection-todo';
 import type { SelectionTodoSession } from './selection-todo';
-import { documentLinks } from '@tano/editor/document-links';
+import { documentLinks, referenceInsertionPoint } from '@tano/editor/document-links';
 import type { CommentAnchor } from '@tano/protocol';
 import { splitFrontmatter, unsupportedMarkdown } from '@tano/editor/syntax';
 import { frontmatterProperties } from '@tano/editor/frontmatter-display';
@@ -189,7 +190,10 @@ import WorkspaceSidebar from './components/WorkspaceSidebar.vue';
 import HelpLauncher from './components/HelpLauncher.vue';
 import type { HelpAvailability, HelpContext } from './help-content';
 import { recordHelpCompleted } from './help-checklist';
-import WorkspaceSwitcher from './components/WorkspaceSwitcher.vue';
+import WorkspaceViewSwitcher from './components/WorkspaceViewSwitcher.vue';
+import { useWorkbenchNavigation, type WorkspaceSidebarView } from './workbench-navigation';
+import { ASSISTANT_TAB_ID, openAssistantPage } from './assistant/navigation';
+const SidebarAssistant = loadingComponent(() => import('./components/SidebarAssistant.vue'));
 import ButtonVisibilityGroup from './components/ButtonVisibilityGroup.vue';
 import InlineAssistantInput from './components/InlineAssistantInput.vue';
 import type { InlineAssistantAnchor } from './components/InlineAssistantInput.vue';
@@ -243,8 +247,6 @@ import {
   SETTINGS_NAVIGATE,
   SETTINGS_STATE,
   closeSettingsWindow,
-  openSettingsWindow,
-  prewarmSettingsWindow,
   settingsWindowLabel,
 } from './settings-window';
 import type { SettingsCommand, SettingsPageId, SettingsSnapshot } from './settings-window';
@@ -302,9 +304,8 @@ const documentationBaseUrl = useWorkbenchRuntime().documentationBaseUrl;
 const extensions = useWorkbenchRuntime().extensions?.() ?? createLocalExtensions();
 const extensionViews = extensions.views ?? [];
 const sidebarNavigationItems = computed(() => [
-  { id: 'repository', get label() { return t('仓库'); } },
+  { id: 'repository', get label() { return t('工作区'); } },
   { id: 'plan', get label() { return t('计划'); } },
-  { id: 'plugin-views', get label() { return t('插件工作台'); } },
   ...extensionViews
     .filter((view) => view.sidebar)
     .map((view) => ({ id: view.id, label: view.label })),
@@ -313,12 +314,11 @@ const sidebarHeaderItems = computed(() => [
   ...extensionViews
     .filter((view) => view.header)
     .map((view) => ({ id: view.id, label: view.label })),
-  { id: 'graph', get label() { return t('关系图谱'); } },
   { id: 'commands', get label() { return t('命令中心'); } },
 ]);
 const repositoryActionItems = computed(() => [
+  ...(store.workspaceSettings.showGraph ? [{ id: 'graph', get label() { return t('关系图谱'); } }] : []),
   { id: 'search', get label() { return t('查找文档'); } },
-  ...(store.workspaceSettings.showPlugins ? [{ id: 'plugins', get label() { return t('插件'); } }] : []),
   { id: 'create', get label() { return t('新建文档'); } },
 ]);
 const documentToolItems = [
@@ -359,7 +359,10 @@ function topbarVisibilityItems(tabId: string, hasDocument: boolean, activePane: 
     ...(hasDocument ? documentToolItems : []),
   ].map((item, index, items) => ({ ...item, separatorBefore: items[index - 1]?.id === 'document-status' }));
 }
-store.registerViews(extensionViews);
+const SETTINGS_TAB_ID = 'view:settings';
+const settingsTabView = { id: SETTINGS_TAB_ID, get label() { return t('设置'); }, icon: Settings2, detachable: true };
+store.registerViews([...extensionViews, settingsTabView, { id: ASSISTANT_TAB_ID, label: t('助手'), icon: Bot }]);
+store.setBeforeWorkspaceChange(async () => { await assistant.settle(); await inlineRunner.settle(); });
 const activeExtensionView = computed(() =>
   extensionViews.find((view) => view.id === store.activeId),
 );
@@ -443,12 +446,47 @@ function openImport() {
 const historyPage = ref<'versions' | 'updates'>('versions');
 const agentPanel = ref(false);
 const recyclePanel = ref(false);
-const sidebarView = ref('repository');
+const navigation = useWorkbenchNavigation(() => store.workspace?.id);
+const { module: navigationModule, workspaceView, sidebarView } = navigation;
+let personalPlanScope: typeof plans.view = 'personal';
+function selectWorkspaceView(id: string) {
+  rememberCalendar();
+  if (navigationModule.value === 'plan') personalPlanScope = plans.view;
+  navigation.selectWorkspaceView(id as WorkspaceSidebarView);
+  restoreCalendar();
+  if (id === 'events') plans.view = 'workspace';
+}
+function selectModule(id: string) {
+  rememberCalendar();
+  if (navigationModule.value === 'plan') personalPlanScope = plans.view;
+  navigation.selectModule(id);
+  restoreCalendar();
+  if (id === 'workspace') {
+    if (workspaceView.value === 'events') plans.view = 'workspace';
+  } else if (id === 'plan') {
+    plans.view = personalPlanScope;
+  }
+  sidebar.value = true;
+}
 watch(() => store.activePluginSidebar, key => { if (key) { sidebarView.value = 'plugin-views'; sidebar.value = true; } });
 watch(() => store.pluginSettingsRequest, request => { if (request) openSettings(request.key); });
 const calendarDate = ref(new Date());
+const sidebarCalendarDate = ref(new Date());
+const calendarScope = ref<typeof plans.view>(plans.view);
 const calendarMode = ref<CalendarViewMode>('week');
 const calendarModeOpen = ref(false);
+const calendarLocations = new Map<string, { date: Date; mode: CalendarViewMode }>();
+function calendarLocationKey() { return navigationModule.value === 'plan' ? 'personal-plan' : store.workspace?.id ?? ''; }
+function rememberCalendar(key?: string) {
+  if (key === undefined && !['workspace', 'plan'].includes(navigationModule.value)) return;
+  calendarLocations.set(key ?? calendarLocationKey(), { date: new Date(sidebarCalendarDate.value), mode: calendarMode.value });
+}
+function restoreCalendar(key?: string) {
+  if (key === undefined && !['workspace', 'plan'].includes(navigationModule.value)) return;
+  key ??= calendarLocationKey();
+  const saved = calendarLocations.get(key);
+  sidebarCalendarDate.value = saved ? new Date(saved.date) : new Date();
+}
 const calendarModeOptions: { mode: CalendarViewMode; label: string }[] = [
   { mode: 'day', get label() { return t('日'); } },
   { mode: 'four-days', get label() { return t('4 天'); } },
@@ -477,13 +515,16 @@ function showCalendarMonth(date: Date) {
   calendarMode.value = 'month';
 }
 function openCalendar(date?: Date) {
-  sidebarView.value = 'plan';
-  if (date) calendarDate.value = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  if (sidebarView.value !== 'events' && navigationModule.value !== 'plan') selectModule('plan');
+  calendarScope.value = plans.view;
+  sidebarCalendarDate.value = date ? new Date(date) : sidebarCalendarDate.value;
+  calendarDate.value = new Date(sidebarCalendarDate.value);
   store.openCalendarTab();
   if (compactPanes.value) sidebar.value = false;
 }
 function openExtensionView(id: string) {
-  sidebarView.value = extensionViews.find((view) => view.id === id)?.sidebar ? id : 'repository';
+  if (navigationModule.value === 'plan') { personalPlanScope = plans.view; rememberCalendar(); }
+  if (extensionViews.find(view => view.id === id)?.sidebar) navigation.selectModule(id);
   store.openViewTab(id);
   if (compactPanes.value) sidebar.value = false;
 }
@@ -496,13 +537,11 @@ const selectedDiff = ref<{
 }>();
 watch(
   () => store.workspace?.id,
-  () => {
+  (id, previous) => {
     agentPanel.value = false;
     selectedDiff.value = undefined;
     recyclePanel.value = false;
-    sidebarView.value = 'repository';
-    calendarDate.value = new Date();
-    calendarMode.value = 'week';
+    if (navigationModule.value === 'workspace') { if (previous) rememberCalendar(previous); restoreCalendar(id); }
     calendarModeOpen.value = false;
     workspaceMenu.value = false;
     settingsPanel.value = false;
@@ -643,12 +682,9 @@ function handlePagePopState() {
   void applyPageRoute(true).catch(store.report);
 }
 
-watch(activeId, (id) => {
-  calendarModeOpen.value = false;
-  if (id === CALENDAR_TAB_ID) sidebarView.value = 'plan';
-  else if (activeExtensionView.value?.sidebar) sidebarView.value = id;
-  else if (extensionViews.some((view) => view.id === sidebarView.value))
-    sidebarView.value = 'repository';
+watch(activeId, id => { calendarModeOpen.value = false; if (id === ASSISTANT_TAB_ID && compactPanes.value) sidebar.value = false; });
+watch(() => [store.activeId, assistant.loading, store.busy] as const, ([id, loading, switching]) => {
+  if (id === ASSISTANT_TAB_ID && !loading && !switching) openAssistantPage(store, assistant);
 });
 const sidebar = ref(!detachedWindow && !compactPanes.value);
 const mainColumn = ref<HTMLElement>();
@@ -1152,7 +1188,7 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
     { id: 'workbench.discussion', category: t('文档'), get label() { return t('发起讨论'); }, keywords: t('文档讨论 评论'), available: editable, run: openDocumentDiscussion },
     { id: 'workbench.sidebar', category: t('视图'), label: sidebar.value ? t('收起侧栏') : t('展开侧栏'), shortcut: shortcuts.value.toggleSidebar, available: !detachedWindow, run: toggleSidebar },
     { id: 'workbench.repository', category: t('工作区'), get label() { return t('打开仓库'); }, available: !detachedWindow, run: () => { sidebar.value = true; sidebarView.value = 'repository'; } },
-    { id: 'workbench.plan', category: t('工作区'), get label() { return t('打开计划'); }, available: !detachedWindow && store.workspaceSettings.showPlan, run: () => { sidebar.value = true; sidebarView.value = 'plan'; } },
+    { id: 'workbench.plan', category: t('工作区'), get label() { return t('打开计划'); }, available: !detachedWindow && store.workspaceSettings.showPlan, run: () => { sidebar.value = true; selectModule('plan'); } },
     { id: 'workbench.calendar', category: t('工作区'), get label() { return t('打开日历'); }, available: store.workspaceSettings.showPlan, run: () => openCalendar() },
     { id: 'workbench.graph', category: t('工作区'), get label() { return t('打开关系图谱'); }, available: store.workspaceSettings.showGraph, run: () => store.openGraphTab() },
     ...store.workspaceViews.map((record) => ({
@@ -1173,7 +1209,16 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
     { id: 'workbench.settings.about', category: t('设置'), get label() { return t('关于同页'); }, run: () => openSettings('about') },
   ];
 });
-const settingsPage = ref<SettingsPageId>('appearance');
+const settingsPage = ref<SettingsPageId>(detachedWindow ? detachedTabRequest()?.settingsPage ?? 'appearance' : 'appearance');
+const settingsHosts = computed(() => [
+  ...(settingsPanel.value ? ['modal'] : []),
+  ...store.panes.filter(pane => pane.activeId === SETTINGS_TAB_ID).map(pane => pane.id),
+]);
+function openSettingsTab(page: SettingsPageId) {
+  settingsPage.value = page;
+  store.openViewTab(SETTINGS_TAB_ID);
+  settingsPanel.value = false;
+}
 watch(defaultSource, (value, previous) => {
   savePreference('defaultSource', value);
   if (!editing.active && !editing.activeBusy)
@@ -1391,9 +1436,13 @@ function beginSelectionTodo(paneId: string, fileId: string) {
     paneSource(fileId) ? paneSourceEditors.get(paneId) : paneEditors.get(paneId)
   )?.captureTodoSelection();
   if (!captured) {
-    store.report(t('请先选择要创建 Todo 的文字'));
+    store.report(t('请先选择要创建任务或事件的文字'));
     return;
   }
+  const sourceSpan = paneSource(fileId)
+    ? paneSourceEditors.get(paneId)?.assistantSelection()?.spans[0]
+    : paneEditors.get(paneId)?.assistantSelection();
+  const location = sourceSpan ? { text: sourceSpan.text, from: sourceSpan.from, to: sourceSpan.to } : { text: captured.text };
   const expected = { id: scope.id, path: scope.path, content: doc.content };
   const source: ReferenceTarget = {
     workspace: scope.id,
@@ -1432,11 +1481,17 @@ function beginSelectionTodo(paneId: string, fileId: string) {
             fileId,
             `${original.content.replace(/\n*$/, '')}\n\n${referenceMarkdown(record.object, record.object.name)}\n`,
           );
-        else if (
-          original.content !== expected.content ||
-          !captured.insert(record.object, record.object.name)
-        )
-          throw new Error(t('原文或选区已变化，任务已保留；可在原文末尾插入引用'));
+        else {
+          if (original.content !== expected.content)
+            throw new Error(t('原文或选区已变化，任务已保留；可在原文末尾插入引用'));
+          if (!captured.insert(record.object, record.object.name)) {
+            const range = assistantSourceRange(original.content, location);
+            if (!range) throw new Error(t('原文或选区已变化，任务已保留；可在原文末尾插入引用'));
+            const point = referenceInsertionPoint(original.content, range.to);
+            const link = `${point.prefix}${referenceMarkdown(record.object, record.object.name)}${point.suffix}`;
+            store.editDocument(fileId, original.content.slice(0, point.at) + link + original.content.slice(point.at));
+          }
+        }
       }
       await nextTick();
       if (!documentLinks(original.content).some((link) => link.target === url))
@@ -1445,7 +1500,7 @@ function beginSelectionTodo(paneId: string, fileId: string) {
       if (original.conflict || original.missing || original.error || store.dirty(original))
         throw new Error(t('任务已保留，原文保存发生冲突或失败，请处理文档提示后重试'));
     },
-  });
+  }, { workspaceName: scope.name, source: { workspaceId: scope.id, fileId: doc.id, selection: location } });
 }
 const paneComments = shallowReactive(new Map<string, InstanceType<typeof DocumentComments>>());
 const commentAnchors = shallowReactive<Record<string, { id: string; anchor: CommentAnchor }[]>>({});
@@ -1672,8 +1727,11 @@ async function openPlanReference(identity: ReferenceIdentity) {
     else store.report(t('个人事项引用目标不可用'));
     return;
   }
+  const source = planDocumentSource(current?.object.properties.documentSource);
   planDetail.value = undefined;
   await openReference(identity);
+  if (source && identity.type === 'document' && identity.id === source.fileId)
+    await revealAssistantSelection(source);
 }
 const assetInput = ref<HTMLInputElement>();
 const assetImportBusy = ref(false);
@@ -1769,7 +1827,7 @@ function revealPendingAssistantSelection() {
   const target = paneSource(pending.tabId) ? paneSourceEditors.get(pending.paneId) : paneEditors.get(pending.paneId);
   if (target?.revealSourceRange(pending)) pendingAssistantReveal = undefined;
 }
-async function revealAssistantSelection(source: AssistantSource) {
+async function revealAssistantSelection(source: Pick<AssistantSource, 'workspaceId' | 'fileId' | 'selection'>) {
   pendingAssistantReveal = undefined;
   if (store.workspace?.id !== source.workspaceId || store.active?.id !== source.fileId) return;
   const range = assistantSourceRange(store.active.content, source.selection);
@@ -3000,6 +3058,7 @@ const transferRollback = new Map<
     created: boolean;
     priorIndex: number;
     priorActive: string;
+    priorSettingsPage?: SettingsPageId;
     undoDock?: () => void;
     timer: ReturnType<typeof setTimeout>;
   }
@@ -3011,6 +3070,7 @@ async function acceptTabTransfer(request: TabTransferRequest) {
   let actualId = request.tabId;
   let created = false;
   const priorActive = store.activeId;
+  const priorSettingsPage = request.tabId === SETTINGS_TAB_ID ? settingsPage.value : undefined;
   const priorIndex = store.tabs.findIndex((tab) => tab.id === request.tabId);
   let undoDock: (() => void) | undefined;
   let error: string | undefined;
@@ -3045,6 +3105,10 @@ async function acceptTabTransfer(request: TabTransferRequest) {
       await store.openDataTable(request.tabId === TABLES_TAB_ID ? undefined : tableFileId(request.tabId));
     } else if (request.tabId.startsWith('workspace-view:')) {
       throw new Error(t('工作区视图暂不支持移到其他窗口'));
+    } else if (request.tabId === SETTINGS_TAB_ID) {
+      created = priorIndex < 0;
+      settingsPage.value = request.settingsPage ?? 'appearance';
+      store.openViewTab(SETTINGS_TAB_ID);
     } else if (extensionViews.some((view) => view.id === request.tabId)) {
       const view = extensionViews.find((view) => view.id === request.tabId)!;
       if (!view.detachable)
@@ -3077,11 +3141,13 @@ async function acceptTabTransfer(request: TabTransferRequest) {
       created,
       priorIndex,
       priorActive,
+      priorSettingsPage,
       undoDock,
       timer,
     });
   } catch (reason) {
     error = String(reason);
+    if (priorSettingsPage !== undefined) settingsPage.value = priorSettingsPage;
     if (created) await store.close(actualId);
     if (store.tabs.some((tab) => tab.id === priorActive)) store.activeId = priorActive;
   }
@@ -3109,6 +3175,7 @@ async function rollbackTabTransfer(request: TabTransferRollback) {
   if (!pending) return;
   transferRollback.delete(request.requestId);
   clearTimeout(pending.timer);
+  if (pending.priorSettingsPage !== undefined) settingsPage.value = pending.priorSettingsPage;
   if (pending.created) await store.close(pending.tabId);
   else if (pending.undoDock) pending.undoDock();
   else if (pending.priorIndex >= 0) store.placeTab(pending.tabId, pending.priorIndex);
@@ -3169,6 +3236,7 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
       const transfer = await requestTabTransfer(dock.targetLabel, {
         workspaceId: workspace.value.id,
         tabId: id,
+        ...(id === SETTINGS_TAB_ID ? { settingsPage: settingsPage.value } : {}),
         index: dock.index,
         drop: dock.drop,
       });
@@ -3185,14 +3253,15 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
       }
       return;
     }
-    const title = tab.graph
+    const title = tab.view ? tab.view.label : tab.graph
       ? t('关系图谱')
       : tab.plugins
         ? t('插件')
         : tab.blank
           ? t('新标签页')
           : basename(tab.path).replace(/\.(md|markdown)$/i, '');
-    const detached = await createDetachedTabWindow(workspace.value.path, id, title, drop);
+    const detached = await createDetachedTabWindow(workspace.value.path, id, title, drop,
+      id === SETTINGS_TAB_ID ? settingsPage.value : undefined);
     await store.close(id);
     if (store.tabs.some((item) => item.id === id)) {
       await detached.destroy();
@@ -3322,16 +3391,13 @@ watch(
 function openSettings(page: SettingsPageId = 'appearance') {
   menu.value = false;
   workspaceMenu.value = false;
-  if (native && !mobile) {
-    requestedSettingsPage = page;
-    void openSettingsWindow(page)
-      .then(() => {
-        settingsWindowVisible = true;
-      })
-      .catch(store.report);
+  settingsPage.value = page === 'preferences' ? 'appearance' : page;
+  const pane = store.panes.find(pane => pane.tabs.includes(SETTINGS_TAB_ID));
+  if (pane) {
+    store.focusPane(pane.id);
+    store.openViewTab(SETTINGS_TAB_ID);
     return;
   }
-  settingsPage.value = page === 'preferences' ? 'appearance' : page;
   settingsPanel.value = true;
 }
 function handleSettingsCommand(command: SettingsCommand) {
@@ -3832,7 +3898,6 @@ let unlistenWatchError: (() => void) | undefined;
 let unlistenTabTransfer: (() => void) | undefined;
 let unlistenTabRollback: (() => void) | undefined;
 let unlistenSettingsCommand: (() => void) | undefined;
-let settingsPrewarmTimer: number | undefined;
 onMounted(async () => {
   window.addEventListener('keydown', handleWorkbenchShortcut, true);
   window.addEventListener('keydown', keydown);
@@ -3894,9 +3959,6 @@ onMounted(async () => {
   }
   if (native && !mobile && !detachedWindow) {
     void updates.initialize();
-    settingsPrewarmTimer = window.setTimeout(() => {
-      void prewarmSettingsWindow().catch(() => {});
-    }, 5000);
   }
   if (native) {
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
@@ -3908,10 +3970,6 @@ onMounted(async () => {
       unlistenClose = await getCurrentWindow().onCloseRequested(async (event) => {
         event.preventDefault();
         if (updates.state.phase === 'installing') return;
-        if (settingsPrewarmTimer !== undefined) {
-          window.clearTimeout(settingsPrewarmTimer);
-          settingsPrewarmTimer = undefined;
-        }
         try {
           if (await store.flush()) {
             await assistant.settle();
@@ -3954,7 +4012,6 @@ onBeforeUnmount(() => {
   unlistenTabTransfer?.();
   unlistenTabRollback?.();
   unlistenSettingsCommand?.();
-  if (settingsPrewarmTimer !== undefined) window.clearTimeout(settingsPrewarmTimer);
   for (const pending of transferRollback.values()) clearTimeout(pending.timer);
   transferRollback.clear();
 });
@@ -3991,7 +4048,7 @@ const helpAvailability = computed<HelpAvailability>(() => ({
   duplicate: !!workspace.value && !workspace.value.readOnly && !!workspaceAdapter.duplicate,
 }));
 const helpBlocked = computed(() => !!(
-  activeExtensionView.value || activeId.value.startsWith('attachment:') ||
+  activeExtensionView.value || activeId.value === SETTINGS_TAB_ID || activeId.value.startsWith('attachment:') ||
   (assistant.opened && assistant.displayMode === 'fullscreen') ||
   busy.value || fatal.value || store.pending || active.value?.conflict || active.value?.error ||
   workspaceMenu.value || menu.value || modal.value || settingsPanel.value ||
@@ -4053,7 +4110,6 @@ const helpBlocked = computed(() => !!(
     </Transition>
     <WorkspaceSidebar
       v-if="workspace && !detachedWindow"
-      :key="workspace.id"
       :open="sidebar"
       :compact="compactPanes"
       :content-element="mainColumn"
@@ -4088,17 +4144,6 @@ const helpBlocked = computed(() => !!(
                 :actions="viewActions[view.id]"
               />
             </template>
-            <button
-              v-if="store.workspaceSettings.showGraph && isVisible('graph')"
-              type="button"
-              class="icon-button"
-              :aria-label="t('打开关系图谱')"
-              :data-tooltip="t('关系图谱')"
-              :aria-pressed="activeId === GRAPH_TAB_ID"
-              @click="store.openGraphTab()"
-            >
-              <GitFork :size="17" :stroke-width="1.6" />
-            </button>
             <button v-if="isVisible('commands')" type="button" class="icon-button" :aria-label="t('打开命令中心')" :data-tooltip="t('命令中心')" :data-tooltip-shortcut="shortcuts.commandPalette" @click="commandPaletteOpened = true"><Search :size="17" /></button>
           </ButtonVisibilityGroup>
         </div>
@@ -4112,14 +4157,14 @@ const helpBlocked = computed(() => !!(
             v-if="isVisible('repository')"
             type="button"
             class="sidebar-navigation-button"
-            :aria-label="t('仓库')"
-            :data-tooltip="t('仓库')"
+            :aria-label="t('工作区')"
+            :data-tooltip="t('工作区')"
             aria-controls="sidebar-repository-panel"
-            :aria-pressed="sidebarView === 'repository'"
-            @click="sidebarView = 'repository'"
+            :aria-pressed="navigationModule === 'workspace'"
+            @click="selectModule('workspace')"
           >
-            <FolderOpen :size="17" :stroke-width="1.8" aria-hidden="true" />
-            <span :aria-hidden="sidebarView !== 'repository'">{{ t('仓库') }}</span>
+            <Box :size="17" :stroke-width="1.8" aria-hidden="true" />
+            <span :aria-hidden="navigationModule !== 'workspace'"><span>{{ t('工作区') }}</span></span>
           </button>
           <button
             v-if="store.workspaceSettings.showPlan && isVisible('plan')"
@@ -4128,11 +4173,11 @@ const helpBlocked = computed(() => !!(
             :aria-label="t('计划')"
             :data-tooltip="t('计划')"
             aria-controls="sidebar-plan-panel"
-            :aria-pressed="sidebarView === 'plan'"
-            @click="openCalendar()"
+            :aria-pressed="navigationModule === 'plan'"
+            @click="selectModule('plan')"
           >
             <CalendarDays :size="18" :stroke-width="1.6" aria-hidden="true" />
-            <span :aria-hidden="sidebarView !== 'plan'">{{ t('计划') }}</span>
+            <span :aria-hidden="navigationModule !== 'plan'"><span>{{ t('计划') }}</span></span>
           </button>
           <template v-for="view in extensionViews" :key="view.id">
             <button
@@ -4143,39 +4188,33 @@ const helpBlocked = computed(() => !!(
               :data-tooltip="view.label"
               :aria-controls="`sidebar-${view.id}`"
               :aria-pressed="sidebarView === view.id"
-              @click="openExtensionView(view.id)"
+              @click="selectModule(view.id)"
             >
               <component :is="view.icon" :size="18" :stroke-width="1.6" aria-hidden="true" />
-              <span :aria-hidden="sidebarView !== view.id">{{ view.label }}</span>
+              <span :aria-hidden="sidebarView !== view.id"><span>{{ view.label }}</span></span>
             </button>
           </template>
-          <button v-if="isVisible('plugin-views') && (store.pluginViews.length || store.pluginCommands.length)" type="button" class="sidebar-navigation-button"
-            :aria-label="t('插件工作台')" :data-tooltip="t('插件工作台')" :aria-pressed="sidebarView === 'plugin-views'" @click="sidebarView = 'plugin-views'">
-            <Puzzle :size="17" /><span :aria-hidden="sidebarView !== 'plugin-views'">{{ t('扩展') }}</span>
-          </button>
         </SidebarNavigation>
         <PluginSidebar v-if="sidebarView === 'plugin-views'" />
-        <div
-          v-show="sidebarView === 'repository'"
-          id="sidebar-repository-panel"
-          class="sidebar-content"
-        >
           <div
-            class="section-label"
+            v-show="navigationModule === 'workspace'"
+            class="section-label sidebar-view-header"
             :class="{ 'drop-target': draggedEntry && dropFolder === '' }"
             @dragover="fileDragOver('', $event)"
             @dragleave="fileDragLeave('', $event)"
             @drop="fileDrop('', $event)"
           >
             <span v-if="draggedEntry">{{ t('放到工作区根目录') }}</span>
-            <WorkspaceSwitcher
+            <WorkspaceViewSwitcher
               v-else
-              :active="sidebar && sidebarView === 'repository' && !workspaceMenu && !modal && !settingsPanel"
+              :model-value="workspaceView"
+              @update:model-value="selectWorkspaceView"
+              :active="sidebar && !workspaceMenu && !modal && !settingsPanel"
               @open="closeButtonVisibilityMenus"
-              @context="openWorkspaceEntryContextMenu"
             />
             <ButtonVisibilityGroup
               v-slot="{ isVisible }"
+              v-show="sidebarView === 'repository'"
               :items="repositoryActionItems"
               :active="sidebar && sidebarView === 'repository'"
               preference-key="tano.preference.repositoryHiddenActions"
@@ -4195,15 +4234,15 @@ const helpBlocked = computed(() => !!(
                 <Search :size="15" :stroke-width="1.6" />
               </button>
               <button
-                v-if="store.workspaceSettings.showPlugins && isVisible('plugins')"
+                v-if="store.workspaceSettings.showGraph && isVisible('graph')"
                 type="button"
                 class="icon-button"
-                :aria-label="t('打开插件标签页')"
-                :data-tooltip="t('工作区插件')"
-                :aria-pressed="activeId === PLUGINS_TAB_ID"
-                @click="store.openPluginsTab()"
+                :aria-label="t('打开关系图谱')"
+                :data-tooltip="t('关系图谱')"
+                :aria-pressed="activeId === GRAPH_TAB_ID"
+                @click="store.openGraphTab()"
               >
-                <Puzzle :size="15" :stroke-width="1.6" />
+                <GitFork :size="15" :stroke-width="1.6" />
               </button>
               <button
                 v-if="isVisible('create')"
@@ -4217,6 +4256,11 @@ const helpBlocked = computed(() => !!(
               </button>
             </ButtonVisibilityGroup>
           </div>
+        <div
+          v-show="sidebarView === 'repository'"
+          id="sidebar-repository-panel"
+          class="sidebar-content"
+        >
           <div
             class="tree-scroll"
             :class="{ 'drop-root': draggedEntry && dropFolder === '' }"
@@ -4258,11 +4302,20 @@ const helpBlocked = computed(() => !!(
             </div>
           </div>
         </div>
+        <section v-if="sidebarView === 'plugins'" class="sidebar-content workspace-plugins-sidebar" :aria-label="t('工作区插件')">
+          <PluginInstaller sidebar @objects="showObjects()" />
+        </section>
+        <section v-if="sidebarView === 'views'" class="sidebar-content workspace-views-sidebar" :aria-label="t('数据库与视图')">
+          <button @click="store.openDataTable()"><Table2 :size="15" />{{ t('数据表') }}</button>
+          <button v-for="record in store.workspaceViews" :key="record.view.id" @click="store.openWorkspaceView(record.view.id)">{{ record.view.name }}</button>
+        </section>
+        <SidebarAssistant v-if="sidebarView === 'assistant'" @open="compactPanes && (sidebar = false)" />
         <SidebarPlan
-          v-show="sidebarView === 'plan'"
-          :active="sidebar && sidebarView === 'plan'"
+          v-show="sidebarView === 'plan' || sidebarView === 'events'"
+          :active="sidebar && (sidebarView === 'plan' || sidebarView === 'events')"
+          :workspace-only="sidebarView === 'events'"
           id="sidebar-plan-panel"
-          :date="calendarDate"
+          :date="sidebarCalendarDate"
           @select-date="openCalendar"
           @select-event="showPlanEvent"
         />
@@ -4905,6 +4958,8 @@ const helpBlocked = computed(() => !!(
             v-if="assistant.available && assistantPanelMounted"
             :compact="compactPanes"
             :fullscreen-target="assistantHosts.get(assistant.fullscreenPaneId ?? '')"
+            :navigation-visible="store.activeId === ASSISTANT_TAB_ID"
+            @show-navigation="sidebar = true"
             @open-reference="openReference"
             @reveal-selection="revealAssistantSelection"
             @open-settings="openSettings('assistant')"
@@ -5017,7 +5072,7 @@ const helpBlocked = computed(() => !!(
                     >{{ t('插件') }}</span
                   ></template
                 ><template
-                  v-for="view in extensionViews.filter((view) => view.id === pane.activeId)"
+                  v-for="view in [...extensionViews, settingsTabView].filter((view) => view.id === pane.activeId)"
                   :key="view.id"
                   ><ChevronRight :size="12" /><component :is="view.icon" :size="14" /><span
                     class="breadcrumb-current"
@@ -5383,6 +5438,7 @@ const helpBlocked = computed(() => !!(
               v-if="workspace && pane.activeId === CALENDAR_TAB_ID"
               :date="calendarDate"
               :mode="calendarMode"
+              :records="plans.recordsFor(calendarScope)"
               @select-mode="selectCalendarMode"
               @visible-month="calendarDate = $event"
               @visible-year="calendarDate = $event"
@@ -5392,6 +5448,7 @@ const helpBlocked = computed(() => !!(
               @select-event="showPlanEvent"
             />
 
+            <main v-if="pane.activeId === ASSISTANT_TAB_ID" class="assistant-page-placeholder"><button @click="openAssistantPage(store, assistant)">{{ t('打开助手') }}</button></main>
             <template v-for="view in extensionViews" :key="view.id">
               <component
                 v-if="pane.activeId === view.id"
@@ -5400,6 +5457,7 @@ const helpBlocked = computed(() => !!(
               />
             </template>
 
+            <div v-if="pane.activeId === SETTINGS_TAB_ID" :id="`settings-host-${pane.id}`" class="settings-tab-host" />
             <PluginView v-if="tab?.pluginView" :view-key="tab.pluginView.key" />
             <main
               v-if="workspace && pane.tabs.includes(PLUGINS_TAB_ID)"
@@ -5477,8 +5535,8 @@ const helpBlocked = computed(() => !!(
                           v-if="showSourceTodo(pane.id, active!)"
                           type="button"
                           class="icon-button"
-                          :aria-label="t('从选区创建 Todo')"
-                          :data-tooltip="t('从选区创建 Todo')"
+                          :aria-label="t('从选区创建任务或事件')"
+                          :data-tooltip="t('从选区创建任务或事件')"
                           @mousedown.prevent
                           @click="beginSelectionTodo(pane.id, active!.id)"
                         >
@@ -5740,6 +5798,7 @@ const helpBlocked = computed(() => !!(
                 pane.activeId !== GRAPH_TAB_ID &&
                 pane.activeId !== PLUGINS_TAB_ID &&
                 pane.activeId !== CALENDAR_TAB_ID &&
+                pane.activeId !== SETTINGS_TAB_ID &&
                 !isTableTab(pane.activeId) &&
                 !tab?.workspaceView &&
                 !tab?.pluginView &&
@@ -6130,8 +6189,12 @@ const helpBlocked = computed(() => !!(
       />
     </template>
     <CommandPalette v-if="commandPaletteOpened && workspace" :commands="workbenchCommands" @close="commandPaletteOpened = false" />
+    <Teleport v-for="host in settingsHosts" :key="host" :to="host === 'modal' ? 'body' : `#settings-host-${host}`" :disabled="host === 'modal'" defer>
     <SettingsPanel
-      v-if="settingsPanel"
+      :tabbed="host !== 'modal'"
+      :can-open-tab="tabsEnabled && !!workspace"
+      @open-tab="openSettingsTab"
+      @page-change="settingsPage = $event"
       :workspace="workspace"
       :extra-pages="extensions.settingsPages"
       :plugin-pages="store.pluginSettingsPages"
@@ -6198,6 +6261,7 @@ const helpBlocked = computed(() => !!(
         <component v-if="extensions.regions['workspace-members-export']" :is="extensions.regions['workspace-members-export']" :workspace="workspace" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" />
       </template>
     </SettingsPanel>
+    </Teleport>
     <div v-if="store.fileMutationPending" class="file-mutation-status" role="status">{{ t('正在同步更改…') }}</div>
     <div v-if="fatal || store.sessionError" class="error-toast" role="alert">
       <AlertTriangle :size="18" /><span>{{ fatal || store.sessionError }}</span

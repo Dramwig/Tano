@@ -37,6 +37,7 @@ export type TabDockReply = {
   hovered?: boolean;
 };
 export type TabTransferRequest = {
+  settingsPage?: string;
   requestId: string;
   sourceLabel: string;
   workspaceId: string;

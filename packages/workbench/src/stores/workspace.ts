@@ -127,10 +127,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const isUtilityTab = (id: string) => isBuiltinTab(id) || views.value.has(id) || pluginViews.value.some(view => view.key === id && view.location === 'tab');
   function registerViews(definitions: readonly WorkbenchViewTab[]) {
     const next = new Map<string, WorkbenchViewTab>();
-    for (const { id, label, icon, detachable, detachBlockedMessage } of definitions) {
+    for (const { id, label, icon, scope, detachable, detachBlockedMessage } of definitions) {
       if (!/^view:[a-z][a-z0-9-]*$/.test(id) || isBuiltinTab(id) || next.has(id) || !label.trim())
         throw new Error(`无效或重复的扩展视图：${id}`);
-      next.set(id, { id, label, icon, detachable, detachBlockedMessage });
+      next.set(id, { id, label, icon, scope, detachable, detachBlockedMessage });
     }
     // Register before session restoration. Refuse to strand an already open view.
     if (tabIds.value.some(id => views.value.has(id) && !next.has(id)))
@@ -991,6 +991,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       `恢复草稿未写入：${String(error)}。文档仍会尝试正常保存。`; },
   );
   let beforeSwitch: (() => Promise<void>) | undefined;
+  let beforeWorkspaceChange: (() => Promise<void>) | undefined;
   let afterSwitch: (() => Promise<void>) | undefined;
   let beforeCloseDocument: ((id: string) => Promise<void>) | undefined;
   let fileOpenRevision = 0;
@@ -1106,6 +1107,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         return;
       }
       await beforeSwitch?.();
+      await beforeWorkspaceChange?.();
       await serial(async () => {
         const previousReady = sessionReady;
         sessionReady = false;
@@ -1125,6 +1127,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           sessionReady = previousReady;
           return;
         }
+        const accountTabs = tabIds.value.filter(id => views.value.get(id)?.scope === 'account');
+        const accountActive = accountTabs.includes(activeId.value) ? activeId.value : undefined;
         stopWatching();
         pluginExecutor.dispose();
         fatal.value = '';
@@ -1209,6 +1213,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
             report(error);
           }
         }
+        if (!detachedTabId) {
+          for (const id of accountTabs) {
+            if (!tabIds.value.includes(id)) tabIds.value.push(id);
+            ensureTabNavigation(id);
+          }
+          if (accountActive) activeId.value = accountActive;
+          touchNavigation();
+        }
         sessionReady = true;
         queueSession();
         if (adapter.recent) recent.value = await adapter.recent();
@@ -1266,6 +1278,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         return false;
       }
       await beforeSwitch?.();
+      await beforeWorkspaceChange?.();
       await serial(async () => {
         assertDeletion();
         const current = workspace.value;
@@ -3038,6 +3051,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     editTableLayout,
     preserveDraft,
     receiveDocument,
+    setBeforeWorkspaceChange: (hook?: () => Promise<void>) => { beforeWorkspaceChange = hook; },
     setDocumentLifecycle: (hooks: {
       beforeSwitch: () => Promise<void>;
       afterSwitch?: () => Promise<void>;

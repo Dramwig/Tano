@@ -20,8 +20,8 @@ import AssistantMessageBody from './AssistantMessageBody.vue';
 
 const assistant = useAssistantStore();
 const workspace = useWorkspaceStore();
-const props = defineProps<{ compact?: boolean; fullscreenTarget?: string | HTMLElement }>();
-const emit = defineEmits<{ openReference: [identity: ReferenceIdentity]; revealSelection: [source: AssistantSource]; openSettings: []; closed: [] }>();
+const props = defineProps<{ compact?: boolean; fullscreenTarget?: string | HTMLElement; navigationVisible?: boolean }>();
+const emit = defineEmits<{ openReference: [identity: ReferenceIdentity]; revealSelection: [source: AssistantSource]; openSettings: []; closed: []; showNavigation: [] }>();
 function afterPanelLeave() {
   if (!assistant.opened) emit('closed');
 }
@@ -429,6 +429,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
   <Transition name="assistant-sidebar" :css="assistant.displayMode === 'sidebar'" appear @after-leave="afterPanelLeave">
   <aside ref="panel" v-show="assistant.opened && (assistant.displayMode !== 'fullscreen' || !!fullscreenTarget)" class="assistant-panel" :class="[`assistant-panel-${assistant.displayMode}`, { 'assistant-panel-compact': compact }]" :style="{ '--assistant-menu-max-height': `${menuMaxHeight}px`, ...floatingStyle }" :inert="!assistant.opened || undefined" :aria-hidden="!assistant.opened || undefined" :aria-label="t('Tano 助手')" @keydown.esc="closePopover(true)" @keydown="menuKey">
     <header class="assistant-heading" @pointerdown="startFloatingGesture" @pointermove="moveFloatingGesture" @pointerup="endFloatingGesture" @pointercancel="endFloatingGesture" @lostpointercapture="endFloatingGesture">
+      <button v-if="compact && navigationVisible && assistant.displayMode === 'fullscreen'" class="icon-button" :aria-label="t('展开侧栏')" @click="emit('showNavigation')"><ArrowLeft :size="17" /></button>
       <button v-if="section !== 'conversation'" class="icon-button" :aria-label="t('返回助手对话')" :data-tooltip="t('返回对话')" @click="section = 'conversation'"><ArrowLeft :size="17" /></button>
       <h2 v-if="section !== 'conversation'">{{ t('会话记录') }}</h2>
       <h2 v-else class="assistant-title-heading">

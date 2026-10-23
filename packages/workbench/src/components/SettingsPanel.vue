@@ -14,6 +14,7 @@ import {
   LogOut,
   Minus,
   Monitor,
+  PanelTop,
   Palette,
   PencilLine,
   Plus,
@@ -66,6 +67,8 @@ const props = defineProps<{
   workspaceDeletionError?: string;
   activeFile?: SettingsPageContext['activeFile'];
   windowed?: boolean;
+  tabbed?: boolean;
+  canOpenTab?: boolean;
   extraPages?: SettingsPage[];
   pluginPages?: PluginSettingsPage[];
   executePlugin?: (interaction: PluginInteraction) => Promise<void>;
@@ -96,6 +99,8 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   close: [];
+  'open-tab': [page: string];
+  'page-change': [page: string];
   'drag-window': [event: MouseEvent];
   'update:defaultSource': [value: boolean];
   'update:theme': [value: ThemePreference];
@@ -160,6 +165,9 @@ const search = ref('');
 const searchInput = ref<HTMLInputElement>();
 const mainContent = ref<HTMLElement>();
 const page = ref<Page>(props.initialPage === 'preferences' ? 'appearance' : props.initialPage ?? 'appearance');
+watch(() => props.initialPage, value => {
+  if (value) page.value = value === 'preferences' ? 'appearance' : value;
+});
 const originalFocus = document.activeElement as HTMLElement | null;
 const pages = [
   {
@@ -328,8 +336,11 @@ watch(search, value => {
 watch(visiblePages, (items) => {
   if (items.length && !items.some((item) => item.id === page.value)) page.value = items[0].id;
 });
+const atTop = ref(true);
 watch(page, () => {
   if (mainContent.value) mainContent.value.scrollTop = 0;
+  atTop.value = true;
+  emit('page-change', page.value);
 });
 onMounted(() => void nextTick(() => searchInput.value?.focus()));
 onBeforeUnmount(() => {
@@ -337,6 +348,7 @@ onBeforeUnmount(() => {
 });
 
 function keydown(event: KeyboardEvent) {
+  if (props.tabbed) return;
   if (event.key === 'Escape') {
     event.stopPropagation();
     emit('close');
@@ -367,11 +379,11 @@ function customFontInput(event: Event) {
 </script>
 
 <template>
-  <div class="modal-backdrop settings-backdrop" :class="{ 'settings-windowed': windowed }" @mousedown.self="!windowed && emit('close')">
+  <div class="modal-backdrop settings-backdrop" :class="{ 'settings-windowed': windowed, 'settings-tabbed': tabbed }" @mousedown.self="!windowed && !tabbed && emit('close')">
     <section
       class="settings-dialog"
-      role="dialog"
-      :aria-modal="!windowed"
+      :role="tabbed ? 'region' : 'dialog'"
+      :aria-modal="!windowed && !tabbed ? true : undefined"
       aria-labelledby="settings-title"
       @keydown="keydown"
     >
@@ -442,6 +454,15 @@ function customFontInput(event: Event) {
       </aside>
 
       <button
+        v-if="canOpenTab && !tabbed && atTop"
+        class="settings-close settings-open-tab"
+        type="button"
+        :aria-label="t('作为标签页打开')"
+        :data-tooltip="t('作为标签页打开')"
+        @click="emit('open-tab', page)"
+      ><PanelTop :size="18" /></button>
+      <button
+        v-if="!tabbed"
         class="settings-close"
         type="button"
         :aria-label="t('关闭设置')"
@@ -450,7 +471,7 @@ function customFontInput(event: Event) {
       >
         <X :size="18" />
       </button>
-      <main ref="mainContent" class="settings-main panel-scrollbar">
+      <main ref="mainContent" class="settings-main panel-scrollbar" @scroll="atTop = ($event.target as HTMLElement).scrollTop <= 0">
         <div v-if="!visiblePages.length" class="settings-content">
           <h2 id="settings-title">{{ t('搜索设置') }}</h2>
           <p class="settings-lead">{{ t('没有找到相关设置，请尝试其他关键词。') }}</p>
@@ -1151,6 +1172,12 @@ function customFontInput(event: Event) {
 </template>
 
 <style>
+.settings-tab-host {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
 .modal-backdrop.settings-backdrop {
   align-items: center;
   padding: 28px;
@@ -1358,6 +1385,26 @@ function customFontInput(event: Event) {
 }
 .settings-close:hover {
   background: var(--hover);
+}
+.settings-open-tab {
+  right: 56px;
+}
+.modal-backdrop.settings-backdrop.settings-tabbed {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  z-index: auto;
+  background: var(--paper);
+  backdrop-filter: none;
+}
+.settings-tabbed .settings-dialog {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 .settings-content {
   max-width: 804px;

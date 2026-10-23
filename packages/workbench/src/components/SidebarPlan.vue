@@ -42,7 +42,7 @@ import { taskReview } from '@tano/protocol';
 import type { WorkspaceObject } from '@tano/protocol';
 import PlanEventContextMenu from './PlanEventContextMenu.vue';
 
-const props = withDefaults(defineProps<{ date: Date; active?: boolean }>(), { active: true });
+const props = withDefaults(defineProps<{ date: Date; active?: boolean; workspaceOnly?: boolean }>(), { active: true });
 const listRoot = ref<HTMLElement>();
 let listMotion: ReturnType<typeof createPlanListMotion> | undefined;
 onBeforeUpdate(() => listMotion?.capture());
@@ -61,7 +61,7 @@ const viewMenu = ref<HTMLElement>();
 const viewMenuPosition = ref({ left: '0px', top: '0px' });
 const viewOpen = ref(false);
 watch(() => props.active, (active) => { if (!active) viewOpen.value = false; });
-const viewLabel = computed(() => ({ workspace: t('工作区'), personal: t('个人'), all: t('全部') })[plans.view]);
+const viewLabel = computed(() => ({ workspace: t('工作区'), personal: t('个人'), all: t('个人 + 当前工作区') })[plans.view]);
 const personalIssue = computed(() => !!plans.loadError || !!plans.errors.length);
 const personalIssueTitle = computed(() => plans.requiresDesktopRestart ? t('个人计划需更新桌面程序') : t('个人计划暂时无法读取'));
 const personalConnectionCount = computed(() => sync.connections.filter(c => c.scope === 'personal').length);
@@ -553,7 +553,7 @@ onBeforeUnmount(() => {
     <div ref="viewPicker" class="sidebar-calendar-heading">
       <div class="sidebar-calendar-month">
         <span :title="monthTitle"><template v-if="uiLocale === 'en-US'">{{ month.toLocaleDateString(uiLocale, { month: 'short', year: 'numeric' }) }}</template><template v-else><span class="sidebar-calendar-year">{{ month.getFullYear() }} 年 </span>{{ month.getMonth() + 1 }} 月</template></span>
-        <button ref="viewTrigger" type="button" class="plan-view-trigger" :aria-label="t('计划范围')" aria-haspopup="menu" aria-controls="plan-view-menu" :aria-expanded="viewOpen" :data-tooltip="viewOptions.find(option => option.value === plans.view)?.detail" @click="toggleViewMenu" @keydown.down.prevent="viewOpen || toggleViewMenu()">
+        <button ref="viewTrigger" type="button" class="plan-view-trigger" :disabled="workspaceOnly" :aria-label="t('计划范围')" aria-haspopup="menu" aria-controls="plan-view-menu" :aria-expanded="viewOpen" :data-tooltip="viewOptions.find(option => option.value === plans.view)?.detail" @click="toggleViewMenu" @keydown.down.prevent="workspaceOnly || viewOpen || toggleViewMenu()">
           <span>{{ viewLabel }}</span><ChevronDown :size="12" aria-hidden="true" />
         </button>
         <button type="button" class="sidebar-calendar-today" :aria-label="t('回到今天')" @click="goToToday">{{ t('今天') }}</button>

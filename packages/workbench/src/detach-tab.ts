@@ -32,7 +32,7 @@ export function detachedTabRequest() {
   const workspacePath = query.get('workspacePath');
   const opener = query.get('opener');
   return tabId && workspacePath && opener && getCurrentWindow().label.startsWith('detached-')
-    ? { tabId, workspacePath, opener }
+    ? { tabId, workspacePath, opener, settingsPage: query.get('settingsPage') ?? undefined }
     : null;
 }
 
@@ -50,6 +50,7 @@ export async function createDetachedTabWindow(
   tabId: string,
   title: string,
   drop?: DetachedDropPoint,
+  settingsPage?: string,
 ) {
   const label = `detached-${crypto.randomUUID()}`;
   const query = new URLSearchParams({
@@ -57,6 +58,7 @@ export async function createDetachedTabWindow(
     workspacePath,
     opener: getCurrentWindow().label,
   });
+  if (tabId === 'view:settings' && settingsPage) query.set('settingsPage', settingsPage);
   const url = `index.html?${query.toString()}`;
   const width = 1100;
   const height = 760;

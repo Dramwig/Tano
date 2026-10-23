@@ -1,5 +1,16 @@
 /** English UI messages. Chinese source messages are the default locale. */
 export const englishMessages: Readonly<Record<string, string>> = {
+  "助手": "Assistant",
+  "打开助手": "Open assistant",
+  "工作区助手": "Workspace assistant",
+  "新会话": "New conversation",
+  "正在读取会话…": "Loading conversations…",
+  "暂无会话": "No conversations yet",
+  "数据库与视图": "Databases and views",
+  '切换侧边栏视图：{0}': 'Switch sidebar view: {0}',
+  '侧边栏视图': 'Sidebar views',
+  '事件与任务': 'Events and tasks',
+  "作为标签页打开": "Open as tab",
   "全部工作区": "All workspaces",
   "最近访问": "Recently visited",
   "归我所有": "Owned by me",
@@ -2696,5 +2707,13 @@ export const englishMessages: Readonly<Record<string, string>> = {
   "修改保留在本机，连接恢复后继续同步。": "Changes are retained on this device and will sync when the connection returns.",
   "正在连接并同步当前文章。": "Connecting and syncing this document.",
   "正在提交文章修改，等待云端确认保存。": "Sending changes and waiting for cloud save confirmation.",
-  "当前文章已同步到云端。": "This document is synced to the cloud."
+  "当前文章已同步到云端。": "This document is synced to the cloud." ,
+  "从选区创建任务或事件": "Create task or event from selection" ,
+  "请先选择要创建任务或事件的文字": "Select text to create a task or event" ,
+  "创建任务或事件": "Create task or event" ,
+  "关闭创建事项": "Close item creation" ,
+  "事项已创建，原文引用尚未保存。": "Item created; the source reference has not been saved." ,
+  "打开事项": "Open item" ,
+  "归属工作区：{0}": "Workspace: {0}" ,
+  "返回原文选区": "Return to source selection"
 };

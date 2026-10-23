@@ -666,6 +666,29 @@ describe('workspace file reconciliation', () => {
     expect(closeHook).not.toHaveBeenCalled();
     expect([...backend.files]).toEqual(filesBefore);
   });
+  it('carries account views across workspaces but not workspace content or assistant tabs', async () => {
+    const account = { ...extensionView, id: 'view:account', scope: 'account' as const };
+    store.registerViews([extensionView, account]);
+    store.openViewTab(extensionView.id);
+    store.openViewTab(account.id);
+    vi.spyOn(backend, 'open').mockResolvedValue({ ...(await backend.refresh()), id: 'second', path: 'second', files: [] });
+    vi.spyOn(backend, 'loadSession').mockResolvedValue(null);
+    await store.openWorkspace('second');
+    expect(store.activeId).toBe(account.id);
+    expect(store.tabs.map(tab => tab.id)).toEqual([account.id]);
+    expect(store.documents).toEqual([]);
+  });
+  it('settles workspace execution before opening another workspace and preserves the current page on failure', async () => {
+    store.registerViews([{ ...extensionView, scope: 'account' }]);
+    store.openViewTab(extensionView.id);
+    const order: string[] = [];
+    store.setBeforeWorkspaceChange(async () => { order.push('settle'); });
+    vi.spyOn(backend, 'open').mockImplementation(async () => { order.push('open'); throw new Error('offline'); });
+    await store.openWorkspace('second');
+    expect(order).toEqual(['settle', 'open']);
+    expect(store.workspace?.id).toBe('test');
+    expect(store.activeId).toBe(extensionView.id);
+  });
   it('drops unavailable extension tabs on restore and keeps documents usable in the local product', async () => {
     store.registerViews([extensionView]);
     store.openViewTab(extensionView.id);

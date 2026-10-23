@@ -193,6 +193,19 @@ it('keeps detached windows from replacing the main window startup selection', as
   expect(readStartupWorkspace()).toBe(lastWorkspace.id);
 });
 
+it('opens a detached settings tab without restoring the main window document tabs', async () => {
+  rememberStartupWorkspace(lastWorkspace.id);
+  window.history.replaceState(null, '', `/?detachedTab=view:settings&workspacePath=${encodeURIComponent(olderWorkspace.path)}&settingsPage=shortcuts`);
+  const adapter = localWorkspace();
+  store.registerViews([{ id: 'view:settings', label: '设置', icon: {}, detachable: true }]);
+  await store.initialize();
+  expect(adapter.open).toHaveBeenCalledExactlyOnceWith(olderWorkspace.path);
+  expect(store.tabs.map(tab => tab.id)).toEqual(['view:settings']);
+  expect(store.activeId).toBe('view:settings');
+  expect(store.active).toBeUndefined();
+  expect(readStartupWorkspace()).toBe(lastWorkspace.id);
+});
+
 it('recovers invalid device preferences through recent history', async () => {
   localStorage.setItem(startupWorkspaceKey, '{broken');
   const adapter = localWorkspace();

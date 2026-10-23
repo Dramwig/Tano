@@ -46,6 +46,8 @@ export interface WorkbenchViewTab {
   id: string;
   label: string;
   icon: Component;
+  /** Account views keep their tab identity across workspace switches. */
+  scope?: 'account' | 'workspace';
   /** Window-local views cannot be transferred unless the overlay explicitly supports it. */
   detachable?: boolean;
   detachBlockedMessage?: string;
