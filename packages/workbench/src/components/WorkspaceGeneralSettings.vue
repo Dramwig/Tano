@@ -84,7 +84,7 @@ const sidebarOptions = [
   { key: 'showPlan', get label() { return t('显示计划'); }, get description() { return t('在侧栏显示计划与日历入口。'); } },
   { key: 'showGraph', get label() { return t('显示关系图谱'); }, get description() { return t('在侧栏顶部显示关系图谱入口。'); } },
   { key: 'showPlugins', get label() { return t('显示插件'); }, get description() { return t('在侧栏顶部显示插件管理入口。'); } },
-  { key: 'showCollaborationViews', get label() { return t('显示协作应用'); }, get description() { return t('在在线工作区侧栏显示聊天、收件箱等协作入口。'); } },
+  { key: 'showCollaborationViews', get label() { return t('显示协作应用'); }, get description() { return t('在侧栏显示聊天等协作入口，不影响账户收件箱。'); } },
 ] as const;
 </script>
 

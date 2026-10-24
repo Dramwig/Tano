@@ -11,6 +11,7 @@ for (const kind of ['task', 'event']) test(`selection creates ${kind} and return
   await page.keyboard.press('Control+a');
   await page.keyboard.type('Follow up the meeting');
   await page.keyboard.press('Control+a');
+  await page.getByRole('button', { name: '更多格式', exact: true }).click();
   await page.getByRole('button', { name: '从选区创建任务或事件', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '从选区创建任务或事件', exact: true });
   await expect(dialog).toContainText('归属工作区：');

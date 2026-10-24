@@ -60,6 +60,19 @@ it('explains that local deletion only removes registration and confirms without 
   root.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }));
   expect(remove).toHaveBeenCalledWith('workspace-one');
 });
+it.each(['local', 'web'] as const)('preserves confirmation across equivalent workspace refreshes in %s mode', async mode => {
+  const { props, remove } = mount(true, mode);
+  button('删除当前工作区').click(); await nextTick();
+  if (mode === 'web') await typeName('我的');
+  for (let refresh = 0; refresh < 3; refresh++) {
+    props.workspace = { ...props.workspace };
+    await nextTick();
+    expect(root.querySelector('form')).not.toBeNull();
+    if (mode === 'web') expect(root.querySelector('input')!.value).toBe('我的');
+  }
+  expect(remove).not.toHaveBeenCalled();
+});
+
 it('discards confirmation when the workspace changes, and keeps service errors visible for retry', async () => {
   const { props, remove } = mount();
   button('删除当前工作区').click(); await nextTick();

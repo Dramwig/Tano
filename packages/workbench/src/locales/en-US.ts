@@ -1,5 +1,10 @@
 /** English UI messages. Chinese source messages are the default locale. */
 export const englishMessages: Readonly<Record<string, string>> = {
+  '渲染示例': 'Rendering example',
+  '语法示例': 'Syntax example',
+  '显示示例': 'Rendered example',
+  '开始': 'Start',
+  '注释': 'Comment',
   '主页': 'Home',
   '导航': 'Navigation',
   '切换到主页': 'Go to Home',
@@ -2062,7 +2067,7 @@ export const englishMessages: Readonly<Record<string, string>> = {
   "选区符号包裹": "Wrap selection with symbols",
   "输入符号包裹选区": "Type symbols to wrap selection",
   "选中文字后输入符号，自动补齐两端。可视化与源码模式通用。": "Type a symbol around selected text to complete both ends. Works in visual and source modes.",
-  "设置仅影响当前设备。扩展语法默认关闭，其他 Markdown 应用可能不支持。": "Settings affect this device only. Extended syntax is off by default and may not work in other Markdown apps.",
+  "选区包裹仅影响当前设备，扩展语法的包裹默认关闭。正文显示由工作区「文档能力」控制，其他 Markdown 应用可能不支持。": "Selection wrapping affects this device only; extension wrapping is off by default. Workspace Document capabilities control rendering. Other Markdown apps may not support these extensions.",
   "内容显示": "Content display",
   "正文自动间距": "Automatic text spacing",
   "在中文与英文、数字、行内公式及引用之间自动留白，仅影响显示，不修改原文。": "Add visual spacing between Chinese text and Latin letters, numbers, inline math, and references without changing the original text.",
@@ -2352,6 +2357,7 @@ export const englishMessages: Readonly<Record<string, string>> = {
   "在侧栏顶部显示插件管理入口。": "Show plugin management at the top of the sidebar.",
   "显示协作应用": "Show collaboration apps",
   "在在线工作区侧栏显示聊天、收件箱等协作入口。": "Show collaboration entries such as chat and inbox in online workspace sidebars.",
+  "在侧栏显示聊天等协作入口，不影响账户收件箱。": "Show collaboration entries such as chat in the sidebar. The account inbox remains available.",
   "图标类型": "Icon type",
   "筛选图标": "Filter icons",
   "筛选…": "Filter…",

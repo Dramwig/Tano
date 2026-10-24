@@ -47,7 +47,7 @@ const { drag, start, cancel } = useToolbarDrag(
     void changeMode(mode);
   },
   focusEditor,
-  () => { handleMenuOpen.value = true; },
+  () => { handleMenuOpen.value = !handleMenuOpen.value; },
 );
 const previewPanel = ref<HTMLElement>();
 const previewStatus = computed(() => {
@@ -107,9 +107,11 @@ watch(
   { flush: 'post' },
 );
 function startDrag(event: PointerEvent) {
-  handleMenuOpen.value = false;
   start(event);
 }
+watch(drag, (value) => {
+  if (value) handleMenuOpen.value = false;
+});
 watch(
   () => [props.mode, props.source, props.disabled, props.editorElement],
   () => {

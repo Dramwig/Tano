@@ -30,7 +30,6 @@ import {
   Plus,
   FolderPlus,
   FolderOpen,
-  Box,
   PanelLeftOpen,
   FileText,
   X,
@@ -305,7 +304,6 @@ const documentationBaseUrl = useWorkbenchRuntime().documentationBaseUrl;
 const extensions = useWorkbenchRuntime().extensions?.() ?? createLocalExtensions();
 const extensionViews = extensions.views ?? [];
 const sidebarNavigationItems = computed(() => [
-  ...(navigationContext.value === 'workspace' ? [{ id: 'repository', label: t('工作区') }] : []),
   { id: 'plan', get label() { return t('计划'); } },
   ...extensionViews
     .filter((view) => view.sidebar)
@@ -453,6 +451,10 @@ const navigation = useWorkbenchNavigation(() => store.workspace?.id, detachedWin
 });
 const { context: navigationContext, module: navigationModule, workspaceView, sidebarView } = navigation;
 let personalPlanScope: typeof plans.view = 'all';
+// Migrate the former workspace plan mode to the workspace view switcher.
+watch([navigationContext, navigationModule], ([context, module]) => {
+  if (context === 'workspace' && module === 'plan') navigation.selectWorkspaceView('events');
+}, { immediate: true });
 function selectContext(context: 'home' | 'workspace') {
   rememberCalendar();
   if (navigationContext.value === 'home') personalPlanScope = plans.view;
@@ -472,7 +474,8 @@ function selectWorkspaceView(id: string) {
 function selectModule(id: string) {
   rememberCalendar();
   if (navigationContext.value === 'home') personalPlanScope = plans.view;
-  navigation.selectModule(id);
+  if (id === 'plan' && navigationContext.value === 'workspace') navigation.selectWorkspaceView('events');
+  else navigation.selectModule(id);
   restoreCalendar();
   plans.view = navigationContext.value === 'home' ? personalPlanScope : 'workspace';
   sidebar.value = true;
@@ -1208,6 +1211,7 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
     { id: 'workbench.sidebar', category: t('视图'), label: sidebar.value ? t('收起侧栏') : t('展开侧栏'), shortcut: shortcuts.value.toggleSidebar, available: !detachedWindow, run: toggleSidebar },
     { id: 'workbench.home', category: t('导航'), get label() { return t('切换到主页'); }, available: !detachedWindow, run: () => { selectContext('home'); sidebar.value = true; } },
     { id: 'workbench.switch-workspace', category: t('导航'), get label() { return t('切换工作区'); }, available: !detachedWindow, run: () => { sidebar.value = true; toggleWorkspaceMenu(); } },
+    ...(extensions.commands ?? []),
     { id: 'workbench.repository', category: t('工作区'), get label() { return t('打开仓库'); }, available: !detachedWindow, run: () => { sidebar.value = true; sidebarView.value = 'repository'; } },
     { id: 'workbench.plan', category: t('工作区'), get label() { return t('打开计划'); }, available: !detachedWindow && store.workspaceSettings.showPlan, run: () => { sidebar.value = true; selectModule('plan'); } },
     { id: 'workbench.calendar', category: t('工作区'), get label() { return t('打开日历'); }, available: store.workspaceSettings.showPlan, run: () => openCalendar() },
@@ -1226,16 +1230,19 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
     { id: 'workbench.settings', category: t('设置'), get label() { return t('外观设置'); }, keywords: t('打开设置'), run: () => openSettings() },
     { id: 'workbench.settings.editing', category: t('设置'), get label() { return t('编辑设置'); }, run: () => openSettings('editing') },
     { id: 'workbench.settings.shortcuts', category: t('设置'), get label() { return t('快捷键'); }, run: () => openSettings('shortcuts') },
-    { id: 'workbench.settings.workspace', category: t('设置'), get label() { return t('工作区设置'); }, run: () => openSettings('workspace') },
+    { id: 'workbench.settings.workspace', category: t('设置'), get label() { return t('工作区设置'); }, available: navigationContext.value === 'workspace' && !!workspace.value, run: () => openSettings('workspace') },
     { id: 'workbench.settings.about', category: t('设置'), get label() { return t('关于同页'); }, run: () => openSettings('about') },
   ];
 });
 const settingsPage = ref<SettingsPageId>(detachedWindow ? detachedTabRequest()?.settingsPage ?? 'appearance' : 'appearance');
+// A loaded workspace keeps its session, but only the workspace navigation owns its settings.
+const settingsWorkspace = computed(() => navigationContext.value === 'workspace' ? workspace.value : null);
 const settingsHosts = computed(() => [
   ...(settingsPanel.value ? ['modal'] : []),
   ...store.panes.filter(pane => pane.activeId === SETTINGS_TAB_ID).map(pane => pane.id),
 ]);
 function openSettingsTab(page: SettingsPageId) {
+  if (!settingsWorkspace.value) return;
   settingsPage.value = page;
   store.openViewTab(SETTINGS_TAB_ID);
   settingsPanel.value = false;
@@ -1244,7 +1251,7 @@ const openingSettingsWindow = ref(false);
 let settingsPanelMountedResolve!: () => void;
 const settingsPanelMounted = new Promise<void>(resolve => { settingsPanelMountedResolve = resolve; });
 async function openSettingsInNewWindow(page: SettingsPageId) {
-  if (!native || mobile || !tabsEnabled || !workspace.value || openingSettingsWindow.value) return;
+  if (!native || mobile || !tabsEnabled || openingSettingsWindow.value) return;
   openingSettingsWindow.value = true;
   settingsPage.value = page;
   settingsPanel.value = false;
@@ -3367,20 +3374,20 @@ async function exportWorkspace(workspaceId: string) {
   } finally { workspaceExporting.value = false; }
 }
 const settingsSnapshot = computed<SettingsSnapshot>(() => ({
-  pluginPages: store.pluginSettingsPages,
-  workspace: workspace.value
+  pluginPages: settingsWorkspace.value ? store.pluginSettingsPages : [],
+  workspace: settingsWorkspace.value
     ? {
-        id: workspace.value.id,
-        name: workspace.value.name,
-        path: workspace.value.path,
-        readOnly: workspace.value.readOnly,
-        canDelete: workspace.value.canDelete,
-        canManageSettings: workspace.value.canManageSettings,
+        id: settingsWorkspace.value.id,
+        name: settingsWorkspace.value.name,
+        path: settingsWorkspace.value.path,
+        readOnly: settingsWorkspace.value.readOnly,
+        canDelete: settingsWorkspace.value.canDelete,
+        canManageSettings: settingsWorkspace.value.canManageSettings,
       }
     : null,
-  activeFile: store.active ? { id: store.active.id, path: store.active.path } : null,
+  activeFile: settingsWorkspace.value && store.active ? { id: store.active.id, path: store.active.path } : null,
   workspaceSettings: store.workspaceSettings,
-  workspacePages: workspace.value?.files.filter(file => file.kind === 'file' && isMarkdown(file.path) && !isWorkspaceInternalPath(file.path)).map(file => ({ id: file.id, path: file.path })) ?? [],
+  workspacePages: settingsWorkspace.value?.files.filter(file => file.kind === 'file' && isMarkdown(file.path) && !isWorkspaceInternalPath(file.path)).map(file => ({ id: file.id, path: file.path })) ?? [],
   workspaceSettingsError: store.workspaceSettingsError,
   workspaceSettingsSaving: store.workspaceSettingsSaving,
   workspaceExporting: workspaceExporting.value,
@@ -3441,7 +3448,7 @@ function openSettings(page: SettingsPageId = 'appearance') {
   menu.value = false;
   workspaceMenu.value = false;
   settingsPage.value = page === 'preferences' ? 'appearance' : page;
-  const pane = store.panes.find(pane => pane.tabs.includes(SETTINGS_TAB_ID));
+  const pane = settingsWorkspace.value && store.panes.find(pane => pane.tabs.includes(SETTINGS_TAB_ID));
   if (pane) {
     store.focusPane(pane.id);
     store.openViewTab(SETTINGS_TAB_ID);
@@ -3450,6 +3457,7 @@ function openSettings(page: SettingsPageId = 'appearance') {
   settingsPanel.value = true;
 }
 function handleSettingsCommand(command: SettingsCommand) {
+  if (!settingsWorkspace.value && ['workspace-delete', 'workspace-setting', 'workspace-settings-reload', 'workspace-export', 'capability'].includes(command.type)) return;
   if (command.type === 'plugin-invoke') {
     void store.interactWithPlugin(command.interaction).then(
       () => emitTo(settingsWindowLabel(), SETTINGS_PLUGIN_RESULT, { requestId: command.requestId }),
@@ -3550,6 +3558,7 @@ function handleSettingsCommand(command: SettingsCommand) {
 function settingsAction(
   action: 'open-folder' | 'switch-mode' | 'reveal' | 'agent' | 'history' | 'recycle' | 'sign-out',
 ) {
+  if (!settingsWorkspace.value && ['reveal', 'agent', 'history', 'recycle'].includes(action)) return;
   settingsPanel.value = false;
   if (action === 'open-folder') void store.openWorkspace();
   else if (action === 'reveal') void store.reveal();
@@ -4199,7 +4208,7 @@ const helpBlocked = computed(() => !!(
             <template v-for="view in extensionViews" :key="`header-${view.id}`">
               <component
                 :is="view.header"
-                v-if="store.workspaceSettings.showCollaborationViews && view.header && isVisible(view.id)"
+                v-if="(view.scope === 'account' || store.workspaceSettings.showCollaborationViews) && view.header && isVisible(view.id)"
                 :actions="viewActions[view.id]"
               />
             </template>
@@ -4207,26 +4216,13 @@ const helpBlocked = computed(() => !!(
           </ButtonVisibilityGroup>
         </div>
         <SidebarNavigation
+          v-if="navigationContext === 'home'"
           v-slot="{ isVisible }"
           :items="sidebarNavigationItems"
           :active="sidebar"
           @open="closeButtonVisibilityMenus"
         >
           <button
-            v-if="navigationContext === 'workspace' && isVisible('repository')"
-            type="button"
-            class="sidebar-navigation-button"
-            :aria-label="t('工作区')"
-            :data-tooltip="t('工作区')"
-            aria-controls="sidebar-repository-panel"
-            :aria-pressed="navigationModule === 'workspace'"
-            @click="selectModule('workspace')"
-          >
-            <Box :size="17" :stroke-width="1.8" aria-hidden="true" />
-            <span :aria-hidden="navigationModule !== 'workspace'"><span>{{ t('工作区') }}</span></span>
-          </button>
-          <button
-            v-if="navigationContext === 'home' || (store.workspaceSettings.showPlan && isVisible('plan'))"
             type="button"
             class="sidebar-navigation-button"
             :aria-label="t('计划')"
@@ -5715,7 +5711,7 @@ const helpBlocked = computed(() => !!(
                         @enter="insertBlockBelowTitle"
                         @comment="paneComments.get(pane.id)?.showDiscussion()"
                       />
-                      <SourceEditor :preferences="editorPreferences" :suggestion-marks="suggestions.sourceMarks"
+                      <SourceEditor :capabilities="store.capabilities" :preferences="editorPreferences" :suggestion-marks="suggestions.sourceMarks"
                         :show-all-line-numbers="showAllLineNumbers"
                         v-if="paneSource(pane.activeId)"
                         :key="active.id"
@@ -6224,15 +6220,15 @@ const helpBlocked = computed(() => !!(
     <SettingsPanel
       @vue:mounted="settingsPanelMountedResolve()"
       :tabbed="host !== 'modal'"
-      :can-open-tab="tabsEnabled && !!workspace"
-      :can-open-window="native && !mobile && tabsEnabled && !!workspace"
+      :can-open-tab="tabsEnabled && !!settingsWorkspace"
+      :can-open-window="native && !mobile && tabsEnabled"
       :opening-window="openingSettingsWindow"
       @open-tab="openSettingsTab"
       @open-window="openSettingsInNewWindow"
       @page-change="settingsPage = $event"
-      :workspace="workspace"
+      :workspace="settingsSnapshot.workspace"
       :extra-pages="extensions.settingsPages"
-      :plugin-pages="store.pluginSettingsPages"
+      :plugin-pages="settingsSnapshot.pluginPages"
       :execute-plugin="store.interactWithPlugin"
       :workspace-settings="store.workspaceSettings"
       :workspace-pages="settingsSnapshot.workspacePages"

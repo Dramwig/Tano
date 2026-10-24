@@ -37,7 +37,7 @@ test('selection wrappers share persistent settings across source and rich editin
   };
   await openSettings();
   await expect(rich.locator('strong')).toHaveText('文字');
-  await page.getByRole('switch', { name: '高亮', exact: true }).click();
+  await expect(page.getByRole('switch', { name: '高亮', exact: true })).not.toBeChecked();
   await page.getByRole('switch', { name: '上标（扩展）', exact: true }).click();
   await expect(page.getByRole('switch', { name: '中文 ￥ 映射为 $', exact: true })).not.toBeChecked();
   await page.getByRole('switch', { name: '中文 ￥ 映射为 $', exact: true }).click();

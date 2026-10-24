@@ -40,6 +40,7 @@ export interface SettingsPageContext {
 export interface SettingsPage {
   id: string; label: string; group: string; terms: string; component: Component;
   icon?: Component;
+  isVisible?: (context: SettingsPageContext) => boolean;
 }
 /** Only this metadata enters the tab store; components and business state stay in the overlay. */
 export interface WorkbenchViewTab {
@@ -72,6 +73,7 @@ export interface WorkbenchObjectDetailsProps {
   disabled: boolean;
 }
 export interface WorkbenchExtensions {
+  commands?: import('./command-palette').WorkbenchCommand[];
   editing: EditingSession;
   /** Per-document persistence state, supplied by hosts that synchronize content. */
   documentStatus?(id: string): DocumentSyncStatus | undefined;

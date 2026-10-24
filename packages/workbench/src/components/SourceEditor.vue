@@ -22,8 +22,8 @@ import { sourceStyleRanges } from '@tano/editor/source-highlight';
 import type { ModeSelection } from '@tano/editor/mode-selection';
 import { splitFrontmatter } from '@tano/editor/syntax';
 import { referenceInsertionPoint } from '@tano/editor/document-links';
-import { selectionWrap } from '@tano/editor/runtime';
-import type { EditorPreferences } from '@tano/editor/runtime';
+import { selectionWrap, workspaceWrapping } from '@tano/editor/runtime';
+import type { EditorPreferences, WorkspaceCapabilities } from '@tano/editor/runtime';
 import { textSearchRanges } from '@tano/editor/search';
 
 const setPageSearch = StateEffect.define<{ query: string; index: number }>();
@@ -60,6 +60,7 @@ const props = defineProps<{
   contentRevision?: string;
   showAllLineNumbers?: boolean;
   preferences?: EditorPreferences;
+  capabilities?: WorkspaceCapabilities;
   readonly: boolean;
   localNative: boolean;
   commentAnchors?: readonly { id: string; anchor: CommentAnchor }[];
@@ -106,7 +107,7 @@ const sourceStyles = StateField.define({
 });
 
 function decorations(markdown: string) {
-  const ranges = sourceStyleRanges(markdown).flatMap(({ from, to, style }) => {
+  const ranges = sourceStyleRanges(markdown, props.capabilities?.features).flatMap(({ from, to, style }) => {
     const marks = [Decoration.mark({ class: `cm-source-${style}` }).range(from, to)];
     if (style.startsWith('heading-')) {
       const lineStart = markdown.lastIndexOf('\n', from - 1) + 1;
@@ -142,6 +143,7 @@ class DeletedSuggestion extends WidgetType {
   ignoreEvent() { return false; }
 }
 watch(() => props.suggestionMarks, () => view?.dispatch({ effects: refreshCommentMarks.of() }));
+watch(() => props.capabilities, () => view?.dispatch({ effects: refreshCommentMarks.of() }), { deep: true });
 
 function fileHandler(event: Event, files: FileList | null | undefined, requireImage: boolean) {
   if (!props.localNative || props.readonly) return false;
@@ -174,7 +176,7 @@ function wrapSourceSelection(current: EditorView, text: string) {
   const source = current.state.doc.toString();
   if (sourceStyleRanges(source).some(range => ['code', 'math', 'frontmatter', 'html'].includes(range.style) &&
       range.from < selection.to && range.to > selection.from)) return false;
-  const wrap = selectionWrap(selected, text, props.preferences?.selectionWrapping,
+  const wrap = selectionWrap(selected, text, workspaceWrapping(props.preferences?.selectionWrapping, props.capabilities?.features),
     source.slice(0, selection.from), source.slice(selection.to));
   if (!wrap) return false;
   if (wrap.prefix) current.dispatch({

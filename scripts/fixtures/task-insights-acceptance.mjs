@@ -6,7 +6,9 @@ export async function acceptTaskInsights(page, expect, canonical, screenshotPath
       properties: { checkable: true, completed: i % 3 === 2, kanbanLane: i % 3 === 1 ? 'doing' : 'todo' } });
     await store.createObject({ type: 'event', name: '统计验收 普通事件', description: '', archived: false, properties: { checkable: false } });
   });
-  await page.getByRole('button', { name: '打开插件标签页', exact: true }).click();
+  await page.getByRole('button', { name: '打开命令中心', exact: true }).click();
+  await page.getByRole('combobox', { name: '搜索命令' }).fill('打开插件中心');
+  await page.getByRole('option').filter({ hasText: '打开插件中心' }).click();
   await page.getByRole('button', { name: '导入插件', exact: true }).click();
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(canonical);
   await page.getByRole('button', { name: '检查清单' }).click();
@@ -14,7 +16,8 @@ export async function acceptTaskInsights(page, expect, canonical, screenshotPath
   await page.getByRole('button', { name: '查看任务统计详情', exact: true }).click();
   await page.getByRole('button', { name: '授权此版本运行', exact: true }).click();
   await page.getByRole('button', { name: '关闭插件窗口', exact: true }).click();
-  await page.getByRole('button', { name: '插件工作台', exact: true }).click();
+  await page.getByRole('button', { name: /^切换侧边栏视图：/ }).click();
+  await page.getByRole('menuitemradio', { name: '插件工作台', exact: true }).click();
   await page.getByRole('navigation', { name: '插件视图' }).getByRole('button', { name: /^任务统计/ }).click();
   const surface = page.getByRole('region', { name: '任务统计 · 任务统计', exact: true });
   const ui = surface.frameLocator('iframe[title="插件界面隔离容器"]').frameLocator('iframe[title="插件自定义界面"]');

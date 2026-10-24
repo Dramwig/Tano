@@ -18,7 +18,12 @@ const trigger = ref<HTMLButtonElement>();
 const confirmation = ref<HTMLButtonElement>();
 const local = computed(() => props.mode === 'local');
 const disabled = computed(() => !props.workspace || (!local.value && !props.workspace.canDelete) || props.busy);
-watch(() => [props.workspace?.id, props.workspace?.name, props.workspace?.canDelete, props.mode], () => {
+watch([
+  () => props.workspace?.id,
+  () => props.workspace?.name,
+  () => props.workspace?.canDelete,
+  () => props.mode,
+], () => {
   confirming.value = false;
   name.value = '';
 });
@@ -74,7 +79,23 @@ function remove() {
 
 <style scoped>
 .workspace-delete-button { color: var(--danger, #c43d3d); flex-shrink: 0; }
-.workspace-delete-confirmation { display: grid; gap: 12px; padding: 20px; border-top: 1px solid var(--line); }
-.workspace-delete-confirmation .settings-controls { justify-content: flex-end; }
-.workspace-delete-confirmation label { overflow-wrap: anywhere; }
+.workspace-delete-confirmation {
+  display: grid;
+  gap: 16px;
+  margin: 8px 0 4px;
+  padding: 20px;
+  border: 1px solid color-mix(in srgb, var(--danger, #c43d3d) 24%, var(--line));
+  border-radius: 10px;
+  background: var(--paper);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.workspace-delete-confirmation p { margin: 0; }
+.workspace-delete-confirmation .settings-controls { justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.workspace-delete-confirmation label,
+.workspace-delete-confirmation p { overflow-wrap: anywhere; }
+.workspace-delete-confirmation .settings-input { width: 100%; }
+@media (max-width: 700px) {
+  .workspace-delete-confirmation { padding: 16px; }
+}
 </style>

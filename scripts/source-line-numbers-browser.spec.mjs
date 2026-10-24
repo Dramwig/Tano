@@ -25,7 +25,7 @@ for (const width of [1280, 390]) test(`source line numbers follow the caret and 
   await expect.poll(displayedNumbers).toEqual(['3']);
   const before = await content.boundingBox();
   const openMenu = async () => {
-    await page.locator('.editor-scroll').first().click({ button: 'right', position: { x: 12, y: 160 } });
+    await page.locator('.editor-scroll').first().evaluate(element => element.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 12, clientY: 160 })));
     return page.getByRole('menuitemcheckbox', { name: '显示所有行号', exact: true });
   };
   let toggle = await openMenu();

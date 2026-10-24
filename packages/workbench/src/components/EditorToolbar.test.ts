@@ -154,15 +154,15 @@ it('marks the current text and background colors and follows resets and selectio
   expect(button('恢复默认文字颜色').getAttribute('aria-pressed')).toBe('true');
   expect(button('恢复默认背景颜色').getAttribute('aria-pressed')).toBe('true');
   await click(button('红色文字'));
-  await openColors();
+  expect(button('更多格式').getAttribute('aria-expanded')).toBe('true');
   expect(button('红色文字').getAttribute('aria-pressed')).toBe('true');
   expect(button('恢复默认文字颜色').getAttribute('aria-pressed')).toBe('false');
   await click(button('蓝色背景'));
-  await openColors();
+  expect(button('更多格式').getAttribute('aria-expanded')).toBe('true');
   expect(button('红色文字').getAttribute('aria-pressed')).toBe('true');
   expect(button('蓝色背景').getAttribute('aria-pressed')).toBe('true');
   await click(button('恢复默认背景颜色'));
-  await openColors();
+  expect(button('更多格式').getAttribute('aria-expanded')).toBe('true');
   expect(button('恢复默认背景颜色').getAttribute('aria-pressed')).toBe('true');
   expect(button('红色文字').getAttribute('aria-pressed')).toBe('true');
   const saved = value.value;
@@ -674,11 +674,21 @@ it('opens placement options from the drag handle and switches mode', async () =>
   expect(toolbarMode.value).toBe('bottom');
 });
 
-it('opens placement options after a real pointer tap without movement', async () => {
+it('toggles placement options on pointer taps and closes them when dragging starts', async () => {
   await mount('正文文字\n', 'fixed');
   await pointer(button('拖动工具栏'), 'pointerdown', 40, 20);
   await pointer(window, 'pointerup', 40, 20);
   expect(button('靠左停靠')).not.toBeNull();
+  await pointer(button('拖动工具栏'), 'pointerdown', 40, 20);
+  await pointer(window, 'pointerup', 40, 20);
+  expect(document.querySelector('.toolbar-dock-menu')).toBeNull();
+  await pointer(button('拖动工具栏'), 'pointerdown', 40, 20);
+  await pointer(window, 'pointerup', 40, 20);
+  expect(button('靠左停靠')).not.toBeNull();
+  await pointer(button('拖动工具栏'), 'pointerdown', 40, 20);
+  await pointer(window, 'pointermove', 100, 100);
+  expect(document.querySelector('.toolbar-dock-menu')).toBeNull();
+  await pointer(window, 'pointercancel', 100, 100);
 });
 
 it('does not open placement options for a pointer release that started elsewhere', async () => {

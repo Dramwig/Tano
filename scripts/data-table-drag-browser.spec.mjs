@@ -117,7 +117,10 @@ test('row previews animate vertically, cancel cleanly, and respect groups and so
   // Moving within one insertion slot must only animate the floating row.
   await page.evaluate(() => {
     window.rowMutations = 0;
-    window.rowObserver = new MutationObserver(changes => window.rowMutations += changes.length);
+    window.rowObserver = new MutationObserver(changes => {
+      // Tooltip accessibility metadata does not rerender or reposition the grid.
+      window.rowMutations += changes.filter(change => change.attributeName !== 'aria-describedby').length;
+    });
     window.rowObserver.observe(document.querySelector('.data-grid'), { subtree: true, childList: true, attributes: true });
   });
   const slot = await grid.locator('tr[data-row="row3"]').boundingBox();

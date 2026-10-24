@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test';
 
+async function selectContext(page, context) {
+  await page.getByRole('button', { name: /^切换上下文：/ }).click();
+  if (context === 'home') await page.locator('#workspace-menu').getByRole('button', { name: '主页', exact: true }).click();
+  else await page.locator('#workspace-menu [data-workspace-entry-id]').first().click();
+}
+
 test('workspace browsing preserves content and assistant drafts across entry points', async ({ page }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -12,12 +18,13 @@ test('workspace browsing preserves content and assistant drafts across entry poi
   await expect(editor).toBeVisible();
   expect(page.url()).toBe(original);
   await expect(page.getByRole('button', { name: '计划范围', exact: true })).toBeDisabled();
+  await selectContext(page, 'home');
   await page.locator('.sidebar-navigation').getByRole('button', { name: '计划', exact: true }).click();
-  await expect(page.locator('.plan-view-trigger')).toHaveText('个人');
+  await expect(page.getByRole('button', { name: '计划范围', exact: true })).toBeEnabled();
   await expect(editor).toBeVisible();
   expect(page.url()).toBe(original);
   await expect(page.locator('.sidebar-view-header')).toBeHidden();
-  await page.locator('.sidebar-navigation').getByRole('button', { name: '工作区', exact: true }).click();
+  await selectContext(page, 'workspace');
   await page.getByRole('button', { name: '切换侧边栏视图：事件与任务', exact: true }).click();
   await page.getByRole('menuitemradio', { name: '助手', exact: true }).click();
   await page.locator('.assistant-navigation-new').click();
@@ -67,6 +74,7 @@ test('module navigation keeps the main content until a sidebar item is opened', 
     await expect(editor).toBeVisible();
     expect(page.url()).toBe(original);
   }
+  await selectContext(page, 'home');
   await nav.getByRole('button', { name: '计划', exact: true }).click();
   await expect(editor).toBeVisible();
   expect(page.url()).toBe(original);
@@ -75,12 +83,13 @@ test('module navigation keeps the main content until a sidebar item is opened', 
   await expect(calendar).toBeVisible();
   const content = await calendar.textContent();
   const calendarUrl = page.url();
-  await nav.getByRole('button', { name: '工作区', exact: true }).click();
+  await selectContext(page, 'workspace');
   await page.getByRole('button', { name: '切换侧边栏视图：文件', exact: true }).click();
   await page.getByRole('menuitemradio', { name: '事件与任务', exact: true }).click();
   await expect(calendar).toBeVisible();
   await expect(calendar).toHaveText(content);
   if (await messages.count()) {
+    await selectContext(page, 'home');
     await messages.click();
     await expect(calendar).toBeVisible();
     await expect(calendar).toHaveText(content);
@@ -91,7 +100,7 @@ test('module navigation keeps the main content until a sidebar item is opened', 
     await page.locator('.chat-list-item').first().click();
     await expect(calendar).toBeHidden();
     const chatUrl = page.url();
-    await nav.getByRole('button', { name: '工作区', exact: true }).click();
+    await selectContext(page, 'workspace');
     expect(page.url()).toBe(chatUrl);
     await expect(calendar).toBeHidden();
   }

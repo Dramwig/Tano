@@ -19,6 +19,45 @@ vi.mock('mermaid', () => ({
 
 let app: App | undefined;
 let root: HTMLDivElement;
+it('preserves disabled extension source when editing and saving an existing document', async () => {
+  const markdown = '^上标^ ~下标~ ++下划线++ ==高亮== %%注释%%\n';
+  const capabilities = structuredClone(defaultCapabilities);
+  for (const feature of ['superscript', 'subscript', 'underline', 'highlight', 'inlineComment'] as const)
+    capabilities.features[feature] = false;
+  const { editor, value, errors } = await mount(markdown, undefined, capabilities, {
+    ...defaultEditorPreferences, selectionWrapping: { ...defaultSelectionWrapping, superscript: true },
+  });
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  expect(view.dom.textContent).toContain(markdown.trimEnd());
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 3)));
+  expect(wrapInput(view, '^')).toBeFalsy();
+  view.dispatch(view.state.tr.insertText('前 ', 1));
+  await nextTick();
+  expect(value.value).toContain('~下标~ ++下划线++ ==高亮== %%注释%%');
+  expect(value.value).toContain('上标^');
+  expect(errors).toEqual([]);
+});
+it.each([
+  ['superscript', '^文字^', 'sup'], ['subscript', '~文字~', 'sub'],
+  ['underline', '++文字++', 'u'], ['highlight', '==文字==', 'mark'],
+  ['inlineComment', '%%文字%%', '[data-tano-comment]'],
+] as const)('toggles workspace %s presentation without changing Markdown or undo history', async (feature, source, selector) => {
+  const markdown = `前 ${source} 后\n`;
+  const { value, editor, capabilities, errors } = await mount(markdown);
+  const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
+  expect(prose.querySelector(selector)?.textContent).toBe('文字');
+  capabilities.value.features[feature] = false;
+  await nextTick();
+  expect(prose.querySelector(selector)).toBeNull();
+  expect(prose.textContent).toContain(`前 ${source} 后`);
+  expect(value.value).toBe(markdown);
+  expect(editor.value!.canUndo()).toBe(false);
+  capabilities.value.features[feature] = true;
+  await nextTick();
+  expect(prose.querySelector(selector)?.textContent).toBe('文字');
+  expect(value.value).toBe(markdown);
+  expect(errors).toEqual([]);
+});
 afterEach(async () => {
   app?.unmount();
   app = undefined;
@@ -207,6 +246,80 @@ it('toggles visual spacing without changing Markdown, selection, history or copi
   expect(errors).toEqual([]);
 });
 
+it('respects visible disabled-style delimiters when spacing and refreshes after capability changes', async () => {
+  const source = '12312^文字^A 中~文字~1 ++文字++A ==文字==1\n';
+  const { value, capabilities, errors } = await mount(source, undefined, {
+    ...defaultCapabilities,
+    features: { ...defaultCapabilities.features, superscript: false, subscript: false, underline: false, highlight: false },
+  }, { ...defaultEditorPreferences, autoSpacing: true });
+  expect(root.querySelector('[data-tano-disabled-style="superscript"]')?.textContent).toBe('^文字^');
+  expect(root.querySelector('.tano-auto-space-before')).toBeNull();
+  capabilities.value = { ...defaultCapabilities, features: { ...defaultCapabilities.features } };
+  await nextTick();
+  expect(root.querySelectorAll('.tano-auto-space-before')).toHaveLength(5);
+  capabilities.value = { ...capabilities.value, features: { ...capabilities.value.features, superscript: false, subscript: false, underline: false, highlight: false } };
+  await nextTick();
+  expect(root.querySelector('.tano-auto-space-before')).toBeNull();
+  expect(value.value).toBe(source);
+  expect(errors).toEqual([]);
+});
+
+it.each(['superscript', 'subscript'] as const)('reveals disabled %s delimiters on click even when the caret is elsewhere', async name => {
+  const { value, errors } = await mount('12312^文字^~文字~\n', undefined, {
+    ...defaultCapabilities,
+    features: { ...defaultCapabilities.features, superscript: false, subscript: false },
+  });
+  const marker = root.querySelector(`[data-tano-disabled-style="${name}"] > span:last-child`)!;
+  marker.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+  await nextTick();
+  expect(root.querySelector('[data-tano-live-inline-source]')?.textContent).toBe(name === 'superscript' ? '^文字^' : '~文字~');
+  expect(value.value).toBe('12312^文字^~文字~\n');
+  expect(errors).toEqual([]);
+});
+
+it.each(['ArrowLeft', 'ArrowRight'])('moves through and out of inline source delimiters with %s without reopening the field', async key => {
+  const source = '前 ++文字++ 后\n';
+  const { editor, value, errors } = await mount(source);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.focus();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 4)));
+  await nextTick();
+  const field = root.querySelector('[data-tano-live-inline-source]')!;
+  const start = view.posAtDOM(field, 0);
+  const length = field.textContent!.length;
+  const left = key === 'ArrowLeft';
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, start + (left ? 1 : length - 1))));
+  const press = () => view.dom.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  press();
+  expect(view.state.selection.from).toBe(start + (left ? 0 : length));
+  press();
+  await nextTick();
+  expect(root.querySelector('[data-tano-live-inline-source]')).toBeNull();
+  expect(view.state.selection.$from.parent.type.name).toBe('paragraph');
+  expect(view.state.selection.from).toBe(left ? 2 : 6);
+  expect(value.value).toBe(source);
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+it.each(['123', '😀23', 'e\u030123', '👩‍💻23'])('closes comment source and advances past one character in %s with one right arrow', async following => {
+  const source = `%%文字%%${following}\n`;
+  const { editor, value, errors } = await mount(source);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.focus();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 2)));
+  const field = root.querySelector('[data-tano-live-inline-source]')!;
+  const end = view.posAtDOM(field, 0) + field.textContent!.length;
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, end)));
+  view.dom.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+  await nextTick();
+  expect(root.querySelector('[data-tano-live-inline-source]')).toBeNull();
+  expect(view.state.doc.textBetween(view.state.selection.from, view.state.doc.content.size)).toBe('23');
+  expect(value.value).toBe(source);
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(errors).toEqual([]);
+});
+
 async function mount(
   content: string,
   importer?: (
@@ -388,7 +501,9 @@ it.each([
   ['=', '123 ==312== 321\n'],
   ['`', '123 `312` 321\n'],
 ])('wraps a selected inline field with %s delimiters', async (delimiter, expected) => {
-  const { value, editor, errors } = await mount('123 312 321\n');
+  const { value, editor, errors, preferences } = await mount('123 312 321\n');
+  preferences.value.selectionWrapping = { ...defaultSelectionWrapping, highlight: true };
+  await nextTick();
   const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
   view.focus();
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 5, 8)));
@@ -1855,7 +1970,6 @@ it('opens a clicked document link as Markdown source while reveal is enabled', a
 });
 
 it.each([
-  ['[目标文档](./target.md)', 'a[href]'],
   ['[[Notes/Plan|计划]]', 'a[data-tano-wiki-target]'],
   ['$x^2$', '.math-preview'],
   ['$$\nx^2\n$$', '.math-preview'],
@@ -1884,6 +1998,44 @@ it.each([
   expect(value.value).toBe(content);
   view.dispatch(view.state.tr.insertText('Z'));
   expect(view.state.selection.$from.parent.textContent).toBe(`${syntax.slice(0, 3)}Z${syntax.slice(3)}`);
+  expect(errors).toEqual([]);
+});
+
+it.each([
+  ['**123456**', 'strong', '123456', 4],
+  ['==文字==', 'mark', '文字', 1],
+  ['++文字++', 'u', '文字', 1],
+  ['^文字^', 'sup', '文字', 1],
+  ['~文字~', 'sub', '文字', 1],
+  ['*文字*', 'em', '文字', 1],
+  ['~~文字~~', 'del', '文字', 1],
+  ['`123456`', 'code', '123456', 4],
+  ['[文字](https://example.com)', 'a[href]', '文字', 1],
+  ['## 123456', 'h2', '123456', 4],
+  ['```js\n123456\n```', 'pre code', '123456', 4],
+] as const)('preserves the clicked text boundary when revealing %s', async (syntax, selector, text, offset) => {
+  const content = `Unrelated paragraph\n\n${syntax}\n`;
+  const { editor, value, errors } = await mount(content);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  let clickedPos = 0;
+  view.state.doc.descendants((node, pos) => {
+    if (node.isText && node.text === text) clickedPos = pos + offset;
+  });
+  expect(clickedPos).toBeGreaterThan(0);
+  const position = vi.spyOn(view, 'posAtCoords').mockImplementation(() => {
+    // Coordinates must be interpreted before new syntax shifts the text.
+    expect(root.querySelector('[data-tano-live-inline-source], [data-tano-live-source]')).toBeNull();
+    return { pos: clickedPos, inside: -1 };
+  });
+  root.querySelector(selector)!.dispatchEvent(new MouseEvent('click', {
+    bubbles: true, cancelable: true, clientX: 160, clientY: 220,
+  }));
+  expect(position).toHaveBeenCalled();
+  expect(view.state.selection.$from.parent.textContent).toBe(syntax);
+  expect(view.state.selection.$from.parentOffset).toBe(syntax.indexOf(text) + offset);
+  expect(value.value).toBe(content);
+  view.dispatch(view.state.tr.insertText('X'));
+  expect(view.state.selection.$from.parent.textContent).toBe(syntax.replace(text, `${text.slice(0, offset)}X${text.slice(offset)}`));
   expect(errors).toEqual([]);
 });
 
@@ -4910,6 +5062,7 @@ it('honors live preference changes and wraps in rendered editing mode', async ()
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 3)));
   expect(wrapInput(view, '*')).toBeFalsy();
   preferences.value.selectionWrapping.enabled = true;
+  preferences.value.selectionWrapping.highlight = true;
   revealMarkdown.value = false;
   await nextTick();
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 3)));
@@ -4930,7 +5083,7 @@ it('does not wrap cross-block selections or selections inside code and math', as
 it.each([['*', '**文字**\n'], ['_', '__文字__\n'], ['~', '~~文字~~\n'], ['=', '==文字==\n']])(
   'keeps repeated %s wrapping consistent when source reveal is disabled', async (key, expected) => {
     const { value, editor, revealMarkdown } = await mount('文字\n', undefined, defaultCapabilities, {
-      ...defaultEditorPreferences, selectionWrapping: { ...defaultSelectionWrapping, subscript: true },
+      ...defaultEditorPreferences, selectionWrapping: { ...defaultSelectionWrapping, subscript: true, highlight: true },
     });
     revealMarkdown.value = false;
     await nextTick();

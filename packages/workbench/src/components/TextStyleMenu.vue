@@ -56,7 +56,6 @@ const colors = [
   { get name() { return t('红色'); }, value: '#dc2626', background: '#fdebec' },
 ];
 function format(command: string, value?: string) {
-  open.value = false;
   emit('format', command, value);
 }
 function closeOutside(event: MouseEvent) {
@@ -181,7 +180,7 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </template>
-      <div v-if="$slots.extra" class="extra-formats" @click="open = false">
+      <div v-if="$slots.extra" class="extra-formats">
         <div v-if="!hideFormats" class="menu-divider" role="separator" />
         <slot name="extra" />
       </div>

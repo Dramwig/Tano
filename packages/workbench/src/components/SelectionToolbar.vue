@@ -38,7 +38,6 @@ let dismissed: Range | null = null;
 let pointerSelecting = false;
 let composing = false;
 let windowBlurred = false;
-let pointerOutsidePane = false;
 let frame = 0;
 let resizeObserver: ResizeObserver | undefined;
 let menuObserver: MutationObserver | undefined;
@@ -230,7 +229,6 @@ async function refresh() {
   const content = editor();
   if (docked.value) {
     if (
-      pointerOutsidePane ||
       !content ||
       (!content.contains(document.activeElement) &&
         !(visible.value && panel.value?.contains(document.activeElement)))
@@ -289,26 +287,10 @@ function pointerUp() {
   pointerSelecting = false;
   schedule();
 }
-function pointerOver(event: PointerEvent) {
-  if (!docked.value || props.dragging || event.pointerType === 'touch') return;
-  const target = event.target as Node | null;
-  const pane = props.editorElement?.closest('.document-layout') ?? props.editorElement;
-  const outside = !pane?.contains(target) && !panel.value?.contains(target);
-  if (outside === pointerOutsidePane) return;
-  pointerOutsidePane = outside;
-  if (outside) hide();
-  else schedule();
-}
-function pointerOut(event: PointerEvent) {
-  if (event.relatedTarget || !docked.value || props.dragging || event.pointerType === 'touch') return;
-  pointerOutsidePane = true;
-  hide();
-}
 function focusIn(event: FocusEvent) {
   // Keyboard navigation back into the editor also restores its docked controls.
   if (editor()?.contains(event.target as Node)) {
     windowBlurred = false;
-    pointerOutsidePane = false;
   }
   schedule();
 }
@@ -381,8 +363,6 @@ onMounted(() => {
   document.addEventListener('pointerdown', pointerDown, true);
   document.addEventListener('pointerup', pointerUp);
   document.addEventListener('pointercancel', pointerUp);
-  document.addEventListener('pointerover', pointerOver);
-  document.addEventListener('pointerout', pointerOut);
   document.addEventListener('focusin', focusIn);
   document.addEventListener('focusout', schedule);
   document.addEventListener('keydown', keydown);
@@ -412,8 +392,6 @@ onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', pointerDown, true);
   document.removeEventListener('pointerup', pointerUp);
   document.removeEventListener('pointercancel', pointerUp);
-  document.removeEventListener('pointerover', pointerOver);
-  document.removeEventListener('pointerout', pointerOut);
   document.removeEventListener('focusin', focusIn);
   document.removeEventListener('focusout', schedule);
   document.removeEventListener('keydown', keydown);

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { sourceStyleRanges } from './source-highlight';
+import { defaultCapabilities } from './runtime';
+
+it('leaves disabled workspace extensions unstyled while retaining standard formatting', () => {
+  const ranges = sourceStyleRanges('^上标^ ~下标~ ++下划线++ ==高亮== %%注释%% **粗体**', {
+    ...defaultCapabilities.features, superscript: false, subscript: false, underline: false, highlight: false, inlineComment: false,
+  });
+  expect(ranges.map(range => range.style)).toEqual(['strong']);
+});
 
 function styled(markdown: string, style: string) {
   return sourceStyleRanges(markdown)

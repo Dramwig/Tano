@@ -580,7 +580,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
         <template v-if="compact && $slots.preferences" #preferences>
           <slot name="preferences" />
         </template>
-        <template v-if="useCompactActions && extraInline.length" #extra>
+        <template v-if="useCompactActions && (extraInline.length || todo || annotation)" #extra>
           <button
             v-for="item in extraInline"
             :key="item.type"
@@ -591,6 +591,15 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
             @click="run(item.command)"
           >
             <component :is="icons[item.type]" :size="16" />{{ item.label }}
+          </button>
+          <div v-if="extraInline.length && (todo || annotation)" class="menu-divider" role="separator" />
+          <button v-if="todo" type="button" :aria-label="t('从选区创建任务或事件')"
+            :disabled="disabled || !context.textSelected" @mousedown.prevent @click="emit('todo')">
+            <ListTodo :size="16" />{{ t('创建任务或事件') }}
+          </button>
+          <button v-if="annotation" type="button" class="annotation-create-button" :aria-label="t('添加局部批注')"
+            :disabled="disabled" @mousedown.prevent @click="emit('annotation')">
+            <MessageSquare :size="16" />{{ t('添加局部批注') }}
           </button>
         </template>
       </TextStyleMenu>
@@ -654,10 +663,10 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
       </form>
     </template>
     <slot name="trailing" />
-    <span v-if="(annotation && !source) || assistant || todo" class="toolbar-divider toolbar-group-divider" aria-hidden="true" />
-    <button v-if="todo && !source" type="button" class="icon-button" :aria-label="t('从选区创建任务或事件')" :data-tooltip="t('从选区创建任务或事件')" :disabled="disabled || !context.textSelected" @mousedown.prevent @click="emit('todo')"><ListTodo :size="17" /></button>
+    <span v-if="assistant || (!useCompactActions && !source && (annotation || todo))" class="toolbar-divider toolbar-group-divider" aria-hidden="true" />
+    <button v-if="todo && !source && !useCompactActions" type="button" class="icon-button" :aria-label="t('从选区创建任务或事件')" :data-tooltip="t('从选区创建任务或事件')" :disabled="disabled || !context.textSelected" @mousedown.prevent @click="emit('todo')"><ListTodo :size="17" /></button>
     <button
-      v-if="annotation && !source"
+      v-if="annotation && !source && !useCompactActions"
       type="button"
       class="icon-button annotation-create-button"
       :aria-label="t('添加局部批注')"

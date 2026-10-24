@@ -5,6 +5,7 @@ import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
 import { refractor } from 'refractor';
 import latex from 'refractor/latex';
 import { sourceStyleRanges } from './source-highlight';
+import { defaultCapabilities } from './runtime';
 import { mathHighlightRanges } from './math-highlight';
 import { mermaidHighlightRanges } from './mermaid-highlight';
 
@@ -156,7 +157,7 @@ export function emptyFencedCodeBodyOffset(source: string): number | null {
     : null;
 }
 
-function editableSourceStyles(state: EditorState): Decoration[] {
+function editableSourceStyles(state: EditorState, features = defaultCapabilities.features): Decoration[] {
   const decorations: Decoration[] = [];
   state.doc.descendants((node, pos) => {
     if (!['tano_live_source', 'tano_live_source_inline'].includes(node.type.name)) return;
@@ -188,7 +189,7 @@ function editableSourceStyles(state: EditorState): Decoration[] {
       return;
     }
     if (node.attrs.origin === 'code_block' && fencedCodeStyles(source, mark)) return;
-    for (const { from, to, style } of sourceStyleRanges(source)) {
+    for (const { from, to, style } of sourceStyleRanges(source, features)) {
       if (style === 'heading') {
         const prefix = /^#{1,6}[ \t]+/.exec(source.slice(from, to));
         if (prefix) mark(from, from + prefix[0].length, 'tano-live-source-marker');
@@ -220,7 +221,7 @@ function editableSourceStyles(state: EditorState): Decoration[] {
 }
 
 /** Style the actual editable source text and show block prefixes near the caret. */
-export function liveMarkdown(enabled: () => boolean, readonly: () => boolean) {
+export function liveMarkdown(enabled: () => boolean, readonly: () => boolean, features = () => defaultCapabilities.features) {
   let focused = false;
   const refresh = (view: import('@milkdown/kit/prose/view').EditorView, value: boolean) => {
     if (focused === value) return;
@@ -241,7 +242,7 @@ export function liveMarkdown(enabled: () => boolean, readonly: () => boolean) {
       },
       decorations(state) {
         if (!focused || !enabled() || readonly()) return null;
-        const decorations = editableSourceStyles(state);
+        const decorations = editableSourceStyles(state, features());
         const selection = state.selection;
         if (selection instanceof NodeSelection && selection.node.type.name === 'tano_wiki_link')
           decorations.push(

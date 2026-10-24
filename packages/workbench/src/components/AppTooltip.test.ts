@@ -8,6 +8,27 @@ let app: App | undefined;
 let root: HTMLElement;
 let button: HTMLButtonElement;
 const hint = () => document.querySelector<HTMLElement>('.app-tooltip');
+it('shows only rendered capability examples using the shared hover and focus hint', async () => {
+  button.dataset.tooltip = 'Mermaid 图表';
+  button.dataset.tooltipExample = 'mermaid';
+  button.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+  await vi.advanceTimersByTimeAsync(250); await flush();
+  expect(hint()?.querySelector('pre')).toBeNull();
+  expect(hint()?.textContent).not.toContain('语法示例');
+  expect(hint()?.querySelector('.example-diagram')?.textContent).toContain('开始');
+  button.dataset.tooltipExample = 'superscript';
+  await flush();
+  expect(hint()?.querySelector('sup')?.textContent).toBe('2');
+  const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+  window.dispatchEvent(escape); await flush();
+  expect(escape.defaultPrevented).toBe(true);
+  expect(hint()).toBeNull();
+  button.focus(); await flush();
+  expect(hint()?.querySelector('sup')).not.toBeNull();
+  button.dataset.tooltipExample = 'unknown';
+  await flush();
+  expect(hint()?.querySelector('.capability-example')).toBeNull();
+});
 async function flush() { await nextTick(); await nextTick(); }
 beforeEach(() => {
   vi.useFakeTimers();

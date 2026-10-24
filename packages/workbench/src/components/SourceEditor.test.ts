@@ -4,7 +4,7 @@ import { createApp, h, nextTick, ref } from 'vue';
 import type { App } from 'vue';
 import { EditorView } from '@codemirror/view';
 import SourceEditor from './SourceEditor.vue';
-import { defaultEditorPreferences, defaultSelectionWrapping } from '@tano/editor/runtime';
+import { defaultCapabilities, defaultEditorPreferences, defaultSelectionWrapping } from '@tano/editor/runtime';
 
 let app: App | undefined;
 let root: HTMLDivElement;
@@ -24,17 +24,34 @@ async function mountSource(content: string) {
   const editor = ref<InstanceType<typeof SourceEditor>>();
   const readonly = ref(false);
   const preferences = ref({ ...defaultEditorPreferences, selectionWrapping: { ...defaultSelectionWrapping } });
+  const capabilities = ref(structuredClone(defaultCapabilities));
   const changed = vi.fn((next: string) => (value.value = next));
   app = createApp({
     render: () => h(SourceEditor, {
-      ref: editor, preferences: preferences.value, modelValue: value.value, readonly: readonly.value, localNative: false,
+      ref: editor, capabilities: capabilities.value, preferences: preferences.value, modelValue: value.value, readonly: readonly.value, localNative: false,
       'onUpdate:modelValue': changed,
     }),
   });
   app.mount(root);
   await nextTick();
-  return { value, editor, readonly, preferences, changed, view: EditorView.findFromDOM(root.querySelector('.cm-editor')!)! };
+  return { value, editor, readonly, capabilities, preferences, changed, view: EditorView.findFromDOM(root.querySelector('.cm-editor')!)! };
 }
+
+it('updates extension styling and gates wrapping when workspace capabilities change', async () => {
+  const { capabilities, preferences, view, value, changed } = await mountSource('^文字^');
+  expect(root.querySelector('.cm-source-superscript')).not.toBeNull();
+  capabilities.value.features.superscript = false;
+  preferences.value.selectionWrapping.superscript = true;
+  await nextTick();
+  expect(root.querySelector('.cm-source-superscript')).toBeNull();
+  view.dispatch({ selection: { anchor: 1, head: 3 } });
+  expect(typeSymbol(view, '^')).toBe(false);
+  expect(value.value).toBe('^文字^');
+  expect(changed).not.toHaveBeenCalled();
+  capabilities.value.features.superscript = true;
+  await nextTick();
+  expect(root.querySelector('.cm-source-superscript')).not.toBeNull();
+});
 
 it('restores a backward mode selection without changing Markdown or undo history', async () => {
   const { editor, view, value, changed } = await mountSource('第一行\r\n第二行 **文字**\r\n');
@@ -331,7 +348,9 @@ it.each(['keyboard', 'text input'])('maps full-width yuan in source via %s when 
 });
 
 it.each([['_', '_'], ['~', '~~'], ['=', '=='], ['`', '`']])('wraps source with %s and preserves backward selections and undo', async (key, delimiter) => {
-  const { value, view, editor } = await mountSource('前 文字 后');
+  const { value, view, editor, preferences } = await mountSource('前 文字 后');
+  preferences.value.selectionWrapping.highlight = true;
+  await nextTick();
   view.dispatch({ selection: { anchor: 4, head: 2 } });
   expect(typeSymbol(view, key)).toBe(true);
   expect(value.value).toBe('前 ' + delimiter + '文字' + delimiter + ' 后');

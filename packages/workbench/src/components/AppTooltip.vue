@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 import { shortcutLabel } from '../shortcuts';
+import { featureDefinitions } from '@tano/editor/runtime';
+import type { DocumentFeature } from '@tano/editor/runtime';
+import CapabilityExample from './CapabilityExample.vue';
 
 // Mount once per workbench. Delegation also covers menus teleported to body.
 // Controls opt in with data-tooltip and optional data-tooltip-shortcut (Mod+I).
@@ -17,6 +20,7 @@ const tooltip = ref<HTMLElement>();
 const portal = ref<HTMLElement | string>('body');
 const label = ref('');
 const shortcut = ref('');
+const example = ref<DocumentFeature>();
 const ready = ref(false);
 let anchor: HTMLElement | null = null;
 let pending: HTMLElement | null = null;
@@ -35,6 +39,7 @@ function hide() {
   }
   anchor = null;
   label.value = '';
+  example.value = undefined;
   ready.value = false;
 }
 function usable(button: HTMLElement) {
@@ -66,6 +71,7 @@ function update() {
   if (!anchor) return;
   if (!usable(anchor)) return hide();
   label.value = tooltipLabel(anchor);
+  example.value = featureDefinitions.find(feature => feature.key === anchor?.dataset.tooltipExample)?.key;
   shortcut.value = anchor.dataset.tooltipShortcut ? shortcutLabel(anchor.dataset.tooltipShortcut) : '';
   void place();
 }
@@ -106,7 +112,10 @@ function leave(event: MouseEvent | FocusEvent) {
 }
 function escape(event: KeyboardEvent) {
   keyboardFocus = true;
-  if (event.key === 'Escape') hide();
+  if (event.key === 'Escape') {
+    if (example.value) { event.preventDefault(); event.stopPropagation(); }
+    hide();
+  }
 }
 function dismiss(event: Event) {
   if (event.type === 'pointerdown') keyboardFocus = false;
@@ -132,7 +141,7 @@ onMounted(() => {
   window.visualViewport?.addEventListener('scroll', hide);
   observer = new MutationObserver(() => { if (anchor) update(); });
   observer.observe(document.body, { childList: true, subtree: true, attributes: true,
-    attributeFilter: ['data-tooltip', 'data-tooltip-shortcut', 'data-markdown-source', 'href', 'class', 'hidden', 'inert', 'aria-hidden', 'open'] });
+    attributeFilter: ['data-tooltip', 'data-tooltip-example', 'data-tooltip-shortcut', 'data-markdown-source', 'href', 'class', 'hidden', 'inert', 'aria-hidden', 'open'] });
 });
 onBeforeUnmount(() => {
   hide();
@@ -156,8 +165,9 @@ onBeforeUnmount(() => {
   <Teleport :to="portal">
     <div v-if="label" :id="id" ref="tooltip" class="app-tooltip panel-scrollbar" role="tooltip"
       popover="manual" :data-ready="ready" @pointerenter="cancelTimer" @pointerleave="leave">
-      <span>{{ label }}</span>
+      <span v-if="!example">{{ label }}</span>
       <span v-if="shortcut" class="app-tooltip-shortcut">{{ shortcut }}</span>
+      <CapabilityExample v-if="example" :feature="example" />
     </div>
   </Teleport>
 </template>

@@ -3,6 +3,7 @@ import { Schema } from '@milkdown/kit/prose/model';
 import { EditorState, TextSelection } from '@milkdown/kit/prose/state';
 import { DecorationSet } from '@milkdown/kit/prose/view';
 import { autoSpacing } from './auto-spacing';
+import { defaultCapabilities } from './runtime';
 
 const schema = new Schema({
   nodes: {
@@ -14,13 +15,13 @@ const schema = new Schema({
     hard_break: { inline: true, group: 'inline' },
     ...Object.fromEntries(['math_inline', 'tano_wiki_link', 'tano_reference'].map(name => [name, { inline: true, group: 'inline', atom: true }])),
   },
-  marks: { strong: {}, link: {}, code: { code: true } },
+  marks: { strong: {}, link: {}, code: { code: true }, superscript: {} },
 });
 const text = (value: string) => schema.text(value);
 const paragraph = (...content: import('@milkdown/kit/prose/model').Node[]) => schema.node('paragraph', null, content);
-function setup(blocks: import('@milkdown/kit/prose/model').Node[]) {
+function setup(blocks: import('@milkdown/kit/prose/model').Node[], features = defaultCapabilities.features) {
   let enabled = true;
-  const plugin = autoSpacing(() => enabled);
+  const plugin = autoSpacing(() => enabled, () => features);
   let state = EditorState.create({ schema, doc: schema.node('doc', null, blocks), plugins: [plugin] });
   return {
     ranges: () => (plugin.props.decorations!.call(plugin, state) as DecorationSet).find().map(({ from, to }) => [from, to]),
@@ -35,6 +36,14 @@ it('spaces Chinese/Latin/numbers across formatting without spacing punctuation o
   expect(test.ranges()).toEqual([[2, 3], [6, 7], [7, 8], [11, 12]]);
   test.select();
   expect(test.ranges()).toHaveLength(4);
+});
+
+it('keeps spacing inside disabled styles across formatting but skips their visible delimiter boundaries', () => {
+  const sup = schema.marks.superscript!.create();
+  const test = setup([paragraph(text('1'), text('中').mark([sup]),
+    text('A').mark([schema.marks.strong!.create(), sup]), text('文').mark([sup]), text('2'))],
+  { ...defaultCapabilities.features, superscript: false });
+  expect(test.ranges()).toEqual([[3, 4], [4, 5]]);
 });
 
 it.each(['math_inline', 'tano_wiki_link', 'tano_reference'])('spaces both Chinese boundaries of %s, respecting whitespace and punctuation', name => {

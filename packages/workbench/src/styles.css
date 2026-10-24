@@ -6080,9 +6080,12 @@ div.tano-feature-source {
 .tano-prose .tano-live-source-highlight { background: #fde04766; }
 .source-editor .cm-source-underline,
 .tano-prose .tano-live-source-underline { text-decoration: underline; }
-.source-editor .cm-source-superscript,
-.tano-prose .tano-live-source-superscript { vertical-align: super; font-size: 0.85em; }
-.source-editor .cm-source-subscript,
-.tano-prose .tano-live-source-subscript { vertical-align: sub; font-size: 0.85em; }
+.source-editor .cm-source-superscript { vertical-align: super; font-size: 0.85em; }
+.source-editor .cm-source-subscript { vertical-align: sub; font-size: 0.85em; }
+/* Match rendered sup/sub metrics so revealing syntax does not grow the line. */
+.tano-prose .tano-live-source-superscript,
+.tano-prose .tano-live-source-subscript { font-size: 0.75em; line-height: 0; }
+.tano-prose .tano-live-source-superscript { vertical-align: super; }
+.tano-prose .tano-live-source-subscript { vertical-align: sub; }
 .source-editor .cm-source-inline_comment,
 .tano-prose .tano-live-source-inline_comment { opacity: 0.55; }

@@ -97,9 +97,9 @@ import { activeInlineSourceRange, emptyFencedCodeBodyOffset, liveMarkdown } from
 import { liveInlineSource, liveSource } from './live-source';
 import { nestedEmphasisRemark } from './nested-emphasis';
 import { sourceStyleRanges } from './source-highlight';
-import { configureMarkdownRuntime, defaultCapabilities, defaultEditorPreferences, selectionWrap } from './runtime';
+import { configureMarkdownRuntime, defaultCapabilities, defaultEditorPreferences, selectionWrap, workspaceWrapping } from './runtime';
 import type { WorkspaceCapabilities, EditorPreferences } from './runtime';
-import { runtimeViews, mermaidView } from './runtime-views';
+import { runtimeViews, runtimeMarkViews, mermaidView } from './runtime-views';
 import { footnoteNumbers, jumpToFootnote } from './footnotes';
 import { references } from './references';
 import { referenceViews } from './reference-views';
@@ -737,7 +737,7 @@ function wrapSelectedInlineSource(ctx: Ctx, view: EditorView, from: number, to: 
   });
   if (protectedContent) return false;
   const selected = state.doc.textBetween(from, to);
-  const wrap = selectionWrap(selected, text, preferences().selectionWrapping,
+  const wrap = selectionWrap(selected, text, workspaceWrapping(preferences().selectionWrapping, policy().features),
     $from.parent.textContent.slice(0, $from.parentOffset), $to.parent.textContent.slice($to.parentOffset));
   if (!wrap || (wrap.prefix === '$' && !policy().features.math)) return false;
   if (!wrap.prefix) return true;
@@ -921,9 +921,17 @@ function inlineSourceTransaction(
 }
 
 function activateInlineSource(ctx: Ctx, view: EditorView, event?: MouseEvent | KeyboardEvent) {
+  const disabledStyle = event?.target instanceof Element
+    ? event.target.closest<HTMLElement>('[data-tano-disabled-style]') : null;
+  // Literal fallback delimiters live outside contentDOM and have no document
+  // positions. Resolve their owning mark before revealing editable source.
+  const content = disabledStyle?.children[1];
+  const selection = content && view.dom.contains(content)
+    ? TextSelection.create(view.state.doc, view.posAtDOM(content, 0)) : view.state.selection;
+  const atomRange = event ? inlineAtomSourceRange(view, event) : null;
   const range =
-    (event ? inlineAtomSourceRange(view, event) : null) ??
-    activeInlineSourceRange(view.state, markAtCaret(view, event));
+    atomRange ??
+    activeInlineSourceRange({ selection }, disabledStyle?.dataset.tanoDisabledStyle ?? markAtCaret(view, event));
   if (!range) return false;
   const tr = inlineSourceTransaction(ctx, view.state, range);
   applying = true;
@@ -932,12 +940,16 @@ function activateInlineSource(ctx: Ctx, view: EditorView, event?: MouseEvent | K
   } finally {
     applying = false;
   }
-  focusRevealedSource(view, event);
+  // Existing text has a semantic caret position mapped by the transaction.
+  // Only previews and decorative delimiters lack an editable text position.
+  const clickedDelimiter = content && event?.target instanceof Element &&
+    !content.contains(event.target);
+  focusRevealedSource(view, atomRange || clickedDelimiter ? event : undefined);
   return true;
 }
 
-// Resolve the pointer against the newly rendered source so the caret stays at
-// the click, even when delimiters or a block preview change the layout.
+// Text callers retain the transaction's mapped caret. Only non-text previews
+// pass a pointer to resolve against the newly editable source.
 function focusRevealedSource(view: EditorView, event?: MouseEvent | KeyboardEvent) {
   view.focus();
   if (!(event instanceof MouseEvent) || (!event.clientX && !event.clientY)) return;
@@ -962,7 +974,7 @@ function activateLinkSource(ctx: Ctx, view: EditorView, link: Element, event: Mo
   } finally {
     applying = false;
   }
-  focusRevealedSource(view, event);
+  focusRevealedSource(view);
   return true;
 }
 
@@ -1184,7 +1196,8 @@ function activateLocalSource(ctx: Ctx, view: EditorView, event: MouseEvent | Key
     event.metaKey ||
     event.shiftKey ||
     target?.closest('button, input, textarea') ||
-    (target?.closest('[contenteditable="false"]:not(.tano-wiki-link)') && !previewBlock)
+    (target?.closest('[contenteditable="false"]:not(.tano-wiki-link)') && !previewBlock &&
+      !target.closest('[data-tano-disabled-style]'))
   )
     return false;
   if (target && previewBlock) {
@@ -1209,7 +1222,7 @@ function activateLocalSource(ctx: Ctx, view: EditorView, event: MouseEvent | Key
       } finally {
         applying = false;
       }
-      focusRevealedSource(view, event);
+      focusRevealedSource(view);
       return true;
     }
   }
@@ -1236,7 +1249,7 @@ function activateLocalSource(ctx: Ctx, view: EditorView, event: MouseEvent | Key
   } finally {
     applying = false;
   }
-  focusRevealedSource(view, event);
+  focusRevealedSource(view);
   return true;
 }
 
@@ -1385,6 +1398,49 @@ function finishLocalSource(ctx: Ctx, view: EditorView) {
     applying = false;
     transitioningSource = false;
   }
+}
+
+function moveAcrossInlineSourceEdge(ctx: Ctx, view: EditorView, direction: -1 | 1) {
+  const current = currentSource(view);
+  const selection = view.state.selection;
+  if (localSource?.kind !== 'inline' || !current ||
+      !(selection instanceof TextSelection) || !selection.empty ||
+      selection.$from.parent !== current.node) return false;
+  const offset = selection.$from.parentOffset;
+  const size = current.node.content.size;
+  const remaining = direction < 0 ? offset : size - offset;
+  // Chromium can skip the first/last DOM caret stop of an inline content node.
+  // Keep that stop explicit so leaving and re-opening the field cannot loop.
+  if (remaining > 1) return false;
+  if (remaining === 1) {
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc,
+      selection.from + direction)).setMeta('addToHistory', false));
+    return true;
+  }
+  const end = current.pos + current.node.nodeSize;
+  const finished = finishLocalSourceTransaction(ctx, view.state);
+  const tr = finished?.tr ?? view.state.tr;
+  let position = direction < 0 ? current.pos : tr.mapping.map(end, 1);
+  const boundary = tr.doc.resolve(position);
+  const adjacent = direction < 0 ? boundary.nodeBefore : boundary.nodeAfter;
+  // The inside and outside of the source node are the same visible caret
+  // stop. Consume the arrow's character movement as well as closing the field.
+  if (adjacent?.isText) {
+    const segments = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(adjacent.text!)];
+    const step = direction < 0 ? segments.at(-1)!.segment.length : segments[0]!.segment.length;
+    position += direction * step;
+    tr.setSelection(TextSelection.create(tr.doc, position));
+  } else {
+    const next = Math.max(0, Math.min(tr.doc.content.size, position + direction));
+    tr.setSelection(Selection.findFrom(tr.doc.resolve(next), direction, true) ?? TextSelection.create(tr.doc, position));
+  }
+  tr.setStoredMarks([]);
+  tr.setMeta('tanoKeepNodeView', true);
+  transitioningSource = true;
+  applying = finished?.unchanged ?? false;
+  try { view.dispatch(tr); }
+  finally { transitioningSource = false; applying = false; }
+  return true;
 }
 
 function enterHeadingSource(ctx: Ctx, view: EditorView) {
@@ -1983,6 +2039,13 @@ const bridge = $prose(
               return true;
             }
             const source = currentSource(view);
+            if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
+                !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey &&
+                !event.isComposing && !view.composing && !props.readonly &&
+                moveAcrossInlineSourceEdge(ctx, view, event.key === 'ArrowLeft' ? -1 : 1)) {
+              event.preventDefault();
+              return true;
+            }
             if (event.key === 'Enter' && !event.altKey && isInTable(view.state)) {
               // Let the IME confirm its candidate without falling through to table keymaps.
               if (event.isComposing || event.keyCode === 229 || view.composing) return true;
@@ -2089,6 +2152,19 @@ const bridge = $prose(
             // of replacing the heading/link/code DOM with an editable source.
             if (_view.state.selection instanceof TextSelection && !_view.state.selection.empty &&
                 event.button === 0 && !event.ctrlKey && !event.metaKey) return false;
+            // The native DOM selection may not have reached editor state yet.
+            // Resolve textual clicks before adding delimiters changes the layout.
+            if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
+                props.revealMarkdown !== false && !props.readonly &&
+                (event.clientX || event.clientY) && !currentSource(_view) &&
+                event.target instanceof Element &&
+                !inlineAtomSourceRange(_view, event) &&
+                !event.target.closest('[contenteditable="false"], .math-preview, .tano-mermaid-preview, .tano-image-block')) {
+              const hit = _view.posAtCoords({ left: event.clientX, top: event.clientY });
+              if (hit && _view.state.doc.resolve(hit.pos).parent.inlineContent)
+                _view.dispatch(_view.state.tr.setSelection(TextSelection.create(_view.state.doc, hit.pos))
+                  .setMeta('tanoKeepNodeView', true).setMeta('addToHistory', false));
+            }
             if (jumpToFootnote(_view, event)) {
               event.preventDefault();
               return true;
@@ -2134,6 +2210,7 @@ const bridge = $prose(
             return activateLocalSource(ctx, _view, event);
           },
         },
+        markViews: runtimeMarkViews(policy()),
         nodeViews: runtimeViews(
           {
             ...referenceViews(
@@ -2483,7 +2560,7 @@ onMounted(async () => {
       .use($prose(() => tableControls(() => !!props.readonly)))
       .use($prose(tableViewports))
       .use($prose(footnoteNumbers))
-      .use($prose(() => autoSpacing(() => preferences().autoSpacing === true)))
+      .use($prose(() => autoSpacing(() => preferences().autoSpacing === true, () => policy().features)))
       .use(textStyles)
       .use(wikiLinkRemark)
       .use(wikiLink)
@@ -2510,6 +2587,7 @@ onMounted(async () => {
           liveMarkdown(
             () => props.revealMarkdown !== false,
             () => !!props.readonly,
+            () => policy().features,
           ),
         ),
       )
@@ -2633,6 +2711,13 @@ watch(() => props.documentId, () => {
   typeMenuProperty.value = undefined;
   if (blockMenu.value) closeBlockMenu(false);
   closeLinkPanel();
+});
+watch(() => JSON.stringify(policy().features), () => {
+  editor?.action(ctx => {
+    const view = ctx.get(editorViewCtx);
+    // ProseMirror rebuilds mark views when nodeViews changes identity.
+    view.setProps({ nodeViews: { ...view.props.nodeViews }, markViews: runtimeMarkViews(policy()) });
+  });
 });
 watch(
   () => [props.readonly, props.enabledLevels, props.capabilities, props.preferences, props.referenceTargets],
