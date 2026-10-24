@@ -59,6 +59,8 @@ export interface WorkbenchViewActions {
 /** Stable view:* IDs are restored only when registered by the current product. */
 export interface WorkbenchView extends WorkbenchViewTab {
   component: Component;
+  /** Collapse navigation when this view becomes active; users can reopen it. */
+  collapseSidebarOnOpen?: boolean;
   sidebar?: Component;
   /** Optional control rendered in the workspace sidebar header. */
   header?: Component;

@@ -31,7 +31,7 @@ test('selection wrappers share persistent settings across source and rich editin
   await expect(rich.locator('[data-tano-live-inline-source]')).toHaveText('**文字**');
 
   const openSettings = async () => {
-    await page.getByRole('button', { name: '切换工作区', exact: true }).click();
+    await page.getByRole('button', { name: /^切换上下文：/ }).click();
     await page.getByRole('button', { name: '设置', exact: true }).click();
     await page.getByRole('button', { name: '编辑设置', exact: true }).click();
   };

@@ -18,7 +18,7 @@ it('opens task evidence from an assistant report and disables references in a di
   pinia = configureWorkbench(createPinia(), { adapter: new DemoAdapter(), native: false, mobile: false });
   setActivePinia(pinia); const workspace = useWorkspaceStore(); await workspace.openWorkspace();
   const task = await workspace.createObject({ type: 'event', name: '验收', description: '', archived: false, properties: { checkable: true, completed: true } });
-  const assistant = useAssistantStore();
+  const assistant = useAssistantStore(); assistant.setDisplayMode('sidebar');
   await vi.waitFor(() => expect(assistant.loading).toBe(false));
   assistant.session = { version: 1, id: crypto.randomUUID(), workspaceId: workspace.workspace!.id, title: '周报', createdAt: 1, updatedAt: 1, revision: 0,
     messages: [{ id: 'answer', role: 'assistant', content: `本周完成 [@验收](object://event/${task.object.id})。`, createdAt: 1, state: 'completed' }] };
@@ -42,7 +42,7 @@ async function mountEmptyConversation(fullscreenTarget?: string | Ref<HTMLElemen
   const workspace = useWorkspaceStore(); await workspace.openWorkspace();
   const file = workspace.workspace!.files.find(file => file.kind === 'file' && file.path.endsWith('.md'))!;
   await workspace.openFileInNewTab(file);
-  const assistant = useAssistantStore();
+  const assistant = useAssistantStore(); assistant.setDisplayMode('sidebar');
   await vi.waitFor(() => expect(assistant.loading).toBe(false));
   assistant.open();
   root = document.createElement('div'); document.body.append(root);

@@ -77,6 +77,7 @@ export async function createDetachedTabWindow(
   });
   const window = new WebviewWindow(label, {
     url,
+    visible: false,
     title: `${title} — Tano / 同页`,
     width,
     height,
@@ -91,17 +92,22 @@ export async function createDetachedTabWindow(
     void window.once('tauri://created', () => resolve());
     void window.once<string>('tauri://error', (event) => reject(new Error(String(event.payload))));
   });
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    await Promise.race([created, ready]);
     await Promise.race([
-      ready,
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('独立窗口启动超时')), 15_000)),
+      Promise.all([created, ready]),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error('独立窗口启动超时')), 15_000);
+      }),
     ]);
+    await window.show();
+    await window.setFocus();
     return window;
   } catch (error) {
     await window.destroy().catch(() => {});
     throw error;
   } finally {
+    clearTimeout(timeout);
     unlisten();
   }
 }

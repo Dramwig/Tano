@@ -1,5 +1,9 @@
 /** English UI messages. Chinese source messages are the default locale. */
 export const englishMessages: Readonly<Record<string, string>> = {
+  '主页': 'Home',
+  '导航': 'Navigation',
+  '切换到主页': 'Go to Home',
+  '切换上下文：{0}': 'Switch context: {0}',
   "助手": "Assistant",
   "打开助手": "Open assistant",
   "工作区助手": "Workspace assistant",
@@ -11,6 +15,7 @@ export const englishMessages: Readonly<Record<string, string>> = {
   '侧边栏视图': 'Sidebar views',
   '事件与任务': 'Events and tasks',
   "作为标签页打开": "Open as tab",
+  "在新窗口打开": "Open in new window",
   "全部工作区": "All workspaces",
   "最近访问": "Recently visited",
   "归我所有": "Owned by me",

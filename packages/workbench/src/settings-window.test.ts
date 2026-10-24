@@ -5,6 +5,7 @@ import capabilities from '../../../apps/client/src-tauri/capabilities/default.js
 
 const native = vi.hoisted(() => ({
   currentLabel: 'main',
+  autoRender: true,
   windows: [] as Array<{
     label: string; options: Record<string, unknown>; focusCount: number; showCount: number; destroyed: boolean;
     visible: boolean; position: { x: number; y: number }; size: { width: number; height: number };
@@ -60,7 +61,7 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
     async once(event: string, callback: () => void) {
       if (event === 'tauri://created') queueMicrotask(() => {
         callback();
-        queueMicrotask(() => native.listeners.get('tano-settings-rendered')?.({ payload: { label: this.label } }));
+        if (native.autoRender) queueMicrotask(() => native.listeners.get('tano-settings-rendered')?.({ payload: { label: this.label } }));
       });
       if (event === 'tauri://destroyed') this.onDestroyed = callback;
       return () => {};
@@ -87,6 +88,7 @@ import {
 beforeEach(() => {
   vi.resetAllMocks();
   native.currentLabel = 'main';
+  native.autoRender = true;
   native.windows.length = 0;
   native.main.outerPosition.mockResolvedValue({ x: 300, y: 150 });
   native.main.outerSize.mockResolvedValue({ width: 2160, height: 1410 });
@@ -96,7 +98,41 @@ beforeEach(() => {
   });
 });
 
-afterEach(async () => { await closeSettingsWindow(); });
+afterEach(async () => { await closeSettingsWindow(); vi.useRealTimers(); });
+
+it('shares an in-progress prewarm with an open and waits for the first render', async () => {
+  vi.useFakeTimers();
+  native.autoRender = false;
+  const warming = prewarmSettingsWindow();
+  await vi.advanceTimersByTimeAsync(0);
+  const opening = openSettingsWindow('shortcuts');
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(native.windows).toHaveLength(1);
+  expect(native.windows[0]?.showCount).toBe(0);
+  native.listeners.get('tano-settings-rendered')?.({ payload: { label: 'settings-main' } });
+  await Promise.all([warming, opening]);
+  expect(native.windows[0]?.showCount).toBe(1);
+  expect(native.emitTo).toHaveBeenCalledWith('settings-main', SETTINGS_NAVIGATE, 'shortcuts');
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it('destroys a failed prewarm and allows the next open to retry', async () => {
+  vi.useFakeTimers();
+  native.autoRender = false;
+  const warming = prewarmSettingsWindow();
+  const failure = expect(warming).rejects.toThrow('设置窗口启动超时');
+  await vi.advanceTimersByTimeAsync(15_000);
+  await failure;
+  expect(native.windows[0]?.destroyed).toBe(true);
+  expect(native.windows[0]?.showCount).toBe(0);
+  native.autoRender = true;
+  const opening = openSettingsWindow('editing');
+  await vi.advanceTimersByTimeAsync(0);
+  await opening;
+  expect(native.windows).toHaveLength(2);
+  expect(native.windows[1]?.showCount).toBe(1);
+  expect(vi.getTimerCount()).toBe(0);
+});
 
 it('prewarms a hidden settings window, then shows and reuses it', async () => {
   await prewarmSettingsWindow();

@@ -1686,7 +1686,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   function openViewTab(id: string) {
     if (!views.value.has(id)) throw new Error(`扩展视图未注册：${id}`);
-    if (!workspace.value) return;
+    if (!workspace.value && views.value.get(id)?.scope !== 'account') return;
     if (!tabIds.value.includes(id)) tabIds.value.push(id);
     activeId.value = id;
     ensureTabNavigation(id);

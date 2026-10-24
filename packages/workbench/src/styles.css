@@ -424,6 +424,23 @@ button:hover {
   border-radius: 5px;
   font-weight: 600;
 }
+.workspace-dropdown .context-menu-item .recent-name {
+  flex: 1;
+  min-width: 0;
+}
+.workspace-dropdown .context-menu-item > svg {
+  flex-shrink: 0;
+}
+.workspace-dropdown .context-menu-item[aria-current='true'] > svg:last-child {
+  color: var(--green);
+}
+.workspace-dropdown .context-menu-item:focus:not(:focus-visible):not(:hover) {
+  background: transparent;
+}
+.workspace-dropdown .context-menu-item:hover,
+.workspace-dropdown .context-menu-item:focus-visible {
+  background: var(--hover);
+}
 .workspace-current {
   background: var(--hover);
   color: var(--text);
@@ -432,21 +449,6 @@ button:hover {
   font-size: 12px;
   color: var(--muted);
   padding: 5px 12px;
-}
-.workspace-menu-summary {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  padding: 3px 7px 8px;
-}
-.workspace-menu-avatar {
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
-  display: grid;
-  place-items: center;
-  border-radius: 7px;
 }
 @media (max-width: 500px) {
 }
@@ -2067,49 +2069,6 @@ button:hover {
   padding: 0;
   margin-right: 2px;
   color: var(--text-secondary);
-}
-.sidebar-popover .workspace-menu-summary {
-  gap: 6px;
-  padding: 4px 7px;
-}
-.workspace-menu-summary-text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 16px;
-}
-.workspace-menu-summary-text strong,
-.workspace-menu-summary-text small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.workspace-menu-summary-text small {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 400;
-}
-.workspace-dropdown .workspace-menu-exit {
-  flex: 0 0 28px;
-  width: 28px;
-  height: 28px;
-  min-height: 28px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  color: var(--text-secondary);
-}
-.workspace-dropdown .workspace-menu-exit svg {
-  width: 16px;
-  height: 16px;
-}
-.sidebar-popover .workspace-menu-avatar {
-  width: 28px;
-  height: 28px;
-  flex-basis: 28px;
-  border-radius: 6px;
 }
 .sidebar-popover .workspace-list-avatar {
   flex-basis: 18px;

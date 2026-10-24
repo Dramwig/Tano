@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalBackdrop from './ModalBackdrop.vue';
 import { t, uiLocale, setUiLocale, uiSearchText } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
@@ -69,6 +70,8 @@ const props = defineProps<{
   windowed?: boolean;
   tabbed?: boolean;
   canOpenTab?: boolean;
+  canOpenWindow?: boolean;
+  openingWindow?: boolean;
   extraPages?: SettingsPage[];
   pluginPages?: PluginSettingsPage[];
   executePlugin?: (interaction: PluginInteraction) => Promise<void>;
@@ -100,6 +103,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
   'open-tab': [page: string];
+  'open-window': [page: string];
   'page-change': [page: string];
   'drag-window': [event: MouseEvent];
   'update:defaultSource': [value: boolean];
@@ -379,9 +383,9 @@ function customFontInput(event: Event) {
 </script>
 
 <template>
-  <div class="modal-backdrop settings-backdrop" :class="{ 'settings-windowed': windowed, 'settings-tabbed': tabbed }" @mousedown.self="!windowed && !tabbed && emit('close')">
+  <ModalBackdrop :active="!windowed && !tabbed" class="modal-backdrop settings-backdrop" :class="{ 'settings-windowed': windowed, 'settings-tabbed': tabbed }" @close="emit('close')">
     <section
-      class="settings-dialog"
+      class="settings-dialog workbench-modal-surface"
       :role="tabbed ? 'region' : 'dialog'"
       :aria-modal="!windowed && !tabbed ? true : undefined"
       aria-labelledby="settings-title"
@@ -454,8 +458,23 @@ function customFontInput(event: Event) {
       </aside>
 
       <button
-        v-if="canOpenTab && !tabbed && atTop"
+        v-if="canOpenWindow && !windowed && !tabbed"
+        class="settings-close settings-open-window"
+        :class="{ 'settings-open-window-with-tab': canOpenTab, 'settings-action-hidden': !atTop }"
+        :inert="!atTop"
+        :aria-hidden="!atTop"
+        type="button"
+        :disabled="openingWindow"
+        :aria-label="t('在新窗口打开')"
+        :data-tooltip="t('在新窗口打开')"
+        @click="emit('open-window', page)"
+      ><ExternalLink :size="18" /></button>
+      <button
+        v-if="canOpenTab && !tabbed"
         class="settings-close settings-open-tab"
+        :class="{ 'settings-action-hidden': !atTop }"
+        :inert="!atTop"
+        :aria-hidden="!atTop"
         type="button"
         :aria-label="t('作为标签页打开')"
         :data-tooltip="t('作为标签页打开')"
@@ -1168,7 +1187,7 @@ function customFontInput(event: Event) {
         </div>
       </main>
     </section>
-  </div>
+  </ModalBackdrop>
 </template>
 
 <style>
@@ -1178,13 +1197,6 @@ function customFontInput(event: Event) {
   min-height: 0;
   overflow: hidden;
 }
-.modal-backdrop.settings-backdrop {
-  align-items: center;
-  padding: 28px;
-  z-index: 80;
-  background: #20252b40;
-  backdrop-filter: blur(4px);
-}
 .settings-dialog {
   position: relative;
   display: flex;
@@ -1192,12 +1204,6 @@ function customFontInput(event: Event) {
   height: min(760px, calc(100dvh - 56px));
   min-height: 0;
   overflow: hidden;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  box-shadow:
-    0 24px 80px #18212b29,
-    0 4px 16px #18212b0d;
 }
 .settings-nav {
   flex: 0 0 224px;
@@ -1388,6 +1394,28 @@ function customFontInput(event: Event) {
 }
 .settings-open-tab {
   right: 56px;
+}
+.settings-open-window {
+  right: 56px;
+}
+.settings-open-window-with-tab {
+  right: 96px;
+}
+.settings-open-tab,
+.settings-open-window {
+  transition: opacity 160ms ease, transform 160ms ease, visibility 160ms;
+}
+.settings-action-hidden {
+  opacity: 0;
+  transform: translateY(-4px);
+  visibility: hidden;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-open-tab,
+  .settings-open-window {
+    transition: none;
+  }
 }
 .modal-backdrop.settings-backdrop.settings-tabbed {
   position: relative;

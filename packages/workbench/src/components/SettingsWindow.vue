@@ -110,7 +110,6 @@ onBeforeUnmount(() => {
   <LoadingSkeleton v-if="!snapshot" variant="shell" />
   <SettingsPanel
     v-else
-    :key="page"
     windowed
     :workspace="snapshot.workspace"
     :workspace-settings="snapshot.workspaceSettings"

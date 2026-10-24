@@ -24,6 +24,11 @@ describe('assistant session coordination', () => {
   let transport: AssistantTransport;
   let history: AssistantSession[];
   beforeEach(() => {
+    const preferences = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => preferences.get(key) ?? null,
+      setItem: (key: string, value: string) => preferences.set(key, value),
+    });
     history = [];
     fixture.workspace = reactive({ workspace: { id: 'workspace', path: 'local', files: [] }, assistantEpoch: 1,
       capabilities: { features: { objectReferences: true } },
@@ -39,7 +44,7 @@ describe('assistant session coordination', () => {
     pinia = createPinia(); setActivePinia(pinia);
     configureWorkbench(pinia, { adapter: { mode: 'web' } as WorkspaceAdapter, native: false, mobile: false, assistant: transport });
   });
-  afterEach(() => { disposePinia(pinia); vi.restoreAllMocks(); });
+  afterEach(() => { disposePinia(pinia); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
   async function ready() {
     const store = useAssistantStore();
     await vi.waitFor(() => expect(store.loading).toBe(false));
@@ -418,6 +423,30 @@ describe('assistant session coordination', () => {
     vi.mocked(transport.models).mockClear();
     await expect(store.checkConnection(connection.id, controller.signal)).rejects.toThrow();
     expect(transport.models).not.toHaveBeenCalled();
+  });
+  it('defaults to floating and remembers the latest panel mode after folding and store recreation', async () => {
+    let store = await ready();
+    store.open();
+    expect(store.displayMode).toBe('floating');
+    for (const mode of ['sidebar', 'floating'] as const) {
+      store.setDisplayMode(mode);
+      store.opened = false;
+      store.open();
+      expect(store.displayMode).toBe(mode);
+      disposePinia(pinia);
+      pinia = createPinia(); setActivePinia(pinia);
+      configureWorkbench(pinia, { adapter: { mode: 'web' } as WorkspaceAdapter, native: false, mobile: false, assistant: transport });
+      store = await ready(); store.open();
+      expect(store.displayMode).toBe(mode);
+    }
+  });
+  it('falls back to floating with invalid or unavailable preference storage', async () => {
+    localStorage.setItem('tano.preference.assistantDisplayMode', 'invalid');
+    const store = await ready();
+    expect(store.displayMode).toBe('floating');
+    vi.stubGlobal('localStorage', { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); } });
+    expect(() => store.setDisplayMode('sidebar')).not.toThrow();
+    expect(useInlineAssistantStore().displayMode).toBe('floating');
   });
   it('changes display modes during a run without changing the conversation, draft or access', async () => {
     const store = await ready(); store.open();

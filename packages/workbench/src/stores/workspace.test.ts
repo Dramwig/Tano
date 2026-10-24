@@ -666,6 +666,18 @@ describe('workspace file reconciliation', () => {
     expect(closeHook).not.toHaveBeenCalled();
     expect([...backend.files]).toEqual(filesBefore);
   });
+  it('opens and closes account tabs before a workspace is selected', async () => {
+    await store.dispose();
+    setActivePinia(configureWorkbench(createPinia(), { adapter: backend, native: false, mobile: false }));
+    store = useWorkspaceStore();
+    store.registerViews([{ ...extensionView, scope: 'account' }]);
+    expect(store.workspace).toBeNull();
+    store.openViewTab(extensionView.id);
+    store.openViewTab(extensionView.id);
+    expect(store.tabs.map(tab => tab.id)).toEqual([extensionView.id]);
+    await store.close(extensionView.id);
+    expect(store.tabs).toEqual([]);
+  });
   it('carries account views across workspaces but not workspace content or assistant tabs', async () => {
     const account = { ...extensionView, id: 'view:account', scope: 'account' as const };
     store.registerViews([extensionView, account]);

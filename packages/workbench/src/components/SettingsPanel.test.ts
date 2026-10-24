@@ -21,6 +21,25 @@ vi.mock('./UpdatePanel.vue', () => ({
 let app: App;
 const tabbed = ref(false);
 const openedTabs: string[] = [];
+const openedWindows: string[] = [];
+const canOpenWindow = ref(true);
+const openingWindow = ref(false);
+
+it('opens the current category in a new window and disables repeated requests while opening', async () => {
+  await openPage('快捷键');
+  const button = root.querySelector<HTMLButtonElement>('.settings-open-window')!;
+  expect(button.getAttribute('aria-label')).toBe('在新窗口打开');
+  button.click();
+  expect(openedWindows).toEqual(['shortcuts']);
+  openingWindow.value = true;
+  await nextTick();
+  expect(button.disabled).toBe(true);
+  button.click();
+  expect(openedWindows).toEqual(['shortcuts']);
+  canOpenWindow.value = false;
+  await nextTick();
+  expect(root.querySelector('.settings-open-window')).toBeNull();
+});
 
 it('opens the selected settings page as a tab only from the top of the panel', async () => {
   const main = root.querySelector<HTMLElement>('.settings-main')!;
@@ -28,10 +47,13 @@ it('opens the selected settings page as a tab only from the top of the panel', a
   main.scrollTop = 80;
   main.dispatchEvent(new Event('scroll'));
   await nextTick();
-  expect(root.querySelector('.settings-open-tab')).toBeNull();
+  expect(root.querySelector('.settings-open-tab')?.classList.contains('settings-action-hidden')).toBe(true);
+  expect(root.querySelector('.settings-open-window')?.getAttribute('aria-hidden')).toBe('true');
   main.scrollTop = 0;
   main.dispatchEvent(new Event('scroll'));
   await nextTick();
+  expect(root.querySelector('.settings-open-tab')?.classList.contains('settings-action-hidden')).toBe(false);
+  expect(root.querySelector('.settings-open-window')?.getAttribute('aria-hidden')).toBe('false');
   await openPage('快捷键');
   root.querySelector<HTMLButtonElement>('.settings-open-tab')!.click();
   expect(openedTabs).toEqual(['shortcuts']);
@@ -88,6 +110,9 @@ async function openPage(label: string) {
 beforeEach(() => {
   tabbed.value = false;
   openedTabs.length = 0;
+  openedWindows.length = 0;
+  canOpenWindow.value = true;
+  openingWindow.value = false;
   setUiLocale('zh-CN');
   localStorage.removeItem(helpPreferenceKey);
   revealUpdates = [];
@@ -117,6 +142,9 @@ beforeEach(() => {
       h(SettingsPanel, {
         tabbed: tabbed.value,
         canOpenTab: true,
+        canOpenWindow: canOpenWindow.value,
+        openingWindow: openingWindow.value,
+        'onOpen-window': (page: string) => openedWindows.push(page),
         'onOpen-tab': (page: string) => openedTabs.push(page),
         workspace: hostWorkspace.value,
         workspaceSettings: workspaceSettings.value,

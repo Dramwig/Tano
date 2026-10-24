@@ -61,14 +61,16 @@ const viewMenu = ref<HTMLElement>();
 const viewMenuPosition = ref({ left: '0px', top: '0px' });
 const viewOpen = ref(false);
 watch(() => props.active, (active) => { if (!active) viewOpen.value = false; });
-const viewLabel = computed(() => ({ workspace: t('工作区'), personal: t('个人'), all: t('个人 + 当前工作区') })[plans.view]);
+watch(() => props.workspaceOnly, () => { viewOpen.value = false; closeCreate(); });
+const effectiveView = computed(() => props.workspaceOnly ? 'workspace' : plans.view);
+const viewLabel = computed(() => ({ workspace: store.workspace?.name ?? t('工作区'), personal: t('个人'), all: t('全部') })[effectiveView.value]);
 const personalIssue = computed(() => !!plans.loadError || !!plans.errors.length);
 const personalIssueTitle = computed(() => plans.requiresDesktopRestart ? t('个人计划需更新桌面程序') : t('个人计划暂时无法读取'));
 const personalConnectionCount = computed(() => sync.connections.filter(c => c.scope === 'personal').length);
 const viewOptions = computed(() => [
-  { value: 'workspace' as const, get label() { return t('工作区'); }, icon: FolderOpen, detail: store.workspace?.name ?? t('尚未打开工作区'), disabled: !store.workspace },
+  { value: 'workspace' as const, get label() { return store.workspace?.name ?? t('工作区'); }, icon: FolderOpen, detail: store.workspace?.name ?? t('尚未打开工作区'), disabled: !store.workspace },
   { value: 'personal' as const, get label() { return t('个人'); }, icon: UserRound, detail: personalIssue.value ? personalIssueTitle.value : personalNative ? personalConnectionCount.value ? t('本设备 · {0} 个同步连接', [personalConnectionCount.value]) : t('本设备 · 未连接同步服务') : t('仅当前浏览器 · 未同步'), disabled: false },
-  { value: 'all' as const, get label() { return t('全部'); }, icon: Layers3, get detail() { return t('个人 + 当前工作区'); }, disabled: !store.workspace },
+  { value: 'all' as const, get label() { return t('全部'); }, icon: Layers3, get detail() { return t('个人 + 当前工作区'); }, disabled: false },
 ]);
 async function toggleViewMenu() {
   viewOpen.value = !viewOpen.value;
@@ -94,6 +96,7 @@ async function closeViewMenu() {
   viewTrigger.value?.focus();
 }
 function chooseView(value: typeof plans.view) {
+  if (props.workspaceOnly) return;
   plans.view = value;
   void closeViewMenu();
 }
@@ -119,7 +122,7 @@ let suppressCalendarClick = false;
 let savedScrollTop = BUFFER_WEEKS * WEEK_HEIGHT;
 let repositioning = false;
 let resizeObserver: ResizeObserver | undefined;
-const events = computed(() => planningEvents(plans.records));
+const events = computed(() => planningEvents(plans.recordsFor(effectiveView.value)));
 const unfinished = computed(() => events.value.filter(record => !isEventCompleted(record)));
 const completed = computed(() => events.value.filter(isEventCompleted));
 const completedExpanded = ref(false);
@@ -184,9 +187,9 @@ const monthTitle = computed(
 const selectedTitle = computed(
   () => t('{0} 月 {1} 日', [selectedDate.value.getMonth() + 1, selectedDate.value.getDate()]),
 );
-const readonly = computed(() => (draft.value?.scope ?? plans.defaultScope) === 'personal'
+const readonly = computed(() => (draft.value?.scope ?? (props.workspaceOnly ? 'workspace' : plans.defaultScope)) === 'personal'
   ? !plans.personalWritable : !plans.workspaceWritable);
-const cannotAdd = computed(() => !plans.personalWritable && !plans.workspaceWritable);
+const cannotAdd = computed(() => props.workspaceOnly ? !plans.workspaceWritable : !plans.personalWritable && !plans.workspaceWritable);
 const pending = ref<string[]>([]);
 const saving = ref(false);
 const error = ref('');
@@ -221,6 +224,7 @@ async function closeScope() {
   scopeTrigger.value?.focus();
 }
 function chooseScope(scope: PlanScope) {
+  if (props.workspaceOnly && scope !== 'workspace') return;
   if (!draft.value || saving.value || (scope === 'personal' ? !plans.personalWritable : !plans.workspaceWritable)) return;
   draft.value.scope = scope;
   void closeScope();
@@ -250,7 +254,7 @@ async function addEvent(kind: 'event' | 'task') {
   if (!draft.value) {
     previousCreateFocus = document.activeElement as HTMLElement | null;
     draft.value = {
-      scope: plans.defaultScope,
+      scope: props.workspaceOnly ? 'workspace' : plans.defaultScope,
       workspaceId: store.workspace?.id,
       name: '',
       checkable: kind === 'task',
@@ -561,10 +565,10 @@ onBeforeUnmount(() => {
       <Teleport to="body">
         <div v-if="viewOpen" id="plan-view-menu" ref="viewMenu" class="plan-scope-menu plan-view-menu" :style="viewMenuPosition" role="menu" :aria-label="t('查看计划')" @keydown="onPickerKeydown($event, viewMenu)" @keydown.esc.stop.prevent="closeViewMenu()">
           <span class="plan-scope-menu-heading">{{ t('查看计划') }}</span>
-          <button v-for="option in viewOptions" :key="option.value" type="button" role="menuitemradio" :aria-label="option.label" :aria-checked="plans.view === option.value" :disabled="option.disabled" @click="chooseView(option.value)">
+          <button v-for="option in viewOptions" :key="option.value" type="button" role="menuitemradio" :aria-label="option.label" :aria-checked="effectiveView === option.value" :disabled="option.disabled" @click="chooseView(option.value)">
             <component :is="option.icon" :size="16" aria-hidden="true" />
             <span><strong>{{ option.label }}</strong><small :title="option.detail">{{ option.detail }}</small></span>
-            <Check v-if="plans.view === option.value" :size="14" aria-hidden="true" />
+            <Check v-if="effectiveView === option.value" :size="14" aria-hidden="true" />
             <CircleAlert v-else-if="option.value === 'personal' && personalIssue" :size="14" class="plan-issue-icon" aria-hidden="true" />
           </button>
           <div class="plan-connections-menu">
@@ -576,10 +580,10 @@ onBeforeUnmount(() => {
       </Teleport>
     </div>
     <PlanConnectionsDialog v-if="connectionKind" :initial-kind="connectionKind" @close="closeConnections" />
-    <p v-if="plans.view !== 'personal' && !store.capabilities.features.objectReferences" class="plan-storage-note">
+    <p v-if="effectiveView !== 'personal' && !store.capabilities.features.objectReferences" class="plan-storage-note">
       {{ t('事件编辑需在工作区设置中启用对象功能。') }}
     </p>
-    <details v-if="plans.view !== 'workspace' && personalIssue" class="plan-load-notice" role="status">
+    <details v-if="effectiveView !== 'workspace' && personalIssue" class="plan-load-notice" role="status">
       <summary><CircleAlert :size="13" aria-hidden="true" /><span>{{ personalIssueTitle }}</span><ChevronDown :size="12" aria-hidden="true" /></summary>
       <p>{{ plans.loadError || t('部分个人事项格式有误，原文件已保留。请修复后重试。') }}</p>
       <p v-for="issue in plans.errors" :key="issue">{{ issue }}</p>
@@ -679,7 +683,7 @@ onBeforeUnmount(() => {
                     <span><strong>{{ t('工作区') }}</strong><small>{{ store.workspace?.name ?? t('尚未打开工作区') }}</small></span>
                     <Check v-if="draft.scope === 'workspace'" :size="15" aria-hidden="true" />
                   </button>
-                  <button type="button" role="menuitemradio" :aria-label="t('个人')" :aria-checked="draft.scope === 'personal'" :disabled="!plans.personalWritable" @click="chooseScope('personal')">
+                  <button type="button" role="menuitemradio" :aria-label="t('个人')" :aria-checked="draft.scope === 'personal'" :disabled="workspaceOnly || !plans.personalWritable" @click="chooseScope('personal')">
                     <UserRound :size="17" aria-hidden="true" />
                     <span><strong>{{ t('个人') }}</strong><small>{{ personalNative ? t('仅这台设备，不随工作区分享') : t('仅当前浏览器，不随工作区分享') }}</small></span>
                     <Check v-if="draft.scope === 'personal'" :size="15" aria-hidden="true" />
@@ -765,7 +769,7 @@ onBeforeUnmount(() => {
       >
         <template #empty>
           <p class="sidebar-calendar-empty" data-plan-layout="agenda-empty">
-            <CalendarDays :size="15" />{{ plans.view === 'personal' && personalIssue ? t('个人事项尚未加载') : t('这一天没有安排') }}
+            <CalendarDays :size="15" />{{ effectiveView === 'personal' && personalIssue ? t('个人事项尚未加载') : t('这一天没有安排') }}
           </p>
         </template>
       </PlanEventList>
@@ -800,7 +804,7 @@ onBeforeUnmount(() => {
       >
         <template #empty>
           <p class="sidebar-calendar-empty" data-plan-layout="unscheduled-empty">
-            <ListTodo :size="15" />{{ plans.view === 'personal' && personalIssue ? t('个人事项尚未加载') : t('没有未安排的任务') }}
+            <ListTodo :size="15" />{{ effectiveView === 'personal' && personalIssue ? t('个人事项尚未加载') : t('没有未安排的任务') }}
           </p>
         </template>
       </PlanEventList>
@@ -836,7 +840,7 @@ onBeforeUnmount(() => {
           >
             <template #empty>
               <p class="sidebar-calendar-empty" data-plan-layout="completed-empty">
-                <CircleCheck :size="15" />{{ plans.view === 'personal' && personalIssue ? t('个人事项尚未加载') : t('没有已完成的任务') }}
+                <CircleCheck :size="15" />{{ effectiveView === 'personal' && personalIssue ? t('个人事项尚未加载') : t('没有已完成的任务') }}
               </p>
             </template>
           </PlanEventList>
