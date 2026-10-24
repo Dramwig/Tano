@@ -581,6 +581,9 @@ button:hover {
   font-size: 13px;
 }
 .tree-scroll {
+  --scroll-fade-mask: linear-gradient(to bottom, transparent, #000 var(--scroll-fade-top, 0px), #000 calc(100% - var(--scroll-fade-bottom, 0px)), transparent);
+  -webkit-mask-image: var(--scroll-fade-mask);
+  mask-image: var(--scroll-fade-mask);
   flex: 1;
   min-height: 0;
   overflow-y: auto;

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import WorkspaceSyncPanel from './components/WorkspaceSyncPanel.vue';
+import { vScrollFade } from './scroll-fade';
 import { createWorkspaceSync, syncEvent } from './workspace-sync';
 import { t } from './i18n';
 import AppTooltip from './components/AppTooltip.vue';
@@ -4317,6 +4318,7 @@ const helpBlocked = computed(() => !!(
           class="sidebar-content"
         >
           <div
+            v-scroll-fade
             class="tree-scroll"
             :class="{ 'drop-root': draggedEntry && dropFolder === '' }"
             @contextmenu.self.prevent="openDirectoryContextMenu('', $event)"
