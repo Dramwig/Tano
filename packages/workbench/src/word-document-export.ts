@@ -46,7 +46,7 @@ function runStyle(element: HTMLElement, inherited: IRunOptions): IRunOptions {
     ...(tag === 'SUP' ? { superScript: true, subScript: false } : {}),
     ...(tag === 'SUB' ? { subScript: true, superScript: false } : {}),
     ...(tag === 'MARK' ? { highlight: HighlightColor.YELLOW } : {}),
-    ...(tag === 'CODE' ? { font: 'Consolas' } : {}),
+    ...(tag === 'CODE' ? { font: codeFont } : {}),
     ...(color(style.color) ? { color: color(style.color) } : {}),
   };
 }
@@ -114,6 +114,26 @@ async function rasterizePreviews(root: HTMLElement) {
       style: { boxSizing: 'border-box', overflow: 'visible', maxWidth: 'none' } });
     preview.replaceWith(image);
   }
+}
+
+/* Latin code face only; Chinese in code keeps the document's East Asian font. */
+const codeFont = { ascii: 'Consolas', hAnsi: 'Consolas', cs: 'Consolas' };
+const genericFonts = /^(-apple-system|BlinkMacSystemFont|system-ui|ui-[a-z-]+|sans-serif|serif|monospace)$/i;
+const cjkFont = /YaHei|PingFang|Hiragino|CJK|Source Han|Noto (Sans|Serif) SC|Song|SimSun|SimHei|Sarasa|Maple Mono NF CN|[\u3400-\u9fff]/i;
+const windowsCjkFont = /^(Microsoft YaHei|SimSun|SimHei|DengXian)$/i;
+/** Word has no fallback chain: give it one concrete Latin face and one CJK face. */
+export function wordFonts(stack: string): { latin: string; eastAsia: string } {
+  const families = stack.split(',').map((name) => name.trim().replace(/^['"]|['"]$/g, ''));
+  const names = families.filter((name) => name && !genericFonts.test(name));
+  // Prefer faces Word can resolve on any Windows install; variable fonts and
+  // macOS-only CJK faces are kept only when nothing portable is listed.
+  const latinNames = names.filter((name) => !cjkFont.test(name));
+  const latin = latinNames.find((name) => !/Variable/i.test(name)) ?? latinNames[0] ?? names[0] ?? 'Arial';
+  const cjkNames = names.filter((name) => cjkFont.test(name));
+  // Resolve the browser's generic serif fallback to a concrete Word CJK face.
+  const fallback = families.some((name) => /^(ui-serif|serif)$/i.test(name)) ? 'SimSun' : latin;
+  const eastAsia = cjkNames.find((name) => windowsCjkFont.test(name)) ?? cjkNames[0] ?? fallback;
+  return { latin, eastAsia };
 }
 
 /** Convert the cleaned editor snapshot to editable Word content. Markdown remains the source. */
@@ -227,7 +247,7 @@ export async function renderWordDocument(root: HTMLElement, options: Pick<Docume
     if (tag === 'UL' || tag === 'OL') return list(element, context);
     if (element instanceof HTMLTableElement) return [await table(element, context), paragraph([], context)];
     if (tag === 'BLOCKQUOTE') return blocks(element.childNodes, { ...context, quote: true, indent: context.indent + 360, width: context.width - 24 });
-    if (tag === 'PRE') return [paragraph(textRuns(element.textContent ?? '', { font: 'Consolas' }), context,
+    if (tag === 'PRE') return [paragraph(textRuns(element.textContent ?? '', { font: codeFont }), context,
       { shading: { fill: 'F1F5F9' }, spacing: { after: 160, line: 240 } })];
     if (tag === 'HR') return [paragraph([], context, { border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: 'CBD5E1' } } })];
     if (tag === 'P' || /^H[1-6]$/.test(tag)) {
@@ -261,9 +281,9 @@ export async function renderWordDocument(root: HTMLElement, options: Pick<Docume
   }
 
   const children = await blocks(root.childNodes, { width: contentWidth, indent: 0, listDepth: 0 });
-  const font = options.fontFamily.split(',')[0].trim().replace(/^['"]|['"]$/g, '') || 'Arial';
+  const { latin: font, eastAsia } = wordFonts(options.fontFamily);
   const document = new Document({ creator: 'Tano', title: options.title ?? basename(options.path),
-    styles: { default: { document: { run: { font: { name: font, eastAsia: font }, size: Math.round(options.fontSize * 1.5), color: '24272B' } } } },
+    styles: { default: { document: { run: { font: { name: font, eastAsia }, size: Math.round(options.fontSize * 1.5), color: '37352F' } } } },
     numbering: { config: numbering },
     sections: [{ properties: { page: { size: { width: pageWidth, height: pageHeight }, margin: { top: margin, bottom: margin, left: margin, right: margin } } },
       children: children.length ? children : [new Paragraph('')] }],

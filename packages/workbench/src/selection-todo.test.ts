@@ -23,3 +23,23 @@ it('retains the same created task when original-document insertion fails or is r
   expect(insert).toHaveBeenCalledTimes(2);
   expect(insert).toHaveBeenLastCalledWith(session.created, true);
 });
+
+it('creates scheduled events without completion controls and requires their date', () => {
+  expect(() => selectionTodoDraft('Meeting', source, 'Meeting', { kind: 'event' })).toThrow('日期');
+  const draft = selectionTodoDraft('Meeting', source, 'Meeting', { kind: 'event', date: { date: '2026-10-23', time: '10:00', end: '2026-10-23T11:00' } });
+  expect(draft.properties.checkable).toBe(false);
+  expect(draft.properties.start).toBeTruthy();
+  expect(draft.properties.end).toBeTruthy();
+});
+it('preserves source location and does not recreate an event after reference insertion fails', async () => {
+  const create = vi.fn(async value => ({ object: { ...value, id: 'b00001', version: 1 } } as ObjectRecord));
+  const insert = vi.fn().mockRejectedValueOnce(new Error('Conflict')).mockResolvedValue(undefined);
+  const location = { workspaceId: 'ws', fileId: 'a00001', selection: { text: 'Meeting', from: 10, to: 17 } };
+  const session = selectionTodoSession('Meeting', source, { create, insert }, { workspaceName: 'Project', source: location });
+  const options = { kind: 'event' as const, date: { date: '2026-10-23', time: '', end: '' } };
+  await expect(session.save('Meeting', false, options)).rejects.toThrow('Conflict');
+  await session.save('Changed', true);
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(session.created?.object.properties.documentSource).toEqual(location);
+  expect(session.created?.object.properties.checkable).toBe(false);
+});

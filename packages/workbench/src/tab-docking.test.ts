@@ -66,6 +66,19 @@ it('waits for target acknowledgement before the source may close its tab', async
     .toMatchObject({ target: 'detached-2', payload: { sourceLabel: 'main', index: 2, drop: { paneId: 'nested', side: 'bottom' } } });
 });
 
+it('transfers the selected settings page and waits for the destination acknowledgement', async () => {
+  bus.handlers.set('tano-tab-transfer-request', new Set([({ payload }) => {
+    expect(payload).toMatchObject({ tabId: 'view:settings', settingsPage: 'shortcuts' });
+    for (const handler of bus.handlers.get('tano-tab-transfer-result') ?? []) handler({ payload: {
+      requestId: payload.requestId, targetLabel: 'main', tabId: payload.tabId, created: true,
+    } });
+  }]));
+  const result = await requestTabTransfer('main', {
+    workspaceId: 'workspace', tabId: 'view:settings', settingsPage: 'shortcuts', index: 0,
+  });
+  expect(result).toMatchObject({ tabId: 'view:settings', created: true });
+});
+
 it('preserves the destination pane and edge and does not dock through the foreground window', async () => {
   let front: Record<string, unknown> = { index: 3, drop: { paneId: 'nested', side: 'left' } };
   bus.handlers.set('tano-tab-dock-probe', new Set([({ payload }) => {

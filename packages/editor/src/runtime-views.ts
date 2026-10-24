@@ -1,15 +1,40 @@
 import { DOMSerializer } from '@milkdown/kit/prose/model';
-import type { Node } from '@milkdown/kit/prose/model';
-import type { NodeViewConstructor } from '@milkdown/kit/prose/view';
+import type { Mark, Node } from '@milkdown/kit/prose/model';
+import type { NodeViewConstructor, MarkViewConstructor } from '@milkdown/kit/prose/view';
 import { Selection, TextSelection } from '@milkdown/kit/prose/state';
 import DOMPurify from 'dompurify';
 import type { WorkspaceCapabilities } from './runtime';
+import { featureEnabled } from './runtime';
 import { mermaidHighlightRanges } from './mermaid-highlight';
 import { floatingPanelPosition, observePanelPosition, positionAnchoredPanel } from './panel-position';
 import type { PanelSide } from './panel-position';
 import { activateEditorPanel, announceEditorPanel, createEditorPanel, onOtherEditorPanel } from './editor-panel';
 import { matchingCodeLanguages } from './code-languages';
 import type { CodeLanguage } from './code-languages';
+
+/** Preserve the shared document schema and source while changing workspace presentation. */
+export function runtimeMarkViews(policy: WorkspaceCapabilities): Record<string, MarkViewConstructor> {
+  return Object.fromEntries(([
+    ['superscript', '^', 'sup'], ['subscript', '~', 'sub'],
+    ['underline', '++', 'u'], ['highlight', '==', 'mark'],
+    ['inline_comment', '%%', 'span'],
+  ] as const).map(([name, marker, tag]) => [name, (mark: Mark) => {
+    if (featureEnabled(name, policy.features))
+      return DOMSerializer.renderSpec(document, mark.type.spec.toDOM!(mark, true));
+    const dom = document.createElement('span');
+    dom.dataset.tanoDisabledStyle = name;
+    const contentDOM = document.createElement('span');
+    const delimiter = mark.attrs.delimiter as string | null;
+    const before = document.createElement('span');
+    const after = document.createElement('span');
+    before.contentEditable = after.contentEditable = 'false';
+    before.textContent = delimiter ?? `<${tag}>`;
+    after.textContent = delimiter ?? `</${tag}>`;
+    if (name === 'inline_comment') before.textContent = after.textContent = marker;
+    dom.append(before, contentDOM, after);
+    return { dom, contentDOM };
+  }]));
+}
 
 export function sourcePresentation(node: Node, policy: WorkspaceCapabilities) {
   const features = policy.features;

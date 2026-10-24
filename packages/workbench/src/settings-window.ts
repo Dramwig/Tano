@@ -172,18 +172,26 @@ async function createSettingsWindow(page: SettingsPageId): Promise<WebviewWindow
       void window.once('tauri://created', () => resolve());
       void window.once<string>('tauri://error', event => reject(new Error(String(event.payload))));
     });
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      await created;
-      opened = window;
       void window.once('tauri://destroyed', () => {
         if (opened === window) opened = null;
       });
-      // Hidden WebView startup happens in the background. Show it after the first settings render.
-      await Promise.race([ready, new Promise<void>(resolve => setTimeout(resolve, 1500))]);
+      // Prewarming must finish the first render, not merely create a WebView.
+      // Never reveal a loading screen when cold startup takes longer than expected.
+      await Promise.race([
+        Promise.all([created, ready]),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(new Error('设置窗口启动超时')), 15_000);
+        }),
+      ]);
+      opened = window;
       return window;
     } catch (error) {
       await window.destroy().catch(() => {});
       throw error;
+    } finally {
+      clearTimeout(timeout);
     }
   } finally {
     unlisten();

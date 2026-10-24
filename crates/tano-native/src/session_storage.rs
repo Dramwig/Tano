@@ -16,6 +16,8 @@ pub struct RecentWorkspace {
     pub(crate) path: String,
     opened_at: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
+    created_at: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     icon: Option<String>,
 }
 #[derive(Serialize, Deserialize)]
@@ -112,6 +114,7 @@ pub fn recent(cache: &Path) -> Result<Vec<RecentWorkspace>, String> {
                 name: row.get(1)?,
                 path: row.get(2)?,
                 opened_at: row.get(3)?,
+                created_at: None,
                 icon: None,
             })
         })
@@ -123,6 +126,7 @@ pub fn recent(cache: &Path) -> Result<Vec<RecentWorkspace>, String> {
         match fs::metadata(&workspace.path) {
             Ok(metadata) if metadata.is_dir() => {
                 workspace.icon = recent_icon(Path::new(&workspace.path));
+                workspace.created_at = recent_created_at(Path::new(&workspace.path), &workspace.id);
                 valid.push(workspace);
             }
             Ok(_) => {
@@ -143,6 +147,26 @@ pub fn recent(cache: &Path) -> Result<Vec<RecentWorkspace>, String> {
         }
     }
     Ok(valid)
+}
+
+// Read portable identity metadata without opening or mutating the workspace.
+fn recent_created_at(root: &Path, expected_id: &str) -> Option<u64> {
+    let root = fs::canonicalize(root).ok()?;
+    let path = storage::identity_path(&root).ok()?;
+    let mut content = String::new();
+    fs::File::open(path)
+        .ok()?
+        .take(262_145)
+        .read_to_string(&mut content)
+        .ok()?;
+    if content.len() > 262_144 {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(&content).ok()?;
+    if value.get("id")?.as_str()? != expected_id {
+        return None;
+    }
+    value.get("createdAt")?.as_u64().filter(|time| *time > 0)
 }
 
 // Read presentation from the portable settings, without opening or mutating the workspace.
@@ -362,6 +386,28 @@ pub fn save(app_data: &Path, workspace_id: &str, session: &WorkspaceSession) -> 
 mod tests {
     use super::*;
     #[test]
+    fn recent_creation_time_is_portable_stable_and_unknown_for_legacy_workspaces() {
+        let data = tempfile::tempdir().unwrap();
+        let root = data.path();
+        let id = storage::workspace_identity(root).unwrap();
+        let path = root.join(".tano/config.json");
+        let original = fs::read_to_string(&path).unwrap();
+        let created = recent_created_at(root, &id).unwrap();
+        assert!(created > 0);
+        assert_eq!(storage::workspace_identity(root).unwrap(), id);
+        assert_eq!(recent_created_at(root, &id), Some(created));
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+        assert_eq!(recent_created_at(root, "other"), None);
+        fs::write(
+            &path,
+            serde_json::json!({"id": id, "format": 1}).to_string(),
+        )
+        .unwrap();
+        assert_eq!(recent_created_at(root, &id), None);
+        fs::write(&path, "invalid").unwrap();
+        assert_eq!(recent_created_at(root, &id), None);
+    }
+    #[test]
     fn unregister_retains_workspace_content_identity_cache_and_recovery_drafts() {
         let data = tempfile::tempdir().unwrap();
         let cache = data.path().join("index.sqlite");
@@ -491,6 +537,7 @@ mod tests {
         .unwrap();
         std::os::unix::fs::symlink(outside.path(), data.path().join(".tano")).unwrap();
         assert!(recent_icon(data.path()).is_none());
+        assert!(recent_created_at(data.path(), "workspace").is_none());
     }
     #[test]
     fn recent_removes_missing_and_moved_workspaces_from_history() {

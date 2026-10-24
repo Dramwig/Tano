@@ -15,6 +15,11 @@ export const featureDefinitions = [
   { key: 'embed', label: '嵌入预览' },
   { key: 'html', label: 'HTML 预览' },
   { key: 'enhanced', label: '折叠、标签页、分栏与附件' },
+  { key: 'superscript', label: '上标（扩展）' },
+  { key: 'subscript', label: '下标（扩展）' },
+  { key: 'underline', label: '下划线（扩展）' },
+  { key: 'highlight', label: '高亮' },
+  { key: 'inlineComment', label: '注释（扩展）' },
 ] as const;
 export type DocumentFeature = (typeof featureDefinitions)[number]['key'];
 export type DocumentFeatures = Record<DocumentFeature, boolean>;
@@ -31,6 +36,8 @@ export interface WorkspaceCapabilities {
   pageWidthLimits: Record<string, boolean>;
 }
 export interface EditorPreferences {
+  /** Device-local visual spacing; never inserts characters into Markdown. */
+  autoSpacing?: boolean;
   previewMathWhileEditing: boolean;
   folding: boolean;
   /** Pressing Space in an empty paragraph opens the one-shot AI composer. */
@@ -48,6 +55,7 @@ export const defaultCapabilities: WorkspaceCapabilities = {
   pageWidthLimits: {},
 };
 export const defaultEditorPreferences: EditorPreferences = {
+  autoSpacing: false,
   previewMathWhileEditing: true,
   folding: true,
   blankBlockAiShortcut: true,
@@ -101,6 +109,8 @@ export function parseCapabilities(content: string): WorkspaceCapabilities {
 }
 
 export const commandFeatures: Record<string, DocumentFeature> = {
+  superscript: 'superscript', subscript: 'subscript', underline: 'underline',
+  highlight: 'highlight', inline_comment: 'inlineComment',
   reference: 'objectReferences', 'object-reference': 'objectReferences',
   math: 'math',
   'math-block': 'math',
@@ -117,6 +127,15 @@ export const commandFeatures: Record<string, DocumentFeature> = {
 export function featureEnabled(command: string, features = defaultCapabilities.features) {
   const feature = commandFeatures[command];
   return !feature || features[feature];
+}
+
+/** Device shortcuts cannot enable syntax disabled by the workspace. */
+export function workspaceWrapping(options: Partial<SelectionWrappingPreferences> | undefined, features = defaultCapabilities.features) {
+  const result = { ...options };
+  for (const key of ['superscript', 'subscript', 'underline', 'highlight', 'math'] as const)
+    if (!features[key]) result[key] = false;
+  if (!features.inlineComment) result.comment = false;
+  return result;
 }
 
 // Policy belongs to the codec instance, never to a process-wide current workspace.

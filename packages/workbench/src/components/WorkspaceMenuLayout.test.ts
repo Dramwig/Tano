@@ -35,7 +35,8 @@ it('keeps workspace switching and settings in the primary menu and opens actions
   const { trigger, openSettings, importAction } = await mount();
   expect(root.textContent).not.toContain('导入');
   expect(root.textContent).toContain('本地工作区');
-  root.querySelector<HTMLButtonElement>('button')!.click();
+  expect(root.querySelector('button')!.textContent).toBe('本地工作区');
+  [...root.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '设置')!.click();
   expect(openSettings).toHaveBeenCalledOnce();
   trigger.click();
   await nextTick();

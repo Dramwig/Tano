@@ -178,7 +178,7 @@ const time = (value?: string) => value ? new Date(value).toLocaleString(uiLocale
 </template>
 
 <style scoped>
-.plan-connections-backdrop { position: fixed; inset: 0; z-index: 95; display: flex; align-items: center; justify-content: center; padding: 20px; background: #11182745; }
+.plan-connections-backdrop { position: fixed; inset: 0; z-index: 95; display: flex; align-items: center; justify-content: center; padding: 20px; background: #0f0f0f45; }
 .plan-connections { width: 680px; max-width: 100%; max-height: min(860px, 90dvh); display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); color: var(--text); box-shadow: 0 24px 80px #0002; outline: none; }
 .plan-connections > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 24px 26px 18px; }
 h2 { margin: 0 0 7px; font-size: 19px; font-weight: 600; }

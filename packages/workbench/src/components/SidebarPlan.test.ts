@@ -19,9 +19,11 @@ let root: HTMLElement;
 let store: ReturnType<typeof useWorkspaceStore>;
 let pinia: ReturnType<typeof createPinia>;
 const date = ref(new Date(2026, 8, 29));
+const workspaceOnly = ref(false);
 const selectEvent = vi.fn();
 beforeEach(async () => {
   localStorage.clear();
+  workspaceOnly.value = false;
   vi.stubGlobal('navigator', { locks: { request: async (_name: string, run: () => unknown) => run() } });
   vi.stubGlobal(
     'ResizeObserver',
@@ -43,6 +45,7 @@ beforeEach(async () => {
   app = createApp(() =>
     h(SidebarPlan, {
       date: date.value,
+      workspaceOnly: workspaceOnly.value,
       'onSelect-date': (value: Date) => {
         date.value = value;
       },
@@ -730,7 +733,7 @@ it('switches the sidebar range from the heading and closes the menu on Escape or
   expect(root.querySelector('select')).toBeNull();
   trigger.click();
   await nextTick();
-  expect(document.activeElement?.getAttribute('aria-label')).toBe('工作区');
+  expect(document.activeElement?.getAttribute('aria-label')).toBe(store.workspace!.name);
   control<HTMLElement>('查看计划').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
   expect(document.activeElement?.getAttribute('aria-label')).toBe('个人');
   (document.activeElement as HTMLButtonElement).click();
@@ -786,4 +789,33 @@ it('explains an outdated desktop host only in personal views and resumes after a
   await vi.waitFor(() => expect(root.querySelector('.plan-load-notice')).toBeNull());
   expect(plans.requiresDesktopRestart).toBe(false);
   expect(plans.personalWritable).toBe(true);
+});
+
+
+it('enforces workspace-only records and creation even when the shared filter is personal', async () => {
+  const plans = usePlanStore();
+  await plans.createPersonal({ type: 'event', name: '私人的任务', description: '', archived: false, properties: { checkable: true } });
+  plans.view = 'personal';
+  workspaceOnly.value = true;
+  await nextTick();
+  expect(root.textContent).not.toContain('私人的任务');
+  expect(control<HTMLButtonElement>('计划范围').disabled).toBe(true);
+  await quickAdd('项目任务');
+  expect(control<HTMLButtonElement>('保存到').textContent).toContain('工作区');
+  control<HTMLButtonElement>('保存到').click();
+  await nextTick();
+  expect(document.querySelector<HTMLButtonElement>('[role=menuitemradio][aria-label="个人"]')!.disabled).toBe(true);
+});
+
+it('keeps All available with no workspace and shows personal sources', async () => {
+  const plans = usePlanStore();
+  await plans.createPersonal({ type: 'event', name: '主页事项', description: '', archived: false, properties: { checkable: true } });
+  store.workspace = null;
+  plans.view = 'all';
+  await nextTick();
+  expect(root.textContent).toContain('主页事项');
+  expect(root.textContent).toContain('个人');
+  control<HTMLButtonElement>('计划范围').click();
+  await nextTick();
+  expect(document.querySelector<HTMLButtonElement>('[role=menuitemradio][aria-label="全部"]')!.disabled).toBe(false);
 });

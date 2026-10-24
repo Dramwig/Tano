@@ -108,7 +108,18 @@ it('moves a node without opening it, releases it on cancellation and opens on a 
   await nextTick();
   expect(node.getAttribute('transform')).not.toBe(position);
   expect(svg.classList.contains('is-dragging')).toBe(true);
+  const firstMove = node.getAttribute('transform');
+  const edge = root.querySelector('line')!;
+  const firstEndpoint = edge.getAttribute('x1');
+  const connected = root.querySelector('[data-node="1"]')!;
+  const connectedPosition = connected.getAttribute('transform');
+  pointer(svg, 'pointermove', 600, 350);
+  await vi.waitFor(() => expect(node.getAttribute('transform')).not.toBe(firstMove));
+  expect(edge.getAttribute('x1')).not.toBe(firstEndpoint);
+  await vi.waitFor(() => expect(connected.getAttribute('transform')).not.toBe(connectedPosition));
+  const beforeRelease = connected.getAttribute('transform');
   pointer(svg, 'pointerup', 560, 320);
+  await vi.waitFor(() => expect(connected.getAttribute('transform')).not.toBe(beforeRelease));
   node.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
   expect(fixture.store.openFileInNewTab).not.toHaveBeenCalled();
   pointer(node, 'pointerdown', 400, 300);

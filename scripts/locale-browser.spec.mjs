@@ -48,7 +48,7 @@ test('switches desktop pages live, preserves document content and remembers the 
   await page.goto('http://127.0.0.1:43845');
   await page.locator('.ProseMirror').first().waitFor();
   const original = await page.locator('.ProseMirror').first().innerText();
-  await page.getByRole('button', { name: '切换工作区', exact: true }).click();
+  await page.getByRole('button', { name: /^切换上下文：/ }).click();
   await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('combobox', { name: '界面语言', exact: true }).selectOption('en-US');
   await expect(page.locator('#settings-title')).toHaveText('Appearance');
@@ -65,7 +65,7 @@ test('switches desktop pages live, preserves document content and remembers the 
   await page.screenshot({ path: testInfo.outputPath('english-workbench.png') });
   await page.reload();
   await expect(page.getByRole('button', { name: 'New document', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Switch workspace', exact: true }).click();
+  await page.getByRole('button', { name: /^Switch context:/ }).click();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.setViewportSize({ width: 900, height: 700 });
   expect(await page.locator('.settings-dialog').evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);

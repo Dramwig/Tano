@@ -12,6 +12,12 @@ import { acceptTaskInsights } from './fixtures/task-insights-acceptance.mjs';
 const origin = process.env.TANO_PLUGIN_TEST_URL ?? 'http://127.0.0.1:43845';
 const moduleUrl = `/@fs/${resolve('packages/workbench/src/plugins').replaceAll('\\', '/')}`;
 
+async function openPluginCenter(page) {
+  await page.getByRole('button', { name: '打开命令中心', exact: true }).click();
+  await page.getByRole('combobox', { name: '搜索命令' }).fill('打开插件中心');
+  await page.getByRole('option').filter({ hasText: '打开插件中心' }).click();
+}
+
 for (const template of ['vue', 'react']) test(`runs a newly generated ${template} starter through real document events and UI messages`, async ({ page }) => {
   test.setTimeout(90000);
   const artifacts = resolve('artifacts'); await mkdir(artifacts, { recursive: true });
@@ -27,7 +33,7 @@ for (const template of ['vue', 'react']) test(`runs a newly generated ${template
       const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace');
       await store.create('000-template-first.md', false, '# Template original\n');
     });
-    await page.getByRole('button', { name: '打开插件标签页', exact: true }).click();
+    await openPluginCenter(page);
     await page.getByRole('button', { name: '导入插件', exact: true }).click();
     await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(canonical);
     await page.getByRole('button', { name: '检查清单' }).click();
@@ -373,7 +379,7 @@ test('watches source edits through developer mode, keeps the last build on compi
     const built = await buildPlugin(directory);
     watcher = await startPluginWatch(directory, { origin });
     await page.goto(origin);
-    await page.getByRole('button', { name: '打开插件标签页', exact: true }).click();
+    await openPluginCenter(page);
     await page.getByRole('button', { name: '导入插件', exact: true }).click();
     await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(built.canonical);
     await page.getByRole('button', { name: '检查清单' }).click();
@@ -436,7 +442,7 @@ test('upgrades, authorizes, inspects logs and rolls back a plugin through its ma
   const pkg = version => ({ packageVersion: 1, manifest: { manifestVersion: 2, apiVersion: 1, id: 'maintenance-test', name: '维护示例', version,
     description: 'Maintenance integration', objectTypes: [], relationTypes: [], permissions: [], commands: [], views: [{ id: 'main', label: '版本内容' }] },
     source: `console.warn('构建 ${version} 已启动'); await tano.views.render('main', {type: 'text', text: '当前构建 ${version}'});` });
-  await page.getByRole('button', { name: '打开插件标签页', exact: true }).click();
+  await openPluginCenter(page);
   const install = async version => {
     await page.getByRole('button', { name: '导入插件', exact: true }).click();
     await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(JSON.stringify(pkg(version)));
@@ -532,7 +538,7 @@ test('packs and runs the Vue kanban, persists drag and keyboard moves, and tears
   const content = readFileSync('artifacts/kanban.tano-plugin.json', 'utf8');
   const errors = []; page.on('pageerror', error => errors.push(error.stack ?? String(error)));
   await page.goto(origin);
-  await page.getByRole('button', { name: '打开插件标签页', exact: true }).click();
+  await openPluginCenter(page);
   await page.getByRole('button', { name: '导入插件', exact: true }).click();
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(content);
   await page.getByRole('button', { name: '检查清单' }).click();
@@ -540,7 +546,8 @@ test('packs and runs the Vue kanban, persists drag and keyboard moves, and tears
   await page.getByRole('button', { name: '查看任务看板详情' }).click();
   await page.getByRole('button', { name: '授权此版本运行' }).click();
   await page.getByRole('button', { name: '关闭插件窗口', exact: true }).click();
-  await page.getByRole('button', { name: '插件工作台', exact: true }).click();
+  await page.getByRole('button', { name: /^切换侧边栏视图：/ }).click();
+  await page.getByRole('menuitemradio', { name: '插件工作台', exact: true }).click();
   await page.getByRole('navigation', { name: '插件视图' }).getByRole('button', { name: /^任务看板/ }).click();
   const surface = page.getByRole('region', { name: '任务看板 · 任务看板' });
   const ui = surface.frameLocator('iframe[title="插件界面隔离容器"]').frameLocator('iframe[title="插件自定义界面"]');
@@ -558,7 +565,7 @@ test('packs and runs the Vue kanban, persists drag and keyboard moves, and tears
   await page.reload();
   await expect(ui.getByRole('region', { name: '已完成', exact: true }).getByRole('article', { name: '验证隔离看板' })).toBeVisible();
   await page.screenshot({ path: 'artifacts/plugin-kanban.png', fullPage: true });
-  await page.getByRole('button', { name: '打开插件标签页', exact: true }).click();
+  await openPluginCenter(page);
   await page.getByRole('button', { name: /^已安装/ }).click();
   await page.getByRole('button', { name: '查看任务看板详情' }).click();
   await page.getByRole('button', { name: '停用插件', exact: true }).click();
@@ -608,7 +615,7 @@ test('runs the SDK in a CSP sandbox and blocks ambient network, cookies and pare
 
 test('installs, authorizes and runs a plugin through the plugin center', async ({ page }) => {
   await page.goto(origin);
-  await page.getByRole('button', { name: '打开插件标签页', exact: true }).click();
+  await openPluginCenter(page);
   await page.getByRole('button', { name: '导入插件', exact: true }).click();
   await page.getByRole('button', { name: '载入文档总览示例' }).click();
   await page.getByRole('button', { name: '检查清单' }).click();
@@ -645,7 +652,7 @@ test('round-trips form values and document writes through the real worker SDK', 
         { type: 'button', action: 'create', label: '创建插件笔记' }
       ] });
     ` };
-  await page.getByRole('button', { name: '打开插件标签页', exact: true }).click();
+  await openPluginCenter(page);
   await page.getByRole('button', { name: '导入插件', exact: true }).click();
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(JSON.stringify(pkg));
   await page.getByRole('button', { name: '检查清单' }).click();
@@ -678,7 +685,7 @@ test('uses plugin pages without desktop tabs, sidebar, settings, menus, palette 
       ] });
       tano.views.onAction('preferences', ({ values }) => tano.notify('已保存示例偏好：' + values.title));
     ` };
-  await page.getByRole('button', { name: '打开插件标签页', exact: true }).click();
+  await openPluginCenter(page);
   await page.getByRole('button', { name: '导入插件', exact: true }).click();
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(JSON.stringify(pkg));
   await page.getByRole('button', { name: '检查清单' }).click();
@@ -687,7 +694,8 @@ test('uses plugin pages without desktop tabs, sidebar, settings, menus, palette 
   await page.getByRole('button', { name: '授权此版本运行' }).click();
   await page.getByRole('button', { name: '关闭插件窗口', exact: true }).click();
 
-  await page.getByRole('button', { name: '插件工作台', exact: true }).click();
+  await page.getByRole('button', { name: /^切换侧边栏视图：/ }).click();
+  await page.getByRole('menuitemradio', { name: '插件工作台', exact: true }).click();
   const sidebar = page.getByRole('region', { name: '插件工作台', exact: true });
   await sidebar.getByRole('button', { name: /^示例看板/ }).click();
   await expect(page.locator('.workspace-tabbar')).toHaveCount(0);
@@ -695,7 +703,8 @@ test('uses plugin pages without desktop tabs, sidebar, settings, menus, palette 
   await page.reload();
   await expect(page.locator('.workspace-tabbar')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '看板已经就绪' })).toBeVisible();
-  await page.getByRole('button', { name: '插件工作台', exact: true }).click();
+  await page.getByRole('button', { name: /^切换侧边栏视图：/ }).click();
+  await page.getByRole('menuitemradio', { name: '插件工作台', exact: true }).click();
   await sidebar.getByRole('button', { name: /^示例摘要/ }).click();
   await expect(sidebar.getByText('侧栏摘要已经就绪', { exact: true })).toBeVisible();
   await sidebar.getByRole('button', { name: /^示例偏好/ }).click();
@@ -720,16 +729,20 @@ test('uses plugin pages without desktop tabs, sidebar, settings, menus, palette 
   await expect(page.getByRole('heading', { name: '看板已经就绪' })).toBeVisible();
   await page.screenshot({ path: 'artifacts/plugin-workbench.png', fullPage: true });
 
-  await page.getByRole('button', { name: '仓库', exact: true }).click();
+  await page.getByRole('button', { name: /^切换侧边栏视图：/ }).click();
+  await page.getByRole('menuitemradio', { name: '文件', exact: true }).click();
   await page.getByRole('treeitem', { name: '01-基础块与行内', exact: true }).click();
   await page.getByRole('button', { name: '文档操作', exact: true }).click();
   await page.getByRole('menuitem', { name: /运行示例命令/ }).click();
-  await page.getByRole('button', { name: '插件工作台', exact: true }).click();
+  await page.getByRole('button', { name: /^切换侧边栏视图：/ }).click();
+  await page.getByRole('menuitemradio', { name: '插件工作台', exact: true }).click();
   await expect(sidebar.getByText('示例命令 3 文档', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '仓库', exact: true }).click();
+  await page.getByRole('button', { name: /^切换侧边栏视图：/ }).click();
+  await page.getByRole('menuitemradio', { name: '文件', exact: true }).click();
   await page.getByRole('treeitem', { name: '01-基础块与行内', exact: true }).click({ button: 'right' });
   await page.getByRole('menuitem', { name: /运行示例命令/ }).click();
-  await page.getByRole('button', { name: '插件工作台', exact: true }).click();
+  await page.getByRole('button', { name: /^切换侧边栏视图：/ }).click();
+  await page.getByRole('menuitemradio', { name: '插件工作台', exact: true }).click();
   await expect(sidebar.getByText('示例命令 4 文档', { exact: true })).toBeVisible();
   await sidebar.getByRole('button', { name: '管理插件', exact: true }).click();
   await page.getByRole('button', { name: /^已安装/ }).click();

@@ -14,8 +14,6 @@
 }
 .touch-layout .sidebar { top: auto; bottom: auto; }
 .touch-layout button { touch-action: manipulation; }
-.touch-layout .sidebar-brand-slot .brand { visibility: hidden; }
-.touch-layout .sidebar-brand-slot .sidebar-toggle { opacity: 1; pointer-events: auto; }
 .touch-layout .sidebar-navigation { overflow-x: auto; flex-shrink: 0; }
 .touch-layout .tree-row { -webkit-touch-callout: none; }
 .touch-layout .sidebar-resize-handle { width: 12px; right: -6px; }
@@ -77,7 +75,7 @@
   left: 0;
   z-index: 40;
   width: min(320px, calc(100% - 48px));
-  box-shadow: 15px 0 40px #1f232815;
+  box-shadow: 15px 0 40px #0f0f0f15;
 }
 .touch-layout.compact-layout .sidebar {
   top: var(--app-safe-top);
@@ -90,7 +88,7 @@
   position: absolute;
   inset: 0;
   z-index: 39;
-  background: #1f232840;
+  background: #0f0f0f40;
 }
 .compact-layout .app-shell:not(.sidebar-hidden) .main-column { margin-left: 0; min-width: 0; width: 100%; }
 .compact-layout .sidebar-resize-handle { display: none; }

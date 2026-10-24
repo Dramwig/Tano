@@ -1,0 +1,47 @@
+// @vitest-environment jsdom
+import { afterEach, expect, it, vi } from 'vitest';
+import { createApp, nextTick } from 'vue';
+import { createPinia, disposePinia } from 'pinia';
+import { configureWorkbench } from '../runtime';
+import { DemoAdapter } from '../adapter';
+import { useWorkspaceStore } from '../stores/workspace';
+import { useAssistantStore } from '../assistant/store';
+import { ASSISTANT_TAB_ID, openAssistantPage } from '../assistant/navigation';
+import SidebarAssistant from './SidebarAssistant.vue';
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); localStorage.clear(); });
+
+it('filters workspace sessions, preserves drafts and prevents replacing a running session', async () => {
+  const pinia = configureWorkbench(createPinia(), { adapter: new DemoAdapter(), native: false, mobile: false });
+  cleanups.push(() => disposePinia(pinia));
+  const workspace = useWorkspaceStore(pinia);
+  cleanups.push(() => workspace.dispose());
+  workspace.registerViews([{ id: ASSISTANT_TAB_ID, label: '助手', icon: {} }]);
+  await workspace.initialize();
+  const assistant = useAssistantStore(pinia);
+  await vi.waitFor(() => expect(assistant.loading).toBe(false));
+  const base = { version: 1 as const, workspaceId: workspace.workspace!.id, createdAt: 1, updatedAt: 1, revision: 0, messages: [] };
+  assistant.sessions = [{ ...base, id: 'first', title: '项目计划' }, { ...base, id: 'second', title: '研究记录' }, { ...base, id: 'other', workspaceId: 'other', title: '其他工作区' }];
+  assistant.selectSession('first');
+  assistant.prompt = '尚未发送';
+  const root = document.createElement('div'); document.body.append(root);
+  const app = createApp(SidebarAssistant).use(pinia); app.mount(root);
+  cleanups.push(() => { assistant.busy = false; app.unmount(); root.remove(); });
+  expect(root.textContent).not.toContain('其他工作区');
+  expect(root.querySelectorAll('.assistant-navigation-session')).toHaveLength(2);
+  openAssistantPage(workspace, assistant);
+  expect(assistant.prompt).toBe('尚未发送');
+  expect(assistant.fullscreenTabId).toBe(ASSISTANT_TAB_ID);
+  assistant.busy = true;
+  openAssistantPage(workspace, assistant, 'second');
+  openAssistantPage(workspace, assistant, undefined, true);
+  expect(assistant.session?.id).toBe('first');
+  await nextTick();
+  expect(root.querySelector<HTMLButtonElement>('.assistant-navigation-new')?.disabled).toBe(true);
+  assistant.busy = false;
+  const input = root.querySelector('input')!; input.value = '研究'; input.dispatchEvent(new Event('input'));
+  await nextTick();
+  expect(root.querySelectorAll('.assistant-navigation-session')).toHaveLength(1);
+  root.querySelector<HTMLButtonElement>('.assistant-navigation-session')!.click();
+  expect(assistant.session?.id).toBe('second');
+});

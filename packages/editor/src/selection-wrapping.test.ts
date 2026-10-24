@@ -7,7 +7,8 @@ it('upgrades single markers, consumes repeated double markers, and honors disabl
   expect(selectionWrap('文字', '~')?.prefix).toBe('~~');
   expect(selectionWrap('文字', '~', { subscript: true })?.prefix).toBe('~');
   expect(selectionWrap('文字', '~', { subscript: true }, '~', '~')?.prefix).toBe('~');
-  expect(selectionWrap('文字', '=', undefined, '==', '==')?.prefix).toBe('');
+  expect(selectionWrap('文字', '=', { highlight: true }, '==', '==')?.prefix).toBe('');
+  expect(selectionWrap('文字', '=')).toBeNull();
   expect(selectionWrap('文字', '*', { enabled: false })).toBeNull();
   expect(selectionWrap('文字', '=', { highlight: false })).toBeNull();
   expect(selectionWrap('文字', '^')).toBeNull();

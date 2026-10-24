@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t } from '../i18n';
-import { TextCursorInput } from 'lucide-vue-next';
+import { Eye, EyeOff } from 'lucide-vue-next';
 
 defineProps<{ modelValue: boolean; source: boolean }>();
 defineEmits<{ 'update:modelValue': [value: boolean] }>();
@@ -21,13 +21,7 @@ defineEmits<{ 'update:modelValue': [value: boolean] }>();
     @mousedown.prevent
     @click="$emit('update:modelValue', !modelValue)"
   >
-    <TextCursorInput :size="17" />
+    <Eye v-if="modelValue" :size="17" />
+    <EyeOff v-else :size="17" />
   </button>
 </template>
-
-<style scoped>
-.markdown-reveal-toggle[aria-pressed='true']:not(:disabled) {
-  color: var(--green);
-  background: var(--accent);
-}
-</style>

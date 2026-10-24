@@ -73,6 +73,29 @@ async function mount(content: string, mode: ToolbarMode = 'fixed') {
 function button(label: string) {
   return root.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
 }
+it.each(['left', 'right', 'bottom'] as const)('keeps the same compact actions when switching from fixed to %s', async (mode) => {
+  const state = await mount('正文文字\n');
+  await selectText(root.querySelector('.ProseMirror p')!, 0, 0);
+  const labels = (element: Element) => Array.from(element.querySelectorAll('button[aria-label]'))
+    .filter(button => !(button as HTMLButtonElement).hidden && !(button.closest('.inline-tools') as HTMLElement | null)?.style.display.includes('none'))
+    .map(button => button.getAttribute('aria-label'));
+  const fixed = labels(root.querySelector('.switchable-toolbar')!);
+  expect(root.querySelector('.switchable-toolbar')!.classList.contains('editor-toolbar')).toBe(true);
+  expect(root.querySelector('.selection-format-toolbar')).toBeNull();
+  expect(root.querySelector('.selection-level')).toBeNull();
+  expect(button('块级类型').closest('.format-actions')!.nextElementSibling!.classList.contains('toolbar-divider')).toBe(true);
+  expect(button('块级类型').textContent!.trim()).toBe('正文');
+  expect(button('块级类型').querySelector('svg')).not.toBeNull();
+  expect(button('块级类型').querySelector('small')).toBeNull();
+  expect(fixed).toEqual(['拖动工具栏', '块级类型', '更多格式']);
+  state.toolbarMode.value = mode;
+  await expectFloating();
+  expect(labels(document.querySelector('.selection-toolbar')!)).toEqual(fixed);
+  const blockTrigger = floatingButton('块级类型');
+  expect(blockTrigger.textContent!.trim()).toBe('');
+  expect(blockTrigger.querySelector('svg')).not.toBeNull();
+  expect(blockTrigger.dataset.tooltip).toBe('正文');
+});
 async function click(element: HTMLElement) {
   element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
   element.click();
@@ -111,8 +134,8 @@ it('switches between block and inline tools for handles, text, and a collapsed c
   await selectText(paragraph, 0, 2);
   expect(context.value.level).toBe('inline');
   expect(button('粗体')).not.toBeNull();
-  expect(button('块级类型')).toBeNull();
-  expect(button('行内公式')).not.toBeNull();
+  expect(button('块级类型')).not.toBeNull();
+  expect(button('行内公式')).toBeNull();
   await selectText(paragraph, 2, 2);
   expect(context.value.level).toBe('block');
   expect(value.value).toBe('# Heading\n\n正文文字\n');
@@ -124,22 +147,22 @@ it('marks the current text and background colors and follows resets and selectio
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 3)));
   await nextTick();
   const openColors = async () => {
-    await click(button('文字样式'));
+    await click(button('更多格式'));
     await click(button('文字颜色'));
   };
   await openColors();
   expect(button('恢复默认文字颜色').getAttribute('aria-pressed')).toBe('true');
   expect(button('恢复默认背景颜色').getAttribute('aria-pressed')).toBe('true');
   await click(button('红色文字'));
-  await openColors();
+  expect(button('更多格式').getAttribute('aria-expanded')).toBe('true');
   expect(button('红色文字').getAttribute('aria-pressed')).toBe('true');
   expect(button('恢复默认文字颜色').getAttribute('aria-pressed')).toBe('false');
   await click(button('蓝色背景'));
-  await openColors();
+  expect(button('更多格式').getAttribute('aria-expanded')).toBe('true');
   expect(button('红色文字').getAttribute('aria-pressed')).toBe('true');
   expect(button('蓝色背景').getAttribute('aria-pressed')).toBe('true');
   await click(button('恢复默认背景颜色'));
-  await openColors();
+  expect(button('更多格式').getAttribute('aria-expanded')).toBe('true');
   expect(button('恢复默认背景颜色').getAttribute('aria-pressed')).toBe('true');
   expect(button('红色文字').getAttribute('aria-pressed')).toBe('true');
   const saved = value.value;
@@ -158,7 +181,7 @@ it('leaves mixed text colors unselected while marking the shared background colo
   const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 4)));
   await nextTick();
-  await click(button('文字样式'));
+  await click(button('更多格式'));
   await click(button('文字颜色'));
   expect(context.value.textColor).toBeUndefined();
   expect(context.value.backgroundColor).toBe('#e3f2fd');
@@ -179,7 +202,7 @@ it('uses inline tools for selected editable Markdown and applies the bold button
   expect(context.value.inlineSource).toBe(true);
   expect(context.value.activeInline).toContain('Bold');
   expect(button('粗体').disabled).toBe(false);
-  expect(button('块级类型')).toBeNull();
+  expect(button('块级类型')).not.toBeNull();
   await click(button('粗体'));
   expect(value.value).toBe('Before **31** 124234 after\n');
   expect(root.querySelector('span[data-tano-live-inline-source]')?.textContent).toBe(
@@ -239,6 +262,7 @@ it('converts a selected list without losing nested content and inserts blocks wi
 it('preserves footnotes, callouts, Mermaid and mentions through Markdown normalization', async () => {
   const { value, editor, context, errors } = await mount('正文\n');
   await selectText(root.querySelector('.ProseMirror p')!);
+  await click(button('更多格式'));
   await click(button('提及文档'));
   await fillForm('计划');
   expect(value.value).toContain('[[计划|正文]]');
@@ -251,6 +275,7 @@ it('preserves footnotes, callouts, Mermaid and mentions through Markdown normali
   value.value += '\n脚注文字\n';
   await nextTick();
   await selectText(root.querySelector('.ProseMirror > p')!);
+  await click(button('更多格式'));
   await click(button('脚注引用'));
   await fillForm('说明内容');
   expect(value.value).toContain('脚注文字[^1]');
@@ -649,11 +674,45 @@ it('opens placement options from the drag handle and switches mode', async () =>
   expect(toolbarMode.value).toBe('bottom');
 });
 
-it('opens placement options after a real pointer tap without movement', async () => {
+it('toggles placement options on pointer taps and closes them when dragging starts', async () => {
   await mount('正文文字\n', 'fixed');
   await pointer(button('拖动工具栏'), 'pointerdown', 40, 20);
   await pointer(window, 'pointerup', 40, 20);
   expect(button('靠左停靠')).not.toBeNull();
+  await pointer(button('拖动工具栏'), 'pointerdown', 40, 20);
+  await pointer(window, 'pointerup', 40, 20);
+  expect(document.querySelector('.toolbar-dock-menu')).toBeNull();
+  await pointer(button('拖动工具栏'), 'pointerdown', 40, 20);
+  await pointer(window, 'pointerup', 40, 20);
+  expect(button('靠左停靠')).not.toBeNull();
+  await pointer(button('拖动工具栏'), 'pointerdown', 40, 20);
+  await pointer(window, 'pointermove', 100, 100);
+  expect(document.querySelector('.toolbar-dock-menu')).toBeNull();
+  await pointer(window, 'pointercancel', 100, 100);
+});
+
+it('does not open placement options for a pointer release that started elsewhere', async () => {
+  await mount('正文文字\n', 'fixed');
+  const handle = button('拖动工具栏')!;
+  await pointer(handle, 'pointerup', 40, 20);
+  handle.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+  await nextTick();
+  expect(document.querySelector('.toolbar-dock-menu')).toBeNull();
+});
+
+it('forgets the open docking menu when the selection toolbar disappears', async () => {
+  await mount('正文文字\n', 'selection');
+  const paragraph = root.querySelector('.ProseMirror p')!;
+  await selectText(paragraph, 0, 2);
+  await expectFloating();
+  await click(floatingButton('拖动工具栏'));
+  expect(document.querySelector('.toolbar-dock-menu')).not.toBeNull();
+  window.dispatchEvent(new Event('blur'));
+  await vi.waitFor(() => expect(document.querySelector('.selection-toolbar')).toBeNull());
+  window.dispatchEvent(new Event('focus'));
+  await selectText(paragraph, 1, 3);
+  await expectFloating();
+  expect(document.querySelector('.toolbar-dock-menu')).toBeNull();
 });
 
 it.each(['left', 'right', 'bottom'] as const)('keeps the toolbar visible when switching from %s to fixed mode', async (mode) => {

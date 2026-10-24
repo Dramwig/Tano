@@ -157,7 +157,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.document-starter { --starter-control-size: 36px; flex-shrink: 0; width: 100%; max-width: 780px; margin: auto auto 0; padding-top: 20px; }
+.document-starter { --starter-control-size: 36px; flex-shrink: 0; width: 100%; max-width: var(--tano-content-measure, 780px); margin: auto auto 0; padding-top: 20px; }
 .document-starter p { margin: 0 0 12px 8px; color: var(--muted); font-size: 12px; }
 .document-starter-actions { position: relative; display: flex; flex-wrap: nowrap; gap: 8px; min-width: 0; }
 .document-starter button { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; min-height: var(--starter-control-size); padding: 8px 13px; border: 0; border-radius: 999px; background: color-mix(in srgb, var(--text) 5%, var(--paper)); color: var(--text); font-size: 13px; line-height: 20px; white-space: nowrap; }

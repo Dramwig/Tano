@@ -1152,7 +1152,7 @@ async function onTabKeydown(event: KeyboardEvent) {
   left: 0;
   width: 2px;
   border-radius: 1px;
-  background: var(--green);
+  background: var(--text);
   pointer-events: none;
 }
 .desktop-tab-context-menu {
@@ -1187,7 +1187,7 @@ async function onTabKeydown(event: KeyboardEvent) {
   bottom: 6px;
   width: 2px;
   border-radius: 1px;
-  background: var(--green);
+  background: var(--text);
   pointer-events: none;
 }
 .desktop-tab-drop-before::after,
@@ -1225,7 +1225,7 @@ async function onTabKeydown(event: KeyboardEvent) {
   position: absolute;
   z-index: 3;
   inset: 4px 0 8px;
-  border-right: 1px solid var(--line);
+  border-right: 0;
   border-radius: 0;
   pointer-events: none;
 }
@@ -1249,17 +1249,13 @@ async function onTabKeydown(event: KeyboardEvent) {
 }
 .desktop-tab-active::before {
   inset: 0;
-  border: 1px solid var(--line);
-  border-bottom: 0;
+  border: 0;
   border-radius: inherit;
 }
 .desktop-tab-corners {
   position: absolute;
   z-index: 3;
   inset: 0;
-  /* Align the outward curves with the inside edge of the tab outline, using
-     the browser's actual border width at fractional zoom levels. */
-  border-inline: 1px solid transparent;
   pointer-events: none;
 }
 .desktop-tab-corners::before,
@@ -1283,16 +1279,16 @@ async function onTabKeydown(event: KeyboardEvent) {
   bottom: 0;
   width: 8px;
   height: 8px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 0;
 }
 .desktop-tab-corner-outline-left {
   left: -8px;
-  border-right: 1px solid var(--line);
+  border-right: 0;
   border-bottom-right-radius: 8px;
 }
 .desktop-tab-corner-outline-right {
   right: -8px;
-  border-left: 1px solid var(--line);
+  border-left: 0;
   border-bottom-left-radius: 8px;
 }
 .desktop-tab-switch {
@@ -1335,7 +1331,7 @@ async function onTabKeydown(event: KeyboardEvent) {
   height: 6px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: var(--green);
+  background: var(--text);
 }
 .desktop-tab-close,
 .desktop-tab-add {

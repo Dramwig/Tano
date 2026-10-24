@@ -17,6 +17,7 @@ import PlanDateField from './PlanDateField.vue';
 import ReferenceConnections from './ReferenceConnections.vue';
 import TaskRepeatControls from './TaskRepeatControls.vue';
 import { useWorkbenchRuntime } from '../runtime';
+import { planDocumentSource } from '../selection-todo';
 
 const props = defineProps<{ record: ObjectRecord }>();
 const emit = defineEmits<{ close: []; openReference: [identity: ReferenceIdentity]; openRecord: [record: ObjectRecord] }>();
@@ -64,6 +65,10 @@ const personalTargets = computed<ReferenceTarget[] | undefined>(() => personal ?
   description: object.description, archived: object.archived,
 })) : undefined);
 const previewTargets = computed(() => personal ? personalTargets.value ?? [] : targets.value);
+const documentSource = computed(() => {
+  const source = planDocumentSource(draft.value.properties.documentSource);
+  return !personal && source?.workspaceId === scopeId ? source : undefined;
+});
 async function resizeName() {
   await nextTick();
   if (!nameField.value) return;
@@ -206,6 +211,7 @@ onBeforeUnmount(() => { nameResize?.disconnect(); if (previousFocus?.isConnected
         </div>
       </header>
       <div class="plan-detail-content">
+        <button v-if="documentSource" type="button" :disabled="busy || !inScope" @click="requestNavigation({ kind: 'reference', identity: { type: 'document', id: documentSource.fileId } })">{{ t('返回原文选区') }}</button>
         <p v-if="!inScope" class="detail-notice" role="alert">{{ t('事项所属空间已切换，当前草稿仍保留。请返回原空间后保存。') }}</p>
         <p v-else-if="!latest" class="detail-notice" role="alert">{{ t('事项已移除或身份不唯一，当前内容仍保留。') }}</p>
         <p v-else-if="latest.object.properties.syncReadOnly" class="detail-notice" role="status">{{ t('此事项来自只读连接，请在来源应用中编辑。') }}</p>

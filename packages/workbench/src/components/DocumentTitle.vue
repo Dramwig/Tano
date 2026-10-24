@@ -87,7 +87,9 @@ function input(event: Event) {
     titleBase = JSON.stringify(yamlTitle.value);
     titleSourceBase = resolvedTitleSource.value;
   }
-  draft.value = (event.target as HTMLInputElement).value;
+  const target = event.target as HTMLTextAreaElement;
+  draft.value = target.value.replace(/[\r\n]+/g, '');
+  if (target.value !== draft.value) target.value = draft.value;
   edited.value = true;
   saveError.value = '';
 }
@@ -149,8 +151,10 @@ async function keydown(event: KeyboardEvent) {
       :resolve-image="resolveImage" :upload-cover="uploadCover" :resource-revision="resourceRevision"
       @update:model-value="emit('update:modelValue', $event)" @comment="emit('comment')" />
     <div class="document-title-content">
-    <input
+    <div class="document-title-wrap">
+    <textarea
       class="document-title-input"
+      rows="1"
       :value="draft"
       :readonly="readonly || saving"
       :aria-label="t('文档标题')"
@@ -165,6 +169,8 @@ async function keydown(event: KeyboardEvent) {
       @compositionstart="composing = true"
       @compositionend="composing = false"
     />
+    <span class="document-title-mirror" aria-hidden="true">{{ draft || t('未命名') }}{{ ' ' }}</span>
+    </div>
     <div v-if="error" :id="errorId" class="document-title-error" role="alert">{{ error }}</div>
     </div>
   </div>

@@ -666,6 +666,41 @@ describe('workspace file reconciliation', () => {
     expect(closeHook).not.toHaveBeenCalled();
     expect([...backend.files]).toEqual(filesBefore);
   });
+  it('opens and closes account tabs before a workspace is selected', async () => {
+    await store.dispose();
+    setActivePinia(configureWorkbench(createPinia(), { adapter: backend, native: false, mobile: false }));
+    store = useWorkspaceStore();
+    store.registerViews([{ ...extensionView, scope: 'account' }]);
+    expect(store.workspace).toBeNull();
+    store.openViewTab(extensionView.id);
+    store.openViewTab(extensionView.id);
+    expect(store.tabs.map(tab => tab.id)).toEqual([extensionView.id]);
+    await store.close(extensionView.id);
+    expect(store.tabs).toEqual([]);
+  });
+  it('carries account views across workspaces but not workspace content or assistant tabs', async () => {
+    const account = { ...extensionView, id: 'view:account', scope: 'account' as const };
+    store.registerViews([extensionView, account]);
+    store.openViewTab(extensionView.id);
+    store.openViewTab(account.id);
+    vi.spyOn(backend, 'open').mockResolvedValue({ ...(await backend.refresh()), id: 'second', path: 'second', files: [] });
+    vi.spyOn(backend, 'loadSession').mockResolvedValue(null);
+    await store.openWorkspace('second');
+    expect(store.activeId).toBe(account.id);
+    expect(store.tabs.map(tab => tab.id)).toEqual([account.id]);
+    expect(store.documents).toEqual([]);
+  });
+  it('settles workspace execution before opening another workspace and preserves the current page on failure', async () => {
+    store.registerViews([{ ...extensionView, scope: 'account' }]);
+    store.openViewTab(extensionView.id);
+    const order: string[] = [];
+    store.setBeforeWorkspaceChange(async () => { order.push('settle'); });
+    vi.spyOn(backend, 'open').mockImplementation(async () => { order.push('open'); throw new Error('offline'); });
+    await store.openWorkspace('second');
+    expect(order).toEqual(['settle', 'open']);
+    expect(store.workspace?.id).toBe('test');
+    expect(store.activeId).toBe(extensionView.id);
+  });
   it('drops unavailable extension tabs on restore and keeps documents usable in the local product', async () => {
     store.registerViews([extensionView]);
     store.openViewTab(extensionView.id);
@@ -904,8 +939,10 @@ describe('workspace file reconciliation', () => {
     const opening = store.openFile(store.workspace!.files.find(file => file.path === 'slow.md')!);
     try {
       await vi.waitFor(() => expect(started).toHaveBeenCalled());
+      expect(store.openingDocuments[store.activePaneId]?.tabId).toBe(store.activeId);
       await store.openFile(store.workspace!.files.find(file => file.path === 'fast.md')!);
       expect(store.active?.path).toBe('fast.md');
+      expect(store.openingDocuments[store.activePaneId]).toBeUndefined();
     } finally { release(); await opening; }
     expect(store.active?.path).toBe('fast.md');
     expect(store.tabs).toHaveLength(1);

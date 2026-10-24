@@ -466,10 +466,10 @@ onBeforeUnmount(() => {
   border-radius: 14px;
   background: var(--paper);
   color: var(--text);
-  box-shadow: 0 25px 90px #1f232828;
+  box-shadow: 0 25px 90px #0f0f0f28;
 }
 .assistant-connection-dialog::backdrop {
-  background: #1f232835;
+  background: #0f0f0f35;
   backdrop-filter: blur(2px);
 }
 .assistant-delete-dialog {

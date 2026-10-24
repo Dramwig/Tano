@@ -1,5 +1,7 @@
 # Cloud Extension API
 
+`WorkbenchViewTab.scope` may be `account` or `workspace` (the default). Account view tabs and the active account page survive workspace switches; the extension retains ownership of messages, drafts, account isolation and reading positions. This metadata does not add a navigation group. Module navigation, workspace sidebar browsing and the active content tab remain independent. The built-in assistant uses `view:assistant`.
+
 Tano's public MIT Core owns the workspace adapter, editor, and workbench. The optional Cloud Overlay lives in a separate private repository. The public product runs without it.
 
 `@tano/workbench/runtime` exports `CLOUD_EXTENSION_API_VERSION`, `CloudExtension`, and `configureWorkbenchWithCloudExtension`. API version 1 lets an overlay provide a `WorkbenchExtensions` implementation for a Pinia workbench instance. That implementation may supply editing sessions, named UI regions, optional views, settings pages, history, refresh, and disconnect actions. Core only calls these hooks; account, chat UI and state, sync, collaboration, network configuration, and hosted service code stay in the overlay.

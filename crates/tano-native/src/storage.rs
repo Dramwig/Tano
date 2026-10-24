@@ -6,7 +6,7 @@ use std::{
     fs,
     io::{Read, Write},
     path::{Component, Path, PathBuf},
-    time::UNIX_EPOCH,
+    time::{SystemTime, UNIX_EPOCH},
 };
 use uuid::Uuid;
 
@@ -255,7 +255,7 @@ pub fn ensure_file_parent(root: &Path, relative: &str) -> Result<PathBuf, String
     resolve_storage(root, relative, false)
 }
 
-fn identity_path(root: &Path) -> Result<PathBuf, String> {
+pub(crate) fn identity_path(root: &Path) -> Result<PathBuf, String> {
     let dir = root.join(".tano");
     if fs::symlink_metadata(&dir).is_ok_and(|m| m.file_type().is_symlink() || !m.is_dir()) {
         return Err(".tano 必须是普通文件夹，不能是符号链接".into());
@@ -307,9 +307,14 @@ pub fn workspace_identity(root: &Path) -> Result<String, String> {
     let path = identity_path(root)?;
     fs::create_dir(root.join(".tano")).map_err(|e| format!("无法创建工作空间配置：{e}"))?;
     let id = Uuid::new_v4().to_string();
-    let content =
-        serde_json::to_string_pretty(&serde_json::json!({ "id": id, "format": 1, "name": "Tano" }))
-            .map_err(|e| e.to_string())?;
+    let created_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_millis() as u64;
+    let content = serde_json::to_string_pretty(&serde_json::json!({
+        "id": id, "format": 1, "name": "Tano", "createdAt": created_at
+    }))
+    .map_err(|e| e.to_string())?;
     create_atomic(&path, content.as_bytes())?;
     Ok(id)
 }

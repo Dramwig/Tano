@@ -166,7 +166,7 @@ watch(() => props.disabled, disabled => { if (disabled) pickerOpen.value = false
 .plan-date-picker { position: relative; }
 .plan-date-picker.with-leading { padding-left: 20px; border-left: 1px solid var(--line); }
 .plan-date-field .plan-schedule-trigger { gap: 10px; min-height: 36px; padding: 4px 6px; border-radius: 6px; font-size: 15px; color: var(--text-secondary); }
-.plan-date-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 5; min-width: 176px; padding: 5px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); box-shadow: 0 6px 24px #1f23281c; }
+.plan-date-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 5; min-width: 176px; padding: 5px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); box-shadow: 0 6px 24px #0f0f0f1c; }
 .with-leading .plan-date-menu { left: 20px; }
 .plan-date-field .plan-date-menu button { display: flex; width: 100%; padding: 9px; gap: 10px; color: var(--text-secondary); font-size: 13px; text-align: left; }
 .plan-date-menu button span { flex: 1; }

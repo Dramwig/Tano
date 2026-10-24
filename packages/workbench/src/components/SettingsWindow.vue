@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue';
 import AppTooltip from './AppTooltip.vue';
 import { t } from '../i18n';
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
@@ -106,10 +107,9 @@ onBeforeUnmount(() => {
 
 <template>
   <AppTooltip />
-  <div v-if="!snapshot" class="settings-window-loading" role="status">{{ t('正在打开设置…') }}</div>
+  <LoadingSkeleton v-if="!snapshot" variant="shell" />
   <SettingsPanel
     v-else
-    :key="page"
     windowed
     :workspace="snapshot.workspace"
     :workspace-settings="snapshot.workspaceSettings"

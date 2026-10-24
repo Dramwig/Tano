@@ -76,7 +76,7 @@ it('continues a quick reversal from its current visual position and cancels moti
   await nextTick();
   await nextTick();
   expect(animate.mock.calls[0][0]).toEqual([
-    { transform: 'translateX(230px)' }, { transform: 'translateX(0)' },
+    { marginLeft: '230px' }, { marginLeft: '0px' },
   ]);
   rect.mockReturnValueOnce({ left: 95 } as DOMRect).mockReturnValueOnce({ left: 230 } as DOMRect);
   open.value = true;
@@ -84,7 +84,7 @@ it('continues a quick reversal from its current visual position and cancels moti
   await nextTick();
   expect(animations[0].cancel).toHaveBeenCalledOnce();
   expect(animate.mock.calls[1][0]).toEqual([
-    { transform: 'translateX(-135px)' }, { transform: 'translateX(0)' },
+    { marginLeft: '-135px' }, { marginLeft: '0px' },
   ]);
   app?.unmount();
   app = undefined;

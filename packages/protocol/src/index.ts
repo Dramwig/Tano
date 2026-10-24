@@ -123,6 +123,18 @@ export interface RecentWorkspace {
   name: string;
   path: string;
   openedAt: number;
+  /** Owner display label supplied by the storage adapter, when available. */
+  owner?: string;
+  /** Stable owner identity used by workspace dashboard filters. */
+  ownerUserId?: string;
+  /** Display identity for a cloud workspace owner, when the server provides it. */
+  ownerProfile?: { userId: string; name: string; avatar?: string };
+  /** Workspace creation time in milliseconds; absent for legacy workspaces. */
+  createdAt?: number | null;
+  /** Optional user selection state supplied by a storage adapter. */
+  favorite?: boolean;
+  /** Whether this workspace was explicitly shared with the current user. */
+  shared?: boolean;
   icon?: string;
 }
 export interface SessionDocument {

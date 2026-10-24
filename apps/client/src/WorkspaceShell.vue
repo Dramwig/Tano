@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import Workbench from '@tano/workbench';
 import { useWorkspaceStore } from '@tano/workbench/stores/workspace';
-import { t } from '@tano/workbench/i18n';
+import LoadingSkeleton from '@tano/workbench/components/LoadingSkeleton.vue';
 
 interface Request { path?: string; error?: string }
 const store = useWorkspaceStore();
@@ -63,5 +63,5 @@ onBeforeUnmount(() => { disposed = true; unlisten?.(); stopWaiting?.(); });
 
 <template>
   <Workbench v-if="loaded" :initial-workspace="initialWorkspace" @ready="onReady" />
-  <div v-else role="status" style="padding: 64px 32px">{{ t('正在打开同页...') }}</div>
+  <LoadingSkeleton v-else variant="shell" />
 </template>

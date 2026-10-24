@@ -5,6 +5,7 @@ import { remarkMathSyntax as remarkMath } from './math-markdown';
 import type { Nodes } from 'mdast';
 import { splitFrontmatter } from './syntax';
 import { remarkTextStyles } from './text-style-markdown';
+import { defaultCapabilities, featureEnabled } from './runtime';
 
 export type SourceStyle =
   | 'frontmatter'
@@ -41,7 +42,7 @@ export interface SourceStyleRange {
 const parser = unified().use(remarkParse).use(remarkGfm, { singleTilde: false }).use(remarkMath).use(remarkTextStyles);
 
 /** Style source bytes without normalizing or hiding any Markdown delimiters. */
-export function sourceStyleRanges(markdown: string): SourceStyleRange[] {
+export function sourceStyleRanges(markdown: string, features = defaultCapabilities.features): SourceStyleRange[] {
   const { prefix, body } = splitFrontmatter(markdown);
   const base = prefix.length;
   const ranges: SourceStyleRange[] = [];
@@ -60,7 +61,7 @@ export function sourceStyleRanges(markdown: string): SourceStyleRange[] {
       const to = base + end;
       switch (node.type) {
         case 'tanoTextStyle':
-          if (node.style !== 'text_color' && node.style !== 'background_color') add(from, to, node.style);
+          if (node.style !== 'text_color' && node.style !== 'background_color' && featureEnabled(node.style, features)) add(from, to, node.style);
           break;
         case 'heading':
           add(from, to, 'heading');

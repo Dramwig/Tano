@@ -127,10 +127,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const isUtilityTab = (id: string) => isBuiltinTab(id) || views.value.has(id) || pluginViews.value.some(view => view.key === id && view.location === 'tab');
   function registerViews(definitions: readonly WorkbenchViewTab[]) {
     const next = new Map<string, WorkbenchViewTab>();
-    for (const { id, label, icon, detachable, detachBlockedMessage } of definitions) {
+    for (const { id, label, icon, scope, detachable, detachBlockedMessage } of definitions) {
       if (!/^view:[a-z][a-z0-9-]*$/.test(id) || isBuiltinTab(id) || next.has(id) || !label.trim())
         throw new Error(`无效或重复的扩展视图：${id}`);
-      next.set(id, { id, label, icon, detachable, detachBlockedMessage });
+      next.set(id, { id, label, icon, scope, detachable, detachBlockedMessage });
     }
     // Register before session restoration. Refuse to strand an already open view.
     if (tabIds.value.some(id => views.value.has(id) && !next.has(id)))
@@ -897,6 +897,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     resize(layout.value);
   }
   const busy = ref(false);
+  const openingDocuments = ref<Record<string, { request: number; tabId: string }>>({});
   const tabTarget = (id: string) => tabAliases.value.get(id) ?? id;
   function newTabAlias(target: string) {
     const id = isTableTab(target)
@@ -990,6 +991,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       `恢复草稿未写入：${String(error)}。文档仍会尝试正常保存。`; },
   );
   let beforeSwitch: (() => Promise<void>) | undefined;
+  let beforeWorkspaceChange: (() => Promise<void>) | undefined;
   let afterSwitch: (() => Promise<void>) | undefined;
   let beforeCloseDocument: ((id: string) => Promise<void>) | undefined;
   let fileOpenRevision = 0;
@@ -1105,6 +1107,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         return;
       }
       await beforeSwitch?.();
+      await beforeWorkspaceChange?.();
       await serial(async () => {
         const previousReady = sessionReady;
         sessionReady = false;
@@ -1124,6 +1127,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           sessionReady = previousReady;
           return;
         }
+        const accountTabs = tabIds.value.filter(id => views.value.get(id)?.scope === 'account');
+        const accountActive = accountTabs.includes(activeId.value) ? activeId.value : undefined;
         stopWatching();
         pluginExecutor.dispose();
         fatal.value = '';
@@ -1139,6 +1144,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         workspaceSettings.value = { ...defaultWorkspaceSettings };
         workspaceSettingsError.value = '';
         workspace.value = next;
+        // The new file tree can render immediately; old documents must not
+        // appear under it while this workspace's metadata/session is loading.
+        documents.value = [];
+        tabIds.value = [];
+        activeId.value = '';
+        openingDocuments.value = {};
+        resetTabNavigation();
         if (remembersStartupWorkspace) rememberStartupWorkspace(next.id);
         objects.value = []; objectErrors.value = [];
         workspaceViews.value = []; workspaceViewErrors.value = [];
@@ -1156,10 +1168,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         ]);
         assistantEpoch.value++;
         assistantApplied.clear();
-        documents.value = [];
-        tabIds.value = [];
-        activeId.value = '';
-        resetTabNavigation();
         activities.value = [];
         sessionError.value = '';
         sessionBlocked = false;
@@ -1204,6 +1212,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           } catch (error) {
             report(error);
           }
+        }
+        if (!detachedTabId) {
+          for (const id of accountTabs) {
+            if (!tabIds.value.includes(id)) tabIds.value.push(id);
+            ensureTabNavigation(id);
+          }
+          if (accountActive) activeId.value = accountActive;
+          touchNavigation();
         }
         sessionReady = true;
         queueSession();
@@ -1262,6 +1278,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         return false;
       }
       await beforeSwitch?.();
+      await beforeWorkspaceChange?.();
       await serial(async () => {
         assertDeletion();
         const current = workspace.value;
@@ -1519,6 +1536,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function openFile(file: FileEntry, options?: { historyIndex?: number }) {
     const creationAtRequest = creationRevision;
     const request = ++fileOpenRevision;
+    const paneId = activePaneId.value;
     const epoch = assistantEpoch.value, activation = activationRevision;
     const workspaceId = workspace.value?.id;
     const current = () => !disposed && !busy.value && request === fileOpenRevision &&
@@ -1533,6 +1551,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       prefetchFile(file);
       if (!wasOpen && !(await prepareTabReplacement(replaceId))) return;
       if (!current()) return;
+      if (!wasOpen) openingDocuments.value[paneId] = { request, tabId: activeId.value };
       if (!openCached(file, replaceId)) await serial(async () => {
         if (!current()) return;
         await openInternal(file, replaceId, current);
@@ -1544,6 +1563,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       if (active.value?.id === file.id) recordHelpCompleted('welcome');
     } catch (e) {
       if (current()) report(e);
+    } finally {
+      if (openingDocuments.value[paneId]?.request === request) delete openingDocuments.value[paneId];
     }
   }
   async function openFileInNewTab(file: FileEntry) {
@@ -1665,7 +1686,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   function openViewTab(id: string) {
     if (!views.value.has(id)) throw new Error(`扩展视图未注册：${id}`);
-    if (!workspace.value) return;
+    if (!workspace.value && views.value.get(id)?.scope !== 'account') return;
     if (!tabIds.value.includes(id)) tabIds.value.push(id);
     activeId.value = id;
     ensureTabNavigation(id);
@@ -2980,6 +3001,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     notice,
     fatal,
     busy,
+    openingDocuments,
     recent,
     sessionError,
     isDemo,
@@ -3029,6 +3051,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     editTableLayout,
     preserveDraft,
     receiveDocument,
+    setBeforeWorkspaceChange: (hook?: () => Promise<void>) => { beforeWorkspaceChange = hook; },
     setDocumentLifecycle: (hooks: {
       beforeSwitch: () => Promise<void>;
       afterSwitch?: () => Promise<void>;

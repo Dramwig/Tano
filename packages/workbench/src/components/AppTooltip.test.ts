@@ -1,12 +1,34 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { createApp, nextTick, type App } from 'vue';
+import { createApp, h, nextTick, type App } from 'vue';
 import AppTooltip from './AppTooltip.vue';
+import WorkspaceBreadcrumb from './WorkspaceBreadcrumb.vue';
 
 let app: App | undefined;
 let root: HTMLElement;
 let button: HTMLButtonElement;
 const hint = () => document.querySelector<HTMLElement>('.app-tooltip');
+it('shows only rendered capability examples using the shared hover and focus hint', async () => {
+  button.dataset.tooltip = 'Mermaid 图表';
+  button.dataset.tooltipExample = 'mermaid';
+  button.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+  await vi.advanceTimersByTimeAsync(250); await flush();
+  expect(hint()?.querySelector('pre')).toBeNull();
+  expect(hint()?.textContent).not.toContain('语法示例');
+  expect(hint()?.querySelector('.example-diagram')?.textContent).toContain('开始');
+  button.dataset.tooltipExample = 'superscript';
+  await flush();
+  expect(hint()?.querySelector('sup')?.textContent).toBe('2');
+  const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+  window.dispatchEvent(escape); await flush();
+  expect(escape.defaultPrevented).toBe(true);
+  expect(hint()).toBeNull();
+  button.focus(); await flush();
+  expect(hint()?.querySelector('sup')).not.toBeNull();
+  button.dataset.tooltipExample = 'unknown';
+  await flush();
+  expect(hint()?.querySelector('.capability-example')).toBeNull();
+});
 async function flush() { await nextTick(); await nextTick(); }
 beforeEach(() => {
   vi.useFakeTimers();
@@ -34,6 +56,29 @@ it('supports delegated hover on disabled controls and preserves existing descrip
   window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); await flush();
   expect(hint()).toBeNull();
   expect(button.getAttribute('aria-describedby')).toBe('existing');
+});
+it('shares editor link hints, updates Wiki targets, and hides hints while editing Wiki source', async () => {
+  const prose = document.createElement('div');
+  prose.className = 'tano-prose';
+  const link = document.createElement('a');
+  link.href = '#';
+  link.textContent = 'Target';
+  link.getClientRects = button.getClientRects;
+  prose.append(link);
+  document.body.append(prose);
+  try {
+    link.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(250); await flush();
+    expect(hint()?.textContent).toBe('Ctrl/⌘ + 点击跳转');
+    link.className = 'tano-wiki-link';
+    link.dataset.markdownSource = '[[Target]]';
+    await flush();
+    expect(hint()?.textContent).toBe('[[Target]] · Ctrl/⌘ + 点击跳转');
+    link.classList.add('tano-live-wiki');
+    await flush();
+    expect(hint()).toBeNull();
+    expect(link.hasAttribute('aria-describedby')).toBe(false);
+  } finally { prose.remove(); }
 });
 it('updates active hints and removes them when a dynamic button is removed', async () => {
   button.focus(); await flush();
@@ -74,4 +119,41 @@ it('does not show a tooltip for touch input or a hidden control', async () => {
   button.hidden = true;
   button.dispatchEvent(new FocusEvent('focusin', { bubbles: true })); await flush();
   expect(hint()).toBeNull();
+});
+
+it('does not reopen hints when a pointer selection restores breadcrumb focus', async () => {
+  const navigationRoot = document.createElement('div');
+  document.body.append(navigationRoot);
+  const navigation = createApp({ render: () => h(WorkspaceBreadcrumb, {
+    workspaceId: 'workspace', workspaceName: 'Workspace', path: 'folder/old.md',
+    entries: [
+      { id: 'folder', path: 'folder', name: 'folder', kind: 'directory', size: 0, modified: 0 },
+      { id: 'new', path: 'folder/new.md', name: 'new.md', kind: 'file', size: 0, modified: 0 },
+    ],
+  }) });
+  navigation.mount(navigationRoot);
+  try {
+    const trigger = navigationRoot.querySelector<HTMLButtonElement>('[data-tooltip="folder"]')!;
+    trigger.getClientRects = button.getClientRects;
+    trigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    trigger.click(); await flush();
+    const row = document.querySelector<HTMLButtonElement>('[data-path="folder/new.md"]')!;
+    row.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    row.click(); await flush();
+    expect(document.activeElement).toBe(trigger);
+    expect(document.querySelector('.breadcrumb-menu')).toBeNull();
+    await vi.advanceTimersByTimeAsync(300); await flush();
+    expect(hint()).toBeNull();
+
+    trigger.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(250); await flush();
+    expect(hint()?.textContent).toBe('folder');
+    trigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    trigger.blur();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));
+    trigger.focus(); await flush();
+    expect(hint()?.textContent).toBe('folder');
+  } finally {
+    navigation.unmount(); navigationRoot.remove();
+  }
 });

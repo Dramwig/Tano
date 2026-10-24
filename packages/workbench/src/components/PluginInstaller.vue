@@ -32,7 +32,7 @@ import PluginIcon from './PluginIcon.vue';
 import PluginListItem from './PluginListItem.vue';
 import { bundledPluginCatalog, type PluginCatalogEntry } from '../plugin-catalog';
 
-const props = withDefaults(defineProps<{ catalog?: readonly PluginCatalogEntry[] }>(), {
+const props = withDefaults(defineProps<{ sidebar?: boolean; catalog?: readonly PluginCatalogEntry[] }>(), {
   catalog: () => bundledPluginCatalog,
 });
 const store = useWorkspaceStore();
@@ -52,7 +52,7 @@ const status = ref('');
 const pending = ref('');
 const busy = computed(() => !!pending.value);
 type View = 'discover' | 'installed' | 'community' | 'publishing';
-const view = ref<View>('discover');
+const view = ref<View>(props.sidebar ? 'installed' : 'discover');
 const publishingOpened = ref(false);
 const query = ref('');
 const category = ref('all');
@@ -274,10 +274,10 @@ async function importCachedPackage() {
 </script>
 
 <template>
-  <div class="plugin-center">
+  <div class="plugin-center" :class="{ 'plugin-center-sidebar': sidebar }">
     <div class="catalog-controls">
       <header class="center-heading">
-        <div class="center-title">
+        <div v-if="!sidebar" class="center-title">
           <h1>{{ t('插件') }}</h1>
           <p>{{ t('发现、安装和管理你的同页扩展。') }}</p>
         </div>
@@ -312,7 +312,7 @@ async function importCachedPackage() {
       </header>
       <div class="catalog-navigation">
         <nav class="center-nav" :aria-label="t('插件中心导航')">
-          <button :class="{ active: view === 'community' }" :aria-pressed="view === 'community'" @click="chooseView('community')">{{ t('社区目录') }}</button>
+          <button v-if="!sidebar" :class="{ active: view === 'community' }" :aria-pressed="view === 'community'" @click="chooseView('community')">{{ t('社区目录') }}</button>
           <button
             :class="{ active: view === 'discover' }"
             :aria-pressed="view === 'discover'"
@@ -403,16 +403,17 @@ async function importCachedPackage() {
     <div v-if="publishingOpened && $slots.publishing" v-show="view === 'publishing'">
       <slot name="publishing" />
     </div>
-    <template v-if="view !== 'publishing'">
+    <template v-if="!sidebar && view !== 'publishing'">
       <PluginRuntimePanel />
       <PluginConnections />
       <PluginAutomations />
       <PluginRepositoryStorage />
     </template>
-    <footer v-if="view !== 'publishing'" class="center-footer">
+    <footer v-if="!sidebar && view !== 'publishing'" class="center-footer">
       <span>{{ store.pluginCatalogSource ? t('社区目录已接入 · 版本由工作区管理员选择') : t('当前提供内置插件与文件导入 · 社区目录尚未配置') }}</span
       ><button @click="emit('objects')">{{ t('管理工作区对象') }} <ArrowUpRight :size="13" /></button>
     </footer>
+    <button v-if="sidebar" class="pc-button sidebar-manage" @click="store.openPluginsTab()">{{ t('管理插件') }} <ArrowUpRight :size="13" /></button>
     <PluginDialog
       v-if="hasDialog"
       :title="importing ? t('导入插件') : t('插件详情')"
@@ -587,3 +588,27 @@ async function importCachedPackage() {
 </template>
 
 <style scoped src="./plugin-center.css"></style>
+
+<style scoped>
+.plugin-center-sidebar { min-height: 0; overflow-y: auto; overflow-x: hidden; padding-top: 8px; }
+.plugin-center-sidebar .catalog-controls { position: static; background: transparent; padding-bottom: 8px; }
+.plugin-center-sidebar .heading-actions { width: 100%; gap: 4px; }
+.plugin-center-sidebar .plugin-search { flex: 1; width: 0; min-width: 0; border-radius: 4px; padding-inline: 7px; }
+.plugin-center-sidebar .pc-add { padding: 6px; border-radius: 4px; background: transparent; color: var(--text); gap: 3px; }
+.plugin-center-sidebar .catalog-navigation { gap: 6px; margin-top: 8px; }
+.plugin-center-sidebar .center-nav { gap: 2px; }
+.plugin-center-sidebar .center-nav > button { padding: 4px 7px; min-height: 28px; border-radius: 4px; font-size: 12px; }
+.plugin-center-sidebar .catalog-filter { width: 100%; }
+.plugin-center-sidebar .catalog-filter select { width: 100%; }
+.plugin-center-sidebar .catalog-heading { margin: 6px 0; }
+.plugin-center-sidebar .catalog-heading h2 { font-size: 12px; }
+.plugin-center-sidebar .plugin-list { display: flex; flex-direction: column; gap: 0; }
+.plugin-center-sidebar :deep(.plugin-entry) { flex-wrap: wrap; gap: 3px; min-height: 76px; padding: 8px 3px; border-radius: 4px; }
+.plugin-center-sidebar :deep(.entry-main) { gap: 8px; flex-basis: calc(100% - 32px); }
+.plugin-center-sidebar :deep(.entry-state) { order: 2; padding-left: 48px; }
+.plugin-center-sidebar :deep(.entry-action) { width: 26px; height: 26px; }
+.plugin-center-sidebar :deep(.entry-description) { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.plugin-center-sidebar .pc-empty { padding: 24px 8px; }
+.plugin-center-sidebar .installed-note { display: none; }
+.plugin-center-sidebar .sidebar-manage { flex-shrink: 0; margin-top: 8px; align-self: flex-start; color: var(--muted); }
+</style>

@@ -96,3 +96,11 @@ it('renders formulas and Mermaid diagrams as images without duplicating their re
     expect(text(document)).toBe('公式');
   } finally { bounds.mockRestore(); vi.doUnmock('html-to-image'); }
 });
+
+it('picks one Latin and one CJK font for Word', async () => {
+  const { wordFonts } = await import('./word-document-export');
+  const { visualFontFamily } = await import('./editor-font');
+  expect(wordFonts(visualFontFamily('system', ''))).toEqual({ latin: 'Segoe UI', eastAsia: 'Microsoft YaHei' });
+  expect(wordFonts(visualFontFamily('serif', ''))).toEqual({ latin: 'Literata', eastAsia: 'SimSun' });
+  expect(wordFonts('"Inter", sans-serif')).toEqual({ latin: 'Inter', eastAsia: 'Inter' });
+});

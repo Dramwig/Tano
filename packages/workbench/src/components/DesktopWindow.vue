@@ -4,11 +4,13 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
 import type { Component } from 'vue';
 import { Minus, X } from 'lucide-vue-next';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { useWindowControlsLayer } from '../window-controls-layer';
 
 defineProps<{ view: Component }>();
 
 const appWindow = getCurrentWindow();
 const maximized = ref(false);
+const { controls, target: controlsTarget } = useWindowControlsLayer();
 let unlistenResize: (() => void) | undefined;
 let mounted = false;
 
@@ -52,7 +54,9 @@ async function toggleMaximize() {
       >
         <img src="/favicon-green.svg?v=3" alt="" draggable="false" />
       </div>
-      <div class="desktop-window-actions" :aria-label="t('窗口控制')">
+    </header>
+    <Teleport v-if="controlsTarget" :to="controlsTarget">
+      <div ref="controls" popover="manual" class="desktop-window-actions" :aria-label="t('窗口控制')" @click.stop @pointerdown.stop @keydown.stop>
         <button type="button" :aria-label="t('最小化')" :data-tooltip="t('最小化')" @click="appWindow.minimize()">
           <Minus :size="15" :stroke-width="1.6" />
         </button>
@@ -77,7 +81,7 @@ async function toggleMaximize() {
           <X :size="16" :stroke-width="1.5" />
         </button>
       </div>
-    </header>
+    </Teleport>
     <div class="desktop-window-content"><component :is="view" /></div>
   </div>
 </template>
@@ -106,6 +110,7 @@ async function toggleMaximize() {
   background: var(--sidebar);
   color: var(--text-secondary);
   user-select: none;
+  padding-right: 138px;
   transition: left 240ms ease;
 }
 .desktop-window-titlebar::after {
@@ -114,7 +119,7 @@ async function toggleMaximize() {
   right: 0;
   bottom: 0;
   left: 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 0;
   pointer-events: none;
 }
 .desktop-window:has(.app-shell.workspace-empty) .desktop-window-titlebar::after,
@@ -138,7 +143,7 @@ async function toggleMaximize() {
   display: flex;
   flex: 0 1 auto;
   min-width: 0;
-  max-width: calc(100% - 190px);
+  max-width: calc(100% - 52px);
 }
 .desktop-sidebar-toggle {
   display: grid;
@@ -184,9 +189,23 @@ async function toggleMaximize() {
   pointer-events: none;
 }
 .desktop-window-actions {
+  position: fixed;
+  inset: 0 0 auto auto;
+  width: 138px;
+  height: calc(var(--workbench-tabbar-height) - 1px);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  background: var(--sidebar);
+  color: var(--text-secondary);
   display: flex;
   align-items: stretch;
   flex-shrink: 0;
+}
+.desktop-window-actions:not(:popover-open) {
+  display: none;
 }
 .desktop-window-actions button {
   display: grid;
@@ -255,18 +274,22 @@ async function toggleMaximize() {
 .desktop-window:has(.workspace-native-tabs) .desktop-window-drag {
   display: none;
 }
-.desktop-window:has(.workspace-native-tabs) .desktop-window-actions {
-  margin-left: auto;
-  /* Leave the pane's bottom separator visible beneath button backgrounds. */
-  margin-bottom: 1px;
-  background: var(--sidebar);
-  pointer-events: auto;
-}
 .desktop-window-content > .app-shell:has(.workspace-native-tabs) .main-column {
   padding-top: 0;
 }
 .workspace-native-tabs .workspace-pane-top-right > .workspace-tabbar {
   padding-right: 138px;
+}
+/* Round the document surface below its tab strip without clipping menus. */
+.workspace-native-tabs .workspace-pane::after {
+  content: '';
+  position: absolute;
+  top: var(--workspace-pane-tabbar-height);
+  left: 0;
+  width: 8px;
+  height: 8px;
+  background: radial-gradient(circle at bottom right, transparent 8px, var(--sidebar) 8.5px);
+  pointer-events: none;
 }
 .workspace-window-drag {
   flex: 1 0 24px;

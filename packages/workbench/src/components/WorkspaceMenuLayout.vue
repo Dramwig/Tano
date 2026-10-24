@@ -97,6 +97,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="workspace-menu-layout">
+    <slot name="workspaces" />
     <div class="menu-divider" />
     <slot name="settings">
       <button type="button" @click="props.actions.openSettings()"><Settings2 :size="16" />{{ t('设置') }}</button>
@@ -113,8 +114,6 @@ onBeforeUnmount(() => {
         :style="{ ...position, visibility: position ? 'visible' : 'hidden' }"
         @keydown="keydown" @click="selected"><slot /></div>
     </Teleport>
-    <div class="menu-divider" />
-    <slot name="workspaces" />
   </div>
 </template>
 

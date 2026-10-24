@@ -12,8 +12,8 @@ import {
   undo,
   undoDepth,
 } from '@codemirror/commands';
-import { Compartment, EditorState, StateEffect, StateField, Transaction } from '@codemirror/state';
-import { Decoration, EditorView, highlightActiveLineGutter, keymap, lineNumbers, WidgetType } from '@codemirror/view';
+import { Compartment, EditorState, RangeSet, StateEffect, StateField, Transaction } from '@codemirror/state';
+import { Decoration, EditorView, GutterMarker, gutterLineClass, highlightActiveLineGutter, keymap, lineNumbers, WidgetType } from '@codemirror/view';
 import { referenceMarkdown } from '@tano/protocol';
 import type { CommentAnchor, ReferenceIdentity } from '@tano/protocol';
 import type { SuggestionDecorations } from '@tano/protocol';
@@ -22,8 +22,8 @@ import { sourceStyleRanges } from '@tano/editor/source-highlight';
 import type { ModeSelection } from '@tano/editor/mode-selection';
 import { splitFrontmatter } from '@tano/editor/syntax';
 import { referenceInsertionPoint } from '@tano/editor/document-links';
-import { selectionWrap } from '@tano/editor/runtime';
-import type { EditorPreferences } from '@tano/editor/runtime';
+import { selectionWrap, workspaceWrapping } from '@tano/editor/runtime';
+import type { EditorPreferences, WorkspaceCapabilities } from '@tano/editor/runtime';
 import { textSearchRanges } from '@tano/editor/search';
 
 const setPageSearch = StateEffect.define<{ query: string; index: number }>();
@@ -57,8 +57,10 @@ const pageSearch = StateField.define({
 
 const props = defineProps<{
   modelValue: string;
+  contentRevision?: string;
   showAllLineNumbers?: boolean;
   preferences?: EditorPreferences;
+  capabilities?: WorkspaceCapabilities;
   readonly: boolean;
   localNative: boolean;
   commentAnchors?: readonly { id: string; anchor: CommentAnchor }[];
@@ -73,9 +75,25 @@ const emit = defineEmits<{
 
 const host = ref<HTMLElement>();
 const readonlyMode = new Compartment();
+const undoHistory = new Compartment();
 const refreshCommentMarks = StateEffect.define<void>();
 let view: EditorView | undefined;
 let applyingModel = false;
+
+class HeadingLineNumber extends GutterMarker {
+  readonly elementClass: string;
+  constructor(readonly level: string) {
+    super();
+    this.elementClass = `cm-source-${level}-gutter`;
+  }
+  eq(other: HeadingLineNumber) { return this.level === other.level; }
+}
+const headingLineNumbers = gutterLineClass.compute(['doc'], state => {
+  const markdown = state.doc.toString();
+  return RangeSet.of(sourceStyleRanges(markdown)
+    .filter(range => /^heading-[1-6]$/.test(range.style))
+    .map(({ from, style }) => new HeadingLineNumber(style).range(state.doc.lineAt(from).from)), true);
+});
 
 const sourceStyles = StateField.define({
   create(state) {
@@ -89,7 +107,7 @@ const sourceStyles = StateField.define({
 });
 
 function decorations(markdown: string) {
-  const ranges = sourceStyleRanges(markdown).flatMap(({ from, to, style }) => {
+  const ranges = sourceStyleRanges(markdown, props.capabilities?.features).flatMap(({ from, to, style }) => {
     const marks = [Decoration.mark({ class: `cm-source-${style}` }).range(from, to)];
     if (style.startsWith('heading-')) {
       const lineStart = markdown.lastIndexOf('\n', from - 1) + 1;
@@ -125,6 +143,7 @@ class DeletedSuggestion extends WidgetType {
   ignoreEvent() { return false; }
 }
 watch(() => props.suggestionMarks, () => view?.dispatch({ effects: refreshCommentMarks.of() }));
+watch(() => props.capabilities, () => view?.dispatch({ effects: refreshCommentMarks.of() }), { deep: true });
 
 function fileHandler(event: Event, files: FileList | null | undefined, requireImage: boolean) {
   if (!props.localNative || props.readonly) return false;
@@ -157,7 +176,7 @@ function wrapSourceSelection(current: EditorView, text: string) {
   const source = current.state.doc.toString();
   if (sourceStyleRanges(source).some(range => ['code', 'math', 'frontmatter', 'html'].includes(range.style) &&
       range.from < selection.to && range.to > selection.from)) return false;
-  const wrap = selectionWrap(selected, text, props.preferences?.selectionWrapping,
+  const wrap = selectionWrap(selected, text, workspaceWrapping(props.preferences?.selectionWrapping, props.capabilities?.features),
     source.slice(0, selection.from), source.slice(selection.to));
   if (!wrap) return false;
   if (wrap.prefix) current.dispatch({
@@ -174,10 +193,11 @@ onMounted(() => {
     state: EditorState.create({
       doc: props.modelValue,
       extensions: [
-        history(),
+        undoHistory.of(history()),
         keymap.of([{ ...indentWithTab, preventDefault: true }, ...defaultKeymap, ...historyKeymap]),
         lineNumbers(),
         highlightActiveLineGutter(),
+        headingLineNumbers,
         EditorView.lineWrapping,
         EditorView.contentAttributes.of({ 'aria-label': t('Markdown 源码'), spellcheck: 'false' }),
         readonlyMode.of([
@@ -209,9 +229,15 @@ onMounted(() => {
 
 onBeforeUnmount(() => { clearTimeout(referenceFlashTimer); view?.destroy(); view = undefined; });
 
+watch(() => props.contentRevision, () => {
+  if (!view) return;
+  // Remove and reattach just the history field; do not recreate CodeMirror.
+  view.dispatch({ effects: undoHistory.reconfigure([]) });
+  view.dispatch({ effects: undoHistory.reconfigure(history()) });
+});
 watch(
-  () => props.modelValue,
-  (value) => {
+  () => [props.modelValue, props.contentRevision] as const,
+  ([value]) => {
     if (!view) return;
     const previous = view.state.doc.toString();
     const next = view.state.toText(value).toString();

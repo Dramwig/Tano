@@ -245,7 +245,7 @@ async function onSearchKeydown(event: KeyboardEvent) {
   justify-content: center;
   align-items: flex-start;
   padding: clamp(36px, 8vh, 80px) 24px 24px;
-  background: #24272b08;
+  background: #37352f08;
 }
 .new-tab-picker {
   display: flex;

@@ -183,7 +183,7 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
 .pane-divider::after { content: ''; position: absolute; background: transparent; pointer-events: none; transition: background 120ms ease; }
 .pane-divider-horizontal::after { top: 0; bottom: 0; left: calc(50% - 1px); width: 2px; }
 .pane-divider-vertical::after { left: 0; right: 0; top: calc(50% - 1px); height: 2px; }
-.pane-divider:hover::after, .pane-divider:focus-visible::after, .pane-divider:active::after { background: var(--green); }
+.pane-divider:hover::after, .pane-divider:focus-visible::after, .pane-divider:active::after { background: var(--text-secondary); }
 .pane-divider:focus-visible { outline: none; }
 .workspace-panes-resizing { user-select: none; }
 .workspace-panes-resizing :deep(.document-layout) { pointer-events: none; }
@@ -196,11 +196,27 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
   padding: 28px var(--document-inset-end) 50px var(--document-inset-start);
 }
 .workspace-panes-multiple :deep(.editor-scroll:has(.document-cover)) { padding-top: 0; }
-.workspace-panes-multiple :deep(.document-title-input) { font-size: clamp(24px, 5cqw, 36px); }
+.workspace-panes-multiple :deep(.document-title-input),
+.workspace-panes-multiple :deep(.document-title-mirror) { font-size: clamp(24px, 5cqw, 36px); }
 .workspace-panes-multiple :deep(.editor-toolbar) { height: auto; min-height: 44px; flex-wrap: wrap; padding: 6px 10px; white-space: nowrap; }
 .workspace-panes-multiple :deep(.editor-toolbar > *) { flex-shrink: 0; }
 .workspace-panes-multiple :deep(.blank-tab-actions) { white-space: normal; }
 .workspace-panes .workspace-pane :deep(.topbar) { padding-inline: 8px; gap: 6px; }
+/* Navigation keeps its normal height and alignment in every docking mode.
+   Its bottom gutter already separates the rows; do not add a second one. */
+@media (pointer: fine) and (min-width: 701px) {
+  .workspace-pane {
+    --topbar-height: 36px;
+  }
+  .workspace-pane:has(.switchable-toolbar) {
+    --inspector-top: calc(var(--workspace-pane-tabbar-height) + var(--topbar-height) + 33px + 16px);
+  }
+  .workspace-pane :deep(.editor-toolbar.switchable-toolbar) {
+    height: auto;
+    min-height: 33px;
+    padding-block: 0 3px;
+  }
+}
 .workspace-panes-multiple :deep(.breadcrumb) { gap: 5px; }
 .workspace-panes-multiple :deep(.document-dropdown) { max-height: calc(100cqh - 100px); overflow-y: auto; overscroll-behavior: contain; }
 .workspace-panes-multiple :deep(.calendar-topbar-controls) { min-width: 0; flex-wrap: wrap; }

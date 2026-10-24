@@ -47,7 +47,7 @@ const { drag, start, cancel } = useToolbarDrag(
     void changeMode(mode);
   },
   focusEditor,
-  () => { handleMenuOpen.value = true; },
+  () => { handleMenuOpen.value = !handleMenuOpen.value; },
 );
 const previewPanel = ref<HTMLElement>();
 const previewStatus = computed(() => {
@@ -107,9 +107,11 @@ watch(
   { flush: 'post' },
 );
 function startDrag(event: PointerEvent) {
-  handleMenuOpen.value = false;
   start(event);
 }
+watch(drag, (value) => {
+  if (value) handleMenuOpen.value = false;
+});
 watch(
   () => [props.mode, props.source, props.disabled, props.editorElement],
   () => {
@@ -138,6 +140,7 @@ async function changeMode(mode: ToolbarMode) {
 <template>
   <EditorToolbar
     v-if="mode === 'fixed'"
+    compact-actions
     class="switchable-toolbar"
     :class="{ 'toolbar-being-dragged': drag }"
     :context="context"
@@ -201,6 +204,7 @@ async function changeMode(mode: ToolbarMode) {
         <div aria-hidden="true" inert>
           <EditorToolbar
             :compact="drag.target !== 'fixed'"
+            compact-actions
             :vertical="previewVertical"
             :class="{ 'switchable-toolbar': drag.target === 'fixed' }"
             :context="context"
@@ -243,6 +247,15 @@ async function changeMode(mode: ToolbarMode) {
 }
 .toolbar-preview-split :deep(.editor-toolbar > *) {
   flex-shrink: 0;
+}
+@media (pointer: fine) and (min-width: 701px) {
+  /* The preview is teleported outside WorkspacePanes, so mirror its compact
+     fixed-toolbar spacing to keep the controls stationary on release. */
+  .toolbar-drag-preview[data-target='fixed'] :deep(.editor-toolbar) {
+    height: auto;
+    min-height: 33px;
+    padding-block: 0 3px;
+  }
 }
 .toolbar-preview-inactive {
   opacity: 0.55;

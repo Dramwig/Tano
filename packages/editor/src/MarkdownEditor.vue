@@ -24,7 +24,7 @@ import {
 } from '@milkdown/kit/preset/commonmark';
 import { gfm, toggleStrikethroughCommand } from '@milkdown/kit/preset/gfm';
 import { toggleMark } from '@milkdown/kit/prose/commands';
-import { history } from '@milkdown/kit/plugin/history';
+import { history, historyProviderPlugin } from '@milkdown/kit/plugin/history';
 import { clipboard } from '@milkdown/kit/plugin/clipboard';
 import { callCommand, $prose } from '@milkdown/kit/utils';
 import { Plugin, PluginKey, NodeSelection, Selection, TextSelection } from '@milkdown/kit/prose/state';
@@ -38,6 +38,7 @@ import {
 } from '@milkdown/kit/prose/history';
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
 import { createDocumentDecorations } from './document-decorations';
+import { autoSpacing } from './auto-spacing';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { Fragment } from '@milkdown/kit/prose/model';
 import { canSplit } from '@milkdown/kit/prose/transform';
@@ -71,6 +72,7 @@ import { configureMarkdownSchema } from './schema';
 import { listMarkdown } from './list-markdown';
 import { codeBlankLinesRemark } from './code-blank-lines';
 import { blockControls } from './blocks';
+import { BlockRangeSelection, expandBlockSelection } from './block-selection';
 import { blockTree, moveBlockSibling, indentBlock, outdentBlock, wrapBlockInToggle, deleteBlock } from './block-tree';
 import { emptyBlockDeletion } from './empty-block';
 import { slashCommands } from './slash-commands';
@@ -95,9 +97,9 @@ import { activeInlineSourceRange, emptyFencedCodeBodyOffset, liveMarkdown } from
 import { liveInlineSource, liveSource } from './live-source';
 import { nestedEmphasisRemark } from './nested-emphasis';
 import { sourceStyleRanges } from './source-highlight';
-import { configureMarkdownRuntime, defaultCapabilities, defaultEditorPreferences, selectionWrap } from './runtime';
+import { configureMarkdownRuntime, defaultCapabilities, defaultEditorPreferences, selectionWrap, workspaceWrapping } from './runtime';
 import type { WorkspaceCapabilities, EditorPreferences } from './runtime';
-import { runtimeViews, mermaidView } from './runtime-views';
+import { runtimeViews, runtimeMarkViews, mermaidView } from './runtime-views';
 import { footnoteNumbers, jumpToFootnote } from './footnotes';
 import { references } from './references';
 import { referenceViews } from './reference-views';
@@ -131,6 +133,7 @@ interface ImportedResource {
 const props = withDefaults(
   defineProps<{
     modelValue: string;
+    contentRevision?: string;
     documentId: string;
     referenceTargets?: readonly ReferenceTarget[];
     readonly?: boolean;
@@ -734,7 +737,7 @@ function wrapSelectedInlineSource(ctx: Ctx, view: EditorView, from: number, to: 
   });
   if (protectedContent) return false;
   const selected = state.doc.textBetween(from, to);
-  const wrap = selectionWrap(selected, text, preferences().selectionWrapping,
+  const wrap = selectionWrap(selected, text, workspaceWrapping(preferences().selectionWrapping, policy().features),
     $from.parent.textContent.slice(0, $from.parentOffset), $to.parent.textContent.slice($to.parentOffset));
   if (!wrap || (wrap.prefix === '$' && !policy().features.math)) return false;
   if (!wrap.prefix) return true;
@@ -918,9 +921,17 @@ function inlineSourceTransaction(
 }
 
 function activateInlineSource(ctx: Ctx, view: EditorView, event?: MouseEvent | KeyboardEvent) {
+  const disabledStyle = event?.target instanceof Element
+    ? event.target.closest<HTMLElement>('[data-tano-disabled-style]') : null;
+  // Literal fallback delimiters live outside contentDOM and have no document
+  // positions. Resolve their owning mark before revealing editable source.
+  const content = disabledStyle?.children[1];
+  const selection = content && view.dom.contains(content)
+    ? TextSelection.create(view.state.doc, view.posAtDOM(content, 0)) : view.state.selection;
+  const atomRange = event ? inlineAtomSourceRange(view, event) : null;
   const range =
-    (event ? inlineAtomSourceRange(view, event) : null) ??
-    activeInlineSourceRange(view.state, markAtCaret(view, event));
+    atomRange ??
+    activeInlineSourceRange({ selection }, disabledStyle?.dataset.tanoDisabledStyle ?? markAtCaret(view, event));
   if (!range) return false;
   const tr = inlineSourceTransaction(ctx, view.state, range);
   applying = true;
@@ -929,12 +940,16 @@ function activateInlineSource(ctx: Ctx, view: EditorView, event?: MouseEvent | K
   } finally {
     applying = false;
   }
-  focusRevealedSource(view, event);
+  // Existing text has a semantic caret position mapped by the transaction.
+  // Only previews and decorative delimiters lack an editable text position.
+  const clickedDelimiter = content && event?.target instanceof Element &&
+    !content.contains(event.target);
+  focusRevealedSource(view, atomRange || clickedDelimiter ? event : undefined);
   return true;
 }
 
-// Resolve the pointer against the newly rendered source so the caret stays at
-// the click, even when delimiters or a block preview change the layout.
+// Text callers retain the transaction's mapped caret. Only non-text previews
+// pass a pointer to resolve against the newly editable source.
 function focusRevealedSource(view: EditorView, event?: MouseEvent | KeyboardEvent) {
   view.focus();
   if (!(event instanceof MouseEvent) || (!event.clientX && !event.clientY)) return;
@@ -959,7 +974,7 @@ function activateLinkSource(ctx: Ctx, view: EditorView, link: Element, event: Mo
   } finally {
     applying = false;
   }
-  focusRevealedSource(view, event);
+  focusRevealedSource(view);
   return true;
 }
 
@@ -1181,7 +1196,8 @@ function activateLocalSource(ctx: Ctx, view: EditorView, event: MouseEvent | Key
     event.metaKey ||
     event.shiftKey ||
     target?.closest('button, input, textarea') ||
-    (target?.closest('[contenteditable="false"]:not(.tano-wiki-link)') && !previewBlock)
+    (target?.closest('[contenteditable="false"]:not(.tano-wiki-link)') && !previewBlock &&
+      !target.closest('[data-tano-disabled-style]'))
   )
     return false;
   if (target && previewBlock) {
@@ -1206,7 +1222,7 @@ function activateLocalSource(ctx: Ctx, view: EditorView, event: MouseEvent | Key
       } finally {
         applying = false;
       }
-      focusRevealedSource(view, event);
+      focusRevealedSource(view);
       return true;
     }
   }
@@ -1233,7 +1249,7 @@ function activateLocalSource(ctx: Ctx, view: EditorView, event: MouseEvent | Key
   } finally {
     applying = false;
   }
-  focusRevealedSource(view, event);
+  focusRevealedSource(view);
   return true;
 }
 
@@ -1354,6 +1370,19 @@ function finishLocalSourceTransaction(ctx: Ctx, state: EditorState) {
     current.pos + current.node.nodeSize,
     replacement,
   );
+  if (state.selection instanceof BlockRangeSelection) {
+    // Finishing live Markdown replaces its temporary node. Keep that block (and
+    // any blocks parsed from it) selected instead of treating it as a deletion.
+    const ranges = state.selection.blocks.map(block => ({
+      from: tr.mapping.map(block.pos, -1),
+      to: tr.mapping.map(block.pos + block.node.nodeSize, 1),
+    }));
+    const positions = blockTree(tr.doc).filter(block => ranges.some(range =>
+      block.pos >= range.from && block.pos + block.node.nodeSize <= range.to)).map(block => block.pos);
+    const selection = BlockRangeSelection.fromBlocks(tr.doc, positions,
+      tr.mapping.map(state.selection.anchorBlock, -1), tr.mapping.map(state.selection.headBlock, -1));
+    if (selection) tr.setSelection(selection);
+  }
   if (raw === session.initial) tr.setMeta('addToHistory', false);
   return { tr, unchanged: raw === session.initial };
 }
@@ -1369,6 +1398,49 @@ function finishLocalSource(ctx: Ctx, view: EditorView) {
     applying = false;
     transitioningSource = false;
   }
+}
+
+function moveAcrossInlineSourceEdge(ctx: Ctx, view: EditorView, direction: -1 | 1) {
+  const current = currentSource(view);
+  const selection = view.state.selection;
+  if (localSource?.kind !== 'inline' || !current ||
+      !(selection instanceof TextSelection) || !selection.empty ||
+      selection.$from.parent !== current.node) return false;
+  const offset = selection.$from.parentOffset;
+  const size = current.node.content.size;
+  const remaining = direction < 0 ? offset : size - offset;
+  // Chromium can skip the first/last DOM caret stop of an inline content node.
+  // Keep that stop explicit so leaving and re-opening the field cannot loop.
+  if (remaining > 1) return false;
+  if (remaining === 1) {
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc,
+      selection.from + direction)).setMeta('addToHistory', false));
+    return true;
+  }
+  const end = current.pos + current.node.nodeSize;
+  const finished = finishLocalSourceTransaction(ctx, view.state);
+  const tr = finished?.tr ?? view.state.tr;
+  let position = direction < 0 ? current.pos : tr.mapping.map(end, 1);
+  const boundary = tr.doc.resolve(position);
+  const adjacent = direction < 0 ? boundary.nodeBefore : boundary.nodeAfter;
+  // The inside and outside of the source node are the same visible caret
+  // stop. Consume the arrow's character movement as well as closing the field.
+  if (adjacent?.isText) {
+    const segments = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(adjacent.text!)];
+    const step = direction < 0 ? segments.at(-1)!.segment.length : segments[0]!.segment.length;
+    position += direction * step;
+    tr.setSelection(TextSelection.create(tr.doc, position));
+  } else {
+    const next = Math.max(0, Math.min(tr.doc.content.size, position + direction));
+    tr.setSelection(Selection.findFrom(tr.doc.resolve(next), direction, true) ?? TextSelection.create(tr.doc, position));
+  }
+  tr.setStoredMarks([]);
+  tr.setMeta('tanoKeepNodeView', true);
+  transitioningSource = true;
+  applying = finished?.unchanged ?? false;
+  try { view.dispatch(tr); }
+  finally { transitioningSource = false; applying = false; }
+  return true;
 }
 
 function enterHeadingSource(ctx: Ctx, view: EditorView) {
@@ -1903,6 +1975,26 @@ const bridge = $prose(
           const placeholders = uploads.getState(state);
           return placeholders && placeholders !== DecorationSet.empty ? decorated.add(state.doc, placeholders.find()) : decorated;
         },
+        handleKeyDown(view, event) {
+          if (event.key !== 'ArrowDown' || event.shiftKey || event.ctrlKey || event.metaKey ||
+              event.altKey || event.isComposing || event.keyCode === 229 || view.composing ||
+              props.readonly || !view.editable) return false;
+          const { doc, selection } = view.state;
+          if (selection instanceof TextSelection) {
+            if (!selection.empty) return false;
+            const { $head } = selection;
+            // Stay within wrapped lines and nested blocks until there is no next line/block.
+            for (let depth = 0; depth < $head.depth; depth++) {
+              if ($head.index(depth) !== $head.node(depth).childCount - 1) return false;
+            }
+            if (!view.endOfTextblock('down')) return false;
+          } else if (!(selection instanceof NodeSelection) || selection.to !== doc.content.size) {
+            return false;
+          }
+          if (doc.lastChild?.eq(view.state.schema.nodes.paragraph!.create())) return false;
+          moveToTrailingParagraph(view);
+          return true;
+        },
         handleDOMEvents: {
           mousedown(view, event) {
             if (event.button === 0) selectingWithPointer = true;
@@ -1919,6 +2011,19 @@ const bridge = $prose(
             return false;
           },
           keydown(view, event) {
+            if (event.key.toLowerCase() === 'a' && (event.ctrlKey || event.metaKey) &&
+                !event.shiftKey && !event.altKey && !event.isComposing && event.keyCode !== 229 && !view.composing &&
+                !(event.target instanceof Element && event.target.closest('input, textarea, [contenteditable="false"]'))) {
+              const selection = expandBlockSelection(view.state.doc, view.state.selection);
+              if (selection) {
+                event.preventDefault();
+                event.stopPropagation();
+                // Expanding the scope must preserve the reader's viewport,
+                // even when the new selection ends far outside the screen.
+                view.dispatch(view.state.tr.setSelection(selection));
+                return true;
+              }
+            }
             if (
               event.key === ' ' &&
               !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey &&
@@ -1934,6 +2039,13 @@ const bridge = $prose(
               return true;
             }
             const source = currentSource(view);
+            if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
+                !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey &&
+                !event.isComposing && !view.composing && !props.readonly &&
+                moveAcrossInlineSourceEdge(ctx, view, event.key === 'ArrowLeft' ? -1 : 1)) {
+              event.preventDefault();
+              return true;
+            }
             if (event.key === 'Enter' && !event.altKey && isInTable(view.state)) {
               // Let the IME confirm its candidate without falling through to table keymaps.
               if (event.isComposing || event.keyCode === 229 || view.composing) return true;
@@ -2040,6 +2152,19 @@ const bridge = $prose(
             // of replacing the heading/link/code DOM with an editable source.
             if (_view.state.selection instanceof TextSelection && !_view.state.selection.empty &&
                 event.button === 0 && !event.ctrlKey && !event.metaKey) return false;
+            // The native DOM selection may not have reached editor state yet.
+            // Resolve textual clicks before adding delimiters changes the layout.
+            if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
+                props.revealMarkdown !== false && !props.readonly &&
+                (event.clientX || event.clientY) && !currentSource(_view) &&
+                event.target instanceof Element &&
+                !inlineAtomSourceRange(_view, event) &&
+                !event.target.closest('[contenteditable="false"], .math-preview, .tano-mermaid-preview, .tano-image-block')) {
+              const hit = _view.posAtCoords({ left: event.clientX, top: event.clientY });
+              if (hit && _view.state.doc.resolve(hit.pos).parent.inlineContent)
+                _view.dispatch(_view.state.tr.setSelection(TextSelection.create(_view.state.doc, hit.pos))
+                  .setMeta('tanoKeepNodeView', true).setMeta('addToHistory', false));
+            }
             if (jumpToFootnote(_view, event)) {
               event.preventDefault();
               return true;
@@ -2085,6 +2210,7 @@ const bridge = $prose(
             return activateLocalSource(ctx, _view, event);
           },
         },
+        markViews: runtimeMarkViews(policy()),
         nodeViews: runtimeViews(
           {
             ...referenceViews(
@@ -2434,6 +2560,7 @@ onMounted(async () => {
       .use($prose(() => tableControls(() => !!props.readonly)))
       .use($prose(tableViewports))
       .use($prose(footnoteNumbers))
+      .use($prose(() => autoSpacing(() => preferences().autoSpacing === true, () => policy().features)))
       .use(textStyles)
       .use(wikiLinkRemark)
       .use(wikiLink)
@@ -2460,6 +2587,7 @@ onMounted(async () => {
           liveMarkdown(
             () => props.revealMarkdown !== false,
             () => !!props.readonly,
+            () => policy().features,
           ),
         ),
       )
@@ -2544,7 +2672,20 @@ function applyContent(value: string) {
     applying = false;
   }
 }
-watch(() => props.modelValue, applyContent);
+watch(() => [props.modelValue, props.contentRevision] as const, ([value, revision], [, previousRevision]) => {
+  applyContent(value);
+  if (revision !== previousRevision && editor && !props.extension?.ownsHistory) {
+    // A suggestion projection is a different editing context. Clear only undo
+    // state, keeping the EditorView, node views, selection and layout mounted.
+    editor.action(ctx => {
+      const view = ctx.get(editorViewCtx);
+      const provider = historyProviderPlugin.key()?.get(view.state);
+      const plugins = view.state.plugins;
+      view.updateState(view.state.reconfigure({ plugins: plugins.filter(plugin => plugin !== provider) })
+        .reconfigure({ plugins }));
+    });
+  }
+});
 watch(() => props.suggestionMarks, () => {
   if (bridgeView && !disposed) bridgeView.dispatch(bridgeView.state.tr.setMeta('addToHistory', false));
 });
@@ -2570,6 +2711,13 @@ watch(() => props.documentId, () => {
   typeMenuProperty.value = undefined;
   if (blockMenu.value) closeBlockMenu(false);
   closeLinkPanel();
+});
+watch(() => JSON.stringify(policy().features), () => {
+  editor?.action(ctx => {
+    const view = ctx.get(editorViewCtx);
+    // ProseMirror rebuilds mark views when nodeViews changes identity.
+    view.setProps({ nodeViews: { ...view.props.nodeViews }, markViews: runtimeMarkViews(policy()) });
+  });
 });
 watch(
   () => [props.readonly, props.enabledLevels, props.capabilities, props.preferences, props.referenceTargets],
@@ -3058,7 +3206,7 @@ function focusTrailingParagraph(event: MouseEvent) {
       !event.target.contains(view.dom)
     )
       return;
-    const { doc, schema } = view.state;
+    const { doc } = view.state;
     const last = doc.lastChild;
     if (!last) return;
     const lastDOM = view.nodeDOM(doc.content.size - last.nodeSize);
@@ -3066,15 +3214,21 @@ function focusTrailingParagraph(event: MouseEvent) {
       return;
 
     event.preventDefault();
-    const paragraph = schema.nodes.paragraph!.create();
-    const reuse = last.eq(paragraph);
-    const tr = view.state.tr;
-    const position = reuse ? doc.content.size - last.nodeSize + 1 : doc.content.size + 1;
-    if (!reuse) tr.insert(doc.content.size, paragraph);
-    tr.setSelection(TextSelection.create(tr.doc, position)).setStoredMarks([]);
-    view.dispatch((reuse ? tr : closeHistory(tr)).scrollIntoView());
-    view.focus();
+    moveToTrailingParagraph(view);
   });
+}
+function moveToTrailingParagraph(view: EditorView) {
+  const { doc, schema } = view.state;
+  const paragraph = schema.nodes.paragraph!.create();
+  const last = doc.lastChild;
+  if (!last) return;
+  const reuse = last.eq(paragraph);
+  const tr = view.state.tr;
+  const position = reuse ? doc.content.size - last.nodeSize + 1 : doc.content.size + 1;
+  if (!reuse) tr.insert(doc.content.size, paragraph);
+  tr.setSelection(TextSelection.create(tr.doc, position)).setStoredMarks([]);
+  view.dispatch((reuse ? tr : closeHistory(tr)).scrollIntoView());
+  view.focus();
 }
 function canUndo() {
   if (!editor || props.readonly || props.extension?.ownsHistory) return false;

@@ -99,7 +99,7 @@ test('keyboard viewport and safe areas keep settings reachable without changing 
   });
   const errors = await open(page);
   await page.getByRole('button', { name: '展开侧栏', exact: true }).tap();
-  await page.getByRole('button', { name: '切换工作区', exact: true }).tap();
+  await page.getByRole('button', { name: /^切换上下文：/ }).tap();
   await page.getByRole('button', { name: '设置', exact: true }).tap();
   await expect(page.locator('.settings-dialog')).toBeVisible();
   await page.evaluate(() => {

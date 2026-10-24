@@ -9,6 +9,7 @@ import type { AttachmentService } from './attachments';
 import type { SettingsPageId } from './settings-window';
 import type { PluginRuntimeServices } from './plugins/host';
 import type { ImportAccountHost } from './account-import/types';
+import type { DocumentSyncStatus } from './document-status';
 
 export interface WorkbenchActions {
   closeMenus(): void;
@@ -39,12 +40,15 @@ export interface SettingsPageContext {
 export interface SettingsPage {
   id: string; label: string; group: string; terms: string; component: Component;
   icon?: Component;
+  isVisible?: (context: SettingsPageContext) => boolean;
 }
 /** Only this metadata enters the tab store; components and business state stay in the overlay. */
 export interface WorkbenchViewTab {
   id: string;
   label: string;
   icon: Component;
+  /** Account views keep their tab identity across workspace switches. */
+  scope?: 'account' | 'workspace';
   /** Window-local views cannot be transferred unless the overlay explicitly supports it. */
   detachable?: boolean;
   detachBlockedMessage?: string;
@@ -56,6 +60,8 @@ export interface WorkbenchViewActions {
 /** Stable view:* IDs are restored only when registered by the current product. */
 export interface WorkbenchView extends WorkbenchViewTab {
   component: Component;
+  /** Collapse navigation when this view becomes active; users can reopen it. */
+  collapseSidebarOnOpen?: boolean;
   sidebar?: Component;
   /** Optional control rendered in the workspace sidebar header. */
   header?: Component;
@@ -67,7 +73,10 @@ export interface WorkbenchObjectDetailsProps {
   disabled: boolean;
 }
 export interface WorkbenchExtensions {
+  commands?: import('./command-palette').WorkbenchCommand[];
   editing: EditingSession;
+  /** Per-document persistence state, supplied by hosts that synchronize content. */
+  documentStatus?(id: string): DocumentSyncStatus | undefined;
   /**
    * workspace-menu-layout can wrap built-in workspace actions through its default slot.
    * plugin-publishing receives WorkbenchActions in the plugin center's My submissions view.

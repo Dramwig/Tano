@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ModalBackdrop from './ModalBackdrop.vue';
+import CapabilitySyntax from './CapabilitySyntax.vue';
 import { t, uiLocale, setUiLocale, uiSearchText } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
@@ -10,10 +12,12 @@ import {
   FileText,
   FolderOpen,
   History,
+  House,
   Keyboard,
   LogOut,
   Minus,
   Monitor,
+  PanelTop,
   Palette,
   PencilLine,
   Plus,
@@ -66,6 +70,10 @@ const props = defineProps<{
   workspaceDeletionError?: string;
   activeFile?: SettingsPageContext['activeFile'];
   windowed?: boolean;
+  tabbed?: boolean;
+  canOpenTab?: boolean;
+  canOpenWindow?: boolean;
+  openingWindow?: boolean;
   extraPages?: SettingsPage[];
   pluginPages?: PluginSettingsPage[];
   executePlugin?: (interaction: PluginInteraction) => Promise<void>;
@@ -96,6 +104,9 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   close: [];
+  'open-tab': [page: string];
+  'open-window': [page: string];
+  'page-change': [page: string];
   'drag-window': [event: MouseEvent];
   'update:defaultSource': [value: boolean];
   'update:theme': [value: ThemePreference];
@@ -160,6 +171,9 @@ const search = ref('');
 const searchInput = ref<HTMLInputElement>();
 const mainContent = ref<HTMLElement>();
 const page = ref<Page>(props.initialPage === 'preferences' ? 'appearance' : props.initialPage ?? 'appearance');
+watch(() => props.initialPage, value => {
+  if (value) page.value = value === 'preferences' ? 'appearance' : value;
+});
 const originalFocus = document.activeElement as HTMLElement | null;
 const pages = [
   {
@@ -232,6 +246,7 @@ function settingSearchEntry(page: Page, id: string, label: string, description =
 }
 
 const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
+  settingSearchEntry('appearance', 'appearance-auto-spacing', '正文自动间距', '在中文与英文、数字、行内公式及引用之间自动留白，仅影响显示，不修改原文。', 'spacing typography 中英文 数字 公式 引用 空格 排版'),
   settingSearchEntry('appearance', 'appearance-language', '界面语言', '立即切换界面语言，仅保存在当前设备。', 'language English 中文'),
   settingSearchEntry('appearance', 'appearance-theme', '主题', '选择应用外观，或随系统外观自动切换。', 'theme light dark system 白天 黑夜 深色 浅色'),
   settingSearchEntry('appearance', 'appearance-visual-font', '可视化编辑字体', '选择内置字体，或使用本机已安装的字体。', 'font system serif mono Maple custom'),
@@ -265,7 +280,7 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('workspace', 'workspace-show-plan', '显示计划', '在侧栏显示计划与日历入口。', 'sidebar plan calendar'),
   settingSearchEntry('workspace', 'workspace-show-graph', '显示关系图谱', '在侧栏顶部显示关系图谱入口。', 'sidebar graph'),
   settingSearchEntry('workspace', 'workspace-show-plugins', '显示插件', '在侧栏顶部显示插件管理入口。', 'sidebar plugins'),
-  settingSearchEntry('workspace', 'workspace-show-collaboration-views', '显示协作应用', '在在线工作区侧栏显示聊天、收件箱等协作入口。', 'sidebar collaboration chat inbox'),
+  settingSearchEntry('workspace', 'workspace-show-collaboration-views', '显示协作应用', '在侧栏显示聊天等协作入口，不影响账户收件箱。', 'sidebar collaboration chat inbox'),
   settingSearchEntry('workspace', 'workspace-export', '工作区内容', '将已保存的 Markdown、附件和工作区设置导出为 ZIP，保留文件夹结构。', 'export ZIP backup'),
   settingSearchEntry('workspace', 'workspace-page-views', '保存并显示页面浏览统计', '页面浏览量统计尚未实现，当前不会收集浏览数据。', 'analytics statistics views'),
   settingSearchEntry('workspace', 'workspace-people', '人物目录', '在工作区对象列表中显示人物；关闭后仍可通过已有引用访问人物。', 'people directory'),
@@ -276,17 +291,32 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
 const settingSearchMatches = computed(() => {
   const query = search.value.trim().toLocaleLowerCase();
   if (!query) return [];
-  return settingSearchEntries.value.filter(item => `${item.label} ${item.description ?? ''} ${item.terms}`.toLocaleLowerCase().includes(query));
+  return settingSearchEntries.value.filter(item => availablePages.value.some(candidate => candidate.id === item.page) && `${item.label} ${item.description ?? ''} ${item.terms}`.toLocaleLowerCase().includes(query));
 });
 const settingMatchesByPage = computed(() => {
   const result = new Map<Page, SettingSearchEntry[]>();
   for (const item of settingSearchMatches.value) result.set(item.page, [...(result.get(item.page) ?? []), item]);
   return result;
 });
+const availableExtraPages = computed(() => (props.extraPages ?? []).filter(item =>
+  (props.workspace || t(item.group) !== t('工作区设置')) &&
+  (!item.isVisible || item.isVisible({ mode: props.mode, workspace: props.workspace, activeFile: props.activeFile ?? null })),
+));
+const availablePluginPages = computed(() => props.workspace
+  ? (props.pluginPages ?? []).filter(item => item.workspaceId === props.workspace!.id)
+  : []);
+const availablePages = computed(() => [
+  ...pages.filter(item => props.workspace || (item.id !== 'workspace' && item.id !== 'documents')),
+  ...availableExtraPages.value.map(item => ({ ...item, group: t(item.group), icon: item.icon ?? UserRound })),
+  ...availablePluginPages.value.map(item => ({ id: item.view.key, label: item.view.label, group: t('插件设置'), terms: item.view.pluginName, icon: UserRound })),
+]);
+// Validate against scope independently of search, including direct navigation requests.
+watch([availablePages, page], ([items]) => {
+  if (!items.some(item => item.id === page.value)) page.value = 'appearance';
+}, { immediate: true });
 const visiblePages = computed(() => {
   const query = search.value.trim().toLocaleLowerCase();
-  return [...pages, ...(props.extraPages ?? []).map(item => ({ ...item, group: t(item.group), icon: item.icon ?? UserRound })),
-    ...(props.pluginPages ?? []).map(item => ({ id: item.view.key, label: item.view.label, get group() { return t('插件设置'); }, terms: item.view.pluginName, icon: UserRound }))].filter(
+  return availablePages.value.filter(
     (item) =>
       `${item.group} ${item.label} ${item.terms}`.toLocaleLowerCase().includes(query) ||
       settingMatchesByPage.value.has(item.id),
@@ -326,9 +356,12 @@ watch(search, value => {
 });
 watch(visiblePages, (items) => {
   if (items.length && !items.some((item) => item.id === page.value)) page.value = items[0].id;
-});
+}, { immediate: true });
+const atTop = ref(true);
 watch(page, () => {
   if (mainContent.value) mainContent.value.scrollTop = 0;
+  atTop.value = true;
+  emit('page-change', page.value);
 });
 onMounted(() => void nextTick(() => searchInput.value?.focus()));
 onBeforeUnmount(() => {
@@ -336,6 +369,7 @@ onBeforeUnmount(() => {
 });
 
 function keydown(event: KeyboardEvent) {
+  if (props.tabbed) return;
   if (event.key === 'Escape') {
     event.stopPropagation();
     emit('close');
@@ -366,11 +400,11 @@ function customFontInput(event: Event) {
 </script>
 
 <template>
-  <div class="modal-backdrop settings-backdrop" :class="{ 'settings-windowed': windowed }" @mousedown.self="!windowed && emit('close')">
+  <ModalBackdrop :active="!windowed && !tabbed" class="modal-backdrop settings-backdrop" :class="{ 'settings-windowed': windowed, 'settings-tabbed': tabbed }" @close="emit('close')">
     <section
-      class="settings-dialog"
-      role="dialog"
-      :aria-modal="!windowed"
+      class="settings-dialog workbench-modal-surface"
+      :role="tabbed ? 'region' : 'dialog'"
+      :aria-modal="!windowed && !tabbed ? true : undefined"
       aria-labelledby="settings-title"
       @keydown="keydown"
     >
@@ -430,17 +464,41 @@ function customFontInput(event: Event) {
           <p v-if="!visiblePages.length" class="settings-search-empty">{{ t('没有找到相关设置') }}</p>
         </div>
         <div class="settings-nav-foot">
-          <span class="settings-workspace-icon"><WorkspaceIcon :icon="workspaceSettings?.icon" :mode="mode" :size="17" /></span>
+          <span class="settings-workspace-icon"><WorkspaceIcon v-if="workspace" :icon="workspaceSettings?.icon" :mode="mode" :size="17" /><House v-else :size="17" /></span>
           <div>
-            <span>{{ workspace?.name ?? t('尚未打开工作区') }}</span>
+            <span>{{ workspace?.name ?? t('主页') }}</span>
             <small>{{
-              mode === 'demo' ? t('浏览器演示') : mode === 'web' ? t('在线工作区') : t('本地工作区')
+              !workspace ? t('个人偏好 · 当前设备') : mode === 'demo' ? t('浏览器演示') : mode === 'web' ? t('在线工作区') : t('本地工作区')
             }}</small>
           </div>
         </div>
       </aside>
 
       <button
+        v-if="canOpenWindow && !windowed && !tabbed"
+        class="settings-close settings-open-window"
+        :class="{ 'settings-open-window-with-tab': canOpenTab, 'settings-action-hidden': !atTop }"
+        :inert="!atTop"
+        :aria-hidden="!atTop"
+        type="button"
+        :disabled="openingWindow"
+        :aria-label="t('在新窗口打开')"
+        :data-tooltip="t('在新窗口打开')"
+        @click="emit('open-window', page)"
+      ><ExternalLink :size="18" /></button>
+      <button
+        v-if="canOpenTab && !tabbed"
+        class="settings-close settings-open-tab"
+        :class="{ 'settings-action-hidden': !atTop }"
+        :inert="!atTop"
+        :aria-hidden="!atTop"
+        type="button"
+        :aria-label="t('作为标签页打开')"
+        :data-tooltip="t('作为标签页打开')"
+        @click="emit('open-tab', page)"
+      ><PanelTop :size="18" /></button>
+      <button
+        v-if="!tabbed"
         class="settings-close"
         type="button"
         :aria-label="t('关闭设置')"
@@ -449,7 +507,7 @@ function customFontInput(event: Event) {
       >
         <X :size="18" />
       </button>
-      <main ref="mainContent" class="settings-main panel-scrollbar">
+      <main ref="mainContent" class="settings-main panel-scrollbar" @scroll="atTop = ($event.target as HTMLElement).scrollTop <= 0">
         <div v-if="!visiblePages.length" class="settings-content">
           <h2 id="settings-title">{{ t('搜索设置') }}</h2>
           <p class="settings-lead">{{ t('没有找到相关设置，请尝试其他关键词。') }}</p>
@@ -636,14 +694,17 @@ function customFontInput(event: Event) {
                     >{{ t('在同一页写下新的想法。') }}<br />Tano 123</p>
                   </div>
                   <div class="settings-font-preview-sample" role="group" :aria-label="t('Markdown 源码预览')">
-                    <p class="settings-source-font-sample" :style="{ fontSize: `${sourceFontSize}px` }">
+                    <p class="settings-source-font-sample" :style="{
+                      fontFamily: visualFontFamily(visualFontChoice, customFontName),
+                      fontSize: `${sourceFontSize}px`,
+                    }">
                       {{ t('# 在同一页写下新的想法') }}<br />Tano 123
                     </p>
                   </div>
                 </div>
               </div>
             </div>
-            <p class="settings-local-note">{{ t('可视化字体仅影响可视化编辑和页面内标题；Markdown 源码保持等宽字体。') }}</p>
+            <p class="settings-local-note">{{ t('所选字体应用于可视化编辑、Markdown 源码和页面内标题；两种编辑模式的字号可分别调整。') }}</p>
           </section>
           <section v-if="page === 'editing'" class="settings-section" :aria-label="t('编辑行为')">
             <h3>{{ t('编辑行为') }}</h3>
@@ -750,11 +811,22 @@ function customFontInput(event: Event) {
                   @click="setWrapping(option.key, !wrapping[option.key])"><span /></button>
               </div>
             </div>
-            <p class="settings-local-note">{{ t('设置仅影响当前设备。扩展语法默认关闭，其他 Markdown 应用可能不支持。') }}</p>
+            <p class="settings-local-note">{{ t('选区包裹仅影响当前设备，扩展语法的包裹默认关闭。正文显示由工作区「文档能力」控制，其他 Markdown 应用可能不支持。') }}</p>
           </section>
           <section v-if="page === 'appearance'" class="settings-section" :aria-label="t('内容显示')">
             <h3>{{ t('内容显示') }}</h3>
             <div class="settings-card">
+              <div class="settings-row" data-settings-key="appearance-auto-spacing">
+                <div>
+                  <strong>{{ t('正文自动间距') }}</strong>
+                  <p>{{ t('在中文与英文、数字、行内公式及引用之间自动留白，仅影响显示，不修改原文。') }}</p>
+                </div>
+                <button type="button" class="settings-switch" :class="{ on: display.autoSpacing }"
+                  role="switch" :aria-checked="display.autoSpacing ?? false" :aria-label="t('正文自动间距')"
+                  @click="emit('update:editorPreferences', { ...display, autoSpacing: !display.autoSpacing })">
+                  <span />
+                </button>
+              </div>
               <div class="settings-row" data-settings-key="appearance-page-title">
                 <div>
                   <strong>{{ t('页面内标题') }}</strong>
@@ -887,7 +959,10 @@ function customFontInput(event: Event) {
                 class="settings-row settings-row-compact"
                 :data-settings-key="`documents-${feature.key}`"
               >
-                <strong>{{ t(feature.label) }}</strong>
+                <div class="settings-inline-copy">
+                  <strong>{{ t(feature.label) }}</strong>
+                  <CapabilitySyntax :feature="feature.key" :data-tooltip="t(feature.label)" :data-tooltip-example="feature.key" tabindex="0" />
+                </div>
                 <button
                   type="button"
                   class="settings-switch"
@@ -1074,16 +1149,16 @@ function customFontInput(event: Event) {
         </div>
 
         <PluginSurface
-          v-else-if="pluginPages?.some(item => item.view.key === page) && executePlugin"
+          v-else-if="availablePluginPages.some(item => item.view.key === page) && executePlugin"
           :key="page"
-          :view="pluginPages.find(item => item.view.key === page)!.view"
-          :workspace-id="pluginPages.find(item => item.view.key === page)!.workspaceId"
-          :runtime="pluginPages.find(item => item.view.key === page)!.runtime"
+          :view="availablePluginPages.find(item => item.view.key === page)!.view"
+          :workspace-id="availablePluginPages.find(item => item.view.key === page)!.workspaceId"
+          :runtime="availablePluginPages.find(item => item.view.key === page)!.runtime"
           :execute="executePlugin"
         />
         <component
-          v-else-if="extraPages?.some(item => item.id === page)"
-          :is="extraPages?.find(item => item.id === page)?.component"
+          v-else-if="availableExtraPages.some(item => item.id === page)"
+          :is="availableExtraPages.find(item => item.id === page)?.component"
           :mode="mode"
           :workspace="workspace"
           :active-file="activeFile ?? null"
@@ -1132,16 +1207,15 @@ function customFontInput(event: Event) {
         </div>
       </main>
     </section>
-  </div>
+  </ModalBackdrop>
 </template>
 
 <style>
-.modal-backdrop.settings-backdrop {
-  align-items: center;
-  padding: 28px;
-  z-index: 80;
-  background: #20252b40;
-  backdrop-filter: blur(4px);
+.settings-tab-host {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 .settings-dialog {
   position: relative;
@@ -1150,12 +1224,6 @@ function customFontInput(event: Event) {
   height: min(760px, calc(100dvh - 56px));
   min-height: 0;
   overflow: hidden;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  box-shadow:
-    0 24px 80px #18212b29,
-    0 4px 16px #18212b0d;
 }
 .settings-nav {
   flex: 0 0 224px;
@@ -1344,6 +1412,48 @@ function customFontInput(event: Event) {
 .settings-close:hover {
   background: var(--hover);
 }
+.settings-open-tab {
+  right: 56px;
+}
+.settings-open-window {
+  right: 56px;
+}
+.settings-open-window-with-tab {
+  right: 96px;
+}
+.settings-open-tab,
+.settings-open-window {
+  transition: opacity 160ms ease, transform 160ms ease, visibility 160ms;
+}
+.settings-action-hidden {
+  opacity: 0;
+  transform: translateY(-4px);
+  visibility: hidden;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-open-tab,
+  .settings-open-window {
+    transition: none;
+  }
+}
+.modal-backdrop.settings-backdrop.settings-tabbed {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  z-index: auto;
+  background: var(--paper);
+  backdrop-filter: none;
+}
+.settings-tabbed .settings-dialog {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
 .settings-content {
   max-width: 804px;
   margin: 0 auto;
@@ -1416,32 +1526,33 @@ function customFontInput(event: Event) {
   line-height: 1.7;
 }
 .settings-section + .settings-section {
-  margin-top: 28px;
+  margin-top: 36px;
 }
 .settings-section > h3 {
   display: flex;
   align-items: center;
   gap: 10px;
   margin: 0 0 12px;
-  padding-left: 2px;
-  font-size: 13px;
-  font-weight: 600;
+  padding: 0 0 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 650;
 }
 .settings-card {
-  padding: 0 20px;
-  border-radius: 12px;
-  background: var(--surface);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .settings-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 28px;
-  min-height: 86px;
-  padding: 20px 0;
-}
-.settings-row + .settings-row {
-  border-top: 1px solid var(--line);
+  min-height: 76px;
+  padding: 16px 0;
 }
 .settings-row > div {
   min-width: 0;
@@ -1542,9 +1653,9 @@ function customFontInput(event: Event) {
 }
 .settings-font-preview {
   padding: 20px 24px;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: 8px;
-  background: var(--paper);
+  background: var(--surface);
   text-align: center;
 }
 .settings-font-preview-samples {
@@ -1556,16 +1667,17 @@ function customFontInput(event: Event) {
   min-width: 0;
   padding: 6px 12px;
 }
-.settings-font-preview-sample + .settings-font-preview-sample {
-  border-left: 1px solid var(--line);
-}
 .settings-font-preview p {
   margin: 0;
   color: var(--text);
-  line-height: 1.7;
+  font-variant-numeric: tabular-nums;
+  font-variant-ligatures: no-contextual;
 }
-.settings-source-font-sample {
-  font-family: 'Cascadia Code', Consolas, 'Microsoft YaHei', monospace;
+.settings-font-preview .settings-visual-font-sample {
+  line-height: 1.6;
+}
+.settings-font-preview .settings-source-font-sample {
+  line-height: 1.928571;
 }
 .settings-font-controls {
   display: flex;
@@ -1667,42 +1779,42 @@ function customFontInput(event: Event) {
   line-height: 1.7;
 }
 .settings-inline-copy {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  column-gap: 16px;
-  row-gap: 3px;
+  display: grid;
+  grid-template-columns: minmax(140px, 180px) auto;
+  align-items: center;
+  gap: 8px 24px;
 }
 .settings-inline-example {
-  display: inline-flex;
+  display: inline-grid;
+  grid-template-columns: 68px 12px minmax(100px, max-content);
   align-items: center;
-  gap: 7px;
+  gap: 12px;
   color: var(--muted);
-  flex-shrink: 0;
 }
 .settings-inline-example kbd,
 .settings-inline-example code {
-  padding: 2px 6px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--paper);
-  font: 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--surface);
+  font: 12px/1.5 var(--font-mono);
+  text-align: center;
   white-space: nowrap;
 }
 .settings-inline-example kbd {
   min-width: 24px;
   text-align: center;
   color: var(--text-secondary);
-  box-shadow: 0 1px 0 var(--line);
+  box-shadow: none;
 }
-.settings-inline-example code { color: var(--text-secondary); }
+.settings-inline-example code { color: var(--text-secondary); background: transparent; }
 .settings-inline-example code span {
   color: var(--green);
-  font-weight: 500;
+  font-weight: 600;
 }
 .settings-row-compact {
-  min-height: 57px;
-  padding: 16px 0;
+  min-height: 52px;
+  padding: 10px 0;
 }
 .settings-notice {
   padding: 12px 14px;
@@ -1723,7 +1835,7 @@ function customFontInput(event: Event) {
   overflow-wrap: anywhere;
 }
 .settings-info.settings-card {
-  padding: 20px;
+  padding: 16px 0;
 }
 .settings-info span,
 .settings-info small {
@@ -1757,7 +1869,7 @@ function customFontInput(event: Event) {
   color: var(--text);
 }
 .settings-brand-card {
-  padding: 24px;
+  padding: 24px 0;
   margin-bottom: 28px;
 }
 .settings-about-brand {
@@ -1813,7 +1925,7 @@ function customFontInput(event: Event) {
 .settings-about-feature {
   display: flex;
   gap: 14px;
-  padding: 20px;
+  padding: 20px 0;
 }
 .settings-about-feature > svg {
   margin-top: 2px;
@@ -1911,10 +2023,6 @@ function customFontInput(event: Event) {
   .settings-lead {
     margin-bottom: 24px;
   }
-  .settings-card {
-    padding-right: 16px;
-    padding-left: 16px;
-  }
   .settings-row {
     min-height: 80px;
     padding: 18px 0;
@@ -1922,6 +2030,14 @@ function customFontInput(event: Event) {
   .settings-row-compact {
     min-height: 56px;
     padding: 15px 0;
+  }
+  .settings-inline-copy {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+  .settings-inline-example {
+    grid-template-columns: 60px 12px minmax(88px, max-content);
+    gap: 8px;
   }
   .settings-row:has(select),
   .settings-row-with-controls {
@@ -1949,8 +2065,6 @@ function customFontInput(event: Event) {
   .settings-font-preview-sample + .settings-font-preview-sample {
     margin-top: 14px;
     padding-top: 20px;
-    border-top: 1px solid var(--line);
-    border-left: 0;
   }
   .settings-actions {
     grid-template-columns: 1fr;

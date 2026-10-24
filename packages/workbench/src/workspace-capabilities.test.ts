@@ -5,6 +5,17 @@ import { loadCapabilities, saveCapabilityPatch } from './workspace-capabilities'
 import { capabilityPath, defaultCapabilities } from '@tano/editor/runtime';
 
 beforeEach(() => localStorage.clear());
+it.each(['superscript', 'subscript', 'underline', 'highlight', 'inlineComment'] as const)(
+  'persists the %s extension in portable workspace rules', async feature => {
+    const adapter = new DemoAdapter();
+    const workspace = await adapter.open();
+    const initial = await loadCapabilities(adapter, workspace);
+    expect(initial.capabilities.features[feature]).toBe(true);
+    const saved = await saveCapabilityPatch(adapter, initial.snapshot, { feature, enabled: false });
+    expect(JSON.parse(saved.snapshot.content).features[feature]).toBe(false);
+    expect((await loadCapabilities(new DemoAdapter(), await adapter.refresh())).capabilities.features[feature]).toBe(false);
+  },
+);
 it('persists workspace policy without touching document content or identity', async () => {
   const adapter = new DemoAdapter();
   const workspace = await adapter.open();

@@ -76,13 +76,13 @@ export const usePlanStore = defineStore('plans', () => {
         }))
       : [],
   );
-  const records = computed(() =>
-    view.value === 'personal'
+  const recordsFor = (scope: PlanScope | 'all') =>
+    scope === 'personal'
       ? personal.value
-      : view.value === 'workspace'
+      : scope === 'workspace'
         ? workspaceRecords.value
-        : [...workspaceRecords.value, ...personal.value],
-  );
+        : [...workspaceRecords.value, ...personal.value];
+  const records = computed(() => recordsFor(view.value));
   function canEdit(record: ObjectRecord) {
     if (record.object.properties.syncReadOnly === true) return false;
     return record.source?.scope === 'personal'
@@ -185,6 +185,7 @@ export const usePlanStore = defineStore('plans', () => {
     loadError,
     requiresDesktopRestart,
     records,
+    recordsFor,
     defaultScope,
     personalWritable,
     workspaceWritable,

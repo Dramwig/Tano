@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t } from '../i18n';
 import {
   computed,
@@ -695,9 +696,7 @@ onBeforeUnmount(() => {
       >
         {{ error ? t('引用关系更新失败：{0}', [error]) : context.errors[0] }}
       </p>
-      <div v-if="loading && !loaded" class="reference-graph-status" role="status">
-        {{ t('正在读取引用关系…') }}
-      </div>
+      <LoadingSkeleton v-if="loading && !loaded" :rows="5" />
       <div
         v-else-if="!total && (error || context.errors.length)"
         class="reference-graph-status is-error"

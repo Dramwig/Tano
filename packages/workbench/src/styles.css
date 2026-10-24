@@ -1,5 +1,3 @@
-@import '@fontsource-variable/inter/wght.css';
-@import '@fontsource-variable/inter/wght-italic.css';
 @import './dark-theme.css';
 @import './mobile.css';
 
@@ -53,39 +51,58 @@
 
 :root {
   color-scheme: light;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  /* One family for chrome and prose: Latin uses the platform UI face and CJK
+     falls back to the platform Chinese face, so mixed lines share a baseline
+     and weight instead of pairing Inter with Microsoft YaHei. */
+  --font-cjk-sans: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans SC', 'Source Han Sans SC';
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI',
+    var(--font-cjk-sans), ui-sans-serif, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  /* Code and source views: Latin mono first, then a CJK face so Chinese in
+     comments/strings never lands on SimSun or MS Gothic. */
+  --font-mono: 'SFMono-Regular', Menlo, 'Cascadia Code', Consolas, 'Maple Mono NF CN',
+    'Sarasa Mono SC', 'Noto Sans Mono CJK SC', var(--font-cjk-sans), ui-monospace, monospace;
+  font-family: var(--font-ui);
   color: var(--text);
   background: var(--paper);
   font-size: 14px;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  /* Neutral surfaces keep reading primary; green identifies actions and selection. */
-  --text: #24272b;
-  --text-secondary: #51565f;
-  --muted: #676d77;
+  /* Neutral surfaces keep reading primary; green identifies actions and selection.
+     Every neutral shares one warm base (55 53 47) so text, seams and hover
+     fills read as one family against the warm sidebar. */
+  --text: #37352f;
+  --text-secondary: #5f5e5b;
+  --muted: #787774;
   --green: #1f7a52;
   --green-hover: #176340;
   --green-fill: #1f7a52;
   --green-fill-hover: #176340;
+  /* Neutral selection states — no green unless it's a true action */
+  --selected: #ebeae8;
+  --selected-text: var(--text);
   --accent: #eaf5ee;
   --block-selection: #e1f1e8;
   --block-selection-overlay: color-mix(in srgb, var(--block-selection) 62%, transparent);
-  --line: #e3e5e8;
-  --control-border: #b9bfc8;
-  --sidebar: #f9f8f7;
-  --sidebar-width: 230px;
+  --line: #ebebea;
+  --control-border: #d3d2ce;
+  --sidebar: #f8f8f7;
+  --sidebar-width: 252px;
   --workbench-tabbar-height: 36px;
   --workbench-topbar-height: 44px;
+  /* Reading measure shared by the body, title, frontmatter, references,
+     comments, suggestions and loading skeleton so every document section
+     stays on one rail. */
+  --tano-content-measure: 700px;
   --paper: #ffffff;
-  --surface: #f5f6f7;
-  --hover: #ebedef;
+  --surface: #f7f7f5;
+  --hover: #efefed;
   --danger: #ab3e35;
   --danger-bg: #fcf1e8;
   --warning: #805c20;
   --warning-bg: #faf0df;
   --warning-border: #e6d3b1;
-  --switch-off: #c7cbd1;
+  --switch-off: #cfcecb;
   --syntax-purple: #8653a8;
   --syntax-red: #cf3156;
   --syntax-blue: #1766ba;
@@ -97,6 +114,7 @@
   --suggestion-bg: color-mix(in srgb, var(--suggestion-color) 12%, transparent);
   --diff-add-bg: #eaf5e7;
   --diff-remove-bg: #fcefea;
+  --quote-border: #d3d2ce;
 }
 * {
   box-sizing: border-box;
@@ -143,7 +161,7 @@ button {
     color 0.15s;
 }
 a {
-  color: var(--green);
+  color: #5f5e5b;
 }
 ::selection {
   background: var(--selection, var(--accent));
@@ -166,18 +184,19 @@ svg {
   scrollbar-width: auto;
 }
 .panel-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 .panel-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
 .panel-scrollbar::-webkit-scrollbar-thumb {
-  border-radius: 6px;
-  background: var(--scrollbar-thumb, var(--control-border));
+  border-radius: 8px;
+  background: #d3d2ce;
+  transition: background 0.15s;
 }
 .panel-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover, var(--muted));
+  background: #a5a39e;
 }
 .panel-scrollbar::-webkit-scrollbar-corner {
   background: transparent;
@@ -190,7 +209,7 @@ svg {
 @supports (-moz-appearance: none) {
   .panel-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: var(--scrollbar-thumb, var(--control-border)) transparent;
+    scrollbar-color: #d3d2ce transparent;
   }
 }
 button:hover {
@@ -208,11 +227,12 @@ button:hover {
 }
 .sidebar {
   position: relative;
-  z-index: 1;
+  /* Keep the resize edge above the editor toolbar's stacking context (3). */
+  z-index: 4;
   width: var(--sidebar-width);
   flex: 0 0 var(--sidebar-width);
   background: var(--sidebar);
-  border-right: 1px solid var(--line);
+  border-right: 0;
   display: flex;
   flex-direction: column;
   padding: 0 7px;
@@ -301,50 +321,59 @@ button:hover {
   align-items: center;
   gap: 4px;
   height: 40px;
-  padding: 3px 4px;
+  padding: 3px 0;
   flex-shrink: 0;
 }
 .sidebar-navigation-button {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0;
   flex: 0 0 auto;
   height: 34px;
-  padding: 0 8px;
+  padding: 0 5px;
   border-radius: 7px;
   font-size: 13px;
   font-weight: 600;
   color: var(--muted);
   white-space: nowrap;
 }
+.sidebar-navigation-button {
+  transition: background-color 180ms ease, color 180ms ease;
+}
 .sidebar-navigation-button svg {
   flex-shrink: 0;
 }
-.sidebar-navigation-button span {
-  max-width: 0;
+.sidebar-navigation-button > span {
+  display: grid;
+  grid-template-columns: 0fr;
   overflow: hidden;
   margin-left: 0;
   opacity: 0;
   transition:
-    max-width 220ms ease,
-    margin-left 220ms ease,
-    opacity 160ms ease;
+    grid-template-columns 200ms cubic-bezier(0.2, 0, 0, 1),
+    margin-left 200ms cubic-bezier(0.2, 0, 0, 1),
+    opacity 200ms ease;
+}
+.sidebar-navigation-button > span > span {
+  min-width: 0;
+  overflow: hidden;
 }
 .sidebar-navigation-button:hover,
 .sidebar-navigation-button[aria-pressed='true'] {
   background: var(--hover);
   color: var(--text);
 }
-.sidebar-navigation-button[aria-pressed='true'] span {
-  max-width: 2em;
+.sidebar-navigation-button[aria-pressed='true'] > span {
+  grid-template-columns: 1fr;
   margin-left: 6px;
   opacity: 1;
 }
 .sidebar-brand-slot {
-  position: relative;
-  flex: 0 0 30px;
-  width: 30px;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 0;
   height: 30px;
 }
 .brand {
@@ -353,7 +382,7 @@ button:hover {
   justify-content: center;
   gap: 7px;
   min-width: 0;
-  width: 30px;
+  width: 32px;
   height: 30px;
 }
 .brand[href] {
@@ -361,47 +390,23 @@ button:hover {
   text-decoration: none;
 }
 .brand[href]:hover {
-  color: var(--green);
+  color: var(--text-secondary);
 }
 .brand[href]:focus-visible {
-  outline: 2px solid var(--green);
+  outline: 2px solid var(--text-secondary);
   outline-offset: 3px;
 }
 .brand > img {
   width: 22px;
   height: 22px;
 }
-.sidebar-brand-slot .sidebar-toggle {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  pointer-events: none;
-}
-.sidebar-brand-slot:hover .brand,
-.sidebar-brand-slot:has(.sidebar-toggle:focus-visible) .brand {
-  opacity: 0;
-}
-.sidebar-brand-slot:hover .sidebar-toggle,
-.sidebar-brand-slot .sidebar-toggle:focus-visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-@media (hover: none) {
-  .sidebar-brand-slot .brand {
-    visibility: hidden;
-  }
-  .sidebar-brand-slot .sidebar-toggle {
-    opacity: 1;
-    pointer-events: auto;
-  }
-}
 .version-pill {
   font-size: 12px;
   letter-spacing: 0.6px;
   background: var(--surface);
-  border: 1px solid var(--line);
-  color: var(--text-secondary);
-  padding: 3px 5px;
+  border: 0;
+  color: var(--muted);
+  padding: 3px 6px;
   border-radius: 4px;
   margin-left: auto;
 }
@@ -419,29 +424,31 @@ button:hover {
   border-radius: 5px;
   font-weight: 600;
 }
+.workspace-dropdown .context-menu-item .recent-name {
+  flex: 1;
+  min-width: 0;
+}
+.workspace-dropdown .context-menu-item > svg {
+  flex-shrink: 0;
+}
+.workspace-dropdown .context-menu-item[aria-current='true'] > svg:last-child {
+  color: var(--green);
+}
+.workspace-dropdown .context-menu-item:focus:not(:focus-visible):not(:hover) {
+  background: transparent;
+}
+.workspace-dropdown .context-menu-item:hover,
+.workspace-dropdown .context-menu-item:focus-visible {
+  background: var(--hover);
+}
 .workspace-current {
   background: var(--hover);
-  color: var(--green);
+  color: var(--text);
 }
 .workspace-list-empty {
   font-size: 12px;
   color: var(--muted);
   padding: 5px 12px;
-}
-.workspace-menu-summary {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  padding: 3px 7px 8px;
-}
-.workspace-menu-avatar {
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
-  display: grid;
-  place-items: center;
-  border-radius: 7px;
 }
 @media (max-width: 500px) {
 }
@@ -486,7 +493,7 @@ button:hover {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  margin: 6px -7px 0 0;
+  margin: 10px -7px 0 0;
   padding: 0 7px 0 0;
 }
 .agent-file-dot {
@@ -503,9 +510,19 @@ button:hover {
   gap: 6px;
   font-size: 12px;
   color: var(--muted);
-  padding: 0 0 0 4px;
-  margin-bottom: 4px;
-  font-weight: 600;
+  padding: 0 0 0 5px;
+  margin-bottom: 8px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.sidebar-view-header {
+  margin-bottom: 0;
+}
+.workspace-views-sidebar > button { display: flex; gap: 7px; align-items: center; padding: 8px 12px; text-align: left; border-radius: 6px; }
+.workspace-views-sidebar > button:hover { background: var(--hover); }
+.assistant-page-placeholder { padding: 24px; }
+.sidebar-view-header + .sidebar-content {
+  margin-top: 0;
 }
 .section-label > span {
   min-width: 0;
@@ -532,6 +549,17 @@ button:hover {
   min-width: 24px;
   min-height: 24px;
 }
+@media (hover: hover) and (pointer: fine) {
+  .section-label > .repository-actions {
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+  .section-label:hover > .repository-actions,
+  .section-label:focus-within > .repository-actions,
+  .section-label:has([aria-expanded='true']) > .repository-actions {
+    opacity: 1;
+  }
+}
 .icon-button {
   height: 30px;
   width: 30px;
@@ -553,6 +581,9 @@ button:hover {
   font-size: 13px;
 }
 .tree-scroll {
+  --scroll-fade-mask: linear-gradient(to bottom, transparent, #000 var(--scroll-fade-top, 0px), #000 calc(100% - var(--scroll-fade-bottom, 0px)), transparent);
+  -webkit-mask-image: var(--scroll-fade-mask);
+  mask-image: var(--scroll-fade-mask);
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -574,7 +605,7 @@ button:hover {
 }
 .tree-row {
   cursor: default;
-  height: 30px;
+  height: 32px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -583,7 +614,8 @@ button:hover {
   color: var(--text-secondary);
   text-align: left;
   position: relative;
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 20px;
   padding-right: 10px;
   margin: 1px 0;
   user-select: none;
@@ -600,14 +632,16 @@ button:hover {
   box-shadow: inset 0 0 0 1px var(--green);
 }
 .tree-row.selected {
-  background: var(--hover);
+  background: var(--selected);
   color: var(--text);
+  font-weight: 500;
 }
 .tree-row.selected.multi-selected {
-  background: var(--accent);
+  background: var(--selected);
 }
 .tree-row.selected.drop-target {
   background: var(--accent);
+  color: var(--green);
 }
 .tree-row:focus-visible {
   outline: none;
@@ -630,6 +664,13 @@ button:hover {
   flex: 0 0 16px;
   display: grid;
   place-items: center;
+  /* Line icons recede so labels carry the tree; emoji icons keep their color. */
+  color: var(--muted);
+  opacity: 0.85;
+}
+.tree-row.selected .tree-icon,
+.tree-row:hover .tree-icon {
+  opacity: 1;
 }
 .tree-icon > svg {
   grid-area: 1 / 1;
@@ -650,6 +691,9 @@ button:hover {
   visibility: visible;
 }
 .tree-row.attachment {
+  color: var(--text-secondary);
+}
+.tree-row.attachment .tree-icon {
   color: var(--muted);
 }
 .tree-row.attachment.selected {
@@ -669,8 +713,8 @@ button:hover {
   gap: 3px;
   flex-shrink: 0;
   margin: 0 -7px;
-  border-top: 1px solid var(--line);
-  padding: 8px 5px;
+  border-top: 0;
+  padding: 6px 5px;
   background: var(--sidebar);
 }
 .sidebar-bottom > .icon-button {
@@ -729,7 +773,7 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
+  padding: 0 28px;
   gap: 15px;
 }
 .workspace-tabbar {
@@ -739,15 +783,14 @@ button:hover {
   flex-shrink: 0;
   background: var(--sidebar);
 }
-/* Draw the track separator once, above inactive tab backgrounds. Active tabs
-   cover it so the document surface stays connected at the rounded corners. */
 .workspace-tabbar::after {
   content: '';
   position: absolute;
   right: 0;
   bottom: 0;
   left: 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 0;
+  opacity: 0.7;
   pointer-events: none;
 }
 .topbar-navigation {
@@ -767,10 +810,11 @@ button:hover {
 .breadcrumb {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   min-width: 0;
   color: var(--muted);
   font-size: 13px;
+  letter-spacing: 0.1px;
   white-space: nowrap;
   overflow: hidden;
 }
@@ -900,7 +944,7 @@ button:hover {
 }
 .calendar-view-menu button:hover,
 .calendar-view-menu button:focus-visible { background: var(--hover); }
-.calendar-view-menu button[aria-checked='true'] { color: var(--green); font-weight: 600; }
+.calendar-view-menu button[aria-checked='true'] { color: var(--text); font-weight: 600; }
 @media (max-width: 900px) {
   .calendar-topbar-period { display: none; }
 }
@@ -1078,7 +1122,7 @@ button:hover {
   font-weight: 600;
   font-size: 14px;
   margin-bottom: 6px;
-  color: var(--text);
+  color: var(--callout-color, var(--text));
 }
 .tano-prose .tano-callout-icon {
   display: block;
@@ -1096,7 +1140,8 @@ button:hover {
 }
 .tano-prose.ProseMirror-focused .tano-live-callout > p:first-of-type > .tano-callout-marker {
   display: block;
-  margin-bottom: 8px;
+  /* Match the preview title so revealing Markdown does not move the body. */
+  margin-bottom: 6px;
   font-size: 14px;
   font-weight: 600;
   color: var(--text);
@@ -1207,7 +1252,7 @@ button:hover {
   font-size: 18px;
 }
 .tano-toggle > .tano-enhanced-header > button:focus-visible {
-  outline: 2px solid var(--green);
+  outline: 2px solid var(--text-secondary);
   outline-offset: 2px;
 }
 .tano-toggle > .tano-enhanced-header > .tano-add-child {
@@ -1258,12 +1303,15 @@ button:hover {
   gap: 8px;
 }
 .tano-prose .tano-tabs {
+  --tano-tabs-header-height: 44px;
   position: relative;
   border: 0;
   border-radius: 0;
   overflow: visible;
 }
 .tano-tabs > .tano-enhanced-header {
+  box-sizing: content-box;
+  height: var(--tano-tabs-header-height);
   flex-wrap: nowrap;
   gap: 8px;
   padding: 0 36px 0 0;
@@ -1291,7 +1339,7 @@ button:hover {
 }
 .tano-tabs > .tano-enhanced-content > .tano-panel > .tano-enhanced-header {
   position: absolute;
-  top: 6px;
+  top: calc((var(--tano-tabs-header-height) - 28px) / 2);
   right: 0;
   padding: 0;
   background: transparent;
@@ -1651,8 +1699,8 @@ button:hover {
   }
 }
 .tano-file-mention {
-  color: var(--green);
-  background: var(--accent);
+  color: #5f5e5b;
+  background: #e8eaed;
   border-radius: 3px;
   padding: 1px 3px;
 }
@@ -1666,7 +1714,7 @@ button:hover {
   }
 }
 .tano-prose sup[data-type='footnote_reference'] {
-  color: var(--green);
+  color: #5f5e5b;
   padding: 0 1px;
 }
 .tano-prose sup[data-type='footnote_reference'][data-footnote-number] {
@@ -1731,8 +1779,9 @@ button:hover {
   margin: 0;
 }
 .source-mode-button.active {
-  color: var(--green);
-  background: var(--accent);
+  color: var(--text);
+  background: var(--hover);
+  font-weight: 500;
 }
 .menu-wrap {
   position: relative;
@@ -1743,7 +1792,7 @@ button:hover {
   width: 218px;
   background: var(--paper);
   border: 1px solid var(--line);
-  box-shadow: 0 10px 35px #1f232818;
+  box-shadow: 0 10px 35px #0f0f0f18;
   border-radius: 8px;
   padding: 6px;
 }
@@ -1947,14 +1996,14 @@ button:hover {
   left: -10000px;
   width: 800px;
   background: #ffffff;
-  color: #24272b;
+  color: #37352f;
 }
 .document-export-content {
   box-sizing: border-box;
   width: 800px;
   padding: 24px;
   background: #ffffff;
-  color: #24272b;
+  color: #37352f;
 }
 .document-export-content .tano-prose {
   min-height: 0;
@@ -1995,7 +2044,7 @@ button:hover {
 }
 .workspace-entry-context-check {
   margin-left: auto;
-  color: var(--green);
+  color: var(--text);
 }
 .sidebar-popover button,
 .sidebar-popover .workspace-list-empty,
@@ -2023,49 +2072,6 @@ button:hover {
   padding: 0;
   margin-right: 2px;
   color: var(--text-secondary);
-}
-.sidebar-popover .workspace-menu-summary {
-  gap: 6px;
-  padding: 4px 7px;
-}
-.workspace-menu-summary-text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 16px;
-}
-.workspace-menu-summary-text strong,
-.workspace-menu-summary-text small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.workspace-menu-summary-text small {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 400;
-}
-.workspace-dropdown .workspace-menu-exit {
-  flex: 0 0 28px;
-  width: 28px;
-  height: 28px;
-  min-height: 28px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  color: var(--text-secondary);
-}
-.workspace-dropdown .workspace-menu-exit svg {
-  width: 16px;
-  height: 16px;
-}
-.sidebar-popover .workspace-menu-avatar {
-  width: 28px;
-  height: 28px;
-  flex-basis: 28px;
-  border-radius: 6px;
 }
 .sidebar-popover .workspace-list-avatar {
   flex-basis: 18px;
@@ -2098,12 +2104,16 @@ button:hover {
 .dropdown .danger-text {
   color: var(--danger);
 }
+.editor-scroll,
+.tano-prose {
+  --tano-block-padding-inline: 8px;
+}
 .editor-scroll {
-  --document-inset-start: clamp(32px, 4.5vw, 80px);
-  --document-inset-end: max(64px, clamp(32px, 4.5vw, 80px));
+  --document-inset-start: clamp(32px, 5vw, 96px);
+  --document-inset-end: max(64px, clamp(32px, 5vw, 96px));
   flex: 1;
   min-width: 0;
-  padding: 40px var(--document-inset-end) 60px var(--document-inset-start);
+  padding: 48px var(--document-inset-end) 60px var(--document-inset-start);
 }
 .document-main > .editor-scroll:has(.document-cover) { padding-top: 0; }
 .editor-scroll:focus {
@@ -2147,7 +2157,7 @@ button:hover {
 }
 .milkdown-host,
 .source-editor {
-  max-width: 780px;
+  max-width: var(--tano-content-measure);
   margin: 0 auto;
 }
 .milkdown-host {
@@ -2157,15 +2167,21 @@ button:hover {
 .document-title {
   position: relative;
   width: 100%;
-  margin: 0 auto 40px;
+  margin: 0 auto 24px;
 }
 .document-title-content,
 .document-appearance-content {
   position: relative;
-  max-width: 780px;
+  max-width: var(--tano-content-measure);
   margin: 0 auto;
 }
-.document-title-input {
+.document-title-content,
+.frontmatter-panel {
+  /* Align document metadata with the content inside text blocks. */
+  padding-inline: var(--tano-block-padding-inline);
+}
+.document-title-input,
+.document-title-mirror {
   display: block;
   width: 100%;
   padding: 0;
@@ -2176,16 +2192,41 @@ button:hover {
   color: var(--text);
   font: inherit;
   font-family: var(--tano-prose-font-family, inherit);
-  font-size: clamp(28px, 3vw, 40px);
+  font-size: clamp(30px, 3vw, 40px);
   font-weight: 700;
-  line-height: 1.35;
-  letter-spacing: -0.025em;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
   text-align: left;
   text-overflow: ellipsis;
 }
 .document-title-input::placeholder {
   color: var(--muted);
   opacity: 0.45;
+}
+.document-title-wrap {
+  display: grid;
+  min-width: 0;
+}
+.document-title-wrap > .document-title-input,
+.document-title-wrap > .document-title-mirror {
+  grid-area: 1 / 1;
+  min-width: 0;
+  /* Serif ascenders/descenders can extend past the line box. Keep the mirror
+     and textarea padding identical so auto-sizing includes that ink space. */
+  padding-block: 0.15em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+.document-title-wrap > textarea {
+  height: 100%;
+  min-height: 0;
+  resize: none;
+  overflow: hidden;
+}
+.document-title-mirror {
+  visibility: hidden;
+  pointer-events: none;
 }
 .document-title-input:focus-visible {
   outline: none;
@@ -2253,8 +2294,8 @@ button:hover {
   background: var(--paper);
   color: var(--text);
   box-shadow:
-    0 8px 24px #00000014,
-    0 2px 6px #00000008;
+    0 12px 32px rgba(0, 0, 0, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.04);
   font-size: 13px;
   line-height: 1.5;
   overflow: hidden;
@@ -2280,7 +2321,7 @@ button:hover {
 }
 .tano-slash-results::-webkit-scrollbar,
 .tano-code-language-results::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
 }
 .tano-slash-results::-webkit-scrollbar-track,
 .tano-code-language-results::-webkit-scrollbar-track {
@@ -2288,8 +2329,8 @@ button:hover {
 }
 .tano-slash-results::-webkit-scrollbar-thumb,
 .tano-code-language-results::-webkit-scrollbar-thumb {
-  border-radius: 6px;
-  background: var(--scrollbar-thumb, var(--control-border));
+  border-radius: 8px;
+  background: #d3d2ce;
 }
 .tano-slash-results::-webkit-scrollbar-button,
 .tano-code-language-results::-webkit-scrollbar-button {
@@ -2347,8 +2388,8 @@ button:hover {
 .tano-slash-form button {
   padding: 6px;
   border-radius: 5px;
-  background: var(--accent);
-  color: var(--green);
+  background: var(--hover);
+  color: var(--text);
 }
 .tano-slash-form small {
   color: var(--danger);
@@ -2442,12 +2483,12 @@ button:hover {
 }
 .tano-fold-toggle:hover {
   background: transparent;
-  color: var(--green);
+  color: var(--text-secondary);
 }
 .tano-fold-toggle.is-folded {
   opacity: 1;
   pointer-events: auto;
-  color: var(--green);
+  color: var(--text-secondary);
 }
 .tano-fold-toggle[hidden] {
   display: none;
@@ -2472,12 +2513,9 @@ button:hover {
 }
 .tano-prose,
 .source-editor {
-  font-family: var(
-    --tano-prose-font-family,
-    'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif
-  );
+  font-family: var(--tano-prose-font-family, var(--font-ui));
   font-variant-numeric: tabular-nums;
-  /* Keep Markdown punctuation stable: Inter substitutes a lower, larger * beside digits. */
+  /* Keep Markdown punctuation stable beside digits in every preset font. */
   font-variant-ligatures: no-contextual;
 }
 .tano-prose {
@@ -2490,13 +2528,14 @@ button:hover {
      Tables are laid out by TableViewport, so their horizontal position stays
      under the viewport's dynamic layout instead of this contract. */
   --tano-block-padding-block: 2px;
-  --tano-block-padding-inline: 8px;
   --tano-block-frame-inset: var(--tano-block-padding-inline);
   outline: none;
   white-space: pre-wrap;
   color: var(--text);
   font-size: var(--tano-prose-font-size, 16px);
-  line-height: 1.8;
+  /* Notion reads at 1.5; CJK glyphs fill the em box, so 1.6 keeps the same
+     visual density for mixed Chinese/Latin paragraphs. */
+  line-height: 1.6;
   min-height: 350px;
   overflow-wrap: anywhere;
   padding-bottom: 8px;
@@ -2515,32 +2554,39 @@ button:hover {
   scroll-margin-top: 69px;
 }
 .tano-prose h1 {
-  font-size: calc(var(--tano-prose-font-size, 16px) * 2);
-  font-weight: 700;
-  line-height: 1.4;
-  letter-spacing: -0.5px;
-  margin-bottom: 24px;
+  font-size: calc(var(--tano-prose-font-size, 16px) * 1.875);
+  /* YaHei bold renders heavy at display sizes; 600 matches Notion's blocks. */
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin-top: 32px;
+  margin-bottom: 8px;
 }
 .tano-prose h2 {
   font-size: calc(var(--tano-prose-font-size, 16px) * 1.5);
   font-weight: 600;
-  margin-top: 34px;
-  margin-bottom: 13px;
-  letter-spacing: 0.2px;
+  line-height: 1.3;
+  margin-top: 28px;
+  margin-bottom: 6px;
+  letter-spacing: -0.005em;
 }
 .tano-prose h3 {
-  font-size: calc(var(--tano-prose-font-size, 16px) * 1.1875);
-  margin-top: 27px;
+  font-size: calc(var(--tano-prose-font-size, 16px) * 1.25);
+  line-height: 1.35;
+  margin-top: 20px;
+  margin-bottom: 4px;
   font-weight: 600;
 }
 .tano-prose h4 {
   font-size: calc(var(--tano-prose-font-size, 16px) * 1.125);
-  margin-top: 22px;
-  margin-bottom: 13px;
+  line-height: 1.4;
+  margin-top: 16px;
+  margin-bottom: 4px;
   font-weight: 600;
 }
+/* Keep related text together; heading margins separate sections. */
 .tano-prose p {
-  margin: 8px 0;
+  margin: 4px 0;
 }
 /* Text blocks own their inset; list items and table cells already supply theirs.
    Keep semantic ProseMirror nodes instead of adding editable wrapper elements. */
@@ -2573,7 +2619,7 @@ button:hover {
 }
 .tano-prose .tano-html-fallback {
   padding: 2px 5px;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 .tano-prose p:has(.tano-html-fallback),
 .tano-prose li:has(.tano-html-fallback) {
@@ -2607,18 +2653,18 @@ button:hover {
   font-synthesis: style;
 }
 .tano-prose blockquote {
-  margin: 26px 0;
+  margin: 12px 0;
   font-size: inherit;
 }
 /* Keep the base quote style below block selection and drag feedback. */
 .tano-prose blockquote:where(:not(.tano-callout)) {
-  margin: 16px 0;
+  margin: 12px 0;
   position: relative;
   border-left: 0;
   background: transparent;
   border-radius: 0;
   padding: 0 0 0 23px;
-  color: var(--text);
+  color: var(--text-secondary);
 }
 .tano-prose blockquote:where(:not(.tano-callout))::before {
   content: '';
@@ -2626,7 +2672,7 @@ button:hover {
   inset-block: 0;
   inset-inline-start: 0;
   width: 3px;
-  background: var(--quote-border, var(--text));
+  background: var(--quote-border);
   pointer-events: none;
 }
 .tano-prose > blockquote:where(:not(.tano-callout)) {
@@ -2636,7 +2682,7 @@ button:hover {
   padding-inline-start: calc(23px - var(--tano-block-frame-inset));
 }
 .tano-prose blockquote p {
-  margin: 8px 0;
+  margin: 4px 0;
 }
 .tano-prose blockquote:not(.tano-callout) > :first-child {
   margin-top: 0;
@@ -2655,14 +2701,18 @@ button:hover {
 }
 .tano-prose ul,
 .tano-prose ol {
+  margin: 4px 0;
   padding-left: calc(23px + var(--tano-block-padding-inline));
   padding-right: var(--tano-block-padding-inline);
 }
 .tano-prose li {
-  padding-left: 4px;
-  margin: 5px 0;
+  padding-left: 2px;
+  margin: 3px 0;
 }
 .tano-prose li p {
+  margin: 0;
+}
+.tano-prose li :is(ul, ol) {
   margin: 0;
 }
 .tano-prose li::marker {
@@ -2691,10 +2741,10 @@ button:hover {
   content: '';
   position: absolute;
   left: -19px;
-  top: 9px;
+  top: calc(0.825em - 6px);
   width: 12px;
   height: 12px;
-  border: 1px solid var(--task-border, var(--line));
+  border: 1px solid var(--line);
   border-radius: 3px;
   background: var(--surface);
 }
@@ -2712,10 +2762,10 @@ button:hover {
   color: var(--muted);
 }
 .tano-prose code {
-  font-family: 'Cascadia Code', 'Consolas', monospace;
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  background: color-mix(in srgb, var(--muted) 15%, transparent);
+  color: var(--syntax-red);
+  border: 0;
   border-radius: 4px;
   font-size: 0.85em;
   padding: 2px 5px;
@@ -2723,7 +2773,7 @@ button:hover {
 .tano-prose pre {
   background: var(--surface);
   padding: 19px 22px;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: 8px;
   overflow: auto;
   line-height: 1.7;
@@ -2738,6 +2788,7 @@ button:hover {
   border: 0;
   background: none;
   padding: 0;
+  color: inherit;
 }
 .tano-prose pre.tano-code-block {
   position: relative;
@@ -2765,7 +2816,7 @@ button:hover {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.4;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font-family: var(--font-ui);
   outline: none;
   z-index: 1;
 }
@@ -2838,16 +2889,15 @@ button:hover {
   border: 0;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
-  padding: 9px 13px;
+  padding: 8px 13px;
   text-align: left;
   vertical-align: top;
   position: relative;
 }
 .tano-prose th {
-  background: var(--paper);
-  font-weight: normal;
-  color: var(--text);
+  font-weight: inherit;
 }
+.tano-prose th,
 .tano-prose td {
   color: var(--text);
 }
@@ -2906,7 +2956,7 @@ button:hover {
 .tano-table-scroll-thumb:hover,
 .tano-table-scrollbar.is-dragging .tano-table-scroll-thumb { background: var(--scrollbar-thumb-hover, var(--muted)); }
 .tano-table-scrollbar.is-dragging .tano-table-scroll-thumb { cursor: grabbing; }
-.tano-table-scrollbar:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.tano-table-scrollbar:focus-visible { outline: 2px solid var(--text-secondary); outline-offset: 2px; }
 .tano-table-viewport {
   position: relative;
   margin-bottom: 16px;
@@ -2994,7 +3044,7 @@ button:hover {
   pointer-events: none;
 }
 .tano-table-insert:is(:hover, :focus-visible) > span { display: flex; }
-.tano-table-insert:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.tano-table-insert:focus-visible { outline: 2px solid var(--text-secondary); outline-offset: 2px; }
 /* Split the shared corner hit area without moving the visible control. */
 .tano-table-insert.is-corner { pointer-events: none; }
 .tano-table-insert.is-corner:is(:hover, :focus-visible) { z-index: 17; }
@@ -3049,7 +3099,7 @@ button:hover {
 .tano-table-grip:is(:hover, :focus-visible, .is-selected) > span,
 .tano-table-controls.is-dragging .tano-table-grip > span { display: flex; }
 .tano-table-grip.is-selected > span { background: var(--surface); color: var(--text); }
-.tano-table-grip:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; border-radius: 4px; }
+.tano-table-grip:focus-visible { outline: 2px solid var(--text-secondary); outline-offset: 1px; border-radius: 4px; }
 .tano-table-controls.is-dragging .tano-table-grip { cursor: grabbing; }
 .tano-table-controls.is-dragging .tano-table-grip:not(.is-selected) { visibility: hidden; }
 .tano-table-dragging .selectedCell { opacity: 0.3; }
@@ -3110,8 +3160,8 @@ button:hover {
 .compact-action-menu .tano-table-alignment-option { display: flex; align-items: center; justify-content: center; height: 26px; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; }
 .tano-table-alignment-option > span { display: flex; }
 .tano-table-alignment-option:is(:hover, :focus-visible) { background: var(--hover); outline: none; }
-.compact-action-menu .tano-table-alignment-option[aria-checked='true'] { background: var(--accent); color: var(--green); }
-.compact-action-menu .tano-table-alignment-option:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+.compact-action-menu .tano-table-alignment-option[aria-checked='true'] { background: var(--hover); color: var(--text); }
+.compact-action-menu .tano-table-alignment-option:focus-visible { outline: 2px solid var(--text-secondary); outline-offset: -2px; }
 .tano-editor-panel.tano-table-color-menu { z-index: 61; }
 .tano-table-color-back[hidden] { display: none; }
 .tano-table-color-back { margin-bottom: 4px; }
@@ -3141,7 +3191,7 @@ button:hover {
   border-radius: 6px;
 }
 .tano-prose a {
-  color: var(--green);
+  color: #5f5e5b;
   text-decoration-color: currentColor;
   text-underline-offset: 3px;
 }
@@ -3152,41 +3202,17 @@ button:hover {
 .tano-prose a.tano-live-wiki {
   cursor: text;
 }
-.tano-prose a[href],
-.tano-prose .tano-reference:not(.is-missing) button:not(:disabled) {
-  position: relative;
-}
-.tano-prose a[href]:not(.tano-live-wiki):hover::after,
-.tano-prose .tano-reference:not(.is-missing) button:not(:disabled):hover::after {
-  content: 'Ctrl/⌘ + 点击跳转';
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 7px);
-  z-index: 5;
-  padding: 4px 7px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  background: var(--paper);
-  color: var(--text);
-  box-shadow: 0 4px 14px #00000018;
-  font:
-    12px 'Cascadia Code',
-    Consolas,
-    monospace;
-  white-space: nowrap;
-  pointer-events: none;
-}
 
 .tano-prose pre.tano-live-source-block {
   min-height: 1em;
-  margin: 8px 0;
+  margin: 4px 0;
   padding: var(--tano-block-padding-block) var(--tano-block-padding-inline);
   border: 0;
   border-radius: 0;
   background: transparent;
   color: var(--text);
   font: inherit;
-  line-height: 1.8;
+  line-height: inherit;
   white-space: pre-wrap;
   overflow: visible;
   overflow-wrap: anywhere;
@@ -3199,10 +3225,10 @@ button:hover {
 .tano-prose pre.tano-live-source-block[data-source-kind='code_block'] {
   margin: 1em 0;
   padding: 0 22px;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: 8px;
   background: var(--surface);
-  font: 0.85em/1.7 'Cascadia Code', 'Consolas', monospace;
+  font: 0.85em/1.7 var(--font-mono);
   white-space: pre;
   overflow: auto;
   overflow-wrap: normal;
@@ -3231,30 +3257,33 @@ button:hover {
 }
 .tano-prose pre.tano-live-source-block[data-source-kind='heading'] {
   color: var(--text);
-  line-height: 1.8;
+  line-height: 1.65;
 }
 .tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='1'] {
-  font-size: calc(var(--tano-prose-font-size, 16px) * 2);
+  font-size: calc(var(--tano-prose-font-size, 16px) * 1.875);
   font-weight: 700;
-  line-height: 1.4;
-  letter-spacing: -0.5px;
-  margin: 0.67em 0 24px;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin: 32px 0 8px;
 }
 .tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='2'] {
   font-size: calc(var(--tano-prose-font-size, 16px) * 1.5);
   font-weight: 600;
-  letter-spacing: 0.2px;
-  margin: 34px 0 13px;
+  line-height: 1.3;
+  letter-spacing: -0.005em;
+  margin: 28px 0 6px;
 }
 .tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='3'] {
-  font-size: calc(var(--tano-prose-font-size, 16px) * 1.1875);
+  font-size: calc(var(--tano-prose-font-size, 16px) * 1.25);
   font-weight: 600;
-  margin: 27px 0 1em;
+  line-height: 1.35;
+  margin: 20px 0 4px;
 }
 .tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='4'] {
   font-size: calc(var(--tano-prose-font-size, 16px) * 1.125);
   font-weight: 600;
-  margin: 22px 0 13px;
+  line-height: 1.4;
+  margin: 16px 0 4px;
 }
 .tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='5'] {
   font-size: 0.83em;
@@ -3372,9 +3401,6 @@ button:hover {
   content: '📄 ';
   text-decoration: none;
 }
-.tano-prose .tano-wiki-link:not(.tano-live-wiki):hover::after {
-  content: attr(data-markdown-source) ' · Ctrl/⌘ + 点击跳转';
-}
 .tano-editor-panel {
   position: absolute;
   z-index: 100;
@@ -3423,7 +3449,7 @@ button:hover {
   outline-color: var(--green);
   color: var(--text);
   background: var(--paper);
-  font: 13px/1.4 Consolas, monospace;
+  font: 13px/1.4 var(--font-mono);
   user-select: text;
 }
 .tano-prose.ProseMirror-focused .tano-live-wiki {
@@ -3431,16 +3457,13 @@ button:hover {
 }
 .tano-prose.ProseMirror-focused .tano-live-wiki::before {
   content: attr(data-markdown-source);
-  font:
-    14px 'Cascadia Code',
-    Consolas,
-    monospace;
+  font: 14px var(--font-mono);
   color: var(--text);
 }
 .tano-prose hr {
   border: 0;
   border-top: 1px solid var(--line);
-  margin: 31px 0;
+  margin: 36px 0;
 }
 .tano-prose > hr {
   margin-inline: var(--tano-block-frame-inset);
@@ -3452,6 +3475,33 @@ button:hover {
   /* Paint the selection inside the block so its own surface remains visible
      underneath and the highlight cannot expand beyond the block range. */
   box-shadow: inset 0 0 0 100vmax var(--block-selection-overlay);
+}
+/* Paint the divider's selection as its own rounded rectangle: an expanded
+   outline also expands the corner radius and makes a one-pixel rule a pill. */
+.tano-prose hr:is(.ProseMirror-selectednode, .tano-block-selected) {
+  position: relative;
+  overflow: visible;
+  border-top-color: var(--green);
+  box-shadow: none;
+}
+.tano-prose hr:is(.ProseMirror-selectednode, .tano-block-selected)::before {
+  content: '';
+  position: absolute;
+  inset: calc(-1px - var(--tano-block-frame-inset)) 0 calc(-1 * var(--tano-block-frame-inset));
+  border-radius: inherit;
+  background: var(--block-selection-overlay);
+  pointer-events: none;
+}
+.tano-prose > hr:is(.ProseMirror-selectednode, .tano-block-selected)::before {
+  inset-inline: calc(-1 * var(--tano-block-frame-inset));
+}
+.tano-prose hr:is(.ProseMirror-selectednode, .tano-block-selected)::after {
+  content: '';
+  position: absolute;
+  inset: -1px 0 auto;
+  height: 1px;
+  background: var(--green);
+  pointer-events: none;
 }
 /* A table's scroll viewport includes page gutters; highlight only its cells. */
 .tano-prose .tano-table-viewport.ProseMirror-selectednode,
@@ -3471,8 +3521,7 @@ button:hover {
   pre,
   .tano-callout,
   .tano-enhanced,
-  .tano-unsupported-block,
-  hr
+  .tano-unsupported-block
 ):is(.ProseMirror-selectednode, .tano-block-selected) {
   outline: var(--tano-block-frame-inset) solid var(--block-selection);
 }
@@ -3541,12 +3590,35 @@ button:hover {
   tab-size: inherit;
 }
 .source-editor .cm-gutters {
+  /* Keep line numbers outside the text measure, including when digits grow.
+     Override CodeMirror's inline sticky positioning: the page scrolls here. */
+  position: absolute !important;
+  left: var(--tano-block-padding-inline);
+  top: 0;
+  transform: translateX(-100%);
   border: 0;
   background: transparent;
+}
+.source-editor .cm-line {
+  padding-inline: var(--tano-block-padding-inline);
 }
 .source-editor .cm-lineNumbers .cm-gutterElement {
   padding: 0 10px 0 0;
   color: var(--muted);
+}
+/* Center on the heading's first visual row, not its full wrapped block.
+   CodeMirror still measures each complete block to position subsequent numbers. */
+.source-editor .cm-lineNumbers .cm-source-heading-1-gutter {
+  padding-top: calc(4px + var(--tano-source-font-size, 14px) * (2.285714 * 1.4 - 1.928571) / 2);
+}
+.source-editor .cm-lineNumbers .cm-source-heading-2-gutter {
+  padding-top: calc(3px + var(--tano-source-font-size, 14px) * (1.714286 * 1.45 - 1.928571) / 2);
+}
+.source-editor .cm-lineNumbers .cm-source-heading-3-gutter {
+  padding-top: calc(3px + var(--tano-source-font-size, 14px) * (1.357143 * 1.5 - 1.928571) / 2);
+}
+.source-editor .cm-lineNumbers .cm-source-heading-4-gutter {
+  padding-top: calc(var(--tano-source-font-size, 14px) * (1.285714 * 1.55 - 1.928571) / 2);
 }
 .source-editor .cm-lineNumbers .cm-activeLineGutter {
   background: transparent;
@@ -3559,7 +3631,7 @@ button:hover {
 .source-editor .cm-content {
   min-height: calc(100vh - 290px);
   padding: 0;
-  caret-color: var(--green);
+  caret-color: #5f5e5b;
 }
 .source-editor .cm-focused {
   outline: none;
@@ -3630,9 +3702,9 @@ button:hover {
   background: var(--surface);
 }
 .source-editor .cm-source-link {
-  color: var(--green);
+  color: #5f5e5b;
   text-decoration: underline;
-  text-decoration-color: #1f7a5266;
+  text-decoration-color: rgba(74, 85, 104, 0.4);
 }
 .source-editor .cm-source-image,
 .source-editor .cm-source-math {
@@ -3660,7 +3732,7 @@ button:hover {
   overflow-y: auto;
   scrollbar-width: none;
   background: var(--paper);
-  box-shadow: 0 12px 28px #1f232810;
+  box-shadow: 0 12px 28px #0f0f0f10;
 }
 .inspector:is(:hover, :focus-within) {
   scrollbar-width: thin;
@@ -3700,7 +3772,7 @@ button:hover {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 16px 10px;
-  box-shadow: 0 12px 28px #1f232810;
+  box-shadow: 0 12px 28px #0f0f0f10;
   pointer-events: auto;
   overscroll-behavior: contain;
 }
@@ -3736,7 +3808,7 @@ button:hover {
   position: relative;
 }
 .inspector-tabs button.active {
-  color: var(--green);
+  color: var(--text);
   font-weight: 600;
 }
 .inspector-tabs button.active:after {
@@ -3773,7 +3845,7 @@ button:hover {
 }
 .outline-control:hover,
 .outline-control.active {
-  color: var(--green);
+  color: var(--text);
   background: var(--hover);
 }
 .outline-search {
@@ -3825,7 +3897,8 @@ button:hover {
   color: var(--text-secondary);
 }
 .outline .outline-active {
-  color: var(--green);
+  color: var(--text);
+  font-weight: 500;
 }
 .outline-text {
   min-width: 0;
@@ -4100,13 +4173,7 @@ button:hover {
 @media (max-width: 700px) and (pointer: coarse) {
   .editor-empty-actions button { min-height: 44px; }
 }
-.workspace-startup {
-  flex: 1;
-  display: grid;
-  place-items: center;
-  color: var(--muted);
-  font-size: 13px;
-}
+.pane-loading-skeleton { position: absolute; inset: var(--topbar-height, 44px) 0 0; z-index: 20; overflow: hidden; background: var(--paper); }
 .welcome {
   flex: 1;
   min-height: 0;
@@ -4123,7 +4190,7 @@ button:hover {
 .welcome-mark img {
   height: 64px;
   width: 64px;
-  filter: drop-shadow(0 12px 17px #1f232820);
+  filter: drop-shadow(0 12px 17px #0f0f0f20);
 }
 .eyebrow {
   font-size: 12px;
@@ -4132,12 +4199,7 @@ button:hover {
   margin: 29px 0 11px;
 }
 .welcome h1 {
-  font-family:
-    'Microsoft YaHei',
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    sans-serif;
+  font-family: var(--font-ui);
   font-size: 32px;
   font-weight: 600;
   color: var(--text);
@@ -4213,7 +4275,7 @@ button:hover {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: #1f232835;
+  background: #0f0f0f35;
   backdrop-filter: blur(2px);
   display: flex;
   align-items: flex-start;
@@ -4228,7 +4290,7 @@ button:hover {
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 10px;
-  box-shadow: 0 25px 90px #1f232828;
+  box-shadow: 0 25px 90px #0f0f0f28;
   padding: 24px;
 }
 .modal > header {
@@ -4383,10 +4445,10 @@ button:hover {
 }
 .search-results::-webkit-scrollbar-thumb {
   border-radius: 6px;
-  background: var(--scrollbar-thumb, #c4c8ce);
+  background: var(--scrollbar-thumb, #cfceca);
 }
 .search-results::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover, #aeb4bb);
+  background: var(--scrollbar-thumb-hover, #b5b4b0);
 }
 .search-results::-webkit-scrollbar-button {
   display: none;
@@ -4396,7 +4458,7 @@ button:hover {
 @supports (-moz-appearance: none) {
   .search-results {
     scrollbar-width: thin;
-    scrollbar-color: var(--scrollbar-thumb, #c4c8ce) transparent;
+    scrollbar-color: var(--scrollbar-thumb, #cfceca) transparent;
   }
 }
 .search-results button {
@@ -4451,8 +4513,8 @@ button:hover {
 }
 .search-results mark {
   border-radius: 2px;
-  background: var(--accent);
-  color: var(--green);
+  background: #fef3c7;
+  color: var(--text);
   font-weight: 600;
 }
 .panel-empty {
@@ -4472,7 +4534,7 @@ button:hover {
 }
 @media (min-width: 1600px) {
   :root {
-    --sidebar-width: 245px;
+    --sidebar-width: 264px;
   }
   .inspector {
     --inspector-width: 250px;
@@ -4486,7 +4548,7 @@ button:hover {
 }
 @media (max-width: 1180px) {
   :root {
-    --sidebar-width: 210px;
+    --sidebar-width: 232px;
   }
   .version-pill {
     font-size: 12px;
@@ -4538,7 +4600,7 @@ button:hover {
     position: absolute;
     inset: 0;
     z-index: 39;
-    background: #1f232820;
+    background: #0f0f0f20;
   }
   .sidebar-dismiss-enter-active,
   .sidebar-dismiss-leave-active {
@@ -4557,7 +4619,7 @@ button:hover {
     top: 0;
     bottom: 0;
     z-index: 40;
-    box-shadow: 15px 0 40px #1f232815;
+    box-shadow: 15px 0 40px #0f0f0f15;
   }
   .main-column {
     width: 100%;
@@ -4651,7 +4713,7 @@ button:hover {
   margin: 0;
   width: 14px;
   height: 14px;
-  accent-color: var(--green);
+  accent-color: #5f5e5b;
   cursor: pointer;
 }
 @media (max-width: 700px) {
@@ -4772,7 +4834,7 @@ button:hover {
   border: 1px dashed var(--warning-border);
   border-radius: 6px;
   color: var(--warning);
-  font: 12px/1.7 system-ui;
+  font: 12px/1.7 var(--font-ui);
 }
 .tano-image-caption {
   display: block;
@@ -4807,7 +4869,7 @@ button:hover {
   outline: none;
   background: var(--paper);
   color: var(--text);
-  font: 13px/1.5 Consolas, monospace;
+  font: 13px/1.5 var(--font-mono);
   user-select: text;
 }
 .tano-image-editor-panel input:focus {
@@ -4899,7 +4961,7 @@ button:hover {
   tab-size: 4;
   pointer-events: none;
   color: var(--text);
-  font: 14px/1.5 Consolas, monospace;
+  font: 14px/1.5 var(--font-mono);
 }
 .tano-math textarea {
   position: relative;
@@ -4922,9 +4984,7 @@ button:hover {
   color: transparent;
   caret-color: var(--text);
   background: transparent;
-  font:
-    14px/1.5 Consolas,
-    monospace;
+  font: 14px/1.5 var(--font-mono);
 }
 .math-editor-panel textarea::-webkit-scrollbar,
 .tano-mermaid-editor-panel textarea::-webkit-scrollbar {
@@ -4942,7 +5002,7 @@ button:hover {
 }
 .math-editor-panel:hover textarea::-webkit-scrollbar-thumb,
 .tano-mermaid-editor-panel:hover textarea::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb-hover, #aeb4bb);
+  background: var(--scrollbar-thumb-hover, #b5b4b0);
 }
 .math-editor-panel textarea::-webkit-scrollbar-button,
 .tano-mermaid-editor-panel textarea::-webkit-scrollbar-button {
@@ -4958,7 +5018,7 @@ button:hover {
   }
   .math-editor-panel:hover textarea,
   .tano-mermaid-editor-panel:hover textarea {
-    scrollbar-color: var(--scrollbar-thumb-hover, #aeb4bb) transparent;
+    scrollbar-color: var(--scrollbar-thumb-hover, #b5b4b0) transparent;
   }
 }
 .tano-math textarea:placeholder-shown {
@@ -4976,13 +5036,13 @@ button:hover {
   display: none;
 }
 .frontmatter-panel {
-  max-width: 780px;
-  margin: 0 auto 26px;
+  max-width: var(--tano-content-measure);
+  margin: 0 auto 20px;
   color: var(--text);
   font-size: 14px;
 }
 .document-title:has(+ .frontmatter-panel) {
-  margin-bottom: 22px;
+  margin-bottom: 12px;
 }
 .frontmatter-heading {
   display: flex;
@@ -4991,8 +5051,9 @@ button:hover {
   width: fit-content;
   min-height: 30px;
   list-style: none;
-  font-size: 15px;
-  font-weight: 600;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 400;
   cursor: pointer;
 }
 .frontmatter-heading::-webkit-details-marker {
@@ -5011,7 +5072,7 @@ button:hover {
   transform: rotate(90deg);
 }
 .frontmatter-heading:hover .frontmatter-chevron {
-  color: var(--green);
+  color: var(--text-secondary);
 }
 .frontmatter-order-toggle {
   display: grid;
@@ -5028,7 +5089,7 @@ button:hover {
 }
 .frontmatter-order-toggle:hover {
   background: var(--hover);
-  color: var(--green);
+  color: var(--text);
 }
 @media (hover: hover) {
   .frontmatter-order-toggle {
@@ -5072,7 +5133,7 @@ button:hover {
 .frontmatter-property-type:hover,
 .frontmatter-property-type[aria-expanded="true"] {
   background: var(--hover);
-  color: var(--green);
+  color: var(--text);
 }
 .frontmatter-property-name {
   color: var(--text-secondary);
@@ -5186,7 +5247,8 @@ button:hover {
   background: var(--hover);
 }
 .frontmatter-type-menu button[aria-checked="true"] {
-  color: var(--green);
+  color: var(--text);
+  font-weight: 500;
 }
 .frontmatter-type-menu .frontmatter-type-delete {
   margin-top: 5px;
@@ -5198,9 +5260,7 @@ button:hover {
   margin: 0 0 8px 25px;
   overflow: auto;
   white-space: pre-wrap;
-  font:
-    12px/1.7 Consolas,
-    monospace;
+  font: 12px/1.7 var(--font-mono);
   color: var(--text-secondary);
 }
 .frontmatter-add {
@@ -5224,7 +5284,7 @@ button:hover {
   transform: translateX(-1px);
 }
 .frontmatter-add:hover {
-  color: var(--green);
+  color: var(--text-secondary);
 }
 @media (max-width: 640px) {
   .frontmatter-property {
@@ -5302,8 +5362,9 @@ button:hover {
   gap: 6px;
 }
 .agent-tabs button.active {
-  background: var(--accent);
-  color: var(--green);
+  background: var(--hover);
+  color: var(--text);
+  font-weight: 500;
 }
 .agent-tabs .agent-terminal {
   margin-left: auto;
@@ -5334,10 +5395,7 @@ button:hover {
 }
 .agent-preview {
   min-height: 240px;
-  font:
-    12px/1.8 'Cascadia Code',
-    Consolas,
-    monospace;
+  font: 12px/1.8 var(--font-mono);
   tab-size: 2;
 }
 .agent-existing {
@@ -5432,10 +5490,7 @@ button:hover {
 .diff-lines {
   overflow: auto;
   max-height: 60vh;
-  font:
-    12px/1.75 'Cascadia Code',
-    Consolas,
-    monospace;
+  font: 12px/1.75 var(--font-mono);
   padding: 8px 0 0;
   background: var(--paper);
 }
@@ -5479,7 +5534,7 @@ button:hover {
 }
 .activity-diff-button {
   display: block;
-  color: var(--green);
+  color: #5f5e5b;
   font-size: 12px;
   margin: 6px 0;
   text-decoration: underline;
@@ -5498,6 +5553,14 @@ button:hover {
 }
 
 /* Rendering preferences never change the underlying Markdown nodes. */
+.tano-prose {
+  /* Spacing is owned by editor decorations, consistently across WebViews. */
+  text-autospace: no-autospace;
+}
+.tano-prose .tano-auto-space-before {
+  margin-inline-start: 0.25em;
+}
+
 .tano-feature-source {
   color: var(--text-secondary);
   background: var(--surface);
@@ -5579,7 +5642,7 @@ div.tano-feature-source {
   tab-size: 4;
   pointer-events: none;
   color: var(--text);
-  font: 14px/1.5 Consolas, monospace;
+  font: 14px/1.5 var(--font-mono);
 }
 .tano-mermaid-editor-panel textarea {
   position: relative;
@@ -5602,7 +5665,7 @@ div.tano-feature-source {
   color: transparent;
   caret-color: var(--text);
   background: transparent;
-  font: 14px/1.5 Consolas, monospace;
+  font: 14px/1.5 var(--font-mono);
 }
 .tano-mermaid-editor-panel textarea:placeholder-shown {
   min-width: min(28ch, calc(100vw - 54px));
@@ -5666,6 +5729,12 @@ div.tano-feature-source {
 .tano-reference .tano-reference-label {
   color: var(--reference-color);
 }
+.tano-reference-prefix {
+  /* The @ descender puts its visual center below the adjacent name. */
+  position: relative;
+  top: -0.1em;
+  margin-inline-end: 0.08em;
+}
 .tano-reference-icon,
 .tano-reference-arrow {
   display: inline-flex;
@@ -5680,10 +5749,6 @@ div.tano-feature-source {
   font-size: 11px;
   font-weight: 400;
   line-height: 1.5;
-}
-.tano-reference .tano-reference-badge {
-  padding-inline-start: 6px;
-  border-inline-start: 1px solid color-mix(in srgb, var(--reference-color) 18%, transparent);
 }
 .tano-reference-card {
   margin: 14px 0;
@@ -5770,10 +5835,6 @@ div.tano-feature-source {
   .tano-reference-card .tano-reference-icon {
     width: 36px;
     height: 36px;
-  }
-  .tano-reference .tano-reference-badge {
-    flex-shrink: 1;
-    min-width: 0;
   }
 }
 .tano-reference-picker {
@@ -6022,9 +6083,12 @@ div.tano-feature-source {
 .tano-prose .tano-live-source-highlight { background: #fde04766; }
 .source-editor .cm-source-underline,
 .tano-prose .tano-live-source-underline { text-decoration: underline; }
-.source-editor .cm-source-superscript,
-.tano-prose .tano-live-source-superscript { vertical-align: super; font-size: 0.85em; }
-.source-editor .cm-source-subscript,
-.tano-prose .tano-live-source-subscript { vertical-align: sub; font-size: 0.85em; }
+.source-editor .cm-source-superscript { vertical-align: super; font-size: 0.85em; }
+.source-editor .cm-source-subscript { vertical-align: sub; font-size: 0.85em; }
+/* Match rendered sup/sub metrics so revealing syntax does not grow the line. */
+.tano-prose .tano-live-source-superscript,
+.tano-prose .tano-live-source-subscript { font-size: 0.75em; line-height: 0; }
+.tano-prose .tano-live-source-superscript { vertical-align: super; }
+.tano-prose .tano-live-source-subscript { vertical-align: sub; }
 .source-editor .cm-source-inline_comment,
 .tano-prose .tano-live-source-inline_comment { opacity: 0.55; }

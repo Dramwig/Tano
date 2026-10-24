@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue';
 import { computed, ref, watch } from 'vue';
 import { Table2, Filter, Save, SlidersHorizontal } from 'lucide-vue-next';
 import { emptyFileMetadata, fileMetadataPath, queryFileDatabase, groupFileDatabase, isMarkdown } from '@tano/protocol';
@@ -88,7 +89,7 @@ function editProperties(file: FileEntry) {
     </form>
     <p v-if="stale" role="status">{{ t('视图已在外部更新，当前设置仍保留。') }}<button @click="reload">{{ t('丢弃当前设置并重新载入') }}</button></p>
     <p v-if="error" role="alert">{{ error }}</p>
-    <p v-if="loading" role="status">{{ t('正在读取文件属性…') }}</p>
+    <LoadingSkeleton v-if="loading" :rows="4" />
     <p v-for="message in errors" :key="message" role="alert">{{ message }}</p>
     <p v-if="!results.length && !loading">{{ t('没有符合条件的文件，请调整筛选或向目录添加文件。') }}</p>
     <section v-for="group in groups" :key="group.name">
@@ -138,7 +139,7 @@ th { color: var(--muted); font-weight: 400; white-space: nowrap; background: var
 tbody tr:hover { background: var(--sidebar); }
 td small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
 .file-link { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; justify-content: flex-start; padding: 0; border: 0; background: transparent; color: var(--text); text-align: left; }
-.file-link:hover { color: var(--green); text-decoration: underline; background: transparent !important; }
+.file-link:hover { color: var(--text); text-decoration: underline; background: transparent !important; }
 .row-properties { color: var(--muted); padding: 5px; }
 h2 { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; margin: 18px 0 8px; }
 h2 small { color: var(--muted); font-size: 11px; font-weight: 400; }

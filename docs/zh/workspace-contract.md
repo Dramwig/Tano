@@ -73,7 +73,7 @@ View 不保存正文、对象副本或权限。打开视图中的条目时，宿
 | 位置 | 职责 | 是否可以删除重建 |
 | --- | --- | --- |
 | 用户文件 | Markdown、PDF、图片、CSV、JSON、代码等内容事实源 | 否 |
-| `.tano/config.json` | 工作区 UUID 与格式版本，不放缓存或本机会话 | 否 |
+| `.tano/config.json` | 工作区 UUID、格式版本与创建时间（旧工作区可缺省），不放缓存或本机会话 | 否 |
 | `.tano/identities.json` | 稳定 File ID、路径映射、内容 hash、墓碑与已占用 ID | 否 |
 | `.tano/files/<fileId>.tano.json` | 跨格式文件的标签和标量属性；不复制正文 | 否 |
 | `.tano/objects/`、关系文件、规则 | 结构化语义、关系、工作区规则 | 否 |

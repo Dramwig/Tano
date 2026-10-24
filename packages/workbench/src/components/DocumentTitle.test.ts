@@ -28,7 +28,7 @@ async function mount(options: { titleSource?: PageTitleSource; modelValue?: stri
   }) });
   app.mount(root);
   await nextTick();
-  const input = root.querySelector<HTMLInputElement>('.document-title-input')!;
+  const input = root.querySelector<HTMLTextAreaElement>('textarea.document-title-input')!;
   async function type(value: string) {
     input.value = value;
     input.dispatchEvent(new Event('input'));

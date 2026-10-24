@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t } from '../i18n';
 import {
   computed,
@@ -30,7 +31,6 @@ const size = reactive({ width: 800, height: 600 });
 const camera = reactive({ x: 0, y: 0, k: 1 });
 const physics = reactive({ ...graphPhysics });
 const layout = shallowRef<ReturnType<typeof createGraphLayout>>();
-const tick = ref(0);
 const hovered = ref('');
 const focused = ref('');
 const dragging = ref(false);
@@ -39,6 +39,12 @@ const settings = ref(false);
 const loading = ref(false);
 const failed = ref<string[]>([]);
 const visible = ref(false);
+let renderFrame: number | undefined;
+let cameraFrame: number | undefined;
+let pendingZoom = 1;
+let pendingZoomAnchor = { x: 0, y: 0 };
+let zoomEndTimer: ReturnType<typeof setTimeout> | undefined;
+const zooming = ref(false);
 const highlighted = computed(() => hovered.value || focused.value);
 const neighbours = computed(() => {
   const result = new Set([highlighted.value]);
@@ -48,10 +54,18 @@ const neighbours = computed(() => {
   }
   return result;
 });
-const nodes = computed(() => {
-  void tick.value;
-  return [...(layout.value?.nodes ?? [])];
-});
+const nodes = computed(() => layout.value?.nodes ?? []);
+const nodeElements = new Map<string, Element>();
+const edgeElements = new Map<string, Element>();
+watch(layout, () => {
+  nodeElements.clear();
+  edgeElements.clear();
+  viewport.value?.querySelectorAll('[data-node]').forEach((el) =>
+    nodeElements.set(el.getAttribute('data-node')!, el));
+  viewport.value?.querySelectorAll('[data-edge]').forEach((el) =>
+    edgeElements.set(el.getAttribute('data-edge')!, el));
+  paintPositions();
+}, { flush: 'post' });
 const transform = computed(
   () => `translate(${size.width / 2 + camera.x},${size.height / 2 + camera.y}) scale(${camera.k})`,
 );
@@ -79,8 +93,29 @@ let gesture:
     }
   | undefined;
 
+function paintPositions() {
+  for (const node of nodes.value) {
+    nodeElements.get(node.id)?.setAttribute('transform', `translate(${node.x},${node.y})`);
+  }
+  for (const edge of layout.value?.edges ?? []) {
+    const el = edgeElements.get(edge.id);
+    el?.setAttribute('x1', String(edge.source.x));
+    el?.setAttribute('y1', String(edge.source.y));
+    el?.setAttribute('x2', String(edge.target.x));
+    el?.setAttribute('y2', String(edge.target.y));
+  }
+}
 function renderTick() {
-  tick.value++;
+  // Coordinates bypass Vue's template diff; only existing SVG attributes change.
+  if (renderFrame !== undefined) return;
+  if (typeof requestAnimationFrame !== 'undefined') {
+    renderFrame = requestAnimationFrame(() => {
+      renderFrame = undefined;
+      paintPositions();
+    });
+  } else {
+    paintPositions();
+  }
 }
 function fit() {
   const all = layout.value?.nodes ?? [];
@@ -107,7 +142,10 @@ function replaceLayout(graph: Parameters<typeof createGraphLayout>[0], first = f
   layout.value = createGraphLayout(graph, previous, physics);
   layout.value.simulation.on('tick', renderTick);
   if (first) {
-    layout.value.simulation.tick(80);
+    const count = layout.value.nodes.length;
+    // A partially settled layout appears immediately and lets the browser
+    // remain responsive while the remaining simulation runs in the background.
+    layout.value.simulation.tick(count > 600 ? 28 : count > 300 ? 42 : 80);
     fit();
   }
   renderTick();
@@ -215,11 +253,25 @@ function zoom(factor: number, anchor = { x: size.width / 2, y: size.height / 2 }
 function wheel(event: WheelEvent) {
   const delta =
     event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? size.height : 1);
-  zoom(Math.exp(-Math.max(-200, Math.min(200, delta)) * 0.002), localPoint(event));
+  pendingZoom *= Math.exp(-Math.max(-200, Math.min(200, delta)) * 0.002);
+  pendingZoomAnchor = localPoint(event);
+  zooming.value = true;
+  clearTimeout(zoomEndTimer);
+  zoomEndTimer = setTimeout(() => (zooming.value = false), 120);
+  if (cameraFrame !== undefined) return;
+  const apply = () => {
+    cameraFrame = undefined;
+    const factor = pendingZoom;
+    pendingZoom = 1;
+    zoom(factor, pendingZoomAnchor);
+  };
+  if (typeof requestAnimationFrame !== 'undefined') cameraFrame = requestAnimationFrame(apply);
+  else apply();
 }
 function startGesture(event: PointerEvent, node?: LayoutNode) {
   if (event.button !== 0 || !event.isPrimary || gesture) return;
   event.preventDefault();
+  paintPositions();
   const point = worldPoint(event);
   gesture = {
     pointerId: event.pointerId,
@@ -247,13 +299,18 @@ function moveGesture(event: PointerEvent) {
   const dx = event.clientX - gesture.startX,
     dy = event.clientY - gesture.startY;
   if (!gesture.moved && Math.hypot(dx, dy) < 5) return;
+  if (!gesture.moved && gesture.node) {
+    // Reheat once when dragging begins. All nodes continue responding to forces;
+    // subsequent pointer events only update the dragged node's fixed position.
+    const simulation = layout.value?.simulation;
+    simulation?.alpha(Math.max(simulation.alpha(), 0.18)).alphaTarget(0.18).restart();
+  }
   gesture.moved = true;
   if (gesture.node) {
     dragging.value = true;
     const point = worldPoint(event);
     gesture.node.x = gesture.node.fx = point.x + gesture.offsetX;
     gesture.node.y = gesture.node.fy = point.y + gesture.offsetY;
-    layout.value?.simulation.alphaTarget(0.18).restart();
     renderTick();
   } else {
     panning.value = true;
@@ -264,6 +321,7 @@ function moveGesture(event: PointerEvent) {
 }
 function cancelGesture() {
   const previous = gesture;
+  if (previous?.node) paintPositions();
   gesture = undefined;
   dragging.value = false;
   panning.value = false;
@@ -351,6 +409,13 @@ onActivated(activate);
 onDeactivated(deactivate);
 onBeforeUnmount(() => {
   deactivate();
+  if (renderFrame !== undefined && typeof cancelAnimationFrame !== 'undefined')
+    cancelAnimationFrame(renderFrame);
+  if (cameraFrame !== undefined && typeof cancelAnimationFrame !== 'undefined')
+    cancelAnimationFrame(cameraFrame);
+  renderFrame = undefined;
+  cameraFrame = undefined;
+  clearTimeout(zoomEndTimer);
   observer?.disconnect();
   clearTimeout(clickTimer);
 });
@@ -366,7 +431,7 @@ onBeforeUnmount(() => {
     <svg
       ref="viewport"
       class="graph-viewport"
-      :class="{ 'is-dragging': dragging, 'is-panning': panning }"
+      :class="{ 'is-dragging': dragging, 'is-panning': panning, 'is-zooming': zooming }"
       :viewBox="`0 0 ${size.width} ${size.height}`"
       tabindex="0"
       role="group"
@@ -515,6 +580,7 @@ onBeforeUnmount(() => {
         {{ t('恢复默认布局参数') }}
       </button>
     </section>
+    <LoadingSkeleton v-if="loading && !nodes.length" :rows="6" />
     <div v-if="!loading && !nodes.length" class="graph-empty">
       <GitFork :size="32" />
       <p>{{ t('工作区还没有 Markdown 文档') }}</p>
@@ -554,6 +620,14 @@ onBeforeUnmount(() => {
 .graph-viewport.is-dragging,
 .is-dragging .graph-node {
   cursor: grabbing;
+}
+.graph-viewport.is-panning .graph-node text,
+.graph-viewport.is-dragging .graph-node text {
+  display: none;
+}
+.graph-viewport.is-zooming .graph-node,
+.graph-viewport.is-zooming .graph-edges line {
+  transition: none;
 }
 .graph-viewport:focus-visible {
   outline: 1px solid var(--line);

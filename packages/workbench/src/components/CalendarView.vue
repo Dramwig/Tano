@@ -8,7 +8,7 @@ import { usePlanStore } from '../stores/plans';
 import { planKey, planSourceLabel } from '../personal-plans';
 import CalendarDayPopover from './CalendarDayPopover.vue';
 
-const props = defineProps<{ date: Date; mode: CalendarViewMode }>();
+const props = defineProps<{ date: Date; mode: CalendarViewMode; records?: ObjectRecord[] }>();
 const emit = defineEmits<{
   'select-mode': [mode: CalendarViewMode];
   'select-date': [date: Date];
@@ -20,8 +20,8 @@ const emit = defineEmits<{
 }>();
 const plans = usePlanStore();
 const scroll = ref<HTMLElement>();
-const events = computed(() => calendarEvents(plans.records));
-const planned = computed(() => planningEvents(plans.records));
+const events = computed(() => calendarEvents(props.records ?? plans.records));
+const planned = computed(() => planningEvents(props.records ?? plans.records));
 const dateOnly = computed(() => planned.value.filter(record => record.object.properties.allDay === true || (!hasEventTime(record) && record.object.properties.date)));
 const dateOnlyEvents = (day: Date) => plannedEventsOnDay(dateOnly.value, day);
 const hasVisibleDateOnly = computed(() => visibleCalendarDays(props.date, props.mode).some(day => dateOnlyEvents(day).length > 0));
@@ -762,7 +762,7 @@ watch(() => props.date, (date) => {
 }
 .calendar-year-month { min-width: 0; }
 .calendar-year-month-title { margin-bottom: 11px; color: var(--text); font-size: 15px; font-weight: 600; }
-.calendar-year-month-title:hover { color: var(--green); }
+.calendar-year-month-title:hover { color: var(--text); }
 .calendar-year-weekdays,
 .calendar-year-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center; }
 .calendar-year-weekdays span { padding-bottom: 4px; color: var(--muted); font-size: 10px; }

@@ -17,6 +17,12 @@ import { assistantCopy, assistantTaskPrompts, formatAssistantText } from './lang
 
 export type AssistantDisplayMode = 'sidebar' | 'floating' | 'fullscreen';
 
+const displayModePreferenceKey = 'tano.preference.assistantDisplayMode';
+function preferredDisplayMode(): 'sidebar' | 'floating' {
+  try { return localStorage.getItem(displayModePreferenceKey) === 'sidebar' ? 'sidebar' : 'floating'; }
+  catch { return 'floating'; }
+}
+
 export const useAssistantStore = defineStore('assistant', () => createAssistantState());
 export const useInlineAssistantStore = defineStore('inline-assistant', () => createAssistantState(true));
 
@@ -30,7 +36,7 @@ function createAssistantState(inline = false) {
   const demo = !!transport?.demo;
   const canConfigure = transport?.canConfigure !== false;
   const opened = ref(false), loading = ref(false), busy = ref(false), applying = ref(false);
-  const displayMode = ref<AssistantDisplayMode>('sidebar');
+  const displayMode = ref<AssistantDisplayMode>(inline ? 'floating' : preferredDisplayMode());
   const fullscreenTabId = ref('');
   const fullscreenPaneId = computed(() => workspace.panes.find(pane => pane.tabs.includes(fullscreenTabId.value))?.id);
   function isFullscreenTab(id: string) {
@@ -40,6 +46,10 @@ function createAssistantState(inline = false) {
     if (mode === 'fullscreen' && !workspace.activeId) workspace.createBlankTab();
     fullscreenTabId.value = mode === 'fullscreen' ? workspace.activeId : '';
     displayMode.value = mode;
+    // Fullscreen belongs to a document tab; remember the reusable panel layout.
+    if (!inline && mode !== 'fullscreen') {
+      try { localStorage.setItem(displayModePreferenceKey, mode); } catch { /* Storage may be unavailable. */ }
+    }
   }
   const connections = ref<AssistantConnection[]>([]);
   const connectionId = ref('');

@@ -295,7 +295,7 @@ onBeforeUnmount(() => {
 
 <style>
 .document-appearance { position: relative; }
-.document-title-actions { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; min-height: 30px; margin: 0 -6px 6px; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+.document-title-actions { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; min-height: 28px; margin: 0 var(--tano-block-padding-inline) 4px; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
 .document-title-actions-placeholder { visibility: hidden; }
 .document-title:has(.document-title-content:hover, .document-appearance-content:hover) .document-title-actions,
 .document-title:has(.document-title-actions :focus-visible, .document-page-icon :focus-visible) .document-title-actions,
@@ -310,7 +310,7 @@ onBeforeUnmount(() => {
 .document-appearance.has-cover .document-appearance-content { padding-top: 24px; }
 .document-appearance.has-cover.has-icon .document-page-icon { position: relative; margin-top: -56px; margin-bottom: 12px; }
 .document-appearance.has-cover .document-appearance-content:not(:has(.document-title-actions)) { padding-bottom: 36px; }
-.document-page-icon { display: flex; align-items: center; width: 64px; height: 64px; margin-bottom: 10px; border-radius: 8px; }
+.document-page-icon { display: flex; align-items: center; width: 64px; height: 64px; margin-bottom: 0; margin-inline-start: calc(var(--tano-block-padding-inline) - 4px); border-radius: 8px; }
 .settings-button.workspace-icon-preview.document-icon-trigger { width: 64px; height: 64px; padding: 4px; border: 0; border-radius: 8px; background: transparent; box-shadow: none; }
 .document-title-action.document-cover-trigger { position: absolute; z-index: 1; top: 12px; right: calc(16px - var(--document-inset-end, 0px)); padding-inline: 10px; border: 1px solid var(--line); background: var(--paper); color: var(--text); box-shadow: 0 1px 3px #18212b0a; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
 .document-cover:hover + .document-cover-trigger,

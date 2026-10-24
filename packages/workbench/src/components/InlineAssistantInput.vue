@@ -191,7 +191,7 @@ onBeforeUnmount(() => {
   /* Keep the one-shot composer visibly floating on white documents as well as
      dark themes.  The previous mixed border/shadow was too subtle on the
      light page and disappeared in WebView captures. */
-  border: 1px solid var(--control-border, #b9bfc8);
+  border: 1px solid var(--control-border, var(--control-border));
   border-radius: 15px;
   background: var(--paper, #ffffff);
   box-shadow:

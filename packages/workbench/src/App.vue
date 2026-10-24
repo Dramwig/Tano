@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import WorkspaceSyncPanel from './components/WorkspaceSyncPanel.vue';
+import { vScrollFade } from './scroll-fade';
 import { createWorkspaceSync, syncEvent } from './workspace-sync';
 import { t } from './i18n';
 import AppTooltip from './components/AppTooltip.vue';
@@ -21,6 +22,7 @@ import { storeToRefs } from 'pinia';
 import { version as appVersion } from '../package.json';
 import {
   BookOpen,
+  House,
   ChevronDown,
   ChevronUp,
   ChevronLeft,
@@ -29,7 +31,6 @@ import {
   Plus,
   FolderPlus,
   FolderOpen,
-  PanelLeftClose,
   PanelLeftOpen,
   FileText,
   X,
@@ -64,11 +65,10 @@ import {
   Puzzle,
   GitFork,
   CalendarDays,
-  LogOut,
   Settings2,
   SquarePen,
   Pin,
-  Ruler,
+  Space,
   Heading1,
   SlidersHorizontal,
   LockKeyhole,
@@ -79,13 +79,13 @@ import {
   Files,
   Table2,
 } from 'lucide-vue-next';
-const MarkdownEditor = defineAsyncComponent(() => import('@tano/editor'));
+const MarkdownEditor = loadingComponent(() => import('@tano/editor'), 'editor');
 const CalloutIconPicker = defineAsyncComponent(() => import('./components/CalloutIconPicker.vue'));
 import { defaultEditorPreferences, normalizeSelectionWrapping } from '@tano/editor/runtime';
 import type { EditorPreferences } from '@tano/editor/runtime';
 import { defaultSelectionContext } from '@tano/editor/selection-context';
 import type { EditorSelectionContext } from '@tano/editor/selection-context';
-const SourceEditor = defineAsyncComponent(() => import('./components/SourceEditor.vue'));
+const SourceEditor = loadingComponent(() => import('./components/SourceEditor.vue'), 'editor');
 import { captureModeViewport, restoreModeViewport } from './editor-mode';
 import type { ModeViewport } from './editor-mode';
 import AttachmentPreview from './components/AttachmentPreview.vue';
@@ -100,19 +100,22 @@ import DocumentTitle from './components/DocumentTitle.vue';
 import { appearanceText } from './document-appearance';
 import { useDocumentFavicon } from './document-favicon';
 import WorkspaceBreadcrumb from './components/WorkspaceBreadcrumb.vue';
+import DocumentStatus from './components/DocumentStatus.vue';
+import { documentStatusItems, type DocumentSyncStatus } from './document-status';
 import DocumentScrollbar from './components/DocumentScrollbar.vue';
 import DocumentExportMenu from './components/DocumentExportMenu.vue';
 import type { ImportRecord } from './components/ImportPanel.vue';
 const ImportPanel = defineAsyncComponent(() => import('./components/ImportPanel.vue'));
-const TemplateLibrary = defineAsyncComponent(() => import('./components/TemplateLibrary.vue'));
+const TemplateLibrary = loadingComponent(() => import('./components/TemplateLibrary.vue'), 'document');
 import type { DocumentExportFormat } from './document-export';
+// Discussion and annotation surfaces decide their own visibility and loading state.
 const DocumentComments = defineAsyncComponent(() => import('./components/DocumentComments.vue'));
-const DocumentSuggestions = defineAsyncComponent(() => import('./components/DocumentSuggestions.vue'));
+const DocumentSuggestions = loadingComponent(() => import('./components/DocumentSuggestions.vue'), 'document');
 import ReferenceGraphPopover from './components/ReferenceGraphPopover.vue';
 const SelectionTodoDialog = defineAsyncComponent(() => import('./components/SelectionTodoDialog.vue'));
-import { selectionTodoSession } from './selection-todo';
+import { planDocumentSource, selectionTodoSession } from './selection-todo';
 import type { SelectionTodoSession } from './selection-todo';
-import { documentLinks } from '@tano/editor/document-links';
+import { documentLinks, referenceInsertionPoint } from '@tano/editor/document-links';
 import type { CommentAnchor } from '@tano/protocol';
 import { splitFrontmatter, unsupportedMarkdown } from '@tano/editor/syntax';
 import { frontmatterProperties } from '@tano/editor/frontmatter-display';
@@ -146,13 +149,13 @@ import { GRAPH_TAB_ID } from './document-graph';
 import { PLUGINS_TAB_ID } from './workspace-plugins';
 import { CALENDAR_TAB_ID, calendarPeriodTitle, shiftCalendarDate } from './calendar';
 import type { CalendarViewMode } from './calendar';
-const RelationGraph = defineAsyncComponent(() => import('./components/RelationGraph.vue'));
+const RelationGraph = loadingComponent(() => import('./components/RelationGraph.vue'), 'document');
 import NewTabPicker from './components/NewTabPicker.vue';
 const EditorTools = defineAsyncComponent(() => import('./components/EditorTools.vue'));
 import { parseToolbarMode, toolbarPreferenceKey } from './toolbar-preference';
-const DocumentHistoryPanel = defineAsyncComponent(() => import('./components/DocumentHistoryPanel.vue'));
-const AgentPanel = defineAsyncComponent(() => import('./components/AgentPanel.vue'));
-const AssistantPanel = defineAsyncComponent(() => import('./components/AssistantPanel.vue'));
+const DocumentHistoryPanel = loadingComponent(() => import('./components/DocumentHistoryPanel.vue'));
+const AgentPanel = loadingComponent(() => import('./components/AgentPanel.vue'));
+const AssistantPanel = loadingComponent(() => import('./components/AssistantPanel.vue'));
 import AssistantLauncher from './components/AssistantLauncher.vue';
 import AssistantButterflyLayer from './components/AssistantButterflyLayer.vue';
 import { butterflyScope } from './assistant/butterfly';
@@ -181,19 +184,22 @@ import type { ObjectRecord } from './workspace-objects';
 import { usePlanStore } from './stores/plans';
 import { usePlanSyncStore } from './stores/plan-sync';
 import { planKey } from './personal-plans';
-const SidebarPlan = defineAsyncComponent(() => import('./components/SidebarPlan.vue'));
+const SidebarPlan = loadingComponent(() => import('./components/SidebarPlan.vue'));
 import SidebarNavigation from './components/SidebarNavigation.vue';
 import WorkspaceSidebar from './components/WorkspaceSidebar.vue';
 import HelpLauncher from './components/HelpLauncher.vue';
 import type { HelpAvailability, HelpContext } from './help-content';
 import { recordHelpCompleted } from './help-checklist';
-import WorkspaceSwitcher from './components/WorkspaceSwitcher.vue';
+import WorkspaceViewSwitcher from './components/WorkspaceViewSwitcher.vue';
+import { useWorkbenchNavigation, type WorkspaceSidebarView } from './workbench-navigation';
+import { ASSISTANT_TAB_ID, openAssistantPage } from './assistant/navigation';
+const SidebarAssistant = loadingComponent(() => import('./components/SidebarAssistant.vue'));
 import ButtonVisibilityGroup from './components/ButtonVisibilityGroup.vue';
 import InlineAssistantInput from './components/InlineAssistantInput.vue';
 import type { InlineAssistantAnchor } from './components/InlineAssistantInput.vue';
-const CalendarView = defineAsyncComponent(() => import('./components/CalendarView.vue'));
-const DataTablePage = defineAsyncComponent(() => import('./components/DataTablePage.vue'));
-const WorkspaceViewPage = defineAsyncComponent(() => import('./components/WorkspaceViewPage.vue'));
+const CalendarView = loadingComponent(() => import('./components/CalendarView.vue'), 'document');
+const DataTablePage = loadingComponent(() => import('./components/DataTablePage.vue'), 'document');
+const WorkspaceViewPage = loadingComponent(() => import('./components/WorkspaceViewPage.vue'), 'document');
 import { isTableTab, TABLES_TAB_ID, tableFileId } from './data-tables';
 import { isDataTableFilePath } from '@tano/protocol';
 const PluginInstaller = defineAsyncComponent(() => import('./components/PluginInstaller.vue'));
@@ -207,7 +213,8 @@ import { pluginShortcutCommand } from './plugins/workbench';
 import { SETTINGS_PLUGIN_RESULT } from './settings-window';
 import { isObjectPath, referenceMarkdown, referenceUrl, resolveReference } from '@tano/protocol';
 import type { ReferenceIdentity, ReferenceTarget } from '@tano/protocol';
-import { sloganParts, welcomeSlogans } from './welcome-slogans';
+import LoadingSkeleton from './components/LoadingSkeleton.vue';
+import { loadingComponent } from './loading-component';
 import { useUpdatesStore } from './stores/updates';
 import { resolveWikiLink } from './wiki-links';
 import { applyFileMovePreview, planFileMovePreview, type FileMovePreview } from './file-move';
@@ -260,6 +267,9 @@ async function toggleSuggestionMode(fileId: string) {
   finally { suggestionModeBusy.value = false; }
 }
 const assistant = useAssistantStore();
+// Keep the panel mounted until its closing transition releases the layout space.
+const assistantPanelMounted = ref(assistant.opened);
+watch(() => assistant.opened, open => { if (open) assistantPanelMounted.value = true; });
 const inlineRunner = useInlineAssistantStore();
 const butterfly = provideButterflyController();
 const vButterflyPerch = butterflyPerchDirective(butterfly);
@@ -287,8 +297,6 @@ usePlanSyncStore();
 const tabsEnabled = native && !mobile;
 const { width: viewportWidth, touch: touchLayout, compact: compactPanes } = useViewport(mobile);
 const detachedWindow = tabsEnabled && !!detachedTabRequest();
-const welcomeSlogan = welcomeSlogans[Math.floor(Math.random() * welcomeSlogans.length)];
-const welcomeSloganParts = sloganParts(welcomeSlogan);
 const localNative = native && !store.isWeb;
 const attachments =
   useWorkbenchRuntime().attachments ?? (localNative ? nativeAttachments : undefined);
@@ -297,9 +305,7 @@ const documentationBaseUrl = useWorkbenchRuntime().documentationBaseUrl;
 const extensions = useWorkbenchRuntime().extensions?.() ?? createLocalExtensions();
 const extensionViews = extensions.views ?? [];
 const sidebarNavigationItems = computed(() => [
-  { id: 'repository', get label() { return t('仓库'); } },
   { id: 'plan', get label() { return t('计划'); } },
-  { id: 'plugin-views', get label() { return t('插件工作台'); } },
   ...extensionViews
     .filter((view) => view.sidebar)
     .map((view) => ({ id: view.id, label: view.label })),
@@ -308,12 +314,11 @@ const sidebarHeaderItems = computed(() => [
   ...extensionViews
     .filter((view) => view.header)
     .map((view) => ({ id: view.id, label: view.label })),
-  { id: 'graph', get label() { return t('关系图谱'); } },
   { id: 'commands', get label() { return t('命令中心'); } },
 ]);
 const repositoryActionItems = computed(() => [
+  ...(store.workspaceSettings.showGraph ? [{ id: 'graph', get label() { return t('关系图谱'); } }] : []),
   { id: 'search', get label() { return t('查找文档'); } },
-  ...(store.workspaceSettings.showPlugins ? [{ id: 'plugins', get label() { return t('插件'); } }] : []),
   { id: 'create', get label() { return t('新建文档'); } },
 ]);
 const documentToolItems = [
@@ -343,6 +348,7 @@ function topbarVisibilityItems(tabId: string, hasDocument: boolean, activePane: 
     ...topbarItems.filter(
       (item) => item.id !== 'breadcrumb' || (tabId !== CALENDAR_TAB_ID && tabId !== GRAPH_TAB_ID),
     ),
+    ...(hasDocument ? [{ id: 'document-status', get label() { return t('文章状态'); } }] : []),
     ...(activePane && extensions.regions['editing-status']
       ? [{ id: 'editing-status', get label() { return t('同步状态'); } }]
       : []),
@@ -351,9 +357,12 @@ function topbarVisibilityItems(tabId: string, hasDocument: boolean, activePane: 
       ? [{ id: 'attachment-export', get label() { return t('导出附件'); } }]
       : []),
     ...(hasDocument ? documentToolItems : []),
-  ];
+  ].map((item, index, items) => ({ ...item, separatorBefore: items[index - 1]?.id === 'document-status' }));
 }
-store.registerViews(extensionViews);
+const SETTINGS_TAB_ID = 'view:settings';
+const settingsTabView = { id: SETTINGS_TAB_ID, get label() { return t('设置'); }, icon: Settings2, detachable: true };
+store.registerViews([...extensionViews, settingsTabView, { id: ASSISTANT_TAB_ID, label: t('助手'), icon: Bot }]);
+store.setBeforeWorkspaceChange(async () => { await assistant.settle(); await inlineRunner.settle(); });
 const activeExtensionView = computed(() =>
   extensionViews.find((view) => view.id === store.activeId),
 );
@@ -366,7 +375,7 @@ const viewActions = Object.fromEntries(
         if (compactPanes.value) sidebar.value = false;
       },
       showSidebar: () => {
-        sidebarView.value = view.id;
+        selectModule(view.id);
         sidebar.value = true;
       },
     },
@@ -437,12 +446,62 @@ function openImport() {
 const historyPage = ref<'versions' | 'updates'>('versions');
 const agentPanel = ref(false);
 const recyclePanel = ref(false);
-const sidebarView = ref('repository');
+const navigation = useWorkbenchNavigation(() => store.workspace?.id, detachedWindow ? undefined : {
+  getItem: key => localStorage.getItem(key),
+  setItem: (key, value) => localStorage.setItem(key, value),
+});
+const { context: navigationContext, module: navigationModule, workspaceView, sidebarView } = navigation;
+let personalPlanScope: typeof plans.view = 'all';
+// Migrate the former workspace plan mode to the workspace view switcher.
+watch([navigationContext, navigationModule], ([context, module]) => {
+  if (context === 'workspace' && module === 'plan') navigation.selectWorkspaceView('events');
+}, { immediate: true });
+function selectContext(context: 'home' | 'workspace') {
+  rememberCalendar();
+  if (navigationContext.value === 'home') personalPlanScope = plans.view;
+  navigation.selectContext(context);
+  plans.view = navigationContext.value === 'home' ? personalPlanScope : 'workspace';
+  restoreCalendar();
+  workspaceMenu.value = false;
+}
+watch(navigationContext, context => { plans.view = context === 'home' ? personalPlanScope : 'workspace'; });
+function selectWorkspaceView(id: string) {
+  rememberCalendar();
+  if (navigationContext.value === 'home') personalPlanScope = plans.view;
+  navigation.selectWorkspaceView(id as WorkspaceSidebarView);
+  restoreCalendar();
+  if (id === 'events') plans.view = 'workspace';
+}
+function selectModule(id: string) {
+  rememberCalendar();
+  if (navigationContext.value === 'home') personalPlanScope = plans.view;
+  if (id === 'plan' && navigationContext.value === 'workspace') navigation.selectWorkspaceView('events');
+  else navigation.selectModule(id);
+  restoreCalendar();
+  plans.view = navigationContext.value === 'home' ? personalPlanScope : 'workspace';
+  sidebar.value = true;
+}
 watch(() => store.activePluginSidebar, key => { if (key) { sidebarView.value = 'plugin-views'; sidebar.value = true; } });
 watch(() => store.pluginSettingsRequest, request => { if (request) openSettings(request.key); });
+const homeContent = ref<string>();
+const homeExtension = computed(() => extensionViews.find(view => view.id === homeContent.value));
 const calendarDate = ref(new Date());
+const sidebarCalendarDate = ref(new Date());
+const calendarScope = ref<typeof plans.view>(plans.view);
 const calendarMode = ref<CalendarViewMode>('week');
 const calendarModeOpen = ref(false);
+const calendarLocations = new Map<string, { date: Date; mode: CalendarViewMode }>();
+function calendarLocationKey() { return navigationContext.value === 'home' ? 'home-plan' : store.workspace?.id ?? ''; }
+function rememberCalendar(key?: string) {
+  if (key === undefined && !['workspace', 'plan'].includes(navigationModule.value)) return;
+  calendarLocations.set(key ?? calendarLocationKey(), { date: new Date(sidebarCalendarDate.value), mode: calendarMode.value });
+}
+function restoreCalendar(key?: string) {
+  if (key === undefined && !['workspace', 'plan'].includes(navigationModule.value)) return;
+  key ??= calendarLocationKey();
+  const saved = calendarLocations.get(key);
+  sidebarCalendarDate.value = saved ? new Date(saved.date) : new Date();
+}
 const calendarModeOptions: { mode: CalendarViewMode; label: string }[] = [
   { mode: 'day', get label() { return t('日'); } },
   { mode: 'four-days', get label() { return t('4 天'); } },
@@ -471,14 +530,22 @@ function showCalendarMonth(date: Date) {
   calendarMode.value = 'month';
 }
 function openCalendar(date?: Date) {
-  sidebarView.value = 'plan';
-  if (date) calendarDate.value = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  store.openCalendarTab();
+  if (sidebarView.value !== 'events' && navigationModule.value !== 'plan') selectModule('plan');
+  calendarScope.value = plans.view;
+  sidebarCalendarDate.value = date ? new Date(date) : sidebarCalendarDate.value;
+  calendarDate.value = new Date(sidebarCalendarDate.value);
+  if (!store.workspace) homeContent.value = CALENDAR_TAB_ID;
+  else store.openCalendarTab();
   if (compactPanes.value) sidebar.value = false;
 }
 function openExtensionView(id: string) {
-  sidebarView.value = extensionViews.find((view) => view.id === id)?.sidebar ? id : 'repository';
-  store.openViewTab(id);
+  if (navigationContext.value === 'home') personalPlanScope = plans.view;
+  rememberCalendar();
+  if (extensionViews.find(view => view.id === id)?.sidebar) navigation.openInHome(id);
+  else navigation.selectContext('home');
+  restoreCalendar();
+  if (!store.workspace) homeContent.value = id;
+  else store.openViewTab(id);
   if (compactPanes.value) sidebar.value = false;
 }
 const selectedDiff = ref<{
@@ -490,13 +557,11 @@ const selectedDiff = ref<{
 }>();
 watch(
   () => store.workspace?.id,
-  () => {
+  (id, previous) => {
     agentPanel.value = false;
     selectedDiff.value = undefined;
     recyclePanel.value = false;
-    sidebarView.value = 'repository';
-    calendarDate.value = new Date();
-    calendarMode.value = 'week';
+    if (navigationModule.value === 'workspace') { if (previous) rememberCalendar(previous); restoreCalendar(id); }
     calendarModeOpen.value = false;
     workspaceMenu.value = false;
     settingsPanel.value = false;
@@ -559,7 +624,8 @@ function currentPageRoute() {
 }
 
 function writePageRoute(replace: boolean) {
-  const path = currentPageRoute();
+  const path = currentPageRoute() ??
+    (!workspace.value && parsePageRoute(window.location.pathname) ? '/' : null);
   if (!webPageRouting || !path) return;
   const url = new URL(window.location.href);
   if (url.pathname === path) return;
@@ -594,12 +660,17 @@ watch([() => workspace.value?.id, activeId], () => {
   if (pageRouteReady && !applyingPageRoute) writePageRoute(false);
 });
 
-async function applyPageRoute() {
+async function applyPageRoute(fromHistory = false) {
   if (!webPageRouting) return;
   const route = parsePageRoute(window.location.pathname);
   pageRouteIndex.value = routeStateIndex();
   pageRouteMax.value = Math.max(pageRouteMax.value, pageRouteIndex.value);
   if (!route) {
+    if (fromHistory && window.location.pathname === '/' && workspace.value) {
+      applyingPageRoute = true;
+      try { await leaveWorkspace(); }
+      finally { applyingPageRoute = false; }
+    }
     writePageRoute(true);
     return;
   }
@@ -628,17 +699,17 @@ async function applyPageRoute() {
 }
 
 function handlePagePopState() {
-  void applyPageRoute().catch(store.report);
+  void applyPageRoute(true).catch(store.report);
 }
 
-watch(activeId, (id) => {
-  calendarModeOpen.value = false;
-  if (id === CALENDAR_TAB_ID) sidebarView.value = 'plan';
-  else if (activeExtensionView.value?.sidebar) sidebarView.value = id;
-  else if (extensionViews.some((view) => view.id === sidebarView.value))
-    sidebarView.value = 'repository';
+watch(activeId, id => { calendarModeOpen.value = false; if (id === ASSISTANT_TAB_ID && compactPanes.value) sidebar.value = false; });
+watch(() => [store.activeId, assistant.loading, store.busy] as const, ([id, loading, switching]) => {
+  if (id === ASSISTANT_TAB_ID && !loading && !switching) openAssistantPage(store, assistant);
 });
 const sidebar = ref(!detachedWindow && !compactPanes.value);
+watch(activeExtensionView, view => {
+  if (view?.collapseSidebarOnOpen) sidebar.value = false;
+}, { immediate: true });
 const mainColumn = ref<HTMLElement>();
 watch(compactPanes, (compact) => { if (compact) sidebar.value = false; });
 const sidebarWidth = ref<number | null>(null);
@@ -728,7 +799,7 @@ function sidebarWidthLimit() {
   );
 }
 function defaultSidebarWidth() {
-  return viewportWidth.value >= 1600 ? 245 : viewportWidth.value <= 1180 ? 210 : 230;
+  return viewportWidth.value >= 1600 ? 264 : viewportWidth.value <= 1180 ? 232 : 252;
 }
 function setSidebarWidth(width: number, preservePreference = false) {
   const requestedWidth = Math.round(width);
@@ -737,7 +808,7 @@ function setSidebarWidth(width: number, preservePreference = false) {
   document.documentElement.style.setProperty('--sidebar-width', `${sidebarWidth.value}px`);
 }
 function currentSidebarWidth() {
-  return document.querySelector<HTMLElement>('.sidebar')?.getBoundingClientRect().width ?? 230;
+  return document.querySelector<HTMLElement>('.sidebar')?.getBoundingClientRect().width ?? defaultSidebarWidth();
 }
 function startSidebarResize(event: PointerEvent) {
   if (compactPanes.value || event.button !== 0) return;
@@ -866,6 +937,7 @@ function readSelectionWrapping() {
   catch { return normalizeSelectionWrapping(); }
 }
 const editorPreferences = ref<EditorPreferences>({
+  autoSpacing: readPreference('autoSpacing', defaultEditorPreferences.autoSpacing ?? false),
   previewMathWhileEditing: readPreference(
     'previewMathWhileEditing',
     defaultEditorPreferences.previewMathWhileEditing,
@@ -877,6 +949,7 @@ const editorPreferences = ref<EditorPreferences>({
 watch(
   editorPreferences,
   (preferences) => {
+    savePreference('autoSpacing', preferences.autoSpacing ?? false);
     savePreference('previewMathWhileEditing', preferences.previewMathWhileEditing);
     savePreference('folding', preferences.folding);
     savePreference('blankBlockAiShortcut', preferences.blankBlockAiShortcut);
@@ -1137,8 +1210,11 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
     { id: 'workbench.properties', category: t('视图'), label: showDocumentProperties.value ? t('隐藏文档属性') : t('显示文档属性'), available: hasDocument, run: () => { showDocumentProperties.value = !showDocumentProperties.value; } },
     { id: 'workbench.discussion', category: t('文档'), get label() { return t('发起讨论'); }, keywords: t('文档讨论 评论'), available: editable, run: openDocumentDiscussion },
     { id: 'workbench.sidebar', category: t('视图'), label: sidebar.value ? t('收起侧栏') : t('展开侧栏'), shortcut: shortcuts.value.toggleSidebar, available: !detachedWindow, run: toggleSidebar },
+    { id: 'workbench.home', category: t('导航'), get label() { return t('切换到主页'); }, available: !detachedWindow, run: () => { selectContext('home'); sidebar.value = true; } },
+    { id: 'workbench.switch-workspace', category: t('导航'), get label() { return t('切换工作区'); }, available: !detachedWindow, run: () => { sidebar.value = true; toggleWorkspaceMenu(); } },
+    ...(extensions.commands ?? []),
     { id: 'workbench.repository', category: t('工作区'), get label() { return t('打开仓库'); }, available: !detachedWindow, run: () => { sidebar.value = true; sidebarView.value = 'repository'; } },
-    { id: 'workbench.plan', category: t('工作区'), get label() { return t('打开计划'); }, available: !detachedWindow && store.workspaceSettings.showPlan, run: () => { sidebar.value = true; sidebarView.value = 'plan'; } },
+    { id: 'workbench.plan', category: t('工作区'), get label() { return t('打开计划'); }, available: !detachedWindow && store.workspaceSettings.showPlan, run: () => { sidebar.value = true; selectModule('plan'); } },
     { id: 'workbench.calendar', category: t('工作区'), get label() { return t('打开日历'); }, available: store.workspaceSettings.showPlan, run: () => openCalendar() },
     { id: 'workbench.graph', category: t('工作区'), get label() { return t('打开关系图谱'); }, available: store.workspaceSettings.showGraph, run: () => store.openGraphTab() },
     ...store.workspaceViews.map((record) => ({
@@ -1155,11 +1231,41 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
     { id: 'workbench.settings', category: t('设置'), get label() { return t('外观设置'); }, keywords: t('打开设置'), run: () => openSettings() },
     { id: 'workbench.settings.editing', category: t('设置'), get label() { return t('编辑设置'); }, run: () => openSettings('editing') },
     { id: 'workbench.settings.shortcuts', category: t('设置'), get label() { return t('快捷键'); }, run: () => openSettings('shortcuts') },
-    { id: 'workbench.settings.workspace', category: t('设置'), get label() { return t('工作区设置'); }, run: () => openSettings('workspace') },
+    { id: 'workbench.settings.workspace', category: t('设置'), get label() { return t('工作区设置'); }, available: navigationContext.value === 'workspace' && !!workspace.value, run: () => openSettings('workspace') },
     { id: 'workbench.settings.about', category: t('设置'), get label() { return t('关于同页'); }, run: () => openSettings('about') },
   ];
 });
-const settingsPage = ref<SettingsPageId>('appearance');
+const settingsPage = ref<SettingsPageId>(detachedWindow ? detachedTabRequest()?.settingsPage ?? 'appearance' : 'appearance');
+// A loaded workspace keeps its session, but only the workspace navigation owns its settings.
+const settingsWorkspace = computed(() => navigationContext.value === 'workspace' ? workspace.value : null);
+const settingsHosts = computed(() => [
+  ...(settingsPanel.value ? ['modal'] : []),
+  ...store.panes.filter(pane => pane.activeId === SETTINGS_TAB_ID).map(pane => pane.id),
+]);
+function openSettingsTab(page: SettingsPageId) {
+  if (!settingsWorkspace.value) return;
+  settingsPage.value = page;
+  store.openViewTab(SETTINGS_TAB_ID);
+  settingsPanel.value = false;
+}
+const openingSettingsWindow = ref(false);
+let settingsPanelMountedResolve!: () => void;
+const settingsPanelMounted = new Promise<void>(resolve => { settingsPanelMountedResolve = resolve; });
+async function openSettingsInNewWindow(page: SettingsPageId) {
+  if (!native || mobile || !tabsEnabled || openingSettingsWindow.value) return;
+  openingSettingsWindow.value = true;
+  settingsPage.value = page;
+  settingsPanel.value = false;
+  requestedSettingsPage = page;
+  try {
+    await openSettingsWindow(page);
+  } catch (error) {
+    settingsPanel.value = true;
+    store.report(error);
+  } finally {
+    openingSettingsWindow.value = false;
+  }
+}
 watch(defaultSource, (value, previous) => {
   savePreference('defaultSource', value);
   if (!editing.active && !editing.activeBusy)
@@ -1377,9 +1483,13 @@ function beginSelectionTodo(paneId: string, fileId: string) {
     paneSource(fileId) ? paneSourceEditors.get(paneId) : paneEditors.get(paneId)
   )?.captureTodoSelection();
   if (!captured) {
-    store.report(t('请先选择要创建 Todo 的文字'));
+    store.report(t('请先选择要创建任务或事件的文字'));
     return;
   }
+  const sourceSpan = paneSource(fileId)
+    ? paneSourceEditors.get(paneId)?.assistantSelection()?.spans[0]
+    : paneEditors.get(paneId)?.assistantSelection();
+  const location = sourceSpan ? { text: sourceSpan.text, from: sourceSpan.from, to: sourceSpan.to } : { text: captured.text };
   const expected = { id: scope.id, path: scope.path, content: doc.content };
   const source: ReferenceTarget = {
     workspace: scope.id,
@@ -1418,11 +1528,17 @@ function beginSelectionTodo(paneId: string, fileId: string) {
             fileId,
             `${original.content.replace(/\n*$/, '')}\n\n${referenceMarkdown(record.object, record.object.name)}\n`,
           );
-        else if (
-          original.content !== expected.content ||
-          !captured.insert(record.object, record.object.name)
-        )
-          throw new Error(t('原文或选区已变化，任务已保留；可在原文末尾插入引用'));
+        else {
+          if (original.content !== expected.content)
+            throw new Error(t('原文或选区已变化，任务已保留；可在原文末尾插入引用'));
+          if (!captured.insert(record.object, record.object.name)) {
+            const range = assistantSourceRange(original.content, location);
+            if (!range) throw new Error(t('原文或选区已变化，任务已保留；可在原文末尾插入引用'));
+            const point = referenceInsertionPoint(original.content, range.to);
+            const link = `${point.prefix}${referenceMarkdown(record.object, record.object.name)}${point.suffix}`;
+            store.editDocument(fileId, original.content.slice(0, point.at) + link + original.content.slice(point.at));
+          }
+        }
       }
       await nextTick();
       if (!documentLinks(original.content).some((link) => link.target === url))
@@ -1431,7 +1547,7 @@ function beginSelectionTodo(paneId: string, fileId: string) {
       if (original.conflict || original.missing || original.error || store.dirty(original))
         throw new Error(t('任务已保留，原文保存发生冲突或失败，请处理文档提示后重试'));
     },
-  });
+  }, { workspaceName: scope.name, source: { workspaceId: scope.id, fileId: doc.id, selection: location } });
 }
 const paneComments = shallowReactive(new Map<string, InstanceType<typeof DocumentComments>>());
 const commentAnchors = shallowReactive<Record<string, { id: string; anchor: CommentAnchor }[]>>({});
@@ -1551,12 +1667,14 @@ function paneCommentGeometry(
   );
 }
 function setPaneComments(paneId: string, value: unknown) {
-  if (value) paneComments.set(paneId, value as InstanceType<typeof DocumentComments>);
+  if (value && typeof (value as { showDiscussion?: unknown }).showDiscussion === 'function') paneComments.set(paneId, value as InstanceType<typeof DocumentComments>);
   else paneComments.delete(paneId);
 }
 const editor = computed(() => paneEditors.get(store.activePaneId));
 function setPaneEditor(id: string, value: unknown) {
-  if (value) paneEditors.set(id, value as InstanceType<typeof MarkdownEditor>);
+  // Async component refs may briefly point at their loading placeholder.
+  // Only publish the editor after its exposed API is available.
+  if (value && typeof (value as { visualSelection?: unknown }).visualSelection === 'function') paneEditors.set(id, value as InstanceType<typeof MarkdownEditor>);
   else paneEditors.delete(id);
 }
 const objectPanel = ref(false);
@@ -1604,7 +1722,9 @@ function showPlanEvent(key: string) {
     return;
   }
   objectPanel.value = false;
+  if (record.source?.scope === 'workspace') selectContext('workspace');
   planDetail.value = record;
+  if (compactPanes.value) sidebar.value = false;
 }
 function managePlanEvents() {
   showObjects();
@@ -1656,8 +1776,11 @@ async function openPlanReference(identity: ReferenceIdentity) {
     else store.report(t('个人事项引用目标不可用'));
     return;
   }
+  const source = planDocumentSource(current?.object.properties.documentSource);
   planDetail.value = undefined;
   await openReference(identity);
+  if (source && identity.type === 'document' && identity.id === source.fileId)
+    await revealAssistantSelection(source);
 }
 const assetInput = ref<HTMLInputElement>();
 const assetImportBusy = ref(false);
@@ -1753,7 +1876,7 @@ function revealPendingAssistantSelection() {
   const target = paneSource(pending.tabId) ? paneSourceEditors.get(pending.paneId) : paneEditors.get(pending.paneId);
   if (target?.revealSourceRange(pending)) pendingAssistantReveal = undefined;
 }
-async function revealAssistantSelection(source: AssistantSource) {
+async function revealAssistantSelection(source: Pick<AssistantSource, 'workspaceId' | 'fileId' | 'selection'>) {
   pendingAssistantReveal = undefined;
   if (store.workspace?.id !== source.workspaceId || store.active?.id !== source.fileId) return;
   const range = assistantSourceRange(store.active.content, source.selection);
@@ -1781,7 +1904,7 @@ async function paneEditorReady(paneId: string, fileId: string, sourceMode: boole
 }
 function setPaneElement(kind: 'scroll' | 'editor' | 'source', id: string, value: unknown) {
   if (kind === 'source') {
-    if (value) paneSourceEditors.set(id, value as InstanceType<typeof SourceEditor>);
+    if (value && typeof (value as { commentSelection?: unknown }).commentSelection === 'function') paneSourceEditors.set(id, value as InstanceType<typeof SourceEditor>);
     else {
       paneSourceEditors.delete(id);
       delete paneSourceSelections[id];
@@ -1804,6 +1927,21 @@ function paneReadonly(doc: OpenDocument) {
       : readPreference(pageLockPreferenceKey(workspace.value?.id ?? '', doc.id), false) ||
         editing.isManaging(doc.id))
   );
+}
+function paneDocumentStatus(doc: OpenDocument) {
+  const locked = doc.id === store.active?.id ? pageLocked.value
+    : readPreference(pageLockPreferenceKey(workspace.value?.id ?? '', doc.id), false);
+  let sync: DocumentSyncStatus | undefined = extensions.documentStatus?.(doc.id);
+  if (!sync && workspaceSync.state.value.backend === 'git') {
+    if (workspaceSync.state.value.conflicts.includes(doc.path)) sync = { kind: 'error', detail: t('当前文章存在 Git 同步冲突。') };
+    else if (workspaceSync.error.value) sync = { kind: 'error', detail: workspaceSync.error.value };
+    else if (workspaceSync.operation.value === 'run') sync = { kind: 'syncing', detail: t('工作区正在进行 Git 同步。') };
+  }
+  return documentStatusItems({ document: doc, locked,
+    preview: updateLock.value || !!workspace.value?.readOnly || !!workspace.value?.files.find(file => file.id === doc.id)?.readOnly,
+    sync,
+    storage: store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local',
+  });
 }
 const documentUndoAvailable = ref(false);
 const documentRedoAvailable = ref(false);
@@ -2084,15 +2222,15 @@ function workspaceEntryContextKeydown(event: KeyboardEvent) {
           : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
   items[next]?.focus({ preventScroll: true });
 }
-function workspaceEntryContextAction(action: 'open' | 'leave' | 'reveal') {
+function workspaceEntryContextAction(action: 'open' | 'reveal') {
   const item = workspaceEntryContextMenu.value?.item;
   if (!item) return;
   closeWorkspaceEntryContextMenu();
   if (action === 'open') {
     workspaceMenu.value = false;
-    if (item.id !== workspace.value?.id) void store.openWorkspace(item.path);
-  } else if (action === 'leave') {
-    void leaveWorkspace();
+    if (item.id === workspace.value?.id) selectContext('workspace');
+    else void store.openWorkspace(item.path);
+
   } else if (action === 'reveal') {
     void store.reveal();
   }
@@ -2297,6 +2435,7 @@ async function addDocumentProperty() {
   if (!canAddDocumentProperty.value) return;
   const fileId = store.activeId;
   const paneId = store.activePaneId;
+  menu.value = false;
   closePageContextMenu();
   showDocumentProperties.value = true;
   setPaneSource(fileId, false);
@@ -2306,8 +2445,8 @@ async function addDocumentProperty() {
   if (store.activeId === fileId && store.activePaneId === paneId)
     await paneEditors.get(paneId)?.addDocumentProperty();
 }
-function togglePageOption(option: 'width' | 'title' | 'properties' | 'outline' | 'lineNumbers') {
-  if (option === 'width') setLimitPageWidth(!limitPageWidth.value);
+function togglePageOption(option: 'title' | 'properties' | 'outline' | 'lineNumbers' | 'autoSpacing') {
+  if (option === 'autoSpacing') editorPreferences.value = { ...editorPreferences.value, autoSpacing: !editorPreferences.value.autoSpacing };
   if (option === 'title') showPageTitle.value = !showPageTitle.value;
   if (option === 'properties') showDocumentProperties.value = !showDocumentProperties.value;
   if (option === 'outline') showOutline.value = !showOutline.value;
@@ -2968,6 +3107,7 @@ const transferRollback = new Map<
     created: boolean;
     priorIndex: number;
     priorActive: string;
+    priorSettingsPage?: SettingsPageId;
     undoDock?: () => void;
     timer: ReturnType<typeof setTimeout>;
   }
@@ -2979,6 +3119,7 @@ async function acceptTabTransfer(request: TabTransferRequest) {
   let actualId = request.tabId;
   let created = false;
   const priorActive = store.activeId;
+  const priorSettingsPage = request.tabId === SETTINGS_TAB_ID ? settingsPage.value : undefined;
   const priorIndex = store.tabs.findIndex((tab) => tab.id === request.tabId);
   let undoDock: (() => void) | undefined;
   let error: string | undefined;
@@ -3013,6 +3154,10 @@ async function acceptTabTransfer(request: TabTransferRequest) {
       await store.openDataTable(request.tabId === TABLES_TAB_ID ? undefined : tableFileId(request.tabId));
     } else if (request.tabId.startsWith('workspace-view:')) {
       throw new Error(t('工作区视图暂不支持移到其他窗口'));
+    } else if (request.tabId === SETTINGS_TAB_ID) {
+      created = priorIndex < 0;
+      settingsPage.value = request.settingsPage ?? 'appearance';
+      store.openViewTab(SETTINGS_TAB_ID);
     } else if (extensionViews.some((view) => view.id === request.tabId)) {
       const view = extensionViews.find((view) => view.id === request.tabId)!;
       if (!view.detachable)
@@ -3045,11 +3190,13 @@ async function acceptTabTransfer(request: TabTransferRequest) {
       created,
       priorIndex,
       priorActive,
+      priorSettingsPage,
       undoDock,
       timer,
     });
   } catch (reason) {
     error = String(reason);
+    if (priorSettingsPage !== undefined) settingsPage.value = priorSettingsPage;
     if (created) await store.close(actualId);
     if (store.tabs.some((tab) => tab.id === priorActive)) store.activeId = priorActive;
   }
@@ -3077,6 +3224,7 @@ async function rollbackTabTransfer(request: TabTransferRollback) {
   if (!pending) return;
   transferRollback.delete(request.requestId);
   clearTimeout(pending.timer);
+  if (pending.priorSettingsPage !== undefined) settingsPage.value = pending.priorSettingsPage;
   if (pending.created) await store.close(pending.tabId);
   else if (pending.undoDock) pending.undoDock();
   else if (pending.priorIndex >= 0) store.placeTab(pending.tabId, pending.priorIndex);
@@ -3137,6 +3285,7 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
       const transfer = await requestTabTransfer(dock.targetLabel, {
         workspaceId: workspace.value.id,
         tabId: id,
+        ...(id === SETTINGS_TAB_ID ? { settingsPage: settingsPage.value } : {}),
         index: dock.index,
         drop: dock.drop,
       });
@@ -3153,14 +3302,15 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
       }
       return;
     }
-    const title = tab.graph
+    const title = tab.view ? tab.view.label : tab.graph
       ? t('关系图谱')
       : tab.plugins
         ? t('插件')
         : tab.blank
           ? t('新标签页')
           : basename(tab.path).replace(/\.(md|markdown)$/i, '');
-    const detached = await createDetachedTabWindow(workspace.value.path, id, title, drop);
+    const detached = await createDetachedTabWindow(workspace.value.path, id, title, drop,
+      id === SETTINGS_TAB_ID ? settingsPage.value : undefined);
     await store.close(id);
     if (store.tabs.some((item) => item.id === id)) {
       await detached.destroy();
@@ -3225,20 +3375,20 @@ async function exportWorkspace(workspaceId: string) {
   } finally { workspaceExporting.value = false; }
 }
 const settingsSnapshot = computed<SettingsSnapshot>(() => ({
-  pluginPages: store.pluginSettingsPages,
-  workspace: workspace.value
+  pluginPages: settingsWorkspace.value ? store.pluginSettingsPages : [],
+  workspace: settingsWorkspace.value
     ? {
-        id: workspace.value.id,
-        name: workspace.value.name,
-        path: workspace.value.path,
-        readOnly: workspace.value.readOnly,
-        canDelete: workspace.value.canDelete,
-        canManageSettings: workspace.value.canManageSettings,
+        id: settingsWorkspace.value.id,
+        name: settingsWorkspace.value.name,
+        path: settingsWorkspace.value.path,
+        readOnly: settingsWorkspace.value.readOnly,
+        canDelete: settingsWorkspace.value.canDelete,
+        canManageSettings: settingsWorkspace.value.canManageSettings,
       }
     : null,
-  activeFile: store.active ? { id: store.active.id, path: store.active.path } : null,
+  activeFile: settingsWorkspace.value && store.active ? { id: store.active.id, path: store.active.path } : null,
   workspaceSettings: store.workspaceSettings,
-  workspacePages: workspace.value?.files.filter(file => file.kind === 'file' && isMarkdown(file.path) && !isWorkspaceInternalPath(file.path)).map(file => ({ id: file.id, path: file.path })) ?? [],
+  workspacePages: settingsWorkspace.value?.files.filter(file => file.kind === 'file' && isMarkdown(file.path) && !isWorkspaceInternalPath(file.path)).map(file => ({ id: file.id, path: file.path })) ?? [],
   workspaceSettingsError: store.workspaceSettingsError,
   workspaceSettingsSaving: store.workspaceSettingsSaving,
   workspaceExporting: workspaceExporting.value,
@@ -3271,6 +3421,13 @@ const settingsSnapshot = computed<SettingsSnapshot>(() => ({
 }));
 let settingsWindowVisible = false;
 let requestedSettingsPage: SettingsPageId = 'appearance';
+let settingsPrewarmTimer: ReturnType<typeof setTimeout> | undefined;
+function warmSettingsWindow() {
+  if (!native || mobile || unmounted) return;
+  clearTimeout(settingsPrewarmTimer);
+  // Warming is speculative; an explicit open retries and reports any failure.
+  void prewarmSettingsWindow().catch(() => {});
+}
 async function syncSettingsWindow() {
   if (!settingsWindowVisible) return;
   try {
@@ -3288,21 +3445,20 @@ watch(
 );
 
 function openSettings(page: SettingsPageId = 'appearance') {
+  warmSettingsWindow();
   menu.value = false;
   workspaceMenu.value = false;
-  if (native && !mobile) {
-    requestedSettingsPage = page;
-    void openSettingsWindow(page)
-      .then(() => {
-        settingsWindowVisible = true;
-      })
-      .catch(store.report);
+  settingsPage.value = page === 'preferences' ? 'appearance' : page;
+  const pane = settingsWorkspace.value && store.panes.find(pane => pane.tabs.includes(SETTINGS_TAB_ID));
+  if (pane) {
+    store.focusPane(pane.id);
+    store.openViewTab(SETTINGS_TAB_ID);
     return;
   }
-  settingsPage.value = page === 'preferences' ? 'appearance' : page;
   settingsPanel.value = true;
 }
 function handleSettingsCommand(command: SettingsCommand) {
+  if (!settingsWorkspace.value && ['workspace-delete', 'workspace-setting', 'workspace-settings-reload', 'workspace-export', 'capability'].includes(command.type)) return;
   if (command.type === 'plugin-invoke') {
     void store.interactWithPlugin(command.interaction).then(
       () => emitTo(settingsWindowLabel(), SETTINGS_PLUGIN_RESULT, { requestId: command.requestId }),
@@ -3403,6 +3559,7 @@ function handleSettingsCommand(command: SettingsCommand) {
 function settingsAction(
   action: 'open-folder' | 'switch-mode' | 'reveal' | 'agent' | 'history' | 'recycle' | 'sign-out',
 ) {
+  if (!settingsWorkspace.value && ['reveal', 'agent', 'history', 'recycle'].includes(action)) return;
   settingsPanel.value = false;
   if (action === 'open-folder') void store.openWorkspace();
   else if (action === 'reveal') void store.reveal();
@@ -3513,7 +3670,7 @@ async function exportDocument(format: DocumentExportFormat) {
     currentWorkspace = workspace.value;
   if (!doc || exportBusy.value) return;
   const title = showPageTitle.value
-    ? editorScroll.value?.querySelector<HTMLInputElement>('.document-title-input')?.value
+    ? editorScroll.value?.querySelector<HTMLTextAreaElement>('.document-title-wrap textarea')?.value
     : undefined;
   const options = {
     id: doc.id,
@@ -3800,7 +3957,6 @@ let unlistenWatchError: (() => void) | undefined;
 let unlistenTabTransfer: (() => void) | undefined;
 let unlistenTabRollback: (() => void) | undefined;
 let unlistenSettingsCommand: (() => void) | undefined;
-let settingsPrewarmTimer: number | undefined;
 onMounted(async () => {
   window.addEventListener('keydown', handleWorkbenchShortcut, true);
   window.addEventListener('keydown', keydown);
@@ -3829,6 +3985,9 @@ onMounted(async () => {
       else await store.initialize(initialPageRoute?.workspaceId ?? props.initialWorkspace);
     });
   } finally {
+    navigation.restore();
+    if (navigation.homeModule.value !== 'plan' && !extensionViews.some(view => view.id === navigation.homeModule.value && view.sidebar)) navigation.homeModule.value = 'plan';
+    plans.view = navigationContext.value === 'home' ? personalPlanScope : 'workspace';
     startupPending.value = false;
   }
   if (unmounted) return;
@@ -3842,6 +4001,7 @@ onMounted(async () => {
     unlistenSettingsCommand = await listen<SettingsCommand>(SETTINGS_COMMAND, ({ payload }) => {
       handleSettingsCommand(payload);
     });
+    settingsPrewarmTimer = setTimeout(warmSettingsWindow, 800);
     unlistenTabTransfer = await listen<TabTransferRequest>(TAB_TRANSFER_REQUEST, ({ payload }) => {
       void acceptTabTransfer(payload).catch(store.report);
     });
@@ -3858,13 +4018,14 @@ onMounted(async () => {
       store.workspace?.path === detachedRequest.workspacePath &&
       store.tabs.length === 1 &&
       (detachedRequest.tabId.startsWith('blank:') || store.tabs[0]?.id === detachedRequest.tabId);
+    // Async settings imports can finish after the workspace is ready. Keep the
+    // native window hidden until its target view has actually mounted.
+    if (opened && detachedRequest.tabId === SETTINGS_TAB_ID) await settingsPanelMounted;
+    await nextTick();
     await reportDetachedReady(opened ? undefined : t('独立窗口未能打开所选标签页'));
   }
   if (native && !mobile && !detachedWindow) {
     void updates.initialize();
-    settingsPrewarmTimer = window.setTimeout(() => {
-      void prewarmSettingsWindow().catch(() => {});
-    }, 5000);
   }
   if (native) {
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
@@ -3876,10 +4037,6 @@ onMounted(async () => {
       unlistenClose = await getCurrentWindow().onCloseRequested(async (event) => {
         event.preventDefault();
         if (updates.state.phase === 'installing') return;
-        if (settingsPrewarmTimer !== undefined) {
-          window.clearTimeout(settingsPrewarmTimer);
-          settingsPrewarmTimer = undefined;
-        }
         try {
           if (await store.flush()) {
             await assistant.settle();
@@ -3896,6 +4053,8 @@ onMounted(async () => {
 });
 onBeforeUnmount(() => {
   unmounted = true;
+  clearTimeout(settingsPrewarmTimer);
+  if (native && !mobile) void closeSettingsWindow();
   document.documentElement.style.removeProperty('--sidebar-width');
   if (headingFrame !== undefined) cancelAnimationFrame(headingFrame);
   workbenchSession.release();
@@ -3922,7 +4081,6 @@ onBeforeUnmount(() => {
   unlistenTabTransfer?.();
   unlistenTabRollback?.();
   unlistenSettingsCommand?.();
-  if (settingsPrewarmTimer !== undefined) window.clearTimeout(settingsPrewarmTimer);
   for (const pending of transferRollback.values()) clearTimeout(pending.timer);
   transferRollback.clear();
 });
@@ -3959,7 +4117,7 @@ const helpAvailability = computed<HelpAvailability>(() => ({
   duplicate: !!workspace.value && !workspace.value.readOnly && !!workspaceAdapter.duplicate,
 }));
 const helpBlocked = computed(() => !!(
-  activeExtensionView.value || activeId.value.startsWith('attachment:') ||
+  activeExtensionView.value || activeId.value === SETTINGS_TAB_ID || activeId.value.startsWith('attachment:') ||
   (assistant.opened && assistant.displayMode === 'fullscreen') ||
   busy.value || fatal.value || store.pending || active.value?.conflict || active.value?.error ||
   workspaceMenu.value || menu.value || modal.value || settingsPanel.value ||
@@ -4003,7 +4161,7 @@ const helpBlocked = computed(() => !!(
     @pointercancel="finishSidebarResize"
     @lostpointercapture="finishSidebarResize"
     :class="{
-      'sidebar-hidden': detachedWindow || !sidebar || !workspace,
+      'sidebar-hidden': detachedWindow || !sidebar,
       'detached-window': detachedWindow,
       'sidebar-resizing': resizingSidebar,
       'workspace-empty': !workspace,
@@ -4013,15 +4171,14 @@ const helpBlocked = computed(() => !!(
     <Teleport to="body"><FileMetadataPanel v-if="fileMetadataTarget" v-bind="fileMetadataTarget" @close="fileMetadataTarget = null" /></Teleport>
     <Transition name="sidebar-dismiss">
       <button
-        v-if="workspace && sidebar && !detachedWindow && compactPanes"
+        v-if="sidebar && !detachedWindow && compactPanes"
         class="sidebar-dismiss"
         :aria-label="t('收起侧栏')"
         @click="toggleSidebar"
       />
     </Transition>
     <WorkspaceSidebar
-      v-if="workspace && !detachedWindow"
-      :key="workspace.id"
+      v-if="!detachedWindow"
       :open="sidebar"
       :compact="compactPanes"
       :content-element="mainColumn"
@@ -4038,15 +4195,6 @@ const helpBlocked = computed(() => !!(
             >
               <img src="/favicon-green.svg?v=3" alt="" />
             </component>
-            <button
-              type="button"
-              class="icon-button sidebar-toggle"
-              :aria-label="t('收起侧栏')"
-              :data-tooltip="t('收起侧栏')" :data-tooltip-shortcut="shortcuts.toggleSidebar"
-              @click="toggleSidebar"
-            >
-              <PanelLeftClose :size="17" :stroke-width="1.6" />
-            </button>
           </div>
           <ButtonVisibilityGroup
             v-slot="{ isVisible }"
@@ -4061,55 +4209,31 @@ const helpBlocked = computed(() => !!(
             <template v-for="view in extensionViews" :key="`header-${view.id}`">
               <component
                 :is="view.header"
-                v-if="store.workspaceSettings.showCollaborationViews && view.header && isVisible(view.id)"
+                v-if="(view.scope === 'account' || store.workspaceSettings.showCollaborationViews) && view.header && isVisible(view.id)"
                 :actions="viewActions[view.id]"
               />
             </template>
-            <button
-              v-if="store.workspaceSettings.showGraph && isVisible('graph')"
-              type="button"
-              class="icon-button"
-              :aria-label="t('打开关系图谱')"
-              :data-tooltip="t('关系图谱')"
-              :aria-pressed="activeId === GRAPH_TAB_ID"
-              @click="store.openGraphTab()"
-            >
-              <GitFork :size="17" :stroke-width="1.6" />
-            </button>
             <button v-if="isVisible('commands')" type="button" class="icon-button" :aria-label="t('打开命令中心')" :data-tooltip="t('命令中心')" :data-tooltip-shortcut="shortcuts.commandPalette" @click="commandPaletteOpened = true"><Search :size="17" /></button>
           </ButtonVisibilityGroup>
         </div>
         <SidebarNavigation
+          v-if="navigationContext === 'home'"
           v-slot="{ isVisible }"
           :items="sidebarNavigationItems"
           :active="sidebar"
           @open="closeButtonVisibilityMenus"
         >
           <button
-            v-if="isVisible('repository')"
-            type="button"
-            class="sidebar-navigation-button"
-            :aria-label="t('仓库')"
-            :data-tooltip="t('仓库')"
-            aria-controls="sidebar-repository-panel"
-            :aria-pressed="sidebarView === 'repository'"
-            @click="sidebarView = 'repository'"
-          >
-            <FolderOpen :size="17" :stroke-width="1.8" aria-hidden="true" />
-            <span :aria-hidden="sidebarView !== 'repository'">{{ t('仓库') }}</span>
-          </button>
-          <button
-            v-if="store.workspaceSettings.showPlan && isVisible('plan')"
             type="button"
             class="sidebar-navigation-button"
             :aria-label="t('计划')"
             :data-tooltip="t('计划')"
             aria-controls="sidebar-plan-panel"
-            :aria-pressed="sidebarView === 'plan'"
-            @click="openCalendar()"
+            :aria-pressed="navigationModule === 'plan'"
+            @click="selectModule('plan')"
           >
             <CalendarDays :size="18" :stroke-width="1.6" aria-hidden="true" />
-            <span :aria-hidden="sidebarView !== 'plan'">{{ t('计划') }}</span>
+            <span :aria-hidden="navigationModule !== 'plan'"><span>{{ t('计划') }}</span></span>
           </button>
           <template v-for="view in extensionViews" :key="view.id">
             <button
@@ -4120,39 +4244,33 @@ const helpBlocked = computed(() => !!(
               :data-tooltip="view.label"
               :aria-controls="`sidebar-${view.id}`"
               :aria-pressed="sidebarView === view.id"
-              @click="openExtensionView(view.id)"
+              @click="selectModule(view.id)"
             >
               <component :is="view.icon" :size="18" :stroke-width="1.6" aria-hidden="true" />
-              <span :aria-hidden="sidebarView !== view.id">{{ view.label }}</span>
+              <span :aria-hidden="sidebarView !== view.id"><span>{{ view.label }}</span></span>
             </button>
           </template>
-          <button v-if="isVisible('plugin-views') && (store.pluginViews.length || store.pluginCommands.length)" type="button" class="sidebar-navigation-button"
-            :aria-label="t('插件工作台')" :data-tooltip="t('插件工作台')" :aria-pressed="sidebarView === 'plugin-views'" @click="sidebarView = 'plugin-views'">
-            <Puzzle :size="17" /><span :aria-hidden="sidebarView !== 'plugin-views'">{{ t('扩展') }}</span>
-          </button>
         </SidebarNavigation>
         <PluginSidebar v-if="sidebarView === 'plugin-views'" />
-        <div
-          v-show="sidebarView === 'repository'"
-          id="sidebar-repository-panel"
-          class="sidebar-content"
-        >
           <div
-            class="section-label"
+            v-show="navigationModule === 'workspace'"
+            class="section-label sidebar-view-header"
             :class="{ 'drop-target': draggedEntry && dropFolder === '' }"
             @dragover="fileDragOver('', $event)"
             @dragleave="fileDragLeave('', $event)"
             @drop="fileDrop('', $event)"
           >
             <span v-if="draggedEntry">{{ t('放到工作区根目录') }}</span>
-            <WorkspaceSwitcher
+            <WorkspaceViewSwitcher
               v-else
-              :active="sidebar && sidebarView === 'repository' && !workspaceMenu && !modal && !settingsPanel"
+              :model-value="workspaceView"
+              @update:model-value="selectWorkspaceView"
+              :active="sidebar && !workspaceMenu && !modal && !settingsPanel"
               @open="closeButtonVisibilityMenus"
-              @context="openWorkspaceEntryContextMenu"
             />
             <ButtonVisibilityGroup
               v-slot="{ isVisible }"
+              v-show="sidebarView === 'repository'"
               :items="repositoryActionItems"
               :active="sidebar && sidebarView === 'repository'"
               preference-key="tano.preference.repositoryHiddenActions"
@@ -4172,15 +4290,15 @@ const helpBlocked = computed(() => !!(
                 <Search :size="15" :stroke-width="1.6" />
               </button>
               <button
-                v-if="store.workspaceSettings.showPlugins && isVisible('plugins')"
+                v-if="store.workspaceSettings.showGraph && isVisible('graph')"
                 type="button"
                 class="icon-button"
-                :aria-label="t('打开插件标签页')"
-                :data-tooltip="t('工作区插件')"
-                :aria-pressed="activeId === PLUGINS_TAB_ID"
-                @click="store.openPluginsTab()"
+                :aria-label="t('打开关系图谱')"
+                :data-tooltip="t('关系图谱')"
+                :aria-pressed="activeId === GRAPH_TAB_ID"
+                @click="store.openGraphTab()"
               >
-                <Puzzle :size="15" :stroke-width="1.6" />
+                <GitFork :size="15" :stroke-width="1.6" />
               </button>
               <button
                 v-if="isVisible('create')"
@@ -4194,7 +4312,13 @@ const helpBlocked = computed(() => !!(
               </button>
             </ButtonVisibilityGroup>
           </div>
+        <div
+          v-show="sidebarView === 'repository'"
+          id="sidebar-repository-panel"
+          class="sidebar-content"
+        >
           <div
+            v-scroll-fade
             class="tree-scroll"
             :class="{ 'drop-root': draggedEntry && dropFolder === '' }"
             @contextmenu.self.prevent="openDirectoryContextMenu('', $event)"
@@ -4235,11 +4359,20 @@ const helpBlocked = computed(() => !!(
             </div>
           </div>
         </div>
+        <section v-if="sidebarView === 'plugins'" class="sidebar-content workspace-plugins-sidebar" :aria-label="t('工作区插件')">
+          <PluginInstaller sidebar @objects="showObjects()" />
+        </section>
+        <section v-if="sidebarView === 'views'" class="sidebar-content workspace-views-sidebar" :aria-label="t('数据库与视图')">
+          <button @click="store.openDataTable()"><Table2 :size="15" />{{ t('数据表') }}</button>
+          <button v-for="record in store.workspaceViews" :key="record.view.id" @click="store.openWorkspaceView(record.view.id)">{{ record.view.name }}</button>
+        </section>
+        <SidebarAssistant v-if="sidebarView === 'assistant'" @open="compactPanes && (sidebar = false)" />
         <SidebarPlan
-          v-show="sidebarView === 'plan'"
-          :active="sidebar && sidebarView === 'plan'"
+          v-show="sidebarView === 'plan' || sidebarView === 'events'"
+          :active="sidebar && (sidebarView === 'plan' || sidebarView === 'events')"
+          :workspace-only="navigationContext === 'workspace'"
           id="sidebar-plan-panel"
-          :date="calendarDate"
+          :date="sidebarCalendarDate"
           @select-date="openCalendar"
           @select-event="showPlanEvent"
         />
@@ -4545,9 +4678,6 @@ const helpBlocked = computed(() => !!(
               >
                 <ExternalLink :size="15" />{{ t('在资源管理器中显示') }}
               </button>
-              <button v-if="!store.isWeb" role="menuitem" :disabled="busy" @click="workspaceEntryContextAction('leave')">
-                <LogOut :size="15" />{{ t('退出当前工作区') }}
-              </button>
             </template>
           </div>
         </Teleport>
@@ -4557,14 +4687,14 @@ const helpBlocked = computed(() => !!(
               class="workspace-picker"
               :aria-expanded="workspaceMenu"
               aria-controls="workspace-menu"
-              :aria-label="t('切换工作区')"
-              :data-tooltip="workspace?.name ?? t('选择工作区')"
+              :aria-label="t('切换上下文：{0}', [navigationContext === 'home' ? t('主页') : workspace?.name ?? t('选择工作区')])"
+              :data-tooltip="navigationContext === 'home' ? t('主页') : workspace?.name ?? t('选择工作区')"
               @click="toggleWorkspaceMenu"
               @contextmenu.stop.prevent="toggleWorkspaceMenu"
             >
-              <span class="workspace-avatar"><WorkspaceIcon :icon="store.workspaceSettings.icon" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" :size="15" /></span>
+              <span class="workspace-avatar"><House v-if="navigationContext === 'home'" :size="15" /><WorkspaceIcon v-else :icon="store.workspaceSettings.icon" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" :size="15" /></span>
               <span class="workspace-picker-text"
-                ><strong>{{ workspace?.name ?? t('选择工作区') }}</strong></span
+                ><strong>{{ navigationContext === 'home' ? t('主页') : workspace?.name ?? t('选择工作区') }}</strong></span
               >
               <component :is="workspaceMenu ? ChevronUp : ChevronDown" :size="12" />
             </button>
@@ -4574,35 +4704,13 @@ const helpBlocked = computed(() => !!(
               class="dropdown compact-action-menu sidebar-popover workspace-dropdown"
               @contextmenu.stop.prevent="workspaceDropdownContextMenu"
             >
-              <div class="workspace-menu-summary">
-                <span class="workspace-menu-avatar"><WorkspaceIcon :icon="store.workspaceSettings.icon" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" :size="16" /></span>
-                <span class="workspace-menu-summary-text">
-                  <strong>{{ workspace?.name ?? t('选择工作区') }}</strong>
-                  <small>{{
-                    store.isDemo
-                      ? t('浏览器演示')
-                      : store.isWeb
-                        ? workspace?.readOnly
-                          ? t('在线工作区 · 只读')
-                          : t('在线工作区')
-                        : t('本地工作区')
-                  }}</small>
-                </span>
-                <button
-                  v-if="!store.isWeb && workspace && !extensions.regions['workspace-menu-layout']"
-                  class="workspace-menu-exit"
-                  type="button"
-                  :aria-label="t('退出当前工作区')"
-                  :data-tooltip="t('退出当前工作区')"
-                  :disabled="busy"
-                  @click="leaveWorkspace"
-                >
-                  <LogOut :size="16" />
-                </button>
-              </div>
+              <button class="context-menu-item" type="button" :aria-current="navigationContext === 'home' ? 'true' : undefined" @click="selectContext('home')"><House :size="16" /><span class="recent-name">{{ t('主页') }}</span><Check v-if="navigationContext === 'home'" :size="15" /></button>
+              <div class="menu-divider" />
               <PluginMenu location="workspace" @selected="workspaceMenu = false" />
               <component
                 :is="extensions.regions['workspace-menu-layout'] ?? WorkspaceMenuLayout"
+                :navigation-context="navigationContext"
+                @select-workspace="selectContext('workspace')"
                 :actions="extensionActions"
               >
               <template v-if="extensions.regions['workspace-settings']" #settings>
@@ -4701,16 +4809,9 @@ const helpBlocked = computed(() => !!(
                 v-if="extensions.regions['sign-out']"
                 :actions="extensionActions"
               />
-              <button
-                v-if="extensions.regions['workspace-menu-layout'] && !store.isWeb && workspace"
-                role="menuitem"
-                :disabled="busy"
-                @click="leaveWorkspace"
-              >
-                <LogOut :size="16" />{{ t('退出当前工作区') }}
-              </button>
               </template>
               <template #workspaces>
+              <button class="context-menu-item" v-if="workspace && !store.recent.some(item => item.id === workspace?.id) && !extensions.regions['workspace-menu-layout']" type="button" :data-workspace-entry-id="workspace.id" :aria-current="navigationContext === 'workspace' ? 'true' : undefined" @click="selectContext('workspace')"><WorkspaceIcon :icon="store.workspaceSettings.icon" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" :size="16" /><span class="recent-name">{{ workspace.name }}</span><Check v-if="navigationContext === 'workspace'" :size="15" /></button>
               <component
                 v-if="extensions.regions['workspace-menu']"
                 :is="extensions.regions['workspace-menu']"
@@ -4722,21 +4823,20 @@ const helpBlocked = computed(() => !!(
                   :disabled="busy"
                   @click="
                     workspaceMenu = false;
-                    store.isDemo ? openSettings('about') : store.openWorkspace();
+                    store.isDemo && workspace ? openSettings('about') : store.openWorkspace();
                   "
                 >
-                  <FolderOpen :size="16" />{{ store.isDemo ? t('了解演示存储') : t('打开默认手机空间') }}
+                  <FolderOpen :size="16" />{{ store.isDemo ? workspace ? t('了解演示存储') : t('打开演示工作区') : t('打开默认手机空间') }}
                 </button>
-                <component
-                  :is="extensions.regions['local-menu-login']"
-                  v-if="extensions.regions['local-menu-login']"
-                  :actions="extensionActions"
-                />
+
                 <button v-if="mobile" :disabled="busy" @click="createNewWorkspace">
                   <FolderPlus :size="16" />{{ t('新建手机空间') }}
                 </button>
                 <template v-if="store.recent.length || (!store.isDemo && !mobile)">
-                  <div class="menu-divider" />
+                  <div
+                    v-if="store.isDemo || mobile"
+                    class="menu-divider"
+                  />
                   <div class="workspace-recent-heading">
                     <span class="recent-label">{{ store.isDemo ? t('最近工作空间') : t('本地工作区') }}</span>
                     <button
@@ -4755,22 +4855,23 @@ const helpBlocked = computed(() => !!(
                     </button>
                   </div>
                   <button
+                    class="context-menu-item"
                     v-for="item in store.recent.slice(0, 5)"
                     :key="item.id"
                     :data-tooltip="item.path"
                     :disabled="busy"
-                    :aria-current="item.id === workspace?.id ? 'true' : undefined"
+                    :aria-current="navigationContext === 'workspace' && item.id === workspace?.id ? 'true' : undefined"
                     :data-workspace-entry-id="item.id"
                     @mousedown.right.stop.prevent="openWorkspaceEntryContextMenu(item, $event)"
                     @contextmenu.stop.prevent="openWorkspaceEntryContextMenu(item, $event)"
                     @click="
                       workspaceMenu = false;
-                      store.openWorkspace(item.path);
+                      item.id === workspace?.id ? selectContext('workspace') : store.openWorkspace(item.path);
                     "
                   >
                     <span class="workspace-list-avatar"><WorkspaceIcon :icon="item.id === workspace?.id ? store.workspaceSettings.icon : item.icon" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" :size="16" /></span>
                     <span class="recent-name">{{ item.name }}</span>
-                    <Check v-if="item.id === workspace?.id" :size="15" />
+                    <Check v-if="navigationContext === 'workspace' && item.id === workspace?.id" :size="15" />
                   </button>
                 </template>
               </template>
@@ -4783,12 +4884,17 @@ const helpBlocked = computed(() => !!(
             v-if="extensions.regions['sidebar-footer']"
             :actions="extensionActions"
           />
+                <component
+                  :is="extensions.regions['local-menu-login']"
+                  v-if="extensions.regions['local-menu-login']"
+                  :actions="extensionActions"
+                />
           <HelpLauncher
             :context="helpContext"
             :availability="helpAvailability"
-            :available="sidebar && !!workspace && !detachedWindow"
+            :available="sidebar && !detachedWindow"
             :blocked="helpBlocked"
-            :scope="`${workspace?.id}:${activeId}`"
+            :scope="`${navigationContext}:${workspace?.id ?? 'home'}:${activeId}`"
             :documentation-base-url="documentationBaseUrl"
             :native="native"
             @open="workspaceMenu = false; menu = false"
@@ -4811,7 +4917,8 @@ const helpBlocked = computed(() => !!(
         />
     </WorkspaceSidebar>
 
-    <div ref="mainColumn" class="main-column" :inert="compactPanes && sidebar && !!workspace || undefined">
+    <div ref="mainColumn" class="main-column" :inert="compactPanes && sidebar || undefined">
+      <button v-if="!workspace && !sidebar && !detachedWindow" class="icon-button" :aria-label="t('展开侧栏')" @click="sidebar = true"><PanelLeftOpen :size="18" /></button>
       <ReferenceGraphPopover
         v-if="referenceGraphTarget"
         v-model:opened="referenceGraphOpened"
@@ -4884,15 +4991,19 @@ const helpBlocked = computed(() => !!(
         </template>
         <template #sidebar>
           <AssistantPanel
-            v-if="assistant.available && assistant.opened"
+            v-if="assistant.available && assistantPanelMounted"
             :compact="compactPanes"
             :fullscreen-target="assistantHosts.get(assistant.fullscreenPaneId ?? '')"
+            :navigation-visible="store.activeId === ASSISTANT_TAB_ID"
+            @show-navigation="sidebar = true"
             @open-reference="openReference"
             @reveal-selection="revealAssistantSelection"
             @open-settings="openSettings('assistant')"
+            @closed="assistantPanelMounted = assistant.opened"
           />
         </template>
         <template #default="{ pane, document: active, tab }">
+          <LoadingSkeleton v-if="store.openingDocuments[pane.id]?.tabId === pane.activeId" variant="document" :rows="10" class="pane-loading-skeleton" />
           <TemplateLibrary
             v-if="templateLibraryOpen && pane.id === templatePaneId && workspace"
             :key="workspace.id"
@@ -4979,19 +5090,25 @@ const helpBlocked = computed(() => !!(
                 "
                 :workspace-id="workspace?.id"
                 :workspace-name="workspace?.name ?? 'Tano'"
+                :hide-workspace="!!tab?.path"
                 :entries="workspace?.files ?? []"
+                :document-icons="treeDocumentIcons"
+                :load-document-icon="loadTreeDocumentIcon"
                 :path="tab?.path"
                 :demo-label="store.isDemo ? workspaceStatusLabel : undefined"
                 :read-only="workspace?.readOnly"
                 @open="(file) => { store.focusPane(pane.id); openEntry(file); }"
               >
+                <template #status>
+                  <DocumentStatus v-if="active && isVisible('document-status')" :document-key="`${workspace?.id}:${active.id}`" :items="paneDocumentStatus(active)" />
+                </template>
                 <template v-if="tab?.pluginView"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">{{ tab.pluginView.label }}</span></template>
                 <template v-if="pane.activeId === PLUGINS_TAB_ID"
                   ><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current"
                     >{{ t('插件') }}</span
                   ></template
                 ><template
-                  v-for="view in extensionViews.filter((view) => view.id === pane.activeId)"
+                  v-for="view in [...extensionViews, settingsTabView].filter((view) => view.id === pane.activeId)"
                   :key="view.id"
                   ><ChevronRight :size="12" /><component :is="view.icon" :size="14" /><span
                     class="breadcrumb-current"
@@ -4999,6 +5116,8 @@ const helpBlocked = computed(() => !!(
                   ></template
                 >
               </WorkspaceBreadcrumb>
+              <DocumentStatus v-if="active && !isVisible('breadcrumb') && isVisible('document-status')"
+                :document-key="`${workspace?.id}:${active.id}`" :items="paneDocumentStatus(active)" />
               <div class="topbar-right">
                 <button v-if="active && touchLayout && showOutline" type="button" class="icon-button"
                   :aria-label="t('文档大纲')" :aria-expanded="touchOutlineOpen"
@@ -5193,15 +5312,11 @@ const helpBlocked = computed(() => !!(
                       @keydown="documentMenuKeydown"
                     >
                       <PluginMenu location="document" :file-id="active.id" @selected="menu = false" />
-                      <button type="button"
-                        :disabled="editorReadonly || !!editing.active || editing.activeBusy || !paneComments.has(store.activePaneId)"
-                        @click="openDocumentDiscussion">
-                        <MessageSquare :size="15" />{{ t('发起讨论') }}
+                      <button type="button" @click="openPaneSearch(pane.id)">
+                        <Search :size="15" />{{ t('页内搜索') }}<span class="menu-shortcut">{{ shortcutHint('pageSearch') }}</span>
                       </button>
-                      <button type="button"
-                        :disabled="suggestionModeBusy || (!documentSuggestions.get(active.id)?.mode && (paneReadonly(active) || editing.isManaging(active.id) || editing.activeBusy)) || documentSuggestions.get(active.id)?.loading || documentSuggestions.get(active.id)?.reviewing"
-                        @click="toggleSuggestionMode(active.id)">
-                        <MessageSquareDiff :size="15" />{{ documentSuggestions.get(active.id)?.mode ? t('退出建议模式') : t('建议编辑') }}
+                      <button type="button" @click="openPaneSearch(pane.id, true)">
+                        <Repeat2 :size="15" />{{ t('查找与替换') }}<span class="menu-shortcut">{{ shortcutHint('pageReplace') }}</span>
                       </button>
                       <button
                         type="button"
@@ -5225,29 +5340,21 @@ const helpBlocked = computed(() => !!(
                       >
                         <CheckCheck :size="15" />{{ t('立即保存') }}<span class="menu-shortcut">{{ shortcutHint('save') }}</span>
                       </button>
-                      <button
-                        class="danger-text"
-                        :disabled="
-                          editorReadonly ||
-                          sessionBlocksFileMutation(pane.activeId) ||
-                          (pane.id === store.activePaneId && editing.activeBusy)
-                        "
-                        @click="removeDocument()"
-                      >
-                        <Trash2 :size="15" />{{
-                          store.isDemo
-                            ? t('删除演示文档')
-                            : store.isWeb
-                              ? t('删除在线文档')
-                              : t('移入回收站')
-                        }}
+                      <div class="menu-divider" role="separator" />
+                      <button type="button" :disabled="!canAddDocumentProperty" @click="addDocumentProperty">
+                        <Plus :size="15" />{{ t('添加文档属性') }}
                       </button>
-                      <button type="button" @click="openPaneSearch(pane.id)">
-                        <Search :size="15" />{{ t('页内搜索') }}<span class="menu-shortcut">{{ shortcutHint('pageSearch') }}</span>
+                      <button type="button"
+                        :disabled="editorReadonly || !!editing.active || editing.activeBusy || !paneComments.has(store.activePaneId)"
+                        @click="openDocumentDiscussion">
+                        <MessageSquare :size="15" />{{ t('发起讨论') }}
                       </button>
-                      <button type="button" @click="openPaneSearch(pane.id, true)">
-                        <Repeat2 :size="15" />{{ t('查找与替换') }}<span class="menu-shortcut">{{ shortcutHint('pageReplace') }}</span>
+                      <button type="button"
+                        :disabled="suggestionModeBusy || (!documentSuggestions.get(active.id)?.mode && (paneReadonly(active) || editing.isManaging(active.id) || editing.activeBusy)) || documentSuggestions.get(active.id)?.loading || documentSuggestions.get(active.id)?.reviewing"
+                        @click="toggleSuggestionMode(active.id)">
+                        <MessageSquareDiff :size="15" />{{ documentSuggestions.get(active.id)?.mode ? t('退出建议模式') : t('建议编辑') }}
                       </button>
+                      <div class="menu-divider" role="separator" />
                       <button
                         type="button"
                         aria-haspopup="dialog"
@@ -5256,7 +5363,6 @@ const helpBlocked = computed(() => !!(
                       >
                         <GitFork :size="15" />{{ t('查看关系图谱') }}
                       </button>
-                      <div class="menu-divider" role="separator" />
                       <button
                         type="button"
                         class="page-toggle-menu-item"
@@ -5273,22 +5379,6 @@ const helpBlocked = computed(() => !!(
                           ><span
                         /></span>
                       </button>
-                      <button
-                        type="button"
-                        class="page-toggle-menu-item"
-                        role="switch"
-                        :aria-checked="showOutline"
-                        :data-tooltip="t('切换文档目录显示')"
-                        @click="showOutline = !showOutline"
-                      >
-                        <List :size="15" />{{ t('显示目录') }}<span
-                          class="menu-switch"
-                          :class="{ on: showOutline }"
-                          aria-hidden="true"
-                          ><span
-                        /></span>
-                      </button>
-                      <div class="menu-divider" role="separator" />
                       <button
                         type="button"
                         class="page-toggle-menu-item"
@@ -5323,8 +5413,25 @@ const helpBlocked = computed(() => !!(
                       >
                         <Clock3 :size="15" />{{ t('更新历史') }}
                       </button>
-                      <div class="menu-divider" role="separator" />
                       <DocumentExportMenu :disabled="exportBusy" @select="exportDocument" />
+                      <div class="menu-divider" role="separator" />
+                      <button
+                        class="danger-text"
+                        :disabled="
+                          editorReadonly ||
+                          sessionBlocksFileMutation(pane.activeId) ||
+                          (pane.id === store.activePaneId && editing.activeBusy)
+                        "
+                        @click="removeDocument()"
+                      >
+                        <Trash2 :size="15" />{{
+                          store.isDemo
+                            ? t('删除演示文档')
+                            : store.isWeb
+                              ? t('删除在线文档')
+                              : t('移入回收站')
+                        }}
+                      </button>
                     </div>
                   </div>
                 </template>
@@ -5367,6 +5474,7 @@ const helpBlocked = computed(() => !!(
               v-if="workspace && pane.activeId === CALENDAR_TAB_ID"
               :date="calendarDate"
               :mode="calendarMode"
+              :records="plans.recordsFor(calendarScope)"
               @select-mode="selectCalendarMode"
               @visible-month="calendarDate = $event"
               @visible-year="calendarDate = $event"
@@ -5376,6 +5484,7 @@ const helpBlocked = computed(() => !!(
               @select-event="showPlanEvent"
             />
 
+            <main v-if="pane.activeId === ASSISTANT_TAB_ID" class="assistant-page-placeholder"><button @click="openAssistantPage(store, assistant)">{{ t('打开助手') }}</button></main>
             <template v-for="view in extensionViews" :key="view.id">
               <component
                 v-if="pane.activeId === view.id"
@@ -5384,6 +5493,7 @@ const helpBlocked = computed(() => !!(
               />
             </template>
 
+            <div v-if="pane.activeId === SETTINGS_TAB_ID" :id="`settings-host-${pane.id}`" class="settings-tab-host" />
             <PluginView v-if="tab?.pluginView" :view-key="tab.pluginView.key" />
             <main
               v-if="workspace && pane.tabs.includes(PLUGINS_TAB_ID)"
@@ -5461,8 +5571,8 @@ const helpBlocked = computed(() => !!(
                           v-if="showSourceTodo(pane.id, active!)"
                           type="button"
                           class="icon-button"
-                          :aria-label="t('从选区创建 Todo')"
-                          :data-tooltip="t('从选区创建 Todo')"
+                          :aria-label="t('从选区创建任务或事件')"
+                          :data-tooltip="t('从选区创建任务或事件')"
                           @mousedown.prevent
                           @click="beginSelectionTodo(pane.id, active!.id)"
                         >
@@ -5603,10 +5713,11 @@ const helpBlocked = computed(() => !!(
                         @enter="insertBlockBelowTitle"
                         @comment="paneComments.get(pane.id)?.showDiscussion()"
                       />
-                      <SourceEditor :preferences="editorPreferences" :suggestion-marks="suggestions.sourceMarks"
+                      <SourceEditor :capabilities="store.capabilities" :preferences="editorPreferences" :suggestion-marks="suggestions.sourceMarks"
                         :show-all-line-numbers="showAllLineNumbers"
                         v-if="paneSource(pane.activeId)"
-                        :key="`${active.id}:${suggestions.viewKey}`"
+                        :key="active.id"
+                        :content-revision="suggestions.viewKey"
                         :ref="(el) => setPaneElement('source', pane.id, el)"
                         :model-value="suggestions.content"
                         :readonly="suggestions.readonly"
@@ -5623,7 +5734,8 @@ const helpBlocked = computed(() => !!(
                       <MarkdownEditor :suggestion-marks="suggestions.richMarks" :transform-change="suggestions.transformChange"
                         v-else
                         :custom-callout-icon="CalloutIconPicker"
-                        :key="`${active.id}:${suggestions.viewKey}:${active.id === store.active?.id ? (editing.active?.key ?? 'local') : 'local'}`"
+                        :content-revision="suggestions.viewKey"
+                        :key="`${active.id}:${active.id === store.active?.id ? (editing.active?.key ?? 'local') : 'local'}`"
                         :ref="(el) => setPaneEditor(pane.id, el)"
                         :document-id="active.id"
                         :readonly="suggestions.readonly"
@@ -5722,6 +5834,7 @@ const helpBlocked = computed(() => !!(
                 pane.activeId !== GRAPH_TAB_ID &&
                 pane.activeId !== PLUGINS_TAB_ID &&
                 pane.activeId !== CALENDAR_TAB_ID &&
+                pane.activeId !== SETTINGS_TAB_ID &&
                 !isTableTab(pane.activeId) &&
                 !tab?.workspaceView &&
                 !tab?.pluginView &&
@@ -5729,7 +5842,8 @@ const helpBlocked = computed(() => !!(
               "
               class="workspace-no-tabs"
             >
-              <EmptyEditor
+              <LoadingSkeleton v-if="busy || startupPending" variant="document" :rows="10" />
+              <EmptyEditor v-else
                 :create-disabled="busy || workspace.readOnly || updateLock"
                 @create="createNewDocument"
                 @open="showModal('newTab')"
@@ -5812,7 +5926,7 @@ const helpBlocked = computed(() => !!(
                       'outline-active': activeHeading === index,
                     }"
                     :style="{
-                      '--outline-indent': `${Math.max(0, heading.level - 2) * 12}px`,
+                      '--outline-indent': `${Math.max(0, heading.level - 1) * 12}px`,
                       '--outline-marker-width': `${Math.max(9, 20 - heading.level * 2)}px`,
                     }"
                     :aria-label="t('跳转到{0}', [heading.text])"
@@ -5882,98 +5996,20 @@ const helpBlocked = computed(() => !!(
           </div>
         </template>
       </WorkspacePanes>
-      <main v-else-if="startupPending" class="workspace-startup" role="status" aria-busy="true">
-        {{ t('正在打开工作区…') }}
-      </main>
-      <main v-else class="welcome">
-        <div class="welcome-mark"><img src="/favicon-green.svg?v=3" :alt="t('Tano 标志')" /></div>
-        <h1>
-          <span
-            v-for="(part, index) in welcomeSloganParts"
-            :key="index"
-            :class="{ 'welcome-latin': part.latin }"
-            >{{ part.text }}</span
-          >
-        </h1>
-        <p>
-          {{
-            store.isWeb
-              ? t('为不同的项目创建工作区，文档会自动保存到服务器。')
-              : mobile
-                ? t('把工作空间带在身边，离线也能继续写作。')
-                : t('打开一个文件夹，让你的 Markdown 成为共同的语言。')
-          }}
-        </p>
-        <div v-if="store.isWeb || mobile || extensions.regions['welcome-login']" class="welcome-actions">
-          <button
-            v-if="store.isWeb || mobile"
-            class="primary-button"
-            :disabled="busy"
-            @click="store.isWeb ? createNewWorkspace() : store.openWorkspace()"
-          >
-            <FolderOpen :size="18" />{{
-              busy
-                ? t('正在打开…')
-                : store.isWeb
-                  ? t('创建工作区')
-                  : mobile
-                    ? t('打开手机工作空间')
-                    : t('打开文件夹')
-            }}<ArrowRight :size="17" />
-          </button>
-          <component
-            :is="extensions.regions['welcome-login']"
-            v-if="extensions.regions['welcome-login']"
-            :actions="extensionActions"
-          />
-        </div>
-        <component
-          :is="extensions.regions['welcome-recent']"
-          v-if="extensions.regions['welcome-recent']"
-          :actions="extensionActions"
-        />
-        <div
-          v-else-if="store.recent.length || (!store.isWeb && !mobile)"
-          class="recent-spaces"
-          :aria-label="t('最近工作空间')"
-        >
-          <div class="recent-spaces-header">
-            <span class="recent-label">{{ t('最新打开仓库') }}</span>
-            <button
-              v-if="!store.isWeb && !mobile"
-              type="button"
-              class="recent-open-button"
-              :disabled="busy"
-              :aria-label="busy ? t('正在打开…') : t('打开本地仓库')"
-              :data-tooltip="busy ? t('正在打开…') : t('打开本地仓库')"
-              @click="store.openWorkspace()"
-            >
-              <Plus :size="18" aria-hidden="true" />
-            </button>
-          </div>
-          <button
-            v-for="item in store.recent.slice(0, 4)"
-            :key="item.id"
-            :disabled="busy"
-            @mousedown.right.stop.prevent="openWorkspaceEntryContextMenu(item, $event)"
-            @contextmenu.stop.prevent="openWorkspaceEntryContextMenu(item, $event)"
-            @click="store.openWorkspace(item.path)"
-          >
-            <span class="workspace-list-avatar">
-              <WorkspaceIcon
-                :icon="item.icon"
-                :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'"
-                :size="16"
-              />
-            </span>
-            <span class="recent-workspace-details">
-              <strong>{{ item.name }}</strong>
-              <small>{{ store.isWeb ? t('在线工作区') : mobile ? t('保存在这台设备') : item.path }}</small>
-            </span>
-            <ArrowRight :size="14" />
-          </button>
-        </div>
-      </main>
+      <WorkspacePanes v-else-if="store.tabs.length && !startupPending" :compact="compactPanes" :tabs-enabled="tabsEnabled" :class="{ 'workspace-native-tabs': tabsEnabled && !compactPanes }">
+        <template #tabs="{ pane }">
+          <div class="workspace-tabbar" :data-tab-pane-id="pane.id"><DesktopTabs :pane-id="pane.id" :detachable="false" /></div>
+        </template>
+        <template #default="{ pane }">
+          <template v-for="view in extensionViews" :key="view.id"><component v-if="pane.activeId === view.id" :is="view.component" :actions="viewActions[view.id]" /></template>
+        </template>
+      </WorkspacePanes>
+      <template v-else-if="homeContent && !startupPending">
+        <CalendarView v-if="homeContent === CALENDAR_TAB_ID" :date="calendarDate" :mode="calendarMode" :records="plans.recordsFor(calendarScope)" @select-mode="selectCalendarMode" @visible-month="calendarDate = $event" @visible-year="calendarDate = $event" @visible-timeline="calendarDate = $event" @select-date="showCalendarDay" @select-month="showCalendarMonth" @select-event="showPlanEvent" />
+        <component v-else-if="homeExtension" :is="homeExtension.component" :actions="viewActions[homeExtension.id]" />
+      </template>
+      <LoadingSkeleton v-else-if="startupPending" variant="shell" />
+      <div v-else class="editor-empty"><div class="editor-empty-mark" aria-hidden="true" /></div>
       <InlineAssistantInput
         v-if="inlineAssistant"
         :anchor="inlineAssistant.anchor"
@@ -6003,29 +6039,16 @@ const helpBlocked = computed(() => !!(
           <button
             type="button"
             role="menuitemcheckbox"
-            :aria-checked="limitPageWidth"
-            :disabled="!pageWidthWritable"
-            @click="togglePageOption('width')"
+            :aria-checked="editorPreferences.autoSpacing ?? false"
+            @click="togglePageOption('autoSpacing')"
           >
-            <Ruler :size="15" />{{ t('限制行宽') }}<Check
-              v-if="limitPageWidth"
+            <Space :size="15" />{{ t('正文自动间距') }}<Check
+              v-if="editorPreferences.autoSpacing"
               class="page-context-check"
               :size="14"
             />
           </button>
-          <button
-            v-if="paneSource(store.activeId)"
-            type="button"
-            role="menuitemcheckbox"
-            :aria-checked="showAllLineNumbers"
-            @click="togglePageOption('lineNumbers')"
-          >
-            <ListOrdered :size="15" />{{ t('显示所有行号') }}<Check
-              v-if="showAllLineNumbers"
-              class="page-context-check"
-              :size="14"
-            />
-          </button>
+          <div class="menu-divider" role="separator" />
           <button
             type="button"
             role="menuitemcheckbox"
@@ -6051,22 +6074,6 @@ const helpBlocked = computed(() => !!(
             />
           </button>
           <button
-            type="button"
-            role="menuitem"
-            :disabled="!canAddDocumentProperty"
-            @click="addDocumentProperty"
-          >
-            <Plus :size="15" />{{ t('添加文档属性') }}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            :disabled="editorReadonly || !!editing.active || editing.activeBusy || !paneComments.has(store.activePaneId)"
-            @click="openDocumentDiscussion"
-          >
-            <MessageSquare :size="15" />{{ t('发起讨论') }}
-          </button>
-          <button
             v-if="!detachedWindow"
             type="button"
             role="menuitemcheckbox"
@@ -6075,6 +6082,19 @@ const helpBlocked = computed(() => !!(
           >
             <List :size="15" />{{ t('显示目录') }}<Check
               v-if="showOutline"
+              class="page-context-check"
+              :size="14"
+            />
+          </button>
+          <button
+            v-if="paneSource(store.activeId)"
+            type="button"
+            role="menuitemcheckbox"
+            :aria-checked="showAllLineNumbers"
+            @click="togglePageOption('lineNumbers')"
+          >
+            <ListOrdered :size="15" />{{ t('显示所有行号') }}<Check
+              v-if="showAllLineNumbers"
               class="page-context-check"
               :size="14"
             />
@@ -6193,16 +6213,24 @@ const helpBlocked = computed(() => !!(
     <template v-for="view in extensionViews" :key="view.id">
       <component
         :is="view.overlay"
-        v-if="workspace && view.overlay"
+        v-if="view.overlay"
         :actions="viewActions[view.id]"
       />
     </template>
-    <CommandPalette v-if="commandPaletteOpened && workspace" :commands="workbenchCommands" @close="commandPaletteOpened = false" />
+    <CommandPalette v-if="commandPaletteOpened" :commands="workbenchCommands" @close="commandPaletteOpened = false" />
+    <Teleport v-for="host in settingsHosts" :key="host" :to="host === 'modal' ? 'body' : `#settings-host-${host}`" :disabled="host === 'modal'" defer>
     <SettingsPanel
-      v-if="settingsPanel"
-      :workspace="workspace"
+      @vue:mounted="settingsPanelMountedResolve()"
+      :tabbed="host !== 'modal'"
+      :can-open-tab="tabsEnabled && !!settingsWorkspace"
+      :can-open-window="native && !mobile && tabsEnabled"
+      :opening-window="openingSettingsWindow"
+      @open-tab="openSettingsTab"
+      @open-window="openSettingsInNewWindow"
+      @page-change="settingsPage = $event"
+      :workspace="settingsSnapshot.workspace"
       :extra-pages="extensions.settingsPages"
-      :plugin-pages="store.pluginSettingsPages"
+      :plugin-pages="settingsSnapshot.pluginPages"
       :execute-plugin="store.interactWithPlugin"
       :workspace-settings="store.workspaceSettings"
       :workspace-pages="settingsSnapshot.workspacePages"
@@ -6266,6 +6294,7 @@ const helpBlocked = computed(() => !!(
         <component v-if="extensions.regions['workspace-members-export']" :is="extensions.regions['workspace-members-export']" :workspace="workspace" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" />
       </template>
     </SettingsPanel>
+    </Teleport>
     <div v-if="store.fileMutationPending" class="file-mutation-status" role="status">{{ t('正在同步更改…') }}</div>
     <div v-if="fatal || store.sessionError" class="error-toast" role="alert">
       <AlertTriangle :size="18" /><span>{{ fatal || store.sessionError }}</span

@@ -131,6 +131,8 @@ it('keeps a visible startup state while the workbench loads and offers a retry i
   start.mockImplementation(() => new Promise(() => {}));
   await import('./main');
   expect(document.getElementById('tano-startup-status')?.textContent).toBe('正在打开同页...');
+  expect(document.getElementById('tano-startup-status')?.classList.contains('tano-skeleton-status')).toBe(true);
+  expect(document.querySelector('.tano-skeleton-shell')).not.toBeNull();
   expect(document.getElementById('tano-startup-retry')?.hidden).toBe(true);
   await vi.advanceTimersByTimeAsync(15_000);
   expect(document.getElementById('tano-startup-status')?.textContent).toContain('正在加载工作台');

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t } from '../i18n';
 import './review-card.css';
 import { computed, nextTick, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, ref, watch } from 'vue';
@@ -737,7 +738,7 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
           :aria-label="t('关闭讨论输入')" :data-tooltip="t('关闭讨论输入')" :disabled="busy" @click="dismissEmptyDiscussion"><X :size="16" /></button>
       </header>
       <p v-if="error && !popupVisible" class="comment-error" role="alert">{{ error }}</p>
-      <p v-if="loading && !discussions" class="discussion-loading">{{ t('正在读取讨论...') }}</p>
+      <LoadingSkeleton v-if="loading && !discussions" :rows="3" />
       <div class="document-discussion-messages">
         <CommentConversation v-for="thread in pendingDiscussions" :key="thread.id"
           :ref="value => value ? conversations.set(thread.id, value as InstanceType<typeof CommentConversation>) : conversations.delete(thread.id)"
@@ -761,8 +762,9 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
 </template>
 
 <style scoped>
-.document-review { color: var(--text); font-family: 'Inter Variable', 'Microsoft YaHei', sans-serif; }
-.document-discussion { max-width: 780px; margin: 48px auto 0; padding-top: 24px; }
+.document-review { color: var(--text); font-family: var(--font-ui); }
+.document-discussion { box-sizing: border-box; max-width: var(--tano-content-measure, 780px); margin: 48px auto 0; padding: 24px var(--tano-block-padding-inline, 8px) 0; }
+.document-discussion :deep(.tano-skeleton-list) { padding-inline: 0; }
 .document-discussion-header { display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px; }
 .document-discussion-header h2 { font-size: 19px; font-weight: 500; line-height: 28px; margin: 0; }
 .document-discussion-header > span { color: var(--muted); font-size: 13px; }
