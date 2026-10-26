@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { onBeforeUnmount, watch } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import Workbench from '@tano/workbench';
 import { useWorkspaceStore } from '@tano/workbench/stores/workspace';
-import LoadingSkeleton from '@tano/workbench/components/LoadingSkeleton.vue';
+
 
 interface Request { path?: string; error?: string }
 const store = useWorkspaceStore();
-const loaded = ref(false);
-const initialWorkspace = ref<string>();
+
+
 let ready = false;
 let disposed = false;
 let draining = false;
@@ -48,20 +48,19 @@ function onReady() {
   if (initialError) store.report(initialError);
   void drain();
 }
-onMounted(async () => {
+async function resolveInitialWorkspace() {
   try {
     unlisten = await listen('shell-workspace-pending', () => void drain());
     if (disposed) { unlisten(); return; }
     const request = await invoke<Request | null>('shell_take_workspace');
-    initialWorkspace.value = request?.path;
     initialError = request?.error;
+    return request?.path;
   } catch (error) { initialError = String(error); }
-  finally { loaded.value = true; }
-});
+}
 onBeforeUnmount(() => { disposed = true; unlisten?.(); stopWaiting?.(); });
 </script>
 
 <template>
-  <Workbench v-if="loaded" :initial-workspace="initialWorkspace" @ready="onReady" />
-  <LoadingSkeleton v-else variant="shell" />
+  <Workbench :resolve-initial-workspace="resolveInitialWorkspace" @ready="onReady" />
+
 </template>

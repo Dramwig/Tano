@@ -93,7 +93,10 @@ import { enhanced } from './enhanced';
 import { enhancedViews } from './enhanced-views';
 import { safeResourceUrl } from './enhanced-markdown';
 import { featureLevel, commandEnabled } from './document-model';
-import { activeInlineSourceRange, emptyFencedCodeBodyOffset, liveMarkdown } from './live-markdown';
+import { emptyFencedCodeBodyOffset, liveMarkdown } from './live-markdown';
+import { activeInlineSourceRange } from './inline-source-range';
+import { inlineSourceCodec, inlineSourceAttributes, reconcileInlineSource } from './inline-source-session';
+import type { InlineSourceSession } from './inline-source-session';
 import { liveInlineSource, liveSource } from './live-source';
 import { nestedEmphasisRemark } from './nested-emphasis';
 import { sourceStyleRanges } from './source-highlight';
@@ -395,7 +398,7 @@ function endPointerSelection() { selectingWithPointer = false; }
 let bridgeView: EditorView | undefined;
 let localSource:
   | { kind: 'block'; id: string; original: Node; initial: string; style: Record<string, string> | null; dismissOnOutside?: boolean }
-  | { kind: 'inline'; id: string; original: Fragment; initial: string }
+  | InlineSourceSession
   | { kind: 'footnote-label'; id: string; initial: string; createdParagraph: boolean }
   | undefined;
 let localSourceCounter = 0;
@@ -859,30 +862,6 @@ function inlineAtomSourceRange(view: EditorView, event: MouseEvent | KeyboardEve
   return null;
 }
 
-function markAtCaret(view: EditorView, event?: MouseEvent | KeyboardEvent) {
-  const anchor = event?.target instanceof Element
-    ? event.target
-    : view.dom.ownerDocument.getSelection()?.anchorNode;
-  const element = anchor instanceof Element ? anchor : anchor?.parentElement;
-  if (!element || !view.dom.contains(element)) return undefined;
-  const marked = element.closest('strong, em, code, del, u, sup, sub, mark, span[style], span[data-tano-comment], a');
-  if (!marked || !view.dom.contains(marked)) return undefined;
-  const names: Record<string, string> = {
-    strong: 'strong',
-    em: 'emphasis',
-    code: 'inlineCode',
-    del: 'strike_through',
-    u: 'underline',
-    sup: 'superscript',
-    sub: 'subscript',
-    mark: 'highlight',
-    span: marked.hasAttribute('data-tano-comment') ? 'inline_comment'
-      : (marked as HTMLElement).style.backgroundColor ? 'background_color' : 'text_color',
-    a: 'link',
-  };
-  return names[marked.tagName.toLowerCase()];
-}
-
 function inlineSourceTransaction(
   ctx: Ctx,
   state: EditorState,
@@ -891,26 +870,31 @@ function inlineSourceTransaction(
 ) {
   const $from = tr.doc.resolve(range.from);
   const original = $from.parent.cut(range.from - $from.start(), range.to - $from.start()).content;
-  const paragraph = state.schema.nodes.paragraph!.create(null, original);
-  const source = ctx
-    .get(serializerCtx)(state.schema.nodes.doc!.create(null, [paragraph]))
-    .replace(/\n+$/, '');
+  const codec = inlineSourceCodec(state.schema, ctx.get(parserCtx), ctx.get(serializerCtx));
+  const source = codec.serialize(original);
   const before = tr.doc.textBetween(
     range.from,
     Math.max(range.from, Math.min(range.to, tr.selection.from)),
   );
-  const offset = Math.min(
+  let offset = Math.min(
     source.length,
     sourceOffset(source, before, tr.doc.textBetween(range.from, range.to)[0] ?? ''),
   );
+  // At a field boundary the caret belongs between complete Markdown tokens,
+  // including closing delimiters and inline atoms that have no textContent.
+  const relative = tr.selection.from - range.from;
+  let atBoundary = relative === original.size;
+  original.forEach((_node, position) => { if (position === relative) atBoundary = true; });
+  if (atBoundary && relative >= 0 && relative <= original.size) {
+    const prefix = original.cut(0, relative);
+    const prefixSource = codec.serialize(prefix);
+    if (source.startsWith(prefixSource)) offset = prefixSource.length;
+  }
   const id = sourceId();
-  const footnote = original.firstChild?.type.name === 'footnote_reference'
-    ? String(original.firstChild.attrs.label)
-    : '';
   const node = liveInlineSource
     .type(ctx)
     .create(
-      { id, origin: original.firstChild?.type.name === 'math_inline' ? 'math_inline' : '', footnoteLabel: footnote },
+      { id, ...inlineSourceAttributes(original) },
       source ? state.schema.text(source) : undefined,
     );
   localSource = { kind: 'inline', id, original, initial: source };
@@ -931,9 +915,10 @@ function activateInlineSource(ctx: Ctx, view: EditorView, event?: MouseEvent | K
   const atomRange = event ? inlineAtomSourceRange(view, event) : null;
   const range =
     atomRange ??
-    activeInlineSourceRange({ selection }, disabledStyle?.dataset.tanoDisabledStyle ?? markAtCaret(view, event));
+    activeInlineSourceRange({ selection }, revealableInlineAtom);
   if (!range) return false;
-  const tr = inlineSourceTransaction(ctx, view.state, range);
+  const tr = inlineSourceTransaction(ctx, view.state, range,
+    content ? view.state.tr.setSelection(selection) : view.state.tr);
   applying = true;
   try {
     view.dispatch(tr);
@@ -1155,6 +1140,10 @@ function enterFootnoteLabelFromCaret(ctx: Ctx, view: EditorView) {
   return activateFootnoteLabelAt(ctx, view, selection.$from.before(definitionDepth), true);
 }
 
+function revealableInlineAtom(node: Node, parent: Node) {
+  return isEditableInlineAtom(node, parent) && (node.type.name !== 'tano_reference' || referencesEnabled());
+}
+
 function selectedSourceTransaction(ctx: Ctx, state: EditorState, tr: Transaction = state.tr) {
   const selection = tr.selection;
   if (selection instanceof NodeSelection) {
@@ -1167,7 +1156,7 @@ function selectedSourceTransaction(ctx: Ctx, state: EditorState, tr: Transaction
     return inlineSourceTransaction(ctx, state, { from: selection.from, to: selection.to }, tr);
   }
   if (!(selection instanceof TextSelection) || !selection.empty) return null;
-  const inlineRange = activeInlineSourceRange(tr, bridgeView && markAtCaret(bridgeView));
+  const inlineRange = activeInlineSourceRange(tr, revealableInlineAtom);
   return inlineRange
     ? inlineSourceTransaction(ctx, state, inlineRange, tr)
     : caretBlockSourceTransaction(ctx, state, tr);
@@ -1293,41 +1282,15 @@ function retainsInlineSource(doc: Node) {
   return retained;
 }
 
-function finishInlineSourceOutsideSyntax(ctx: Ctx, state: EditorState) {
-  if (localSource?.kind !== 'inline' || bridgeView?.composing ||
-      !(state.selection instanceof TextSelection) || !state.selection.empty) return null;
+function updateInlineSource(ctx: Ctx, state: EditorState) {
+  if (localSource?.kind !== 'inline' || bridgeView?.composing || props.readonly) return null;
   const current = findCurrentSource(state);
-  if (!current || state.selection.$from.parent !== current.node) return null;
-  const raw = current.node.textContent;
-  const ranges = sourceStyleRanges(raw);
-  if (!ranges.length) return null;
-  const from = Math.min(...ranges.map(range => range.from));
-  const to = Math.max(...ranges.map(range => range.to));
-  const offset = state.selection.from - current.pos - 1;
-  // Continued typing extends the temporary source node. Its DOM boundary no
-  // longer tells us whether the caret has left the actual Markdown syntax.
-  if (offset >= from && offset <= to) return null;
-  const syntax = raw.slice(from, to);
-  const parsed = ctx.get(parserCtx)(syntax);
-  if (parsed?.childCount !== 1 || parsed.firstChild?.type.name !== 'paragraph' ||
-      retainsInlineSource(parsed) ||
-      ctx.get(serializerCtx)(parsed).replace(/\n+$/, '') !== syntax) return null;
-  const text = (value: string) => value ? Fragment.from(state.schema.text(value)) : Fragment.empty;
-  // Keep surrounding text (especially a newly typed space) out of the parser:
-  // trimming it would lose input and move the caret back into the formatted run.
-  const replacement = text(raw.slice(0, from))
-    .append(parsed.firstChild.content).append(text(raw.slice(to)));
-  const document = state.schema.nodes.doc!.create(null,
-    state.schema.nodes.paragraph!.create(null, replacement));
-  if (ctx.get(serializerCtx)(document).trimEnd() !== raw.trimEnd()) return null;
-  const tr = state.tr.replaceWith(current.pos, current.pos + current.node.nodeSize, replacement);
-  const position = current.pos + (offset < from
-    ? offset
-    : from + parsed.firstChild.content.size + offset - to);
-  tr.setSelection(TextSelection.create(tr.doc, position));
-  tr.setStoredMarks([]);
-  localSource = undefined;
-  return tr;
+  if (!current) return null;
+  const result = reconcileInlineSource(state, current, localSource,
+    inlineSourceCodec(state.schema, ctx.get(parserCtx), ctx.get(serializerCtx)),
+    revealableInlineAtom, props.revealMarkdown !== false);
+  if (result) localSource = result.session;
+  return result;
 }
 
 function finishLocalSourceTransaction(ctx: Ctx, state: EditorState) {
@@ -1435,6 +1398,9 @@ function moveAcrossInlineSourceEdge(ctx: Ctx, view: EditorView, direction: -1 | 
     tr.setSelection(Selection.findFrom(tr.doc.resolve(next), direction, true) ?? TextSelection.create(tr.doc, position));
   }
   tr.setStoredMarks([]);
+  const adjacentRange = finished && props.revealMarkdown !== false
+    ? activeInlineSourceRange(tr, revealableInlineAtom) : null;
+  if (adjacentRange) inlineSourceTransaction(ctx, view.state, adjacentRange, tr);
   tr.setMeta('tanoKeepNodeView', true);
   transitioningSource = true;
   applying = finished?.unchanged ?? false;
@@ -1749,8 +1715,11 @@ const bridge = $prose(
           if (restoredSource) return restoredSource;
         }
         if (localSource) {
-          const finishedInline = finishInlineSourceOutsideSyntax(ctx, state);
-          if (finishedInline) return finishedInline;
+          const updated = updateInlineSource(ctx, state);
+          if (updated) {
+            sourceActivationPending ||= updated.presentationOnly && !transactions.some(transaction => transaction.docChanged);
+            return updated.tr;
+          }
           const current = findCurrentSource(state);
           if (
             !current ||

@@ -79,7 +79,9 @@ import {
   Files,
   Table2,
 } from 'lucide-vue-next';
-const MarkdownEditor = loadingComponent(() => import('@tano/editor'), 'editor');
+import MarkdownEditorSkeleton from './components/MarkdownEditorSkeleton.vue';
+import DocumentLoading from './components/DocumentLoading.vue';
+const MarkdownEditor = defineAsyncComponent({ loader: () => import('@tano/editor'), delay: 0, loadingComponent: MarkdownEditorSkeleton });
 const CalloutIconPicker = defineAsyncComponent(() => import('./components/CalloutIconPicker.vue'));
 import { defaultEditorPreferences, normalizeSelectionWrapping } from '@tano/editor/runtime';
 import type { EditorPreferences } from '@tano/editor/runtime';
@@ -110,7 +112,8 @@ const TemplateLibrary = loadingComponent(() => import('./components/TemplateLibr
 import type { DocumentExportFormat } from './document-export';
 // Discussion and annotation surfaces decide their own visibility and loading state.
 const DocumentComments = defineAsyncComponent(() => import('./components/DocumentComments.vue'));
-const DocumentSuggestions = loadingComponent(() => import('./components/DocumentSuggestions.vue'), 'document');
+// Keep the document layout mounted while only the editor implementation loads.
+import DocumentSuggestions from './components/DocumentSuggestions.vue';
 import ReferenceGraphPopover from './components/ReferenceGraphPopover.vue';
 const SelectionTodoDialog = defineAsyncComponent(() => import('./components/SelectionTodoDialog.vue'));
 import { planDocumentSource, selectionTodoSession } from './selection-todo';
@@ -195,7 +198,7 @@ import { useWorkbenchNavigation, type WorkspaceSidebarView } from './workbench-n
 import { ASSISTANT_TAB_ID, openAssistantPage } from './assistant/navigation';
 const SidebarAssistant = loadingComponent(() => import('./components/SidebarAssistant.vue'));
 import ButtonVisibilityGroup from './components/ButtonVisibilityGroup.vue';
-import InlineAssistantInput from './components/InlineAssistantInput.vue';
+const InlineAssistantInput = defineAsyncComponent(() => import('./components/InlineAssistantInput.vue'));
 import type { InlineAssistantAnchor } from './components/InlineAssistantInput.vue';
 const CalendarView = loadingComponent(() => import('./components/CalendarView.vue'), 'document');
 const DataTablePage = loadingComponent(() => import('./components/DataTablePage.vue'), 'document');
@@ -252,7 +255,7 @@ import {
 } from './settings-window';
 import type { SettingsCommand, SettingsPageId, SettingsSnapshot } from './settings-window';
 
-const props = defineProps<{ initialWorkspace?: string; createWorkspace?: boolean }>();
+const props = defineProps<{ initialWorkspace?: string; resolveInitialWorkspace?: () => Promise<string | undefined>; createWorkspace?: boolean }>();
 const emit = defineEmits<{ ready: [] }>();
 const store = useWorkspaceStore();
 const startupPending = ref(true);
@@ -3982,7 +3985,7 @@ onMounted(async () => {
   try {
     await workbenchSession.initialize(async () => {
       if (props.createWorkspace) await createNewWorkspace();
-      else await store.initialize(initialPageRoute?.workspaceId ?? props.initialWorkspace);
+      else await store.initialize(initialPageRoute?.workspaceId ?? (props.resolveInitialWorkspace ? await props.resolveInitialWorkspace() : props.initialWorkspace));
     });
   } finally {
     navigation.restore();
@@ -3992,6 +3995,8 @@ onMounted(async () => {
   }
   if (unmounted) return;
   emit('ready');
+  await nextTick();
+
   if (webPageRouting) {
     pageRouteReady = true;
     if (props.createWorkspace || initialPageRouteSuperseded) writePageRoute(true);
@@ -4327,7 +4332,8 @@ const helpBlocked = computed(() => !!(
             @drop.self="fileDrop('', $event)"
           >
             <FileTree
-              v-if="workspace"
+              v-if="workspace || startupPending"
+              :loading="startupPending && !workspace"
               :entries="treeFiles"
               :document-icons="treeDocumentIcons"
               :load-document-icon="loadTreeDocumentIcon"
@@ -4928,8 +4934,9 @@ const helpBlocked = computed(() => !!(
         :anchor="referenceGraphAnchor"
         @open="openReference"
       />
-      <div v-if="workspace && compactPanes && tabsEnabled" class="workspace-tabbar">
+      <div v-if="(workspace || startupPending) && compactPanes && tabsEnabled" class="workspace-tabbar">
         <DesktopTabs
+          :loading="startupPending"
           :file-drag="tabFileDrag"
           :assistant-tab="assistantTab"
           @files-dropped="fileDragEnd"
@@ -4939,7 +4946,7 @@ const helpBlocked = computed(() => !!(
       </div>
 
       <WorkspacePanes
-        v-if="workspace"
+        v-if="workspace || startupPending"
         :compact="compactPanes"
         :tabs-enabled="tabsEnabled"
         :class="{ 'workspace-native-tabs': tabsEnabled && !compactPanes }"
@@ -4964,6 +4971,7 @@ const helpBlocked = computed(() => !!(
               <PanelLeftOpen :size="16" :stroke-width="1.6" />
             </button>
             <DesktopTabs
+              :loading="startupPending"
               :pane-id="pane.id"
               :detachable="native && !mobile"
               :file-drag="tabFileDrag"
@@ -5003,7 +5011,7 @@ const helpBlocked = computed(() => !!(
           />
         </template>
         <template #default="{ pane, document: active, tab }">
-          <LoadingSkeleton v-if="store.openingDocuments[pane.id]?.tabId === pane.activeId" variant="document" :rows="10" class="pane-loading-skeleton" />
+
           <TemplateLibrary
             v-if="templateLibraryOpen && pane.id === templatePaneId && workspace"
             :key="workspace.id"
@@ -5082,6 +5090,7 @@ const helpBlocked = computed(() => !!(
                 </button>
               </div>
               <WorkspaceBreadcrumb
+                :loading="startupPending && !workspace"
                 :perch="{ id: `breadcrumb:${paneButterflyScope(pane.id, pane.activeId)}`, scope: paneButterflyScope(pane.id, pane.activeId), label: t('面包屑'), kind: 'component' }"
                 v-if="
                   isVisible('breadcrumb') &&
@@ -5100,7 +5109,10 @@ const helpBlocked = computed(() => !!(
                 @open="(file) => { store.focusPane(pane.id); openEntry(file); }"
               >
                 <template #status>
-                  <DocumentStatus v-if="active && isVisible('document-status')" :document-key="`${workspace?.id}:${active.id}`" :items="paneDocumentStatus(active)" />
+                  <DocumentStatus v-if="active && isVisible('document-status')" :document-key="`${workspace?.id}:${active.id}`" :items="paneDocumentStatus(active)">
+                    <component :is="extensions.regions['document-status-details']"
+                      v-if="pane.id === store.activePaneId && extensions.regions['document-status-details']" :actions="extensionActions" />
+                  </DocumentStatus>
                 </template>
                 <template v-if="tab?.pluginView"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">{{ tab.pluginView.label }}</span></template>
                 <template v-if="pane.activeId === PLUGINS_TAB_ID"
@@ -5117,7 +5129,10 @@ const helpBlocked = computed(() => !!(
                 >
               </WorkspaceBreadcrumb>
               <DocumentStatus v-if="active && !isVisible('breadcrumb') && isVisible('document-status')"
-                :document-key="`${workspace?.id}:${active.id}`" :items="paneDocumentStatus(active)" />
+                :document-key="`${workspace?.id}:${active.id}`" :items="paneDocumentStatus(active)">
+                <component :is="extensions.regions['document-status-details']"
+                  v-if="pane.id === store.activePaneId && extensions.regions['document-status-details']" :actions="extensionActions" />
+              </DocumentStatus>
               <div class="topbar-right">
                 <button v-if="active && touchLayout && showOutline" type="button" class="icon-button"
                   :aria-label="t('文档大纲')" :aria-expanded="touchOutlineOpen"
@@ -5515,7 +5530,8 @@ const helpBlocked = computed(() => !!(
               </div>
             </main>
 
-            <template v-if="active">
+            <DocumentLoading v-if="store.openingDocuments[pane.id]?.tabId === pane.activeId" :unlimited="!limitPageWidth" :touch="touchLayout" :style="{ '--tano-prose-font-family': selectedVisualFontFamily, '--tano-prose-font-size': `${visualFontSize}px` }" />
+            <template v-else-if="active">
               <PageSearch
                 :shortcuts="shortcuts"
                 :key="`search:${active.id}`"
@@ -5830,7 +5846,7 @@ const helpBlocked = computed(() => !!(
             />
             <main
               v-else-if="
-                workspace &&
+                (workspace || startupPending) &&
                 pane.activeId !== GRAPH_TAB_ID &&
                 pane.activeId !== PLUGINS_TAB_ID &&
                 pane.activeId !== CALENDAR_TAB_ID &&
@@ -5841,10 +5857,11 @@ const helpBlocked = computed(() => !!(
                 !extensionViews.find((view) => view.id === pane.activeId)
               "
               class="workspace-no-tabs"
+              :class="{ 'workspace-no-tabs-loading': startupPending }"
             >
-              <LoadingSkeleton v-if="busy || startupPending" variant="document" :rows="10" />
+              <DocumentLoading v-if="startupPending" :unlimited="!limitPageWidth" :touch="touchLayout" :style="{ '--tano-prose-font-family': selectedVisualFontFamily, '--tano-prose-font-size': `${visualFontSize}px` }" />
               <EmptyEditor v-else
-                :create-disabled="busy || workspace.readOnly || updateLock"
+                :create-disabled="busy || !workspace || workspace.readOnly || updateLock"
                 @create="createNewDocument"
                 @open="showModal('newTab')"
                 @search="showModal('search')"
@@ -6008,7 +6025,6 @@ const helpBlocked = computed(() => !!(
         <CalendarView v-if="homeContent === CALENDAR_TAB_ID" :date="calendarDate" :mode="calendarMode" :records="plans.recordsFor(calendarScope)" @select-mode="selectCalendarMode" @visible-month="calendarDate = $event" @visible-year="calendarDate = $event" @visible-timeline="calendarDate = $event" @select-date="showCalendarDay" @select-month="showCalendarMonth" @select-event="showPlanEvent" />
         <component v-else-if="homeExtension" :is="homeExtension.component" :actions="viewActions[homeExtension.id]" />
       </template>
-      <LoadingSkeleton v-else-if="startupPending" variant="shell" />
       <div v-else class="editor-empty"><div class="editor-empty-mark" aria-hidden="true" /></div>
       <InlineAssistantInput
         v-if="inlineAssistant"

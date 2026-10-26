@@ -17,10 +17,12 @@ import {
 } from '@tano/protocol';
 import FileTreeRename from './FileTreeRename.vue';
 import DocumentFileIcon from './DocumentFileIcon.vue';
+import LoadingSkeleton from './LoadingSkeleton.vue';
 
 const props = withDefaults(
   defineProps<{
     entries: FileEntry[];
+    loading?: boolean;
     documentIcons?: Readonly<Record<string, string>>;
     loadDocumentIcon?: (file: FileEntry, signal: AbortSignal) => Promise<string>;
     parent?: string;
@@ -189,6 +191,7 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
     @dragleave="emit('dragLeave', parent, $event)"
     @drop="emit('drop', parent, $event)"
   >
+    <li v-if="loading && !entries.length" role="none"><LoadingSkeleton :rows="6" :label="t('正在加载…')" /></li>
     <li v-for="file in children" :key="file.id">
       <component
         :is="file.id === renamingId ? 'div' : 'button'"

@@ -4,7 +4,7 @@ import './review-card.css';
 import { captureReviewRail, updateReviewRail, removeReviewRail } from './review-rail';
 import { computed, nextTick, onBeforeUnmount, onBeforeUpdate, onMounted, ref, watch } from 'vue';
 import { Check, X } from 'lucide-vue-next';
-import { createHeadlessMarkdown } from '@tano/editor/headless';
+import type { createHeadlessMarkdown } from '@tano/editor/headless';
 import type { CommentMention, SuggestionDecorations } from '@tano/protocol';
 import { suggestionReviewThread } from '@tano/protocol';
 import CommentConversation from './CommentConversation.vue';
@@ -46,7 +46,7 @@ let projectionSize = 0;
 async function project(text: string) {
   const cached = projections.get(text);
   if (cached !== undefined) return cached;
-  const codec = await (parser ??= createHeadlessMarkdown());
+  const codec = await (parser ??= import('@tano/editor/headless').then(({ createHeadlessMarkdown }) => createHeadlessMarkdown()));
   const ready = projections.get(text);
   if (ready !== undefined) return ready;
   const result = codec.projectComments(text);

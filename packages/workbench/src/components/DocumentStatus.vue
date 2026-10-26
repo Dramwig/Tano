@@ -25,7 +25,9 @@ function place() {
   };
 }
 async function show() { cancelClose(); opened.value = true; await nextTick(); place(); }
-function leave() { cancelClose(); if (!pinned.value) timer = setTimeout(close, 160); }
+function leave() { cancelClose(); if (!pinned.value) timer = setTimeout(() => {
+  if (!panel.value?.contains(document.activeElement)) close();
+}, 160); }
 function toggle() { if (pinned.value) close(); else { pinned.value = true; void show(); } }
 function hover(event: PointerEvent) { if (event.pointerType !== 'touch') void show(); }
 function outside(event: Event) {
@@ -67,11 +69,12 @@ onBeforeUnmount(() => {
   </button>
   <Teleport to="body">
     <section v-if="opened" :id="panelId" ref="panel" class="document-status-panel" :style="position"
-      role="dialog" :aria-label="t('文章状态')" @pointerenter="cancelClose" @pointerleave="leave">
+      role="dialog" :aria-label="t('文章状态')" @pointerenter="cancelClose" @pointerleave="leave" @focusin="cancelClose">
       <div v-for="(item, index) in items" :key="`${item.kind}:${index}`" class="document-status-row">
         <component :is="icons[item.kind]" :size="16" :stroke-width="1.6" aria-hidden="true" />
         <div><strong>{{ item.label }}</strong><p>{{ item.detail }}</p></div>
       </div>
+      <slot />
     </section>
   </Teleport>
 </template>

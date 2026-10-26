@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { t } from '../i18n';
+import LoadingSkeleton from './LoadingSkeleton.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ArrowLeft, ArrowRight, Bot, CalendarDays, FileText, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, SquarePen, ExternalLink, Bug } from 'lucide-vue-next';
 import { basename, isMarkdown, isDataTableFilePath } from '@tano/protocol';
@@ -25,6 +26,7 @@ const navigationItems = [
   { id: 'forward', get label() { return t('前进'); } },
 ];
 const props = defineProps<{
+  loading?: boolean;
   detachable?: boolean;
   paneId?: string;
   fileDrag?: { workspaceId: string; ids: readonly string[] };
@@ -904,6 +906,7 @@ async function onTabKeydown(event: KeyboardEvent) {
       @contextmenu.self.prevent="openContextMenu($event, null)"
       @dragstart="!nativeTabDrag && $event.preventDefault()"
     >
+      <LoadingSkeleton v-if="loading && !paneTabs.length" class="desktop-tabs-loading" :rows="1" />
       <div
         v-for="(doc, index) in paneTabs"
         :key="doc.id"
@@ -1430,4 +1433,10 @@ async function onTabKeydown(event: KeyboardEvent) {
     pointer-events: auto;
   }
 }
+</style>
+
+<style scoped>
+.desktop-tabs-loading { width: 160px; flex: 0 0 160px; align-self: center; }
+.desktop-tabs-loading :deep(.tano-skeleton-list) { padding: 0 12px; gap: 0; }
+.desktop-tabs-loading :deep(.tano-skeleton-bar) { height: 12px; margin: 0; width: 100%; }
 </style>

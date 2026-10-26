@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { t } from '../i18n';
+import LoadingSkeleton from './LoadingSkeleton.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch, type Component } from 'vue';
 import { ArrowLeft, BookOpen, Check, ChevronRight, File, FileText, Table2, FolderOpen, LockKeyhole } from 'lucide-vue-next';
 import { basename, isMarkdown, isDataTableFilePath, isWorkspaceInternalPath, parentPath, type FileEntry } from '@tano/protocol';
@@ -9,6 +10,7 @@ import DocumentFileIcon from './DocumentFileIcon.vue';
 const vButterflyPerch = butterflyPerchDirective(useButterflyController());
 
 const props = defineProps<{
+  loading?: boolean;
   workspaceId?: string;
   workspaceName: string;
   hideWorkspace?: boolean;
@@ -157,7 +159,8 @@ onBeforeUnmount(() => {
 
 <template>
   <nav ref="root" class="breadcrumb" :aria-label="t('当前位置')">
-    <button v-if="!hideWorkspace" type="button" class="breadcrumb-trigger breadcrumb-workspace"
+    <LoadingSkeleton v-if="loading" class="breadcrumb-loading" :rows="1" />
+    <button v-else-if="!hideWorkspace" type="button" class="breadcrumb-trigger breadcrumb-workspace"
       :class="{ 'demo-badge breadcrumb-demo-badge': demoLabel }"
       :disabled="!workspaceId" :data-tooltip="demoLabel ? t('浏览器演示 · 数据仅保存在本浏览器') : workspaceName"
       :aria-label="t('浏览工作区：{0}', [workspaceName])" aria-haspopup="menu"
@@ -231,6 +234,9 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .breadcrumb { gap: 2px; }
+.breadcrumb-loading { width: 160px; }
+.breadcrumb-loading :deep(.tano-skeleton-list) { padding: 0 6px; gap: 0; }
+.breadcrumb-loading :deep(.tano-skeleton-bar) { height: 12px; margin: 0; width: 100%; }
 .breadcrumb > .breadcrumb-trigger {
   display: inline-flex;
   align-items: center;

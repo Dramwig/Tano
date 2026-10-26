@@ -712,7 +712,7 @@ button:hover {
   align-items: center;
   gap: 3px;
   flex-shrink: 0;
-  margin: 0 -7px;
+  margin: auto -7px 0;
   border-top: 0;
   padding: 6px 5px;
   background: var(--sidebar);
@@ -4087,6 +4087,7 @@ button:hover {
     padding: 20px 16px 40px;
   }
 }
+.workspace-no-tabs.workspace-no-tabs-loading { padding: 0; }
 .workspace-no-tabs {
   flex: 1;
   min-height: 0;
@@ -4173,7 +4174,7 @@ button:hover {
 @media (max-width: 700px) and (pointer: coarse) {
   .editor-empty-actions button { min-height: 44px; }
 }
-.pane-loading-skeleton { position: absolute; inset: var(--topbar-height, 44px) 0 0; z-index: 20; overflow: hidden; background: var(--paper); }
+.pane-loading-skeleton { box-sizing: border-box; position: absolute; inset: var(--topbar-height, 44px) 0 0; z-index: 20; overflow: hidden; background: var(--paper); }
 .welcome {
   flex: 1;
   min-height: 0;

@@ -755,7 +755,7 @@ onBeforeUnmount(() => {
           <Plus :size="14" />
         </button>
       </div>
-      <PlanEventList
+      <PlanEventList :loading="effectiveView !== 'workspace' && plans.initializing"
         :records="agenda"
         :date="selectedDate"
         :disabled="false"
@@ -790,7 +790,7 @@ onBeforeUnmount(() => {
           <Plus :size="14" />
         </button>
       </div>
-      <PlanEventList
+      <PlanEventList :loading="effectiveView !== 'workspace' && plans.initializing"
         :records="unscheduled"
         :date="selectedDate"
         :disabled="false"
@@ -825,7 +825,7 @@ onBeforeUnmount(() => {
       </h3>
       <div :id="completedListId" :hidden="!completedExpanded">
         <template v-if="completedExpanded">
-          <PlanEventList
+          <PlanEventList :loading="effectiveView !== 'workspace' && plans.initializing"
             :records="completed"
             :date="selectedDate"
             show-date
