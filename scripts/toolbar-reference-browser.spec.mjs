@@ -41,9 +41,116 @@ async function prepare(page, mode = 'selection') {
     component.exposed.restoreModeSelection(selection);
   }, { anchor: markdown.indexOf(selected), head: markdown.indexOf(selected) + selected.length });
   const toolbar = page.locator('.selection-toolbar');
-  await toolbar.getByRole('button', { name: '更多格式', exact: true }).click();
+  if (mode !== 'fixed') await toolbar.getByRole('button', { name: '更多格式', exact: true }).click();
   return toolbar;
 }
+
+for (const mode of ['selection', 'fixed', 'bottom', 'left', 'right']) {
+  test(`${mode}: right click elsewhere preserves text and opens selection controls at pointer`, async ({ page }) => {
+    const toolbar = await prepare(page, mode);
+    const heading = page.locator('.ProseMirror h1').first();
+    const box = await heading.boundingBox();
+    const point = { x: box.x + box.width - 280, y: box.y + 10 };
+    await page.mouse.click(point.x, point.y, { button: 'right' });
+    const menu = page.getByRole('menu', { name: '选区操作', exact: true });
+    await expect(menu).toBeVisible();
+    await expect(toolbar).toBeHidden();
+    const rect = await menu.boundingBox();
+    expect(Math.abs(rect.x - point.x)).toBeLessThan(2);
+    expect(Math.abs(rect.y - point.y)).toBeLessThan(2);
+    await expect(menu.getByRole('menuitem')).toHaveCount(1);
+    await expect(menu.locator('.menu-shortcut')).toHaveText(/Ctrl \+ C|⌘ \+ C/);
+    await page.evaluate(() => { window.__copiedMarkdown = null; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.__copiedMarkdown = text; } } }); });
+    if (mode === 'fixed') await menu.getByRole('menuitem', { name: '复制 Markdown', exact: true }).press('ControlOrMeta+c');
+    else await menu.getByRole('menuitem', { name: '复制 Markdown', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.__copiedMarkdown?.trim())).toBe(selected);
+    await expect.poll(() => page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').active.content)).toBe(markdown);
+  });
+}
+
+test('right click text menu only offers copy and Escape preserves content', async ({ page }) => {
+  await prepare(page, 'fixed');
+  const target = page.locator('.ProseMirror h1');
+  await target.click({ button: 'right', position: { x: 300, y: 10 } });
+  const menu = page.getByRole('menu', { name: '选区操作', exact: true });
+  await expect(menu).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await target.click({ button: 'right', position: { x: 300, y: 10 } });
+  await expect(menu.getByRole('menuitem')).toHaveCount(1);
+  await expect(menu.getByRole('menuitem', { name: '复制 Markdown', exact: true })).toBeVisible();
+  await expect(page.locator('.ProseMirror p')).toHaveText(`前文${selected}后文。`);
+  await expect(target).toHaveText('工具栏测试');
+});
+
+test('right click page whitespace preserves a selected block', async ({ page }) => {
+  const toolbar = await prepare(page);
+  await page.locator('.ProseMirror p').first().click();
+  await page.locator('.tano-block-handle').first().dispatchEvent('click');
+  await page.keyboard.press('Escape');
+  const selectedBlock = page.locator('.ProseMirror-selectednode');
+  await expect(selectedBlock).toHaveCount(1);
+  const before = await selectedBlock.textContent();
+  const bounds = await page.locator('.editor-scroll').first().boundingBox();
+  await page.mouse.click(bounds.x + bounds.width - 15, bounds.y + bounds.height - 20, { button: 'right' });
+  await expect(toolbar).toBeHidden();
+  await expect(selectedBlock).toHaveText(before);
+  const menu = page.locator('.block-context-menu');
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: '创建副本' })).toBeVisible();
+  const menuBounds = await menu.boundingBox();
+  expect(menuBounds.y + menuBounds.height).toBeLessThanOrEqual(bounds.y + bounds.height - 19);
+  await menu.getByRole('menuitem', { name: '删除块' }).click();
+  await expect(page.locator('.ProseMirror h1')).toHaveCount(0);
+  await expect(page.locator('.ProseMirror p')).toContainText(selected);
+});
+
+for (const [action, expected, container = '折叠块'] of [
+  ['创建副本', ['一', '二', '三', '二', '三', '四']],
+  ['删除块', ['一', '四']],
+  ['上移块', ['二', '三', '一', '四']],
+  ['下移块', ['一', '四', '二', '三']],
+  ['合并放入新块', ['一', '四']],
+  ['合并放入新块', ['一', '四'], '引用块'],
+  ['合并放入新块', ['一', '四'], '提示块'],
+  ['合并放入新块', ['一', '四'], '标签页'],
+  ['合并放入新块', ['一', '四'], '分栏'],
+]) test(`selected block handle menu applies ${action} ${container} to the whole group`, async ({ page }) => {
+  await prepare(page, 'fixed');
+  await page.evaluate(async () => {
+    await document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace')
+      .create('多选菜单.md', false, '一\n\n二\n\n三\n\n四\n');
+  });
+  const paragraphs = page.locator('.ProseMirror > p');
+  await expect(paragraphs).toHaveText(['一', '二', '三', '四']);
+  const handles = page.locator('.tano-block-handle');
+  await handles.nth(1).dispatchEvent('click');
+  await page.keyboard.press('Escape');
+  await handles.nth(2).dispatchEvent('click', { shiftKey: true });
+  await expect(page.locator('.tano-block-selected')).toHaveCount(2);
+  await handles.nth(1).dispatchEvent('click');
+  const menu = page.getByRole('menu', { name: '2 个块的操作', exact: true });
+  await expect(menu).toBeVisible();
+  await expect(page.locator('.tano-block-selected')).toHaveCount(2);
+  await expect(menu.getByRole('menuitem', { name: '删除块', exact: true }).locator('.menu-shortcut')).toContainText('Backspace');
+  if (action === '上移块') await menu.getByRole('menuitem', { name: action, exact: true }).press('Alt+ArrowUp');
+  else await menu.getByRole('menuitem', { name: action, exact: true }).click();
+  if (action === '合并放入新块') {
+    const submenu = page.getByRole('menu', { name: '合并放入新块', exact: true });
+    await expect(submenu).toBeVisible();
+    await expect(submenu.getByRole('menuitem')).toHaveCount(5);
+    await expect(paragraphs).toHaveText(['一', '二', '三', '四']);
+    await submenu.getByRole('menuitem', { name: container, exact: true }).click();
+  }
+  await expect(paragraphs).toHaveText(expected);
+  if (action === '合并放入新块') {
+    await expect(page.locator('.ProseMirror')).toContainText('二');
+    await expect(page.locator('.ProseMirror')).toContainText('三');
+    await page.locator('.tano-block-handle').nth(1).dispatchEvent('click');
+    await page.locator('.block-context-menu').getByRole('menuitem', { name: '展开', exact: true }).click();
+    await expect(paragraphs).toHaveText(['一', '二', '三', '四']);
+  }
+});
 
 for (const mode of ['selection', 'bottom', 'left', 'right']) {
 for (const [button, label, value, result] of [

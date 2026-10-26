@@ -689,6 +689,33 @@ it('opens tab actions by mouse or keyboard and closes other tabs in order', asyn
   expect(document.body.querySelector('.desktop-tab-context-menu')).toBeNull();
 });
 
+it('keeps right-edge context menus below window controls after viewport clamping', async () => {
+  const controls = document.createElement('div');
+  controls.className = 'desktop-window-actions';
+  controls.getBoundingClientRect = () => ({
+    left: window.innerWidth - 138, right: window.innerWidth,
+    top: 0, bottom: 40, width: 138, height: 40,
+  }) as DOMRect;
+  document.body.append(controls);
+  const width = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(180);
+  const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(160);
+  try {
+    root.querySelector<HTMLElement>('.desktop-window-drag')!.dispatchEvent(new MouseEvent('contextmenu', {
+      bubbles: true, cancelable: true, clientX: window.innerWidth - 20, clientY: 20,
+    }));
+    await nextTick();
+    await nextTick();
+    const menu = document.body.querySelector<HTMLElement>('.desktop-tab-context-menu')!;
+    expect(menu.style.left).toBe(`${window.innerWidth - 188}px`);
+    expect(menu.style.top).toBe('48px');
+    expect(menu.style.maxHeight).toBe(`${window.innerHeight - 56}px`);
+  } finally {
+    controls.remove();
+    width.mockRestore();
+    height.mockRestore();
+  }
+});
+
 it('opens blank-track actions without starting window drag', async () => {
   const newTab = vi.fn();
   const newDocument = vi.fn();
@@ -707,18 +734,12 @@ it('opens blank-track actions without starting window drag', async () => {
   expect(rightClick.defaultPrevented).toBe(true);
   const menu = document.body.querySelector<HTMLElement>('.desktop-tab-context-menu')!;
   expect(menu.getAttribute('aria-label')).toBe('标签栏操作');
-  [...menu.querySelectorAll('button')]
-    .find((button) => button.textContent?.includes('新建文档'))!
-    .click();
-  expect(newDocument).toHaveBeenCalledOnce();
-  expect(newTab).not.toHaveBeenCalled();
-
-  track.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
-  await nextTick();
+  expect(menu.textContent).not.toContain('新建文档');
   [...document.body.querySelectorAll<HTMLButtonElement>('.desktop-tab-context-menu button')]
     .find((button) => button.textContent?.includes('新建标签页'))!
     .click();
   expect(newTab).toHaveBeenCalledOnce();
+  expect(newDocument).not.toHaveBeenCalled();
 });
 
 it('opens devtools from the blank track without changing tabs and dismisses the menu', async () => {

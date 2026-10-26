@@ -40,8 +40,12 @@ it('keeps workspace switching and settings in the primary menu and opens actions
   expect(openSettings).toHaveBeenCalledOnce();
   trigger.click();
   await nextTick();
+  await nextTick();
   expect(menu()).not.toBeNull();
   const items = menu()!.querySelectorAll<HTMLButtonElement>('button');
+  expect(document.activeElement).toBe(menu());
+  key(menu()!, 'ArrowDown');
+  expect(document.activeElement).toBe(items[1]);
   items[0].click();
   await nextTick();
   expect(menu()).not.toBeNull();

@@ -13,6 +13,7 @@ import {
   nextTick,
   onBeforeUnmount,
   onMounted,
+  provide,
   ref,
   shallowReactive,
   shallowRef,
@@ -44,7 +45,6 @@ import {
   History,
   List,
   ListTodo,
-  ListOrdered,
   CircleHelp,
   ArrowLeft,
   ArrowRight,
@@ -68,9 +68,6 @@ import {
   Settings2,
   SquarePen,
   Pin,
-  Space,
-  Heading1,
-  SlidersHorizontal,
   LockKeyhole,
   MoveHorizontal,
   Undo2,
@@ -105,6 +102,8 @@ import WorkspaceBreadcrumb from './components/WorkspaceBreadcrumb.vue';
 import DocumentStatus from './components/DocumentStatus.vue';
 import { documentStatusItems, type DocumentSyncStatus } from './document-status';
 import DocumentScrollbar from './components/DocumentScrollbar.vue';
+import PageDisplayOptions from './components/PageDisplayOptions.vue';
+import DocumentGlobalMenu from './components/DocumentGlobalMenu.vue';
 import DocumentExportMenu from './components/DocumentExportMenu.vue';
 import type { ImportRecord } from './components/ImportPanel.vue';
 const ImportPanel = defineAsyncComponent(() => import('./components/ImportPanel.vue'));
@@ -223,9 +222,10 @@ import { resolveWikiLink } from './wiki-links';
 import { applyFileMovePreview, planFileMovePreview, type FileMovePreview } from './file-move';
 import {
   isSidebarToggleShortcut, matchesShortcut, parseShortcutBindings, readShortcutBindings,
-  saveShortcutBindings, shortcutLabel, shortcutPreferenceKey,
+  saveShortcutBindings, shortcutLabel, shortcutKeys, shortcutPreferenceKey,
 } from './shortcuts';
 import type { ShortcutId } from './shortcuts';
+import { configuredEditorShortcuts } from './configured-editor-shortcuts';
 import { createDetachedTabWindow, detachedTabRequest, reportDetachedReady } from './detach-tab';
 import type { DetachedDropPoint } from './detach-tab';
 import {
@@ -317,7 +317,6 @@ const sidebarHeaderItems = computed(() => [
   ...extensionViews
     .filter((view) => view.header)
     .map((view) => ({ id: view.id, label: view.label })),
-  { id: 'commands', get label() { return t('命令中心'); } },
 ]);
 const repositoryActionItems = computed(() => [
   ...(store.workspaceSettings.showGraph ? [{ id: 'graph', get label() { return t('关系图谱'); } }] : []),
@@ -882,7 +881,17 @@ function syncShortcutPreferences(event: StorageEvent) {
 }
 onMounted(() => window.addEventListener('storage', syncShortcutPreferences));
 onBeforeUnmount(() => window.removeEventListener('storage', syncShortcutPreferences));
-function shortcutHint(id: ShortcutId) { return shortcutLabel(shortcuts.value[id]); }
+function shortcutHint(id: ShortcutId) { const first = shortcutKeys(shortcuts.value[id])[0]; return first ? shortcutLabel(first) : ''; }
+provide('tano-shortcut-bindings', shortcuts);
+const routeConfiguredEditorShortcut = configuredEditorShortcuts(() => shortcuts.value,
+  () => !settingsPanel.value && !modal.value && !commandPaletteOpened.value && !updateLock.value,
+  () => paneEditorScrolls.get(store.activePaneId), id => {
+    const action = ({ deleteBlock: 'delete', moveBlockUp: 'move-up', moveBlockDown: 'move-down', indentBlock: 'indent', outdentBlock: 'outdent' } as Record<string, string>)[id];
+    if (action) paneEditors.get(store.activePaneId)?.blockShortcut(action);
+  });
+// Register during setup, before child editors install their native capture handlers.
+window.addEventListener('keydown', routeConfiguredEditorShortcut, true);
+onBeforeUnmount(() => window.removeEventListener('keydown', routeConfiguredEditorShortcut, true));
 watch(toolbarMode, (value) => saveTextPreference('toolbarMode', value));
 function syncToolbarPreference(event: StorageEvent) {
   if (event.key === toolbarPreferenceKey || event.key === null)
@@ -4218,7 +4227,6 @@ const helpBlocked = computed(() => !!(
                 :actions="viewActions[view.id]"
               />
             </template>
-            <button v-if="isVisible('commands')" type="button" class="icon-button" :aria-label="t('打开命令中心')" :data-tooltip="t('命令中心')" :data-tooltip-shortcut="shortcuts.commandPalette" @click="commandPaletteOpened = true"><Search :size="17" /></button>
           </ButtonVisibilityGroup>
         </div>
         <SidebarNavigation
@@ -4442,7 +4450,7 @@ const helpBlocked = computed(() => !!(
                       ? t('删除所选文档')
                       : t('将所选条目移入回收站')
                 }}
-              </button>
+              <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('deleteFile') }}</kbd></button>
             </template>
             <template v-else>
               <template v-if="fileContextMenu.file.kind === 'directory'">
@@ -4475,7 +4483,7 @@ const helpBlocked = computed(() => !!(
                   @click="fileContextAction('rename')"
                 >
                   <Pencil :size="15" />{{ t('重命名文件夹') }}
-                </button>
+                <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd></button>
               </template>
               <template v-else>
                 <button
@@ -4514,7 +4522,7 @@ const helpBlocked = computed(() => !!(
                   @click="fileContextAction('rename')"
                 >
                   <Pencil :size="15" />{{ t('重命名文档') }}
-                </button>
+                <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd></button>
                 <button
                   v-else-if="attachments || isDataTableFilePath(fileContextMenu.file.path)"
                   role="menuitem"
@@ -4522,7 +4530,7 @@ const helpBlocked = computed(() => !!(
                   @click="fileContextAction('rename')"
                 >
                   <Pencil :size="15" />{{ t('重命名文件') }}
-                </button>
+                <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd></button>
               </template>
               <button
                 v-if="canDuplicateEntry(fileContextMenu.file)"
@@ -4577,7 +4585,7 @@ const helpBlocked = computed(() => !!(
                           : t('删除在线文档')
                         : t('移入回收站')
                   }}
-                </button>
+                <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('deleteFile') }}</kbd></button>
               </template>
             </template>
           </div>
@@ -4638,7 +4646,7 @@ const helpBlocked = computed(() => !!(
                 @click="directoryContextAction('rename')"
               >
                 <Pencil :size="15" />{{ t('重命名文件夹') }}
-              </button>
+              <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd></button>
               <button
                 class="danger-text"
                 role="menuitem"
@@ -4648,7 +4656,7 @@ const helpBlocked = computed(() => !!(
                 <Trash2 :size="15" />{{
                   store.isDemo ? t('删除文件夹') : store.isWeb ? t('删除在线文件夹') : t('将文件夹移入回收站')
                 }}
-              </button>
+              <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('deleteFile') }}</kbd></button>
             </template>
           </div>
         </Teleport>
@@ -4726,6 +4734,9 @@ const helpBlocked = computed(() => !!(
               />
               </template>
               <template #default>
+              <button role="menuitem" @click="workspaceMenu = false; commandPaletteOpened = true">
+                <Search :size="16" />{{ t('命令中心') }}<span class="menu-shortcut">{{ shortcutHint('commandPalette') }}</span>
+              </button>
               <component
                 :is="extensions.regions['workspace-settings']"
                 v-if="extensions.regions['workspace-menu-layout'] && extensions.regions['workspace-settings']"
@@ -5338,14 +5349,14 @@ const helpBlocked = computed(() => !!(
                         :disabled="editorReadonly || !documentUndoAvailable"
                         @click="undoDocument"
                       >
-                        <Undo2 :size="15" />{{ t('撤销') }}<span class="menu-shortcut">Ctrl Z</span>
+                        <Undo2 :size="15" />{{ t('撤销') }}<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('undo') }}</kbd>
                       </button>
                       <button
                         type="button"
                         :disabled="editorReadonly || !documentRedoAvailable"
                         @click="redoDocument"
                       >
-                        <Redo2 :size="15" />{{ t('重做') }}<span class="menu-shortcut">Ctrl Y</span>
+                        <Redo2 :size="15" />{{ t('重做') }}<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('redo') }}</kbd>
                       </button>
                       <button
                         @click="
@@ -5428,6 +5439,16 @@ const helpBlocked = computed(() => !!(
                       >
                         <Clock3 :size="15" />{{ t('更新历史') }}
                       </button>
+                      <DocumentGlobalMenu>
+                        <PageDisplayOptions :auto-spacing="editorPreferences.autoSpacing ?? false"
+                          :show-page-title="showPageTitle"
+                          :show-document-properties="showDocumentProperties"
+                          :show-outline="showOutline"
+                          :show-all-line-numbers="showAllLineNumbers"
+                          :detached-window="!!detachedWindow"
+                          :source="paneSource(store.activeId)"
+                          @toggle="togglePageOption" />
+                      </DocumentGlobalMenu>
                       <DocumentExportMenu :disabled="exportBusy" @select="exportDocument" />
                       <div class="menu-divider" role="separator" />
                       <button
@@ -5747,7 +5768,7 @@ const helpBlocked = computed(() => !!(
                             insertSourceFiles(files, position, requireImage, active, pane.id)
                         "
                       />
-                      <MarkdownEditor :suggestion-marks="suggestions.richMarks" :transform-change="suggestions.transformChange"
+                      <MarkdownEditor :shortcut-hints="{ delete: shortcutHint('deleteBlock'), 'move-up': shortcutHint('moveBlockUp'), 'move-down': shortcutHint('moveBlockDown'), indent: shortcutHint('indentBlock'), outdent: shortcutHint('outdentBlock') }" :suggestion-marks="suggestions.richMarks" :transform-change="suggestions.transformChange"
                         v-else
                         :custom-callout-icon="CalloutIconPicker"
                         :content-revision="suggestions.viewKey"
@@ -6052,69 +6073,14 @@ const helpBlocked = computed(() => !!(
           :style="{ left: `${pageContextMenu.x}px`, top: `${pageContextMenu.y}px` }"
           @keydown="pageContextKeydown"
         >
-          <button
-            type="button"
-            role="menuitemcheckbox"
-            :aria-checked="editorPreferences.autoSpacing ?? false"
-            @click="togglePageOption('autoSpacing')"
-          >
-            <Space :size="15" />{{ t('正文自动间距') }}<Check
-              v-if="editorPreferences.autoSpacing"
-              class="page-context-check"
-              :size="14"
-            />
-          </button>
-          <div class="menu-divider" role="separator" />
-          <button
-            type="button"
-            role="menuitemcheckbox"
-            :aria-checked="showPageTitle"
-            @click="togglePageOption('title')"
-          >
-            <Heading1 :size="15" />{{ t('页面内标题') }}<Check
-              v-if="showPageTitle"
-              class="page-context-check"
-              :size="14"
-            />
-          </button>
-          <button
-            type="button"
-            role="menuitemcheckbox"
-            :aria-checked="showDocumentProperties"
-            @click="togglePageOption('properties')"
-          >
-            <SlidersHorizontal :size="15" />{{ t('文档属性') }}<Check
-              v-if="showDocumentProperties"
-              class="page-context-check"
-              :size="14"
-            />
-          </button>
-          <button
-            v-if="!detachedWindow"
-            type="button"
-            role="menuitemcheckbox"
-            :aria-checked="showOutline"
-            @click="togglePageOption('outline')"
-          >
-            <List :size="15" />{{ t('显示目录') }}<Check
-              v-if="showOutline"
-              class="page-context-check"
-              :size="14"
-            />
-          </button>
-          <button
-            v-if="paneSource(store.activeId)"
-            type="button"
-            role="menuitemcheckbox"
-            :aria-checked="showAllLineNumbers"
-            @click="togglePageOption('lineNumbers')"
-          >
-            <ListOrdered :size="15" />{{ t('显示所有行号') }}<Check
-              v-if="showAllLineNumbers"
-              class="page-context-check"
-              :size="14"
-            />
-          </button>
+          <PageDisplayOptions :auto-spacing="editorPreferences.autoSpacing ?? false"
+            :show-page-title="showPageTitle"
+            :show-document-properties="showDocumentProperties"
+            :show-outline="showOutline"
+            :show-all-line-numbers="showAllLineNumbers"
+            :detached-window="!!detachedWindow"
+            :source="paneSource(store.activeId)"
+            @toggle="togglePageOption" />
         </div>
       </Teleport>
       <Teleport to="body">

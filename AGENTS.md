@@ -22,7 +22,7 @@ Tano — Humans and agents, on the same page.
 
 ## Development
 
-- Run all tests and checks locally before committing or merging, and record the commands, results and tested revision in the commit body or an optional PR. GitHub Actions is manual-only for packaging, release and synchronization; never add commit/PR-triggered CI or run test suites there. See [docs/local-validation.md](docs/local-validation.md).
+- Ordinary Git commits, pushes and merges do not require tests, builds or dependency installation; do not run them or synchronize Core solely for a Git request. During development, choose targeted local checks based on the change or explicit user instructions. Before publishing a new version, complete the full local checks and applicable platform acceptance on the final release revision, and record the commands, results and tested SHA in release evidence. GitHub Actions is manual-only for packaging, release and synchronization; never add commit/PR-triggered CI or run test suites there. See [docs/local-validation.md](docs/local-validation.md).
 
 - `npm install`, `npm run dev` for the browser demo; `npm run desktop` for the real desktop filesystem.
 - `npm run check` for TypeScript, merge/store tests, and production build.
@@ -36,7 +36,7 @@ Tano — Humans and agents, on the same page.
 - After completing a requested Git commit/push/merge workflow, agents must automatically run `npm run cache:clean -- -Apply` on Windows in each affected repository, without asking again. Wait until all validation, packaging, deployment and acceptance work in that workflow has finished. Read-only Git commands do not trigger cleanup. This is an agent workflow rule, not a Git hook; see [docs/local-validation.md](docs/local-validation.md).
 - Only clean the script's allowlisted Rust cache subdirectories and Android build intermediates. Preserve source, uncommitted work, `node_modules/`, `vendor/`, installer bundles, exported Core packages, release evidence, backups and local service state. If a build is active or a safety check fails, defer cleanup and report why; never force it. Report recycled bytes separately from reclaimed disk space. On other platforms, report that this Windows cleanup command is unavailable rather than substituting broad deletion commands.
 
-- Follow [docs/branching.md](docs/branching.md): PRs are optional; normal pushes to `main` and `dev` are allowed after local validation. Integrate ordinary work into `dev` before promoting it to `main`.
+- Follow [docs/branching.md](docs/branching.md): PRs are optional; normal pushes to `main` and `dev` are allowed without a mandatory local-test gate. Integrate ordinary work into `dev` before promoting it to `main`.
 - Use `git merge --no-ff` when merging between branches, including task branches and `main`/`dev`, to preserve a merge record. Never squash/rebase long-lived branches or force-push/delete them. Version updates and hotfixes made on `main` must be merged back into `dev` the same way.
 
 - Follow the Conventional Commit format and the examples in [CONTRIBUTING.md](CONTRIBUTING.md) for every new commit.

@@ -734,6 +734,7 @@ export function blockControls(
         if (view.state.selection instanceof BlockRangeSelection &&
           view.state.selection.blocks.some(block => block.pos === pos)) {
           view.focus();
+          openMenu?.(event, handle);
           return;
         }
         view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));

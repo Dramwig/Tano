@@ -1859,7 +1859,7 @@ button:hover {
   background: var(--line);
 }
 .compact-action-menu .menu-shortcut {
-  font-size: 11px;
+  font-size: 10px;
 }
 .compact-action-menu .menu-beta {
   margin-left: auto;
@@ -1912,11 +1912,15 @@ button:hover {
   position: fixed;
   z-index: 100;
   width: 190px;
+  max-width: calc(100vw - 16px);
   max-height: calc(100dvh - 16px);
   overflow-y: auto;
 }
 .block-context-menu:focus {
   outline: none;
+}
+.block-context-menu .menu-shortcut {
+  padding-left: 0;
 }
 .block-context-menu button > span {
   width: 15px;
@@ -1979,9 +1983,11 @@ button:hover {
   right: 0;
   top: 35px;
 }
+.document-global-trigger .document-global-chevron,
 .document-export-trigger .document-export-chevron {
   margin-left: auto;
 }
+.document-global-trigger[aria-expanded='true'],
 .document-export-trigger[aria-expanded='true'] {
   background: var(--hover);
 }
@@ -2098,6 +2104,15 @@ button:hover {
 }
 .menu-shortcut {
   margin-left: auto;
+  padding: 0 0 0 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-family: inherit;
+  font-weight: normal;
   font-size: 12px;
   color: var(--muted);
 }

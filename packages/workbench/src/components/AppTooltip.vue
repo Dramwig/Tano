@@ -72,7 +72,7 @@ function update() {
   if (!usable(anchor)) return hide();
   label.value = tooltipLabel(anchor);
   example.value = featureDefinitions.find(feature => feature.key === anchor?.dataset.tooltipExample)?.key;
-  shortcut.value = anchor.dataset.tooltipShortcut ? shortcutLabel(anchor.dataset.tooltipShortcut) : '';
+  shortcut.value = anchor.dataset.tooltipShortcut ? shortcutLabel(anchor.dataset.tooltipShortcut.split(',')) : '';
   void place();
 }
 function show(button: HTMLElement) {

@@ -8,7 +8,7 @@ export interface WorkbenchCommand {
   label: string;
   category?: string;
   keywords?: string;
-  shortcut?: string | null;
+  shortcut?: string | readonly string[] | null;
   available?: boolean;
   run: () => unknown;
 }

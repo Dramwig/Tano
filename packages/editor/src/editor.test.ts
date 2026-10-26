@@ -4291,7 +4291,7 @@ describe('Markdown editor round trips', () => {
     expect(errors).toEqual([]);
   });
 
-  it('temporarily selects the right-clicked block and restores the prior selection on Escape', async () => {
+  it('keeps the selected block when right-clicking another block and pressing Escape', async () => {
     const { value, revealMarkdown, errors } = await mount('First paragraph.\n\nSecond paragraph.\n');
     revealMarkdown.value = false;
     await nextTick();
@@ -4304,8 +4304,8 @@ describe('Markdown editor round trips', () => {
     const menu = document.querySelector<HTMLElement>('.block-context-menu');
     expect(event.defaultPrevented).toBe(true);
     expect(menu?.getAttribute('role')).toBe('menu');
-    expect(paragraphs[1]?.classList.contains('ProseMirror-selectednode')).toBe(true);
-    expect(paragraphs[0]?.classList.contains('ProseMirror-selectednode')).toBe(false);
+    expect(paragraphs[1]?.classList.contains('ProseMirror-selectednode')).toBe(false);
+    expect(paragraphs[0]?.classList.contains('ProseMirror-selectednode')).toBe(true);
     menu!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     await nextTick();
     expect(document.querySelector('.block-context-menu')).toBeNull();

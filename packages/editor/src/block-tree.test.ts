@@ -15,6 +15,8 @@ import {
   wrapBlockInToggle,
 } from './block-tree';
 import { blockCommand } from './block-commands';
+import { blockMenuStructure, blockContainerOptions } from './block-menu-structure';
+import { BlockRangeSelection } from './block-selection';
 import { selectedBlocks } from './document-model';
 import { unsupportedMarkdown } from './syntax';
 
@@ -27,6 +29,44 @@ afterAll(async () => {
 });
 const toggle = (title: string, body: string) =>
   `<details>\n<summary>${title}</summary>\n\n${body}\n\n</details>`;
+
+it('menu conversion preserves separate roots, and wrapping/unwrapping preserves their order', () => {
+  let state = stateFor('One\n\nTwo\n\nThree');
+  state = state.apply(state.tr.setSelection(BlockRangeSelection.fromBlocks(state.doc, blockTree(state.doc).map(block => block.pos))!));
+  state = state.apply(blockMenuStructure(state, 'heading')!);
+  expect(state.doc.childCount).toBe(3);
+  expect(blockTree(state.doc).map(block => [block.node.type.name, block.depth])).toEqual([
+    ['heading', 0], ['heading', 0], ['heading', 0],
+  ]);
+  expect(blockMenuStructure(state, 'quote')).toBeNull();
+  state = state.apply(blockMenuStructure(state, 'wrap-toggle')!);
+  expect(state.doc.childCount).toBe(1);
+  expect(state.doc.firstChild!.childCount).toBe(3);
+  state = state.apply(blockMenuStructure(state, 'unwrap')!);
+  expect(state.doc.content.content.map(node => node.textContent)).toEqual(['One', 'Two', 'Three']);
+  roundtrip(state);
+});
+
+it('unwraps selected containers without touching an unselected gap', () => {
+  let state = stateFor(`${toggle('A', 'One')}\n\nGap\n\n${toggle('B', 'Two')}`);
+  const positions = blockTree(state.doc).filter(block => block.node.type.name === 'tano_toggle').map(block => block.pos);
+  state = state.apply(state.tr.setSelection(BlockRangeSelection.fromBlocks(state.doc, positions)!));
+  expect(blockMenuStructure(state, 'wrap-toggle')).toBeNull();
+  state = state.apply(blockMenuStructure(state, 'unwrap')!);
+  expect(state.doc.content.content.map(node => node.textContent)).toEqual(['One', 'Gap', 'Two']);
+  roundtrip(state);
+});
+
+it.each(blockContainerOptions)('wraps blocks in $type and unwraps without losing their content', ({ type }) => {
+  let state = stateFor('One\n\nTwo');
+  state = state.apply(state.tr.setSelection(BlockRangeSelection.fromBlocks(state.doc, blockTree(state.doc).map(block => block.pos))!));
+  state = state.apply(blockMenuStructure(state, `wrap-${type}`)!);
+  expect(state.doc.childCount).toBe(1);
+  roundtrip(state);
+  state = state.apply(blockMenuStructure(state, 'unwrap')!);
+  expect(state.doc.content.content.map(node => node.textContent)).toEqual(['One', 'Two']);
+  roundtrip(state);
+});
 function stateFor(source: string) {
   return codec.withContext((ctx) =>
     EditorState.create({ doc: ctx.get(parserCtx)(source)!, plugins: [history()] }),

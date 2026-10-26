@@ -1,7 +1,7 @@
 # Branching and integration
 
 PRs are optional in both repositories. Ordinary commits and pushes may update
-`main` and `dev` directly after local validation. `main` remains the default,
+`main` and `dev` directly without a mandatory local-test gate. `main` remains the default,
 releasable branch; `dev` integrates the next version. Production and installers
 come from explicitly selected, immutable tags in [release automation](release-automation.md),
 not automatically from a branch push.
@@ -12,19 +12,20 @@ not automatically from a branch push.
    (or `origin/main`). This tracks the remote branch without inventing a merge.
 2. Work on dev directly, or create an isolated task branch from dev, normally
    `codex/<task>` for agent work. Use Conventional Commits.
-3. Run `npm run check` and relevant native/platform checks locally. Record the
-   tested revision, commands and results in the commit body or an optional PR.
+3. Commit the intended changes. Tests and builds are not prerequisites for Git
+   work; use targeted local checks when useful during development. Record actual
+   results if run, without claiming untested changes are verified.
 4. Merge a task branch into dev with `git merge --no-ff <task-branch>`, and push dev.
-5. After integration passes locally, merge dev into main with
+5. When ready to integrate, merge dev into main with
    `git merge --no-ff dev`, and push main. Keep unfinished work out of main.
 
-For example, with current branches and locally validated dev:
+For example, with current branches and development ready for integration:
 
 ```sh
 git fetch origin
 git switch main
 git merge --ff-only origin/main
-git merge --no-ff dev -m "chore(repo): integrate tested development"
+git merge --no-ff dev -m "chore(repo): integrate development"
 git push origin main
 ```
 
@@ -36,24 +37,26 @@ an ancestor, Git correctly reports that there is nothing to merge.
 
 Do not force-push, reset shared history, or delete main/dev. If a push is rejected
 because the remote advanced, fetch and integrate the remote changes, resolve any
-conflicts, validate the result locally and retry an ordinary push. Never use force
+conflicts, review the resolved changes and retry an ordinary push. Never use force
 to bypass the rejection. Delete only fully merged short-lived task branches.
 
 ## Releases and hotfixes
 
 Version changes happen on main only when preparing a release. Run the release-plan
-script locally, validate, commit and push; the **Prepare release PR** workflows
+script locally, commit and push; the **Prepare release PR** workflows
 remain optional helpers for review. Tags must retain main ancestry and immutable
-source identity. Pushing main or a tag does not publish anything automatically.
+source identity. Before creating a release tag or publishing a new version,
+complete [local release validation](local-validation.md) on the final candidate
+and record its exact SHA. Pushing main or a tag does not publish anything automatically.
 
 Urgent fixes may be committed on main or merged from a hotfix branch with
-`--no-ff`, after local tests. If the deployed tag differs from main, assess the
+`--no-ff` without a mandatory test gate for the Git operation. If the deployed tag differs from main, assess the
 additional changes before publishing. Every version update and hotfix must return
 to dev before the next promotion.
 
 ## Synchronize main back into dev
 
-With current branches and local validation:
+With current branches:
 
 ```sh
 git fetch origin
@@ -64,14 +67,14 @@ git push origin dev
 ```
 
 Resolve conflicts on dev or a temporary branch based on dev; do not change main
-just to resolve a synchronization conflict. Test the resolved result before
-committing and pushing it.
+just to resolve a synchronization conflict. Review the resolved changes and
+commit/push normally; release validation applies when publishing a version.
 
 [Sync main into dev](../.github/workflows/sync-development.yml) is an optional
 manual helper that opens/reuses a main-to-dev PR. It does not merge, rewrite
 branches or deploy. It needs the release-automation App/token; ordinary local
 merge and push use the developer's existing Git authentication and need no App.
-If using this helper, validate locally and choose **Create a merge commit**.
+If using this helper, choose **Create a merge commit**.
 
 ## GitHub protection
 

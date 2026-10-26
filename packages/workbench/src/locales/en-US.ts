@@ -292,6 +292,7 @@ export const englishMessages: Readonly<Record<string, string>> = {
   "页内搜索": "Find in page",
   "查找与替换": "Find and replace",
   "查看关系图谱": "View relationship graph",
+  "工作区显示选项": "Workspace display options",
   "全宽": "Full width",
   "切换页面内容宽度": "Toggle page width",
   "显示目录": "Show outline",

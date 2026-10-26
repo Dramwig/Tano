@@ -4,13 +4,14 @@ import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 import { ArrowDownToLine, ChevronRight, Code2, FileText, Image, FileType } from 'lucide-vue-next';
 import type { DocumentExportFormat } from '../document-export';
 import WordFileIcon from './WordFileIcon.vue';
+import { useDocumentSubmenu } from './use-document-submenu';
 
 defineProps<{ disabled?: boolean }>();
 const emit = defineEmits<{ select: [format: DocumentExportFormat] }>();
 const panelId = useId();
 const trigger = ref<HTMLButtonElement>();
 const panel = ref<HTMLElement>();
-const open = ref(false);
+const { open, activate, close, cancelClose, scheduleClose } = useDocumentSubmenu(trigger);
 const position = ref({ left: '0px', top: '0px' });
 const formats = [
   { id: 'markdown', label: 'Markdown', icon: FileText },
@@ -19,14 +20,8 @@ const formats = [
   { id: 'html', label: 'HTML', icon: Code2 },
   { id: 'png', get label() { return t('图片'); }, icon: Image },
 ] as const;
-let closeTimer: ReturnType<typeof setTimeout> | undefined;
-
-function cancelClose() { clearTimeout(closeTimer); }
-function close() { cancelClose(); open.value = false; }
-function scheduleClose() { cancelClose(); closeTimer = setTimeout(close, 180); }
 async function show(focus = false) {
-  cancelClose();
-  open.value = true;
+  activate();
   await nextTick();
   const anchor = trigger.value?.closest('.document-dropdown')?.getBoundingClientRect();
   const row = trigger.value?.getBoundingClientRect();

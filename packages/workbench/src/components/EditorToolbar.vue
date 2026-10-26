@@ -49,7 +49,8 @@ import {
 import type { EditorSelectionContext } from '@tano/editor/selection-context';
 import type { DocumentFeatures } from '@tano/editor/runtime';
 import TextStyleMenu from './TextStyleMenu.vue';
-import { formattingShortcuts } from '../shortcuts';
+import { useFormattingShortcuts } from '../use-formatting-shortcuts';
+const formattingShortcuts = useFormattingShortcuts();
 import { announceToolbarMenuOpen, isAnotherToolbarMenu, toolbarMenuOpenEvent } from '../toolbar-menu';
 
 const props = defineProps<{

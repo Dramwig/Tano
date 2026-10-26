@@ -4,20 +4,41 @@ All tests, static checks and smoke tests run on developer machines. Ordinary
 commits, pushes (including tags), PR updates and merges start **no GitHub Actions**.
 No Git hook is installed and no background test runner is started automatically.
 
-## Before submitting or merging
+## Ordinary Git work
 
-1. Update the target branch and validate the proposed integration locally. After
-   resolving a merge conflict, rerun the affected checks on the resolved result.
+Ordinary commits, pushes, PR updates and merges (including main/dev integration,
+hotfix commits and conflict resolution) do not require tests or builds first.
+For a Git-only request, inspect the changes and branch state, perform the requested
+Git operation and verify the resulting status; do not automatically install
+dependencies, run test suites, build installers or synchronize Core. Lightweight
+Git checks such as `git diff --check` are appropriate.
+
+During development and bug fixing, choose targeted local checks according to the
+change and user instructions. Record actual results when checks are run; do not
+claim that untested changes passed. Publishing a version is a separate gate below.
+
+## Before publishing a new version
+
+1. Finish integration, conflict resolution, version changes and dependency/Core
+   updates first. Validate the final release candidate, including changes from
+   both repositories when relevant. A branch push is not release approval.
 2. Run `npm ci` when dependencies change, then `npm run check`. This covers
    TypeScript, unit/integration tests, production builds and documentation links.
-3. Run the additional commands below for affected areas. Tests requiring a native
-   platform run locally on that platform; record unavailable checks honestly.
-4. Record the tested revision, commands, results and any platform limitations in
-   the commit body or an optional PR. For checks before a commit, record the base
-   SHA and that the staged working tree was tested. Ordinary pushes to main/dev
-   are allowed; force pushes and branch deletion remain blocked. If using a PR,
-   resolve its review conversations. There are no remote required checks.
-   A successful manual package build is not a test result.
+3. Run the additional commands below for affected areas and release platforms.
+   Record unavailable platform checks honestly; an unverified platform is not
+   accepted for release. A successful package build is not a test result.
+4. Record commands, results, tested SHA and platform limitations in release
+   evidence (release notes, a release commit body or an optional PR). If validating
+   before a commit, record the base SHA and tested working tree, then associate
+   that evidence with the resulting release SHA.
+5. Complete validation before creating the release tag or dispatching publication
+   or production deployment. Failed required checks block release, not ordinary
+   Git work. Existing evidence may be reused for unchanged source, dependencies
+   and build configuration; if the candidate changes, rerun the full check and
+   affected platform checks for the new candidate.
+
+Force pushes and long-lived branch deletion remain blocked. PRs remain optional;
+resolve review conversations when using one. There are no remote required tests.
 
 | Area | Additional local validation |
 | --- | --- |
@@ -30,7 +51,7 @@ No Git hook is installed and no background test runner is started automatically.
 | Browser plugins | `npm run test:plugins:browser` (install Playwright Chromium locally first) |
 | Native plugins | `npm run test:plugins:native` |
 
-For desktop startup changes, inspect the **first visible frame** of a fresh process
+Before releasing desktop startup changes, inspect the **first visible frame** of a fresh process
 in both `npm run desktop` (with a fresh Vite server) and the built release. It must
 show the startup UI or workbench, including when workbench imports are slow or
 fail. A screenshot taken after initialization does not verify this. Navigation

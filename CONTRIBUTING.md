@@ -1,15 +1,22 @@
 # Contributing to Tano
 
-Run `npm run check` before submitting a change. For native storage changes, also run `npm run test:native` and format the affected Rust crates as described in `AGENTS.md`.
+Ordinary commits, pushes and merges do not require tests, builds or dependency
+installation. Run targeted local checks during development when useful for the
+change or requested by the user; a Git-only request does not trigger validation
+or Core synchronization. Do not describe untested changes as verified.
+
+Before publishing a new version, run `npm run check` and the applicable native,
+platform and smoke checks on the final release revision. Record commands,
+results, tested SHA and platform limitations in release evidence (release notes,
+a release commit body or an optional PR). See [local validation](docs/local-validation.md).
 
 All tests and checks run locally; GitHub Actions only runs explicitly requested
-packaging, release or synchronization jobs. Record local validation and the tested
-revision in the commit body or an optional PR. See [local validation](docs/local-validation.md).
+packaging, release or synchronization jobs. Shared Core changes use the public
+source and export/update flow; never edit vendor snapshots or dependencies by hand.
 
 ## Branches
 
-PRs are optional. After local validation, ordinary `git commit` and `git push`
-may update `dev` or `main` directly. Integrate normal development into `dev`
+PRs are optional. Ordinary `git commit` and `git push` may update `dev` or `main` directly. Integrate normal development into `dev`
 first; keep `main` releasable. Task branches remain useful for isolated work.
 
 Use `git merge --no-ff` for every merge between branches, including task branches,
