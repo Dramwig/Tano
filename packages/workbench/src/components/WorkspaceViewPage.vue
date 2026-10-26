@@ -7,6 +7,7 @@ import { t } from '../i18n';
 import { useWorkspaceStore } from '../stores/workspace';
 import FileDatabasePage from './FileDatabasePage.vue';
 import ObjectDatabasePage from './ObjectDatabasePage.vue';
+import LoadingSkeleton from './LoadingSkeleton.vue';
 
 const props = defineProps<{ view: WorkspaceViewDefinition }>();
 const emit = defineEmits<{
@@ -59,7 +60,8 @@ function fileIcon(row: (typeof sourceRows.value)[number]) {
 </script>
 
 <template>
-  <FileDatabasePage v-if="view.database" :view="view" @open-file="emit('open-file', $event)" @edit-document-properties="emit('edit-document-properties', $event)" />
+  <LoadingSkeleton v-if="store.workspaceLoading?.views || (view.objectDatabase && store.workspaceLoading?.objects)" variant="document" :rows="6" />
+  <FileDatabasePage v-else-if="view.database" :view="view" @open-file="emit('open-file', $event)" @edit-document-properties="emit('edit-document-properties', $event)" />
   <ObjectDatabasePage v-else-if="view.objectDatabase" :view="view" @open-object="emit('open-object', $event)" />
   <main v-else class="workspace-view-page" :aria-label="view.name">
     <header class="workspace-view-header">

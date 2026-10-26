@@ -399,15 +399,17 @@ export class NativeAdapter implements WorkspaceAdapter {
   readonly mode = 'desktop' as const;
   reserveObjectId = (occupied: string[]) => invoke<string>('reserve_reference_id', { occupied });
   createAgentRecord = (path: string, content: string) => invoke<void>('create_agent_record', { path, content });
+  selectWorkspacePath = mobile ? undefined : async (): Promise<string | null> => {
+    const path = await chooseDirectory({
+      directory: true,
+      multiple: false,
+      title: '选择 Tano 工作文件夹',
+    });
+    return typeof path === 'string' ? path : null;
+  };
   async open(savedPath?: string): Promise<Workspace | null> {
     if (mobile && !savedPath) return { ...await invoke<Workspace>('open_mobile_workspace', { name: null }), canDelete: true };
-    const path =
-      savedPath ??
-      (await chooseDirectory({
-        directory: true,
-        multiple: false,
-        title: '选择 Tano 工作文件夹',
-      }));
+    const path = savedPath ?? await this.selectWorkspacePath?.();
     if (typeof path !== 'string') return null;
     return { ...await invoke<Workspace>('open_workspace', { path }), canDelete: true };
   }

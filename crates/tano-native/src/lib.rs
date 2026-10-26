@@ -40,6 +40,8 @@ mod updates;
 mod workspace_git;
 mod workspace_identity;
 mod workspace_lock;
+#[cfg(test)]
+mod workspace_responsiveness_tests;
 #[cfg(desktop)]
 mod workspace_sync;
 
@@ -85,12 +87,10 @@ fn workspace_lock_directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 fn should_notify_workspace_change(relative: &Path) -> bool {
-    let path = relative.to_string_lossy().replace('\\', "/");
-    path == ".tano"
-        || path.starts_with(".tano/")
-        || !relative
-            .components()
-            .any(|component| component.as_os_str().to_string_lossy().starts_with('.'))
+    relative.components().enumerate().all(|(index, component)| {
+        let name = component.as_os_str().to_string_lossy();
+        (index == 0 && name == ".tano") || !storage::ignored_workspace_name(&name)
+    })
 }
 
 #[cfg(test)]
@@ -108,7 +108,15 @@ mod watcher_path_tests {
         ] {
             assert!(should_notify_workspace_change(Path::new(path)), "{path}");
         }
-        for path in [".workspace/objects/old.tano.json", ".git/HEAD"] {
+        for path in [
+            ".workspace/objects/old.tano.json",
+            ".git/HEAD",
+            "node_modules/package/index.js",
+            "nested/target/debug/app.exe",
+            "dist/index.html",
+            ".tano/.tano-temporary",
+            "notes/.draft.md",
+        ] {
             assert!(!should_notify_workspace_change(Path::new(path)), "{path}");
         }
     }
@@ -118,6 +126,9 @@ fn with_session<T>(
     state: State<AppState>,
     f: impl FnOnce(&Session) -> Result<T, String>,
 ) -> Result<T, String> {
+    // Every command using this lock must dispatch off the window thread. Opening
+    // a workspace holds it during scanning; a synchronous IPC/asset callback
+    // waiting here would stall the WebView and all window events.
     let guard = state.session.lock().map_err(|e| e.to_string())?;
     let session = guard.as_ref().ok_or("请先打开一个工作空间")?;
     if !session.root_key.is_empty() && storage::native_key(&session.root) != session.root_key {
@@ -151,7 +162,7 @@ async fn open_workspace(path: String, app: tauri::AppHandle) -> Result<storage::
     .map_err(|e| format!("打开工作空间任务失败：{e}"))?
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn close_workspace(
     workspace_id: String,
     state: State<AppState>,
@@ -171,7 +182,7 @@ fn close_workspace(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn unregister_workspace(
     workspace_id: String,
     state: State<AppState>,
@@ -223,8 +234,9 @@ fn open_workspace_blocking(
     if !root.is_dir() {
         return Err("请选择一个文件夹".into());
     }
+    let newly_created = storage::existing_workspace_identity(&root)?.is_none();
     if let Some(session) = guard.as_ref() {
-        if session.root == root {
+        if session.root == root && !newly_created {
             identity_manifest::require(&root, &session.id)?;
             return storage::scan(&root, &session.id, &cache_path(&app)?);
         }
@@ -233,12 +245,17 @@ fn open_workspace_blocking(
         }
     }
     let data = app_data(&app)?;
-    let recent_id = if workspace_identity::registered_identity(&data, &root)?.is_none() {
-        session_storage::known_identity(&cache_path(&app)?, &root)?
+    let registered = workspace_identity::registered_identity(&data, &root)?;
+    let recent_id = if registered.is_none() {
+        guard
+            .as_ref()
+            .filter(|session| session.root == root)
+            .map(|session| session.id.clone())
+            .or(session_storage::known_identity(&cache_path(&app)?, &root)?)
     } else {
         None
     };
-    let newly_created = storage::existing_workspace_identity(&root)?.is_none();
+    let reinitialized = newly_created && (registered.is_some() || recent_id.is_some());
     let id = workspace_identity::identity_for_open(
         &data,
         &root,
@@ -257,6 +274,7 @@ fn open_workspace_blocking(
     storage::assert_workspace_identity(&root, &id)?;
     let mut workspace = storage::scan(&root, &id, &cache_path(&app)?)?;
     workspace.newly_created = newly_created.then_some(true);
+    workspace.reinitialized = reinitialized.then_some(true);
     let handle = app.clone();
     let watch_root = root.clone();
     let mut watcher = notify::recommended_watcher(
@@ -308,7 +326,7 @@ async fn refresh_workspace(app: tauri::AppHandle) -> Result<storage::Workspace, 
     .map_err(|e| format!("刷新工作空间任务失败：{e}"))?
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn search_documents(
     workspace_id: String,
     query: String,
@@ -320,7 +338,7 @@ fn search_documents(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn recent_workspaces(
     app: tauri::AppHandle,
 ) -> Result<Vec<session_storage::RecentWorkspace>, String> {
@@ -391,7 +409,7 @@ async fn open_mobile_workspace(
     open_workspace(path.to_string_lossy().to_string(), app).await
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn mobile_recycled(
     workspace_id: String,
     app: tauri::AppHandle,
@@ -405,7 +423,7 @@ fn mobile_recycled(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn mobile_recover(
     workspace_id: String,
     id: String,
@@ -419,7 +437,7 @@ fn mobile_recover(
         mobile_storage::recover(&app_data(&app)?, &s.root, &s.id, &id)
     })
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn load_session(
     workspace_id: String,
     app: tauri::AppHandle,
@@ -432,7 +450,7 @@ fn load_session(
         session_storage::load(&app_data(&app)?, &s.id)
     })
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn save_session(
     workspace_id: String,
     session: session_storage::WorkspaceSession,
@@ -447,7 +465,7 @@ fn save_session(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn import_attachment(
     workspace_id: String,
     name: String,
@@ -474,7 +492,7 @@ fn import_attachment(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn read_attachment(
     workspace_id: String,
     path: String,
@@ -487,7 +505,7 @@ fn read_attachment(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn export_attachment(
     workspace_id: String,
     path: String,
@@ -501,7 +519,7 @@ fn export_attachment(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn export_document(
     content: String,
     destination: String,
@@ -572,7 +590,7 @@ fn write_export(app: &tauri::AppHandle, destination: &str, bytes: &[u8]) -> Resu
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn open_external_url(url: String, app: tauri::AppHandle) -> Result<(), String> {
     let parsed = validated_external_url(&url)?;
     use tauri_plugin_opener::OpenerExt;
@@ -629,14 +647,14 @@ mod external_url_tests {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn read_document(path: String, state: State<AppState>) -> Result<storage::Snapshot, String> {
     with_session(state, |s| {
         storage::read(&storage::resolve_storage(&s.root, &path, true)?)
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn write_document(
     path: String,
     content: String,
@@ -649,7 +667,7 @@ fn write_document(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn create_agent_record(
     path: String,
     content: String,
@@ -678,7 +696,7 @@ fn create_agent_record(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn reserve_reference_id(
     app: tauri::AppHandle,
     occupied: Vec<String>,
@@ -689,7 +707,7 @@ fn reserve_reference_id(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn create_document(
     path: String,
     content: String,
@@ -712,14 +730,14 @@ fn create_document(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn create_folder(path: String, state: State<AppState>) -> Result<(), String> {
     with_session(state, |s| {
         std::fs::create_dir(storage::resolve(&s.root, &path, false)?).map_err(|e| e.to_string())
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn rename_document(
     from: String,
     to: String,
@@ -731,7 +749,7 @@ fn rename_document(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn move_entry(
     from: String,
     to: String,
@@ -743,7 +761,7 @@ fn move_entry(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn remove_document(
     path: String,
     app: tauri::AppHandle,
@@ -775,7 +793,7 @@ fn remove_document(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn change_assistant_file(
     request: assistant_files::FileChangeRequest,
     app: tauri::AppHandle,
@@ -796,7 +814,7 @@ fn change_assistant_file(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn delete_workspace_object(
     request: assistant_files::FileChangeRequest,
     app: tauri::AppHandle,
@@ -817,7 +835,7 @@ fn delete_workspace_object(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn reveal_workspace(state: State<AppState>) -> Result<(), String> {
     #[cfg(mobile)]
     {
@@ -840,7 +858,7 @@ fn reveal_workspace(state: State<AppState>) -> Result<(), String> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn open_workspace_entry(
     workspace_id: String,
     path: String,
@@ -864,7 +882,7 @@ fn open_workspace_entry(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn workspace_entry_path(
     workspace_id: String,
     path: String,
@@ -884,7 +902,7 @@ fn workspace_entry_path(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn duplicate_workspace_entry(
     workspace_id: String,
     path: String,
@@ -898,7 +916,7 @@ fn duplicate_workspace_entry(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn open_workspace_terminal(workspace_id: String, state: State<AppState>) -> Result<(), String> {
     if cfg!(mobile) {
         return Err("请在电脑端打开工作区终端".into());
@@ -906,7 +924,7 @@ fn open_workspace_terminal(workspace_id: String, state: State<AppState>) -> Resu
     with_workspace_session(&workspace_id, state, |s| agent::terminal(&s.root))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn agent_setup(
     workspace_id: String,
     app: tauri::AppHandle,
@@ -954,7 +972,7 @@ fn agent_setup(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn agent_changes(
     workspace_id: String,
     selected: Option<String>,
@@ -1049,18 +1067,22 @@ pub fn configure_with_commands(
                     .stop_window(window.label());
             }
         })
-        .register_uri_scheme_protocol("tano-asset", |context, request| {
-            let state = context.app_handle().state::<AppState>();
-            let guard = state.session.lock();
-            if let Ok(guard) = guard {
-                if let Some(session) = guard.as_ref() {
-                    return assets::respond(&session.root, &session.id, &request);
-                }
-            }
-            tauri::http::Response::builder()
-                .status(404)
-                .body(b"No workspace".to_vec())
-                .expect("static response")
+        .register_asynchronous_uri_scheme_protocol("tano-asset", |context, request, responder| {
+            let app = context.app_handle().clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                let state = app.state::<AppState>();
+                let response = match state.session.lock() {
+                    Ok(guard) if guard.is_some() => {
+                        let session = guard.as_ref().unwrap();
+                        assets::respond(&session.root, &session.id, &request)
+                    }
+                    _ => tauri::http::Response::builder()
+                        .status(404)
+                        .body(b"No workspace".to_vec())
+                        .expect("static response"),
+                };
+                responder.respond(response);
+            });
         })
         .invoke_handler(move |invoke| {
             #[cfg(desktop)]

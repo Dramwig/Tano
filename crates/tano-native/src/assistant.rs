@@ -830,7 +830,7 @@ fn external_root_key(key: &str) -> Result<String, String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn assistant_external_sessions(
     app: tauri::AppHandle,
     state: State<crate::AppState>,
@@ -877,7 +877,7 @@ pub fn assistant_external_sessions(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn assistant_external_result(
     app: tauri::AppHandle,
     state: State<crate::AppState>,
@@ -935,7 +935,7 @@ pub fn assistant_external_result(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn assistant_sessions_load(
     app: tauri::AppHandle,
     state: State<crate::AppState>,
@@ -972,7 +972,7 @@ pub fn assistant_sessions_load(
     Ok(sessions)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn assistant_session_save(
     app: tauri::AppHandle,
     state: State<crate::AppState>,
@@ -1027,7 +1027,7 @@ pub fn assistant_session_save(
     Ok(current + 1)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn assistant_session_delete(
     app: tauri::AppHandle,
     state: State<crate::AppState>,

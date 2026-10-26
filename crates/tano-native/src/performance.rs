@@ -33,13 +33,20 @@ fn large_workspace_scan_and_search() {
     let initial_scan_ms = start.elapsed().as_secs_f64() * 1000.0;
     assert_eq!(initial.files.len(), count);
     let mut unchanged_scan_ms = Vec::new();
+    let mut unchanged_content_reads = Vec::new();
+    storage::take_scan_content_reads();
     for _ in 0..5 {
         let start = Instant::now();
         let scanned = storage::scan(&root, "benchmark", &cache).unwrap();
         unchanged_scan_ms.push(start.elapsed().as_secs_f64() * 1000.0);
+        unchanged_content_reads.push(storage::take_scan_content_reads());
         assert_eq!(scanned.files.len(), count);
         assert_eq!(scanned.files[0].id, initial.files[0].id);
     }
+    let start = Instant::now();
+    storage::scan_without_content_cache(&root, "benchmark", &cache).unwrap();
+    let uncached_scan_ms = start.elapsed().as_secs_f64() * 1000.0;
+    let uncached_content_reads = storage::take_scan_content_reads();
     let mut queries = Vec::new();
     for (needle, expected) in [
         ("UniqueMarker000042", 1),
@@ -90,6 +97,6 @@ fn large_workspace_scan_and_search() {
         .is_empty());
     println!(
         "TANO_BENCHMARK {}",
-        json!({"files":count,"contentBytes":bytes,"fixtureMs":fixture_ms,"initialScanMs":initial_scan_ms,"unchangedScanMs":unchanged_scan_ms,"incrementalScanMs":incremental_scan_ms,"queries":queries,"correctness":"stable UUID; rename+edit+delete index; workspace isolation"})
+        json!({"files":count,"contentBytes":bytes,"fixtureMs":fixture_ms,"initialScanMs":initial_scan_ms,"unchangedScanMs":unchanged_scan_ms,"unchangedContentReads":unchanged_content_reads,"uncachedScanMs":uncached_scan_ms,"uncachedContentReads":uncached_content_reads,"incrementalScanMs":incremental_scan_ms,"queries":queries,"correctness":"stable UUID; rename+edit+delete index; workspace isolation"})
     );
 }

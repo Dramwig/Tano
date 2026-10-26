@@ -25,7 +25,7 @@ async function mountPanes(side: 'right' | 'bottom' = 'right', sharedTabs = false
   const editor = defineComponent({ setup() { mounted(); return () => h('textarea', { value: 'unsaved draft' }); } });
   root = document.createElement('div');
   document.body.append(root);
-  app = createApp({ render: () => h(WorkspacePanes, {}, {
+  app = createApp({ render: () => h(WorkspacePanes, { loading: fixture.store.loading }, {
     ...(sharedTabs ? {
       tabs: ({ pane }: any) => h('div', { class: 'workspace-tabbar', 'data-tab-pane-id': pane.id }),
       sidebar: () => fixture.store.assistantOpened ? h('aside', { class: 'assistant-panel' }) : null,
@@ -36,6 +36,22 @@ async function mountPanes(side: 'right' | 'bottom' = 'right', sharedTabs = false
   await nextTick();
   return { id: layout.id, mounted };
 }
+
+it('reserves a loading pane while retaining the old editors for flush and cancellation', async () => {
+  await mountPanes('right', true);
+  const previous = [...root.querySelectorAll<HTMLElement>('.workspace-pane')];
+  const editors = previous.map(pane => pane.querySelector('textarea')!);
+  editors[0].value = '尚未保存的输入';
+  fixture.store.loading = true;
+  await nextTick();
+  expect(previous.every(pane => pane.style.display === 'none')).toBe(true);
+  expect(editors.every(editor => editor.isConnected)).toBe(true);
+  expect([...root.querySelectorAll<HTMLElement>('.workspace-pane')].filter(pane => pane.style.display !== 'none')).toHaveLength(1);
+  fixture.store.loading = false;
+  await nextTick();
+  expect([...root.querySelectorAll('.workspace-pane textarea')]).toEqual(editors);
+  expect(editors[0].value).toBe('尚未保存的输入');
+});
 
 it('shows only the active page without tabs or split controls while retaining saved drafts and layout', async () => {
   await mountPanes('right', true);

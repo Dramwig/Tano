@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { t } from '../i18n';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { layoutGeometry, mapLayout, panePreviewRects } from '../pane-layout';
+import { layoutGeometry, mapLayout, newPane, panePreviewRects } from '../pane-layout';
 import type { LayoutRect } from '../pane-layout';
 import { useWorkspaceStore } from '../stores/workspace';
 
-const props = withDefaults(defineProps<{ compact?: boolean; tabsEnabled?: boolean }>(), {
+const props = withDefaults(defineProps<{ compact?: boolean; tabsEnabled?: boolean; loading?: boolean }>(), {
   tabsEnabled: true,
 });
 const store = useWorkspaceStore();
@@ -31,7 +31,10 @@ const geometry = computed(() => {
   // The last pane of a window stays visible until the transfer is acknowledged.
   return remaining ? layoutGeometry(remaining) : committed.value;
 });
-const visible = computed(() => singlePane.value
+const loadingPane = newPane();
+const visible = computed(() => props.loading
+  ? [{ pane: loadingPane, rect: { left: 0, top: 0, width: 1, height: 1 } }]
+  : singlePane.value
   ? geometry.value.panes.filter(({ pane }) => pane.id === store.activePaneId)
     .map(item => ({ ...item, rect: { left: 0, top: 0, width: 1, height: 1 } }))
   : geometry.value.panes);
@@ -48,7 +51,8 @@ const tabbarPanes = computed(() => [
   })),
   // Keep departing editors mounted to flush drafts and restore on failure.
   // No hidden-pane geometry participates in hit tests or visible dividers.
-  ...(!singlePane.value ? committed.value.panes.filter(item => !visible.value.some(({ pane }) => pane.id === item.pane.id))
+  ...(!singlePane.value || props.loading ? committed.value.panes.filter(item =>
+    !visible.value.some(({ pane }) => pane.id === item.pane.id) && (!props.loading || item.pane.tabs.length))
     .map(item => ({ ...item, hidden: true })) : []),
 ]);
 const displayed = computed(() => tabbarPanes.value.map(item => ({

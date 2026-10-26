@@ -201,7 +201,7 @@ const InlineAssistantInput = defineAsyncComponent(() => import('./components/Inl
 import type { InlineAssistantAnchor } from './components/InlineAssistantInput.vue';
 const CalendarView = loadingComponent(() => import('./components/CalendarView.vue'), 'document');
 const DataTablePage = loadingComponent(() => import('./components/DataTablePage.vue'), 'document');
-const WorkspaceViewPage = loadingComponent(() => import('./components/WorkspaceViewPage.vue'), 'document');
+const WorkspaceViewTab = loadingComponent(() => import('./components/WorkspaceViewTab.vue'), 'document');
 import { isTableTab, TABLES_TAB_ID, tableFileId } from './data-tables';
 import { isDataTableFilePath } from '@tano/protocol';
 const PluginInstaller = defineAsyncComponent(() => import('./components/PluginInstaller.vue'));
@@ -577,7 +577,10 @@ watch(
     optimisticFileMove.value = null;
   },
 );
-const { workspace, active, activeId, activities, fatal, busy } = storeToRefs(store);
+const { workspace, active, activeId, activities, fatal, busy, openingWorkspace } = storeToRefs(store);
+const filesPending = computed(() => store.workspaceLoading.files || (startupPending.value && !workspace.value));
+const sessionPending = computed(() => filesPending.value || store.workspaceLoading.session);
+const switchingWorkspace = computed(() => store.workspaceLoading.files);
 if (!native) useDocumentFavicon(() => workspace.value && active.value ? appearanceText(active.value.content, 'icon') : '');
 const webPageRouting = !native && (store.isDemo || store.isWeb);
 const initialPageRoute = webPageRouting ? parsePageRoute(window.location.pathname) : null;
@@ -1156,6 +1159,7 @@ const treeFiles = computed(() => {
     ? applyFileMovePreview(files, preview.changes)
     : files;
 });
+const fileTree = ref<InstanceType<typeof FileTree>>();
 const treeDocumentIcons = computed(() => Object.fromEntries(
   [
     ...store.documents.map(doc => [doc.id, appearanceText(doc.content, 'icon')]),
@@ -2248,9 +2252,7 @@ function workspaceEntryContextAction(action: 'open' | 'reveal') {
   }
 }
 function selectFileTreeEntry(file: FileEntry, event: MouseEvent) {
-  const visibleIds = [
-    ...document.querySelectorAll<HTMLElement>('.tree-scroll .tree-row[data-entry-id]'),
-  ].map((row) => row.dataset.entryId!);
+  const visibleIds = fileTree.value?.getVisibleIds() ?? [];
   const next = selectTreeEntry(
     { ids: selectedEntryIds.value, anchor: selectionAnchorId.value },
     file.id,
@@ -3741,6 +3743,7 @@ function toggleSidebar() {
   workspaceMenu.value = false;
 }
 function handleWorkbenchShortcut(event: KeyboardEvent) {
+  if (openingWorkspace.value) return;
   if (event.defaultPrevented || importPanel.value || settingsPanel.value || commandPaletteOpened.value || updateLock.value || modal.value) return;
   let action: (() => void) | undefined;
   if (!detachedWindow && workspace.value && isSidebarToggleShortcut(event, shortcuts.value)) action = toggleSidebar;
@@ -3760,6 +3763,7 @@ function handleWorkbenchShortcut(event: KeyboardEvent) {
   action();
 }
 function handlePageSearchShortcut(event: KeyboardEvent) {
+  if (openingWorkspace.value) return;
   if (
     importPanel.value ||
     settingsPanel.value ||
@@ -3793,6 +3797,7 @@ function handlePageSearchShortcut(event: KeyboardEvent) {
   }
 }
 function keydown(event: KeyboardEvent) {
+  if (openingWorkspace.value) return;
   if (importPanel.value) return;
   if (settingsPanel.value) {
     if (event.key === 'Escape') settingsPanel.value = false;
@@ -3835,11 +3840,7 @@ function keydown(event: KeyboardEvent) {
     }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
       event.preventDefault();
-      selectedEntryIds.value = new Set(
-        [...document.querySelectorAll<HTMLElement>('.tree-scroll .tree-row[data-entry-id]')].map(
-          (row) => row.dataset.entryId!,
-        ),
-      );
+      selectedEntryIds.value = new Set(fileTree.value?.getVisibleIds() ?? []);
       selectionAnchorId.value = treeRow.dataset.entryId ?? null;
       return;
     }
@@ -4044,9 +4045,10 @@ onMounted(async () => {
   if (native) {
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
     if (localNative)
-      unlistenWatchError = await listen<string>('workspace-watch-error', (event) =>
-        store.report(t('文件监听遇到错误：{0}。目录仍会定期自动检查。', [event.payload])),
-      );
+      unlistenWatchError = await listen<string>('workspace-watch-error', (event) => {
+        store.enableWorkspacePolling();
+        store.report(t('文件监听遇到错误：{0}。目录仍会定期自动检查。', [event.payload]));
+      });
     if (!mobile)
       unlistenClose = await getCurrentWindow().onCloseRequested(async (event) => {
         event.preventDefault();
@@ -4160,6 +4162,7 @@ const helpBlocked = computed(() => !!(
       <PanelLeftOpen :size="16" :stroke-width="1.6" />
     </button>
     <DesktopTabs
+      :loading="sessionPending"
       detachable
       :file-drag="tabFileDrag"
       @files-dropped="fileDragEnd"
@@ -4182,7 +4185,7 @@ const helpBlocked = computed(() => !!(
     }"
   >
     <AssistantButterflyLayer :controller="butterfly" />
-    <Teleport to="body"><FileMetadataPanel v-if="fileMetadataTarget" v-bind="fileMetadataTarget" @close="fileMetadataTarget = null" /></Teleport>
+    <Teleport to="body"><FileMetadataPanel v-if="fileMetadataTarget && !switchingWorkspace" v-bind="fileMetadataTarget" @close="fileMetadataTarget = null" /></Teleport>
     <Transition name="sidebar-dismiss">
       <button
         v-if="sidebar && !detachedWindow && compactPanes"
@@ -4340,8 +4343,9 @@ const helpBlocked = computed(() => !!(
             @drop.self="fileDrop('', $event)"
           >
             <FileTree
-              v-if="workspace || startupPending"
-              :loading="startupPending && !workspace"
+              ref="fileTree"
+              v-if="workspace || startupPending || filesPending"
+              :loading="filesPending"
               :entries="treeFiles"
               :document-icons="treeDocumentIcons"
               :load-document-icon="loadTreeDocumentIcon"
@@ -4365,7 +4369,7 @@ const helpBlocked = computed(() => !!(
               @rename-finished="finishTreeRename"
             />
             <div
-              v-if="!noteCount"
+              v-if="!filesPending && !noteCount"
               class="tree-empty"
               @contextmenu.prevent="openDirectoryContextMenu('', $event)"
             >
@@ -4377,8 +4381,11 @@ const helpBlocked = computed(() => !!(
           <PluginInstaller sidebar @objects="showObjects()" />
         </section>
         <section v-if="sidebarView === 'views'" class="sidebar-content workspace-views-sidebar" :aria-label="t('数据库与视图')">
+          <LoadingSkeleton v-if="store.workspaceLoading.views" :rows="4" />
+          <template v-else>
           <button @click="store.openDataTable()"><Table2 :size="15" />{{ t('数据表') }}</button>
           <button v-for="record in store.workspaceViews" :key="record.view.id" @click="store.openWorkspaceView(record.view.id)">{{ record.view.name }}</button>
+          </template>
         </section>
         <SidebarAssistant v-if="sidebarView === 'assistant'" @open="compactPanes && (sidebar = false)" />
         <SidebarPlan
@@ -4701,14 +4708,14 @@ const helpBlocked = computed(() => !!(
               class="workspace-picker"
               :aria-expanded="workspaceMenu"
               aria-controls="workspace-menu"
-              :aria-label="t('切换上下文：{0}', [navigationContext === 'home' ? t('主页') : workspace?.name ?? t('选择工作区')])"
-              :data-tooltip="navigationContext === 'home' ? t('主页') : workspace?.name ?? t('选择工作区')"
+              :aria-label="filesPending ? t('正在打开工作区…') : t('切换上下文：{0}', [navigationContext === 'home' ? t('主页') : workspace?.name ?? t('选择工作区')])"
+              :data-tooltip="filesPending ? t('正在打开工作区…') : navigationContext === 'home' ? t('主页') : workspace?.name ?? t('选择工作区')"
               @click="toggleWorkspaceMenu"
               @contextmenu.stop.prevent="toggleWorkspaceMenu"
             >
               <span class="workspace-avatar"><House v-if="navigationContext === 'home'" :size="15" /><WorkspaceIcon v-else :icon="store.workspaceSettings.icon" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" :size="15" /></span>
               <span class="workspace-picker-text"
-                ><strong>{{ navigationContext === 'home' ? t('主页') : workspace?.name ?? t('选择工作区') }}</strong></span
+                ><span v-if="filesPending" class="tano-skeleton-bar" /><strong v-else>{{ navigationContext === 'home' ? t('主页') : workspace?.name ?? t('选择工作区') }}</strong></span
               >
               <component :is="workspaceMenu ? ChevronUp : ChevronDown" :size="12" />
             </button>
@@ -4920,7 +4927,7 @@ const helpBlocked = computed(() => !!(
           />
         </div>
         <div
-          v-if="!compactPanes"
+          v-if="!compactPanes && !switchingWorkspace"
           class="sidebar-resize-handle"
           role="separator"
           :aria-label="t('调整侧栏宽度')"
@@ -4937,7 +4944,7 @@ const helpBlocked = computed(() => !!(
     <div ref="mainColumn" class="main-column" :inert="compactPanes && sidebar || undefined">
       <button v-if="!workspace && !sidebar && !detachedWindow" class="icon-button" :aria-label="t('展开侧栏')" @click="sidebar = true"><PanelLeftOpen :size="18" /></button>
       <ReferenceGraphPopover
-        v-if="referenceGraphTarget"
+        v-if="referenceGraphTarget && !switchingWorkspace"
         v-model:opened="referenceGraphOpened"
         variant="panel"
         :identity="{ type: 'document', id: referenceGraphTarget.id }"
@@ -4945,9 +4952,9 @@ const helpBlocked = computed(() => !!(
         :anchor="referenceGraphAnchor"
         @open="openReference"
       />
-      <div v-if="(workspace || startupPending) && compactPanes && tabsEnabled" class="workspace-tabbar">
+      <div v-if="(workspace || startupPending || filesPending) && compactPanes && tabsEnabled" class="workspace-tabbar">
         <DesktopTabs
-          :loading="startupPending"
+          :loading="sessionPending"
           :file-drag="tabFileDrag"
           :assistant-tab="assistantTab"
           @files-dropped="fileDragEnd"
@@ -4957,7 +4964,8 @@ const helpBlocked = computed(() => !!(
       </div>
 
       <WorkspacePanes
-        v-if="workspace || startupPending"
+        v-if="workspace || startupPending || filesPending"
+        :loading="filesPending"
         :compact="compactPanes"
         :tabs-enabled="tabsEnabled"
         :class="{ 'workspace-native-tabs': tabsEnabled && !compactPanes }"
@@ -4982,7 +4990,7 @@ const helpBlocked = computed(() => !!(
               <PanelLeftOpen :size="16" :stroke-width="1.6" />
             </button>
             <DesktopTabs
-              :loading="startupPending"
+              :loading="sessionPending"
               :pane-id="pane.id"
               :detachable="native && !mobile"
               :file-drag="tabFileDrag"
@@ -5101,7 +5109,7 @@ const helpBlocked = computed(() => !!(
                 </button>
               </div>
               <WorkspaceBreadcrumb
-                :loading="startupPending && !workspace"
+                :loading="filesPending"
                 :perch="{ id: `breadcrumb:${paneButterflyScope(pane.id, pane.activeId)}`, scope: paneButterflyScope(pane.id, pane.activeId), label: t('面包屑'), kind: 'component' }"
                 v-if="
                   isVisible('breadcrumb') &&
@@ -5498,16 +5506,17 @@ const helpBlocked = computed(() => !!(
                 @open="openAssistant(pane.id, pane.activeId, { forcePanel: true })"
               />
             </div>
-            <WorkspaceViewPage
-              v-if="workspace && tab?.workspaceView && pane.activeId === tab.id"
-              :key="`${workspace.id}:${tab.workspaceView.view.id}:${tab.workspaceView.view.database || tab.workspaceView.view.objectDatabase ? '' : tab.workspaceView.snapshot.hash}`"
-              :view="tab.workspaceView.view"
+            <WorkspaceViewTab
+              v-if="workspace && pane.activeId.startsWith('workspace-view:')"
+              :key="`${workspace.id}:${pane.activeId}`"
+              :tab-id="pane.activeId"
               @open-file="(file) => { store.focusPane(pane.id); void openWorkspaceViewSourceFile(file); }"
               @edit-document-properties="async (file) => { store.focusPane(pane.id); await openWorkspaceViewSourceFile(file); showDocumentProperties = true; setPaneSource(file.id, false); }"
               @open-object="(identity) => { store.focusPane(pane.id); openWorkspaceViewSourceObject(identity); }"
             />
             <CalendarView
               v-if="workspace && pane.activeId === CALENDAR_TAB_ID"
+              :loading="calendarScope === 'workspace' && store.workspaceLoading.objects"
               :date="calendarDate"
               :mode="calendarMode"
               :records="plans.recordsFor(calendarScope)"
@@ -5530,7 +5539,7 @@ const helpBlocked = computed(() => !!(
             </template>
 
             <div v-if="pane.activeId === SETTINGS_TAB_ID" :id="`settings-host-${pane.id}`" class="settings-tab-host" />
-            <PluginView v-if="tab?.pluginView" :view-key="tab.pluginView.key" />
+            <PluginView v-if="pane.activeId.startsWith('plugin:')" :view-key="pane.activeId" />
             <main
               v-if="workspace && pane.tabs.includes(PLUGINS_TAB_ID)"
               v-show="pane.activeId === PLUGINS_TAB_ID"
@@ -5551,7 +5560,7 @@ const helpBlocked = computed(() => !!(
               </div>
             </main>
 
-            <DocumentLoading v-if="store.openingDocuments[pane.id]?.tabId === pane.activeId" :unlimited="!limitPageWidth" :touch="touchLayout" :style="{ '--tano-prose-font-family': selectedVisualFontFamily, '--tano-prose-font-size': `${visualFontSize}px` }" />
+            <DocumentLoading v-if="(!active && sessionPending) || store.restoringDocuments[pane.activeId] || store.openingDocuments[pane.id]?.tabId === pane.activeId" :unlimited="!limitPageWidth" :touch="touchLayout" :style="{ '--tano-prose-font-family': selectedVisualFontFamily, '--tano-prose-font-size': `${visualFontSize}px` }" />
             <template v-else-if="active">
               <PageSearch
                 :shortcuts="shortcuts"
@@ -5873,14 +5882,16 @@ const helpBlocked = computed(() => !!(
                 pane.activeId !== CALENDAR_TAB_ID &&
                 pane.activeId !== SETTINGS_TAB_ID &&
                 !isTableTab(pane.activeId) &&
+                !pane.activeId.startsWith('workspace-view:') &&
+                !pane.activeId.startsWith('plugin:') &&
                 !tab?.workspaceView &&
                 !tab?.pluginView &&
                 !extensionViews.find((view) => view.id === pane.activeId)
               "
               class="workspace-no-tabs"
-              :class="{ 'workspace-no-tabs-loading': startupPending }"
+              :class="{ 'workspace-no-tabs-loading': sessionPending }"
             >
-              <DocumentLoading v-if="startupPending" :unlimited="!limitPageWidth" :touch="touchLayout" :style="{ '--tano-prose-font-family': selectedVisualFontFamily, '--tano-prose-font-size': `${visualFontSize}px` }" />
+              <DocumentLoading v-if="sessionPending" :unlimited="!limitPageWidth" :touch="touchLayout" :style="{ '--tano-prose-font-family': selectedVisualFontFamily, '--tano-prose-font-size': `${visualFontSize}px` }" />
               <EmptyEditor v-else
                 :create-disabled="busy || !workspace || workspace.readOnly || updateLock"
                 @create="createNewDocument"
@@ -6048,7 +6059,7 @@ const helpBlocked = computed(() => !!(
       </template>
       <div v-else class="editor-empty"><div class="editor-empty-mark" aria-hidden="true" /></div>
       <InlineAssistantInput
-        v-if="inlineAssistant"
+        v-if="inlineAssistant && !switchingWorkspace"
         :anchor="inlineAssistant.anchor"
         v-model:value="inlineAssistantPrompt"
         :state="inlineAssistantState"
@@ -6065,7 +6076,7 @@ const helpBlocked = computed(() => !!(
 
       <Teleport to="body">
         <div
-          v-if="pageContextMenu"
+          v-if="pageContextMenu && !switchingWorkspace"
           ref="pageContextMenuElement"
           class="dropdown compact-action-menu page-context-menu"
           role="menu"
@@ -6085,7 +6096,7 @@ const helpBlocked = computed(() => !!(
       </Teleport>
       <Teleport to="body">
         <div
-          v-if="outlineContextMenu"
+          v-if="outlineContextMenu && !switchingWorkspace"
           ref="outlineContextMenuElement"
           class="dropdown compact-action-menu page-context-menu outline-context-menu"
           role="menu"

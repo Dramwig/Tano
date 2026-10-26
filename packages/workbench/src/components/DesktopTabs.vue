@@ -32,7 +32,7 @@ const props = defineProps<{
   fileDrag?: { workspaceId: string; ids: readonly string[] };
   assistantTab?: { id: string; title: string };
 }>();
-const paneTabs = computed(() => props.paneId
+const paneTabs = computed(() => props.loading ? [] : props.paneId
   ? store.tabs.filter(tab => store.panes.find(pane => pane.id === props.paneId)?.tabs.includes(tab.id))
   : store.tabs);
 const documentIcons = computed(() => Object.fromEntries(

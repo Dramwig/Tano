@@ -750,6 +750,9 @@ button:hover {
 .workspace-page-content {
   display: contents;
 }
+.component-loading-content {
+  display: contents;
+}
 .assistant-fullscreen-host {
   display: flex;
   flex: 1;

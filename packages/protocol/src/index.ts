@@ -38,6 +38,8 @@ export interface Workspace {
   readOnly?: boolean;
   /** Transient creation result; omitted on subsequent opens and refreshes. */
   newlyCreated?: boolean;
+  /** Local metadata was deleted; this open initialized a new workspace identity. */
+  reinitialized?: boolean;
   /** True only when the current user may delete this workspace. */
   canDelete?: boolean;
   /** Supplied by the authority owning workspace membership, never by portable files. */
@@ -79,6 +81,8 @@ export interface WorkspaceAdapter {
   reserveObjectId?(occupied: string[]): Promise<string>;
   /** Reserve an externally proposed, never-used object or table ID before exclusive creation. */
   createAgentRecord?(path: string, content: string): Promise<void>;
+  /** Select a folder without opening it or changing the active workspace; null cancels. */
+  selectWorkspacePath?(): Promise<string | null>;
   open(path?: string): Promise<Workspace | null>;
   close?(workspaceId: string): Promise<void>;
   createWorkspace?(name: string): Promise<Workspace>;
