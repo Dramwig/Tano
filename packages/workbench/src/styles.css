@@ -1994,10 +1994,13 @@ button:hover {
 .document-export-trigger[aria-expanded='true'] {
   background: var(--hover);
 }
+.document-global-menu,
+.document-export-menu {
+  width: 184px;
+}
 .document-export-menu {
   position: fixed;
   z-index: 100;
-  width: 176px;
 }
 .document-export-renderer {
   position: fixed;
@@ -2628,25 +2631,31 @@ button:hover {
 }
 .tano-prose .tano-html-fallback,
 .tano-prose .tano-unsupported-block {
-  color: var(--danger);
-  background: var(--danger-bg);
-  border: 1px solid var(--danger);
+  color: var(--text-secondary);
+  background: var(--surface);
+  border: 0;
   border-radius: 5px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .tano-prose .tano-html-fallback {
-  padding: 2px 5px;
+  /* Include wrapped source and padding in the line box so it cannot paint
+     over adjacent lines. A compact box keeps short anchors unobtrusive. */
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+  vertical-align: baseline;
+  padding: 2px 6px;
   font-family: var(--font-mono);
-}
-.tano-prose p:has(.tano-html-fallback),
-.tano-prose li:has(.tano-html-fallback) {
-  outline: 1px solid var(--danger);
-  background: var(--danger-bg);
+  font-size: 0.875em;
+  line-height: 1.6;
 }
 .tano-prose .tano-unsupported-block {
-  padding: 9px 12px;
-  margin: 13px 0;
+  padding: 8px 10px;
+  margin: 8px 0;
+}
+.tano-prose > .tano-unsupported-block {
+  margin-inline: var(--tano-block-frame-inset);
 }
 .tano-prose .tano-unsupported-label {
   display: block;
@@ -3785,7 +3794,7 @@ button:hover {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: thin;
+  scrollbar-width: none;
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -3793,6 +3802,9 @@ button:hover {
   box-shadow: 0 12px 28px #0f0f0f10;
   pointer-events: auto;
   overscroll-behavior: contain;
+}
+.inspector-outline .inspector-surface::-webkit-scrollbar {
+  display: none;
 }
 .inspector-outline-left .inspector-surface {
   align-self: flex-start;
@@ -3876,9 +3888,6 @@ button:hover {
   border-radius: 6px;
   color: var(--muted);
 }
-.outline-search:focus-within {
-  border-color: var(--green);
-}
 .outline-search input {
   width: 100%;
   min-width: 0;
@@ -3934,6 +3943,9 @@ button:hover {
   border-radius: 0;
   background: transparent;
 }
+.inspector-hover-outline.inspector-outline-left:not(:hover):not(:focus-within) .outline button {
+  justify-content: flex-start;
+}
 .inspector-hover-outline:not(:hover):not(:focus-within) .outline-controls,
 .inspector-hover-outline:not(:hover):not(:focus-within) .outline-search {
   display: none;
@@ -3961,6 +3973,9 @@ button:hover {
   padding: 0 8px;
   margin: 0;
   text-align: right;
+}
+.inspector-hover-outline.inspector-outline-left:not(:hover):not(:focus-within) .panel-empty {
+  text-align: left;
 }
 .inspector-hover-outline:not(:hover):not(:focus-within) .outline-empty-marker {
   display: inline-block;

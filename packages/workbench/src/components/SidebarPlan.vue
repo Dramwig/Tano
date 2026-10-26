@@ -555,7 +555,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="listRoot" class="sidebar-calendar" role="region" :aria-label="t('计划侧栏')">
-    <LoadingSkeleton v-if="store.workspaceLoading?.objects && plans.view === 'workspace'" :rows="6" />
+    <LoadingSkeleton v-if="store.workspaceLoading?.objects && plans.view === 'workspace'" variant="tree" :rows="6" />
     <div v-show="!store.workspaceLoading?.objects || plans.view !== 'workspace'" class="component-loading-content">
     <div ref="viewPicker" class="sidebar-calendar-heading">
       <div class="sidebar-calendar-month">

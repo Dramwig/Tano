@@ -72,11 +72,11 @@ onBeforeUnmount(() => {
     aria-haspopup="menu" :aria-expanded="open" :aria-controls="open ? panelId : undefined"
     @pointerenter="show()" @pointerleave="scheduleClose"
     @click="show(true)" @keydown="triggerKeydown">
-    <Settings2 :size="15" />{{ t('工作区显示选项') }}<ChevronRight class="document-global-chevron" :size="14" />
+    <Settings2 :size="15" />{{ t('工作区选项') }}<ChevronRight class="document-global-chevron" :size="14" />
   </button>
   <Teleport to="body">
     <div v-if="open" :id="panelId" ref="panel" class="dropdown compact-action-menu document-global-menu page-context-menu"
-      :style="position" role="menu" :aria-label="t('工作区显示选项')" tabindex="-1"
+      :style="position" role="menu" :aria-label="t('工作区选项')" tabindex="-1"
       @pointerenter="cancelClose" @pointerleave="scheduleClose" @keydown="panelKeydown">
       <slot />
     </div>

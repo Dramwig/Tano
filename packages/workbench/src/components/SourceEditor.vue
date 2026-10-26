@@ -143,7 +143,7 @@ class DeletedSuggestion extends WidgetType {
   ignoreEvent() { return false; }
 }
 watch(() => props.suggestionMarks, () => view?.dispatch({ effects: refreshCommentMarks.of() }));
-watch(() => props.capabilities, () => view?.dispatch({ effects: refreshCommentMarks.of() }), { deep: true });
+watch(() => JSON.stringify(props.capabilities?.features), () => view?.dispatch({ effects: refreshCommentMarks.of() }));
 
 function fileHandler(event: Event, files: FileList | null | undefined, requireImage: boolean) {
   if (!props.localNative || props.readonly) return false;

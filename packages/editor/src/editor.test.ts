@@ -1103,6 +1103,26 @@ it('switches workspace capabilities without mutating content, and restores rende
   expect(errors).toEqual([]);
 });
 
+it('changes page width without refreshing content views or dispatching editor transactions', async () => {
+  const source = '公式 \\(x^2\\)\n\n```js\nconst x = 1;\n```\n';
+  const { value, capabilities, editor } = await mount(source);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  const dispatch = vi.spyOn(view, 'dispatch');
+  const refresh = vi.fn();
+  root.addEventListener('tano-math-refresh', refresh, true);
+  const formula = root.querySelector('.tano-math');
+  const selection = view.state.selection;
+  capabilities.value = { ...structuredClone(defaultCapabilities), pageWidthLimits: { a12345: false } };
+  await nextTick();
+  capabilities.value.pageWidthLimits.a12345 = true;
+  await nextTick();
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(refresh).not.toHaveBeenCalled();
+  expect(root.querySelector('.tano-math')).toBe(formula);
+  expect(view.state.selection).toBe(selection);
+  expect(value.value).toBe(source);
+});
+
 it('opens a document with disabled capabilities while keeping its table visual', async () => {
   const source = '\\(x\\) [[note]]\n\n| A | B |\n| - | - |\n| 1 | 2 |\n';
   const { value, errors } = await mount(

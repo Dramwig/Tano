@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createPinia, disposePinia, setActivePinia } from 'pinia';
+import { watch } from 'vue';
 import { DemoAdapter } from '../adapter';
 import { configureWorkbench } from '../runtime';
 import { useWorkspaceStore } from './workspace';
@@ -74,6 +75,129 @@ it('checks settings authority separately from content write permission', async (
   expect(create).not.toHaveBeenCalled();
   expect(store.workspace?.readOnly).not.toBe(true);
 });
+it('previews page width before persistence completes and restores saved width on failure', async () => {
+  const adapter = new DemoAdapter(); await setup(adapter);
+  const documentId = store.activeId!;
+  await store.updateCapabilities({ pageWidth: { documentId, limited: false } });
+  const gate = deferred();
+  vi.spyOn(adapter, 'write').mockImplementationOnce(async () => {
+    await gate.promise;
+    throw new Error('Width save failed');
+  });
+  const saving = store.updateCapabilities({ pageWidth: { documentId, limited: true } });
+  expect(store.capabilities.pageWidthLimits[documentId]).toBeUndefined();
+  expect(store.capabilitySaving).toBe(true);
+  gate.resolve(); await saving;
+  expect(store.capabilities.pageWidthLimits[documentId]).toBe(false);
+  expect(store.capabilitySaving).toBe(false);
+});
+
+it('keeps width disabled when an earlier refresh reads the old full-width rules before the queued save', async () => {
+  const adapter = new DemoAdapter(); await setup(adapter);
+  const documentId = store.activeId!;
+  await store.updateCapabilities({ pageWidth: { documentId, limited: false } });
+  const gate = deferred(), started = deferred();
+  const refresh = adapter.refresh.bind(adapter);
+  vi.spyOn(adapter, 'refresh').mockImplementationOnce(async () => {
+    started.resolve(); await gate.promise; return refresh();
+  });
+  const refreshing = store.refresh(); await started.promise;
+  const states: boolean[] = [];
+  const stop = watch(() => store.capabilities.pageWidthLimits[documentId] !== false,
+    limited => states.push(limited), { flush: 'sync' });
+  try {
+    const saving = store.updateCapabilities({ pageWidth: { documentId, limited: true } });
+    expect(store.capabilities.pageWidthLimits[documentId]).toBeUndefined();
+    gate.resolve(); await refreshing; await saving;
+    expect(states).toEqual([true]);
+    expect(store.capabilities.pageWidthLimits[documentId]).toBeUndefined();
+    await store.refresh();
+    expect(store.capabilities.pageWidthLimits[documentId]).toBeUndefined();
+  } finally { gate.resolve(); stop(); }
+});
+
+it('accepts repeated width clicks during a slow save and persists the latest choice without replaying old states', async () => {
+  const adapter = new DemoAdapter(); await setup(adapter);
+  const documentId = store.activeId!;
+  await store.updateCapabilities({ pageWidth: { documentId, limited: true } });
+  const gate = deferred(), started = deferred();
+  const write = adapter.write.bind(adapter);
+  const writes = vi.spyOn(adapter, 'write').mockImplementationOnce(async (...args) => {
+    started.resolve(); await gate.promise; return write(...args);
+  });
+  const states: boolean[] = [];
+  const stop = watch(() => store.capabilities.pageWidthLimits[documentId] !== false,
+    limited => states.push(limited), { flush: 'sync' });
+  try {
+    const first = store.updateCapabilities({ pageWidth: { documentId, limited: false } });
+    await started.promise;
+    const second = store.updateCapabilities({ pageWidth: { documentId, limited: true } });
+    const third = store.updateCapabilities({ pageWidth: { documentId, limited: false } });
+    const last = store.updateCapabilities({ pageWidth: { documentId, limited: true } });
+    expect(states).toEqual([false, true, false, true]);
+    expect(store.capabilitySaving).toBe(true);
+    gate.resolve(); await Promise.all([first, second, third, last]);
+    expect(states).toEqual([false, true, false, true]);
+    expect(writes).toHaveBeenCalledTimes(2);
+    expect(store.capabilitySaving).toBe(false);
+    await store.refresh();
+    expect(store.capabilities.pageWidthLimits[documentId]).toBeUndefined();
+  } finally { gate.resolve(); stop(); }
+});
+
+it('keeps pending choices for different documents independent', async () => {
+  const adapter = new DemoAdapter({ files: { 'a.md': '# A', 'b.md': '# B' } }); await setup(adapter);
+  const [firstId, secondId] = store.workspace!.files.filter(file => file.path.endsWith('.md')).map(file => file.id);
+  await store.updateCapabilities({ pageWidth: { documentId: firstId!, limited: true } });
+  const gate = deferred(), started = deferred();
+  const write = adapter.write.bind(adapter);
+  vi.spyOn(adapter, 'write').mockImplementationOnce(async (...args) => {
+    started.resolve(); await gate.promise; return write(...args);
+  });
+  const first = store.updateCapabilities({ pageWidth: { documentId: firstId!, limited: false } });
+  await started.promise;
+  const second = store.updateCapabilities({ pageWidth: { documentId: secondId!, limited: false } });
+  expect(store.capabilities.pageWidthLimits[firstId!]).toBe(false);
+  expect(store.capabilities.pageWidthLimits[secondId!]).toBe(false);
+  gate.resolve(); await Promise.all([first, second]); await store.refresh();
+  expect(store.capabilities.pageWidthLimits[firstId!]).toBe(false);
+  expect(store.capabilities.pageWidthLimits[secondId!]).toBe(false);
+});
+
+it('does not roll back a newer width choice when the earlier save fails', async () => {
+  const adapter = new DemoAdapter(); await setup(adapter);
+  const documentId = store.activeId!;
+  await store.updateCapabilities({ pageWidth: { documentId, limited: false } });
+  const gate = deferred(), started = deferred();
+  vi.spyOn(adapter, 'write').mockImplementationOnce(async () => {
+    started.resolve(); await gate.promise; throw new Error('Earlier save failed');
+  });
+  const first = store.updateCapabilities({ pageWidth: { documentId, limited: true } });
+  await started.promise;
+  const second = store.updateCapabilities({ pageWidth: { documentId, limited: false } });
+  const states: boolean[] = [];
+  const stop = watch(() => store.capabilities.pageWidthLimits[documentId] !== false,
+    limited => states.push(limited), { flush: 'sync' });
+  try {
+    gate.resolve(); await Promise.all([first, second]); await store.refresh();
+    expect(states).toEqual([]);
+    expect(store.capabilities.pageWidthLimits[documentId]).toBe(false);
+    expect(store.capabilitySaving).toBe(false);
+  } finally { gate.resolve(); stop(); }
+});
+
+it('restores saved width when both persistence and reloading rules fail', async () => {
+  const adapter = new DemoAdapter(); await setup(adapter);
+  const documentId = store.activeId!;
+  await store.updateCapabilities({ pageWidth: { documentId, limited: false } });
+  vi.spyOn(adapter, 'write').mockRejectedValueOnce(new Error('Width save failed'));
+  vi.spyOn(adapter, 'read').mockRejectedValue(new Error('Rules reload failed'));
+  await store.updateCapabilities({ pageWidth: { documentId, limited: true } });
+  expect(store.capabilities.pageWidthLimits[documentId]).toBe(false);
+  expect(store.capabilitySaving).toBe(false);
+  expect(store.capabilityError).toContain('Rules reload failed');
+});
+
 it('uses the saved workspace title source and follows external changes on refresh', async () => {
   const adapter = new DemoAdapter();
   const initial = await saveWorkspaceSettingsPatch(adapter, null, { key: 'pageTitleSource', value: 'filename', previous: 'frontmatter-first' });

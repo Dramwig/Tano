@@ -49,3 +49,21 @@ it('maps empty paragraphs and active inline Markdown without changing the docume
     expect(doc.toJSON()).toEqual(before);
   });
 });
+
+it('restores a long document caret without serializing the whole document for every binary-search step', () => {
+  const markdown = Array.from({ length: 400 }, (_, i) =>
+    `## Heading ${i}\n\nParagraph **bold text** and [a link](https://example.com), with more body text.\n\n`,
+  ).join('');
+  codec.withContext(ctx => {
+    const doc = ctx.get(parserCtx)(markdown)!;
+    const serialize = ctx.get(serializerCtx);
+    for (const text of ['Paragraph **bold text**', 'Heading 200', 'more body text.\n\n']) {
+      const offset = (text.startsWith('more') ? markdown.lastIndexOf(text) : markdown.indexOf(text)) + 4;
+      let serializations = 0;
+      const map = markdownPositionMap(doc, markdown, doc => { serializations++; return serialize(doc); });
+      const prose = map.toProse(offset);
+      expect(map.toSource(prose)).toBe(offset);
+      expect(serializations).toBeLessThanOrEqual(7);
+    }
+  });
+});

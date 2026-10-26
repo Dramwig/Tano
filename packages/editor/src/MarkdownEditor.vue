@@ -2698,7 +2698,14 @@ watch(() => JSON.stringify(policy().features), () => {
   });
 });
 watch(
-  () => [props.readonly, props.enabledLevels, props.capabilities, props.preferences, props.referenceTargets],
+  // Page widths are workbench layout state. Saving them must not invalidate
+  // every node view (or refresh every formula/code block) in a long document.
+  () => JSON.stringify([props.readonly, props.enabledLevels, {
+    features: policy().features,
+    markdownDialect: policy().markdownDialect,
+    mathSyntax: policy().mathSyntax,
+    bulletListMarker: policy().bulletListMarker,
+  }, props.preferences, props.referenceTargets]),
   () =>
     editor?.action((ctx) => {
       runtimeRevision++;
@@ -2708,7 +2715,6 @@ watch(
       view.dispatch(view.state.tr.setMeta('addToHistory', false));
       view.dom.querySelectorAll('.tano-math, .tano-mermaid, .tano-code-block, .tano-image, [data-tano-live-source], [data-tano-live-inline-source]').forEach((node) => node.dispatchEvent(new Event('tano-math-refresh')));
     }),
-  { deep: true },
 );
 watch(
   () => props.revealMarkdown,

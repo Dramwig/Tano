@@ -88,13 +88,24 @@ export function markdownPositionMap(doc: Node, markdown: string, serialize: (doc
   function toProse(offset: number) {
     if (!count) return 0;
     let low = 0, high = count - 1;
-    while (low < high) {
-      const middle = Math.floor((low + high) / 2);
-      if (toSource(at(middle)) < offset) low = middle + 1;
-      else high = middle;
+    let from = toSource(at(low)), to = toSource(at(high));
+    if (offset <= from) return at(low);
+    if (offset >= to) return at(high);
+    // Most rendered characters occupy one source character. Interpolate in
+    // source coordinates first, rather than serializing the entire document
+    // once per bit of its character count. Keep bracketing the exact position;
+    // fall back to bisection for unusually uneven Markdown expansion.
+    for (let probe = 0; high - low > 1; probe++) {
+      const estimate = probe < 8 && to > from
+        ? Math.round(low + (offset - from) * (high - low) / (to - from))
+        : Math.floor((low + high) / 2);
+      const middle = Math.max(low + 1, Math.min(high - 1, estimate));
+      const value = toSource(at(middle));
+      if (value === offset) return at(middle);
+      if (value < offset) { low = middle; from = value; }
+      else { high = middle; to = value; }
     }
-    const next = at(low), previous = at(Math.max(0, low - 1));
-    return Math.abs(toSource(previous) - offset) < Math.abs(toSource(next) - offset) ? previous : next;
+    return Math.abs(from - offset) < Math.abs(to - offset) ? at(low) : at(high);
   }
   return { toSource, toProse };
 }

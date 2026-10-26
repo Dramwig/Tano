@@ -22,6 +22,8 @@ Tano — Humans and agents, on the same page.
 
 ## Development
 
+- Before release-related Git commits, pushes, or tag creation for any new Core or Product/cloud version, add the current release's changes to the website changelog in Tano-cloud (`apps/client/src/changelog/zh-cn.md` and `en-us.md`). Review `/zh-cn/changelog/` locally before those Git operations. This also applies to Core-only releases; record the version, date, scope and actual changes, and include the changelog update in the coordinated release commits before tagging. See [docs/release-automation.md](docs/release-automation.md). Ordinary non-release Git work does not require a release entry.
+
 - Ordinary Git commits, pushes and merges do not require tests, builds or dependency installation; do not run them or synchronize Core solely for a Git request. During development, choose targeted local checks based on the change or explicit user instructions. Before publishing a new version, complete the full local checks and applicable platform acceptance on the final release revision, and record the commands, results and tested SHA in release evidence. GitHub Actions is manual-only for packaging, release and synchronization; never add commit/PR-triggered CI or run test suites there. See [docs/local-validation.md](docs/local-validation.md).
 
 - `npm install`, `npm run dev` for the browser demo; `npm run desktop` for the real desktop filesystem.

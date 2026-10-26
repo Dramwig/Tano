@@ -21,7 +21,7 @@ import type { WorkbenchViewTab } from '../runtime';
 import { planFileMove } from '../file-move';
 import { optimisticFiles, type FileMutationPreview } from '../optimistic-files';
 import { topLevelEntries } from '../file-selection';
-import { defaultCapabilities } from '@tano/editor/runtime';
+import { defaultCapabilities, parseCapabilities } from '@tano/editor/runtime';
 import { loadCapabilities, saveCapabilityPatch } from '../workspace-capabilities';
 import type { CapabilityPatch } from '../workspace-capabilities';
 import { defaultWorkspaceSettings, loadWorkspaceSettings, saveWorkspaceSettingsPatch } from '../workspace-settings';
@@ -756,38 +756,77 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const capabilityError = ref('');
   const capabilitySaving = ref(false);
   let capabilityBase: FileSnapshot | null = null;
+  const pendingPageWidths = new Map<string, { workspaceId: string; documentId: string; limited: boolean }>();
+  let capabilitySaves = 0;
+  function withPendingPageWidth(policy: typeof capabilities.value) {
+    const pageWidthLimits = { ...policy.pageWidthLimits };
+    for (const pending of pendingPageWidths.values()) {
+      if (pending.workspaceId !== workspace.value?.id) continue;
+      if (pending.limited) delete pageWidthLimits[pending.documentId];
+      else pageWidthLimits[pending.documentId] = false;
+    }
+    return { ...policy, pageWidthLimits };
+  }
   async function refreshCapabilities() {
     if (!workspace.value) return;
+    const workspaceId = workspace.value.id;
     try {
       const loaded = await loadCapabilities(adapter, workspace.value);
+      if (workspace.value?.id !== workspaceId) return;
       capabilityBase = loaded.snapshot;
-      if (JSON.stringify(capabilities.value) !== JSON.stringify(loaded.capabilities))
-        capabilities.value = loaded.capabilities;
+      const next = withPendingPageWidth(loaded.capabilities);
+      if (JSON.stringify(capabilities.value) !== JSON.stringify(next))
+        capabilities.value = next;
       capabilityError.value = '';
     } catch (error) {
       capabilityError.value = `无法读取工作区规则：${String(error)}。原文件已保留，设置暂时不可修改。`;
     }
   }
   async function updateCapabilities(patch: CapabilityPatch) {
-    if (!workspace.value || capabilitySaving.value || capabilityError.value) return;
+    if (!workspace.value || (capabilitySaving.value && !('pageWidth' in patch)) || capabilityError.value) return;
     const workspaceId = workspace.value.id;
     const base = capabilityBase;
+    capabilitySaves++;
     capabilitySaving.value = true;
+    // Keep the preview over any older refresh already ahead of this save in
+    // the serial queue. The disk snapshot remains the merge base, not the preview.
+    const pending = 'pageWidth' in patch && canManageSettings.value && !workspace.value.readOnly
+      ? { workspaceId, ...patch.pageWidth } : undefined;
+    const pendingKey = pending ? `${workspaceId}:${pending.documentId}` : '';
+    if (pending) {
+      pendingPageWidths.set(pendingKey, pending);
+      capabilities.value = withPendingPageWidth(capabilities.value);
+    }
     try {
       await serial(async () => {
-        if (workspace.value?.id !== workspaceId) throw new Error('工作区已切换，请重试');
-        writable();
-        if (!canManageSettings.value) throw new Error('只有工作区所有者和管理者可以修改工作区设置');
-        const saved = await saveCapabilityPatch(adapter, base, patch);
-        capabilityBase = saved.snapshot;
-        capabilities.value = saved.capabilities;
-        workspace.value = await adapter.refresh();
+        // A queued click superseded by a newer choice never needs its own write.
+        if (pending && pendingPageWidths.get(pendingKey) !== pending) return;
+        try {
+          if (workspace.value?.id !== workspaceId) throw new Error('工作区已切换，请重试');
+          writable();
+          if (!canManageSettings.value) throw new Error('只有工作区所有者和管理者可以修改工作区设置');
+          // Width writes follow preceding local saves, while other policy edits
+          // retain the base captured when requested for conflict detection.
+          const saved = await saveCapabilityPatch(adapter, pending ? capabilityBase : base, patch);
+          capabilityBase = saved.snapshot;
+          capabilities.value = withPendingPageWidth(saved.capabilities);
+          workspace.value = await adapter.refresh();
+        } catch (error) {
+          report(error);
+          if (pendingPageWidths.get(pendingKey) === pending) pendingPageWidths.delete(pendingKey);
+          if (workspace.value?.id === workspaceId) {
+            // Keep newer choices visible even when an older write fails.
+            capabilities.value = withPendingPageWidth(capabilityBase
+              ? parseCapabilities(capabilityBase.content) : structuredClone(defaultCapabilities));
+            await refreshCapabilities();
+          }
+        } finally {
+          if (pendingPageWidths.get(pendingKey) === pending) pendingPageWidths.delete(pendingKey);
+        }
       });
-    } catch (error) {
-      report(error);
-      await serial(refreshCapabilities);
     } finally {
-      capabilitySaving.value = false;
+      capabilitySaves--;
+      capabilitySaving.value = capabilitySaves > 0;
     }
   }
   const documents = ref<OpenDocument[]>([]);

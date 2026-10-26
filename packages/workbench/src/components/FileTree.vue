@@ -233,7 +233,7 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
     @dragleave="emit('dragLeave', parent, $event)"
     @drop="emit('drop', parent, $event)"
   >
-    <li v-if="loading" role="none"><LoadingSkeleton :rows="6" :label="t('正在加载…')" /></li>
+    <li v-if="loading" role="none"><LoadingSkeleton variant="tree" :rows="6" :label="t('正在加载…')" /></li>
     <li v-for="{ file, depth: rowDepth, position, siblings, index } in windowRows" :key="file.id"
       :class="{ 'file-tree-virtual-row': virtual }"
       :style="virtual ? { top: `${index * treeRowHeight}px`, height: `${treeRowHeight}px` } : undefined"

@@ -3,7 +3,17 @@
 .tano-skeleton-bar:nth-child(3n) { animation-delay: .36s; }
 .tano-skeleton-shell { box-sizing: border-box; display: flex; flex: 1; align-items: center; justify-content: center; width: 100%; min-height: 100%; color: var(--text, #37352f); }
 .tano-skeleton-list { display: grid; gap: 20px; padding: 20px; }
-.tano-skeleton-list .tano-skeleton-bar:last-child { width: 65%; }
+:is(.tano-skeleton-list, .tano-skeleton-tree) > :nth-child(6n + 1) { --skeleton-text-width: 86%; }
+:is(.tano-skeleton-list, .tano-skeleton-tree) > :nth-child(6n + 2) { --skeleton-text-width: 62%; }
+:is(.tano-skeleton-list, .tano-skeleton-tree) > :nth-child(6n + 3) { --skeleton-text-width: 94%; }
+:is(.tano-skeleton-list, .tano-skeleton-tree) > :nth-child(6n + 4) { --skeleton-text-width: 73%; }
+:is(.tano-skeleton-list, .tano-skeleton-tree) > :nth-child(6n + 5) { --skeleton-text-width: 82%; }
+:is(.tano-skeleton-list, .tano-skeleton-tree) > :nth-child(6n) { --skeleton-text-width: 56%; }
+.tano-skeleton-list > .tano-skeleton-bar,
+.tano-skeleton-tree-label > .tano-skeleton-bar { width: var(--skeleton-text-width); }
+.tano-skeleton-tree-row { box-sizing: border-box; display: flex; align-items: center; gap: 8px; height: 32px; margin: 1px 0; padding: 0 10px 0 4px; }
+.tano-skeleton-tree-row > .tano-skeleton-icon { flex: 0 0 16px; width: 16px; height: 16px; border-radius: 4px; }
+.tano-skeleton-tree-label { flex: 1; min-width: 0; }
 .tano-skeleton-document { box-sizing: border-box; width: 100%; max-width: var(--tano-content-measure, 700px); margin: 0 auto; padding: 8px var(--tano-block-padding-inline, 8px); display: grid; align-content: start; gap: 22px; }
 .tano-skeleton-document .tano-skeleton-bar:first-child { width: 45%; height: 32px; margin-bottom: 24px; }
 .tano-skeleton-document .tano-skeleton-bar:nth-child(4n) { width: 72%; margin-bottom: 20px; }

@@ -139,6 +139,18 @@ async function toggleMaximize() {
 .desktop-window:has(.app-shell.sidebar-resizing) .desktop-window-titlebar {
   transition: none;
 }
+.desktop-window:has(.desktop-window-tab-slot .desktop-tab-strip) .sidebar-header-actions {
+  /* Meet the titlebar navigation with the same 2px gap as its buttons. */
+  margin-inline-end: -7px;
+}
+.desktop-window:has(.desktop-window-tab-slot .desktop-tab-strip) .sidebar-header-actions .icon-button {
+  flex-basis: 28px;
+  width: 28px;
+  height: 26px;
+}
+.desktop-window-tab-slot > .desktop-sidebar-toggle-hidden + .desktop-tab-navigation:has(.icon-button) {
+  padding-inline-start: 2px;
+}
 .desktop-window-tab-slot:has(.desktop-tab-strip) {
   display: flex;
   flex: 0 1 auto;

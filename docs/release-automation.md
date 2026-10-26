@@ -13,6 +13,17 @@ with the same name points to the Product commit.
 
 ## Prepare and publish Core
 
+Before any release-related Git commit, push, or tag creation, update the website
+changelog in the private Tano-cloud repository, including for a Core-only release.
+Edit `apps/client/src/changelog/zh-cn.md` and `en-us.md` together, following that
+repository's `docs/changelog.md`. Record the intended version, date, release scope
+and actual additions, improvements and fixes since the previous corresponding
+release. Review `http://127.0.0.1:43941/zh-cn/changelog/` locally before proceeding.
+Include the changelog changes in the coordinated release commits before creating
+`core-vX.Y.Z` or Product tags; do not defer the entry until after tagging. Pending
+release notes must not claim that publication or deployment has already succeeded.
+This requirement applies to release work, not ordinary non-release Git operations.
+
 1. Promote the intended development changes to main with
    `git merge --no-ff dev`. Prepare versions locally on main with
    `node scripts/release-plan.mjs prepare patch core` (minor, major or an exact

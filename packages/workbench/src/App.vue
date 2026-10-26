@@ -3,6 +3,7 @@ import WorkspaceSyncPanel from './components/WorkspaceSyncPanel.vue';
 import { vScrollFade } from './scroll-fade';
 import { createWorkspaceSync, syncEvent } from './workspace-sync';
 import { t } from './i18n';
+import { focusedOutlineIndices } from './outline-tree';
 import AppTooltip from './components/AppTooltip.vue';
 import { assistantDiscussionPrompt } from './assistant/language';
 import { assistantSourceRange } from './assistant/source-selection';
@@ -37,13 +38,13 @@ import {
   X,
   Check,
   Circle,
-  Code2,
   MoreHorizontal,
   ArrowUpRight,
   Archive,
   Clock3,
   History,
   List,
+  ListTree,
   ListTodo,
   CircleHelp,
   ArrowLeft,
@@ -95,6 +96,7 @@ import EmptyEditor from './components/EmptyEditor.vue';
 import DocumentStarter from './components/DocumentStarter.vue';
 import { documentStarter, templateStarterBody } from './document-starters';
 import MarkdownRevealToggle from './components/MarkdownRevealToggle.vue';
+import SourceCodeIcon from './components/SourceCodeIcon.vue';
 import DocumentTitle from './components/DocumentTitle.vue';
 import { appearanceText } from './document-appearance';
 import { useDocumentFavicon } from './document-favicon';
@@ -186,7 +188,7 @@ import type { ObjectRecord } from './workspace-objects';
 import { usePlanStore } from './stores/plans';
 import { usePlanSyncStore } from './stores/plan-sync';
 import { planKey } from './personal-plans';
-const SidebarPlan = loadingComponent(() => import('./components/SidebarPlan.vue'));
+const SidebarPlan = loadingComponent(() => import('./components/SidebarPlan.vue'), 'tree');
 import SidebarNavigation from './components/SidebarNavigation.vue';
 import WorkspaceSidebar from './components/WorkspaceSidebar.vue';
 import HelpLauncher from './components/HelpLauncher.vue';
@@ -932,7 +934,6 @@ const pageWidthWritable = computed(
     !!workspace.value &&
     !workspace.value.readOnly &&
     !active.value?.missing &&
-    !store.capabilitySaving &&
     !store.capabilityError,
 );
 function setLimitPageWidth(value: boolean) {
@@ -996,13 +997,25 @@ const source = computed({
   },
 });
 const pageLocked = ref(false);
+const workspaceLocked = ref(false);
+watch(
+  () => workspace.value?.id,
+  (id) => { workspaceLocked.value = !!id && readPreference(`workspaceLocked.${id}`, false); },
+  { immediate: true },
+);
+function toggleWorkspaceLock() {
+  const id = workspace.value?.id;
+  if (!id) return;
+  workspaceLocked.value = !workspaceLocked.value;
+  savePreference(`workspaceLocked.${id}`, workspaceLocked.value);
+}
 function pageLockPreferenceKey(workspaceId: string, documentId: string) {
   return `pageLocked.${workspaceId}.${documentId}`;
 }
 function togglePageLock() {
   const currentWorkspace = workspace.value;
   const document = active.value;
-  if (!currentWorkspace || !document) return;
+  if (!currentWorkspace || !document || workspaceLocked.value) return;
   pageLocked.value = !pageLocked.value;
   savePreference(pageLockPreferenceKey(currentWorkspace.id, document.id), pageLocked.value);
 }
@@ -1018,6 +1031,7 @@ watch(
 );
 const editorReadonly = computed(
   () =>
+    workspaceLocked.value ||
     pageLocked.value ||
     updateLock.value ||
     store.busy ||
@@ -1029,7 +1043,7 @@ const editorReadonly = computed(
 );
 async function renameDocumentTitle(workspaceId: string, id: string, from: string, to: string) {
   if (workspace.value?.id !== workspaceId) throw new Error(t('工作空间已切换，请重新打开文档后重试'));
-  if (updateLock.value || store.busy || workspace.value.readOnly || sessionBlocksFileMutation(id))
+  if (workspaceLocked.value || updateLock.value || store.busy || workspace.value.readOnly || sessionBlocksFileMutation(id))
     throw new Error(t('当前文档暂时无法重命名'));
   const doc = store.documentForTab(id);
   if (!doc || store.displayPath(doc) !== from) throw new Error(t('文件位置已变化，请重新输入标题'));
@@ -1068,6 +1082,8 @@ watch(activeId, () => { touchOutlineOpen.value = false; });
 const outlineOnLeft = ref(readPreference('outlineOnLeft', false));
 const outlinePinned = ref(readPreference('outlinePinned', false));
 const outlineSearchOpen = ref(false);
+const outlineAutoCollapse = ref(readPreference('outlineAutoCollapse', false));
+watch(outlineAutoCollapse, (enabled) => savePreference('outlineAutoCollapse', enabled));
 const outlineSearch = ref('');
 const outlineSearchInput = ref<HTMLInputElement>();
 watch(showOutline, (visible) => {
@@ -1220,7 +1236,7 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
       context: paneSelections[store.activePaneId] ?? defaultSelectionContext, features: store.capabilities.features,
       run: (name, value) => editor.value?.command(name, value) }),
     { id: 'workbench.source', category: t('视图'), label: source.value ? t('返回可视化编辑') : t('切换源码模式'), available: standardEditor, keywords: 'Markdown source', run: () => { source.value = !source.value; } },
-    { id: 'workbench.reading', category: t('视图'), label: pageLocked.value ? t('退出阅读模式') : t('进入阅读模式'), available: hasDocument, keywords: t('锁定页面 解锁'), run: togglePageLock },
+    { id: 'workbench.reading', category: t('视图'), label: pageLocked.value ? t('退出阅读模式') : t('进入阅读模式'), available: hasDocument && !workspaceLocked.value, keywords: t('锁定页面 解锁'), run: togglePageLock },
     { id: 'workbench.width', category: t('视图'), label: limitPageWidth.value ? t('展开页面全宽') : t('限制页面宽度'), available: hasDocument && pageWidthWritable.value, run: () => setLimitPageWidth(!limitPageWidth.value) },
     { id: 'workbench.outline', category: t('视图'), label: showOutline.value ? t('隐藏文档目录') : t('显示文档目录'), available: hasDocument, keywords: t('大纲'), run: () => { showOutline.value = !showOutline.value; } },
     { id: 'workbench.properties', category: t('视图'), label: showDocumentProperties.value ? t('隐藏文档属性') : t('显示文档属性'), available: hasDocument, run: () => { showDocumentProperties.value = !showDocumentProperties.value; } },
@@ -1933,6 +1949,7 @@ function setPaneElement(kind: 'scroll' | 'editor' | 'source', id: string, value:
 }
 function paneReadonly(doc: OpenDocument) {
   return (
+    workspaceLocked.value ||
     updateLock.value ||
     store.busy ||
     !!workspace.value?.readOnly ||
@@ -1945,8 +1962,8 @@ function paneReadonly(doc: OpenDocument) {
   );
 }
 function paneDocumentStatus(doc: OpenDocument) {
-  const locked = doc.id === store.active?.id ? pageLocked.value
-    : readPreference(pageLockPreferenceKey(workspace.value?.id ?? '', doc.id), false);
+  const locked = workspaceLocked.value || (doc.id === store.active?.id ? pageLocked.value
+    : readPreference(pageLockPreferenceKey(workspace.value?.id ?? '', doc.id), false));
   let sync: DocumentSyncStatus | undefined = extensions.documentStatus?.(doc.id);
   if (!sync && workspaceSync.state.value.backend === 'git') {
     if (workspaceSync.state.value.conflicts.includes(doc.path)) sync = { kind: 'error', detail: t('当前文章存在 Git 同步冲突。') };
@@ -2857,8 +2874,12 @@ async function openWikiLink(target: string) {
 const outline = computed(() => headings(active.value?.content ?? ''));
 const visibleOutline = computed(() => {
   const query = outlineSearch.value.trim().toLocaleLowerCase();
+  const focused = outlineAutoCollapse.value && !query
+    ? focusedOutlineIndices(outline.value, activeHeading.value)
+    : undefined;
   return outline.value.flatMap((heading, index) =>
-    !query || heading.text.toLocaleLowerCase().includes(query) ? [{ heading, index }] : [],
+    (!focused || focused.has(index)) && (!query || heading.text.toLocaleLowerCase().includes(query))
+      ? [{ heading, index }] : [],
   );
 });
 async function toggleOutlineSearch(event?: Event) {
@@ -5325,7 +5346,7 @@ const helpBlocked = computed(() => !!(
                       "
                       @click="setPaneSource(pane.activeId, !paneSource(pane.activeId))"
                     >
-                      <Code2 :size="17" />
+                      <SourceCodeIcon :size="17" :off="!paneSource(pane.activeId)" />
                     </button>
                   </div>
                   <div class="menu-wrap">
@@ -5402,6 +5423,7 @@ const helpBlocked = computed(() => !!(
                         class="page-toggle-menu-item"
                         role="switch"
                         :aria-checked="!limitPageWidth"
+                        :aria-busy="store.capabilitySaving || undefined"
                         :disabled="!pageWidthWritable"
                         :data-tooltip="t('切换页面内容宽度')"
                         @click="setLimitPageWidth(!limitPageWidth)"
@@ -5417,13 +5439,14 @@ const helpBlocked = computed(() => !!(
                         type="button"
                         class="page-toggle-menu-item"
                         role="switch"
-                        :aria-checked="pageLocked"
-                        :data-tooltip="pageLocked ? t('退出阅读模式') : t('锁定后进入阅读模式')"
+                        :aria-checked="workspaceLocked || pageLocked"
+                        :disabled="workspaceLocked"
+                        :data-tooltip="workspaceLocked ? t('请先关闭工作区锁定，再修改页面锁定') : pageLocked ? t('退出阅读模式') : t('锁定后进入阅读模式')"
                         @click="togglePageLock"
                       >
                         <LockKeyhole :size="15" />{{ t('锁定页面') }}<span
                           class="menu-switch"
-                          :class="{ on: pageLocked }"
+                          :class="{ on: workspaceLocked || pageLocked }"
                           aria-hidden="true"
                           ><span
                         /></span>
@@ -5448,6 +5471,14 @@ const helpBlocked = computed(() => !!(
                         <Clock3 :size="15" />{{ t('更新历史') }}
                       </button>
                       <DocumentGlobalMenu>
+                        <button type="button" class="page-toggle-menu-item" role="switch"
+                          :aria-checked="workspaceLocked" :disabled="!workspace"
+                          :data-tooltip="t('锁定后，整个工作区的页面进入阅读模式')"
+                          @click="toggleWorkspaceLock">
+                          <LockKeyhole :size="15" />{{ t('锁定工作区') }}<span
+                            class="menu-switch" :class="{ on: workspaceLocked }" aria-hidden="true"><span /></span>
+                        </button>
+                        <div class="menu-divider" role="separator" />
                         <PageDisplayOptions :auto-spacing="editorPreferences.autoSpacing ?? false"
                           :show-page-title="showPageTitle"
                           :show-document-properties="showDocumentProperties"
@@ -5650,7 +5681,7 @@ const helpBlocked = computed(() => !!(
                             :data-tooltip="paneSource(pane.activeId) ? t('返回编辑') : t('切换源码模式')"
                             @click="setPaneSource(pane.activeId, !paneSource(pane.activeId))"
                           >
-                            <Code2 :size="17" />
+                            <SourceCodeIcon :size="17" :off="!paneSource(pane.activeId)" />
                           </button>
                         </ButtonVisibilityGroup>
                       </template>
@@ -5933,6 +5964,18 @@ const helpBlocked = computed(() => !!(
                     @click="touchOutlineOpen = false"><X :size="18" /></button>
                   <button
                     class="outline-control"
+                    :class="{ active: outlineAutoCollapse }"
+                    type="button"
+                    :aria-label="t('自动折叠大纲')"
+                    :data-tooltip="t('自动折叠大纲')"
+                    :aria-pressed="outlineAutoCollapse"
+                    @click="outlineAutoCollapse = !outlineAutoCollapse"
+                  >
+                    <ListTree :size="15" />
+                  </button>
+                  <button
+                    class="outline-control"
+                    :class="{ active: outlineSearchOpen }"
                     type="button"
                     :aria-label="t('搜索大纲标题')"
                     :data-tooltip="t('搜索大纲标题')"
