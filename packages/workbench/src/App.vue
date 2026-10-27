@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import WorkspaceSyncPanel from './components/WorkspaceSyncPanel.vue';
 import { vScrollFade } from './scroll-fade';
+import { vOutlineMotion } from './outline-motion';
 import { createWorkspaceSync, syncEvent } from './workspace-sync';
 import { t } from './i18n';
 import { focusedOutlineIndices } from './outline-tree';
@@ -2077,7 +2078,7 @@ const outlineCoverBottom = ref(0);
 const outlinePosition = computed(() => {
   if (!outlineCoverBottom.value) return undefined;
   const top = `max(var(--inspector-top), ${outlineCoverBottom.value}px)`;
-  return { top, maxHeight: `calc(100% - ${top} - 12px)` };
+  return { top, maxHeight: `calc(100% - ${top} - var(--inspector-bottom, 12px))` };
 });
 let headingFrame: number | undefined;
 async function dragPaneWindow(event: MouseEvent) {
@@ -2892,6 +2893,14 @@ async function toggleOutlineSearch(event?: Event) {
   outlineSearchOpen.value = true;
   await nextTick();
   outlineSearchInput.value?.focus();
+}
+function releaseOutlinePointerFocus(event: PointerEvent) {
+  if (panel.value !== 'outline' || touchLayout.value || !hoverOutline || outlinePinned.value || event.pointerType === 'touch') return;
+  const surface = event.currentTarget as HTMLElement;
+  const focused = document.activeElement;
+  // Mouse-opened search must not act as a pin. Keyboard focus still expands
+  // the outline until the pointer leaves it, and the search state is retained.
+  if (focused instanceof HTMLElement && surface.contains(focused)) focused.blur();
 }
 function toggleOutlinePin(event: MouseEvent) {
   outlinePinned.value = !outlinePinned.value;
@@ -5939,17 +5948,19 @@ const helpBlocked = computed(() => !!(
                 pane.id === store.activePaneId &&
                 (panel !== 'outline' || (showOutline && (!touchLayout || touchOutlineOpen)))
               "
+              v-outline-motion
               class="inspector"
               :style="panel === 'outline' ? outlinePosition : undefined"
               :class="{
                 'inspector-outline': panel === 'outline',
                 'inspector-outline-left': panel === 'outline' && outlineOnLeft,
                 'inspector-hover-outline':
-                  panel === 'outline' && !touchLayout && hoverOutline && !outlinePinned && !outlineSearchOpen,
+                  panel === 'outline' && !touchLayout && hoverOutline && !outlinePinned,
                 'inspector-activity': panel === 'activity',
               }"
               :aria-label="panel === 'outline' ? t('文档目录') : t('文档动态')"
               @contextmenu="openOutlineContextMenu"
+              @pointerleave="releaseOutlinePointerFocus"
             >
               <div class="inspector-surface">
                 <div v-if="panel === 'activity'" class="inspector-tabs">
@@ -6010,7 +6021,7 @@ const helpBlocked = computed(() => !!(
                     @keydown.esc.stop.prevent="toggleOutlineSearch"
                   />
                 </div>
-                <nav v-if="panel === 'outline'" class="outline" :aria-label="t('文档大纲')">
+                <nav v-if="panel === 'outline'" v-scroll-fade class="outline" :aria-label="t('文档大纲')">
                   <button
                     v-for="{ heading, index } in visibleOutline"
                     :key="index"

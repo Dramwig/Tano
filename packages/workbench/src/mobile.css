@@ -36,7 +36,7 @@
 .touch-layout input:not([type='checkbox']):not([type='radio']):not(.document-title-input),
 .touch-layout textarea,
 .touch-layout select { font-size: max(16px, 1em); }
-.touch-layout .inspector { --inspector-top: 60px; max-height: calc(100% - 72px); }
+.touch-layout .inspector { --inspector-top: 60px; max-height: calc(100% - var(--inspector-top) - var(--inspector-bottom, 12px)); }
 .touch-layout .inspector-surface { max-height: inherit; }
 .touch-layout .modal-backdrop,
 .touch-layout .modal-backdrop.settings-backdrop,
