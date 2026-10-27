@@ -94,7 +94,7 @@ const emit = defineEmits<{ details: []; install: [] }>();
 .entry-copy strong {
   color: var(--text);
   font-size: 13px;
-  font-weight: 550;
+  font-weight: 500;
   line-height: 20px;
 }
 .entry-description {

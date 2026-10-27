@@ -80,7 +80,7 @@ onScopeDispose(() => { controller.abort(); secret.value = ''; });
 </template>
 <style scoped>
 .plugin-connections { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 12px; font-size: 12px; }
-summary { cursor: pointer; padding: 8px 0; font-weight: 600; }
+summary { cursor: pointer; padding: 8px 0; font-weight: 500; }
 p, li { color: var(--muted); overflow-wrap: anywhere; }
 form { display: grid; gap: 12px; max-width: 560px; margin: 16px 0; }
 label { display: flex; align-items: center; gap: 10px; }

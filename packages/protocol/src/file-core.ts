@@ -1,7 +1,7 @@
 import type { FileEntry, Workspace } from './index';
 import { isWorkspaceInternalPath } from './workspace-paths';
 
-export type FilePreviewKind = 'markdown' | 'table' | 'image' | 'pdf' | 'csv' | 'json' | 'code' | 'text' | 'audio' | 'video' | 'binary';
+export type FilePreviewKind = 'markdown' | 'table' | 'image' | 'pdf' | 'office' | 'csv' | 'json' | 'code' | 'text' | 'audio' | 'video' | 'binary';
 export interface FileHandler {
   readonly id: string;
   readonly extensions: readonly string[];
@@ -18,6 +18,12 @@ export const builtInFileHandlers: readonly FileHandler[] = Object.freeze([
   handler('table', ['table.json'], 'application/json', 'table', true),
   handler('markdown', ['md', 'markdown'], 'text/markdown', 'markdown', true),
   handler('pdf', ['pdf'], 'application/pdf', 'pdf'),
+  handler('excel', ['xls'], 'application/vnd.ms-excel', 'office'),
+  handler('excel-openxml', ['xlsx'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'office'),
+  handler('word', ['doc'], 'application/msword', 'office'),
+  handler('word-openxml', ['docx'], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'office'),
+  handler('powerpoint', ['ppt'], 'application/vnd.ms-powerpoint', 'office'),
+  handler('powerpoint-openxml', ['pptx'], 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'office'),
   ...Object.entries({ png: 'png', jpg: 'jpeg', jpeg: 'jpeg', gif: 'gif', webp: 'webp', avif: 'avif', bmp: 'bmp', svg: 'svg+xml' })
     .map(([ext, mime]) => handler(`image-${ext}`, [ext], `image/${mime}`, 'image')),
   handler('csv', ['csv', 'tsv'], 'text/csv', 'csv'),

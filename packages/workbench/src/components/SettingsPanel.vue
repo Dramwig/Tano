@@ -1516,7 +1516,7 @@ function customFontInput(event: Event) {
   padding-right: 20px;
   font-size: 22px;
   line-height: 1.4;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: -0.5px;
 }
 .settings-lead {
@@ -1538,7 +1538,7 @@ function customFontInput(event: Event) {
   color: var(--text);
   font-size: 16px;
   line-height: 1.5;
-  font-weight: 650;
+  font-weight: 600;
 }
 .settings-card {
   padding: 0;
@@ -1885,7 +1885,7 @@ function customFontInput(event: Event) {
 .settings-about-brand h3 {
   margin: 0;
   font-size: 23px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: -0.5px;
 }
 .settings-about-brand h3 span {

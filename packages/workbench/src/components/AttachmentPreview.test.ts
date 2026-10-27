@@ -7,6 +7,7 @@ import { configureWorkbench } from '../runtime';
 import AttachmentPreview from './AttachmentPreview.vue';
 import { nativeAttachments } from '../attachments';
 vi.mock('../attachments', () => ({ nativeAttachments: { readAttachment: vi.fn() } }));
+vi.mock('./OfficePreview.vue', () => ({ __esModule: true, default: { props: ['bytes', 'path'], render(this: { bytes: Uint8Array; path: string }) { return h('section', { 'data-office-path': this.path }, Array.from(this.bytes).join(',')); } } }));
 
 let app: App | undefined;
 afterEach(() => { app?.unmount(); app = undefined; document.body.replaceChildren(); });
@@ -19,6 +20,18 @@ it('reads desktop non-image previews through native bytes rather than the image-
   app.use(pinia).mount(root);
   await vi.waitFor(() => expect(root.querySelector('table')?.textContent).toContain('local'));
   expect(nativeAttachments.readAttachment).toHaveBeenCalledWith('ws', 'data.csv');
+});
+it.each(['xls', 'xlsx', 'doc', 'docx', 'ppt', 'pptx'])('loads %s through the host attachment service without text conversion or writes', async extension => {
+  const bytes = new Uint8Array([0, 255, 128, 13]);
+  const readAttachment = vi.fn().mockResolvedValue(bytes), read = vi.fn(), write = vi.fn();
+  const pinia = configureWorkbench(createPinia(), { adapter: { mode: 'demo', read, write } as unknown as WorkspaceAdapter,
+    attachments: { readAttachment } as unknown as typeof nativeAttachments, native: false, mobile: false });
+  const file: FileEntry = { id: 'abcdef', path: `附件.${extension}`, name: `附件.${extension}`, kind: 'file', size: bytes.length, modified: 1 };
+  const root = document.createElement('div'); document.body.append(root);
+  app = createApp(() => h(AttachmentPreview, { file, url: null, workspaceId: 'cloud' })); app.use(pinia).mount(root);
+  await vi.waitFor(() => expect(root.querySelector('[data-office-path]')?.textContent).toBe('0,255,128,13'));
+  expect(readAttachment).toHaveBeenCalledWith('cloud', file.path);
+  expect(read).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled();
 });
 it('previews text without interpreting markup and never writes the attachment', async () => {
   const read = vi.fn().mockResolvedValue({ content: '<script>alert(1)</script>\n文本附件', hash: 'base', modified: 1 });

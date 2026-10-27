@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t } from '../i18n';
-import { computed, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, ref, shallowRef, watch } from 'vue';
 import type { FileEntry } from '@tano/protocol';
 import { basename, fileHandlers } from '@tano/protocol';
 import { codePreviewTokens } from '@tano/editor/code-preview';
@@ -9,6 +9,7 @@ import { csvPreview, verifyPreviewBytes } from '../file-preview';
 import PdfPreview from './PdfPreview.vue';
 import { nativeAttachments } from '../attachments';
 import { useWorkbenchRuntime } from '../runtime';
+const OfficePreview = defineAsyncComponent(() => import('./OfficePreview.vue'));
 
 const props = defineProps<{ file?: FileEntry; url: string | null; workspaceId?: string }>();
 const runtime = useWorkbenchRuntime();
@@ -21,6 +22,7 @@ const failed = ref(false);
 const handler = computed(() => fileHandlers.resolve(props.file?.path ?? ''));
 const type = computed(() => handler.value.preview);
 const pdfBytes = ref<Uint8Array>();
+const officeBytes = shallowRef<Uint8Array>();
 const mediaUrl = ref('');
 const csv = computed(() => type.value === 'csv' ? csvPreview(text.value, props.file?.path ?? '') : null);
 const json = computed(() => {
@@ -38,12 +40,12 @@ watch([() => props.workspaceId, () => props.file?.id, () => props.file?.path, ()
   text.value = error.value = '';
   failed.value = false;
   loading.value = false;
-  pdfBytes.value = undefined; mediaUrl.value = '';
+  pdfBytes.value = undefined; officeBytes.value = undefined; mediaUrl.value = '';
   const file = props.file;
   const kind = type.value;
   const mime = handler.value.mimeType;
-  if (!file || !['text', 'csv', 'json', 'code', 'pdf', 'image'].includes(kind)) return;
-  const limit = (kind === 'pdf' || kind === 'image' ? 50 : 2) * 1024 * 1024;
+  if (!file || !['text', 'csv', 'json', 'code', 'pdf', 'office', 'image'].includes(kind)) return;
+  const limit = (kind === 'pdf' || kind === 'image' || kind === 'office' ? 50 : 2) * 1024 * 1024;
   if (file.size > limit) { error.value = t('文件较大，请导出后查看。'); return; }
   loading.value = true;
   try {
@@ -54,11 +56,13 @@ watch([() => props.workspaceId, () => props.file?.id, () => props.file?.path, ()
       const response = await fetch(props.url, { signal: controller.signal });
       if (!response.ok) throw new Error(t('无法读取附件'));
       bytes = new Uint8Array(await response.arrayBuffer());
-    } else bytes = new TextEncoder().encode((await adapter.read(file.path)).content);
+    } else if (kind === 'office') throw new Error(t('无法读取附件'));
+    else bytes = new TextEncoder().encode((await adapter.read(file.path)).content);
     if (!current) return;
     if (bytes.byteLength > limit) throw new Error(t('文件较大，请导出后查看。'));
     verifyPreviewBytes(bytes, kind, mime);
-    if (kind === 'pdf') pdfBytes.value = bytes;
+    if (kind === 'office') officeBytes.value = bytes;
+    else if (kind === 'pdf') pdfBytes.value = bytes;
     else if (kind === 'image') {
       objectUrl = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: mime }));
       mediaUrl.value = objectUrl;
@@ -89,6 +93,7 @@ watch([() => props.workspaceId, () => props.file?.id, () => props.file?.path, ()
     <video v-else-if="type === 'video' && url && !failed" :src="url" controls preload="metadata" @error="failed = true" />
     <audio v-else-if="type === 'audio' && url && !failed" :src="url" controls preload="metadata" @error="failed = true" />
     <PdfPreview v-else-if="type === 'pdf' && pdfBytes" :bytes="pdfBytes" />
+    <OfficePreview v-else-if="type === 'office' && officeBytes" :bytes="officeBytes" :path="file.path" />
     <p v-else role="status">{{ failed ? t('附件暂不可用，可导出后查看。') : t('此文件暂不支持预览。') }}</p>
   </main>
 </template>

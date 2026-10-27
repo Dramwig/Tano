@@ -15,6 +15,9 @@ it('resolves the same identity at a new path with a changed revision and exclude
 it.each([['a.TABLE.JSON', 'table', true], ['a.md', 'markdown', true], ['a.csv', 'csv', false], ['a.json', 'json', false], ['a.py', 'code', false], ['a.png', 'image', false], ['a.exe', 'binary', false]])('routes %s to its declared capabilities', (path, preview, canEdit) => {
   expect(fileHandlers.resolve(path)).toMatchObject({ preview, canEdit });
 });
+it.each(['xls', 'xlsx', 'doc', 'docx', 'ppt', 'pptx'])('routes %s to the built-in read-only Office viewer', extension => {
+  expect(fileHandlers.resolve(`attachments/阅读.${extension.toUpperCase()}`)).toMatchObject({ preview: 'office', canEdit: false, permissions: ['read'] });
+});
 it('validates portable metadata and never accepts paths or executable/nested property values as identity', () => {
   const value = { version: 1, fileId: 'abcdef', tags: ['paper'], properties: { owner: 'Li', done: true } };
   expect(parseFileMetadata(JSON.stringify(value), 'abcdef')).toEqual(value);

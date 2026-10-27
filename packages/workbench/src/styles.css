@@ -85,6 +85,7 @@
   --block-selection: #e1f1e8;
   --block-selection-overlay: color-mix(in srgb, var(--block-selection) 62%, transparent);
   --line: #ebebea;
+  --tree-guide: color-mix(in srgb, var(--muted) 18%, transparent);
   --control-border: #d3d2ce;
   --sidebar: #f8f8f7;
   --sidebar-width: 252px;
@@ -334,7 +335,7 @@ button:hover {
   padding: 0 5px;
   border-radius: 7px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--muted);
   white-space: nowrap;
 }
@@ -422,7 +423,7 @@ button:hover {
   display: grid;
   place-items: center;
   border-radius: 5px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .workspace-dropdown .context-menu-item .recent-name {
   flex: 1;
@@ -632,6 +633,24 @@ button:hover {
   margin: 1px 0;
   user-select: none;
 }
+/* Indent guides: one hairline per ancestor level, centred under that level's
+   icon (row padding is 4px + depth * 17px, icon is 16px wide). Extends 1px
+   past the row so the rows' 1px margins don't break the line. */
+.tree-row::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  left: 4px;
+  width: calc(var(--tree-depth, 0) * 17px);
+  background: repeating-linear-gradient(
+    to right,
+    transparent 0 7.5px,
+    var(--tree-guide) 7.5px 8.5px,
+    transparent 8.5px 17px
+  );
+  pointer-events: none;
+}
 .tree-row:hover {
   background: var(--hover);
 }
@@ -646,7 +665,6 @@ button:hover {
 .tree-row.selected {
   background: var(--selected);
   color: var(--text);
-  font-weight: 500;
 }
 .tree-row.selected.multi-selected {
   background: var(--selected);
@@ -911,7 +929,7 @@ button:hover {
   margin-right: 8px;
   color: var(--text);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -961,7 +979,7 @@ button:hover {
 }
 .calendar-view-menu button:hover,
 .calendar-view-menu button:focus-visible { background: var(--hover); }
-.calendar-view-menu button[aria-checked='true'] { color: var(--text); font-weight: 600; }
+.calendar-view-menu button[aria-checked='true'] { color: var(--text); font-weight: 500; }
 @media (max-width: 900px) {
   .calendar-topbar-period { display: none; }
 }
@@ -1740,7 +1758,7 @@ button:hover {
 .tano-prose sup[data-type='footnote_reference'][data-footnote-number]::before {
   content: '[' attr(data-footnote-number) ']';
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .milkdown-host.tano-link-modifier .tano-prose sup[data-type='footnote_reference'][data-footnote-number] {
   cursor: pointer;
@@ -2228,7 +2246,7 @@ button:hover {
   font: inherit;
   font-family: var(--tano-prose-font-family, inherit);
   font-size: clamp(30px, 3vw, 40px);
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
   letter-spacing: -0.015em;
   text-align: left;
@@ -2279,7 +2297,7 @@ button:hover {
   box-shadow: 0 2px 5px #00000016;
   text-align: center;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 18px;
 }
 .document-title-error::before {
@@ -2560,8 +2578,8 @@ button:hover {
        same rail, then keep their own internal padding;
      - nested blocks own their local spacing and must not inherit the outer
        rail a second time.
-     Tables are laid out by TableViewport, so their horizontal position stays
-     under the viewport's dynamic layout instead of this contract. */
+     TableViewport applies the same frame inset within its dynamic horizontal
+     layout, including the extra scrollable width of wide tables. */
   --tano-block-padding-block: 2px;
   --tano-block-frame-inset: var(--tano-block-padding-inline);
   outline: none;
@@ -2586,6 +2604,8 @@ button:hover {
 .tano-prose h5,
 .tano-prose h6 {
   color: var(--text);
+  /* One heading weight everywhere (prose, live source, title); UI emphasis uses 500. */
+  font-weight: 600;
   scroll-margin-top: 69px;
 }
 .tano-prose h1 {
@@ -2674,7 +2694,7 @@ button:hover {
 .tano-prose .tano-unsupported-label {
   display: block;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   margin-bottom: 5px;
 }
 .tano-prose .tano-unsupported-block pre {
@@ -3174,6 +3194,9 @@ button:hover {
 .tano-editor-panel.tano-table-color-menu {
   position: fixed;
   z-index: 60;
+  /* The menu receives focus before arrow-key navigation; focused items supply
+     the visual feedback, so the container should keep its normal border. */
+  outline: none;
   max-width: var(--tano-panel-available-width, calc(100vw - 16px));
   max-height: var(--tano-panel-available-height, calc(100vh - 16px));
   overflow: auto;
@@ -3232,9 +3255,16 @@ button:hover {
   border-radius: 6px;
 }
 .tano-prose a {
-  color: #5f5e5b;
-  text-decoration-color: currentColor;
+  color: var(--text-secondary);
+  /* Hairline, translucent underline so link-dense passages and tables stay calm. */
+  text-decoration-color: color-mix(in srgb, var(--muted) 40%, transparent);
+  text-decoration-thickness: 1px;
   text-underline-offset: 3px;
+  transition: text-decoration-color 0.12s ease, color 0.12s ease;
+}
+.tano-prose a:hover {
+  color: var(--text);
+  text-decoration-color: currentColor;
 }
 .milkdown-host.tano-link-modifier .tano-prose a[href]:not(.tano-live-wiki) {
   cursor: pointer;
@@ -3302,7 +3332,7 @@ button:hover {
 }
 .tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='1'] {
   font-size: calc(var(--tano-prose-font-size, 16px) * 1.875);
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.3;
   letter-spacing: -0.01em;
   margin: 32px 0 8px;
@@ -3328,12 +3358,12 @@ button:hover {
 }
 .tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='5'] {
   font-size: 0.83em;
-  font-weight: 700;
+  font-weight: 600;
   margin: 1.67em 0;
 }
 .tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='6'] {
   font-size: 0.67em;
-  font-weight: 700;
+  font-weight: 600;
   margin: 2.33em 0;
 }
 .tano-prose > pre.tano-live-source-block[data-source-kind='heading']:first-child {
@@ -3544,12 +3574,16 @@ button:hover {
   background: var(--green);
   pointer-events: none;
 }
-/* A table's scroll viewport includes page gutters; highlight only its cells. */
+/* A table's scroll viewport includes page gutters; paint selection on the
+   table itself, with the same outer inset as other top-level framed blocks. */
 .tano-prose .tano-table-viewport.ProseMirror-selectednode,
 .tano-prose .tano-table-viewport.tano-block-selected {
   background-color: transparent;
   background-image: none;
   box-shadow: none;
+}
+.tano-prose > .tano-table-viewport:is(.ProseMirror-selectednode, .tano-block-selected):not(.tano-block-drag-source) > .tableWrapper > table {
+  outline: var(--tano-block-frame-inset) solid var(--block-selection);
 }
 .tano-prose .tano-table-viewport:is(.ProseMirror-selectednode, .tano-block-selected):not(.tano-block-drag-source) > .tableWrapper > table > tbody > tr > :is(th, td) {
   box-shadow: inset 0 0 0 100vmax var(--block-selection-overlay);
@@ -3689,7 +3723,7 @@ button:hover {
 }
 .source-editor .cm-source-heading {
   color: var(--syntax-red);
-  font-weight: 700;
+  font-weight: 600;
 }
 .source-editor .cm-source-heading-1 {
   font-size: calc(var(--tano-source-font-size, 14px) * 2.285714);
@@ -3729,7 +3763,7 @@ button:hover {
   padding-bottom: 3px;
 }
 .source-editor .cm-source-strong {
-  font-weight: 700;
+  font-weight: 600;
 }
 .source-editor .cm-source-emphasis {
   font-style: italic;
@@ -3852,7 +3886,7 @@ button:hover {
 }
 .inspector-tabs button.active {
   color: var(--text);
-  font-weight: 600;
+  font-weight: 500;
 }
 .inspector-tabs button.active:after {
   content: '';
@@ -4568,7 +4602,7 @@ button:hover {
   border-radius: 2px;
   background: #fef3c7;
   color: var(--text);
-  font-weight: 600;
+  font-weight: 500;
 }
 .panel-empty {
   font-size: 12px;
@@ -5102,12 +5136,18 @@ button:hover {
   align-items: center;
   gap: 4px;
   width: fit-content;
-  min-height: 30px;
+  min-height: 26px;
   list-style: none;
-  color: var(--muted);
-  font-size: 14px;
+  /* Metadata entry point stays quieter than body text until hovered. */
+  color: color-mix(in srgb, var(--muted) 72%, var(--paper));
+  font-size: 13px;
   font-weight: 400;
   cursor: pointer;
+  transition: color 0.12s ease;
+}
+.frontmatter-heading:hover,
+.frontmatter-panel[open] > .frontmatter-heading {
+  color: var(--muted);
 }
 .frontmatter-heading::-webkit-details-marker {
   display: none;
@@ -5115,17 +5155,14 @@ button:hover {
 .frontmatter-chevron {
   display: block;
   flex: none;
-  width: 16px;
-  height: 16px;
-  color: var(--muted);
+  width: 14px;
+  height: 14px;
+  color: inherit;
   transform: rotate(0);
   transform-origin: center;
 }
 .frontmatter-panel[open] .frontmatter-chevron {
   transform: rotate(90deg);
-}
-.frontmatter-heading:hover .frontmatter-chevron {
-  color: var(--text-secondary);
 }
 .frontmatter-order-toggle {
   display: grid;
@@ -5833,7 +5870,7 @@ div.tano-feature-source {
   line-height: 1.5;
 }
 .tano-reference-card .tano-reference-label {
-  font-weight: 600;
+  font-weight: 500;
 }
 .tano-reference-card .tano-reference-badge {
   padding: 1px 6px;

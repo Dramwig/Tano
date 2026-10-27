@@ -90,7 +90,7 @@ function greet(event: PointerEvent) {
 .assistant-launcher-hint strong {
   color: var(--text);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .assistant-launcher:focus-visible .assistant-launcher-hint {
   visibility: visible;

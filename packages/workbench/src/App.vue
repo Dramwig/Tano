@@ -5905,7 +5905,7 @@ const helpBlocked = computed(() => !!(
               :file="tab?.attachment"
               :workspace-id="workspace.id"
               :url="
-                attachments && tab?.attachment
+                attachments && tab?.attachment && fileHandlers.resolve(tab.attachment.path).preview !== 'office'
                   ? attachments.imageUrl(
                       workspace,
                       '',

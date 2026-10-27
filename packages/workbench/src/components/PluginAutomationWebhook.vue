@@ -66,7 +66,7 @@ onScopeDispose(() => { controller.abort(); secret.value = undefined; });
 </template>
 <style scoped>
 .automation-webhook { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
-summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+summary { cursor: pointer; font-weight: 500; padding: 4px 0; }
 p { overflow-wrap: anywhere; line-height: 1.6; }
 label { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
 input:not([type=checkbox]) { flex: 1; min-width: 0; padding: 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--text); font: inherit; }

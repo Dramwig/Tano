@@ -221,7 +221,7 @@ onBeforeUnmount(() => originalFocus?.focus());
   margin: 0 10px 24px;
   color: var(--text);
   font-size: 17px;
-  font-weight: 650;
+  font-weight: 600;
 }
 .document-history-nav nav {
   display: grid;
@@ -293,7 +293,7 @@ onBeforeUnmount(() => originalFocus?.focus());
   gap: 8px;
   margin: 0;
   font-size: 22px;
-  font-weight: 650;
+  font-weight: 600;
 }
 .document-history-content,
 .update-history-content {
@@ -352,7 +352,7 @@ onBeforeUnmount(() => originalFocus?.focus());
   display: block;
   color: var(--text);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .update-history-item p {
   margin: 5px 0;

@@ -226,7 +226,7 @@ onMounted(async () => {
 .template-breadcrumb-preview :deep(.breadcrumb-current) { flex-shrink: 0; }
 .template-library-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .template-library-content { max-width: 1360px; margin: 0 auto; padding: 34px 46px 44px; }
-.template-library h1 { margin: 0; font-size: 34px; line-height: 1.4; letter-spacing: -1px; font-weight: 650; overflow-wrap: anywhere; outline: none; }
+.template-library h1 { margin: 0; font-size: 34px; line-height: 1.4; letter-spacing: -1px; font-weight: 600; overflow-wrap: anywhere; outline: none; }
 .template-library h2 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; }
 .template-library p { margin: 0; line-height: 1.7; }
 .template-library-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 6px 0 34px; }
@@ -238,7 +238,7 @@ onMounted(async () => {
 .template-search .icon-button { width: 25px; height: 25px; }
 .template-categories { display: flex; align-items: center; gap: 28px; border-bottom: 1px solid var(--line); margin-bottom: 22px; }
 .template-categories button { position: relative; padding: 12px 0 15px; border: 0; border-radius: 0; background: transparent; color: var(--muted); font-size: 13px; line-height: 18px; white-space: nowrap; }
-.template-categories button.selected { color: var(--text); font-weight: 600; }
+.template-categories button.selected { color: var(--text); font-weight: 500; }
 .template-categories button.selected::after { position: absolute; bottom: 0; left: 0; right: 0; height: 2px; border-radius: 1px; background: var(--text); content: ''; }
 .template-categories button:hover:not(.selected) { color: var(--text); }
 .template-collections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 30px; }

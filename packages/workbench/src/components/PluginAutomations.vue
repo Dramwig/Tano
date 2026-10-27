@@ -200,7 +200,7 @@ onScopeDispose(() => { controller.abort(); clearTimeout(timer); });
 </template>
 <style scoped>
 .plugin-automations { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 12px; font-size: 12px; scroll-margin-top: 180px; }
-summary { cursor: pointer; padding: 8px 0; font-weight: 600; }
+summary { cursor: pointer; padding: 8px 0; font-weight: 500; }
 p, li { color: var(--muted); overflow-wrap: anywhere; line-height: 1.6; }
 strong, h4 { color: var(--text); }
 .jobs { list-style: none; padding: 0; display: grid; gap: 12px; }

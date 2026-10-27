@@ -224,7 +224,7 @@ watch(() => props.thread.messages, messages => {
 .comment-message-content { min-width: 0; flex: 1; padding: 0 0 2px; }
 .comment-message-header { display: flex; align-items: center; min-height: 24px; justify-content: space-between; gap: 8px; }
 .comment-message-meta { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; min-width: 0; font-size: 13px; line-height: 20px; overflow-wrap: anywhere; }
-.comment-message-meta strong { font-weight: 600; color: var(--text); }
+.comment-message-meta strong { font-weight: 500; color: var(--text); }
 .comment-message-meta time, .comment-edited { color: var(--muted); font-size: 12px; }
 .comment-message p { margin: 5px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.65; color: var(--text); }
 .comment-quote { margin: 8px 0 10px 2px; border-left: 2px solid #eabf35; padding-left: 10px; color: var(--muted); font-size: 12px; line-height: 1.6; max-height: 80px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }

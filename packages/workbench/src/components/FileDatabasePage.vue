@@ -109,7 +109,7 @@ function editProperties(file: FileEntry) {
 .file-database { flex: 1; height: 100%; min-width: 0; box-sizing: border-box; overflow: auto; padding: 22px 28px 24px; background: var(--paper); color: var(--text); }
 .database-heading { display: flex; align-items: center; gap: 10px; }
 .database-heading > svg { flex: none; color: var(--green); }
-h1 { flex: 1; min-width: 0; margin: 0; font-size: 23px; font-weight: 650; }
+h1 { flex: 1; min-width: 0; margin: 0; font-size: 23px; font-weight: 600; }
 h1 input { width: 100%; min-width: 0; font-size: inherit; font-weight: inherit; border-color: transparent; padding: 3px; background: transparent; }
 header p { margin: 8px 0 14px 35px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .database-count { color: var(--muted); white-space: nowrap; font-size: 11px; }
