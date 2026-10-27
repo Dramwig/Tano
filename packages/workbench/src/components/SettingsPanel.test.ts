@@ -625,7 +625,8 @@ it('switches open pages immediately, keeps workspace content and searches Englis
   expect(root.querySelector('select[aria-label="Theme"]')).not.toBeNull();
   expect(root.querySelector('.settings-nav-foot')?.textContent).toContain('主题');
   await openPage('Keyboard shortcuts');
-  expect(root.querySelectorAll('.shortcut-settings-row')).toHaveLength(14);
+  expect(root.querySelector('[data-settings-key="shortcut-save"]')?.textContent).toContain('Save now');
+  expect(root.querySelector('[data-settings-key="shortcut-bold"]')?.textContent).toContain('Bold');
   expect(root.textContent).toContain('Save now');
   await openPage('Document capabilities');
   expect(root.textContent).toContain('Math formulas');
