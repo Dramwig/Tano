@@ -36,7 +36,10 @@ it('opens task evidence from an assistant report and disables references in a di
 
 async function mountEmptyConversation(fullscreenTarget?: string | Ref<HTMLElement | undefined>) {
   localStorage.clear();
-  vi.stubGlobal('navigator', Object.create(navigator, { locks: { value: { request: async (_name: string, action: () => unknown) => action() } } }));
+  vi.stubGlobal('navigator', Object.create(navigator, {
+    platform: { value: navigator.platform },
+    locks: { value: { request: async (_name: string, action: () => unknown) => action() } },
+  }));
   pinia = configureWorkbench(createPinia(), { adapter: new DemoAdapter(), native: false, mobile: false });
   setActivePinia(pinia);
   const workspace = useWorkspaceStore(); await workspace.openWorkspace();
