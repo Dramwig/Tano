@@ -9,6 +9,7 @@ import { blockTree } from './block-tree';
 import MarkdownEditor from './MarkdownEditor.vue';
 import { splitFrontmatter, unsupportedMarkdown } from './syntax';
 import { defaultCapabilities, defaultEditorPreferences, defaultSelectionWrapping } from './runtime';
+import { inlineSourceCodec } from './inline-source-session';
 
 vi.mock('mermaid', () => ({
   default: {
@@ -19,6 +20,28 @@ vi.mock('mermaid', () => ({
 
 let app: App | undefined;
 let root: HTMLDivElement;
+describe('inline source field model', () => {
+  it.each([
+    ['**粗体**++下划线++', ['**粗体**', '++下划线++']],
+    ['==文字==%%文字%%123', ['==文字==', '%%文字%%']],
+    ['**123213**$12312$', ['**123213**', '$12312$']],
+    ['**粗体 [链接](https://example.com/) 结尾**', ['**粗体 [链接](https://example.com/) 结尾**']],
+    ['<abbr title="Tano">同页</abbr>++文字++', ['<abbr title="Tano">同页</abbr>', '++文字++']],
+    ['[[Notes/Plan|计划]]++文字++', ['[[Notes/Plan|计划]]', '++文字++']],
+    ['  **粗体**  ++下划线++  ', ['**粗体**', '++下划线++']],
+  ] as const)('finds complete semantic fields without changing %s', async (source, expected) => {
+    const { editor } = await mount('测试\n');
+    editor.value!.withContext(ctx => {
+      const codec = inlineSourceCodec(ctx.get(editorViewCtx).state.schema, ctx.get(parserCtx), ctx.get(serializerCtx));
+      const parts = codec.parts(source)!;
+      expect(parts).not.toBeNull();
+      expect(parts.filter(part => part.formatted).map(part => source.slice(part.from, part.to))).toEqual(expected);
+      expect(parts.map(part => source.slice(part.from, part.to)).join('')).toBe(source);
+      expect(codec.serialize(codec.parse(source)!)).toBe(source);
+    });
+  });
+});
+
 it('preserves disabled extension source when editing and saving an existing document', async () => {
   const markdown = '^上标^ ~下标~ ++下划线++ ==高亮== %%注释%%\n';
   const capabilities = structuredClone(defaultCapabilities);
@@ -272,7 +295,7 @@ it.each(['superscript', 'subscript'] as const)('reveals disabled %s delimiters o
   const marker = root.querySelector(`[data-tano-disabled-style="${name}"] > span:last-child`)!;
   marker.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
   await nextTick();
-  expect(root.querySelector('[data-tano-live-inline-source]')?.textContent).toBe(name === 'superscript' ? '^文字^' : '~文字~');
+  expect(root.querySelector('[data-tano-live-inline-source]')?.textContent).toBe(name === 'superscript' ? '^文字^' : '^文字^~文字~');
   expect(value.value).toBe('12312^文字^~文字~\n');
   expect(errors).toEqual([]);
 });
@@ -299,6 +322,111 @@ it.each(['ArrowLeft', 'ArrowRight'])('moves through and out of inline source del
   expect(view.state.selection.from).toBe(left ? 2 : 6);
   expect(value.value).toBe(source);
   expect(editor.value!.canUndo()).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+it.each([
+  ['ArrowLeft', '文字'], ['ArrowRight', '文字'],
+  ['ArrowLeft', '字'], ['ArrowRight', '字'],
+  ['ArrowLeft', '😀字'], ['ArrowRight', '字😀'],
+])('reveals both fields at the inline source boundary with %s into %s', async (key, text) => {
+  const source = `~文字~++${text}++==文字==\n`;
+  const { editor, value, errors } = await mount(source);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.focus();
+  const left = key === 'ArrowLeft';
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, left ? 4 + text.length : 2)));
+  const field = root.querySelector('[data-tano-live-inline-source]')!;
+  const start = view.posAtDOM(field, 0);
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc,
+    start + (left ? 0 : field.textContent!.length))));
+  view.dom.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  await nextTick();
+  const expanded = left ? `++${text}++==文字==` : `~文字~++${text}++`;
+  expect(root.querySelector('[data-tano-live-inline-source]')?.textContent).toBe(expanded);
+  expect(view.state.selection.$from.parent.textContent).toBe(expanded);
+  expect(value.value).toBe(source);
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+it.each([
+  ['前 **文字** 后\n', 3, '**文字**', 0],
+  ['前 **文字** 后\n', 5, '**文字**', 6],
+  ['**文字**++下划线++\n', 3, '**文字**++下划线++', 6],
+  ['**123213**$12312$\n', 7, '**123213**$12312$', 10],
+  ['$12312$**文字**\n', 2, '$12312$**文字**', 7],
+] as const)('reveals all inline fields touching the caret in %s at %s', async (source, position, expanded, offset) => {
+  const { editor, value, errors } = await mount(source);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.focus();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, position)));
+  await nextTick();
+  expect(root.querySelector('[data-tano-live-inline-source]')?.textContent).toBe(expanded);
+  expect(view.state.selection.$from.parentOffset).toBe(offset);
+  expect(value.value).toBe(source);
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+it.each([
+  ['==文字==%%文字%%123\n', 3, 9, '%%文字%%', 'mark', '文字'],
+  ['==文字==%%文字%%123\n', 3, 3, '==文字==', '[data-tano-comment]', '文字'],
+  ['**123213**$12312$\n', 7, 12, '$12312$', 'strong', '123213'],
+  ['$12312$**123213**\n', 2, 10, '**123213**', '.math-inline', undefined],
+] as const)('collapses the field left behind in %s', async (content, boundary, offset, expanded, selector, text) => {
+  const { editor, value, errors } = await mount(content);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.focus();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, boundary)));
+  const field = root.querySelector('[data-tano-live-inline-source]')!;
+  const start = view.posAtDOM(field, 0);
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, start + offset)));
+  await nextTick();
+  expect(view.state.selection.$from.parent.textContent).toBe(expanded);
+  expect(root.querySelector(selector)).not.toBeNull();
+  if (text) expect(root.querySelector(selector)?.textContent).toBe(text);
+  expect(value.value).toBe(content);
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+it('preserves edits made in the transaction that expands an adjacent field', async () => {
+  const { editor, value, errors } = await mount('前 **文字**$x$ 后\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.focus();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 4)));
+  const field = root.querySelector('[data-tano-live-inline-source]')!;
+  const start = view.posAtDOM(field, 0);
+  const tr = view.state.tr.insertText('新', start + 3);
+  tr.setSelection(TextSelection.create(tr.doc, start + 7));
+  view.dispatch(tr);
+  await nextTick();
+  expect(root.querySelector('[data-tano-live-inline-source]')?.textContent).toBe('**文新字**$x$');
+  expect(value.value).toBe('前 **文新字**$x$ 后\n');
+  view.dom.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+  await nextTick();
+  expect(value.value).toBe('前 **文新字**$x$ 后\n');
+  expect(root.querySelector('strong')?.textContent).toBe('文新字');
+  expect(errors).toEqual([]);
+});
+
+it('preserves edits and undo when moving between adjacent source fields', async () => {
+  const source = '前 ==文字==%%注释%% 后\n';
+  const { editor, value, errors } = await mount(source);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.focus();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 5)));
+  const start = view.state.selection.$from.start();
+  view.dispatch(view.state.tr.insertText('新', start + 3));
+  expect(value.value).toBe('前 ==文新字==%%注释%% 后\n');
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, start + 10)));
+  expect(view.state.selection.$from.parent.textContent).toBe('%%注释%%');
+  expect(value.value).toBe('前 ==文新字==%%注释%% 后\n');
+  expect(editor.value!.undoLastChange()).toBe(true);
+  expect(value.value).toBe(source);
+  expect(editor.value!.redoLastChange()).toBe(true);
+  expect(value.value).toBe('前 ==文新字==%%注释%% 后\n');
   expect(errors).toEqual([]);
 });
 
@@ -973,6 +1101,26 @@ it('switches workspace capabilities without mutating content, and restores rende
   expect(root.querySelector('.tano-feature-source')).toBeNull();
   expect(value.value).toBe(source);
   expect(errors).toEqual([]);
+});
+
+it('changes page width without refreshing content views or dispatching editor transactions', async () => {
+  const source = '公式 \\(x^2\\)\n\n```js\nconst x = 1;\n```\n';
+  const { value, capabilities, editor } = await mount(source);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  const dispatch = vi.spyOn(view, 'dispatch');
+  const refresh = vi.fn();
+  root.addEventListener('tano-math-refresh', refresh, true);
+  const formula = root.querySelector('.tano-math');
+  const selection = view.state.selection;
+  capabilities.value = { ...structuredClone(defaultCapabilities), pageWidthLimits: { a12345: false } };
+  await nextTick();
+  capabilities.value.pageWidthLimits.a12345 = true;
+  await nextTick();
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(refresh).not.toHaveBeenCalled();
+  expect(root.querySelector('.tano-math')).toBe(formula);
+  expect(view.state.selection).toBe(selection);
+  expect(value.value).toBe(source);
 });
 
 it('opens a document with disabled capabilities while keeping its table visual', async () => {
@@ -2917,20 +3065,23 @@ it('switches between headings without displaying a read-only Markdown prefix', a
   expect(errors).toEqual([]);
 });
 
-it('does not reveal the previous field when the caret is in following plain text', async () => {
+it.each([0, 1])('reveals the previous field only at the adjacent plain-text boundary (offset %s)', async offset => {
   const { value, errors } = await mount('A **bold** tail\n');
   const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
   prose.focus();
   const after = prose.querySelector('p')!.lastChild!;
   const range = document.createRange();
-  range.setStart(after, 0);
+  range.setStart(after, offset);
   range.collapse(true);
   window.getSelection()!.removeAllRanges();
   window.getSelection()!.addRange(range);
   document.dispatchEvent(new Event('selectionchange'));
   await nextTick();
-  expect(prose.querySelector('span[data-tano-live-inline-source]')).toBeNull();
-  expect(prose.querySelector('strong')?.textContent).toBe('bold');
+  if (offset === 0) expect(prose.querySelector('span[data-tano-live-inline-source]')?.textContent).toBe('**bold**');
+  else {
+    expect(prose.querySelector('span[data-tano-live-inline-source]')).toBeNull();
+    expect(prose.querySelector('strong')?.textContent).toBe('bold');
+  }
   expect(value.value).toBe('A **bold** tail\n');
   expect(errors).toEqual([]);
 });
@@ -2977,9 +3128,9 @@ it('keeps enclosing marks when editing a nested inline field', async () => {
   placeCaret(link, 2);
   link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
   const source = prose.querySelector<HTMLElement>('span[data-tano-live-inline-source]')!;
-  expect(source.textContent).toBe('**[link](https://example.com/)**');
+  expect(source.textContent).toBe('**bold [link](https://example.com/) tail**');
   expect(prose.querySelector('p')?.firstChild?.textContent).toBe('A ');
-  source.textContent = '**[link](https://new.example/)**';
+  source.textContent = '**bold [link](https://new.example/) tail**';
   source.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
   await vi.waitFor(() => expect(value.value).toContain('https://new.example/'));
   prose.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
@@ -4160,7 +4311,7 @@ describe('Markdown editor round trips', () => {
     expect(errors).toEqual([]);
   });
 
-  it('temporarily selects the right-clicked block and restores the prior selection on Escape', async () => {
+  it('keeps the selected block when right-clicking another block and pressing Escape', async () => {
     const { value, revealMarkdown, errors } = await mount('First paragraph.\n\nSecond paragraph.\n');
     revealMarkdown.value = false;
     await nextTick();
@@ -4173,8 +4324,8 @@ describe('Markdown editor round trips', () => {
     const menu = document.querySelector<HTMLElement>('.block-context-menu');
     expect(event.defaultPrevented).toBe(true);
     expect(menu?.getAttribute('role')).toBe('menu');
-    expect(paragraphs[1]?.classList.contains('ProseMirror-selectednode')).toBe(true);
-    expect(paragraphs[0]?.classList.contains('ProseMirror-selectednode')).toBe(false);
+    expect(paragraphs[1]?.classList.contains('ProseMirror-selectednode')).toBe(false);
+    expect(paragraphs[0]?.classList.contains('ProseMirror-selectednode')).toBe(true);
     menu!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     await nextTick();
     expect(document.querySelector('.block-context-menu')).toBeNull();

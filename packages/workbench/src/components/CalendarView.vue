@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t, uiLocale } from '../i18n';
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
 import { calendarEvents, eventsOnDay, hasEventTime, localDayKey, monthDays, plannedEventsOnDay, planningEvents, shiftCalendarDate, visibleCalendarDays, weekDays } from '../calendar';
@@ -8,7 +9,7 @@ import { usePlanStore } from '../stores/plans';
 import { planKey, planSourceLabel } from '../personal-plans';
 import CalendarDayPopover from './CalendarDayPopover.vue';
 
-const props = defineProps<{ date: Date; mode: CalendarViewMode; records?: ObjectRecord[] }>();
+const props = defineProps<{ date: Date; mode: CalendarViewMode; records?: ObjectRecord[]; loading?: boolean }>();
 const emit = defineEmits<{
   'select-mode': [mode: CalendarViewMode];
   'select-date': [date: Date];
@@ -396,6 +397,8 @@ watch(() => props.date, (date) => {
     @scroll.passive="onCalendarScroll"
     @wheel="onCalendarWheel"
   >
+    <LoadingSkeleton v-if="loading" variant="document" :rows="6" />
+    <div v-show="!loading" class="component-loading-content">
     <div
       v-if="timeline"
       class="calendar-view-inner"
@@ -540,6 +543,7 @@ watch(() => props.date, (date) => {
           </button>
         </div>
       </section>
+    </div>
     </div>
   </main>
   <CalendarDayPopover

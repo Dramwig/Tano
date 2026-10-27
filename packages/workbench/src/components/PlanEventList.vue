@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t, uiLocale } from '../i18n';
 import { onBeforeUnmount, ref, TransitionGroup, watch } from 'vue';
 import { animate } from 'motion/mini';
@@ -11,6 +12,7 @@ import { readPlanDate } from '../plan-date';
 
 const props = defineProps<{
   records: ObjectRecord[];
+  loading?: boolean;
   date: Date;
   disabled: boolean;
   pending: string[];
@@ -143,7 +145,8 @@ function eventTime(record: ObjectRecord, day: Date) {
 </script>
 
 <template>
-  <slot v-if="!records.length && !leavingCount" name="empty" />
+  <LoadingSkeleton v-if="loading && !records.length" :rows="3" />
+  <slot v-else-if="!records.length && !leavingCount" name="empty" />
   <TransitionGroup tag="ul" class="plan-events" :class="{ 'has-leaving': leavingCount > 0 }" :css="false" @enter="enterRow" @enter-cancelled="cancelEnter" @leave="leaveRow" @leave-cancelled="cancelLeave">
     <li
       v-for="record in records"

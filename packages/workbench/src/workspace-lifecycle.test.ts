@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { WorkspaceLifecycle } from './workspace-lifecycle';
 
@@ -31,4 +32,78 @@ it('coalesces a burst and stops a pending refresh when the workspace is closed',
   await vi.advanceTimersByTimeAsync(150);
   expect(refresh).toHaveBeenCalledTimes(1);
   expect(stop).toHaveBeenCalledTimes(1);
+});
+
+it('uses native events and focus without polling a healthy watcher', async () => {
+  vi.useFakeTimers();
+  const refresh = vi.fn().mockResolvedValue(undefined);
+  let changed!: () => void;
+  const lifecycle = new WorkspaceLifecycle({
+    watch: async callback => { changed = callback; return () => {}; },
+    available: () => true, refresh, report: vi.fn(),
+  }, true);
+  try {
+    await lifecycle.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(refresh).not.toHaveBeenCalled();
+    changed();
+    await vi.advanceTimersByTimeAsync(150);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    window.dispatchEvent(new Event('focus'));
+    await vi.advanceTimersByTimeAsync(150);
+    expect(refresh).toHaveBeenCalledTimes(2);
+    lifecycle.enablePolling();
+    lifecycle.enablePolling();
+    await vi.advanceTimersByTimeAsync(5_150);
+    expect(refresh).toHaveBeenCalledTimes(3);
+  } finally { lifecycle.stop(); }
+});
+
+it('polls after watcher failure and stops polling once registration recovers', async () => {
+  vi.useFakeTimers();
+  const refresh = vi.fn().mockResolvedValue(undefined), report = vi.fn();
+  const lifecycle = new WorkspaceLifecycle({
+    watch: vi.fn().mockRejectedValueOnce(new Error('watch unavailable')).mockResolvedValue(() => {}),
+    available: () => true, refresh, report,
+  }, true);
+  try {
+    await lifecycle.start();
+    expect(report).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(5_150);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    await lifecycle.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  } finally { lifecycle.stop(); }
+});
+
+it('defers queued changes during switching and replays them if switching is cancelled', async () => {
+  vi.useFakeTimers();
+  const refresh = vi.fn().mockResolvedValue(undefined);
+  let changed!: () => void;
+  const lifecycle = new WorkspaceLifecycle({
+    watch: async callback => { changed = callback; return () => {}; },
+    available: () => true, refresh, report: vi.fn(),
+  }, true);
+  try {
+    await lifecycle.start();
+    changed();
+    lifecycle.pause();
+    changed();
+    window.dispatchEvent(new Event('focus'));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(refresh).not.toHaveBeenCalled();
+    lifecycle.resume();
+    await vi.advanceTimersByTimeAsync(150);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    changed();
+    lifecycle.pause();
+    await lifecycle.start();
+    lifecycle.resume();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    changed();
+    await vi.advanceTimersByTimeAsync(150);
+    expect(refresh).toHaveBeenCalledTimes(2);
+  } finally { lifecycle.stop(); }
 });

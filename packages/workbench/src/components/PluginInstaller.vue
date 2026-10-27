@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue';
 import { retiredSystemPlugin } from '../workspace-plugins';
 import { t } from '../i18n';
 import { computed, nextTick, ref, watch } from 'vue';
@@ -275,6 +276,8 @@ async function importCachedPackage() {
 
 <template>
   <div class="plugin-center" :class="{ 'plugin-center-sidebar': sidebar }">
+    <LoadingSkeleton v-if="store.workspaceLoading?.plugins" :rows="6" />
+    <div v-show="!store.workspaceLoading?.plugins" class="component-loading-content">
     <div class="catalog-controls">
       <header class="center-heading">
         <div v-if="!sidebar" class="center-title">
@@ -584,6 +587,7 @@ async function importCachedPackage() {
         </footer>
       </template>
     </PluginDialog>
+    </div>
   </div>
 </template>
 

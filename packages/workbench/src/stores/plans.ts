@@ -18,6 +18,7 @@ export const usePlanStore = defineStore('plans', () => {
     (runtime.native ? new NativePersonalPlans() : new BrowserPersonalPlans());
   const view = ref<PlanScope | 'all'>('workspace');
   const personalId = ref('');
+  const initializing = ref(true);
   const personal = ref<ObjectRecord[]>([]);
   const errors = ref<string[]>([]);
   const loadError = ref('');
@@ -176,10 +177,11 @@ export const usePlanStore = defineStore('plans', () => {
     window.removeEventListener('focus', onFocus);
     window.removeEventListener('storage', onStorage);
   });
-  void refreshPersonal();
+  void refreshPersonal().finally(() => { initializing.value = false; });
   return {
     view,
     personalId,
+    initializing,
     personal,
     errors,
     loadError,

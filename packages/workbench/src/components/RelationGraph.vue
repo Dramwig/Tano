@@ -428,6 +428,8 @@ onBeforeUnmount(() => {
     :class="{ 'has-topbar': controlsTarget }"
     :aria-label="t('关系图谱')"
   >
+    <LoadingSkeleton v-if="store.workspaceLoading?.objects || store.workspaceLoading?.relations" variant="document" :rows="6" />
+    <div v-show="!store.workspaceLoading?.objects && !store.workspaceLoading?.relations" class="component-loading-content">
     <svg
       ref="viewport"
       class="graph-viewport"
@@ -597,6 +599,7 @@ onBeforeUnmount(() => {
       <button @click="refresh">{{ t('重试') }}</button>
     </div>
     <footer class="graph-help">{{ t('拖动节点或空白处 · 滚轮缩放 · 点击节点打开文档') }}</footer>
+    </div>
   </main>
 </template>
 

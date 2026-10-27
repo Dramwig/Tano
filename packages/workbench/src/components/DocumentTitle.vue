@@ -9,6 +9,7 @@ import type { PageTitleSource } from '../page-title-source';
 import DocumentAppearance from './DocumentAppearance.vue';
 
 const props = withDefaults(defineProps<{
+  loading?: boolean;
   workspaceId: string;
   documentId: string;
   path: string;
@@ -146,13 +147,14 @@ async function keydown(event: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="document-title" :aria-busy="saving">
-    <DocumentAppearance :model-value="modelValue" :readonly="readonly || saving" :mode="mode"
+  <div class="document-title" :aria-busy="loading || saving">
+    <DocumentAppearance :model-value="modelValue" :readonly="loading || readonly || saving" :mode="mode"
       :resolve-image="resolveImage" :upload-cover="uploadCover" :resource-revision="resourceRevision"
       @update:model-value="emit('update:modelValue', $event)" @comment="emit('comment')" />
     <div class="document-title-content">
     <div class="document-title-wrap">
-    <textarea
+    <span v-if="loading" class="document-title-loading document-title-input" aria-hidden="true"><span class="tano-skeleton-bar" /></span>
+    <textarea v-else
       class="document-title-input"
       rows="1"
       :value="draft"
@@ -175,3 +177,8 @@ async function keydown(event: KeyboardEvent) {
     </div>
   </div>
 </template>
+
+<style scoped>
+.document-title-loading { display: flex; align-items: center; }
+.document-title-loading .tano-skeleton-bar { width: 45%; height: .8em; }
+</style>

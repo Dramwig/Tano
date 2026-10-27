@@ -36,11 +36,42 @@ it('records a new binding and updates the displayed shortcut', async () => {
   expect(button('设置查找文档快捷键').getAttribute('aria-pressed')).toBe('false');
 });
 
+it('offers a cancel button for both editing and adding a binding without changing saved keys', async () => {
+  const bindings = mountSettings();
+  button('设置重做快捷键').click(); await nextTick();
+  button('取消编辑').click(); await nextTick();
+  expect(bindings.value.redo).toEqual(defaultShortcutBindings.redo);
+  expect(button('设置重做快捷键').getAttribute('aria-pressed')).toBe('false');
+  button('添加重做快捷键').click(); await nextTick();
+  expect(button('设置重做快捷键 3')).not.toBeNull();
+  button('取消编辑').click(); await nextTick();
+  expect(button('设置重做快捷键 3')).toBeNull();
+  expect(bindings.value.redo).toEqual(defaultShortcutBindings.redo);
+});
+
+it('shows redo aliases separately and edits, removes, and adds one without replacing the others', async () => {
+  const bindings = mountSettings();
+  expect(button('设置重做快捷键').textContent).toBe('Ctrl+Y');
+  expect(button('设置重做快捷键 2').textContent).toBe('Ctrl+Shift+Z');
+  const second = button('设置重做快捷键 2'); second.click(); await nextTick();
+  second.dispatchEvent(new KeyboardEvent('keydown', { key: 'Y', altKey: true, shiftKey: true, bubbles: true }));
+  await nextTick();
+  expect(bindings.value.redo).toEqual(['Mod+Y', 'Alt+Shift+Y']);
+  button('清除重做快捷键').click(); await nextTick();
+  expect(bindings.value.redo).toBe('Alt+Shift+Y');
+  button('添加重做快捷键').click(); await nextTick();
+  button('设置重做快捷键 2').dispatchEvent(new KeyboardEvent('keydown', { key: 'y', altKey: true, bubbles: true }));
+  await nextTick();
+  expect(bindings.value.redo).toEqual(['Alt+Shift+Y', 'Alt+Y']);
+});
+
 it('keeps the previous value and explains conflicts while recording', async () => {
   const bindings = mountSettings();
   await record('查找文档', 's', { ctrlKey: true });
   expect(bindings.value.findDocument).toBe('Mod+K');
   expect(root.querySelector('[role="alert"]')!.textContent).toContain('立即保存');
+  expect(root.querySelector('[role="alert"]')!.closest('[data-settings-key]')?.getAttribute('data-settings-key')).toBe('shortcut-findDocument');
+  expect(button('设置查找文档快捷键').getAttribute('aria-invalid')).toBe('true');
   expect(button('设置查找文档快捷键').getAttribute('aria-pressed')).toBe('true');
   await record('查找文档', 'p', { ctrlKey: true, shiftKey: true });
   expect(root.querySelector('[role="alert"]')!.textContent).toContain('打开命令中心');
@@ -57,6 +88,7 @@ it('cancels on Escape without closing settings and ignores IME events', async ()
   expect(bubbled).toBe(0);
   expect(bindings.value.save).toBe('Mod+S');
   expect(button('设置立即保存快捷键').getAttribute('aria-pressed')).toBe('false');
+  expect(document.activeElement).not.toBe(button('设置立即保存快捷键'));
   await record('立即保存', 'p', { ctrlKey: true, isComposing: true });
   expect(bindings.value.save).toBe('Mod+S');
 });

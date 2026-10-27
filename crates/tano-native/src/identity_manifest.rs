@@ -288,6 +288,8 @@ pub fn publish(
 pub fn publish_cache(root: &Path, workspace_id: &str, cache: &Path) -> Result<(), String> {
     let mut connection = storage::database(cache)?;
     let transaction = connection.transaction().map_err(|e| e.to_string())?;
+    // Reinitialization can publish an empty manifest before the first scan.
+    cache_revision(&transaction, workspace_id)?;
     publish(&transaction, root, workspace_id)?;
     transaction.commit().map_err(|e| e.to_string())
 }

@@ -15,6 +15,7 @@ afterEach(async () => {
   await store?.dispose();
   if (pinia) disposePinia(pinia);
   vi.restoreAllMocks();
+  vi.useRealTimers();
   window.history.replaceState(null, '', '/');
 });
 
@@ -147,6 +148,30 @@ it('does not replace the remembered workspace when switching fails', async () =>
   expect(store.workspace?.id).toBe(lastWorkspace.id);
 });
 
+it('pauses old workspace refreshes during a switch and resumes external changes after failure', async () => {
+  const adapter = localWorkspace();
+  let changed!: () => void;
+  vi.spyOn(adapter, 'watch').mockImplementation(async callback => { changed = callback; return () => {}; });
+  await store.initialize();
+  vi.useFakeTimers();
+  const refresh = vi.spyOn(adapter, 'refresh');
+  let settle!: () => void, entered!: () => void;
+  const barrier = new Promise<void>(resolve => { entered = resolve; });
+  store.setBeforeWorkspaceChange(() => new Promise<void>(resolve => { settle = resolve; entered(); }));
+  adapter.open.mockRejectedValueOnce(new Error('offline'));
+  changed();
+  const switching = store.openWorkspace(olderWorkspace.path);
+  await barrier;
+  changed();
+  await vi.advanceTimersByTimeAsync(500);
+  expect(refresh).not.toHaveBeenCalled();
+  settle();
+  await switching;
+  expect(store.workspace?.id).toBe(lastWorkspace.id);
+  await vi.advanceTimersByTimeAsync(150);
+  expect(refresh).toHaveBeenCalledTimes(1);
+});
+
 it('shows the picker instead of opening another repository when the remembered workspace was removed', async () => {
   rememberStartupWorkspace(lastWorkspace.id);
   const adapter = localWorkspace([olderWorkspace]);
@@ -275,6 +300,33 @@ it('initializes newly created local workspaces on their first open', async () =>
   await store.initialize('C:\\新工作区');
   expect(store.active?.path).toBe(workspaceWelcomePath);
   expect(store.active?.content).toBe(workspaceWelcomeContent('desktop'));
+});
+
+it('explains metadata deletion after opening a reinitialized local workspace', async () => {
+  const adapter = emptyWorkspace('desktop');
+  await adapter.create('已有笔记.md', '# 原有内容\n');
+  vi.spyOn(adapter, 'open').mockImplementationOnce(async () => ({
+    ...await adapter.refresh(), newlyCreated: true, reinitialized: true,
+  }));
+  const create = vi.spyOn(adapter, 'create');
+  await store.initialize('C:\\已有文件夹');
+  expect(store.workspace).not.toBeNull();
+  expect(store.active?.content).toBe('# 原有内容\n');
+  expect(create).not.toHaveBeenCalled();
+  expect(store.fatal).toBe('.tano 已删除，工作区已重新初始化。旧对象已丢失，文档和附件保留。');
+  store.fatal = '';
+  await store.openWorkspace('C:\\已有文件夹');
+  expect(store.fatal).toBe('');
+});
+
+it('keeps the reinitialization notice when an empty folder receives its welcome document', async () => {
+  const adapter = emptyWorkspace('desktop');
+  vi.spyOn(adapter, 'open').mockImplementationOnce(async () => ({
+    ...await adapter.refresh(), newlyCreated: true, reinitialized: true,
+  }));
+  await store.initialize('C:\\空文件夹');
+  expect(store.active?.path).toBe(workspaceWelcomePath);
+  expect(store.fatal).toContain('工作区已重新初始化');
 });
 
 it('does not recreate a deleted guide when an existing empty workspace is reopened', async () => {

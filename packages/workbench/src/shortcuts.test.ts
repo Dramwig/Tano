@@ -83,6 +83,17 @@ it('persists bindings and disabled actions in device preferences', () => {
   expect(localStorage.length).toBe(1);
 });
 
+it('persists multiple bindings, matches each alias, and removes only the chosen alias', () => {
+  const bindings = { ...defaultShortcutBindings, redo: ['Alt+Y', 'Alt+Shift+Y'] };
+  saveShortcutBindings(bindings);
+  expect(readShortcutBindings().redo).toEqual(['Alt+Y', 'Alt+Shift+Y']);
+  expect(matchesShortcut(shortcut('y', { altKey: true }), 'redo', bindings)).toBe(true);
+  expect(matchesShortcut(shortcut('Y', { altKey: true, shiftKey: true }), 'redo', bindings)).toBe(true);
+  expect(matchesShortcut(shortcut('y', { ctrlKey: true }), 'redo', bindings)).toBe(false);
+  expect(shortcutBindingError('undo', 'Alt+Shift+Y', bindings)).toContain('重做');
+  expect(shortcutLabel(bindings.redo)).toBe('Alt + Y / Alt + Shift + Y');
+});
+
 it('recovers from corrupt preferences and disables ambiguous saved conflicts', () => {
   localStorage.setItem(shortcutPreferenceKey, '{invalid');
   expect(readShortcutBindings()).toEqual(defaultShortcutBindings);

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import html from '../index.html?raw';
+import { startupSkeleton } from '../../../packages/workbench/src/startup-skeleton';
 
 const start = vi.fn<(signal?: AbortSignal) => Promise<void>>();
 const nativeStartup = vi.hoisted(() => ({ native: false, reveal: vi.fn() }));
@@ -132,7 +133,10 @@ it('keeps a visible startup state while the workbench loads and offers a retry i
   await import('./main');
   expect(document.getElementById('tano-startup-status')?.textContent).toBe('正在打开同页...');
   expect(document.getElementById('tano-startup-status')?.classList.contains('tano-skeleton-status')).toBe(true);
-  expect(document.querySelector('.tano-skeleton-shell')).not.toBeNull();
+  expect(document.querySelector('.tano-skeleton-shell')?.outerHTML).toBe(startupSkeleton);
+  expect(document.querySelector('.tano-skeleton-shell aside, .tano-skeleton-brand, .tano-skeleton-row')).toBeNull();
+  expect(document.querySelector('.tano-skeleton-document')).toBeNull();
+  expect(document.querySelector('.tano-skeleton-shell')?.childElementCount).toBe(0);
   expect(document.getElementById('tano-startup-retry')?.hidden).toBe(true);
   await vi.advanceTimersByTimeAsync(15_000);
   expect(document.getElementById('tano-startup-status')?.textContent).toContain('正在加载工作台');

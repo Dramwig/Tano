@@ -1,7 +1,7 @@
 import type { PluginCommandDefinition, PluginViewDefinition } from '@tano/protocol';
 import type { InstalledObjectPlugin } from '../workspace-plugins';
 import type { PluginRuntimeState } from './host';
-import { shortcutBindingFromEvent, shortcutDefinitions, type ShortcutBindings } from '../shortcuts';
+import { shortcutBindingFromEvent, shortcutKeys, shortcutDefinitions, type ShortcutBindings } from '../shortcuts';
 
 export interface PluginWorkbenchView extends PluginViewDefinition {
   key: string; pluginId: string; pluginName: string;
@@ -32,7 +32,7 @@ export function pluginShortcutCommand(event: KeyboardEvent, commands: PluginWork
   if (event.defaultPrevented || event.isComposing || event.repeat) return;
   if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable], [role="dialog"], dialog')) return;
   const key = shortcutBindingFromEvent(event);
-  if (!key || reserved.has(key) || shortcutDefinitions.some(item => bindings[item.id] === key)) return;
+  if (!key || reserved.has(key) || shortcutDefinitions.some(item => shortcutKeys(bindings[item.id]).includes(key))) return;
   const matches = commands.filter(command => command.shortcut === key);
   return matches.length === 1 ? matches[0] : undefined;
 }

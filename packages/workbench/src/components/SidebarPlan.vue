@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t, uiLocale } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, ref, useId, watch } from 'vue';
 import {
@@ -554,6 +555,8 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="listRoot" class="sidebar-calendar" role="region" :aria-label="t('计划侧栏')">
+    <LoadingSkeleton v-if="store.workspaceLoading?.objects && plans.view === 'workspace'" variant="tree" :rows="6" />
+    <div v-show="!store.workspaceLoading?.objects || plans.view !== 'workspace'" class="component-loading-content">
     <div ref="viewPicker" class="sidebar-calendar-heading">
       <div class="sidebar-calendar-month">
         <span :title="monthTitle"><template v-if="uiLocale === 'en-US'">{{ month.toLocaleDateString(uiLocale, { month: 'short', year: 'numeric' }) }}</template><template v-else><span class="sidebar-calendar-year">{{ month.getFullYear() }} 年 </span>{{ month.getMonth() + 1 }} 月</template></span>
@@ -755,7 +758,7 @@ onBeforeUnmount(() => {
           <Plus :size="14" />
         </button>
       </div>
-      <PlanEventList
+      <PlanEventList :loading="effectiveView !== 'workspace' && plans.initializing"
         :records="agenda"
         :date="selectedDate"
         :disabled="false"
@@ -790,7 +793,7 @@ onBeforeUnmount(() => {
           <Plus :size="14" />
         </button>
       </div>
-      <PlanEventList
+      <PlanEventList :loading="effectiveView !== 'workspace' && plans.initializing"
         :records="unscheduled"
         :date="selectedDate"
         :disabled="false"
@@ -825,7 +828,7 @@ onBeforeUnmount(() => {
       </h3>
       <div :id="completedListId" :hidden="!completedExpanded">
         <template v-if="completedExpanded">
-          <PlanEventList
+          <PlanEventList :loading="effectiveView !== 'workspace' && plans.initializing"
             :records="completed"
             :date="selectedDate"
             show-date
@@ -856,6 +859,7 @@ onBeforeUnmount(() => {
       @action="contextAction"
       @close="closeContextMenu"
     />
+    </div>
   </div>
 </template>
 

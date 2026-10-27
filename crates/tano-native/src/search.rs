@@ -18,7 +18,7 @@ pub fn update(
     id: &str,
     path: &str,
     hash: &str,
-    bytes: &[u8],
+    bytes: Option<&[u8]>,
 ) -> Result<(), String> {
     let old: Option<(i64, String, String)> = tx
         .query_row(
@@ -28,16 +28,15 @@ pub fn update(
         )
         .optional()
         .map_err(|e| e.to_string())?;
-    let eligible = !hash.is_empty()
-        && bytes.len() <= 8 * 1024 * 1024
-        && Path::new(path)
-            .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown"));
-    let content = if eligible {
-        std::str::from_utf8(bytes).ok()
-    } else {
-        None
-    };
+    let content = bytes
+        .filter(|bytes| {
+            !hash.is_empty()
+                && bytes.len() <= 8 * 1024 * 1024
+                && Path::new(path).extension().is_some_and(|e| {
+                    e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown")
+                })
+        })
+        .and_then(|bytes| std::str::from_utf8(bytes).ok());
     if let Some((row, previous_path, previous_hash)) = &old {
         if content.is_some() && previous_path == path && previous_hash == hash {
             return Ok(());
@@ -120,6 +119,39 @@ pub fn query(cache: &Path, workspace: &str, query: &str) -> Result<Vec<SearchHit
 mod tests {
     use super::*;
     use std::fs;
+    #[test]
+    fn streamed_files_are_not_indexed_as_empty_markdown() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut db = crate::storage::database(&directory.path().join("index.sqlite")).unwrap();
+        let tx = db.transaction().unwrap();
+        update(
+            &tx,
+            "one",
+            "aabbcc",
+            "note.md",
+            "small",
+            Some(b"searchable text"),
+        )
+        .unwrap();
+        update(&tx, "one", "aabbcc", "note.md", "large", None).unwrap();
+        let count: i64 = tx
+            .query_row("SELECT count(*) FROM search_documents", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 0);
+        update(&tx, "one", "aabbcc", "note.md", "empty", Some(b"")).unwrap();
+        let count: i64 = tx
+            .query_row("SELECT count(*) FROM search_documents", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(
+            count, 1,
+            "an actual empty document remains searchable by its path"
+        );
+    }
+
     #[test]
     fn indexes_external_edits_renames_deletion_and_rebuild() {
         let root = tempfile::tempdir().unwrap();

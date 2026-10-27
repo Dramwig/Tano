@@ -53,6 +53,18 @@ it('updates extension styling and gates wrapping when workspace capabilities cha
   expect(root.querySelector('.cm-source-superscript')).not.toBeNull();
 });
 
+it('changes page width without rebuilding source decorations', async () => {
+  const { capabilities, view, value, changed } = await mountSource('^文字^');
+  const dispatch = vi.spyOn(view, 'dispatch');
+  capabilities.value = { ...structuredClone(defaultCapabilities), pageWidthLimits: { a12345: false } };
+  await nextTick();
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(root.querySelector('.cm-source-superscript')).not.toBeNull();
+  expect(value.value).toBe('^文字^');
+  expect(changed).not.toHaveBeenCalled();
+  dispatch.mockRestore();
+});
+
 it('restores a backward mode selection without changing Markdown or undo history', async () => {
   const { editor, view, value, changed } = await mountSource('第一行\r\n第二行 **文字**\r\n');
   editor.value!.restoreModeSelection({ anchor: 12, head: 5 });

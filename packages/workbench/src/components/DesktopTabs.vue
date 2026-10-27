@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { t } from '../i18n';
+import LoadingSkeleton from './LoadingSkeleton.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ArrowLeft, ArrowRight, Bot, CalendarDays, FileText, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, SquarePen, ExternalLink, Bug } from 'lucide-vue-next';
+import { ArrowLeft, ArrowRight, Bot, CalendarDays, FileText, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, ExternalLink, Bug } from 'lucide-vue-next';
 import { basename, isMarkdown, isDataTableFilePath } from '@tano/protocol';
 import { invoke } from '@tauri-apps/api/core';
 import { cursorPosition, getCurrentWindow } from '@tauri-apps/api/window';
@@ -25,12 +26,13 @@ const navigationItems = [
   { id: 'forward', get label() { return t('前进'); } },
 ];
 const props = defineProps<{
+  loading?: boolean;
   detachable?: boolean;
   paneId?: string;
   fileDrag?: { workspaceId: string; ids: readonly string[] };
   assistantTab?: { id: string; title: string };
 }>();
-const paneTabs = computed(() => props.paneId
+const paneTabs = computed(() => props.loading ? [] : props.paneId
   ? store.tabs.filter(tab => store.panes.find(pane => pane.id === props.paneId)?.tabs.includes(tab.id))
   : store.tabs);
 const documentIcons = computed(() => Object.fromEntries(
@@ -605,6 +607,17 @@ function openContextMenu(event: MouseEvent | KeyboardEvent, tabId: string | null
     if (!menu || contextMenu.value?.tabId !== tabId) return;
     contextMenu.value.x = Math.max(8, Math.min(x, window.innerWidth - menu.offsetWidth - 8));
     contextMenu.value.y = Math.max(8, Math.min(y, window.innerHeight - menu.offsetHeight - 8));
+    // Window controls live in the browser top layer, above any z-index. Keep
+    // menus below them when viewport clamping puts the menu in their column.
+    const controls = document.querySelector<HTMLElement>('.desktop-window-actions');
+    const controlsRect = controls?.getBoundingClientRect();
+    if (controlsRect && contextMenu.value.x < controlsRect.right
+      && contextMenu.value.x + menu.offsetWidth > controlsRect.left
+      && contextMenu.value.y < controlsRect.bottom
+      && contextMenu.value.y + menu.offsetHeight > controlsRect.top) {
+      contextMenu.value.y = controlsRect.bottom + 8;
+    }
+    menu.style.maxHeight = `${Math.max(0, window.innerHeight - contextMenu.value.y - 8)}px`;
     menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
   });
 }
@@ -669,7 +682,7 @@ async function closeTabs(ids: string[]) {
 }
 
 async function contextAction(
-  action: 'split-right' | 'split-bottom' | 'new-tab' | 'new-document' | 'detach' | 'close' | 'close-others' | 'close-right' | 'close-all' | 'open-devtools',
+  action: 'split-right' | 'split-bottom' | 'new-tab' | 'detach' | 'close' | 'close-others' | 'close-right' | 'close-all' | 'open-devtools',
 ) {
   const tabId = contextMenu.value?.tabId;
   closeContextMenu();
@@ -681,7 +694,6 @@ async function contextAction(
     return;
   }
   if (action === 'new-tab') return emit('new-tab');
-  if (action === 'new-document') return emit('new-document');
   if (action === 'detach' && tabId) return emit('detach-tab', tabId);
   if (action === 'close' && tabId) return closeTab(tabId);
   const ids = paneTabs.value.map((tab) => tab.id);
@@ -904,6 +916,7 @@ async function onTabKeydown(event: KeyboardEvent) {
       @contextmenu.self.prevent="openContextMenu($event, null)"
       @dragstart="!nativeTabDrag && $event.preventDefault()"
     >
+      <LoadingSkeleton v-if="loading && !paneTabs.length" class="desktop-tabs-loading" :rows="1" />
       <div
         v-for="(doc, index) in paneTabs"
         :key="doc.id"
@@ -1028,14 +1041,6 @@ async function onTabKeydown(event: KeyboardEvent) {
         <button type="button" role="menuitem" @click="contextAction('new-tab')">
           <Plus :size="15" />{{ t('新建标签页') }}
         </button>
-        <button
-          type="button"
-          role="menuitem"
-          :disabled="store.workspace?.readOnly || store.busy"
-          @click="contextAction('new-document')"
-        >
-          <SquarePen :size="15" />{{ t('新建文档') }}
-        </button>
         <div class="menu-divider" role="separator" />
         <button
           type="button"
@@ -1158,6 +1163,8 @@ async function onTabKeydown(event: KeyboardEvent) {
 .desktop-tab-context-menu {
   position: fixed;
   z-index: 1001;
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 .desktop-tab-drag-preview {
   position: fixed;
@@ -1430,4 +1437,10 @@ async function onTabKeydown(event: KeyboardEvent) {
     pointer-events: auto;
   }
 }
+</style>
+
+<style scoped>
+.desktop-tabs-loading { width: 160px; flex: 0 0 160px; align-self: center; }
+.desktop-tabs-loading :deep(.tano-skeleton-list) { padding: 0 12px; gap: 0; }
+.desktop-tabs-loading :deep(.tano-skeleton-bar) { height: 12px; margin: 0; width: 100%; }
 </style>

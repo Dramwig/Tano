@@ -13,7 +13,9 @@ import { createNativePluginConnections, createNativePluginServices } from '@tano
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
 export async function start(signal?: AbortSignal) {
-  await initializeLocaleSync(native);
+  // The saved locale applies synchronously; native cross-window subscription
+  // must not hold up mounting the workbench.
+  void initializeLocaleSync(native);
   const settingsRoute = native && !!settingsWindowRequest();
   await initializePlatform();
   signal?.throwIfAborted();

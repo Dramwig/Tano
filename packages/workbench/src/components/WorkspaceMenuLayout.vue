@@ -19,7 +19,7 @@ function close(restoreFocus = false) {
 function enabledItems() {
   return [...(panel.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
 }
-async function show(last = false) {
+async function show(last?: boolean) {
   opened.value = true;
   await nextTick();
   const row = trigger.value?.getBoundingClientRect();
@@ -44,7 +44,7 @@ async function show(last = false) {
   await nextTick();
   if (opened.value) {
     const items = enabledItems();
-    (items[last ? items.length - 1 : 0] ?? menu).focus({ preventScroll: true });
+    (last === undefined ? menu : items[last ? items.length - 1 : 0] ?? menu).focus({ preventScroll: true });
   }
 }
 function triggerKeydown(event: KeyboardEvent) {
@@ -63,6 +63,7 @@ function keydown(event: KeyboardEvent) {
     const items = enabledItems();
     const current = items.indexOf(document.activeElement as HTMLButtonElement);
     const index = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+      : current < 0 ? (event.key === 'ArrowDown' ? 0 : items.length - 1)
       : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
     items[index]?.focus();
   }
@@ -109,7 +110,7 @@ onBeforeUnmount(() => {
     </button>
     <Teleport to="body">
       <div v-if="opened" :id="menuId" ref="panel"
-        class="dropdown compact-action-menu workspace-more-menu"
+        class="dropdown compact-action-menu workspace-more-menu panel-scrollbar"
         role="menu" :aria-label="t('更多工作区操作')" tabindex="-1"
         :style="{ ...position, visibility: position ? 'visible' : 'hidden' }"
         @keydown="keydown" @click="selected"><slot /></div>

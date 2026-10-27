@@ -3,6 +3,26 @@ import { createApp, defineComponent, h, type Component } from 'vue';
 import { expect, it } from 'vitest';
 import { loadingComponent } from './loading-component';
 
+it.each([0, 1])('lets sibling region %s finish without waiting for the other or disabling controls', async first => {
+  const resolve: ((component: Component) => void)[] = [];
+  const regions = [0, 1].map(i => loadingComponent(() => new Promise<Component>(done => { resolve[i] = done; })));
+  const root = document.createElement('div');
+  const app = createApp({ render: () => h('main', [h('button', '搜索'), ...regions.map(region => h(region))]) });
+  app.mount(root);
+  try {
+    const button = root.querySelector('button');
+    expect(root.querySelectorAll('.loading-skeleton')).toHaveLength(2);
+    resolve[first]!(defineComponent({ render: () => h('article', `区域 ${first}`) }));
+    await expect.poll(() => root.querySelectorAll('.loading-skeleton').length).toBe(1);
+    const ready = root.querySelector('article');
+    resolve[1 - first]!(defineComponent({ render: () => h('section', '另一区域') }));
+    await expect.poll(() => root.querySelectorAll('.loading-skeleton').length).toBe(0);
+    expect(root.querySelector('article')).toBe(ready);
+    expect(root.querySelector('button')).toBe(button);
+    expect(button?.disabled).toBe(false);
+  } finally { app.unmount(); }
+});
+
 it('resolves nested regions independently without replacing already mounted content', async () => {
   let resolveParent!: (component: Component) => void;
   let resolveChild!: (component: Component) => void;

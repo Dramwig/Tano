@@ -11,13 +11,19 @@ export function sourceBlockStyle(element: globalThis.Node | null): Record<string
   );
   return {
     marginTop: style.marginTop,
-    marginRight: style.marginRight,
     marginBottom: style.marginBottom,
-    marginLeft: style.marginLeft,
     paddingTop: style.paddingTop,
-    paddingRight: style.paddingRight,
     paddingBottom: style.paddingBottom,
-    paddingLeft: style.paddingLeft,
+    // List padding reserves space for rendered markers. The source already
+    // contains those markers, so use the source block's normal horizontal inset.
+    // Leave horizontal margins to CSS too: a copied zero margin would override
+    // the top-level source block's inset and shift it left of paragraph text.
+    ...(element.matches('ul, ol') ? {} : {
+      marginRight: style.marginRight,
+      marginLeft: style.marginLeft,
+      paddingRight: style.paddingRight,
+      paddingLeft: style.paddingLeft,
+    }),
     borderTop: style.borderTop,
     borderRight: style.borderRight,
     borderBottom: style.borderBottom,

@@ -59,6 +59,7 @@ for (const pkg of metadata.packages.filter(p => p.source).sort((a,b) => a.id.loc
 }
 const text = sections.join('\n\n' + '='.repeat(78) + '\n\n') + '\n';
 const iconNotices = await Promise.all([
+  ['Tabler Icons (source-code outline SVG)', 'https://github.com/tabler/tabler-icons/blob/main/icons/outline/source-code.svg', 'packages/workbench/src/assets/tabler'],
   ['Material Icon Theme 5.38.1 (import file format SVGs)', 'https://github.com/material-extensions/vscode-material-icon-theme/tree/v5.38.1/icons', 'packages/workbench/src/assets/import-file-icons', 'MIT', 'README.md', await readFile(join(root, 'packages/editor/src/language-icons/material/LICENSE'), 'utf8')],
   ['Simple Icons 15.0.0 (ten bundled import provider SVGs)', 'https://github.com/simple-icons/simple-icons/tree/15.0.0', 'packages/workbench/src/assets/import-icons', 'CC0-1.0', 'LICENSE.md', await readFile(join(root, 'packages/workbench/src/assets/import-icons/README.md'), 'utf8')],
   ['Open collections and NASA (bundled art and photography covers)', 'https://www.clevelandart.org/open-access', 'packages/workbench/src/assets/covers', 'CC0-1.0, Public Domain, CC-BY-SA-4.0, and NASA Media Usage Guidelines (per image)', 'LICENSE', (await readFile(join(root, 'packages/workbench/src/assets/covers/NOTICE.txt'), 'utf8')) + '\n' + (await readFile(join(root, 'packages/workbench/src/assets/covers/CC-BY-SA-4.0.txt'), 'utf8')) + '\n' + (await readFile(join(root, 'packages/workbench/src/assets/covers/NASA-MEDIA-NOTICE.txt'), 'utf8'))],

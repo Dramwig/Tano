@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { t } from '../i18n';
-import { formattingShortcuts } from '../shortcuts';
+import { useFormattingShortcuts } from '../use-formatting-shortcuts';
+const formattingShortcuts = useFormattingShortcuts();
 import { nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import {
   Type,

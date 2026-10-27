@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { Component } from 'vue';
-import { AlignLeft, ArrowDownAZ, Braces, CalendarClock, CalendarDays, CheckSquare2, ChevronRight, CircleHelp, Hash, List, Plus, Repeat2, Trash2 } from 'lucide-vue-next';
+import { AlignLeft, ArrowDownAZ, Braces, CalendarClock, CalendarDays, CheckSquare2, ChevronRight, CircleHelp, Columns2, Hash, Info, List, ListCollapse, PanelsTopLeft, Plus, Quote, Repeat2, Trash2 } from 'lucide-vue-next';
 import {
   Editor,
   rootCtx,
@@ -73,7 +73,7 @@ import { listMarkdown } from './list-markdown';
 import { codeBlankLinesRemark } from './code-blank-lines';
 import { blockControls } from './blocks';
 import { BlockRangeSelection, expandBlockSelection } from './block-selection';
-import { blockTree, moveBlockSibling, indentBlock, outdentBlock, wrapBlockInToggle, deleteBlock } from './block-tree';
+import { blockTree, moveBlockSibling, moveBlocksTo, isBlockContainer, indentBlock, outdentBlock, deleteBlock, deleteBlocks } from './block-tree';
 import { emptyBlockDeletion } from './empty-block';
 import { slashCommands } from './slash-commands';
 import { textStyles, underline, superscript, subscript, highlight, textColor, backgroundColor } from './text-styles';
@@ -82,9 +82,10 @@ import { wikiLink, wikiLinkInput, wikiLinkRemark } from './wiki-link';
 import { parseWikiLink } from './wiki-link-markdown';
 import { rawBlocks } from './raw-block';
 import { renderHtml } from './html-render';
-import { blockType, canTransformBlock, selectionContext } from './document-model';
+import { blockType, selectionContext } from './document-model';
 import type { EditorSelectionContext } from './document-model';
 import { blockCommand, blockCommandNames } from './block-commands';
+import { blockMenuStructure, blockContainerOptions } from './block-menu-structure';
 import { createCalloutTitle } from './callout-title';
 import type { CalloutKind } from './callout-title';
 import { blockContentStart, calloutMarker } from './callout';
@@ -93,7 +94,10 @@ import { enhanced } from './enhanced';
 import { enhancedViews } from './enhanced-views';
 import { safeResourceUrl } from './enhanced-markdown';
 import { featureLevel, commandEnabled } from './document-model';
-import { activeInlineSourceRange, emptyFencedCodeBodyOffset, liveMarkdown } from './live-markdown';
+import { emptyFencedCodeBodyOffset, liveMarkdown } from './live-markdown';
+import { activeInlineSourceRange } from './inline-source-range';
+import { inlineSourceCodec, inlineSourceAttributes, reconcileInlineSource } from './inline-source-session';
+import type { InlineSourceSession } from './inline-source-session';
 import { liveInlineSource, liveSource } from './live-source';
 import { nestedEmphasisRemark } from './nested-emphasis';
 import { sourceStyleRanges } from './source-highlight';
@@ -137,6 +141,7 @@ const props = withDefaults(
     documentId: string;
     referenceTargets?: readonly ReferenceTarget[];
     readonly?: boolean;
+    shortcutHints?: Record<string, string>;
     enabledLevels?: readonly number[];
     capabilities?: WorkspaceCapabilities;
     preferences?: EditorPreferences;
@@ -373,8 +378,12 @@ function clearLinkModifier() {
   linkModifier.value = false;
 }
 const blockMenuElement = ref<HTMLElement>();
-const blockMenu = shallowRef<{ index: number; x: number; y: number; doc: Node } | null>(null);
+const blockMenu = shallowRef<{ index: number; x: number; y: number; doc: Node; selectionMenu?: boolean } | null>(null);
 const blockConvertTrigger = ref<HTMLButtonElement>();
+const blockWrapTrigger = ref<HTMLButtonElement>();
+const copyShortcutLabel = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘ + C' : 'Ctrl + C';
+const blockContainerIcons = { quote: Quote, callout: Info, toggle: ListCollapse, tabs: PanelsTopLeft, columns: Columns2 };
+const blockSubmenuKind = ref<'convert' | 'wrap'>('convert');
 const blockConvertElement = ref<HTMLElement>();
 const blockConvertMenu = shallowRef<{ x: number; y: number } | null>(null);
 let blockConvertCloseTimer: ReturnType<typeof setTimeout> | undefined;
@@ -395,7 +404,7 @@ function endPointerSelection() { selectingWithPointer = false; }
 let bridgeView: EditorView | undefined;
 let localSource:
   | { kind: 'block'; id: string; original: Node; initial: string; style: Record<string, string> | null; dismissOnOutside?: boolean }
-  | { kind: 'inline'; id: string; original: Fragment; initial: string }
+  | InlineSourceSession
   | { kind: 'footnote-label'; id: string; initial: string; createdParagraph: boolean }
   | undefined;
 let localSourceCounter = 0;
@@ -859,30 +868,6 @@ function inlineAtomSourceRange(view: EditorView, event: MouseEvent | KeyboardEve
   return null;
 }
 
-function markAtCaret(view: EditorView, event?: MouseEvent | KeyboardEvent) {
-  const anchor = event?.target instanceof Element
-    ? event.target
-    : view.dom.ownerDocument.getSelection()?.anchorNode;
-  const element = anchor instanceof Element ? anchor : anchor?.parentElement;
-  if (!element || !view.dom.contains(element)) return undefined;
-  const marked = element.closest('strong, em, code, del, u, sup, sub, mark, span[style], span[data-tano-comment], a');
-  if (!marked || !view.dom.contains(marked)) return undefined;
-  const names: Record<string, string> = {
-    strong: 'strong',
-    em: 'emphasis',
-    code: 'inlineCode',
-    del: 'strike_through',
-    u: 'underline',
-    sup: 'superscript',
-    sub: 'subscript',
-    mark: 'highlight',
-    span: marked.hasAttribute('data-tano-comment') ? 'inline_comment'
-      : (marked as HTMLElement).style.backgroundColor ? 'background_color' : 'text_color',
-    a: 'link',
-  };
-  return names[marked.tagName.toLowerCase()];
-}
-
 function inlineSourceTransaction(
   ctx: Ctx,
   state: EditorState,
@@ -891,26 +876,31 @@ function inlineSourceTransaction(
 ) {
   const $from = tr.doc.resolve(range.from);
   const original = $from.parent.cut(range.from - $from.start(), range.to - $from.start()).content;
-  const paragraph = state.schema.nodes.paragraph!.create(null, original);
-  const source = ctx
-    .get(serializerCtx)(state.schema.nodes.doc!.create(null, [paragraph]))
-    .replace(/\n+$/, '');
+  const codec = inlineSourceCodec(state.schema, ctx.get(parserCtx), ctx.get(serializerCtx));
+  const source = codec.serialize(original);
   const before = tr.doc.textBetween(
     range.from,
     Math.max(range.from, Math.min(range.to, tr.selection.from)),
   );
-  const offset = Math.min(
+  let offset = Math.min(
     source.length,
     sourceOffset(source, before, tr.doc.textBetween(range.from, range.to)[0] ?? ''),
   );
+  // At a field boundary the caret belongs between complete Markdown tokens,
+  // including closing delimiters and inline atoms that have no textContent.
+  const relative = tr.selection.from - range.from;
+  let atBoundary = relative === original.size;
+  original.forEach((_node, position) => { if (position === relative) atBoundary = true; });
+  if (atBoundary && relative >= 0 && relative <= original.size) {
+    const prefix = original.cut(0, relative);
+    const prefixSource = codec.serialize(prefix);
+    if (source.startsWith(prefixSource)) offset = prefixSource.length;
+  }
   const id = sourceId();
-  const footnote = original.firstChild?.type.name === 'footnote_reference'
-    ? String(original.firstChild.attrs.label)
-    : '';
   const node = liveInlineSource
     .type(ctx)
     .create(
-      { id, origin: original.firstChild?.type.name === 'math_inline' ? 'math_inline' : '', footnoteLabel: footnote },
+      { id, ...inlineSourceAttributes(original) },
       source ? state.schema.text(source) : undefined,
     );
   localSource = { kind: 'inline', id, original, initial: source };
@@ -931,9 +921,10 @@ function activateInlineSource(ctx: Ctx, view: EditorView, event?: MouseEvent | K
   const atomRange = event ? inlineAtomSourceRange(view, event) : null;
   const range =
     atomRange ??
-    activeInlineSourceRange({ selection }, disabledStyle?.dataset.tanoDisabledStyle ?? markAtCaret(view, event));
+    activeInlineSourceRange({ selection }, revealableInlineAtom);
   if (!range) return false;
-  const tr = inlineSourceTransaction(ctx, view.state, range);
+  const tr = inlineSourceTransaction(ctx, view.state, range,
+    content ? view.state.tr.setSelection(selection) : view.state.tr);
   applying = true;
   try {
     view.dispatch(tr);
@@ -1155,6 +1146,10 @@ function enterFootnoteLabelFromCaret(ctx: Ctx, view: EditorView) {
   return activateFootnoteLabelAt(ctx, view, selection.$from.before(definitionDepth), true);
 }
 
+function revealableInlineAtom(node: Node, parent: Node) {
+  return isEditableInlineAtom(node, parent) && (node.type.name !== 'tano_reference' || referencesEnabled());
+}
+
 function selectedSourceTransaction(ctx: Ctx, state: EditorState, tr: Transaction = state.tr) {
   const selection = tr.selection;
   if (selection instanceof NodeSelection) {
@@ -1167,7 +1162,7 @@ function selectedSourceTransaction(ctx: Ctx, state: EditorState, tr: Transaction
     return inlineSourceTransaction(ctx, state, { from: selection.from, to: selection.to }, tr);
   }
   if (!(selection instanceof TextSelection) || !selection.empty) return null;
-  const inlineRange = activeInlineSourceRange(tr, bridgeView && markAtCaret(bridgeView));
+  const inlineRange = activeInlineSourceRange(tr, revealableInlineAtom);
   return inlineRange
     ? inlineSourceTransaction(ctx, state, inlineRange, tr)
     : caretBlockSourceTransaction(ctx, state, tr);
@@ -1293,41 +1288,15 @@ function retainsInlineSource(doc: Node) {
   return retained;
 }
 
-function finishInlineSourceOutsideSyntax(ctx: Ctx, state: EditorState) {
-  if (localSource?.kind !== 'inline' || bridgeView?.composing ||
-      !(state.selection instanceof TextSelection) || !state.selection.empty) return null;
+function updateInlineSource(ctx: Ctx, state: EditorState) {
+  if (localSource?.kind !== 'inline' || bridgeView?.composing || props.readonly) return null;
   const current = findCurrentSource(state);
-  if (!current || state.selection.$from.parent !== current.node) return null;
-  const raw = current.node.textContent;
-  const ranges = sourceStyleRanges(raw);
-  if (!ranges.length) return null;
-  const from = Math.min(...ranges.map(range => range.from));
-  const to = Math.max(...ranges.map(range => range.to));
-  const offset = state.selection.from - current.pos - 1;
-  // Continued typing extends the temporary source node. Its DOM boundary no
-  // longer tells us whether the caret has left the actual Markdown syntax.
-  if (offset >= from && offset <= to) return null;
-  const syntax = raw.slice(from, to);
-  const parsed = ctx.get(parserCtx)(syntax);
-  if (parsed?.childCount !== 1 || parsed.firstChild?.type.name !== 'paragraph' ||
-      retainsInlineSource(parsed) ||
-      ctx.get(serializerCtx)(parsed).replace(/\n+$/, '') !== syntax) return null;
-  const text = (value: string) => value ? Fragment.from(state.schema.text(value)) : Fragment.empty;
-  // Keep surrounding text (especially a newly typed space) out of the parser:
-  // trimming it would lose input and move the caret back into the formatted run.
-  const replacement = text(raw.slice(0, from))
-    .append(parsed.firstChild.content).append(text(raw.slice(to)));
-  const document = state.schema.nodes.doc!.create(null,
-    state.schema.nodes.paragraph!.create(null, replacement));
-  if (ctx.get(serializerCtx)(document).trimEnd() !== raw.trimEnd()) return null;
-  const tr = state.tr.replaceWith(current.pos, current.pos + current.node.nodeSize, replacement);
-  const position = current.pos + (offset < from
-    ? offset
-    : from + parsed.firstChild.content.size + offset - to);
-  tr.setSelection(TextSelection.create(tr.doc, position));
-  tr.setStoredMarks([]);
-  localSource = undefined;
-  return tr;
+  if (!current) return null;
+  const result = reconcileInlineSource(state, current, localSource,
+    inlineSourceCodec(state.schema, ctx.get(parserCtx), ctx.get(serializerCtx)),
+    revealableInlineAtom, props.revealMarkdown !== false);
+  if (result) localSource = result.session;
+  return result;
 }
 
 function finishLocalSourceTransaction(ctx: Ctx, state: EditorState) {
@@ -1435,6 +1404,9 @@ function moveAcrossInlineSourceEdge(ctx: Ctx, view: EditorView, direction: -1 | 
     tr.setSelection(Selection.findFrom(tr.doc.resolve(next), direction, true) ?? TextSelection.create(tr.doc, position));
   }
   tr.setStoredMarks([]);
+  const adjacentRange = finished && props.revealMarkdown !== false
+    ? activeInlineSourceRange(tr, revealableInlineAtom) : null;
+  if (adjacentRange) inlineSourceTransaction(ctx, view.state, adjacentRange, tr);
   tr.setMeta('tanoKeepNodeView', true);
   transitioningSource = true;
   applying = finished?.unchanged ?? false;
@@ -1749,8 +1721,11 @@ const bridge = $prose(
           if (restoredSource) return restoredSource;
         }
         if (localSource) {
-          const finishedInline = finishInlineSourceOutsideSyntax(ctx, state);
-          if (finishedInline) return finishedInline;
+          const updated = updateInlineSource(ctx, state);
+          if (updated) {
+            sourceActivationPending ||= updated.presentationOnly && !transactions.some(transaction => transaction.docChanged);
+            return updated.tr;
+          }
           const current = findCurrentSource(state);
           if (
             !current ||
@@ -2531,6 +2506,9 @@ onMounted(async () => {
   window.addEventListener('pointerdown', dismissBlockSourceOnPointer, true);
   window.addEventListener('pointerdown', dismissBlockMenuOnPointer, true);
   window.addEventListener('contextmenu', dismissBlockMenuOnContext);
+  window.addEventListener('mousedown', preserveSelectedContext, true);
+  window.addEventListener('pointerdown', preserveSelectedContext, true);
+  window.addEventListener('contextmenu', openSelectedContext, true);
   window.addEventListener('scroll', dismissBlockMenuOnScroll, true);
   window.addEventListener('resize', dismissBlockMenuOnScroll);
   try {
@@ -2720,7 +2698,14 @@ watch(() => JSON.stringify(policy().features), () => {
   });
 });
 watch(
-  () => [props.readonly, props.enabledLevels, props.capabilities, props.preferences, props.referenceTargets],
+  // Page widths are workbench layout state. Saving them must not invalidate
+  // every node view (or refresh every formula/code block) in a long document.
+  () => JSON.stringify([props.readonly, props.enabledLevels, {
+    features: policy().features,
+    markdownDialect: policy().markdownDialect,
+    mathSyntax: policy().mathSyntax,
+    bulletListMarker: policy().bulletListMarker,
+  }, props.preferences, props.referenceTargets]),
   () =>
     editor?.action((ctx) => {
       runtimeRevision++;
@@ -2730,7 +2715,6 @@ watch(
       view.dispatch(view.state.tr.setMeta('addToHistory', false));
       view.dom.querySelectorAll('.tano-math, .tano-mermaid, .tano-code-block, .tano-image, [data-tano-live-source], [data-tano-live-inline-source]').forEach((node) => node.dispatchEvent(new Event('tano-math-refresh')));
     }),
-  { deep: true },
 );
 watch(
   () => props.revealMarkdown,
@@ -2917,6 +2901,25 @@ function rememberRightClickSelection(event: MouseEvent) {
   });
 }
 
+function selectedContextTarget(event: MouseEvent) {
+  const target = event.target;
+  return !props.readonly && !disposed && target instanceof Element &&
+    (root.value?.closest('.editor-scroll') ?? root.value)?.contains(target) &&
+    !target.closest('button, input, textarea, select, [role="dialog"]') &&
+    bridgeView && !bridgeView.state.selection.empty;
+}
+function preserveSelectedContext(event: MouseEvent) {
+  if (event.button !== 2 || !selectedContextTarget(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+}
+function openSelectedContext(event: MouseEvent) {
+  if (!selectedContextTarget(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  openBlockMenu(event, undefined, true);
+}
+
 function blockIndexFromEvent(view: EditorView, target: EventTarget | null): number | null {
   if (!(target instanceof Element)) return null;
   const handle = target.closest<HTMLElement>('.tano-block-handle');
@@ -2933,12 +2936,17 @@ function blockIndexFromEvent(view: EditorView, target: EventTarget | null): numb
   return null;
 }
 
-function openBlockMenu(event: MouseEvent, anchor?: HTMLElement) {
+function openBlockMenu(event: MouseEvent, anchor?: HTMLElement, preserveSelection = false) {
   if (!editor || props.readonly || disposed) return;
   editor.action((ctx) => {
     const view = ctx.get(editorViewCtx);
-    const index = blockIndexFromEvent(view, event.target);
-    if (index == null) {
+    if (anchor && view.state.selection instanceof BlockRangeSelection) preserveSelection = true;
+    const index = preserveSelection
+      ? blockTree(view.state.doc).findIndex(({ pos, node }) => view.state.selection instanceof NodeSelection || view.state.selection instanceof BlockRangeSelection
+        ? pos === view.state.selection.from
+        : pos <= view.state.selection.from && pos + node.nodeSize > view.state.selection.from)
+      : blockIndexFromEvent(view, event.target);
+    if (index == null || index < 0) {
       if (blockMenu.value) closeBlockMenu();
       return;
     }
@@ -2949,7 +2957,7 @@ function openBlockMenu(event: MouseEvent, anchor?: HTMLElement) {
       : { selection: view.state.selection, doc: view.state.doc };
     rightClickSelection = null;
     const pos = blockTree(view.state.doc)[index]!.pos;
-    view.dispatch(
+    if (!preserveSelection) view.dispatch(
       view.state.tr
         .setSelection(NodeSelection.create(view.state.doc, pos))
         .setMeta('tanoBlockContextSelect', true)
@@ -2957,7 +2965,7 @@ function openBlockMenu(event: MouseEvent, anchor?: HTMLElement) {
     );
     // Leaving a live heading source replaces its temporary node. The mapped
     // selection may become a caret, so select the restored block once more.
-    if (!(view.state.selection instanceof NodeSelection) || view.state.selection.from !== pos)
+    if (!preserveSelection && (!(view.state.selection instanceof NodeSelection) || view.state.selection.from !== pos))
       view.dispatch(
         view.state.tr
           .setSelection(NodeSelection.create(view.state.doc, pos))
@@ -2970,6 +2978,7 @@ function openBlockMenu(event: MouseEvent, anchor?: HTMLElement) {
       x: Math.max(8, event.clientX),
       y: Math.max(8, event.clientY),
       doc: view.state.doc,
+      selectionMenu: preserveSelection && view.state.selection instanceof TextSelection,
     };
     const openedMenu = blockMenu.value;
     void nextTick(() => {
@@ -2983,7 +2992,8 @@ function openBlockMenu(event: MouseEvent, anchor?: HTMLElement) {
       blockMenu.value = {
         ...openedMenu,
         x: Math.max(8, Math.min(x, window.innerWidth - menu.offsetWidth - 8)),
-        y: Math.max(8, Math.min(y, window.innerHeight - menu.offsetHeight - 8)),
+        y: Math.max(8, preserveSelection && y + menu.offsetHeight > window.innerHeight - 8
+          ? y - menu.offsetHeight : Math.min(y, window.innerHeight - menu.offsetHeight - 8)),
       };
       menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
     });
@@ -2992,9 +3002,26 @@ function openBlockMenu(event: MouseEvent, anchor?: HTMLElement) {
 
 function blockMenuCommandAvailable(name: string) {
   const current = blockMenu.value;
-  return !!current &&
-    (name === 'quote' || canTransformBlock(blockTree(current.doc)[current.index]!.node)) &&
-    commandEnabled(name, props.enabledLevels, policy().features);
+  return !!current && !!bridgeView &&
+    (name === 'unwrap' || commandEnabled(name.startsWith('wrap-') ? name.slice(5) : name, props.enabledLevels, policy().features)) &&
+    !!blockMenuStructure(bridgeView.state, name);
+}
+function blockMenuSelectionCount() {
+  return selectionBeforeMenu?.selection instanceof BlockRangeSelection ? selectionBeforeMenu.selection.blocks.length : 1;
+}
+function blockShortcut(action: string) {
+  if (!bridgeView || props.readonly || disposed) return;
+  const view = bridgeView, state = view.state;
+  const selection = state.selection;
+  let tr: Transaction | null = null;
+  if (selection instanceof BlockRangeSelection) tr = selectedBlocksMenuTransaction(state, action);
+  else if (selection instanceof NodeSelection && selection.node.isBlock) {
+    tr = action === 'delete' ? deleteBlocks(state, [selection.from])
+      : action === 'indent' ? indentBlock(state, selection.from)
+      : action === 'outdent' ? outdentBlock(state, selection.from)
+      : moveBlockSibling(state, selection.from, action === 'move-up' ? -1 : 1);
+  }
+  if (tr) { closeBlockMenu(false); view.dispatch(tr.scrollIntoView()); view.focus(); }
 }
 
 function blockMenuMoveAvailable(action: string) {
@@ -3003,6 +3030,7 @@ function blockMenuMoveAvailable(action: string) {
   return editor.action((ctx) => {
     const state = ctx.get(editorViewCtx).state;
     if (!state.doc.eq(current.doc)) return false;
+    if (state.selection instanceof BlockRangeSelection) return !!selectedBlocksMenuTransaction(state, action);
     const pos = blockTree(state.doc)[current.index]?.pos;
     if (pos == null) return false;
     return !!(action === 'indent' ? indentBlock(state, pos) : action === 'outdent' ? outdentBlock(state, pos)
@@ -3010,19 +3038,79 @@ function blockMenuMoveAvailable(action: string) {
   });
 }
 
+function selectedBlocksMenuTransaction(state: EditorState, action: string): Transaction | null {
+  const selection = state.selection;
+  if (!(selection instanceof BlockRangeSelection)) return null;
+  const blocks = selection.blocks, first = blocks[0]!, last = blocks.at(-1)!;
+  const positions = blocks.map(block => block.pos);
+  if (action === 'delete') return deleteBlocks(state, positions);
+  if (action === 'duplicate') {
+    const at = last.pos + last.node.nodeSize;
+    const tr = state.tr.insert(at, selection.content().content);
+    let pos = at;
+    const copied = blocks.map(block => { const start = pos; pos += block.node.nodeSize; return start; });
+    return tr.setSelection(BlockRangeSelection.fromBlocks(tr.doc, copied)!);
+  }
+  if (!blocks.every((block, index) => block.parentPos === first.parentPos && block.index === first.index + index)) return null;
+  let parentPos = first.parentPos, index = first.index;
+  if (action === 'move-up') index--;
+  else if (action === 'move-down') index = last.index + 2;
+  else if (action === 'indent') {
+    if (first.index <= blockContentStart(first.parent)) return null;
+    const previous = first.parent.child(first.index - 1);
+    if (!isBlockContainer(previous)) return null;
+    parentPos = first.pos - previous.nodeSize;
+    index = previous.childCount;
+  } else if (action === 'outdent') {
+    const owner = blockTree(state.doc).find(entry => entry.pos <= first.parentPos &&
+      first.parentPos < entry.pos + entry.node.nodeSize &&
+      entry.depth === first.depth - (first.parent.type.name === 'tano_panel' ? 2 : 1));
+    if (!owner) return null;
+    parentPos = owner.parentPos;
+    index = owner.index + 1;
+  } else return null;
+  const tr = moveBlocksTo(state, positions, parentPos, index, true);
+  if (!tr) return null;
+  let pos = tr.selection.from;
+  const moved = blocks.map(block => { const start = pos; pos += block.node.nodeSize; return start; });
+  return tr.setSelection(BlockRangeSelection.fromBlocks(tr.doc, moved)!);
+}
+
 async function blockMenuAction(action: string) {
   const current = blockMenu.value;
   if (!current || !editor || props.readonly) return;
-  if (['paragraph', 'heading', 'list', 'quote'].includes(action)) {
+  if (current.selectionMenu) {
+    closeBlockMenu(false);
+    if (action !== 'copy') return;
+    const markdown = editor.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      if (!view.state.doc.eq(current.doc)) return null;
+      const slice = view.state.selection.content();
+      return ctx.get(serializerCtx)(view.state.schema.topNodeType.create(null, slice.content));
+    });
+    if (markdown !== null) {
+      try { await navigator.clipboard.writeText(markdown); }
+      catch { emit('error', '无法复制选区内容，请检查剪贴板权限'); }
+    }
+    return;
+  }
+  if (['paragraph', 'heading', 'list', 'quote', 'unwrap'].includes(action) || action.startsWith('wrap-')) {
     if (!blockMenuCommandAvailable(action)) return;
     closeBlockMenu(false);
-    command(action);
+    editor.action(ctx => {
+      const view = ctx.get(editorViewCtx);
+      const tr = blockMenuStructure(view.state, action);
+      if (tr) view.dispatch(tr.scrollIntoView());
+      view.focus();
+    });
     return;
   }
   if (action === 'copy') {
     const markdown = editor.action((ctx) => {
       const view = ctx.get(editorViewCtx);
       if (!view.state.doc.eq(current.doc)) return null;
+      if (view.state.selection instanceof BlockRangeSelection)
+        return ctx.get(serializerCtx)(view.state.schema.topNodeType.create(null, view.state.selection.content().content));
       const node = blockTree(view.state.doc)[current.index]!.node;
       return ctx.get(serializerCtx)(view.state.schema.topNodeType.create(null, node));
     });
@@ -3039,6 +3127,12 @@ async function blockMenuAction(action: string) {
   editor.action((ctx) => {
     const view = ctx.get(editorViewCtx);
     if (!view.state.doc.eq(current.doc)) return;
+    if (view.state.selection instanceof BlockRangeSelection && action !== 'source') {
+      const tr = selectedBlocksMenuTransaction(view.state, action);
+      if (tr) view.dispatch(tr.scrollIntoView());
+      view.focus();
+      return;
+    }
     const { doc, schema } = view.state;
     const { node, pos, parent } = blockTree(doc)[current.index]!;
     if (action === 'source') {
@@ -3063,10 +3157,6 @@ async function blockMenuAction(action: string) {
         : moveBlockSibling(view.state, pos, action === 'move-up' ? -1 : 1);
       if (!tr) return;
       view.dispatch(tr.scrollIntoView());
-    } else if (action === 'wrap-toggle') {
-      if (!commandEnabled('toggle', props.enabledLevels, policy().features)) return;
-      const tr = wrapBlockInToggle(view.state, pos);
-      if (tr) view.dispatch(tr.scrollIntoView());
     } else if (action === 'delete') {
       const tr = deleteBlock(view.state, pos);
       if (tr) view.dispatch(tr.scrollIntoView());
@@ -3079,7 +3169,7 @@ function closeBlockConvertMenu(restoreFocus = false) {
   clearTimeout(blockConvertCloseTimer);
   blockConvertCloseTimer = undefined;
   blockConvertMenu.value = null;
-  if (restoreFocus) blockConvertTrigger.value?.focus();
+  if (restoreFocus) (blockSubmenuKind.value === 'wrap' ? blockWrapTrigger : blockConvertTrigger).value?.focus();
 }
 
 function scheduleCloseBlockConvertMenu() {
@@ -3089,12 +3179,13 @@ function scheduleCloseBlockConvertMenu() {
   }, 150);
 }
 
-function openBlockConvertMenu(focusFirst = false) {
+function openBlockConvertMenu(focusFirst = false, kind: 'convert' | 'wrap' = 'convert') {
   clearTimeout(blockConvertCloseTimer);
   if (!blockMenu.value) return;
+  blockSubmenuKind.value = kind;
   blockConvertMenu.value ??= { x: blockMenu.value.x, y: blockMenu.value.y };
   void nextTick(() => {
-    const trigger = blockConvertTrigger.value;
+    const trigger = (blockSubmenuKind.value === 'wrap' ? blockWrapTrigger : blockConvertTrigger).value;
     const submenu = blockConvertElement.value;
     const menu = blockMenuElement.value;
     if (!trigger || !submenu || !menu || !blockConvertMenu.value) return;
@@ -3111,6 +3202,21 @@ function openBlockConvertMenu(focusFirst = false) {
 }
 
 function onBlockMenuKeydown(event: KeyboardEvent) {
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && !event.isComposing && event.key.toLowerCase() === 'c') {
+    event.preventDefault();
+    event.stopPropagation();
+    void blockMenuAction('copy');
+    return;
+  }
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.isComposing) {
+    const action = ({ ArrowUp: 'move-up', ArrowDown: 'move-down', ArrowRight: 'indent', ArrowLeft: 'outdent' } as Record<string, string>)[event.key];
+    if (action) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (blockMenuMoveAvailable(action)) void blockMenuAction(action);
+      return;
+    }
+  }
   const inSubmenu = !!blockConvertElement.value?.contains(event.target as globalThis.Node);
   if ((event.key === 'Escape' && blockConvertMenu.value) || (event.key === 'ArrowLeft' && inSubmenu)) {
     event.preventDefault();
@@ -3118,9 +3224,9 @@ function onBlockMenuKeydown(event: KeyboardEvent) {
     closeBlockConvertMenu(true);
     return;
   }
-  if (event.key === 'ArrowRight' && event.target === blockConvertTrigger.value) {
+  if (event.key === 'ArrowRight' && (event.target === blockConvertTrigger.value || event.target === blockWrapTrigger.value)) {
     event.preventDefault();
-    openBlockConvertMenu(true);
+    openBlockConvertMenu(true, event.target === blockWrapTrigger.value ? 'wrap' : 'convert');
     return;
   }
   if (event.key === 'Escape') {
@@ -3475,6 +3581,7 @@ function revealSourceRange(range: { from: number; to: number }) {
   });
 }
 defineExpose({
+  blockShortcut,
   addDocumentProperty,
   initializeBody,
   captureVisualAnchor: (options?: { highlight?: boolean }) => bridgeView && !disposed ? captureVisualAnchor(bridgeView, options) : null,
@@ -3519,6 +3626,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointerdown', dismissBlockSourceOnPointer, true);
   window.removeEventListener('pointerdown', dismissBlockMenuOnPointer, true);
   window.removeEventListener('contextmenu', dismissBlockMenuOnContext);
+  window.removeEventListener('mousedown', preserveSelectedContext, true);
+  window.removeEventListener('pointerdown', preserveSelectedContext, true);
+  window.removeEventListener('contextmenu', openSelectedContext, true);
   window.removeEventListener('scroll', dismissBlockMenuOnScroll, true);
   window.removeEventListener('resize', dismissBlockMenuOnScroll);
   window.removeEventListener('keydown', syncLinkModifier, true);
@@ -3695,32 +3805,40 @@ onBeforeUnmount(() => {
       class="dropdown compact-action-menu block-context-menu"
       role="menu"
       tabindex="-1"
-      :aria-label="`第 ${blockMenu.index + 1} 个块的操作`"
+      :aria-label="blockMenu.selectionMenu ? '选区操作' : blockMenuSelectionCount() > 1 ? `${blockMenuSelectionCount()} 个块的操作` : `第 ${blockMenu.index + 1} 个块的操作`"
       :style="{ left: `${blockMenu.x}px`, top: `${blockMenu.y}px` }"
       @keydown="onBlockMenuKeydown"
     >
-      <div class="block-context-heading" role="presentation">块操作</div>
-      <button role="menuitem" type="button" @click="blockMenuAction('copy')"><span aria-hidden="true">⧉</span>复制 Markdown</button>
-      <button role="menuitem" type="button" @click="blockMenuAction('source')"><Braces :size="15" aria-hidden="true" />临时显示 Markdown 源码</button>
+      <div class="block-context-heading" role="presentation">{{ blockMenu.selectionMenu ? '选区操作' : blockMenuSelectionCount() > 1 ? `${blockMenuSelectionCount()} 个块的操作` : '块操作' }}</div>
+      <button role="menuitem" type="button" @click="blockMenuAction('copy')"><span aria-hidden="true">⧉</span>复制 Markdown<kbd class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
+      <template v-if="!blockMenu.selectionMenu">
+      <button role="menuitem" type="button" :disabled="blockMenuSelectionCount() > 1" :title="blockMenuSelectionCount() > 1 ? '请选中单个块查看临时源码' : undefined" @click="blockMenuAction('source')"><Braces :size="15" aria-hidden="true" />临时显示 Markdown 源码</button>
       <button role="menuitem" type="button" @click="blockMenuAction('duplicate')"><span aria-hidden="true">▣</span>创建副本</button>
       <div class="menu-divider" role="separator" />
       <div class="block-convert-menu" role="presentation" @pointerenter="openBlockConvertMenu()" @pointerleave="scheduleCloseBlockConvertMenu">
-        <button ref="blockConvertTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu" @click="openBlockConvertMenu(true)"><Repeat2 :size="15" aria-hidden="true" />转换为<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
-        <div v-if="blockConvertMenu" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" aria-label="转换为" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
+        <button ref="blockConvertTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'convert'" @click="openBlockConvertMenu(true)"><Repeat2 :size="15" aria-hidden="true" />转换为<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
+        <div v-if="blockConvertMenu && blockSubmenuKind === 'convert'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" aria-label="转换为" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
           <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('paragraph')" @click="blockMenuAction('paragraph')"><span aria-hidden="true">¶</span>转为正文</button>
           <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('heading')" @click="blockMenuAction('heading')"><span aria-hidden="true">H</span>转为标题</button>
           <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('list')" @click="blockMenuAction('list')"><span aria-hidden="true">☷</span>转为列表</button>
           <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('quote')" @click="blockMenuAction('quote')"><span aria-hidden="true">❝</span>转为引用</button>
         </div>
       </div>
-      <button role="menuitem" type="button" :disabled="!commandEnabled('toggle', props.enabledLevels, policy().features)" @click="blockMenuAction('wrap-toggle')"><span aria-hidden="true">▸</span>放入新折叠块</button>
+      <div class="block-convert-menu" role="presentation" @pointerenter="openBlockConvertMenu(false, 'wrap')" @pointerleave="scheduleCloseBlockConvertMenu">
+        <button ref="blockWrapTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'wrap'" @click="openBlockConvertMenu(true, 'wrap')"><span aria-hidden="true">▸</span>合并放入新块<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
+        <div v-if="blockConvertMenu && blockSubmenuKind === 'wrap'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" aria-label="合并放入新块" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
+          <button v-for="option in blockContainerOptions" :key="option.type" role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('wrap-' + option.type)" @click="blockMenuAction('wrap-' + option.type)"><component :is="blockContainerIcons[option.type]" :size="16" aria-hidden="true" />{{ option.label }}</button>
+        </div>
+      </div>
+      <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('unwrap')" title="移除外层块，将内部子块提升一级" @click="blockMenuAction('unwrap')"><span aria-hidden="true">↗</span>展开</button>
       <div class="menu-divider" role="separator" />
-      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('move-up')" @click="blockMenuAction('move-up')"><span aria-hidden="true">↑</span>上移块</button>
-      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('move-down')" @click="blockMenuAction('move-down')"><span aria-hidden="true">↓</span>下移块</button>
-      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('indent')" @click="blockMenuAction('indent')"><span aria-hidden="true">→</span>移入前一个容器</button>
-      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('outdent')" @click="blockMenuAction('outdent')"><span aria-hidden="true">←</span>移出当前容器</button>
+      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('move-up')" @click="blockMenuAction('move-up')"><span aria-hidden="true">↑</span>上移块<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['move-up'] ?? 'Alt + ↑' }}</kbd></button>
+      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('move-down')" @click="blockMenuAction('move-down')"><span aria-hidden="true">↓</span>下移块<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['move-down'] ?? 'Alt + ↓' }}</kbd></button>
+      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('indent')" @click="blockMenuAction('indent')"><span aria-hidden="true">→</span>移入前一个容器<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['indent'] ?? 'Alt + →' }}</kbd></button>
+      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('outdent')" @click="blockMenuAction('outdent')"><span aria-hidden="true">←</span>移出当前容器<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['outdent'] ?? 'Alt + ←' }}</kbd></button>
       <div class="menu-divider" role="separator" />
-      <button role="menuitem" type="button" class="danger-text" @click="blockMenuAction('delete')"><Trash2 :size="15" aria-hidden="true" />删除块</button>
+      <button role="menuitem" type="button" class="danger-text" @click="blockMenuAction('delete')"><Trash2 :size="15" aria-hidden="true" />删除块<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['delete'] ?? 'Backspace' }}</kbd></button>
+      </template>
     </div>
   </Teleport>
 </template>

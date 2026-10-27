@@ -92,8 +92,17 @@ pub fn identity_for_open(
             }
             Ok(id)
         }
-        None if expected.is_some() => Err("工作区 .tano 已丢失，已停止打开，未改动现有文件".into()),
-        None => storage::workspace_identity(root),
+        None => {
+            let id = storage::workspace_identity(root)?;
+            if let Some(previous) = expected {
+                // Deleting all of .tano starts a new workspace. Keep old indexes
+                // and drafts isolated under the old UUID, never import them.
+                identity_manifest::publish_cache(root, &id, cache)?;
+                crate::session_storage::unregister(cache, app_data, root, previous)?;
+                register_identity(app_data, root, &id)?;
+            }
+            Ok(id)
+        }
     }
 }
 
@@ -136,36 +145,142 @@ mod tests {
         assert!(register_identity(data.path(), &root, &uuid::Uuid::new_v4().to_string()).is_err());
     }
     #[test]
-    fn known_workspace_loss_never_generates_a_new_identity() {
+    fn deleted_metadata_starts_a_new_workspace_and_preserves_existing_content() {
+        for registered in [false, true] {
+            let data = tempfile::tempdir().unwrap();
+            let root = tempfile::tempdir().unwrap();
+            let root = fs::canonicalize(root.path()).unwrap();
+            let cache = data.path().join("index.sqlite");
+            let old = identity_for_open(data.path(), &root, None, &cache).unwrap();
+            fs::write(root.join("note.md"), "original").unwrap();
+            fs::write(root.join("image.png"), [0, 1, 255, 128]).unwrap();
+            fs::create_dir(root.join(".tano/objects")).unwrap();
+            let object = ".tano/objects/a12345.tano.json";
+            fs::write(root.join(object), r#"{"id":"a12345","type":"event"}"#).unwrap();
+            let before = storage::scan(&root, &old, &cache).unwrap();
+            crate::session_storage::record(&cache, &before).unwrap();
+            if registered {
+                register_identity(data.path(), &root, &old).unwrap();
+            }
+            // Leave a pending operation with the old identity: it must not run
+            // against the new workspace or prevent it from opening.
+            identity_manifest::begin_create(&root, &old, &cache, "pending.md", b"old").unwrap();
+            fs::write(root.join("pending.md"), "external replacement").unwrap();
+            fs::remove_dir_all(root.join(".tano")).unwrap();
+            fs::write(root.join("note.md"), "external edit after deletion").unwrap();
+
+            assert!(identity_manifest::require(&root, &old).is_err());
+            assert!(!root.join(".tano").exists());
+            let recent = (!registered).then_some(old.as_str());
+            let new = identity_for_open(data.path(), &root, recent, &cache).unwrap();
+            assert_ne!(new, old);
+            assert_eq!(
+                registered_identity(data.path(), &root).unwrap(),
+                Some(new.clone())
+            );
+            let reopened = storage::scan(&root, &new, &cache).unwrap();
+            crate::session_storage::record(&cache, &reopened).unwrap();
+            let manifest = identity_manifest::read(&root, &new).unwrap().unwrap();
+            assert_eq!(manifest.workspace_id, new);
+            assert_eq!(manifest.files.len(), 3);
+            assert!(!manifest.files.iter().any(|file| file.path == object));
+            assert!(!manifest.reserved_ids.contains(&"a12345".to_string()));
+            for file in &reopened.files {
+                assert!(storage::is_short_id(&file.id));
+            }
+            assert_eq!(
+                fs::read_to_string(root.join("note.md")).unwrap(),
+                "external edit after deletion"
+            );
+            assert_eq!(
+                fs::read_to_string(root.join("pending.md")).unwrap(),
+                "external replacement"
+            );
+            assert_eq!(fs::read(root.join("image.png")).unwrap(), [0, 1, 255, 128]);
+            assert!(!root.join(".tano/objects").exists());
+            assert!(storage::cached_identity_exists(&cache, &old).unwrap());
+            assert_eq!(
+                crate::session_storage::known_identity(&cache, &root).unwrap(),
+                Some(new.clone())
+            );
+            let recent = crate::session_storage::recent(&cache).unwrap();
+            assert_eq!(recent.len(), 1);
+            assert_eq!(recent[0].id, new);
+            assert_eq!(
+                identity_for_open(data.path(), &root, None, &cache).unwrap(),
+                new
+            );
+            assert!(!root.join("index.sqlite").exists());
+        }
+    }
+
+    #[test]
+    fn deleted_metadata_starts_fresh_without_a_cached_index() {
+        for registered in [false, true] {
+            let data = tempfile::tempdir().unwrap();
+            let root = tempfile::tempdir().unwrap();
+            let root = fs::canonicalize(root.path()).unwrap();
+            let old = uuid::Uuid::new_v4().to_string();
+            if registered {
+                register_identity(data.path(), &root, &old).unwrap();
+            }
+            fs::write(root.join("note.md"), "keep this content").unwrap();
+            let cache = data.path().join("index.sqlite");
+            let new = identity_for_open(data.path(), &root, Some(&old), &cache).unwrap();
+            assert_ne!(new, old);
+            let opened = storage::scan(&root, &new, &cache).unwrap();
+            identity_manifest::require(&root, &new).unwrap();
+            assert_eq!(opened.files.len(), 1);
+            assert!(storage::is_short_id(&opened.files[0].id));
+            assert_eq!(
+                fs::read_to_string(root.join("note.md")).unwrap(),
+                "keep this content"
+            );
+        }
+    }
+    #[test]
+    fn partial_or_replaced_metadata_is_preserved() {
         let data = tempfile::tempdir().unwrap();
         let root = tempfile::tempdir().unwrap();
         let root = fs::canonicalize(root.path()).unwrap();
         let cache = data.path().join("index.sqlite");
         let id = identity_for_open(data.path(), &root, None, &cache).unwrap();
+        storage::scan(&root, &id, &cache).unwrap();
         register_identity(data.path(), &root, &id).unwrap();
-        fs::remove_dir_all(root.join(".tano")).unwrap();
-        assert!(identity_for_open(data.path(), &root, None, &cache)
-            .unwrap_err()
-            .contains("已丢失"));
-        assert!(!root.join(".tano").exists());
-        fs::create_dir(root.join(".tano")).unwrap();
+        fs::remove_file(root.join(".tano/identities.json")).unwrap();
+        assert!(identity_for_open(data.path(), &root, None, &cache).is_err());
+        assert!(!root.join(".tano/identities.json").exists());
+        fs::remove_file(root.join(".tano/config.json")).unwrap();
         assert!(identity_for_open(data.path(), &root, None, &cache).is_err());
         assert!(!root.join(".tano/config.json").exists());
+        fs::write(root.join(".tano/config.json"), "broken JSON").unwrap();
+        assert!(identity_for_open(data.path(), &root, None, &cache).is_err());
+        assert_eq!(
+            fs::read_to_string(root.join(".tano/config.json")).unwrap(),
+            "broken JSON"
+        );
+        let replaced = serde_json::json!({"id": uuid::Uuid::new_v4().to_string()}).to_string();
+        fs::write(root.join(".tano/config.json"), &replaced).unwrap();
+        assert!(identity_for_open(data.path(), &root, None, &cache).is_err());
+        assert_eq!(
+            fs::read_to_string(root.join(".tano/config.json")).unwrap(),
+            replaced
+        );
     }
+
+    #[cfg(unix)]
     #[test]
-    fn recent_index_also_protects_unregistered_existing_workspaces() {
+    fn rebuilding_does_not_follow_a_metadata_directory_symlink() {
         let data = tempfile::tempdir().unwrap();
         let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
         let root = fs::canonicalize(root.path()).unwrap();
-        let old = uuid::Uuid::new_v4().to_string();
-        assert!(identity_for_open(
-            data.path(),
-            &root,
-            Some(&old),
-            &data.path().join("index.sqlite")
-        )
-        .is_err());
-        assert!(!root.join(".tano").exists());
+        register_identity(data.path(), &root, &uuid::Uuid::new_v4().to_string()).unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.join(".tano")).unwrap();
+        assert!(
+            identity_for_open(data.path(), &root, None, &data.path().join("index.sqlite")).is_err()
+        );
+        assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 0);
     }
 
     #[test]

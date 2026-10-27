@@ -55,19 +55,7 @@
 .tano-skeleton-bar { display: block; height: 12px; border-radius: 5px; background: currentColor; opacity: .09; animation: tano-skeleton-pulse 1.6s ease-in-out infinite; }
 .tano-skeleton-bar:nth-child(2n) { animation-delay: .18s; }
 .tano-skeleton-bar:nth-child(3n) { animation-delay: .36s; }
-.tano-skeleton-shell { box-sizing: border-box; display: flex; flex: 1; width: 100%; min-height: 100%; background: var(--paper, #fff); color: var(--text, #252820); font: 14px/1.6 system-ui, sans-serif; }
-.tano-skeleton-sidebar { box-sizing: border-box; flex: 0 0 240px; display: flex; flex-direction: column; gap: 24px; padding: 32px 26px; border-right: 1px solid var(--line, #e8e9e6); }
-.tano-skeleton-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; color: var(--green, #397d54); font-size: 23px; font-weight: 650; }
-.tano-skeleton-brand img { width: 38px; height: 38px; }
-.tano-skeleton-sidebar .tano-skeleton-bar { height: 20px; width: 80%; }
-.tano-skeleton-sidebar-bottom { margin-top: auto; display: grid; gap: 24px; padding-top: 48px; }
-.tano-skeleton-content { box-sizing: border-box; flex: 1; min-width: 0; padding: 42px 32px; background: var(--surface, #f5f6f7); }
-.tano-skeleton-title { height: 30px; width: 180px; margin-bottom: 18px; }
-.tano-skeleton-subtitle { width: 38%; margin-bottom: 32px; }
-.tano-skeleton-toolbar { height: 40px; width: 48%; margin-bottom: 24px; }
-.tano-skeleton-row { display: flex; align-items: center; gap: 20px; padding: 24px 18px; border-bottom: 1px solid var(--line, #e8e9e6); }
-.tano-skeleton-row .tano-skeleton-bar { flex: 1; }
-.tano-skeleton-row .tano-skeleton-bar:first-child { flex: 2; }
+.tano-skeleton-shell { box-sizing: border-box; display: flex; flex: 1; align-items: center; justify-content: center; width: 100%; min-height: 100%; color: var(--text, #37352f); }
 .tano-skeleton-list { display: grid; gap: 20px; padding: 20px; }
 .tano-skeleton-list .tano-skeleton-bar:last-child { width: 65%; }
 .tano-skeleton-document { box-sizing: border-box; width: min(100%, 860px); margin: 0 auto; padding: 48px 32px; display: grid; align-content: start; gap: 22px; }
@@ -77,14 +65,7 @@
 @keyframes tano-skeleton-pulse { 50% { opacity: .18; } }
 :root[data-theme="dark"] .tano-skeleton-shell { --paper: #1d201c; --surface: #232622; --text: #e6e9e0; --line: #343a32; }
 @media (prefers-reduced-motion: reduce) { .tano-skeleton-bar { animation: none; } }
-@media (max-width: 760px) {
-  .tano-skeleton-shell { flex-direction: column; }
-  .tano-skeleton-sidebar { flex: 0 0 auto; padding: 20px 16px; flex-direction: row; flex-wrap: wrap; gap: 16px; border-right: 0; border-bottom: 1px solid var(--line, #e8e9e6); }
-  .tano-skeleton-brand { width: 100%; margin-bottom: 8px; }
-  .tano-skeleton-sidebar > .tano-skeleton-bar { width: 24%; }
-  .tano-skeleton-sidebar-bottom { display: none; }
-  .tano-skeleton-content { padding: 28px 16px; }
-}
+
 
 .tano-startup { height: 100dvh; padding: 0; gap: 0; align-items: stretch; justify-content: flex-start; text-align: left; }
 .tano-startup > .tano-skeleton-shell { min-height: 0; }
@@ -95,10 +76,7 @@
   <body>
     <div id="app">
       <main id="tano-startup" class="tano-startup" aria-busy="true">
-<div class="tano-skeleton-shell" aria-hidden="true">
-  <aside class="tano-skeleton-sidebar"><div class="tano-skeleton-brand"><img src="/favicon-green.svg?v=3" alt="" />同页</div><span class="tano-skeleton-bar"></span><span class="tano-skeleton-bar"></span><span class="tano-skeleton-bar"></span><div class="tano-skeleton-sidebar-bottom"><span class="tano-skeleton-bar"></span><span class="tano-skeleton-bar"></span></div></aside>
-  <div class="tano-skeleton-content"><span class="tano-skeleton-bar tano-skeleton-title"></span><span class="tano-skeleton-bar tano-skeleton-subtitle"></span><span class="tano-skeleton-bar tano-skeleton-toolbar"></span><div class="tano-skeleton-row"><span class="tano-skeleton-bar"></span><span class="tano-skeleton-bar"></span><span class="tano-skeleton-bar"></span><span class="tano-skeleton-bar"></span></div><div class="tano-skeleton-row"><span class="tano-skeleton-bar"></span><span class="tano-skeleton-bar"></span><span class="tano-skeleton-bar"></span><span class="tano-skeleton-bar"></span></div><div class="tano-skeleton-row"><span class="tano-skeleton-bar"></span><span class="tano-skeleton-bar"></span><span class="tano-skeleton-bar"></span><span class="tano-skeleton-bar"></span></div><div class="tano-skeleton-row"><span class="tano-skeleton-bar"></span><span class="tano-skeleton-bar"></span><span class="tano-skeleton-bar"></span><span class="tano-skeleton-bar"></span></div></div>
-</div>
+<div class="tano-skeleton-shell" aria-hidden="true"></div>
         <p id="tano-startup-status" class="tano-skeleton-status" role="status">正在打开同页...</p>
         <p id="tano-startup-detail" class="tano-startup-detail" hidden></p>
         <button id="tano-startup-retry" type="button" hidden>重新加载</button>

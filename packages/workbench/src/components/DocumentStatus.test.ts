@@ -6,13 +6,23 @@ import type { DocumentStatusItem } from '../document-status';
 let app: App;
 let root: HTMLElement;
 const dialog = () => document.querySelector('[role="dialog"]');
-async function mount() {
+async function mount(action?: () => void) {
   const props = reactive({ documentKey: 'w:a', items: [{ kind: 'saved', label: '已保存', detail: '修改已保存到本机文件。' }] as DocumentStatusItem[] });
   root = document.createElement('div'); document.body.append(root);
-  app = createApp({ render: () => h(DocumentStatus, props) }); app.mount(root); await nextTick();
+  app = createApp({ render: () => h(DocumentStatus, props, action ? { default: () => h('button', { onClick: action }, '重试协作连接') } : undefined) }); app.mount(root); await nextTick();
   return { props, button: root.querySelector('button')! };
 }
 afterEach(() => { app?.unmount(); root?.remove(); vi.useRealTimers(); });
+it('keeps recovery actions hidden until opened and reachable by keyboard', async () => {
+  vi.useFakeTimers(); const retry = vi.fn(); const { button } = await mount(retry);
+  expect(document.body.textContent).not.toContain('重试协作连接');
+  button.focus(); await nextTick();
+  const action = dialog()!.querySelector('button')!;
+  action.focus(); await vi.advanceTimersByTimeAsync(200);
+  expect(dialog()).not.toBeNull(); action.click(); expect(retry).toHaveBeenCalledOnce();
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); await nextTick();
+  expect(dialog()).toBeNull(); expect(document.activeElement).toBe(button);
+});
 it('keeps text hidden until hover, supports crossing into the panel and click pinning', async () => {
   vi.useFakeTimers(); const { button } = await mount();
   expect(button.textContent).toBe(''); expect(dialog()).toBeNull();

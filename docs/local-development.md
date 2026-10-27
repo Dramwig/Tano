@@ -25,7 +25,7 @@ The desktop application ID is `app.tano.local`. On Windows, application data is 
 
 After dependencies are installed, local editing, search, and draft persistence can work offline. Remote images and an explicitly configured update check still require a network connection. Source builds do not configure an update endpoint by default.
 
-Run `npm run check`, `npm run test:native`, and `npm run mcp:smoke` before submitting changes. After changing Rust code, run:
+Before publishing a new version, run `npm run check` and the applicable native and MCP checks (`npm run test:native`, `npm run mcp:smoke`) as described in [local validation](local-validation.md). Ordinary commits, pushes and merges do not require these commands; choose targeted checks during development when useful. After changing Rust code, run:
 
 ```sh
 cargo fmt --manifest-path crates/tano-native/Cargo.toml

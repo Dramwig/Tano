@@ -61,8 +61,9 @@ async function place() {
   hint.style.maxWidth = `${Math.min(320, right - left)}px`;
   hint.style.maxHeight = `${bottom - top}px`;
   const rect = button.getBoundingClientRect();
-  const above = rect.top - hint.offsetHeight - 8;
-  const y = above >= top ? above : rect.bottom + 8;
+  const gap = button.closest('.compact-action-menu') ? 3 : 8;
+  const above = rect.top - hint.offsetHeight - gap;
+  const y = above >= top ? above : rect.bottom + gap;
   hint.style.left = `${Math.max(left, Math.min(rect.left + (rect.width - hint.offsetWidth) / 2, right - hint.offsetWidth))}px`;
   hint.style.top = `${Math.max(top, Math.min(y, bottom - hint.offsetHeight))}px`;
   ready.value = true;
@@ -72,7 +73,7 @@ function update() {
   if (!usable(anchor)) return hide();
   label.value = tooltipLabel(anchor);
   example.value = featureDefinitions.find(feature => feature.key === anchor?.dataset.tooltipExample)?.key;
-  shortcut.value = anchor.dataset.tooltipShortcut ? shortcutLabel(anchor.dataset.tooltipShortcut) : '';
+  shortcut.value = anchor.dataset.tooltipShortcut ? shortcutLabel(anchor.dataset.tooltipShortcut.split(',')) : '';
   void place();
 }
 function show(button: HTMLElement) {

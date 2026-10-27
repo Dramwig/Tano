@@ -454,14 +454,15 @@ button:hover {
 }
 .workspace-picker {
   width: 100%;
+  height: 26px;
   display: flex;
   text-align: left;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   border: 1px solid transparent;
   background: transparent;
-  border-radius: 6px;
-  padding: 5px;
+  border-radius: 5px;
+  padding: 0 5px;
   min-width: 0;
 }
 .workspace-picker:hover {
@@ -470,19 +471,27 @@ button:hover {
 .workspace-avatar {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
   border-radius: 5px;
 }
 .workspace-picker-text {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
+}
+.workspace-picker > svg {
+  flex-shrink: 0;
+  /* The chevron has more intrinsic side padding than the workspace glyph. */
+  margin-inline-start: -1px;
 }
 .workspace-picker strong {
   display: block;
   font-size: 13px;
   font-weight: 500;
+  line-height: 16px;
+  /* Align the visible UI-font strokes with the adjacent icon strokes. */
+  transform: translateY(-1px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -580,10 +589,13 @@ button:hover {
   background: var(--surface);
   font-size: 13px;
 }
-.tree-scroll {
+.tree-scroll,
+.outline {
   --scroll-fade-mask: linear-gradient(to bottom, transparent, #000 var(--scroll-fade-top, 0px), #000 calc(100% - var(--scroll-fade-bottom, 0px)), transparent);
   -webkit-mask-image: var(--scroll-fade-mask);
   mask-image: var(--scroll-fade-mask);
+}
+.tree-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -710,15 +722,17 @@ button:hover {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   flex-shrink: 0;
-  margin: 0 -7px;
+  margin: auto -7px 0;
   border-top: 0;
-  padding: 6px 5px;
+  padding: 6px 2px 6px 5px;
   background: var(--sidebar);
 }
 .sidebar-bottom > .icon-button {
-  flex-shrink: 0;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 26px;
 }
 .sidebar-bottom [aria-expanded='true'] {
   background: var(--hover);
@@ -748,6 +762,9 @@ button:hover {
   line-height: 1.8;
 }
 .workspace-page-content {
+  display: contents;
+}
+.component-loading-content {
   display: contents;
 }
 .assistant-fullscreen-host {
@@ -1859,7 +1876,7 @@ button:hover {
   background: var(--line);
 }
 .compact-action-menu .menu-shortcut {
-  font-size: 11px;
+  font-size: 10px;
 }
 .compact-action-menu .menu-beta {
   margin-left: auto;
@@ -1912,11 +1929,15 @@ button:hover {
   position: fixed;
   z-index: 100;
   width: 190px;
+  max-width: calc(100vw - 16px);
   max-height: calc(100dvh - 16px);
   overflow-y: auto;
 }
 .block-context-menu:focus {
   outline: none;
+}
+.block-context-menu .menu-shortcut {
+  padding-left: 0;
 }
 .block-context-menu button > span {
   width: 15px;
@@ -1979,16 +2000,21 @@ button:hover {
   right: 0;
   top: 35px;
 }
+.document-global-trigger .document-global-chevron,
 .document-export-trigger .document-export-chevron {
   margin-left: auto;
 }
+.document-global-trigger[aria-expanded='true'],
 .document-export-trigger[aria-expanded='true'] {
   background: var(--hover);
+}
+.document-global-menu,
+.document-export-menu {
+  width: 184px;
 }
 .document-export-menu {
   position: fixed;
   z-index: 100;
-  width: 176px;
 }
 .document-export-renderer {
   position: fixed;
@@ -2098,6 +2124,15 @@ button:hover {
 }
 .menu-shortcut {
   margin-left: auto;
+  padding: 0 0 0 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-family: inherit;
+  font-weight: normal;
   font-size: 12px;
   color: var(--muted);
 }
@@ -2610,25 +2645,31 @@ button:hover {
 }
 .tano-prose .tano-html-fallback,
 .tano-prose .tano-unsupported-block {
-  color: var(--danger);
-  background: var(--danger-bg);
-  border: 1px solid var(--danger);
+  color: var(--text-secondary);
+  background: var(--surface);
+  border: 0;
   border-radius: 5px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .tano-prose .tano-html-fallback {
-  padding: 2px 5px;
+  /* Include wrapped source and padding in the line box so it cannot paint
+     over adjacent lines. A compact box keeps short anchors unobtrusive. */
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+  vertical-align: baseline;
+  padding: 2px 6px;
   font-family: var(--font-mono);
-}
-.tano-prose p:has(.tano-html-fallback),
-.tano-prose li:has(.tano-html-fallback) {
-  outline: 1px solid var(--danger);
-  background: var(--danger-bg);
+  font-size: 0.875em;
+  line-height: 1.6;
 }
 .tano-prose .tano-unsupported-block {
-  padding: 9px 12px;
-  margin: 13px 0;
+  padding: 8px 10px;
+  margin: 8px 0;
+}
+.tano-prose > .tano-unsupported-block {
+  margin-inline: var(--tano-block-frame-inset);
 }
 .tano-prose .tano-unsupported-label {
   display: block;
@@ -3722,7 +3763,7 @@ button:hover {
   position: absolute;
   top: var(--inspector-top);
   right: 12px;
-  max-height: calc(100% - var(--inspector-top) - 12px);
+  max-height: calc(100% - var(--inspector-top) - var(--inspector-bottom, 12px));
   z-index: 4;
   width: var(--inspector-width);
   border: 1px solid var(--line);
@@ -3743,6 +3784,7 @@ button:hover {
   min-height: 100%;
 }
 .inspector.inspector-outline {
+  --inspector-bottom: 24px;
   width: var(--inspector-width);
   max-width: calc(100% - 24px);
   right: 12px;
@@ -3765,21 +3807,22 @@ button:hover {
   width: 100%;
   max-width: 100%;
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: thin;
+  overflow: hidden;
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 16px 10px;
+  padding: 16px 10px 4px;
   box-shadow: 0 12px 28px #0f0f0f10;
   pointer-events: auto;
   overscroll-behavior: contain;
 }
+.inspector-outline .outline::-webkit-scrollbar {
+  display: none;
+}
 .inspector-outline-left .inspector-surface {
   align-self: flex-start;
 }
-.inspector-hover-outline:not(:hover):not(:focus-within) .inspector-surface {
+.inspector-hover-outline:not(:hover):not(:focus-within):not([data-outline-closing]) .inspector-surface {
   width: 32px;
   margin-right: 0;
   padding: 0;
@@ -3821,10 +3864,15 @@ button:hover {
   background: var(--green);
 }
 .outline {
-  flex-shrink: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  overscroll-behavior: contain;
 }
 .outline-controls {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 3px;
   padding: 0 3px 9px 10px;
@@ -3850,6 +3898,7 @@ button:hover {
 }
 .outline-search {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 7px;
   margin: 0 3px 9px;
@@ -3857,9 +3906,6 @@ button:hover {
   border: 1px solid var(--line);
   border-radius: 6px;
   color: var(--muted);
-}
-.outline-search:focus-within {
-  border-color: var(--green);
 }
 .outline-search input {
   width: 100%;
@@ -3908,7 +3954,7 @@ button:hover {
 .outline-empty-marker {
   display: none;
 }
-.inspector-hover-outline:not(:hover):not(:focus-within) .outline button {
+.inspector-hover-outline:not(:hover):not(:focus-within):not([data-outline-closing]) .outline button {
   height: 14px;
   padding: 0 8px;
   margin: 0;
@@ -3916,14 +3962,17 @@ button:hover {
   border-radius: 0;
   background: transparent;
 }
-.inspector-hover-outline:not(:hover):not(:focus-within) .outline-controls,
-.inspector-hover-outline:not(:hover):not(:focus-within) .outline-search {
+.inspector-hover-outline.inspector-outline-left:not(:hover):not(:focus-within):not([data-outline-closing]) .outline button {
+  justify-content: flex-start;
+}
+.inspector-hover-outline:not(:hover):not(:focus-within):not([data-outline-closing]) .outline-controls,
+.inspector-hover-outline:not(:hover):not(:focus-within):not([data-outline-closing]) .outline-search {
   display: none;
 }
-.inspector-hover-outline:not(:hover):not(:focus-within) .outline button:hover {
+.inspector-hover-outline:not(:hover):not(:focus-within):not([data-outline-closing]) .outline button:hover {
   background: transparent;
 }
-.inspector-hover-outline:not(:hover):not(:focus-within) .outline-marker {
+.inspector-hover-outline:not(:hover):not(:focus-within):not([data-outline-closing]) .outline-marker {
   display: block;
   width: var(--outline-marker-width, 20px);
   height: 1px;
@@ -3931,20 +3980,23 @@ button:hover {
   flex-shrink: 0;
   transition: background-color 150ms ease;
 }
-.inspector-hover-outline:not(:hover):not(:focus-within) .outline-active .outline-marker {
+.inspector-hover-outline:not(:hover):not(:focus-within):not([data-outline-closing]) .outline-active .outline-marker {
   height: 2px;
   background: var(--text);
 }
-.inspector-hover-outline:not(:hover):not(:focus-within) .outline-text {
+.inspector-hover-outline:not(:hover):not(:focus-within):not([data-outline-closing]) .outline-text {
   display: none;
 }
-.inspector-hover-outline:not(:hover):not(:focus-within) .panel-empty {
+.inspector-hover-outline:not(:hover):not(:focus-within):not([data-outline-closing]) .panel-empty {
   font-size: 0;
   padding: 0 8px;
   margin: 0;
   text-align: right;
 }
-.inspector-hover-outline:not(:hover):not(:focus-within) .outline-empty-marker {
+.inspector-hover-outline.inspector-outline-left:not(:hover):not(:focus-within):not([data-outline-closing]) .panel-empty {
+  text-align: left;
+}
+.inspector-hover-outline:not(:hover):not(:focus-within):not([data-outline-closing]) .outline-empty-marker {
   display: inline-block;
   width: 16px;
   height: 1px;
@@ -4087,6 +4139,7 @@ button:hover {
     padding: 20px 16px 40px;
   }
 }
+.workspace-no-tabs.workspace-no-tabs-loading { padding: 0; }
 .workspace-no-tabs {
   flex: 1;
   min-height: 0;
@@ -4173,7 +4226,7 @@ button:hover {
 @media (max-width: 700px) and (pointer: coarse) {
   .editor-empty-actions button { min-height: 44px; }
 }
-.pane-loading-skeleton { position: absolute; inset: var(--topbar-height, 44px) 0 0; z-index: 20; overflow: hidden; background: var(--paper); }
+.pane-loading-skeleton { box-sizing: border-box; position: absolute; inset: var(--topbar-height, 44px) 0 0; z-index: 20; overflow: hidden; background: var(--paper); }
 .welcome {
   flex: 1;
   min-height: 0;

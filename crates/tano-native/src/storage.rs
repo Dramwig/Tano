@@ -12,6 +12,9 @@ use uuid::Uuid;
 
 const MAX_DOCUMENT_BYTES: u64 = 8 * 1024 * 1024;
 
+#[path = "storage_scan_cache.rs"]
+mod scan_cache;
+
 #[derive(Serialize)]
 pub struct Workspace {
     pub id: String,
@@ -20,6 +23,8 @@ pub struct Workspace {
     pub files: Vec<Entry>,
     #[serde(rename = "newlyCreated", skip_serializing_if = "Option::is_none")]
     pub newly_created: Option<bool>,
+    #[serde(rename = "reinitialized", skip_serializing_if = "Option::is_none")]
+    pub reinitialized: Option<bool>,
 }
 #[derive(Serialize)]
 pub struct Entry {
@@ -50,6 +55,8 @@ pub fn hash(content: &[u8]) -> String {
     format!("{:x}", Sha256::digest(content))
 }
 fn hash_path(path: &Path) -> Result<String, String> {
+    #[cfg(test)]
+    scan_cache::content_read();
     let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
     let mut digest = Sha256::new();
     let mut buffer = [0_u8; 64 * 1024];
@@ -460,6 +467,10 @@ pub(crate) fn native_key(_path: &Path) -> String {
 
 const MAX_WORKSPACE_ENTRIES: usize = 20_000;
 
+pub(crate) fn ignored_workspace_name(name: &str) -> bool {
+    name.starts_with('.') || matches!(name, "node_modules" | "target" | "dist")
+}
+
 fn walk(
     root: &Path,
     dir: &Path,
@@ -477,9 +488,7 @@ fn walk(
             .to_string_lossy()
             .replace('\\', "/");
         let internal = path == ".tano" || path.starts_with(".tano/");
-        if (name.starts_with('.') && path != ".tano")
-            || matches!(name.as_str(), "node_modules" | "target" | "dist")
-        {
+        if path != ".tano" && ignored_workspace_name(&name) {
             continue;
         }
         let metadata = fs::symlink_metadata(item.path()).map_err(|e| e.to_string())?;
@@ -532,6 +541,8 @@ struct CachedIdentity {
     hash: String,
     native_key: String,
     version: i64,
+    stamp: String,
+    indexed: bool,
 }
 
 fn unique_unclaimed<'a>(
@@ -547,6 +558,24 @@ fn unique_unclaimed<'a>(
 }
 
 pub fn scan(root: &Path, id: &str, cache: &Path) -> Result<Workspace, String> {
+    scan_inner(root, id, cache, true)
+}
+
+#[cfg(test)]
+pub(crate) fn scan_without_content_cache(
+    root: &Path,
+    id: &str,
+    cache: &Path,
+) -> Result<Workspace, String> {
+    scan_inner(root, id, cache, false)
+}
+
+#[cfg(test)]
+pub(crate) fn take_scan_content_reads() -> usize {
+    scan_cache::take_content_reads()
+}
+
+fn scan_inner(root: &Path, id: &str, cache: &Path, reuse: bool) -> Result<Workspace, String> {
     crate::identity_manifest::recover_mutation(root, id, cache)?;
     crate::identity_manifest::recover_move(root, id, cache)?;
     let mut entries = Vec::new();
@@ -556,10 +585,22 @@ pub fn scan(root: &Path, id: &str, cache: &Path) -> Result<Workspace, String> {
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| e.to_string())?;
     crate::identity_manifest::hydrate(&transaction, root, id)?;
+    transaction
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS scan_fingerprints (
+        workspace_id TEXT NOT NULL, path TEXT NOT NULL, hash TEXT NOT NULL, stamp TEXT NOT NULL,
+        PRIMARY KEY(workspace_id,path));",
+        )
+        .map_err(|e| e.to_string())?;
     let old: HashMap<String, CachedIdentity> = {
         let mut statement = transaction
             .prepare(
-                "SELECT path, id, hash, native_key, version FROM files WHERE workspace_id=? AND deleted=0",
+                "SELECT f.path,f.id,f.hash,f.native_key,f.version,COALESCE(c.stamp,''),s.rowid IS NOT NULL
+                 FROM files f LEFT JOIN scan_fingerprints c
+                   ON c.workspace_id=f.workspace_id AND c.path=f.path AND c.hash=f.hash
+                 LEFT JOIN search_documents s
+                   ON s.workspace=f.workspace_id AND s.file_id=f.id AND s.path=f.path AND s.hash=f.hash
+                 WHERE f.workspace_id=? AND f.deleted=0",
             )
             .map_err(|e| e.to_string())?;
         let rows = statement
@@ -571,16 +612,27 @@ pub fn scan(root: &Path, id: &str, cache: &Path) -> Result<Workspace, String> {
                         hash: row.get(2)?,
                         native_key: row.get(3)?,
                         version: row.get(4)?,
+                        stamp: row.get(5)?,
+                        indexed: row.get(6)?,
                     },
                 ))
             })
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
     };
-    let native_keys: HashMap<String, String> = entries
+    let states: HashMap<String, scan_cache::FileState> = entries
         .iter()
         .filter(|entry| entry.kind != "directory")
-        .map(|entry| (entry.path.clone(), native_key(&root.join(&entry.path))))
+        .map(|entry| {
+            (
+                entry.path.clone(),
+                scan_cache::state(&root.join(&entry.path)),
+            )
+        })
+        .collect();
+    let native_keys: HashMap<String, String> = states
+        .iter()
+        .map(|(path, state)| (path.clone(), state.key.clone()))
         .collect();
     let mut current_native_counts: HashMap<&str, usize> = HashMap::new();
     for key in native_keys.values().filter(|key| !key.is_empty()) {
@@ -660,9 +712,15 @@ pub fn scan(root: &Path, id: &str, cache: &Path) -> Result<Workspace, String> {
             unresolved_hashes.insert(entry.path.clone(), digest);
         }
     }
-    transaction
-        .execute("UPDATE files SET deleted=1 WHERE workspace_id=?", [id])
-        .map_err(|e| e.to_string())?;
+    // Retain unchanged rows instead of tombstoning and rewriting the whole index.
+    for path in old.keys().filter(|path| !native_keys.contains_key(*path)) {
+        transaction
+            .execute(
+                "UPDATE files SET deleted=1 WHERE workspace_id=?1 AND path=?2",
+                params![id, path],
+            )
+            .map_err(|e| e.to_string())?;
+    }
     // Object IDs are source metadata. Remember imported IDs too, even after their file is deleted.
     for entry in entries.iter().filter(|entry| {
         entry.kind == "file"
@@ -686,14 +744,29 @@ pub fn scan(root: &Path, id: &str, cache: &Path) -> Result<Workspace, String> {
             entry.id = format!("folder:{}", entry.path);
             continue;
         }
-        let bytes = if entry.size <= 50 * 1024 * 1024 {
+        let state = &states[&entry.path];
+        let searchable = is_markdown(Path::new(&entry.path)) && entry.size <= MAX_DOCUMENT_BYTES;
+        let cached = old.get(&entry.path).filter(|cached| {
+            reuse
+                && !state.stamp.is_empty()
+                && cached.stamp == state.stamp
+                && cached.native_key == state.key
+                && is_short_id(&cached.id)
+                && (!searchable || cached.indexed)
+        });
+        // Only searchable Markdown needs a retained buffer. Hash attachments in
+        // bounded chunks instead of allocating up to 50 MiB per file per scan.
+        let bytes = if cached.is_none() && searchable {
+            #[cfg(test)]
+            scan_cache::content_read();
             Some(fs::read(root.join(&entry.path)).map_err(|e| e.to_string())?)
         } else {
             None
         };
-        let digest = match &bytes {
-            Some(bytes) => hash(bytes),
-            None => hash_path(&root.join(&entry.path))?,
+        let digest = match (cached, &bytes) {
+            (Some(cached), _) => cached.hash.clone(),
+            (_, Some(bytes)) => hash(bytes),
+            _ => hash_path(&root.join(&entry.path))?,
         };
         entry.content_hash = (!digest.is_empty()).then(|| digest.clone());
         if unresolved_hashes
@@ -716,16 +789,46 @@ pub fn scan(root: &Path, id: &str, cache: &Path) -> Result<Workspace, String> {
             .map(|cached| cached.version + i64::from(cached.hash != digest))
             .unwrap_or(1);
         claimed.insert(entry.id.clone());
-        crate::search::update(
-            &transaction,
-            id,
-            &entry.id,
-            &entry.path,
-            &digest,
-            bytes.as_deref().unwrap_or(&[]),
-        )?;
-        transaction.execute("INSERT INTO files (workspace_id, path, id, hash, version, deleted, native_key) VALUES (?1,?2,?3,?4,?6,0,?5) ON CONFLICT(workspace_id,path) DO UPDATE SET id=excluded.id, version=excluded.version, hash=excluded.hash, deleted=0, native_key=excluded.native_key", params![id, entry.path, entry.id, digest, key, version]).map_err(|e| e.to_string())?;
+        if cached.is_none() {
+            crate::search::update(
+                &transaction,
+                id,
+                &entry.id,
+                &entry.path,
+                &digest,
+                bytes.as_deref(),
+            )?;
+        }
+        if old.get(&entry.path).is_none_or(|previous| {
+            previous.id != entry.id
+                || previous.version != version
+                || previous.hash != digest
+                || previous.native_key != *key
+        }) {
+            transaction.prepare_cached("INSERT INTO files (workspace_id, path, id, hash, version, deleted, native_key) VALUES (?1,?2,?3,?4,?6,0,?5) ON CONFLICT(workspace_id,path) DO UPDATE SET id=excluded.id, version=excluded.version, hash=excluded.hash, deleted=0, native_key=excluded.native_key")
+                .map_err(|e| e.to_string())?.execute(params![id, entry.path, entry.id, digest, key, version]).map_err(|e| e.to_string())?;
+        }
+        if cached.is_none() {
+            let after = scan_cache::state(&root.join(&entry.path));
+            // A racing writer must never associate old bytes with a newer stamp.
+            let stamp = if scan_cache::unchanged(state, &after) {
+                &state.stamp
+            } else {
+                ""
+            };
+            transaction.prepare_cached("INSERT INTO scan_fingerprints VALUES(?1,?2,?3,?4)
+                ON CONFLICT(workspace_id,path) DO UPDATE SET hash=excluded.hash,stamp=excluded.stamp")
+                .map_err(|e| e.to_string())?.execute(params![id, entry.path, digest, stamp]).map_err(|e| e.to_string())?;
+        }
     }
+    transaction
+        .execute(
+            "DELETE FROM scan_fingerprints WHERE workspace_id=?1 AND NOT EXISTS (
+        SELECT 1 FROM files f WHERE f.workspace_id=scan_fingerprints.workspace_id
+        AND f.path=scan_fingerprints.path AND f.deleted=0)",
+            [id],
+        )
+        .map_err(|e| e.to_string())?;
     crate::search::prune(&transaction, id)?;
     crate::identity_manifest::publish(&transaction, root, id)?;
     transaction.commit().map_err(|e| e.to_string())?;
@@ -740,6 +843,7 @@ pub fn scan(root: &Path, id: &str, cache: &Path) -> Result<Workspace, String> {
         path: display_path(root),
         files: entries,
         newly_created: None,
+        reinitialized: None,
     })
 }
 
@@ -1043,6 +1147,10 @@ pub fn duplicate_entry(root: &Path, from: &str) -> Result<String, String> {
 #[cfg(test)]
 #[path = "storage_cross_volume_tests.rs"]
 mod cross_volume_tests;
+
+#[cfg(test)]
+#[path = "storage_scan_cache_tests.rs"]
+mod scan_cache_tests;
 
 #[cfg(test)]
 mod tests {

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { t } from '../i18n';
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { flattenFileTree, indexFileTree } from '../file-tree-model';
+import { treeRowHeight, useFileTreeViewport } from '../file-tree-viewport';
 import {
   ChevronRight,
   ChevronDown,
@@ -12,15 +14,16 @@ import {
   isDataTableFilePath,
   isMarkdown,
   parentPath,
-  isWorkspaceInternalPath,
   type FileEntry,
 } from '@tano/protocol';
 import FileTreeRename from './FileTreeRename.vue';
 import DocumentFileIcon from './DocumentFileIcon.vue';
+import LoadingSkeleton from './LoadingSkeleton.vue';
 
 const props = withDefaults(
   defineProps<{
     entries: FileEntry[];
+    loading?: boolean;
     documentIcons?: Readonly<Record<string, string>>;
     loadDocumentIcon?: (file: FileEntry, signal: AbortSignal) => Promise<string>;
     parent?: string;
@@ -63,16 +66,54 @@ let hoverExpandPath: string | null = null;
 const largeTree = computed(() => props.entries.length > 500);
 const isCollapsed = (path: string) =>
   largeTree.value ? !expanded.value.has(path) : collapsed.value.has(path);
-const children = computed(() =>
-  props.entries
-    .filter((f) => !isWorkspaceInternalPath(f.path) && parentPath(f.path) === props.parent)
-    .sort((a, b) => {
-      if (a.kind !== b.kind) return a.kind === 'directory' ? -1 : 1;
-      if (a.path === '开始使用.md') return -1;
-      if (b.path === '开始使用.md') return 1;
-      return a.name.localeCompare(b.name, 'zh-CN', { numeric: true });
-    }),
-);
+const treeElement = ref<HTMLElement>();
+const virtual = computed(() => !props.loading && props.depth === 0 && largeTree.value);
+const folders = computed(() => indexFileTree(props.entries));
+const rows = computed(() => props.loading ? [] : virtual.value
+  ? flattenFileTree(folders.value, props.parent, props.depth, isCollapsed)
+  : (folders.value.get(props.parent) ?? []).map((file, index, children) =>
+      ({ file, depth: props.depth, position: index + 1, siblings: children.length })));
+const { windowRows, focused, reveal, focus } = useFileTreeViewport(treeElement, virtual, rows,
+  () => [props.renamingId, props.draggedId, props.contextSelected]);
+const tabStop = computed(() => rows.value.some(row => row.file.id === focused.value) ? focused.value : rows.value[0]?.file.id);
+function getVisibleIds(): string[] {
+  return virtual.value ? rows.value.map(row => row.file.id)
+    : [...(treeElement.value?.querySelectorAll<HTMLElement>('.tree-row[data-entry-id]') ?? [])].map(row => row.dataset.entryId!);
+}
+defineExpose({ getVisibleIds });
+watch(() => props.renamingId, async id => {
+  if (!id || !virtual.value) return;
+  const file = props.entries.find(file => file.id === id);
+  for (let path = file && parentPath(file.path); path; path = parentPath(path)) expanded.value.add(path);
+  await nextTick();
+  if (props.renamingId === id) reveal(id);
+}, { flush: 'post' });
+
+function rowKeydown(file: FileEntry, event: KeyboardEvent) {
+  keyboardContext(file, event);
+  if (!virtual.value || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+  const index = rows.value.findIndex(row => row.file.id === file.id);
+  let target: string | undefined;
+  if (event.key === 'ArrowDown') target = rows.value[index + 1]?.file.id;
+  else if (event.key === 'ArrowUp') target = rows.value[index - 1]?.file.id;
+  else if (event.key === 'Home') target = rows.value[0]?.file.id;
+  else if (event.key === 'End') target = rows.value.at(-1)?.file.id;
+  else if (event.key === 'ArrowRight' && file.kind === 'directory') {
+    if (isCollapsed(file.path)) toggle(file.path);
+    else target = folders.value.get(file.path)?.[0]?.id;
+  } else if (event.key === 'ArrowLeft') {
+    if (file.kind === 'directory' && !isCollapsed(file.path)) toggle(file.path);
+    else target = rows.value.find(row => row.file.path === parentPath(file.path))?.file.id;
+  } else return;
+  event.preventDefault();
+  if (target) void focus(target);
+}
+function finishRename(file: FileEntry) {
+  // Keep the row alive across removal of the editor, even if it was offscreen.
+  // FileTreeRename restores focus for Enter/Escape; blur must keep the new target.
+  if (virtual.value) focused.value = file.id;
+  emit('renameFinished', file);
+}
 function toggle(path: string) {
   const toggled = largeTree.value ? expanded.value : collapsed.value;
   if (toggled.has(path)) toggled.delete(path);
@@ -181,7 +222,10 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
 
 <template>
   <ul
+    ref="treeElement"
     class="file-tree"
+    :class="{ 'file-tree-virtual': virtual }"
+    :style="virtual ? { height: `${rows.length * treeRowHeight}px` } : undefined"
     :role="depth === 0 ? 'tree' : 'group'"
     :aria-label="depth === 0 ? t('文件和文件夹') : undefined"
     @contextmenu.self.stop.prevent="emit('contextBlank', parent, $event)"
@@ -189,7 +233,11 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
     @dragleave="emit('dragLeave', parent, $event)"
     @drop="emit('drop', parent, $event)"
   >
-    <li v-for="file in children" :key="file.id">
+    <li v-if="loading" role="none"><LoadingSkeleton variant="tree" :rows="6" :label="t('正在加载…')" /></li>
+    <li v-for="{ file, depth: rowDepth, position, siblings, index } in windowRows" :key="file.id"
+      :class="{ 'file-tree-virtual-row': virtual }"
+      :style="virtual ? { top: `${index * treeRowHeight}px`, height: `${treeRowHeight}px` } : undefined"
+      role="none">
       <component
         :is="file.id === renamingId ? 'div' : 'button'"
         class="tree-row"
@@ -204,10 +252,14 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
             file.kind === 'file' && !isMarkdown(file.path) && !isDataTableFilePath(file.path),
         }"
         :draggable="file.id !== renamingId && (canDrag?.(file) ?? false)"
-        :style="{ paddingLeft: `${4 + depth * 17}px` }"
+        :style="{ paddingLeft: `${4 + rowDepth * 17}px` }"
         :title="file.path"
         :data-entry-id="file.id"
         :aria-selected="selectedIds.has(file.id)"
+        :aria-level="rowDepth + 1"
+        :aria-posinset="position"
+        :aria-setsize="siblings"
+        :tabindex="virtual && file.id !== renamingId ? (file.id === tabStop ? 0 : -1) : undefined"
         :aria-expanded="file.kind === 'directory' ? !isCollapsed(file.path) : undefined"
         @click="clickEntry(file, $event)"
         @mousedown="suppressHeldClick(file, $event)"
@@ -217,9 +269,9 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
         @pointercancel="cancelTouchHold"
         @pointerleave="cancelTouchHold"
         @pointerenter="emit('prefetch', file)"
-        @focus="emit('prefetch', file)"
+        @focus="focused = file.id; emit('prefetch', file)"
         @contextmenu.prevent="contextEntry(file, $event)"
-        @keydown="keyboardContext(file, $event)"
+        @keydown="rowKeydown(file, $event)"
         @dragstart="emit('dragStart', file, $event)"
         @dragend="emit('dragEnd')"
         @dragover="rowDragOver(file, $event)"
@@ -258,7 +310,7 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
           v-if="file.id === renamingId && renameEntry"
           :file="file"
           :rename="renameEntry"
-          @finish="emit('renameFinished', file)"
+          @finish="finishRename(file)"
         />
         <span v-else class="tree-label">{{
           file.name.replace(/(\.table\.json|\.(md|markdown))$/i, '')
@@ -266,7 +318,7 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
         <span v-if="file.name === 'AGENTS.md'" class="agent-file-dot" />
       </component>
       <FileTree
-        v-if="file.kind === 'directory' && !isCollapsed(file.path)"
+        v-if="!virtual && file.kind === 'directory' && !isCollapsed(file.path)"
         :entries="entries"
         :document-icons="documentIcons"
         :load-document-icon="loadDocumentIcon"
@@ -294,3 +346,8 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
     </li>
   </ul>
 </template>
+
+<style>
+.file-tree-virtual { position: relative; overflow-anchor: none; }
+.file-tree-virtual-row { position: absolute; left: 0; right: 0; display: flow-root; }
+</style>

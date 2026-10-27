@@ -242,7 +242,7 @@ onBeforeUnmount(() => {
     @pointerleave="hovered = false; leavePreview()"
     @focus="showPreview" @blur="leavePreview" @keydown.tab="triggerTab"
     @keydown.down.prevent="openHelp()"
-  ><CircleHelp :size="17" /></button>
+  ><CircleHelp :size="17" :stroke-width="1.6" /></button>
 
   <Teleport to="body">
     <section v-if="preview && !opened && available" :id="`${id}-preview`" ref="previewPanel" data-help-surface

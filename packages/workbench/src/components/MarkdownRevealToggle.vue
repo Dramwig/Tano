@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { t } from '../i18n';
-import { Eye, EyeOff } from 'lucide-vue-next';
 
 defineProps<{ modelValue: boolean; source: boolean }>();
 defineEmits<{ 'update:modelValue': [value: boolean] }>();
@@ -21,7 +20,11 @@ defineEmits<{ 'update:modelValue': [value: boolean] }>();
     @mousedown.prevent
     @click="$emit('update:modelValue', !modelValue)"
   >
-    <Eye v-if="modelValue" :size="17" />
-    <EyeOff v-else :size="17" />
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+      <path d="m6 8-4 4 4 4M18 8l4 4-4 4M10 4h4M10 20h4" />
+      <path v-if="modelValue" d="M12 4v16" />
+      <path v-else d="M12 4v5M12 15v5M3 3l18 18" />
+    </svg>
   </button>
 </template>

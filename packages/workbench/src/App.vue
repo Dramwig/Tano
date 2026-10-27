@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import WorkspaceSyncPanel from './components/WorkspaceSyncPanel.vue';
 import { vScrollFade } from './scroll-fade';
+import { vOutlineMotion } from './outline-motion';
 import { createWorkspaceSync, syncEvent } from './workspace-sync';
 import { t } from './i18n';
+import { focusedOutlineIndices } from './outline-tree';
 import AppTooltip from './components/AppTooltip.vue';
 import { assistantDiscussionPrompt } from './assistant/language';
 import { assistantSourceRange } from './assistant/source-selection';
@@ -13,6 +15,7 @@ import {
   nextTick,
   onBeforeUnmount,
   onMounted,
+  provide,
   ref,
   shallowReactive,
   shallowRef,
@@ -36,15 +39,14 @@ import {
   X,
   Check,
   Circle,
-  Code2,
   MoreHorizontal,
   ArrowUpRight,
   Archive,
   Clock3,
   History,
   List,
+  ListTree,
   ListTodo,
-  ListOrdered,
   CircleHelp,
   ArrowLeft,
   ArrowRight,
@@ -68,9 +70,6 @@ import {
   Settings2,
   SquarePen,
   Pin,
-  Space,
-  Heading1,
-  SlidersHorizontal,
   LockKeyhole,
   MoveHorizontal,
   Undo2,
@@ -79,7 +78,9 @@ import {
   Files,
   Table2,
 } from 'lucide-vue-next';
-const MarkdownEditor = loadingComponent(() => import('@tano/editor'), 'editor');
+import MarkdownEditorSkeleton from './components/MarkdownEditorSkeleton.vue';
+import DocumentLoading from './components/DocumentLoading.vue';
+const MarkdownEditor = defineAsyncComponent({ loader: () => import('@tano/editor'), delay: 0, loadingComponent: MarkdownEditorSkeleton });
 const CalloutIconPicker = defineAsyncComponent(() => import('./components/CalloutIconPicker.vue'));
 import { defaultEditorPreferences, normalizeSelectionWrapping } from '@tano/editor/runtime';
 import type { EditorPreferences } from '@tano/editor/runtime';
@@ -96,6 +97,7 @@ import EmptyEditor from './components/EmptyEditor.vue';
 import DocumentStarter from './components/DocumentStarter.vue';
 import { documentStarter, templateStarterBody } from './document-starters';
 import MarkdownRevealToggle from './components/MarkdownRevealToggle.vue';
+import SourceCodeIcon from './components/SourceCodeIcon.vue';
 import DocumentTitle from './components/DocumentTitle.vue';
 import { appearanceText } from './document-appearance';
 import { useDocumentFavicon } from './document-favicon';
@@ -103,6 +105,8 @@ import WorkspaceBreadcrumb from './components/WorkspaceBreadcrumb.vue';
 import DocumentStatus from './components/DocumentStatus.vue';
 import { documentStatusItems, type DocumentSyncStatus } from './document-status';
 import DocumentScrollbar from './components/DocumentScrollbar.vue';
+import PageDisplayOptions from './components/PageDisplayOptions.vue';
+import DocumentGlobalMenu from './components/DocumentGlobalMenu.vue';
 import DocumentExportMenu from './components/DocumentExportMenu.vue';
 import type { ImportRecord } from './components/ImportPanel.vue';
 const ImportPanel = defineAsyncComponent(() => import('./components/ImportPanel.vue'));
@@ -110,7 +114,8 @@ const TemplateLibrary = loadingComponent(() => import('./components/TemplateLibr
 import type { DocumentExportFormat } from './document-export';
 // Discussion and annotation surfaces decide their own visibility and loading state.
 const DocumentComments = defineAsyncComponent(() => import('./components/DocumentComments.vue'));
-const DocumentSuggestions = loadingComponent(() => import('./components/DocumentSuggestions.vue'), 'document');
+// Keep the document layout mounted while only the editor implementation loads.
+import DocumentSuggestions from './components/DocumentSuggestions.vue';
 import ReferenceGraphPopover from './components/ReferenceGraphPopover.vue';
 const SelectionTodoDialog = defineAsyncComponent(() => import('./components/SelectionTodoDialog.vue'));
 import { planDocumentSource, selectionTodoSession } from './selection-todo';
@@ -184,7 +189,7 @@ import type { ObjectRecord } from './workspace-objects';
 import { usePlanStore } from './stores/plans';
 import { usePlanSyncStore } from './stores/plan-sync';
 import { planKey } from './personal-plans';
-const SidebarPlan = loadingComponent(() => import('./components/SidebarPlan.vue'));
+const SidebarPlan = loadingComponent(() => import('./components/SidebarPlan.vue'), 'tree');
 import SidebarNavigation from './components/SidebarNavigation.vue';
 import WorkspaceSidebar from './components/WorkspaceSidebar.vue';
 import HelpLauncher from './components/HelpLauncher.vue';
@@ -195,11 +200,11 @@ import { useWorkbenchNavigation, type WorkspaceSidebarView } from './workbench-n
 import { ASSISTANT_TAB_ID, openAssistantPage } from './assistant/navigation';
 const SidebarAssistant = loadingComponent(() => import('./components/SidebarAssistant.vue'));
 import ButtonVisibilityGroup from './components/ButtonVisibilityGroup.vue';
-import InlineAssistantInput from './components/InlineAssistantInput.vue';
+const InlineAssistantInput = defineAsyncComponent(() => import('./components/InlineAssistantInput.vue'));
 import type { InlineAssistantAnchor } from './components/InlineAssistantInput.vue';
 const CalendarView = loadingComponent(() => import('./components/CalendarView.vue'), 'document');
 const DataTablePage = loadingComponent(() => import('./components/DataTablePage.vue'), 'document');
-const WorkspaceViewPage = loadingComponent(() => import('./components/WorkspaceViewPage.vue'), 'document');
+const WorkspaceViewTab = loadingComponent(() => import('./components/WorkspaceViewTab.vue'), 'document');
 import { isTableTab, TABLES_TAB_ID, tableFileId } from './data-tables';
 import { isDataTableFilePath } from '@tano/protocol';
 const PluginInstaller = defineAsyncComponent(() => import('./components/PluginInstaller.vue'));
@@ -220,9 +225,10 @@ import { resolveWikiLink } from './wiki-links';
 import { applyFileMovePreview, planFileMovePreview, type FileMovePreview } from './file-move';
 import {
   isSidebarToggleShortcut, matchesShortcut, parseShortcutBindings, readShortcutBindings,
-  saveShortcutBindings, shortcutLabel, shortcutPreferenceKey,
+  saveShortcutBindings, shortcutLabel, shortcutKeys, shortcutPreferenceKey,
 } from './shortcuts';
 import type { ShortcutId } from './shortcuts';
+import { configuredEditorShortcuts } from './configured-editor-shortcuts';
 import { createDetachedTabWindow, detachedTabRequest, reportDetachedReady } from './detach-tab';
 import type { DetachedDropPoint } from './detach-tab';
 import {
@@ -252,7 +258,7 @@ import {
 } from './settings-window';
 import type { SettingsCommand, SettingsPageId, SettingsSnapshot } from './settings-window';
 
-const props = defineProps<{ initialWorkspace?: string; createWorkspace?: boolean }>();
+const props = defineProps<{ initialWorkspace?: string; resolveInitialWorkspace?: () => Promise<string | undefined>; createWorkspace?: boolean }>();
 const emit = defineEmits<{ ready: [] }>();
 const store = useWorkspaceStore();
 const startupPending = ref(true);
@@ -314,7 +320,6 @@ const sidebarHeaderItems = computed(() => [
   ...extensionViews
     .filter((view) => view.header)
     .map((view) => ({ id: view.id, label: view.label })),
-  { id: 'commands', get label() { return t('命令中心'); } },
 ]);
 const repositoryActionItems = computed(() => [
   ...(store.workspaceSettings.showGraph ? [{ id: 'graph', get label() { return t('关系图谱'); } }] : []),
@@ -575,7 +580,10 @@ watch(
     optimisticFileMove.value = null;
   },
 );
-const { workspace, active, activeId, activities, fatal, busy } = storeToRefs(store);
+const { workspace, active, activeId, activities, fatal, busy, openingWorkspace } = storeToRefs(store);
+const filesPending = computed(() => store.workspaceLoading.files || (startupPending.value && !workspace.value));
+const sessionPending = computed(() => filesPending.value || store.workspaceLoading.session);
+const switchingWorkspace = computed(() => store.workspaceLoading.files);
 if (!native) useDocumentFavicon(() => workspace.value && active.value ? appearanceText(active.value.content, 'icon') : '');
 const webPageRouting = !native && (store.isDemo || store.isWeb);
 const initialPageRoute = webPageRouting ? parsePageRoute(window.location.pathname) : null;
@@ -879,7 +887,17 @@ function syncShortcutPreferences(event: StorageEvent) {
 }
 onMounted(() => window.addEventListener('storage', syncShortcutPreferences));
 onBeforeUnmount(() => window.removeEventListener('storage', syncShortcutPreferences));
-function shortcutHint(id: ShortcutId) { return shortcutLabel(shortcuts.value[id]); }
+function shortcutHint(id: ShortcutId) { const first = shortcutKeys(shortcuts.value[id])[0]; return first ? shortcutLabel(first) : ''; }
+provide('tano-shortcut-bindings', shortcuts);
+const routeConfiguredEditorShortcut = configuredEditorShortcuts(() => shortcuts.value,
+  () => !settingsPanel.value && !modal.value && !commandPaletteOpened.value && !updateLock.value,
+  () => paneEditorScrolls.get(store.activePaneId), id => {
+    const action = ({ deleteBlock: 'delete', moveBlockUp: 'move-up', moveBlockDown: 'move-down', indentBlock: 'indent', outdentBlock: 'outdent' } as Record<string, string>)[id];
+    if (action) paneEditors.get(store.activePaneId)?.blockShortcut(action);
+  });
+// Register during setup, before child editors install their native capture handlers.
+window.addEventListener('keydown', routeConfiguredEditorShortcut, true);
+onBeforeUnmount(() => window.removeEventListener('keydown', routeConfiguredEditorShortcut, true));
 watch(toolbarMode, (value) => saveTextPreference('toolbarMode', value));
 function syncToolbarPreference(event: StorageEvent) {
   if (event.key === toolbarPreferenceKey || event.key === null)
@@ -917,7 +935,6 @@ const pageWidthWritable = computed(
     !!workspace.value &&
     !workspace.value.readOnly &&
     !active.value?.missing &&
-    !store.capabilitySaving &&
     !store.capabilityError,
 );
 function setLimitPageWidth(value: boolean) {
@@ -981,13 +998,25 @@ const source = computed({
   },
 });
 const pageLocked = ref(false);
+const workspaceLocked = ref(false);
+watch(
+  () => workspace.value?.id,
+  (id) => { workspaceLocked.value = !!id && readPreference(`workspaceLocked.${id}`, false); },
+  { immediate: true },
+);
+function toggleWorkspaceLock() {
+  const id = workspace.value?.id;
+  if (!id) return;
+  workspaceLocked.value = !workspaceLocked.value;
+  savePreference(`workspaceLocked.${id}`, workspaceLocked.value);
+}
 function pageLockPreferenceKey(workspaceId: string, documentId: string) {
   return `pageLocked.${workspaceId}.${documentId}`;
 }
 function togglePageLock() {
   const currentWorkspace = workspace.value;
   const document = active.value;
-  if (!currentWorkspace || !document) return;
+  if (!currentWorkspace || !document || workspaceLocked.value) return;
   pageLocked.value = !pageLocked.value;
   savePreference(pageLockPreferenceKey(currentWorkspace.id, document.id), pageLocked.value);
 }
@@ -1003,6 +1032,7 @@ watch(
 );
 const editorReadonly = computed(
   () =>
+    workspaceLocked.value ||
     pageLocked.value ||
     updateLock.value ||
     store.busy ||
@@ -1014,7 +1044,7 @@ const editorReadonly = computed(
 );
 async function renameDocumentTitle(workspaceId: string, id: string, from: string, to: string) {
   if (workspace.value?.id !== workspaceId) throw new Error(t('工作空间已切换，请重新打开文档后重试'));
-  if (updateLock.value || store.busy || workspace.value.readOnly || sessionBlocksFileMutation(id))
+  if (workspaceLocked.value || updateLock.value || store.busy || workspace.value.readOnly || sessionBlocksFileMutation(id))
     throw new Error(t('当前文档暂时无法重命名'));
   const doc = store.documentForTab(id);
   if (!doc || store.displayPath(doc) !== from) throw new Error(t('文件位置已变化，请重新输入标题'));
@@ -1053,6 +1083,8 @@ watch(activeId, () => { touchOutlineOpen.value = false; });
 const outlineOnLeft = ref(readPreference('outlineOnLeft', false));
 const outlinePinned = ref(readPreference('outlinePinned', false));
 const outlineSearchOpen = ref(false);
+const outlineAutoCollapse = ref(readPreference('outlineAutoCollapse', false));
+watch(outlineAutoCollapse, (enabled) => savePreference('outlineAutoCollapse', enabled));
 const outlineSearch = ref('');
 const outlineSearchInput = ref<HTMLInputElement>();
 watch(showOutline, (visible) => {
@@ -1144,6 +1176,7 @@ const treeFiles = computed(() => {
     ? applyFileMovePreview(files, preview.changes)
     : files;
 });
+const fileTree = ref<InstanceType<typeof FileTree>>();
 const treeDocumentIcons = computed(() => Object.fromEntries(
   [
     ...store.documents.map(doc => [doc.id, appearanceText(doc.content, 'icon')]),
@@ -1204,7 +1237,7 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
       context: paneSelections[store.activePaneId] ?? defaultSelectionContext, features: store.capabilities.features,
       run: (name, value) => editor.value?.command(name, value) }),
     { id: 'workbench.source', category: t('视图'), label: source.value ? t('返回可视化编辑') : t('切换源码模式'), available: standardEditor, keywords: 'Markdown source', run: () => { source.value = !source.value; } },
-    { id: 'workbench.reading', category: t('视图'), label: pageLocked.value ? t('退出阅读模式') : t('进入阅读模式'), available: hasDocument, keywords: t('锁定页面 解锁'), run: togglePageLock },
+    { id: 'workbench.reading', category: t('视图'), label: pageLocked.value ? t('退出阅读模式') : t('进入阅读模式'), available: hasDocument && !workspaceLocked.value, keywords: t('锁定页面 解锁'), run: togglePageLock },
     { id: 'workbench.width', category: t('视图'), label: limitPageWidth.value ? t('展开页面全宽') : t('限制页面宽度'), available: hasDocument && pageWidthWritable.value, run: () => setLimitPageWidth(!limitPageWidth.value) },
     { id: 'workbench.outline', category: t('视图'), label: showOutline.value ? t('隐藏文档目录') : t('显示文档目录'), available: hasDocument, keywords: t('大纲'), run: () => { showOutline.value = !showOutline.value; } },
     { id: 'workbench.properties', category: t('视图'), label: showDocumentProperties.value ? t('隐藏文档属性') : t('显示文档属性'), available: hasDocument, run: () => { showDocumentProperties.value = !showDocumentProperties.value; } },
@@ -1917,6 +1950,7 @@ function setPaneElement(kind: 'scroll' | 'editor' | 'source', id: string, value:
 }
 function paneReadonly(doc: OpenDocument) {
   return (
+    workspaceLocked.value ||
     updateLock.value ||
     store.busy ||
     !!workspace.value?.readOnly ||
@@ -1929,8 +1963,8 @@ function paneReadonly(doc: OpenDocument) {
   );
 }
 function paneDocumentStatus(doc: OpenDocument) {
-  const locked = doc.id === store.active?.id ? pageLocked.value
-    : readPreference(pageLockPreferenceKey(workspace.value?.id ?? '', doc.id), false);
+  const locked = workspaceLocked.value || (doc.id === store.active?.id ? pageLocked.value
+    : readPreference(pageLockPreferenceKey(workspace.value?.id ?? '', doc.id), false));
   let sync: DocumentSyncStatus | undefined = extensions.documentStatus?.(doc.id);
   if (!sync && workspaceSync.state.value.backend === 'git') {
     if (workspaceSync.state.value.conflicts.includes(doc.path)) sync = { kind: 'error', detail: t('当前文章存在 Git 同步冲突。') };
@@ -2044,7 +2078,7 @@ const outlineCoverBottom = ref(0);
 const outlinePosition = computed(() => {
   if (!outlineCoverBottom.value) return undefined;
   const top = `max(var(--inspector-top), ${outlineCoverBottom.value}px)`;
-  return { top, maxHeight: `calc(100% - ${top} - 12px)` };
+  return { top, maxHeight: `calc(100% - ${top} - var(--inspector-bottom, 12px))` };
 });
 let headingFrame: number | undefined;
 async function dragPaneWindow(event: MouseEvent) {
@@ -2236,9 +2270,7 @@ function workspaceEntryContextAction(action: 'open' | 'reveal') {
   }
 }
 function selectFileTreeEntry(file: FileEntry, event: MouseEvent) {
-  const visibleIds = [
-    ...document.querySelectorAll<HTMLElement>('.tree-scroll .tree-row[data-entry-id]'),
-  ].map((row) => row.dataset.entryId!);
+  const visibleIds = fileTree.value?.getVisibleIds() ?? [];
   const next = selectTreeEntry(
     { ids: selectedEntryIds.value, anchor: selectionAnchorId.value },
     file.id,
@@ -2843,8 +2875,12 @@ async function openWikiLink(target: string) {
 const outline = computed(() => headings(active.value?.content ?? ''));
 const visibleOutline = computed(() => {
   const query = outlineSearch.value.trim().toLocaleLowerCase();
+  const focused = outlineAutoCollapse.value && !query
+    ? focusedOutlineIndices(outline.value, activeHeading.value)
+    : undefined;
   return outline.value.flatMap((heading, index) =>
-    !query || heading.text.toLocaleLowerCase().includes(query) ? [{ heading, index }] : [],
+    (!focused || focused.has(index)) && (!query || heading.text.toLocaleLowerCase().includes(query))
+      ? [{ heading, index }] : [],
   );
 });
 async function toggleOutlineSearch(event?: Event) {
@@ -2857,6 +2893,14 @@ async function toggleOutlineSearch(event?: Event) {
   outlineSearchOpen.value = true;
   await nextTick();
   outlineSearchInput.value?.focus();
+}
+function releaseOutlinePointerFocus(event: PointerEvent) {
+  if (panel.value !== 'outline' || touchLayout.value || !hoverOutline || outlinePinned.value || event.pointerType === 'touch') return;
+  const surface = event.currentTarget as HTMLElement;
+  const focused = document.activeElement;
+  // Mouse-opened search must not act as a pin. Keyboard focus still expands
+  // the outline until the pointer leaves it, and the search state is retained.
+  if (focused instanceof HTMLElement && surface.contains(focused)) focused.blur();
 }
 function toggleOutlinePin(event: MouseEvent) {
   outlinePinned.value = !outlinePinned.value;
@@ -3729,6 +3773,7 @@ function toggleSidebar() {
   workspaceMenu.value = false;
 }
 function handleWorkbenchShortcut(event: KeyboardEvent) {
+  if (openingWorkspace.value) return;
   if (event.defaultPrevented || importPanel.value || settingsPanel.value || commandPaletteOpened.value || updateLock.value || modal.value) return;
   let action: (() => void) | undefined;
   if (!detachedWindow && workspace.value && isSidebarToggleShortcut(event, shortcuts.value)) action = toggleSidebar;
@@ -3748,6 +3793,7 @@ function handleWorkbenchShortcut(event: KeyboardEvent) {
   action();
 }
 function handlePageSearchShortcut(event: KeyboardEvent) {
+  if (openingWorkspace.value) return;
   if (
     importPanel.value ||
     settingsPanel.value ||
@@ -3781,6 +3827,7 @@ function handlePageSearchShortcut(event: KeyboardEvent) {
   }
 }
 function keydown(event: KeyboardEvent) {
+  if (openingWorkspace.value) return;
   if (importPanel.value) return;
   if (settingsPanel.value) {
     if (event.key === 'Escape') settingsPanel.value = false;
@@ -3823,11 +3870,7 @@ function keydown(event: KeyboardEvent) {
     }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
       event.preventDefault();
-      selectedEntryIds.value = new Set(
-        [...document.querySelectorAll<HTMLElement>('.tree-scroll .tree-row[data-entry-id]')].map(
-          (row) => row.dataset.entryId!,
-        ),
-      );
+      selectedEntryIds.value = new Set(fileTree.value?.getVisibleIds() ?? []);
       selectionAnchorId.value = treeRow.dataset.entryId ?? null;
       return;
     }
@@ -3982,7 +4025,7 @@ onMounted(async () => {
   try {
     await workbenchSession.initialize(async () => {
       if (props.createWorkspace) await createNewWorkspace();
-      else await store.initialize(initialPageRoute?.workspaceId ?? props.initialWorkspace);
+      else await store.initialize(initialPageRoute?.workspaceId ?? (props.resolveInitialWorkspace ? await props.resolveInitialWorkspace() : props.initialWorkspace));
     });
   } finally {
     navigation.restore();
@@ -3992,6 +4035,8 @@ onMounted(async () => {
   }
   if (unmounted) return;
   emit('ready');
+  await nextTick();
+
   if (webPageRouting) {
     pageRouteReady = true;
     if (props.createWorkspace || initialPageRouteSuperseded) writePageRoute(true);
@@ -4030,9 +4075,10 @@ onMounted(async () => {
   if (native) {
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
     if (localNative)
-      unlistenWatchError = await listen<string>('workspace-watch-error', (event) =>
-        store.report(t('文件监听遇到错误：{0}。目录仍会定期自动检查。', [event.payload])),
-      );
+      unlistenWatchError = await listen<string>('workspace-watch-error', (event) => {
+        store.enableWorkspacePolling();
+        store.report(t('文件监听遇到错误：{0}。目录仍会定期自动检查。', [event.payload]));
+      });
     if (!mobile)
       unlistenClose = await getCurrentWindow().onCloseRequested(async (event) => {
         event.preventDefault();
@@ -4146,6 +4192,7 @@ const helpBlocked = computed(() => !!(
       <PanelLeftOpen :size="16" :stroke-width="1.6" />
     </button>
     <DesktopTabs
+      :loading="sessionPending"
       detachable
       :file-drag="tabFileDrag"
       @files-dropped="fileDragEnd"
@@ -4168,7 +4215,7 @@ const helpBlocked = computed(() => !!(
     }"
   >
     <AssistantButterflyLayer :controller="butterfly" />
-    <Teleport to="body"><FileMetadataPanel v-if="fileMetadataTarget" v-bind="fileMetadataTarget" @close="fileMetadataTarget = null" /></Teleport>
+    <Teleport to="body"><FileMetadataPanel v-if="fileMetadataTarget && !switchingWorkspace" v-bind="fileMetadataTarget" @close="fileMetadataTarget = null" /></Teleport>
     <Transition name="sidebar-dismiss">
       <button
         v-if="sidebar && !detachedWindow && compactPanes"
@@ -4213,7 +4260,6 @@ const helpBlocked = computed(() => !!(
                 :actions="viewActions[view.id]"
               />
             </template>
-            <button v-if="isVisible('commands')" type="button" class="icon-button" :aria-label="t('打开命令中心')" :data-tooltip="t('命令中心')" :data-tooltip-shortcut="shortcuts.commandPalette" @click="commandPaletteOpened = true"><Search :size="17" /></button>
           </ButtonVisibilityGroup>
         </div>
         <SidebarNavigation
@@ -4327,7 +4373,9 @@ const helpBlocked = computed(() => !!(
             @drop.self="fileDrop('', $event)"
           >
             <FileTree
-              v-if="workspace"
+              ref="fileTree"
+              v-if="workspace || startupPending || filesPending"
+              :loading="filesPending"
               :entries="treeFiles"
               :document-icons="treeDocumentIcons"
               :load-document-icon="loadTreeDocumentIcon"
@@ -4351,7 +4399,7 @@ const helpBlocked = computed(() => !!(
               @rename-finished="finishTreeRename"
             />
             <div
-              v-if="!noteCount"
+              v-if="!filesPending && !noteCount"
               class="tree-empty"
               @contextmenu.prevent="openDirectoryContextMenu('', $event)"
             >
@@ -4363,8 +4411,11 @@ const helpBlocked = computed(() => !!(
           <PluginInstaller sidebar @objects="showObjects()" />
         </section>
         <section v-if="sidebarView === 'views'" class="sidebar-content workspace-views-sidebar" :aria-label="t('数据库与视图')">
+          <LoadingSkeleton v-if="store.workspaceLoading.views" :rows="4" />
+          <template v-else>
           <button @click="store.openDataTable()"><Table2 :size="15" />{{ t('数据表') }}</button>
           <button v-for="record in store.workspaceViews" :key="record.view.id" @click="store.openWorkspaceView(record.view.id)">{{ record.view.name }}</button>
+          </template>
         </section>
         <SidebarAssistant v-if="sidebarView === 'assistant'" @open="compactPanes && (sidebar = false)" />
         <SidebarPlan
@@ -4436,7 +4487,7 @@ const helpBlocked = computed(() => !!(
                       ? t('删除所选文档')
                       : t('将所选条目移入回收站')
                 }}
-              </button>
+              <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('deleteFile') }}</kbd></button>
             </template>
             <template v-else>
               <template v-if="fileContextMenu.file.kind === 'directory'">
@@ -4469,7 +4520,7 @@ const helpBlocked = computed(() => !!(
                   @click="fileContextAction('rename')"
                 >
                   <Pencil :size="15" />{{ t('重命名文件夹') }}
-                </button>
+                <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd></button>
               </template>
               <template v-else>
                 <button
@@ -4508,7 +4559,7 @@ const helpBlocked = computed(() => !!(
                   @click="fileContextAction('rename')"
                 >
                   <Pencil :size="15" />{{ t('重命名文档') }}
-                </button>
+                <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd></button>
                 <button
                   v-else-if="attachments || isDataTableFilePath(fileContextMenu.file.path)"
                   role="menuitem"
@@ -4516,7 +4567,7 @@ const helpBlocked = computed(() => !!(
                   @click="fileContextAction('rename')"
                 >
                   <Pencil :size="15" />{{ t('重命名文件') }}
-                </button>
+                <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd></button>
               </template>
               <button
                 v-if="canDuplicateEntry(fileContextMenu.file)"
@@ -4571,7 +4622,7 @@ const helpBlocked = computed(() => !!(
                           : t('删除在线文档')
                         : t('移入回收站')
                   }}
-                </button>
+                <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('deleteFile') }}</kbd></button>
               </template>
             </template>
           </div>
@@ -4632,7 +4683,7 @@ const helpBlocked = computed(() => !!(
                 @click="directoryContextAction('rename')"
               >
                 <Pencil :size="15" />{{ t('重命名文件夹') }}
-              </button>
+              <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd></button>
               <button
                 class="danger-text"
                 role="menuitem"
@@ -4642,7 +4693,7 @@ const helpBlocked = computed(() => !!(
                 <Trash2 :size="15" />{{
                   store.isDemo ? t('删除文件夹') : store.isWeb ? t('删除在线文件夹') : t('将文件夹移入回收站')
                 }}
-              </button>
+              <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('deleteFile') }}</kbd></button>
             </template>
           </div>
         </Teleport>
@@ -4687,14 +4738,14 @@ const helpBlocked = computed(() => !!(
               class="workspace-picker"
               :aria-expanded="workspaceMenu"
               aria-controls="workspace-menu"
-              :aria-label="t('切换上下文：{0}', [navigationContext === 'home' ? t('主页') : workspace?.name ?? t('选择工作区')])"
-              :data-tooltip="navigationContext === 'home' ? t('主页') : workspace?.name ?? t('选择工作区')"
+              :aria-label="filesPending ? t('正在打开工作区…') : t('切换上下文：{0}', [navigationContext === 'home' ? t('主页') : workspace?.name ?? t('选择工作区')])"
+              :data-tooltip="filesPending ? t('正在打开工作区…') : navigationContext === 'home' ? t('主页') : workspace?.name ?? t('选择工作区')"
               @click="toggleWorkspaceMenu"
               @contextmenu.stop.prevent="toggleWorkspaceMenu"
             >
               <span class="workspace-avatar"><House v-if="navigationContext === 'home'" :size="15" /><WorkspaceIcon v-else :icon="store.workspaceSettings.icon" :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'" :size="15" /></span>
               <span class="workspace-picker-text"
-                ><strong>{{ navigationContext === 'home' ? t('主页') : workspace?.name ?? t('选择工作区') }}</strong></span
+                ><span v-if="filesPending" class="tano-skeleton-bar" /><strong v-else>{{ navigationContext === 'home' ? t('主页') : workspace?.name ?? t('选择工作区') }}</strong></span
               >
               <component :is="workspaceMenu ? ChevronUp : ChevronDown" :size="12" />
             </button>
@@ -4720,6 +4771,9 @@ const helpBlocked = computed(() => !!(
               />
               </template>
               <template #default>
+              <button role="menuitem" @click="workspaceMenu = false; commandPaletteOpened = true">
+                <Search :size="16" />{{ t('命令中心') }}<span class="menu-shortcut">{{ shortcutHint('commandPalette') }}</span>
+              </button>
               <component
                 :is="extensions.regions['workspace-settings']"
                 v-if="extensions.regions['workspace-menu-layout'] && extensions.regions['workspace-settings']"
@@ -4903,7 +4957,7 @@ const helpBlocked = computed(() => !!(
           />
         </div>
         <div
-          v-if="!compactPanes"
+          v-if="!compactPanes && !switchingWorkspace"
           class="sidebar-resize-handle"
           role="separator"
           :aria-label="t('调整侧栏宽度')"
@@ -4920,7 +4974,7 @@ const helpBlocked = computed(() => !!(
     <div ref="mainColumn" class="main-column" :inert="compactPanes && sidebar || undefined">
       <button v-if="!workspace && !sidebar && !detachedWindow" class="icon-button" :aria-label="t('展开侧栏')" @click="sidebar = true"><PanelLeftOpen :size="18" /></button>
       <ReferenceGraphPopover
-        v-if="referenceGraphTarget"
+        v-if="referenceGraphTarget && !switchingWorkspace"
         v-model:opened="referenceGraphOpened"
         variant="panel"
         :identity="{ type: 'document', id: referenceGraphTarget.id }"
@@ -4928,8 +4982,9 @@ const helpBlocked = computed(() => !!(
         :anchor="referenceGraphAnchor"
         @open="openReference"
       />
-      <div v-if="workspace && compactPanes && tabsEnabled" class="workspace-tabbar">
+      <div v-if="(workspace || startupPending || filesPending) && compactPanes && tabsEnabled" class="workspace-tabbar">
         <DesktopTabs
+          :loading="sessionPending"
           :file-drag="tabFileDrag"
           :assistant-tab="assistantTab"
           @files-dropped="fileDragEnd"
@@ -4939,7 +4994,8 @@ const helpBlocked = computed(() => !!(
       </div>
 
       <WorkspacePanes
-        v-if="workspace"
+        v-if="workspace || startupPending || filesPending"
+        :loading="filesPending"
         :compact="compactPanes"
         :tabs-enabled="tabsEnabled"
         :class="{ 'workspace-native-tabs': tabsEnabled && !compactPanes }"
@@ -4964,6 +5020,7 @@ const helpBlocked = computed(() => !!(
               <PanelLeftOpen :size="16" :stroke-width="1.6" />
             </button>
             <DesktopTabs
+              :loading="sessionPending"
               :pane-id="pane.id"
               :detachable="native && !mobile"
               :file-drag="tabFileDrag"
@@ -5003,7 +5060,7 @@ const helpBlocked = computed(() => !!(
           />
         </template>
         <template #default="{ pane, document: active, tab }">
-          <LoadingSkeleton v-if="store.openingDocuments[pane.id]?.tabId === pane.activeId" variant="document" :rows="10" class="pane-loading-skeleton" />
+
           <TemplateLibrary
             v-if="templateLibraryOpen && pane.id === templatePaneId && workspace"
             :key="workspace.id"
@@ -5082,6 +5139,7 @@ const helpBlocked = computed(() => !!(
                 </button>
               </div>
               <WorkspaceBreadcrumb
+                :loading="filesPending"
                 :perch="{ id: `breadcrumb:${paneButterflyScope(pane.id, pane.activeId)}`, scope: paneButterflyScope(pane.id, pane.activeId), label: t('面包屑'), kind: 'component' }"
                 v-if="
                   isVisible('breadcrumb') &&
@@ -5100,7 +5158,10 @@ const helpBlocked = computed(() => !!(
                 @open="(file) => { store.focusPane(pane.id); openEntry(file); }"
               >
                 <template #status>
-                  <DocumentStatus v-if="active && isVisible('document-status')" :document-key="`${workspace?.id}:${active.id}`" :items="paneDocumentStatus(active)" />
+                  <DocumentStatus v-if="active && isVisible('document-status')" :document-key="`${workspace?.id}:${active.id}`" :items="paneDocumentStatus(active)">
+                    <component :is="extensions.regions['document-status-details']"
+                      v-if="pane.id === store.activePaneId && extensions.regions['document-status-details']" :actions="extensionActions" />
+                  </DocumentStatus>
                 </template>
                 <template v-if="tab?.pluginView"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">{{ tab.pluginView.label }}</span></template>
                 <template v-if="pane.activeId === PLUGINS_TAB_ID"
@@ -5117,7 +5178,10 @@ const helpBlocked = computed(() => !!(
                 >
               </WorkspaceBreadcrumb>
               <DocumentStatus v-if="active && !isVisible('breadcrumb') && isVisible('document-status')"
-                :document-key="`${workspace?.id}:${active.id}`" :items="paneDocumentStatus(active)" />
+                :document-key="`${workspace?.id}:${active.id}`" :items="paneDocumentStatus(active)">
+                <component :is="extensions.regions['document-status-details']"
+                  v-if="pane.id === store.activePaneId && extensions.regions['document-status-details']" :actions="extensionActions" />
+              </DocumentStatus>
               <div class="topbar-right">
                 <button v-if="active && touchLayout && showOutline" type="button" class="icon-button"
                   :aria-label="t('文档大纲')" :aria-expanded="touchOutlineOpen"
@@ -5291,7 +5355,7 @@ const helpBlocked = computed(() => !!(
                       "
                       @click="setPaneSource(pane.activeId, !paneSource(pane.activeId))"
                     >
-                      <Code2 :size="17" />
+                      <SourceCodeIcon :size="17" :off="!paneSource(pane.activeId)" />
                     </button>
                   </div>
                   <div class="menu-wrap">
@@ -5323,14 +5387,14 @@ const helpBlocked = computed(() => !!(
                         :disabled="editorReadonly || !documentUndoAvailable"
                         @click="undoDocument"
                       >
-                        <Undo2 :size="15" />{{ t('撤销') }}<span class="menu-shortcut">Ctrl Z</span>
+                        <Undo2 :size="15" />{{ t('撤销') }}<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('undo') }}</kbd>
                       </button>
                       <button
                         type="button"
                         :disabled="editorReadonly || !documentRedoAvailable"
                         @click="redoDocument"
                       >
-                        <Redo2 :size="15" />{{ t('重做') }}<span class="menu-shortcut">Ctrl Y</span>
+                        <Redo2 :size="15" />{{ t('重做') }}<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('redo') }}</kbd>
                       </button>
                       <button
                         @click="
@@ -5368,6 +5432,7 @@ const helpBlocked = computed(() => !!(
                         class="page-toggle-menu-item"
                         role="switch"
                         :aria-checked="!limitPageWidth"
+                        :aria-busy="store.capabilitySaving || undefined"
                         :disabled="!pageWidthWritable"
                         :data-tooltip="t('切换页面内容宽度')"
                         @click="setLimitPageWidth(!limitPageWidth)"
@@ -5383,13 +5448,14 @@ const helpBlocked = computed(() => !!(
                         type="button"
                         class="page-toggle-menu-item"
                         role="switch"
-                        :aria-checked="pageLocked"
-                        :data-tooltip="pageLocked ? t('退出阅读模式') : t('锁定后进入阅读模式')"
+                        :aria-checked="workspaceLocked || pageLocked"
+                        :disabled="workspaceLocked"
+                        :data-tooltip="workspaceLocked ? t('请先关闭工作区锁定，再修改页面锁定') : pageLocked ? t('退出阅读模式') : t('锁定后进入阅读模式')"
                         @click="togglePageLock"
                       >
                         <LockKeyhole :size="15" />{{ t('锁定页面') }}<span
                           class="menu-switch"
-                          :class="{ on: pageLocked }"
+                          :class="{ on: workspaceLocked || pageLocked }"
                           aria-hidden="true"
                           ><span
                         /></span>
@@ -5413,6 +5479,24 @@ const helpBlocked = computed(() => !!(
                       >
                         <Clock3 :size="15" />{{ t('更新历史') }}
                       </button>
+                      <DocumentGlobalMenu>
+                        <button type="button" class="page-toggle-menu-item" role="switch"
+                          :aria-checked="workspaceLocked" :disabled="!workspace"
+                          :data-tooltip="t('锁定后，整个工作区的页面进入阅读模式')"
+                          @click="toggleWorkspaceLock">
+                          <LockKeyhole :size="15" />{{ t('锁定工作区') }}<span
+                            class="menu-switch" :class="{ on: workspaceLocked }" aria-hidden="true"><span /></span>
+                        </button>
+                        <div class="menu-divider" role="separator" />
+                        <PageDisplayOptions :auto-spacing="editorPreferences.autoSpacing ?? false"
+                          :show-page-title="showPageTitle"
+                          :show-document-properties="showDocumentProperties"
+                          :show-outline="showOutline"
+                          :show-all-line-numbers="showAllLineNumbers"
+                          :detached-window="!!detachedWindow"
+                          :source="paneSource(store.activeId)"
+                          @toggle="togglePageOption" />
+                      </DocumentGlobalMenu>
                       <DocumentExportMenu :disabled="exportBusy" @select="exportDocument" />
                       <div class="menu-divider" role="separator" />
                       <button
@@ -5462,16 +5546,17 @@ const helpBlocked = computed(() => !!(
                 @open="openAssistant(pane.id, pane.activeId, { forcePanel: true })"
               />
             </div>
-            <WorkspaceViewPage
-              v-if="workspace && tab?.workspaceView && pane.activeId === tab.id"
-              :key="`${workspace.id}:${tab.workspaceView.view.id}:${tab.workspaceView.view.database || tab.workspaceView.view.objectDatabase ? '' : tab.workspaceView.snapshot.hash}`"
-              :view="tab.workspaceView.view"
+            <WorkspaceViewTab
+              v-if="workspace && pane.activeId.startsWith('workspace-view:')"
+              :key="`${workspace.id}:${pane.activeId}`"
+              :tab-id="pane.activeId"
               @open-file="(file) => { store.focusPane(pane.id); void openWorkspaceViewSourceFile(file); }"
               @edit-document-properties="async (file) => { store.focusPane(pane.id); await openWorkspaceViewSourceFile(file); showDocumentProperties = true; setPaneSource(file.id, false); }"
               @open-object="(identity) => { store.focusPane(pane.id); openWorkspaceViewSourceObject(identity); }"
             />
             <CalendarView
               v-if="workspace && pane.activeId === CALENDAR_TAB_ID"
+              :loading="calendarScope === 'workspace' && store.workspaceLoading.objects"
               :date="calendarDate"
               :mode="calendarMode"
               :records="plans.recordsFor(calendarScope)"
@@ -5494,7 +5579,7 @@ const helpBlocked = computed(() => !!(
             </template>
 
             <div v-if="pane.activeId === SETTINGS_TAB_ID" :id="`settings-host-${pane.id}`" class="settings-tab-host" />
-            <PluginView v-if="tab?.pluginView" :view-key="tab.pluginView.key" />
+            <PluginView v-if="pane.activeId.startsWith('plugin:')" :view-key="pane.activeId" />
             <main
               v-if="workspace && pane.tabs.includes(PLUGINS_TAB_ID)"
               v-show="pane.activeId === PLUGINS_TAB_ID"
@@ -5515,7 +5600,8 @@ const helpBlocked = computed(() => !!(
               </div>
             </main>
 
-            <template v-if="active">
+            <DocumentLoading v-if="(!active && sessionPending) || store.restoringDocuments[pane.activeId] || store.openingDocuments[pane.id]?.tabId === pane.activeId" :unlimited="!limitPageWidth" :touch="touchLayout" :style="{ '--tano-prose-font-family': selectedVisualFontFamily, '--tano-prose-font-size': `${visualFontSize}px` }" />
+            <template v-else-if="active">
               <PageSearch
                 :shortcuts="shortcuts"
                 :key="`search:${active.id}`"
@@ -5604,7 +5690,7 @@ const helpBlocked = computed(() => !!(
                             :data-tooltip="paneSource(pane.activeId) ? t('返回编辑') : t('切换源码模式')"
                             @click="setPaneSource(pane.activeId, !paneSource(pane.activeId))"
                           >
-                            <Code2 :size="17" />
+                            <SourceCodeIcon :size="17" :off="!paneSource(pane.activeId)" />
                           </button>
                         </ButtonVisibilityGroup>
                       </template>
@@ -5731,7 +5817,7 @@ const helpBlocked = computed(() => !!(
                             insertSourceFiles(files, position, requireImage, active, pane.id)
                         "
                       />
-                      <MarkdownEditor :suggestion-marks="suggestions.richMarks" :transform-change="suggestions.transformChange"
+                      <MarkdownEditor :shortcut-hints="{ delete: shortcutHint('deleteBlock'), 'move-up': shortcutHint('moveBlockUp'), 'move-down': shortcutHint('moveBlockDown'), indent: shortcutHint('indentBlock'), outdent: shortcutHint('outdentBlock') }" :suggestion-marks="suggestions.richMarks" :transform-change="suggestions.transformChange"
                         v-else
                         :custom-callout-icon="CalloutIconPicker"
                         :content-revision="suggestions.viewKey"
@@ -5830,21 +5916,24 @@ const helpBlocked = computed(() => !!(
             />
             <main
               v-else-if="
-                workspace &&
+                (workspace || startupPending) &&
                 pane.activeId !== GRAPH_TAB_ID &&
                 pane.activeId !== PLUGINS_TAB_ID &&
                 pane.activeId !== CALENDAR_TAB_ID &&
                 pane.activeId !== SETTINGS_TAB_ID &&
                 !isTableTab(pane.activeId) &&
+                !pane.activeId.startsWith('workspace-view:') &&
+                !pane.activeId.startsWith('plugin:') &&
                 !tab?.workspaceView &&
                 !tab?.pluginView &&
                 !extensionViews.find((view) => view.id === pane.activeId)
               "
               class="workspace-no-tabs"
+              :class="{ 'workspace-no-tabs-loading': sessionPending }"
             >
-              <LoadingSkeleton v-if="busy || startupPending" variant="document" :rows="10" />
+              <DocumentLoading v-if="sessionPending" :unlimited="!limitPageWidth" :touch="touchLayout" :style="{ '--tano-prose-font-family': selectedVisualFontFamily, '--tano-prose-font-size': `${visualFontSize}px` }" />
               <EmptyEditor v-else
-                :create-disabled="busy || workspace.readOnly || updateLock"
+                :create-disabled="busy || !workspace || workspace.readOnly || updateLock"
                 @create="createNewDocument"
                 @open="showModal('newTab')"
                 @search="showModal('search')"
@@ -5859,17 +5948,19 @@ const helpBlocked = computed(() => !!(
                 pane.id === store.activePaneId &&
                 (panel !== 'outline' || (showOutline && (!touchLayout || touchOutlineOpen)))
               "
+              v-outline-motion
               class="inspector"
               :style="panel === 'outline' ? outlinePosition : undefined"
               :class="{
                 'inspector-outline': panel === 'outline',
                 'inspector-outline-left': panel === 'outline' && outlineOnLeft,
                 'inspector-hover-outline':
-                  panel === 'outline' && !touchLayout && hoverOutline && !outlinePinned && !outlineSearchOpen,
+                  panel === 'outline' && !touchLayout && hoverOutline && !outlinePinned,
                 'inspector-activity': panel === 'activity',
               }"
               :aria-label="panel === 'outline' ? t('文档目录') : t('文档动态')"
               @contextmenu="openOutlineContextMenu"
+              @pointerleave="releaseOutlinePointerFocus"
             >
               <div class="inspector-surface">
                 <div v-if="panel === 'activity'" class="inspector-tabs">
@@ -5884,6 +5975,18 @@ const helpBlocked = computed(() => !!(
                     @click="touchOutlineOpen = false"><X :size="18" /></button>
                   <button
                     class="outline-control"
+                    :class="{ active: outlineAutoCollapse }"
+                    type="button"
+                    :aria-label="t('自动折叠大纲')"
+                    :data-tooltip="t('自动折叠大纲')"
+                    :aria-pressed="outlineAutoCollapse"
+                    @click="outlineAutoCollapse = !outlineAutoCollapse"
+                  >
+                    <ListTree :size="15" />
+                  </button>
+                  <button
+                    class="outline-control"
+                    :class="{ active: outlineSearchOpen }"
                     type="button"
                     :aria-label="t('搜索大纲标题')"
                     :data-tooltip="t('搜索大纲标题')"
@@ -5918,7 +6021,7 @@ const helpBlocked = computed(() => !!(
                     @keydown.esc.stop.prevent="toggleOutlineSearch"
                   />
                 </div>
-                <nav v-if="panel === 'outline'" class="outline" :aria-label="t('文档大纲')">
+                <nav v-if="panel === 'outline'" v-scroll-fade class="outline" :aria-label="t('文档大纲')">
                   <button
                     v-for="{ heading, index } in visibleOutline"
                     :key="index"
@@ -6008,10 +6111,9 @@ const helpBlocked = computed(() => !!(
         <CalendarView v-if="homeContent === CALENDAR_TAB_ID" :date="calendarDate" :mode="calendarMode" :records="plans.recordsFor(calendarScope)" @select-mode="selectCalendarMode" @visible-month="calendarDate = $event" @visible-year="calendarDate = $event" @visible-timeline="calendarDate = $event" @select-date="showCalendarDay" @select-month="showCalendarMonth" @select-event="showPlanEvent" />
         <component v-else-if="homeExtension" :is="homeExtension.component" :actions="viewActions[homeExtension.id]" />
       </template>
-      <LoadingSkeleton v-else-if="startupPending" variant="shell" />
       <div v-else class="editor-empty"><div class="editor-empty-mark" aria-hidden="true" /></div>
       <InlineAssistantInput
-        v-if="inlineAssistant"
+        v-if="inlineAssistant && !switchingWorkspace"
         :anchor="inlineAssistant.anchor"
         v-model:value="inlineAssistantPrompt"
         :state="inlineAssistantState"
@@ -6028,7 +6130,7 @@ const helpBlocked = computed(() => !!(
 
       <Teleport to="body">
         <div
-          v-if="pageContextMenu"
+          v-if="pageContextMenu && !switchingWorkspace"
           ref="pageContextMenuElement"
           class="dropdown compact-action-menu page-context-menu"
           role="menu"
@@ -6036,74 +6138,19 @@ const helpBlocked = computed(() => !!(
           :style="{ left: `${pageContextMenu.x}px`, top: `${pageContextMenu.y}px` }"
           @keydown="pageContextKeydown"
         >
-          <button
-            type="button"
-            role="menuitemcheckbox"
-            :aria-checked="editorPreferences.autoSpacing ?? false"
-            @click="togglePageOption('autoSpacing')"
-          >
-            <Space :size="15" />{{ t('正文自动间距') }}<Check
-              v-if="editorPreferences.autoSpacing"
-              class="page-context-check"
-              :size="14"
-            />
-          </button>
-          <div class="menu-divider" role="separator" />
-          <button
-            type="button"
-            role="menuitemcheckbox"
-            :aria-checked="showPageTitle"
-            @click="togglePageOption('title')"
-          >
-            <Heading1 :size="15" />{{ t('页面内标题') }}<Check
-              v-if="showPageTitle"
-              class="page-context-check"
-              :size="14"
-            />
-          </button>
-          <button
-            type="button"
-            role="menuitemcheckbox"
-            :aria-checked="showDocumentProperties"
-            @click="togglePageOption('properties')"
-          >
-            <SlidersHorizontal :size="15" />{{ t('文档属性') }}<Check
-              v-if="showDocumentProperties"
-              class="page-context-check"
-              :size="14"
-            />
-          </button>
-          <button
-            v-if="!detachedWindow"
-            type="button"
-            role="menuitemcheckbox"
-            :aria-checked="showOutline"
-            @click="togglePageOption('outline')"
-          >
-            <List :size="15" />{{ t('显示目录') }}<Check
-              v-if="showOutline"
-              class="page-context-check"
-              :size="14"
-            />
-          </button>
-          <button
-            v-if="paneSource(store.activeId)"
-            type="button"
-            role="menuitemcheckbox"
-            :aria-checked="showAllLineNumbers"
-            @click="togglePageOption('lineNumbers')"
-          >
-            <ListOrdered :size="15" />{{ t('显示所有行号') }}<Check
-              v-if="showAllLineNumbers"
-              class="page-context-check"
-              :size="14"
-            />
-          </button>
+          <PageDisplayOptions :auto-spacing="editorPreferences.autoSpacing ?? false"
+            :show-page-title="showPageTitle"
+            :show-document-properties="showDocumentProperties"
+            :show-outline="showOutline"
+            :show-all-line-numbers="showAllLineNumbers"
+            :detached-window="!!detachedWindow"
+            :source="paneSource(store.activeId)"
+            @toggle="togglePageOption" />
         </div>
       </Teleport>
       <Teleport to="body">
         <div
-          v-if="outlineContextMenu"
+          v-if="outlineContextMenu && !switchingWorkspace"
           ref="outlineContextMenuElement"
           class="dropdown compact-action-menu page-context-menu outline-context-menu"
           role="menu"

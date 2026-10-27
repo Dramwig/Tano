@@ -426,7 +426,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 
 <template>
   <Teleport :to="teleportTarget" :disabled="assistant.displayMode === 'sidebar'">
-  <Transition name="assistant-sidebar" :css="assistant.displayMode === 'sidebar'" appear @after-leave="afterPanelLeave">
+  <Transition :name="assistant.displayMode === 'floating' ? 'assistant-floating' : 'assistant-sidebar'" :css="assistant.displayMode !== 'fullscreen'" appear @after-leave="afterPanelLeave">
   <aside ref="panel" v-show="assistant.opened && (assistant.displayMode !== 'fullscreen' || !!fullscreenTarget)" class="assistant-panel" :class="[`assistant-panel-${assistant.displayMode}`, { 'assistant-panel-compact': compact }]" :style="{ '--assistant-menu-max-height': `${menuMaxHeight}px`, ...floatingStyle }" :inert="!assistant.opened || undefined" :aria-hidden="!assistant.opened || undefined" :aria-label="t('Tano 助手')" @keydown.esc="closePopover(true)" @keydown="menuKey">
     <header class="assistant-heading" @pointerdown="startFloatingGesture" @pointermove="moveFloatingGesture" @pointerup="endFloatingGesture" @pointercancel="endFloatingGesture" @lostpointercapture="endFloatingGesture">
       <button v-if="compact && navigationVisible && assistant.displayMode === 'fullscreen'" class="icon-button" :aria-label="t('展开侧栏')" @click="emit('showNavigation')"><ArrowLeft :size="17" /></button>
@@ -659,7 +659,20 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
   margin-right: 0;
   transform: translateX(100%);
 }
+.assistant-panel-floating.assistant-floating-enter-active,
+.assistant-panel-floating.assistant-floating-leave-active {
+  transform-origin: bottom right;
+  transition: opacity 200ms cubic-bezier(0.2, 0, 0, 1), transform 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+.assistant-panel-floating.assistant-floating-enter-from,
+.assistant-panel-floating.assistant-floating-leave-to {
+  opacity: 0;
+  transform: translateY(12px) scale(0.96);
+}
+.assistant-panel-floating.assistant-floating-leave-active { pointer-events: none; }
 @media (prefers-reduced-motion: reduce) {
+  .assistant-panel-floating.assistant-floating-enter-active,
+  .assistant-panel-floating.assistant-floating-leave-active,
   .assistant-panel-sidebar.assistant-sidebar-enter-active,
   .assistant-panel-sidebar.assistant-sidebar-leave-active { transition: none; }
 }

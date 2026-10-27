@@ -139,6 +139,22 @@ async function toggleMaximize() {
 .desktop-window:has(.app-shell.sidebar-resizing) .desktop-window-titlebar {
   transition: none;
 }
+.desktop-window:has(.desktop-window-tab-slot .desktop-tab-strip, .workspace-native-tabs) .sidebar-header-actions {
+  /* Keep the last action center 16px before the sidebar divider. */
+  margin-inline-end: -5px;
+}
+.desktop-window:has(.desktop-window-tab-slot .desktop-tab-strip, .workspace-native-tabs) .sidebar-header-actions .icon-button {
+  flex-basis: 28px;
+  width: 28px;
+  height: 26px;
+}
+.desktop-window-tab-slot > .desktop-sidebar-toggle-hidden + .desktop-tab-navigation:has(.icon-button) {
+  /* Match the action center with 14px half-width + 2px inset after the divider. */
+  padding-inline-start: 2px;
+}
+.desktop-window:has(.app-shell:not(.sidebar-hidden)) .workspace-native-tabs .workspace-pane-tabbar:first-child .desktop-tab-navigation:has(.icon-button) {
+  padding-inline-start: 2px;
+}
 .desktop-window-tab-slot:has(.desktop-tab-strip) {
   display: flex;
   flex: 0 1 auto;
