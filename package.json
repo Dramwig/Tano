@@ -44,6 +44,9 @@
     "emoji:generate": "node scripts/build-workspace-emoji-catalog.mjs && node scripts/build-workspace-emoji-sprite.mjs",
     "emoji:check": "node scripts/build-workspace-emoji-catalog.mjs --check && node scripts/build-workspace-emoji-sprite.mjs --check",
     "core:export": "npm run demo:generate && npm run mcp:build && node scripts/export-core.mjs",
+    "core:registry:prepare": "npm run core:export && node scripts/prepare-core-registry.mjs",
+    "core:registry:smoke": "node scripts/core-registry-smoke.mjs",
+    "core:publish": "node --use-env-proxy scripts/publish-core.mjs",
     "boundary:check": "node scripts/check-boundaries.mjs",
     "notices:generate": "node scripts/generate-notices.mjs"
   },

@@ -1,0 +1,68 @@
+name: Publish reviewed Core packages
+on:
+  workflow_dispatch:
+    inputs:
+      core_tag:
+        description: Locally validated stable Core tag (core-vX.Y.Z)
+        type: string
+        required: true
+      local_evidence:
+        description: JSON with sourceCommit and successful local command records (see docs/core-distribution.md)
+        type: string
+        required: true
+      distribution_smoke:
+        description: Local smoke summary JSON for the exact reproducible distribution artifacts
+        type: string
+        required: true
+permissions:
+  contents: write
+concurrency:
+  group: core-package-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    environment: release-automation
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.core_tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify immutable source
+        env:
+          CORE_TAG: ${{ inputs.core_tag }}
+        run: |
+          node scripts/version.mjs check --tag "$CORE_TAG"
+          test "$(git rev-parse "$CORE_TAG^{commit}")" = "$(git rev-parse HEAD)"
+          git merge-base --is-ancestor HEAD origin/main
+          test -z "$(git status --porcelain)"
+      - name: Package the six reviewed components
+        run: npm ci && npm run core:registry:prepare
+      - name: Save supplied local validation evidence
+        env:
+          LOCAL_EVIDENCE: ${{ inputs.local_evidence }}
+          DISTRIBUTION_SMOKE: ${{ inputs.distribution_smoke }}
+        run: |
+          node --input-type=module -e 'import fs from "node:fs"; fs.writeFileSync("artifacts/core-registry/local-evidence.json", JSON.stringify(JSON.parse(process.env.LOCAL_EVIDENCE))); fs.mkdirSync("artifacts/core-registry/smoke", { recursive: true }); fs.writeFileSync("artifacts/core-registry/smoke/summary.json", JSON.stringify(JSON.parse(process.env.DISTRIBUTION_SMOKE)));'
+      - name: Publish immutable packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: npm run core:publish -- --apply --evidence artifacts/core-registry/local-evidence.json
+      - name: Publish the small distribution manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CORE_TAG: ${{ inputs.core_tag }}
+        run: |
+          if ! gh release view "$CORE_TAG" >/dev/null 2>&1; then
+            gh release create "$CORE_TAG" --verify-tag --latest=false --title "Tano Core ${CORE_TAG#core-v}" --notes-file ".github/releases/$CORE_TAG.md"
+          fi
+          node scripts/publish-core-manifest.mjs "$CORE_TAG"

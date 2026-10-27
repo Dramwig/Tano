@@ -1,0 +1,6 @@
+{
+  "format": 1,
+  "npmRegistry": "https://registry.npmjs.org/",
+  "npmScope": "@tano.page",
+  "nativePackage": "tano-native"
+}

@@ -27,6 +27,7 @@ Tano — Humans and agents, on the same page.
 - Ordinary Git commits, pushes and merges do not require tests, builds or dependency installation; do not run them or synchronize Core solely for a Git request. During development, choose targeted local checks based on the change or explicit user instructions. Before publishing a new version, complete the full local checks and applicable platform acceptance on the final release revision, and record the commands, results and tested SHA in release evidence. GitHub Actions is manual-only for packaging, release and synchronization; never add commit/PR-triggered CI or run test suites there. See [docs/local-validation.md](docs/local-validation.md).
 
 - `npm install`, `npm run dev` for the browser demo; `npm run desktop` for the real desktop filesystem.
+- Deliver shared Core as five `@tano.page` npm packages and the `tano-native` crate, with one version and source commit; publish the complete set for a new Core release. Product-only updates reuse the pinned Core; adopting an already published Core does not republish it. Follow [docs/core-distribution.md](docs/core-distribution.md). Keep local source development available and never commit exported `.tgz` files.
 - `npm run check` for TypeScript, merge/store tests, and production build.
 - `npm run docs:check` to verify relative Markdown documentation links independently.
 - `npm run test:native` for native storage tests using the release desktop configuration.
