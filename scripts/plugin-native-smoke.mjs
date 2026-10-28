@@ -130,11 +130,11 @@ try {
   await page.getByRole('button', { name: '关闭插件窗口', exact: true }).click();
   const connection = page.locator('details[aria-label="插件服务连接"]');
   const expandConnections = async () => {
-    // The newly activated Worker inserts a preview above this panel. Wait for its
-    // layout before clicking; otherwise it can move the summary between down/up.
-    await expect(page.getByRole('button', { name: '读取并预览', exact: true })).toBeVisible();
+    // Tab views no longer render a duplicate preview in the plugin center.
+    // Wait for activation, then use the summary's keyboard action across layout changes.
+    await expect.poll(() => page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').pluginRuntime.find(plugin => plugin.id === 'github-importer')?.status), { timeout: 30000 }).toBe('running');
     await connection.locator('summary').scrollIntoViewIfNeeded();
-    if (!await connection.evaluate(node => node.open)) await connection.locator('summary').click();
+    if (!await connection.evaluate(node => node.open)) await connection.locator('summary').press('Enter');
     await expect(connection).toHaveAttribute('open', '');
   };
   const listConnections = () => page.evaluate(workspaceId => window.__TAURI_INTERNALS__.invoke('plugin_connections_list', { requestId: crypto.randomUUID(), workspaceId }), identity);
