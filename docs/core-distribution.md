@@ -79,9 +79,9 @@ Before asking the publisher to sign in again, check the existing credentials:
 npm whoami --registry=https://registry.npmjs.org/
 ```
 
-Reuse a working login. Do not run `npm login` unconditionally for every release.
-The Core publisher checks `npm whoami` and calls `npm publish`; it does not force
-a new login. A successful identity check confirms authentication, but does not
+Reuse a working login for token setup. Do not run `npm login` unconditionally for
+every release. The Core publisher checks `npm whoami` with its dedicated publishing
+credential and calls `npm publish`; it does not force a new login. A successful identity check confirms authentication, but does not
 prove package write permission or remove a publishing 2FA challenge. Reauthenticate
 when the registry reports expired or invalid credentials; handle network failures
 as network failures rather than assuming the user must log in again.
@@ -101,10 +101,50 @@ For local publication without repeated browser prompts, the rules as of
 - Select read and write permission that allows direct publication, rather than
   stage-only permission, and enable **Bypass 2FA** when creating the token.
 - Choose an appropriate expiry; write tokens have a maximum lifetime of 90 days.
-- Store the token in the user-level `.npmrc`, outside the repository. The registry
-  entry has the form `//registry.npmjs.org/:_authToken=<token>`; replace the
-  placeholder locally and never include the actual value in documentation,
-  command output, release evidence or Git.
+- Keep the dedicated publishing credential outside the repository. The local
+  setup below encrypts it for the current Windows user with DPAPI. Never include
+  the actual value in documentation, command output, release evidence or Git.
+
+### Set up local automatic publishing on Windows
+
+Run this once in an interactive terminal, and again to renew an expired token:
+
+```powershell
+npm run core:auth:setup
+npm run core:auth:status -- --check
+```
+
+Setup installs a pinned npm CLI under `%LOCALAPPDATA%\Tano\release-operations\npm-cli`
+without changing the global npm version or project dependencies. It reuses a valid
+login or opens npm's browser login, asks for the npm account password with hidden
+input, and handles npm's token-creation 2FA challenge. Enter credentials only in
+that local terminal or npm's browser page. The adapter uses the pinned CLI's own
+authentication implementation; revalidate it when upgrading that CLI.
+
+It creates a 90-day token limited to exactly `@tano.page/protocol`,
+`@tano.page/markdown`, `@tano.page/editor`, `@tano.page/workbench`, and
+`@tano.page/mcp`, with direct read-write and bypass 2FA, and no organization
+administration. The encrypted value and non-secret metadata are saved in
+`%LOCALAPPDATA%\Tano\release-operations\npm-publish-token.json`.
+The ordinary user `.npmrc` is preserved. Renewing replaces the local encrypted
+credential; revoke the previous token in npm settings if it has not expired.
+
+`core:publish -- --apply` automatically loads this credential. Explicit
+`TANO_NPM_PUBLISH_TOKEN`, `NODE_AUTH_TOKEN`, or `NPM_TOKEN` environment credentials
+take precedence, in that order, for existing automation environments. npm runs
+from an isolated temporary directory with a configuration containing only an
+environment-variable reference, so project `.npmrc` files cannot override the
+selected credential. The token is passed only to npm child processes, never to
+Cargo, command arguments or the temporary file. That directory is removed on
+completion or failure. Dry runs do not need this credential.
+
+An absent, expired, or invalid credential stops the publication before any crate
+or npm package is uploaded. The publisher does not fall back to a login session
+and repeated browser prompts. `core:auth:status -- --check` verifies identity and
+reads back the registry's token metadata to check the exact five-package write
+scope, bypass 2FA and server-side expiry, without uploading anything. Account
+access changes or package policies that disallow tokens can still prevent a
+publication. No extra version is published to test authentication.
 
 The package's publishing settings must allow granular tokens. A package configured
 to require 2FA and disallow tokens still requires interactive publication. Existing
