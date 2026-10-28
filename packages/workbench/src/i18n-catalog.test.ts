@@ -46,4 +46,4 @@ it('covers UI message calls, shared editor labels and interpolation parameters',
   const parameters = (value: string) => [...value.matchAll(/\{\d+\}/g)].map(match => match[0]).sort();
   for (const [source, translated] of Object.entries(englishMessages))
     expect(parameters(translated), source).toEqual(parameters(source));
-});
+}, 15000); // This parses the complete, growing workbench source tree rather than one fixture.
