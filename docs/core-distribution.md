@@ -71,11 +71,65 @@ the tested source, dependencies and build configuration are unchanged, as define
 in [local validation](local-validation.md). Keep logs and any reuse explanation
 with the evidence. Tests run locally, never in GitHub Actions.
 
+## Reuse local npm authentication
+
+Before asking the publisher to sign in again, check the existing credentials:
+
+```powershell
+npm whoami --registry=https://registry.npmjs.org/
+```
+
+Reuse a working login. Do not run `npm login` unconditionally for every release.
+The Core publisher checks `npm whoami` and calls `npm publish`; it does not force
+a new login. A successful identity check confirms authentication, but does not
+prove package write permission or remove a publishing 2FA challenge. Reauthenticate
+when the registry reports expired or invalid credentials; handle network failures
+as network failures rather than assuming the user must log in again.
+
+npm saves local authentication in the user configuration, normally
+`~/.npmrc` (`$env:USERPROFILE\.npmrc` on Windows). Saving a token on disk does
+not extend its server-side lifetime. Since December 2025, `npm login` issues a
+two-hour session token, and publishing with that session still enforces 2FA.
+This explains why another release can require browser authentication even though
+the computer retained the credentials. See the
+[npm session authentication announcement](https://github.blog/changelog/2025-12-09-npm-classic-tokens-revoked-session-based-auth-and-cli-token-management-now-available/).
+
+For local publication without repeated browser prompts, the rules as of
+2026-10-28 allow a granular access token with these settings:
+
+- Limit package/scope access to the five published `@tano.page` Core packages.
+- Select read and write permission that allows direct publication, rather than
+  stage-only permission, and enable **Bypass 2FA** when creating the token.
+- Choose an appropriate expiry; write tokens have a maximum lifetime of 90 days.
+- Store the token in the user-level `.npmrc`, outside the repository. The registry
+  entry has the form `//registry.npmjs.org/:_authToken=<token>`; replace the
+  placeholder locally and never include the actual value in documentation,
+  command output, release evidence or Git.
+
+The package's publishing settings must allow granular tokens. A package configured
+to require 2FA and disallow tokens still requires interactive publication. Existing
+session credentials do not become a granular token automatically. Token creation
+or renewal can itself require interactive authentication. See
+[creating access tokens](https://docs.npmjs.com/creating-and-viewing-access-tokens/)
+and [package publishing authentication](https://docs.npmjs.com/requiring-2fa-for-package-publishing-and-settings-modification/).
+
+For the longer-term manual release workflow, prefer
+[npm trusted publishing with OIDC](https://docs.npmjs.com/trusted-publishers/): a
+configured GitHub Actions workflow obtains short-lived publishing credentials
+without a stored npm publishing token. npm has announced a target of January 2027
+for removing direct publication from bypass-2FA granular tokens; recheck the
+[announced transition](https://github.blog/changelog/2026-07-31-restricting-npm-bypass-2fa-granular-access-tokens/)
+before relying on them for future releases. The current workflow still uses
+`NPM_TOKEN`; OIDC requires configuring the trusted publisher and adapting the
+workflow and publisher's token-based `whoami` preflight. Keep Actions manual-only
+and retain all local validation and immutable-artifact requirements when migrating.
+
 ## Publish immutable packages
 
-Authenticate locally with `npm login` and `cargo login`. Do not put tokens in the
-repository. The registry scope must belong to the publishing account. From the
-clean tagged checkout, publish the prepared, validated artifacts:
+Reuse valid npm credentials as described above; use `npm login` only when needed.
+Configure crates.io credentials separately with `cargo login` when needed. Do not
+put tokens in the repository. The registry scope must belong to the publishing
+account. From the clean tagged checkout, publish the prepared, validated artifacts:
 
 ```powershell
 npm run core:publish -- --apply --evidence artifacts/core-registry/local-evidence.json
