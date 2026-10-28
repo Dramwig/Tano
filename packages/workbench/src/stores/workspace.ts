@@ -1746,8 +1746,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       pluginRuntime.value.some(plugin => plugin.id === 'excalidraw' && plugin.status === 'running');
   }
   async function openDrawingPlugin(file: FileEntry) {
+    const currentWorkspace = workspace.value;
+    if (!currentWorkspace) return false;
     try {
-      await pluginExecutor.invoke('excalidraw', 'command', 'open', { workspaceId: workspace.value.id, fileId: file.id });
+      await pluginExecutor.invoke('excalidraw', 'command', 'open', { workspaceId: currentWorkspace.id, fileId: file.id });
       return true;
     } catch (error) { report(error); return false; }
   }
