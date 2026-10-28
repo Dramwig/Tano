@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { OfficeBlock } from '../office-preview/model';
-defineProps<{ blocks: OfficeBlock[] }>();
+defineProps<{ blocks: OfficeBlock[]; imageLoading?: 'eager' | 'lazy' }>();
 </script>
 
 <template>
@@ -11,11 +11,11 @@ defineProps<{ blocks: OfficeBlock[] }>();
     <div v-else-if="block.kind === 'table'" class="office-table-scroll">
       <table class="office-document-table"><tbody>
         <tr v-for="(row, rowIndex) in block.rows" :key="rowIndex">
-          <td v-for="(cell, column) in row" :key="column" :colspan="cell.colspan"><OfficeBlocks :blocks="cell.blocks" /></td>
+          <td v-for="(cell, column) in row" :key="column" :colspan="cell.colspan"><OfficeBlocks :blocks="cell.blocks" :image-loading="imageLoading" /></td>
         </tr>
       </tbody></table>
     </div>
-    <img v-else-if="block.kind === 'image'" class="office-image" :src="block.src" :alt="block.alt" loading="lazy" />
+    <img v-else-if="block.kind === 'image'" class="office-image" :src="block.src" :alt="block.alt" :loading="imageLoading ?? 'lazy'" />
   </template>
 </template>
 

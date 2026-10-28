@@ -1,5 +1,6 @@
 @import './dark-theme.css';
 @import './mobile.css';
+@import './scrollbars.css';
 
 @font-face {
   font-family: Literata;
@@ -178,40 +179,6 @@ kbd {
 }
 svg {
   flex-shrink: 0;
-}
-.panel-scrollbar {
-  /* Inherited native scrollbar colors override the arrow-free WebKit styling. */
-  scrollbar-color: auto;
-  scrollbar-width: auto;
-}
-.panel-scrollbar::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-.panel-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.panel-scrollbar::-webkit-scrollbar-thumb {
-  border-radius: 8px;
-  background: #d3d2ce;
-  transition: background 0.15s;
-}
-.panel-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #a5a39e;
-}
-.panel-scrollbar::-webkit-scrollbar-corner {
-  background: transparent;
-}
-.panel-scrollbar::-webkit-scrollbar-button {
-  display: none;
-  width: 0;
-  height: 0;
-}
-@supports (-moz-appearance: none) {
-  .panel-scrollbar {
-    scrollbar-width: thin;
-    scrollbar-color: #d3d2ce transparent;
-  }
 }
 button:hover {
   color: var(--text);
@@ -1520,7 +1487,7 @@ button:hover {
   flex: 1;
   min-width: 0;
   overflow-x: auto;
-  scrollbar-width: thin;
+  scrollbar-width: auto;
 }
 .tano-tab-list [role='tab'] {
   position: relative;
@@ -2372,24 +2339,6 @@ button:hover {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-.tano-slash-results::-webkit-scrollbar,
-.tano-code-language-results::-webkit-scrollbar {
-  width: 5px;
-}
-.tano-slash-results::-webkit-scrollbar-track,
-.tano-code-language-results::-webkit-scrollbar-track {
-  background: transparent;
-}
-.tano-slash-results::-webkit-scrollbar-thumb,
-.tano-code-language-results::-webkit-scrollbar-thumb {
-  border-radius: 8px;
-  background: #d3d2ce;
-}
-.tano-slash-results::-webkit-scrollbar-button,
-.tano-code-language-results::-webkit-scrollbar-button {
-  display: none;
-  height: 0;
-}
 .tano-slash-option,
 .tano-code-language-option {
   display: flex;
@@ -2982,14 +2931,14 @@ button:hover {
 }
 .tano-prose .tableWrapper::-webkit-scrollbar { display: none; }
 .tano-table-scrollbar {
-  height: 10px;
+  height: var(--scrollbar-size);
   position: relative;
   margin-top: -16px;
   margin-bottom: 6px;
   touch-action: none;
   cursor: pointer;
   border-radius: 5px;
-  background: color-mix(in srgb, var(--line) 45%, transparent);
+  background: transparent;
   transition: opacity 120ms ease;
 }
 @media (hover: hover) and (pointer: fine) {
@@ -3007,11 +2956,11 @@ button:hover {
 .tano-table-scrollbar[hidden] { display: none; }
 .tano-table-scroll-thumb {
   position: absolute;
-  top: 1px;
+  top: var(--scrollbar-inset);
   left: 0;
-  height: 8px;
+  height: calc(var(--scrollbar-size) - 2 * var(--scrollbar-inset));
   background: var(--scrollbar-thumb, var(--control-border));
-  border-radius: 5px;
+  border-radius: var(--scrollbar-radius);
   cursor: grab;
 }
 .tano-table-scroll-thumb:hover,
@@ -3810,7 +3759,7 @@ button:hover {
   box-shadow: 0 12px 28px #0f0f0f10;
 }
 .inspector:is(:hover, :focus-within) {
-  scrollbar-width: thin;
+  scrollbar-width: auto;
 }
 .inspector-surface {
   display: flex;
@@ -4524,30 +4473,6 @@ button:hover {
   background: var(--paper);
   box-shadow: 0 24px 64px #1c211d24;
 }
-.search-results::-webkit-scrollbar {
-  width: 6px;
-}
-.search-results::-webkit-scrollbar-track {
-  background: transparent;
-}
-.search-results::-webkit-scrollbar-thumb {
-  border-radius: 6px;
-  background: var(--scrollbar-thumb, #cfceca);
-}
-.search-results::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover, #b5b4b0);
-}
-.search-results::-webkit-scrollbar-button {
-  display: none;
-  width: 0;
-  height: 0;
-}
-@supports (-moz-appearance: none) {
-  .search-results {
-    scrollbar-width: thin;
-    scrollbar-color: var(--scrollbar-thumb, #cfceca) transparent;
-  }
-}
 .search-results button {
   display: grid;
   gap: 2px;
@@ -5072,41 +4997,6 @@ button:hover {
   caret-color: var(--text);
   background: transparent;
   font: 14px/1.5 var(--font-mono);
-}
-.math-editor-panel textarea::-webkit-scrollbar,
-.tano-mermaid-editor-panel textarea::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-.math-editor-panel textarea::-webkit-scrollbar-track,
-.tano-mermaid-editor-panel textarea::-webkit-scrollbar-track {
-  background: transparent;
-}
-.math-editor-panel textarea::-webkit-scrollbar-thumb,
-.tano-mermaid-editor-panel textarea::-webkit-scrollbar-thumb {
-  border-radius: 4px;
-  background: transparent;
-}
-.math-editor-panel:hover textarea::-webkit-scrollbar-thumb,
-.tano-mermaid-editor-panel:hover textarea::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb-hover, #b5b4b0);
-}
-.math-editor-panel textarea::-webkit-scrollbar-button,
-.tano-mermaid-editor-panel textarea::-webkit-scrollbar-button {
-  display: none;
-  width: 0;
-  height: 0;
-}
-@supports (-moz-appearance: none) {
-  .math-editor-panel textarea,
-  .tano-mermaid-editor-panel textarea {
-    scrollbar-width: thin;
-    scrollbar-color: transparent transparent;
-  }
-  .math-editor-panel:hover textarea,
-  .tano-mermaid-editor-panel:hover textarea {
-    scrollbar-color: var(--scrollbar-thumb-hover, #b5b4b0) transparent;
-  }
 }
 .tano-math textarea:placeholder-shown {
   min-width: min(28ch, calc(100vw - 54px));

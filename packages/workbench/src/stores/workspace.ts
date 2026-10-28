@@ -1674,6 +1674,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return true;
   }
   async function openFile(file: FileEntry, options?: { historyIndex?: number }) {
+    if (await openDrawingPlugin(file)) return;
     const creationAtRequest = creationRevision;
     const request = ++fileOpenRevision;
     const paneId = activePaneId.value;
@@ -1709,6 +1710,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function openFileInNewTab(file: FileEntry) {
     try {
+      if (await openDrawingPlugin(file)) return;
       await serial(async () => {
         if (file.kind === 'file' && isDataTableFilePath(file.path)) {
           const target = tableTabId(dataTableFileId(file.id));
@@ -1737,6 +1739,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     } catch (error) {
       report(error);
     }
+  }
+  /** The bundled drawing plugin handles its own Markdown; disabled plugins keep source access. */
+  async function openDrawingPlugin(file: FileEntry) {
+    if (file.kind !== 'file' || !/\.excalidraw\.md$/i.test(file.path) || !workspace.value ||
+      !pluginRuntime.value.some(plugin => plugin.id === 'excalidraw' && plugin.status === 'running')) return false;
+    try {
+      await pluginExecutor.invoke('excalidraw', 'command', 'open', { workspaceId: workspace.value.id, fileId: file.id });
+      return true;
+    } catch (error) { report(error); return false; }
   }
   function openAttachmentInNewTab(file: FileEntry) {
     if (!workspace.value || file.kind !== 'file' || isMarkdown(file.path) || isDataTableFilePath(file.path) ||

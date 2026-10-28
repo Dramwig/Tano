@@ -139,9 +139,19 @@ function clearFilters() {
   installedFilter.value = 'all';
   search.value?.focus();
 }
-function installFromCatalog(manifest: PluginManifest) {
+async function installFromCatalog(manifest: PluginManifest) {
+  if (busy.value || !store.workspace) return;
   const entry = props.catalog.find((item) => item.manifest.id === manifest.id);
-  void change({ install: manifest, ...(entry?.package ? { package: entry.package } : {}) });
+  if (!entry?.loadPackage) { await change({ install: manifest, ...(entry?.package ? { package: entry.package } : {}) }); return; }
+  const workspace = store.workspace.id;
+  pending.value = manifest.id; error.value = ''; status.value = '';
+  try {
+    const pkg = await entry.loadPackage();
+    if (store.workspace?.id !== workspace) return;
+    pending.value = '';
+    await change({ install: manifest, package: pkg });
+  } catch (cause) { if (store.workspace?.id === workspace) error.value = String(cause); }
+  finally { pending.value = ''; }
 }
 function browse() {
   chooseView('discover');

@@ -5,7 +5,7 @@ import innerSource from './ui-inner.js?raw';
 
 // Keep the hash in desktop CSP in sync using the sandbox hash regression test.
 export const uiSandboxBootstrap = outerSource.replaceAll('\r\n', '\n');
-export const uiSandboxHash = 'sha256-5xF74IlJ//+nV7veKIEjdcmV2wCIynPnBwcARC0YBdA=';
+export const uiSandboxHash = 'sha256-mttmlt/RorVenHE6uCEgyXxhCOzmzxA4bSqs3JcgTSI=';
 export const uiInnerBootstrap = innerSource.replaceAll('\r\n', '\n');
 export const uiInnerHash = 'sha256-P5ZdN4WrfG4W8bRc6EVq4b3kO6ADXLEDtdOYQg0IEzE=';
 export interface PluginUiSandbox { update(state: PluginJson): void; dispose(): void }
@@ -13,7 +13,7 @@ export function createPluginUiSandbox(container: HTMLElement, bundle: PluginUiBu
   receive: (message: PluginJson) => Promise<void>, failed: (error: string) => void,
   diagnostic?: (level: string, message: string) => void): PluginUiSandbox {
   const frame = document.createElement('iframe');
-  frame.setAttribute('sandbox', 'allow-scripts allow-forms');
+  frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-downloads');
   frame.setAttribute('referrerpolicy', 'no-referrer');
   frame.setAttribute('allow', "camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'; payment 'none'; usb 'none'; serial 'none'; bluetooth 'none'; display-capture 'none'");
   frame.title = '插件界面隔离容器';

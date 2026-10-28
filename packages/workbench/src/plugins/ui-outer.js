@@ -5,7 +5,7 @@ addEventListener('message', function initialize(event) {
   const port = event.ports[0];
   const channel = new MessageChannel();
   const child = document.createElement('iframe');
-  child.setAttribute('sandbox', 'allow-scripts allow-forms');
+  child.setAttribute('sandbox', 'allow-scripts allow-forms allow-downloads');
   child.setAttribute('referrerpolicy', 'no-referrer');
   child.title = '插件自定义界面';
   child.style.cssText = 'width:100%;height:100%;border:0;display:block';

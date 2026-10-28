@@ -131,9 +131,9 @@ onBeforeUnmount(() => finish());
 </template>
 
 <style scoped>
-.document-scrollbar { position: relative; flex: 0 0 12px; width: 12px; min-height: 0; }
+.document-scrollbar { position: relative; flex: 0 0 var(--scrollbar-size, 12px); width: var(--scrollbar-size, 12px); min-height: 0; }
 .document-scrollbar-track { position: absolute; inset: 0; touch-action: none; user-select: none; }
-.document-scrollbar-thumb { position: absolute; top: 0; left: 2px; width: 8px; border-radius: 6px; background: var(--scrollbar-thumb, var(--control-border)); }
+.document-scrollbar-thumb { position: absolute; top: 0; left: var(--scrollbar-inset, 2px); width: calc(var(--scrollbar-size, 12px) - 2 * var(--scrollbar-inset, 2px)); border-radius: var(--scrollbar-radius, 6px); background: var(--scrollbar-thumb, var(--control-border)); }
 .document-scrollbar-track:hover .document-scrollbar-thumb,
 .document-scrollbar-track:focus-visible .document-scrollbar-thumb,
 .document-scrollbar.is-dragging .document-scrollbar-thumb { background: var(--scrollbar-thumb-hover, var(--muted)); }

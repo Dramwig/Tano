@@ -60,6 +60,21 @@ function button(label: string) {
   )!;
 }
 
+it('loads a bundled code package on installation and keeps failed downloads retryable', async () => {
+  const manifest = { ...bundledObjectPlugins[0]!, id: 'lazy-drawing', name: '按需白板', objectTypes: [], relationTypes: [] };
+  const loadPackage = vi.fn().mockRejectedValueOnce(new Error('package unavailable')).mockResolvedValue({ packageVersion: 1, manifest });
+  catalogOverride.value = [{ manifest, category: { id: 'tools', label: '工具' }, loadPackage }];
+  await nextTick();
+  expect(loadPackage).not.toHaveBeenCalled();
+  button('安装按需白板').click();
+  await vi.waitFor(() => expect(root.textContent).toContain('package unavailable'));
+  expect(store.installedPlugins).toHaveLength(0);
+  expect(button('安装按需白板').disabled).toBe(false);
+  button('安装按需白板').click();
+  await vi.waitFor(() => expect(store.installedPlugins[0]?.manifest.id).toBe('lazy-drawing'));
+  expect(loadPackage).toHaveBeenCalledTimes(2);
+});
+
 it('offers publishing only when the product provides it and preserves drafts while browsing plugins', async () => {
   expect(button('我的投稿')).toBeUndefined();
   button('社区目录').click();

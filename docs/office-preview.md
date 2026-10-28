@@ -18,8 +18,35 @@ This is a content reading view. It does not reproduce Office pagination, themes,
 merged-cell layout, master slides, charts, animations or every embedded object.
 Legacy Word and PowerPoint previews do not retain original formatting or images.
 Headers, footers, speaker notes and unsupported drawing objects are not included.
-Word reading sections group up to 200 extracted blocks and are not printed pages.
+Word content is paginated into fixed A4-proportioned reading pages; these are not
+the original Word print pages.
 The original attachment remains available through the existing export action.
+
+## Reader layout
+
+PDF and Office attachments share an IDE pane reader with an independently scrolling
+canvas. PDF, Word and PowerPoint pages form one continuous vertical stack with
+24px gaps. Scrolling updates the current page; navigation controls scroll to a page
+instead of replacing the content. PDF canvases and Word page views are mounted near
+the viewport, while page placeholders preserve the complete scroll range. PDF page
+dimensions are read before rendering, including mixed portrait/landscape documents.
+Read-only status uses the same status icon and hover/click panel as Markdown,
+immediately after the breadcrumb filename; no bottom status bar is shown. Page/row
+position and zoom details live in the preview actions popover. Controls are folded into the
+breadcrumb row's preview actions button, matching Markdown's header action pattern.
+Each split pane owns its action host. The popover supports Escape, outside dismissal,
+focus restoration and viewport-aware positioning. Standalone readers without a header
+host keep an inline toolbar. Page navigation, zoom presets, zoom buttons and width/page
+fitting do not move the workbench chrome.
+PDF has lazy page thumbnails; Word pages and PowerPoint slides have a collapsible
+navigation list. Arrow keys and Home/End navigate when the reading canvas has focus.
+Word uses fixed 794 × 1123 paper with overflow continuing onto subsequent pages.
+Narrow panes scale the entire page without changing line wrapping or pagination;
+PowerPoint uses a landscape canvas. These surfaces do not imply original-layout fidelity.
+Excel uses sticky row/column headings and bottom worksheet tabs with keyboard navigation.
+Format limitations are available through the information button, with truncation warnings
+remaining visible above the grid. Document paper stays white in dark mode while viewer
+controls and spreadsheets follow the workbench theme.
 
 ## Limits and isolation
 

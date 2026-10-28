@@ -14,6 +14,15 @@ function mount(path = 'book.xlsx') {
   app = createApp(() => h(OfficePreview, file.value)); app.mount(root);
   return { root, file };
 }
+it.each([['file.xls', 'spreadsheet'], ['file.xlsx', 'spreadsheet'], ['file.doc', 'word'], ['file.docx', 'word'], ['file.ppt', 'presentation'], ['file.pptx', 'presentation']])('keeps the %s layout during worker parsing and removes it after success', async (path, kind) => {
+  let finish!: (result: Preview) => void;
+  vi.mocked(readOffice).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  const { root } = mount(path);
+  expect(root.querySelector('[data-preview-kind]')?.getAttribute('data-preview-kind')).toBe(kind);
+  expect(root.querySelector('[role="status"]')?.getAttribute('aria-label')).toMatch(/^正在加载/);
+  finish({ kind: 'document', legacy: false, pages: [{ name: '', blocks: [] }] });
+  await vi.waitFor(() => expect(root.querySelector('[data-preview-kind]')).toBeNull());
+});
 
 it('paginates sheets, resets the row page on sheet changes, and escapes cell HTML', async () => {
   vi.mocked(readOffice).mockResolvedValue({ kind: 'spreadsheet', sheets: [
@@ -30,7 +39,7 @@ it('paginates sheets, resets the row page on sheet changes, and escapes cell HTM
   expect(root.querySelector('tbody')?.textContent).toContain('<img src=x onerror=alert(1)>');
   expect(root.querySelector('img')).toBeNull();
   expect(root.textContent).toContain('10000 行、200 列');
-  expect(root.querySelector('[aria-label="下一页"]')).toBeNull();
+  expect(root.querySelector<HTMLButtonElement>('[aria-label="下一页"]')?.disabled).toBe(true);
   expect(root.querySelector('[contenteditable], input, textarea')).toBeNull();
 });
 
@@ -46,15 +55,16 @@ it('renders document tables and styled text without interpreting document markup
   expect(root.querySelector('script, iframe, object, embed, [contenteditable]')).toBeNull();
 });
 
-it('moves between slides and exposes empty/image-only slide limitations', async () => {
+it('renders all slides together and exposes empty/image-only slide limitations', async () => {
   vi.mocked(readOffice).mockResolvedValue({ kind: 'presentation', legacy: true, pages: [
     { name: '', blocks: [{ kind: 'paragraph', runs: [{ text: '第一页正文' }] }] }, { name: '', blocks: [] },
   ] });
   const { root } = mount('slides.ppt');
   await vi.waitFor(() => expect(root.querySelector('article')?.textContent).toContain('第一页正文'));
   root.querySelector<HTMLButtonElement>('[aria-label="下一页"]')!.click(); await nextTick();
-  expect(root.querySelector('article')?.getAttribute('aria-label')).toBe('幻灯片 2 / 2');
-  expect(root.querySelector('article')?.textContent).toContain('没有可提取的文字');
+  expect(root.querySelectorAll('article')).toHaveLength(2);
+  expect(root.querySelectorAll('article')[1]?.getAttribute('aria-label')).toBe('幻灯片 2 / 2');
+  expect(root.querySelectorAll('article')[1]?.textContent).toContain('没有可提取的文字');
   expect(root.querySelector<HTMLButtonElement>('[aria-label="下一页"]')?.disabled).toBe(true);
 });
 

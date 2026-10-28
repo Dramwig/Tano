@@ -564,12 +564,9 @@ watch(() => props.date, (date) => {
   overflow: auto;
   background: var(--paper);
 }
-.calendar-view-timeline { overflow-anchor: none; scrollbar-width: none; }
-.calendar-view-timeline::-webkit-scrollbar { display: none; }
+.calendar-view-timeline { overflow-anchor: none; }
 .calendar-view-month,
-.calendar-view-year { scrollbar-width: none; overflow-anchor: none; }
-.calendar-view-month::-webkit-scrollbar,
-.calendar-view-year::-webkit-scrollbar { display: none; }
+.calendar-view-year { overflow-anchor: none; }
 .calendar-view-days,
 .calendar-view-grid {
   display: grid;

@@ -38,7 +38,7 @@ async function action(action: string) {
 }
 </script>
 <template>
-  <section class="plugin-surface" :aria-label="`${view.pluginName} · ${view.label}`">
+  <section class="plugin-surface" :data-plugin="view.pluginId" :aria-label="`${view.pluginName} · ${view.label}`">
     <header><div><h2>{{ view.label }}</h2><span>{{ view.pluginName }}</span></div><span>{{ runtime ? { loading: t('加载中'), running: t('运行中'), blocked: t('等待授权或运行环境'), error: t('已停止') }[runtime.status] : t('未运行') }}</span></header>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="runtime?.message" :role="runtime.status === 'error' ? 'alert' : 'status'">{{ runtime.message }}</p>
@@ -50,6 +50,8 @@ async function action(action: string) {
 </template>
 <style scoped>
 .plugin-surface { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 20px; color: var(--text); font-size: 13px; }
+.plugin-surface[data-plugin="excalidraw"] { display: flex; flex-direction: column; height: 100%; padding: 0; overflow: hidden; }
+.plugin-surface[data-plugin="excalidraw"] > header { display: none; }
 header { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
 h2 { font-size: 18px; margin: 0 0 4px; }
 header span, .empty { color: var(--muted); font-size: 12px; }

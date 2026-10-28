@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { localizedDataFieldTypes as dataFieldTypes } from '../ui-labels';
 import { t } from '../i18n';
-import LoadingSkeleton from './LoadingSkeleton.vue';
+import PreviewSkeleton from './PreviewSkeleton.vue';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import {
   Plus,
@@ -778,7 +778,7 @@ const filterOperators = [
 
 <template>
   <div class="data-page-layout">
-  <LoadingSkeleton v-if="store.workspaceLoading?.tables" variant="document" :rows="8" />
+  <PreviewSkeleton v-if="store.workspaceLoading?.tables" kind="spreadsheet" />
   <div v-show="!store.workspaceLoading?.tables" class="component-loading-content">
   <section ref="root" class="data-page" :aria-label="t('数据表工作区')" @paste="paste" @keydown="keydown">
     <template v-if="table && view && state">
