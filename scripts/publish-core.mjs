@@ -4,15 +4,18 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { integrity, publicationAllowed, sha256 } from './core-distribution.mjs';
+import { publicationAuth } from './core-publish-auth.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 export async function publishCore({ root = repository, apply = false, evidencePath,
-  npmCli = process.env.npm_execpath, run = execFileSync, fetchImpl = fetch } = {}) {
+  npmCli = process.env.npm_execpath, run = execFileSync, fetchImpl = fetch, loadAuth = publicationAuth } = {}) {
   if (!npmCli?.endsWith('.js')) throw new Error('Run through npm run core:publish');
   const directory = join(root, 'artifacts/core-registry');
   const manifest = JSON.parse(await readFile(join(directory, 'core-registry.json'), 'utf8'));
-  const npm = args => run(process.execPath, [npmCli, ...args], { cwd: root, encoding: 'utf8', stdio: 'pipe', windowsHide: true });
+  let auth;
+  const npmOptions = () => ({ cwd: auth?.cwd ?? root, ...(auth ? { env: auth.env } : {}), windowsHide: true });
+  const npm = args => run(process.execPath, [npmCli, ...args], { ...npmOptions(), encoding: 'utf8', stdio: 'pipe' });
   const git = args => run('git', args, { cwd: root, encoding: 'utf8' }).trim();
   for (const item of [...manifest.packages, manifest.native]) {
     if (!/^[\w.-]+\.(tgz|crate)$/.test(item.file)) throw new Error('Unsafe Core artifact path');
@@ -38,42 +41,47 @@ export async function publishCore({ root = repository, apply = false, evidencePa
   run('git', ['merge-base', '--is-ancestor', manifest.sourceCommit, 'origin/main'], { cwd: root });
   // Repack from the validated source before calling this command; Rust's publisher must
   // publish exactly the prepared archive, not silently reuse a modified source tree.
-  npm(['whoami', '--registry', manifest.npmRegistry]);
-  const pending = [];
-  for (const item of manifest.packages) {
-    try {
-      const existing = JSON.parse(npm(['view', `${item.publishedName}@${item.version}`, '--json', '--registry', manifest.npmRegistry]));
-      if (existing.dist?.integrity !== item.integrity || existing.tanoCore?.sourceCommit !== manifest.sourceCommit)
-        throw new Error(`Immutable npm version already contains different code: ${item.publishedName}@${item.version}`);
-    } catch (error) {
-      if (/E404/.test(String(error.stderr))) pending.push(item);
-      else throw error;
+  auth = await loadAuth({ registry: manifest.npmRegistry });
+  try {
+    // Never fall back to the short-lived login session and five interactive prompts.
+    // Reject missing/expired credentials before publishing even the native crate.
+    npm(['whoami', '--registry', manifest.npmRegistry]);
+    const pending = [];
+    for (const item of manifest.packages) {
+      try {
+        const existing = JSON.parse(npm(['view', `${item.publishedName}@${item.version}`, '--json', '--registry', manifest.npmRegistry]));
+        if (existing.dist?.integrity !== item.integrity || existing.tanoCore?.sourceCommit !== manifest.sourceCommit)
+          throw new Error(`Immutable npm version already contains different code: ${item.publishedName}@${item.version}`);
+      } catch (error) {
+        if (/E404/.test(String(error.stderr))) pending.push(item);
+        else throw error;
+      }
     }
-  }
-  const nativeUrl = `https://crates.io/api/v1/crates/tano-native/${manifest.version}`;
-  const nativeResponse = await fetchImpl(nativeUrl, { headers: { 'User-Agent': 'Tano-Core-distribution (https://github.com/Dramwig/Tano)' }, signal: AbortSignal.timeout(30_000) });
-  let publishNative = false;
-  if (nativeResponse.status === 404) publishNative = true;
-  else {
-    if (!nativeResponse.ok) throw new Error(`Cannot query crates.io: HTTP ${nativeResponse.status}`);
-    if ((await nativeResponse.json()).version?.checksum !== manifest.native.sha256)
-      throw new Error('Immutable Rust version already contains different code');
-  }
-  // Complete all collision checks before the first remote write. Retrying a partial
-  // publication skips only versions whose exact bytes and provenance already match.
-  if (publishNative) {
-    run('cargo', ['package', '--manifest-path', join(root, 'crates/tano-native/Cargo.toml'),
-      '--target-dir', join(directory, 'native-target'), '--locked', '--no-verify'], { cwd: root, stdio: 'inherit' });
-    const packed = await readFile(join(directory, 'native-target/package', manifest.native.file));
-    if (sha256(packed) !== manifest.native.sha256) throw new Error('Rust archive changed; prepare the distribution again');
-    run('cargo', ['publish', '--manifest-path', join(root, 'crates/tano-native/Cargo.toml'),
-      '--target-dir', join(directory, 'native-target'), '--locked', '--no-verify'], { cwd: root, stdio: 'inherit' });
-  }
-  for (const item of pending)
-    run(process.execPath, [npmCli, 'publish', join(directory, item.file), '--ignore-scripts', '--access', 'public', '--loglevel=warn', '--registry', manifest.npmRegistry],
-      { cwd: root, stdio: 'inherit', windowsHide: true });
-  console.log(`Core ${manifest.version} published. Consumer: npm run core:sync -- --registry "${join(directory, 'core-registry.json')}"`);
-  return manifest;
+    const nativeUrl = `https://crates.io/api/v1/crates/tano-native/${manifest.version}`;
+    const nativeResponse = await fetchImpl(nativeUrl, { headers: { 'User-Agent': 'Tano-Core-distribution (https://github.com/Dramwig/Tano)' }, signal: AbortSignal.timeout(30_000) });
+    let publishNative = false;
+    if (nativeResponse.status === 404) publishNative = true;
+    else {
+      if (!nativeResponse.ok) throw new Error(`Cannot query crates.io: HTTP ${nativeResponse.status}`);
+      if ((await nativeResponse.json()).version?.checksum !== manifest.native.sha256)
+        throw new Error('Immutable Rust version already contains different code');
+    }
+    // Complete all collision checks before the first remote write. Retrying a partial
+    // publication skips only versions whose exact bytes and provenance already match.
+    if (publishNative) {
+      run('cargo', ['package', '--manifest-path', join(root, 'crates/tano-native/Cargo.toml'),
+        '--target-dir', join(directory, 'native-target'), '--locked', '--no-verify'], { cwd: root, stdio: 'inherit' });
+      const packed = await readFile(join(directory, 'native-target/package', manifest.native.file));
+      if (sha256(packed) !== manifest.native.sha256) throw new Error('Rust archive changed; prepare the distribution again');
+      run('cargo', ['publish', '--manifest-path', join(root, 'crates/tano-native/Cargo.toml'),
+        '--target-dir', join(directory, 'native-target'), '--locked', '--no-verify'], { cwd: root, stdio: 'inherit' });
+    }
+    for (const item of pending)
+      run(process.execPath, [npmCli, 'publish', join(directory, item.file), '--ignore-scripts', '--access', 'public', '--loglevel=warn', '--registry', manifest.npmRegistry],
+        { ...npmOptions(), stdio: ['ignore', 'inherit', 'inherit'] });
+    console.log(`Core ${manifest.version} published. Consumer: npm run core:sync -- --registry "${join(directory, 'core-registry.json')}"`);
+    return manifest;
+  } finally { await auth.dispose(); }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

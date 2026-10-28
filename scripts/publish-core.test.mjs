@@ -1,5 +1,6 @@
 import { afterEach, expect, it } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { corePackages, integrity, sha256 } from './core-distribution.mjs';
@@ -26,7 +27,7 @@ async function fixture() {
   const evidencePath = join(out, 'evidence.json');
   await writeFile(evidencePath, JSON.stringify({ sourceCommit: manifest.sourceCommit,
     commands: ['npm run check', 'npm run test:native', 'npm run mcp:smoke', 'npm run core:registry:smoke'].map(command => ({ command, exitCode: 0 })) }));
-  return { root, out, manifest, evidencePath };
+  return { root, out, manifest, evidencePath, loadAuth: async () => ({ cwd: root, env: {}, dispose: async () => {} }) };
 }
 it('retries a partial publication by skipping only identical existing versions', async () => {
   const f = await fixture(), published = [];
@@ -59,4 +60,53 @@ it('rejects a version collision before any remote writes', async () => {
 it('rejects modified archives before contacting a registry', async () => {
   const f = await fixture(); await writeFile(join(f.out, 'editor.tgz'), 'tampered');
   await expect(publishCore({ ...f, npmCli: '/npm.js', run: () => { throw new Error('unexpected network'); } })).rejects.toThrow('artifact changed');
+});
+it('fails missing publication authentication before publishing any registry artifact', async () => {
+  const f = await fixture(), commands = [];
+  await expect(publishCore({ ...f, apply: true, npmCli: '/npm.js',
+    run: (command, args) => { commands.push(command); return args[0] === 'rev-parse' ? f.manifest.sourceCommit : ''; },
+    loadAuth: async () => { throw new Error('Dedicated credential expired'); },
+  })).rejects.toThrow('credential expired');
+  expect(commands.every(command => command === 'git')).toBe(true);
+});
+it('isolates credentials to npm and disposes the configuration after a registry failure', async () => {
+  const f = await fixture(); let disposed = false;
+  const isolated = { cwd: '/isolated', env: { TANO_NPM_PUBLISH_TOKEN: 'test-only' }, dispose: async () => { disposed = true; } };
+  await expect(publishCore({ ...f, apply: true, npmCli: '/npm.js', loadAuth: async () => isolated,
+    run: (command, args, options) => {
+      if (command === 'git') { expect(options.env).toBeUndefined(); return args[0] === 'rev-parse' ? f.manifest.sourceCommit : ''; }
+      expect(options.cwd).toBe(isolated.cwd);
+      expect(options.env).toBe(isolated.env);
+      expect(args.join(' ')).not.toContain('test-only');
+      throw new Error('Registry authentication rejected');
+    },
+  })).rejects.toThrow('authentication rejected');
+  expect(disposed).toBe(true);
+});
+it('publishes the complete set without passing the npm token to Cargo or enabling interactive npm auth', async () => {
+  const f = await fixture(), commands = []; let disposed = false;
+  const isolated = { cwd: '/isolated', env: { TANO_NPM_PUBLISH_TOKEN: 'test-only' }, dispose: async () => { disposed = true; } };
+  await publishCore({ ...f, apply: true, npmCli: '/npm.js', loadAuth: async () => isolated,
+    fetchImpl: async () => new Response('', { status: 404 }),
+    run: (command, args, options) => {
+      commands.push({ command, args });
+      if (command === 'git') return args[0] === 'rev-parse' ? f.manifest.sourceCommit : '';
+      if (command === 'cargo') {
+        expect(options.env).toBeUndefined();
+        if (args[0] === 'package') {
+          mkdirSync(join(f.out, 'native-target/package'), { recursive: true });
+          writeFileSync(join(f.out, 'native-target/package/native.crate'), 'native');
+        }
+        return '';
+      }
+      expect(options.env).toBe(isolated.env);
+      expect(options.cwd).toBe(isolated.cwd);
+      if (args[1] === 'view') { const error = new Error('missing'); error.stderr = 'E404'; throw error; }
+      if (args[1] === 'publish') expect(options.stdio[0]).toBe('ignore');
+      return 'dramwig';
+    },
+  });
+  expect(commands.filter(c => c.args[1] === 'publish')).toHaveLength(5);
+  expect(commands.some(c => c.command === 'cargo' && c.args[0] === 'publish')).toBe(true);
+  expect(disposed).toBe(true);
 });
