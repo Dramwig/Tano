@@ -4244,7 +4244,7 @@ dependencies = [
 
 [[package]]
 name = "tano"
-version = "0.9.1"
+version = "0.9.2"
 dependencies = [
  "base64 0.22.1",
  "libc",
@@ -4271,7 +4271,7 @@ dependencies = [
 
 [[package]]
 name = "tano-native"
-version = "0.9.1"
+version = "0.9.2"
 dependencies = [
  "base64 0.22.1",
  "hmac",
