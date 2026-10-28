@@ -38,7 +38,7 @@ it('keeps a wide nested table within its toggle content width', async () => {
   expect(changes).not.toHaveBeenCalled();
 }, 10_000);
 
-it('expands only wide tables, reserves the comment gutter, and tracks each scrollable edge without changing Markdown', async () => {
+it.each([0, 8])('expands only wide tables, reserves the comment gutter, and tracks scrollable edges with a %ipx frame inset without changing Markdown', async frameInset => {
   const source = 'Before\n\n| A | B |\n| --- | --- |\n| alpha | beta |\n\nAfter\n';
   let tableWidth = 1600;
   let paneWidth = 1280;
@@ -74,6 +74,8 @@ it('expands only wide tables, reserves the comment gutter, and tracks each scrol
   app.mount(root);
   await vi.waitFor(() => expect(editor.value?.withContext(ctx => ctx.get(editorViewCtx))).toBeDefined());
   const viewport = root.querySelector<HTMLElement>('.tano-table-viewport')!;
+  viewport.parentElement!.style.setProperty('--tano-block-frame-inset', `${frameInset}px`);
+  resize();
   wrapper = viewport.querySelector<HTMLElement>('.tableWrapper')!;
   const scrollbar = viewport.querySelector<HTMLElement>('[role="scrollbar"]')!;
   Object.defineProperty(scrollbar, 'clientWidth', { get: () => Number.parseFloat(scrollbar.style.width) });
@@ -86,12 +88,12 @@ it('expands only wide tables, reserves the comment gutter, and tracks each scrol
   expect(viewport.style.marginLeft).toBe('-250px');
   expect(250 + Number.parseFloat(viewport.style.marginLeft)).toBe(0);
   expect(250 + Number.parseFloat(viewport.style.marginLeft) + Number.parseFloat(viewport.style.width)).toBe(paneWidth);
-  expect(scrollbar.style.width).toBe('780px');
-  expect(scrollbar.style.marginLeft).toBe('250px');
-  expect(viewport.querySelector('table')!.style.marginLeft).toBe('250px');
-  expect(viewport.querySelector('table')!.style.marginRight).toBe('250px');
+  await vi.waitFor(() => expect(scrollbar.style.width).toBe(`${780 - frameInset * 2}px`));
+  expect(scrollbar.style.marginLeft).toBe(`${250 + frameInset}px`);
+  expect(viewport.querySelector('table')!.style.marginLeft).toBe(`${250 + frameInset}px`);
+  expect(viewport.querySelector('table')!.style.marginRight).toBe(`${250 + frameInset}px`);
   wrapper.dispatchEvent(new Event('scroll'));
-  expect(scrollbar.getAttribute('aria-valuemax')).toBe('820');
+  expect(scrollbar.getAttribute('aria-valuemax')).toBe(String(820 + frameInset * 2));
   expect(viewport.classList.contains('has-comments')).toBe(false);
 
   const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
@@ -103,8 +105,8 @@ it('expands only wide tables, reserves the comment gutter, and tracks each scrol
   await nextTick();
   await vi.waitFor(() => expect(viewport.style.width).toBe('780px'));
   expect(viewport.style.marginLeft).toBe('0px');
-  expect(viewport.querySelector('table')!.style.marginLeft).toBe('0px');
-  expect(viewport.querySelector('table')!.style.marginRight).toBe('0px');
+  expect(viewport.querySelector('table')!.style.marginLeft).toBe(`${frameInset}px`);
+  expect(viewport.querySelector('table')!.style.marginRight).toBe(`${frameInset}px`);
   expect(viewport.classList.contains('has-comments')).toBe(true);
   expect(viewport.classList.contains('can-scroll-right')).toBe(true);
   expect(viewport.classList.contains('can-scroll-left')).toBe(false);
@@ -114,13 +116,13 @@ it('expands only wide tables, reserves the comment gutter, and tracks each scrol
   expect(viewport.classList.contains('can-scroll-right')).toBe(true);
   // Handle placement follows the viewport's layout on a separate animation frame.
   await vi.waitFor(() => expect(root.querySelector<HTMLElement>('.tano-block-handle[data-block-index="1"]')!.style.transform).toBe(''));
-  wrapper.scrollLeft = 820;
+  wrapper.scrollLeft = 820 + frameInset * 2;
   wrapper.dispatchEvent(new Event('scroll'));
   expect(viewport.classList.contains('can-scroll-right')).toBe(false);
-  expect(scrollbar.style.width).toBe('780px');
-  expect(scrollbar.style.marginLeft).toBe('0px');
+  expect(scrollbar.style.width).toBe(`${780 - frameInset * 2}px`);
+  expect(scrollbar.style.marginLeft).toBe(`${frameInset}px`);
   expect(scrollbar.hidden).toBe(false);
-  expect(scrollbar.getAttribute('aria-valuemax')).toBe('820');
+  expect(scrollbar.getAttribute('aria-valuemax')).toBe(String(820 + frameInset * 2));
   scrollbar.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
   expect(wrapper.scrollLeft).toBe(0);
   wrapper.dispatchEvent(new Event('scroll'));

@@ -1,31 +1,22 @@
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount, nextTick } from 'vue';
-import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
+import { computed, ref, shallowRef, watch } from 'vue';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { t } from '../i18n';
-const props = defineProps<{ bytes: Uint8Array }>();
-const canvas = ref<HTMLCanvasElement>(); const page = ref(1); const pages = ref(0); const error = ref(''); const busy = ref(false);
-let document: PDFDocumentProxy | undefined; let rendering: RenderTask | undefined; let generation = 0;
-async function render() {
-  const current = ++generation;
-  rendering?.cancel(); busy.value = true;
-  try {
-    const pdfPage = await document?.getPage(page.value);
-    await nextTick();
-    if (!pdfPage || !canvas.value || current !== generation) return;
-    const viewport = pdfPage.getViewport({ scale: 1 });
-    // Bound both axes, including deliberately oversized pages.
-    const scale = Math.min(1.5, 2400 / Math.max(viewport.width, viewport.height));
-    const sized = pdfPage.getViewport({ scale });
-    canvas.value.width = sized.width; canvas.value.height = sized.height;
-    rendering = pdfPage.render({ canvas: canvas.value, viewport: sized });
-    await rendering.promise;
-  } catch (reason) { if (current === generation && (reason as Error).name !== 'RenderingCancelledException') error.value = String(reason); }
-  finally { if (current === generation) busy.value = false; }
-}
+import PreviewSkeleton from './PreviewSkeleton.vue';
+import DocumentReader from './DocumentReader.vue';
+import PdfThumbnail from './PdfThumbnail.vue';
+import PdfPage from './PdfPage.vue';
+import ReaderPage from './ReaderPage.vue';
+const props = defineProps<{ bytes: Uint8Array; controlsTarget?: string }>();
+const page = ref(1), error = ref(''), busy = ref(false);
+const document = shallowRef<PDFDocumentProxy>();
+const sizes = shallowRef<{ width: number; height: number }[]>([]);
+const navigation = computed(() => sizes.value.map(() => ''));
+const width = computed(() => sizes.value.reduce((max, size) => Math.max(max, size.width), 0));
 watch(() => props.bytes, async (bytes, _, onCleanup) => {
   let current = true; let destroy: (() => void) | undefined;
-  onCleanup(() => { current = false; generation++; rendering?.cancel(); destroy?.(); });
-  page.value = 1; pages.value = 0; error.value = ''; busy.value = true;
+  onCleanup(() => { current = false; destroy?.(); });
+  document.value = undefined; page.value = 1; sizes.value = []; error.value = ''; busy.value = true;
   try {
     const pdf = await import('pdfjs-dist');
     const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url');
@@ -34,19 +25,35 @@ watch(() => props.bytes, async (bytes, _, onCleanup) => {
     const task = pdf.getDocument({ data: bytes.slice(), useSystemFonts: true });
     destroy = () => { void task.destroy(); };
     const loaded = await task.promise;
+    // Reserve true page sizes before lazy rendering to keep the scroll range stable.
+    const dimensions: { width: number; height: number }[] = [];
+    for (let index = 1; index <= loaded.numPages; index++) {
+      if (!current) return;
+      const view = (await loaded.getPage(index)).getViewport({ scale: 1 });
+      dimensions.push({ width: view.width, height: view.height });
+    }
     if (!current) return;
-    document = loaded; pages.value = loaded.numPages; await render();
-  } catch (reason) { if (current) { error.value = String(reason); busy.value = false; } }
+    document.value = loaded; sizes.value = dimensions;
+  } catch (reason) { if (current) error.value = String(reason); }
+  finally { if (current) busy.value = false; }
 }, { immediate: true });
-watch(page, () => { if (document && pages.value) void render(); });
-onBeforeUnmount(() => { generation++; rendering?.cancel(); });
 </script>
 <template>
-  <section class="pdf-preview" :aria-label="t('PDF 预览')">
-    <nav><button :disabled="busy || page <= 1" @click="page--">{{ t('上一页') }}</button><span>{{ page }} / {{ pages }}</span><button :disabled="busy || page >= pages" @click="page++">{{ t('下一页') }}</button></nav>
-    <p v-if="error" role="alert">{{ error }}</p><canvas v-show="pages && !error" ref="canvas" :aria-label="t('PDF 页面')" />
+  <section class="pdf-preview" :aria-label="t('PDF 预览')" :aria-busy="busy">
+    <PreviewSkeleton v-if="busy && !error" kind="pdf" :controls="!controlsTarget" />
+    <p v-if="error" class="pdf-error" role="alert">{{ error }}</p>
+    <DocumentReader v-if="document && sizes.length && !error" v-model:page="page" continuous :controls-target="controlsTarget" :count="sizes.length" :width="width" :height="sizes[0].height" :navigation="navigation" format="PDF" :status="t('第 {0} 页，共 {1} 页', [page, sizes.length])">
+      <template #thumbnail="{ index }"><PdfThumbnail :key="index" :document="document" :page="index + 1" /></template>
+      <template #default="{ scale }">
+        <ReaderPage v-for="(size, index) in sizes" :key="index" :page="index + 1" :width="size.width" :height="size.height" :scale="scale">
+          <PdfPage :document="document" :page="index + 1" :width="size.width" :height="size.height" :scale="scale" />
+        </ReaderPage>
+      </template>
+    </DocumentReader>
   </section>
 </template>
 <style scoped>
-nav { display: flex; gap: 16px; align-items: center; justify-content: center; margin-bottom: 16px; } button { padding: 6px 12px; } canvas { display: block; max-width: 100%; height: auto; margin: auto; background: white; } p { overflow-wrap: anywhere; }
+.pdf-preview { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.pdf-preview > .preview-skeleton { box-sizing: border-box; padding: 24px; overflow: hidden; }
+.pdf-error { padding: 24px; color: var(--muted); overflow-wrap: anywhere; font-size: 14px; }
 </style>

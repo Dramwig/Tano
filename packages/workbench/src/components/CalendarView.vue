@@ -564,12 +564,9 @@ watch(() => props.date, (date) => {
   overflow: auto;
   background: var(--paper);
 }
-.calendar-view-timeline { overflow-anchor: none; scrollbar-width: none; }
-.calendar-view-timeline::-webkit-scrollbar { display: none; }
+.calendar-view-timeline { overflow-anchor: none; }
 .calendar-view-month,
-.calendar-view-year { scrollbar-width: none; overflow-anchor: none; }
-.calendar-view-month::-webkit-scrollbar,
-.calendar-view-year::-webkit-scrollbar { display: none; }
+.calendar-view-year { overflow-anchor: none; }
 .calendar-view-days,
 .calendar-view-grid {
   display: grid;
@@ -691,7 +688,7 @@ watch(() => props.date, (date) => {
 .calendar-view-event:focus-visible { background: color-mix(in srgb, var(--green) 27%, var(--paper)); }
 .calendar-view-event strong,
 .calendar-view-event span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.calendar-view-event strong { font-size: 12px; font-weight: 600; }
+.calendar-view-event strong { font-size: 12px; font-weight: 500; }
 .calendar-view-point { flex-direction: row; align-items: center; gap: 5px; padding: 2px 4px 2px 13px; border-left: 0; background: transparent; }
 .calendar-view-point::before { content: ''; position: absolute; left: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
 .calendar-view-point span { color: var(--muted); }
@@ -729,7 +726,7 @@ watch(() => props.date, (date) => {
   font-variant-numeric: tabular-nums;
 }
 .calendar-month-date { margin: 0 0 5px auto; font-size: 12px; }
-.calendar-month-date.month-start { width: auto; min-width: 27px; padding: 0 5px; font-weight: 600; }
+.calendar-month-date.month-start { width: auto; min-width: 27px; padding: 0 5px; font-weight: 500; }
 .calendar-month-date:hover,
 .calendar-year-days button:hover { background: var(--hover); }
 .calendar-month-event {

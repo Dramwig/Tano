@@ -11,6 +11,13 @@ versions, deployment and installer publication belong to the private repository.
 A public Product `vA.B.C` tag points to its pinned Core commit; the private tag
 with the same name points to the Product commit.
 
+Only a release that changes shipped Core contents needs a new Core version and
+all six registry packages (five on npm, one on crates.io). Product-only changes
+reuse the pinned Core, and adopting a previously published Core requires only a
+consumer sync. See the [publication decision table](core-distribution.md#when-publication-is-required).
+Neither a production deployment nor an ordinary commit automatically publishes
+Core packages.
+
 ## Prepare and publish Core
 
 Before any release-related Git commit, push, or tag creation, update the website
@@ -37,14 +44,18 @@ This requirement applies to release work, not ordinary non-release Git operation
    validation blocks publication; ordinary commits and pushes remain allowed.
 3. Manually run **Tag reviewed release** on main. It validates the release plan
    and creates an immutable tag; it neither runs tests nor waits for retired CI.
-4. Manually run **Export reviewed Core**, supplying that Core tag. It checks tag
-   identity, main ancestry and clean source, then exports the distribution and
-   uploads a 30-day transport artifact. It does not dispatch a consumer workflow.
-5. In the consumer, sync the intended tagged Core source locally using
-   `npm run core:sync` and commit the snapshot to dev. This explicit sync command
-   includes validation; it is not a prerequisite for ordinary Git work. Alternatively use
-   **Sync reviewed Core** as an optional PR helper. The committed snapshot is the
-   durable copy; the expiring Actions artifact is not a dependency source.
+4. Prepare and smoke-test the six registry artifacts locally, then run
+   **Publish reviewed Core packages** manually with the tag and exact local
+   evidence, or publish locally with `npm run core:publish -- --apply --evidence
+   <json>`. Follow [Core distribution](core-distribution.md). Five npm packages
+   use `@tano.page`; the Rust crate uses crates.io. Publish the small discovery
+   manifest with the Core GitHub Release. **Export reviewed Core** remains an
+   optional transport export; its expiring artifact is not a dependency source.
+5. In the consumer, run `npm run core:sync -- --registry <manifest-file-or-url>`
+   and commit the manifests/locks and removal of tracked snapshots to dev. The
+   explicit sync includes local validation; it is not a prerequisite for ordinary
+   Git work. **Sync reviewed Core** remains an optional manual PR helper and
+   installs published packages without running test suites in Actions.
 6. Synchronize main into dev locally with `git merge --no-ff main` and push dev.
    **Sync main into dev** remains an optional manual PR helper. Neither path starts
    Actions or requires a PR to update the protected branches.

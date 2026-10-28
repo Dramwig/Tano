@@ -1059,7 +1059,7 @@ onBeforeUnmount(() => {
   border-radius: 0;
   background: transparent;
   font-size: 26px;
-  font-weight: 550;
+  font-weight: 500;
   line-height: 1.5;
   caret-color: var(--green);
 }
@@ -1255,14 +1255,14 @@ onBeforeUnmount(() => {
   color: var(--text);
 }
 .sidebar-calendar-day[aria-pressed='true'] {
-  font-weight: 600;
+  font-weight: 500;
 }
 .sidebar-calendar-day.outside-month {
   color: color-mix(in srgb, var(--muted) 65%, transparent);
 }
 .sidebar-calendar-day.month-start {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .sidebar-calendar-day:focus-visible {
   outline: 1px solid var(--green);

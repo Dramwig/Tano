@@ -203,7 +203,7 @@ import ButtonVisibilityGroup from './components/ButtonVisibilityGroup.vue';
 const InlineAssistantInput = defineAsyncComponent(() => import('./components/InlineAssistantInput.vue'));
 import type { InlineAssistantAnchor } from './components/InlineAssistantInput.vue';
 const CalendarView = loadingComponent(() => import('./components/CalendarView.vue'), 'document');
-const DataTablePage = loadingComponent(() => import('./components/DataTablePage.vue'), 'document');
+const DataTablePage = loadingComponent(() => import('./components/DataTablePage.vue'), 'spreadsheet');
 const WorkspaceViewTab = loadingComponent(() => import('./components/WorkspaceViewTab.vue'), 'document');
 import { isTableTab, TABLES_TAB_ID, tableFileId } from './data-tables';
 import { isDataTableFilePath } from '@tano/protocol';
@@ -333,6 +333,7 @@ const documentToolItems = [
 const topbarItems = [
   { id: 'breadcrumb', get label() { return t('面包屑'); } },
 ];
+const attachmentStatus = computed(() => [{ kind: 'locked' as const, label: t('只读预览'), detail: t('附件以只读方式打开，不会修改原文件。') }]);
 const workspaceStatusLabel = computed(() =>
   store.workspace?.readOnly
     ? t('只读权限')
@@ -353,7 +354,7 @@ function topbarVisibilityItems(tabId: string, hasDocument: boolean, activePane: 
     ...topbarItems.filter(
       (item) => item.id !== 'breadcrumb' || (tabId !== CALENDAR_TAB_ID && tabId !== GRAPH_TAB_ID),
     ),
-    ...(hasDocument ? [{ id: 'document-status', get label() { return t('文章状态'); } }] : []),
+    ...(hasDocument || tabId.startsWith('attachment:') ? [{ id: 'document-status', get label() { return t('文章状态'); } }] : []),
     ...(activePane && extensions.regions['editing-status']
       ? [{ id: 'editing-status', get label() { return t('同步状态'); } }]
       : []),
@@ -5162,6 +5163,7 @@ const helpBlocked = computed(() => !!(
                     <component :is="extensions.regions['document-status-details']"
                       v-if="pane.id === store.activePaneId && extensions.regions['document-status-details']" :actions="extensionActions" />
                   </DocumentStatus>
+                  <DocumentStatus v-else-if="tab?.attachment && isVisible('document-status')" :document-key="`${workspace?.id}:${tab.attachment.id}`" :items="attachmentStatus" />
                 </template>
                 <template v-if="tab?.pluginView"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">{{ tab.pluginView.label }}</span></template>
                 <template v-if="pane.activeId === PLUGINS_TAB_ID"
@@ -5177,10 +5179,10 @@ const helpBlocked = computed(() => !!(
                   ></template
                 >
               </WorkspaceBreadcrumb>
-              <DocumentStatus v-if="active && !isVisible('breadcrumb') && isVisible('document-status')"
-                :document-key="`${workspace?.id}:${active.id}`" :items="paneDocumentStatus(active)">
-                <component :is="extensions.regions['document-status-details']"
-                  v-if="pane.id === store.activePaneId && extensions.regions['document-status-details']" :actions="extensionActions" />
+              <DocumentStatus v-if="(active || tab?.attachment) && !isVisible('breadcrumb') && isVisible('document-status')"
+                :document-key="`${workspace?.id}:${active?.id ?? tab?.attachment?.id}`" :items="active ? paneDocumentStatus(active) : attachmentStatus">
+                <component v-if="active && pane.id === store.activePaneId && extensions.regions['document-status-details']" :is="extensions.regions['document-status-details']"
+                  :actions="extensionActions" />
               </DocumentStatus>
               <div class="topbar-right">
                 <button v-if="active && touchLayout && showOutline" type="button" class="icon-button"
@@ -5202,6 +5204,7 @@ const helpBlocked = computed(() => !!(
                 >
                   <ArrowDownToLine :size="16" /><span>{{ t('导出') }}</span>
                 </button>
+                <div :id="`attachment-controls-${pane.id}`" class="attachment-controls-host" v-show="!!tab?.attachment" />
                 <component
                   :is="extensions.regions['editing-status']"
                   v-if="
@@ -5902,10 +5905,11 @@ const helpBlocked = computed(() => !!(
 
             <AttachmentPreview
               v-else-if="workspace && pane.activeId.startsWith('attachment:')"
+              :controls-target="detachedWindow ? undefined : `#attachment-controls-${pane.id}`"
               :file="tab?.attachment"
               :workspace-id="workspace.id"
               :url="
-                attachments && tab?.attachment
+                attachments && tab?.attachment && fileHandlers.resolve(tab.attachment.path).preview !== 'office'
                   ? attachments.imageUrl(
                       workspace,
                       '',

@@ -388,7 +388,7 @@ export function tableControls(readonly: () => boolean) {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'tano-table-alignment-option';
-            button.title = option.label;
+            button.dataset.tooltip = option.label;
             button.setAttribute('aria-label', option.label);
             button.setAttribute('role', 'menuitemradio');
             button.setAttribute('aria-checked', String(current.size === 1 && current.has(option.value)));

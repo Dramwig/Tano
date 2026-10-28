@@ -114,7 +114,7 @@ h1 { margin: 0; font-size: clamp(24px, 4vw, 36px); letter-spacing: -.03em; }
 .workspace-view-description { max-width: 680px; margin: 10px 0 0; color: var(--muted); line-height: 1.65; font-size: 14px; }
 .workspace-view-count { flex-shrink: 0; border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; color: var(--muted); font-size: 12px; }
 .workspace-view-query, .workspace-view-warning { max-width: 960px; margin: 0 auto 12px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; color: var(--muted); font-size: 12px; line-height: 1.5; }
-.workspace-view-query span { margin-right: 8px; font-weight: 600; color: var(--text); }
+.workspace-view-query span { margin-right: 8px; font-weight: 500; color: var(--text); }
 .workspace-view-warning { display: flex; align-items: center; gap: 8px; border-color: color-mix(in srgb, var(--warning) 45%, var(--line)); color: var(--warning); }
 .workspace-view-sources { max-width: 960px; margin: 18px auto 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 10px; }
 .workspace-view-source { display: flex; align-items: flex-start; gap: 10px; min-width: 0; text-align: left; border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: var(--surface-raised, var(--surface)); color: var(--text); transition: border-color .15s, background .15s; }
@@ -122,7 +122,7 @@ h1 { margin: 0; font-size: clamp(24px, 4vw, 36px); letter-spacing: -.03em; }
 .workspace-view-source > svg:last-child { flex-shrink: 0; margin-left: auto; color: var(--muted); }
 .workspace-view-source-copy { min-width: 0; flex: 1; }
 .workspace-view-source-copy strong, .workspace-view-source-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.workspace-view-source-copy strong { font-size: 14px; font-weight: 600; }
+.workspace-view-source-copy strong { font-size: 14px; font-weight: 500; }
 .workspace-view-source-copy small { margin-top: 4px; color: var(--muted); font-size: 11px; }
 .workspace-view-source-detail { overflow-wrap: anywhere; white-space: normal !important; }
 .workspace-view-source.missing { opacity: .62; cursor: default; }

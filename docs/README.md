@@ -11,6 +11,7 @@ Tano is a File-Native Workspace: real files remain the source of truth while peo
 | [Third-party account imports](account-import.md) | Provider applications, credentials, and import limits |
 | [Mobile development](mobile.md) | Android, iPhone/iPad, adaptive layout and local device checks |
 | [Architecture](architecture.md) | Storage layers and workspace identity |
+| [Office attachment reading](office-preview.md) | Built-in read-only Excel, Word and PowerPoint previews and limits |
 | [Cloud Extension API](cloud-extension.md) | Optional overlay contract and repository boundary |
 | [Git and version history](git.md) | Local Git inspection and the cloud history boundary |
 | [Plugins](plugins.md) | Plugin SDK, shared workspace rules, permissions, and development tools |
@@ -19,4 +20,5 @@ Tano is a File-Native Workspace: real files remain the source of truth while peo
 | [Agent workflow](agent-workflow.md) | Local MCP server and conditional writes |
 | [Backup and recovery](backup-recovery.md) | What to back up and how recovery works |
 | [Builds and releases](releases.md) | Desktop packages and signed updates |
+| [Core package distribution](core-distribution.md) | npm and Rust packages, immutable pins and registry migration |
 | [License and scope](license.md) | MIT license and third-party notices |

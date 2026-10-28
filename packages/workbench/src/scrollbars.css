@@ -1,0 +1,36 @@
+/* One scrollbar treatment for pages, panels and native horizontal overflow.
+   Managed document/table scrollbars use these same tokens; their native tracks
+   remain hidden by the owning component to avoid duplicate scrollbars. */
+:root {
+  --scrollbar-size: 12px;
+  --scrollbar-inset: 2px;
+  --scrollbar-radius: 6px;
+  --scrollbar-thumb: var(--control-border);
+  --scrollbar-thumb-hover: var(--muted);
+}
+* {
+  /* Standard non-auto values override WebKit scrollbar styling in Chromium. */
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+*::-webkit-scrollbar { width: var(--scrollbar-size); height: var(--scrollbar-size); }
+*::-webkit-scrollbar-track, *::-webkit-scrollbar-corner { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  min-width: 24px;
+  min-height: 24px;
+  border: var(--scrollbar-inset) solid transparent;
+  border-radius: var(--scrollbar-radius);
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover, *::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-thumb-hover);
+}
+*::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
+}
+@media (forced-colors: active) {
+  * { scrollbar-color: auto; }
+  *::-webkit-scrollbar-thumb { background-color: ButtonText; }
+}

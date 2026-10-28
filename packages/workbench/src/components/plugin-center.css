@@ -172,7 +172,7 @@
 .center-nav > button.active {
   background: var(--surface);
   color: var(--text);
-  font-weight: 550;
+  font-weight: 500;
 }
 .center-nav > button:hover {
   color: var(--text);
@@ -222,7 +222,7 @@
 .catalog-heading h2 {
   margin: 0;
   font-size: 15px;
-  font-weight: 550;
+  font-weight: 500;
   line-height: 1.5;
 }
 .result-count {
@@ -354,7 +354,7 @@
 }
 .import-file strong {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .import-file span {
   color: var(--muted);
@@ -364,7 +364,7 @@
   display: block;
   margin: 22px 0 8px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
 }
 #plugin-manifest {
   display: block;
@@ -420,7 +420,7 @@
 .detail-heading h3 {
   margin: 0;
   font-size: 22px;
-  font-weight: 650;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 .detail-heading p {

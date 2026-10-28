@@ -2,6 +2,18 @@
 import { createApp, defineComponent, h, type Component } from 'vue';
 import { expect, it } from 'vitest';
 import { loadingComponent } from './loading-component';
+it('keeps a table-shaped skeleton while a data table component downloads', async () => {
+  let finish!: (component: Component) => void;
+  const Table = loadingComponent(() => new Promise<Component>(resolve => { finish = resolve; }), 'spreadsheet');
+  const root = document.createElement('div'), app = createApp(() => h(Table)); app.mount(root);
+  try {
+    expect(root.querySelector('[data-preview-kind="spreadsheet"]')).not.toBeNull();
+    expect(root.querySelector('.loading-skeleton-document')).toBeNull();
+    finish(defineComponent({ render: () => h('table', [h('tbody', [h('tr', [h('td', '已加载')])])]) }));
+    await expect.poll(() => root.querySelector('td')?.textContent).toBe('已加载');
+    expect(root.querySelector('[data-preview-kind]')).toBeNull();
+  } finally { app.unmount(); }
+});
 
 it.each([0, 1])('lets sibling region %s finish without waiting for the other or disabling controls', async first => {
   const resolve: ((component: Component) => void)[] = [];

@@ -87,7 +87,11 @@ export class TableViewport extends TableView {
     const insetRight = inset(style.paddingRight) + inset(style.borderRightWidth);
     const originLeft = parent === this.view.dom ? prose.left : container.left + insetLeft;
     const baseWidth = parent === this.view.dom ? prose.width : Math.max(0, container.width - insetLeft - insetRight);
-    this.fitColumns(baseWidth);
+    // Keep the frame on the same rail as top-level text and framed blocks.
+    // Leave this space inside the scroll area so a selected table's outline fits too.
+    const frameInset = parent === this.view.dom ? inset(style.getPropertyValue('--tano-block-frame-inset')) : 0;
+    const frameWidth = Math.max(0, baseWidth - frameInset * 2);
+    this.fitColumns(frameWidth);
     // Reserve the review gutter only for annotations belonging to this table.
     const annotated = !!this.table.querySelector('[data-comment-id], [data-suggestion-id]');
     const contentWidth = this.table.getBoundingClientRect().width;
@@ -95,13 +99,13 @@ export class TableViewport extends TableView {
     const contained = !!parent.closest('.tano-enhanced');
     const availableLeft = contained ? originLeft : Math.min(originLeft, surface.left);
     const availableRight = contained ? originLeft + baseWidth : Math.max(originLeft + baseWidth, surface.left + this.surface.clientWidth);
-    const width = annotated || contentWidth <= baseWidth ? baseWidth
+    const width = annotated || contentWidth <= frameWidth ? baseWidth
       : Math.max(baseWidth, availableRight - availableLeft);
     const left = Math.max(availableLeft, Math.min(originLeft - (width - baseWidth) / 2, availableRight - width));
     this.applyLayout(annotated, [
       { element: this.dom, styles: { width, marginLeft: annotated ? 0 : left - originLeft } },
-      { element: this.table, styles: { marginLeft: annotated ? 0 : originLeft - left, marginRight: annotated ? 0 : left + width - originLeft - baseWidth } },
-      { element: this.scrollbar, styles: { width: baseWidth, marginLeft: annotated ? 0 : originLeft - left } },
+      { element: this.table, styles: { marginLeft: frameInset + (annotated ? 0 : originLeft - left), marginRight: frameInset + (annotated ? 0 : left + width - originLeft - baseWidth) } },
+      { element: this.scrollbar, styles: { width: frameWidth, marginLeft: frameInset + (annotated ? 0 : originLeft - left) } },
     ]);
     this.dom.classList.toggle('has-comments', annotated);
     this.edges();

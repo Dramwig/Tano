@@ -44,8 +44,8 @@ async function invoke(plugin: PluginRuntimeState, kind: 'command' | 'action', na
       <div class="plugin-commands"><button v-for="command in plugin.commands" :key="command.id" :disabled="!!pending || plugin.status !== 'running'" @click="invoke(plugin, 'command', command.id)">{{ command.label }}</button></div>
       <details v-for="view in plugin.views" :key="view.id" open><summary>{{ view.label }}</summary>
         <button v-if="view.location && view.location !== 'panel'" @click="store.openPluginView(plugin.id, view.id)">{{ t('打开') }}{{ { tab: t('标签页'), sidebar: t('侧栏'), settings: t('设置页') }[view.location] }}</button>
-        <PluginCustomView v-if="view.custom && plugin.status === 'running' && store.workspace" :bundle="view.custom.bundle" :state="view.custom.state" :workspace-id="store.workspace.id" :plugin-id="plugin.id" :instance-id="plugin.instanceId" :view-id="view.id" :execute="store.interactWithPlugin" />
-        <PluginViewNode v-else-if="view.tree" :node="view.tree" :values="inputs(plugin.id, view.id, view.tree)" :disabled="!!pending || plugin.status !== 'running'"
+        <PluginCustomView v-if="view.custom && (!view.location || view.location === 'panel') && plugin.status === 'running' && store.workspace" :bundle="view.custom.bundle" :state="view.custom.state" :workspace-id="store.workspace.id" :plugin-id="plugin.id" :instance-id="plugin.instanceId" :view-id="view.id" :execute="store.interactWithPlugin" />
+        <PluginViewNode v-else-if="view.tree && (!view.location || view.location === 'panel')" :node="view.tree" :values="inputs(plugin.id, view.id, view.tree)" :disabled="!!pending || plugin.status !== 'running'"
           @input="(key, value) => { values[`${plugin.id}:${view.id}`][key] = value; }"
           @action="action => invoke(plugin, 'action', view.id, { action, values: { ...inputs(plugin.id, view.id, view.tree!) } })" />
       </details>

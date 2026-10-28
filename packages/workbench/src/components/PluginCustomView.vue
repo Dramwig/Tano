@@ -24,13 +24,14 @@ watch([() => container.value, () => props.workspaceId, () => props.pluginId, () 
 watch(() => props.state, state => sandbox?.update(state), { flush: 'post' });
 </script>
 <template>
-  <div class="plugin-custom-view">
+  <div class="plugin-custom-view" :class="{ 'plugin-custom-fill': pluginId === 'excalidraw' }">
     <p v-if="error" role="alert">{{ error }}</p>
     <div ref="container" class="plugin-custom-container" v-show="!error" />
   </div>
 </template>
 <style scoped>
 .plugin-custom-view { min-height: 320px; height: min(650px, 70vh); }
+.plugin-custom-fill { flex: 1; height: 100%; min-height: 320px; }
 .plugin-custom-container { height: 100%; }
 [role="alert"] { color: var(--danger, #b33); }
 </style>

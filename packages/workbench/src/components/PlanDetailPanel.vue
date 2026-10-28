@@ -268,7 +268,7 @@ h2 { font-size: 12px; font-weight: 500; margin: 0; flex-shrink: 0; color: var(--
 .plan-detail-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .plan-detail-actions .icon-button { width: 28px; height: 28px; color: var(--muted); }
 .plan-detail-actions .is-archived { color: var(--green); background: var(--accent); }
-.plan-detail-content { flex: 1; min-height: 0; overflow: auto; padding: 28px 36px; scrollbar-width: thin; }
+.plan-detail-content { flex: 1; min-height: 0; overflow: auto; padding: 28px 36px; }
 .detail-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .plan-detail-name { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
 .detail-completion { position: relative; display: grid; place-items: center; width: 28px; height: 38px; flex: none; color: var(--muted); }

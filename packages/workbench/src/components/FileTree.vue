@@ -252,7 +252,7 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
             file.kind === 'file' && !isMarkdown(file.path) && !isDataTableFilePath(file.path),
         }"
         :draggable="file.id !== renamingId && (canDrag?.(file) ?? false)"
-        :style="{ paddingLeft: `${4 + rowDepth * 17}px` }"
+        :style="{ paddingLeft: `${4 + rowDepth * 17}px`, '--tree-depth': rowDepth }"
         :title="file.path"
         :data-entry-id="file.id"
         :aria-selected="selectedIds.has(file.id)"

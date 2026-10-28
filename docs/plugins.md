@@ -4,6 +4,8 @@
 
 ## 安装和管理
 
+内置 [Excalidraw 插件](excalidraw.md) 复用官方绘图组件，支持独立画布标签页、工作区 Markdown 自动保存与标准 Excalidraw 文件导入导出。
+
 打开「插件」，使用内置声明式插件，或导入 JSON 插件包。导入窗口提供「文档总览」代码示例。检查、导入以及打开工作区均不会替用户授权代码。
 
 管理员在插件详情中选择必需、推荐、允许自行启用或禁止，并编辑共享 JSON 设置。规则锁定清单、版本和代码摘要；管理员升级或重新导入旧包即可更新或回滚。成员可调整推荐/可选插件的本机启用状态，必需和禁止规则不可由成员覆盖。代码授权绑定账号、工作区和精确摘要，更新脚本后需重新授权。
@@ -278,7 +280,7 @@ export default function mount(view: TanoPluginViewApi) {
 
 状态为最大 128 KB 的 JSON，界面向 Worker 发送的单条消息最大 16 KB，每个界面最多 16 个并发请求，每秒最多 100 条消息。界面加载超过 15 秒会关闭；工作区、版本或实例变化会销毁旧页面与消息通道。普通状态更新保留当前 DOM 和输入，不重新加载界面。
 
-界面采用两层不透明来源的 sandbox iframe：外层只有固定启动代码并禁止子页面加载外部地址，内层运行包内代码。CSP 阻止直接网络请求、外部图片/CSS、表单提交、嵌套网络页面和 Worker；窗口、宿主存储、凭据及 Tauri IPC 不提供给界面。固定启动代码也禁用 WebRTC 构造器，避免其独立网络通道。正常表单事件可用于交互，实际联网必须交给 Worker 的已授权 SDK。[iframe sandbox](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/iframe#sandbox) 和 [CSP frame-src](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/frame-src) 提供浏览器边界；跨浏览器行为仍需实际验收。
+界面采用两层不透明来源的 sandbox iframe：外层只有固定启动代码并禁止子页面加载外部地址，内层运行包内代码。CSP 阻止直接网络请求、外部图片/CSS、表单提交、嵌套网络页面和 Worker；窗口、宿主存储、凭据及 Tauri IPC 不提供给界面。固定启动代码也禁用 WebRTC 构造器，避免其独立网络通道。正常表单事件可用于交互，界面允许用户导出本地生成的文件，实际联网必须交给 Worker 的已授权 SDK。[iframe sandbox](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/iframe#sandbox) 和 [CSP frame-src](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/frame-src) 提供浏览器边界；跨浏览器行为仍需实际验收。
 
 完整 Vue 示例见 [任务看板](../examples/plugins/kanban/README.md)，包含拖拽、键盘移动、错误反馈、工作区对象持久化和重启恢复。React 与 Chart.js 示例见 [任务统计](../examples/plugins/task-insights/README.md)，包含分页汇总、交互图表、筛选、实时刷新与资源清理。两个示例都使用工作区事件任务，内容没有移到插件缓存或数据库。
 

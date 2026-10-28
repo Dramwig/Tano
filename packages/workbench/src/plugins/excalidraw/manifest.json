@@ -1,0 +1,43 @@
+{
+  "manifestVersion": 2,
+  "apiVersion": 1,
+  "id": "excalidraw",
+  "name": "Excalidraw",
+  "version": "1.0.0",
+  "description": "手绘白板：图形、箭头、文字与自由绘画，自动保存到工作区 Markdown，支持 Excalidraw 文件导入导出。",
+  "objectTypes": [],
+  "relationTypes": [],
+  "permissions": [
+    "documents.read",
+    "documents.write",
+    "storage",
+    "ui"
+  ],
+  "networkOrigins": [],
+  "nativeCommands": [],
+  "commands": [
+    {
+      "id": "open",
+      "label": "Excalidraw：打开白板",
+      "menus": [
+        "workspace",
+        "document",
+        "file"
+      ]
+    },
+    {
+      "id": "create",
+      "label": "Excalidraw：新建白板",
+      "menus": [
+        "workspace"
+      ]
+    }
+  ],
+  "views": [
+    {
+      "id": "board",
+      "label": "Excalidraw 白板",
+      "location": "tab"
+    }
+  ]
+}

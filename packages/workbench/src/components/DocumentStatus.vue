@@ -60,7 +60,7 @@ onBeforeUnmount(() => {
 
 <template>
   <button v-if="primary" ref="trigger" type="button" class="document-status-trigger"
-    :class="{ 'needs-attention': primary.kind === 'error' || primary.kind === 'offline' }"
+    :class="{ 'needs-attention': primary.kind === 'error' || primary.kind === 'offline', 'is-saved': primary.kind === 'saved' }"
     :aria-label="t('文章状态：{0}', [items.map(item => item.label).join('，')])"
     aria-haspopup="dialog" :aria-expanded="opened" :aria-controls="opened ? panelId : undefined"
     @pointerenter="hover" @pointerleave="leave" @focus="show" @blur="leave" @click="toggle">
@@ -84,6 +84,8 @@ onBeforeUnmount(() => {
 .document-status-trigger:hover, .document-status-trigger[aria-expanded='true'] { background: var(--hover); color: var(--text); }
 .document-status-trigger:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
 .document-status-trigger.needs-attention { color: var(--danger, #c4483d); }
+/* The saved check is the one quiet brand-green mark in the chrome. */
+.document-status-trigger.is-saved, .document-status-trigger.is-saved:hover, .document-status-trigger.is-saved[aria-expanded='true'] { color: var(--green); }
 .document-status-panel { position: fixed; z-index: 90; box-sizing: border-box; width: 288px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow-y: auto; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--text); box-shadow: 0 8px 28px #0002; }
 .document-status-row { display: flex; align-items: flex-start; gap: 9px; }
 .document-status-row + .document-status-row { margin-top: 12px; }
