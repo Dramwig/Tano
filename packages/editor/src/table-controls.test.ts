@@ -295,7 +295,8 @@ it.each(['left', 'center', 'right'] as const)('switches a column to %s alignment
     return [...root.querySelectorAll<HTMLButtonElement>('.tano-table-alignment-option')];
   };
   const options = openColumnMenu();
-  expect(options.map(button => button.title)).toEqual(['左对齐', '居中对齐', '右对齐']);
+  expect(options.map(button => button.getAttribute('aria-label'))).toEqual(['左对齐', '居中对齐', '右对齐']);
+  expect(options.map(button => button.dataset.tooltip)).toEqual(['左对齐', '居中对齐', '右对齐']);
   expect(options.map(button => button.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false']);
   options[['left', 'center', 'right'].indexOf(alignment)]!.click();
   expect(root.querySelector<HTMLElement>('.tano-table-menu')!.hidden).toBe(true);
