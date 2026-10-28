@@ -1716,7 +1716,7 @@ it('edits Mermaid in one live panel and closes it on outside click', async () =>
   previews[0]!.click();
   expect(root.querySelectorAll('.tano-mermaid-editor-panel:not([hidden])')).toHaveLength(0);
   expect(errors).toEqual([]);
-});
+}, 15000); // Cold Mermaid/math rendering can exceed the default five seconds in the full suite.
 
 it('keeps Enter in the Mermaid editor and closes with Escape', async () => {
     const { value, revealMarkdown, errors } = await mount('```mermaid\n\n```\n');

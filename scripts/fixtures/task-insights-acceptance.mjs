@@ -6,7 +6,9 @@ export async function acceptTaskInsights(page, expect, canonical, screenshotPath
       properties: { checkable: true, completed: i % 3 === 2, kanbanLane: i % 3 === 1 ? 'doing' : 'todo' } });
     await store.createObject({ type: 'event', name: '统计验收 普通事件', description: '', archived: false, properties: { checkable: false } });
   });
-  await page.getByRole('button', { name: '打开命令中心', exact: true }).click();
+  await page.getByRole('button', { name: /^切换上下文：/ }).click();
+  await page.getByRole('button', { name: '更多操作', exact: true }).click();
+  await page.getByRole('menuitem', { name: /命令中心/ }).click();
   await page.getByRole('combobox', { name: '搜索命令' }).fill('打开插件中心');
   await page.getByRole('option').filter({ hasText: '打开插件中心' }).click();
   await page.getByRole('button', { name: '导入插件', exact: true }).click();
@@ -16,6 +18,7 @@ export async function acceptTaskInsights(page, expect, canonical, screenshotPath
   await page.getByRole('button', { name: '查看任务统计详情', exact: true }).click();
   await page.getByRole('button', { name: '授权此版本运行', exact: true }).click();
   await page.getByRole('button', { name: '关闭插件窗口', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').pluginRuntime.find(row => row.id === 'task-insights')?.status), { timeout: 30000 }).toBe('running');
   await page.getByRole('button', { name: /^切换侧边栏视图：/ }).click();
   await page.getByRole('menuitemradio', { name: '插件工作台', exact: true }).click();
   await page.getByRole('navigation', { name: '插件视图' }).getByRole('button', { name: /^任务统计/ }).click();
