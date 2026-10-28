@@ -315,6 +315,7 @@ fn validate(session: &WorkspaceSession) -> Result<(), String> {
                 && id != "view:graph"
                 && id != "view:plugins"
                 && id != "view:calendar"
+                && id != "view:settings"
                 && id != "tables"
                 && !id.strip_prefix("table:").is_some_and(|table_id| {
                     table_id.len() == 6
@@ -695,6 +696,33 @@ mod tests {
         assert_eq!(restored.documents.len(), 1);
         saved.tabs.push("view:unknown".into());
         assert!(validate(&saved).is_err());
+    }
+    #[test]
+    fn restores_settings_tab_and_layout_without_losing_document_drafts() {
+        let data = tempfile::tempdir().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut saved = session();
+        saved.tabs.push("view:settings".into());
+        saved.active_id = "view:settings".into();
+        saved.layout = Some(serde_json::json!({
+            "kind": "pane", "id": "main",
+            "tabs": ["file-id", "blank:test", "view:settings"],
+            "activeId": "view:settings"
+        }));
+        save(data.path(), &id, &saved).unwrap();
+        let restored = load(data.path(), &id).unwrap().unwrap();
+        assert_eq!(restored.active_id, "view:settings");
+        assert_eq!(restored.tabs, saved.tabs);
+        assert_eq!(restored.layout, saved.layout);
+        assert_eq!(restored.documents.len(), 1);
+        assert_eq!(
+            restored.documents[0].draft.as_ref().unwrap().content,
+            "unsaved human edit"
+        );
+        assert_eq!(
+            restored.documents[0].draft.as_ref().unwrap().base.hash,
+            storage::hash(b"base")
+        );
     }
     #[test]
     fn restores_attachment_tab_without_a_document_draft() {
