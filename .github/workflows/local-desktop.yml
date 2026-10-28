@@ -1,0 +1,93 @@
+name: Build reviewed Tano Local
+on:
+  workflow_dispatch:
+    inputs:
+      unsigned_preview:
+        description: Publishable preview without Authenticode; requires explicit unsigned labeling
+        type: boolean
+        default: false
+      local_evidence:
+        description: JSON with exact sourceCommit and successful local check, native and MCP commands
+        type: string
+        required: true
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+concurrency:
+  group: local-desktop-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    if: github.repository == 'Dramwig/Tano' && startsWith(github.ref, 'refs/tags/core-v')
+    runs-on: windows-2022
+    environment: release-automation
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Import publisher certificate
+        if: inputs.unsigned_preview != true
+        shell: pwsh
+        env:
+          CERTIFICATE: ${{ secrets.LOCAL_WINDOWS_CERTIFICATE_PFX }}
+          CERTIFICATE_PASSWORD: ${{ secrets.LOCAL_WINDOWS_CERTIFICATE_PASSWORD }}
+          THUMBPRINT: ${{ vars.LOCAL_WINDOWS_CERTIFICATE_THUMBPRINT }}
+        run: |
+          if (-not $env:CERTIFICATE -or $env:THUMBPRINT -notmatch '^[a-fA-F0-9]{40}$') { throw 'Configure Local Authenticode credentials; unsigned release is disabled' }
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'tano-local-publisher.pfx'
+          try {
+            [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:CERTIFICATE))
+            $password = ConvertTo-SecureString $env:CERTIFICATE_PASSWORD -AsPlainText -Force
+            $certificate = Import-PfxCertificate -FilePath $certificatePath -CertStoreLocation Cert:\CurrentUser\My -Password $password
+            if (-not ($certificate | Where-Object Thumbprint -eq $env:THUMBPRINT)) { throw 'Certificate thumbprint mismatch' }
+          } finally { if (Test-Path -LiteralPath $certificatePath) { Remove-Item -LiteralPath $certificatePath } }
+      - run: npm ci
+      - name: Build signed Local from locally validated Core
+        shell: pwsh
+        env:
+          LOCAL_EVIDENCE: ${{ inputs.local_evidence }}
+          TANO_LOCAL_CERTIFICATE_THUMBPRINT: ${{ vars.LOCAL_WINDOWS_CERTIFICATE_THUMBPRINT }}
+          UNSIGNED_PREVIEW: ${{ inputs.unsigned_preview }}
+        run: |
+          $evidencePath = Join-Path $env:RUNNER_TEMP 'local-evidence.json'
+          [IO.File]::WriteAllText($evidencePath, $env:LOCAL_EVIDENCE)
+          $buildArguments = @('scripts/local-release.mjs', 'prepare', $evidencePath)
+          if ($env:UNSIGNED_PREVIEW -eq 'true') { $buildArguments += '--unsigned-preview' }
+          node @buildArguments
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Attest public source and exact release artifacts
+        id: provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: artifacts/local/core-v*/*
+      - name: Preserve verification bundle
+        shell: pwsh
+        env:
+          BUNDLE_PATH: ${{ steps.provenance.outputs.bundle-path }}
+        run: Copy-Item -LiteralPath $env:BUNDLE_PATH -Destination "artifacts/local/${{ github.ref_name }}/local-provenance.jsonl"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tano-local-${{ github.ref_name }}-windows-x64
+          path: artifacts/local/core-v*/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Remove imported certificate
+        if: always() && inputs.unsigned_preview != true
+        shell: pwsh
+        env:
+          THUMBPRINT: ${{ vars.LOCAL_WINDOWS_CERTIFICATE_THUMBPRINT }}
+        run: |
+          if ($env:THUMBPRINT -match '^[a-fA-F0-9]{40}$') {
+            $certificatePath = "Cert:\CurrentUser\My\$($env:THUMBPRINT)"
+            if (Test-Path -LiteralPath $certificatePath) { Remove-Item -LiteralPath $certificatePath }
+          }

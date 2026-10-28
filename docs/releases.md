@@ -6,6 +6,11 @@ For local release validation, manually created immutable tags and registry publi
 
 Run `npm run desktop:build` to build a desktop package. The source build does not require an account or signing key and has no update endpoint configured by default. On Windows, the NSIS installer is written under `apps/client/src-tauri/target/release/bundle/nsis/`.
 
+For the Windows x64 **Tano Local** official open source build, see
+[Local release gates and download verification](local-release.md). Local uses a
+public, manually dispatched Core-tagged build, Authenticode and GitHub provenance;
+it never publishes a Product updater feed or becomes the latest Product Release.
+
 The public repository builds the complete local MIT product. The [Cloud Extension API](cloud-extension.md) lets the private `Tano-cloud` repository add the official online features. Official installers are built from that private overlay and published as assets on `Dramwig/Tano` Releases. GitHub's automatically generated source archives for those releases contain only this public MIT repository; they are not the source of the cloud-enabled binary.
 
 Use `npm run version:set -- 0.2.0` to update this Core repository's npm workspaces, internal dependency ranges, npm/Cargo lockfiles, Tauri config and Rust crate versions together. `npm run version:check` verifies they agree and is part of `npm run check`. The separately released Python and Rust protocol helper packages keep their own versions. The official Product version is managed separately in the private `Tano-cloud` repository.

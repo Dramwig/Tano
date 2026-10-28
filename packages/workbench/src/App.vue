@@ -193,6 +193,7 @@ const SidebarPlan = loadingComponent(() => import('./components/SidebarPlan.vue'
 import SidebarNavigation from './components/SidebarNavigation.vue';
 import WorkspaceSidebar from './components/WorkspaceSidebar.vue';
 import HelpLauncher from './components/HelpLauncher.vue';
+import SidebarUpdateButton from './components/SidebarUpdateButton.vue';
 import type { HelpAvailability, HelpContext } from './help-content';
 import { recordHelpCompleted } from './help-checklist';
 import WorkspaceViewSwitcher from './components/WorkspaceViewSwitcher.vue';
@@ -4944,18 +4945,25 @@ const helpBlocked = computed(() => !!(
                   v-if="extensions.regions['local-menu-login']"
                   :actions="extensionActions"
                 />
-          <HelpLauncher
-            :context="helpContext"
-            :availability="helpAvailability"
-            :available="sidebar && !detachedWindow"
-            :blocked="helpBlocked"
-            :scope="`${navigationContext}:${workspace?.id ?? 'home'}:${activeId}`"
-            :documentation-base-url="documentationBaseUrl"
-            :native="native"
-            @open="workspaceMenu = false; menu = false"
-            @settings="openSettings"
-            @documentation="openExternalUrl($event).catch(store.report)"
-          />
+          <SidebarUpdateButton
+            :enabled="native && !mobile && !detachedWindow"
+            :state="updates.state"
+            @download="updates.download()"
+            @install="updates.install()"
+          >
+            <HelpLauncher
+              :context="helpContext"
+              :availability="helpAvailability"
+              :available="sidebar && !detachedWindow"
+              :blocked="helpBlocked"
+              :scope="`${navigationContext}:${workspace?.id ?? 'home'}:${activeId}`"
+              :documentation-base-url="documentationBaseUrl"
+              :native="native"
+              @open="workspaceMenu = false; menu = false"
+              @settings="openSettings"
+              @documentation="openExternalUrl($event).catch(store.report)"
+            />
+          </SidebarUpdateButton>
         </div>
         <div
           v-if="!compactPanes && !switchingWorkspace"

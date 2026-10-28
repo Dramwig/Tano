@@ -63,6 +63,13 @@ This requirement applies to release work, not ordinary non-release Git operation
 Android and Apple preview builds are manual-only and build without running tests.
 Local `npm run version:set -- X.Y.Z` and `npm run core:export` remain available.
 
+For public Windows x64 Tano Local installers, manually dispatch **Build reviewed
+Tano Local** at the stable Core tag and follow the separate
+[Local artifact acceptance and publication procedure](local-release.md). This
+public build contains no private overlay, does not execute tests in Actions and
+does not automatically publish its installer. Accepted Local assets share the
+Core Release with `core-registry.json`; every Core Release stays `latest=false`.
+
 ## GitHub configuration
 
 Version/tag/synchronization operations use the `release-automation` environment:

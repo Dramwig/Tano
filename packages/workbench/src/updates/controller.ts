@@ -2,11 +2,16 @@ export interface UpdateStatus {
   currentVersion: string;
   configured: boolean;
   reason: string | null;
+  /** Native distribution identity chooses the manual download channel. */
+  downloadUrl?: string;
+  manual?: boolean;
 }
 export interface UpdateCandidate {
   id: string;
   version: string;
   notes: string;
+  /** A Local announcement opens a release page and cannot be installed here. */
+  manualUrl?: string | null;
 }
 export interface UpdateProgress {
   downloaded: number;
@@ -21,6 +26,7 @@ export interface UpdateHost {
   install(id: string): Promise<void>;
   flush(): Promise<boolean>;
   disconnect(): Promise<void>;
+  openRelease?(url: string): Promise<void>;
 }
 
 /** Owns the save/install order independently of the view and native updater. */
@@ -30,26 +36,36 @@ export class UpdateController {
   phase: UpdatePhase = 'idle';
   error = '';
   progress: UpdateProgress = { downloaded: 0 };
+  private loadingStatus = false;
   constructor(
     private host: UpdateHost,
     private changed: () => void,
   ) {}
   get busy() {
-    return ['checking', 'downloading', 'installing'].includes(this.phase);
+    return this.loadingStatus || ['checking', 'downloading', 'installing'].includes(this.phase);
   }
   async initialize() {
     if (this.status || this.busy) return;
-    try {
-      this.status = await this.host.status();
-      this.changed();
-      if (this.status.configured) await this.check();
-    } catch (error) {
-      this.error = String(error);
-      this.changed();
-    }
+    await this.check();
   }
   async check() {
-    if (this.busy || !this.status?.configured) return;
+    if (this.busy) return;
+    // A failed status IPC must remain retryable from the About panel.
+    if (!this.status) {
+      this.loadingStatus = true;
+      this.error = '';
+      this.changed();
+      try {
+        this.status = await this.host.status();
+      } catch (error) {
+        this.error = String(error);
+        return;
+      } finally {
+        this.loadingStatus = false;
+        this.changed();
+      }
+    }
+    if (!this.status.configured && !this.status.manual) return;
     this.phase = 'checking';
     this.error = '';
     this.candidate = undefined;
@@ -65,6 +81,17 @@ export class UpdateController {
   }
   async download() {
     if (this.phase !== 'available' || !this.candidate) return;
+    if (this.status?.manual || this.candidate.manualUrl) {
+      this.error = '';
+      try {
+        const url = this.candidate.manualUrl;
+        if (!url || !/^https:\/\/github\.com\/Dramwig\/Tano\/releases\/tag\/core-v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(url) || !this.host.openRelease)
+          throw new Error('Local 发行版链接无效');
+        await this.host.openRelease(url);
+      } catch (error) { this.error = String(error); }
+      this.changed();
+      return;
+    }
     this.phase = 'downloading';
     this.error = '';
     this.progress = { downloaded: 0 };
@@ -82,7 +109,7 @@ export class UpdateController {
     this.changed();
   }
   async install() {
-    if (this.phase !== 'ready' || !this.candidate) return;
+    if (this.phase !== 'ready' || !this.candidate || this.status?.manual || this.candidate.manualUrl) return;
     this.phase = 'installing';
     this.error = '';
     this.changed();

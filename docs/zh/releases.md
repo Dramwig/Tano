@@ -6,6 +6,8 @@
 
 运行 `npm run desktop:build` 构建桌面安装包。源码构建无需账号或签名私钥，默认不配置更新地址。在 Windows 上，NSIS 安装包位于 `apps/client/src-tauri/target/release/bundle/nsis/`。
 
+**Tano Local · 开源本地版**的 Windows x64 官方构建流程见 [Local 发布与下载校验](../local-release.md)。从公开 Core 标签手动构建，要求 Authenticode 签名、GitHub 构建来源证明和安装包实测；仅上传到对应 Core Release，不设为 latest，不接入 Tano 自动更新渠道。未完成这些条件前，官网下载页显示准备中。
+
 公开仓库可以构建完整的 MIT 本地产品。[Cloud Extension API](../cloud-extension.md) 让私有 `Tano-cloud` 仓库加入官方联网功能。官方安装包由私有仓库构建，统一作为 `Dramwig/Tano` 的 Release 附件发布。GitHub 自动生成的源码压缩包只包含公开 MIT Core，不包含官方二进制中的私有 Cloud Overlay。
 
 运行 `npm run version:set -- 0.2.0` 可统一修改公开 Core 仓库的 npm 工作区、内部依赖版本、npm/Cargo 锁文件、Tauri 配置和 Rust crate 版本。`npm run version:check` 校验这些版本是否一致，并已纳入 `npm run check`。官方 Product 版本独立由私有 `Tano-cloud` 管理；独立发布的 Python/Rust 协议辅助包也保留各自的版本号。

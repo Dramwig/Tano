@@ -46,6 +46,55 @@ it('does not contact a feed when the binary has no pinned release configuration'
   expect(host.check).not.toHaveBeenCalled();
 });
 
+it('announces Local versions and opens only the public Core release without entering the installer path', async () => {
+  const { host, controller } = fixture();
+  const url = 'https://github.com/Dramwig/Tano/releases/tag/core-v1.2.3';
+  host.openRelease = vi.fn(async () => {});
+  vi.mocked(host.status).mockResolvedValue({ configured: false, currentVersion: '1.2.2', reason: 'manual', manual: true });
+  vi.mocked(host.check).mockResolvedValue({ id: 'core-v1.2.3', version: '1.2.3', notes: '', manualUrl: url });
+  await controller.initialize();
+  expect(controller.phase).toBe('available');
+  await controller.download();
+  expect(host.openRelease).toHaveBeenCalledWith(url);
+  expect(host.download).not.toHaveBeenCalled();
+  controller.phase = 'ready';
+  await controller.install();
+  expect(host.install).not.toHaveBeenCalled();
+  expect(host.flush).not.toHaveBeenCalled();
+  controller.phase = 'available';
+  controller.candidate!.manualUrl = 'https://example.com/setup.exe';
+  await controller.download();
+  expect(controller.error).toContain('链接无效');
+  expect(host.openRelease).toHaveBeenCalledOnce();
+});
+
+it('retries a failed status request through manual check', async () => {
+  const { host, controller } = fixture();
+  vi.mocked(host.status).mockRejectedValueOnce(new Error('status IPC unavailable'));
+  await controller.initialize();
+  expect(controller.error).toContain('status IPC unavailable');
+  expect(controller.busy).toBe(false);
+  await controller.check();
+  expect(host.status).toHaveBeenCalledTimes(2);
+  expect(host.check).toHaveBeenCalledOnce();
+  expect(controller.phase).toBe('available');
+  expect(controller.error).toBe('');
+});
+
+it('serializes concurrent initialization and manual checks while loading status', async () => {
+  const { host, controller } = fixture();
+  let finish!: (value: Awaited<ReturnType<UpdateHost['status']>>) => void;
+  vi.mocked(host.status).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+  const initializing = controller.initialize();
+  expect(controller.busy).toBe(true);
+  await controller.initialize();
+  await controller.check();
+  expect(host.status).toHaveBeenCalledOnce();
+  finish({ configured: true, currentVersion: '0.1.0', reason: null });
+  await initializing;
+  expect(host.check).toHaveBeenCalledOnce();
+});
+
 it('never enables installation after an invalid signature or download failure', async () => {
   const { host, controller } = fixture();
   vi.mocked(host.download).mockRejectedValue(new Error('signature mismatch'));

@@ -5,6 +5,7 @@ import { UpdateController } from '../updates/controller';
 import type { UpdateCandidate, UpdateProgress, UpdateStatus } from '../updates/controller';
 import { useWorkspaceStore } from './workspace';
 import { useWorkbenchRuntime } from '../runtime';
+import { openExternalUrl } from '../attachments';
 
 export const useUpdatesStore = defineStore('updates', () => {
   const workspace = useWorkspaceStore();
@@ -15,6 +16,7 @@ export const useUpdatesStore = defineStore('updates', () => {
       {
         status: () => invoke<UpdateStatus>('update_status'),
         check: () => invoke<UpdateCandidate | null>('update_check'),
+        openRelease: openExternalUrl,
         async download(id, onProgress) {
           const progress = new Channel<UpdateProgress>();
           progress.onmessage = onProgress;

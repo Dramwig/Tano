@@ -52,6 +52,21 @@ function database() {
   return new DatabaseSync(join(data, 'agents', `${id}.sqlite`));
 }
 
+it('rejects unsupported formats on open and after a connected workspace changes format', () => {
+  const store = open();
+  const before = store.read('note.md');
+  for (const format of [2, 0, -1, 1.5, '1', null]) {
+    const config = JSON.stringify({ id, format });
+    writeFileSync(join(root, '.tano/config.json'), config);
+    expect(() => open()).toThrow('数据格式');
+    expect(() => store.change('note.md', 'overwrite', before.sha256, 'self-reported')).toThrow('数据格式');
+    expect(readFileSync(join(root, '.tano/config.json'), 'utf8')).toBe(config);
+    expect(readFileSync(join(root, 'note.md'), 'utf8')).toBe(before.content);
+  }
+  writeFileSync(join(root, '.tano/config.json'), JSON.stringify({ id }));
+  expect(open().id).toBe(id);
+});
+
 it('queues immutable proposals with stable document identity without writing Markdown', () => {
   const store = open();
   const snapshot = store.read('note.md');

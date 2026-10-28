@@ -278,6 +278,14 @@ fn read_identity(path: &Path) -> Result<String, String> {
     let value: serde_json::Value =
         serde_json::from_slice(&fs::read(path).map_err(|e| e.to_string())?)
             .map_err(|e| format!("工作空间配置损坏：{e}"))?;
+    // Missing format is the original v1 identity. Never interpret an unknown
+    // format as v1 or rewrite it while opening an older Local/Product build.
+    if value
+        .get("format")
+        .is_some_and(|format| format.as_u64() != Some(1))
+    {
+        return Err("此工作区的数据格式不受当前版本支持，请升级 Tano 或 Tano Local；已停止打开和写入，原文件已保留".into());
+    }
     let id = value
         .get("id")
         .and_then(|v| v.as_str())
@@ -1689,6 +1697,35 @@ mod tests {
         fs::write(&path, "invalid JSON").unwrap();
         assert!(workspace_identity(temp.path()).is_err());
         assert_eq!(fs::read_to_string(path).unwrap(), "invalid JSON");
+    }
+
+    #[test]
+    fn unsupported_workspace_formats_stop_open_and_active_session_writes() {
+        let temp = tempfile::tempdir().unwrap();
+        let id = workspace_identity(temp.path()).unwrap();
+        let config = temp.path().join(".tano/config.json");
+        let note = temp.path().join("note.md");
+        fs::write(&note, "external content").unwrap();
+        for format in [
+            serde_json::json!(2),
+            serde_json::json!(0),
+            serde_json::json!(-1),
+            serde_json::json!(1.5),
+            serde_json::json!("1"),
+            serde_json::Value::Null,
+        ] {
+            let bytes =
+                serde_json::to_vec(&serde_json::json!({"id": id, "format": format})).unwrap();
+            fs::write(&config, &bytes).unwrap();
+            assert!(workspace_identity(temp.path())
+                .unwrap_err()
+                .contains("数据格式"));
+            assert!(assert_workspace_identity(temp.path(), &id).is_err());
+            assert_eq!(fs::read(&config).unwrap(), bytes);
+            assert_eq!(fs::read_to_string(&note).unwrap(), "external content");
+        }
+        fs::write(&config, serde_json::json!({"id": id}).to_string()).unwrap();
+        assert_eq!(workspace_identity(temp.path()).unwrap(), id);
     }
 
     #[test]
