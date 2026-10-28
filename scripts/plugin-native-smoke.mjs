@@ -17,6 +17,13 @@ const directory = await mkdtemp(join(artifacts, 'plugin-native-smoke-'));
 const target = join(root, 'apps/client/src-tauri/target');
 const cargoArgs = ['build', '--release', '--locked', '--features', 'tauri/custom-protocol', '--manifest-path', 'apps/client/src-tauri/Cargo.toml'];
 const config = { identifier: 'app.tano.plugin-smoke', app: { windows: [{ label: 'main', title: 'Tano Plugin Smoke', visible: false, width: 1280, height: 900, decorations: false }] } };
+async function openPluginCenter(page) {
+  await page.getByRole('button', { name: /^切换上下文：/ }).click();
+  await page.getByRole('button', { name: '更多操作', exact: true }).click();
+  await page.getByRole('menuitem', { name: /命令中心/ }).click();
+  await page.getByRole('combobox', { name: '搜索命令' }).fill('打开插件中心');
+  await page.getByRole('option').filter({ hasText: '打开插件中心' }).click();
+}
 async function run(command, args, options = {}) {
   const child = spawn(command, args, { cwd: root, windowsHide: true, stdio: 'inherit', ...options });
   const [code] = await once(child, 'exit');
@@ -87,8 +94,7 @@ try {
   await acceptTaskInsights(page, expect, insights.canonical, join(artifacts, 'plugin-react-native.png'));
   console.log('React/Chart.js native acceptance passed: pagination, canvas, filters, events and cleanup.');
   const { canonical, integrity } = await buildPlugin(join(root, 'scripts/fixtures/native-query-plugin'));
-  await page.getByRole('button', { name: '仓库', exact: true }).click();
-  await page.getByRole('button', { name: '打开插件标签页', exact: true }).click();
+  await openPluginCenter(page);
   await page.getByRole('button', { name: '导入插件', exact: true }).click();
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(canonical);
   await page.getByRole('button', { name: '检查清单' }).click();
@@ -96,7 +102,8 @@ try {
   await page.getByRole('button', { name: '查看本机查询测试详情', exact: true }).click();
   await page.getByRole('button', { name: '授权此版本运行', exact: true }).click();
   await page.getByRole('button', { name: '关闭插件窗口', exact: true }).click();
-  await page.getByRole('button', { name: '插件工作台', exact: true }).click();
+  await page.getByRole('button', { name: /^切换侧边栏视图：/ }).click();
+  await page.getByRole('menuitemradio', { name: '插件工作台', exact: true }).click();
   await page.getByRole('region', { name: '插件工作台', exact: true }).getByRole('button', { name: /^Git 变更/ }).click();
   const view = page.getByRole('region', { name: '本机查询测试 · Git 变更', exact: true }).frameLocator('iframe[title="插件界面隔离容器"]').frameLocator('iframe');
   await expect(view.getByRole('heading', { name: 'Git 变更', exact: true })).toBeVisible({ timeout: 15000 });
@@ -108,8 +115,7 @@ try {
   await expect(view.locator('pre')).toContainText('+native git smoke extra', { timeout: 15000 });
   await page.screenshot({ path: join(artifacts, 'plugin-native-webview.png') });
   expect(await readFile(join(workspace, '.git/index'))).toEqual(indexBefore);
-  await page.getByRole('button', { name: '仓库', exact: true }).click();
-  await page.getByRole('button', { name: '打开插件标签页', exact: true }).click();
+  await openPluginCenter(page);
   const importer = await buildPlugin(join(root, 'examples/plugins/github-importer'));
   await page.getByRole('button', { name: '导入插件', exact: true }).click();
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(importer.canonical);
@@ -152,8 +158,7 @@ try {
     await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$pinia?._s.has('workspace'));
     await open(workspace);
     await page.waitForFunction(id => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$pinia?._s.get('workspace')?.workspace?.id === id, identity);
-    await page.getByRole('button', { name: '仓库', exact: true }).click();
-    await page.getByRole('button', { name: '打开插件标签页', exact: true }).click();
+    await openPluginCenter(page);
     await expandConnections();
     await connection.getByLabel('连接插件', { exact: true }).selectOption('github-importer');
     await expect(connection.getByRole('button', { name: '更新并授权当前版本', exact: true })).toBeEnabled();
