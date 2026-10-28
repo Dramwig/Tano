@@ -562,7 +562,7 @@ it('opens directly on the complete about page', () => {
   expect(root.querySelector('.shortcut-settings')).toBeNull();
   expect(root.textContent).not.toContain('版本与更新');
   expect(root.textContent).not.toContain('备份恢复与 Agent 工作流');
-  expect(root.querySelector('.settings-brand-actions .update-panel-stub')).not.toBeNull();
+  expect(root.querySelector('.settings-about-update .update-panel-stub')).not.toBeNull();
 });
 
 it('keeps the about content inside settings navigation', async () => {

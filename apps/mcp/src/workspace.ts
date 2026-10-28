@@ -117,6 +117,8 @@ function workspaceIdentity(root: string) {
   if (metadata.isSymbolicLink() || !metadata.isFile())
     throw new Error('工作区配置不能是符号链接或非文件');
   const config = JSON.parse(readFileSync(file, 'utf8'));
+  if (config && Object.hasOwn(config, 'format') && config.format !== 1)
+    throw new Error('此工作区的数据格式不受当前版本支持，请升级 Tano 或 Tano Local；已停止打开和写入，原文件已保留');
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(config.id))
     throw new Error('请先用 Tano 打开此工作文件夹');
   return config.id as string;

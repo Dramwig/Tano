@@ -1172,11 +1172,13 @@ function customFontInput(event: Event) {
               <h3>Tano <span v-if="uiLocale === 'zh-CN'">/ 同页</span></h3>
               <div class="settings-brand-actions">
                 <span class="settings-version-pill">{{ version }}</span>
-                <slot v-if="native && !mobile" name="update-panel"><UpdatePanel /></slot>
               </div>
             </div>
             <p class="settings-about-slogan">Humans and agents, on the same page.</p>
             <p v-if="uiLocale === 'zh-CN'" class="settings-about-translation">{{ t('人与 Agent，在同一页工作。') }}</p>
+            <div v-if="native && !mobile" class="settings-about-update">
+              <slot name="update-panel"><UpdatePanel /></slot>
+            </div>
           </div>
 
           <section class="settings-section" aria-labelledby="settings-work-mode">
@@ -1921,6 +1923,11 @@ function customFontInput(event: Event) {
   margin: 0;
   color: var(--muted);
   font-size: 12px;
+}
+.settings-about-update {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
 }
 .settings-about-feature {
   display: flex;

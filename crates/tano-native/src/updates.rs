@@ -9,6 +9,8 @@ pub struct Status {
     current_version: String,
     configured: bool,
     reason: Option<String>,
+    download_url: &'static str,
+    manual: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -17,6 +19,7 @@ pub struct Candidate {
     id: String,
     version: String,
     notes: String,
+    manual_url: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -88,11 +91,102 @@ pub fn update_status(app: AppHandle) -> Status {
     let reason = configuration().err();
     #[cfg(mobile)]
     let reason = Some("移动端请通过原安装渠道更新。".into());
+    let manual = cfg!(desktop) && app.config().identifier == "app.tano.local" && reason.is_some();
     Status {
         current_version: app.package_info().version.to_string(),
         configured: reason.is_none(),
         reason,
+        manual,
+        download_url: if app.config().identifier == "app.tano.local" {
+            "https://tano.page/zh-cn/download/#local"
+        } else {
+            "https://tano.page/zh-cn/download/"
+        },
     }
+}
+
+#[cfg(desktop)]
+fn local_announcement(
+    value: &serde_json::Value,
+    current: [u64; 3],
+) -> Result<Option<Candidate>, String> {
+    let invalid = "Tano Local 版本公告尚未提供或无效，请前往官网查看发布状态";
+    let version = value["version"].as_str().ok_or(invalid)?;
+    let parts: Vec<_> = version.split('.').collect();
+    if parts.len() != 3
+        || parts.iter().any(|part| {
+            part.is_empty()
+                || (part.len() > 1 && part.starts_with('0'))
+                || !part.bytes().all(|c| c.is_ascii_digit())
+        })
+    {
+        return Err(invalid.into());
+    }
+    let numbers = parts
+        .iter()
+        .map(|part| part.parse::<u64>().map_err(|_| invalid))
+        .collect::<Result<Vec<_>, _>>()?;
+    let tag = format!("core-v{version}");
+    let base = format!("https://github.com/Dramwig/Tano/releases/download/{tag}/");
+    let commit = value["sourceCommit"].as_str().unwrap_or("");
+    let certificate = value["certificateThumbprint"].as_str().unwrap_or("");
+    let unsigned_preview = value["preview"] == true
+        && value["authenticode"] == "unsigned"
+        && value["certificateThumbprint"].is_null();
+    if value["format"] != 1
+        || value["edition"] != "local"
+        || value["automaticUpdates"] != false
+        || value["tag"] != tag
+        || value["windowsUrl"] != format!("{base}Tano-Local_{version}_x64-setup.exe")
+        || value["checksumsUrl"] != format!("{base}SHA256SUMS.txt")
+        || value["provenanceUrl"] != format!("{base}local-provenance.jsonl")
+        || value["sourceUrl"] != format!("https://github.com/Dramwig/Tano/tree/{tag}")
+        || commit.len() != 40
+        || !commit
+            .bytes()
+            .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+        || (!unsigned_preview
+            && (certificate.len() != 40
+                || !certificate
+                    .bytes()
+                    .all(|c| c.is_ascii_digit() || (b'A'..=b'F').contains(&c))))
+    {
+        return Err(invalid.into());
+    }
+    if numbers.as_slice() <= current.as_slice() {
+        return Ok(None);
+    }
+    Ok(Some(Candidate {
+        id: tag.clone(),
+        version: version.into(),
+        notes: "Tano Local 新版已发布，请查看公开发行版并手动下载安装。".into(),
+        manual_url: Some(format!(
+            "https://github.com/Dramwig/Tano/releases/tag/{tag}"
+        )),
+    }))
+}
+
+#[cfg(desktop)]
+async fn check_local_announcement(app: &AppHandle) -> Result<Option<Candidate>, String> {
+    let response = reqwest::Client::builder()
+        .https_only(true)
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?
+        .get("https://tano.page/releases/local.json")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?;
+    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+    if bytes.len() > 64 * 1024 {
+        return Err("Tano Local 版本公告过大".into());
+    }
+    let value = serde_json::from_slice(&bytes)
+        .map_err(|_| "Tano Local 版本公告无效，请前往官网查看发布状态")?;
+    let version = &app.package_info().version;
+    local_announcement(&value, [version.major, version.minor, version.patch])
 }
 
 #[tauri::command]
@@ -104,6 +198,12 @@ pub async fn update_check(
     {
         use std::time::Duration;
         use tauri_plugin_updater::UpdaterExt;
+        if app.config().identifier == "app.tano.local" && configuration().is_err() {
+            *state.pending.lock().await = None;
+            // Announcement only: no updater candidate or installer bytes enter
+            // native state, even after a newer Local release is discovered.
+            return check_local_announcement(&app).await;
+        }
         let Configuration {
             endpoint,
             key,
@@ -143,6 +243,7 @@ pub async fn update_check(
             id: uuid::Uuid::new_v4().to_string(),
             version: update.version.clone(),
             notes: update.body.clone().unwrap_or_default(),
+            manual_url: None,
         };
         *pending = Some(Pending {
             id: candidate.id.clone(),
@@ -231,6 +332,37 @@ pub async fn update_install(
 #[cfg(all(test, desktop))]
 mod tests {
     use super::*;
+    #[test]
+    fn local_announcements_accept_only_stable_core_assets_and_never_install() {
+        let base = "https://github.com/Dramwig/Tano/releases/download/core-v1.10.0/";
+        let value = serde_json::json!({ "format": 1, "edition": "local", "automaticUpdates": false,
+            "version": "1.10.0", "tag": "core-v1.10.0", "sourceCommit": "a".repeat(40), "certificateThumbprint": "A".repeat(40),
+            "windowsUrl": format!("{base}Tano-Local_1.10.0_x64-setup.exe"), "checksumsUrl": format!("{base}SHA256SUMS.txt"),
+            "provenanceUrl": format!("{base}local-provenance.jsonl"), "sourceUrl": "https://github.com/Dramwig/Tano/tree/core-v1.10.0" });
+        let candidate = local_announcement(&value, [1, 9, 0]).unwrap().unwrap();
+        assert_eq!(
+            candidate.manual_url.unwrap(),
+            "https://github.com/Dramwig/Tano/releases/tag/core-v1.10.0"
+        );
+        assert!(local_announcement(&value, [1, 10, 0]).unwrap().is_none());
+        assert!(local_announcement(&value, [2, 0, 0]).unwrap().is_none());
+        for (key, replacement) in [
+            ("version", serde_json::json!("1.10.0-beta")),
+            ("tag", serde_json::json!("v1.10.0")),
+            ("edition", serde_json::json!("product")),
+            (
+                "windowsUrl",
+                serde_json::json!("https://example.com/setup.exe"),
+            ),
+            ("certificateThumbprint", serde_json::Value::Null),
+            ("automaticUpdates", serde_json::json!(true)),
+        ] {
+            let mut invalid = value.clone();
+            invalid[key] = replacement;
+            assert!(local_announcement(&invalid, [1, 9, 0]).is_err());
+        }
+        assert!(local_announcement(&serde_json::Value::Null, [1, 9, 0]).is_err());
+    }
     #[test]
     fn endpoints_cannot_override_trust_or_use_cleartext() {
         for url in [

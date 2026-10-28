@@ -35,6 +35,12 @@ This open-source Core works locally without an account. The browser demo uses br
 
 [GitHub Releases](https://github.com/Dramwig/Tano/releases) provide the complete official Tano installers. They are built from this MIT Core plus a proprietary Cloud Overlay maintained in a private repository. This repository's source and GitHub-generated source archives contain the Core only. Core tags use `core-vX.Y.Z`; Product releases use `vA.B.C` and can share the same Core commit.
 
+[Tano Local · open source local edition](https://tano.page/en-us/download/#local)
+is the official build of this public MIT source without the proprietary overlay.
+Windows x64 builds are attached to stable Core releases. Unsigned previews are
+explicitly labeled on the download page and include public provenance and SHA-256
+checksums. See [Local build and verification](docs/local-release.md).
+
 ## Quick start
 
 Install [Node.js 24.12+](https://nodejs.org/) and npm. The desktop app also needs [Rust stable](https://rustup.rs/) and the [Tauri 2 system prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform.
