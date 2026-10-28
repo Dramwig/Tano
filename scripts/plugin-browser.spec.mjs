@@ -13,7 +13,9 @@ const origin = process.env.TANO_PLUGIN_TEST_URL ?? 'http://127.0.0.1:43845';
 const moduleUrl = `/@fs/${resolve('packages/workbench/src/plugins').replaceAll('\\', '/')}`;
 
 async function openPluginCenter(page) {
-  await page.getByRole('button', { name: '打开命令中心', exact: true }).click();
+  await page.getByRole('button', { name: /^切换上下文：/ }).click();
+  await page.getByRole('button', { name: '更多操作', exact: true }).click();
+  await page.getByRole('menuitem', { name: /命令中心/ }).click();
   await page.getByRole('combobox', { name: '搜索命令' }).fill('打开插件中心');
   await page.getByRole('option').filter({ hasText: '打开插件中心' }).click();
 }
