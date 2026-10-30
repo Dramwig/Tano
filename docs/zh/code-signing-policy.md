@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-计划申请 SignPath Foundation 开源签名服务，**尚未提交申请、尚未获批、尚未启用**。当前 Windows 包仍为明确标注的未签名预览版。SHA-256 和公开构建来源证明不能代替 Windows Authenticode 签名。
+已于 2026 年 10 月 30 日提交 SignPath Foundation 开源签名申请，**待审核，尚未获批、尚未启用签名**。当前 Windows 包仍为明确标注的未签名预览版。SHA-256 和公开构建来源证明不能代替 Windows Authenticode 签名。
 
 英文政策保留获批并启用后的服务署名，目前不表示已经获得赞助或签名。基金会方案的证书主体为 SignPath Foundation，Windows 发布者身份将体现该主体。
 

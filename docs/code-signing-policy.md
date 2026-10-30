@@ -4,8 +4,8 @@ Updated: October 30, 2026. [中文](zh/code-signing-policy.md) · [Local privacy
 
 ## Current status
 
-SignPath Foundation signing is **planned, not active**. Application materials are
-being prepared; no application submission or approval is claimed. Current Local
+SignPath Foundation signing is **not active**. The project application was submitted
+on October 30, 2026 and is awaiting review; approval is not claimed. Current Local
 Windows downloads remain explicitly labeled **unsigned previews**. SHA-256 checksums
 and public build provenance do not replace Windows Authenticode signatures.
 
