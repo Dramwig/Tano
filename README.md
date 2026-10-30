@@ -43,7 +43,7 @@ checksums. See [Local build and verification](docs/local-release.md).
 
 ### Code signing policy
 
-SignPath Foundation application materials are being prepared; signing is not active.
+The SignPath Foundation application was submitted on October 30, 2026 and awaits review; signing is not active.
 Current Local downloads remain explicitly labeled unsigned previews. See the
 [Code signing policy](docs/code-signing-policy.md) and
 [Tano Local privacy policy](docs/local-privacy.md) for scope, team roles and network behavior.

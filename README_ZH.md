@@ -39,7 +39,7 @@
 
 ### Code signing policy / 代码签名政策
 
-SignPath Foundation 申请材料准备中，尚未提交、获批或启用签名。当前 Local 包仍明确标为未签名预览版。参见[代码签名政策](docs/zh/code-signing-policy.md)及 [Local 隐私说明](docs/zh/local-privacy.md)，了解范围、团队职责及联网行为。
+SignPath Foundation 申请已于 2026 年 10 月 30 日提交，待审核，尚未获批或启用签名。当前 Local 包仍明确标为未签名预览版。参见[代码签名政策](docs/zh/code-signing-policy.md)及 [Local 隐私说明](docs/zh/local-privacy.md)，了解范围、团队职责及联网行为。
 
 ## 快速开始
 
