@@ -1,5 +1,10 @@
 # Tano Local official builds
 
+See the [Code signing policy](code-signing-policy.md),
+[Local privacy policy](local-privacy.md) and [SignPath application materials](signpath-application.md).
+SignPath signing is planned, not active; the existing PFX path below is not a
+SignPath adapter. Current preview signing labels remain unchanged.
+
 Tano Local is the complete MIT local product, built entirely in the public
 `Dramwig/Tano` repository. It has no proprietary Cloud Overlay and needs no
 account. Tano also supports local use without an account. Core remains the name
