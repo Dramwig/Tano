@@ -105,6 +105,8 @@ export interface WorkspaceAdapter {
   /** Confirm the staged request, reusing its durable identity and idempotency key on retry. */
   commitCreate?(id: string): Promise<{ file: FileEntry; snapshot: FileSnapshot }>;
   createFolder(path: string): Promise<void>;
+  /** Must reject nonempty directories, including hidden/unindexed entries; never recurse. */
+  removeEmptyFolder?(workspaceId: string, path: string): Promise<void>;
   rename(from: string, to: string): Promise<void>;
   move(from: string, to: string, kind: FileEntry['kind']): Promise<void>;
   duplicate?(workspaceId: string, path: string): Promise<string>;

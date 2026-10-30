@@ -73,6 +73,10 @@
   border-color: var(--line-strong);
   box-shadow: var(--overlay-shadow);
 }
+/* Menu groups need more contrast than decorative seams on raised surfaces. */
+:root[data-theme='dark'] .menu-divider {
+  background: var(--line-strong);
+}
 :root[data-theme='dark'] :is(.search-input-wrap, .search-results) {
   background: var(--surface-raised);
   box-shadow: var(--overlay-shadow);

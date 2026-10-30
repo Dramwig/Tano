@@ -277,6 +277,7 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('workspace', 'workspace-icon', '图标', '选择内置图标、表情符号或上传图片，显示在侧栏和工作区菜单中。', 'workspace icon emoji'),
   settingSearchEntry('workspace', 'workspace-home-page', '默认打开页面', '首次打开时进入此页面；已有会话会恢复上次打开的标签页。', 'home page default'),
   settingSearchEntry('workspace', 'workspace-title-source', '页面标题来源', '适用于当前工作区的所有页面。仅“YAML title 优先”在字段为空或无效时使用文件名。', 'title source filename YAML'),
+  settingSearchEntry('workspace', 'workspace-folder-home', '文件夹首页', '点击文件夹名称打开直属首页，点击图标展开。首页文件在文件树中隐藏，不移动或修改文件。', 'README _index index folder home'),
   settingSearchEntry('workspace', 'workspace-show-plan', '显示计划', '在侧栏显示计划与日历入口。', 'sidebar plan calendar'),
   settingSearchEntry('workspace', 'workspace-show-graph', '显示关系图谱', '在侧栏顶部显示关系图谱入口。', 'sidebar graph'),
   settingSearchEntry('workspace', 'workspace-show-plugins', '显示插件', '在侧栏顶部显示插件管理入口。', 'sidebar plugins'),
@@ -1168,7 +1169,7 @@ function customFontInput(event: Event) {
           <p class="settings-lead">{{ t('了解同页与版本信息。') }}</p>
           <div class="settings-card settings-brand-card" data-settings-key="about-updates">
             <div class="settings-about-brand">
-              <img :src="'/favicon-green.svg?v=3'" alt="" />
+              <img src="../assets/tano-logo.svg" alt="" />
               <h3>Tano <span v-if="uiLocale === 'zh-CN'">/ 同页</span></h3>
               <div class="settings-brand-actions">
                 <span class="settings-version-pill">{{ version }}</span>

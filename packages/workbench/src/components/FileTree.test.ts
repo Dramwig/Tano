@@ -11,6 +11,74 @@ const entries: FileEntry[] = [
   { id: 'document', path: '项目/计划.md', name: '计划.md', kind: 'file', size: 1, modified: 0 },
 ];
 
+it('opens folder homes separately from expansion, preserves folder actions, and reacts to external removal', async () => {
+  const home: FileEntry = { id: 'home', path: '项目/README.md', name: 'README.md', kind: 'file', size: 1, modified: 0 };
+  const files = ref([...entries, home]);
+  const open = vi.fn(), context = vi.fn(), prefetch = vi.fn();
+  root = document.createElement('div'); document.body.append(root);
+  app = createApp({ render: () => h(FileTree, { entries: files.value, selectedIds: new Set(['home']), documentIcons: { home: '🚀' }, onOpen: open, onContext: context, onPrefetch: prefetch }) });
+  app.mount(root); await nextTick();
+  const folder = root.querySelector<HTMLButtonElement>('[title="项目"]')!;
+  expect(root.querySelector('[title="项目/README.md"]')).toBeNull();
+  expect(folder.classList.contains('selected')).toBe(true);
+  expect(folder.outerHTML).toContain('data-emoji="🚀"');
+  folder.click(); await nextTick();
+  expect(open).toHaveBeenCalledWith(home);
+  expect(folder.getAttribute('aria-expanded')).toBe('true');
+  open.mockClear();
+  folder.querySelector<HTMLElement>('.tree-icon')!.click(); await nextTick();
+  expect(open).not.toHaveBeenCalled();
+  expect(folder.getAttribute('aria-expanded')).toBe('false');
+  folder.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })); await nextTick();
+  expect(folder.getAttribute('aria-expanded')).toBe('true');
+  folder.dispatchEvent(new Event('pointerenter'));
+  expect(prefetch).toHaveBeenCalledWith(home);
+  folder.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  expect(context.mock.calls[0][0]).toEqual(entries[0]);
+  folder.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+  expect(open).not.toHaveBeenCalled();
+  files.value = entries; await nextTick();
+  folder.click(); await nextTick();
+  expect(folder.getAttribute('aria-expanded')).toBe('false');
+  expect(open).not.toHaveBeenCalled();
+});
+
+it.each([false, true])('reveals hidden home files and switches filename rules in virtual=%s trees', async virtual => {
+  const home: FileEntry = { id: 'home', path: '项目/README.md', name: 'README.md', kind: 'file', size: 1, modified: 0 };
+  const index: FileEntry = { ...home, id: 'index', path: '项目/_index.md', name: '_index.md' };
+  const files = [...entries, home, index, ...(virtual ? Array.from({ length: 510 }, (_, i) => ({ ...home, id: `f${i}`, path: `file${i}.md`, name: `file${i}.md` })) : [])];
+  const filename = ref<'README.md' | '_index.md' | ''>('README.md'), revealed = ref('');
+  root = document.createElement('div'); document.body.append(root);
+  app = createApp({ render: () => h(FileTree, { entries: files, folderHomeFileName: filename.value, revealedHomeId: revealed.value }) });
+  app.mount(root); await nextTick();
+  const folder = root.querySelector<HTMLButtonElement>('[title="项目"]')!;
+  if (virtual) { folder.querySelector<HTMLElement>('.tree-icon')!.click(); await nextTick(); }
+  expect(root.querySelector('[title="项目/README.md"]')).toBeNull();
+  expect(root.querySelector('[title="项目/_index.md"]')).not.toBeNull();
+  folder.querySelector<HTMLElement>('.tree-icon')!.click(); await nextTick();
+  revealed.value = 'home'; await nextTick(); await nextTick();
+  expect(root.querySelector('[title="项目/README.md"]')).not.toBeNull();
+  expect(folder.getAttribute('aria-expanded')).toBe('true');
+  filename.value = '_index.md'; revealed.value = ''; await nextTick();
+  expect(root.querySelector('[title="项目/_index.md"]')).toBeNull();
+  expect(root.querySelector('[title="项目/README.md"]')).not.toBeNull();
+  filename.value = ''; await nextTick();
+  expect(root.querySelector('[title="项目/_index.md"]')).not.toBeNull();
+});
+
+it('expands an ordinary collapsed folder when a newly created child enters rename mode', async () => {
+  const renaming = ref('');
+  root = document.createElement('div'); document.body.append(root);
+  app = createApp({ render: () => h(FileTree, { entries, renamingId: renaming.value, renameEntry: async () => {} }) });
+  app.mount(root); await nextTick();
+  const folder = root.querySelector<HTMLButtonElement>('[title="项目"]')!;
+  folder.click(); await nextTick();
+  expect(root.querySelector('[title="项目/计划.md"]')).toBeNull();
+  renaming.value = 'document'; await nextTick(); await nextTick();
+  expect(folder.getAttribute('aria-expanded')).toBe('true');
+  expect(root.querySelector('.tree-rename-input')).not.toBeNull();
+});
+
 it('keeps platform data out of the document tree', async () => {
   root = document.createElement('div');
   document.body.append(root);

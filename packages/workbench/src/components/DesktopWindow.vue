@@ -52,7 +52,7 @@ async function toggleMaximize() {
         @mousedown="drag"
         @dblclick="toggleMaximize"
       >
-        <img src="/favicon-green.svg?v=3" alt="" draggable="false" />
+        <img src="../assets/tano-logo.svg" alt="" draggable="false" />
       </div>
     </header>
     <Teleport v-if="controlsTarget" :to="controlsTarget">

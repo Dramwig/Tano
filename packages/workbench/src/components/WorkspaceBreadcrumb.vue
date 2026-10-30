@@ -2,7 +2,9 @@
 import { t } from '../i18n';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch, type Component } from 'vue';
-import { ArrowLeft, BookOpen, Check, ChevronRight, File, FileText, Table2, FolderOpen, LockKeyhole } from 'lucide-vue-next';
+import { ArrowLeft, BookOpen, Check, ChevronDown, ChevronRight, File, FileText, Table2, FolderOpen, LockKeyhole } from 'lucide-vue-next';
+import FolderHomeIcon from './FolderHomeIcon.vue';
+import { indexFolderHomes, type FolderHomeFileName } from '../folder-home';
 import { basename, isMarkdown, isDataTableFilePath, isWorkspaceInternalPath, parentPath, type FileEntry } from '@tano/protocol';
 import { butterflyPerchDirective, useButterflyController, type ButterflyPerch } from '../assistant/butterfly-vue';
 import DocumentFileIcon from './DocumentFileIcon.vue';
@@ -15,6 +17,7 @@ const props = defineProps<{
   workspaceName: string;
   hideWorkspace?: boolean;
   entries: FileEntry[];
+  folderHomeFileName?: FolderHomeFileName;
   documentIcons?: Readonly<Record<string, string>>;
   loadDocumentIcon?: (file: FileEntry, signal: AbortSignal) => Promise<string>;
   path?: string;
@@ -33,11 +36,19 @@ const folder = ref('');
 const position = ref({ left: '0px', top: '0px' });
 let trigger: HTMLButtonElement | undefined;
 const currentFile = computed(() => props.entries.find(entry => entry.kind === 'file' && entry.path === props.path));
-const parts = computed(() => (props.path ?? '').split('/').filter(Boolean).map((name, index, all) => ({
-  name,
-  path: all.slice(0, index + 1).join('/'),
-  current: index === all.length - 1,
-})));
+const homes = computed(() => indexFolderHomes(props.entries, props.folderHomeFileName));
+const parts = computed(() => {
+  const names = (props.path ?? '').split('/').filter(Boolean);
+  if (props.path && homes.value.get(parentPath(props.path))?.path === props.path) names.pop();
+  return names.map((name, index, all) => {
+    const path = all.slice(0, index + 1).join('/');
+    return { name, path, current: index === all.length - 1, home: homes.value.get(path) };
+  });
+});
+function activatePart(event: MouseEvent, part: typeof parts.value[number]) {
+  if (part.home) { close(); emit('open', part.home); }
+  else show(event, part.path, part.current ? parentPath(part.path) : part.path);
+}
 const children = computed(() => props.entries
   .filter(entry => !isWorkspaceInternalPath(entry.path) && parentPath(entry.path) === folder.value)
   .sort((a, b) => a.kind !== b.kind ? (a.kind === 'directory' ? -1 : 1)
@@ -185,22 +196,30 @@ onBeforeUnmount(() => {
       <ChevronRight v-if="!hideWorkspace || index > 0 || pages?.length" :size="12" class="breadcrumb-separator" aria-hidden="true" />
       <button type="button" class="breadcrumb-trigger" :class="{ 'breadcrumb-current': part.current }"
         v-butterfly-perch="part.current ? perch : undefined"
-        :data-tooltip="part.path" :aria-label="part.current ? t('切换文件：{0}', [part.name]) : t('浏览目录：{0}', [part.path])"
-        :aria-current="part.current ? 'page' : undefined" aria-haspopup="menu"
-        :aria-expanded="opened && anchorKey === part.path" :aria-controls="opened && anchorKey === part.path ? menuId : undefined"
-        @click="show($event, part.path, part.current ? parentPath(part.path) : part.path)"
-        @keydown.down.prevent.stop="show($event, part.path, part.current ? parentPath(part.path) : part.path)"
-        @keydown.up.prevent.stop="show($event, part.path, part.current ? parentPath(part.path) : part.path)"
+        :data-tooltip="part.home?.path ?? part.path" :aria-label="part.home ? t('打开文件夹首页：{0}', [part.name]) : part.current ? t('切换文件：{0}', [part.name]) : t('浏览目录：{0}', [part.path])"
+        :aria-current="part.current ? 'page' : undefined" :aria-haspopup="part.home ? undefined : 'menu'"
+        :aria-expanded="part.home ? undefined : opened && anchorKey === part.path" :aria-controls="!part.home && opened && anchorKey === part.path ? menuId : undefined"
+        @click="activatePart($event, part)"
+        @keydown.down.prevent.stop="show($event, part.path, part.home || !part.current ? part.path : parentPath(part.path))"
+        @keydown.up.prevent.stop="show($event, part.path, part.home || !part.current ? part.path : parentPath(part.path))"
         @keydown.esc.stop.prevent="close(true)">
         <DocumentFileIcon
-          v-if="part.current && currentFile && (isMarkdown(part.path) || isDataTableFilePath(part.path))"
+          v-if="part.home" :file="part.home" :icon="documentIcons?.[part.home.id]" :load="loadDocumentIcon" :fallback="FolderHomeIcon"
+        />
+        <DocumentFileIcon
+          v-else-if="part.current && currentFile && (isMarkdown(part.path) || isDataTableFilePath(part.path))"
           :key="`${workspaceId}:${currentFile.id}`"
           :file="currentFile" :icon="documentIcons?.[currentFile.id]"
           :load="isMarkdown(part.path) ? loadDocumentIcon : undefined"
         />
         <component v-else :is="part.current ? (isDataTableFilePath(part.path) ? Table2 : isMarkdown(part.path) ? FileText : File) : FolderOpen" :size="14" />
-        <span>{{ part.current && (isMarkdown(part.path) || isDataTableFilePath(part.path)) ? part.name.replace(/(\.table\.json|\.(md|markdown))$/i, '') : part.name }}</span>
+        <span>{{ !part.home && part.current && (isMarkdown(part.path) || isDataTableFilePath(part.path)) ? part.name.replace(/(\.table\.json|\.(md|markdown))$/i, '') : part.name }}</span>
       </button>
+      <button v-if="part.home" type="button" class="breadcrumb-trigger breadcrumb-folder-menu"
+        :class="{ 'breadcrumb-current': part.current }" :aria-label="t('浏览目录：{0}', [part.path])" aria-haspopup="menu"
+        :aria-expanded="opened && anchorKey === part.path" :aria-controls="opened && anchorKey === part.path ? menuId : undefined"
+        @click="show($event, part.path, part.path)" @keydown.down.prevent.stop="show($event, part.path, part.path)"
+        @keydown.up.prevent.stop="show($event, part.path, part.path)"><ChevronDown :size="12" /></button>
     </template>
     <slot name="status" />
   </nav>

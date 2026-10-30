@@ -6,6 +6,17 @@ import { defaultWorkspaceSettings, loadWorkspaceSettings, parseWorkspaceSettings
 import { builtinWorkspaceIcons, workspaceEmojiGroups } from './workspace-icons';
 
 beforeEach(() => localStorage.clear());
+it('defaults folder homes, persists the chosen filename, and preserves external conflicting settings', async () => {
+  expect(parseWorkspaceSettings('{"version":1}').folderHomeFileName).toBe('README.md');
+  const adapter = new DemoAdapter();
+  await adapter.open();
+  const base = await saveWorkspaceSettingsPatch(adapter, null, { key: 'folderHomeFileName', value: '_index.md', previous: 'README.md' });
+  const external = await saveWorkspaceSettingsPatch(adapter, base.snapshot, { key: 'folderHomeFileName', value: 'index.md', previous: '_index.md' });
+  await expect(saveWorkspaceSettingsPatch(adapter, base.snapshot, { key: 'folderHomeFileName', value: '', previous: '_index.md' })).rejects.toThrow('其他人或程序修改');
+  expect((await loadWorkspaceSettings(adapter, await adapter.refresh())).settings.folderHomeFileName).toBe('index.md');
+  expect(await adapter.read(workspaceSettingsPath)).toEqual(external.snapshot);
+  expect(() => parseWorkspaceSettings('{"version":1,"folderHomeFileName":"../README.md"}')).toThrow('文件名');
+});
 it('persists portable settings independently of Markdown content and workspace identity', async () => {
   const adapter = new DemoAdapter();
   const workspace = await adapter.open();

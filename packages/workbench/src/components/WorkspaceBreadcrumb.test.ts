@@ -37,6 +37,28 @@ beforeEach(async () => {
 });
 afterEach(() => { app.unmount(); root.remove(); vi.restoreAllMocks(); });
 
+it('opens folder homes while preserving a separate directory menu and collapses the home breadcrumb', async () => {
+  const home = entry('项目/README.md');
+  props.entries.push(home); await nextTick();
+  await click(trigger('打开文件夹首页：项目'));
+  expect(onOpen).toHaveBeenCalledWith(home);
+  expect(menu()).toBeNull();
+  await click(trigger('浏览目录：项目'));
+  expect(item(home.path)).toBeDefined();
+  await key(menu()!, 'Escape');
+  props.path = home.path; await nextTick();
+  expect(trigger('打开文件夹首页：项目').getAttribute('aria-current')).toBe('page');
+  expect(root.querySelector('[aria-label="切换文件：README.md"]')).toBeNull();
+  await click(trigger('浏览目录：项目'));
+  await click(item('项目/当前.md'));
+  expect(onOpen).toHaveBeenLastCalledWith(expect.objectContaining({ path: '项目/当前.md' }));
+  props.entries = props.entries.filter(file => file.path !== home.path);
+  props.path = '项目/当前.md'; await nextTick();
+  expect(root.querySelector('[aria-label="打开文件夹首页：项目"]')).toBeNull();
+  await click(trigger('浏览目录：项目'));
+  expect(menu()).not.toBeNull();
+});
+
 it('browses root children, enters folders and returns to the previous directory', async () => {
   const workspace = trigger('浏览工作区：我的工作区');
   await click(workspace);

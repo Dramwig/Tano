@@ -2,6 +2,7 @@
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { flattenFileTree, indexFileTree } from '../file-tree-model';
+import { indexFolderHomes, type FolderHomeFileName } from '../folder-home';
 import { treeRowHeight, useFileTreeViewport } from '../file-tree-viewport';
 import {
   ChevronRight,
@@ -18,11 +19,14 @@ import {
 } from '@tano/protocol';
 import FileTreeRename from './FileTreeRename.vue';
 import DocumentFileIcon from './DocumentFileIcon.vue';
+import FolderHomeIcon from './FolderHomeIcon.vue';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 
 const props = withDefaults(
   defineProps<{
     entries: FileEntry[];
+    folderHomeFileName?: FolderHomeFileName;
+    revealedHomeId?: string;
     loading?: boolean;
     documentIcons?: Readonly<Record<string, string>>;
     loadDocumentIcon?: (file: FileEntry, signal: AbortSignal) => Promise<string>;
@@ -38,6 +42,7 @@ const props = withDefaults(
   }>(),
   {
     parent: '',
+    folderHomeFileName: 'README.md',
     depth: 0,
     selectedIds: () => new Set<string>(),
     contextSelected: '',
@@ -68,7 +73,12 @@ const isCollapsed = (path: string) =>
   largeTree.value ? !expanded.value.has(path) : collapsed.value.has(path);
 const treeElement = ref<HTMLElement>();
 const virtual = computed(() => !props.loading && props.depth === 0 && largeTree.value);
-const folders = computed(() => indexFileTree(props.entries));
+const homes = computed(() => indexFolderHomes(props.entries, props.folderHomeFileName));
+const hiddenHomeIds = computed(() => new Set([...homes.value.values()].map(file => file.id).filter(id => id !== props.revealedHomeId)));
+const folders = computed(() => indexFileTree(props.entries.filter(file => !hiddenHomeIds.value.has(file.id))));
+const homeFor = (file: FileEntry) => file.kind === 'directory' ? homes.value.get(file.path) : undefined;
+const isSelected = (file: FileEntry) => props.selectedIds.has(file.id) ||
+  (!!homeFor(file) && hiddenHomeIds.value.has(homeFor(file)!.id) && props.selectedIds.has(homeFor(file)!.id));
 const rows = computed(() => props.loading ? [] : virtual.value
   ? flattenFileTree(folders.value, props.parent, props.depth, isCollapsed)
   : (folders.value.get(props.parent) ?? []).map((file, index, children) =>
@@ -81,17 +91,48 @@ function getVisibleIds(): string[] {
     : [...(treeElement.value?.querySelectorAll<HTMLElement>('.tree-row[data-entry-id]') ?? [])].map(row => row.dataset.entryId!);
 }
 defineExpose({ getVisibleIds });
-watch(() => props.renamingId, async id => {
-  if (!id || !virtual.value) return;
+watch(() => props.revealedHomeId, async id => {
   const file = props.entries.find(file => file.id === id);
-  for (let path = file && parentPath(file.path); path; path = parentPath(path)) expanded.value.add(path);
+  if (!file) return;
+  for (let path = parentPath(file.path); path; path = parentPath(path)) {
+    expanded.value.add(path);
+    collapsed.value.delete(path);
+  }
   await nextTick();
-  if (props.renamingId === id) reveal(id);
+  if (props.depth !== 0) return;
+  if (virtual.value) await focus(file.id);
+  else {
+    const row = [...(treeElement.value?.querySelectorAll<HTMLElement>('.tree-row') ?? [])].find(row => row.dataset.entryId === id);
+    row?.focus();
+    row?.scrollIntoView?.({ block: 'nearest' });
+  }
+}, { immediate: true });
+watch(() => props.renamingId, async id => {
+  if (!id) return;
+  const file = props.entries.find(file => file.id === id);
+  for (let path = file && parentPath(file.path); path; path = parentPath(path)) {
+    expanded.value.add(path);
+    collapsed.value.delete(path);
+  }
+  await nextTick();
+  if (virtual.value && props.renamingId === id) reveal(id);
 }, { flush: 'post' });
 
 function rowKeydown(file: FileEntry, event: KeyboardEvent) {
   keyboardContext(file, event);
-  if (!virtual.value || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+  if (!virtual.value) {
+    if (event.key === 'ArrowRight' && file.kind === 'directory') {
+      event.preventDefault();
+      if (isCollapsed(file.path)) toggle(file.path);
+      else (event.currentTarget as HTMLElement).parentElement?.querySelector<HTMLElement>('ul .tree-row')?.focus();
+    } else if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      if (file.kind === 'directory' && !isCollapsed(file.path)) toggle(file.path);
+      else treeElement.value?.parentElement?.querySelector<HTMLElement>(':scope > .tree-row')?.focus();
+    }
+    return;
+  }
   const index = rows.value.findIndex(row => row.file.id === file.id);
   let target: string | undefined;
   if (event.key === 'ArrowDown') target = rows.value[index + 1]?.file.id;
@@ -215,8 +256,17 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
   if (event.shiftKey || event.ctrlKey || event.metaKey) {
     return;
   }
-  if (file.kind === 'directory') toggle(file.path);
+  const home = homeFor(file);
+  if (home) emit('open', home);
+  else if (file.kind === 'directory') toggle(file.path);
   else emit('open', file);
+}
+function clickIcon(file: FileEntry, event: MouseEvent) {
+  if (file.kind !== 'directory') return;
+  event.stopPropagation();
+  if (suppressHeldClick(file, event) || file.id === props.renamingId) return;
+  emit('select', file, event);
+  if (!event.shiftKey && !event.ctrlKey && !event.metaKey) toggle(file.path);
 }
 </script>
 
@@ -243,7 +293,7 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
         class="tree-row"
         role="treeitem"
         :class="{
-          selected: selectedIds.has(file.id),
+          selected: isSelected(file),
           'multi-selected': selectedIds.size > 1 && selectedIds.has(file.id),
           'context-target': file.id === contextSelected,
           dragging: file.id === draggedId,
@@ -255,7 +305,7 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
         :style="{ paddingLeft: `${4 + rowDepth * 17}px`, '--tree-depth': rowDepth }"
         :title="file.path"
         :data-entry-id="file.id"
-        :aria-selected="selectedIds.has(file.id)"
+        :aria-selected="isSelected(file)"
         :aria-level="rowDepth + 1"
         :aria-posinset="position"
         :aria-setsize="siblings"
@@ -268,8 +318,8 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
         @pointerup="cancelTouchHold"
         @pointercancel="cancelTouchHold"
         @pointerleave="cancelTouchHold"
-        @pointerenter="emit('prefetch', file)"
-        @focus="focused = file.id; emit('prefetch', file)"
+        @pointerenter="emit('prefetch', homeFor(file) ?? file)"
+        @focus="focused = file.id; emit('prefetch', homeFor(file) ?? file)"
         @contextmenu.prevent="contextEntry(file, $event)"
         @keydown="rowKeydown(file, $event)"
         @dragstart="emit('dragStart', file, $event)"
@@ -282,9 +332,15 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
           class="tree-icon"
           :class="{ 'tree-icon-expandable': file.kind === 'directory' }"
           aria-hidden="true"
+          @click="clickIcon(file, $event)"
         >
           <DocumentFileIcon
-            v-if="file.kind === 'file' && (isMarkdown(file.path) || isDataTableFilePath(file.path))"
+            v-if="homeFor(file)"
+            class="tree-item-icon"
+            :file="homeFor(file)!" :icon="documentIcons?.[homeFor(file)!.id]" :load="loadDocumentIcon" :fallback="FolderHomeIcon"
+          />
+          <DocumentFileIcon
+            v-else-if="file.kind === 'file' && (isMarkdown(file.path) || isDataTableFilePath(file.path))"
             :file="file" :icon="documentIcons?.[file.id]" :load="isMarkdown(file.path) ? loadDocumentIcon : undefined"
           />
           <component v-else
@@ -313,13 +369,15 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
           @finish="finishRename(file)"
         />
         <span v-else class="tree-label">{{
-          file.name.replace(/(\.table\.json|\.(md|markdown))$/i, '')
+          file.kind === 'directory' ? file.name : file.name.replace(/(\.table\.json|\.(md|markdown))$/i, '')
         }}</span>
         <span v-if="file.name === 'AGENTS.md'" class="agent-file-dot" />
       </component>
       <FileTree
         v-if="!virtual && file.kind === 'directory' && !isCollapsed(file.path)"
         :entries="entries"
+        :folder-home-file-name="folderHomeFileName"
+        :revealed-home-id="revealedHomeId"
         :document-icons="documentIcons"
         :load-document-icon="loadDocumentIcon"
         :parent="file.path"

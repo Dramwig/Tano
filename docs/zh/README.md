@@ -14,6 +14,7 @@ Tano 是一个以真实文件为内容源、让人与 Agent 在同一页工作�
 | [第三方账号导入](account-import.md) | OAuth 应用配置、连接方式与导入范围 |
 | [手机与平板开发](../mobile.md) | Android、iPhone/iPad、响应式布局与本机验证 |
 | [架构](architecture.md) | 存储分层与工作区身份 |
+| [文件夹首页](folder-home.md) | README 首页、识别设置和文件树导航 |
 | [Workspace Contract v1](workspace-contract.md) | File、Object、View、稳定身份、来源和冲突规则 |
 | [产品规划：File-Native Workspace](product-strategy.md) | 产品定位、竞争边界、当前状态和交付顺序 |
 | [数据表](data-tables.md) | 独立记录、类型字段、视图、公式、CSV 与冲突恢复 |

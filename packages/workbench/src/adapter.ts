@@ -267,6 +267,16 @@ export class DemoAdapter implements WorkspaceAdapter {
   async changeFile(request: FileChangeRequest): Promise<WriteResult> {
     return this.changeChecked(request, false);
   }
+  async removeEmptyFolder(workspaceId: string, path: string) {
+    this.check(path);
+    if (workspaceId !== this.workspaceId) throw new Error('工作区已切换');
+    await this.changeEntries(() => {
+      if (!this.folders.includes(path)) throw new Error('文件夹已不存在');
+      if ([...Object.keys(this.files), ...this.folders].some(entry => entry.startsWith(`${path}/`)))
+        throw new Error('文件夹不为空，不能转为普通文档');
+      this.folders = this.folders.filter(entry => entry !== path);
+    });
+  }
   async removeObjectFile(request: FileChangeRequest): Promise<WriteResult> {
     return this.changeChecked(request, true);
   }
@@ -431,6 +441,7 @@ export class NativeAdapter implements WorkspaceAdapter {
     invoke<WriteResult>('write_document', { path, content, expectedHash });
   create = (path: string, content: string) => invoke<void>('create_document', { path, content });
   createFolder = (path: string) => invoke<void>('create_folder', { path });
+  removeEmptyFolder = (workspaceId: string, path: string) => invoke<void>('remove_empty_folder', { workspaceId, path });
   rename = (from: string, to: string) => invoke<void>('rename_document', { from, to });
   move = (from: string, to: string, _kind: FileEntry['kind']) =>
     invoke<void>('move_entry', { from, to });

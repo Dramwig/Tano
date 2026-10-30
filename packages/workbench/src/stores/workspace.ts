@@ -19,6 +19,7 @@ import { mergeMarkdown } from '@tano/markdown';
 import { useWorkbenchRuntime } from '../runtime';
 import type { WorkbenchViewTab } from '../runtime';
 import { planFileMove } from '../file-move';
+import { convertFolderDocument, type FolderConversionKind } from '../folder-conversion';
 import { optimisticFiles, type FileMutationPreview } from '../optimistic-files';
 import { topLevelEntries } from '../file-selection';
 import { defaultCapabilities, parseCapabilities } from '@tano/editor/runtime';
@@ -2692,6 +2693,43 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function rename(doc: OpenDocument, path: string) {
     return renameEntry({ id: doc.id, path: displayPath(doc), kind: 'file' }, path);
   }
+  const folderConversionBusy = ref(false);
+  const canConvertFolderDocuments = !!adapter.changeFile && !!adapter.removeEmptyFolder;
+  async function convertDocumentStructure(file: FileEntry, kind: FolderConversionKind) {
+    writable();
+    if (folderConversionBusy.value) throw new Error('正在转换文档，请稍候');
+    const scope = workspace.value?.id;
+    if (!scope) throw new Error('请先打开一个工作空间');
+    folderConversionBusy.value = true;
+    try {
+      if (!(await flush()) || documents.value.some(doc => doc.conflict || doc.missing))
+        throw new Error('请先处理未保存的修改、冲突或缺失文档');
+      return await serial(async () => {
+        writable();
+        if (workspace.value?.id !== scope) throw new Error('工作区已切换');
+        let result: Awaited<ReturnType<typeof convertFolderDocument>> | undefined;
+        try {
+          result = await convertFolderDocument(adapter, scope, file, workspaceSettings.value.folderHomeFileName, kind);
+        } finally {
+          // Reconcile all open references, including unsaved edits made during the operation.
+          const current = await adapter.refresh();
+          if (current.id === scope && workspace.value?.id === scope) {
+            workspace.value = current;
+            for (const doc of documents.value) {
+              const entry = current.files.find(entry => entry.id === doc.id);
+              if (!entry) { doc.missing = true; continue; }
+              doc.path = entry.path; doc.missing = false;
+              await reconcile(doc, await adapter.read(entry.path));
+            }
+          }
+        }
+        const opened = workspace.value?.files.find(entry => entry.id === result!.openId);
+        if (opened) await openInternal(opened);
+        activity(kind === 'child' ? '已新建子文档' : '已转为普通文档', `${file.path} → ${result.plan.destination}`, 'file');
+        return opened;
+      });
+    } finally { folderConversionBusy.value = false; }
+  }
   async function moveEntry(file: FileEntry, folder: string, expectedWorkspaceId?: string) {
     if (!isWeb) return moveEntryConfirmed(file, folder, expectedWorkspaceId);
     const { current, affected, preview } = prepareFileMutation([file], expectedWorkspaceId);
@@ -3236,6 +3274,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     saveCopy,
     rename,
     renameEntry,
+    canConvertFolderDocuments,
+    folderConversionBusy,
+    convertDocumentStructure,
     moveEntry,
     duplicateEntry,
     remove,

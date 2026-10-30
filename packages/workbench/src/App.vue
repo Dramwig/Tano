@@ -147,6 +147,8 @@ import {
 } from './attachments';
 import { headings } from '@tano/markdown';
 import FileTree from './components/FileTree.vue';
+import { indexFolderHomes } from './folder-home';
+import { planFolderConversion, type FolderConversionKind } from './folder-conversion';
 import DesktopTabs from './components/DesktopTabs.vue';
 import WorkspacePanes from './components/WorkspacePanes.vue';
 import type { OpenDocument } from './stores/workspace';
@@ -1149,7 +1151,8 @@ watch(
   },
 );
 function selectActiveFileInTree() {
-  const id = activeId.value.startsWith('table:') ? tableFileId(activeId.value) : activeId.value;
+  const activeFileId = activeId.value.startsWith('table:') ? tableFileId(activeId.value) : activeId.value;
+  const id = folderRowId(activeFileId);
   const available = !!id && workspace.value?.files.some((file) => file.id === id);
   selectedEntryIds.value = available ? new Set([id]) : new Set();
   selectionAnchorId.value = available ? id : null;
@@ -1179,6 +1182,56 @@ const treeFiles = computed(() => {
     : files;
 });
 const fileTree = ref<InstanceType<typeof FileTree>>();
+const revealedHomeId = ref('');
+const folderHomes = computed(() => indexFolderHomes(treeFiles.value, store.workspaceSettings.folderHomeFileName));
+const homeFolderIds = computed(() => {
+  const ids = new Map<string, string>();
+  for (const folder of treeFiles.value) {
+    const home = folder.kind === 'directory' && folderHomes.value.get(folder.path);
+    if (home) ids.set(home.id, folder.id);
+  }
+  return ids;
+});
+function folderRowId(id: string) {
+  return id === revealedHomeId.value ? id : homeFolderIds.value.get(id) ?? id;
+}
+watch(() => [workspace.value?.id, store.workspaceSettings.folderHomeFileName], () => { revealedHomeId.value = ''; });
+watch([homeFolderIds, revealedHomeId], () => {
+  selectedEntryIds.value = new Set([...selectedEntryIds.value].map(folderRowId));
+  if (selectionAnchorId.value) selectionAnchorId.value = folderRowId(selectionAnchorId.value);
+});
+const contextFolderHome = computed(() => fileContextMenu.value?.file.kind === 'directory'
+  ? folderHomes.value.get(fileContextMenu.value.file.path) : undefined);
+function folderConversionIssue(file: FileEntry, kind: FolderConversionKind) {
+  if (!store.canConvertFolderDocuments) return t('当前存储适配器尚不支持安全的文档与文件夹转换');
+  if (store.folderConversionBusy) return t('正在转换文档，请稍候');
+  try { planFolderConversion(treeFiles.value, file, store.workspaceSettings.folderHomeFileName, kind); return ''; }
+  catch (error) { return t(error instanceof Error ? error.message : String(error)); }
+}
+async function convertDocumentStructure(kind: FolderConversionKind) {
+  const file = fileContextMenu.value?.file;
+  closeFileContextMenu();
+  if (!file) return;
+  try {
+    const created = await store.convertDocumentStructure(file, kind);
+    if (created && kind === 'child') startTreeRename(created);
+  } catch (error) { store.report(error); }
+}
+async function folderHomeContextAction(showFile: boolean) {
+  const home = contextFolderHome.value;
+  if (!home) return;
+  const hideFile = showFile && revealedHomeId.value === home.id;
+  closeFileContextMenu(hideFile);
+  if (showFile) {
+    if (hideFile) {
+      revealedHomeId.value = '';
+      return;
+    }
+    revealedHomeId.value = home.id;
+    selectedEntryIds.value = new Set([home.id]);
+    selectionAnchorId.value = home.id;
+  } else await openTreeEntry(home);
+}
 const treeDocumentIcons = computed(() => Object.fromEntries(
   [
     ...store.documents.map(doc => [doc.id, appearanceText(doc.content, 'icon')]),
@@ -4242,7 +4295,7 @@ const helpBlocked = computed(() => !!(
               :aria-label="native ? undefined : t('返回同页首页')"
               @click="returnHome"
             >
-              <img src="/favicon-green.svg?v=3" alt="" />
+              <img src="./assets/tano-logo.svg" alt="" />
             </component>
           </div>
           <ButtonVisibilityGroup
@@ -4379,6 +4432,8 @@ const helpBlocked = computed(() => !!(
               v-if="workspace || startupPending || filesPending"
               :loading="filesPending"
               :entries="treeFiles"
+              :folder-home-file-name="store.workspaceSettings.folderHomeFileName"
+              :revealed-home-id="revealedHomeId"
               :document-icons="treeDocumentIcons"
               :load-document-icon="loadTreeDocumentIcon"
               :selected-ids="selectedEntryIds"
@@ -4452,7 +4507,6 @@ const helpBlocked = computed(() => !!(
             :style="{ left: `${fileContextMenu.x}px`, top: `${fileContextMenu.y}px` }"
             @keydown="fileContextKeydown"
           >
-            <PluginMenu v-if="!multipleContextEntries && fileContextMenu.file.kind === 'file'" location="file" :file-id="fileContextMenu.file.id" @selected="closeFileContextMenu()" />
             <template v-if="multipleContextEntries">
               <div class="file-context-count" role="presentation">
                 {{ t('已选中') }} {{ contextEntries.length }} {{ t('个条目') }}
@@ -4492,19 +4546,19 @@ const helpBlocked = computed(() => !!(
               <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('deleteFile') }}</kbd></button>
             </template>
             <template v-else>
+              <!-- Primary actions stay first for files and folders. -->
               <template v-if="fileContextMenu.file.kind === 'directory'">
+                <template v-if="contextFolderHome">
+                  <button role="menuitem" @click="folderHomeContextAction(false)">
+                    <FileText :size="15" />{{ t('打开首页') }}
+                  </button>
+                </template>
                 <button
                   role="menuitem"
                   :disabled="fileMutationDisabled(fileContextMenu.file)"
                   @click="fileContextAction('document')"
                 >
                   <FileText :size="15" />{{ t('在此新建文档') }}
-                </button>
-                <button role="menuitem" :disabled="fileMutationDisabled(fileContextMenu.file)" @click="fileContextAction('table')">
-                  <Table2 :size="15" />{{ t('在此新建数据表') }}
-                </button>
-                <button role="menuitem" :disabled="fileMutationDisabled(fileContextMenu.file)" @click="fileContextAction('database')">
-                  <Table2 :size="15" />{{ t('以数据库视图管理此目录') }}
                 </button>
                 <button
                   role="menuitem"
@@ -4515,44 +4569,63 @@ const helpBlocked = computed(() => !!(
                 </button>
                 <button
                   role="menuitem"
+                  :disabled="fileMutationDisabled(fileContextMenu.file)"
+                  @click="fileContextAction('table')"
+                >
+                  <Table2 :size="15" />{{ t('在此新建数据表') }}
+                </button>
+                <button
+                  role="menuitem"
                   :disabled="
-                    fileMutationDisabled(fileContextMenu.file) ||
-                    directoryHasManagedFile(fileContextMenu.file)
+                    fileMutationDisabled(fileContextMenu.file) || directoryHasManagedFile(fileContextMenu.file)
                   "
                   @click="fileContextAction('rename')"
                 >
                   <Pencil :size="15" />{{ t('重命名文件夹') }}
-                <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd></button>
+                  <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd>
+                </button>
               </template>
               <template v-else>
                 <button
-                  v-if="!isWorkspaceInternalPath(fileContextMenu.file.path)"
-                  role="menuitem"
-                  @click="fileContextAction('object')"
-                >
-                  <Users :size="15" />{{ t('查看文件对象') }}
-                </button>
-                <button v-if="!isWorkspaceInternalPath(fileContextMenu.file.path)" role="menuitem" @click="fileContextAction('metadata')">
-                  <FileText :size="15" />{{ t('文件属性') }}
-                </button>
-                <button v-if="attachments && !isWorkspaceInternalPath(fileContextMenu.file.path)" role="menuitem" @click="fileContextAction('export')">
-                  <ArrowUpRight :size="15" />{{ t('导出文件副本') }}
-                </button>
-                <button
-                  v-if="isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path) || attachments"
+                  v-if="
+                    isMarkdown(fileContextMenu.file.path) ||
+                    isDataTableFilePath(fileContextMenu.file.path) ||
+                    attachments
+                  "
                   role="menuitem"
                   @click="fileContextAction('open')"
                 >
                   <FileText :size="15" />{{
-                    isDataTableFilePath(fileContextMenu.file.path) ? t('打开数据表') : isMarkdown(fileContextMenu.file.path) ? t('打开文档') : t('打开附件')
+                    isDataTableFilePath(fileContextMenu.file.path)
+                      ? t('打开数据表')
+                      : isMarkdown(fileContextMenu.file.path)
+                        ? t('打开文档')
+                        : t('打开附件')
                   }}
                 </button>
                 <button
-                  v-if="tabsEnabled && (isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path))"
+                  v-if="
+                    tabsEnabled &&
+                    (isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path))
+                  "
                   role="menuitem"
                   @click="fileContextAction('open-new-tab')"
                 >
                   <ExternalLink :size="15" />{{ t('在新标签页中打开') }}
+                </button>
+                <button
+                  v-if="isMarkdown(fileContextMenu.file.path) && !isWorkspaceInternalPath(fileContextMenu.file.path)"
+                  role="menuitem"
+                  :disabled="
+                    fileMutationDisabled(fileContextMenu.file) || !!folderConversionIssue(fileContextMenu.file, 'child')
+                  "
+                  :data-tooltip="
+                    folderConversionIssue(fileContextMenu.file, 'child') ||
+                    t('将此文档作为文件夹首页，并新建子文档；相关链接会同步更新。')
+                  "
+                  @click="convertDocumentStructure('child')"
+                >
+                  <FolderPlus :size="15" />{{ t('新建子文档') }}
                 </button>
                 <button
                   v-if="isMarkdown(fileContextMenu.file.path)"
@@ -4561,7 +4634,8 @@ const helpBlocked = computed(() => !!(
                   @click="fileContextAction('rename')"
                 >
                   <Pencil :size="15" />{{ t('重命名文档') }}
-                <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd></button>
+                  <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd>
+                </button>
                 <button
                   v-else-if="attachments || isDataTableFilePath(fileContextMenu.file.path)"
                   role="menuitem"
@@ -4569,7 +4643,8 @@ const helpBlocked = computed(() => !!(
                   @click="fileContextAction('rename')"
                 >
                   <Pencil :size="15" />{{ t('重命名文件') }}
-                <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd></button>
+                  <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd>
+                </button>
               </template>
               <button
                 v-if="canDuplicateEntry(fileContextMenu.file)"
@@ -4579,25 +4654,89 @@ const helpBlocked = computed(() => !!(
               >
                 <Copy :size="15" />{{ t('创建副本') }}
               </button>
+              <div class="menu-divider" role="separator" />
+              <!-- Copy and export. -->
               <button role="menuitem" @click="fileContextAction('copy')">
                 <Copy :size="15" />{{ t('复制相对路径') }}
               </button>
               <button
-                v-if="store.isWeb && fileContextMenu.file.kind === 'file' && (isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path))"
+                v-if="
+                  store.isWeb &&
+                  fileContextMenu.file.kind === 'file' &&
+                  (isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path))
+                "
                 role="menuitem"
                 @click="fileContextAction('copy-link')"
               >
                 <Link :size="15" />{{ t('复制链接') }}
               </button>
-              <button
-                v-if="localNative && !mobile"
-                role="menuitem"
-                @click="fileContextAction('copy-full-path')"
-              >
+              <button v-if="localNative && !mobile" role="menuitem" @click="fileContextAction('copy-full-path')">
                 <Copy :size="15" />{{
                   fileContextMenu.file.kind === 'directory' ? t('复制文件夹路径') : t('复制文件路径')
                 }}
               </button>
+              <template v-if="fileContextMenu.file.kind === 'file'">
+                <button
+                  v-if="attachments && !isWorkspaceInternalPath(fileContextMenu.file.path)"
+                  role="menuitem"
+                  @click="fileContextAction('export')"
+                >
+                  <ArrowUpRight :size="15" />{{ t('导出文件副本') }}
+                </button>
+              </template>
+              <!-- Properties and less frequent structure actions. -->
+              <template v-if="fileContextMenu.file.kind === 'directory'">
+                <div class="menu-divider" role="separator" />
+                <template v-if="contextFolderHome">
+                  <button role="menuitem" @click="folderHomeContextAction(true)">
+                    <FileText :size="15" />{{ t(revealedHomeId === contextFolderHome.id ? '隐藏首页文件' : '显示首页文件') }}
+                  </button>
+                  <button
+                    role="menuitem"
+                    :disabled="
+                      fileMutationDisabled(fileContextMenu.file) ||
+                      !!folderConversionIssue(fileContextMenu.file, 'flatten')
+                    "
+                    :data-tooltip="
+                      folderConversionIssue(fileContextMenu.file, 'flatten') ||
+                      t('仅首页会移出，空文件夹将被移除，相关链接会同步更新。')
+                    "
+                    @click="convertDocumentStructure('flatten')"
+                  >
+                    <FileText :size="15" />{{ t('转为普通文档') }}
+                  </button>
+                </template>
+                <button
+                  role="menuitem"
+                  :disabled="fileMutationDisabled(fileContextMenu.file)"
+                  @click="fileContextAction('database')"
+                >
+                  <Table2 :size="15" />{{ t('以数据库视图管理此目录') }}
+                </button>
+              </template>
+              <template v-else-if="!isWorkspaceInternalPath(fileContextMenu.file.path)">
+                <div class="menu-divider" role="separator" />
+                <button
+                  v-if="!isWorkspaceInternalPath(fileContextMenu.file.path)"
+                  role="menuitem"
+                  @click="fileContextAction('metadata')"
+                >
+                  <FileText :size="15" />{{ t('文件属性') }}
+                </button>
+                <button
+                  v-if="!isWorkspaceInternalPath(fileContextMenu.file.path)"
+                  role="menuitem"
+                  @click="fileContextAction('object')"
+                >
+                  <Users :size="15" />{{ t('查看文件对象') }}
+                </button>
+              </template>
+              <PluginMenu
+                v-if="fileContextMenu.file.kind === 'file'"
+                location="file"
+                :file-id="fileContextMenu.file.id"
+                @selected="closeFileContextMenu()"
+              />
               <template v-if="localNative && !mobile">
                 <div class="menu-divider" role="separator" />
                 <button role="menuitem" @click="fileContextAction('open-default')">
@@ -4624,7 +4763,8 @@ const helpBlocked = computed(() => !!(
                           : t('删除在线文档')
                         : t('移入回收站')
                   }}
-                <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('deleteFile') }}</kbd></button>
+                  <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('deleteFile') }}</kbd>
+                </button>
               </template>
             </template>
           </div>
@@ -5159,6 +5299,7 @@ const helpBlocked = computed(() => !!(
                 :workspace-name="workspace?.name ?? 'Tano'"
                 :hide-workspace="!!tab?.path"
                 :entries="workspace?.files ?? []"
+                :folder-home-file-name="store.workspaceSettings.folderHomeFileName"
                 :document-icons="treeDocumentIcons"
                 :load-document-icon="loadTreeDocumentIcon"
                 :path="tab?.path"

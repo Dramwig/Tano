@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue';
 import { Bot, FileText, Table2 } from 'lucide-vue-next';
 import { isDataTableFilePath } from '@tano/protocol';
 import type { FileEntry } from '@tano/protocol';
@@ -9,6 +9,7 @@ const props = defineProps<{
   file: FileEntry;
   /** Undefined means unopened; an empty string explicitly removes the icon. */
   icon?: string;
+  fallback?: Component;
   load?: (file: FileEntry, signal: AbortSignal) => Promise<string>;
 }>();
 const host = ref<HTMLElement>();
@@ -48,7 +49,7 @@ onBeforeUnmount(() => observer?.disconnect());
 <template>
   <span ref="host" class="document-file-icon" aria-hidden="true">
     <WorkspaceIcon v-if="currentIcon" :icon="currentIcon" :size="16" />
-    <component v-else :is="isDataTableFilePath(file.path) ? Table2 : file.name === 'AGENTS.md' ? Bot : FileText" :size="16" :stroke-width="1.6" />
+    <component v-else :is="fallback ?? (isDataTableFilePath(file.path) ? Table2 : file.name === 'AGENTS.md' ? Bot : FileText)" :size="16" :stroke-width="1.6" />
   </span>
 </template>
 

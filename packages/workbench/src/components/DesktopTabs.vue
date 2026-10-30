@@ -2,7 +2,7 @@
 import { t } from '../i18n';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ArrowLeft, ArrowRight, Bot, CalendarDays, FileText, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, ExternalLink, Bug } from 'lucide-vue-next';
+import { ArrowLeft, ArrowRight, Bot, CalendarDays, FileText, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, PanelBottomClose, ExternalLink, Bug } from 'lucide-vue-next';
 import { basename, isMarkdown, isDataTableFilePath } from '@tano/protocol';
 import { invoke } from '@tauri-apps/api/core';
 import { cursorPosition, getCurrentWindow } from '@tauri-apps/api/window';
@@ -1010,11 +1010,6 @@ async function onTabKeydown(event: KeyboardEvent) {
       :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
     >
       <template v-if="contextMenu.tabId">
-        <button v-if="paneId" type="button" role="menuitem" @click="contextAction('split-right')"><PanelRightClose :size="15" />{{ t('向右分屏') }}</button>
-        <button v-if="paneId" type="button" role="menuitem" @click="contextAction('split-bottom')"><PanelRightClose :size="15" />{{ t('向下分屏') }}</button>
-        <button v-if="detachable" type="button" role="menuitem" :disabled="!!paneTabs.find(tab => tab.id === contextMenu?.tabId)?.workspaceView || !!paneTabs.find(tab => tab.id === contextMenu?.tabId)?.pluginView || (!!paneTabs.find(tab => tab.id === contextMenu?.tabId)?.view && !paneTabs.find(tab => tab.id === contextMenu?.tabId)?.view?.detachable)" @click="contextAction('detach')">
-          <ExternalLink :size="15" />{{ t('在新窗口中打开') }}
-        </button>
         <button type="button" role="menuitem" @click="contextAction('close')">
           <X :size="15" />{{ t('关闭标签页') }}
         </button>
@@ -1034,8 +1029,22 @@ async function onTabKeydown(event: KeyboardEvent) {
           "
           @click="contextAction('close-right')"
         >
-          <PanelRightClose :size="15" />{{ t('关闭右侧标签页') }}
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M9 3v18m3-12 6 6m0-6-6 6" />
+          </svg>{{ t('关闭右侧标签页') }}
         </button>
+        <template v-if="paneId">
+          <div class="menu-divider" role="separator" />
+          <button type="button" role="menuitem" @click="contextAction('split-right')"><PanelRightClose :size="15" />{{ t('向右分屏') }}</button>
+          <button type="button" role="menuitem" @click="contextAction('split-bottom')"><PanelBottomClose :size="15" />{{ t('向下分屏') }}</button>
+        </template>
+        <template v-if="detachable">
+          <div class="menu-divider" role="separator" />
+          <button type="button" role="menuitem" :disabled="!!paneTabs.find(tab => tab.id === contextMenu?.tabId)?.workspaceView || !!paneTabs.find(tab => tab.id === contextMenu?.tabId)?.pluginView || (!!paneTabs.find(tab => tab.id === contextMenu?.tabId)?.view && !paneTabs.find(tab => tab.id === contextMenu?.tabId)?.view?.detachable)" @click="contextAction('detach')">
+            <ExternalLink :size="15" />{{ t('在新窗口中打开') }}
+          </button>
+        </template>
       </template>
       <template v-else>
         <button type="button" role="menuitem" @click="contextAction('new-tab')">

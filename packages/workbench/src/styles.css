@@ -368,6 +368,10 @@ button:hover {
   width: 22px;
   height: 22px;
 }
+.sidebar-brand-slot .brand > img {
+  /* Align the visible pages, accounting for the SVG's transparent inset. */
+  transform: translateX(-3px);
+}
 .version-pill {
   font-size: 12px;
   letter-spacing: 0.6px;
@@ -493,6 +497,8 @@ button:hover {
   letter-spacing: 0;
 }
 .sidebar-view-header {
+  /* Preserve the view switcher's height while showing the root drop hint. */
+  min-height: 28px;
   margin-bottom: 0;
 }
 .workspace-views-sidebar > button { display: flex; gap: 7px; align-items: center; padding: 8px 12px; text-align: left; border-radius: 6px; }
@@ -669,7 +675,7 @@ button:hover {
 .tree-row:hover .tree-icon {
   opacity: 1;
 }
-.tree-icon > svg {
+.tree-icon > svg, .tree-icon > .document-file-icon {
   grid-area: 1 / 1;
 }
 .tree-chevron {
@@ -679,13 +685,18 @@ button:hover {
 .tree-row.selected .tree-chevron {
   color: inherit;
 }
-.tree-row:hover .tree-icon-expandable .tree-item-icon,
+.tree-icon-expandable:hover .tree-item-icon,
 .tree-row:focus-visible .tree-icon-expandable .tree-item-icon {
   visibility: hidden;
 }
-.tree-row:hover .tree-icon-expandable .tree-chevron,
+.tree-icon-expandable:hover .tree-chevron,
 .tree-row:focus-visible .tree-icon-expandable .tree-chevron {
   visibility: visible;
+}
+@media (hover: none), (pointer: coarse) {
+  .tree-icon-expandable .tree-item-icon { visibility: hidden; }
+  .tree-icon-expandable .tree-chevron { visibility: visible; }
+  .tree-icon-expandable { width: 28px; height: 28px; flex-basis: 28px; }
 }
 .tree-row.attachment {
   color: var(--text-secondary);

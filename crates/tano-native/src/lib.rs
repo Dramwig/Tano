@@ -750,6 +750,20 @@ fn rename_document(
 }
 
 #[tauri::command(async)]
+fn remove_empty_folder(
+    workspace_id: String,
+    path: String,
+    state: State<AppState>,
+) -> Result<(), String> {
+    with_session(state, |s| {
+        if s.id != workspace_id {
+            return Err("工作区已切换".into());
+        }
+        storage::remove_empty_folder(&s.root, &s.id, &path)
+    })
+}
+
+#[tauri::command(async)]
 fn move_entry(
     from: String,
     to: String,
@@ -1227,6 +1241,7 @@ pub fn configure_with_commands(
                     create_document,
                     create_folder,
                     rename_document,
+                    remove_empty_folder,
                     move_entry,
                     remove_document,
                     change_assistant_file,

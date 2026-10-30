@@ -54,6 +54,52 @@ pub enum WriteResult {
 pub fn hash(content: &[u8]) -> String {
     format!("{:x}", Sha256::digest(content))
 }
+
+/// Unlike recycling a directory, this never removes hidden or concurrently added children.
+pub fn remove_empty_folder(root: &Path, workspace_id: &str, relative: &str) -> Result<(), String> {
+    assert_workspace_identity(root, workspace_id)?;
+    let target = resolve(root, relative, true)?;
+    if fs::symlink_metadata(root.join(relative))
+        .map_err(|e| e.to_string())?
+        .file_type()
+        .is_symlink()
+    {
+        return Err("不能转换符号链接文件夹".into());
+    }
+    if !fs::symlink_metadata(&target)
+        .map_err(|e| e.to_string())?
+        .is_dir()
+    {
+        return Err("只能移除空文件夹".into());
+    }
+    fs::remove_dir(target).map_err(|e| format!("文件夹不为空或无法移除：{e}"))
+}
+
+#[cfg(test)]
+mod empty_folder_tests {
+    use super::*;
+
+    #[test]
+    fn empty_folder_removal_preserves_hidden_children_and_checks_workspace() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let id = workspace_identity(&root).unwrap();
+        fs::create_dir(root.join("folder")).unwrap();
+        fs::write(root.join("folder/.hidden"), "keep").unwrap();
+        assert!(remove_empty_folder(&root, &id, "folder").is_err());
+        assert_eq!(
+            fs::read_to_string(root.join("folder/.hidden")).unwrap(),
+            "keep"
+        );
+        fs::remove_file(root.join("folder/.hidden")).unwrap();
+        assert!(remove_empty_folder(&root, "wrong-workspace", "folder").is_err());
+        assert!(remove_empty_folder(&root, &id, "../outside").is_err());
+        assert!(remove_empty_folder(&root, &id, "").is_err());
+        assert!(remove_empty_folder(&root, &id, ".tano").is_err());
+        remove_empty_folder(&root, &id, "folder").unwrap();
+        assert!(!root.join("folder").exists());
+    }
+}
 fn hash_path(path: &Path) -> Result<String, String> {
     #[cfg(test)]
     scan_cache::content_read();
