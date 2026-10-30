@@ -6,6 +6,9 @@ Tano 是一个以真实文件为内容源、让人与 Agent 在同一页工作�
 
 | 指南 | 主题 |
 | --- | --- |
+| [Code signing policy / 代码签名政策](code-signing-policy.md) | Local 签名范围、职责及当前状态 |
+| [Local 隐私说明](local-privacy.md) | 本地数据、联网请求及第三方连接 |
+| [SignPath 申请材料](../signpath-application.md) | 英文项目介绍、公开证据及提交前检查 |
 | [本地开发](local-development.md) | 环境要求、启动与检查 |
 | [Windows 右键打开](../windows-shell.md) | 安装时可选的右键菜单、文件夹工作区与独立 Markdown 文件 |
 | [第三方账号导入](account-import.md) | OAuth 应用配置、连接方式与导入范围 |

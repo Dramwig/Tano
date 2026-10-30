@@ -20,5 +20,8 @@ Tano is a File-Native Workspace: real files remain the source of truth while peo
 | [Agent workflow](agent-workflow.md) | Local MCP server and conditional writes |
 | [Backup and recovery](backup-recovery.md) | What to back up and how recovery works |
 | [Builds and releases](releases.md) | Desktop packages and signed updates |
+| [Code signing policy](code-signing-policy.md) | Local signing scope, roles and status |
+| [Local privacy policy](local-privacy.md) | Local data, requests and optional connections |
+| [SignPath application materials](signpath-application.md) | Description, evidence and submission checklist |
 | [Core package distribution](core-distribution.md) | npm and Rust packages, immutable pins and registry migration |
 | [License and scope](license.md) | MIT license and third-party notices |

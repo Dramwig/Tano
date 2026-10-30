@@ -41,6 +41,13 @@ Windows x64 builds are attached to stable Core releases. Unsigned previews are
 explicitly labeled on the download page and include public provenance and SHA-256
 checksums. See [Local build and verification](docs/local-release.md).
 
+### Code signing policy
+
+SignPath Foundation application materials are being prepared; signing is not active.
+Current Local downloads remain explicitly labeled unsigned previews. See the
+[Code signing policy](docs/code-signing-policy.md) and
+[Tano Local privacy policy](docs/local-privacy.md) for scope, team roles and network behavior.
+
 ## Quick start
 
 Install [Node.js 24.12+](https://nodejs.org/) and npm. The desktop app also needs [Rust stable](https://rustup.rs/) and the [Tauri 2 system prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform.

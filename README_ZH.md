@@ -35,6 +35,12 @@
 
 [GitHub Releases](https://github.com/Dramwig/Tano/releases) 提供完整的 Tano 官方安装包，由本仓库的 MIT Core 与私有 Cloud Overlay 构建。本仓库源码及 GitHub 自动生成的源码压缩包只包含 Core。Core 标签使用 `core-vX.Y.Z`，Product Release 使用 `vA.B.C`；多个 Product 版本可以复用同一 Core 提交。
 
+[Tano Local · 开源本地版](https://tano.page/zh-cn/download/#local)是公开 MIT 源码构建的独立安装包，不含私有 Cloud Overlay；Windows x64 包附在对应 Core Release 下。
+
+### Code signing policy / 代码签名政策
+
+SignPath Foundation 申请材料准备中，尚未提交、获批或启用签名。当前 Local 包仍明确标为未签名预览版。参见[代码签名政策](docs/zh/code-signing-policy.md)及 [Local 隐私说明](docs/zh/local-privacy.md)，了解范围、团队职责及联网行为。
+
 ## 快速开始
 
 安装 [Node.js 24.12+](https://nodejs.org/) 和 npm。运行桌面应用还需要 [Rust stable](https://rustup.rs/) 及当前平台的 [Tauri 2 系统依赖](https://v2.tauri.app/start/prerequisites/)。
