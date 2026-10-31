@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createApp, h, nextTick, reactive, type App } from 'vue';
-import { basename, type FileEntry } from '@tano/protocol';
+import { basename, defaultFileDatabaseQuery, type FileEntry, type WorkspaceViewDefinition } from '@tano/protocol';
 import WorkspaceBreadcrumb from './WorkspaceBreadcrumb.vue';
 
 const entry = (path: string, kind: FileEntry['kind'] = 'file'): FileEntry => ({
@@ -9,7 +9,7 @@ const entry = (path: string, kind: FileEntry['kind'] = 'file'): FileEntry => ({
 });
 let app: App;
 let root: HTMLDivElement;
-let props: { workspaceId: string; workspaceName: string; path: string; entries: FileEntry[] };
+let props: { workspaceId: string; workspaceName: string; path: string; entries: FileEntry[]; workspaceView?: WorkspaceViewDefinition };
 const onOpen = vi.fn();
 const menu = () => document.querySelector<HTMLElement>('.breadcrumb-menu');
 const rows = () => [...document.querySelectorAll<HTMLButtonElement>('.breadcrumb-menu-entry')];
@@ -36,6 +36,37 @@ beforeEach(async () => {
   await nextTick();
 });
 afterEach(() => { app.unmount(); root.remove(); vi.restoreAllMocks(); });
+
+it('shows the database logical directory and view name without exposing its internal path', async () => {
+  props.path = '.tano/views/files-22eedb78-5ba9-4448-ac1f-4c1e8b059206.tano.json';
+  props.workspaceView = {
+    version: 1, layer: 'view', workspaceId: 'workspace', id: 'files-22eedb78',
+    name: '项目资料库', kind: 'files', sources: [],
+    database: { ...defaultFileDatabaseQuery(), directory: '项目/子目录' },
+  };
+  await nextTick();
+  expect([...root.querySelectorAll('.breadcrumb-trigger')].map(node => node.textContent?.trim()))
+    .toEqual(['我的工作区', '项目', '子目录', '项目资料库']);
+  expect(root.innerHTML).not.toMatch(/\.tano|22eedb78|\.json/);
+  expect(root.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+  expect(root.querySelector('[aria-current="page"] .lucide-database-icon')).not.toBeNull();
+  await click(trigger('浏览目录：项目/子目录'));
+  expect(item('项目/子目录/深入.md')).toBeDefined();
+  await click(item('项目/子目录/深入.md'));
+  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ path: '项目/子目录/深入.md' }));
+
+  props.workspaceView.name = '重命名后的资料库';
+  props.workspaceView.database!.directory = '';
+  await nextTick();
+  expect([...root.querySelectorAll('.breadcrumb-trigger')].map(node => node.textContent?.trim()))
+    .toEqual(['我的工作区', '重命名后的资料库']);
+  expect(root.innerHTML).not.toMatch(/\.tano|22eedb78|\.json/);
+
+  delete props.workspaceView;
+  props.path = '项目/当前.md';
+  await nextTick();
+  expect(trigger('切换文件：当前.md')).not.toBeNull();
+});
 
 it('opens folder homes while preserving a separate directory menu and collapses the home breadcrumb', async () => {
   const home = entry('项目/README.md');

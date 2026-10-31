@@ -21,6 +21,7 @@ const call = (method, params = {}) => new Promise((resolve, reject) => {
 });
 const tano = Object.freeze({
   context: () => call('context'),
+  attachments: Object.freeze({ read: (fileId, offset = 0, revision) => call('attachments.read', { fileId, offset, revision }) }),
   documents: Object.freeze({
     list: () => call('documents.list'),
     query: options => call('documents.query', { options }),
@@ -44,6 +45,7 @@ const tano = Object.freeze({
     commands.set(id, handler); await call('commands.register', { id });
   } }),
   views: Object.freeze({ render: (id, tree) => call('views.render', { id, tree }),
+    setHeader: (id, header) => call('views.setHeader', { id, header }),
     renderCustom: (id, state) => call('views.renderCustom', { id, state }),
     open: id => call('views.open', { id }),
     onMessage: (id, handler) => { viewMessages.set(id, handler); return () => viewMessages.delete(id); },

@@ -27,7 +27,7 @@
     "ios:dev": "npm run tauri -w @tano/client -- ios dev",
     "ios:build": "npm run tauri -w @tano/client -- ios build --ci",
     "typecheck": "npm run typecheck -w @tano/client && npm run typecheck -w @tano/mcp && npm run typecheck:plugins",
-    "typecheck:plugins": "tsc --project examples/plugins/task-insights/tsconfig.json && tsc --project examples/plugins/excalidraw/tsconfig.json",
+    "typecheck:plugins": "tsc --project examples/plugins/task-insights/tsconfig.json && tsc --project examples/plugins/excalidraw/tsconfig.json && tsc --project examples/plugins/presentation-preview/tsconfig.json && tsc --project examples/plugins/word-preview/tsconfig.json",
     "test": "vitest run --maxWorkers=2",
     "test:plugins:browser": "playwright test",
     "test:mobile:browser": "playwright test mobile-browser.spec.mjs",
@@ -51,13 +51,18 @@
     "core:auth:setup": "node --use-env-proxy scripts/setup-core-publish-auth.mjs",
     "core:auth:status": "node --use-env-proxy scripts/setup-core-publish-auth.mjs --status",
     "boundary:check": "node scripts/check-boundaries.mjs",
-    "notices:generate": "node scripts/generate-notices.mjs"
+    "notices:generate": "node scripts/generate-notices.mjs",
+    "plugin:presentation": "node scripts/build-presentation-preview.mjs",
+    "plugin:word": "node scripts/build-word-preview.mjs"
   },
   "devDependencies": {
     "@excalidraw/excalidraw": "0.18.1",
+    "@file-viewer/doc": "3.3.3",
+    "@file-viewer/docx": "0.3.39",
     "@playwright/test": "^1.64.0",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "@web-ppt/core": "0.5.0",
     "chart.js": "4.5.1",
     "emojibase-data": "17.0.0",
     "esbuild": "^0.28.2",

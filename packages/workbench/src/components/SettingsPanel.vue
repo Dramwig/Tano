@@ -21,6 +21,7 @@ import {
   Palette,
   PencilLine,
   Plus,
+  RotateCcw,
   Search,
   Trash2,
   UserRound,
@@ -52,6 +53,7 @@ import ShortcutSettings from './ShortcutSettings.vue';
 import { defaultShortcutBindings, shortcutDefinitions } from '../shortcuts';
 import type { ShortcutBindings } from '../shortcuts';
 import { useHelpPreferences } from '../help-guidance';
+import { readSettingsPage, rememberSettingsPage } from '../settings-preference';
 
 type Page = string;
 type Action =
@@ -97,6 +99,7 @@ const props = defineProps<{
   historyEnabled: boolean;
   version: string;
   initialPage?: Page;
+  rememberPage?: boolean;
   capabilities?: WorkspaceCapabilities;
   editorPreferences?: EditorPreferences;
   capabilityError?: string;
@@ -132,6 +135,11 @@ const emit = defineEmits<{
   'workspace-delete': [workspaceId: string];
 }>();
 const rules = computed(() => props.capabilities ?? defaultCapabilities);
+const mathSyntaxDescription = computed(() => ({
+  preserve: '已有公式保持原来的写法，新公式使用上面的默认格式。',
+  dollar: '新旧公式统一使用美元符号（$…$ / $$…$$），在下次编辑保存正文时应用。',
+  latex: '新旧公式统一使用反斜杠括号（\\(…\\) / \\[…\\]），在下次编辑保存正文时应用。',
+})[rules.value.mathSyntax]);
 const { preferences: helpPreferences, setEnabled: setHelpEnabled } = useHelpPreferences();
 const display = computed(() => props.editorPreferences ?? defaultEditorPreferences);
 const wrapping = computed(() => normalizeSelectionWrapping(display.value.selectionWrapping));
@@ -168,9 +176,9 @@ const displayOptions = [
 ] as const;
 
 const search = ref('');
-const searchInput = ref<HTMLInputElement>();
+const settingsDialog = ref<HTMLElement>();
 const mainContent = ref<HTMLElement>();
-const page = ref<Page>(props.initialPage === 'preferences' ? 'appearance' : props.initialPage ?? 'appearance');
+const page = ref<Page>(props.initialPage === 'preferences' ? 'appearance' : props.initialPage ?? readSettingsPage());
 watch(() => props.initialPage, value => {
   if (value) page.value = value === 'preferences' ? 'appearance' : value;
 });
@@ -178,17 +186,17 @@ const originalFocus = document.activeElement as HTMLElement | null;
 const pages = [
   {
     id: 'appearance',
-    get label() { return t('外观设置'); },
+    get label() { return t('外观'); },
     get group() { return t('个人偏好'); },
     icon: Palette,
-    get terms() { return uiSearchText('外观 主题 白天 黑夜 深色 浅色 跟随系统 字体 系统字体 衬线字体 等宽字体 Mono Maple 自定义字体 字号 字体大小 页面内标题 属性 文档属性 文档讨论 评论 显示目录 文档大纲 目录位置 左侧 右侧 帮助 上手 引导 气泡 偶尔显示使用提示'); },
+    get terms() { return uiSearchText('外观设置') + ' ' + uiSearchText('外观 主题 白天 黑夜 深色 浅色 跟随系统 字体 系统字体 衬线字体 等宽字体 Mono Maple 自定义字体 字号 字体大小 页面内标题 属性 文档属性 文档讨论 评论 显示目录 文档大纲 目录位置 左侧 右侧 帮助 上手 引导 气泡 偶尔显示使用提示'); },
   },
   {
     id: 'editing',
-    get label() { return t('编辑设置'); },
+    get label() { return t('编辑器'); },
     get group() { return t('个人偏好'); },
     icon: PencilLine,
-    get terms() { return uiSearchText('编辑器 Markdown 源码 默认编辑模式 光标 语法 展开 编辑 Reveal 数学 公式 KaTeX 标题 列表 折叠 工具栏 选区 顶部 固定 胶囊 符号 包裹 自动配对 斜体 粗体 删除线 高亮 代码 上标 下标 下划线 注释'); },
+    get terms() { return uiSearchText('编辑设置') + ' ' + uiSearchText('编辑器 Markdown 源码 默认编辑模式 光标 语法 展开 编辑 Reveal 数学 公式 KaTeX 标题 列表 折叠 工具栏 选区 顶部 固定 胶囊 符号 包裹 自动配对 斜体 粗体 删除线 高亮 代码 上标 下标 下划线 注释'); },
   },
   {
     id: 'shortcuts',
@@ -199,24 +207,24 @@ const pages = [
   },
   {
     id: 'assistant',
-    get label() { return t('助手设置'); },
+    get label() { return t('助手'); },
     get group() { return t('个人偏好'); },
     icon: Bot,
-    get terms() { return uiSearchText('助手 模型 连接 API 密钥 Codex CLI Claude CLI token 工具调用 个人设置'); },
+    get terms() { return uiSearchText('助手设置') + ' ' + uiSearchText('助手 模型 连接 API 密钥 Codex CLI Claude CLI token 工具调用 个人设置'); },
   },
   {
     id: 'workspace',
-    get label() { return t('工作区'); },
+    get label() { return t('基本设置'); },
     get group() { return t('工作区设置'); },
     icon: BookOpen,
     get terms() { return uiSearchText('文件夹 历史 回收站 Agent 存储 当前空间 名称 图标 表情 默认页面 首页 页面标题来源 文件名 YAML title 侧栏 计划 图谱 插件 导出 ZIP 浏览统计 人物 目录 活动 悬浮卡片 ID 删除'); },
   },
   {
     id: 'documents',
-    get label() { return t('文档能力'); },
+    get label() { return t('Markdown 与格式'); },
     get group() { return t('工作区设置'); },
     icon: FileText,
-    get terms() { return uiSearchText('Markdown 数学 公式 Math Mermaid Wiki Links 提示块 脚注 HTML 嵌入 对象 引用 折叠 标签页 分栏 附件 输出 语法 方言 无序列表 标记 Obsidian GitHub Pandoc CommonMark'); },
+    get terms() { return `${uiSearchText('文档能力')} ${uiSearchText('Markdown 数学 公式 Math Mermaid Wiki Links 提示块 脚注 HTML 嵌入 对象 引用 折叠 标签页 分栏 附件 输出 语法 方言 无序列表 标记 Obsidian GitHub Pandoc CommonMark')}`; },
   },
   {
     id: 'about',
@@ -270,8 +278,8 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   ...shortcutDefinitions.map(item => settingSearchEntry('shortcuts', `shortcut-${item.id}`, item.label, 'scope' in item ? item.scope : '', 'shortcut keybinding keyboard')),
   settingSearchEntry('assistant', 'assistant-connections', '模型连接', '管理助手使用的 API 或 CLI 连接。', 'assistant model connection API CLI'),
   ...featureDefinitions.map(feature => settingSearchEntry('documents', `documents-${feature.key}`, feature.label, '', 'Markdown extension')),
-  settingSearchEntry('documents', 'documents-dialect', 'Markdown 方言', '决定新公式的默认写法：Pandoc 使用 LaTeX 定界符，其余使用美元符号。解析始终兼容两种写法。', 'dialect Obsidian GitHub Pandoc CommonMark'),
-  settingSearchEntry('documents', 'documents-math-syntax', '公式输出语法', '默认保留已有公式的原始定界符。选择统一语法后，在下一次编辑保存正文时应用。', 'math formula syntax LaTeX Dollar'),
+  settingSearchEntry('documents', 'documents-dialect', '新公式默认格式', '设置新公式的写法，不确定时保留默认即可。', 'Markdown 方言 dialect Obsidian GitHub Pandoc CommonMark'),
+  settingSearchEntry('documents', 'documents-math-syntax', '已有公式保存格式', '保留原样：已有公式不转换，新公式使用上面的默认格式。选择统一格式：新旧公式都使用所选写法，在下次编辑保存正文时应用。', '公式输出语法 math formula syntax LaTeX Dollar'),
   settingSearchEntry('documents', 'documents-bullet-marker', '无序列表标记', '选择无序列表与待办列表的 Markdown 标记，在下一次编辑保存正文时应用。', 'bullet list marker'),
   settingSearchEntry('workspace', 'workspace-name', '工作区名称', '最多 65 个字符，显示在侧栏和工作区菜单中。', 'workspace name'),
   settingSearchEntry('workspace', 'workspace-icon', '图标', '选择内置图标、表情符号或上传图片，显示在侧栏和工作区菜单中。', 'workspace icon emoji'),
@@ -324,7 +332,7 @@ const visiblePages = computed(() => {
   );
 });
 const navigationGroups = computed(() =>
-  [t('个人偏好'), t('工作区设置'), t('插件设置'), t('帮助')]
+  [t('账号'), t('个人偏好'), t('工作区设置'), t('插件设置'), t('帮助')]
     .map((label) => ({ label, pages: visiblePages.value.filter((item) => item.group === label) }))
     .filter((group) => group.pages.length),
 );
@@ -363,8 +371,15 @@ watch(page, () => {
   if (mainContent.value) mainContent.value.scrollTop = 0;
   atTop.value = true;
   emit('page-change', page.value);
-});
-onMounted(() => void nextTick(() => searchInput.value?.focus()));
+}, { immediate: true });
+watch([page, () => props.rememberPage], ([value, remember]) => {
+  if (remember !== false) rememberSettingsPage(value);
+}, { immediate: true });
+onMounted(() => void nextTick(() => {
+  const dialog = settingsDialog.value;
+  const selectedPage = dialog?.querySelector<HTMLElement>('.settings-nav button[aria-current="page"]');
+  (selectedPage ?? dialog)?.focus({ preventScroll: true });
+}));
 onBeforeUnmount(() => {
   if (originalFocus?.isConnected) originalFocus.focus();
 });
@@ -403,7 +418,9 @@ function customFontInput(event: Event) {
 <template>
   <ModalBackdrop :active="!windowed && !tabbed" class="modal-backdrop settings-backdrop" :class="{ 'settings-windowed': windowed, 'settings-tabbed': tabbed }" @close="emit('close')">
     <section
+      ref="settingsDialog"
       class="settings-dialog workbench-modal-surface"
+      tabindex="-1"
       :role="tabbed ? 'region' : 'dialog'"
       :aria-modal="!windowed && !tabbed ? true : undefined"
       aria-labelledby="settings-title"
@@ -419,7 +436,6 @@ function customFontInput(event: Event) {
         <label class="settings-search">
           <Search :size="16" />
           <input
-            ref="searchInput"
             v-model="search"
             type="search"
             :placeholder="t('搜索设置…')"
@@ -434,7 +450,7 @@ function customFontInput(event: Event) {
             role="group"
             :aria-label="group.label"
           >
-            <span class="settings-nav-group">{{ group.label }}</span>
+            <span v-if="group.label !== t('账号') || group.pages.length > 1" class="settings-nav-group">{{ group.label }}</span>
             <div class="settings-nav-items">
               <button
                 v-for="item in group.pages"
@@ -650,9 +666,10 @@ function customFontInput(event: Event) {
                     type="button"
                     class="settings-font-reset"
                     :aria-label="t('重置可视化编辑字号')"
+                    :data-tooltip="t('重置可视化编辑字号')"
                     :disabled="visualFontSize === 16"
                     @click="emit('update:visualFontSize', 16)"
-                  >{{ t('重置') }}</button>
+                  ><RotateCcw :size="15" :stroke-width="1.75" aria-hidden="true" /></button>
                 </div>
               </div>
               <div class="settings-row settings-font-row" data-settings-key="appearance-source-size">
@@ -678,9 +695,10 @@ function customFontInput(event: Event) {
                     type="button"
                     class="settings-font-reset"
                     :aria-label="t('重置 Markdown 源码字号')"
+                    :data-tooltip="t('重置 Markdown 源码字号')"
                     :disabled="sourceFontSize === 14"
                     @click="emit('update:sourceFontSize', 14)"
-                  >{{ t('重置') }}</button>
+                  ><RotateCcw :size="15" :stroke-width="1.75" aria-hidden="true" /></button>
                 </div>
               </div>
               <div class="settings-font-preview" :aria-label="t('字体与字号预览')">
@@ -812,7 +830,7 @@ function customFontInput(event: Event) {
                   @click="setWrapping(option.key, !wrapping[option.key])"><span /></button>
               </div>
             </div>
-            <p class="settings-local-note">{{ t('选区包裹仅影响当前设备，扩展语法的包裹默认关闭。正文显示由工作区「文档能力」控制，其他 Markdown 应用可能不支持。') }}</p>
+            <p class="settings-local-note">{{ t('选区包裹仅影响当前设备，扩展语法的包裹默认关闭。正文显示由工作区「Markdown 与格式」控制，其他 Markdown 应用可能不支持。') }}</p>
           </section>
           <section v-if="page === 'appearance'" class="settings-section" :aria-label="t('内容显示')">
             <h3>{{ t('内容显示') }}</h3>
@@ -936,13 +954,13 @@ function customFontInput(event: Event) {
 
         <div v-else-if="page === 'documents'" class="settings-content">
           <div class="settings-title-line">
-            <h2 id="settings-title">{{ t('文档能力') }}</h2>
+            <h2 id="settings-title">{{ t('Markdown 与格式') }}</h2>
             <div class="settings-page-scope" role="note" tabindex="0" :aria-label="scopeLabel">
               <BookOpen :size="13" /><span>{{ scopeLabel }}</span>
             </div>
           </div>
           <p class="settings-lead">{{ t('仅对当前工作区生效，文档能力与 Markdown 输出规则随空间共享。') }}</p>
-          <section class="settings-section" :aria-label="t('文档能力')">
+          <section class="settings-section" :aria-label="t('内容扩展')">
             <h3>{{ t('内容扩展') }}<span class="settings-scope">{{ t('工作区共享') }}</span></h3>
             <p class="settings-section-description">{{ t('关闭后显示原始内容，已有文档会保留。') }}</p>
             <p v-if="capabilityError" class="settings-notice" role="alert">{{ capabilityError }}</p>
@@ -990,15 +1008,19 @@ function customFontInput(event: Event) {
             <div class="settings-card">
               <div class="settings-row" data-settings-key="documents-dialect">
                 <div>
-                  <strong>{{ t('Markdown 方言') }}</strong>
+                  <strong>{{ t('新公式默认格式') }}</strong>
                   <p>
-                    {{ t('决定新公式的默认写法：Pandoc 使用 LaTeX 定界符，其余使用美元符号。解析始终兼容两种写法。') }}
+                    {{ t('设置新公式的写法，不确定时保留默认即可。') }}
+                  </p>
+                  <p class="settings-format-example">
+                    <span>{{ t('行内公式') }} <code>{{ rules.markdownDialect === 'pandoc' ? '\\(x^2\\)' : '$x^2$' }}</code></span>
+                    <span>{{ t('独立成行的公式') }} <code>{{ rules.markdownDialect === 'pandoc' ? '\\[x^2\\]' : '$$x^2$$' }}</code></span>
                   </p>
                 </div>
                 <select
-                  :value="rules.markdownDialect"
+                  :value="rules.markdownDialect === 'pandoc' ? 'pandoc' : 'obsidian'"
                   :disabled="rulesDisabled"
-                  :aria-label="t('Markdown 方言')"
+                  :aria-label="t('新公式默认格式')"
                   @change="
                     emit('capability', {
                       markdownDialect: ($event.target as HTMLSelectElement)
@@ -1006,21 +1028,19 @@ function customFontInput(event: Event) {
                     })
                   "
                 >
-                  <option value="obsidian">Obsidian</option>
-                  <option value="github">GitHub</option>
-                  <option value="pandoc">Pandoc</option>
-                  <option value="commonmark">{{ t('CommonMark + 扩展') }}</option>
+                  <option value="obsidian">{{ t('美元符号') }}</option>
+                  <option value="pandoc">{{ t('反斜杠括号') }}</option>
                 </select>
               </div>
               <div class="settings-row" data-settings-key="documents-math-syntax">
                 <div>
-                  <strong>{{ t('公式输出语法') }}</strong>
-                  <p>{{ t('默认保留已有公式的原始定界符。选择统一语法后，在下一次编辑保存正文时应用。') }}</p>
+                  <strong>{{ t('已有公式保存格式') }}</strong>
+                  <p>{{ t(mathSyntaxDescription) }}</p>
                 </div>
                 <select
                   :value="rules.mathSyntax"
                   :disabled="rulesDisabled"
-                  :aria-label="t('公式输出语法')"
+                  :aria-label="t('已有公式保存格式')"
                   @change="
                     emit('capability', {
                       mathSyntax: ($event.target as HTMLSelectElement)
@@ -1028,9 +1048,9 @@ function customFontInput(event: Event) {
                     })
                   "
                 >
-                  <option value="preserve">{{ t('保留原始格式') }}</option>
-                  <option value="dollar">Dollar：$ / $$</option>
-                  <option value="latex">LaTeX：\( \) / \[ \]</option>
+                  <option value="preserve">{{ t('保留原样（推荐）') }}</option>
+                  <option value="dollar">{{ t('统一为美元符号') }}</option>
+                  <option value="latex">{{ t('统一为反斜杠括号') }}</option>
                 </select>
               </div>
               <div class="settings-row" data-settings-key="documents-bullet-marker">
@@ -1049,9 +1069,9 @@ function customFontInput(event: Event) {
                     })
                   "
                 >
-                  <option value="-">-</option>
-                  <option value="+">+</option>
-                  <option value="*">*</option>
+                  <option value="-">{{ t('短横线：- 列表项') }}</option>
+                  <option value="+">{{ t('加号：+ 列表项') }}</option>
+                  <option value="*">{{ t('星号：* 列表项') }}</option>
                 </select>
               </div>
             </div>
@@ -1060,7 +1080,7 @@ function customFontInput(event: Event) {
 
         <div v-else-if="page === 'workspace'" class="settings-content">
           <div class="settings-title-line">
-            <h2 id="settings-title">{{ t('工作区') }}</h2>
+            <h2 id="settings-title">{{ t('基本设置') }}</h2>
             <div class="settings-page-scope" role="note" tabindex="0" :aria-label="scopeLabel">
               <BookOpen :size="13" /><span>{{ scopeLabel }}</span>
             </div>
@@ -1175,8 +1195,7 @@ function customFontInput(event: Event) {
                 <span class="settings-version-pill">{{ version }}</span>
               </div>
             </div>
-            <p class="settings-about-slogan">Humans and agents, on the same page.</p>
-            <p v-if="uiLocale === 'zh-CN'" class="settings-about-translation">{{ t('人与 Agent，在同一页工作。') }}</p>
+            <p class="settings-about-slogan">{{ t('人与 Agent，在同一页工作。') }}</p>
             <div v-if="native && !mobile" class="settings-about-update">
               <slot name="update-panel"><UpdatePanel /></slot>
             </div>
@@ -1272,11 +1291,17 @@ function customFontInput(event: Event) {
 .settings-search input:focus {
   outline: none;
 }
+.settings-search > svg {
+  flex-shrink: 0;
+}
+.settings-search input::-webkit-search-cancel-button {
+  filter: grayscale(1);
+}
 .settings-nav-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 12px 0 24px;
+  padding: 24px 0 24px;
 }
 .settings-nav-group {
   display: block;
@@ -1594,6 +1619,17 @@ function customFontInput(event: Event) {
 :root[data-theme='dark'] .settings-row select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%23b8c0c9' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3 4.5 3 3 3-3'/%3E%3C/svg%3E");
 }
+.settings-row[data-settings-key='documents-dialect'] select,
+.settings-row[data-settings-key='documents-math-syntax'] select,
+.settings-row[data-settings-key='documents-bullet-marker'] select {
+  width: 248px;
+}
+.settings-format-example {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+.settings-format-example span { white-space: nowrap; }
 .settings-row select:hover:not(:disabled) {
   border-color: var(--control-border);
 }
@@ -1716,7 +1752,8 @@ function customFontInput(event: Event) {
 }
 .settings-font-controls .settings-font-reset {
   margin-left: 4px;
-  font-size: 12px;
+  width: 30px;
+  padding: 0;
 }
 .settings-switch {
   position: relative;
@@ -1919,11 +1956,6 @@ function customFontInput(event: Event) {
   color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.7;
-}
-.settings-about-translation {
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
 }
 .settings-about-update {
   margin-top: 22px;

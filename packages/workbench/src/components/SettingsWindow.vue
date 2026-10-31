@@ -22,6 +22,8 @@ const request = settingsWindowRequest()!;
 const extensions = useWorkbenchRuntime().extensions?.();
 const snapshot = ref<SettingsSnapshot | null>(null);
 const page = ref<SettingsPageId>(request.page);
+// A prewarmed hidden window must not replace the user's last visited page.
+const rememberPage = ref(false);
 const error = ref('');
 const unlisten: Array<() => void> = [];
 let mounted = false;
@@ -82,6 +84,7 @@ onMounted(async () => {
   unlisten.push(stateListener);
   const navigationListener = await listen<SettingsPageId>(SETTINGS_NAVIGATE, event => {
     page.value = event.payload;
+    rememberPage.value = true;
   });
   if (!mounted) { navigationListener(); return; }
   unlisten.push(navigationListener);
@@ -146,6 +149,7 @@ onBeforeUnmount(() => {
     :capabilities="snapshot.capabilities"
     :version="snapshot.version"
     :initial-page="page"
+    :remember-page="rememberPage"
     :editor-preferences="snapshot.editorPreferences"
     :capability-error="snapshot.capabilityError"
     :capability-saving="snapshot.capabilitySaving"

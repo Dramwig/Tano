@@ -1,0 +1,33 @@
+{
+  "manifestVersion": 2,
+  "apiVersion": 1,
+  "id": "word-preview",
+  "name": "Word 文档预览",
+  "version": "1.0.0",
+  "description": "离线渲染 DOCX 页面、分节、页眉页脚、表格和图片，以及旧版 DOC 的文字与表格样式，无需安装 Word。",
+  "objectTypes": [],
+  "relationTypes": [],
+  "permissions": [
+    "attachments.read",
+    "ui"
+  ],
+  "networkOrigins": [],
+  "nativeCommands": [],
+  "commands": [
+    {
+      "id": "open",
+      "label": "Word：打开预览",
+      "menus": [
+        "file",
+        "workspace"
+      ]
+    }
+  ],
+  "views": [
+    {
+      "id": "document",
+      "label": "Word 文档预览",
+      "location": "tab"
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import { vScrollFade } from './scroll-fade';
 import { vOutlineMotion } from './outline-motion';
 import { createWorkspaceSync, syncEvent } from './workspace-sync';
 import { t } from './i18n';
+import { readSettingsPage } from './settings-preference';
 import { focusedOutlineIndices } from './outline-tree';
 import AppTooltip from './components/AppTooltip.vue';
 import { assistantDiscussionPrompt } from './assistant/language';
@@ -77,6 +78,7 @@ import {
   ArrowDownToLine,
   Files,
   Table2,
+  Database,
 } from 'lucide-vue-next';
 import MarkdownEditorSkeleton from './components/MarkdownEditorSkeleton.vue';
 import DocumentLoading from './components/DocumentLoading.vue';
@@ -90,6 +92,7 @@ const SourceEditor = loadingComponent(() => import('./components/SourceEditor.vu
 import { captureModeViewport, restoreModeViewport } from './editor-mode';
 import type { ModeViewport } from './editor-mode';
 import AttachmentPreview from './components/AttachmentPreview.vue';
+import type { AttachmentStatusUpdate } from './attachment-status';
 import FileMetadataPanel from './components/FileMetadataPanel.vue';
 import { fileHandlers } from '@tano/protocol';
 import PageSearch from './components/PageSearch.vue';
@@ -102,6 +105,8 @@ import DocumentTitle from './components/DocumentTitle.vue';
 import { appearanceText } from './document-appearance';
 import { useDocumentFavicon } from './document-favicon';
 import WorkspaceBreadcrumb from './components/WorkspaceBreadcrumb.vue';
+import PluginViewHeader from './components/PluginViewHeader.vue';
+import { pluginPreviewStatus, pluginViewHeader } from './plugins/view-header';
 import DocumentStatus from './components/DocumentStatus.vue';
 import { documentStatusItems, type DocumentSyncStatus } from './document-status';
 import DocumentScrollbar from './components/DocumentScrollbar.vue';
@@ -336,7 +341,18 @@ const documentToolItems = [
 const topbarItems = [
   { id: 'breadcrumb', get label() { return t('面包屑'); } },
 ];
-const attachmentStatus = computed(() => [{ kind: 'locked' as const, label: t('只读预览'), detail: t('附件以只读方式打开，不会修改原文件。') }]);
+const attachmentStates = ref<Record<string, AttachmentStatusUpdate>>({});
+function receiveAttachmentStatus(paneId: string, update: AttachmentStatusUpdate) {
+  if (update.state) attachmentStates.value[paneId] = update;
+  else if (attachmentStates.value[paneId]?.source === update.source) delete attachmentStates.value[paneId];
+}
+function currentAttachmentStatus(paneId: string, file?: FileEntry) {
+  const update = attachmentStates.value[paneId];
+  return update?.documentKey === `${workspace.value?.id}:${file?.id}` ? update.state : undefined;
+}
+const attachmentStatus = (paneId: string, file?: FileEntry) => currentAttachmentStatus(paneId, file)?.items ?? (attachments?.writeSpreadsheet && file && /\.(xlsx|xls)$/i.test(file.path) && !file.readOnly && !workspace.value?.readOnly
+  ? [{ kind: 'preview' as const, label: t('Excel 编辑'), detail: t('支持调整列宽、编辑单元格和新增工作表；修改会自动保存。') }]
+  : [{ kind: 'locked' as const, label: t('只读预览'), detail: t('附件以只读方式打开，不会修改原文件。') }]);
 const workspaceStatusLabel = computed(() =>
   store.workspace?.readOnly
     ? t('只读权限')
@@ -1316,14 +1332,14 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
     { id: 'workbench.plugins', category: t('工作区'), get label() { return t('打开插件中心'); }, available: store.workspaceSettings.showPlugins, run: () => store.openPluginsTab() },
     { id: 'workbench.updates', category: t('历史'), get label() { return t('文档更新历史'); }, available: hasDocument, run: () => { historyPage.value = 'updates'; historyPanel.value = true; } },
     { id: 'workbench.versions', category: t('历史'), get label() { return t('文档版本历史'); }, available: hasDocument && !!extensions.historyEnabled, run: () => { historyPage.value = 'versions'; historyPanel.value = true; } },
-    { id: 'workbench.settings', category: t('设置'), get label() { return t('外观设置'); }, keywords: t('打开设置'), run: () => openSettings() },
+    { id: 'workbench.settings', category: t('设置'), get label() { return t('外观设置'); }, keywords: t('打开设置'), run: () => openSettings('appearance') },
     { id: 'workbench.settings.editing', category: t('设置'), get label() { return t('编辑设置'); }, run: () => openSettings('editing') },
     { id: 'workbench.settings.shortcuts', category: t('设置'), get label() { return t('快捷键'); }, run: () => openSettings('shortcuts') },
     { id: 'workbench.settings.workspace', category: t('设置'), get label() { return t('工作区设置'); }, available: navigationContext.value === 'workspace' && !!workspace.value, run: () => openSettings('workspace') },
     { id: 'workbench.settings.about', category: t('设置'), get label() { return t('关于同页'); }, run: () => openSettings('about') },
   ];
 });
-const settingsPage = ref<SettingsPageId>(detachedWindow ? detachedTabRequest()?.settingsPage ?? 'appearance' : 'appearance');
+const settingsPage = ref<SettingsPageId>(detachedWindow ? detachedTabRequest()?.settingsPage ?? readSettingsPage() : readSettingsPage());
 // A loaded workspace keeps its session, but only the workspace navigation owns its settings.
 const settingsWorkspace = computed(() => navigationContext.value === 'workspace' ? workspace.value : null);
 const settingsHosts = computed(() => [
@@ -3543,7 +3559,7 @@ watch(
   { deep: true },
 );
 
-function openSettings(page: SettingsPageId = 'appearance') {
+function openSettings(page: SettingsPageId = readSettingsPage(settingsPage.value)) {
   warmSettingsWindow();
   menu.value = false;
   workspaceMenu.value = false;
@@ -4711,7 +4727,7 @@ const helpBlocked = computed(() => !!(
                   :disabled="fileMutationDisabled(fileContextMenu.file)"
                   @click="fileContextAction('database')"
                 >
-                  <Table2 :size="15" />{{ t('以数据库视图管理此目录') }}
+                  <Database :size="15" />{{ t('以数据库视图管理此目录') }}
                 </button>
               </template>
               <template v-else-if="!isWorkspaceInternalPath(fileContextMenu.file.path)">
@@ -4790,7 +4806,7 @@ const helpBlocked = computed(() => !!(
               <Table2 :size="15" />{{ t('新建数据表') }}
             </button>
             <button role="menuitem" :disabled="!workspace || workspace.readOnly || busy" @click="directoryContextAction('database')">
-              <Table2 :size="15" />{{ t('以数据库视图管理此目录') }}
+              <Database :size="15" />{{ t('以数据库视图管理此目录') }}
             </button>
             <button
               role="menuitem"
@@ -5297,24 +5313,30 @@ const helpBlocked = computed(() => !!(
                 "
                 :workspace-id="workspace?.id"
                 :workspace-name="workspace?.name ?? 'Tano'"
-                :hide-workspace="!!tab?.path"
+                :hide-workspace="!!tab?.path && !tab?.workspaceView"
                 :entries="workspace?.files ?? []"
                 :folder-home-file-name="store.workspaceSettings.folderHomeFileName"
                 :document-icons="treeDocumentIcons"
                 :load-document-icon="loadTreeDocumentIcon"
                 :path="tab?.path"
+                :workspace-view="tab?.workspaceView?.view"
                 :demo-label="store.isDemo ? workspaceStatusLabel : undefined"
                 :read-only="workspace?.readOnly"
                 @open="(file) => { store.focusPane(pane.id); openEntry(file); }"
               >
                 <template #status>
+                  <DocumentStatus v-if="tab?.pluginView && isVisible('document-status')"
+                    :document-key="`${workspace?.id}:${tab.pluginView.pluginId}:${tab.pluginView.id}:${pluginViewHeader(store.pluginRuntime, tab.pluginView)?.title}`"
+                    :items="pluginPreviewStatus(store.pluginRuntime, tab.pluginView)" />
                   <DocumentStatus v-if="active && isVisible('document-status')" :document-key="`${workspace?.id}:${active.id}`" :items="paneDocumentStatus(active)">
                     <component :is="extensions.regions['document-status-details']"
                       v-if="pane.id === store.activePaneId && extensions.regions['document-status-details']" :actions="extensionActions" />
                   </DocumentStatus>
-                  <DocumentStatus v-else-if="tab?.attachment && isVisible('document-status')" :document-key="`${workspace?.id}:${tab.attachment.id}`" :items="attachmentStatus" />
+                  <DocumentStatus v-else-if="tab?.attachment && isVisible('document-status')" :document-key="`${workspace?.id}:${tab.attachment.id}`" :items="attachmentStatus(pane.id, tab.attachment)">
+                    <button v-if="currentAttachmentStatus(pane.id, tab.attachment)?.retry" :disabled="currentAttachmentStatus(pane.id, tab.attachment)?.retryDisabled" @click="currentAttachmentStatus(pane.id, tab.attachment)?.retry?.()">{{ t('重试') }}</button>
+                  </DocumentStatus>
                 </template>
-                <template v-if="tab?.pluginView"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">{{ tab.pluginView.label }}</span></template>
+                <template v-if="tab?.pluginView"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current" :title="pluginViewHeader(store.pluginRuntime, tab.pluginView)?.title">{{ pluginViewHeader(store.pluginRuntime, tab.pluginView)?.title || tab.pluginView.label }}</span></template>
                 <template v-if="pane.activeId === PLUGINS_TAB_ID"
                   ><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current"
                     >{{ t('插件') }}</span
@@ -5329,11 +5351,14 @@ const helpBlocked = computed(() => !!(
                 >
               </WorkspaceBreadcrumb>
               <DocumentStatus v-if="(active || tab?.attachment) && !isVisible('breadcrumb') && isVisible('document-status')"
-                :document-key="`${workspace?.id}:${active?.id ?? tab?.attachment?.id}`" :items="active ? paneDocumentStatus(active) : attachmentStatus">
+                :document-key="`${workspace?.id}:${active?.id ?? tab?.attachment?.id}`" :items="active ? paneDocumentStatus(active) : attachmentStatus(pane.id, tab?.attachment)">
                 <component v-if="active && pane.id === store.activePaneId && extensions.regions['document-status-details']" :is="extensions.regions['document-status-details']"
                   :actions="extensionActions" />
+                <button v-if="!active && currentAttachmentStatus(pane.id, tab?.attachment)?.retry" :disabled="currentAttachmentStatus(pane.id, tab?.attachment)?.retryDisabled" @click="currentAttachmentStatus(pane.id, tab?.attachment)?.retry?.()">{{ t('重试') }}</button>
               </DocumentStatus>
               <div class="topbar-right">
+                <PluginViewHeader v-if="tab?.pluginView && workspace" :view="tab.pluginView" :workspace-id="workspace.id"
+                  :runtime="store.pluginRuntime.find(item => item.id === tab.pluginView?.pluginId)" :execute="store.interactWithPlugin" />
                 <button v-if="active && touchLayout && showOutline" type="button" class="icon-button"
                   :aria-label="t('文档大纲')" :aria-expanded="touchOutlineOpen"
                   @click="panel = 'outline'; touchOutlineOpen = !touchOutlineOpen">
@@ -6054,6 +6079,9 @@ const helpBlocked = computed(() => !!(
 
             <AttachmentPreview
               v-else-if="workspace && pane.activeId.startsWith('attachment:')"
+              status-managed
+              @status="receiveAttachmentStatus(pane.id, $event)"
+              :read-only="!!workspace.readOnly || updateLock || busy"
               :controls-target="detachedWindow ? undefined : `#attachment-controls-${pane.id}`"
               :file="tab?.attachment"
               :workspace-id="workspace.id"

@@ -73,6 +73,9 @@
   border-color: var(--line-strong);
   box-shadow: var(--overlay-shadow);
 }
+:root[data-theme='dark'] :is(.help-popover, .help-submenu, .help-bubble, .help-preview) {
+  --help-surface: var(--surface-raised);
+}
 /* Menu groups need more contrast than decorative seams on raised surfaces. */
 :root[data-theme='dark'] .menu-divider {
   background: var(--line-strong);

@@ -98,7 +98,7 @@ watch(scale, async (value, previous) => {
   }
 });
 function keyboard(event: KeyboardEvent) {
-  if (event.target !== viewport.value || event.altKey || event.ctrlKey || event.metaKey) return;
+  if (props.grid || event.target !== viewport.value || event.altKey || event.ctrlKey || event.metaKey) return;
   if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); move(props.page + (event.key === 'ArrowRight' ? 1 : -1)); }
   if (event.key === 'Home') { event.preventDefault(); move(1); }
   if (event.key === 'End') { event.preventDefault(); move(props.count); }
@@ -140,13 +140,13 @@ onBeforeUnmount(() => {
         <span class="reader-format">{{ format }}</span>
       </div>
       <div v-if="controlsTarget" class="reader-position"><span>{{ status }}</span><span>{{ Math.round(scale * 100) }}%</span></div>
-      <nav class="reader-tools reader-pagination" :aria-label="t('预览翻页')">
+      <nav v-if="!grid" class="reader-tools reader-pagination" :aria-label="t('预览翻页')">
         <span v-if="controlsTarget" class="reader-control-label">{{ t('预览页码') }}</span>
         <button :disabled="page <= 1" :aria-label="t('上一页')" :title="t('上一页')" @click="move(page - 1)"><ChevronLeft :size="16" /></button>
         <select :value="page" :aria-label="t('预览页码')" @change="move(Number(($event.target as HTMLSelectElement).value))"><option v-for="index in count" :key="index" :value="index">{{ index }} / {{ count }}</option></select>
         <button :disabled="page >= count" :aria-label="t('下一页')" :title="t('下一页')" @click="move(page + 1)"><ChevronRight :size="16" /></button>
       </nav>
-      <span class="reader-separator" />
+      <span v-if="!grid" class="reader-separator" />
       <div class="reader-tools reader-zoom">
         <span v-if="controlsTarget" class="reader-control-label">{{ t('预览缩放') }}</span>
         <button :aria-label="t('缩小')" :title="t('缩小')" :disabled="scale <= .25" @click="adjustZoom(-1)"><Minus :size="16" /></button>
@@ -209,6 +209,7 @@ select { max-width: 110px; height: 26px; padding: 0 5px; background: var(--paper
 .reader-continuous .reader-viewport { overflow-anchor: none; }
 .reader-grid .reader-content { padding: 0; } .reader-grid .reader-viewport { background: var(--paper); }
 .reader-tabs { flex: 0 0 auto; display: flex; align-items: stretch; overflow-x: auto; min-height: 34px; border-top: 1px solid var(--line); background: var(--surface); }
+.reader-grid .reader-tabs { background: var(--paper); }
 .reader-position { display: flex; justify-content: space-between; gap: 12px; padding: 0 6px; color: var(--muted); font-size: 11px; }
 @container (max-width: 580px) { .reader-toolbar { padding: 0 6px; gap: 3px; } .reader-format, .reader-fit, .reader-separator { display: none; } .reader-leading, .reader-trailing { flex: 0 0 auto; } .reader-pagination { margin-left: auto; } .reader-zoom { margin-right: auto; } .reader-tools { gap: 0; } select { max-width: 90px; } .reader-navigation { position: absolute; z-index: 2; top: 0; bottom: 0; left: 0; width: 176px; box-shadow: 4px 0 12px #0002; } }
 @container (max-width: 380px) { .reader-toolbar { gap: 2px; overflow-x: auto; } .reader-toolbar button { width: 24px; } .reader-pagination select { min-width: 56px; } .reader-zoom select { width: 80px; } }

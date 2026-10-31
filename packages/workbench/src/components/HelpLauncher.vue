@@ -271,7 +271,7 @@ onBeforeUnmount(() => {
 
     <div v-if="opened && available && more" :id="`${id}-more`" ref="morePanel" data-help-surface
       class="help-submenu" :style="morePosition" role="menu" :aria-label="t('更多帮助选项')" @keydown="moreKeys">
-      <button class="help-row" role="menuitem" @click="settings('shortcuts')"><Keyboard :size="15" /><span>{{ t('键盘快捷键') }}</span><ArrowUpRight :size="12" /></button>
+      <button class="help-row" role="menuitem" @click="settings('shortcuts')"><Keyboard :size="15" /><span>{{ t('键盘快捷键') }}</span></button>
       <button class="help-row" role="menuitem" @click="settings('about')"><CircleHelp :size="15" /><span>{{ t('关于同页') }}</span></button>
     </div>
 
@@ -290,7 +290,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .help-popover, .help-submenu, .help-bubble, .help-preview { position: fixed; z-index: 65; }
-.help-popover, .help-submenu, .help-bubble, .help-preview { color: var(--text); background: var(--paper); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 30px #00000012, 0 2px 6px #00000008; font-size: 13px; line-height: 1.5; }
+.help-popover, .help-submenu, .help-bubble, .help-preview { --help-surface: var(--paper); color: var(--text); background: var(--help-surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 30px #00000012, 0 2px 6px #00000008; font-size: 13px; line-height: 1.5; }
 .help-popover { width: min(248px, calc(100vw - 24px)); overflow-y: auto; padding: 5px; border-radius: 9px; font-size: 12px; overscroll-behavior: contain; }
 .help-submenu { z-index: 66; width: min(176px, calc(100vw - 24px)); overflow-y: auto; padding: 5px; border-radius: 9px; overscroll-behavior: contain; }
 .help-menu-checklist { margin: 4px 4px 0; padding: 10px 3px 4px; border-top: 1px solid var(--line); }
@@ -306,7 +306,7 @@ onBeforeUnmount(() => {
 .help-chevron-left { transform: rotate(180deg); }
 .help-close { display: grid; place-items: center; flex: 0 0 24px; width: 24px; height: 24px; padding: 3px; color: var(--muted); border-radius: 5px; }
 .help-bubble { width: min(268px, calc(100vw - 24px)); padding: 10px 13px 12px; }
-.help-bubble::after { content: ''; position: absolute; left: var(--help-tail); bottom: -5px; width: 8px; height: 8px; background: var(--paper); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); transform: translateX(-50%) rotate(45deg); }
+.help-bubble::after { content: ''; position: absolute; left: var(--help-tail); bottom: -5px; width: 8px; height: 8px; background: var(--help-surface); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); transform: translateX(-50%) rotate(45deg); }
 .help-bubble-heading { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 11px; }
 .help-bubble p { margin: 5px 0 12px; font-size: 13px; line-height: 1.8; }
 .help-bubble-actions { display: flex; align-items: center; justify-content: space-between; }

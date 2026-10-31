@@ -520,6 +520,35 @@ fn export_attachment(
 }
 
 #[tauri::command(async)]
+fn write_spreadsheet(
+    workspace_id: String,
+    path: String,
+    content: String,
+    expected: String,
+    app: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<String, String> {
+    use base64::Engine;
+    if content.len() > 70 * 1024 * 1024 {
+        return Err("附件过大".into());
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(content)
+        .map_err(|_| "附件编码无效")?;
+    with_workspace_mutating_session(&workspace_id, state, &app, |s| {
+        assets::write_spreadsheet(
+            &s.root,
+            &path,
+            &bytes,
+            &expected,
+            &app_data(&app)?
+                .join("spreadsheet-backups")
+                .join(storage::hash(s.id.as_bytes())),
+        )
+    })
+}
+
+#[tauri::command(async)]
 fn export_document(
     content: String,
     destination: String,
@@ -1225,6 +1254,7 @@ pub fn configure_with_commands(
                     save_session,
                     import_attachment,
                     read_attachment,
+                    write_spreadsheet,
                     export_attachment,
                     export_document,
                     open_external_url,

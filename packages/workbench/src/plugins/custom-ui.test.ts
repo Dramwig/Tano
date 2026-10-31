@@ -40,6 +40,15 @@ it('uses only the verified bundle, gates messages by instance and rejects non-JS
     callback({ type: 'call', id: 1, method: 'views.renderCustom', params: { id: 'overview', state: { count: 1 }, bundle: { source: 'forged' } } });
     await vi.waitFor(() => expect(states[0]?.views[0]?.custom?.state).toEqual({ count: 1 }));
     expect(states[0]!.views[0]!.custom!.bundle).toEqual(pkg.ui!.overview);
+    const header = { title: '文件.pptx', status: '1 / 2', actions: [{ id: 'next', label: '下一页', icon: 'next' }] };
+    callback({ type: 'call', id: 2, method: 'views.setHeader', params: { id: 'overview', header } });
+    await vi.waitFor(() => expect(states[0]?.views[0]?.header).toEqual(header));
+    expect(states[0]?.views[0]?.custom?.state).toEqual({ count: 1 });
+    callback({ type: 'call', id: 3, method: 'views.renderCustom', params: { id: 'overview', state: { count: 2 } } });
+    await vi.waitFor(() => expect(states[0]?.views[0]?.custom?.state).toEqual({ count: 2 }));
+    expect(states[0]?.views[0]?.header).toEqual(header);
+    callback({ type: 'call', id: 4, method: 'views.setHeader', params: { id: 'undeclared', header } });
+    await vi.waitFor(() => expect(send).toHaveBeenCalledWith(expect.objectContaining({ id: 4, error: expect.stringContaining('没有在清单中声明') })));
     callback({ type: 'ready' });
     const instanceId = states[0]!.instanceId;
     await host.invoke(pkg.manifest.id, 'diagnostic', 'overview', { level: 'warn', message: '界面警告' }, instanceId);

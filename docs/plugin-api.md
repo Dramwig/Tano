@@ -4,6 +4,17 @@
 
 ## 创建与验证
 
+### 附件只读预览
+
+声明 `attachments.read` 权限后，`tano.attachments.read(fileId, offset?, revision?)`
+返回 `{ path, revision, offset, total, chunk }`，其中 `chunk` 为最多 18,000 字节的
+Base64 数据。首次使用偏移 0，随后传入已读取的字节数与返回的 `revision`。
+宿主仅允许当前工作区内可见的普通附件，禁止 Markdown 和 `.tano` 内部数据，
+单文件最大 50 MiB。续读绑定工作区、插件实例及文件版本；切换、撤权或版本变化
+后应从头重试。此 API 不写文件，也不授予路径访问或本机命令权限。
+浏览器宿主需提供 `AttachmentService.readAttachment`；用户在插件文件选择器中
+主动选择的本机文件则由隔离界面直接读取。
+
 在执行过 `npm install` 的 Tano 源码目录中运行：
 
 ```sh
@@ -126,11 +137,18 @@ await tano.documents.edit(fileId, [{ from: document.content.length,
 | `views.open(id)` | Promise<void> | 打开声明位置的视图 |
 | `views.onAction(id, handler)` | 取消订阅函数 | handler 收到 `{ action,values }` |
 | `views.renderCustom(id, state)` | Promise<void> | 需 ui 权限及包内界面，推送 JSON 状态 |
+| `views.setHeader(id, header)` | Promise<void> | 需 ui 权限，为声明的视图设置面包屑标题和右侧操作；不占用内容区域 |
 | `views.onMessage(id, handler)` | 取消订阅函数 | 接收页面的 JSON，必须验证消息输入 |
 | UI 的 `tanoView.postMessage(message)` | Promise<void> | 向自身 Worker 发消息，最多 16 KiB |
 | UI 的 `tanoView.onState(handler)` | 取消订阅函数 | 订阅 JSON 状态 |
 
 UI 没有文档、网络、本机存储或 Tauri API；Worker 读取后推送。React useEffect 返回 onState 的取消函数。视图 id 必须在清单中声明，位置为 panel/tab/sidebar/settings。宿主 DOM、编辑器 schema 和任意原生命令不属于此 SDK。
+
+自定义标签页可调用 `views.setHeader(id, { title, status?, statusAfter?, previewInfo?, actions })`，由宿主在面包屑左侧显示标题、右侧显示操作。标题最多 200 字符，状态最多 80 字符，操作最多 10 项；`statusAfter` 是放置状态的操作 ID。每项为 `{ id, label, icon?, disabled?, accept?, group? }`，图标限 `open/previous/next/minus/plus/fit/info`。`group`（最多 40 字符）将低频操作按组收进右侧“…”弹层；未指定分组的操作保留在面包屑行。`previewInfo: { label, detail }` 在面包屑标题后显示预览状态图标，悬浮、聚焦或点击展开详情；标签最多 80 字符，详情最多 2000 字符，均为纯文本。页眉状态独立于 `renderCustom` 内容状态。点击操作通过 `onMessage` 收到 `{ type:'header-action', action:id }`。
+
+设置 `accept:'.ppt,.pptx'` 之类的扩展名列表后，宿主提供本机文件选择器，仅把用户选中的文件传给当前工作区的当前插件实例；上限 50 MiB。消息为 `{ type:'header-file', action, name, total, offset, chunk, transferId }`，`chunk` 是最多 9000 字节的 base64 编码。插件须在处理完分块后结束消息回调，宿主才发送下一块；若转发给异步界面，应等待界面确认以免覆盖尚未消费的状态。切换工作区、插件实例或关闭页面会停止后续传输。
+
+读取所选文件前，宿主先发送 `{ type:'header-file-start', action, name, transferId }`，插件可立即展示加载骨架。读取或传输失败时发送 `{ type:'header-file-error', transferId, error }`；插件应按 `transferId` 结束对应加载状态，忽略过期传输的错误。
 
 ## 事件和自动化
 

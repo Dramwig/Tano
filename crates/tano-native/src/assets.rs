@@ -105,6 +105,54 @@ pub fn read(root: &Path, relative: &str) -> Result<Vec<u8>, String> {
     fs::read(target).map_err(|e| e.to_string())
 }
 
+pub fn write_spreadsheet(
+    root: &Path,
+    relative: &str,
+    bytes: &[u8],
+    expected: &str,
+    backups: &Path,
+) -> Result<String, String> {
+    let target = storage::resolve(root, relative, true)?;
+    let extension = target
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if !matches!(extension.as_str(), "xls" | "xlsx") || bytes.len() as u64 > MAX_BYTES {
+        return Err("仅支持保存 50 MiB 以内的 Excel 工作簿".into());
+    }
+    if !(extension == "xlsx" && bytes.starts_with(b"PK\x03\x04")
+        || extension == "xls" && bytes.starts_with(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"))
+    {
+        return Err("工作簿内容与扩展名不符".into());
+    }
+    let original = read(root, relative)?;
+    if storage::hash(&original) != expected {
+        return Err("原文件已被外部修改，本地草稿已保留；请重新打开后处理冲突".into());
+    }
+    let permissions = fs::metadata(&target)
+        .map_err(|e| e.to_string())?
+        .permissions();
+    if permissions.readonly() {
+        return Err("工作簿为只读文件".into());
+    }
+    fs::create_dir_all(backups).map_err(|e| e.to_string())?;
+    let backup = backups.join(format!("{}.{}", uuid::Uuid::new_v4(), extension));
+    storage::create_atomic(&backup, &original)?;
+    let staged = storage::temporary(&target, bytes)?;
+    staged
+        .as_file()
+        .set_permissions(permissions)
+        .map_err(|e| e.to_string())?;
+    if storage::resolve(root, relative, true)? != target
+        || storage::hash(&read(root, relative)?) != expected
+    {
+        return Err("原文件已被外部修改，本地草稿与原文件备份已保留".into());
+    }
+    staged.persist(&target).map_err(|e| e.to_string())?;
+    Ok(backup.to_string_lossy().into_owned())
+}
+
 pub fn respond(root: &Path, workspace_id: &str, request: &Request<Vec<u8>>) -> Response<Vec<u8>> {
     let result = (|| {
         if request.method() != "GET" {
@@ -161,6 +209,43 @@ pub fn respond(root: &Path, workspace_id: &str, request: &Request<Vec<u8>>) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn spreadsheet_save_backs_up_and_refuses_external_changes() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(temp.path()).unwrap();
+        let backups = tempfile::tempdir().unwrap();
+        let path = root.join("book.xlsx");
+        let original = b"PK\x03\x04original";
+        let updated = b"PK\x03\x04updated";
+        fs::write(&path, original).unwrap();
+        let backup = write_spreadsheet(
+            &root,
+            "book.xlsx",
+            updated,
+            &storage::hash(original),
+            backups.path(),
+        )
+        .unwrap();
+        assert_eq!(fs::read(backup).unwrap(), original);
+        assert_eq!(fs::read(&path).unwrap(), updated);
+        assert!(write_spreadsheet(
+            &root,
+            "book.xlsx",
+            original,
+            &storage::hash(original),
+            backups.path()
+        )
+        .is_err());
+        assert_eq!(fs::read(&path).unwrap(), updated);
+        assert!(write_spreadsheet(
+            &root,
+            "../book.xlsx",
+            updated,
+            &storage::hash(updated),
+            backups.path()
+        )
+        .is_err());
+    }
     #[test]
     fn imports_without_overwrite_and_serves_only_selected_workspace_images() {
         let temp = tempfile::tempdir().unwrap();

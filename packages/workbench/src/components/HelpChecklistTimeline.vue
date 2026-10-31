@@ -48,7 +48,7 @@ const docsUrl = (topic?: HelpTopicId) => helpDocumentationUrl(props.documentatio
 .help-timeline li { display: flex; position: relative; gap: 5px; min-height: 27px; }
 .help-timeline li:not(:last-child)::before { content: ''; position: absolute; top: 13px; bottom: -13px; left: 10px; width: 1px; background: var(--line); }
 .help-step-status { position: relative; z-index: 1; display: grid; place-items: center; align-self: flex-start; flex: 0 0 21px; width: 21px; height: 27px; }
-.help-step-marker { display: grid; place-items: center; width: 7px; height: 7px; color: var(--paper); background: var(--paper); border: 1px solid var(--muted); border-radius: 50%; box-shadow: 0 0 0 3px var(--paper); }
+.help-step-marker { display: grid; place-items: center; width: 7px; height: 7px; color: var(--help-surface, var(--paper)); background: var(--help-surface, var(--paper)); border: 1px solid var(--muted); border-radius: 50%; box-shadow: 0 0 0 3px var(--help-surface, var(--paper)); }
 .is-next .help-step-marker { background: var(--green); border-color: var(--green); }
 .is-complete .help-step-marker { width: 11px; height: 11px; color: var(--green); border-color: var(--green); }
 .help-step-content { flex: 1; min-width: 0; padding: 4px 0 5px; }

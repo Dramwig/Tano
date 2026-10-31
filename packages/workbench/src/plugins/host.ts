@@ -6,6 +6,8 @@ import { createPluginSandbox, type PluginSandbox, type PluginSandboxFactory } fr
 import { applyPluginTextEdits } from './data';
 import type { PluginEvent } from '../plugin-sdk';
 import type { PluginCatalogProvider } from './catalog';
+import { resolveSystemPlugin } from './system';
+import { parseViewHeader, type PluginViewHeader } from './view-header';
 import { parsePluginConnectionRequest, pluginConnectionOrigin, type PluginConnectionProvider, type PluginAutomationProvider } from '@tano/protocol';
 
 export interface PluginRuntimeServices {
@@ -22,7 +24,7 @@ export interface PluginNativeContext { workspaceId: string; pluginId: string; in
 export interface PluginRuntimeState {
   id: string; instanceId: string; name: string; status: 'loading' | 'running' | 'blocked' | 'error'; message: string;
   commands: PluginCommandDefinition[];
-  views: (PluginViewDefinition & { tree?: PluginViewNode; custom?: { bundle: PluginUiBundle; state: PluginJson } })[];
+  views: (PluginViewDefinition & { header?: PluginViewHeader; tree?: PluginViewNode; custom?: { bundle: PluginUiBundle; state: PluginJson } })[];
   logs?: { time: string; level: 'info' | 'warn' | 'error'; message: string }[];
 }
 export interface PluginAccess {
@@ -36,6 +38,8 @@ interface Session {
   ui?: Record<string, PluginUiBundle>;
 }
 const permissions: Record<string, PluginPermission> = {
+  'views.setHeader': 'ui',
+  'attachments.read': 'attachments.read',
   'views.renderCustom': 'ui',
   'documents.list': 'documents.read', 'documents.read': 'documents.read', 'documents.open': 'documents.read',
   'documents.write': 'documents.write', 'documents.create': 'documents.write',
@@ -98,7 +102,9 @@ export class PluginExecutionHost {
         this.stop(session); session.state.status = 'error'; session.state.message = message.slice(0, 1000); this.log(session, 'error', message);
       };
       session.timer = setTimeout(() => fail('插件启动超时，已停止运行'), 15000);
-      void new PluginPackageCache(this.storage).resolve(workspace.id, rule, session.controller.signal, this.services.repository).then(pkg => {
+      const packageSource = installation.system ? resolveSystemPlugin(rule)
+        : new PluginPackageCache(this.storage).resolve(workspace.id, rule, session.controller.signal, this.services.repository);
+      void packageSource.then(pkg => {
         if (session.controller.signal.aborted) return;
         session.ui = pkg.ui;
         session.sandbox = this.factory(pkg.source!, message => this.receive(session, workspace.id, rule.settings, message, fail), fail);
@@ -153,14 +159,24 @@ export class PluginExecutionHost {
       const definition = session.manifest.views.find(item => item.id === params.id);
       if (!definition) throw new Error('视图没有在清单中声明');
       const tree = parsePluginView(params.tree);
-      session.state.views = [...session.state.views.filter(view => view.id !== definition.id), { ...definition, tree }]; this.publish(); return null;
+      const previous = session.state.views.find(view => view.id === definition.id);
+      session.state.views = [...session.state.views.filter(view => view.id !== definition.id), { ...definition, header: previous?.header, tree }]; this.publish(); return null;
+    }
+    if (method === 'views.setHeader') {
+      const definition = session.manifest.views.find(item => item.id === params.id);
+      if (!definition) throw new Error('视图没有在清单中声明');
+      const header = parseViewHeader(parsePluginJson(params.header, 8192));
+      const previous = session.state.views.find(view => view.id === definition.id);
+      session.state.views = [...session.state.views.filter(view => view.id !== definition.id), { ...previous, ...definition, header }];
+      this.publish(); return null;
     }
     if (method === 'views.renderCustom') {
       const definition = session.manifest.views.find(item => item.id === params.id);
       const bundle = definition && session.ui && Object.hasOwn(session.ui, definition.id) ? session.ui[definition.id] : undefined;
       if (!definition || !bundle) throw new Error('插件包没有提供此视图的界面');
       const state = parsePluginJson(params.state);
-      session.state.views = [...session.state.views.filter(view => view.id !== definition.id), { ...definition, custom: { bundle, state } }];
+      const previous = session.state.views.find(view => view.id === definition.id);
+      session.state.views = [...session.state.views.filter(view => view.id !== definition.id), { ...previous, ...definition, custom: { bundle, state } }];
       this.publish(); return null;
     }
     if (method === 'views.open') {
@@ -216,7 +232,7 @@ export class PluginExecutionHost {
         method = 'documents.write';
       }
     }
-    if (method.endsWith('.query') || method === 'documents.search') params = { ...params, queryScope: session.state.instanceId };
+    if (method.endsWith('.query') || method === 'documents.search' || method === 'attachments.read') params = { ...params, queryScope: session.state.instanceId };
     const result = await this.access.call(method, params, () => this.assert(session));
     this.assert(session);
     const remember = (kind: string, value: unknown) => {

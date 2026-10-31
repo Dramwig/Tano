@@ -1,0 +1,9 @@
+{
+  "manifestVersion": 2, "apiVersion": 1,
+  "id": "presentation-preview", "name": "演示文稿预览", "version": "1.0.0",
+  "description": "离线预览 PPT/PPTX，按原始尺寸渲染文字、图片、图形、主题和母版，无需安装 Office。",
+  "objectTypes": [], "relationTypes": [], "permissions": ["attachments.read", "ui"],
+  "networkOrigins": [], "nativeCommands": [],
+  "commands": [{ "id": "open", "label": "演示文稿：打开预览", "menus": ["file", "workspace"] }],
+  "views": [{ "id": "slides", "label": "演示文稿预览", "location": "tab" }]
+}

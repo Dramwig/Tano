@@ -1,4 +1,6 @@
 import { useDocumentIndex } from '../document-index';
+import { PluginAttachmentReader } from '../plugins/attachment-reader';
+import { nativeAttachments } from '../attachments';
 import { WorkspacePluginRuntime } from '../workspace-plugin-runtime';
 import { WorkspaceLifecycle } from '../workspace-lifecycle';
 import { useTabNavigation } from '../tab-navigation';
@@ -113,6 +115,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const helpEdits = createHelpEditQueue();
   onScopeDispose(helpEdits.dispose);
   const runtime = useWorkbenchRuntime();
+  const pluginAttachmentReader = new PluginAttachmentReader();
   const { adapter, mobile } = runtime;
   const views = shallowRef<ReadonlyMap<string, WorkbenchViewTab>>(new Map());
   const workspaceViewTabPrefix = 'workspace-view:';
@@ -331,6 +334,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const objectErrors = ref<string[]>([]);
   let pluginEditorEdit: ((id: string, before: string, after: string) => Promise<boolean>) | undefined;
   const pluginRuntime = shallowRef<PluginRuntimeState[]>([]);
+  watch([() => workspace.value?.id, () => pluginRuntime.value.map(plugin => `${plugin.instanceId}:${plugin.status}`).join(',')],
+    () => pluginAttachmentReader.clear());
   const pluginQueryPager = new PluginQueryPager();
   const canManageSettings = computed(() => !!workspace.value && !workspace.value.readOnly &&
     (workspace.value.canManageSettings ?? adapter.mode !== 'web'));
@@ -466,6 +471,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         if (!expected || workspace.value?.id !== expected) throw new Error('工作区已切换');
       };
       assertCurrent();
+      if (method === 'attachments.read') return pluginAttachmentReader.read(workspace.value!, params,
+        runtime.attachments ?? (runtime.native && adapter.mode === 'desktop' ? nativeAttachments : undefined), assertCurrent);
       workspace.value = await adapter.refresh();
       await refreshObjects();
       assertCurrent();
@@ -1675,6 +1682,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return true;
   }
   async function openFile(file: FileEntry, options?: { historyIndex?: number }) {
+    if (officePluginHandles(file) && await openOfficePlugin(file)) return;
     if (drawingPluginHandles(file) && await openDrawingPlugin(file)) return;
     const creationAtRequest = creationRevision;
     const request = ++fileOpenRevision;
@@ -1711,6 +1719,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function openFileInNewTab(file: FileEntry) {
     try {
+      if (officePluginHandles(file) && await openOfficePlugin(file)) return;
       if (drawingPluginHandles(file) && await openDrawingPlugin(file)) return;
       await serial(async () => {
         if (file.kind === 'file' && isDataTableFilePath(file.path)) {
@@ -1754,9 +1763,23 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return true;
     } catch (error) { report(error); return false; }
   }
-  function openAttachmentInNewTab(file: FileEntry) {
+  function officePluginId(file: FileEntry) {
+    return /\.pptx?$/i.test(file.path) ? 'presentation-preview' : /\.docx?$/i.test(file.path) ? 'word-preview' : undefined;
+  }
+  function officePluginHandles(file: FileEntry) {
+    return file.kind === 'file' && !!officePluginId(file) && !!workspace.value &&
+      pluginRuntime.value.some(plugin => plugin.id === officePluginId(file) && plugin.status === 'running');
+  }
+  async function openOfficePlugin(file: FileEntry) {
+    try {
+      await pluginExecutor.invoke(officePluginId(file)!, 'command', 'open', { workspaceId: workspace.value!.id, fileId: file.id });
+      return true;
+    } catch (error) { report(error); return false; }
+  }
+  async function openAttachmentInNewTab(file: FileEntry) {
     if (!workspace.value || file.kind !== 'file' || isMarkdown(file.path) || isDataTableFilePath(file.path) ||
         !workspace.value.files.some(entry => entry.id === file.id && entry.path === file.path)) return;
+    if (officePluginHandles(file) && await openOfficePlugin(file)) return;
     const id = `attachment:${file.id}`;
     if (!tabIds.value.includes(id)) tabIds.value.push(id);
     activeId.value = id;
@@ -3052,6 +3075,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
   function dispose() {
+    pluginAttachmentReader.clear();
     disposed = true;
     helpEdits.dispose();
     clearTimeout(pluginEventTimer);

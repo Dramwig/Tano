@@ -18,7 +18,7 @@ import type { DocumentTab } from '../stores/workspace';
 import ButtonVisibilityGroup from './ButtonVisibilityGroup.vue';
 import WorkspaceIcon from './WorkspaceIcon.vue';
 import { appearanceText } from '../document-appearance';
-import { Table2 } from 'lucide-vue-next';
+import { Database, Table2 } from 'lucide-vue-next';
 
 const store = useWorkspaceStore();
 const navigationItems = [
@@ -955,6 +955,7 @@ async function onTabKeydown(event: KeyboardEvent) {
           <span v-else-if="!doc.blank && documentIcons[doc.id]" class="desktop-tab-icon desktop-tab-document-icon" aria-hidden="true">
             <WorkspaceIcon :icon="documentIcons[doc.id]" :size="15" />
           </span>
+          <Database v-else-if="doc.workspaceView?.view.database" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <Table2 v-else-if="doc.dataTable" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <FileText v-else-if="!doc.blank" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <span class="desktop-tab-label">{{ tabLabel(doc) }}</span>
@@ -1083,6 +1084,7 @@ async function onTabKeydown(event: KeyboardEvent) {
       <span v-if="documentIcons[dragPreview.id]" class="desktop-tab-icon desktop-tab-document-icon">
         <WorkspaceIcon :icon="documentIcons[dragPreview.id]" :size="15" />
       </span>
+      <Database v-else-if="paneTabs.find(tab => tab.id === dragPreview?.id)?.workspaceView?.view.database" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
       <component v-else :is="isDataTableFilePath(dragPreview.path) ? Table2 : FileText" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
       <span class="desktop-tab-label">{{ title(dragPreview.path) }}</span>
       <span v-if="dragPreview.dirty" class="desktop-tab-dirty" />
@@ -1273,6 +1275,9 @@ async function onTabKeydown(event: KeyboardEvent) {
   z-index: 3;
   inset: 0;
   pointer-events: none;
+}
+.desktop-tab-native-drag-image .desktop-tab-corners {
+  display: none;
 }
 .desktop-tab-corners::before,
 .desktop-tab-corners::after {

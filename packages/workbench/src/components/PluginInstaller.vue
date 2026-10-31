@@ -46,7 +46,7 @@ const previewPackage = ref<PluginPackage>();
 const policyMode = ref<PluginMode>('recommended');
 const settingsText = ref('{}');
 const sourceUrl = ref('');
-const permissionLabels: Record<PluginPermission, string> = { get 'documents.read'() { return t('读取与打开文档'); }, get 'documents.write'() { return t('创建与修改文档'); }, get 'objects.read'() { return t('读取对象'); }, get 'objects.write'() { return t('创建与修改对象'); }, get 'relations.read'() { return t('读取关系'); }, get 'relations.write'() { return t('修改关系'); }, get storage() { return t('保存插件本机状态'); }, get network() { return t('访问指定网络来源'); }, get connections() { return t('使用单独授权的服务凭据'); }, get native() { return t('调用指定本机能力'); }, get ui() { return t('运行隔离的自定义界面'); } };
+const permissionLabels: Record<PluginPermission, string> = { get 'attachments.read'() { return t('只读访问工作区附件'); }, get 'documents.read'() { return t('读取与打开文档'); }, get 'documents.write'() { return t('创建与修改文档'); }, get 'objects.read'() { return t('读取对象'); }, get 'objects.write'() { return t('创建与修改对象'); }, get 'relations.read'() { return t('读取关系'); }, get 'relations.write'() { return t('修改关系'); }, get storage() { return t('保存插件本机状态'); }, get network() { return t('访问指定网络来源'); }, get connections() { return t('使用单独授权的服务凭据'); }, get native() { return t('调用指定本机能力'); }, get ui() { return t('运行隔离的自定义界面'); } };
 const modeLabels: Record<PluginMode, string> = { get required() { return t('必需'); }, get recommended() { return t('推荐'); }, get optional() { return t('允许自行启用'); }, get disabled() { return t('禁止'); } };
 const error = ref('');
 const status = ref('');
@@ -499,7 +499,7 @@ async function importCachedPackage() {
           <PluginIcon :id="detail.id" />
           <div>
             <h3>{{ detail.name }}</h3>
-            <p>v{{ detail.version }} · {{ detail.id }}</p>
+            <p>v{{ detail.version }} · {{ detail.id }}<span v-if="selectedInstallation?.system"> · {{ t('系统插件') }}</span></p>
           </div>
           <span
             v-if="selectedInstallation"
@@ -537,10 +537,10 @@ async function importCachedPackage() {
           <p>{{ detail.permissions.map(permission => permissionLabels[permission]).join('、') || t('仅显示插件界面') }}</p>
           <p v-if="detail.networkOrigins.length">{{ t('网络来源：') }}{{ detail.networkOrigins.join('、') }}</p>
           <p v-if="detail.nativeCommands.length">{{ t('本机能力：') }}{{ detail.nativeCommands.join('、') }}</p>
-          <p class="dialog-intro">{{ t('授权绑定当前内容摘要；更新后需要重新授权。') }}</p>
-          <button v-if="selectedInstallation" class="pc-button pc-secondary" @click="authorize(!selectedInstallation.authorized)">{{ selectedInstallation.authorized ? t('撤销此设备授权') : t('授权此版本运行') }}</button>
+          <p class="dialog-intro">{{ selectedInstallation?.system ? t('随应用提供，默认启用，无需单独授权；版本随应用更新。') : t('授权绑定当前内容摘要；更新后需要重新授权。') }}</p>
+          <button v-if="selectedInstallation && !selectedInstallation.system" class="pc-button pc-secondary" @click="authorize(!selectedInstallation.authorized)">{{ selectedInstallation.authorized ? t('撤销此设备授权') : t('授权此版本运行') }}</button>
         </section>
-        <section v-if="selectedInstallation?.rule && store.canManagePlugins" class="detail-section plugin-policy">
+        <section v-if="selectedInstallation?.rule && !selectedInstallation.system && store.canManagePlugins" class="detail-section plugin-policy">
           <h4>{{ t('工作区规则') }}</h4>
           <p>{{ t('保存后影响此工作区的所有成员。必需仍需成员各自授权代码；禁止会在成员同步后停止运行，共享设置变更会重新启动已授权实例。') }}</p>
           <label>{{ t('启用方式') }}<select v-model="policyMode" :aria-label="t('插件工作区规则')"><option value="required">{{ t('必需') }}</option><option value="recommended">{{ t('推荐') }}</option><option value="optional">{{ t('允许自行启用') }}</option><option value="disabled">{{ t('禁止') }}</option></select></label>
@@ -548,17 +548,17 @@ async function importCachedPackage() {
           <label v-if="detail.manifestVersion === 2">{{ t('插件包 HTTPS 地址（可选）') }}<input v-model="sourceUrl" :aria-label="t('插件包下载地址')" type="url" /></label>
           <button class="pc-button pc-secondary" :disabled="busy" @click="savePolicy">{{ t('保存工作区规则') }}</button>
         </section>
-        <p v-else-if="selectedInstallation?.rule" class="dialog-intro">{{ t('启用方式由工作区管理员控制：') }}{{ modeLabels[selectedInstallation.rule.mode] }}</p>
-        <PluginMaintenance v-if="selectedInstallation && detail.manifestVersion === 2" :id="detail.id" />
+        <p v-else-if="selectedInstallation?.rule && !selectedInstallation.system" class="dialog-intro">{{ t('启用方式由工作区管理员控制：') }}{{ modeLabels[selectedInstallation.rule.mode] }}</p>
+        <PluginMaintenance v-if="selectedInstallation && !selectedInstallation.system && detail.manifestVersion === 2" :id="detail.id" />
         <p class="detail-scope">
           <ShieldCheck :size="17" /><span
-            >{{ t('版本与共享设置保存在工作区；代码和缓存保存在应用数据中。') }}<br />{{ t('插件操作遵循你的文档权限。') }}</span
+            >{{ selectedInstallation?.system ? t('系统插件随应用提供；启用偏好仅保存在此设备。') : t('版本与共享设置保存在工作区；代码和缓存保存在应用数据中。') }}<br />{{ t('插件操作遵循你的文档权限。') }}</span
           >
         </p>
         <footer class="detail-footer">
           <template v-if="selectedInstallation"
             ><button
-              class="pc-button pc-text uninstall"
+              v-if="!selectedInstallation.system" class="pc-button pc-text uninstall"
               :disabled="busy || !store.canManagePlugins"
               @click="change({ uninstall: detail.id })"
             >

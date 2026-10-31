@@ -1,0 +1,136 @@
+// @vitest-environment jsdom
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { createApp, h, nextTick, type App } from 'vue';
+import SpreadsheetEditor from './SpreadsheetEditor.vue';
+import { draft, serializeWorkbook, type SpreadsheetDraft } from '../office-preview/draft';
+import { readOffice } from '../office-preview/client';
+vi.mock('../office-preview/draft', () => ({ draft: vi.fn(), serializeWorkbook: vi.fn() }));
+vi.mock('../office-preview/client', () => ({ readOffice: vi.fn() }));
+let app: App | undefined, stored: SpreadsheetDraft | undefined;
+const original = [{ name: 'Budget', columns: 1, rows: [['old']], truncated: false }];
+beforeEach(() => {
+  stored = undefined;
+  vi.mocked(draft).mockImplementation(async (_key, value) => {
+    if (value === undefined) return stored;
+    stored = value === null ? undefined : structuredClone(value);
+  });
+  vi.mocked(serializeWorkbook).mockResolvedValue(new Uint8Array([2]));
+  vi.mocked(readOffice).mockResolvedValue({ kind: 'spreadsheet', sheets: [...structuredClone(original), { name: '工作表1', columns: 1, rows: [['']], truncated: false }] });
+});
+afterEach(() => { app?.unmount(); app = undefined; document.body.replaceChildren(); vi.clearAllMocks(); });
+it('selects an entire column, copies its values, clears via menu and restores keyboard focus', async () => {
+  const copy = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: copy } });
+  const root = await mount(vi.fn().mockResolvedValue('backup'));
+  const header = root.querySelector<HTMLButtonElement>('[aria-label="选择 A 列"]')!;
+  header.click(); await nextTick();
+  expect(header.getAttribute('aria-pressed')).toBe('true');
+  expect(root.querySelectorAll('td.cell-selected')).toHaveLength(1);
+  header.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 300, clientY: 100 }));
+  await vi.waitFor(() => expect(document.querySelector('[role=menu]')).not.toBeNull());
+  const buttons = document.querySelectorAll<HTMLButtonElement>('[role=menuitem]');
+  buttons[0].click(); await vi.waitFor(() => expect(copy).toHaveBeenCalledWith('old'));
+  await vi.waitFor(() => expect(document.querySelector('[role=menu]')).toBeNull()); expect(document.activeElement).toBe(header);
+  header.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, shiftKey: true, key: 'F10' }));
+  await vi.waitFor(() => expect(document.querySelector('[role=menu]')).not.toBeNull());
+  document.querySelectorAll<HTMLButtonElement>('[role=menuitem]')[1].click();
+  await vi.waitFor(() => expect(root.querySelector('tbody td')?.textContent?.trim()).toBe(''));
+  expect(stored?.edits).toContainEqual({ kind: 'clear', sheet: 'Budget', axis: 'column', index: 0 });
+  await vi.waitFor(() => expect(stored).toBeUndefined());
+});
+it('selects rows independently, deletes through the menu, and closes on Escape', async () => {
+  const root = await mount(vi.fn().mockResolvedValue('backup'));
+  const header = root.querySelector<HTMLButtonElement>('[aria-label="选择第 1 行"]')!;
+  header.click(); await nextTick();
+  expect(header.getAttribute('aria-pressed')).toBe('true');
+  expect(root.querySelectorAll('td.cell-selected')).toHaveLength(1);
+  header.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(document.querySelector('[role=menu]')).not.toBeNull());
+  const remove = document.querySelectorAll<HTMLButtonElement>('[role=menuitem]')[2];
+  expect(remove.textContent).toBe('删除行'); remove.click();
+  await vi.waitFor(() => expect(stored?.edits).toContainEqual({ kind: 'delete', sheet: 'Budget', axis: 'row', index: 0 }));
+  expect(root.querySelectorAll('td.cell-selected')).toHaveLength(0);
+  header.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(document.querySelector('[role=menu]')).not.toBeNull());
+  document.querySelector('[role=menu]')!.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Escape' }));
+  await nextTick(); expect(document.querySelector('[role=menu]')).toBeNull();
+  await vi.waitFor(() => expect(stored).toBeUndefined());
+});
+async function mount(save: (bytes: Uint8Array, expected: string) => Promise<string>, sheets = original) {
+  const root = document.createElement('div'); document.body.append(root);
+  app = createApp(() => h(SpreadsheetEditor, { bytes: new Uint8Array([1]), path: 'book.xlsx', sheets, draftKey: 'ws:file', save, readLatest: async () => new Uint8Array([1]) }));
+  app.mount(root);
+  await vi.waitFor(() => expect(root.querySelector('[aria-label="新建工作表"]')).not.toBeNull());
+  return root;
+}
+it('opens the tab menu with the shared panel style and renames the targeted tab', async () => {
+  const root = await mount(vi.fn().mockResolvedValue('backup'));
+  const tab = root.querySelector<HTMLButtonElement>('[role=tab]')!;
+  tab.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'F10', shiftKey: true }));
+  await vi.waitFor(() => expect(document.querySelector('[aria-label="工作表操作"]')).not.toBeNull());
+  expect(document.querySelector('[role=menu]')?.classList.contains('compact-action-menu')).toBe(true);
+  expect(document.querySelectorAll<HTMLButtonElement>('[role=menuitem]')[2].disabled).toBe(true);
+  document.querySelector<HTMLButtonElement>('[role=menuitem]')!.click();
+  await nextTick();
+  const input = root.querySelector<HTMLInputElement>('[aria-label="工作表名称"]')!;
+  input.value = 'Renamed'; input.dispatchEvent(new Event('input', { bubbles: true }));
+  vi.mocked(readOffice).mockResolvedValue({ kind: 'spreadsheet', sheets: [{ ...original[0], name: 'Renamed' }] });
+  root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(stored?.edits).toContainEqual({ kind: 'rename-sheet', sheet: 'Budget', name: 'Renamed' }));
+  expect(root.querySelector('[role=tab]')?.textContent).toBe('Renamed');
+  await vi.waitFor(() => expect(stored).toBeUndefined());
+});
+it.each(['copy', 'delete'])('uses the right-clicked inactive worksheet for %s', async action => {
+  const second = { ...structuredClone(original[0]), name: 'Other' };
+  const root = await mount(vi.fn().mockResolvedValue('backup'), [...original, second]);
+  const tab = root.querySelectorAll<HTMLButtonElement>('[role=tab]')[1];
+  expect(tab.getAttribute('aria-selected')).toBe('false');
+  tab.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(document.querySelector('[aria-label="工作表操作"]')).not.toBeNull());
+  vi.mocked(readOffice).mockResolvedValue({ kind: 'spreadsheet', sheets: action === 'copy' ? [...original, second, { ...second, name: 'Other (1)' }] : original });
+  document.querySelectorAll<HTMLButtonElement>('[role=menuitem]')[action === 'copy' ? 1 : 2].click();
+  await vi.waitFor(() => expect(stored?.edits).toContainEqual(action === 'copy' ? { kind: 'copy-sheet', sheet: 'Other', name: 'Other (1)' } : { kind: 'delete-sheet', sheet: 'Other' }));
+  await vi.waitFor(() => expect(stored).toBeUndefined());
+  expect(root.querySelector('[role=tab][aria-selected=true]')?.textContent).toBe(action === 'copy' ? 'Other (1)' : 'Budget');
+});
+it('autosaves without banners and keeps edits made during an in-flight save', async () => {
+  let finish!: (backup: string) => void;
+  const save = vi.fn().mockImplementationOnce(() => new Promise<string>(resolve => { finish = resolve; })).mockResolvedValue('backup');
+  const root = await mount(save);
+  expect(root.textContent).not.toContain('保存到原文件');
+  root.querySelector<HTMLButtonElement>('[aria-label="新建工作表"]')!.click();
+  await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  const add = root.querySelector<HTMLButtonElement>('[aria-label="添加新列"]')!;
+  expect(add.disabled).toBe(false); add.click();
+  await vi.waitFor(() => expect(root.querySelectorAll('thead th')).toHaveLength(4));
+  finish('backup');
+  await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+  await vi.waitFor(() => expect(stored).toBeUndefined());
+  expect(vi.mocked(serializeWorkbook).mock.calls[1][2]).toEqual([{ kind: 'column', sheet: '工作表1', column: 1 }]);
+  expect(root.querySelector('.sheet-save-bar, .sheet-message')).toBeNull();
+});
+it('retains the draft after a save failure and offers retry only on failure', async () => {
+  const save = vi.fn().mockRejectedValueOnce(new Error('磁盘写入失败')).mockResolvedValue('backup');
+  const root = await mount(save);
+  root.querySelector<HTMLButtonElement>('[aria-label="新建工作表"]')!.click();
+  await vi.waitFor(() => expect(root.querySelector('.document-status-trigger.needs-attention')).not.toBeNull());
+  expect(root.querySelector('.sheet-message, [role="alert"]')).toBeNull();
+  expect(document.body.textContent).not.toContain('磁盘写入失败');
+  expect(stored?.edits).toHaveLength(1);
+  root.querySelector<HTMLButtonElement>('.document-status-trigger')!.click();
+  await vi.waitFor(() => expect(document.querySelector('.document-status-panel')?.textContent).toContain('磁盘写入失败'));
+  document.querySelector<HTMLButtonElement>('.document-status-panel button')!.click();
+  await vi.waitFor(() => expect(stored).toBeUndefined());
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(root.querySelector('.document-status-trigger.needs-attention')).toBeNull();
+  expect(document.querySelector('.document-status-panel')?.textContent).not.toContain('磁盘写入失败');
+});
+it('flushes queued edits when the pane closes before the debounce expires', async () => {
+  const save = vi.fn().mockResolvedValue('backup');
+  const root = await mount(save);
+  root.querySelector<HTMLButtonElement>('[aria-label="新建工作表"]')!.click();
+  await vi.waitFor(() => expect(stored?.edits).toHaveLength(1));
+  await nextTick(); app!.unmount(); app = undefined;
+  await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  await vi.waitFor(() => expect(stored).toBeUndefined());
+});

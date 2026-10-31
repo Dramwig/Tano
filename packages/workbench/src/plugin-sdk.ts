@@ -41,6 +41,8 @@ export type PluginEvent = { type: 'workspace.changed'; fileId?: string } | {
   reset?: boolean;
 };
 export interface TanoPluginApi {
+  /** Read-only binary snapshot in bounded base64 chunks; continue with the returned revision. */
+  attachments: { read(fileId: string, offset?: number, revision?: string): Promise<{ path: string; revision: string; offset: number; total: number; chunk: string }> };
   context(): Promise<{ workspaceId: string; pluginId: string; settings: Record<string, unknown> }>;
   documents: {
     list(): Promise<PluginDocumentEntry[]>;
@@ -76,6 +78,8 @@ export interface TanoPluginApi {
   };
   commands: { register(id: string, handler: (context?: { fileId?: string; workspaceId: string }) => void | Promise<void>): Promise<void> };
   views: {
+    /** Host-rendered controls at the right of this view's breadcrumb row. */
+    setHeader(id: string, header: import('./plugins/view-header').PluginViewHeader): Promise<void>;
     render(id: string, tree: PluginViewNode): Promise<void>;
     renderCustom(id: string, state: PluginJson): Promise<void>;
     open(id: string): Promise<void>;

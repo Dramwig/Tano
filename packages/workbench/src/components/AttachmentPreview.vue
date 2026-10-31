@@ -9,9 +9,11 @@ import { csvPreview, verifyPreviewBytes } from '../file-preview';
 import PdfPreview from './PdfPreview.vue';
 import { nativeAttachments } from '../attachments';
 import { useWorkbenchRuntime } from '../runtime';
+import type { AttachmentStatusUpdate } from '../attachment-status';
 const OfficePreview = defineAsyncComponent({ loader: () => import('./OfficePreview.vue'), loadingComponent: PreviewSkeleton, delay: 0 });
 
-const props = defineProps<{ file?: FileEntry; url: string | null; workspaceId?: string; controlsTarget?: string }>();
+const props = defineProps<{ file?: FileEntry; url: string | null; workspaceId?: string; controlsTarget?: string; readOnly?: boolean; statusManaged?: boolean }>();
+const emit = defineEmits<{ status: [update: AttachmentStatusUpdate] }>();
 const runtime = useWorkbenchRuntime();
 const { adapter } = runtime;
 const attachments = runtime.attachments ?? (runtime.native && adapter.mode === 'desktop' ? nativeAttachments : undefined);
@@ -24,6 +26,15 @@ const handler = computed(() => fileHandlers.resolve(props.file?.path ?? ''));
 const type = computed(() => handler.value.preview);
 const pdfBytes = ref<Uint8Array>();
 const officeBytes = shallowRef<Uint8Array>();
+const spreadsheetSave = computed(() => {
+  const workspaceId = props.workspaceId, path = props.file?.path;
+  if (!workspaceId || !path || props.readOnly || props.file?.readOnly || !attachments?.writeSpreadsheet) return undefined;
+  return (bytes: Uint8Array, expected: string) => attachments.writeSpreadsheet!(workspaceId, path, bytes, expected);
+});
+const spreadsheetRead = computed(() => {
+  const workspaceId = props.workspaceId, path = props.file?.path;
+  return workspaceId && path && attachments?.readAttachment ? () => attachments.readAttachment!(workspaceId, path) : undefined;
+});
 const mediaUrl = ref('');
 const csv = computed(() => type.value === 'csv' ? csvPreview(text.value, props.file?.path ?? '') : null);
 const json = computed(() => {
@@ -33,7 +44,14 @@ const json = computed(() => {
 });
 const tokens = computed(() => codePreviewTokens(type.value === 'json' ? json.value.content : text.value,
   props.file?.path.split('.').at(-1)?.toLowerCase() ?? ''));
-watch([() => props.workspaceId, () => props.file?.id, () => props.file?.path, () => props.file?.modified, () => props.file?.size, () => props.file?.contentHash, () => props.url], async (_next, _old, onCleanup) => {
+// Writable spreadsheets own their live buffer. Their own saves must not remount the
+// editor on every filesystem notification; the save path reads/merges the latest bytes.
+const liveSpreadsheet = computed(() => !!spreadsheetSave.value && /\.xlsx?$/i.test(props.file?.path ?? ''));
+watch([() => props.workspaceId, () => props.file?.id, () => props.file?.path, liveSpreadsheet,
+  () => liveSpreadsheet.value ? undefined : props.file?.modified,
+  () => liveSpreadsheet.value ? undefined : props.file?.size,
+  () => liveSpreadsheet.value ? undefined : props.file?.contentHash,
+  () => liveSpreadsheet.value ? undefined : props.url], async (_next, _old, onCleanup) => {
   let current = true;
   const controller = new AbortController();
   let objectUrl = '';
@@ -52,6 +70,12 @@ watch([() => props.workspaceId, () => props.file?.id, () => props.file?.path, ()
   if (file.size > limit) { error.value = t('文件较大，请导出后查看。'); return; }
   loading.value = true;
   try {
+    if (kind === 'office' && /\.pptx?$/i.test(file.path)) {
+      throw new Error(t('请在插件中启用系统插件「演示文稿预览」，然后重新打开文件。'));
+    }
+    if (kind === 'office' && /\.docx?$/i.test(file.path)) {
+      throw new Error(t('请在插件中启用系统插件「Word 文档预览」，然后重新打开文件。'));
+    }
     let bytes: Uint8Array;
     if (attachments?.readAttachment && props.workspaceId) {
       bytes = await attachments.readAttachment(props.workspaceId, file.path);
@@ -102,7 +126,7 @@ watch([() => props.workspaceId, () => props.file?.id, () => props.file?.path, ()
       <component :is="type" v-show="!mediaLoading" :key="url" :src="url" controls preload="metadata" @loadedmetadata="mediaLoading = false" @error="failed = true; mediaLoading = false" />
     </div>
     <PdfPreview v-else-if="type === 'pdf' && pdfBytes" :bytes="pdfBytes" :controls-target="controlsTarget" />
-    <OfficePreview v-else-if="type === 'office' && officeBytes" :bytes="officeBytes" :path="file.path" :controls-target="controlsTarget" :controls="!controlsTarget" />
+    <OfficePreview v-else-if="type === 'office' && officeBytes" :bytes="officeBytes" :path="file.path" :controls-target="controlsTarget" :controls="!controlsTarget" :draft-key="`${workspaceId}:${file.id}`" :save="spreadsheetSave" :read-latest="spreadsheetRead" :status-managed="statusManaged" @status="emit('status', $event)" />
     <p v-else role="status">{{ failed ? t('附件暂不可用，可导出后查看。') : t('此文件暂不支持预览。') }}</p>
   </main>
 </template>

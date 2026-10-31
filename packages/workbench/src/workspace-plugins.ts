@@ -3,6 +3,7 @@ import type { PluginManifest, PluginMode, PluginPackage, Workspace, WorkspaceAda
 import { canManageWorkspacePlugins, loadPluginPolicy, savePluginRule } from './plugins/policy';
 import type { PluginPolicySnapshot } from './plugins/policy';
 import { PluginPackageCache, type PluginPackageRepository } from './plugins/packages';
+import { systemPlugin } from './plugins/system';
 
 export const retiredSystemPlugin = (id: string) => id === 'git-inspector';
 const retiredMessage = 'Git 功能已内置，请从工作区菜单打开“Git 与同步”，无需安装或授权插件';
@@ -10,6 +11,8 @@ const retiredMessage = 'Git 功能已内置，请从工作区菜单打开“Git 
 export const PLUGINS_TAB_ID = 'view:plugins';
 
 export interface InstalledObjectPlugin {
+  /** Product-owned registration; never copied from untrusted package metadata. */
+  system?: boolean;
   manifest: PluginManifest;
   enabled: boolean;
   rule?: WorkspacePluginRule;
@@ -33,6 +36,7 @@ export class WorkspacePluginHost {
     private registry = objectTypeRegistry,
     storage?: Pick<Storage, 'getItem' | 'setItem'>,
     private principal = 'device',
+    private systemIds: readonly string[] = [],
   ) {
     const memory = new Map<string, string>();
     this.storage =
@@ -94,6 +98,7 @@ export class WorkspacePluginHost {
   }
   async change(workspace: string, change: PluginChange) {
     const id = 'install' in change ? change.install.id : 'uninstall' in change ? change.uninstall : change.id;
+    if (this.systemIds.includes(id)) throw new Error('系统插件随应用更新，不能导入替换或卸载');
     if (retiredSystemPlugin(id) && !('uninstall' in change)) throw new Error(retiredMessage);
     const update = () => {
       const before = this.storage.getItem(keyFor(workspace));
@@ -138,6 +143,7 @@ export class WorkspacePluginHost {
     this.storage.setItem(`tano.plugin-preferences.v1.${encodeURIComponent(this.principal)}.${encodeURIComponent(workspace)}`, JSON.stringify(preferences));
   }
   authorize(workspace: string, id: string, integrity: string | undefined, expectedAuthorization?: string) {
+    if (this.systemIds.includes(id)) throw new Error('系统插件无需单独授权，请使用启用或停用');
     if (workspace !== this.workspaceId) throw new Error('工作区已切换');
     const rule = this.shared?.policy.plugins.find(row => row.manifest.id === id);
     if (!rule || (integrity && rule.integrity !== integrity)) throw new Error('插件版本已变化，请重新查看权限');
@@ -149,12 +155,16 @@ export class WorkspacePluginHost {
     const shared = await loadPluginPolicy(adapter, workspace);
     this.workspaceId = workspace.id;
     this.shared = shared;
-    if (!shared.snapshot) return this.load(workspace.id);
     const preferences = this.preferences(workspace.id);
-    const plugins = shared.policy.plugins.filter(rule => !retiredSystemPlugin(rule.manifest.id)).map(rule => ({ manifest: rule.manifest, rule,
+    const plugins: InstalledObjectPlugin[] = shared.snapshot ? shared.policy.plugins.filter(rule => !retiredSystemPlugin(rule.manifest.id) && !this.systemIds.includes(rule.manifest.id)).map(rule => ({ manifest: rule.manifest, rule,
       enabled: rule.mode === 'required' || (rule.mode !== 'disabled' && (preferences[rule.manifest.id]?.enabled ?? rule.mode === 'recommended')),
       authorized: rule.manifest.manifestVersion === 1 || preferences[rule.manifest.id]?.integrity === rule.integrity,
-    }));
+    })) : this.read(workspace.id).filter(item => !retiredSystemPlugin(item.manifest.id) && !this.systemIds.includes(item.manifest.id));
+    for (const id of this.systemIds) {
+      const { pkg, integrity } = await systemPlugin(id);
+      plugins.push({ manifest: pkg.manifest, system: true, enabled: preferences[id]?.enabled ?? true, authorized: true,
+        rule: { manifest: pkg.manifest, integrity, mode: 'recommended', settings: {} } });
+    }
     this.validate(plugins);
     this.apply(plugins);
     return plugins;
@@ -163,6 +173,11 @@ export class WorkspacePluginHost {
     assertCurrent: () => void, repository?: PluginPackageRepository) {
     if (this.workspaceId !== workspace.id || !this.shared) throw new Error('请先载入工作区插件规则');
     const id = 'install' in change ? change.install.id : 'uninstall' in change ? change.uninstall : change.id;
+    if (this.systemIds.includes(id)) {
+      assertCurrent();
+      if ('enabled' in change) { this.setPreference(workspace.id, id, { enabled: change.enabled }); return; }
+      throw new Error('系统插件随应用更新，不能导入替换或卸载');
+    }
     if (retiredSystemPlugin(id) && !('uninstall' in change)) throw new Error(retiredMessage);
     const rule = this.shared.policy.plugins.find(row => row.manifest.id === id);
     if ('enabled' in change && this.shared.snapshot) {

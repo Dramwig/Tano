@@ -11,7 +11,7 @@ export interface PluginPackageUsage {
   entries: { integrity: string; pluginId: string; version: string; bytes: number;
     state: 'pending' | 'ready' | 'deleting'; pinned: boolean; createdAt: string; removable?: boolean }[];
 }
-export const pluginPermissions = ['documents.read', 'documents.write', 'objects.read', 'objects.write',
+export const pluginPermissions = ['attachments.read', 'documents.read', 'documents.write', 'objects.read', 'objects.write',
   'relations.read', 'relations.write', 'storage', 'network', 'connections', 'native', 'ui'] as const;
 export type PluginPermission = typeof pluginPermissions[number];
 export type PluginMode = 'required' | 'recommended' | 'optional' | 'disabled';
