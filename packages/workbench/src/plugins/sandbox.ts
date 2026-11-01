@@ -1,3 +1,4 @@
+/// <reference path="./worker-source.d.ts" />
 import workerSource from './worker.js?raw';
 
 export interface PluginSandbox {

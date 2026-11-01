@@ -1,7 +1,7 @@
 import { h, render as renderIcon, watch, type Component } from 'vue';
-import { ArrowUpRight, Box, CalendarDays, Circle, CircleCheck, FileText, Folder, Link2Off, Paperclip, UserRound } from 'lucide-vue-next';
+import { ArrowUpRight, Bot, Box, CalendarDays, Circle, CircleCheck, FileText, Folder, Link2Off, Paperclip, UserRound } from 'lucide-vue-next';
 import type { EditorView, NodeViewConstructor } from '@milkdown/kit/prose/view';
-import { parseReferenceUrl, resolveReference, referenceTypeLabel } from '@tano/protocol';
+import { parseReferenceUrl, resolveReference, referenceTypeLabel, isAgentPerson } from '@tano/protocol';
 import type { ReferenceTarget, ReferenceIdentity } from '@tano/protocol';
 
 const referenceIcons: Record<string, Component> = {
@@ -83,6 +83,7 @@ export function referenceViews(
         function render() {
           dom.dataset.referenceUrl = current.attrs.url;
           dom.dataset.referenceLabel = current.attrs.label;
+          dom.dataset.mentionId = current.attrs.mentionId ?? '';
           const identity = parseReferenceUrl(current.attrs.url);
           const result = identity ? resolveReference(targets(), identity) : { error: 'missing' };
           const target = 'target' in result ? result.target : undefined;
@@ -103,7 +104,7 @@ export function referenceViews(
           const completed = target?.properties?.completed === true || ['done', 'completed'].includes(String(target?.properties?.status));
           dom.dataset.referenceType = task ? 'task' : identity?.type ?? '';
           dom.classList.toggle('is-completed', !!task && completed);
-          renderIcon(h(missing ? Link2Off : task ? completed ? CircleCheck : Circle : referenceIcons[target.type] ?? Box, {
+          renderIcon(h(missing ? Link2Off : task ? completed ? CircleCheck : Circle : isAgentPerson(target) ? Bot : referenceIcons[target.type] ?? Box, {
             size: block ? 21 : 14, strokeWidth: 1.7,
           }), icon);
           badge.textContent = !enabled()

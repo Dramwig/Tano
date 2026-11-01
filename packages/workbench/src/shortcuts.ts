@@ -48,7 +48,7 @@ export const shortcutDefinitions = [
   { id: 'deleteBlock', get label() { return t('删除选中的块'); }, get group() { return t('块操作'); }, default: ["Backspace","Delete"], context: 'block', get scope() { return t('选中块或块菜单中'); } },
   { id: 'moveBlockUp', get label() { return t('上移块'); }, get group() { return t('块操作'); }, default: "Alt+ArrowUp", context: 'block', get scope() { return t('选中块或块菜单中'); } },
   { id: 'moveBlockDown', get label() { return t('下移块'); }, get group() { return t('块操作'); }, default: "Alt+ArrowDown", context: 'block', get scope() { return t('选中块或块菜单中'); } },
-  { id: 'indentBlock', get label() { return t('移入前一个容器'); }, get group() { return t('块操作'); }, default: "Alt+ArrowRight", context: 'block', get scope() { return t('选中块或块菜单中'); } },
+  { id: 'indentBlock', get label() { return t('移入前容器'); }, get group() { return t('块操作'); }, default: "Alt+ArrowRight", context: 'block', get scope() { return t('选中块或块菜单中'); } },
   { id: 'outdentBlock', get label() { return t('移出当前容器'); }, get group() { return t('块操作'); }, default: "Alt+ArrowLeft", context: 'block', get scope() { return t('选中块或块菜单中'); } },
   { id: 'renameFile', get label() { return t('重命名文件或文件夹'); }, get group() { return t('文件管理'); }, default: "F2", context: 'file', get scope() { return t('文件树中'); } },
   { id: 'deleteFile', get label() { return t('删除文件或文件夹'); }, get group() { return t('文件管理'); }, default: "Delete", context: 'file', get scope() { return t('文件树中'); } },
@@ -183,7 +183,18 @@ export function shortcutAriaLabel(binding: ShortcutBinding | undefined) {
 
 export function shortcutLabel(binding: ShortcutBinding | undefined) {
   if (!shortcutKeys(binding).length) return t('未设置');
-  return shortcutKeys(binding).map(binding => binding.split('+').map(key => key === 'Mod' ? (isMac() ? '⌘' : 'Ctrl') : key === 'Escape' ? 'Esc' : key === 'Space' ? t('空格') : key).join(' + ')).join(' / ');
+  const labels: Record<string, string> = {
+    Mod: isMac() ? '⌘' : 'Ctrl',
+    Escape: 'Esc',
+    Space: t('空格'),
+    ArrowUp: '↑',
+    ArrowDown: '↓',
+    ArrowLeft: '←',
+    ArrowRight: '→',
+  };
+  return shortcutKeys(binding).map(binding =>
+    binding.split('+').map(key => labels[key] ?? key).join(' + '),
+  ).join(' / ');
 }
 
 export function matchesShortcut(event: KeyboardShortcutEvent, id: ShortcutId, bindings = defaultShortcutBindings) {

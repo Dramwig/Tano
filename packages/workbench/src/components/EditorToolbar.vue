@@ -12,28 +12,13 @@ import {
   Superscript,
   ChevronRight,
   Check,
-  Heading1,
   Heading2,
-  Heading3,
-  Heading4,
   Heading,
   List,
-  ListOrdered,
   Quote,
   ListTodo,
-  FileSymlink,
   Image,
   Table,
-  Workflow,
-  Info,
-  ListCollapse,
-  Paperclip,
-  PanelsTopLeft,
-  PanelTop,
-  Columns2,
-  Minus,
-  SquareSigma,
-  Plus,
   Type,
   Bot,
   MessageSquare,
@@ -48,6 +33,7 @@ import {
 } from '@tano/editor/selection-context';
 import type { EditorSelectionContext } from '@tano/editor/selection-context';
 import type { DocumentFeatures } from '@tano/editor/runtime';
+import { blockIcons, headingIcons, customCalloutIcon, blockIconStrokeWidth } from '@tano/editor/block-icons';
 import TextStyleMenu from './TextStyleMenu.vue';
 import { useFormattingShortcuts } from '../use-formatting-shortcuts';
 const formattingShortcuts = useFormattingShortcuts();
@@ -76,7 +62,6 @@ const open = ref(false);
 const headingsOpen = ref(false);
 const headingPanel = ref<HTMLElement>();
 const headingGroupId = useId();
-const headingIcons = [Heading1, Heading2, Heading3, Heading4];
 watch(open, () => { headingsOpen.value = false; });
 function headingTrigger() {
   return root.value?.querySelector<HTMLButtonElement>('[data-heading-trigger]');
@@ -149,27 +134,6 @@ const icons = {
   FootnoteReference: Superscript,
   Mention: AtSign,
 };
-const blockIcons = {
-  ObjectReference: FileSymlink,
-  Heading,
-  Paragraph: Type,
-  Quote,
-  BulletList: List,
-  OrderedList: ListOrdered,
-  TodoList: ListTodo,
-  CodeBlock: Code,
-  ImageBlock: Image,
-  Table,
-  MermaidBlock: Workflow,
-  Callout: Info,
-  Toggle: ListCollapse,
-  FileBlock: Paperclip,
-  Embed: PanelTop,
-  Tabs: PanelsTopLeft,
-  Columns: Columns2,
-  HorizontalRule: Minus,
-  MathBlock: SquareSigma,
-};
 const blockMenuGroups = [
   ['Paragraph', 'Heading'],
   ['BulletList', 'OrderedList', 'TodoList', 'Quote', 'Callout'],
@@ -180,7 +144,10 @@ const blockMenuGroups = [
 const availableBlocks = computed(() => blockMenuGroups
   .map(types => types
     .map(type => blockTypes.find(item => item.type === type)!)
-    .filter(item => commandEnabled(item.command, props.enabledLevels, props.features)))
+    .filter(item => !insertionCommands.has(item.command)
+      && commandEnabled(item.command, props.enabledLevels, props.features)
+      && (props.context.availableBlockCommands?.includes(item.command)
+        ?? (props.context.canTransform || wrappingCommands.has(item.command)))))
   .filter(items => items.length > 0)
   .flatMap((items, groupIndex) => items.map((item, index) => ({
     ...item,
@@ -418,7 +385,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
             @click="toggleBlockMenu"
           >
             <span ref="blockContent" class="block-type-content">
-              <component :is="blockIcon" :size="17" aria-hidden="true" />
+              <component :is="blockIcon" :size="17" :stroke-width="blockIconStrokeWidth" aria-hidden="true" />
               <span v-if="!compact">{{ blockLabel }}</span>
             </span>
           </button>
@@ -433,15 +400,12 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
                 :data-feature-level="item.level"
                 :data-heading-trigger="item.type === 'Heading' ? '' : undefined"
                 type="button"
-                :disabled="!context.canTransform && !insertionCommands.has(item.command) && !wrappingCommands.has(item.command)"
                 :class="{ 'is-current': context.block === item.type }"
                 :aria-pressed="item.type === 'Heading' ? undefined : context.block === item.type"
                 :aria-expanded="item.type === 'Heading' ? headingsOpen : undefined"
                 :aria-controls="item.type === 'Heading' ? headingGroupId : undefined"
                 :data-tooltip="
-                  item.type === 'Heading' ? t('标题级别') : insertionCommands.has(item.command)
-                    ? t('在当前块后插入，空段落会替换')
-                    : item.command === 'mermaid'
+                  item.type === 'Heading' ? t('标题级别') : item.command === 'mermaid'
                       ? t('转换为 Mermaid 代码块')
                       : t('转换当前块')
                 "
@@ -450,16 +414,15 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
                 @keydown.right="item.type === 'Heading' && ($event.preventDefault(), openHeadings(true))"
                 @click="item.type === 'Heading' ? openHeadings($event.detail === 0) : run(item.command)"
               >
-                <component :is="blockIcons[item.type]" class="block-type-icon" :size="16" aria-hidden="true" />
+                <component :is="blockIcons[item.type]" class="block-type-icon" :size="16" :stroke-width="blockIconStrokeWidth" aria-hidden="true" />
                 <span class="block-type-label"
                   >{{ item.label
                   }}<small v-if="!compact">{{ item.type }} · Level {{ item.level }}</small></span
                 ><ChevronRight v-if="item.type === 'Heading'" :size="14" aria-hidden="true" />
-                <Plus v-else-if="insertionCommands.has(item.command)" :size="13" aria-hidden="true" />
               </button>
               <button v-if="item.type === 'Callout'" type="button" data-feature-level="1"
                 @mousedown.prevent @click="run('callout', 'CUSTOM')">
-                <span class="block-type-icon" aria-hidden="true">💡</span>
+                <component :is="customCalloutIcon" class="block-type-icon" :size="16" :stroke-width="blockIconStrokeWidth" aria-hidden="true" />
                 <span class="block-type-label">{{ t('自定义块') }}</span>
               </button>
             </template>
@@ -481,7 +444,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
               :disabled="disabled || !context.canTransform"
               @mousedown.prevent
               @click="run('heading', String(index + 1))">
-              <component :is="icon" class="block-type-icon" :size="16" aria-hidden="true" />
+              <component :is="icon" class="block-type-icon" :size="16" :stroke-width="blockIconStrokeWidth" aria-hidden="true" />
               <span class="block-type-label">{{ t('{0} 级标题', [index + 1]) }}</span>
               <Check v-if="context.block === 'Heading' && context.headingLevel === index + 1" :size="14" aria-hidden="true" />
             </button>

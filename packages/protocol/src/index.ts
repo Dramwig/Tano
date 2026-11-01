@@ -9,6 +9,7 @@ export * from './plugins';
 export * from './extensions';
 export * from './workspace-paths';
 export * from './comments';
+export * from './mentions';
 export * from './suggestions';
 export * from './document-layout';
 export * from './data-tables';
@@ -192,3 +193,5 @@ export * from './agent-gateway';
 export * from './data-table-query';
 
 export * from './structured-merge';
+
+export * from './entry-drag';

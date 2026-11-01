@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ShortcutHint from '@tano/editor/shortcut-hint';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { X } from 'lucide-vue-next';
@@ -62,7 +63,7 @@ onBeforeUnmount(() => { dialog.value?.close(); if (before?.isConnected) before.f
           <button v-for="(command, index) in commands" :id="`workbench-command-${index}`" :key="command.id" type="button" class="command-option" role="option" :aria-selected="index === selected" tabindex="-1"
             @pointermove="selected = index" @click="execute(index)">
             <span class="command-label" :title="command.showSource ? `${command.source}：${command.label}` : command.label"><template v-if="command.showSource">{{ command.source }}：</template>{{ command.label }}</span>
-            <kbd v-if="command.shortcut" class="command-shortcut">{{ shortcutLabel(command.shortcut) }}</kbd>
+            <kbd v-if="command.shortcut" class="command-shortcut"><ShortcutHint :label="shortcutLabel(command.shortcut)" /></kbd>
           </button>
         </div>
         <p v-if="!commands.length" class="command-empty" role="status">{{ t('没有匹配的命令') }}</p>

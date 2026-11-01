@@ -256,10 +256,7 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
   if (event.shiftKey || event.ctrlKey || event.metaKey) {
     return;
   }
-  const home = homeFor(file);
-  if (home) emit('open', home);
-  else if (file.kind === 'directory') toggle(file.path);
-  else emit('open', file);
+  emit('open', file);
 }
 function clickIcon(file: FileEntry, event: MouseEvent) {
   if (file.kind !== 'directory') return;

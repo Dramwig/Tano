@@ -2,6 +2,7 @@ import {
   commentDataPath,
   emptyCommentFile,
   parseCommentFile,
+  rebaseCommentMentions,
 } from '@tano/protocol';
 import type {
   CommentAnchor,
@@ -15,16 +16,17 @@ import type {
 } from '@tano/protocol';
 
 export interface CommentAuthor { id: string; name: string }
-export interface CommentMessageEdit { messageId: string; expectedBody: string; body: string }
+export type CommentStorage = Pick<WorkspaceAdapter, 'refresh' | 'read' | 'write' | 'create'>;
+export interface CommentMessageEdit { messageId: string; expectedBody: string; body: string; mentions?: CommentMention[] }
 export interface CommentMessageRemoval {
   messageId: string;
   expectedBody: string;
   expectedMessages?: { id: string; body: string }[];
 }
-const pendingWrites = new WeakMap<WorkspaceAdapter, Map<string, Promise<unknown>>>();
+const pendingWrites = new WeakMap<CommentStorage, Map<string, Promise<unknown>>>();
 export type CommentChange =
-  | { type: 'start'; id: string; body: string; author: CommentAuthor; anchor?: CommentAnchor; mentions?: CommentMention[] }
-  | { type: 'reply'; threadId: string; id: string; body: string; author: CommentAuthor; replyTo?: string; mentions?: CommentMention[] }
+  | { type: 'start'; id: string; body: string; author: CommentAuthor; anchor?: CommentAnchor; mentions?: CommentMention[]; agentTaskId?: string }
+  | { type: 'reply'; threadId: string; id: string; body: string; author: CommentAuthor; replyTo?: string; mentions?: CommentMention[]; agentTaskId?: string }
   | { type: 'resolve'; threadId: string; resolved: boolean }
   | ({ type: 'edit'; threadId: string; authorId: string } & CommentMessageEdit)
   | ({ type: 'delete'; threadId: string; authorId: string } & CommentMessageRemoval)
@@ -32,7 +34,7 @@ export type CommentChange =
 
 function message(id: string, body: string, author: CommentAuthor, mentions?: CommentMention[], replyTo?: string): CommentMessage {
   return { id, body: body.trim(), authorId: author.id, authorName: author.name, createdAt: Date.now(),
-    ...(mentions?.length ? { mentions } : {}), ...(replyTo ? { replyTo } : {}) };
+    ...(mentions?.length ? { mentions: rebaseCommentMentions(mentions, body, body.trim()) } : {}), ...(replyTo ? { replyTo } : {}) };
 }
 
 /** Each edit is reapplied to the newest file, so independent replies survive a CAS conflict. */
@@ -45,7 +47,8 @@ export function applyCommentChange(file: CommentFile, change: CommentChange): Co
     if (next.kind === 'discussion' && change.anchor) throw new Error('整篇讨论不需要局部锚点');
     const createdAt = Date.now();
     next.threads.push({ id: change.id, ...(change.anchor ? { anchor: change.anchor } : {}),
-      messages: [message(change.id, change.body, change.author, change.mentions)], resolved: false,
+      messages: [{ ...message(change.id, change.body, change.author, change.mentions),
+        ...(change.agentTaskId ? { agentTaskId: change.agentTaskId } : {}) }], resolved: false,
       detached: false, createdAt });
   } else {
     const thread = next.threads.find(item => item.id === change.threadId);
@@ -54,7 +57,8 @@ export function applyCommentChange(file: CommentFile, change: CommentChange): Co
     if (change.type === 'reply') {
       if (thread.messages.some(item => item.id === change.id)) return next;
       if (!change.body.trim()) throw new Error('请输入回复内容');
-      thread.messages.push(message(change.id, change.body, change.author, change.mentions, change.replyTo));
+      thread.messages.push({ ...message(change.id, change.body, change.author, change.mentions, change.replyTo),
+        ...(change.agentTaskId ? { agentTaskId: change.agentTaskId } : {}) });
     } else if (change.type === 'resolve') thread.resolved = change.resolved;
     else if (change.type === 'edit' || change.type === 'delete') {
       const index = thread.messages.findIndex(item => item.id === change.messageId);
@@ -65,8 +69,10 @@ export function applyCommentChange(file: CommentFile, change: CommentChange): Co
       if (current.body !== change.expectedBody) throw new Error('评论已由其他编辑更新，请刷新后重试；输入内容仍保留');
       if (change.type === 'edit') {
         if (!change.body.trim()) throw new Error('请输入评论内容');
+        current.mentions = change.mentions === undefined
+          ? rebaseCommentMentions(current.mentions ?? [], current.body, change.body.trim())
+          : rebaseCommentMentions(change.mentions, change.body, change.body.trim());
         current.body = change.body.trim();
-        current.mentions = current.mentions?.filter(item => current.body.includes(item.text));
         current.updatedAt = Date.now();
       } else if (index === 0) {
         if (!change.expectedMessages || change.expectedMessages.length !== thread.messages.length ||
@@ -89,7 +95,7 @@ export function applyCommentChange(file: CommentFile, change: CommentChange): Co
   return parseCommentFile(JSON.stringify(next), next.kind, next.fileId);
 }
 
-export async function loadCommentFile(adapter: WorkspaceAdapter, kind: CommentKind, fileId: string, workspaceSnapshot?: Workspace) {
+export async function loadCommentFile(adapter: CommentStorage, kind: CommentKind, fileId: string, workspaceSnapshot?: Workspace) {
   const path = commentDataPath(kind, fileId);
   const workspace = workspaceSnapshot ?? await adapter.refresh();
   if (!workspace.files.some(file => file.kind === 'file' && file.path === path))
@@ -99,7 +105,7 @@ export async function loadCommentFile(adapter: WorkspaceAdapter, kind: CommentKi
 }
 
 export async function saveCommentChange(
-  adapter: WorkspaceAdapter,
+  adapter: CommentStorage,
   kind: CommentKind,
   fileId: string,
   change: CommentChange,
@@ -119,7 +125,7 @@ export async function saveCommentChange(
 }
 
 async function writeCommentChange(
-  adapter: WorkspaceAdapter, kind: CommentKind, fileId: string, path: string, change: CommentChange,
+  adapter: CommentStorage, kind: CommentKind, fileId: string, path: string, change: CommentChange,
 ) {
   for (let attempt = 0; attempt < 5; attempt++) {
     const current = await loadCommentFile(adapter, kind, fileId);

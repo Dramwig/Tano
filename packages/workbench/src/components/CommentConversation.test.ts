@@ -3,10 +3,32 @@ import { afterEach, expect, it } from 'vitest';
 import { createApp, defineComponent, h, nextTick, reactive, ref } from 'vue';
 import type { CommentThread } from '@tano/protocol';
 import CommentConversation from './CommentConversation.vue';
+import { createPinia, disposePinia } from 'pinia';
+import { configureWorkbench } from '../runtime';
+import { DemoAdapter } from '../adapter';
 
 let app: ReturnType<typeof createApp> | undefined;
 let root: HTMLDivElement | undefined;
 afterEach(() => { app?.unmount(); root?.remove(); });
+
+it('addresses a local annotation reply to the latest message so agent questions can resume', async () => {
+  const pinia = configureWorkbench(createPinia(), { adapter: new DemoAdapter(), native: false, mobile: false });
+  const replies: unknown[][] = [];
+  const thread: CommentThread = { id: 'thread-0001', resolved: false, detached: false, createdAt: 0, messages: [
+    { id: 'thread-0001', authorId: 'alice', authorName: 'Alice', body: '@AI 请检查', createdAt: 0 },
+    { id: 'question-0001', authorId: 'a00001', authorName: 'AI', body: '目标读者是谁？', createdAt: 1, agentTaskId: 'task-0001' },
+  ] };
+  root = document.createElement('div'); document.body.append(root);
+  app = createApp(defineComponent(() => () => h(CommentConversation, { thread, local: true, readonly: false, busy: false,
+    authorId: 'alice', authorName: 'Alice', onReply: (...args) => replies.push(args) })));
+  app.use(pinia).mount(root);
+  try {
+    const input = root.querySelector('textarea')!;
+    input.value = '团队成员'; input.dispatchEvent(new Event('input', { bubbles: true })); await nextTick();
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    expect(replies[0]).toEqual(['团队成员', [], 'question-0001']);
+  } finally { app.unmount(); app = undefined; disposePinia(pinia); }
+});
 
 it('identifies an earlier secondary comment as the reply target and reflects edits without guessing legacy targets', async () => {
   const thread = reactive<CommentThread>({

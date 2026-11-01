@@ -323,6 +323,33 @@ it('treats a cross-paragraph range and code text as block selections without mov
   expect(context.value.activeInline).not.toContain('InlineMath');
 }, 20_000); // The first rendered formula loads the math module on a cold test worker.
 
+it('shows only supported block conversions and hides insertion actions', async () => {
+  const { editor, context, errors } = await mount('正文\n');
+  await handle();
+  await click(button('块级类型'));
+  const labels = () => [...root.querySelectorAll('.block-type-menu .block-type-label')]
+    .map(label => label.childNodes[0]?.textContent?.trim());
+  expect(labels()).toEqual(['正文', '标题', '无序列表', '有序列表', '待办列表', '引用', '提示块', '自定义块', '代码块', 'Mermaid 图表']);
+  await click(button('块级类型'));
+  editor.value!.command('table');
+  await nextTick();
+  expect(context.value.block).toBe('Table');
+  await click(button('块级类型'));
+  expect(labels()).toEqual(['引用', '提示块', '自定义块']);
+  expect(errors).toEqual([]);
+});
+
+it('hides code conversions when a block contains an inline image', async () => {
+  await mount('文字 ![图片](photo.png)\n');
+  await handle();
+  await click(button('块级类型'));
+  const labels = [...root.querySelectorAll('.block-type-menu .block-type-label')]
+    .map(label => label.childNodes[0]?.textContent?.trim());
+  expect(labels).toContain('正文');
+  expect(labels).not.toContain('代码块');
+  expect(labels).not.toContain('Mermaid 图表');
+});
+
 it('keeps read-only and source modes non-editable and closes stale menus', async () => {
   const { readonly, source, value, editor } = await mount('正文\n');
   await click(button('块级类型'));

@@ -11,7 +11,7 @@ const entries: FileEntry[] = [
   { id: 'document', path: '项目/计划.md', name: '计划.md', kind: 'file', size: 1, modified: 0 },
 ];
 
-it('opens folder homes separately from expansion, preserves folder actions, and reacts to external removal', async () => {
+it('opens folders separately from tree expansion, including folders with home files', async () => {
   const home: FileEntry = { id: 'home', path: '项目/README.md', name: 'README.md', kind: 'file', size: 1, modified: 0 };
   const files = ref([...entries, home]);
   const open = vi.fn(), context = vi.fn(), prefetch = vi.fn();
@@ -23,7 +23,7 @@ it('opens folder homes separately from expansion, preserves folder actions, and 
   expect(folder.classList.contains('selected')).toBe(true);
   expect(folder.outerHTML).toContain('data-emoji="🚀"');
   folder.click(); await nextTick();
-  expect(open).toHaveBeenCalledWith(home);
+  expect(open).toHaveBeenCalledWith(entries[0]);
   expect(folder.getAttribute('aria-expanded')).toBe('true');
   open.mockClear();
   folder.querySelector<HTMLElement>('.tree-icon')!.click(); await nextTick();
@@ -39,8 +39,8 @@ it('opens folder homes separately from expansion, preserves folder actions, and 
   expect(open).not.toHaveBeenCalled();
   files.value = entries; await nextTick();
   folder.click(); await nextTick();
-  expect(folder.getAttribute('aria-expanded')).toBe('false');
-  expect(open).not.toHaveBeenCalled();
+  expect(folder.getAttribute('aria-expanded')).toBe('true');
+  expect(open).toHaveBeenCalledWith(entries[0]);
 });
 
 it.each([false, true])('reveals hidden home files and switches filename rules in virtual=%s trees', async virtual => {
@@ -72,7 +72,7 @@ it('expands an ordinary collapsed folder when a newly created child enters renam
   app = createApp({ render: () => h(FileTree, { entries, renamingId: renaming.value, renameEntry: async () => {} }) });
   app.mount(root); await nextTick();
   const folder = root.querySelector<HTMLButtonElement>('[title="项目"]')!;
-  folder.click(); await nextTick();
+  folder.querySelector<HTMLElement>('.tree-icon')!.click(); await nextTick();
   expect(root.querySelector('[title="项目/计划.md"]')).toBeNull();
   renaming.value = 'document'; await nextTick(); await nextTick();
   expect(folder.getAttribute('aria-expanded')).toBe('true');
@@ -338,7 +338,7 @@ it('expands a collapsed folder after a valid drag hovers over it', async () => {
   app.mount(root);
   await nextTick();
   const folder = root.querySelector<HTMLButtonElement>('[title="项目"]')!;
-  folder.click();
+  folder.querySelector<HTMLElement>('.tree-icon')!.click();
   await nextTick();
   expect(folder.getAttribute('aria-expanded')).toBe('false');
 
@@ -368,7 +368,7 @@ it('cancels hover expansion on leave or drop and can open a folder that cannot a
   app.mount(root);
   await nextTick();
   const folder = root.querySelector<HTMLButtonElement>('[title="项目"]')!;
-  folder.click();
+  folder.querySelector<HTMLElement>('.tree-icon')!.click();
   await nextTick();
 
   folder.dispatchEvent(new Event('dragover', { bubbles: true }));

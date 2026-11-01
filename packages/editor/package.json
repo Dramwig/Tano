@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./block-icons": "./src/block-icons.ts",
+    "./shortcut-hint": "./src/ShortcutHint.vue",
     "./code-preview": "./src/code-preview.ts",
     ".": "./src/MarkdownEditor.vue",
     "./syntax": "./src/syntax.ts",

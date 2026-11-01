@@ -1,4 +1,4 @@
-export const ASSISTANT_PROTOCOL_VERSION = 12;
+export const ASSISTANT_PROTOCOL_VERSION = 13;
 
 
 export type AssistantReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
@@ -217,6 +217,8 @@ export interface AssistantImportCandidate {
 }
 
 export interface AssistantTransport {
+  inbox?: import('./mentions').AgentInboxStorage;
+  hostedInbox?: import('./mentions').HostedAgentInbox;
   readConnectionKey?(connectionId: string): Promise<string>;
   scanCcSwitch?(path?: string): Promise<AssistantImportCandidate[]>;
   importCcSwitch?(ids: string[], path?: string): Promise<void>;

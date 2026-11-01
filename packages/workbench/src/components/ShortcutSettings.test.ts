@@ -36,6 +36,18 @@ it('records a new binding and updates the displayed shortcut', async () => {
   expect(button('设置查找文档快捷键').getAttribute('aria-pressed')).toBe('false');
 });
 
+it('renders Backspace as a library icon, including custom modifier combinations', async () => {
+  const bindings = mountSettings();
+  const control = button('设置删除选中的块快捷键');
+  expect(control.querySelector('kbd svg.shortcut-backspace')).not.toBeNull();
+  expect(control.querySelector('.shortcut-hint')?.getAttribute('aria-label')).toBe('Backspace');
+  expect(control.textContent).not.toContain('⌫');
+  bindings.value = { ...bindings.value, deleteBlock: 'Alt+Backspace' };
+  await nextTick();
+  expect(control.textContent).toContain('Alt+');
+  expect(control.querySelector('kbd svg.shortcut-backspace')).not.toBeNull();
+});
+
 it('offers a cancel button for both editing and adding a binding without changing saved keys', async () => {
   const bindings = mountSettings();
   button('设置重做快捷键').click(); await nextTick();

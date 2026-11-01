@@ -1188,6 +1188,8 @@ pub fn configure_with_commands(
                     assistant::assistant_request,
                     assistant::assistant_cancel,
                     assistant::assistant_sessions_load,
+                    assistant::inbox::assistant_inbox_load,
+                    assistant::inbox::assistant_inbox_save,
                     assistant::assistant_session_save,
                     assistant::assistant_session_delete,
                     assistant::assistant_external_sessions,

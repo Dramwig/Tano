@@ -20,4 +20,7 @@ watch(() => icon.value.favicon, () => { failed.value = false; });
 .connection-avatar { display: inline-flex; flex: none; align-items: center; justify-content: center; border-radius: 8px; background: var(--hover); color: var(--text); font-size: 12px; font-weight: 600; overflow: hidden; }
 .connection-avatar-svg, .connection-avatar img { display: block; width: 72%; height: 72%; object-fit: contain; }
 .connection-avatar-svg :deep(svg) { display: block; width: 100%; height: 100%; }
+.connection-avatar[data-brand^='agent-color-'] .connection-avatar-svg { width: 88%; height: 88%; }
+.connection-avatar[data-brand='kimi'], .connection-avatar[data-brand='openrouter'] { background: #18181b; }
+.connection-avatar[data-brand='grok'] { background: #dbeafe; color: #172554; }
 </style>

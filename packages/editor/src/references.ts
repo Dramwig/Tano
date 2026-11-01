@@ -1,13 +1,14 @@
 import { $nodeSchema, $remark } from '@milkdown/kit/utils';
 import type { Nodes, Parent, Root } from 'mdast';
 import type { Plugin } from 'unified';
-import { parseReferenceUrl, referenceUrl } from '@tano/protocol';
+import { parseReferenceUrl, referenceUrl, mentionIdFromTitle } from '@tano/protocol';
 
 interface ReferenceNode extends Parent {
   type: 'tanoReference';
   url: string;
   label: string;
   card: boolean;
+  mentionId?: string;
   children: [];
 }
 declare module 'mdast' {
@@ -36,6 +37,7 @@ const remarkReferences: Plugin<[], Root> = () => (tree) => {
           type: 'tanoReference',
           url: referenceUrl(identity),
           label,
+          mentionId: identity.type === 'person' ? mentionIdFromTitle(child.title) : undefined,
           card:
             child.title === 'tano:object-card' &&
             node.type === 'paragraph' &&
@@ -64,7 +66,7 @@ function referenceSchema(block: boolean) {
     inline: !block,
     atom: true,
     selectable: true,
-    attrs: { url: { default: '', validate: 'string' }, label: { default: '', validate: 'string' } },
+    attrs: { url: { default: '', validate: 'string' }, label: { default: '', validate: 'string' }, mentionId: { default: '', validate: 'string' } },
     parseDOM: [
       {
         tag: `[data-tano-reference="${block ? 'block' : 'inline'}"]`,
@@ -72,7 +74,8 @@ function referenceSchema(block: boolean) {
           const url = dom.getAttribute('data-reference-url') ?? '';
           const identity = parseReferenceUrl(url);
           return identity
-            ? { url: referenceUrl(identity), label: dom.getAttribute('data-reference-label') ?? '' }
+            ? { url: referenceUrl(identity), label: dom.getAttribute('data-reference-label') ?? '',
+              mentionId: mentionIdFromTitle(`tano:mention:${dom.getAttribute('data-mention-id')}`) ?? '' }
             : false;
         },
       },
@@ -83,13 +86,14 @@ function referenceSchema(block: boolean) {
         'data-tano-reference': block ? 'block' : 'inline',
         'data-reference-url': node.attrs.url,
         'data-reference-label': node.attrs.label,
+        'data-mention-id': node.attrs.mentionId,
         'data-feature-level': '2',
       },
       `@${node.attrs.label}`,
     ],
     parseMarkdown: {
       match: (node) => node.type === 'tanoReference' && node.card === block,
-      runner: (state, node, type) => state.addNode(type, { url: node.url, label: node.label }),
+      runner: (state, node, type) => state.addNode(type, { url: node.url, label: node.label, mentionId: node.mentionId ?? '' }),
     },
     toMarkdown: {
       match: (node) => node.type.name === name,
@@ -99,6 +103,7 @@ function referenceSchema(block: boolean) {
         state.openNode('link', undefined, {
           url: identity ? referenceUrl(identity) : node.attrs.url,
           ...(block ? { title: 'tano:object-card' } : {}),
+          ...(!block && identity?.type === 'person' && node.attrs.mentionId ? { title: `tano:mention:${node.attrs.mentionId}` } : {}),
         });
         state.addNode('text', undefined, `${block ? '' : '@'}${node.attrs.label}`);
         state.closeNode();

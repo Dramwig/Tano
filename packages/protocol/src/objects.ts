@@ -70,7 +70,8 @@ export function referenceUrl(target: ReferenceIdentity): string {
 }
 export function referenceMarkdown(target: ReferenceIdentity, label: string): string {
   const name = label.replace(/[\r\n]+/g, ' ').replace(/[\\\[\]]/g, '\\$&');
-  return `[@${name}](${referenceUrl(target)})`;
+  const title = target.type === 'person' ? ` "tano:mention:${crypto.randomUUID()}"` : '';
+  return `[@${name}](${referenceUrl(target)}${title})`;
 }
 export function parseReferenceUrl(url: string): ReferenceIdentity | null {
   const match = /^object:\/\/([a-z][a-z0-9.-]*)\/([0-9a-f]{6})$/.exec(url);

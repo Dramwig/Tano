@@ -1107,10 +1107,10 @@ button:hover {
   float: left;
   margin: 0 0 0 -33px;
   width: 26px;
-  min-height: 28px;
+  height: calc(var(--tano-prose-font-size, 16px) * 1.6);
   justify-content: center;
   font-size: 18px;
-  line-height: 28px;
+  line-height: 1;
 }
 .tano-prose .tano-callout[data-callout-kind='custom'] > .tano-callout-marker-paragraph + * {
   margin-top: 0;
@@ -1935,15 +1935,11 @@ button:hover {
 .block-context-menu .menu-shortcut {
   padding-left: 0;
 }
-.block-context-menu button > span {
-  width: 15px;
-  flex: 0 0 15px;
-  color: var(--text-secondary);
-  text-align: center;
-  font-size: 14px;
-}
 .block-context-menu button > svg {
+  width: 15px;
+  height: 15px;
   flex: 0 0 15px;
+  stroke-width: 1.6;
 }
 .block-context-menu .block-convert-chevron {
   margin-left: auto;
@@ -1957,11 +1953,6 @@ button:hover {
   width: 154px;
   max-height: calc(100dvh - 16px);
   overflow-y: auto;
-}
-.block-context-heading {
-  padding: 5px 7px 4px;
-  color: var(--muted);
-  font-size: 11px;
 }
 .page-context-menu {
   position: fixed;
@@ -2365,11 +2356,13 @@ button:hover {
   background: var(--surface);
 }
 .tano-slash-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 20px;
+  height: 20px;
   flex-shrink: 0;
   color: var(--text-secondary);
-  text-align: center;
-  font-size: 13px;
 }
 .tano-slash-label-en {
   flex: 1;
@@ -5828,53 +5821,115 @@ div.tano-feature-source {
     height: 36px;
   }
 }
+
 .tano-reference-picker {
   position: fixed;
   z-index: 100;
-  width: min(348px, calc(100vw - 16px));
-  max-height: 330px;
-  overflow: auto;
-  padding: 12px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: min(392px, calc(100vw - 16px));
+  max-height: min(420px, calc(100dvh - 16px));
+  padding: 4px 0 0;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 14px;
   background: var(--surface);
-  box-shadow: 0 12px 36px #0003;
+  color: var(--text);
+  box-shadow: 0 16px 48px #0002, 0 2px 8px #0000000a;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.5;
 }
 .tano-reference-picker[hidden],
-.tano-reference-picker input[hidden] {
-  display: none;
+.tano-reference-picker input[hidden] { display: none; }
+.tano-reference-picker input {
+  margin: 0 16px 10px;
+  width: calc(100% - 32px);
 }
-.tano-reference-picker strong,
-.tano-reference-picker small {
-  display: block;
+.tano-reference-picker-filters {
+  display: flex;
+  flex-shrink: 0;
+  gap: 3px;
+  padding: 4px 12px;
+  border-top: 1px solid var(--line);
+  overflow-x: auto;
+}
+.tano-reference-picker-filters button {
+  flex: 1;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  white-space: nowrap;
   font-size: 12px;
 }
-.tano-reference-picker > small {
+.tano-reference-picker-filters button:hover { background: var(--hover); }
+.tano-reference-picker-filters button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--green);
+  font-weight: 600;
+}
+.tano-reference-picker-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 10px 6px;
+}
+.tano-reference-picker-group {
+  padding: 9px 8px 5px;
   color: var(--muted);
-  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 600;
 }
-.tano-reference-picker input {
-  margin: 8px 0;
-  width: 100%;
-}
-.tano-reference-picker button {
-  display: block;
+.tano-reference-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   border: 0;
-  border-radius: 5px;
-  padding: 8px;
+  border-radius: 8px;
+  padding: 5px 8px;
   text-align: left;
   background: transparent;
   color: inherit;
 }
-.tano-reference-picker button[aria-selected='true'] {
-  background: var(--hover);
-  outline: 1px solid var(--green);
+.tano-reference-picker-option:hover { background: var(--hover); }
+.tano-reference-picker-option[aria-selected='true'] {
+  background: var(--accent);
 }
-.tano-reference-picker button small {
+.tano-reference-picker-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--hover);
   color: var(--muted);
-  overflow-wrap: anywhere;
-  margin-top: 3px;
+}
+.tano-reference-picker-icon[data-type='person'] {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 10%, var(--surface));
+}
+.tano-reference-picker-icon[data-type='document'] {
+  color: light-dark(#486da5, #94b6e6);
+  background: color-mix(in srgb, #7297cc 12%, var(--surface));
+}
+.tano-reference-picker-body { flex: 1; min-width: 0; }
+.tano-reference-picker-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tano-reference-picker-name { font-size: 13px; font-weight: 500; }
+.tano-reference-picker-badge { flex-shrink: 0; color: var(--muted); font-size: 10px; }
+.tano-reference-picker-empty {
+  padding: 22px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
 }
 .object-panel-backdrop {
   position: fixed;

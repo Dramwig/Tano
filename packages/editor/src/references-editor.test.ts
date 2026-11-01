@@ -262,6 +262,51 @@ it('opens only the link editor when clicking an existing Wiki link', async () =>
   expect(value.value).toBe('前 [[Notes/Plan|计划]] 后。\n');
   expect(errors).toEqual([]);
 });
+it('separates reference types beyond the old result limit and inserts from the filtered list', async () => {
+  const documents = Array.from({ length: 35 }, (_, index) => ({
+    workspace: 'ws', type: 'document', id: `d${String(index).padStart(5, '0')}`,
+    name: `文档 ${index}`, path: `笔记/文档 ${index}.md`,
+  }));
+  const { editor, value } = await mount('', false, [...documents, targets[0]!]);
+  editor.value!.command('reference');
+  await nextTick();
+  const picker = root.querySelector<HTMLElement>('.tano-reference-picker')!;
+  expect(picker.textContent).not.toContain('Level 2');
+  expect(picker.querySelectorAll('[role=option]')).toHaveLength(31);
+  expect(picker.querySelector('[aria-selected=true]')).toBeNull();
+  const search = picker.querySelector('input')!;
+  search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+  expect(value.value).not.toContain('object://');
+  search.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+  expect(picker.querySelector('[aria-selected=true]')).toBe(picker.querySelector('[role=option]'));
+  search.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+  expect(picker.querySelector('[aria-selected=true]')).toBe(picker.querySelectorAll('[role=option]')[1]);
+  const people = picker.querySelector<HTMLButtonElement>('[data-category=person]')!;
+  people.click();
+  expect(picker.querySelector('[aria-selected=true]')).toBeNull();
+  search.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+  expect(picker.querySelector('[aria-selected=true]')).toBe(picker.querySelector('[role=option]'));
+  expect(people.getAttribute('aria-pressed')).toBe('true');
+  expect(picker.querySelectorAll('[role=option]')).toHaveLength(1);
+  expect(picker.querySelector('[role=option]')?.textContent).toContain('Alice');
+  picker.querySelector<HTMLButtonElement>('[data-category=asset]')!.click();
+  expect(picker.querySelectorAll('[role=option]')).toHaveLength(0);
+  search.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+  expect(picker.querySelector('[aria-selected=true]')).toBeNull();
+  expect(picker.textContent).toContain('此类型暂无可引用内容');
+  picker.querySelector<HTMLButtonElement>('[data-category=document]')!.click();
+  search.value = '文档 34';
+  search.dispatchEvent(new Event('input'));
+  expect(picker.querySelectorAll('[role=option]')).toHaveLength(1);
+  expect(picker.querySelector('[aria-selected=true]')).toBeNull();
+  search.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+  search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+  await vi.waitFor(() => expect(value.value).toContain('object://document/d00034'));
+  editor.value!.command('reference');
+  await nextTick();
+  expect(picker.querySelector('[data-category=all]')?.getAttribute('aria-pressed')).toBe('true');
+  expect(picker.querySelector('[aria-selected=true]')).toBeNull();
+});
 it('does not open the reference picker from a Wiki link click', () => {
   root = document.createElement('div');
   document.body.append(root);

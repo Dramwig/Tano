@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ShortcutHint from '@tano/editor/shortcut-hint';
 import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 import { shortcutLabel } from '../shortcuts';
 import { featureDefinitions } from '@tano/editor/runtime';
@@ -167,7 +168,7 @@ onBeforeUnmount(() => {
     <div v-if="label" :id="id" ref="tooltip" class="app-tooltip panel-scrollbar" role="tooltip"
       popover="manual" :data-ready="ready" @pointerenter="cancelTimer" @pointerleave="leave">
       <span v-if="!example">{{ label }}</span>
-      <span v-if="shortcut" class="app-tooltip-shortcut">{{ shortcut }}</span>
+      <span v-if="shortcut" class="app-tooltip-shortcut"><ShortcutHint :label="shortcut" /></span>
       <CapabilityExample v-if="example" :feature="example" />
     </div>
   </Teleport>

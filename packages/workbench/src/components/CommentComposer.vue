@@ -1,21 +1,26 @@
 <script setup lang="ts">
 import { t } from '../i18n';
 import { computed, nextTick, ref, watch } from 'vue';
-import { ArrowUp, AtSign, UserRound } from 'lucide-vue-next';
+import { ArrowUp, AtSign, UserRound, Bot } from 'lucide-vue-next';
+import { isAgentPerson, rebaseCommentMentions, referenceCandidates } from '@tano/protocol';
 import type { CommentMention } from '@tano/protocol';
 import { useWorkspaceStore } from '../stores/workspace';
 
-const props = defineProps<{ modelValue: string; authorName: string; label: string; busy?: boolean; compact?: boolean }>();
+const props = defineProps<{ modelValue: string; authorName: string; label: string; busy?: boolean; compact?: boolean;
+  initialMentions?: CommentMention[]; maxHeight?: number }>();
 const emit = defineEmits<{ 'update:modelValue': [value: string]; submit: [mentions: CommentMention[]] }>();
 const workspace = useWorkspaceStore();
 const choosing = ref(false);
 const query = ref('');
 const mentionStart = ref<number | null>(null);
-const mentions = ref<CommentMention[]>([]);
-const people = computed(() => workspace.objects.map(item => item.object).filter(item =>
-  item.type === 'person' && !item.archived && item.name.toLocaleLowerCase().includes(query.value.toLocaleLowerCase())));
+const mentions = ref<CommentMention[]>(props.initialMentions?.map(mention => ({ ...mention })) ?? []);
+const people = computed(() => referenceCandidates(workspace.objects.filter(item => item.object.type === 'person')
+  .map(item => ({ ...item.object, workspace: workspace.workspace?.id ?? '', path: item.path })), query.value));
+let previousBody = props.modelValue;
+let pendingEdit: { from: number; to: number } | undefined;
 watch(() => props.modelValue, value => {
-  mentions.value = mentions.value.filter(item => value.includes(item.text));
+  mentions.value = rebaseCommentMentions(mentions.value, previousBody, value);
+  previousBody = value;
   if (!value) choosing.value = false;
   void nextTick(resize);
 });
@@ -26,8 +31,11 @@ async function mention(personId: string, name: string) {
   const from = mentionStart.value ?? input.value?.selectionStart ?? props.modelValue.length;
   const to = input.value?.selectionEnd ?? from;
   if (props.modelValue.length - (to - from) + text.length + 1 > 20_000) return;
-  emit('update:modelValue', `${props.modelValue.slice(0, from)}${text} ${props.modelValue.slice(to)}`);
-  if (!mentions.value.some(item => item.personId === personId)) mentions.value.push({ personId, text });
+  const next = `${props.modelValue.slice(0, from)}${text} ${props.modelValue.slice(to)}`;
+  mentions.value = rebaseCommentMentions(mentions.value, previousBody, next);
+  mentions.value.push({ id: crypto.randomUUID(), personId, text, from });
+  previousBody = next;
+  emit('update:modelValue', next);
   choosing.value = false;
   query.value = '';
   mentionStart.value = null;
@@ -38,10 +46,12 @@ const input = ref<HTMLTextAreaElement>();
 function resize() {
   if (!input.value) return;
   input.value.style.height = 'auto';
-  input.value.style.height = `${Math.min(160, Math.max(props.compact ? 26 : 36, input.value.scrollHeight))}px`;
+  input.value.style.height = `${Math.min(props.maxHeight ?? 160, Math.max(props.compact ? 26 : 36, input.value.scrollHeight))}px`;
 }
 function update(event: Event) {
   const field = event.target as HTMLTextAreaElement;
+  mentions.value = rebaseCommentMentions(mentions.value, previousBody, field.value, pendingEdit);
+  previousBody = field.value; pendingEdit = undefined;
   emit('update:modelValue', field.value);
   const typed = /(?:^|\s)@([^\s@]*)$/.exec(field.value.slice(0, field.selectionStart));
   choosing.value = Boolean(typed);
@@ -49,8 +59,15 @@ function update(event: Event) {
   mentionStart.value = typed ? field.selectionStart - typed[1]!.length - 1 : null;
   resize();
 }
+function beforeInput(event: Event) {
+  const field = event.target as HTMLTextAreaElement;
+  let from = field.selectionStart, to = field.selectionEnd;
+  if (from === to && (event as InputEvent).inputType === 'deleteContentBackward') from = Math.max(0, from - 1);
+  if (from === to && (event as InputEvent).inputType === 'deleteContentForward') to = Math.min(field.value.length, to + 1);
+  pendingEdit = { from, to };
+}
 function keydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') { choosing.value = false; return; }
+  if (event.key === 'Escape') { if (choosing.value) event.stopPropagation(); choosing.value = false; return; }
   if (event.key === 'Enter' && choosing.value && !event.shiftKey && !event.isComposing && people.value[0]) {
     event.preventDefault();
     void mention(people.value[0].id, people.value[0].name);
@@ -60,7 +77,7 @@ function keydown(event: KeyboardEvent) {
   event.preventDefault();
   submit();
 }
-async function focus() { await nextTick(); input.value?.focus(); }
+async function focus(end = false) { await nextTick(); input.value?.focus(); if (end) input.value?.setSelectionRange(props.modelValue.length, props.modelValue.length); }
 defineExpose({ focus });
 </script>
 
@@ -69,15 +86,15 @@ defineExpose({ focus });
     <span v-if="compact" class="comment-avatar" :title="authorName"><UserRound :size="15" /></span>
     <div class="comment-composer-field">
       <textarea ref="input" :value="modelValue" :aria-label="label" :placeholder="label" rows="1"
-        maxlength="20000" @input="update" @keydown="keydown" />
+        maxlength="20000" :readonly="busy" @beforeinput="beforeInput" @input="update" @keydown="keydown" />
       <button v-if="workspace.objects.some(item => item.object.type === 'person' && !item.object.archived)" type="button"
         class="comment-mention" :data-tooltip="t('提及人物')" :aria-label="t('提及人物')" :aria-expanded="choosing" :disabled="busy" @click="choosing = !choosing; mentionStart = null; query = ''"><AtSign :size="16" /></button>
-      <button type="submit" class="comment-send" :aria-label="t('发表{0}', [label])" :data-tooltip="t('发表{0}', [label])"
-        :disabled="busy || !modelValue.trim()"><ArrowUp :size="16" /></button>
+      <slot name="actions"><button type="submit" class="comment-send" :aria-label="t('发表{0}', [label])" :data-tooltip="t('发表{0}', [label])"
+        :disabled="busy || !modelValue.trim()"><ArrowUp :size="16" /></button></slot>
     </div>
     <div v-if="choosing" class="comment-people" role="dialog" :aria-label="t('提及人物')" @keydown.esc.stop="choosing = false">
       <input v-model="query" :aria-label="t('搜索人物')" :placeholder="t('搜索人物')" @keydown.enter.prevent />
-      <button v-for="person in people" :key="person.id" type="button" @click="mention(person.id, person.name)"><UserRound :size="14" />{{ person.name }}</button>
+      <button v-for="person in people" :key="person.id" type="button" @click="mention(person.id, person.name)"><component :is="isAgentPerson(person) ? Bot : UserRound" :size="14" />{{ person.name }}</button>
       <span v-if="!people.length">{{ t('没有匹配的人物') }}</span>
     </div>
   </form>

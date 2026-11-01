@@ -1,6 +1,8 @@
 import { Fragment } from '@milkdown/kit/prose/model';
 import type { Node, Schema } from '@milkdown/kit/prose/model';
 import { NodeSelection, TextSelection } from '@milkdown/kit/prose/state';
+import type { EditorState } from '@milkdown/kit/prose/state';
+import { blockTypes, insertionCommands } from './selection-context';
 import type { Command } from '@milkdown/kit/prose/state';
 import { canTransformBlock, selectedBlocks } from './document-model';
 import { safeResourceUrl } from './enhanced-markdown';
@@ -242,4 +244,11 @@ export function blockCommand(name: string, value?: string, currentTextblock = fa
     dispatch(tr.scrollIntoView());
     return true;
   };
+}
+
+/** Probe the normal command path, including schema checks, without changing the editor. */
+export function availableBlockConversions(state: EditorState): string[] {
+  return blockTypes
+    .filter(item => !insertionCommands.has(item.command) && blockCommand(item.command)(state, () => {}))
+    .map(item => item.command);
 }

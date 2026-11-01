@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import {
   defaultShortcutBindings, isSidebarToggleShortcut, matchesShortcut, parseShortcutBindings,
   readShortcutBindings, saveShortcutBindings, shortcutBindingError, shortcutBindingFromEvent,
-  shortcutLabel, shortcutPreferenceKey,
+  shortcutAriaLabel, shortcutLabel, shortcutPreferenceKey,
 } from './shortcuts';
 
 afterEach(() => { localStorage.clear(); vi.restoreAllMocks(); });
@@ -11,6 +11,31 @@ afterEach(() => { localStorage.clear(); vi.restoreAllMocks(); });
 function shortcut(key: string, options: KeyboardEventInit = {}) {
   return new KeyboardEvent('keydown', { key, ...options });
 }
+
+it.each([
+  ['moveBlockUp', 'ArrowUp', '↑'],
+  ['moveBlockDown', 'ArrowDown', '↓'],
+  ['indentBlock', 'ArrowRight', '→'],
+  ['outdentBlock', 'ArrowLeft', '←'],
+] as const)('displays an arrow symbol for %s', (id, key, symbol) => {
+  expect(shortcutLabel(defaultShortcutBindings[id])).toBe(`Alt + ${symbol}`);
+  expect(shortcutLabel(key)).toBe(symbol);
+  expect(shortcutAriaLabel(defaultShortcutBindings[id])).toBe(`Alt+${key}`);
+  expect(matchesShortcut(shortcut(key, { altKey: true }), id)).toBe(true);
+});
+
+it('formats multiple direction keys with arrow symbols', () => {
+  expect(shortcutLabel(defaultShortcutBindings.menuNavigate)).toBe('↑ / ↓ / Home / End');
+  expect(shortcutLabel(defaultShortcutBindings.navigateTabs)).toBe('← / → / Home / End');
+});
+
+it('preserves backspace names for icon rendering and accessibility', () => {
+  expect(shortcutLabel('Backspace')).toBe('Backspace');
+  expect(shortcutLabel('Alt+Backspace')).toBe('Alt + Backspace');
+  expect(shortcutLabel(defaultShortcutBindings.deleteBlock)).toBe('Backspace / Delete');
+  expect(shortcutAriaLabel('Backspace')).toBe('Backspace');
+  expect(matchesShortcut(shortcut('Backspace'), 'deleteBlock')).toBe(true);
+});
 
 it('recognizes the sidebar toggle shortcut on Windows and macOS', () => {
   expect(isSidebarToggleShortcut(shortcut('b', { ctrlKey: true }))).toBe(true);

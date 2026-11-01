@@ -5,6 +5,7 @@ import { assistantCopy, assistantTaskPrompts } from '../assistant/language';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { AlignLeft, ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRight, ChevronsRight, CircleCheck, Copy, Cpu, createLucideIcon, FilePlus2, FileText, History, Languages, LoaderCircle, MessageCircle, MessageCirclePlus, Minus, MoreHorizontal, Paperclip, Pencil, Plug, Plus, RefreshCw, Reply, Quote, Search, Settings2, Square, Terminal, Trash2, Undo2, X } from 'lucide-vue-next';
 import MarkdownEditor from '@tano/editor';
+import { droppedEntryReferences, entryReferenceDragType, referenceMarkdown } from '@tano/protocol';
 import type { AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSource, ReferenceIdentity } from '@tano/protocol';
 import { useAssistantStore } from '../assistant/store';
 import { isAssistantFile } from '../assistant/files';
@@ -17,6 +18,7 @@ import AssistantGenerationHint from './AssistantGenerationHint.vue';
 import AssistantButterfly from './AssistantButterfly.vue';
 import AssistantQuestionCard from './AssistantQuestionCard.vue';
 import AssistantMessageBody from './AssistantMessageBody.vue';
+import AgentInboxPanel from './AgentInboxPanel.vue';
 
 const assistant = useAssistantStore();
 const workspace = useWorkspaceStore();
@@ -40,6 +42,11 @@ const exportMessage = ref<AssistantMessage>();
 const exportPath = ref(t('助手结果.md'));
 const visibleMessages = ref(30);
 const panel = ref<HTMLElement>();
+let modeAnimation: Animation | undefined;
+function cancelModeAnimation() {
+  modeAnimation?.cancel();
+  modeAnimation = undefined;
+}
 const popover = ref<'model' | 'reasoning' | 'add' | 'history' | 'more' | 'mode' | 'translation' | null>(null);
 function displayIcon(name: string, region: { x: string; y: string; width: string; height: string }) {
   return createLucideIcon(name, [
@@ -166,6 +173,27 @@ function searchModels() {
   if (!searchingModels.value) modelQuery.value = '';
   void nextTick(() => panel.value?.querySelector<HTMLElement>(searchingModels.value ? '#assistant-model-search' : `[aria-label="${t('搜索模型列表')}"]`)?.focus());
 }
+function dragReferences(event: DragEvent) {
+  if (controlsLocked.value || !event.dataTransfer?.types.includes(entryReferenceDragType)) return;
+  event.preventDefault(); event.stopPropagation();
+  event.dataTransfer.dropEffect = 'copy';
+}
+function dropReferences(event: DragEvent) {
+  if (!event.dataTransfer?.types.includes(entryReferenceDragType)) return;
+  event.preventDefault(); event.stopPropagation();
+  if (controlsLocked.value) return;
+  const targets = droppedEntryReferences(event.dataTransfer.getData(entryReferenceDragType), workspace.referenceTargets);
+  for (const target of targets) {
+    if (isAssistantFile(target.path)) {
+      if (!assistant.files.includes(target.id)) toggleSource(target.id);
+    } else {
+      const reference = referenceMarkdown(target, target.name);
+      if (!assistant.prompt.includes(reference)) assistant.prompt += `${assistant.prompt ? '\n' : ''}${reference}`;
+      notice.value = t('已添加附件引用，当前助手无法直接读取附件正文');
+    }
+  }
+  void nextTick(() => textarea.value?.focus());
+}
 function toggleSource(id: string) {
   if (assistant.busy) return;
   if (assistant.files.includes(id)) {
@@ -252,6 +280,7 @@ function selectDisplayMode(mode: AssistantDisplayMode) {
 function startFloatingGesture(event: PointerEvent) {
   if (props.compact || assistant.displayMode !== 'floating' || event.button !== 0 || !panel.value ||
     (event.target as Element).closest('button, input, .assistant-popover')) return;
+  cancelModeAnimation();
   const { left, top, width, height } = panel.value.getBoundingClientRect();
   const target = event.currentTarget as HTMLElement;
   floatingGesture = { pointer: event.pointerId, target, x: event.clientX, y: event.clientY, rect: { left, top, width, height } };
@@ -354,6 +383,10 @@ function updateMenuPosition() {
   const topBoundary = element.querySelector('.assistant-heading')?.getBoundingClientRect().bottom ?? element.getBoundingClientRect().top;
   menuMaxHeight.value = Math.max(80, triggerBounds.top - topBoundary - 16);
 }
+function viewportResized() {
+  cancelModeAnimation();
+  resized();
+}
 function resized() {
   if (floatingRect.value) {
     const rect = floatingRect.value;
@@ -382,7 +415,7 @@ onMounted(() => {
   // An async panel may finish loading after the user has already closed it.
   if (!assistant.opened) { emit('closed'); return; }
   window.addEventListener('pointerdown', outsidePopover);
-  window.addEventListener('resize', resized);
+  window.addEventListener('resize', viewportResized);
   if (typeof ResizeObserver !== 'undefined') {
     composerObserver = new ResizeObserver(updateMenuPosition);
     if (panel.value) composerObserver.observe(panel.value);
@@ -392,10 +425,11 @@ onMounted(() => {
   void nextTick(() => { resizeInput(); scrollToLatest(); textarea.value?.focus({ preventScroll: true }); });
 });
 onBeforeUnmount(() => {
+  cancelModeAnimation();
   endFloatingGesture();
   composerObserver?.disconnect();
   window.removeEventListener('pointerdown', outsidePopover);
-  window.removeEventListener('resize', resized);
+  window.removeEventListener('resize', viewportResized);
 });
 watch(() => assistant.prompt, () => { void nextTick(resizeInput); });
 watch(() => assistant.pendingUserInput?.request.id, (id, previous) => {
@@ -406,8 +440,29 @@ watch(() => [assistant.files.length, assistant.selection?.text], () => { void ne
 watch(section, () => { closePopover(); void nextTick(() => { resizeInput(); scrollToLatest(); }); });
 watch(() => assistant.opened, open => {
   if (open) void nextTick(() => textarea.value?.focus({ preventScroll: true }));
-  else { closePopover(); endFloatingGesture(); }
+  else { cancelModeAnimation(); closePopover(); endFloatingGesture(); }
 });
+watch(() => assistant.displayMode, async (_mode, _previous, onCleanup) => {
+  const element = panel.value;
+  // Measure before Vue moves the same conversation between Teleport hosts.
+  const before = element?.getBoundingClientRect();
+  const radius = element && getComputedStyle(element).borderRadius;
+  cancelModeAnimation();
+  let stale = false;
+  onCleanup(() => { stale = true; });
+  await nextTick();
+  if (stale || !element || !assistant.opened || !before?.width || !before.height ||
+    !element.animate || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const after = element.getBoundingClientRect();
+  if (!after.width || !after.height) return;
+  modeAnimation = element.animate([
+    {
+      transform: `translate(${before.left - after.left}px, ${before.top - after.top}px) scale(${before.width / after.width}, ${before.height / after.height})`,
+      borderRadius: radius,
+    },
+    { transform: 'none', borderRadius: getComputedStyle(element).borderRadius },
+  ], { duration: 240, easing: 'cubic-bezier(0.2, 0, 0, 1)' });
+}, { flush: 'pre' });
 watch(() => [assistant.displayMode, props.fullscreenTarget], () => {
   endFloatingGesture();
   void nextTick(() => { resized(); resizeInput(); if (assistant.opened) textarea.value?.focus({ preventScroll: true }); });
@@ -427,7 +482,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 <template>
   <Teleport :to="teleportTarget" :disabled="assistant.displayMode === 'sidebar'">
   <Transition :name="assistant.displayMode === 'floating' ? 'assistant-floating' : 'assistant-sidebar'" :css="assistant.displayMode !== 'fullscreen'" appear @after-leave="afterPanelLeave">
-  <aside ref="panel" v-show="assistant.opened && (assistant.displayMode !== 'fullscreen' || !!fullscreenTarget)" class="assistant-panel" :class="[`assistant-panel-${assistant.displayMode}`, { 'assistant-panel-compact': compact }]" :style="{ '--assistant-menu-max-height': `${menuMaxHeight}px`, ...floatingStyle }" :inert="!assistant.opened || undefined" :aria-hidden="!assistant.opened || undefined" :aria-label="t('Tano 助手')" @keydown.esc="closePopover(true)" @keydown="menuKey">
+  <aside @dragover="dragReferences" @drop="dropReferences" ref="panel" v-show="assistant.opened && (assistant.displayMode !== 'fullscreen' || !!fullscreenTarget)" class="assistant-panel" :class="[`assistant-panel-${assistant.displayMode}`, { 'assistant-panel-compact': compact }]" :style="{ '--assistant-menu-max-height': `${menuMaxHeight}px`, ...floatingStyle }" :inert="!assistant.opened || undefined" :aria-hidden="!assistant.opened || undefined" :aria-label="t('Tano 助手')" @keydown.esc="closePopover(true)" @keydown="menuKey">
     <header class="assistant-heading" @pointerdown="startFloatingGesture" @pointermove="moveFloatingGesture" @pointerup="endFloatingGesture" @pointercancel="endFloatingGesture" @lostpointercapture="endFloatingGesture">
       <button v-if="compact && navigationVisible && assistant.displayMode === 'fullscreen'" class="icon-button" :aria-label="t('展开侧栏')" @click="emit('showNavigation')"><ArrowLeft :size="17" /></button>
       <button v-if="section !== 'conversation'" class="icon-button" :aria-label="t('返回助手对话')" :data-tooltip="t('返回对话')" @click="section = 'conversation'"><ArrowLeft :size="17" /></button>
@@ -492,6 +547,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
     <template v-else>
       <div class="assistant-transcript">
       <div ref="messages" class="assistant-messages panel-scrollbar" role="log" :aria-label="t('助手对话')" @scroll="updateScroll">
+        <AgentInboxPanel />
         <LoadingSkeleton v-if="assistant.loading && !assistant.session?.messages.length" :rows="5" />
         <div v-else-if="!assistant.session?.messages.length" class="assistant-welcome">
           <!-- Reserved for platform AI settings; currently greets with a flutter. -->
@@ -640,6 +696,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 
 <style scoped>
 .assistant-panel { --assistant-sidebar-width: clamp(360px, 32vw, 480px); flex: 0 1 var(--assistant-sidebar-width); width: var(--assistant-sidebar-width); min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--paper); color: var(--text); }
+.assistant-panel { transform-origin: top left; }
 /* Slide a full-width conversation into view while its margin gives the editor
    the same amount of space back. Messages do not rewrap during the slide. */
 .assistant-panel-sidebar.assistant-sidebar-enter-active,

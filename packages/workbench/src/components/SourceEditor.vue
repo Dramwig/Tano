@@ -14,8 +14,8 @@ import {
 } from '@codemirror/commands';
 import { Compartment, EditorState, RangeSet, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { Decoration, EditorView, GutterMarker, gutterLineClass, highlightActiveLineGutter, keymap, lineNumbers, WidgetType } from '@codemirror/view';
-import { referenceMarkdown } from '@tano/protocol';
-import type { CommentAnchor, ReferenceIdentity } from '@tano/protocol';
+import { droppedEntryReferences, entryReferenceDragType, referenceMarkdown } from '@tano/protocol';
+import type { CommentAnchor, ReferenceIdentity, ReferenceTarget } from '@tano/protocol';
 import type { SuggestionDecorations } from '@tano/protocol';
 import type { CommentGeometry } from '@tano/editor/comment-projection';
 import { sourceStyleRanges } from '@tano/editor/source-highlight';
@@ -57,6 +57,7 @@ const pageSearch = StateField.define({
 
 const props = defineProps<{
   modelValue: string;
+  referenceTargets?: readonly ReferenceTarget[];
   contentRevision?: string;
   showAllLineNumbers?: boolean;
   preferences?: EditorPreferences;
@@ -214,7 +215,23 @@ onMounted(() => {
         EditorView.domEventHandlers({
           keydown: (event, current) => wrapSelectedSourceField(event, current),
           paste: (event) => fileHandler(event, event.clipboardData?.files, true),
-          drop: (event) => fileHandler(event, event.dataTransfer?.files, false),
+          dragover: (event) => {
+            if (props.readonly || !event.dataTransfer?.types.includes(entryReferenceDragType)) return false;
+            event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; return true;
+          },
+          drop: (event, current) => {
+            if (!event.dataTransfer?.types.includes(entryReferenceDragType)) return fileHandler(event, event.dataTransfer?.files, false);
+            event.preventDefault(); event.stopPropagation();
+            if (props.readonly) return true;
+            const targets = droppedEntryReferences(event.dataTransfer.getData(entryReferenceDragType), props.referenceTargets ?? []);
+            const insert = targets.map(target => referenceMarkdown(target, target.name)).join(' ');
+            if (insert) {
+              const from = current.posAtCoords({ x: event.clientX, y: event.clientY }) ?? current.state.selection.main.head;
+              current.dispatch({ changes: { from, insert }, selection: { anchor: from + insert.length }, userEvent: 'input.drop' });
+              current.focus();
+            }
+            return true;
+          },
         }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !applyingModel)

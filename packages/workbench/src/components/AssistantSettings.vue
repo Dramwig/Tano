@@ -62,6 +62,15 @@ const editor = ref<HTMLDialogElement>();
 const avatarTrigger = ref<HTMLButtonElement>();
 const avatarPopover = ref<HTMLElement>();
 const avatarOpen = ref(false);
+const avatarStyles = ['品牌', '线条', '彩色', '像素'] as const;
+type AvatarStyle = typeof avatarStyles[number];
+const avatarStyle = ref<AvatarStyle>('品牌');
+function iconStyle(id?: string): AvatarStyle {
+  if (id?.startsWith('agent-color-')) return '彩色';
+  if (id?.startsWith('agent-pixel-')) return '像素';
+  return id?.startsWith('agent-') ? '线条' : '品牌';
+}
+const visibleAvatarOptions = computed(() => connectionIconOptions.filter(option => iconStyle(option.id) === avatarStyle.value));
 const avatarPosition = ref({ left: '0px', top: '0px' });
 
 function closeAvatarPicker(restoreFocus = false) {
@@ -72,24 +81,40 @@ function closeAvatarPicker(restoreFocus = false) {
 
 async function toggleAvatarPicker() {
   if (avatarOpen.value) { closeAvatarPicker(true); return; }
+  avatarStyle.value = iconStyle(draft.value?.icon);
   avatarOpen.value = true;
   await nextTick();
+  positionAvatarPicker();
+  avatarPopover.value?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus({ preventScroll: true });
+}
+
+function positionAvatarPicker() {
   const popup = avatarPopover.value;
   const trigger = avatarTrigger.value;
   if (!popup || !trigger) return;
   popup.showPopover?.();
   const bounds = trigger.getBoundingClientRect();
+  popup.style.maxWidth = `${bounds.width}px`;
   const top = bounds.bottom + 6;
   avatarPosition.value = {
-    left: `${Math.max(8, Math.min(bounds.left, window.innerWidth - popup.offsetWidth - 8))}px`,
+    left: `${Math.max(8, Math.min(bounds.right - popup.offsetWidth, window.innerWidth - popup.offsetWidth - 8))}px`,
     top: `${Math.max(8, Math.min(top + popup.offsetHeight <= window.innerHeight - 8 ? top : bounds.top - popup.offsetHeight - 6, window.innerHeight - popup.offsetHeight - 8))}px`,
   };
-  popup.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus({ preventScroll: true });
 }
+
+watch(avatarStyle, async () => {
+  await nextTick();
+  if (avatarOpen.value) positionAvatarPicker();
+});
 
 function selectAvatar(icon?: string) {
   if (draft.value) draft.value.icon = icon;
   closeAvatarPicker(true);
+}
+
+function randomAvatar() {
+  const options = visibleAvatarOptions.value.filter(option => option.id !== draft.value?.icon);
+  selectAvatar(options[Math.floor(Math.random() * options.length)]!.id);
 }
 
 function avatarToggled(event: Event) {
@@ -543,9 +568,13 @@ onBeforeUnmount(() => {
               <div class="connection-icon-preview"><AssistantConnectionAvatar :connection="draft" />
                 <button type="button" :aria-pressed="!draft.icon || draft.icon === 'auto'" @click="selectAvatar()">{{ t('自动识别') }}</button>
                 <button type="button" :aria-pressed="draft.icon === 'initials'" @click="selectAvatar('initials')">{{ t('名称缩写') }}</button>
+                <button type="button" @click="randomAvatar">{{ t('随机选择') }}</button>
+              </div>
+              <div class="connection-icon-styles" role="group" :aria-label="t('图标风格')">
+                <button v-for="style in avatarStyles" :key="style" type="button" :aria-pressed="avatarStyle === style" @click="avatarStyle = style">{{ t(style) }}</button>
               </div>
               <div class="connection-icon-options">
-                <button v-for="option in connectionIconOptions" :key="option.id" type="button" :title="option.label" :aria-label="option.label" :aria-pressed="draft.icon === option.id" @click="selectAvatar(option.id)">
+                <button v-for="option in visibleAvatarOptions" :key="option.id" type="button" :title="t(option.label)" :aria-label="t(option.label)" :aria-pressed="draft.icon === option.id" @click="selectAvatar(option.id)">
                   <AssistantConnectionAvatar :connection="{ ...draft, icon: option.id }" />
                 </button>
               </div>

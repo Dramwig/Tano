@@ -4355,7 +4355,12 @@ describe('Markdown editor round trips', () => {
       expect(handle.getAttribute('aria-haspopup')).toBe('menu');
       expect(menu.style.left).toBe(`${x}px`);
       expect(menu.style.top).toBe(`${y}px`);
-      expect(menu.contains(document.activeElement)).toBe(true);
+      expect(document.activeElement).toBe(menu);
+      const items = [...menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+      menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+      expect(document.activeElement).toBe(items[0]);
+      items[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+      expect(document.activeElement).toBe(items[1]);
       menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
       await nextTick();
       expect(document.querySelector('.block-context-menu')).toBeNull();
@@ -4368,6 +4373,30 @@ describe('Markdown editor round trips', () => {
       width.mockRestore();
       height.mockRestore();
     }
+  });
+
+  it.each(['转换为', '合并放入新块'])('opens the %s submenu without selecting its first item', async (label) => {
+    const { errors } = await mount('First paragraph.\n\nSecond paragraph.\n');
+    root.querySelector<HTMLButtonElement>('.tano-block-handle')!.click();
+    await nextTick();
+    const menu = document.querySelector<HTMLElement>('.block-context-menu')!;
+    const trigger = [...menu.querySelectorAll<HTMLButtonElement>('button')]
+      .find(button => button.textContent?.includes(label))!;
+    trigger.click();
+    await nextTick();
+    await nextTick();
+    const submenu = menu.querySelector<HTMLElement>('.block-convert-submenu')!;
+    expect(document.activeElement).toBe(submenu);
+    const items = [...submenu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+    submenu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(items[0]);
+    items[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(items[1]);
+    items[1]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+    await nextTick();
+    expect(menu.querySelector('.block-convert-submenu')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    expect(errors).toEqual([]);
   });
 
   it('opens the block menu from the gutter handle and duplicates only that block', async () => {

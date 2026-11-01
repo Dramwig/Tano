@@ -1,19 +1,13 @@
 import type { AssistantConnection } from '@tano/protocol';
-import { modelIcon } from './model-icons';
-import siliconcloud from '../assets/model-icons/lobehub/siliconcloud.svg?raw';
-import openrouter from '../assets/model-icons/lobehub/openrouter.svg?raw';
-import aihubmix from '../assets/model-icons/lobehub/aihubmix.svg?raw';
-import ai302 from '../assets/model-icons/lobehub/ai302.svg?raw';
-import burncloud from '../assets/model-icons/lobehub/burncloud.svg?raw';
-import newapi from '../assets/model-icons/lobehub/newapi.svg?raw';
-import together from '../assets/model-icons/lobehub/together.svg?raw';
-import groq from '../assets/model-icons/lobehub/groq.svg?raw';
-import fireworks from '../assets/model-icons/lobehub/fireworks.svg?raw';
+import { connectionBrandIcons } from './connection-brand-icons';
+import { agentIconOptions } from './agent-icons';
+import { legacyColorfulIcons } from './legacy-color-agent-icons';
 
-const extra = { siliconcloud, openrouter, aihubmix, ai302, burncloud, newapi, together, groq, fireworks };
 const providers: [string, string, string[]][] = [
-  ['openai', 'OpenAI / Codex', ['openai.com']],
+  ['openai', 'OpenAI / GPT', ['openai.com']],
+  ['codex', 'Codex', []],
   ['claude', 'Anthropic / Claude', ['anthropic.com']],
+  ['claudecode', 'Claude Code', []],
   ['gemini', 'Google Gemini', ['googleapis.com']],
   ['deepseek', 'DeepSeek', ['deepseek.com']],
   ['qwen', '通义千问', ['aliyuncs.com']],
@@ -36,7 +30,7 @@ const providers: [string, string, string[]][] = [
   ['groq', 'Groq', ['groq.com']],
   ['fireworks', 'Fireworks AI', ['fireworks.ai']],
 ];
-export const connectionIconOptions = providers.map(([id, label]) => ({ id, label }));
+export const connectionIconOptions = [...providers.map(([id, label]) => ({ id, label })), ...agentIconOptions];
 export type ConnectionIdentity = Pick<AssistantConnection, 'name' | 'endpoint' | 'kind' | 'icon'>;
 function serviceUrl(endpoint: string): URL | undefined {
   try {
@@ -47,11 +41,13 @@ function serviceUrl(endpoint: string): URL | undefined {
 }
 export function connectionIcon(connection: ConnectionIdentity) {
   const url = serviceUrl(connection.endpoint);
-  const detected = connection.kind === 'codex-cli' ? 'openai' : connection.kind === 'claude-cli' ? 'claude'
+  const detected = connection.kind === 'codex-cli' ? 'codex' : connection.kind === 'claude-cli' ? 'claudecode'
     : providers.find(([, , domains]) => domains.some(domain => url?.hostname === domain || url?.hostname.endsWith(`.${domain}`)))?.[0];
   const selected = connection.icon && connection.icon !== 'auto' ? connection.icon : detected;
-  const svg = selected && selected !== 'initials' && providers.some(([id]) => id === selected)
-    ? (extra[selected as keyof typeof extra] ?? modelIcon(selected)?.svg) : undefined;
+  const svg = agentIconOptions.find(option => option.id === selected)?.svg
+    ?? legacyColorfulIcons.find(option => option.id === selected)?.svg
+    ?? (selected && selected !== 'initials' && providers.some(([id]) => id === selected)
+      ? connectionBrandIcons[selected] : undefined);
   return {
     brand: svg ? selected : undefined,
     svg,

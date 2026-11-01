@@ -114,7 +114,7 @@ dialog.assistant-config-dialog .connection-avatar-popover {
   position: fixed;
   inset: auto;
   margin: 0;
-  width: min(320px, calc(100vw - 16px));
+  width: min(480px, calc(100vw - 16px));
   max-height: calc(100dvh - 16px);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -131,6 +131,11 @@ dialog.assistant-config-dialog .connection-avatar-popover .connection-icon-previ
   border-bottom: 1px solid var(--line);
 }
 dialog.assistant-config-dialog .connection-avatar-popover .connection-icon-options {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(40px, 1fr));
   padding: 0 12px 12px;
+}
+dialog.assistant-config-dialog .connection-avatar-popover .connection-icon-styles {
+  display: flex;
+  gap: 8px;
+  padding: 0 12px 10px;
 }

@@ -33,7 +33,7 @@ it('selects a stable person identity when typing @ and drops removed mentions be
   await nextTick(); await nextTick();
   expect(body.value).toBe('@Alice ');
   root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-  expect(submissions[0]).toEqual([{ personId: 'a00001', text: '@Alice' }]);
+  expect(submissions[0]).toEqual([{ personId: 'a00001', text: '@Alice', id: expect.any(String), from: 0 }]);
   body.value = 'No mention'; await nextTick();
   root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
   expect(submissions[1]).toEqual([]);

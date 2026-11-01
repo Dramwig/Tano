@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { Component } from 'vue';
-import { AlignLeft, ArrowDownAZ, Braces, CalendarClock, CalendarDays, CheckSquare2, ChevronRight, CircleHelp, Columns2, Hash, Info, List, ListCollapse, PanelsTopLeft, Plus, Quote, Repeat2, Trash2 } from 'lucide-vue-next';
+import ShortcutHint from './ShortcutHint.vue';
+import { AlignLeft, ArrowDown, ArrowDownAZ, ArrowUp, Braces, ClipboardCopy, CopyPlus, Group, Heading, IndentDecrease, IndentIncrease, Pilcrow, Replace, SquareCode, Ungroup, CalendarClock, CalendarDays, CheckSquare2, ChevronRight, CircleHelp, Columns2, Hash, Info, List, ListCollapse, PanelsTopLeft, Plus, Quote, Trash2 } from 'lucide-vue-next';
 import {
   Editor,
   rootCtx,
@@ -40,7 +41,7 @@ import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
 import { createDocumentDecorations } from './document-decorations';
 import { autoSpacing } from './auto-spacing';
 import type { EditorView } from '@milkdown/kit/prose/view';
-import { Fragment } from '@milkdown/kit/prose/model';
+import { Fragment, Slice } from '@milkdown/kit/prose/model';
 import { canSplit } from '@milkdown/kit/prose/transform';
 import type { Mark, Node } from '@milkdown/kit/prose/model';
 import type { Ctx } from '@milkdown/kit/ctx';
@@ -84,7 +85,7 @@ import { rawBlocks } from './raw-block';
 import { renderHtml } from './html-render';
 import { blockType, selectionContext } from './document-model';
 import type { EditorSelectionContext } from './document-model';
-import { blockCommand, blockCommandNames } from './block-commands';
+import { availableBlockConversions, blockCommand, blockCommandNames } from './block-commands';
 import { blockMenuStructure, blockContainerOptions } from './block-menu-structure';
 import { createCalloutTitle } from './callout-title';
 import type { CalloutKind } from './callout-title';
@@ -111,7 +112,7 @@ import { referencePicker, openReferencePicker } from './reference-picker';
 import { floatingPanelPosition, positionAnchoredPanel } from './panel-position';
 import type { PanelSide } from './panel-position';
 import { activateEditorPanel, announceEditorPanel, createEditorPanel, onOtherEditorPanel } from './editor-panel';
-import { parseReferenceUrl, referenceUrl, resolveReference } from '@tano/protocol';
+import { droppedEntryReferences, entryReferenceDragType, parseReferenceUrl, referenceUrl, resolveReference } from '@tano/protocol';
 import type { ReferenceTarget, ReferenceIdentity } from '@tano/protocol';
 import type { CommentAnchor } from '@tano/protocol';
 import { commentSpansForSelection, projectCommentText, proseRangesForCommentSpans } from './comment-projection';
@@ -1772,7 +1773,7 @@ const bridge = $prose(
       view: (view) => {
         bridgeView = view;
         emptyDocument.value = isEmptyDocument(view.state.doc);
-        emit('selectionChange', selectionContext(view.state));
+        emit('selectionChange', { ...selectionContext(view.state), availableBlockCommands: availableBlockConversions(view.state) });
         return {
           update(view, previous) {
             emptyDocument.value = isEmptyDocument(view.state.doc);
@@ -1794,7 +1795,7 @@ const bridge = $prose(
               !previous.doc.eq(view.state.doc) ||
               previous.storedMarks !== view.state.storedMarks
             )
-              emit('selectionChange', selectionContext(view.state));
+              emit('selectionChange', { ...selectionContext(view.state), availableBlockCommands: availableBlockConversions(view.state) });
             if (activated || applying || disposed || props.readonly || previous.doc.eq(view.state.doc)) return;
             if (sameMarkdownContent(previous.doc, view.state.doc)) return;
             // Column padding depends on the widest cell: typing in that cell
@@ -2111,7 +2112,29 @@ const bridge = $prose(
               );
             return true;
           },
+          dragover(_view, event) {
+            if (props.readonly || !referencesEnabled() || !event.dataTransfer?.types.includes(entryReferenceDragType)) return false;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'copy';
+            return true;
+          },
           drop(view, event) {
+            if (event.dataTransfer?.types.includes(entryReferenceDragType)) {
+              event.preventDefault();
+              event.stopPropagation();
+              if (props.readonly || !referencesEnabled()) return true;
+              const targets = droppedEntryReferences(event.dataTransfer.getData(entryReferenceDragType), props.referenceTargets ?? []);
+              if (!targets.length) return true;
+              const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos ?? view.state.selection.from;
+              const nodes = targets.flatMap((target, index) => [
+                ...(index ? [view.state.schema.text(' ')] : []),
+                view.state.schema.nodes.tano_reference!.create({ url: referenceUrl(target), label: target.name }),
+              ]);
+              const tr = view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(pos)));
+              view.dispatch(tr.replaceSelection(new Slice(Fragment.fromArray(nodes), 0, 0)).scrollIntoView());
+              view.focus();
+              return true;
+            }
             const files = Array.from(event.dataTransfer?.files ?? []);
             if (!files.length || !props.importFile || props.readonly) return false;
             event.preventDefault();
@@ -2995,7 +3018,7 @@ function openBlockMenu(event: MouseEvent, anchor?: HTMLElement, preserveSelectio
         y: Math.max(8, preserveSelection && y + menu.offsetHeight > window.innerHeight - 8
           ? y - menu.offsetHeight : Math.min(y, window.innerHeight - menu.offsetHeight - 8)),
       };
-      menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+      menu.focus({ preventScroll: true });
     });
   });
 }
@@ -3179,7 +3202,7 @@ function scheduleCloseBlockConvertMenu() {
   }, 150);
 }
 
-function openBlockConvertMenu(focusFirst = false, kind: 'convert' | 'wrap' = 'convert') {
+function openBlockConvertMenu(focusMenu = false, kind: 'convert' | 'wrap' = 'convert') {
   clearTimeout(blockConvertCloseTimer);
   if (!blockMenu.value) return;
   blockSubmenuKind.value = kind;
@@ -3197,7 +3220,7 @@ function openBlockConvertMenu(focusFirst = false, kind: 'convert' | 'wrap' = 'co
       x: Math.max(8, Math.min(x, window.innerWidth - submenu.offsetWidth - 8)),
       y: Math.max(8, Math.min(triggerBounds.top - 5, window.innerHeight - submenu.offsetHeight - 8)),
     };
-    if (focusFirst) submenu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+    if (focusMenu) submenu.focus({ preventScroll: true });
   });
 }
 
@@ -3809,35 +3832,34 @@ onBeforeUnmount(() => {
       :style="{ left: `${blockMenu.x}px`, top: `${blockMenu.y}px` }"
       @keydown="onBlockMenuKeydown"
     >
-      <div class="block-context-heading" role="presentation">{{ blockMenu.selectionMenu ? '选区操作' : blockMenuSelectionCount() > 1 ? `${blockMenuSelectionCount()} 个块的操作` : '块操作' }}</div>
-      <button role="menuitem" type="button" @click="blockMenuAction('copy')"><span aria-hidden="true">⧉</span>复制 Markdown<kbd class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
+      <button role="menuitem" type="button" @click="blockMenuAction('copy')"><ClipboardCopy :size="15" aria-hidden="true" />复制 Markdown<kbd class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
       <template v-if="!blockMenu.selectionMenu">
-      <button role="menuitem" type="button" :disabled="blockMenuSelectionCount() > 1" :title="blockMenuSelectionCount() > 1 ? '请选中单个块查看临时源码' : undefined" @click="blockMenuAction('source')"><Braces :size="15" aria-hidden="true" />临时显示 Markdown 源码</button>
-      <button role="menuitem" type="button" @click="blockMenuAction('duplicate')"><span aria-hidden="true">▣</span>创建副本</button>
+      <button role="menuitem" type="button" :disabled="blockMenuSelectionCount() > 1" :title="blockMenuSelectionCount() > 1 ? '请选中单个块查看临时源码' : undefined" @click="blockMenuAction('source')"><SquareCode :size="15" aria-hidden="true" />临时显示 Markdown 源码</button>
+      <button role="menuitem" type="button" @click="blockMenuAction('duplicate')"><CopyPlus :size="15" aria-hidden="true" />创建副本</button>
       <div class="menu-divider" role="separator" />
       <div class="block-convert-menu" role="presentation" @pointerenter="openBlockConvertMenu()" @pointerleave="scheduleCloseBlockConvertMenu">
-        <button ref="blockConvertTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'convert'" @click="openBlockConvertMenu(true)"><Repeat2 :size="15" aria-hidden="true" />转换为<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
-        <div v-if="blockConvertMenu && blockSubmenuKind === 'convert'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" aria-label="转换为" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
-          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('paragraph')" @click="blockMenuAction('paragraph')"><span aria-hidden="true">¶</span>转为正文</button>
-          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('heading')" @click="blockMenuAction('heading')"><span aria-hidden="true">H</span>转为标题</button>
-          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('list')" @click="blockMenuAction('list')"><span aria-hidden="true">☷</span>转为列表</button>
-          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('quote')" @click="blockMenuAction('quote')"><span aria-hidden="true">❝</span>转为引用</button>
+        <button ref="blockConvertTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'convert'" @click="openBlockConvertMenu(true)"><Replace :size="15" aria-hidden="true" />转换为<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
+        <div v-if="blockConvertMenu && blockSubmenuKind === 'convert'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" aria-label="转换为" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
+          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('paragraph')" @click="blockMenuAction('paragraph')"><Pilcrow :size="15" aria-hidden="true" />转为正文</button>
+          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('heading')" @click="blockMenuAction('heading')"><Heading :size="15" aria-hidden="true" />转为标题</button>
+          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('list')" @click="blockMenuAction('list')"><List :size="15" aria-hidden="true" />转为列表</button>
+          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('quote')" @click="blockMenuAction('quote')"><Quote :size="15" aria-hidden="true" />转为引用</button>
         </div>
       </div>
       <div class="block-convert-menu" role="presentation" @pointerenter="openBlockConvertMenu(false, 'wrap')" @pointerleave="scheduleCloseBlockConvertMenu">
-        <button ref="blockWrapTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'wrap'" @click="openBlockConvertMenu(true, 'wrap')"><span aria-hidden="true">▸</span>合并放入新块<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
-        <div v-if="blockConvertMenu && blockSubmenuKind === 'wrap'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" aria-label="合并放入新块" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
+        <button ref="blockWrapTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'wrap'" @click="openBlockConvertMenu(true, 'wrap')"><Group :size="15" aria-hidden="true" />合并放入新块<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
+        <div v-if="blockConvertMenu && blockSubmenuKind === 'wrap'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" aria-label="合并放入新块" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
           <button v-for="option in blockContainerOptions" :key="option.type" role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('wrap-' + option.type)" @click="blockMenuAction('wrap-' + option.type)"><component :is="blockContainerIcons[option.type]" :size="16" aria-hidden="true" />{{ option.label }}</button>
         </div>
       </div>
-      <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('unwrap')" title="移除外层块，将内部子块提升一级" @click="blockMenuAction('unwrap')"><span aria-hidden="true">↗</span>展开</button>
+      <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('unwrap')" title="移除外层块，将内部子块提升一级" @click="blockMenuAction('unwrap')"><Ungroup :size="15" aria-hidden="true" />展开</button>
       <div class="menu-divider" role="separator" />
-      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('move-up')" @click="blockMenuAction('move-up')"><span aria-hidden="true">↑</span>上移块<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['move-up'] ?? 'Alt + ↑' }}</kbd></button>
-      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('move-down')" @click="blockMenuAction('move-down')"><span aria-hidden="true">↓</span>下移块<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['move-down'] ?? 'Alt + ↓' }}</kbd></button>
-      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('indent')" @click="blockMenuAction('indent')"><span aria-hidden="true">→</span>移入前一个容器<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['indent'] ?? 'Alt + →' }}</kbd></button>
-      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('outdent')" @click="blockMenuAction('outdent')"><span aria-hidden="true">←</span>移出当前容器<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['outdent'] ?? 'Alt + ←' }}</kbd></button>
+      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('move-up')" @click="blockMenuAction('move-up')"><ArrowUp :size="15" aria-hidden="true" />上移块<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['move-up'] ?? 'Alt + ↑' }}</kbd></button>
+      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('move-down')" @click="blockMenuAction('move-down')"><ArrowDown :size="15" aria-hidden="true" />下移块<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['move-down'] ?? 'Alt + ↓' }}</kbd></button>
+      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('indent')" @click="blockMenuAction('indent')"><IndentIncrease :size="15" aria-hidden="true" />移入前容器<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['indent'] ?? 'Alt + →' }}</kbd></button>
+      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('outdent')" @click="blockMenuAction('outdent')"><IndentDecrease :size="15" aria-hidden="true" />移出当前容器<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['outdent'] ?? 'Alt + ←' }}</kbd></button>
       <div class="menu-divider" role="separator" />
-      <button role="menuitem" type="button" class="danger-text" @click="blockMenuAction('delete')"><Trash2 :size="15" aria-hidden="true" />删除块<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['delete'] ?? 'Backspace' }}</kbd></button>
+      <button role="menuitem" type="button" class="danger-text" @click="blockMenuAction('delete')"><Trash2 :size="15" aria-hidden="true" />删除块<kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHints?.['delete'] ?? 'Backspace'" /></kbd></button>
       </template>
     </div>
   </Teleport>

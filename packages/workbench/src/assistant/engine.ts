@@ -288,6 +288,9 @@ export function proposalFromTool(call: AssistantToolCall, sources: readonly Assi
   return { ...common, kind: 'edit', fileId: source.fileId, path: source.path, base: source.content, content };
 }
 
+/** Durable background runners suspend at a question and resume from the discussion. */
+export class AssistantWaitingError extends Error {}
+
 export async function runAssistant(options: {
   transport: AssistantTransport; connectionId: string; model: string; tools: boolean; workspaceId: string; runId: string;
   mode?: AssistantMode;
@@ -502,6 +505,7 @@ export async function runAssistant(options: {
         result = change;
         if (directName && change.written !== true) failure = ('error' in change ? change.error : undefined) ?? '变更未完成';
       } catch (error) {
+        if (error instanceof AssistantWaitingError) throw error;
         options.signal.throwIfAborted();
         failure = String(error) || '工具调用失败'; result = { error: failure, written: false };
       }

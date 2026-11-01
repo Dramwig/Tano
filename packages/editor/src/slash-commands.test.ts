@@ -175,6 +175,22 @@ describe('slash block commands', () => {
     expect(host!.querySelector('img')?.closest('p')?.hasAttribute('data-placeholder')).toBe(false);
   });
 
+  it('renders consistent decorative SVG icons for every slash item and filtered results', async () => {
+    const { type, menu } = await mount();
+    type('/');
+    const icons = [...menu().querySelectorAll('.tano-slash-icon')];
+    expect(icons).toHaveLength(slashItems('', [0, 1]).length);
+    for (const icon of icons) {
+      expect(icon.getAttribute('aria-hidden')).toBe('true');
+      expect(icon.textContent).toBe('');
+      expect(icon.querySelector('svg')?.getAttribute('width')).toBe('16');
+      expect(icon.querySelector('svg')?.getAttribute('stroke-width')).toBe('1.75');
+    }
+    type('custom');
+    expect(menu().querySelectorAll('.tano-slash-icon svg')).toHaveLength(1);
+    expect(menu().querySelector('.tano-slash-option')?.textContent).toContain('Custom Callout');
+  });
+
   it('converts with Enter, puts the caret in a table, and undoes/redoes atomically', async () => {
     const { view, type, key, menu, markdownValue } = await mount();
     type('/table');

@@ -11,7 +11,7 @@ import CommentComposer from './CommentComposer.vue';
 const props = defineProps<{ thread: CommentThread; quote?: string; local?: boolean; preview?: boolean; readonly: boolean; busy: boolean; authorId: string; authorName: string; assistant?: boolean }>();
 const emit = defineEmits<{
   expand: [];
-  reply: [body: string, mentions: CommentMention[]];
+  reply: [body: string, mentions: CommentMention[], replyTo?: string];
   'reply-request': [message: CommentMessage];
   resolve: [resolved: boolean];
   edit: [change: CommentMessageEdit];
@@ -31,7 +31,7 @@ const replyTargets = computed(() => {
   }
   return targets;
 });
-const editInput = ref<HTMLTextAreaElement[]>();
+const editInput = ref<InstanceType<typeof CommentComposer>[]>();
 const editing = ref<{ id: string; body: string; base: string }>();
 const menu = ref<HTMLElement>();
 const menuMessage = ref<CommentMessage>();
@@ -39,7 +39,7 @@ const menuPosition = ref({ left: '0px', top: '0px' });
 const removal = ref<CommentMessageRemoval>();
 let menuButton: HTMLButtonElement | undefined;
 function sendReply(mentions: CommentMention[] = []) {
-  if (reply.value.trim()) emit('reply', reply.value, mentions);
+  if (reply.value.trim()) emit('reply', reply.value, mentions, props.thread.messages.at(-1)?.id);
 }
 function clearReply() { reply.value = ''; }
 function finishEdit() { editing.value = undefined; }
@@ -80,33 +80,13 @@ async function editMessage() {
   editing.value = { id: message.id, body: message.body, base: message.body };
   closeMenu();
   await nextTick();
-  const input = editInput.value?.[0];
-  resizeEdit();
-  input?.focus();
-  input?.setSelectionRange(input.value.length, input.value.length);
+  await editInput.value?.[0]?.focus(true);
 }
-function saveEdit() {
+function saveEdit(mentions?: CommentMention[]) {
   if (props.busy || !editing.value?.body.trim()) return;
-  emit('edit', { messageId: editing.value.id, body: editing.value.body, expectedBody: editing.value.base });
-}
-function resizeEdit() {
-  const input = editInput.value?.[0];
-  if (!input) return;
-  input.style.height = 'auto';
-  input.style.height = `${Math.min(320, input.scrollHeight)}px`;
+  emit('edit', { messageId: editing.value.id, body: editing.value.body, expectedBody: editing.value.base, mentions });
 }
 function cancelEdit() { if (!props.busy) finishEdit(); }
-function editKeydown(event: KeyboardEvent) {
-  if (event.isComposing) return;
-  if (event.key === 'Escape') {
-    event.stopPropagation();
-    event.preventDefault();
-    cancelEdit();
-  } else if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault();
-    saveEdit();
-  }
-}
 function prepareRemoval() {
   const message = menuMessage.value;
   if (!message) return;
@@ -156,7 +136,7 @@ watch(() => props.thread.messages, messages => {
 <template>
   <article class="comment-conversation" :class="{ 'is-local': local, 'is-preview': preview }" :data-comment-thread="thread.id">
     <div v-for="(message, index) in thread.messages" v-show="!preview || index === 0 || index === thread.messages.length - 1" :key="message.id" class="comment-message" :class="{ 'is-reply': index > 0 }">
-      <span class="comment-avatar" :title="message.authorName"><UserRound :size="local ? 15 : 18" /></span>
+      <span class="comment-avatar" :title="message.authorName"><component :is="message.agentTaskId ? Bot : UserRound" :size="local ? 15 : 18" /></span>
       <div class="comment-message-content">
         <div class="comment-message-header">
           <div class="comment-message-meta"><strong>{{ message.authorName }}</strong>
@@ -180,13 +160,14 @@ watch(() => props.thread.messages, messages => {
           <span class="comment-reply-reference-body">{{ replyTargets.get(message.id)?.body }}</span>
         </div>
         <slot v-if="index === 0 && $slots['first-body']" name="first-body" :preview="preview" />
-        <form v-else-if="editing?.id === message.id" class="comment-edit" @submit.prevent="saveEdit" @keydown="editKeydown">
-          <textarea ref="editInput" v-model="editing.body" :aria-label="t('编辑评论')" rows="1" maxlength="20000" :readonly="busy" @input="resizeEdit" />
-          <div class="comment-edit-actions" role="group" :aria-label="t('编辑操作')">
+        <CommentComposer v-else-if="editing?.id === message.id" ref="editInput" v-model="editing.body" class="comment-edit"
+          :label="t('编辑评论')" :author-name="authorName" :busy="busy" :initial-mentions="message.mentions" :max-height="320"
+          @submit="saveEdit" @keydown.esc.stop.prevent="cancelEdit">
+          <template #actions><div class="comment-edit-actions" role="group" :aria-label="t('编辑操作')">
             <button type="button" class="comment-edit-cancel" :aria-label="t('取消编辑')" :data-tooltip="t('取消编辑')" :disabled="busy" @click="cancelEdit"><X :size="13" /></button>
             <button type="submit" class="comment-edit-confirm" :aria-label="t('确认编辑')" :data-tooltip="t('确认编辑')" :disabled="busy || !editing.body.trim()"><Check :size="13" /></button>
-          </div>
-        </form>
+          </div></template>
+        </CommentComposer>
         <p v-else>{{ message.body }}</p>
         <button v-if="preview && index === 0 && hiddenReplies" type="button" class="comment-expand-replies" @click="emit('expand')">{{ t('查看') }} {{ hiddenReplies }} {{ t('条回复') }}</button>
         <div v-if="index === 0 && thread.resolved" class="comment-message-actions">
@@ -230,7 +211,8 @@ watch(() => props.thread.messages, messages => {
 .comment-quote { margin: 8px 0 10px 2px; border-left: 2px solid #eabf35; padding-left: 10px; color: var(--muted); font-size: 12px; line-height: 1.6; max-height: 80px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .comment-message-actions { display: flex; align-items: center; gap: 12px; min-height: 22px; margin-top: 7px; font-size: 12px; color: var(--muted); }
 .comment-edit { display: flex; align-items: flex-start; gap: 10px; margin-top: 8px; }
-.comment-edit textarea { flex: 1; min-width: 0; width: 100%; min-height: 22px; max-height: 320px; box-sizing: border-box; resize: none; border: 0; border-radius: 0; padding: 0; margin: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+.comment-edit :deep(.comment-composer-field) { border: 0; padding: 0; align-items: flex-start; gap: 8px; }
+.comment-edit :deep(textarea) { flex: 1; min-width: 0; width: 100%; min-height: 22px; max-height: 320px; box-sizing: border-box; resize: none; border: 0; border-radius: 0; padding: 0; margin: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
 .comment-edit-actions { display: flex; flex: none; align-items: center; gap: 8px; height: 22px; }
 .comment-edit-actions button { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; color: white; cursor: pointer; }
 .comment-edit-cancel { background: #858585; }
@@ -246,7 +228,7 @@ watch(() => props.thread.messages, messages => {
 .comment-conversation:not(.is-local) .comment-message-header { align-items: center; min-height: 32px; }
 .comment-conversation:not(.is-local) .comment-message-meta { gap: 8px; font-size: 14px; line-height: 24px; }
 .comment-conversation:not(.is-local) .comment-message p { margin-top: 4px; font-size: 15px; line-height: 1.65; }
-.comment-conversation:not(.is-local) .comment-edit textarea { font-size: 15px; line-height: 1.65; }
+.comment-conversation:not(.is-local) .comment-edit :deep(textarea) { font-size: 15px; line-height: 1.65; }
 .comment-reply-reference { display: flex; align-items: center; gap: 4px; min-width: 0; margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 18px; }
 .comment-reply-reference > svg { flex: none; }
 .comment-reply-reference-author { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

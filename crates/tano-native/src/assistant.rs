@@ -13,6 +13,9 @@ use tokio::sync::watch;
 static CONNECTION_LOCK: Mutex<()> = Mutex::new(());
 static SESSION_LOCK: Mutex<()> = Mutex::new(());
 
+#[path = "assistant_inbox.rs"]
+pub(crate) mod inbox;
+
 #[path = "assistant_cc_switch.rs"]
 pub(crate) mod cc_switch;
 
@@ -374,7 +377,7 @@ pub async fn assistant_models(
 
 #[tauri::command]
 pub fn assistant_protocol_version() -> u32 {
-    12
+    13
 }
 
 #[tauri::command]
@@ -1547,7 +1550,7 @@ mod tests {
             forbidden["tools"][10]["function"]["name"] = json!("execute_shell");
             assert!(request_body(&config, forbidden).is_err());
         }
-        assert_eq!(assistant_protocol_version(), 12);
+        assert_eq!(assistant_protocol_version(), 13);
     }
     #[test]
     fn chat_combines_only_leading_system_messages_and_preserves_tool_receipts() {

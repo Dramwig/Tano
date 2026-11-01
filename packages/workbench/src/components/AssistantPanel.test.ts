@@ -522,3 +522,20 @@ it('groups and searches recent sessions in the title menu while keeping the conv
   expect(assistant.session!.title).toBe('昨天的翻译');
   expect(root.querySelector('#assistant-history-options')).toBeNull();
 });
+
+it('adds dragged sources once and rejects cross-workspace references', async () => {
+  const { workspace, assistant } = await mountEmptyConversation();
+  const targets = workspace.referenceTargets.filter(target => target.type === 'document').slice(0, 2);
+  assistant.files = [];
+  const drop = (workspaceId: string) => {
+    const event = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'dataTransfer', { value: {
+      types: ['application/x-tano-entry-references'],
+      getData: () => JSON.stringify({ workspace: workspaceId, ids: targets.map(target => target.id) }),
+    } });
+    root.querySelector('.assistant-panel')!.dispatchEvent(event);
+  };
+  drop('foreign'); expect(assistant.files).toEqual([]);
+  drop(workspace.workspace!.id); drop(workspace.workspace!.id);
+  expect(assistant.files).toEqual(targets.map(target => target.id));
+});

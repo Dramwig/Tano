@@ -16,7 +16,7 @@ import TemplateThumbnail from './TemplateThumbnail.vue';
 import WorkspaceBreadcrumb from './WorkspaceBreadcrumb.vue';
 
 const props = defineProps<{ source?: string; demoLabel?: string | null; initialize?: { title: string; apply: (content: string) => void } }>();
-const emit = defineEmits<{ close: []; openFile: [file: FileEntry] }>();
+const emit = defineEmits<{ close: []; openFile: [file: FileEntry]; openDirectory: [path: string] }>();
 const store = useWorkspaceStore(), workspaceId = store.workspace!.id;
 const page = ref<HTMLElement>(), scroller = ref<HTMLElement>();
 const custom = ref<DocumentTemplate[]>([]), selected = ref<DocumentTemplate>();
@@ -121,7 +121,7 @@ onMounted(async () => {
       <div class="template-breadcrumb" :class="{ 'template-breadcrumb-preview': mode === 'preview' }"><WorkspaceBreadcrumb
         :workspace-id="store.workspace?.id" :workspace-name="store.workspace?.name ?? 'Tano'"
         :entries="store.workspace?.files ?? []" :demo-label="demoLabel" :read-only="store.workspace?.readOnly"
-        :pages="breadcrumbPages" @navigate="navigateBreadcrumb" @open="emit('openFile', $event)"
+        :pages="breadcrumbPages" @navigate="navigateBreadcrumb" @open="emit('openFile', $event)" @open-directory="emit('openDirectory', $event)"
       /></div>
       <button v-if="mode === 'browse'" class="template-button" :disabled="disabled" @click="edit(true)"><Plus :size="15" />{{ t('创建模板') }}</button>
       <button v-else-if="mode === 'preview'" class="template-button template-button-primary" @click="navigate('detail')"><FilePlus2 :size="15" />{{ t('使用模板') }}</button>

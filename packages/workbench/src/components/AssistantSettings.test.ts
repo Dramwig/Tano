@@ -496,6 +496,40 @@ it('edits and saves a connection avatar without changing its identity', async ()
   expect(assistant.saveConnection).toHaveBeenCalledWith(expect.objectContaining({ id: 'existing', icon: 'siliconcloud' }), '');
 });
 
+it('right-aligns the avatar picker and saves a different random generic icon', async () => {
+  assistant.connections[0]!.icon = 'agent-robot';
+  await openEditor(true);
+  const trigger = dialog().querySelector<HTMLButtonElement>('.connection-avatar-trigger')!;
+  vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({ left: 100, right: 700, top: 100, bottom: 140 } as DOMRect);
+  vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(320);
+  vi.spyOn(Math, 'random').mockReturnValue(0);
+  trigger.click(); await nextTick(); await nextTick();
+  expect(dialog().querySelector<HTMLElement>('.connection-avatar-popover')!.style.left).toBe('380px');
+  expect(dialog().querySelectorAll('.connection-icon-options button')).toHaveLength(24);
+  button('随机选择', dialog()).click(); await nextTick();
+  expect(dialog().querySelector('.connection-avatar-popover')).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+  submit(); await nextTick();
+  expect(assistant.saveConnection).toHaveBeenCalledWith(expect.objectContaining({ id: 'existing', icon: 'agent-cat' }), '');
+});
+
+it('switches avatar styles and preserves the selected style when reopening', async () => {
+  await openEditor(true);
+  const trigger = dialog().querySelector<HTMLButtonElement>('.connection-avatar-trigger')!;
+  trigger.click(); await nextTick(); await nextTick();
+  button('彩色', dialog()).click(); await nextTick();
+  expect(dialog().querySelectorAll('.connection-icon-options button')).toHaveLength(24);
+  dialog().querySelector<HTMLButtonElement>('.connection-icon-options [aria-label="宇航员"]')!.click();
+  await nextTick(); trigger.click(); await nextTick(); await nextTick();
+  expect(button('彩色', dialog()).getAttribute('aria-pressed')).toBe('true');
+  expect(dialog().querySelector('.connection-icon-options [aria-label="宇航员"]')?.getAttribute('aria-pressed')).toBe('true');
+  button('像素', dialog()).click(); await nextTick();
+  expect(dialog().querySelectorAll('.connection-icon-options button')).toHaveLength(12);
+  dialog().querySelector<HTMLButtonElement>('[aria-label="Pixel 1"]')!.click();
+  await nextTick(); submit(); await nextTick();
+  expect(assistant.saveConnection).toHaveBeenCalledWith(expect.objectContaining({ icon: 'agent-pixel-1' }), '');
+});
+
 it('keeps quota configuration out of the model connection editor', async () => {
   await openEditor(true);
   expect(dialog().querySelector('.quota-panel')).toBeNull();

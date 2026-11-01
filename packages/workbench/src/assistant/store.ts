@@ -7,7 +7,7 @@ import type { AssistantExecutionResult } from './execution';
 import { useWorkspaceStore } from '../stores/workspace';
 import { useWorkbenchRuntime } from '../runtime';
 import { demoAssistantTransport, nativeAssistantTransport } from './transport';
-import { runAssistant } from './engine';
+import { runAssistant, AssistantWaitingError } from './engine';
 import { AssistantRunError } from './completion';
 import type { AssistantTextPhase } from './completion';
 import { assistantHistory } from './results';
@@ -29,9 +29,15 @@ export const useAssistantStore = defineStore('assistant', () => createAssistantS
 export const useInlineAssistantStore = defineStore('inline-assistant', () => createAssistantState(true));
 
 /** Separate task controllers and sessions, with the same guarded execution path. */
-function createAssistantState(inline = false) {
-  const workspace = useWorkspaceStore();
-  const runtime = useWorkbenchRuntime();
+export interface BackgroundAssistantHooks {
+  workspace?: ReturnType<typeof useWorkspaceStore>;
+  runtime?: ReturnType<typeof useWorkbenchRuntime>;
+  guard(): Promise<void>;
+  askUser(questions: AssistantQuestion[]): Promise<never>;
+}
+export function createAssistantState(inline = false, background?: BackgroundAssistantHooks) {
+  const workspace = background?.workspace ?? useWorkspaceStore();
+  const runtime = background?.runtime ?? useWorkbenchRuntime();
   const transport = runtime.assistant ?? (runtime.native && !runtime.mobile && runtime.adapter.mode === 'desktop'
     ? nativeAssistantTransport() : runtime.adapter.mode === 'demo' ? demoAssistantTransport() : undefined);
   const available = !!transport;
@@ -288,6 +294,7 @@ function createAssistantState(inline = false) {
     reply.activity?.push({ kind: 'input', inputId: request.id });
     try { await persist(target); signal.throwIfAborted(); }
     catch (reason) { request.status = 'cancelled'; throw reason; }
+    if (background) return background.askUser(questions);
     return new Promise<AssistantQuestionAnswer[]>((resolve, reject) => {
       const clear = () => {
         signal.removeEventListener('abort', cancel);
@@ -393,7 +400,11 @@ function createAssistantState(inline = false) {
       let textPhase: AssistantTextPhase = 'pending';
       let responseStart = 0, activityStart = 0, runCompleted = false;
       let toolActivity: Extract<AssistantActivity, { kind: 'tool' }> | undefined;
-      reply.usage = await runAssistant({ transport, connectionId: config.id, model, reasoningEffort: effort, tools: config.tools,
+      const executionTransport = background ? { ...transport, request: async (...args: Parameters<typeof transport.request>) => {
+        await background.guard();
+        return transport.request(...args);
+      } } : transport;
+      reply.usage = await runAssistant({ transport: executionTransport, connectionId: config.id, model, reasoningEffort: effort, tools: config.tools,
         mode: inline ? 'inline' : 'sidebar', locale: requestLocale, promptOrigin,
         workspaceId: expected.id, runId: reply.id, sources: reply.sources!, history, rules, prompt: question, signal: abort.signal,
         ...(inline ? {} : { askUser: (questions: AssistantQuestion[]) => askUser(questions, target, reply!, abort.signal) }),
@@ -472,8 +483,9 @@ function createAssistantState(inline = false) {
     } catch (reason) {
       const cancelled = abort.signal.aborted;
       if (reply) {
-        reply.state = cancelled ? 'cancelled' : 'failed';
-        reply.termination = { reason: cancelled ? 'cancelled' : reason instanceof AssistantRunError ? reason.reason : 'error' };
+        reply.state = reason instanceof AssistantWaitingError ? 'waiting' : cancelled ? 'cancelled' : 'failed';
+        reply.termination = reason instanceof AssistantWaitingError ? undefined
+          : { reason: cancelled ? 'cancelled' : reason instanceof AssistantRunError ? reason.reason : 'error' };
         for (const item of reply.activity ?? []) if (item.kind === 'text') item.phase = 'working';
         reply.error = cancelled ? '已停止，已完成的修改保留在变更清单中，未完成的操作不会继续执行' : String(reason);
       } else if (epoch === generation) error.value = String(reason);
@@ -498,6 +510,7 @@ function createAssistantState(inline = false) {
       if (proposal.fileId && managed(proposal.fileId)) throw new Error('此文档正由协作会话管理，暂时不能直接修改');
     };
     try {
+      await background?.guard();
       assertCurrent();
       if (target.messages.some(message => message.proposals?.some(item => item.id !== proposal.id &&
           ['unknown', 'applying'].includes(item.status) && (item.path === proposal.path || !!proposal.fileId && item.fileId === proposal.fileId))))
@@ -514,6 +527,7 @@ function createAssistantState(inline = false) {
         }
         proposal.status = 'applying';
         await persist(target); // A crash must leave a durable intent, never an invisible write.
+        await background?.guard();
         assertCurrent();
         submitted = true;
         const result = await workspace.reviewAssistantProposal(expected, proposal, proposal.preview, true, signal);
@@ -707,7 +721,7 @@ function createAssistantState(inline = false) {
     const expected = scope(); loading.value = true; error.value = '';
     try {
       await reloadConnections();
-      const loaded = inline ? [] : await transport.loadSessions(expected.id);
+      const loaded = inline || background ? [] : await transport.loadSessions(expected.id);
       if (epoch !== generation) return;
       for (const target of loaded) for (const message of target.messages) {
         if (message.state === 'running' || message.state === 'waiting') {

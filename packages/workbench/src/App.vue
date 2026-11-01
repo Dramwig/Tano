@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ShortcutHint from '@tano/editor/shortcut-hint';
 import WorkspaceSyncPanel from './components/WorkspaceSyncPanel.vue';
 import { vScrollFade } from './scroll-fade';
 import { vOutlineMotion } from './outline-motion';
@@ -105,6 +106,7 @@ import DocumentTitle from './components/DocumentTitle.vue';
 import { appearanceText } from './document-appearance';
 import { useDocumentFavicon } from './document-favicon';
 import WorkspaceBreadcrumb from './components/WorkspaceBreadcrumb.vue';
+import FolderView from './components/FolderView.vue';
 import PluginViewHeader from './components/PluginViewHeader.vue';
 import { pluginPreviewStatus, pluginViewHeader } from './plugins/view-header';
 import DocumentStatus from './components/DocumentStatus.vue';
@@ -174,6 +176,7 @@ import { butterflyScope } from './assistant/butterfly';
 import { createButterflyIdleTrigger } from './assistant/butterfly-idle';
 import { butterflyPerchDirective, provideButterflyController } from './assistant/butterfly-vue';
 import { useAssistantStore, useInlineAssistantStore } from './assistant/store';
+import { useAgentInboxController, agentInboxKey } from './assistant/agent-controller';
 import { inlineAssistantResult } from './assistant/inline-result';
 const DiffDialog = defineAsyncComponent(() => import('./components/DiffDialog.vue'));
 import { handleMobileVisibility } from './mobile-lifecycle';
@@ -281,6 +284,9 @@ async function toggleSuggestionMode(fileId: string) {
   finally { suggestionModeBusy.value = false; }
 }
 const assistant = useAssistantStore();
+const agentInbox = useAgentInboxController();
+provide(agentInboxKey, agentInbox);
+watch(agentInbox.error, error => { if (error) store.report(error); });
 // Keep the panel mounted until its closing transition releases the layout space.
 const assistantPanelMounted = ref(assistant.opened);
 watch(() => assistant.opened, open => { if (open) assistantPanelMounted.value = true; });
@@ -387,7 +393,7 @@ function topbarVisibilityItems(tabId: string, hasDocument: boolean, activePane: 
 const SETTINGS_TAB_ID = 'view:settings';
 const settingsTabView = { id: SETTINGS_TAB_ID, get label() { return t('设置'); }, icon: Settings2, detachable: true };
 store.registerViews([...extensionViews, settingsTabView, { id: ASSISTANT_TAB_ID, label: t('助手'), icon: Bot }]);
-store.setBeforeWorkspaceChange(async () => { await assistant.settle(); await inlineRunner.settle(); });
+store.setBeforeWorkspaceChange(async () => { await assistant.settle(); await inlineRunner.settle(); await agentInbox.settle(); });
 const activeExtensionView = computed(() =>
   extensionViews.find((view) => view.id === store.activeId),
 );
@@ -1199,6 +1205,12 @@ const treeFiles = computed(() => {
 });
 const fileTree = ref<InstanceType<typeof FileTree>>();
 const revealedHomeId = ref('');
+async function openBreadcrumbDirectory(path: string, newTab = false) {
+  const home = folderHomes.value.get(path);
+  if (home) await openEntry(home, newTab);
+  else await store.openDirectory(path, { newTab });
+  if (compactPanes.value) sidebar.value = false;
+}
 const folderHomes = computed(() => indexFolderHomes(treeFiles.value, store.workspaceSettings.folderHomeFileName));
 const homeFolderIds = computed(() => {
   const ids = new Map<string, string>();
@@ -2229,6 +2241,10 @@ async function insertSourceFiles(
 
 async function openEntry(file: FileEntry, newTab = false) {
   newTab = newTab && tabsEnabled;
+  if (file.kind === 'directory') {
+    await openBreadcrumbDirectory(file.path, newTab);
+    return;
+  }
   const handler = fileHandlers.resolve(file.path);
   if (isObjectPath(file.path)) {
     const record = store.objects.find((item) => item.path === file.path);
@@ -2683,6 +2699,12 @@ function fileDragStart(file: FileEntry, event: DragEvent) {
   draggedEntry.value = { file, workspaceId: workspace.value.id };
   draggedSelection.value = selection;
   dropFolder.value = null;
+  event.dataTransfer.setData('application/x-tano-entry-references', JSON.stringify({
+    workspace: workspace.value.id,
+    ids: store.referenceTargets.filter(target => selection.some(entry =>
+      entry.id === target.id || (entry.kind === 'directory' && target.path.startsWith(`${entry.path}/`)),
+    )).map(target => target.id),
+  }));
   event.dataTransfer.effectAllowed = 'copyMove';
   event.dataTransfer.setData(
     'application/x-tano-entry',
@@ -4158,11 +4180,13 @@ onMounted(async () => {
           if (await store.flush()) {
             await assistant.settle();
             await inlineRunner.settle();
+            await agentInbox.settle();
             await editing.suspendAll();
             await closeSettingsWindow();
             await getCurrentWindow().destroy();
           } else store.report(t('还有未保存的内容，窗口已保留。请先保存或另存副本。'));
         } catch (error) {
+          agentInbox.resume();
           store.report(error);
         }
       });
@@ -4559,7 +4583,7 @@ const helpBlocked = computed(() => !!(
                       ? t('删除所选文档')
                       : t('将所选条目移入回收站')
                 }}
-              <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('deleteFile') }}</kbd></button>
+              <kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('deleteFile')" /></kbd></button>
             </template>
             <template v-else>
               <!-- Primary actions stay first for files and folders. -->
@@ -4598,7 +4622,7 @@ const helpBlocked = computed(() => !!(
                   @click="fileContextAction('rename')"
                 >
                   <Pencil :size="15" />{{ t('重命名文件夹') }}
-                  <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd>
+                  <kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('renameFile')" /></kbd>
                 </button>
               </template>
               <template v-else>
@@ -4650,7 +4674,7 @@ const helpBlocked = computed(() => !!(
                   @click="fileContextAction('rename')"
                 >
                   <Pencil :size="15" />{{ t('重命名文档') }}
-                  <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd>
+                  <kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('renameFile')" /></kbd>
                 </button>
                 <button
                   v-else-if="attachments || isDataTableFilePath(fileContextMenu.file.path)"
@@ -4659,7 +4683,7 @@ const helpBlocked = computed(() => !!(
                   @click="fileContextAction('rename')"
                 >
                   <Pencil :size="15" />{{ t('重命名文件') }}
-                  <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd>
+                  <kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('renameFile')" /></kbd>
                 </button>
               </template>
               <button
@@ -4779,7 +4803,7 @@ const helpBlocked = computed(() => !!(
                           : t('删除在线文档')
                         : t('移入回收站')
                   }}
-                  <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('deleteFile') }}</kbd>
+                  <kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('deleteFile')" /></kbd>
                 </button>
               </template>
             </template>
@@ -4841,7 +4865,7 @@ const helpBlocked = computed(() => !!(
                 @click="directoryContextAction('rename')"
               >
                 <Pencil :size="15" />{{ t('重命名文件夹') }}
-              <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd></button>
+              <kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('renameFile')" /></kbd></button>
               <button
                 class="danger-text"
                 role="menuitem"
@@ -4851,7 +4875,7 @@ const helpBlocked = computed(() => !!(
                 <Trash2 :size="15" />{{
                   store.isDemo ? t('删除文件夹') : store.isWeb ? t('删除在线文件夹') : t('将文件夹移入回收站')
                 }}
-              <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('deleteFile') }}</kbd></button>
+              <kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('deleteFile')" /></kbd></button>
             </template>
           </div>
         </Teleport>
@@ -4930,7 +4954,7 @@ const helpBlocked = computed(() => !!(
               </template>
               <template #default>
               <button role="menuitem" @click="workspaceMenu = false; commandPaletteOpened = true">
-                <Search :size="16" />{{ t('命令中心') }}<span class="menu-shortcut">{{ shortcutHint('commandPalette') }}</span>
+                <Search :size="16" />{{ t('命令中心') }}<span class="menu-shortcut"><ShortcutHint :label="shortcutHint('commandPalette')" /></span>
               </button>
               <component
                 :is="extensions.regions['workspace-settings']"
@@ -5234,6 +5258,7 @@ const helpBlocked = computed(() => !!(
             :demo-label="store.isDemo ? workspaceStatusLabel : undefined"
             @close="templateLibraryOpen = false"
             @open-file="(file) => { store.focusPane(pane.id); openEntry(file); }"
+            @open-directory="(path) => { store.focusPane(pane.id); templateLibraryOpen = false; void openBreadcrumbDirectory(path); }"
           >
             <template #navigation>
               <div v-if="!sidebar && !(native && !mobile && workspace)" class="topbar-navigation">
@@ -5313,16 +5338,17 @@ const helpBlocked = computed(() => !!(
                 "
                 :workspace-id="workspace?.id"
                 :workspace-name="workspace?.name ?? 'Tano'"
-                :hide-workspace="!!tab?.path && !tab?.workspaceView"
                 :entries="workspace?.files ?? []"
                 :folder-home-file-name="store.workspaceSettings.folderHomeFileName"
                 :document-icons="treeDocumentIcons"
                 :load-document-icon="loadTreeDocumentIcon"
                 :path="tab?.path"
+                :directory="!!tab?.directory"
                 :workspace-view="tab?.workspaceView?.view"
                 :demo-label="store.isDemo ? workspaceStatusLabel : undefined"
                 :read-only="workspace?.readOnly"
                 @open="(file) => { store.focusPane(pane.id); openEntry(file); }"
+                @open-directory="(path) => { store.focusPane(pane.id); void openBreadcrumbDirectory(path); }"
               >
                 <template #status>
                   <DocumentStatus v-if="tab?.pluginView && isVisible('document-status')"
@@ -5554,24 +5580,24 @@ const helpBlocked = computed(() => !!(
                     >
                       <PluginMenu location="document" :file-id="active.id" @selected="menu = false" />
                       <button type="button" @click="openPaneSearch(pane.id)">
-                        <Search :size="15" />{{ t('页内搜索') }}<span class="menu-shortcut">{{ shortcutHint('pageSearch') }}</span>
+                        <Search :size="15" />{{ t('页内搜索') }}<span class="menu-shortcut"><ShortcutHint :label="shortcutHint('pageSearch')" /></span>
                       </button>
                       <button type="button" @click="openPaneSearch(pane.id, true)">
-                        <Repeat2 :size="15" />{{ t('查找与替换') }}<span class="menu-shortcut">{{ shortcutHint('pageReplace') }}</span>
+                        <Repeat2 :size="15" />{{ t('查找与替换') }}<span class="menu-shortcut"><ShortcutHint :label="shortcutHint('pageReplace')" /></span>
                       </button>
                       <button
                         type="button"
                         :disabled="editorReadonly || !documentUndoAvailable"
                         @click="undoDocument"
                       >
-                        <Undo2 :size="15" />{{ t('撤销') }}<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('undo') }}</kbd>
+                        <Undo2 :size="15" />{{ t('撤销') }}<kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('undo')" /></kbd>
                       </button>
                       <button
                         type="button"
                         :disabled="editorReadonly || !documentRedoAvailable"
                         @click="redoDocument"
                       >
-                        <Redo2 :size="15" />{{ t('重做') }}<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('redo') }}</kbd>
+                        <Redo2 :size="15" />{{ t('重做') }}<kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('redo')" /></kbd>
                       </button>
                       <button
                         @click="
@@ -5579,7 +5605,7 @@ const helpBlocked = computed(() => !!(
                           store.flush();
                         "
                       >
-                        <CheckCheck :size="15" />{{ t('立即保存') }}<span class="menu-shortcut">{{ shortcutHint('save') }}</span>
+                        <CheckCheck :size="15" />{{ t('立即保存') }}<span class="menu-shortcut"><ShortcutHint :label="shortcutHint('save')" /></span>
                       </button>
                       <div class="menu-divider" role="separator" />
                       <button type="button" :disabled="!canAddDocumentProperty" @click="addDocumentProperty">
@@ -5723,6 +5749,11 @@ const helpBlocked = computed(() => !!(
                 @open="openAssistant(pane.id, pane.activeId, { forcePanel: true })"
               />
             </div>
+            <FolderView v-if="workspace && tab?.directory" :directory="tab.directory" :entries="workspace.files"
+              :folder-home-file-name="store.workspaceSettings.folderHomeFileName"
+              :document-icons="treeDocumentIcons" :load-document-icon="loadTreeDocumentIcon"
+              @open="(file) => { store.focusPane(pane.id); void openEntry(file); }"
+              @up="() => { store.focusPane(pane.id); void openBreadcrumbDirectory(parentPath(tab.directory!.path)); }" />
             <WorkspaceViewTab
               v-if="workspace && pane.activeId.startsWith('workspace-view:')"
               :key="`${workspace.id}:${pane.activeId}`"
@@ -5976,7 +6007,7 @@ const helpBlocked = computed(() => !!(
                         @enter="insertBlockBelowTitle"
                         @comment="paneComments.get(pane.id)?.showDiscussion()"
                       />
-                      <SourceEditor :capabilities="store.capabilities" :preferences="editorPreferences" :suggestion-marks="suggestions.sourceMarks"
+                      <SourceEditor :reference-targets="store.referenceTargets" :capabilities="store.capabilities" :preferences="editorPreferences" :suggestion-marks="suggestions.sourceMarks"
                         :show-all-line-numbers="showAllLineNumbers"
                         v-if="paneSource(pane.activeId)"
                         :key="active.id"
@@ -6106,6 +6137,7 @@ const helpBlocked = computed(() => !!(
                 !pane.activeId.startsWith('workspace-view:') &&
                 !pane.activeId.startsWith('plugin:') &&
                 !tab?.workspaceView &&
+                !tab?.directory &&
                 !tab?.pluginView &&
                 !extensionViews.find((view) => view.id === pane.activeId)
               "

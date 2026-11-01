@@ -654,10 +654,10 @@ async function start(kind: CommentKind, mentions: CommentMention[] = [], draftId
   finally { busy.value = false; }
 }
 
-async function change(kind: CommentKind, threadId: string, action: 'reply' | 'resolve', body = '', resolved = false, mentions: CommentMention[] = []) {
+async function change(kind: CommentKind, threadId: string, action: 'reply' | 'resolve', body = '', resolved = false, mentions: CommentMention[] = [], replyTo?: string) {
   if (action === 'reply' && !body) return;
   const saved = await saveChange(kind, action === 'reply'
-    ? { type: 'reply', threadId, id: crypto.randomUUID(), body, author: props.author, mentions }
+    ? { type: 'reply', threadId, id: crypto.randomUUID(), body, author: props.author, mentions, replyTo }
     : { type: 'resolve', threadId, resolved });
   if (saved && action === 'reply') conversations.get(threadId)?.clearReply();
 }
@@ -712,7 +712,7 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
               :thread="thread" :quote="layout.rail ? undefined : quote(working[thread.id]!)" local :preview="layout.rail && !threadExpanded(thread.id)"
               :readonly="readonly" :busy="busy" :author-id="author.id" :author-name="author.name" @expand="selectThread(thread.id, true)"
               :assistant="assistant" @assistant="emit('assistant', { kind: 'annotation', thread, quote: quote(working[thread.id]!) })"
-              @reply="(body, mentions) => change('annotation', thread.id, 'reply', body, false, mentions)"
+              @reply="(body, mentions, replyTo) => change('annotation', thread.id, 'reply', body, false, mentions, replyTo)"
               @edit="editMessage('annotation', thread.id, $event)" @remove="removeMessage('annotation', thread.id, $event)"
               @resolve="change('annotation', thread.id, 'resolve', '', $event)" />
             <p v-if="layout.rail && error && threadExpanded(thread.id)" class="comment-error" role="alert">{{ error }}</p>
