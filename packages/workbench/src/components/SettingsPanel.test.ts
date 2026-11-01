@@ -220,7 +220,7 @@ it('places the account group first without making it the initial page', async ()
   expect(accountGroup?.querySelector('.settings-nav-group')).toBeNull();
   expect(accountGroup?.querySelector('button')?.textContent).toContain('账号设置');
   expect(root.querySelector('.settings-nav-group')?.textContent).toBe('个人偏好');
-  expect(root.querySelector('#settings-title')?.textContent).toBe('外观设置');
+  expect(root.querySelector('#settings-title')?.textContent).toBe('外观');
 });
 
 it('restores the last visited page after remounting and honors explicit destinations', async () => {
@@ -242,7 +242,7 @@ it.each(['workspace', 'removed-plugin'])('falls back when the saved page %s is u
   initialSettingsPage.value = undefined;
   panelKey.value++;
   await nextTick();
-  expect(root.querySelector('#settings-title')?.textContent).toBe('外观设置');
+  expect(root.querySelector('#settings-title')?.textContent).toBe('外观');
   expect(localStorage.getItem(settingsPagePreferenceKey)).toBe('appearance');
 });
 
@@ -297,7 +297,7 @@ it('keeps the searchable usage hint switch in appearance settings and preserves 
   localStorage.setItem(helpPreferenceKey, JSON.stringify(saved));
   const input = root.querySelector<HTMLInputElement>('[aria-label="搜索设置"]')!;
   input.value = '使用提示'; input.dispatchEvent(new Event('input')); await nextTick();
-  expect(root.querySelector('#settings-title')?.textContent).toBe('外观设置');
+  expect(root.querySelector('#settings-title')?.textContent).toBe('外观');
   const toggle = root.querySelector<HTMLButtonElement>('[aria-label="偶尔显示使用提示"]')!;
   expect(toggle.getAttribute('aria-checked')).toBe('true');
   toggle.click(); await nextTick();
@@ -570,7 +570,7 @@ it('keeps home settings personal and removes workspace search results when leavi
 it('lists matching setting rows and opens the exact row from the search result', async () => {
   const input = root.querySelector<HTMLInputElement>('[aria-label="搜索设置"]')!;
   input.value = '主题'; input.dispatchEvent(new Event('input')); await nextTick();
-  expect(root.querySelector('#settings-title')?.textContent).toBe('外观设置');
+  expect(root.querySelector('#settings-title')?.textContent).toBe('外观');
   expect([...root.querySelectorAll('.settings-nav-setting')].map(item => item.textContent?.trim())).toContain('主题');
   expect(root.querySelector('[data-settings-key="appearance-theme"]')).not.toBeNull();
   root.querySelector<HTMLButtonElement>('.settings-nav-setting')!.click();
@@ -654,9 +654,9 @@ it('opens directly on the complete about page with the current locale slogan', a
 
 it('keeps the about content inside settings navigation', async () => {
   await openPage('外观');
-  expect(root.querySelector('h2')?.textContent).toBe('外观设置');
+  expect(root.querySelector('h2')?.textContent).toBe('外观');
   await openPage('编辑器');
-  expect(root.querySelector('h2')?.textContent).toBe('编辑设置');
+  expect(root.querySelector('h2')?.textContent).toBe('编辑器');
   await openPage('关于同页');
   expect(root.querySelector('h2')?.textContent).toBe('关于同页');
   expect(root.querySelector('.settings-about-brand')).not.toBeNull();
@@ -729,7 +729,7 @@ it('switches open pages immediately, keeps workspace content and searches Englis
   englishLanguage.value = 'zh-CN';
   englishLanguage.dispatchEvent(new Event('change'));
   await nextTick();
-  expect(root.querySelector('h2')?.textContent).toBe('外观设置');
+  expect(root.querySelector('h2')?.textContent).toBe('外观');
   expect(root.querySelector('select[aria-label="主题"]')).not.toBeNull();
 });
 
@@ -747,5 +747,5 @@ it('hides online-only pages and exits them when switching to a local workspace',
   await nextTick();
   expect(navigation()).not.toContain('在线专属设置');
   expect(root.querySelector('.extra-settings-mode')).toBeNull();
-  expect(root.querySelector('#settings-title')?.textContent).toBe('外观设置');
+  expect(root.querySelector('#settings-title')?.textContent).toBe('外观');
 });

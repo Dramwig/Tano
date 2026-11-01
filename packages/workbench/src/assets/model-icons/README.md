@@ -1,6 +1,6 @@
 # Bundled model icons
 
-The 18 unmodified monochrome SVGs in `lobehub/` come from
+The 27 unmodified monochrome SVGs in `lobehub/` come from
 [`@lobehub/icons-static-svg` 1.95.1](https://www.npmjs.com/package/@lobehub/icons-static-svg/v/1.95.1),
 part of [Lobe Icons](https://github.com/lobehub/lobe-icons), copyright (c) 2023 LobeHub.
 They retain their [MIT license](lobehub/LICENSE). Brand names and marks belong to
@@ -10,7 +10,7 @@ Package: `https://registry.npmjs.org/@lobehub/icons-static-svg/-/icons-static-sv
 
 Package integrity: `sha512-Hw7EPPgVnC4NZLXBfTNJG6hyQgqECfUPC11VVXodPSr1aebKcFxDZlSpxhWwYNdCc6bhxps/x5TtXoPmfKH2ag==`
 
-Upstream paths: `package/icons/{openai,claude,gemini,gemma,deepseek,qwen,grok,mistral,meta,kimi,zhipu,minimax,doubao,yi,baichuan,cohere,hunyuan,wenxin}.svg`.
+Upstream paths: `package/icons/{openai,claude,gemini,gemma,deepseek,qwen,grok,mistral,meta,kimi,zhipu,minimax,doubao,yi,baichuan,cohere,hunyuan,wenxin,siliconcloud,openrouter,aihubmix,ai302,burncloud,newapi,together,groq,fireworks}.svg`.
 
 The package omits its license file; the retained license is from upstream revision
 [`c385b2b8d1f9e19aa86e628d4e23c91ee1111a47`](https://github.com/lobehub/lobe-icons/blob/c385b2b8d1f9e19aa86e628d4e23c91ee1111a47/LICENSE).

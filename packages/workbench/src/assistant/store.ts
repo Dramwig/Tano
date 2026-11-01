@@ -2,7 +2,7 @@ import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { defineStore } from 'pinia';
 import { isAssistantModelId, isAssistantReasoningSelection, parseAssistantSession, parseAssistantAnswers, isDataTableFilePath } from '@tano/protocol';
 import type { AssistantQuestion, AssistantQuestionAnswer, AssistantUserInput } from '@tano/protocol';
-import type { AssistantActivity, AssistantConnection, AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSession, AssistantSource } from '@tano/protocol';
+import type { AssistantActivity, AssistantConnection, AssistantQuotaResult, AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSession, AssistantSource } from '@tano/protocol';
 import type { AssistantExecutionResult } from './execution';
 import { useWorkspaceStore } from '../stores/workspace';
 import { useWorkbenchRuntime } from '../runtime';
@@ -14,6 +14,8 @@ import { assistantHistory } from './results';
 import { useSuggestionStore } from '../stores/suggestions';
 import { uiLocale } from '../i18n';
 import { assistantCopy, assistantTaskPrompts, formatAssistantText } from './language';
+
+export type AssistantConnectionCheck = { fingerprint: string; elapsedMs?: number; checkedAt?: number; message: string; failed: boolean };
 
 export type AssistantDisplayMode = 'sidebar' | 'floating' | 'fullscreen';
 
@@ -52,6 +54,15 @@ function createAssistantState(inline = false) {
     }
   }
   const connections = ref<AssistantConnection[]>([]);
+  const connectionCheckResults = ref<Record<string, AssistantConnectionCheck>>({});
+  const connectionQuotaResults = ref<Record<string, { fingerprint: string; result: AssistantQuotaResult }>>({});
+  watch(() => connections.value.map(connection => JSON.stringify(connection)), fingerprints => {
+    for (const cache of [connectionCheckResults.value, connectionQuotaResults.value]) {
+      for (const [id, entry] of Object.entries(cache)) {
+        if (!fingerprints.includes(entry.fingerprint)) delete cache[id];
+      }
+    }
+  });
   const connectionId = ref('');
   const modelId = ref('');
   const reasoningEffort = ref<AssistantReasoningSelection>('medium');
@@ -155,6 +166,23 @@ function createAssistantState(inline = false) {
       if (!abort.signal.aborted && modelController === abort) modelsError.value = String(reason);
     } finally { if (modelController === abort) { modelsLoading.value = false; modelController = undefined; } }
   }
+  async function readConnectionKey(id: string) {
+    if (!canConfigure || !connections.value.some(item => item.id === id && !item.managed && item.hasKey && (!item.kind || item.kind === 'api')))
+      throw new Error('此连接无法读取 API 密钥');
+    if (!transport?.readConnectionKey) throw new Error('当前环境不支持读取已保存的密钥，请更新并重启桌面版');
+    return transport.readConnectionKey(id);
+  }
+  async function queryQuota(id: string) {
+    if (!transport?.quota) throw new Error('当前环境不支持服务商额度查询，请使用桌面版');
+    if (!connections.value.some(item => item.id === id && !item.managed)) throw new Error('此连接不支持个人额度查询');
+    return transport.quota(id);
+  }
+  async function saveQuota(id: string, config: import('@tano/protocol').AssistantQuotaConfig, key?: string) {
+    if (!transport?.saveQuota) throw new Error('当前环境不支持额度配置，请使用桌面版');
+    if (!connections.value.some(item => item.id === id && !item.managed)) throw new Error('连接已移除或由平台管理');
+    await transport.saveQuota(id, config, key);
+    await reloadConnections();
+  }
   async function checkConnection(id: string, signal: AbortSignal) {
     signal.throwIfAborted();
     if (!transport) throw new Error('当前运行环境未提供助手连接配置');
@@ -213,6 +241,16 @@ function createAssistantState(inline = false) {
     await transport.saveConnection(config, key);
     await reloadConnections(); await selectConnection(config.id, previous?.endpoint !== config.endpoint ||
       (previous?.kind ?? 'api') !== (config.kind ?? 'api') || previous?.cliPath !== config.cliPath);
+  }
+  const canImportCcSwitch = canConfigure && !!transport?.scanCcSwitch && !!transport?.importCcSwitch;
+  async function scanCcSwitch(path?: string) {
+    if (!canImportCcSwitch) throw new Error('当前环境不支持从 CC Switch 导入');
+    return transport!.scanCcSwitch!(path);
+  }
+  async function importCcSwitch(ids: string[], path?: string) {
+    if (!canImportCcSwitch || busy.value || applying.value || loading.value) throw new Error('请先等待当前任务完成');
+    await transport!.importCcSwitch!(ids, path);
+    await reloadConnections();
   }
   async function removeConnection(id: string) {
     if (!transport || busy.value || applying.value || loading.value) throw new Error('请先等待当前任务完成');
@@ -341,7 +379,8 @@ function createAssistantState(inline = false) {
       const now = Date.now();
       target.messages.push({ id: crypto.randomUUID(), role: 'user', content: question, createdAt: now });
       reply = { id: crypto.randomUUID(), role: 'assistant', content: '', createdAt: now, sources,
-        attachedSourceIds: sources.map(source => source.id), proposals: [], toolResults: [], activity: [], rules: rules.map(rule => rule.path), state: 'running', model };
+        attachedSourceIds: sources.map(source => source.id), proposals: [], toolResults: [], activity: [], rules: rules.map(rule => rule.path), state: 'running', model,
+        connectionId: config.id, connectionName: config.name };
       target.messages.push(reply);
       // Use the reactive instance for streaming; the plain object pushed above is not reactive.
       reply = target.messages[target.messages.length - 1];
@@ -691,7 +730,7 @@ function createAssistantState(inline = false) {
   });
   watch([connection, opened], () => { void reloadModels(); });
   onScopeDispose(() => { stop(); modelController?.abort(); });
-  return { available, demo, canConfigure, opened, displayMode, fullscreenTabId, fullscreenPaneId, isFullscreenTab, setDisplayMode, loading, busy, applying, connections, connectionId, connection, modelId, models, modelsLoading, modelsError, reloadModels, refreshModels, selectModel, selectConnection, sessions, session, externalSessions, loadExternal, importExternal,
+  return { connectionCheckResults, connectionQuotaResults, canImportCcSwitch, scanCcSwitch, importCcSwitch, available, demo, canConfigure, opened, displayMode, fullscreenTabId, fullscreenPaneId, isFullscreenTab, setDisplayMode, loading, busy, applying, connections, connectionId, connection, modelId, models, modelsLoading, modelsError, reloadModels, refreshModels, selectModel, selectConnection, sessions, session, externalSessions, loadExternal, importExternal,
     files, selection, prompt, setBuiltInPrompt, error, progress, pendingUserInput, startDocumentDraft, submitUserInput, reasoningEffort, selectReasoningEffort, replyTarget, open, stop, settle, send, newSession, selectSession, deleteSession, review, verify,
-    undo, reject, publishSuggestions, saveConnection, removeConnection, reloadConnections, checkConnection, setManaged: (check: (id: string) => boolean) => { managed = check; } };
+    undo, reject, publishSuggestions, saveConnection, removeConnection, reloadConnections, checkConnection, readConnectionKey, queryQuota, saveQuota, setManaged: (check: (id: string) => boolean) => { managed = check; } };
 }

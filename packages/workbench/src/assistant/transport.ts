@@ -18,6 +18,11 @@ export function nativeAssistantTransport(): AssistantTransport {
   }
   return {
     connections: () => call('assistant_connections'),
+    readConnectionKey: connectionId => call('assistant_connection_key', { connectionId }),
+    scanCcSwitch: path => call('assistant_cc_switch_scan', { path: path ?? null }),
+    importCcSwitch: (ids, path) => call('assistant_cc_switch_import', { ids, path: path ?? null }),
+    quota: connectionId => call('assistant_quota', { connectionId }),
+    saveQuota: (connectionId, config, key) => call('assistant_quota_save', { connectionId, config, key: key ?? null }),
     async models(connectionId, signal) {
       signal.throwIfAborted();
       const requestId = crypto.randomUUID();

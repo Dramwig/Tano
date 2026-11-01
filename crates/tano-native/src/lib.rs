@@ -1177,6 +1177,11 @@ pub fn configure_with_commands(
                 let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
                     assistant::assistant_protocol_version,
                     assistant::assistant_connections,
+                    assistant::assistant_connection_key,
+                    assistant::cc_switch::assistant_cc_switch_scan,
+                    assistant::cc_switch::assistant_cc_switch_import,
+                    assistant::quota::assistant_quota,
+                    assistant::quota::assistant_quota_save,
                     assistant::assistant_models,
                     assistant::assistant_connection_save,
                     assistant::assistant_connection_remove,

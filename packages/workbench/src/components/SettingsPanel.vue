@@ -531,7 +531,7 @@ function customFontInput(event: Event) {
         </div>
         <div v-else-if="page === 'appearance' || page === 'editing'" class="settings-content">
           <div class="settings-title-line">
-            <h2 id="settings-title">{{ page === 'appearance' ? t('外观设置') : t('编辑设置') }}</h2>
+            <h2 id="settings-title">{{ page === 'appearance' ? t('外观') : t('编辑器') }}</h2>
             <div class="settings-page-scope" role="note" tabindex="0" :aria-label="scopeLabel">
               <Monitor :size="13" /><span>{{ scopeLabel }}</span>
             </div>
@@ -1328,6 +1328,9 @@ function customFontInput(event: Event) {
   font-size: 13px;
   line-height: 20px;
 }
+.settings-nav-scroll button:focus-visible {
+  outline-offset: -2px;
+}
 .settings-nav-scroll button svg {
   color: var(--text-secondary);
 }
@@ -1556,7 +1559,8 @@ function customFontInput(event: Event) {
 .settings-section + .settings-section {
   margin-top: 36px;
 }
-.settings-section > h3 {
+.settings-section > h3,
+.settings-section-heading {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1568,6 +1572,7 @@ function customFontInput(event: Event) {
   line-height: 1.5;
   font-weight: 600;
 }
+.settings-section-heading > h3 { margin: 0; font: inherit; }
 .settings-card {
   padding: 0;
   border: 0;

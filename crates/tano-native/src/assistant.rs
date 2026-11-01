@@ -13,8 +13,13 @@ use tokio::sync::watch;
 static CONNECTION_LOCK: Mutex<()> = Mutex::new(());
 static SESSION_LOCK: Mutex<()> = Mutex::new(());
 
+#[path = "assistant_cc_switch.rs"]
+pub(crate) mod cc_switch;
+
 #[path = "assistant_api.rs"]
 mod api;
+#[path = "assistant_quota.rs"]
+pub(crate) mod quota;
 
 #[derive(Default)]
 pub struct AssistantState {
@@ -94,6 +99,10 @@ impl Default for Protocol {
 pub struct Connection {
     id: String,
     name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    icon: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    quota: Option<quota::Config>,
     #[serde(default)]
     kind: crate::assistant_cli::Kind,
     #[serde(default)]
@@ -122,6 +131,8 @@ fn auto_adapt_default() -> bool {
 struct StoredConnection {
     config: Connection,
     credential: Option<String>,
+    #[serde(default)]
+    quota_credential: Option<String>,
 }
 
 fn assistant_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -171,7 +182,18 @@ fn service_endpoint(value: &str, resource: &str) -> Result<reqwest::Url, String>
 }
 
 fn validate_connection(connection: &Connection) -> Result<(), String> {
+    if let Some(config) = &connection.quota {
+        quota::validate(config)?;
+    }
     valid_id(&connection.id)?;
+    if connection.icon.as_ref().is_some_and(|icon| {
+        icon.len() > 64
+            || !icon
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    }) {
+        return Err("连接头像标识无效".into());
+    }
     if connection.name.trim().is_empty()
         || connection.name.len() > 120
         || connection.endpoint.len() > 2000
@@ -202,6 +224,9 @@ fn read_connections(directory: &Path) -> Result<Vec<StoredConnection>, String> {
     for stored in &connections {
         validate_connection(&stored.config)?;
         if let Some(credential) = &stored.credential {
+            valid_id(credential)?;
+        }
+        if let Some(credential) = &stored.quota_credential {
             valid_id(credential)?;
         }
     }
@@ -365,9 +390,21 @@ pub fn assistant_connections(app: tauri::AppHandle) -> Result<Vec<Connection>, S
 }
 
 #[tauri::command]
+pub fn assistant_connection_key(
+    app: tauri::AppHandle,
+    connection_id: String,
+) -> Result<String, String> {
+    let connection = load_connection(&app, &connection_id)?;
+    let id = connection.credential.ok_or("此连接没有已保存的 API 密钥")?;
+    credential(&id)?
+        .get_password()
+        .map_err(|_| "无法读取 API 密钥，请重新配置连接".into())
+}
+
+#[tauri::command]
 pub fn assistant_connection_save(
     app: tauri::AppHandle,
-    connection: Connection,
+    mut connection: Connection,
     key: Option<String>,
 ) -> Result<(), String> {
     validate_connection(&connection)?;
@@ -378,8 +415,24 @@ pub fn assistant_connection_save(
         .iter()
         .find(|item| item.config.id == connection.id)
         .cloned();
+    // Quota has its own editor and save command; a stale model form must not overwrite it.
+    if let Some(previous) = &old {
+        connection.quota = previous.config.quota.clone();
+    }
     if old.is_none() && connections.len() >= 20 {
         return Err("最多保存 20 个模型连接".into());
+    }
+    if old.as_ref().is_some_and(|s| {
+        s.quota_credential.is_some()
+            && s.config
+                .quota
+                .as_ref()
+                .and_then(|c| c.base_url.as_deref())
+                .filter(|s| !s.is_empty())
+                .is_none()
+            && s.config.endpoint != connection.endpoint
+    }) {
+        return Err("请先在额度查询面板清除独立查询密钥，再更换模型服务地址".into());
     }
     if connection.kind != crate::assistant_cli::Kind::Api {
         crate::assistant_cli::resolve(connection.kind, &connection.cli_path)?;
@@ -387,6 +440,7 @@ pub fn assistant_connection_save(
         connections.push(StoredConnection {
             config: connection,
             credential: None,
+            quota_credential: old.as_ref().and_then(|item| item.quota_credential.clone()),
         });
         atomic_json(&directory.join("connections.json"), &connections)?;
         if let Some(id) = old.and_then(|old| old.credential) {
@@ -439,6 +493,7 @@ pub fn assistant_connection_save(
     connections.push(StoredConnection {
         config: connection,
         credential: credential_id.clone(),
+        quota_credential: old.as_ref().and_then(|item| item.quota_credential.clone()),
     });
     if let Err(error) = atomic_json(&directory.join("connections.json"), &connections) {
         if let Some(id) = new_id {
@@ -465,9 +520,16 @@ pub fn assistant_connection_remove(app: tauri::AppHandle, id: String) -> Result<
         .iter()
         .find(|item| item.config.id == id)
         .and_then(|item| item.credential.clone());
+    let quota_removed = connections
+        .iter()
+        .find(|item| item.config.id == id)
+        .and_then(|item| item.quota_credential.clone());
     connections.retain(|item| item.config.id != id);
     atomic_json(&directory.join("connections.json"), &connections)?;
     if let Some(id) = removed {
+        let _ = credential(&id)?.delete_credential();
+    }
+    if let Some(id) = quota_removed {
         let _ = credential(&id)?.delete_credential();
     }
     Ok(())
@@ -1275,12 +1337,29 @@ mod tests {
         assert!(endpoint("http://127.0.0.1:1234/v1").is_ok());
     }
     #[test]
+    fn connection_icon_round_trip_and_legacy_compatibility() {
+        let mut value = json!({"id": uuid::Uuid::new_v4().to_string(), "name": "test", "endpoint": "https://example.com/v1", "tools": false, "maxOutputTokens": 2048});
+        let legacy: Connection = serde_json::from_value(value.clone()).unwrap();
+        assert!(legacy.icon.is_none());
+        value["icon"] = json!("siliconcloud");
+        let config: Connection = serde_json::from_value(value.clone()).unwrap();
+        assert!(validate_connection(&config).is_ok());
+        assert_eq!(
+            serde_json::to_value(config).unwrap()["icon"],
+            "siliconcloud"
+        );
+        value["icon"] = json!("<svg onload=alert(1)>");
+        assert!(validate_connection(&serde_json::from_value(value).unwrap()).is_err());
+    }
+    #[test]
     fn builds_only_authorized_requests_and_scopes_session_identity() {
         let connection = Connection {
             id: uuid::Uuid::new_v4().to_string(),
             name: "test".into(),
             kind: crate::assistant_cli::Kind::Api,
             cli_path: String::new(),
+            icon: None,
+            quota: None,
             reasoning_effort: None,
             endpoint: "https://example.com/v1".into(),
             protocol: Protocol::ChatCompletions,
@@ -1373,11 +1452,14 @@ mod tests {
         atomic_json(&path, &Vec::<StoredConnection>::new()).unwrap();
         assert!(read_connections(temp.path()).unwrap().is_empty());
         let stored = StoredConnection {
+            quota_credential: None,
             config: Connection {
                 id: uuid::Uuid::new_v4().to_string(),
                 name: "fixture".into(),
                 kind: crate::assistant_cli::Kind::Api,
                 cli_path: String::new(),
+                icon: None,
+                quota: None,
                 reasoning_effort: None,
                 endpoint: "http://127.0.0.1:1441/v1".into(),
                 protocol: Protocol::ChatCompletions,

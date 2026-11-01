@@ -113,6 +113,7 @@ mod tests {
 
     fn connection() -> StoredConnection {
         StoredConnection {
+            quota_credential: None,
             config: serde_json::from_value(json!({
                 "id": "1735eb4e-b089-42e4-b1e2-1d92d4992063", "name": "fixture",
                 "endpoint": "http://127.0.0.1:1234/v1", "protocol": "responses",
