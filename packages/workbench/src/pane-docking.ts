@@ -1,4 +1,5 @@
 import { dockSideAt } from './pane-layout';
+import { tabLayoutRect } from './tab-layout';
 import type { PaneDrop } from './pane-layout';
 
 // Both captured pointer drags and Windows native drags use the same hit test.
@@ -19,7 +20,7 @@ export function paneDropAt(x: number, y: number): PaneDrop | undefined {
   if (!paneId) return;
   if (strip) {
     const tabs = [...strip.querySelectorAll<HTMLElement>('.desktop-tab')];
-    const index = tabs.findIndex(tab => { const box = tab.getBoundingClientRect(); return x < box.left + box.width / 2; });
+    const index = tabs.findIndex(tab => { const box = tabLayoutRect(tab); return x < box.left + box.width / 2; });
     return { paneId, side: 'center', index: index < 0 ? tabs.length : index };
   }
   if (!pane) return;

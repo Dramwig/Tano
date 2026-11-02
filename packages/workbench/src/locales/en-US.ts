@@ -463,6 +463,7 @@ export const englishMessages: Readonly<Record<string, string>> = {
   "最近工作空间": "Recent workspaces",
   "打开新的本地文件夹": "Open another local folder",
   "调整侧栏宽度": "Resize sidebar",
+  "拖动调宽，向左拖到底收起": "Drag to resize; drag fully left to collapse",
   "拖动窗口": "Drag window",
   "后退": "Back",
   "前进": "Forward",

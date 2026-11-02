@@ -28,6 +28,7 @@ let pending: HTMLElement | null = null;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let observer: MutationObserver | undefined;
 let keyboardFocus = true;
+let pointerAnchor: { x: number; y: number } | undefined;
 
 function cancelTimer() { clearTimeout(timer); timer = undefined; }
 function hide() {
@@ -39,6 +40,7 @@ function hide() {
     else anchor.removeAttribute('aria-describedby');
   }
   anchor = null;
+  pointerAnchor = undefined;
   label.value = '';
   example.value = undefined;
   ready.value = false;
@@ -63,6 +65,14 @@ async function place() {
   hint.style.maxHeight = `${bottom - top}px`;
   const rect = button.getBoundingClientRect();
   const gap = button.closest('.compact-action-menu') ? 3 : 8;
+  if (button.dataset.tooltipAnchor === 'pointer') {
+    const point = pointerAnchor ?? { x: rect.right, y: rect.top + rect.height / 2 };
+    const x = point.x + gap + hint.offsetWidth <= right ? point.x + gap : point.x - hint.offsetWidth - gap;
+    hint.style.left = `${Math.max(left, Math.min(x, right - hint.offsetWidth))}px`;
+    hint.style.top = `${Math.max(top, Math.min(point.y - hint.offsetHeight / 2, bottom - hint.offsetHeight))}px`;
+    ready.value = true;
+    return;
+  }
   const above = rect.top - hint.offsetHeight - gap;
   const y = above >= top ? above : rect.bottom + gap;
   hint.style.left = `${Math.max(left, Math.min(rect.left + (rect.width - hint.offsetWidth) / 2, right - hint.offsetWidth))}px`;
@@ -77,10 +87,11 @@ function update() {
   shortcut.value = anchor.dataset.tooltipShortcut ? shortcutLabel(anchor.dataset.tooltipShortcut.split(',')) : '';
   void place();
 }
-function show(button: HTMLElement) {
+function show(button: HTMLElement, point?: { x: number; y: number }) {
   hide();
   if (!usable(button)) return;
   anchor = button;
+  pointerAnchor = point;
   // A modal makes nodes outside its DOM subtree inert, including popovers.
   portal.value = button.closest<HTMLDialogElement>('dialog[open]') ?? 'body';
   button.setAttribute('aria-describedby', [button.getAttribute('aria-describedby'), id].filter(Boolean).join(' '));
@@ -100,7 +111,9 @@ function enter(event: PointerEvent | FocusEvent) {
   hide();
   if (event.type === 'focusin') return show(button);
   pending = button;
-  timer = setTimeout(() => show(button), 250);
+  const point = 'clientX' in event ? { x: event.clientX, y: event.clientY } : undefined;
+  const delay = Number(button.dataset.tooltipDelay);
+  timer = setTimeout(() => show(button, point), Number.isFinite(delay) && delay >= 0 ? delay : 250);
 }
 function leave(event: MouseEvent | FocusEvent) {
   if (!(event.target instanceof Node) ||
@@ -197,7 +210,7 @@ onBeforeUnmount(() => {
 }
 .app-tooltip[data-ready='false'] { visibility: hidden; }
 .app-tooltip::backdrop { background: transparent; pointer-events: none; }
-.app-tooltip-shortcut { color: #b8b8b8; }
+.app-tooltip-shortcut { justify-self: center; color: #b8b8b8; }
 @media (forced-colors: active) {
   .app-tooltip { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
   .app-tooltip-shortcut { color: CanvasText; }

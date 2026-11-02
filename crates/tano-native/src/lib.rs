@@ -35,6 +35,8 @@ mod plugin_oauth_types;
 mod search;
 mod session_storage;
 pub mod storage;
+#[cfg(windows)]
+mod tab_drag_preview;
 mod updates;
 #[cfg(desktop)]
 mod workspace_git;
@@ -365,18 +367,49 @@ fn open_devtools(window: tauri::WebviewWindow) {
 }
 
 #[tauri::command]
-async fn tab_drag_release() -> Result<serde_json::Value, String> {
+async fn tab_drag_release(
+    window: tauri::WebviewWindow,
+    preview: Option<serde_json::Value>,
+    drag_id: Option<String>,
+) -> Result<serde_json::Value, String> {
     #[cfg(windows)]
     {
-        tauri::async_runtime::spawn_blocking(|| {
+        let source = window.hwnd().map_err(|e| e.to_string())?.0 as usize;
+        let scale = window.scale_factor().map_err(|e| e.to_string())?;
+        tauri::async_runtime::spawn_blocking(move || {
             use windows_sys::Win32::Foundation::POINT;
-            use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
+            use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+                GetAsyncKeyState, VK_ESCAPE, VK_LBUTTON,
+            };
             use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
             // The WebView may not dispatch dragend after an OS drag ends outside its window.
             // Observe the button on a host thread so renderer timer throttling cannot lose it.
+            let preview = preview
+                .map(serde_json::from_value::<tab_drag_preview::Bitmap>)
+                .transpose()
+                .map_err(|e| e.to_string())?
+                .map(tab_drag_preview::Preview::new)
+                .transpose()?;
             while unsafe { GetAsyncKeyState(VK_LBUTTON.into()) < 0 } {
-                std::thread::sleep(std::time::Duration::from_millis(8));
+                if unsafe { GetAsyncKeyState(VK_ESCAPE.into()) < 0 } {
+                    return Ok(serde_json::json!({"x": 0, "y": 0, "cancelled": true}));
+                }
+                let mut cursor = POINT { x: 0, y: 0 };
+                if unsafe { GetCursorPos(&mut cursor) } != 0 {
+                    if let Some(preview) = &preview {
+                        preview.update(cursor, source as _)?;
+                    }
+                    if let Some(drag_id) = &drag_id {
+                        let mut local = cursor;
+                        if unsafe { windows_sys::Win32::Graphics::Gdi::ScreenToClient(source as _, &mut local) } != 0 {
+                            let _ = window.emit("tano-tab-drag-position", serde_json::json!({
+                                "dragId": drag_id, "x": local.x as f64 / scale, "y": local.y as f64 / scale
+                            }));
+                        }
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(16));
             }
             let mut point = POINT { x: 0, y: 0 };
             if unsafe { GetCursorPos(&mut point) } == 0 {

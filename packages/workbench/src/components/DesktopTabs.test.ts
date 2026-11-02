@@ -38,6 +38,11 @@ vi.mock('@tauri-apps/api/window', () => ({
 let app: App;
 let root: HTMLDivElement;
 let buttons: HTMLButtonElement[];
+let releaseNative: (point: { x: number; y: number }) => void;
+async function releaseNativeAtCursor() {
+  releaseNative(await nativeWindow.cursorPosition());
+  window.dispatchEvent(new MouseEvent("dragend", { bubbles: true }));
+}
 
 function pointer(target: HTMLElement, type: string, x: number, y = 18) {
   const event = new MouseEvent(type, {
@@ -52,9 +57,10 @@ function pointer(target: HTMLElement, type: string, x: number, y = 18) {
 }
 
 beforeEach(() => {
+  HTMLElement.prototype.scrollIntoView = vi.fn();
   platform.nativeOs = 'windows';
   platform.mobile = false;
-  nativeCore.invoke.mockReset().mockImplementation(() => new Promise(() => {}));
+  nativeCore.invoke.mockReset().mockImplementation(() => new Promise(resolve => { releaseNative = resolve; }));
   nativeEvents.listeners.clear();
   nativeEvents.emitTo.mockClear();
   fixture.store = reactive({
@@ -184,7 +190,7 @@ it('renders extension labels and icons and prevents detaching window-local views
   expect(fixture.store.close).toHaveBeenCalledWith('view:sample');
 });
 
-it('marks an incoming tab position with a line without reserving space and answers a cross-window drop probe', async () => {
+it('previews an incoming tab with a full-width slot and answers a cross-window drop probe', async () => {
   app.unmount();
   app = createApp(DesktopTabs, { detachable: true });
   app.mount(root.querySelector('.desktop-window-tab-slot')!);
@@ -205,7 +211,8 @@ it('marks an incoming tab position with a line without reserving space and answe
   list.dispatchEvent(over);
   await nextTick();
   expect(over.defaultPrevented).toBe(true);
-  expect(list.querySelector('.desktop-tab-incoming-slot')).toBeNull();
+  expect(list.querySelector<HTMLElement>('.desktop-tab-incoming-slot')?.style.width).toBe('180px');
+  expect(list.querySelector<HTMLElement>('[data-id="b"]')?.style.transform).toBe('translateX(180px)');
   expect(list.querySelectorAll('.desktop-tab')).toHaveLength(3);
   expect(list.querySelector('.desktop-tab-dock-before')?.getAttribute('data-id')).toBe('b');
   expect(root.querySelector<HTMLElement>('.desktop-tab-strip')?.style.getPropertyValue('--desktop-tab-count')).toBe('3');
@@ -419,14 +426,17 @@ it('keeps the slot across tab child transitions and ignores invalid drops', asyn
 
 it('shows the insertion side and commits only on release, suppressing the trailing click', async () => {
   pointer(buttons[0], 'pointerdown', 80);
+  expect(fixture.store.activeId).toBe('a');
   pointer(buttons[0], 'pointermove', 570);
   await nextTick();
   expect(root.querySelector('.desktop-tab-drop-after')?.getAttribute('data-id')).toBe('c');
   expect(fixture.store.moveDocument).not.toHaveBeenCalled();
+  expect(root.querySelector<HTMLElement>('[data-id="a"]')?.style.transform).toBe('translateX(400px)');
+  expect(root.querySelector<HTMLElement>('[data-id="b"]')?.style.transform).toBe('translateX(-200px)');
   pointer(buttons[0], 'pointerup', 570);
   buttons[0].click();
   expect(fixture.store.moveDocument).toHaveBeenCalledExactlyOnceWith('a', 'c', 'after');
-  expect(fixture.store.activeId).toBe('b');
+  expect(fixture.store.activeId).toBe('a');
   await nextTick();
   expect(root.querySelector('.desktop-tab-dragging')).toBeNull();
 });
@@ -478,7 +488,7 @@ it('shows the dragged tab under the pointer, including outside the strip, and re
   expect(preview.querySelector('.workspace-emoji-icon')?.getAttribute('data-emoji')).toBe('🌿');
   expect(preview.textContent).toContain('a');
   expect(preview.style.left).toBe('180px');
-  expect(preview.style.top).toBe('2px');
+  expect(preview.style.top).toBe('0px'); // Snapped to the track, not the pointer's vertical offset.
   expect(preview.style.width).toBe('200px');
 
   pointer(buttons[0], 'pointermove', 300, 80);
@@ -555,15 +565,34 @@ it('uses a native drag image and reorders a tab at the release point', async () 
   button.dispatchEvent(start);
   expect(start.defaultPrevented).toBe(false);
   expect(transfer.setData).toHaveBeenCalledWith('application/x-tano-tab', 'a');
-  expect(transfer.setDragImage).toHaveBeenCalledWith(expect.any(HTMLElement), 80, 18);
-  expect(nativeCore.invoke).toHaveBeenCalledWith('tab_drag_release');
+  expect(transfer.setDragImage).toHaveBeenCalledWith(expect.any(HTMLCanvasElement), 0, 0);
+  expect(nativeCore.invoke).toHaveBeenCalledWith('tab_drag_release', { preview: undefined, dragId: expect.any(String) });
   expect(document.body.querySelector('.desktop-tab-drag-preview')).toBeNull();
+  await vi.waitFor(() => expect(nativeEvents.listeners.get('tano-tab-drag-position')?.size).toBe(1));
+  const args = (nativeCore.invoke.mock.calls as unknown as [string, { dragId: string }][]) .find(call => call[0] === 'tab_drag_release')![1];
+  // Crossing an iframe stops DOM dragover, but OS coordinates must keep moving.
+  for (const handler of nativeEvents.listeners.get('tano-tab-drag-position') ?? []) {
+    handler({ payload: { dragId: args.dragId, x: 300, y: 500 } });
+  }
+  await nextTick();
+  expect(document.body.querySelector<HTMLElement>('.desktop-tab-drag-preview')?.style.top).toBe('482px');
+  for (const handler of nativeEvents.listeners.get('tano-tab-drag-position') ?? []) {
+    handler({ payload: { dragId: args.dragId, x: 300, y: 650 } });
+  }
+  await nextTick();
+  expect(document.body.querySelector<HTMLElement>('.desktop-tab-drag-preview')?.style.top).toBe('632px');
   pointer(button, 'pointercancel', 80);
   pointer(button, 'lostpointercapture', 80);
   await nextTick();
   expect(root.querySelector('.desktop-tab-list-dragging')).not.toBeNull();
-  nativeWindow.cursorPosition.mockResolvedValueOnce({ x: 440, y: 18 });
+  // A renderer dragend before OS button release must not consume the gesture.
   window.dispatchEvent(new MouseEvent('dragend', { bubbles: true }));
+  await new Promise(resolve => setTimeout(resolve, 10));
+  expect(root.querySelector('.desktop-tab-list-dragging')).not.toBeNull();
+  expect(fixture.store.moveDocument).not.toHaveBeenCalled();
+  expect(onDetachTab).not.toHaveBeenCalled();
+  nativeWindow.cursorPosition.mockResolvedValueOnce({ x: 440, y: 18 });
+  await releaseNativeAtCursor();
   await vi.waitFor(() => expect(fixture.store.moveDocument).toHaveBeenCalledWith('a', 'c', 'before'));
   expect(fixture.store.moveDocument).toHaveBeenCalledWith('a', 'c', 'before');
   expect(onDetachTab).not.toHaveBeenCalled();
@@ -606,7 +635,7 @@ it('renders and closes an empty tab without treating it as a document', async ()
   const tab = root.querySelector<HTMLElement>('[data-id="blank:test"]')!;
   tab.scrollIntoView = vi.fn();
   expect(tab.textContent).toContain('新标签页');
-  expect(tab.querySelector('.desktop-tab-icon')).toBeNull();
+  expect(tab.querySelector('.lucide-file-plus2-icon')).not.toBeNull();
   // Vue ignores synthetic events stamped in the same tick as a new listener.
   await new Promise(resolve => setTimeout(resolve, 1));
   tab.querySelector<HTMLButtonElement>('.desktop-tab-switch')!.click();
@@ -858,7 +887,7 @@ it.each([false, true])('previews a pane edge and docks on release without detach
     window.dispatchEvent(new MouseEvent('dragover', { bubbles: true, cancelable: true, clientX: 590, clientY: 250 }));
     expect(fixture.store.paneDrop).toEqual({ paneId: 'pane', side: 'right' });
     nativeWindow.cursorPosition.mockResolvedValueOnce({ x: 590, y: 250 });
-    window.dispatchEvent(new MouseEvent('dragend', { bubbles: true }));
+    await releaseNativeAtCursor();
     await vi.waitFor(() => expect(fixture.store.dockTab).toHaveBeenCalledOnce());
   } else pointer(button, 'pointerup', 590, 250);
   expect(fixture.store.dockTab).toHaveBeenCalledExactlyOnceWith('a', { paneId: 'pane', side: 'right' });
@@ -873,7 +902,7 @@ it.each([false, true])('previews a pane edge and docks on release without detach
     button.dispatchEvent(start);
     window.dispatchEvent(new MouseEvent('dragleave', { bubbles: true, clientX: 590, clientY: 250 }));
     nativeWindow.cursorPosition.mockResolvedValueOnce({ x: 590, y: 250 });
-    window.dispatchEvent(new MouseEvent('dragend', { bubbles: true }));
+    await releaseNativeAtCursor();
     await vi.waitFor(() => expect(onDetachTab).toHaveBeenCalledOnce());
     expect(fixture.store.dockTab).not.toHaveBeenCalled();
     expect(onDetachTab.mock.calls[0].slice(0, 2)).toEqual(['a', expect.objectContaining({ x: 590, y: 250, insideSourceWindow: true })]);
