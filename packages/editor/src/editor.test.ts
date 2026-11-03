@@ -4792,6 +4792,136 @@ describe('Markdown editor round trips', () => {
     expect(errors).toEqual([]);
   });
 
+  async function openSelectedBlockSources(view: EditorView, positions: number[]) {
+    view.dispatch(view.state.tr.setSelection(BlockRangeSelection.fromBlocks(view.state.doc, positions)!));
+    root.querySelector<HTMLButtonElement>(`.tano-block-handle[data-block-pos="${positions[0]}"]`)!.click();
+    await nextTick();
+    const button = [...document.querySelectorAll<HTMLButtonElement>('.block-context-menu button')]
+      .find(button => button.textContent === '编辑源码')!;
+    expect(button.disabled).toBe(false);
+    button.click();
+    await nextTick();
+  }
+
+  it.each([true, false])('reveals selected mixed blocks together and restores their exact nodes without edits (automatic source: %s)', async automatic => {
+    const content = 'Before.\n\n## Heading\n\nText with **bold**.\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\nAfter.\n';
+    const { editor, value, revealMarkdown, errors } = await mount(content);
+    revealMarkdown.value = automatic;
+    await nextTick();
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    const original = view.state.doc;
+    const positions = blockTree(original).slice(1, 4).map(block => block.pos);
+    await openSelectedBlockSources(view, positions);
+    const sources = view.dom.querySelectorAll('pre[data-tano-live-source]');
+    expect(sources).toHaveLength(1);
+    expect(sources[0]!.textContent).toContain('## Heading\n\nText with **bold**.\n\n| A');
+    expect(sources[0]!.textContent).not.toContain('Before.');
+    expect(sources[0]!.textContent).not.toContain('After.');
+    expect(value.value).toBe(content);
+    expect(editor.value!.canUndo()).toBe(false);
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    await nextTick();
+    expect(view.dom.querySelector('[data-tano-live-source]')).toBeNull();
+    expect(view.state.doc.eq(original)).toBe(true);
+    expect(value.value).toBe(content);
+    expect(editor.value!.canUndo()).toBe(false);
+    expect(errors).toEqual([]);
+  });
+
+  it('edits selected blocks into new block types and undoes the edit without changing outside blocks', async () => {
+    const content = 'Before.\n\nFirst.\n\nSecond.\n\nAfter.\n';
+    const { editor, value, revealMarkdown, errors } = await mount(content);
+    revealMarkdown.value = false;
+    await nextTick();
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    await openSelectedBlockSources(view, blockTree(view.state.doc).slice(1, 3).map(block => block.pos));
+    const source = view.state.doc.child(1), pos = view.state.doc.firstChild!.nodeSize;
+    view.dispatch(view.state.tr.insertText('## Updated\n\n* Item\n\nNew paragraph.', pos + 1, pos + source.nodeSize - 1));
+    await nextTick();
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    await nextTick();
+    expect(value.value).toBe('Before.\n\n## Updated\n\n* Item\n\nNew paragraph.\n\nAfter.\n');
+    expect(view.state.doc.content.content.map(node => node.type.name)).toEqual(['paragraph', 'heading', 'bullet_list', 'paragraph', 'paragraph']);
+    expect(editor.value!.undoLastChange()).toBe(true);
+    await nextTick();
+    expect(value.value).toBe(content);
+    expect(editor.value!.redoLastChange()).toBe(true);
+    await nextTick();
+    expect(value.value).toContain('## Updated\n\n* Item\n\nNew paragraph.');
+    expect(errors).toEqual([]);
+  });
+
+  it('edits disjoint selections across containers while preserving unselected blocks and their positions', async () => {
+    const content = 'First.\n\nKeep between.\n\n> Nested.\n>\n> Keep nested.\n\nAfter.\n';
+    const { editor, value, revealMarkdown, errors } = await mount(content);
+    revealMarkdown.value = false;
+    await nextTick();
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    const selected = blockTree(view.state.doc).filter(block => ['First.', 'Nested.'].includes(block.node.textContent));
+    await openSelectedBlockSources(view, selected.map(block => block.pos));
+    expect(view.dom.querySelectorAll('[data-tano-live-source]')).toHaveLength(2);
+    for (const [index, text] of ['Updated first.', 'Updated nested.'].entries()) {
+      const sources: { node: typeof view.state.doc; pos: number }[] = [];
+      view.state.doc.descendants((node, pos) => { if (node.type.name === 'tano_live_source') sources.push({ node, pos }); });
+      const source = sources[index]!;
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, source.pos + 1)));
+      expect(view.dom.querySelectorAll('[data-tano-live-source]')).toHaveLength(2);
+      view.dispatch(view.state.tr.insertText(text, source.pos + 1, source.pos + source.node.nodeSize - 1));
+    }
+    await nextTick();
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    await nextTick();
+    expect(view.dom.querySelector('[data-tano-live-source]')).toBeNull();
+    expect(value.value).toBe('Updated first.\n\nKeep between.\n\n> Updated nested.\n>\n> Keep nested.\n\nAfter.\n');
+    expect(view.dom.querySelector('blockquote')?.textContent).toBe('Updated nested.Keep nested.');
+    for (let step = 0; step < 4 && editor.value!.canUndo(); step++) {
+      expect(editor.value!.undoLastChange()).toBe(true);
+      await nextTick();
+      expect(value.value).toContain('Keep between.');
+      expect(value.value).toContain('> Keep nested.');
+      expect(value.value).toContain('After.');
+    }
+    expect(value.value).toBe(content);
+    expect(errors).toEqual([]);
+  });
+
+  it('keeps all restored blocks selected when expanding out of a grouped source', async () => {
+    const content = 'Before.\n\nFirst.\n\nSecond.\n\nAfter.\n';
+    const { editor, value, revealMarkdown, errors } = await mount(content);
+    revealMarkdown.value = false;
+    await nextTick();
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    await openSelectedBlockSources(view, blockTree(view.state.doc).slice(1, 3).map(block => block.pos));
+    const positions = blockTree(view.state.doc).map(block => block.pos);
+    view.dispatch(view.state.tr.setSelection(BlockRangeSelection.fromBlocks(view.state.doc, positions)!));
+    await nextTick();
+    expect(view.state.selection).toBeInstanceOf(BlockRangeSelection);
+    expect((view.state.selection as BlockRangeSelection).blocks.map(block => block.node.textContent))
+      .toEqual(['Before.', 'First.', 'Second.', 'After.']);
+    expect(value.value).toBe(content);
+    expect(editor.value!.canUndo()).toBe(false);
+    expect(errors).toEqual([]);
+  });
+
+  it('preserves source spelling in one selected group while restoring the other groups', async () => {
+    const content = 'First.\n\nKeep.\n\nLast.\n';
+    const { editor, value, revealMarkdown, errors } = await mount(content);
+    revealMarkdown.value = false;
+    await nextTick();
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    const blocks = blockTree(view.state.doc);
+    await openSelectedBlockSources(view, [blocks[0]!.pos, blocks[2]!.pos]);
+    const source = view.state.doc.firstChild!;
+    view.dispatch(view.state.tr.insertText('- Item', 1, source.nodeSize - 1));
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    await nextTick();
+    expect(value.value).toBe('- Item\n\nKeep.\n\nLast.\n');
+    expect(view.dom.querySelectorAll('[data-tano-live-source]')).toHaveLength(1);
+    expect(view.state.doc.lastChild!.type.name).toBe('paragraph');
+    expect(view.state.doc.lastChild!.textContent).toBe('Last.');
+    expect(errors).toEqual([]);
+  });
+
   it.each([
     ['paragraph', 'Text with **bold** and [link](https://example.com).'],
     ['heading', '## Heading'],
@@ -4809,7 +4939,7 @@ describe('Markdown editor round trips', () => {
     root.querySelector('.tano-block-handle')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     await nextTick();
     [...document.querySelectorAll<HTMLButtonElement>('.block-context-menu button')]
-      .find(button => button.textContent?.includes('临时显示 Markdown 源码'))!.click();
+      .find(button => button.textContent?.includes('编辑源码'))!.click();
     await nextTick();
     const source = root.querySelector<HTMLElement>('pre[data-tano-live-source]')!;
     expect(source).not.toBeNull();
@@ -4837,7 +4967,7 @@ describe('Markdown editor round trips', () => {
     root.querySelector('blockquote > p')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     await nextTick();
     [...document.querySelectorAll<HTMLButtonElement>('.block-context-menu button')]
-      .find(button => button.textContent?.includes('临时显示 Markdown 源码'))!.click();
+      .find(button => button.textContent?.includes('编辑源码'))!.click();
     await nextTick();
     expect(root.querySelector('blockquote pre[data-tano-live-source]')?.textContent).toBe('Child **bold**');
     const from = view.state.selection.$from.start();

@@ -63,6 +63,13 @@ const open = ref(false);
 const headingsOpen = ref(false);
 const headingPanel = ref<HTMLElement>();
 const headingGroupId = useId();
+const dividerPixelRatio = ref(window.devicePixelRatio || 1);
+const dividerThickness = computed(() =>
+  `${Math.max(1, Math.round(dividerPixelRatio.value)) / dividerPixelRatio.value}px`,
+);
+function updateDividerPixelRatio() {
+  dividerPixelRatio.value = window.devicePixelRatio || 1;
+}
 watch(open, () => { headingsOpen.value = false; });
 function headingTrigger() {
   return root.value?.querySelector<HTMLButtonElement>('[data-heading-trigger]');
@@ -114,11 +121,13 @@ function closeOtherMenu(event: Event) {
   headingsOpen.value = false;
 }
 onMounted(() => {
+  window.addEventListener('resize', updateDividerPixelRatio);
   window.addEventListener('resize', closeHeadingOnViewportChange);
   window.addEventListener('scroll', closeHeadingOnViewportChange, true);
   window.addEventListener(toolbarMenuOpenEvent, closeOtherMenu);
 });
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateDividerPixelRatio);
   window.removeEventListener('resize', closeHeadingOnViewportChange);
   window.removeEventListener('scroll', closeHeadingOnViewportChange, true);
   window.removeEventListener(toolbarMenuOpenEvent, closeOtherMenu);
@@ -363,6 +372,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
   <div
     ref="root"
     class="contextual-toolbar"
+    :style="{ '--toolbar-divider-thickness': dividerThickness }"
     :class="compact ? 'selection-format-toolbar' : 'editor-toolbar'"
     :data-selection-level="source ? 'source' : context.level"
     role="toolbar"
@@ -496,6 +506,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
       </div>
       <!-- Keep side buttons mounted so an interrupted transition can reverse in place. -->
       <span v-if="!compact && (context.level === 'block' || useCompactActions)" class="toolbar-divider" aria-hidden="true" />
+      <span v-if="compact && context.level === 'inline' && primaryInline.length" class="toolbar-divider toolbar-group-divider" aria-hidden="true" />
       <Transition
         :css="false"
         @enter="(element, done) => animateActions(element, done, true)"
@@ -510,7 +521,6 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
           class="inline-tools"
         >
           <div class="format-actions inline-actions">
-            <span v-if="compact && primaryInline.length" class="toolbar-divider toolbar-group-divider" aria-hidden="true" />
             <button
               v-for="item in primaryInline"
               :key="item.type"
@@ -705,13 +715,14 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
   display: block;
   flex-shrink: 0;
   align-self: center;
-  width: 1px;
+  /* Keep both separators equally thick at fractional display scales. */
+  width: var(--toolbar-divider-thickness);
   height: 20px;
   margin: 0 3px;
 }
 .contextual-toolbar[aria-orientation='vertical'] .toolbar-group-divider {
   width: 22px;
-  height: 1px;
+  height: var(--toolbar-divider-thickness);
   margin: 3px 0;
 }
 .selection-format-toolbar {

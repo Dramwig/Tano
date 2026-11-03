@@ -5,7 +5,7 @@ import type { Component } from 'vue';
 import ShortcutHint from './ShortcutHint.vue';
 import WechatLogo from './clipboard-icons/wechat.vue';
 import ZhihuLogo from './clipboard-icons/zhihu.vue';
-import { AlignLeft, ArrowDown, ArrowDownAZ, ArrowUp, Braces, ClipboardCopy, CopyPlus, Group, Heading, IndentDecrease, IndentIncrease, Pilcrow, Replace, Sigma, Table2, SquareCode, Ungroup, CalendarClock, CalendarDays, CheckSquare2, ChevronRight, CircleHelp, Columns2, Hash, Info, List, ListCollapse, PanelsTopLeft, Plus, Quote, Trash2 } from 'lucide-vue-next';
+import { AlignLeft, ArrowDown, ArrowDownAZ, ArrowUp, Braces, ClipboardCopy, CopyPlus, Group, Heading, IndentDecrease, IndentIncrease, Pilcrow, Replace, RotateCcw, Sigma, Table2, SquareCode, Ungroup, CalendarClock, CalendarDays, Check, CheckSquare2, ChevronRight, CircleHelp, Columns2, Hash, Info, List, ListCollapse, PanelsTopLeft, Plus, Quote, Trash2 } from 'lucide-vue-next';
 import {
   Editor,
   rootCtx,
@@ -122,7 +122,7 @@ import type { CommentAnchor } from '@tano/protocol';
 import { commentSpansForSelection, projectCommentText, proseRangesForCommentSpans } from './comment-projection';
 import { captureCaretAnchor, captureVisualAnchor, visualAnchorPlugin, visualSelection } from './visual-anchor';
 import { columnResizing, isInTable } from '@milkdown/kit/prose/tables';
-import { breakTableCell, nextTableRow } from './table-commands';
+import { breakTableCell, nextTableRow, tableLineAction } from './table-commands';
 import { tableBreaksRemark } from './table-markdown';
 import { defaultTableColumnWidth, minimumTableColumnWidth } from '@tano/protocol';
 import type { TableLayout } from '@tano/protocol';
@@ -412,8 +412,10 @@ let sourceActivationPending = false;
 let selectingWithPointer = false;
 function endPointerSelection() { selectingWithPointer = false; }
 let bridgeView: EditorView | undefined;
+type BlockSourceGroup = { id: string; original: Fragment; initial: string };
 let localSource:
   | { kind: 'block'; id: string; original: Node; initial: string; style: Record<string, string> | null; dismissOnOutside?: boolean }
+  | { kind: 'block-group'; id: string; sources: BlockSourceGroup[] }
   | InlineSourceSession
   | { kind: 'footnote-label'; id: string; initial: string; createdParagraph: boolean }
   | undefined;
@@ -701,13 +703,19 @@ function sourceOffset(source: string, before: string, first: string) {
 
 function findCurrentSource(state: EditorState) {
   if (!localSource) return undefined;
+  const ids = new Set(localSource.kind === 'block-group' ? localSource.sources.map(source => source.id) : [localSource.id]);
   let found: { node: Node; pos: number } | undefined;
   state.doc.descendants((node, pos) => {
     if (
       ['tano_live_source', 'tano_live_source_inline'].includes(node.type.name) &&
-      node.attrs.id === localSource?.id
-    )
-      found = { node, pos };
+      ids.has(node.attrs.id)
+    ) {
+      // Several disjoint block groups can stay open together. Prefer the one
+      // containing the selection so moving between their sources keeps them open.
+      if (!found || (state.selection.from >= pos + 1 && state.selection.to < pos + node.nodeSize))
+        found = { node, pos };
+      return false;
+    }
   });
   return found;
 }
@@ -1026,6 +1034,32 @@ function blockNodeSourceTransaction(
   return tr;
 }
 
+function selectedBlocksSourceTransaction(ctx: Ctx, state: EditorState, selection: BlockRangeSelection) {
+  const groups: (typeof selection.blocks)[] = [];
+  for (const block of selection.blocks) {
+    const previous = groups.at(-1)?.at(-1);
+    if (previous && previous.parentPos === block.parentPos && previous.pos + previous.node.nodeSize === block.pos)
+      groups.at(-1)!.push(block);
+    else groups.push([block]);
+  }
+  const sources = groups.map(blocks => {
+    const original = Fragment.fromArray(blocks.map(block => block.node));
+    const initial = ctx.get(serializerCtx)(state.schema.topNodeType.create(null, original)).replace(/\n+$/, '');
+    return { id: sourceId(), original, initial };
+  });
+  const tr = state.tr;
+  for (let index = groups.length - 1; index >= 0; index--) {
+    const blocks = groups[index]!, source = sources[index]!;
+    const last = blocks.at(-1)!;
+    const node = liveSource.type(ctx).create({ id: source.id, origin: 'blocks' },
+      source.initial ? state.schema.text(source.initial) : undefined);
+    tr.replaceWith(blocks[0]!.pos, last.pos + last.node.nodeSize, node);
+  }
+  localSource = { kind: 'block-group', id: sources[0]!.id, sources };
+  tr.setSelection(TextSelection.create(tr.doc, groups[0]![0]!.pos + 1));
+  return tr.setMeta('addToHistory', false);
+}
+
 function caretBlockSourceTransaction(ctx: Ctx, state: EditorState, tr: Transaction = state.tr) {
   const $cursor = tr.selection.$from;
   for (let depth = $cursor.depth; depth > 0; depth--) {
@@ -1309,11 +1343,53 @@ function updateInlineSource(ctx: Ctx, state: EditorState) {
   return result;
 }
 
+function preserveSourceBlockSelection(state: EditorState, tr: Transaction) {
+  if (!(state.selection instanceof BlockRangeSelection)) return;
+  // Finishing live Markdown replaces its temporary nodes. Keep the restored
+  // blocks selected instead of treating their source nodes as deletions.
+  const ranges = state.selection.blocks.map(block => ({
+    from: tr.mapping.map(block.pos, -1),
+    to: tr.mapping.map(block.pos + block.node.nodeSize, 1),
+  }));
+  const positions = blockTree(tr.doc).filter(block => ranges.some(range =>
+    block.pos >= range.from && block.pos + block.node.nodeSize <= range.to)).map(block => block.pos);
+  const selection = BlockRangeSelection.fromBlocks(tr.doc, positions,
+    tr.mapping.map(state.selection.anchorBlock, -1), tr.mapping.map(state.selection.headBlock, -1));
+  if (selection) tr.setSelection(selection);
+}
+
 function finishLocalSourceTransaction(ctx: Ctx, state: EditorState) {
   if (!localSource) return;
   const current = findCurrentSource(state);
   const session = localSource;
   localSource = undefined;
+  if (session.kind === 'block-group') {
+    const sources = new Map(session.sources.map(source => [source.id, source]));
+    const replacements: { pos: number; node: Node; content: Fragment }[] = [];
+    let unchanged = true;
+    state.doc.descendants((node, pos) => {
+      if (node.type.name !== 'tano_live_source') return;
+      const source = sources.get(node.attrs.id);
+      if (!source) return false;
+      const raw = node.textContent;
+      if (raw === source.initial) replacements.push({ pos, node, content: source.original });
+      else {
+        unchanged = false;
+        const parsed = ctx.get(parserCtx)(raw);
+        // Keep source text editable when conversion would change its spelling.
+        if (parsed && !retainsInlineSource(parsed) &&
+            ctx.get(serializerCtx)(parsed).replace(/\n+$/, '') === raw.replace(/\n+$/, ''))
+          replacements.push({ pos, node, content: parsed.content.size ? parsed.content : Fragment.from(state.schema.nodes.paragraph!.create()) });
+      }
+      return false;
+    });
+    if (!replacements.length) return;
+    const tr = state.tr;
+    for (const { pos, node, content } of replacements.reverse()) tr.replaceWith(pos, pos + node.nodeSize, content);
+    preserveSourceBlockSelection(state, tr);
+    if (unchanged) tr.setMeta('addToHistory', false);
+    return { tr, unchanged };
+  }
   if (!current) return;
   const raw = current.node.textContent;
   if (session.kind === 'footnote-label') {
@@ -1349,19 +1425,7 @@ function finishLocalSourceTransaction(ctx: Ctx, state: EditorState) {
     current.pos + current.node.nodeSize,
     replacement,
   );
-  if (state.selection instanceof BlockRangeSelection) {
-    // Finishing live Markdown replaces its temporary node. Keep that block (and
-    // any blocks parsed from it) selected instead of treating it as a deletion.
-    const ranges = state.selection.blocks.map(block => ({
-      from: tr.mapping.map(block.pos, -1),
-      to: tr.mapping.map(block.pos + block.node.nodeSize, 1),
-    }));
-    const positions = blockTree(tr.doc).filter(block => ranges.some(range =>
-      block.pos >= range.from && block.pos + block.node.nodeSize <= range.to)).map(block => block.pos);
-    const selection = BlockRangeSelection.fromBlocks(tr.doc, positions,
-      tr.mapping.map(state.selection.anchorBlock, -1), tr.mapping.map(state.selection.headBlock, -1));
-    if (selection) tr.setSelection(selection);
-  }
+  preserveSourceBlockSelection(state, tr);
   if (raw === session.initial) tr.setMeta('addToHistory', false);
   return { tr, unchanged: raw === session.initial };
 }
@@ -3107,6 +3171,12 @@ function blockMenuCommandAvailable(name: string) {
 function blockMenuSelectionCount() {
   return selectionBeforeMenu?.selection instanceof BlockRangeSelection ? selectionBeforeMenu.selection.blocks.length : 1;
 }
+const blockMenuTable = computed(() => {
+  const current = blockMenu.value;
+  if (!current || current.selectionMenu || blockMenuSelectionCount() > 1) return null;
+  const entry = blockTree(current.doc)[current.index];
+  return entry?.node.type.name === 'table' ? entry.node : null;
+});
 function blockShortcut(action: string) {
   if (!bridgeView || props.readonly || disposed) return;
   const view = bridgeView, state = view.state;
@@ -3252,7 +3322,7 @@ async function blockMenuAction(action: string) {
   editor.action((ctx) => {
     const view = ctx.get(editorViewCtx);
     if (!view.state.doc.eq(current.doc)) return;
-    if (view.state.selection instanceof BlockRangeSelection && action !== 'source') {
+    if (view.state.selection instanceof BlockRangeSelection && action !== 'source' && action !== 'restoreAutoWidth') {
       const tr = selectedBlocksMenuTransaction(view.state, action);
       if (tr) view.dispatch(tr.scrollIntoView());
       view.focus();
@@ -3261,7 +3331,10 @@ async function blockMenuAction(action: string) {
     const { doc, schema } = view.state;
     const { node, pos, parent } = blockTree(doc)[current.index]!;
     if (action === 'source') {
-      const tr = blockNodeSourceTransaction(ctx, view.state, { node, pos }, view.state.tr);
+      const selection = view.state.selection;
+      const tr = selection instanceof BlockRangeSelection && selection.blocks.length > 1
+        ? selectedBlocksSourceTransaction(ctx, view.state, selection)
+        : blockNodeSourceTransaction(ctx, view.state, { node, pos }, view.state.tr);
       if (localSource?.kind === 'block') localSource.dismissOnOutside = true;
       // Revealing syntax is a view change, including when automatic reveal is off.
       applying = true;
@@ -3272,6 +3345,9 @@ async function blockMenuAction(action: string) {
         applying = false;
         transitioningSource = false;
       }
+    } else if (action === 'restoreAutoWidth') {
+      const tr = tableLineAction(view.state, { pos, axis: 'column', index: 0 }, 'restoreAutoWidth');
+      if (tr) view.dispatch(tr.scrollIntoView());
     } else if (action === 'duplicate') {
       const insertPos = pos + node.nodeSize;
       const tr = view.state.tr.insert(insertPos, node);
@@ -3380,12 +3456,14 @@ function onBlockMenuKeydown(event: KeyboardEvent) {
 }
 
 function dismissBlockSourceOnPointer(event: PointerEvent) {
-  if (!editor || disposed || localSource?.kind !== 'block' || !localSource.dismissOnOutside) return;
+  if (!editor || disposed || !(localSource?.kind === 'block-group' ||
+      (localSource?.kind === 'block' && localSource.dismissOnOutside))) return;
   editor.action(ctx => {
     const view = ctx.get(editorViewCtx);
-    const source = currentSource(view);
-    const dom = source && view.nodeDOM(source.pos);
-    if (dom instanceof globalThis.Node && event.target instanceof globalThis.Node && dom.contains(event.target)) return;
+    if (event.target instanceof Element) {
+      const source = event.target.closest('[data-tano-live-source]');
+      if (source && view.dom.contains(source)) return;
+    }
     finishLocalSource(ctx, view);
   });
 }
@@ -3955,8 +4033,9 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <template v-if="!blockMenu.selectionMenu">
-      <button role="menuitem" type="button" :disabled="blockMenuSelectionCount() > 1" :title="blockMenuSelectionCount() > 1 ? '请选中单个块查看临时源码' : undefined" @click="blockMenuAction('source')"><SquareCode :size="15" aria-hidden="true" />临时显示 Markdown 源码</button>
+      <button role="menuitem" type="button" title="编辑所选块的 Markdown 源码" @click="blockMenuAction('source')"><SquareCode :size="15" aria-hidden="true" />编辑源码</button>
       <button role="menuitem" type="button" @click="blockMenuAction('duplicate')"><CopyPlus :size="15" aria-hidden="true" />创建副本</button>
+      <button v-if="blockMenuTable" role="menuitem" type="button" :disabled="!!blockMenuTable.attrs.autoWidth" :title="blockMenuTable.attrs.autoWidth ? '整张表已使用自动宽度' : '恢复整张表的自动宽度'" @click="blockMenuAction('restoreAutoWidth')"><RotateCcw :size="15" aria-hidden="true" />恢复自动宽度<Check v-if="blockMenuTable.attrs.autoWidth" class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
       <div class="menu-divider" role="separator" />
       <div class="block-convert-menu" role="presentation" @pointerenter="openBlockConvertMenu()" @pointerleave="scheduleCloseBlockConvertMenu">
         <button ref="blockConvertTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'convert'" @click="openBlockConvertMenu(true)"><Replace :size="15" aria-hidden="true" />转换为<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>

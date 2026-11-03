@@ -120,6 +120,7 @@ onMounted(async () => {
       <slot name="navigation" />
       <div class="template-breadcrumb" :class="{ 'template-breadcrumb-preview': mode === 'preview' }"><WorkspaceBreadcrumb
         :workspace-id="store.workspace?.id" :workspace-name="store.workspace?.name ?? 'Tano'"
+        :workspace-icon="store.workspaceSettings.icon" :workspace-mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'"
         :entries="store.workspace?.files ?? []" :demo-label="demoLabel" :read-only="store.workspace?.readOnly"
         :pages="breadcrumbPages" @navigate="navigateBreadcrumb" @open="emit('openFile', $event)" @open-directory="emit('openDirectory', $event)"
       /></div>

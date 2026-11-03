@@ -3,7 +3,8 @@ import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch, type Component } from 'vue';
-import { BookOpen, Check, ChevronRight, Database, Table2, LockKeyhole } from 'lucide-vue-next';
+import { Check, ChevronRight, Database, Table2 } from 'lucide-vue-next';
+import WorkspaceIcon from './WorkspaceIcon.vue';
 import ResourceIcon from './ResourceIcon.vue';
 import { indexFolderHomes, type FolderHomeFileName } from '../folder-home';
 import { basename, isMarkdown, isDataTableFilePath, isWorkspaceInternalPath, parentPath, type FileEntry, type WorkspaceViewDefinition } from '@tano/protocol';
@@ -16,6 +17,8 @@ const props = defineProps<{
   loading?: boolean;
   workspaceId?: string;
   workspaceName: string;
+  workspaceIcon?: string;
+  workspaceMode?: 'demo' | 'web' | 'local';
   hideWorkspace?: boolean;
   entries: FileEntry[];
   folderHomeFileName?: FolderHomeFileName;
@@ -181,7 +184,7 @@ onBeforeUnmount(() => {
       :disabled="!workspaceId" :data-tooltip="demoLabel ? t('浏览器演示 · 数据仅保存在本浏览器') : workspaceName"
       :aria-label="t('打开文件夹：{0}', [workspaceName])" :aria-current="directory && !path ? 'page' : undefined"
       @click="close(); emit('openDirectory', '')">
-      <LockKeyhole v-if="demoLabel && readOnly" :size="14" /><BookOpen v-else :size="14" />
+      <span class="breadcrumb-workspace-icon" aria-hidden="true"><WorkspaceIcon :icon="workspaceIcon" :mode="workspaceMode" :size="14" /></span>
       <span class="breadcrumb-workspace-label">{{ workspaceName }}</span>
     </button>
       <button v-if="!loading && !hideWorkspace" type="button" class="breadcrumb-separator breadcrumb-menu-trigger"
@@ -280,9 +283,17 @@ onBeforeUnmount(() => {
 }
 .breadcrumb > .breadcrumb-current { color: var(--text); }
 .breadcrumb > .breadcrumb-workspace { max-width: 220px; }
+.breadcrumb-workspace-icon { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; flex-shrink: 0; border-radius: 3px; }
 .breadcrumb-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .breadcrumb-trigger > svg, .breadcrumb-separator { flex-shrink: 0; }
 .breadcrumb-trigger > .document-file-icon, .breadcrumb-menu-entry > .document-file-icon { flex-shrink: 0; }
+.breadcrumb-trigger > svg,
+.breadcrumb-trigger > .document-file-icon,
+.breadcrumb-workspace-icon,
+.breadcrumb > svg.breadcrumb-separator,
+.breadcrumb-menu-trigger > svg,
+.breadcrumb-menu-entry > svg,
+.breadcrumb-menu-entry > .document-file-icon { translate: 0 var(--navigation-icon-offset-y, 0.5px); }
 button.breadcrumb-trigger:hover, .breadcrumb-trigger[aria-expanded='true'] { background: var(--hover); }
 .breadcrumb-trigger:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
 .breadcrumb > .breadcrumb-menu-trigger {

@@ -59,6 +59,9 @@
   --font-cjk-sans: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans SC', 'Source Han Sans SC';
   --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI',
     var(--font-cjk-sans), ui-sans-serif, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  /* UI glyphs sit slightly below their line-box centre. Align navigation icons
+     with the visible text rather than only the surrounding flex boxes. */
+  --navigation-icon-offset-y: 0.5px;
   /* Code and source views: Latin mono first, then a CJK face so Chinese in
      comments/strings never lands on SimSun or MS Gothic. */
   --font-mono: 'SFMono-Regular', Menlo, 'Cascadia Code', Consolas, 'Maple Mono NF CN',
@@ -668,6 +671,7 @@ button:hover {
   flex: 0 0 16px;
   display: grid;
   place-items: center;
+  translate: 0 var(--navigation-icon-offset-y);
   /* Line icons recede so labels carry the tree; emoji icons keep their color. */
   color: var(--muted);
   opacity: 0.85;
