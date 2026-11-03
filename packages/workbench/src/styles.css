@@ -1,6 +1,7 @@
 @import './dark-theme.css';
 @import './mobile.css';
 @import './scrollbars.css';
+@import './surface-motion.css';
 
 @font-face {
   font-family: Literata;
@@ -1955,7 +1956,7 @@ button:hover {
   overflow-y: auto;
 }
 .block-convert-submenu[aria-label='复制为'] {
-  width: 280px;
+  width: 240px;
   max-width: calc(100vw - 16px);
 }
 .page-context-menu {

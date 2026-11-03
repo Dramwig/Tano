@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t, uiLocale } from '../i18n';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { CalendarDays, Check, Cloud, FileUp, ListTodo, RefreshCw, X, ArrowLeft, Plus, ChevronRight } from 'lucide-vue-next';
@@ -110,7 +111,7 @@ const time = (value?: string) => value ? new Date(value).toLocaleString(uiLocale
 
 <template>
   <Teleport to="body">
-    <div class="plan-connections-backdrop" @mousedown.self="!working && emit('close')">
+    <div v-surface-motion="'PlanConnectionsDialog:0'" class="plan-connections-backdrop" @mousedown.self="!working && emit('close')">
       <section ref="panel" class="plan-connections" role="dialog" aria-modal="true" :aria-label="t('日历与 Todo 连接')" tabindex="-1" @keydown="keyboard">
         <header><div><h2>{{ t('日历与 Todo') }}</h2><p>{{ t('连接常用服务，或从文件导入事项。') }}</p></div><button class="icon-button" :aria-label="t('关闭同步设置')" :disabled="working" @click="emit('close')"><X :size="18" /></button></header>
         <nav class="connection-tabs" :aria-label="t('同步类别')">

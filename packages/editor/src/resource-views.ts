@@ -1,3 +1,4 @@
+import { setSurfaceVisible } from './surface-motion';
 import type { NodeViewConstructor } from '@milkdown/kit/prose/view';
 import { Ellipsis, ExternalLink, FileUp, Image as ImageIcon } from 'lucide-vue-next';
 import { h, render as renderIcon, watch, type Component } from 'vue';
@@ -101,7 +102,7 @@ export function resourceView(
       panelSide = undefined;
       stopPositioning?.();
       stopPositioning = undefined;
-      panel.hidden = true;
+      setSurfaceVisible(panel, false);
       dom.classList.remove('tano-editor-active');
       error.hidden = true;
       url.setCustomValidity('');
@@ -111,7 +112,7 @@ export function resourceView(
       if (readonly() || editing) return;
       announceEditorPanel(view.dom, dom);
       editing = true;
-      panel.hidden = false;
+      setSurfaceVisible(panel, true);
       dom.classList.add('tano-editor-active');
       title.value = String(current.attrs.title ?? '');
       url.value = String(current.attrs.url ?? '');

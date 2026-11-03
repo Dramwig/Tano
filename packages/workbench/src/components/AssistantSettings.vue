@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion, closeSurfaceDialog } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowReactive, watch } from 'vue';
 import { Bot, Copy, Save, ChevronDown, Eye, EyeOff, Gauge, LoaderCircle, MoreHorizontal, Pencil, Plus, Settings2, Trash2, TriangleAlert, Wifi } from 'lucide-vue-next';
@@ -157,7 +158,7 @@ async function configureQuota(connection: AssistantConnection) {
 function closeQuotaEditor() {
   if (quotaSaving.value) return;
   const id = quotaEditorId.value;
-  quotaDialog.value?.close();
+  closeSurfaceDialog(quotaDialog.value);
   quotaEditorId.value = '';
   void nextTick(() => { document.querySelector<HTMLButtonElement>(`[data-quota-owner="${id}"]`)?.focus(); });
 }
@@ -344,7 +345,7 @@ function addConnection() {
 function closeEditor() {
   if (saving.value) return;
   closeAvatarPicker();
-  editor.value?.close();
+  closeSurfaceDialog(editor.value);
   draft.value = null;
   resetSecret();
   error.value = '';
@@ -391,7 +392,7 @@ function confirmRemoval(connection: AssistantConnection, event: Event) {
 
 function closeDeletion() {
   if (removing.value) return;
-  deletionDialog.value?.close();
+  closeSurfaceDialog(deletionDialog.value);
   pendingDeletion.value = null;
   error.value = '';
   const target = deletionTrigger;
@@ -433,8 +434,8 @@ onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', dismissAvatarPicker, true);
   window.removeEventListener('scroll', dismissAvatarPicker, true);
   window.removeEventListener('resize', dismissAvatarPicker);
-  editor.value?.close();
-  deletionDialog.value?.close();
+  closeSurfaceDialog(editor.value);
+  closeSurfaceDialog(deletionDialog.value);
   for (const controller of checkControllers.values()) controller.abort();
   checkControllers.clear();
   document.removeEventListener('pointerdown', dismissMenu, true);
@@ -526,10 +527,10 @@ onBeforeUnmount(() => {
   </div>
 
   <Teleport to="body">
-    <dialog v-if="quotaConnection" ref="quotaDialog" class="assistant-connection-dialog assistant-config-dialog assistant-quota-dialog" aria-label="额度查询配置" @cancel.prevent="closeQuotaEditor" @keydown.stop>
+    <dialog v-surface-motion="'AssistantSettings:0'" v-if="quotaConnection" ref="quotaDialog" class="assistant-connection-dialog assistant-config-dialog assistant-quota-dialog" aria-label="额度查询配置" @cancel.prevent="closeQuotaEditor" @keydown.stop>
       <AssistantQuotaConfig :key="quotaConnection.id" :connection="quotaConnection" @close="closeQuotaEditor" @busy="quotaSaving = $event" @saved="emit('changed')" />
     </dialog>
-    <dialog v-if="pendingDeletion" ref="deletionDialog" class="assistant-connection-dialog assistant-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="assistant-delete-title" aria-describedby="assistant-delete-description" @cancel.prevent="closeDeletion" @keydown.stop>
+    <dialog v-surface-motion="'AssistantSettings:1'" v-if="pendingDeletion" ref="deletionDialog" class="assistant-connection-dialog assistant-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="assistant-delete-title" aria-describedby="assistant-delete-description" @cancel.prevent="closeDeletion" @keydown.stop>
       <form class="assistant-connection-form" :aria-busy="removing" @submit.prevent="removeConnection">
         <header class="assistant-form-heading"><h2 id="assistant-delete-title">{{ t('删除模型连接') }}</h2></header>
         <div class="assistant-form-scroll">
@@ -542,7 +543,7 @@ onBeforeUnmount(() => {
         </footer>
       </form>
     </dialog>
-    <div v-if="menuConnection" id="assistant-connection-actions" ref="menu" class="dropdown compact-action-menu assistant-connection-menu" role="menu" tabindex="-1" :aria-label="t('{0} 操作', [menuConnection.name])" :style="menuPosition" @keydown.stop="menuKey">
+    <div v-surface-motion="'AssistantSettings:2'" v-if="menuConnection" id="assistant-connection-actions" ref="menu" class="dropdown compact-action-menu assistant-connection-menu" role="menu" tabindex="-1" :aria-label="t('{0} 操作', [menuConnection.name])" :style="menuPosition" @keydown.stop="menuKey">
       <button type="button" role="menuitem" :disabled="checkControllers.has(menuConnection.id) || saving" @click="checkConnection(menuConnection)"><Wifi :size="15" />{{ checkControllers.has(menuConnection.id) ? t('正在检测…') : menuConnection.managed ? t('刷新模型名单') : t('检测连通') }}</button>
       <button v-if="canQueryQuota(menuConnection)" type="button" role="menuitem" :disabled="saving || quotaLoading[menuConnection.id]" @click="queryConnectionQuota(menuConnection)"><Gauge :size="15" />{{ quotaLoading[menuConnection.id] ? t('正在查询额度…') : t('查询额度') }}</button>
       <div v-if="!menuConnection.managed" class="menu-divider" role="separator" />
@@ -551,7 +552,7 @@ onBeforeUnmount(() => {
       <div v-if="!menuConnection.managed" class="menu-divider" role="separator" />
       <button v-if="!menuConnection.managed" type="button" role="menuitem" :disabled="saving || assistant.busy || assistant.loading" @click="configureQuota(menuConnection)"><Settings2 :size="15" />{{ t('配置额度查询') }}</button>
     </div>
-    <dialog v-if="draft" ref="editor" class="assistant-connection-dialog assistant-config-dialog" aria-labelledby="assistant-connection-editor-title" @cancel.prevent="closeEditor" @keydown.stop>
+    <dialog v-surface-motion="'AssistantSettings:3'" v-if="draft" ref="editor" class="assistant-connection-dialog assistant-config-dialog" aria-labelledby="assistant-connection-editor-title" @cancel.prevent="closeEditor" @keydown.stop>
       <form class="assistant-connection-form" :aria-busy="saving" @submit.prevent="saveConnection">
         <header class="assistant-form-heading">
           <h2 id="assistant-connection-editor-title">{{ assistant.connections.some(connection => connection.id === draft?.id) ? t('编辑连接') : t('新建连接') }}</h2>
@@ -564,7 +565,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="connection-avatar-field">
               <button ref="avatarTrigger" type="button" class="connection-avatar-trigger" aria-haspopup="dialog" :aria-expanded="avatarOpen" :aria-controls="avatarOpen ? 'connection-avatar-popover' : undefined" @click="toggleAvatarPicker"><span class="config-avatar-summary"><AssistantConnectionAvatar :connection="draft" :size="28" /><span>{{ t('连接头像') }}</span></span><span class="config-summary-hint">选择图标 <ChevronDown :size="14" /></span></button>
-              <div v-if="avatarOpen" id="connection-avatar-popover" ref="avatarPopover" popover="auto" role="dialog" aria-label="选择连接头像" class="connection-icon-picker connection-avatar-popover" :style="avatarPosition" @toggle="avatarToggled" @keydown.esc.stop.prevent="closeAvatarPicker(true)">
+              <div v-surface-motion="'AssistantSettings:4'" v-if="avatarOpen" id="connection-avatar-popover" ref="avatarPopover" popover="auto" role="dialog" aria-label="选择连接头像" class="connection-icon-picker connection-avatar-popover" :style="avatarPosition" @toggle="avatarToggled" @keydown.esc.stop.prevent="closeAvatarPicker(true)">
               <div class="connection-icon-preview"><AssistantConnectionAvatar :connection="draft" />
                 <button type="button" :aria-pressed="!draft.icon || draft.icon === 'auto'" @click="selectAvatar()">{{ t('自动识别') }}</button>
                 <button type="button" :aria-pressed="draft.icon === 'initials'" @click="selectAvatar('initials')">{{ t('名称缩写') }}</button>

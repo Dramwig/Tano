@@ -1,3 +1,4 @@
+import { setSurfaceVisible } from './surface-motion';
 import { $nodeSchema, $remark, $inputRule } from '@milkdown/kit/utils';
 import { InputRule } from '@milkdown/kit/prose/inputrules';
 import { NodeSelection, Selection } from '@milkdown/kit/prose/state';
@@ -284,7 +285,7 @@ export function mathView(
       preview.setAttribute('aria-label', !readonly() && clickToEdit() ? '编辑公式' : 'LaTeX 公式');
       dom.classList.toggle('math-click-to-edit', !readonly() && clickToEdit());
       dom.classList.toggle('tano-editor-active', editing);
-      panel.hidden = !editing;
+      setSurfaceVisible(panel, editing);
       input.hidden = !editing;
       renderSource();
       renderMathPreview(

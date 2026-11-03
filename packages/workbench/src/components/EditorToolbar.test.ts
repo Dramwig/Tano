@@ -819,6 +819,8 @@ it('positions newly opened docked menus using their trigger and actual height', 
 });
 
 it('disables a fading toolbar and keeps a reopened toolbar when the previous exit finishes', async () => {
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = vi.fn(() => ({ matches: false, addEventListener: vi.fn() }) as unknown as MediaQueryList);
   const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'animate');
   const nativeAnimations: { onfinish: (() => void) | null; cancel: ReturnType<typeof vi.fn> }[] = [];
   Object.defineProperty(Element.prototype, 'animate', {
@@ -841,6 +843,7 @@ it('disables a fading toolbar and keeps a reopened toolbar when the previous exi
     const content = root.querySelector<HTMLElement>('.ProseMirror')!;
     await selectText(root.querySelector('.ProseMirror p')!, 0, 2);
     await expectFloating();
+    await vi.waitFor(() => expect(nativeAnimations.length).toBeGreaterThan(0));
     finishAnimations();
     await nextTick();
     const outgoing = document.querySelector('.selection-toolbar')!;
@@ -854,6 +857,7 @@ it('disables a fading toolbar and keeps a reopened toolbar when the previous exi
     content.focus();
     await vi.waitFor(() => expect(document.querySelector('.selection-toolbar:not([inert])')).not.toBeNull());
     const reopened = document.querySelector('.selection-toolbar:not([inert])')!;
+    await vi.waitFor(() => expect(nativeAnimations.length).toBeGreaterThan(0));
     finishAnimations();
     await nextTick();
     expect(reopened.isConnected).toBe(true);
@@ -863,6 +867,7 @@ it('disables a fading toolbar and keeps a reopened toolbar when the previous exi
     finishAnimations();
     await vi.waitFor(() => expect(document.querySelector('.selection-toolbar')).toBeNull());
   } finally {
+    window.matchMedia = previousMatchMedia;
     if (descriptor) Object.defineProperty(Element.prototype, 'animate', descriptor);
     else Reflect.deleteProperty(Element.prototype, 'animate');
   }

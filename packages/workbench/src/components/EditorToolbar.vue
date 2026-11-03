@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { animate } from 'motion/mini';
@@ -86,6 +87,7 @@ async function openHeadings(focus = false) {
   const y = Math.max(8, Math.min(anchor.top, window.innerHeight - panel.offsetHeight - 8));
   panel.style.left = `${x - parent.left - parentElement.clientLeft}px`;
   panel.style.top = `${y - parent.top - parentElement.clientTop}px`;
+  panel.dataset.surfaceSide = x < bounds.left ? 'left' : 'right';
   if (focus) (panel.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')
     ?? panel.querySelector<HTMLButtonElement>('button'))?.focus();
 }
@@ -329,6 +331,9 @@ function animateActions(element: Element, done: () => void, entering: boolean) {
   const margin = props.vertical ? 'marginBlockEnd' : 'marginInlineEnd';
   const previous = host.getBoundingClientRect()[axis];
   const interrupted = actionMotions.has(host);
+  const currentStyle = getComputedStyle(host);
+  const previousOpacity = Number(currentStyle.opacity);
+  const previousMargin = parseFloat(currentStyle[margin]) || 0;
   clearActionMotion(host);
   if (entering) enableEnteringActions(host);
   else disableLeavingActions(host);
@@ -341,8 +346,8 @@ function animateActions(element: Element, done: () => void, entering: boolean) {
   host.style.overflow = 'hidden';
   const animation = animate(host, {
     [axis]: [entering && !interrupted ? 0 : previous, entering ? size : 0],
-    [margin]: [entering ? -gap : 0, entering ? 0 : -gap],
-    opacity: entering ? [0, 1] : [1, 0],
+    [margin]: [interrupted ? previousMargin : entering ? -gap : 0, entering ? 0 : -gap],
+    opacity: [interrupted ? previousOpacity : entering ? 0 : 1, entering ? 1 : 0],
   }, { duration: 0.2, ease: [0.22, 1, 0.36, 1] });
   actionMotions.set(host, animation);
   void animation.finished.then(() => {
@@ -389,7 +394,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
               <span v-if="!compact">{{ blockLabel }}</span>
             </span>
           </button>
-          <div
+          <div v-surface-motion="'EditorToolbar:0'"
             v-if="open && !disabled"
             class="dropdown compact-action-menu block-type-menu panel-scrollbar"
             :aria-label="t('Block Level 选项')"
@@ -436,7 +441,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
               <option value="CUSTOM">{{ t('自定义块') }}</option>
             </select>
           </div>
-          <div v-if="open && headingsOpen && !disabled" :id="headingGroupId" ref="headingPanel"
+          <div v-surface-motion="'EditorToolbar:1'" v-if="open && headingsOpen && !disabled" :id="headingGroupId" ref="headingPanel"
             class="heading-submenu compact-action-menu panel-scrollbar" role="group" :aria-label="t('标题级别')"
             @keydown="headingPanelKey">
             <button v-for="(icon, index) in headingIcons" :key="index" type="button"
@@ -605,7 +610,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
         <option value="CAUTION">{{ t('注意') }}</option>
         <option value="CUSTOM">{{ t('自定义块') }}</option>
       </select>
-      <form
+      <form v-surface-motion="'EditorToolbar:2'"
         v-if="form && !disabled"
         class="toolbar-input-panel"
         :aria-label="formLabel"

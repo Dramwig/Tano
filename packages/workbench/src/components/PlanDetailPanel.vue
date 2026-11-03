@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useId, watch } from 'vue';
 import { Archive, CalendarDays, Check, Circle, CircleCheck, Copy, Flag, ListTodo, LoaderCircle, RotateCcw, Save, X } from 'lucide-vue-next';
@@ -201,7 +202,7 @@ onBeforeUnmount(() => { nameResize?.disconnect(); if (previousFocus?.isConnected
 </script>
 
 <template>
-  <div class="plan-detail-backdrop" @mousedown.self="requestNavigation({ kind: 'close' })">
+  <div v-surface-motion="'PlanDetailPanel:0'" class="plan-detail-backdrop" @mousedown.self="requestNavigation({ kind: 'close' })">
     <form ref="panel" class="plan-detail-panel" role="dialog" aria-modal="true" :aria-label="title" tabindex="-1" @submit.prevent="save()" @keydown="keyboard">
       <header>
         <div class="plan-detail-heading"><component :is="checkable ? ListTodo : CalendarDays" :size="18" /><h2>{{ title }}</h2><span>{{ personal ? t('个人') : base.source?.name ?? store.workspace?.name }}</span></div>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Check } from 'lucide-vue-next';
 
@@ -155,7 +156,7 @@ onBeforeUnmount(() => {
     <slot :is-visible="isVisible" />
   </component>
   <Teleport to="body">
-    <div
+    <div v-surface-motion="'ButtonVisibilityGroup:0'"
       v-if="menu"
       ref="menuElement"
       class="dropdown compact-action-menu button-visibility-menu"

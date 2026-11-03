@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { FolderOpen, ChevronLeft, ChevronRight, Minus, Plus, Maximize, Info, MoreHorizontal } from 'lucide-vue-next';
 import type { PluginRuntimeState } from '../plugins/host';
@@ -111,7 +112,7 @@ async function selectFile(event: Event, id: string) {
     </template>
     <button v-if="groups.length" ref="trigger" type="button" aria-label="预览操作" title="预览操作" aria-haspopup="dialog" :aria-controls="popoverId" :aria-expanded="expanded" @click="toggle" @keydown.down.prevent="!expanded && toggle()"><MoreHorizontal :size="19" /></button>
     <Teleport to="body">
-      <div v-if="expanded && header" :id="popoverId" ref="popover" class="plugin-header-popover" :style="position" role="dialog" aria-label="预览操作" @keydown.stop="keyboard">
+      <div v-surface-motion="'PluginViewHeader:0'" v-if="expanded && header" :id="popoverId" ref="popover" class="plugin-header-popover" :style="position" role="dialog" aria-label="预览操作" @keydown.stop="keyboard">
         <div class="plugin-header-heading"><span>{{ view.label }}</span><span>{{ header.status }}</span></div>
         <div v-for="group in groups" :key="group.label" class="plugin-header-group">
           <span class="plugin-header-group-label">{{ group.label }}</span>

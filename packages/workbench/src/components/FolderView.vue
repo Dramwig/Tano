@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { ArrowUp, File, Folder } from 'lucide-vue-next';
+import { ArrowUp } from 'lucide-vue-next';
 import { isDataTableFilePath, isMarkdown, isWorkspaceInternalPath, parentPath, type FileEntry } from '@tano/protocol';
 import { t } from '../i18n';
 import { indexFolderHomes, type FolderHomeFileName } from '../folder-home';
 import DocumentFileIcon from './DocumentFileIcon.vue';
-import FolderHomeIcon from './FolderHomeIcon.vue';
+import ResourceIcon from './ResourceIcon.vue';
 
 const props = defineProps<{
   directory: { path: string; name: string; missing: boolean };
@@ -28,7 +28,7 @@ const fileSize = (file: FileEntry) => file.kind === 'directory' ? '—' : file.s
 <template>
   <section class="folder-view panel-scrollbar" :aria-label="t('文件夹视图')">
     <header class="folder-view-header">
-      <h1><Folder :size="22" />{{ directory.name }}</h1>
+      <h1><ResourceIcon :path="directory.path" kind="directory" :size="22" />{{ directory.name }}</h1>
       <button v-if="directory.path && !directory.missing" type="button" @click="emit('up')"><ArrowUp :size="16" />{{ t('返回上级目录') }}</button>
     </header>
     <p v-if="directory.missing" class="folder-view-empty" role="status">{{ t('文件夹不可用') }}</p>
@@ -39,10 +39,10 @@ const fileSize = (file: FileEntry) => file.kind === 'directory' ? '—' : file.s
           <button type="button" class="folder-view-entry" :data-path="file.path" :title="file.name" @click="emit('open', file)">
             <span class="folder-view-name">
               <DocumentFileIcon v-if="homeFor(file)" :file="homeFor(file)!"
-                :icon="documentIcons?.[homeFor(file)!.id]" :load="loadDocumentIcon" :fallback="FolderHomeIcon" />
+                :icon="documentIcons?.[homeFor(file)!.id]" :load="loadDocumentIcon" :resource="{ ...file, folderHome: true }" />
               <DocumentFileIcon v-else-if="file.kind === 'file' && (isMarkdown(file.path) || isDataTableFilePath(file.path))"
                 :file="file" :icon="documentIcons?.[file.id]" :load="isMarkdown(file.path) ? loadDocumentIcon : undefined" />
-              <component v-else :is="file.kind === 'directory' ? Folder : File" :size="16" :stroke-width="1.6" />
+              <ResourceIcon v-else :path="file.path" :name="file.name" :kind="file.kind" />
               <span>{{ file.name }}</span>
             </span>
             <span class="folder-view-date">{{ file.modified ? new Date(file.modified).toLocaleString() : '—' }}</span>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import ModalBackdrop from './ModalBackdrop.vue';
 import CapabilitySyntax from './CapabilitySyntax.vue';
 import { t, uiLocale, setUiLocale, uiSearchText } from '../i18n';
@@ -419,7 +420,7 @@ function customFontInput(event: Event) {
 </script>
 
 <template>
-  <ModalBackdrop :active="!windowed && !tabbed" class="modal-backdrop settings-backdrop" :class="{ 'settings-windowed': windowed, 'settings-tabbed': tabbed }" @close="emit('close')">
+  <ModalBackdrop v-surface-motion="!windowed && !tabbed ? 'SettingsPanel:0' : false" :active="!windowed && !tabbed" class="modal-backdrop settings-backdrop" :class="{ 'settings-windowed': windowed, 'settings-tabbed': tabbed }" @close="emit('close')">
     <section
       ref="settingsDialog"
       class="settings-dialog workbench-modal-surface"

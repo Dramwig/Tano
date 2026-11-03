@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion, closeSurfaceDialog } from '@tano/editor/surface-motion';
 import ShortcutHint from '@tano/editor/shortcut-hint';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -49,10 +50,10 @@ function keydown(event: KeyboardEvent) {
   }
 }
 onMounted(() => { dialog.value?.showModal(); void nextTick(() => input.value?.focus()); });
-onBeforeUnmount(() => { dialog.value?.close(); if (before?.isConnected) before.focus(); });
+onBeforeUnmount(() => { closeSurfaceDialog(dialog.value); if (before?.isConnected) before.focus(); });
 </script>
 <template>
-  <dialog ref="dialog" class="command-palette" :aria-label="t('命令中心')" @cancel.prevent="emit('close')" @keydown="keydown" @click="event => { if (event.target === dialog) emit('close'); }">
+  <dialog v-surface-motion="'CommandPalette:0'" ref="dialog" class="command-palette" :aria-label="t('命令中心')" @cancel.prevent="emit('close')" @keydown="keydown" @click="event => { if (event.target === dialog) emit('close'); }">
     <div class="command-palette-body">
       <div class="command-search">
         <input ref="input" v-model="query" role="combobox" :aria-label="t('搜索命令')" aria-autocomplete="list" aria-controls="workbench-command-list" :aria-activedescendant="selected >= 0 && commands[selected] ? `workbench-command-${selected}` : undefined" aria-expanded="true" :placeholder="t('搜索命令…')" autocomplete="off" spellcheck="false" />

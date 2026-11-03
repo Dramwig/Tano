@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion, closeSurfaceDialog } from '@tano/editor/surface-motion';
 import { t, uiLocale } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useId } from 'vue';
 import { animate } from 'motion/mini';
@@ -242,13 +243,13 @@ function backdropClick(event: MouseEvent) {
   if (shouldClose) close();
 }
 onMounted(() => { dialog.value?.showModal(); });
-onBeforeUnmount(() => { generation++; dialogHeightMotion?.stop(); dialogHeightMotion = undefined; dialog.value?.close(); originalFocus?.isConnected && originalFocus.focus(); });
+onBeforeUnmount(() => { generation++; dialogHeightMotion?.stop(); dialogHeightMotion = undefined; closeSurfaceDialog(dialog.value); originalFocus?.isConnected && originalFocus.focus(); });
 const issueText = (issue: ImportIssue) => `${issue.name}：${issue.message}`;
 </script>
 
 <template>
   <Teleport to="body">
-    <dialog ref="dialog" class="import-dialog" :class="{ 'import-dialog-detail': prepared }" :aria-labelledby="titleId" @cancel.prevent="close" @keydown="keydown"
+    <dialog v-surface-motion="'ImportPanel:0'" ref="dialog" class="import-dialog" :class="{ 'import-dialog-detail': prepared }" :aria-labelledby="titleId" @cancel.prevent="close" @keydown="keydown"
       @pointerdown="backdropPointerDown" @click.self="backdropClick">
       <div class="import-main">
         <header class="import-heading" :class="{ 'import-heading-detail': prepared }">

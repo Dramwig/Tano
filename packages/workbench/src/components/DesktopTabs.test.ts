@@ -124,7 +124,7 @@ it('labels the fullscreen assistant tab and restores the document label when its
   assistantTab.value = undefined; await nextTick();
   expect(tab.dataset.tooltip).toBe('b.md');
   expect(tab.querySelector('.desktop-tab-label')!.textContent).toBe('b');
-  expect(tab.querySelector('.lucide-file-text-icon')).not.toBeNull();
+  expect(tab.querySelector('[data-file-icon="markdown"]')).not.toBeNull();
 });
 
 it('shows each document icon from its current draft and restores the default when removed', async () => {
@@ -133,7 +133,7 @@ it('shows each document icon from its current draft and restores the default whe
   await nextTick();
   expect(buttons[0].querySelector('.workspace-emoji-icon')?.getAttribute('data-emoji')).toBe('🌿');
   expect(buttons[1].querySelector('.lucide-book-open-icon')).not.toBeNull();
-  expect(buttons[2].querySelector('.lucide-file-text-icon')).not.toBeNull();
+  expect(buttons[2].querySelector('[data-file-icon="markdown"]')).not.toBeNull();
   fixture.store.tabs[1].document.content = '---\nicon: 😗\n---\n第二篇\n';
   await nextTick();
   expect(buttons[1].querySelector('.workspace-emoji-icon')?.getAttribute('data-emoji')).toBe('😗');
@@ -143,14 +143,35 @@ it('shows each document icon from its current draft and restores the default whe
   fixture.store.tabs[1].document.content = '第二篇\n';
   await nextTick();
   expect(buttons[1].querySelector('.desktop-tab-document-icon')).toBeNull();
-  expect(buttons[1].querySelector('.lucide-file-text-icon')).not.toBeNull();
+  expect(buttons[1].querySelector('[data-file-icon="markdown"]')).not.toBeNull();
   expect(buttons[0].querySelector('.workspace-emoji-icon')?.getAttribute('data-emoji')).toBe('🌿');
+});
+
+it('uses Office file icons for attachment tabs and their drag previews', async () => {
+  const formats = [['report.doc', 'word'], ['report.DOCX', 'word'], ['budget.xls', 'spreadsheet'],
+    ['budget.XLSX', 'spreadsheet'], ['slides.ppt', 'slides'], ['slides.PPTX', 'slides']] as const;
+  for (const [path, icon] of formats) {
+    fixture.store.tabs[0] = { id: 'a', path, blank: false, attachmentPreview: true,
+      attachment: { id: 'office', name: path, path, kind: 'file', size: 8000000, modified: 0 } };
+    await nextTick();
+    const svg = buttons[0].querySelector('[data-file-icon]')!;
+    expect(svg.getAttribute('data-file-icon')).toBe(icon);
+    expect(svg.getAttribute('width')).toBe('15');
+    pointer(buttons[0], 'pointerdown', 80);
+    pointer(buttons[0], 'pointermove', 260, 20);
+    await nextTick();
+    const preview = document.body.querySelector('.desktop-tab-drag-preview [data-file-icon]')!;
+    expect(preview.getAttribute('data-file-icon')).toBe(icon);
+    expect(preview.getAttribute('width')).toBe('15');
+    pointer(buttons[0], 'pointercancel', 260, 20);
+    await nextTick();
+  }
 });
 
 it('updates data table tab and drag preview icons and restores the table fallback', async () => {
   fixture.store.tabs[0] = { id: 'a', path: '计划.table.json', blank: false, dataTable: { name: '计划', dirty: false } };
   await nextTick();
-  expect(buttons[0].querySelector('[class*="lucide-table"]')).not.toBeNull();
+  expect(buttons[0].querySelector('[data-file-icon="table"]')).not.toBeNull();
   fixture.store.tabs[0].dataTable.icon = '😄'; await nextTick();
   expect(buttons[0].querySelector('.workspace-emoji-icon')?.getAttribute('data-emoji')).toBe('😄');
   pointer(buttons[0], 'pointerdown', 80);
@@ -164,8 +185,8 @@ it('updates data table tab and drag preview icons and restores the table fallbac
   fixture.store.tabs[0].dataTable.icon = 'data:image/png;base64,aGVsbG8='; await nextTick();
   expect(buttons[0].querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,aGVsbG8=');
   delete fixture.store.tabs[0].dataTable.icon; await nextTick();
-  expect(buttons[0].querySelector('[class*="lucide-table"]')).not.toBeNull();
-  expect(preview.querySelector('[class*="lucide-table"]')).not.toBeNull();
+  expect(buttons[0].querySelector('[data-file-icon="table"]')).not.toBeNull();
+  expect(preview.querySelector('[data-file-icon="table"]')).not.toBeNull();
   expect(buttons[0].querySelector('.desktop-tab-document-icon')).toBeNull();
   pointer(buttons[0], 'pointercancel', 260, 20);
 });

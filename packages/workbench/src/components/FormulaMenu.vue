@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { Sigma } from 'lucide-vue-next';
@@ -37,7 +38,7 @@ onBeforeUnmount(() => window.removeEventListener('click', closeOutside));
     >
       <Sigma :size="17" />
     </button>
-    <div v-if="open && !disabled" class="dropdown document-dropdown">
+    <div v-surface-motion="'FormulaMenu:0'" v-if="open && !disabled" class="dropdown document-dropdown">
       <button @mousedown.prevent @click="insert('math')">{{ t('行内公式 · $…$') }}</button>
       <button @mousedown.prevent @click="insert('math-block')">{{ t('公式块 · $$…$$') }}</button>
     </div>

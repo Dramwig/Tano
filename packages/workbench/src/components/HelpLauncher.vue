@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { ArrowUpRight, BookOpen, ChevronRight, CircleHelp, Compass, Keyboard, MoreHorizontal, X } from 'lucide-vue-next';
@@ -70,6 +71,7 @@ function placeMore() {
   const right = parent.right + 4;
   const left = parent.left - width - 4;
   moreOnLeft.value = right + width > window.innerWidth - 12 && left >= 12;
+  if (morePanel.value) morePanel.value.dataset.surfaceSide = moreOnLeft.value ? 'left' : 'right';
   morePosition.value = {
     left: `${Math.max(12, Math.min(moreOnLeft.value ? left : right, window.innerWidth - width - 12))}px`,
     top: `${Math.max(12, Math.min(row.top - 5, window.innerHeight - height - 12))}px`,
@@ -245,7 +247,7 @@ onBeforeUnmount(() => {
   ><CircleHelp :size="17" :stroke-width="1.6" /></button>
 
   <Teleport to="body">
-    <section v-if="preview && !opened && available" :id="`${id}-preview`" ref="previewPanel" data-help-surface
+    <section v-surface-motion="'HelpLauncher:0'" v-if="preview && !opened && available" :id="`${id}-preview`" ref="previewPanel" data-help-surface
       role="region" :aria-label="t('上手指引')" class="help-preview" :style="position"
       @pointerenter="previewHovered = true; keepPreview()" @pointerleave="previewHovered = false; leavePreview()"
       @focusin="previewFocused = true; keepPreview()" @focusout="previewFocusOut">
@@ -253,7 +255,7 @@ onBeforeUnmount(() => {
         @documentation="followDocumentation" />
     </section>
 
-    <section v-if="opened && available" :id="`${id}-panel`" ref="panel" data-help-surface
+    <section v-surface-motion="'HelpLauncher:1'" v-if="opened && available" :id="`${id}-panel`" ref="panel" data-help-surface
       class="help-popover" :style="position" role="dialog" aria-modal="false" :aria-label="t('帮助与上手')"
       @keydown="menuKeys" @scroll="closeMore()">
         <div class="help-menu-heading">{{ t('帮助与上手') }}</div>
@@ -269,13 +271,13 @@ onBeforeUnmount(() => {
           @documentation="followDocumentation" />
     </section>
 
-    <div v-if="opened && available && more" :id="`${id}-more`" ref="morePanel" data-help-surface
+    <div v-surface-motion="'HelpLauncher:2'" v-if="opened && available && more" :id="`${id}-more`" ref="morePanel" data-help-surface
       class="help-submenu" :style="morePosition" role="menu" :aria-label="t('更多帮助选项')" @keydown="moreKeys">
       <button class="help-row" role="menuitem" @click="settings('shortcuts')"><Keyboard :size="15" /><span>{{ t('键盘快捷键') }}</span></button>
       <button class="help-row" role="menuitem" @click="settings('about')"><CircleHelp :size="15" /><span>{{ t('关于同页') }}</span></button>
     </div>
 
-    <aside v-if="hint && available && !opened" ref="bubble" data-help-surface class="help-bubble" :style="position" :aria-label="t('使用小提示')"
+    <aside v-surface-motion="'HelpLauncher:3'" v-if="hint && available && !opened" ref="bubble" data-help-surface class="help-bubble" :style="position" :aria-label="t('使用小提示')"
       @pointerenter="bubbleHovered = true" @pointerleave="bubbleHovered = false"
       @focusin="bubbleFocused = true" @focusout="bubbleFocused = !!bubble?.contains($event.relatedTarget as Node)">
       <div class="help-bubble-heading"><span>{{ t('小提示') }}</span><button class="help-close" :aria-label="t('暂时不提示')" @click="dismiss(true)"><X :size="14" /></button></div>

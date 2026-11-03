@@ -1,3 +1,4 @@
+import { setSurfaceVisible, showSurface, removeSurface } from './surface-motion';
 import { DOMSerializer } from '@milkdown/kit/prose/model';
 import type { Mark, Node } from '@milkdown/kit/prose/model';
 import type { NodeViewConstructor, MarkViewConstructor } from '@milkdown/kit/prose/view';
@@ -239,6 +240,7 @@ export function mermaidView(
         if (!menuOpen) {
           menuOpen = true;
           document.body.append(menu);
+          showSurface(menu);
           language.setAttribute('aria-expanded', 'true');
           stopPositioning = observePanelPosition(positionMenu);
         }
@@ -248,7 +250,7 @@ export function mermaidView(
       function closeMenu() {
         if (!menuOpen) return;
         menuOpen = false;
-        menu.remove();
+        removeSurface(menu);
         stopPositioning?.();
         stopPositioning = undefined;
         language.setAttribute('aria-expanded', 'false');
@@ -445,7 +447,7 @@ export function mermaidView(
       if (input.value !== currentNode.textContent) input.value = currentNode.textContent;
       renderSource();
       input.readOnly = readonly();
-      panel.hidden = !editing;
+      setSurfaceVisible(panel, editing);
       preview.tabIndex = readonly() ? -1 : 0;
       preview.setAttribute('role', readonly() ? 'img' : 'button');
       preview.setAttribute('aria-label', readonly() ? 'Mermaid 图表' : '编辑 Mermaid 图表');

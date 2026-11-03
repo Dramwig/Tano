@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { localizedDataFieldTypes as dataFieldTypes } from '../ui-labels';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -122,6 +123,7 @@ function position() {
     maxHeight: `${window.innerHeight - 16}px`,
   });
   rootStyle.value = place(root.value, rect.left, rect.bottom + 4, 224);
+  if (root.value) root.value.dataset.surfaceSide = parseFloat(String(rootStyle.value.top)) < rect.top ? 'up' : 'down';
   const bounds = (style: CSSProperties) => {
     const left = Number.parseFloat(String(style.left)),
       top = Number.parseFloat(String(style.top));
@@ -132,6 +134,9 @@ function position() {
     window.innerWidth < 760 || (first.left < 448 && window.innerWidth - first.right < 448);
   // Reserve room for both levels so the option editor never folds back over its parent.
   const openLeft = window.innerWidth - first.right < 448 && first.left >= 448;
+  const side = !narrow.value && openLeft ? 'left' : 'right';
+  if (secondary.value) secondary.value.dataset.surfaceSide = side;
+  if (tertiary.value) tertiary.value.dataset.surfaceSide = side;
   if (first) {
     const x = narrow.value ? first.left : openLeft ? first.left - 236 : first.right + 4;
     secondaryStyle.value = place(
@@ -388,8 +393,8 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div class="field-menu-layer" :class="{ 'field-menu-stacked': narrow }" @keydown="keydown">
-      <section
+    <div v-surface-motion="'DataFieldMenu:0'" class="field-menu-layer" :class="{ 'field-menu-stacked': narrow }" @keydown="keydown">
+      <section v-surface-motion="'DataFieldMenu:root'"
         ref="root"
         class="field-menu panel-scrollbar"
         :class="{ 'field-menu-covered': narrow && panel }"
@@ -511,8 +516,9 @@ onBeforeUnmount(() => {
         <p v-if="error && !panel" role="alert">{{ error }}</p>
       </section>
 
-      <section
+      <section v-surface-motion="'DataFieldMenu:1'"
         v-if="panel"
+        :key="panel"
         ref="secondary"
         class="field-menu field-submenu panel-scrollbar"
         :class="{ 'field-menu-covered': narrow && option !== undefined }"
@@ -630,7 +636,7 @@ onBeforeUnmount(() => {
         <p v-if="error && option === undefined" role="alert">{{ error }}</p>
       </section>
 
-      <section
+      <section v-surface-motion="'DataFieldMenu:2'"
         v-if="option !== undefined"
         ref="tertiary"
         class="field-menu field-option-menu panel-scrollbar"
@@ -883,20 +889,5 @@ onBeforeUnmount(() => {
 }
 .field-menu-stacked .option-move {
   opacity: 1;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .field-menu {
-    animation: field-menu-in 0.1s ease-out;
-  }
-  @keyframes field-menu-in {
-    from {
-      opacity: 0;
-      transform: translateY(-2px);
-    }
-    to {
-      opacity: 1;
-      transform: none;
-    }
-  }
 }
 </style>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { ImagePlus, Link, MessageSquare, Smile, Upload } from 'lucide-vue-next';
@@ -96,6 +97,7 @@ function placeCover() {
       : rect.top - height - 8 >= top ? rect.top - height - 8 : Math.max(top, bottom - height),
     width, maxHeight,
   };
+  if (coverPanel.value) coverPanel.value.dataset.surfaceSide = coverPosition.value.top < rect.top ? 'up' : 'down';
 }
 async function toggleCover() {
   if (disabled.value) return;
@@ -244,7 +246,7 @@ onBeforeUnmount(() => {
     <p v-if="error && !coverOpen" class="document-appearance-error" role="alert">{{ error }}</p>
     </div>
     <Teleport to="body">
-      <section v-if="coverOpen" :id="coverPanelId" ref="coverPanel" class="workspace-icon-picker document-cover-picker" role="dialog" :aria-label="t('文档封面')"
+      <section v-surface-motion="'DocumentAppearance:0'" v-if="coverOpen" :id="coverPanelId" ref="coverPanel" class="workspace-icon-picker document-cover-picker" role="dialog" :aria-label="t('文档封面')"
         :style="{ left: `${coverPosition.left}px`, top: `${coverPosition.top}px`, width: `${coverPosition.width}px`, maxHeight: `${coverPosition.maxHeight}px` }"
         :aria-busy="busy" @keydown="coverKeydown" @paste="pasteCover">
         <header class="workspace-icon-picker-header">

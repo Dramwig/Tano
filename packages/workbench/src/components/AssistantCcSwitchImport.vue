@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion, closeSurfaceDialog } from '@tano/editor/surface-motion';
 import { computed, nextTick, ref } from 'vue';
 import { Download, LoaderCircle } from 'lucide-vue-next';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -34,7 +35,7 @@ async function show() {
 }
 function close() {
   if (locked.value) return;
-  dialog.value?.close(); visible.value = false;
+  closeSurfaceDialog(dialog.value); visible.value = false;
   trigger.value?.focus();
 }
 async function chooseFile() {
@@ -57,7 +58,7 @@ async function save() {
 <template>
   <button v-if="assistant.canImportCcSwitch" ref="trigger" type="button" class="cc-import-trigger" aria-haspopup="dialog" :disabled="assistant.busy || assistant.loading" @click="show"><Download :size="15" />{{ t('从 CC Switch 导入') }}</button>
   <Teleport to="body">
-    <dialog v-if="visible" ref="dialog" class="cc-import-dialog" aria-labelledby="cc-import-title" @cancel.prevent="close" @keydown.stop>
+    <dialog v-surface-motion="'AssistantCcSwitchImport:0'" v-if="visible" ref="dialog" class="cc-import-dialog" aria-labelledby="cc-import-title" @cancel.prevent="close" @keydown.stop>
       <form @submit.prevent="save">
         <header><h2 id="cc-import-title">{{ t('从 CC Switch 导入') }}</h2></header>
         <div class="cc-import-body" :aria-busy="locked">

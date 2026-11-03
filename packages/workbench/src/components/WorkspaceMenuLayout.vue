@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 import { ChevronRight, MoreHorizontal, Settings2 } from 'lucide-vue-next';
@@ -30,9 +31,12 @@ async function show(last?: boolean) {
   const edge = 8;
   let x = parent.right + 4;
   let y = row.top - 4;
+  let side = 'right';
   if (x + width > window.innerWidth - edge) {
+    side = 'left';
     x = parent.left - width - 4;
     if (x < edge) {
+      side = 'down';
       x = parent.left;
       y = row.bottom + 4;
     }
@@ -41,6 +45,7 @@ async function show(last?: boolean) {
     left: `${Math.max(edge, Math.min(x, window.innerWidth - width - edge))}px`,
     top: `${Math.max(edge, Math.min(y, window.innerHeight - height - edge))}px`,
   };
+  menu.dataset.surfaceSide = side === 'down' && parseFloat(position.value.top) < row.top ? 'up' : side;
   await nextTick();
   if (opened.value) {
     const items = enabledItems();
@@ -109,7 +114,7 @@ onBeforeUnmount(() => {
       <MoreHorizontal :size="16" /><span>{{ t('更多操作') }}</span><ChevronRight :size="13" />
     </button>
     <Teleport to="body">
-      <div v-if="opened" :id="menuId" ref="panel"
+      <div v-surface-motion="'WorkspaceMenuLayout:0'" v-if="opened" :id="menuId" ref="panel"
         class="dropdown compact-action-menu workspace-more-menu panel-scrollbar"
         role="menu" :aria-label="t('更多工作区操作')" tabindex="-1"
         :style="{ ...position, visibility: position ? 'visible' : 'hidden' }"

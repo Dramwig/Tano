@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t, uiLocale } from '../i18n';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
@@ -149,7 +150,7 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <div class="modal-backdrop" @mousedown.self="!busy && emit('close')">
+  <div v-surface-motion="'AgentPanel:0'" class="modal-backdrop" @mousedown.self="!busy && emit('close')">
     <section
       class="modal agent-modal"
       role="dialog"

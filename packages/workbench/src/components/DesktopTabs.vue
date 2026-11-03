@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ArrowLeft, ArrowRight, Folder, Bot, CalendarDays, FileText, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, PanelBottomClose, ExternalLink, Bug } from 'lucide-vue-next';
+import { ArrowLeft, ArrowRight, Bot, CalendarDays, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, PanelBottomClose, ExternalLink, Bug } from 'lucide-vue-next';
 import { basename, isMarkdown, isDataTableFilePath } from '@tano/protocol';
 import { invoke } from '@tauri-apps/api/core';
 import { cursorPosition, getCurrentWindow } from '@tauri-apps/api/window';
@@ -19,8 +20,9 @@ import { useWorkspaceStore } from '../stores/workspace';
 import type { DocumentTab } from '../stores/workspace';
 import ButtonVisibilityGroup from './ButtonVisibilityGroup.vue';
 import WorkspaceIcon from './WorkspaceIcon.vue';
+import ResourceIcon from './ResourceIcon.vue';
 import { appearanceText } from '../document-appearance';
-import { Database, Table2, FilePlus2 } from 'lucide-vue-next';
+import { Database, FilePlus2 } from 'lucide-vue-next';
 
 const store = useWorkspaceStore();
 const navigationItems = [
@@ -1062,7 +1064,7 @@ async function onTabKeydown(event: KeyboardEvent) {
           @click="store.activeId = doc.id"
         >
           <Bot v-if="assistantTab?.id === doc.id" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
-          <Folder v-else-if="doc.directory" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
+          <ResourceIcon v-else-if="doc.directory" :path="doc.path" kind="directory" class="desktop-tab-icon" :size="15" />
           <GitFork v-else-if="doc.graph" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <Puzzle v-else-if="doc.plugins" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <CalendarDays v-else-if="doc.calendar" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
@@ -1072,9 +1074,8 @@ async function onTabKeydown(event: KeyboardEvent) {
             <WorkspaceIcon :icon="documentIcons[doc.id]" :size="15" />
           </span>
           <Database v-else-if="doc.workspaceView?.view.database" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
-          <Table2 v-else-if="doc.dataTable" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <FilePlus2 v-else-if="doc.blank" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
-          <FileText v-else class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
+          <ResourceIcon v-else :path="doc.path" class="desktop-tab-icon" :size="15" />
           <span class="desktop-tab-label">{{ tabLabel(doc) }}</span>
           <span
             v-if="doc.dataTable?.dirty || doc.document && store.dirty(doc.document)"
@@ -1120,7 +1121,7 @@ async function onTabKeydown(event: KeyboardEvent) {
       <strong>{{ draggedFiles.length === 1 ? title(draggedFiles[0]!.path) : t('{0} 个文档', [draggedFiles.length]) }}</strong>
       <span>{{ t('在此处作为新标签页打开') }}</span>
     </div>
-    <div
+    <div v-surface-motion="'DesktopTabs:0'"
       v-if="contextMenu"
       ref="contextMenuElement"
       class="dropdown compact-action-menu desktop-tab-context-menu"
@@ -1204,7 +1205,7 @@ async function onTabKeydown(event: KeyboardEvent) {
         <WorkspaceIcon :icon="documentIcons[dragPreview.id]" :size="15" />
       </span>
       <Database v-else-if="paneTabs.find(tab => tab.id === dragPreview?.id)?.workspaceView?.view.database" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
-      <component v-else :is="isDataTableFilePath(dragPreview.path) ? Table2 : FileText" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
+      <ResourceIcon v-else :path="dragPreview.path" :kind="paneTabs.find(tab => tab.id === dragPreview?.id)?.directory ? 'directory' : 'file'" class="desktop-tab-icon" :size="15" />
       <span class="desktop-tab-label">{{ paneTabs.find(tab => tab.id === dragPreview?.id) ? tabLabel(paneTabs.find(tab => tab.id === dragPreview?.id)!) : title(dragPreview.path) }}</span>
       <span v-if="dragPreview.dirty" class="desktop-tab-dirty" />
     </div>

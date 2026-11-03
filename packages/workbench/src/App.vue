@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import ShortcutHint from '@tano/editor/shortcut-hint';
 import WorkspaceSyncPanel from './components/WorkspaceSyncPanel.vue';
 import { vScrollFade } from './scroll-fade';
@@ -4537,7 +4538,7 @@ const helpBlocked = computed(() => !!(
           />
         </template>
         <Teleport to="body">
-          <div
+          <div v-surface-motion="'App:0'"
             v-if="fileContextMenu"
             class="dropdown compact-action-menu file-context-menu"
             role="menu"
@@ -4813,7 +4814,7 @@ const helpBlocked = computed(() => !!(
           </div>
         </Teleport>
         <Teleport to="body">
-          <div
+          <div v-surface-motion="'App:1'"
             v-if="directoryContextMenu"
             class="dropdown compact-action-menu file-context-menu directory-context-menu"
             role="menu"
@@ -4883,7 +4884,7 @@ const helpBlocked = computed(() => !!(
           </div>
         </Teleport>
         <Teleport to="body">
-          <div
+          <div v-surface-motion="'App:2'"
             v-if="workspaceEntryContextMenu"
             ref="workspaceEntryContextMenuElement"
             class="dropdown compact-action-menu file-context-menu workspace-entry-context-menu"
@@ -4934,7 +4935,7 @@ const helpBlocked = computed(() => !!(
               >
               <component :is="workspaceMenu ? ChevronUp : ChevronDown" :size="12" />
             </button>
-            <div
+            <div v-surface-motion="'App:3'"
               v-if="workspaceMenu"
               id="workspace-menu"
               class="dropdown compact-action-menu sidebar-popover workspace-dropdown"
@@ -5500,7 +5501,7 @@ const helpBlocked = computed(() => !!(
                     >
                       {{ calendarModeLabel }}<ChevronDown :size="14" />
                     </button>
-                    <div
+                    <div v-surface-motion="'App:4'"
                       v-if="calendarModeOpen"
                       class="calendar-view-menu"
                       role="menu"
@@ -5579,7 +5580,7 @@ const helpBlocked = computed(() => !!(
                     >
                       <MoreHorizontal :size="19" />
                     </button>
-                    <div
+                    <div v-surface-motion="'App:5'"
                       v-if="menu && pane.id === store.activePaneId"
                       ref="documentMenuElement"
                       class="dropdown compact-action-menu document-dropdown"
@@ -6349,7 +6350,7 @@ const helpBlocked = computed(() => !!(
       />
 
       <Teleport to="body">
-        <div
+        <div v-surface-motion="'App:6'"
           v-if="pageContextMenu && !switchingWorkspace"
           ref="pageContextMenuElement"
           class="dropdown compact-action-menu page-context-menu"
@@ -6369,7 +6370,7 @@ const helpBlocked = computed(() => !!(
         </div>
       </Teleport>
       <Teleport to="body">
-        <div
+        <div v-surface-motion="'App:7'"
           v-if="outlineContextMenu && !switchingWorkspace"
           ref="outlineContextMenuElement"
           class="dropdown compact-action-menu page-context-menu outline-context-menu"
@@ -6571,7 +6572,7 @@ const helpBlocked = computed(() => !!(
     </div>
 
     <NewTabPicker v-if="modal === 'newTab'" @close="modal = ''" @new-document="createNewDocument" @new-table="createNewEntry('table')" />
-    <div
+    <div v-surface-motion="'App:8'"
       v-if="modal && modal !== 'newTab'"
       class="modal-backdrop"
       :class="{ 'search-backdrop': modal === 'search' }"

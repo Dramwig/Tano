@@ -1,3 +1,4 @@
+import { setSurfaceVisible } from './surface-motion';
 import { h, render } from 'vue';
 import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronRight, Copy, Eraser, GripHorizontal, GripVertical, PaintRoller, Plus, RotateCcw, Trash2 } from 'lucide-vue-next';
 import type { Component } from 'vue';
@@ -92,7 +93,7 @@ export function tableControls(readonly: () => boolean) {
 
       const closeColors = () => {
         keepColors();
-        palette.hidden = true;
+        setSurfaceVisible(palette, false);
         items.style.visibility = '';
         items.removeAttribute('aria-hidden');
         colorButton?.setAttribute('aria-expanded', 'false');
@@ -101,7 +102,7 @@ export function tableControls(readonly: () => boolean) {
 
       const close = () => {
         stopPanel?.(); stopPanel = undefined;
-        menu.hidden = true;
+        setSurfaceVisible(menu, false);
         selected = null;
         outline.hidden = true;
         closeColors();
@@ -257,6 +258,7 @@ export function tableControls(readonly: () => boolean) {
             : right + width <= window.innerWidth - 8 ? right : left;
           const height = palette.getBoundingClientRect().height;
           palette.style.left = `${x}px`;
+          palette.dataset.surfaceSide = !overlay && x < parent.left ? 'left' : 'right';
           palette.style.top = `${Math.max(8, Math.min(anchor.top, window.innerHeight - height - 8))}px`;
         }
       };
@@ -354,7 +356,7 @@ export function tableControls(readonly: () => boolean) {
             }
             colorGroups.append(section);
           }
-          palette.hidden = false;
+          setSurfaceVisible(palette, true);
           colorButton?.setAttribute('aria-expanded', 'true');
         }
         positionMenu();
@@ -454,7 +456,7 @@ export function tableControls(readonly: () => boolean) {
         if (!select(target)) return;
         const grip = grips[target.axis];
         renderItems();
-        menu.hidden = false;
+        setSurfaceVisible(menu, true);
         grip.setAttribute('aria-expanded', 'true');
         announceEditorPanel(host, grip);
         stopPanel = activateEditorPanel({ panel: menu, anchor: grip, position: positionMenu, close });

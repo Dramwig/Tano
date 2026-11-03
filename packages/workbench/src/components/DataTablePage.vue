@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { localizedDataFieldTypes as dataFieldTypes } from '../ui-labels';
 import { t } from '../i18n';
 import PreviewSkeleton from './PreviewSkeleton.vue';
@@ -1431,7 +1432,7 @@ const filterOperators = [
       @filter="filterField"
     />
     <input ref="fileInput" type="file" accept=".csv,text/csv" hidden @change="chooseImport" />
-    <div v-if="fieldDraft" class="data-modal-backdrop" @keydown.esc.stop="fieldDraft = undefined">
+    <div v-surface-motion="'DataTablePage:0'" v-if="fieldDraft" class="data-modal-backdrop" @keydown.esc.stop="fieldDraft = undefined">
       <section
         class="data-modal panel-scrollbar"
         role="dialog"
@@ -1495,7 +1496,7 @@ const filterOperators = [
         </footer>
       </section>
     </div>
-    <div v-if="importText !== undefined" class="data-modal-backdrop">
+    <div v-surface-motion="'DataTablePage:1'" v-if="importText !== undefined" class="data-modal-backdrop">
       <section
         class="data-modal panel-scrollbar"
         role="dialog"
@@ -1519,7 +1520,7 @@ const filterOperators = [
         </footer>
       </section>
     </div>
-    <div v-if="confirmAction" class="data-modal-backdrop">
+    <div v-surface-motion="'DataTablePage:2'" v-if="confirmAction" class="data-modal-backdrop">
       <section
         class="data-modal panel-scrollbar"
         role="alertdialog"

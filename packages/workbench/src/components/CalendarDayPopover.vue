@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t, uiLocale } from '../i18n';
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { X } from 'lucide-vue-next';
@@ -30,18 +31,25 @@ function place() {
   const bottom = window.innerHeight - margin;
   let left = anchor.right + gap;
   let top = anchor.top - 12;
+  let side = 'right';
   if (left + width > right) {
+    side = 'left';
     if (anchor.left - gap - width >= margin) left = anchor.left - gap - width;
     else {
+      side = 'down';
       left = anchor.left + (anchor.width - width) / 2;
       top = anchor.bottom + gap;
-      if (top + height > bottom) top = anchor.top - gap - height;
+      if (top + height > bottom) {
+        top = anchor.top - gap - height;
+        side = 'up';
+      }
     }
   }
   position.value = {
     left: `${Math.max(margin, Math.min(left, right - width))}px`,
     top: `${Math.max(margin, Math.min(top, bottom - height))}px`,
   };
+  panel.value.dataset.surfaceSide = side;
 }
 async function focusPanel() {
   await nextTick();
@@ -85,7 +93,7 @@ watch(() => props.date, focusPanel);
 
 <template>
   <Teleport to="body">
-    <section
+    <section v-surface-motion="'CalendarDayPopover:0'"
       :id="id"
       ref="panel"
       class="calendar-day-popover"

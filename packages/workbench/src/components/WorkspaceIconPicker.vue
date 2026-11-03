@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t, uiLocale } from '../i18n';
 import englishIconLabels from '../locales/icon-labels-en.json';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
@@ -94,6 +95,7 @@ function place() {
     left: Math.max(8, Math.min(props.align === 'start' ? rect.left : rect.right - width, window.innerWidth - width - 8)),
     top, width, maxHeight,
   };
+  if (panel.value) panel.value.dataset.surfaceSide = top < rect.top ? 'up' : 'down';
 }
 async function toggle() {
   if (props.disabled) return;
@@ -211,7 +213,7 @@ onBeforeUnmount(() => {
     :aria-controls="pickerId" :disabled="disabled" @click="toggle"
   ><slot name="preview"><WorkspaceIcon :icon="icon" :mode="mode" :size="28" /></slot></button>
   <Teleport to="body">
-    <section
+    <section v-surface-motion="'WorkspaceIconPicker:0'"
       v-if="open" :id="pickerId" ref="panel" class="workspace-icon-picker" role="dialog"
       :aria-label="label" :style="{
         left: `${position.left}px`, top: `${position.top}px`, width: `${position.width}px`, maxHeight: `${position.maxHeight}px`,

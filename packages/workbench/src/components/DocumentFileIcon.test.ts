@@ -30,7 +30,7 @@ async function mount(load = vi.fn(async (_file: FileEntry, _signal: AbortSignal)
 it('loads unopened documents only when visible and does not reread an unchanged file listing', async () => {
   const { state, load, visible } = await mount();
   expect(load).not.toHaveBeenCalled();
-  expect(root.querySelector('[class*="lucide-file-text"]')).not.toBeNull();
+  expect(root.querySelector('[data-file-icon="markdown"]')).not.toBeNull();
   await visible();
   await vi.waitFor(() => expect(root.querySelector('.workspace-emoji-icon')?.getAttribute('data-emoji')).toBe('🌿'));
   state.file = { ...state.file }; await nextTick();
@@ -49,7 +49,7 @@ it('prefers live drafts including icon removal, then reloads the saved icon afte
   resolve('🌿'); await nextTick();
   expect(root.querySelector('.workspace-emoji-icon')?.getAttribute('data-emoji')).toBe('🚀');
   state.icon = ''; await nextTick();
-  expect(root.querySelector('[class*="lucide-file-text"]')).not.toBeNull();
+  expect(root.querySelector('[data-file-icon="markdown"]')).not.toBeNull();
   state.icon = undefined; await nextTick();
   expect(load).toHaveBeenCalledTimes(2);
   resolve('icon:book');
@@ -81,6 +81,6 @@ it('renders uploaded icons and safely restores the default icon when a backgroun
   await visible(); expect(load).not.toHaveBeenCalled();
   load.mockRejectedValue(new Error('unreadable'));
   state.file.name = 'AGENTS.md'; state.icon = undefined;
-  await vi.waitFor(() => expect(root.querySelector('[class*="lucide-bot"]')).not.toBeNull());
+  await vi.waitFor(() => expect(root.querySelector('[data-file-icon="agents"]')).not.toBeNull());
   expect(root.querySelector('img')).toBeNull();
 });

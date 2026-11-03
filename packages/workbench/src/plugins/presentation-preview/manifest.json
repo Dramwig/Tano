@@ -4,6 +4,6 @@
   "description": "离线预览 PPT/PPTX，按原始尺寸渲染文字、图片、图形、主题和母版，无需安装 Office。",
   "objectTypes": [], "relationTypes": [], "permissions": ["attachments.read", "ui"],
   "networkOrigins": [], "nativeCommands": [],
-  "commands": [{ "id": "open", "label": "演示文稿：打开预览", "menus": ["file"] }],
+  "commands": [{ "id": "open", "label": "演示文稿：打开预览" }],
   "views": [{ "id": "slides", "label": "演示文稿预览", "location": "tab" }]
 }

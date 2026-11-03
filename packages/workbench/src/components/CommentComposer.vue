@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, ref, watch } from 'vue';
 import { ArrowUp, AtSign, UserRound, Bot } from 'lucide-vue-next';
@@ -92,7 +93,7 @@ defineExpose({ focus });
       <slot name="actions"><button type="submit" class="comment-send" :aria-label="t('发表{0}', [label])" :data-tooltip="t('发表{0}', [label])"
         :disabled="busy || !modelValue.trim()"><ArrowUp :size="16" /></button></slot>
     </div>
-    <div v-if="choosing" class="comment-people" role="dialog" :aria-label="t('提及人物')" @keydown.esc.stop="choosing = false">
+    <div v-surface-motion="'CommentComposer:0'" v-if="choosing" class="comment-people" role="dialog" :aria-label="t('提及人物')" @keydown.esc.stop="choosing = false">
       <input v-model="query" :aria-label="t('搜索人物')" :placeholder="t('搜索人物')" @keydown.enter.prevent />
       <button v-for="person in people" :key="person.id" type="button" @click="mention(person.id, person.name)"><component :is="isAgentPerson(person) ? Bot : UserRound" :size="14" />{{ person.name }}</button>
       <span v-if="!people.length">{{ t('没有匹配的人物') }}</span>

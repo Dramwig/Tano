@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import { vSurfaceMotion, setSurfaceVisible } from './surface-motion';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { Component } from 'vue';
 import ShortcutHint from './ShortcutHint.vue';
-import { AlignLeft, ArrowDown, ArrowDownAZ, ArrowUp, Braces, ClipboardCopy, CopyPlus, Group, Heading, IndentDecrease, IndentIncrease, Pilcrow, Replace, SquareCode, Ungroup, CalendarClock, CalendarDays, CheckSquare2, ChevronRight, CircleHelp, Columns2, Hash, Info, List, ListCollapse, PanelsTopLeft, Plus, Quote, Trash2 } from 'lucide-vue-next';
+import WechatLogo from './clipboard-icons/wechat.vue';
+import ZhihuLogo from './clipboard-icons/zhihu.vue';
+import { AlignLeft, ArrowDown, ArrowDownAZ, ArrowUp, Braces, ClipboardCopy, CopyPlus, Group, Heading, IndentDecrease, IndentIncrease, Pilcrow, Replace, Sigma, Table2, SquareCode, Ungroup, CalendarClock, CalendarDays, CheckSquare2, ChevronRight, CircleHelp, Columns2, Hash, Info, List, ListCollapse, PanelsTopLeft, Plus, Quote, Trash2 } from 'lucide-vue-next';
 import {
   Editor,
   rootCtx,
@@ -2398,7 +2401,7 @@ const bridge = $prose(
                   status.removeAttribute('role');
                   status.removeAttribute('aria-label');
                 }
-                panel.hidden = !editing;
+                setSurfaceVisible(panel, editing);
                 for (const { key, input } of fields) {
                   const value = String(current.attrs[key] ?? '');
                   if (input.value !== value) input.value = value;
@@ -3319,6 +3322,7 @@ function openBlockConvertMenu(focusMenu = false, kind: 'convert' | 'wrap' | 'cop
     const triggerBounds = trigger.getBoundingClientRect();
     const x = bounds.right + submenu.offsetWidth <= window.innerWidth - 8
       ? bounds.right - 1 : bounds.left - submenu.offsetWidth + 1;
+    submenu.dataset.surfaceSide = x < bounds.left ? 'left' : 'right';
     blockConvertMenu.value = {
       x: Math.max(8, Math.min(x, window.innerWidth - submenu.offsetWidth - 8)),
       y: Math.max(8, Math.min(triggerBounds.top - 5, window.innerHeight - submenu.offsetHeight - 8)),
@@ -3873,7 +3877,7 @@ onBeforeUnmount(() => {
             >{{ property.value }}</button>
             <span v-else class="frontmatter-property-value">{{ property.value }}</span>
           </template>
-          <div v-if="typeMenuProperty === property.name || (typeMenuProperty === null && !property.name)" class="frontmatter-type-menu" role="menu" aria-label="属性类型">
+          <div v-surface-motion="'MarkdownEditor:0'" v-if="typeMenuProperty === property.name || (typeMenuProperty === null && !property.name)" class="frontmatter-type-menu" role="menu" aria-label="属性类型">
             <button v-for="option in propertyTypeOptions" :key="option.kind" type="button" role="menuitemradio" :aria-checked="currentPropertyKind(property.name) === option.kind" @click="changePropertyType(option.kind)">
               <component :is="option.icon" :size="16" />{{ option.label }}
             </button>
@@ -3902,7 +3906,7 @@ onBeforeUnmount(() => {
   />
   <slot v-if="emptyDocument && !readonly" name="empty-document" />
   <Teleport to="body">
-    <div
+    <div v-surface-motion="'MarkdownEditor:1'"
       v-if="linkPanel"
       ref="linkPanelElement"
       class="tano-editor-panel tano-link-editor-panel"
@@ -3925,7 +3929,7 @@ onBeforeUnmount(() => {
     </div>
   </Teleport>
   <Teleport to="body">
-    <div
+    <div v-surface-motion="'MarkdownEditor:2'"
       v-if="blockMenu"
       ref="blockMenuElement"
       class="dropdown compact-action-menu block-context-menu"
@@ -3937,15 +3941,17 @@ onBeforeUnmount(() => {
     >
       <div class="block-convert-menu" role="presentation" @pointerenter="openBlockConvertMenu(false, 'copy')" @pointerleave="scheduleCloseBlockConvertMenu">
         <button ref="blockCopyTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'copy'" @click="openBlockConvertMenu(true, 'copy')"><ClipboardCopy :size="15" aria-hidden="true" />复制为<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
-        <div v-if="blockConvertMenu && blockSubmenuKind === 'copy'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" aria-label="复制为" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
+        <div v-surface-motion="'MarkdownEditor:3'" v-if="blockConvertMenu && blockSubmenuKind === 'copy'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" aria-label="复制为" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
       <button role="menuitem" type="button" @click="blockMenuAction('copy')"><ClipboardCopy :size="15" aria-hidden="true" />复制 Markdown<kbd v-if="defaultCopyAction === 'copy'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
       <button role="menuitem" type="button" title="在 Word / WPS 中粘贴后选择“保留源格式”，以保留颜色、底色和字体" @click="blockMenuAction('copy-rich')"><Pilcrow :size="15" aria-hidden="true" />复制富文本（Word / WPS）<kbd v-if="defaultCopyAction === 'copy-rich'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
       <button role="menuitem" type="button" title="复制 HTML 源码" @click="blockMenuAction('copy-html')"><Braces :size="15" aria-hidden="true" />复制 HTML<kbd v-if="defaultCopyAction === 'copy-html'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
       <button role="menuitem" type="button" @click="blockMenuAction('copy-text')"><AlignLeft :size="15" aria-hidden="true" />复制纯文本<kbd v-if="defaultCopyAction === 'copy-text'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
-      <button role="menuitem" type="button" title="内联排版样式，外链转为可见地址；公式本地渲染为 SVG" @click="blockMenuAction('copy-wechat')"><ClipboardCopy :size="15" aria-hidden="true" />复制到微信公众号<kbd v-if="defaultCopyAction === 'copy-wechat'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
-      <button role="menuitem" type="button" title="保留链接，公式使用知乎编辑器的识别标记" @click="blockMenuAction('copy-zhihu')"><ClipboardCopy :size="15" aria-hidden="true" />复制到知乎<kbd v-if="defaultCopyAction === 'copy-zhihu'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
-      <button v-if="specialCopyFormats.mathml" role="menuitem" type="button" @click="blockMenuAction('copy-mathml')"><Braces :size="15" aria-hidden="true" />复制公式 MathML</button>
-      <button v-if="specialCopyFormats.tsv" role="menuitem" type="button" @click="blockMenuAction('copy-tsv')"><ClipboardCopy :size="15" aria-hidden="true" />复制表格 TSV</button>
+      <div v-if="specialCopyFormats.mathml || specialCopyFormats.tsv" class="menu-divider" role="separator" />
+      <button v-if="specialCopyFormats.mathml" role="menuitem" type="button" @click="blockMenuAction('copy-mathml')"><Sigma :size="15" aria-hidden="true" />复制公式 MathML</button>
+      <button v-if="specialCopyFormats.tsv" role="menuitem" type="button" @click="blockMenuAction('copy-tsv')"><Table2 :size="15" aria-hidden="true" />复制表格 TSV</button>
+      <div class="menu-divider" role="separator" />
+      <button role="menuitem" type="button" title="内联排版样式，外链转为可见地址；公式本地渲染为 SVG" @click="blockMenuAction('copy-wechat')"><WechatLogo />复制到微信公众号<kbd v-if="defaultCopyAction === 'copy-wechat'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
+      <button role="menuitem" type="button" title="保留链接，公式使用知乎编辑器的识别标记" @click="blockMenuAction('copy-zhihu')"><ZhihuLogo />复制到知乎<kbd v-if="defaultCopyAction === 'copy-zhihu'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
         </div>
       </div>
       <template v-if="!blockMenu.selectionMenu">
@@ -3954,7 +3960,7 @@ onBeforeUnmount(() => {
       <div class="menu-divider" role="separator" />
       <div class="block-convert-menu" role="presentation" @pointerenter="openBlockConvertMenu()" @pointerleave="scheduleCloseBlockConvertMenu">
         <button ref="blockConvertTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'convert'" @click="openBlockConvertMenu(true)"><Replace :size="15" aria-hidden="true" />转换为<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
-        <div v-if="blockConvertMenu && blockSubmenuKind === 'convert'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" aria-label="转换为" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
+        <div v-surface-motion="'MarkdownEditor:4'" v-if="blockConvertMenu && blockSubmenuKind === 'convert'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" aria-label="转换为" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
           <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('paragraph')" @click="blockMenuAction('paragraph')"><Pilcrow :size="15" aria-hidden="true" />转为正文</button>
           <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('heading')" @click="blockMenuAction('heading')"><Heading :size="15" aria-hidden="true" />转为标题</button>
           <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('list')" @click="blockMenuAction('list')"><List :size="15" aria-hidden="true" />转为列表</button>
@@ -3963,7 +3969,7 @@ onBeforeUnmount(() => {
       </div>
       <div class="block-convert-menu" role="presentation" @pointerenter="openBlockConvertMenu(false, 'wrap')" @pointerleave="scheduleCloseBlockConvertMenu">
         <button ref="blockWrapTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'wrap'" @click="openBlockConvertMenu(true, 'wrap')"><Group :size="15" aria-hidden="true" />合并放入新块<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
-        <div v-if="blockConvertMenu && blockSubmenuKind === 'wrap'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" aria-label="合并放入新块" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
+        <div v-surface-motion="'MarkdownEditor:5'" v-if="blockConvertMenu && blockSubmenuKind === 'wrap'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" aria-label="合并放入新块" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
           <button v-for="option in blockContainerOptions" :key="option.type" role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('wrap-' + option.type)" @click="blockMenuAction('wrap-' + option.type)"><component :is="blockContainerIcons[option.type]" :size="16" aria-hidden="true" />{{ option.label }}</button>
         </div>
       </div>

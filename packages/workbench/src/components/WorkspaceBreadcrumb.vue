@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch, type Component } from 'vue';
-import { BookOpen, Check, ChevronRight, Database, File, FileText, Table2, FolderOpen, LockKeyhole } from 'lucide-vue-next';
-import FolderHomeIcon from './FolderHomeIcon.vue';
+import { BookOpen, Check, ChevronRight, Database, Table2, LockKeyhole } from 'lucide-vue-next';
+import ResourceIcon from './ResourceIcon.vue';
 import { indexFolderHomes, type FolderHomeFileName } from '../folder-home';
 import { basename, isMarkdown, isDataTableFilePath, isWorkspaceInternalPath, parentPath, type FileEntry, type WorkspaceViewDefinition } from '@tano/protocol';
 import { butterflyPerchDirective, useButterflyController, type ButterflyPerch } from '../assistant/butterfly-vue';
@@ -74,6 +75,7 @@ function placeMenu() {
     left: `${Math.max(edge, Math.min(anchor.left, window.innerWidth - bounds.width - edge))}px`,
     top: `${Math.max(edge, Math.min(anchor.bottom + 6, window.innerHeight - bounds.height - edge))}px`,
   };
+  menu.value.dataset.surfaceSide = parseFloat(position.value.top) < anchor.top ? 'up' : 'down';
 }
 function rows() {
   return [...(menu.value?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [])];
@@ -208,7 +210,8 @@ onBeforeUnmount(() => {
         :aria-current="part.current ? 'page' : undefined"
         @click="activatePart(part)">
         <DocumentFileIcon
-          v-if="part.home" :file="part.home" :icon="documentIcons?.[part.home.id]" :load="loadDocumentIcon" :fallback="FolderHomeIcon"
+          v-if="part.home" :file="part.home" :icon="documentIcons?.[part.home.id]" :load="loadDocumentIcon"
+          :resource="{ path: part.path, kind: 'directory', folderHome: true, expanded: true }"
         />
         <DocumentFileIcon
           v-else-if="part.current && currentFile && (isMarkdown(part.path) || isDataTableFilePath(part.path))"
@@ -216,7 +219,7 @@ onBeforeUnmount(() => {
           :file="currentFile" :icon="documentIcons?.[currentFile.id]"
           :load="isMarkdown(part.path) ? loadDocumentIcon : undefined"
         />
-        <component v-else :is="part.directory ? FolderOpen : part.current ? (isDataTableFilePath(part.path) ? Table2 : isMarkdown(part.path) ? FileText : File) : FolderOpen" :size="14" />
+        <ResourceIcon v-else :path="part.path" :kind="part.directory ? 'directory' : 'file'" :expanded="true" :size="14" />
         <span>{{ !part.home && part.current && (isMarkdown(part.path) || isDataTableFilePath(part.path)) ? part.name.replace(/(\.table\.json|\.(md|markdown))$/i, '') : part.name }}</span>
       </button>
       <button v-if="part.directory" type="button" class="breadcrumb-separator breadcrumb-menu-trigger"
@@ -237,7 +240,7 @@ onBeforeUnmount(() => {
     <slot name="status" />
   </nav>
   <Teleport to="body">
-    <div v-if="opened" :id="menuId" ref="menu" class="breadcrumb-menu" :style="position"
+    <div v-surface-motion="'WorkspaceBreadcrumb:0'" v-if="opened" :id="menuId" ref="menu" class="breadcrumb-menu" :style="position"
       role="menu" :aria-label="t('浏览目录：{0}', [folderLabel])" tabindex="-1" @keydown="menuKeydown">
       <div class="breadcrumb-menu-list panel-scrollbar">
         <button v-for="entry in children" :key="entry.id" type="button" class="breadcrumb-menu-entry"
@@ -248,7 +251,7 @@ onBeforeUnmount(() => {
             :file="entry" :icon="documentIcons?.[entry.id]"
             :load="isMarkdown(entry.path) ? loadDocumentIcon : undefined"
           />
-          <component v-else :is="entry.kind === 'directory' ? FolderOpen : File" :size="17" :stroke-width="1.6" />
+          <ResourceIcon v-else :path="entry.path" :name="entry.name" :kind="entry.kind" :expanded="true" :size="17" />
           <span>{{ fileLabel(entry) }}</span>
           <Check v-if="entry.kind === 'file' && entry.path === path" :size="14" class="breadcrumb-menu-trailing" />
         </button>
