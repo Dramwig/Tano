@@ -1,3 +1,4 @@
+import { parseReferenceUrl } from '@tano/protocol';
 import { $inputRule, $nodeSchema, $remark } from '@milkdown/kit/utils';
 import { markdownPolicy } from './runtime';
 import { InputRule } from '@milkdown/kit/prose/inputrules';
@@ -77,9 +78,16 @@ export const wikiLinkInput = $inputRule(
     new InputRule(
       /\[\[([^\[\]\r\n]+)\]\]$/,
       (state, match, start, end) => {
-        if (!markdownPolicy(ctx).features.wikiLink || insideCode(state, start, end)) return null;
+        if (insideCode(state, start, end)) return null;
         const preceding = state.doc.textBetween(Math.max(0, start - 2), start);
         if (preceding.endsWith('!') || preceding.endsWith('\\')) return null;
+        const identity = parseReferenceUrl(match[1]);
+        if (identity) {
+          if (!markdownPolicy(ctx).features.objectReferences) return null;
+          const type = state.schema.nodes.tano_reference;
+          return type ? state.tr.replaceWith(start, end, type.create({ url: match[1], label: '' })) : null;
+        }
+        if (!markdownPolicy(ctx).features.wikiLink) return null;
         const parsed = parseWikiLink(match[1]);
         if (!parsed) return null;
         return state.tr.replaceWith(start, end, wikiLink.type(ctx).create(parsed));

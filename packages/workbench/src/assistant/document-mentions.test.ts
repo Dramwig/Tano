@@ -33,3 +33,12 @@ it('excludes code, metadata, images, ordinary links and duplicate copied identit
   expect(events).toHaveLength(1);
   expect(events[0].body).toContain('请求');
 });
+
+it('dispatches annotated identity references once and ignores plain references and code', () => {
+  const ref = '[[object://person/a00001]]<!--tano:mention:mention-0001-->';
+  const content = `Review ${ref}\n\n${ref}\n\n[[object://person/a00001]]\n\n\`${ref}\``;
+  const events = documentMentionEvents('ws', 'b00002', content, 'hash', 'actor', 1);
+  expect(events).toHaveLength(1);
+  expect(events[0]?.personId).toBe('a00001');
+  expect(events[0]?.source.mentionId).toBe('mention-0001');
+});

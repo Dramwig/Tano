@@ -46,6 +46,13 @@ for (const [path, content] of bytes) {
   if (!/\.(md|markdown)$/.test(path)) continue;
   const source = content.toString('utf8');
   visit(parser.parse(source), node => {
+    if (node.type === 'text' && node.position) {
+      const raw = source.slice(node.position.start.offset, node.position.end.offset);
+      for (const match of raw.matchAll(/(?<!\\)\[\[(object:\/\/([a-z][a-z0-9.-]*)\/([0-9a-f]{6}))\]\]/g)) {
+        const object = bytes.get(`.tano/objects/${match[3]}.tano.json`);
+        if (!object || JSON.parse(object.toString('utf8')).type !== match[2]) throw new Error(`${path}: unresolved object ${match[1]}`);
+      }
+    }
     if (!['link', 'image', 'definition'].includes(node.type)) return;
     const url = node.url;
     if (url.startsWith('object://')) {

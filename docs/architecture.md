@@ -63,3 +63,9 @@ Workspace records remain in the workspace's `.tano/objects/`. Native personal re
 Browser personal records use the separate `tano.personal-plans.v1` key. Writes require Web Locks and compare against the latest base hash; unsupported browsers cannot write personal records. Native operations use a process coordination lock and the existing atomic file writer. Both adapters reuse object merging, retaining the persisted version and editing draft on conflicts and preserving corrupt data.
 
 Personal means this device or browser, not a Tano account-backed private cloud. Optional desktop calendar and Todo connections can exchange selected records with external services; connection setup, credentials, and baselines stay in application data and the OS credential store. Calendar and Todo have separate connection settings. Browser and mobile hosts support iCalendar file import only. See the [planning sync guide](zh/planning-sync.md) for provider setup, conflict behavior, and verification limits. Cross-workspace assignee filtering and ownership migration are not implemented. Ownership and responsibility are separate: a person record does not establish a signed-in identity, and workspace records are not labeled as assigned to the current user.
+
+### Markdown object references
+
+New references use `[[object://person/e82f91]]`: only type and stable ID are stored, and the UI resolves the current name. Typing `@` opens the object picker. A standalone `![[object://event/282f91]]` renders an object card; ordinary `[[document/path]]` remains a path link.
+
+Existing `[name](object://type/id)` links and `tano:object-card` titles remain readable; editor serialization emits the new syntax. Person mentions inserted by the picker can append `<!--tano:mention:occurrence-id-->` to preserve Agent delivery deduplication. This metadata is not an alias. Plain identity references do not dispatch Agent tasks, and code examples remain literal.

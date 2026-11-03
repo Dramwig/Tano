@@ -68,11 +68,17 @@ export function referenceUrl(target: ReferenceIdentity): string {
   if (!isShortId(target.id) || !validObjectType(target.type)) throw new Error('引用身份无效');
   return `object://${target.type}/${target.id}`;
 }
-export function referenceMarkdown(target: ReferenceIdentity, label: string): string {
-  const name = label.replace(/[\r\n]+/g, ' ').replace(/[\\\[\]]/g, '\\$&');
-  const title = target.type === 'person' ? ` "tano:mention:${crypto.randomUUID()}"` : '';
-  return `[@${name}](${referenceUrl(target)}${title})`;
+export function referenceMarkdown(target: ReferenceIdentity, _label?: string): string {
+  const mentionId = target.type === 'person' ? crypto.randomUUID() : '';
+  return referenceSyntax(target, false, mentionId);
 }
+/** Names are resolved from the object; occurrence metadata only tracks Agent delivery. */
+export function referenceSyntax(target: ReferenceIdentity, card = false, mentionId = ''): string {
+  const metadata = !card && target.type === 'person' && /^[a-z0-9-]{8,80}$/i.test(mentionId)
+    ? `<!--tano:mention:${mentionId}-->` : '';
+  return `${card ? '!' : ''}[[${referenceUrl(target)}]]${metadata}`;
+}
+
 export function parseReferenceUrl(url: string): ReferenceIdentity | null {
   const match = /^object:\/\/([a-z][a-z0-9.-]*)\/([0-9a-f]{6})$/.exec(url);
   return match && validObjectType(match[1]) ? { type: match[1]!, id: match[2]! } : null;

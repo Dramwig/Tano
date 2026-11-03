@@ -7,7 +7,7 @@ const props = defineProps<{ feature: DocumentFeature }>();
 const source = computed(() => {
   const text = t('文字'), document = t('文档');
   const examples: Record<DocumentFeature, string> = {
-    objectReferences: `[${document}](object://document/Ab3dE5gH)`,
+    objectReferences: '[[object://document/a00001]]',
     math: '$E = mc^2$',
     mermaid: `\`\`\`mermaid\nflowchart LR\n  A[${t('开始')}] --> B[${t('完成')}]\n\`\`\``,
     wikiLink: `[[${document}]]`,

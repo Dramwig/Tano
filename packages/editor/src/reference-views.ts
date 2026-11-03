@@ -1,7 +1,7 @@
 import { h, render as renderIcon, watch, type Component } from 'vue';
 import { ArrowUpRight, Bot, Box, CalendarDays, Circle, CircleCheck, FileText, Folder, Link2Off, Paperclip, UserRound } from 'lucide-vue-next';
 import type { EditorView, NodeViewConstructor } from '@milkdown/kit/prose/view';
-import { parseReferenceUrl, resolveReference, referenceTypeLabel, isAgentPerson } from '@tano/protocol';
+import { parseReferenceUrl, referenceSyntax, resolveReference, referenceTypeLabel, isAgentPerson } from '@tano/protocol';
 import type { ReferenceTarget, ReferenceIdentity } from '@tano/protocol';
 
 const referenceIcons: Record<string, Component> = {
@@ -91,14 +91,8 @@ export function referenceViews(
           dom.classList.toggle('is-missing', missing);
           dom.classList.toggle('is-disabled', !enabled());
           label.textContent = enabled()
-            ? `${target?.name ?? current.attrs.label}`
-            : `[${block ? '' : '@'}${current.attrs.label}](${current.attrs.url}${block ? ' "tano:object-card"' : ''})`;
-          if (enabled() && !block) {
-            const prefix = document.createElement('span');
-            prefix.className = 'tano-reference-prefix';
-            prefix.textContent = '@';
-            label.prepend(prefix);
-          }
+            ? target?.name ?? `引用不可用 · ${identity?.id ?? current.attrs.url}`
+            : identity ? referenceSyntax(identity, block, current.attrs.mentionId) : current.attrs.url;
           button.disabled = (!enabled() || missing) && !canEditSource();
           const task = target && (target.type === 'task' || (target.type === 'event' && target.properties?.checkable === true));
           const completed = target?.properties?.completed === true || ['done', 'completed'].includes(String(target?.properties?.status));

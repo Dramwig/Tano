@@ -4,14 +4,14 @@
 
 Preset records live under `.tano/objects/` at the workspace root. References use a six-digit lowercase hexadecimal ID independent of the file path.
 
-- Person: [@Alex Morgan](object://person/a82f91)
-- Task: [@Review rendering](object://task/b82f91)
-- Project: [@Markdown QA](object://project/c82f91)
-- Event: [@QA review meeting](object://event/d82f91)
+- Person: [[object://person/a82f91]]
+- Task: [[object://task/b82f91]]
+- Project: [[object://project/c82f91]]
+- Event: [[object://event/d82f91]]
 
-The standalone paragraph becomes a card through its `tano:object-card` title:
+References store identity only and display the current object name. Type `@` to open the object picker. A standalone `![[object://type/ID]]` displays an object card:
 
-[QA review meeting](object://event/d82f91 "tano:object-card")
+![[object://event/d82f91]]
 
 Rename a Person, Task, Project or Event and verify references still resolve by ID. Task, Project and Experiment are editable core schemas. Existing checkable Events retain their identities. Object databases switch between table, board and gallery without copying records or relations.
 

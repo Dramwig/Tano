@@ -102,6 +102,7 @@ import DocumentStarter from './components/DocumentStarter.vue';
 import { documentStarter, templateStarterBody } from './document-starters';
 import MarkdownRevealToggle from './components/MarkdownRevealToggle.vue';
 import SourceCodeIcon from './components/SourceCodeIcon.vue';
+import OpenWorkspaceIcon from './components/OpenWorkspaceIcon.vue';
 import DocumentTitle from './components/DocumentTitle.vue';
 import { appearanceText } from './document-appearance';
 import { useDocumentFavicon } from './document-favicon';
@@ -5087,7 +5088,7 @@ const helpBlocked = computed(() => !!(
                         store.openWorkspace();
                       "
                     >
-                      <FolderPlus :size="16" :stroke-width="1.6" />
+                      <OpenWorkspaceIcon :size="16" />
                     </button>
                   </div>
                   <button

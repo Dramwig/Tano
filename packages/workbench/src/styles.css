@@ -2981,7 +2981,7 @@ button:hover {
    The selector intentionally stops at direct children so nested panels,
    columns, tabs, and resources keep their own internal layout. TableViewport
    is excluded because it owns horizontal width and margin compensation. */
-.tano-prose > :is(.tano-callout, .tano-enhanced, .tano-unsupported-block) {
+.tano-prose > :is(.tano-callout, .tano-enhanced, .tano-unsupported-block, .tano-reference-card) {
   margin-inline: var(--tano-block-frame-inset);
 }
 .tano-prose > :first-child {
@@ -3549,7 +3549,8 @@ button:hover {
   pre,
   .tano-callout,
   .tano-enhanced,
-  .tano-unsupported-block
+  .tano-unsupported-block,
+  .tano-reference-card
 ):is(.ProseMirror-selectednode, .tano-block-selected) {
   outline: var(--tano-block-frame-inset) solid var(--block-selection);
 }
