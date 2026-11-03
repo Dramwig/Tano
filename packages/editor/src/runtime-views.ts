@@ -4,7 +4,7 @@ import type { NodeViewConstructor, MarkViewConstructor } from '@milkdown/kit/pro
 import { Selection, TextSelection } from '@milkdown/kit/prose/state';
 import DOMPurify from 'dompurify';
 import type { WorkspaceCapabilities } from './runtime';
-import { featureEnabled } from './runtime';
+import { featureEnabled, recognizesMath, newMathSyntax } from './runtime';
 import { mermaidHighlightRanges } from './mermaid-highlight';
 import { floatingPanelPosition, observePanelPosition, positionAnchoredPanel } from './panel-position';
 import type { PanelSide } from './panel-position';
@@ -41,7 +41,7 @@ export function sourcePresentation(node: Node, policy: WorkspaceCapabilities) {
   switch (node.type.name) {
     case 'math_inline':
     case 'math_block':
-      return !features.math;
+      return !recognizesMath(policy, node.attrs.delimiter || newMathSyntax(policy));
     case 'tano_wiki_link':
       return !features.wikiLink;
     case 'footnote_definition':

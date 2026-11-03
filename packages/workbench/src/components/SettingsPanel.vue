@@ -36,6 +36,7 @@ import {
   featureDefinitions,
   defaultCapabilities,
   defaultEditorPreferences,
+  normalizeCopyFormat,
   normalizeSelectionWrapping,
   selectionWrappingOptions,
 } from '@tano/editor/runtime';
@@ -269,6 +270,7 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('appearance', 'appearance-help', '偶尔显示使用提示', '在你停下来时，在帮助按钮上方显示简短的用法提示。关闭后仍可手动查看帮助。', 'help tips hints'),
   settingSearchEntry('editing', 'editing-default-mode', '默认编辑模式', '选择打开文档时使用的视图。', 'editor visual Markdown source'),
   settingSearchEntry('editing', 'editing-reveal-markdown', '光标进入时展开 Markdown 源码', '类似 Typora、Obsidian 的实时预览：光标进入时显示 Markdown 语法，离开后恢复排版。', 'live preview source syntax'),
+  settingSearchEntry('editing', 'editing-copy-format', '默认复制格式', '设置可视化编辑区的默认复制与剪切格式，右键菜单仍可单次选择其他格式。仅保存在当前设备。', 'copy clipboard Ctrl+C Command+C Word HTML Markdown 富文本 纯文本 剪贴板 复制'),
   settingSearchEntry('editing', 'editing-toolbar', '编辑工具栏', '随选区显示，或停靠在顶部、底部、左侧、右侧；也可拖动工具栏手柄调整。仅影响当前设备。', 'toolbar selection top bottom left right'),
   settingSearchEntry('editing', 'editing-preview-math', '编辑时预览公式', '展开 Markdown 源码编辑公式时同步显示排版效果。', 'math formula preview'),
   settingSearchEntry('editing', 'editing-folding', '标题与列表折叠', '显示折叠按钮，临时收起标题下的内容或列表项。', 'heading list folding collapse'),
@@ -278,6 +280,7 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   ...shortcutDefinitions.map(item => settingSearchEntry('shortcuts', `shortcut-${item.id}`, item.label, 'scope' in item ? item.scope : '', 'shortcut keybinding keyboard')),
   settingSearchEntry('assistant', 'assistant-connections', '模型连接', '管理助手使用的 API 或 CLI 连接。', 'assistant model connection API CLI'),
   ...featureDefinitions.map(feature => settingSearchEntry('documents', `documents-${feature.key}`, feature.label, '', 'Markdown extension')),
+  settingSearchEntry('documents', 'documents-math-recognition', '识别的公式语法', '未选中的语法按普通文本显示，不修改 Markdown 原文。', '公式 渲染 识别 math LaTeX dollar'),
   settingSearchEntry('documents', 'documents-dialect', '新公式默认格式', '设置新公式的写法，不确定时保留默认即可。', 'Markdown 方言 dialect Obsidian GitHub Pandoc CommonMark'),
   settingSearchEntry('documents', 'documents-math-syntax', '已有公式保存格式', '保留原样：已有公式不转换，新公式使用上面的默认格式。选择统一格式：新旧公式都使用所选写法，在下次编辑保存正文时应用。', '公式输出语法 math formula syntax LaTeX Dollar'),
   settingSearchEntry('documents', 'documents-bullet-marker', '无序列表标记', '选择无序列表与待办列表的 Markdown 标记，在下一次编辑保存正文时应用。', 'bullet list marker'),
@@ -728,6 +731,24 @@ function customFontInput(event: Event) {
           <section v-if="page === 'editing'" class="settings-section" :aria-label="t('编辑行为')">
             <h3>{{ t('编辑行为') }}</h3>
             <div class="settings-card">
+              <div class="settings-row" data-settings-key="editing-copy-format">
+                <div>
+                  <strong>{{ t('默认复制格式') }}</strong>
+                  <p>{{ t('设置可视化编辑区的默认复制与剪切格式，右键菜单仍可单次选择其他格式。仅保存在当前设备。') }}</p>
+                  <p v-if="normalizeCopyFormat(display.copyFormat) === 'rich'">{{ t('在 Word 中粘贴后选择“保留源格式”，以保留颜色、底色和字体。') }}</p>
+                  <p v-if="normalizeCopyFormat(display.copyFormat) === 'wechat'">{{ t('公众号复制会将外链转为可见地址，公式在本地渲染为 SVG。') }}</p>
+                  <p v-if="normalizeCopyFormat(display.copyFormat) === 'zhihu'">{{ t('知乎复制会携带公式识别标记，由知乎编辑器解析公式。') }}</p>
+                </div>
+                <select :aria-label="t('默认复制格式')" :value="normalizeCopyFormat(display.copyFormat)"
+                  @change="emit('update:editorPreferences', { ...display, copyFormat: normalizeCopyFormat(($event.target as HTMLSelectElement).value) })">
+                  <option value="markdown">{{ t('Markdown 源码（默认）') }}</option>
+                  <option value="rich">{{ t('富文本（Word / WPS）') }}</option>
+                  <option value="wechat">{{ t('微信公众号') }}</option>
+                  <option value="zhihu">{{ t('知乎') }}</option>
+                  <option value="html">{{ t('HTML 源码') }}</option>
+                  <option value="text">{{ t('纯文本') }}</option>
+                </select>
+              </div>
               <div class="settings-row" data-settings-key="editing-toolbar">
                 <div>
                   <strong>{{ t('编辑工具栏') }}</strong>
@@ -959,7 +980,7 @@ function customFontInput(event: Event) {
               <BookOpen :size="13" /><span>{{ scopeLabel }}</span>
             </div>
           </div>
-          <p class="settings-lead">{{ t('仅对当前工作区生效，文档能力与 Markdown 输出规则随空间共享。') }}</p>
+          <p class="settings-lead">{{ t('仅对当前工作区生效，文档能力与 Markdown 语法规则随空间共享。') }}</p>
           <section class="settings-section" :aria-label="t('内容扩展')">
             <h3>{{ t('内容扩展') }}<span class="settings-scope">{{ t('工作区共享') }}</span></h3>
             <p class="settings-section-description">{{ t('关闭后显示原始内容，已有文档会保留。') }}</p>
@@ -1003,9 +1024,23 @@ function customFontInput(event: Event) {
             </div>
             <p class="settings-local-note">{{ t('Kanban 与数据库块尚未实现；相关源码会保留。') }}</p>
           </section>
-          <section class="settings-section" :aria-label="t('Markdown 输出')">
-            <h3>{{ t('Markdown 输出') }}</h3>
+          <section class="settings-section" :aria-label="t('Markdown 语法')">
+            <h3>{{ t('Markdown 语法') }}</h3>
             <div class="settings-card">
+              <div class="settings-row" data-settings-key="documents-math-recognition">
+                <div>
+                  <strong>{{ t('识别的公式语法') }}</strong>
+                  <p>{{ t('未选中的语法按普通文本显示，不修改 Markdown 原文。') }}</p>
+                  <p><code>$…$ / $$…$$</code> · <code>\(…\) / \[…\]</code></p>
+                </div>
+                <select :value="rules.mathRecognition ?? 'all'" :disabled="rulesDisabled || !rules.features.math"
+                  :aria-label="t('识别的公式语法')"
+                  @change="emit('capability', { mathRecognition: ($event.target as HTMLSelectElement).value as WorkspaceCapabilities['mathRecognition'] })">
+                  <option value="all">{{ t('全部支持（推荐）') }}</option>
+                  <option value="dollar">{{ t('仅美元符号') }}</option>
+                  <option value="latex">{{ t('仅反斜杠括号') }}</option>
+                </select>
+              </div>
               <div class="settings-row" data-settings-key="documents-dialect">
                 <div>
                   <strong>{{ t('新公式默认格式') }}</strong>
@@ -1624,6 +1659,7 @@ function customFontInput(event: Event) {
 :root[data-theme='dark'] .settings-row select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%23b8c0c9' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3 4.5 3 3 3-3'/%3E%3C/svg%3E");
 }
+.settings-row[data-settings-key='documents-math-recognition'] select,
 .settings-row[data-settings-key='documents-dialect'] select,
 .settings-row[data-settings-key='documents-math-syntax'] select,
 .settings-row[data-settings-key='documents-bullet-marker'] select {

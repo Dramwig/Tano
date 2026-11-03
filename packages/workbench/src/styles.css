@@ -1954,6 +1954,10 @@ button:hover {
   max-height: calc(100dvh - 16px);
   overflow-y: auto;
 }
+.block-convert-submenu[aria-label='复制为'] {
+  width: 280px;
+  max-width: calc(100vw - 16px);
+}
 .page-context-menu {
   position: fixed;
   z-index: 100;

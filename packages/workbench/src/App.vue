@@ -85,7 +85,7 @@ import MarkdownEditorSkeleton from './components/MarkdownEditorSkeleton.vue';
 import DocumentLoading from './components/DocumentLoading.vue';
 const MarkdownEditor = defineAsyncComponent({ loader: () => import('@tano/editor'), delay: 0, loadingComponent: MarkdownEditorSkeleton });
 const CalloutIconPicker = defineAsyncComponent(() => import('./components/CalloutIconPicker.vue'));
-import { defaultEditorPreferences, normalizeSelectionWrapping } from '@tano/editor/runtime';
+import { defaultEditorPreferences, normalizeCopyFormat, normalizeSelectionWrapping } from '@tano/editor/runtime';
 import type { EditorPreferences } from '@tano/editor/runtime';
 import { defaultSelectionContext } from '@tano/editor/selection-context';
 import type { EditorSelectionContext } from '@tano/editor/selection-context';
@@ -981,6 +981,7 @@ function readSelectionWrapping() {
   catch { return normalizeSelectionWrapping(); }
 }
 const editorPreferences = ref<EditorPreferences>({
+  copyFormat: normalizeCopyFormat(readTextPreference('copyFormat')),
   autoSpacing: readPreference('autoSpacing', defaultEditorPreferences.autoSpacing ?? false),
   previewMathWhileEditing: readPreference(
     'previewMathWhileEditing',
@@ -993,6 +994,7 @@ const editorPreferences = ref<EditorPreferences>({
 watch(
   editorPreferences,
   (preferences) => {
+    saveTextPreference('copyFormat', normalizeCopyFormat(preferences.copyFormat));
     savePreference('autoSpacing', preferences.autoSpacing ?? false);
     savePreference('previewMathWhileEditing', preferences.previewMathWhileEditing);
     savePreference('folding', preferences.folding);

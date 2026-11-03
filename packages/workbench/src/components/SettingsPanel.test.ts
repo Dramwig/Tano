@@ -280,6 +280,22 @@ it('toggles automatic text spacing in appearance without changing other editor p
   expect(editorPreferences.value).toEqual({ ...previous, autoSpacing: false });
 });
 
+it('changes the default clipboard format without changing other editor preferences', async () => {
+  await openPage('编辑器');
+  const select = root.querySelector<HTMLSelectElement>('[aria-label="默认复制格式"]')!;
+  expect(select.value).toBe('markdown');
+  const previous = { ...editorPreferences.value };
+  expect([...select.options].filter(option => option.value === 'rich')).toHaveLength(1);
+  expect([...select.options].some(option => option.value === 'word')).toBe(false);
+  for (const format of ['rich', 'wechat', 'zhihu', 'html', 'text', 'markdown'] as const) {
+    select.value = format;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await nextTick();
+    expect(editorPreferences.value).toEqual({ ...previous, copyFormat: format });
+    expect(select.value).toBe(format);
+  }
+});
+
 it('moves shortcuts out of About into a searchable preference page', async () => {
   expect(root.querySelector('.shortcut-settings')).toBeNull();
   expect(root.querySelector('.settings-about')!.textContent).not.toContain('键盘快捷键');
@@ -348,10 +364,10 @@ it('maps legacy formula presets to two formats without rewriting settings on ope
   expect(select.disabled).toBe(true);
 });
 
-it('offers workspace bullet markers under Markdown output and disables them without write access', async () => {
+it('offers workspace bullet markers under Markdown syntax and disables them without write access', async () => {
   hostWorkspace.value = { id: 'local-workspace', name: '本地', path: 'C:/Notes', readOnly: true };
   await openPage('Markdown 与格式');
-  const select = root.querySelector<HTMLSelectElement>('section[aria-label="Markdown 输出"] select[aria-label="无序列表标记"]')!;
+  const select = root.querySelector<HTMLSelectElement>('section[aria-label="Markdown 语法"] select[aria-label="无序列表标记"]')!;
   expect(select.disabled).toBe(true);
   expect([...select.options].map(option => option.value)).toEqual(['-', '+', '*']);
   hostWorkspace.value = { id: 'local-workspace', name: '本地', path: 'C:/Notes' };
@@ -748,4 +764,19 @@ it('hides online-only pages and exits them when switching to a local workspace',
   expect(navigation()).not.toContain('在线专属设置');
   expect(root.querySelector('.extra-settings-mode')).toBeNull();
   expect(root.querySelector('#settings-title')?.textContent).toBe('外观');
+});
+
+it('offers math recognition separately from output and respects math and write permissions', async () => {
+  hostWorkspace.value = { id: 'local-workspace', name: '本地', path: 'C:/Notes' };
+  await openPage('Markdown 与格式');
+  const select = root.querySelector<HTMLSelectElement>('select[aria-label="识别的公式语法"]')!;
+  expect(select.value).toBe('all');
+  expect([...select.options].map(option => option.value)).toEqual(['all', 'dollar', 'latex']);
+  select.value = 'latex'; select.dispatchEvent(new Event('change'));
+  expect(capabilityUpdates.at(-1)).toEqual({ mathRecognition: 'latex' });
+  capabilities.value.features.math = false; await nextTick();
+  expect(select.disabled).toBe(true);
+  capabilities.value.features.math = true;
+  hostWorkspace.value = { ...hostWorkspace.value, readOnly: true }; await nextTick();
+  expect(select.disabled).toBe(true);
 });

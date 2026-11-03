@@ -5,7 +5,7 @@ type InlineMath = Extract<Nodes, { type: 'inlineMath' }>;
 import type { Construct, State } from 'micromark-util-types';
 import type { Handle } from 'mdast-util-to-markdown';
 import remarkMath from 'remark-math';
-import { defaultCapabilities, newMathSyntax } from './runtime';
+import { defaultCapabilities, newMathSyntax, recognizesMath } from './runtime';
 import type { WorkspaceCapabilities } from './runtime';
 
 interface MathSource {
@@ -178,7 +178,7 @@ export const remarkMathSyntax: Plugin<[{ policy?: () => WorkspaceCapabilities }?
         const value = math.value ?? '';
         const policy = options.policy?.() ?? defaultCapabilities;
         const source = math.data?.tanoMath;
-        if (policy.mathSyntax === 'preserve' && source?.raw && source.value === value)
+        if ((policy.mathSyntax === 'preserve' || !recognizesMath(policy, source?.delimiter ?? newMathSyntax(policy))) && source?.raw && source.value === value)
           return source.raw;
         const delimiter =
           policy.mathSyntax === 'preserve' && source?.delimiter
