@@ -1,3 +1,5 @@
+@import './theme-contract.css';
+@import './layout-themes.css';
 @import './dark-theme.css';
 @import './mobile.css';
 @import './scrollbars.css';
@@ -1873,8 +1875,12 @@ button:hover {
   color: var(--danger);
 }
 .compact-action-menu .menu-divider {
+  /* Borders snap to device pixels; filled 1px blocks can alternate in thickness at fractional scaling. */
+  height: 0;
+  flex-shrink: 0;
   margin: 3px -6px;
-  background: var(--line);
+  border-top: 1px solid var(--line);
+  background: none;
 }
 .compact-action-menu .menu-shortcut {
   font-size: 10px;
@@ -1968,6 +1974,9 @@ button:hover {
   z-index: 100;
   width: 144px;
 }
+.page-context-menu:focus {
+  outline: none;
+}
 .page-context-menu button {
   gap: 7px;
 }
@@ -2004,7 +2013,7 @@ button:hover {
 .document-export-trigger[aria-expanded='true'] {
   background: var(--hover);
 }
-.document-global-menu,
+.workspace-options-menu,
 .document-export-menu {
   width: 184px;
 }
@@ -2775,7 +2784,7 @@ button:hover {
   background: var(--green-fill);
   border-color: var(--line);
   content: '✓';
-  color: white;
+  color: var(--on-accent, white);
   font-size: 12px;
   display: grid;
   place-items: center;
@@ -3063,7 +3072,7 @@ button:hover {
   align-items: center;
   justify-content: center;
   background: var(--green-fill);
-  color: white;
+  color: var(--on-accent, white);
   pointer-events: none;
 }
 .tano-table-insert:is(:hover, :focus-visible) > span { display: flex; }
@@ -4291,13 +4300,13 @@ button:hover {
   padding: 11px 16px;
   border-radius: 6px;
   background: var(--green-fill);
-  color: white;
+  color: var(--on-accent, white);
   font-size: 14px;
   font-weight: 500;
 }
 .primary-button:hover {
   background: var(--green-fill-hover);
-  color: white;
+  color: var(--on-accent, white);
 }
 .error-toast {
   position: fixed;

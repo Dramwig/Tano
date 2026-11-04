@@ -1,0 +1,179 @@
+{
+  "manifestVersion": 1,
+  "id": "theme-tide",
+  "name": "潮汐主题",
+  "version": "1.0.0",
+  "description": "潮汐主题：独立配色、图标与形态，可应用预设或自由混搭。",
+  "objectTypes": [],
+  "relationTypes": [],
+  "appearance": {
+    "version": 2,
+    "colors": [
+      {
+        "id": "tide",
+        "label": "潮汐",
+        "light": {
+          "paper": "#f1f8fb",
+          "sidebar": "#e2f0f5",
+          "surface": "#e9f4f8",
+          "surface-raised": "#ffffff",
+          "hover": "#d4eaf3",
+          "text": "#163343",
+          "text-secondary": "#395b70",
+          "muted": "#526f80",
+          "line": "#c0dbe7",
+          "control-border": "#678b9e",
+          "line-strong": "#678b9e",
+          "selected": "#d4eaf3",
+          "selected-text": "#163343",
+          "accent": "#e9f4f8",
+          "green": "#086b94",
+          "green-hover": "#086b94",
+          "green-fill": "#075372",
+          "green-fill-hover": "#075372",
+          "block-selection": "#d4eaf3",
+          "danger": "#a31b1b",
+          "danger-bg": "#fff0ee",
+          "warning": "#714300",
+          "warning-bg": "#fff5d8",
+          "warning-border": "#678b9e",
+          "switch-off": "#678b9e",
+          "syntax-purple": "#68349a",
+          "syntax-red": "#a31b1b",
+          "syntax-blue": "#086b94",
+          "syntax-orange": "#884600",
+          "syntax-teal": "#00645b",
+          "syntax-green": "#426b18",
+          "highlight-bg": "#ffe680",
+          "suggestion-color": "#086b94",
+          "diff-add-bg": "#e4f5e7",
+          "diff-remove-bg": "#ffe9e6",
+          "quote-border": "#678b9e",
+          "scrollbar-thumb": "#678b9e",
+          "scrollbar-thumb-hover": "#526f80",
+          "backdrop": "#15233355",
+          "on-accent": "#ffffff",
+          "selection": "#d4eaf3"
+        },
+        "dark": {
+          "paper": "#101c2b",
+          "sidebar": "#0b1421",
+          "surface": "#182a3e",
+          "surface-raised": "#21364e",
+          "hover": "#29435d",
+          "text": "#e1eef8",
+          "text-secondary": "#b2cbdd",
+          "muted": "#91acbf",
+          "line": "#304e68",
+          "control-border": "#668ca6",
+          "line-strong": "#668ca6",
+          "selected": "#29435d",
+          "selected-text": "#e1eef8",
+          "accent": "#182a3e",
+          "green": "#77cbea",
+          "green-hover": "#77cbea",
+          "green-fill": "#246b8c",
+          "green-fill-hover": "#246b8c",
+          "block-selection": "#29435d",
+          "danger": "#ffb4ac",
+          "danger-bg": "#411717",
+          "warning": "#ffe0a3",
+          "warning-bg": "#362c17",
+          "warning-border": "#668ca6",
+          "switch-off": "#668ca6",
+          "syntax-purple": "#dfb8ff",
+          "syntax-red": "#ffb4ac",
+          "syntax-blue": "#77cbea",
+          "syntax-orange": "#ffd1a3",
+          "syntax-teal": "#a4e6df",
+          "syntax-green": "#c7e69a",
+          "highlight-bg": "#665500",
+          "suggestion-color": "#77cbea",
+          "diff-add-bg": "#203a28",
+          "diff-remove-bg": "#412422",
+          "quote-border": "#668ca6",
+          "scrollbar-thumb": "#668ca6",
+          "scrollbar-thumb-hover": "#91acbf",
+          "backdrop": "#00000099",
+          "on-accent": "#ffffff",
+          "selection": "#29435d"
+        }
+      }
+    ],
+    "icons": [
+      {
+        "id": "tide",
+        "label": "潮汐图标",
+        "icons": {
+          "note": {
+            "color": "syntax-blue",
+            "silhouette": "none",
+            "paths": [
+              "M10 2a8 8 0 1 0 0 16a8 8 0 1 0 0-16 M6 10q4-5 8 0 M6 13q4-5 8 0"
+            ]
+          },
+          "folder": {
+            "color": "accent",
+            "silhouette": "none",
+            "paths": [
+              "M2 6q3-3 7 0h9v10H2z"
+            ]
+          },
+          "open": {
+            "color": "syntax-blue",
+            "silhouette": "none",
+            "paths": [
+              "M2 6q3-3 7 0h9v10H2z",
+              "M3 12h14"
+            ]
+          },
+          "code": {
+            "color": "syntax-blue",
+            "silhouette": "none",
+            "paths": [
+              "M7 5l-5 5l5 5 M13 5l5 5l-5 5"
+            ]
+          }
+        },
+        "file": "note",
+        "folder": "folder",
+        "folderExpanded": "open",
+        "fileExtensions": {
+          "ts": "code",
+          "js": "code",
+          "json": "code"
+        }
+      }
+    ],
+    "presets": [
+      {
+        "id": "islands",
+        "label": "潮汐卡片岛",
+        "color": "tide",
+        "icons": "tide",
+        "layout": "builtin:islands",
+        "shape": "tide"
+      }
+    ],
+    "shapes": [
+      {
+        "id": "tide",
+        "label": "圆润宽松",
+        "tokens": {
+          "font-ui": "'Segoe UI', 'Microsoft YaHei UI', sans-serif",
+          "font-prose": "'Segoe UI', 'Microsoft YaHei UI', sans-serif",
+          "font-mono": "'Cascadia Code', Consolas, monospace",
+          "radius-control": "12px",
+          "radius-card": "18px",
+          "radius-dialog": "22px",
+          "space-control-x": "10px",
+          "space-control-y": "8px",
+          "space-panel": "22px",
+          "space-row-gap": "8px",
+          "overlay-shadow": "0px 6px 20px #00000030",
+          "dialog-shadow": "0px 18px 60px #00000044"
+        }
+      }
+    ]
+  }
+}

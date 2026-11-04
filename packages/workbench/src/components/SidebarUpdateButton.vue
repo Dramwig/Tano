@@ -179,7 +179,7 @@ function activate() {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  color: #fff;
+  color: var(--on-accent, #fff);
   background: var(--green-fill);
   transition: background-color 180ms ease;
 }

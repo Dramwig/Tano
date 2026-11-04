@@ -195,3 +195,5 @@ export * from './data-table-query';
 export * from './structured-merge';
 
 export * from './entry-drag';
+
+export * from './appearance';

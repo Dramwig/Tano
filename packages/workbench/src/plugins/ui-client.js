@@ -20,11 +20,43 @@ addEventListener('error', event => { event.preventDefault(); report(event.messag
 addEventListener('unhandledrejection', event => { event.preventDefault(); report(event.reason); });
 document.querySelector('#app').innerHTML = initialization.html;
 const style = document.createElement('style'); style.textContent = initialization.css; document.head.append(style);
+const themeSubscribers = new Set();
+let theme;
+const themeProperties = new Set();
+function installTheme(value) {
+  theme = Object.freeze({ ...value, ...(value.layout ? { layout: Object.freeze({ ...value.layout }) } : {}),
+    shape: Object.freeze({ ...value.shape, tokens: Object.freeze({ ...value.shape.tokens }) }), tokens: Object.freeze({ ...value.tokens }) });
+  document.documentElement.dataset.theme = theme.mode;
+  document.documentElement.dataset.layout = theme.layout?.structure ?? 'continuous';
+  document.documentElement.dataset.surface = theme.layout?.surface ?? 'flat';
+  document.documentElement.dataset.shapeTheme = theme.shape.id;
+  document.documentElement.style.setProperty('--layout-gap', `${theme.layout?.gap ?? 16}px`);
+  document.documentElement.style.setProperty('--layout-page-width', `${theme.layout?.pageWidth ?? 880}px`);
+  document.documentElement.style.colorScheme = theme.mode;
+  for (const key of themeProperties) document.documentElement.style.removeProperty('--' + key);
+  themeProperties.clear();
+  for (const [key, value] of Object.entries(theme.tokens)) {
+    document.documentElement.style.setProperty('--' + key, value);
+    themeProperties.add(key);
+  }
+  for (const handler of themeSubscribers) { try { handler(theme); } catch (error) { report(error); } }
+}
+const baseStyle = document.createElement('style');
+baseStyle.textContent = 'body { color: var(--text); background: var(--paper); font-family: var(--font-ui); }';
+document.head.prepend(baseStyle);
+installTheme(initialTheme);
 const subscribers = new Set();
 const pending = new Map();
 let state = initialization.state;
 let sequence = 0;
 const tanoView = Object.freeze({
+  theme() { return theme; },
+  onTheme(handler) {
+    if (typeof handler !== 'function') throw new Error('主题订阅需要处理函数');
+    themeSubscribers.add(handler);
+    queueMicrotask(() => { if (themeSubscribers.has(handler)) { try { handler(theme); } catch (error) { report(error); } } });
+    return () => themeSubscribers.delete(handler);
+  },
   onState(handler) {
     if (typeof handler !== 'function') throw new Error('界面状态需要处理函数');
     subscribers.add(handler);
@@ -43,7 +75,9 @@ const tanoView = Object.freeze({
   },
 });
 port.onmessage = ({ data }) => {
-  if (data?.type === 'state') {
+  if (data?.type === 'theme') {
+    installTheme(data.theme);
+  } else if (data?.type === 'state') {
     state = data.state;
     for (const handler of subscribers) { try { handler(state); } catch (error) { report(error); } }
   } else if (data?.type === 'result') {

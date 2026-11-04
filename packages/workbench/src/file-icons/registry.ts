@@ -1,4 +1,5 @@
 import { shallowRef, type InjectionKey } from 'vue';
+import { isFileIconColor } from '@tano/protocol';
 import { defaultFileIconTheme } from './default-theme';
 import type { FileIconDefinition, FileIconResource, FileIconTheme } from './types';
 
@@ -8,7 +9,7 @@ function normalize(map: Readonly<Record<string, string>> | undefined) {
 function snapshot(theme: FileIconTheme): FileIconTheme {
   if (!theme.id.trim()) throw new Error('File icon theme requires an id');
   const icons = Object.fromEntries(Object.entries(theme.icons).map(([id, icon]) => {
-    if (!id.trim() || !/^(#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})|currentColor)$/i.test(icon.color) ||
+    if (!id.trim() || !isFileIconColor(icon.color) ||
       icon.paths.some(path => !/^[MmZzLlHhVvCcSsQqTtAaEe\d\s.,+\-]*$/.test(path)) ||
       (icon.label?.length ?? 0) > 4 ||
       (icon.silhouette && !['file', 'folder', 'folder-open', 'none'].includes(icon.silhouette))) {
@@ -48,8 +49,8 @@ function match(theme: FileIconTheme, resource: FileIconResource): string | undef
 export class FileIconRegistry {
   private readonly themes = new Map<string, FileIconTheme>();
   private readonly revision = shallowRef(0);
-  private activeId = 'tano';
-  constructor() { this.themes.set('tano', snapshot(defaultFileIconTheme)); }
+  private activeId = 'builtin:tano';
+  constructor() { this.themes.set('builtin:tano', snapshot(defaultFileIconTheme)); }
 
   register(theme: FileIconTheme): () => void {
     if (this.themes.has(theme.id)) throw new Error(`File icon theme already registered: ${theme.id}`);
@@ -59,7 +60,7 @@ export class FileIconRegistry {
     return () => {
       if (this.themes.get(saved.id) !== saved) return;
       this.themes.delete(saved.id);
-      if (this.activeId === saved.id) this.activeId = 'tano';
+      if (this.activeId === saved.id) this.activeId = 'builtin:tano';
       this.revision.value++;
     };
   }
@@ -73,7 +74,7 @@ export class FileIconRegistry {
   resolve(resource: FileIconResource): { themeId: string; id: string; icon: FileIconDefinition } {
     void this.revision.value;
     const active = this.themes.get(this.activeId)!;
-    const fallback = this.themes.get('tano')!;
+    const fallback = this.themes.get('builtin:tano')!;
     const selected = match(active, resource);
     const theme = selected ? active : fallback;
     const id = selected ?? match(fallback, resource)!;

@@ -17,9 +17,10 @@ it('updates mounted tree icons when a theme is selected or removed, retaining do
   app.mount(root);
   try {
     expect(root.querySelector('[data-file-icon="image"]')?.getAttribute('width')).toBe('16');
-    const dispose = registry.register({ id: 'test', label: 'Test', icons: { note: { color: '#123456', paths: ['M2 2h4'], silhouette: 'none' } }, fileExtensions: { md: 'note' } });
+    const dispose = registry.register({ id: 'test', label: 'Test', icons: { note: { color: 'syntax-blue', paths: ['M2 2h4'], silhouette: 'none' } }, fileExtensions: { md: 'note' } });
     registry.select('test'); await nextTick();
     expect(root.querySelector('[data-file-icon="note"]')).not.toBeNull();
+    expect(root.querySelector('[data-file-icon="note"]')?.getAttribute('style')).toContain('var(--syntax-blue)');
     expect(root.querySelectorAll('[data-file-icon="note"] path')).toHaveLength(1);
     expect(root.querySelector('[data-file-icon="image"]')).not.toBeNull();
     expect(root.querySelector('[data-emoji]')?.getAttribute('data-emoji')).toBe('🌿');
@@ -33,7 +34,7 @@ it('updates mounted tree icons when a theme is selected or removed, retaining do
 it('keeps Office formats consistent across explorer, folder rows and breadcrumbs after renaming', async () => {
   const formats = [['方案.v2.doc', 'word'], ['方案.DOCX', 'word'], ['预算.xls', 'spreadsheet'],
     ['预算.XLSX', 'spreadsheet'], ['汇报.ppt', 'slides'], ['汇报.PPTX', 'slides']] as const;
-  const entries = reactive(formats.map(([path], index) => ({ id: String(index), path, name: path,
+  const entries = reactive(formats.map(([path], index) => ({ id: String(index), path: String(path), name: String(path),
     kind: 'file' as const, size: (index + 1) * 1024 * 1024, modified: 0 })));
   const root = document.createElement('div'); document.body.append(root);
   const app = createApp({ render: () => h('div', [

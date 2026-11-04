@@ -2,6 +2,7 @@
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import ModalBackdrop from './ModalBackdrop.vue';
 import CapabilitySyntax from './CapabilitySyntax.vue';
+import ThemePresetPicker from './ThemePresetPicker.vue';
 import { t, uiLocale, setUiLocale, uiSearchText } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
@@ -43,7 +44,9 @@ import {
 } from '@tano/editor/runtime';
 import type { WorkspaceCapabilities, EditorPreferences } from '@tano/editor/runtime';
 import type { CapabilityPatch } from '../workspace-capabilities';
-import type { ThemePreference } from '../theme';
+import { fixedColorMode, type ThemePreference } from '../theme';
+import type { AppearanceSnapshot, AppearanceSelection } from '../appearance';
+import { appearanceKinds, builtinDefault } from '../appearance';
 import { sanitizeCustomFontName, visualFontFamily } from '../editor-font';
 import type { VisualFontChoice } from '../editor-font';
 import type { ToolbarMode } from '../toolbar-preference';
@@ -86,6 +89,7 @@ const props = defineProps<{
   mobile: boolean;
   defaultSource: boolean;
   theme: ThemePreference;
+  appearance?: AppearanceSnapshot;
   visualFontChoice: VisualFontChoice;
   customFontName: string;
   revealMarkdown: boolean;
@@ -107,6 +111,10 @@ const props = defineProps<{
   capabilityError?: string;
   capabilitySaving?: boolean;
 }>();
+const fixedDisplayMode = computed(() => fixedColorMode(props.appearance?.color));
+const displayMode = computed(() => fixedDisplayMode.value ?? props.theme);
+const displayModeDescription = computed(() => fixedDisplayMode.value === 'light' ? '当前配色主题仅支持浅色。'
+  : fixedDisplayMode.value === 'dark' ? '当前配色主题仅支持深色。' : '选择浅色、深色或跟随系统，偏好在工作区间共用。');
 const emit = defineEmits<{
   close: [];
   'open-tab': [page: string];
@@ -115,6 +123,7 @@ const emit = defineEmits<{
   'drag-window': [event: MouseEvent];
   'update:defaultSource': [value: boolean];
   'update:theme': [value: ThemePreference];
+  appearance: [selection: AppearanceSelection];
   'update:visualFontChoice': [value: VisualFontChoice];
   'update:customFontName': [value: string];
   'update:revealMarkdown': [value: boolean];
@@ -258,7 +267,15 @@ function settingSearchEntry(page: Page, id: string, label: string, description =
 const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('appearance', 'appearance-auto-spacing', '正文自动间距', '在中文与英文、数字、行内公式及引用之间自动留白，仅影响显示，不修改原文。', 'spacing typography 中英文 数字 公式 引用 空格 排版'),
   settingSearchEntry('appearance', 'appearance-language', '界面语言', '立即切换界面语言，仅保存在当前设备。', 'language English 中文'),
-  settingSearchEntry('appearance', 'appearance-theme', '主题', '选择应用外观，或随系统外观自动切换。', 'theme light dark system 白天 黑夜 深色 浅色'),
+  settingSearchEntry('appearance', 'appearance-theme', '显示模式', displayModeDescription.value, 'theme display mode light dark system 主题 模式 白天 黑夜 深色 浅色'),
+  ...(props.appearance ? [
+  settingSearchEntry('appearance', 'appearance-scope', '为此工作区单独设置', '用户默认与工作区覆盖', 'scope user workspace 用户 默认 覆盖'),
+  settingSearchEntry('appearance', 'appearance-shape', '形态与密度', '独立选择字体、圆角、控件间距和阴影。', 'shape typography density 字体 圆角 密度 间距 阴影'),
+  settingSearchEntry('appearance', 'appearance-presets', '主题预设', '只应用预设声明的配色、图标、布局和形态，未指定的项保持当前。', 'preset theme 一键 整套 预设 风格'),
+  settingSearchEntry('appearance', 'appearance-color', '配色主题', '选择工作区主题插件。', 'theme 插件 风格 配色'),
+  settingSearchEntry('appearance', 'appearance-icons', '文件与目录图标', '选择工作区图标主题。', 'icon 文件夹 图标 插件'),
+  settingSearchEntry('appearance', 'appearance-layout', '布局风格', '独立选择页面结构和材质，可与任意配色、图标混搭。', 'layout islands paper retro 卡片岛 复古 拟物 纸质 布局'),
+  ] : []),
   settingSearchEntry('appearance', 'appearance-visual-font', '可视化编辑字体', '选择内置字体，或使用本机已安装的字体。', 'font system serif mono Maple custom'),
   settingSearchEntry('appearance', 'appearance-custom-font', '字体名称', '输入本机字体名称；未安装时会回退到系统字体。', 'custom font'),
   settingSearchEntry('appearance', 'appearance-visual-size', '可视化编辑字号', '调整正文、标题和编辑中的内容大小。', 'font size'),
@@ -540,7 +557,7 @@ function customFontInput(event: Event) {
               <Monitor :size="13" /><span>{{ scopeLabel }}</span>
             </div>
           </div>
-          <p class="settings-lead">{{ page === 'appearance' ? t('适用于这台设备上的所有工作区，仅影响你的显示效果。') : t('适用于这台设备上的所有工作区，仅影响你的编辑体验。') }}</p>
+          <p class="settings-lead">{{ page === 'appearance' ? t('外观默认用于当前用户的所有工作区，也可为此工作区单独设置。') : t('适用于这台设备上的所有工作区，仅影响你的编辑体验。') }}</p>
           <section v-if="page === 'appearance'" class="settings-section" :aria-label="t('外观')">
             <h3>{{ t('外观') }}</h3>
             <div class="settings-card">
@@ -555,21 +572,49 @@ function customFontInput(event: Event) {
                   <option value="en-US">English</option>
                 </select>
               </div>
+              <div v-if="appearance" class="settings-row" data-settings-key="appearance-scope">
+                <div><strong>{{ t('为此工作区单独设置') }}</strong><p>{{ t(appearance.scope === 'workspace' ? '仅覆盖配色、图标、布局和形态；关闭后恢复用户默认。' : '四个槽位使用用户默认；其他工作区会沿用这些选择。') }}</p></div>
+                <button type="button" class="settings-switch" :class="{ on: appearance.scope === 'workspace' }" role="switch" :aria-label="t('为此工作区单独设置')" :aria-checked="appearance.scope === 'workspace'" :disabled="!appearance.workspaceId"
+                  @click="emit('appearance', { workspaceId: appearance.workspaceId, kind: 'scope', id: appearance.scope === 'workspace' ? 'user' : 'workspace' })"><span /></button>
+              </div>
               <div class="settings-row" data-settings-key="appearance-theme">
                 <div>
-                  <strong>{{ t('主题') }}</strong>
-                  <p>{{ t('选择应用外观，或随系统外观自动切换。') }}</p>
+                  <strong>{{ t('显示模式') }}</strong>
+                  <p>{{ t(displayModeDescription) }}</p>
                 </div>
                 <select
-                  :value="theme"
-                  :aria-label="t('主题')"
+                  :value="displayMode"
+                  :disabled="!!fixedDisplayMode"
+                  :aria-label="t('显示模式')"
                   @change="emit('update:theme', ($event.target as HTMLSelectElement).value as ThemePreference)"
                 >
-                  <option value="light">{{ t('白天') }}</option>
-                  <option value="dark">{{ t('黑夜') }}</option>
-                  <option value="system">{{ t('跟随系统') }}</option>
+                  <option v-if="!fixedDisplayMode || fixedDisplayMode === 'light'" value="light">{{ t('浅色') }}</option>
+                  <option v-if="!fixedDisplayMode || fixedDisplayMode === 'dark'" value="dark">{{ t('深色') }}</option>
+                  <option v-if="!fixedDisplayMode" value="system">{{ t('跟随系统') }}</option>
                 </select>
               </div>
+              <template v-if="appearance">
+                <section class="theme-presets" data-settings-key="appearance-presets" :aria-label="t('主题预设')">
+                  <h3>{{ t('主题预设') }}</h3>
+                  <p>{{ t('只应用预设声明的配色、图标、布局和形态，未指定的项保持当前。') }}</p>
+                  <ThemePresetPicker :appearance="appearance" @select="emit('appearance', $event)" />
+                </section>
+                <div v-for="kind in appearanceKinds" :key="kind" class="settings-row" :data-settings-key="`appearance-${kind}`">
+                  <div>
+                    <strong>{{ t(kind === 'color' ? '配色主题' : kind === 'layout' ? '布局风格' : kind === 'shape' ? '形态与密度' : '文件与目录图标') }}</strong>
+                    <p>{{ t(kind === 'shape' ? '独立选择字体、圆角、控件间距和阴影。' : kind === 'layout' ? '独立选择页面结构和材质，可与任意配色、图标混搭。' : '从内置项和当前工作区已启用的插件中选择，保存在当前设备。') }}</p>
+                    <p v-if="appearance.selected[kind] !== appearance.active[kind]" role="status">{{ t('原主题当前不可用，已使用同页默认；重新启用后会自动恢复。') }}</p>
+                  </div>
+                  <select :aria-label="t(kind === 'color' ? '配色主题' : kind === 'layout' ? '布局风格' : kind === 'shape' ? '形态与密度' : '文件与目录图标')"
+                    :value="appearance.selected[kind]"
+                    @change="emit('appearance', { workspaceId: appearance.workspaceId, kind, id: ($event.target as HTMLSelectElement).value })">
+                    <option :value="builtinDefault">{{ t('同页默认') }}</option>
+                    <option v-if="appearance.selected[kind] !== appearance.active[kind]" :value="appearance.selected[kind]" disabled>{{ t('原主题暂不可用（使用默认）') }}</option>
+                    <option v-for="choice in (kind === 'color' ? appearance.colors : kind === 'layout' ? appearance.layouts : kind === 'shape' ? appearance.shapes : appearance.icons)" :key="choice.id" :value="choice.id">{{ t(choice.label) }}</option>
+                  </select>
+                </div>
+                <p v-for="message in appearance.errors" :key="message" role="alert">{{ message }}</p>
+              </template>
             </div>
           </section>
           <section v-if="page === 'editing'" class="settings-section" aria-labelledby="settings-editor">
@@ -2219,4 +2264,6 @@ function customFontInput(event: Event) {
   z-index: 2;
 }
 
+.theme-presets { padding-block: 20px; border-bottom: 1px solid var(--line); }
+.theme-presets > p { color: var(--text-secondary); font-size: 13px; line-height: 1.6; }
 </style>

@@ -1,4 +1,5 @@
 import { parsePluginJson, pluginRecord, type PluginJson, type PluginUiBundle } from '@tano/protocol';
+import { resolvedTheme, themeChangedEvent } from '../theme';
 import outerSource from './ui-outer.js?raw';
 import clientSource from './ui-client.js?raw';
 import innerSource from './ui-inner.js?raw';
@@ -22,7 +23,9 @@ export function createPluginUiSandbox(container: HTMLElement, bundle: PluginUiBu
   let disposed = false, initialized = false, ready = false, inFlight = 0, calls = 0, windowStart = Date.now();
   let latest = parsePluginJson(state);
   const seen = new Set<number>();
-  const dispose = () => { if (disposed) return; disposed = true; clearTimeout(timer); channel.port1.close(); channel.port2.close(); frame.remove(); };
+  const syncTheme = () => { if (ready && !disposed) channel.port1.postMessage({ type: 'theme', theme: resolvedTheme() }); };
+  window.addEventListener(themeChangedEvent, syncTheme);
+  const dispose = () => { if (disposed) return; disposed = true; window.removeEventListener(themeChangedEvent, syncTheme); clearTimeout(timer); channel.port1.close(); channel.port2.close(); frame.remove(); };
   const fail = (message: string) => { if (!disposed) { dispose(); failed(message.slice(0, 1000)); } };
   const timer = setTimeout(() => fail('插件界面加载超时'), 15000);
   channel.port1.onmessageerror = () => fail('插件界面消息无法解码');
@@ -30,7 +33,7 @@ export function createPluginUiSandbox(container: HTMLElement, bundle: PluginUiBu
     if (disposed || !pluginRecord(data)) return;
     if (Date.now() - windowStart > 1000) { windowStart = Date.now(); calls = 0; }
     if (++calls > 100) { fail('插件界面消息超过资源限制'); return; }
-    if (data.type === 'ready') { ready = true; clearTimeout(timer); channel.port1.postMessage({ type: 'state', state: latest }); return; }
+    if (data.type === 'ready') { ready = true; clearTimeout(timer); syncTheme(); channel.port1.postMessage({ type: 'state', state: latest }); return; }
     if (data.type === 'failed') { fail(String(data.error)); return; }
     if (data.type === 'log') { if (typeof data.message === 'string') diagnostic?.(String(data.level), data.message.slice(0, 1500)); return; }
     if (data.type !== 'message' || !Number.isSafeInteger(data.id) || Number(data.id) <= 0 || seen.has(Number(data.id))) return;
@@ -51,7 +54,7 @@ export function createPluginUiSandbox(container: HTMLElement, bundle: PluginUiBu
     if (initialized) { fail('插件界面容器发生了未授权导航'); return; }
     initialized = true;
     // Vue may wrap component props in a Proxy, which structured clone cannot transfer.
-    frame.contentWindow?.postMessage({ type: 'tano-view-init', bundle: { html: bundle.html, css: bundle.css, source: bundle.source }, clientSource, innerSource: uiInnerBootstrap, innerHash: uiInnerHash, state: latest }, '*', [channel.port2]);
+    frame.contentWindow?.postMessage({ type: 'tano-view-init', bundle: { html: bundle.html, css: bundle.css, source: bundle.source }, clientSource: `const initialTheme = ${JSON.stringify(resolvedTheme())};\n${clientSource}`, innerSource: uiInnerBootstrap, innerHash: uiInnerHash, state: latest }, '*', [channel.port2]);
   };
   frame.srcdoc = `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src '${uiSandboxHash}' '${uiInnerHash}' blob:; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"><script>${uiSandboxBootstrap}</script>`;
   container.append(frame);

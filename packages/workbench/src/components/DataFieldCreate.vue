@@ -388,7 +388,7 @@ function keydown(event: KeyboardEvent) {
   justify-content: center;
   width: 100%;
   background: var(--green-fill);
-  color: white;
+  color: var(--on-accent, white);
 }
 .field-create-panel .field-create-submit:hover {
   background: var(--green-fill-hover);

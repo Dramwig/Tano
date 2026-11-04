@@ -266,7 +266,10 @@ import type { TabTransferRequest, TabTransferRollback, TabTransferResult } from 
 import { selectTreeEntry, topLevelEntries } from './file-selection';
 import { isBlankPageTarget } from './page-context-menu';
 import { pageRoutePath, pageRouteUrl, parsePageRoute } from './web-navigation';
-import { applyTheme, readThemePreference, saveThemePreference } from './theme';
+import { applyTheme } from './theme';
+import { AppearanceController } from './appearance';
+import LayoutDocumentChrome from './components/LayoutDocumentChrome.vue';
+import { FileIconRegistry, fileIconRegistryKey } from './file-icons/registry';
 import type { ThemePreference } from './theme';
 import { parseVisualFontChoice, sanitizeCustomFontName, visualFontFamily } from './editor-font';
 import type { VisualFontChoice } from './editor-font';
@@ -777,13 +780,26 @@ watch(sidebar, (open) => {
     sidebarSnapRestoreWidth = null;
   }
 });
-const theme = ref<ThemePreference>(readThemePreference());
+const appearanceIcons = new FileIconRegistry();
+provide(fileIconRegistryKey, appearanceIcons);
+const appearanceController = new AppearanceController(appearanceIcons, useWorkbenchRuntime().plugins?.principal ?? 'device', {
+  getItem: key => window.localStorage.getItem(key), setItem: (key, value) => window.localStorage.setItem(key, value),
+});
+const appearance = appearanceController.state;
+watch([() => store.workspace?.id ?? '', () => store.installedPlugins, () => store.installedPluginWorkspace], ([id, installed, loadedFor]) => {
+  appearanceController.sync(id, id === loadedFor ? installed : []);
+}, { immediate: true, deep: true });
+onBeforeUnmount(() => appearanceController.dispose());
+const theme = computed<ThemePreference>({ get: () => appearance.value.mode,
+  set: mode => appearanceController.select({ workspaceId: appearance.value.workspaceId, kind: 'mode', id: mode }) });
+const onAppearanceStorage = (event: StorageEvent) => appearanceController.refreshPreferences(event.key);
+onMounted(() => window.addEventListener('storage', onAppearanceStorage));
+onBeforeUnmount(() => window.removeEventListener('storage', onAppearanceStorage));
 const systemThemeMedia = window.matchMedia?.('(prefers-color-scheme: dark)');
 const onSystemThemeChange = () => {
   if (theme.value === 'system') applyTheme('system');
 };
 applyTheme(theme.value);
-watch(theme, saveThemePreference);
 onMounted(() => systemThemeMedia?.addEventListener('change', onSystemThemeChange));
 onBeforeUnmount(() => systemThemeMedia?.removeEventListener('change', onSystemThemeChange));
 function readPreference(key: string, fallback: boolean): boolean {
@@ -2551,7 +2567,7 @@ function openPageContextMenu(event: MouseEvent) {
         Math.max(8, window.innerHeight - element.offsetHeight - 8),
       ),
     };
-    element.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+    element.focus({ preventScroll: true });
   });
 }
 function openDocumentDiscussion() {
@@ -3551,6 +3567,7 @@ const settingsSnapshot = computed<SettingsSnapshot>(() => ({
   mode: store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local',
   defaultSource: defaultSource.value,
   theme: theme.value,
+  appearance: appearance.value,
   visualFontChoice: visualFontChoice.value,
   customFontName: customFontName.value,
   revealMarkdown: revealMarkdown.value,
@@ -3610,6 +3627,7 @@ function openSettings(page: SettingsPageId = readSettingsPage(settingsPage.value
   settingsPanel.value = true;
 }
 function handleSettingsCommand(command: SettingsCommand) {
+  if (command.type === 'appearance') { appearanceController.select(command.selection); return; }
   if (!settingsWorkspace.value && ['workspace-delete', 'workspace-setting', 'workspace-settings-reload', 'workspace-export', 'capability'].includes(command.type)) return;
   if (command.type === 'plugin-invoke') {
     void store.interactWithPlugin(command.interaction).then(
@@ -5715,22 +5733,15 @@ const helpBlocked = computed(() => !!(
                         <Clock3 :size="15" />{{ t('更新历史') }}
                       </button>
                       <DocumentGlobalMenu>
-                        <button type="button" class="page-toggle-menu-item" role="switch"
-                          :aria-checked="workspaceLocked" :disabled="!workspace"
-                          :data-tooltip="t('锁定后，整个工作区的页面进入阅读模式')"
-                          @click="toggleWorkspaceLock">
-                          <LockKeyhole :size="15" />{{ t('锁定工作区') }}<span
-                            class="menu-switch" :class="{ on: workspaceLocked }" aria-hidden="true"><span /></span>
-                        </button>
-                        <div class="menu-divider" role="separator" />
-                        <PageDisplayOptions :auto-spacing="editorPreferences.autoSpacing ?? false"
+                        <PageDisplayOptions :workspace-locked="workspaceLocked" :workspace-available="!!workspace"
+                          :auto-spacing="editorPreferences.autoSpacing ?? false"
                           :show-page-title="showPageTitle"
                           :show-document-properties="showDocumentProperties"
                           :show-outline="showOutline"
                           :show-all-line-numbers="showAllLineNumbers"
                           :detached-window="!!detachedWindow"
                           :source="paneSource(store.activeId)"
-                          @toggle="togglePageOption" />
+                          @toggle="togglePageOption" @toggle-workspace-lock="toggleWorkspaceLock" />
                       </DocumentGlobalMenu>
                       <DocumentExportMenu :disabled="exportBusy" @select="exportDocument" />
                       <div class="menu-divider" role="separator" />
@@ -5870,6 +5881,7 @@ const helpBlocked = computed(() => !!(
                   @scroll.passive="scheduleActiveHeading"
                 >
                   <main class="document-main">
+                    <LayoutDocumentChrome :layout="appearance.layout" :path="active.path" />
                     <EditorTools
                       :shortcuts="shortcuts"
                       v-model:mode="toolbarMode"
@@ -6377,20 +6389,22 @@ const helpBlocked = computed(() => !!(
         <div v-surface-motion="'App:6'"
           v-if="pageContextMenu && !switchingWorkspace"
           ref="pageContextMenuElement"
-          class="dropdown compact-action-menu page-context-menu"
+          class="dropdown compact-action-menu page-context-menu workspace-options-menu"
           role="menu"
           :aria-label="t('页面显示选项')"
+          tabindex="-1"
           :style="{ left: `${pageContextMenu.x}px`, top: `${pageContextMenu.y}px` }"
           @keydown="pageContextKeydown"
         >
-          <PageDisplayOptions :auto-spacing="editorPreferences.autoSpacing ?? false"
+          <PageDisplayOptions :workspace-locked="workspaceLocked" :workspace-available="!!workspace"
+            :auto-spacing="editorPreferences.autoSpacing ?? false"
             :show-page-title="showPageTitle"
             :show-document-properties="showDocumentProperties"
             :show-outline="showOutline"
             :show-all-line-numbers="showAllLineNumbers"
             :detached-window="!!detachedWindow"
             :source="paneSource(store.activeId)"
-            @toggle="togglePageOption" />
+            @toggle="togglePageOption" @toggle-workspace-lock="toggleWorkspaceLock" />
         </div>
       </Teleport>
       <Teleport to="body">
@@ -6543,6 +6557,8 @@ const helpBlocked = computed(() => !!(
       :mobile="mobile"
       :default-source="defaultSource"
       :theme="theme"
+      :appearance="appearance"
+      @appearance="appearanceController.select($event)"
       :visual-font-choice="visualFontChoice"
       :custom-font-name="customFontName"
       :reveal-markdown="revealMarkdown"

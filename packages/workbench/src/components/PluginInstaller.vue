@@ -511,6 +511,15 @@ async function importCachedPackage() {
         <p class="detail-description">
           {{ detail.description || t('为当前工作区添加自定义对象与关系。') }}
         </p>
+        <section v-if="detail.appearance" class="detail-section">
+          <h4>{{ t('主题与图标') }}</h4>
+          <p v-for="color in detail.appearance.colors" :key="color.id">{{ t('配色主题') }}：{{ color.label }}</p>
+          <p v-for="icons in detail.appearance.icons" :key="icons.id">{{ t('文件与目录图标') }}：{{ icons.label }}</p>
+          <p v-for="layout in detail.appearance.layouts" :key="layout.id">{{ t('布局风格') }}：{{ layout.label }}</p>
+          <p v-for="shape in detail.appearance.shapes" :key="shape.id">{{ t('形态与密度') }}：{{ shape.label }}</p>
+          <p v-for="preset in detail.appearance.presets" :key="preset.id">{{ t('主题预设') }}：{{ preset.label }}</p>
+          <p>{{ t('安装后在设置 → 外观应用预设，或分别选择配色、图标、布局和形态。未指定的项保持当前。') }}</p>
+        </section>
         <section class="detail-section">
           <h4>
             {{ t('扩展对象') }} <span>{{ detail.objectTypes.length }}</span>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, inject } from 'vue';
+import { fileIconCssColor } from '@tano/protocol';
 import { fileIconRegistry, fileIconRegistryKey, type FileIconResource } from '../file-icons/registry';
 const props = withDefaults(defineProps<FileIconResource & { size?: number }>(), { size: 16 });
 const registry = inject(fileIconRegistryKey, fileIconRegistry);
@@ -9,7 +10,7 @@ const resolved = computed(() => registry.resolve(props));
 <template>
   <svg class="resource-icon" :data-file-icon="resolved.id" :data-icon-theme="resolved.themeId"
     :width="size" :height="size" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"
-    :style="{ color: resolved.icon.color }" stroke="currentColor" stroke-width="1.33" stroke-linecap="round" stroke-linejoin="round">
+    :style="{ color: fileIconCssColor(resolved.icon.color) }" stroke="currentColor" stroke-width="1.33" stroke-linecap="round" stroke-linejoin="round">
     <template v-if="resolved.icon.silhouette === 'folder' || resolved.icon.silhouette === 'folder-open'">
       <path d="M2 6V4.5h6l2 2h8V17H2z" fill="currentColor" fill-opacity=".16" />
       <path v-if="resolved.icon.silhouette === 'folder-open'" d="M2 17l2-8h15l-2 8z" fill="var(--paper, white)" />

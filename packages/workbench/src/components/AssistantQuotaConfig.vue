@@ -113,7 +113,7 @@ onMounted(async () => { await nextTick(); toggle.value?.focus({ preventScroll: t
 .quota-switch[aria-checked='true'] { background: var(--green); }.quota-switch[aria-checked='true'] span { transform: translateX(14px); }
 .quota-templates { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 20px; }
 .quota-templates button { border: 1px solid var(--line); border-radius: 20px; padding: 5px 12px; color: var(--muted); font-size: 12px; }
-.quota-templates button[aria-pressed='true'] { background: var(--green); border-color: var(--green); color: white; }
+.quota-templates button[aria-pressed='true'] { background: var(--green); border-color: var(--green); color: var(--on-accent, white); }
 .quota-subheading { margin-bottom: 14px; }.quota-subheading span, .quota-panel small, .quota-help { color: var(--muted); font-size: 12px; line-height: 1.6; }
 .quota-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .quota-grid label { display: block; font-size: 12px; min-width: 0; }.quota-grid input { display: block; width: 100%; margin-top: 7px; height: 34px; border: 1px solid var(--line); border-radius: 6px; background: var(--hover); color: var(--text); padding: 6px 10px; font: inherit; }

@@ -17,7 +17,7 @@ const folder = (expanded = false, home = false): FileIconDefinition => glyph(
 );
 
 export const defaultFileIconTheme: FileIconTheme = {
-  id: 'tano', label: '同页',
+  id: 'builtin:tano', label: '同页',
   file: 'file', folder: 'folder', folderExpanded: 'folder-open',
   folderHome: 'folder-home', folderHomeExpanded: 'folder-home-open',
   icons: {

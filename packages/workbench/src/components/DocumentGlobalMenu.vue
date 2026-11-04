@@ -80,7 +80,7 @@ onBeforeUnmount(() => {
     <Settings2 :size="15" />{{ t('工作区选项') }}<ChevronRight class="document-global-chevron" :size="14" />
   </button>
   <Teleport to="body">
-    <div v-surface-motion="'DocumentGlobalMenu:0'" v-if="open" :id="panelId" ref="panel" class="dropdown compact-action-menu document-global-menu page-context-menu"
+    <div v-surface-motion="'DocumentGlobalMenu:0'" v-if="open" :id="panelId" ref="panel" class="dropdown compact-action-menu document-global-menu page-context-menu workspace-options-menu"
       :style="position" role="menu" :aria-label="t('工作区选项')" tabindex="-1"
       @pointerenter="cancelClose" @pointerleave="scheduleClose" @keydown="panelKeydown">
       <slot />

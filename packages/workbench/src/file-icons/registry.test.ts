@@ -45,7 +45,7 @@ describe('file icon themes', () => {
     expect(registry.resolve({ path: 'SPECIAL.TS' }).id).toBe('special');
     expect(() => registry.register(theme())).toThrow('already registered');
     expect(() => registry.register({ ...theme(), id: 'broken', file: 'missing' })).toThrow('Unknown file icon');
-    expect(() => registry.register({ ...theme(), id: 'unsafe', icons: { custom: { color: 'url(https://example.com)', paths: [] } } })).toThrow('Invalid file icon');
-    expect(() => registry.register({ ...theme(), id: 'tano' })).toThrow('already registered');
+    expect(() => registry.register({ ...theme(), id: 'unsafe', icons: { custom: { color: 'url(https://example.com)' as any, paths: [] } } })).toThrow('Invalid file icon');
+    expect(() => registry.register({ ...theme(), id: 'builtin:tano' })).toThrow('already registered');
   });
 });

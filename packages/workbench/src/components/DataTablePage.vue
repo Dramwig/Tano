@@ -1590,7 +1590,7 @@ const filterOperators = [
 }
 .data-page .data-primary {
   background: var(--green-fill);
-  color: white;
+  color: var(--on-accent, white);
   white-space: nowrap;
 }
 .data-page .data-primary:hover {

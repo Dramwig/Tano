@@ -12,6 +12,7 @@ const changes = computed(() => {
   return [t('运行权限'), t('联网地址'), t('本机能力')].map((label, i) => ({ label, before: before[i]!, after: after[i]!,
     added: after[i]!.filter(value => !before[i]!.includes(value)), removed: before[i]!.filter(value => !after[i]!.includes(value)) }));
 });
+const appearanceChanged = computed(() => canonicalPluginJson(props.before?.appearance ?? null) !== canonicalPluginJson(props.after.appearance ?? null));
 const schemaChanged = computed(() => props.before && canonicalPluginJson([props.before.objectTypes, props.before.relationTypes]) !== canonicalPluginJson([props.after.objectTypes, props.after.relationTypes]));
 </script>
 <template>
@@ -25,6 +26,7 @@ const schemaChanged = computed(() => props.before && canonicalPluginJson([props.
       <p v-if="change.added.length">{{ t('新增') }}{{ change.label }}：{{ change.added.join('、') }}</p>
       <p v-if="change.removed.length">{{ t('移除') }}{{ change.label }}：{{ change.removed.join('、') }}</p>
     </template>
+    <p v-if="appearanceChanged">{{ t('配色、图标、布局、形态或预设将变化。已保存的搭配不会自动跟随预设更新；移除正在使用的主题时会回退到同页默认。') }}</p>
     <p v-if="schemaChanged">{{ t('对象或关系定义将变化。现有 Markdown 数据会保留，请先核对旧数据在新版本中的展示。') }}</p>
     <p v-if="after.manifestVersion === 2">{{ t('每位成员需在自己的设备上授权新代码摘要；已有服务连接和后台任务若绑定旧摘要，需要重新授权。') }}</p>
     <p v-if="before">{{ t('保留当前共享设置和历史版本。正在运行的旧实例将停止，未完成的调用会取消。') }}</p>

@@ -1,9 +1,11 @@
+import { parsePluginAppearance, type PluginAppearance } from './appearance';
 import { ObjectTypeRegistry, coreObjectTypes, validObjectType } from './object-types';
 import type { ObjectField } from './object-types';
 import type { RelationTypeDefinition } from './relations';
 
 export interface ObjectPluginManifest {
   manifestVersion: 1;
+  appearance?: PluginAppearance;
   id: string;
   name: string;
   version: string;
@@ -37,6 +39,7 @@ export function parseObjectPlugin(content: string): ObjectPluginManifest {
     'description',
     'objectTypes',
     'relationTypes',
+    'appearance',
   ]);
   if (
     value.manifestVersion !== 1 ||
@@ -100,6 +103,7 @@ export function parseObjectPlugin(content: string): ObjectPluginManifest {
   }
   return {
     ...value,
+    ...(value.appearance === undefined ? {} : { appearance: parsePluginAppearance(value.appearance) }),
     objectTypes: value.objectTypes.map((type: { fields?: ObjectField[] }) => ({
       ...type,
       fields: type.fields ?? [],

@@ -408,7 +408,7 @@ const issueText = (issue: ImportIssue) => `${issue.name}：${issue.message}`;
 .import-footer label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; min-width: 0; }
 .import-footer label span { white-space: nowrap; }
 .import-footer input { width: 130px; min-width: 60px; padding: 6px 8px; border: 1px solid var(--control-border); border-radius: 4px; color: var(--text); background: var(--paper); }
-.import-submit { display: flex; align-items: center; justify-content: center; flex-shrink: 0; gap: 8px; min-height: 36px; padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 500; color: #fff; background: var(--green-fill); box-shadow: 0 4px 12px color-mix(in srgb, var(--green-fill) 28%, transparent); }
+.import-submit { display: flex; align-items: center; justify-content: center; flex-shrink: 0; gap: 8px; min-height: 36px; padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 500; color: var(--on-accent, #fff); background: var(--green-fill); box-shadow: 0 4px 12px color-mix(in srgb, var(--green-fill) 28%, transparent); }
 .import-submit:hover:not(:disabled) { background: var(--green-fill-hover); }
 .import-record { border-bottom: 1px solid var(--line); padding: 20px 0; }
 .import-record-heading { display: flex; align-items: center; gap: 12px; }.import-record-heading > div { min-width: 0; }.import-record-heading strong { display: block; font-size: 13px; overflow-wrap: anywhere; }.import-record-heading small { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }.import-record-heading button { margin-left: auto; }

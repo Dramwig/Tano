@@ -28,5 +28,5 @@ export function visualFontFamily(choice: VisualFontChoice, customName: string): 
   const name = sanitizeCustomFontName(customName).trim();
   return choice === 'custom' && name
     ? `${JSON.stringify(name)}, ${systemFontFamily}`
-    : systemFontFamily;
+    : 'var(--font-prose, ' + systemFontFamily + ')';
 }

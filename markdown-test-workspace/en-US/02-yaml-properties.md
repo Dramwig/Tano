@@ -40,4 +40,8 @@ Expand document properties and inspect strings, numbers, booleans, nulls, arrays
 
 Edit `title` or `tags` in source mode, then save and reopen. Check comments, quotes, key order, and multiline syntax. Editing the body should not silently discard the frontmatter comment or rewrite its values.
 
-The document title and filename are separate from the YAML `title` property. Check each operation independently.
+In workspace general settings, choose the page title source: filename, YAML title, or YAML title first. The default prefers a valid YAML title and falls back to the filename when absent. Editing the page title updates the selected source and does not automatically rewrite a body heading.
+
+- [ ] With YAML title selected, edit the page title and check that `title` changes while the filename stays the same.
+- [ ] With filename selected, edit the page title and check that the file is renamed while YAML title remains.
+- [ ] With YAML title first, clear or remove the field and check filename fallback. Restore the content you want after the exercise.

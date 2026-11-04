@@ -1133,7 +1133,7 @@ onBeforeUnmount(() => {
 }
 .plan-create-actions button[type='submit'] {
   background: var(--green-fill);
-  color: white;
+  color: var(--on-accent, white);
 }
 .plan-create-actions button[type='submit']:not(:disabled):hover {
   background: var(--green-fill-hover);
@@ -1276,7 +1276,7 @@ onBeforeUnmount(() => {
   aspect-ratio: 1;
   border-radius: 50%;
   background: var(--green-fill);
-  color: white;
+  color: var(--on-accent, white);
 }
 .sidebar-calendar-event-dot {
   position: absolute;

@@ -340,7 +340,7 @@ onBeforeUnmount(() => {
 .document-cover-link-field { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--control-border); border-radius: 6px; color: var(--muted); }
 .document-cover-link-field:focus-within { outline: 2px solid var(--text); outline-offset: 1px; }
 .document-cover-link-field input { min-width: 0; width: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 13px; }
-.document-cover-link > .settings-button { align-self: center; justify-content: center; min-width: 112px; margin-top: 16px; color: #fff; border-color: var(--green-fill); background: var(--green-fill); }
+.document-cover-link > .settings-button { align-self: center; justify-content: center; min-width: 112px; margin-top: 16px; color: var(--on-accent, #fff); border-color: var(--green-fill); background: var(--green-fill); }
 .document-cover-link > .settings-button:hover:not(:disabled) { border-color: var(--green-fill-hover); background: var(--green-fill-hover); }
 .document-cover-picker .document-appearance-error { margin: 0; padding: 0 16px 14px; }
 .document-appearance-error { margin: 6px 0; color: #c43e47; font-size: 12px; line-height: 1.5; }

@@ -29,7 +29,7 @@ from metadata before falling back to the file theme. Existing user-selected
 returns an idempotent disposer. `select(id)` activates a registered theme. Mounted
 icons update immediately; disposing the active theme restores Tano defaults.
 Duplicate IDs and invalid references are rejected. Contributions are copied and
-frozen; vectors accept path data, fixed colors and short text labels, never HTML,
+frozen; vectors accept path data, hex or semantic colors and short text labels, never HTML,
 remote URLs or executable components.
 
 The default registry is application-local. A host can provide an isolated registry
@@ -44,7 +44,7 @@ app.provide(fileIconRegistryKey, registry);
 const dispose = registry.register({
   id: 'example.notes',
   label: 'Notes',
-  icons: { note: { color: '#648bc8', paths: ['M6 10h8 M6 13h8 M6 16h5'] } },
+  icons: { note: { color: 'syntax-blue', paths: ['M6 10h8 M6 13h8 M6 16h5'] } },
   fileExtensions: { md: 'note', markdown: 'note' },
 });
 registry.select('example.notes');
@@ -52,9 +52,13 @@ registry.select('example.notes');
 dispose();
 ```
 
-This is a host extension point, **not yet a sandbox plugin SDK capability or a
-theme settings screen**. A future plugin contribution bridge must validate the
-manifest, register only enabled/authorized contributions, dispose them on plugin
-disable/uninstall/workspace changes, and activate only the user's selected theme.
-Device-local theme selection belongs in application settings, not workspace root
-files or `.tano/config.json`. No new persistence is introduced here.
+## Plugin contributions
+
+Installable packages now declare `appearance: { version: 2, icons: [...] }` using
+this same data shape. See [Theme plugins](theme-plugins.md) for validation limits,
+packing, separate color/icon selection, device-local persistence and lifecycle
+fallback. Only enabled contributions (and authorized executable versions) are
+registered. Disable, uninstall and workspace changes dispose the old icons;
+explicit document icons remain higher priority than the selected icon theme.
+
+Icon color accepts a whitelisted color-token name such as `accent` or `syntax-blue`, a hex color, or `currentColor`. Semantic colors render as CSS variables and follow the selected light/dark palette without re-registering icons. Arbitrary CSS variables and URLs are rejected.

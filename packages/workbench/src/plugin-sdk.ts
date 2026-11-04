@@ -3,6 +3,9 @@ import type { PluginViewNode, PluginJson, WorkspaceObject, WorkspaceRelation, Pl
 export type { PluginManifest, ExecutablePluginManifest, PluginPackage, PluginPermission, PluginViewNode, PluginJson, PluginUiBundle } from '@tano/protocol';
 /** Runs inside the custom UI frame; workspace access stays in the plugin's Worker. */
 export interface TanoPluginViewApi {
+  /** Read-only host appearance, also applied as CSS variables inside the isolated UI. */
+  theme(): import('./theme').ResolvedTheme;
+  onTheme(handler: (theme: import('./theme').ResolvedTheme) => void): () => void;
   postMessage(message: PluginJson): Promise<void>;
   onState(handler: (state: PluginJson) => void): () => void;
 }

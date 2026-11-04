@@ -79,6 +79,7 @@
 /* Menu groups need more contrast than decorative seams on raised surfaces. */
 :root[data-theme='dark'] .menu-divider {
   background: var(--line-strong);
+  border-color: var(--line-strong);
 }
 :root[data-theme='dark'] :is(.search-input-wrap, .search-results) {
   background: var(--surface-raised);

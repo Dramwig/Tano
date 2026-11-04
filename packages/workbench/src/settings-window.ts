@@ -7,6 +7,7 @@ import type { EditorPreferences, WorkspaceCapabilities } from '@tano/editor/runt
 import type { CapabilityPatch } from './workspace-capabilities';
 import type { WorkspaceSettings, WorkspaceSettingsPatch } from './workspace-settings';
 import type { ThemePreference } from './theme';
+import type { AppearanceSnapshot, AppearanceSelection } from './appearance';
 import type { VisualFontChoice } from './editor-font';
 import type { ToolbarMode } from './toolbar-preference';
 import type { ShortcutBindings } from './shortcuts';
@@ -38,6 +39,7 @@ export interface SettingsValues {
 }
 
 export interface SettingsSnapshot extends SettingsValues, SettingsPageContext {
+  appearance?: AppearanceSnapshot;
   pluginPages?: PluginSettingsPage[];
   workspaceSettings: WorkspaceSettings;
   workspacePages: { id: string; path: string }[];
@@ -66,6 +68,7 @@ export interface SettingsSnapshot extends SettingsValues, SettingsPageContext {
 export type SettingsCommand =
   | { type: 'plugin-invoke'; requestId: string; interaction: PluginInteraction }
   | { type: 'ready' }
+  | { type: 'appearance'; selection: AppearanceSelection }
   | { type: 'change'; key: keyof SettingsValues; value: SettingsValues[keyof SettingsValues] }
   | { type: 'assistant-refresh' }
   | { type: 'capability'; value: CapabilityPatch }

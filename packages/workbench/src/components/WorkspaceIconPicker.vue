@@ -296,7 +296,7 @@ onBeforeUnmount(() => {
 .workspace-icon-picker-upload-symbol { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 12px; color: var(--muted); background: var(--surface); }
 .workspace-icon-picker-upload-title { margin: 12px 0 0; font-size: 14px; font-weight: 500; line-height: 20px; }
 .workspace-icon-picker-upload-actions { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 16px; }
-.workspace-icon-picker-upload-actions .settings-button { min-width: 112px; min-height: 34px; padding: 6px 11px; justify-content: center; border-color: var(--green-fill); color: #fff; background: var(--green-fill); }
+.workspace-icon-picker-upload-actions .settings-button { min-width: 112px; min-height: 34px; padding: 6px 11px; justify-content: center; border-color: var(--green-fill); color: var(--on-accent, #fff); background: var(--green-fill); }
 .workspace-icon-picker-upload-actions .settings-button:hover:not(:disabled) { border-color: var(--green-fill-hover); background: var(--green-fill-hover); }
 .workspace-icon-picker-upload-paste { margin: 0; color: var(--muted); font-size: 12px; line-height: 20px; }
 .workspace-icon-picker-upload-paste kbd { font-family: inherit; font-size: inherit; }

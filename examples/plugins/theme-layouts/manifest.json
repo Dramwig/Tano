@@ -1,0 +1,55 @@
+{
+  "manifestVersion": 1,
+  "id": "theme-layouts",
+  "name": "页面风格集",
+  "version": "1.0.0",
+  "description": "卡片岛、复古拟物、纸质文档三种布局；可与任意配色、图标混搭。",
+  "objectTypes": [],
+  "relationTypes": [],
+  "appearance": {
+    "version": 2,
+    "layouts": [
+      {
+        "id": "islands",
+        "label": "宽松卡片岛",
+        "structure": "islands",
+        "surface": "flat",
+        "gap": 24,
+        "pageWidth": 1040
+      },
+      {
+        "id": "retro",
+        "label": "手写笔记本",
+        "structure": "notebook",
+        "surface": "skeuomorphic",
+        "gap": 24,
+        "pageWidth": 960
+      },
+      {
+        "id": "paper",
+        "label": "窄版纸质文档",
+        "structure": "document",
+        "surface": "paper",
+        "gap": 24,
+        "pageWidth": 760
+      }
+    ],
+    "presets": [
+      {
+        "id": "islands",
+        "label": "宽松卡片岛",
+        "layout": "islands"
+      },
+      {
+        "id": "retro",
+        "label": "手写笔记本",
+        "layout": "retro"
+      },
+      {
+        "id": "paper",
+        "label": "窄版纸质文档",
+        "layout": "paper"
+      }
+    ]
+  }
+}

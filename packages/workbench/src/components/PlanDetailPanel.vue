@@ -321,7 +321,7 @@ footer { border-top: 1px solid var(--line); padding-bottom: max(12px, env(safe-a
 .detail-save-state.has-changes { color: var(--text-secondary); }
 .detail-close { padding: 8px 12px; height: 36px; font-size: 13px; color: var(--text-secondary); border-radius: 5px; }
 .detail-close:hover:not(:disabled) { background: var(--hover); }
-.detail-save { display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex-shrink: 0; min-width: 90px; height: 36px; border-radius: 6px; color: #fff; background: var(--green-fill); font-size: 13px; }
+.detail-save { display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex-shrink: 0; min-width: 90px; height: 36px; border-radius: 6px; color: var(--on-accent, #fff); background: var(--green-fill); font-size: 13px; }
 .detail-save:hover:not(:disabled) { background: var(--green-fill-hover); }
 .plan-detail-panel button:disabled { opacity: .55; cursor: not-allowed; }
 .plan-detail-panel :is(input, textarea):disabled { cursor: not-allowed; }
