@@ -2,6 +2,7 @@
 import { t } from '../i18n';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { animate } from 'motion/mini';
 import { ArrowLeft, ArrowRight, Folder, Bot, CalendarDays, FileText, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, PanelBottomClose, ExternalLink, Bug } from 'lucide-vue-next';
 import { basename, isMarkdown, isDataTableFilePath } from '@tano/protocol';
 import { invoke } from '@tauri-apps/api/core';
@@ -66,6 +67,104 @@ let blankTrack: HTMLElement | null = null;
 const frozenTabWidths = ref<Record<string, number>>({});
 const frozenStripWidth = ref<number>();
 const pointerInsideTabList = ref(false);
+const tabLayoutAnimating = ref(false);
+const movingTabs = new Map<HTMLElement, { animation: ReturnType<typeof animate>; restore: () => void }>();
+let tabMoveRevision = 0;
+let tabLayoutMotion: Promise<void> | undefined;
+let finishCancelledTabMove: (() => void) | undefined;
+function cancelTabMoves() {
+  tabMoveRevision++;
+  finishCancelledTabMove?.();
+  finishCancelledTabMove = undefined;
+  for (const { animation, restore } of movingTabs.values()) { animation.cancel(); restore(); }
+  movingTabs.clear();
+  tabLayoutAnimating.value = false;
+}
+function releaseTabWidths() {
+  frozenTabWidths.value = {};
+  frozenStripWidth.value = undefined;
+}
+function moveTabElement(element: HTMLElement, keyframes: Record<string, (number | string)[]>, restore: () => void) {
+  const animation = animate(element, keyframes, { duration: 0.18, ease: [0.22, 1, 0.36, 1] });
+  movingTabs.set(element, { animation, restore });
+}
+async function animateTabLayout(ids: string[], opening: boolean) {
+  const list = tabList.value;
+  if (!list) return;
+  const strip = list.parentElement!;
+  const stripWidth = strip.getBoundingClientRect().width;
+  // Capture the visible layout so rapid opens/closes continue from this frame.
+  const previous = new Map([...list.querySelectorAll<HTMLElement>('.desktop-tab')]
+    .map(tab => [tab.dataset.id!, { box: tab.getBoundingClientRect(), opacity: Number(getComputedStyle(tab).opacity) }]));
+  cancelTabMoves();
+  const revision = tabMoveRevision;
+  tabLayoutAnimating.value = true;
+  if (opening) releaseTabWidths();
+  else {
+    frozenTabWidths.value = Object.fromEntries([...previous].map(([id, { box }]) => [id, box.width]));
+    frozenStripWidth.value = ids.reduce((width, id) => width + (previous.get(id)?.box.width ?? 200), 42);
+  }
+  await nextTick();
+  if (revision !== tabMoveRevision || tabList.value !== list) return;
+  const targetStripWidth = strip.getBoundingClientRect().width;
+  if (opening) {
+    // Measure the final responsive widths, then use pixels throughout expansion.
+    // Relative flex bases would resize existing tabs as the strip itself grows.
+    frozenTabWidths.value = Object.fromEntries([...list.querySelectorAll<HTMLElement>('.desktop-tab')]
+      .map(tab => [tab.dataset.id!, tab.getBoundingClientRect().width]));
+    frozenStripWidth.value = targetStripWidth;
+    await nextTick();
+    if (revision !== tabMoveRevision || tabList.value !== list) return;
+  }
+  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  let finishCancelled!: () => void;
+  const cancelled = new Promise<void>(resolve => { finishCancelled = resolve; });
+  finishCancelledTabMove = finishCancelled;
+  const inlineWidth = strip.style.width;
+  if (!reduced && typeof strip.animate === 'function' && Math.abs(stripWidth - targetStripWidth) >= 0.5) {
+    moveTabElement(strip, { width: [`${stripWidth}px`, `${targetStripWidth}px`] }, () => { strip.style.width = inlineWidth; });
+  }
+  for (const tab of list.querySelectorAll<HTMLElement>('.desktop-tab')) {
+    const before = previous.get(tab.dataset.id!);
+    if (reduced || typeof tab.animate !== 'function') continue;
+    if (opening) {
+      const width = frozenTabWidths.value[tab.dataset.id!]!;
+      const fromWidth = before?.box.width ?? 0, opacity = before?.opacity ?? 0;
+      if (Math.abs(fromWidth - width) < 0.5 && opacity === 1) continue;
+      const flex = tab.style.flex, overflow = tab.style.overflow, inlineOpacity = tab.style.opacity;
+      tab.style.overflow = 'clip';
+      moveTabElement(tab, { flexBasis: [`${fromWidth}px`, `${width}px`], opacity: [opacity, 1] }, () => {
+        tab.style.flex = flex; tab.style.overflow = overflow; tab.style.opacity = inlineOpacity;
+      });
+    } else {
+      const offset = before ? before.box.left - tabLayoutRect(tab).left : 0;
+      if (Math.abs(offset) < 0.5) continue;
+      const transform = tab.style.transform;
+      moveTabElement(tab, { transform: [`translateX(${offset}px)`, 'translateX(0px)'] }, () => { tab.style.transform = transform; });
+    }
+  }
+  const movements = [...movingTabs];
+  // Motion's finished promise does not settle when cancel() interrupts it.
+  await Promise.race([Promise.allSettled(movements.map(([, { animation }]) => animation.finished)), cancelled]);
+  if (finishCancelledTabMove === finishCancelled) finishCancelledTabMove = undefined;
+  for (const [element, movement] of movements) {
+    if (movingTabs.get(element) !== movement) continue;
+    const { animation, restore } = movement;
+    animation.cancel();
+    restore();
+    movingTabs.delete(element);
+  }
+  if (revision === tabMoveRevision) {
+    if (opening) {
+      releaseTabWidths();
+      await nextTick();
+      // Apply the responsive basis while CSS size transitions are still off.
+      // Otherwise the browser batches it with re-enabling those transitions.
+      list.getBoundingClientRect();
+    }
+    if (revision === tabMoveRevision) tabLayoutAnimating.value = false;
+  }
+}
 const title = (path: string) => basename(path).replace(/\.(md|markdown)$/i, '');
 const tabLabel = (tab: DocumentTab) => props.assistantTab?.id === tab.id ? props.assistantTab.title
   : tab.directory ? t(tab.directory.name) : tab.dataTable ? tab.dataTable.name : tab.workspaceView ? tab.workspaceView.view.name : tab.graph ? t('关系图谱') : tab.plugins ? t('插件') : tab.calendar ? t('计划') : tab.pluginView ? tab.pluginView.label : tab.view ? tab.view.label : tab.blank ? t('新标签页') : title(tab.path);
@@ -406,6 +505,7 @@ function moveDrag(event: PointerEvent) {
   gesture.y = event.clientY;
   if (!draggingId.value) {
     if (Math.hypot(gesture.x - gesture.startX, gesture.y - gesture.startY) < 6) return;
+    cancelTabMoves();
     draggingId.value = gesture.id;
     suppressClick = true;
     scrollFrame = requestAnimationFrame(scrollWhileDragging);
@@ -558,6 +658,7 @@ function startNativeDrag(event: DragEvent, id: string) {
     event.preventDefault();
     return;
   }
+  cancelTabMoves();
   const element = event.currentTarget as HTMLElement;
   const tab = element.closest<HTMLElement>('.desktop-tab');
   const doc = paneTabs.value.find((item) => item.id === id);
@@ -669,20 +770,6 @@ function onClick(event: MouseEvent) {
 }
 
 function closeTab(id: string) {
-  const list = tabList.value;
-  if (list && pointerInsideTabList.value) {
-    const widths: Record<string, number> = {};
-    list.querySelectorAll<HTMLElement>('.desktop-tab').forEach((tab) => {
-      const width = tab.getBoundingClientRect().width;
-      if (tab.dataset.id && width > 0) widths[tab.dataset.id] = width;
-    });
-    frozenTabWidths.value = widths;
-    frozenStripWidth.value =
-      Object.entries(widths).reduce(
-        (total, [tabId, width]) => total + (tabId === id ? 0 : width),
-        0,
-      ) + 42;
-  }
   store.close(id);
 }
 
@@ -859,10 +946,11 @@ onMounted(() => {
   window.addEventListener('resize', dismissContextMenu);
 });
 
-function onTabListPointerLeave() {
+async function onTabListPointerLeave() {
   pointerInsideTabList.value = false;
-  frozenTabWidths.value = {};
-  frozenStripWidth.value = undefined;
+  const revision = tabMoveRevision;
+  while (tabLayoutMotion) await tabLayoutMotion;
+  if (!pointerInsideTabList.value && revision === tabMoveRevision) releaseTabWidths();
 }
 
 function onTabListPointerEnter() {
@@ -886,6 +974,7 @@ function onTabWheel(event: WheelEvent) {
 }
 
 onBeforeUnmount(() => {
+  cancelTabMoves();
   finishDrag();
   clearFileSlot();
   window.removeEventListener('dragover', fileDragOver, true);
@@ -917,17 +1006,31 @@ onBeforeUnmount(() => {
 });
 
 watch(
-  () => store.activeId,
-  async () => {
+  selectedId,
+  async (id) => {
     await nextTick();
-    tabList.value
-      ?.querySelector('.desktop-tab-active')
+    if (tabLayoutMotion) await tabLayoutMotion;
+    const list = tabList.value;
+    // During compression the new tab temporarily extends past the viewport.
+    // Scrolling to that intermediate position moves every existing tab twice.
+    const resizing = list?.getAnimations?.({ subtree: true }).filter(animation =>
+      'transitionProperty' in animation && animation.transitionProperty === 'flex-basis') ?? [];
+    if (resizing.length) await Promise.allSettled(resizing.map(animation => animation.finished));
+    if (tabList.value !== list || selectedId.value !== id) return;
+    list?.querySelector('.desktop-tab-active')
       ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   },
 );
 
-watch(() => paneTabs.value.map((tab) => tab.id).join('|'), () => {
+watch(() => paneTabs.value.map(tab => tab.id), (ids, previous) => {
   if (incomingDropTimer) clearIncomingSlot();
+  const closed = previous.some(id => !ids.includes(id) && !store.tabs.some(tab => tab.id === id));
+  const opening = ids.some(id => !previous.includes(id));
+  if (closed || opening) {
+    const movement = animateTabLayout(ids, opening);
+    tabLayoutMotion = movement;
+    void movement.then(() => { if (tabLayoutMotion === movement) tabLayoutMotion = undefined; });
+  }
 });
 
 watch(draggedFiles, (files) => {
@@ -1013,7 +1116,7 @@ async function onTabKeydown(event: KeyboardEvent) {
     <div
       ref="tabList"
       class="desktop-tab-list"
-      :class="{ 'desktop-tab-list-dragging': draggingId, 'desktop-tab-list-snapping': snapLayout }"
+      :class="{ 'desktop-tab-list-dragging': draggingId, 'desktop-tab-list-snapping': snapLayout, 'desktop-tab-list-frozen': frozenStripWidth !== undefined, 'desktop-tab-list-animating': tabLayoutAnimating }"
       role="tablist"
       :aria-label="t('已打开的文档')"
       @keydown="onTabKeydown"
@@ -1044,7 +1147,7 @@ async function onTabKeydown(event: KeyboardEvent) {
           'desktop-tab-dock-after': dockSlotIndex === paneTabs.length && index === paneTabs.length - 1,
         }"
         :style="{
-          flex: frozenTabWidths[doc.id] ? `0 0 ${frozenTabWidths[doc.id]}px` : undefined,
+          flex: frozenTabWidths[doc.id] !== undefined ? `0 0 ${frozenTabWidths[doc.id]}px` : undefined,
           transform: snapLayout ? `translateX(${snapLayout.offsets[doc.id] ?? 0}px)` : undefined,
         }"
         @contextmenu.stop.prevent="openContextMenu($event, doc.id)"
@@ -1221,12 +1324,12 @@ async function onTabKeydown(event: KeyboardEvent) {
 }
 .desktop-tab-strip {
   display: flex;
+  /* Motion measures this final width, then expands with pixel tab bases. */
   width: calc(var(--desktop-tab-count) * 200px + 42px);
   max-width: 100%;
   min-width: 0;
   height: 100%;
   align-items: stretch;
-  transition: width 180ms cubic-bezier(.22, 1, .36, 1);
 }
 .desktop-tab-strip-file-drop .desktop-tab-list {
   min-width: 4px;
@@ -1323,8 +1426,7 @@ async function onTabKeydown(event: KeyboardEvent) {
   container-type: inline-size;
   display: flex;
   align-items: center;
-  /* An explicit basis can interpolate when the tab count changes; automatic
-     flex shrink redistribution jumps straight to the new widths. */
+  /* Keep a responsive basis outside the measured open/close animations. */
   flex: 0 0 calc(100% / max(1, var(--desktop-tab-count)));
   min-width: 28px;
   max-width: 200px;
@@ -1340,6 +1442,11 @@ async function onTabKeydown(event: KeyboardEvent) {
 .desktop-tab-list-snapping .desktop-tab {
   transition: transform 180ms cubic-bezier(.22, 1, .36, 1), flex-basis 180ms cubic-bezier(.22, 1, .36, 1), background 0.15s, color 0.15s;
 }
+.desktop-tab-list-frozen .desktop-tab,
+.desktop-tab-list-animating .desktop-tab {
+  transition: background 0.15s, color 0.15s;
+}
+.desktop-tab-list-frozen .desktop-tab { min-width: 0; }
 .desktop-tab-navigation:has(.icon-button)::before,
 .desktop-tab::before {
   content: '';
