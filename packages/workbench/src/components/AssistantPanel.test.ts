@@ -9,6 +9,7 @@ import { useWorkspaceStore } from '../stores/workspace';
 import { useAssistantStore } from '../assistant/store';
 import AssistantPanel from './AssistantPanel.vue';
 import { setUiLocale } from '../i18n';
+import { assistantTaskPrompts } from '../assistant/language';
 let app: ReturnType<typeof createApp> | undefined;
 let pinia: ReturnType<typeof createPinia>;
 let root: HTMLDivElement;
@@ -54,30 +55,26 @@ async function mountEmptyConversation(fullscreenTarget?: string | Ref<HTMLElemen
   return { workspace, assistant };
 }
 
-it('offers one translation starter with explicit targets without rewriting a draft on locale change', async () => {
-  const { assistant } = await mountEmptyConversation();
+it('prepares automatic translation in one click without rewriting a draft on locale change', async () => {
+  const { workspace, assistant } = await mountEmptyConversation();
   setUiLocale('en-US'); await nextTick();
-  const buttons = () => [...root.querySelectorAll<HTMLButtonElement>('.assistant-starter > button')];
+  const buttons = () => [...root.querySelectorAll<HTMLButtonElement>('.assistant-starter')];
   expect(buttons().map(button => button.textContent)).toEqual(['Summarize this note', 'Polish this note', 'Translate this note', 'Extract action items']);
   buttons()[2]!.click(); await nextTick();
-  const targets = () => [...root.querySelectorAll<HTMLButtonElement>('#assistant-translation-options button')];
-  targets().find(button => button.textContent === 'Translate to Chinese')!.click();
-  expect(assistant.prompt).toBe('Translate this note into Simplified Chinese and preserve its Markdown formatting.');
-  await nextTick();
-  expect(targets()).toHaveLength(0);
+  expect(assistant.prompt).toBe(assistantTaskPrompts.starters.translate);
+  expect(assistant.files).toContain(workspace.active!.id);
+  expect(document.activeElement).toBe(root.querySelector('textarea'));
+  expect(buttons()[2]!.hasAttribute('aria-haspopup')).toBe(false);
+  expect(buttons()[2]!.querySelectorAll('svg')).toHaveLength(1);
+  expect(root.querySelector('.assistant-popover')).toBeNull();
   assistant.prompt = '用户草稿 {0}: please answer in Japanese';
   setUiLocale('zh-CN'); await nextTick();
   expect(assistant.prompt).toBe('用户草稿 {0}: please answer in Japanese');
   expect(buttons().map(button => button.textContent)).toContain('翻译这篇笔记');
   buttons()[2]!.click(); await nextTick();
-  expect(assistant.prompt).toBe('用户草稿 {0}: please answer in Japanese');
-  targets()[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-  await nextTick();
-  expect(targets()).toHaveLength(0);
-  expect(document.activeElement).toBe(buttons()[2]);
-  buttons()[2]!.click(); await nextTick();
-  targets().find(button => button.textContent === '翻译成英文')!.click();
-  expect(assistant.prompt).toBe('Translate this note into English and preserve its Markdown formatting.');
+  expect(assistant.prompt).toBe(assistantTaskPrompts.starters.translate);
+  expect(assistant.files.filter(id => id === workspace.active!.id)).toHaveLength(1);
+  expect(root.querySelector('.assistant-popover')).toBeNull();
 });
 
 it.each(['zh-CN', 'en-US'] as const)('shows live work, collapses it on completion and copies only the final answer (%s)', async locale => {

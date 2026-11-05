@@ -50,7 +50,7 @@ function cancelModeAnimation() {
   modeAnimation?.cancel();
   modeAnimation = undefined;
 }
-const popover = ref<'model' | 'reasoning' | 'add' | 'history' | 'more' | 'mode' | 'translation' | null>(null);
+const popover = ref<'model' | 'reasoning' | 'add' | 'history' | 'more' | 'mode' | null>(null);
 function displayIcon(name: string, region: { x: string; y: string; width: string; height: string }) {
   return createLucideIcon(name, [
     ['rect', { x: '2', y: '4', width: '20', height: '16', rx: '2', key: 'frame' }],
@@ -115,16 +115,8 @@ const starters = computed(() => {
   return [
     { label: copy.summary, prompt: prompts.summary, icon: AlignLeft },
     { label: copy.polish, prompt: prompts.polish, icon: Pencil },
-    { label: copy.translate, prompt: null, icon: Languages },
+    { label: copy.translate, prompt: prompts.translate, icon: Languages },
     { label: copy.tasks, prompt: prompts.tasks, icon: CircleCheck },
-  ];
-});
-const translationTargets = computed(() => {
-  const copy = assistantCopy(uiLocale.value).starters;
-  const prompts = assistantTaskPrompts.starters;
-  return [
-    { label: copy.translateEnglish, prompt: prompts.translateEnglish },
-    { label: copy.translateChinese, prompt: prompts.translateChinese },
   ];
 });
 const sourceFiles = computed(() => workspace.workspace?.files.filter(file => file.kind === 'file' && isAssistantFile(file.path) &&
@@ -559,12 +551,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
           </button>
           <h3>{{ t('今天想从哪里开始？') }}</h3>
           <div class="assistant-starters">
-            <div v-for="starter in starters" :key="starter.label" class="assistant-starter">
-              <button :disabled="controlsLocked || !workspace.active" :data-assistant-popover="starter.prompt === null ? '' : undefined" :aria-expanded="starter.prompt === null ? popover === 'translation' : undefined" :aria-controls="starter.prompt === null ? 'assistant-translation-options' : undefined" :aria-haspopup="starter.prompt === null ? 'menu' : undefined" @click="starter.prompt === null ? togglePopover('translation', $event) : preparePrompt(starter.prompt)"><component :is="starter.icon" :size="18" /><span>{{ starter.label }}</span><ChevronDown v-if="starter.prompt === null" :size="14" /></button>
-              <div v-surface-motion="'AssistantPanel:4'" v-if="starter.prompt === null && popover === 'translation'" id="assistant-translation-options" class="assistant-popover assistant-translation-menu" role="menu" :aria-label="starter.label">
-                <button v-for="target in translationTargets" :key="target.prompt" class="assistant-menu-item" role="menuitem" data-menu-item :disabled="controlsLocked || !workspace.active" @click="preparePrompt(target.prompt)">{{ target.label }}</button>
-              </div>
-            </div>
+            <button v-for="starter in starters" :key="starter.label" class="assistant-starter" :disabled="controlsLocked || !workspace.active" @click="preparePrompt(starter.prompt)"><component :is="starter.icon" :size="18" /><span>{{ starter.label }}</span></button>
           </div>
         </div>
         <button v-if="(assistant.session?.messages.length ?? 0) > visibleMessages" class="assistant-text-action" @click="visibleMessages += 30">{{ t('查看较早消息') }}</button>
@@ -814,9 +801,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 .assistant-welcome-butterfly { width: 30px; height: 30px; }
 .assistant-welcome h3 { margin: 0 0 17px; font-size: 19px; line-height: 1.5; font-weight: 600; }
 .assistant-starters { display: grid; gap: 1px; }
-.assistant-starter { position: relative; }
-.assistant-starter > button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 38px; padding: 7px 8px; margin-left: -8px; border-radius: 6px; color: var(--text-secondary); text-align: left; font-size: 14px; }
-.assistant-translation-menu { bottom: 100%; left: 22px; width: min(200px, calc(100% - 22px)); }
+.assistant-starter { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 38px; padding: 7px 8px; margin-left: -8px; border-radius: 6px; color: var(--text-secondary); text-align: left; font-size: 14px; }
 .assistant-starters button svg { flex-shrink: 0; }
 .assistant-starters button:hover:not(:disabled) { background: var(--surface); color: var(--text); }
 .assistant-conversation-meta { flex: 0 0 auto; padding: 4px 0 18px; color: var(--muted); font-size: 11px; text-align: center; }
