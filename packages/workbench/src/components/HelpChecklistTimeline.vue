@@ -2,7 +2,7 @@
 import { t } from '../i18n';
 import { computed } from 'vue';
 import { ArrowUpRight, Check } from 'lucide-vue-next';
-import { helpChecklist, helpDocumentationUrl, type HelpChecklistId, type HelpContext, type HelpAvailability, type HelpTopicId } from '../help-content';
+import { helpChecklist, helpDocumentationUrl, isHelpStepAvailable, type HelpChecklistId, type HelpContext, type HelpAvailability, type HelpTopicId } from '../help-content';
 import { resumeHelpLesson } from '../help-checklist';
 
 const props = defineProps<{
@@ -16,13 +16,14 @@ const emit = defineEmits<{ documentation: [event: MouseEvent, topic?: HelpTopicI
 // Re-evaluate on the next opening. Keep links stable under the pointer and keyboard focus.
 const lesson = resumeHelpLesson(props.completed, props.context, props.availability);
 const nextStep = computed(() => lesson?.visible.find(step => !props.completed.includes(step.id))?.id);
-const totalDone = computed(() => helpChecklist.filter(step => props.completed.includes(step.id)).length);
+const availableSteps = computed(() => helpChecklist.filter(step => isHelpStepAvailable(step, props.availability)));
+const totalDone = computed(() => availableSteps.value.filter(step => props.completed.includes(step.id)).length);
 const docsUrl = (topic?: HelpTopicId) => helpDocumentationUrl(props.documentationBaseUrl, topic);
 </script>
 
 <template>
   <div class="help-checklist">
-    <div class="help-preview-heading"><span :id="headingId">{{ lesson ? t('上手 · {0}', [lesson.label]) : t('上手指引') }}</span><span>{{ totalDone }}/{{ helpChecklist.length }} {{ t('已完成') }}</span></div>
+    <div class="help-preview-heading"><span :id="headingId">{{ lesson ? t('上手 · {0}', [lesson.label]) : t('上手指引') }}</span><span>{{ totalDone }}/{{ availableSteps.length }} {{ t('已完成') }}</span></div>
     <section v-if="lesson" class="help-current-stage" :aria-label="t('当前阶段：{0}', [lesson.label])">
       <ol class="help-timeline" :aria-label="lesson.label">
         <li v-for="step in lesson.visible" :key="step.id"

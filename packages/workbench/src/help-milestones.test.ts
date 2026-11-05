@@ -9,6 +9,8 @@ it.each([
   ['table', '| 列 |\n| --- |\n| 值 |'], ['divider', '前文\n\n---\n\n后文'],
   ['external-link', '[资料](https://example.com)'], ['image', '![示例](image.png)'],
   ['footnote', '说明[^a]\n\n[^a]: 参考资料'],
+  ['strikethrough', '~~取消~~'], ['math', '$x + y$'], ['math', '$$\nx + y\n$$'],
+  ['mermaid', '```mermaid\ngraph TD\nA --> B\n```'],
 ])('recognizes a newly inserted %s feature', (id, markdown) => {
   expect(newMarkdownMilestones('普通正文', '普通正文\n\n' + markdown)).toContain(id);
 });
@@ -18,10 +20,12 @@ it('does not credit existing syntax, plain text edits, code examples or incomple
   expect(newMarkdownMilestones('## 标题\n\n正文', '## 标题\n\n正文\n')).toEqual([]);
   expect(newMarkdownMilestones('', '```md\n# 标题\n**加粗**\n- 列表\n```')).toEqual(['code-block']);
   expect(newMarkdownMilestones('', '`**示例**`')).toEqual(['inline-code']);
+  expect(newMarkdownMilestones('', '```md\n~~文字~~ $x$\n```')).toEqual(['code-block']);
+  expect(newMarkdownMilestones('', '```mermaid\n\n```')).not.toContain('mermaid');
   expect(newMarkdownMilestones('', '---\ntitle: 示例\n---\n正文')).toEqual([]);
   expect(newMarkdownMilestones('', '说明[^a]')).not.toContain('footnote');
   expect(newMarkdownMilestones('', '[内部](other.md)')).not.toContain('external-link');
-  expect(newMarkdownMilestones('', '$**公式中的星号**$\n\n$$\n# 公式示例\n$$')).toEqual([]);
+  expect(newMarkdownMilestones('', '$**公式中的星号**$\n\n$$\n# 公式示例\n$$')).toEqual(['math']);
   expect(newMarkdownMilestones('', '+++\ntitle = "**示例**"\n+++\n正文')).toEqual([]);
 });
 

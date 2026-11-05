@@ -4240,6 +4240,8 @@ watch(activeId, () => {
   void nextTick(scheduleActiveHeading);
 });
 const helpContext = computed<HelpContext>(() => {
+  if (activeId.value === ASSISTANT_TAB_ID || sidebarView.value === 'assistant') return 'assistant';
+  if (isTableTab(activeId.value)) return 'tables';
   if (activeId.value === GRAPH_TAB_ID) return 'graph';
   if (activeId.value === PLUGINS_TAB_ID) return 'plugins';
   if (activeId.value === CALENDAR_TAB_ID || sidebarView.value === 'plan') return 'plan';
@@ -4256,6 +4258,14 @@ const helpAvailability = computed<HelpAvailability>(() => ({
   templates: !!workspace.value && !workspace.value.readOnly,
   import: !!workspace.value && !workspace.value.readOnly,
   duplicate: !!workspace.value && !workspace.value.readOnly && !!workspaceAdapter.duplicate,
+  'folder-home': !!workspace.value && !!store.workspaceSettings.folderHomeFileName,
+  'folder-conversion': !!workspace.value && !workspace.value.readOnly && store.canConvertFolderDocuments && !!store.workspaceSettings.folderHomeFileName,
+  panes: !!workspace.value && !compactPanes.value,
+  assistant: !!workspace.value && assistant.available,
+  'assistant-configure': !!workspace.value && assistant.available && assistant.canConfigure && !assistant.demo,
+  suggestions: !!active.value && !editorReadonly.value && !editing.isManaging(active.value.id),
+  math: !!active.value && !editorReadonly.value && store.capabilities.features.math,
+  mermaid: !!active.value && !editorReadonly.value && store.capabilities.features.mermaid,
 }));
 const helpBlocked = computed(() => !!(
   activeExtensionView.value || activeId.value === SETTINGS_TAB_ID || activeId.value.startsWith('attachment:') ||

@@ -5,7 +5,8 @@ import type { Root, RootContent } from 'mdast';
 import type { HelpChecklistId } from './help-content';
 
 export const markdownMilestones = ['heading', 'bold', 'italic', 'bullet-list', 'ordered-list', 'todo-list',
-  'quote', 'code-block', 'inline-code', 'table', 'divider', 'external-link', 'image', 'footnote'] as const;
+  'quote', 'code-block', 'inline-code', 'table', 'divider', 'external-link', 'image', 'footnote',
+  'strikethrough', 'math', 'mermaid'] as const;
 
 function featureCounts(tree: Root) {
   const counts = new Map<HelpChecklistId, number>();
@@ -16,10 +17,17 @@ function featureCounts(tree: Root) {
       case 'heading': add('heading'); break;
       case 'strong': add('bold'); break;
       case 'emphasis': add('italic'); break;
+      case 'delete': add('strikethrough'); break;
+      case 'math': case 'inlineMath': if (node.value.trim()) add('math'); break;
       case 'list': add(node.ordered ? 'ordered-list' : 'bullet-list'); break;
       case 'listItem': if (typeof node.checked === 'boolean') add('todo-list'); break;
       case 'blockquote': add('quote'); break;
-      case 'code': if (node.value.trim()) add('code-block'); break;
+      case 'code':
+        if (node.value.trim()) {
+          add('code-block');
+          if (node.lang === 'mermaid') add('mermaid');
+        }
+        break;
       case 'inlineCode': if (node.value.trim()) add('inline-code'); break;
       case 'table': add('table'); break;
       case 'thematicBreak': add('divider'); break;

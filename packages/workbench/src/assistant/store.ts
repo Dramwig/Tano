@@ -5,6 +5,7 @@ import type { AssistantQuestion, AssistantQuestionAnswer, AssistantUserInput } f
 import type { AssistantActivity, AssistantConnection, AssistantQuotaResult, AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSession, AssistantSource } from '@tano/protocol';
 import type { AssistantExecutionResult } from './execution';
 import { useWorkspaceStore } from '../stores/workspace';
+import { recordHelpCompleted } from '../help-checklist';
 import { useWorkbenchRuntime } from '../runtime';
 import { demoAssistantTransport, nativeAssistantTransport } from './transport';
 import { runAssistant, AssistantWaitingError } from './engine';
@@ -245,6 +246,7 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
     const previous = connections.value.find(item => item.id === config.id);
     if (!canConfigure || config.managed || previous?.managed) throw new Error('此模型连接由平台管理员配置');
     await transport.saveConnection(config, key);
+    recordHelpCompleted('assistant-connection');
     await reloadConnections(); await selectConnection(config.id, previous?.endpoint !== config.endpoint ||
       (previous?.kind ?? 'api') !== (config.kind ?? 'api') || previous?.cliPath !== config.cliPath);
   }
@@ -268,6 +270,7 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
     if (!available) return;
     if (displayMode.value === 'fullscreen') setDisplayMode('fullscreen');
     opened.value = true;
+    recordHelpCompleted('assistant');
     if (fileId && !busy.value) {
       if (!files.value.includes(fileId)) files.value.push(fileId);
       selection.value = selected ? { fileId, ...selected } : null;
@@ -480,6 +483,10 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
         throw new AssistantRunError('incomplete', '助手运行尚未完成');
       reply.state = 'completed';
       reply.termination = { reason: 'completed' };
+      if (!background) {
+        recordHelpCompleted('assistant-question');
+        if (sources.length) recordHelpCompleted('assistant-context');
+      }
     } catch (reason) {
       const cancelled = abort.signal.aborted;
       if (reply) {

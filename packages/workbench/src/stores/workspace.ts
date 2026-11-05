@@ -22,6 +22,7 @@ import { useWorkbenchRuntime } from '../runtime';
 import type { WorkbenchViewTab } from '../runtime';
 import { planFileMove } from '../file-move';
 import { convertFolderDocument, type FolderConversionKind } from '../folder-conversion';
+import { indexFolderHomes } from '../folder-home';
 import { optimisticFiles, type FileMutationPreview } from '../optimistic-files';
 import { topLevelEntries } from '../file-selection';
 import { defaultCapabilities, parseCapabilities } from '@tano/editor/runtime';
@@ -235,6 +236,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function createDataTable(template: 'blank' | 'parts' = 'blank', parent = '') {
     const id = await dataTables.create(template, undefined, parent);
+    recordHelpCompleted('data-table');
     await openDataTable(id);
     return id;
   }
@@ -946,6 +948,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activeId.value = id;
     changingLayout = false;
     const applied = JSON.stringify(layout.value);
+    if (layoutPanes(before).length < panes.value.length) recordHelpCompleted('split-view');
     // A receiving window can undo a move if the source fails to close. Never
     // overwrite layout changes made by the user while that acknowledgement ran.
     return () => {
@@ -1720,7 +1723,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         recordTabNavigation(replaceId, file.id, options?.historyIndex);
       else if (!replaceId && activeId.value === file.id)
         ensureTabNavigation(file.id, file.id);
-      if (active.value?.id === file.id) recordHelpCompleted('welcome');
+      if (active.value?.id === file.id) recordOpenedDocument(file);
     } catch (e) {
       if (current()) report(e);
     } finally {
@@ -1755,10 +1758,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         await openInternal(file);
         if (activeId.value === file.id) ensureTabNavigation(file.id, file.id);
       });
-      if (active.value?.id === file.id) recordHelpCompleted('welcome');
+      if (active.value?.id === file.id) recordOpenedDocument(file);
     } catch (error) {
       report(error);
     }
+  }
+  function recordOpenedDocument(file: FileEntry) {
+    recordHelpCompleted('welcome');
+    if (workspace.value && indexFolderHomes(workspace.value.files, workspaceSettings.value.folderHomeFileName)
+      .get(parentPath(file.path))?.id === file.id) recordHelpCompleted('folder-home');
   }
   /** The bundled drawing plugin handles its own Markdown; disabled plugins keep source access. */
   function drawingPluginHandles(file: FileEntry) {
@@ -2765,6 +2773,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         const opened = workspace.value?.files.find(entry => entry.id === result!.openId);
         if (opened) await openInternal(opened);
         activity(kind === 'child' ? '已新建子文档' : '已转为普通文档', `${file.path} → ${result.plan.destination}`, 'file');
+        recordHelpCompleted(kind === 'child' ? 'child-document' : 'flatten-folder');
         return opened;
       });
     } finally { folderConversionBusy.value = false; }
