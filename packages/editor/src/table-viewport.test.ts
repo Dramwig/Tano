@@ -12,6 +12,57 @@ let app: ReturnType<typeof createApp> | undefined;
 let root: HTMLElement;
 afterEach(() => { app?.unmount(); root?.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
+it('fits many tables in one transaction when the document width changes', async () => {
+  const callbacks = new Set<() => void>();
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(callback: () => void) { callbacks.add(callback); }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  });
+  let width = 800;
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
+  Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => new DOMRect(0, 0, width, 300));
+  root = document.createElement('div'); root.className = 'editor-scroll'; document.body.append(root);
+  const editor = ref<InstanceType<typeof MarkdownEditor>>();
+  const changes = vi.fn();
+  app = createApp({ render: () => h(MarkdownEditor, { ref: editor, documentId: 'batch-tables',
+    modelValue: Array.from({ length: 20 }, (_, i) => `## Table ${i}\n\n| A | B |\n| --- | --- |\n| ${i} | text |\n\n`).join(''),
+    'onUpdate:modelValue': changes }) });
+  app.mount(root);
+  await vi.waitFor(() => expect(editor.value?.withContext(ctx => ctx.get(editorViewCtx))).toBeDefined(), { timeout: 5000 });
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx))!;
+  const widths = () => {
+    const result: number[] = [];
+    view.state.doc.descendants(node => { if (node.type.name === 'table_cell') result.push(node.attrs.colwidth?.[0]); });
+    return result;
+  };
+  await vi.waitFor(() => expect(widths()).toEqual(Array(40).fill(400)), { timeout: 5000 });
+  const scrollbars = [...root.querySelectorAll<HTMLElement>('.tano-table-scrollbar')];
+  await vi.waitFor(() => expect(scrollbars.every(bar => bar.hasAttribute('aria-valuemax'))).toBe(true));
+  const geometryOrder: string[] = [];
+  for (const wrapper of root.querySelectorAll<HTMLElement>('.tableWrapper')) {
+    Object.defineProperty(wrapper, 'scrollWidth', { get: () => { geometryOrder.push('read'); return 800; } });
+  }
+  for (const scrollbar of scrollbars) {
+    const setAttribute = scrollbar.setAttribute.bind(scrollbar);
+    vi.spyOn(scrollbar, 'setAttribute').mockImplementation((name, value) => {
+      if (name === 'aria-valuemax') geometryOrder.push('write');
+      setAttribute(name, value);
+    });
+  }
+  const dispatch = view.dispatch.bind(view);
+  let updates = 0;
+  view.dispatch = tr => { if (tr.docChanged) updates++; dispatch(tr); };
+  width = 1200; callbacks.forEach(callback => callback());
+  await vi.waitFor(() => expect(widths()).toEqual(Array(40).fill(600)), { timeout: 5000 });
+  await vi.waitFor(() => expect(geometryOrder.filter(event => event === 'write').length).toBeGreaterThanOrEqual(20));
+  expect(geometryOrder.slice(0, 20)).toEqual(Array(20).fill('read'));
+  expect(updates).toBe(1);
+  expect(changes).not.toHaveBeenCalled();
+}, 15000);
+
 it('keeps a wide nested table within its toggle content width', async () => {
   Range.prototype.getBoundingClientRect = () => new DOMRect();
   Range.prototype.getClientRects = () => [] as unknown as DOMRectList;

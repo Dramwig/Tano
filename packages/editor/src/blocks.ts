@@ -7,6 +7,7 @@ import { blockTree, deleteBlocks, moveBlockTo, moveBlockBeside, moveBlockSibling
 import { closeHistory } from '@milkdown/kit/prose/history';
 import { moveBlocksTo } from './block-tree';
 import { BlockRangeSelection } from './block-selection';
+import { BlockViewport } from './block-viewport';
 
 /** Move one top-level Markdown block in a single, undoable editor transaction. */
 export function moveBlock(
@@ -249,8 +250,11 @@ export function blockControls(
       let hoveredIndex: number | null = null;
       let hoveredFoldIndex: number | null = null;
       let hoverSuppressed = false;
-      const handles: HTMLButtonElement[] = [];
-      const foldButtons: HTMLButtonElement[] = [];
+      const handles = new Map<number, HTMLButtonElement>();
+      const foldButtons = new Map<number, HTMLButtonElement>();
+      let blockIndices = new Map<number, number>();
+      let foldIndices = new Map<number, number>();
+      const viewport = new BlockViewport(view, scheduleLayout);
       let entries = blockTree(view.state.doc);
       let foldEntries = foldingTree(view.state.doc, entries);
       let positions: number[] = [];
@@ -303,16 +307,17 @@ export function blockControls(
         const handle = target.closest<HTMLButtonElement>('.tano-block-handle');
         if (handle && controls.contains(handle)) return Number(handle.dataset.blockIndex);
         if (!view.dom.contains(target)) return null;
-        for (let index = entries.length - 1; index >= 0; index--)
-          if (blockElement(index)?.contains(target)) return index;
+        for (const pos of viewport.containing(target)) {
+          const index = blockIndices.get(pos);
+          if (index !== undefined) return index;
+        }
         return null;
       }
 
       function blockElement(index: number) {
         const pos = positions[index];
         if (pos == null) return null;
-        const element = view.nodeDOM(pos);
-        return element instanceof Element ? element : null;
+        return viewport.element(pos);
       }
 
       function blockRect(index: number) {
@@ -322,8 +327,7 @@ export function blockControls(
       }
 
       function foldElement(index: number) {
-        const element = view.nodeDOM(foldEntries[index]!.pos);
-        return element instanceof Element ? element : null;
+        return viewport.element(foldEntries[index]!.pos);
       }
 
       function foldRect(index: number) {
@@ -342,22 +346,24 @@ export function blockControls(
       function foldIndexAt(target: EventTarget | null, x: number, y: number) {
         if (target instanceof Element) {
           const button = target.closest<HTMLButtonElement>('.tano-fold-toggle');
-          if (button && controls.contains(button)) return foldButtons.indexOf(button);
+          if (button && controls.contains(button)) return Number(button.dataset.foldIndex);
           // Text content identifies its own item even when jsdom or a browser
           // reports the surrounding list item's box for the pointer target.
           const text = target.closest('p, h1, h2, h3, h4, h5, h6');
           if (text && view.dom.contains(text)) {
-            for (let index = foldEntries.length - 1; index >= 0; index--)
-              if (foldElement(index) === text || foldElement(index) === text.parentElement) return index;
+            for (const pos of viewport.containing(text)) {
+              const index = foldIndices.get(pos);
+              if (index !== undefined && (foldElement(index) === text || foldElement(index) === text.parentElement)) return index;
+            }
           }
           // jsdom and detached/offscreen DOM can report empty rectangles. In
           // that case there is no reliable coordinate hit to resolve.
-          if (view.dom.contains(target) && !foldEntries.some((_, index) => {
+          if (view.dom.contains(target) && ![...foldButtons.keys()].some(index => {
             const rect = foldRect(index);
             return !!rect && rect.width > 0 && rect.height > 0;
           })) return null;
         }
-        for (let index = foldEntries.length - 1; index >= 0; index--) {
+        for (const index of [...foldButtons.keys()].sort((a, b) => b - a)) {
           const rect = foldRect(index);
           const element = foldElement(index);
           if (rect && element && x >= foldLeft(index, element, rect) - 24 &&
@@ -370,7 +376,7 @@ export function blockControls(
       function blockIndexAtCoords(x: number, y: number) {
         let closest: number | null = null;
         let closestDistance = Infinity;
-        for (let index = entries.length - 1; index >= 0; index--) {
+        for (const index of [...handles.keys()].sort((a, b) => b - a)) {
           const rect = blockRect(index);
           if (
             !rect ||
@@ -394,14 +400,43 @@ export function blockControls(
 
       // Keep interaction targets current even while their geometry waits for a frame.
       function syncControls() {
-        if (indexedDoc === view.state.doc) return;
+        if (indexedDoc === view.state.doc) {
+          if (viewport.detached()) {
+            viewport.update([...positions, ...foldIndices.keys()]);
+            syncVisibleControls();
+          }
+          return;
+        }
         indexedDoc = view.state.doc;
         entries = blockTree(view.state.doc);
         foldEntries = foldingTree(view.state.doc, entries);
         const count = entries.length;
         positions = entries.map(({ pos }) => pos);
-        while (handles.length > count) handles.pop()!.remove();
-        while (handles.length < count) {
+        blockIndices = new Map(positions.map((pos, index) => [pos, index]));
+        foldIndices = new Map(foldEntries.map(({ pos }, index) => [pos, index]));
+        viewport.update([...positions, ...foldIndices.keys()]);
+        syncVisibleControls();
+        handles.forEach((handle, index) => configureHandle(handle, index));
+        if (hoveredIndex != null && hoveredIndex >= count) hoveredIndex = null;
+        if (hoveredFoldIndex != null && hoveredFoldIndex >= foldEntries.length) hoveredFoldIndex = null;
+      }
+
+      function syncVisibleControls() {
+        const blocks = new Set<number>(), folds = new Set<number>();
+        for (const pos of viewport.visible) {
+          const block = blockIndices.get(pos), fold = foldIndices.get(pos);
+          if (block !== undefined) blocks.add(block);
+          if (fold !== undefined) folds.add(fold);
+        }
+        if (sourceIndex !== null && entries[sourceIndex]) blocks.add(sourceIndex);
+        handles.forEach((button, index) => {
+          if (!blocks.has(index)) { button.remove(); handles.delete(index); }
+        });
+        foldButtons.forEach((button, index) => {
+          if (!folds.has(index)) { button.remove(); foldButtons.delete(index); }
+        });
+        for (const index of blocks) {
+          if (handles.has(index)) continue;
           const handle = document.createElement('button');
           handle.type = 'button';
           handle.className = 'tano-block-handle';
@@ -413,10 +448,11 @@ export function blockControls(
           icon.textContent = '⠿';
           handle.append(icon);
           controls.append(handle);
-          handles.push(handle);
+          handles.set(index, handle);
+          configureHandle(handle, index);
         }
-        while (foldButtons.length > foldEntries.length) foldButtons.pop()!.remove();
-        while (foldButtons.length < foldEntries.length) {
+        for (const index of folds) {
+          if (foldButtons.has(index)) continue;
           const button = document.createElement('button');
           button.type = 'button';
           button.className = 'tano-fold-toggle';
@@ -425,33 +461,30 @@ export function blockControls(
           button.tabIndex = -1;
           button.textContent = '▾';
           controls.append(button);
-          foldButtons.push(button);
+          button.dataset.foldIndex = String(index);
+          foldButtons.set(index, button);
         }
-        for (let index = 0; index < count; index++) {
-          const handle = handles[index];
-          const element = blockElement(index);
-          handle.classList.toggle('is-column-child', !!element?.parentElement?.closest('.tano-columns'));
-          handle.classList.toggle('is-columns', entries[index]!.node.type.name === 'tano_columns');
-          if (!handle.classList.contains('is-column-child') && !handle.classList.contains('is-columns'))
-            handle.style.left = '';
-          const type = blockType(entries[index]!.node);
-          const kind =
-            blockTypes.find((item) => item.type === type)?.label ??
-            blockLabel[entries[index]!.node.type.name] ??
-            '内容';
-          handle.dataset.featureLevel = String(featureLevel(type));
-          handle.dataset.blockIndex = String(index);
-          handle.dataset.blockPos = String(entries[index]!.pos);
-          handle.dataset.blockDepth = String(entries[index]!.depth);
-          handle.setAttribute(
-            'aria-label',
-            `点击选中第 ${index + 1} 个${kind.endsWith('块') ? kind : `${kind}块`}${openMenu ? '并打开菜单' : ''}，拖动调整顺序`,
-          );
-          handle.title = `${kind}；点击选中${openMenu ? '并打开菜单' : ''}；Shift+点击连续多选；Ctrl/Cmd+点击增减选择；拖动换位；Alt+↑/↓ 同级排序；Alt+←/→ 移出/移入容器`;
-          if (openMenu) handle.setAttribute('aria-haspopup', 'menu');
-        }
-        if (hoveredIndex != null && hoveredIndex >= count) hoveredIndex = null;
-        if (hoveredFoldIndex != null && hoveredFoldIndex >= foldEntries.length) hoveredFoldIndex = null;
+      }
+
+      function configureHandle(handle: HTMLButtonElement, index: number) {
+        const element = blockElement(index);
+        handle.classList.toggle('is-column-child', !!element?.parentElement?.closest('.tano-columns'));
+        handle.classList.toggle('is-columns', entries[index]!.node.type.name === 'tano_columns');
+        const type = blockType(entries[index]!.node);
+        const kind =
+          blockTypes.find((item) => item.type === type)?.label ??
+          blockLabel[entries[index]!.node.type.name] ??
+          '内容';
+        handle.dataset.featureLevel = String(featureLevel(type));
+        handle.dataset.blockIndex = String(index);
+        handle.dataset.blockPos = String(entries[index]!.pos);
+        handle.dataset.blockDepth = String(entries[index]!.depth);
+        handle.setAttribute(
+          'aria-label',
+          `点击选中第 ${index + 1} 个${kind.endsWith('块') ? kind : `${kind}块`}${openMenu ? '并打开菜单' : ''}，拖动调整顺序`,
+        );
+        handle.title = `${kind}；点击选中${openMenu ? '并打开菜单' : ''}；Shift+点击连续多选；Ctrl/Cmd+点击增减选择；拖动换位；Alt+↑/↓ 同级排序；Alt+←/→ 移出/移入容器`;
+        if (openMenu) handle.setAttribute('aria-haspopup', 'menu');
       }
 
       function scheduleLayout() {
@@ -472,6 +505,7 @@ export function blockControls(
       function layout() {
         if (destroyed) return;
         syncControls();
+        syncVisibleControls();
         const readOnly = readonly(), canFold = folding();
         if (readOnly && !canFold) {
           clearDrag();
@@ -479,7 +513,6 @@ export function blockControls(
           return;
         }
         controls.hidden = false;
-        const count = entries.length;
         const hostRect = host.getBoundingClientRect();
         const top = hostRect.top, hostLeft = hostRect.left;
         const pane = hoverSurface.getBoundingClientRect();
@@ -503,11 +536,13 @@ export function blockControls(
           if (!centers.has(element)) centers.set(element, firstLineCenter(element, rect));
           return centers.get(element)!;
         };
-        const blocks = entries.map((entry, index) => {
-          const handle = handles[index]!;
+        type BlockGeometry = { rect: DOMRect | null; left: number | null; x: number; y: number;
+          width: number; hidden: boolean; transform: string; clipPath: string };
+        const blocks = new Map([...handles].map<[number, BlockGeometry]>(([index, handle]) => {
+          const entry = entries[index]!;
           const element = blockElement(index), rect = measure(element);
-          if (readOnly || !visible(rect)) return { rect, left: null, x: 0, y: top, width: 0,
-            hidden: true, transform: '', clipPath: '' };
+          if (readOnly || !visible(rect)) return [index, { rect, left: null, x: 0, y: top, width: 0,
+            hidden: true, transform: '', clipPath: '' }];
           const columnChild = handle.classList.contains('is-column-child');
           const isColumns = entry.node.type.name === 'tano_columns';
           const style = getComputedStyle(handle);
@@ -520,23 +555,23 @@ export function blockControls(
             : rect && entry.depth > 0 ? rect.left - hostLeft : 0;
           const y = element && rect ? center(element, rect) - height / 2 : top;
           const x = hostLeft + translation + (left ?? (isColumns ? -52 : Number.parseFloat(style.left) || -28));
-          return { rect, left, x, y, width, hidden: readOnly || !rect,
+          return [index, { rect, left, x, y, width, hidden: readOnly || !rect,
             transform: table || (rect && entry.depth > 0) ? `translateX(${translation}px)` : '',
             clipPath: table && pane.width > 0
-              ? `inset(0 ${Math.max(0, x + width - pane.right)}px 0 ${Math.max(0, pane.left - x)}px)` : '' };
-        });
+              ? `inset(0 ${Math.max(0, x + width - pane.right)}px 0 ${Math.max(0, pane.left - x)}px)` : '' }];
+        }));
         // Place outer column controls beyond the first column's controls. If the
         // viewport has no spare gutter, stack them above the row instead. Use the
         // proposed bounds, so nested columns need no write/read layout round trips.
-        for (let index = count - 1; index >= 0; index--) {
+        for (const index of [...blocks.keys()].sort((a, b) => b - a)) {
           const entry = entries[index]!;
           if (entry.node.type.name !== 'tano_columns') continue;
-          const block = blocks[index]!, rect = block.rect;
+          const block = blocks.get(index)!, rect = block.rect;
           if (!rect || block.hidden) continue;
           let left = rect.left - 52;
           let above = rect.top - 28;
-          for (let child = index + 1; child < count && entries[child]!.pos < entry.pos + entry.node.nodeSize; child++) {
-            const childBlock = blocks[child]!;
+          for (const [child, childBlock] of blocks) {
+            if (child <= index || entries[child]!.pos >= entry.pos + entry.node.nodeSize) continue;
             if (!childBlock.rect || childBlock.rect.left > rect.left + 1 || childBlock.hidden) continue;
             left = Math.min(left, childBlock.x - 24);
             above = Math.min(above, childBlock.y - 28);
@@ -548,17 +583,17 @@ export function blockControls(
           if (stacked) block.y = above;
         }
         const folded = foldingKey.getState(view.state) ?? new Set<string>();
-        const folds = foldEntries.map((_, index) => {
+        const folds = new Map([...foldButtons].map(([index, button]) => {
           const element = foldElement(index);
           const measured = measure(element);
           const rect = canFold && visible(measured) ? measured : null;
-          return { hidden: !rect || !canFold, isFolded: folded.has(blockKey(index)),
-            top: element && rect ? center(element, rect) - top - (foldButtons[index]!.offsetHeight || 24) / 2 : null,
-            left: element && rect ? foldLeft(index, element, rect) - hostLeft - (foldButtons[index]!.offsetWidth || 18) : null };
-        });
+          return [index, { hidden: !rect || !canFold, isFolded: folded.has(blockKey(index)),
+            top: element && rect ? center(element, rect) - top - (button.offsetHeight || 24) / 2 : null,
+            left: element && rect ? foldLeft(index, element, rect) - hostLeft - (button.offsetWidth || 18) : null }] as const;
+        }));
         // Apply all writes together; no geometry reads belong below this point.
         blocks.forEach((block, index) => {
-          const handle = handles[index]!;
+          const handle = handles.get(index)!;
           if (block.hidden) { handle.hidden = true; return; }
           handle.style.left = block.left === null ? '' : `${block.left}px`;
           handle.style.top = `${block.y - top}px`;
@@ -567,7 +602,7 @@ export function blockControls(
           handle.style.clipPath = block.clipPath;
         });
         folds.forEach(({ hidden, isFolded, top, left }, index) => {
-          const foldButton = foldButtons[index];
+          const foldButton = foldButtons.get(index)!;
           const glyph = isFolded ? '▸' : '▾';
           if (foldButton.textContent !== glyph) foldButton.textContent = glyph;
           foldButton.hidden = hidden;
@@ -623,7 +658,7 @@ export function blockControls(
 
       function hoveredHandleBridge(event: MouseEvent) {
         if (hoveredIndex == null) return null;
-        const handle = handles[hoveredIndex];
+        const handle = handles.get(hoveredIndex);
         if (!handle || handle.hidden || (!handle.classList.contains('is-column-child') && !handle.classList.contains('is-columns'))) return null;
         if (event.target instanceof Element && event.target.closest('.tano-block-handle')) return null;
         const hovered = entries[hoveredIndex]!;
@@ -746,7 +781,7 @@ export function blockControls(
         flushLayout();
         const button = (event.target as Element).closest<HTMLButtonElement>('.tano-fold-toggle');
         if (!button || !folding()) return;
-        const index = foldButtons.indexOf(button);
+        const index = Number(button.dataset.foldIndex);
         if (index < 0 || button.hidden) return;
         event.preventDefault();
         event.stopPropagation();
@@ -1093,7 +1128,7 @@ export function blockControls(
         event.preventDefault();
         view.dispatch(transaction.scrollIntoView());
         flushLayout();
-        handles[positions.indexOf(view.state.selection.from)]?.focus();
+        handles.get(positions.indexOf(view.state.selection.from))?.focus();
       }
 
       controls.addEventListener('pointerdown', onPointerDown);
@@ -1137,6 +1172,7 @@ export function blockControls(
         },
         destroy() {
           destroyed = true;
+          viewport.destroy();
           if (layoutFrame !== undefined) cancelAnimationFrame(layoutFrame);
           clearDrag();
           marquee = null;

@@ -169,3 +169,42 @@ it('cancels queued layout work when the editor is destroyed', () => {
   window.dispatchEvent(new Event('resize'));
   expect(frames.size).toBe(0);
 });
+
+it('mounts only visible controls and remaps their positions after an edit', () => {
+  view.destroy(); root.replaceChildren();
+  let notify: IntersectionObserverCallback;
+  const observed = new Set<Element>();
+  const disconnect = vi.fn();
+  vi.stubGlobal('IntersectionObserver', class {
+    constructor(callback: IntersectionObserverCallback) { notify = callback; }
+    observe(element: Element) { observed.add(element); }
+    unobserve(element: Element) { observed.delete(element); }
+    disconnect = disconnect;
+  });
+  const host = document.createElement('div'); root.append(host);
+  const doc = schema.node('doc', null, Array.from({ length: 1000 }, (_, i) =>
+    schema.node('paragraph', null, schema.text(`Paragraph ${i}`))));
+  view = new EditorView(host, { state: EditorState.create({ schema, doc, plugins: [blockControls(() => false)] }) });
+  expect(observed.size).toBe(1000);
+  expect(root.querySelectorAll('.tano-block-handle')).toHaveLength(0);
+  const elements = [...view.dom.children];
+  const visible = (from: number, to: number, intersecting: boolean) => notify!(elements.slice(from, to)
+    .map(target => ({ target, isIntersecting: intersecting }) as IntersectionObserverEntry), {} as IntersectionObserver);
+  visible(0, 8, true); paint();
+  expect(root.querySelectorAll('.tano-block-handle')).toHaveLength(8);
+  const offscreen = vi.fn(() => new DOMRect(0, 50000, 400, 24));
+  Object.defineProperty(elements[500], 'getBoundingClientRect', { value: offscreen });
+  root.dispatchEvent(new Event('scroll')); paint();
+  expect(offscreen).not.toHaveBeenCalled();
+  visible(0, 8, false); visible(990, 1000, true); paint();
+  expect(root.querySelectorAll('.tano-block-handle')).toHaveLength(10);
+  view.dispatch(view.state.tr.insertText('longer ', 1));
+  const handle = root.querySelector<HTMLButtonElement>('[data-block-index="995"]')!;
+  const pos = Number(handle.dataset.blockPos);
+  handle.click();
+  expect(view.state.selection.from).toBe(pos);
+  expect(view.state.doc.nodeAt(pos)?.textContent).toBe('Paragraph 995');
+  expect(root.querySelectorAll('.tano-block-handle')).toHaveLength(10);
+  view.destroy();
+  expect(disconnect).toHaveBeenCalledOnce();
+});

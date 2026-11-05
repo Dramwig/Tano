@@ -65,6 +65,35 @@ it('changes page width without rebuilding source decorations', async () => {
   dispatch.mockRestore();
 });
 
+it('keeps mapped syntax marks equal to a full parse after local and distant edits', async () => {
+  const { sourceStyleRanges } = await import('@tano/editor/source-highlight');
+  const { view, value } = await mountSource('## Heading\n\n' + 'ordinary **bold** ==highlight==\n\n'.repeat(60));
+  const marks = () => {
+    const ranges: { from: number; to: number; style: string }[] = [];
+    for (const source of view.state.facet(EditorView.decorations)) {
+      if (typeof source === 'function') continue;
+      source.between(0, view.state.doc.length, (from, to, decoration) => {
+        const style = decoration.spec.class?.replace(/^cm-source-/, '');
+        if (to > from && decoration.spec.class?.startsWith('cm-source-')) ranges.push({ from, to, style });
+      });
+    }
+    return ranges.sort((a, b) => a.from - b.from || a.to - b.to || a.style.localeCompare(b.style));
+  };
+  const check = () => expect(marks()).toEqual(sourceStyleRanges(view.state.doc.toString())
+    .sort((a, b) => a.from - b.from || a.to - b.to || a.style.localeCompare(b.style)));
+  check();
+  const from = view.state.doc.toString().indexOf('ordinary', 700);
+  view.dispatch({ changes: { from: from + 2, insert: 'new' } }); // No reparse.
+  check();
+  view.dispatch({ changes: { from, to: from + 11, insert: '==changed==' } });
+  check();
+  value.value = '**remote**\n\n' + value.value + '\n\n==last==';
+  await nextTick();
+  check();
+  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '' } });
+  check();
+});
+
 it('restores a backward mode selection without changing Markdown or undo history', async () => {
   const { editor, view, value, changed } = await mountSource('第一行\r\n第二行 **文字**\r\n');
   editor.value!.restoreModeSelection({ anchor: 12, head: 5 });
@@ -143,6 +172,23 @@ it('maps a backward selection through external changes without making them undoa
   expect(view.state.selection.main.head).toBe(4);
   expect(changed).not.toHaveBeenCalled();
   expect(editor.value!.canUndo()).toBe(false);
+});
+
+it('preserves the middle selection and local undo when remote edits arrive at both ends', async () => {
+  const original = '开头\n\n中间保持光标的段落\n\n结尾';
+  const { value, editor, view } = await mountSource(original);
+  const at = original.indexOf('光标');
+  view.dispatch({ changes: { from: at, insert: '本地' }, selection: { anchor: at + 2 } });
+  await nextTick();
+  value.value = '新增甲\n' + value.value + '\n新增乙';
+  await nextTick();
+  expect(view.state.selection.main.head).toBe(at + 6);
+  expect(editor.value!.undoLastChange()).toBe(true);
+  await nextTick();
+  expect(value.value).toBe('新增甲\n' + original + '\n新增乙');
+  expect(editor.value!.redoLastChange()).toBe(true);
+  await nextTick();
+  expect(value.value).toBe('新增甲\n' + original.slice(0, at) + '本地' + original.slice(at) + '\n新增乙');
 });
 
 it('highlights and navigates literal matches without changing source, caret or history', async () => {

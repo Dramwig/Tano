@@ -2,9 +2,31 @@ use crate::storage;
 use rusqlite::{params, Transaction};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{collections::HashSet, fs, io::Read, path::Path};
+use std::{
+    collections::HashSet,
+    fs,
+    io::Read,
+    path::{Path, PathBuf},
+    sync::{Mutex, OnceLock},
+};
 
 const FILE: &str = "identities.json";
+
+struct ValidatedManifest {
+    path: PathBuf,
+    workspace_id: String,
+    stamp: String,
+    revision: Option<(u64, String)>,
+}
+
+// Validation and the hydrated revision are memoized. Mutations still read,
+// compare and publish the manifest directly.
+// Bound the process-local hints across windows/workspaces. A reliable stamp
+// includes native identity and change time, not just mtime and length.
+static VALIDATED: OnceLock<Mutex<Vec<ValidatedManifest>>> = OnceLock::new();
+
+#[cfg(test)]
+thread_local! { static MANIFEST_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,15 +58,53 @@ fn active(root: &Path, workspace_id: &str) -> Result<bool, String> {
 
 pub fn require(root: &Path, workspace_id: &str) -> Result<(), String> {
     storage::assert_workspace_identity(root, workspace_id)?;
-    if !path(root).is_file() {
+    let file = path(root);
+    if !file.is_file() {
         return Err("工作区身份清单已丢失，已停止写入；请检查 .tano/identities.json".into());
+    }
+    let before = storage::scan_cache::state(&file).stamp;
+    let validated = VALIDATED.get_or_init(|| Mutex::new(Vec::new()));
+    if !before.is_empty()
+        && validated.lock().is_ok_and(|entries| {
+            entries.iter().any(|entry| {
+                entry.path == file && entry.workspace_id == workspace_id && entry.stamp == before
+            })
+        })
+    {
+        return Ok(());
     }
     read(root, workspace_id)?
         .ok_or("工作区身份清单已丢失，请检查 .tano/identities.json".to_string())?;
+    remember_validation(file, workspace_id, before, None);
     Ok(())
 }
 
+fn remember_validation(
+    file: PathBuf,
+    workspace_id: &str,
+    before: String,
+    revision: Option<(u64, String)>,
+) {
+    // A writer or an unreliable stamp requires a fresh read on the next call.
+    if !before.is_empty() && storage::scan_cache::state(&file).stamp == before {
+        if let Ok(mut entries) = VALIDATED.get_or_init(|| Mutex::new(Vec::new())).lock() {
+            entries.retain(|entry| entry.path != file);
+            if entries.len() >= 8 {
+                entries.remove(0);
+            }
+            entries.push(ValidatedManifest {
+                path: file,
+                workspace_id: workspace_id.into(),
+                stamp: before,
+                revision,
+            });
+        }
+    }
+}
+
 pub fn read(root: &Path, workspace_id: &str) -> Result<Option<IdentityManifest>, String> {
+    #[cfg(test)]
+    MANIFEST_READS.with(|count| count.set(count.get() + 1));
     let file = path(root);
     let metadata = fs::symlink_metadata(&file);
     let metadata = match metadata {
@@ -138,6 +198,24 @@ pub fn hydrate(
         return Ok(());
     }
     let prior_revision = cache_revision(transaction, workspace_id)?;
+    let file = path(root);
+    let before = storage::scan_cache::state(&file).stamp;
+    if !before.is_empty()
+        && prior_revision.is_some()
+        && VALIDATED
+            .get_or_init(|| Mutex::new(Vec::new()))
+            .lock()
+            .is_ok_and(|entries| {
+                entries.iter().any(|entry| {
+                    entry.path == file
+                        && entry.workspace_id == workspace_id
+                        && entry.stamp == before
+                        && entry.revision == prior_revision
+                })
+            })
+    {
+        return Ok(());
+    }
     let Some(manifest) = read(root, workspace_id)? else {
         if prior_revision.is_some() {
             return Err("工作区身份清单已丢失，已停止扫描；请检查 .tano/identities.json".into());
@@ -145,6 +223,12 @@ pub fn hydrate(
         return Ok(());
     };
     let hash = storage::hash(&bytes(&manifest)?);
+    remember_validation(
+        file,
+        workspace_id,
+        before,
+        Some((manifest.revision, hash.clone())),
+    );
     if prior_revision == Some((manifest.revision, hash.clone())) {
         return Ok(());
     }
@@ -253,7 +337,6 @@ pub fn publish(
     let old = read(root, workspace_id)?;
     let revision = old.as_ref().map_or(1, |m| m.revision + 1);
     let proposed = from_cache(transaction, workspace_id, revision)?;
-    validate(&proposed, workspace_id)?;
     if let Some(previous) = &old {
         if previous.files == proposed.files && previous.reserved_ids == proposed.reserved_ids {
             return set_cache_revision(
@@ -264,6 +347,7 @@ pub fn publish(
             );
         }
     }
+    validate(&proposed, workspace_id)?;
     let target = path(root);
     let new_bytes = bytes(&proposed)?;
     if let Some(previous) = old {
@@ -716,6 +800,131 @@ pub fn recover_mutation(root: &Path, workspace_id: &str, cache: &Path) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hydration_cache_requires_both_file_stamp_and_database_revision() {
+        let (_directory, _data, root, id, cache) = workspace();
+        storage::scan(&root, &id, &cache).unwrap();
+        let mut connection = storage::database(&cache).unwrap();
+        let transaction = connection.transaction().unwrap();
+        hydrate(&transaction, &root, &id).unwrap();
+        MANIFEST_READS.with(|count| count.set(0));
+        hydrate(&transaction, &root, &id).unwrap();
+        if !storage::scan_cache::state(&path(&root)).stamp.is_empty() {
+            assert_eq!(MANIFEST_READS.with(|count| count.get()), 0);
+        }
+        transaction
+            .execute("DELETE FROM identity_revisions WHERE workspace_id=?", [&id])
+            .unwrap();
+        MANIFEST_READS.with(|count| count.set(0));
+        hydrate(&transaction, &root, &id).unwrap();
+        assert_eq!(MANIFEST_READS.with(|count| count.get()), 1);
+        let file = path(&root);
+        let original = fs::read_to_string(&file).unwrap();
+        let modified = fs::metadata(&file).unwrap().modified().unwrap();
+        let invalid = original.replacen("\"format\": 1", "\"format\": 9", 1);
+        fs::write(&file, &invalid).unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&file)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(modified))
+            .unwrap();
+        assert!(hydrate(&transaction, &root, &id).is_err());
+        fs::write(&file, &original).unwrap();
+        hydrate(&transaction, &root, &id).unwrap();
+        storage::temporary(&file, invalid.as_bytes())
+            .unwrap()
+            .persist(&file)
+            .unwrap();
+        assert!(hydrate(&transaction, &root, &id).is_err());
+        fs::write(&file, &original).unwrap();
+        hydrate(&transaction, &root, &id).unwrap();
+        fs::remove_file(&file).unwrap();
+        assert!(hydrate(&transaction, &root, &id).is_err());
+    }
+
+    #[test]
+    fn validation_cache_skips_unchanged_reads_but_detects_external_changes() {
+        let (_directory, _data, root, id, cache) = workspace();
+        storage::scan(&root, &id, &cache).unwrap();
+        require(&root, &id).unwrap();
+        MANIFEST_READS.with(|count| count.set(0));
+        for _ in 0..20 {
+            require(&root, &id).unwrap();
+        }
+        if !storage::scan_cache::state(&path(&root)).stamp.is_empty() {
+            assert_eq!(MANIFEST_READS.with(|count| count.get()), 0);
+        }
+        let file = path(&root);
+        let original = fs::read_to_string(&file).unwrap();
+        let invalid = original.replacen("\"format\": 1", "\"format\": 9", 1);
+        assert_ne!(original, invalid);
+        let modified = fs::metadata(&file).unwrap().modified().unwrap();
+        fs::write(&file, &invalid).unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&file)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(modified))
+            .unwrap();
+        assert!(
+            require(&root, &id).is_err(),
+            "same-size, restored-mtime edit"
+        );
+        fs::write(&file, &original).unwrap();
+        require(&root, &id).unwrap();
+        storage::temporary(&file, invalid.as_bytes())
+            .unwrap()
+            .persist(&file)
+            .unwrap();
+        assert!(require(&root, &id).is_err(), "atomic replacement");
+        fs::write(&file, &original).unwrap();
+        require(&root, &id).unwrap();
+        assert!(require(&root, &uuid::Uuid::new_v4().to_string()).is_err());
+        fs::remove_file(&file).unwrap();
+        assert!(require(&root, &id).is_err(), "deleted manifest");
+        fs::write(&file, original).unwrap();
+        require(&root, &id).unwrap();
+        fs::remove_file(root.join(".tano/config.json")).unwrap();
+        assert!(
+            require(&root, &id).is_err(),
+            "identity is checked even on a cache hit"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn validation_cache_is_disabled_while_a_writer_is_open() {
+        use std::io::{Seek, SeekFrom, Write};
+        let (_directory, _data, root, id, cache) = workspace();
+        storage::scan(&root, &id, &cache).unwrap();
+        require(&root, &id).unwrap();
+        let file = path(&root);
+        let original = fs::read_to_string(&file).unwrap();
+        let invalid = original.replacen("\"format\": 1", "\"format\": 9", 1);
+        let mut writer = fs::File::options().write(true).open(&file).unwrap();
+        assert!(storage::scan_cache::state(&file).stamp.is_empty());
+        writer.write_all(invalid.as_bytes()).unwrap();
+        writer.flush().unwrap();
+        assert!(require(&root, &id).is_err());
+        writer.seek(SeekFrom::Start(0)).unwrap();
+        writer.write_all(original.as_bytes()).unwrap();
+        writer.flush().unwrap();
+        MANIFEST_READS.with(|count| count.set(0));
+        require(&root, &id).unwrap();
+        require(&root, &id).unwrap();
+        assert_eq!(MANIFEST_READS.with(|count| count.get()), 2);
+        let mut connection = storage::database(&cache).unwrap();
+        let transaction = connection.transaction().unwrap();
+        hydrate(&transaction, &root, &id).unwrap();
+        MANIFEST_READS.with(|count| count.set(0));
+        hydrate(&transaction, &root, &id).unwrap();
+        hydrate(&transaction, &root, &id).unwrap();
+        assert_eq!(MANIFEST_READS.with(|count| count.get()), 2);
+        drop(writer);
+        require(&root, &id).unwrap();
+    }
 
     fn workspace() -> (
         tempfile::TempDir,

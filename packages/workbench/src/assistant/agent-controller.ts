@@ -64,7 +64,7 @@ export function useAgentInboxController() {
   const owner = crypto.randomUUID();
   const running = new Set<string>();
   const active = new Set<Promise<void>>();
-  const documentRevisions = new Map<string, { hash: string; since: number }>();
+  const documentRevisions = new Map<string, { hash: string; since: number; reconciledBindings?: string }>();
   let scanning = false, disposed = false, suspended = false, identitiesAt = 0, previousWorkspace = '';
   let scanPromise: Promise<void> | undefined;
   state.settle = async () => {
@@ -87,7 +87,8 @@ export function useAgentInboxController() {
     const current = workspace.workspace;
     if (disposed || suspended || scanning || workspace.openingWorkspace || !current || !workspace.capabilities.features.objectReferences) return;
     scanning = true;
-    const valid = () => !disposed && !suspended && workspace.workspace?.id === current.id && workspace.workspace.path === current.path;
+    const valid = () => !disposed && !suspended && !workspace.openingWorkspace &&
+      workspace.workspace?.id === current.id && workspace.workspace.path === current.path;
     try {
       if (previousWorkspace !== current.id) { identitiesAt = 0; hostedState = undefined; documentRevisions.clear(); previousWorkspace = current.id; }
       if (transport!.hostedInbox) {
@@ -102,30 +103,60 @@ export function useAgentInboxController() {
         tasks.value = hostedState?.tasks ?? []; bindings.value = hostedState?.bindings ?? [];
         return;
       }
-      if (Date.now() - identitiesAt > 30_000) {
+      const checkingIdentities = Date.now() - identitiesAt > 30_000;
+      if (checkingIdentities) {
         const identityErrors = await ensureAgentIdentities(current.id, runtime.adapter, transport!, lifecycle.signal);
         if (!valid()) return;
         if (identityErrors.length) error.value = identityErrors.join('\n');
-        await workspace.refresh();
         identitiesAt = Date.now();
       }
-      const snapshot = await runtime.adapter.refresh();
+      const localInbox = await inbox.load(current.id);
+      if (!valid()) return;
+      // A local workspace with no robots has no mention work. In particular,
+      // do not read/parse every Markdown document just to discover no binding.
+      if (!localInbox.bindings.length && !localInbox.tasks.length) {
+        documentRevisions.clear();
+        tasks.value = [...hostedState?.tasks ?? []];
+        bindings.value = [...hostedState?.bindings ?? []];
+        return;
+      }
+      if (checkingIdentities) {
+        await workspace.refresh();
+        if (!valid()) return;
+      }
+      // The desktop lifecycle already owns filesystem watches and their polling
+      // fallback. Share its committed snapshot instead of starting a competing
+      // full scan every two seconds while opening/saving files needs that lock.
+      const snapshot = checkingIdentities || runtime.adapter.mode === 'desktop' && !runtime.mobile
+        ? workspace.workspace! : await runtime.adapter.refresh();
       if (!valid() || snapshot.id !== current.id) return;
+      const bindingRevision = JSON.stringify(localInbox.bindings);
       const sources = new Set<string>();
       for (const file of snapshot.files) {
+        if (!valid()) return;
         if (file.kind === 'file' && !file.path.startsWith('.tano/') && /\.(md|markdown)$/i.test(file.path)) {
           sources.add(`document:${file.id}`);
+          const previous = documentRevisions.get(file.id);
+          // Native scans supply a verified content hash. Observe the debounce
+          // from that snapshot, and read only a changed, settled document.
+          if (file.contentHash) {
+            if (!previous || previous.hash !== file.contentHash) {
+              documentRevisions.set(file.id, { hash: file.contentHash, since: Date.now() });
+              continue;
+            }
+            if (Date.now() - previous.since < 2000 || previous.reconciledBindings === bindingRevision) continue;
+          }
           const content = await runtime.adapter.read(file.path);
           if (!valid()) return;
-          const previous = documentRevisions.get(file.id);
           if (!previous || previous.hash !== content.hash) {
             documentRevisions.set(file.id, { hash: content.hash, since: Date.now() });
             continue;
           }
-          if (Date.now() - previous.since < 2000) continue;
+          if (Date.now() - previous.since < 2000 || previous.reconciledBindings === bindingRevision) continue;
           const actorId = runtime.extensions?.().commentAuthor?.().id ?? 'local';
           await queue.reconcile(current.id, { kind: 'document', fileId: file.id },
             documentMentionEvents(current.id, file.id, content.content, content.hash, actorId, file.modified));
+          previous.reconciledBindings = bindingRevision;
           continue;
         }
         const match = /^\.tano\/(annotations|discussions)\/([0-9a-f]{6})\.tano\.json$/.exec(file.path);
@@ -146,6 +177,9 @@ export function useAgentInboxController() {
             message.authorId === task.event.actorId && message.replyTo === task.result!.messageId);
           if (answer) await queue.resume(current.id, task.id, { messageId: answer.id, body: answer.body, threadId: thread!.id }, task.result!.messageId);
         }
+      }
+      for (const id of documentRevisions.keys()) {
+        if (!sources.has(`document:${id}`)) documentRevisions.delete(id);
       }
       let state = await inbox.load(current.id);
       for (const task of state.tasks) {

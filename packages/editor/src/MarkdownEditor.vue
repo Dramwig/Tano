@@ -39,6 +39,7 @@ import {
 } from '@milkdown/kit/prose/history';
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
 import { createDocumentDecorations } from './document-decorations';
+import { richViewport, virtualBlockViews } from './rich-viewport';
 import { autoSpacing } from './auto-spacing';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { Fragment, Slice } from '@milkdown/kit/prose/model';
@@ -1882,7 +1883,7 @@ const bridge = $prose(
                   'data-inline-type': 'Mention',
                 }),
               );
-            if (!node.isText)
+            if (!node.isText && !node.isBlock)
               decorations.push(
                 Decoration.node(pos, pos + node.nodeSize, {
                   'data-runtime-policy': String(runtimeRevision),
@@ -1920,6 +1921,7 @@ const bridge = $prose(
             }
             decorations.push(
               Decoration.node(pos, pos + node.nodeSize, {
+                'data-runtime-policy': String(runtimeRevision),
                 'data-block-type': type,
                 'data-feature-level': String(featureLevel(type)),
                 ...(editingFootnoteLabel ? { class: 'tano-footnote-label-editing' } : {}),
@@ -2209,8 +2211,9 @@ const bridge = $prose(
           },
         },
         markViews: runtimeMarkViews(policy()),
-        nodeViews: runtimeViews(
+        nodeViews: virtualBlockViews(runtimeViews(
           {
+            table: (node, view) => new TableViewport(node, defaultTableColumnWidth, view),
             ...referenceViews(
               () => props.referenceTargets ?? [],
               referencesEnabled,
@@ -2498,7 +2501,7 @@ const bridge = $prose(
             return ctx.get(serializerCtx)(schema.topNodeType.create(null, content));
           },
           () => emit('editSource'),
-        ),
+        )),
       },
     }),
 );
@@ -2555,7 +2558,7 @@ onMounted(async () => {
       .use(commonmark)
       .use(codeBlankLinesRemark)
       .use(listMarkdown)
-      .use($prose(() => columnResizing({ cellMinWidth: minimumTableColumnWidth, defaultCellMinWidth: defaultTableColumnWidth, handleWidth: 6, View: TableViewport })))
+      .use($prose(() => columnResizing({ cellMinWidth: minimumTableColumnWidth, defaultCellMinWidth: defaultTableColumnWidth, handleWidth: 6, View: null })))
       .use(gfm)
       .use($prose(() => tableLayouts(() => props.tableLayouts ?? [], tables => emit('tableLayoutChange', tables), () => !!props.readonly)))
       .use($prose(() => tableControls(() => !!props.readonly)))
@@ -2607,11 +2610,13 @@ onMounted(async () => {
       .use(bridge)
       .use(commentMarks)
       .use(referenceFlash)
+      .use($prose(richViewport))
       .use($prose(visualAnchorPlugin))
       .use($prose(() => suggestionMarks(() => props.suggestionMarks)))
       .use($prose(() => pageSearchPlugin(() => emit('searchChange'))));
     editor = await instance.create();
     if (disposed) {
+      bridgeView?.destroy();
       await editor.destroy();
       return;
     }
@@ -3658,6 +3663,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('keyup', syncLinkModifier, true);
   window.removeEventListener('blur', clearLinkModifier);
   unbindExtension?.();
+  // Stop DOM observers and scheduled plugin work before Milkdown removes the
+  // schema contexts asynchronously. Otherwise a queued render can use a
+  // heading/node serializer whose context has already been removed.
+  bridgeView?.destroy();
   void editor?.destroy();
 });
 </script>

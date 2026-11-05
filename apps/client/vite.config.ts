@@ -1,7 +1,15 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
 
 export default defineConfig({
+  resolve: {
+    // The browser export creates a DOM element at module load. Markdown also
+    // runs in a Worker, so use the package's DOM-free entity lookup in both.
+    alias: { 'decode-named-character-reference': require.resolve('decode-named-character-reference') },
+  },
   plugins: [
     vue(),
     {

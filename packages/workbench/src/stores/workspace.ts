@@ -401,9 +401,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const relationIndex = computed(() => new RelationIndex(relations.value));
   const objectDefinitions = ref(objectTypeRegistry.list());
   onScopeDispose(objectTypeRegistry.subscribe(() => { objectDefinitions.value = objectTypeRegistry.list(); }));
-  const referenceTargets = computed<ReferenceTarget[]>(() => workspace.value ? [
+  const fileReferenceTargets = computed<ReferenceTarget[]>(() => workspace.value ? [
     ...documentTargets(workspace.value.id, workspace.value.files),
     ...assetTargets(workspace.value.id, workspace.value.files),
+  ] : []);
+  const referenceTargets = computed<ReferenceTarget[]>(() => workspace.value ? [
+    ...fileReferenceTargets.value,
     ...objects.value.filter(({ object }) => {
       const definition = objectDefinitions.value.find((entry) => entry.type === object.type)
         ?? objectTypeRegistry.get(object.type);
@@ -412,8 +415,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       try { validateObjectProperties(object.type, object.properties); return true; } catch { return false; }
     }).map(({ object, path }) => ({ workspace: workspace.value!.id, type: object.type, id: object.id, name: object.name, description: object.description, archived: object.archived, path, properties: object.properties })),
   ] : []);
-  const referenceRevision = computed(() => JSON.stringify([workspace.value?.id, workspace.value?.path,
-    workspace.value?.files.map(file => [file.id, file.path, file.modified, file.size]),
+  // File metadata changes independently of open-document drafts and object loads.
+  // Keep its traversal/serialization cached across those more frequent updates.
+  const referenceFilesRevision = computed((previous?: { key: string; version: number }) => {
+    const key = JSON.stringify([workspace.value?.id, workspace.value?.path,
+      workspace.value?.files.map(file => [file.id, file.path, file.modified, file.size, file.contentHash])]);
+    return previous?.key === key ? previous : { key, version: (previous?.version ?? 0) + 1 };
+  });
+  const referenceRevision = computed(() => JSON.stringify([referenceFilesRevision.value.version,
     documents.value.map(doc => [doc.id, documentIndex.revision(doc)]), objects.value.map(record => [record.object.id, record.object.description, record.object.name, record.object.archived])]));
   let pluginEventTimer: ReturnType<typeof setTimeout>;
   onScopeDispose(() => clearTimeout(pluginEventTimer));

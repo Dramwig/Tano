@@ -13,7 +13,7 @@ use uuid::Uuid;
 const MAX_DOCUMENT_BYTES: u64 = 8 * 1024 * 1024;
 
 #[path = "storage_scan_cache.rs"]
-mod scan_cache;
+pub(crate) mod scan_cache;
 
 #[derive(Serialize)]
 pub struct Workspace {
@@ -674,16 +674,12 @@ fn scan_inner(root: &Path, id: &str, cache: &Path, reuse: bool) -> Result<Worksp
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
     };
-    let states: HashMap<String, scan_cache::FileState> = entries
+    let paths: Vec<&str> = entries
         .iter()
         .filter(|entry| entry.kind != "directory")
-        .map(|entry| {
-            (
-                entry.path.clone(),
-                scan_cache::state(&root.join(&entry.path)),
-            )
-        })
+        .map(|entry| entry.path.as_str())
         .collect();
+    let states = scan_cache::states(root, &paths)?;
     let native_keys: HashMap<String, String> = states
         .iter()
         .map(|(path, state)| (path.clone(), state.key.clone()))

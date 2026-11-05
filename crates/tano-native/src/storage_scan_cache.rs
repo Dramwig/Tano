@@ -1,15 +1,61 @@
 //! Device-local scan hints. Content and portable identity remain in workspace files.
-use std::{fs, path::Path};
+use std::{collections::HashMap, fs, path::Path};
 
-pub(super) struct FileState {
+pub(crate) struct FileState {
     pub key: String,
     pub stamp: String,
+}
+
+pub(super) fn states(root: &Path, paths: &[&str]) -> Result<HashMap<String, FileState>, String> {
+    // Opening thousands of Windows handles can incur per-file latency on first
+    // access. Overlap a bounded number of independent queries. Keep hashing,
+    // identity reconciliation and database writes on the scan's owning thread.
+    let workers = if cfg!(windows) {
+        std::thread::available_parallelism()
+            .map(usize::from)
+            .unwrap_or(1)
+            .min(8)
+            .min(paths.len() / 256)
+            .max(1)
+    } else {
+        1
+    };
+    let read = |chunk: &[&str]| {
+        chunk
+            .iter()
+            .map(|path| (String::from(*path), state(&root.join(path))))
+            .collect::<HashMap<_, _>>()
+    };
+    if workers == 1 {
+        return Ok(read(paths));
+    }
+    std::thread::scope(|scope| {
+        let mut jobs = Vec::with_capacity(workers);
+        let mut result = HashMap::with_capacity(paths.len());
+        for chunk in paths.chunks(paths.len().div_ceil(workers)) {
+            match std::thread::Builder::new()
+                .name("tano-file-state".into())
+                .spawn_scoped(scope, move || read(chunk))
+            {
+                Ok(job) => jobs.push(job),
+                // Resource-constrained systems can finish the same queries inline.
+                Err(_) => result.extend(read(chunk)),
+            }
+        }
+        for job in jobs {
+            result.extend(
+                job.join()
+                    .map_err(|_| "读取文件状态的后台任务失败".to_string())?,
+            );
+        }
+        Ok(result)
+    })
 }
 
 // A timestamp/length pair alone misses same-size edits with restored mtime.
 // Include the filesystem's change time and native identity, or disable reuse.
 #[cfg(windows)]
-pub(super) fn state(path: &Path) -> FileState {
+pub(crate) fn state(path: &Path) -> FileState {
     use std::os::windows::{fs::OpenOptionsExt, io::AsRawHandle};
     use windows_sys::Win32::Storage::FileSystem::{
         FileBasicInfo, GetFileInformationByHandle, GetFileInformationByHandleEx,
@@ -65,7 +111,7 @@ pub(super) fn state(path: &Path) -> FileState {
 }
 
 #[cfg(unix)]
-pub(super) fn state(path: &Path) -> FileState {
+pub(crate) fn state(path: &Path) -> FileState {
     use std::os::unix::fs::MetadataExt;
     let Ok(meta) = fs::symlink_metadata(path) else {
         return FileState {
@@ -86,7 +132,7 @@ pub(super) fn state(path: &Path) -> FileState {
 }
 
 #[cfg(not(any(windows, unix)))]
-pub(super) fn state(_path: &Path) -> FileState {
+pub(crate) fn state(_path: &Path) -> FileState {
     FileState {
         key: String::new(),
         stamp: String::new(),

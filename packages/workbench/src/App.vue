@@ -3,6 +3,7 @@ import ShortcutHint from '@tano/editor/shortcut-hint';
 import WorkspaceSyncPanel from './components/WorkspaceSyncPanel.vue';
 import { vScrollFade } from './scroll-fade';
 import { vOutlineMotion } from './outline-motion';
+import { HeadingViewport } from './heading-viewport';
 import { createWorkspaceSync, syncEvent } from './workspace-sync';
 import { t } from './i18n';
 import { readSettingsPage } from './settings-preference';
@@ -3051,6 +3052,7 @@ function outlineContextKeydown(event: KeyboardEvent) {
           : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
   items[next]?.focus();
 }
+const headingViewport = new HeadingViewport();
 function updateActiveHeading() {
   const container = documentScroll.value;
   const cover = container?.querySelector<HTMLElement>('.document-cover');
@@ -3059,16 +3061,9 @@ function updateActiveHeading() {
   outlineCoverBottom.value = cover && pane
     ? Math.max(0, cover.getBoundingClientRect().bottom - pane.getBoundingClientRect().top + 16)
     : 0;
-  const items = editorScroll.value?.querySelectorAll<HTMLElement>(
-    '.tano-prose h1, .tano-prose h2, .tano-prose h3, .tano-prose h4, .tano-prose h5, .tano-prose h6',
-  );
-  if (!container || source.value || !items?.length || !outline.value.length) return;
-  const threshold = container.getBoundingClientRect().top + 100;
-  let current = 0;
-  items.forEach((item, index) => {
-    if (item.getBoundingClientRect().top <= threshold) current = index;
-  });
-  activeHeading.value = Math.min(current, outline.value.length - 1);
+  const root = editorScroll.value;
+  if (!container || !root || source.value || !outline.value.length) return;
+  activeHeading.value = Math.min(headingViewport.active(root, container), outline.value.length - 1);
 }
 function scheduleActiveHeading() {
   if (headingFrame !== undefined) return;
@@ -3077,19 +3072,38 @@ function scheduleActiveHeading() {
     updateActiveHeading();
   });
 }
-watch([() => outline.value.length, source], () => void nextTick(scheduleActiveHeading), {
+watch([() => active.value?.content, source], () => {
+  headingViewport.invalidate();
+  void nextTick(scheduleActiveHeading);
+}, {
   flush: 'post',
 });
-watch([documentScroll, showPageTitle], ([container], _, cleanup) => {
+watch([documentScroll, editorScroll, showPageTitle], ([container, root], _, cleanup) => {
+  const invalidate = () => { headingViewport.invalidate(); scheduleActiveHeading(); };
+  invalidate();
   scheduleActiveHeading();
   if (!container) return;
   // A cover can be added or removed without changing the outline. Also follow
   // window/sidebar/split resizing and title or toolbar layout changes.
-  const observer = new ResizeObserver(scheduleActiveHeading);
+  const observer = new ResizeObserver(invalidate);
   observer.observe(container);
   for (const element of container.querySelectorAll('.document-main, .document-title'))
     observer.observe(element);
-  cleanup(() => observer.disconnect());
+  // Font/image loading and folded/expanded node views can move headings without
+  // changing Markdown. Gutter button updates are deliberately excluded.
+  const mutations = new MutationObserver(records => {
+    if (records.some(record => {
+      const element = record.target instanceof Element ? record.target : record.target.parentElement;
+      return element?.closest('.tano-prose') || [...record.addedNodes, ...record.removedNodes]
+        .some(node => node instanceof Element && (node.matches('.tano-prose') || node.querySelector('.tano-prose')));
+    })) invalidate();
+  });
+  if (root) {
+    observer.observe(root);
+    mutations.observe(root, { childList: true, subtree: true, attributes: true, characterData: true });
+    root.addEventListener('load', invalidate, true);
+  }
+  cleanup(() => { observer.disconnect(); mutations.disconnect(); root?.removeEventListener('load', invalidate, true); });
 }, { flush: 'post' });
 const noteCount = computed(
   () => workspace.value?.files.filter((f) => f.kind === 'file' && !isWorkspaceInternalPath(f.path) && (isMarkdown(f.path) || isDataTableFilePath(f.path))).length ?? 0,
