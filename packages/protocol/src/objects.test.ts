@@ -4,6 +4,8 @@ import {
   parseReferenceUrl,
   referenceCandidates,
   referenceUrl,
+  referenceMarkdown,
+  referenceSyntax,
   resolveReference,
   assetTargets,
   documentTargets,
@@ -270,4 +272,11 @@ it('rejects malformed identities and object schemas while retaining future field
   expect(parseObject(JSON.stringify(value))).toEqual(value);
   for (const patch of [{ id: '../a' }, { name: '' }, { properties: [] }, { type: '../invalid' }])
     expect(() => parseObject(JSON.stringify({ ...value, ...patch }))).toThrow();
+});
+
+it('stores identity without a copied name and preserves person occurrence metadata', () => {
+  expect(referenceMarkdown(targets[1]!, 'An outdated [name]')).toBe('[[object://project/b91af2]]');
+  expect(referenceMarkdown(targets[0]!, 'Alice')).toMatch(/^\[\[object:\/\/person\/a82f91\]\]<!--tano:mention:[a-z0-9-]+-->$/);
+  expect(referenceSyntax(targets[0]!)).toBe('[[object://person/a82f91]]');
+  expect(referenceSyntax(targets[1]!, true)).toBe('![[object://project/b91af2]]');
 });

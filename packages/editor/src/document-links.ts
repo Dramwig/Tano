@@ -1,3 +1,4 @@
+import { remarkObjectReferences } from './object-reference-markdown';
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
@@ -18,7 +19,7 @@ export interface DocumentLinkDetail extends DocumentLink {
   excerpt: string;
 }
 
-const parser = unified().use(remarkParse).use(remarkGfm).use(remarkMathSyntax);
+const parser = unified().use(remarkParse).use(remarkGfm).use(remarkMathSyntax).use(remarkObjectReferences);
 
 /** Replace destinations only, retaining source formatting, labels, titles and code examples. */
 export function rewriteDocumentLinks(markdown: string, replace: (link: DocumentLink) => string): string {
@@ -39,6 +40,12 @@ export function rewriteDocumentLinks(markdown: string, replace: (link: DocumentL
       if (next !== node.url && node.position?.start.offset !== undefined && node.position.end.offset !== undefined) {
         const from = node.position.start.offset + parsed.offset;
         const raw = markdown.slice(from, node.position.end.offset + parsed.offset);
+        const objectToken = /^!?\[\[(object:\/\/[^\[\]\r\n]+)\]\]/.exec(raw);
+        if (objectToken && parseReferenceUrl(objectToken[1]!)) {
+          const start = raw.indexOf('object://');
+          edits.push({ from: from + start, to: from + start + objectToken[1]!.length, text: next });
+          return;
+        }
         let cursor = node.type === 'image' ? 1 : 0;
         if (raw[cursor] !== '[') throw new Error('无法安全更新链接，请先将自动链接改为 Markdown 链接');
         let depth = 0;
@@ -84,7 +91,7 @@ export function rewriteDocumentLinks(markdown: string, replace: (link: DocumentL
 export function parseDocumentMarkdown(markdown: string) {
   const { body } = splitFrontmatter(markdown);
   const source = body.replace(/^\uFEFF?\+\+\+\r?\n[\s\S]*?\r?\n\+\+\+(?:\r?\n|$)/, '');
-  return { source, tree: parser.parse(source), offset: markdown.length - source.length };
+  return { source, tree: parser.runSync(parser.parse(source), source), offset: markdown.length - source.length };
 }
 
 /** Source-mode references must be inserted outside code, math, metadata and existing links. */
@@ -106,7 +113,7 @@ export function referenceInsertionPoint(markdown: string, position: number) {
       if ('children' in node) node.children.forEach(visit);
     }
   }
-  visit(parser.parse(source));
+  visit(parser.runSync(parser.parse(source), source));
   return result;
 }
 
@@ -120,7 +127,7 @@ export function internalReferenceDefinitions(markdown: string): { from: number; 
       result.push({ from: node.position.start.offset + offset, to: node.position.end.offset + offset });
     if ('children' in node) node.children.forEach(visit);
   }
-  visit(parser.parse(source));
+  visit(parser.runSync(parser.parse(source), source));
   return result;
 }
 
@@ -152,7 +159,7 @@ export function documentLinkDetails(markdown: string, parsed = parseDocumentMark
   collect(tree);
   function visit(node: Nodes) {
     if (node.type === 'link' || node.type === 'image') {
-      add(node, 'markdown', node.url, label(node) || ('alt' in node ? node.alt ?? '' : ''));
+      add(node, 'markdown', node.url, label(node) || ('alt' in node ? node.alt ?? '' : parseReferenceUrl(node.url) ? node.url : ''));
     } else if (node.type === 'linkReference' || node.type === 'imageReference') {
       const target = definitions.get(node.identifier);
       if (target) add(node, 'markdown', target, label(node) || ('alt' in node ? node.alt ?? '' : ''));

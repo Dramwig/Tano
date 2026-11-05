@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { Copy, Eraser, Pencil, Plus, Trash2 } from 'lucide-vue-next';
 import DocumentReader from './DocumentReader.vue';
@@ -70,6 +71,7 @@ async function showMenu(event: MouseEvent | KeyboardEvent, trigger: HTMLElement,
   opened.x = Math.max(8, Math.min(x, window.innerWidth - size.width - 8));
   opened.y = Math.max(8, Math.min(top, window.innerHeight - size.height - 8));
   opened.positioned = true;
+  menuElement.value.dataset.surfaceSide = top < (name ? rect.top : y) ? 'up' : 'down';
   await nextTick();
   if (menu.value === opened) (menuElement.value?.querySelector<HTMLButtonElement>('button:not(:disabled)') ?? menuElement.value)?.focus({ preventScroll: true });
 }
@@ -350,7 +352,7 @@ async function saveFile() {
         <button v-if="writable" class="add-sheet" :disabled="busy || sheets.length >= officeLimits.sheets || totalCells >= officeLimits.cells" :aria-label="t('新建工作表')" @click="addSheet"><Plus :size="16" /></button>
       </template>
     </DocumentReader>
-    <Teleport to="body"><div v-if="menu" ref="menuElement" class="dropdown compact-action-menu sheet-context-menu" role="menu" tabindex="-1" :aria-label="menu.sheet ? t('工作表操作') : t('行列操作')" :style="{ left: `${menu.x}px`, top: `${menu.y}px`, visibility: menu.positioned ? 'visible' : 'hidden' }" @keydown="menuKey" @contextmenu.prevent>
+    <Teleport to="body"><div v-surface-motion="'SpreadsheetEditor:0'" v-if="menu" ref="menuElement" class="dropdown compact-action-menu sheet-context-menu" role="menu" tabindex="-1" :aria-label="menu.sheet ? t('工作表操作') : t('行列操作')" :style="{ left: `${menu.x}px`, top: `${menu.y}px`, visibility: menu.positioned ? 'visible' : 'hidden' }" @keydown="menuKey" @contextmenu.prevent>
       <template v-if="menu.sheet">
         <button role="menuitem" :disabled="!writable || busy" @click="beginRename"><Pencil :size="14" aria-hidden="true" />{{ t('重命名工作表') }}</button>
         <button role="menuitem" :disabled="!writable || busy || !canCopySheet" @click="sheetAction('copy-sheet')"><Copy :size="14" aria-hidden="true" />{{ t('复制工作表') }}</button>

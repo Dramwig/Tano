@@ -68,14 +68,14 @@ it.each(['task', 'project', 'person', 'document', 'event', 'asset'])(
       name: 'Item',
       path: type === 'document' ? 'Item.md' : type === 'asset' ? 'Item.png' : 'objects/a00001.tano.json',
     };
-    const source = `Before [@Item](object://${type}/a00001) after.\n`;
+    const source = `Before [[object://${type}/a00001]] after.\n`;
     const { value, opened, errors } = await mount(source, true, [target]);
     const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
     prose.focus();
     root.querySelector<HTMLButtonElement>('.tano-reference button')!.click();
     await nextTick();
     expect(root.querySelector('[data-tano-live-inline-source]')?.textContent).toBe(
-      `[@Item](object://${type}/a00001)`,
+      `[[object://${type}/a00001]]`,
     );
     expect(value.value).toBe(source);
     expect(opened).toEqual([]);
@@ -96,7 +96,7 @@ it('creates an inline Todo reference after selected prose and supports undo with
   expect(selection.text).toBe('selected');
   expect(selection.insert({ type: 'event', id: 'b00001' }, 'Task')).toBe(true);
   await nextTick();
-  expect(value.value).toContain('before selected [@Task](object://event/b00001) after');
+  expect(value.value).toContain('before selected [[object://event/b00001]] after');
   expect(editor.value!.undoLastChange()).toBe(true);
   await nextTick();
   expect(value.value.trim()).toBe('before selected after');
@@ -114,7 +114,7 @@ it('places a Todo reference in a paragraph after selected fenced code', async ()
   expect(selection.text).toBe('selected code');
   expect(selection.insert({ type: 'event', id: 'b00001' }, 'Task')).toBe(true);
   await nextTick();
-  expect(value.value).toContain('```ts\nselected code\n```\n\n[@Task](object://event/b00001)');
+  expect(value.value).toContain('```ts\nselected code\n```\n\n[[object://event/b00001]]');
 });
 it('keeps a core object card rendered when clicked with Markdown reveal enabled', async () => {
   const source = '[Plan](object://project/b00002 "tano:object-card")\n';
@@ -131,13 +131,13 @@ it('keeps a core object card rendered when clicked with Markdown reveal enabled'
   expect(errors).toEqual([]);
 });
 it('opens a core object target with Ctrl-click while Markdown reveal is enabled', async () => {
-  const { opened, value } = await mount('[@Alice](object://person/a00001)\n', true);
+  const { opened, value } = await mount('[[object://person/a00001]]\n', true);
   root
     .querySelector<HTMLButtonElement>('.tano-reference button')!
     .dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
   expect(opened).toEqual([{ type: 'person', id: 'a00001' }]);
   expect(root.querySelector('[data-tano-live-inline-source]')).toBeNull();
-  expect(value.value).toBe('[@Alice](object://person/a00001)\n');
+  expect(value.value).toBe('[[object://person/a00001]]\n');
 });
 it('opens an event from its card details and preserves the original timestamps and Markdown', async () => {
   const source = '[Meeting](object://event/a00001 "tano:object-card")\n';
@@ -174,30 +174,30 @@ it('keeps an unavailable card readable and prevents opening its details', async 
   expect(value.value).toBe(source);
 });
 it('switches directly between core object reference sources', async () => {
-  const source = '[@Alice](object://person/a00001) and [@Alice](object://project/b00002)\n';
+  const source = '[[object://person/a00001]] and [[object://project/b00002]]\n';
   const { value, opened, errors } = await mount(source, true);
   const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
   prose.focus();
   root.querySelectorAll<HTMLButtonElement>('.tano-reference button')[0]!.click();
   expect(root.querySelector('[data-tano-live-inline-source]')?.textContent).toBe(
-    '[@Alice](object://person/a00001)',
+    '[[object://person/a00001]]',
   );
   root.querySelector<HTMLButtonElement>('.tano-reference button')!.click();
   await nextTick();
   expect(root.querySelector('[data-tano-live-inline-source]')?.textContent).toBe(
-    '[@Alice](object://project/b00002)',
+    '[[object://project/b00002]]',
   );
   expect(value.value).toBe(source);
   expect(opened).toEqual([]);
   expect(errors).toEqual([]);
 });
 it('updates display after rename without rewriting Markdown and preserves unavailable or disabled refs', async () => {
-  const source = '[@Alice](object://person/a00001)\n';
+  const source = '[[object://person/a00001]]\n';
   const { value, candidates, capabilities, opened, errors } = await mount(source);
-  expect(root.querySelector('.tano-reference')?.textContent).toContain('@Alice');
+  expect(root.querySelector('.tano-reference')?.textContent).toContain('Alice');
   candidates.value[0]!.name = 'Alice Zhang';
   await nextTick();
-  expect(root.querySelector('.tano-reference')?.textContent).toContain('@Alice Zhang');
+  expect(root.querySelector('.tano-reference')?.textContent).toContain('Alice Zhang');
   (root.querySelector('.tano-reference button') as HTMLButtonElement).click();
   expect(opened).toEqual([{ type: 'person', id: 'a00001' }]);
   expect(value.value).toBe(source);
@@ -213,7 +213,7 @@ it('updates display after rename without rewriting Markdown and preserves unavai
   expect(errors).toEqual([]);
 });
 it('keeps removed domain references visible and inert without enabling them as core types', async () => {
-  const source = '[@Legacy](object://dataset/a00001)\n';
+  const source = '[[object://dataset/a00001]]\n';
   const { value, candidates, opened, errors } = await mount(source);
   candidates.value = [
     {
@@ -244,11 +244,11 @@ it('binds the chosen same-name target and creates a card through the block comma
       node.textContent?.includes('事件'),
     ) as HTMLButtonElement
   ).click();
-  await vi.waitFor(() => expect(value.value).toContain('[@Alice](object://event/b00002)'));
+  await vi.waitFor(() => expect(value.value).toContain('[[object://event/b00002]]'));
   editor.value!.command('object-reference');
   await nextTick();
   (root.querySelector('[role=option]') as HTMLButtonElement).click();
-  await vi.waitFor(() => expect(value.value).toContain('"tano:object-card"'));
+  await vi.waitFor(() => expect(value.value).toContain('![[object://'));
   expect(root.querySelector('.tano-reference-card')?.getAttribute('data-feature-level')).toBe('2');
   expect(errors).toEqual([]);
 });

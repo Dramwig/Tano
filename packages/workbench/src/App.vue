@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import ShortcutHint from '@tano/editor/shortcut-hint';
 import WorkspaceSyncPanel from './components/WorkspaceSyncPanel.vue';
 import { vScrollFade } from './scroll-fade';
@@ -37,8 +38,22 @@ import {
   Plus,
   FolderPlus,
   FolderOpen,
+  FolderSearch,
+  FolderTree,
   PanelLeftOpen,
+  PanelsTopLeft,
   FileText,
+  FilePlus2,
+  FileOutput,
+  FileSliders,
+  FileSymlink,
+  Paperclip,
+  Eye,
+  EyeOff,
+  TextCursorInput,
+  Route,
+  AppWindow,
+  Blocks,
   X,
   Check,
   Circle,
@@ -56,17 +71,14 @@ import {
   AlertTriangle,
   RefreshCw,
   Repeat2,
-  Pencil,
   Trash2,
   Bot,
   MessageSquare,
   MessageSquareDiff,
-  ExternalLink,
   Link,
   CheckCheck,
-  Copy,
+  CopyPlus,
   LoaderCircle,
-  Users,
   Puzzle,
   GitFork,
   CalendarDays,
@@ -86,7 +98,7 @@ import MarkdownEditorSkeleton from './components/MarkdownEditorSkeleton.vue';
 import DocumentLoading from './components/DocumentLoading.vue';
 const MarkdownEditor = defineAsyncComponent({ loader: () => import('@tano/editor'), delay: 0, loadingComponent: MarkdownEditorSkeleton });
 const CalloutIconPicker = defineAsyncComponent(() => import('./components/CalloutIconPicker.vue'));
-import { defaultEditorPreferences, normalizeSelectionWrapping } from '@tano/editor/runtime';
+import { defaultEditorPreferences, normalizeCopyFormat, normalizeSelectionWrapping } from '@tano/editor/runtime';
 import type { EditorPreferences } from '@tano/editor/runtime';
 import { defaultSelectionContext } from '@tano/editor/selection-context';
 import type { EditorSelectionContext } from '@tano/editor/selection-context';
@@ -103,6 +115,7 @@ import DocumentStarter from './components/DocumentStarter.vue';
 import { documentStarter, templateStarterBody } from './document-starters';
 import MarkdownRevealToggle from './components/MarkdownRevealToggle.vue';
 import SourceCodeIcon from './components/SourceCodeIcon.vue';
+import OpenWorkspaceIcon from './components/OpenWorkspaceIcon.vue';
 import DocumentTitle from './components/DocumentTitle.vue';
 import { appearanceText } from './document-appearance';
 import { useDocumentFavicon } from './document-favicon';
@@ -255,7 +268,10 @@ import type { TabTransferRequest, TabTransferRollback, TabTransferResult } from 
 import { selectTreeEntry, topLevelEntries } from './file-selection';
 import { isBlankPageTarget } from './page-context-menu';
 import { pageRoutePath, pageRouteUrl, parsePageRoute } from './web-navigation';
-import { applyTheme, readThemePreference, saveThemePreference } from './theme';
+import { applyTheme } from './theme';
+import { AppearanceController } from './appearance';
+import LayoutDocumentChrome from './components/LayoutDocumentChrome.vue';
+import { FileIconRegistry, fileIconRegistryKey } from './file-icons/registry';
 import type { ThemePreference } from './theme';
 import { parseVisualFontChoice, sanitizeCustomFontName, visualFontFamily } from './editor-font';
 import type { VisualFontChoice } from './editor-font';
@@ -766,13 +782,26 @@ watch(sidebar, (open) => {
     sidebarSnapRestoreWidth = null;
   }
 });
-const theme = ref<ThemePreference>(readThemePreference());
+const appearanceIcons = new FileIconRegistry();
+provide(fileIconRegistryKey, appearanceIcons);
+const appearanceController = new AppearanceController(appearanceIcons, useWorkbenchRuntime().plugins?.principal ?? 'device', {
+  getItem: key => window.localStorage.getItem(key), setItem: (key, value) => window.localStorage.setItem(key, value),
+});
+const appearance = appearanceController.state;
+watch([() => store.workspace?.id ?? '', () => store.installedPlugins, () => store.installedPluginWorkspace], ([id, installed, loadedFor]) => {
+  appearanceController.sync(id, id === loadedFor ? installed : []);
+}, { immediate: true, deep: true });
+onBeforeUnmount(() => appearanceController.dispose());
+const theme = computed<ThemePreference>({ get: () => appearance.value.mode,
+  set: mode => appearanceController.select({ workspaceId: appearance.value.workspaceId, kind: 'mode', id: mode }) });
+const onAppearanceStorage = (event: StorageEvent) => appearanceController.refreshPreferences(event.key);
+onMounted(() => window.addEventListener('storage', onAppearanceStorage));
+onBeforeUnmount(() => window.removeEventListener('storage', onAppearanceStorage));
 const systemThemeMedia = window.matchMedia?.('(prefers-color-scheme: dark)');
 const onSystemThemeChange = () => {
   if (theme.value === 'system') applyTheme('system');
 };
 applyTheme(theme.value);
-watch(theme, saveThemePreference);
 onMounted(() => systemThemeMedia?.addEventListener('change', onSystemThemeChange));
 onBeforeUnmount(() => systemThemeMedia?.removeEventListener('change', onSystemThemeChange));
 function readPreference(key: string, fallback: boolean): boolean {
@@ -982,6 +1011,7 @@ function readSelectionWrapping() {
   catch { return normalizeSelectionWrapping(); }
 }
 const editorPreferences = ref<EditorPreferences>({
+  copyFormat: normalizeCopyFormat(readTextPreference('copyFormat')),
   autoSpacing: readPreference('autoSpacing', defaultEditorPreferences.autoSpacing ?? false),
   previewMathWhileEditing: readPreference(
     'previewMathWhileEditing',
@@ -994,6 +1024,7 @@ const editorPreferences = ref<EditorPreferences>({
 watch(
   editorPreferences,
   (preferences) => {
+    saveTextPreference('copyFormat', normalizeCopyFormat(preferences.copyFormat));
     savePreference('autoSpacing', preferences.autoSpacing ?? false);
     savePreference('previewMathWhileEditing', preferences.previewMathWhileEditing);
     savePreference('folding', preferences.folding);
@@ -2551,7 +2582,7 @@ function openPageContextMenu(event: MouseEvent) {
         Math.max(8, window.innerHeight - element.offsetHeight - 8),
       ),
     };
-    element.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+    element.focus({ preventScroll: true });
   });
 }
 function openDocumentDiscussion() {
@@ -3564,6 +3595,7 @@ const settingsSnapshot = computed<SettingsSnapshot>(() => ({
   mode: store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local',
   defaultSource: defaultSource.value,
   theme: theme.value,
+  appearance: appearance.value,
   visualFontChoice: visualFontChoice.value,
   customFontName: customFontName.value,
   revealMarkdown: revealMarkdown.value,
@@ -3623,6 +3655,7 @@ function openSettings(page: SettingsPageId = readSettingsPage(settingsPage.value
   settingsPanel.value = true;
 }
 function handleSettingsCommand(command: SettingsCommand) {
+  if (command.type === 'appearance') { appearanceController.select(command.selection); return; }
   if (!settingsWorkspace.value && ['workspace-delete', 'workspace-setting', 'workspace-settings-reload', 'workspace-export', 'capability'].includes(command.type)) return;
   if (command.type === 'plugin-invoke') {
     void store.interactWithPlugin(command.interaction).then(
@@ -4597,7 +4630,7 @@ const helpBlocked = computed(() => !!(
           />
         </template>
         <Teleport to="body">
-          <div
+          <div v-surface-motion="'App:0'"
             v-if="fileContextMenu"
             class="dropdown compact-action-menu file-context-menu"
             role="menu"
@@ -4620,17 +4653,18 @@ const helpBlocked = computed(() => !!(
                 :disabled="selectionDeleteDisabled"
                 @click="fileContextAction('duplicate')"
               >
-                <Copy :size="15" />{{ t('为所选条目创建副本') }}
+                <CopyPlus :size="15" />{{ t('为所选条目创建副本') }}
               </button>
+              <div v-if="!mobile && localNative" class="menu-divider" role="separator" />
               <button role="menuitem" @click="fileContextAction('copy')">
-                <Copy :size="15" />{{ t('复制相对路径') }}
+                <Route :size="15" />{{ t('复制相对路径') }}
               </button>
               <button
                 v-if="localNative && !mobile"
                 role="menuitem"
                 @click="fileContextAction('copy-full-path')"
               >
-                <Copy :size="15" />{{ t('复制完整路径') }}
+                <FolderTree :size="15" />{{ t('复制完整路径') }}
               </button>
               <div class="menu-divider" role="separator" />
               <button
@@ -4649,19 +4683,20 @@ const helpBlocked = computed(() => !!(
               <kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('deleteFile')" /></kbd></button>
             </template>
             <template v-else>
-              <!-- Primary actions stay first for files and folders. -->
+              <!-- Open actions precede editing and organization. -->
               <template v-if="fileContextMenu.file.kind === 'directory'">
                 <template v-if="contextFolderHome">
                   <button role="menuitem" @click="folderHomeContextAction(false)">
-                    <FileText :size="15" />{{ t('打开首页') }}
+                    <House :size="15" />{{ t('打开首页') }}
                   </button>
+                  <div class="menu-divider" role="separator" />
                 </template>
                 <button
                   role="menuitem"
                   :disabled="fileMutationDisabled(fileContextMenu.file)"
                   @click="fileContextAction('document')"
                 >
-                  <FileText :size="15" />{{ t('在此新建文档') }}
+                  <FilePlus2 :size="15" />{{ t('在此新建文档') }}
                 </button>
                 <button
                   role="menuitem"
@@ -4684,7 +4719,7 @@ const helpBlocked = computed(() => !!(
                   "
                   @click="fileContextAction('rename')"
                 >
-                  <Pencil :size="15" />{{ t('重命名文件夹') }}
+                  <TextCursorInput :size="15" />{{ t('重命名文件夹') }}
                   <kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('renameFile')" /></kbd>
                 </button>
               </template>
@@ -4698,7 +4733,9 @@ const helpBlocked = computed(() => !!(
                   role="menuitem"
                   @click="fileContextAction('open')"
                 >
-                  <FileText :size="15" />{{
+                  <Table2 v-if="isDataTableFilePath(fileContextMenu.file.path)" :size="15" />
+                  <FileText v-else-if="isMarkdown(fileContextMenu.file.path)" :size="15" />
+                  <Paperclip v-else :size="15" />{{
                     isDataTableFilePath(fileContextMenu.file.path)
                       ? t('打开数据表')
                       : isMarkdown(fileContextMenu.file.path)
@@ -4714,29 +4751,20 @@ const helpBlocked = computed(() => !!(
                   role="menuitem"
                   @click="fileContextAction('open-new-tab')"
                 >
-                  <ExternalLink :size="15" />{{ t('在新标签页中打开') }}
+                  <PanelsTopLeft :size="15" />{{ t('在新标签页中打开') }}
                 </button>
-                <button
-                  v-if="isMarkdown(fileContextMenu.file.path) && !isWorkspaceInternalPath(fileContextMenu.file.path)"
-                  role="menuitem"
-                  :disabled="
-                    fileMutationDisabled(fileContextMenu.file) || !!folderConversionIssue(fileContextMenu.file, 'child')
-                  "
-                  :data-tooltip="
-                    folderConversionIssue(fileContextMenu.file, 'child') ||
-                    t('将此文档作为文件夹首页，并新建子文档；相关链接会同步更新。')
-                  "
-                  @click="convertDocumentStructure('child')"
-                >
-                  <FolderPlus :size="15" />{{ t('新建子文档') }}
-                </button>
+                <div
+                  v-if="isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path) || attachments"
+                  class="menu-divider"
+                  role="separator"
+                />
                 <button
                   v-if="isMarkdown(fileContextMenu.file.path)"
                   role="menuitem"
                   :disabled="fileMutationDisabled(fileContextMenu.file)"
                   @click="fileContextAction('rename')"
                 >
-                  <Pencil :size="15" />{{ t('重命名文档') }}
+                  <TextCursorInput :size="15" />{{ t('重命名文档') }}
                   <kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('renameFile')" /></kbd>
                 </button>
                 <button
@@ -4745,7 +4773,7 @@ const helpBlocked = computed(() => !!(
                   :disabled="fileMutationDisabled(fileContextMenu.file)"
                   @click="fileContextAction('rename')"
                 >
-                  <Pencil :size="15" />{{ t('重命名文件') }}
+                  <TextCursorInput :size="15" />{{ t('重命名文件') }}
                   <kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('renameFile')" /></kbd>
                 </button>
               </template>
@@ -4755,12 +4783,26 @@ const helpBlocked = computed(() => !!(
                 :disabled="fileMutationDisabled(fileContextMenu.file)"
                 @click="fileContextAction('duplicate')"
               >
-                <Copy :size="15" />{{ t('创建副本') }}
+                <CopyPlus :size="15" />{{ t('创建副本') }}
+              </button>
+              <button
+                v-if="fileContextMenu.file.kind === 'file' && isMarkdown(fileContextMenu.file.path) && !isWorkspaceInternalPath(fileContextMenu.file.path)"
+                role="menuitem"
+                :disabled="
+                  fileMutationDisabled(fileContextMenu.file) || !!folderConversionIssue(fileContextMenu.file, 'child')
+                "
+                :data-tooltip="
+                  folderConversionIssue(fileContextMenu.file, 'child') ||
+                  t('将此文档作为文件夹首页，并新建子文档；相关链接会同步更新。')
+                "
+                @click="convertDocumentStructure('child')"
+              >
+                <FolderPlus :size="15" />{{ t('新建子文档') }}
               </button>
               <div class="menu-divider" role="separator" />
               <!-- Copy and export. -->
               <button role="menuitem" @click="fileContextAction('copy')">
-                <Copy :size="15" />{{ t('复制相对路径') }}
+                <Route :size="15" />{{ t('复制相对路径') }}
               </button>
               <button
                 v-if="
@@ -4774,7 +4816,7 @@ const helpBlocked = computed(() => !!(
                 <Link :size="15" />{{ t('复制链接') }}
               </button>
               <button v-if="localNative && !mobile" role="menuitem" @click="fileContextAction('copy-full-path')">
-                <Copy :size="15" />{{
+                <FolderTree :size="15" />{{
                   fileContextMenu.file.kind === 'directory' ? t('复制文件夹路径') : t('复制文件路径')
                 }}
               </button>
@@ -4784,15 +4826,26 @@ const helpBlocked = computed(() => !!(
                   role="menuitem"
                   @click="fileContextAction('export')"
                 >
-                  <ArrowUpRight :size="15" />{{ t('导出文件副本') }}
+                  <FileOutput :size="15" />{{ t('导出文件副本') }}
                 </button>
               </template>
-              <!-- Properties and less frequent structure actions. -->
+              <!-- System actions stay together before file information. -->
+              <template v-if="localNative && !mobile">
+                <div class="menu-divider" role="separator" />
+                <button role="menuitem" @click="fileContextAction('open-default')">
+                  <AppWindow :size="15" />{{ t('使用默认应用打开') }}
+                </button>
+                <button role="menuitem" @click="fileContextAction('reveal-entry')">
+                  <FolderSearch :size="15" />{{ t('在系统资源管理器中显示') }}
+                </button>
+              </template>
+              <!-- File information and less frequent folder structure actions. -->
               <template v-if="fileContextMenu.file.kind === 'directory'">
                 <div class="menu-divider" role="separator" />
                 <template v-if="contextFolderHome">
                   <button role="menuitem" @click="folderHomeContextAction(true)">
-                    <FileText :size="15" />{{ t(revealedHomeId === contextFolderHome.id ? '隐藏首页文件' : '显示首页文件') }}
+                    <EyeOff v-if="revealedHomeId === contextFolderHome.id" :size="15" />
+                    <Eye v-else :size="15" />{{ t(revealedHomeId === contextFolderHome.id ? '隐藏首页文件' : '显示首页文件') }}
                   </button>
                   <button
                     role="menuitem"
@@ -4806,7 +4859,7 @@ const helpBlocked = computed(() => !!(
                     "
                     @click="convertDocumentStructure('flatten')"
                   >
-                    <FileText :size="15" />{{ t('转为普通文档') }}
+                    <FileSymlink :size="15" />{{ t('转为普通文档') }}
                   </button>
                 </template>
                 <button
@@ -4824,14 +4877,14 @@ const helpBlocked = computed(() => !!(
                   role="menuitem"
                   @click="fileContextAction('metadata')"
                 >
-                  <FileText :size="15" />{{ t('文件属性') }}
+                  <FileSliders :size="15" />{{ t('文件属性') }}
                 </button>
                 <button
                   v-if="!isWorkspaceInternalPath(fileContextMenu.file.path)"
                   role="menuitem"
                   @click="fileContextAction('object')"
                 >
-                  <Users :size="15" />{{ t('查看文件对象') }}
+                  <Blocks :size="15" />{{ t('查看文件对象') }}
                 </button>
               </template>
               <PluginMenu
@@ -4840,15 +4893,6 @@ const helpBlocked = computed(() => !!(
                 :file-id="fileContextMenu.file.id"
                 @selected="closeFileContextMenu()"
               />
-              <template v-if="localNative && !mobile">
-                <div class="menu-divider" role="separator" />
-                <button role="menuitem" @click="fileContextAction('open-default')">
-                  <ArrowUpRight :size="15" />{{ t('使用默认应用打开') }}
-                </button>
-                <button role="menuitem" @click="fileContextAction('reveal-entry')">
-                  <ArrowUpRight :size="15" />{{ t('在系统资源管理器中显示') }}
-                </button>
-              </template>
               <template v-if="!fileDeleteDisabled(fileContextMenu.file) || !store.isWeb">
                 <div class="menu-divider" role="separator" />
                 <button
@@ -4873,7 +4917,7 @@ const helpBlocked = computed(() => !!(
           </div>
         </Teleport>
         <Teleport to="body">
-          <div
+          <div v-surface-motion="'App:1'"
             v-if="directoryContextMenu"
             class="dropdown compact-action-menu file-context-menu directory-context-menu"
             role="menu"
@@ -4887,7 +4931,7 @@ const helpBlocked = computed(() => !!(
               :disabled="!workspace || workspace.readOnly || busy"
               @click="directoryContextAction('document')"
             >
-              <FileText :size="15" />{{ t('新建文档') }}
+              <FilePlus2 :size="15" />{{ t('新建文档') }}
             </button>
             <button role="menuitem" :disabled="!workspace || workspace.readOnly || busy" @click="directoryContextAction('table')">
               <Table2 :size="15" />{{ t('新建数据表') }}
@@ -4916,10 +4960,10 @@ const helpBlocked = computed(() => !!(
                 :disabled="directoryContextDuplicateDisabled()"
                 @click="directoryContextAction('duplicate')"
               >
-                <Copy :size="15" />{{ t('创建副本') }}
+                <CopyPlus :size="15" />{{ t('创建副本') }}
               </button>
               <button role="menuitem" @click="directoryContextAction('copy')">
-                <Copy :size="15" />{{ t('复制相对路径') }}
+                <Route :size="15" />{{ t('复制相对路径') }}
               </button>
               <div class="menu-divider" role="separator" />
               <button
@@ -4927,7 +4971,7 @@ const helpBlocked = computed(() => !!(
                 :disabled="directoryContextRenameDisabled()"
                 @click="directoryContextAction('rename')"
               >
-                <Pencil :size="15" />{{ t('重命名文件夹') }}
+                <TextCursorInput :size="15" />{{ t('重命名文件夹') }}
               <kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('renameFile')" /></kbd></button>
               <button
                 class="danger-text"
@@ -4943,7 +4987,7 @@ const helpBlocked = computed(() => !!(
           </div>
         </Teleport>
         <Teleport to="body">
-          <div
+          <div v-surface-motion="'App:2'"
             v-if="workspaceEntryContextMenu"
             ref="workspaceEntryContextMenuElement"
             class="dropdown compact-action-menu file-context-menu workspace-entry-context-menu"
@@ -4972,7 +5016,7 @@ const helpBlocked = computed(() => !!(
                 :disabled="busy"
                 @click="workspaceEntryContextAction('reveal')"
               >
-                <ExternalLink :size="15" />{{ t('在资源管理器中显示') }}
+                <FolderSearch :size="15" />{{ t('在资源管理器中显示') }}
               </button>
             </template>
           </div>
@@ -4994,7 +5038,7 @@ const helpBlocked = computed(() => !!(
               >
               <component :is="workspaceMenu ? ChevronUp : ChevronDown" :size="12" />
             </button>
-            <div
+            <div v-surface-motion="'App:3'"
               v-if="workspaceMenu"
               id="workspace-menu"
               class="dropdown compact-action-menu sidebar-popover workspace-dropdown"
@@ -5039,7 +5083,7 @@ const helpBlocked = computed(() => !!(
               >
                 <Files :size="16" />{{ t('文档模板') }}
               </button>
-              <button role="menuitem" @click="showObjects()"><Users :size="16" />{{ t('工作区对象') }}</button>
+              <button role="menuitem" @click="showObjects()"><Blocks :size="16" />{{ t('工作区对象') }}</button>
               <button role="menuitem" :disabled="!workspace || workspace.readOnly || busy || !store.capabilities.features.objectReferences" @click="workspaceMenu = false; store.createObjectDatabase().catch(store.report)"><Table2 :size="16" />{{ t('创建对象数据库视图') }}</button>
               <template v-if="store.workspaceViews.length">
                 <div class="menu-divider" />
@@ -5150,7 +5194,7 @@ const helpBlocked = computed(() => !!(
                         store.openWorkspace();
                       "
                     >
-                      <FolderPlus :size="16" :stroke-width="1.6" />
+                      <OpenWorkspaceIcon :size="16" />
                     </button>
                   </div>
                   <button
@@ -5406,6 +5450,8 @@ const helpBlocked = computed(() => !!(
                 "
                 :workspace-id="workspace?.id"
                 :workspace-name="workspace?.name ?? 'Tano'"
+                :workspace-icon="store.workspaceSettings.icon"
+                :workspace-mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'"
                 :entries="workspace?.files ?? []"
                 :folder-home-file-name="store.workspaceSettings.folderHomeFileName"
                 :document-icons="treeDocumentIcons"
@@ -5561,7 +5607,7 @@ const helpBlocked = computed(() => !!(
                     >
                       {{ calendarModeLabel }}<ChevronDown :size="14" />
                     </button>
-                    <div
+                    <div v-surface-motion="'App:4'"
                       v-if="calendarModeOpen"
                       class="calendar-view-menu"
                       role="menu"
@@ -5643,7 +5689,7 @@ const helpBlocked = computed(() => !!(
                     >
                       <MoreHorizontal :size="19" />
                     </button>
-                    <div
+                    <div v-surface-motion="'App:5'"
                       v-if="menu && pane.id === store.activePaneId"
                       ref="documentMenuElement"
                       class="dropdown compact-action-menu document-dropdown"
@@ -5754,22 +5800,15 @@ const helpBlocked = computed(() => !!(
                         <Clock3 :size="15" />{{ t('更新历史') }}
                       </button>
                       <DocumentGlobalMenu>
-                        <button type="button" class="page-toggle-menu-item" role="switch"
-                          :aria-checked="workspaceLocked" :disabled="!workspace"
-                          :data-tooltip="t('锁定后，整个工作区的页面进入阅读模式')"
-                          @click="toggleWorkspaceLock">
-                          <LockKeyhole :size="15" />{{ t('锁定工作区') }}<span
-                            class="menu-switch" :class="{ on: workspaceLocked }" aria-hidden="true"><span /></span>
-                        </button>
-                        <div class="menu-divider" role="separator" />
-                        <PageDisplayOptions :auto-spacing="editorPreferences.autoSpacing ?? false"
+                        <PageDisplayOptions :workspace-locked="workspaceLocked" :workspace-available="!!workspace"
+                          :auto-spacing="editorPreferences.autoSpacing ?? false"
                           :show-page-title="showPageTitle"
                           :show-document-properties="showDocumentProperties"
                           :show-outline="showOutline"
                           :show-all-line-numbers="showAllLineNumbers"
                           :detached-window="!!detachedWindow"
                           :source="paneSource(store.activeId)"
-                          @toggle="togglePageOption" />
+                          @toggle="togglePageOption" @toggle-workspace-lock="toggleWorkspaceLock" />
                       </DocumentGlobalMenu>
                       <DocumentExportMenu :disabled="exportBusy" @select="exportDocument" />
                       <DocumentPrintButton :busy="printBusy" :shortcut="shortcuts.print" @select="printActiveDocument" />
@@ -5911,6 +5950,7 @@ const helpBlocked = computed(() => !!(
                   @scroll.passive="scheduleActiveHeading"
                 >
                   <main class="document-main">
+                    <LayoutDocumentChrome :layout="appearance.layout" :path="active.path" />
                     <EditorTools
                       :shortcuts="shortcuts"
                       v-model:mode="toolbarMode"
@@ -6419,27 +6459,29 @@ const helpBlocked = computed(() => !!(
       />
 
       <Teleport to="body">
-        <div
+        <div v-surface-motion="'App:6'"
           v-if="pageContextMenu && !switchingWorkspace"
           ref="pageContextMenuElement"
-          class="dropdown compact-action-menu page-context-menu"
+          class="dropdown compact-action-menu page-context-menu workspace-options-menu"
           role="menu"
           :aria-label="t('页面显示选项')"
+          tabindex="-1"
           :style="{ left: `${pageContextMenu.x}px`, top: `${pageContextMenu.y}px` }"
           @keydown="pageContextKeydown"
         >
-          <PageDisplayOptions :auto-spacing="editorPreferences.autoSpacing ?? false"
+          <PageDisplayOptions :workspace-locked="workspaceLocked" :workspace-available="!!workspace"
+            :auto-spacing="editorPreferences.autoSpacing ?? false"
             :show-page-title="showPageTitle"
             :show-document-properties="showDocumentProperties"
             :show-outline="showOutline"
             :show-all-line-numbers="showAllLineNumbers"
             :detached-window="!!detachedWindow"
             :source="paneSource(store.activeId)"
-            @toggle="togglePageOption" />
+            @toggle="togglePageOption" @toggle-workspace-lock="toggleWorkspaceLock" />
         </div>
       </Teleport>
       <Teleport to="body">
-        <div
+        <div v-surface-motion="'App:7'"
           v-if="outlineContextMenu && !switchingWorkspace"
           ref="outlineContextMenuElement"
           class="dropdown compact-action-menu page-context-menu outline-context-menu"
@@ -6588,6 +6630,8 @@ const helpBlocked = computed(() => !!(
       :mobile="mobile"
       :default-source="defaultSource"
       :theme="theme"
+      :appearance="appearance"
+      @appearance="appearanceController.select($event)"
       :visual-font-choice="visualFontChoice"
       :custom-font-name="customFontName"
       :reveal-markdown="revealMarkdown"
@@ -6641,7 +6685,7 @@ const helpBlocked = computed(() => !!(
     </div>
 
     <NewTabPicker v-if="modal === 'newTab'" @close="modal = ''" @new-document="createNewDocument" @new-table="createNewEntry('table')" />
-    <div
+    <div v-surface-motion="'App:8'"
       v-if="modal && modal !== 'newTab'"
       class="modal-backdrop"
       :class="{ 'search-backdrop': modal === 'search' }"

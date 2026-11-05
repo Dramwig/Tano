@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t, uiLocale } from '../i18n';
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import {
@@ -64,7 +65,7 @@ onBeforeUnmount(() => originalFocus?.focus());
 </script>
 
 <template>
-  <div class="modal-backdrop document-history-backdrop" @mousedown.self="emit('close')">
+  <div v-surface-motion="'DocumentHistoryPanel:0'" class="modal-backdrop document-history-backdrop" @mousedown.self="emit('close')">
     <section
       class="document-history-dialog"
       role="dialog"

@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch, type Component } from 'vue';
-import { BookOpen, Check, ChevronRight, Database, File, FileText, Table2, FolderOpen, LockKeyhole } from 'lucide-vue-next';
-import FolderHomeIcon from './FolderHomeIcon.vue';
+import { Check, ChevronRight, Database, Table2 } from 'lucide-vue-next';
+import WorkspaceIcon from './WorkspaceIcon.vue';
+import ResourceIcon from './ResourceIcon.vue';
 import { indexFolderHomes, type FolderHomeFileName } from '../folder-home';
 import { basename, isMarkdown, isDataTableFilePath, isWorkspaceInternalPath, parentPath, type FileEntry, type WorkspaceViewDefinition } from '@tano/protocol';
 import { butterflyPerchDirective, useButterflyController, type ButterflyPerch } from '../assistant/butterfly-vue';
@@ -15,6 +17,8 @@ const props = defineProps<{
   loading?: boolean;
   workspaceId?: string;
   workspaceName: string;
+  workspaceIcon?: string;
+  workspaceMode?: 'demo' | 'web' | 'local';
   hideWorkspace?: boolean;
   entries: FileEntry[];
   folderHomeFileName?: FolderHomeFileName;
@@ -74,6 +78,7 @@ function placeMenu() {
     left: `${Math.max(edge, Math.min(anchor.left, window.innerWidth - bounds.width - edge))}px`,
     top: `${Math.max(edge, Math.min(anchor.bottom + 6, window.innerHeight - bounds.height - edge))}px`,
   };
+  menu.value.dataset.surfaceSide = parseFloat(position.value.top) < anchor.top ? 'up' : 'down';
 }
 function rows() {
   return [...(menu.value?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [])];
@@ -179,7 +184,7 @@ onBeforeUnmount(() => {
       :disabled="!workspaceId" :data-tooltip="demoLabel ? t('浏览器演示 · 数据仅保存在本浏览器') : workspaceName"
       :aria-label="t('打开文件夹：{0}', [workspaceName])" :aria-current="directory && !path ? 'page' : undefined"
       @click="close(); emit('openDirectory', '')">
-      <LockKeyhole v-if="demoLabel && readOnly" :size="14" /><BookOpen v-else :size="14" />
+      <span class="breadcrumb-workspace-icon" aria-hidden="true"><WorkspaceIcon :icon="workspaceIcon" :mode="workspaceMode" :size="14" /></span>
       <span class="breadcrumb-workspace-label">{{ workspaceName }}</span>
     </button>
       <button v-if="!loading && !hideWorkspace" type="button" class="breadcrumb-separator breadcrumb-menu-trigger"
@@ -208,7 +213,8 @@ onBeforeUnmount(() => {
         :aria-current="part.current ? 'page' : undefined"
         @click="activatePart(part)">
         <DocumentFileIcon
-          v-if="part.home" :file="part.home" :icon="documentIcons?.[part.home.id]" :load="loadDocumentIcon" :fallback="FolderHomeIcon"
+          v-if="part.home" :file="part.home" :icon="documentIcons?.[part.home.id]" :load="loadDocumentIcon"
+          :resource="{ path: part.path, kind: 'directory', folderHome: true, expanded: true }"
         />
         <DocumentFileIcon
           v-else-if="part.current && currentFile && (isMarkdown(part.path) || isDataTableFilePath(part.path))"
@@ -216,7 +222,7 @@ onBeforeUnmount(() => {
           :file="currentFile" :icon="documentIcons?.[currentFile.id]"
           :load="isMarkdown(part.path) ? loadDocumentIcon : undefined"
         />
-        <component v-else :is="part.directory ? FolderOpen : part.current ? (isDataTableFilePath(part.path) ? Table2 : isMarkdown(part.path) ? FileText : File) : FolderOpen" :size="14" />
+        <ResourceIcon v-else :path="part.path" :kind="part.directory ? 'directory' : 'file'" :expanded="true" :size="14" />
         <span>{{ !part.home && part.current && (isMarkdown(part.path) || isDataTableFilePath(part.path)) ? part.name.replace(/(\.table\.json|\.(md|markdown))$/i, '') : part.name }}</span>
       </button>
       <button v-if="part.directory" type="button" class="breadcrumb-separator breadcrumb-menu-trigger"
@@ -237,7 +243,7 @@ onBeforeUnmount(() => {
     <slot name="status" />
   </nav>
   <Teleport to="body">
-    <div v-if="opened" :id="menuId" ref="menu" class="breadcrumb-menu" :style="position"
+    <div v-surface-motion="'WorkspaceBreadcrumb:0'" v-if="opened" :id="menuId" ref="menu" class="breadcrumb-menu" :style="position"
       role="menu" :aria-label="t('浏览目录：{0}', [folderLabel])" tabindex="-1" @keydown="menuKeydown">
       <div class="breadcrumb-menu-list panel-scrollbar">
         <button v-for="entry in children" :key="entry.id" type="button" class="breadcrumb-menu-entry"
@@ -248,7 +254,7 @@ onBeforeUnmount(() => {
             :file="entry" :icon="documentIcons?.[entry.id]"
             :load="isMarkdown(entry.path) ? loadDocumentIcon : undefined"
           />
-          <component v-else :is="entry.kind === 'directory' ? FolderOpen : File" :size="17" :stroke-width="1.6" />
+          <ResourceIcon v-else :path="entry.path" :name="entry.name" :kind="entry.kind" :expanded="true" :size="17" />
           <span>{{ fileLabel(entry) }}</span>
           <Check v-if="entry.kind === 'file' && entry.path === path" :size="14" class="breadcrumb-menu-trailing" />
         </button>
@@ -277,9 +283,17 @@ onBeforeUnmount(() => {
 }
 .breadcrumb > .breadcrumb-current { color: var(--text); }
 .breadcrumb > .breadcrumb-workspace { max-width: 220px; }
+.breadcrumb-workspace-icon { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; flex-shrink: 0; border-radius: 3px; }
 .breadcrumb-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .breadcrumb-trigger > svg, .breadcrumb-separator { flex-shrink: 0; }
 .breadcrumb-trigger > .document-file-icon, .breadcrumb-menu-entry > .document-file-icon { flex-shrink: 0; }
+.breadcrumb-trigger > svg,
+.breadcrumb-trigger > .document-file-icon,
+.breadcrumb-workspace-icon,
+.breadcrumb > svg.breadcrumb-separator,
+.breadcrumb-menu-trigger > svg,
+.breadcrumb-menu-entry > svg,
+.breadcrumb-menu-entry > .document-file-icon { translate: 0 var(--navigation-icon-offset-y, 0.5px); }
 button.breadcrumb-trigger:hover, .breadcrumb-trigger[aria-expanded='true'] { background: var(--hover); }
 .breadcrumb-trigger:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
 .breadcrumb > .breadcrumb-menu-trigger {

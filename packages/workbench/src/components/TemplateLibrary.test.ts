@@ -27,6 +27,7 @@ async function mount(props = {}) {
 beforeEach(() => {
   onClose.mockReset();
   mock.store = reactive({
+    workspaceSettings: { icon: '' }, isDemo: false, isWeb: false,
     workspace: { id: 'workspace', name: '测试工作区', files: [{ id: 'weekly', name: '周报.md', path: '周报.md', kind: 'file' }], readOnly: false },
     templates: vi.fn().mockResolvedValue({ templates: [], errors: [] }),
     writeTemplate: vi.fn(), create: vi.fn().mockResolvedValue(undefined),

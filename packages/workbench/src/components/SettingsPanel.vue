@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import ModalBackdrop from './ModalBackdrop.vue';
 import CapabilitySyntax from './CapabilitySyntax.vue';
+import ThemePresetPicker from './ThemePresetPicker.vue';
 import { t, uiLocale, setUiLocale, uiSearchText } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
@@ -36,12 +38,15 @@ import {
   featureDefinitions,
   defaultCapabilities,
   defaultEditorPreferences,
+  normalizeCopyFormat,
   normalizeSelectionWrapping,
   selectionWrappingOptions,
 } from '@tano/editor/runtime';
 import type { WorkspaceCapabilities, EditorPreferences } from '@tano/editor/runtime';
 import type { CapabilityPatch } from '../workspace-capabilities';
-import type { ThemePreference } from '../theme';
+import { fixedColorMode, type ThemePreference } from '../theme';
+import type { AppearanceSnapshot, AppearanceSelection } from '../appearance';
+import { appearanceKinds, builtinDefault } from '../appearance';
 import { sanitizeCustomFontName, visualFontFamily } from '../editor-font';
 import type { VisualFontChoice } from '../editor-font';
 import type { ToolbarMode } from '../toolbar-preference';
@@ -84,6 +89,7 @@ const props = defineProps<{
   mobile: boolean;
   defaultSource: boolean;
   theme: ThemePreference;
+  appearance?: AppearanceSnapshot;
   visualFontChoice: VisualFontChoice;
   customFontName: string;
   revealMarkdown: boolean;
@@ -105,6 +111,10 @@ const props = defineProps<{
   capabilityError?: string;
   capabilitySaving?: boolean;
 }>();
+const fixedDisplayMode = computed(() => fixedColorMode(props.appearance?.color));
+const displayMode = computed(() => fixedDisplayMode.value ?? props.theme);
+const displayModeDescription = computed(() => fixedDisplayMode.value === 'light' ? '当前配色主题仅支持浅色。'
+  : fixedDisplayMode.value === 'dark' ? '当前配色主题仅支持深色。' : '选择浅色、深色或跟随系统，偏好在工作区间共用。');
 const emit = defineEmits<{
   close: [];
   'open-tab': [page: string];
@@ -113,6 +123,7 @@ const emit = defineEmits<{
   'drag-window': [event: MouseEvent];
   'update:defaultSource': [value: boolean];
   'update:theme': [value: ThemePreference];
+  appearance: [selection: AppearanceSelection];
   'update:visualFontChoice': [value: VisualFontChoice];
   'update:customFontName': [value: string];
   'update:revealMarkdown': [value: boolean];
@@ -256,7 +267,15 @@ function settingSearchEntry(page: Page, id: string, label: string, description =
 const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('appearance', 'appearance-auto-spacing', '正文自动间距', '在中文与英文、数字、行内公式及引用之间自动留白，仅影响显示，不修改原文。', 'spacing typography 中英文 数字 公式 引用 空格 排版'),
   settingSearchEntry('appearance', 'appearance-language', '界面语言', '立即切换界面语言，仅保存在当前设备。', 'language English 中文'),
-  settingSearchEntry('appearance', 'appearance-theme', '主题', '选择应用外观，或随系统外观自动切换。', 'theme light dark system 白天 黑夜 深色 浅色'),
+  settingSearchEntry('appearance', 'appearance-theme', '显示模式', displayModeDescription.value, 'theme display mode light dark system 主题 模式 白天 黑夜 深色 浅色'),
+  ...(props.appearance ? [
+  settingSearchEntry('appearance', 'appearance-scope', '为此工作区单独设置', '用户默认与工作区覆盖', 'scope user workspace 用户 默认 覆盖'),
+  settingSearchEntry('appearance', 'appearance-shape', '形态与密度', '独立选择字体、圆角、控件间距和阴影。', 'shape typography density 字体 圆角 密度 间距 阴影'),
+  settingSearchEntry('appearance', 'appearance-presets', '主题预设', '只应用预设声明的配色、图标、布局和形态，未指定的项保持当前。', 'preset theme 一键 整套 预设 风格'),
+  settingSearchEntry('appearance', 'appearance-color', '配色主题', '选择工作区主题插件。', 'theme 插件 风格 配色'),
+  settingSearchEntry('appearance', 'appearance-icons', '文件与目录图标', '选择工作区图标主题。', 'icon 文件夹 图标 插件'),
+  settingSearchEntry('appearance', 'appearance-layout', '布局风格', '独立选择页面结构和材质，可与任意配色、图标混搭。', 'layout islands paper retro 卡片岛 复古 拟物 纸质 布局'),
+  ] : []),
   settingSearchEntry('appearance', 'appearance-visual-font', '可视化编辑字体', '选择内置字体，或使用本机已安装的字体。', 'font system serif mono Maple custom'),
   settingSearchEntry('appearance', 'appearance-custom-font', '字体名称', '输入本机字体名称；未安装时会回退到系统字体。', 'custom font'),
   settingSearchEntry('appearance', 'appearance-visual-size', '可视化编辑字号', '调整正文、标题和编辑中的内容大小。', 'font size'),
@@ -269,6 +288,7 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('appearance', 'appearance-help', '偶尔显示使用提示', '在你停下来时，在帮助按钮上方显示简短的用法提示。关闭后仍可手动查看帮助。', 'help tips hints'),
   settingSearchEntry('editing', 'editing-default-mode', '默认编辑模式', '选择打开文档时使用的视图。', 'editor visual Markdown source'),
   settingSearchEntry('editing', 'editing-reveal-markdown', '光标进入时展开 Markdown 源码', '类似 Typora、Obsidian 的实时预览：光标进入时显示 Markdown 语法，离开后恢复排版。', 'live preview source syntax'),
+  settingSearchEntry('editing', 'editing-copy-format', '默认复制格式', '设置可视化编辑区的默认复制与剪切格式，右键菜单仍可单次选择其他格式。仅保存在当前设备。', 'copy clipboard Ctrl+C Command+C Word HTML Markdown 富文本 纯文本 剪贴板 复制'),
   settingSearchEntry('editing', 'editing-toolbar', '编辑工具栏', '随选区显示，或停靠在顶部、底部、左侧、右侧；也可拖动工具栏手柄调整。仅影响当前设备。', 'toolbar selection top bottom left right'),
   settingSearchEntry('editing', 'editing-preview-math', '编辑时预览公式', '展开 Markdown 源码编辑公式时同步显示排版效果。', 'math formula preview'),
   settingSearchEntry('editing', 'editing-folding', '标题与列表折叠', '显示折叠按钮，临时收起标题下的内容或列表项。', 'heading list folding collapse'),
@@ -278,6 +298,7 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   ...shortcutDefinitions.map(item => settingSearchEntry('shortcuts', `shortcut-${item.id}`, item.label, 'scope' in item ? item.scope : '', 'shortcut keybinding keyboard')),
   settingSearchEntry('assistant', 'assistant-connections', '模型连接', '管理助手使用的 API 或 CLI 连接。', 'assistant model connection API CLI'),
   ...featureDefinitions.map(feature => settingSearchEntry('documents', `documents-${feature.key}`, feature.label, '', 'Markdown extension')),
+  settingSearchEntry('documents', 'documents-math-recognition', '识别的公式语法', '未选中的语法按普通文本显示，不修改 Markdown 原文。', '公式 渲染 识别 math LaTeX dollar'),
   settingSearchEntry('documents', 'documents-dialect', '新公式默认格式', '设置新公式的写法，不确定时保留默认即可。', 'Markdown 方言 dialect Obsidian GitHub Pandoc CommonMark'),
   settingSearchEntry('documents', 'documents-math-syntax', '已有公式保存格式', '保留原样：已有公式不转换，新公式使用上面的默认格式。选择统一格式：新旧公式都使用所选写法，在下次编辑保存正文时应用。', '公式输出语法 math formula syntax LaTeX Dollar'),
   settingSearchEntry('documents', 'documents-bullet-marker', '无序列表标记', '选择无序列表与待办列表的 Markdown 标记，在下一次编辑保存正文时应用。', 'bullet list marker'),
@@ -416,7 +437,7 @@ function customFontInput(event: Event) {
 </script>
 
 <template>
-  <ModalBackdrop :active="!windowed && !tabbed" class="modal-backdrop settings-backdrop" :class="{ 'settings-windowed': windowed, 'settings-tabbed': tabbed }" @close="emit('close')">
+  <ModalBackdrop v-surface-motion="!windowed && !tabbed ? 'SettingsPanel:0' : false" :active="!windowed && !tabbed" class="modal-backdrop settings-backdrop" :class="{ 'settings-windowed': windowed, 'settings-tabbed': tabbed }" @close="emit('close')">
     <section
       ref="settingsDialog"
       class="settings-dialog workbench-modal-surface"
@@ -536,7 +557,7 @@ function customFontInput(event: Event) {
               <Monitor :size="13" /><span>{{ scopeLabel }}</span>
             </div>
           </div>
-          <p class="settings-lead">{{ page === 'appearance' ? t('适用于这台设备上的所有工作区，仅影响你的显示效果。') : t('适用于这台设备上的所有工作区，仅影响你的编辑体验。') }}</p>
+          <p class="settings-lead">{{ page === 'appearance' ? t('外观默认用于当前用户的所有工作区，也可为此工作区单独设置。') : t('适用于这台设备上的所有工作区，仅影响你的编辑体验。') }}</p>
           <section v-if="page === 'appearance'" class="settings-section" :aria-label="t('外观')">
             <h3>{{ t('外观') }}</h3>
             <div class="settings-card">
@@ -551,21 +572,49 @@ function customFontInput(event: Event) {
                   <option value="en-US">English</option>
                 </select>
               </div>
+              <div v-if="appearance" class="settings-row" data-settings-key="appearance-scope">
+                <div><strong>{{ t('为此工作区单独设置') }}</strong><p>{{ t(appearance.scope === 'workspace' ? '仅覆盖配色、图标、布局和形态；关闭后恢复用户默认。' : '四个槽位使用用户默认；其他工作区会沿用这些选择。') }}</p></div>
+                <button type="button" class="settings-switch" :class="{ on: appearance.scope === 'workspace' }" role="switch" :aria-label="t('为此工作区单独设置')" :aria-checked="appearance.scope === 'workspace'" :disabled="!appearance.workspaceId"
+                  @click="emit('appearance', { workspaceId: appearance.workspaceId, kind: 'scope', id: appearance.scope === 'workspace' ? 'user' : 'workspace' })"><span /></button>
+              </div>
               <div class="settings-row" data-settings-key="appearance-theme">
                 <div>
-                  <strong>{{ t('主题') }}</strong>
-                  <p>{{ t('选择应用外观，或随系统外观自动切换。') }}</p>
+                  <strong>{{ t('显示模式') }}</strong>
+                  <p>{{ t(displayModeDescription) }}</p>
                 </div>
                 <select
-                  :value="theme"
-                  :aria-label="t('主题')"
+                  :value="displayMode"
+                  :disabled="!!fixedDisplayMode"
+                  :aria-label="t('显示模式')"
                   @change="emit('update:theme', ($event.target as HTMLSelectElement).value as ThemePreference)"
                 >
-                  <option value="light">{{ t('白天') }}</option>
-                  <option value="dark">{{ t('黑夜') }}</option>
-                  <option value="system">{{ t('跟随系统') }}</option>
+                  <option v-if="!fixedDisplayMode || fixedDisplayMode === 'light'" value="light">{{ t('浅色') }}</option>
+                  <option v-if="!fixedDisplayMode || fixedDisplayMode === 'dark'" value="dark">{{ t('深色') }}</option>
+                  <option v-if="!fixedDisplayMode" value="system">{{ t('跟随系统') }}</option>
                 </select>
               </div>
+              <template v-if="appearance">
+                <section class="theme-presets" data-settings-key="appearance-presets" :aria-label="t('主题预设')">
+                  <h3>{{ t('主题预设') }}</h3>
+                  <p>{{ t('只应用预设声明的配色、图标、布局和形态，未指定的项保持当前。') }}</p>
+                  <ThemePresetPicker :appearance="appearance" @select="emit('appearance', $event)" />
+                </section>
+                <div v-for="kind in appearanceKinds" :key="kind" class="settings-row" :data-settings-key="`appearance-${kind}`">
+                  <div>
+                    <strong>{{ t(kind === 'color' ? '配色主题' : kind === 'layout' ? '布局风格' : kind === 'shape' ? '形态与密度' : '文件与目录图标') }}</strong>
+                    <p>{{ t(kind === 'shape' ? '独立选择字体、圆角、控件间距和阴影。' : kind === 'layout' ? '独立选择页面结构和材质，可与任意配色、图标混搭。' : '从内置项和当前工作区已启用的插件中选择，保存在当前设备。') }}</p>
+                    <p v-if="appearance.selected[kind] !== appearance.active[kind]" role="status">{{ t('原主题当前不可用，已使用同页默认；重新启用后会自动恢复。') }}</p>
+                  </div>
+                  <select :aria-label="t(kind === 'color' ? '配色主题' : kind === 'layout' ? '布局风格' : kind === 'shape' ? '形态与密度' : '文件与目录图标')"
+                    :value="appearance.selected[kind]"
+                    @change="emit('appearance', { workspaceId: appearance.workspaceId, kind, id: ($event.target as HTMLSelectElement).value })">
+                    <option :value="builtinDefault">{{ t('同页默认') }}</option>
+                    <option v-if="appearance.selected[kind] !== appearance.active[kind]" :value="appearance.selected[kind]" disabled>{{ t('原主题暂不可用（使用默认）') }}</option>
+                    <option v-for="choice in (kind === 'color' ? appearance.colors : kind === 'layout' ? appearance.layouts : kind === 'shape' ? appearance.shapes : appearance.icons)" :key="choice.id" :value="choice.id">{{ t(choice.label) }}</option>
+                  </select>
+                </div>
+                <p v-for="message in appearance.errors" :key="message" role="alert">{{ message }}</p>
+              </template>
             </div>
           </section>
           <section v-if="page === 'editing'" class="settings-section" aria-labelledby="settings-editor">
@@ -728,6 +777,24 @@ function customFontInput(event: Event) {
           <section v-if="page === 'editing'" class="settings-section" :aria-label="t('编辑行为')">
             <h3>{{ t('编辑行为') }}</h3>
             <div class="settings-card">
+              <div class="settings-row" data-settings-key="editing-copy-format">
+                <div>
+                  <strong>{{ t('默认复制格式') }}</strong>
+                  <p>{{ t('设置可视化编辑区的默认复制与剪切格式，右键菜单仍可单次选择其他格式。仅保存在当前设备。') }}</p>
+                  <p v-if="normalizeCopyFormat(display.copyFormat) === 'rich'">{{ t('在 Word 中粘贴后选择“保留源格式”，以保留颜色、底色和字体。') }}</p>
+                  <p v-if="normalizeCopyFormat(display.copyFormat) === 'wechat'">{{ t('公众号复制会将外链转为可见地址，公式在本地渲染为 SVG。') }}</p>
+                  <p v-if="normalizeCopyFormat(display.copyFormat) === 'zhihu'">{{ t('知乎复制会携带公式识别标记，由知乎编辑器解析公式。') }}</p>
+                </div>
+                <select :aria-label="t('默认复制格式')" :value="normalizeCopyFormat(display.copyFormat)"
+                  @change="emit('update:editorPreferences', { ...display, copyFormat: normalizeCopyFormat(($event.target as HTMLSelectElement).value) })">
+                  <option value="markdown">{{ t('Markdown 源码（默认）') }}</option>
+                  <option value="rich">{{ t('富文本（Word / WPS）') }}</option>
+                  <option value="wechat">{{ t('微信公众号') }}</option>
+                  <option value="zhihu">{{ t('知乎') }}</option>
+                  <option value="html">{{ t('HTML 源码') }}</option>
+                  <option value="text">{{ t('纯文本') }}</option>
+                </select>
+              </div>
               <div class="settings-row" data-settings-key="editing-toolbar">
                 <div>
                   <strong>{{ t('编辑工具栏') }}</strong>
@@ -959,7 +1026,7 @@ function customFontInput(event: Event) {
               <BookOpen :size="13" /><span>{{ scopeLabel }}</span>
             </div>
           </div>
-          <p class="settings-lead">{{ t('仅对当前工作区生效，文档能力与 Markdown 输出规则随空间共享。') }}</p>
+          <p class="settings-lead">{{ t('仅对当前工作区生效，文档能力与 Markdown 语法规则随空间共享。') }}</p>
           <section class="settings-section" :aria-label="t('内容扩展')">
             <h3>{{ t('内容扩展') }}<span class="settings-scope">{{ t('工作区共享') }}</span></h3>
             <p class="settings-section-description">{{ t('关闭后显示原始内容，已有文档会保留。') }}</p>
@@ -1003,9 +1070,23 @@ function customFontInput(event: Event) {
             </div>
             <p class="settings-local-note">{{ t('Kanban 与数据库块尚未实现；相关源码会保留。') }}</p>
           </section>
-          <section class="settings-section" :aria-label="t('Markdown 输出')">
-            <h3>{{ t('Markdown 输出') }}</h3>
+          <section class="settings-section" :aria-label="t('Markdown 语法')">
+            <h3>{{ t('Markdown 语法') }}</h3>
             <div class="settings-card">
+              <div class="settings-row" data-settings-key="documents-math-recognition">
+                <div>
+                  <strong>{{ t('识别的公式语法') }}</strong>
+                  <p>{{ t('未选中的语法按普通文本显示，不修改 Markdown 原文。') }}</p>
+                  <p><code>$…$ / $$…$$</code> · <code>\(…\) / \[…\]</code></p>
+                </div>
+                <select :value="rules.mathRecognition ?? 'all'" :disabled="rulesDisabled || !rules.features.math"
+                  :aria-label="t('识别的公式语法')"
+                  @change="emit('capability', { mathRecognition: ($event.target as HTMLSelectElement).value as WorkspaceCapabilities['mathRecognition'] })">
+                  <option value="all">{{ t('全部支持（推荐）') }}</option>
+                  <option value="dollar">{{ t('仅美元符号') }}</option>
+                  <option value="latex">{{ t('仅反斜杠括号') }}</option>
+                </select>
+              </div>
               <div class="settings-row" data-settings-key="documents-dialect">
                 <div>
                   <strong>{{ t('新公式默认格式') }}</strong>
@@ -1624,6 +1705,7 @@ function customFontInput(event: Event) {
 :root[data-theme='dark'] .settings-row select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%23b8c0c9' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3 4.5 3 3 3-3'/%3E%3C/svg%3E");
 }
+.settings-row[data-settings-key='documents-math-recognition'] select,
 .settings-row[data-settings-key='documents-dialect'] select,
 .settings-row[data-settings-key='documents-math-syntax'] select,
 .settings-row[data-settings-key='documents-bullet-marker'] select {
@@ -2182,4 +2264,6 @@ function customFontInput(event: Event) {
   z-index: 2;
 }
 
+.theme-presets { padding-block: 20px; border-bottom: 1px solid var(--line); }
+.theme-presets > p { color: var(--text-secondary); font-size: 13px; line-height: 1.6; }
 </style>

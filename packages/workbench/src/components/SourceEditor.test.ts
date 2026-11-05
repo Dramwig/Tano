@@ -243,7 +243,7 @@ it('appends a Todo reference without replacing the selected text and makes the i
   expect(captured.text).toBe('selected');
   expect(captured.insert({ type: 'event', id: 'b00001' }, 'Task')).toBe(true);
   await nextTick();
-  expect(value.value).toBe('before selected [@Task](object://event/b00001) after');
+  expect(value.value).toBe('before selected [[object://event/b00001]] after');
   expect(editor.value!.undoLastChange()).toBe(true);
   await nextTick();
   expect(value.value).toBe('before selected after');
@@ -256,7 +256,7 @@ it('keeps a source-mode reference outside selected fenced code', async () => {
   view.dispatch({ selection: { anchor: 6, head: 19 } });
   expect(editor.value!.captureTodoSelection()!.insert({ type: 'event', id: 'b00001' }, 'Task')).toBe(true);
   await nextTick();
-  expect(value.value).toContain('```ts\nselected code\n```\n\n[@Task](object://event/b00001)');
+  expect(value.value).toContain('```ts\nselected code\n```\n\n[[object://event/b00001]]');
 });
 
 it('undoes local typing without reverting an independent external edit', async () => {

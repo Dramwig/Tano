@@ -6,6 +6,8 @@ The Inter font uses the SIL Open Font License in `apps/client/public/INTER-LICEN
 
 The Literata font uses the SIL Open Font License in `apps/client/public/LITERATA-LICENSE.txt`.
 
+The open workspace button embeds the [Bootstrap Icons folder-symlink SVG](https://github.com/twbs/icons/blob/main/icons/folder-symlink.svg), copyright (c) 2019-2024 The Bootstrap Authors, under MIT. Its source reference and license are retained in [packages/workbench/src/assets/bootstrap/](packages/workbench/src/assets/bootstrap/README.md) and the client distribution notices.
+
 The source mode button embeds the [Tabler Icons source-code outline SVG](https://github.com/tabler/tabler-icons/blob/main/icons/outline/source-code.svg), copyright (c) 2020-2026 Paweł Kuna, under MIT. Its source and license are retained in [packages/workbench/src/assets/tabler/](packages/workbench/src/assets/tabler/README.md) and the generated client distribution notices.
 
 The import panel bundles ten unmodified brand SVGs from [Simple Icons 15.0.0](https://github.com/simple-icons/simple-icons/tree/15.0.0), distributed under CC0-1.0, and two original MIT-licensed Tano pictograms. Source URLs, display colors, and the license are retained in [packages/workbench/src/assets/import-icons/](packages/workbench/src/assets/import-icons/README.md) and the generated client distribution notices. Brand marks identify import sources; trademark rights remain with their owners and no affiliation or endorsement is implied.

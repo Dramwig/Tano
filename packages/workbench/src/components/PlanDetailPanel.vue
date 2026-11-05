@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useId, watch } from 'vue';
 import { Archive, CalendarDays, Check, Circle, CircleCheck, Copy, Flag, ListTodo, LoaderCircle, RotateCcw, Save, X } from 'lucide-vue-next';
@@ -201,7 +202,7 @@ onBeforeUnmount(() => { nameResize?.disconnect(); if (previousFocus?.isConnected
 </script>
 
 <template>
-  <div class="plan-detail-backdrop" @mousedown.self="requestNavigation({ kind: 'close' })">
+  <div v-surface-motion="'PlanDetailPanel:0'" class="plan-detail-backdrop" @mousedown.self="requestNavigation({ kind: 'close' })">
     <form ref="panel" class="plan-detail-panel" role="dialog" aria-modal="true" :aria-label="title" tabindex="-1" @submit.prevent="save()" @keydown="keyboard">
       <header>
         <div class="plan-detail-heading"><component :is="checkable ? ListTodo : CalendarDays" :size="18" /><h2>{{ title }}</h2><span>{{ personal ? t('个人') : base.source?.name ?? store.workspace?.name }}</span></div>
@@ -320,7 +321,7 @@ footer { border-top: 1px solid var(--line); padding-bottom: max(12px, env(safe-a
 .detail-save-state.has-changes { color: var(--text-secondary); }
 .detail-close { padding: 8px 12px; height: 36px; font-size: 13px; color: var(--text-secondary); border-radius: 5px; }
 .detail-close:hover:not(:disabled) { background: var(--hover); }
-.detail-save { display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex-shrink: 0; min-width: 90px; height: 36px; border-radius: 6px; color: #fff; background: var(--green-fill); font-size: 13px; }
+.detail-save { display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex-shrink: 0; min-width: 90px; height: 36px; border-radius: 6px; color: var(--on-accent, #fff); background: var(--green-fill); font-size: 13px; }
 .detail-save:hover:not(:disabled) { background: var(--green-fill-hover); }
 .plan-detail-panel button:disabled { opacity: .55; cursor: not-allowed; }
 .plan-detail-panel :is(input, textarea):disabled { cursor: not-allowed; }

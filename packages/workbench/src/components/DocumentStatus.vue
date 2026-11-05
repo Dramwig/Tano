@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { AlertCircle, Check, CircleDot, CloudUpload, Eye, LoaderCircle, LockKeyhole, RefreshCw, WifiOff } from 'lucide-vue-next';
 import { t } from '../i18n';
@@ -68,7 +69,7 @@ onBeforeUnmount(() => {
       :class="{ spinning: primary.kind === 'syncing' || primary.kind === 'saving' }" />
   </button>
   <Teleport to="body">
-    <section v-if="opened" :id="panelId" ref="panel" class="document-status-panel" :style="position"
+    <section v-surface-motion="'DocumentStatus:0'" v-if="opened" :id="panelId" ref="panel" class="document-status-panel" :style="position"
       role="dialog" :aria-label="t('文章状态')" @pointerenter="cancelClose" @pointerleave="leave" @focusin="cancelClose">
       <div v-for="(item, index) in items" :key="`${item.kind}:${index}`" class="document-status-row">
         <component :is="icons[item.kind]" :size="16" :stroke-width="1.6" aria-hidden="true" />

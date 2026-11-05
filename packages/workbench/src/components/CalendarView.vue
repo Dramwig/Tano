@@ -650,7 +650,7 @@ watch(() => props.date, (date) => {
 .calendar-view-date-event:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
 .calendar-view-day-heading.today strong,
 .calendar-month-date.today,
-.calendar-year-days button.today > .calendar-year-date { color: white; background: var(--green-fill); }
+.calendar-year-days button.today > .calendar-year-date { color: var(--on-accent, white); background: var(--green-fill); }
 .calendar-view-grid { height: 1344px; }
 .calendar-view-hours { position: sticky; left: 0; z-index: 1; background: var(--paper); }
 .calendar-view-hours span {

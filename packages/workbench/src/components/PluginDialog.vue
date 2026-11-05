@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion, closeSurfaceDialog } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { onMounted, onBeforeUnmount, ref, useId } from 'vue';
 import { X } from 'lucide-vue-next';
@@ -7,7 +8,7 @@ const emit = defineEmits<{ close: [] }>();
 const dialog = ref<HTMLDialogElement>();
 const titleId = useId();
 onMounted(() => dialog.value?.showModal());
-onBeforeUnmount(() => dialog.value?.close());
+onBeforeUnmount(() => closeSurfaceDialog(dialog.value));
 function trapFocus(event: KeyboardEvent) {
   if (event.key !== 'Tab') return;
   const controls = [
@@ -28,7 +29,7 @@ function trapFocus(event: KeyboardEvent) {
 </script>
 
 <template>
-  <dialog
+  <dialog v-surface-motion="'PluginDialog:0'"
     ref="dialog"
     class="plugin-dialog"
     :aria-labelledby="titleId"

@@ -118,7 +118,7 @@
   background: var(--text-secondary);
 }
 .pc-primary {
-  color: #fff;
+  color: var(--on-accent, #fff);
   background: var(--green-fill);
 }
 .pc-primary:hover:not(:disabled) {

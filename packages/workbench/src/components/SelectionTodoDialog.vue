@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { nextTick, onMounted, onBeforeUnmount, ref } from 'vue';
 import { X } from 'lucide-vue-next';
@@ -35,7 +36,7 @@ async function save(append = false) {
 </script>
 
 <template>
-  <div class="selection-todo-backdrop" @click.self="close">
+  <div v-surface-motion="'SelectionTodoDialog:0'" class="selection-todo-backdrop" @click.self="close">
     <form ref="panel" class="selection-todo-dialog" role="dialog" aria-modal="true" :aria-label="t('从选区创建任务或事件')" @submit.prevent="save()" @keydown.esc.stop.prevent="close" @keydown="trapFocus">
       <header><h2>{{ t('创建任务或事件') }}</h2><button type="button" class="icon-button" :aria-label="t('关闭创建事项')" :data-tooltip="t('关闭')" :disabled="busy" @click="close"><X :size="18" /></button></header>
       <p>{{ t('归属工作区：{0}', [session.workspaceName]) }}</p>

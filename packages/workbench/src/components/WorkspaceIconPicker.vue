@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t, uiLocale } from '../i18n';
 import englishIconLabels from '../locales/icon-labels-en.json';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
@@ -94,6 +95,7 @@ function place() {
     left: Math.max(8, Math.min(props.align === 'start' ? rect.left : rect.right - width, window.innerWidth - width - 8)),
     top, width, maxHeight,
   };
+  if (panel.value) panel.value.dataset.surfaceSide = top < rect.top ? 'up' : 'down';
 }
 async function toggle() {
   if (props.disabled) return;
@@ -211,7 +213,7 @@ onBeforeUnmount(() => {
     :aria-controls="pickerId" :disabled="disabled" @click="toggle"
   ><slot name="preview"><WorkspaceIcon :icon="icon" :mode="mode" :size="28" /></slot></button>
   <Teleport to="body">
-    <section
+    <section v-surface-motion="'WorkspaceIconPicker:0'"
       v-if="open" :id="pickerId" ref="panel" class="workspace-icon-picker" role="dialog"
       :aria-label="label" :style="{
         left: `${position.left}px`, top: `${position.top}px`, width: `${position.width}px`, maxHeight: `${position.maxHeight}px`,
@@ -294,7 +296,7 @@ onBeforeUnmount(() => {
 .workspace-icon-picker-upload-symbol { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 12px; color: var(--muted); background: var(--surface); }
 .workspace-icon-picker-upload-title { margin: 12px 0 0; font-size: 14px; font-weight: 500; line-height: 20px; }
 .workspace-icon-picker-upload-actions { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 16px; }
-.workspace-icon-picker-upload-actions .settings-button { min-width: 112px; min-height: 34px; padding: 6px 11px; justify-content: center; border-color: var(--green-fill); color: #fff; background: var(--green-fill); }
+.workspace-icon-picker-upload-actions .settings-button { min-width: 112px; min-height: 34px; padding: 6px 11px; justify-content: center; border-color: var(--green-fill); color: var(--on-accent, #fff); background: var(--green-fill); }
 .workspace-icon-picker-upload-actions .settings-button:hover:not(:disabled) { border-color: var(--green-fill-hover); background: var(--green-fill-hover); }
 .workspace-icon-picker-upload-paste { margin: 0; color: var(--muted); font-size: 12px; line-height: 20px; }
 .workspace-icon-picker-upload-paste kbd { font-family: inherit; font-size: inherit; }

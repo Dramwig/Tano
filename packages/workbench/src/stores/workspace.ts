@@ -356,6 +356,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   if (typeof window !== 'undefined') window.addEventListener('storage', pluginStorageChanged);
   onScopeDispose(() => { if (typeof window !== 'undefined') window.removeEventListener('storage', pluginStorageChanged); });
   const installedPlugins = ref<InstalledObjectPlugin[]>([]);
+  const installedPluginWorkspace = ref('');
   const pluginDevelopment = shallowRef<PluginDevelopmentState>({ pluginId: '', active: false, message: '' });
   const pluginServices = new WorkspacePluginRuntime({
     adapter, services: runtime.plugins, serial, refresh: refreshObjects, call: pluginCall,
@@ -440,7 +441,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     referenceDocumentCache.clear();
     const pluginsReady = loadWorkspacePart('plugins', async () => {
         try {
-          installedPlugins.value = await pluginHost.loadWorkspace(adapter, current);
+          const installed = await pluginHost.loadWorkspace(adapter, current);
+          if (workspace.value?.id !== current.id) return;
+          installedPlugins.value = installed;
+          installedPluginWorkspace.value = current.id;
           pluginExecutor.sync(current, installedPlugins.value);
           pluginError.value = '';
         } catch (error) {
@@ -3153,6 +3157,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     dockTab,
     resizeSplit,
     installedPlugins,
+    installedPluginWorkspace,
     pluginRuntime,
     canManagePlugins,
     canManageSettings,

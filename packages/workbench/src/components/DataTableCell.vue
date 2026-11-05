@@ -81,6 +81,7 @@ async function placeMenu() {
   if (!menu.value?.open || !anchor || popover.value !== element) return;
   // Measure the rendered border box after width and wrapping have settled.
   const height = element.getBoundingClientRect().height;
+  element.dataset.surfaceSide = anchor.bottom + height + 4 <= window.innerHeight - 8 ? 'down' : 'up';
   menuStyle.value = {
     ...menuStyle.value,
     left: `${Math.max(8, Math.min(anchor.left, window.innerWidth - width - 8))}px`,

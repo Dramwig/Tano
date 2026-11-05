@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
@@ -125,7 +126,7 @@ async function onSearchKeydown(event: KeyboardEvent) {
 
 <template>
   <Teleport to="body">
-    <div
+    <div v-surface-motion="'NewTabPicker:0'"
       class="new-tab-backdrop"
       @mousedown.self="emit('close')"
       @keydown.esc.stop.prevent="emit('close')"

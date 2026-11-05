@@ -1,5 +1,7 @@
 # 插件 API v1 参考与迁移
 
+主题贡献、稳定样式变量、独立配色/图标选择及隔离页面同步见 [主题插件](theme-plugins.md)。
+
 本文覆盖 [SDK 类型定义](../packages/workbench/src/plugin-sdk.ts) 的全部公开方法。清单、运行限制和示例见 [插件开发](plugins.md)。SDK 只导入类型，运行时对象由宿主传给 `activate(tano)`。
 
 ## 创建与验证

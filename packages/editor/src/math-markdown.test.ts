@@ -63,3 +63,16 @@ describe('math syntax adapters', () => {
     }
   });
 });
+
+it.each([
+  ['dollar', '\\(x_1\\)', 'dollar'],
+  ['latex', '$x_1$', 'latex'],
+  ['dollar', '\\[\nx_1\n\\]', 'dollar'],
+  ['latex', '$$\nx_1\n$$', 'latex'],
+] as const)('preserves unrecognized %s source even when output conversion is enabled', async (recognition, formula, output) => {
+  const codec = await createHeadlessMarkdown({ ...defaultCapabilities, mathRecognition: recognition, mathSyntax: output });
+  try {
+    const source = formula.includes('\n') ? `${formula}\n` : `前 ${formula} 后\n`;
+    expect(codec.normalize(source)).toContain(formula);
+  } finally { await codec.destroy(); }
+});

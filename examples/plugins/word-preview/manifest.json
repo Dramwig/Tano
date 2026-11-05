@@ -16,11 +16,7 @@
   "commands": [
     {
       "id": "open",
-      "label": "Word：打开预览",
-      "menus": [
-        "file",
-        "workspace"
-      ]
+      "label": "Word：打开预览"
     }
   ],
   "views": [

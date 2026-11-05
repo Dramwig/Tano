@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { animate } from 'motion/mini';
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import type { EditorSelectionContext } from '@tano/editor/document-model';
 import type { DocumentFeatures } from '@tano/editor/runtime';
 import EditorToolbar from './EditorToolbar.vue';
@@ -43,60 +43,6 @@ let resizeObserver: ResizeObserver | undefined;
 let menuObserver: MutationObserver | undefined;
 const observedMenus = new Set<HTMLElement>();
 let mounted = false;
-const animations = new Map<Element, ReturnType<typeof animate>>();
-
-function cancelAnimation(element: Element) {
-  animations.get(element)?.stop();
-  animations.delete(element);
-}
-function prepareEnter(element: Element) {
-  element.removeAttribute('inert');
-  element.removeAttribute('aria-hidden');
-  const surface = element.firstElementChild as HTMLElement | null;
-  if (surface) {
-    surface.style.opacity = '0';
-    surface.style.transform = 'scale(0.96)';
-  }
-}
-function animateVisibility(element: Element, done: () => void, entering: boolean) {
-  cancelAnimation(element);
-  if (!entering) {
-    element.setAttribute('inert', '');
-    element.setAttribute('aria-hidden', 'true');
-  }
-  // Animate the surface so docking transforms and positioning measurements stay stable.
-  const surface = element.firstElementChild as HTMLElement | null;
-  if (
-    !surface ||
-    typeof surface.animate !== 'function' ||
-    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-  ) {
-    if (surface) {
-      surface.style.opacity = entering ? '1' : '0';
-      surface.style.transform = '';
-    }
-    done();
-    return;
-  }
-  const animation = animate(
-    surface,
-    { opacity: entering ? 1 : 0, transform: entering ? 'scale(1)' : 'scale(0.96)' },
-    { duration: entering ? 0.16 : 0.12, ease: [0.22, 1, 0.36, 1] },
-  );
-  animations.set(element, animation);
-  void animation.finished.then(() => {
-    if (animations.get(element) !== animation) return;
-    animations.delete(element);
-    surface.style.transform = '';
-    done();
-  });
-}
-function enter(element: Element, done: () => void) {
-  animateVisibility(element, done, true);
-}
-function leave(element: Element, done: () => void) {
-  animateVisibility(element, done, false);
-}
 
 function editor() {
   return props.editorElement?.querySelector<HTMLElement>('.ProseMirror');
@@ -384,7 +330,6 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   mounted = false;
-  for (const element of animations.keys()) cancelAnimation(element);
   cancelAnimationFrame(frame);
   resizeObserver?.disconnect();
   menuObserver?.disconnect();
@@ -409,15 +354,7 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <Transition
-      :css="false"
-      @before-enter="prepareEnter"
-      @enter="enter"
-      @leave="leave"
-      @enter-cancelled="cancelAnimation"
-      @leave-cancelled="cancelAnimation"
-    >
-      <div
+    <div v-surface-motion="'SelectionToolbar:surface'"
         v-if="visible"
         ref="panel"
         class="selection-toolbar"
@@ -447,7 +384,7 @@ onBeforeUnmount(() => {
           <template v-if="$slots.preferences" #preferences><slot name="preferences" /></template>
         </EditorToolbar>
       </div>
-    </Transition>
+
   </Teleport>
 </template>
 

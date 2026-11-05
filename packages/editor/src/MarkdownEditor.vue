@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import { vSurfaceMotion, setSurfaceVisible } from './surface-motion';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { Component } from 'vue';
 import ShortcutHint from './ShortcutHint.vue';
-import { AlignLeft, ArrowDown, ArrowDownAZ, ArrowUp, Braces, ClipboardCopy, CopyPlus, Group, Heading, IndentDecrease, IndentIncrease, Pilcrow, Replace, SquareCode, Ungroup, CalendarClock, CalendarDays, CheckSquare2, ChevronRight, CircleHelp, Columns2, Hash, Info, List, ListCollapse, PanelsTopLeft, Plus, Quote, Trash2 } from 'lucide-vue-next';
+import WechatLogo from './clipboard-icons/wechat.vue';
+import ZhihuLogo from './clipboard-icons/zhihu.vue';
+import { AlignLeft, ArrowDown, ArrowDownAZ, ArrowUp, Braces, ClipboardCopy, CopyPlus, Group, Heading, IndentDecrease, IndentIncrease, Pilcrow, Replace, RotateCcw, Sigma, Table2, SquareCode, Ungroup, CalendarClock, CalendarDays, Check, CheckSquare2, ChevronRight, CircleHelp, Columns2, Hash, Info, List, ListCollapse, PanelsTopLeft, Plus, Quote, Trash2 } from 'lucide-vue-next';
 import {
   Editor,
   rootCtx,
@@ -42,7 +45,7 @@ import { createDocumentDecorations } from './document-decorations';
 import { richViewport, virtualBlockViews } from './rich-viewport';
 import { autoSpacing } from './auto-spacing';
 import type { EditorView } from '@milkdown/kit/prose/view';
-import { Fragment, Slice } from '@milkdown/kit/prose/model';
+import { DOMSerializer, Fragment, Slice } from '@milkdown/kit/prose/model';
 import { canSplit } from '@milkdown/kit/prose/transform';
 import type { Mark, Node } from '@milkdown/kit/prose/model';
 import type { Ctx } from '@milkdown/kit/ctx';
@@ -103,8 +106,9 @@ import type { InlineSourceSession } from './inline-source-session';
 import { liveInlineSource, liveSource } from './live-source';
 import { nestedEmphasisRemark } from './nested-emphasis';
 import { sourceStyleRanges } from './source-highlight';
-import { configureMarkdownRuntime, defaultCapabilities, defaultEditorPreferences, selectionWrap, workspaceWrapping } from './runtime';
-import type { WorkspaceCapabilities, EditorPreferences } from './runtime';
+import { configureMarkdownRuntime, defaultCapabilities, defaultEditorPreferences, normalizeCopyFormat, selectionWrap, workspaceWrapping } from './runtime';
+import type { WorkspaceCapabilities, EditorPreferences, CopyFormat } from './runtime';
+import { destinationClipboardHTML, selectedFormulaMathML, tableTSV } from './clipboard-formats';
 import { runtimeViews, runtimeMarkViews, mermaidView } from './runtime-views';
 import { footnoteNumbers, jumpToFootnote } from './footnotes';
 import { references } from './references';
@@ -119,7 +123,7 @@ import type { CommentAnchor } from '@tano/protocol';
 import { commentSpansForSelection, projectCommentText, proseRangesForCommentSpans } from './comment-projection';
 import { captureCaretAnchor, captureVisualAnchor, visualAnchorPlugin, visualSelection } from './visual-anchor';
 import { columnResizing, isInTable } from '@milkdown/kit/prose/tables';
-import { breakTableCell, nextTableRow } from './table-commands';
+import { breakTableCell, nextTableRow, tableLineAction } from './table-commands';
 import { tableBreaksRemark } from './table-markdown';
 import { defaultTableColumnWidth, minimumTableColumnWidth } from '@tano/protocol';
 import type { TableLayout } from '@tano/protocol';
@@ -179,6 +183,10 @@ const emit = defineEmits<{
 const policy = () => props.capabilities ?? defaultCapabilities;
 const referencesEnabled = () => props.referenceTargets !== undefined && commandEnabled('reference', props.enabledLevels, policy().features);
 const preferences = () => props.preferences ?? defaultEditorPreferences;
+const defaultCopyAction = computed(() => {
+  const format = normalizeCopyFormat(preferences().copyFormat);
+  return format === 'markdown' ? 'copy' : `copy-${format}`;
+});
 const root = ref<HTMLElement>();
 const emptyDocument = ref(false);
 function isEmptyDocument(doc: Node) {
@@ -382,10 +390,11 @@ function clearLinkModifier() {
 const blockMenuElement = ref<HTMLElement>();
 const blockMenu = shallowRef<{ index: number; x: number; y: number; doc: Node; selectionMenu?: boolean } | null>(null);
 const blockConvertTrigger = ref<HTMLButtonElement>();
+const blockCopyTrigger = ref<HTMLButtonElement>();
 const blockWrapTrigger = ref<HTMLButtonElement>();
 const copyShortcutLabel = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘ + C' : 'Ctrl + C';
 const blockContainerIcons = { quote: Quote, callout: Info, toggle: ListCollapse, tabs: PanelsTopLeft, columns: Columns2 };
-const blockSubmenuKind = ref<'convert' | 'wrap'>('convert');
+const blockSubmenuKind = ref<'convert' | 'wrap' | 'copy'>('convert');
 const blockConvertElement = ref<HTMLElement>();
 const blockConvertMenu = shallowRef<{ x: number; y: number } | null>(null);
 let blockConvertCloseTimer: ReturnType<typeof setTimeout> | undefined;
@@ -404,8 +413,10 @@ let sourceActivationPending = false;
 let selectingWithPointer = false;
 function endPointerSelection() { selectingWithPointer = false; }
 let bridgeView: EditorView | undefined;
+type BlockSourceGroup = { id: string; original: Fragment; initial: string };
 let localSource:
   | { kind: 'block'; id: string; original: Node; initial: string; style: Record<string, string> | null; dismissOnOutside?: boolean }
+  | { kind: 'block-group'; id: string; sources: BlockSourceGroup[] }
   | InlineSourceSession
   | { kind: 'footnote-label'; id: string; initial: string; createdParagraph: boolean }
   | undefined;
@@ -693,13 +704,19 @@ function sourceOffset(source: string, before: string, first: string) {
 
 function findCurrentSource(state: EditorState) {
   if (!localSource) return undefined;
+  const ids = new Set(localSource.kind === 'block-group' ? localSource.sources.map(source => source.id) : [localSource.id]);
   let found: { node: Node; pos: number } | undefined;
   state.doc.descendants((node, pos) => {
     if (
       ['tano_live_source', 'tano_live_source_inline'].includes(node.type.name) &&
-      node.attrs.id === localSource?.id
-    )
-      found = { node, pos };
+      ids.has(node.attrs.id)
+    ) {
+      // Several disjoint block groups can stay open together. Prefer the one
+      // containing the selection so moving between their sources keeps them open.
+      if (!found || (state.selection.from >= pos + 1 && state.selection.to < pos + node.nodeSize))
+        found = { node, pos };
+      return false;
+    }
   });
   return found;
 }
@@ -1018,6 +1035,32 @@ function blockNodeSourceTransaction(
   return tr;
 }
 
+function selectedBlocksSourceTransaction(ctx: Ctx, state: EditorState, selection: BlockRangeSelection) {
+  const groups: (typeof selection.blocks)[] = [];
+  for (const block of selection.blocks) {
+    const previous = groups.at(-1)?.at(-1);
+    if (previous && previous.parentPos === block.parentPos && previous.pos + previous.node.nodeSize === block.pos)
+      groups.at(-1)!.push(block);
+    else groups.push([block]);
+  }
+  const sources = groups.map(blocks => {
+    const original = Fragment.fromArray(blocks.map(block => block.node));
+    const initial = ctx.get(serializerCtx)(state.schema.topNodeType.create(null, original)).replace(/\n+$/, '');
+    return { id: sourceId(), original, initial };
+  });
+  const tr = state.tr;
+  for (let index = groups.length - 1; index >= 0; index--) {
+    const blocks = groups[index]!, source = sources[index]!;
+    const last = blocks.at(-1)!;
+    const node = liveSource.type(ctx).create({ id: source.id, origin: 'blocks' },
+      source.initial ? state.schema.text(source.initial) : undefined);
+    tr.replaceWith(blocks[0]!.pos, last.pos + last.node.nodeSize, node);
+  }
+  localSource = { kind: 'block-group', id: sources[0]!.id, sources };
+  tr.setSelection(TextSelection.create(tr.doc, groups[0]![0]!.pos + 1));
+  return tr.setMeta('addToHistory', false);
+}
+
 function caretBlockSourceTransaction(ctx: Ctx, state: EditorState, tr: Transaction = state.tr) {
   const $cursor = tr.selection.$from;
   for (let depth = $cursor.depth; depth > 0; depth--) {
@@ -1301,11 +1344,53 @@ function updateInlineSource(ctx: Ctx, state: EditorState) {
   return result;
 }
 
+function preserveSourceBlockSelection(state: EditorState, tr: Transaction) {
+  if (!(state.selection instanceof BlockRangeSelection)) return;
+  // Finishing live Markdown replaces its temporary nodes. Keep the restored
+  // blocks selected instead of treating their source nodes as deletions.
+  const ranges = state.selection.blocks.map(block => ({
+    from: tr.mapping.map(block.pos, -1),
+    to: tr.mapping.map(block.pos + block.node.nodeSize, 1),
+  }));
+  const positions = blockTree(tr.doc).filter(block => ranges.some(range =>
+    block.pos >= range.from && block.pos + block.node.nodeSize <= range.to)).map(block => block.pos);
+  const selection = BlockRangeSelection.fromBlocks(tr.doc, positions,
+    tr.mapping.map(state.selection.anchorBlock, -1), tr.mapping.map(state.selection.headBlock, -1));
+  if (selection) tr.setSelection(selection);
+}
+
 function finishLocalSourceTransaction(ctx: Ctx, state: EditorState) {
   if (!localSource) return;
   const current = findCurrentSource(state);
   const session = localSource;
   localSource = undefined;
+  if (session.kind === 'block-group') {
+    const sources = new Map(session.sources.map(source => [source.id, source]));
+    const replacements: { pos: number; node: Node; content: Fragment }[] = [];
+    let unchanged = true;
+    state.doc.descendants((node, pos) => {
+      if (node.type.name !== 'tano_live_source') return;
+      const source = sources.get(node.attrs.id);
+      if (!source) return false;
+      const raw = node.textContent;
+      if (raw === source.initial) replacements.push({ pos, node, content: source.original });
+      else {
+        unchanged = false;
+        const parsed = ctx.get(parserCtx)(raw);
+        // Keep source text editable when conversion would change its spelling.
+        if (parsed && !retainsInlineSource(parsed) &&
+            ctx.get(serializerCtx)(parsed).replace(/\n+$/, '') === raw.replace(/\n+$/, ''))
+          replacements.push({ pos, node, content: parsed.content.size ? parsed.content : Fragment.from(state.schema.nodes.paragraph!.create()) });
+      }
+      return false;
+    });
+    if (!replacements.length) return;
+    const tr = state.tr;
+    for (const { pos, node, content } of replacements.reverse()) tr.replaceWith(pos, pos + node.nodeSize, content);
+    preserveSourceBlockSelection(state, tr);
+    if (unchanged) tr.setMeta('addToHistory', false);
+    return { tr, unchanged };
+  }
   if (!current) return;
   const raw = current.node.textContent;
   if (session.kind === 'footnote-label') {
@@ -1341,19 +1426,7 @@ function finishLocalSourceTransaction(ctx: Ctx, state: EditorState) {
     current.pos + current.node.nodeSize,
     replacement,
   );
-  if (state.selection instanceof BlockRangeSelection) {
-    // Finishing live Markdown replaces its temporary node. Keep that block (and
-    // any blocks parsed from it) selected instead of treating it as a deletion.
-    const ranges = state.selection.blocks.map(block => ({
-      from: tr.mapping.map(block.pos, -1),
-      to: tr.mapping.map(block.pos + block.node.nodeSize, 1),
-    }));
-    const positions = blockTree(tr.doc).filter(block => ranges.some(range =>
-      block.pos >= range.from && block.pos + block.node.nodeSize <= range.to)).map(block => block.pos);
-    const selection = BlockRangeSelection.fromBlocks(tr.doc, positions,
-      tr.mapping.map(state.selection.anchorBlock, -1), tr.mapping.map(state.selection.headBlock, -1));
-    if (selection) tr.setSelection(selection);
-  }
+  preserveSourceBlockSelection(state, tr);
   if (raw === session.initial) tr.setMeta('addToHistory', false);
   return { tr, unchanged: raw === session.initial };
 }
@@ -1693,6 +1766,60 @@ const referenceFlash = $prose(() => new Plugin<DecorationSet>({
   },
   props: { decorations: state => referenceFlashKey.getState(state) },
 }));
+function clipboardContent(ctx: Ctx, content: Fragment, format: CopyFormat | 'mathml' | 'tsv'): { text: string; html?: string } {
+  if (format === 'markdown')
+    return { text: ctx.get(serializerCtx)(ctx.get(editorViewCtx).state.schema.topNodeType.create(null, content)) };
+  const text = content.textBetween(0, content.size, '\n\n', node => {
+    if (node.type.name.startsWith('tano_reference')) {
+      const identity = parseReferenceUrl(node.attrs.url ?? '');
+      const result = identity && resolveReference(props.referenceTargets ?? [], identity);
+      return result && result.target ? result.target.name : node.attrs.label || node.attrs.url || '';
+    }
+    if (node.type.name === 'hardbreak') return '\n';
+    return node.attrs.label || node.attrs.alt || node.attrs.value || node.attrs.target || '';
+  });
+  if (format === 'text') return { text };
+  const clipboardDocument = document.implementation.createHTMLDocument('');
+  const container = clipboardDocument.createElement('div');
+  container.append(DOMSerializer.fromSchema(ctx.get(editorViewCtx).state.schema).serializeFragment(content, { document: clipboardDocument }));
+  if (format === 'mathml') {
+    const math = selectedFormulaMathML(container);
+    return { text: math, html: math };
+  }
+  if (format === 'tsv') {
+    // Resolve object names before converting cells to spreadsheet text.
+    container.querySelectorAll<HTMLElement>('[data-tano-reference]').forEach(reference => {
+      const identity = parseReferenceUrl(reference.dataset.referenceUrl ?? '');
+      const resolved = identity && resolveReference(props.referenceTargets ?? [], identity);
+      reference.textContent = resolved && resolved.target ? resolved.target.name : reference.dataset.referenceLabel || reference.dataset.referenceUrl || '';
+    });
+    return { text: tableTSV(container) };
+  }
+  const html = destinationClipboardHTML(container, props.referenceTargets ?? [],
+    format === 'wechat' || format === 'zhihu' ? format : 'rich');
+  return format === 'html' ? { text: html } : { text, html };
+}
+
+function copySelectionWithPreference(ctx: Ctx, view: EditorView, event: ClipboardEvent) {
+  if (view.state.selection.empty || !event.clipboardData) return false;
+  event.preventDefault();
+  if (event.type === 'cut' && props.readonly) return true;
+  const format = normalizeCopyFormat(preferences().copyFormat);
+  const serialized = view.serializeForClipboard(view.state.selection.content());
+  let copied: { text: string; html?: string };
+  try { copied = format === 'markdown' ? { text: serialized.text } : clipboardContent(ctx, serialized.slice.content, format); }
+  catch (error) {
+    emit('error', error instanceof Error ? error.message : '无法转换复制内容');
+    return true;
+  }
+  event.clipboardData.clearData();
+  event.clipboardData.setData('text/plain', copied.text);
+  if (copied.html !== undefined) event.clipboardData.setData('text/html', copied.html);
+  if (event.type === 'cut')
+    view.dispatch(view.state.tr.deleteSelection().scrollIntoView().setMeta('uiEvent', 'cut'));
+  return true;
+}
+
 const bridge = $prose(
   (ctx) =>
     new Plugin({
@@ -1974,6 +2101,8 @@ const bridge = $prose(
           return true;
         },
         handleDOMEvents: {
+          copy: (view, event) => copySelectionWithPreference(ctx, view, event),
+          cut: (view, event) => copySelectionWithPreference(ctx, view, event),
           mousedown(view, event) {
             if (event.button === 0) selectingWithPointer = true;
             if (
@@ -2269,6 +2398,8 @@ const bridge = $prose(
               true,
               () => preferences().previewMathWhileEditing && props.revealMarkdown !== false,
               (source) => ctx.get(parserCtx)(source),
+              undefined,
+              policy,
             ),
             tano_live_source: mathSourcePreviewView(
               false,
@@ -2277,6 +2408,7 @@ const bridge = $prose(
               (id) => localSource?.kind === 'block' && localSource.id === id
                 ? localSource.style
                 : null,
+              policy,
             ),
             image(node, view, getPos) {
               const wrapper = document.createElement('span');
@@ -2336,7 +2468,7 @@ const bridge = $prose(
                   status.removeAttribute('role');
                   status.removeAttribute('aria-label');
                 }
-                panel.hidden = !editing;
+                setSurfaceVisible(panel, editing);
                 for (const { key, input } of fields) {
                   const value = String(current.attrs[key] ?? '');
                   if (input.value !== value) input.value = value;
@@ -2547,6 +2679,12 @@ onMounted(async () => {
         ctx.update(editorViewOptionsCtx, (prev) => ({
           ...prev,
           editable: () => !props.readonly,
+          // Milkdown's plain-text shortcut ignores marks and single-child block
+          // structure. Always serialize the slice, including partial selections,
+          // so copy/cut and drag retain Markdown syntax and reference identities.
+          clipboardTextSerializer: (slice, view) => ctx.get(serializerCtx)(
+            view.state.schema.topNodeType.create(null, slice.content),
+          ),
           attributes: {
             class: 'tano-prose',
             spellcheck: 'false',
@@ -2732,6 +2870,7 @@ watch(
     features: policy().features,
     markdownDialect: policy().markdownDialect,
     mathSyntax: policy().mathSyntax,
+    mathRecognition: policy().mathRecognition,
     bulletListMarker: policy().bulletListMarker,
   }, props.preferences, props.referenceTargets]),
   () =>
@@ -3037,6 +3176,12 @@ function blockMenuCommandAvailable(name: string) {
 function blockMenuSelectionCount() {
   return selectionBeforeMenu?.selection instanceof BlockRangeSelection ? selectionBeforeMenu.selection.blocks.length : 1;
 }
+const blockMenuTable = computed(() => {
+  const current = blockMenu.value;
+  if (!current || current.selectionMenu || blockMenuSelectionCount() > 1) return null;
+  const entry = blockTree(current.doc)[current.index];
+  return entry?.node.type.name === 'table' ? entry.node : null;
+});
 function blockShortcut(action: string) {
   if (!bridgeView || props.readonly || disposed) return;
   const view = bridgeView, state = view.state;
@@ -3104,24 +3249,69 @@ function selectedBlocksMenuTransaction(state: EditorState, action: string): Tran
   return tr.setSelection(BlockRangeSelection.fromBlocks(tr.doc, moved)!);
 }
 
+function menuCopyContent(ctx: Ctx, table = false): Fragment | null {
+  const current = blockMenu.value;
+  if (!current) return null;
+  const view = ctx.get(editorViewCtx);
+  if (!view.state.doc.eq(current.doc)) return null;
+  if (table) {
+    const { $from, $to } = view.state.selection;
+    for (let depth = $from.depth; depth > 0; depth--) {
+      if ($from.node(depth).type.name === 'table' && $to.depth >= depth && $to.node(depth) === $from.node(depth))
+        return Fragment.from($from.node(depth));
+    }
+  }
+  return current.selectionMenu || view.state.selection instanceof BlockRangeSelection
+    ? view.state.selection.content().content
+    : Fragment.from(blockTree(view.state.doc)[current.index]!.node);
+}
+
+const specialCopyFormats = computed(() => {
+  if (!blockMenu.value || !editor) return { mathml: false, tsv: false };
+  return editor.action(ctx => {
+    let formulas = 0, tables = 0;
+    menuCopyContent(ctx)?.descendants(node => { if (node.type.name === 'math_inline' || node.type.name === 'math_block') formulas++; });
+    menuCopyContent(ctx, true)?.descendants(node => { if (node.type.name === 'table') tables++; });
+    return { mathml: formulas === 1, tsv: tables === 1 };
+  });
+});
+
 async function blockMenuAction(action: string) {
   const current = blockMenu.value;
   if (!current || !editor || props.readonly) return;
-  if (current.selectionMenu) {
-    closeBlockMenu(false);
-    if (action !== 'copy') return;
-    const markdown = editor.action((ctx) => {
-      const view = ctx.get(editorViewCtx);
-      if (!view.state.doc.eq(current.doc)) return null;
-      const slice = view.state.selection.content();
-      return ctx.get(serializerCtx)(view.state.schema.topNodeType.create(null, slice.content));
-    });
-    if (markdown !== null) {
-      try { await navigator.clipboard.writeText(markdown); }
-      catch { emit('error', '无法复制选区内容，请检查剪贴板权限'); }
+  if (['copy', 'copy-html', 'copy-text', 'copy-rich', 'copy-wechat', 'copy-zhihu', 'copy-mathml', 'copy-tsv'].includes(action)) {
+    let copied: { text: string; html?: string } | null;
+    try {
+      copied = editor.action((ctx) => {
+        const content = menuCopyContent(ctx, action === 'copy-tsv');
+        if (!content) return null;
+        const format = action === 'copy-mathml' ? 'mathml' : action === 'copy-tsv' ? 'tsv' : normalizeCopyFormat(action.slice(5));
+        return clipboardContent(ctx, content, format);
+      });
+    } catch (error) {
+      emit('error', error instanceof Error ? error.message : '无法转换复制内容');
+      closeBlockMenu(!current.selectionMenu);
+      return;
+    }
+    closeBlockMenu(!current.selectionMenu);
+    if (copied !== null) {
+      try {
+        if (copied.html !== undefined) {
+          if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
+            emit('error', '当前环境不支持复制富文本，请使用复制 HTML 或复制 Markdown');
+            return;
+          }
+          await navigator.clipboard.write([new ClipboardItem({
+            'text/html': new Blob([copied.html], { type: 'text/html' }),
+            'text/plain': new Blob([copied.text], { type: 'text/plain' }),
+          })]);
+        } else await navigator.clipboard.writeText(copied.text);
+      }
+      catch { emit('error', current.selectionMenu ? '无法复制选区内容，请检查剪贴板权限' : '无法复制块内容，请检查剪贴板权限'); }
     }
     return;
   }
+  if (current.selectionMenu) { closeBlockMenu(false); return; }
   if (['paragraph', 'heading', 'list', 'quote', 'unwrap'].includes(action) || action.startsWith('wrap-')) {
     if (!blockMenuCommandAvailable(action)) return;
     closeBlockMenu(false);
@@ -3133,29 +3323,11 @@ async function blockMenuAction(action: string) {
     });
     return;
   }
-  if (action === 'copy') {
-    const markdown = editor.action((ctx) => {
-      const view = ctx.get(editorViewCtx);
-      if (!view.state.doc.eq(current.doc)) return null;
-      if (view.state.selection instanceof BlockRangeSelection)
-        return ctx.get(serializerCtx)(view.state.schema.topNodeType.create(null, view.state.selection.content().content));
-      const node = blockTree(view.state.doc)[current.index]!.node;
-      return ctx.get(serializerCtx)(view.state.schema.topNodeType.create(null, node));
-    });
-    closeBlockMenu();
-    if (markdown === null) return;
-    try {
-      await navigator.clipboard.writeText(markdown);
-    } catch {
-      emit('error', '无法复制块内容，请检查剪贴板权限');
-    }
-    return;
-  }
   closeBlockMenu(false);
   editor.action((ctx) => {
     const view = ctx.get(editorViewCtx);
     if (!view.state.doc.eq(current.doc)) return;
-    if (view.state.selection instanceof BlockRangeSelection && action !== 'source') {
+    if (view.state.selection instanceof BlockRangeSelection && action !== 'source' && action !== 'restoreAutoWidth') {
       const tr = selectedBlocksMenuTransaction(view.state, action);
       if (tr) view.dispatch(tr.scrollIntoView());
       view.focus();
@@ -3164,7 +3336,10 @@ async function blockMenuAction(action: string) {
     const { doc, schema } = view.state;
     const { node, pos, parent } = blockTree(doc)[current.index]!;
     if (action === 'source') {
-      const tr = blockNodeSourceTransaction(ctx, view.state, { node, pos }, view.state.tr);
+      const selection = view.state.selection;
+      const tr = selection instanceof BlockRangeSelection && selection.blocks.length > 1
+        ? selectedBlocksSourceTransaction(ctx, view.state, selection)
+        : blockNodeSourceTransaction(ctx, view.state, { node, pos }, view.state.tr);
       if (localSource?.kind === 'block') localSource.dismissOnOutside = true;
       // Revealing syntax is a view change, including when automatic reveal is off.
       applying = true;
@@ -3175,6 +3350,9 @@ async function blockMenuAction(action: string) {
         applying = false;
         transitioningSource = false;
       }
+    } else if (action === 'restoreAutoWidth') {
+      const tr = tableLineAction(view.state, { pos, axis: 'column', index: 0 }, 'restoreAutoWidth');
+      if (tr) view.dispatch(tr.scrollIntoView());
     } else if (action === 'duplicate') {
       const insertPos = pos + node.nodeSize;
       const tr = view.state.tr.insert(insertPos, node);
@@ -3193,11 +3371,15 @@ async function blockMenuAction(action: string) {
   });
 }
 
+function blockSubmenuTrigger() {
+  return blockSubmenuKind.value === 'copy' ? blockCopyTrigger : blockSubmenuKind.value === 'wrap' ? blockWrapTrigger : blockConvertTrigger;
+}
+
 function closeBlockConvertMenu(restoreFocus = false) {
   clearTimeout(blockConvertCloseTimer);
   blockConvertCloseTimer = undefined;
   blockConvertMenu.value = null;
-  if (restoreFocus) (blockSubmenuKind.value === 'wrap' ? blockWrapTrigger : blockConvertTrigger).value?.focus();
+  if (restoreFocus) blockSubmenuTrigger().value?.focus();
 }
 
 function scheduleCloseBlockConvertMenu() {
@@ -3207,13 +3389,13 @@ function scheduleCloseBlockConvertMenu() {
   }, 150);
 }
 
-function openBlockConvertMenu(focusMenu = false, kind: 'convert' | 'wrap' = 'convert') {
+function openBlockConvertMenu(focusMenu = false, kind: 'convert' | 'wrap' | 'copy' = 'convert') {
   clearTimeout(blockConvertCloseTimer);
   if (!blockMenu.value) return;
   blockSubmenuKind.value = kind;
   blockConvertMenu.value ??= { x: blockMenu.value.x, y: blockMenu.value.y };
   void nextTick(() => {
-    const trigger = (blockSubmenuKind.value === 'wrap' ? blockWrapTrigger : blockConvertTrigger).value;
+    const trigger = blockSubmenuTrigger().value;
     const submenu = blockConvertElement.value;
     const menu = blockMenuElement.value;
     if (!trigger || !submenu || !menu || !blockConvertMenu.value) return;
@@ -3221,6 +3403,7 @@ function openBlockConvertMenu(focusMenu = false, kind: 'convert' | 'wrap' = 'con
     const triggerBounds = trigger.getBoundingClientRect();
     const x = bounds.right + submenu.offsetWidth <= window.innerWidth - 8
       ? bounds.right - 1 : bounds.left - submenu.offsetWidth + 1;
+    submenu.dataset.surfaceSide = x < bounds.left ? 'left' : 'right';
     blockConvertMenu.value = {
       x: Math.max(8, Math.min(x, window.innerWidth - submenu.offsetWidth - 8)),
       y: Math.max(8, Math.min(triggerBounds.top - 5, window.innerHeight - submenu.offsetHeight - 8)),
@@ -3233,7 +3416,7 @@ function onBlockMenuKeydown(event: KeyboardEvent) {
   if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && !event.isComposing && event.key.toLowerCase() === 'c') {
     event.preventDefault();
     event.stopPropagation();
-    void blockMenuAction('copy');
+    void blockMenuAction(defaultCopyAction.value);
     return;
   }
   if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.isComposing) {
@@ -3252,9 +3435,9 @@ function onBlockMenuKeydown(event: KeyboardEvent) {
     closeBlockConvertMenu(true);
     return;
   }
-  if (event.key === 'ArrowRight' && (event.target === blockConvertTrigger.value || event.target === blockWrapTrigger.value)) {
+  if (event.key === 'ArrowRight' && (event.target === blockConvertTrigger.value || event.target === blockWrapTrigger.value || event.target === blockCopyTrigger.value)) {
     event.preventDefault();
-    openBlockConvertMenu(true, event.target === blockWrapTrigger.value ? 'wrap' : 'convert');
+    openBlockConvertMenu(true, event.target === blockCopyTrigger.value ? 'copy' : event.target === blockWrapTrigger.value ? 'wrap' : 'convert');
     return;
   }
   if (event.key === 'Escape') {
@@ -3278,12 +3461,14 @@ function onBlockMenuKeydown(event: KeyboardEvent) {
 }
 
 function dismissBlockSourceOnPointer(event: PointerEvent) {
-  if (!editor || disposed || localSource?.kind !== 'block' || !localSource.dismissOnOutside) return;
+  if (!editor || disposed || !(localSource?.kind === 'block-group' ||
+      (localSource?.kind === 'block' && localSource.dismissOnOutside))) return;
   editor.action(ctx => {
     const view = ctx.get(editorViewCtx);
-    const source = currentSource(view);
-    const dom = source && view.nodeDOM(source.pos);
-    if (dom instanceof globalThis.Node && event.target instanceof globalThis.Node && dom.contains(event.target)) return;
+    if (event.target instanceof Element) {
+      const source = event.target.closest('[data-tano-live-source]');
+      if (source && view.dom.contains(source)) return;
+    }
     finishLocalSource(ctx, view);
   });
 }
@@ -3779,7 +3964,7 @@ onBeforeUnmount(() => {
             >{{ property.value }}</button>
             <span v-else class="frontmatter-property-value">{{ property.value }}</span>
           </template>
-          <div v-if="typeMenuProperty === property.name || (typeMenuProperty === null && !property.name)" class="frontmatter-type-menu" role="menu" aria-label="属性类型">
+          <div v-surface-motion="'MarkdownEditor:0'" v-if="typeMenuProperty === property.name || (typeMenuProperty === null && !property.name)" class="frontmatter-type-menu" role="menu" aria-label="属性类型">
             <button v-for="option in propertyTypeOptions" :key="option.kind" type="button" role="menuitemradio" :aria-checked="currentPropertyKind(property.name) === option.kind" @click="changePropertyType(option.kind)">
               <component :is="option.icon" :size="16" />{{ option.label }}
             </button>
@@ -3808,7 +3993,7 @@ onBeforeUnmount(() => {
   />
   <slot v-if="emptyDocument && !readonly" name="empty-document" />
   <Teleport to="body">
-    <div
+    <div v-surface-motion="'MarkdownEditor:1'"
       v-if="linkPanel"
       ref="linkPanelElement"
       class="tano-editor-panel tano-link-editor-panel"
@@ -3831,7 +4016,7 @@ onBeforeUnmount(() => {
     </div>
   </Teleport>
   <Teleport to="body">
-    <div
+    <div v-surface-motion="'MarkdownEditor:2'"
       v-if="blockMenu"
       ref="blockMenuElement"
       class="dropdown compact-action-menu block-context-menu"
@@ -3841,14 +4026,29 @@ onBeforeUnmount(() => {
       :style="{ left: `${blockMenu.x}px`, top: `${blockMenu.y}px` }"
       @keydown="onBlockMenuKeydown"
     >
-      <button role="menuitem" type="button" @click="blockMenuAction('copy')"><ClipboardCopy :size="15" aria-hidden="true" />复制 Markdown<kbd class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
+      <div class="block-convert-menu" role="presentation" @pointerenter="openBlockConvertMenu(false, 'copy')" @pointerleave="scheduleCloseBlockConvertMenu">
+        <button ref="blockCopyTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'copy'" @click="openBlockConvertMenu(true, 'copy')"><ClipboardCopy :size="15" aria-hidden="true" />复制为<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
+        <div v-surface-motion="'MarkdownEditor:3'" v-if="blockConvertMenu && blockSubmenuKind === 'copy'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" aria-label="复制为" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
+      <button role="menuitem" type="button" @click="blockMenuAction('copy')"><ClipboardCopy :size="15" aria-hidden="true" />复制 Markdown<kbd v-if="defaultCopyAction === 'copy'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
+      <button role="menuitem" type="button" title="在 Word / WPS 中粘贴后选择“保留源格式”，以保留颜色、底色和字体" @click="blockMenuAction('copy-rich')"><Pilcrow :size="15" aria-hidden="true" />复制富文本（Word / WPS）<kbd v-if="defaultCopyAction === 'copy-rich'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
+      <button role="menuitem" type="button" title="复制 HTML 源码" @click="blockMenuAction('copy-html')"><Braces :size="15" aria-hidden="true" />复制 HTML<kbd v-if="defaultCopyAction === 'copy-html'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
+      <button role="menuitem" type="button" @click="blockMenuAction('copy-text')"><AlignLeft :size="15" aria-hidden="true" />复制纯文本<kbd v-if="defaultCopyAction === 'copy-text'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
+      <div v-if="specialCopyFormats.mathml || specialCopyFormats.tsv" class="menu-divider" role="separator" />
+      <button v-if="specialCopyFormats.mathml" role="menuitem" type="button" @click="blockMenuAction('copy-mathml')"><Sigma :size="15" aria-hidden="true" />复制公式 MathML</button>
+      <button v-if="specialCopyFormats.tsv" role="menuitem" type="button" @click="blockMenuAction('copy-tsv')"><Table2 :size="15" aria-hidden="true" />复制表格 TSV</button>
+      <div class="menu-divider" role="separator" />
+      <button role="menuitem" type="button" title="内联排版样式，外链转为可见地址；公式本地渲染为 SVG" @click="blockMenuAction('copy-wechat')"><WechatLogo />复制到微信公众号<kbd v-if="defaultCopyAction === 'copy-wechat'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
+      <button role="menuitem" type="button" title="保留链接，公式使用知乎编辑器的识别标记" @click="blockMenuAction('copy-zhihu')"><ZhihuLogo />复制到知乎<kbd v-if="defaultCopyAction === 'copy-zhihu'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
+        </div>
+      </div>
       <template v-if="!blockMenu.selectionMenu">
-      <button role="menuitem" type="button" :disabled="blockMenuSelectionCount() > 1" :title="blockMenuSelectionCount() > 1 ? '请选中单个块查看临时源码' : undefined" @click="blockMenuAction('source')"><SquareCode :size="15" aria-hidden="true" />临时显示 Markdown 源码</button>
+      <button role="menuitem" type="button" title="编辑所选块的 Markdown 源码" @click="blockMenuAction('source')"><SquareCode :size="15" aria-hidden="true" />编辑源码</button>
       <button role="menuitem" type="button" @click="blockMenuAction('duplicate')"><CopyPlus :size="15" aria-hidden="true" />创建副本</button>
+      <button v-if="blockMenuTable" role="menuitem" type="button" :disabled="!!blockMenuTable.attrs.autoWidth" :title="blockMenuTable.attrs.autoWidth ? '整张表已使用自动宽度' : '恢复整张表的自动宽度'" @click="blockMenuAction('restoreAutoWidth')"><RotateCcw :size="15" aria-hidden="true" />恢复自动宽度<Check v-if="blockMenuTable.attrs.autoWidth" class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
       <div class="menu-divider" role="separator" />
       <div class="block-convert-menu" role="presentation" @pointerenter="openBlockConvertMenu()" @pointerleave="scheduleCloseBlockConvertMenu">
         <button ref="blockConvertTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'convert'" @click="openBlockConvertMenu(true)"><Replace :size="15" aria-hidden="true" />转换为<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
-        <div v-if="blockConvertMenu && blockSubmenuKind === 'convert'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" aria-label="转换为" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
+        <div v-surface-motion="'MarkdownEditor:4'" v-if="blockConvertMenu && blockSubmenuKind === 'convert'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" aria-label="转换为" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
           <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('paragraph')" @click="blockMenuAction('paragraph')"><Pilcrow :size="15" aria-hidden="true" />转为正文</button>
           <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('heading')" @click="blockMenuAction('heading')"><Heading :size="15" aria-hidden="true" />转为标题</button>
           <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('list')" @click="blockMenuAction('list')"><List :size="15" aria-hidden="true" />转为列表</button>
@@ -3857,7 +4057,7 @@ onBeforeUnmount(() => {
       </div>
       <div class="block-convert-menu" role="presentation" @pointerenter="openBlockConvertMenu(false, 'wrap')" @pointerleave="scheduleCloseBlockConvertMenu">
         <button ref="blockWrapTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'wrap'" @click="openBlockConvertMenu(true, 'wrap')"><Group :size="15" aria-hidden="true" />合并放入新块<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
-        <div v-if="blockConvertMenu && blockSubmenuKind === 'wrap'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" aria-label="合并放入新块" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
+        <div v-surface-motion="'MarkdownEditor:5'" v-if="blockConvertMenu && blockSubmenuKind === 'wrap'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" aria-label="合并放入新块" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
           <button v-for="option in blockContainerOptions" :key="option.type" role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('wrap-' + option.type)" @click="blockMenuAction('wrap-' + option.type)"><component :is="blockContainerIcons[option.type]" :size="16" aria-hidden="true" />{{ option.label }}</button>
         </div>
       </div>

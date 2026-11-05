@@ -20,6 +20,7 @@ export async function verifyPlugin(content) {
 export async function buildPlugin(target) {
   const { parsePluginManifest } = await protocol();
   const manifest = parsePluginManifest(JSON.parse(await readFile(join(target, 'manifest.json'), 'utf8')));
+  if (manifest.manifestVersion === 1) return verifyPlugin(JSON.stringify({ packageVersion: 1, manifest }));
   const bundled = await build({ entryPoints: [join(target, 'main.ts')], bundle: true, platform: 'browser', format: 'iife', globalName: 'TanoPlugin', write: false, logLevel: 'silent', target: 'es2022' });
   let entries = [];
   try { entries = await readdir(join(target, 'ui')); } catch (error) { if (error.code !== 'ENOENT') throw error; }

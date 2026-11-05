@@ -113,11 +113,11 @@ it('shows and updates document icons in nested folders without replacing folder 
   app.mount(root); await nextTick();
   const row = root.querySelector('[title="项目/计划.md"]')!;
   expect(row.querySelector('.workspace-emoji-icon')?.getAttribute('data-emoji')).toBe('🚀');
-  expect(root.querySelector('[title="项目"] [class*="lucide-folder-open"]')).not.toBeNull();
+  expect(root.querySelector('[title="项目"] [data-file-icon="folder-open"]')).not.toBeNull();
   documentIcons.value.document = 'icon:book'; await nextTick();
   expect(row.querySelector('[class*="lucide-book"]')).not.toBeNull();
   documentIcons.value.document = ''; await nextTick();
-  expect(row.querySelector('[class*="lucide-file-text"]')).not.toBeNull();
+  expect(row.querySelector('[data-file-icon="markdown"]')).not.toBeNull();
   expect(row.querySelector('.workspace-emoji-icon, .workspace-default-icon')).toBeNull();
 });
 
@@ -129,7 +129,7 @@ it('updates nested data table icons and restores the table fallback without read
   app = createApp({ render: () => h(FileTree, { entries: [...entries, table], documentIcons: documentIcons.value, loadDocumentIcon }) });
   app.mount(root); await nextTick();
   const row = root.querySelector('[title="项目/计划.table.json"]')!;
-  expect(row.querySelector('[class*="lucide-table"]')).not.toBeNull();
+  expect(row.querySelector('[data-file-icon="table"]')).not.toBeNull();
   documentIcons.value.table = '😄'; await nextTick();
   expect(row.querySelector('.workspace-emoji-icon')?.getAttribute('data-emoji')).toBe('😄');
   documentIcons.value.table = 'icon:book'; await nextTick();
@@ -137,7 +137,7 @@ it('updates nested data table icons and restores the table fallback without read
   documentIcons.value.table = 'data:image/png;base64,aGVsbG8='; await nextTick();
   expect(row.querySelector('img')?.getAttribute('src')).toBe(documentIcons.value.table);
   documentIcons.value.table = ''; await nextTick();
-  expect(row.querySelector('[class*="lucide-table"]')).not.toBeNull();
+  expect(row.querySelector('[data-file-icon="table"]')).not.toBeNull();
   expect(row.querySelector('.workspace-emoji-icon, img')).toBeNull();
   expect(loadDocumentIcon).not.toHaveBeenCalled();
 });

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { animate } from 'motion/mini';
@@ -62,6 +63,13 @@ const open = ref(false);
 const headingsOpen = ref(false);
 const headingPanel = ref<HTMLElement>();
 const headingGroupId = useId();
+const dividerPixelRatio = ref(window.devicePixelRatio || 1);
+const dividerThickness = computed(() =>
+  `${Math.max(1, Math.round(dividerPixelRatio.value)) / dividerPixelRatio.value}px`,
+);
+function updateDividerPixelRatio() {
+  dividerPixelRatio.value = window.devicePixelRatio || 1;
+}
 watch(open, () => { headingsOpen.value = false; });
 function headingTrigger() {
   return root.value?.querySelector<HTMLButtonElement>('[data-heading-trigger]');
@@ -86,6 +94,7 @@ async function openHeadings(focus = false) {
   const y = Math.max(8, Math.min(anchor.top, window.innerHeight - panel.offsetHeight - 8));
   panel.style.left = `${x - parent.left - parentElement.clientLeft}px`;
   panel.style.top = `${y - parent.top - parentElement.clientTop}px`;
+  panel.dataset.surfaceSide = x < bounds.left ? 'left' : 'right';
   if (focus) (panel.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')
     ?? panel.querySelector<HTMLButtonElement>('button'))?.focus();
 }
@@ -112,11 +121,13 @@ function closeOtherMenu(event: Event) {
   headingsOpen.value = false;
 }
 onMounted(() => {
+  window.addEventListener('resize', updateDividerPixelRatio);
   window.addEventListener('resize', closeHeadingOnViewportChange);
   window.addEventListener('scroll', closeHeadingOnViewportChange, true);
   window.addEventListener(toolbarMenuOpenEvent, closeOtherMenu);
 });
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateDividerPixelRatio);
   window.removeEventListener('resize', closeHeadingOnViewportChange);
   window.removeEventListener('scroll', closeHeadingOnViewportChange, true);
   window.removeEventListener(toolbarMenuOpenEvent, closeOtherMenu);
@@ -329,6 +340,9 @@ function animateActions(element: Element, done: () => void, entering: boolean) {
   const margin = props.vertical ? 'marginBlockEnd' : 'marginInlineEnd';
   const previous = host.getBoundingClientRect()[axis];
   const interrupted = actionMotions.has(host);
+  const currentStyle = getComputedStyle(host);
+  const previousOpacity = Number(currentStyle.opacity);
+  const previousMargin = parseFloat(currentStyle[margin]) || 0;
   clearActionMotion(host);
   if (entering) enableEnteringActions(host);
   else disableLeavingActions(host);
@@ -341,8 +355,8 @@ function animateActions(element: Element, done: () => void, entering: boolean) {
   host.style.overflow = 'hidden';
   const animation = animate(host, {
     [axis]: [entering && !interrupted ? 0 : previous, entering ? size : 0],
-    [margin]: [entering ? -gap : 0, entering ? 0 : -gap],
-    opacity: entering ? [0, 1] : [1, 0],
+    [margin]: [interrupted ? previousMargin : entering ? -gap : 0, entering ? 0 : -gap],
+    opacity: [interrupted ? previousOpacity : entering ? 0 : 1, entering ? 1 : 0],
   }, { duration: 0.2, ease: [0.22, 1, 0.36, 1] });
   actionMotions.set(host, animation);
   void animation.finished.then(() => {
@@ -358,6 +372,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
   <div
     ref="root"
     class="contextual-toolbar"
+    :style="{ '--toolbar-divider-thickness': dividerThickness }"
     :class="compact ? 'selection-format-toolbar' : 'editor-toolbar'"
     :data-selection-level="source ? 'source' : context.level"
     role="toolbar"
@@ -389,7 +404,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
               <span v-if="!compact">{{ blockLabel }}</span>
             </span>
           </button>
-          <div
+          <div v-surface-motion="'EditorToolbar:0'"
             v-if="open && !disabled"
             class="dropdown compact-action-menu block-type-menu panel-scrollbar"
             :aria-label="t('Block Level 选项')"
@@ -436,7 +451,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
               <option value="CUSTOM">{{ t('自定义块') }}</option>
             </select>
           </div>
-          <div v-if="open && headingsOpen && !disabled" :id="headingGroupId" ref="headingPanel"
+          <div v-surface-motion="'EditorToolbar:1'" v-if="open && headingsOpen && !disabled" :id="headingGroupId" ref="headingPanel"
             class="heading-submenu compact-action-menu panel-scrollbar" role="group" :aria-label="t('标题级别')"
             @keydown="headingPanelKey">
             <button v-for="(icon, index) in headingIcons" :key="index" type="button"
@@ -491,6 +506,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
       </div>
       <!-- Keep side buttons mounted so an interrupted transition can reverse in place. -->
       <span v-if="!compact && (context.level === 'block' || useCompactActions)" class="toolbar-divider" aria-hidden="true" />
+      <span v-if="compact && context.level === 'inline' && primaryInline.length" class="toolbar-divider toolbar-group-divider" aria-hidden="true" />
       <Transition
         :css="false"
         @enter="(element, done) => animateActions(element, done, true)"
@@ -505,7 +521,6 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
           class="inline-tools"
         >
           <div class="format-actions inline-actions">
-            <span v-if="compact && primaryInline.length" class="toolbar-divider toolbar-group-divider" aria-hidden="true" />
             <button
               v-for="item in primaryInline"
               :key="item.type"
@@ -605,7 +620,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
         <option value="CAUTION">{{ t('注意') }}</option>
         <option value="CUSTOM">{{ t('自定义块') }}</option>
       </select>
-      <form
+      <form v-surface-motion="'EditorToolbar:2'"
         v-if="form && !disabled"
         class="toolbar-input-panel"
         :aria-label="formLabel"
@@ -700,13 +715,14 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
   display: block;
   flex-shrink: 0;
   align-self: center;
-  width: 1px;
+  /* Keep both separators equally thick at fractional display scales. */
+  width: var(--toolbar-divider-thickness);
   height: 20px;
   margin: 0 3px;
 }
 .contextual-toolbar[aria-orientation='vertical'] .toolbar-group-divider {
   width: 22px;
-  height: 1px;
+  height: var(--toolbar-divider-thickness);
   margin: 3px 0;
 }
 .selection-format-toolbar {

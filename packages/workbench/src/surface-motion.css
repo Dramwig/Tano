@@ -1,0 +1,89 @@
+/* Shared surface geometry, including surfaces teleported outside the app shell.
+   Reveal from the anchor edge without scaling text or changing layout bounds.
+   Transforms would change getBoundingClientRect() and the containing block of
+   fixed submenus, so directional menus use a short clip reveal instead.
+   Hidden/covered levels opt out so each reveal (including returning to a
+   parent level on narrow screens) starts a fresh animation after placement.
+   surface-motion.ts owns reversible entry/exit and DOM removal. */
+@media (prefers-reduced-motion: no-preference) {
+  :where(
+    [data-surface-side],
+    [role='menu'],
+    [role='dialog']:not(.sidebar),
+    [role='alertdialog'],
+    .dropdown,
+    .compact-action-menu,
+    .tano-editor-panel,
+    .tano-slash-menu,
+    .tano-code-language-menu,
+    .tano-panel-actions,
+    .frontmatter-type-menu,
+    .assistant-popover,
+    .toolbar-input-panel,
+    .annotation-popup,
+    .annotation-rail,
+    .document-discussion,
+    .inline-assistant-response,
+    .calendar-view-menu,
+    .help-preview,
+    .help-bubble,
+    .connection-avatar-popover:popover-open
+  ):not([hidden], [style*='visibility: hidden'], .field-menu-covered) {
+    --tano-surface-inset: -48px -48px 40% -48px;
+  }
+
+  /* Defaults for CSS-anchored menus. Placement code overrides these with the
+     actual side when a menu flips to fit the viewport. Reset on each surface
+     above so a nested menu never inherits its parent's opening direction. */
+  :where(.workspace-dropdown, .help-popover, .help-preview, .help-bubble,
+    .assistant-composer-area .assistant-popover,
+    .selection-toolbar:not(.docked-toolbar)[data-menu-side='above'] .dropdown,
+    .selection-toolbar:not(.docked-toolbar)[data-menu-side='above'] .toolbar-input-panel
+  ):not([data-surface-side]) {
+    --tano-surface-inset: 40% -48px -48px -48px;
+  }
+  :where(.docked-toolbar .dropdown, .docked-toolbar .toolbar-input-panel):not([data-surface-side]) {
+    --tano-surface-inset: -48px 40% -48px -48px;
+  }
+  :where(.docked-toolbar[data-dock='right'] .dropdown,
+    .docked-toolbar[data-dock='right'] .toolbar-input-panel):not([data-surface-side]) {
+    --tano-surface-inset: -48px -48px -48px 40%;
+  }
+  [data-surface-side='up'] { --tano-surface-inset: 40% -48px -48px -48px; }
+  [data-surface-side='down'] { --tano-surface-inset: -48px -48px 40% -48px; }
+  [data-surface-side='right'] { --tano-surface-inset: -48px 40% -48px -48px; }
+  [data-surface-side='left'] { --tano-surface-inset: -48px -48px -48px 40%; }
+
+  /* A fast hover/keyboard action can open a child before its parent finishes.
+     Keep that child and its pointer path visible outside the parent's bounds. */
+  :where(.selection-toolbar, .dropdown, .compact-action-menu, .tano-editor-panel, [role='menu'], [role='dialog']):has(
+    :is([role='menu'], .compact-action-menu, .tano-editor-panel):not([hidden], [style*='display: none'], [style*='visibility: hidden'])
+  ) {
+    clip-path: none !important;
+  }
+
+  /* Native disclosures keep their semantic open state. CSS transitions reverse
+     from the current interpolated size, including rapid keyboard toggles. */
+  @supports (interpolate-size: allow-keywords) {
+    details::details-content {
+      interpolate-size: allow-keywords;
+      block-size: 0;
+      opacity: 0;
+      overflow: clip;
+      transition: block-size 180ms cubic-bezier(0.2, 0, 0, 1), opacity 130ms ease-out,
+        content-visibility 180ms allow-discrete;
+    }
+    details[open]::details-content { block-size: auto; opacity: 1; }
+    details:has(.frontmatter-type-menu, .tano-panel-actions, .data-option-popover)::details-content {
+      overflow: visible;
+    }
+  }
+}
+[data-surface-leaving], [data-surface-leaving] * { pointer-events: none !important; }
+
+@media print {
+  :where([role='menu'], [role='dialog'], [role='alertdialog'], dialog, .modal, details[open] > :not(summary)) {
+    animation: none !important;
+  }
+  details::details-content { transition: none !important; }
+}

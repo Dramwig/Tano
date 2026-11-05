@@ -1,3 +1,4 @@
+import { setSurfaceVisible } from './surface-motion';
 import { Plugin, PluginKey, TextSelection, NodeSelection } from '@milkdown/kit/prose/state';
 import type { EditorState, Transaction } from '@milkdown/kit/prose/state';
 import { closeHistory } from '@milkdown/kit/prose/history';
@@ -233,7 +234,7 @@ export function referencePicker(options: {
           ? menu.getBoundingClientRect() : undefined;
         clearSizeMotion();
         const session = referencePickerKey.getState(view.state);
-        menu.hidden = !session || !options.enabled();
+        setSurfaceVisible(menu, !!session && options.enabled());
         if (menu.hidden || !session) return;
         if (query !== session.query || manual !== !session.typed) active = -1;
         query = session.query;

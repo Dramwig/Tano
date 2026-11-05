@@ -3,7 +3,7 @@
   "id": "f82f91",
   "type": "task",
   "name": "检查渲染",
-  "description": "历史任务类型的引用兼容示例",
+  "description": "用于检查任务属性、引用与改名",
   "archived": false,
   "properties": { "status": "todo", "priority": 2, "done": false }
 }

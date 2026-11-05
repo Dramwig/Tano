@@ -1,7 +1,7 @@
 import { $nodeSchema, $remark } from '@milkdown/kit/utils';
 import type { Nodes, Parent, Root } from 'mdast';
 import type { Plugin } from 'unified';
-import { parseReferenceUrl, referenceUrl, mentionIdFromTitle } from '@tano/protocol';
+import { parseReferenceUrl, referenceUrl, referenceSyntax, mentionIdFromTitle } from '@tano/protocol';
 
 interface ReferenceNode extends Parent {
   type: 'tanoReference';
@@ -19,44 +19,51 @@ declare module 'mdast' {
     tanoReference: ReferenceNode;
   }
 }
-const remarkReferences: Plugin<[], Root> = () => (tree) => {
-  function visit(node: Nodes) {
-    if (!('children' in node) || node.type === 'link') return;
-    node.children = node.children.map((child) => {
-      const identity = child.type === 'link' ? parseReferenceUrl(child.url) : null;
-      if (
-        child.type === 'link' &&
-        identity &&
-        child.children.every((part) => part.type === 'text')
-      ) {
-        const label = child.children
-          .map((part) => ('value' in part ? part.value : ''))
-          .join('')
-          .replace(/^@/, '');
-        return {
-          type: 'tanoReference',
-          url: referenceUrl(identity),
-          label,
-          mentionId: identity.type === 'person' ? mentionIdFromTitle(child.title) : undefined,
-          card:
-            child.title === 'tano:object-card' &&
-            node.type === 'paragraph' &&
-            node.children.length === 1,
-          children: [],
-        } as ReferenceNode;
-      }
-      visit(child);
-      if (
-        child.type === 'paragraph' &&
-        child.children.length === 1 &&
-        child.children[0]?.type === 'tanoReference' &&
-        child.children[0].card
-      )
-        return child.children[0];
-      return child;
-    }) as typeof node.children;
-  }
-  visit(tree);
+const remarkReferences: Plugin<[], Root> = function () {
+  const data = this.data();
+  (data.toMarkdownExtensions ??= []).push({ handlers: { tanoReference: (node) => {
+    const reference = node as ReferenceNode;
+    return referenceSyntax(parseReferenceUrl(reference.url)!, reference.card, reference.mentionId);
+  } } });
+  return (tree) => {
+    function visit(node: Nodes) {
+      if (!('children' in node) || node.type === 'link') return;
+      node.children = node.children.map((child) => {
+        const identity = child.type === 'link' ? parseReferenceUrl(child.url) : null;
+        if (
+          child.type === 'link' &&
+          identity &&
+          child.children.every((part) => part.type === 'text')
+        ) {
+          const label = child.children
+            .map((part) => ('value' in part ? part.value : ''))
+            .join('')
+            .replace(/^@/, '');
+          return {
+            type: 'tanoReference',
+            url: referenceUrl(identity),
+            label,
+            mentionId: identity.type === 'person' ? mentionIdFromTitle(child.title) : undefined,
+            card:
+              child.title === 'tano:object-card' &&
+              node.type === 'paragraph' &&
+              node.children.length === 1,
+            children: [],
+          } as ReferenceNode;
+        }
+        visit(child);
+        if (
+          child.type === 'paragraph' &&
+          child.children.length === 1 &&
+          child.children[0]?.type === 'tanoReference' &&
+          child.children[0].card
+        )
+          return child.children[0];
+        return child;
+      }) as typeof node.children;
+    }
+    visit(tree);
+  };
 };
 export const referenceRemark = $remark('tano-references', () => remarkReferences);
 function referenceSchema(block: boolean) {
@@ -89,7 +96,7 @@ function referenceSchema(block: boolean) {
         'data-mention-id': node.attrs.mentionId,
         'data-feature-level': '2',
       },
-      `@${node.attrs.label}`,
+      node.attrs.label || node.attrs.url,
     ],
     parseMarkdown: {
       match: (node) => node.type === 'tanoReference' && node.card === block,
@@ -100,13 +107,10 @@ function referenceSchema(block: boolean) {
       runner: (state, node) => {
         const identity = parseReferenceUrl(node.attrs.url);
         if (block) state.openNode('paragraph');
-        state.openNode('link', undefined, {
+        state.addNode('tanoReference', undefined, undefined, {
           url: identity ? referenceUrl(identity) : node.attrs.url,
-          ...(block ? { title: 'tano:object-card' } : {}),
-          ...(!block && identity?.type === 'person' && node.attrs.mentionId ? { title: `tano:mention:${node.attrs.mentionId}` } : {}),
+          label: '', card: block, mentionId: node.attrs.mentionId,
         });
-        state.addNode('text', undefined, `${block ? '' : '@'}${node.attrs.label}`);
-        state.closeNode();
         if (block) state.closeNode();
       },
     },

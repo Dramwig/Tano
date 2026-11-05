@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { computed, onBeforeUnmount, ref, useId } from 'vue';
 const props = defineProps<{ label: string; summary: string; failed?: boolean; checkedAt?: number; refreshing?: boolean }>();
 const now = ref(Date.now());
@@ -46,7 +47,7 @@ onBeforeUnmount(() => { clearTimeout(closeTimer); clearInterval(ageTimer); });
       @mouseenter="showPanel" @mouseleave="scheduleClose" @focus="showPanel" @blur="scheduleClose" @click="showPanel" @keydown.esc.stop.prevent="closePanel">
       <slot name="icon" /><span>{{ summary }}</span>
     </button>
-    <div :id="panelId" ref="panel" popover="auto" class="connection-status-popover" role="region" :aria-label="label"
+    <div v-surface-motion="'AssistantConnectionStatus:0'" :id="panelId" ref="panel" popover="auto" class="connection-status-popover" role="region" :aria-label="label"
       @toggle="expanded = $event.newState === 'open'" @mouseenter="keepOpen" @mouseleave="scheduleClose" @focusout="scheduleClose" @keydown.esc.stop.prevent="closePanel">
       <header>{{ label }}</header><slot />
     </div>

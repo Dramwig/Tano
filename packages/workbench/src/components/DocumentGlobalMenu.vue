@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 import { Settings2, ChevronRight } from 'lucide-vue-next';
@@ -18,9 +19,12 @@ async function show(focus = false) {
   const { width, height } = panel.value.getBoundingClientRect();
   const gap = 4, overlap = 4, edge = 8;
   let left = anchor.right + gap, top = row.top - 5;
+  let side = 'right';
   if (left + width > window.innerWidth - edge) {
+    side = 'left';
     left = anchor.left - width + overlap;
     if (left < edge) {
+      side = 'down';
       left = anchor.right - width;
       top = row.bottom + gap;
     }
@@ -29,6 +33,7 @@ async function show(focus = false) {
     left: `${Math.max(edge, Math.min(left, window.innerWidth - width - edge))}px`,
     top: `${Math.max(edge, Math.min(top, window.innerHeight - height - edge))}px`,
   };
+  panel.value.dataset.surfaceSide = side === 'down' && parseFloat(position.value.top) < row.top ? 'up' : side;
   if (focus) panel.value.focus({ preventScroll: true });
 }
 function triggerKeydown(event: KeyboardEvent) {
@@ -75,7 +80,7 @@ onBeforeUnmount(() => {
     <Settings2 :size="15" />{{ t('工作区选项') }}<ChevronRight class="document-global-chevron" :size="14" />
   </button>
   <Teleport to="body">
-    <div v-if="open" :id="panelId" ref="panel" class="dropdown compact-action-menu document-global-menu page-context-menu"
+    <div v-surface-motion="'DocumentGlobalMenu:0'" v-if="open" :id="panelId" ref="panel" class="dropdown compact-action-menu document-global-menu page-context-menu workspace-options-menu"
       :style="position" role="menu" :aria-label="t('工作区选项')" tabindex="-1"
       @pointerenter="cancelClose" @pointerleave="scheduleClose" @keydown="panelKeydown">
       <slot />

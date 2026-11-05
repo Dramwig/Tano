@@ -1,3 +1,4 @@
+import { transformObjectReferences } from './object-reference-markdown';
 import { unified } from 'unified';
 import { styleDelimiters, styleDelimiterConstruct } from './style-delimiters';
 import { transformTableBreaks } from './table-markdown';
@@ -229,6 +230,7 @@ const inlineStyleParser = unified().use(remarkParse).use(remarkGfm, { singleTild
 export function hasUnsupportedHtml(markdown: string): boolean {
   if (!markdown.includes('<')) return false;
   const tree = styleParser.parse(markdown);
+  transformObjectReferences(tree, markdown);
   transformTableBreaks(tree);
   transformStyles(tree);
   function containsHtml(node: Nodes, parent?: Nodes): boolean {

@@ -59,6 +59,7 @@ for (const pkg of metadata.packages.filter(p => p.source).sort((a,b) => a.id.loc
 }
 const text = sections.join('\n\n' + '='.repeat(78) + '\n\n') + '\n';
 const iconNotices = await Promise.all([
+  ['Bootstrap Icons (folder-symlink SVG)', 'https://github.com/twbs/icons/blob/main/icons/folder-symlink.svg', 'packages/workbench/src/assets/bootstrap'],
   ['Tabler Icons (source-code outline SVG)', 'https://github.com/tabler/tabler-icons/blob/main/icons/outline/source-code.svg', 'packages/workbench/src/assets/tabler'],
   ['Material Icon Theme 5.38.1 (import file format SVGs)', 'https://github.com/material-extensions/vscode-material-icon-theme/tree/v5.38.1/icons', 'packages/workbench/src/assets/import-file-icons', 'MIT', 'README.md', await readFile(join(root, 'packages/editor/src/language-icons/material/LICENSE'), 'utf8')],
   ['Simple Icons 15.0.0 (ten bundled import provider SVGs)', 'https://github.com/simple-icons/simple-icons/tree/15.0.0', 'packages/workbench/src/assets/import-icons', 'CC0-1.0', 'LICENSE.md', await readFile(join(root, 'packages/workbench/src/assets/import-icons/README.md'), 'utf8')],

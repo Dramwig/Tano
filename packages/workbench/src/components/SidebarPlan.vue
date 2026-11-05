@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t, uiLocale } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, ref, useId, watch } from 'vue';
@@ -566,7 +567,7 @@ onBeforeUnmount(() => {
         <button type="button" class="sidebar-calendar-today" :aria-label="t('回到今天')" @click="goToToday">{{ t('今天') }}</button>
       </div>
       <Teleport to="body">
-        <div v-if="viewOpen" id="plan-view-menu" ref="viewMenu" class="plan-scope-menu plan-view-menu" :style="viewMenuPosition" role="menu" :aria-label="t('查看计划')" @keydown="onPickerKeydown($event, viewMenu)" @keydown.esc.stop.prevent="closeViewMenu()">
+        <div v-surface-motion="'SidebarPlan:0'" v-if="viewOpen" id="plan-view-menu" ref="viewMenu" class="plan-scope-menu plan-view-menu" :style="viewMenuPosition" role="menu" :aria-label="t('查看计划')" @keydown="onPickerKeydown($event, viewMenu)" @keydown.esc.stop.prevent="closeViewMenu()">
           <span class="plan-scope-menu-heading">{{ t('查看计划') }}</span>
           <button v-for="option in viewOptions" :key="option.value" type="button" role="menuitemradio" :aria-label="option.label" :aria-checked="effectiveView === option.value" :disabled="option.disabled" @click="chooseView(option.value)">
             <component :is="option.icon" :size="16" aria-hidden="true" />
@@ -637,7 +638,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <Teleport to="body">
-      <div v-if="draft" class="modal-backdrop plan-create-backdrop" @mousedown.self="closeCreate">
+      <div v-surface-motion="'SidebarPlan:1'" v-if="draft" class="modal-backdrop plan-create-backdrop" @mousedown.self="closeCreate">
         <section
           ref="createPanel"
           class="modal plan-create-panel"
@@ -671,7 +672,7 @@ onBeforeUnmount(() => {
                   <span>{{ draft.scope === 'personal' ? t('个人') : t('工作区') }}</span>
                   <ChevronDown :size="13" aria-hidden="true" />
                 </button>
-                <div
+                <div v-surface-motion="'SidebarPlan:2'"
                   v-if="scopeOpen"
                   id="plan-create-scope-menu"
                   class="plan-scope-menu"
@@ -1132,7 +1133,7 @@ onBeforeUnmount(() => {
 }
 .plan-create-actions button[type='submit'] {
   background: var(--green-fill);
-  color: white;
+  color: var(--on-accent, white);
 }
 .plan-create-actions button[type='submit']:not(:disabled):hover {
   background: var(--green-fill-hover);
@@ -1275,7 +1276,7 @@ onBeforeUnmount(() => {
   aspect-ratio: 1;
   border-radius: 50%;
   background: var(--green-fill);
-  color: white;
+  color: var(--on-accent, white);
 }
 .sidebar-calendar-event-dot {
   position: absolute;

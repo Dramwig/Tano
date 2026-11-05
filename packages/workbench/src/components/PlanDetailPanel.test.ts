@@ -66,7 +66,7 @@ it('edits descriptions and document references without exposing the object inspe
   await vi.waitFor(() => expect(plans.update).toHaveBeenCalledOnce());
   const [base, value] = plans.update.mock.calls[0]!;
   expect(base.snapshot.hash).toBe('base');
-  expect(value.description).toBe('需要阅读 [@计划](object://document/a00001)');
+  expect(value.description).toBe('需要阅读 [[object://document/a00001]]');
   expect(value.properties).toEqual(original.object.properties);
   expect(root.querySelector<HTMLButtonElement>('[type=submit]')!.disabled).toBe(true);
 });

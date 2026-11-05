@@ -1,3 +1,4 @@
+import { setSurfaceVisible } from './surface-motion';
 import { h, render, type Component } from 'vue';
 import { blockIcons, headingIcons, customCalloutIcon, blockIconStrokeWidth } from './block-icons';
 import { Plugin, PluginKey, Selection, TextSelection } from '@milkdown/kit/prose/state';
@@ -299,7 +300,7 @@ export function slashCommands(options: {
       let destroyed = false;
 
       function hide() {
-        menu.hidden = true;
+        setSurfaceVisible(menu, false);
         view.dom.removeAttribute('aria-controls');
         view.dom.removeAttribute('aria-activedescendant');
       }
@@ -475,7 +476,7 @@ export function slashCommands(options: {
           empty.textContent = '没有匹配的块类型';
           list.append(empty);
         }
-        menu.hidden = false;
+        setSurfaceVisible(menu, true);
         view.dom.setAttribute('aria-controls', list.id);
         select(active);
         position();

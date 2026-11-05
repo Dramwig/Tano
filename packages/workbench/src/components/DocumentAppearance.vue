@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { ImagePlus, Link, MessageSquare, Smile, Upload } from 'lucide-vue-next';
@@ -96,6 +97,7 @@ function placeCover() {
       : rect.top - height - 8 >= top ? rect.top - height - 8 : Math.max(top, bottom - height),
     width, maxHeight,
   };
+  if (coverPanel.value) coverPanel.value.dataset.surfaceSide = coverPosition.value.top < rect.top ? 'up' : 'down';
 }
 async function toggleCover() {
   if (disabled.value) return;
@@ -244,7 +246,7 @@ onBeforeUnmount(() => {
     <p v-if="error && !coverOpen" class="document-appearance-error" role="alert">{{ error }}</p>
     </div>
     <Teleport to="body">
-      <section v-if="coverOpen" :id="coverPanelId" ref="coverPanel" class="workspace-icon-picker document-cover-picker" role="dialog" :aria-label="t('文档封面')"
+      <section v-surface-motion="'DocumentAppearance:0'" v-if="coverOpen" :id="coverPanelId" ref="coverPanel" class="workspace-icon-picker document-cover-picker" role="dialog" :aria-label="t('文档封面')"
         :style="{ left: `${coverPosition.left}px`, top: `${coverPosition.top}px`, width: `${coverPosition.width}px`, maxHeight: `${coverPosition.maxHeight}px` }"
         :aria-busy="busy" @keydown="coverKeydown" @paste="pasteCover">
         <header class="workspace-icon-picker-header">
@@ -338,7 +340,7 @@ onBeforeUnmount(() => {
 .document-cover-link-field { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--control-border); border-radius: 6px; color: var(--muted); }
 .document-cover-link-field:focus-within { outline: 2px solid var(--text); outline-offset: 1px; }
 .document-cover-link-field input { min-width: 0; width: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 13px; }
-.document-cover-link > .settings-button { align-self: center; justify-content: center; min-width: 112px; margin-top: 16px; color: #fff; border-color: var(--green-fill); background: var(--green-fill); }
+.document-cover-link > .settings-button { align-self: center; justify-content: center; min-width: 112px; margin-top: 16px; color: var(--on-accent, #fff); border-color: var(--green-fill); background: var(--green-fill); }
 .document-cover-link > .settings-button:hover:not(:disabled) { border-color: var(--green-fill-hover); background: var(--green-fill-hover); }
 .document-cover-picker .document-appearance-error { margin: 0; padding: 0 16px 14px; }
 .document-appearance-error { margin: 6px 0; color: #c43e47; font-size: 12px; line-height: 1.5; }

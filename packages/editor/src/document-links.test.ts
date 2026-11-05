@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { documentLinks, documentLinkDetails, referenceInsertionPoint } from './document-links';
+import { rewriteDocumentLinks, documentLinks, documentLinkDetails, referenceInsertionPoint } from './document-links';
 
 it('extracts Markdown, reference-style, wiki and embedded document links', () => {
   expect(
@@ -61,4 +61,16 @@ it('places a source-mode reference outside fenced and inline code and frontmatte
   expect(point.prefix).toBe('\n\n');
   expect(referenceInsertionPoint('before `selected code` after', 16).at).toBe(22);
   expect(referenceInsertionPoint('---\ntitle: selected\n---\nbody', 12).at).toBe(24);
+});
+
+it('indexes identity-only references and rewrites only their destination bytes', () => {
+  const source = '[[object://document/a00001]] [[Notes]]\n\n![[object://event/b00002]]\n';
+  expect(documentLinks(source)).toEqual([
+    { kind: 'markdown', target: 'object://document/a00001' },
+    { kind: 'wiki', target: 'Notes' },
+    { kind: 'markdown', target: 'object://event/b00002' },
+  ]);
+  expect(rewriteDocumentLinks(source, link => link.target === 'object://document/a00001' ? 'object://document/c00003' : link.target))
+    .toBe(source.replace('a00001', 'c00003'));
+  expect(documentLinks('`[[object://person/a00001]]`\n\n```md\n[[object://person/a00001]]\n```')).toEqual([]);
 });

@@ -323,12 +323,12 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
   white-space: nowrap;
 }
 .page-search-replace-actions .replace-current {
-  color: white;
+  color: var(--on-accent, white);
   background: var(--green-fill);
   border-radius: 8px;
 }
 .page-search-replace-actions .replace-current:hover:not(:disabled) {
-  color: white;
+  color: var(--on-accent, white);
   background: var(--green-fill-hover);
 }
 @media (max-width: 700px) {

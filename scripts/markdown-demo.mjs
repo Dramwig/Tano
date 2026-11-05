@@ -15,8 +15,8 @@ if (cloud && JSON.parse(await readFile(join(cloud, 'package.json'), 'utf8')).nam
   throw new Error('The destination must be the Tano-cloud repository.');
 
 const names = {
-  'zh-CN': ['00-从这里开始.md', '01-基础块与行内.md', '02-YAML-属性字段.md', '03-公式图表与脚注.md', '04-增强块.md', '05-链接图片与附件.md', '06-对象引用.md', '07-原文保留边界.md', '08-未知指令与嵌入.md', '09-TOML-属性.md', '子目录/目标文档.markdown', 'assets/示例 附件.txt'],
-  'en-US': ['00-getting-started.md', '01-basic-blocks-and-inline.md', '02-yaml-properties.md', '03-math-diagrams-and-footnotes.md', '04-enhanced-blocks.md', '05-links-images-and-attachments.md', '06-object-references.md', '07-source-preservation-boundaries.md', '08-unknown-directives-and-embeds.md', '09-toml-frontmatter.md', 'nested-folder/target-document.markdown', 'assets/sample attachment.txt'],
+  'zh-CN': ['00-从这里开始.md', '01-基础块与行内.md', '02-YAML-属性字段.md', '03-公式图表与脚注.md', '04-增强块.md', '05-链接图片与附件.md', '06-对象引用.md', '07-原文保留边界.md', '08-未知指令与嵌入.md', '09-TOML-属性.md', '10-多块编辑与布局.md', '11-复制格式与公式识别.md', '12-文件导航与附件.md', '13-数据表与视图.md', '14-助手与Agent工作流.md', '示例项目/README.md', '示例项目/验收清单.md', '子目录/目标文档.markdown', 'assets/示例 附件.txt'],
+  'en-US': ['00-getting-started.md', '01-basic-blocks-and-inline.md', '02-yaml-properties.md', '03-math-diagrams-and-footnotes.md', '04-enhanced-blocks.md', '05-links-images-and-attachments.md', '06-object-references.md', '07-source-preservation-boundaries.md', '08-unknown-directives-and-embeds.md', '09-toml-frontmatter.md', '10-block-editing-and-layout.md', '11-copy-formats-and-math.md', '12-files-and-attachments.md', '13-data-tables-and-views.md', '14-assistant-and-agents.md', 'sample-project/README.md', 'sample-project/review-checklist.md', 'nested-folder/target-document.markdown', 'assets/sample attachment.txt'],
 };
 const imagePaths = ['zh-CN/assets/测试图片.png', 'en-US/assets/test-image.png'];
 const objectIds = ['a82f91', 'b82f91', 'c82f91', 'd82f91', 'e82f91', 'f82f91', '182f91', '282f91'];
@@ -46,6 +46,13 @@ for (const [path, content] of bytes) {
   if (!/\.(md|markdown)$/.test(path)) continue;
   const source = content.toString('utf8');
   visit(parser.parse(source), node => {
+    if (node.type === 'text' && node.position) {
+      const raw = source.slice(node.position.start.offset, node.position.end.offset);
+      for (const match of raw.matchAll(/(?<!\\)\[\[(object:\/\/([a-z][a-z0-9.-]*)\/([0-9a-f]{6}))\]\]/g)) {
+        const object = bytes.get(`.tano/objects/${match[3]}.tano.json`);
+        if (!object || JSON.parse(object.toString('utf8')).type !== match[2]) throw new Error(`${path}: unresolved object ${match[1]}`);
+      }
+    }
     if (!['link', 'image', 'definition'].includes(node.type)) return;
     const url = node.url;
     if (url.startsWith('object://')) {
@@ -129,4 +136,5 @@ for (const { path, content, base } of changes) {
   if ((current && sha(current)) !== base) throw new Error(`File changed during generation: ${path}`);
   await writeFile(path, content, { flag: base === null ? 'wx' : 'w' });
 }
-console.log(`Markdown QA: 11 documents per language; links and 8 object records verified. ${check ? 'Generated demo is current.' : `${changes.length} files written.`}`);
+const documentCounts = Object.entries(names).map(([locale, files]) => `${locale}: ${files.filter(path => /\.(md|markdown)$/.test(path)).length} documents`).join(', ');
+console.log(`Markdown QA: ${documentCounts}; links and ${objectIds.length} object records verified. ${check ? 'Generated demo is current.' : `${changes.length} files written.`}`);

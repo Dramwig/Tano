@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t } from '../i18n';
 import {
@@ -653,7 +654,7 @@ onBeforeUnmount(() => {
     </button>
   </div>
   <Teleport to="body">
-    <section
+    <section v-surface-motion="'ReferenceGraphPopover:0'"
       v-if="opened"
       ref="panel"
       class="reference-graph-popover"

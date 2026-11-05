@@ -3,12 +3,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApp, defineComponent, h, nextTick, ref } from 'vue';
 import type { App } from 'vue';
 import { editorViewCtx, parserCtx, serializerCtx } from '@milkdown/kit/core';
-import { NodeSelection, TextSelection } from '@milkdown/kit/prose/state';
+import { AllSelection, NodeSelection, TextSelection } from '@milkdown/kit/prose/state';
+import type { EditorView } from '@milkdown/kit/prose/view';
 import { BlockRangeSelection } from './block-selection';
 import { blockTree } from './block-tree';
 import MarkdownEditor from './MarkdownEditor.vue';
 import { splitFrontmatter, unsupportedMarkdown } from './syntax';
-import { defaultCapabilities, defaultEditorPreferences, defaultSelectionWrapping } from './runtime';
+import { defaultCapabilities, defaultEditorPreferences, defaultSelectionWrapping, normalizeCopyFormat } from './runtime';
 import { inlineSourceCodec } from './inline-source-session';
 
 vi.mock('mermaid', () => ({
@@ -86,6 +87,363 @@ afterEach(async () => {
   app = undefined;
   root?.remove();
   await nextTick();
+});
+
+function copyMarkdown(view: EditorView, type = 'copy') {
+  const data = new Map<string, string>();
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clipboardData', { value: {
+    clearData: () => data.clear(),
+    setData: (format: string, value: string) => data.set(format, value),
+  } });
+  view.dom.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(true);
+  return data;
+}
+
+async function expandCopyMenu() {
+  const trigger = document.querySelector<HTMLButtonElement>('.block-context-menu button[aria-haspopup="menu"]')!;
+  expect(trigger.textContent).toBe('复制为');
+  expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  trigger.click();
+  await nextTick();
+}
+
+it.each([
+  ['**加粗文字**', '**加粗文字**'],
+  ['*斜体文字*', '*斜体文字*'],
+  ['`tano:object-card`', '`tano:object-card`'],
+  ['[链接文字](https://example.com/)', '[链接文字](https://example.com/)'],
+  ['## 标题文字', '## 标题文字'],
+  ['- 列表文字', '* 列表文字'],
+])('copies rendered %s as Markdown even when it contains only one text node', async (source, expected) => {
+  const { editor, revealMarkdown, value, errors } = await mount(source + '\n');
+  revealMarkdown.value = false;
+  await nextTick();
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  let from = 0, to = 0;
+  view.state.doc.descendants((node, pos) => {
+    if (node.isText) { from = pos; to = pos + node.nodeSize; }
+  });
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
+  expect(copyMarkdown(view).get('text/plain')?.trimEnd()).toBe(expected);
+  expect(value.value).toBe(source + '\n');
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+it('copies a partial cross-block selection with code delimiters and complete object reference source', async () => {
+  const source = '预置记录位于外层工作区根目录的 `.tano/objects/`。身份与文件路径无关。\n\n'
+    + '- Person：[[object://person/e82f91]]\n- Task：[[object://task/f82f91]]\n'
+    + '- Project：[[object://project/182f91]]\n- Event：[[object://event/282f91]]\n\n'
+    + '下面的独占段落通过 `tano:object-card` 标题成为对象卡片：\n';
+  const { editor, value, errors } = await mount(source);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  let to = 0;
+  view.state.doc.descendants((node, pos) => {
+    if (node.isText && node.text === 'tano:object-card') to = pos + 'tano:object-c'.length;
+  });
+  const from = 1 + source.indexOf('层工作区');
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
+  const copied = copyMarkdown(view);
+  expect(copied.get('text/plain')?.trimEnd()).toBe(
+    source.slice(source.indexOf('层工作区'), source.indexOf('tano:object-card')).replace(/^- /gm, '* ') + 'tano:object-c`',
+  );
+  expect([...copied.keys()]).toEqual(['text/plain']);
+  expect(value.value).toBe(source);
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+it('copies Markdown in readonly mode and cuts partial formatted text as one undoable edit', async () => {
+  const { editor, readonly, revealMarkdown, value, errors } = await mount('前 **加粗文字** 后\n');
+  revealMarkdown.value = false;
+  readonly.value = true;
+  await nextTick();
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 4, 6)));
+  expect(copyMarkdown(view).get('text/plain')?.trimEnd()).toBe('**粗文**');
+  expect(value.value).toBe('前 **加粗文字** 后\n');
+  expect(editor.value!.canUndo()).toBe(false);
+  readonly.value = false;
+  await nextTick();
+  expect(copyMarkdown(view, 'cut').get('text/plain')?.trimEnd()).toBe('**粗文**');
+  expect(view.state.doc.textContent).toBe('前 加字 后');
+  editor.value!.undoLastChange();
+  expect(view.state.doc.textContent).toBe('前 加粗文字 后');
+  expect(errors).toEqual([]);
+});
+
+it('copies characters selected inside a live Markdown source field verbatim', async () => {
+  const { editor, value, errors } = await mount('前 **加粗文字** 后\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.focus();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 4)));
+  let from = 0;
+  view.state.doc.descendants((node, pos) => {
+    if (node.type.name === 'tano_live_source_inline') from = pos + 1;
+  });
+  expect(from).toBeGreaterThan(0);
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, from + 4)));
+  expect(copyMarkdown(view).get('text/plain')?.trimEnd()).toBe('**加粗');
+  expect(value.value).toBe('前 **加粗文字** 后\n');
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+it.each(['markdown', 'rich', 'html', 'text', 'word', 'wechat', 'zhihu'] as const)('immediately applies the %s preference to copy and cut', async copyFormat => {
+  const { editor, preferences, revealMarkdown, value, errors } = await mount('前 **加粗** 后\n');
+  revealMarkdown.value = false;
+  await nextTick();
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3, 5)));
+  expect(copyMarkdown(view).get('text/plain')?.trimEnd()).toBe('**加粗**');
+  preferences.value = { ...preferences.value, copyFormat: normalizeCopyFormat(copyFormat) };
+  if (copyFormat === 'word') expect(preferences.value.copyFormat).toBe('rich');
+  await nextTick();
+  for (const type of ['copy', 'cut']) {
+    const data = copyMarkdown(view, type);
+    const plain = data.get('text/plain')!.trimEnd();
+    if (copyFormat === 'markdown') expect(plain).toBe('**加粗**');
+    else if (copyFormat === 'html') expect(plain).toContain('<strong>加粗</strong>');
+    else expect(plain).toBe('加粗');
+    if (['rich', 'word', 'wechat', 'zhihu'].includes(copyFormat)) expect(data.get('text/html')).toContain('<strong>加粗</strong>');
+    else expect(data.has('text/html')).toBe(false);
+  }
+  expect(view.state.doc.textContent).toBe('前  后');
+  expect(editor.value!.undoLastChange()).toBe(true);
+  expect(view.state.doc.textContent).toBe('前 加粗 后');
+  expect(value.value).toBe('前 **加粗** 后\n');
+  expect(errors).toEqual([]);
+});
+
+it('uses the preferred format for the context-menu shortcut while explicit Markdown copy overrides it', async () => {
+  const { editor, preferences, revealMarkdown } = await mount('**加粗**\n');
+  revealMarkdown.value = false;
+  preferences.value = { ...preferences.value, copyFormat: 'text' };
+  await nextTick();
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 3)));
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  const descriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  try {
+    const open = async () => {
+      view.dom.querySelector('p')!.dispatchEvent(new MouseEvent('contextmenu', { button: 2, bubbles: true, cancelable: true }));
+      await nextTick();
+      await expandCopyMenu();
+      return document.querySelector<HTMLElement>('.block-context-menu')!;
+    };
+    const menu = await open();
+    expect(menu.querySelector('kbd')!.parentElement!.textContent).toContain('复制纯文本');
+    menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true, cancelable: true }));
+    await nextTick();
+    expect(writeText).toHaveBeenLastCalledWith('加粗');
+    const reopened = await open();
+    [...reopened.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '复制 Markdown')!.click();
+    await nextTick();
+    expect(writeText.mock.lastCall![0].trimEnd()).toBe('**加粗**');
+    expect(preferences.value.copyFormat).toBe('text');
+  } finally {
+    if (descriptor) Object.defineProperty(navigator, 'clipboard', descriptor);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+  }
+});
+
+it.each(['selection', 'block', 'blocks'] as const)('offers Markdown, HTML source, rich text and plain text for a %s', async mode => {
+  const source = '前 **加粗** & 后\n\n第二段\n';
+  const { editor, revealMarkdown, value, errors } = await mount(source);
+  revealMarkdown.value = false;
+  await nextTick();
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  const write = vi.fn().mockResolvedValue(undefined);
+  const itemDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'ClipboardItem');
+  Object.defineProperty(globalThis, 'ClipboardItem', { configurable: true, value: class {
+    constructor(readonly data: Record<string, Blob>) {}
+  } });
+  const descriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText, write } });
+  try {
+    for (const label of ['复制 Markdown', '复制 HTML', '复制纯文本', '复制富文本（Word / WPS）']) {
+      if (mode === 'selection')
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3, 5)));
+      else if (mode === 'blocks')
+        view.dispatch(view.state.tr.setSelection(BlockRangeSelection.fromBlocks(view.state.doc, blockTree(view.state.doc).map(block => block.pos))!));
+      else view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, 0)));
+      const selection = view.state.selection;
+      view.dom.querySelector('p')!.dispatchEvent(new MouseEvent('contextmenu', { button: 2, bubbles: true, cancelable: true }));
+      await nextTick();
+      const menu = document.querySelector<HTMLElement>('.block-context-menu')!;
+      expect(menu).not.toBeNull();
+      expect(menu.querySelector('[aria-label="复制为"]')).toBeNull();
+      await expandCopyMenu();
+      const button = [...menu.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.startsWith(label))!;
+      expect(button).toBeDefined();
+      button.click();
+      await nextTick();
+      let copied = writeText.mock.lastCall![0];
+      if (label === '复制富文本（Word / WPS）') {
+        expect(write).toHaveBeenCalledTimes(1);
+        const data = write.mock.lastCall![0][0].data as Record<string, Blob>;
+        expect(Object.keys(data)).toEqual(['text/html', 'text/plain']);
+        const readBlob = (blob: Blob) => new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = reject;
+          reader.readAsText(blob);
+        });
+        copied = await readBlob(data['text/html']!);
+        expect(await readBlob(data['text/plain']!)).toBe(mode === 'selection' ? '加粗' : '前 加粗 & 后' + (mode === 'blocks' ? '\n\n第二段' : ''));
+        expect(writeText).toHaveBeenCalledTimes(3);
+      }
+      if (label === '复制 HTML' || label === '复制富文本（Word / WPS）') {
+        expect(copied).toContain('<strong>加粗</strong>');
+        if (mode !== 'selection') expect(copied).toContain('&amp;');
+        if (mode === 'blocks') expect(copied).toContain('第二段</p>');
+        expect(copied).not.toContain('data-pm-slice');
+        expect(copied).not.toContain('tano-block-handle');
+      } else if (label === '复制纯文本') {
+        expect(copied).toBe(mode === 'selection' ? '加粗' : '前 加粗 & 后' + (mode === 'blocks' ? '\n\n第二段' : ''));
+      } else expect(copied).toContain('**加粗**');
+      expect(document.querySelector('.block-context-menu')).toBeNull();
+      expect(view.state.selection.eq(selection)).toBe(true);
+      expect(value.value).toBe(source);
+      expect(editor.value!.canUndo()).toBe(false);
+    }
+    expect(errors).toEqual([]);
+  } finally {
+    if (itemDescriptor) Object.defineProperty(globalThis, 'ClipboardItem', itemDescriptor);
+    else Reflect.deleteProperty(globalThis, 'ClipboardItem');
+    if (descriptor) Object.defineProperty(navigator, 'clipboard', descriptor);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+  }
+});
+
+it.each(['rich', 'wechat', 'zhihu', 'mathml', 'tsv'] as const)('copies the %s context-menu format without editing the document', async format => {
+  const source = format === 'tsv' ? '| 名称 | 内容 |\n| --- | --- |\n| A | B |\n' : '前 `code` $x^2$ 后\n';
+  const { editor, value, errors, revealMarkdown } = await mount(source);
+  revealMarkdown.value = false;
+  await nextTick();
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  const write = vi.fn().mockResolvedValue(undefined);
+  const itemDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'ClipboardItem');
+  const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  Object.defineProperty(globalThis, 'ClipboardItem', { configurable: true, value: class {
+    constructor(readonly data: Record<string, Blob>) {}
+  } });
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write, writeText } });
+  const readBlob = (blob: Blob) => new Promise<string>(resolve => {
+    const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.readAsText(blob);
+  });
+  try {
+    // Open inside a cell to exercise copying the containing table, not just its paragraph.
+    const target = view.dom.querySelector(format === 'tsv' ? 'td p' : 'p')!;
+    target.dispatchEvent(new MouseEvent('contextmenu', { button: 2, bubbles: true, cancelable: true }));
+    await nextTick();
+    await expandCopyMenu();
+    const labels = { rich: '复制富文本（Word / WPS）', wechat: '复制到微信公众号', zhihu: '复制到知乎', mathml: '复制公式 MathML', tsv: '复制表格 TSV' };
+    expect([...document.querySelectorAll('.block-context-menu button')].some(button => button.textContent?.includes('复制到 Word'))).toBe(false);
+    const buttons = [...document.querySelectorAll<HTMLButtonElement>('.block-context-menu button')];
+    const button = buttons.find(button => button.textContent?.startsWith(labels[format]));
+    expect(button).toBeDefined();
+    expect(buttons.some(button => button.textContent === (format === 'tsv' ? '复制公式 MathML' : '复制表格 TSV'))).toBe(false);
+    button!.click();
+    await nextTick();
+    if (format === 'tsv') {
+      expect(writeText).toHaveBeenCalledWith('名称\t内容\r\nA\tB');
+      expect(write).not.toHaveBeenCalled();
+    } else {
+      expect(write).toHaveBeenCalledTimes(1);
+      const data = write.mock.lastCall![0][0].data as Record<string, Blob>;
+      const html = await readBlob(data['text/html']!);
+      if (format === 'mathml') {
+        expect(html).toContain('<math');
+        expect(html).toContain('<msup>');
+        expect(await readBlob(data['text/plain']!)).toBe(html);
+      } else if (format === 'rich') {
+        expect(html).toContain('mso-ascii-font-family:Consolas');
+        expect(html).toContain('<math');
+      } else if (format === 'wechat') {
+        expect(html).toContain('<svg');
+        expect(html).toContain('<path');
+      } else {
+        expect(html).toContain('class="Formula-image"');
+        expect(html).toContain('alt="x^2"');
+      }
+    }
+    expect(value.value).toBe(source);
+    expect(editor.value!.canUndo()).toBe(false);
+    expect(errors).toEqual([]);
+  } finally {
+    if (itemDescriptor) Object.defineProperty(globalThis, 'ClipboardItem', itemDescriptor);
+    else Reflect.deleteProperty(globalThis, 'ClipboardItem');
+    if (clipboardDescriptor) Object.defineProperty(navigator, 'clipboard', clipboardDescriptor);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+  }
+});
+
+it.each(['wechat', 'zhihu'] as const)('copies dollar and LaTeX math delimiters using %s platform formulas', async copyFormat => {
+  const source = '美元行内：$a^2+b^2=c^2$；LaTeX 行内：\\(a^2+b^2=c^2\\)。\n\n$$\nE = mc^2\n$$\n\n\\[\n\\frac{1}{2}\n\\]\n';
+  const { editor, preferences, revealMarkdown, value, errors } = await mount(source);
+  revealMarkdown.value = false;
+  preferences.value = { ...preferences.value, copyFormat };
+  await nextTick();
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+  const copied = copyMarkdown(view);
+  const container = document.createElement('div');
+  container.innerHTML = copied.get('text/html')!;
+  if (copyFormat === 'wechat') expect(container.querySelectorAll('svg')).toHaveLength(4);
+  else {
+    const formulas = [...container.querySelectorAll<HTMLImageElement>('img.Formula-image')];
+    expect(formulas).toHaveLength(4);
+    expect(formulas[0]!.alt).toBe('a^2+b^2=c^2');
+    expect(formulas[1]!.alt).toBe('a^2+b^2=c^2');
+    expect(formulas[2]!.alt.trim()).toBe('E = mc^2\\\\');
+  }
+  expect(value.value).toBe(source);
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+it('preserves the document when a WeChat formula fails during cut', async () => {
+  const source = '公式 $\\frac{$\n';
+  const { editor, preferences, revealMarkdown, value, errors } = await mount(source);
+  revealMarkdown.value = false;
+  preferences.value = { ...preferences.value, copyFormat: 'wechat' };
+  await nextTick();
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, view.state.doc.content.size - 1)));
+  expect(copyMarkdown(view, 'cut').size).toBe(0);
+  expect(value.value).toBe(source);
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(errors.some(error => error.includes('无法转换公众号公式'))).toBe(true);
+});
+
+it('reports unsupported rich text copying without silently copying HTML source', async () => {
+  const { editor, errors, revealMarkdown } = await mount('**加粗**\n');
+  revealMarkdown.value = false;
+  await nextTick();
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  const writeText = vi.fn();
+  const descriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  try {
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 3)));
+    view.dom.querySelector('p')!.dispatchEvent(new MouseEvent('contextmenu', { button: 2, bubbles: true, cancelable: true }));
+    await nextTick();
+    await expandCopyMenu();
+    [...document.querySelectorAll<HTMLButtonElement>('.block-context-menu button')]
+      .find(button => button.textContent === '复制富文本（Word / WPS）')!.click();
+    await nextTick();
+    expect(writeText).not.toHaveBeenCalled();
+    expect(errors).toEqual(['当前环境不支持复制富文本，请使用复制 HTML 或复制 Markdown']);
+  } finally {
+    if (descriptor) Object.defineProperty(navigator, 'clipboard', descriptor);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+  }
 });
 
 it.each(['ctrlKey', 'metaKey'] as const)('%s+A expands block selection one level at a time and resets at a new caret', async modifier => {
@@ -4375,7 +4733,7 @@ describe('Markdown editor round trips', () => {
     }
   });
 
-  it.each(['转换为', '合并放入新块'])('opens the %s submenu without selecting its first item', async (label) => {
+  it.each(['转换为', '合并放入新块', '复制为'])('opens the %s submenu without selecting its first item', async (label) => {
     const { errors } = await mount('First paragraph.\n\nSecond paragraph.\n');
     root.querySelector<HTMLButtonElement>('.tano-block-handle')!.click();
     await nextTick();
@@ -4434,6 +4792,136 @@ describe('Markdown editor round trips', () => {
     expect(errors).toEqual([]);
   });
 
+  async function openSelectedBlockSources(view: EditorView, positions: number[]) {
+    view.dispatch(view.state.tr.setSelection(BlockRangeSelection.fromBlocks(view.state.doc, positions)!));
+    root.querySelector<HTMLButtonElement>(`.tano-block-handle[data-block-pos="${positions[0]}"]`)!.click();
+    await nextTick();
+    const button = [...document.querySelectorAll<HTMLButtonElement>('.block-context-menu button')]
+      .find(button => button.textContent === '编辑源码')!;
+    expect(button.disabled).toBe(false);
+    button.click();
+    await nextTick();
+  }
+
+  it.each([true, false])('reveals selected mixed blocks together and restores their exact nodes without edits (automatic source: %s)', async automatic => {
+    const content = 'Before.\n\n## Heading\n\nText with **bold**.\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\nAfter.\n';
+    const { editor, value, revealMarkdown, errors } = await mount(content);
+    revealMarkdown.value = automatic;
+    await nextTick();
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    const original = view.state.doc;
+    const positions = blockTree(original).slice(1, 4).map(block => block.pos);
+    await openSelectedBlockSources(view, positions);
+    const sources = view.dom.querySelectorAll('pre[data-tano-live-source]');
+    expect(sources).toHaveLength(1);
+    expect(sources[0]!.textContent).toContain('## Heading\n\nText with **bold**.\n\n| A');
+    expect(sources[0]!.textContent).not.toContain('Before.');
+    expect(sources[0]!.textContent).not.toContain('After.');
+    expect(value.value).toBe(content);
+    expect(editor.value!.canUndo()).toBe(false);
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    await nextTick();
+    expect(view.dom.querySelector('[data-tano-live-source]')).toBeNull();
+    expect(view.state.doc.eq(original)).toBe(true);
+    expect(value.value).toBe(content);
+    expect(editor.value!.canUndo()).toBe(false);
+    expect(errors).toEqual([]);
+  });
+
+  it('edits selected blocks into new block types and undoes the edit without changing outside blocks', async () => {
+    const content = 'Before.\n\nFirst.\n\nSecond.\n\nAfter.\n';
+    const { editor, value, revealMarkdown, errors } = await mount(content);
+    revealMarkdown.value = false;
+    await nextTick();
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    await openSelectedBlockSources(view, blockTree(view.state.doc).slice(1, 3).map(block => block.pos));
+    const source = view.state.doc.child(1), pos = view.state.doc.firstChild!.nodeSize;
+    view.dispatch(view.state.tr.insertText('## Updated\n\n* Item\n\nNew paragraph.', pos + 1, pos + source.nodeSize - 1));
+    await nextTick();
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    await nextTick();
+    expect(value.value).toBe('Before.\n\n## Updated\n\n* Item\n\nNew paragraph.\n\nAfter.\n');
+    expect(view.state.doc.content.content.map(node => node.type.name)).toEqual(['paragraph', 'heading', 'bullet_list', 'paragraph', 'paragraph']);
+    expect(editor.value!.undoLastChange()).toBe(true);
+    await nextTick();
+    expect(value.value).toBe(content);
+    expect(editor.value!.redoLastChange()).toBe(true);
+    await nextTick();
+    expect(value.value).toContain('## Updated\n\n* Item\n\nNew paragraph.');
+    expect(errors).toEqual([]);
+  });
+
+  it('edits disjoint selections across containers while preserving unselected blocks and their positions', async () => {
+    const content = 'First.\n\nKeep between.\n\n> Nested.\n>\n> Keep nested.\n\nAfter.\n';
+    const { editor, value, revealMarkdown, errors } = await mount(content);
+    revealMarkdown.value = false;
+    await nextTick();
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    const selected = blockTree(view.state.doc).filter(block => ['First.', 'Nested.'].includes(block.node.textContent));
+    await openSelectedBlockSources(view, selected.map(block => block.pos));
+    expect(view.dom.querySelectorAll('[data-tano-live-source]')).toHaveLength(2);
+    for (const [index, text] of ['Updated first.', 'Updated nested.'].entries()) {
+      const sources: { node: typeof view.state.doc; pos: number }[] = [];
+      view.state.doc.descendants((node, pos) => { if (node.type.name === 'tano_live_source') sources.push({ node, pos }); });
+      const source = sources[index]!;
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, source.pos + 1)));
+      expect(view.dom.querySelectorAll('[data-tano-live-source]')).toHaveLength(2);
+      view.dispatch(view.state.tr.insertText(text, source.pos + 1, source.pos + source.node.nodeSize - 1));
+    }
+    await nextTick();
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    await nextTick();
+    expect(view.dom.querySelector('[data-tano-live-source]')).toBeNull();
+    expect(value.value).toBe('Updated first.\n\nKeep between.\n\n> Updated nested.\n>\n> Keep nested.\n\nAfter.\n');
+    expect(view.dom.querySelector('blockquote')?.textContent).toBe('Updated nested.Keep nested.');
+    for (let step = 0; step < 4 && editor.value!.canUndo(); step++) {
+      expect(editor.value!.undoLastChange()).toBe(true);
+      await nextTick();
+      expect(value.value).toContain('Keep between.');
+      expect(value.value).toContain('> Keep nested.');
+      expect(value.value).toContain('After.');
+    }
+    expect(value.value).toBe(content);
+    expect(errors).toEqual([]);
+  });
+
+  it('keeps all restored blocks selected when expanding out of a grouped source', async () => {
+    const content = 'Before.\n\nFirst.\n\nSecond.\n\nAfter.\n';
+    const { editor, value, revealMarkdown, errors } = await mount(content);
+    revealMarkdown.value = false;
+    await nextTick();
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    await openSelectedBlockSources(view, blockTree(view.state.doc).slice(1, 3).map(block => block.pos));
+    const positions = blockTree(view.state.doc).map(block => block.pos);
+    view.dispatch(view.state.tr.setSelection(BlockRangeSelection.fromBlocks(view.state.doc, positions)!));
+    await nextTick();
+    expect(view.state.selection).toBeInstanceOf(BlockRangeSelection);
+    expect((view.state.selection as BlockRangeSelection).blocks.map(block => block.node.textContent))
+      .toEqual(['Before.', 'First.', 'Second.', 'After.']);
+    expect(value.value).toBe(content);
+    expect(editor.value!.canUndo()).toBe(false);
+    expect(errors).toEqual([]);
+  });
+
+  it('preserves source spelling in one selected group while restoring the other groups', async () => {
+    const content = 'First.\n\nKeep.\n\nLast.\n';
+    const { editor, value, revealMarkdown, errors } = await mount(content);
+    revealMarkdown.value = false;
+    await nextTick();
+    const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+    const blocks = blockTree(view.state.doc);
+    await openSelectedBlockSources(view, [blocks[0]!.pos, blocks[2]!.pos]);
+    const source = view.state.doc.firstChild!;
+    view.dispatch(view.state.tr.insertText('- Item', 1, source.nodeSize - 1));
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    await nextTick();
+    expect(value.value).toBe('- Item\n\nKeep.\n\nLast.\n');
+    expect(view.dom.querySelectorAll('[data-tano-live-source]')).toHaveLength(1);
+    expect(view.state.doc.lastChild!.type.name).toBe('paragraph');
+    expect(view.state.doc.lastChild!.textContent).toBe('Last.');
+    expect(errors).toEqual([]);
+  });
+
   it.each([
     ['paragraph', 'Text with **bold** and [link](https://example.com).'],
     ['heading', '## Heading'],
@@ -4451,7 +4939,7 @@ describe('Markdown editor round trips', () => {
     root.querySelector('.tano-block-handle')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     await nextTick();
     [...document.querySelectorAll<HTMLButtonElement>('.block-context-menu button')]
-      .find(button => button.textContent?.includes('临时显示 Markdown 源码'))!.click();
+      .find(button => button.textContent?.includes('编辑源码'))!.click();
     await nextTick();
     const source = root.querySelector<HTMLElement>('pre[data-tano-live-source]')!;
     expect(source).not.toBeNull();
@@ -4479,7 +4967,7 @@ describe('Markdown editor round trips', () => {
     root.querySelector('blockquote > p')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     await nextTick();
     [...document.querySelectorAll<HTMLButtonElement>('.block-context-menu button')]
-      .find(button => button.textContent?.includes('临时显示 Markdown 源码'))!.click();
+      .find(button => button.textContent?.includes('编辑源码'))!.click();
     await nextTick();
     expect(root.querySelector('blockquote pre[data-tano-live-source]')?.textContent).toBe('Child **bold**');
     const from = view.state.selection.$from.start();
@@ -5272,3 +5760,43 @@ it.each([['*', '**文字**\n'], ['_', '__文字__\n'], ['~', '~~文字~~\n'], ['
     for (let press = 0; press < 3; press++) expect(wrapInput(view, key)).toBe(true);
     expect(value.value).toBe(expected);
   });
+
+it('switches recognized formula syntax immediately without changing source or undo history', async () => {
+  const markdown = '前 $x_1$ 和 \\(y_2\\) 后\n';
+  const { value, editor, capabilities, errors } = await mount(markdown);
+  const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
+  expect(prose.querySelectorAll('.tano-math')).toHaveLength(2);
+  for (const [recognition, raw] of [['dollar', '\\(y_2\\)'], ['latex', '$x_1$']] as const) {
+    capabilities.value.mathRecognition = recognition;
+    await nextTick();
+    expect(prose.querySelectorAll('.tano-math')).toHaveLength(1);
+    expect(prose.querySelector('.tano-feature-source')?.textContent).toBe(raw);
+    expect(value.value).toBe(markdown);
+    expect(editor.value!.canUndo()).toBe(false);
+  }
+  capabilities.value.mathRecognition = 'all'; await nextTick();
+  expect(prose.querySelectorAll('.tano-math')).toHaveLength(2);
+  expect(errors).toEqual([]);
+});
+
+it.each([
+  ['$$\nx^2\n$$\n', 'latex'],
+  ['\\[\nx^2\n\\]\n', 'dollar'],
+] as const)('hides editing previews for unrecognized block syntax: %s', async (content, recognition) => {
+  const { value, capabilities, errors } = await mount(content);
+  const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
+  prose.focus();
+  prose.querySelector<HTMLElement>('.math-block .math-preview')!.dispatchEvent(
+    new MouseEvent('click', { bubbles: true, button: 0 }),
+  );
+  await nextTick();
+  expect(prose.querySelector<HTMLElement>('.tano-live-math-preview')?.hidden).toBe(false);
+  capabilities.value.mathRecognition = recognition;
+  await nextTick();
+  expect(prose.querySelector<HTMLElement>('.tano-live-math-preview')?.hidden).toBe(true);
+  expect(value.value).toBe(content);
+  capabilities.value.mathRecognition = 'all';
+  await nextTick();
+  expect(prose.querySelector<HTMLElement>('.tano-live-math-preview')?.hidden).toBe(false);
+  expect(errors).toEqual([]);
+});

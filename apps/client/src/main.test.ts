@@ -144,7 +144,7 @@ it('keeps a visible startup state while the workbench loads and offers a retry i
 });
 
 it.each(['light', 'dark'])('applies the saved %s theme while workbench loading is still pending', async theme => {
-  localStorage.setItem('tano.preference.theme', theme);
+  localStorage.setItem('tano.appearance.v2.device.user', JSON.stringify({ mode: theme }));
   start.mockImplementation(() => new Promise(() => {}));
   await import('./main');
   expect(document.documentElement.dataset.theme).toBe(theme);

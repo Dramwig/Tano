@@ -10,6 +10,7 @@ __pycache__/
 !.env.example
 test-results/
 .playwright-cli/
+/output/
 artifacts/
 apps/client/src-tauri/gen/android/app/src/main/jniLibs/
 apps/client/src-tauri/gen/android/app/src/main/assets/

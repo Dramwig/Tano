@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { X } from 'lucide-vue-next';
@@ -34,7 +35,7 @@ function keydown(event: KeyboardEvent) {
 }
 </script>
 <template>
-  <div class="modal-backdrop" @mousedown.self="emit('close')">
+  <div v-surface-motion="'DiffDialog:0'" class="modal-backdrop" @mousedown.self="emit('close')">
     <section
       class="modal diff-modal"
       role="dialog"

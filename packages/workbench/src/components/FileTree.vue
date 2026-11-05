@@ -7,9 +7,6 @@ import { treeRowHeight, useFileTreeViewport } from '../file-tree-viewport';
 import {
   ChevronRight,
   ChevronDown,
-  Folder,
-  FolderOpen,
-  File,
 } from 'lucide-vue-next';
 import {
   isDataTableFilePath,
@@ -19,7 +16,7 @@ import {
 } from '@tano/protocol';
 import FileTreeRename from './FileTreeRename.vue';
 import DocumentFileIcon from './DocumentFileIcon.vue';
-import FolderHomeIcon from './FolderHomeIcon.vue';
+import ResourceIcon from './ResourceIcon.vue';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 
 const props = withDefaults(
@@ -336,24 +333,14 @@ function clickIcon(file: FileEntry, event: MouseEvent) {
           <DocumentFileIcon
             v-if="homeFor(file)"
             class="tree-item-icon"
-            :file="homeFor(file)!" :icon="documentIcons?.[homeFor(file)!.id]" :load="loadDocumentIcon" :fallback="FolderHomeIcon"
+            :file="homeFor(file)!" :icon="documentIcons?.[homeFor(file)!.id]" :load="loadDocumentIcon"
+            :resource="{ ...file, folderHome: true, expanded: !isCollapsed(file.path) }"
           />
           <DocumentFileIcon
             v-else-if="file.kind === 'file' && (isMarkdown(file.path) || isDataTableFilePath(file.path))"
             :file="file" :icon="documentIcons?.[file.id]" :load="isMarkdown(file.path) ? loadDocumentIcon : undefined"
           />
-          <component v-else
-            :is="
-              file.kind === 'directory'
-                ? isCollapsed(file.path)
-                  ? Folder
-                  : FolderOpen
-                : File
-            "
-            :size="16"
-            :stroke-width="1.6"
-            class="tree-item-icon"
-          />
+          <ResourceIcon v-else :path="file.path" :name="file.name" :kind="file.kind" :expanded="!isCollapsed(file.path)" class="tree-item-icon" />
           <component
             :is="isCollapsed(file.path) ? ChevronRight : ChevronDown"
             v-if="file.kind === 'directory'"

@@ -1,0 +1,91 @@
+/* Appearance contract v1. Defaults are also sent into isolated plugin views. */
+:root {
+  --on-accent: #ffffff;
+  --selection: var(--accent);
+  --font-prose: var(--font-ui);
+  --radius-control: 6px;
+  --radius-card: 10px;
+  --radius-dialog: 14px;
+  --space-control-x: 10px;
+  --space-control-y: 6px;
+  --space-panel: 20px;
+  --space-row-gap: 8px;
+  --surface-raised: var(--paper);
+  --line-strong: var(--control-border);
+  --backdrop: #00000055;
+  --overlay-shadow: 0 8px 28px #00000018, 0 2px 8px #00000010;
+  --dialog-shadow: 0 24px 80px #00000026, 0 4px 16px #00000014;
+}
+/* Contract overrides are scoped to an explicitly selected plugin theme. Keep
+   the built-in theme and component-specific shapes (switches, icons) intact. */
+:root[data-shape-theme] :is(
+  .tree-row, .folder-view-entry, .dropdown button, .menu-item,
+  .settings-row select, .settings-row input, .settings-nav button, .settings-search, .settings-close,
+  .settings-font-controls button, .pc-button, .primary-button,
+  .modal input, .modal button, .command-palette input, .tano-editor-panel button
+) { border-radius: var(--radius-control); }
+:root[data-shape-theme] :is(
+  .settings-row select, .settings-row input, .modal input
+) {
+  color: var(--text);
+  background-color: var(--surface);
+  border-color: var(--control-border);
+  padding-block: var(--space-control-y);
+  padding-left: var(--space-control-x);
+}
+:root[data-shape-theme] :is(.tree-row, .folder-view-entry) {
+  gap: var(--space-row-gap);
+  padding-block: var(--space-control-y);
+}
+:root[data-shape-theme] :is(
+  .settings-card, .review-card, .assistant-composer, .tano-prose pre, .tano-prose blockquote
+) { border-radius: var(--radius-card); }
+:root[data-shape-theme] :is(
+  .modal, .settings-dialog, .object-panel, .import-dialog, .plugin-dialog,
+  .command-palette, .document-history-dialog, .selection-todo-dialog,
+  .plan-detail-panel, .plan-connections, .assistant-connection-dialog, .assistant-panel-floating,
+  .new-tab-picker, .personal-plan-dialog
+) {
+  border-radius: var(--radius-dialog);
+  background-color: var(--paper);
+  color: var(--text);
+  border-color: var(--line-strong);
+  box-shadow: var(--dialog-shadow);
+}
+:root[data-shape-theme] :is(
+  .dropdown, .tano-slash-menu, .tano-code-language-menu, .tano-editor-panel,
+  .selection-format-toolbar, .page-search, .assistant-popover, .breadcrumb-menu,
+  .annotation-popup, .workspace-icon-picker, .help-popover, .help-submenu, .help-bubble,
+  .help-preview, .calendar-day-popover, .plan-date-menu, .reference-graph-popover, .plan-scope-menu
+) {
+  background: var(--surface-raised);
+  color: var(--text);
+  border-color: var(--line-strong);
+  border-radius: var(--radius-card);
+  box-shadow: var(--overlay-shadow);
+}
+:root[data-shape-theme] :is(.settings-row, .modal, .tano-editor-panel) {
+  padding-block: var(--space-panel);
+}
+:root[data-shape-theme] :is(.modal-backdrop, .object-panel-backdrop, .plugin-dialog-backdrop) {
+  background: var(--backdrop);
+}
+:root[data-shape-theme] dialog::backdrop { background: var(--backdrop); }
+/* A narrow mouse-driven window still uses compact desktop controls. */
+@media (pointer: coarse) {
+  :root[data-shape-theme] :is(.tree-row, .folder-view-entry, .settings-row select, .settings-row input) { min-height: 44px; }
+}
+/* Full-screen sheets must survive every shape's dialog radius. */
+@media (max-width: 700px), (pointer: coarse) {
+  :root[data-shape-theme] .settings-dialog { border-radius: 0; }
+}
+
+:root[data-shape-theme] a { color: var(--green); }
+:root[data-shape-theme] .source-editor .cm-source-link {
+  color: var(--green);
+  text-decoration-color: currentColor;
+}
+:root[data-shape-theme] .tano-file-mention { color: var(--text-secondary); background: var(--surface); }
+:root[data-shape-theme] .tano-prose sup[data-type='footnote_reference'] { color: var(--green); }
+:root[data-shape-theme] .tano-search-match { background: var(--highlight-bg); }
+:root[data-shape-theme] .tano-search-current { background: var(--block-selection); box-shadow: 0 0 0 1px var(--green); }

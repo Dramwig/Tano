@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { CalendarDays, ClipboardList, LayoutTemplate, ListTodo, MoreHorizontal, Sparkles } from 'lucide-vue-next';
@@ -69,6 +70,7 @@ async function show(selection?: 'first' | 'last') {
   const above = Math.max(0, anchor.top - 16);
   const below = Math.max(0, window.innerHeight - anchor.bottom - 16);
   const upward = above >= below;
+  menu.value.dataset.surfaceSide = upward ? 'up' : 'down';
   const maxHeight = Math.max(above, below);
   const height = Math.min(menu.value.scrollHeight + menu.value.offsetHeight - menu.value.clientHeight, maxHeight);
   const width = menu.value.getBoundingClientRect().width;
@@ -146,7 +148,7 @@ onBeforeUnmount(() => {
     </div>
   </section>
   <Teleport to="body">
-    <div v-if="open" :id="menuId" ref="menu" class="dropdown compact-action-menu panel-scrollbar document-starter-menu"
+    <div v-surface-motion="'DocumentStarter:0'" v-if="open" :id="menuId" ref="menu" class="dropdown compact-action-menu panel-scrollbar document-starter-menu"
       role="menu" tabindex="-1" :aria-label="t('更多开始使用选项')" :style="position" @keydown.stop="menuKey">
       <button v-for="action in overflow" :key="action.id" type="button" role="menuitem"
         :disabled="action.id === 'draft' && assistantBusy" @click="activate(action.id)">
