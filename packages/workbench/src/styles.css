@@ -685,10 +685,12 @@ button:hover {
 .tree-row.selected .tree-chevron {
   color: inherit;
 }
+.tree-row-expandable:hover .tree-item-icon,
 .tree-icon-expandable:hover .tree-item-icon,
 .tree-row:focus-visible .tree-icon-expandable .tree-item-icon {
   visibility: hidden;
 }
+.tree-row-expandable:hover .tree-chevron,
 .tree-icon-expandable:hover .tree-chevron,
 .tree-row:focus-visible .tree-icon-expandable .tree-chevron {
   visibility: visible;

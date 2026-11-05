@@ -11,7 +11,7 @@ const entries: FileEntry[] = [
   { id: 'document', path: '项目/计划.md', name: '计划.md', kind: 'file', size: 1, modified: 0 },
 ];
 
-it('opens folders separately from tree expansion, including folders with home files', async () => {
+it('opens folder homes separately and toggles folders without homes from the whole row', async () => {
   const home: FileEntry = { id: 'home', path: '项目/README.md', name: 'README.md', kind: 'file', size: 1, modified: 0 };
   const files = ref([...entries, home]);
   const open = vi.fn(), context = vi.fn(), prefetch = vi.fn();
@@ -39,8 +39,14 @@ it('opens folders separately from tree expansion, including folders with home fi
   expect(open).not.toHaveBeenCalled();
   files.value = entries; await nextTick();
   folder.click(); await nextTick();
+  expect(folder.getAttribute('aria-expanded')).toBe('false');
+  expect(root.querySelector('[title="项目/计划.md"]')).toBeNull();
+  folder.querySelector<HTMLElement>('.tree-label')!.click(); await nextTick();
   expect(folder.getAttribute('aria-expanded')).toBe('true');
-  expect(open).toHaveBeenCalledWith(entries[0]);
+  expect(root.querySelector('[title="项目/计划.md"]')).not.toBeNull();
+  folder.querySelector<HTMLElement>('.tree-icon')!.click(); await nextTick();
+  expect(folder.getAttribute('aria-expanded')).toBe('false');
+  expect(open).not.toHaveBeenCalled();
 });
 
 it.each([false, true])('reveals hidden home files and switches filename rules in virtual=%s trees', async virtual => {

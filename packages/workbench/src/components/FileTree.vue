@@ -256,7 +256,8 @@ function clickEntry(file: FileEntry, event: MouseEvent) {
   if (event.shiftKey || event.ctrlKey || event.metaKey) {
     return;
   }
-  emit('open', file);
+  if (file.kind === 'directory' && !homeFor(file)) toggle(file.path);
+  else emit('open', file);
 }
 function clickIcon(file: FileEntry, event: MouseEvent) {
   if (file.kind !== 'directory') return;
@@ -291,6 +292,7 @@ function clickIcon(file: FileEntry, event: MouseEvent) {
         role="treeitem"
         :class="{
           selected: isSelected(file),
+          'tree-row-expandable': file.kind === 'directory' && !homeFor(file),
           'multi-selected': selectedIds.size > 1 && selectedIds.has(file.id),
           'context-target': file.id === contextSelected,
           dragging: file.id === draggedId,
