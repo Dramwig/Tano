@@ -7,7 +7,9 @@ preserve the import names. `tano-native` is published to crates.io.
 
 All six packages identify the same stable Core version and clean source commit.
 The current packages distribute TypeScript/Vue sources for the consumer's
-Vue/Vite/esbuild toolchain; the MCP package contains its standalone CJS executable.
+Vue/Vite/esbuild toolchain. Install TypeScript in the consumer's build toolchain
+so Vue can resolve imported component prop types. The MCP package contains its
+standalone CJS executable.
 This does not change the public/private repository boundary or MIT licensing.
 
 ## When publication is required
