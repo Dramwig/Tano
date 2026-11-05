@@ -80,11 +80,6 @@
   :root[data-shape-theme] .settings-dialog { border-radius: 0; }
 }
 
-:root[data-shape-theme] a { color: var(--green); }
-:root[data-shape-theme] .source-editor .cm-source-link {
-  color: var(--green);
-  text-decoration-color: currentColor;
-}
 :root[data-shape-theme] .tano-file-mention { color: var(--text-secondary); background: var(--surface); }
 :root[data-shape-theme] .tano-prose sup[data-type='footnote_reference'] { color: var(--green); }
 :root[data-shape-theme] .tano-search-match { background: var(--highlight-bg); }

@@ -14,7 +14,7 @@ function tooltipLabel(element: HTMLElement) {
   if (element.dataset.tooltip !== undefined) return element.dataset.tooltip;
   if (!element.matches(editorLinkSelector)) return '';
   const source = element.classList.contains('tano-wiki-link') ? element.dataset.markdownSource : '';
-  return `${source ? `${source} · ` : ''}Ctrl/⌘ + 点击跳转`;
+  return `${source ? `${source} · ` : ''}${shortcutLabel('Mod')} + 点击跳转`;
 }
 const id = useId();
 const tooltip = ref<HTMLElement>();

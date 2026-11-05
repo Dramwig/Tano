@@ -265,6 +265,9 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* Breadcrumb labels use a smaller UI face than the file tree. Its visible
+   glyphs sit lower in the line box, so it needs its own optical correction. */
+.breadcrumb, .breadcrumb-menu { --navigation-icon-offset-y: 1.5px; }
 .breadcrumb { gap: 2px; }
 .breadcrumb-loading { width: 160px; }
 .breadcrumb-loading :deep(.tano-skeleton-list) { padding: 0 6px; gap: 0; }
@@ -292,6 +295,7 @@ onBeforeUnmount(() => {
 .breadcrumb-workspace-icon,
 .breadcrumb > svg.breadcrumb-separator,
 .breadcrumb-menu-trigger > svg,
+.breadcrumb :deep(.document-status-trigger > svg),
 .breadcrumb-menu-entry > svg,
 .breadcrumb-menu-entry > .document-file-icon { translate: 0 var(--navigation-icon-offset-y, 0.5px); }
 button.breadcrumb-trigger:hover, .breadcrumb-trigger[aria-expanded='true'] { background: var(--hover); }
