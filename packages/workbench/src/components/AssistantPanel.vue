@@ -19,10 +19,12 @@ import AssistantButterfly from './AssistantButterfly.vue';
 import AssistantQuestionCard from './AssistantQuestionCard.vue';
 import AssistantMessageBody from './AssistantMessageBody.vue';
 import AgentInboxPanel from './AgentInboxPanel.vue';
+import { shortcutAriaLabel, shortcutKeys } from '../shortcuts';
+import type { ShortcutBinding } from '../shortcuts';
 
 const assistant = useAssistantStore();
 const workspace = useWorkspaceStore();
-const props = defineProps<{ compact?: boolean; fullscreenTarget?: string | HTMLElement; navigationVisible?: boolean }>();
+const props = defineProps<{ compact?: boolean; fullscreenTarget?: string | HTMLElement; navigationVisible?: boolean; toggleShortcut?: ShortcutBinding }>();
 const emit = defineEmits<{ openReference: [identity: ReferenceIdentity]; revealSelection: [source: AssistantSource]; openSettings: []; closed: []; showNavigation: [] }>();
 function afterPanelLeave() {
   if (!assistant.opened) emit('closed');
@@ -508,7 +510,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
           <button v-if="!assistant.demo" data-menu-item @click="closePopover(); emit('openSettings')"><Settings2 :size="16" />{{ t('助手设置') }}</button>
         </div>
       </template>
-      <button class="icon-button" :data-tooltip="t('收起助手')" :aria-label="t('收起助手')" @click="assistant.opened = false"><ChevronsRight v-if="assistant.displayMode === 'sidebar'" :size="19" /><Minus v-else :size="17" /></button>
+      <button class="icon-button" :data-tooltip="t('收起助手')" :aria-label="t('收起助手')" :aria-keyshortcuts="shortcutAriaLabel(toggleShortcut) || undefined" :data-tooltip-shortcut="shortcutKeys(toggleShortcut)[0]" @click="assistant.opened = false"><ChevronsRight v-if="assistant.displayMode === 'sidebar'" :size="19" /><Minus v-else :size="17" /></button>
       <div v-if="popover === 'history'" id="assistant-history-options" class="assistant-popover assistant-history-menu" role="dialog" :aria-label="t('最近助手会话')">
         <div class="assistant-popover-heading"><span>{{ t('会话记录') }}</span><button class="icon-button" :class="{ selected: searchingHistory }" :aria-label="t('搜索会话记录')" :data-tooltip="t('搜索会话')" @click="searchHistory"><Search :size="16" /></button></div>
         <label v-if="searchingHistory" class="assistant-menu-search"><Search :size="15" /><input v-model="historyQuery" :aria-label="t('搜索助手会话')" :placeholder="t('搜索会话')" /></label>

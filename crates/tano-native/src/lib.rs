@@ -32,6 +32,7 @@ mod plugin_oauth;
 mod plugin_oauth_loopback;
 #[cfg(desktop)]
 mod plugin_oauth_types;
+mod printing;
 mod search;
 mod session_storage;
 pub mod storage;
@@ -71,7 +72,10 @@ fn workspace_switch_blocked(app: &tauri::AppHandle) -> bool {
     // Settings are prewarmed and follow the main window's workspace snapshot. Only
     // independent content windows must be closed before replacing the shared session.
     app.webview_windows().keys().any(|label| {
-        label != "main" && !label.starts_with("settings-") && !label.starts_with("file-")
+        label != "main"
+            && !label.starts_with("settings-")
+            && !label.starts_with("file-")
+            && !label.starts_with("print-")
     })
 }
 
@@ -1297,6 +1301,9 @@ pub fn configure_with_commands(
                     write_spreadsheet,
                     export_attachment,
                     export_document,
+                    printing::document_print_printers,
+                    printing::document_print_preview,
+                    printing::document_print_submit,
                     open_external_url,
                     refresh_workspace,
                     reserve_reference_id,

@@ -2,10 +2,13 @@
 import { t } from '../i18n';
 import { computed, ref, useId } from 'vue';
 import AssistantButterfly from './AssistantButterfly.vue';
+import ShortcutHint from '@tano/editor/shortcut-hint';
+import { shortcutAriaLabel, shortcutKeys, shortcutLabel } from '../shortcuts';
+import type { ShortcutBinding } from '../shortcuts';
 import { butterflyPerchDirective, useButterflyController } from '../assistant/butterfly-vue';
 import type { ButterflyPerch } from '../assistant/butterfly-vue';
 
-const props = defineProps<{ busy?: boolean; scope?: string; contextLabel?: string }>();
+const props = defineProps<{ busy?: boolean; scope?: string; contextLabel?: string; shortcut?: ShortcutBinding }>();
 const emit = defineEmits<{ open: [] }>();
 const controller = useButterflyController();
 const vButterflyPerch = butterflyPerchDirective(controller);
@@ -27,6 +30,7 @@ function greet(event: PointerEvent) {
     class="assistant-launcher"
     :aria-label="away ? t('让蝴蝶回到圆球') : t('打开同页助手')"
     :aria-describedby="hintId"
+    :aria-keyshortcuts="!away && shortcutAriaLabel(shortcut) || undefined"
     @mousedown.prevent
     @pointerenter="greet"
     @click="away ? controller?.returnHome() : emit('open')"
@@ -34,6 +38,7 @@ function greet(event: PointerEvent) {
     <span :id="hintId" class="assistant-launcher-hint" role="tooltip">
       <strong>{{ t('同页助手') }}</strong>
       <span>{{ hint }}</span>
+      <ShortcutHint v-if="!away && shortcutKeys(shortcut).length" :label="shortcutLabel(shortcut)" />
     </span>
     <AssistantButterfly ref="butterflyMark" class="assistant-launcher-mark" :class="{ 'is-away': away }" />
     <span v-if="busy" class="assistant-launcher-status" aria-hidden="true" />

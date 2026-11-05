@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { t } from '../i18n';
+import { shortcutAriaLabel, shortcutKeys } from '../shortcuts';
+import type { ShortcutBinding } from '../shortcuts';
 
-defineProps<{ modelValue: boolean; source: boolean }>();
+defineProps<{ modelValue: boolean; source: boolean; shortcut?: ShortcutBinding }>();
 defineEmits<{ 'update:modelValue': [value: boolean] }>();
 </script>
 
@@ -11,6 +13,8 @@ defineEmits<{ 'update:modelValue': [value: boolean] }>();
     class="icon-button markdown-reveal-toggle"
     :aria-label="t('光标展开源码')"
     :aria-pressed="modelValue"
+    :aria-keyshortcuts="shortcutAriaLabel(shortcut) || undefined"
+    :data-tooltip-shortcut="shortcutKeys(shortcut)[0]"
     :disabled="source"
     :data-tooltip="source
       ? t('当前为完整源码模式；返回编辑后可切换光标展开源码')

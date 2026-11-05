@@ -6125,6 +6125,65 @@ div.tano-feature-source {
 }
 @media print {
   [data-tano-comment] { display: none !important; }
+  @page { margin: 16mm; }
+  html.document-printing,
+  html.document-printing body {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+    color-scheme: light !important;
+  }
+  html.document-printing body > :not(.document-print-root) { display: none !important; }
+  .document-print-root {
+    position: static;
+    display: block;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .document-print-root .document-export-content {
+    width: auto;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    overflow-wrap: anywhere;
+  }
+  .document-print-root .tano-prose {
+    min-width: 0;
+    min-height: 0;
+    overflow: visible;
+  }
+  .document-print-root :is(h1, h2, h3, h4, h5, h6) {
+    break-after: avoid;
+    break-inside: avoid;
+  }
+  .document-print-root :is(p, li) { orphans: 3; widows: 3; }
+  .document-print-root :is(img, svg, .tano-math-block, .tano-mermaid-preview) {
+    max-width: 100%;
+    height: auto;
+    break-inside: avoid;
+  }
+  .document-print-root img { max-height: 240mm; object-fit: contain; }
+  .document-print-root :is(.tano-table-viewport, .tableWrapper) {
+    display: block;
+    max-width: 100%;
+    overflow: visible;
+  }
+  .document-print-root table { table-layout: fixed; }
+  .document-print-root :is(th, td) { min-width: 0; overflow-wrap: anywhere; }
+  .document-print-root tr { break-inside: avoid; }
+  .document-print-root thead { display: table-header-group; }
+  .document-print-root pre { overflow: visible; }
+  .document-print-root .tano-tabs > .tano-enhanced-content { padding: 0; }
+  .document-print-root .document-print-panel-title { margin: 16px 0 8px; font-size: 1em; }
+  .document-print-root :is(.tano-enhanced, .tano-enhanced-content) {
+    max-height: none;
+    overflow: visible;
+  }
 }
 
 .source-editor .cm-source-highlight,

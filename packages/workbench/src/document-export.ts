@@ -41,7 +41,7 @@ export function cleanExportContent(root: HTMLElement) {
     label.textContent = input.value;
     input.replaceWith(label);
   });
-  root.querySelectorAll('button, .tano-editor-panel, .tano-tab-list, .tano-block-handle, .tano-table-scrollbar, .ProseMirror-gapcursor, .tano-image-caption:empty').forEach(element => element.remove());
+  root.querySelectorAll('button, .tano-editor-panel, .tano-tab-list, .tano-block-handle, .tano-table-scrollbar, .ProseMirror-gapcursor, .ProseMirror-separator, .tano-image-caption:empty').forEach(element => element.remove());
   root.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach(input => {
     input.toggleAttribute('checked', input.checked);
     input.disabled = true;
@@ -127,8 +127,11 @@ async function waitForDiagrams(root: HTMLElement) {
   });
 }
 
-export async function renderDocumentExport(options: DocumentExportOptions, format: DocumentExportFormat): Promise<Blob> {
-  if (format === 'markdown') return new Blob([options.content], { type: 'text/markdown;charset=utf-8' });
+/** Render from the Markdown snapshot, independently of the visible editor and its folds. */
+export async function withDocumentSnapshot<T>(options: DocumentExportOptions, consume: (snapshot: HTMLElement) => Promise<T>, settings: {
+  inlineImages?: boolean;
+  preserveReferenceLabels?: boolean;
+} = {}): Promise<T> {
   const host = document.createElement('div');
   host.className = 'document-export-renderer';
   host.setAttribute('aria-hidden', 'true');
@@ -172,7 +175,7 @@ export async function renderDocumentExport(options: DocumentExportOptions, forma
       snapshot.append(title);
     }
     snapshot.append(prose.cloneNode(true));
-    if (format === 'docx') {
+    if (settings.preserveReferenceLabels) {
       // These buttons carry document content, rather than editor actions.
       snapshot.querySelectorAll('.tano-reference > button, .tano-reference-card > button, .tano-resource-row').forEach(button => {
         const label = document.createElement('span');
@@ -184,9 +187,20 @@ export async function renderDocumentExport(options: DocumentExportOptions, forma
     cleanExportContent(snapshot);
     host.append(snapshot);
     mount.style.display = 'none';
-    await inlineImages(snapshot);
+    if (settings.inlineImages !== false) await inlineImages(snapshot);
     await Promise.all([...snapshot.querySelectorAll<HTMLImageElement>('img[src]')].map(image => image.decode()));
     await document.fonts.ready;
+    return await consume(snapshot);
+  } finally {
+    clearTimeout(timer);
+    app.unmount();
+    host.remove();
+  }
+}
+
+export async function renderDocumentExport(options: DocumentExportOptions, format: DocumentExportFormat): Promise<Blob> {
+  if (format === 'markdown') return new Blob([options.content], { type: 'text/markdown;charset=utf-8' });
+  return withDocumentSnapshot(options, async snapshot => {
     if (format === 'docx') {
       const { renderWordDocument } = await import('./word-document-export');
       return await renderWordDocument(snapshot, options);
@@ -230,11 +244,7 @@ export async function renderDocumentExport(options: DocumentExportOptions, forma
     }
     pdf.setProperties({ title: options.title ?? basename(options.path), creator: 'Tano' });
     return pdf.output('blob');
-  } finally {
-    clearTimeout(timer);
-    app.unmount();
-    host.remove();
-  }
+  }, { preserveReferenceLabels: format === 'docx' });
 }
 
 export function downloadExport(blob: Blob, filename: string) {

@@ -42,6 +42,17 @@ it('recognizes the sidebar toggle shortcut on Windows and macOS', () => {
   expect(isSidebarToggleShortcut(shortcut('B', { metaKey: true }))).toBe(true);
 });
 
+it('supports printing on Windows and macOS, including custom bindings and conflicts', () => {
+  expect(matchesShortcut(shortcut('p', { ctrlKey: true }), 'print')).toBe(true);
+  expect(matchesShortcut(shortcut('p', { metaKey: true }), 'print')).toBe(true);
+  expect(matchesShortcut(shortcut('p', { ctrlKey: true, shiftKey: true }), 'print')).toBe(false);
+  expect(shortcutBindingError('save', 'Mod+P', defaultShortcutBindings)).toContain('打印文档');
+  const bindings = parseShortcutBindings({ print: 'Alt+P' });
+  expect(matchesShortcut(shortcut('p', { altKey: true }), 'print', bindings)).toBe(true);
+  expect(matchesShortcut(shortcut('p', { ctrlKey: true }), 'print', bindings)).toBe(false);
+  expect(parseShortcutBindings({ save: 'Mod+P' })).toMatchObject({ save: 'Mod+P', print: null });
+});
+
 it('ignores modified, repeated, and composing key presses', () => {
   expect(isSidebarToggleShortcut(shortcut('b'))).toBe(false);
   expect(isSidebarToggleShortcut(shortcut('b', { ctrlKey: true, shiftKey: true }))).toBe(false);
@@ -49,6 +60,27 @@ it('ignores modified, repeated, and composing key presses', () => {
   expect(isSidebarToggleShortcut(shortcut('b', { ctrlKey: true, repeat: true }))).toBe(false);
   expect(isSidebarToggleShortcut(shortcut('b', { ctrlKey: true, isComposing: true }))).toBe(false);
   expect(isSidebarToggleShortcut(shortcut('b', { ctrlKey: true, keyCode: 229 }))).toBe(false);
+});
+
+it.each([
+  ['toggleSource', 'e', '切换源码模式'],
+  ['toggleMarkdownReveal', 'm', '光标展开源码'],
+  ['toggleAssistant', 'a', '打开或关闭同页助手'],
+] as const)('supports %s defaults, customization, and existing saved bindings', (id, key, label) => {
+  expect(matchesShortcut(shortcut(key, { ctrlKey: true, shiftKey: true }), id)).toBe(true);
+  expect(matchesShortcut(shortcut(key, { metaKey: true, shiftKey: true }), id)).toBe(true);
+  expect(matchesShortcut(shortcut(key, { ctrlKey: true }), id)).toBe(false);
+  expect(matchesShortcut(shortcut(key, { ctrlKey: true, shiftKey: true, repeat: true }), id)).toBe(false);
+  expect(matchesShortcut(shortcut(key, { ctrlKey: true, shiftKey: true, isComposing: true }), id)).toBe(false);
+  expect(shortcutBindingError('save', `Mod+Shift+${key.toUpperCase()}`, defaultShortcutBindings)).toContain(label);
+  const custom = parseShortcutBindings({ [id]: 'Alt+J' });
+  saveShortcutBindings(custom);
+  expect(matchesShortcut(shortcut('j', { altKey: true }), id, readShortcutBindings())).toBe(true);
+  expect(matchesShortcut(shortcut(key, { ctrlKey: true, shiftKey: true }), id, custom)).toBe(false);
+  expect(parseShortcutBindings({ [id]: null })[id]).toBeNull();
+  const upgraded = parseShortcutBindings({ save: defaultShortcutBindings[id] });
+  expect(upgraded.save).toEqual(defaultShortcutBindings[id]);
+  expect(upgraded[id]).toBeNull();
 });
 
 it.each(['input', 'textarea', 'select', 'rich text', 'plain text'])('leaves Ctrl+B to the focused %s', (kind) => {

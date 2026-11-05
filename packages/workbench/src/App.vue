@@ -116,10 +116,11 @@ import DocumentScrollbar from './components/DocumentScrollbar.vue';
 import PageDisplayOptions from './components/PageDisplayOptions.vue';
 import DocumentGlobalMenu from './components/DocumentGlobalMenu.vue';
 import DocumentExportMenu from './components/DocumentExportMenu.vue';
+import DocumentPrintButton from './components/DocumentPrintButton.vue';
 import type { ImportRecord } from './components/ImportPanel.vue';
 const ImportPanel = defineAsyncComponent(() => import('./components/ImportPanel.vue'));
 const TemplateLibrary = loadingComponent(() => import('./components/TemplateLibrary.vue'), 'document');
-import type { DocumentExportFormat } from './document-export';
+import type { DocumentExportFormat, DocumentExportOptions } from './document-export';
 // Discussion and annotation surfaces decide their own visibility and loading state.
 const DocumentComments = defineAsyncComponent(() => import('./components/DocumentComments.vue'));
 // Keep the document layout mounted while only the editor implementation loads.
@@ -237,7 +238,7 @@ import { resolveWikiLink } from './wiki-links';
 import { applyFileMovePreview, planFileMovePreview, type FileMovePreview } from './file-move';
 import {
   isSidebarToggleShortcut, matchesShortcut, parseShortcutBindings, readShortcutBindings,
-  saveShortcutBindings, shortcutLabel, shortcutKeys, shortcutPreferenceKey,
+  saveShortcutBindings, shortcutLabel, shortcutAriaLabel, shortcutKeys, shortcutPreferenceKey,
 } from './shortcuts';
 import type { ShortcutId } from './shortcuts';
 import { configuredEditorShortcuts } from './configured-editor-shortcuts';
@@ -1135,6 +1136,7 @@ watch(
   },
 );
 const exportBusy = ref(false);
+const printBusy = ref(false);
 const documentMenuButton = ref<HTMLButtonElement>();
 const documentMenuElement = ref<HTMLElement>();
 const workspaceMenu = ref(false);
@@ -1313,6 +1315,7 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
       id: `workbench.export.${format}`, category: t('导出'), label: ({ markdown: 'Markdown', docx: 'Word', pdf: 'PDF', html: 'HTML', png: t('图片') })[format],
       keywords: format, available: hasDocument && !exportBusy.value, run: () => exportDocument(format),
     })),
+    { id: 'workbench.print', category: t('文档'), get label() { return t('打印文档'); }, shortcut: shortcuts.value.print, available: hasDocument && !printBusy.value, run: printActiveDocument },
     { id: 'workbench.find', category: t('编辑'), get label() { return t('页内搜索'); }, shortcut: shortcuts.value.pageSearch, available: standardEditor, run: () => openPaneSearch() },
     { id: 'workbench.replace', category: t('编辑'), get label() { return t('查找与替换'); }, shortcut: shortcuts.value.pageReplace, available: editable, run: () => openPaneSearch(store.activePaneId, true) },
     { id: 'workbench.undo', category: t('编辑'), get label() { return t('撤销'); }, available: editable && documentUndoAvailable.value, run: undoDocument },
@@ -1320,7 +1323,9 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
     ...editorPaletteCommands({ editable: editable && !!editor.value, source: source.value,
       context: paneSelections[store.activePaneId] ?? defaultSelectionContext, features: store.capabilities.features,
       run: (name, value) => editor.value?.command(name, value) }),
-    { id: 'workbench.source', category: t('视图'), label: source.value ? t('返回可视化编辑') : t('切换源码模式'), available: standardEditor, keywords: 'Markdown source', run: () => { source.value = !source.value; } },
+    { id: 'workbench.source', category: t('视图'), label: source.value ? t('返回可视化编辑') : t('切换源码模式'), shortcut: shortcuts.value.toggleSource, available: standardEditor, keywords: 'Markdown source', run: () => { source.value = !source.value; } },
+    { id: 'workbench.markdown-reveal', category: t('视图'), get label() { return t('光标展开源码'); }, shortcut: shortcuts.value.toggleMarkdownReveal, available: standardEditor && !source.value, keywords: 'Markdown source cursor', run: () => { revealMarkdown.value = !revealMarkdown.value; } },
+    { id: 'workbench.assistant', category: t('视图'), get label() { return t('打开或关闭同页助手'); }, shortcut: shortcuts.value.toggleAssistant, available: !!workspace.value && assistant.available, run: toggleAssistant },
     { id: 'workbench.reading', category: t('视图'), label: pageLocked.value ? t('退出阅读模式') : t('进入阅读模式'), available: hasDocument && !workspaceLocked.value, keywords: t('锁定页面 解锁'), run: togglePageLock },
     { id: 'workbench.width', category: t('视图'), label: limitPageWidth.value ? t('展开页面全宽') : t('限制页面宽度'), available: hasDocument && pageWidthWritable.value, run: () => setLimitPageWidth(!limitPageWidth.value) },
     { id: 'workbench.outline', category: t('视图'), label: showOutline.value ? t('隐藏文档目录') : t('显示文档目录'), available: hasDocument, keywords: t('大纲'), run: () => { showOutline.value = !showOutline.value; } },
@@ -1701,6 +1706,15 @@ function openAssistant(paneId = store.activePaneId, fileId = store.activeId,
     options.capturedSelection ?? taskSelection,
   );
   if (window.innerWidth < 1100) sidebar.value = false;
+}
+function toggleAssistant() {
+  if (!workspace.value || !assistant.available) return;
+  if (assistant.opened) {
+    assistant.opened = false;
+    void nextTick(() => {
+      if (!assistant.opened) (source.value ? sourceEditor.value : editor.value)?.focus();
+    });
+  } else openAssistant(store.activePaneId, store.activeId, { forcePanel: true });
 }
 function initializeDocument(paneId: string, fileId: string, content: string, expected: string) {
   const doc = store.documentForTab(fileId);
@@ -3816,14 +3830,14 @@ async function submitModal() {
     modalBusy.value = false;
   }
 }
-async function exportDocument(format: DocumentExportFormat) {
+function documentOutputOptions(): DocumentExportOptions | undefined {
   const doc = active.value,
     currentWorkspace = workspace.value;
-  if (!doc || exportBusy.value) return;
+  if (!doc) return;
   const title = showPageTitle.value
     ? editorScroll.value?.querySelector<HTMLTextAreaElement>('.document-title-wrap textarea')?.value
     : undefined;
-  const options = {
+  return {
     id: doc.id,
     path: doc.path,
     content: doc.content,
@@ -3838,12 +3852,32 @@ async function exportDocument(format: DocumentExportFormat) {
     fontFamily: selectedVisualFontFamily.value,
     fontSize: visualFontSize.value,
   };
+}
+async function printActiveDocument() {
+  if (printBusy.value) return;
+  const options = documentOutputOptions();
+  if (!options) return;
+  menu.value = false;
+  printBusy.value = true;
+  try {
+    const { printDocument } = await import('./document-print');
+    await printDocument(options);
+  } catch (reason) {
+    store.report(t('打印失败：{0}', [reason instanceof Error ? reason.message : String(reason)]));
+  } finally {
+    printBusy.value = false;
+  }
+}
+async function exportDocument(format: DocumentExportFormat) {
+  if (exportBusy.value) return;
+  const options = documentOutputOptions();
+  if (!options) return;
   menu.value = false;
   exportBusy.value = true;
   try {
     const { downloadExport, exportFilename, renderDocumentExport } = await import('./document-export');
     const blob = await renderDocumentExport(options, format);
-    const filename = exportFilename(doc.path, format);
+    const filename = exportFilename(options.path, format);
     if (localNative) {
       const { saveDocumentExport } = await import('./native-document-export');
       if (!(await saveDocumentExport(blob, filename, format))) return;
@@ -3883,8 +3917,13 @@ function handleWorkbenchShortcut(event: KeyboardEvent) {
   if (openingWorkspace.value) return;
   if (event.defaultPrevented || importPanel.value || settingsPanel.value || commandPaletteOpened.value || updateLock.value || modal.value) return;
   let action: (() => void) | undefined;
+  const standardEditor = !!active.value && !editing.active && !editing.activeBusy;
   if (!detachedWindow && workspace.value && isSidebarToggleShortcut(event, shortcuts.value)) action = toggleSidebar;
   else if (matchesShortcut(event, 'save', shortcuts.value)) action = () => { void store.flush(); };
+  else if (active.value && matchesShortcut(event, 'print', shortcuts.value)) action = () => { void printActiveDocument(); };
+  else if (standardEditor && matchesShortcut(event, 'toggleSource', shortcuts.value)) action = () => { source.value = !source.value; };
+  else if (standardEditor && !source.value && matchesShortcut(event, 'toggleMarkdownReveal', shortcuts.value)) action = () => { revealMarkdown.value = !revealMarkdown.value; };
+  else if (workspace.value && assistant.available && matchesShortcut(event, 'toggleAssistant', shortcuts.value)) action = toggleAssistant;
   else if (matchesShortcut(event, 'findDocument', shortcuts.value)) action = () => showModal('search');
   else if (workspace.value && matchesShortcut(event, 'openDocument', shortcuts.value)) action = () => showModal('newTab');
   else if (workspace.value && matchesShortcut(event, 'newDocument', shortcuts.value)) action = () => { void createNewDocument(); };
@@ -5267,6 +5306,7 @@ const helpBlocked = computed(() => !!(
           <AssistantPanel
             v-if="assistant.available && assistantPanelMounted"
             :compact="compactPanes"
+            :toggle-shortcut="shortcuts.toggleAssistant"
             :fullscreen-target="assistantHosts.get(assistant.fullscreenPaneId ?? '')"
             :navigation-visible="store.activeId === ASSISTANT_TAB_ID"
             @show-navigation="sidebar = true"
@@ -5565,6 +5605,7 @@ const helpBlocked = computed(() => !!(
                       v-if="isVisible('markdown-reveal')"
                       v-model="revealMarkdown"
                       :source="paneSource(pane.activeId)"
+                      :shortcut="shortcuts.toggleMarkdownReveal"
                     />
                     <button
                       v-if="isVisible('source-mode')"
@@ -5577,6 +5618,8 @@ const helpBlocked = computed(() => !!(
                       "
                       :aria-label="paneSource(pane.activeId) ? t('返回编辑') : t('切换源码模式')"
                       :aria-pressed="paneSource(pane.activeId)"
+                      :aria-keyshortcuts="shortcutAriaLabel(shortcuts.toggleSource) || undefined"
+                      :data-tooltip-shortcut="shortcutKeys(shortcuts.toggleSource)[0]"
                       :data-tooltip="
                         editing.isManaging(pane.activeId)
                           ? t('当前编辑扩展不支持切换源码模式')
@@ -5729,6 +5772,7 @@ const helpBlocked = computed(() => !!(
                           @toggle="togglePageOption" />
                       </DocumentGlobalMenu>
                       <DocumentExportMenu :disabled="exportBusy" @select="exportDocument" />
+                      <DocumentPrintButton :busy="printBusy" :shortcut="shortcuts.print" @select="printActiveDocument" />
                       <div class="menu-divider" role="separator" />
                       <button
                         class="danger-text"
@@ -5772,6 +5816,7 @@ const helpBlocked = computed(() => !!(
               <AssistantLauncher
                 v-if="assistant.available && !assistant.opened"
                 :scope="paneButterflyScope(pane.id, pane.activeId)"
+                :shortcut="shortcuts.toggleAssistant"
                 :context-label="t('聊聊这张数据表')"
                 :busy="assistant.busy || assistant.applying"
                 @open="openAssistant(pane.id, pane.activeId, { forcePanel: true })"
@@ -5914,6 +5959,7 @@ const helpBlocked = computed(() => !!(
                             v-if="isVisible('markdown-reveal')"
                             v-model="revealMarkdown"
                             :source="paneSource(pane.activeId)"
+                            :shortcut="shortcuts.toggleMarkdownReveal"
                           />
                           <button
                             v-if="isVisible('source-mode')"
@@ -5923,6 +5969,8 @@ const helpBlocked = computed(() => !!(
                             :disabled="!!editing.active || editing.activeBusy"
                             :aria-label="paneSource(pane.activeId) ? t('返回编辑') : t('切换源码模式')"
                             :aria-pressed="paneSource(pane.activeId)"
+                            :aria-keyshortcuts="shortcutAriaLabel(shortcuts.toggleSource) || undefined"
+                            :data-tooltip-shortcut="shortcutKeys(shortcuts.toggleSource)[0]"
                             :data-tooltip="paneSource(pane.activeId) ? t('返回编辑') : t('切换源码模式')"
                             @click="setPaneSource(pane.activeId, !paneSource(pane.activeId))"
                           >
@@ -6130,6 +6178,7 @@ const helpBlocked = computed(() => !!(
                 <AssistantLauncher
                   v-if="assistant.available && !assistant.opened"
                   :scope="paneButterflyScope(pane.id, active!.id)"
+                  :shortcut="shortcuts.toggleAssistant"
                   :busy="assistant.busy || assistant.applying"
                   @open="openAssistant(pane.id, active!.id, { forcePanel: true })"
                 />

@@ -7,6 +7,7 @@ const app = vi.hoisted(() => ({
   platform: vi.fn<() => Promise<void>>(),
   create: vi.fn(),
   windowLabel: 'main',
+  print: vi.fn<() => Promise<boolean>>(),
 }));
 vi.mock('vue', async importOriginal => ({
   ...await importOriginal<typeof import('vue')>(),
@@ -22,6 +23,7 @@ vi.mock('@tano/workbench/platform', () => ({ mobile: false, initializePlatform: 
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ label: app.windowLabel }) }));
 vi.mock('@tano/workbench/styles.css', () => ({}));
 vi.mock('@tano/workbench/settings-window', () => ({ settingsWindowRequest: () => undefined }));
+vi.mock('@tano/workbench/print-window', () => ({ startDocumentPrintWindow: app.print }));
 vi.mock('@tano/workbench/plugins/catalog', () => ({ HttpPluginCatalog: class {} }));
 vi.mock('@tano/workbench/plugins/native', () => ({
   createNativePluginServices: () => ({}), createNativePluginConnections: () => ({}),
@@ -37,6 +39,15 @@ beforeEach(() => {
   app.platform.mockReset().mockResolvedValue(undefined);
   app.create.mockReset();
   app.windowLabel = 'main';
+  app.print.mockReset().mockResolvedValue(false);
+});
+
+it('mounts the independent print route without opening a workspace or desktop frame', async () => {
+  app.print.mockResolvedValue(true);
+  const { start } = await import('./start');
+  await start();
+  expect(app.platform).not.toHaveBeenCalled();
+  expect(app.create).not.toHaveBeenCalled();
 });
 
 it.each([
