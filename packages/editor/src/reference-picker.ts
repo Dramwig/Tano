@@ -1,9 +1,36 @@
+import { setSurfaceVisible } from './surface-motion';
 import { Plugin, PluginKey, TextSelection, NodeSelection } from '@milkdown/kit/prose/state';
 import type { EditorState, Transaction } from '@milkdown/kit/prose/state';
 import { closeHistory } from '@milkdown/kit/prose/history';
-import { referenceCandidates, referenceTypeLabel, referenceUrl } from '@tano/protocol';
+import {
+  referenceCandidates,
+  referenceTypeLabel,
+  referenceUrl,
+  isAgentPerson,
+} from '@tano/protocol';
+import { h, render as renderIcon, type Component } from 'vue';
+import { animate } from 'motion/mini';
+import { Bot, Box, CalendarDays, FileText, Paperclip, UserRound } from 'lucide-vue-next';
 import type { ReferenceTarget } from '@tano/protocol';
 import { selectedBlocks } from './document-model';
+
+const pickerCategories = [
+  { key: 'all', label: '全部' },
+  { key: 'person', label: '人物' },
+  { key: 'document', label: '文档' },
+  { key: 'asset', label: '附件' },
+  { key: 'event', label: '事件' },
+  { key: 'other', label: '其他' },
+];
+const pickerIcons: Record<string, Component> = {
+  person: UserRound,
+  document: FileText,
+  asset: Paperclip,
+  event: CalendarDays,
+};
+function targetCategory(target: ReferenceTarget) {
+  return Object.hasOwn(pickerIcons, target.type) ? target.type : 'other';
+}
 
 interface PickerSession {
   from: number;
@@ -28,7 +55,11 @@ export function applyReference(state: EditorState, target: ReferenceTarget): Tra
   const session = referencePickerKey.getState(state);
   if (!session) return null;
   const tr = closeHistory(state.tr);
-  const attrs = { url: referenceUrl(target), label: target.name };
+  const attrs = {
+    url: referenceUrl(target),
+    label: target.name,
+    mentionId: target.type === 'person' && !session.block ? crypto.randomUUID() : '',
+  };
   if (!session.block) {
     tr.replaceWith(session.from, session.to, state.schema.nodes.tano_reference!.create(attrs));
     tr.setSelection(TextSelection.near(tr.doc.resolve(session.from + 1)));
@@ -119,16 +150,14 @@ export function referencePicker(options: {
         if (!at && !wiki) return false;
         const start = wiki ? from - 1 : from;
         view.dispatch(
-          view.state.tr
-            .insertText(text, from, to)
-            .setMeta(referencePickerKey, {
-              from: start,
-              to: from + text.length,
-              query: '',
-              block: false,
-              typed: true,
-              trigger: wiki ? '[[' : '@',
-            }),
+          view.state.tr.insertText(text, from, to).setMeta(referencePickerKey, {
+            from: start,
+            to: from + text.length,
+            query: '',
+            block: false,
+            typed: true,
+            trigger: wiki ? '[[' : '@',
+          }),
         );
         return true;
       },
@@ -140,22 +169,49 @@ export function referencePicker(options: {
       menu.hidden = true;
       menu.setAttribute('role', 'dialog');
       menu.setAttribute('aria-label', '选择引用对象或文档');
-      const title = document.createElement('strong');
-      title.textContent = '选择目标 · Level 2';
       const search = document.createElement('input');
       search.setAttribute('aria-label', '搜索引用目标');
-      search.placeholder = '名称，或 person:Alice / event:事件';
+      search.placeholder = '搜索名称或路径…';
+      const filters = document.createElement('div');
+      filters.className = 'tano-reference-picker-filters';
+      filters.setAttribute('role', 'group');
+      filters.setAttribute('aria-label', '引用类型');
       const list = document.createElement('div');
+      list.className = 'tano-reference-picker-list';
       list.setAttribute('role', 'listbox');
       list.setAttribute('aria-label', '引用候选');
-      const hint = document.createElement('small');
-      hint.textContent = '同名目标请核对类型与路径 · ↑↓ 选择 · Enter 绑定 ID · Esc 取消';
-      menu.append(title, search, list, hint);
+      menu.append(search, list, filters);
       view.dom.parentElement!.append(menu);
       let matches: ReferenceTarget[] = [],
-        active = 0,
+        active = -1,
         query = '',
         manual = false;
+      let category = 'all';
+      let sizeMotion: ReturnType<typeof animate> | undefined;
+      function clearSizeMotion() {
+        sizeMotion?.stop();
+        sizeMotion = undefined;
+        menu.style.height = '';
+      }
+      const iconHosts: HTMLElement[] = [];
+      for (const item of pickerCategories) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = item.label;
+        button.dataset.category = item.key;
+        button.onmousedown = (event) => event.preventDefault();
+        button.onclick = () => {
+          if (category === item.key) return;
+          category = item.key;
+          active = -1;
+          render(true);
+          list.scrollTop = 0;
+        };
+        button.onkeydown = (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') handleKey(event);
+        };
+        filters.append(button);
+      }
       const close = () => {
         if (referencePickerKey.getState(view.state))
           view.dispatch(view.state.tr.setMeta(referencePickerKey, 'close'));
@@ -173,42 +229,109 @@ export function referencePicker(options: {
         if (tr) view.dispatch(tr);
         view.focus();
       };
-      function render() {
+      function render(animateSize = false) {
+        const from = !menu.hidden && (animateSize || sizeMotion)
+          ? menu.getBoundingClientRect() : undefined;
+        clearSizeMotion();
         const session = referencePickerKey.getState(view.state);
-        menu.hidden = !session || !options.enabled();
+        setSurfaceVisible(menu, !!session && options.enabled());
         if (menu.hidden || !session) return;
-        if (query !== session.query || manual !== !session.typed) active = 0;
+        if (query !== session.query || manual !== !session.typed) active = -1;
         query = session.query;
         manual = !session.typed;
         search.hidden = session.typed;
         if (search.value !== query) search.value = query;
-        matches = referenceCandidates(options.targets(), query).slice(0, 30);
-        active = Math.min(active, Math.max(0, matches.length - 1));
+        const candidates = referenceCandidates(options.targets(), query);
+        for (const button of filters.querySelectorAll('button')) {
+          button.setAttribute('aria-pressed', String(button.dataset.category === category));
+        }
+        const groups = pickerCategories
+          .slice(1)
+          .filter((item) => category === 'all' || category === item.key)
+          .map((item) => ({
+            ...item,
+            targets: candidates.filter((target) => targetCategory(target) === item.key),
+          }))
+          .filter((item) => item.targets.length);
+        matches = groups.flatMap((group) => group.targets.slice(0, 30));
+        active = Math.min(active, matches.length - 1);
+        for (const host of iconHosts) renderIcon(null, host);
+        iconHosts.length = 0;
         list.replaceChildren();
         if (!matches.length) {
           const empty = document.createElement('p');
-          empty.textContent = '没有匹配目标。可先在“工作区对象”中创建；未绑定的文字会保留。';
+          empty.className = 'tano-reference-picker-empty';
+          empty.textContent = query
+            ? '没有找到匹配结果，试试其他名称或类型。'
+            : '此类型暂无可引用内容。';
           list.append(empty);
         }
-        matches.forEach((target, index) => {
-          const button = document.createElement('button');
-          button.type = 'button';
-          button.setAttribute('role', 'option');
-          button.setAttribute('aria-selected', String(index === active));
-          button.textContent = `${target.name} · ${referenceTypeLabel(target.type)}`;
-          const path = document.createElement('small');
-          path.textContent = `${target.path} · ${target.id.slice(0, 8)}`;
-          button.append(path);
-          button.onmousedown = (event) => event.preventDefault();
-          button.onclick = () => choose(target);
-          list.append(button);
-        });
+        let index = 0;
+        for (const group of groups) {
+          const section = document.createElement('div');
+          section.setAttribute('role', 'group');
+          section.setAttribute('aria-label', group.label);
+          const heading = document.createElement('div');
+          heading.className = 'tano-reference-picker-group';
+          heading.textContent = `${group.label} · ${group.targets.length}${group.targets.length > 30 ? '（显示前 30 项）' : ''}`;
+          section.append(heading);
+          for (const target of group.targets.slice(0, 30)) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.setAttribute('role', 'option');
+            button.setAttribute('aria-selected', String(index === active));
+            button.className = 'tano-reference-picker-option';
+            const icon = document.createElement('span');
+            icon.className = 'tano-reference-picker-icon';
+            icon.dataset.type = group.key;
+            icon.setAttribute('aria-hidden', 'true');
+            renderIcon(
+              h(isAgentPerson(target) ? Bot : (pickerIcons[target.type] ?? Box), {
+                size: 16,
+                strokeWidth: 1.7,
+              }),
+              icon,
+            );
+            iconHosts.push(icon);
+            const body = document.createElement('span');
+            body.className = 'tano-reference-picker-body';
+            const name = document.createElement('span');
+            name.className = 'tano-reference-picker-name';
+            name.textContent = target.name;
+            const badge = document.createElement('span');
+            badge.className = 'tano-reference-picker-badge';
+            badge.textContent = isAgentPerson(target) ? 'Agent' : referenceTypeLabel(target.type);
+            button.title = `${target.name}\n${target.path}\n${target.id}`;
+            body.append(name);
+            button.append(icon, body, badge);
+            button.onmousedown = (event) => event.preventDefault();
+            button.onclick = () => choose(target);
+            section.append(button);
+            index++;
+          }
+          list.append(section);
+        }
         try {
           const rect = view.coordsAtPos(Math.min(session.to, view.state.doc.content.size));
-          menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 356))}px`;
-          menu.style.top = `${Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 340))}px`;
+          menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+          menu.style.top = `${Math.max(8, Math.min(rect.bottom + 8, window.innerHeight - menu.offsetHeight - 8))}px`;
         } catch {
           /* Detached test views have no coordinates. */
+        }
+        const to = menu.getBoundingClientRect();
+        if (from?.height && to.height && typeof menu.animate === 'function' &&
+          !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches &&
+          Math.abs(from.height - to.height) > 0.5) {
+          const animation = animate(menu, {
+            height: [from.height, to.height],
+            top: [from.top, to.top],
+          }, { duration: 0.24, ease: [0.22, 1, 0.36, 1] });
+          sizeMotion = animation;
+          void animation.finished.then(() => {
+            if (sizeMotion !== animation) return;
+            clearSizeMotion();
+            menu.style.top = `${to.top}px`;
+          });
         }
       }
       search.oninput = () => {
@@ -228,10 +351,13 @@ export function referencePicker(options: {
         }
         if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
           event.preventDefault();
+          if (!matches.length) return true;
           active =
-            (active + (event.key === 'ArrowDown' ? 1 : -1) + Math.max(1, matches.length)) %
-            Math.max(1, matches.length);
+            active === -1
+              ? (event.key === 'ArrowDown' ? 0 : matches.length - 1)
+              : (active + (event.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length;
           render();
+          list.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' });
           return true;
         }
         if (event.key === 'Enter' && matches[active]) {
@@ -253,11 +379,17 @@ export function referencePicker(options: {
       return {
         update() {
           const wasHidden = menu.hidden;
+          if (wasHidden) {
+            category = 'all';
+            active = -1;
+          }
           render();
           if (wasHidden && !menu.hidden && manual) queueMicrotask(() => search.focus());
         },
         destroy() {
+          clearSizeMotion();
           document.removeEventListener('mousedown', outside);
+          for (const host of iconHosts) renderIcon(null, host);
           menu.remove();
           handleKey = () => false;
         },

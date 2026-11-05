@@ -43,6 +43,7 @@ export function floatingPanelPosition(
   const chosenSide = side ?? (below + panelRect.height <= visible.bottom || above < visible.top ? 'below' : 'above');
   const preferredY = chosenSide === 'above' ? above : below;
   const y = Math.max(visible.top, Math.min(preferredY, visible.bottom - panelRect.height));
+  panel.dataset.surfaceSide = chosenSide === 'above' ? 'up' : 'down';
   return { x, y, side: chosenSide };
 }
 

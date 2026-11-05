@@ -24,18 +24,27 @@ export const featureDefinitions = [
 export type DocumentFeature = (typeof featureDefinitions)[number]['key'];
 export type DocumentFeatures = Record<DocumentFeature, boolean>;
 export type MarkdownDialect = 'obsidian' | 'github' | 'pandoc' | 'commonmark';
+export type MathRecognition = 'all' | 'dollar' | 'latex';
 export type MathSyntax = 'preserve' | 'dollar' | 'latex';
 export type BulletListMarker = '-' | '+' | '*';
+export type CopyFormat = 'markdown' | 'rich' | 'html' | 'text' | 'wechat' | 'zhihu';
+export function normalizeCopyFormat(value: unknown): CopyFormat {
+  if (value === 'word') return 'rich';
+  return value === 'rich' || value === 'html' || value === 'text' || value === 'wechat' || value === 'zhihu' ? value : 'markdown';
+}
 export interface WorkspaceCapabilities {
   version: 1;
   features: DocumentFeatures;
   markdownDialect: MarkdownDialect;
   mathSyntax: MathSyntax;
+  mathRecognition: MathRecognition;
   bulletListMarker: BulletListMarker;
   /** Shared per-document layout keyed by the stable short file ID; absent means limited width. */
   pageWidthLimits: Record<string, boolean>;
 }
 export interface EditorPreferences {
+  /** Device-local default for copying/cutting from the visual editor. */
+  copyFormat?: CopyFormat;
   /** Device-local visual spacing; never inserts characters into Markdown. */
   autoSpacing?: boolean;
   previewMathWhileEditing: boolean;
@@ -51,10 +60,12 @@ export const defaultCapabilities: WorkspaceCapabilities = {
   ) as DocumentFeatures,
   markdownDialect: 'obsidian',
   mathSyntax: 'preserve',
+  mathRecognition: 'all',
   bulletListMarker: '*',
   pageWidthLimits: {},
 };
 export const defaultEditorPreferences: EditorPreferences = {
+  copyFormat: 'markdown',
   autoSpacing: false,
   previewMathWhileEditing: true,
   folding: true,
@@ -81,6 +92,9 @@ export function parseCapabilities(content: string): WorkspaceCapabilities {
   }
   const markdownDialect = data.markdownDialect ?? defaultCapabilities.markdownDialect;
   const mathSyntax = data.mathSyntax ?? defaultCapabilities.mathSyntax;
+  const mathRecognition = data.mathRecognition ?? defaultCapabilities.mathRecognition;
+  if (!['all', 'dollar', 'latex'].includes(String(mathRecognition)))
+    throw new Error('未知的公式识别语法');
   const bulletListMarker = data.bulletListMarker ?? defaultCapabilities.bulletListMarker;
   if (!['obsidian', 'github', 'pandoc', 'commonmark'].includes(String(markdownDialect)))
     throw new Error('未知的 Markdown 方言');
@@ -103,6 +117,7 @@ export function parseCapabilities(content: string): WorkspaceCapabilities {
     features,
     markdownDialect: markdownDialect as MarkdownDialect,
     mathSyntax: mathSyntax as MathSyntax,
+    mathRecognition: mathRecognition as MathRecognition,
     bulletListMarker: bulletListMarker as BulletListMarker,
     pageWidthLimits,
   };
@@ -152,4 +167,10 @@ export function newMathSyntax(policy: WorkspaceCapabilities) {
       ? 'latex'
       : 'dollar'
     : policy.mathSyntax;
+}
+
+/** Recognition changes presentation, never the shared schema or original source. */
+export function recognizesMath(policy: WorkspaceCapabilities, delimiter: string) {
+  return policy.features.math && (policy.mathRecognition === 'all' ||
+    !policy.mathRecognition || policy.mathRecognition === delimiter);
 }

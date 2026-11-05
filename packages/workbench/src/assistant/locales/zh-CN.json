@@ -3,8 +3,6 @@
     "summary": "总结这篇笔记",
     "polish": "润色这篇笔记",
     "translate": "翻译这篇笔记",
-    "translateEnglish": "翻译成英文",
-    "translateChinese": "翻译成中文",
     "tasks": "提取待办事项"
   },
   "progress": {

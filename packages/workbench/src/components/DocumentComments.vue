@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t } from '../i18n';
 import './review-card.css';
@@ -654,10 +655,10 @@ async function start(kind: CommentKind, mentions: CommentMention[] = [], draftId
   finally { busy.value = false; }
 }
 
-async function change(kind: CommentKind, threadId: string, action: 'reply' | 'resolve', body = '', resolved = false, mentions: CommentMention[] = []) {
+async function change(kind: CommentKind, threadId: string, action: 'reply' | 'resolve', body = '', resolved = false, mentions: CommentMention[] = [], replyTo?: string) {
   if (action === 'reply' && !body) return;
   const saved = await saveChange(kind, action === 'reply'
-    ? { type: 'reply', threadId, id: crypto.randomUUID(), body, author: props.author, mentions }
+    ? { type: 'reply', threadId, id: crypto.randomUUID(), body, author: props.author, mentions, replyTo }
     : { type: 'resolve', threadId, resolved });
   if (saved && action === 'reply') conversations.get(threadId)?.clearReply();
 }
@@ -698,7 +699,7 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
       :aria-expanded="openBlockKey === block.key && popupVisible" @mousedown.prevent @click="openBlockComments(block.key, block.ids)">
       <MessageSquare :size="15" /><span>{{ count(block.ids) }}</span>
     </button>
-    <div v-if="annotationMounted" v-show="layout.rail || popupVisible" ref="popup" :class="layout.rail ? 'annotation-rail' : 'annotation-popup'"
+    <div v-surface-motion="'DocumentComments:0'" v-if="annotationMounted" v-show="layout.rail || popupVisible" ref="popup" :class="layout.rail ? 'annotation-rail' : 'annotation-popup'"
       :role="layout.rail ? 'region' : 'dialog'" :aria-label="t('局部批注')"
       :style="{ top: `${layout.rail ? 0 : popupTop}px`, left: `${layout.rail ? layout.railLeft : layout.popupLeft}px`, width: `${layout.rail ? railWidth : layout.popupWidth}px` }">
       <div :class="{ 'annotation-popup-content panel-scrollbar': !layout.rail }">
@@ -712,7 +713,7 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
               :thread="thread" :quote="layout.rail ? undefined : quote(working[thread.id]!)" local :preview="layout.rail && !threadExpanded(thread.id)"
               :readonly="readonly" :busy="busy" :author-id="author.id" :author-name="author.name" @expand="selectThread(thread.id, true)"
               :assistant="assistant" @assistant="emit('assistant', { kind: 'annotation', thread, quote: quote(working[thread.id]!) })"
-              @reply="(body, mentions) => change('annotation', thread.id, 'reply', body, false, mentions)"
+              @reply="(body, mentions, replyTo) => change('annotation', thread.id, 'reply', body, false, mentions, replyTo)"
               @edit="editMessage('annotation', thread.id, $event)" @remove="removeMessage('annotation', thread.id, $event)"
               @resolve="change('annotation', thread.id, 'resolve', '', $event)" />
             <p v-if="layout.rail && error && threadExpanded(thread.id)" class="comment-error" role="alert">{{ error }}</p>
@@ -731,7 +732,7 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
       <p v-if="error && !layout.rail" class="comment-error" role="alert">{{ error }}</p>
     </div>
     <p v-if="error && !popupVisible && !discussionShown" class="comment-error" role="alert">{{ error }}</p>
-    <section v-show="discussionShown" ref="discussionSection" class="document-discussion" :aria-label="t('文档讨论')">
+    <section v-surface-motion="'DocumentComments:1'" v-show="discussionShown" ref="discussionSection" class="document-discussion" :aria-label="t('文档讨论')">
       <header class="document-discussion-header">
         <h2>{{ t('文档讨论') }}</h2><span v-if="pendingDiscussions.length">{{ pendingDiscussions.reduce((total, thread) => total + thread.messages.length, 0) }}</span>
         <button v-if="!pendingDiscussions.length && !discussionDraft.trim()" type="button" class="discussion-dismiss"

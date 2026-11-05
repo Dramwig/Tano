@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t, uiLocale } from '../i18n';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { CalendarDays, Check, Cloud, FileUp, ListTodo, RefreshCw, X, ArrowLeft, Plus, ChevronRight } from 'lucide-vue-next';
@@ -110,7 +111,7 @@ const time = (value?: string) => value ? new Date(value).toLocaleString(uiLocale
 
 <template>
   <Teleport to="body">
-    <div class="plan-connections-backdrop" @mousedown.self="!working && emit('close')">
+    <div v-surface-motion="'PlanConnectionsDialog:0'" class="plan-connections-backdrop" @mousedown.self="!working && emit('close')">
       <section ref="panel" class="plan-connections" role="dialog" aria-modal="true" :aria-label="t('日历与 Todo 连接')" tabindex="-1" @keydown="keyboard">
         <header><div><h2>{{ t('日历与 Todo') }}</h2><p>{{ t('连接常用服务，或从文件导入事项。') }}</p></div><button class="icon-button" :aria-label="t('关闭同步设置')" :disabled="working" @click="emit('close')"><X :size="18" /></button></header>
         <nav class="connection-tabs" :aria-label="t('同步类别')">
@@ -222,7 +223,7 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--green); }
 .connection-direction legend { margin-bottom: 10px; }
 .connection-direction label { display: flex; align-items: center; gap: 6px; }
 .connection-form-footer { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 16px; font-size: 12px; color: var(--muted); }
-.connection-primary { color: white; background: var(--green-fill); padding: 9px 16px; border-radius: 7px; font-size: 12px; }
+.connection-primary { color: var(--on-accent, white); background: var(--green-fill); padding: 9px 16px; border-radius: 7px; font-size: 12px; }
 .connection-error { margin-bottom: 14px; padding: 9px 11px; border-radius: 6px; background: #c5555510; color: #b14949; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .connection-success { display: flex; gap: 7px; color: var(--green); margin-bottom: 16px; font-size: 12px; }
 .connection-preview { max-height: 260px; overflow: auto; margin: 10px 0 20px; border: 1px solid var(--line); border-radius: 6px; }

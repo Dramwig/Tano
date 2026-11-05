@@ -83,6 +83,8 @@ export interface EditorSelectionContext {
   /** The legacy highlight mark is represented by 'highlight'. */
   backgroundColor?: string | null;
   canTransform: boolean;
+  /** Conversion commands supported by the current selection and its parent schema. */
+  availableBlockCommands?: readonly string[];
   canStyleText: boolean;
   inlineSource?: boolean;
   /** A non-empty text range, rather than a caret or an explicit block selection. */

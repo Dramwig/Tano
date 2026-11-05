@@ -165,12 +165,12 @@ async function openDownloads() {
   border-color: var(--control-border);
 }
 .update-panel .update-button.has-update {
-  color: #fff;
+  color: var(--on-accent, #fff);
   border-color: var(--green);
   background: var(--green);
 }
 .update-panel .update-button.has-update:hover:not(:disabled) {
-  color: #fff;
+  color: var(--on-accent, #fff);
   border-color: var(--green-hover);
   background: var(--green-hover);
 }

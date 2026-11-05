@@ -1,0 +1,193 @@
+{
+  "manifestVersion": 1,
+  "id": "theme-paper",
+  "name": "纸页主题",
+  "version": "1.0.0",
+  "description": "纸页主题：独立配色、图标与形态，可应用预设或自由混搭。",
+  "objectTypes": [],
+  "relationTypes": [],
+  "appearance": {
+    "version": 2,
+    "colors": [
+      {
+        "id": "paper",
+        "label": "纸页",
+        "light": {
+          "paper": "#faf3e3",
+          "sidebar": "#eee3cd",
+          "surface": "#f3e9d5",
+          "surface-raised": "#fffbf1",
+          "hover": "#e9dcc2",
+          "text": "#3d3023",
+          "text-secondary": "#66513e",
+          "muted": "#755f4b",
+          "line": "#d8c7a6",
+          "control-border": "#9e8360",
+          "line-strong": "#9e8360",
+          "selected": "#e9dcc2",
+          "selected-text": "#3d3023",
+          "accent": "#f3e9d5",
+          "green": "#77512b",
+          "green-hover": "#77512b",
+          "green-fill": "#5d3a1d",
+          "green-fill-hover": "#5d3a1d",
+          "block-selection": "#e9dcc2",
+          "danger": "#a31b1b",
+          "danger-bg": "#fff0ee",
+          "warning": "#714300",
+          "warning-bg": "#fff5d8",
+          "warning-border": "#9e8360",
+          "switch-off": "#9e8360",
+          "syntax-purple": "#68349a",
+          "syntax-red": "#a31b1b",
+          "syntax-blue": "#77512b",
+          "syntax-orange": "#884600",
+          "syntax-teal": "#00645b",
+          "syntax-green": "#426b18",
+          "highlight-bg": "#ffe680",
+          "suggestion-color": "#77512b",
+          "diff-add-bg": "#e4f5e7",
+          "diff-remove-bg": "#ffe9e6",
+          "quote-border": "#9e8360",
+          "scrollbar-thumb": "#9e8360",
+          "scrollbar-thumb-hover": "#79634e",
+          "backdrop": "#15233355",
+          "on-accent": "#ffffff",
+          "selection": "#e9dcc2"
+        },
+        "dark": {
+          "paper": "#231e18",
+          "sidebar": "#1b1712",
+          "surface": "#30281f",
+          "surface-raised": "#393025",
+          "hover": "#403426",
+          "text": "#eee2cc",
+          "text-secondary": "#cabc9e",
+          "muted": "#b3a184",
+          "line": "#524331",
+          "control-border": "#8b7354",
+          "line-strong": "#8b7354",
+          "selected": "#403426",
+          "selected-text": "#eee2cc",
+          "accent": "#30281f",
+          "green": "#d0ae79",
+          "green-hover": "#d0ae79",
+          "green-fill": "#936632",
+          "green-fill-hover": "#936632",
+          "block-selection": "#403426",
+          "danger": "#ffb4ac",
+          "danger-bg": "#411717",
+          "warning": "#ffe0a3",
+          "warning-bg": "#362c17",
+          "warning-border": "#8b7354",
+          "switch-off": "#8b7354",
+          "syntax-purple": "#dfb8ff",
+          "syntax-red": "#ffb4ac",
+          "syntax-blue": "#d0ae79",
+          "syntax-orange": "#ffd1a3",
+          "syntax-teal": "#a4e6df",
+          "syntax-green": "#c7e69a",
+          "highlight-bg": "#665500",
+          "suggestion-color": "#d0ae79",
+          "diff-add-bg": "#203a28",
+          "diff-remove-bg": "#412422",
+          "quote-border": "#8b7354",
+          "scrollbar-thumb": "#8b7354",
+          "scrollbar-thumb-hover": "#b3a184",
+          "backdrop": "#00000099",
+          "on-accent": "#ffffff",
+          "selection": "#403426"
+        }
+      }
+    ],
+    "icons": [
+      {
+        "id": "paper",
+        "label": "纸页图标",
+        "icons": {
+          "note": {
+            "color": "syntax-blue",
+            "silhouette": "none",
+            "paths": [
+              "M5 3h10v14H5z M8 7h4 M8 10h4 M8 13h3"
+            ]
+          },
+          "folder": {
+            "color": "accent",
+            "silhouette": "none",
+            "paths": [
+              "M2 5h6l2 2h8v10H2z"
+            ]
+          },
+          "open": {
+            "color": "syntax-blue",
+            "silhouette": "none",
+            "paths": [
+              "M2 5h6l2 2h8v10H2z",
+              "M3 12h14"
+            ]
+          },
+          "code": {
+            "color": "syntax-blue",
+            "silhouette": "none",
+            "paths": [
+              "M7 5l-5 5l5 5 M13 5l5 5l-5 5"
+            ]
+          }
+        },
+        "file": "note",
+        "folder": "folder",
+        "folderExpanded": "open",
+        "fileExtensions": {
+          "ts": "code",
+          "js": "code",
+          "json": "code"
+        }
+      }
+    ],
+    "presets": [
+      {
+        "id": "paper",
+        "label": "纸质文稿",
+        "color": "paper",
+        "icons": "paper",
+        "layout": "builtin:paper",
+        "shape": "paper"
+      },
+      {
+        "id": "notebook",
+        "label": "手写笔记本",
+        "color": "paper",
+        "icons": "paper",
+        "layout": "builtin:retro",
+        "shape": "builtin:handwritten"
+      },
+      {
+        "id": "paper-layout",
+        "label": "纸页配色与文稿布局",
+        "color": "paper",
+        "layout": "builtin:paper"
+      }
+    ],
+    "shapes": [
+      {
+        "id": "paper",
+        "label": "纸页排印",
+        "tokens": {
+          "font-ui": "'Segoe UI', 'Microsoft YaHei UI', sans-serif",
+          "font-prose": "Georgia, 'Noto Serif CJK SC', serif",
+          "font-mono": "'Cascadia Code', Consolas, monospace",
+          "radius-control": "2px",
+          "radius-card": "4px",
+          "radius-dialog": "6px",
+          "space-control-x": "10px",
+          "space-control-y": "6px",
+          "space-panel": "18px",
+          "space-row-gap": "8px",
+          "overlay-shadow": "0px 6px 20px #00000030",
+          "dialog-shadow": "0px 18px 60px #00000044"
+        }
+      }
+    ]
+  }
+}

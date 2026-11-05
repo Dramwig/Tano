@@ -19,6 +19,10 @@ export const shortcutDefinitions = [
   { id: 'openDocument', get label() { return t('打开文档'); }, get group() { return t('工作台'); }, default: 'Mod+O' },
   { id: 'newDocument', get label() { return t('新建文档'); }, get group() { return t('工作台'); }, default: 'Mod+N' },
   { id: 'save', get label() { return t('立即保存'); }, get group() { return t('工作台'); }, default: 'Mod+S' },
+  { id: 'print', get label() { return t('打印文档'); }, get group() { return t('工作台'); }, default: 'Mod+P' },
+  { id: 'toggleSource', get label() { return t('切换源码模式'); }, get group() { return t('工作台'); }, default: 'Mod+Shift+E' },
+  { id: 'toggleMarkdownReveal', get label() { return t('光标展开源码'); }, get group() { return t('工作台'); }, default: 'Mod+Shift+M', get scope() { return t('可视化编辑器中'); } },
+  { id: 'toggleAssistant', get label() { return t('打开或关闭同页助手'); }, get group() { return t('工作台'); }, default: 'Mod+Shift+A' },
   { id: 'pageSearch', get label() { return t('页内搜索'); }, get group() { return t('页内搜索'); }, default: 'Mod+F' },
   { id: 'pageReplace', get label() { return t('查找与替换'); }, get group() { return t('页内搜索'); }, default: 'Mod+H' },
   { id: 'nextMatch', get label() { return t('下一个匹配'); }, get group() { return t('页内搜索'); }, default: 'Enter', get scope() { return t('搜索输入框中'); } },
@@ -48,7 +52,7 @@ export const shortcutDefinitions = [
   { id: 'deleteBlock', get label() { return t('删除选中的块'); }, get group() { return t('块操作'); }, default: ["Backspace","Delete"], context: 'block', get scope() { return t('选中块或块菜单中'); } },
   { id: 'moveBlockUp', get label() { return t('上移块'); }, get group() { return t('块操作'); }, default: "Alt+ArrowUp", context: 'block', get scope() { return t('选中块或块菜单中'); } },
   { id: 'moveBlockDown', get label() { return t('下移块'); }, get group() { return t('块操作'); }, default: "Alt+ArrowDown", context: 'block', get scope() { return t('选中块或块菜单中'); } },
-  { id: 'indentBlock', get label() { return t('移入前一个容器'); }, get group() { return t('块操作'); }, default: "Alt+ArrowRight", context: 'block', get scope() { return t('选中块或块菜单中'); } },
+  { id: 'indentBlock', get label() { return t('移入前容器'); }, get group() { return t('块操作'); }, default: "Alt+ArrowRight", context: 'block', get scope() { return t('选中块或块菜单中'); } },
   { id: 'outdentBlock', get label() { return t('移出当前容器'); }, get group() { return t('块操作'); }, default: "Alt+ArrowLeft", context: 'block', get scope() { return t('选中块或块菜单中'); } },
   { id: 'renameFile', get label() { return t('重命名文件或文件夹'); }, get group() { return t('文件管理'); }, default: "F2", context: 'file', get scope() { return t('文件树中'); } },
   { id: 'deleteFile', get label() { return t('删除文件或文件夹'); }, get group() { return t('文件管理'); }, default: "Delete", context: 'file', get scope() { return t('文件树中'); } },
@@ -145,8 +149,10 @@ export function parseShortcutBindings(value: unknown): ShortcutBindings {
     }
   }
   // Do not let a newly introduced default erase a pre-existing custom binding.
-  if (!Object.hasOwn(input, 'commandPalette') && shortcutDefinitions.some(({ id }) =>
-    id !== 'commandPalette' && Object.hasOwn(input, id) && shortcutKeys(bindings[id]).some(key => shortcutKeys(bindings.commandPalette).includes(key)))) bindings.commandPalette = null;
+  for (const introduced of ['commandPalette', 'print', 'toggleSource', 'toggleMarkdownReveal', 'toggleAssistant'] as const) {
+    if (!Object.hasOwn(input, introduced) && shortcutDefinitions.some(({ id }) =>
+      id !== introduced && Object.hasOwn(input, id) && shortcutKeys(bindings[id]).some(key => shortcutKeys(bindings[introduced]).includes(key)))) bindings[introduced] = null;
+  }
   for (const definition of shortcutDefinitions) {
     const { id } = definition;
     if (!('context' in definition) || Object.hasOwn(input, id)) continue;
@@ -183,7 +189,18 @@ export function shortcutAriaLabel(binding: ShortcutBinding | undefined) {
 
 export function shortcutLabel(binding: ShortcutBinding | undefined) {
   if (!shortcutKeys(binding).length) return t('未设置');
-  return shortcutKeys(binding).map(binding => binding.split('+').map(key => key === 'Mod' ? (isMac() ? '⌘' : 'Ctrl') : key === 'Escape' ? 'Esc' : key === 'Space' ? t('空格') : key).join(' + ')).join(' / ');
+  const labels: Record<string, string> = {
+    Mod: isMac() ? '⌘' : 'Ctrl',
+    Escape: 'Esc',
+    Space: t('空格'),
+    ArrowUp: '↑',
+    ArrowDown: '↓',
+    ArrowLeft: '←',
+    ArrowRight: '→',
+  };
+  return shortcutKeys(binding).map(binding =>
+    binding.split('+').map(key => labels[key] ?? key).join(' + '),
+  ).join(' / ');
 }
 
 export function matchesShortcut(event: KeyboardShortcutEvent, id: ShortcutId, bindings = defaultShortcutBindings) {

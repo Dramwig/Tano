@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { AlertTriangle, ArrowUpRight, Boxes, FileText, Image as ImageIcon, Table2 } from 'lucide-vue-next';
-import { basename, isMarkdown } from '@tano/protocol';
+import { AlertTriangle, ArrowUpRight, Boxes, Table2 } from 'lucide-vue-next';
+import { basename } from '@tano/protocol';
+import ResourceIcon from './ResourceIcon.vue';
 import type { FileEntry, ReferenceIdentity, WorkspaceViewDefinition } from '@tano/protocol';
 import { t } from '../i18n';
 import { useWorkspaceStore } from '../stores/workspace';
@@ -51,12 +52,6 @@ function open(row: (typeof sourceRows.value)[number]) {
   if (row.file) emit('open-file', row.file);
   else if (row.identity && !row.missing) emit('open-object', row.identity);
 }
-function fileIcon(row: (typeof sourceRows.value)[number]) {
-  if (row.layer === 'object') return Boxes;
-  if (row.file && isMarkdown(row.file.path)) return FileText;
-  if (row.file?.path.match(/\.(png|jpe?g|gif|webp|svg)$/i)) return ImageIcon;
-  return FileText;
-}
 </script>
 
 <template>
@@ -93,7 +88,8 @@ function fileIcon(row: (typeof sourceRows.value)[number]) {
         :disabled="row.missing"
         @click="open(row)"
       >
-        <component :is="fileIcon(row)" :size="19" />
+        <Boxes v-if="row.layer === 'object'" :size="19" />
+        <ResourceIcon v-else :path="row.file?.path ?? ''" :size="19" />
         <span class="workspace-view-source-copy">
           <strong>{{ row.label }}</strong>
           <small>{{ row.layer === 'file' ? t('File · 真实文件来源') : t('Object · 结构化语义来源') }}</small>

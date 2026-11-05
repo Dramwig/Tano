@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { GripVertical } from 'lucide-vue-next';
@@ -67,7 +68,7 @@ onBeforeUnmount(() => {
     >
       <GripVertical :size="16" />
     </button>
-    <div v-if="mode && open" class="dropdown compact-action-menu toolbar-dock-menu" role="menu" :aria-label="t('工具栏停靠位置')">
+    <div v-surface-motion="'ToolbarDragHandle:0'" v-if="mode && open" class="dropdown compact-action-menu toolbar-dock-menu" role="menu" :aria-label="t('工具栏停靠位置')">
       <ToolbarModeOptions :mode="mode" @select="emit('select', $event)" />
     </div>
   </div>

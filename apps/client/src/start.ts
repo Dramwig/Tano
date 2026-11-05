@@ -11,8 +11,10 @@ import { settingsWindowRequest } from '@tano/workbench/settings-window';
 import { HttpPluginCatalog } from '@tano/workbench/plugins/catalog';
 import { createNativePluginConnections, createNativePluginServices } from '@tano/workbench/plugins/native';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { startDocumentPrintWindow } from '@tano/workbench/print-window';
 
 export async function start(signal?: AbortSignal) {
+  if (await startDocumentPrintWindow(signal)) return;
   // The saved locale applies synchronously; native cross-window subscription
   // must not hold up mounting the workbench.
   void initializeLocaleSync(native);

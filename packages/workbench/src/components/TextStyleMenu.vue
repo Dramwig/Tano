@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { useFormattingShortcuts } from '../use-formatting-shortcuts';
 const formattingShortcuts = useFormattingShortcuts();
@@ -103,6 +104,7 @@ async function openColors(focus = false) {
     : Math.max(8, anchor.top - panel.offsetHeight - 4);
   panel.style.left = `${x - parent.left - parentElement.clientLeft}px`;
   panel.style.top = `${y - parent.top - parentElement.clientTop}px`;
+  panel.dataset.surfaceSide = y < anchor.top ? 'up' : 'down';
   if (focus) panel.querySelector<HTMLButtonElement>('button')?.focus();
 }
 function colorPanelKey(event: KeyboardEvent) {
@@ -149,7 +151,7 @@ onBeforeUnmount(() => {
     >
       <Ellipsis v-if="more" :size="17" /><Type v-else :size="17" />
     </button>
-    <div
+    <div v-surface-motion="'TextStyleMenu:0'"
       v-if="open && (!disabled || $slots.preferences)"
       class="dropdown compact-action-menu text-style-dropdown panel-scrollbar"
       :class="{ 'toolbar-action-dropdown': hideFormats }"
@@ -190,7 +192,7 @@ onBeforeUnmount(() => {
         <slot name="preferences" />
       </div>
     </div>
-    <div v-if="open && colorsOpen && !disabled && !hideFormats" :id="colorPanelId" ref="colorPanel"
+    <div v-surface-motion="'TextStyleMenu:1'" v-if="open && colorsOpen && !disabled && !hideFormats" :id="colorPanelId" ref="colorPanel"
       class="text-color-submenu compact-action-menu panel-scrollbar" role="group" :aria-label="t('文字颜色')"
       @keydown="colorPanelKey">
         <div class="text-style-label">{{ t('文字颜色') }}</div>

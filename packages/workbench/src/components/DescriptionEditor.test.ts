@@ -6,7 +6,7 @@ import DescriptionEditor from './DescriptionEditor.vue';
 let app: App | undefined;
 let root: HTMLDivElement;
 afterEach(() => { app?.unmount(); root?.remove(); });
-it('searches documents and inserts a stable escaped reference at the captured text selection', async () => {
+it('searches documents and inserts an identity-only reference at the captured text selection', async () => {
   root = document.createElement('div'); document.body.append(root);
   const value = ref('before placeholder after');
   app = createApp(() => h(DescriptionEditor, { modelValue: value.value, targets: [
@@ -23,7 +23,7 @@ it('searches documents and inserts a stable escaped reference at the captured te
   expect(root.querySelectorAll('.description-candidates button')).toHaveLength(1);
   search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
   await nextTick();
-  expect(value.value).toBe('before [@Plan \\[2026\\]](object://document/a00001) after');
+  expect(value.value).toBe('before [[object://document/a00001]] after');
   expect(document.activeElement).toBe(textarea);
 });
 it('shows a readable reference without normalizing the source, and preserves it through editing', async () => {

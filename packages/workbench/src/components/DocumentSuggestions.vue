@@ -178,10 +178,10 @@ function clicked(event: MouseEvent) {
   const mark = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-suggestion-id]') : null;
   if (mark?.dataset.suggestionId) void focus(mark.dataset.suggestionId, false);
 }
-async function reply(id: string, body: string, mentions: CommentMention[]) {
+async function reply(id: string, body: string, mentions: CommentMention[], replyTo?: string) {
   await action(async () => {
     await store.changeReply(props.document.id, id, { type: 'reply', threadId: id,
-      id: crypto.randomUUID(), body, author: props.author, mentions });
+      id: crypto.randomUUID(), body, author: props.author, mentions, replyTo });
     conversations.get(id)?.clearReply();
   });
 }
@@ -222,7 +222,7 @@ async function removeReply(id: string, change: CommentMessageRemoval) {
             :thread="suggestionReviewThread(item)" local :preview="selected !== item.id"
             :readonly="readonly || managed" :busy="!!session?.saving || !!session?.reviewing"
             :author-id="author.id" :author-name="author.name" @expand="focus(item.id)"
-            @reply="(body, mentions) => reply(item.id, body, mentions)"
+            @reply="(body, mentions, replyTo) => reply(item.id, body, mentions, replyTo)"
             @edit="editReply(item.id, $event)" @remove="removeReply(item.id, $event)">
           <template #first-tools>
             <div v-if="item.status === 'pending' || item.status === 'applying'" class="review-card-tools" role="group" :aria-label="t('建议操作')">

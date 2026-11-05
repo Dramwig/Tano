@@ -1,4 +1,4 @@
-export const ASSISTANT_PROTOCOL_VERSION = 12;
+export const ASSISTANT_PROTOCOL_VERSION = 13;
 
 
 export type AssistantReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
@@ -11,6 +11,9 @@ export function isAssistantReasoningSelection(value: unknown): value is Assistan
 export interface AssistantConnection {
   id: string;
   name: string;
+  /** Bundled provider icon ID, `initials`, or omitted for automatic detection. */
+  icon?: string;
+  quota?: AssistantQuotaConfig;
   kind?: 'api' | 'codex-cli' | 'claude-cli';
   cliPath?: string;
   /** Legacy connection default, used when restoring a conversation without its own selection. */
@@ -23,6 +26,26 @@ export interface AssistantConnection {
   hasKey: boolean;
   /** Configured by the hosting application. */
   managed?: boolean;
+}
+
+export interface AssistantQuotaConfig {
+  mode: 'disabled' | 'official' | 'generic' | 'newapi' | 'deepseek' | 'siliconflow' | 'openrouter' | 'sub2api' | 'custom';
+  baseUrl?: string;
+  userId?: string;
+  timeoutSeconds?: number;
+  intervalMinutes?: number;
+  path?: string;
+  method?: 'GET' | 'POST';
+  auth?: 'bearer' | 'x-api-key' | 'none';
+  body?: string;
+  remainingPath?: string;
+  usedPath?: string;
+  totalPath?: string;
+  unit?: string;
+}
+export interface AssistantQuotaResult {
+  checkedAt: number;
+  items: { label: string; remaining?: number; used?: number; total?: number; unit: string; resetsAt?: string }[];
 }
 
 export interface AssistantSource {
@@ -144,6 +167,9 @@ export interface AssistantMessage {
   termination?: { reason: AssistantTerminationReason };
   error?: string;
   model?: string;
+  /** Connection used for this reply; independent of the session's later selection. */
+  connectionId?: string;
+  connectionName?: string;
   rules?: string[];
   timing?: { firstContentMs?: number; totalMs: number };
 }
@@ -182,9 +208,24 @@ export interface AssistantRequest {
   messages: AssistantWireMessage[];
   tools?: { type: 'function'; function: { name: string; description: string; parameters: Record<string, unknown> } }[];
 }
+export interface AssistantImportCandidate {
+  id: string;
+  name: string;
+  source: string;
+  endpoint: string;
+  reason: string | null;
+}
+
 export interface AssistantTransport {
+  inbox?: import('./mentions').AgentInboxStorage;
+  hostedInbox?: import('./mentions').HostedAgentInbox;
+  readConnectionKey?(connectionId: string): Promise<string>;
+  scanCcSwitch?(path?: string): Promise<AssistantImportCandidate[]>;
+  importCcSwitch?(ids: string[], path?: string): Promise<void>;
   canConfigure?: boolean;
   connections(): Promise<AssistantConnection[]>;
+  quota?(connectionId: string): Promise<AssistantQuotaResult>;
+  saveQuota?(connectionId: string, config: AssistantQuotaConfig, key?: string): Promise<void>;
   models(connectionId: string, signal: AbortSignal): Promise<string[]>;
   saveConnection(connection: Omit<AssistantConnection, 'hasKey'>, key?: string): Promise<void>;
   removeConnection(id: string): Promise<void>;
@@ -220,6 +261,8 @@ export function parseAssistantSession(value: unknown): AssistantSession {
     if (!message || !text(message.id, 80) || ids.has(message.id) ||
         !['user', 'assistant'].includes(message.role) || !text(message.content, 1_000_000) ||
         !Number.isFinite(message.createdAt) ||
+        (message.connectionId !== undefined && (!text(message.connectionId, 80) || !message.connectionId.trim())) ||
+        (message.connectionName !== undefined && (!text(message.connectionName, 120) || !message.connectionId)) ||
         (message.state && !['running', 'waiting', 'completed', 'cancelled', 'failed', 'interrupted'].includes(message.state)) ||
         (message.termination !== undefined && (!message.termination || message.role !== 'assistant' ||
           !['completed', 'cancelled', 'interrupted', 'round_limit', 'no_progress', 'output_limit', 'incomplete', 'empty_response', 'error'].includes(message.termination.reason) ||

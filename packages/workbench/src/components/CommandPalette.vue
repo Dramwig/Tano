@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { vSurfaceMotion, closeSurfaceDialog } from '@tano/editor/surface-motion';
+import ShortcutHint from '@tano/editor/shortcut-hint';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { X } from 'lucide-vue-next';
@@ -48,10 +50,10 @@ function keydown(event: KeyboardEvent) {
   }
 }
 onMounted(() => { dialog.value?.showModal(); void nextTick(() => input.value?.focus()); });
-onBeforeUnmount(() => { dialog.value?.close(); if (before?.isConnected) before.focus(); });
+onBeforeUnmount(() => { closeSurfaceDialog(dialog.value); if (before?.isConnected) before.focus(); });
 </script>
 <template>
-  <dialog ref="dialog" class="command-palette" :aria-label="t('命令中心')" @cancel.prevent="emit('close')" @keydown="keydown" @click="event => { if (event.target === dialog) emit('close'); }">
+  <dialog v-surface-motion="'CommandPalette:0'" ref="dialog" class="command-palette" :aria-label="t('命令中心')" @cancel.prevent="emit('close')" @keydown="keydown" @click="event => { if (event.target === dialog) emit('close'); }">
     <div class="command-palette-body">
       <div class="command-search">
         <input ref="input" v-model="query" role="combobox" :aria-label="t('搜索命令')" aria-autocomplete="list" aria-controls="workbench-command-list" :aria-activedescendant="selected >= 0 && commands[selected] ? `workbench-command-${selected}` : undefined" aria-expanded="true" :placeholder="t('搜索命令…')" autocomplete="off" spellcheck="false" />
@@ -62,7 +64,7 @@ onBeforeUnmount(() => { dialog.value?.close(); if (before?.isConnected) before.f
           <button v-for="(command, index) in commands" :id="`workbench-command-${index}`" :key="command.id" type="button" class="command-option" role="option" :aria-selected="index === selected" tabindex="-1"
             @pointermove="selected = index" @click="execute(index)">
             <span class="command-label" :title="command.showSource ? `${command.source}：${command.label}` : command.label"><template v-if="command.showSource">{{ command.source }}：</template>{{ command.label }}</span>
-            <kbd v-if="command.shortcut" class="command-shortcut">{{ shortcutLabel(command.shortcut) }}</kbd>
+            <kbd v-if="command.shortcut" class="command-shortcut"><ShortcutHint :label="shortcutLabel(command.shortcut)" /></kbd>
           </button>
         </div>
         <p v-if="!commands.length" class="command-empty" role="status">{{ t('没有匹配的命令') }}</p>

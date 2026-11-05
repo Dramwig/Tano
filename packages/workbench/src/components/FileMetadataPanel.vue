@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useWorkspaceStore } from '../stores/workspace';
 import type { FileMetadataState } from '../file-metadata';
@@ -73,7 +74,7 @@ async function save() {
 }
 </script>
 <template>
-  <div class="file-metadata-backdrop" @click.self="!busy && emit('close')" @keydown.esc.stop="!busy && emit('close')">
+  <div v-surface-motion="'FileMetadataPanel:0'" class="file-metadata-backdrop" @click.self="!busy && emit('close')" @keydown.esc.stop="!busy && emit('close')">
     <section ref="panel" role="dialog" aria-modal="true" :aria-label="t('文件属性')" class="file-metadata-panel" @keydown="trapFocus">
       <div ref="scrollElement" class="file-metadata-scroll"><div>
       <div class="heading"><strong>{{ t('文件属性') }}</strong><button :disabled="busy" @click="emit('close')">{{ t('关闭') }}</button></div>

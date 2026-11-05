@@ -5,6 +5,7 @@ import { suggestionReviewThread } from '@tano/protocol';
 import { applyCommentChange } from '../workspace-comments';
 import type { CommentChange } from '../workspace-comments';
 import { useWorkspaceStore } from './workspace';
+import { recordHelpCompleted } from '../help-checklist';
 import { projectSuggestions, proposalSuggestions, suggestEdit } from '../document-suggestions';
 import { mergeSuggestions } from '../workspace-suggestions';
 import type { SuggestionState } from '../workspace-suggestions';
@@ -94,6 +95,7 @@ export const useSuggestionStore = defineStore('document-suggestions', () => {
     if (!session.state || session.reviewing) return;
     await persist(session);
     session.mode = !session.mode;
+    if (session.mode) recordHelpCompleted('suggestion-mode');
     session.viewVersion++;
   }
   async function changeReply(fileId: string, id: string, change: Extract<CommentChange, { type: 'reply' | 'edit' | 'delete' }>) {
@@ -132,6 +134,7 @@ export const useSuggestionStore = defineStore('document-suggestions', () => {
         result = await workspace.acceptDocumentSuggestion(session.scope, result.state, id, result.preview);
       session.state = result.state;
       session.records = copy(result.state.file.suggestions);
+      if (session.records.some(item => item.id === id && item.status === 'accepted')) recordHelpCompleted('accept-suggestion');
       if (result.status === 'preview') session.previews[id] = result.preview!;
       else { delete session.previews[id]; session.viewVersion++; }
       session.error = '';

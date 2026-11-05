@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import type { AppearanceSnapshot, AppearanceSelection } from '../appearance';
+import { builtinAppearance } from '../appearance';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createApp, defineComponent, h, nextTick, ref } from 'vue';
 import type { App } from 'vue';
@@ -13,6 +15,7 @@ import type { ToolbarMode } from '../toolbar-preference';
 import { helpPreferenceKey, readHelpPreferences, useHelpPreferences } from '../help-guidance';
 import { setUiLocale } from '../i18n';
 import { localePreferenceKey, readUiLocale } from '../locale';
+import { settingsPagePreferenceKey } from '../settings-preference';
 
 vi.mock('./UpdatePanel.vue', () => ({
   default: { template: '<div class="update-panel-stub">应用更新</div>' },
@@ -24,6 +27,9 @@ const openedTabs: string[] = [];
 const openedWindows: string[] = [];
 const canOpenWindow = ref(true);
 const openingWindow = ref(false);
+const panelKey = ref(0);
+const initialSettingsPage = ref<string | undefined>('about');
+const rememberPage = ref(true);
 
 it('opens the current category in a new window and disables repeated requests while opening', async () => {
   await openPage('快捷键');
@@ -78,6 +84,8 @@ const editorPreferences = ref<EditorPreferences>({ ...defaultEditorPreferences }
 let capabilityUpdates: CapabilityPatch[];
 let capabilities = ref(structuredClone(defaultCapabilities));
 let revealMarkdown = ref(true);
+const appearance = ref<AppearanceSnapshot>();
+const appearanceSelections: AppearanceSelection[] = [];
 let theme = ref<'light' | 'dark' | 'system'>('system');
 let visualFontChoice = ref<'system' | 'serif' | 'mono' | 'custom'>('system');
 let customFontName = ref('');
@@ -109,6 +117,10 @@ async function openPage(label: string) {
 }
 
 beforeEach(() => {
+  panelKey.value = 0;
+  rememberPage.value = true;
+  initialSettingsPage.value = 'about';
+  localStorage.removeItem(settingsPagePreferenceKey);
   tabbed.value = false;
   openedTabs.length = 0;
   openedWindows.length = 0;
@@ -123,6 +135,7 @@ beforeEach(() => {
   revealMarkdown = ref(true);
   editorPreferences.value = { ...defaultEditorPreferences };
   theme = ref('system');
+  appearance.value = undefined; appearanceSelections.length = 0;
   visualFontChoice = ref('system');
   customFontName = ref('');
   showPageTitle = ref(true);
@@ -141,6 +154,8 @@ beforeEach(() => {
   app = createApp(
     defineComponent(() => () =>
       h(SettingsPanel, {
+        key: panelKey.value,
+        rememberPage: rememberPage.value,
         tabbed: tabbed.value,
         canOpenTab: true,
         canOpenWindow: canOpenWindow.value,
@@ -160,6 +175,7 @@ beforeEach(() => {
         onCapability: (patch: CapabilityPatch) => capabilityUpdates.push(patch),
         mode: workspaceMode.value,
         extraPages: [
+          { id: 'account', label: '账号设置', group: '账号', terms: '', component: ExtraSettings },
           { id: 'extra', label: '扩展设置', group: '个人偏好', terms: '', component: ExtraSettings },
           { id: 'online-only', label: '在线专属设置', group: '工作区设置', terms: '', component: ExtraSettings,
             isVisible: context => context.mode === 'web' && !!context.workspace },
@@ -168,6 +184,8 @@ beforeEach(() => {
         mobile: false,
         defaultSource: false,
         theme: theme.value,
+        appearance: appearance.value,
+        onAppearance: (selection: AppearanceSelection) => appearanceSelections.push(selection),
         visualFontChoice: visualFontChoice.value,
         customFontName: customFontName.value,
         revealMarkdown: revealMarkdown.value,
@@ -181,7 +199,7 @@ beforeEach(() => {
         sourceFontSize: sourceFontSize.value,
         historyEnabled: true,
         version: '1.2.3',
-        initialPage: 'about',
+        initialPage: initialSettingsPage.value,
         'onUpdate:revealMarkdown': (value: boolean) => revealUpdates.push(value),
         'onUpdate:toolbarMode': (value: ToolbarMode) => { toolbarMode.value = value; },
         'onUpdate:theme': (value: 'light' | 'dark' | 'system') => { theme.value = value; },
@@ -199,8 +217,56 @@ beforeEach(() => {
   app.mount(root);
 });
 
+it('places the account group first without making it the initial page', async () => {
+  initialSettingsPage.value = undefined;
+  localStorage.removeItem(settingsPagePreferenceKey);
+  panelKey.value++;
+  await nextTick();
+  const accountGroup = root.querySelector('.settings-nav-section');
+  expect(accountGroup?.getAttribute('aria-label')).toBe('账号');
+  expect(accountGroup?.querySelector('.settings-nav-group')).toBeNull();
+  expect(accountGroup?.querySelector('button')?.textContent).toContain('账号设置');
+  expect(root.querySelector('.settings-nav-group')?.textContent).toBe('个人偏好');
+  expect(root.querySelector('#settings-title')?.textContent).toBe('外观');
+});
+
+it('restores the last visited page after remounting and honors explicit destinations', async () => {
+  await openPage('账号设置');
+  expect(localStorage.getItem(settingsPagePreferenceKey)).toBe('account');
+  initialSettingsPage.value = undefined;
+  panelKey.value++;
+  await nextTick();
+  expect(root.querySelector('.settings-nav button[aria-current="page"]')?.textContent).toContain('账号设置');
+  initialSettingsPage.value = 'shortcuts';
+  panelKey.value++;
+  await nextTick();
+  expect(root.querySelector('#settings-title')?.textContent).toBe('快捷键');
+  expect(localStorage.getItem(settingsPagePreferenceKey)).toBe('shortcuts');
+});
+
+it.each(['workspace', 'removed-plugin'])('falls back when the saved page %s is unavailable', async savedPage => {
+  localStorage.setItem(settingsPagePreferenceKey, savedPage);
+  initialSettingsPage.value = undefined;
+  panelKey.value++;
+  await nextTick();
+  expect(root.querySelector('#settings-title')?.textContent).toBe('外观');
+  expect(localStorage.getItem(settingsPagePreferenceKey)).toBe('appearance');
+});
+
+it('does not overwrite the saved page while a settings window is only prewarming', async () => {
+  localStorage.setItem(settingsPagePreferenceKey, 'account');
+  rememberPage.value = false;
+  initialSettingsPage.value = 'appearance';
+  panelKey.value++;
+  await nextTick();
+  expect(localStorage.getItem(settingsPagePreferenceKey)).toBe('account');
+  rememberPage.value = true;
+  await nextTick();
+  expect(localStorage.getItem(settingsPagePreferenceKey)).toBe('appearance');
+});
+
 it('shows the Markdown reveal switch enabled and emits a change', async () => {
-  await openPage('编辑设置');
+  await openPage('编辑器');
   const toggle = root.querySelector<HTMLButtonElement>('[role="switch"]')!;
   expect(toggle.getAttribute('aria-checked')).toBe('true');
   toggle.click();
@@ -208,7 +274,7 @@ it('shows the Markdown reveal switch enabled and emits a change', async () => {
 });
 
 it('toggles automatic text spacing in appearance without changing other editor preferences', async () => {
-  await openPage('外观设置');
+  await openPage('外观');
   const toggle = root.querySelector<HTMLButtonElement>('[role="switch"][aria-label="正文自动间距"]')!;
   expect(toggle.getAttribute('aria-checked')).toBe('false');
   const previous = { ...editorPreferences.value };
@@ -219,6 +285,22 @@ it('toggles automatic text spacing in appearance without changing other editor p
   toggle.click();
   await nextTick();
   expect(editorPreferences.value).toEqual({ ...previous, autoSpacing: false });
+});
+
+it('changes the default clipboard format without changing other editor preferences', async () => {
+  await openPage('编辑器');
+  const select = root.querySelector<HTMLSelectElement>('[aria-label="默认复制格式"]')!;
+  expect(select.value).toBe('markdown');
+  const previous = { ...editorPreferences.value };
+  expect([...select.options].filter(option => option.value === 'rich')).toHaveLength(1);
+  expect([...select.options].some(option => option.value === 'word')).toBe(false);
+  for (const format of ['rich', 'wechat', 'zhihu', 'html', 'text', 'markdown'] as const) {
+    select.value = format;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await nextTick();
+    expect(editorPreferences.value).toEqual({ ...previous, copyFormat: format });
+    expect(select.value).toBe(format);
+  }
 });
 
 it('moves shortcuts out of About into a searchable preference page', async () => {
@@ -238,7 +320,7 @@ it('keeps the searchable usage hint switch in appearance settings and preserves 
   localStorage.setItem(helpPreferenceKey, JSON.stringify(saved));
   const input = root.querySelector<HTMLInputElement>('[aria-label="搜索设置"]')!;
   input.value = '使用提示'; input.dispatchEvent(new Event('input')); await nextTick();
-  expect(root.querySelector('#settings-title')?.textContent).toBe('外观设置');
+  expect(root.querySelector('#settings-title')?.textContent).toBe('外观');
   const toggle = root.querySelector<HTMLButtonElement>('[aria-label="偶尔显示使用提示"]')!;
   expect(toggle.getAttribute('aria-checked')).toBe('true');
   toggle.click(); await nextTick();
@@ -249,7 +331,7 @@ it('keeps the searchable usage hint switch in appearance settings and preserves 
 });
 
 it('reflects opt-out from a help bubble and preferences changed in another window', async () => {
-  await openPage('外观设置');
+  await openPage('外观');
   let preferences!: ReturnType<typeof useHelpPreferences>;
   const host = document.createElement('div'); document.body.append(host);
   const preferenceApp = createApp({ setup() { preferences = useHelpPreferences(); return () => null; } });
@@ -266,10 +348,33 @@ it('reflects opt-out from a help bubble and preferences changed in another windo
   } finally { preferenceApp.unmount(); host.remove(); }
 });
 
-it('offers workspace bullet markers under Markdown output and disables them without write access', async () => {
+it('maps legacy formula presets to two formats without rewriting settings on open', async () => {
+  hostWorkspace.value = { id: 'local-workspace', name: '本地', path: 'C:/Notes' };
+  await openPage('Markdown 与格式');
+  const select = root.querySelector<HTMLSelectElement>('select[aria-label="新公式默认格式"]')!;
+  expect([...select.options].map(option => option.textContent)).toEqual(['美元符号', '反斜杠括号']);
+  for (const preset of ['obsidian', 'github', 'commonmark', 'pandoc'] as const) {
+    capabilities.value.markdownDialect = preset;
+    await nextTick();
+    expect(select.value).toBe(preset === 'pandoc' ? 'pandoc' : 'obsidian');
+    expect(root.querySelector('.settings-format-example')?.textContent)
+      .toContain(preset === 'pandoc' ? '\\(x^2\\)' : '$x^2$');
+  }
+  expect(capabilityUpdates).toEqual([]);
+  for (const preset of ['obsidian', 'pandoc']) {
+    select.value = preset;
+    select.dispatchEvent(new Event('change'));
+    expect(capabilityUpdates.at(-1)).toEqual({ markdownDialect: preset });
+  }
+  hostWorkspace.value = { ...hostWorkspace.value, readOnly: true };
+  await nextTick();
+  expect(select.disabled).toBe(true);
+});
+
+it('offers workspace bullet markers under Markdown syntax and disables them without write access', async () => {
   hostWorkspace.value = { id: 'local-workspace', name: '本地', path: 'C:/Notes', readOnly: true };
-  await openPage('文档能力');
-  const select = root.querySelector<HTMLSelectElement>('section[aria-label="Markdown 输出"] select[aria-label="无序列表标记"]')!;
+  await openPage('Markdown 与格式');
+  const select = root.querySelector<HTMLSelectElement>('section[aria-label="Markdown 语法"] select[aria-label="无序列表标记"]')!;
   expect(select.disabled).toBe(true);
   expect([...select.options].map(option => option.value)).toEqual(['-', '+', '*']);
   hostWorkspace.value = { id: 'local-workspace', name: '本地', path: 'C:/Notes' };
@@ -286,7 +391,7 @@ it('offers workspace bullet markers under Markdown output and disables them with
 });
 it('offers extension rendering switches in shared document capabilities', async () => {
   hostWorkspace.value = { id: 'local-workspace', name: '本地', path: 'C:/Notes' };
-  await openPage('文档能力');
+  await openPage('Markdown 与格式');
   for (const feature of ['superscript', 'subscript', 'underline', 'highlight', 'inlineComment'] as const) {
     const control = root.querySelector<HTMLButtonElement>(`[data-settings-key="documents-${feature}"] [role="switch"]`)!;
     expect(control.getAttribute('aria-checked')).toBe('true');
@@ -296,7 +401,7 @@ it('offers extension rendering switches in shared document capabilities', async 
 });
 it('shows registration-only deletion in local workspace settings and omits it from the browser demo', async () => {
   hostWorkspace.value = { id: 'local-workspace', name: '本地', path: 'C:/Notes', canDelete: true };
-  await openPage('工作区');
+  await openPage('基本设置');
   expect(root.querySelector('.workspace-deletion-settings')?.textContent).toContain('本地仓库注册');
   workspaceMode.value = 'demo'; await nextTick();
   expect(root.querySelector('.workspace-deletion-settings')).toBeNull();
@@ -305,7 +410,7 @@ it('shows registration-only deletion in local workspace settings and omits it fr
 it('requires management access for shared document rules while keeping personal preferences available', async () => {
   workspaceMode.value = 'web';
   hostWorkspace.value = { id: 'online', name: '在线', path: '', readOnly: false, canManageSettings: false };
-  await openPage('文档能力');
+  await openPage('Markdown 与格式');
   const select = root.querySelector<HTMLSelectElement>('select[aria-label="无序列表标记"]')!;
   expect(select.disabled).toBe(true);
   expect(root.textContent).toContain('只有工作区所有者和管理者');
@@ -324,7 +429,7 @@ it('passes host workspace identity and file context to extension pages and clear
 });
 
 it('offers all toolbar positions as a device preference even without a workspace', async () => {
-  await openPage('编辑设置');
+  await openPage('编辑器');
   const select = root.querySelector<HTMLSelectElement>('select[aria-label="编辑工具栏"]')!;
   expect(select.disabled).toBe(false);
   expect(select.value).toBe('selection');
@@ -338,10 +443,10 @@ it('offers all toolbar positions as a device preference even without a workspace
   }
 });
 
-it('offers light, dark, and system themes', async () => {
-  await openPage('外观设置');
-  const select = root.querySelector<HTMLSelectElement>('select[aria-label="主题"]')!;
-  expect([...select.options].map(({ textContent }) => textContent)).toEqual(['白天', '黑夜', '跟随系统']);
+it('offers light, dark, and system display modes', async () => {
+  await openPage('外观');
+  const select = root.querySelector<HTMLSelectElement>('select[aria-label="显示模式"]')!;
+  expect([...select.options].map(({ textContent }) => textContent)).toEqual(['浅色', '深色', '跟随系统']);
   expect(select.value).toBe('system');
   select.value = 'dark';
   select.dispatchEvent(new Event('change'));
@@ -350,8 +455,30 @@ it('offers light, dark, and system themes', async () => {
   expect(select.value).toBe('dark');
 });
 
+it.each(['light', 'dark'] as const)('limits display mode options for a %s-only theme and restores the user preference for dual themes', async mode => {
+  const selected = { color: 'sample:fixed', icons: 'builtin:tano', layout: 'builtin:tano', shape: 'builtin:tano' };
+  const palette = mode === 'light' ? { light: {} } : { dark: {} };
+  appearance.value = { workspaceId: 'one', scope: 'workspace', mode: 'system', colors: [], icons: [], layouts: [], shapes: [], presets: [],
+    selected, active: selected, color: { id: 'sample:fixed', label: '单模式', ...palette }, errors: [] };
+  await openPage('外观');
+  const select = root.querySelector<HTMLSelectElement>('[aria-label="显示模式"]')!;
+  expect(select.disabled).toBe(true);
+  expect([...select.options].map(option => option.value)).toEqual([mode]);
+  expect(select.value).toBe(mode);
+  expect(root.textContent).toContain(mode === 'light' ? '当前配色主题仅支持浅色' : '当前配色主题仅支持深色');
+  expect(theme.value).toBe('system');
+  theme.value = mode === 'light' ? 'dark' : 'light'; await nextTick();
+  expect(select.value).toBe(mode);
+  appearance.value = { ...appearance.value, color: { id: 'sample:dual', label: '双模式', light: {}, dark: {} } }; await nextTick();
+  expect(select.disabled).toBe(false);
+  expect([...select.options].map(option => option.value)).toEqual(['light', 'dark', 'system']);
+  expect(select.value).toBe(theme.value);
+  appearance.value = { ...appearance.value, color: undefined }; theme.value = 'system'; await nextTick();
+  expect(select.disabled).toBe(false); expect(select.value).toBe('system');
+});
+
 it('offers system, serif, mono, and a custom local font with a live preview', async () => {
-  await openPage('外观设置');
+  await openPage('外观');
   const fontSection = root.querySelector<HTMLElement>('section[aria-label="编辑字体与字号"]')!;
   expect(fontSection.querySelectorAll('.settings-font-preview-sample')).toHaveLength(2);
   expect(fontSection.querySelector('.settings-font-preview')?.textContent).not.toMatch(/预览|px/);
@@ -388,7 +515,7 @@ it('offers system, serif, mono, and a custom local font with a live preview', as
 });
 
 it('shows the formula preview setting and emits its change', async () => {
-  await openPage('编辑设置');
+  await openPage('编辑器');
   const content = root.querySelector<HTMLElement>('section[aria-label="编辑行为"]')!;
   expect(content.textContent).toContain('编辑时预览公式');
   expect(content.textContent).toContain('标题与列表折叠');
@@ -404,7 +531,7 @@ it('shows the formula preview setting and emits its change', async () => {
 });
 
 it.each(['页面内标题', '文档属性'])('keeps the %s preference in sync with its current value', async (label) => {
-  await openPage('外观设置');
+  await openPage('外观');
   const preference = label === '页面内标题' ? showPageTitle : showDocumentProperties;
   const toggle = root.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!;
   expect(toggle.getAttribute('aria-checked')).toBe('true');
@@ -418,7 +545,7 @@ it.each(['页面内标题', '文档属性'])('keeps the %s preference in sync wi
 });
 
 it('toggles the directory position preference', async () => {
-  await openPage('外观设置');
+  await openPage('外观');
   const toggle = root.querySelector<HTMLButtonElement>('[aria-label="目录显示在左侧"]')!;
   expect(toggle.getAttribute('aria-checked')).toBe('false');
   toggle.click();
@@ -431,13 +558,13 @@ it('toggles the directory position preference', async () => {
 });
 
 it('saves the page title source for the current workspace independently of title visibility', async () => {
-  await openPage('外观设置');
+  await openPage('外观');
   expect(root.querySelector('[aria-label="页面标题来源"]')).toBeNull();
   root.querySelector<HTMLButtonElement>('[aria-label="页面内标题"]')!.click();
   await nextTick();
   expect(showPageTitle.value).toBe(false);
   hostWorkspace.value = { id: 'local-workspace', name: '本地', path: 'C:/Notes' };
-  await openPage('工作区');
+  await openPage('基本设置');
   const select = root.querySelector<HTMLSelectElement>('[aria-label="页面标题来源"]')!;
   expect(select.value).toBe('frontmatter-first');
   expect([...select.options].map(option => option.textContent)).toEqual(['文件名', 'YAML title', 'YAML title 优先']);
@@ -461,7 +588,7 @@ it.each(['标题来源', 'YAML title', '文件名'])('finds the workspace title 
   await nextTick();
   const input = root.querySelector<HTMLInputElement>('[aria-label="搜索设置"]')!;
   input.value = query; input.dispatchEvent(new Event('input')); await nextTick();
-  expect([...root.querySelectorAll('.settings-nav-items button')].map(item => item.textContent?.trim())).toEqual(['工作区']);
+  expect([...root.querySelectorAll('.settings-nav-items button')].map(item => item.textContent?.trim())).toEqual(['基本设置']);
   expect(root.querySelector('[aria-label="页面标题来源"]')).not.toBeNull();
 });
 
@@ -469,7 +596,7 @@ it('keeps home settings personal and removes workspace search results when leavi
   expect(root.querySelector('.settings-nav-foot')?.textContent).toContain('主页');
   expect(root.querySelector('.settings-nav')?.textContent).not.toContain('工作区设置');
   hostWorkspace.value = { id: 'a', name: '工作区 A', path: 'C:/A' };
-  await openPage('文档能力');
+  await openPage('Markdown 与格式');
   const input = root.querySelector<HTMLInputElement>('[aria-label="搜索设置"]')!;
   input.value = 'YAML title'; input.dispatchEvent(new Event('input')); await nextTick();
   expect(root.querySelector('[aria-label="页面标题来源"]')).not.toBeNull();
@@ -481,23 +608,23 @@ it('keeps home settings personal and removes workspace search results when leavi
   expect(root.querySelector('.settings-nav-foot')?.textContent).not.toContain('工作区 A');
   input.value = ''; input.dispatchEvent(new Event('input')); await nextTick();
   hostWorkspace.value = { id: 'b', name: '工作区 B', path: 'C:/B' };
-  await openPage('工作区');
+  await openPage('基本设置');
   expect(root.querySelector('.settings-nav-foot')?.textContent).toContain('工作区 B');
 });
 
 it('lists matching setting rows and opens the exact row from the search result', async () => {
   const input = root.querySelector<HTMLInputElement>('[aria-label="搜索设置"]')!;
   input.value = '主题'; input.dispatchEvent(new Event('input')); await nextTick();
-  expect(root.querySelector('#settings-title')?.textContent).toBe('外观设置');
-  expect([...root.querySelectorAll('.settings-nav-setting')].map(item => item.textContent?.trim())).toContain('主题');
+  expect(root.querySelector('#settings-title')?.textContent).toBe('外观');
+  expect([...root.querySelectorAll('.settings-nav-setting')].map(item => item.textContent?.trim())).toContain('显示模式');
   expect(root.querySelector('[data-settings-key="appearance-theme"]')).not.toBeNull();
   root.querySelector<HTMLButtonElement>('.settings-nav-setting')!.click();
   await nextTick();
-  expect(root.querySelector('.settings-nav-setting.selected')?.textContent?.trim()).toBe('主题');
+  expect(root.querySelector('.settings-nav-setting.selected')?.textContent?.trim()).toBe('显示模式');
 });
 
 it('adjusts each editor font size independently and restores its default', async () => {
-  await openPage('外观设置');
+  await openPage('外观');
   const visualPreview = root.querySelector<HTMLElement>('.settings-visual-font-sample')!;
   const sourcePreview = root.querySelector<HTMLElement>('.settings-source-font-sample')!;
   expect(visualPreview.style.fontSize).toBe('16px');
@@ -524,7 +651,7 @@ it('adjusts each editor font size independently and restores its default', async
 });
 
 it('disables formula preview when Markdown reveal is off and restores its saved choice', async () => {
-  await openPage('编辑设置');
+  await openPage('编辑器');
   const content = root.querySelector<HTMLElement>('section[aria-label="编辑行为"]')!;
   const preview = content.querySelector<HTMLButtonElement>('[aria-label="编辑时预览公式"]')!;
   const folding = content.querySelector<HTMLButtonElement>('[aria-label="标题与列表折叠"]')!;
@@ -553,41 +680,46 @@ afterEach(() => {
   localStorage.removeItem(localePreferenceKey);
 });
 
-it('opens directly on the complete about page', () => {
+it('opens directly on the complete about page with the current locale slogan', async () => {
   expect(root.querySelector('h2')?.textContent).toBe('关于同页');
   expect(root.querySelector('.settings-about-brand')?.textContent).toContain('Tano / 同页');
   expect(root.querySelector('.settings-version-pill')?.textContent).toBe('1.2.3');
-  expect(root.textContent).toContain('Humans and agents, on the same page.');
+  expect(root.querySelector('.settings-about-slogan')?.textContent).toBe('人与 Agent，在同一页工作。');
+  expect(root.textContent).not.toContain('Humans and agents, on the same page.');
   expect(root.textContent).toContain('这是你的本地 Markdown 工作台');
   expect(root.querySelector('.shortcut-settings')).toBeNull();
   expect(root.textContent).not.toContain('版本与更新');
   expect(root.textContent).not.toContain('备份恢复与 Agent 工作流');
   expect(root.querySelector('.settings-about-update .update-panel-stub')).not.toBeNull();
+  setUiLocale('en-US');
+  await nextTick();
+  expect(root.querySelector('.settings-about-slogan')?.textContent).toBe('Humans and agents, on the same page.');
+  expect(root.textContent).not.toContain('人与 Agent，在同一页工作。');
 });
 
 it('keeps the about content inside settings navigation', async () => {
-  await openPage('外观设置');
-  expect(root.querySelector('h2')?.textContent).toBe('外观设置');
-  await openPage('编辑设置');
-  expect(root.querySelector('h2')?.textContent).toBe('编辑设置');
+  await openPage('外观');
+  expect(root.querySelector('h2')?.textContent).toBe('外观');
+  await openPage('编辑器');
+  expect(root.querySelector('h2')?.textContent).toBe('编辑器');
   await openPage('关于同页');
   expect(root.querySelector('h2')?.textContent).toBe('关于同页');
   expect(root.querySelector('.settings-about-brand')).not.toBeNull();
 });
 
 it('separates appearance and editing controls', async () => {
-  await openPage('外观设置');
-  expect(root.querySelector('select[aria-label="主题"]')).not.toBeNull();
+  await openPage('外观');
+  expect(root.querySelector('select[aria-label="显示模式"]')).not.toBeNull();
   expect(root.querySelector('select[aria-label="默认编辑模式"]')).toBeNull();
   expect(root.querySelector('[aria-label="页面内标题"]')).not.toBeNull();
-  await openPage('编辑设置');
-  expect(root.querySelector('select[aria-label="主题"]')).toBeNull();
+  await openPage('编辑器');
+  expect(root.querySelector('select[aria-label="显示模式"]')).toBeNull();
   expect(root.querySelector('select[aria-label="默认编辑模式"]')).not.toBeNull();
   expect(root.querySelector('[aria-label="页面内标题"]')).toBeNull();
 });
 
 it('configures individual selection wrappers and disables them with the master switch', async () => {
-  await openPage('编辑设置');
+  await openPage('编辑器');
   const control = (label: string) => root.querySelector<HTMLButtonElement>('[role="switch"][aria-label="' + label + '"]')!;
   expect(control('输入符号包裹选区').getAttribute('aria-checked')).toBe('true');
   expect(control('高亮').getAttribute('aria-checked')).toBe('false');
@@ -614,7 +746,7 @@ it('configures individual selection wrappers and disables them with the master s
 
 it('switches open pages immediately, keeps workspace content and searches English settings', async () => {
   hostWorkspace.value = { id: 'test', name: '主题', path: '/notes' };
-  await openPage('外观设置');
+  await openPage('外观');
   const language = root.querySelector<HTMLSelectElement>('select[aria-label="界面语言"]')!;
   language.value = 'en-US';
   language.dispatchEvent(new Event('change'));
@@ -622,13 +754,13 @@ it('switches open pages immediately, keeps workspace content and searches Englis
   expect(readUiLocale()).toBe('en-US');
   expect(document.documentElement.lang).toBe('en-US');
   expect(root.querySelector('h2')?.textContent).toBe('Appearance');
-  expect(root.querySelector('select[aria-label="Theme"]')).not.toBeNull();
+  expect(root.querySelector('select[aria-label="Display mode"]')).not.toBeNull();
   expect(root.querySelector('.settings-nav-foot')?.textContent).toContain('主题');
   await openPage('Keyboard shortcuts');
   expect(root.querySelector('[data-settings-key="shortcut-save"]')?.textContent).toContain('Save now');
   expect(root.querySelector('[data-settings-key="shortcut-bold"]')?.textContent).toContain('Bold');
   expect(root.textContent).toContain('Save now');
-  await openPage('Document capabilities');
+  await openPage('Markdown & formatting');
   expect(root.textContent).toContain('Math formulas');
   const search = root.querySelector<HTMLInputElement>('[aria-label="Search settings"]')!;
   search.value = 'language';
@@ -642,8 +774,8 @@ it('switches open pages immediately, keeps workspace content and searches Englis
   englishLanguage.value = 'zh-CN';
   englishLanguage.dispatchEvent(new Event('change'));
   await nextTick();
-  expect(root.querySelector('h2')?.textContent).toBe('外观设置');
-  expect(root.querySelector('select[aria-label="主题"]')).not.toBeNull();
+  expect(root.querySelector('h2')?.textContent).toBe('外观');
+  expect(root.querySelector('select[aria-label="显示模式"]')).not.toBeNull();
 });
 
 it('hides online-only pages and exits them when switching to a local workspace', async () => {
@@ -660,5 +792,63 @@ it('hides online-only pages and exits them when switching to a local workspace',
   await nextTick();
   expect(navigation()).not.toContain('在线专属设置');
   expect(root.querySelector('.extra-settings-mode')).toBeNull();
-  expect(root.querySelector('#settings-title')?.textContent).toBe('外观设置');
+  expect(root.querySelector('#settings-title')?.textContent).toBe('外观');
+});
+
+it('offers math recognition separately from output and respects math and write permissions', async () => {
+  hostWorkspace.value = { id: 'local-workspace', name: '本地', path: 'C:/Notes' };
+  await openPage('Markdown 与格式');
+  const select = root.querySelector<HTMLSelectElement>('select[aria-label="识别的公式语法"]')!;
+  expect(select.value).toBe('all');
+  expect([...select.options].map(option => option.value)).toEqual(['all', 'dollar', 'latex']);
+  select.value = 'latex'; select.dispatchEvent(new Event('change'));
+  expect(capabilityUpdates.at(-1)).toEqual({ mathRecognition: 'latex' });
+  capabilities.value.features.math = false; await nextTick();
+  expect(select.disabled).toBe(true);
+  capabilities.value.features.math = true;
+  hostWorkspace.value = { ...hostWorkspace.value, readOnly: true }; await nextTick();
+  expect(select.disabled).toBe(true);
+});
+
+
+it('emits a single complete-preset command and reflects matched or customized state', async () => {
+  const selected = { color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', shape: 'builtin:tano' };
+  appearance.value = { workspaceId: 'one', scope: 'user', mode: 'system', shapes: [], colors: [], icons: [], layouts: [],
+    presets: [{ id: 'builtin:tano', label: '同页默认', selected }], presetId: 'builtin:tano', selected, active: selected, errors: [] };
+  await openPage('外观'); await nextTick();
+  const card = root.querySelector<HTMLButtonElement>('[data-preset-id="builtin:tano"]')!;
+  expect(card.getAttribute('aria-pressed')).toBe('true');
+  root.querySelector<HTMLButtonElement>('[aria-label="为此工作区单独设置"]')!.click();
+  expect(appearanceSelections.pop()).toEqual({ workspaceId: 'one', kind: 'scope', id: 'workspace' });
+  card.click(); expect(appearanceSelections).toEqual([{ workspaceId: 'one', kind: 'preset', id: 'builtin:tano' }]);
+  appearance.value = { ...appearance.value, presetId: undefined }; await nextTick();
+  expect(root.querySelector('.theme-preset-quick-row [aria-pressed="true"]')?.textContent).toContain('当前搭配');
+  appearance.value = { ...appearance.value, presets: [{ ...appearance.value.presets[0]!, unavailable: true,
+    missing: [{ kind: 'shape', id: 'builtin:new-shape' }, { kind: 'layout', id: 'builtin:new-layout' }] }] };
+  await nextTick();
+  root.querySelector<HTMLButtonElement>('[aria-label="更多主题"]')!.click(); await nextTick(); await nextTick();
+  const unavailable = root.querySelector<HTMLButtonElement>('.theme-preset-popover [data-preset-id="builtin:tano"]')!;
+  expect(unavailable.disabled).toBe(true);
+  const reason = root.querySelector('.theme-preset-missing')!;
+  expect(unavailable.getAttribute('aria-describedby')).toBe(reason.id);
+  expect(unavailable.contains(reason)).toBe(false);
+  expect(reason.textContent).toContain('形态与密度 builtin:new-shape');
+  expect(reason.textContent).toContain('布局风格 builtin:new-layout');
+  expect(reason.textContent).toContain('请安装或更新宿主');
+  expect(root.textContent).toContain('偏好在工作区间共用');
+});
+it('selects colors and icons independently and explains unavailable selections', async () => {
+  appearance.value = { workspaceId: 'one', scope: 'user', mode: 'system', shapes: [], colors: [{ id: 'paper:paper', label: '纸页' }], icons: [{ id: 'lines:lines', label: '线条' }], layouts: [...builtinAppearance.layouts], presets: [],
+    selected: { color: 'builtin:tano', icons: 'missing', layout: 'builtin:tano', shape: 'builtin:tano' }, active: { color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', shape: 'builtin:tano' }, errors: [] };
+  await openPage('外观'); await nextTick();
+  const color = root.querySelector<HTMLSelectElement>('[aria-label="配色主题"]')!;
+  const icons = root.querySelector<HTMLSelectElement>('[aria-label="文件与目录图标"]')!;
+  expect(icons.value).toBe('missing');
+  expect(root.textContent).toContain('原主题当前不可用');
+  color.value = 'paper:paper'; color.dispatchEvent(new Event('change')); await nextTick();
+  icons.value = 'lines:lines'; icons.dispatchEvent(new Event('change')); await nextTick();
+  expect(appearanceSelections).toEqual([{ workspaceId: 'one', kind: 'color', id: 'paper:paper' }, { workspaceId: 'one', kind: 'icons', id: 'lines:lines' }]);
+  const layout = root.querySelector<HTMLSelectElement>('[aria-label="布局风格"]')!;
+  layout.value = 'builtin:paper'; layout.dispatchEvent(new Event('change')); await nextTick();
+  expect(appearanceSelections.at(-1)).toEqual({ workspaceId: 'one', kind: 'layout', id: 'builtin:paper' });
 });

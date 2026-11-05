@@ -3,8 +3,6 @@
     "summary": "Summarize this note",
     "polish": "Polish this note",
     "translate": "Translate this note",
-    "translateEnglish": "Translate to English",
-    "translateChinese": "Translate to Chinese",
     "tasks": "Extract action items"
   },
   "progress": {

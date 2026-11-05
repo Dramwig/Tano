@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue';
 import { CalendarDays, Check, ChevronDown, Clock3, ListTodo } from 'lucide-vue-next';
@@ -131,7 +132,7 @@ watch(() => props.disabled, disabled => { if (disabled) pickerOpen.value = false
         <button ref="timeAction" type="button" class="plan-schedule-trigger" :aria-label="t('时间安排')" aria-haspopup="menu" :aria-controls="pickerId" :aria-expanded="pickerOpen" :disabled="disabled" @click="togglePicker" @keydown.down.prevent="pickerOpen || togglePicker()">
           <CalendarDays :size="22" :stroke-width="1.8" aria-hidden="true" /><span>{{ label }}</span><ChevronDown :size="16" aria-hidden="true" />
         </button>
-        <div v-if="pickerOpen" :id="pickerId" class="plan-date-menu" role="menu" :aria-label="t('时间安排')" @keydown="pickerKeydown">
+        <div v-surface-motion="'PlanDateField:0'" v-if="pickerOpen" :id="pickerId" class="plan-date-menu" role="menu" :aria-label="t('时间安排')" @keydown="pickerKeydown">
           <button v-for="option in options" :key="option.value" type="button" role="menuitemradio" :aria-checked="mode === option.value" @click="chooseSchedule(option.value)"><component :is="option.icon" :size="17" aria-hidden="true" /><span>{{ option.label }}</span><Check v-if="mode === option.value" :size="16" aria-hidden="true" /></button>
         </div>
       </div>

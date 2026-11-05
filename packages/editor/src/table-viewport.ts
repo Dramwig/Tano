@@ -1,18 +1,30 @@
 import type { Node } from '@milkdown/kit/prose/model';
-import { Plugin } from '@milkdown/kit/prose/state';
+import { Plugin, type Transaction } from '@milkdown/kit/prose/state';
 import { columnResizingPluginKey, TableMap, TableView } from '@milkdown/kit/prose/tables';
 import type { EditorView, ViewMutationRecord } from '@milkdown/kit/prose/view';
 import { defaultTableColumnWidth } from '@tano/protocol';
 import { animate } from 'motion/mini';
 
 const viewports = new WeakMap<EditorView, Set<TableViewport>>();
+const queues = new WeakMap<EditorView, { pending: Set<TableViewport>; frame?: number }>();
 let viewportId = 0;
 type ViewportStyles = Partial<Record<'width' | 'marginLeft' | 'marginRight', number>>;
+interface ViewportLayout {
+  annotated: boolean;
+  target: string;
+  targets: { element: HTMLElement; styles: ViewportStyles }[];
+  frames: Record<string, string[]>[];
+}
+interface ScrollbarGeometry {
+  maximum: number;
+  position: number;
+  size: number;
+  offset: number;
+}
 
 /** Keep the content width independent of the visible, horizontally scrollable viewport. */
 export class TableViewport extends TableView {
   private wrapper: HTMLDivElement;
-  private frame: number | undefined;
   private observer: ResizeObserver | undefined;
   private observedParent: HTMLElement | undefined;
   private surface: HTMLElement;
@@ -63,14 +75,47 @@ export class TableViewport extends TableView {
   }
 
   schedule = () => {
-    if (this.frame !== undefined) return;
-    this.frame = window.requestAnimationFrame(() => {
-      this.frame = undefined;
-      this.layout();
+    let queue = queues.get(this.view);
+    if (!queue) { queue = { pending: new Set() }; queues.set(this.view, queue); }
+    queue.pending.add(this);
+    if (queue.frame !== undefined) return;
+    const batch = queue;
+    batch.frame = window.requestAnimationFrame(() => {
+      batch.frame = undefined;
+      if (this.view.isDestroyed) { batch.pending.clear(); return; }
+      const pending = [...batch.pending].filter(item => item.dom.isConnected);
+      batch.pending.clear();
+      // All automatic widths belong to one presentation transaction. Dispatching
+      // once per table repeatedly rebuilt document decorations and block controls.
+      const tr = this.view.state.tr;
+      for (const item of pending) item.fitColumns(item.frameWidth(), tr);
+      if (tr.docChanged) {
+        this.view.dispatch(tr.setMeta('addToHistory', false));
+        for (const item of pending) item.schedule();
+      } else {
+        // Read every table before writing any styles. A write/read pair per
+        // table forces the browser to lay out the entire document repeatedly.
+        const layouts = pending.map(item => ({ item, layout: item.measureLayout() }));
+        for (const { item, layout } of layouts) if (layout) item.applyLayout(layout);
+        const scrollbars = pending.map(item => ({ item, geometry: item.measureEdges() }));
+        for (const { item, geometry } of scrollbars) item.applyEdges(geometry);
+        for (const item of pending) item.dom.dispatchEvent(new Event('tano-table-layout', { bubbles: true }));
+      }
     });
   };
 
-  private layout() {
+  private frameWidth() {
+    const parent = this.dom.parentElement!;
+    const style = getComputedStyle(parent);
+    const inset = (value: string) => Number.parseFloat(value) || 0;
+    const width = parent.getBoundingClientRect().width;
+    return parent === this.view.dom
+      ? width - inset(style.getPropertyValue('--tano-block-frame-inset')) * 2
+      : Math.max(0, width - inset(style.paddingLeft) - inset(style.paddingRight)
+        - inset(style.borderLeftWidth) - inset(style.borderRightWidth));
+  }
+
+  private measureLayout(): ViewportLayout | undefined {
     if (!this.dom.isConnected) return;
     const prose = this.view.dom.getBoundingClientRect();
     const surface = this.surface.getBoundingClientRect();
@@ -91,7 +136,6 @@ export class TableViewport extends TableView {
     // Leave this space inside the scroll area so a selected table's outline fits too.
     const frameInset = parent === this.view.dom ? inset(style.getPropertyValue('--tano-block-frame-inset')) : 0;
     const frameWidth = Math.max(0, baseWidth - frameInset * 2);
-    this.fitColumns(frameWidth);
     // Reserve the review gutter only for annotations belonging to this table.
     const annotated = !!this.table.querySelector('[data-comment-id], [data-suggestion-id]');
     const contentWidth = this.table.getBoundingClientRect().width;
@@ -102,17 +146,26 @@ export class TableViewport extends TableView {
     const width = annotated || contentWidth <= frameWidth ? baseWidth
       : Math.max(baseWidth, availableRight - availableLeft);
     const left = Math.max(availableLeft, Math.min(originLeft - (width - baseWidth) / 2, availableRight - width));
-    this.applyLayout(annotated, [
+    const targets = [
       { element: this.dom, styles: { width, marginLeft: annotated ? 0 : left - originLeft } },
       { element: this.table, styles: { marginLeft: frameInset + (annotated ? 0 : originLeft - left), marginRight: frameInset + (annotated ? 0 : left + width - originLeft - baseWidth) } },
       { element: this.scrollbar, styles: { width: frameWidth, marginLeft: frameInset + (annotated ? 0 : originLeft - left) } },
-    ]);
-    this.dom.classList.toggle('has-comments', annotated);
-    this.edges();
-    this.dom.dispatchEvent(new Event('tano-table-layout', { bubbles: true }));
+    ];
+    const target = JSON.stringify(targets.map(entry => entry.styles));
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (this.layoutState?.target === target && this.layoutState.annotated === annotated && !(reduceMotion && this.motions)) return;
+    const transition = this.layoutState !== undefined && this.layoutState.annotated !== annotated && !reduceMotion;
+    const frames = transition ? targets.map(({ element, styles }) => {
+      const computed = getComputedStyle(element);
+      return Object.fromEntries(Object.entries(styles).flatMap(([property, value]) => {
+        const from = parseFloat(computed[property as keyof ViewportStyles]) || 0;
+        return Math.abs(from - value) > 0.01 ? [[property, [`${from}px`, `${value}px`]]] : [];
+      }));
+    }) : [];
+    return { annotated, target, targets, frames };
   }
 
-  private fitColumns(containerWidth: number) {
+  private fitColumns(containerWidth: number, tr: Transaction) {
     if (!this.node.attrs.autoWidth || containerWidth <= 0 || columnResizingPluginKey.getState(this.view.state)?.dragging ||
         this.view.dom.parentElement?.classList.contains('tano-table-dragging')) return;
     const map = TableMap.get(this.node);
@@ -126,7 +179,6 @@ export class TableViewport extends TableView {
     while (depth > 0 && resolved.node(depth).type.name !== 'table') depth--;
     if (!depth) return;
     const start = resolved.start(depth);
-    const tr = this.view.state.tr;
     for (const offset of new Set(map.map)) {
       const cell = this.node.nodeAt(offset)!;
       const column = map.colCount(offset);
@@ -134,27 +186,16 @@ export class TableViewport extends TableView {
       if (JSON.stringify(cell.attrs.colwidth) !== JSON.stringify(colwidth))
         tr.setNodeMarkup(start + offset, undefined, { ...cell.attrs, colwidth });
     }
-    if (tr.docChanged) this.view.dispatch(tr.setMeta('addToHistory', false));
   }
 
-  private applyLayout(annotated: boolean, targets: { element: HTMLElement; styles: ViewportStyles }[]) {
-    const target = JSON.stringify(targets.map(entry => entry.styles));
-    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    if (this.layoutState?.target === target && this.layoutState.annotated === annotated && !(reduceMotion && this.motions)) return;
-    const transition = this.layoutState !== undefined && this.layoutState.annotated !== annotated && !reduceMotion;
-    const frames = targets.map(({ element, styles }) => {
-      const computed = getComputedStyle(element);
-      return Object.fromEntries(Object.entries(styles).flatMap(([property, value]) => {
-        const from = parseFloat(computed[property as keyof ViewportStyles]) || 0;
-        return Math.abs(from - value) > 0.01 ? [[property, [`${from}px`, `${value}px`]]] : [];
-      }));
-    });
+  private applyLayout({ annotated, target, targets, frames }: ViewportLayout) {
     this.stopMotion();
     for (const { element, styles } of targets) {
       for (const [property, value] of Object.entries(styles)) element.style[property as keyof ViewportStyles] = `${value}px`;
     }
+    this.dom.classList.toggle('has-comments', annotated);
     this.layoutState = { annotated, target };
-    if (!transition || typeof this.dom.animate !== 'function') return;
+    if (!frames.length || typeof this.dom.animate !== 'function') return;
     // Animate the viewport and its compensating margins together; cell text stays unscaled.
     const motions = targets.flatMap(({ element }, index) => Object.keys(frames[index]!).length
       ? [animate(element, frames[index]!, { duration: 0.24, ease: [0.22, 1, 0.36, 1] })] : []);
@@ -187,17 +228,30 @@ export class TableViewport extends TableView {
   }
 
   private edges = () => {
-    const maximum = Math.max(0, this.wrapper.scrollWidth - this.wrapper.clientWidth);
-    this.scrollbar.hidden = maximum <= 1;
-    const track = this.scrollbar.clientWidth;
-    const size = Math.min(track, Math.max(32, track * this.wrapper.clientWidth / Math.max(1, this.wrapper.scrollWidth)));
-    this.thumb.style.width = `${size}px`;
-    this.thumb.style.transform = `translateX(${maximum ? (track - size) * this.wrapper.scrollLeft / maximum : 0}px)`;
-    this.scrollbar.setAttribute('aria-valuemax', String(Math.round(maximum)));
-    this.scrollbar.setAttribute('aria-valuenow', String(Math.round(this.wrapper.scrollLeft)));
-    this.dom.classList.toggle('can-scroll-left', this.wrapper.scrollLeft > 1);
-    this.dom.classList.toggle('can-scroll-right', this.wrapper.scrollLeft < maximum - 1);
+    this.applyEdges(this.measureEdges());
   };
+
+  private measureEdges(): ScrollbarGeometry {
+    const content = this.wrapper.scrollWidth;
+    const viewport = this.wrapper.clientWidth;
+    const position = this.wrapper.scrollLeft;
+    const maximum = Math.max(0, content - viewport);
+    // Layout sets an explicit track width, including while the bar is hidden.
+    // Reading that width avoids revealing the bar just to measure it again.
+    const track = Number.parseFloat(this.scrollbar.style.width) || this.scrollbar.clientWidth;
+    const size = Math.min(track, Math.max(32, track * viewport / Math.max(1, content)));
+    return { maximum, position, size, offset: maximum ? (track - size) * position / maximum : 0 };
+  }
+
+  private applyEdges({ maximum, position, size, offset }: ScrollbarGeometry) {
+    this.scrollbar.hidden = maximum <= 1;
+    this.thumb.style.width = `${size}px`;
+    this.thumb.style.transform = `translateX(${offset}px)`;
+    this.scrollbar.setAttribute('aria-valuemax', String(Math.round(maximum)));
+    this.scrollbar.setAttribute('aria-valuenow', String(Math.round(position)));
+    this.dom.classList.toggle('can-scroll-left', position > 1);
+    this.dom.classList.toggle('can-scroll-right', position < maximum - 1);
+  }
 
   private startScroll = (event: PointerEvent) => {
     if (event.button !== 0) return;
@@ -255,7 +309,12 @@ export class TableViewport extends TableView {
 
   destroy() {
     this.stopMotion();
-    if (this.frame !== undefined) window.cancelAnimationFrame(this.frame);
+    const queue = queues.get(this.view);
+    queue?.pending.delete(this);
+    if (queue && !queue.pending.size && queue.frame !== undefined) {
+      window.cancelAnimationFrame(queue.frame);
+      queue.frame = undefined;
+    }
     this.observer?.disconnect();
     this.wrapper.removeEventListener('scroll', this.edges);
     window.removeEventListener('resize', this.schedule);
@@ -268,7 +327,7 @@ export function tableViewports() {
     view(view) {
       const update = () => viewports.get(view)?.forEach(viewport => viewport.schedule());
       update();
-      return { update };
+      return { update(next, previous) { if (next.state.doc !== previous.doc) update(); } };
     },
   });
 }

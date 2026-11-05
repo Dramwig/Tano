@@ -32,9 +32,12 @@ mod plugin_oauth;
 mod plugin_oauth_loopback;
 #[cfg(desktop)]
 mod plugin_oauth_types;
+mod printing;
 mod search;
 mod session_storage;
 pub mod storage;
+#[cfg(windows)]
+mod tab_drag_preview;
 mod updates;
 #[cfg(desktop)]
 mod workspace_git;
@@ -69,7 +72,10 @@ fn workspace_switch_blocked(app: &tauri::AppHandle) -> bool {
     // Settings are prewarmed and follow the main window's workspace snapshot. Only
     // independent content windows must be closed before replacing the shared session.
     app.webview_windows().keys().any(|label| {
-        label != "main" && !label.starts_with("settings-") && !label.starts_with("file-")
+        label != "main"
+            && !label.starts_with("settings-")
+            && !label.starts_with("file-")
+            && !label.starts_with("print-")
     })
 }
 
@@ -365,18 +371,49 @@ fn open_devtools(window: tauri::WebviewWindow) {
 }
 
 #[tauri::command]
-async fn tab_drag_release() -> Result<serde_json::Value, String> {
+async fn tab_drag_release(
+    window: tauri::WebviewWindow,
+    preview: Option<serde_json::Value>,
+    drag_id: Option<String>,
+) -> Result<serde_json::Value, String> {
     #[cfg(windows)]
     {
-        tauri::async_runtime::spawn_blocking(|| {
+        let source = window.hwnd().map_err(|e| e.to_string())?.0 as usize;
+        let scale = window.scale_factor().map_err(|e| e.to_string())?;
+        tauri::async_runtime::spawn_blocking(move || {
             use windows_sys::Win32::Foundation::POINT;
-            use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
+            use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+                GetAsyncKeyState, VK_ESCAPE, VK_LBUTTON,
+            };
             use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
             // The WebView may not dispatch dragend after an OS drag ends outside its window.
             // Observe the button on a host thread so renderer timer throttling cannot lose it.
+            let preview = preview
+                .map(serde_json::from_value::<tab_drag_preview::Bitmap>)
+                .transpose()
+                .map_err(|e| e.to_string())?
+                .map(tab_drag_preview::Preview::new)
+                .transpose()?;
             while unsafe { GetAsyncKeyState(VK_LBUTTON.into()) < 0 } {
-                std::thread::sleep(std::time::Duration::from_millis(8));
+                if unsafe { GetAsyncKeyState(VK_ESCAPE.into()) < 0 } {
+                    return Ok(serde_json::json!({"x": 0, "y": 0, "cancelled": true}));
+                }
+                let mut cursor = POINT { x: 0, y: 0 };
+                if unsafe { GetCursorPos(&mut cursor) } != 0 {
+                    if let Some(preview) = &preview {
+                        preview.update(cursor, source as _)?;
+                    }
+                    if let Some(drag_id) = &drag_id {
+                        let mut local = cursor;
+                        if unsafe { windows_sys::Win32::Graphics::Gdi::ScreenToClient(source as _, &mut local) } != 0 {
+                            let _ = window.emit("tano-tab-drag-position", serde_json::json!({
+                                "dragId": drag_id, "x": local.x as f64 / scale, "y": local.y as f64 / scale
+                            }));
+                        }
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(16));
             }
             let mut point = POINT { x: 0, y: 0 };
             if unsafe { GetCursorPos(&mut point) } == 0 {
@@ -516,6 +553,35 @@ fn export_attachment(
     with_workspace_session(&workspace_id, state, |s| {
         let bytes = assets::read(&s.root, &path)?;
         write_export(&app, &destination, &bytes)
+    })
+}
+
+#[tauri::command(async)]
+fn write_spreadsheet(
+    workspace_id: String,
+    path: String,
+    content: String,
+    expected: String,
+    app: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<String, String> {
+    use base64::Engine;
+    if content.len() > 70 * 1024 * 1024 {
+        return Err("附件过大".into());
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(content)
+        .map_err(|_| "附件编码无效")?;
+    with_workspace_mutating_session(&workspace_id, state, &app, |s| {
+        assets::write_spreadsheet(
+            &s.root,
+            &path,
+            &bytes,
+            &expected,
+            &app_data(&app)?
+                .join("spreadsheet-backups")
+                .join(storage::hash(s.id.as_bytes())),
+        )
     })
 }
 
@@ -746,6 +812,20 @@ fn rename_document(
 ) -> Result<(), String> {
     with_session(state, |s| {
         storage::rename(&s.root, &s.id, &from, &to, &cache_path(&app)?)
+    })
+}
+
+#[tauri::command(async)]
+fn remove_empty_folder(
+    workspace_id: String,
+    path: String,
+    state: State<AppState>,
+) -> Result<(), String> {
+    with_session(state, |s| {
+        if s.id != workspace_id {
+            return Err("工作区已切换".into());
+        }
+        storage::remove_empty_folder(&s.root, &s.id, &path)
     })
 }
 
@@ -1134,12 +1214,19 @@ pub fn configure_with_commands(
                 let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
                     assistant::assistant_protocol_version,
                     assistant::assistant_connections,
+                    assistant::assistant_connection_key,
+                    assistant::cc_switch::assistant_cc_switch_scan,
+                    assistant::cc_switch::assistant_cc_switch_import,
+                    assistant::quota::assistant_quota,
+                    assistant::quota::assistant_quota_save,
                     assistant::assistant_models,
                     assistant::assistant_connection_save,
                     assistant::assistant_connection_remove,
                     assistant::assistant_request,
                     assistant::assistant_cancel,
                     assistant::assistant_sessions_load,
+                    assistant::inbox::assistant_inbox_load,
+                    assistant::inbox::assistant_inbox_save,
                     assistant::assistant_session_save,
                     assistant::assistant_session_delete,
                     assistant::assistant_external_sessions,
@@ -1211,8 +1298,12 @@ pub fn configure_with_commands(
                     save_session,
                     import_attachment,
                     read_attachment,
+                    write_spreadsheet,
                     export_attachment,
                     export_document,
+                    printing::document_print_printers,
+                    printing::document_print_preview,
+                    printing::document_print_submit,
                     open_external_url,
                     refresh_workspace,
                     reserve_reference_id,
@@ -1227,6 +1318,7 @@ pub fn configure_with_commands(
                     create_document,
                     create_folder,
                     rename_document,
+                    remove_empty_folder,
                     move_entry,
                     remove_document,
                     change_assistant_file,

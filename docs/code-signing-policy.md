@@ -1,11 +1,13 @@
 # Tano Local — Code signing policy
 
-Updated: October 30, 2026. [中文](zh/code-signing-policy.md) · [Local privacy policy](local-privacy.md)
+Updated: October 31, 2026. [中文](zh/code-signing-policy.md) · [Local privacy policy](local-privacy.md)
 
 ## Current status
 
-SignPath Foundation signing is **not active**. The project application was submitted
-on October 30, 2026 and is awaiting review; approval is not claimed. Current Local
+SignPath Foundation signing is **not active**. The October 30, 2026 application
+was not approved because the project did not yet demonstrate sufficient public
+trust and visibility. The Foundation invited a future application after broader
+recognition; there is no pending approval from this submission. Current Local
 Windows downloads remain explicitly labeled **unsigned previews**. SHA-256 checksums
 and public build provenance do not replace Windows Authenticode signatures.
 

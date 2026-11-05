@@ -9,6 +9,7 @@ export * from './plugins';
 export * from './extensions';
 export * from './workspace-paths';
 export * from './comments';
+export * from './mentions';
 export * from './suggestions';
 export * from './document-layout';
 export * from './data-tables';
@@ -105,6 +106,8 @@ export interface WorkspaceAdapter {
   /** Confirm the staged request, reusing its durable identity and idempotency key on retry. */
   commitCreate?(id: string): Promise<{ file: FileEntry; snapshot: FileSnapshot }>;
   createFolder(path: string): Promise<void>;
+  /** Must reject nonempty directories, including hidden/unindexed entries; never recurse. */
+  removeEmptyFolder?(workspaceId: string, path: string): Promise<void>;
   rename(from: string, to: string): Promise<void>;
   move(from: string, to: string, kind: FileEntry['kind']): Promise<void>;
   duplicate?(workspaceId: string, path: string): Promise<string>;
@@ -190,3 +193,7 @@ export * from './agent-gateway';
 export * from './data-table-query';
 
 export * from './structured-merge';
+
+export * from './entry-drag';
+
+export * from './appearance';

@@ -49,6 +49,7 @@ it('keeps administrator rules and rollback history on update while requiring aut
 });
 it.each(['switch', 'revoke', 'abort', 'corrupt'] as const)('rejects a late or invalid catalog download (%s)', async mode => {
   const { pkg, release, download, publish, workspace, controller } = await fixture();
+  const initialPlugins = store.installedPlugins.map(item => item.manifest.id);
   download.mockImplementationOnce(async () => {
     if (mode === 'switch') store.workspace = { ...store.workspace!, id: 'another-workspace' };
     if (mode === 'revoke') store.workspace!.canManagePlugins = false;
@@ -56,5 +57,7 @@ it.each(['switch', 'revoke', 'abort', 'corrupt'] as const)('rejects a late or in
     return { pkg: mode === 'corrupt' ? { ...pkg, source: 'changed' } : pkg };
   });
   await expect(store.installCatalogRelease(release, workspace, controller.signal)).rejects.toThrow();
-  expect(publish).not.toHaveBeenCalled(); expect(store.installedPlugins).toHaveLength(0);
+  expect(publish).not.toHaveBeenCalled();
+  expect(store.installedPlugins.map(item => item.manifest.id)).toEqual(initialPlugins);
+  expect(store.installedPlugins.some(item => item.manifest.id === release.manifest.id)).toBe(false);
 });

@@ -1,3 +1,5 @@
+import codex from '../assets/model-icons/lobehub/codex.svg?raw';
+import claudecode from '../assets/model-icons/lobehub/claudecode.svg?raw';
 import openai from '../assets/model-icons/lobehub/openai.svg?raw';
 import claude from '../assets/model-icons/lobehub/claude.svg?raw';
 import gemini from '../assets/model-icons/lobehub/gemini.svg?raw';
@@ -17,13 +19,15 @@ import cohere from '../assets/model-icons/lobehub/cohere.svg?raw';
 import hunyuan from '../assets/model-icons/lobehub/hunyuan.svg?raw';
 import wenxin from '../assets/model-icons/lobehub/wenxin.svg?raw';
 
-const icons = { openai, claude, gemini, gemma, deepseek, qwen, grok, mistral, meta, kimi, zhipu, minimax, doubao, yi, baichuan, cohere, hunyuan, wenxin };
+const icons = { openai, claude, codex, claudecode, gemini, gemma, deepseek, qwen, grok, mistral, meta, kimi, zhipu, minimax, doubao, yi, baichuan, cohere, hunyuan, wenxin };
 export type ModelIconBrand = keyof typeof icons;
 
 // Match family names rather than pinning individual model versions. A boundary
 // avoids matching unrelated names such as "grokking" or "yiwen".
 const families: readonly [ModelIconBrand, RegExp][] = [
-  ['openai', /^(?:openai|gpt|chatgpt|codex|o1|o3|o4)(?=$|[\d\s._-])/],
+  ['codex', /^(?:codex(?=$|[\d\s._-])|gpt[\d\s._-].*[-_ ]codex(?=$|[\d\s._-]))/],
+  ['claudecode', /^(?:claude[\s._-]?code)(?=$|[\d\s._-])/],
+  ['openai', /^(?:openai|gpt|chatgpt|o1|o3|o4)(?=$|[\d\s._-])/],
   ['claude', /^(?:anthropic|claude|sonnet|opus|haiku)(?=$|[\d\s._-])/],
   ['gemini', /^(?:gemini)(?=$|[\d\s._-])/],
   ['gemma', /^(?:gemma|codegemma|paligemma)(?=$|[\d\s._-])/],

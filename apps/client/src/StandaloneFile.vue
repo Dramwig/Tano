@@ -4,6 +4,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { save as chooseSave } from '@tauri-apps/plugin-dialog';
 import MarkdownEditor from '@tano/editor';
+import { defaultCapabilities } from '@tano/editor/runtime';
+import { safeRemoteImage } from '@tano/protocol';
+import { t } from '@tano/workbench/i18n';
+import { matchesShortcut, readShortcutBindings, shortcutPreferenceKey } from '@tano/workbench/shortcuts';
+import DocumentPrintButton from '@tano/workbench/components/DocumentPrintButton.vue';
 import SourceEditor from '@tano/workbench/components/SourceEditor.vue';
 import { StandaloneSession, type Snapshot, type WriteResult } from './standalone-session';
 
@@ -14,6 +19,8 @@ const status = ref('');
 const source = ref(false);
 const saving = ref(false);
 const closing = ref(false);
+const printBusy = ref(false);
+const shortcuts = ref(readShortcutBindings());
 const appWindow = getCurrentWindow();
 const draftKey = `tano.standalone.draft.${appWindow.label}`;
 const name = computed(() => path.value.split(/[\\/]/).pop() ?? 'Markdown');
@@ -71,6 +78,33 @@ async function copy() {
     status.value = '副本已保存，原文件保持不变';
   } catch (cause) { error.value = String(cause); }
 }
+async function printCurrentDocument() {
+  if (!session.value || printBusy.value) return;
+  const prose = document.querySelector('.standalone-document .tano-prose');
+  const style = getComputedStyle(prose ?? document.documentElement);
+  const options = {
+    id: appWindow.label, path: path.value, content: session.value.content,
+    title: name.value.replace(/\.(md|markdown)$/i, ''), capabilities: defaultCapabilities,
+    referenceTargets: [], resolveImage: safeRemoteImage,
+    fontFamily: style.fontFamily, fontSize: prose ? Number.parseFloat(style.fontSize) || 16 : 16,
+  };
+  printBusy.value = true;
+  error.value = '';
+  try {
+    const { printDocument } = await import('@tano/workbench/document-print');
+    await printDocument(options);
+  } catch (reason) {
+    error.value = t('打印失败：{0}', [reason instanceof Error ? reason.message : String(reason)]);
+  } finally { printBusy.value = false; }
+}
+function printShortcut(event: KeyboardEvent) {
+  if (!event.defaultPrevented && !closing.value && session.value && matchesShortcut(event, 'print', shortcuts.value)) {
+    event.preventDefault(); event.stopPropagation(); void printCurrentDocument();
+  }
+}
+function syncShortcuts(event: StorageEvent) {
+  if (event.key === shortcutPreferenceKey || event.key === null) shortcuts.value = readShortcutBindings();
+}
 async function saveAndClose() { if (await save()) await appWindow.close(); }
 async function discardAndClose() {
   localStorage.removeItem(draftKey);
@@ -89,6 +123,8 @@ function beforeUnload(event: BeforeUnloadEvent) {
 }
 onMounted(async () => {
   window.addEventListener('keydown', keydown);
+  window.addEventListener('keydown', printShortcut, true);
+  window.addEventListener('storage', syncShortcuts);
   window.addEventListener('beforeunload', beforeUnload);
   try {
     const opened = await invoke<{ path: string; snapshot: Snapshot }>('standalone_read');
@@ -126,6 +162,8 @@ onBeforeUnmount(() => {
   unlistenClose?.();
   unlistenFocus?.();
   window.removeEventListener('keydown', keydown);
+  window.removeEventListener('keydown', printShortcut, true);
+  window.removeEventListener('storage', syncShortcuts);
   window.removeEventListener('beforeunload', beforeUnload);
 });
 </script>
@@ -136,6 +174,7 @@ onBeforeUnmount(() => {
       <div class="standalone-name"><strong>{{ name }}{{ session?.dirty ? ' · 未保存' : '' }}</strong><span :title="displayPath">{{ displayPath || '正在打开文件…' }}</span></div>
       <button :disabled="!session" :aria-pressed="source" @click="source = !source">{{ source ? '阅读编辑' : '源码' }}</button>
       <button :disabled="!session || saving" @click="copy">另存副本</button>
+      <DocumentPrintButton class="standalone-print" :disabled="!session" :busy="printBusy" :shortcut="shortcuts.print" standalone @select="printCurrentDocument" />
       <button :disabled="!session?.dirty || saving" @click="save">{{ saving ? '保存中…' : '保存' }}</button>
     </header>
     <p v-if="error" class="standalone-message" role="alert">{{ error }}</p>
@@ -166,6 +205,7 @@ onBeforeUnmount(() => {
 .standalone-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: 12px; }
 button { padding: 7px 13px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); color: inherit; cursor: pointer; }
 button:disabled { opacity: .45; cursor: default; }
+.standalone-print { display: inline-flex; align-items: center; gap: 6px; }
 button[aria-pressed="true"] { background: var(--sidebar); }
 .standalone-message { margin: 8px 24px; font-size: 13px; }
 .standalone-conflict { padding: 12px 24px; background: #fff2cc; color: #654913; }

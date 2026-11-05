@@ -50,8 +50,8 @@ async function action(action: string) {
 </template>
 <style scoped>
 .plugin-surface { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 20px; color: var(--text); font-size: 13px; }
-.plugin-surface[data-plugin="excalidraw"] { display: flex; flex-direction: column; height: 100%; padding: 0; overflow: hidden; }
-.plugin-surface[data-plugin="excalidraw"] > header { display: none; }
+.plugin-surface[data-plugin="excalidraw"], .plugin-surface[data-plugin="presentation-preview"], .plugin-surface[data-plugin="word-preview"] { display: flex; flex-direction: column; height: 100%; padding: 0; overflow: hidden; }
+.plugin-surface[data-plugin="excalidraw"] > header, .plugin-surface[data-plugin="presentation-preview"] > header, .plugin-surface[data-plugin="word-preview"] > header { display: none; }
 header { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
 h2 { font-size: 18px; margin: 0 0 4px; }
 header span, .empty { color: var(--muted); font-size: 12px; }

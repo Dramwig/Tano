@@ -9,7 +9,7 @@ import { helpMarkdownSnapshot, markdownMilestones, newMarkdownMilestones, planMi
 export const helpChecklistKey = 'tano.preference.helpChecklist.v2';
 export const helpLessonKey = 'tano.preference.helpLesson.v1';
 // Source/reading modes are part of the same document activity, not a new course.
-const lessonScope = (context: HelpContext) => ['plan', 'plugins', 'graph'].includes(context) ? context : 'document';
+const lessonScope = (context: HelpContext) => ['plan', 'plugins', 'graph', 'assistant', 'tables'].includes(context) ? context : 'document';
 const sessionLessons = new Map<string, HelpLessonCursor>();
 
 export function resumeHelpLesson(completed: readonly HelpChecklistId[], context: HelpContext, availability: HelpAvailability = {}) {

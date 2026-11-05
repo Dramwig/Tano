@@ -25,10 +25,35 @@ export interface CommentMessage {
   updatedAt?: number;
   replyTo?: string;
   mentions?: CommentMention[];
+  /** Stable execution receipt for idempotent agent replies. */
+  agentTaskId?: string;
 }
 
 /** Explicit person references remain portable; account bindings belong to Cloud. */
-export interface CommentMention { personId: string; text: string }
+export interface CommentMention { personId: string; text: string; id?: string; from?: number }
+
+/** Preserve identities outside an input edit and remove any selected mention it replaces. */
+export function rebaseCommentMentions(mentions: readonly CommentMention[], before: string, after: string,
+  edit?: { from: number; to: number }): CommentMention[] {
+  let start = 0;
+  while (start < before.length && start < after.length && before[start] === after[start]) start++;
+  let oldEnd = before.length, newEnd = after.length;
+  while (oldEnd > start && newEnd > start && before[oldEnd - 1] === after[newEnd - 1]) { oldEnd--; newEnd--; }
+  if (edit) {
+    const inserted = after.length - before.length + edit.to - edit.from;
+    if (edit.from >= 0 && edit.to >= edit.from && edit.to <= before.length && inserted >= 0 &&
+        before.slice(0, edit.from) === after.slice(0, edit.from) && before.slice(edit.to) === after.slice(edit.from + inserted)) {
+      start = edit.from; oldEnd = edit.to; newEnd = edit.from + inserted;
+    }
+  }
+  return mentions.flatMap(mention => {
+    if (mention.from === undefined) return after.includes(mention.text) ? [{ ...mention }] : [];
+    const end = mention.from + mention.text.length;
+    if (mention.from < oldEnd && end > start) return [];
+    const from = mention.from >= oldEnd ? mention.from + newEnd - oldEnd : mention.from;
+    return after.slice(from, from + mention.text.length) === mention.text ? [{ ...mention, from }] : [];
+  });
+}
 
 export interface CommentThread {
   id: string;
@@ -89,10 +114,16 @@ export function parseCommentFile(content: string, kind: CommentKind, fileId: str
           (message.updatedAt !== undefined && !Number.isFinite(message.updatedAt))) throw new Error('评论内容格式无效');
       if (message.replyTo !== undefined && (!validId(message.replyTo) || message.replyTo === message.id ||
           !thread.messages.some(item => item.id === message.replyTo))) throw new Error('回复目标无效');
+      if (message.agentTaskId !== undefined && !validId(message.agentTaskId)) throw new Error('机器人任务身份无效');
       if (message.mentions !== undefined && (!Array.isArray(message.mentions) || message.mentions.length > 100 ||
           message.mentions.some(item => !item || !/^[0-9a-f]{6}$/.test(item.personId) ||
+            item.id !== undefined && !validId(item.id) ||
             !validText(item.text, 120) || !item.text.startsWith('@') || item.text.length < 2 ||
+            (item.from !== undefined && (!Number.isSafeInteger(item.from) || item.from < 0 ||
+              message.body.slice(item.from, item.from + item.text.length) !== item.text)) ||
             !message.body.includes(item.text)))) throw new Error('提及人物格式无效');
+      const mentionIds = message.mentions?.filter(item => item.id).map(item => item.id) ?? [];
+      if (new Set(mentionIds).size !== mentionIds.length) throw new Error('提及身份重复');
       messageIds.add(message.id);
     }
   }

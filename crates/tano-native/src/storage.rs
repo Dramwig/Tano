@@ -13,7 +13,7 @@ use uuid::Uuid;
 const MAX_DOCUMENT_BYTES: u64 = 8 * 1024 * 1024;
 
 #[path = "storage_scan_cache.rs"]
-mod scan_cache;
+pub(crate) mod scan_cache;
 
 #[derive(Serialize)]
 pub struct Workspace {
@@ -53,6 +53,52 @@ pub enum WriteResult {
 
 pub fn hash(content: &[u8]) -> String {
     format!("{:x}", Sha256::digest(content))
+}
+
+/// Unlike recycling a directory, this never removes hidden or concurrently added children.
+pub fn remove_empty_folder(root: &Path, workspace_id: &str, relative: &str) -> Result<(), String> {
+    assert_workspace_identity(root, workspace_id)?;
+    let target = resolve(root, relative, true)?;
+    if fs::symlink_metadata(root.join(relative))
+        .map_err(|e| e.to_string())?
+        .file_type()
+        .is_symlink()
+    {
+        return Err("不能转换符号链接文件夹".into());
+    }
+    if !fs::symlink_metadata(&target)
+        .map_err(|e| e.to_string())?
+        .is_dir()
+    {
+        return Err("只能移除空文件夹".into());
+    }
+    fs::remove_dir(target).map_err(|e| format!("文件夹不为空或无法移除：{e}"))
+}
+
+#[cfg(test)]
+mod empty_folder_tests {
+    use super::*;
+
+    #[test]
+    fn empty_folder_removal_preserves_hidden_children_and_checks_workspace() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let id = workspace_identity(&root).unwrap();
+        fs::create_dir(root.join("folder")).unwrap();
+        fs::write(root.join("folder/.hidden"), "keep").unwrap();
+        assert!(remove_empty_folder(&root, &id, "folder").is_err());
+        assert_eq!(
+            fs::read_to_string(root.join("folder/.hidden")).unwrap(),
+            "keep"
+        );
+        fs::remove_file(root.join("folder/.hidden")).unwrap();
+        assert!(remove_empty_folder(&root, "wrong-workspace", "folder").is_err());
+        assert!(remove_empty_folder(&root, &id, "../outside").is_err());
+        assert!(remove_empty_folder(&root, &id, "").is_err());
+        assert!(remove_empty_folder(&root, &id, ".tano").is_err());
+        remove_empty_folder(&root, &id, "folder").unwrap();
+        assert!(!root.join("folder").exists());
+    }
 }
 fn hash_path(path: &Path) -> Result<String, String> {
     #[cfg(test)]
@@ -628,16 +674,12 @@ fn scan_inner(root: &Path, id: &str, cache: &Path, reuse: bool) -> Result<Worksp
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
     };
-    let states: HashMap<String, scan_cache::FileState> = entries
+    let paths: Vec<&str> = entries
         .iter()
         .filter(|entry| entry.kind != "directory")
-        .map(|entry| {
-            (
-                entry.path.clone(),
-                scan_cache::state(&root.join(&entry.path)),
-            )
-        })
+        .map(|entry| entry.path.as_str())
         .collect();
+    let states = scan_cache::states(root, &paths)?;
     let native_keys: HashMap<String, String> = states
         .iter()
         .map(|(path, state)| (path.clone(), state.key.clone()))

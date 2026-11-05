@@ -2,7 +2,7 @@
 import { t } from '../i18n';
 import { computed } from 'vue';
 import { ArrowUpRight, Check } from 'lucide-vue-next';
-import { helpChecklist, helpDocumentationUrl, type HelpChecklistId, type HelpContext, type HelpAvailability, type HelpTopicId } from '../help-content';
+import { helpChecklist, helpDocumentationUrl, isHelpStepAvailable, type HelpChecklistId, type HelpContext, type HelpAvailability, type HelpTopicId } from '../help-content';
 import { resumeHelpLesson } from '../help-checklist';
 
 const props = defineProps<{
@@ -16,13 +16,14 @@ const emit = defineEmits<{ documentation: [event: MouseEvent, topic?: HelpTopicI
 // Re-evaluate on the next opening. Keep links stable under the pointer and keyboard focus.
 const lesson = resumeHelpLesson(props.completed, props.context, props.availability);
 const nextStep = computed(() => lesson?.visible.find(step => !props.completed.includes(step.id))?.id);
-const totalDone = computed(() => helpChecklist.filter(step => props.completed.includes(step.id)).length);
+const availableSteps = computed(() => helpChecklist.filter(step => isHelpStepAvailable(step, props.availability)));
+const totalDone = computed(() => availableSteps.value.filter(step => props.completed.includes(step.id)).length);
 const docsUrl = (topic?: HelpTopicId) => helpDocumentationUrl(props.documentationBaseUrl, topic);
 </script>
 
 <template>
   <div class="help-checklist">
-    <div class="help-preview-heading"><span :id="headingId">{{ lesson ? t('上手 · {0}', [lesson.label]) : t('上手指引') }}</span><span>{{ totalDone }}/{{ helpChecklist.length }} {{ t('已完成') }}</span></div>
+    <div class="help-preview-heading"><span :id="headingId">{{ lesson ? t('上手 · {0}', [lesson.label]) : t('上手指引') }}</span><span>{{ totalDone }}/{{ availableSteps.length }} {{ t('已完成') }}</span></div>
     <section v-if="lesson" class="help-current-stage" :aria-label="t('当前阶段：{0}', [lesson.label])">
       <ol class="help-timeline" :aria-label="lesson.label">
         <li v-for="step in lesson.visible" :key="step.id"
@@ -48,7 +49,7 @@ const docsUrl = (topic?: HelpTopicId) => helpDocumentationUrl(props.documentatio
 .help-timeline li { display: flex; position: relative; gap: 5px; min-height: 27px; }
 .help-timeline li:not(:last-child)::before { content: ''; position: absolute; top: 13px; bottom: -13px; left: 10px; width: 1px; background: var(--line); }
 .help-step-status { position: relative; z-index: 1; display: grid; place-items: center; align-self: flex-start; flex: 0 0 21px; width: 21px; height: 27px; }
-.help-step-marker { display: grid; place-items: center; width: 7px; height: 7px; color: var(--paper); background: var(--paper); border: 1px solid var(--muted); border-radius: 50%; box-shadow: 0 0 0 3px var(--paper); }
+.help-step-marker { display: grid; place-items: center; width: 7px; height: 7px; color: var(--help-surface, var(--paper)); background: var(--help-surface, var(--paper)); border: 1px solid var(--muted); border-radius: 50%; box-shadow: 0 0 0 3px var(--help-surface, var(--paper)); }
 .is-next .help-step-marker { background: var(--green); border-color: var(--green); }
 .is-complete .help-step-marker { width: 11px; height: 11px; color: var(--green); border-color: var(--green); }
 .help-step-content { flex: 1; min-width: 0; padding: 4px 0 5px; }

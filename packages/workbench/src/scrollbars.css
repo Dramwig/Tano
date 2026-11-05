@@ -5,8 +5,9 @@
   --scrollbar-size: 12px;
   --scrollbar-inset: 2px;
   --scrollbar-radius: 6px;
-  --scrollbar-thumb: var(--control-border);
-  --scrollbar-thumb-hover: var(--muted);
+  /* Isolated plugin viewers reuse this stylesheet without host theme variables. */
+  --scrollbar-thumb: var(--control-border, #d3d2ce);
+  --scrollbar-thumb-hover: var(--muted, #787774);
 }
 * {
   /* Standard non-auto values override WebKit scrollbar styling in Chromium. */

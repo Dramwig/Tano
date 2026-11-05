@@ -1,3 +1,6 @@
+import { setSurfaceVisible } from './surface-motion';
+import { h, render, type Component } from 'vue';
+import { blockIcons, headingIcons, customCalloutIcon, blockIconStrokeWidth } from './block-icons';
 import { Plugin, PluginKey, Selection, TextSelection } from '@milkdown/kit/prose/state';
 import type { EditorState, Transaction } from '@milkdown/kit/prose/state';
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
@@ -15,27 +18,27 @@ interface SlashItem {
   englishLabel: string;
   value?: string;
   keywords: string;
-  icon: string;
+  icon: Component;
 }
-const aliases: Record<string, [string, string, string]> = {
-  'object-reference': ['object reference 对象 引用', '@', 'Object Reference'],
-  paragraph: ['text plain 正文 文本', 'T', 'Paragraph'],
-  quote: ['blockquote 引用', '❞', 'Quote'],
-  list: ['bullet unordered 无序', '•', 'Bullet List'],
-  'ordered-list': ['number numbered 有序', '1.', 'Ordered List'],
-  'todo-list': ['task checkbox check 待办 任务', '☑', 'Task List'],
-  'code-block': ['code 代码', '</>', 'Code Block'],
-  image: ['picture photo 图片', '▧', 'Image'],
-  table: ['表格', '▦', 'Table'],
-  mermaid: ['diagram 流程图', '◇', 'Mermaid'],
-  callout: ['note tip 提示', 'ⓘ', 'Callout'],
-  toggle: ['details 折叠', '▸', 'Toggle'],
-  file: ['attachment 附件', '↗', 'Attachment'],
-  embed: ['嵌入', '▣', 'Embed'],
-  tabs: ['标签页', '▤', 'Tabs'],
-  columns: ['分栏', '◫', 'Columns'],
-  'horizontal-rule': ['divider separator hr 分割线 分隔线', '—', 'Divider'],
-  'math-block': ['math equation latex 公式', '∑', 'Math Block'],
+const aliases: Record<string, [string, string]> = {
+  'object-reference': ['object reference 对象 引用', 'Object Reference'],
+  paragraph: ['text plain 正文 文本', 'Paragraph'],
+  quote: ['blockquote 引用', 'Quote'],
+  list: ['bullet unordered 无序', 'Bullet List'],
+  'ordered-list': ['number numbered 有序', 'Ordered List'],
+  'todo-list': ['task checkbox check 待办 任务', 'Task List'],
+  'code-block': ['code 代码', 'Code Block'],
+  image: ['picture photo 图片', 'Image'],
+  table: ['表格', 'Table'],
+  mermaid: ['diagram 流程图', 'Mermaid'],
+  callout: ['note tip 提示', 'Callout'],
+  toggle: ['details 折叠', 'Toggle'],
+  file: ['attachment 附件', 'Attachment'],
+  embed: ['嵌入', 'Embed'],
+  tabs: ['标签页', 'Tabs'],
+  columns: ['分栏', 'Columns'],
+  'horizontal-rule': ['divider separator hr 分割线 分隔线', 'Divider'],
+  'math-block': ['math equation latex 公式', 'Math Block'],
 };
 const items: SlashItem[] = blockTypes.flatMap<SlashItem>((item) =>
   item.command === 'heading'
@@ -45,21 +48,21 @@ const items: SlashItem[] = blockTypes.flatMap<SlashItem>((item) =>
         englishLabel: `Heading ${i + 1}`,
         value: String(i + 1),
         keywords: `heading h${i + 1} 标题${i + 1}`,
-        icon: `H${i + 1}`,
+        icon: headingIcons[i]!,
       }))
     : [
         {
           command: item.command,
           label: item.label,
-          englishLabel: aliases[item.command]?.[2] ?? item.command,
+          englishLabel: aliases[item.command]?.[1] ?? item.command,
           keywords: `${item.command} ${aliases[item.command]?.[0] ?? ''}`,
-          icon: aliases[item.command]?.[1] ?? '□',
+          icon: blockIcons[item.type],
         },
       ],
 );
 items.splice(items.findIndex(item => item.command === 'callout') + 1, 0, {
   command: 'callout', value: 'CUSTOM', label: '自定义块', englishLabel: 'Custom Callout',
-  keywords: 'custom callout emoji icon 自定义 图标 表情 提示', icon: '💡',
+  keywords: 'custom callout emoji icon 自定义 图标 表情 提示', icon: customCalloutIcon,
 });
 // Keep the most common empty-block action first.
 items.unshift(
@@ -234,7 +237,7 @@ export function slashCommands(options: {
               const command = blockTypes.find((item) => item.type === blockType(parent))?.command;
               if (command && aliases[command]) {
                 placeholder = command === 'list' || command === 'ordered-list' ? 'List'
-                  : command === 'quote' ? 'Empty quote' : aliases[command]![2];
+                  : command === 'quote' ? 'Empty quote' : aliases[command]![1];
                 break;
               }
             }
@@ -297,7 +300,7 @@ export function slashCommands(options: {
       let destroyed = false;
 
       function hide() {
-        menu.hidden = true;
+        setSurfaceVisible(menu, false);
         view.dom.removeAttribute('aria-controls');
         view.dom.removeAttribute('aria-activedescendant');
       }
@@ -363,6 +366,12 @@ export function slashCommands(options: {
         view.dispatch(tr);
         view.focus();
       }
+      const iconHosts: HTMLElement[] = [];
+      function clearList() {
+        for (const host of iconHosts) render(null, host);
+        iconHosts.length = 0;
+        list.replaceChildren();
+      }
       function choose(item: SlashItem) {
         if (!session.getState(view.state)) return;
         if (!['image', 'file', 'embed'].includes(item.command)) {
@@ -372,7 +381,7 @@ export function slashCommands(options: {
         formItem = item;
         formState = view.state;
         title.textContent = `插入${item.label}`;
-        list.replaceChildren();
+        clearList();
         list.removeAttribute('role');
         view.dom.removeAttribute('aria-activedescendant');
         const form = document.createElement('form');
@@ -437,7 +446,7 @@ export function slashCommands(options: {
         active = Math.min(active, Math.max(0, matches.length - 1));
         title.textContent = '';
         list.setAttribute('role', 'listbox');
-        list.replaceChildren();
+        clearList();
         matches.forEach((item, index) => {
           const button = document.createElement('button');
           button.type = 'button';
@@ -447,7 +456,8 @@ export function slashCommands(options: {
           const icon = document.createElement('span');
           icon.className = 'tano-slash-icon';
           icon.setAttribute('aria-hidden', 'true');
-          icon.textContent = item.icon;
+          render(h(item.icon, { size: 16, strokeWidth: blockIconStrokeWidth }), icon);
+          iconHosts.push(icon);
           const label = document.createElement('span');
           label.className = 'tano-slash-label-zh';
           label.textContent = item.label;
@@ -466,7 +476,7 @@ export function slashCommands(options: {
           empty.textContent = '没有匹配的块类型';
           list.append(empty);
         }
-        menu.hidden = false;
+        setSurfaceVisible(menu, true);
         view.dom.setAttribute('aria-controls', list.id);
         select(active);
         position();
@@ -539,6 +549,7 @@ export function slashCommands(options: {
         destroy() {
           destroyed = true;
           hide();
+          clearList();
           menu.remove();
           document.removeEventListener('pointerdown', outside);
           document.removeEventListener('scroll', position, true);

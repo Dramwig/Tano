@@ -3,7 +3,7 @@
   "id": "182f91",
   "type": "project",
   "name": "Markdown 验收",
-  "description": "历史项目类型的引用兼容示例",
+  "description": "用于检查项目属性、引用与改名",
   "archived": false,
   "properties": { "phase": "review", "progress": 0.5, "active": true }
 }

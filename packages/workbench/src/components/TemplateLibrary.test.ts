@@ -27,6 +27,7 @@ async function mount(props = {}) {
 beforeEach(() => {
   onClose.mockReset();
   mock.store = reactive({
+    workspaceSettings: { icon: '' }, isDemo: false, isWeb: false,
     workspace: { id: 'workspace', name: '测试工作区', files: [{ id: 'weekly', name: '周报.md', path: '周报.md', kind: 'file' }], readOnly: false },
     templates: vi.fn().mockResolvedValue({ templates: [], errors: [] }),
     writeTemplate: vi.fn(), create: vi.fn().mockResolvedValue(undefined),
@@ -51,7 +52,7 @@ it('uses workspace breadcrumbs for page navigation and does not dismiss on Escap
   expect(onClose).not.toHaveBeenCalled();
   await click('模板库');
   expect(root.querySelector('.template-grid')).not.toBeNull();
-  await click('浏览工作区：测试工作区');
+  await click('浏览目录：测试工作区');
   const entry = document.querySelector<HTMLButtonElement>('.breadcrumb-menu-entry')!;
   expect(entry.textContent).toContain('周报');
   entry.click(); await settle();

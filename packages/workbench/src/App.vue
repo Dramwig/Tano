@@ -1,9 +1,13 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
+import ShortcutHint from '@tano/editor/shortcut-hint';
 import WorkspaceSyncPanel from './components/WorkspaceSyncPanel.vue';
 import { vScrollFade } from './scroll-fade';
 import { vOutlineMotion } from './outline-motion';
+import { HeadingViewport } from './heading-viewport';
 import { createWorkspaceSync, syncEvent } from './workspace-sync';
 import { t } from './i18n';
+import { readSettingsPage } from './settings-preference';
 import { focusedOutlineIndices } from './outline-tree';
 import AppTooltip from './components/AppTooltip.vue';
 import { assistantDiscussionPrompt } from './assistant/language';
@@ -34,8 +38,22 @@ import {
   Plus,
   FolderPlus,
   FolderOpen,
+  FolderSearch,
+  FolderTree,
   PanelLeftOpen,
+  PanelsTopLeft,
   FileText,
+  FilePlus2,
+  FileOutput,
+  FileSliders,
+  FileSymlink,
+  Paperclip,
+  Eye,
+  EyeOff,
+  TextCursorInput,
+  Route,
+  AppWindow,
+  Blocks,
   X,
   Check,
   Circle,
@@ -53,17 +71,14 @@ import {
   AlertTriangle,
   RefreshCw,
   Repeat2,
-  Pencil,
   Trash2,
   Bot,
   MessageSquare,
   MessageSquareDiff,
-  ExternalLink,
   Link,
   CheckCheck,
-  Copy,
+  CopyPlus,
   LoaderCircle,
-  Users,
   Puzzle,
   GitFork,
   CalendarDays,
@@ -77,12 +92,13 @@ import {
   ArrowDownToLine,
   Files,
   Table2,
+  Database,
 } from 'lucide-vue-next';
 import MarkdownEditorSkeleton from './components/MarkdownEditorSkeleton.vue';
 import DocumentLoading from './components/DocumentLoading.vue';
 const MarkdownEditor = defineAsyncComponent({ loader: () => import('@tano/editor'), delay: 0, loadingComponent: MarkdownEditorSkeleton });
 const CalloutIconPicker = defineAsyncComponent(() => import('./components/CalloutIconPicker.vue'));
-import { defaultEditorPreferences, normalizeSelectionWrapping } from '@tano/editor/runtime';
+import { defaultEditorPreferences, normalizeCopyFormat, normalizeSelectionWrapping } from '@tano/editor/runtime';
 import type { EditorPreferences } from '@tano/editor/runtime';
 import { defaultSelectionContext } from '@tano/editor/selection-context';
 import type { EditorSelectionContext } from '@tano/editor/selection-context';
@@ -90,6 +106,7 @@ const SourceEditor = loadingComponent(() => import('./components/SourceEditor.vu
 import { captureModeViewport, restoreModeViewport } from './editor-mode';
 import type { ModeViewport } from './editor-mode';
 import AttachmentPreview from './components/AttachmentPreview.vue';
+import type { AttachmentStatusUpdate } from './attachment-status';
 import FileMetadataPanel from './components/FileMetadataPanel.vue';
 import { fileHandlers } from '@tano/protocol';
 import PageSearch from './components/PageSearch.vue';
@@ -98,20 +115,25 @@ import DocumentStarter from './components/DocumentStarter.vue';
 import { documentStarter, templateStarterBody } from './document-starters';
 import MarkdownRevealToggle from './components/MarkdownRevealToggle.vue';
 import SourceCodeIcon from './components/SourceCodeIcon.vue';
+import OpenWorkspaceIcon from './components/OpenWorkspaceIcon.vue';
 import DocumentTitle from './components/DocumentTitle.vue';
 import { appearanceText } from './document-appearance';
 import { useDocumentFavicon } from './document-favicon';
 import WorkspaceBreadcrumb from './components/WorkspaceBreadcrumb.vue';
+import FolderView from './components/FolderView.vue';
+import PluginViewHeader from './components/PluginViewHeader.vue';
+import { pluginPreviewStatus, pluginViewHeader } from './plugins/view-header';
 import DocumentStatus from './components/DocumentStatus.vue';
 import { documentStatusItems, type DocumentSyncStatus } from './document-status';
 import DocumentScrollbar from './components/DocumentScrollbar.vue';
 import PageDisplayOptions from './components/PageDisplayOptions.vue';
 import DocumentGlobalMenu from './components/DocumentGlobalMenu.vue';
 import DocumentExportMenu from './components/DocumentExportMenu.vue';
+import DocumentPrintButton from './components/DocumentPrintButton.vue';
 import type { ImportRecord } from './components/ImportPanel.vue';
 const ImportPanel = defineAsyncComponent(() => import('./components/ImportPanel.vue'));
 const TemplateLibrary = loadingComponent(() => import('./components/TemplateLibrary.vue'), 'document');
-import type { DocumentExportFormat } from './document-export';
+import type { DocumentExportFormat, DocumentExportOptions } from './document-export';
 // Discussion and annotation surfaces decide their own visibility and loading state.
 const DocumentComments = defineAsyncComponent(() => import('./components/DocumentComments.vue'));
 // Keep the document layout mounted while only the editor implementation loads.
@@ -147,6 +169,8 @@ import {
 } from './attachments';
 import { headings } from '@tano/markdown';
 import FileTree from './components/FileTree.vue';
+import { indexFolderHomes } from './folder-home';
+import { planFolderConversion, type FolderConversionKind } from './folder-conversion';
 import DesktopTabs from './components/DesktopTabs.vue';
 import WorkspacePanes from './components/WorkspacePanes.vue';
 import type { OpenDocument } from './stores/workspace';
@@ -167,6 +191,7 @@ import { butterflyScope } from './assistant/butterfly';
 import { createButterflyIdleTrigger } from './assistant/butterfly-idle';
 import { butterflyPerchDirective, provideButterflyController } from './assistant/butterfly-vue';
 import { useAssistantStore, useInlineAssistantStore } from './assistant/store';
+import { useAgentInboxController, agentInboxKey } from './assistant/agent-controller';
 import { inlineAssistantResult } from './assistant/inline-result';
 const DiffDialog = defineAsyncComponent(() => import('./components/DiffDialog.vue'));
 import { handleMobileVisibility } from './mobile-lifecycle';
@@ -226,7 +251,7 @@ import { resolveWikiLink } from './wiki-links';
 import { applyFileMovePreview, planFileMovePreview, type FileMovePreview } from './file-move';
 import {
   isSidebarToggleShortcut, matchesShortcut, parseShortcutBindings, readShortcutBindings,
-  saveShortcutBindings, shortcutLabel, shortcutKeys, shortcutPreferenceKey,
+  saveShortcutBindings, shortcutLabel, shortcutAriaLabel, shortcutKeys, shortcutPreferenceKey,
 } from './shortcuts';
 import type { ShortcutId } from './shortcuts';
 import { configuredEditorShortcuts } from './configured-editor-shortcuts';
@@ -243,7 +268,10 @@ import type { TabTransferRequest, TabTransferRollback, TabTransferResult } from 
 import { selectTreeEntry, topLevelEntries } from './file-selection';
 import { isBlankPageTarget } from './page-context-menu';
 import { pageRoutePath, pageRouteUrl, parsePageRoute } from './web-navigation';
-import { applyTheme, readThemePreference, saveThemePreference } from './theme';
+import { applyTheme } from './theme';
+import { AppearanceController } from './appearance';
+import LayoutDocumentChrome from './components/LayoutDocumentChrome.vue';
+import { FileIconRegistry, fileIconRegistryKey } from './file-icons/registry';
 import type { ThemePreference } from './theme';
 import { parseVisualFontChoice, sanitizeCustomFontName, visualFontFamily } from './editor-font';
 import type { VisualFontChoice } from './editor-font';
@@ -274,6 +302,9 @@ async function toggleSuggestionMode(fileId: string) {
   finally { suggestionModeBusy.value = false; }
 }
 const assistant = useAssistantStore();
+const agentInbox = useAgentInboxController();
+provide(agentInboxKey, agentInbox);
+watch(agentInbox.error, error => { if (error) store.report(error); });
 // Keep the panel mounted until its closing transition releases the layout space.
 const assistantPanelMounted = ref(assistant.opened);
 watch(() => assistant.opened, open => { if (open) assistantPanelMounted.value = true; });
@@ -334,7 +365,18 @@ const documentToolItems = [
 const topbarItems = [
   { id: 'breadcrumb', get label() { return t('面包屑'); } },
 ];
-const attachmentStatus = computed(() => [{ kind: 'locked' as const, label: t('只读预览'), detail: t('附件以只读方式打开，不会修改原文件。') }]);
+const attachmentStates = ref<Record<string, AttachmentStatusUpdate>>({});
+function receiveAttachmentStatus(paneId: string, update: AttachmentStatusUpdate) {
+  if (update.state) attachmentStates.value[paneId] = update;
+  else if (attachmentStates.value[paneId]?.source === update.source) delete attachmentStates.value[paneId];
+}
+function currentAttachmentStatus(paneId: string, file?: FileEntry) {
+  const update = attachmentStates.value[paneId];
+  return update?.documentKey === `${workspace.value?.id}:${file?.id}` ? update.state : undefined;
+}
+const attachmentStatus = (paneId: string, file?: FileEntry) => currentAttachmentStatus(paneId, file)?.items ?? (attachments?.writeSpreadsheet && file && /\.(xlsx|xls)$/i.test(file.path) && !file.readOnly && !workspace.value?.readOnly
+  ? [{ kind: 'preview' as const, label: t('Excel 编辑'), detail: t('支持调整列宽、编辑单元格和新增工作表；修改会自动保存。') }]
+  : [{ kind: 'locked' as const, label: t('只读预览'), detail: t('附件以只读方式打开，不会修改原文件。') }]);
 const workspaceStatusLabel = computed(() =>
   store.workspace?.readOnly
     ? t('只读权限')
@@ -369,7 +411,7 @@ function topbarVisibilityItems(tabId: string, hasDocument: boolean, activePane: 
 const SETTINGS_TAB_ID = 'view:settings';
 const settingsTabView = { id: SETTINGS_TAB_ID, get label() { return t('设置'); }, icon: Settings2, detachable: true };
 store.registerViews([...extensionViews, settingsTabView, { id: ASSISTANT_TAB_ID, label: t('助手'), icon: Bot }]);
-store.setBeforeWorkspaceChange(async () => { await assistant.settle(); await inlineRunner.settle(); });
+store.setBeforeWorkspaceChange(async () => { await assistant.settle(); await inlineRunner.settle(); await agentInbox.settle(); });
 const activeExtensionView = computed(() =>
   extensionViews.find((view) => view.id === store.activeId),
 );
@@ -740,13 +782,26 @@ watch(sidebar, (open) => {
     sidebarSnapRestoreWidth = null;
   }
 });
-const theme = ref<ThemePreference>(readThemePreference());
+const appearanceIcons = new FileIconRegistry();
+provide(fileIconRegistryKey, appearanceIcons);
+const appearanceController = new AppearanceController(appearanceIcons, useWorkbenchRuntime().plugins?.principal ?? 'device', {
+  getItem: key => window.localStorage.getItem(key), setItem: (key, value) => window.localStorage.setItem(key, value),
+});
+const appearance = appearanceController.state;
+watch([() => store.workspace?.id ?? '', () => store.installedPlugins, () => store.installedPluginWorkspace], ([id, installed, loadedFor]) => {
+  appearanceController.sync(id, id === loadedFor ? installed : []);
+}, { immediate: true, deep: true });
+onBeforeUnmount(() => appearanceController.dispose());
+const theme = computed<ThemePreference>({ get: () => appearance.value.mode,
+  set: mode => appearanceController.select({ workspaceId: appearance.value.workspaceId, kind: 'mode', id: mode }) });
+const onAppearanceStorage = (event: StorageEvent) => appearanceController.refreshPreferences(event.key);
+onMounted(() => window.addEventListener('storage', onAppearanceStorage));
+onBeforeUnmount(() => window.removeEventListener('storage', onAppearanceStorage));
 const systemThemeMedia = window.matchMedia?.('(prefers-color-scheme: dark)');
 const onSystemThemeChange = () => {
   if (theme.value === 'system') applyTheme('system');
 };
 applyTheme(theme.value);
-watch(theme, saveThemePreference);
 onMounted(() => systemThemeMedia?.addEventListener('change', onSystemThemeChange));
 onBeforeUnmount(() => systemThemeMedia?.removeEventListener('change', onSystemThemeChange));
 function readPreference(key: string, fallback: boolean): boolean {
@@ -956,6 +1011,7 @@ function readSelectionWrapping() {
   catch { return normalizeSelectionWrapping(); }
 }
 const editorPreferences = ref<EditorPreferences>({
+  copyFormat: normalizeCopyFormat(readTextPreference('copyFormat')),
   autoSpacing: readPreference('autoSpacing', defaultEditorPreferences.autoSpacing ?? false),
   previewMathWhileEditing: readPreference(
     'previewMathWhileEditing',
@@ -968,6 +1024,7 @@ const editorPreferences = ref<EditorPreferences>({
 watch(
   editorPreferences,
   (preferences) => {
+    saveTextPreference('copyFormat', normalizeCopyFormat(preferences.copyFormat));
     savePreference('autoSpacing', preferences.autoSpacing ?? false);
     savePreference('previewMathWhileEditing', preferences.previewMathWhileEditing);
     savePreference('folding', preferences.folding);
@@ -1110,6 +1167,7 @@ watch(
   },
 );
 const exportBusy = ref(false);
+const printBusy = ref(false);
 const documentMenuButton = ref<HTMLButtonElement>();
 const documentMenuElement = ref<HTMLElement>();
 const workspaceMenu = ref(false);
@@ -1149,7 +1207,8 @@ watch(
   },
 );
 function selectActiveFileInTree() {
-  const id = activeId.value.startsWith('table:') ? tableFileId(activeId.value) : activeId.value;
+  const activeFileId = activeId.value.startsWith('table:') ? tableFileId(activeId.value) : activeId.value;
+  const id = folderRowId(activeFileId);
   const available = !!id && workspace.value?.files.some((file) => file.id === id);
   selectedEntryIds.value = available ? new Set([id]) : new Set();
   selectionAnchorId.value = available ? id : null;
@@ -1179,6 +1238,62 @@ const treeFiles = computed(() => {
     : files;
 });
 const fileTree = ref<InstanceType<typeof FileTree>>();
+const revealedHomeId = ref('');
+async function openBreadcrumbDirectory(path: string, newTab = false) {
+  const home = folderHomes.value.get(path);
+  if (home) await openEntry(home, newTab);
+  else await store.openDirectory(path, { newTab });
+  if (compactPanes.value) sidebar.value = false;
+}
+const folderHomes = computed(() => indexFolderHomes(treeFiles.value, store.workspaceSettings.folderHomeFileName));
+const homeFolderIds = computed(() => {
+  const ids = new Map<string, string>();
+  for (const folder of treeFiles.value) {
+    const home = folder.kind === 'directory' && folderHomes.value.get(folder.path);
+    if (home) ids.set(home.id, folder.id);
+  }
+  return ids;
+});
+function folderRowId(id: string) {
+  return id === revealedHomeId.value ? id : homeFolderIds.value.get(id) ?? id;
+}
+watch(() => [workspace.value?.id, store.workspaceSettings.folderHomeFileName], () => { revealedHomeId.value = ''; });
+watch([homeFolderIds, revealedHomeId], () => {
+  selectedEntryIds.value = new Set([...selectedEntryIds.value].map(folderRowId));
+  if (selectionAnchorId.value) selectionAnchorId.value = folderRowId(selectionAnchorId.value);
+});
+const contextFolderHome = computed(() => fileContextMenu.value?.file.kind === 'directory'
+  ? folderHomes.value.get(fileContextMenu.value.file.path) : undefined);
+function folderConversionIssue(file: FileEntry, kind: FolderConversionKind) {
+  if (!store.canConvertFolderDocuments) return t('当前存储适配器尚不支持安全的文档与文件夹转换');
+  if (store.folderConversionBusy) return t('正在转换文档，请稍候');
+  try { planFolderConversion(treeFiles.value, file, store.workspaceSettings.folderHomeFileName, kind); return ''; }
+  catch (error) { return t(error instanceof Error ? error.message : String(error)); }
+}
+async function convertDocumentStructure(kind: FolderConversionKind) {
+  const file = fileContextMenu.value?.file;
+  closeFileContextMenu();
+  if (!file) return;
+  try {
+    const created = await store.convertDocumentStructure(file, kind);
+    if (created && kind === 'child') startTreeRename(created);
+  } catch (error) { store.report(error); }
+}
+async function folderHomeContextAction(showFile: boolean) {
+  const home = contextFolderHome.value;
+  if (!home) return;
+  const hideFile = showFile && revealedHomeId.value === home.id;
+  closeFileContextMenu(hideFile);
+  if (showFile) {
+    if (hideFile) {
+      revealedHomeId.value = '';
+      return;
+    }
+    revealedHomeId.value = home.id;
+    selectedEntryIds.value = new Set([home.id]);
+    selectionAnchorId.value = home.id;
+  } else await openTreeEntry(home);
+}
 const treeDocumentIcons = computed(() => Object.fromEntries(
   [
     ...store.documents.map(doc => [doc.id, appearanceText(doc.content, 'icon')]),
@@ -1231,6 +1346,7 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
       id: `workbench.export.${format}`, category: t('导出'), label: ({ markdown: 'Markdown', docx: 'Word', pdf: 'PDF', html: 'HTML', png: t('图片') })[format],
       keywords: format, available: hasDocument && !exportBusy.value, run: () => exportDocument(format),
     })),
+    { id: 'workbench.print', category: t('文档'), get label() { return t('打印文档'); }, shortcut: shortcuts.value.print, available: hasDocument && !printBusy.value, run: printActiveDocument },
     { id: 'workbench.find', category: t('编辑'), get label() { return t('页内搜索'); }, shortcut: shortcuts.value.pageSearch, available: standardEditor, run: () => openPaneSearch() },
     { id: 'workbench.replace', category: t('编辑'), get label() { return t('查找与替换'); }, shortcut: shortcuts.value.pageReplace, available: editable, run: () => openPaneSearch(store.activePaneId, true) },
     { id: 'workbench.undo', category: t('编辑'), get label() { return t('撤销'); }, available: editable && documentUndoAvailable.value, run: undoDocument },
@@ -1238,7 +1354,9 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
     ...editorPaletteCommands({ editable: editable && !!editor.value, source: source.value,
       context: paneSelections[store.activePaneId] ?? defaultSelectionContext, features: store.capabilities.features,
       run: (name, value) => editor.value?.command(name, value) }),
-    { id: 'workbench.source', category: t('视图'), label: source.value ? t('返回可视化编辑') : t('切换源码模式'), available: standardEditor, keywords: 'Markdown source', run: () => { source.value = !source.value; } },
+    { id: 'workbench.source', category: t('视图'), label: source.value ? t('返回可视化编辑') : t('切换源码模式'), shortcut: shortcuts.value.toggleSource, available: standardEditor, keywords: 'Markdown source', run: () => { source.value = !source.value; } },
+    { id: 'workbench.markdown-reveal', category: t('视图'), get label() { return t('光标展开源码'); }, shortcut: shortcuts.value.toggleMarkdownReveal, available: standardEditor && !source.value, keywords: 'Markdown source cursor', run: () => { revealMarkdown.value = !revealMarkdown.value; } },
+    { id: 'workbench.assistant', category: t('视图'), get label() { return t('打开或关闭同页助手'); }, shortcut: shortcuts.value.toggleAssistant, available: !!workspace.value && assistant.available, run: toggleAssistant },
     { id: 'workbench.reading', category: t('视图'), label: pageLocked.value ? t('退出阅读模式') : t('进入阅读模式'), available: hasDocument && !workspaceLocked.value, keywords: t('锁定页面 解锁'), run: togglePageLock },
     { id: 'workbench.width', category: t('视图'), label: limitPageWidth.value ? t('展开页面全宽') : t('限制页面宽度'), available: hasDocument && pageWidthWritable.value, run: () => setLimitPageWidth(!limitPageWidth.value) },
     { id: 'workbench.outline', category: t('视图'), label: showOutline.value ? t('隐藏文档目录') : t('显示文档目录'), available: hasDocument, keywords: t('大纲'), run: () => { showOutline.value = !showOutline.value; } },
@@ -1263,14 +1381,14 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
     { id: 'workbench.plugins', category: t('工作区'), get label() { return t('打开插件中心'); }, available: store.workspaceSettings.showPlugins, run: () => store.openPluginsTab() },
     { id: 'workbench.updates', category: t('历史'), get label() { return t('文档更新历史'); }, available: hasDocument, run: () => { historyPage.value = 'updates'; historyPanel.value = true; } },
     { id: 'workbench.versions', category: t('历史'), get label() { return t('文档版本历史'); }, available: hasDocument && !!extensions.historyEnabled, run: () => { historyPage.value = 'versions'; historyPanel.value = true; } },
-    { id: 'workbench.settings', category: t('设置'), get label() { return t('外观设置'); }, keywords: t('打开设置'), run: () => openSettings() },
+    { id: 'workbench.settings', category: t('设置'), get label() { return t('外观设置'); }, keywords: t('打开设置'), run: () => openSettings('appearance') },
     { id: 'workbench.settings.editing', category: t('设置'), get label() { return t('编辑设置'); }, run: () => openSettings('editing') },
     { id: 'workbench.settings.shortcuts', category: t('设置'), get label() { return t('快捷键'); }, run: () => openSettings('shortcuts') },
     { id: 'workbench.settings.workspace', category: t('设置'), get label() { return t('工作区设置'); }, available: navigationContext.value === 'workspace' && !!workspace.value, run: () => openSettings('workspace') },
     { id: 'workbench.settings.about', category: t('设置'), get label() { return t('关于同页'); }, run: () => openSettings('about') },
   ];
 });
-const settingsPage = ref<SettingsPageId>(detachedWindow ? detachedTabRequest()?.settingsPage ?? 'appearance' : 'appearance');
+const settingsPage = ref<SettingsPageId>(detachedWindow ? detachedTabRequest()?.settingsPage ?? readSettingsPage() : readSettingsPage());
 // A loaded workspace keeps its session, but only the workspace navigation owns its settings.
 const settingsWorkspace = computed(() => navigationContext.value === 'workspace' ? workspace.value : null);
 const settingsHosts = computed(() => [
@@ -1619,6 +1737,15 @@ function openAssistant(paneId = store.activePaneId, fileId = store.activeId,
     options.capturedSelection ?? taskSelection,
   );
   if (window.innerWidth < 1100) sidebar.value = false;
+}
+function toggleAssistant() {
+  if (!workspace.value || !assistant.available) return;
+  if (assistant.opened) {
+    assistant.opened = false;
+    void nextTick(() => {
+      if (!assistant.opened) (source.value ? sourceEditor.value : editor.value)?.focus();
+    });
+  } else openAssistant(store.activePaneId, store.activeId, { forcePanel: true });
 }
 function initializeDocument(paneId: string, fileId: string, content: string, expected: string) {
   const doc = store.documentForTab(fileId);
@@ -2160,6 +2287,10 @@ async function insertSourceFiles(
 
 async function openEntry(file: FileEntry, newTab = false) {
   newTab = newTab && tabsEnabled;
+  if (file.kind === 'directory') {
+    await openBreadcrumbDirectory(file.path, newTab);
+    return;
+  }
   const handler = fileHandlers.resolve(file.path);
   if (isObjectPath(file.path)) {
     const record = store.objects.find((item) => item.path === file.path);
@@ -2451,7 +2582,7 @@ function openPageContextMenu(event: MouseEvent) {
         Math.max(8, window.innerHeight - element.offsetHeight - 8),
       ),
     };
-    element.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+    element.focus({ preventScroll: true });
   });
 }
 function openDocumentDiscussion() {
@@ -2614,6 +2745,12 @@ function fileDragStart(file: FileEntry, event: DragEvent) {
   draggedEntry.value = { file, workspaceId: workspace.value.id };
   draggedSelection.value = selection;
   dropFolder.value = null;
+  event.dataTransfer.setData('application/x-tano-entry-references', JSON.stringify({
+    workspace: workspace.value.id,
+    ids: store.referenceTargets.filter(target => selection.some(entry =>
+      entry.id === target.id || (entry.kind === 'directory' && target.path.startsWith(`${entry.path}/`)),
+    )).map(target => target.id),
+  }));
   event.dataTransfer.effectAllowed = 'copyMove';
   event.dataTransfer.setData(
     'application/x-tano-entry',
@@ -2960,6 +3097,7 @@ function outlineContextKeydown(event: KeyboardEvent) {
           : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
   items[next]?.focus();
 }
+const headingViewport = new HeadingViewport();
 function updateActiveHeading() {
   const container = documentScroll.value;
   const cover = container?.querySelector<HTMLElement>('.document-cover');
@@ -2968,16 +3106,9 @@ function updateActiveHeading() {
   outlineCoverBottom.value = cover && pane
     ? Math.max(0, cover.getBoundingClientRect().bottom - pane.getBoundingClientRect().top + 16)
     : 0;
-  const items = editorScroll.value?.querySelectorAll<HTMLElement>(
-    '.tano-prose h1, .tano-prose h2, .tano-prose h3, .tano-prose h4, .tano-prose h5, .tano-prose h6',
-  );
-  if (!container || source.value || !items?.length || !outline.value.length) return;
-  const threshold = container.getBoundingClientRect().top + 100;
-  let current = 0;
-  items.forEach((item, index) => {
-    if (item.getBoundingClientRect().top <= threshold) current = index;
-  });
-  activeHeading.value = Math.min(current, outline.value.length - 1);
+  const root = editorScroll.value;
+  if (!container || !root || source.value || !outline.value.length) return;
+  activeHeading.value = Math.min(headingViewport.active(root, container), outline.value.length - 1);
 }
 function scheduleActiveHeading() {
   if (headingFrame !== undefined) return;
@@ -2986,19 +3117,38 @@ function scheduleActiveHeading() {
     updateActiveHeading();
   });
 }
-watch([() => outline.value.length, source], () => void nextTick(scheduleActiveHeading), {
+watch([() => active.value?.content, source], () => {
+  headingViewport.invalidate();
+  void nextTick(scheduleActiveHeading);
+}, {
   flush: 'post',
 });
-watch([documentScroll, showPageTitle], ([container], _, cleanup) => {
+watch([documentScroll, editorScroll, showPageTitle], ([container, root], _, cleanup) => {
+  const invalidate = () => { headingViewport.invalidate(); scheduleActiveHeading(); };
+  invalidate();
   scheduleActiveHeading();
   if (!container) return;
   // A cover can be added or removed without changing the outline. Also follow
   // window/sidebar/split resizing and title or toolbar layout changes.
-  const observer = new ResizeObserver(scheduleActiveHeading);
+  const observer = new ResizeObserver(invalidate);
   observer.observe(container);
   for (const element of container.querySelectorAll('.document-main, .document-title'))
     observer.observe(element);
-  cleanup(() => observer.disconnect());
+  // Font/image loading and folded/expanded node views can move headings without
+  // changing Markdown. Gutter button updates are deliberately excluded.
+  const mutations = new MutationObserver(records => {
+    if (records.some(record => {
+      const element = record.target instanceof Element ? record.target : record.target.parentElement;
+      return element?.closest('.tano-prose') || [...record.addedNodes, ...record.removedNodes]
+        .some(node => node instanceof Element && (node.matches('.tano-prose') || node.querySelector('.tano-prose')));
+    })) invalidate();
+  });
+  if (root) {
+    observer.observe(root);
+    mutations.observe(root, { childList: true, subtree: true, attributes: true, characterData: true });
+    root.addEventListener('load', invalidate, true);
+  }
+  cleanup(() => { observer.disconnect(); mutations.disconnect(); root?.removeEventListener('load', invalidate, true); });
 }, { flush: 'post' });
 const noteCount = computed(
   () => workspace.value?.files.filter((f) => f.kind === 'file' && !isWorkspaceInternalPath(f.path) && (isMarkdown(f.path) || isDataTableFilePath(f.path))).length ?? 0,
@@ -3445,6 +3595,7 @@ const settingsSnapshot = computed<SettingsSnapshot>(() => ({
   mode: store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local',
   defaultSource: defaultSource.value,
   theme: theme.value,
+  appearance: appearance.value,
   visualFontChoice: visualFontChoice.value,
   customFontName: customFontName.value,
   revealMarkdown: revealMarkdown.value,
@@ -3490,7 +3641,7 @@ watch(
   { deep: true },
 );
 
-function openSettings(page: SettingsPageId = 'appearance') {
+function openSettings(page: SettingsPageId = readSettingsPage(settingsPage.value)) {
   warmSettingsWindow();
   menu.value = false;
   workspaceMenu.value = false;
@@ -3504,6 +3655,7 @@ function openSettings(page: SettingsPageId = 'appearance') {
   settingsPanel.value = true;
 }
 function handleSettingsCommand(command: SettingsCommand) {
+  if (command.type === 'appearance') { appearanceController.select(command.selection); return; }
   if (!settingsWorkspace.value && ['workspace-delete', 'workspace-setting', 'workspace-settings-reload', 'workspace-export', 'capability'].includes(command.type)) return;
   if (command.type === 'plugin-invoke') {
     void store.interactWithPlugin(command.interaction).then(
@@ -3711,14 +3863,14 @@ async function submitModal() {
     modalBusy.value = false;
   }
 }
-async function exportDocument(format: DocumentExportFormat) {
+function documentOutputOptions(): DocumentExportOptions | undefined {
   const doc = active.value,
     currentWorkspace = workspace.value;
-  if (!doc || exportBusy.value) return;
+  if (!doc) return;
   const title = showPageTitle.value
     ? editorScroll.value?.querySelector<HTMLTextAreaElement>('.document-title-wrap textarea')?.value
     : undefined;
-  const options = {
+  return {
     id: doc.id,
     path: doc.path,
     content: doc.content,
@@ -3733,12 +3885,32 @@ async function exportDocument(format: DocumentExportFormat) {
     fontFamily: selectedVisualFontFamily.value,
     fontSize: visualFontSize.value,
   };
+}
+async function printActiveDocument() {
+  if (printBusy.value) return;
+  const options = documentOutputOptions();
+  if (!options) return;
+  menu.value = false;
+  printBusy.value = true;
+  try {
+    const { printDocument } = await import('./document-print');
+    await printDocument(options);
+  } catch (reason) {
+    store.report(t('打印失败：{0}', [reason instanceof Error ? reason.message : String(reason)]));
+  } finally {
+    printBusy.value = false;
+  }
+}
+async function exportDocument(format: DocumentExportFormat) {
+  if (exportBusy.value) return;
+  const options = documentOutputOptions();
+  if (!options) return;
   menu.value = false;
   exportBusy.value = true;
   try {
     const { downloadExport, exportFilename, renderDocumentExport } = await import('./document-export');
     const blob = await renderDocumentExport(options, format);
-    const filename = exportFilename(doc.path, format);
+    const filename = exportFilename(options.path, format);
     if (localNative) {
       const { saveDocumentExport } = await import('./native-document-export');
       if (!(await saveDocumentExport(blob, filename, format))) return;
@@ -3778,8 +3950,13 @@ function handleWorkbenchShortcut(event: KeyboardEvent) {
   if (openingWorkspace.value) return;
   if (event.defaultPrevented || importPanel.value || settingsPanel.value || commandPaletteOpened.value || updateLock.value || modal.value) return;
   let action: (() => void) | undefined;
+  const standardEditor = !!active.value && !editing.active && !editing.activeBusy;
   if (!detachedWindow && workspace.value && isSidebarToggleShortcut(event, shortcuts.value)) action = toggleSidebar;
   else if (matchesShortcut(event, 'save', shortcuts.value)) action = () => { void store.flush(); };
+  else if (active.value && matchesShortcut(event, 'print', shortcuts.value)) action = () => { void printActiveDocument(); };
+  else if (standardEditor && matchesShortcut(event, 'toggleSource', shortcuts.value)) action = () => { source.value = !source.value; };
+  else if (standardEditor && !source.value && matchesShortcut(event, 'toggleMarkdownReveal', shortcuts.value)) action = () => { revealMarkdown.value = !revealMarkdown.value; };
+  else if (workspace.value && assistant.available && matchesShortcut(event, 'toggleAssistant', shortcuts.value)) action = toggleAssistant;
   else if (matchesShortcut(event, 'findDocument', shortcuts.value)) action = () => showModal('search');
   else if (workspace.value && matchesShortcut(event, 'openDocument', shortcuts.value)) action = () => showModal('newTab');
   else if (workspace.value && matchesShortcut(event, 'newDocument', shortcuts.value)) action = () => { void createNewDocument(); };
@@ -4089,11 +4266,13 @@ onMounted(async () => {
           if (await store.flush()) {
             await assistant.settle();
             await inlineRunner.settle();
+            await agentInbox.settle();
             await editing.suspendAll();
             await closeSettingsWindow();
             await getCurrentWindow().destroy();
           } else store.report(t('还有未保存的内容，窗口已保留。请先保存或另存副本。'));
         } catch (error) {
+          agentInbox.resume();
           store.report(error);
         }
       });
@@ -4147,6 +4326,8 @@ watch(activeId, () => {
   void nextTick(scheduleActiveHeading);
 });
 const helpContext = computed<HelpContext>(() => {
+  if (activeId.value === ASSISTANT_TAB_ID || sidebarView.value === 'assistant') return 'assistant';
+  if (isTableTab(activeId.value)) return 'tables';
   if (activeId.value === GRAPH_TAB_ID) return 'graph';
   if (activeId.value === PLUGINS_TAB_ID) return 'plugins';
   if (activeId.value === CALENDAR_TAB_ID || sidebarView.value === 'plan') return 'plan';
@@ -4163,6 +4344,14 @@ const helpAvailability = computed<HelpAvailability>(() => ({
   templates: !!workspace.value && !workspace.value.readOnly,
   import: !!workspace.value && !workspace.value.readOnly,
   duplicate: !!workspace.value && !workspace.value.readOnly && !!workspaceAdapter.duplicate,
+  'folder-home': !!workspace.value && !!store.workspaceSettings.folderHomeFileName,
+  'folder-conversion': !!workspace.value && !workspace.value.readOnly && store.canConvertFolderDocuments && !!store.workspaceSettings.folderHomeFileName,
+  panes: !!workspace.value && !compactPanes.value,
+  assistant: !!workspace.value && assistant.available,
+  'assistant-configure': !!workspace.value && assistant.available && assistant.canConfigure && !assistant.demo,
+  suggestions: !!active.value && !editorReadonly.value && !editing.isManaging(active.value.id),
+  math: !!active.value && !editorReadonly.value && store.capabilities.features.math,
+  mermaid: !!active.value && !editorReadonly.value && store.capabilities.features.mermaid,
 }));
 const helpBlocked = computed(() => !!(
   activeExtensionView.value || activeId.value === SETTINGS_TAB_ID || activeId.value.startsWith('attachment:') ||
@@ -4242,7 +4431,7 @@ const helpBlocked = computed(() => !!(
               :aria-label="native ? undefined : t('返回同页首页')"
               @click="returnHome"
             >
-              <img src="/favicon-green.svg?v=3" alt="" />
+              <img src="./assets/tano-logo.svg" alt="" />
             </component>
           </div>
           <ButtonVisibilityGroup
@@ -4379,6 +4568,8 @@ const helpBlocked = computed(() => !!(
               v-if="workspace || startupPending || filesPending"
               :loading="filesPending"
               :entries="treeFiles"
+              :folder-home-file-name="store.workspaceSettings.folderHomeFileName"
+              :revealed-home-id="revealedHomeId"
               :document-icons="treeDocumentIcons"
               :load-document-icon="loadTreeDocumentIcon"
               :selected-ids="selectedEntryIds"
@@ -4439,7 +4630,7 @@ const helpBlocked = computed(() => !!(
           />
         </template>
         <Teleport to="body">
-          <div
+          <div v-surface-motion="'App:0'"
             v-if="fileContextMenu"
             class="dropdown compact-action-menu file-context-menu"
             role="menu"
@@ -4452,7 +4643,6 @@ const helpBlocked = computed(() => !!(
             :style="{ left: `${fileContextMenu.x}px`, top: `${fileContextMenu.y}px` }"
             @keydown="fileContextKeydown"
           >
-            <PluginMenu v-if="!multipleContextEntries && fileContextMenu.file.kind === 'file'" location="file" :file-id="fileContextMenu.file.id" @selected="closeFileContextMenu()" />
             <template v-if="multipleContextEntries">
               <div class="file-context-count" role="presentation">
                 {{ t('已选中') }} {{ contextEntries.length }} {{ t('个条目') }}
@@ -4463,17 +4653,18 @@ const helpBlocked = computed(() => !!(
                 :disabled="selectionDeleteDisabled"
                 @click="fileContextAction('duplicate')"
               >
-                <Copy :size="15" />{{ t('为所选条目创建副本') }}
+                <CopyPlus :size="15" />{{ t('为所选条目创建副本') }}
               </button>
+              <div v-if="!mobile && localNative" class="menu-divider" role="separator" />
               <button role="menuitem" @click="fileContextAction('copy')">
-                <Copy :size="15" />{{ t('复制相对路径') }}
+                <Route :size="15" />{{ t('复制相对路径') }}
               </button>
               <button
                 v-if="localNative && !mobile"
                 role="menuitem"
                 @click="fileContextAction('copy-full-path')"
               >
-                <Copy :size="15" />{{ t('复制完整路径') }}
+                <FolderTree :size="15" />{{ t('复制完整路径') }}
               </button>
               <div class="menu-divider" role="separator" />
               <button
@@ -4489,22 +4680,23 @@ const helpBlocked = computed(() => !!(
                       ? t('删除所选文档')
                       : t('将所选条目移入回收站')
                 }}
-              <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('deleteFile') }}</kbd></button>
+              <kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('deleteFile')" /></kbd></button>
             </template>
             <template v-else>
+              <!-- Open actions precede editing and organization. -->
               <template v-if="fileContextMenu.file.kind === 'directory'">
+                <template v-if="contextFolderHome">
+                  <button role="menuitem" @click="folderHomeContextAction(false)">
+                    <House :size="15" />{{ t('打开首页') }}
+                  </button>
+                  <div class="menu-divider" role="separator" />
+                </template>
                 <button
                   role="menuitem"
                   :disabled="fileMutationDisabled(fileContextMenu.file)"
                   @click="fileContextAction('document')"
                 >
-                  <FileText :size="15" />{{ t('在此新建文档') }}
-                </button>
-                <button role="menuitem" :disabled="fileMutationDisabled(fileContextMenu.file)" @click="fileContextAction('table')">
-                  <Table2 :size="15" />{{ t('在此新建数据表') }}
-                </button>
-                <button role="menuitem" :disabled="fileMutationDisabled(fileContextMenu.file)" @click="fileContextAction('database')">
-                  <Table2 :size="15" />{{ t('以数据库视图管理此目录') }}
+                  <FilePlus2 :size="15" />{{ t('在此新建文档') }}
                 </button>
                 <button
                   role="menuitem"
@@ -4515,61 +4707,75 @@ const helpBlocked = computed(() => !!(
                 </button>
                 <button
                   role="menuitem"
+                  :disabled="fileMutationDisabled(fileContextMenu.file)"
+                  @click="fileContextAction('table')"
+                >
+                  <Table2 :size="15" />{{ t('在此新建数据表') }}
+                </button>
+                <button
+                  role="menuitem"
                   :disabled="
-                    fileMutationDisabled(fileContextMenu.file) ||
-                    directoryHasManagedFile(fileContextMenu.file)
+                    fileMutationDisabled(fileContextMenu.file) || directoryHasManagedFile(fileContextMenu.file)
                   "
                   @click="fileContextAction('rename')"
                 >
-                  <Pencil :size="15" />{{ t('重命名文件夹') }}
-                <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd></button>
+                  <TextCursorInput :size="15" />{{ t('重命名文件夹') }}
+                  <kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('renameFile')" /></kbd>
+                </button>
               </template>
               <template v-else>
                 <button
-                  v-if="!isWorkspaceInternalPath(fileContextMenu.file.path)"
-                  role="menuitem"
-                  @click="fileContextAction('object')"
-                >
-                  <Users :size="15" />{{ t('查看文件对象') }}
-                </button>
-                <button v-if="!isWorkspaceInternalPath(fileContextMenu.file.path)" role="menuitem" @click="fileContextAction('metadata')">
-                  <FileText :size="15" />{{ t('文件属性') }}
-                </button>
-                <button v-if="attachments && !isWorkspaceInternalPath(fileContextMenu.file.path)" role="menuitem" @click="fileContextAction('export')">
-                  <ArrowUpRight :size="15" />{{ t('导出文件副本') }}
-                </button>
-                <button
-                  v-if="isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path) || attachments"
+                  v-if="
+                    isMarkdown(fileContextMenu.file.path) ||
+                    isDataTableFilePath(fileContextMenu.file.path) ||
+                    attachments
+                  "
                   role="menuitem"
                   @click="fileContextAction('open')"
                 >
-                  <FileText :size="15" />{{
-                    isDataTableFilePath(fileContextMenu.file.path) ? t('打开数据表') : isMarkdown(fileContextMenu.file.path) ? t('打开文档') : t('打开附件')
+                  <Table2 v-if="isDataTableFilePath(fileContextMenu.file.path)" :size="15" />
+                  <FileText v-else-if="isMarkdown(fileContextMenu.file.path)" :size="15" />
+                  <Paperclip v-else :size="15" />{{
+                    isDataTableFilePath(fileContextMenu.file.path)
+                      ? t('打开数据表')
+                      : isMarkdown(fileContextMenu.file.path)
+                        ? t('打开文档')
+                        : t('打开附件')
                   }}
                 </button>
                 <button
-                  v-if="tabsEnabled && (isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path))"
+                  v-if="
+                    tabsEnabled &&
+                    (isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path))
+                  "
                   role="menuitem"
                   @click="fileContextAction('open-new-tab')"
                 >
-                  <ExternalLink :size="15" />{{ t('在新标签页中打开') }}
+                  <PanelsTopLeft :size="15" />{{ t('在新标签页中打开') }}
                 </button>
+                <div
+                  v-if="isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path) || attachments"
+                  class="menu-divider"
+                  role="separator"
+                />
                 <button
                   v-if="isMarkdown(fileContextMenu.file.path)"
                   role="menuitem"
                   :disabled="fileMutationDisabled(fileContextMenu.file)"
                   @click="fileContextAction('rename')"
                 >
-                  <Pencil :size="15" />{{ t('重命名文档') }}
-                <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd></button>
+                  <TextCursorInput :size="15" />{{ t('重命名文档') }}
+                  <kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('renameFile')" /></kbd>
+                </button>
                 <button
                   v-else-if="attachments || isDataTableFilePath(fileContextMenu.file.path)"
                   role="menuitem"
                   :disabled="fileMutationDisabled(fileContextMenu.file)"
                   @click="fileContextAction('rename')"
                 >
-                  <Pencil :size="15" />{{ t('重命名文件') }}
-                <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd></button>
+                  <TextCursorInput :size="15" />{{ t('重命名文件') }}
+                  <kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('renameFile')" /></kbd>
+                </button>
               </template>
               <button
                 v-if="canDuplicateEntry(fileContextMenu.file)"
@@ -4577,36 +4783,116 @@ const helpBlocked = computed(() => !!(
                 :disabled="fileMutationDisabled(fileContextMenu.file)"
                 @click="fileContextAction('duplicate')"
               >
-                <Copy :size="15" />{{ t('创建副本') }}
-              </button>
-              <button role="menuitem" @click="fileContextAction('copy')">
-                <Copy :size="15" />{{ t('复制相对路径') }}
+                <CopyPlus :size="15" />{{ t('创建副本') }}
               </button>
               <button
-                v-if="store.isWeb && fileContextMenu.file.kind === 'file' && (isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path))"
+                v-if="fileContextMenu.file.kind === 'file' && isMarkdown(fileContextMenu.file.path) && !isWorkspaceInternalPath(fileContextMenu.file.path)"
+                role="menuitem"
+                :disabled="
+                  fileMutationDisabled(fileContextMenu.file) || !!folderConversionIssue(fileContextMenu.file, 'child')
+                "
+                :data-tooltip="
+                  folderConversionIssue(fileContextMenu.file, 'child') ||
+                  t('将此文档作为文件夹首页，并新建子文档；相关链接会同步更新。')
+                "
+                @click="convertDocumentStructure('child')"
+              >
+                <FolderPlus :size="15" />{{ t('新建子文档') }}
+              </button>
+              <div class="menu-divider" role="separator" />
+              <!-- Copy and export. -->
+              <button role="menuitem" @click="fileContextAction('copy')">
+                <Route :size="15" />{{ t('复制相对路径') }}
+              </button>
+              <button
+                v-if="
+                  store.isWeb &&
+                  fileContextMenu.file.kind === 'file' &&
+                  (isMarkdown(fileContextMenu.file.path) || isDataTableFilePath(fileContextMenu.file.path))
+                "
                 role="menuitem"
                 @click="fileContextAction('copy-link')"
               >
                 <Link :size="15" />{{ t('复制链接') }}
               </button>
-              <button
-                v-if="localNative && !mobile"
-                role="menuitem"
-                @click="fileContextAction('copy-full-path')"
-              >
-                <Copy :size="15" />{{
+              <button v-if="localNative && !mobile" role="menuitem" @click="fileContextAction('copy-full-path')">
+                <FolderTree :size="15" />{{
                   fileContextMenu.file.kind === 'directory' ? t('复制文件夹路径') : t('复制文件路径')
                 }}
               </button>
+              <template v-if="fileContextMenu.file.kind === 'file'">
+                <button
+                  v-if="attachments && !isWorkspaceInternalPath(fileContextMenu.file.path)"
+                  role="menuitem"
+                  @click="fileContextAction('export')"
+                >
+                  <FileOutput :size="15" />{{ t('导出文件副本') }}
+                </button>
+              </template>
+              <!-- System actions stay together before file information. -->
               <template v-if="localNative && !mobile">
                 <div class="menu-divider" role="separator" />
                 <button role="menuitem" @click="fileContextAction('open-default')">
-                  <ArrowUpRight :size="15" />{{ t('使用默认应用打开') }}
+                  <AppWindow :size="15" />{{ t('使用默认应用打开') }}
                 </button>
                 <button role="menuitem" @click="fileContextAction('reveal-entry')">
-                  <ArrowUpRight :size="15" />{{ t('在系统资源管理器中显示') }}
+                  <FolderSearch :size="15" />{{ t('在系统资源管理器中显示') }}
                 </button>
               </template>
+              <!-- File information and less frequent folder structure actions. -->
+              <template v-if="fileContextMenu.file.kind === 'directory'">
+                <div class="menu-divider" role="separator" />
+                <template v-if="contextFolderHome">
+                  <button role="menuitem" @click="folderHomeContextAction(true)">
+                    <EyeOff v-if="revealedHomeId === contextFolderHome.id" :size="15" />
+                    <Eye v-else :size="15" />{{ t(revealedHomeId === contextFolderHome.id ? '隐藏首页文件' : '显示首页文件') }}
+                  </button>
+                  <button
+                    role="menuitem"
+                    :disabled="
+                      fileMutationDisabled(fileContextMenu.file) ||
+                      !!folderConversionIssue(fileContextMenu.file, 'flatten')
+                    "
+                    :data-tooltip="
+                      folderConversionIssue(fileContextMenu.file, 'flatten') ||
+                      t('仅首页会移出，空文件夹将被移除，相关链接会同步更新。')
+                    "
+                    @click="convertDocumentStructure('flatten')"
+                  >
+                    <FileSymlink :size="15" />{{ t('转为普通文档') }}
+                  </button>
+                </template>
+                <button
+                  role="menuitem"
+                  :disabled="fileMutationDisabled(fileContextMenu.file)"
+                  @click="fileContextAction('database')"
+                >
+                  <Database :size="15" />{{ t('以数据库视图管理此目录') }}
+                </button>
+              </template>
+              <template v-else-if="!isWorkspaceInternalPath(fileContextMenu.file.path)">
+                <div class="menu-divider" role="separator" />
+                <button
+                  v-if="!isWorkspaceInternalPath(fileContextMenu.file.path)"
+                  role="menuitem"
+                  @click="fileContextAction('metadata')"
+                >
+                  <FileSliders :size="15" />{{ t('文件属性') }}
+                </button>
+                <button
+                  v-if="!isWorkspaceInternalPath(fileContextMenu.file.path)"
+                  role="menuitem"
+                  @click="fileContextAction('object')"
+                >
+                  <Blocks :size="15" />{{ t('查看文件对象') }}
+                </button>
+              </template>
+              <PluginMenu
+                v-if="fileContextMenu.file.kind === 'file'"
+                location="file"
+                :file-id="fileContextMenu.file.id"
+                @selected="closeFileContextMenu()"
+              />
               <template v-if="!fileDeleteDisabled(fileContextMenu.file) || !store.isWeb">
                 <div class="menu-divider" role="separator" />
                 <button
@@ -4624,13 +4910,14 @@ const helpBlocked = computed(() => !!(
                           : t('删除在线文档')
                         : t('移入回收站')
                   }}
-                <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('deleteFile') }}</kbd></button>
+                  <kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('deleteFile')" /></kbd>
+                </button>
               </template>
             </template>
           </div>
         </Teleport>
         <Teleport to="body">
-          <div
+          <div v-surface-motion="'App:1'"
             v-if="directoryContextMenu"
             class="dropdown compact-action-menu file-context-menu directory-context-menu"
             role="menu"
@@ -4644,13 +4931,13 @@ const helpBlocked = computed(() => !!(
               :disabled="!workspace || workspace.readOnly || busy"
               @click="directoryContextAction('document')"
             >
-              <FileText :size="15" />{{ t('新建文档') }}
+              <FilePlus2 :size="15" />{{ t('新建文档') }}
             </button>
             <button role="menuitem" :disabled="!workspace || workspace.readOnly || busy" @click="directoryContextAction('table')">
               <Table2 :size="15" />{{ t('新建数据表') }}
             </button>
             <button role="menuitem" :disabled="!workspace || workspace.readOnly || busy" @click="directoryContextAction('database')">
-              <Table2 :size="15" />{{ t('以数据库视图管理此目录') }}
+              <Database :size="15" />{{ t('以数据库视图管理此目录') }}
             </button>
             <button
               role="menuitem"
@@ -4673,10 +4960,10 @@ const helpBlocked = computed(() => !!(
                 :disabled="directoryContextDuplicateDisabled()"
                 @click="directoryContextAction('duplicate')"
               >
-                <Copy :size="15" />{{ t('创建副本') }}
+                <CopyPlus :size="15" />{{ t('创建副本') }}
               </button>
               <button role="menuitem" @click="directoryContextAction('copy')">
-                <Copy :size="15" />{{ t('复制相对路径') }}
+                <Route :size="15" />{{ t('复制相对路径') }}
               </button>
               <div class="menu-divider" role="separator" />
               <button
@@ -4684,8 +4971,8 @@ const helpBlocked = computed(() => !!(
                 :disabled="directoryContextRenameDisabled()"
                 @click="directoryContextAction('rename')"
               >
-                <Pencil :size="15" />{{ t('重命名文件夹') }}
-              <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('renameFile') }}</kbd></button>
+                <TextCursorInput :size="15" />{{ t('重命名文件夹') }}
+              <kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('renameFile')" /></kbd></button>
               <button
                 class="danger-text"
                 role="menuitem"
@@ -4695,12 +4982,12 @@ const helpBlocked = computed(() => !!(
                 <Trash2 :size="15" />{{
                   store.isDemo ? t('删除文件夹') : store.isWeb ? t('删除在线文件夹') : t('将文件夹移入回收站')
                 }}
-              <kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('deleteFile') }}</kbd></button>
+              <kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('deleteFile')" /></kbd></button>
             </template>
           </div>
         </Teleport>
         <Teleport to="body">
-          <div
+          <div v-surface-motion="'App:2'"
             v-if="workspaceEntryContextMenu"
             ref="workspaceEntryContextMenuElement"
             class="dropdown compact-action-menu file-context-menu workspace-entry-context-menu"
@@ -4729,7 +5016,7 @@ const helpBlocked = computed(() => !!(
                 :disabled="busy"
                 @click="workspaceEntryContextAction('reveal')"
               >
-                <ExternalLink :size="15" />{{ t('在资源管理器中显示') }}
+                <FolderSearch :size="15" />{{ t('在资源管理器中显示') }}
               </button>
             </template>
           </div>
@@ -4751,7 +5038,7 @@ const helpBlocked = computed(() => !!(
               >
               <component :is="workspaceMenu ? ChevronUp : ChevronDown" :size="12" />
             </button>
-            <div
+            <div v-surface-motion="'App:3'"
               v-if="workspaceMenu"
               id="workspace-menu"
               class="dropdown compact-action-menu sidebar-popover workspace-dropdown"
@@ -4774,7 +5061,7 @@ const helpBlocked = computed(() => !!(
               </template>
               <template #default>
               <button role="menuitem" @click="workspaceMenu = false; commandPaletteOpened = true">
-                <Search :size="16" />{{ t('命令中心') }}<span class="menu-shortcut">{{ shortcutHint('commandPalette') }}</span>
+                <Search :size="16" />{{ t('命令中心') }}<span class="menu-shortcut"><ShortcutHint :label="shortcutHint('commandPalette')" /></span>
               </button>
               <component
                 :is="extensions.regions['workspace-settings']"
@@ -4796,7 +5083,7 @@ const helpBlocked = computed(() => !!(
               >
                 <Files :size="16" />{{ t('文档模板') }}
               </button>
-              <button role="menuitem" @click="showObjects()"><Users :size="16" />{{ t('工作区对象') }}</button>
+              <button role="menuitem" @click="showObjects()"><Blocks :size="16" />{{ t('工作区对象') }}</button>
               <button role="menuitem" :disabled="!workspace || workspace.readOnly || busy || !store.capabilities.features.objectReferences" @click="workspaceMenu = false; store.createObjectDatabase().catch(store.report)"><Table2 :size="16" />{{ t('创建对象数据库视图') }}</button>
               <template v-if="store.workspaceViews.length">
                 <div class="menu-divider" />
@@ -4907,7 +5194,7 @@ const helpBlocked = computed(() => !!(
                         store.openWorkspace();
                       "
                     >
-                      <FolderPlus :size="16" :stroke-width="1.6" />
+                      <OpenWorkspaceIcon :size="16" />
                     </button>
                   </div>
                   <button
@@ -4970,6 +5257,10 @@ const helpBlocked = computed(() => !!(
           class="sidebar-resize-handle"
           role="separator"
           :aria-label="t('调整侧栏宽度')"
+          :data-tooltip="t('拖动调宽，向左拖到底收起')"
+          :data-tooltip-shortcut="shortcuts.toggleSidebar"
+          data-tooltip-anchor="pointer"
+          data-tooltip-delay="700"
           aria-orientation="vertical"
           :aria-valuenow="sidebarWidth ?? defaultSidebarWidth()"
           :aria-valuemin="SIDEBAR_MIN_WIDTH"
@@ -5059,6 +5350,7 @@ const helpBlocked = computed(() => !!(
           <AssistantPanel
             v-if="assistant.available && assistantPanelMounted"
             :compact="compactPanes"
+            :toggle-shortcut="shortcuts.toggleAssistant"
             :fullscreen-target="assistantHosts.get(assistant.fullscreenPaneId ?? '')"
             :navigation-visible="store.activeId === ASSISTANT_TAB_ID"
             @show-navigation="sidebar = true"
@@ -5078,6 +5370,7 @@ const helpBlocked = computed(() => !!(
             :demo-label="store.isDemo ? workspaceStatusLabel : undefined"
             @close="templateLibraryOpen = false"
             @open-file="(file) => { store.focusPane(pane.id); openEntry(file); }"
+            @open-directory="(path) => { store.focusPane(pane.id); templateLibraryOpen = false; void openBreadcrumbDirectory(path); }"
           >
             <template #navigation>
               <div v-if="!sidebar && !(native && !mobile && workspace)" class="topbar-navigation">
@@ -5157,23 +5450,33 @@ const helpBlocked = computed(() => !!(
                 "
                 :workspace-id="workspace?.id"
                 :workspace-name="workspace?.name ?? 'Tano'"
-                :hide-workspace="!!tab?.path"
+                :workspace-icon="store.workspaceSettings.icon"
+                :workspace-mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'"
                 :entries="workspace?.files ?? []"
+                :folder-home-file-name="store.workspaceSettings.folderHomeFileName"
                 :document-icons="treeDocumentIcons"
                 :load-document-icon="loadTreeDocumentIcon"
                 :path="tab?.path"
+                :directory="!!tab?.directory"
+                :workspace-view="tab?.workspaceView?.view"
                 :demo-label="store.isDemo ? workspaceStatusLabel : undefined"
                 :read-only="workspace?.readOnly"
                 @open="(file) => { store.focusPane(pane.id); openEntry(file); }"
+                @open-directory="(path) => { store.focusPane(pane.id); void openBreadcrumbDirectory(path); }"
               >
                 <template #status>
+                  <DocumentStatus v-if="tab?.pluginView && isVisible('document-status')"
+                    :document-key="`${workspace?.id}:${tab.pluginView.pluginId}:${tab.pluginView.id}:${pluginViewHeader(store.pluginRuntime, tab.pluginView)?.title}`"
+                    :items="pluginPreviewStatus(store.pluginRuntime, tab.pluginView)" />
                   <DocumentStatus v-if="active && isVisible('document-status')" :document-key="`${workspace?.id}:${active.id}`" :items="paneDocumentStatus(active)">
                     <component :is="extensions.regions['document-status-details']"
                       v-if="pane.id === store.activePaneId && extensions.regions['document-status-details']" :actions="extensionActions" />
                   </DocumentStatus>
-                  <DocumentStatus v-else-if="tab?.attachment && isVisible('document-status')" :document-key="`${workspace?.id}:${tab.attachment.id}`" :items="attachmentStatus" />
+                  <DocumentStatus v-else-if="tab?.attachment && isVisible('document-status')" :document-key="`${workspace?.id}:${tab.attachment.id}`" :items="attachmentStatus(pane.id, tab.attachment)">
+                    <button v-if="currentAttachmentStatus(pane.id, tab.attachment)?.retry" :disabled="currentAttachmentStatus(pane.id, tab.attachment)?.retryDisabled" @click="currentAttachmentStatus(pane.id, tab.attachment)?.retry?.()">{{ t('重试') }}</button>
+                  </DocumentStatus>
                 </template>
-                <template v-if="tab?.pluginView"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">{{ tab.pluginView.label }}</span></template>
+                <template v-if="tab?.pluginView"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current" :title="pluginViewHeader(store.pluginRuntime, tab.pluginView)?.title">{{ pluginViewHeader(store.pluginRuntime, tab.pluginView)?.title || tab.pluginView.label }}</span></template>
                 <template v-if="pane.activeId === PLUGINS_TAB_ID"
                   ><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current"
                     >{{ t('插件') }}</span
@@ -5188,11 +5491,14 @@ const helpBlocked = computed(() => !!(
                 >
               </WorkspaceBreadcrumb>
               <DocumentStatus v-if="(active || tab?.attachment) && !isVisible('breadcrumb') && isVisible('document-status')"
-                :document-key="`${workspace?.id}:${active?.id ?? tab?.attachment?.id}`" :items="active ? paneDocumentStatus(active) : attachmentStatus">
+                :document-key="`${workspace?.id}:${active?.id ?? tab?.attachment?.id}`" :items="active ? paneDocumentStatus(active) : attachmentStatus(pane.id, tab?.attachment)">
                 <component v-if="active && pane.id === store.activePaneId && extensions.regions['document-status-details']" :is="extensions.regions['document-status-details']"
                   :actions="extensionActions" />
+                <button v-if="!active && currentAttachmentStatus(pane.id, tab?.attachment)?.retry" :disabled="currentAttachmentStatus(pane.id, tab?.attachment)?.retryDisabled" @click="currentAttachmentStatus(pane.id, tab?.attachment)?.retry?.()">{{ t('重试') }}</button>
               </DocumentStatus>
               <div class="topbar-right">
+                <PluginViewHeader v-if="tab?.pluginView && workspace" :view="tab.pluginView" :workspace-id="workspace.id"
+                  :runtime="store.pluginRuntime.find(item => item.id === tab.pluginView?.pluginId)" :execute="store.interactWithPlugin" />
                 <button v-if="active && touchLayout && showOutline" type="button" class="icon-button"
                   :aria-label="t('文档大纲')" :aria-expanded="touchOutlineOpen"
                   @click="panel = 'outline'; touchOutlineOpen = !touchOutlineOpen">
@@ -5301,7 +5607,7 @@ const helpBlocked = computed(() => !!(
                     >
                       {{ calendarModeLabel }}<ChevronDown :size="14" />
                     </button>
-                    <div
+                    <div v-surface-motion="'App:4'"
                       v-if="calendarModeOpen"
                       class="calendar-view-menu"
                       role="menu"
@@ -5345,6 +5651,7 @@ const helpBlocked = computed(() => !!(
                       v-if="isVisible('markdown-reveal')"
                       v-model="revealMarkdown"
                       :source="paneSource(pane.activeId)"
+                      :shortcut="shortcuts.toggleMarkdownReveal"
                     />
                     <button
                       v-if="isVisible('source-mode')"
@@ -5357,6 +5664,8 @@ const helpBlocked = computed(() => !!(
                       "
                       :aria-label="paneSource(pane.activeId) ? t('返回编辑') : t('切换源码模式')"
                       :aria-pressed="paneSource(pane.activeId)"
+                      :aria-keyshortcuts="shortcutAriaLabel(shortcuts.toggleSource) || undefined"
+                      :data-tooltip-shortcut="shortcutKeys(shortcuts.toggleSource)[0]"
                       :data-tooltip="
                         editing.isManaging(pane.activeId)
                           ? t('当前编辑扩展不支持切换源码模式')
@@ -5380,7 +5689,7 @@ const helpBlocked = computed(() => !!(
                     >
                       <MoreHorizontal :size="19" />
                     </button>
-                    <div
+                    <div v-surface-motion="'App:5'"
                       v-if="menu && pane.id === store.activePaneId"
                       ref="documentMenuElement"
                       class="dropdown compact-action-menu document-dropdown"
@@ -5388,24 +5697,24 @@ const helpBlocked = computed(() => !!(
                     >
                       <PluginMenu location="document" :file-id="active.id" @selected="menu = false" />
                       <button type="button" @click="openPaneSearch(pane.id)">
-                        <Search :size="15" />{{ t('页内搜索') }}<span class="menu-shortcut">{{ shortcutHint('pageSearch') }}</span>
+                        <Search :size="15" />{{ t('页内搜索') }}<span class="menu-shortcut"><ShortcutHint :label="shortcutHint('pageSearch')" /></span>
                       </button>
                       <button type="button" @click="openPaneSearch(pane.id, true)">
-                        <Repeat2 :size="15" />{{ t('查找与替换') }}<span class="menu-shortcut">{{ shortcutHint('pageReplace') }}</span>
+                        <Repeat2 :size="15" />{{ t('查找与替换') }}<span class="menu-shortcut"><ShortcutHint :label="shortcutHint('pageReplace')" /></span>
                       </button>
                       <button
                         type="button"
                         :disabled="editorReadonly || !documentUndoAvailable"
                         @click="undoDocument"
                       >
-                        <Undo2 :size="15" />{{ t('撤销') }}<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('undo') }}</kbd>
+                        <Undo2 :size="15" />{{ t('撤销') }}<kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('undo')" /></kbd>
                       </button>
                       <button
                         type="button"
                         :disabled="editorReadonly || !documentRedoAvailable"
                         @click="redoDocument"
                       >
-                        <Redo2 :size="15" />{{ t('重做') }}<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHint('redo') }}</kbd>
+                        <Redo2 :size="15" />{{ t('重做') }}<kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHint('redo')" /></kbd>
                       </button>
                       <button
                         @click="
@@ -5413,7 +5722,7 @@ const helpBlocked = computed(() => !!(
                           store.flush();
                         "
                       >
-                        <CheckCheck :size="15" />{{ t('立即保存') }}<span class="menu-shortcut">{{ shortcutHint('save') }}</span>
+                        <CheckCheck :size="15" />{{ t('立即保存') }}<span class="menu-shortcut"><ShortcutHint :label="shortcutHint('save')" /></span>
                       </button>
                       <div class="menu-divider" role="separator" />
                       <button type="button" :disabled="!canAddDocumentProperty" @click="addDocumentProperty">
@@ -5491,24 +5800,18 @@ const helpBlocked = computed(() => !!(
                         <Clock3 :size="15" />{{ t('更新历史') }}
                       </button>
                       <DocumentGlobalMenu>
-                        <button type="button" class="page-toggle-menu-item" role="switch"
-                          :aria-checked="workspaceLocked" :disabled="!workspace"
-                          :data-tooltip="t('锁定后，整个工作区的页面进入阅读模式')"
-                          @click="toggleWorkspaceLock">
-                          <LockKeyhole :size="15" />{{ t('锁定工作区') }}<span
-                            class="menu-switch" :class="{ on: workspaceLocked }" aria-hidden="true"><span /></span>
-                        </button>
-                        <div class="menu-divider" role="separator" />
-                        <PageDisplayOptions :auto-spacing="editorPreferences.autoSpacing ?? false"
+                        <PageDisplayOptions :workspace-locked="workspaceLocked" :workspace-available="!!workspace"
+                          :auto-spacing="editorPreferences.autoSpacing ?? false"
                           :show-page-title="showPageTitle"
                           :show-document-properties="showDocumentProperties"
                           :show-outline="showOutline"
                           :show-all-line-numbers="showAllLineNumbers"
                           :detached-window="!!detachedWindow"
                           :source="paneSource(store.activeId)"
-                          @toggle="togglePageOption" />
+                          @toggle="togglePageOption" @toggle-workspace-lock="toggleWorkspaceLock" />
                       </DocumentGlobalMenu>
                       <DocumentExportMenu :disabled="exportBusy" @select="exportDocument" />
+                      <DocumentPrintButton :busy="printBusy" :shortcut="shortcuts.print" @select="printActiveDocument" />
                       <div class="menu-divider" role="separator" />
                       <button
                         class="danger-text"
@@ -5552,11 +5855,17 @@ const helpBlocked = computed(() => !!(
               <AssistantLauncher
                 v-if="assistant.available && !assistant.opened"
                 :scope="paneButterflyScope(pane.id, pane.activeId)"
+                :shortcut="shortcuts.toggleAssistant"
                 :context-label="t('聊聊这张数据表')"
                 :busy="assistant.busy || assistant.applying"
                 @open="openAssistant(pane.id, pane.activeId, { forcePanel: true })"
               />
             </div>
+            <FolderView v-if="workspace && tab?.directory" :directory="tab.directory" :entries="workspace.files"
+              :folder-home-file-name="store.workspaceSettings.folderHomeFileName"
+              :document-icons="treeDocumentIcons" :load-document-icon="loadTreeDocumentIcon"
+              @open="(file) => { store.focusPane(pane.id); void openEntry(file); }"
+              @up="() => { store.focusPane(pane.id); void openBreadcrumbDirectory(parentPath(tab.directory!.path)); }" />
             <WorkspaceViewTab
               v-if="workspace && pane.activeId.startsWith('workspace-view:')"
               :key="`${workspace.id}:${pane.activeId}`"
@@ -5641,6 +5950,7 @@ const helpBlocked = computed(() => !!(
                   @scroll.passive="scheduleActiveHeading"
                 >
                   <main class="document-main">
+                    <LayoutDocumentChrome :layout="appearance.layout" :path="active.path" />
                     <EditorTools
                       :shortcuts="shortcuts"
                       v-model:mode="toolbarMode"
@@ -5689,6 +5999,7 @@ const helpBlocked = computed(() => !!(
                             v-if="isVisible('markdown-reveal')"
                             v-model="revealMarkdown"
                             :source="paneSource(pane.activeId)"
+                            :shortcut="shortcuts.toggleMarkdownReveal"
                           />
                           <button
                             v-if="isVisible('source-mode')"
@@ -5698,6 +6009,8 @@ const helpBlocked = computed(() => !!(
                             :disabled="!!editing.active || editing.activeBusy"
                             :aria-label="paneSource(pane.activeId) ? t('返回编辑') : t('切换源码模式')"
                             :aria-pressed="paneSource(pane.activeId)"
+                            :aria-keyshortcuts="shortcutAriaLabel(shortcuts.toggleSource) || undefined"
+                            :data-tooltip-shortcut="shortcutKeys(shortcuts.toggleSource)[0]"
                             :data-tooltip="paneSource(pane.activeId) ? t('返回编辑') : t('切换源码模式')"
                             @click="setPaneSource(pane.activeId, !paneSource(pane.activeId))"
                           >
@@ -5810,7 +6123,7 @@ const helpBlocked = computed(() => !!(
                         @enter="insertBlockBelowTitle"
                         @comment="paneComments.get(pane.id)?.showDiscussion()"
                       />
-                      <SourceEditor :capabilities="store.capabilities" :preferences="editorPreferences" :suggestion-marks="suggestions.sourceMarks"
+                      <SourceEditor :reference-targets="store.referenceTargets" :capabilities="store.capabilities" :preferences="editorPreferences" :suggestion-marks="suggestions.sourceMarks"
                         :show-all-line-numbers="showAllLineNumbers"
                         v-if="paneSource(pane.activeId)"
                         :key="active.id"
@@ -5905,6 +6218,7 @@ const helpBlocked = computed(() => !!(
                 <AssistantLauncher
                   v-if="assistant.available && !assistant.opened"
                   :scope="paneButterflyScope(pane.id, active!.id)"
+                  :shortcut="shortcuts.toggleAssistant"
                   :busy="assistant.busy || assistant.applying"
                   @open="openAssistant(pane.id, active!.id, { forcePanel: true })"
                 />
@@ -5913,6 +6227,9 @@ const helpBlocked = computed(() => !!(
 
             <AttachmentPreview
               v-else-if="workspace && pane.activeId.startsWith('attachment:')"
+              status-managed
+              @status="receiveAttachmentStatus(pane.id, $event)"
+              :read-only="!!workspace.readOnly || updateLock || busy"
               :controls-target="detachedWindow ? undefined : `#attachment-controls-${pane.id}`"
               :file="tab?.attachment"
               :workspace-id="workspace.id"
@@ -5937,6 +6254,7 @@ const helpBlocked = computed(() => !!(
                 !pane.activeId.startsWith('workspace-view:') &&
                 !pane.activeId.startsWith('plugin:') &&
                 !tab?.workspaceView &&
+                !tab?.directory &&
                 !tab?.pluginView &&
                 !extensionViews.find((view) => view.id === pane.activeId)
               "
@@ -6141,27 +6459,29 @@ const helpBlocked = computed(() => !!(
       />
 
       <Teleport to="body">
-        <div
+        <div v-surface-motion="'App:6'"
           v-if="pageContextMenu && !switchingWorkspace"
           ref="pageContextMenuElement"
-          class="dropdown compact-action-menu page-context-menu"
+          class="dropdown compact-action-menu page-context-menu workspace-options-menu"
           role="menu"
           :aria-label="t('页面显示选项')"
+          tabindex="-1"
           :style="{ left: `${pageContextMenu.x}px`, top: `${pageContextMenu.y}px` }"
           @keydown="pageContextKeydown"
         >
-          <PageDisplayOptions :auto-spacing="editorPreferences.autoSpacing ?? false"
+          <PageDisplayOptions :workspace-locked="workspaceLocked" :workspace-available="!!workspace"
+            :auto-spacing="editorPreferences.autoSpacing ?? false"
             :show-page-title="showPageTitle"
             :show-document-properties="showDocumentProperties"
             :show-outline="showOutline"
             :show-all-line-numbers="showAllLineNumbers"
             :detached-window="!!detachedWindow"
             :source="paneSource(store.activeId)"
-            @toggle="togglePageOption" />
+            @toggle="togglePageOption" @toggle-workspace-lock="toggleWorkspaceLock" />
         </div>
       </Teleport>
       <Teleport to="body">
-        <div
+        <div v-surface-motion="'App:7'"
           v-if="outlineContextMenu && !switchingWorkspace"
           ref="outlineContextMenuElement"
           class="dropdown compact-action-menu page-context-menu outline-context-menu"
@@ -6310,6 +6630,8 @@ const helpBlocked = computed(() => !!(
       :mobile="mobile"
       :default-source="defaultSource"
       :theme="theme"
+      :appearance="appearance"
+      @appearance="appearanceController.select($event)"
       :visual-font-choice="visualFontChoice"
       :custom-font-name="customFontName"
       :reveal-markdown="revealMarkdown"
@@ -6363,7 +6685,7 @@ const helpBlocked = computed(() => !!(
     </div>
 
     <NewTabPicker v-if="modal === 'newTab'" @close="modal = ''" @new-document="createNewDocument" @new-table="createNewEntry('table')" />
-    <div
+    <div v-surface-motion="'App:8'"
       v-if="modal && modal !== 'newTab'"
       class="modal-backdrop"
       :class="{ 'search-backdrop': modal === 'search' }"

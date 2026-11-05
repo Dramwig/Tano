@@ -61,3 +61,25 @@ it('reports partial read failures and rejects queries bound to a different works
   await expect(store.getReferenceContext(target, undefined, { id: 'another workspace', path: store.workspace!.path })).rejects.toThrow('切换');
   await expect(store.assistantReferenceContext({ id: store.workspace!.id, path: store.workspace!.path, epoch: store.assistantEpoch - 1 }, target)).rejects.toThrow('会话');
 });
+
+it('reuses file reference targets across object changes and invalidates revisions for drafts and same-size external edits', async () => {
+  const store = useWorkspaceStore();
+  await store.openWorkspace();
+  await store.createObject({ type: 'event', name: 'Before', description: '', archived: false, properties: {} });
+  const file = store.workspace!.files.find(file => file.id === store.active!.id)!;
+  const target = store.referenceTargets.find(target => target.id === file.id)!;
+  const revision = store.referenceRevision;
+  store.objects[0]!.object.name = 'After';
+  expect(store.referenceTargets.find(item => item.id === file.id)).toBe(target);
+  expect(store.referenceRevision).not.toBe(revision);
+  const objectRevision = store.referenceRevision;
+  store.editDocument(file.id, store.active!.content + '\nDraft');
+  expect(store.referenceRevision).not.toBe(objectRevision);
+  const draftRevision = store.referenceRevision;
+  file.contentHash = 'new-content-hash';
+  expect(store.referenceRevision).not.toBe(draftRevision);
+  const hashRevision = store.referenceRevision;
+  file.path = 'renamed.md';
+  expect(store.referenceRevision).not.toBe(hashRevision);
+  expect(store.referenceTargets.find(item => item.id === file.id)?.path).toBe('renamed.md');
+});

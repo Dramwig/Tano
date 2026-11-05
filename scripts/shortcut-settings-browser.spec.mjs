@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test';
+const origin = process.env.TANO_SHORTCUT_TEST_URL || 'http://127.0.0.1:43845';
 async function prepare(page) {
   await page.addInitScript(() => localStorage.setItem('tano.preference.locale', 'zh-CN'));
-  await page.goto('http://127.0.0.1:43845');
+  await page.goto(origin);
   await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$pinia?._s.get('workspace')?.workspace);
   await page.evaluate(async () => { await document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').create('快捷键验证.md', false, 'Alpha\n'); });
   await expect(page.locator('.ProseMirror p').first()).toHaveText('Alpha');
@@ -27,6 +28,61 @@ test('shows shortcut conflicts directly under the active binding and clears them
   await row.getByRole('button', { name: '取消编辑', exact: true }).click();
   await expect(alert).toHaveCount(0);
   await expect(control).toContainText('Ctrl+O');
+});
+
+test('toggles source modes from the editor and advertises their shortcuts', async ({ page }) => {
+  await prepare(page);
+  const sourceToggle = page.getByRole('button', { name: '切换源码模式', exact: true });
+  const reveal = page.getByRole('button', { name: '光标展开源码', exact: true });
+  await expect(sourceToggle).toHaveAttribute('aria-keyshortcuts', 'Control+Shift+E');
+  await expect(reveal).toHaveAttribute('aria-keyshortcuts', 'Control+Shift+M');
+  await expect(sourceToggle).toHaveAttribute('data-tooltip-shortcut', 'Mod+Shift+E');
+  await expect(reveal).toHaveAttribute('data-tooltip-shortcut', 'Mod+Shift+M');
+  const paragraph = page.locator('.ProseMirror p').first();
+  await paragraph.click(); await page.keyboard.press('End');
+  await page.keyboard.press('Control+Shift+m');
+  await expect(reveal).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.ProseMirror')).toBeFocused();
+  await page.keyboard.press('Control+Shift+m');
+  await expect(reveal).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Control+Shift+e');
+  const source = page.locator('.cm-content');
+  await expect(source).toBeVisible(); await expect(source).toBeFocused();
+  await expect(reveal).toBeDisabled();
+  await page.keyboard.press('Control+Shift+m');
+  await expect(reveal).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Control+Shift+e');
+  await expect(paragraph).toHaveText('Alpha');
+  await expect(page.locator('.ProseMirror')).toBeFocused();
+  await page.keyboard.type('X');
+  await expect(paragraph).toHaveText('AlphaX');
+});
+
+test('custom source shortcuts apply immediately, persist, and stay inactive while settings are open', async ({ page }) => {
+  await prepare(page); await settings(page);
+  const sourceBinding = page.getByRole('button', { name: '设置切换源码模式快捷键', exact: true });
+  const revealBinding = page.getByRole('button', { name: '设置光标展开源码快捷键', exact: true });
+  await expect(sourceBinding).toContainText('Ctrl+Shift+E');
+  await expect(revealBinding).toContainText('Ctrl+Shift+M');
+  await sourceBinding.click(); await sourceBinding.press('Alt+e');
+  await revealBinding.click(); await revealBinding.press('Alt+m');
+  await page.keyboard.press('Alt+e'); await page.keyboard.press('Alt+m');
+  await expect(page.locator('.cm-content')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '光标展开源码', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: '关闭设置', exact: true }).click();
+  const paragraph = page.locator('.ProseMirror p').first();
+  await paragraph.click();
+  await page.keyboard.press('Control+Shift+e'); await page.keyboard.press('Control+Shift+m');
+  await expect(page.locator('.cm-content')).toHaveCount(0);
+  const reveal = page.getByRole('button', { name: '光标展开源码', exact: true });
+  await expect(reveal).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Alt+m');
+  await expect(reveal).toHaveAttribute('aria-pressed', 'false');
+  await page.keyboard.press('Alt+e'); await expect(page.locator('.cm-content')).toBeVisible();
+  await page.keyboard.press('Alt+e'); await expect(paragraph).toBeVisible();
+  await page.reload(); await settings(page);
+  await expect(sourceBinding).toContainText('Alt+E');
+  await expect(revealBinding).toContainText('Alt+M');
 });
 test('shows and independently edits multiple redo keys, persists them, and routes live editor input', async ({ page }) => {
   await prepare(page);

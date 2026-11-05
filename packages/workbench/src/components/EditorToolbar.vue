@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { animate } from 'motion/mini';
@@ -12,28 +13,13 @@ import {
   Superscript,
   ChevronRight,
   Check,
-  Heading1,
   Heading2,
-  Heading3,
-  Heading4,
   Heading,
   List,
-  ListOrdered,
   Quote,
   ListTodo,
-  FileSymlink,
   Image,
   Table,
-  Workflow,
-  Info,
-  ListCollapse,
-  Paperclip,
-  PanelsTopLeft,
-  PanelTop,
-  Columns2,
-  Minus,
-  SquareSigma,
-  Plus,
   Type,
   Bot,
   MessageSquare,
@@ -48,6 +34,7 @@ import {
 } from '@tano/editor/selection-context';
 import type { EditorSelectionContext } from '@tano/editor/selection-context';
 import type { DocumentFeatures } from '@tano/editor/runtime';
+import { blockIcons, headingIcons, customCalloutIcon, blockIconStrokeWidth } from '@tano/editor/block-icons';
 import TextStyleMenu from './TextStyleMenu.vue';
 import { useFormattingShortcuts } from '../use-formatting-shortcuts';
 const formattingShortcuts = useFormattingShortcuts();
@@ -76,7 +63,13 @@ const open = ref(false);
 const headingsOpen = ref(false);
 const headingPanel = ref<HTMLElement>();
 const headingGroupId = useId();
-const headingIcons = [Heading1, Heading2, Heading3, Heading4];
+const dividerPixelRatio = ref(window.devicePixelRatio || 1);
+const dividerThickness = computed(() =>
+  `${Math.max(1, Math.round(dividerPixelRatio.value)) / dividerPixelRatio.value}px`,
+);
+function updateDividerPixelRatio() {
+  dividerPixelRatio.value = window.devicePixelRatio || 1;
+}
 watch(open, () => { headingsOpen.value = false; });
 function headingTrigger() {
   return root.value?.querySelector<HTMLButtonElement>('[data-heading-trigger]');
@@ -101,6 +94,7 @@ async function openHeadings(focus = false) {
   const y = Math.max(8, Math.min(anchor.top, window.innerHeight - panel.offsetHeight - 8));
   panel.style.left = `${x - parent.left - parentElement.clientLeft}px`;
   panel.style.top = `${y - parent.top - parentElement.clientTop}px`;
+  panel.dataset.surfaceSide = x < bounds.left ? 'left' : 'right';
   if (focus) (panel.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')
     ?? panel.querySelector<HTMLButtonElement>('button'))?.focus();
 }
@@ -127,11 +121,13 @@ function closeOtherMenu(event: Event) {
   headingsOpen.value = false;
 }
 onMounted(() => {
+  window.addEventListener('resize', updateDividerPixelRatio);
   window.addEventListener('resize', closeHeadingOnViewportChange);
   window.addEventListener('scroll', closeHeadingOnViewportChange, true);
   window.addEventListener(toolbarMenuOpenEvent, closeOtherMenu);
 });
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateDividerPixelRatio);
   window.removeEventListener('resize', closeHeadingOnViewportChange);
   window.removeEventListener('scroll', closeHeadingOnViewportChange, true);
   window.removeEventListener(toolbarMenuOpenEvent, closeOtherMenu);
@@ -149,27 +145,6 @@ const icons = {
   FootnoteReference: Superscript,
   Mention: AtSign,
 };
-const blockIcons = {
-  ObjectReference: FileSymlink,
-  Heading,
-  Paragraph: Type,
-  Quote,
-  BulletList: List,
-  OrderedList: ListOrdered,
-  TodoList: ListTodo,
-  CodeBlock: Code,
-  ImageBlock: Image,
-  Table,
-  MermaidBlock: Workflow,
-  Callout: Info,
-  Toggle: ListCollapse,
-  FileBlock: Paperclip,
-  Embed: PanelTop,
-  Tabs: PanelsTopLeft,
-  Columns: Columns2,
-  HorizontalRule: Minus,
-  MathBlock: SquareSigma,
-};
 const blockMenuGroups = [
   ['Paragraph', 'Heading'],
   ['BulletList', 'OrderedList', 'TodoList', 'Quote', 'Callout'],
@@ -180,7 +155,10 @@ const blockMenuGroups = [
 const availableBlocks = computed(() => blockMenuGroups
   .map(types => types
     .map(type => blockTypes.find(item => item.type === type)!)
-    .filter(item => commandEnabled(item.command, props.enabledLevels, props.features)))
+    .filter(item => !insertionCommands.has(item.command)
+      && commandEnabled(item.command, props.enabledLevels, props.features)
+      && (props.context.availableBlockCommands?.includes(item.command)
+        ?? (props.context.canTransform || wrappingCommands.has(item.command)))))
   .filter(items => items.length > 0)
   .flatMap((items, groupIndex) => items.map((item, index) => ({
     ...item,
@@ -362,6 +340,9 @@ function animateActions(element: Element, done: () => void, entering: boolean) {
   const margin = props.vertical ? 'marginBlockEnd' : 'marginInlineEnd';
   const previous = host.getBoundingClientRect()[axis];
   const interrupted = actionMotions.has(host);
+  const currentStyle = getComputedStyle(host);
+  const previousOpacity = Number(currentStyle.opacity);
+  const previousMargin = parseFloat(currentStyle[margin]) || 0;
   clearActionMotion(host);
   if (entering) enableEnteringActions(host);
   else disableLeavingActions(host);
@@ -374,8 +355,8 @@ function animateActions(element: Element, done: () => void, entering: boolean) {
   host.style.overflow = 'hidden';
   const animation = animate(host, {
     [axis]: [entering && !interrupted ? 0 : previous, entering ? size : 0],
-    [margin]: [entering ? -gap : 0, entering ? 0 : -gap],
-    opacity: entering ? [0, 1] : [1, 0],
+    [margin]: [interrupted ? previousMargin : entering ? -gap : 0, entering ? 0 : -gap],
+    opacity: [interrupted ? previousOpacity : entering ? 0 : 1, entering ? 1 : 0],
   }, { duration: 0.2, ease: [0.22, 1, 0.36, 1] });
   actionMotions.set(host, animation);
   void animation.finished.then(() => {
@@ -391,6 +372,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
   <div
     ref="root"
     class="contextual-toolbar"
+    :style="{ '--toolbar-divider-thickness': dividerThickness }"
     :class="compact ? 'selection-format-toolbar' : 'editor-toolbar'"
     :data-selection-level="source ? 'source' : context.level"
     role="toolbar"
@@ -418,11 +400,11 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
             @click="toggleBlockMenu"
           >
             <span ref="blockContent" class="block-type-content">
-              <component :is="blockIcon" :size="17" aria-hidden="true" />
+              <component :is="blockIcon" :size="17" :stroke-width="blockIconStrokeWidth" aria-hidden="true" />
               <span v-if="!compact">{{ blockLabel }}</span>
             </span>
           </button>
-          <div
+          <div v-surface-motion="'EditorToolbar:0'"
             v-if="open && !disabled"
             class="dropdown compact-action-menu block-type-menu panel-scrollbar"
             :aria-label="t('Block Level 选项')"
@@ -433,15 +415,12 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
                 :data-feature-level="item.level"
                 :data-heading-trigger="item.type === 'Heading' ? '' : undefined"
                 type="button"
-                :disabled="!context.canTransform && !insertionCommands.has(item.command) && !wrappingCommands.has(item.command)"
                 :class="{ 'is-current': context.block === item.type }"
                 :aria-pressed="item.type === 'Heading' ? undefined : context.block === item.type"
                 :aria-expanded="item.type === 'Heading' ? headingsOpen : undefined"
                 :aria-controls="item.type === 'Heading' ? headingGroupId : undefined"
                 :data-tooltip="
-                  item.type === 'Heading' ? t('标题级别') : insertionCommands.has(item.command)
-                    ? t('在当前块后插入，空段落会替换')
-                    : item.command === 'mermaid'
+                  item.type === 'Heading' ? t('标题级别') : item.command === 'mermaid'
                       ? t('转换为 Mermaid 代码块')
                       : t('转换当前块')
                 "
@@ -450,16 +429,15 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
                 @keydown.right="item.type === 'Heading' && ($event.preventDefault(), openHeadings(true))"
                 @click="item.type === 'Heading' ? openHeadings($event.detail === 0) : run(item.command)"
               >
-                <component :is="blockIcons[item.type]" class="block-type-icon" :size="16" aria-hidden="true" />
+                <component :is="blockIcons[item.type]" class="block-type-icon" :size="16" :stroke-width="blockIconStrokeWidth" aria-hidden="true" />
                 <span class="block-type-label"
                   >{{ item.label
                   }}<small v-if="!compact">{{ item.type }} · Level {{ item.level }}</small></span
                 ><ChevronRight v-if="item.type === 'Heading'" :size="14" aria-hidden="true" />
-                <Plus v-else-if="insertionCommands.has(item.command)" :size="13" aria-hidden="true" />
               </button>
               <button v-if="item.type === 'Callout'" type="button" data-feature-level="1"
                 @mousedown.prevent @click="run('callout', 'CUSTOM')">
-                <span class="block-type-icon" aria-hidden="true">💡</span>
+                <component :is="customCalloutIcon" class="block-type-icon" :size="16" :stroke-width="blockIconStrokeWidth" aria-hidden="true" />
                 <span class="block-type-label">{{ t('自定义块') }}</span>
               </button>
             </template>
@@ -473,7 +451,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
               <option value="CUSTOM">{{ t('自定义块') }}</option>
             </select>
           </div>
-          <div v-if="open && headingsOpen && !disabled" :id="headingGroupId" ref="headingPanel"
+          <div v-surface-motion="'EditorToolbar:1'" v-if="open && headingsOpen && !disabled" :id="headingGroupId" ref="headingPanel"
             class="heading-submenu compact-action-menu panel-scrollbar" role="group" :aria-label="t('标题级别')"
             @keydown="headingPanelKey">
             <button v-for="(icon, index) in headingIcons" :key="index" type="button"
@@ -481,7 +459,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
               :disabled="disabled || !context.canTransform"
               @mousedown.prevent
               @click="run('heading', String(index + 1))">
-              <component :is="icon" class="block-type-icon" :size="16" aria-hidden="true" />
+              <component :is="icon" class="block-type-icon" :size="16" :stroke-width="blockIconStrokeWidth" aria-hidden="true" />
               <span class="block-type-label">{{ t('{0} 级标题', [index + 1]) }}</span>
               <Check v-if="context.block === 'Heading' && context.headingLevel === index + 1" :size="14" aria-hidden="true" />
             </button>
@@ -528,6 +506,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
       </div>
       <!-- Keep side buttons mounted so an interrupted transition can reverse in place. -->
       <span v-if="!compact && (context.level === 'block' || useCompactActions)" class="toolbar-divider" aria-hidden="true" />
+      <span v-if="compact && context.level === 'inline' && primaryInline.length" class="toolbar-divider toolbar-group-divider" aria-hidden="true" />
       <Transition
         :css="false"
         @enter="(element, done) => animateActions(element, done, true)"
@@ -542,7 +521,6 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
           class="inline-tools"
         >
           <div class="format-actions inline-actions">
-            <span v-if="compact && primaryInline.length" class="toolbar-divider toolbar-group-divider" aria-hidden="true" />
             <button
               v-for="item in primaryInline"
               :key="item.type"
@@ -642,7 +620,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
         <option value="CAUTION">{{ t('注意') }}</option>
         <option value="CUSTOM">{{ t('自定义块') }}</option>
       </select>
-      <form
+      <form v-surface-motion="'EditorToolbar:2'"
         v-if="form && !disabled"
         class="toolbar-input-panel"
         :aria-label="formLabel"
@@ -737,13 +715,14 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
   display: block;
   flex-shrink: 0;
   align-self: center;
-  width: 1px;
+  /* Keep both separators equally thick at fractional display scales. */
+  width: var(--toolbar-divider-thickness);
   height: 20px;
   margin: 0 3px;
 }
 .contextual-toolbar[aria-orientation='vertical'] .toolbar-group-divider {
   width: 22px;
-  height: 1px;
+  height: var(--toolbar-divider-thickness);
   margin: 3px 0;
 }
 .selection-format-toolbar {

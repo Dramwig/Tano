@@ -50,6 +50,22 @@ describe('assistant session coordination', () => {
     await vi.waitFor(() => expect(store.loading).toBe(false));
     return store;
   }
+  it('keeps connection status caches on reload and clears them when configuration changes', async () => {
+    const store = await ready();
+    await store.reloadConnections();
+    const fingerprint = JSON.stringify(store.connections[0]);
+    store.connectionCheckResults.connection = { fingerprint, message: 'ok', failed: false, checkedAt: Date.now(), elapsedMs: 100 };
+    store.connectionQuotaResults.connection = { fingerprint, result: { checkedAt: Date.now(), items: [] } };
+    await store.reloadConnections();
+    expect(store.connectionCheckResults.connection.elapsedMs).toBe(100);
+    expect(store.connectionQuotaResults.connection).toBeDefined();
+    vi.mocked(transport.connections).mockResolvedValueOnce([{ ...connection, endpoint: 'https://changed.example/v1' }]);
+    await store.reloadConnections();
+    await vi.waitFor(() => {
+      expect(store.connectionCheckResults.connection).toBeUndefined();
+      expect(store.connectionQuotaResults.connection).toBeUndefined();
+    });
+  });
   it.each(['inline', 'panel'] as const)('keeps progress-only %s requests running until the executor receives a final answer', async mode => {
     const store = mode === 'inline' ? useInlineAssistantStore() : await ready();
     await vi.waitFor(() => expect(store.loading).toBe(false));
@@ -75,6 +91,9 @@ describe('assistant session coordination', () => {
     expect(assistantAnswerText(reply)).toBe('核对完成。'); expect(requests).toBe(2);
     const saved = parseAssistantSession(JSON.parse(JSON.stringify(store.session!)));
     expect(assistantAnswerText(saved.messages.at(-1)!)).toBe('核对完成。');
+    expect(saved.messages.at(-1)).toMatchObject({ connectionId: connection.id, connectionName: connection.name });
+    saved.connectionId = 'another-connection';
+    expect(parseAssistantSession(saved).messages.at(-1)!.connectionId).toBe(connection.id);
   });
   it.each(['cancel', 'disconnect'] as const)('preserves a real saved edit when the following answer ends with %s', async ending => {
     const store = await ready(); await store.selectModel('test');

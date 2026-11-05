@@ -14,10 +14,13 @@ function makeAssistant() {
   return reactive({
     available: true, canConfigure: true, demo: false, busy: false, loading: false,
     connections: [{ ...connection }],
+    connectionCheckResults: {}, connectionQuotaResults: {},
     reloadConnections: vi.fn(async () => {}),
+    readConnectionKey: vi.fn(async (_id: string) => 'saved-test-key'),
     saveConnection: vi.fn(async (_config: Omit<AssistantConnection, 'hasKey'>, _key?: string) => {}),
     removeConnection: vi.fn(async (_id: string) => {}),
     checkConnection: vi.fn(async (_id: string, _signal: AbortSignal) => 2),
+    queryQuota: vi.fn(async (_id: string) => ({ checkedAt: Date.now(), items: [{ label: '额度', remaining: 75, unit: '%' }] })),
   });
 }
 let assistant: ReturnType<typeof makeAssistant>;
@@ -94,6 +97,48 @@ async function openDeletion() {
   return trigger;
 }
 
+it('duplicates settings and the saved API key under a new identity only after saving', async () => {
+  assistant.connections[0] = { ...connection, icon: 'openrouter', quota: { mode: 'openrouter' } };
+  await openMenu(); button('复制连接').click(); await nextTick();
+  expect(document.querySelector('[role="menu"]')).toBeNull();
+  expect(dialog().textContent).toContain('新建连接');
+  expect(nameInput().value).toBe('已有连接（副本）');
+  expect(assistant.saveConnection).not.toHaveBeenCalled();
+  expect(assistant.readConnectionKey).not.toHaveBeenCalled();
+  submit(); await vi.waitFor(() => expect(dialog()).toBeNull());
+  const copied = assistant.saveConnection.mock.lastCall![0];
+  expect(copied.id).not.toBe(connection.id);
+  const { hasKey, ...config } = connection;
+  expect(copied).toMatchObject({ ...config, id: copied.id, name: '已有连接（副本）', icon: 'openrouter', quota: { mode: 'openrouter' } });
+  expect(copied.quota).not.toBe(assistant.connections[0].quota);
+  expect(assistant.saveConnection.mock.lastCall![1]).toBe('saved-test-key');
+  expect(assistant.connections[0].name).toBe(connection.name);
+});
+
+it('keeps a failed key copy editable for retry or replacement', async () => {
+  assistant.readConnectionKey.mockRejectedValueOnce(new Error('读取密钥失败'));
+  await openMenu(); button('复制连接').click(); await nextTick();
+  submit();
+  await vi.waitFor(() => expect(dialog().querySelector('[role="alert"]')?.textContent).toContain('读取密钥失败'));
+  expect(assistant.saveConnection).not.toHaveBeenCalled();
+  await input(dialog().querySelector('#assistant-api-key')!, 'replacement-key');
+  submit(); await vi.waitFor(() => expect(dialog()).toBeNull());
+  expect(assistant.readConnectionKey).toHaveBeenCalledTimes(1);
+  expect(assistant.saveConnection.mock.lastCall![1]).toBe('replacement-key');
+});
+
+it('cancels a copy without saving and duplicates CLI settings without reading an API key', async () => {
+  const trigger = await openMenu(); button('复制连接').click(); await nextTick();
+  button('取消', dialog()).click(); await nextTick();
+  expect(document.activeElement).toBe(trigger);
+  expect(assistant.saveConnection).not.toHaveBeenCalled();
+  assistant.connections[0] = { ...connection, kind: 'codex-cli', cliPath: 'C:/tools/codex.exe', reasoningEffort: 'high' };
+  await openMenu(); button('复制连接').click(); await nextTick();
+  submit(); await vi.waitFor(() => expect(dialog()).toBeNull());
+  expect(assistant.readConnectionKey).not.toHaveBeenCalled();
+  expect(assistant.saveConnection).toHaveBeenCalledWith(expect.objectContaining({ kind: 'codex-cli', cliPath: 'C:/tools/codex.exe', reasoningEffort: 'high' }), undefined);
+});
+
 it('requires confirmation before deletion and preserves the connection when cancelled or dismissed', async () => {
   const trigger = await openDeletion();
   expect(dialog().open).toBe(true);
@@ -163,6 +208,10 @@ it('opens only one actions menu and supports keyboard navigation, Escape, and ou
   menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
   expect(document.activeElement).toBe(button('编辑连接', menu));
   menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  expect(document.activeElement).toBe(button('复制连接', menu));
+  menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  expect(document.activeElement).toBe(button('配置额度查询', menu));
+  menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
   expect(document.activeElement).toBe(button('检测连通', menu));
   menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await nextTick();
   expect(document.querySelector('[role="menu"]')).toBeNull();
@@ -171,7 +220,7 @@ it('opens only one actions menu and supports keyboard navigation, Escape, and ou
   const reopenedMenu = document.querySelector<HTMLElement>('[role="menu"]')!;
   expect(document.activeElement).toBe(reopenedMenu);
   reopenedMenu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
-  expect(document.activeElement).toBe(button('编辑连接', reopenedMenu));
+  expect(document.activeElement).toBe(button('配置额度查询', reopenedMenu));
   reopenedMenu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await nextTick();
   trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); await nextTick();
   expect(document.activeElement).toBe(button('检测连通'));
@@ -183,23 +232,81 @@ it('opens only one actions menu and supports keyboard navigation, Escape, and ou
   expect(document.querySelector('[role="menu"]')).toBeNull();
 });
 
-it('checks the chosen connection, blocks repeated checks, and shows its result without editing', async () => {
+it('checks the chosen connection independently and blocks only duplicate checks', async () => {
   let finish!: (count: number) => void;
   assistant.checkConnection.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
   await openMenu(); button('检测连通').click(); await nextTick();
   expect(assistant.checkConnection).toHaveBeenCalledWith(connection.id, expect.any(AbortSignal));
   expect(document.querySelector('[role="menu"]')).toBeNull();
   expect(root.querySelector('[role="status"]')?.textContent).toContain('正在检测');
-  expect(root.querySelector<HTMLButtonElement>('[aria-label="删除连接 已有连接"]')!.disabled).toBe(true);
+  expect(root.querySelector<HTMLButtonElement>('[aria-label="删除连接 已有连接"]')!.disabled).toBe(false);
   await openMenu();
-  expect(button('正在检测…').disabled).toBe(true);
-  button('正在检测…').click();
+  expect(button('正在检测…', document.querySelector('[role="menu"]')!).disabled).toBe(true);
+  for (const label of ['编辑连接', '复制连接', '配置额度查询']) expect(button(label).disabled).toBe(false);
+  button('正在检测…', document.querySelector('[role="menu"]')!).click();
   expect(assistant.checkConnection).toHaveBeenCalledOnce();
   finish(3);
   await vi.waitFor(() => expect(root.querySelector('[role="status"]')?.textContent).toContain('已读取 3 个模型'));
   expect(root.querySelector<HTMLButtonElement>('[aria-label="删除连接 已有连接"]')!.disabled).toBe(false);
+  expect(root.querySelector('.connection-check .connection-status-summary')?.textContent).toMatch(/\d+ ms/);
+  expect(root.querySelector('.connection-check-values')?.textContent).toContain('检测时间');
   expect(assistant.saveConnection).not.toHaveBeenCalled();
   expect(changed).not.toHaveBeenCalled();
+  assistant.connections[0].endpoint = 'https://changed.example/v1';
+  await nextTick();
+  expect(root.querySelector('.connection-check')).toBeNull();
+});
+
+it('restores completed check results when settings are reopened', async () => {
+  await openMenu(); button('检测连通').click();
+  await vi.waitFor(() => expect(root.querySelector('.connection-check-values')).not.toBeNull());
+  const summary = root.querySelector('.connection-check .connection-status-summary')!.textContent;
+  app.unmount();
+  app = createApp(() => h(AssistantSettings, { onChanged: changed })); app.mount(root);
+  await nextTick();
+  expect(root.querySelector('.connection-check .connection-status-summary')?.textContent).toBe(summary);
+  expect(assistant.checkConnection).toHaveBeenCalledOnce();
+});
+
+it('allows checks on different connections and quota queries while a check is pending', async () => {
+  assistant.connections[0].kind = 'codex-cli';
+  assistant.connections.push({ ...connection, id: 'second', name: '第二连接' });
+  const finish = new Map<string, (count: number) => void>();
+  assistant.checkConnection.mockImplementation(id => new Promise(resolve => finish.set(id, resolve)));
+  await openMenu(); button('检测连通').click(); await nextTick();
+  await openMenu(); button('查询额度').click();
+  await vi.waitFor(() => expect(assistant.queryQuota).toHaveBeenCalledWith('existing'));
+  await openMenu(1);
+  expect(button('检测连通').disabled).toBe(false);
+  button('检测连通').click(); await nextTick();
+  expect(assistant.checkConnection).toHaveBeenCalledTimes(2);
+  finish.get('second')!(4);
+  await vi.waitFor(() => expect(root.textContent).toContain('已读取 4 个模型'));
+  await openMenu();
+  expect(button('正在检测…', document.querySelector('[role="menu"]')!).disabled).toBe(true);
+  button('编辑连接').click(); await nextTick();
+  expect(dialog().open).toBe(true);
+  finish.get('existing')!(1); await nextTick();
+});
+
+it('cancels stale checks after edits or deletion without clearing a newer check', async () => {
+  const finish: Array<(count: number) => void> = [];
+  assistant.checkConnection.mockImplementation(() => new Promise(resolve => finish.push(resolve)));
+  await openMenu(); button('检测连通').click(); await nextTick();
+  const oldSignal = assistant.checkConnection.mock.lastCall![1];
+  assistant.connections[0].endpoint = 'https://changed.example/v1'; await nextTick();
+  expect(oldSignal.aborted).toBe(true);
+  expect(root.querySelector('.connection-check')).toBeNull();
+  await openMenu(); button('检测连通').click(); await nextTick();
+  const newSignal = assistant.checkConnection.mock.lastCall![1];
+  finish[0](99); await nextTick(); await nextTick();
+  expect(root.textContent).not.toContain('已读取 99 个模型');
+  await openMenu();
+  expect(button('正在检测…', document.querySelector('[role="menu"]')!).disabled).toBe(true);
+  assistant.connections.splice(0, 1); await nextTick();
+  expect(newSignal.aborted).toBe(true);
+  finish[1](3); await nextTick(); await nextTick();
+  expect(root.querySelector('.connection-check')).toBeNull();
 });
 
 it('shows a failed connectivity check and allows retrying', async () => {
@@ -207,6 +314,7 @@ it('shows a failed connectivity check and allows retrying', async () => {
   await openMenu(); button('检测连通').click();
   await vi.waitFor(() => expect(root.querySelector('[role="alert"]')?.textContent).toContain('API 密钥无效'));
   expect(root.querySelector('[role="status"]')).toBeNull();
+  expect(root.querySelector('.connection-check .connection-status-summary')?.textContent).toMatch(/检测失败 · \d+ ms/);
   await openMenu(); button('检测连通').click();
   await vi.waitFor(() => expect(root.querySelector('[role="status"]')?.textContent).toContain('连接成功'));
   expect(root.querySelector('[role="alert"]')).toBeNull();
@@ -217,6 +325,7 @@ it('describes CLI discovery accurately and cancels pending checks when unmounted
   await openMenu(); button('检测连通').click();
   await vi.waitFor(() => expect(root.querySelector('[role="status"]')?.textContent).toContain('CLI 可执行文件可用'));
   expect(root.querySelector('[role="status"]')?.textContent).toContain('登录状态与模型连通需在会话中确认');
+  expect(root.querySelector('.connection-check .connection-status-summary')?.textContent?.trim()).toMatch(/^\d+ ms$/);
   let finish!: (count: number) => void;
   assistant.checkConnection.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
   await openMenu(); button('检测连通').click(); await nextTick();
@@ -309,19 +418,23 @@ it('keeps a failed edit and its error in the modal so it can be retried', async 
   expect(changed).toHaveBeenCalledOnce();
 });
 
-it('clears the saved-key mask on focus while preserving the key when saved without a replacement', async () => {
+it('restores the saved-key mask on blur while preserving the key without a replacement', async () => {
   await openEditor(true);
   const secret = dialog().querySelector<HTMLInputElement>('#assistant-api-key')!;
   expect(secret.type).toBe('password');
   expect(secret.placeholder).toMatch(/^•+$/);
   expect(secret.value).toBe('');
-  expect(dialog().querySelector<HTMLButtonElement>('.assistant-secret-toggle')!.disabled).toBe(true);
+  expect(dialog().querySelector<HTMLButtonElement>('.assistant-secret-toggle')!.disabled).toBe(false);
+  secret.focus(); await nextTick();
+  expect(secret.placeholder).toBe('');
+  secret.blur(); await nextTick();
+  expect(secret.placeholder).toMatch(/^•+$/);
   secret.focus(); await nextTick();
   expect(secret.placeholder).toBe('');
   await input(secret, 'test-replacement');
   await input(secret, '');
   secret.blur(); await nextTick();
-  expect(secret.placeholder).toBe('');
+  expect(secret.placeholder).toMatch(/^•+$/);
   await input(nameInput(), '仅修改名称');
   submit();
   await vi.waitFor(() => expect(dialog()).toBeNull());
@@ -366,4 +479,130 @@ it('shows platform connections without personal editing actions', async () => {
   root.querySelector<HTMLButtonElement>('.assistant-connection-more')!.click(); await nextTick();
   expect(button('编辑连接')).toBeUndefined(); button('刷新模型名单').click();
   await vi.waitFor(() => expect(root.textContent).toContain('平台已开放 2 个模型'));
+});
+
+it('edits and saves a connection avatar without changing its identity', async () => {
+  assistant.connections[0]!.icon = 'deepseek';
+  await openEditor(true);
+  const trigger = dialog().querySelector<HTMLButtonElement>('.connection-avatar-trigger')!;
+  trigger.click(); await nextTick(); await nextTick();
+  expect(dialog().querySelector('[aria-label="DeepSeek"]')?.getAttribute('aria-pressed')).toBe('true');
+  dialog().querySelector<HTMLButtonElement>('[aria-label="硅基流动"]')!.click();
+  await nextTick();
+  expect(dialog().querySelector('.connection-avatar-popover')).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+  submit();
+  await nextTick();
+  expect(assistant.saveConnection).toHaveBeenCalledWith(expect.objectContaining({ id: 'existing', icon: 'siliconcloud' }), '');
+});
+
+it('right-aligns the avatar picker and saves a different random generic icon', async () => {
+  assistant.connections[0]!.icon = 'agent-robot';
+  await openEditor(true);
+  const trigger = dialog().querySelector<HTMLButtonElement>('.connection-avatar-trigger')!;
+  vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({ left: 100, right: 700, top: 100, bottom: 140 } as DOMRect);
+  vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(320);
+  vi.spyOn(Math, 'random').mockReturnValue(0);
+  trigger.click(); await nextTick(); await nextTick();
+  expect(dialog().querySelector<HTMLElement>('.connection-avatar-popover')!.style.left).toBe('380px');
+  expect(dialog().querySelectorAll('.connection-icon-options button')).toHaveLength(24);
+  button('随机选择', dialog()).click(); await nextTick();
+  expect(dialog().querySelector('.connection-avatar-popover')).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+  submit(); await nextTick();
+  expect(assistant.saveConnection).toHaveBeenCalledWith(expect.objectContaining({ id: 'existing', icon: 'agent-cat' }), '');
+});
+
+it('switches avatar styles and preserves the selected style when reopening', async () => {
+  await openEditor(true);
+  const trigger = dialog().querySelector<HTMLButtonElement>('.connection-avatar-trigger')!;
+  trigger.click(); await nextTick(); await nextTick();
+  button('彩色', dialog()).click(); await nextTick();
+  expect(dialog().querySelectorAll('.connection-icon-options button')).toHaveLength(24);
+  dialog().querySelector<HTMLButtonElement>('.connection-icon-options [aria-label="宇航员"]')!.click();
+  await nextTick(); trigger.click(); await nextTick(); await nextTick();
+  expect(button('彩色', dialog()).getAttribute('aria-pressed')).toBe('true');
+  expect(dialog().querySelector('.connection-icon-options [aria-label="宇航员"]')?.getAttribute('aria-pressed')).toBe('true');
+  button('像素', dialog()).click(); await nextTick();
+  expect(dialog().querySelectorAll('.connection-icon-options button')).toHaveLength(12);
+  dialog().querySelector<HTMLButtonElement>('[aria-label="Pixel 1"]')!.click();
+  await nextTick(); submit(); await nextTick();
+  expect(assistant.saveConnection).toHaveBeenCalledWith(expect.objectContaining({ icon: 'agent-pixel-1' }), '');
+});
+
+it('keeps quota configuration out of the model connection editor', async () => {
+  await openEditor(true);
+  expect(dialog().querySelector('.quota-panel')).toBeNull();
+  expect(dialog().textContent).not.toContain('额度查询');
+});
+it('places quota actions in the connection menu and focuses quota configuration', async () => {
+  assistant.connections[0]!.kind = 'codex-cli';
+  await nextTick();
+  expect(root.textContent).not.toContain('查询额度');
+  await openMenu();
+  button('查询额度', document.querySelector('[role="menu"]')!).click();
+  await vi.waitFor(() => expect(root.textContent).toContain('剩余 75'));
+  expect(assistant.queryQuota).toHaveBeenCalledExactlyOnceWith('existing');
+  expect(document.querySelector('[role="menu"]')).toBeNull();
+  await openMenu();
+  button('配置额度查询', document.querySelector('[role="menu"]')!).click();
+  await nextTick(); await nextTick();
+  expect(dialog().open).toBe(true);
+  expect(dialog().classList.contains('assistant-quota-dialog')).toBe(true);
+  expect(root.querySelector('.quota-panel')).toBeNull();
+  expect(document.activeElement).toBe(dialog().querySelector('[role="switch"]'));
+  dialog().dispatchEvent(new Event('cancel', { cancelable: true }));
+  await nextTick();
+  expect(dialog()).toBeNull();
+  expect(document.activeElement).toBe(root.querySelector('.assistant-connection-more'));
+});
+
+it('reads a saved key on demand, hides it again, and saves without replacing it', async () => {
+  await openEditor(true);
+  expect(assistant.readConnectionKey).not.toHaveBeenCalled();
+  const field = dialog().querySelector<HTMLInputElement>('#assistant-api-key')!;
+  const toggle = dialog().querySelector<HTMLButtonElement>('.assistant-secret-toggle')!;
+  toggle.click();
+  await vi.waitFor(() => expect(field.type).toBe('text'));
+  expect(field.value).toBe('saved-test-key');
+  expect(assistant.readConnectionKey).toHaveBeenCalledWith('existing');
+  toggle.click(); await nextTick();
+  expect(field.type).toBe('password');
+  expect(field.value).toBe('');
+  toggle.click();
+  await vi.waitFor(() => expect(field.type).toBe('text'));
+  submit();
+  await vi.waitFor(() => expect(dialog()).toBeNull());
+  expect(assistant.saveConnection).toHaveBeenCalledWith(expect.objectContaining({ id: 'existing' }), '');
+  await openEditor(true);
+  expect(dialog().querySelector<HTMLInputElement>('#assistant-api-key')!.value).toBe('');
+});
+
+it('ignores a late key read after closing and reopening the editor', async () => {
+  let resolve!: (key: string) => void;
+  assistant.readConnectionKey.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  await openEditor(true);
+  dialog().querySelector<HTMLButtonElement>('.assistant-secret-toggle')!.click(); await nextTick();
+  button('取消', dialog()).click(); await nextTick();
+  await openEditor(true);
+  resolve('stale-test-key'); await nextTick(); await nextTick();
+  expect(dialog().querySelector<HTMLInputElement>('#assistant-api-key')!.value).toBe('');
+  expect(dialog().querySelector<HTMLInputElement>('#assistant-api-key')!.type).toBe('password');
+});
+
+it('allows retry after a failed key read and preserves a replacement typed while loading', async () => {
+  await openEditor(true);
+  const toggle = dialog().querySelector<HTMLButtonElement>('.assistant-secret-toggle')!;
+  assistant.readConnectionKey.mockRejectedValueOnce(new Error('vault unavailable'));
+  toggle.click();
+  await vi.waitFor(() => expect(dialog().textContent).toContain('无法读取已保存的 API 密钥'));
+  expect(toggle.disabled).toBe(false);
+  let resolve!: (key: string) => void;
+  assistant.readConnectionKey.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  toggle.click(); await nextTick();
+  const field = dialog().querySelector<HTMLInputElement>('#assistant-api-key')!;
+  await input(field, 'replacement-key');
+  resolve('stale-test-key'); await nextTick(); await nextTick();
+  expect(field.value).toBe('replacement-key');
+  expect(field.type).toBe('password');
 });

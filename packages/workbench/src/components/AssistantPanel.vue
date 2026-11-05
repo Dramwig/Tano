@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t, uiLocale } from '../i18n';
 import { assistantCopy, assistantTaskPrompts } from '../assistant/language';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { AlignLeft, ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRight, ChevronsRight, CircleCheck, Copy, Cpu, createLucideIcon, FilePlus2, FileText, History, Languages, LoaderCircle, MessageCircle, MessageCirclePlus, Minus, MoreHorizontal, Paperclip, Pencil, Plug, Plus, RefreshCw, Reply, Quote, Search, Settings2, Square, Terminal, Trash2, Undo2, X } from 'lucide-vue-next';
 import MarkdownEditor from '@tano/editor';
+import { droppedEntryReferences, entryReferenceDragType, referenceMarkdown } from '@tano/protocol';
 import type { AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSource, ReferenceIdentity } from '@tano/protocol';
 import { useAssistantStore } from '../assistant/store';
 import { isAssistantFile } from '../assistant/files';
@@ -17,10 +19,13 @@ import AssistantGenerationHint from './AssistantGenerationHint.vue';
 import AssistantButterfly from './AssistantButterfly.vue';
 import AssistantQuestionCard from './AssistantQuestionCard.vue';
 import AssistantMessageBody from './AssistantMessageBody.vue';
+import AgentInboxPanel from './AgentInboxPanel.vue';
+import { shortcutAriaLabel, shortcutKeys } from '../shortcuts';
+import type { ShortcutBinding } from '../shortcuts';
 
 const assistant = useAssistantStore();
 const workspace = useWorkspaceStore();
-const props = defineProps<{ compact?: boolean; fullscreenTarget?: string | HTMLElement; navigationVisible?: boolean }>();
+const props = defineProps<{ compact?: boolean; fullscreenTarget?: string | HTMLElement; navigationVisible?: boolean; toggleShortcut?: ShortcutBinding }>();
 const emit = defineEmits<{ openReference: [identity: ReferenceIdentity]; revealSelection: [source: AssistantSource]; openSettings: []; closed: []; showNavigation: [] }>();
 function afterPanelLeave() {
   if (!assistant.opened) emit('closed');
@@ -40,7 +45,12 @@ const exportMessage = ref<AssistantMessage>();
 const exportPath = ref(t('助手结果.md'));
 const visibleMessages = ref(30);
 const panel = ref<HTMLElement>();
-const popover = ref<'model' | 'reasoning' | 'add' | 'history' | 'more' | 'mode' | 'translation' | null>(null);
+let modeAnimation: Animation | undefined;
+function cancelModeAnimation() {
+  modeAnimation?.cancel();
+  modeAnimation = undefined;
+}
+const popover = ref<'model' | 'reasoning' | 'add' | 'history' | 'more' | 'mode' | null>(null);
 function displayIcon(name: string, region: { x: string; y: string; width: string; height: string }) {
   return createLucideIcon(name, [
     ['rect', { x: '2', y: '4', width: '20', height: '16', rx: '2', key: 'frame' }],
@@ -105,16 +115,8 @@ const starters = computed(() => {
   return [
     { label: copy.summary, prompt: prompts.summary, icon: AlignLeft },
     { label: copy.polish, prompt: prompts.polish, icon: Pencil },
-    { label: copy.translate, prompt: null, icon: Languages },
+    { label: copy.translate, prompt: prompts.translate, icon: Languages },
     { label: copy.tasks, prompt: prompts.tasks, icon: CircleCheck },
-  ];
-});
-const translationTargets = computed(() => {
-  const copy = assistantCopy(uiLocale.value).starters;
-  const prompts = assistantTaskPrompts.starters;
-  return [
-    { label: copy.translateEnglish, prompt: prompts.translateEnglish },
-    { label: copy.translateChinese, prompt: prompts.translateChinese },
   ];
 });
 const sourceFiles = computed(() => workspace.workspace?.files.filter(file => file.kind === 'file' && isAssistantFile(file.path) &&
@@ -165,6 +167,27 @@ function searchModels() {
   searchingModels.value = !searchingModels.value;
   if (!searchingModels.value) modelQuery.value = '';
   void nextTick(() => panel.value?.querySelector<HTMLElement>(searchingModels.value ? '#assistant-model-search' : `[aria-label="${t('搜索模型列表')}"]`)?.focus());
+}
+function dragReferences(event: DragEvent) {
+  if (controlsLocked.value || !event.dataTransfer?.types.includes(entryReferenceDragType)) return;
+  event.preventDefault(); event.stopPropagation();
+  event.dataTransfer.dropEffect = 'copy';
+}
+function dropReferences(event: DragEvent) {
+  if (!event.dataTransfer?.types.includes(entryReferenceDragType)) return;
+  event.preventDefault(); event.stopPropagation();
+  if (controlsLocked.value) return;
+  const targets = droppedEntryReferences(event.dataTransfer.getData(entryReferenceDragType), workspace.referenceTargets);
+  for (const target of targets) {
+    if (isAssistantFile(target.path)) {
+      if (!assistant.files.includes(target.id)) toggleSource(target.id);
+    } else {
+      const reference = referenceMarkdown(target, target.name);
+      if (!assistant.prompt.includes(reference)) assistant.prompt += `${assistant.prompt ? '\n' : ''}${reference}`;
+      notice.value = t('已添加附件引用，当前助手无法直接读取附件正文');
+    }
+  }
+  void nextTick(() => textarea.value?.focus());
 }
 function toggleSource(id: string) {
   if (assistant.busy) return;
@@ -252,6 +275,7 @@ function selectDisplayMode(mode: AssistantDisplayMode) {
 function startFloatingGesture(event: PointerEvent) {
   if (props.compact || assistant.displayMode !== 'floating' || event.button !== 0 || !panel.value ||
     (event.target as Element).closest('button, input, .assistant-popover')) return;
+  cancelModeAnimation();
   const { left, top, width, height } = panel.value.getBoundingClientRect();
   const target = event.currentTarget as HTMLElement;
   floatingGesture = { pointer: event.pointerId, target, x: event.clientX, y: event.clientY, rect: { left, top, width, height } };
@@ -354,6 +378,10 @@ function updateMenuPosition() {
   const topBoundary = element.querySelector('.assistant-heading')?.getBoundingClientRect().bottom ?? element.getBoundingClientRect().top;
   menuMaxHeight.value = Math.max(80, triggerBounds.top - topBoundary - 16);
 }
+function viewportResized() {
+  cancelModeAnimation();
+  resized();
+}
 function resized() {
   if (floatingRect.value) {
     const rect = floatingRect.value;
@@ -382,7 +410,7 @@ onMounted(() => {
   // An async panel may finish loading after the user has already closed it.
   if (!assistant.opened) { emit('closed'); return; }
   window.addEventListener('pointerdown', outsidePopover);
-  window.addEventListener('resize', resized);
+  window.addEventListener('resize', viewportResized);
   if (typeof ResizeObserver !== 'undefined') {
     composerObserver = new ResizeObserver(updateMenuPosition);
     if (panel.value) composerObserver.observe(panel.value);
@@ -392,10 +420,11 @@ onMounted(() => {
   void nextTick(() => { resizeInput(); scrollToLatest(); textarea.value?.focus({ preventScroll: true }); });
 });
 onBeforeUnmount(() => {
+  cancelModeAnimation();
   endFloatingGesture();
   composerObserver?.disconnect();
   window.removeEventListener('pointerdown', outsidePopover);
-  window.removeEventListener('resize', resized);
+  window.removeEventListener('resize', viewportResized);
 });
 watch(() => assistant.prompt, () => { void nextTick(resizeInput); });
 watch(() => assistant.pendingUserInput?.request.id, (id, previous) => {
@@ -406,8 +435,29 @@ watch(() => [assistant.files.length, assistant.selection?.text], () => { void ne
 watch(section, () => { closePopover(); void nextTick(() => { resizeInput(); scrollToLatest(); }); });
 watch(() => assistant.opened, open => {
   if (open) void nextTick(() => textarea.value?.focus({ preventScroll: true }));
-  else { closePopover(); endFloatingGesture(); }
+  else { cancelModeAnimation(); closePopover(); endFloatingGesture(); }
 });
+watch(() => assistant.displayMode, async (_mode, _previous, onCleanup) => {
+  const element = panel.value;
+  // Measure before Vue moves the same conversation between Teleport hosts.
+  const before = element?.getBoundingClientRect();
+  const radius = element && getComputedStyle(element).borderRadius;
+  cancelModeAnimation();
+  let stale = false;
+  onCleanup(() => { stale = true; });
+  await nextTick();
+  if (stale || !element || !assistant.opened || !before?.width || !before.height ||
+    !element.animate || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const after = element.getBoundingClientRect();
+  if (!after.width || !after.height) return;
+  modeAnimation = element.animate([
+    {
+      transform: `translate(${before.left - after.left}px, ${before.top - after.top}px) scale(${before.width / after.width}, ${before.height / after.height})`,
+      borderRadius: radius,
+    },
+    { transform: 'none', borderRadius: getComputedStyle(element).borderRadius },
+  ], { duration: 240, easing: 'cubic-bezier(0.2, 0, 0, 1)' });
+}, { flush: 'pre' });
 watch(() => [assistant.displayMode, props.fullscreenTarget], () => {
   endFloatingGesture();
   void nextTick(() => { resized(); resizeInput(); if (assistant.opened) textarea.value?.focus({ preventScroll: true }); });
@@ -427,7 +477,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 <template>
   <Teleport :to="teleportTarget" :disabled="assistant.displayMode === 'sidebar'">
   <Transition :name="assistant.displayMode === 'floating' ? 'assistant-floating' : 'assistant-sidebar'" :css="assistant.displayMode !== 'fullscreen'" appear @after-leave="afterPanelLeave">
-  <aside ref="panel" v-show="assistant.opened && (assistant.displayMode !== 'fullscreen' || !!fullscreenTarget)" class="assistant-panel" :class="[`assistant-panel-${assistant.displayMode}`, { 'assistant-panel-compact': compact }]" :style="{ '--assistant-menu-max-height': `${menuMaxHeight}px`, ...floatingStyle }" :inert="!assistant.opened || undefined" :aria-hidden="!assistant.opened || undefined" :aria-label="t('Tano 助手')" @keydown.esc="closePopover(true)" @keydown="menuKey">
+  <aside @dragover="dragReferences" @drop="dropReferences" ref="panel" v-show="assistant.opened && (assistant.displayMode !== 'fullscreen' || !!fullscreenTarget)" class="assistant-panel" :class="[`assistant-panel-${assistant.displayMode}`, { 'assistant-panel-compact': compact }]" :style="{ '--assistant-menu-max-height': `${menuMaxHeight}px`, ...floatingStyle }" :inert="!assistant.opened || undefined" :aria-hidden="!assistant.opened || undefined" :aria-label="t('Tano 助手')" @keydown.esc="closePopover(true)" @keydown="menuKey">
     <header class="assistant-heading" @pointerdown="startFloatingGesture" @pointermove="moveFloatingGesture" @pointerup="endFloatingGesture" @pointercancel="endFloatingGesture" @lostpointercapture="endFloatingGesture">
       <button v-if="compact && navigationVisible && assistant.displayMode === 'fullscreen'" class="icon-button" :aria-label="t('展开侧栏')" @click="emit('showNavigation')"><ArrowLeft :size="17" /></button>
       <button v-if="section !== 'conversation'" class="icon-button" :aria-label="t('返回助手对话')" :data-tooltip="t('返回对话')" @click="section = 'conversation'"><ArrowLeft :size="17" /></button>
@@ -440,7 +490,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
         <button v-else class="icon-button" :data-tooltip="t('新建会话')" :aria-label="t('新建助手会话')" :disabled="assistant.busy || assistant.applying" @click="startNewSession"><MessageCirclePlus :size="18" /></button>
       </template>
       <button class="icon-button assistant-display-mode" :data-tooltip="t('切换助手显示模式')" :aria-label="t('切换助手显示模式')" :aria-expanded="popover === 'mode'" aria-controls="assistant-display-options" data-assistant-popover @click="togglePopover('mode', $event)"><component :is="displayModeIcon" :size="18" :stroke-width="1.5" /></button>
-      <div v-if="popover === 'mode'" id="assistant-display-options" class="assistant-popover assistant-mode-menu" role="menu" :aria-label="t('助手显示模式')">
+      <div v-surface-motion="'AssistantPanel:0'" v-if="popover === 'mode'" id="assistant-display-options" class="assistant-popover assistant-mode-menu" role="menu" :aria-label="t('助手显示模式')">
         <template v-for="mode in displayModes" :key="mode.id">
           <div v-if="mode.id === 'fullscreen'" class="assistant-menu-divider" role="separator" />
           <button class="assistant-menu-item" role="menuitemradio" :aria-checked="assistant.displayMode === mode.id" :class="{ selected: assistant.displayMode === mode.id }" data-menu-item @click="selectDisplayMode(mode.id)"><component :is="mode.icon" class="assistant-mode-icon" :size="16" :stroke-width="1.5" /><span class="assistant-menu-label">{{ mode.label }}</span><Check v-if="assistant.displayMode === mode.id" :size="14" class="assistant-menu-check" /></button>
@@ -448,13 +498,13 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
       </div>
       <template v-if="section === 'conversation'">
         <button class="icon-button" :data-tooltip="t('更多选项')" :aria-label="t('助手更多选项')" :aria-expanded="popover === 'more'" aria-controls="assistant-more-options" data-assistant-popover @click="togglePopover('more', $event)"><MoreHorizontal :size="19" /></button>
-        <div v-if="popover === 'more'" id="assistant-more-options" class="assistant-popover assistant-more-menu">
+        <div v-surface-motion="'AssistantPanel:1'" v-if="popover === 'more'" id="assistant-more-options" class="assistant-popover assistant-more-menu">
           <button data-menu-item @click="openHistory"><History :size="16" />{{ t('管理会话') }}</button>
           <button v-if="!assistant.demo" data-menu-item @click="closePopover(); emit('openSettings')"><Settings2 :size="16" />{{ t('助手设置') }}</button>
         </div>
       </template>
-      <button class="icon-button" :data-tooltip="t('收起助手')" :aria-label="t('收起助手')" @click="assistant.opened = false"><ChevronsRight v-if="assistant.displayMode === 'sidebar'" :size="19" /><Minus v-else :size="17" /></button>
-      <div v-if="popover === 'history'" id="assistant-history-options" class="assistant-popover assistant-history-menu" role="dialog" :aria-label="t('最近助手会话')">
+      <button class="icon-button" :data-tooltip="t('收起助手')" :aria-label="t('收起助手')" :aria-keyshortcuts="shortcutAriaLabel(toggleShortcut) || undefined" :data-tooltip-shortcut="shortcutKeys(toggleShortcut)[0]" @click="assistant.opened = false"><ChevronsRight v-if="assistant.displayMode === 'sidebar'" :size="19" /><Minus v-else :size="17" /></button>
+      <div v-surface-motion="'AssistantPanel:2'" v-if="popover === 'history'" id="assistant-history-options" class="assistant-popover assistant-history-menu" role="dialog" :aria-label="t('最近助手会话')">
         <div class="assistant-popover-heading"><span>{{ t('会话记录') }}</span><button class="icon-button" :class="{ selected: searchingHistory }" :aria-label="t('搜索会话记录')" :data-tooltip="t('搜索会话')" @click="searchHistory"><Search :size="16" /></button></div>
         <label v-if="searchingHistory" class="assistant-menu-search"><Search :size="15" /><input v-model="historyQuery" :aria-label="t('搜索助手会话')" :placeholder="t('搜索会话')" /></label>
         <div class="assistant-menu-scroll panel-scrollbar">
@@ -482,7 +532,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
         </button>
         <button class="icon-button" :disabled="assistant.busy || assistant.applying" :aria-label="t('删除会话 {0}', [session.title])" :data-tooltip="t('删除会话')" @click="deleting = session.id"><Trash2 :size="15" /></button>
       </div>
-      <div v-if="deleting" class="assistant-delete-confirm" role="alertdialog" :aria-label="t('删除助手会话')">
+      <div v-surface-motion="'AssistantPanel:3'" v-if="deleting" class="assistant-delete-confirm" role="alertdialog" :aria-label="t('删除助手会话')">
         <p>{{ t('删除这条会话及其修改记录？') }}</p>
         <button class="secondary-button" @click="deleting = undefined">{{ t('取消') }}</button>
         <button class="primary-button destructive" @click="assistant.deleteSession(deleting).catch(error => assistant.error = String(error)); deleting = undefined">{{ t('删除会话') }}</button>
@@ -492,6 +542,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
     <template v-else>
       <div class="assistant-transcript">
       <div ref="messages" class="assistant-messages panel-scrollbar" role="log" :aria-label="t('助手对话')" @scroll="updateScroll">
+        <AgentInboxPanel />
         <LoadingSkeleton v-if="assistant.loading && !assistant.session?.messages.length" :rows="5" />
         <div v-else-if="!assistant.session?.messages.length" class="assistant-welcome">
           <!-- Reserved for platform AI settings; currently greets with a flutter. -->
@@ -500,12 +551,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
           </button>
           <h3>{{ t('今天想从哪里开始？') }}</h3>
           <div class="assistant-starters">
-            <div v-for="starter in starters" :key="starter.label" class="assistant-starter">
-              <button :disabled="controlsLocked || !workspace.active" :data-assistant-popover="starter.prompt === null ? '' : undefined" :aria-expanded="starter.prompt === null ? popover === 'translation' : undefined" :aria-controls="starter.prompt === null ? 'assistant-translation-options' : undefined" :aria-haspopup="starter.prompt === null ? 'menu' : undefined" @click="starter.prompt === null ? togglePopover('translation', $event) : preparePrompt(starter.prompt)"><component :is="starter.icon" :size="18" /><span>{{ starter.label }}</span><ChevronDown v-if="starter.prompt === null" :size="14" /></button>
-              <div v-if="starter.prompt === null && popover === 'translation'" id="assistant-translation-options" class="assistant-popover assistant-translation-menu" role="menu" :aria-label="starter.label">
-                <button v-for="target in translationTargets" :key="target.prompt" class="assistant-menu-item" role="menuitem" data-menu-item :disabled="controlsLocked || !workspace.active" @click="preparePrompt(target.prompt)">{{ target.label }}</button>
-              </div>
-            </div>
+            <button v-for="starter in starters" :key="starter.label" class="assistant-starter" :disabled="controlsLocked || !workspace.active" @click="preparePrompt(starter.prompt)"><component :is="starter.icon" :size="18" /><span>{{ starter.label }}</span></button>
           </div>
         </div>
         <button v-if="(assistant.session?.messages.length ?? 0) > visibleMessages" class="assistant-text-action" @click="visibleMessages += 30">{{ t('查看较早消息') }}</button>
@@ -559,7 +605,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
       </div>
       <form v-if="exportMessage" class="assistant-export" @submit.prevent="exportAnswer"><label>{{ t('文档路径') }}<input v-model="exportPath" required maxlength="220" /></label><button class="secondary-button" type="button" @click="exportMessage = undefined">{{ t('取消') }}</button><button class="primary-button"><FilePlus2 :size="14" />{{ t('生成保存建议') }}</button></form>
       <div class="assistant-composer-area" :class="{ 'assistant-composer-area-question': assistant.pendingUserInput }">
-        <div v-if="popover === 'model'" id="assistant-model-options" class="assistant-popover assistant-model-menu" :style="menuPosition" :aria-label="t('模型选择')">
+        <div v-surface-motion="'AssistantPanel:5'" v-if="popover === 'model'" :key="modelView" id="assistant-model-options" class="assistant-popover assistant-model-menu" :style="menuPosition" :aria-label="t('模型选择')">
           <div class="assistant-popover-heading">
             <button v-if="modelView !== 'main'" class="icon-button" :data-tooltip="t('返回模型列表')" :aria-label="t('返回模型列表')" @click="setModelView('main')"><ArrowLeft :size="16" /></button>
             <span>{{ modelView === 'connections' ? t('模型连接') : modelView === 'manual' ? t('指定模型') : t('选择模型') }}</span>
@@ -594,7 +640,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
             <button v-if="!assistant.connections.length && !assistant.demo && assistant.canConfigure !== false" class="assistant-menu-item" data-menu-item @click="closePopover(); emit('openSettings')"><Plus :size="16" /><span class="assistant-menu-label">{{ t('添加模型连接') }}</span></button>
           </template>
         </div>
-        <div v-if="popover === 'add'" id="assistant-add-options" class="assistant-popover assistant-add-menu" :style="menuPosition" :aria-label="addView === 'sources' ? t('选择参考文档') : t('添加内容')">
+        <div v-surface-motion="'AssistantPanel:6'" v-if="popover === 'add'" :key="addView" id="assistant-add-options" class="assistant-popover assistant-add-menu" :style="menuPosition" :aria-label="addView === 'sources' ? t('选择参考文档') : t('添加内容')">
           <template v-if="addView === 'main'">
             <button class="assistant-menu-item" data-menu-item :disabled="controlsLocked" @click="openSources"><Paperclip :size="18" /><span class="assistant-menu-label">{{ t('添加参考文档') }}</span><ChevronRight :size="15" /></button>
             <button class="assistant-menu-item" data-menu-item :disabled="controlsLocked || !workspace.active" @click="addCurrentNote"><FileText :size="18" /><span class="assistant-menu-label">{{ t('引用当前笔记') }}</span><Check v-if="workspace.active && assistant.files.includes(workspace.active.id)" :size="16" class="assistant-menu-check" /></button>
@@ -610,7 +656,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
             </div>
           </template>
         </div>
-        <div v-if="popover === 'reasoning' && assistant.connection?.kind === 'codex-cli'" id="assistant-reasoning-options" class="assistant-popover assistant-reasoning-menu" :style="menuPosition" role="dialog" :aria-label="t('当前对话的推理强度')">
+        <div v-surface-motion="'AssistantPanel:7'" v-if="popover === 'reasoning' && assistant.connection?.kind === 'codex-cli'" id="assistant-reasoning-options" class="assistant-popover assistant-reasoning-menu" :style="menuPosition" role="dialog" :aria-label="t('当前对话的推理强度')">
           <div class="assistant-menu-heading"><span>{{ t('推理强度') }}</span></div>
           <div role="radiogroup" :aria-label="t('推理强度')">
             <button v-for="choice in reasoningChoices" :key="choice.id" type="button" role="radio" :aria-label="choice.label" :aria-checked="assistant.reasoningEffort === choice.id" class="assistant-menu-item assistant-detail-option" :class="{ selected: assistant.reasoningEffort === choice.id }" :disabled="controlsLocked" data-menu-item @click="changeReasoning(choice.id)"><span class="assistant-menu-label"><span>{{ choice.label }}</span><small>{{ choice.detail }}</small></span><Check v-if="assistant.reasoningEffort === choice.id" :size="16" /></button>
@@ -640,6 +686,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 
 <style scoped>
 .assistant-panel { --assistant-sidebar-width: clamp(360px, 32vw, 480px); flex: 0 1 var(--assistant-sidebar-width); width: var(--assistant-sidebar-width); min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--paper); color: var(--text); }
+.assistant-panel { transform-origin: top left; }
 /* Slide a full-width conversation into view while its margin gives the editor
    the same amount of space back. Messages do not rewrap during the slide. */
 .assistant-panel-sidebar.assistant-sidebar-enter-active,
@@ -754,9 +801,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 .assistant-welcome-butterfly { width: 30px; height: 30px; }
 .assistant-welcome h3 { margin: 0 0 17px; font-size: 19px; line-height: 1.5; font-weight: 600; }
 .assistant-starters { display: grid; gap: 1px; }
-.assistant-starter { position: relative; }
-.assistant-starter > button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 38px; padding: 7px 8px; margin-left: -8px; border-radius: 6px; color: var(--text-secondary); text-align: left; font-size: 14px; }
-.assistant-translation-menu { bottom: 100%; left: 22px; width: min(200px, calc(100% - 22px)); }
+.assistant-starter { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 38px; padding: 7px 8px; margin-left: -8px; border-radius: 6px; color: var(--text-secondary); text-align: left; font-size: 14px; }
 .assistant-starters button svg { flex-shrink: 0; }
 .assistant-starters button:hover:not(:disabled) { background: var(--surface); color: var(--text); }
 .assistant-conversation-meta { flex: 0 0 auto; padding: 4px 0 18px; color: var(--muted); font-size: 11px; text-align: center; }

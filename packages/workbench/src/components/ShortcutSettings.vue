@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ShortcutHint from '@tano/editor/shortcut-hint';
 import { t } from '../i18n';
 import { computed, nextTick, ref } from 'vue';
 import { Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-vue-next';
@@ -58,13 +59,13 @@ function resetAll() { cancel(); emit('change', { ...defaultShortcutBindings }); 
           <div class="shortcut-settings-name"><strong>{{ item.label }}</strong><p v-if="'scope' in item">{{ item.scope }}</p></div>
           <div class="shortcut-settings-variants">
             <div v-for="(binding, index) in rows(item.id)" :key="index" class="shortcut-settings-variant">
-              <span v-if="'readOnly' in item" class="shortcut-record"><kbd>{{ shortcutLabel(binding).replaceAll(' + ', '+') }}</kbd></span>
+              <span v-if="'readOnly' in item" class="shortcut-record"><kbd><ShortcutHint :label="shortcutLabel(binding).replaceAll(' + ', '+')" /></kbd></span>
               <div v-else class="shortcut-settings-input">
               <button type="button" class="shortcut-record" :class="{ 'is-recording': editing(item.id, index), 'has-error': rowError(item.id, index) }"
                 :aria-invalid="rowError(item.id, index) || undefined" :aria-describedby="rowError(item.id, index) ? `shortcut-error-${item.id}-${index}` : undefined"
                 :aria-label="t('设置{0}快捷键', [item.label]) + (index ? ' ' + (index + 1) : '')" :aria-pressed="editing(item.id, index)"
                 @click="start(item.id, index)" @keydown="capture($event, item.id, index)" @blur="editing(item.id, index) && cancel()">
-                <kbd>{{ editing(item.id, index) ? t('请按下快捷键…') : shortcutLabel(binding).replaceAll(' + ', '+') }}</kbd><Pencil v-if="!editing(item.id, index)" :size="13" :stroke-width="1.5" />
+                <kbd><ShortcutHint :label="editing(item.id, index) ? t('请按下快捷键…') : shortcutLabel(binding).replaceAll(' + ', '+')" /></kbd><Pencil v-if="!editing(item.id, index)" :size="13" :stroke-width="1.5" />
               </button>
               <button v-if="editing(item.id, index)" type="button" class="shortcut-cancel" :aria-label="t('取消编辑')" :data-tooltip="t('取消编辑')" @pointerdown.prevent @click="cancel"><X :size="13" :stroke-width="1.5" /></button>
               </div>

@@ -68,7 +68,7 @@ it('loads a bundled code package on installation and keeps failed downloads retr
   expect(loadPackage).not.toHaveBeenCalled();
   button('安装按需白板').click();
   await vi.waitFor(() => expect(root.textContent).toContain('package unavailable'));
-  expect(store.installedPlugins).toHaveLength(0);
+  expect(store.installedPlugins.filter(plugin => !plugin.system)).toHaveLength(0);
   expect(button('安装按需白板').disabled).toBe(false);
   button('安装按需白板').click();
   await vi.waitFor(() => expect(store.installedPlugins[0]?.manifest.id).toBe('lazy-drawing'));
@@ -103,7 +103,7 @@ it('offers publishing only when the product provides it and preserves drafts whi
 
 it('installs a plugin and preserves its objects when disabled and re-enabled', async () => {
   button('安装研究工作台').click();
-  await vi.waitFor(() => expect(store.installedPlugins).toHaveLength(1));
+  await vi.waitFor(() => expect(store.installedPlugins.filter(plugin => !plugin.system)).toHaveLength(1));
   const paper = await store.createObject({
     type: 'research.paper',
     name: '论文',
@@ -113,7 +113,7 @@ it('installs a plugin and preserves its objects when disabled and re-enabled', a
   });
   expect(store.referenceTargets.some((item) => item.id === paper.object.id)).toBe(true);
 
-  button('已安装 1').click();
+  button(`已安装 ${store.installedPlugins.length}`).click();
   await nextTick();
   button('管理研究工作台').click();
   await nextTick();
@@ -127,9 +127,9 @@ it('installs a plugin and preserves its objects when disabled and re-enabled', a
   expect(store.referenceTargets.some((item) => item.id === paper.object.id)).toBe(true);
 
   button('卸载插件').click();
-  await vi.waitFor(() => expect(store.installedPlugins).toHaveLength(0));
+  await vi.waitFor(() => expect(store.installedPlugins.filter(plugin => !plugin.system)).toHaveLength(0));
   expect(store.objects).toHaveLength(1);
-  expect(root.textContent).toContain('还没有安装插件');
+  expect(root.textContent).toContain('演示文稿预览');
 });
 
 it('combines category and object-type search and resets an empty result', async () => {
@@ -236,7 +236,7 @@ it('keeps a failed install actionable and reports the error in its dialog', asyn
     expect(root.querySelector('dialog [role="alert"]')?.textContent).toContain('另一窗口'),
   );
   expect(install.disabled).toBe(false);
-  expect(store.installedPlugins).toHaveLength(0);
+  expect(store.installedPlugins.filter(plugin => !plugin.system)).toHaveLength(0);
 });
 
 it('clears an earlier preview when a newly selected file cannot be imported', async () => {
@@ -316,4 +316,19 @@ it('filters a long installed list by state before paginating', async () => {
   await nextTick();
   expect(root.querySelectorAll('.plugin-entry')).toHaveLength(25);
   expect(root.querySelector('.catalog-more')).toBeNull();
+});
+
+it.each(['演示文稿预览', 'Word 文档预览'])('identifies system plugin %s and exposes only its device activation control', async name => {
+  button(`已安装 ${store.installedPlugins.length}`).click(); await nextTick();
+  button(`管理${name}`).click(); await nextTick();
+  expect(root.textContent).toContain('系统插件');
+  expect(root.textContent).toContain('无需单独授权');
+  expect(button('卸载插件')).toBeUndefined();
+  expect(button('撤销此设备授权')).toBeUndefined();
+  expect(button('授权此版本运行')).toBeUndefined();
+  expect(root.querySelector('[aria-label="插件工作区规则"]')).toBeNull();
+  button('停用插件').click();
+  await vi.waitFor(() => expect(store.installedPlugins.find(p => p.system && p.manifest.name === name)?.enabled).toBe(false));
+  button('启用插件').click();
+  await vi.waitFor(() => expect(store.installedPlugins.find(p => p.system && p.manifest.name === name)?.enabled).toBe(true));
 });

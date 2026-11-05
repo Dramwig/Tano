@@ -36,6 +36,33 @@ it('records a new binding and updates the displayed shortcut', async () => {
   expect(button('设置查找文档快捷键').getAttribute('aria-pressed')).toBe('false');
 });
 
+it('renders Backspace as a library icon, including custom modifier combinations', async () => {
+  const bindings = mountSettings();
+  const control = button('设置删除选中的块快捷键');
+  expect(control.querySelector('kbd svg.shortcut-backspace')).not.toBeNull();
+  expect(control.querySelector('.shortcut-hint')?.getAttribute('aria-label')).toBe('Backspace');
+  expect(control.textContent).not.toContain('⌫');
+  bindings.value = { ...bindings.value, deleteBlock: 'Alt+Backspace' };
+  await nextTick();
+  expect(control.textContent).toContain('Alt+');
+  expect(control.querySelector('kbd svg.shortcut-backspace')).not.toBeNull();
+});
+
+it.each([
+  ['toggleSource', '切换源码模式', 'Ctrl+Shift+E'],
+  ['toggleMarkdownReveal', '光标展开源码', 'Ctrl+Shift+M'],
+  ['toggleAssistant', '打开或关闭同页助手', 'Ctrl+Shift+A'],
+] as const)('edits, clears, and restores the %s shortcut', async (id, label, keys) => {
+  const bindings = mountSettings();
+  expect(button(`设置${label}快捷键`).textContent).toBe(keys);
+  await record(label, 'j', { altKey: true });
+  expect(bindings.value[id]).toBe('Alt+J');
+  button(`清除${label}快捷键`).click(); await nextTick();
+  expect(bindings.value[id]).toBeNull();
+  button(`恢复${label}默认快捷键`).click(); await nextTick();
+  expect(bindings.value[id]).toBe(defaultShortcutBindings[id]);
+});
+
 it('offers a cancel button for both editing and adding a binding without changing saved keys', async () => {
   const bindings = mountSettings();
   button('设置重做快捷键').click(); await nextTick();

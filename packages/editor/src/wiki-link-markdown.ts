@@ -1,3 +1,5 @@
+import { transformObjectReferences } from './object-reference-markdown';
+import { parseReferenceUrl } from '@tano/protocol';
 import { unified } from 'unified';
 import type { Plugin } from 'unified';
 import remarkParse from 'remark-parse';
@@ -96,7 +98,10 @@ export const remarkWikiLinks: Plugin<[], Root> = function () {
   const data = this.data();
   const extensions = data.toMarkdownExtensions ?? (data.toMarkdownExtensions = []);
   extensions.push({ handlers: { tanoWikiLink: serializeWikiLink } });
-  return (tree, file) => transform(tree, String(file.value));
+  return (tree, file) => {
+    transformObjectReferences(tree, String(file.value));
+    transform(tree, String(file.value));
+  };
 };
 
 const detector = unified().use(remarkParse).use(remarkGfm).use(remarkMath).use(remarkWikiLinks);
@@ -106,7 +111,7 @@ export function parsedWikiLinkCount(markdown: string): number {
   const tree = detector.runSync(detector.parse(markdown), markdown);
   let count = 0;
   function visit(node: Nodes) {
-    if (node.type === 'tanoWikiLink') count++;
+    if (node.type === 'tanoWikiLink' || (node.type === 'link' && parseReferenceUrl(node.url) && node.position?.start.offset !== undefined && /^!?\[\[object:\/\//.test(markdown.slice(node.position.start.offset)))) count++;
     else if ('children' in node) node.children.forEach(visit);
   }
   visit(tree);

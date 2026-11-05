@@ -1,5 +1,7 @@
 import { bundledObjectPlugins, type PluginManifest, type PluginPackage } from '@tano/protocol';
 import excalidrawManifest from './plugins/excalidraw/manifest.json';
+import wordManifest from './plugins/word-preview/manifest.json';
+import presentationManifest from './plugins/presentation-preview/manifest.json';
 
 /** Catalog metadata is separate from the portable plugin manifest. */
 export interface PluginCatalogEntry {
@@ -17,6 +19,10 @@ const categories: Record<string, PluginCatalogEntry['category']> = {
 };
 
 export const bundledPluginCatalog: readonly PluginCatalogEntry[] = [
+  { manifest: wordManifest as PluginManifest, category: { id: 'tools', label: '其他工具' },
+    loadPackage: async () => (await import('./plugins/word-preview/bundle.tano-plugin.json')).default as PluginPackage },
+  { manifest: presentationManifest as PluginManifest, category: { id: 'tools', label: '其他工具' },
+    loadPackage: async () => (await import('./plugins/presentation-preview/bundle.tano-plugin.json')).default as PluginPackage },
   { manifest: excalidrawManifest as PluginManifest, category: { id: 'tools', label: '其他工具' },
     loadPackage: async () => (await import('./plugins/excalidraw/bundle.tano-plugin.json')).default as PluginPackage },
   ...bundledObjectPlugins.map((manifest) => ({

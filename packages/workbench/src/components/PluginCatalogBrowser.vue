@@ -146,7 +146,7 @@ onScopeDispose(() => controller.abort());
 .pc-button { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; min-height: 32px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; font-weight: 500; line-height: 1.5; }
 .pc-secondary { background: var(--paper); color: var(--text-secondary); }
 .pc-secondary:hover:not(:disabled) { background: var(--surface); border-color: var(--control-border); }
-.pc-primary { color: #fff; background: var(--green-fill); border-color: transparent; }
+.pc-primary { color: var(--on-accent, #fff); background: var(--green-fill); border-color: transparent; }
 .pc-primary:hover:not(:disabled) { background: var(--green-fill-hover); }
 .pc-button:disabled { opacity: .5; cursor: default; }
 select { padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--text); font: inherit; }

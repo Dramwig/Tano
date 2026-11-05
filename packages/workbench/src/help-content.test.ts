@@ -1,4 +1,6 @@
+// @vitest-environment jsdom
 import { expect, it } from 'vitest';
+import { setUiLocale } from './i18n';
 import { defaultDocumentationBaseUrl, helpChecklist, helpDocumentationUrl, helpTopics, selectHelpLesson, type HelpChecklistId } from './help-content';
 
 it('routes contextual hints to documentation pages without storing a second guide body', () => {
@@ -32,6 +34,28 @@ it('prioritizes the current activity even before general onboarding is complete'
   expect(selectHelpLesson([], 'graph')?.id).toBe('organize');
   expect(selectHelpLesson([], 'source')?.id).toBe('reading');
   expect(selectHelpLesson([], 'reading')?.id).toBe('reading');
+  expect(selectHelpLesson([], 'assistant')?.id).toBe('assistant');
+  expect(selectHelpLesson([], 'tables')?.id).toBe('workflow');
+});
+
+it('hides unsupported additions without discarding existing completion', () => {
+  const availability = { assistant: false, 'assistant-configure': false, 'folder-conversion': false,
+    'folder-home': false, math: false, mermaid: false, suggestions: false, panes: false };
+  expect(selectHelpLesson([], 'assistant', availability)?.id).not.toBe('assistant');
+  const organize = selectHelpLesson(['document', 'graph'], 'graph', availability)!;
+  expect(organize.done).toBe(2);
+  expect(organize.steps.some(step => ['folder-home', 'child-document', 'flatten-folder'].includes(step.id))).toBe(false);
+  expect(selectHelpLesson([], 'reading', availability)?.steps.some(step => step.id === 'split-view')).toBe(false);
+});
+
+it('translates every help label and hint when changing languages', () => {
+  try {
+    setUiLocale('en-US');
+    for (const item of [...Object.values(helpTopics), ...helpChecklist]) {
+      expect(item.hint).not.toMatch(/[\u3400-\u9fff]/);
+      expect('label' in item ? item.label : item.title).not.toMatch(/[\u3400-\u9fff]/);
+    }
+  } finally { setUiLocale('zh-CN'); }
 });
 
 it('recognizes experienced users without marking unperformed basics complete', () => {

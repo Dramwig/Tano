@@ -22,6 +22,15 @@ function mount(readOnly = false, canManageSettings = true) {
   app.mount(root);
   return { settings, change, exportContent, error, workspaceId };
 }
+it('offers README, _index, index and disabled folder homes using the latest saved value', async () => {
+  const { settings, change } = mount();
+  const select = root.querySelector<HTMLSelectElement>('[aria-label="文件夹首页"]')!;
+  expect(select.value).toBe('README.md');
+  expect([...select.options].map(option => option.value)).toEqual(['README.md', '_index.md', 'index.md', '']);
+  settings.value.folderHomeFileName = 'index.md'; await nextTick();
+  select.value = '_index.md'; select.dispatchEvent(new Event('change'));
+  expect(change).toHaveBeenCalledWith('ws', { key: 'folderHomeFileName', value: '_index.md', previous: 'index.md' });
+});
 async function pasteImage(file: File) {
   root.querySelector<HTMLButtonElement>('[aria-label="选择工作区图标"]')!.click(); await nextTick();
   document.querySelector<HTMLButtonElement>('[data-tab="upload"]')!.click(); await nextTick();

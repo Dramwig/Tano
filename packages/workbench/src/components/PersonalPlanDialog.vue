@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { nextTick, onMounted, onUnmounted, ref } from 'vue';
 import SidebarPlan from './SidebarPlan.vue';
@@ -42,7 +43,7 @@ function keyboard(event: KeyboardEvent) {
 }
 </script>
 <template>
-  <div class="personal-plan-backdrop" @mousedown.self="emit('close')">
+  <div v-surface-motion="'PersonalPlanDialog:0'" class="personal-plan-backdrop" @mousedown.self="emit('close')">
     <section
       ref="panel"
       class="personal-plan-dialog"

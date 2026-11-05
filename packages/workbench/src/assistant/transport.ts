@@ -1,6 +1,7 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { splitFrontmatter } from '@tano/editor/syntax';
-import { ASSISTANT_PROTOCOL_VERSION, parseAssistantSession, isDataTableFilePath, parseDataTable } from '@tano/protocol';
+import { ASSISTANT_PROTOCOL_VERSION, parseAssistantSession, isDataTableFilePath, parseDataTable, parseAgentInbox } from '@tano/protocol';
+import { browserAgentInbox } from './browser-inbox';
 import type { AssistantConnection, AssistantRequest, AssistantSession, AssistantSource, AssistantTransport } from '@tano/protocol';
 import { assistantCopy, assistantRequestLocale, assistantSourceSeparator, assistantTaskPrompts, formatAssistantText } from './language';
 
@@ -17,7 +18,18 @@ export function nativeAssistantTransport(): AssistantTransport {
     return invoke<T>(command, args);
   }
   return {
+    inbox: {
+      load: async workspaceId => parseAgentInbox(await call('assistant_inbox_load', { workspaceId }), workspaceId),
+      compareExchange: (inbox, expectedRevision) => call('assistant_inbox_save', {
+        inbox: parseAgentInbox(JSON.parse(JSON.stringify(inbox)), inbox.workspaceId), expectedRevision,
+      }),
+    },
     connections: () => call('assistant_connections'),
+    readConnectionKey: connectionId => call('assistant_connection_key', { connectionId }),
+    scanCcSwitch: path => call('assistant_cc_switch_scan', { path: path ?? null }),
+    importCcSwitch: (ids, path) => call('assistant_cc_switch_import', { ids, path: path ?? null }),
+    quota: connectionId => call('assistant_quota', { connectionId }),
+    saveQuota: (connectionId, config, key) => call('assistant_quota_save', { connectionId, config, key: key ?? null }),
     async models(connectionId, signal) {
       signal.throwIfAborted();
       const requestId = crypto.randomUUID();
@@ -90,6 +102,7 @@ export function demoAssistantTransport(): AssistantTransport {
   };
   return {
     demo: true,
+    inbox: browserAgentInbox(demoKey),
     connections: async () => [{ ...demoConnection }],
     models: async (_id, signal) => { signal.throwIfAborted(); return ['模拟响应', '简洁模拟']; },
     saveConnection: async () => { throw new Error('浏览器演示仅提供模拟连接'); },

@@ -1,0 +1,182 @@
+/* Host-owned regions. No editor reparenting or transformed overlay ancestors. */
+.layout-document-chrome { display: none; }
+@media screen {
+  :root[data-layout-theme]:not([data-layout-theme='builtin:tano']) {
+    /* The desk is the recessed surface behind pages and cards. Built-in palettes already ship a designed desk. */
+    --desk-depth: 10%;
+    --layout-desk: color-mix(in srgb, var(--sidebar) calc(100% - var(--desk-depth)), var(--text) var(--desk-depth));
+    --layout-edge: color-mix(in srgb, var(--line) 60%, var(--text) 20%);
+    --layout-lift: var(--overlay-shadow);
+    --layout-hairline: color-mix(in srgb, var(--line) 85%, var(--text) 6%);
+  }
+  :root:is([data-color-theme='builtin:mist'], [data-color-theme='builtin:leather'], [data-color-theme='builtin:ink']) { --desk-depth: 0%; }
+  /* In dark mode the desk recedes into black so raised pages and cards stay lighter than their surroundings. */
+  :root[data-theme='dark'][data-layout-theme]:not([data-layout-theme='builtin:tano']) {
+    --layout-desk: color-mix(in srgb, var(--sidebar) calc(100% - var(--desk-depth) * 3), #000 calc(var(--desk-depth) * 3));
+    --layout-hairline: color-mix(in srgb, var(--line) 80%, var(--text) 10%);
+  }
+  :root[data-theme='dark'][data-layout='islands'] { --island-desk: var(--layout-desk); }
+
+  /* Islands: the navigation and the workspace float as two calm cards on a tinted desk.
+     The document itself stays one continuous page inside its card. */
+  :root[data-layout='islands'] { --island-desk: color-mix(in srgb, var(--sidebar) calc(100% - var(--desk-depth)), var(--text) var(--desk-depth)); }
+  :root[data-layout='islands'] .app-shell { padding: var(--layout-gap); gap: calc(var(--layout-gap) * .75); background: var(--island-desk); }
+  :root[data-layout='islands'] .app-shell > .sidebar {
+    padding: 6px 8px 0; background: var(--sidebar);
+    border: 1px solid var(--layout-hairline); border-radius: var(--radius-card); box-shadow: var(--layout-lift);
+  }
+  :root[data-layout='islands'] .sidebar > * { min-width: 0; }
+  :root[data-layout='islands'] .sidebar > .sidebar-resize-handle { right: calc(var(--layout-gap) * -.375 - 5px); }
+  :root[data-layout='islands'] .sidebar-header { padding-inline: 4px; }
+  :root[data-layout='islands'] .sidebar-bottom {
+    margin: auto -8px 0; padding: 7px 8px; background: transparent;
+    border-top: 1px solid var(--layout-hairline); border-radius: 0 0 var(--radius-card) var(--radius-card);
+  }
+  :root[data-layout='islands'] .tree-row.selected { border-radius: var(--radius-control); }
+  :root[data-layout='islands'] .main-column {
+    background: var(--paper); overflow: hidden;
+    border: 1px solid var(--layout-hairline); border-radius: var(--radius-card); box-shadow: var(--layout-lift);
+  }
+  :root[data-layout='islands'] .workspace-pane .topbar { border-bottom: 1px solid color-mix(in srgb, var(--layout-hairline) 60%, transparent); }
+  :root[data-layout='islands'] :is(.settings-card, .folder-view-entry, .review-card) { border: 1px solid var(--layout-hairline); border-radius: var(--radius-card); background: var(--paper); box-shadow: var(--layout-lift); }
+  :root[data-layout='islands'] .settings-card { padding-inline: 16px; }
+
+  /* Notebook: leather cover with stitching, a spiral binding punched through the leaves,
+     ruled paper, a red margin and a fabric bookmark. Materials are fixed; text colours follow the theme. */
+  :root[data-layout='notebook'] {
+    --notebook-cover: #6a4733;
+    --notebook-cover-light: #84593f;
+    --notebook-stitch: #e2c39b99;
+    --notebook-sheet: color-mix(in srgb, var(--paper) 93%, #ecd9b0 7%);
+    --notebook-rule: color-mix(in srgb, #5f86b8 26%, transparent);
+    --notebook-margin: color-mix(in srgb, #c9564a 50%, transparent);
+    --notebook-ribbon: #8f3a33;
+  }
+  :root[data-theme='dark'][data-layout='notebook'] {
+    --notebook-cover: #4b3426;
+    --notebook-cover-light: #5a4030;
+    --notebook-stitch: #b8976d66;
+    --notebook-sheet: color-mix(in srgb, var(--paper) 95%, #ecd9b0 5%);
+    --notebook-rule: color-mix(in srgb, #8fb0d8 16%, transparent);
+    --notebook-margin: color-mix(in srgb, #e07b6e 34%, transparent);
+    --notebook-ribbon: #7a302a;
+  }
+  :root[data-layout='notebook'] .app-shell { background: var(--layout-desk); }
+  :root[data-layout='notebook'] :is(.main-column, .workspace-pane) { background: transparent; }
+  :root[data-layout='notebook'] .app-shell > .sidebar { border-right: 1px solid var(--layout-hairline); background: var(--sidebar); }
+  :root[data-layout='notebook'] .sidebar-header { border-bottom: 1px dashed var(--line-strong); margin-bottom: 8px; }
+  :root[data-layout='notebook'] .tree-row.selected { background: var(--notebook-sheet); border-radius: var(--radius-control); box-shadow: 0 1px 2px #0000001f, inset 3px 0 0 var(--notebook-ribbon); }
+  :root[data-layout='notebook'] .sidebar-bottom { border-top: 1px dashed var(--line-strong); }
+  :root[data-layout='notebook'] .workspace-pane .topbar { background: var(--sidebar); border-bottom: 1px solid var(--layout-hairline); }
+  :root[data-layout='notebook'] .document-layout { padding: calc(var(--layout-gap) + 10px) clamp(14px, 3vw, 48px) 56px; }
+  :root[data-layout='notebook'] .document-main {
+    max-width: var(--layout-page-width); margin-inline: auto;
+    padding: 0 0 16px 30px;
+    border: 12px solid var(--notebook-cover); border-left-width: 26px;
+    border-radius: 10px 14px 14px 10px;
+    background-color: var(--notebook-sheet); background-clip: padding-box;
+    box-shadow: inset 0 0 0 1px #00000014, 0 1px 0 1px #ffffff12, 0 3px 6px #00000030, 0 22px 44px -14px #00000066;
+  }
+  /* Spiral coil: each ring wraps from behind the cover through a punched hole in the leaf. */
+  :root[data-layout='notebook'] .document-main::before {
+    content: ''; position: absolute; z-index: 1; pointer-events: none;
+    left: -34px; top: 18px; bottom: 18px; width: 64px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='34' viewBox='0 0 64 34'%3E%3Cdefs%3E%3ClinearGradient id='m' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23fdfdfb'/%3E%3Cstop offset='.5' stop-color='%23c4c1b9'/%3E%3Cstop offset='1' stop-color='%23605c55'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cellipse cx='48' cy='19' rx='3.6' ry='3.9' fill='%23000' fill-opacity='.42'/%3E%3Cpath d='M12 22C10 10 40 6 48 17' fill='none' stroke='%23000' stroke-opacity='.3' stroke-width='4' stroke-linecap='round' transform='translate(1.2 2.2)'/%3E%3Cpath d='M12 22C10 10 40 6 48 17' fill='none' stroke='url(%23m)' stroke-width='3.6' stroke-linecap='round'/%3E%3Cpath d='M15 15C21 10 34 9 42 12' fill='none' stroke='%23fff' stroke-opacity='.7' stroke-width='1' stroke-linecap='round'/%3E%3C/svg%3E") 0 0 / 64px 34px repeat-y;
+  }
+  /* Saddle stitching around the cover edge. */
+  :root[data-layout='notebook'] .document-main::after {
+    content: ''; position: absolute; inset: -7px -7px -7px -20px; pointer-events: none;
+    border: 1.5px dashed var(--notebook-stitch); border-radius: 6px 9px 9px 6px;
+  }
+  :root[data-layout='notebook'] .layout-document-chrome { display: block; position: relative; padding: 28px 56px 0 48px; }
+  :root[data-layout='notebook'] .layout-document-caption { padding: 0 48px 10px 0; border-bottom: 1px solid var(--notebook-rule); color: var(--muted); font: italic 13px var(--font-prose); }
+  :root[data-layout='notebook'] .layout-document-format { display: none; }
+  .notebook-ribbon {
+    position: absolute; right: 40px; top: -12px; width: 22px; height: 74px; pointer-events: none;
+    background: linear-gradient(90deg, #0000002e, transparent 22% 78%, #0000002e), repeating-linear-gradient(0deg, #ffffff0d 0 1px, transparent 1px 3px), var(--notebook-ribbon, var(--green));
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 86%, 0 100%);
+    filter: drop-shadow(0 2px 2px #00000040);
+  }
+  :root[data-layout='notebook'] .editor-scroll { --document-inset-start: 48px; --document-inset-end: 56px; padding-top: 32px; }
+  :root[data-layout='notebook'] .document-title { margin-bottom: 24px; }
+  :root[data-layout='notebook'] :is(.document-title-input, .document-title-mirror) { font-family: var(--tano-prose-font-family, var(--font-prose)); font-weight: 600; }
+  :root[data-layout='notebook'] .milkdown-host {
+    background: linear-gradient(var(--notebook-margin), var(--notebook-margin)) 0 0 / 1.5px 100% no-repeat;
+    padding-left: 18px; box-sizing: border-box;
+  }
+  /* Ruled lines follow body text only; tables, code, callouts and media keep their own surfaces. */
+  :root[data-layout='notebook'] .tano-prose > :is(p, ul, ol, blockquote) { line-height: 1.95; }
+  :root[data-layout='notebook'] .tano-prose > p,
+  :root[data-layout='notebook'] .tano-prose > :is(ul, ol) > li > p {
+    background-image: repeating-linear-gradient(to bottom, transparent 0 calc(1.95em - 1px), var(--notebook-rule) calc(1.95em - 1px) 1.95em);
+  }
+  :root[data-layout='notebook'] .tano-prose :is(h1, h2, h3) { font-family: var(--tano-prose-font-family, var(--font-prose)); }
+  :root[data-layout='notebook'] .document-main > .editor-toolbar { background: var(--notebook-sheet); border-bottom: 1px solid var(--notebook-rule); }
+  .layout-document-caption { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .layout-document-filename { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .layout-document-format { flex-shrink: 0; font-size: 11px; }
+
+  /* Document: a single formal sheet on the desk, running header, centred title and a short stack beneath. */
+  :root[data-layout='document'] :is(.main-column, .workspace-pane) { background: var(--layout-desk); }
+  :root[data-layout='document'] .workspace-pane .topbar { border-bottom: 1px solid var(--layout-hairline); background: var(--sidebar); }
+  :root[data-layout='document'] .document-layout { padding: calc(var(--layout-gap) + 8px) clamp(12px, 3vw, 48px) 64px; }
+  :root[data-layout='document'] .document-main {
+    max-width: var(--layout-page-width); margin-inline: auto; background-color: var(--paper);
+    border: 1px solid var(--layout-hairline); border-radius: 2px;
+    box-shadow: 0 1px 2px #0000001a, 0 14px 36px -12px #00000040,
+      0 5px 0 -2px var(--paper), 0 5px 0 -1px var(--layout-edge),
+      0 10px 0 -5px var(--paper), 0 10px 0 -4px var(--layout-edge);
+  }
+  :root[data-layout='document'] .layout-document-chrome { display: block; padding: 22px 56px 0; }
+  :root[data-layout='document'] .layout-document-caption { padding-bottom: 10px; border-bottom: 1px solid var(--layout-hairline); font: 11px var(--font-mono); color: var(--muted); letter-spacing: .06em; }
+  :root[data-layout='document'] .layout-document-format { text-transform: uppercase; letter-spacing: .12em; }
+  :root[data-layout='document'] .editor-scroll { --document-inset-start: 56px; --document-inset-end: 56px; padding-top: 48px; padding-bottom: 72px; }
+  :root[data-layout='document'] .document-title { padding-bottom: 28px; margin-bottom: 36px; }
+  :root[data-layout='document'] .document-title::after { content: ''; display: block; width: 72px; height: 2px; margin: 24px auto 0; background: var(--text); opacity: .7; }
+  :root[data-layout='document'] :is(.document-title-input, .document-title-mirror) { text-align: center; font-size: 36px; letter-spacing: .01em; }
+  :root[data-layout='document'] .tano-prose :is(h1, h2, h3) { letter-spacing: .01em; }
+  :root[data-layout='document'] .tano-prose > h2 { padding-bottom: 6px; background: linear-gradient(var(--line), var(--line)) var(--tano-block-padding-inline) 100% / calc(100% - 2 * var(--tano-block-padding-inline)) 1px no-repeat; }
+  :root[data-layout='document'] .document-main > .editor-toolbar { border-bottom: 1px solid var(--line); background: var(--paper); }
+  :root:is([data-layout='document'], [data-layout='notebook']) .document-main:has(.editor-scroll.width-unlimited) { max-width: none; }
+
+  /* Materials remain composable with the independently selected geometry. */
+  :root[data-layout-theme][data-surface='paper'] .document-main { background-image: radial-gradient(color-mix(in srgb, var(--text) 3%, transparent) .6px, transparent .9px); background-size: 5px 5px; }
+  :root[data-layout-theme][data-surface='paper'] :is(.settings-dialog, .modal, .dropdown) { border-radius: var(--radius-dialog); border: 1px solid var(--layout-edge); box-shadow: var(--overlay-shadow); }
+  :root[data-layout-theme][data-surface='skeuomorphic'] .app-shell { background-color: var(--layout-desk); background-image: repeating-linear-gradient(0deg, #00000005 0 1px, transparent 1px 4px), repeating-linear-gradient(90deg, #ffffff06 0 1px, transparent 1px 4px); }
+  /* Gutter shading near the binding plus a fine paper tooth. */
+  :root[data-layout-theme][data-surface='skeuomorphic'] .document-main { background-image: linear-gradient(90deg, #0000001c, transparent 34px), radial-gradient(#80602e0c .6px, transparent .9px); background-size: auto, 4px 4px; }
+  :root[data-layout-theme][data-surface='skeuomorphic'] :is(.settings-dialog, .modal, .dropdown) { border: 1px solid var(--line-strong); border-radius: var(--radius-dialog); box-shadow: var(--overlay-shadow); }
+
+  :root:is([data-layout='document'], [data-layout='notebook']) .workspace-panes-multiple .document-layout { padding: 10px; }
+  :root:is([data-layout='document'], [data-layout='notebook']) .workspace-panes-multiple .editor-scroll { --document-inset-start: 28px; --document-inset-end: 28px; }
+  :root:is([data-layout='document'], [data-layout='notebook']) .workspace-panes-multiple .layout-document-chrome { padding-inline: 28px; }
+  :root.compact-layout[data-layout='islands'] .app-shell { padding: calc(8px + env(safe-area-inset-top, 0px)) calc(8px + env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) calc(8px + env(safe-area-inset-left, 0px)); gap: 0; }
+  :root.compact-layout[data-layout='notebook'] .document-layout { padding: 16px 6px 28px 10px; }
+  :root.compact-layout[data-layout='notebook'] .document-main { border-width: 7px; border-left-width: 16px; padding-left: 16px; }
+  :root.compact-layout[data-layout='notebook'] .document-main::before { left: -27px; transform: scale(.8); transform-origin: left top; bottom: auto; height: calc((100% - 36px) / .8); }
+  :root.compact-layout[data-layout='notebook'] .document-main::after { inset: -4px -4px -4px -12px; }
+  :root.compact-layout[data-layout='notebook'] .layout-document-chrome { padding: 22px 22px 0 18px; }
+  :root.compact-layout[data-layout='notebook'] .notebook-ribbon { top: -7px; right: 18px; width: 16px; height: 56px; }
+  :root.compact-layout[data-layout='notebook'] .milkdown-host { padding-left: 10px; }
+  :root.compact-layout[data-layout='document'] .document-layout { padding: 14px 8px 28px; }
+  :root.compact-layout[data-layout='document'] .layout-document-chrome { padding: 18px 22px 0; }
+  :root.compact-layout:is([data-layout='document'], [data-layout='notebook']) .editor-scroll { --document-inset-start: 22px; --document-inset-end: 22px; }
+  :root.compact-layout[data-layout='document'] :is(.document-title-input, .document-title-mirror) { font-size: 28px; }
+  :root.compact-layout[data-layout-theme]:not([data-layout-theme='builtin:tano']) .settings-dialog { border-radius: 0; box-shadow: none; }
+}
+.layout-thumbnail { width: 100%; height: 84px; display: flex; gap: 6px; padding: 8px; background: var(--sidebar); border-radius: 6px; }
+.layout-thumbnail > i { width: 24%; background: var(--paper); border: 1px solid var(--line-strong); border-radius: 5px; box-shadow: 0 1px 2px #0000001a; }
+.layout-thumbnail > span { flex: 1; display: flex; flex-direction: column; gap: 5px; }
+.layout-thumbnail > span > i { display: block; height: 12px; background: var(--paper); border: 1px solid var(--line-strong); border-radius: 5px; box-shadow: 0 1px 2px #0000001a; }
+.layout-thumbnail > span > i:last-child { flex: 1; }
+[data-layout-preview='builtin:islands'] .layout-thumbnail > span > i:first-child { border-top: 2px solid var(--green); }
+[data-layout-preview='builtin:retro'] .layout-thumbnail { background: var(--sidebar); }
+[data-layout-preview='builtin:retro'] .layout-thumbnail > span { position: relative; border: 4px solid color-mix(in srgb, var(--green) 75%, #24160d); border-left-width: 8px; border-radius: 5px 7px 7px 5px; background: var(--paper); gap: 7px; padding: 6px; }
+[data-layout-preview='builtin:retro'] .layout-thumbnail > span::before { content: ''; position: absolute; left: -10px; top: 4px; bottom: 4px; width: 11px; background: repeating-linear-gradient(0deg, transparent 0 9px, #bbb6aa 9px 12px); }
+[data-layout-preview='builtin:retro'] .layout-thumbnail > span::after { content: ''; position: absolute; right: 5px; top: -4px; width: 5px; height: 16px; background: var(--green); }
+[data-layout-preview='builtin:retro'] .layout-thumbnail > span > i { height: 1px; flex: none; border: 0; border-bottom: 1px solid var(--line-strong); border-radius: 0; }
+[data-layout-preview='builtin:paper'] .layout-thumbnail { gap: 8px; }
+[data-layout-preview='builtin:paper'] .layout-thumbnail > i { border: 0; background: transparent; }
+[data-layout-preview='builtin:paper'] .layout-thumbnail > span { background: var(--paper); border: 1px solid var(--line-strong); border-radius: 1px; box-shadow: 2px 2px 0 -1px var(--paper), 2px 2px 0 0 var(--line-strong), 4px 4px 0 -1px var(--paper), 4px 4px 0 0 var(--line-strong); padding: 10px 12px; margin: 0 8px 4px 0; gap: 6px; }
+[data-layout-preview='builtin:paper'] .layout-thumbnail > span > i { flex: none; height: 2px; background: var(--muted); border: 0; border-radius: 0; box-shadow: none; opacity: .55; }
+[data-layout-preview='builtin:paper'] .layout-thumbnail > span > i:first-child { width: 50%; align-self: center; height: 3px; opacity: .9; margin-bottom: 4px; }

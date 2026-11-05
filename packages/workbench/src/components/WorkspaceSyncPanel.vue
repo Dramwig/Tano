@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import GitInspectionPanel from './GitInspectionPanel.vue';
 import { ref } from 'vue';
 import { X, RefreshCw, GitBranch } from 'lucide-vue-next';
@@ -12,7 +13,7 @@ const { state, busy, error } = props.controller;
 async function enable() { await props.controller.action('configure', remote.value.trim()); if (state.value.backend === 'git') await props.controller.action('run'); }
 </script>
 <template>
-  <div class="modal-backdrop" @mousedown.self="emit('close')" @keydown.esc="emit('close')">
+  <div v-surface-motion="'WorkspaceSyncPanel:0'" class="modal-backdrop" @mousedown.self="emit('close')" @keydown.esc="emit('close')">
     <section class="modal workspace-sync-panel" role="dialog" aria-modal="true" aria-label="Git 与同步">
       <header><h2><GitBranch :size="20" />Git 与同步</h2><button class="icon-button" aria-label="关闭同步" @click="emit('close')"><X :size="18" /></button></header>
       <nav aria-label="Git 功能"><button class="secondary-button" :aria-pressed="tab === 'git'" @click="tab = 'git'">变更与历史</button><button class="secondary-button" :aria-pressed="tab === 'sync'" @click="tab = 'sync'">同步设置</button></nav>

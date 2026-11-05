@@ -44,7 +44,7 @@ beforeEach(() => {
   app.mount(root);
 });
 afterEach(() => {
-  app?.unmount(); root.remove(); button.remove(); vi.useRealTimers();
+  app?.unmount(); root.remove(); button.remove(); vi.useRealTimers(); vi.restoreAllMocks();
 });
 it('supports delegated hover on disabled controls and preserves existing descriptions', async () => {
   button.disabled = true;
@@ -57,7 +57,11 @@ it('supports delegated hover on disabled controls and preserves existing descrip
   expect(hint()).toBeNull();
   expect(button.getAttribute('aria-describedby')).toBe('existing');
 });
-it('shares editor link hints, updates Wiki targets, and hides hints while editing Wiki source', async () => {
+it.each([
+  ['Win32', 'Ctrl'],
+  ['MacIntel', '⌘'],
+])('shows %s link hints, updates Wiki targets, and hides hints while editing Wiki source', async (platform, modifier) => {
+  vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);
   const prose = document.createElement('div');
   prose.className = 'tano-prose';
   const link = document.createElement('a');
@@ -69,11 +73,11 @@ it('shares editor link hints, updates Wiki targets, and hides hints while editin
   try {
     link.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
     await vi.advanceTimersByTimeAsync(250); await flush();
-    expect(hint()?.textContent).toBe('Ctrl/⌘ + 点击跳转');
+    expect(hint()?.textContent).toBe(`${modifier} + 点击跳转`);
     link.className = 'tano-wiki-link';
     link.dataset.markdownSource = '[[Target]]';
     await flush();
-    expect(hint()?.textContent).toBe('[[Target]] · Ctrl/⌘ + 点击跳转');
+    expect(hint()?.textContent).toBe(`[[Target]] · ${modifier} + 点击跳转`);
     link.classList.add('tano-live-wiki');
     await flush();
     expect(hint()).toBeNull();
@@ -134,13 +138,14 @@ it('does not reopen hints when a pointer selection restores breadcrumb focus', a
   navigation.mount(navigationRoot);
   try {
     const trigger = navigationRoot.querySelector<HTMLButtonElement>('[data-tooltip="folder"]')!;
+    const menuTrigger = navigationRoot.querySelector<HTMLButtonElement>('[aria-label="浏览目录：folder"]')!;
     trigger.getClientRects = button.getClientRects;
-    trigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
-    trigger.click(); await flush();
+    menuTrigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    menuTrigger.click(); await flush();
     const row = document.querySelector<HTMLButtonElement>('[data-path="folder/new.md"]')!;
     row.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
     row.click(); await flush();
-    expect(document.activeElement).toBe(trigger);
+    expect(document.activeElement).toBe(menuTrigger);
     expect(document.querySelector('.breadcrumb-menu')).toBeNull();
     await vi.advanceTimersByTimeAsync(300); await flush();
     expect(hint()).toBeNull();

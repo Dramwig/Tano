@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { localizedDataFieldTypes as dataFieldTypes } from '../ui-labels';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
@@ -192,7 +193,7 @@ function keydown(event: KeyboardEvent) {
     </template>
   </div>
   <Teleport to="body">
-    <section
+    <section v-surface-motion="'DataFieldCreate:0'"
       v-if="open"
       ref="panel"
       class="field-create-panel panel-scrollbar"
@@ -387,7 +388,7 @@ function keydown(event: KeyboardEvent) {
   justify-content: center;
   width: 100%;
   background: var(--green-fill);
-  color: white;
+  color: var(--on-accent, white);
 }
 .field-create-panel .field-create-submit:hover {
   background: var(--green-fill-hover);

@@ -20,9 +20,9 @@ it('round trips inline and card references through Markdown and containers', asy
     'Meeting [@Alice](object://person/a82f91).\n\n[Alice](object://database/b91af2 "tano:object-card")\n\n<details>\n<summary>More</summary>\n\n[@SWAT](object://document/c72bb3)\n\n</details>\n';
   try {
     const normalized = codec.normalize(source);
-    expect(normalized).toContain('[@Alice](object://person/a82f91)');
-    expect(normalized).toContain('[Alice](object://database/b91af2 "tano:object-card")');
-    expect(normalized).toContain('[@SWAT](object://document/c72bb3)');
+    expect(normalized).toContain('[[object://person/a82f91]]');
+    expect(normalized).toContain('![[object://database/b91af2]]');
+    expect(normalized).toContain('[[object://document/c72bb3]]');
     expect(codec.normalize(normalized)).toBe(normalized);
   } finally {
     await codec.destroy();
@@ -45,4 +45,15 @@ it('preserves event, asset and unavailable plugin references through the shared 
   } finally {
     await codec.destroy();
   }
+});
+
+it('round trips identity-only refs, cards, mixed Wiki links and stable mention metadata', async () => {
+  const codec = await createHeadlessMarkdown();
+  try {
+    const source = '[[Notes]] [[object://person/a00001]]<!--tano:mention:mention-0001--> [[Other]]\n\n![[object://event/b00002]]\n';
+    const normalized = codec.normalize(source);
+    expect(normalized).toBe(source);
+    expect(codec.normalize(normalized)).toBe(source);
+    expect(codec.mentionAnchors(source, 'hash').has('mention-0001')).toBe(true);
+  } finally { await codec.destroy(); }
 });

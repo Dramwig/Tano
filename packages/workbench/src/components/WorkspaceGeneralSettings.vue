@@ -6,6 +6,7 @@ import type { Workspace } from '@tano/protocol';
 import { defaultWorkspaceSettings } from '../workspace-settings';
 import type { WorkspaceSettings, WorkspaceSettingsPatch } from '../workspace-settings';
 import type { PageTitleSource } from '../page-title-source';
+import { folderHomeFileNames, type FolderHomeFileName } from '../folder-home';
 import WorkspaceIconPicker from './WorkspaceIconPicker.vue';
 import { iconImage } from '../icon-image';
 
@@ -123,6 +124,17 @@ const sidebarOptions = [
           <option value="">{{ t('自动选择') }}</option>
           <option v-if="settings.homePageId && !pages?.some(page => page.id === settings.homePageId)" :value="settings.homePageId" disabled>{{ t('原页面已移除（请重新选择）') }}</option>
           <option v-for="page in pages" :key="page.id" :value="page.id">{{ page.path }}</option>
+        </select>
+      </div>
+      <div class="settings-row" data-settings-key="workspace-folder-home">
+        <div>
+          <strong>{{ t('文件夹首页') }}</strong>
+          <p>{{ t('点击文件夹名称打开直属首页，点击图标展开。首页文件在文件树中隐藏，不移动或修改文件。') }}</p>
+        </div>
+        <select :value="settings.folderHomeFileName" :aria-label="t('文件夹首页')" :disabled="disabled"
+          @change="change({ key: 'folderHomeFileName', value: ($event.target as HTMLSelectElement).value as FolderHomeFileName, previous: settings.folderHomeFileName })">
+          <option v-for="filename in folderHomeFileNames" :key="filename" :value="filename">{{ filename }}</option>
+          <option value="">{{ t('关闭') }}</option>
         </select>
       </div>
       <div class="settings-row" data-settings-key="workspace-title-source">

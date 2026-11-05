@@ -323,6 +323,33 @@ it('treats a cross-paragraph range and code text as block selections without mov
   expect(context.value.activeInline).not.toContain('InlineMath');
 }, 20_000); // The first rendered formula loads the math module on a cold test worker.
 
+it('shows only supported block conversions and hides insertion actions', async () => {
+  const { editor, context, errors } = await mount('正文\n');
+  await handle();
+  await click(button('块级类型'));
+  const labels = () => [...root.querySelectorAll('.block-type-menu .block-type-label')]
+    .map(label => label.childNodes[0]?.textContent?.trim());
+  expect(labels()).toEqual(['正文', '标题', '无序列表', '有序列表', '待办列表', '引用', '提示块', '自定义块', '代码块', 'Mermaid 图表']);
+  await click(button('块级类型'));
+  editor.value!.command('table');
+  await nextTick();
+  expect(context.value.block).toBe('Table');
+  await click(button('块级类型'));
+  expect(labels()).toEqual(['引用', '提示块', '自定义块']);
+  expect(errors).toEqual([]);
+});
+
+it('hides code conversions when a block contains an inline image', async () => {
+  await mount('文字 ![图片](photo.png)\n');
+  await handle();
+  await click(button('块级类型'));
+  const labels = [...root.querySelectorAll('.block-type-menu .block-type-label')]
+    .map(label => label.childNodes[0]?.textContent?.trim());
+  expect(labels).toContain('正文');
+  expect(labels).not.toContain('代码块');
+  expect(labels).not.toContain('Mermaid 图表');
+});
+
 it('keeps read-only and source modes non-editable and closes stale menus', async () => {
   const { readonly, source, value, editor } = await mount('正文\n');
   await click(button('块级类型'));
@@ -792,6 +819,8 @@ it('positions newly opened docked menus using their trigger and actual height', 
 });
 
 it('disables a fading toolbar and keeps a reopened toolbar when the previous exit finishes', async () => {
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = vi.fn(() => ({ matches: false, addEventListener: vi.fn() }) as unknown as MediaQueryList);
   const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'animate');
   const nativeAnimations: { onfinish: (() => void) | null; cancel: ReturnType<typeof vi.fn> }[] = [];
   Object.defineProperty(Element.prototype, 'animate', {
@@ -814,6 +843,7 @@ it('disables a fading toolbar and keeps a reopened toolbar when the previous exi
     const content = root.querySelector<HTMLElement>('.ProseMirror')!;
     await selectText(root.querySelector('.ProseMirror p')!, 0, 2);
     await expectFloating();
+    await vi.waitFor(() => expect(nativeAnimations.length).toBeGreaterThan(0));
     finishAnimations();
     await nextTick();
     const outgoing = document.querySelector('.selection-toolbar')!;
@@ -827,6 +857,7 @@ it('disables a fading toolbar and keeps a reopened toolbar when the previous exi
     content.focus();
     await vi.waitFor(() => expect(document.querySelector('.selection-toolbar:not([inert])')).not.toBeNull());
     const reopened = document.querySelector('.selection-toolbar:not([inert])')!;
+    await vi.waitFor(() => expect(nativeAnimations.length).toBeGreaterThan(0));
     finishAnimations();
     await nextTick();
     expect(reopened.isConnected).toBe(true);
@@ -836,6 +867,7 @@ it('disables a fading toolbar and keeps a reopened toolbar when the previous exi
     finishAnimations();
     await vi.waitFor(() => expect(document.querySelector('.selection-toolbar')).toBeNull());
   } finally {
+    window.matchMedia = previousMatchMedia;
     if (descriptor) Object.defineProperty(Element.prototype, 'animate', descriptor);
     else Reflect.deleteProperty(Element.prototype, 'animate');
   }

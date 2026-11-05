@@ -5,7 +5,8 @@ export type OfficeBlock =
   | { kind: 'table'; rows: { blocks: OfficeBlock[]; colspan: number }[][] }
   | { kind: 'image'; src: string; alt: string };
 export interface OfficePage { name: string; blocks: OfficeBlock[] }
-export interface OfficeSheet { name: string; rows: string[][]; columns: number; truncated: boolean }
+export const officeDefaultColumnWidth = 72;
+export interface OfficeSheet { name: string; rows: string[][]; columns: number; columnWidths?: number[]; truncated: boolean }
 export type OfficePreview =
   | { kind: 'spreadsheet'; sheets: OfficeSheet[] }
   | { kind: 'document'; pages: OfficePage[]; legacy: boolean }

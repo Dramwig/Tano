@@ -118,3 +118,18 @@ it('handles a racing creator and rejects invalid feature types', async () => {
   await adapter.write(capabilityPath, '{"features":{"math":"false"}}', saved.snapshot.hash);
   await expect(loadCapabilities(adapter, await adapter.refresh())).rejects.toThrow('布尔值');
 });
+
+it('defaults legacy math recognition and merges only independent changes', async () => {
+  const { parseCapabilities } = await import('@tano/editor/runtime');
+  expect(parseCapabilities('{}').mathRecognition).toBe('all');
+  expect(() => parseCapabilities('{"mathRecognition":"invalid"}')).toThrow('公式识别语法');
+  const adapter = new DemoAdapter();
+  await adapter.open();
+  const initial = await saveCapabilityPatch(adapter, null, { mathRecognition: 'all' });
+  await saveCapabilityPatch(adapter, initial.snapshot, { mathSyntax: 'latex' });
+  const saved = await saveCapabilityPatch(adapter, initial.snapshot, { mathRecognition: 'dollar' });
+  expect(saved.capabilities).toMatchObject({ mathRecognition: 'dollar', mathSyntax: 'latex' });
+  expect((await loadCapabilities(adapter, await adapter.refresh())).capabilities.mathRecognition).toBe('dollar');
+  await expect(saveCapabilityPatch(adapter, initial.snapshot, { mathRecognition: 'latex' })).rejects.toThrow('外部修改');
+  expect(await adapter.read(capabilityPath)).toEqual(saved.snapshot);
+});

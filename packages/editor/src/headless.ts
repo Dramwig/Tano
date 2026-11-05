@@ -37,6 +37,8 @@ import { nestedEmphasisRemark } from './nested-emphasis';
 import { enhanced } from './enhanced';
 import { splitFrontmatter, unsupportedMarkdown } from './syntax';
 import { projectCommentText } from './comment-projection';
+import { makeCommentAnchor } from './comment-anchors';
+import type { CommentAnchor } from '@tano/protocol';
 import { configureMarkdownRuntime, defaultCapabilities } from './runtime';
 import type { WorkspaceCapabilities } from './runtime';
 
@@ -118,6 +120,23 @@ export async function createHeadlessMarkdown(policy: WorkspaceCapabilities = def
     }
   });
   return {
+    mentionAnchors(markdown: string, baseHash: string) {
+      const { body } = splitFrontmatter(markdown);
+      const doc = ctx.get(parserCtx)(body);
+      if (!doc) throw new Error('无法解析提及位置');
+      const projection = projectCommentText(doc);
+      const anchors = new Map<string, CommentAnchor>();
+      doc.descendants((node, pos) => {
+        if (node.type.name !== 'tano_reference' || !node.attrs.mentionId) return;
+        const at = doc.resolve(pos);
+        const parts = projection.segments.filter(part => part.proseFrom >= at.start() && part.proseTo <= at.end());
+        if (!parts.length) return;
+        const from = parts[0].from, to = parts.at(-1)!.to;
+        if (!anchors.has(node.attrs.mentionId)) anchors.set(node.attrs.mentionId,
+          makeCommentAnchor('prose', projection.text, [{ from, to, text: projection.text.slice(from, to) }], baseHash));
+      });
+      return anchors;
+    },
     projectComments(markdown: string) {
       const { body } = splitFrontmatter(markdown);
       const node = ctx.get(parserCtx)(body);

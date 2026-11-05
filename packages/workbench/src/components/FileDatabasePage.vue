@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { computed, ref, watch } from 'vue';
-import { Table2, Filter, Save, SlidersHorizontal } from 'lucide-vue-next';
+import { Database, Filter, Save, SlidersHorizontal } from 'lucide-vue-next';
 import { emptyFileMetadata, fileMetadataPath, queryFileDatabase, groupFileDatabase, isMarkdown } from '@tano/protocol';
 import type { FileEntry, FileMetadata, WorkspaceViewDefinition } from '@tano/protocol';
 import { useWorkspaceStore } from '../stores/workspace';
@@ -69,7 +69,7 @@ function editProperties(file: FileEntry) {
 <template>
   <div class="file-database-shell">
   <main ref="scrollElement" class="file-database" :aria-label="view.name"><div class="database-content">
-    <header><div class="database-heading"><Table2 :size="22" /><h1><input v-model="draft.name" :aria-label="t('视图名称')" maxlength="200" required /></h1><span class="database-count">{{ results.length }} / {{ files.length }} {{ t('个文件') }}</span></div><p>{{ query.directory || t('工作区根目录') }} · {{ t('直接查询原文件，不复制源文件') }}</p></header>
+    <header><div class="database-heading"><Database :size="22" /><h1><input v-model="draft.name" :aria-label="t('视图名称')" maxlength="200" required /></h1><span class="database-count">{{ results.length }} / {{ files.length }} {{ t('个文件') }}</span></div><p>{{ query.directory || t('工作区根目录') }} · {{ t('直接查询原文件，不复制源文件') }}</p></header>
     <form class="database-query" @submit.prevent="save">
       <label class="checkbox"><input v-model="query.recursive" type="checkbox" />{{ t('包含子目录') }}</label>
       <div v-for="(filter, index) in query.filters" :key="index" class="filter-row">
@@ -108,7 +108,7 @@ function editProperties(file: FileEntry) {
 .file-database-shell { display: flex; height: 100%; min-height: 0; overflow: hidden; background: var(--paper); }
 .file-database { flex: 1; height: 100%; min-width: 0; box-sizing: border-box; overflow: auto; padding: 22px 28px 24px; background: var(--paper); color: var(--text); }
 .database-heading { display: flex; align-items: center; gap: 10px; }
-.database-heading > svg { flex: none; color: var(--green); }
+.database-heading > svg { flex: none; color: var(--muted); }
 h1 { flex: 1; min-width: 0; margin: 0; font-size: 23px; font-weight: 600; }
 h1 input { width: 100%; min-width: 0; font-size: inherit; font-weight: inherit; border-color: transparent; padding: 3px; background: transparent; }
 header p { margin: 8px 0 14px 35px; color: var(--muted); font-size: 12px; line-height: 1.5; }

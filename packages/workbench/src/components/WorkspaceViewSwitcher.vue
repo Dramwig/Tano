@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { useWorkspaceStore } from '../stores/workspace';
 import { useAssistantStore } from '../assistant/store';
@@ -128,7 +129,7 @@ onBeforeUnmount(() => {
     <ChevronDown :size="12" :class="{ expanded: position }" aria-hidden="true" />
   </button>
   <Teleport to="body">
-    <div
+    <div v-surface-motion="'WorkspaceViewSwitcher:0'"
       v-if="position"
       :id="menuId"
       ref="menuElement"

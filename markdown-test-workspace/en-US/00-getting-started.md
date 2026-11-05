@@ -1,14 +1,15 @@
 ---
-title: "Tano Markdown QA Workspace"
+title: "Tano Feature Practice Workspace"
 tags: [testing, Markdown, workspace]
 created: "2026-09-26"
+updated: "2026-11-03"
 ---
 
-# Tano Markdown QA Workspace
+# Tano Feature Practice Workspace
 
 [简体中文](../zh-CN/00-从这里开始.md) · [Language overview](../开始使用.md)
 
-This is the English set of Markdown QA documents. Open the containing workspace folder in the desktop app to test real files. The browser demo bundles separate copies and saves edits only in this browser; it cannot read or sync this local folder.
+Explore current editing and workspace workflows through 18 English documents. Start with syntax in 01–09, then use 10–14 for practical exercises. Open the containing workspace folder in the desktop app to test real files. The browser demo bundles separate copies and saves edits only in this browser; it cannot read or sync this local folder.
 
 ## File guide
 
@@ -23,6 +24,12 @@ This is the English set of Markdown QA documents. Open the containing workspace 
 | [07-source-preservation-boundaries.md](07-source-preservation-boundaries.md) | Unsupported syntax and source fallback |
 | [08-unknown-directives-and-embeds.md](08-unknown-directives-and-embeds.md) | Unknown directives, Wiki embeds, and code-fence metadata |
 | [09-toml-frontmatter.md](09-toml-frontmatter.md) | TOML frontmatter source preservation |
+| [10-block-editing-and-layout.md](10-block-editing-and-layout.md) | Multiple-block source editing, undo, columns, and automatic table widths |
+| [11-copy-formats-and-math.md](11-copy-formats-and-math.md) | Clipboard destinations, MathML/TSV, and math recognition |
+| [12-files-and-attachments.md](12-files-and-attachments.md) | Folder homes, conversion, tabs, and desktop attachment exercises |
+| [13-data-tables-and-views.md](13-data-tables-and-views.md) | Data tables, formulas, file views, and object views |
+| [14-assistant-and-agents.md](14-assistant-and-agents.md) | Inline assistant, execution vs proposals, @Agent, and MCP permissions |
+| [Sample project](sample-project/README.md) and [review checklist](sample-project/review-checklist.md) | A real folder home with child documents and relative links |
 | [nested-folder/target-document.markdown](nested-folder/target-document.markdown) | Nested paths, the `.markdown` extension, and heading navigation |
 
 ## Format checklist
@@ -36,7 +43,7 @@ This is the English set of Markdown QA documents. Open the containing workspace 
 | Enhanced blocks | NOTE/TIP/IMPORTANT/WARNING/CAUTION, Toggle, File, Embed, Tabs, and Columns; Panel belongs inside Tabs or Columns |
 | Math | Inline `$...$` / `\(...\)` and display `$$...$$` / `\[...\]` |
 | Properties | YAML strings, numbers, booleans, nulls, lists, multiline values, nested objects, and comments |
-| Objects | Person and Event records, historical Task/Project references, and Document/Asset file resources |
+| Objects | Editable Person, Task, Project, and Event records, plus Document/Asset references assigned by the app |
 
 This checklist does not promise every CommonMark dialect or arbitrary HTML/CSS. Ordinary HTML can be previewed locally and preserved in source mode; its real-time collaboration codec support differs from restricted text-style tags.
 
@@ -56,3 +63,7 @@ In workspace document-capability settings, toggle `objectReferences`, `math`, `m
 Edit the YAML examples in source mode to inspect exact comments, order, and multiline syntax. `created`, `updated`, `date`, `created_at`, and `updated_at` are useful date-field examples; arbitrary keys do not acquire a dedicated business schema.
 
 Preset object records live at the workspace root under `.tano/objects/`. Document and Asset short IDs are assigned by the app; create their references with the picker instead of guessing an ID. Browser samples are isolated from the local workspaces and do not provide network sync or a real agent connection.
+
+## Existing demo copies
+
+An existing browser demo keeps your saved copy rather than replacing it with new samples. To inspect the latest bundled examples without losing earlier edits, use a separate browser profile or private window. No exercise on this page has been marked as a passed acceptance test.

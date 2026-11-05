@@ -1661,3 +1661,30 @@ describe('workspace panes', () => {
     expect(store.activeId).toBe('note-id');
   });
 });
+
+it('opens folder tabs by identity, preserves drafts, and restores a folder session', async () => {
+  await store.create('项目', true);
+  await store.openFile(store.workspace!.files.find(file => file.id === 'note-id')!);
+  store.edit('saved before folder navigation');
+  await store.openDirectory('项目');
+  const id = store.activeId;
+  expect(store.tabs.find(tab => tab.id === id)?.directory).toEqual({ path: '项目', name: '项目', missing: false });
+  expect(backend.files.get('note.md')?.content).toBe('saved before folder navigation');
+  await store.openDirectory('');
+  expect(store.activeId).toBe('directory:/');
+  await store.navigateHistory(-1);
+  expect(store.activeId).toBe(id);
+  await store.navigateHistory(1);
+  expect(store.activeId).toBe('directory:/');
+  await store.openDirectory('项目');
+  expect(store.activeId).toBe(id);
+  await vi.waitFor(() => expect(backend.session?.activeId).toBe(id));
+  await store.dispose();
+  setActivePinia(configureWorkbench(createPinia(), { adapter: backend, native: false, mobile: false }));
+  store = useWorkspaceStore();
+  await store.initialize();
+  expect(store.activeId).toBe(id);
+  expect(store.tabs.find(tab => tab.id === id)?.directory?.path).toBe('项目');
+  await store.removeEntry(store.workspace!.files.find(file => file.path === '项目')!);
+  expect(store.tabs.find(tab => tab.id === id)?.directory?.missing).toBe(true);
+});

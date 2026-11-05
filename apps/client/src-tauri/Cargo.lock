@@ -4244,7 +4244,7 @@ dependencies = [
 
 [[package]]
 name = "tano"
-version = "0.9.2"
+version = "0.10.0"
 dependencies = [
  "base64 0.22.1",
  "libc",
@@ -4271,7 +4271,7 @@ dependencies = [
 
 [[package]]
 name = "tano-native"
-version = "0.9.2"
+version = "0.10.0"
 dependencies = [
  "base64 0.22.1",
  "hmac",
@@ -4296,6 +4296,8 @@ dependencies = [
  "toml 0.9.12+spec-1.1.0",
  "trash",
  "uuid",
+ "webview2-com",
+ "windows 0.61.3",
  "windows-sys 0.61.2",
 ]
 

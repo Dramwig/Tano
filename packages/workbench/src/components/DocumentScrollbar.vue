@@ -19,13 +19,18 @@ function measure() {
   const element = props.scrollElement;
   viewport.value = element?.clientHeight ?? 0;
   extent.value = element?.scrollHeight ?? 0;
-  position.value = Math.max(0, Math.min(element?.scrollTop ?? 0, maximum.value));
+  updatePosition();
+}
+function updatePosition() {
+  // Content and viewport extents are maintained by ResizeObserver. Reading
+  // scrollHeight on every scroll event forces pending editor layout to finish.
+  position.value = Math.max(0, Math.min(props.scrollElement?.scrollTop ?? 0, maximum.value));
 }
 function scrollTo(value: number) {
   const element = props.scrollElement;
   if (!element) return;
   element.scrollTop = Math.max(0, Math.min(value, maximum.value));
-  measure();
+  updatePosition();
 }
 function finish(event?: PointerEvent) {
   if (!gesture || (event && event.pointerId !== gesture.pointer)) return;
@@ -84,7 +89,7 @@ watch(() => props.scrollElement, (element, _, cleanup) => {
   measure();
   if (!element) return;
   element.classList.add('document-layout-managed-scrollbar');
-  element.addEventListener('scroll', measure, { passive: true });
+  element.addEventListener('scroll', updatePosition, { passive: true });
   const observer = new ResizeObserver(measure);
   observer.observe(element);
   // The document main grows for edits, image loads, source mode and comments.
@@ -94,7 +99,7 @@ watch(() => props.scrollElement, (element, _, cleanup) => {
   cleanup(() => {
     finish();
     observer.disconnect();
-    element.removeEventListener('scroll', measure);
+    element.removeEventListener('scroll', updatePosition);
     element.classList.remove('document-layout-managed-scrollbar');
     window.removeEventListener('blur', blur);
   });

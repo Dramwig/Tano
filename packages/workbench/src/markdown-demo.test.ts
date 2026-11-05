@@ -18,7 +18,7 @@ it.each(['zh-cn', 'en-us'] as const)('opens only the %s documents, resources, an
   const workspace = await adapter.open();
   expect(workspace.id).toBe(`demo-${locale}`);
   const documents = workspace.files.filter(file => file.kind === 'file' && /\.(md|markdown)$/.test(file.path));
-  expect(documents).toHaveLength(11);
+  expect(documents).toHaveLength(18);
   expect(workspace.files.some(file => /^(zh-CN|en-US)(\/|$)/.test(file.path))).toBe(false);
   expect(documents.some(file => file.path.includes(locale === 'zh-cn' ? 'getting-started' : '从这里开始'))).toBe(false);
   const home = await adapter.read(locale === 'zh-cn' ? '00-从这里开始.md' : '00-getting-started.md');

@@ -1,10 +1,11 @@
+import { setSurfaceVisible, showSurface, removeSurface } from './surface-motion';
 import { DOMSerializer } from '@milkdown/kit/prose/model';
 import type { Mark, Node } from '@milkdown/kit/prose/model';
 import type { NodeViewConstructor, MarkViewConstructor } from '@milkdown/kit/prose/view';
 import { Selection, TextSelection } from '@milkdown/kit/prose/state';
 import DOMPurify from 'dompurify';
 import type { WorkspaceCapabilities } from './runtime';
-import { featureEnabled } from './runtime';
+import { featureEnabled, recognizesMath, newMathSyntax } from './runtime';
 import { mermaidHighlightRanges } from './mermaid-highlight';
 import { floatingPanelPosition, observePanelPosition, positionAnchoredPanel } from './panel-position';
 import type { PanelSide } from './panel-position';
@@ -41,7 +42,7 @@ export function sourcePresentation(node: Node, policy: WorkspaceCapabilities) {
   switch (node.type.name) {
     case 'math_inline':
     case 'math_block':
-      return !features.math;
+      return !recognizesMath(policy, node.attrs.delimiter || newMathSyntax(policy));
     case 'tano_wiki_link':
       return !features.wikiLink;
     case 'footnote_definition':
@@ -239,6 +240,7 @@ export function mermaidView(
         if (!menuOpen) {
           menuOpen = true;
           document.body.append(menu);
+          showSurface(menu);
           language.setAttribute('aria-expanded', 'true');
           stopPositioning = observePanelPosition(positionMenu);
         }
@@ -248,7 +250,7 @@ export function mermaidView(
       function closeMenu() {
         if (!menuOpen) return;
         menuOpen = false;
-        menu.remove();
+        removeSurface(menu);
         stopPositioning?.();
         stopPositioning = undefined;
         language.setAttribute('aria-expanded', 'false');
@@ -445,7 +447,7 @@ export function mermaidView(
       if (input.value !== currentNode.textContent) input.value = currentNode.textContent;
       renderSource();
       input.readOnly = readonly();
-      panel.hidden = !editing;
+      setSurfaceVisible(panel, editing);
       preview.tabIndex = readonly() ? -1 : 0;
       preview.setAttribute('role', readonly() ? 'img' : 'button');
       preview.setAttribute('aria-label', readonly() ? 'Mermaid 图表' : '编辑 Mermaid 图表');

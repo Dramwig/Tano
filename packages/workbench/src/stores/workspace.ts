@@ -1,4 +1,6 @@
 import { useDocumentIndex } from '../document-index';
+import { PluginAttachmentReader } from '../plugins/attachment-reader';
+import { nativeAttachments } from '../attachments';
 import { WorkspacePluginRuntime } from '../workspace-plugin-runtime';
 import { WorkspaceLifecycle } from '../workspace-lifecycle';
 import { useTabNavigation } from '../tab-navigation';
@@ -19,6 +21,8 @@ import { mergeMarkdown } from '@tano/markdown';
 import { useWorkbenchRuntime } from '../runtime';
 import type { WorkbenchViewTab } from '../runtime';
 import { planFileMove } from '../file-move';
+import { convertFolderDocument, type FolderConversionKind } from '../folder-conversion';
+import { indexFolderHomes } from '../folder-home';
 import { optimisticFiles, type FileMutationPreview } from '../optimistic-files';
 import { topLevelEntries } from '../file-selection';
 import { defaultCapabilities, parseCapabilities } from '@tano/editor/runtime';
@@ -93,6 +97,7 @@ export interface DocumentTab {
   calendar: boolean;
   view?: WorkbenchViewTab;
   workspaceView?: WorkspaceViewRecord;
+  directory?: { path: string; name: string; missing: boolean };
   pluginView?: PluginWorkbenchView;
   document?: OpenDocument;
   attachmentPreview: boolean;
@@ -112,6 +117,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const helpEdits = createHelpEditQueue();
   onScopeDispose(helpEdits.dispose);
   const runtime = useWorkbenchRuntime();
+  const pluginAttachmentReader = new PluginAttachmentReader();
   const { adapter, mobile } = runtime;
   const views = shallowRef<ReadonlyMap<string, WorkbenchViewTab>>(new Map());
   const workspaceViewTabPrefix = 'workspace-view:';
@@ -122,8 +128,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const viewId = workspaceViewId(id);
     return viewId !== undefined && workspaceViews.value.some((record) => record.view.id === viewId);
   };
-  const isNavigationPage = (id: string) => id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || isTableTab(id) || hasWorkspaceViewTab(id);
-  const isBuiltinTab = (id: string) => id.startsWith('blank:') || id.startsWith('attachment:') || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || id === CALENDAR_TAB_ID || isTableTab(id) || hasWorkspaceViewTab(id);
+  const isDirectoryTab = (id: string) => id.startsWith('directory:');
+  function directoryForTab(id: string) {
+    if (!isDirectoryTab(id)) return undefined;
+    if (id === 'directory:/') return { path: '', name: workspace.value?.name ?? '', missing: false };
+    const entry = workspace.value?.files.find(file => file.id === id.slice('directory:'.length) && file.kind === 'directory');
+    return { path: entry?.path ?? '', name: entry?.name ?? '文件夹不可用', missing: entry?.kind !== 'directory' };
+  }
+  const isNavigationPage = (id: string) => (isDirectoryTab(id) && !directoryForTab(id)?.missing) || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || isTableTab(id) || hasWorkspaceViewTab(id);
+  const isBuiltinTab = (id: string) => isDirectoryTab(id) || id.startsWith('blank:') || id.startsWith('attachment:') || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || id === CALENDAR_TAB_ID || isTableTab(id) || hasWorkspaceViewTab(id);
   const isUtilityTab = (id: string) => isBuiltinTab(id) || views.value.has(id) || pluginViews.value.some(view => view.key === id && view.location === 'tab');
   function registerViews(definitions: readonly WorkbenchViewTab[]) {
     const next = new Map<string, WorkbenchViewTab>();
@@ -223,6 +236,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function createDataTable(template: 'blank' | 'parts' = 'blank', parent = '') {
     const id = await dataTables.create(template, undefined, parent);
+    recordHelpCompleted('data-table');
     await openDataTable(id);
     return id;
   }
@@ -330,6 +344,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const objectErrors = ref<string[]>([]);
   let pluginEditorEdit: ((id: string, before: string, after: string) => Promise<boolean>) | undefined;
   const pluginRuntime = shallowRef<PluginRuntimeState[]>([]);
+  watch([() => workspace.value?.id, () => pluginRuntime.value.map(plugin => `${plugin.instanceId}:${plugin.status}`).join(',')],
+    () => pluginAttachmentReader.clear());
   const pluginQueryPager = new PluginQueryPager();
   const canManageSettings = computed(() => !!workspace.value && !workspace.value.readOnly &&
     (workspace.value.canManageSettings ?? adapter.mode !== 'web'));
@@ -340,6 +356,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   if (typeof window !== 'undefined') window.addEventListener('storage', pluginStorageChanged);
   onScopeDispose(() => { if (typeof window !== 'undefined') window.removeEventListener('storage', pluginStorageChanged); });
   const installedPlugins = ref<InstalledObjectPlugin[]>([]);
+  const installedPluginWorkspace = ref('');
   const pluginDevelopment = shallowRef<PluginDevelopmentState>({ pluginId: '', active: false, message: '' });
   const pluginServices = new WorkspacePluginRuntime({
     adapter, services: runtime.plugins, serial, refresh: refreshObjects, call: pluginCall,
@@ -385,9 +402,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const relationIndex = computed(() => new RelationIndex(relations.value));
   const objectDefinitions = ref(objectTypeRegistry.list());
   onScopeDispose(objectTypeRegistry.subscribe(() => { objectDefinitions.value = objectTypeRegistry.list(); }));
-  const referenceTargets = computed<ReferenceTarget[]>(() => workspace.value ? [
+  const fileReferenceTargets = computed<ReferenceTarget[]>(() => workspace.value ? [
     ...documentTargets(workspace.value.id, workspace.value.files),
     ...assetTargets(workspace.value.id, workspace.value.files),
+  ] : []);
+  const referenceTargets = computed<ReferenceTarget[]>(() => workspace.value ? [
+    ...fileReferenceTargets.value,
     ...objects.value.filter(({ object }) => {
       const definition = objectDefinitions.value.find((entry) => entry.type === object.type)
         ?? objectTypeRegistry.get(object.type);
@@ -396,8 +416,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       try { validateObjectProperties(object.type, object.properties); return true; } catch { return false; }
     }).map(({ object, path }) => ({ workspace: workspace.value!.id, type: object.type, id: object.id, name: object.name, description: object.description, archived: object.archived, path, properties: object.properties })),
   ] : []);
-  const referenceRevision = computed(() => JSON.stringify([workspace.value?.id, workspace.value?.path,
-    workspace.value?.files.map(file => [file.id, file.path, file.modified, file.size]),
+  // File metadata changes independently of open-document drafts and object loads.
+  // Keep its traversal/serialization cached across those more frequent updates.
+  const referenceFilesRevision = computed((previous?: { key: string; version: number }) => {
+    const key = JSON.stringify([workspace.value?.id, workspace.value?.path,
+      workspace.value?.files.map(file => [file.id, file.path, file.modified, file.size, file.contentHash])]);
+    return previous?.key === key ? previous : { key, version: (previous?.version ?? 0) + 1 };
+  });
+  const referenceRevision = computed(() => JSON.stringify([referenceFilesRevision.value.version,
     documents.value.map(doc => [doc.id, documentIndex.revision(doc)]), objects.value.map(record => [record.object.id, record.object.description, record.object.name, record.object.archived])]));
   let pluginEventTimer: ReturnType<typeof setTimeout>;
   onScopeDispose(() => clearTimeout(pluginEventTimer));
@@ -415,7 +441,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     referenceDocumentCache.clear();
     const pluginsReady = loadWorkspacePart('plugins', async () => {
         try {
-          installedPlugins.value = await pluginHost.loadWorkspace(adapter, current);
+          const installed = await pluginHost.loadWorkspace(adapter, current);
+          if (workspace.value?.id !== current.id) return;
+          installedPlugins.value = installed;
+          installedPluginWorkspace.value = current.id;
           pluginExecutor.sync(current, installedPlugins.value);
           pluginError.value = '';
         } catch (error) {
@@ -465,6 +494,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         if (!expected || workspace.value?.id !== expected) throw new Error('工作区已切换');
       };
       assertCurrent();
+      if (method === 'attachments.read') return pluginAttachmentReader.read(workspace.value!, params,
+        runtime.attachments ?? (runtime.native && adapter.mode === 'desktop' ? nativeAttachments : undefined), assertCurrent);
       workspace.value = await adapter.refresh();
       await refreshObjects();
       assertCurrent();
@@ -930,6 +961,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activeId.value = id;
     changingLayout = false;
     const applied = JSON.stringify(layout.value);
+    if (layoutPanes(before).length < panes.value.length) recordHelpCompleted('split-view');
     // A receiving window can undo a move if the source fails to close. Never
     // overwrite layout changes made by the user while that acknowledgement ran.
     return () => {
@@ -993,8 +1025,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const table = dataTables.records.value.find(record => tableTabId(record.fileId) === targetId);
       const tableFile = isTableTab(targetId) ? fileRegistry.value?.get(tableFileId(targetId)) : undefined;
       const tablePath = tableFile ? displayPath(tableFile) : table?.path;
+      const directory = directoryForTab(targetId);
       const workspaceView = workspaceViews.value.find(record => workspaceViewTabId(record.view.id) === targetId);
-      return { id, path: document ? displayPath(document) : pendingPath ?? (attachment ? displayPath(attachment) : tableFile ? displayPath(tableFile) : workspaceView?.path ?? tablePath ?? (attachmentPreview ? '附件不可用' : '')), blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, view: views.value.get(id), workspaceView, pluginView: pluginViews.value.find(view => view.key === id && view.location === 'tab'), document, attachmentPreview, attachment,
+      return { id, directory, path: directory ? directory.path : document ? displayPath(document) : pendingPath ?? (attachment ? displayPath(attachment) : tableFile ? displayPath(tableFile) : workspaceView?.path ?? tablePath ?? (attachmentPreview ? '附件不可用' : '')), blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, view: views.value.get(id), workspaceView, pluginView: pluginViews.value.find(view => view.key === id && view.location === 'tab'), document, attachmentPreview, attachment,
         ...(isTableTab(targetId) ? { dataTable: { name: tablePath ? dataTableName(tablePath) : '数据表不可用', dirty: !!table && dataTables.dirty(table), icon: table?.draft.icon } } : {}) };
     }),
   );
@@ -1287,6 +1320,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           else if (detachedTabId === PLUGINS_TAB_ID) await openPluginsTab({ newTab: true });
           else if (detachedTabId === CALENDAR_TAB_ID) openCalendarTab();
           else if (isTableTab(detachedTabId)) await openPageTab(detachedTabId, { newTab: true });
+          else if (isDirectoryTab(detachedTabId)) await openPageTab(detachedTabId, { newTab: true });
           else if (isWorkspaceViewTab(detachedTabId)) await openWorkspaceView(workspaceViewId(detachedTabId)!, { newTab: true });
           else if (views.value.has(detachedTabId)) {
             if (!views.value.get(detachedTabId)?.detachable) throw new Error('此扩展视图不支持移到其他窗口');
@@ -1674,6 +1708,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return true;
   }
   async function openFile(file: FileEntry, options?: { historyIndex?: number }) {
+    if (officePluginHandles(file) && await openOfficePlugin(file)) return;
     if (drawingPluginHandles(file) && await openDrawingPlugin(file)) return;
     const creationAtRequest = creationRevision;
     const request = ++fileOpenRevision;
@@ -1701,7 +1736,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         recordTabNavigation(replaceId, file.id, options?.historyIndex);
       else if (!replaceId && activeId.value === file.id)
         ensureTabNavigation(file.id, file.id);
-      if (active.value?.id === file.id) recordHelpCompleted('welcome');
+      if (active.value?.id === file.id) recordOpenedDocument(file);
     } catch (e) {
       if (current()) report(e);
     } finally {
@@ -1710,6 +1745,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function openFileInNewTab(file: FileEntry) {
     try {
+      if (officePluginHandles(file) && await openOfficePlugin(file)) return;
       if (drawingPluginHandles(file) && await openDrawingPlugin(file)) return;
       await serial(async () => {
         if (file.kind === 'file' && isDataTableFilePath(file.path)) {
@@ -1735,10 +1771,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         await openInternal(file);
         if (activeId.value === file.id) ensureTabNavigation(file.id, file.id);
       });
-      if (active.value?.id === file.id) recordHelpCompleted('welcome');
+      if (active.value?.id === file.id) recordOpenedDocument(file);
     } catch (error) {
       report(error);
     }
+  }
+  function recordOpenedDocument(file: FileEntry) {
+    recordHelpCompleted('welcome');
+    if (workspace.value && indexFolderHomes(workspace.value.files, workspaceSettings.value.folderHomeFileName)
+      .get(parentPath(file.path))?.id === file.id) recordHelpCompleted('folder-home');
   }
   /** The bundled drawing plugin handles its own Markdown; disabled plugins keep source access. */
   function drawingPluginHandles(file: FileEntry) {
@@ -1753,9 +1794,23 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return true;
     } catch (error) { report(error); return false; }
   }
-  function openAttachmentInNewTab(file: FileEntry) {
+  function officePluginId(file: FileEntry) {
+    return /\.pptx?$/i.test(file.path) ? 'presentation-preview' : /\.docx?$/i.test(file.path) ? 'word-preview' : undefined;
+  }
+  function officePluginHandles(file: FileEntry) {
+    return file.kind === 'file' && !!officePluginId(file) && !!workspace.value &&
+      pluginRuntime.value.some(plugin => plugin.id === officePluginId(file) && plugin.status === 'running');
+  }
+  async function openOfficePlugin(file: FileEntry) {
+    try {
+      await pluginExecutor.invoke(officePluginId(file)!, 'command', 'open', { workspaceId: workspace.value!.id, fileId: file.id });
+      return true;
+    } catch (error) { report(error); return false; }
+  }
+  async function openAttachmentInNewTab(file: FileEntry) {
     if (!workspace.value || file.kind !== 'file' || isMarkdown(file.path) || isDataTableFilePath(file.path) ||
         !workspace.value.files.some(entry => entry.id === file.id && entry.path === file.path)) return;
+    if (officePluginHandles(file) && await openOfficePlugin(file)) return;
     const id = `attachment:${file.id}`;
     if (!tabIds.value.includes(id)) tabIds.value.push(id);
     activeId.value = id;
@@ -1823,6 +1878,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function openGraphTab(options?: { newTab?: boolean; historyIndex?: number }) {
     await openPageTab(GRAPH_TAB_ID, options);
     if (workspace.value && activeId.value === GRAPH_TAB_ID) recordHelpCompleted('graph');
+  }
+  async function openDirectory(path: string, options?: { newTab?: boolean; historyIndex?: number }) {
+    if (!workspace.value) return;
+    const entry = workspace.value.files.find(file => file.kind === 'directory' && file.path === path);
+    if (path && !entry) return;
+    await openPageTab(path ? `directory:${entry!.id}` : 'directory:/', options);
   }
   async function openWorkspaceView(id: string, options?: { newTab?: boolean; historyIndex?: number }) {
     if (!workspaceViews.value.some((record) => record.view.id === id)) throw new Error('工作区视图已不存在，请刷新后重试');
@@ -2692,6 +2753,44 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function rename(doc: OpenDocument, path: string) {
     return renameEntry({ id: doc.id, path: displayPath(doc), kind: 'file' }, path);
   }
+  const folderConversionBusy = ref(false);
+  const canConvertFolderDocuments = !!adapter.changeFile && !!adapter.removeEmptyFolder;
+  async function convertDocumentStructure(file: FileEntry, kind: FolderConversionKind) {
+    writable();
+    if (folderConversionBusy.value) throw new Error('正在转换文档，请稍候');
+    const scope = workspace.value?.id;
+    if (!scope) throw new Error('请先打开一个工作空间');
+    folderConversionBusy.value = true;
+    try {
+      if (!(await flush()) || documents.value.some(doc => doc.conflict || doc.missing))
+        throw new Error('请先处理未保存的修改、冲突或缺失文档');
+      return await serial(async () => {
+        writable();
+        if (workspace.value?.id !== scope) throw new Error('工作区已切换');
+        let result: Awaited<ReturnType<typeof convertFolderDocument>> | undefined;
+        try {
+          result = await convertFolderDocument(adapter, scope, file, workspaceSettings.value.folderHomeFileName, kind);
+        } finally {
+          // Reconcile all open references, including unsaved edits made during the operation.
+          const current = await adapter.refresh();
+          if (current.id === scope && workspace.value?.id === scope) {
+            workspace.value = current;
+            for (const doc of documents.value) {
+              const entry = current.files.find(entry => entry.id === doc.id);
+              if (!entry) { doc.missing = true; continue; }
+              doc.path = entry.path; doc.missing = false;
+              await reconcile(doc, await adapter.read(entry.path));
+            }
+          }
+        }
+        const opened = workspace.value?.files.find(entry => entry.id === result!.openId);
+        if (opened) await openInternal(opened);
+        activity(kind === 'child' ? '已新建子文档' : '已转为普通文档', `${file.path} → ${result.plan.destination}`, 'file');
+        recordHelpCompleted(kind === 'child' ? 'child-document' : 'flatten-folder');
+        return opened;
+      });
+    } finally { folderConversionBusy.value = false; }
+  }
   async function moveEntry(file: FileEntry, folder: string, expectedWorkspaceId?: string) {
     if (!isWeb) return moveEntryConfirmed(file, folder, expectedWorkspaceId);
     const { current, affected, preview } = prepareFileMutation([file], expectedWorkspaceId);
@@ -3014,6 +3113,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
   function dispose() {
+    pluginAttachmentReader.clear();
     disposed = true;
     helpEdits.dispose();
     clearTimeout(pluginEventTimer);
@@ -3057,6 +3157,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     dockTab,
     resizeSplit,
     installedPlugins,
+    installedPluginWorkspace,
     pluginRuntime,
     canManagePlugins,
     canManageSettings,
@@ -3176,6 +3277,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     prefetchFile,
     openFileInNewTab,
     openAttachmentInNewTab,
+    openDirectory,
     openFilesInNewTabsAt,
     createBlankTab,
     openGraphTab,
@@ -3236,6 +3338,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     saveCopy,
     rename,
     renameEntry,
+    canConvertFolderDocuments,
+    folderConversionBusy,
+    convertDocumentStructure,
     moveEntry,
     duplicateEntry,
     remove,

@@ -1,0 +1,12 @@
+@import '../../../../packages/workbench/src/scrollbars.css';
+
+html,body,#app { margin:0; height:100%; font:14px system-ui,sans-serif; color:#24292f; background:#f1f2f4; }
+#app { display:flex; flex-direction:column; overflow:hidden; }
+#status { margin:0; padding:8px 16px; overflow-wrap:anywhere; }
+main { flex:1; overflow:auto; min-height:0; padding:24px; box-sizing:border-box; }
+#paper { width:max-content; min-width:100%; }
+#paper .docx-wrapper { padding:24px; background:transparent; }
+#paper section.docx { margin:0 auto 24px; box-shadow:0 2px 8px #0002; }
+.word-legacy-page { margin:0 auto; box-shadow:0 2px 8px #0002; }
+dialog { max-width:min(700px,85vw); max-height:75vh; border:1px solid #ddd; border-radius:8px; padding:20px; }
+pre { white-space:pre-wrap; } button { font:inherit; padding:5px 10px; border:1px solid #ddd; border-radius:5px; background:white; cursor:pointer; }

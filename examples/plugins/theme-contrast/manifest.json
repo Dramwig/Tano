@@ -1,0 +1,179 @@
+{
+  "manifestVersion": 1,
+  "id": "theme-contrast",
+  "name": "明晰主题",
+  "version": "1.0.0",
+  "description": "明晰主题：独立配色、图标与形态，可应用预设或自由混搭。",
+  "objectTypes": [],
+  "relationTypes": [],
+  "appearance": {
+    "version": 2,
+    "colors": [
+      {
+        "id": "contrast",
+        "label": "明晰",
+        "light": {
+          "paper": "#ffffff",
+          "sidebar": "#f2f2f2",
+          "surface": "#ffffff",
+          "surface-raised": "#ffffff",
+          "hover": "#e0eaff",
+          "text": "#111111",
+          "text-secondary": "#242424",
+          "muted": "#444444",
+          "line": "#777777",
+          "control-border": "#333333",
+          "line-strong": "#333333",
+          "selected": "#e0eaff",
+          "selected-text": "#111111",
+          "accent": "#ffffff",
+          "green": "#003cbb",
+          "green-hover": "#003cbb",
+          "green-fill": "#002c8a",
+          "green-fill-hover": "#002c8a",
+          "block-selection": "#e0eaff",
+          "danger": "#a31b1b",
+          "danger-bg": "#fff0ee",
+          "warning": "#714300",
+          "warning-bg": "#fff5d8",
+          "warning-border": "#333333",
+          "switch-off": "#333333",
+          "syntax-purple": "#68349a",
+          "syntax-red": "#a31b1b",
+          "syntax-blue": "#003cbb",
+          "syntax-orange": "#884600",
+          "syntax-teal": "#00645b",
+          "syntax-green": "#426b18",
+          "highlight-bg": "#ffe680",
+          "suggestion-color": "#003cbb",
+          "diff-add-bg": "#e4f5e7",
+          "diff-remove-bg": "#ffe9e6",
+          "quote-border": "#333333",
+          "scrollbar-thumb": "#333333",
+          "scrollbar-thumb-hover": "#444444",
+          "backdrop": "#15233355",
+          "on-accent": "#ffffff",
+          "selection": "#e0eaff"
+        },
+        "dark": {
+          "paper": "#000000",
+          "sidebar": "#080808",
+          "surface": "#111111",
+          "surface-raised": "#191919",
+          "hover": "#303030",
+          "text": "#ffffff",
+          "text-secondary": "#eeeeee",
+          "muted": "#cccccc",
+          "line": "#aaaaaa",
+          "control-border": "#dddddd",
+          "line-strong": "#dddddd",
+          "selected": "#303030",
+          "selected-text": "#ffffff",
+          "accent": "#111111",
+          "green": "#ffe066",
+          "green-hover": "#ffe066",
+          "green-fill": "#ffe066",
+          "green-fill-hover": "#ffe066",
+          "block-selection": "#303030",
+          "danger": "#ffb4ac",
+          "danger-bg": "#411717",
+          "warning": "#ffe0a3",
+          "warning-bg": "#362c17",
+          "warning-border": "#dddddd",
+          "switch-off": "#dddddd",
+          "syntax-purple": "#dfb8ff",
+          "syntax-red": "#ffb4ac",
+          "syntax-blue": "#ffe066",
+          "syntax-orange": "#ffd1a3",
+          "syntax-teal": "#a4e6df",
+          "syntax-green": "#c7e69a",
+          "highlight-bg": "#665500",
+          "suggestion-color": "#ffe066",
+          "diff-add-bg": "#203a28",
+          "diff-remove-bg": "#412422",
+          "quote-border": "#dddddd",
+          "scrollbar-thumb": "#dddddd",
+          "scrollbar-thumb-hover": "#cccccc",
+          "backdrop": "#00000099",
+          "on-accent": "#000000",
+          "selection": "#303030"
+        }
+      }
+    ],
+    "icons": [
+      {
+        "id": "contrast",
+        "label": "明晰图标",
+        "icons": {
+          "note": {
+            "color": "syntax-blue",
+            "silhouette": "none",
+            "paths": [
+              "M4 2h12v16H4z M7 6h6 M7 10h6 M7 14h6"
+            ]
+          },
+          "folder": {
+            "color": "accent",
+            "silhouette": "none",
+            "paths": [
+              "M1 5h7l3 3h8v10H1z"
+            ]
+          },
+          "open": {
+            "color": "syntax-blue",
+            "silhouette": "none",
+            "paths": [
+              "M1 5h7l3 3h8v10H1z",
+              "M3 12h14"
+            ]
+          },
+          "code": {
+            "color": "syntax-blue",
+            "silhouette": "none",
+            "paths": [
+              "M7 5l-5 5l5 5 M13 5l5 5l-5 5"
+            ]
+          }
+        },
+        "file": "note",
+        "folder": "folder",
+        "folderExpanded": "open",
+        "fileExtensions": {
+          "ts": "code",
+          "js": "code",
+          "json": "code"
+        }
+      }
+    ],
+    "presets": [
+      {
+        "id": "focus",
+        "label": "明晰专注",
+        "color": "contrast",
+        "icons": "contrast",
+        "layout": "builtin:tano",
+        "shape": "contrast"
+      }
+    ],
+    "shapes": [
+      {
+        "id": "contrast",
+        "label": "直角紧凑",
+        "tokens": {
+          "font-ui": "'Segoe UI', 'Microsoft YaHei UI', sans-serif",
+          "font-prose": "'Segoe UI', 'Microsoft YaHei UI', sans-serif",
+          "font-mono": "'Cascadia Code', Consolas, monospace",
+          "radius-control": "0px",
+          "radius-card": "0px",
+          "radius-dialog": "0px",
+          "space-control-x": "10px",
+          "space-control-y": "7px",
+          "space-panel": "20px",
+          "space-row-gap": "8px",
+          "overlay-shadow": "none",
+          "dialog-shadow": "none"
+        }
+      }
+    ]
+  }
+}

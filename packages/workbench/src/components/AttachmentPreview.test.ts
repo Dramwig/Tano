@@ -7,10 +7,27 @@ import { configureWorkbench } from '../runtime';
 import AttachmentPreview from './AttachmentPreview.vue';
 import { nativeAttachments } from '../attachments';
 vi.mock('../attachments', () => ({ nativeAttachments: { readAttachment: vi.fn() } }));
+vi.mock('./PdfPreview.vue', () => ({ default: { props: ['bytes'], render(this: { bytes: Uint8Array }) { return h('section', { 'data-rendered-pdf': '' }, new TextDecoder().decode(this.bytes)); } } }));
 vi.mock('./OfficePreview.vue', () => ({ __esModule: true, default: { props: ['bytes', 'path'], render(this: { bytes: Uint8Array; path: string }) { return h('section', { 'data-office-path': this.path }, Array.from(this.bytes).join(',')); } } }));
 
 let app: App | undefined;
 afterEach(() => { app?.unmount(); app = undefined; document.body.replaceChildren(); });
+it('keeps a writable spreadsheet mounted when its own save updates file metadata', async () => {
+  const readAttachment = vi.fn().mockResolvedValue(new Uint8Array([80, 75, 3, 4]));
+  const pinia = configureWorkbench(createPinia(), { adapter: { mode: 'demo' } as WorkspaceAdapter,
+    attachments: { readAttachment, writeSpreadsheet: vi.fn() } as unknown as typeof nativeAttachments, native: false, mobile: false });
+  const file = ref<FileEntry>({ id: 'book', path: 'book.xlsx', name: 'book.xlsx', kind: 'file', size: 4, modified: 1 });
+  const root = document.createElement('div'); document.body.append(root);
+  app = createApp(() => h(AttachmentPreview, { file: file.value, url: null, workspaceId: 'ws' })); app.use(pinia).mount(root);
+  await vi.waitFor(() => expect(root.querySelector('[data-office-path]')).not.toBeNull());
+  const editor = root.querySelector('[data-office-path]');
+  file.value = { ...file.value, modified: 2, size: 500, contentHash: 'saved' };
+  await nextTick(); await nextTick();
+  expect(root.querySelector('[data-office-path]')).toBe(editor);
+  expect(readAttachment).toHaveBeenCalledTimes(1);
+  file.value = { ...file.value, id: 'other', path: 'other.xlsx' };
+  await vi.waitFor(() => expect(readAttachment).toHaveBeenCalledTimes(2));
+});
 it('adapts pending attachment reads immediately when switching between file types', async () => {
   const readAttachment = vi.fn(() => new Promise<Uint8Array>(() => {}));
   const pinia = configureWorkbench(createPinia(), { adapter: { mode: 'demo' } as WorkspaceAdapter,
@@ -18,7 +35,7 @@ it('adapts pending attachment reads immediately when switching between file type
   const file = ref<FileEntry>({ id: 'abcdef', path: 'book.xlsx', name: 'book.xlsx', kind: 'file', size: 20, modified: 1 });
   const root = document.createElement('div'); document.body.append(root);
   app = createApp(() => h(AttachmentPreview, { file: file.value, url: null, workspaceId: 'ws' })); app.use(pinia).mount(root);
-  for (const [path, kind] of [['book.xlsx', 'spreadsheet'], ['slides.ppt', 'presentation'], ['doc.docx', 'word'], ['paper.pdf', 'pdf'], ['data.csv', 'spreadsheet'], ['main.ts', 'code'], ['note.txt', 'text'], ['picture.png', 'image']]) {
+  for (const [path, kind] of [['book.xlsx', 'spreadsheet'], ['paper.pdf', 'pdf'], ['data.csv', 'spreadsheet'], ['main.ts', 'code'], ['note.txt', 'text'], ['picture.png', 'image']]) {
     file.value = { ...file.value, path, name: path };
     await vi.waitFor(() => expect(root.querySelector('[data-preview-kind]')?.getAttribute('data-preview-kind')).toBe(kind));
     expect(root.querySelector('[data-preview-kind]')?.getAttribute('aria-busy')).toBe('true');
@@ -67,7 +84,7 @@ it('reads desktop non-image previews through native bytes rather than the image-
   await vi.waitFor(() => expect(root.querySelector('table')?.textContent).toContain('local'));
   expect(nativeAttachments.readAttachment).toHaveBeenCalledWith('ws', 'data.csv');
 });
-it.each(['xls', 'xlsx', 'doc', 'docx', 'ppt', 'pptx'])('loads %s through the host attachment service without text conversion or writes', async extension => {
+it.each(['xls', 'xlsx'])('loads %s through the host attachment service without text conversion or writes', async extension => {
   const bytes = new Uint8Array([0, 255, 128, 13]);
   const readAttachment = vi.fn().mockResolvedValue(bytes), read = vi.fn(), write = vi.fn();
   const pinia = configureWorkbench(createPinia(), { adapter: { mode: 'demo', read, write } as unknown as WorkspaceAdapter,
@@ -79,6 +96,18 @@ it.each(['xls', 'xlsx', 'doc', 'docx', 'ppt', 'pptx'])('loads %s through the hos
   expect(readAttachment).toHaveBeenCalledWith('cloud', file.path);
   expect(read).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled();
 });
+it.each(['ppt', 'pptx', 'doc', 'docx'])('requires the format plugin for %s instead of a native converter or reflowed text', async extension => {
+  const readAttachment = vi.fn();
+  const pinia = configureWorkbench(createPinia(), { adapter: { mode: 'demo' } as WorkspaceAdapter,
+    attachments: { readAttachment } as unknown as typeof nativeAttachments, native: false, mobile: false });
+  const file: FileEntry = { id: 'slides', path: 'slides.' + extension, name: 'slides', kind: 'file', size: 20, modified: 1 };
+  const root = document.createElement('div'); document.body.append(root);
+  app = createApp(() => h(AttachmentPreview, { file, url: null, workspaceId: 'ws' })); app.use(pinia).mount(root);
+  await vi.waitFor(() => expect(root.textContent).toContain(extension.startsWith('doc') ? '启用系统插件「Word 文档预览」' : '启用系统插件「演示文稿预览」'));
+  expect(readAttachment).not.toHaveBeenCalled();
+  expect(root.querySelector('[data-office-path], [data-rendered-pdf]')).toBeNull();
+});
+
 it('previews text without interpreting markup and never writes the attachment', async () => {
   const read = vi.fn().mockResolvedValue({ content: '<script>alert(1)</script>\n文本附件', hash: 'base', modified: 1 });
   const write = vi.fn();

@@ -324,6 +324,11 @@ fn validate(session: &WorkspaceSession) -> Result<(), String> {
                             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
                 })
                 && !plugin_tab(id)
+                // Folder tabs refer to stable file IDs; only the workspace root
+                // uses a special key. Never accept arbitrary directory paths.
+                && !id.strip_prefix("directory:").is_some_and(|file_id| {
+                    file_id == "/" || storage::is_short_id(file_id)
+                })
                 && !id.strip_prefix("workspace-view:").is_some_and(|view_id| {
                     !view_id.is_empty()
                         && view_id.len() <= 64
@@ -737,6 +742,72 @@ mod tests {
         assert_eq!(restored.documents.len(), 1);
         saved.tabs.push("attachment:".into());
         assert!(validate(&saved).is_err());
+    }
+    #[test]
+    fn restores_directory_tabs_and_layout_without_losing_document_drafts() {
+        let data = tempfile::tempdir().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut saved = session();
+        saved
+            .tabs
+            .extend(["directory:/".into(), "directory:a12345".into()]);
+        saved.layout = Some(serde_json::json!({
+            "kind": "split", "id": "split", "axis": "horizontal", "ratio": 0.6,
+            "first": { "kind": "pane", "id": "left", "tabs": ["file-id", "blank:test"], "activeId": "file-id" },
+            "second": { "kind": "pane", "id": "right", "tabs": ["directory:/", "directory:a12345"], "activeId": "directory:a12345" }
+        }));
+        // Both the workspace root and ordinary folders are navigation tabs,
+        // never fake documents. A later snapshot must update the same journal.
+        for active in ["directory:a12345", "directory:/"] {
+            saved.active_id = active.into();
+            saved.layout.as_mut().unwrap()["second"]["activeId"] = active.into();
+            saved.documents[0].draft.as_mut().unwrap().content.push('!');
+            save(data.path(), &id, &saved).unwrap();
+            let restored = load(data.path(), &id).unwrap().unwrap();
+            assert_eq!(restored.active_id, active);
+            assert_eq!(restored.tabs, saved.tabs);
+            assert_eq!(restored.layout, saved.layout);
+            assert_eq!(restored.documents.len(), 1);
+            let draft = restored.documents[0].draft.as_ref().unwrap();
+            assert_eq!(
+                draft.content,
+                saved.documents[0].draft.as_ref().unwrap().content
+            );
+            assert_eq!(draft.base.hash, storage::hash(b"base"));
+        }
+    }
+    #[test]
+    fn rejects_invalid_directory_tabs_without_replacing_recovery_file() {
+        let data = tempfile::tempdir().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut saved = session();
+        save(data.path(), &id, &saved).unwrap();
+        let record = path(data.path(), &id).unwrap();
+        let original = fs::read(&record).unwrap();
+        for invalid in [
+            "directory:",
+            "directory:../outside",
+            "directory:/folder",
+            "directory:C:/folder",
+            "directory:a12345/child",
+            "directory:A12345",
+            "directory:g12345",
+            "directory:a1234",
+            "directory:a123456",
+        ] {
+            saved.tabs.push(invalid.into());
+            saved.active_id = invalid.into();
+            assert!(save(data.path(), &id, &saved).is_err(), "{invalid}");
+            assert_eq!(fs::read(&record).unwrap(), original);
+            saved.tabs.pop();
+        }
+        // Duplicate directory tabs still invalidate the snapshot.
+        saved
+            .tabs
+            .extend(["directory:/".into(), "directory:/".into()]);
+        saved.active_id = "directory:/".into();
+        assert!(save(data.path(), &id, &saved).is_err());
+        assert_eq!(fs::read(&record).unwrap(), original);
     }
     #[test]
     fn restores_workspace_database_views_and_rejects_invalid_view_ids() {

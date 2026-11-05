@@ -1,6 +1,13 @@
 # Tano Local — SignPath application materials
 
-Submitted: October 30, 2026. **Awaiting review; not approved; signing is not active.**
+Submitted: October 30, 2026. Decision recorded: October 31, 2026.
+**Application not approved; signing is not active.**
+
+The maintainer supplied the Foundation's October 30 response: public trust and
+visibility signals were insufficient at this stage. The Foundation cited adoption,
+independent references, institutional backing and sustained engagement, and invited
+reapplication after broader recognition. It did not identify a build or packaging
+failure in that response. Do not continue waiting for activation from this submission.
 
 The official form at `https://signpath.org/apply` displayed **Form submitted** and
 **Thank you, we'll be in touch soon.** after submission. No application ID or
@@ -10,7 +17,8 @@ authorization; optional marketing communications remained unchecked. This receip
 confirms delivery of the application, not account provisioning or signing approval.
 
 The information below records the submitted [official form](https://signpath.org/apply).
-Do not submit a duplicate application while awaiting the Foundation's response.
+Retain these materials for a future application when new, verifiable public adoption
+and recognition evidence is available; do not resubmit the same evidence immediately.
 Never send passwords, private keys, API tokens or backup codes with an application.
 
 ## Project fields
@@ -82,14 +90,15 @@ evidence that a newer Local binary exists.
 
 - [x] 维护者确认 Dramwig（Zixi Wang）负责维护、外部贡献审阅和发布签名批准。
 - [x] 已有公开 MIT 源码、Local Windows 包、工作流、校验值和来源证明。
-- [x] 已准备中英文签名政策及 Local 隐私说明，并按真实回执记录待审核状态。
+- [x] 已准备中英文签名政策及 Local 隐私说明，并按维护者提供的审核结果记录本次未获批状态。
 - [x] 政策和 README 入口已发布到公开仓库，英文政策已验证匿名可访问。
 - [x] 现有 Local GitHub Release 已加入政策链接；申请使用仓库主页和该 Release 下载页。
 - [ ] 发布官网首页页脚及 Local 下载区域的政策入口，检查中英文页面。
 - [ ] 确认 GitHub 多因素认证已开启；目前未经确认。
-- [ ] 等待账号开通/激活，再按官方流程设置凭据和开启 SignPath 多因素认证。
+- [ ] 若未来获批或选择其他签名方案，再按实际账号开通流程设置凭据和多因素认证；本次不再等待自动激活。
 - [x] 维护者同意以所填姓名及联系邮箱提交申请，并接受必选条款与数据处理授权。
-- [x] 收到页面成功回执，政策状态更新为“已申请，待审核”。
+- [x] 收到页面成功回执，确认申请送达。
+- [x] 维护者于 2026 年 10 月 31 日提供基金会回复，状态更新为“本次未获批准”。
 
 获批后另行配置组织、项目、产物限制、审批策略及可信构建。完成签名与最终
 Windows 验收后，才可把新包标为已签名。不修改旧包、不覆盖已有资产，保留

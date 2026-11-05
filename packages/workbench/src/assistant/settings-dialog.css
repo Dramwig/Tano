@@ -1,0 +1,141 @@
+/* Shared visual language for connection and quota editors. */
+dialog.assistant-config-dialog.assistant-connection-dialog {
+  width: min(640px, calc(100vw - 32px));
+  border: 1px solid var(--line); border-radius: 16px;
+  box-shadow: 0 24px 80px #00000026, 0 4px 16px #0000000a;
+}
+dialog.assistant-config-dialog.assistant-connection-dialog .assistant-form-heading,
+dialog.assistant-config-dialog.assistant-connection-dialog .quota-panel > header {
+  padding: 20px 28px 16px; border-bottom: 0; gap: 16px;
+}
+dialog.assistant-config-dialog.assistant-connection-dialog h2 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.5; letter-spacing: -.2px; }
+dialog.assistant-config-dialog.assistant-connection-dialog .assistant-form-scroll,
+dialog.assistant-config-dialog.assistant-connection-dialog .quota-panel > .quota-scroll { padding: 8px 28px 24px; }
+dialog.assistant-config-dialog.assistant-connection-dialog :is(.assistant-form-fields, .quota-scroll > fieldset) { gap: 24px; }
+dialog.assistant-config-dialog .config-section { display: grid; gap: 14px; }
+dialog.assistant-config-dialog .config-section + .config-section { padding-top: 22px; border-top: 1px solid var(--line); }
+dialog.assistant-config-dialog.assistant-connection-dialog :is(.config-section h3, .quota-panel h5) { margin: 0; font-size: 12px; font-weight: 600; color: var(--text-secondary); line-height: 1.5; }
+dialog.assistant-config-dialog .config-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; min-width: 0; }
+dialog.assistant-config-dialog.assistant-connection-dialog :is(.assistant-connection-form label, .quota-grid label) { color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+dialog.assistant-config-dialog.assistant-connection-dialog :is(input:not([type='checkbox']), select) {
+  box-sizing: border-box; width: 100%; min-width: 0; height: 38px; min-height: 38px; padding: 8px 11px;
+  border: 1px solid var(--control-border, var(--line)); border-radius: 8px; background: var(--paper); color: var(--text); font: inherit; font-size: 13px;
+  transition: border-color .15s, box-shadow .15s;
+}
+dialog.assistant-config-dialog.assistant-connection-dialog .assistant-secret-input input { padding-right: 40px; }
+dialog.assistant-config-dialog.assistant-connection-dialog :is(input, select, textarea):focus-visible { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 12%, transparent); }
+dialog.assistant-config-dialog.assistant-connection-dialog input::placeholder { color: var(--muted); letter-spacing: normal; opacity: .75; }
+dialog.assistant-config-dialog input[type='checkbox'] { accent-color: var(--green); }
+dialog.assistant-config-dialog .config-field-hint { margin: -6px 0 0; font-size: 11px; line-height: 1.6; color: var(--muted); }
+dialog.assistant-config-dialog.assistant-connection-dialog .config-disclosure { border: 1px solid var(--line); border-radius: 10px; padding: 0; background: var(--paper); }
+dialog.assistant-config-dialog .config-disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; cursor: pointer; list-style: none; color: var(--text-secondary); font-size: 12px; }
+dialog.assistant-config-dialog .config-disclosure > summary::-webkit-details-marker { display: none; }
+dialog.assistant-config-dialog .config-summary-hint { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; font-weight: 400; }
+dialog.assistant-config-dialog .config-disclosure[open] > summary > .config-summary-hint > svg { transform: rotate(180deg); }
+dialog.assistant-config-dialog .config-avatar-summary { display: inline-flex; align-items: center; gap: 10px; }
+dialog.assistant-config-dialog .connection-icon-picker .connection-icon-preview { margin: 0; padding: 8px 14px; font-size: 12px; }
+dialog.assistant-config-dialog .connection-icon-picker .connection-icon-preview > .connection-avatar { display: none; }
+dialog.assistant-config-dialog .connection-icon-picker .connection-icon-options { padding: 0 14px 14px; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); gap: 5px; }
+dialog.assistant-config-dialog .connection-icon-options button { display: grid; place-items: center; }
+dialog.assistant-config-dialog .config-advanced-body { padding: 4px 14px 16px; display: grid; gap: 14px; }
+dialog.assistant-config-dialog.assistant-connection-dialog .quota-card { border: 0; border-radius: 0; background: transparent; padding: 0; }
+dialog.assistant-config-dialog.assistant-connection-dialog .quota-enable { border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--hover) 45%, var(--paper)); padding: 14px 16px; }
+dialog.assistant-config-dialog.assistant-connection-dialog .quota-enable strong { font-size: 13px; font-weight: 500; }
+dialog.assistant-config-dialog.assistant-connection-dialog .quota-enable .quota-help { margin-top: 2px; font-size: 11px; }
+dialog.assistant-config-dialog.assistant-connection-dialog .quota-templates { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin: 12px 0 24px; }
+dialog.assistant-config-dialog.assistant-connection-dialog .quota-templates button { padding: 7px 5px; min-height: 33px; border-radius: 7px; font-size: 12px; background: var(--paper); color: var(--text-secondary); }
+dialog.assistant-config-dialog.assistant-connection-dialog .quota-templates button[aria-pressed='true'] { background: color-mix(in srgb, var(--green) 9%, var(--paper)); border-color: color-mix(in srgb, var(--green) 60%, var(--line)); color: var(--green); font-weight: 600; }
+dialog.assistant-config-dialog.assistant-connection-dialog .quota-templates button:hover:not([aria-pressed='true']) { background: var(--hover); }
+dialog.assistant-config-dialog.assistant-connection-dialog .quota-help { font-size: 11px; line-height: 1.65; }
+dialog.assistant-config-dialog.assistant-connection-dialog .quota-subheading { padding-top: 20px; border-top: 1px solid var(--line); margin-bottom: 14px; }
+dialog.assistant-config-dialog.assistant-connection-dialog .quota-subheading span { font-size: 11px; }
+dialog.assistant-config-dialog.assistant-connection-dialog .quota-clear { font-size: 11px; margin: 12px 0 6px; }
+dialog.assistant-config-dialog.assistant-connection-dialog .quota-timing { margin-top: 20px; padding-top: 20px; }
+dialog.assistant-config-dialog.assistant-connection-dialog .quota-advanced { padding: 0; border: 1px solid var(--line); border-radius: 10px; }
+dialog.assistant-config-dialog.assistant-connection-dialog .quota-advanced summary { margin: 0; }
+dialog.assistant-config-dialog.assistant-connection-dialog .quota-advanced > p { padding: 0 14px; }
+dialog.assistant-config-dialog.assistant-connection-dialog .quota-advanced textarea { margin: 12px 14px 14px; width: calc(100% - 28px); background: color-mix(in srgb, var(--hover) 50%, var(--paper)); }
+dialog.assistant-config-dialog.assistant-connection-dialog :is(.assistant-form-actions, .quota-panel > footer) { padding: 16px 28px; gap: 8px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--hover) 30%, var(--paper)); }
+dialog.assistant-config-dialog.assistant-connection-dialog :is(.assistant-form-actions, .quota-panel > footer) button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 36px;
+  gap: 6px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  background: var(--paper);
+  color: var(--text-secondary);
+  border: 1px solid var(--control-border);
+}
+dialog.assistant-config-dialog.assistant-connection-dialog :is(.assistant-form-actions, .quota-panel > footer) button > svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+dialog.assistant-config-dialog.assistant-connection-dialog :is(.assistant-form-actions, .quota-panel > footer) button:hover:not(:disabled) {
+  background: var(--hover);
+}
+@media (max-width: 600px) {
+  dialog.assistant-config-dialog.assistant-connection-dialog { width: calc(100vw - 24px); border-radius: 12px; }
+  dialog.assistant-config-dialog.assistant-connection-dialog :is(.assistant-form-heading, .assistant-form-scroll, .assistant-form-actions, .quota-panel > header, .quota-panel > .quota-scroll, .quota-panel > footer) { padding-left: 18px; padding-right: 18px; }
+  dialog.assistant-config-dialog .config-field-grid { grid-template-columns: 1fr; }
+  dialog.assistant-config-dialog.assistant-connection-dialog .quota-templates { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  dialog.assistant-config-dialog.assistant-connection-dialog .quota-advanced summary span { font-size: 10px; }
+  dialog.assistant-config-dialog.assistant-connection-dialog :is(.assistant-form-actions, .quota-panel > footer) button { padding-inline: 12px; }
+}
+
+dialog.assistant-config-dialog .connection-avatar-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-align: left;
+}
+dialog.assistant-config-dialog .connection-avatar-trigger:hover,
+dialog.assistant-config-dialog .connection-avatar-trigger[aria-expanded='true'] {
+  background: var(--hover);
+}
+dialog.assistant-config-dialog .connection-avatar-trigger[aria-expanded='true'] .config-summary-hint > svg {
+  transform: rotate(180deg);
+}
+dialog.assistant-config-dialog .connection-avatar-popover {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(480px, calc(100vw - 16px));
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--text);
+  box-shadow: 0 12px 40px #00000024, 0 2px 8px #0000000c;
+}
+dialog.assistant-config-dialog .connection-avatar-popover .connection-icon-preview {
+  padding: 0 12px 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+dialog.assistant-config-dialog .connection-avatar-popover .connection-icon-options {
+  grid-template-columns: repeat(auto-fit, minmax(40px, 1fr));
+  padding: 0 12px 12px;
+}
+dialog.assistant-config-dialog .connection-avatar-popover .connection-icon-styles {
+  display: flex;
+  gap: 8px;
+  padding: 0 12px 10px;
+}

@@ -1,9 +1,13 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch, type Component } from 'vue';
-import { ArrowLeft, BookOpen, Check, ChevronRight, File, FileText, Table2, FolderOpen, LockKeyhole } from 'lucide-vue-next';
-import { basename, isMarkdown, isDataTableFilePath, isWorkspaceInternalPath, parentPath, type FileEntry } from '@tano/protocol';
+import { Check, ChevronRight, Database, Table2 } from 'lucide-vue-next';
+import WorkspaceIcon from './WorkspaceIcon.vue';
+import ResourceIcon from './ResourceIcon.vue';
+import { indexFolderHomes, type FolderHomeFileName } from '../folder-home';
+import { basename, isMarkdown, isDataTableFilePath, isWorkspaceInternalPath, parentPath, type FileEntry, type WorkspaceViewDefinition } from '@tano/protocol';
 import { butterflyPerchDirective, useButterflyController, type ButterflyPerch } from '../assistant/butterfly-vue';
 import DocumentFileIcon from './DocumentFileIcon.vue';
 
@@ -13,17 +17,22 @@ const props = defineProps<{
   loading?: boolean;
   workspaceId?: string;
   workspaceName: string;
+  workspaceIcon?: string;
+  workspaceMode?: 'demo' | 'web' | 'local';
   hideWorkspace?: boolean;
   entries: FileEntry[];
+  folderHomeFileName?: FolderHomeFileName;
   documentIcons?: Readonly<Record<string, string>>;
   loadDocumentIcon?: (file: FileEntry, signal: AbortSignal) => Promise<string>;
   path?: string;
+  directory?: boolean;
+  workspaceView?: WorkspaceViewDefinition;
   pages?: { id: string; label: string; icon?: Component; current?: boolean; disabled?: boolean }[];
   demoLabel?: string | null;
   readOnly?: boolean;
   perch?: ButterflyPerch;
 }>();
-const emit = defineEmits<{ open: [file: FileEntry]; navigate: [id: string] }>();
+const emit = defineEmits<{ open: [file: FileEntry]; openDirectory: [path: string]; navigate: [id: string] }>();
 const menuId = useId();
 const root = ref<HTMLElement>();
 const menu = ref<HTMLElement>();
@@ -33,11 +42,21 @@ const folder = ref('');
 const position = ref({ left: '0px', top: '0px' });
 let trigger: HTMLButtonElement | undefined;
 const currentFile = computed(() => props.entries.find(entry => entry.kind === 'file' && entry.path === props.path));
-const parts = computed(() => (props.path ?? '').split('/').filter(Boolean).map((name, index, all) => ({
-  name,
-  path: all.slice(0, index + 1).join('/'),
-  current: index === all.length - 1,
-})));
+const homes = computed(() => indexFolderHomes(props.entries, props.folderHomeFileName));
+const logicalPath = computed(() => props.workspaceView ? props.workspaceView.database?.directory ?? '' : props.path ?? '');
+const parts = computed(() => {
+  const names = logicalPath.value.split('/').filter(Boolean);
+  if (!props.directory && !props.workspaceView && props.path && homes.value.get(parentPath(props.path))?.path === props.path) names.pop();
+  return names.map((name, index, all) => {
+    const path = all.slice(0, index + 1).join('/');
+    return { name, path, current: !props.workspaceView && index === all.length - 1, directory: !!props.directory || !!props.workspaceView || index < all.length - 1 || homes.value.has(path), home: homes.value.get(path) };
+  });
+});
+function activatePart(part: typeof parts.value[number]) {
+  close();
+  if (part.directory) emit('openDirectory', part.path);
+  else if (currentFile.value) emit('open', currentFile.value);
+}
 const children = computed(() => props.entries
   .filter(entry => !isWorkspaceInternalPath(entry.path) && parentPath(entry.path) === folder.value)
   .sort((a, b) => a.kind !== b.kind ? (a.kind === 'directory' ? -1 : 1)
@@ -59,6 +78,7 @@ function placeMenu() {
     left: `${Math.max(edge, Math.min(anchor.left, window.innerWidth - bounds.width - edge))}px`,
     top: `${Math.max(edge, Math.min(anchor.bottom + 6, window.innerHeight - bounds.height - edge))}px`,
   };
+  menu.value.dataset.surfaceSide = parseFloat(position.value.top) < anchor.top ? 'up' : 'down';
 }
 function rows() {
   return [...(menu.value?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [])];
@@ -84,13 +104,9 @@ function show(event: MouseEvent | KeyboardEvent, key: string, directory: string)
   void focusEntry(props.path, event instanceof KeyboardEvent && event.key === 'ArrowUp');
 }
 function choose(entry: FileEntry) {
-  if (entry.kind === 'directory') {
-    folder.value = entry.path;
-    void focusEntry(props.path);
-  } else {
-    close(true);
-    emit('open', entry);
-  }
+  close(true);
+  if (entry.kind === 'directory') emit('openDirectory', entry.path);
+  else emit('open', entry);
 }
 function goBack() {
   if (!folder.value) return;
@@ -112,7 +128,10 @@ function menuKeydown(event: KeyboardEvent) {
     event.preventDefault();
     const path = (document.activeElement as HTMLElement)?.dataset.path;
     const entry = children.value.find(item => item.path === path && item.kind === 'directory');
-    if (entry) choose(entry);
+    if (entry) {
+      folder.value = entry.path;
+      void focusEntry(props.path);
+    }
   } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
     event.preventDefault();
     const items = rows();
@@ -132,7 +151,7 @@ function outside(event: Event) {
 function onScroll(event: Event) {
   if (!menu.value?.contains(event.target as Node)) placeMenu();
 }
-watch(() => [props.workspaceId, props.path], () => close());
+watch(() => [props.workspaceId, props.path, props.workspaceView?.id, logicalPath.value], () => close());
 watch(children, async () => {
   if (!opened.value) return;
   if (folder.value && !props.entries.some(entry => entry.kind === 'directory' && entry.path === folder.value)) {
@@ -163,16 +182,21 @@ onBeforeUnmount(() => {
     <button v-else-if="!hideWorkspace" type="button" class="breadcrumb-trigger breadcrumb-workspace"
       :class="{ 'demo-badge breadcrumb-demo-badge': demoLabel }"
       :disabled="!workspaceId" :data-tooltip="demoLabel ? t('浏览器演示 · 数据仅保存在本浏览器') : workspaceName"
-      :aria-label="t('浏览工作区：{0}', [workspaceName])" aria-haspopup="menu"
-      :aria-expanded="opened && anchorKey === 'workspace'" :aria-controls="opened && anchorKey === 'workspace' ? menuId : undefined"
-      @click="show($event, 'workspace', '')" @keydown.down.prevent.stop="show($event, 'workspace', '')"
-      @keydown.up.prevent.stop="show($event, 'workspace', '')" @keydown.esc.stop.prevent="close(true)">
-      <LockKeyhole v-if="demoLabel && readOnly" :size="14" /><BookOpen v-else :size="14" />
-      <span class="breadcrumb-workspace-label">{{ demoLabel || workspaceName }}</span>
+      :aria-label="t('打开文件夹：{0}', [workspaceName])" :aria-current="directory && !path ? 'page' : undefined"
+      @click="close(); emit('openDirectory', '')">
+      <span class="breadcrumb-workspace-icon" aria-hidden="true"><WorkspaceIcon :icon="workspaceIcon" :mode="workspaceMode" :size="14" /></span>
+      <span class="breadcrumb-workspace-label">{{ workspaceName }}</span>
     </button>
+      <button v-if="!loading && !hideWorkspace" type="button" class="breadcrumb-separator breadcrumb-menu-trigger"
+        :disabled="!workspaceId" :aria-label="t('浏览目录：{0}', [workspaceName])" aria-haspopup="menu"
+        :aria-expanded="opened && anchorKey === 'workspace'" :aria-controls="opened && anchorKey === 'workspace' ? menuId : undefined"
+        @click="show($event, 'workspace', '')" @keydown.down.prevent.stop="show($event, 'workspace', '')"
+        @keydown.up.prevent.stop="show($event, 'workspace', '')" @keydown.esc.stop.prevent="close(true)">
+        <ChevronRight :size="12" aria-hidden="true" />
+      </button>
     <slot />
     <template v-for="(page, index) in pages" :key="page.id">
-      <ChevronRight v-if="!hideWorkspace || index > 0" :size="12" class="breadcrumb-separator" aria-hidden="true" />
+      <ChevronRight v-if="index > 0" :size="12" class="breadcrumb-separator" aria-hidden="true" />
       <component :is="page.current ? 'span' : 'button'" class="breadcrumb-trigger breadcrumb-page"
         :class="{ 'breadcrumb-current': page.current }" :type="page.current ? undefined : 'button'"
         :aria-current="page.current ? 'page' : undefined" :disabled="page.current ? undefined : page.disabled"
@@ -182,36 +206,45 @@ onBeforeUnmount(() => {
       </component>
     </template>
     <template v-for="(part, index) in parts" :key="part.path">
-      <ChevronRight v-if="!hideWorkspace || index > 0 || pages?.length" :size="12" class="breadcrumb-separator" aria-hidden="true" />
+      <ChevronRight v-if="index === 0 && pages?.length" :size="12" class="breadcrumb-separator" aria-hidden="true" />
       <button type="button" class="breadcrumb-trigger" :class="{ 'breadcrumb-current': part.current }"
         v-butterfly-perch="part.current ? perch : undefined"
-        :data-tooltip="part.path" :aria-label="part.current ? t('切换文件：{0}', [part.name]) : t('浏览目录：{0}', [part.path])"
-        :aria-current="part.current ? 'page' : undefined" aria-haspopup="menu"
-        :aria-expanded="opened && anchorKey === part.path" :aria-controls="opened && anchorKey === part.path ? menuId : undefined"
-        @click="show($event, part.path, part.current ? parentPath(part.path) : part.path)"
-        @keydown.down.prevent.stop="show($event, part.path, part.current ? parentPath(part.path) : part.path)"
-        @keydown.up.prevent.stop="show($event, part.path, part.current ? parentPath(part.path) : part.path)"
-        @keydown.esc.stop.prevent="close(true)">
+        :data-tooltip="part.home?.path ?? part.path" :aria-label="part.directory ? t('打开文件夹：{0}', [part.path]) : part.name"
+        :aria-current="part.current ? 'page' : undefined"
+        @click="activatePart(part)">
         <DocumentFileIcon
-          v-if="part.current && currentFile && (isMarkdown(part.path) || isDataTableFilePath(part.path))"
+          v-if="part.home" :file="part.home" :icon="documentIcons?.[part.home.id]" :load="loadDocumentIcon"
+          :resource="{ path: part.path, kind: 'directory', folderHome: true, expanded: true }"
+        />
+        <DocumentFileIcon
+          v-else-if="part.current && currentFile && (isMarkdown(part.path) || isDataTableFilePath(part.path))"
           :key="`${workspaceId}:${currentFile.id}`"
           :file="currentFile" :icon="documentIcons?.[currentFile.id]"
           :load="isMarkdown(part.path) ? loadDocumentIcon : undefined"
         />
-        <component v-else :is="part.current ? (isDataTableFilePath(part.path) ? Table2 : isMarkdown(part.path) ? FileText : File) : FolderOpen" :size="14" />
-        <span>{{ part.current && (isMarkdown(part.path) || isDataTableFilePath(part.path)) ? part.name.replace(/(\.table\.json|\.(md|markdown))$/i, '') : part.name }}</span>
+        <ResourceIcon v-else :path="part.path" :kind="part.directory ? 'directory' : 'file'" :expanded="true" :size="14" />
+        <span>{{ !part.home && part.current && (isMarkdown(part.path) || isDataTableFilePath(part.path)) ? part.name.replace(/(\.table\.json|\.(md|markdown))$/i, '') : part.name }}</span>
       </button>
+      <button v-if="part.directory" type="button" class="breadcrumb-separator breadcrumb-menu-trigger"
+        :aria-label="t('浏览目录：{0}', [part.path])" aria-haspopup="menu"
+        :aria-expanded="opened && anchorKey === part.path" :aria-controls="opened && anchorKey === part.path ? menuId : undefined"
+        @click="show($event, part.path, part.path)" @keydown.down.prevent.stop="show($event, part.path, part.path)"
+        @keydown.up.prevent.stop="show($event, part.path, part.path)" @keydown.esc.stop.prevent="close(true)">
+        <ChevronRight :size="12" aria-hidden="true" />
+      </button>
+    </template>
+    <template v-if="workspaceView">
+      <ChevronRight v-if="!parts.length && pages?.length" :size="12" class="breadcrumb-separator" aria-hidden="true" />
+      <span class="breadcrumb-trigger breadcrumb-current" aria-current="page" :title="workspaceView.name" v-butterfly-perch="perch">
+        <component :is="workspaceView.database || workspaceView.objectDatabase ? Database : Table2" :size="14" aria-hidden="true" />
+        <span>{{ workspaceView.name }}</span>
+      </span>
     </template>
     <slot name="status" />
   </nav>
   <Teleport to="body">
-    <div v-if="opened" :id="menuId" ref="menu" class="breadcrumb-menu" :style="position"
+    <div v-surface-motion="'WorkspaceBreadcrumb:0'" v-if="opened" :id="menuId" ref="menu" class="breadcrumb-menu" :style="position"
       role="menu" :aria-label="t('浏览目录：{0}', [folderLabel])" tabindex="-1" @keydown="menuKeydown">
-      <div class="breadcrumb-menu-heading">
-        <button v-if="folder" type="button" class="breadcrumb-menu-back" role="menuitem"
-          :aria-label="t('返回上级目录')" :data-tooltip="t('返回上级目录')" @click="goBack"><ArrowLeft :size="15" /></button>
-        <span :title="folder || workspaceName">{{ folderLabel }}</span>
-      </div>
       <div class="breadcrumb-menu-list panel-scrollbar">
         <button v-for="entry in children" :key="entry.id" type="button" class="breadcrumb-menu-entry"
           :class="{ 'is-current': entry.path === path }" role="menuitem" :data-path="entry.path"
@@ -221,10 +254,9 @@ onBeforeUnmount(() => {
             :file="entry" :icon="documentIcons?.[entry.id]"
             :load="isMarkdown(entry.path) ? loadDocumentIcon : undefined"
           />
-          <component v-else :is="entry.kind === 'directory' ? FolderOpen : File" :size="17" :stroke-width="1.6" />
+          <ResourceIcon v-else :path="entry.path" :name="entry.name" :kind="entry.kind" :expanded="true" :size="17" />
           <span>{{ fileLabel(entry) }}</span>
-          <ChevronRight v-if="entry.kind === 'directory'" :size="14" class="breadcrumb-menu-trailing" />
-          <Check v-else-if="entry.path === path" :size="14" class="breadcrumb-menu-trailing" />
+          <Check v-if="entry.kind === 'file' && entry.path === path" :size="14" class="breadcrumb-menu-trailing" />
         </button>
         <p v-if="!children.length" class="breadcrumb-menu-empty">{{ t('此目录为空') }}</p>
       </div>
@@ -233,6 +265,9 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* Breadcrumb labels use a smaller UI face than the file tree. Its visible
+   glyphs sit lower in the line box, so it needs its own optical correction. */
+.breadcrumb, .breadcrumb-menu { --navigation-icon-offset-y: 1.5px; }
 .breadcrumb { gap: 2px; }
 .breadcrumb-loading { width: 160px; }
 .breadcrumb-loading :deep(.tano-skeleton-list) { padding: 0 6px; gap: 0; }
@@ -250,11 +285,36 @@ onBeforeUnmount(() => {
   text-align: left;
 }
 .breadcrumb > .breadcrumb-current { color: var(--text); }
+.breadcrumb > .breadcrumb-workspace { max-width: 220px; }
+.breadcrumb-workspace-icon { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; flex-shrink: 0; border-radius: 3px; }
 .breadcrumb-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .breadcrumb-trigger > svg, .breadcrumb-separator { flex-shrink: 0; }
 .breadcrumb-trigger > .document-file-icon, .breadcrumb-menu-entry > .document-file-icon { flex-shrink: 0; }
+.breadcrumb-trigger > svg,
+.breadcrumb-trigger > .document-file-icon,
+.breadcrumb-workspace-icon,
+.breadcrumb > svg.breadcrumb-separator,
+.breadcrumb-menu-trigger > svg,
+.breadcrumb :deep(.document-status-trigger > svg),
+.breadcrumb-menu-entry > svg,
+.breadcrumb-menu-entry > .document-file-icon { translate: 0 var(--navigation-icon-offset-y, 0.5px); }
 button.breadcrumb-trigger:hover, .breadcrumb-trigger[aria-expanded='true'] { background: var(--hover); }
 .breadcrumb-trigger:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+.breadcrumb > .breadcrumb-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 22px;
+  height: 26px;
+  margin: 0;
+  padding: 0;
+  border-radius: 5px;
+  color: inherit;
+}
+.breadcrumb-menu-trigger:hover, .breadcrumb-menu-trigger[aria-expanded='true'] { background: var(--hover); }
+.breadcrumb-menu-trigger:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+.breadcrumb-menu-trigger[aria-expanded='true'] > svg { transform: rotate(90deg); }
 .breadcrumb-menu {
   position: fixed;
   z-index: 75;
@@ -271,9 +331,6 @@ button.breadcrumb-trigger:hover, .breadcrumb-trigger[aria-expanded='true'] { bac
   color: var(--text);
   font-size: 13px;
 }
-.breadcrumb-menu-heading { display: flex; align-items: center; gap: 5px; min-height: 31px; padding: 2px 7px 5px; color: var(--muted); }
-.breadcrumb-menu-heading > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.breadcrumb-menu-back { display: grid; place-items: center; flex-shrink: 0; width: 26px; height: 26px; margin-left: -4px; border-radius: 5px; }
 .breadcrumb-menu-list {
   min-height: 0;
   margin-right: -4px;
@@ -287,14 +344,14 @@ button.breadcrumb-trigger:hover, .breadcrumb-trigger[aria-expanded='true'] { bac
 .breadcrumb-menu-trailing { margin-left: auto; }
 .breadcrumb-menu-entry.is-current { background: var(--surface); }
 .breadcrumb-menu-entry.is-current > .breadcrumb-menu-trailing { color: var(--green); }
-.breadcrumb-menu-entry:hover, .breadcrumb-menu-back:hover { background: var(--hover); }
-.breadcrumb-menu-entry:focus-visible, .breadcrumb-menu-back:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; background: var(--hover); }
+.breadcrumb-menu-entry:hover { background: var(--hover); }
+.breadcrumb-menu-entry:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; background: var(--hover); }
 .breadcrumb-menu-empty { margin: 0; padding: 20px 9px; color: var(--muted); text-align: center; }
 @media (max-width: 700px) {
-  .breadcrumb > .breadcrumb-workspace { flex-shrink: 0; }
-  .breadcrumb-workspace:not(.breadcrumb-demo-badge) .breadcrumb-workspace-label { display: none; }
+  .breadcrumb > .breadcrumb-workspace { max-width: 100px; flex-shrink: 1; }
   .breadcrumb > .breadcrumb-trigger:not(.breadcrumb-workspace):not(.breadcrumb-current):not(.breadcrumb-page),
   .breadcrumb > .breadcrumb-separator { display: none; }
-  .breadcrumb > .breadcrumb-separator:last-of-type { display: block; }
+  .breadcrumb > .breadcrumb-menu-trigger:has(+ .breadcrumb-current),
+  .breadcrumb > .breadcrumb-current + .breadcrumb-menu-trigger { display: inline-flex; }
 }
 </style>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { Check, ChevronDown, ChevronRight, ChevronUp, MessageCircle, MoreHorizontal, Square, ThumbsDown, ThumbsUp, Undo2, X } from 'lucide-vue-next';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
@@ -130,7 +131,7 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div ref="shell" class="inline-assistant" :class="{ 'inline-assistant-error': state === 'error' }" :style="style" role="status">
+    <div v-surface-motion="'InlineAssistantInput:0'" ref="shell" class="inline-assistant" :class="{ 'inline-assistant-error': state === 'error' }" :style="style" role="status">
       <form v-if="state === 'input'" class="inline-assistant-input" @submit.prevent="submit">
         <AssistantButterfly :size="22" motion="none" />
         <input ref="input" :value="value" maxlength="20000" :aria-label="t('输入助手任务')" :placeholder="placeholder" @input="emit('update:value', ($event.target as HTMLInputElement).value)" @keydown.esc.prevent="emit('close')" />
@@ -146,7 +147,7 @@ onBeforeUnmount(() => {
       </div>
       <div v-else class="inline-assistant-state inline-assistant-complete" :class="{ 'inline-assistant-expanded': expanded }">
         <AssistantButterfly :size="22" motion="none" />
-        <div v-if="expanded" :id="responseId" ref="response" class="inline-assistant-response panel-scrollbar" tabindex="0" :aria-label="t('助手回复')" @scroll.passive="updateResponseMask">
+        <div v-surface-motion="'InlineAssistantInput:1'" v-if="expanded" :id="responseId" ref="response" class="inline-assistant-response panel-scrollbar" tabindex="0" :aria-label="t('助手回复')" @scroll.passive="updateResponseMask">
           <div v-if="state === 'error' || renderFailed" class="inline-assistant-response-text">{{ resultText }}</div>
           <MarkdownEditor v-else :model-value="resultText" :document-id="responseId" readonly :reveal-markdown="false" :resolve-image="() => null"
             open-links-on-tap @open-link="emit('conversation')" @ready="schedule" @error="renderFailed = true" />

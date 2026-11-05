@@ -7,6 +7,9 @@ import { BrowserPersonalPlans } from './personal-plans';
 import { configureWorkbench } from './runtime';
 import { useWorkspaceStore } from './stores/workspace';
 import { usePlanStore } from './stores/plans';
+import { useSuggestionStore } from './stores/suggestions';
+import { useAssistantStore } from './assistant/store';
+import { demoAssistantTransport } from './assistant/transport';
 import { helpChecklistKey, readHelpCompleted, recordHelpCompleted } from './help-checklist';
 import { markdownMilestones } from './help-milestones';
 import * as documentLinks from '@tano/editor/document-links';
@@ -232,6 +235,92 @@ it('keeps independent completion markers and avoids writing them again', () => {
   recordHelpCompleted('welcome');
   expect(set.mock.calls.map(([key]) => key)).toEqual([helpChecklistKey + '.welcome', helpChecklistKey + '.plan']);
   expect(readHelpCompleted()).toEqual(['welcome', 'plan']);
+});
+
+it('credits folder homes and conversions only after successful user operations', async () => {
+  const { store, file } = await workspace();
+  await store.create('notes', true);
+  await adapter.create('notes/README.md', '# Home');
+  await store.refresh();
+  expect(readHelpCompleted()).not.toContain('folder-home');
+  await store.openFile(file('notes/README.md'));
+  expect(readHelpCompleted()).toContain('folder-home');
+  await store.convertDocumentStructure(file('source.md'), 'child');
+  expect(readHelpCompleted()).toContain('child-document');
+  await expect(store.convertDocumentStructure(file('source'), 'flatten')).rejects.toThrow();
+  expect(readHelpCompleted()).not.toContain('flatten-folder');
+  await store.convertDocumentStructure(file('notes'), 'flatten');
+  expect(readHelpCompleted()).toContain('flatten-folder');
+});
+
+it('credits a new data table and an actual split, not failed creation or tab reordering', async () => {
+  const { store, file } = await workspace();
+  const create = vi.spyOn(adapter, 'create').mockRejectedValueOnce(new Error('cannot create'));
+  await expect(store.createDataTable()).rejects.toThrow();
+  expect(readHelpCompleted()).not.toContain('data-table');
+  create.mockRestore();
+  await store.createDataTable();
+  expect(readHelpCompleted()).toContain('data-table');
+  await store.openFileInNewTab(file('source.md'));
+  await store.openFileInNewTab(file('another.md'));
+  store.dockTab(file('source.md').id, { paneId: store.activePaneId, side: 'center', index: 0 });
+  expect(readHelpCompleted()).not.toContain('split-view');
+  store.dockTab(file('source.md').id, { paneId: store.activePaneId, side: 'right' });
+  expect(store.panes).toHaveLength(2);
+  expect(readHelpCompleted()).toContain('split-view');
+});
+
+it('records suggestion entry and acceptance without crediting loading or a failed write', async () => {
+  const { store, file } = await workspace();
+  await store.openFile(file('source.md'));
+  const suggestions = useSuggestionStore(), id = store.activeId;
+  await suggestions.load(id);
+  expect(readHelpCompleted()).not.toContain('suggestion-mode');
+  await suggestions.toggle(id);
+  expect(readHelpCompleted()).toContain('suggestion-mode');
+  suggestions.edit(id, store.active!.content.replace('Existing', 'Updated'), { id: 'local', name: 'Local' });
+  await suggestions.flush();
+  const suggestion = suggestions.get(id)!.records[0]!;
+  const write = vi.spyOn(adapter, 'write').mockRejectedValueOnce(new Error('cannot save'));
+  await suggestions.accept(id, suggestion.id);
+  expect(readHelpCompleted()).not.toContain('accept-suggestion');
+  write.mockRestore();
+  await suggestions.accept(id, suggestion.id);
+  expect(suggestions.get(id)!.error).toBe('');
+  expect(readHelpCompleted()).toContain('accept-suggestion');
+});
+
+it('records assistant actions only after connection saves and completed responses', async () => {
+  const transport = demoAssistantTransport();
+  disposePinia(pinia);
+  pinia = createPinia();
+  configureWorkbench(pinia, { adapter, personalPlans: personal, native: false, mobile: false, assistant: transport });
+  setActivePinia(pinia);
+  const { file } = await workspace();
+  const assistant = useAssistantStore();
+  await vi.waitFor(() => expect(assistant.loading).toBe(false));
+  expect(readHelpCompleted()).not.toContain('assistant');
+  assistant.open(file('source.md').id);
+  expect(readHelpCompleted()).toContain('assistant');
+  await expect(assistant.saveConnection(assistant.connections[0])).rejects.toThrow();
+  expect(readHelpCompleted()).not.toContain('assistant-connection');
+  vi.spyOn(transport, 'saveConnection').mockResolvedValue();
+  await assistant.saveConnection(assistant.connections[0]);
+  expect(readHelpCompleted()).toContain('assistant-connection');
+  await assistant.selectModel('模拟响应');
+  const request = vi.spyOn(transport, 'request').mockRejectedValueOnce(new Error('offline'));
+  assistant.prompt = '请概括参考内容';
+  await assistant.send();
+  expect(readHelpCompleted()).not.toContain('assistant-question');
+  expect(readHelpCompleted()).not.toContain('assistant-context');
+  request.mockImplementation(async (_id, _request, _signal, chunk) => {
+    chunk(new TextEncoder().encode('data: {"choices":[{"index":0,"delta":{"content":"[[tano:final]]\\n概括完成"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'));
+  });
+  assistant.prompt = '请再试一次';
+  await assistant.send();
+  expect(assistant.session!.messages.at(-1)!.state).toBe('completed');
+  expect(readHelpCompleted()).toContain('assistant-question');
+  expect(readHelpCompleted()).toContain('assistant-context');
 });
 
 it('shares syntax analysis between guidance checks and reuses only an exact edit baseline', async () => {

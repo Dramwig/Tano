@@ -16,10 +16,16 @@ export interface AttachmentService {
   }>;
   exportAttachment(workspaceId: string, path: string): Promise<void>;
   readAttachment?(workspaceId: string, path: string): Promise<Uint8Array>;
+  writeSpreadsheet?(workspaceId: string, path: string, bytes: Uint8Array, expected: string): Promise<string>;
 }
 
 export const nativeAttachments: AttachmentService = {
   imageUrl, importAttachment, exportAttachment,
+  async writeSpreadsheet(workspaceId, path, bytes, expected) {
+    let binary = '';
+    for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+    return invoke<string>('write_spreadsheet', { workspaceId, path, content: btoa(binary), expected });
+  },
   async readAttachment(workspaceId, path) {
     const content = await invoke<string>('read_attachment', { workspaceId, path });
     return Uint8Array.from(atob(content), char => char.charCodeAt(0));

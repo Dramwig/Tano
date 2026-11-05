@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Archive, CircleCheck, FileText, Pencil, RotateCcw } from 'lucide-vue-next';
@@ -79,7 +80,7 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div
+    <div v-surface-motion="'PlanEventContextMenu:0'"
       :id="id"
       ref="menu"
       class="dropdown compact-action-menu plan-event-context-menu"

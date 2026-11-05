@@ -10,7 +10,8 @@ import { nextTick } from 'vue';
 
 const bridge = vi.hoisted(() => ({ receive: undefined as ((message: unknown) => void) | undefined, send: vi.fn() }));
 vi.mock('./sandbox', () => ({ createPluginSandbox: (_source: string, receive: (message: unknown) => void) => {
-  bridge.receive = receive; return { send: bridge.send, dispose: vi.fn() };
+  if (_source === documentOverviewPlugin.source) bridge.receive = receive;
+  return { send: bridge.send, dispose: vi.fn() };
 } }));
 
 let store: ReturnType<typeof useWorkspaceStore>;
@@ -44,6 +45,9 @@ async function call(method: string, params: Record<string, unknown> = {}) {
   return message.result;
 }
 const fileId = () => store.workspace!.files.find(file => file.path === 'note.md')!.id;
+it('requires separate attachment permission even for plugins allowed to read Markdown', async () => {
+  await expect(call('attachments.read', { fileId: fileId(), offset: 0 })).rejects.toThrow('attachments.read');
+});
 
 it('merges a plugin edit with independent disk edits and preserves both sides of overlaps', async () => {
   const original = await call('documents.read', { fileId: fileId() });
@@ -91,7 +95,7 @@ it('stops malformed worker messages without throwing into the application', () =
   const message: Record<string, unknown> = { type: 'call', id: 1, method: 'documents.list' };
   message.params = message;
   expect(() => bridge.receive!(message)).not.toThrow();
-  expect(store.pluginRuntime[0]?.status).toBe('error');
+  expect(store.pluginRuntime.find(plugin => plugin.id === 'document-overview')?.status).toBe('error');
 });
 
 it('routes declared views and removes every workbench entry when the plugin is disabled', async () => {
@@ -116,7 +120,7 @@ it('routes declared views and removes every workbench entry when the plugin is d
 });
 
 it('rejects stale settings interactions without sending a callback to a new instance', async () => {
-  const interaction = { workspaceId: store.workspace!.id, pluginId: 'document-overview', instanceId: store.pluginRuntime[0]!.instanceId,
+  const interaction = { workspaceId: store.workspace!.id, pluginId: 'document-overview', instanceId: store.pluginRuntime.find(plugin => plugin.id === 'document-overview')!.instanceId,
     kind: 'action' as const, name: 'preferences', payload: { action: 'save', values: {} } };
   await expect(store.interactWithPlugin({ ...interaction, workspaceId: 'old-workspace' })).rejects.toThrow('工作区已切换');
   await expect(store.interactWithPlugin({ ...interaction, instanceId: 'old-instance' })).rejects.toThrow('运行版本已变化');

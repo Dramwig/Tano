@@ -14,11 +14,14 @@ import {
 } from '@codemirror/commands';
 import { Compartment, EditorState, RangeSet, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { Decoration, EditorView, GutterMarker, gutterLineClass, highlightActiveLineGutter, keymap, lineNumbers, WidgetType } from '@codemirror/view';
-import { referenceMarkdown } from '@tano/protocol';
-import type { CommentAnchor, ReferenceIdentity } from '@tano/protocol';
+import type { DecorationSet } from '@codemirror/view';
+import { droppedEntryReferences, entryReferenceDragType, referenceMarkdown } from '@tano/protocol';
+import type { CommentAnchor, ReferenceIdentity, ReferenceTarget } from '@tano/protocol';
 import type { SuggestionDecorations } from '@tano/protocol';
 import type { CommentGeometry } from '@tano/editor/comment-projection';
-import { sourceStyleRanges } from '@tano/editor/source-highlight';
+import { sourceChanges, sourceStyleRanges, type SourceHighlightChange, type SourceHighlightUpdate } from '@tano/editor/source-highlight';
+import { SourceHighlightParser } from '../source-highlight-parser';
+import { captureModeViewport, restoreModeViewport } from '../editor-mode';
 import type { ModeSelection } from '@tano/editor/mode-selection';
 import { splitFrontmatter } from '@tano/editor/syntax';
 import { referenceInsertionPoint } from '@tano/editor/document-links';
@@ -57,6 +60,7 @@ const pageSearch = StateField.define({
 
 const props = defineProps<{
   modelValue: string;
+  referenceTargets?: readonly ReferenceTarget[];
   contentRevision?: string;
   showAllLineNumbers?: boolean;
   preferences?: EditorPreferences;
@@ -88,33 +92,86 @@ class HeadingLineNumber extends GutterMarker {
   }
   eq(other: HeadingLineNumber) { return this.level === other.level; }
 }
-const headingLineNumbers = gutterLineClass.compute(['doc'], state => {
-  const markdown = state.doc.toString();
-  return RangeSet.of(sourceStyleRanges(markdown)
-    .filter(range => /^heading-[1-6]$/.test(range.style))
-    .map(({ from, style }) => new HeadingLineNumber(style).range(state.doc.lineAt(from).from)), true);
+const setSyntax = StateEffect.define<SourceHighlightUpdate>();
+const syntaxParser = new SourceHighlightParser((text, update) => {
+  const current = view;
+  if (!current || current.state.doc.toString() !== text) return;
+  const scroll = current.dom.closest<HTMLElement>('.document-layout');
+  const state = current.state;
+  const anchor = {
+    captureModeSelection: () => state.selection.main,
+    restoreModeSelection: () => {},
+    modeCursorTop: () => current.coordsAtPos(state.selection.main.head)?.top ?? null,
+  };
+  const headings: string[] = [];
+  state.field(syntaxStyles).headings.between(update.from, update.to, (from, _to, marker) => {
+    if (update.full || from < update.to) headings.push(`${from}:${marker.elementClass}`);
+  });
+  const nextHeadings = update.ranges.filter(range => /^heading-[1-6]$/.test(range.style))
+    .map(range => `${state.doc.lineAt(range.from).from}:cm-source-${range.style}-gutter`);
+  const headingsChanged = headings.join('|') !== nextHeadings.join('|');
+  const bookmark = scroll && headingsChanged && captureModeViewport(anchor, scroll);
+  current.dispatch({ effects: setSyntax.of(update) });
+  // Heading styles can change wrapped line heights after the worker finishes.
+  // Preserve the reading position in the workbench's outer scroll container.
+  if (scroll && bookmark) void restoreModeViewport(anchor, scroll, bookmark, false,
+    () => current === view && current.state.doc === state.doc && current.state.selection.eq(state.selection));
 });
+interface SourceSyntax { decorations: DecorationSet; headings: RangeSet<GutterMarker> }
+function updateSyntax(previous: SourceSyntax, state: EditorState, update?: SourceHighlightUpdate): SourceSyntax {
+  if (!update || (!update.full && update.from === update.to && !update.ranges.length)) return previous;
+  const marks = [], headings = [];
+  for (const range of update.ranges) {
+    marks.push(Decoration.mark({ class: `cm-source-${range.style}` }).range(range.from, range.to));
+    if (/^heading-[1-6]$/.test(range.style)) {
+      const from = state.doc.lineAt(range.from).from;
+      marks.push(Decoration.line({ class: `cm-source-${range.style}-line` }).range(from));
+      headings.push(new HeadingLineNumber(range.style).range(from));
+    }
+  }
+  const filter = (from: number) => from < update.from || from >= update.to;
+  return {
+    decorations: (update.full ? Decoration.none : previous.decorations).update({
+      filterFrom: update.from, filterTo: update.to, filter, add: marks, sort: true,
+    }),
+    headings: (update.full ? RangeSet.empty : previous.headings).update({
+      filterFrom: update.from, filterTo: update.to, filter, add: headings, sort: true,
+    }),
+  };
+}
+const syntaxStyles = StateField.define<SourceSyntax>({
+  create: state => updateSyntax({ decorations: Decoration.none, headings: RangeSet.empty }, state,
+    syntaxParser.parse(state.doc.toString(), props.capabilities?.features)),
+  update(previous, tr) {
+    const completed = tr.effects.find(effect => effect.is(setSyntax));
+    if (completed) return updateSyntax(previous, tr.state, completed.value);
+    if (!tr.docChanged && !tr.effects.some(effect => effect.is(refreshSyntax))) return previous;
+    const changes: SourceHighlightChange[] = [];
+    tr.changes.iterChanges((from, to, _fromB, _toB, inserted) => changes.push({ from, to, insert: inserted.toString() }));
+    const update = syntaxParser.parse(tr.state.doc.toString(), props.capabilities?.features, changes);
+    // Existing marks follow edits immediately while the newest parse is pending.
+    return updateSyntax({ decorations: previous.decorations.map(tr.changes), headings: previous.headings.map(tr.changes) }, tr.state, update);
+  },
+  provide: field => EditorView.decorations.from(field, value => value.decorations),
+});
+const refreshSyntax = StateEffect.define<void>();
+const headingLineNumbers = gutterLineClass.compute([syntaxStyles], state => state.field(syntaxStyles).headings);
 
 const sourceStyles = StateField.define({
   create(state) {
-    return decorations(state.doc.toString());
+    return decorations(state);
   },
   update(current, transaction) {
     return transaction.docChanged || transaction.effects.some(effect => effect.is(refreshCommentMarks))
-      ? decorations(transaction.state.doc.toString()) : current;
+      ? decorations(transaction.state) : current;
   },
   provide: (field) => EditorView.decorations.from(field),
 });
 
-function decorations(markdown: string) {
-  const ranges = sourceStyleRanges(markdown, props.capabilities?.features).flatMap(({ from, to, style }) => {
-    const marks = [Decoration.mark({ class: `cm-source-${style}` }).range(from, to)];
-    if (style.startsWith('heading-')) {
-      const lineStart = markdown.lastIndexOf('\n', from - 1) + 1;
-      marks.push(Decoration.line({ class: `cm-source-${style}-line` }).range(lineStart));
-    }
-    return marks;
-  });
+function decorations(state: EditorState) {
+  if (!props.commentAnchors?.length && !props.suggestionMarks) return Decoration.none;
+  const markdown = state.doc.toString();
+  const ranges = [];
   for (const { id, anchor } of props.commentAnchors ?? []) {
     if (anchor.basis !== 'source' ||
         anchor.spans.some(span => markdown.slice(span.from, span.to) !== span.text)) continue;
@@ -143,7 +200,7 @@ class DeletedSuggestion extends WidgetType {
   ignoreEvent() { return false; }
 }
 watch(() => props.suggestionMarks, () => view?.dispatch({ effects: refreshCommentMarks.of() }));
-watch(() => JSON.stringify(props.capabilities?.features), () => view?.dispatch({ effects: refreshCommentMarks.of() }));
+watch(() => JSON.stringify(props.capabilities?.features), () => view?.dispatch({ effects: refreshSyntax.of() }));
 
 function fileHandler(event: Event, files: FileList | null | undefined, requireImage: boolean) {
   if (!props.localNative || props.readonly) return false;
@@ -174,11 +231,11 @@ function wrapSourceSelection(current: EditorView, text: string) {
   const toLine = current.state.doc.lineAt(selection.to - 1).number;
   if (fromLine !== toLine) return false;
   const source = current.state.doc.toString();
-  if (sourceStyleRanges(source).some(range => ['code', 'math', 'frontmatter', 'html'].includes(range.style) &&
-      range.from < selection.to && range.to > selection.from)) return false;
   const wrap = selectionWrap(selected, text, workspaceWrapping(props.preferences?.selectionWrapping, props.capabilities?.features),
     source.slice(0, selection.from), source.slice(selection.to));
   if (!wrap) return false;
+  if (sourceStyleRanges(source).some(range => ['code', 'math', 'frontmatter', 'html'].includes(range.style) &&
+      range.from < selection.to && range.to > selection.from)) return false;
   if (wrap.prefix) current.dispatch({
     changes: { from: selection.from, to: selection.to, insert: wrap.prefix + selected + wrap.suffix },
     selection: { anchor: selection.anchor + wrap.prefix.length, head: selection.head + wrap.prefix.length },
@@ -197,6 +254,7 @@ onMounted(() => {
         keymap.of([{ ...indentWithTab, preventDefault: true }, ...defaultKeymap, ...historyKeymap]),
         lineNumbers(),
         highlightActiveLineGutter(),
+        syntaxStyles,
         headingLineNumbers,
         EditorView.lineWrapping,
         EditorView.contentAttributes.of({ 'aria-label': t('Markdown 源码'), spellcheck: 'false' }),
@@ -214,7 +272,23 @@ onMounted(() => {
         EditorView.domEventHandlers({
           keydown: (event, current) => wrapSelectedSourceField(event, current),
           paste: (event) => fileHandler(event, event.clipboardData?.files, true),
-          drop: (event) => fileHandler(event, event.dataTransfer?.files, false),
+          dragover: (event) => {
+            if (props.readonly || !event.dataTransfer?.types.includes(entryReferenceDragType)) return false;
+            event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; return true;
+          },
+          drop: (event, current) => {
+            if (!event.dataTransfer?.types.includes(entryReferenceDragType)) return fileHandler(event, event.dataTransfer?.files, false);
+            event.preventDefault(); event.stopPropagation();
+            if (props.readonly) return true;
+            const targets = droppedEntryReferences(event.dataTransfer.getData(entryReferenceDragType), props.referenceTargets ?? []);
+            const insert = targets.map(target => referenceMarkdown(target, target.name)).join(' ');
+            if (insert) {
+              const from = current.posAtCoords({ x: event.clientX, y: event.clientY }) ?? current.state.selection.main.head;
+              current.dispatch({ changes: { from, insert }, selection: { anchor: from + insert.length }, userEvent: 'input.drop' });
+              current.focus();
+            }
+            return true;
+          },
         }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !applyingModel)
@@ -227,7 +301,7 @@ onMounted(() => {
   emit('ready');
 });
 
-onBeforeUnmount(() => { clearTimeout(referenceFlashTimer); view?.destroy(); view = undefined; });
+onBeforeUnmount(() => { clearTimeout(referenceFlashTimer); syntaxParser.destroy(); view?.destroy(); view = undefined; });
 
 watch(() => props.contentRevision, () => {
   if (!view) return;
@@ -243,15 +317,10 @@ watch(
     const next = view.state.toText(value).toString();
     if (next === previous) return;
     // Map the selection and local undo steps through just the changed range.
-    let from = 0;
-    while (from < previous.length && from < next.length && previous[from] === next[from]) from++;
-    let to = previous.length;
-    let end = next.length;
-    while (to > from && end > from && previous[to - 1] === next[end - 1]) { to--; end--; }
     applyingModel = true;
     try {
       view.dispatch({
-        changes: { from, to, insert: next.slice(from, end) },
+        changes: sourceChanges(previous, next),
         annotations: [Transaction.addToHistory.of(false), isolateHistory.of('full')],
       });
     } finally {

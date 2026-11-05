@@ -15,13 +15,19 @@ import type {
   SettingsAction, SettingsCommand, SettingsPageId, SettingsSnapshot, SettingsValues,
 } from '../settings-window';
 import type { CapabilityPatch } from '../workspace-capabilities';
-import { applyTheme } from '../theme';
+import { applyTheme, applyAppearance } from '../theme';
 import type { PluginInteraction } from '../plugins/workbench';
 
 const request = settingsWindowRequest()!;
 const extensions = useWorkbenchRuntime().extensions?.();
 const snapshot = ref<SettingsSnapshot | null>(null);
 const page = ref<SettingsPageId>(request.page);
+const systemThemeMedia = window.matchMedia?.('(prefers-color-scheme: dark)');
+const systemThemeChanged = () => { if (snapshot.value?.theme === 'system') applyTheme('system'); };
+onMounted(() => systemThemeMedia?.addEventListener('change', systemThemeChanged));
+onBeforeUnmount(() => systemThemeMedia?.removeEventListener('change', systemThemeChanged));
+// A prewarmed hidden window must not replace the user's last visited page.
+const rememberPage = ref(false);
 const error = ref('');
 const unlisten: Array<() => void> = [];
 let mounted = false;
@@ -71,7 +77,7 @@ onMounted(async () => {
   unlisten.push(closeListener);
   const stateListener = await listen<SettingsSnapshot>(SETTINGS_STATE, async event => {
     snapshot.value = event.payload;
-    applyTheme(event.payload.theme);
+    applyAppearance(event.payload.appearance?.color, event.payload.appearance?.layout, event.payload.appearance?.shape, event.payload.theme);
     if (!rendered) {
       await nextTick();
       rendered = true;
@@ -82,6 +88,7 @@ onMounted(async () => {
   unlisten.push(stateListener);
   const navigationListener = await listen<SettingsPageId>(SETTINGS_NAVIGATE, event => {
     page.value = event.payload;
+    rememberPage.value = true;
   });
   if (!mounted) { navigationListener(); return; }
   unlisten.push(navigationListener);
@@ -130,6 +137,8 @@ onBeforeUnmount(() => {
     :mobile="false"
     :default-source="snapshot.defaultSource"
     :theme="snapshot.theme"
+    :appearance="snapshot.appearance"
+    @appearance="send({ type: 'appearance', selection: $event })"
     :visual-font-choice="snapshot.visualFontChoice"
     :custom-font-name="snapshot.customFontName"
     :reveal-markdown="snapshot.revealMarkdown"
@@ -146,13 +155,14 @@ onBeforeUnmount(() => {
     :capabilities="snapshot.capabilities"
     :version="snapshot.version"
     :initial-page="page"
+    :remember-page="rememberPage"
     :editor-preferences="snapshot.editorPreferences"
     :capability-error="snapshot.capabilityError"
     :capability-saving="snapshot.capabilitySaving"
     @close="getCurrentWindow().close()"
     @drag-window="dragWindow"
     @update:default-source="change('defaultSource', $event)"
-    @update:theme="change('theme', $event)"
+    @update:theme="snapshot.appearance ? send({ type: 'appearance', selection: { workspaceId: snapshot.appearance.workspaceId, kind: 'mode', id: $event } }) : change('theme', $event)"
     @update:visual-font-choice="change('visualFontChoice', $event)"
     @update:custom-font-name="change('customFontName', $event)"
     @update:reveal-markdown="change('revealMarkdown', $event)"

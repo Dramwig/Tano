@@ -5,6 +5,7 @@ import { PluginDevelopmentRunner, type PluginDevelopmentState } from './plugins/
 import { PluginPackageCache } from './plugins/packages';
 import { canManageWorkspacePlugins } from './plugins/policy';
 import { verifyCatalogPackage } from './plugins/catalog';
+import { systemPluginIds } from './plugins/system';
 
 export interface WorkspacePluginRuntimeHost {
   adapter: WorkspaceAdapter;
@@ -27,7 +28,7 @@ export class WorkspacePluginRuntime {
   readonly developer: PluginDevelopmentRunner;
   private developmentState: PluginDevelopmentState = { pluginId: '', active: false, message: '' };
   constructor(private readonly host: WorkspacePluginRuntimeHost) {
-    this.policy = new WorkspacePluginHost(objectTypeRegistry, undefined, host.services?.principal);
+    this.policy = new WorkspacePluginHost(objectTypeRegistry, undefined, host.services?.principal, systemPluginIds);
     this.executor = new PluginExecutionHost({ call: host.call }, host.changed, host.services);
     this.developer = new PluginDevelopmentRunner({
       snapshot: (id) => {

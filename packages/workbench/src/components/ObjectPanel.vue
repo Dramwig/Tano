@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, ref, watch } from 'vue';
 import { objectTypeRegistry, referenceUrl } from '@tano/protocol';
@@ -316,7 +317,7 @@ const uri = computed(() =>
 </script>
 
 <template>
-  <div class="object-panel-backdrop" @click.self="emit('close')">
+  <div v-surface-motion="'ObjectPanel:0'" class="object-panel-backdrop" @click.self="emit('close')">
     <section
       ref="panel"
       class="object-panel"

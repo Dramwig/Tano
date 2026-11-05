@@ -11,7 +11,7 @@ export interface PluginPackageUsage {
   entries: { integrity: string; pluginId: string; version: string; bytes: number;
     state: 'pending' | 'ready' | 'deleting'; pinned: boolean; createdAt: string; removable?: boolean }[];
 }
-export const pluginPermissions = ['documents.read', 'documents.write', 'objects.read', 'objects.write',
+export const pluginPermissions = ['attachments.read', 'documents.read', 'documents.write', 'objects.read', 'objects.write',
   'relations.read', 'relations.write', 'storage', 'network', 'connections', 'native', 'ui'] as const;
 export type PluginPermission = typeof pluginPermissions[number];
 export type PluginMode = 'required' | 'recommended' | 'optional' | 'disabled';
@@ -74,10 +74,10 @@ export function parsePluginManifest(value: unknown): PluginManifest {
   if (!pluginRecord(value)) throw new Error('插件清单无效');
   if (value.manifestVersion === 1) return parseObjectPlugin(JSON.stringify(value));
   keys(value, ['manifestVersion', 'apiVersion', 'id', 'name', 'version', 'description', 'objectTypes',
-    'relationTypes', 'permissions', 'networkOrigins', 'nativeCommands', 'commands', 'views', 'automations']);
+    'relationTypes', 'permissions', 'networkOrigins', 'nativeCommands', 'commands', 'views', 'automations', 'appearance']);
   if (value.manifestVersion !== 2 || value.apiVersion !== 1) throw new Error('不支持此插件 API 版本');
   const base = parseObjectPlugin(JSON.stringify({ manifestVersion: 1, id: value.id, name: value.name,
-    version: value.version, description: value.description, objectTypes: value.objectTypes ?? [], relationTypes: value.relationTypes ?? [] }));
+    version: value.version, description: value.description, objectTypes: value.objectTypes ?? [], relationTypes: value.relationTypes ?? [], ...(value.appearance === undefined ? {} : { appearance: value.appearance }) }));
   const uniqueStrings = (input: unknown, check: (item: unknown) => boolean, limit = 50): string[] => {
     if (!Array.isArray(input) || input.length > limit || input.some(item => !check(item)) || new Set(input).size !== input.length)
       throw new Error('插件权限或扩展入口无效');

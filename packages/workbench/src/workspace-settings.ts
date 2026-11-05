@@ -3,6 +3,7 @@ import type { FileSnapshot, Workspace, WorkspaceAdapter } from '@tano/protocol';
 import { builtinWorkspaceIcon } from './workspace-icons';
 import { parsePageTitleSource } from './page-title-source';
 import type { PageTitleSource } from './page-title-source';
+import { folderHomeFileNames, type FolderHomeFileName } from './folder-home';
 
 export interface WorkspaceSettings {
   version: 1;
@@ -10,6 +11,7 @@ export interface WorkspaceSettings {
   icon: string;
   homePageId: string;
   pageTitleSource: PageTitleSource;
+  folderHomeFileName: FolderHomeFileName;
   showPlan: boolean;
   showGraph: boolean;
   showPlugins: boolean;
@@ -17,7 +19,7 @@ export interface WorkspaceSettings {
   showPeopleDirectory: boolean;
 }
 export const defaultWorkspaceSettings: WorkspaceSettings = {
-  version: 1, name: '', icon: '', homePageId: '', pageTitleSource: 'frontmatter-first', showPlan: true,
+  version: 1, name: '', icon: '', homePageId: '', pageTitleSource: 'frontmatter-first', folderHomeFileName: 'README.md', showPlan: true,
   showGraph: true, showPlugins: true, showCollaborationViews: true, showPeopleDirectory: true,
 };
 export type WorkspaceSettingKey = Exclude<keyof WorkspaceSettings, 'version'>;
@@ -38,6 +40,8 @@ export function parseWorkspaceSettings(content: string): WorkspaceSettings {
   if (settings.name !== settings.name.trim() || [...settings.name].length > 65 || /[\r\n\x00-\x1f]/.test(settings.name))
     throw new Error('工作区名称最多 65 个字符，不能包含换行或控制字符');
   if (settings.homePageId && !isShortId(settings.homePageId)) throw new Error('默认页面 ID 无效');
+  if (settings.folderHomeFileName !== '' && !folderHomeFileNames.includes(settings.folderHomeFileName))
+    throw new Error('文件夹首页文件名无效');
   if (parsePageTitleSource(settings.pageTitleSource) !== settings.pageTitleSource)
     throw new Error('页面标题来源无效');
   if (settings.icon.startsWith('data:')) {

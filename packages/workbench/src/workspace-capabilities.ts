@@ -6,6 +6,7 @@ import type { WorkspaceCapabilities } from '@tano/editor/runtime';
 export type CapabilityPatch =
   | { feature: keyof WorkspaceCapabilities['features']; enabled: boolean }
   | { markdownDialect: WorkspaceCapabilities['markdownDialect'] }
+  | { mathRecognition: WorkspaceCapabilities['mathRecognition'] }
   | { mathSyntax: WorkspaceCapabilities['mathSyntax'] }
   | { bulletListMarker: WorkspaceCapabilities['bulletListMarker'] }
   | { pageWidth: { documentId: string; limited: boolean } };
@@ -29,12 +30,14 @@ export async function saveCapabilityPatch(
   const field = (policy: WorkspaceCapabilities) => {
     if ('feature' in patch) return policy.features[patch.feature];
     if ('pageWidth' in patch) return policy.pageWidthLimits[patch.pageWidth.documentId] ?? true;
+    if ('mathRecognition' in patch) return policy.mathRecognition;
     if ('mathSyntax' in patch) return policy.mathSyntax;
     if ('bulletListMarker' in patch) return policy.bulletListMarker;
     return policy.markdownDialect;
   };
   const desired = 'feature' in patch ? patch.enabled
     : 'pageWidth' in patch ? patch.pageWidth.limited
+    : 'mathRecognition' in patch ? patch.mathRecognition
     : 'mathSyntax' in patch ? patch.mathSyntax
     : 'bulletListMarker' in patch ? patch.bulletListMarker
     : patch.markdownDialect;

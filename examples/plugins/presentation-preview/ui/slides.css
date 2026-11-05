@@ -1,0 +1,11 @@
+@import '../../../../packages/workbench/src/scrollbars.css';
+
+html,body,#app { margin:0; height:100%; font:14px system-ui,sans-serif; color:#24292f; background:#f1f2f4; }
+#app { display:flex; flex-direction:column; overflow:hidden; }
+button { font:inherit; padding:5px 10px; border:1px solid #ddd; border-radius:5px; background:white; cursor:pointer; }
+button:disabled { opacity:.45; cursor:default; } button:focus-visible { outline:2px solid #387350; }
+#status { margin:0; padding:8px 16px; overflow-wrap:anywhere; }
+main { flex:1; overflow:auto; min-height:0; padding:24px; box-sizing:border-box; }
+#paper { margin:0 auto; background:white; box-shadow:0 2px 8px #0002; flex-shrink:0; }
+#paper > svg { display:block; }
+dialog { max-width:85vw; max-height:75vh; } pre { white-space:pre-wrap; }

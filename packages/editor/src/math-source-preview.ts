@@ -1,6 +1,9 @@
 import type { Node } from '@milkdown/kit/prose/model';
 import type { NodeViewConstructor } from '@milkdown/kit/prose/view';
 import { renderMathPreview } from './math';
+import { defaultCapabilities } from './runtime';
+import { sourcePresentation } from './runtime-views';
+import type { WorkspaceCapabilities } from './runtime';
 
 /** Preserve the rendered block's spacing and typography as its source grows. */
 export function sourceBlockStyle(element: globalThis.Node | null): Record<string, string> | null {
@@ -14,11 +17,10 @@ export function sourceBlockStyle(element: globalThis.Node | null): Record<string
     marginBottom: style.marginBottom,
     paddingTop: style.paddingTop,
     paddingBottom: style.paddingBottom,
-    // List padding reserves space for rendered markers. The source already
-    // contains those markers, so use the source block's normal horizontal inset.
-    // Leave horizontal margins to CSS too: a copied zero margin would override
-    // the top-level source block's inset and shift it left of paragraph text.
-    ...(element.matches('ul, ol') ? {} : {
+    // Lists reserve marker space; table viewports compensate for horizontal
+    // scrolling. Neither inset belongs to editable source. Leave horizontal
+    // spacing to CSS so source stays on the paragraph text rail.
+    ...(element.matches('ul, ol, .tano-table-viewport') ? {} : {
       marginRight: style.marginRight,
       marginLeft: style.marginLeft,
       paddingRight: style.paddingRight,
@@ -50,6 +52,7 @@ export function mathSourcePreviewView(
   enabled: () => boolean,
   parse: (source: string) => Node | null,
   sourceStyle: (id: string) => Record<string, string> | null = () => null,
+  policy: () => WorkspaceCapabilities = () => defaultCapabilities,
 ): NodeViewConstructor {
   return (node) => {
     let current = node;
@@ -109,7 +112,7 @@ export function mathSourcePreviewView(
         : parsed?.childCount === 1
           ? parsed.firstChild
           : null;
-      if (math?.type.name !== expected) {
+      if (math?.type.name !== expected || sourcePresentation(math, policy())) {
         preview.hidden = true;
         return;
       }

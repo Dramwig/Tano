@@ -1,3 +1,4 @@
+import { setSurfaceVisible } from './surface-motion';
 import { $nodeSchema, $remark, $inputRule } from '@milkdown/kit/utils';
 import { InputRule } from '@milkdown/kit/prose/inputrules';
 import { NodeSelection, Selection } from '@milkdown/kit/prose/state';
@@ -7,7 +8,7 @@ import { mathHighlightRanges } from './math-highlight';
 import { positionAnchoredPanel } from './panel-position';
 import type { PanelSide } from './panel-position';
 import { activateEditorPanel, announceEditorPanel, createEditorPanel, onOtherEditorPanel } from './editor-panel';
-import { markdownPolicy } from './runtime';
+import { markdownPolicy, recognizesMath } from './runtime';
 import katex from 'katex';
 import type { NodeViewConstructor } from '@milkdown/kit/prose/view';
 
@@ -137,7 +138,7 @@ export const inlineMathInput = $inputRule(
     new InputRule(
       /(?<![\\$])(\${1,2})([^$\n\ufffc]+)\1$/,
       (state, match, start, end) => {
-        if (!markdownPolicy(ctx).features.math || containsCode(state, start, end)) return null;
+        if (!recognizesMath(markdownPolicy(ctx), 'dollar') || containsCode(state, start, end)) return null;
         return state.tr.replaceWith(
           start,
           end,
@@ -159,7 +160,7 @@ export const blockMathInput = $inputRule(
     new InputRule(
       /^\$\$[ \u00a0]$/,
       (state, _match, start, end) => {
-        if (!markdownPolicy(ctx).features.math || containsCode(state, start, end)) return null;
+        if (!recognizesMath(markdownPolicy(ctx), 'dollar') || containsCode(state, start, end)) return null;
         const $start = state.doc.resolve(start);
         if ($start.parent.type.name !== 'paragraph' || end !== $start.end()) return null;
         const index = $start.index(-1);
@@ -179,7 +180,7 @@ export const blockMathInput = $inputRule(
 export const latexMathInput = $inputRule(
   (ctx) =>
     new InputRule(/(?<!\\)\\\(([^\n\ufffc]+)\\\)$/, (state, match, start, end) => {
-      if (!markdownPolicy(ctx).features.math || containsCode(state, start, end)) return null;
+      if (!recognizesMath(markdownPolicy(ctx), 'latex') || containsCode(state, start, end)) return null;
       return state.tr.replaceWith(
         start,
         end,
@@ -284,7 +285,7 @@ export function mathView(
       preview.setAttribute('aria-label', !readonly() && clickToEdit() ? '编辑公式' : 'LaTeX 公式');
       dom.classList.toggle('math-click-to-edit', !readonly() && clickToEdit());
       dom.classList.toggle('tano-editor-active', editing);
-      panel.hidden = !editing;
+      setSurfaceVisible(panel, editing);
       input.hidden = !editing;
       renderSource();
       renderMathPreview(

@@ -33,6 +33,18 @@ it('flags spreadsheet truncation instead of silently omitting out-of-range conte
   expect(result.kind === 'spreadsheet' && result.sheets[0].rows.length).toBe(officeLimits.rows);
 });
 
+it.each(['xls', 'xlsx'] as const)('preserves saved %s column widths and defaults missing widths', extension => {
+  const book = utils.book_new();
+  const sized = utils.aoa_to_sheet([['项目', '金额', '状态']]);
+  sized['!cols'] = [{ wpx: 160 }, { wpx: 90 }];
+  utils.book_append_sheet(book, sized, '有列宽');
+  utils.book_append_sheet(book, utils.aoa_to_sheet([['默认']]), '默认列宽');
+  const result = parseOffice(new Uint8Array(write(book, { type: 'array', bookType: extension === 'xls' ? 'biff8' : 'xlsx' })), extension);
+  if (result.kind !== 'spreadsheet') throw new Error('wrong preview');
+  expect(result.sheets[0].columnWidths).toEqual([160, 90, 72]);
+  expect(result.sheets[1].columnWidths).toEqual([72]);
+});
+
 it('reads DOCX heading, formatted text, tables and embedded raster images as inert blocks', () => {
   const bytes = zip({ 'word/document.xml': word('<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>中文标题</w:t></w:r></w:p>' +
     '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>表格单元格</w:t></w:r></w:p></w:tc></w:tr></w:tbl>' +

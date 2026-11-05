@@ -24,6 +24,7 @@ function run(key: string) {
 </template>
 <style scoped>
 .plugin-menu { border-top: 1px solid var(--line); padding-block: 5px; }
+.menu-divider + .plugin-menu { border-top: 0; }
 button { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; padding: 8px 10px; color: var(--text); background: transparent; border: 0; border-radius: 5px; font: inherit; text-align: left; }
 button:hover, button:focus-visible { background: var(--surface); }
 small { color: var(--muted); font-size: 11px; }
