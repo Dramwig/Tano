@@ -1,5 +1,5 @@
 import { shallowRef, type InjectionKey } from 'vue';
-import { isFileIconColor } from '@tano/protocol';
+import { isFileIconColor, isFileIconImage } from '@tano/protocol';
 import { defaultFileIconTheme } from './default-theme';
 import type { FileIconDefinition, FileIconResource, FileIconTheme } from './types';
 
@@ -12,6 +12,8 @@ function snapshot(theme: FileIconTheme): FileIconTheme {
     if (!id.trim() || !isFileIconColor(icon.color) ||
       icon.paths.some(path => !/^[MmZzLlHhVvCcSsQqTtAaEe\d\s.,+\-]*$/.test(path)) ||
       (icon.label?.length ?? 0) > 4 ||
+      (icon.image !== undefined && !isFileIconImage(icon.image)) ||
+      (icon.lightImage !== undefined && (icon.image === undefined || !isFileIconImage(icon.lightImage))) ||
       (icon.silhouette && !['file', 'folder', 'folder-open', 'none'].includes(icon.silhouette))) {
       throw new Error(`Invalid file icon: ${id}`);
     }

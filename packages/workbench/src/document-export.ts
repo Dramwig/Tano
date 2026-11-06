@@ -25,7 +25,9 @@ export function exportFilename(path: string, format: DocumentExportFormat) {
 
 function stylesheetText(rules: CSSRuleList): string {
   return [...rules].flatMap(rule => {
-    if (rule instanceof CSSFontFaceRule) return [];
+    // Split editor fonts use Unicode-scoped faces. Keep those rules in
+    // exported HTML; other font assets are handled by getFontEmbedCSS below.
+    if (rule instanceof CSSFontFaceRule) return rule.style.fontFamily.replace(/^["']|["']$/g, '').startsWith('Tano Latin ') ? [rule.cssText] : [];
     if (rule instanceof CSSImportRule) return rule.styleSheet ? [stylesheetText(rule.styleSheet.cssRules)] : [];
     return [rule.cssText];
   }).join('\n');

@@ -50,8 +50,9 @@ import type { CapabilityPatch } from '../workspace-capabilities';
 import { fixedColorMode, type ThemePreference } from '../theme';
 import type { AppearanceSnapshot, AppearanceSelection } from '../appearance';
 import { appearanceKinds, builtinDefault } from '../appearance';
-import { sanitizeCustomFontName, visualFontFamily } from '../editor-font';
-import type { VisualFontChoice } from '../editor-font';
+import { defaultSplitFontSettings, sanitizeCustomFontName } from '../editor-font';
+import type { SplitFontSettings, VisualFontChoice } from '../editor-font';
+import { useEditorFontFamily } from '../use-editor-font';
 import type { ToolbarMode } from '../toolbar-preference';
 import type { WorkspaceSettings, WorkspaceSettingsPatch } from '../workspace-settings';
 import WorkspaceGeneralSettings from './WorkspaceGeneralSettings.vue';
@@ -95,6 +96,7 @@ const props = defineProps<{
   appearance?: AppearanceSnapshot;
   visualFontChoice: VisualFontChoice;
   customFontName: string;
+  splitFontSettings?: SplitFontSettings;
   revealMarkdown: boolean;
   toolbarMode?: ToolbarMode;
   shortcuts?: ShortcutBindings;
@@ -129,6 +131,7 @@ const emit = defineEmits<{
   appearance: [selection: AppearanceSelection];
   'update:visualFontChoice': [value: VisualFontChoice];
   'update:customFontName': [value: string];
+  'update:splitFontSettings': [value: SplitFontSettings];
   'update:revealMarkdown': [value: boolean];
   'update:toolbarMode': [value: ToolbarMode];
   'update:shortcuts': [value: ShortcutBindings];
@@ -149,6 +152,17 @@ const emit = defineEmits<{
   'workspace-delete': [workspaceId: string];
 }>();
 const rules = computed(() => props.capabilities ?? defaultCapabilities);
+const splitFonts = computed(() => props.splitFontSettings ?? defaultSplitFontSettings(props.visualFontChoice, props.customFontName));
+const previewFontFamily = useEditorFontFamily(() => props.visualFontChoice, () => props.customFontName, () => splitFonts.value);
+type FontTarget = 'unified' | 'chinese' | 'english';
+const fontRows = computed(() => splitFonts.value.enabled ? [
+  { target: 'chinese' as const, label: '中文字体', customLabel: '中文字体名称', customAriaLabel: '自定义中文字体名称', ...splitFonts.value.chinese },
+  { target: 'english' as const, label: '英文字体', customLabel: '英文字体名称', customAriaLabel: '自定义英文字体名称', ...splitFonts.value.english },
+] : [{ target: 'unified' as const, label: '可视化编辑字体', customLabel: '字体名称', customAriaLabel: '自定义字体名称', choice: props.visualFontChoice, customName: props.customFontName }]);
+function updateFontChoice(target: FontTarget, choice: VisualFontChoice) {
+  if (target === 'unified') emit('update:visualFontChoice', choice);
+  else emit('update:splitFontSettings', { ...splitFonts.value, [target]: { ...splitFonts.value[target], choice } });
+}
 const mathSyntaxDescription = computed(() => ({
   preserve: '已有公式保持原来的写法，新公式使用上面的默认格式。',
   dollar: '新旧公式统一使用美元符号（$…$ / $$…$$），在下次编辑保存正文时应用。',
@@ -286,13 +300,18 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('appearance', 'appearance-theme', '显示模式', displayModeDescription.value, 'theme display mode light dark system 主题 模式 白天 黑夜 深色 浅色'),
   ...(props.appearance ? [
   settingSearchEntry('appearance', 'appearance-scope', '为此工作区单独设置', '用户默认与工作区覆盖', 'scope user workspace 用户 默认 覆盖'),
-  settingSearchEntry('appearance', 'appearance-shape', '形态与密度', '独立选择字体、圆角、控件间距和阴影。', 'shape typography density 字体 圆角 密度 间距 阴影'),
+  settingSearchEntry('appearance', 'appearance-shape', '形态与密度', '选择组件圆角、控件间距和阴影；字体在下方单独设置。', 'shape density 圆角 密度 间距 阴影'),
   settingSearchEntry('appearance', 'appearance-presets', '主题预设', '只应用预设声明的配色、图标、布局和形态，未指定的项保持当前。', 'preset theme 一键 整套 预设 风格'),
   settingSearchEntry('appearance', 'appearance-color', '配色主题', '选择工作区主题插件。', 'theme 插件 风格 配色'),
   settingSearchEntry('appearance', 'appearance-icons', '文件与目录图标', '选择工作区图标主题。', 'icon 文件夹 图标 插件'),
   settingSearchEntry('appearance', 'appearance-layout', '布局风格', '独立选择页面结构和材质，可与任意配色、图标混搭。', 'layout islands paper retro 卡片岛 复古 拟物 纸质 布局'),
   ] : []),
-  settingSearchEntry('appearance', 'appearance-visual-font', '可视化编辑字体', '选择内置字体，或使用本机已安装的字体。', 'font system serif mono Maple custom'),
+  ...(!splitFonts.value.enabled ? [settingSearchEntry('appearance', 'appearance-visual-font', '可视化编辑字体', '选择内置字体，或使用本机已安装的字体。', 'font system serif mono Maple custom')] : []),
+  settingSearchEntry('appearance', 'appearance-split-fonts', '分别设置中英文字体', '开启后分别选择中文和英文字体；关闭后恢复统一字体设置。', 'font split Chinese English 中英文 中文 英文 字体 拆分'),
+  ...(splitFonts.value.enabled ? [
+    settingSearchEntry('appearance', 'appearance-chinese-font', '中文字体', '选择内置字体，或使用本机已安装的字体。', 'Chinese CJK 中文 字体'),
+    settingSearchEntry('appearance', 'appearance-english-font', '英文字体', '选择内置字体，或使用本机已安装的字体。', 'English Latin 英文 字体'),
+  ] : []),
   settingSearchEntry('appearance', 'appearance-custom-font', '字体名称', '输入本机字体名称；未安装时会回退到系统字体。', 'custom font'),
   settingSearchEntry('appearance', 'appearance-visual-size', '可视化编辑字号', '调整正文、标题和编辑中的内容大小。', 'font size'),
   settingSearchEntry('appearance', 'appearance-source-size', 'Markdown 源码字号', '调整源码视图中的文字大小。', 'source font size'),
@@ -447,11 +466,12 @@ function keydown(event: KeyboardEvent) {
     first?.focus();
   }
 }
-function customFontInput(event: Event) {
+function customFontInput(event: Event, target: FontTarget = 'unified') {
   const input = event.target as HTMLInputElement;
   const value = sanitizeCustomFontName(input.value);
   if (input.value !== value) input.value = value;
-  emit('update:customFontName', value);
+  if (target === 'unified') emit('update:customFontName', value);
+  else emit('update:splitFontSettings', { ...splitFonts.value, [target]: { ...splitFonts.value[target], customName: value } });
 }
 </script>
 
@@ -621,7 +641,7 @@ function customFontInput(event: Event) {
                 <div v-for="kind in appearanceKinds" :key="kind" class="settings-row" :data-settings-key="`appearance-${kind}`">
                   <div>
                     <strong>{{ t(kind === 'color' ? '配色主题' : kind === 'layout' ? '布局风格' : kind === 'shape' ? '形态与密度' : '文件与目录图标') }}</strong>
-                    <p>{{ t(kind === 'shape' ? '独立选择字体、圆角、控件间距和阴影。' : kind === 'layout' ? '独立选择页面结构和材质，可与任意配色、图标混搭。' : '从内置项和当前工作区已启用的插件中选择，保存在当前设备。') }}</p>
+                    <p>{{ t(kind === 'shape' ? '选择组件圆角、控件间距和阴影；字体在下方单独设置。' : kind === 'layout' ? '独立选择页面结构和材质，可与任意配色、图标混搭。' : '从内置项和当前工作区已启用的插件中选择，保存在当前设备。') }}</p>
                     <p v-if="appearance.selected[kind] !== appearance.active[kind]" role="status">{{ t('原主题当前不可用，已使用同页默认；重新启用后会自动恢复。') }}</p>
                   </div>
                   <select :aria-label="t(kind === 'color' ? '配色主题' : kind === 'layout' ? '布局风格' : kind === 'shape' ? '形态与密度' : '文件与目录图标')"
@@ -680,37 +700,49 @@ function customFontInput(event: Event) {
           <section v-if="page === 'appearance'" class="settings-section" data-settings-key="appearance-custom-font" :aria-label="t('编辑字体与字号')">
             <h3>{{ t('编辑字体与字号') }}</h3>
             <div class="settings-card settings-font-card">
-              <div class="settings-row" data-settings-key="appearance-visual-font">
+              <div class="settings-row" data-settings-key="appearance-split-fonts">
                 <div>
-                  <strong>{{ t('可视化编辑字体') }}</strong>
+                  <strong>{{ t('分别设置中英文字体') }}</strong>
+                  <p>{{ t('开启后分别选择中文和英文字体；关闭后恢复统一字体设置。') }}</p>
+                </div>
+                <button type="button" class="settings-switch" :class="{ on: splitFonts.enabled }"
+                  role="switch" :aria-checked="splitFonts.enabled" :aria-label="t('分别设置中英文字体')"
+                  @click="emit('update:splitFontSettings', { ...splitFonts, enabled: !splitFonts.enabled })"><span /></button>
+              </div>
+              <template v-for="font in fontRows" :key="font.target">
+              <div class="settings-row" :data-settings-key="font.target === 'unified' ? 'appearance-visual-font' : `appearance-${font.target}-font`">
+                <div>
+                  <strong>{{ t(font.label) }}</strong>
                   <p>{{ t('选择内置字体，或使用本机已安装的字体。') }}</p>
                 </div>
                 <select
-                  :value="visualFontChoice"
-                  :aria-label="t('可视化编辑字体')"
-                  @change="emit('update:visualFontChoice', ($event.target as HTMLSelectElement).value as VisualFontChoice)"
+                  :value="font.choice"
+                  :aria-label="t(font.label)"
+                  @change="updateFontChoice(font.target, ($event.target as HTMLSelectElement).value as VisualFontChoice)"
                 >
                   <option value="system">{{ t('系统字体') }}</option>
                   <option value="serif">{{ t('衬线字体') }}</option>
+                  <option value="handwritten">{{ t('手写字体') }}</option>
                   <option value="mono">{{ t('等宽字体') }}</option>
                   <option value="custom">{{ t('自定义字体') }}</option>
                 </select>
               </div>
-              <div v-if="visualFontChoice === 'custom'" class="settings-row settings-custom-font-row" data-settings-key="appearance-custom-font">
+              <div v-if="font.choice === 'custom'" class="settings-row settings-custom-font-row" :data-settings-key="font.target === 'unified' ? 'appearance-custom-font' : `appearance-${font.target}-custom-font`">
                 <div>
-                  <strong>{{ t('字体名称') }}</strong>
+                  <strong>{{ t(font.customLabel) }}</strong>
                   <p>{{ t('输入本机字体名称；未安装时会回退到系统字体。') }}</p>
                 </div>
                 <input
-                  :value="customFontName"
+                  :value="font.customName"
                   type="text"
                   maxlength="80"
                   autocomplete="off"
-                  :aria-label="t('自定义字体名称')"
+                  :aria-label="t(font.customAriaLabel)"
                   :placeholder="t('例如：霞鹜文楷')"
-                  @input="customFontInput"
+                  @input="customFontInput($event, font.target)"
                 />
               </div>
+              </template>
               <div class="settings-row settings-font-row" data-settings-key="appearance-visual-size">
                 <div>
                   <strong>{{ t('可视化编辑字号') }}</strong>
@@ -775,14 +807,14 @@ function customFontInput(event: Event) {
                     <p
                       class="settings-visual-font-sample"
                       :style="{
-                        fontFamily: visualFontFamily(visualFontChoice, customFontName),
+                        fontFamily: previewFontFamily,
                         fontSize: `${visualFontSize}px`,
                       }"
                     >{{ t('在同一页写下新的想法。') }}<br />Tano 123</p>
                   </div>
                   <div class="settings-font-preview-sample" role="group" :aria-label="t('Markdown 源码预览')">
                     <p class="settings-source-font-sample" :style="{
-                      fontFamily: visualFontFamily(visualFontChoice, customFontName),
+                      fontFamily: previewFontFamily,
                       fontSize: `${sourceFontSize}px`,
                     }">
                       {{ t('# 在同一页写下新的想法') }}<br />Tano 123

@@ -274,7 +274,8 @@ import { AppearanceController } from './appearance';
 import LayoutDocumentChrome from './components/LayoutDocumentChrome.vue';
 import { FileIconRegistry, fileIconRegistryKey } from './file-icons/registry';
 import type { ThemePreference } from './theme';
-import { parseVisualFontChoice, sanitizeCustomFontName, visualFontFamily } from './editor-font';
+import { parseVisualFontChoice, sanitizeCustomFontName, parseSplitFontSettings } from './editor-font';
+import { useEditorFontFamily } from './use-editor-font';
 import type { VisualFontChoice } from './editor-font';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import {
@@ -967,9 +968,10 @@ const visualFontChoice = ref<VisualFontChoice>(
   parseVisualFontChoice(readTextPreference('visualFontChoice')),
 );
 const customFontName = ref(sanitizeCustomFontName(readTextPreference('customFontName')));
-const selectedVisualFontFamily = computed(() =>
-  visualFontFamily(visualFontChoice.value, customFontName.value),
-);
+const savedSplitFontSettings = readTextPreference('splitFontSettings');
+const splitFontSettings = ref(savedSplitFontSettings ? parseSplitFontSettings(savedSplitFontSettings, visualFontChoice.value, customFontName.value) : undefined);
+const selectedVisualFontFamily = useEditorFontFamily(() => visualFontChoice.value, () => customFontName.value, () => splitFontSettings.value);
+watch(splitFontSettings, value => { if (value) saveTextPreference('splitFontSettings', JSON.stringify(value)); }, { deep: true });
 watch(visualFontChoice, (value) => saveTextPreference('visualFontChoice', value));
 watch(customFontName, (value) => saveTextPreference('customFontName', value));
 const visualFontSize = ref(readFontSizePreference('visualFontSize', 16));
@@ -3622,6 +3624,7 @@ const settingsSnapshot = computed<SettingsSnapshot>(() => ({
   appearance: appearance.value,
   visualFontChoice: visualFontChoice.value,
   customFontName: customFontName.value,
+  splitFontSettings: splitFontSettings.value,
   revealMarkdown: revealMarkdown.value,
   toolbarMode: toolbarMode.value,
   shortcuts: shortcuts.value,
@@ -3742,6 +3745,9 @@ function handleSettingsCommand(command: SettingsCommand) {
       break;
     case 'customFontName':
       customFontName.value = command.value as string;
+      break;
+    case 'splitFontSettings':
+      splitFontSettings.value = parseSplitFontSettings(JSON.stringify(command.value), visualFontChoice.value, customFontName.value);
       break;
     case 'revealMarkdown':
       revealMarkdown.value = command.value as boolean;
@@ -6634,6 +6640,7 @@ const helpBlocked = computed(() => !!(
       @appearance="appearanceController.select($event)"
       :visual-font-choice="visualFontChoice"
       :custom-font-name="customFontName"
+      :split-font-settings="splitFontSettings"
       :reveal-markdown="revealMarkdown"
       :toolbar-mode="toolbarMode"
       :shortcuts="shortcuts"
@@ -6659,6 +6666,7 @@ const helpBlocked = computed(() => !!(
       @update:theme="theme = $event"
       @update:visual-font-choice="visualFontChoice = $event"
       @update:custom-font-name="customFontName = $event"
+      @update:split-font-settings="splitFontSettings = $event"
       @update:reveal-markdown="revealMarkdown = $event"
       @update:toolbar-mode="toolbarMode = $event"
       @update:shortcuts="shortcuts = $event"

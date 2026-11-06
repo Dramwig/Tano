@@ -53,7 +53,9 @@
     "boundary:check": "node scripts/check-boundaries.mjs",
     "notices:generate": "node scripts/generate-notices.mjs",
     "plugin:presentation": "node scripts/build-presentation-preview.mjs",
-    "plugin:word": "node scripts/build-word-preview.mjs"
+    "plugin:word": "node scripts/build-word-preview.mjs",
+    "plugin:material-icons": "node --use-env-proxy scripts/build-material-icon-theme.mjs",
+    "plugin:vscode-icons": "node --use-env-proxy scripts/build-vscode-icons.mjs"
   },
   "devDependencies": {
     "@excalidraw/excalidraw": "0.18.1",

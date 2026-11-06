@@ -18,9 +18,9 @@ export const builtinAppearance: AppearanceBuiltins = {
   shapes: [
     { id: 'builtin:rounded', label: '圆润宽松', tokens: { 'radius-control': '10px', 'radius-card': '16px', 'radius-dialog': '20px', 'space-panel': '22px', 'space-row-gap': '6px',
       'overlay-shadow': '0px 1px 2px #1b263a14, 0px 8px 24px #1b263a14', 'dialog-shadow': '0px 24px 64px #1b263a33' } },
-    { id: 'builtin:handwritten', label: '手写笔记', tokens: { 'font-prose': "'KaiTi', 'STKaiti', 'Kaiti SC', 'Noto Serif CJK SC', Georgia, serif", 'radius-control': '6px', 'radius-card': '6px', 'radius-dialog': '10px',
+    { id: 'builtin:handwritten', label: '柔和圆角', tokens: { 'radius-control': '6px', 'radius-card': '6px', 'radius-dialog': '10px',
       'overlay-shadow': '0px 2px 4px #3a2b1f22, 0px 10px 24px #3a2b1f33', 'dialog-shadow': '0px 20px 56px #3a2b1f55' } },
-    { id: 'builtin:print', label: '印刷文稿', tokens: { 'font-prose': "Literata, 'Source Han Serif SC', 'Noto Serif CJK SC', Songti SC, Georgia, serif", 'radius-control': '3px', 'radius-card': '2px', 'radius-dialog': '4px',
+    { id: 'builtin:print', label: '微圆角', tokens: { 'radius-control': '3px', 'radius-card': '2px', 'radius-dialog': '4px',
       'overlay-shadow': '0px 1px 3px #00000026, 0px 10px 28px #0000001f', 'dialog-shadow': '0px 18px 56px #00000040' } },
     { id: 'builtin:crisp', label: '直角紧凑', tokens: { 'radius-control': '0px', 'radius-card': '0px', 'radius-dialog': '0px', 'space-panel': '12px', 'space-control-y': '4px', 'overlay-shadow': 'none', 'dialog-shadow': 'none' } },
   ],

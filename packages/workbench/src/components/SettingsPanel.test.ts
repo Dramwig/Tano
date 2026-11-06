@@ -12,6 +12,7 @@ import type { SettingsPageContext } from '../runtime';
 import { defaultWorkspaceSettings } from '../workspace-settings';
 import type { WorkspaceSettingsPatch } from '../workspace-settings';
 import type { ToolbarMode } from '../toolbar-preference';
+import type { SplitFontSettings, VisualFontChoice } from '../editor-font';
 import { helpPreferenceKey, readHelpPreferences, useHelpPreferences } from '../help-guidance';
 import { setUiLocale } from '../i18n';
 import { localePreferenceKey, readUiLocale } from '../locale';
@@ -87,8 +88,9 @@ let revealMarkdown = ref(true);
 const appearance = ref<AppearanceSnapshot>();
 const appearanceSelections: AppearanceSelection[] = [];
 let theme = ref<'light' | 'dark' | 'system'>('system');
-let visualFontChoice = ref<'system' | 'serif' | 'mono' | 'custom'>('system');
+let visualFontChoice = ref<VisualFontChoice>('system');
 let customFontName = ref('');
+let splitFontSettings = ref<SplitFontSettings>();
 let showPageTitle = ref(true);
 let showDocumentProperties = ref(true);
 let outlineOnLeft = ref(false);
@@ -138,6 +140,7 @@ beforeEach(() => {
   appearance.value = undefined; appearanceSelections.length = 0;
   visualFontChoice = ref('system');
   customFontName = ref('');
+  splitFontSettings = ref<SplitFontSettings>();
   showPageTitle = ref(true);
   showDocumentProperties = ref(true);
   outlineOnLeft = ref(false);
@@ -187,6 +190,7 @@ beforeEach(() => {
         appearance: appearance.value,
         onAppearance: (selection: AppearanceSelection) => appearanceSelections.push(selection),
         visualFontChoice: visualFontChoice.value,
+        splitFontSettings: splitFontSettings.value,
         customFontName: customFontName.value,
         revealMarkdown: revealMarkdown.value,
         toolbarMode: toolbarMode.value,
@@ -203,7 +207,8 @@ beforeEach(() => {
         'onUpdate:revealMarkdown': (value: boolean) => revealUpdates.push(value),
         'onUpdate:toolbarMode': (value: ToolbarMode) => { toolbarMode.value = value; },
         'onUpdate:theme': (value: 'light' | 'dark' | 'system') => { theme.value = value; },
-        'onUpdate:visualFontChoice': (value: 'system' | 'serif' | 'mono' | 'custom') => { visualFontChoice.value = value; },
+        'onUpdate:visualFontChoice': (value: VisualFontChoice) => { visualFontChoice.value = value; },
+        'onUpdate:splitFontSettings': (value: SplitFontSettings) => { splitFontSettings.value = value; },
         'onUpdate:customFontName': (value: string) => { customFontName.value = value; },
         'onUpdate:showPageTitle': (value: boolean) => { showPageTitle.value = value; },
         'onUpdate:showDocumentProperties': (value: boolean) => { showDocumentProperties.value = value; },
@@ -477,7 +482,7 @@ it.each(['light', 'dark'] as const)('limits display mode options for a %s-only t
   expect(select.disabled).toBe(false); expect(select.value).toBe('system');
 });
 
-it('offers system, serif, mono, and a custom local font with a live preview', async () => {
+it('offers system, serif, handwritten, mono, and a custom local font with a live preview', async () => {
   await openPage('外观');
   const fontSection = root.querySelector<HTMLElement>('section[aria-label="编辑字体与字号"]')!;
   expect(fontSection.querySelectorAll('.settings-font-preview-sample')).toHaveLength(2);
@@ -485,7 +490,7 @@ it('offers system, serif, mono, and a custom local font with a live preview', as
   expect(root.querySelector('section[aria-label="编辑字号"]')).toBeNull();
   const select = root.querySelector<HTMLSelectElement>('select[aria-label="可视化编辑字体"]')!;
   expect([...select.options].map(({ textContent }) => textContent)).toEqual([
-    '系统字体', '衬线字体', '等宽字体', '自定义字体',
+    '系统字体', '衬线字体', '手写字体', '等宽字体', '自定义字体',
   ]);
   select.value = 'serif';
   select.dispatchEvent(new Event('change'));
@@ -494,6 +499,11 @@ it('offers system, serif, mono, and a custom local font with a live preview', as
   expect(root.querySelector<HTMLElement>('.settings-visual-font-sample')?.style.fontFamily).toContain('Georgia');
   expect(root.querySelector<HTMLElement>('.settings-source-font-sample')?.style.fontFamily)
     .toBe(root.querySelector<HTMLElement>('.settings-visual-font-sample')?.style.fontFamily);
+  select.value = 'handwritten';
+  select.dispatchEvent(new Event('change'));
+  await nextTick();
+  expect(visualFontChoice.value).toBe('handwritten');
+  expect(root.querySelector<HTMLElement>('.settings-visual-font-sample')?.style.fontFamily).toContain('KaiTi');
   select.value = 'mono';
   select.dispatchEvent(new Event('change'));
   await nextTick();
@@ -512,6 +522,38 @@ it('offers system, serif, mono, and a custom local font with a live preview', as
   expect(root.querySelector<HTMLElement>('.settings-visual-font-sample')?.style.fontFamily).toContain('霞鹜文楷');
   expect(root.querySelector<HTMLElement>('.settings-source-font-sample')?.style.fontFamily)
     .toBe(root.querySelector<HTMLElement>('.settings-visual-font-sample')?.style.fontFamily);
+});
+
+it('toggles independent Chinese and English fonts, previews both, and restores both modes without losing choices', async () => {
+  visualFontChoice.value = 'serif';
+  await openPage('外观');
+  const toggle = root.querySelector<HTMLButtonElement>('[role="switch"][aria-label="分别设置中英文字体"]')!;
+  expect(toggle.getAttribute('aria-checked')).toBe('false');
+  expect(root.querySelector('[aria-label="中文字体"]')).toBeNull();
+  toggle.click(); await nextTick();
+  expect(toggle.getAttribute('aria-checked')).toBe('true');
+  expect(root.querySelector('[aria-label="可视化编辑字体"]')).toBeNull();
+  const chinese = root.querySelector<HTMLSelectElement>('[aria-label="中文字体"]')!;
+  expect(chinese.value).toBe('serif');
+  chinese.value = 'custom'; chinese.dispatchEvent(new Event('change')); await nextTick();
+  const name = root.querySelector<HTMLInputElement>('[aria-label="自定义中文字体名称"]')!;
+  name.value = '霞鹜文楷'; name.dispatchEvent(new Event('input')); await nextTick();
+  const english = root.querySelector<HTMLSelectElement>('[aria-label="英文字体"]')!;
+  english.value = 'mono'; english.dispatchEvent(new Event('change')); await nextTick();
+  expect(splitFontSettings.value!.chinese).toEqual({ choice: 'custom', customName: '霞鹜文楷' });
+  expect(splitFontSettings.value!.english.choice).toBe('mono');
+  const preview = root.querySelector<HTMLElement>('.settings-visual-font-sample')!;
+  expect(preview.style.fontFamily).toContain('霞鹜文楷');
+  expect(preview.style.fontFamily).toContain('Tano Latin Maple Mono NF');
+  expect(root.querySelector<HTMLElement>('.settings-source-font-sample')?.style.fontFamily).toBe(preview.style.fontFamily);
+  expect(document.querySelector('style[data-tano-editor-fonts]')?.textContent).toContain('unicode-range');
+  toggle.click(); await nextTick();
+  expect(document.querySelector('style[data-tano-editor-fonts]')).toBeNull();
+  expect(root.querySelector<HTMLSelectElement>('[aria-label="可视化编辑字体"]')?.value).toBe('serif');
+  toggle.click(); await nextTick();
+  expect(root.querySelector<HTMLSelectElement>('[aria-label="中文字体"]')?.value).toBe('custom');
+  expect(root.querySelector<HTMLInputElement>('[aria-label="自定义中文字体名称"]')?.value).toBe('霞鹜文楷');
+  expect(root.querySelector<HTMLSelectElement>('[aria-label="英文字体"]')?.value).toBe('mono');
 });
 
 it('shows the formula preview setting and emits its change', async () => {

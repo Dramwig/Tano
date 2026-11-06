@@ -54,19 +54,21 @@ npm run plugin -- verify examples/plugins/theme-paper/theme-paper-1.0.0.tano-plu
 
 ## 形态与密度
 
-配色的 light/dark 仅接受颜色 token。字体、圆角、控件间距与阴影在独立的 shapes 中声明：
+配色的 light/dark 仅接受颜色 token。圆角、控件间距与阴影在独立的 shapes 中声明：
 
 ```json
 "shapes": [{
   "id": "print", "label": "纸页排印",
-  "tokens": { "font-prose": "Literata, Georgia, serif", "radius-card": "2px", "space-panel": "20px", "overlay-shadow": "none" }
+  "tokens": { "radius-card": "2px", "space-panel": "20px", "overlay-shadow": "none" }
 }]
 ```
 
-内置形态包括同页默认、圆润宽松、手写笔记、印刷文稿、直角紧凑。
-布局负责区域分块、纸张材质与结构间距；卡片圆角、字体及浮层阴影引用形态 token。
-布局不覆盖形态的圆角或字体。Notebook 的装订环、封皮与横线保留为布局材质；用户显式编辑字体优先于形态正文默认。
-因此可以同时选择纸页颜色、同页默认字体形态和卡片岛布局，也可以让卡片岛使用直角紧凑形态。
+内置形态包括同页默认、圆润宽松、柔和圆角、微圆角、直角紧凑。
+柔和圆角、微圆角保留原有 `builtin:handwritten`、`builtin:print` ID，以兼容已保存选择和预设引用。
+布局负责区域分块、纸张材质与结构间距；组件圆角、控件间距及浮层阴影引用形态 token。
+Notebook 的装订环、封皮与横线保留为布局材质。字体统一在「编辑字体与字号」中选择，系统字体始终使用系统字体栈；手写字体也在此单独选择。
+旧版 v2 主题包的 `font-ui`、`font-prose`、`font-mono` 仍通过协议校验，但宿主不再应用这些形态字体 token，切换形态或主题预设不会改变字体。
+因此可以同时选择纸页颜色、系统字体和卡片岛布局，也可以让卡片岛使用直角紧凑形态。
 
 ## 主题预设
 
@@ -120,19 +122,26 @@ color、icons、layout、shape 均可选，至少声明一项；省略表示不�
 | 状态 | danger、danger-bg、warning、warning-bg、warning-border、switch-off | 同上 |
 | 编辑器 | syntax-purple/red/blue/orange/teal/green、highlight-bg、suggestion-color、diff-add-bg、diff-remove-bg、quote-border | 同上 |
 | 浮层与滚动 | scrollbar-thumb、scrollbar-thumb-hover、backdrop | 同上 |
-| 字体 | font-ui、font-prose、font-mono | 本机字体列表与 generic family；无 URL、CSS 函数或远程字体 |
+| 旧版字体（兼容校验，宿主忽略） | font-ui、font-prose、font-mono | 本机字体列表与 generic family；无 URL、CSS 函数或远程字体 |
 | 圆角 | radius-control、radius-card、radius-dialog | 0–24px |
 | 间距 | space-control-x、space-control-y、space-panel、space-row-gap | 2–24px |
 | 阴影 | overlay-shadow、dialog-shadow | none 或最多 3 层 px 偏移/模糊/扩展与十六进制颜色；各长度绝对值 ≤100 |
 
 间距用于控件、目录行、设置行与面板，不暴露任意定位或隐藏界面的 CSS。
 移动端目录行和输入控件保留至少 44px 高的触控区域。圆角不改变开关、圆形图标等语义形状。
-字体的“系统字体”选项跟随形态正文默认；用户显式选择衬线、等宽、自定义字体时优先使用用户选择。
+编辑字体由用户独立选择系统、衬线、手写、等宽或自定义字体，不继承形态设置。
+可在「编辑字体与字号」顶部开启「分别设置中英文字体」，独立选择中文和英文字体。英文字体仅应用于拉丁字符，中文及全角标点使用中文字体；关闭后恢复原有统一字体，单独设置仍保留。设置保存在当前设备，并应用于正文、页面内标题、源码和字体预览。
 主题作者须自行验证颜色对比；语法颜色名称是语义槽位，不要求实际颜色必须与名称相同。
 
 图标格式见 [文件图标主题](file-icon-themes.md)。`appearance.icons` 使用相同的 `FileIconTheme`，
-最多 256 个图标、每个最多 32 条路径、单路径最多 4096 字符、匹配表最多 512 项。
-图标使用 20×20 坐标、单色描边，允许 `currentColor`，不接受远程资源、HTML、任意 SVG 或脚本。
+最多 2048 个图标、每个最多 32 条路径、单路径最多 4096 字符、每张匹配表最多 8192 项。
+矢量图标使用 20×20 坐标、单色描边，允许 `currentColor`。
+彩色图标可在原定义上增加 `image`（`data:image/png;base64,...`），并按需提供 `lightImage`；
+存在 `image` 时用图片替代路径、轮廓与文字。`lightImage` 随宿主实际浅色模式显示，深色模式使用 `image`，
+并非跟随操作系统模式。每张编码图片最多 44 KiB，必须包含 PNG 签名、IHDR、IDAT 与 IEND，尺寸限制为 1–128px；不接受远程资源、HTML、SVG 或脚本。
+图标主题可提供最多 4096 字符的 `notice`，保留第三方许可全文。原有单色主题无须修改。
+插件清单和完整包分别最多 4 MiB，工作区插件规则最多 16 MiB（包含当前及历史清单），所有限制均按 UTF-8 字节计算。
+例如 [Material 文件图标](../examples/plugins/material-icon-theme/README.md) 使用嵌入式彩色资源，作为按需导入的独立插件提供。
 用户显式指定的文档 emoji/图标仍优先。
 
 ## 生命周期与保存

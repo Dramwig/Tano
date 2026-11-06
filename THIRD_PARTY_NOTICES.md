@@ -18,7 +18,11 @@ The document cover gallery bundles 75 covers from 57 artworks and 20 NASA photog
 
 The unmodified [ICAL.js](https://github.com/kewisch/ical.js/tree/v2.2.1) parser is distributed under MPL-2.0. Its source is available from that repository and the corresponding npm package; its license text is included in the generated distribution notices. Tano's connector code remains MIT. The native keyring dependency retains its MIT OR Apache-2.0 license.
 
+The standalone [Material file icon plugin](examples/plugins/material-icon-theme/README.md) adapts the default icons and associations from [Material Icon Theme 5.40.0](https://github.com/material-extensions/vscode-material-icon-theme/tree/v5.40.0), Copyright (c) 2025 Material Extensions, under MIT. Tano converts the artwork to 64×64 palette PNGs and includes light variants. The full upstream license is retained in the plugin's LICENSE and embedded `notice`; its archive integrity and generated package digest are recorded in upstream.json. This optional importable package is not bundled into the client application.
+
 The Maple Mono NF font uses the SIL Open Font License in `apps/client/public/MAPLE-MONO-LICENSE.txt`.
+
+The optional standalone [vscode-icons plugin](examples/plugins/vscode-icons/README.md) adapts [vscode-icons 13.0.0](https://github.com/vscode-icons/vscode-icons/tree/866d4f48701ba71e39d309e9e519bcf2eaf1c3e2), Copyright The vscode-icons Contributors. Upstream source code is MIT; artwork and the derived 32×32 palette PNGs retain CC BY-SA 4.0, while branded icons retain their respective copyright licenses and trademarks as stated upstream. The separately GPL-3.0-or-later-licensed xposed artwork is excluded. The plugin source includes the full CC BY-SA 4.0 and MIT texts, attribution, changes, source and archive/package hashes; the installable package embeds attribution, license links and the upstream MIT text in its `notice`. This plugin is not bundled into the client, and its artwork license does not change Tano code's MIT license.
 
 The assistant model picker bundles 18 unmodified SVGs from [Lobe Icons](https://github.com/lobehub/lobe-icons), distributed under MIT. The license, package version, integrity hash, and asset paths are retained in [packages/workbench/src/assets/model-icons/](packages/workbench/src/assets/model-icons/README.md) and the generated client distribution notices.
 

@@ -1,0 +1,20 @@
+{
+  "version": "13.0.0",
+  "commit": "866d4f48701ba71e39d309e9e519bcf2eaf1c3e2",
+  "url": "https://codeload.github.com/vscode-icons/vscode-icons/tar.gz/866d4f48701ba71e39d309e9e519bcf2eaf1c3e2",
+  "archiveSha256": "29446f67bc94d3bdb8be6590d13c1194c84391790787e829e25cdb4b218eab78",
+  "rendering": "32×32 PNG, 32-color palette, no dithering",
+  "artworkLicense": "CC-BY-SA-4.0; branded artwork retains its respective licenses",
+  "excludedArtwork": [
+    "file_type_xposed.svg"
+  ],
+  "icons": 1309,
+  "associations": {
+    "fileNames": 1909,
+    "fileExtensions": 1006,
+    "folderNames": 519,
+    "folderNamesExpanded": 519
+  },
+  "bytes": 2239021,
+  "sha256": "29434d6ada810d23d8427a40708c350e95c5b8e23b4b8bd07e81af3f1e8756cf"
+}

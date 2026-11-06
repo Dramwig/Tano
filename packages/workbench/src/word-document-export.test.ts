@@ -102,6 +102,9 @@ it('picks one Latin and one CJK font for Word', async () => {
   const { visualFontFamily } = await import('./editor-font');
   expect(wordFonts(visualFontFamily('system', ''))).toEqual({ latin: 'Segoe UI', eastAsia: 'Microsoft YaHei' });
   expect(wordFonts(visualFontFamily('serif', ''))).toEqual({ latin: 'Literata', eastAsia: 'SimSun' });
+  const { resolveEditorFont, defaultSplitFontSettings } = await import('./editor-font');
+  const split = { ...defaultSplitFontSettings(), enabled: true, chinese: { choice: 'handwritten' as const, customName: '' }, english: { choice: 'serif' as const, customName: '' } };
+  expect(wordFonts(resolveEditorFont('system', '', split).family)).toEqual({ latin: 'Literata', eastAsia: 'KaiTi' });
   expect(wordFonts('"Inter", sans-serif')).toEqual({ latin: 'Inter', eastAsia: 'Inter' });
 });
 

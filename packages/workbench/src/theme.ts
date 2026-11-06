@@ -1,4 +1,7 @@
-import { appearanceVersion, themeTokenNames, themeColorTokens, themeShapeTokens, type ColorThemeDefinition, type ThemeTokens, type ShapeTokens, type LayoutThemeDefinition, type ShapeThemeDefinition } from '@tano/protocol';
+import { appearanceVersion, themeTokenNames, themeColorTokens, themeRadiusTokens, themeSpaceTokens, themeShadowTokens, type ColorThemeDefinition, type ThemeTokens, type ShapeTokens, type LayoutThemeDefinition, type ShapeThemeDefinition } from '@tano/protocol';
+// Legacy v2 shapes may declare fonts. Accept the package, but keep typography
+// under the user's font settings rather than applying it with component shape.
+const componentShapeTokens = [...themeRadiusTokens, ...themeSpaceTokens, ...themeShadowTokens];
 export type ThemePreference = 'light' | 'dark' | 'system';
 export interface ResolvedTheme {
   version: typeof appearanceVersion;
@@ -19,7 +22,8 @@ let shape: ShapeThemeDefinition | undefined;
 export function applyAppearance(value?: ColorAppearance, layoutValue?: LayoutThemeDefinition, shapeValue?: ShapeThemeDefinition, mode = currentPreference): void {
   appearance = value ?? { light: {}, dark: {} };
   layout = layoutValue ? { ...layoutValue } : undefined;
-  shape = shapeValue ? { ...shapeValue, tokens: { ...shapeValue.tokens } } : undefined;
+  shape = shapeValue ? { ...shapeValue, tokens: Object.fromEntries(componentShapeTokens.flatMap(key =>
+    shapeValue.tokens[key] === undefined ? [] : [[key, shapeValue.tokens[key]]])) } : undefined;
   const root = document.documentElement;
   root.dataset.layout = layout?.structure ?? 'continuous';
   root.dataset.surface = layout?.surface ?? 'flat';
@@ -73,7 +77,7 @@ export function applyTheme(preference: ThemePreference): void {
   applied.clear();
   const colors = appearance[resolved] ?? {};
   const tokens = { ...Object.fromEntries(themeColorTokens.flatMap(key => colors[key] === undefined ? [] : [[key, colors[key]]])),
-    ...Object.fromEntries(themeShapeTokens.flatMap(key => shape?.tokens[key] === undefined ? [] : [[key, shape.tokens[key]]])) };
+    ...Object.fromEntries(componentShapeTokens.flatMap(key => shape?.tokens[key] === undefined ? [] : [[key, shape.tokens[key]]])) };
   for (const [key, value] of Object.entries(tokens)) {
     document.documentElement.style.setProperty(`--${key}`, value);
     applied.add(key);
