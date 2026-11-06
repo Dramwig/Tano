@@ -6,8 +6,9 @@ import { parse } from '@vue/compiler-sfc';
 import { expect, it } from 'vitest';
 import { englishMessages } from './locales/en-US';
 import { blockTypes, inlineTypes } from '@tano/editor/selection-context';
-import { featureDefinitions, selectionWrappingOptions } from '@tano/editor/runtime';
+import { featureDefinitions, selectionWrappingOptions, chineseInputOptions } from '@tano/editor/runtime';
 import { dataFieldTypes } from '@tano/protocol';
+import { settingExamples } from './setting-examples';
 
 it('covers UI message calls, shared editor labels and interpolation parameters', () => {
   const missing = new Set<string>();
@@ -38,7 +39,10 @@ it('covers UI message calls, shared editor labels and interpolation parameters',
     }
   }
   walk(directory);
-  for (const item of [...blockTypes, ...inlineTypes, ...featureDefinitions, ...selectionWrappingOptions])
+  for (const example of Object.values(settingExamples))
+    for (const message of [example.label, example.description])
+      if (!(message in englishMessages)) missing.add(message);
+  for (const item of [...blockTypes, ...inlineTypes, ...featureDefinitions, ...selectionWrappingOptions, ...chineseInputOptions])
     if (!(item.label in englishMessages)) missing.add(item.label);
   for (const label of Object.values(dataFieldTypes)) if (!(label in englishMessages)) missing.add(label);
   for (const option of selectionWrappingOptions) if (!(option.example in englishMessages)) missing.add(option.example);

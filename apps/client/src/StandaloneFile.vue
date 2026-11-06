@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { save as chooseSave } from '@tauri-apps/plugin-dialog';
 import MarkdownEditor from '@tano/editor';
+import AppTooltip from '@tano/workbench/components/AppTooltip.vue';
 import { defaultCapabilities } from '@tano/editor/runtime';
 import { safeRemoteImage } from '@tano/protocol';
 import { t } from '@tano/workbench/i18n';
@@ -170,6 +171,7 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="standalone-file">
+    <AppTooltip />
     <header class="standalone-header">
       <div class="standalone-name"><strong>{{ name }}{{ session?.dirty ? ' · 未保存' : '' }}</strong><span :title="displayPath">{{ displayPath || '正在打开文件…' }}</span></div>
       <button :disabled="!session" :aria-pressed="source" @click="source = !source">{{ source ? '阅读编辑' : '源码' }}</button>
@@ -186,7 +188,7 @@ onBeforeUnmount(() => {
     </section>
     <div v-if="session" class="standalone-document">
       <SourceEditor v-if="source" v-model="session.content" :readonly="false" :local-native="true" :show-all-line-numbers="true" />
-      <MarkdownEditor v-else v-model="session.content" :document-id="appWindow.label" @error="error = $event" @edit-source="source = true" />
+      <MarkdownEditor v-else v-model="session.content" :document-id="appWindow.label" :translate="t" @error="error = $event" @edit-source="source = true" />
     </div>
     <div v-if="closing" class="standalone-overlay">
       <section role="dialog" aria-modal="true" aria-labelledby="unsaved-title" class="standalone-dialog">

@@ -19,6 +19,7 @@ import { refreshWorkspace, subscribeBackgroundRefresh } from '../background-refr
 import type { CommentAuthor, CommentChange, CommentMessageEdit, CommentMessageRemoval } from '../workspace-comments';
 import CommentComposer from './CommentComposer.vue';
 import CommentConversation from './CommentConversation.vue';
+import DocumentDiscussionHeader from './DocumentDiscussionHeader.vue';
 import ReviewCard from './ReviewCard.vue';
 
 const props = withDefaults(defineProps<{
@@ -733,11 +734,10 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
     </div>
     <p v-if="error && !popupVisible && !discussionShown" class="comment-error" role="alert">{{ error }}</p>
     <section v-surface-motion="'DocumentComments:1'" v-show="discussionShown" ref="discussionSection" class="document-discussion" :aria-label="t('文档讨论')">
-      <header class="document-discussion-header">
-        <h2>{{ t('文档讨论') }}</h2><span v-if="pendingDiscussions.length">{{ pendingDiscussions.reduce((total, thread) => total + thread.messages.length, 0) }}</span>
+      <DocumentDiscussionHeader :count="pendingDiscussions.reduce((total, thread) => total + thread.messages.length, 0)">
         <button v-if="!pendingDiscussions.length && !discussionDraft.trim()" type="button" class="discussion-dismiss"
           :aria-label="t('关闭讨论输入')" :data-tooltip="t('关闭讨论输入')" :disabled="busy" @click="dismissEmptyDiscussion"><X :size="16" /></button>
-      </header>
+      </DocumentDiscussionHeader>
       <p v-if="error && !popupVisible" class="comment-error" role="alert">{{ error }}</p>
       <LoadingSkeleton v-if="loading && !discussions" :rows="3" />
       <div class="document-discussion-messages">
@@ -766,9 +766,6 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
 .document-review { color: var(--text); font-family: var(--font-ui); }
 .document-discussion { box-sizing: border-box; max-width: var(--tano-content-measure, 780px); margin: 48px auto 0; padding: 24px var(--tano-block-padding-inline, 8px) 0; }
 .document-discussion :deep(.tano-skeleton-list) { padding-inline: 0; }
-.document-discussion-header { display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px; }
-.document-discussion-header h2 { font-size: 19px; font-weight: 500; line-height: 28px; margin: 0; }
-.document-discussion-header > span { color: var(--muted); font-size: 13px; }
 .discussion-dismiss { display: grid; place-items: center; margin-left: auto; padding: 4px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
 .discussion-dismiss:hover { background: var(--hover); color: var(--text); }
 .document-discussion-compose { margin-top: 16px; }

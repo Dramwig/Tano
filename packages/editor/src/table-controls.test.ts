@@ -18,10 +18,11 @@ let root: HTMLDivElement;
 afterEach(() => { app?.unmount(); root?.remove(); });
 const markdown = '| A | B | C |\n| --- | --- | --- |\n| alpha | beta | gamma |\n| one | two | three |\n';
 
-async function mount(source = markdown, saved: TableLayout[] = [], readonly = false) {
+async function mount(source = markdown, saved: TableLayout[] = [], readonly = false, scrollContainer = false) {
   Range.prototype.getBoundingClientRect = () => new DOMRect();
   Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
   root = document.createElement('div');
+  if (scrollContainer) root.className = 'document-layout';
   document.body.append(root);
   const editor = ref<InstanceType<typeof MarkdownEditor>>();
   const value = ref(source);
@@ -57,6 +58,11 @@ function hoverInsertionTable(x = 260, y = 84) {
   }));
 }
 
+function coordinate(element: HTMLElement, axis: 'top' | 'left') {
+  const origin = root.querySelector('.ProseMirror')!.parentElement!.getBoundingClientRect();
+  return Number.parseFloat(element.style[axis]) + origin[axis];
+}
+
 it.each([
   ['column', 0], ['column', 1], ['column', 3],
   ['row', 0], ['row', 1], ['row', 3],
@@ -70,13 +76,13 @@ it.each([
   expect(points).toHaveLength(4);
   const button = points[index]!;
   expect(button.hidden).toBe(false);
-  expect(Number.parseFloat(axis === 'column' ? button.style.top : button.style.left) + 12).toBe(100);
+  expect(coordinate(button, axis === 'column' ? 'top' : 'left') + 12).toBe(100);
   button.focus();
   const line = root.querySelector<HTMLElement>('.tano-table-insert-line')!;
   expect(line.hidden).toBe(false);
-  expect(axis === 'column' ? line.style.left : line.style.top).toBe(`${100 + index * (axis === 'column' ? 160 : 40)}px`);
-  expect(Number.parseFloat(axis === 'column' ? button.style.left : button.style.top) + 12)
-    .toBe(Number.parseFloat(axis === 'column' ? line.style.left : line.style.top));
+  expect(coordinate(line, axis === 'column' ? 'left' : 'top')).toBe(100 + index * (axis === 'column' ? 160 : 40));
+  expect(coordinate(button, axis === 'column' ? 'left' : 'top') + 12)
+    .toBe(coordinate(line, axis === 'column' ? 'left' : 'top'));
   button.click();
   const table = view.state.doc.firstChild!;
   view.state.doc.check();
@@ -116,20 +122,96 @@ it('clips insertion points and previews to the visible table and repositions on 
   const row = root.querySelector<HTMLButtonElement>('.tano-table-insert.is-row[data-index="1"]')!;
   row.focus();
   const line = root.querySelector<HTMLElement>('.tano-table-insert-line')!;
-  expect(line.style.left).toBe('200px');
+  expect(coordinate(line, 'left')).toBe(200);
   expect(line.style.width).toBe('240px');
   measureInsertionTable(60);
   wrapper.getBoundingClientRect = () => new DOMRect(200, 80, 240, 300);
   wrapper.dispatchEvent(new Event('scroll'));
-  await vi.waitFor(() => expect(columns[1]!.style.left).toBe('208px'));
+  await vi.waitFor(() => expect(coordinate(columns[1]!, 'left')).toBe(208));
   measureInsertionTable(80);
   wrapper.getBoundingClientRect = () => new DOMRect(200, 80, 240, 300);
   wrapper.dispatchEvent(new Event('tano-table-layout', { bubbles: true }));
-  expect(columns[1]!.style.left).toBe('228px');
+  expect(coordinate(columns[1]!, 'left')).toBe(228);
   measureInsertionTable();
   root.querySelector<HTMLTableElement>('table')!.getBoundingClientRect = () => new DOMRect(100, 50, 480, 120);
   hoverInsertionTable(260, 120);
-  expect([...columns].every(button => button.hidden)).toBe(true);
+  expect([...columns].filter(button => !button.hidden).every(button => coordinate(button, 'top') + 12 === 50)).toBe(true);
+});
+
+it('batches scroll positioning and measures all cell boundaries before changing controls', async () => {
+  const { value } = await mount();
+  await new Promise(resolve => setTimeout(resolve, 50));
+  measureInsertionTable(); hoverInsertionTable();
+  const controls = root.querySelector<HTMLElement>('.tano-table-controls')!;
+  const observer = new MutationObserver(() => {});
+  observer.observe(controls, { attributes: true, subtree: true });
+  const writesBeforeReads: string[] = [];
+  const reads = vi.fn();
+  for (const cell of root.querySelectorAll<HTMLElement>('th, td')) {
+    const measure = cell.getBoundingClientRect.bind(cell);
+    cell.getBoundingClientRect = () => {
+      writesBeforeReads.push(...observer.takeRecords().map(record => record.attributeName!));
+      reads();
+      return measure();
+    };
+  }
+  const frames: FrameRequestCallback[] = [];
+  const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => frames.push(callback));
+  try {
+    // The pointer remains over the table as the document scrolls. Repeated
+    // events before a paint must not repeatedly force its pending layout.
+    root.dispatchEvent(new Event('scroll'));
+    root.dispatchEvent(new Event('scroll'));
+    expect(reads).not.toHaveBeenCalled();
+    frames.splice(0).forEach(callback => callback(0));
+    expect(reads).toHaveBeenCalled();
+    expect(reads.mock.calls.length).toBeLessThanOrEqual(root.querySelectorAll('th, td').length + 1);
+    expect(writesBeforeReads).toEqual([]);
+    expect(value.value).toBe(markdown);
+    const row = root.querySelector<HTMLButtonElement>('.tano-table-insert.is-row[data-index="1"]')!;
+    expect(row.hidden).toBe(false);
+    expect(coordinate(row, 'top')).toBe(128);
+    reads.mockClear();
+    root.dispatchEvent(new Event('scroll'));
+    app!.unmount(); app = undefined;
+    frames.splice(0).forEach(callback => callback(0));
+    expect(reads).not.toHaveBeenCalled();
+  } finally {
+    raf.mockRestore(); observer.disconnect();
+  }
+});
+
+it('keeps content-relative controls on document scroll and refreshes them for layout and horizontal scroll', async () => {
+  vi.stubGlobal('IntersectionObserver', class { observe() {} unobserve() {} disconnect() {} });
+  try {
+    await mount(markdown, [], false, true);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    measureInsertionTable(); hoverInsertionTable();
+    const row = root.querySelector<HTMLButtonElement>('.tano-table-insert.is-row[data-index="1"]')!;
+    const reads = [...root.querySelectorAll<HTMLElement>('table, th, td')].map(cell => vi.spyOn(cell, 'getBoundingClientRect'));
+    root.scrollTop = 45;
+    root.dispatchEvent(new Event('scroll'));
+    // Absolute controls retain their document-relative position. In the
+    // browser the scroller moves them with the row, without a layout callback.
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(row.style.top).toBe('48px');
+    expect(reads.every(read => read.mock.calls.length === 0)).toBe(true);
+    // Layout and horizontal-scroll changes still need fresh measurements.
+    root.querySelector('.tableWrapper')!.dispatchEvent(new Event('tano-table-layout', { bubbles: true }));
+    expect(coordinate(row, 'top')).toBe(128);
+    expect(reads.some(read => read.mock.calls.length > 0)).toBe(true);
+    reads.forEach(read => read.mockClear());
+    root.querySelector('.tableWrapper')!.dispatchEvent(new Event('scroll'));
+    await vi.waitFor(() => expect(reads.some(read => read.mock.calls.length > 0)).toBe(true));
+    const unrelated = document.createElement('div'); document.body.append(unrelated);
+    reads.forEach(read => read.mockClear());
+    unrelated.dispatchEvent(new Event('scroll'));
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(reads.every(read => read.mock.calls.length === 0)).toBe(true);
+    unrelated.remove();
+  } finally {
+    vi.restoreAllMocks(); vi.unstubAllGlobals();
+  }
 });
 
 it('hides quick insertion on leave, document changes, line menus, and in readonly editors', async () => {

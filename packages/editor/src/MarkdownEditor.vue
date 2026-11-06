@@ -59,7 +59,8 @@ import {
   inlineMathInput,
   blockMathInput,
 } from './math';
-import { mathSourcePreviewView, sourceBlockStyle } from './math-source-preview';
+import { sourcePreviewView, sourceBlockStyle } from './source-preview';
+import { createMermaidRenderer } from './mermaid-preview';
 import { splitFrontmatter } from './syntax';
 import { SuggestionChangeCodec } from './suggestion-codec';
 import { markdownPositionMap } from './mode-selection';
@@ -81,6 +82,7 @@ import { BlockRangeSelection, expandBlockSelection } from './block-selection';
 import { blockTree, moveBlockSibling, moveBlocksTo, isBlockContainer, indentBlock, outdentBlock, deleteBlock, deleteBlocks } from './block-tree';
 import { emptyBlockDeletion } from './empty-block';
 import { slashCommands } from './slash-commands';
+import type { SlashTranslate } from './slash-commands';
 import { textStyles, underline, superscript, subscript, highlight, textColor, backgroundColor } from './text-styles';
 import { normalizeTextColor } from './text-style-markdown';
 import { wikiLink, wikiLinkInput, wikiLinkRemark } from './wiki-link';
@@ -106,7 +108,7 @@ import type { InlineSourceSession } from './inline-source-session';
 import { liveInlineSource, liveSource } from './live-source';
 import { nestedEmphasisRemark } from './nested-emphasis';
 import { sourceStyleRanges } from './source-highlight';
-import { configureMarkdownRuntime, defaultCapabilities, defaultEditorPreferences, normalizeCopyFormat, selectionWrap, workspaceWrapping } from './runtime';
+import { configureMarkdownRuntime, defaultCapabilities, defaultEditorPreferences, normalizeCopyFormat, selectionWrap, workspaceWrapping, mapChineseInput, normalizeChineseInput, mappedChineseInputKey, mappedChineseBeforeInput } from './runtime';
 import type { WorkspaceCapabilities, EditorPreferences, CopyFormat } from './runtime';
 import { destinationClipboardHTML, selectedFormulaMathML, tableTSV } from './clipboard-formats';
 import { runtimeViews, runtimeMarkViews, mermaidView } from './runtime-views';
@@ -147,6 +149,8 @@ const props = withDefaults(
     documentId: string;
     referenceTargets?: readonly ReferenceTarget[];
     readonly?: boolean;
+    /** Translate editor-owned slash menu text without touching document content. */
+    translate?: SlashTranslate;
     shortcutHints?: Record<string, string>;
     enabledLevels?: readonly number[];
     capabilities?: WorkspaceCapabilities;
@@ -183,6 +187,7 @@ const emit = defineEmits<{
 const policy = () => props.capabilities ?? defaultCapabilities;
 const referencesEnabled = () => props.referenceTargets !== undefined && commandEnabled('reference', props.enabledLevels, policy().features);
 const preferences = () => props.preferences ?? defaultEditorPreferences;
+const renderMermaid = createMermaidRenderer();
 const defaultCopyAction = computed(() => {
   const format = normalizeCopyFormat(preferences().copyFormat);
   return format === 'markdown' ? 'copy' : `copy-${format}`;
@@ -746,6 +751,66 @@ function fillEmptyRenderedCodeLine(view: EditorView, from: number, to: number, t
       $from.parentOffset !== 0) return false;
   view.dispatch(view.state.tr.insertText(text, from, from + 1));
   return true;
+}
+
+let chineseCompositionRevision = 0;
+function chineseInputSettings() {
+  return normalizeChineseInput(preferences().chineseInput, preferences().selectionWrapping);
+}
+function mappedChineseInput(text: string) {
+  return mapChineseInput(text, chineseInputSettings());
+}
+function insertChineseInput(ctx: Ctx, view: EditorView, from: number, to: number, text: string) {
+  const mapped = mappedChineseInput(text);
+  return mapped !== text && insertMappedChineseInput(ctx, view, from, to, mapped);
+}
+function insertMappedChineseInput(ctx: Ctx, view: EditorView, from: number, to: number, mapped: string) {
+  if (props.readonly || view.composing) return false;
+  if (!wrapSelectedInlineSource(ctx, view, from, to, mapped) &&
+      !insertEmptyCodeSourceText(view, from, to, mapped) &&
+      !fillEmptyRenderedCodeLine(view, from, to, mapped) &&
+      !insertPartialEmphasisSource(ctx, view, from, to, mapped))
+    view.dispatch(view.state.tr.insertText(mapped, from, to));
+  return true;
+}
+function chineseInputEventTarget(event: Event) {
+  return !(event.target instanceof Element && event.target.closest('input, textarea, [contenteditable="false"]'));
+}
+function beforeChineseInput(ctx: Ctx, view: EditorView, event: InputEvent) {
+  if (!chineseInputEventTarget(event)) return false;
+  const mapped = mappedChineseBeforeInput(event, chineseInputSettings());
+  if (mapped === null) return false;
+  const ranges = event.getTargetRanges?.() ?? [];
+  if (ranges.length > 1) return false;
+  let { from, to } = view.state.selection;
+  if (ranges.length) {
+    const range = ranges[0]!;
+    if (!view.dom.contains(range.startContainer) || !view.dom.contains(range.endContainer)) return false;
+    from = view.posAtDOM(range.startContainer, range.startOffset);
+    to = view.posAtDOM(range.endContainer, range.endOffset);
+  }
+  if (from < 0 || to < from || to > view.state.doc.content.size) return false;
+  if (!insertMappedChineseInput(ctx, view, from, to, mapped)) return false;
+  event.preventDefault();
+  return true;
+}
+function finishChineseComposition(view: EditorView, text: string) {
+  const revision = ++chineseCompositionRevision;
+  if (!text || mappedChineseInput(text) === text) return;
+  // Run after the editor's composition-end flush, within the same paint boundary.
+  // A timer can leave the committed Chinese glyph visible for a frame in WebView2.
+  queueMicrotask(() => queueMicrotask(() => {
+    if (revision !== chineseCompositionRevision || disposed || view.isDestroyed || props.readonly || view.composing) return;
+    const { selection } = view.state;
+    if (!selection.empty || selection.$from.parentOffset < text.length) return;
+    const to = selection.from, from = to - text.length;
+    if (view.state.doc.textBetween(from, to) === text)
+      insertChineseInputFromComposition(view, from, to, text);
+  }));
+}
+function insertChineseInputFromComposition(view: EditorView, from: number, to: number, text: string) {
+  const mapped = mappedChineseInput(text);
+  if (mapped !== text) view.dispatch(view.state.tr.insertText(mapped, from, to));
 }
 
 function wrapSelectedInlineSource(ctx: Ctx, view: EditorView, from: number, to: number, text: string) {
@@ -1965,7 +2030,8 @@ const bridge = $prose(
       },
       props: {
         handleTextInput(view, from, to, text) {
-          return insertEmptyCodeSourceText(view, from, to, text) ||
+          return insertChineseInput(ctx, view, from, to, text) ||
+            insertEmptyCodeSourceText(view, from, to, text) ||
             fillEmptyRenderedCodeLine(view, from, to, text) ||
             wrapSelectedInlineSource(ctx, view, from, to, text) ||
             insertPartialEmphasisSource(ctx, view, from, to, text);
@@ -2101,6 +2167,7 @@ const bridge = $prose(
           return true;
         },
         handleDOMEvents: {
+          beforeinput: (view, event) => beforeChineseInput(ctx, view, event as InputEvent),
           copy: (view, event) => copySelectionWithPreference(ctx, view, event),
           cut: (view, event) => copySelectionWithPreference(ctx, view, event),
           mousedown(view, event) {
@@ -2118,6 +2185,11 @@ const bridge = $prose(
             return false;
           },
           keydown(view, event) {
+            const mapped = chineseInputEventTarget(event) && mappedChineseInputKey(event, chineseInputSettings());
+            if (mapped && insertMappedChineseInput(ctx, view, view.state.selection.from, view.state.selection.to, mapped)) {
+              event.preventDefault();
+              return true;
+            }
             if (event.key.toLowerCase() === 'a' && (event.ctrlKey || event.metaKey) &&
                 !event.shiftKey && !event.altKey && !event.isComposing && event.keyCode !== 229 && !view.composing &&
                 !(event.target instanceof Element && event.target.closest('input, textarea, [contenteditable="false"]'))) {
@@ -2213,7 +2285,12 @@ const bridge = $prose(
             finishLocalSource(ctx, view);
             return false;
           },
-          compositionend(view) {
+          compositionstart() {
+            chineseCompositionRevision++;
+            return false;
+          },
+          compositionend(view, event) {
+            finishChineseComposition(view, (event as CompositionEvent).data);
             queueMicrotask(() => {
               if (!disposed && !view.isDestroyed && localSource)
                 view.dispatch(view.state.tr);
@@ -2381,6 +2458,7 @@ const bridge = $prose(
               () => policy().features.mermaid,
               () => !!props.readonly,
               () => props.revealMarkdown !== false,
+              renderMermaid,
             ),
             math_inline: mathView(
               false,
@@ -2394,14 +2472,14 @@ const bridge = $prose(
               () => props.revealMarkdown === false || preferences().previewMathWhileEditing,
               () => props.revealMarkdown !== false,
             ),
-            tano_live_source_inline: mathSourcePreviewView(
+            tano_live_source_inline: sourcePreviewView(
               true,
               () => preferences().previewMathWhileEditing && props.revealMarkdown !== false,
               (source) => ctx.get(parserCtx)(source),
               undefined,
               policy,
             ),
-            tano_live_source: mathSourcePreviewView(
+            tano_live_source: sourcePreviewView(
               false,
               () => preferences().previewMathWhileEditing && props.revealMarkdown !== false,
               (source) => ctx.get(parserCtx)(source),
@@ -2409,6 +2487,10 @@ const bridge = $prose(
                 ? localSource.style
                 : null,
               policy,
+              {
+                enabled: () => preferences().previewMermaidWhileEditing !== false && props.revealMarkdown !== false && !props.readonly,
+                render: renderMermaid,
+              },
             ),
             image(node, view, getPos) {
               const wrapper = document.createElement('span');
@@ -2738,6 +2820,7 @@ onMounted(async () => {
       .use(
         $prose(() =>
           slashCommands({
+            translate: props.translate,
             readonly: () => !!props.readonly,
             levels: () => props.enabledLevels,
             features: () => policy().features,
@@ -3793,7 +3876,22 @@ function revealSourceRange(range: { from: number; to: number }) {
     return true;
   });
 }
+/** Render the normal source-editing state in an isolated example without moving browser focus. */
+function revealPreviewSource() {
+  if (!editor || !bridgeView || disposed || props.readonly) return;
+  editor.action(ctx => {
+    const view = ctx.get(editorViewCtx);
+    const node = view.state.doc.firstChild;
+    if (!node || node.type.name === 'tano_live_source') return;
+    const tr = blockNodeSourceTransaction(ctx, view.state, { node, pos: 0 }, view.state.tr);
+    const previous = applying;
+    applying = true;
+    try { view.dispatch(tr.setMeta('addToHistory', false)); }
+    finally { applying = previous; }
+  });
+}
 defineExpose({
+  revealPreviewSource,
   blockShortcut,
   addDocumentProperty,
   initializeBody,
@@ -3826,6 +3924,7 @@ defineExpose({
   redoLastChange,
 });
 onBeforeUnmount(() => {
+  chineseCompositionRevision++;
   suggestionCodec.clear();
   clearTimeout(referenceFlashTimer);
   closeBlockConvertMenu();

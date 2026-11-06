@@ -4,7 +4,6 @@ export const selectionWrappingOptions = [
   { key: 'strike', label: '删除线', example: '~ → ~~文字~~', enabled: true },
   { key: 'code', label: '行内代码', example: '` → `文字`', enabled: true },
   { key: 'math', label: '行内公式', example: '$ → $文字$', enabled: true },
-  { key: 'yenToDollar', label: '中文 ￥ 映射为 $', example: '￥ → $文字$；需开启行内公式，仅作用于选区包裹', enabled: false },
   { key: 'highlight', label: '高亮', example: '= → ==文字==', enabled: false },
   { key: 'superscript', label: '上标（扩展）', example: '^ → ^文字^', enabled: false },
   { key: 'subscript', label: '下标（扩展）', example: '~ → ~文字~；再次输入 ~ 可升级为删除线', enabled: false },
@@ -12,7 +11,10 @@ export const selectionWrappingOptions = [
   { key: 'comment', label: '注释（扩展）', example: '% → %%文字%%', enabled: false },
 ] as const;
 export type SelectionWrappingKey = (typeof selectionWrappingOptions)[number]['key'];
-export type SelectionWrappingPreferences = Record<SelectionWrappingKey | 'enabled', boolean>;
+export type SelectionWrappingPreferences = Record<SelectionWrappingKey | 'enabled', boolean> & {
+  /** @deprecated Migrated to ChineseInputPreferences. */
+  yenToDollar?: boolean;
+};
 export const defaultSelectionWrapping = Object.fromEntries([
   ['enabled', true], ...selectionWrappingOptions.map(option => [option.key, option.enabled]),
 ]) as SelectionWrappingPreferences;
@@ -33,7 +35,6 @@ export function normalizeSelectionWrapping(value?: unknown): SelectionWrappingPr
 export function selectionWrap(text: string, key: string, options?: Partial<SelectionWrappingPreferences>, before = '', after = '') {
   const settings = normalizeSelectionWrapping(options);
   if (!settings.enabled || !text.trim() || /[\r\n]/.test(text)) return null;
-  if (key === '￥' && settings.yenToDollar) key = '$';
   const tokens: Record<string, string | false> = {
     '*': settings.asterisk && '*', '**': settings.asterisk && '**',
     '_': settings.underscore && '_', '__': settings.underscore && '__',

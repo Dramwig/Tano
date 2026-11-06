@@ -170,6 +170,17 @@ it('cancels queued layout work when the editor is destroyed', () => {
   expect(frames.size).toBe(0);
 });
 
+it('ignores scrolls outside the editor in hosts without IntersectionObserver', () => {
+  paint();
+  const unrelated = document.createElement('div'); document.body.append(unrelated);
+  try {
+    unrelated.dispatchEvent(new Event('scroll'));
+    expect(frames.size).toBe(0);
+    root.dispatchEvent(new Event('scroll'));
+    expect(frames.size).toBe(1);
+  } finally { unrelated.remove(); }
+});
+
 it('mounts only visible controls and remaps their positions after an edit', () => {
   view.destroy(); root.replaceChildren();
   let notify: IntersectionObserverCallback;
@@ -192,11 +203,23 @@ it('mounts only visible controls and remaps their positions after an edit', () =
     .map(target => ({ target, isIntersecting: intersecting }) as IntersectionObserverEntry), {} as IntersectionObserver);
   visible(0, 8, true); paint();
   expect(root.querySelectorAll('.tano-block-handle')).toHaveLength(8);
+  const mountedRead = vi.fn(() => Element.prototype.getBoundingClientRect.call(elements[4]!));
+  Object.defineProperty(elements[4]!, 'getBoundingClientRect', { value: mountedRead });
   const offscreen = vi.fn(() => new DOMRect(0, 50000, 400, 24));
   Object.defineProperty(elements[500], 'getBoundingClientRect', { value: offscreen });
   root.dispatchEvent(new Event('scroll')); paint();
   expect(offscreen).not.toHaveBeenCalled();
-  visible(0, 8, false); visible(990, 1000, true); paint();
+  expect(mountedRead).not.toHaveBeenCalled();
+  elements[4]!.dispatchEvent(new Event('scroll')); paint();
+  expect(mountedRead).toHaveBeenCalled();
+  mountedRead.mockClear();
+  // A block enters the observer's buffer before it reaches the screen. Its
+  // absolute controls must already be positioned, without scroll-time layout.
+  Object.defineProperty(elements[8]!, 'getBoundingClientRect', { value: () => new DOMRect(100, 1000, 400, 24) });
+  visible(8, 9, true); paint();
+  expect(root.querySelector<HTMLButtonElement>('[data-block-index="8"]')!.hidden).toBe(false);
+  expect(mountedRead).not.toHaveBeenCalled();
+  visible(0, 9, false); visible(990, 1000, true); paint();
   expect(root.querySelectorAll('.tano-block-handle')).toHaveLength(10);
   view.dispatch(view.state.tr.insertText('longer ', 1));
   const handle = root.querySelector<HTMLButtonElement>('[data-block-index="995"]')!;

@@ -16,10 +16,43 @@ interface SlashItem {
   command: string;
   label: string;
   englishLabel: string;
+  marker: string;
   value?: string;
   keywords: string;
   icon: Component;
 }
+export type SlashTranslate = (message: string, values?: readonly unknown[]) => string;
+const defaultTranslate: SlashTranslate = (message, values = []) =>
+  message.replace(/\{(\d+)\}/g, (token, index: string) =>
+    Number(index) < values.length ? String(values[Number(index)]) : token);
+
+function itemLabel(item: SlashItem, translate: SlashTranslate) {
+  return item.command === 'heading'
+    ? translate('{0} 级标题', [item.value])
+    : translate(item.label);
+}
+
+// Syntax hints are independent of the localized name and searchable aliases.
+const markers: Record<string, string> = {
+  paragraph: '',
+  'object-reference': '@',
+  quote: '>',
+  list: '-',
+  'ordered-list': '1.',
+  'todo-list': '[]',
+  'code-block': '```',
+  image: '![]()',
+  table: '| |',
+  mermaid: '```mermaid',
+  callout: '[!NOTE]',
+  toggle: '<details>',
+  file: ':::file',
+  embed: ':::embed',
+  tabs: ':::tabs',
+  columns: ':::columns',
+  'horizontal-rule': '---',
+  'math-block': '$$',
+};
 const aliases: Record<string, [string, string]> = {
   'object-reference': ['object reference 对象 引用', 'Object Reference'],
   paragraph: ['text plain 正文 文本', 'Paragraph'],
@@ -46,6 +79,7 @@ const items: SlashItem[] = blockTypes.flatMap<SlashItem>((item) =>
         command: 'heading',
         label: `${i + 1} 级标题`,
         englishLabel: `Heading ${i + 1}`,
+        marker: '#'.repeat(i + 1),
         value: String(i + 1),
         keywords: `heading h${i + 1} 标题${i + 1}`,
         icon: headingIcons[i]!,
@@ -55,6 +89,7 @@ const items: SlashItem[] = blockTypes.flatMap<SlashItem>((item) =>
           command: item.command,
           label: item.label,
           englishLabel: aliases[item.command]?.[1] ?? item.command,
+          marker: markers[item.command] ?? '',
           keywords: `${item.command} ${aliases[item.command]?.[0] ?? ''}`,
           icon: blockIcons[item.type],
         },
@@ -62,6 +97,7 @@ const items: SlashItem[] = blockTypes.flatMap<SlashItem>((item) =>
 );
 items.splice(items.findIndex(item => item.command === 'callout') + 1, 0, {
   command: 'callout', value: 'CUSTOM', label: '自定义块', englishLabel: 'Custom Callout',
+  marker: '[!CUSTOM]',
   keywords: 'custom callout emoji icon 自定义 图标 表情 提示', icon: customCalloutIcon,
 });
 // Keep the most common empty-block action first.
@@ -72,23 +108,31 @@ items.unshift(
   )[0]!,
 );
 
-export function slashQuery(state: EditorState) {
+export function slashQuery(state: EditorState, composing = false) {
   const { selection } = state;
-  if (!(selection instanceof TextSelection) || !selection.empty) return null;
+  if (!(selection instanceof TextSelection) || (!selection.empty && !composing) ||
+      !selection.$from.sameParent(selection.$to)) return null;
   const { $from } = selection;
   if (!['paragraph', 'heading'].includes($from.parent.type.name)) return null;
-  const prefix = $from.parent.textBetween(0, $from.parentOffset, '', '\ufffc');
-  if (!/^\/[^/\s\ufffc]*$/.test(prefix)) return null;
-  return { from: $from.start(), to: selection.from, query: prefix.slice(1) };
+  // IMEs can select preedit text or put spaces between uncommitted syllables.
+  const end = composing ? $from.parent.content.size : $from.parentOffset;
+  const prefix = $from.parent.textBetween(0, end, '', '\ufffc');
+  if (!(composing ? /^\/[^/\ufffc]*$/ : /^\/[^/\s\ufffc]*$/).test(prefix)) return null;
+  return { from: $from.start(), to: $from.start() + end, query: prefix.slice(1) };
 }
 
-export function slashItems(query: string, levels?: readonly number[], features?: DocumentFeatures) {
+export function slashItems(
+  query: string,
+  levels?: readonly number[],
+  features?: DocumentFeatures,
+  translate: SlashTranslate = defaultTranslate,
+) {
   const words = query.trim().toLowerCase().split(/\s+/);
   return items.filter(
     (item) =>
       commandEnabled(item.command, levels, features) &&
       words.every((word) =>
-        `${item.englishLabel} ${item.label} ${item.keywords}`.toLowerCase().includes(word),
+        `${itemLabel(item, translate)} ${item.englishLabel} ${item.label} ${item.keywords}`.toLowerCase().includes(word),
       ),
   );
 }
@@ -140,11 +184,15 @@ export function slashCommands(options: {
   levels: () => readonly number[] | undefined;
   features?: () => DocumentFeatures;
   aiShortcut?: () => boolean;
+  translate?: SlashTranslate;
 }) {
+  const translate = options.translate ?? defaultTranslate;
   const session = new PluginKey<ReturnType<typeof slashQuery>>('tano-slash-session');
   let refresh = () => {};
   let blur = (_event: FocusEvent) => {};
   let keydown = (_event: KeyboardEvent) => false;
+  let composing = false;
+  let compositionEndTimer: ReturnType<typeof setTimeout> | undefined;
   return new Plugin<ReturnType<typeof slashQuery>>({
     key: session,
     state: {
@@ -152,19 +200,19 @@ export function slashCommands(options: {
       apply(tr, current, previous, next) {
         const action = tr.getMeta(session);
         if (action === 'close' || options.readonly()) return null;
-        const query = slashQuery(next);
+        const query = slashQuery(next, composing);
         if (
           !query ||
-          next.selection.$from.parentOffset !== next.selection.$from.parent.content.size
+          (!composing && next.selection.$from.parentOffset !== next.selection.$from.parent.content.size)
         )
           return null;
         if (action === 'start') return query;
         if (
           !current ||
-          (tr.selectionSet && !tr.docChanged && !next.selection.eq(previous.selection))
+          (!composing && tr.selectionSet && !tr.docChanged && !next.selection.eq(previous.selection))
         )
           return null;
-        if (!tr.docChanged) return current;
+        if (!tr.docChanged) return composing ? query : current;
         // Heading IDs and other derived attributes can be updated by appended
         // transactions without changing the input or moving its caret.
         if (
@@ -262,6 +310,27 @@ export function slashCommands(options: {
         return DecorationSet.create(state.doc, decorations);
       },
       handleDOMEvents: {
+        compositionstart() {
+          clearTimeout(compositionEndTimer);
+          composing = true;
+          return false;
+        },
+        compositionupdate() {
+          clearTimeout(compositionEndTimer);
+          composing = true;
+          return false;
+        },
+        compositionend(view) {
+          // compositionend may precede the final input/DOM flush. Reconcile next
+          // turn, after ProseMirror has read the committed text.
+          clearTimeout(compositionEndTimer);
+          compositionEndTimer = setTimeout(() => {
+            composing = false;
+            if (!view.isDestroyed)
+              view.dispatch(view.state.tr.setMeta('addToHistory', false));
+          }, 0);
+          return false;
+        },
         focus() {
           refresh();
           return false;
@@ -281,20 +350,22 @@ export function slashCommands(options: {
       const menu = document.createElement('div');
       menu.className = 'tano-slash-menu';
       menu.hidden = true;
-      menu.setAttribute('aria-label', '切换块类型');
+      menu.setAttribute('aria-label', translate('切换块类型'));
       const title = document.createElement('div');
       title.className = 'tano-slash-title';
       const list = document.createElement('div');
       list.className = 'tano-slash-results';
       list.id = `tano-slash-${crypto.randomUUID()}`;
       list.setAttribute('role', 'listbox');
-      list.setAttribute('aria-label', '块类型搜索结果');
+      list.setAttribute('aria-label', translate('块类型搜索结果'));
       menu.append(title, list);
       view.dom.ownerDocument.body.append(menu);
       let matches: SlashItem[] = [];
       let active = 0;
       let signature = '';
+      let renderedResults = '';
       let unmatchedLength: number | undefined;
+      let committedQuery = '';
       let formItem: SlashItem | undefined;
       let formState: EditorState | undefined;
       let destroyed = false;
@@ -306,6 +377,7 @@ export function slashCommands(options: {
       }
       function close() {
         unmatchedLength = undefined;
+        committedQuery = '';
         formItem = undefined;
         formState = undefined;
         hide();
@@ -359,7 +431,7 @@ export function slashCommands(options: {
         }
         const tr = applySlashCommand(view.state, item, value);
         if (!tr) {
-          title.textContent = '当前容器不支持此块类型，请选择其他类型';
+          title.textContent = translate('当前容器不支持此块类型，请选择其他类型');
           return;
         }
         close();
@@ -368,38 +440,40 @@ export function slashCommands(options: {
       }
       const iconHosts: HTMLElement[] = [];
       function clearList() {
+        renderedResults = '';
         for (const host of iconHosts) render(null, host);
         iconHosts.length = 0;
         list.replaceChildren();
       }
       function choose(item: SlashItem) {
-        if (!session.getState(view.state)) return;
+        if (composing || view.composing || !session.getState(view.state)) return;
         if (!['image', 'file', 'embed'].includes(item.command)) {
           execute(item);
           return;
         }
         formItem = item;
         formState = view.state;
-        title.textContent = `插入${item.label}`;
+        const label = itemLabel(item, translate);
+        title.textContent = translate('插入{0}', [label]);
         clearList();
         list.removeAttribute('role');
         view.dom.removeAttribute('aria-activedescendant');
         const form = document.createElement('form');
         form.className = 'tano-slash-form';
         const input = document.createElement('input');
-        input.placeholder = 'HTTPS 地址或工作空间内的相对路径';
-        input.setAttribute('aria-label', `${item.label}地址`);
+        input.placeholder = translate('HTTPS 地址或工作空间内的相对路径');
+        input.setAttribute('aria-label', translate('{0}地址', [label]));
         const error = document.createElement('small');
         error.setAttribute('role', 'alert');
         const submit = document.createElement('button');
         submit.type = 'submit';
-        submit.textContent = '插入';
+        submit.textContent = translate('插入');
         form.append(input, error, submit);
         form.onsubmit = (event) => {
           event.preventDefault();
           const value = input.value.trim();
           if (!safeResourceUrl(value)) {
-            error.textContent = '请填写有效的网页地址或相对路径';
+            error.textContent = translate('请填写有效的网页地址或相对路径');
             return;
           }
           execute(item, value);
@@ -434,47 +508,74 @@ export function slashCommands(options: {
           close();
           return;
         }
-        matches = slashItems(query.query, options.levels(), options.features?.());
+        matches = slashItems(query.query, options.levels(), options.features?.(), translate);
+        menu.setAttribute('aria-label', translate('切换块类型'));
+        list.setAttribute('aria-label', translate('块类型搜索结果'));
         const queryLength = Array.from(query.query).length;
-        if (matches.length) unmatchedLength = undefined;
-        else if (unmatchedLength === undefined || queryLength < unmatchedLength)
-          unmatchedLength = queryLength;
-        else if (queryLength - unmatchedLength >= 2) {
-          close();
-          return;
+        if (!composing && !view.composing) {
+          const changed = committedQuery !== query.query;
+          committedQuery = query.query;
+          if (matches.length) unmatchedLength = undefined;
+          else {
+            if (unmatchedLength === undefined || queryLength < unmatchedLength) {
+              const characters = Array.from(query.query);
+              // Count committed characters even when an IME/paste inserts them
+              // in one transaction, rather than counting preedit updates.
+              unmatchedLength = !changed ? queryLength : characters.findIndex((_, index) => !slashItems(
+                characters.slice(0, index + 1).join(''), options.levels(), options.features?.(), translate,
+              ).length) + 1;
+            }
+            if (queryLength - unmatchedLength >= 2) {
+              close();
+              return;
+            }
+          }
         }
         active = Math.min(active, Math.max(0, matches.length - 1));
         title.textContent = '';
         list.setAttribute('role', 'listbox');
-        clearList();
-        matches.forEach((item, index) => {
-          const button = document.createElement('button');
-          button.type = 'button';
-          button.className = 'tano-slash-option';
-          button.id = `${list.id}-${index}`;
-          button.setAttribute('role', 'option');
-          const icon = document.createElement('span');
-          icon.className = 'tano-slash-icon';
-          icon.setAttribute('aria-hidden', 'true');
-          render(h(item.icon, { size: 16, strokeWidth: blockIconStrokeWidth }), icon);
-          iconHosts.push(icon);
-          const label = document.createElement('span');
-          label.className = 'tano-slash-label-zh';
-          label.textContent = item.label;
-          const english = document.createElement('span');
-          english.className = 'tano-slash-label-en';
-          english.textContent = item.englishLabel;
-          button.append(icon, english, label);
-          button.onmouseenter = () => select(index);
-          button.onclick = () => choose(item);
-          list.append(button);
-        });
-        if (!matches.length) {
-          const empty = document.createElement('div');
-          empty.className = 'tano-slash-empty';
-          empty.setAttribute('role', 'status');
-          empty.textContent = '没有匹配的块类型';
-          list.append(empty);
+        const resultsSignature = JSON.stringify([
+          ...matches.map(item => [item.command, item.value, itemLabel(item, translate), item.marker]),
+          translate('没有匹配的块类型'),
+        ]);
+        // Keep hovered result elements alive through derived/no-op editor updates.
+        if (resultsSignature !== renderedResults) {
+          clearList();
+          matches.forEach((item, index) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'tano-slash-option';
+            button.id = `${list.id}-${index}`;
+            button.setAttribute('role', 'option');
+            button.dataset.tooltip = itemLabel(item, translate);
+            button.dataset.tooltipBlock = item.command;
+            if (item.value) button.dataset.tooltipBlockValue = item.value;
+            button.dataset.tooltipPlacement = 'right';
+            const icon = document.createElement('span');
+            icon.className = 'tano-slash-icon';
+            icon.setAttribute('aria-hidden', 'true');
+            render(h(item.icon, { size: 16, strokeWidth: blockIconStrokeWidth }), icon);
+            iconHosts.push(icon);
+            const label = document.createElement('span');
+            label.className = 'tano-slash-label';
+            label.textContent = itemLabel(item, translate);
+            const marker = document.createElement('span');
+            marker.className = 'tano-slash-marker';
+            marker.setAttribute('aria-hidden', 'true');
+            marker.textContent = item.marker;
+            button.append(icon, label, marker);
+            button.onmouseenter = () => select(index);
+            button.onclick = () => choose(item);
+            list.append(button);
+          });
+          if (!matches.length) {
+            const empty = document.createElement('div');
+            empty.className = 'tano-slash-empty';
+            empty.setAttribute('role', 'status');
+            empty.textContent = translate('没有匹配的块类型');
+            list.append(empty);
+          }
+          renderedResults = resultsSignature;
         }
         setSurfaceVisible(menu, true);
         view.dom.setAttribute('aria-controls', list.id);
@@ -485,8 +586,10 @@ export function slashCommands(options: {
         if (
           !menu.hidden &&
           !formItem &&
+          !composing &&
           !event.isComposing &&
           !view.composing &&
+          event.keyCode !== 229 &&
           [' ', 'Tab', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(
             event.key,
           )
@@ -497,6 +600,7 @@ export function slashCommands(options: {
         if (
           menu.hidden ||
           formItem ||
+          composing ||
           event.isComposing ||
           view.composing ||
           event.keyCode === 229 ||
@@ -548,6 +652,7 @@ export function slashCommands(options: {
         update: refresh,
         destroy() {
           destroyed = true;
+          clearTimeout(compositionEndTimer);
           hide();
           clearList();
           menu.remove();

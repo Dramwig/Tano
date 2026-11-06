@@ -252,14 +252,16 @@ export function blockControls(
       let hoverSuppressed = false;
       const handles = new Map<number, HTMLButtonElement>();
       const foldButtons = new Map<number, HTMLButtonElement>();
+      const positioned = new WeakSet<HTMLButtonElement>();
       let blockIndices = new Map<number, number>();
       let foldIndices = new Map<number, number>();
-      const viewport = new BlockViewport(view, scheduleLayout);
+      const viewport = new BlockViewport(view, () => queueLayout(true));
       let entries = blockTree(view.state.doc);
       let foldEntries = foldingTree(view.state.doc, entries);
       let positions: number[] = [];
       let indexedDoc: ProseMirrorNode | undefined;
       let layoutFrame: number | undefined;
+      let visibilityOnly = false;
       let destroyed = false;
       const marqueeBox = document.createElement('div');
       marqueeBox.className = 'tano-block-selection-box';
@@ -488,10 +490,16 @@ export function blockControls(
       }
 
       function scheduleLayout() {
-        if (destroyed || layoutFrame !== undefined) return;
+        queueLayout(false);
+      }
+
+      function queueLayout(onlyVisibility: boolean) {
+        if (destroyed) return;
+        if (layoutFrame !== undefined) { visibilityOnly = visibilityOnly && onlyVisibility; return; }
+        visibilityOnly = onlyVisibility;
         layoutFrame = requestAnimationFrame(() => {
           layoutFrame = undefined;
-          layout();
+          layout(visibilityOnly);
         });
       }
 
@@ -502,7 +510,7 @@ export function blockControls(
         layout();
       }
 
-      function layout() {
+      function layout(onlyVisibility = false) {
         if (destroyed) return;
         syncControls();
         syncVisibleControls();
@@ -513,6 +521,14 @@ export function blockControls(
           return;
         }
         controls.hidden = false;
+        // Previously positioned top-level controls keep their content-relative
+        // coordinates when the observer changes the visible range. Containers
+        // retain the full pass because their gutters can depend on children.
+        const partial = onlyVisibility && [...handles.keys()].every(index =>
+          entries[index]!.depth === 0 && entries[index]!.node.type.name !== 'tano_columns');
+        const pendingHandles = [...handles].filter(([, button]) => !partial || !positioned.has(button));
+        const pendingFolds = [...foldButtons].filter(([, button]) => !partial || !positioned.has(button));
+        if (partial && !pendingHandles.length && !pendingFolds.length) { showHoveredHandle(); return; }
         const hostRect = host.getBoundingClientRect();
         const top = hostRect.top, hostLeft = hostRect.left;
         const pane = hoverSurface.getBoundingClientRect();
@@ -520,7 +536,9 @@ export function blockControls(
         const visibleTop = Math.max(0, pane.top) - 160;
         const visibleBottom = Math.min(window.innerHeight, pane.bottom) + 160;
         const visible = (rect: DOMRect | null) => !!rect &&
-          (pane.height <= 0 || (rect.bottom >= visibleTop && rect.top <= visibleBottom));
+          // Observed controls include the viewport's buffer. Position them now,
+          // so they scroll into view with their blocks without another layout.
+          (viewport.observing || pane.height <= 0 || (rect.bottom >= visibleTop && rect.top <= visibleBottom));
         // Read geometry once, before touching any control's styles. Headings share
         // their first-line measurement between the drag handle and fold button.
         const rects = new Map<Element, DOMRect | null>();
@@ -538,7 +556,7 @@ export function blockControls(
         };
         type BlockGeometry = { rect: DOMRect | null; left: number | null; x: number; y: number;
           width: number; hidden: boolean; transform: string; clipPath: string };
-        const blocks = new Map([...handles].map<[number, BlockGeometry]>(([index, handle]) => {
+        const blocks = new Map(pendingHandles.map<[number, BlockGeometry]>(([index, handle]) => {
           const entry = entries[index]!;
           const element = blockElement(index), rect = measure(element);
           if (readOnly || !visible(rect)) return [index, { rect, left: null, x: 0, y: top, width: 0,
@@ -583,7 +601,7 @@ export function blockControls(
           if (stacked) block.y = above;
         }
         const folded = foldingKey.getState(view.state) ?? new Set<string>();
-        const folds = new Map([...foldButtons].map(([index, button]) => {
+        const folds = new Map(pendingFolds.map(([index, button]) => {
           const element = foldElement(index);
           const measured = measure(element);
           const rect = canFold && visible(measured) ? measured : null;
@@ -594,6 +612,7 @@ export function blockControls(
         // Apply all writes together; no geometry reads belong below this point.
         blocks.forEach((block, index) => {
           const handle = handles.get(index)!;
+          positioned.add(handle);
           if (block.hidden) { handle.hidden = true; return; }
           handle.style.left = block.left === null ? '' : `${block.left}px`;
           handle.style.top = `${block.y - top}px`;
@@ -603,6 +622,7 @@ export function blockControls(
         });
         folds.forEach(({ hidden, isFolded, top, left }, index) => {
           const foldButton = foldButtons.get(index)!;
+          positioned.add(foldButton);
           const glyph = isFolded ? '▸' : '▾';
           if (foldButton.textContent !== glyph) foldButton.textContent = glyph;
           foldButton.hidden = hidden;
@@ -624,7 +644,16 @@ export function blockControls(
       }
 
       function onTableScroll(event: Event) {
-        if (event.target instanceof Element && event.target.matches('.tableWrapper')) scheduleLayout();
+        // Nested scroll areas move their children relative to the editor host;
+        // unlike the document's own scroll, these still need fresh positions.
+        if (event.target instanceof Element) scheduleLayout();
+      }
+
+      function onFallbackScroll(event: Event) {
+        // Absolute controls already move with their content. IntersectionObserver
+        // maintains their mounted range; only older hosts need scroll-time work.
+        const target = event.target;
+        if (target === document || (target instanceof Element && target.contains(host))) scheduleLayout();
       }
 
       function clearDragVisuals() {
@@ -1139,7 +1168,7 @@ export function blockControls(
       view.dom.addEventListener('beforeinput', onEditorInput, true);
       view.dom.addEventListener('compositionstart', onEditorInput, true);
       view.dom.addEventListener('scroll', onTableScroll, true);
-      window.addEventListener('scroll', scheduleLayout, true);
+      if (!viewport.observing) window.addEventListener('scroll', onFallbackScroll, true);
       view.dom.addEventListener('tano-table-layout', scheduleLayout);
       view.dom.addEventListener('tano-block-layout', scheduleLayout);
       hoverSurface.addEventListener('mouseover', onHover);
@@ -1195,7 +1224,7 @@ export function blockControls(
           view.dom.removeEventListener('beforeinput', onEditorInput, true);
           view.dom.removeEventListener('compositionstart', onEditorInput, true);
           view.dom.removeEventListener('scroll', onTableScroll, true);
-          window.removeEventListener('scroll', scheduleLayout, true);
+          window.removeEventListener('scroll', onFallbackScroll, true);
           view.dom.removeEventListener('tano-table-layout', scheduleLayout);
           view.dom.removeEventListener('tano-block-layout', scheduleLayout);
           hoverSurface.removeEventListener('mouseover', onHover);

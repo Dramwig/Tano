@@ -3,11 +3,48 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createApp, h, nextTick, type App } from 'vue';
 import AppTooltip from './AppTooltip.vue';
 import WorkspaceBreadcrumb from './WorkspaceBreadcrumb.vue';
+import { settingHint } from '../setting-examples';
+
+// Rendering engines are exercised in browser tests; these tests cover hint lifecycle/props.
+vi.mock('./RenderedExample.vue', () => ({ default: { props: { markdown: String, source: String, folded: Boolean }, template: '<div class="rendered-example" inert :data-markdown="markdown" :data-source="source" :data-folded="folded" />' } }));
+vi.mock('./SourceExample.vue', () => ({ default: { props: ['markdown'], template: '<div data-renderer="source" :data-markdown="markdown" />' } }));
+vi.mock('./ExampleViewport.vue', () => ({ default: { template: '<div><slot /></div>' } }));
 
 let app: App | undefined;
 let root: HTMLElement;
 let button: HTMLButtonElement;
 const hint = () => document.querySelector<HTMLElement>('.app-tooltip');
+it('reuses setting demonstrations for hover and focus, updates scenes, and dismisses only the hint on Escape', async () => {
+  for (const [name, value] of Object.entries(settingHint('editing-preview-math'))) button.setAttribute(name, String(value));
+  button.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+  await vi.advanceTimersByTimeAsync(250); await flush();
+  expect(hint()?.querySelector('.setting-example')?.getAttribute('data-scene')).toBe('math');
+  expect(hint()?.querySelector('.demo-after[data-source="math"]')).not.toBeNull();
+  button.dataset.tooltipSetting = 'editing-folding'; await flush();
+  expect(hint()?.querySelector('.demo-after[data-folded="true"]')).not.toBeNull();
+  const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+  window.dispatchEvent(escape); await flush();
+  expect(escape.defaultPrevented).toBe(true);
+  expect(hint()).toBeNull();
+  button.focus(); await flush();
+  expect(hint()?.querySelector('.setting-example')?.getAttribute('data-scene')).toBe('folding');
+});
+it('renders block examples to the right and updates the heading level without editing content', async () => {
+  button.dataset.tooltip = '3 级标题';
+  button.dataset.tooltipBlock = 'heading';
+  button.dataset.tooltipBlockValue = '3';
+  button.dataset.tooltipPlacement = 'right';
+  button.getBoundingClientRect = () => new DOMRect(100, 200, 326, 28);
+  button.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+  await vi.advanceTimersByTimeAsync(250); await flush();
+  expect(hint()?.querySelector<HTMLElement>('.rendered-example')?.dataset.markdown).toContain('### 在灯塔下等日落');
+  expect(hint()?.style.left).toBe('428px');
+  expect(hint()?.querySelector('.rendered-example')?.hasAttribute('inert')).toBe(true);
+  button.dataset.tooltipBlockValue = '1'; await flush();
+  expect(hint()?.querySelector<HTMLElement>('.rendered-example')?.dataset.markdown).toContain('# 周末去看海');
+  button.hidden = true; await flush();
+  expect(hint()).toBeNull();
+});
 it('shows only rendered capability examples using the shared hover and focus hint', async () => {
   button.dataset.tooltip = 'Mermaid 图表';
   button.dataset.tooltipExample = 'mermaid';
@@ -15,16 +52,16 @@ it('shows only rendered capability examples using the shared hover and focus hin
   await vi.advanceTimersByTimeAsync(250); await flush();
   expect(hint()?.querySelector('pre')).toBeNull();
   expect(hint()?.textContent).not.toContain('语法示例');
-  expect(hint()?.querySelector('.example-diagram')?.textContent).toContain('开始');
+  expect(hint()?.querySelector<HTMLElement>('.rendered-example')?.dataset.markdown).toContain('flowchart LR');
   button.dataset.tooltipExample = 'superscript';
   await flush();
-  expect(hint()?.querySelector('sup')?.textContent).toBe('2');
+  expect(hint()?.querySelector<HTMLElement>('.rendered-example')?.dataset.markdown).toBe('x^2^');
   const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
   window.dispatchEvent(escape); await flush();
   expect(escape.defaultPrevented).toBe(true);
   expect(hint()).toBeNull();
   button.focus(); await flush();
-  expect(hint()?.querySelector('sup')).not.toBeNull();
+  expect(hint()?.querySelector<HTMLElement>('.rendered-example')?.dataset.markdown).toBe('x^2^');
   button.dataset.tooltipExample = 'unknown';
   await flush();
   expect(hint()?.querySelector('.capability-example')).toBeNull();

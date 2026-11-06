@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createApp, defineComponent, h, nextTick, ref } from 'vue';
 import type { App } from 'vue';
 import SettingsPanel from './SettingsPanel.vue';
-import { defaultCapabilities, defaultEditorPreferences } from '@tano/editor/runtime';
+import { defaultCapabilities, defaultEditorPreferences, chineseInputOptions } from '@tano/editor/runtime';
 import type { EditorPreferences } from '@tano/editor/runtime';
 import type { CapabilityPatch } from '../workspace-capabilities';
 import type { SettingsPageContext } from '../runtime';
@@ -523,11 +523,27 @@ it('shows the formula preview setting and emits its change', async () => {
   expect(ai.textContent).toContain('空白块按空格启动 AI');
   expect(content.textContent).not.toContain('渲染数学公式');
   expect(content.textContent).not.toContain('同时显示公式源码');
-  expect(content.querySelectorAll('[role="switch"]')).toHaveLength(2);
+  expect(content.querySelectorAll('[role="switch"]')).toHaveLength(3);
   const preview = content.querySelector<HTMLButtonElement>('[aria-label="编辑时预览公式"]')!;
   expect(preview.getAttribute('aria-checked')).toBe('true');
   preview.click();
   expect(preferenceUpdates).toEqual([{ ...defaultEditorPreferences, previewMathWhileEditing: false }]);
+});
+
+it('toggles Mermaid preview independently and disables it while source reveal is off', async () => {
+  await openPage('编辑器');
+  const preview = root.querySelector<HTMLButtonElement>('[aria-label="编辑时预览 Mermaid"]')!;
+  expect(preview.getAttribute('aria-checked')).toBe('true');
+  preview.click();
+  expect(preferenceUpdates).toEqual([{ ...defaultEditorPreferences, previewMermaidWhileEditing: false }]);
+  revealMarkdown.value = false;
+  await nextTick();
+  expect(preview.disabled).toBe(true);
+  expect(preview.getAttribute('aria-checked')).toBe('false');
+  expect(root.textContent).toContain('Mermaid 面板仍会实时渲染');
+  revealMarkdown.value = true;
+  await nextTick();
+  expect(preview.disabled).toBe(false);
 });
 
 it.each(['页面内标题', '文档属性'])('keeps the %s preference in sync with its current value', async (label) => {
@@ -724,10 +740,6 @@ it('configures individual selection wrappers and disables them with the master s
   expect(control('输入符号包裹选区').getAttribute('aria-checked')).toBe('true');
   expect(control('高亮').getAttribute('aria-checked')).toBe('false');
   expect(control('上标（扩展）').getAttribute('aria-checked')).toBe('false');
-  expect(control('中文 ￥ 映射为 $').getAttribute('aria-checked')).toBe('false');
-  control('中文 ￥ 映射为 $').click();
-  await nextTick();
-  expect(editorPreferences.value.selectionWrapping?.yenToDollar).toBe(true);
   control('上标（扩展）').click();
   await nextTick();
   expect(editorPreferences.value.selectionWrapping?.superscript).toBe(true);
@@ -742,6 +754,28 @@ it('configures individual selection wrappers and disables them with the master s
   await nextTick();
   expect(control('上标（扩展）').getAttribute('aria-checked')).toBe('true');
   expect(control('高亮').getAttribute('aria-checked')).toBe('true');
+});
+
+it('groups Chinese input mappings separately, defaults them off and keeps them independent of wrapping', async () => {
+  await openPage('编辑器');
+  const section = root.querySelector<HTMLElement>('section[aria-label="中文输入优化"]')!;
+  expect(section.previousElementSibling?.getAttribute('aria-label')).toBe('选区符号包裹');
+  expect(root.querySelector('section[aria-label="选区符号包裹"] [aria-label="中文 ￥ 映射为 $"]')).toBeNull();
+  for (const option of chineseInputOptions) {
+    const control = section.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${option.label}"]`)!;
+    expect(control.getAttribute('aria-checked')).toBe('false');
+    control.click();
+    await nextTick();
+    expect(editorPreferences.value.chineseInput?.[option.key]).toBe(true);
+  }
+  root.querySelector<HTMLButtonElement>('[role="switch"][aria-label="输入符号包裹选区"]')!.click();
+  await nextTick();
+  expect([...section.querySelectorAll<HTMLButtonElement>('[role="switch"]')].every(control => !control.disabled)).toBe(true);
+  const comma = section.querySelector<HTMLButtonElement>('[aria-label="中文逗号"][role="switch"]')!;
+  comma.click();
+  await nextTick();
+  expect(editorPreferences.value.chineseInput?.comma).toBe(false);
+  expect(editorPreferences.value.chineseInput?.period).toBe(true);
 });
 
 it('switches open pages immediately, keeps workspace content and searches English settings', async () => {

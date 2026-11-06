@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./preview": "./src/preview.ts",
     "./block-icons": "./src/block-icons.ts",
     "./shortcut-hint": "./src/ShortcutHint.vue",
     "./code-preview": "./src/code-preview.ts",

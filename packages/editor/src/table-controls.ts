@@ -19,12 +19,19 @@ function icon(component: Component) {
   return element;
 }
 
+function setHidden(element: HTMLElement, hidden: boolean) {
+  if (element.hidden !== hidden) element.hidden = hidden;
+}
+
 export function tableControls(readonly: () => boolean) {
   return new Plugin({
     key: new PluginKey('tanoTableControls'),
     view(view) {
       const host = view.dom.parentElement!;
       const surface = host.closest<HTMLElement>('.editor-scroll') ?? host;
+      const scroll = host.closest<HTMLElement>('.document-layout');
+      let documentLeft = scroll?.scrollLeft ?? 0;
+      let viewportSize = { width: window.innerWidth, height: window.innerHeight, ratio: window.devicePixelRatio || 1 };
       const controls = document.createElement('div');
       controls.className = 'tano-table-controls';
       const grips = {} as Record<TableAxis, HTMLButtonElement>;
@@ -142,21 +149,21 @@ export function tableControls(readonly: () => boolean) {
         const clip = wrapper.getBoundingClientRect();
         const viewport = surface.getBoundingClientRect();
         const left = Math.max(bounds.left, clip.left, viewport.left, 0);
-        const right = Math.min(bounds.right, clip.right, viewport.right, window.innerWidth);
+        const right = Math.min(bounds.right, clip.right, viewport.right, viewportSize.width);
         const top = Math.max(bounds.top, viewport.top, 0);
-        const bottom = Math.min(bounds.bottom, viewport.bottom, window.innerHeight);
+        const bottom = Math.min(bounds.bottom, viewport.bottom, viewportSize.height);
         const border = getComputedStyle(table.rows[0]?.cells[0] ?? cell);
-        const pixelRatio = window.devicePixelRatio || 1;
+        const pixelRatio = viewportSize.ratio;
         // Collapsed borders are painted on device pixels; DOM bounds can remain fractional.
         const borderCenter = (edge: number, width: string) =>
           (Math.round(edge * pixelRatio) + Math.round((parseFloat(width) || 1) * pixelRatio) / 2) / pixelRatio;
-        return { cell: cell.getBoundingClientRect(), bounds, left, right, top, bottom,
+        return { cell: cell.getBoundingClientRect(), origin: host.getBoundingClientRect(), bounds, left, right, top, bottom,
           borderLeft: borderCenter(bounds.left, border.borderLeftWidth),
           borderTop: borderCenter(bounds.top, border.borderTopWidth),
-          viewportLeft: Math.max(viewport.left, 0), viewportRight: Math.min(viewport.right, window.innerWidth) };
+          viewportLeft: Math.max(viewport.left, 0), viewportRight: Math.min(viewport.right, viewportSize.width) };
       };
-      const positionInsertions = (g: NonNullable<ReturnType<typeof geometry>>) => {
-        if (!hovered || selected || pending || !menu.hidden) { hideInsertions(); return; }
+      const measureInsertions = (g: NonNullable<ReturnType<typeof geometry>>, readRect: (element: Element) => DOMRect) => {
+        if (!hovered || selected || pending || !menu.hidden) return hideInsertions;
         if (insertionDoc !== view.state.doc || insertionTable !== hovered.pos) {
           hideInsertions();
           for (const span of insertionControls.querySelectorAll('span')) render(null, span);
@@ -210,31 +217,43 @@ export function tableControls(readonly: () => boolean) {
             }
           }
         }
-        insertionControls.hidden = false;
-        insertionLine.hidden = true;
-        for (const { button, target, action } of insertions) {
-          const rect = cellDOM(target.pos, target.axis === 'row' ? target.index : 0,
-            target.axis === 'column' ? target.index : 0)?.getBoundingClientRect();
-          if (!rect) { button.hidden = true; continue; }
-          const column = target.axis === 'column';
-          const boundary = column ? (action === 'after' ? rect.right : rect.left)
-            : (action === 'after' ? rect.bottom : rect.top);
-          button.hidden = column ? g.bounds.top < g.top || boundary < g.left || boundary > g.right
-            : boundary < g.top || boundary > g.bottom;
-          if (button.hidden) continue;
-          button.style.left = `${column ? Math.max(g.viewportLeft, Math.min(boundary - 12, g.viewportRight - 24))
-            : Math.max(g.left - 12, g.viewportLeft)}px`;
-          button.style.top = `${column ? g.bounds.top - 12 : boundary - 12}px`;
-          if (activeInsertion === button) {
-            insertionLine.hidden = false;
-            insertionLine.style.transform = column ? 'translateX(-50%)' : 'translateY(-50%)';
-            Object.assign(insertionLine.style, column ? {
-              left: `${boundary}px`, top: `${g.top}px`, width: 'var(--tano-table-stroke-width, 3px)', height: `${g.bottom - g.top}px`,
-            } : {
-              left: `${g.left}px`, top: `${boundary}px`, width: `${g.right - g.left}px`, height: 'var(--tano-table-stroke-width, 3px)',
-            });
+        // Measure every boundary before moving or revealing any controls. Doing
+        // this inside the write loop forces layout once per row on each scroll.
+        const rects = new Map<HTMLElement, DOMRect>();
+        const placements = insertions.map(insertion => {
+          const { target } = insertion;
+          const cell = cellDOM(target.pos, target.axis === 'row' ? target.index : 0,
+            target.axis === 'column' ? target.index : 0);
+          if (cell && !rects.has(cell)) rects.set(cell, readRect(cell));
+          return { ...insertion, rect: cell ? rects.get(cell) : undefined };
+        });
+        return () => {
+          setHidden(insertionControls, false);
+          let showLine = false;
+          for (const { button, target, action, rect } of placements) {
+            if (!rect) { setHidden(button, true); continue; }
+            const column = target.axis === 'column';
+            const boundary = column ? (action === 'after' ? rect.right : rect.left)
+              : (action === 'after' ? rect.bottom : rect.top);
+            // Vertical clipping belongs to the document scroller. These
+            // absolute controls move with their rows without scroll-time work.
+            setHidden(button, column && (boundary < g.left || boundary > g.right));
+            if (button.hidden) continue;
+            button.style.left = `${(column ? Math.max(g.viewportLeft, Math.min(boundary - 12, g.viewportRight - 24))
+              : Math.max(g.left - 12, g.viewportLeft)) - g.origin.left}px`;
+            button.style.top = `${(column ? g.bounds.top - 12 : boundary - 12) - g.origin.top}px`;
+            if (activeInsertion === button) {
+              showLine = true;
+              insertionLine.style.transform = column ? 'translateX(-50%)' : 'translateY(-50%)';
+              Object.assign(insertionLine.style, column ? {
+                left: `${boundary - g.origin.left}px`, top: `${g.bounds.top - g.origin.top}px`, width: 'var(--tano-table-stroke-width, 3px)', height: `${g.bounds.height}px`,
+              } : {
+                left: `${g.left - g.origin.left}px`, top: `${boundary - g.origin.top}px`, width: `${g.right - g.left}px`, height: 'var(--tano-table-stroke-width, 3px)',
+              });
+            }
           }
-        }
+          setHidden(insertionLine, !showLine);
+        };
       };
       const positionMenu = () => {
         if (menu.hidden || !selected) return;
@@ -264,30 +283,36 @@ export function tableControls(readonly: () => boolean) {
       };
       const position = () => {
         if (readonly()) { hide(); return; }
+        viewportSize = { width: window.innerWidth, height: window.innerHeight, ratio: window.devicePixelRatio || 1 };
+        documentLeft = scroll?.scrollLeft ?? 0;
         const g = geometry();
         if (!g || g.left >= g.right || g.top >= g.bottom) { hide(); return; }
+        const applyInsertions = measureInsertions(g, element => element.getBoundingClientRect());
+        const selectedDOM = selected ? cellDOM(selected.pos, selected.axis === 'row' ? selected.index : 0,
+          selected.axis === 'column' ? selected.index : 0) : null;
+        const selectedRect = selectedDOM?.getBoundingClientRect();
         const x = (Math.max(g.left, g.cell.left) + Math.min(g.right, g.cell.right)) / 2;
         const y = (g.cell.top + g.cell.bottom) / 2;
-        grips.column.hidden = g.cell.right <= g.left || g.cell.left >= g.right || g.bounds.top < g.top;
-        grips.row.hidden = y < g.top || y > g.bottom;
-        if (selected && grips[selected.axis].hidden) close();
-        grips.column.style.left = `${x - 14}px`;
-        grips.column.style.top = `${g.borderTop - 14}px`;
-        grips.row.style.left = `${Math.max(g.borderLeft, g.left, g.viewportLeft + 14) - 14}px`;
-        grips.row.style.top = `${y - 14}px`;
+        setHidden(grips.column, g.cell.right <= g.left || g.cell.left >= g.right);
+        setHidden(grips.row, false);
+        const selectedY = selected?.axis === 'column' ? g.bounds.top : y;
+        if (selected && (grips[selected.axis].hidden || selectedY < g.top || selectedY > g.bottom)) close();
+        grips.column.style.left = `${x - 14 - g.origin.left}px`;
+        grips.column.style.top = `${g.borderTop - 14 - g.origin.top}px`;
+        grips.row.style.left = `${Math.max(g.borderLeft, g.left, g.viewportLeft + 14) - 14 - g.origin.left}px`;
+        grips.row.style.top = `${y - 14 - g.origin.top}px`;
         if (selected) {
-          const dom = cellDOM(selected.pos, selected.axis === 'row' ? selected.index : 0, selected.axis === 'column' ? selected.index : 0);
-          const rect = dom?.getBoundingClientRect();
+          const rect = selectedRect;
           if (rect) {
             const left = selected.axis === 'row' ? g.left : Math.max(g.left, rect.left);
             const right = selected.axis === 'row' ? g.right : Math.min(g.right, rect.right);
-            const top = selected.axis === 'row' ? Math.max(g.top, rect.top) : g.top;
-            const bottom = selected.axis === 'row' ? Math.min(g.bottom, rect.bottom) : g.bottom;
+            const top = selected.axis === 'row' ? rect.top : g.bounds.top;
+            const bottom = selected.axis === 'row' ? rect.bottom : g.bounds.bottom;
             outline.hidden = !!pending?.dragging || left >= right || top >= bottom;
-            Object.assign(outline.style, { left: `${left}px`, top: `${top}px`, width: `${Math.max(0, right - left)}px`, height: `${Math.max(0, bottom - top)}px` });
+            Object.assign(outline.style, { left: `${left - g.origin.left}px`, top: `${top - g.origin.top}px`, width: `${Math.max(0, right - left)}px`, height: `${Math.max(0, bottom - top)}px` });
           }
         }
-        positionInsertions(g);
+        applyInsertions();
         positionMenu();
       };
       const select = (target: TableTarget) => {
@@ -513,9 +538,9 @@ export function tableControls(readonly: () => boolean) {
           const rect = dom?.getBoundingClientRect();
           marker.hidden = !overTable || to === pending.target.index || !rect;
           if (g && rect) Object.assign(marker.style, axis === 'row' ? {
-            left: `${g.left}px`, top: `${to > pending.target.index ? rect.bottom : rect.top}px`, width: `${g.right - g.left}px`, height: 'var(--tano-table-stroke-width, 3px)',
+            left: `${g.left - g.origin.left}px`, top: `${(to > pending.target.index ? rect.bottom : rect.top) - g.origin.top}px`, width: `${g.right - g.left}px`, height: 'var(--tano-table-stroke-width, 3px)',
           } : {
-            left: `${to > pending.target.index ? rect.right : rect.left}px`, top: `${g.top}px`, width: 'var(--tano-table-stroke-width, 3px)', height: `${g.bottom - g.top}px`,
+            left: `${(to > pending.target.index ? rect.right : rect.left) - g.origin.left}px`, top: `${g.top - g.origin.top}px`, width: 'var(--tano-table-stroke-width, 3px)', height: `${g.bottom - g.top}px`,
           });
           return;
         }
@@ -605,8 +630,22 @@ export function tableControls(readonly: () => boolean) {
       window.addEventListener('blur', onCancel);
       surface.addEventListener('pointerleave', onLeave);
       const reposition = () => { if (hovered) position(); };
-      const stopPosition = observePanelPosition(reposition);
+      let positionFrame: number | undefined;
+      const schedulePosition = (event?: Event) => {
+        if (!hovered) return;
+        const target = event?.target;
+        if (event?.type === 'scroll' && target instanceof Element && !target.contains(host) && !host.contains(target)) return;
+        const ownScroll = event?.type === 'scroll' && target === scroll;
+        if (ownScroll && scroll && !selected && !pending && menu.hidden && scroll.scrollLeft === documentLeft) return;
+        if (positionFrame !== undefined) return;
+        positionFrame = requestAnimationFrame(() => {
+          positionFrame = undefined;
+          reposition();
+        });
+      };
+      const stopPosition = observePanelPosition(schedulePosition);
       host.addEventListener('tano-table-layout', reposition);
+      host.addEventListener('tano-block-layout', reposition);
       const stopOther = onOtherEditorPanel(host, () => selected ? grips[selected.axis] : null, close);
       return {
         update(next, previous) {
@@ -616,6 +655,7 @@ export function tableControls(readonly: () => boolean) {
         },
         destroy() {
           hide(); stopPosition(); stopOther();
+          if (positionFrame !== undefined) cancelAnimationFrame(positionFrame);
           document.removeEventListener('pointermove', onMove);
           document.removeEventListener('pointerup', onUp);
           document.removeEventListener('pointercancel', onCancel);
@@ -623,6 +663,7 @@ export function tableControls(readonly: () => boolean) {
           window.removeEventListener('blur', onCancel);
           surface.removeEventListener('pointerleave', onLeave);
           host.removeEventListener('tano-table-layout', reposition);
+          host.removeEventListener('tano-block-layout', reposition);
           for (const element of controls.querySelectorAll('span')) render(null, element);
           controls.remove();
         },

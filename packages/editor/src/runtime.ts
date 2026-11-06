@@ -1,6 +1,9 @@
 import type { Ctx } from '@milkdown/kit/ctx';
 import { isShortId } from '@tano/protocol';
 import type { SelectionWrappingPreferences } from './selection-wrapping';
+import type { ChineseInputPreferences } from './chinese-input';
+export { chineseInputOptions, defaultChineseInput, normalizeChineseInput, mapChineseInput, mappedChineseInputKey, mappedChineseBeforeInput } from './chinese-input';
+export type { ChineseInputPreferences } from './chinese-input';
 export { selectionWrap, selectionWrappingOptions, defaultSelectionWrapping, normalizeSelectionWrapping } from './selection-wrapping';
 export type { SelectionWrappingPreferences } from './selection-wrapping';
 export { workspaceCapabilityPath as capabilityPath } from '@tano/protocol';
@@ -48,10 +51,14 @@ export interface EditorPreferences {
   /** Device-local visual spacing; never inserts characters into Markdown. */
   autoSpacing?: boolean;
   previewMathWhileEditing: boolean;
+  /** Device-local Mermaid preview while editing revealed Markdown source. */
+  previewMermaidWhileEditing?: boolean;
   folding: boolean;
   /** Pressing Space in an empty paragraph opens the one-shot AI composer. */
   blankBlockAiShortcut: boolean;
   selectionWrapping?: SelectionWrappingPreferences;
+  /** Device-local punctuation mappings for Chinese input methods; all disabled by default. */
+  chineseInput?: ChineseInputPreferences;
 }
 export const defaultCapabilities: WorkspaceCapabilities = {
   version: 1,
@@ -68,6 +75,7 @@ export const defaultEditorPreferences: EditorPreferences = {
   copyFormat: 'markdown',
   autoSpacing: false,
   previewMathWhileEditing: true,
+  previewMermaidWhileEditing: true,
   folding: true,
   blankBlockAiShortcut: true,
 };

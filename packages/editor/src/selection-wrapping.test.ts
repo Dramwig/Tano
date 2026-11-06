@@ -28,11 +28,9 @@ it('normalizes old, partial, and corrupt preferences without enabling extensions
   expect(normalizeSelectionWrapping({ enabled: 'false', math: false })).toEqual({ ...defaultSelectionWrapping, math: false });
 });
 
-it('maps full-width yuan to math only when enabled and respects the math and master switches', () => {
+it('leaves Chinese punctuation mapping to the input policy', () => {
   expect(selectionWrap('x_1', '￥')).toBeNull();
-  expect(selectionWrap('x_1', '￥', { yenToDollar: true })).toEqual({ prefix: '$', suffix: '$', literal: true });
-  expect(selectionWrap('x_1', '￥', { yenToDollar: true, math: false })).toBeNull();
-  expect(selectionWrap('x_1', '￥', { yenToDollar: true, enabled: false })).toBeNull();
-  expect(selectionWrap('', '￥', { yenToDollar: true })).toBeNull();
-  expect(selectionWrap('100', '¥', { yenToDollar: true })).toBeNull();
+  expect(selectionWrap('x_1', '$')).toEqual({ prefix: '$', suffix: '$', literal: true });
+  expect(selectionWrap('x_1', '$', { math: false })).toBeNull();
+  expect(selectionWrap('x_1', '$', { enabled: false })).toBeNull();
 });

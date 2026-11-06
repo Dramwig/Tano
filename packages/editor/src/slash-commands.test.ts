@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, serializerCtx } from '@milkdown/kit/core';
 import { commonmark } from '@milkdown/kit/preset/commonmark';
 import { gfm } from '@milkdown/kit/preset/gfm';
@@ -80,6 +80,15 @@ async function mount(markdown = '') {
 }
 
 describe('slash block commands', () => {
+  it('keeps hovered result elements and their descriptions during non-query editor updates', async () => {
+    const { view, type, menu } = await mount();
+    type('/table');
+    const option = menu().querySelector('[role="option"]')!;
+    option.setAttribute('aria-describedby', 'hover-preview');
+    view.dispatch(view.state.tr.setMeta('addToHistory', false));
+    expect(menu().querySelector('[role="option"]')).toBe(option);
+    expect(option.getAttribute('aria-describedby')).toBe('hover-preview');
+  });
   it('decorates the empty caret paragraph without changing Markdown and removes it when typing', async () => {
     const { view, type, markdownValue } = await mount();
     const original = markdownValue();
@@ -188,7 +197,9 @@ describe('slash block commands', () => {
     }
     type('custom');
     expect(menu().querySelectorAll('.tano-slash-icon svg')).toHaveLength(1);
-    expect(menu().querySelector('.tano-slash-option')?.textContent).toContain('Custom Callout');
+    expect(menu().querySelector('.tano-slash-label')?.textContent).toBe('自定义块');
+    expect(menu().querySelector('.tano-slash-marker')?.textContent).toBe('[!CUSTOM]');
+    expect(menu().querySelector('.tano-slash-marker')?.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('converts with Enter, puts the caret in a table, and undoes/redoes atomically', async () => {
@@ -249,6 +260,54 @@ describe('slash block commands', () => {
     expect(key('Enter', true).defaultPrevented).toBe(false);
     expect(view.state.doc.firstChild?.type.name).toBe('paragraph');
     view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+  });
+
+  it('keeps the session through long IME preedit, syllable spaces and temporary selections', async () => {
+    const { view, type, key, menu } = await mount();
+    type('/');
+    view.dom.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    type('biao ti');
+    expect(menu().hidden).toBe(false);
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 2, 9)));
+    expect(menu().hidden).toBe(false);
+    view.dispatch(view.state.tr.insertText('标题', 2, 9));
+    view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '标题' }));
+    // Some IMEs finish composition before sending the key used to confirm it.
+    expect(key('Enter').defaultPrevented).toBe(false);
+    expect(view.state.doc.firstChild?.type.name).toBe('paragraph');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await vi.waitFor(() => expect(menu().querySelectorAll('[role="option"]')).toHaveLength(4));
+    expect(menu().hidden).toBe(false);
+    key('Enter');
+    expect(view.state.doc.firstChild?.type.name).toBe('heading');
+  });
+
+  it('dismisses long committed IME garbage but never dismisses its uncommitted preedit', async () => {
+    const { view, type, menu } = await mount();
+    type('/');
+    view.dom.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    type('wwwwwww');
+    expect(menu().hidden).toBe(false);
+    view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: 'wwwwwww' }));
+    await vi.waitFor(() => expect(menu().hidden).toBe(true));
+    expect(view.state.doc.textContent).toBe('/wwwwwww');
+    type('x');
+    expect(menu().hidden).toBe(true);
+  });
+
+  it('keeps the slash menu usable after IME cancellation', async () => {
+    const { view, type, key, menu } = await mount();
+    type('/');
+    view.dom.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    type('biao ti');
+    view.dispatch(view.state.tr.delete(2, view.state.doc.content.size - 1));
+    view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+    await vi.waitFor(() => expect(view.composing).toBe(false));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(menu().hidden).toBe(false);
+    type('table');
+    key('Enter');
+    expect(view.state.doc.firstChild?.type.name).toBe('table');
   });
 
   it('closes on whitespace and stays closed after deleting the space or typing more', async () => {
@@ -354,7 +413,7 @@ describe('slash block commands', () => {
     type('y');
     view.dispatch(view.state.tr.delete(view.state.selection.from - 2, view.state.selection.from));
     expect(menu().hidden).toBe(false);
-    expect(menu().textContent).toContain('Table');
+    expect(menu().querySelector('.tano-slash-label')?.textContent).toBe('表格');
     type('z');
     expect(menu().hidden).toBe(false);
     type('x');

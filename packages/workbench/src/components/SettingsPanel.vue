@@ -2,6 +2,7 @@
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import ModalBackdrop from './ModalBackdrop.vue';
 import CapabilitySyntax from './CapabilitySyntax.vue';
+import { settingHint } from '../setting-examples';
 import ThemePresetPicker from './ThemePresetPicker.vue';
 import { t, uiLocale, setUiLocale, uiSearchText } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -41,6 +42,8 @@ import {
   normalizeCopyFormat,
   normalizeSelectionWrapping,
   selectionWrappingOptions,
+  chineseInputOptions,
+  normalizeChineseInput,
 } from '@tano/editor/runtime';
 import type { WorkspaceCapabilities, EditorPreferences } from '@tano/editor/runtime';
 import type { CapabilityPatch } from '../workspace-capabilities';
@@ -162,8 +165,13 @@ const wrappingOptions = computed(() => selectionWrappingOptions.map(option => {
 function setWrapping(key: keyof typeof wrapping.value, enabled: boolean) {
   emit('update:editorPreferences', { ...display.value, selectionWrapping: { ...wrapping.value, [key]: enabled } });
 }
+const chineseInput = computed(() => normalizeChineseInput(display.value.chineseInput, display.value.selectionWrapping));
+function setChineseInput(key: keyof typeof chineseInput.value, enabled: boolean) {
+  emit('update:editorPreferences', { ...display.value, chineseInput: { ...chineseInput.value, [key]: enabled } });
+}
 function displayOptionActive(key: keyof EditorPreferences) {
-  return display.value[key] && (key !== 'previewMathWhileEditing' || props.revealMarkdown);
+  const value = key === 'previewMermaidWhileEditing' ? display.value[key] !== false : display.value[key];
+  return value && (key !== 'previewMathWhileEditing' && key !== 'previewMermaidWhileEditing' || props.revealMarkdown);
 }
 const rulesDisabled = computed(
   () =>
@@ -176,11 +184,19 @@ const rulesDisabled = computed(
 const displayOptions = [
   {
     key: 'previewMathWhileEditing',
+    settingsKey: 'preview-math',
     get label() { return t('编辑时预览公式'); },
     get description() { return t('展开 Markdown 源码编辑公式时同步显示排版效果。'); },
   },
   {
+    key: 'previewMermaidWhileEditing',
+    settingsKey: 'preview-mermaid',
+    get label() { return t('编辑时预览 Mermaid'); },
+    get description() { return t('展开 Markdown 源码编辑 Mermaid 时同步显示图表。'); },
+  },
+  {
     key: 'folding',
+    settingsKey: 'folding',
     get label() { return t('标题与列表折叠'); },
     get description() { return t('显示折叠按钮，临时收起标题下的内容或列表项。'); },
   },
@@ -291,10 +307,13 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('editing', 'editing-copy-format', '默认复制格式', '设置可视化编辑区的默认复制与剪切格式，右键菜单仍可单次选择其他格式。仅保存在当前设备。', 'copy clipboard Ctrl+C Command+C Word HTML Markdown 富文本 纯文本 剪贴板 复制'),
   settingSearchEntry('editing', 'editing-toolbar', '编辑工具栏', '随选区显示，或停靠在顶部、底部、左侧、右侧；也可拖动工具栏手柄调整。仅影响当前设备。', 'toolbar selection top bottom left right'),
   settingSearchEntry('editing', 'editing-preview-math', '编辑时预览公式', '展开 Markdown 源码编辑公式时同步显示排版效果。', 'math formula preview'),
+  settingSearchEntry('editing', 'editing-preview-mermaid', '编辑时预览 Mermaid', '展开 Markdown 源码编辑 Mermaid 时同步显示图表。', 'mermaid diagram chart preview 图表'),
   settingSearchEntry('editing', 'editing-folding', '标题与列表折叠', '显示折叠按钮，临时收起标题下的内容或列表项。', 'heading list folding collapse'),
   settingSearchEntry('editing', 'editing-ai-shortcut', '空白块按空格启动 AI', '在空白 block 中按空格，直接展开一次性 AI 编辑输入框。', 'AI space block'),
   settingSearchEntry('editing', 'editing-wrapping', '输入符号包裹选区', '选中文字后输入符号，自动补齐两端。可视化与源码模式通用。', 'selection wrapping symbols'),
   ...selectionWrappingOptions.map(option => settingSearchEntry('editing', `editing-wrapping-${option.key}`, option.label, option.example, 'selection wrapping Markdown')),
+  ...chineseInputOptions.map(option => settingSearchEntry('editing', `editing-chinese-input-${option.key}`, option.label,
+    `${option.input} → ${option.output}`, '中文输入优化 输入法 标点 符号映射 Chinese IME punctuation')),
   ...shortcutDefinitions.map(item => settingSearchEntry('shortcuts', `shortcut-${item.id}`, item.label, 'scope' in item ? item.scope : '', 'shortcut keybinding keyboard')),
   settingSearchEntry('assistant', 'assistant-connections', '模型连接', '管理助手使用的 API 或 CLI 连接。', 'assistant model connection API CLI'),
   ...featureDefinitions.map(feature => settingSearchEntry('documents', `documents-${feature.key}`, feature.label, '', 'Markdown extension')),
@@ -620,7 +639,7 @@ function customFontInput(event: Event) {
           <section v-if="page === 'editing'" class="settings-section" aria-labelledby="settings-editor">
             <h3 id="settings-editor">{{ t('编辑器') }}</h3>
             <div class="settings-card">
-              <div class="settings-row" data-settings-key="editing-default-mode">
+              <div class="settings-row" data-settings-key="editing-default-mode" v-bind="settingHint('editing-default-mode')">
                 <div>
                   <strong>{{ t('默认编辑模式') }}</strong>
                   <p>{{ t('选择打开文档时使用的视图。') }}</p>
@@ -639,7 +658,7 @@ function customFontInput(event: Event) {
                   <option value="source">{{ t('Markdown 源码') }}</option>
                 </select>
               </div>
-              <div class="settings-row" data-settings-key="editing-reveal-markdown">
+              <div class="settings-row" data-settings-key="editing-reveal-markdown" v-bind="settingHint('editing-reveal-markdown')">
                 <div>
                   <strong>{{ t('光标进入时展开 Markdown 源码') }}</strong>
                   <p>{{ t('类似 Typora、Obsidian 的实时预览：光标进入时显示 Markdown 语法，离开后恢复排版。') }}</p>
@@ -777,7 +796,7 @@ function customFontInput(event: Event) {
           <section v-if="page === 'editing'" class="settings-section" :aria-label="t('编辑行为')">
             <h3>{{ t('编辑行为') }}</h3>
             <div class="settings-card">
-              <div class="settings-row" data-settings-key="editing-copy-format">
+              <div class="settings-row" data-settings-key="editing-copy-format" v-bind="settingHint('editing-copy-format')">
                 <div>
                   <strong>{{ t('默认复制格式') }}</strong>
                   <p>{{ t('设置可视化编辑区的默认复制与剪切格式，右键菜单仍可单次选择其他格式。仅保存在当前设备。') }}</p>
@@ -795,7 +814,7 @@ function customFontInput(event: Event) {
                   <option value="text">{{ t('纯文本') }}</option>
                 </select>
               </div>
-              <div class="settings-row" data-settings-key="editing-toolbar">
+              <div class="settings-row" data-settings-key="editing-toolbar" v-bind="settingHint('editing-toolbar')">
                 <div>
                   <strong>{{ t('编辑工具栏') }}</strong>
                   <p>{{ t('随选区显示，或停靠在顶部、底部、左侧、右侧；也可拖动工具栏手柄调整。仅影响当前设备。') }}</p>
@@ -813,14 +832,17 @@ function customFontInput(event: Event) {
                 v-for="option in displayOptions"
                 :key="option.key"
                 class="settings-row"
-                :data-settings-key="`editing-${option.key === 'previewMathWhileEditing' ? 'preview-math' : 'folding'}`"
-                :class="{ 'is-disabled': option.key === 'previewMathWhileEditing' && !revealMarkdown }"
+                :data-settings-key="`editing-${option.settingsKey}`"
+                v-bind="settingHint(`editing-${option.settingsKey}`)"
+                :class="{ 'is-disabled': option.key !== 'folding' && !revealMarkdown }"
               >
                 <div>
                   <strong>{{ t(option.label) }}</strong>
                   <p>{{
-                    option.key === 'previewMathWhileEditing' && !revealMarkdown
-                      ? t('仅控制 Markdown 源码展开时的预览；公式面板仍会实时渲染。')
+                    option.key !== 'folding' && !revealMarkdown
+                      ? option.key === 'previewMathWhileEditing'
+                        ? t('仅控制 Markdown 源码展开时的预览；公式面板仍会实时渲染。')
+                        : t('仅控制 Markdown 源码展开时的预览；Mermaid 面板仍会实时渲染。')
                       : option.description
                   }}</p>
                 </div>
@@ -831,11 +853,11 @@ function customFontInput(event: Event) {
                   role="switch"
                   :aria-checked="displayOptionActive(option.key)"
                   :aria-label="option.label"
-                  :disabled="option.key === 'previewMathWhileEditing' && !revealMarkdown"
+                  :disabled="option.key !== 'folding' && !revealMarkdown"
                   @click="
                     emit('update:editorPreferences', {
                       ...display,
-                      [option.key]: !display[option.key],
+                      [option.key]: !displayOptionActive(option.key),
                     })
                   "
                 >
@@ -847,7 +869,7 @@ function customFontInput(event: Event) {
           <section v-if="page === 'editing'" class="settings-section" :aria-label="t('AI 功能')">
             <h3>{{ t('AI 功能') }}</h3>
             <div class="settings-card">
-              <div class="settings-row" data-settings-key="editing-ai-shortcut">
+              <div class="settings-row" data-settings-key="editing-ai-shortcut" v-bind="settingHint('editing-ai-shortcut')">
                 <div>
                   <strong>{{ t('空白块按空格启动 AI') }}</strong>
                   <p>{{ t('在空白 block 中按空格，直接展开一次性 AI 编辑输入框。') }}</p>
@@ -872,7 +894,7 @@ function customFontInput(event: Event) {
           <section v-if="page === 'editing'" class="settings-section" :aria-label="t('选区符号包裹')">
             <h3>{{ t('选区符号包裹') }}</h3>
             <div class="settings-card">
-              <div class="settings-row" data-settings-key="editing-wrapping">
+              <div class="settings-row" data-settings-key="editing-wrapping" v-bind="settingHint('editing-wrapping')">
                 <div>
                   <strong>{{ t('输入符号包裹选区') }}</strong>
                   <p>{{ t('选中文字后输入符号，自动补齐两端。可视化与源码模式通用。') }}</p>
@@ -899,10 +921,31 @@ function customFontInput(event: Event) {
             </div>
             <p class="settings-local-note">{{ t('选区包裹仅影响当前设备，扩展语法的包裹默认关闭。正文显示由工作区「Markdown 与格式」控制，其他 Markdown 应用可能不支持。') }}</p>
           </section>
+          <section v-if="page === 'editing'" class="settings-section" :aria-label="t('中文输入优化')">
+            <h3>{{ t('中文输入优化') }}</h3>
+            <p class="settings-local-note">{{ t('输入中文符号时，按键位转换为英文符号。可视化与源码模式通用，各项默认关闭。') }}</p>
+            <div class="settings-card">
+              <div v-for="option in chineseInputOptions" :key="option.key" class="settings-row settings-row-compact"
+                :data-settings-key="`editing-chinese-input-${option.key}`">
+                <div class="settings-inline-copy">
+                  <strong>{{ t(option.label) }}</strong>
+                  <span class="settings-inline-example" :aria-label="`${option.input} → ${option.output}`">
+                    <kbd aria-hidden="true">{{ option.input }}</kbd>
+                    <ArrowRight :size="12" aria-hidden="true" />
+                    <code aria-hidden="true"><span>{{ option.output }}</span></code>
+                  </span>
+                </div>
+                <button type="button" class="settings-switch" role="switch" :aria-label="t(option.label)"
+                  :class="{ on: chineseInput[option.key] }" :aria-checked="chineseInput[option.key]"
+                  @click="setChineseInput(option.key, !chineseInput[option.key])"><span /></button>
+              </div>
+            </div>
+            <p class="settings-local-note">{{ t('仅影响当前设备的新输入，不转换粘贴或已有正文。转换后的符号可配合上方的选区包裹设置使用。') }}</p>
+          </section>
           <section v-if="page === 'appearance'" class="settings-section" :aria-label="t('内容显示')">
             <h3>{{ t('内容显示') }}</h3>
             <div class="settings-card">
-              <div class="settings-row" data-settings-key="appearance-auto-spacing">
+              <div class="settings-row" data-settings-key="appearance-auto-spacing" v-bind="settingHint('appearance-auto-spacing')">
                 <div>
                   <strong>{{ t('正文自动间距') }}</strong>
                   <p>{{ t('在中文与英文、数字、行内公式及引用之间自动留白，仅影响显示，不修改原文。') }}</p>
@@ -913,7 +956,7 @@ function customFontInput(event: Event) {
                   <span />
                 </button>
               </div>
-              <div class="settings-row" data-settings-key="appearance-page-title">
+              <div class="settings-row" data-settings-key="appearance-page-title" v-bind="settingHint('appearance-page-title')">
                 <div>
                   <strong>{{ t('页面内标题') }}</strong>
                   <p>{{ t('在编辑区顶部显示当前文档标题。') }}</p>
@@ -930,7 +973,7 @@ function customFontInput(event: Event) {
                   <span />
                 </button>
               </div>
-              <div class="settings-row" data-settings-key="appearance-properties">
+              <div class="settings-row" data-settings-key="appearance-properties" v-bind="settingHint('appearance-properties')">
                 <div>
                   <strong>{{ t('文档属性') }}</strong>
                   <p>{{ t('在可视化编辑区显示文档属性。') }}</p>
@@ -947,7 +990,7 @@ function customFontInput(event: Event) {
                   <span />
                 </button>
               </div>
-              <div class="settings-row" data-settings-key="appearance-discussion">
+              <div class="settings-row" data-settings-key="appearance-discussion" v-bind="settingHint('appearance-discussion')">
                 <div>
                   <strong>{{ t('文档讨论') }}</strong>
                   <p>{{ t('有讨论时在文档底部显示，没有讨论时自动隐藏。') }}</p>
@@ -964,7 +1007,7 @@ function customFontInput(event: Event) {
                   <span />
                 </button>
               </div>
-              <div class="settings-row" data-settings-key="appearance-outline">
+              <div class="settings-row" data-settings-key="appearance-outline" v-bind="settingHint('appearance-outline')">
                 <div>
                   <strong>{{ t('显示目录') }}</strong>
                 </div>
@@ -980,7 +1023,7 @@ function customFontInput(event: Event) {
                   <span />
                 </button>
               </div>
-              <div class="settings-row" data-settings-key="appearance-outline-position">
+              <div class="settings-row" data-settings-key="appearance-outline-position" v-bind="settingHint('appearance-outline-position')">
                 <div>
                   <strong>{{ t('目录显示在左侧') }}</strong>
                   <p>{{ t('将文档大纲放到编辑区左侧。') }}</p>
@@ -1044,6 +1087,7 @@ function customFontInput(event: Event) {
                 :key="feature.key"
                 class="settings-row settings-row-compact"
                 :data-settings-key="`documents-${feature.key}`"
+                :data-tooltip="t(feature.label)" :data-tooltip-example="feature.key"
               >
                 <div class="settings-inline-copy">
                   <strong>{{ t(feature.label) }}</strong>
@@ -1073,7 +1117,7 @@ function customFontInput(event: Event) {
           <section class="settings-section" :aria-label="t('Markdown 语法')">
             <h3>{{ t('Markdown 语法') }}</h3>
             <div class="settings-card">
-              <div class="settings-row" data-settings-key="documents-math-recognition">
+              <div class="settings-row" data-settings-key="documents-math-recognition" v-bind="settingHint('documents-math-recognition')">
                 <div>
                   <strong>{{ t('识别的公式语法') }}</strong>
                   <p>{{ t('未选中的语法按普通文本显示，不修改 Markdown 原文。') }}</p>
@@ -1087,7 +1131,7 @@ function customFontInput(event: Event) {
                   <option value="latex">{{ t('仅反斜杠括号') }}</option>
                 </select>
               </div>
-              <div class="settings-row" data-settings-key="documents-dialect">
+              <div class="settings-row" data-settings-key="documents-dialect" v-bind="settingHint('documents-dialect')">
                 <div>
                   <strong>{{ t('新公式默认格式') }}</strong>
                   <p>
@@ -1113,7 +1157,7 @@ function customFontInput(event: Event) {
                   <option value="pandoc">{{ t('反斜杠括号') }}</option>
                 </select>
               </div>
-              <div class="settings-row" data-settings-key="documents-math-syntax">
+              <div class="settings-row" data-settings-key="documents-math-syntax" v-bind="settingHint('documents-math-syntax')">
                 <div>
                   <strong>{{ t('已有公式保存格式') }}</strong>
                   <p>{{ t(mathSyntaxDescription) }}</p>
@@ -1134,7 +1178,7 @@ function customFontInput(event: Event) {
                   <option value="latex">{{ t('统一为反斜杠括号') }}</option>
                 </select>
               </div>
-              <div class="settings-row" data-settings-key="documents-bullet-marker">
+              <div class="settings-row" data-settings-key="documents-bullet-marker" v-bind="settingHint('documents-bullet-marker')">
                 <div>
                   <strong>{{ t('无序列表标记') }}</strong>
                   <p>{{ t('选择无序列表与待办列表的 Markdown 标记，在下一次编辑保存正文时应用。') }}</p>

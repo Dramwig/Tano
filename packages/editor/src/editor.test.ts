@@ -8,8 +8,9 @@ import type { EditorView } from '@milkdown/kit/prose/view';
 import { BlockRangeSelection } from './block-selection';
 import { blockTree } from './block-tree';
 import MarkdownEditor from './MarkdownEditor.vue';
+import mermaid from 'mermaid';
 import { splitFrontmatter, unsupportedMarkdown } from './syntax';
-import { defaultCapabilities, defaultEditorPreferences, defaultSelectionWrapping, normalizeCopyFormat } from './runtime';
+import { defaultCapabilities, defaultEditorPreferences, defaultSelectionWrapping, defaultChineseInput, normalizeCopyFormat } from './runtime';
 import { inlineSourceCodec } from './inline-source-session';
 
 vi.mock('mermaid', () => ({
@@ -2011,6 +2012,143 @@ it('keeps Mermaid source fence lines at a readable height after expanding a prev
   expect(source.nextElementSibling?.textContent).toBe('脚注');
   expect(value.value).toBe(content);
   expect(errors).toEqual([]);
+});
+
+it('previews Mermaid source independently of math and closes without changing Markdown or history', async () => {
+  const content = '```mermaid\ngraph TD\n  A --> B\n```\n\n脚注\n';
+  const { editor, value, preferences, capabilities, errors } = await mount(content);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  await vi.waitFor(() => expect(view.dom.querySelector('.tano-mermaid-preview svg')).not.toBeNull());
+  view.dom.querySelector<HTMLElement>('.tano-mermaid-preview')!.click();
+  const source = view.dom.querySelector<HTMLElement>('[data-tano-live-source]')!;
+  const preview = source.querySelector<HTMLElement>('.tano-live-mermaid-preview')!;
+  await vi.waitFor(() => expect(preview.querySelector('svg')).not.toBeNull());
+  expect(preview.hidden).toBe(false);
+  expect(source.querySelector('code')!.textContent).toBe(content.split('\n\n')[0]);
+  preferences.value = { ...preferences.value, previewMathWhileEditing: false };
+  await nextTick();
+  expect(preview.hidden).toBe(false);
+  preferences.value = { ...preferences.value, previewMermaidWhileEditing: false };
+  await nextTick();
+  expect(preview.hidden).toBe(true);
+  preferences.value = { ...preferences.value, previewMermaidWhileEditing: true };
+  await nextTick();
+  await vi.waitFor(() => expect(preview.hidden).toBe(false));
+  capabilities.value.features.mermaid = false;
+  await nextTick();
+  expect(view.dom.querySelector<HTMLElement>('.tano-live-mermaid-preview')!.hidden).toBe(true);
+  capabilities.value.features.mermaid = true;
+  await nextTick();
+  await vi.waitFor(() => expect(view.dom.querySelector<HTMLElement>('.tano-live-mermaid-preview')!.hidden).toBe(false));
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, view.state.doc.content.size - 1)));
+  expect(view.dom.querySelector('.tano-live-mermaid-preview')).toBeNull();
+  expect(value.value).toBe(content);
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+it('keeps the last valid Mermaid editing preview during invalid input and recovers', async () => {
+  const { editor, value, errors } = await mount('```mermaid\ngraph TD\n  A --> B\n```\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.dom.querySelector<HTMLElement>('.tano-mermaid-preview')!.click();
+  const preview = view.dom.querySelector<HTMLElement>('.tano-live-mermaid-preview')!;
+  await vi.waitFor(() => expect(preview.querySelector('svg')).not.toBeNull());
+  const previous = preview.innerHTML;
+  vi.mocked(mermaid.render).mockRejectedValueOnce(new Error('incomplete diagram'));
+  const replaceSource = (source: string) => {
+    const node = view.state.doc.firstChild!;
+    view.dispatch(view.state.tr.insertText(source, 1, node.nodeSize - 1));
+  };
+  replaceSource('```mermaid\ngraph TD\n  A[\n```');
+  await vi.waitFor(() => expect(preview.classList.contains('tano-mermaid-preview-stale')).toBe(true));
+  expect(preview.innerHTML).toBe(previous);
+  expect(preview.hidden).toBe(false);
+  replaceSource('```mermaid\ngraph LR\n  A --> C\n```');
+  await vi.waitFor(() => expect(preview.classList.contains('tano-mermaid-preview-stale')).toBe(false));
+  expect(preview.hidden).toBe(false);
+  expect(vi.mocked(mermaid.render).mock.calls.at(-1)?.[1]).toContain('A --> C');
+  replaceSource('```mermaid\n\n```');
+  expect(preview.hidden).toBe(true);
+  expect(preview.querySelector('svg')).toBeNull();
+  expect(value.value).toContain('```mermaid');
+  expect(errors).toEqual([]);
+});
+
+it('discards late Mermaid editing renders after disabling the preview', async () => {
+  const { editor, preferences, errors } = await mount('```mermaid\ngraph TD\n  A --> B\n```\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  await vi.waitFor(() => expect(view.dom.querySelector('.tano-mermaid-preview svg')).not.toBeNull());
+  let complete!: (value: Awaited<ReturnType<typeof mermaid.render>>) => void;
+  vi.mocked(mermaid.render).mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+  view.dom.querySelector<HTMLElement>('.tano-mermaid-preview')!.click();
+  const preview = view.dom.querySelector<HTMLElement>('.tano-live-mermaid-preview')!;
+  await vi.waitFor(() => expect(complete).toBeTypeOf('function'));
+  preferences.value = { ...preferences.value, previewMermaidWhileEditing: false };
+  await nextTick();
+  complete({ svg: '<svg xmlns="http://www.w3.org/2000/svg"/>', diagramType: 'flowchart-v2' });
+  await vi.waitFor(() => expect(document.querySelector('body > [aria-hidden="true"] svg')).toBeNull());
+  expect(preview.hidden).toBe(true);
+  expect(preview.querySelector('svg')).toBeNull();
+  expect(errors).toEqual([]);
+});
+
+it('restores an unchanged Mermaid preview synchronously when the caret leaves its source', async () => {
+  const content = '```mermaid\nsequenceDiagram\n  Alice->>Bob: Hello\n```\n\n脚注\n';
+  const render = vi.mocked(mermaid.render).mockClear();
+  const { editor, value, errors } = await mount(content);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  await vi.waitFor(() => expect(view.dom.querySelector('.tano-mermaid-preview svg')).not.toBeNull());
+  const calls = render.mock.calls.length;
+  for (let index = 0; index < 3; index++) {
+    view.dom.querySelector<HTMLElement>('.tano-mermaid-preview')!.click();
+    expect(view.dom.querySelector('[data-tano-live-source]')).not.toBeNull();
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, view.state.doc.content.size - 1)));
+    // No microtask/frame may see an empty preview that collapses the block.
+    expect(view.dom.querySelector('.tano-mermaid-preview svg')).not.toBeNull();
+    expect(render.mock.calls).toHaveLength(calls);
+  }
+  expect(value.value).toBe(content);
+  expect(editor.value!.canUndo()).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+it('gives cached Mermaid previews independent SVG and marker namespaces', async () => {
+  vi.mocked(mermaid.render).mockImplementationOnce(async id => ({
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" id="${id}"><defs><marker id="${id}-arrow"/></defs><path marker-end="url(#${id}-arrow)"/></svg>`,
+    diagramType: 'flowchart-v2',
+  }));
+  const { editor } = await mount('```mermaid\ngraph TD\n  A --> B\n```\n\n脚注\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  await vi.waitFor(() => expect(view.dom.querySelector('.tano-mermaid-preview svg')).not.toBeNull());
+  const originalId = view.dom.querySelector('svg')!.id;
+  const diagram = view.state.doc.firstChild!;
+  view.dispatch(view.state.tr.insert(view.state.doc.content.size, diagram));
+  const svgs = [...view.dom.querySelectorAll('.tano-mermaid-preview svg')];
+  expect(svgs).toHaveLength(2);
+  expect(svgs[0]!.id).toBe(originalId);
+  expect(svgs[1]!.id).not.toBe(originalId);
+  for (const svg of svgs)
+    expect(svg.querySelector('path')!.getAttribute('marker-end')).toBe(`url(#${svg.id}-arrow)`);
+});
+
+it.each([false, true])('isolates and removes Mermaid measurement DOM (failure: %s)', async failure => {
+  let complete!: (value: Awaited<ReturnType<typeof mermaid.render>>) => void;
+  let fail!: (reason: Error) => void;
+  const render = vi.mocked(mermaid.render).mockClear().mockImplementationOnce(() => new Promise((resolve, reject) => {
+    complete = resolve;
+    fail = reject;
+  }));
+  await mount('```mermaid\ngraph TD\n  A --> B\n```\n');
+  await vi.waitFor(() => expect(render).toHaveBeenCalled());
+  const host = render.mock.calls[0]![2] as HTMLElement;
+  expect(host.isConnected).toBe(true);
+  expect(host.parentElement).toBe(document.body);
+  expect(host.style.position).toBe('fixed');
+  expect(host.style.visibility).toBe('hidden');
+  if (failure) fail(new Error('incomplete diagram'));
+  else complete({ svg: '<svg xmlns="http://www.w3.org/2000/svg"/>', diagramType: 'flowchart-v2' });
+  await vi.waitFor(() => expect(host.isConnected).toBe(false));
+  expect(root.querySelector(failure ? '.tano-mermaid-preview-stale' : '.tano-mermaid-preview svg')).not.toBeNull();
 });
 
 it('shows one quiet placeholder for an empty Mermaid block', async () => {
@@ -5673,16 +5811,12 @@ function wrapInput(view: import('@milkdown/kit/prose/view').EditorView, key: str
 }
 
 it('maps full-width yuan to an inline formula with preview and preserves the formula on blur', async () => {
-  const { value, editor, preferences, capabilities } = await mount('x_1\n');
+  const { value, editor, preferences } = await mount('x_1\n');
   const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
   view.focus();
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 4)));
   expect(wrapInput(view, '￥')).toBeFalsy();
-  preferences.value.selectionWrapping = { ...defaultSelectionWrapping, yenToDollar: true };
-  capabilities.value.features.math = false;
-  await nextTick();
-  expect(wrapInput(view, '￥')).toBeFalsy();
-  capabilities.value.features.math = true;
+  preferences.value.chineseInput = { ...defaultChineseInput, yenToDollar: true };
   await nextTick();
   expect(wrapInput(view, '￥')).toBe(true);
   expect(value.value).toBe('$x_1$\n');
@@ -5691,6 +5825,102 @@ it('maps full-width yuan to an inline formula with preview and preserves the for
   view.dom.blur();
   await nextTick();
   expect(value.value).toBe('$x_1$\n');
+});
+
+it.each([true, false])('maps newly typed Chinese punctuation and supports undo with revealMarkdown=%s', async reveal => {
+  const { value, editor, preferences, readonly, revealMarkdown } = await mount('原文【，。】\n');
+  revealMarkdown.value = reveal;
+  await nextTick();
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 7)));
+  expect(wrapInput(view, '（！……')).toBeFalsy();
+  preferences.value.chineseInput = { ...defaultChineseInput, parentheses: true, exclamation: true, ellipsisToCaret: true };
+  await nextTick();
+  expect(value.value).toBe('原文【，。】\n');
+  expect(wrapInput(view, '（！……')).toBe(true);
+  expect(value.value).toBe('原文【，。】(!^\n');
+  expect(editor.value!.undoLastChange()).toBe(true);
+  expect(value.value).toBe('原文【，。】\n');
+  readonly.value = true;
+  await nextTick();
+  expect(wrapInput(view, '（！……')).toBeFalsy();
+});
+
+it.each(['keydown', 'beforeinput'])('inserts Chinese punctuation mapping before DOM mutation via %s', async method => {
+  const { value, editor, preferences, readonly } = await mount('正文\n');
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3)));
+  const event = () => method === 'keydown'
+    ? new KeyboardEvent('keydown', { key: '【', code: 'BracketLeft', keyCode: 219, bubbles: true, cancelable: true })
+    : new InputEvent('beforeinput', { inputType: 'insertText', data: '【', bubbles: true, cancelable: true });
+  const disabled = event();
+  view.dom.dispatchEvent(disabled);
+  expect(disabled.defaultPrevented).toBe(false);
+  preferences.value.chineseInput = { ...defaultChineseInput, brackets: true };
+  await nextTick();
+  const enabled = event();
+  view.dom.dispatchEvent(enabled);
+  expect(enabled.defaultPrevented).toBe(true);
+  expect(view.dom.textContent).toContain('正文[');
+  expect(view.dom.textContent).not.toContain('【');
+  expect(editor.value!.undoLastChange()).toBe(true);
+  expect(value.value).toBe('正文\n');
+  readonly.value = true;
+  await nextTick();
+  const locked = event();
+  view.dom.dispatchEvent(locked);
+  expect(locked.defaultPrevented).toBe(false);
+});
+
+it('honors the beforeinput target range instead of overwriting the current selection', async () => {
+  const { value, editor, preferences } = await mount('甲乙\n');
+  preferences.value.chineseInput = { ...defaultChineseInput, brackets: true };
+  await nextTick();
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3)));
+  const text = view.dom.querySelector('p')!.firstChild!;
+  const event = new InputEvent('beforeinput', { inputType: 'insertText', data: '【', bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'getTargetRanges', { value: () => [{ startContainer: text, startOffset: 0, endContainer: text, endOffset: 1 }] });
+  view.dom.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(true);
+  expect(view.state.doc.textContent).toBe('[乙');
+  expect(value.value).toBe('\\[乙\n');
+});
+
+it('converts committed IME punctuation without changing a composition in progress', async () => {
+  const { value, editor, preferences } = await mount('正文\n');
+  preferences.value.chineseInput = { ...defaultChineseInput, comma: true };
+  await nextTick();
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3)));
+  view.dom.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+  expect(wrapInput(view, '，')).toBeFalsy();
+  view.dispatch(view.state.tr.insertText('，'));
+  expect(value.value).toBe('正文，\n');
+  view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '，' }));
+  // Conversion must finish in the microtask checkpoint, before any timer/paint.
+  await new Promise<void>(resolve => queueMicrotask(() => queueMicrotask(resolve)));
+  expect(value.value).toBe('正文,\n');
+  expect(editor.value!.undoLastChange()).toBe(true);
+  expect(value.value).toBe('正文\n');
+});
+
+it('uses mapped ellipsis with the superscript wrapper and keeps mapping active when wrapping is off', async () => {
+  const { value, editor, preferences } = await mount('文字\n');
+  preferences.value.chineseInput = { ...defaultChineseInput, ellipsisToCaret: true };
+  preferences.value.selectionWrapping = { ...defaultSelectionWrapping, superscript: true };
+  await nextTick();
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3, 1)));
+  expect(wrapInput(view, '……')).toBe(true);
+  expect(value.value).toBe('^文字^\n');
+  expect(view.state.doc.textBetween(view.state.selection.from, view.state.selection.to)).toBe('文字');
+  expect(editor.value!.undoLastChange()).toBe(true);
+  preferences.value.selectionWrapping.enabled = false;
+  await nextTick();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3)));
+  expect(wrapInput(view, '……')).toBe(true);
+  expect(value.value).toBe('文字^\n');
 });
 
 it('upgrades retained backward selections to bold and undoes the wrapper', async () => {

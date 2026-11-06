@@ -10,6 +10,7 @@ import { t } from './i18n';
 import { readSettingsPage } from './settings-preference';
 import { focusedOutlineIndices } from './outline-tree';
 import AppTooltip from './components/AppTooltip.vue';
+import DocumentOutline from './components/DocumentOutline.vue';
 import { assistantDiscussionPrompt } from './assistant/language';
 import { assistantSourceRange } from './assistant/source-selection';
 import type { AssistantSource } from '@tano/protocol';
@@ -98,7 +99,7 @@ import MarkdownEditorSkeleton from './components/MarkdownEditorSkeleton.vue';
 import DocumentLoading from './components/DocumentLoading.vue';
 const MarkdownEditor = defineAsyncComponent({ loader: () => import('@tano/editor'), delay: 0, loadingComponent: MarkdownEditorSkeleton });
 const CalloutIconPicker = defineAsyncComponent(() => import('./components/CalloutIconPicker.vue'));
-import { defaultEditorPreferences, normalizeCopyFormat, normalizeSelectionWrapping } from '@tano/editor/runtime';
+import { defaultEditorPreferences, normalizeCopyFormat, normalizeSelectionWrapping, normalizeChineseInput } from '@tano/editor/runtime';
 import type { EditorPreferences } from '@tano/editor/runtime';
 import { defaultSelectionContext } from '@tano/editor/selection-context';
 import type { EditorSelectionContext } from '@tano/editor/selection-context';
@@ -1010,6 +1011,12 @@ function readSelectionWrapping() {
   try { return normalizeSelectionWrapping(JSON.parse(readTextPreference('selectionWrapping') || 'null')); }
   catch { return normalizeSelectionWrapping(); }
 }
+function readChineseInput() {
+  let value: unknown, legacy: unknown;
+  try { value = JSON.parse(readTextPreference('chineseInput') || 'null'); } catch { /* Use safe defaults. */ }
+  try { legacy = JSON.parse(readTextPreference('selectionWrapping') || 'null'); } catch { /* No legacy preference. */ }
+  return normalizeChineseInput(value, legacy);
+}
 const editorPreferences = ref<EditorPreferences>({
   copyFormat: normalizeCopyFormat(readTextPreference('copyFormat')),
   autoSpacing: readPreference('autoSpacing', defaultEditorPreferences.autoSpacing ?? false),
@@ -1017,9 +1024,11 @@ const editorPreferences = ref<EditorPreferences>({
     'previewMathWhileEditing',
     defaultEditorPreferences.previewMathWhileEditing,
   ),
+  previewMermaidWhileEditing: readPreference('previewMermaidWhileEditing', defaultEditorPreferences.previewMermaidWhileEditing ?? true),
   folding: readPreference('folding', defaultEditorPreferences.folding),
   blankBlockAiShortcut: readPreference('blankBlockAiShortcut', defaultEditorPreferences.blankBlockAiShortcut),
   selectionWrapping: readSelectionWrapping(),
+  chineseInput: readChineseInput(),
 });
 watch(
   editorPreferences,
@@ -1027,9 +1036,11 @@ watch(
     saveTextPreference('copyFormat', normalizeCopyFormat(preferences.copyFormat));
     savePreference('autoSpacing', preferences.autoSpacing ?? false);
     savePreference('previewMathWhileEditing', preferences.previewMathWhileEditing);
+    savePreference('previewMermaidWhileEditing', preferences.previewMermaidWhileEditing !== false);
     savePreference('folding', preferences.folding);
     savePreference('blankBlockAiShortcut', preferences.blankBlockAiShortcut);
     saveTextPreference('selectionWrapping', JSON.stringify(normalizeSelectionWrapping(preferences.selectionWrapping)));
+    saveTextPreference('chineseInput', JSON.stringify(normalizeChineseInput(preferences.chineseInput)));
   },
   { deep: true },
 );
@@ -3098,23 +3109,36 @@ function outlineContextKeydown(event: KeyboardEvent) {
   items[next]?.focus();
 }
 const headingViewport = new HeadingViewport();
-function updateActiveHeading() {
+let pendingHeadingScroll: { top: number; coverBottom: number } | undefined;
+function updateActiveHeading(snapshot?: typeof pendingHeadingScroll) {
   const container = documentScroll.value;
   const cover = container?.querySelector<HTMLElement>('.document-cover');
   const pane = container?.closest<HTMLElement>('.workspace-pane');
   // Measure in the inspector's containing pane, including partially scrolled covers.
-  outlineCoverBottom.value = cover && pane
+  outlineCoverBottom.value = snapshot?.coverBottom ?? (cover && pane
     ? Math.max(0, cover.getBoundingClientRect().bottom - pane.getBoundingClientRect().top + 16)
-    : 0;
+    : 0);
   const root = editorScroll.value;
   if (!container || !root || source.value || !outline.value.length) return;
-  activeHeading.value = Math.min(headingViewport.active(root, container), outline.value.length - 1);
+  activeHeading.value = Math.min(headingViewport.active(root, container, 100, snapshot?.top), outline.value.length - 1);
 }
-function scheduleActiveHeading() {
+function scheduleActiveHeading(event?: Event) {
+  const container = documentScroll.value;
+  if (event?.type === 'scroll' && event.target !== container) return;
+  if (event?.type === 'scroll' && container) {
+    // Read before animation-frame callbacks move floating controls. Even a
+    // scrollTop getter after those writes can force pending layout to finish.
+    const cover = container.querySelector<HTMLElement>('.document-cover');
+    const pane = container.closest<HTMLElement>('.workspace-pane');
+    pendingHeadingScroll = { top: container.scrollTop, coverBottom: cover && pane
+      ? Math.max(0, cover.getBoundingClientRect().bottom - pane.getBoundingClientRect().top + 16) : 0 };
+  } else pendingHeadingScroll = undefined;
   if (headingFrame !== undefined) return;
   headingFrame = requestAnimationFrame(() => {
     headingFrame = undefined;
-    updateActiveHeading();
+    const snapshot = pendingHeadingScroll;
+    pendingHeadingScroll = undefined;
+    updateActiveHeading(snapshot);
   });
 }
 watch([() => active.value?.content, source], () => {
@@ -6155,6 +6179,7 @@ const helpBlocked = computed(() => !!(
                         :capabilities="store.capabilities"
                         :reference-targets="store.referenceTargets"
                         :preferences="editorPreferences"
+                        :translate="t"
                         :extension="
                           active.id === store.active?.id ? editing.active?.extension : undefined
                         "
@@ -6351,32 +6376,7 @@ const helpBlocked = computed(() => !!(
                     @keydown.esc.stop.prevent="toggleOutlineSearch"
                   />
                 </div>
-                <nav v-if="panel === 'outline'" v-scroll-fade class="outline" :aria-label="t('文档大纲')">
-                  <button
-                    v-for="{ heading, index } in visibleOutline"
-                    :key="index"
-                    :class="{
-                      'outline-active': activeHeading === index,
-                    }"
-                    :style="{
-                      '--outline-indent': `${Math.max(0, heading.level - 1) * 12}px`,
-                      '--outline-marker-width': `${Math.max(9, 20 - heading.level * 2)}px`,
-                    }"
-                    :aria-label="t('跳转到{0}', [heading.text])"
-                    :aria-current="activeHeading === index ? 'location' : undefined"
-                    @click="jumpToHeading(index, true)"
-                  >
-                    <span class="outline-marker" aria-hidden="true" />
-                    <span class="outline-text">{{ heading.text }}</span>
-                  </button>
-                  <p v-if="!outline.length" class="panel-empty">
-                    <span class="outline-empty-marker" aria-hidden="true" />
-                    {{ t('写下一个标题，') }}<br />{{ t('让思路有迹可循。') }}
-                  </p>
-                  <p v-else-if="!visibleOutline.length" class="outline-no-results" role="status">
-                    {{ t('没有匹配的标题') }}
-                  </p>
-                </nav>
+<DocumentOutline v-if="panel === 'outline'" :items="visibleOutline" :has-headings="!!outline.length" :active-index="activeHeading" @select="jumpToHeading($event, true)" />
                 <div v-else class="activity-list">
                   <p class="activity-explainer">{{ t('这个会话中的文件变化。外部编辑者身份暂不可识别。') }}</p>
                   <button v-if="localNative" class="secondary-button" @click="agentPanel = true">
