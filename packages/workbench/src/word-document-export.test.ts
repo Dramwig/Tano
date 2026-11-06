@@ -104,3 +104,21 @@ it('picks one Latin and one CJK font for Word', async () => {
   expect(wordFonts(visualFontFamily('serif', ''))).toEqual({ latin: 'Literata', eastAsia: 'SimSun' });
   expect(wordFonts('"Inter", sans-serif')).toEqual({ latin: 'Inter', eastAsia: 'Inter' });
 });
+
+it('resolves theme font variables and nested fallbacks before choosing Word faces', async () => {
+  const { wordFonts } = await import('./word-document-export');
+  const style = document.documentElement.style;
+  style.setProperty('--test-word-font', 'var(--test-word-base)');
+  style.setProperty('--test-word-base', '"Inter", "Microsoft YaHei", sans-serif');
+  try {
+    expect(wordFonts('var(--test-word-font, Georgia, serif)'))
+      .toEqual({ latin: 'Inter', eastAsia: 'Microsoft YaHei' });
+    expect(wordFonts('var(--missing-word-font, var(--missing-word-base, Georgia, serif))'))
+      .toEqual({ latin: 'Georgia', eastAsia: 'SimSun' });
+    style.setProperty('--test-word-base', 'var(--test-word-font)');
+    expect(wordFonts('var(--test-word-font)')).toEqual({ latin: 'Arial', eastAsia: 'Arial' });
+  } finally {
+    style.removeProperty('--test-word-font');
+    style.removeProperty('--test-word-base');
+  }
+});

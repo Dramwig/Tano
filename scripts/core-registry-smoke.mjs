@@ -55,7 +55,9 @@ try {
   const dependencies = Object.fromEntries(manifest.packages.map(p => [p.name,
     p.name === p.publishedName ? p.version : `npm:${p.publishedName}@${p.version}`]));
   const devDependencies = {};
-  for (const name of ['vite', '@vitejs/plugin-vue', 'vue', 'pinia'])
+  // Vue needs TypeScript to resolve imported defineProps interfaces in the
+  // distributed SFC sources, just as it does in the real cloud consumer.
+  for (const name of ['vite', '@vitejs/plugin-vue', 'vue', 'pinia', 'typescript'])
     devDependencies[name] = JSON.parse(await readFile(resolve('node_modules', name, 'package.json'), 'utf8')).version;
   await writeFile(join(project, 'package.json'), JSON.stringify({ name: 'tano-registry-smoke', private: true, type: 'module', dependencies,
     devDependencies }, null, 2));

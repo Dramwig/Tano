@@ -121,10 +121,23 @@ const codeFont = { ascii: 'Consolas', hAnsi: 'Consolas', cs: 'Consolas' };
 const genericFonts = /^(-apple-system|BlinkMacSystemFont|system-ui|ui-[a-z-]+|sans-serif|serif|monospace)$/i;
 const cjkFont = /YaHei|PingFang|Hiragino|CJK|Source Han|Noto (Sans|Serif) SC|Song|SimSun|SimHei|Sarasa|Maple Mono NF CN|[\u3400-\u9fff]/i;
 const windowsCjkFont = /^(Microsoft YaHei|SimSun|SimHei|DengXian)$/i;
+function resolveFontVariables(stack: string): string {
+  const style = typeof document === 'undefined' ? undefined : getComputedStyle(document.documentElement);
+  // Resolve inner expressions first, including theme variables and their CSS
+  // fallbacks. A bounded expansion also prevents cyclic theme variables from
+  // reaching Word as literal font names.
+  for (let depth = 0; depth < 16; depth++) {
+    const next = stack.replace(/var\(\s*(--[\w-]+)\s*(?:,\s*([^()]*))?\)/g,
+      (_, name: string, fallback = '') => style?.getPropertyValue(name).trim() || fallback);
+    if (next === stack) break;
+    stack = next;
+  }
+  return stack;
+}
 /** Word has no fallback chain: give it one concrete Latin face and one CJK face. */
 export function wordFonts(stack: string): { latin: string; eastAsia: string } {
-  const families = stack.split(',').map((name) => name.trim().replace(/^['"]|['"]$/g, ''));
-  const names = families.filter((name) => name && !genericFonts.test(name));
+  const families = resolveFontVariables(stack).split(',').map((name) => name.trim().replace(/^['"]|['"]$/g, ''));
+  const names = families.filter((name) => name && !genericFonts.test(name) && !/[()]/.test(name));
   // Prefer faces Word can resolve on any Windows install; variable fonts and
   // macOS-only CJK faces are kept only when nothing portable is listed.
   const latinNames = names.filter((name) => !cjkFont.test(name));
