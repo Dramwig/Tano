@@ -84,22 +84,16 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 .theme-preview-callout > i { width: 85%; height: 2px; border-radius: 1px; background: var(--preview-green); opacity: .45; }
 .theme-preview-callout > i:last-child { width: 60%; }
 .theme-preview-paragraph-short { display: none; }
-/* Floating cards keep the same workspace silhouette, with a recessed desk. */
-[data-preview-structure='islands'] .theme-preview-workspace { gap: 5px; padding: 5px; background: var(--preview-sidebar); }
+/* Two floating cards under a top bar that sits directly on the desk. */
+[data-preview-structure='islands'] .theme-preview-toolbar { border-bottom: 0; background: var(--preview-sidebar); }
+[data-preview-structure='islands'] .theme-preview-workspace { gap: 5px; padding: 0 5px 5px; background: var(--preview-sidebar); }
 [data-preview-structure='islands'] .theme-preview-sidebar { padding: 6px 4px; border: 1px solid var(--preview-line); border-radius: 4px; background: var(--preview-paper); }
 [data-preview-structure='islands'] .theme-preview-main { padding: 7px 9px; border: 1px solid var(--preview-line); border-radius: 4px; }
 [data-preview-structure='islands'] .theme-preview-document { gap: 6px; }
 [data-preview-structure='islands'] .theme-preview-nav:last-child { display: none; }
-/* A fine spine and binding suggest a notebook without a heavy leather frame. */
-[data-preview-structure='notebook'] .theme-preview-window { border-color: color-mix(in srgb, var(--preview-green) 24%, var(--preview-line)); }
-[data-preview-structure='notebook'] .theme-preview-main { padding: 6px 8px; background: var(--preview-sidebar); }
-[data-preview-structure='notebook'] .theme-preview-document { padding: 8px 9px 6px 12px; gap: 6px; border: 1px solid var(--preview-control-border); border-left: 3px solid var(--preview-green); border-radius: 2px 4px 4px 2px; background: var(--preview-paper); box-shadow: 1px 2px 2px #0000000c; }
-[data-preview-structure='notebook'] .theme-preview-document::before { content: ''; position: absolute; left: -5px; top: 8px; bottom: 5px; width: 5px; background: repeating-linear-gradient(to bottom, var(--preview-muted) 0 2px, transparent 2px 10px); border-radius: 1px; }
-[data-preview-structure='notebook'] .theme-preview-document::after { content: ''; position: absolute; right: 7px; top: -1px; width: 4px; height: 9px; background: var(--preview-green); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 75%, 0 100%); }
-[data-preview-structure='notebook'] .theme-preview-callout { padding-block: 3px; }
-/* Printed pages use a quiet sheet edge and a centered title. */
+/* Paper: a single soft sheet on the desk with a centred title. */
 [data-preview-structure='document'] .theme-preview-main { padding: 6px 16px; background: var(--preview-sidebar); }
-[data-preview-structure='document'] .theme-preview-document { padding: 8px 9px; gap: 6px; border: 1px solid var(--preview-control-border); background: var(--preview-paper); box-shadow: 2px 2px 0 -1px var(--preview-paper), 2px 2px 0 var(--preview-control-border); }
+[data-preview-structure='document'] .theme-preview-document { padding: 8px 9px; gap: 6px; border: 1px solid var(--preview-line); border-radius: 2px; background: var(--preview-paper); box-shadow: 0 2px 5px -2px #00000026; }
 [data-preview-structure='document'] .theme-preview-heading { width: 44%; align-self: center; height: 3px; margin-bottom: 2px; }
 [data-preview-structure='document'] .theme-preview-callout { display: none; }
 [data-preview-structure='document'] .theme-preview-paragraph-short { display: flex; }

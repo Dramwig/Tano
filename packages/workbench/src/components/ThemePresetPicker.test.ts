@@ -20,35 +20,50 @@ beforeEach(() => {
   app.mount(root);
 });
 afterEach(() => { app.unmount(); root.remove(); controller.dispose(); localStorage.clear(); });
-const more = () => root.querySelector<HTMLButtonElement>('[aria-label="更多主题"]')!;
+const more = () => root.querySelector<HTMLButtonElement>('button[aria-label="更多主题"]')!;
 const rowIds = () => [...root.querySelectorAll('.theme-preset-quick-row [data-preset-id]')].map(card => card.getAttribute('data-preset-id'));
 async function open() { more().click(); await nextTick(); await nextTick(); }
 
-it('keeps one row and swaps the current and previous presets after a selection', async () => {
+const pressed = () => [...root.querySelectorAll('.theme-preset-quick-row [aria-pressed="true"]')].map(card => card.getAttribute('data-preset-id'));
+
+it('lists every preset in catalog order without a collapsed panel when they fit in one row', async () => {
+  expect(rowIds()).toEqual(['builtin:tano', 'builtin:islands', 'builtin:paper']);
+  expect(pressed()).toEqual(['builtin:tano']);
+  expect(more()).toBeNull();
+  expect(root.querySelector('.theme-preset-quick-row')?.textContent).toContain('纸感');
+  expect(root.textContent).not.toMatch(/复古拟物|上次使用|暂无使用记录/);
+  root.querySelector<HTMLButtonElement>('.theme-preset-quick-row [data-preset-id="builtin:paper"]')!.click();
+  await nextTick();
+  expect(rowIds()).toEqual(['builtin:tano', 'builtin:islands', 'builtin:paper']);
+  expect(pressed()).toEqual(['builtin:paper']);
+  expect(more()).toBeNull();
+});
+
+async function customize() {
+  controller.select({ workspaceId: 'one', kind: 'preset', id: 'builtin:paper' });
+  controller.select({ workspaceId: 'one', kind: 'shape', id: 'builtin:crisp' });
+  await nextTick();
+}
+
+it('collapses into current, previous and more once the choices no longer fit', async () => {
+  await customize();
   expect(root.querySelector('.theme-preset-quick-row')?.children).toHaveLength(3);
-  expect(rowIds()).toEqual(['builtin:tano', 'builtin:islands']);
-  expect(root.querySelector('.theme-preset-quick-row')?.textContent).toContain('卡片岛');
-  expect(root.textContent).not.toMatch(/上次使用|暂无使用记录/);
-  expect(root.querySelector('.theme-preset-popover')).toBeNull();
+  expect(rowIds()).toEqual(['current', 'builtin:paper']);
+  expect(root.querySelector('.theme-preset-quick-row')?.textContent).toContain('当前搭配');
+  expect(controller.state.value.currentPreset?.structure).toBe('document');
   await open();
   expect(more().getAttribute('aria-expanded')).toBe('true');
   expect([...root.querySelectorAll('.theme-preset-popover [data-preset-id]')].map(card => card.getAttribute('data-preset-id')))
-    .toEqual(['builtin:retro', 'builtin:paper']);
-  root.querySelector<HTMLButtonElement>('.theme-preset-popover [data-preset-id="builtin:retro"]')!.click();
+    .toEqual(['builtin:tano', 'builtin:islands']);
+  root.querySelector<HTMLButtonElement>('.theme-preset-popover [data-preset-id="builtin:islands"]')!.click();
   await nextTick();
-  expect(rowIds()).toEqual(['builtin:retro', 'builtin:tano']);
   expect(root.querySelector('.theme-preset-popover')).toBeNull();
-  expect(document.activeElement).toBe(more());
-  await open();
-  expect([...root.querySelectorAll('.theme-preset-popover [data-preset-id]')].map(card => card.getAttribute('data-preset-id')))
-    .toEqual(['builtin:islands', 'builtin:paper']);
-  more().click(); await nextTick();
-  root.querySelector<HTMLButtonElement>('.theme-preset-quick-row [data-preset-id="builtin:tano"]')!.click();
-  await nextTick();
-  expect(rowIds()).toEqual(['builtin:tano', 'builtin:retro']);
+  expect(rowIds()).toEqual(['builtin:tano', 'builtin:islands', 'builtin:paper']);
+  expect(pressed()).toEqual(['builtin:islands']);
 });
 
 it('closes on Escape without closing settings and restores keyboard focus', async () => {
+  await customize();
   await open();
   const bubbled = vi.fn();
   root.addEventListener('keydown', bubbled);
@@ -60,15 +75,12 @@ it('closes on Escape without closing settings and restores keyboard focus', asyn
   expect(document.activeElement).toBe(more());
 });
 
-it('previews a custom combination and hides unavailable entries from the previous slot', async () => {
-  controller.select({ workspaceId: 'one', kind: 'preset', id: 'builtin:retro' });
-  controller.select({ workspaceId: 'one', kind: 'shape', id: 'builtin:crisp' });
-  await nextTick();
-  expect(rowIds()[0]).toBe('current');
-  expect(root.querySelector('.theme-preset-quick-row')?.textContent).toContain('当前搭配');
-  expect(controller.state.value.currentPreset?.structure).toBe('notebook');
-  controller.state.value = { ...controller.state.value, presets: controller.state.value.presets.map(preset => ({ ...preset, unavailable: true })) };
+it('hides unavailable entries from the previous slot of a custom combination', async () => {
+  await customize();
+  controller.state.value = { ...controller.state.value, presets: [...controller.state.value.presets,
+    { id: 'plugin:extra', label: '额外', selected: { layout: 'builtin:islands' } }].map(preset => ({ ...preset, unavailable: true })) };
   await nextTick();
   expect(rowIds()).toEqual(['current']);
+  expect(more()).not.toBeNull();
   expect(root.textContent).not.toMatch(/上次使用|暂无使用记录/);
 });

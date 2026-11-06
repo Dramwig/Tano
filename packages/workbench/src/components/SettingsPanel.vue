@@ -304,7 +304,7 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('appearance', 'appearance-presets', '主题预设', '只应用预设声明的配色、图标、布局和形态，未指定的项保持当前。', 'preset theme 一键 整套 预设 风格'),
   settingSearchEntry('appearance', 'appearance-color', '配色主题', '选择工作区主题插件。', 'theme 插件 风格 配色'),
   settingSearchEntry('appearance', 'appearance-icons', '文件与目录图标', '选择工作区图标主题。', 'icon 文件夹 图标 插件'),
-  settingSearchEntry('appearance', 'appearance-layout', '布局风格', '独立选择页面结构和材质，可与任意配色、图标混搭。', 'layout islands paper retro 卡片岛 复古 拟物 纸质 布局'),
+  settingSearchEntry('appearance', 'appearance-layout', '布局风格', '独立选择页面结构和材质，可与任意配色、图标混搭。', 'layout islands paper 卡片岛 纸感 纸质 布局'),
   ] : []),
   ...(!splitFonts.value.enabled ? [settingSearchEntry('appearance', 'appearance-visual-font', '可视化编辑字体', '选择内置字体，或使用本机已安装的字体。', 'font system serif mono Maple custom')] : []),
   settingSearchEntry('appearance', 'appearance-split-fonts', '分别设置中英文字体', '开启后分别选择中文和英文字体；关闭后恢复统一字体设置。', 'font split Chinese English 中英文 中文 英文 字体 拆分'),

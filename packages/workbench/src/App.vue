@@ -5352,6 +5352,7 @@ const helpBlocked = computed(() => !!(
             <DesktopTabs
               :loading="sessionPending"
               :pane-id="pane.id"
+              :show-navigation="rect.top === 0 && rect.left === 0"
               :detachable="native && !mobile"
               :file-drag="tabFileDrag"
               :assistant-tab="assistantTab"
@@ -5865,6 +5866,8 @@ const helpBlocked = computed(() => !!(
                 </template>
               </div>
             </ButtonVisibilityGroup>
+            <!-- Everything below the top bar. A layout can raise it as its own surface (card islands); otherwise display: contents. -->
+            <div class="workspace-page-body">
             <KeepAlive v-if="pane.tabs.includes(GRAPH_TAB_ID)">
               <RelationGraph
                 v-if="workspace && pane.activeId === GRAPH_TAB_ID"
@@ -6432,12 +6435,13 @@ const helpBlocked = computed(() => !!(
                 </div>
               </div>
             </aside>
+            </div>
           </div>
         </template>
       </WorkspacePanes>
       <WorkspacePanes v-else-if="store.tabs.length && !startupPending" :compact="compactPanes" :tabs-enabled="tabsEnabled" :class="{ 'workspace-native-tabs': tabsEnabled && !compactPanes }">
-        <template #tabs="{ pane }">
-          <div class="workspace-tabbar" :data-tab-pane-id="pane.id"><DesktopTabs :pane-id="pane.id" :detachable="false" /></div>
+        <template #tabs="{ pane, rect }">
+          <div class="workspace-tabbar" :data-tab-pane-id="pane.id"><DesktopTabs :pane-id="pane.id" :show-navigation="rect.top === 0 && rect.left === 0" :detachable="false" /></div>
         </template>
         <template #default="{ pane }">
           <template v-for="view in extensionViews" :key="view.id"><component v-if="pane.activeId === view.id" :is="view.component" :actions="viewActions[view.id]" /></template>

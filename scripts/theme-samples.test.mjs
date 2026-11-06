@@ -15,9 +15,9 @@ it('ships a layout-only plugin with independently composable structures and mate
   const built = await buildPlugin(directory);
   const shipped = await verifyPlugin(await readFile(resolve(directory, 'theme-layouts-1.0.0.tano-plugin.json'), 'utf8'));
   expect(shipped.integrity).toBe(built.integrity);
-  expect(built.pkg.manifest.appearance.layouts).toHaveLength(3);
-  expect(built.pkg.manifest.appearance.presets).toHaveLength(3);
-  expect(new Set(built.pkg.manifest.appearance.layouts.map(layout => layout.structure))).toEqual(new Set(['islands', 'notebook', 'document']));
+  expect(built.pkg.manifest.appearance.layouts).toHaveLength(2);
+  expect(built.pkg.manifest.appearance.presets).toHaveLength(2);
+  expect(new Set(built.pkg.manifest.appearance.layouts.map(layout => layout.structure))).toEqual(new Set(['islands', 'document']));
   expect(built.pkg.manifest.appearance.colors).toBeUndefined();
   expect(built.pkg.source).toBeUndefined();
 });

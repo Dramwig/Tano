@@ -902,8 +902,9 @@ it('emits a single complete-preset command and reflects matched or customized st
   appearance.value = { ...appearance.value, presets: [{ ...appearance.value.presets[0]!, unavailable: true,
     missing: [{ kind: 'shape', id: 'builtin:new-shape' }, { kind: 'layout', id: 'builtin:new-layout' }] }] };
   await nextTick();
-  root.querySelector<HTMLButtonElement>('[aria-label="更多主题"]')!.click(); await nextTick(); await nextTick();
-  const unavailable = root.querySelector<HTMLButtonElement>('.theme-preset-popover [data-preset-id="builtin:tano"]')!;
+  // Two choices fit in one row, so the unavailable preset is listed inline instead of behind 更多.
+  expect(root.querySelector('button[aria-label="更多主题"]')).toBeNull();
+  const unavailable = root.querySelector<HTMLButtonElement>('.theme-preset-quick-row [data-preset-id="builtin:tano"]')!;
   expect(unavailable.disabled).toBe(true);
   const reason = root.querySelector('.theme-preset-missing')!;
   expect(unavailable.getAttribute('aria-describedby')).toBe(reason.id);

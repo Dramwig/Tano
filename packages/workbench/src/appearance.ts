@@ -11,8 +11,7 @@ export const builtinDefault = 'builtin:tano';
 export const builtinAppearance: AppearanceBuiltins = {
   layouts: [
     { id: 'builtin:islands', label: '卡片岛', structure: 'islands', surface: 'flat', gap: 16, pageWidth: 960 },
-    { id: 'builtin:retro', label: '复古拟物', structure: 'notebook', surface: 'skeuomorphic', gap: 24, pageWidth: 960 },
-    { id: 'builtin:paper', label: '纸质文档', structure: 'document', surface: 'paper', gap: 24, pageWidth: 880 },
+    { id: 'builtin:paper', label: '纸感', structure: 'document', surface: 'paper', gap: 24, pageWidth: 800 },
   ],
   colors: builtinColors,
   shapes: [
@@ -27,8 +26,7 @@ export const builtinAppearance: AppearanceBuiltins = {
   presets: [
     { id: builtinDefault, label: '同页默认', selected: { color: builtinDefault, icons: builtinDefault, layout: builtinDefault, shape: builtinDefault } },
     { id: 'builtin:islands', label: '卡片岛', selected: { color: 'builtin:mist', icons: builtinDefault, layout: 'builtin:islands', shape: 'builtin:rounded' } },
-    { id: 'builtin:retro', label: '复古拟物', selected: { color: 'builtin:leather', icons: builtinDefault, layout: 'builtin:retro', shape: 'builtin:handwritten' } },
-    { id: 'builtin:paper', label: '纸质文档', selected: { color: 'builtin:ink', icons: builtinDefault, layout: 'builtin:paper', shape: 'builtin:print' } },
+    { id: 'builtin:paper', label: '纸感', selected: { color: 'builtin:ink', icons: builtinDefault, layout: 'builtin:paper', shape: 'builtin:print' } },
   ],
 };
 /** The host owns the catalog. The protocol only validates builtin reference syntax. */

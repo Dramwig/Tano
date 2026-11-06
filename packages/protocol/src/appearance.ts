@@ -75,14 +75,14 @@ export interface ThemePresetDefinition {
 export interface LayoutThemeDefinition {
   id: string;
   label: string;
-  structure: 'continuous' | 'islands' | 'notebook' | 'document';
-  surface: 'flat' | 'paper' | 'skeuomorphic';
+  structure: 'continuous' | 'islands' | 'document';
+  surface: 'flat' | 'paper';
   gap?: number;
   pageWidth?: number;
 }
 /** Only host-designed and verified structure/material pairs are supported. */
 export const layoutSurfaceByStructure = {
-  continuous: 'flat', islands: 'flat', notebook: 'skeuomorphic', document: 'paper',
+  continuous: 'flat', islands: 'flat', document: 'paper',
 } as const satisfies Record<LayoutThemeDefinition['structure'], LayoutThemeDefinition['surface']>;
 const color = /^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i;
 export function isFileIconColor(value: unknown): value is FileIconColor {
@@ -213,8 +213,10 @@ export function parsePluginAppearance(value: unknown): PluginAppearance {
   const icons = value.icons === undefined ? undefined : parseList(value.icons, parseFileIconTheme);
   const layouts = value.layouts === undefined ? undefined : parseList(value.layouts, item => {
     keys(item, ['id', 'label', 'structure', 'surface', 'gap', 'pageWidth']); id(item.id); label(item.label);
-    if (typeof item.structure !== 'string' || !['continuous', 'islands', 'notebook', 'document'].includes(item.structure) ||
-      typeof item.surface !== 'string' || !['flat', 'paper', 'skeuomorphic'].includes(item.surface)) throw new Error('布局风格无效');
+    // The skeuomorphic notebook structure was retired in favour of the calmer paper document.
+    if (item.structure === 'notebook') throw new Error('笔记本布局已停止支持，请改用 document 结构');
+    if (typeof item.structure !== 'string' || !['continuous', 'islands', 'document'].includes(item.structure) ||
+      typeof item.surface !== 'string' || !['flat', 'paper'].includes(item.surface)) throw new Error('布局风格无效');
     if (layoutSurfaceByStructure[item.structure as LayoutThemeDefinition['structure']] !== item.surface) throw new Error(`不支持此布局与材质组合：${item.structure} × ${item.surface}`);
     for (const [key, min, max] of [['gap', 8, 32], ['pageWidth', 640, 1200]] as const) {
       if (item[key] !== undefined && (typeof item[key] !== 'number' || !Number.isInteger(item[key]) || item[key] < min || item[key] > max)) throw new Error(`布局尺寸无效：${key}`);

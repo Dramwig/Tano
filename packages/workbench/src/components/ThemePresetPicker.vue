@@ -23,6 +23,12 @@ const previous = computed(() => [
   .find(preset => preset && !preset.unavailable && preset.id !== current.value.id));
 const morePresets = computed(() => props.appearance.presets
   .filter(preset => preset.id !== current.value.id && preset.id !== previous.value?.id));
+/** When every choice fits in the row, list them in catalog order and skip the collapsed "more" panel. */
+const inlinePresets = computed(() => {
+  const presets = props.appearance.presets;
+  const cards = presets.some(preset => preset.id === current.value.id) ? presets : [current.value, ...presets];
+  return cards.length <= 3 ? cards.map(preset => preset.id === current.value.id ? current.value : preset) : undefined;
+});
 
 function close(restoreFocus = false) {
   expanded.value = false;
@@ -47,7 +53,7 @@ function dismiss(event: PointerEvent) {
   if (picker.value?.contains(event.target) || event.target === picker.value?.closest('.settings-main')) return;
   close();
 }
-watch(() => [props.appearance.workspaceId, props.appearance.scope], () => close());
+watch(() => [props.appearance.workspaceId, props.appearance.scope, !!inlinePresets.value], () => close());
 onMounted(() => {
   document.addEventListener('pointerdown', dismiss, true);
 });
@@ -58,7 +64,10 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="picker" class="theme-preset-picker">
-    <div class="theme-preset-quick-row" :aria-label="t('常用主题')">
+    <div v-if="inlinePresets" class="theme-preset-quick-row" :aria-label="t('常用主题')">
+      <ThemePresetCard v-for="preset in inlinePresets" :key="preset.id" :preset="preset" :selected="preset.id === current.id" @select="select" />
+    </div>
+    <div v-else class="theme-preset-quick-row" :aria-label="t('常用主题')">
       <ThemePresetCard :preset="current" selected @select="select" />
       <ThemePresetCard v-if="previous" :preset="previous" @select="select" />
       <button ref="trigger" type="button" class="theme-preset-more" :aria-label="t('更多主题')"
@@ -67,7 +76,7 @@ onBeforeUnmount(() => {
         <span class="theme-preset-placeholder"><LayoutGrid :size="28" :stroke-width="1.3" aria-hidden="true" /></span>
       </button>
     </div>
-    <div v-if="expanded" :id="panelId" ref="panel" v-surface-motion="'ThemePresetPicker:0'"
+    <div v-if="expanded && !inlinePresets" :id="panelId" ref="panel" v-surface-motion="'ThemePresetPicker:0'"
       class="theme-preset-popover" role="region" :aria-label="t('更多主题')" tabindex="-1"
       @keydown.esc.stop.prevent="close(true)">
       <div class="theme-preset-grid">

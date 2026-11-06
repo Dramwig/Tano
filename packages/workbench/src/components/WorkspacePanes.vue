@@ -79,6 +79,11 @@ function focusPaneFromPointer(event: PointerEvent, paneId: string) {
     // the pane tree on the initial pointerdown.
     if (scrollbarWidth > 0 && event.clientX >= rect.right - scrollbarWidth) return;
   }
+  focusPaneFromEvent(event, paneId);
+}
+function focusPaneFromEvent(event: Event, paneId: string) {
+  // Shared history controls act on the focused pane, even when hosted elsewhere.
+  if (event.target instanceof Element && event.target.closest('.desktop-tab-navigation')) return;
   store.focusPane(paneId);
 }
 type Divider = ReturnType<typeof layoutGeometry>['dividers'][number];
@@ -124,7 +129,7 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
         v-show="!hidden" class="workspace-pane-tabbar" :inert="hidden"
         :class="{ 'workspace-pane-top-right': rect.left + rect.width >= 1 - 1e-6 }"
         :style="tabbarStyle(rect)"
-        @pointerdown.capture="focusPaneFromPointer($event, pane.id)" @focusin="store.focusPane(pane.id)">
+        @pointerdown.capture="focusPaneFromPointer($event, pane.id)" @focusin="focusPaneFromEvent($event, pane.id)">
         <slot name="tabs" :pane="pane" :rect="rect" />
       </div>
     </div>
@@ -138,7 +143,7 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
           v-for="{ pane, rect, hidden, topTabbar } in displayed" :key="pane.id" v-show="!hidden" class="workspace-pane" :inert="hidden"
           :class="{ 'workspace-pane-active': !hidden && pane.id === visibleActivePaneId, 'workspace-pane-top': rect.top === 0, 'workspace-pane-external-tabs': !singlePane && showTabs && topTabbar && !!$slots.tabs }"
           :data-pane-id="pane.id" :style="rectStyle(rect)" :aria-label="showTabs ? t('文档标签组') : t('文档内容')"
-          @pointerdown.capture="focusPaneFromPointer($event, pane.id)" @focusin="store.focusPane(pane.id)"
+          @pointerdown.capture="focusPaneFromPointer($event, pane.id)" @focusin="focusPaneFromEvent($event, pane.id)"
         >
           <slot v-if="!singlePane && showTabs && !topTabbar" name="tabs" :pane="pane" :rect="rect" />
           <slot :pane="pane" :rect="rect" :document="documentForTab(pane.activeId)"
@@ -174,7 +179,6 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
 .workspace-pane { --workspace-pane-tabbar-height: var(--workbench-tabbar-height); --inspector-top: calc(var(--workspace-pane-tabbar-height) + var(--topbar-height) + 44px + 16px); position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--paper); }
 .workspace-pane-external-tabs { --workspace-pane-tabbar-height: 0px; }
 .workspace-panes-multiple .workspace-pane { container-type: size; }
-.workspace-panes-multiple .workspace-pane-active { box-shadow: inset 0 2px var(--green); }
 .pane-divider { position: absolute; z-index: 12; touch-action: none; }
 .pane-divider-horizontal { width: 7px !important; transform: translateX(-50%); cursor: col-resize; }
 .pane-divider-vertical { height: 7px !important; transform: translateY(-50%); cursor: row-resize; }

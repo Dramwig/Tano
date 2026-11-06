@@ -66,7 +66,7 @@ npm run plugin -- verify examples/plugins/theme-paper/theme-paper-1.0.0.tano-plu
 内置形态包括同页默认、圆润宽松、柔和圆角、微圆角、直角紧凑。
 柔和圆角、微圆角保留原有 `builtin:handwritten`、`builtin:print` ID，以兼容已保存选择和预设引用。
 布局负责区域分块、纸张材质与结构间距；组件圆角、控件间距及浮层阴影引用形态 token。
-Notebook 的装订环、封皮与横线保留为布局材质。字体统一在「编辑字体与字号」中选择，系统字体始终使用系统字体栈；手写字体也在此单独选择。
+纸感布局的纸纹与居中标题属于布局材质。字体统一在「编辑字体与字号」中选择，系统字体始终使用系统字体栈；手写字体也在此单独选择。
 旧版 v2 主题包的 `font-ui`、`font-prose`、`font-mono` 仍通过协议校验，但宿主不再应用这些形态字体 token，切换形态或主题预设不会改变字体。
 因此可以同时选择纸页颜色、系统字体和卡片岛布局，也可以让卡片岛使用直角紧凑形态。
 
@@ -85,10 +85,10 @@ color、icons、layout、shape 均可选，至少声明一项；省略表示不�
 引用本插件的贡献时使用本地 ID，不加插件前缀。不允许跨插件引用。
 协议校验 builtin: 后的 ID 格式，不内置名单；宿主在注册目录中解析引用，不支持的内置项会禁用整套预设，不会部分应用。
 设置卡片会列出缺少项的类别和完整 ID，并提示安装或更新宿主，例如「缺少形态与密度 builtin:new-shape；请安装或更新宿主」。
-当前内置布局为 builtin:islands、builtin:retro、builtin:paper，形态为 builtin:rounded、builtin:handwritten、builtin:print、builtin:crisp。
+当前内置布局为 builtin:islands、builtin:paper，形态为 builtin:rounded、builtin:handwritten、builtin:print、builtin:crisp。
 内置 ID 从清单、设置消息到存储保持一致。
-三个内置预设各自搭配宿主自带的配色：卡片岛使用 `builtin:mist`（雾岛，冷灰蓝桌面与白色卡片）、复古拟物使用 `builtin:leather`（皮革，暖米色纸页与鞍革棕）、
-纸质文档使用 `builtin:ink`（墨纸，中性暖灰桌面与墨蓝强调）。它们定义在 `builtin-colors.ts`，同样出现在「配色主题」列表中，可与任何布局混搭；
+除同页默认外，两个内置预设各自搭配宿主自带的配色：卡片岛使用 `builtin:mist`（雾岛，冷灰蓝桌面与白色卡片），
+纸感使用 `builtin:ink`（纸墨，暖沙色桌面、米白纸页与墨蓝强调）。另有不绑定预设的 `builtin:sage`（护眼绿，柔和豆沙绿纸面、非纯黑文字与深叶绿强调，减少大面积亮白和蓝色）。它们定义在 `builtin-colors.ts`，同样出现在「配色主题」列表中，可与任何布局混搭；
 `AppearanceBuiltins.colors` 可选，注入目录时不提供即无内置配色。
 内置布局、形态与预设共同定义在宿主的 `builtinAppearance` 目录中；预设显式声明推荐槽位，不根据 `structure` 推断形态。
 构造 `AppearanceController` 时可注入完整目录，主题预设和布局下拉选项均使用该目录。新增布局不会自动生成或绑定预设。
@@ -179,7 +179,7 @@ iframe 仍为 opaque origin，不能访问宿主 DOM；主题不授予网络、�
 
 ## 页面结构与材质
 
-「布局风格」内置卡片岛、复古拟物、纸质文档，无需安装插件；也可以安装只提供布局的主题包。
+「布局风格」内置卡片岛、纸感，无需安装插件；也可以安装只提供布局的主题包。
 布局选择与配色、图标独立，切换时保留编辑器实例、选区及 Markdown 内容。
 
 ```json
@@ -196,21 +196,22 @@ iframe 仍为 opaque origin，不能访问宿主 DOM；主题不授予网络、�
 }
 ```
 
-以上是 manifest 的 `appearance` 字段。结构与材质只允许下列四组已实现组合，其他八组在导入时明确拒绝：
+以上是 manifest 的 `appearance` 字段。结构与材质只允许下列三组已实现组合，其他组合在导入时明确拒绝：
 
 | structure | surface |
 | --- | --- |
 | continuous | flat |
 | islands | flat |
-| notebook | skeuomorphic |
 | document | paper |
+
+早期的 `notebook × skeuomorphic`（复古拟物笔记本）已移除；仍声明它的布局会以「笔记本布局已停止支持」拒绝导入，已保存的相关选择回退到默认外观。
 
 字段说明：
 
 | 字段 | 取值与行为 |
 | --- | --- |
-| structure | continuous：连续界面；islands：导航与工作区分别是浮于桌面的两张圆角卡片，文档在卡片内保持连续；notebook：皮质封皮、缝线、螺旋装订环、横线纸（仅正文段落与列表）、红色页边线和布质书签的笔记本；document：带文档页眉、居中标题与下方纸叠的正式纸质文稿 |
-| surface | flat：平面；paper：轻纸纹、纸叠投影；skeuomorphic：细纸纹、桌面肌理和纸片浮层，与 notebook 结构组合成实体笔记本拟物风格 |
+| structure | continuous：连续界面；islands：导航与工作区分别是浮于桌面的两张圆角卡片，文档在卡片内保持连续；document：暖色桌面上的单张纸页，带安静的文件名页眉、居中标题与短线，正文行距略宽 |
+| surface | flat：平面；paper：极淡纸纹与柔和投影，不再绘制纸叠 |
 | gap | 可选整数 8–32，单位 px，默认 16；控制卡片间隙或纸张外边距 |
 | pageWidth | 可选整数 640–1200，单位 px，默认 880；控制文档卡片/纸张最大宽度 |
 

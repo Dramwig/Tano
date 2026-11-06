@@ -766,7 +766,8 @@ button:hover {
   color: var(--muted);
   line-height: 1.8;
 }
-.workspace-page-content {
+.workspace-page-content,
+.workspace-page-body {
   display: contents;
 }
 .component-loading-content {

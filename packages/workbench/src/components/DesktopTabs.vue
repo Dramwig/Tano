@@ -34,6 +34,7 @@ const props = defineProps<{
   loading?: boolean;
   detachable?: boolean;
   paneId?: string;
+  showNavigation?: boolean;
   fileDrag?: { workspaceId: string; ids: readonly string[] };
   assistantTab?: { id: string; title: string };
 }>();
@@ -1072,6 +1073,7 @@ async function onTabKeydown(event: KeyboardEvent) {
 
 <template>
   <ButtonVisibilityGroup
+    v-if="showNavigation !== false"
     v-slot="{ isVisible }"
     :items="navigationItems"
     preference-key="tano.preference.documentHiddenTools"
@@ -1086,8 +1088,8 @@ async function onTabKeydown(event: KeyboardEvent) {
       class="icon-button"
       :aria-label="t('后退')"
       :data-tooltip="t('后退')"
-      :disabled="!store.canNavigateHistory(-1, selectedId)"
-      @click="store.navigateHistory(-1, paneId)"
+      :disabled="!store.canNavigateHistory(-1)"
+      @click="store.navigateHistory(-1)"
     >
       <ArrowLeft :size="16" :stroke-width="1.6" />
     </button>
@@ -1097,8 +1099,8 @@ async function onTabKeydown(event: KeyboardEvent) {
       class="icon-button"
       :aria-label="t('前进')"
       :data-tooltip="t('前进')"
-      :disabled="!store.canNavigateHistory(1, selectedId)"
-      @click="store.navigateHistory(1, paneId)"
+      :disabled="!store.canNavigateHistory(1)"
+      @click="store.navigateHistory(1)"
     >
       <ArrowRight :size="16" :stroke-width="1.6" />
     </button>
@@ -1107,7 +1109,7 @@ async function onTabKeydown(event: KeyboardEvent) {
     class="desktop-tab-strip"
     :data-tab-pane-id="paneId"
     @pointerdown.capture="activatePane"
-    :class="{ 'desktop-tab-strip-file-drop': fileSlot }"
+    :class="{ 'desktop-tab-strip-file-drop': fileSlot, 'desktop-tab-strip-inset': showNavigation === false }"
     :style="{
       '--desktop-tab-count': paneTabs.length,
       width: frozenStripWidth === undefined ? undefined : `${frozenStripWidth}px`,
@@ -1331,6 +1333,10 @@ async function onTabKeydown(event: KeyboardEvent) {
   min-width: 0;
   height: 100%;
   align-items: stretch;
+}
+.desktop-tab-strip-inset {
+  margin-inline-start: 12px;
+  max-width: calc(100% - 12px);
 }
 .desktop-tab-strip-file-drop .desktop-tab-list {
   min-width: 4px;
