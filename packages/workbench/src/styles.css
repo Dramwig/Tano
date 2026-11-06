@@ -6240,3 +6240,7 @@ div.tano-feature-source {
 .tano-prose .tano-live-source-subscript { vertical-align: sub; }
 .source-editor .cm-source-inline_comment,
 .tano-prose .tano-live-source-inline_comment { opacity: 0.55; }
+
+/* Regional glyph shapes for application chrome; editor font preferences remain explicit. */
+:root:lang(zh-TW) { --font-cjk-sans: 'PingFang TC', 'Microsoft JhengHei UI', 'Microsoft JhengHei', 'Noto Sans CJK TC', 'Noto Sans TC', sans-serif; }
+:root:lang(ja) { --font-cjk-sans: 'Hiragino Sans', 'Yu Gothic UI', 'Yu Gothic', Meiryo, 'Noto Sans CJK JP', 'Noto Sans JP', sans-serif; }

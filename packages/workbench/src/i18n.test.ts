@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { initializeLocaleSync, setUiLocale, t, uiLocale } from './i18n';
-import { localePreferenceKey, parseUiLocale, readUiLocale } from './locale';
+import { localePreferenceKey, parseUiLocale, readUiLocale, uiLocales } from './locale';
 
 const nativeEvents = vi.hoisted(() => ({
   emit: vi.fn().mockResolvedValue(undefined),
@@ -45,4 +45,12 @@ it('updates existing views from storage events and native settings windows witho
   localStorage.removeItem(localePreferenceKey);
   window.dispatchEvent(new StorageEvent('storage', { key: null }));
   expect(uiLocale.value).toBe('zh-CN');
+});
+
+it.each(uiLocales)('persists %s and preserves interpolated content', locale => {
+  expect(parseUiLocale(locale)).toBe(locale);
+  setUiLocale(locale);
+  expect(readUiLocale()).toBe(locale);
+  expect(document.documentElement.lang).toBe(locale);
+  expect(t('工作区设置 · {0}', ['<script> 文档{1}.md'])).toContain('<script> 文档{1}.md');
 });

@@ -5,6 +5,7 @@ import CapabilitySyntax from './CapabilitySyntax.vue';
 import { settingHint } from '../setting-examples';
 import ThemePresetPicker from './ThemePresetPicker.vue';
 import { t, uiLocale, setUiLocale, uiSearchText } from '../i18n';
+import { uiLocaleOptions } from '../locale';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   ArrowRight,
@@ -607,8 +608,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
                 </div>
                 <select :value="uiLocale" :aria-label="t('界面语言')"
                   @change="setUiLocale(($event.target as HTMLSelectElement).value)">
-                  <option value="zh-CN">简体中文</option>
-                  <option value="en-US">English</option>
+                  <option v-for="option in uiLocaleOptions" :key="option.value" :value="option.value" :lang="option.value">{{ option.label }}</option>
                 </select>
               </div>
               <div v-if="appearance" class="settings-row" data-settings-key="appearance-scope">
@@ -1482,6 +1482,8 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   border-radius: 6px;
   color: var(--text);
   text-align: left;
+  overflow-wrap: anywhere;
+  hyphens: auto;
   font-size: 13px;
   line-height: 20px;
 }
@@ -1489,6 +1491,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   outline-offset: -2px;
 }
 .settings-nav-scroll button svg {
+  flex-shrink: 0;
   color: var(--text-secondary);
 }
 .settings-nav-scroll button:hover {

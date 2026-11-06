@@ -54,9 +54,8 @@ const agendaDates = computed(() => {
   return Array.from({ length }, (_, index) => new Date(year, month, index + 1))
     .filter(day => dayRecords(day).length > 0);
 });
-const weekdays = computed(() => uiLocale.value === 'en-US'
-  ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-  : ['一', '二', '三', '四', '五', '六', '日']);
+const weekdays = computed(() => uiLocale.value === 'zh-CN' ? ['一', '二', '三', '四', '五', '六', '日']
+  : Array.from({ length: 7 }, (_, index) => new Intl.DateTimeFormat(uiLocale.value, { weekday: 'short' }).format(new Date(2024, 0, 1 + index))));
 const hours = Array.from({ length: 24 }, (_, hour) => hour);
 const hourHeight = 56;
 const today = computed(() => localDayKey(new Date()));
@@ -493,7 +492,7 @@ watch(() => props.date, (date) => {
 
     <div v-else-if="mode === 'year'" class="calendar-year-view">
       <section v-for="year in scrollingYears" :key="year" class="calendar-year-section" :data-year="year">
-        <h2 class="calendar-year-heading">{{ year }}{{ uiLocale === 'zh-CN' ? ' 年' : '' }}</h2>
+        <h2 class="calendar-year-heading">{{ new Date(year, 0, 1).toLocaleDateString(uiLocale, { year: 'numeric' }) }}</h2>
         <div class="calendar-year-grid">
           <section v-for="month in monthsForYear(year)" :key="month.date.getMonth()" class="calendar-year-month">
             <button type="button" class="calendar-year-month-title" @click="emit('select-month', month.date)">

@@ -6,7 +6,7 @@ import { vScrollFade } from './scroll-fade';
 import { vOutlineMotion } from './outline-motion';
 import { HeadingViewport } from './heading-viewport';
 import { createWorkspaceSync, syncEvent } from './workspace-sync';
-import { t } from './i18n';
+import { uiLocale, t } from './i18n';
 import { readSettingsPage } from './settings-preference';
 import { focusedOutlineIndices } from './outline-tree';
 import AppTooltip from './components/AppTooltip.vue';
@@ -6416,7 +6416,7 @@ const helpBlocked = computed(() => !!(
                         {{ t('查看差异') }}
                       </button>
                       <time>{{
-                        new Date(item.time).toLocaleTimeString('zh-CN', {
+                        new Date(item.time).toLocaleTimeString(uiLocale, {
                           hour: '2-digit',
                           minute: '2-digit',
                         })

@@ -20,6 +20,7 @@
     "./document-print": "./src/document-print.ts",
     "./print-window": "./src/print-window.ts",
     "./locale": "./src/locale.ts",
+    "./startup-copy": "./src/startup-copy.ts",
     "./settings-window": "./src/settings-window.ts",
     "./stores/workspace": "./src/stores/workspace.ts",
     "./*": "./src/*"
