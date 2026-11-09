@@ -4,6 +4,7 @@ import { ASSISTANT_PROTOCOL_VERSION, parseAssistantSession, isDataTableFilePath,
 import { browserAgentInbox } from './browser-inbox';
 import type { AssistantConnection, AssistantRequest, AssistantSession, AssistantSource, AssistantTransport } from '@tano/protocol';
 import { assistantCopy, assistantRequestLocale, assistantSourceSeparator, assistantTaskPrompts, formatAssistantText } from './language';
+import { loadLocaleCatalogs } from '../locale-catalogs';
 
 export function nativeAssistantTransport(): AssistantTransport {
   let compatible: Promise<void> | undefined;
@@ -124,6 +125,8 @@ export function demoAssistantTransport(): AssistantTransport {
     }),
     async request(_connectionId, request: AssistantRequest, signal, chunk) {
       const locale = assistantRequestLocale(request);
+      await loadLocaleCatalogs(locale);
+      signal.throwIfAborted();
       const copy = assistantCopy(locale);
       const demo = copy.demo;
       const last = request.messages.at(-1)!;

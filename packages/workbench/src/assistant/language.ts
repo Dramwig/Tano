@@ -1,19 +1,11 @@
 import type { AssistantRequest } from '@tano/protocol';
 import { parseUiLocale, uiLocales } from '../locale';
 import type { UiLocale } from '../locale';
-import chinese from './locales/zh-CN.json';
-import english from './locales/en-US.json';
-import traditional from './locales/zh-TW.json';
-import japanese from './locales/ja-JP.json';
-import spanish from './locales/es-ES.json';
-import german from './locales/de-DE.json';
+import { localeDefinition } from '../locale-registry';
+import { assistantCatalog } from '../locale-catalogs';
 import taskPrompts from './task-prompts.json';
 
-const catalogs: Record<UiLocale, typeof chinese> = {
-  'zh-CN': chinese, 'en-US': english, 'zh-TW': traditional,
-  'ja-JP': japanese, 'es-ES': spanish, 'de-DE': german,
-};
-export const assistantCopy = (locale: UiLocale) => catalogs[parseUiLocale(locale)];
+export const assistantCopy = (locale: UiLocale) => assistantCatalog(parseUiLocale(locale));
 export const assistantTaskPrompts = taskPrompts;
 export type AssistantPromptOrigin = 'builtin' | 'user';
 
@@ -25,8 +17,7 @@ export function formatAssistantText(template: string, values: readonly unknown[]
 
 export function assistantLanguagePolicy(locale: UiLocale, origin: AssistantPromptOrigin = 'user'): string {
   const normalized = parseUiLocale(locale);
-  const language = { 'zh-CN': 'Simplified Chinese', 'en-US': 'English', 'zh-TW': 'Traditional Chinese',
-    'ja-JP': 'Japanese', 'es-ES': 'Spanish', 'de-DE': 'German' }[normalized];
+  const language = localeDefinition(normalized).language;
   return `[tano-response-locale:${normalized}]\n${formatAssistantText(taskPrompts.languagePolicy, [language, normalized])}\n${taskPrompts.inputOrigin[origin]}`;
 }
 

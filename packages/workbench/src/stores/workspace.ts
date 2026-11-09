@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useDocumentIndex } from '../document-index';
 import { PluginAttachmentReader } from '../plugins/attachment-reader';
 import { nativeAttachments } from '../attachments';
@@ -142,7 +143,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const next = new Map<string, WorkbenchViewTab>();
     for (const { id, label, icon, scope, detachable, detachBlockedMessage } of definitions) {
       if (!/^view:[a-z][a-z0-9-]*$/.test(id) || isBuiltinTab(id) || next.has(id) || !label.trim())
-        throw new Error(`无效或重复的扩展视图：${id}`);
+        throw new Error(t('无效或重复的扩展视图：{0}', [id]));
       next.set(id, { id, label, icon, scope, detachable, detachBlockedMessage });
     }
     // Register before session restoration. Refuse to strand an already open view.
@@ -181,7 +182,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const scope = workspace.value?.id;
     const id = `objects-${crypto.randomUUID()}`;
     await serial(async () => {
-      if (!scope || workspace.value?.id !== scope) throw new Error('工作区已切换');
+      if (!scope || workspace.value?.id !== scope) throw new Error(t('工作区已切换'));
       writable();
       if (!capabilities.value.features.objectReferences) throw new Error('Level 2 已关闭');
       const view = parseWorkspaceView(JSON.stringify({ version: 1, layer: 'view', workspaceId: scope, id,
@@ -195,7 +196,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const scope = workspace.value?.id;
     const id = `files-${crypto.randomUUID()}`;
     await serial(async () => {
-      if (!scope || workspace.value?.id !== scope) throw new Error('工作区已切换');
+      if (!scope || workspace.value?.id !== scope) throw new Error(t('工作区已切换'));
       writable();
       if (directory && !workspace.value.files.some(f => f.kind === 'directory' && f.path === directory)) throw new Error('目录已不存在');
       const view = parseWorkspaceView(JSON.stringify({ version: 1, layer: 'view', workspaceId: scope, id,
@@ -206,14 +207,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     await openWorkspaceView(id, { newTab: true });
   }
   const saveFileDatabase = (view: WorkspaceViewDefinition, base: FileSnapshot) => serial(async () => {
-    if (workspace.value?.id !== view.workspaceId) throw new Error('工作区已切换');
+    if (workspace.value?.id !== view.workspaceId) throw new Error(t('工作区已切换'));
     writable();
     const checked = parseWorkspaceView(JSON.stringify(view));
     const result = await adapter.write(workspaceViewPath(checked.id), JSON.stringify(checked, null, 2) + '\n', base.hash);
     if (result.status !== 'saved') {
       const copy = `.tano/conflicts/view-${checked.id}-${crypto.randomUUID()}.tano.json`;
       await adapter.create(copy, JSON.stringify(checked, null, 2) + '\n');
-      throw new Error(`视图已被外部修改或删除，外部版本未覆盖；当前设置已保留在 ${copy}`);
+      throw new Error(t('视图已被外部修改或删除，外部版本未覆盖；当前设置已保留在 {0}', [copy]));
     }
     workspace.value = await adapter.refresh(); await refreshObjects();
     return result.snapshot;
@@ -491,7 +492,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return serial(async () => {
       const assertCurrent = () => {
         assertInstance();
-        if (!expected || workspace.value?.id !== expected) throw new Error('工作区已切换');
+        if (!expected || workspace.value?.id !== expected) throw new Error(t('工作区已切换'));
       };
       assertCurrent();
       if (method === 'attachments.read') return pluginAttachmentReader.read(workspace.value!, params,
@@ -552,7 +553,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         if (!live.clean || !merged.clean) {
           const copyPath = entry.path.replace(/\.(md|markdown)$/i, `.plugin-conflict-${crypto.randomUUID().slice(0, 8)}.md`);
           assertCurrent(); await adapter.create(copyPath, desired);
-          throw new Error(`文档有重叠修改，插件版本已保存在 ${copyPath}`);
+          throw new Error(t('文档有重叠修改，插件版本已保存在 {0}', [copyPath]));
         }
         const editing = runtime.extensions?.()?.editing;
         if (editing?.isManaging(entry.id)) {
@@ -576,7 +577,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         if (result.status !== 'saved') {
           const copyPath = entry.path.replace(/\.(md|markdown)$/i, `.plugin-conflict-${crypto.randomUUID().slice(0, 8)}.md`);
           await adapter.create(copyPath, desired);
-          throw new Error(`保存时文件发生变化，插件版本已保存在 ${copyPath}`);
+          throw new Error(t('保存时文件发生变化，插件版本已保存在 {0}', [copyPath]));
         }
         return { id: entry.id, hash: await assistantHash(result.snapshot.content), status: 'saved' };
       }
@@ -604,10 +605,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           assertCurrent(); await adapter.create(path, JSON.stringify({ version: 1, pluginProposal: object, base: params.base }, null, 2) + '\n');
           return path;
         };
-        if (!merged) throw new Error(`对象已有重叠修改，插件版本已保存在 ${await preserve()}`);
+        if (!merged) throw new Error(t('对象已有重叠修改，插件版本已保存在 {0}', [await preserve()]));
         let saved: ObjectRecord;
         try { assertCurrent(); saved = await saveObject(adapter, record, merged); }
-        catch (error) { throw new Error(`${String(error)} 插件版本已保存在 ${await preserve()}`); }
+        catch (error) { throw new Error(t('{0} 插件版本已保存在 {1}', [String(error), await preserve()])); }
         workspace.value = await adapter.refresh(); await refreshObjects(); return saved.object;
       }
       if (method === 'relations.add' || method === 'relations.remove') {
@@ -666,7 +667,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function createObject(draft: Pick<WorkspaceObject, 'type' | 'name' | 'description' | 'properties' | 'archived'>) {
     const workspaceId = workspace.value?.id;
     return serial(async () => {
-      if (!workspaceId || workspace.value?.id !== workspaceId) throw new Error('工作区已切换');
+      if (!workspaceId || workspace.value?.id !== workspaceId) throw new Error(t('工作区已切换'));
       writable();
       if (!capabilities.value.features.objectReferences) throw new Error('Level 2 已关闭');
       validateObjectProperties(draft.type, draft.properties);
@@ -699,7 +700,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function deleteObject(record: ObjectRecord, expectedWorkspace: string) {
     return serial(async () => {
-      if (workspace.value?.id !== expectedWorkspace) throw new Error('工作区已切换');
+      if (workspace.value?.id !== expectedWorkspace) throw new Error(t('工作区已切换'));
       writable();
       if (!capabilities.value.features.objectReferences) throw new Error('Level 2 已关闭');
       if (record.object.properties.syncReadOnly === true) throw new Error('此对象为只读');
@@ -716,10 +717,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     });
   }
   async function templates(expectedWorkspace: string) {
-    if (workspace.value?.id !== expectedWorkspace) throw new Error('工作区已切换');
+    if (workspace.value?.id !== expectedWorkspace) throw new Error(t('工作区已切换'));
     const current = await adapter.refresh();
     const loaded = await loadTemplates(adapter, current);
-    if (workspace.value?.id !== expectedWorkspace) throw new Error('工作区已切换');
+    if (workspace.value?.id !== expectedWorkspace) throw new Error(t('工作区已切换'));
     return loaded;
   }
   async function writeTemplate(content: string, expectedWorkspace: string, base?: DocumentTemplate) {
@@ -735,7 +736,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function repeatPreview(record: ObjectRecord, expectedWorkspace: string) {
     return serial(async () => {
-      if (workspace.value?.id !== expectedWorkspace) throw new Error('工作区已切换');
+      if (workspace.value?.id !== expectedWorkspace) throw new Error(t('工作区已切换'));
       writable(); workspace.value = await adapter.refresh(); await refreshObjects();
       const current = objects.value.find(item => item.object.id === record.object.id);
       if (!current || current.snapshot.hash !== record.snapshot.hash) throw new Error('任务已变化，请重新读取再创建下一次');
@@ -746,7 +747,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function createRepeat(preview: RepeatPreview, expectedWorkspace: string) {
     return serial(async () => {
-      if (workspace.value?.id !== expectedWorkspace) throw new Error('工作区已切换');
+      if (workspace.value?.id !== expectedWorkspace) throw new Error(t('工作区已切换'));
       writable(); workspace.value = await adapter.refresh(); await refreshObjects();
       if (objectErrors.value.length || relationError.value) throw new Error('请先处理对象或关系读取错误');
       const source = objects.value.find(item => item.object.id === preview.sourceId);
@@ -1323,7 +1324,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           else if (isDirectoryTab(detachedTabId)) await openPageTab(detachedTabId, { newTab: true });
           else if (isWorkspaceViewTab(detachedTabId)) await openWorkspaceView(workspaceViewId(detachedTabId)!, { newTab: true });
           else if (views.value.has(detachedTabId)) {
-            if (!views.value.get(detachedTabId)?.detachable) throw new Error('此扩展视图不支持移到其他窗口');
+            if (!views.value.get(detachedTabId)?.detachable) throw new Error(t('此扩展视图不支持移到其他窗口'));
             openViewTab(detachedTabId);
           }
           else if (detachedTabId.startsWith('blank:')) createBlankTab();
@@ -1407,7 +1408,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     try {
       const assertDeletion = () => {
         if (deleteId === undefined) return;
-        if (workspace.value?.id !== deleteId) throw new Error('工作区已切换，请重新确认删除');
+        if (workspace.value?.id !== deleteId) throw new Error(t('工作区已切换，请重新确认删除'));
         if (detachedTabId) throw new Error('请在主工作台删除工作区');
         if (!adapter.deleteWorkspace || !workspace.value.canDelete)
           throw new Error(isWeb ? '仅工作区所有者可以删除工作区' : '此平台暂不支持删除本地工作区注册');
@@ -1901,7 +1902,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     touchNavigation();
   }
   function openViewTab(id: string) {
-    if (!views.value.has(id)) throw new Error(`扩展视图未注册：${id}`);
+    if (!views.value.has(id)) throw new Error(t('扩展视图未注册：{0}', [id]));
     if (!workspace.value && views.value.get(id)?.scope !== 'account') return;
     if (!tabIds.value.includes(id)) tabIds.value.push(id);
     activeId.value = id;
@@ -1913,7 +1914,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   function readGraphDocument(expectedWorkspace: Pick<Workspace, 'id' | 'path'>, file: Pick<FileEntry, 'id'> & Partial<Pick<FileEntry, 'path'>>) {
     return serial(async () => {
       if (workspace.value?.id !== expectedWorkspace.id || workspace.value.path !== expectedWorkspace.path)
-        throw new Error('工作区已切换');
+        throw new Error(t('工作区已切换'));
       const entry = fileRegistry.value?.get(file.id);
       if (!entry || (file.path !== undefined && entry.path !== file.path) || entry.kind !== 'file' || !isMarkdown(entry.path)) throw new Error('文档已移动或删除');
       const draft = documentIndex.byId.value.get(file.id);
@@ -1926,7 +1927,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     expected = workspace.value ? { id: workspace.value.id, path: workspace.value.path } : undefined) {
     return serial(async () => {
       if (!expected || workspace.value?.id !== expected.id || workspace.value.path !== expected.path)
-        throw new Error('工作区已切换');
+        throw new Error(t('工作区已切换'));
       if (adapter.mode === 'web') {
         try { workspace.value = await adapter.refresh(); await refreshObjects(); }
         catch (error) { clearRevokedReferences(error); throw error; }
@@ -1978,7 +1979,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         if (!current.files.some(file => file.path === path && file.kind === 'file')) continue;
         const disk = await adapter.read(path);
         const content = documentIndex.byPath.value.get(path)?.content ?? disk.content;
-        if (new TextEncoder().encode(content).length > 32_000) throw new Error(`${path} 超过 32 KB，请缩短工作区助手规则`);
+        if (new TextEncoder().encode(content).length > 32_000) throw new Error(t('{0} 超过 32 KB，请缩短工作区助手规则', [path]));
         rules.push({ path, content });
       }
       return rules;
@@ -2571,7 +2572,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function stageDocument(path: string, content = '', expectedWorkspaceId?: string) {
     writable();
     if (busy.value || !workspace.value) throw new Error('工作区正在切换，请稍后重试');
-    if (expectedWorkspaceId && workspace.value.id !== expectedWorkspaceId) throw new Error('工作区已切换');
+    if (expectedWorkspaceId && workspace.value.id !== expectedWorkspaceId) throw new Error(t('工作区已切换'));
     const staged = await adapter.stageCreate!(path, content);
     creationRevision++;
     workspace.value = staged.workspace;
@@ -2678,7 +2679,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return entry;
   }
   async function confirmFileMutation(scope: string, run: () => Promise<void>) {
-    if (disposed || workspace.value?.id !== scope) throw new Error('工作区已切换');
+    if (disposed || workspace.value?.id !== scope) throw new Error(t('工作区已切换'));
     try { await run(); }
     catch (error) {
       // A response can fail after the server committed. Recover its actual state
@@ -2702,7 +2703,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (invalid) throw new Error(invalid);
     const { current, affected, preview } = prepareFileMutation([file]);
     if (current.files.some(entry => entry.id !== file.id && pathKey(entry.path) === pathKey(path)))
-      throw new Error('已经存在一个同名文件');
+      throw new Error(t('已经存在一个同名文件'));
     if (file.path === path) return;
     preview.paths.set(file.id, path);
     fileMutations.enqueue('重命名', preview, () => confirmFileMutation(preview.workspaceId,
@@ -2722,7 +2723,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           (entry) => entry.id !== file.id && pathKey(entry.path) === pathKey(path),
         )
       )
-        throw new Error('已经存在一个同名文件');
+        throw new Error(t('已经存在一个同名文件'));
       const withinSource = (entryPath: string) =>
         entryPath === file.path ||
         (file.kind === 'directory' && entryPath.startsWith(`${file.path}/`));
@@ -2757,7 +2758,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const canConvertFolderDocuments = !!adapter.changeFile && !!adapter.removeEmptyFolder;
   async function convertDocumentStructure(file: FileEntry, kind: FolderConversionKind) {
     writable();
-    if (folderConversionBusy.value) throw new Error('正在转换文档，请稍候');
+    if (folderConversionBusy.value) throw new Error(t('正在转换文档，请稍候'));
     const scope = workspace.value?.id;
     if (!scope) throw new Error('请先打开一个工作空间');
     folderConversionBusy.value = true;
@@ -2766,7 +2767,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         throw new Error('请先处理未保存的修改、冲突或缺失文档');
       return await serial(async () => {
         writable();
-        if (workspace.value?.id !== scope) throw new Error('工作区已切换');
+        if (workspace.value?.id !== scope) throw new Error(t('工作区已切换'));
         let result: Awaited<ReturnType<typeof convertFolderDocument>> | undefined;
         try {
           result = await convertFolderDocument(adapter, scope, file, workspaceSettings.value.folderHomeFileName, kind);
@@ -2988,7 +2989,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         } catch (error) {
           workspace.value = await adapter.refresh();
           throw new Error(
-            `${removed ? `已移除 ${removed} 项；` : ''}处理「${file.path}」失败：${error instanceof Error ? error.message : String(error)}`,
+            t('{0}处理「{1}」失败：{2}', [removed ? t('已移除 {0} 项；', [removed]) : '', file.path, error instanceof Error ? error.message : String(error)]),
           );
         }
         removed++;
@@ -3178,13 +3179,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       if (workspace.value?.id !== workspaceId || !oauth || !installation?.enabled || !installation.authorized || installation.rule?.integrity !== input.integrity ||
         installation.manifest.manifestVersion !== 2 || !installation.manifest.permissions.includes('connections') || !installation.manifest.networkOrigins.includes(input.origin)) throw new Error('请先启用并授权此插件的当前版本');
       const flow = await oauth.start(workspaceId, input, signal);
-      signal.throwIfAborted(); if (workspace.value?.id !== workspaceId) throw new Error('工作区已切换');
+      signal.throwIfAborted(); if (workspace.value?.id !== workspaceId) throw new Error(t('工作区已切换'));
       return flow;
     },
     loadPluginConnections: async (workspaceId: string, signal: AbortSignal) => {
       if (workspace.value?.id !== workspaceId || !runtime.plugins?.connections) throw new Error('当前工作区未提供凭据连接');
       const connections = await runtime.plugins.connections.list(workspaceId, signal);
-      signal.throwIfAborted(); if (workspace.value?.id !== workspaceId) throw new Error('工作区已切换');
+      signal.throwIfAborted(); if (workspace.value?.id !== workspaceId) throw new Error(t('工作区已切换'));
       return connections;
     },
     savePluginConnection: async (workspaceId: string, input: PluginConnectionInput, signal: AbortSignal) => {
@@ -3193,11 +3194,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       if (workspace.value?.id !== workspaceId || !runtime.plugins?.connections || !installation?.enabled || !installation.authorized || installation.rule?.integrity !== input.integrity ||
           installation.manifest.manifestVersion !== 2 || !installation.manifest.permissions.includes('connections') || !installation.manifest.networkOrigins.includes(input.origin)) throw new Error('请先启用并授权此插件的当前版本');
       const connection = await runtime.plugins.connections.save(workspaceId, parsePluginConnectionInput(input), signal);
-      signal.throwIfAborted(); if (workspace.value?.id !== workspaceId) throw new Error('工作区已切换');
+      signal.throwIfAborted(); if (workspace.value?.id !== workspaceId) throw new Error(t('工作区已切换'));
       return connection;
     },
     removePluginConnection: async (workspaceId: string, pluginId: string, origin: string, version: string, signal: AbortSignal) => {
-      signal.throwIfAborted(); if (workspace.value?.id !== workspaceId || !runtime.plugins?.connections) throw new Error('工作区已切换');
+      signal.throwIfAborted(); if (workspace.value?.id !== workspaceId || !runtime.plugins?.connections) throw new Error(t('工作区已切换'));
       await runtime.plugins.connections.remove(workspaceId, pluginId, origin, version, signal);
       signal.throwIfAborted();
     },

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
-import { t } from '../i18n';
+import { uiLocale, t } from '../i18n';
 import { onMounted, onBeforeUnmount, ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { Trash2, X, RotateCcw } from 'lucide-vue-next';
@@ -89,7 +89,7 @@ onBeforeUnmount(() => {
       <p v-if="notice" role="status">{{ notice }}</p>
       <div v-for="item in records" :key="item.id" class="recycle-entry">
         <span
-          >{{ item.path }}<small>{{ new Date(item.deletedAt).toLocaleString() }}</small></span
+          >{{ item.path }}<small>{{ new Date(item.deletedAt).toLocaleString(uiLocale) }}</small></span
         ><button class="secondary-button" :disabled="busy" @click="recover(item.id)">
           <RotateCcw :size="15" />{{ t('恢复副本') }}
         </button>

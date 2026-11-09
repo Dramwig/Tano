@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { FolderOpen, ChevronLeft, ChevronRight, Minus, Plus, Maximize, Info, MoreHorizontal } from 'lucide-vue-next';
@@ -98,7 +99,7 @@ async function selectFile(event: Event, id: string) {
 }
 </script>
 <template>
-  <div v-if="header" class="plugin-view-header" role="toolbar" :aria-label="`${view.label}操作`">
+  <div v-if="header" class="plugin-view-header" role="toolbar" :aria-label="t('{0}操作', [view.label])">
     <span v-if="header.status && !header.statusAfter" class="plugin-view-position" aria-live="polite">{{ header.status }}</span>
     <template v-for="item in primary" :key="item.id">
       <label v-if="item.accept" class="plugin-header-file" :title="item.label" :class="{ disabled: item.disabled || uploading, 'text-action': !item.icon }">
@@ -110,9 +111,9 @@ async function selectFile(event: Event, id: string) {
       </button>
       <span v-if="item.id === header.statusAfter && header.status" class="plugin-view-position" aria-live="polite">{{ header.status }}</span>
     </template>
-    <button v-if="groups.length" ref="trigger" type="button" aria-label="预览操作" title="预览操作" aria-haspopup="dialog" :aria-controls="popoverId" :aria-expanded="expanded" @click="toggle" @keydown.down.prevent="!expanded && toggle()"><MoreHorizontal :size="19" /></button>
+    <button v-if="groups.length" ref="trigger" type="button" :aria-label="t('预览操作')" :title="t('预览操作')" aria-haspopup="dialog" :aria-controls="popoverId" :aria-expanded="expanded" @click="toggle" @keydown.down.prevent="!expanded && toggle()"><MoreHorizontal :size="19" /></button>
     <Teleport to="body">
-      <div v-surface-motion="'PluginViewHeader:0'" v-if="expanded && header" :id="popoverId" ref="popover" class="plugin-header-popover" :style="position" role="dialog" aria-label="预览操作" @keydown.stop="keyboard">
+      <div v-surface-motion="'PluginViewHeader:0'" v-if="expanded && header" :id="popoverId" ref="popover" class="plugin-header-popover" :style="position" role="dialog" :aria-label="t('预览操作')" @keydown.stop="keyboard">
         <div class="plugin-header-heading"><span>{{ view.label }}</span><span>{{ header.status }}</span></div>
         <div v-for="group in groups" :key="group.label" class="plugin-header-group">
           <span class="plugin-header-group-label">{{ group.label }}</span>

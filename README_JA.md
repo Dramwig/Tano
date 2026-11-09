@@ -14,7 +14,7 @@
 
 ### 🌐 The Official Website: [tano.page](https://tano.page)
 
-[English](README.md) | [中文](README_ZH.md) | 日本語 | [Deutsch](README_DE.md)
+[English](README.md) | [中文](README_ZH.md) | 日本語 | [Deutsch](README_DE.md) | [繁體中文](README_TW.md) | [Español](README_ES.md)
 
 [クイックスタート](#クイックスタート) · [機能](#機能) · [ドキュメント](docs/ja/README.md) · [開発](#開発)
 

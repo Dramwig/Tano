@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { afterEach, expect, it, vi } from 'vitest';
-import { initializeLocaleSync, setUiLocale, t, uiLocale } from './i18n';
-import { localePreferenceKey, parseUiLocale, readUiLocale, uiLocales } from './locale';
+import { beforeAll, afterEach, expect, it, vi } from 'vitest';
+import { initializeLocaleSync, preloadUiLocale, setUiLocale, t, uiLocale } from './i18n';
+import { localePreferenceKey, parseUiLocale, readUiLocale, uiLocales, systemUiLocale } from './locale';
 
 const nativeEvents = vi.hoisted(() => ({
   emit: vi.fn().mockResolvedValue(undefined),
@@ -44,7 +44,7 @@ it('updates existing views from storage events and native settings windows witho
   expect(nativeEvents.emit).toHaveBeenCalledTimes(1);
   localStorage.removeItem(localePreferenceKey);
   window.dispatchEvent(new StorageEvent('storage', { key: null }));
-  expect(uiLocale.value).toBe('zh-CN');
+  expect(uiLocale.value).toBe(systemUiLocale());
 });
 
 it.each(uiLocales)('persists %s and preserves interpolated content', locale => {
@@ -53,4 +53,9 @@ it.each(uiLocales)('persists %s and preserves interpolated content', locale => {
   expect(readUiLocale()).toBe(locale);
   expect(document.documentElement.lang).toBe(locale);
   expect(t('工作区设置 · {0}', ['<script> 文档{1}.md'])).toContain('<script> 文档{1}.md');
+});
+
+beforeAll(async () => {
+  const { uiLocales } = await import('./locale');
+  await Promise.all(uiLocales.map(preloadUiLocale));
 });

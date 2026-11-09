@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, expect, it, vi } from 'vitest';
+import { beforeAll, afterEach, expect, it, vi } from 'vitest';
 import { createApp, h, nextTick, ref } from 'vue';
 import type { Ref } from 'vue';
 import { createPinia, disposePinia, setActivePinia } from 'pinia';
@@ -8,7 +8,7 @@ import { DemoAdapter } from '../adapter';
 import { useWorkspaceStore } from '../stores/workspace';
 import { useAssistantStore } from '../assistant/store';
 import AssistantPanel from './AssistantPanel.vue';
-import { setUiLocale } from '../i18n';
+import { setUiLocale, preloadUiLocale } from '../i18n';
 import { assistantTaskPrompts } from '../assistant/language';
 let app: ReturnType<typeof createApp> | undefined;
 let pinia: ReturnType<typeof createPinia>;
@@ -535,4 +535,9 @@ it('adds dragged sources once and rejects cross-workspace references', async () 
   drop('foreign'); expect(assistant.files).toEqual([]);
   drop(workspace.workspace!.id); drop(workspace.workspace!.id);
   expect(assistant.files).toEqual(targets.map(target => target.id));
+});
+
+beforeAll(async () => {
+  const { uiLocales } = await import('../locale');
+  await Promise.all(uiLocales.map(preloadUiLocale));
 });

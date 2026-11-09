@@ -4,6 +4,7 @@ import AssistantConnectionStatus from './AssistantConnectionStatus.vue';
 import { Gauge, LoaderCircle, TriangleAlert } from 'lucide-vue-next';
 import type { AssistantConnection, AssistantQuotaResult } from '@tano/protocol';
 import { useAssistantStore } from '../assistant/store';
+import { uiLocale, t } from '../i18n';
 const props = defineProps<{ connection: AssistantConnection; request?: number }>();
 const emit = defineEmits<{ loading: [boolean] }>();
 const assistant = useAssistantStore();
@@ -13,10 +14,10 @@ const error = ref('');
 const loading = ref(false);
 const primary = computed(() => result.value?.items.find(item => item.remaining != null));
 const summary = computed(() => {
-  if (primary.value) return `剩余 ${primary.value.remaining!.toLocaleString()}${primary.value.unit === '%' ? '%' : ` ${primary.value.unit ?? ''}`}`;
-  if (loading.value) return '查询中';
-  if (error.value) return '查询失败';
-  return '查看额度';
+  if (primary.value) return `${t('剩余')} ${primary.value.remaining!.toLocaleString(uiLocale.value)}${primary.value.unit === '%' ? '%' : ` ${primary.value.unit ?? ''}`}`;
+  if (loading.value) return t('查询中');
+  if (error.value) return t('查询失败');
+  return t('查看额度');
 });
 watch(loading, value => emit('loading', value));
 watch(() => props.request, () => { void refresh(); });
@@ -47,29 +48,29 @@ async function refresh() {
 }
 function resetTime(value: string) {
   const date = new Date(/^\d+$/.test(value) ? Number(value) * 1000 : value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(uiLocale.value);
 }
 </script>
 <template>
-  <AssistantConnectionStatus class="connection-quota" :key="JSON.stringify(connection)" :label="'额度详情'" :summary="summary" :checked-at="result?.checkedAt" :refreshing="loading" :failed="!!error" v-if="(loading || result || error) && !connection.managed && connection.quota?.mode !== 'disabled' && (connection.kind === 'codex-cli' || connection.kind === 'claude-cli' || connection.quota)">
+  <AssistantConnectionStatus class="connection-quota" :key="JSON.stringify(connection)" :label="t('额度详情')" :summary="summary" :checked-at="result?.checkedAt" :refreshing="loading" :failed="!!error" v-if="(loading || result || error) && !connection.managed && connection.quota?.mode !== 'disabled' && (connection.kind === 'codex-cli' || connection.kind === 'claude-cli' || connection.quota)">
     <template #icon>
       <LoaderCircle v-if="loading" :size="14" class="spinning" aria-hidden="true" />
       <TriangleAlert v-else-if="error" :size="14" aria-hidden="true" />
       <Gauge v-else :size="14" aria-hidden="true" />
     </template>
-      <p v-if="loading" role="status">正在查询额度…</p>
-      <p v-if="error" class="quota-error" role="alert">{{ error }}{{ result ? '（保留上次结果）' : '' }}</p>
+      <p v-if="loading" role="status">{{ t('正在查询额度…') }}</p>
+      <p v-if="error" class="quota-error" role="alert">{{ error }}{{ result ? t('（保留上次结果）') : '' }}</p>
       <template v-if="result">
         <section v-for="(item, index) in result.items" :key="index" class="quota-item">
           <strong>{{ item.label }}</strong>
           <dl>
-            <div v-if="item.remaining != null"><dt>剩余</dt><dd>{{ item.remaining.toLocaleString() }} {{ item.unit }}</dd></div>
-            <div v-if="item.used != null"><dt>已用</dt><dd>{{ item.used.toLocaleString() }} {{ item.unit }}</dd></div>
-            <div v-if="item.total != null"><dt>总额</dt><dd>{{ item.total.toLocaleString() }} {{ item.unit }}</dd></div>
+            <div v-if="item.remaining != null"><dt>{{ t('剩余') }}</dt><dd>{{ item.remaining.toLocaleString(uiLocale) }} {{ item.unit }}</dd></div>
+            <div v-if="item.used != null"><dt>{{ t('已用') }}</dt><dd>{{ item.used.toLocaleString(uiLocale) }} {{ item.unit }}</dd></div>
+            <div v-if="item.total != null"><dt>{{ t('总额') }}</dt><dd>{{ item.total.toLocaleString(uiLocale) }} {{ item.unit }}</dd></div>
           </dl>
-          <small v-if="item.resetsAt">重置：{{ resetTime(item.resetsAt) }}</small>
+          <small v-if="item.resetsAt">{{ t('重置：') }}{{ resetTime(item.resetsAt) }}</small>
         </section>
-        <footer>查询于 {{ new Date(result.checkedAt).toLocaleString() }}</footer>
+        <footer>{{ t('查询于') }} {{ new Date(result.checkedAt).toLocaleString(uiLocale) }}</footer>
       </template>
   </AssistantConnectionStatus>
 </template>

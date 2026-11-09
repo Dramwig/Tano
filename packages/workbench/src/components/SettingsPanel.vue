@@ -4,7 +4,7 @@ import ModalBackdrop from './ModalBackdrop.vue';
 import CapabilitySyntax from './CapabilitySyntax.vue';
 import { settingHint } from '../setting-examples';
 import ThemePresetPicker from './ThemePresetPicker.vue';
-import { t, uiLocale, setUiLocale, uiSearchText } from '../i18n';
+import { t, uiLocale, setUiLocale, uiSearchText, localeLoadError } from '../i18n';
 import { uiLocaleOptions } from '../locale';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
@@ -611,6 +611,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
                   <option v-for="option in uiLocaleOptions" :key="option.value" :value="option.value" :lang="option.value">{{ option.label }}</option>
                 </select>
               </div>
+              <p v-if="localeLoadError" role="alert">{{ t('无法加载界面语言，请重试。') }}</p>
               <div v-if="appearance" class="settings-row" data-settings-key="appearance-scope">
                 <div><strong>{{ t('为此工作区单独设置') }}</strong><p>{{ t(appearance.scope === 'workspace' ? '仅覆盖配色、图标、布局和形态；关闭后恢复用户默认。' : '四个槽位使用用户默认；其他工作区会沿用这些选择。') }}</p></div>
                 <button type="button" class="settings-switch" :class="{ on: appearance.scope === 'workspace' }" role="switch" :aria-label="t('为此工作区单独设置')" :aria-checked="appearance.scope === 'workspace'" :disabled="!appearance.workspaceId"
@@ -1347,6 +1348,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
           <div class="settings-card settings-brand-card" data-settings-key="about-updates">
             <div class="settings-about-brand">
               <img src="../assets/tano-logo.svg" alt="" />
+              <!-- i18n-ignore: The Chinese brand suffix is shown only in the Chinese UI. -->
               <h3>Tano <span v-if="uiLocale === 'zh-CN'">/ 同页</span></h3>
               <div class="settings-brand-actions">
                 <span class="settings-version-pill">{{ version }}</span>

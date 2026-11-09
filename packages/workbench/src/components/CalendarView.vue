@@ -415,7 +415,7 @@ watch(() => props.date, (date) => {
           class="calendar-view-day-heading"
           :class="{ today: localDayKey(day) === today }"
         >
-          <span>{{ uiLocale === 'zh-CN' ? '周' : '' }}{{ weekday(day) }}</span>
+          <span>{{ uiLocale === 'zh-CN' ? t('周') : '' }}{{ weekday(day) }}</span>
           <strong>{{ day.getDate() }}</strong>
         </div>
         <template v-if="hasVisibleDateOnly">
@@ -456,7 +456,7 @@ watch(() => props.date, (date) => {
 
     <div v-else-if="mode === 'month'" class="calendar-month-view">
       <div class="calendar-month-weekdays" aria-hidden="true">
-        <span v-for="name in weekdays" :key="name">{{ uiLocale === 'zh-CN' ? '周' : '' }}{{ name }}</span>
+        <span v-for="name in weekdays" :key="name">{{ uiLocale === 'zh-CN' ? t('周') : '' }}{{ name }}</span>
       </div>
       <div
         v-for="week in scrollingWeeks"

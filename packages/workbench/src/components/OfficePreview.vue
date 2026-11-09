@@ -45,7 +45,7 @@ watch([() => props.bytes, () => props.path, retry], async (_, __, cleanup) => {
       :controls-target="controlsTarget"
       continuous :landscape="result.kind === 'presentation'"
       :width="result.kind === 'presentation' ? 960 : 794" :height="result.kind === 'presentation' ? 540 : 1123"
-      :navigation="navigation" :navigation-label="result.kind === 'presentation' ? '幻灯片' : '页面'"
+      :navigation="navigation" :navigation-label="result.kind === 'presentation' ? t('幻灯片') : t('页面')"
       :format="path.split('.').at(-1)?.toUpperCase()" :note="note" :status="status" @update:page="page = $event - 1">
       <template #default="{ scale, contentWidth }">
         <template v-if="result.kind === 'document'">

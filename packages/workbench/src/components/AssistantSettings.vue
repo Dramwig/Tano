@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { vSurfaceMotion, closeSurfaceDialog } from '@tano/editor/surface-motion';
-import { t } from '../i18n';
+import { uiLocale, t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowReactive, watch } from 'vue';
 import { Bot, Copy, Save, ChevronDown, Eye, EyeOff, Gauge, LoaderCircle, MoreHorizontal, Pencil, Plus, Settings2, Trash2, TriangleAlert, Wifi } from 'lucide-vue-next';
 import type { AssistantConnection } from '@tano/protocol';
@@ -489,7 +489,7 @@ onBeforeUnmount(() => {
                 <p :role="connectionChecks[connection.id].failed ? 'alert' : 'status'">{{ connectionChecks[connection.id].message }}</p>
                 <dl v-if="connectionChecks[connection.id].elapsedMs != null" class="connection-check-values">
                   <div><dt>{{ t('检测耗时') }}</dt><dd>{{ connectionChecks[connection.id].elapsedMs }} ms</dd></div>
-                  <div><dt>{{ t('检测时间') }}</dt><dd>{{ new Date(connectionChecks[connection.id].checkedAt!).toLocaleString() }}</dd></div>
+                  <div><dt>{{ t('检测时间') }}</dt><dd>{{ new Date(connectionChecks[connection.id].checkedAt!).toLocaleString(uiLocale) }}</dd></div>
                 </dl>
               </AssistantConnectionStatus>
               <AssistantQuota :connection="connection" :request="quotaRequests[connection.id]" @loading="quotaLoading[connection.id] = $event" />
@@ -527,7 +527,7 @@ onBeforeUnmount(() => {
   </div>
 
   <Teleport to="body">
-    <dialog v-surface-motion="'AssistantSettings:0'" v-if="quotaConnection" ref="quotaDialog" class="assistant-connection-dialog assistant-config-dialog assistant-quota-dialog" aria-label="额度查询配置" @cancel.prevent="closeQuotaEditor" @keydown.stop>
+    <dialog v-surface-motion="'AssistantSettings:0'" v-if="quotaConnection" ref="quotaDialog" class="assistant-connection-dialog assistant-config-dialog assistant-quota-dialog" :aria-label="t('额度查询配置')" @cancel.prevent="closeQuotaEditor" @keydown.stop>
       <AssistantQuotaConfig :key="quotaConnection.id" :connection="quotaConnection" @close="closeQuotaEditor" @busy="quotaSaving = $event" @saved="emit('changed')" />
     </dialog>
     <dialog v-surface-motion="'AssistantSettings:1'" v-if="pendingDeletion" ref="deletionDialog" class="assistant-connection-dialog assistant-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="assistant-delete-title" aria-describedby="assistant-delete-description" @cancel.prevent="closeDeletion" @keydown.stop>
@@ -559,13 +559,13 @@ onBeforeUnmount(() => {
         </header>
         <div class="assistant-form-scroll">
           <fieldset :disabled="saving" class="assistant-form-fields">
-            <section class="config-section"><h3>基本信息</h3><div class="config-field-grid">
+            <section class="config-section"><h3>{{ t('基本信息') }}</h3><div class="config-field-grid">
             <label>{{ t('连接名称') }}<input ref="nameInput" v-model="draft.name" required maxlength="120" autocomplete="off" /></label>
             <label>{{ t('连接方式') }}<select v-model="draft.kind" @change="resetSecret(); draft.quota = undefined"><option value="api">API</option><option value="codex-cli">Codex CLI</option><option value="claude-cli">Claude CLI</option></select></label>
             </div>
             <div class="connection-avatar-field">
-              <button ref="avatarTrigger" type="button" class="connection-avatar-trigger" aria-haspopup="dialog" :aria-expanded="avatarOpen" :aria-controls="avatarOpen ? 'connection-avatar-popover' : undefined" @click="toggleAvatarPicker"><span class="config-avatar-summary"><AssistantConnectionAvatar :connection="draft" :size="28" /><span>{{ t('连接头像') }}</span></span><span class="config-summary-hint">选择图标 <ChevronDown :size="14" /></span></button>
-              <div v-surface-motion="'AssistantSettings:4'" v-if="avatarOpen" id="connection-avatar-popover" ref="avatarPopover" popover="auto" role="dialog" aria-label="选择连接头像" class="connection-icon-picker connection-avatar-popover" :style="avatarPosition" @toggle="avatarToggled" @keydown.esc.stop.prevent="closeAvatarPicker(true)">
+              <button ref="avatarTrigger" type="button" class="connection-avatar-trigger" aria-haspopup="dialog" :aria-expanded="avatarOpen" :aria-controls="avatarOpen ? 'connection-avatar-popover' : undefined" @click="toggleAvatarPicker"><span class="config-avatar-summary"><AssistantConnectionAvatar :connection="draft" :size="28" /><span>{{ t('连接头像') }}</span></span><span class="config-summary-hint">{{ t('选择图标') }} <ChevronDown :size="14" /></span></button>
+              <div v-surface-motion="'AssistantSettings:4'" v-if="avatarOpen" id="connection-avatar-popover" ref="avatarPopover" popover="auto" role="dialog" :aria-label="t('选择连接头像')" class="connection-icon-picker connection-avatar-popover" :style="avatarPosition" @toggle="avatarToggled" @keydown.esc.stop.prevent="closeAvatarPicker(true)">
               <div class="connection-icon-preview"><AssistantConnectionAvatar :connection="draft" />
                 <button type="button" :aria-pressed="!draft.icon || draft.icon === 'auto'" @click="selectAvatar()">{{ t('自动识别') }}</button>
                 <button type="button" :aria-pressed="draft.icon === 'initials'" @click="selectAvatar('initials')">{{ t('名称缩写') }}</button>
@@ -582,7 +582,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
             </section>
-            <section class="config-section"><h3>{{ draft.kind === 'api' ? '服务凭据' : '本机命令行' }}</h3>
+            <section class="config-section"><h3>{{ draft.kind === 'api' ? t('服务凭据') : t('本机命令行') }}</h3>
               <template v-if="draft.kind === 'api'">
                 <label>{{ t('API 服务地址') }}<input v-model="draft.endpoint" required type="url" maxlength="2000" autocomplete="off" placeholder="https://api.example.com/v1" /></label>
 
@@ -595,12 +595,12 @@ onBeforeUnmount(() => {
                   </button>
                 </div>
               </div>
-                <p class="config-field-hint">密钥安全保存在本机，留空保留已保存的密钥。</p>
+                <p class="config-field-hint">{{ t('密钥安全保存在本机，留空保留已保存的密钥。') }}</p>
               </template>
-              <template v-else><label>{{ t('CLI 可执行文件路径') }}<input v-model="draft.cliPath" maxlength="2000" autocomplete="off" :placeholder="t('留空自动查找')" /></label><p class="config-field-hint">使用本机已登录的账号，通常无需填写路径。</p></template>
+              <template v-else><label>{{ t('CLI 可执行文件路径') }}<input v-model="draft.cliPath" maxlength="2000" autocomplete="off" :placeholder="t('留空自动查找')" /></label><p class="config-field-hint">{{ t('使用本机已登录的账号，通常无需填写路径。') }}</p></template>
             </section>
             <details class="config-disclosure config-advanced">
-              <summary><span>高级设置</span><span class="config-summary-hint">协议与工具 <ChevronDown :size="14" /></span></summary>
+              <summary><span>{{ t('高级设置') }}</span><span class="config-summary-hint">{{ t('协议与工具') }} <ChevronDown :size="14" /></span></summary>
               <div class="config-advanced-body">
                 <div v-if="draft.kind === 'api'" class="config-field-grid">
                   <label>{{ t('首选接口协议') }}<select v-model="draft.protocol"><option value="responses">Responses</option><option value="chat-completions">Chat Completions</option></select></label>

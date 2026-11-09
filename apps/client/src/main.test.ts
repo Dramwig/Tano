@@ -19,6 +19,8 @@ beforeEach(() => {
   vi.doMock('./start', () => ({ start }));
   vi.spyOn(console, 'error').mockImplementation(() => {});
   localStorage.clear();
+  // Most recovery fixtures exercise an explicitly selected Chinese interface.
+  localStorage.setItem('tano.preference.locale', 'zh-CN');
   delete document.documentElement.dataset.theme;
   document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML;
 });
@@ -98,6 +100,17 @@ it('does not mount a late workbench import over native timeout recovery', async 
   await vi.advanceTimersByTimeAsync(1);
   expect(start).not.toHaveBeenCalled();
   expect(document.getElementById('tano-startup-retry')?.hidden).toBe(false);
+});
+
+it('uses the system language for first-launch recovery when no preference is saved', async () => {
+  localStorage.removeItem('tano.preference.locale');
+  vi.spyOn(navigator, 'language', 'get').mockReturnValue('ja-JP');
+  nativeStartup.native = true;
+  start.mockRejectedValue(new Error('Unavailable'));
+  await import('./main');
+  await vi.waitFor(() => expect(document.getElementById('tano-startup-status')?.textContent).toBe('Tano を開けませんでした'));
+  expect(document.documentElement.lang).toBe('ja-JP');
+  expect(document.getElementById('tano-startup-retry')?.textContent).toBe('再読み込み');
 });
 
 it('uses the saved English preference for startup, slow loading and timeout recovery', async () => {

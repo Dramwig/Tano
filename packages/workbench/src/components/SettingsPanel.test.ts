@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { AppearanceSnapshot, AppearanceSelection } from '../appearance';
 import { builtinAppearance } from '../appearance';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { beforeAll, afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createApp, defineComponent, h, nextTick, ref } from 'vue';
 import type { App } from 'vue';
 import SettingsPanel from './SettingsPanel.vue';
@@ -14,7 +14,7 @@ import type { WorkspaceSettingsPatch } from '../workspace-settings';
 import type { ToolbarMode } from '../toolbar-preference';
 import type { SplitFontSettings, VisualFontChoice } from '../editor-font';
 import { helpPreferenceKey, readHelpPreferences, useHelpPreferences } from '../help-guidance';
-import { setUiLocale } from '../i18n';
+import { setUiLocale, preloadUiLocale } from '../i18n';
 import { localePreferenceKey, readUiLocale } from '../locale';
 import { settingsPagePreferenceKey } from '../settings-preference';
 
@@ -928,4 +928,9 @@ it('selects colors and icons independently and explains unavailable selections',
   const layout = root.querySelector<HTMLSelectElement>('[aria-label="布局风格"]')!;
   layout.value = 'builtin:paper'; layout.dispatchEvent(new Event('change')); await nextTick();
   expect(appearanceSelections.at(-1)).toEqual({ workspaceId: 'one', kind: 'layout', id: 'builtin:paper' });
+});
+
+beforeAll(async () => {
+  const { uiLocales } = await import('../locale');
+  await Promise.all(uiLocales.map(preloadUiLocale));
 });

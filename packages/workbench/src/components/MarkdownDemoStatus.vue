@@ -15,6 +15,7 @@ async function switchDemo(event: MouseEvent) {
 </script>
 
 <template>
+  <!-- i18n-ignore: Demo content locale is fixed by its route, independently of the UI preference. -->
   <span class="markdown-demo-status">
     <span :title="english ? 'Edits are saved only in this browser. Network sync and real agents are unavailable.' : '修改仅保存在本浏览器，不提供网络同步或真实 Agent 连接。'">
       {{ english ? 'English demo · Browser storage' : '中文演示 · 浏览器存储' }}
