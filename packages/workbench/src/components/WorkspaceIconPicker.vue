@@ -1,11 +1,6 @@
 <script setup lang="ts">
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
-import { t, uiLocale } from '../i18n';
-import englishIconLabels from '../locales/icon-labels-en.json';
-import traditionalIconLabels from '../locales/icon-labels-zh-TW.json';
-import japaneseIconLabels from '../locales/icon-labels-ja-JP.json';
-import spanishIconLabels from '../locales/icon-labels-es-ES.json';
-import germanIconLabels from '../locales/icon-labels-de-DE.json';
+import { t, uiIconLabel } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { Search, Upload } from 'lucide-vue-next';
 import WorkspaceIcon from './WorkspaceIcon.vue';
@@ -44,10 +39,7 @@ const position = ref({ left: 8, top: 8, width: 392, maxHeight: 440 });
 const groups = computed(() => (tab.value === 'icons' ? workspaceBuiltinIconGroups : workspaceEmojiGroups).map(group => ({
   ...group, label: t(group.label),
   icons: group.icons.map(icon => ({ ...icon,
-    label: uiLocale.value === 'zh-CN' ? icon.label : ({
-      'en-US': englishIconLabels, 'zh-TW': traditionalIconLabels, 'ja-JP': japaneseIconLabels,
-      'es-ES': spanishIconLabels, 'de-DE': germanIconLabels,
-    }[uiLocale.value] as Record<string, string>)[icon.value] ?? icon.label,
+    label: uiIconLabel(icon.value, icon.label),
   })),
 })));
 const filteredGroups = computed(() => filterWorkspaceIconGroups(groups.value, query.value));

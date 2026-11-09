@@ -173,18 +173,18 @@ onBeforeUnmount(() => {
   <main class="standalone-file">
     <AppTooltip />
     <header class="standalone-header">
-      <div class="standalone-name"><strong>{{ name }}{{ session?.dirty ? ' · 未保存' : '' }}</strong><span :title="displayPath">{{ displayPath || '正在打开文件…' }}</span></div>
-      <button :disabled="!session" :aria-pressed="source" @click="source = !source">{{ source ? '阅读编辑' : '源码' }}</button>
-      <button :disabled="!session || saving" @click="copy">另存副本</button>
+      <div class="standalone-name"><strong>{{ name }}{{ session?.dirty ? t(' · 未保存') : '' }}</strong><span :title="displayPath">{{ displayPath || t('正在打开文件…') }}</span></div>
+      <button :disabled="!session" :aria-pressed="source" @click="source = !source">{{ source ? t('阅读编辑') : t('源码') }}</button>
+      <button :disabled="!session || saving" @click="copy">{{ t('另存副本') }}</button>
       <DocumentPrintButton class="standalone-print" :disabled="!session" :busy="printBusy" :shortcut="shortcuts.print" standalone @select="printCurrentDocument" />
-      <button :disabled="!session?.dirty || saving" @click="save">{{ saving ? '保存中…' : '保存' }}</button>
+      <button :disabled="!session?.dirty || saving" @click="save">{{ saving ? t('保存中…') : t('保存') }}</button>
     </header>
     <p v-if="error" class="standalone-message" role="alert">{{ error }}</p>
     <p v-if="status" class="standalone-message" role="status">{{ status }}</p>
     <section v-if="session?.conflict" class="standalone-conflict" role="alert">
-      <strong>文件有冲突：你的编辑和磁盘版本均已保留。</strong>
-      <p>请对照磁盘内容整理编辑后另存副本。原文件不会被自动覆盖。</p>
-      <details><summary>查看磁盘版本</summary><pre>{{ session.conflict.content }}</pre></details>
+      <strong>{{ t('文件有冲突：你的编辑和磁盘版本均已保留。') }}</strong>
+      <p>{{ t('请对照磁盘内容整理编辑后另存副本。原文件不会被自动覆盖。') }}</p>
+      <details><summary>{{ t('查看磁盘版本') }}</summary><pre>{{ session.conflict.content }}</pre></details>
     </section>
     <div v-if="session" class="standalone-document">
       <SourceEditor v-if="source" v-model="session.content" :readonly="false" :local-native="true" :show-all-line-numbers="true" />
@@ -192,9 +192,9 @@ onBeforeUnmount(() => {
     </div>
     <div v-if="closing" class="standalone-overlay">
       <section role="dialog" aria-modal="true" aria-labelledby="unsaved-title" class="standalone-dialog">
-        <h2 id="unsaved-title">保存对 {{ name }} 的修改？</h2>
-        <p>文件中还有未保存的编辑。</p>
-        <div><button @click="closing = false">取消</button><button :disabled="saving" @click="discardAndClose">不保存</button><button :disabled="saving" @click="saveAndClose">保存并关闭</button></div>
+        <h2 id="unsaved-title">{{ t('保存对 {0} 的修改？', [name]) }}</h2>
+        <p>{{ t('文件中还有未保存的编辑。') }}</p>
+        <div><button @click="closing = false">{{ t('取消') }}</button><button :disabled="saving" @click="discardAndClose">{{ t('不保存') }}</button><button :disabled="saving" @click="saveAndClose">{{ t('保存并关闭') }}</button></div>
       </section>
     </div>
   </main>

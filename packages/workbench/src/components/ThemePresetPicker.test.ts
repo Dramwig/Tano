@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { beforeAll, afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createApp, h, nextTick, type App } from 'vue';
 import { AppearanceController } from '../appearance';
 import { FileIconRegistry } from '../file-icons/registry';
-import { setUiLocale } from '../i18n';
+import { setUiLocale, preloadUiLocale } from '../i18n';
 import ThemePresetPicker from './ThemePresetPicker.vue';
 
 let app: App;
@@ -83,4 +83,9 @@ it('hides unavailable entries from the previous slot of a custom combination', a
   expect(rowIds()).toEqual(['current']);
   expect(more()).not.toBeNull();
   expect(root.textContent).not.toMatch(/上次使用|暂无使用记录/);
+});
+
+beforeAll(async () => {
+  const { uiLocales } = await import('../locale');
+  await Promise.all(uiLocales.map(preloadUiLocale));
 });

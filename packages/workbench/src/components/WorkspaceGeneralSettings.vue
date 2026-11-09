@@ -185,7 +185,7 @@ const sidebarOptions = [
     <h3>{{ t('人物') }}</h3>
     <div class="settings-card">
       <div class="settings-row" data-settings-key="workspace-people"><div><strong>{{ t('人物目录') }}</strong><p>{{ t('在工作区对象列表中显示人物；关闭后仍可通过已有引用访问人物。') }}</p></div><button type="button" class="settings-switch" :class="{ on: settings.showPeopleDirectory }" role="switch" :aria-label="t('人物目录')" :aria-checked="settings.showPeopleDirectory" :disabled="disabled" @click="change({ key: 'showPeopleDirectory', value: !settings.showPeopleDirectory, previous: settings.showPeopleDirectory })"><span /></button></div>
-      <div v-for="label in ['在人物资料中显示近期活动', '人物悬浮卡片']" :key="label" class="settings-row is-disabled"><div><strong>{{ t(label) }} <span class="settings-scope">{{ t('尚未开放') }}</span></strong><p>{{ label === '人物悬浮卡片' ? t('悬停时展示人物资料的卡片尚未实现。') : t('人物的编辑与评论活动展示尚未实现。') }}</p></div><button type="button" class="settings-switch" role="switch" :aria-label="t(label)" aria-checked="false" disabled><span /></button></div>
+      <div v-for="label in [t('在人物资料中显示近期活动'), t('人物悬浮卡片')]" :key="label" class="settings-row is-disabled"><div><strong>{{ t(label) }} <span class="settings-scope">{{ t('尚未开放') }}</span></strong><p>{{ label === t('人物悬浮卡片') ? t('悬停时展示人物资料的卡片尚未实现。') : t('人物的编辑与评论活动展示尚未实现。') }}</p></div><button type="button" class="settings-switch" role="switch" :aria-label="t(label)" aria-checked="false" disabled><span /></button></div>
     </div>
   </section>
   <section v-if="workspace?.id" class="settings-section" :aria-label="t('工作区 ID')">

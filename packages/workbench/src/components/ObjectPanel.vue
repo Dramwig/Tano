@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
-import { t } from '../i18n';
+import { uiLocale, t } from '../i18n';
 import { computed, nextTick, ref, watch } from 'vue';
 import { objectTypeRegistry, referenceUrl } from '@tano/protocol';
 import { objectTypeLabel as referenceTypeLabel } from '../ui-labels';
@@ -508,7 +508,7 @@ const uri = computed(() =>
             <dt>{{ t('大小') }}</dt>
             <dd>{{ resource.size }} {{ t('字节') }}</dd>
             <dt>{{ t('修改时间') }}</dt>
-            <dd>{{ new Date(resource.modified ?? 0).toLocaleString() }}</dd>
+            <dd>{{ new Date(resource.modified ?? 0).toLocaleString(uiLocale) }}</dd>
           </dl>
           <code class="object-identity">{{ referenceUrl(resource) }}</code>
           <ReferenceConnections :identity="resource" :active="open" @open="openLinked" />

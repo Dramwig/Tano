@@ -560,7 +560,7 @@ onBeforeUnmount(() => {
     <div v-show="!store.workspaceLoading?.objects || plans.view !== 'workspace'" class="component-loading-content">
     <div ref="viewPicker" class="sidebar-calendar-heading">
       <div class="sidebar-calendar-month">
-        <span :title="monthTitle"><template v-if="uiLocale !== 'zh-CN'">{{ month.toLocaleDateString(uiLocale, { month: 'short', year: 'numeric' }) }}</template><template v-else><span class="sidebar-calendar-year">{{ month.getFullYear() }} 年 </span>{{ month.getMonth() + 1 }} 月</template></span>
+        <span :title="monthTitle"><template v-if="uiLocale !== 'zh-CN'">{{ month.toLocaleDateString(uiLocale, { month: 'short', year: 'numeric' }) }}</template><template v-else><span class="sidebar-calendar-year">{{ month.getFullYear() }} {{ t('年') }} </span>{{ month.getMonth() + 1 }} {{ t('月') }}</template></span>
         <button ref="viewTrigger" type="button" class="plan-view-trigger" :disabled="workspaceOnly" :aria-label="t('计划范围')" aria-haspopup="menu" aria-controls="plan-view-menu" :aria-expanded="viewOpen" :data-tooltip="viewOptions.find(option => option.value === plans.view)?.detail" @click="toggleViewMenu" @keydown.down.prevent="workspaceOnly || viewOpen || toggleViewMenu()">
           <span>{{ viewLabel }}</span><ChevronDown :size="12" aria-hidden="true" />
         </button>

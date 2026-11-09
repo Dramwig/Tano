@@ -84,9 +84,9 @@ const title = computed(() => assistant.session?.messages.length ? assistant.sess
 const modelLabel = computed(() => assistant.modelId === 'cli-default' ? t('CLI 默认模型') : assistant.modelId || t('选择模型'));
 const controlsLocked = computed(() => assistant.busy || assistant.applying || assistant.loading);
 const reasoningChoices: { id: AssistantReasoningSelection; label: string; short: string; detail: string }[] = [
-  { id: 'low', get label() { return t('低'); }, get short() { return t('低'); }, get detail() { return t('日常问答，优先速度'); } },
-  { id: 'medium', get label() { return t('中'); }, get short() { return t('中'); }, get detail() { return t('平衡速度与质量'); } },
-  { id: 'high', get label() { return t('高'); }, get short() { return t('高'); }, get detail() { return t('复杂分析'); } },
+  { id: 'low', get label() { return t('推理强度::低'); }, get short() { return t('推理强度::低'); }, get detail() { return t('日常问答，优先速度'); } },
+  { id: 'medium', get label() { return t('推理强度::中'); }, get short() { return t('推理强度::中'); }, get detail() { return t('平衡速度与质量'); } },
+  { id: 'high', get label() { return t('推理强度::高'); }, get short() { return t('推理强度::高'); }, get detail() { return t('复杂分析'); } },
   { id: 'xhigh', get label() { return t('很高'); }, get short() { return t('很高'); }, get detail() { return t('更深入推理'); } },
   { id: 'max', get label() { return t('最高'); }, get short() { return t('最高'); }, get detail() { return t('更多推理，更长等待'); } },
   { id: 'ultra', get label() { return t('极高'); }, get short() { return t('极高'); }, get detail() { return t('更多推理，更长等待'); } },

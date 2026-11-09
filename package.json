@@ -40,6 +40,8 @@
     "mcp:start": "npm run start -w @tano/mcp",
     "mcp:smoke": "node scripts/mcp-smoke.mjs",
     "docs:check": "node scripts/check-doc-links.mjs",
+    "i18n:check": "node scripts/i18n-audit.mjs",
+    "i18n:audit": "node scripts/i18n-audit.mjs --json",
     "demo:generate": "node scripts/markdown-demo.mjs",
     "demo:check": "node scripts/markdown-demo.mjs --check",
     "emoji:generate": "node scripts/build-workspace-emoji-catalog.mjs && node scripts/build-workspace-emoji-sprite.mjs",

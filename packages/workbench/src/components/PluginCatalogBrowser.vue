@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { retiredSystemPlugin } from '../workspace-plugins';
-import { t } from '../i18n';
+import { uiLocale, t } from '../i18n';
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { canonicalPluginJson, comparePluginVersions, type PluginCatalogRelease, type PluginReleaseCatalog } from '@tano/protocol';
 import { useWorkspaceStore } from '../stores/workspace';
@@ -101,7 +101,7 @@ onScopeDispose(() => controller.abort());
       </ul>
       <p v-if="catalog && !latest.length">{{ t('没有找到匹配的社区插件。') }}</p>
       <button v-if="latest.length > visibleLimit" class="pc-button pc-secondary" @click="visibleLimit += 24">{{ t('显示更多') }}</button>
-      <p v-if="catalog" class="catalog-origin">{{ t('目录更新时间：') }}{{ new Date(catalog.updatedAt).toLocaleString() }}{{ t('。发布者信息由此目录的维护者管理。') }}</p>
+      <p v-if="catalog" class="catalog-origin">{{ t('目录更新时间：') }}{{ new Date(catalog.updatedAt).toLocaleString(uiLocale) }}{{ t('。发布者信息由此目录的维护者管理。') }}</p>
     </template>
     <PluginDialog v-if="selected" :title="t('社区插件版本')" :busy="installing" @close="selectedId = ''">
       <h3>{{ selected.manifest.name }}</h3><p>{{ selected.manifest.description }}</p>

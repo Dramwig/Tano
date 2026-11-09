@@ -1,6 +1,6 @@
 import { createApp, nextTick } from 'vue';
 import { createPinia } from 'pinia';
-import { initializeLocaleSync, t, uiLocale } from '@tano/workbench/i18n';
+import { initializeLocaleSync, initializeUiLocale, t, uiLocale } from '@tano/workbench/i18n';
 import { watchEffect } from 'vue';
 import { configureWorkbench, createLocalExtensions } from '@tano/workbench/runtime';
 import { NativeAdapter, native } from '@tano/workbench/adapter';
@@ -14,8 +14,10 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { startDocumentPrintWindow } from '@tano/workbench/print-window';
 
 export async function start(signal?: AbortSignal) {
+  await initializeUiLocale();
+  signal?.throwIfAborted();
   if (await startDocumentPrintWindow(signal)) return;
-  // The saved locale applies synchronously; native cross-window subscription
+  // Catalogs are ready; native cross-window subscription
   // must not hold up mounting the workbench.
   void initializeLocaleSync(native);
   const settingsRoute = native && !!settingsWindowRequest();

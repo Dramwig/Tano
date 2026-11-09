@@ -5098,7 +5098,7 @@ const helpBlocked = computed(() => !!(
                 v-if="extensions.regions['workspace-menu-layout'] && extensions.regions['workspace-settings']"
                 :actions="extensionActions"
               />
-              <button v-if="workspace && native && !mobile && !store.isWeb" role="menuitem" @click="openSystemSync()"><RefreshCw :size="16" />Git 与同步</button>
+              <button v-if="workspace && native && !mobile && !store.isWeb" role="menuitem" @click="openSystemSync()"><RefreshCw :size="16" />{{ t('Git 与同步') }}</button>
               <button v-if="workspace" role="menuitem" :disabled="workspace.readOnly || busy" @click="openImport">
                 <ArrowDownToLine :size="16" />{{ t('导入') }}
               </button>

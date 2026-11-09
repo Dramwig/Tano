@@ -1,0 +1,70 @@
+{
+  " · {0} 项": {
+    "count": 0,
+    "forms": {
+      "one": " · {0} elemento",
+      "other": " · {0} artículos"
+    }
+  },
+  "{0} 个条目操作": {
+    "count": 0,
+    "forms": {
+      "one": "Acciones para {0} elemento",
+      "other": "Acciones para {0} elementos"
+    }
+  },
+  "{0} 个文档": {
+    "count": 0,
+    "forms": {
+      "one": "{0} documento",
+      "other": "{0} documentos"
+    }
+  },
+  "继续，预览 {0} 项内容": {
+    "count": 0,
+    "forms": {
+      "one": "Continuar, previsualizar {0} elemento",
+      "other": "Continuar, vista previa de {0} elementos"
+    }
+  },
+  "开始导入 {0} 个页面": {
+    "count": 0,
+    "forms": {
+      "one": "Importar {0} página",
+      "other": "Importar {0} páginas"
+    }
+  },
+  "{0} / {1} 篇文档": {
+    "count": 1,
+    "forms": {
+      "one": "{0} / {1} documento",
+      "other": "{0} / {1} documentos"
+    }
+  },
+  "导入 {0} 条": {
+    "count": 0,
+    "forms": {
+      "one": "Importar {0} elemento",
+      "other": "Importar {0} artículos"
+    }
+  },
+  "有 {0} 篇文档未能读取，图谱可能不完整。": {
+    "count": 0,
+    "forms": {
+      "one": "No se pudo leer {0} documento. El grafo puede estar incompleto.",
+      "other": "No se pudieron leer los documentos {0}. El gráfico puede estar incompleto."
+    }
+  },
+  "已导入 {0} 条，跳过 {1} 条重复或取消的事项。": {
+    "count": [
+      0,
+      1
+    ],
+    "forms": {
+      "one-one": "Se importó {0} elemento; se omitió {1} elemento duplicado o cancelado.",
+      "one-other": "Se importó {0} elemento; se omitieron {1} elementos duplicados o cancelados.",
+      "other-one": "Se importaron {0} elementos; se omitió {1} elemento duplicado o cancelado.",
+      "other": "Se importaron {0} elementos; se omitieron {1} elementos duplicados o cancelados."
+    }
+  }
+}
