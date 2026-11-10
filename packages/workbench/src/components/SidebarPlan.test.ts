@@ -112,7 +112,7 @@ it.each([
 ])('identifies the dominant visible month from %s, including dates after the top week', async (firstDate, title, prefix) => {
   const viewport = draggableCalendar();
   await scrollCalendarTo(viewport, firstDate!);
-  expect(root.querySelector('.sidebar-calendar-month > span')?.textContent).toBe(title);
+  expect(root.querySelector('.sidebar-calendar-month > span')?.getAttribute('title')).toBe(title);
   for (const day of viewport.querySelectorAll<HTMLElement>('[data-date]'))
     expect(day.classList.contains('outside-month')).toBe(!day.dataset.date!.startsWith(prefix!));
   expect(date.value.getDate()).toBe(29);
@@ -123,21 +123,21 @@ it('weights partially visible rows and keeps the current month stable at an even
   // From August 10, the six rows contain 22 August days and 20 September days.
   // Scrolling 30/7 pixels clips one August day-equivalent and reveals one of September.
   await scrollCalendarTo(viewport, '2026-08-10', 4.2);
-  expect(root.querySelector('.sidebar-calendar-month > span')?.textContent).toBe('2026 年 8 月');
+  expect(root.querySelector('.sidebar-calendar-month > span')?.getAttribute('title')).toBe('2026 年 8 月');
   await scrollCalendarTo(viewport, '2026-08-10', 4.4);
-  expect(root.querySelector('.sidebar-calendar-month > span')?.textContent).toBe('2026 年 9 月');
+  expect(root.querySelector('.sidebar-calendar-month > span')?.getAttribute('title')).toBe('2026 年 9 月');
   await scrollCalendarTo(viewport, '2026-08-10', 4.2);
-  expect(root.querySelector('.sidebar-calendar-month > span')?.textContent).toBe('2026 年 8 月');
+  expect(root.querySelector('.sidebar-calendar-month > span')?.getAttribute('title')).toBe('2026 年 8 月');
 
   // May 11 through June 21 has exactly three full weeks from each month.
   await scrollCalendarTo(viewport, '2026-05-11', 5);
-  expect(root.querySelector('.sidebar-calendar-month > span')?.textContent).toBe('2026 年 6 月');
+  expect(root.querySelector('.sidebar-calendar-month > span')?.getAttribute('title')).toBe('2026 年 6 月');
   await scrollCalendarTo(viewport, '2026-05-11');
-  expect(root.querySelector('.sidebar-calendar-month > span')?.textContent).toBe('2026 年 6 月');
+  expect(root.querySelector('.sidebar-calendar-month > span')?.getAttribute('title')).toBe('2026 年 6 月');
   await scrollCalendarTo(viewport, '2026-05-11', -5);
-  expect(root.querySelector('.sidebar-calendar-month > span')?.textContent).toBe('2026 年 5 月');
+  expect(root.querySelector('.sidebar-calendar-month > span')?.getAttribute('title')).toBe('2026 年 5 月');
   await scrollCalendarTo(viewport, '2026-05-11');
-  expect(root.querySelector('.sidebar-calendar-month > span')?.textContent).toBe('2026 年 5 月');
+  expect(root.querySelector('.sidebar-calendar-month > span')?.getAttribute('title')).toBe('2026 年 5 月');
 });
 
 it('allows clicks with slight hand movement and scrolls drags vertically without selecting a date', async () => {
