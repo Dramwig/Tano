@@ -175,7 +175,7 @@ export function parsePluginJson(value: unknown, limit = 128 * 1024): PluginJson 
   return JSON.parse(content);
 }
 export function parsePluginPolicy(content: string): WorkspacePluginPolicy {
-  if (content.length > 1024 * 1024) throw new Error('工作区插件规则不能超过 1 MB');
+  if (new TextEncoder().encode(content).length > 16 * 1024 * 1024) throw new Error('工作区插件规则不能超过 16 MiB');
   const value = JSON.parse(content);
   keys(value, ['version', 'plugins']);
   if (value.version !== 1 || !Array.isArray(value.plugins) || value.plugins.length > 100) throw new Error('工作区插件规则无效');

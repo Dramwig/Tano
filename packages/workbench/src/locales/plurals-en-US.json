@@ -1,0 +1,70 @@
+{
+  " · {0} 项": {
+    "count": 0,
+    "forms": {
+      "one": " · {0} item",
+      "other": " · {0} items"
+    }
+  },
+  "{0} 个条目操作": {
+    "count": 0,
+    "forms": {
+      "one": "Actions for {0} item",
+      "other": "Actions for {0} items"
+    }
+  },
+  "{0} 个文档": {
+    "count": 0,
+    "forms": {
+      "one": "{0} document",
+      "other": "{0} documents"
+    }
+  },
+  "继续，预览 {0} 项内容": {
+    "count": 0,
+    "forms": {
+      "one": "Continue, preview {0} item",
+      "other": "Continue, preview {0} items"
+    }
+  },
+  "开始导入 {0} 个页面": {
+    "count": 0,
+    "forms": {
+      "one": "Import {0} page",
+      "other": "Import {0} pages"
+    }
+  },
+  "{0} / {1} 篇文档": {
+    "count": 1,
+    "forms": {
+      "one": "{0} / {1} document",
+      "other": "{0} / {1} documents"
+    }
+  },
+  "导入 {0} 条": {
+    "count": 0,
+    "forms": {
+      "one": "Import {0} item",
+      "other": "Import {0} items"
+    }
+  },
+  "有 {0} 篇文档未能读取，图谱可能不完整。": {
+    "count": 0,
+    "forms": {
+      "one": "Could not read {0} document. The graph may be incomplete.",
+      "other": "Could not read {0} documents. The graph may be incomplete."
+    }
+  },
+  "已导入 {0} 条，跳过 {1} 条重复或取消的事项。": {
+    "count": [
+      0,
+      1
+    ],
+    "forms": {
+      "one-one": "Imported {0} item; skipped {1} duplicate or canceled item.",
+      "one-other": "Imported {0} item; skipped {1} duplicates or canceled items.",
+      "other-one": "Imported {0} items; skipped {1} duplicate or canceled item.",
+      "other": "Imported {0} items; skipped {1} duplicates or canceled items."
+    }
+  }
+}

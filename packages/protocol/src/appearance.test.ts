@@ -20,7 +20,7 @@ it('preserves appearance on executable manifests without changing old package se
 });
 describe('appearance boundary', () => {
   it('validates partial presets and checks builtin syntax without hardcoding the host catalog', () => {
-    const preset = { id: 'writing', label: '书写', color: 'paper', icons: 'lines', layout: 'builtin:retro' };
+    const preset = { id: 'writing', label: '书写', color: 'paper', icons: 'lines', layout: 'builtin:paper' };
     expect(parsePluginAppearance({ ...appearance(), presets: [preset] }).presets).toEqual([preset]);
     const builtin = { ...preset, color: 'builtin:tano', icons: 'builtin:tano' };
     expect(parsePluginAppearance({ version: 2, presets: [builtin] }).presets).toEqual([builtin]);
@@ -54,12 +54,18 @@ describe('appearance boundary', () => {
       expect(() => parsePluginAppearance({ version: 2, layouts: [{ ...layout, ...change }] })).toThrow();
     }
   });
-  it.each(['continuous', 'islands', 'notebook', 'document'].flatMap(structure =>
-    ['flat', 'paper', 'skeuomorphic'].map(surface => ({ structure, surface }))))('checks layout combination $structure × $surface', ({ structure, surface }) => {
+  it.each(['continuous', 'islands', 'document'].flatMap(structure =>
+    ['flat', 'paper'].map(surface => ({ structure, surface }))))('checks layout combination $structure × $surface', ({ structure, surface }) => {
     const parse = () => parsePluginAppearance({ version: 2, layouts: [{ id: 'x', label: 'X', structure, surface }] });
-    const supported = ['continuous:flat', 'islands:flat', 'notebook:skeuomorphic', 'document:paper'];
+    const supported = ['continuous:flat', 'islands:flat', 'document:paper'];
     if (supported.includes(`${structure}:${surface}`)) expect(parse().layouts?.[0]).toMatchObject({ structure, surface });
     else expect(parse).toThrow(`不支持此布局与材质组合：${structure} × ${surface}`);
+  });
+  it('rejects the retired notebook structure and skeuomorphic surface with a clear message', () => {
+    expect(() => parsePluginAppearance({ version: 2, layouts: [{ id: 'x', label: 'X', structure: 'notebook', surface: 'skeuomorphic' }] }))
+      .toThrow('笔记本布局已停止支持');
+    expect(() => parsePluginAppearance({ version: 2, layouts: [{ id: 'x', label: 'X', structure: 'document', surface: 'skeuomorphic' }] }))
+      .toThrow('布局风格无效');
   });
   it.each([{ light: { paper: '#fff' }, dark: { paper: '#111' } }, { light: {} }, { dark: { paper: '#111' } }])('preserves supported modes without synthesizing absent palettes: %s', modes => {
     const color = { id: 'sample', label: '样例', ...modes };

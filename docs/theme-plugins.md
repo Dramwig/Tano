@@ -54,19 +54,21 @@ npm run plugin -- verify examples/plugins/theme-paper/theme-paper-1.0.0.tano-plu
 
 ## 形态与密度
 
-配色的 light/dark 仅接受颜色 token。字体、圆角、控件间距与阴影在独立的 shapes 中声明：
+配色的 light/dark 仅接受颜色 token。圆角、控件间距与阴影在独立的 shapes 中声明：
 
 ```json
 "shapes": [{
   "id": "print", "label": "纸页排印",
-  "tokens": { "font-prose": "Literata, Georgia, serif", "radius-card": "2px", "space-panel": "20px", "overlay-shadow": "none" }
+  "tokens": { "radius-card": "2px", "space-panel": "20px", "overlay-shadow": "none" }
 }]
 ```
 
-内置形态包括同页默认、圆润宽松、手写笔记、印刷文稿、直角紧凑。
-布局负责区域分块、纸张材质与结构间距；卡片圆角、字体及浮层阴影引用形态 token。
-布局不覆盖形态的圆角或字体。Notebook 的装订环、封皮与横线保留为布局材质；用户显式编辑字体优先于形态正文默认。
-因此可以同时选择纸页颜色、同页默认字体形态和卡片岛布局，也可以让卡片岛使用直角紧凑形态。
+内置形态包括同页默认、圆润宽松、柔和圆角、微圆角、直角紧凑。
+柔和圆角、微圆角保留原有 `builtin:handwritten`、`builtin:print` ID，以兼容已保存选择和预设引用。
+布局负责区域分块、纸张材质与结构间距；组件圆角、控件间距及浮层阴影引用形态 token。
+纸感布局的纸纹与居中标题属于布局材质。字体统一在「编辑字体与字号」中选择，系统字体始终使用系统字体栈；手写字体也在此单独选择。
+旧版 v2 主题包的 `font-ui`、`font-prose`、`font-mono` 仍通过协议校验，但宿主不再应用这些形态字体 token，切换形态或主题预设不会改变字体。
+因此可以同时选择纸页颜色、系统字体和卡片岛布局，也可以让卡片岛使用直角紧凑形态。
 
 ## 主题预设
 
@@ -83,10 +85,10 @@ color、icons、layout、shape 均可选，至少声明一项；省略表示不�
 引用本插件的贡献时使用本地 ID，不加插件前缀。不允许跨插件引用。
 协议校验 builtin: 后的 ID 格式，不内置名单；宿主在注册目录中解析引用，不支持的内置项会禁用整套预设，不会部分应用。
 设置卡片会列出缺少项的类别和完整 ID，并提示安装或更新宿主，例如「缺少形态与密度 builtin:new-shape；请安装或更新宿主」。
-当前内置布局为 builtin:islands、builtin:retro、builtin:paper，形态为 builtin:rounded、builtin:handwritten、builtin:print、builtin:crisp。
+当前内置布局为 builtin:islands、builtin:paper，形态为 builtin:rounded、builtin:handwritten、builtin:print、builtin:crisp。
 内置 ID 从清单、设置消息到存储保持一致。
-三个内置预设各自搭配宿主自带的配色：卡片岛使用 `builtin:mist`（雾岛，冷灰蓝桌面与白色卡片）、复古拟物使用 `builtin:leather`（皮革，暖米色纸页与鞍革棕）、
-纸质文档使用 `builtin:ink`（墨纸，中性暖灰桌面与墨蓝强调）。它们定义在 `builtin-colors.ts`，同样出现在「配色主题」列表中，可与任何布局混搭；
+除同页默认外，两个内置预设各自搭配宿主自带的配色：卡片岛使用 `builtin:mist`（雾岛，冷灰蓝桌面与白色卡片），
+纸感使用 `builtin:ink`（纸墨，暖沙色桌面、米白纸页与墨蓝强调）。另有不绑定预设的 `builtin:sage`（护眼绿，柔和豆沙绿纸面、非纯黑文字与深叶绿强调，减少大面积亮白和蓝色）。它们定义在 `builtin-colors.ts`，同样出现在「配色主题」列表中，可与任何布局混搭；
 `AppearanceBuiltins.colors` 可选，注入目录时不提供即无内置配色。
 内置布局、形态与预设共同定义在宿主的 `builtinAppearance` 目录中；预设显式声明推荐槽位，不根据 `structure` 推断形态。
 构造 `AppearanceController` 时可注入完整目录，主题预设和布局下拉选项均使用该目录。新增布局不会自动生成或绑定预设。
@@ -120,19 +122,26 @@ color、icons、layout、shape 均可选，至少声明一项；省略表示不�
 | 状态 | danger、danger-bg、warning、warning-bg、warning-border、switch-off | 同上 |
 | 编辑器 | syntax-purple/red/blue/orange/teal/green、highlight-bg、suggestion-color、diff-add-bg、diff-remove-bg、quote-border | 同上 |
 | 浮层与滚动 | scrollbar-thumb、scrollbar-thumb-hover、backdrop | 同上 |
-| 字体 | font-ui、font-prose、font-mono | 本机字体列表与 generic family；无 URL、CSS 函数或远程字体 |
+| 旧版字体（兼容校验，宿主忽略） | font-ui、font-prose、font-mono | 本机字体列表与 generic family；无 URL、CSS 函数或远程字体 |
 | 圆角 | radius-control、radius-card、radius-dialog | 0–24px |
 | 间距 | space-control-x、space-control-y、space-panel、space-row-gap | 2–24px |
 | 阴影 | overlay-shadow、dialog-shadow | none 或最多 3 层 px 偏移/模糊/扩展与十六进制颜色；各长度绝对值 ≤100 |
 
 间距用于控件、目录行、设置行与面板，不暴露任意定位或隐藏界面的 CSS。
 移动端目录行和输入控件保留至少 44px 高的触控区域。圆角不改变开关、圆形图标等语义形状。
-字体的“系统字体”选项跟随形态正文默认；用户显式选择衬线、等宽、自定义字体时优先使用用户选择。
+编辑字体由用户独立选择系统、衬线、手写、等宽或自定义字体，不继承形态设置。
+可在「编辑字体与字号」顶部开启「分别设置中英文字体」，独立选择中文和英文字体。英文字体仅应用于拉丁字符，中文及全角标点使用中文字体；关闭后恢复原有统一字体，单独设置仍保留。设置保存在当前设备，并应用于正文、页面内标题、源码和字体预览。
 主题作者须自行验证颜色对比；语法颜色名称是语义槽位，不要求实际颜色必须与名称相同。
 
 图标格式见 [文件图标主题](file-icon-themes.md)。`appearance.icons` 使用相同的 `FileIconTheme`，
-最多 256 个图标、每个最多 32 条路径、单路径最多 4096 字符、匹配表最多 512 项。
-图标使用 20×20 坐标、单色描边，允许 `currentColor`，不接受远程资源、HTML、任意 SVG 或脚本。
+最多 2048 个图标、每个最多 32 条路径、单路径最多 4096 字符、每张匹配表最多 8192 项。
+矢量图标使用 20×20 坐标、单色描边，允许 `currentColor`。
+彩色图标可在原定义上增加 `image`（`data:image/png;base64,...`），并按需提供 `lightImage`；
+存在 `image` 时用图片替代路径、轮廓与文字。`lightImage` 随宿主实际浅色模式显示，深色模式使用 `image`，
+并非跟随操作系统模式。每张编码图片最多 44 KiB，必须包含 PNG 签名、IHDR、IDAT 与 IEND，尺寸限制为 1–128px；不接受远程资源、HTML、SVG 或脚本。
+图标主题可提供最多 4096 字符的 `notice`，保留第三方许可全文。原有单色主题无须修改。
+插件清单和完整包分别最多 4 MiB，工作区插件规则最多 16 MiB（包含当前及历史清单），所有限制均按 UTF-8 字节计算。
+例如 [Material 文件图标](../examples/plugins/material-icon-theme/README.md) 使用嵌入式彩色资源，作为按需导入的独立插件提供。
 用户显式指定的文档 emoji/图标仍优先。
 
 ## 生命周期与保存
@@ -170,7 +179,7 @@ iframe 仍为 opaque origin，不能访问宿主 DOM；主题不授予网络、�
 
 ## 页面结构与材质
 
-「布局风格」内置卡片岛、复古拟物、纸质文档，无需安装插件；也可以安装只提供布局的主题包。
+「布局风格」内置卡片岛、纸感，无需安装插件；也可以安装只提供布局的主题包。
 布局选择与配色、图标独立，切换时保留编辑器实例、选区及 Markdown 内容。
 
 ```json
@@ -187,21 +196,22 @@ iframe 仍为 opaque origin，不能访问宿主 DOM；主题不授予网络、�
 }
 ```
 
-以上是 manifest 的 `appearance` 字段。结构与材质只允许下列四组已实现组合，其他八组在导入时明确拒绝：
+以上是 manifest 的 `appearance` 字段。结构与材质只允许下列三组已实现组合，其他组合在导入时明确拒绝：
 
 | structure | surface |
 | --- | --- |
 | continuous | flat |
 | islands | flat |
-| notebook | skeuomorphic |
 | document | paper |
+
+早期的 `notebook × skeuomorphic`（复古拟物笔记本）已移除；仍声明它的布局会以「笔记本布局已停止支持」拒绝导入，已保存的相关选择回退到默认外观。
 
 字段说明：
 
 | 字段 | 取值与行为 |
 | --- | --- |
-| structure | continuous：连续界面；islands：导航与工作区分别是浮于桌面的两张圆角卡片，文档在卡片内保持连续；notebook：皮质封皮、缝线、螺旋装订环、横线纸（仅正文段落与列表）、红色页边线和布质书签的笔记本；document：带文档页眉、居中标题与下方纸叠的正式纸质文稿 |
-| surface | flat：平面；paper：轻纸纹、纸叠投影；skeuomorphic：细纸纹、桌面肌理和纸片浮层，与 notebook 结构组合成实体笔记本拟物风格 |
+| structure | continuous：连续界面；islands：导航与工作区分别是浮于桌面的两张圆角卡片，文档在卡片内保持连续；document：暖色桌面上的单张纸页，带安静的文件名页眉、居中标题与短线，正文行距略宽 |
+| surface | flat：平面；paper：极淡纸纹与柔和投影，不再绘制纸叠 |
 | gap | 可选整数 8–32，单位 px，默认 16；控制卡片间隙或纸张外边距 |
 | pageWidth | 可选整数 640–1200，单位 px，默认 880；控制文档卡片/纸张最大宽度 |
 

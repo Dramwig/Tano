@@ -105,7 +105,7 @@ it('refreshes inherited preferences from another window without discarding a loc
   controller.dispose();
 });
 const presetManifest: ObjectPluginManifest = { ...manifest, appearance: { ...manifest.appearance!,
-  presets: [{ id: 'writing', label: '书写', color: 'ink', icons: 'ink', layout: 'builtin:retro', shape: 'builtin:tano' }] } };
+  presets: [{ id: 'writing', label: '书写', color: 'ink', icons: 'ink', layout: 'builtin:islands', shape: 'builtin:tano' }] } };
 it('applies single-mode themes without changing user preference through workspace overrides, reload and plugin fallback', () => {
   const custom = structuredClone(manifest);
   custom.appearance!.colors!.push({ id: 'day', label: '日光', light: { paper: '#fff9ed' } }, { id: 'night', label: '夜色', dark: { paper: '#17202a' } });
@@ -155,7 +155,7 @@ it('applies all preset choices with one save and repaint, supports customization
   controller.select({ workspaceId: 'one', kind: 'mode', id: 'dark' }); apply.mockClear(); storage.setItem.mockClear();
   controller.select({ workspaceId: 'one', kind: 'preset', id: 'sample:writing' });
   expect(storage.setItem).toHaveBeenCalledOnce(); expect(apply).toHaveBeenCalledOnce();
-  expect(controller.state.value.active).toEqual({ color: 'sample:ink', icons: 'sample:ink', layout: 'builtin:retro', shape: 'builtin:tano' });
+  expect(controller.state.value.active).toEqual({ color: 'sample:ink', icons: 'sample:ink', layout: 'builtin:islands', shape: 'builtin:tano' });
   expect(controller.state.value.presetId).toBe('sample:writing');
   expect(registry.resolve({ path: 'x.md' }).id).toBe('note');
   expect(resolvedTheme().mode).toBe('dark');
@@ -192,24 +192,24 @@ it('persists choices across reload, restores disabled presets and never reapplie
 it('persists recent presets with one selection write and isolates account and workspace history', () => {
   let controller = new AppearanceController(new FileIconRegistry(), 'alice', localStorage);
   controller.sync('one', []);
+  controller.select({ workspaceId: 'one', kind: 'preset', id: 'builtin:paper' });
   controller.select({ workspaceId: 'one', kind: 'preset', id: 'builtin:islands' });
-  controller.select({ workspaceId: 'one', kind: 'preset', id: 'builtin:retro' });
-  expect(controller.state.value.recentPresetIds).toEqual(['builtin:retro', 'builtin:islands', 'builtin:tano']);
+  expect(controller.state.value.recentPresetIds).toEqual(['builtin:islands', 'builtin:paper', 'builtin:tano']);
   controller.dispose();
   controller = new AppearanceController(new FileIconRegistry(), 'alice', localStorage);
   controller.sync('one', []);
-  expect(controller.state.value.recentPresetIds).toEqual(['builtin:retro', 'builtin:islands', 'builtin:tano']);
+  expect(controller.state.value.recentPresetIds).toEqual(['builtin:islands', 'builtin:paper', 'builtin:tano']);
   controller.select({ workspaceId: 'one', kind: 'mode', id: 'dark' });
-  expect(controller.state.value.recentPresetIds).toEqual(['builtin:retro', 'builtin:islands', 'builtin:tano']);
+  expect(controller.state.value.recentPresetIds).toEqual(['builtin:islands', 'builtin:paper', 'builtin:tano']);
   controller.select({ workspaceId: 'one', kind: 'scope', id: 'workspace' });
   controller.select({ workspaceId: 'one', kind: 'preset', id: 'builtin:paper' });
   expect(controller.state.value.recentPresetIds?.[0]).toBe('builtin:paper');
   controller.sync('two', []);
-  expect(controller.state.value.recentPresetIds?.[0]).toBe('builtin:retro');
+  expect(controller.state.value.recentPresetIds?.[0]).toBe('builtin:islands');
   controller.sync('one', []);
   expect(controller.state.value.recentPresetIds?.[0]).toBe('builtin:paper');
   controller.select({ workspaceId: 'one', kind: 'scope', id: 'user' });
-  expect(controller.state.value.recentPresetIds?.[0]).toBe('builtin:retro');
+  expect(controller.state.value.recentPresetIds?.[0]).toBe('builtin:islands');
   controller.dispose();
   controller = new AppearanceController(new FileIconRegistry(), 'bob', localStorage);
   controller.sync('one', []);

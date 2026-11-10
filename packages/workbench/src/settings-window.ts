@@ -8,7 +8,7 @@ import type { CapabilityPatch } from './workspace-capabilities';
 import type { WorkspaceSettings, WorkspaceSettingsPatch } from './workspace-settings';
 import type { ThemePreference } from './theme';
 import type { AppearanceSnapshot, AppearanceSelection } from './appearance';
-import type { VisualFontChoice } from './editor-font';
+import type { SplitFontSettings, VisualFontChoice } from './editor-font';
 import type { ToolbarMode } from './toolbar-preference';
 import type { ShortcutBindings } from './shortcuts';
 import type { UpdateCandidate, UpdatePhase, UpdateProgress, UpdateStatus } from './updates/controller';
@@ -25,6 +25,7 @@ export interface SettingsValues {
   theme: ThemePreference;
   visualFontChoice: VisualFontChoice;
   customFontName: string;
+  splitFontSettings?: SplitFontSettings;
   revealMarkdown: boolean;
   toolbarMode: ToolbarMode;
   shortcuts: ShortcutBindings;

@@ -25,7 +25,7 @@ import { captureModeViewport, restoreModeViewport } from '../editor-mode';
 import type { ModeSelection } from '@tano/editor/mode-selection';
 import { splitFrontmatter } from '@tano/editor/syntax';
 import { referenceInsertionPoint } from '@tano/editor/document-links';
-import { selectionWrap, workspaceWrapping } from '@tano/editor/runtime';
+import { selectionWrap, workspaceWrapping, mapChineseInput, normalizeChineseInput, mappedChineseInputKey, mappedChineseBeforeInput } from '@tano/editor/runtime';
 import type { EditorPreferences, WorkspaceCapabilities } from '@tano/editor/runtime';
 import { textSearchRanges } from '@tano/editor/search';
 
@@ -83,6 +83,7 @@ const undoHistory = new Compartment();
 const refreshCommentMarks = StateEffect.define<void>();
 let view: EditorView | undefined;
 let applyingModel = false;
+let chineseCompositionRevision = 0;
 
 class HeadingLineNumber extends GutterMarker {
   readonly elementClass: string;
@@ -212,15 +213,21 @@ function fileHandler(event: Event, files: FileList | null | undefined, requireIm
 }
 
 function wrapSelectedSourceField(event: KeyboardEvent, current: EditorView) {
+  const mapped = mappedChineseInputKey(event, chineseInputSettings());
+  const { from, to } = current.state.selection.main;
+  if (mapped && insertMappedChineseInput(current, from, to, mapped)) {
+    event.preventDefault();
+    return true;
+  }
   if (event.ctrlKey || event.metaKey || event.altKey ||
-      event.isComposing) return false;
-  if (!wrapSourceSelection(current, event.key)) return false;
+      event.isComposing || event.keyCode === 229 || event.key === 'Process' || event.key === 'Unidentified') return false;
+  if (!wrapSourceSelection(current, mappedChineseInput(event.key))) return false;
   event.preventDefault();
   return true;
 }
 
 function wrapSourceSelection(current: EditorView, text: string) {
-  if (props.readonly || current.composing) return false;
+  if (props.readonly || current.compositionStarted) return false;
   const selection = current.state.selection.main;
   if (selection.empty || current.state.selection.ranges.length !== 1) return false;
   const selected = current.state.sliceDoc(selection.from, selection.to);
@@ -244,6 +251,37 @@ function wrapSourceSelection(current: EditorView, text: string) {
   return true;
 }
 
+function chineseInputSettings() {
+  return normalizeChineseInput(props.preferences?.chineseInput, props.preferences?.selectionWrapping);
+}
+function mappedChineseInput(text: string) {
+  return mapChineseInput(text, chineseInputSettings());
+}
+function insertChineseInput(current: EditorView, from: number, to: number, text: string) {
+  const mapped = mappedChineseInput(text);
+  return mapped !== text && insertMappedChineseInput(current, from, to, mapped);
+}
+function insertMappedChineseInput(current: EditorView, from: number, to: number, mapped: string) {
+  if (props.readonly || current.compositionStarted || current.state.selection.ranges.length !== 1) return false;
+  if (from !== current.state.selection.main.from || to !== current.state.selection.main.to ||
+      !wrapSourceSelection(current, mapped)) current.dispatch({
+    changes: { from, to, insert: mapped }, selection: { anchor: from + mapped.length }, userEvent: 'input.type',
+  });
+  return true;
+}
+function finishChineseComposition(current: EditorView, text: string) {
+  const revision = ++chineseCompositionRevision;
+  if (!text || mappedChineseInput(text) === text) return;
+  // Wait for CodeMirror's composition-end flush without yielding a browser frame.
+  queueMicrotask(() => queueMicrotask(() => {
+    if (revision !== chineseCompositionRevision || view !== current || props.readonly || current.compositionStarted || current.state.selection.ranges.length !== 1) return;
+    const selection = current.state.selection.main;
+    const to = selection.from, from = to - text.length;
+    if (selection.empty && from >= 0 && current.state.sliceDoc(from, to) === text)
+      insertChineseInput(current, from, to, text);
+  }));
+}
+
 onMounted(() => {
   view = new EditorView({
     parent: host.value,
@@ -265,11 +303,27 @@ onMounted(() => {
         sourceStyles,
         pageSearch,
         referenceFlash,
-        // Full-width punctuation may arrive as text input without a matching keydown.
-        EditorView.inputHandler.of((current, from, to, text) =>
-          text === '￥' && from === current.state.selection.main.from &&
-          to === current.state.selection.main.to && wrapSourceSelection(current, text)),
+        // Chinese punctuation can arrive without a matching keydown.
+        EditorView.inputHandler.of((current, from, to, text) => insertChineseInput(current, from, to, text)),
         EditorView.domEventHandlers({
+          beforeinput: (event, current) => {
+            const mapped = mappedChineseBeforeInput(event, chineseInputSettings());
+            if (mapped === null) return false;
+            const ranges = event.getTargetRanges?.() ?? [];
+            if (ranges.length > 1) return false;
+            let { from, to } = current.state.selection.main;
+            if (ranges.length) {
+              const range = ranges[0]!;
+              if (!current.contentDOM.contains(range.startContainer) || !current.contentDOM.contains(range.endContainer)) return false;
+              from = current.posAtDOM(range.startContainer, range.startOffset);
+              to = current.posAtDOM(range.endContainer, range.endOffset);
+            }
+            if (from < 0 || to < from || to > current.state.doc.length || !insertMappedChineseInput(current, from, to, mapped)) return false;
+            event.preventDefault();
+            return true;
+          },
+          compositionstart: () => { chineseCompositionRevision++; return false; },
+          compositionend: (event, current) => { finishChineseComposition(current, event.data); return false; },
           keydown: (event, current) => wrapSelectedSourceField(event, current),
           paste: (event) => fileHandler(event, event.clipboardData?.files, true),
           dragover: (event) => {
@@ -301,7 +355,7 @@ onMounted(() => {
   emit('ready');
 });
 
-onBeforeUnmount(() => { clearTimeout(referenceFlashTimer); syntaxParser.destroy(); view?.destroy(); view = undefined; });
+onBeforeUnmount(() => { chineseCompositionRevision++; clearTimeout(referenceFlashTimer); syntaxParser.destroy(); view?.destroy(); view = undefined; });
 
 watch(() => props.contentRevision, () => {
   if (!view) return;

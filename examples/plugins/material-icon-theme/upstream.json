@@ -1,0 +1,15 @@
+{
+  "version": "5.40.0",
+  "url": "https://registry.npmjs.org/material-icon-theme/-/material-icon-theme-5.40.0.tgz",
+  "integrity": "sha512-IrvgusbwtqxhUtVgUy0nToJcfN7CYVRdbBxKMfbo0vab9flVBHA5INZ9UiE5SgRj+PM6opCl5nn5TZdpm2UaxA==",
+  "rendering": "64×64 PNG, 64-color palette",
+  "icons": 1123,
+  "associations": {
+    "fileNames": 1952,
+    "fileExtensions": 1391,
+    "folderNames": 4649,
+    "folderNamesExpanded": 4649
+  },
+  "bytes": 2230258,
+  "sha256": "31bf39ace0ef73b49dd37f6a8f0a65a0aa3e9afac375ca62a5429edbd7c45c54"
+}

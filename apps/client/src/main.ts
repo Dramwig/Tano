@@ -1,3 +1,4 @@
+import { startupCopy } from '@tano/workbench/startup-copy';
 import { applyTheme, readThemePreference } from '@tano/workbench/theme';
 import { applyUiLocale, readUiLocale } from '@tano/workbench/locale';
 import { invoke, isTauri } from '@tauri-apps/api/core';
@@ -8,19 +9,7 @@ applyTheme(readThemePreference());
 const locale = readUiLocale();
 applyUiLocale(locale);
 // Keep startup recovery independent of Vue and the workbench message catalog.
-const startupText = locale === 'en-US' ? {
-  opening: 'Opening Tano...',
-  loading: 'Loading the workbench. The first launch may take a moment.',
-  retry: 'Reload',
-  failure: 'Unable to open Tano',
-  timeout: 'Opening Tano timed out after 30 seconds. Please reload.',
-} : {
-  opening: '正在打开同页...',
-  loading: '正在加载工作台，首次启动可能需要一些时间',
-  retry: '重新加载',
-  failure: '无法打开同页',
-  timeout: '打开同页超时，工作台加载已超过 30 秒，请重新加载。',
-};
+const startupText = startupCopy(locale);
 
 const root = document.getElementById('app')!;
 const startup = document.getElementById('tano-startup')!;

@@ -5,6 +5,28 @@ import { FileIconRegistry, fileIconRegistryKey } from '../file-icons/registry';
 import FileTree from './FileTree.vue';
 import FolderView from './FolderView.vue';
 import WorkspaceBreadcrumb from './WorkspaceBreadcrumb.vue';
+import ResourceIcon from './ResourceIcon.vue';
+
+it('renders embedded artwork and light variants without document silhouettes or labels', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { parsePluginPackage } = await import('@tano/protocol');
+  const pkg = parsePluginPackage(readFileSync('examples/plugins/material-icon-theme/material-icon-theme-1.0.0.tano-plugin.json', 'utf8'));
+  const theme = pkg.manifest.appearance!.icons![0]!;
+  const name = Object.keys(theme.fileNames!).find(name => theme.icons[theme.fileNames![name]!]!.lightImage)!;
+  const registry = new FileIconRegistry();
+  const dispose = registry.register(theme); registry.select(theme.id);
+  const root = document.createElement('div');
+  const app = createApp({ render: () => h(ResourceIcon, { path: name }) });
+  app.provide(fileIconRegistryKey, registry); app.mount(root);
+  try {
+    expect(root.querySelectorAll('image')).toHaveLength(2);
+    expect(root.querySelector('image')?.getAttribute('href')).toMatch(/^data:image\/png;base64,/);
+    expect(root.querySelectorAll('path, text')).toHaveLength(0);
+    dispose(); await nextTick();
+    expect(root.querySelectorAll('image')).toHaveLength(0);
+    expect(root.querySelector('path')).not.toBeNull();
+  } finally { app.unmount(); root.remove(); }
+});
 
 it('updates mounted tree icons when a theme is selected or removed, retaining document overrides', async () => {
   const root = document.createElement('div'); document.body.append(root);

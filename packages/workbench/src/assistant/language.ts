@@ -1,12 +1,11 @@
 import type { AssistantRequest } from '@tano/protocol';
-import { parseUiLocale } from '../locale';
+import { parseUiLocale, uiLocales } from '../locale';
 import type { UiLocale } from '../locale';
-import chinese from './locales/zh-CN.json';
-import english from './locales/en-US.json';
+import { localeDefinition } from '../locale-registry';
+import { assistantCatalog } from '../locale-catalogs';
 import taskPrompts from './task-prompts.json';
 
-const catalogs: Record<UiLocale, typeof chinese> = { 'zh-CN': chinese, 'en-US': english };
-export const assistantCopy = (locale: UiLocale) => catalogs[parseUiLocale(locale)];
+export const assistantCopy = (locale: UiLocale) => assistantCatalog(parseUiLocale(locale));
 export const assistantTaskPrompts = taskPrompts;
 export type AssistantPromptOrigin = 'builtin' | 'user';
 
@@ -18,15 +17,15 @@ export function formatAssistantText(template: string, values: readonly unknown[]
 
 export function assistantLanguagePolicy(locale: UiLocale, origin: AssistantPromptOrigin = 'user'): string {
   const normalized = parseUiLocale(locale);
-  const language = normalized === 'en-US' ? 'English' : 'Simplified Chinese';
+  const language = localeDefinition(normalized).language;
   return `[tano-response-locale:${normalized}]\n${formatAssistantText(taskPrompts.languagePolicy, [language, normalized])}\n${taskPrompts.inputOrigin[origin]}`;
 }
 
 /** The demo follows the same request snapshot as real transports, never the live UI locale. */
 export function assistantRequestLocale(request: AssistantRequest): UiLocale {
-  return request.messages.some(message => message.role === 'system' &&
-    (message.content?.includes(assistantLanguagePolicy('en-US', 'user')) ||
-      message.content?.includes(assistantLanguagePolicy('en-US', 'builtin')))) ? 'en-US' : 'zh-CN';
+  return uiLocales.find(locale => request.messages.some(message => message.role === 'system' &&
+    (message.content?.includes(assistantLanguagePolicy(locale, 'user')) ||
+      message.content?.includes(assistantLanguagePolicy(locale, 'builtin'))))) ?? 'zh-CN';
 }
 
 export const assistantSourceSeparator = () => `\n${taskPrompts.sourceDataHeader}\n`;

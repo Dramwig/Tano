@@ -6,6 +6,7 @@ import {
 import type { ILevelsOptions, IParagraphOptions, IRunOptions, ParagraphChild } from 'docx';
 import { basename } from '@tano/protocol';
 import type { DocumentExportOptions } from './document-export';
+import { latinFontAliasPrefix } from './editor-font';
 
 const mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const pageWidth = 11906, pageHeight = 16838, margin = 850;
@@ -119,8 +120,8 @@ async function rasterizePreviews(root: HTMLElement) {
 /* Latin code face only; Chinese in code keeps the document's East Asian font. */
 const codeFont = { ascii: 'Consolas', hAnsi: 'Consolas', cs: 'Consolas' };
 const genericFonts = /^(-apple-system|BlinkMacSystemFont|system-ui|ui-[a-z-]+|sans-serif|serif|monospace)$/i;
-const cjkFont = /YaHei|PingFang|Hiragino|CJK|Source Han|Noto (Sans|Serif) SC|Song|SimSun|SimHei|Sarasa|Maple Mono NF CN|[\u3400-\u9fff]/i;
-const windowsCjkFont = /^(Microsoft YaHei|SimSun|SimHei|DengXian)$/i;
+const cjkFont = /YaHei|PingFang|Hiragino|CJK|Source Han|Noto (Sans|Serif) SC|Song|SimSun|SimHei|KaiTi|Kaiti SC|Sarasa|Maple Mono NF CN|[\u3400-\u9fff]/i;
+const windowsCjkFont = /^(Microsoft YaHei|SimSun|SimHei|DengXian|KaiTi)$/i;
 function resolveFontVariables(stack: string): string {
   const style = typeof document === 'undefined' ? undefined : getComputedStyle(document.documentElement);
   // Resolve inner expressions first, including theme variables and their CSS
@@ -137,6 +138,11 @@ function resolveFontVariables(stack: string): string {
 /** Word has no fallback chain: give it one concrete Latin face and one CJK face. */
 export function wordFonts(stack: string): { latin: string; eastAsia: string } {
   const families = resolveFontVariables(stack).split(',').map((name) => name.trim().replace(/^['"]|['"]$/g, ''));
+  const latinAliases = families.filter(name => name.startsWith(latinFontAliasPrefix));
+  if (latinAliases.length) {
+    return { latin: wordFonts(latinAliases.map(name => name.slice(latinFontAliasPrefix.length)).join(', ')).latin,
+      eastAsia: wordFonts(families.filter(name => !name.startsWith(latinFontAliasPrefix)).join(', ')).eastAsia };
+  }
   const names = families.filter((name) => name && !genericFonts.test(name) && !/[()]/.test(name));
   // Prefer faces Word can resolve on any Windows install; variable fonts and
   // macOS-only CJK faces are kept only when nothing portable is listed.

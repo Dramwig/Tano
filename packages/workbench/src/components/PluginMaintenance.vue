@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { t } from '../i18n';
+import { uiLocale, t } from '../i18n';
 import { computed, ref, watch } from 'vue';
 import { pluginCacheLimit, pluginPackageLimit } from '@tano/protocol';
 import PluginRepositoryStorage from './PluginRepositoryStorage.vue';
@@ -68,7 +68,7 @@ async function run(action: () => Promise<unknown>, message: string) {
       <p>{{ t('保留最近 10 个版本引用。移除引用后，该版本不再受云端回收保护，日后恢复需重新导入。回滚沿用当前共享设置，运行前仍需核对并授权版本。') }}</p>
       <ul>
         <li v-for="version in installation?.rule?.history" :key="version.integrity ?? version.recordedAt">
-          <strong>{{ version.manifest.version }}</strong> · {{ new Date(version.recordedAt).toLocaleString() }}
+          <strong>{{ version.manifest.version }}</strong> · {{ new Date(version.recordedAt).toLocaleString(uiLocale) }}
           <code>{{ version.integrity?.slice(0, 12) }}</code>
           <button v-if="version.integrity" :disabled="pending || !store.canManagePlugins" @click="run(() => store.rollbackPlugin(id, version.integrity!, store.workspace!.id), t('已恢复所选版本'))">{{ t('恢复版本') }} {{ version.manifest.version }}</button>
           <button v-if="version.integrity" :disabled="pending || !store.canManagePlugins"
@@ -87,7 +87,7 @@ async function run(action: () => Promise<unknown>, message: string) {
       <summary>{{ t('运行日志（') }}{{ runtime?.logs?.length ?? 0 }}）</summary>
       <p>{{ t('仅保留本次工作区会话最近 100 条，重新加载插件后仍可查看。') }}</p>
       <button @click="store.clearPluginLogs(id)">{{ t('清空日志') }}</button>
-      <ol class="plugin-logs"><li v-for="(log, index) in runtime?.logs" :key="index"><time>{{ new Date(log.time).toLocaleTimeString() }}</time> {{ log.level }} <pre>{{ log.message }}</pre></li></ol>
+      <ol class="plugin-logs"><li v-for="(log, index) in runtime?.logs" :key="index"><time>{{ new Date(log.time).toLocaleTimeString(uiLocale) }}</time> {{ log.level }} <pre>{{ log.message }}</pre></li></ol>
     </details>
   </section>
 </template>

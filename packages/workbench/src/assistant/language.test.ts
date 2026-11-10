@@ -35,6 +35,7 @@ it('does not derive the demo language from user-controlled source or history tex
 
 it.each([
   ['zh-CN', 'Simplified Chinese'], ['en-US', 'English'],
+  ['zh-TW', 'Traditional Chinese'], ['ja-JP', 'Japanese'], ['es-ES', 'Spanish'], ['de-DE', 'German'],
 ] as const)('uses English instructions to request %s output', (locale, language) => {
   const policy = assistantLanguagePolicy(locale);
   expect(policy).toContain(`The fallback response language for this task is ${language} (UI locale: ${locale}).`);

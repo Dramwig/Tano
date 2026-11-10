@@ -31,11 +31,11 @@ export function shiftCalendarDate(date: Date, mode: CalendarViewMode, offset: nu
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + offset * days);
 }
 export function calendarPeriodTitle(date: Date, mode: CalendarViewMode) {
-  if (uiLocale.value === 'en-US') {
-    if (mode === 'year') return String(date.getFullYear());
-    if (mode === 'month' || mode === 'agenda') return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  if (uiLocale.value !== 'zh-CN') {
+    if (mode === 'year') return date.toLocaleDateString(uiLocale.value, { year: 'numeric' });
+    if (mode === 'month' || mode === 'agenda') return date.toLocaleDateString(uiLocale.value, { month: 'long', year: 'numeric' });
     const days = visibleCalendarDays(date, mode);
-    const format = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    const format = new Intl.DateTimeFormat(uiLocale.value, { year: 'numeric', month: 'short', day: 'numeric' });
     return mode === 'day' ? format.format(date) : format.formatRange(days[0]!, days.at(-1)!);
   }
   if (mode === 'year') return `${date.getFullYear()} 年`;

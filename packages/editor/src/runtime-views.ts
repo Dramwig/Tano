@@ -3,7 +3,8 @@ import { DOMSerializer } from '@milkdown/kit/prose/model';
 import type { Mark, Node } from '@milkdown/kit/prose/model';
 import type { NodeViewConstructor, MarkViewConstructor } from '@milkdown/kit/prose/view';
 import { Selection, TextSelection } from '@milkdown/kit/prose/state';
-import DOMPurify from 'dompurify';
+import { createMermaidRenderer } from './mermaid-preview';
+import type { MermaidRenderer } from './mermaid-preview';
 import type { WorkspaceCapabilities } from './runtime';
 import { featureEnabled, recognizesMath, newMathSyntax } from './runtime';
 import { mermaidHighlightRanges } from './mermaid-highlight';
@@ -129,12 +130,12 @@ export function runtimeViews(
   return result;
 }
 
-let diagramId = 0;
 let codeLanguageMenuId = 0;
 export function mermaidView(
   enabled: () => boolean,
   readonly: () => boolean,
   revealMarkdown: () => boolean,
+  renderMermaid: MermaidRenderer = createMermaidRenderer(),
 ): NodeViewConstructor {
   return (node, view, getPos) => {
     const isDiagram = node.attrs.language?.toLowerCase() === 'mermaid' && enabled();
@@ -412,18 +413,10 @@ export function mermaidView(
       if (preview.classList.contains('tano-mermaid-preview-empty')) preview.replaceChildren();
       preview.classList.remove('tano-mermaid-preview-empty');
       try {
-        const { default: mermaid } = await import('mermaid');
-        mermaid.initialize({
-          startOnLoad: false,
-          securityLevel: 'strict',
-          suppressErrorRendering: true,
-          htmlLabels: false,
-        });
-        const result = await mermaid.render(`tano-diagram-${++diagramId}`, value);
+        const result = renderMermaid(value, view.dom.clientWidth);
+        const svg = typeof result === 'string' ? result : await result;
         if (current === generation) {
-          preview.innerHTML = DOMPurify.sanitize(result.svg, {
-            USE_PROFILES: { svg: true, svgFilters: true },
-          });
+          preview.innerHTML = svg;
           preview.classList.remove('tano-mermaid-preview-stale');
           preview.title = '';
           if (editing) positionPanel();

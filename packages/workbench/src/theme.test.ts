@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { applyAppearance, applyTheme, parseThemePreference, readThemePreference, resolvedTheme } from './theme';
+import { visualFontFamily } from './editor-font';
 
 afterEach(() => {
   applyAppearance(undefined, undefined, undefined, 'system');
@@ -8,6 +9,29 @@ afterEach(() => {
   window.localStorage.clear();
   document.documentElement.removeAttribute('data-theme');
   document.documentElement.style.removeProperty('color-scheme');
+});
+
+it('ignores legacy shape fonts while preserving component styles and editor font choices', () => {
+  const font = visualFontFamily('system', '');
+  applyAppearance(undefined, undefined, { id: 'legacy:print', label: '旧排印', tokens: {
+    'font-ui': 'serif', 'font-prose': 'cursive', 'font-mono': 'monospace',
+    'radius-card': '2px', 'space-panel': '18px', 'overlay-shadow': 'none',
+  } });
+  for (const mode of ['light', 'dark'] as const) {
+    applyTheme(mode);
+    for (const key of ['font-ui', 'font-prose', 'font-mono']) {
+      expect(document.documentElement.style.getPropertyValue(`--${key}`)).toBe('');
+      expect(resolvedTheme().shape.tokens).not.toHaveProperty(key);
+    }
+    expect(document.documentElement.style.getPropertyValue('--radius-card')).toBe('2px');
+    expect(document.documentElement.style.getPropertyValue('--space-panel')).toBe('18px');
+    expect(document.documentElement.style.getPropertyValue('--overlay-shadow')).toBe('none');
+    expect(visualFontFamily('system', '')).toBe(font);
+    expect(visualFontFamily('custom', '')).toBe(font);
+    expect(visualFontFamily('handwritten', '')).toContain('KaiTi');
+  }
+  applyAppearance();
+  expect(document.documentElement.style.getPropertyValue('--radius-card')).toBe('');
 });
 
 it.each(['light', 'dark'] as const)('keeps a %s-only theme fixed through preference and system changes, then restores the preference', mode => {

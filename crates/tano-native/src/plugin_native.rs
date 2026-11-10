@@ -180,7 +180,7 @@ pub(crate) fn policy_for(
     capability: &str,
 ) -> Result<String, String> {
     let path = crate::storage::resolve_storage(root, ".tano/plugins.tano.json", true)?;
-    let content = crate::workspace_git::read_bounded(&path, 2 * 1024 * 1024)?;
+    let content = crate::workspace_git::read_bounded(&path, 16 * 1024 * 1024)?;
     let value: Value = serde_json::from_slice(&content).map_err(|_| "插件规则损坏")?;
     let plugins = value
         .get("plugins")

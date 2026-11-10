@@ -46,6 +46,9 @@ describe('file icon themes', () => {
     expect(() => registry.register(theme())).toThrow('already registered');
     expect(() => registry.register({ ...theme(), id: 'broken', file: 'missing' })).toThrow('Unknown file icon');
     expect(() => registry.register({ ...theme(), id: 'unsafe', icons: { custom: { color: 'url(https://example.com)' as any, paths: [] } } })).toThrow('Invalid file icon');
+    for (const image of ['https://example.com/icon.png', 'data:image/svg+xml;base64,PHN2Zy8+']) {
+      expect(() => registry.register({ ...theme(), id: 'unsafe-image', icons: { custom: { color: 'currentColor', paths: [], image } } })).toThrow('Invalid file icon');
+    }
     expect(() => registry.register({ ...theme(), id: 'builtin:tano' })).toThrow('already registered');
   });
 });

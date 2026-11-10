@@ -6,10 +6,11 @@ import { vScrollFade } from './scroll-fade';
 import { vOutlineMotion } from './outline-motion';
 import { HeadingViewport } from './heading-viewport';
 import { createWorkspaceSync, syncEvent } from './workspace-sync';
-import { t } from './i18n';
+import { uiLocale, t } from './i18n';
 import { readSettingsPage } from './settings-preference';
 import { focusedOutlineIndices } from './outline-tree';
 import AppTooltip from './components/AppTooltip.vue';
+import DocumentOutline from './components/DocumentOutline.vue';
 import { assistantDiscussionPrompt } from './assistant/language';
 import { assistantSourceRange } from './assistant/source-selection';
 import type { AssistantSource } from '@tano/protocol';
@@ -98,7 +99,7 @@ import MarkdownEditorSkeleton from './components/MarkdownEditorSkeleton.vue';
 import DocumentLoading from './components/DocumentLoading.vue';
 const MarkdownEditor = defineAsyncComponent({ loader: () => import('@tano/editor'), delay: 0, loadingComponent: MarkdownEditorSkeleton });
 const CalloutIconPicker = defineAsyncComponent(() => import('./components/CalloutIconPicker.vue'));
-import { defaultEditorPreferences, normalizeCopyFormat, normalizeSelectionWrapping } from '@tano/editor/runtime';
+import { defaultEditorPreferences, normalizeCopyFormat, normalizeSelectionWrapping, normalizeChineseInput } from '@tano/editor/runtime';
 import type { EditorPreferences } from '@tano/editor/runtime';
 import { defaultSelectionContext } from '@tano/editor/selection-context';
 import type { EditorSelectionContext } from '@tano/editor/selection-context';
@@ -273,7 +274,8 @@ import { AppearanceController } from './appearance';
 import LayoutDocumentChrome from './components/LayoutDocumentChrome.vue';
 import { FileIconRegistry, fileIconRegistryKey } from './file-icons/registry';
 import type { ThemePreference } from './theme';
-import { parseVisualFontChoice, sanitizeCustomFontName, visualFontFamily } from './editor-font';
+import { parseVisualFontChoice, sanitizeCustomFontName, parseSplitFontSettings } from './editor-font';
+import { useEditorFontFamily } from './use-editor-font';
 import type { VisualFontChoice } from './editor-font';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import {
@@ -966,9 +968,10 @@ const visualFontChoice = ref<VisualFontChoice>(
   parseVisualFontChoice(readTextPreference('visualFontChoice')),
 );
 const customFontName = ref(sanitizeCustomFontName(readTextPreference('customFontName')));
-const selectedVisualFontFamily = computed(() =>
-  visualFontFamily(visualFontChoice.value, customFontName.value),
-);
+const savedSplitFontSettings = readTextPreference('splitFontSettings');
+const splitFontSettings = ref(savedSplitFontSettings ? parseSplitFontSettings(savedSplitFontSettings, visualFontChoice.value, customFontName.value) : undefined);
+const selectedVisualFontFamily = useEditorFontFamily(() => visualFontChoice.value, () => customFontName.value, () => splitFontSettings.value);
+watch(splitFontSettings, value => { if (value) saveTextPreference('splitFontSettings', JSON.stringify(value)); }, { deep: true });
 watch(visualFontChoice, (value) => saveTextPreference('visualFontChoice', value));
 watch(customFontName, (value) => saveTextPreference('customFontName', value));
 const visualFontSize = ref(readFontSizePreference('visualFontSize', 16));
@@ -1010,6 +1013,12 @@ function readSelectionWrapping() {
   try { return normalizeSelectionWrapping(JSON.parse(readTextPreference('selectionWrapping') || 'null')); }
   catch { return normalizeSelectionWrapping(); }
 }
+function readChineseInput() {
+  let value: unknown, legacy: unknown;
+  try { value = JSON.parse(readTextPreference('chineseInput') || 'null'); } catch { /* Use safe defaults. */ }
+  try { legacy = JSON.parse(readTextPreference('selectionWrapping') || 'null'); } catch { /* No legacy preference. */ }
+  return normalizeChineseInput(value, legacy);
+}
 const editorPreferences = ref<EditorPreferences>({
   copyFormat: normalizeCopyFormat(readTextPreference('copyFormat')),
   autoSpacing: readPreference('autoSpacing', defaultEditorPreferences.autoSpacing ?? false),
@@ -1017,9 +1026,11 @@ const editorPreferences = ref<EditorPreferences>({
     'previewMathWhileEditing',
     defaultEditorPreferences.previewMathWhileEditing,
   ),
+  previewMermaidWhileEditing: readPreference('previewMermaidWhileEditing', defaultEditorPreferences.previewMermaidWhileEditing ?? true),
   folding: readPreference('folding', defaultEditorPreferences.folding),
   blankBlockAiShortcut: readPreference('blankBlockAiShortcut', defaultEditorPreferences.blankBlockAiShortcut),
   selectionWrapping: readSelectionWrapping(),
+  chineseInput: readChineseInput(),
 });
 watch(
   editorPreferences,
@@ -1027,9 +1038,11 @@ watch(
     saveTextPreference('copyFormat', normalizeCopyFormat(preferences.copyFormat));
     savePreference('autoSpacing', preferences.autoSpacing ?? false);
     savePreference('previewMathWhileEditing', preferences.previewMathWhileEditing);
+    savePreference('previewMermaidWhileEditing', preferences.previewMermaidWhileEditing !== false);
     savePreference('folding', preferences.folding);
     savePreference('blankBlockAiShortcut', preferences.blankBlockAiShortcut);
     saveTextPreference('selectionWrapping', JSON.stringify(normalizeSelectionWrapping(preferences.selectionWrapping)));
+    saveTextPreference('chineseInput', JSON.stringify(normalizeChineseInput(preferences.chineseInput)));
   },
   { deep: true },
 );
@@ -3098,23 +3111,36 @@ function outlineContextKeydown(event: KeyboardEvent) {
   items[next]?.focus();
 }
 const headingViewport = new HeadingViewport();
-function updateActiveHeading() {
+let pendingHeadingScroll: { top: number; coverBottom: number } | undefined;
+function updateActiveHeading(snapshot?: typeof pendingHeadingScroll) {
   const container = documentScroll.value;
   const cover = container?.querySelector<HTMLElement>('.document-cover');
   const pane = container?.closest<HTMLElement>('.workspace-pane');
   // Measure in the inspector's containing pane, including partially scrolled covers.
-  outlineCoverBottom.value = cover && pane
+  outlineCoverBottom.value = snapshot?.coverBottom ?? (cover && pane
     ? Math.max(0, cover.getBoundingClientRect().bottom - pane.getBoundingClientRect().top + 16)
-    : 0;
+    : 0);
   const root = editorScroll.value;
   if (!container || !root || source.value || !outline.value.length) return;
-  activeHeading.value = Math.min(headingViewport.active(root, container), outline.value.length - 1);
+  activeHeading.value = Math.min(headingViewport.active(root, container, 100, snapshot?.top), outline.value.length - 1);
 }
-function scheduleActiveHeading() {
+function scheduleActiveHeading(event?: Event) {
+  const container = documentScroll.value;
+  if (event?.type === 'scroll' && event.target !== container) return;
+  if (event?.type === 'scroll' && container) {
+    // Read before animation-frame callbacks move floating controls. Even a
+    // scrollTop getter after those writes can force pending layout to finish.
+    const cover = container.querySelector<HTMLElement>('.document-cover');
+    const pane = container.closest<HTMLElement>('.workspace-pane');
+    pendingHeadingScroll = { top: container.scrollTop, coverBottom: cover && pane
+      ? Math.max(0, cover.getBoundingClientRect().bottom - pane.getBoundingClientRect().top + 16) : 0 };
+  } else pendingHeadingScroll = undefined;
   if (headingFrame !== undefined) return;
   headingFrame = requestAnimationFrame(() => {
     headingFrame = undefined;
-    updateActiveHeading();
+    const snapshot = pendingHeadingScroll;
+    pendingHeadingScroll = undefined;
+    updateActiveHeading(snapshot);
   });
 }
 watch([() => active.value?.content, source], () => {
@@ -3598,6 +3624,7 @@ const settingsSnapshot = computed<SettingsSnapshot>(() => ({
   appearance: appearance.value,
   visualFontChoice: visualFontChoice.value,
   customFontName: customFontName.value,
+  splitFontSettings: splitFontSettings.value,
   revealMarkdown: revealMarkdown.value,
   toolbarMode: toolbarMode.value,
   shortcuts: shortcuts.value,
@@ -3718,6 +3745,9 @@ function handleSettingsCommand(command: SettingsCommand) {
       break;
     case 'customFontName':
       customFontName.value = command.value as string;
+      break;
+    case 'splitFontSettings':
+      splitFontSettings.value = parseSplitFontSettings(JSON.stringify(command.value), visualFontChoice.value, customFontName.value);
       break;
     case 'revealMarkdown':
       revealMarkdown.value = command.value as boolean;
@@ -5068,7 +5098,7 @@ const helpBlocked = computed(() => !!(
                 v-if="extensions.regions['workspace-menu-layout'] && extensions.regions['workspace-settings']"
                 :actions="extensionActions"
               />
-              <button v-if="workspace && native && !mobile && !store.isWeb" role="menuitem" @click="openSystemSync()"><RefreshCw :size="16" />Git 与同步</button>
+              <button v-if="workspace && native && !mobile && !store.isWeb" role="menuitem" @click="openSystemSync()"><RefreshCw :size="16" />{{ t('Git 与同步') }}</button>
               <button v-if="workspace" role="menuitem" :disabled="workspace.readOnly || busy" @click="openImport">
                 <ArrowDownToLine :size="16" />{{ t('导入') }}
               </button>
@@ -5322,6 +5352,7 @@ const helpBlocked = computed(() => !!(
             <DesktopTabs
               :loading="sessionPending"
               :pane-id="pane.id"
+              :show-navigation="rect.top === 0 && rect.left === 0"
               :detachable="native && !mobile"
               :file-drag="tabFileDrag"
               :assistant-tab="assistantTab"
@@ -5358,7 +5389,11 @@ const helpBlocked = computed(() => !!(
             @reveal-selection="revealAssistantSelection"
             @open-settings="openSettings('assistant')"
             @closed="assistantPanelMounted = assistant.opened"
-          />
+          >
+            <template #quota>
+              <component :is="extensions.regions['assistant-quota']" v-if="extensions.regions['assistant-quota']" :actions="extensionActions" />
+            </template>
+          </AssistantPanel>
         </template>
         <template #default="{ pane, document: active, tab }">
 
@@ -5835,6 +5870,8 @@ const helpBlocked = computed(() => !!(
                 </template>
               </div>
             </ButtonVisibilityGroup>
+            <!-- Everything below the top bar. A layout can raise it as its own surface (card islands); otherwise display: contents. -->
+            <div class="workspace-page-body">
             <KeepAlive v-if="pane.tabs.includes(GRAPH_TAB_ID)">
               <RelationGraph
                 v-if="workspace && pane.activeId === GRAPH_TAB_ID"
@@ -6155,6 +6192,7 @@ const helpBlocked = computed(() => !!(
                         :capabilities="store.capabilities"
                         :reference-targets="store.referenceTargets"
                         :preferences="editorPreferences"
+                        :translate="t"
                         :extension="
                           active.id === store.active?.id ? editing.active?.extension : undefined
                         "
@@ -6351,32 +6389,7 @@ const helpBlocked = computed(() => !!(
                     @keydown.esc.stop.prevent="toggleOutlineSearch"
                   />
                 </div>
-                <nav v-if="panel === 'outline'" v-scroll-fade class="outline" :aria-label="t('文档大纲')">
-                  <button
-                    v-for="{ heading, index } in visibleOutline"
-                    :key="index"
-                    :class="{
-                      'outline-active': activeHeading === index,
-                    }"
-                    :style="{
-                      '--outline-indent': `${Math.max(0, heading.level - 1) * 12}px`,
-                      '--outline-marker-width': `${Math.max(9, 20 - heading.level * 2)}px`,
-                    }"
-                    :aria-label="t('跳转到{0}', [heading.text])"
-                    :aria-current="activeHeading === index ? 'location' : undefined"
-                    @click="jumpToHeading(index, true)"
-                  >
-                    <span class="outline-marker" aria-hidden="true" />
-                    <span class="outline-text">{{ heading.text }}</span>
-                  </button>
-                  <p v-if="!outline.length" class="panel-empty">
-                    <span class="outline-empty-marker" aria-hidden="true" />
-                    {{ t('写下一个标题，') }}<br />{{ t('让思路有迹可循。') }}
-                  </p>
-                  <p v-else-if="!visibleOutline.length" class="outline-no-results" role="status">
-                    {{ t('没有匹配的标题') }}
-                  </p>
-                </nav>
+<DocumentOutline v-if="panel === 'outline'" :items="visibleOutline" :has-headings="!!outline.length" :active-index="activeHeading" @select="jumpToHeading($event, true)" />
                 <div v-else class="activity-list">
                   <p class="activity-explainer">{{ t('这个会话中的文件变化。外部编辑者身份暂不可识别。') }}</p>
                   <button v-if="localNative" class="secondary-button" @click="agentPanel = true">
@@ -6407,7 +6420,7 @@ const helpBlocked = computed(() => !!(
                         {{ t('查看差异') }}
                       </button>
                       <time>{{
-                        new Date(item.time).toLocaleTimeString('zh-CN', {
+                        new Date(item.time).toLocaleTimeString(uiLocale, {
                           hour: '2-digit',
                           minute: '2-digit',
                         })
@@ -6426,12 +6439,13 @@ const helpBlocked = computed(() => !!(
                 </div>
               </div>
             </aside>
+            </div>
           </div>
         </template>
       </WorkspacePanes>
       <WorkspacePanes v-else-if="store.tabs.length && !startupPending" :compact="compactPanes" :tabs-enabled="tabsEnabled" :class="{ 'workspace-native-tabs': tabsEnabled && !compactPanes }">
-        <template #tabs="{ pane }">
-          <div class="workspace-tabbar" :data-tab-pane-id="pane.id"><DesktopTabs :pane-id="pane.id" :detachable="false" /></div>
+        <template #tabs="{ pane, rect }">
+          <div class="workspace-tabbar" :data-tab-pane-id="pane.id"><DesktopTabs :pane-id="pane.id" :show-navigation="rect.top === 0 && rect.left === 0" :detachable="false" /></div>
         </template>
         <template #default="{ pane }">
           <template v-for="view in extensionViews" :key="view.id"><component v-if="pane.activeId === view.id" :is="view.component" :actions="viewActions[view.id]" /></template>
@@ -6634,6 +6648,7 @@ const helpBlocked = computed(() => !!(
       @appearance="appearanceController.select($event)"
       :visual-font-choice="visualFontChoice"
       :custom-font-name="customFontName"
+      :split-font-settings="splitFontSettings"
       :reveal-markdown="revealMarkdown"
       :toolbar-mode="toolbarMode"
       :shortcuts="shortcuts"
@@ -6659,6 +6674,7 @@ const helpBlocked = computed(() => !!(
       @update:theme="theme = $event"
       @update:visual-font-choice="visualFontChoice = $event"
       @update:custom-font-name="customFontName = $event"
+      @update:split-font-settings="splitFontSettings = $event"
       @update:reveal-markdown="revealMarkdown = $event"
       @update:toolbar-mode="toolbarMode = $event"
       @update:shortcuts="shortcuts = $event"

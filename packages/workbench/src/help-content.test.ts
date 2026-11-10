@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { expect, it } from 'vitest';
-import { setUiLocale } from './i18n';
+import { beforeAll, expect, it } from 'vitest';
+import { setUiLocale, preloadUiLocale } from './i18n';
 import { defaultDocumentationBaseUrl, helpChecklist, helpDocumentationUrl, helpTopics, selectHelpLesson, type HelpChecklistId } from './help-content';
 
 it('routes contextual hints to documentation pages without storing a second guide body', () => {
@@ -115,4 +115,9 @@ it('fills the rolling window with available steps', () => {
   const initial = selectHelpLesson([], 'graph')!;
   const resumed = selectHelpLesson(['create-folder'], 'graph', { duplicate: false }, initial.cursor)!;
   expect(resumed.visible.map(step => step.id)).toEqual(['create-folder', 'move-document', 'document', 'graph']);
+});
+
+beforeAll(async () => {
+  const { uiLocales } = await import('./locale');
+  await Promise.all(uiLocales.map(preloadUiLocale));
 });

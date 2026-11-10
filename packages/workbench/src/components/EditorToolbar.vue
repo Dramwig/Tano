@@ -407,6 +407,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
           <div v-surface-motion="'EditorToolbar:0'"
             v-if="open && !disabled"
             class="dropdown compact-action-menu block-type-menu panel-scrollbar"
+            data-tooltip-boundary
             :aria-label="t('Block Level 选项')"
           >
             <template v-for="item in availableBlocks" :key="item.type">
@@ -419,11 +420,9 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
                 :aria-pressed="item.type === 'Heading' ? undefined : context.block === item.type"
                 :aria-expanded="item.type === 'Heading' ? headingsOpen : undefined"
                 :aria-controls="item.type === 'Heading' ? headingGroupId : undefined"
-                :data-tooltip="
-                  item.type === 'Heading' ? t('标题级别') : item.command === 'mermaid'
-                      ? t('转换为 Mermaid 代码块')
-                      : t('转换当前块')
-                "
+                :data-tooltip="item.type === 'Heading' ? (headingsOpen ? undefined : t('标题级别')) : item.label"
+                :data-tooltip-block="item.type === 'Heading' ? undefined : item.command"
+                :data-tooltip-placement="item.type === 'Heading' ? undefined : 'right'"
                 @mousedown.prevent
                 @pointerenter="item.type === 'Heading' ? ($event.pointerType === 'mouse' && openHeadings()) : closeHeadings()"
                 @keydown.right="item.type === 'Heading' && ($event.preventDefault(), openHeadings(true))"
@@ -436,6 +435,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
                 ><ChevronRight v-if="item.type === 'Heading'" :size="14" aria-hidden="true" />
               </button>
               <button v-if="item.type === 'Callout'" type="button" data-feature-level="1"
+                :data-tooltip="t('自定义块')" data-tooltip-block="callout" data-tooltip-block-value="CUSTOM" data-tooltip-placement="right"
                 @mousedown.prevent @click="run('callout', 'CUSTOM')">
                 <component :is="customCalloutIcon" class="block-type-icon" :size="16" :stroke-width="blockIconStrokeWidth" aria-hidden="true" />
                 <span class="block-type-label">{{ t('自定义块') }}</span>
@@ -453,8 +453,11 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
           </div>
           <div v-surface-motion="'EditorToolbar:1'" v-if="open && headingsOpen && !disabled" :id="headingGroupId" ref="headingPanel"
             class="heading-submenu compact-action-menu panel-scrollbar" role="group" :aria-label="t('标题级别')"
+            data-tooltip-boundary
             @keydown="headingPanelKey">
             <button v-for="(icon, index) in headingIcons" :key="index" type="button"
+              :data-tooltip="t('{0} 级标题', [index + 1])"
+              data-tooltip-block="heading" :data-tooltip-block-value="index + 1" data-tooltip-placement="right"
               :aria-pressed="context.block === 'Heading' && context.headingLevel === index + 1"
               :disabled="disabled || !context.canTransform"
               @mousedown.prevent

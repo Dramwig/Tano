@@ -20,6 +20,8 @@ const props = withDefaults(defineProps<{
   progress?: string;
   error?: string;
   placeholder?: string;
+  /** Render the real composer inside an inert visual example without focus/portals. */
+  embedded?: boolean;
 }>(), { error: '', get placeholder() { return t('告诉助手如何处理所选内容…'); } });
 const emit = defineEmits<{
   'update:value': [value: string];
@@ -48,6 +50,7 @@ let frame = 0;
 let lastRect: DOMRect | undefined;
 
 function position() {
+  if (props.embedded) return;
   updateResponseMask();
   const rects = props.anchor.getRects();
   const current = rects.at(-1) ?? lastRect;
@@ -86,7 +89,7 @@ function handleOutsidePointerDown(event: PointerEvent) {
   if (busy.value || !(target instanceof Node) || shell.value?.contains(target)) return;
   emit('close');
 }
-watch(() => [props.anchor, props.state], () => { schedule(); if (props.state === 'input') void nextTick(() => input.value?.focus()); });
+watch(() => [props.anchor, props.state], () => { schedule(); if (!props.embedded && props.state === 'input') void nextTick(() => input.value?.focus()); });
 watch(() => [props.state, resultText.value], () => {
   expansionChosen = false;
   renderFailed.value = false;
@@ -107,6 +110,7 @@ watch(response, (element, previous) => {
 }, { flush: 'post' });
 watch(expanded, () => { void nextTick(schedule); });
 onMounted(() => {
+  if (props.embedded) return;
   schedule();
   if (typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver(() => { measurePreview(); schedule(); });
@@ -130,8 +134,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <Teleport to="body">
-    <div v-surface-motion="'InlineAssistantInput:0'" ref="shell" class="inline-assistant" :class="{ 'inline-assistant-error': state === 'error' }" :style="style" role="status">
+  <Teleport to="body" :disabled="embedded">
+    <div v-surface-motion="'InlineAssistantInput:0'" ref="shell" class="inline-assistant" :class="{ 'inline-assistant-error': state === 'error', 'inline-assistant-embedded': embedded }" :style="style" role="status">
       <form v-if="state === 'input'" class="inline-assistant-input" @submit.prevent="submit">
         <AssistantButterfly :size="22" motion="none" />
         <input ref="input" :value="value" maxlength="20000" :aria-label="t('输入助手任务')" :placeholder="placeholder" @input="emit('update:value', ($event.target as HTMLInputElement).value)" @keydown.esc.prevent="emit('close')" />
@@ -201,6 +205,7 @@ onBeforeUnmount(() => {
   color: var(--text);
   font-size: 13px;
 }
+.inline-assistant.inline-assistant-embedded { position: relative; width: 100%; }
 .inline-assistant-input, .inline-assistant-state {
   display: flex;
   align-items: center;

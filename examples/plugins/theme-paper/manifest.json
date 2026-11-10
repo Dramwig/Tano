@@ -155,14 +155,6 @@
         "shape": "paper"
       },
       {
-        "id": "notebook",
-        "label": "手写笔记本",
-        "color": "paper",
-        "icons": "paper",
-        "layout": "builtin:retro",
-        "shape": "builtin:handwritten"
-      },
-      {
         "id": "paper-layout",
         "label": "纸页配色与文稿布局",
         "color": "paper",

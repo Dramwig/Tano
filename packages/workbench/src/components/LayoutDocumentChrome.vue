@@ -7,15 +7,12 @@ const props = defineProps<{
   path: string;
 }>();
 const filename = computed(() => basename(props.path));
-const noteTitle = computed(() => filename.value.replace(/\.(md|markdown)$/i, ''));
 </script>
 
 <template>
-  <header v-if="layout?.structure === 'notebook' || layout?.structure === 'document'" class="layout-document-chrome">
-    <span v-if="layout.structure === 'notebook'" class="notebook-ribbon" aria-hidden="true" />
+  <header v-if="layout?.structure === 'document'" class="layout-document-chrome">
     <div class="layout-document-caption">
-      <span class="layout-document-filename" :title="path">{{ layout.structure === 'notebook' ? noteTitle : filename }}</span>
-      <span v-if="layout.structure === 'document'" class="layout-document-format">Markdown</span>
+      <span class="layout-document-filename" :title="path">{{ filename }}</span>
     </div>
   </header>
 </template>

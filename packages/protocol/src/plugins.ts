@@ -15,7 +15,7 @@ export interface ObjectPluginManifest {
 }
 /** Data-only manifests: no script, network, renderer, or filesystem execution. */
 export function parseObjectPlugin(content: string): ObjectPluginManifest {
-  if (content.length > 256 * 1024) throw new Error('插件清单不能超过 256 KB');
+  if (new TextEncoder().encode(content).length > 4 * 1024 * 1024) throw new Error('插件清单不能超过 4 MiB');
   const value = JSON.parse(content);
   const keys = (object: unknown, allowed: string[]) => {
     if (

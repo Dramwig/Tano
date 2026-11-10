@@ -766,7 +766,8 @@ button:hover {
   color: var(--muted);
   line-height: 1.8;
 }
-.workspace-page-content {
+.workspace-page-content,
+.workspace-page-body {
   display: contents;
 }
 .component-loading-content {
@@ -2342,6 +2343,9 @@ button:hover {
   line-height: 1.5;
   overflow: hidden;
 }
+.tano-slash-menu {
+  width: min(280px, calc(100vw - 16px));
+}
 .tano-slash-menu[hidden] {
   display: none;
 }
@@ -2384,14 +2388,17 @@ button:hover {
   flex-shrink: 0;
   color: var(--text-secondary);
 }
-.tano-slash-label-en {
+.tano-slash-label {
   flex: 1;
   min-width: 0;
 }
-.tano-slash-label-zh {
+.tano-slash-marker {
   flex-shrink: 0;
   color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
   text-align: right;
+  white-space: nowrap;
 }
 .tano-slash-empty {
   padding: 12px 8px;
@@ -3048,10 +3055,10 @@ button:hover {
 .tano-prose.resize-cursor * {
   cursor: col-resize !important;
 }
-.tano-table-controls { pointer-events: none; }
+.tano-table-controls { position: absolute; inset: 0; pointer-events: none; }
 .tano-table-insert-controls[hidden], .tano-table-insert[hidden], .tano-table-insert-line[hidden] { display: none; }
 .tano-table-insert {
-  position: fixed;
+  position: absolute;
   z-index: 16;
   display: grid;
   place-items: center;
@@ -3085,9 +3092,9 @@ button:hover {
 .tano-table-insert-hit { position: absolute; inset: 0; pointer-events: auto; }
 .tano-table-insert.is-column > .tano-table-insert-hit { clip-path: polygon(0 0, 100% 0, 100% 100%); }
 .tano-table-insert.is-row > .tano-table-insert-hit { clip-path: polygon(0 0, 0 100%, 100% 100%); }
-.tano-table-insert-line { position: fixed; z-index: 12; background: var(--green); pointer-events: none; }
+.tano-table-insert-line { position: absolute; z-index: 12; background: var(--green); pointer-events: none; }
 .tano-table-grip {
-  position: fixed;
+  position: absolute;
   z-index: 15;
   width: 28px;
   height: 28px;
@@ -3156,13 +3163,13 @@ button:hover {
 .tano-prose.tano-table-drag-preview :is(table, thead, tbody, tr, th, td) { background: transparent; }
 .tano-table-controls.is-dragging .tano-table-grip.is-selected { z-index: 41; will-change: transform; }
 .tano-table-line-outline {
-  position: fixed;
+  position: absolute;
   z-index: 12;
   box-sizing: border-box;
   border-radius: 4px;
   pointer-events: none;
 }
-.tano-table-line-drop { position: fixed; z-index: 42; background: var(--green); pointer-events: none; }
+.tano-table-line-drop { position: absolute; z-index: 42; background: var(--green); pointer-events: none; }
 .tano-editor-panel.tano-table-menu,
 .tano-editor-panel.tano-table-color-menu {
   position: fixed;
@@ -3365,7 +3372,8 @@ button:hover {
 .tano-prose pre.tano-live-source-block[data-source-kind='math_block'] {
   position: relative;
 }
-.tano-prose .tano-live-math-preview {
+.tano-prose .tano-live-math-preview,
+.tano-prose .tano-live-mermaid-preview {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
@@ -3390,8 +3398,22 @@ button:hover {
   left: 50%;
   transform: translateX(-50%);
 }
-.tano-prose .tano-live-math-preview[hidden] {
+.tano-prose .tano-live-math-preview[hidden],
+.tano-prose .tano-live-mermaid-preview[hidden] {
   display: none;
+}
+.tano-prose .tano-live-mermaid-preview {
+  /* Code source scrolls horizontally; fixed positioning escapes its clipping. */
+  position: fixed;
+  max-width: min(640px, var(--tano-panel-available-width, calc(100vw - 32px)));
+  white-space: normal;
+}
+.tano-prose .tano-live-mermaid-preview svg {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: min(320px, 40vh);
 }
 .tano-prose .tano-live-source-inline .tano-live-source-strong {
   font-weight: 600;
@@ -6218,3 +6240,7 @@ div.tano-feature-source {
 .tano-prose .tano-live-source-subscript { vertical-align: sub; }
 .source-editor .cm-source-inline_comment,
 .tano-prose .tano-live-source-inline_comment { opacity: 0.55; }
+
+/* Regional glyph shapes for application chrome; editor font preferences remain explicit. */
+:root:lang(zh-TW) { --font-cjk-sans: 'PingFang TC', 'Microsoft JhengHei UI', 'Microsoft JhengHei', 'Noto Sans CJK TC', 'Noto Sans TC', sans-serif; }
+:root:lang(ja) { --font-cjk-sans: 'Hiragino Sans', 'Yu Gothic UI', 'Yu Gothic', Meiryo, 'Noto Sans CJK JP', 'Noto Sans JP', sans-serif; }

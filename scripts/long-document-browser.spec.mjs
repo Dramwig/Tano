@@ -66,6 +66,27 @@ test('long documents keep controls bounded while scrolling, folding and editing 
   expect(errors).toEqual([]);
 });
 
+test('outline follows scroll snapshots and refreshes its index after wrapping changes', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('http://127.0.0.1:43845');
+  await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$pinia?._s.get('workspace')?.workspace);
+  await page.evaluate(async () => {
+    const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace');
+    const text = Array.from({ length: 12 }, (_, i) => `## Reading section ${i + 1}\n\n${'正文 English paragraph. '.repeat(100)}\n\n`).join('');
+    await store.create('outline-scroll-snapshot.md', false, text);
+  });
+  const headings = page.locator('.ProseMirror h2');
+  await expect(headings).toHaveCount(12);
+  for (const [width, index] of [[1280, 6], [900, 3], [1440, 9]]) {
+    await page.setViewportSize({ width, height: 900 });
+    await headings.nth(index).evaluate(heading => heading.scrollIntoView({ block: 'start' }));
+    await expect(page.locator('.outline [aria-current="location"]')).toHaveAttribute('aria-label', `跳转到Reading section ${index + 1}`);
+  }
+  expect(errors).toEqual([]);
+});
+
 async function modeState(page) {
   return page.evaluate(() => {
     let component = document.querySelector('.source-editor, .milkdown-host').__vueParentComponent;

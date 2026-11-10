@@ -14,7 +14,7 @@
 
 ### 🌐 The Official Website: [tano.page](https://tano.page)
 
-English | [中文](README_ZH.md) | [日本語](README_JA.md) | [Deutsch](README_DE.md)
+English | [中文](README_ZH.md) | [日本語](README_JA.md) | [Deutsch](README_DE.md) | [繁體中文](README_TW.md) | [Español](README_ES.md)
 
 [Downloads](https://github.com/Dramwig/Tano/releases) · [Quick start](#quick-start) · [Features](#features) · [Documentation](docs/README.md) · [Development](#development)
 

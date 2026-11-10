@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import { ArrowUp } from 'lucide-vue-next';
 import { isDataTableFilePath, isMarkdown, isWorkspaceInternalPath, parentPath, type FileEntry } from '@tano/protocol';
-import { t } from '../i18n';
+import { uiLocale, t } from '../i18n';
 import { indexFolderHomes, type FolderHomeFileName } from '../folder-home';
 import DocumentFileIcon from './DocumentFileIcon.vue';
 import ResourceIcon from './ResourceIcon.vue';
@@ -45,7 +45,7 @@ const fileSize = (file: FileEntry) => file.kind === 'directory' ? '—' : file.s
               <ResourceIcon v-else :path="file.path" :name="file.name" :kind="file.kind" />
               <span>{{ file.name }}</span>
             </span>
-            <span class="folder-view-date">{{ file.modified ? new Date(file.modified).toLocaleString() : '—' }}</span>
+            <span class="folder-view-date">{{ file.modified ? new Date(file.modified).toLocaleString(uiLocale) : '—' }}</span>
             <span class="folder-view-type">{{ fileType(file) }}</span><span class="folder-view-size">{{ fileSize(file) }}</span>
           </button>
         </li>

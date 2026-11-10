@@ -4,7 +4,7 @@ import { createApp, h, nextTick, ref } from 'vue';
 import type { App } from 'vue';
 import { EditorView } from '@codemirror/view';
 import SourceEditor from './SourceEditor.vue';
-import { defaultCapabilities, defaultEditorPreferences, defaultSelectionWrapping } from '@tano/editor/runtime';
+import { defaultCapabilities, defaultEditorPreferences, defaultSelectionWrapping, defaultChineseInput } from '@tano/editor/runtime';
 
 let app: App | undefined;
 let root: HTMLDivElement;
@@ -395,7 +395,7 @@ it.each(['keyboard', 'text input'])('maps full-width yuan in source via %s when 
   const input = () => method === 'keyboard' ? typeSymbol(view, '￥') :
     view.state.facet(EditorView.inputHandler).some(handler => handler(view, 0, 3, '￥', () => view.state.update({ changes: { from: 0, to: 3, insert: '￥' } })));
   expect(input()).toBe(false);
-  preferences.value.selectionWrapping.yenToDollar = true;
+  preferences.value.chineseInput = { ...defaultChineseInput, yenToDollar: true };
   await nextTick();
   expect(input()).toBe(true);
   expect(value.value).toBe('$x_1$');
@@ -403,6 +403,117 @@ it.each(['keyboard', 'text input'])('maps full-width yuan in source via %s when 
   expect(view.state.selection.main.head).toBe(1);
   expect(editor.value!.undoLastChange()).toBe(true);
   expect(value.value).toBe('x_1');
+});
+
+function inputText(view: EditorView, text: string) {
+  const { from, to } = view.state.selection.main;
+  return view.state.facet(EditorView.inputHandler).some(handler =>
+    handler(view, from, to, text, () => view.state.update({ changes: { from, to, insert: text } })));
+}
+
+it('maps source input independently of wrapping, preserves existing text and undoes the conversion', async () => {
+  const { value, view, preferences, editor, readonly } = await mountSource('原文【，。】');
+  view.dispatch({ selection: { anchor: view.state.doc.length } });
+  expect(inputText(view, '【】（）；，。！……￥')).toBe(false);
+  preferences.value.chineseInput = Object.fromEntries(Object.keys(defaultChineseInput).map(key => [key, true])) as typeof defaultChineseInput;
+  preferences.value.selectionWrapping.enabled = false;
+  await nextTick();
+  expect(value.value).toBe('原文【，。】');
+  expect(inputText(view, '【】（）；，。！……￥')).toBe(true);
+  expect(value.value).toBe('原文【，。】[]();,.!^$');
+  expect(view.state.selection.main.head).toBe(value.value.length);
+  expect(editor.value!.undoLastChange()).toBe(true);
+  expect(value.value).toBe('原文【，。】');
+  readonly.value = true;
+  await nextTick();
+  expect(inputText(view, '，')).toBe(false);
+});
+
+it.each(['keydown', 'beforeinput'])('intercepts Chinese punctuation before DOM insertion via %s', async method => {
+  const { value, view, preferences, editor, readonly } = await mountSource('正文');
+  view.dispatch({ selection: { anchor: 2 } });
+  const event = () => method === 'keydown'
+    ? new KeyboardEvent('keydown', { key: '【', code: 'BracketLeft', keyCode: 219, bubbles: true, cancelable: true })
+    : new InputEvent('beforeinput', { inputType: 'insertText', data: '【', bubbles: true, cancelable: true });
+  const disabled = event();
+  view.contentDOM.dispatchEvent(disabled);
+  expect(disabled.defaultPrevented).toBe(false);
+  preferences.value.chineseInput = { ...defaultChineseInput, brackets: true };
+  await nextTick();
+  const enabled = event();
+  view.contentDOM.dispatchEvent(enabled);
+  expect(enabled.defaultPrevented).toBe(true);
+  expect(value.value).toBe('正文[');
+  expect(view.contentDOM.textContent).not.toContain('【');
+  expect(editor.value!.undoLastChange()).toBe(true);
+  expect(value.value).toBe('正文');
+  readonly.value = true;
+  await nextTick();
+  const locked = event();
+  view.contentDOM.dispatchEvent(locked);
+  expect(locked.defaultPrevented).toBe(false);
+});
+
+it('honors the beforeinput target range without overwriting the current source selection', async () => {
+  const { value, view, preferences } = await mountSource('甲乙');
+  preferences.value.chineseInput = { ...defaultChineseInput, brackets: true };
+  await nextTick();
+  view.dispatch({ selection: { anchor: 2 } });
+  const text = view.contentDOM.querySelector('.cm-line')!.firstChild!;
+  const event = new InputEvent('beforeinput', { inputType: 'insertText', data: '【', bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'getTargetRanges', { value: () => [{ startContainer: text, startOffset: 0, endContainer: text, endOffset: 1 }] });
+  view.contentDOM.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(true);
+  expect(value.value).toBe('[乙');
+});
+
+it('maps committed IME punctuation after composition, preserving candidate text and undo', async () => {
+  const { value, view, preferences, editor } = await mountSource('正文');
+  preferences.value.chineseInput = { ...defaultChineseInput, ellipsisToCaret: true };
+  await nextTick();
+  view.dispatch({ selection: { anchor: 2 } });
+  view.contentDOM.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+  const composing = vi.spyOn(view, 'composing', 'get').mockReturnValue(true);
+  expect(inputText(view, '……')).toBe(false);
+  view.dispatch({ changes: { from: 2, insert: '……' }, selection: { anchor: 4 }, userEvent: 'input.type.compose' });
+  expect(value.value).toBe('正文……');
+  composing.mockRestore();
+  view.contentDOM.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '……' }));
+  // Waiting for a timer here would conceal the WebView2 one-frame flash.
+  await new Promise<void>(resolve => queueMicrotask(() => queueMicrotask(resolve)));
+  expect(value.value).toBe('正文^');
+  expect(editor.value!.undoLastChange()).toBe(true);
+  expect(value.value).toBe('正文');
+});
+
+it('uses mapped ellipsis with the source superscript wrapper and honors workspace syntax settings', async () => {
+  const { value, view, preferences, capabilities, editor } = await mountSource('文字');
+  preferences.value.chineseInput = { ...defaultChineseInput, ellipsisToCaret: true };
+  preferences.value.selectionWrapping.superscript = true;
+  await nextTick();
+  view.dispatch({ selection: { anchor: 2, head: 0 } });
+  expect(inputText(view, '……')).toBe(true);
+  expect(value.value).toBe('^文字^');
+  expect(view.state.selection.main.anchor).toBe(3);
+  expect(view.state.selection.main.head).toBe(1);
+  expect(editor.value!.undoLastChange()).toBe(true);
+  capabilities.value.features.superscript = false;
+  await nextTick();
+  view.dispatch({ selection: { anchor: 2, head: 0 } });
+  expect(inputText(view, '……')).toBe(true);
+  expect(value.value).toBe('^');
+});
+
+it('does not pre-wrap a selection from IME key metadata before the actual commit', async () => {
+  const { value, view, preferences } = await mountSource('文字');
+  preferences.value.chineseInput = { ...defaultChineseInput, ellipsisToCaret: true };
+  preferences.value.selectionWrapping.superscript = true;
+  await nextTick();
+  view.dispatch({ selection: { anchor: 0, head: 2 } });
+  for (const key of ['Process', 'Unidentified', '……', '^']) {
+    expect(typeSymbol(view, key, { code: 'Digit6', keyCode: 229, shiftKey: true })).toBe(false);
+    expect(value.value).toBe('文字');
+  }
 });
 
 it.each([['_', '_'], ['~', '~~'], ['=', '=='], ['`', '`']])('wraps source with %s and preserves backward selections and undo', async (key, delimiter) => {

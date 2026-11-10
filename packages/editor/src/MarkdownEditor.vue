@@ -59,7 +59,8 @@ import {
   inlineMathInput,
   blockMathInput,
 } from './math';
-import { mathSourcePreviewView, sourceBlockStyle } from './math-source-preview';
+import { sourcePreviewView, sourceBlockStyle } from './source-preview';
+import { createMermaidRenderer } from './mermaid-preview';
 import { splitFrontmatter } from './syntax';
 import { SuggestionChangeCodec } from './suggestion-codec';
 import { markdownPositionMap } from './mode-selection';
@@ -81,6 +82,7 @@ import { BlockRangeSelection, expandBlockSelection } from './block-selection';
 import { blockTree, moveBlockSibling, moveBlocksTo, isBlockContainer, indentBlock, outdentBlock, deleteBlock, deleteBlocks } from './block-tree';
 import { emptyBlockDeletion } from './empty-block';
 import { slashCommands } from './slash-commands';
+import type { SlashTranslate } from './slash-commands';
 import { textStyles, underline, superscript, subscript, highlight, textColor, backgroundColor } from './text-styles';
 import { normalizeTextColor } from './text-style-markdown';
 import { wikiLink, wikiLinkInput, wikiLinkRemark } from './wiki-link';
@@ -106,7 +108,7 @@ import type { InlineSourceSession } from './inline-source-session';
 import { liveInlineSource, liveSource } from './live-source';
 import { nestedEmphasisRemark } from './nested-emphasis';
 import { sourceStyleRanges } from './source-highlight';
-import { configureMarkdownRuntime, defaultCapabilities, defaultEditorPreferences, normalizeCopyFormat, selectionWrap, workspaceWrapping } from './runtime';
+import { configureMarkdownRuntime, defaultCapabilities, defaultEditorPreferences, normalizeCopyFormat, selectionWrap, workspaceWrapping, mapChineseInput, normalizeChineseInput, mappedChineseInputKey, mappedChineseBeforeInput } from './runtime';
 import type { WorkspaceCapabilities, EditorPreferences, CopyFormat } from './runtime';
 import { destinationClipboardHTML, selectedFormulaMathML, tableTSV } from './clipboard-formats';
 import { runtimeViews, runtimeMarkViews, mermaidView } from './runtime-views';
@@ -147,6 +149,8 @@ const props = withDefaults(
     documentId: string;
     referenceTargets?: readonly ReferenceTarget[];
     readonly?: boolean;
+    /** Translate editor-owned UI text without touching document content. */
+    translate?: SlashTranslate;
     shortcutHints?: Record<string, string>;
     enabledLevels?: readonly number[];
     capabilities?: WorkspaceCapabilities;
@@ -167,6 +171,10 @@ const props = withDefaults(
   }>(),
   { revealMarkdown: true, showDocumentProperties: true },
 );
+const t: SlashTranslate = (message, values = []) => props.translate?.(message, values) ??
+  message.replace(/\{(\d+)\}/g, (token, index: string) =>
+    Number(index) < values.length ? String(values[Number(index)] ?? '') : token);
+
 const emit = defineEmits<{
   'update:modelValue': [value: string];
   error: [message: string];
@@ -183,6 +191,7 @@ const emit = defineEmits<{
 const policy = () => props.capabilities ?? defaultCapabilities;
 const referencesEnabled = () => props.referenceTargets !== undefined && commandEnabled('reference', props.enabledLevels, policy().features);
 const preferences = () => props.preferences ?? defaultEditorPreferences;
+const renderMermaid = createMermaidRenderer();
 const defaultCopyAction = computed(() => {
   const format = normalizeCopyFormat(preferences().copyFormat);
   return format === 'markdown' ? 'copy' : `copy-${format}`;
@@ -460,14 +469,14 @@ const propertyError = ref('');
 const propertyErrorField = ref<'name' | 'value'>('value');
 const typeMenuProperty = ref<string | null | undefined>();
 const propertyTypeOptions = [
-  { kind: 'text', label: '文本', icon: AlignLeft },
-  { kind: 'number', label: '数字', icon: Hash },
-  { kind: 'boolean', label: '复选框', icon: CheckSquare2 },
-  { kind: 'date', label: '日期', icon: CalendarDays },
-  { kind: 'datetime', label: '日期和时间', icon: CalendarClock },
-  { kind: 'list', label: '列表', icon: List },
-  { kind: 'object', label: '对象', icon: Braces },
-  { kind: 'null', label: '空值', icon: CircleHelp },
+  { kind: 'text', get label() { return t('文本'); }, icon: AlignLeft },
+  { kind: 'number', get label() { return t('数字'); }, icon: Hash },
+  { kind: 'boolean', get label() { return t('复选框'); }, icon: CheckSquare2 },
+  { kind: 'date', get label() { return t('日期'); }, icon: CalendarDays },
+  { kind: 'datetime', get label() { return t('日期和时间'); }, icon: CalendarClock },
+  { kind: 'list', get label() { return t('列表'); }, icon: List },
+  { kind: 'object', get label() { return t('对象'); }, icon: Braces },
+  { kind: 'null', get label() { return t('空值'); }, icon: CircleHelp },
 ] as const;
 function currentPropertyKind(name: string): FrontmatterValueKind {
   return editingProperty.value === name || (editingProperty.value === null && !name)
@@ -503,7 +512,7 @@ function editProperty(name: string | null, focus: 'name' | 'value' | false = 'va
   void nextTick(() => {
     if (name === null && frontmatterPanel.value) frontmatterPanel.value.open = true;
     if (focus) frontmatterPanel.value?.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
-      `.frontmatter-row-editor ${name === null || focus === 'name' ? '[aria-label="属性名"]' : '[aria-label="属性值"]'}`,
+      `.frontmatter-row-editor ${name === null || focus === 'name' ? '.frontmatter-name-input' : '.frontmatter-value-editor :is(input, textarea, select)'}`,
     )?.focus();
     activatingProperty = false;
   });
@@ -563,7 +572,7 @@ function syncProperty(event?: Event) {
     propertyError.value = '';
   } catch (error) {
     propertyError.value = error instanceof Error ? error.message : String(error);
-    propertyErrorField.value = event?.target instanceof Element && event.target.getAttribute('aria-label') === '属性名'
+    propertyErrorField.value = event?.target instanceof Element && event.target.classList.contains('frontmatter-name-input')
       ? 'name' : 'value';
   }
 }
@@ -746,6 +755,66 @@ function fillEmptyRenderedCodeLine(view: EditorView, from: number, to: number, t
       $from.parentOffset !== 0) return false;
   view.dispatch(view.state.tr.insertText(text, from, from + 1));
   return true;
+}
+
+let chineseCompositionRevision = 0;
+function chineseInputSettings() {
+  return normalizeChineseInput(preferences().chineseInput, preferences().selectionWrapping);
+}
+function mappedChineseInput(text: string) {
+  return mapChineseInput(text, chineseInputSettings());
+}
+function insertChineseInput(ctx: Ctx, view: EditorView, from: number, to: number, text: string) {
+  const mapped = mappedChineseInput(text);
+  return mapped !== text && insertMappedChineseInput(ctx, view, from, to, mapped);
+}
+function insertMappedChineseInput(ctx: Ctx, view: EditorView, from: number, to: number, mapped: string) {
+  if (props.readonly || view.composing) return false;
+  if (!wrapSelectedInlineSource(ctx, view, from, to, mapped) &&
+      !insertEmptyCodeSourceText(view, from, to, mapped) &&
+      !fillEmptyRenderedCodeLine(view, from, to, mapped) &&
+      !insertPartialEmphasisSource(ctx, view, from, to, mapped))
+    view.dispatch(view.state.tr.insertText(mapped, from, to));
+  return true;
+}
+function chineseInputEventTarget(event: Event) {
+  return !(event.target instanceof Element && event.target.closest('input, textarea, [contenteditable="false"]'));
+}
+function beforeChineseInput(ctx: Ctx, view: EditorView, event: InputEvent) {
+  if (!chineseInputEventTarget(event)) return false;
+  const mapped = mappedChineseBeforeInput(event, chineseInputSettings());
+  if (mapped === null) return false;
+  const ranges = event.getTargetRanges?.() ?? [];
+  if (ranges.length > 1) return false;
+  let { from, to } = view.state.selection;
+  if (ranges.length) {
+    const range = ranges[0]!;
+    if (!view.dom.contains(range.startContainer) || !view.dom.contains(range.endContainer)) return false;
+    from = view.posAtDOM(range.startContainer, range.startOffset);
+    to = view.posAtDOM(range.endContainer, range.endOffset);
+  }
+  if (from < 0 || to < from || to > view.state.doc.content.size) return false;
+  if (!insertMappedChineseInput(ctx, view, from, to, mapped)) return false;
+  event.preventDefault();
+  return true;
+}
+function finishChineseComposition(view: EditorView, text: string) {
+  const revision = ++chineseCompositionRevision;
+  if (!text || mappedChineseInput(text) === text) return;
+  // Run after the editor's composition-end flush, within the same paint boundary.
+  // A timer can leave the committed Chinese glyph visible for a frame in WebView2.
+  queueMicrotask(() => queueMicrotask(() => {
+    if (revision !== chineseCompositionRevision || disposed || view.isDestroyed || props.readonly || view.composing) return;
+    const { selection } = view.state;
+    if (!selection.empty || selection.$from.parentOffset < text.length) return;
+    const to = selection.from, from = to - text.length;
+    if (view.state.doc.textBetween(from, to) === text)
+      insertChineseInputFromComposition(view, from, to, text);
+  }));
+}
+function insertChineseInputFromComposition(view: EditorView, from: number, to: number, text: string) {
+  const mapped = mappedChineseInput(text);
+  if (mapped !== text) view.dispatch(view.state.tr.insertText(mapped, from, to));
 }
 
 function wrapSelectedInlineSource(ctx: Ctx, view: EditorView, from: number, to: number, text: string) {
@@ -1965,7 +2034,8 @@ const bridge = $prose(
       },
       props: {
         handleTextInput(view, from, to, text) {
-          return insertEmptyCodeSourceText(view, from, to, text) ||
+          return insertChineseInput(ctx, view, from, to, text) ||
+            insertEmptyCodeSourceText(view, from, to, text) ||
             fillEmptyRenderedCodeLine(view, from, to, text) ||
             wrapSelectedInlineSource(ctx, view, from, to, text) ||
             insertPartialEmphasisSource(ctx, view, from, to, text);
@@ -2101,6 +2171,7 @@ const bridge = $prose(
           return true;
         },
         handleDOMEvents: {
+          beforeinput: (view, event) => beforeChineseInput(ctx, view, event as InputEvent),
           copy: (view, event) => copySelectionWithPreference(ctx, view, event),
           cut: (view, event) => copySelectionWithPreference(ctx, view, event),
           mousedown(view, event) {
@@ -2118,6 +2189,11 @@ const bridge = $prose(
             return false;
           },
           keydown(view, event) {
+            const mapped = chineseInputEventTarget(event) && mappedChineseInputKey(event, chineseInputSettings());
+            if (mapped && insertMappedChineseInput(ctx, view, view.state.selection.from, view.state.selection.to, mapped)) {
+              event.preventDefault();
+              return true;
+            }
             if (event.key.toLowerCase() === 'a' && (event.ctrlKey || event.metaKey) &&
                 !event.shiftKey && !event.altKey && !event.isComposing && event.keyCode !== 229 && !view.composing &&
                 !(event.target instanceof Element && event.target.closest('input, textarea, [contenteditable="false"]'))) {
@@ -2213,7 +2289,12 @@ const bridge = $prose(
             finishLocalSource(ctx, view);
             return false;
           },
-          compositionend(view) {
+          compositionstart() {
+            chineseCompositionRevision++;
+            return false;
+          },
+          compositionend(view, event) {
+            finishChineseComposition(view, (event as CompositionEvent).data);
             queueMicrotask(() => {
               if (!disposed && !view.isDestroyed && localSource)
                 view.dispatch(view.state.tr);
@@ -2381,6 +2462,7 @@ const bridge = $prose(
               () => policy().features.mermaid,
               () => !!props.readonly,
               () => props.revealMarkdown !== false,
+              renderMermaid,
             ),
             math_inline: mathView(
               false,
@@ -2394,14 +2476,14 @@ const bridge = $prose(
               () => props.revealMarkdown === false || preferences().previewMathWhileEditing,
               () => props.revealMarkdown !== false,
             ),
-            tano_live_source_inline: mathSourcePreviewView(
+            tano_live_source_inline: sourcePreviewView(
               true,
               () => preferences().previewMathWhileEditing && props.revealMarkdown !== false,
               (source) => ctx.get(parserCtx)(source),
               undefined,
               policy,
             ),
-            tano_live_source: mathSourcePreviewView(
+            tano_live_source: sourcePreviewView(
               false,
               () => preferences().previewMathWhileEditing && props.revealMarkdown !== false,
               (source) => ctx.get(parserCtx)(source),
@@ -2409,6 +2491,10 @@ const bridge = $prose(
                 ? localSource.style
                 : null,
               policy,
+              {
+                enabled: () => preferences().previewMermaidWhileEditing !== false && props.revealMarkdown !== false && !props.readonly,
+                render: renderMermaid,
+              },
             ),
             image(node, view, getPos) {
               const wrapper = document.createElement('span');
@@ -2738,6 +2824,7 @@ onMounted(async () => {
       .use(
         $prose(() =>
           slashCommands({
+            translate: props.translate,
             readonly: () => !!props.readonly,
             levels: () => props.enabledLevels,
             features: () => policy().features,
@@ -3793,7 +3880,22 @@ function revealSourceRange(range: { from: number; to: number }) {
     return true;
   });
 }
+/** Render the normal source-editing state in an isolated example without moving browser focus. */
+function revealPreviewSource() {
+  if (!editor || !bridgeView || disposed || props.readonly) return;
+  editor.action(ctx => {
+    const view = ctx.get(editorViewCtx);
+    const node = view.state.doc.firstChild;
+    if (!node || node.type.name === 'tano_live_source') return;
+    const tr = blockNodeSourceTransaction(ctx, view.state, { node, pos: 0 }, view.state.tr);
+    const previous = applying;
+    applying = true;
+    try { view.dispatch(tr.setMeta('addToHistory', false)); }
+    finally { applying = previous; }
+  });
+}
 defineExpose({
+  revealPreviewSource,
   blockShortcut,
   addDocumentProperty,
   initializeBody,
@@ -3826,6 +3928,7 @@ defineExpose({
   redoLastChange,
 });
 onBeforeUnmount(() => {
+  chineseCompositionRevision++;
   suggestionCodec.clear();
   clearTimeout(referenceFlashTimer);
   closeBlockConvertMenu();
@@ -3867,15 +3970,13 @@ onBeforeUnmount(() => {
           stroke-linecap="round"
           stroke-linejoin="round"
         />
-      </svg>
-      文档属性
-      <button
+      </svg> {{ t('文档属性') }} <button
         v-if="properties !== null"
         type="button"
         class="frontmatter-order-toggle"
         :aria-pressed="propertyOrder === 'name'"
-        :aria-label="propertyOrder === 'source' ? '按名称排序文档属性' : '按文件顺序显示文档属性'"
-        :title="propertyOrder === 'source' ? '按名称排序' : '按文件顺序显示'"
+        :aria-label="propertyOrder === 'source' ? t('按名称排序文档属性') : t('按文件顺序显示文档属性')"
+        :title="propertyOrder === 'source' ? t('按名称排序') : t('按文件顺序显示')"
         @click.stop.prevent="propertyOrder = propertyOrder === 'source' ? 'name' : 'source'"
         @keydown.stop
       ><ArrowDownAZ :size="16" /></button>
@@ -3883,7 +3984,7 @@ onBeforeUnmount(() => {
     <div class="frontmatter-content">
       <template v-if="properties === null">
         <pre class="frontmatter-raw">{{ metadata }}</pre>
-        <button v-if="!readonly" type="button" class="frontmatter-add" @click="emit('editSource')">在源码中编辑</button>
+        <button v-if="!readonly" type="button" class="frontmatter-add" @click="emit('editSource')">{{ t('在源码中编辑') }}</button>
       </template>
       <template v-else>
         <div
@@ -3900,8 +4001,8 @@ onBeforeUnmount(() => {
             v-if="!readonly"
             type="button"
             class="frontmatter-property-type"
-            :title="`属性类型：${propertyTypeOptions.find((option) => option.kind === currentPropertyKind(property.name))?.label}`"
-            :aria-label="`切换 ${property.name || '新属性'} 的类型`"
+            :title="t('属性类型：{0}', [propertyTypeOptions.find((option) => option.kind === currentPropertyKind(property.name))?.label])"
+            :aria-label="t('切换 {0} 的类型', [property.name || t('新属性')])"
             :aria-expanded="typeMenuProperty === property.name || (typeMenuProperty === null && !property.name)"
             @click="openPropertyTypeMenu(property.name || null)"
           ><component :is="propertyTypeIcon(property.name)" :size="16" /></button>
@@ -3911,23 +4012,23 @@ onBeforeUnmount(() => {
             class="frontmatter-row-editor"
           >
             <div class="frontmatter-name-editor">
-              <input v-model="propertyName" class="frontmatter-name-input" aria-label="属性名" :aria-invalid="propertyError && propertyErrorField === 'name' ? true : undefined" spellcheck="false" @input="syncProperty" @compositionend="syncProperty" @keydown.enter="finishPropertyOnKey" />
+              <input v-model="propertyName" class="frontmatter-name-input" :aria-label="t('属性名')" :aria-invalid="propertyError && propertyErrorField === 'name' ? true : undefined" spellcheck="false" @input="syncProperty" @compositionend="syncProperty" @keydown.enter="finishPropertyOnKey" />
               <span v-if="propertyError && propertyErrorField === 'name'" class="frontmatter-row-error" role="alert">{{ propertyError }}</span>
             </div>
             <div class="frontmatter-value-editor">
-              <select v-if="propertyKind === 'boolean'" v-model="propertyInput" aria-label="属性值" :aria-invalid="propertyError && propertyErrorField === 'value' ? true : undefined" @change="syncProperty">
+              <select v-if="propertyKind === 'boolean'" v-model="propertyInput" :aria-label="t('属性值')" :aria-invalid="propertyError && propertyErrorField === 'value' ? true : undefined" @change="syncProperty">
                 <option value="true">true</option>
                 <option value="false">false</option>
               </select>
-              <span v-else-if="propertyKind === 'null'" class="frontmatter-null-value">空</span>
-              <input v-else-if="propertyKind === 'date'" v-model="propertyInput" aria-label="属性值" :aria-invalid="propertyError && propertyErrorField === 'value' ? true : undefined" type="date" @input="syncProperty" />
+              <span v-else-if="propertyKind === 'null'" class="frontmatter-null-value">{{ t('空') }}</span>
+              <input v-else-if="propertyKind === 'date'" v-model="propertyInput" :aria-label="t('属性值')" :aria-invalid="propertyError && propertyErrorField === 'value' ? true : undefined" type="date" @input="syncProperty" />
               <textarea
                 v-else-if="propertyKind === 'list' || propertyKind === 'object' || propertyInput.includes('\n')"
                 v-model="propertyInput"
-                aria-label="属性值"
+                :aria-label="t('属性值')"
                 :aria-invalid="propertyError && propertyErrorField === 'value' ? true : undefined"
                 :rows="propertyKind === 'text' ? 2 : 4"
-                :title="propertyKind === 'list' || propertyKind === 'object' ? '使用 JSON 格式' : undefined"
+                :title="propertyKind === 'list' || propertyKind === 'object' ? t('使用 JSON 格式') : undefined"
                 spellcheck="false"
                 @input="syncProperty"
                 @compositionend="syncProperty"
@@ -3935,7 +4036,7 @@ onBeforeUnmount(() => {
               <input
                 v-else
                 v-model="propertyInput"
-                aria-label="属性值"
+                :aria-label="t('属性值')"
                 :aria-invalid="propertyError && propertyErrorField === 'value' ? true : undefined"
                 type="text"
                 :inputmode="propertyKind === 'number' ? 'decimal' : undefined"
@@ -3951,7 +4052,7 @@ onBeforeUnmount(() => {
               v-if="!readonly"
               type="button"
               class="frontmatter-property-name frontmatter-property-button"
-              :title="`编辑 ${property.name}`"
+              :title="t('编辑 {0}', [property.name])"
               @click="editProperty(property.name, 'name')"
             >{{ property.name }}</button>
             <span v-else class="frontmatter-property-name">{{ property.name }}</span>
@@ -3959,16 +4060,16 @@ onBeforeUnmount(() => {
               v-if="!readonly"
               type="button"
               class="frontmatter-property-value frontmatter-property-button"
-              :title="`编辑 ${property.name}`"
+              :title="t('编辑 {0}', [property.name])"
               @click="editProperty(property.name)"
             >{{ property.value }}</button>
             <span v-else class="frontmatter-property-value">{{ property.value }}</span>
           </template>
-          <div v-surface-motion="'MarkdownEditor:0'" v-if="typeMenuProperty === property.name || (typeMenuProperty === null && !property.name)" class="frontmatter-type-menu" role="menu" aria-label="属性类型">
+          <div v-surface-motion="'MarkdownEditor:0'" v-if="typeMenuProperty === property.name || (typeMenuProperty === null && !property.name)" class="frontmatter-type-menu" role="menu" :aria-label="t('属性类型')">
             <button v-for="option in propertyTypeOptions" :key="option.kind" type="button" role="menuitemradio" :aria-checked="currentPropertyKind(property.name) === option.kind" @click="changePropertyType(option.kind)">
               <component :is="option.icon" :size="16" />{{ option.label }}
             </button>
-            <button v-if="editingProperty !== null" type="button" role="menuitem" class="frontmatter-type-delete" @click="deleteProperty"><Trash2 :size="16" />删除属性</button>
+            <button v-if="editingProperty !== null" type="button" role="menuitem" class="frontmatter-type-delete" @click="deleteProperty"><Trash2 :size="16" />{{ t('删除属性') }}</button>
           </div>
         </div>
       </template>
@@ -3978,8 +4079,7 @@ onBeforeUnmount(() => {
         class="frontmatter-add frontmatter-add-property"
         @click="editProperty(null)"
       >
-        <Plus :size="16" aria-hidden="true" />添加文档属性
-      </button>
+        <Plus :size="16" aria-hidden="true" />{{ t('添加文档属性') }} </button>
     </div>
   </details>
   <div
@@ -3998,20 +4098,20 @@ onBeforeUnmount(() => {
       ref="linkPanelElement"
       class="tano-editor-panel tano-link-editor-panel"
       role="group"
-      :aria-label="linkPanel.kind === 'wiki' ? '编辑 Wiki 链接' : '编辑链接'"
+      :aria-label="linkPanel.kind === 'wiki' ? t('编辑 Wiki 链接') : t('编辑链接')"
       :style="{ left: `${linkPanel.x}px`, top: `${linkPanel.y}px` }"
       @keydown.esc.prevent.stop="closeLinkPanel"
       @mousedown.stop
       @click.stop
     >
       <template v-if="linkPanel.kind === 'wiki'">
-        <label>目标<input ref="linkPanelFirstInput" :value="linkPanel.target" aria-label="Wiki 链接目标" @input="editLinkPanel('target', $event)" /></label>
-        <label>别名<input :value="linkPanel.label" aria-label="Wiki 链接别名" placeholder="留空时使用目标名称" @input="editLinkPanel('label', $event)" /></label>
+        <label>{{ t('目标') }}<input ref="linkPanelFirstInput" :value="linkPanel.target" :aria-label="t('Wiki 链接目标')" @input="editLinkPanel('target', $event)" /></label>
+        <label>{{ t('别名') }}<input :value="linkPanel.label" :aria-label="t('Wiki 链接别名')" :placeholder="t('留空时使用目标名称')" @input="editLinkPanel('label', $event)" /></label>
       </template>
       <template v-else>
-        <label>文字<input ref="linkPanelFirstInput" :value="linkPanel.text" aria-label="链接文字" @input="editLinkPanel('text', $event)" /></label>
-        <label>地址<input :value="linkPanel.href" aria-label="链接地址" @input="editLinkPanel('href', $event)" /></label>
-        <label>标题<input :value="linkPanel.title" aria-label="链接标题" placeholder="可选" @input="editLinkPanel('title', $event)" /></label>
+        <label>{{ t('文字') }}<input ref="linkPanelFirstInput" :value="linkPanel.text" :aria-label="t('链接文字')" @input="editLinkPanel('text', $event)" /></label>
+        <label>{{ t('地址') }}<input :value="linkPanel.href" :aria-label="t('链接地址')" @input="editLinkPanel('href', $event)" /></label>
+        <label>{{ t('标题') }}<input :value="linkPanel.title" :aria-label="t('链接标题')" :placeholder="t('可选')" @input="editLinkPanel('title', $event)" /></label>
       </template>
     </div>
   </Teleport>
@@ -4022,53 +4122,53 @@ onBeforeUnmount(() => {
       class="dropdown compact-action-menu block-context-menu"
       role="menu"
       tabindex="-1"
-      :aria-label="blockMenu.selectionMenu ? '选区操作' : blockMenuSelectionCount() > 1 ? `${blockMenuSelectionCount()} 个块的操作` : `第 ${blockMenu.index + 1} 个块的操作`"
+      :aria-label="blockMenu.selectionMenu ? t('选区操作') : blockMenuSelectionCount() > 1 ? t('{0} 个块的操作', [blockMenuSelectionCount()]) : t('第 {0} 个块的操作', [blockMenu.index + 1])"
       :style="{ left: `${blockMenu.x}px`, top: `${blockMenu.y}px` }"
       @keydown="onBlockMenuKeydown"
     >
       <div class="block-convert-menu" role="presentation" @pointerenter="openBlockConvertMenu(false, 'copy')" @pointerleave="scheduleCloseBlockConvertMenu">
-        <button ref="blockCopyTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'copy'" @click="openBlockConvertMenu(true, 'copy')"><ClipboardCopy :size="15" aria-hidden="true" />复制为<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
-        <div v-surface-motion="'MarkdownEditor:3'" v-if="blockConvertMenu && blockSubmenuKind === 'copy'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" aria-label="复制为" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
-      <button role="menuitem" type="button" @click="blockMenuAction('copy')"><ClipboardCopy :size="15" aria-hidden="true" />复制 Markdown<kbd v-if="defaultCopyAction === 'copy'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
-      <button role="menuitem" type="button" title="在 Word / WPS 中粘贴后选择“保留源格式”，以保留颜色、底色和字体" @click="blockMenuAction('copy-rich')"><Pilcrow :size="15" aria-hidden="true" />复制富文本（Word / WPS）<kbd v-if="defaultCopyAction === 'copy-rich'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
-      <button role="menuitem" type="button" title="复制 HTML 源码" @click="blockMenuAction('copy-html')"><Braces :size="15" aria-hidden="true" />复制 HTML<kbd v-if="defaultCopyAction === 'copy-html'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
-      <button role="menuitem" type="button" @click="blockMenuAction('copy-text')"><AlignLeft :size="15" aria-hidden="true" />复制纯文本<kbd v-if="defaultCopyAction === 'copy-text'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
+        <button ref="blockCopyTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'copy'" @click="openBlockConvertMenu(true, 'copy')"><ClipboardCopy :size="15" aria-hidden="true" />{{ t('复制为') }}<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
+        <div v-surface-motion="'MarkdownEditor:3'" v-if="blockConvertMenu && blockSubmenuKind === 'copy'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" :aria-label="t('复制为')" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
+      <button role="menuitem" type="button" @click="blockMenuAction('copy')"><ClipboardCopy :size="15" aria-hidden="true" />{{ t('复制 Markdown') }}<kbd v-if="defaultCopyAction === 'copy'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
+      <button role="menuitem" type="button" :title="t('在 Word / WPS 中粘贴后选择“保留源格式”，以保留颜色、底色和字体')" @click="blockMenuAction('copy-rich')"><Pilcrow :size="15" aria-hidden="true" />{{ t('复制富文本（Word / WPS）') }}<kbd v-if="defaultCopyAction === 'copy-rich'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
+      <button role="menuitem" type="button" :title="t('复制 HTML 源码')" @click="blockMenuAction('copy-html')"><Braces :size="15" aria-hidden="true" />{{ t('复制 HTML') }}<kbd v-if="defaultCopyAction === 'copy-html'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
+      <button role="menuitem" type="button" @click="blockMenuAction('copy-text')"><AlignLeft :size="15" aria-hidden="true" />{{ t('复制纯文本') }}<kbd v-if="defaultCopyAction === 'copy-text'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
       <div v-if="specialCopyFormats.mathml || specialCopyFormats.tsv" class="menu-divider" role="separator" />
-      <button v-if="specialCopyFormats.mathml" role="menuitem" type="button" @click="blockMenuAction('copy-mathml')"><Sigma :size="15" aria-hidden="true" />复制公式 MathML</button>
-      <button v-if="specialCopyFormats.tsv" role="menuitem" type="button" @click="blockMenuAction('copy-tsv')"><Table2 :size="15" aria-hidden="true" />复制表格 TSV</button>
+      <button v-if="specialCopyFormats.mathml" role="menuitem" type="button" @click="blockMenuAction('copy-mathml')"><Sigma :size="15" aria-hidden="true" />{{ t('复制公式 MathML') }}</button>
+      <button v-if="specialCopyFormats.tsv" role="menuitem" type="button" @click="blockMenuAction('copy-tsv')"><Table2 :size="15" aria-hidden="true" />{{ t('复制表格 TSV') }}</button>
       <div class="menu-divider" role="separator" />
-      <button role="menuitem" type="button" title="内联排版样式，外链转为可见地址；公式本地渲染为 SVG" @click="blockMenuAction('copy-wechat')"><WechatLogo />复制到微信公众号<kbd v-if="defaultCopyAction === 'copy-wechat'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
-      <button role="menuitem" type="button" title="保留链接，公式使用知乎编辑器的识别标记" @click="blockMenuAction('copy-zhihu')"><ZhihuLogo />复制到知乎<kbd v-if="defaultCopyAction === 'copy-zhihu'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
+      <button role="menuitem" type="button" :title="t('内联排版样式，外链转为可见地址；公式本地渲染为 SVG')" @click="blockMenuAction('copy-wechat')"><WechatLogo />{{ t('复制到微信公众号') }}<kbd v-if="defaultCopyAction === 'copy-wechat'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
+      <button role="menuitem" type="button" :title="t('保留链接，公式使用知乎编辑器的识别标记')" @click="blockMenuAction('copy-zhihu')"><ZhihuLogo />{{ t('复制到知乎') }}<kbd v-if="defaultCopyAction === 'copy-zhihu'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
         </div>
       </div>
       <template v-if="!blockMenu.selectionMenu">
-      <button role="menuitem" type="button" title="编辑所选块的 Markdown 源码" @click="blockMenuAction('source')"><SquareCode :size="15" aria-hidden="true" />编辑源码</button>
-      <button role="menuitem" type="button" @click="blockMenuAction('duplicate')"><CopyPlus :size="15" aria-hidden="true" />创建副本</button>
-      <button v-if="blockMenuTable" role="menuitem" type="button" :disabled="!!blockMenuTable.attrs.autoWidth" :title="blockMenuTable.attrs.autoWidth ? '整张表已使用自动宽度' : '恢复整张表的自动宽度'" @click="blockMenuAction('restoreAutoWidth')"><RotateCcw :size="15" aria-hidden="true" />恢复自动宽度<Check v-if="blockMenuTable.attrs.autoWidth" class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
+      <button role="menuitem" type="button" :title="t('编辑所选块的 Markdown 源码')" @click="blockMenuAction('source')"><SquareCode :size="15" aria-hidden="true" />{{ t('编辑源码') }}</button>
+      <button role="menuitem" type="button" @click="blockMenuAction('duplicate')"><CopyPlus :size="15" aria-hidden="true" />{{ t('创建副本') }}</button>
+      <button v-if="blockMenuTable" role="menuitem" type="button" :disabled="!!blockMenuTable.attrs.autoWidth" :title="blockMenuTable.attrs.autoWidth ? t('整张表已使用自动宽度') : t('恢复整张表的自动宽度')" @click="blockMenuAction('restoreAutoWidth')"><RotateCcw :size="15" aria-hidden="true" />{{ t('恢复自动宽度') }}<Check v-if="blockMenuTable.attrs.autoWidth" class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
       <div class="menu-divider" role="separator" />
       <div class="block-convert-menu" role="presentation" @pointerenter="openBlockConvertMenu()" @pointerleave="scheduleCloseBlockConvertMenu">
-        <button ref="blockConvertTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'convert'" @click="openBlockConvertMenu(true)"><Replace :size="15" aria-hidden="true" />转换为<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
-        <div v-surface-motion="'MarkdownEditor:4'" v-if="blockConvertMenu && blockSubmenuKind === 'convert'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" aria-label="转换为" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
-          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('paragraph')" @click="blockMenuAction('paragraph')"><Pilcrow :size="15" aria-hidden="true" />转为正文</button>
-          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('heading')" @click="blockMenuAction('heading')"><Heading :size="15" aria-hidden="true" />转为标题</button>
-          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('list')" @click="blockMenuAction('list')"><List :size="15" aria-hidden="true" />转为列表</button>
-          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('quote')" @click="blockMenuAction('quote')"><Quote :size="15" aria-hidden="true" />转为引用</button>
+        <button ref="blockConvertTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'convert'" @click="openBlockConvertMenu(true)"><Replace :size="15" aria-hidden="true" />{{ t('转换为') }}<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
+        <div v-surface-motion="'MarkdownEditor:4'" v-if="blockConvertMenu && blockSubmenuKind === 'convert'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" :aria-label="t('转换为')" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
+          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('paragraph')" @click="blockMenuAction('paragraph')"><Pilcrow :size="15" aria-hidden="true" />{{ t('转为正文') }}</button>
+          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('heading')" @click="blockMenuAction('heading')"><Heading :size="15" aria-hidden="true" />{{ t('转为标题') }}</button>
+          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('list')" @click="blockMenuAction('list')"><List :size="15" aria-hidden="true" />{{ t('转为列表') }}</button>
+          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('quote')" @click="blockMenuAction('quote')"><Quote :size="15" aria-hidden="true" />{{ t('转为引用') }}</button>
         </div>
       </div>
       <div class="block-convert-menu" role="presentation" @pointerenter="openBlockConvertMenu(false, 'wrap')" @pointerleave="scheduleCloseBlockConvertMenu">
-        <button ref="blockWrapTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'wrap'" @click="openBlockConvertMenu(true, 'wrap')"><Group :size="15" aria-hidden="true" />合并放入新块<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
-        <div v-surface-motion="'MarkdownEditor:5'" v-if="blockConvertMenu && blockSubmenuKind === 'wrap'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" aria-label="合并放入新块" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
-          <button v-for="option in blockContainerOptions" :key="option.type" role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('wrap-' + option.type)" @click="blockMenuAction('wrap-' + option.type)"><component :is="blockContainerIcons[option.type]" :size="16" aria-hidden="true" />{{ option.label }}</button>
+        <button ref="blockWrapTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'wrap'" @click="openBlockConvertMenu(true, 'wrap')"><Group :size="15" aria-hidden="true" />{{ t('合并放入新块') }}<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
+        <div v-surface-motion="'MarkdownEditor:5'" v-if="blockConvertMenu && blockSubmenuKind === 'wrap'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" :aria-label="t('合并放入新块')" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
+          <button v-for="option in blockContainerOptions" :key="option.type" role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('wrap-' + option.type)" @click="blockMenuAction('wrap-' + option.type)"><component :is="blockContainerIcons[option.type]" :size="16" aria-hidden="true" />{{ t(option.label) }}</button>
         </div>
       </div>
-      <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('unwrap')" title="移除外层块，将内部子块提升一级" @click="blockMenuAction('unwrap')"><Ungroup :size="15" aria-hidden="true" />展开</button>
+      <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('unwrap')" :title="t('移除外层块，将内部子块提升一级')" @click="blockMenuAction('unwrap')"><Ungroup :size="15" aria-hidden="true" />{{ t('展开') }}</button>
       <div class="menu-divider" role="separator" />
-      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('move-up')" @click="blockMenuAction('move-up')"><ArrowUp :size="15" aria-hidden="true" />上移块<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['move-up'] ?? 'Alt + ↑' }}</kbd></button>
-      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('move-down')" @click="blockMenuAction('move-down')"><ArrowDown :size="15" aria-hidden="true" />下移块<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['move-down'] ?? 'Alt + ↓' }}</kbd></button>
-      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('indent')" @click="blockMenuAction('indent')"><IndentIncrease :size="15" aria-hidden="true" />移入前容器<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['indent'] ?? 'Alt + →' }}</kbd></button>
-      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('outdent')" @click="blockMenuAction('outdent')"><IndentDecrease :size="15" aria-hidden="true" />移出当前容器<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['outdent'] ?? 'Alt + ←' }}</kbd></button>
+      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('move-up')" @click="blockMenuAction('move-up')"><ArrowUp :size="15" aria-hidden="true" />{{ t('上移块') }}<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['move-up'] ?? 'Alt + ↑' }}</kbd></button>
+      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('move-down')" @click="blockMenuAction('move-down')"><ArrowDown :size="15" aria-hidden="true" />{{ t('下移块') }}<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['move-down'] ?? 'Alt + ↓' }}</kbd></button>
+      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('indent')" @click="blockMenuAction('indent')"><IndentIncrease :size="15" aria-hidden="true" />{{ t('移入前容器') }}<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['indent'] ?? 'Alt + →' }}</kbd></button>
+      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('outdent')" @click="blockMenuAction('outdent')"><IndentDecrease :size="15" aria-hidden="true" />{{ t('移出当前容器') }}<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['outdent'] ?? 'Alt + ←' }}</kbd></button>
       <div class="menu-divider" role="separator" />
-      <button role="menuitem" type="button" class="danger-text" @click="blockMenuAction('delete')"><Trash2 :size="15" aria-hidden="true" />删除块<kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHints?.['delete'] ?? 'Backspace'" /></kbd></button>
+      <button role="menuitem" type="button" class="danger-text" @click="blockMenuAction('delete')"><Trash2 :size="15" aria-hidden="true" />{{ t('删除块') }}<kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHints?.['delete'] ?? 'Backspace'" /></kbd></button>
       </template>
     </div>
   </Teleport>

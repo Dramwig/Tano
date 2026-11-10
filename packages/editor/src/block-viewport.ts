@@ -44,6 +44,8 @@ export class BlockViewport {
 
   element(pos: number) { return this.elements.get(pos) ?? null; }
 
+  get observing() { return this.observer !== undefined; }
+
   detached() { return [...this.elements.values()].some(element => !element.isConnected); }
 
   containing(target: Element) {

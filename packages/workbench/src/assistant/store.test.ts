@@ -1,11 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, disposePinia, setActivePinia } from 'pinia';
 import { reactive } from 'vue';
 import type { AssistantProposal, AssistantSession, AssistantTransport, WorkspaceAdapter } from '@tano/protocol';
 import { parseAssistantSession } from '@tano/protocol';
 import { configureWorkbench, useWorkbenchRuntime } from '../runtime';
 import { useAssistantStore, useInlineAssistantStore } from './store';
-import { setUiLocale } from '../i18n';
+import { setUiLocale, preloadUiLocale } from '../i18n';
 import { assistantLanguagePolicy, assistantTaskPrompts } from './language';
 import { assistantAnswerText, assistantDisplayParts } from './results';
 
@@ -797,4 +797,9 @@ describe('assistant session coordination', () => {
     history.push(restored);
     const store = await ready(); expect(store.modelId).toBe('legacy-model');
   });
+});
+
+beforeAll(async () => {
+  const { uiLocales } = await import('../locale');
+  await Promise.all(uiLocales.map(preloadUiLocale));
 });

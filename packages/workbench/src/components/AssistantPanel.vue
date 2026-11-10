@@ -84,9 +84,9 @@ const title = computed(() => assistant.session?.messages.length ? assistant.sess
 const modelLabel = computed(() => assistant.modelId === 'cli-default' ? t('CLI 默认模型') : assistant.modelId || t('选择模型'));
 const controlsLocked = computed(() => assistant.busy || assistant.applying || assistant.loading);
 const reasoningChoices: { id: AssistantReasoningSelection; label: string; short: string; detail: string }[] = [
-  { id: 'low', get label() { return t('低'); }, get short() { return t('低'); }, get detail() { return t('日常问答，优先速度'); } },
-  { id: 'medium', get label() { return t('中'); }, get short() { return t('中'); }, get detail() { return t('平衡速度与质量'); } },
-  { id: 'high', get label() { return t('高'); }, get short() { return t('高'); }, get detail() { return t('复杂分析'); } },
+  { id: 'low', get label() { return t('推理强度::低'); }, get short() { return t('推理强度::低'); }, get detail() { return t('日常问答，优先速度'); } },
+  { id: 'medium', get label() { return t('推理强度::中'); }, get short() { return t('推理强度::中'); }, get detail() { return t('平衡速度与质量'); } },
+  { id: 'high', get label() { return t('推理强度::高'); }, get short() { return t('推理强度::高'); }, get detail() { return t('复杂分析'); } },
   { id: 'xhigh', get label() { return t('很高'); }, get short() { return t('很高'); }, get detail() { return t('更深入推理'); } },
   { id: 'max', get label() { return t('最高'); }, get short() { return t('最高'); }, get detail() { return t('更多推理，更长等待'); } },
   { id: 'ultra', get label() { return t('极高'); }, get short() { return t('极高'); }, get detail() { return t('更多推理，更长等待'); } },
@@ -604,6 +604,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
       <button v-if="showLatest" class="assistant-jump-latest" :data-tooltip="t('回到最新消息')" :aria-label="t('滚动到最新消息')" @click="scrollToLatest"><ArrowDown :size="20" /></button>
       </div>
       <form v-if="exportMessage" class="assistant-export" @submit.prevent="exportAnswer"><label>{{ t('文档路径') }}<input v-model="exportPath" required maxlength="220" /></label><button class="secondary-button" type="button" @click="exportMessage = undefined">{{ t('取消') }}</button><button class="primary-button"><FilePlus2 :size="14" />{{ t('生成保存建议') }}</button></form>
+      <slot name="quota" />
       <div class="assistant-composer-area" :class="{ 'assistant-composer-area-question': assistant.pendingUserInput }">
         <div v-surface-motion="'AssistantPanel:5'" v-if="popover === 'model'" :key="modelView" id="assistant-model-options" class="assistant-popover assistant-model-menu" :style="menuPosition" :aria-label="t('模型选择')">
           <div class="assistant-popover-heading">

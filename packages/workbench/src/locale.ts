@@ -1,15 +1,27 @@
+import { localeRegistry, uiLocales, type UiLocale } from './locale-registry';
+export { localeRegistry, uiLocales, uiLocaleOptions, type UiLocale } from './locale-registry';
+
 /** Device preferences only: never written into workspace content or rules. */
-export type UiLocale = 'zh-CN' | 'en-US';
 export const localePreferenceKey = 'tano.preference.locale';
 export const localeChangeEvent = 'tano:locale-change';
 
 export function parseUiLocale(value: unknown): UiLocale {
-  return value === 'en-US' ? 'en-US' : 'zh-CN';
+  return uiLocales.includes(value as UiLocale) ? value as UiLocale : 'zh-CN';
+}
+
+/** Match the browser preference only when the user has not chosen a locale. */
+export function systemUiLocale(language = typeof navigator !== 'undefined' ? navigator.language : ''): UiLocale {
+  const normalized = language.replace('_', '-').toLowerCase();
+  if (/^zh-(?:tw|hk|mo|hant)(?:-|$)/.test(normalized)) return 'zh-TW';
+  const prefix = normalized.split('-')[0];
+  return localeRegistry.find(locale => locale.value.toLowerCase().startsWith(`${prefix}-`))?.value ?? 'zh-CN';
 }
 
 export function readUiLocale(): UiLocale {
-  try { return parseUiLocale(window.localStorage.getItem(localePreferenceKey)); }
-  catch { return 'zh-CN'; }
+  try {
+    const saved = window.localStorage.getItem(localePreferenceKey);
+    return saved == null ? systemUiLocale() : parseUiLocale(saved);
+  } catch { return systemUiLocale(); }
 }
 
 export function applyUiLocale(value: UiLocale): void {

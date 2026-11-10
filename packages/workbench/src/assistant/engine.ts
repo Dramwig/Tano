@@ -15,6 +15,7 @@ import type { AssistantMode } from './prompts';
 import type { UiLocale } from '../locale';
 import { assistantCopy, assistantSourceSeparator, formatAssistantText } from './language';
 import type { AssistantPromptOrigin } from './language';
+import { loadLocaleCatalogs } from '../locale-catalogs';
 
 export const assistantLimits = { contextBytes: 256_000, rounds: 8, idleRounds: 3, proposals: 20, responseBytes: 1_000_000 };
 
@@ -320,6 +321,8 @@ export async function runAssistant(options: {
   if (bytes > assistantLimits.contextBytes) throw new Error('参考内容超过 256 KB，请减少文档或选择较小片段');
   const mode = options.mode ?? 'sidebar';
   const locale = options.locale ?? 'zh-CN';
+  await loadLocaleCatalogs(locale);
+  options.signal.throwIfAborted();
   const copy = assistantCopy(locale);
   const askUser = mode === 'sidebar' ? options.askUser : undefined;
   const proposalTools = [...assistantTools, ...(options.structures ? structureTools : [])];

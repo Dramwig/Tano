@@ -5,9 +5,14 @@ import { shortcutLabel } from '../shortcuts';
 import { featureDefinitions } from '@tano/editor/runtime';
 import type { DocumentFeature } from '@tano/editor/runtime';
 import CapabilityExample from './CapabilityExample.vue';
+import BlockExample from './BlockExample.vue';
+import SettingExample from './SettingExample.vue';
+import { isSettingExample, type SettingExampleKey } from '../setting-examples';
+import { blockTypes } from '@tano/editor/selection-context';
 
 // Mount once per workbench. Delegation also covers menus teleported to body.
 // Controls opt in with data-tooltip and optional data-tooltip-shortcut (Mod+I).
+// Block previews use data-tooltip-block; data-tooltip-boundary anchors them outside a menu.
 // Rendered editor links share this hint without changing their Markdown content.
 const editorLinkSelector = '.tano-prose a[href]:not(.tano-live-wiki)';
 function tooltipLabel(element: HTMLElement) {
@@ -22,6 +27,9 @@ const portal = ref<HTMLElement | string>('body');
 const label = ref('');
 const shortcut = ref('');
 const example = ref<DocumentFeature>();
+const blockExample = ref('');
+const blockValue = ref('');
+const settingExample = ref<SettingExampleKey>();
 const ready = ref(false);
 let anchor: HTMLElement | null = null;
 let pending: HTMLElement | null = null;
@@ -43,6 +51,9 @@ function hide() {
   pointerAnchor = undefined;
   label.value = '';
   example.value = undefined;
+  blockExample.value = '';
+  blockValue.value = '';
+  settingExample.value = undefined;
   ready.value = false;
 }
 function usable(button: HTMLElement) {
@@ -64,7 +75,22 @@ async function place() {
   hint.style.maxWidth = `${Math.min(320, right - left)}px`;
   hint.style.maxHeight = `${bottom - top}px`;
   const rect = button.getBoundingClientRect();
-  const gap = button.closest('.compact-action-menu') ? 3 : 8;
+  const gap = blockExample.value ? 2 : button.closest('.compact-action-menu') ? 3 : 8;
+  if (button.dataset.tooltipPlacement === 'right') {
+    const edge = button.closest('[data-tooltip-boundary], [role="listbox"]')?.getBoundingClientRect() ?? rect;
+    const besideRight = edge.right + gap;
+    const besideLeft = edge.left - hint.offsetWidth - gap;
+    const x = besideRight + hint.offsetWidth <= right ? besideRight : besideLeft;
+    const beside = x >= left;
+    hint.style.left = `${beside ? x : Math.max(left, Math.min(edge.left, right - hint.offsetWidth))}px`;
+    // On narrow screens place the preview below the menu instead of covering rows.
+    const menu = button.closest('[data-tooltip-boundary], .tano-slash-menu')?.getBoundingClientRect() ?? edge;
+    const y = beside ? rect.top + (rect.height - hint.offsetHeight) / 2
+      : menu.bottom + gap + hint.offsetHeight <= bottom ? menu.bottom + gap : menu.top - hint.offsetHeight - gap;
+    hint.style.top = `${Math.max(top, Math.min(y, bottom - hint.offsetHeight))}px`;
+    ready.value = true;
+    return;
+  }
   if (button.dataset.tooltipAnchor === 'pointer') {
     const point = pointerAnchor ?? { x: rect.right, y: rect.top + rect.height / 2 };
     const x = point.x + gap + hint.offsetWidth <= right ? point.x + gap : point.x - hint.offsetWidth - gap;
@@ -84,6 +110,10 @@ function update() {
   if (!usable(anchor)) return hide();
   label.value = tooltipLabel(anchor);
   example.value = featureDefinitions.find(feature => feature.key === anchor?.dataset.tooltipExample)?.key;
+  blockExample.value = blockTypes.find(block => block.command === anchor?.dataset.tooltipBlock)?.command ?? '';
+  blockValue.value = anchor.dataset.tooltipBlockValue ?? '';
+  const setting = anchor.dataset.tooltipSetting ?? '';
+  settingExample.value = isSettingExample(setting) ? setting : undefined;
   shortcut.value = anchor.dataset.tooltipShortcut ? shortcutLabel(anchor.dataset.tooltipShortcut.split(',')) : '';
   void place();
 }
@@ -128,7 +158,7 @@ function leave(event: MouseEvent | FocusEvent) {
 function escape(event: KeyboardEvent) {
   keyboardFocus = true;
   if (event.key === 'Escape') {
-    if (example.value) { event.preventDefault(); event.stopPropagation(); }
+    if (example.value || settingExample.value) { event.preventDefault(); event.stopPropagation(); }
     hide();
   }
 }
@@ -156,7 +186,7 @@ onMounted(() => {
   window.visualViewport?.addEventListener('scroll', hide);
   observer = new MutationObserver(() => { if (anchor) update(); });
   observer.observe(document.body, { childList: true, subtree: true, attributes: true,
-    attributeFilter: ['data-tooltip', 'data-tooltip-example', 'data-tooltip-shortcut', 'data-markdown-source', 'href', 'class', 'hidden', 'inert', 'aria-hidden', 'open'] });
+    attributeFilter: ['data-tooltip', 'data-tooltip-example', 'data-tooltip-block', 'data-tooltip-block-value', 'data-tooltip-setting', 'data-tooltip-anchor', 'data-tooltip-placement', 'data-tooltip-shortcut', 'data-markdown-source', 'href', 'class', 'hidden', 'inert', 'aria-hidden', 'open'] });
 });
 onBeforeUnmount(() => {
   hide();
@@ -179,10 +209,13 @@ onBeforeUnmount(() => {
 <template>
   <Teleport :to="portal">
     <div v-if="label" :id="id" ref="tooltip" class="app-tooltip panel-scrollbar" role="tooltip"
-      popover="manual" :data-ready="ready" @pointerenter="cancelTimer" @pointerleave="leave">
-      <span v-if="!example">{{ label }}</span>
+      popover="manual" :data-ready="ready" @pointerenter="cancelTimer" @pointerleave="leave"
+      @mousedown="(blockExample || settingExample) && $event.preventDefault()">
+      <span v-if="!example && !blockExample && !settingExample">{{ label }}</span>
       <span v-if="shortcut" class="app-tooltip-shortcut"><ShortcutHint :label="shortcut" /></span>
-      <CapabilityExample v-if="example" :feature="example" />
+      <SettingExample v-if="settingExample" :setting="settingExample" />
+      <CapabilityExample v-else-if="example" :feature="example" />
+      <BlockExample v-else-if="blockExample" :command="blockExample" :value="blockValue" :label="label" />
     </div>
   </Teleport>
 </template>

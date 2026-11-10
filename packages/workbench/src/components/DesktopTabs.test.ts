@@ -3,6 +3,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createApp, h, markRaw, nextTick, reactive, ref } from 'vue';
 import type { App } from 'vue';
 import DesktopTabs from './DesktopTabs.vue';
+import WorkspacePanes from './WorkspacePanes.vue';
+import { dockLayout, layoutPanes, newPane } from '../pane-layout';
 import { TAB_DOCK_PROBE, TAB_DRAG_FINISHED, tabDragMetaType } from '../tab-docking';
 
 const fixture = vi.hoisted(() => ({ store: null as any }));
@@ -276,6 +278,57 @@ afterEach(() => {
   document.body.querySelectorAll('.desktop-tab-native-drag-image').forEach((image) => image.remove());
   vi.unstubAllGlobals();
   delete (document as Partial<Document>).elementFromPoint;
+});
+
+it.each(['right', 'bottom'] as const)('shares history controls with the focused page in a %s split', async side => {
+  app.unmount();
+  const first = newPane(['a', 'b', 'c']);
+  const layout = dockLayout(first, 'c', { paneId: first.id, side });
+  fixture.store.layout = layout;
+  fixture.store.panes = layoutPanes(layout);
+  fixture.store.focusPane = vi.fn((id: string) => {
+    fixture.store.activePaneId = id;
+    fixture.store.activeId = fixture.store.panes.find((pane: { id: string }) => pane.id === id).activeId;
+  });
+  fixture.store.canNavigateHistory.mockImplementation((direction: number) =>
+    direction === (fixture.store.activeId === 'c' ? -1 : 1));
+  const navigatedPages: string[] = [];
+  fixture.store.navigateHistory.mockImplementation(() => navigatedPages.push(fixture.store.activeId));
+  app = createApp({ render: () => h(WorkspacePanes, {}, {
+    tabs: ({ pane, rect }: any) => h(DesktopTabs, {
+      paneId: pane.id, showNavigation: rect.top === 0 && rect.left === 0,
+    }),
+    default: () => h('textarea'),
+  }) });
+  app.mount(root.querySelector('.desktop-window-tab-slot')!);
+  const editors = root.querySelectorAll<HTMLTextAreaElement>('.workspace-pane textarea');
+  editors[1].focus();
+  await nextTick();
+  const focusedPane = fixture.store.activePaneId;
+  expect(fixture.store.activeId).toBe('c');
+  expect(root.querySelectorAll('.desktop-tab-navigation')).toHaveLength(1);
+  const back = root.querySelector<HTMLButtonElement>('[aria-label="后退"]')!;
+  const forward = root.querySelector<HTMLButtonElement>('[aria-label="前进"]')!;
+  expect(back.disabled).toBe(false);
+  expect(forward.disabled).toBe(true);
+  fixture.store.focusPane.mockClear();
+  pointer(back, 'pointerdown', 15);
+  back.focus();
+  back.click();
+  expect(fixture.store.focusPane).not.toHaveBeenCalled();
+  expect(fixture.store.activePaneId).toBe(focusedPane);
+  expect(fixture.store.navigateHistory).toHaveBeenLastCalledWith(-1);
+  expect(navigatedPages).toEqual(['c']);
+
+  editors[0].focus();
+  await nextTick();
+  const leftPage = fixture.store.activeId;
+  expect(back.disabled).toBe(true);
+  expect(forward.disabled).toBe(false);
+  forward.focus();
+  forward.click();
+  expect(fixture.store.navigateHistory).toHaveBeenLastCalledWith(1);
+  expect(navigatedPages).toEqual(['c', leftPage]);
 });
 
 it('previews foreign tabs in the hovered pane only and retains the released destination while saving', async () => {

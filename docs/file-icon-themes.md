@@ -32,6 +32,17 @@ Duplicate IDs and invalid references are rejected. Contributions are copied and
 frozen; vectors accept path data, hex or semantic colors and short text labels, never HTML,
 remote URLs or executable components.
 
+Color artwork can additionally use `image` and optional `lightImage`: embedded,
+bounded PNG data URIs, rendered in place of the vector. The light variant follows
+the host's resolved appearance mode. Remote images and SVG data URIs are rejected.
+An optional theme `notice` preserves third-party attribution and license text in
+the installable package. See [Material file icons](../examples/plugins/material-icon-theme/README.md)
+for an offline, data-only adaptation of Material Icon Theme, including reproducible
+build instructions and the exact supported associations.
+The separate [vscode-icons plugin](../examples/plugins/vscode-icons/README.md)
+uses this same format, with CC BY-SA 4.0 artwork attribution and its upstream
+known language suffixes adapted to filename matching. Both plugins can coexist.
+
 The default registry is application-local. A host can provide an isolated registry
 using Vue's `fileIconRegistryKey`, for example when different workspace roots need
 different themes:
