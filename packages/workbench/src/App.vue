@@ -5389,7 +5389,11 @@ const helpBlocked = computed(() => !!(
             @reveal-selection="revealAssistantSelection"
             @open-settings="openSettings('assistant')"
             @closed="assistantPanelMounted = assistant.opened"
-          />
+          >
+            <template #quota>
+              <component :is="extensions.regions['assistant-quota']" v-if="extensions.regions['assistant-quota']" :actions="extensionActions" />
+            </template>
+          </AssistantPanel>
         </template>
         <template #default="{ pane, document: active, tab }">
 

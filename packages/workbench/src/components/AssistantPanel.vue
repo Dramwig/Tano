@@ -604,6 +604,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
       <button v-if="showLatest" class="assistant-jump-latest" :data-tooltip="t('回到最新消息')" :aria-label="t('滚动到最新消息')" @click="scrollToLatest"><ArrowDown :size="20" /></button>
       </div>
       <form v-if="exportMessage" class="assistant-export" @submit.prevent="exportAnswer"><label>{{ t('文档路径') }}<input v-model="exportPath" required maxlength="220" /></label><button class="secondary-button" type="button" @click="exportMessage = undefined">{{ t('取消') }}</button><button class="primary-button"><FilePlus2 :size="14" />{{ t('生成保存建议') }}</button></form>
+      <slot name="quota" />
       <div class="assistant-composer-area" :class="{ 'assistant-composer-area-question': assistant.pendingUserInput }">
         <div v-surface-motion="'AssistantPanel:5'" v-if="popover === 'model'" :key="modelView" id="assistant-model-options" class="assistant-popover assistant-model-menu" :style="menuPosition" :aria-label="t('模型选择')">
           <div class="assistant-popover-heading">
