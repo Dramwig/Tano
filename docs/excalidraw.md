@@ -29,7 +29,7 @@
 ```powershell
 npm run plugin:excalidraw
 npm run typecheck:plugins
-npx vitest run scripts/plugin-excalidraw.test.ts scripts/plugin-excalidraw-model.test.ts
+npx vitest run scripts/plugin/plugin-excalidraw.test.ts scripts/plugin/plugin-excalidraw-model.test.ts
 ```
 
 源码位于 `examples/plugins/excalidraw/`。专用构建脚本将固定版本官方依赖、中文语言包和字体打进隔离界面，并使用 gzip 和浏览器 `DecompressionStream` 在本地加载，使最终 JSON 插件包保持在现有 4 MiB 限额内。生成的 `packages/workbench/src/plugins/excalidraw/bundle.tano-plugin.json` 是应用离线安装源，插件中心只在用户安装时加载它；修改插件源码后需重新生成。共享工作台只携带安装包与清单，不直接依赖 React 或绘图库。

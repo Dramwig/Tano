@@ -17,7 +17,7 @@ Localized names and search tags are described in the separately licensed
 [metadata catalog](../emojibase/README.md).
 
 Regenerate the catalog subset from the pinned release with
-`node scripts/sync-workspace-emoji.mjs`, which also rebuilds the sprite.
+`node scripts/build/sync-workspace-emoji.mjs`, which also rebuilds the sprite.
 To rebuild offline from retained SVGs, run `npm run emoji:generate`.
 `npm run emoji:check` verifies source hashes, catalog coordinates, and the
 generated image. Source archive and per-file SHA-256 hashes are recorded in

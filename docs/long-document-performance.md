@@ -85,7 +85,7 @@
 
 64 项相关测试通过，覆盖增量与全文结果对照、250 次确定性混合编辑、跨行代码和公式、嵌套列表、引用定义、CRLF/CR、功能策略、跳过版本和 Worker 失败恢复。另通过 6 项开发浏览器回归、生产构建中的真实 Worker 输入与撤销验证、客户端类型检查和生产构建。
 
-基准脚本、原始结果和截图保存在 `%TEMP%/tano-source-incremental/`，其中 `parser-results.json` 为解析基准，`browser-results.json` 为浏览器记录，`final-dist/` 为受测构建。真实 Worker 回归位于 [源码高亮浏览器测试](../scripts/source-highlight-browser.spec.mjs)。
+基准脚本、原始结果和截图保存在 `%TEMP%/tano-source-incremental/`，其中 `parser-results.json` 为解析基准，`browser-results.json` 为浏览器记录，`final-dist/` 为受测构建。真实 Worker 回归位于 [源码高亮浏览器测试](../scripts/browser/source-highlight-browser.spec.mjs)。
 
 ## 第四轮：修改映射、局部装饰、正文虚拟化及超大块输入
 
@@ -118,7 +118,7 @@
 
 453 项相关单元与编辑器测试通过，覆盖多处远端修改后的光标／撤销、局部装饰与全文结果对照、装饰缓存映射、Worker 跳过版本恢复等。38 项不同的浏览器用例覆盖块拖拽和多选、跨屏复制、搜索定位、屏幕外更新、表格、缩放、模式切换、源码 Worker 与完整打印快照。客户端类型检查与生产构建通过。协作验证使用编辑器接收外部更新的路径，尚未进行两台客户端联网并发压测；没有进行桌面原生磁盘性能验收。
 
-原始结果、CPU profile、构建入口摘要和最终构建保存在 `%TEMP%/tano-four-optimizations/`，最终富文本记录为 `accepted-rich/results.json`，对照为 `before-rich/results.json`，源码为 `browser-results.json`，超大块为 `large-block-results.json`。`after-rich/` 和 `final-rich/` 是收尾优化前的中间版本，不能作为最终结果。新增回归见 [正文虚拟化浏览器测试](../scripts/rich-viewport-browser.spec.mjs)。
+原始结果、CPU profile、构建入口摘要和最终构建保存在 `%TEMP%/tano-four-optimizations/`，最终富文本记录为 `accepted-rich/results.json`，对照为 `before-rich/results.json`，源码为 `browser-results.json`，超大块为 `large-block-results.json`。`after-rich/` 和 `final-rich/` 是收尾优化前的中间版本，不能作为最终结果。新增回归见 [正文虚拟化浏览器测试](../scripts/browser/rich-viewport-browser.spec.mjs)。
 
 ## 短文档表格滚动补查
 
@@ -130,7 +130,7 @@
 
 38 项表格控件、表格视口和块控件测试通过，新增断言覆盖滚动合并、读写顺序和销毁后的任务取消。短文档滚动定位／插入／撤销及三项长文档虚拟化浏览器回归通过，客户端类型检查通过。短文档浏览器回归使用仓库当前 QA 文档；性能对照使用反馈中的原始文件副本，没有修改用户文件。
 
-原始结果和逐轮时间线在 `%TEMP%/tano-short-scroll/controlled-results.json` 与 `controlled-*-*.json`，其中包含原文 SHA-256、大小、浏览器版本和浏览器错误记录；复测脚本在同一临时目录的上级 `tano-short-controlled.cjs`。新增回归见 [短文档表格滚动浏览器测试](../scripts/short-table-scroll-browser.spec.mjs)。
+原始结果和逐轮时间线在 `%TEMP%/tano-short-scroll/controlled-results.json` 与 `controlled-*-*.json`，其中包含原文 SHA-256、大小、浏览器版本和浏览器错误记录；复测脚本在同一临时目录的上级 `tano-short-controlled.cjs`。新增回归见 [短文档表格滚动浏览器测试](../scripts/browser/short-table-scroll-browser.spec.mjs)。
 
 ## 280 Hz 下的滚动帧间隔测量
 
@@ -155,10 +155,10 @@
 
 最终主测量与对照均无浏览器错误。原始逐帧结果在 `%TEMP%/tano-scroll-fps-20261106-1793897642897/accepted-wheel/results.json`，诊断对照在 `ablation-wheel/results.json`，独立 profile 和时间线在 `accepted-profiles/`；`source.json` 保存源码指纹，`dist/` 为受测构建。早期 `wheel/` 与 `profiles/` 含测量脚本在沙箱预览帧访问 `localStorage` 的错误，不作为最终结果。测量脚本已将偏好初始化限制在顶层页面。
 
-复测使用 [滚动帧间隔测量脚本](../scripts/benchmark-scroll-frame-pacing.mjs)，先按下节启动对应生产构建预览，再运行：
+复测使用 [滚动帧间隔测量脚本](../scripts/bench/benchmark-scroll-frame-pacing.mjs)，先按下节启动对应生产构建预览，再运行：
 
 ```powershell
-node scripts/benchmark-scroll-frame-pacing.mjs --url http://127.0.0.1:43847 --output "$env:TEMP/tano-frame-pacing" --hz 280 --seconds 2.5 --rounds 3
+node scripts/bench/benchmark-scroll-frame-pacing.mjs --url http://127.0.0.1:43847 --output "$env:TEMP/tano-frame-pacing" --hz 280 --seconds 2.5 --rounds 3
 ```
 
 `--qa` 可指定反馈原文，默认使用仓库 QA 文档；`--profile` 在计时样本之外另跑一轮并保存 CPU profile 和排版时间线。`--input raf` 是主动逐帧修改滚动位置的压力对照，不应与默认原生滚动结果混用。脚本不打开用户工作区，不修改用户原文，不操作现有桌面窗口。
@@ -203,11 +203,11 @@ node node_modules/vite/bin/vite.js preview --config apps/client/vite.config.ts -
 使用隔离浏览器会话创建测试文档，不会写入用户已打开的工作区：
 
 ```powershell
-node scripts/benchmark-long-document.mjs --url http://127.0.0.1:43847 --output "$env:TEMP/tano-long-document"
-node scripts/benchmark-long-document.mjs --url http://127.0.0.1:43847 --sizes 1500 --output "$env:TEMP/tano-over-10000-lines"
+node scripts/bench/benchmark-long-document.mjs --url http://127.0.0.1:43847 --output "$env:TEMP/tano-long-document"
+node scripts/bench/benchmark-long-document.mjs --url http://127.0.0.1:43847 --sizes 1500 --output "$env:TEMP/tano-over-10000-lines"
 ```
 
-脚本在 Windows 优先使用已安装的 Edge，也可通过 `--executable` 指定浏览器。默认样本为 20、100、400、1,000 节；1,500 节为 11,105 行。功能回归在 [长文档浏览器测试](../scripts/long-document-browser.spec.mjs)，性能测量在 [基准脚本](../scripts/benchmark-long-document.mjs)。
+脚本在 Windows 优先使用已安装的 Edge，也可通过 `--executable` 指定浏览器。默认样本为 20、100、400、1,000 节；1,500 节为 11,105 行。功能回归在 [长文档浏览器测试](../scripts/browser/long-document-browser.spec.mjs)，性能测量在 [基准脚本](../scripts/bench/benchmark-long-document.mjs)。
 
 ## 参考
 

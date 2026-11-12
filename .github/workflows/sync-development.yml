@@ -24,7 +24,7 @@ jobs:
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/sync-development.mjs --check
+        run: node scripts/dev/sync-development.mjs --check
       - uses: ./.github/actions/release-token
         if: steps.plan.outputs.needed == 'true'
         id: identity
@@ -36,4 +36,4 @@ jobs:
         if: steps.plan.outputs.needed == 'true'
         env:
           GH_TOKEN: ${{ steps.identity.outputs.token }}
-        run: node scripts/sync-development.mjs
+        run: node scripts/dev/sync-development.mjs

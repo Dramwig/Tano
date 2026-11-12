@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: node scripts/release-plan.mjs check
+      - run: node scripts/release/release-plan.mjs check
       - uses: ./.github/actions/release-token
         id: identity
         with:
@@ -30,4 +30,4 @@ jobs:
       - name: Create immutable tag after local validation
         env:
           GH_TOKEN: ${{ steps.identity.outputs.token }}
-        run: node scripts/release-github.mjs tag
+        run: node scripts/release/release-github.mjs tag

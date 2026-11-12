@@ -1,6 +1,6 @@
 # Tano 文档
 
-[English](../README.md) | 中文 | [日本語](../ja/README.md) | [Deutsch](../de/README.md) | [项目 README](../../README_ZH.md)
+[English](../README.md) | 中文 | [日本語](../ja/README.md) | [Deutsch](../de/README.md) | [项目 README](../project-readme/README_ZH.md)
 
 Tano 是一个以真实文件为内容源、让人与 Agent 在同一页工作的 File-Native Workspace。可以从[本地开发](local-development.md)开始运行桌面应用或浏览器演示，再按需要阅读下面的指南。
 

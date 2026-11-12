@@ -89,8 +89,8 @@ merges do not trigger Actions. GitHub cannot attest to local test results.
 Inspect and verify policy with an authenticated repository administrator:
 
 ```sh
-node scripts/configure-branches.mjs OWNER/REPOSITORY
-node scripts/configure-branches.mjs OWNER/REPOSITORY --apply
+node scripts/dev/configure-branches.mjs OWNER/REPOSITORY
+node scripts/dev/configure-branches.mjs OWNER/REPOSITORY --apply
 ```
 
 The first command is read-only. The second creates missing matching protection

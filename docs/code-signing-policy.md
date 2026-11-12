@@ -27,7 +27,7 @@ The proprietary Cloud Overlay, hosted services and Tano Product installers conta
 private code are excluded and must never use this Foundation signing subscription.
 Third-party components retain their licenses and existing signatures; their binaries
 are not signed as Tano-owned software. See [MIT](../LICENSE), [license scope](license.md)
-and [third-party notices](../THIRD_PARTY_NOTICES.md).
+and [third-party notices](THIRD_PARTY_NOTICES.md).
 
 ## Team and approval
 

@@ -61,7 +61,7 @@ jobs:
         run: |
           $evidencePath = Join-Path $env:RUNNER_TEMP 'local-evidence.json'
           [IO.File]::WriteAllText($evidencePath, $env:LOCAL_EVIDENCE)
-          $buildArguments = @('scripts/local-release.mjs', 'prepare', $evidencePath)
+          $buildArguments = @('scripts/release/local-release.mjs', 'prepare', $evidencePath)
           if ($env:UNSIGNED_PREVIEW -eq 'true') { $buildArguments += '--unsigned-preview' }
           node @buildArguments
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

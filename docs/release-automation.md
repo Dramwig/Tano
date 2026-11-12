@@ -33,7 +33,7 @@ This requirement applies to release work, not ordinary non-release Git operation
 
 1. Promote the intended development changes to main with
    `git merge --no-ff dev`. Prepare versions locally on main with
-   `node scripts/release-plan.mjs prepare patch core` (minor, major or an exact
+   `node scripts/release/release-plan.mjs prepare patch core` (minor, major or an exact
    stable version also work). This aligns npm/Tauri/Cargo versions and locks and
    drafts release notes. **Prepare Core release PR** remains an optional helper.
 2. Review the version changes, then commit and push main normally. When using a

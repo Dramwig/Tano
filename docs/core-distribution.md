@@ -184,7 +184,7 @@ can be resumed with the same source and artifacts. Changed content needs a new
 Core version. Never retarget tags or overwrite registry versions.
 
 After all six packages are available, attach `core-registry.json` to the Core
-GitHub Release using `node scripts/publish-core-manifest.mjs core-vX.Y.Z`.
+GitHub Release using `node scripts/core/publish-core-manifest.mjs core-vX.Y.Z`.
 Create that Release from the existing immutable tag first if necessary. The
 manifest upload refuses to overwrite an asset with different contents. Registry
 packages are the dependency source; the small release manifest is for discovery.

@@ -14,7 +14,7 @@
 
 ### 🌐 The Official Website: [tano.page](https://tano.page)
 
-English | [中文](README_ZH.md) | [日本語](README_JA.md) | [Deutsch](README_DE.md) | [繁體中文](README_TW.md) | [Español](README_ES.md)
+English | [中文](docs/project-readme/README_ZH.md) | [日本語](docs/project-readme/README_JA.md) | [Deutsch](docs/project-readme/README_DE.md) | [繁體中文](docs/project-readme/README_TW.md) | [Español](docs/project-readme/README_ES.md)
 
 [Downloads](https://github.com/Dramwig/Tano/releases) · [Quick start](#quick-start) · [Features](#features) · [Documentation](docs/README.md) · [Development](#development)
 
@@ -83,4 +83,4 @@ npm run mcp:smoke
 
 For commit message format and contribution guidance, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Tano is released under the [MIT License](LICENSE). Third-party components keep their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md).
+Tano is released under the [MIT License](LICENSE). Third-party components keep their own licenses; see [third-party notices](docs/THIRD_PARTY_NOTICES.md).

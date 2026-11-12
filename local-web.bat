@@ -22,7 +22,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-node scripts\check-node.mjs
+node scripts\check\check-node.mjs
 if errorlevel 1 (
   pause
   exit /b 1

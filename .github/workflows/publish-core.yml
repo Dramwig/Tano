@@ -40,7 +40,7 @@ jobs:
         env:
           CORE_TAG: ${{ inputs.core_tag }}
         run: |
-          node scripts/version.mjs check --tag "$CORE_TAG"
+          node scripts/release/version.mjs check --tag "$CORE_TAG"
           test "$(git rev-parse "$CORE_TAG^{commit}")" = "$(git rev-parse HEAD)"
           git merge-base --is-ancestor HEAD origin/main
           test -z "$(git status --porcelain)"
@@ -65,4 +65,4 @@ jobs:
           if ! gh release view "$CORE_TAG" >/dev/null 2>&1; then
             gh release create "$CORE_TAG" --verify-tag --latest=false --title "Tano Core ${CORE_TAG#core-v}" --notes-file ".github/releases/$CORE_TAG.md"
           fi
-          node scripts/publish-core-manifest.mjs "$CORE_TAG"
+          node scripts/core/publish-core-manifest.mjs "$CORE_TAG"

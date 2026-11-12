@@ -67,7 +67,7 @@ replacement for that publication. Update both website changelogs and review
    already public, publish the accepted artifacts:
 
    ```powershell
-   node scripts/local-release.mjs publish C:/release-artifacts/core-vX.Y.Z C:/release-evidence/acceptance.json
+   node scripts/release/local-release.mjs publish C:/release-artifacts/core-vX.Y.Z C:/release-evidence/acceptance.json
    ```
 
    The publisher requires the installer's exact SHA-256, checksums, timestamped
@@ -92,7 +92,7 @@ replacement for that publication. Update both website changelogs and review
 Local source builds remain available with `npm run desktop:build`; they need no
 account, publishing credential or signing key. They are not official accepted
 release artifacts. To prepare a signed release locally from the clean tag use
-`node scripts/local-release.mjs prepare C:/release-evidence/local.json`, with
+`node scripts/release/local-release.mjs prepare C:/release-evidence/local.json`, with
 `TANO_LOCAL_CERTIFICATE_THUMBPRINT` pointing to the publisher certificate in
 the current user's certificate store. Public GitHub provenance still requires
 the public workflow build; a local build alone cannot pass publication.
