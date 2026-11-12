@@ -26,7 +26,7 @@ let timer: ReturnType<typeof setInterval> | undefined;
 watch(() => JSON.stringify(props.connection), () => {
   clearInterval(timer);
   const minutes = props.connection.quota?.intervalMinutes ?? 0;
-  if (!props.connection.managed && props.connection.quota?.mode !== 'disabled' && minutes > 0 && minutes <= 1440) {
+  if (!props.connection.platformProvider && props.connection.quota?.mode !== 'disabled' && minutes > 0 && minutes <= 1440) {
     timer = setInterval(() => { if (!document.hidden) void refresh(); }, minutes * 60000);
   }
 }, { immediate: true });
@@ -52,7 +52,7 @@ function resetTime(value: string) {
 }
 </script>
 <template>
-  <AssistantConnectionStatus class="connection-quota" :key="JSON.stringify(connection)" :label="t('额度详情')" :summary="summary" :checked-at="result?.checkedAt" :refreshing="loading" :failed="!!error" v-if="(loading || result || error) && !connection.managed && connection.quota?.mode !== 'disabled' && (connection.kind === 'codex-cli' || connection.kind === 'claude-cli' || connection.quota)">
+  <AssistantConnectionStatus class="connection-quota" :key="JSON.stringify(connection)" :label="t('额度详情')" :summary="summary" :checked-at="result?.checkedAt" :refreshing="loading" :failed="!!error" v-if="(loading || result || error) && !connection.platformProvider && connection.quota?.mode !== 'disabled' && (connection.kind === 'codex-cli' || connection.kind === 'claude-cli' || connection.quota)">
     <template #icon>
       <LoaderCircle v-if="loading" :size="14" class="spinning" aria-hidden="true" />
       <TriangleAlert v-else-if="error" :size="14" aria-hidden="true" />

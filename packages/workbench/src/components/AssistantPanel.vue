@@ -615,7 +615,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
           </div>
           <template v-if="modelView === 'connections'">
             <div class="assistant-menu-scroll panel-scrollbar">
-              <button v-for="connection in assistant.connections" :key="connection.id" class="assistant-menu-item assistant-detail-option" :class="{ selected: assistant.connectionId === connection.id }" :aria-pressed="assistant.connectionId === connection.id" :disabled="controlsLocked" data-menu-item @click="changeConnection(connection.id)"><Plug v-if="!connection.kind || connection.kind === 'api'" :size="17" /><Terminal v-else :size="17" /><span class="assistant-menu-label"><span>{{ connection.name }}</span><small>{{ connection.managed ? t('平台提供') : connection.kind === 'codex-cli' ? 'Codex CLI' : connection.kind === 'claude-cli' ? 'Claude CLI' : t('API 连接') }}</small></span><Check v-if="assistant.connectionId === connection.id" :size="16" class="assistant-menu-check" /></button>
+              <button v-for="connection in assistant.connections" :key="connection.id" class="assistant-menu-item assistant-detail-option" :class="{ selected: assistant.connectionId === connection.id }" :aria-pressed="assistant.connectionId === connection.id" :disabled="controlsLocked" data-menu-item @click="changeConnection(connection.id)"><Plug v-if="!connection.kind || connection.kind === 'api'" :size="17" /><Terminal v-else :size="17" /><span class="assistant-menu-label"><span>{{ connection.name }}</span><small>{{ connection.platformProvider ? t('平台提供') : connection.kind === 'codex-cli' ? 'Codex CLI' : connection.kind === 'claude-cli' ? 'Claude CLI' : t('API 连接') }}</small></span><Check v-if="assistant.connectionId === connection.id" :size="16" class="assistant-menu-check" /></button>
             </div>
             <div v-if="!assistant.demo && assistant.canConfigure !== false" class="assistant-menu-divider" />
             <button v-if="!assistant.demo && assistant.canConfigure !== false" class="assistant-menu-item" data-menu-item @click="closePopover(); emit('openSettings')"><Plus :size="17" /><span class="assistant-menu-label">{{ t('添加模型连接') }}</span></button>
@@ -637,7 +637,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
             </div>
             <p v-if="assistant.modelsError" class="assistant-model-error" role="alert">{{ assistant.modelsError }}</p>
             <div class="assistant-menu-divider" />
-            <button v-if="assistant.connection && !assistant.connection.managed" class="assistant-menu-item" :aria-label="t('手动指定对话模型')" :disabled="controlsLocked" data-menu-item @click="inputModel"><Pencil :size="16" /><span class="assistant-menu-label">{{ t('手动指定模型') }}</span></button>
+            <button v-if="assistant.connection && !assistant.connection.platformProvider" class="assistant-menu-item" :aria-label="t('手动指定对话模型')" :disabled="controlsLocked" data-menu-item @click="inputModel"><Pencil :size="16" /><span class="assistant-menu-label">{{ t('手动指定模型') }}</span></button>
             <button v-if="!assistant.connections.length && !assistant.demo && assistant.canConfigure !== false" class="assistant-menu-item" data-menu-item @click="closePopover(); emit('openSettings')"><Plus :size="16" /><span class="assistant-menu-label">{{ t('添加模型连接') }}</span></button>
           </template>
         </div>

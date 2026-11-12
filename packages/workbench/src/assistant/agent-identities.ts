@@ -14,7 +14,7 @@ export async function ensureAgentIdentities(
   const queue = new AgentTaskQueue(transport.inbox);
   const connections = await transport.connections();
   for (const connection of connections) {
-    if (connection.managed && transport.hostedInbox) continue;
+    if (connection.platformProvider && transport.hostedInbox) continue;
     try {
       signal?.throwIfAborted();
       const inbox = await transport.inbox.load(workspaceId);
@@ -90,7 +90,7 @@ export async function ensureAgentIdentities(
   await queue.update(workspaceId, (inbox) => {
     for (const binding of inbox.bindings)
       if (!connections.some((connection) => connection.id === binding.connectionId) ||
-          transport.hostedInbox && connections.some(connection => connection.id === binding.connectionId && connection.managed))
+          transport.hostedInbox && connections.some(connection => connection.id === binding.connectionId && connection.platformProvider))
         binding.enabled = false;
   });
   return errors;

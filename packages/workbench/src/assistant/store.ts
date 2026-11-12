@@ -142,7 +142,7 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
   async function reloadConnections() {
     if (!transport) return;
     const epoch = generation;
-    const loaded = await transport.connections();
+    const loaded = (await transport.connections()).map(({ managed, ...connection }) => ({ ...connection, platformProvider: connection.platformProvider ?? managed }));
     if (epoch !== generation) return;
     connections.value = loaded;
     if (!connectionId.value && !session.value?.connectionId)
@@ -174,19 +174,19 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
     } finally { if (modelController === abort) { modelsLoading.value = false; modelController = undefined; } }
   }
   async function readConnectionKey(id: string) {
-    if (!canConfigure || !connections.value.some(item => item.id === id && !item.managed && item.hasKey && (!item.kind || item.kind === 'api')))
+    if (!canConfigure || !connections.value.some(item => item.id === id && !item.platformProvider && item.hasKey && (!item.kind || item.kind === 'api')))
       throw new Error('此连接无法读取 API 密钥');
     if (!transport?.readConnectionKey) throw new Error('当前环境不支持读取已保存的密钥，请更新并重启桌面版');
     return transport.readConnectionKey(id);
   }
   async function queryQuota(id: string) {
     if (!transport?.quota) throw new Error('当前环境不支持服务商额度查询，请使用桌面版');
-    if (!connections.value.some(item => item.id === id && !item.managed)) throw new Error('此连接不支持个人额度查询');
+    if (!connections.value.some(item => item.id === id && !item.platformProvider)) throw new Error('此连接不支持个人额度查询');
     return transport.quota(id);
   }
   async function saveQuota(id: string, config: import('@tano/protocol').AssistantQuotaConfig, key?: string) {
     if (!transport?.saveQuota) throw new Error('当前环境不支持额度配置，请使用桌面版');
-    if (!connections.value.some(item => item.id === id && !item.managed)) throw new Error('连接已移除或由平台管理');
+    if (!connections.value.some(item => item.id === id && !item.platformProvider)) throw new Error('连接已移除或由平台管理');
     await transport.saveQuota(id, config, key);
     await reloadConnections();
   }
@@ -244,7 +244,7 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
   async function saveConnection(config: Omit<AssistantConnection, 'hasKey'>, key?: string) {
     if (!transport || busy.value || applying.value || loading.value) throw new Error('请先等待当前任务完成');
     const previous = connections.value.find(item => item.id === config.id);
-    if (!canConfigure || config.managed || previous?.managed) throw new Error('此模型连接由平台管理员配置');
+    if (!canConfigure || config.platformProvider || previous?.platformProvider) throw new Error('此模型连接由平台管理员配置');
     await transport.saveConnection(config, key);
     recordHelpCompleted('assistant-connection');
     await reloadConnections(); await selectConnection(config.id, previous?.endpoint !== config.endpoint ||
@@ -262,7 +262,7 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
   }
   async function removeConnection(id: string) {
     if (!transport || busy.value || applying.value || loading.value) throw new Error('请先等待当前任务完成');
-    if (!canConfigure || connections.value.find(item => item.id === id)?.managed) throw new Error('此模型连接由平台管理员配置');
+    if (!canConfigure || connections.value.find(item => item.id === id)?.platformProvider) throw new Error('此模型连接由平台管理员配置');
     await transport.removeConnection(id);
     await reloadConnections();
   }

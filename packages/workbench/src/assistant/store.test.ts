@@ -50,6 +50,21 @@ describe('assistant session coordination', () => {
     await vi.waitFor(() => expect(store.loading).toBe(false));
     return store;
   }
+  it('opens a saved official session with a legacy managed provider', async () => {
+    const provider = { ...connection, id: 'official:legacy-provider', managed: true };
+    vi.mocked(transport.connections).mockResolvedValue([provider]);
+    const restored = { ...session(), connectionId: provider.id, model: 'test' };
+    history.push(restored);
+    const store = await ready();
+    store.selectSession(restored.id);
+    expect(store.connectionId).toBe(provider.id);
+    expect(store.connection?.platformProvider).toBe(true);
+    store.prompt = 'continue';
+    await store.send();
+    expect(transport.request).toHaveBeenCalled();
+    expect(vi.mocked(transport.request).mock.calls[0][0]).toBe(provider.id);
+  });
+
   it('keeps connection status caches on reload and clears them when configuration changes', async () => {
     const store = await ready();
     await store.reloadConnections();
