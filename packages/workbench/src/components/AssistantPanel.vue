@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
+import { MOTION_DURATION, captureList, spring } from '@tano/editor/motion';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t, uiLocale } from '../i18n';
 import { assistantCopy, assistantTaskPrompts } from '../assistant/language';
@@ -122,6 +123,14 @@ const starters = computed(() => {
 const sourceFiles = computed(() => workspace.workspace?.files.filter(file => file.kind === 'file' && isAssistantFile(file.path) &&
   file.path.toLocaleLowerCase().includes(query.value.toLocaleLowerCase())).slice(0, 100) ?? []);
 const displayed = computed(() => assistant.session?.messages.slice(-visibleMessages.value) ?? []);
+// New turns rise in and deleted/retracted turns fade out. Opening a session
+// (no shared ids) or paging older history is not an edit, so it stays still.
+watch(() => displayed.value.map(message => message.id), (next, previous) => {
+  if (!previous?.length || !next.some(id => previous.includes(id))) return;
+  if (next.length > previous.length && next[0] !== previous[0] && next.includes(previous[0]!)) return;
+  const play = captureList(messages.value, '.assistant-message[data-message-id]', element => element.dataset.messageId, { maxEnter: 4, strip: ['data-message-id'] });
+  void nextTick(play);
+}, { flush: 'pre' });
 const messageSources = computed(() => {
   const messages = assistant.session?.messages ?? [];
   const sourcesByMessage = new Map<string, AssistantSource[]>();
@@ -456,7 +465,7 @@ watch(() => assistant.displayMode, async (_mode, _previous, onCleanup) => {
       borderRadius: radius,
     },
     { transform: 'none', borderRadius: getComputedStyle(element).borderRadius },
-  ], { duration: 240, easing: 'cubic-bezier(0.2, 0, 0, 1)' });
+  ], { duration: MOTION_DURATION.snappy + 40, easing: spring('snappy') });
 }, { flush: 'pre' });
 watch(() => [assistant.displayMode, props.fullscreenTarget], () => {
   endFloatingGesture();
@@ -556,7 +565,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
         </div>
         <button v-if="(assistant.session?.messages.length ?? 0) > visibleMessages" class="assistant-text-action" @click="visibleMessages += 30">{{ t('查看较早消息') }}</button>
         <div v-if="displayed.length" class="assistant-conversation-meta">{{ t('同页助手 ·') }} {{ messageTime(displayed[0]!.createdAt) }}</div>
-        <article v-for="message in displayed" :key="message.id" class="assistant-message" :class="`assistant-message-${message.role}`" :aria-label="message.role === 'user' ? t('你的消息') : t('助手回答')">
+        <article v-for="message in displayed" :key="message.id" :data-message-id="message.id" class="assistant-message" :class="`assistant-message-${message.role}`" :aria-label="message.role === 'user' ? t('你的消息') : t('助手回答')">
           <div v-if="message.role === 'user' && messageSources.get(message.id)?.length" class="assistant-citations assistant-attachments" :aria-label="t('已发送的引用')">
             <template v-for="source in messageSources.get(message.id)" :key="source.id">
               <button v-if="!source.selection" :data-tooltip="source.path" @click="openSource(source)"><FileText :size="12" />{{ source.path }}</button>
@@ -692,7 +701,11 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
    the same amount of space back. Messages do not rewrap during the slide. */
 .assistant-panel-sidebar.assistant-sidebar-enter-active,
 .assistant-panel-sidebar.assistant-sidebar-leave-active {
-  transition: margin-right 200ms cubic-bezier(0.2, 0, 0, 1);
+  transition: margin-right var(--motion-spring) var(--ease-spring-smooth);
+}
+.assistant-panel-sidebar.assistant-sidebar-leave-active {
+  transition-duration: var(--motion-base);
+  transition-timing-function: var(--ease-exit);
 }
 .assistant-panel-sidebar.assistant-sidebar-enter-from,
 .assistant-panel-sidebar.assistant-sidebar-leave-to {
@@ -710,7 +723,11 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 .assistant-panel-floating.assistant-floating-enter-active,
 .assistant-panel-floating.assistant-floating-leave-active {
   transform-origin: bottom right;
-  transition: opacity 200ms cubic-bezier(0.2, 0, 0, 1), transform 200ms cubic-bezier(0.2, 0, 0, 1);
+  transition: opacity var(--motion-base) var(--ease-standard), transform var(--motion-bouncy) var(--ease-spring);
+}
+.assistant-panel-floating.assistant-floating-leave-active {
+  transition-duration: var(--motion-quick);
+  transition-timing-function: var(--ease-exit);
 }
 .assistant-panel-floating.assistant-floating-enter-from,
 .assistant-panel-floating.assistant-floating-leave-to {

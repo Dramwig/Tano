@@ -1,4 +1,5 @@
 import { animate } from 'motion/mini';
+import { springEasing } from '@tano/editor/motion';
 
 type Entry = { id: string; element: HTMLElement; anchor: number; selected?: boolean };
 type State = { target: string; motion?: ReturnType<typeof animate> };
@@ -102,7 +103,7 @@ function arrange(parent: HTMLElement) {
       paddingRight: [`${padding}px`, `${12 + outset}px`],
       height: [`${bounds.height}px`, `${height}px`],
       opacity: [previous ? 1 : 0, 1],
-    }, { duration: 0.22, ease: [0.22, 1, 0.36, 1] });
+    }, { duration: 0.34, ease: springEasing('snappy') });
     void state.motion.finished.then(() => {
       if (states.get(card) !== state) return;
       state.motion?.stop();

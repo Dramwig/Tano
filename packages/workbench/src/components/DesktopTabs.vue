@@ -4,6 +4,7 @@ import { t } from '../i18n';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { animate } from 'motion/mini';
+import { springEasing } from '@tano/editor/motion';
 import { ArrowLeft, ArrowRight, Bot, CalendarDays, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, PanelBottomClose, ExternalLink, Bug } from 'lucide-vue-next';
 import { basename, isMarkdown, isDataTableFilePath } from '@tano/protocol';
 import { invoke } from '@tauri-apps/api/core';
@@ -88,7 +89,7 @@ function releaseTabWidths() {
   frozenStripWidth.value = undefined;
 }
 function moveTabElement(element: HTMLElement, keyframes: Record<string, (number | string)[]>, restore: () => void) {
-  const animation = animate(element, keyframes, { duration: 0.18, ease: [0.22, 1, 0.36, 1] });
+  const animation = animate(element, keyframes, { duration: 0.32, ease: springEasing('snappy') });
   movingTabs.set(element, { animation, restore });
 }
 async function animateTabLayout(ids: string[], opening: boolean) {
@@ -1402,7 +1403,7 @@ async function onTabKeydown(event: KeyboardEvent) {
   border-radius: 8px 8px 0 0;
   background: color-mix(in srgb, var(--text) 7%, transparent);
   pointer-events: none;
-  transition: transform 180ms cubic-bezier(.22, 1, .36, 1), width 180ms ease;
+  transition: transform var(--motion-spring) var(--ease-spring), width var(--motion-spring) var(--ease-spring-smooth);
 }
 .desktop-tab-context-menu {
   position: fixed;
@@ -1442,12 +1443,12 @@ async function onTabKeydown(event: KeyboardEvent) {
   border-radius: 8px 8px 0 0;
   color: var(--text-secondary);
   transition:
-    flex-basis 180ms cubic-bezier(.22, 1, .36, 1),
+    flex-basis var(--motion-spring) var(--ease-spring-smooth),
     background 0.15s,
     color 0.15s;
 }
 .desktop-tab-list-snapping .desktop-tab {
-  transition: transform 180ms cubic-bezier(.22, 1, .36, 1), flex-basis 180ms cubic-bezier(.22, 1, .36, 1), background 0.15s, color 0.15s;
+  transition: transform var(--motion-spring) var(--ease-spring), flex-basis var(--motion-spring) var(--ease-spring-smooth), background 0.15s, color 0.15s;
 }
 .desktop-tab-list-frozen .desktop-tab,
 .desktop-tab-list-animating .desktop-tab {

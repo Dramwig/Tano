@@ -10,6 +10,7 @@ import {
 } from '@tano/protocol';
 import { h, render as renderIcon, type Component } from 'vue';
 import { animate } from 'motion/mini';
+import { springEasing } from './motion';
 import { Bot, Box, CalendarDays, FileText, Paperclip, UserRound } from 'lucide-vue-next';
 import type { ReferenceTarget } from '@tano/protocol';
 import { selectedBlocks } from './document-model';
@@ -325,7 +326,7 @@ export function referencePicker(options: {
           const animation = animate(menu, {
             height: [from.height, to.height],
             top: [from.top, to.top],
-          }, { duration: 0.24, ease: [0.22, 1, 0.36, 1] });
+          }, { duration: 0.24, ease: springEasing('smooth') });
           sizeMotion = animation;
           void animation.finished.then(() => {
             if (sizeMotion !== animation) return;

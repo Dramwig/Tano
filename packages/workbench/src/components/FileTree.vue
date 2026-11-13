@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { t } from '../i18n';
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, provide, ref, watch } from 'vue';
+import { captureList } from '@tano/editor/motion';
 import { flattenFileTree, indexFileTree } from '../file-tree-model';
 import { indexFolderHomes, type FolderHomeFileName } from '../folder-home';
 import { treeRowHeight, useFileTreeViewport } from '../file-tree-viewport';
@@ -80,6 +81,23 @@ const rows = computed(() => props.loading ? [] : virtual.value
   ? flattenFileTree(folders.value, props.parent, props.depth, isCollapsed)
   : (folders.value.get(props.parent) ?? []).map((file, index, children) =>
       ({ file, depth: props.depth, position: index + 1, siblings: children.length })));
+// One motion scope per tree: nested folders report structure changes to the
+// root, which FLIPs moved rows, rises new rows in and ghosts removed rows out.
+const treeMotionKey = Symbol.for('tano-file-tree-motion');
+const parentTreeMotion = inject<(() => void) | undefined>(treeMotionKey, undefined);
+let pendingTreeMotion: (() => void) | undefined;
+function beginRootTreeMotion() {
+  const root = treeElement.value;
+  if (pendingTreeMotion || !root?.querySelector('.tree-row[data-entry-id]')) return;
+  pendingTreeMotion = captureList(root, '.tree-row[data-entry-id]', row => row.dataset.entryId,
+    { maxEnter: 24, strip: ['data-entry-id'] });
+  void nextTick(() => { const play = pendingTreeMotion; pendingTreeMotion = undefined; play?.(); });
+}
+const beginTreeMotion = parentTreeMotion ?? beginRootTreeMotion;
+if (!parentTreeMotion) provide(treeMotionKey, beginRootTreeMotion);
+watch(() => rows.value.map(row => row.file.id).join('\n'), (_next, previous) => {
+  if (previous) beginTreeMotion();
+}, { flush: 'pre' });
 const { windowRows, focused, reveal, focus } = useFileTreeViewport(treeElement, virtual, rows,
   () => [props.renamingId, props.draggedId, props.contextSelected]);
 const tabStop = computed(() => rows.value.some(row => row.file.id === focused.value) ? focused.value : rows.value[0]?.file.id);
@@ -153,6 +171,7 @@ function finishRename(file: FileEntry) {
   emit('renameFinished', file);
 }
 function toggle(path: string) {
+  beginTreeMotion();
   const toggled = largeTree.value ? expanded.value : collapsed.value;
   if (toggled.has(path)) toggled.delete(path);
   else toggled.add(path);

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { vSurfaceMotion, setSurfaceVisible } from './surface-motion';
+import { blockMotion } from './block-motion';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { Component } from 'vue';
 import ShortcutHint from './ShortcutHint.vue';
@@ -2837,6 +2838,7 @@ onMounted(async () => {
       .use(referenceFlash)
       .use($prose(richViewport))
       .use($prose(visualAnchorPlugin))
+      .use($prose(() => blockMotion()))
       .use($prose(() => suggestionMarks(() => props.suggestionMarks)))
       .use($prose(() => pageSearchPlugin(() => emit('searchChange'))));
     editor = await instance.create();

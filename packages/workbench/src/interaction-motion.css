@@ -1,0 +1,130 @@
+/* Interaction motion layer — one spring vocabulary for the whole product.
+ *
+ * Curves are physically sampled springs (see @tano/editor/motion, keep the
+ * strings in sync). Enter with springs, leave with quick ease-in; colour and
+ * background changes cross-fade. Every rule here is low-specificity so a
+ * component that defines its own motion keeps it.
+ *
+ * Press/hover scale for buttons is handled by installInteractionMotion()
+ * through the individual `scale` property, so it never fights `transform`.
+ */
+:root {
+  --ease-spring-smooth: linear(0, 0.052, 0.165, 0.297, 0.426, 0.541, 0.64, 0.721, 0.786, 0.837, 0.877, 0.908, 0.931, 0.949, 0.962, 0.972, 0.98, 0.985, 0.989, 0.992, 0.994, 0.996, 1);
+  --ease-spring: linear(0, 0.023, 0.084, 0.168, 0.266, 0.368, 0.471, 0.567, 0.656, 0.736, 0.804, 0.863, 0.91, 0.949, 0.979, 1.001, 1.017, 1.028, 1.035, 1.038, 1.038, 1.037, 1.034, 1.031, 1.027, 1.023, 1.019, 1.016, 1.012, 1.009, 1.007, 1.005, 1);
+  --ease-spring-bouncy: linear(0, 0.026, 0.094, 0.191, 0.305, 0.428, 0.55, 0.667, 0.773, 0.866, 0.945, 1.008, 1.056, 1.09, 1.112, 1.124, 1.126, 1.122, 1.113, 1.1, 1.086, 1.07, 1.055, 1.04, 1.027, 1.015, 1.006, 0.998, 0.992, 0.988, 0.986, 0.984, 0.984, 0.985, 0.986, 0.988, 0.989, 0.991, 0.993, 0.995, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 0.7, 0.2);
+  --motion-quick: 140ms;
+  --motion-base: 220ms;
+  --motion-spring: 380ms;
+  --motion-bouncy: 520ms;
+  --focus-ring: color-mix(in srgb, var(--text) 38%, transparent);
+}
+@supports not (transition-timing-function: linear(0, 1)) {
+  :root {
+    --ease-spring-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-spring: cubic-bezier(0.34, 1.32, 0.64, 1);
+    --ease-spring-bouncy: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --motion-quick: 1ms; --motion-base: 1ms; --motion-spring: 1ms; --motion-bouncy: 1ms; }
+}
+:root[data-motion='reduced'] { --motion-quick: 1ms; --motion-base: 1ms; --motion-spring: 1ms; --motion-bouncy: 1ms; }
+
+/* ---- Controls cross-fade their state colours ---------------------------- */
+:where(input, textarea, select, [contenteditable='true']:not(.ProseMirror)) {
+  transition:
+    border-color var(--motion-base) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard),
+    background-color var(--motion-base) var(--ease-standard);
+}
+:where(a, [role='tab'], [role='option'], [role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'], [role='treeitem'], summary) {
+  transition:
+    background-color var(--motion-quick) var(--ease-standard),
+    color var(--motion-quick) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard),
+    opacity var(--motion-quick) var(--ease-standard);
+}
+
+/* ---- Focus ring blooms outward instead of snapping ---------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  :where(button, a, summary, [role='button'], [role='tab'], [role='switch'], input, select, textarea):focus-visible {
+    animation: tano-focus-bloom var(--motion-bouncy) var(--ease-spring-bouncy);
+  }
+}
+@keyframes tano-focus-bloom {
+  from { outline-offset: 0px; outline-color: transparent; }
+}
+
+/* ---- Disclosure chevrons and icon state swaps spring into place --------- */
+:where(button, summary, [role='button'], [role='treeitem']) :where(svg) {
+  transition:
+    transform var(--motion-spring) var(--ease-spring),
+    rotate var(--motion-spring) var(--ease-spring),
+    color var(--motion-quick) var(--ease-standard),
+    opacity var(--motion-quick) var(--ease-standard);
+}
+
+/* ---- Selection changes pop once (tabs, segmented choices, toggled tools).
+   An animation starts the moment its selector begins to match, so this runs
+   exactly when the state flips to selected. ---------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  :where([role='tab'][aria-selected='true'], [role='radio'][aria-checked='true'], button[aria-pressed='true'], [role='menuitemradio'][aria-checked='true'] > svg) {
+    animation: tano-select-pop var(--motion-bouncy) var(--ease-spring-bouncy);
+  }
+}
+@keyframes tano-select-pop {
+  from { scale: 0.94; }
+}
+
+/* ---- Task checkboxes: the tick lands with a little weight -------------- */
+@media (prefers-reduced-motion: no-preference) {
+  .tano-prose li[data-item-type='task'][data-checked='true']:before {
+    animation: tano-check-pop var(--motion-bouncy) var(--ease-spring-bouncy);
+  }
+}
+.tano-prose li[data-item-type='task'] {
+  transition: color var(--motion-base) var(--ease-standard);
+}
+@keyframes tano-check-pop {
+  0% { scale: 0.6; }
+  100% { scale: 1; }
+}
+
+/* ---- Editor block motion helpers (block-motion.ts) --------------------- */
+.tano-block-ghost-layer {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 0;
+  height: 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 0;
+}
+.tano-block-ghost-layer > * { position: absolute; margin: 0 !important; }
+
+/* ---- Small rising notifications ---------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  :where(.error-toast, .toast, [role='status'].notice, .assistant-notice) {
+    animation: tano-toast-in var(--motion-bouncy) var(--ease-spring) both;
+  }
+}
+@keyframes tano-toast-in {
+  from { opacity: 0; translate: 0 10px; scale: 0.96; }
+}
+
+/* ---- Shared keyframes for components ------------------------------------ */
+@keyframes tano-rise-in {
+  from { opacity: 0; translate: 0 6px; scale: 0.985; }
+}
+@keyframes tano-tooltip-in {
+  from { opacity: 0; scale: 0.94; translate: 0 2px; }
+}
+@keyframes tano-fade-in {
+  from { opacity: 0; }
+}
+
+@media print {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

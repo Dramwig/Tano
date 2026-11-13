@@ -26,10 +26,10 @@ it('animates selection and deselection horizontally without replacing the rail t
   expanded.value = true;
   await nextTick(); await nextTick();
   expect(animate).toHaveBeenLastCalledWith(card, { translate: ['0px 0px', '-12px 0px'] },
-    { duration: 0.28, ease: [0.22, 1, 0.36, 1] });
+    { duration: 0.38, ease: expect.any(Function) });
   expanded.value = false;
   await nextTick(); await nextTick();
   expect(animate).toHaveBeenLastCalledWith(card, { translate: ['-12px 0px', '0px 0px'] },
-    { duration: 0.28, ease: [0.22, 1, 0.36, 1] });
+    { duration: 0.38, ease: expect.any(Function) });
   expect(card.style.transform).toBe('translateY(8px)');
 });

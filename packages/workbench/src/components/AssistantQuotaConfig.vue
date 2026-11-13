@@ -109,9 +109,10 @@ onMounted(async () => { await nextTick(); toggle.value?.focus({ preventScroll: t
 .quota-panel fieldset { display: grid; gap: 16px; min-width: 0; border: 0; margin: 0; padding: 0; }
 .quota-card { border: 1px solid var(--line); border-radius: 12px; padding: 20px; background: var(--paper); }
 .quota-enable { font-size: 13px; padding-block: 16px; }
-.quota-switch { width: 32px; height: 18px; padding: 2px; border-radius: 20px; background: var(--muted); flex: none; }
-.quota-switch span { display: block; height: 14px; width: 14px; border-radius: 50%; background: white; transition: transform .15s; }
-.quota-switch[aria-checked='true'] { background: var(--green); }.quota-switch[aria-checked='true'] span { transform: translateX(14px); }
+.quota-switch { width: 32px; height: 18px; padding: 2px; border-radius: 20px; background: var(--switch-off); flex: none; transition: background-color var(--motion-base) var(--ease-standard); }
+.quota-switch span { display: block; height: 14px; width: 14px; border-radius: 999px; background: white; box-shadow: 0 1px 3px #18212b26; transition: translate var(--motion-bouncy) var(--ease-spring-bouncy), width var(--motion-spring) var(--ease-spring); }
+.quota-switch[aria-checked='true'] { background: var(--switch-on, var(--green)); }.quota-switch[aria-checked='true'] span { translate: 14px 0; }
+.quota-switch:active span { width: 18px; }.quota-switch[aria-checked='true']:active span { translate: 10px 0; }
 .quota-templates { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 20px; }
 .quota-templates button { border: 1px solid var(--line); border-radius: 20px; padding: 5px 12px; color: var(--muted); font-size: 12px; }
 .quota-templates button[aria-pressed='true'] { background: var(--green); border-color: var(--green); color: var(--on-accent, white); }

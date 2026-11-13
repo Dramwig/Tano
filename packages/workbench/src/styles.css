@@ -4,6 +4,7 @@
 @import './mobile.css';
 @import './scrollbars.css';
 @import './surface-motion.css';
+@import './interaction-motion.css';
 
 @font-face {
   font-family: Literata;
@@ -81,15 +82,20 @@
   --text: #37352f;
   --text-secondary: #5f5e5b;
   --muted: #787774;
-  --green: #1f7a52;
-  --green-hover: #176340;
-  --green-fill: #1f7a52;
-  --green-fill-hover: #176340;
-  /* Neutral selection states — no green unless it's a true action */
+  /* Monochrome accent: the historical `--green*` names are the interaction
+     ink (focus, active, fills). Brand green survives only as a tiny status
+     cue via --brand-green (e.g. the saved check). */
+  --brand-green: #1f7a52;
+  --green: #2f2e2a;
+  --green-hover: #111110;
+  --green-fill: #2f2e2a;
+  --green-fill-hover: #4a4844;
+  --switch-on: #2f2e2a;
+  /* Neutral selection states */
   --selected: #ebeae8;
   --selected-text: var(--text);
-  --accent: #eaf5ee;
-  --block-selection: #e1f1e8;
+  --accent: #f0efed;
+  --block-selection: #e6e5e1;
   --block-selection-overlay: color-mix(in srgb, var(--block-selection) 62%, transparent);
   --line: #ebebea;
   --tree-guide: color-mix(in srgb, var(--muted) 18%, transparent);
@@ -160,13 +166,17 @@ button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: 2px solid var(--green);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
 }
 button {
   transition:
-    background 0.15s,
-    color 0.15s;
+    background var(--motion-quick) var(--ease-standard),
+    color var(--motion-quick) var(--ease-standard),
+    border-color var(--motion-quick) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard),
+    opacity var(--motion-quick) var(--ease-standard),
+    outline-offset var(--motion-base) var(--ease-spring-bouncy);
 }
 a {
   color: #5f5e5b;
@@ -255,7 +265,11 @@ button:hover {
 .sidebar-enter-active,
 .sidebar-leave-active {
   overflow: hidden;
-  transition: transform 200ms cubic-bezier(0.2, 0, 0, 1);
+  transition: transform var(--motion-spring) var(--ease-spring-smooth);
+}
+.sidebar-leave-active {
+  transition-duration: var(--motion-base);
+  transition-timing-function: var(--ease-exit);
 }
 .sidebar-leave-active {
   /* Release the layout width once, keeping the departing surface visible. */
@@ -325,9 +339,9 @@ button:hover {
   margin-left: 0;
   opacity: 0;
   transition:
-    grid-template-columns 200ms cubic-bezier(0.2, 0, 0, 1),
-    margin-left 200ms cubic-bezier(0.2, 0, 0, 1),
-    opacity 200ms ease;
+    grid-template-columns var(--motion-spring) var(--ease-spring-smooth),
+    margin-left var(--motion-spring) var(--ease-spring-smooth),
+    opacity var(--motion-base) var(--ease-standard);
 }
 .sidebar-navigation-button > span > span {
   min-width: 0;
@@ -1909,22 +1923,33 @@ button:hover {
   flex: 0 0 30px;
   border-radius: 999px;
   background: var(--switch-off);
-  transition: background-color 150ms ease;
+  transition: background-color var(--motion-base) var(--ease-standard);
 }
 .menu-switch.on {
-  background: var(--green);
+  background: var(--switch-on, var(--green));
 }
 .menu-switch > span {
   display: block;
   width: 14px;
   height: 14px;
-  border-radius: 50%;
+  border-radius: 999px;
   background: #fff;
-  box-shadow: 0 1px 3px #18212b26;
-  transition: transform 150ms ease;
+  box-shadow: 0 1px 3px #18212b26, 0 0 0 0.5px #0000000d;
+  transition:
+    translate var(--motion-bouncy) var(--ease-spring-bouncy),
+    width var(--motion-spring) var(--ease-spring);
 }
 .menu-switch.on > span {
-  transform: translateX(12px);
+  translate: 12px 0;
+}
+/* iOS-style: the thumb stretches toward its destination while pressed. */
+:active > .menu-switch > span,
+.menu-switch:active > span {
+  width: 17px;
+}
+:active > .menu-switch.on > span,
+.menu-switch.on:active > span {
+  translate: 9px 0;
 }
 .file-context-menu {
   position: fixed;
@@ -4663,7 +4688,7 @@ button:hover {
   }
   .sidebar-dismiss-enter-active,
   .sidebar-dismiss-leave-active {
-    transition: opacity 200ms cubic-bezier(0.2, 0, 0, 1);
+    transition: opacity var(--motion-base) var(--ease-standard);
   }
   .sidebar-dismiss-enter-from,
   .sidebar-dismiss-leave-to {

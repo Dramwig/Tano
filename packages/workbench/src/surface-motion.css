@@ -70,8 +70,9 @@
       block-size: 0;
       opacity: 0;
       overflow: clip;
-      transition: block-size 180ms cubic-bezier(0.2, 0, 0, 1), opacity 130ms ease-out,
-        content-visibility 180ms allow-discrete;
+      transition: block-size var(--motion-spring, 320ms) var(--ease-spring-smooth, cubic-bezier(0.2, 0, 0, 1)),
+        opacity var(--motion-base, 180ms) ease-out,
+        content-visibility var(--motion-spring, 320ms) allow-discrete;
     }
     details[open]::details-content { block-size: auto; opacity: 1; }
     details:has(.frontmatter-type-menu, .tano-panel-actions, .data-option-popover)::details-content {

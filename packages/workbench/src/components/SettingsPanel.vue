@@ -1931,7 +1931,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   padding: 3px;
   border-radius: 999px;
   background: var(--switch-off);
-  transition: background 0.18s;
+  transition: background-color var(--motion-base) var(--ease-standard);
 }
 .settings-switch::before {
   content: '';
@@ -1939,22 +1939,31 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   inset: -9px -3px;
 }
 .settings-switch.on {
-  background: var(--green);
+  background: var(--switch-on, var(--green));
 }
 .settings-switch.on:hover:not(:disabled) {
-  background: var(--green-hover);
+  background: color-mix(in srgb, var(--switch-on, var(--green)) 88%, var(--paper));
 }
 .settings-switch span {
   display: block;
   width: 16px;
   height: 16px;
-  border-radius: 50%;
+  border-radius: 999px;
   background: white;
-  box-shadow: 0 1px 3px #18212b26;
-  transition: transform 0.18s;
+  box-shadow: 0 1px 3px #18212b26, 0 0 0 0.5px #0000000d;
+  transition:
+    translate var(--motion-bouncy) var(--ease-spring-bouncy),
+    width var(--motion-spring) var(--ease-spring);
 }
 .settings-switch.on span {
-  transform: translateX(16px);
+  translate: 16px 0;
+}
+/* The thumb stretches toward its destination while pressed, then springs. */
+.settings-switch:active:not(:disabled) span {
+  width: 20px;
+}
+.settings-switch.on:active:not(:disabled) span {
+  translate: 12px 0;
 }
 .settings-row.is-disabled > div,
 .settings-switch:disabled {

@@ -1,4 +1,5 @@
 import { animate } from 'motion/mini';
+import { springEasing } from '@tano/editor/motion';
 
 type Point = { x: number; y: number };
 type Layout = Point & { motion?: ReturnType<typeof animate> };
@@ -70,7 +71,7 @@ export function createPlanListMotion(root: HTMLElement) {
       const dx = from.x - x, dy = from.y - y;
       if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
       const movement = animate(element, { translate: [`${dx}px ${dy}px`, '0px 0px'] }, {
-        duration: 0.22, ease: [0.22, 1, 0.36, 1],
+        duration: 0.34, ease: springEasing('snappy'),
       });
       layout.motion = movement;
       void movement.finished.then(() => {

@@ -22,7 +22,8 @@
     "./comment-anchors": "./src/comment-anchors.ts",
     "./extension": "./src/extension.ts",
     "./search": "./src/search.ts",
-    "./surface-motion": "./src/surface-motion.ts"
+    "./surface-motion": "./src/surface-motion.ts",
+    "./motion": "./src/motion.ts"
   },
   "dependencies": {
     "@milkdown/kit": "^7.22.1",

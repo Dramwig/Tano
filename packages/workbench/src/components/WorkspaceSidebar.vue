@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { t } from '../i18n';
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { MOTION_DURATION, spring } from '@tano/editor/motion';
 
 const props = defineProps<{
   open: boolean;
@@ -69,7 +70,7 @@ watch(() => props.open, async (_, __, cleanup) => {
   const animation = content.animate([
     { marginLeft: `${offset}px` },
     { marginLeft: '0px' },
-  ], { duration: 200, easing: 'cubic-bezier(0.2, 0, 0, 1)' });
+  ], { duration: MOTION_DURATION.snappy, easing: spring('smooth') });
   motion = animation;
   animation.onfinish = () => {
     if (motion === animation) motion = undefined;

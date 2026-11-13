@@ -4,6 +4,7 @@ import { columnResizingPluginKey, TableMap, TableView } from '@milkdown/kit/pros
 import type { EditorView, ViewMutationRecord } from '@milkdown/kit/prose/view';
 import { defaultTableColumnWidth } from '@tano/protocol';
 import { animate } from 'motion/mini';
+import { springEasing } from './motion';
 
 const viewports = new WeakMap<EditorView, Set<TableViewport>>();
 const queues = new WeakMap<EditorView, { pending: Set<TableViewport>; frame?: number }>();
@@ -198,7 +199,7 @@ export class TableViewport extends TableView {
     if (!frames.length || typeof this.dom.animate !== 'function') return;
     // Animate the viewport and its compensating margins together; cell text stays unscaled.
     const motions = targets.flatMap(({ element }, index) => Object.keys(frames[index]!).length
-      ? [animate(element, frames[index]!, { duration: 0.24, ease: [0.22, 1, 0.36, 1] })] : []);
+      ? [animate(element, frames[index]!, { duration: 0.24, ease: springEasing('smooth') })] : []);
     if (!motions.length) return;
     this.motions = motions;
     this.trackMotion();

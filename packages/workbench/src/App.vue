@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
+import { installInteractionMotion } from '@tano/editor/motion';
 import ShortcutHint from '@tano/editor/shortcut-hint';
 import WorkspaceSyncPanel from './components/WorkspaceSyncPanel.vue';
 import { vScrollFade } from './scroll-fade';
@@ -798,6 +799,11 @@ const theme = computed<ThemePreference>({ get: () => appearance.value.mode,
   set: mode => appearanceController.select({ workspaceId: appearance.value.workspaceId, kind: 'mode', id: mode }) });
 const onAppearanceStorage = (event: StorageEvent) => appearanceController.refreshPreferences(event.key);
 onMounted(() => window.addEventListener('storage', onAppearanceStorage));
+// Delegated press/hover springs for every button in the workbench and its
+// teleported surfaces (dialogs, menus, settings).
+let disposeInteractionMotion: (() => void) | undefined;
+onMounted(() => { disposeInteractionMotion = installInteractionMotion(); });
+onBeforeUnmount(() => disposeInteractionMotion?.());
 onBeforeUnmount(() => window.removeEventListener('storage', onAppearanceStorage));
 const systemThemeMedia = window.matchMedia?.('(prefers-color-scheme: dark)');
 const onSystemThemeChange = () => {

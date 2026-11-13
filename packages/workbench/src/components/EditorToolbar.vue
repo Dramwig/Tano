@@ -3,6 +3,7 @@ import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { animate } from 'motion/mini';
+import { springEasing } from '@tano/editor/motion';
 import {
   Bold,
   Italic,
@@ -220,12 +221,12 @@ watch([blockLabel, blockIcon, () => props.compact], async () => {
   const to = button.getBoundingClientRect().width;
   if (Math.abs(to - from) > 0.5) {
     blockWidthMotion = animate(button, { width: [from, to] }, {
-      duration: 0.2, ease: [0.22, 1, 0.36, 1],
+      duration: 0.32, ease: springEasing('snappy'),
     });
   }
   blockContentMotion = animate(content, {
     opacity: [0.35, 1], transform: ['translateY(2px)', 'translateY(0px)'],
-  }, { duration: 0.2, ease: [0.22, 1, 0.36, 1] });
+  }, { duration: 0.32, ease: springEasing('snappy') });
   await blockContentMotion.finished;
   if (version === blockMotionVersion) stopBlockMotion();
 });
@@ -357,7 +358,7 @@ function animateActions(element: Element, done: () => void, entering: boolean) {
     [axis]: [entering && !interrupted ? 0 : previous, entering ? size : 0],
     [margin]: [interrupted ? previousMargin : entering ? -gap : 0, entering ? 0 : -gap],
     opacity: [interrupted ? previousOpacity : entering ? 0 : 1, entering ? 1 : 0],
-  }, { duration: 0.2, ease: [0.22, 1, 0.36, 1] });
+  }, { duration: 0.32, ease: springEasing('snappy') });
   actionMotions.set(host, animation);
   void animation.finished.then(() => {
     if (actionMotions.get(host) !== animation) return;

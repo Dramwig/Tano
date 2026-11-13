@@ -242,6 +242,9 @@ onBeforeUnmount(() => {
   overflow-wrap: anywhere;
 }
 .app-tooltip[data-ready='false'] { visibility: hidden; }
+@media (prefers-reduced-motion: no-preference) {
+  .app-tooltip[data-ready='true'] { animation: tano-tooltip-in var(--motion-spring, 300ms) var(--ease-spring, ease-out) both; }
+}
 .app-tooltip::backdrop { background: transparent; pointer-events: none; }
 .app-tooltip-shortcut { justify-self: center; color: #b8b8b8; }
 @media (forced-colors: active) {
