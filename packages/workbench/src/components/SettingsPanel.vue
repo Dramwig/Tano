@@ -196,6 +196,45 @@ const rulesDisabled = computed(
     props.capabilitySaving ||
     !!props.capabilityError,
 );
+type MotionOptionKey = 'smoothCaret' | 'typingMotion' | 'blockMotion' | 'blockResizeMotion' | 'reduceInterfaceMotion';
+const motionOptions: { key: MotionOptionKey; settingsKey: string; readonly label: string; readonly description: string }[] = [
+  {
+    key: 'reduceInterfaceMotion',
+    settingsKey: 'appearance-reduce-motion',
+    get label() { return t('减少动态效果'); },
+    get description() { return t('关闭按钮回弹、面板弹出和编辑区动画。系统开启“减少动态效果”时始终生效。'); },
+  },
+  {
+    key: 'smoothCaret',
+    settingsKey: 'appearance-smooth-caret',
+    get label() { return t('光标平滑移动'); },
+    get description() { return t('输入、移动光标和换行时，光标平滑滑到新位置。'); },
+  },
+  {
+    key: 'typingMotion',
+    settingsKey: 'appearance-typing-motion',
+    get label() { return t('文字输入与删除动画'); },
+    get description() { return t('新输入的文字淡入，删除的文字在原位置淡出。'); },
+  },
+  {
+    key: 'blockMotion',
+    settingsKey: 'appearance-block-motion',
+    get label() { return t('段落增删动画'); },
+    get description() { return t('新段落浮现，删除的段落淡出，其余段落平滑让位。'); },
+  },
+  {
+    key: 'blockResizeMotion',
+    settingsKey: 'appearance-block-resize-motion',
+    get label() { return t('段落变高时下方内容平滑移动'); },
+    get description() { return t('段落内换行或删减使高度变化时，下方内容平滑跟随。'); },
+  },
+];
+function motionOptionActive(key: MotionOptionKey) {
+  return key === 'reduceInterfaceMotion' ? display.value[key] === true : display.value[key] !== false;
+}
+function toggleMotionOption(key: MotionOptionKey) {
+  emit('update:editorPreferences', { ...display.value, [key]: !motionOptionActive(key) });
+}
 const displayOptions = [
   {
     key: 'previewMathWhileEditing',
@@ -321,6 +360,11 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('appearance', 'appearance-discussion', '文档讨论', '有讨论时在文档底部显示，没有讨论时自动隐藏。', 'comments discussion'),
   settingSearchEntry('appearance', 'appearance-outline', '显示目录', '', 'outline table of contents'),
   settingSearchEntry('appearance', 'appearance-outline-position', '目录显示在左侧', '将文档大纲放到编辑区左侧。', 'outline left right'),
+  settingSearchEntry('appearance', 'appearance-reduce-motion', '减少动态效果', '关闭按钮回弹、面板弹出和编辑区动画。系统开启“减少动态效果”时始终生效。', 'reduce motion animation accessibility 减少 动态 动画 动效 无障碍'),
+  settingSearchEntry('appearance', 'appearance-smooth-caret', '光标平滑移动', '输入、移动光标和换行时，光标平滑滑到新位置。', 'caret cursor smooth animation motion 光标 平滑 动画 动效'),
+  settingSearchEntry('appearance', 'appearance-typing-motion', '文字输入与删除动画', '新输入的文字淡入，删除的文字在原位置淡出。', 'typing delete animation motion 打字 输入 删除 退格 动画 动效'),
+  settingSearchEntry('appearance', 'appearance-block-motion', '段落增删动画', '新段落浮现，删除的段落淡出，其余段落平滑让位。', 'block paragraph animation motion 段落 块 动画 动效'),
+  settingSearchEntry('appearance', 'appearance-block-resize-motion', '段落变高时下方内容平滑移动', '段落内换行或删减使高度变化时，下方内容平滑跟随。', 'block height wrap animation motion 段落 高度 换行 动画 动效'),
   settingSearchEntry('appearance', 'appearance-help', '偶尔显示使用提示', '在你停下来时，在帮助按钮上方显示简短的用法提示。关闭后仍可手动查看帮助。', 'help tips hints'),
   settingSearchEntry('editing', 'editing-default-mode', '默认编辑模式', '选择打开文档时使用的视图。', 'editor visual Markdown source'),
   settingSearchEntry('editing', 'editing-reveal-markdown', '光标进入时展开 Markdown 源码', '类似 Typora、Obsidian 的实时预览：光标进入时显示 Markdown 语法，离开后恢复排版。', 'live preview source syntax'),
@@ -1070,6 +1114,23 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
                   :aria-label="t('目录显示在左侧')"
                   @click="emit('update:outlineOnLeft', !(outlineOnLeft ?? false))"
                 >
+                  <span />
+                </button>
+              </div>
+            </div>
+          </section>
+          <section v-if="page === 'appearance'" class="settings-section" :aria-label="t('动效')">
+            <h3>{{ t('动效') }}</h3>
+            <div class="settings-card">
+              <div v-for="option in motionOptions" :key="option.key" class="settings-row" :data-settings-key="option.settingsKey">
+                <div>
+                  <strong>{{ option.label }}</strong>
+                  <p>{{ option.description }}</p>
+                </div>
+                <button type="button" class="settings-switch" :class="{ on: motionOptionActive(option.key) }"
+                  role="switch" :aria-checked="motionOptionActive(option.key)" :aria-label="option.label"
+                  :disabled="option.key !== 'reduceInterfaceMotion' && display.reduceInterfaceMotion === true"
+                  @click="toggleMotionOption(option.key)">
                   <span />
                 </button>
               </div>

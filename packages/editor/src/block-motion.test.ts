@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Schema } from '@milkdown/kit/prose/model';
-import { EditorState } from '@milkdown/kit/prose/state';
+import { EditorState, TextSelection } from '@milkdown/kit/prose/state';
 import { EditorView } from '@milkdown/kit/prose/view';
 import { blockMotion } from './block-motion';
 
@@ -76,4 +76,47 @@ it('does nothing when the user prefers reduced motion', () => {
   expect(calls).toEqual([]);
   expect(document.querySelector('[data-motion-ghost]')).toBeNull();
   view.destroy();
+});
+
+describe('in-block height changes', () => {
+  type Observed = { callback: ResizeObserverCallback; targets: Set<Element> };
+  let observers: Observed[] = [];
+  beforeEach(() => {
+    observers = [];
+    vi.stubGlobal('ResizeObserver', class {
+      private record: Observed;
+      constructor(callback: ResizeObserverCallback) { this.record = { callback, targets: new Set() }; observers.push(this.record); }
+      observe(target: Element) { this.record.targets.add(target); }
+      unobserve(target: Element) { this.record.targets.delete(target); }
+      disconnect() { this.record.targets.clear(); }
+    });
+  });
+  const resize = (element: Element, height: number) => {
+    for (const observer of observers) if (observer.targets.has(element))
+      observer.callback([{ target: element, borderBoxSize: [{ blockSize: height, inlineSize: 600 }] } as unknown as ResizeObserverEntry], {} as ResizeObserver);
+  };
+  const caretIn = (view: EditorView, pos: number) => view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)));
+
+  it('glides the blocks below when typing wraps a line', () => {
+    const view = editor('alpha', 'beta', 'gamma');
+    caretIn(view, 6);
+    const [first, second, third] = [...view.dom.children] as HTMLElement[];
+    resize(first!, 30); // initial observation
+    view.dispatch(view.state.tr.insertText(' and more', 6));
+    resize(first!, 60);
+    expect(translated(second!)).toBe(true);
+    expect(translated(third!)).toBe(true);
+    const frames = calls.find(call => call.element === second)!.frames;
+    expect(frames[0]!.translate).toBe('0 -30px');
+    view.destroy();
+  });
+  it('ignores height changes that no edit caused', () => {
+    const view = editor('alpha', 'beta');
+    caretIn(view, 6);
+    const first = view.dom.children[0]!;
+    resize(first, 30);
+    resize(first, 60); // e.g. the window got narrower
+    expect(calls).toEqual([]);
+    view.destroy();
+  });
 });

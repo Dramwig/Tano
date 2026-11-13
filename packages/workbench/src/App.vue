@@ -1037,6 +1037,11 @@ const editorPreferences = ref<EditorPreferences>({
   blankBlockAiShortcut: readPreference('blankBlockAiShortcut', defaultEditorPreferences.blankBlockAiShortcut),
   selectionWrapping: readSelectionWrapping(),
   chineseInput: readChineseInput(),
+  smoothCaret: readPreference('smoothCaret', true),
+  typingMotion: readPreference('typingMotion', true),
+  blockMotion: readPreference('blockMotion', true),
+  blockResizeMotion: readPreference('blockResizeMotion', true),
+  reduceInterfaceMotion: readPreference('reduceInterfaceMotion', false),
 });
 watch(
   editorPreferences,
@@ -1049,8 +1054,23 @@ watch(
     savePreference('blankBlockAiShortcut', preferences.blankBlockAiShortcut);
     saveTextPreference('selectionWrapping', JSON.stringify(normalizeSelectionWrapping(preferences.selectionWrapping)));
     saveTextPreference('chineseInput', JSON.stringify(normalizeChineseInput(preferences.chineseInput)));
+    savePreference('smoothCaret', preferences.smoothCaret !== false);
+    savePreference('typingMotion', preferences.typingMotion !== false);
+    savePreference('blockMotion', preferences.blockMotion !== false);
+    savePreference('blockResizeMotion', preferences.blockResizeMotion !== false);
+    savePreference('reduceInterfaceMotion', preferences.reduceInterfaceMotion === true);
   },
   { deep: true },
+);
+// `data-motion="reduced"` is honoured by the motion helpers and the CSS tokens,
+// exactly like the operating-system "reduce motion" setting.
+watch(
+  () => editorPreferences.value.reduceInterfaceMotion === true,
+  (reduced) => {
+    if (reduced) document.documentElement.dataset.motion = 'reduced';
+    else if (document.documentElement.dataset.motion === 'reduced') delete document.documentElement.dataset.motion;
+  },
+  { immediate: true },
 );
 const hoverOutline = window.matchMedia('(hover: hover)').matches;
 const sourceModes = shallowReactive<Record<string, boolean>>({});

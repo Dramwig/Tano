@@ -278,6 +278,28 @@ it('shows the Markdown reveal switch enabled and emits a change', async () => {
   expect(revealUpdates).toEqual([false]);
 });
 
+it('switches each editor motion separately and greys them out while motion is reduced', async () => {
+  await openPage('外观');
+  const toggle = (label: string) => root.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${label}"]`)!;
+  for (const label of ['光标平滑移动', '文字输入与删除动画', '段落增删动画', '段落变高时下方内容平滑移动'])
+    expect(toggle(label).getAttribute('aria-checked')).toBe('true');
+  expect(toggle('减少动态效果').getAttribute('aria-checked')).toBe('false');
+  const motionRows = [...root.querySelectorAll('section[aria-label="动效"] [role="switch"]')].map(row => row.getAttribute('aria-label'));
+  expect(motionRows[0]).toBe('减少动态效果');
+  const previous = { ...editorPreferences.value };
+  toggle('光标平滑移动').click();
+  await nextTick();
+  expect(editorPreferences.value).toEqual({ ...previous, smoothCaret: false });
+  toggle('段落变高时下方内容平滑移动').click();
+  await nextTick();
+  expect(editorPreferences.value).toEqual({ ...previous, smoothCaret: false, blockResizeMotion: false });
+  toggle('减少动态效果').click();
+  await nextTick();
+  expect(editorPreferences.value.reduceInterfaceMotion).toBe(true);
+  expect(toggle('文字输入与删除动画').disabled).toBe(true);
+  expect(toggle('减少动态效果').disabled).toBe(false);
+});
+
 it('toggles automatic text spacing in appearance without changing other editor preferences', async () => {
   await openPage('外观');
   const toggle = root.querySelector<HTMLButtonElement>('[role="switch"][aria-label="正文自动间距"]')!;

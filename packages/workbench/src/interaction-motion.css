@@ -104,6 +104,54 @@
 }
 .tano-block-ghost-layer > * { position: absolute; margin: 0 !important; }
 
+/* ---- Editor typing motion (typing-motion.ts) --------------------------- */
+/* Typed text fades in (typing-motion.ts drives it with WAAPI so a span that
+   ProseMirror redraws resumes its fade instead of restarting it). Only
+   opacity and blur: offsetting inline text snaps to whole pixels and reads as
+   a flicker. */
+
+/* Overlay next to the editor DOM: the caret and deleted-text ghosts. */
+.tano-type-layer {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 0;
+  height: 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 1;
+}
+.tano-type-ghost {
+  position: absolute;
+  margin: 0;
+  white-space: pre;
+  pointer-events: none;
+}
+/* The native caret is hidden only while the drawn one is on screen. */
+.ProseMirror.tano-smooth-caret { caret-color: transparent; }
+.tano-caret {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  width: 2px;
+  height: 1.2em;
+  border-radius: 1px;
+  background: var(--text);
+  transform-origin: 50% 50%;
+  will-change: translate;
+  transition:
+    translate 120ms var(--ease-spring),
+    height 120ms var(--ease-spring),
+    background-color 160ms ease;
+}
+.tano-caret[hidden] { display: none; }
+.tano-caret.is-idle { animation: tano-caret-breathe 1.1s ease-in-out infinite; }
+@keyframes tano-caret-breathe {
+  0%, 42% { opacity: 1; }
+  52%, 90% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
 /* ---- Small rising notifications ---------------------------------------- */
 @media (prefers-reduced-motion: no-preference) {
   :where(.error-toast, .toast, [role='status'].notice, .assistant-notice) {

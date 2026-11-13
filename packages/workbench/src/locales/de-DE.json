@@ -3538,5 +3538,16 @@
   "新属性": "Neue Eigenschaft",
   "列表": "Liste",
   "日期和时间": "Datum und Uhrzeit",
-  "空值": "Null"
+  "空值": "Null",
+  "动效": "Bewegung",
+  "光标平滑移动": "Weicher Cursor",
+  "输入、移动光标和换行时，光标平滑滑到新位置。": "Der Cursor gleitet beim Tippen, Bewegen und bei neuen Zeilen an seine neue Position.",
+  "文字输入与删除动画": "Animation beim Tippen und Löschen",
+  "新输入的文字淡入，删除的文字在原位置淡出。": "Neu getippter Text wird eingeblendet, gelöschter Text an seiner Stelle ausgeblendet.",
+  "段落增删动画": "Animation beim Hinzufügen und Entfernen von Blöcken",
+  "新段落浮现，删除的段落淡出，其余段落平滑让位。": "Neue Blöcke steigen auf, entfernte Blöcke blenden aus, der Rest gleitet nach.",
+  "段落变高时下方内容平滑移动": "Weiche Bewegung bei Höhenänderung eines Blocks",
+  "段落内换行或删减使高度变化时，下方内容平滑跟随。": "Wenn ein Block umbricht oder kürzer wird, gleitet der Inhalt darunter mit.",
+  "减少动态效果": "Bewegung reduzieren",
+  "关闭按钮回弹、面板弹出和编辑区动画。系统开启“减少动态效果”时始终生效。": "Schaltet Tastenfedern, Panel-Einblendungen und Editor-Animationen ab. Immer aktiv, wenn das System Bewegung reduziert."
 }

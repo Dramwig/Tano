@@ -59,6 +59,16 @@ export interface EditorPreferences {
   selectionWrapping?: SelectionWrappingPreferences;
   /** Device-local punctuation mappings for Chinese input methods; all disabled by default. */
   chineseInput?: ChineseInputPreferences;
+  /** Device-local editor motion; absent means on. Reduced motion always wins. */
+  smoothCaret?: boolean;
+  /** Typed text fades in, deleted text fades out. */
+  typingMotion?: boolean;
+  /** Added blocks rise in, removed blocks fade out, the rest glide. */
+  blockMotion?: boolean;
+  /** Content below a block glides when the block grows or shrinks. */
+  blockResizeMotion?: boolean;
+  /** Turns interface motion (press, panels, popovers) down like the OS setting. */
+  reduceInterfaceMotion?: boolean;
 }
 export const defaultCapabilities: WorkspaceCapabilities = {
   version: 1,
@@ -78,6 +88,11 @@ export const defaultEditorPreferences: EditorPreferences = {
   previewMermaidWhileEditing: true,
   folding: true,
   blankBlockAiShortcut: true,
+  smoothCaret: true,
+  typingMotion: true,
+  blockMotion: true,
+  blockResizeMotion: true,
+  reduceInterfaceMotion: false,
 };
 
 /** Validate portable policy without discarding unknown fields from newer clients. */

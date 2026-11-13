@@ -29,8 +29,21 @@ it('sinks a button by a fixed pixel depth and springs it back on release', () =>
   pointer('pointerdown', button.firstElementChild!);
   pointer('pointerup', button);
   const [down, up] = scales(button);
-  expect(Number(down)).toBeCloseTo(1 - 4 / 120);
+  expect(Number(down)).toBeCloseTo(1 - 5 / 120);
   expect(up).toBe('1');
+  // A quick tap still dips to the pressed depth before springing back.
+  const tap = calls.at(-1)!.frames;
+  expect(tap).toHaveLength(3);
+  expect(Number(tap[1]!.scale)).toBeCloseTo(1 - 5 / 120);
+});
+it('lifts and presses a full-width form button visibly', () => {
+  vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockReturnValue({ x: 0, y: 0, left: 0, top: 0, right: 480, bottom: 48, width: 480, height: 48, toJSON() {} } as DOMRect);
+  document.body.innerHTML = '<button type="submit" style="background: black">继续</button>';
+  const button = document.querySelector('button')!;
+  button.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+  Object.defineProperty(window.PointerEvent?.prototype ?? {}, 'pointerType', { configurable: true, get: () => 'mouse' });
+  pointer('pointerdown', button);
+  expect(Number(scales(button).at(-1))).toBeCloseTo(0.975);
 });
 it('leaves rows, menu items, switches, drag sources and disabled buttons flat', () => {
   document.body.innerHTML = `<div role="treeitem" tabindex="0">a</div><button role="menuitem">b</button>

@@ -86,7 +86,7 @@ const NOT_PRESSABLE = [
 /** Triggers whose geometry anchors a popup: never leave them scaled. */
 const ANCHOR = '[aria-haspopup]:not([aria-haspopup="false"]), [aria-expanded], [aria-controls]';
 
-type Pressed = { element: HTMLElement; scale: number; hover: number; animation?: Animation };
+type Pressed = { element: HTMLElement; scale: number; hover: number; at: number; animation?: Animation };
 const animations = new WeakMap<HTMLElement, Animation>();
 
 function currentScale(element: HTMLElement): number {
@@ -122,22 +122,24 @@ function pressTarget(event: Event): HTMLElement | null {
   return element;
 }
 
-/** Equal *pixel* depth for every size: icons sink ~10%, wide buttons ~2%. */
+/** ~5px of depth for every size: icons sink ~10%; wide call-to-action
+ * buttons still sink at least 2.5% so the press is clearly visible. */
 function depth(rect: DOMRect) {
   const longest = Math.max(rect.width, rect.height);
   if (!longest) return 1;
-  return 1 - Math.min(0.1, Math.max(0.018, 4 / longest));
+  return 1 - Math.min(0.1, Math.max(0.025, 5 / longest));
 }
 /** Only standalone, button-shaped controls lift on hover. */
 function hoverLift(element: HTMLElement, rect: DOMRect) {
   if (element.matches(ANCHOR)) return 1;
-  if (rect.width < 64 || rect.height < 28 || rect.width > 420 || rect.height > 72) return 1;
+  // Full-width form buttons (login, checkout) lift too; long list rows don't.
+  if (rect.width < 64 || rect.height < 28 || rect.width > 720 || rect.height > 72) return 1;
   if (element.matches('[role="tab"], [role="radio"], summary, [aria-pressed], [aria-selected]')) return 1;
   const style = getComputedStyle(element);
   const filled = style.backgroundColor !== 'rgba(0, 0, 0, 0)' && style.backgroundColor !== 'transparent';
   const bordered = parseFloat(style.borderTopWidth) > 0 && style.borderTopStyle !== 'none';
   if (!filled && !bordered) return 1;
-  return 1 + Math.min(0.025, 2 / rect.width);
+  return 1 + Math.min(0.025, Math.max(0.01, 2 / rect.width));
 }
 
 let installed: (() => void) | undefined;
@@ -165,6 +167,24 @@ export function installInteractionMotion(root: Document = document): () => void 
       scaleTo(element, 1, 120, spring('smooth'));
       return;
     }
+    const held = performance.now() - current.at;
+    if (held < MOTION_DURATION.press + 30) {
+      // A quick click releases before the press has landed. Finish the dip
+      // first, then spring back, so every tap reads as a press.
+      const from = currentScale(element);
+      animations.get(element)?.cancel();
+      const animation = element.animate([
+        { scale: String(from), easing: EASE_PRESS },
+        { scale: String(current.scale), offset: 0.18, easing: spring('bouncy') },
+        { scale: String(target) },
+      ], { duration: MOTION_DURATION.bouncy + 80, fill: 'forwards' });
+      animations.set(element, animation);
+      animation.onfinish = () => {
+        if (animations.get(element) !== animation || target !== 1) return;
+        animation.cancel(); animations.delete(element);
+      };
+      return;
+    }
     scaleTo(element, target, MOTION_DURATION.bouncy, spring('bouncy'));
   };
 
@@ -173,7 +193,7 @@ export function installInteractionMotion(root: Document = document): () => void 
     const element = pressTarget(event);
     if (!element) return;
     const rect = element.getBoundingClientRect();
-    pressed = { element, scale: depth(rect), hover: hoverLift(element, rect) };
+    pressed = { element, scale: depth(rect), hover: hoverLift(element, rect), at: performance.now() };
     scaleTo(element, pressed.scale, MOTION_DURATION.press, EASE_PRESS);
   };
   const up = () => release(true);
