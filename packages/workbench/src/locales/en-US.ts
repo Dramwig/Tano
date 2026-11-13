@@ -3551,6 +3551,8 @@ export const englishMessages: Readonly<Record<string, string>> = {
   "新段落浮现，删除的段落淡出，其余段落平滑让位。": "New blocks rise in, removed blocks fade out, and the rest glide into place.",
   "段落变高时下方内容平滑移动": "Smooth movement when a block changes height",
   "段落内换行或删减使高度变化时，下方内容平滑跟随。": "When a block wraps onto a new line or gets shorter, the content below glides along.",
+  "Markdown 源码展开收起动画": "Markdown source reveal animation",
+  "光标进入或离开链接、行内代码、公式和引用时，源码平滑展开，离开后平滑收起。": "When the cursor enters or leaves a link, inline code, formula or reference, its source smoothly opens up and closes again.",
   "减少动态效果": "Reduce motion",
   "关闭按钮回弹、面板弹出和编辑区动画。系统开启“减少动态效果”时始终生效。": "Turns off button bounce, panel pop-ins and editor animation. Always on when the system reduce-motion setting is enabled.",
 };

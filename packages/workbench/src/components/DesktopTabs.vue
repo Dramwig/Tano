@@ -1030,6 +1030,13 @@ watch(() => paneTabs.value.map(tab => tab.id), (ids, previous) => {
   if (incomingDropTimer) clearIncomingSlot();
   const closed = previous.some(id => !ids.includes(id) && !store.tabs.some(tab => tab.id === id));
   const opening = ids.some(id => !previous.includes(id));
+  // Navigation replaces a tab's content ID without opening another slot.
+  // Do not expand that replacement from zero as if it were a new tab.
+  if (closed && opening && ids.length === previous.length) {
+    cancelTabMoves();
+    releaseTabWidths();
+    return;
+  }
   if (closed || opening) {
     const movement = animateTabLayout(ids, opening);
     tabLayoutMotion = movement;

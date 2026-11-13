@@ -189,6 +189,22 @@ it('dismisses on outside input, viewport changes, disabled settings, and unmount
   state.disabled = false; await nextTick(); await open(); app.unmount(); expect(panel()).toBeNull();
 });
 
+it('keeps its opening anchor when the underlying layout moves between tabs', async () => {
+  mount();
+  const bounds = vi.spyOn(trigger(), 'getBoundingClientRect').mockReturnValue({ left: 100, right: 148, top: 20, bottom: 48 } as DOMRect);
+  await open();
+  const { left, top } = panel()!.style;
+  bounds.mockReturnValue({ left: 106, right: 154, top: 26, bottom: 54 } as DOMRect);
+  for (const id of ['icons', 'emoji', 'upload', 'emoji']) {
+    tab(id).click(); await nextTick(); await nextTick();
+    expect(panel()!.style.left).toBe(left);
+    expect(panel()!.style.top).toBe(top);
+  }
+  trigger().click(); await nextTick();
+  await open();
+  expect(panel()!.style.top).toBe('62px');
+});
+
 it('keeps the popover inside a narrow, short viewport', async () => {
   vi.stubGlobal('innerWidth', 320); vi.stubGlobal('innerHeight', 300);
   try {

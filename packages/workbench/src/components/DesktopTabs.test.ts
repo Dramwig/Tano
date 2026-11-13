@@ -690,6 +690,24 @@ it('uses a native drag image and reorders a tab at the release point', async () 
   expect(fixture.store.moveDocument).not.toHaveBeenCalled();
 });
 
+it('does not replay tab expansion when navigation replaces the file in a tab', async () => {
+  const replacement = { id: 'd', path: 'd.md', blank: false, document: { id: 'd', path: 'd.md' } };
+  fixture.store.tabs.splice(1, 1, replacement);
+  fixture.store.activeId = 'd';
+  await nextTick();
+  const list = root.querySelector<HTMLElement>('.desktop-tab-list')!;
+  expect(list.classList.contains('desktop-tab-list-animating')).toBe(false);
+  expect(list.classList.contains('desktop-tab-list-frozen')).toBe(false);
+  expect(list.querySelectorAll('.desktop-tab')).toHaveLength(3);
+  expect(list.querySelector('[data-id="d"]')).not.toBeNull();
+});
+
+it('still animates expansion when another tab is opened', async () => {
+  fixture.store.tabs.push({ id: 'd', path: 'd.md', blank: false, document: { id: 'd', path: 'd.md' } });
+  await nextTick();
+  expect(root.querySelector('.desktop-tab-list')!.classList.contains('desktop-tab-list-animating')).toBe(true);
+});
+
 it('reserves a default width for each open tab', async () => {
   const strip = root.querySelector<HTMLElement>('.desktop-tab-strip')!;
   expect(strip.style.getPropertyValue('--desktop-tab-count')).toBe('3');

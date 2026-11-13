@@ -1840,6 +1840,23 @@ it.each([
   expect(errors).toEqual([]);
 });
 
+it.each([
+  '+++\ntitle = "TOML"\n+++\n\n# Body\n\nText\n',
+  '+++\ntitle = "TOML"\n+++\n',
+])('opens leading unsupported Markdown without selecting the block: %s', async content => {
+  const { editor, value, errors } = await mount(content);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  expect(root.querySelector('.tano-unsupported-block')).not.toBeNull();
+  expect(view.state.selection).not.toBeInstanceOf(NodeSelection);
+  expect(view.state.selection.empty).toBe(true);
+  expect(root.querySelector('.ProseMirror-selectednode')).toBeNull();
+  expect(value.value).toBe(content);
+  expect(editor.value!.canUndo()).toBe(false);
+  root.querySelector<HTMLButtonElement>('.tano-block-handle')!.click();
+  expect(root.querySelector('.tano-unsupported-block.ProseMirror-selectednode')).not.toBeNull();
+  expect(errors).toEqual([]);
+});
+
 it('reserves whole-block selection for the handle and context menu', async () => {
   const { editor, revealMarkdown, errors } = await mount('Before.\n\n$$\nx^2\n$$\n\nAfter.\n');
   revealMarkdown.value = false;
@@ -4105,7 +4122,7 @@ describe('Markdown editor round trips', () => {
     await vi.waitFor(() => expect(handles()[1]!.hidden).toBe(true));
     expect(handles()[0]!.hidden).toBe(false);
     expect(value.value).toBe(saved);
-    root.querySelector<HTMLButtonElement>('[aria-label="添加子块"]')!.click();
+    root.querySelector<HTMLInputElement>('[aria-label="折叠块标题"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await nextTick();
     await vi.waitFor(() => expect(handles()[1]!.hidden).toBe(false));
     expect(root.querySelectorAll('.tano-toggle p')).toHaveLength(1);
@@ -4118,7 +4135,7 @@ describe('Markdown editor round trips', () => {
     editor.value!.command('toggle');
     await nextTick();
     expect(root.querySelector('.tano-toggle .tano-toggle p')).not.toBeNull();
-    root.querySelectorAll<HTMLButtonElement>('[aria-label="添加子块"]')[0]!.click();
+    root.querySelector<HTMLInputElement>('[aria-label="折叠块标题"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await nextTick();
     const view = editor.value!.withContext((ctx) => ctx.get(editorViewCtx));
     view.dispatch(view.state.tr.insertText('Sibling'));

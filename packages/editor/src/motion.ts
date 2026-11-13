@@ -261,15 +261,14 @@ export function installInteractionMotion(root: Document = document): () => void 
 
 type Snapshot = { rect: DOMRect; ghost?: HTMLElement };
 
-/** Ghost a departing element above its old place, then fade/shrink it away.
- * The ghost is a detached, inert clone; the real node is already gone. */
-export function ghostExit(source: HTMLElement | undefined, rect: DOMRect, host: HTMLElement, options: { scale?: number; y?: number; strip?: string[] } = {}) {
+/** Detached, inert clone of a departing element pinned over its old place. */
+function placeGhost(source: HTMLElement | undefined, rect: DOMRect, host: HTMLElement, strip: string[] = []) {
   if (!source || !host.isConnected || !rect.width || !rect.height) return;
   const ghost = source.cloneNode(true) as HTMLElement;
   ghost.removeAttribute('id');
   for (const node of ghost.querySelectorAll('[id]')) node.removeAttribute('id');
   // Identity attributes must not make a ghost look like a live row to queries.
-  for (const name of options.strip ?? []) {
+  for (const name of strip) {
     ghost.removeAttribute(name);
     for (const node of ghost.querySelectorAll(`[${name}]`)) node.removeAttribute(name);
   }
@@ -284,13 +283,38 @@ export function ghostExit(source: HTMLElement | undefined, rect: DOMRect, host: 
   const placed = ghost.getBoundingClientRect();
   ghost.style.left = `${rect.left - placed.left}px`;
   ghost.style.top = `${rect.top - placed.top}px`;
+  return ghost;
+}
+
+/** Ghost a departing element above its old place, then fade/shrink it away.
+ * The ghost is a detached, inert clone; the real node is already gone. */
+export function ghostExit(source: HTMLElement | undefined, rect: DOMRect, host: HTMLElement, options: { scale?: number; y?: number; strip?: string[]; cover?: { edge: Edge; delay: number } } = {}) {
+  const ghost = placeGhost(source, rect, host, options.strip);
+  if (!ghost) return;
   const animation = ghost.animate([
     { opacity: 1, scale: '1', translate: '0 0', filter: 'blur(0px)' },
     { opacity: 0, scale: String(options.scale ?? 0.96), translate: `0 ${options.y ?? -2}px`, filter: 'blur(1.5px)' },
   ], { duration: 200, easing: EASE_EXIT, fill: 'forwards' });
+  if (options.cover) foldClip(ghost, rect.top, options.cover.edge, options.cover.delay);
   const remove = () => ghost.remove();
   animation.onfinish = remove;
   animation.oncancel = remove;
+}
+
+/* Accordion folding -------------------------------------------------------- */
+/* Rows are transparent, so a run that appears/disappears between survivors
+ * (a folder's children) must never sit under the rows moving past it. Each
+ * row of the run is clipped to everything above the top edge of the first
+ * surviving row below it; that row FLIPs with the same spring, duration and
+ * delay, so the clip edge rides exactly on it. On collapse the followers wait
+ * FOLD_EXIT_DELAY so the children's own fade-out reads first. */
+export const FOLD_EXIT_DELAY = 130;
+/** Viewport-y of a moving edge at the start and end of the move. */
+export type Edge = { from: number; to: number };
+const foldPolygon = (bottom: number) => `polygon(-50% -9999px, 150% -9999px, 150% ${bottom}px, -50% ${bottom}px)`;
+export function foldClip(element: HTMLElement, top: number, edge: Edge, delay = 0) {
+  return element.animate([{ clipPath: foldPolygon(edge.from - top) }, { clipPath: foldPolygon(edge.to - top) }],
+    { duration: MOTION_DURATION.snappy, easing: spring('snappy'), delay, fill: 'both' });
 }
 
 export function riseIn(element: HTMLElement, delay = 0, distance = 6) {
@@ -300,17 +324,72 @@ export function riseIn(element: HTMLElement, delay = 0, distance = 6) {
   ], { duration: MOTION_DURATION.snappy, easing: spring('snappy'), delay, fill: 'backwards' });
 }
 
-export function flipFrom(element: HTMLElement, from: DOMRect, to: DOMRect = element.getBoundingClientRect()) {
+export function flipFrom(element: HTMLElement, from: DOMRect, to: DOMRect = element.getBoundingClientRect(), delay = 0) {
   const dx = from.left - to.left, dy = from.top - to.top;
   if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
   element.animate([{ translate: `${dx}px ${dy}px` }, { translate: '0 0' }],
-    { duration: MOTION_DURATION.snappy, easing: spring('snappy'), composite: 'add' });
+    { duration: MOTION_DURATION.snappy, easing: spring('snappy'), composite: 'add', delay, fill: 'backwards' });
+}
+
+/* Height motion ------------------------------------------------------------ */
+/* Layout-driven: the element's own height animates, so everything after it in
+ * the flow (sibling rows, the document body) glides along with no FLIP and no
+ * overlap. Content is clipped only while a height animation runs. */
+const resizing = new WeakMap<HTMLElement, Animation>();
+function clipWhile(element: HTMLElement, animation: Animation, clip: boolean) {
+  const previous = element.style.overflow;
+  if (clip) element.style.overflow = 'clip';
+  resizing.set(element, animation);
+  const settle = () => {
+    if (resizing.get(element) === animation) resizing.delete(element);
+    if (clip && element.style.overflow === 'clip') element.style.overflow = previous;
+  };
+  animation.addEventListener('finish', settle);
+  animation.addEventListener('cancel', settle);
+}
+/** Cancel a running height animation so the natural layout can be measured. */
+export function settleHeight(element: HTMLElement) {
+  resizing.get(element)?.cancel();
+}
+/** Animate `height` between two measured pixel sizes. Interruptible: call
+ * `settleHeight` first, measure, then pass the visual height as `from`. */
+export function resizeHeight(element: HTMLElement, from: number, to: number, options: { kind?: SpringKind; clip?: boolean } = {}) {
+  if (!canAnimate(element) || Math.abs(from - to) < 0.5) return;
+  const kind = options.kind ?? 'snappy';
+  const animation = element.animate([{ height: `${from}px` }, { height: `${to}px` }],
+    { duration: MOTION_DURATION[kind], easing: spring(kind) });
+  clipWhile(element, animation, options.clip !== false);
+  return animation;
+}
+/** Enter/leave a block row (or the whole panel) by growing from / shrinking
+ * to nothing, padding and margin included. `done` runs when finished. */
+export function collapseElement(element: HTMLElement, enter: boolean, done: () => void) {
+  if (!canAnimate(element) || !element.getClientRects().length) { done(); return; }
+  const style = getComputedStyle(element);
+  const rect = element.getBoundingClientRect();
+  const borderBox = style.boxSizing === 'border-box';
+  const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+  const full = {
+    height: `${borderBox ? rect.height : Math.max(0, rect.height - padding)}px`,
+    paddingTop: style.paddingTop, paddingBottom: style.paddingBottom,
+    marginTop: style.marginTop, marginBottom: style.marginBottom, opacity: 1,
+    // A `min-height` (CSS or inline, e.g. an editing row) would stop the row
+    // shrinking and make it snap away at the end.
+    minHeight: '0px',
+  };
+  const none = { minHeight: '0px', height: '0px', paddingTop: '0px', paddingBottom: '0px', marginTop: '0px', marginBottom: '0px', opacity: 0 };
+  const animation = element.animate(enter ? [none, full] : [full, none], enter
+    ? { duration: MOTION_DURATION.smooth + 60, easing: spring('smooth') }
+    : { duration: MOTION_DURATION.exit + 90, easing: EASE_EXIT, fill: 'forwards' });
+  clipWhile(element, animation, true);
+  animation.addEventListener('finish', done);
+  animation.addEventListener('cancel', done);
 }
 
 /** Snapshot keyed children before a render; call the returned `play()` after
  * the DOM has updated. Unchanged keys move with FLIP, new keys rise in and
  * removed keys leave through a ghost. Read-only between calls. */
-export function captureList(root: HTMLElement | null | undefined, selector: string, key: (element: HTMLElement) => string | undefined, options: { enter?: boolean; exit?: boolean; maxEnter?: number; strip?: string[] } = {}) {
+export function captureList(root: HTMLElement | null | undefined, selector: string, key: (element: HTMLElement) => string | undefined, options: { enter?: boolean; exit?: boolean; maxEnter?: number; strip?: string[]; fold?: boolean } = {}) {
   if (!root || !canAnimate(root) || !root.getClientRects().length) return () => {};
   const before = new Map<string, Snapshot>();
   const view = root.getBoundingClientRect();
@@ -333,20 +412,53 @@ export function captureList(root: HTMLElement | null | undefined, selector: stri
     let entering = 0;
     const host = root;
     const next = root.getBoundingClientRect();
+    const rows: { id: string; element: HTMLElement; rect: DOMRect }[] = [];
+    const after = new Map<string, DOMRect>();
     for (const element of root.querySelectorAll<HTMLElement>(selector)) {
       if (element.closest('[data-motion-ghost]')) continue;
       const id = key(element);
       if (!id) continue;
       seen.add(id);
-      const previous = before.get(id);
       const rect = element.getBoundingClientRect();
-      if (rect.bottom < next.top - 80 || rect.top > next.bottom + 80) continue;
-      if (previous) flipFrom(element, previous.rect, rect);
-      else if (options.enter !== false && entering < (options.maxEnter ?? 24)) riseIn(element, Math.min(entering++, 10) * 14, 4);
+      rows.push({ id, element, rect });
+      after.set(id, rect);
+    }
+    const near = (rect: DOMRect) => rect.bottom >= next.top - 80 && rect.top <= next.bottom + 80;
+    const edgeOf = (id: string | undefined, side: 'top' | 'bottom'): Edge | undefined => {
+      const from = id ? before.get(id)?.rect : undefined, to = id ? after.get(id) : undefined;
+      return from && to ? { from: from[side], to: to[side] } : undefined;
+    };
+    const leavingAny = [...before.keys()].some(id => !seen.has(id));
+    // Collapse: hold the followers while the leaving rows start fading.
+    const delay = options.fold && options.exit !== false && leavingAny ? FOLD_EXIT_DELAY : 0;
+    let below: string | undefined;
+    const enterEdge = new Map<string, Edge>();
+    if (options.fold) for (let index = rows.length - 1; index >= 0; index--) {
+      const { id } = rows[index];
+      if (before.has(id)) below = id;
+      else { const edge = edgeOf(below, 'top'); if (edge) enterEdge.set(id, edge); }
+    }
+    for (const { id, element, rect } of rows) {
+      if (!near(rect)) continue;
+      const previous = before.get(id);
+      if (previous) { flipFrom(element, previous.rect, rect, delay); continue; }
+      if (options.enter === false || entering >= (options.maxEnter ?? 24)) continue;
+      const edge = enterEdge.get(id);
+      if (!edge) { riseIn(element, Math.min(entering++, 10) * 14, 4); continue; }
+      // Expand: uncovered in place by the rows moving down, fading in.
+      entering++;
+      const clip = foldClip(element, rect.top, edge, delay);
+      clip.onfinish = () => clip.cancel();
+      element.animate([{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_DURATION.smooth, easing: spring('smooth'), delay, fill: 'backwards' });
     }
     if (options.exit === false) return;
-    for (const [id, snapshot] of before) {
-      if (!seen.has(id) && snapshot.ghost) ghostExit(snapshot.ghost, snapshot.rect, host, { strip: options.strip });
+    below = undefined;
+    const old = [...before];
+    for (let index = old.length - 1; index >= 0; index--) {
+      const [id, snapshot] = old[index];
+      if (seen.has(id)) { below = id; continue; }
+      const edge = options.fold ? edgeOf(below, 'top') : undefined;
+      ghostExit(snapshot.ghost, snapshot.rect, host, { strip: options.strip, cover: edge && { edge, delay } });
     }
   };
 }

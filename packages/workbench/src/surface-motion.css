@@ -65,7 +65,9 @@
   /* Native disclosures keep their semantic open state. CSS transitions reverse
      from the current interpolated size, including rapid keyboard toggles. */
   @supports (interpolate-size: allow-keywords) {
-    details::details-content {
+    /* Document properties animate their inner content in MarkdownEditor.
+       Animating the native wrapper too causes a second collapse on close. */
+    details:not(.frontmatter-panel)::details-content {
       interpolate-size: allow-keywords;
       block-size: 0;
       opacity: 0;
@@ -74,8 +76,8 @@
         opacity var(--motion-base, 180ms) ease-out,
         content-visibility var(--motion-spring, 320ms) allow-discrete;
     }
-    details[open]::details-content { block-size: auto; opacity: 1; }
-    details:has(.frontmatter-type-menu, .tano-panel-actions, .data-option-popover)::details-content {
+    details:not(.frontmatter-panel)[open]::details-content { block-size: auto; opacity: 1; }
+    details:not(.frontmatter-panel):has(.frontmatter-type-menu, .tano-panel-actions, .data-option-popover)::details-content {
       overflow: visible;
     }
   }

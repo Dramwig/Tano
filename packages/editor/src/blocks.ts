@@ -8,6 +8,7 @@ import { closeHistory } from '@milkdown/kit/prose/history';
 import { moveBlocksTo } from './block-tree';
 import { BlockRangeSelection } from './block-selection';
 import { BlockViewport } from './block-viewport';
+import { blockMotionKey, FOLD_MOTION } from './block-motion';
 
 /** Move one top-level Markdown block in a single, undoable editor transaction. */
 export function moveBlock(
@@ -815,7 +816,7 @@ export function blockControls(
         event.preventDefault();
         event.stopPropagation();
         const key = blockKey(index);
-        view.dispatch(view.state.tr.setMeta(foldingKey, key).setMeta('addToHistory', false));
+        view.dispatch(view.state.tr.setMeta(foldingKey, key).setMeta(blockMotionKey, FOLD_MOTION).setMeta('addToHistory', false));
       }
 
       function findInsertion(x: number, y: number) {

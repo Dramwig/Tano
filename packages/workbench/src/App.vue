@@ -186,7 +186,10 @@ const EditorTools = defineAsyncComponent(() => import('./components/EditorTools.
 import { parseToolbarMode, toolbarPreferenceKey } from './toolbar-preference';
 const DocumentHistoryPanel = loadingComponent(() => import('./components/DocumentHistoryPanel.vue'));
 const AgentPanel = loadingComponent(() => import('./components/AgentPanel.vue'));
-const AssistantPanel = loadingComponent(() => import('./components/AssistantPanel.vue'));
+// The panel owns its placement (Teleport for floating/fullscreen). A generic
+// loading skeleton here would enter the pane's flex row and shrink the editor
+// on the first open, then disappear when the panel teleports out.
+const AssistantPanel = defineAsyncComponent(() => import('./components/AssistantPanel.vue'));
 import AssistantLauncher from './components/AssistantLauncher.vue';
 import AssistantButterflyLayer from './components/AssistantButterflyLayer.vue';
 import { butterflyScope } from './assistant/butterfly';
@@ -1041,6 +1044,7 @@ const editorPreferences = ref<EditorPreferences>({
   typingMotion: readPreference('typingMotion', true),
   blockMotion: readPreference('blockMotion', true),
   blockResizeMotion: readPreference('blockResizeMotion', true),
+  sourceRevealMotion: readPreference('sourceRevealMotion', true),
   reduceInterfaceMotion: readPreference('reduceInterfaceMotion', false),
 });
 watch(
@@ -1058,6 +1062,7 @@ watch(
     savePreference('typingMotion', preferences.typingMotion !== false);
     savePreference('blockMotion', preferences.blockMotion !== false);
     savePreference('blockResizeMotion', preferences.blockResizeMotion !== false);
+    savePreference('sourceRevealMotion', preferences.sourceRevealMotion !== false);
     savePreference('reduceInterfaceMotion', preferences.reduceInterfaceMotion === true);
   },
   { deep: true },

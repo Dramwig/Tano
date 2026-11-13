@@ -23,6 +23,9 @@ const panel = ref<HTMLElement>();
 const searchInput = ref<HTMLInputElement>();
 const scrollArea = ref<HTMLElement>();
 const open = ref(false);
+// Keep one anchor for an open session: tab changes must not follow layout
+// movement of the document underneath the teleported picker.
+let anchorRect: DOMRect | undefined;
 watch(open, value => emit('update:open', value), { flush: 'sync' });
 const tabs = [
   { id: 'emoji', get label() { return t('表情符号'); } },
@@ -81,7 +84,7 @@ function scrollToCategory(id: string) {
 }
 function place() {
   if (!trigger.value) return;
-  const rect = trigger.value.getBoundingClientRect();
+  const rect = anchorRect ?? trigger.value.getBoundingClientRect();
   const width = Math.max(0, Math.min(392, window.innerWidth - 16));
   const maxHeight = Math.max(0, Math.min(440, window.innerHeight - 16));
   const height = Math.min(panel.value?.offsetHeight || maxHeight, maxHeight);
@@ -101,6 +104,7 @@ async function toggle() {
   if (open.value) { close(); return; }
   tab.value = props.icon.startsWith('icon:') ? 'icons' : 'emoji';
   query.value = ''; focusedIcon.value = '';
+  anchorRect = trigger.value?.getBoundingClientRect();
   place();
   open.value = true;
   await nextTick();

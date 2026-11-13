@@ -293,6 +293,10 @@ it('switches each editor motion separately and greys them out while motion is re
   toggle('段落变高时下方内容平滑移动').click();
   await nextTick();
   expect(editorPreferences.value).toEqual({ ...previous, smoothCaret: false, blockResizeMotion: false });
+  expect(toggle('Markdown 源码展开收起动画').getAttribute('aria-checked')).toBe('true');
+  toggle('Markdown 源码展开收起动画').click();
+  await nextTick();
+  expect(editorPreferences.value).toEqual({ ...previous, smoothCaret: false, blockResizeMotion: false, sourceRevealMotion: false });
   toggle('减少动态效果').click();
   await nextTick();
   expect(editorPreferences.value.reduceInterfaceMotion).toBe(true);

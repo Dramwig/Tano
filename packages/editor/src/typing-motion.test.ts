@@ -7,16 +7,17 @@ import { typedRange, typingMotion, typingMotionKey } from './typing-motion';
 
 const schema = new Schema({ nodes: {
   doc: { content: 'block+' },
-  paragraph: { group: 'block', content: 'text*', toDOM: () => ['p', 0] },
+  paragraph: { group: 'block', content: 'inline*', toDOM: () => ['p', 0] },
+  source: { group: 'inline', inline: true, content: 'text*', toDOM: () => ['code', 0] },
   code_block: { group: 'block', content: 'text*', code: true, toDOM: () => ['pre', ['code', 0]] },
-  text: {},
+  text: { group: 'inline' },
 } });
 let reduced = false;
 beforeEach(() => {
   reduced = false;
   vi.stubGlobal('matchMedia', () => ({ get matches() { return reduced; }, addEventListener() {} }));
   Object.defineProperty(HTMLElement.prototype, 'animate', { configurable: true, value() {
-    return { cancel() {}, onfinish: null, oncancel: null } as unknown as Animation;
+    return { cancel() {}, pause() {}, finish() {}, currentTime: 0, playbackRate: 1, onfinish: null, oncancel: null } as unknown as Animation;
   } });
   const rect = () => ({ x: 10, y: 20, left: 10, top: 20, right: 30, bottom: 40, width: 20, height: 20, toJSON() {} }) as DOMRect;
   Object.defineProperty(Range.prototype, 'getClientRects', { configurable: true, value: () => [rect()] });
@@ -89,6 +90,7 @@ it('leaves code blocks, pastes and reduced motion alone', () => {
 
 it('ghosts text deleted by a command outside the ProseMirror DOM', () => {
   const view = editor('hello world');
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 12)));
   view.dispatch(view.state.tr.delete(7, 12));
   const ghost = document.querySelector<HTMLElement>('.tano-type-ghost');
   expect(ghost?.textContent).toBe('world');
@@ -108,6 +110,26 @@ it('does not ghost whitespace or text deleted while unfocused', () => {
   view.destroy();
 });
 
+it('does not ghost edits away from the caret or inline nodes being re-rendered', () => {
+  const view = editor('hello world');
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 12)));
+  view.dispatch(view.state.tr.delete(1, 6));
+  expect(document.querySelector('.tano-type-ghost')).toBeNull();
+  view.destroy();
+
+  // Live Markdown source collapsing back into rendered text once the caret
+  // leaves it: the source node is replaced, nothing was erased.
+  const root = document.createElement('div'); document.body.append(root);
+  const doc = schema.node('doc', null, [schema.node('paragraph', null,
+    [schema.text('a '), schema.node('source', null, [schema.text('[Guide](00-getting-started.md)')])])]);
+  const live = new EditorView(root, { state: EditorState.create({ doc, plugins: [typingMotion()] }) });
+  const end = live.state.doc.content.size - 1;
+  live.dispatch(live.state.tr.setSelection(TextSelection.create(live.state.doc, end)));
+  live.dispatch(live.state.tr.replaceWith(3, end, schema.text('Guide')));
+  expect(document.querySelector('.tano-type-ghost')).toBeNull();
+  live.destroy();
+});
+
 it('settles committed IME text after composition ends', async () => {
   const view = editor('');
   view.dom.dispatchEvent(new Event('compositionstart'));
@@ -121,21 +143,28 @@ it('settles committed IME text after composition ends', async () => {
   view.destroy();
 });
 
-it('anchors each typed fade to when the text was typed, so a redraw resumes it', () => {
-  const started: { span: HTMLElement; animation: { startTime: number | null } }[] = [];
-  Object.defineProperty(HTMLElement.prototype, 'animate', { configurable: true, value(this: HTMLElement) {
-    const animation = { startTime: null as number | null, cancel() {}, onfinish: null, oncancel: null };
-    started.push({ span: this, animation });
-    return animation as unknown as Animation;
-  } });
+
+it('drops spans of text that has already been revealed while typing continues', () => {
   const view = editor('hello');
+  let now = 1000;
+  vi.spyOn(performance, 'now').mockImplementation(() => now);
   type(view, 'a', 6);
+  now += 600;
   type(view, 'b');
-  const spans = [...view.dom.querySelectorAll<HTMLElement>('.tano-typed')];
-  expect(spans.map(span => span.textContent)).toEqual(['a', 'b']);
-  for (const span of spans) {
-    const fade = started.filter(entry => entry.span === span).pop();
-    expect(fade?.animation.startTime).toBe(Number(span.dataset.typedAt));
-  }
+  expect([...view.dom.querySelectorAll('.tano-typed')].map(span => span.textContent)).toEqual(['b']);
+  expect(typingMotionKey.getState(view.state)?.count).toBe(1);
+  view.destroy();
+});
+
+it('does not animate a held key: no spans while typing, no ghosts while deleting', () => {
+  const view = editor('hello world');
+  view.dom.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', repeat: true, bubbles: true }));
+  type(view, 'x', 12);
+  expect(view.dom.querySelector('.tano-typed')).toBeNull();
+  view.dispatch(view.state.tr.delete(7, 13));
+  expect(document.querySelector('.tano-type-ghost')).toBeNull();
+  view.dom.dispatchEvent(new KeyboardEvent('keyup', { key: 'x', bubbles: true }));
+  type(view, 'y', 7);
+  expect(view.dom.querySelector('.tano-typed')?.textContent).toBe('y');
   view.destroy();
 });

@@ -67,6 +67,8 @@ export interface EditorPreferences {
   blockMotion?: boolean;
   /** Content below a block glides when the block grows or shrinks. */
   blockResizeMotion?: boolean;
+  /** Live Markdown fields (links, code, math, references) open and close smoothly. */
+  sourceRevealMotion?: boolean;
   /** Turns interface motion (press, panels, popovers) down like the OS setting. */
   reduceInterfaceMotion?: boolean;
 }
@@ -92,6 +94,7 @@ export const defaultEditorPreferences: EditorPreferences = {
   typingMotion: true,
   blockMotion: true,
   blockResizeMotion: true,
+  sourceRevealMotion: true,
   reduceInterfaceMotion: false,
 };
 

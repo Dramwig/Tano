@@ -196,7 +196,7 @@ const rulesDisabled = computed(
     props.capabilitySaving ||
     !!props.capabilityError,
 );
-type MotionOptionKey = 'smoothCaret' | 'typingMotion' | 'blockMotion' | 'blockResizeMotion' | 'reduceInterfaceMotion';
+type MotionOptionKey = 'smoothCaret' | 'typingMotion' | 'blockMotion' | 'blockResizeMotion' | 'sourceRevealMotion' | 'reduceInterfaceMotion';
 const motionOptions: { key: MotionOptionKey; settingsKey: string; readonly label: string; readonly description: string }[] = [
   {
     key: 'reduceInterfaceMotion',
@@ -227,6 +227,12 @@ const motionOptions: { key: MotionOptionKey; settingsKey: string; readonly label
     settingsKey: 'appearance-block-resize-motion',
     get label() { return t('段落变高时下方内容平滑移动'); },
     get description() { return t('段落内换行或删减使高度变化时，下方内容平滑跟随。'); },
+  },
+  {
+    key: 'sourceRevealMotion',
+    settingsKey: 'appearance-source-reveal-motion',
+    get label() { return t('Markdown 源码展开收起动画'); },
+    get description() { return t('光标进入或离开链接、行内代码、公式和引用时，源码平滑展开，离开后平滑收起。'); },
   },
 ];
 function motionOptionActive(key: MotionOptionKey) {
@@ -365,6 +371,7 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('appearance', 'appearance-typing-motion', '文字输入与删除动画', '新输入的文字淡入，删除的文字在原位置淡出。', 'typing delete animation motion 打字 输入 删除 退格 动画 动效'),
   settingSearchEntry('appearance', 'appearance-block-motion', '段落增删动画', '新段落浮现，删除的段落淡出，其余段落平滑让位。', 'block paragraph animation motion 段落 块 动画 动效'),
   settingSearchEntry('appearance', 'appearance-block-resize-motion', '段落变高时下方内容平滑移动', '段落内换行或删减使高度变化时，下方内容平滑跟随。', 'block height wrap animation motion 段落 高度 换行 动画 动效'),
+  settingSearchEntry('appearance', 'appearance-source-reveal-motion', 'Markdown 源码展开收起动画', '光标进入或离开链接、行内代码、公式和引用时，源码平滑展开，离开后平滑收起。', 'markdown source reveal link code math reference wiki animation motion 源码 展开 收起 链接 公式 引用 动画 动效'),
   settingSearchEntry('appearance', 'appearance-help', '偶尔显示使用提示', '在你停下来时，在帮助按钮上方显示简短的用法提示。关闭后仍可手动查看帮助。', 'help tips hints'),
   settingSearchEntry('editing', 'editing-default-mode', '默认编辑模式', '选择打开文档时使用的视图。', 'editor visual Markdown source'),
   settingSearchEntry('editing', 'editing-reveal-markdown', '光标进入时展开 Markdown 源码', '类似 Typora、Obsidian 的实时预览：光标进入时显示 Markdown 语法，离开后恢复排版。', 'live preview source syntax'),

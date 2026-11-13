@@ -23,6 +23,33 @@ async function settings(page) {
   await page.locator('.settings-nav button').filter({ hasText: /^快捷键$/ }).click();
 }
 
+test('first floating assistant load never reserves sidebar space', async ({ page }) => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let requested = false;
+  await page.route('**/components/AssistantPanel.vue', async route => {
+    requested = true;
+    await gate;
+    await route.continue();
+  });
+  try {
+    await prepare(page);
+    await page.evaluate(() => {
+      document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('assistant').setDisplayMode('floating');
+    });
+    const editor = page.locator('.editor-scroll').first();
+    const before = await editor.boundingBox();
+    await page.getByRole('button', { name: '打开同页助手', exact: true }).click();
+    await expect.poll(() => requested).toBe(true);
+    // Hold the cold import long enough to expose the loading state.
+    await expect(page.locator('.workspace-layout > .loading-skeleton')).toHaveCount(0);
+    expect((await editor.boundingBox()).width).toBe(before.width);
+    release();
+    await expect(page.locator('.assistant-panel-floating')).toBeVisible();
+    expect((await editor.boundingBox()).width).toBe(before.width);
+  } finally { release(); }
+});
+
 for (const mode of ['floating', 'sidebar', 'fullscreen']) {
   test(`opens and closes the ${mode} assistant with context and a preserved draft`, async ({ page }) => {
     await prepare(page);

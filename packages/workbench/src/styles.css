@@ -5,6 +5,7 @@
 @import './scrollbars.css';
 @import './surface-motion.css';
 @import './interaction-motion.css';
+@import '@milkdown/kit/prose/gapcursor/style/gapcursor.css';
 
 @font-face {
   font-family: Literata;
@@ -1288,22 +1289,17 @@ button:hover {
 .tano-toggle > .tano-enhanced-header > .tano-toggle-trigger {
   font-size: 18px;
 }
+.tano-toggle-icon {
+  display: inline-block;
+  rotate: 0deg;
+  transition: rotate var(--motion-spring, 380ms) var(--ease-spring-smooth, ease-out);
+}
+.tano-toggle-trigger[aria-expanded='true'] > .tano-toggle-icon {
+  rotate: 90deg;
+}
 .tano-toggle > .tano-enhanced-header > button:focus-visible {
   outline: 2px solid var(--text-secondary);
   outline-offset: 2px;
-}
-.tano-toggle > .tano-enhanced-header > .tano-add-child {
-  font-size: 18px;
-  opacity: 0;
-  pointer-events: none;
-}
-.tano-toggle > .tano-enhanced-header:hover > .tano-add-child,
-.tano-toggle > .tano-enhanced-header:focus-within > .tano-add-child {
-  opacity: 1;
-  pointer-events: auto;
-}
-.tano-toggle > .tano-enhanced-header > .tano-add-child:disabled {
-  display: none;
 }
 .tano-toggle > .tano-enhanced-content {
   padding: 0 0 0 28px;
@@ -1313,12 +1309,6 @@ button:hover {
 }
 .tano-toggle > .tano-enhanced-content > :last-child {
   margin-bottom: 0;
-}
-@media (hover: none) {
-  .tano-toggle > .tano-enhanced-header > .tano-add-child {
-    opacity: 1;
-    pointer-events: auto;
-  }
 }
 .tano-enhanced-content[hidden],
 .tano-enhanced[hidden] {
@@ -3543,14 +3533,6 @@ button:hover {
   font: 13px/1.4 var(--font-mono);
   user-select: text;
 }
-.tano-prose.ProseMirror-focused .tano-live-wiki {
-  font-size: 0;
-}
-.tano-prose.ProseMirror-focused .tano-live-wiki::before {
-  content: attr(data-markdown-source);
-  font: 14px var(--font-mono);
-  color: var(--text);
-}
 .tano-prose hr {
   border: 0;
   border-top: 1px solid var(--line);
@@ -3558,6 +3540,9 @@ button:hover {
 }
 .tano-prose > hr {
   margin-inline: var(--tano-block-frame-inset);
+}
+.tano-prose .ProseMirror-gapcursor::after {
+  border-top-color: var(--text);
 }
 .tano-prose .ProseMirror-selectednode,
 .tano-prose .tano-block-selected {
@@ -5122,9 +5107,15 @@ button:hover {
   color: inherit;
   transform: rotate(0);
   transform-origin: center;
+  transition: transform var(--motion-spring, 380ms) var(--ease-spring, ease);
 }
-.frontmatter-panel[open] .frontmatter-chevron {
+/* Follows the panel's own expanded state (not [open]) so it turns the moment
+ * the user clicks, while the content is still animating closed. */
+.frontmatter-chevron.is-expanded {
   transform: rotate(90deg);
+}
+.frontmatter-rows {
+  display: contents;
 }
 .frontmatter-order-toggle {
   display: grid;
@@ -5161,7 +5152,7 @@ button:hover {
   position: relative;
   display: grid;
   grid-template-columns: 17px minmax(100px, 140px) minmax(0, 1fr);
-  align-items: center;
+  align-items: start;
   gap: 8px;
   min-height: 32px;
   padding: 5px 0;
@@ -5188,13 +5179,17 @@ button:hover {
   color: var(--text);
 }
 .frontmatter-property-name {
+  min-width: 0;
   color: var(--text-secondary);
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .frontmatter-property-value {
   min-width: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .frontmatter-property-button {
   width: 100%;
@@ -5205,6 +5200,7 @@ button:hover {
 }
 .frontmatter-property.is-editing {
   z-index: 2;
+  align-items: start;
 }
 .frontmatter-property-button:hover,
 .frontmatter-property-button:focus-visible {
@@ -5215,10 +5211,9 @@ button:hover {
   display: grid;
   grid-column: 2 / -1;
   grid-template-columns: minmax(100px, 140px) minmax(0, 1fr);
-  align-items: center;
+  align-items: start;
   gap: 8px;
   min-width: 0;
-  height: 100%;
 }
 .frontmatter-row-editor input,
 .frontmatter-row-editor select,
@@ -5226,14 +5221,33 @@ button:hover {
   width: 100%;
   min-width: 0;
   height: 22px;
+  margin: 0;
   padding: 0 4px;
   border: 0;
   border-radius: 3px;
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 14px;
   line-height: 22px;
+}
+.frontmatter-row-editor .frontmatter-name-input {
+  color: var(--text-secondary);
+}
+.frontmatter-value-editor select {
+  appearance: none;
+  padding-right: 24px;
+}
+.frontmatter-value-editor:has(> select)::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--text-secondary);
+  border-bottom: 1.5px solid var(--text-secondary);
+  transform: rotate(45deg);
+  pointer-events: none;
 }
 .frontmatter-row-editor input:focus,
 .frontmatter-row-editor select:focus,
@@ -5244,31 +5258,33 @@ button:hover {
 .frontmatter-value-editor {
   position: relative;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   min-width: 0;
-  height: 100%;
 }
 .frontmatter-value-editor textarea {
-  height: 100%;
-  min-height: 0;
-  resize: none;
+  height: auto;
+  min-height: 44px;
+  resize: vertical;
   overflow-y: auto;
 }
 .frontmatter-null-value {
-  padding: 3px 4px;
-  color: var(--muted);
+  height: 22px;
+  padding: 0 4px;
+  color: var(--text);
+  line-height: 22px;
 }
 .frontmatter-row-error {
-  position: absolute;
-  top: calc(100% + 2px);
-  left: 4px;
-  z-index: 3;
+  align-self: flex-start;
+  max-width: 100%;
+  margin-top: 2px;
   padding: 2px 6px;
   border: 1px solid var(--line);
   border-radius: 3px;
   background: var(--paper);
   color: var(--danger, #b42318);
   font-size: 12px;
+  overflow-wrap: anywhere;
 }
 .frontmatter-type-menu {
   position: absolute;
@@ -5279,19 +5295,24 @@ button:hover {
   width: 176px;
   max-height: 300px;
   overflow-y: auto;
-  padding: 5px;
   border: 1px solid var(--line);
-  border-radius: 6px;
   background: var(--paper);
-  box-shadow: 0 8px 24px #0002;
+}
+/* Height animations temporarily clip the disclosure and its rows. A menu
+   must remain visible and clickable beyond all of those animated bounds. */
+.frontmatter-panel:has(.frontmatter-type-menu),
+.frontmatter-panel:has(.frontmatter-type-menu)::details-content,
+.frontmatter-content:has(.frontmatter-type-menu),
+.frontmatter-property:has(.frontmatter-type-menu) {
+  overflow: visible !important;
+}
+.frontmatter-panel:has(.frontmatter-type-menu) {
+  position: relative;
+  z-index: 3;
 }
 .frontmatter-type-menu button {
   display: flex;
   align-items: center;
-  gap: 9px;
-  min-height: 30px;
-  padding: 4px 8px;
-  border-radius: 3px;
   text-align: left;
 }
 .frontmatter-type-menu button:hover,

@@ -3,6 +3,7 @@ import { watch } from 'vue';
 import { NodeSelection, TextSelection } from '@milkdown/kit/prose/state';
 import { resourceView } from './resource-views';
 import { columnsView } from './columns-view';
+import { resizeHeight, settleHeight } from './motion';
 
 let tabsId = 0;
 
@@ -61,6 +62,8 @@ export function enhancedViews(
       header.contentEditable = 'false';
       const content = document.createElement('div');
       content.className = 'tano-enhanced-content';
+      let toggleAnimation: Animation | undefined;
+      let toggling = false;
       const title = document.createElement('input');
       const panelMenu = document.createElement('details');
       panelMenu.className = 'tano-panel-menu';
@@ -80,6 +83,11 @@ export function enhancedViews(
       toggle.type = 'button';
       toggle.className = 'tano-toggle-trigger';
       toggle.setAttribute('aria-label', '展开或收起折叠块');
+      const toggleIcon = document.createElement('span');
+      toggleIcon.className = 'tano-toggle-icon';
+      toggleIcon.setAttribute('aria-hidden', 'true');
+      toggleIcon.textContent = '▸';
+      toggle.append(toggleIcon);
       const setAttrs = (attrs: Record<string, string>) => {
         const pos = getPos();
         if (pos !== undefined && !readonly())
@@ -89,22 +97,32 @@ export function enhancedViews(
       };
       title.oninput = () => setAttrs({ title: title.value.replace(/[\r\n]/g, ' ') });
       toggle.onclick = () => {
+        const from = content.getBoundingClientRect().height;
+        toggleAnimation?.cancel();
+        toggleAnimation = undefined;
+        settleHeight(content);
+        toggling = true;
         expanded = !expanded;
         const pos = getPos();
         if (!expanded && pos !== undefined && view.state.selection.from > pos && view.state.selection.to < pos + current.nodeSize)
           view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)).setMeta('addToHistory', false));
         render();
+        const to = expanded ? content.getBoundingClientRect().height : 0;
+        const animation = resizeHeight(content, from, to, { kind: 'smooth' });
+        toggleAnimation = animation;
+        const finish = () => {
+          if (toggleAnimation !== animation) return;
+          toggleAnimation = undefined;
+          toggling = false;
+          render();
+        };
+        if (animation) animation.addEventListener('finish', finish);
+        else finish();
       };
       if (kind === 'toggle') header.append(toggle);
       if (['toggle', 'panel'].includes(kind)) header.append(title);
       if (kind === 'toggle' || kind === 'panel') {
-        const add = document.createElement('button');
-        add.type = 'button';
-        add.className = 'tano-add-child';
-        add.textContent = kind === 'toggle' ? '+' : '＋ 子块';
-        add.setAttribute('aria-label', '添加子块');
-        add.title = '添加子块，输入 / 选择类型';
-        add.onclick = () => {
+        const addChild = () => {
           const pos = getPos();
           if (pos === undefined || readonly()) return;
           expanded = true;
@@ -119,11 +137,20 @@ export function enhancedViews(
           render();
           view.focus();
         };
-        header.append(add);
+        if (kind === 'panel') {
+          const add = document.createElement('button');
+          add.type = 'button';
+          add.className = 'tano-add-child';
+          add.textContent = '＋ 子块';
+          add.setAttribute('aria-label', '添加子块');
+          add.title = '添加子块，输入 / 选择类型';
+          add.onclick = addChild;
+          header.append(add);
+        }
         title.onkeydown = (event) => {
           if (event.key !== 'Enter') return;
           event.preventDefault();
-          add.click();
+          addChild();
         };
       }
       if (kind === 'panel') {
@@ -233,9 +260,8 @@ export function enhancedViews(
           }
         }
         if (kind === 'toggle') {
-          toggle.textContent = expanded ? '▾' : '▸';
           toggle.setAttribute('aria-expanded', String(expanded));
-          content.hidden = !expanded;
+          content.hidden = !expanded && !toggling;
         }
         if (kind === 'tabs') {
           active = Math.min(active, current.childCount - 1);
@@ -333,8 +359,10 @@ export function enhancedViews(
           mutation.type !== 'selection' &&
           (header.contains(mutation.target) ||
             mutation.target === dom ||
+            (mutation.target === content && mutation.type === 'attributes' && mutation.attributeName === 'style') ||
             (mutation.type === 'attributes' && mutation.attributeName === 'hidden')),
         destroy() {
+          toggleAnimation?.cancel();
           stop();
           if (kind === 'panel') document.removeEventListener('pointerdown', closePanelMenu);
           dom.removeEventListener('tano-panel-layout', refreshPanel);

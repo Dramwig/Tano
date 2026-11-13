@@ -90,7 +90,7 @@ function beginRootTreeMotion() {
   const root = treeElement.value;
   if (pendingTreeMotion || !root?.querySelector('.tree-row[data-entry-id]')) return;
   pendingTreeMotion = captureList(root, '.tree-row[data-entry-id]', row => row.dataset.entryId,
-    { maxEnter: 24, strip: ['data-entry-id'] });
+    { maxEnter: 24, strip: ['data-entry-id'], fold: true });
   void nextTick(() => { const play = pendingTreeMotion; pendingTreeMotion = undefined; play?.(); });
 }
 const beginTreeMotion = parentTreeMotion ?? beginRootTreeMotion;

@@ -2,7 +2,7 @@ import { Plugin, PluginKey, type Transaction } from '@milkdown/kit/prose/state';
 import { Mapping, ReplaceAroundStep, ReplaceStep } from '@milkdown/kit/prose/transform';
 import type { Node } from '@milkdown/kit/prose/model';
 import type { EditorView } from '@milkdown/kit/prose/view';
-import { canAnimate, flipFrom, ghostExit, riseIn, spring, MOTION_DURATION } from './motion';
+import { canAnimate, flipFrom, foldClip, ghostExit, riseIn, spring, FOLD_EXIT_DELAY, MOTION_DURATION, type Edge } from './motion';
 
 /* Paragraph-level motion for the editor.
  *
@@ -30,6 +30,9 @@ type Snapshot = {
 };
 
 export const blockMotionKey = new PluginKey('tano-block-motion');
+/** `tr.setMeta(blockMotionKey, FOLD_MOTION)`: the transaction folds or unfolds
+ * content (decorations only, the document is unchanged). */
+export const FOLD_MOTION = 'fold';
 const MAX_CHANGED_BLOCKS = 40;
 const MAX_ENTERING = 12;
 const VIEW_MARGIN = 120;
@@ -156,6 +159,92 @@ function play(view: EditorView, snapshot: Snapshot) {
   }
 }
 
+/* Folding ------------------------------------------------------------------ */
+/* Folding hides blocks with a display:none decoration, so no step describes
+ * it. Rows are compared by DOM visibility instead: content that disappears
+ * fades out in place as a ghost, the blocks after it wait FOLD_EXIT_DELAY and
+ * then glide up, and each ghost is clipped to the top edge of the first block
+ * below it so the transparent text never overlaps. Unfolding is the reverse:
+ * revealed content fades in where it lands while the blocks below move away. */
+const FOLDED = '.tano-folded-heading-content, .tano-folded-list-content';
+const MAX_FOLD_UNITS = 3000;
+type FoldUnit = { dom: HTMLElement; parent: number; rect: DOMRect; shown: boolean };
+
+/** Rows that can fold: blocks from `collect`, plus the children of a list
+ * item (the part a folded list item hides). `parent` is -1 for top rows. */
+function foldUnits(view: EditorView): FoldUnit[] | undefined {
+  const units: FoldUnit[] = [];
+  const blocks = collect(view.state.doc);
+  if (blocks.length > MAX_FOLD_UNITS) return undefined;
+  const measure = (dom: HTMLElement, parent: number) => {
+    const rect = dom.getBoundingClientRect();
+    units.push({ dom, parent, rect, shown: rect.height > 0 && !dom.closest(FOLDED) });
+  };
+  for (const block of blocks) {
+    const dom = element(view, block);
+    if (!dom) continue;
+    const index = units.length;
+    measure(dom, -1);
+    if (block.node.type.name !== 'list_item') continue;
+    block.node.forEach((child, offset, childIndex) => {
+      if (!childIndex) return;
+      const nested = view.nodeDOM(block.pos + 1 + offset);
+      if (nested instanceof HTMLElement) measure(nested, index);
+    });
+  }
+  return units;
+}
+
+type FoldSnapshot = { doc: Node; units: FoldUnit[]; ghosts: Map<number, HTMLElement> };
+
+function captureFold(view: EditorView): FoldSnapshot | undefined {
+  const units = foldUnits(view);
+  if (!units) return undefined;
+  const ghosts = new Map<number, HTMLElement>();
+  const bottom = window.innerHeight + VIEW_MARGIN;
+  units.forEach((unit, index) => {
+    if (unit.shown && ghosts.size < 40 && unit.rect.bottom > -VIEW_MARGIN && unit.rect.top < bottom)
+      ghosts.set(index, unit.dom.cloneNode(true) as HTMLElement);
+  });
+  return { doc: view.state.doc, units, ghosts };
+}
+
+function playFold(view: EditorView, snapshot: FoldSnapshot) {
+  const after = foldUnits(view);
+  const before = snapshot.units;
+  if (!after || after.length !== before.length || after.some((unit, index) => unit.dom !== before[index]!.dom)) return;
+  const leaving = (index: number) => before[index]!.shown && !after[index]!.shown;
+  const stays = (index: number) => before[index]!.shown && after[index]!.shown;
+  const delay = before.some((_, index) => leaving(index)) ? FOLD_EXIT_DELAY : 0;
+  // A nested row only animates on its own when its list item stays put;
+  // otherwise it travels inside its parent's ghost or reveal.
+  const own = (index: number) => { const parent = before[index]!.parent; return parent < 0 || stays(parent); };
+  const viewBottom = window.innerHeight + VIEW_MARGIN;
+  const near = (rect: DOMRect) => rect.bottom > -VIEW_MARGIN && rect.top < viewBottom;
+  let layer: HTMLElement | undefined;
+  let below: Edge | undefined;
+  for (let index = after.length - 1; index >= 0; index--) {
+    const was = before[index]!, now = after[index]!;
+    if (stays(index)) {
+      if (was.parent >= 0) continue;
+      below = { from: was.rect.top, to: now.rect.top };
+      if (near(now.rect) || near(was.rect)) flipFrom(now.dom, was.rect, now.rect, delay);
+      continue;
+    }
+    if (!own(index)) continue;
+    if (leaving(index)) {
+      const ghost = snapshot.ghosts.get(index);
+      if (!ghost) continue;
+      layer ??= ghostLayer(view);
+      if (layer) ghostExit(ghost, was.rect, layer, { scale: 0.97, y: -3, cover: below && { edge: below, delay } });
+    } else if (now.shown && !was.shown && near(now.rect)) {
+      if (below) { const clip = foldClip(now.dom, now.rect.top, below, delay); clip.onfinish = () => clip.cancel(); }
+      now.dom.animate([{ opacity: 0 }, { opacity: 1 }],
+        { duration: MOTION_DURATION.smooth, easing: spring('smooth'), delay, fill: 'backwards' });
+    }
+  }
+}
+
 /** True when an element's following siblings sit below it, not beside it. */
 function stacksVertically(element: HTMLElement) {
   const parent = element.parentElement;
@@ -268,13 +357,18 @@ export function blockMotion(options: BlockMotionOptions | (() => boolean) = {}) 
   const resizing = typeof options === 'function' ? options : options.resize ?? (() => true);
   let view: EditorView | undefined;
   let pending: Snapshot | undefined;
+  let folding: FoldSnapshot | undefined;
   let growth: GrowthWatcher | undefined;
   /** Whether any transaction since the last draw rewrapped blocks. */
   let reshaped = false;
   return new Plugin({
     key: blockMotionKey,
     filterTransaction(tr, state) {
-      if (!tr.docChanged) return true;
+      if (!tr.docChanged) {
+        if (tr.getMeta(blockMotionKey) === FOLD_MOTION && view && state.doc === view.state.doc && enabled() &&
+          view.dom.isConnected && canAnimate(view.dom)) folding = captureFold(view);
+        return true;
+      }
       if (!reshaped && structural(tr)) reshaped = true;
       if (pending && tr.before === pending.doc) {
         pending.mapping.appendMapping(tr.mapping);
@@ -310,6 +404,9 @@ export function blockMotion(options: BlockMotionOptions | (() => boolean) = {}) 
       if (typeof ResizeObserver !== 'undefined') growth = new GrowthWatcher(editorView);
       return {
         update(current, previous) {
+          const fold = folding;
+          folding = undefined;
+          if (fold && fold.doc === current.state.doc && current.dom.isConnected) playFold(current, fold);
           const snapshot = pending;
           pending = undefined;
           const played = !!snapshot && snapshot.doc === current.state.doc && current.dom.isConnected;
@@ -321,7 +418,7 @@ export function blockMotion(options: BlockMotionOptions | (() => boolean) = {}) 
           reshaped = false;
           growth?.sync(current, changed && !blocky && resizing(), blocky);
         },
-        destroy() { view = undefined; pending = undefined; growth?.destroy(); growth = undefined; },
+        destroy() { view = undefined; pending = undefined; folding = undefined; growth?.destroy(); growth = undefined; },
       };
     },
   });
