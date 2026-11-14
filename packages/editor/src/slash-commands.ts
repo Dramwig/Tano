@@ -181,6 +181,7 @@ export function applySlashCommand(
 
 export function slashCommands(options: {
   readonly: () => boolean;
+  chineseSlash?: () => boolean;
   levels: () => readonly number[] | undefined;
   features?: () => DocumentFeatures;
   aiShortcut?: () => boolean;
@@ -243,7 +244,8 @@ export function slashCommands(options: {
       handleTextInput(view, from, to, text) {
         const { selection } = view.state;
         if (
-          text !== '/' ||
+          (text !== '/' && !(text === '、' && options.chineseSlash?.())) ||
+          view.composing ||
           options.readonly() ||
           !view.editable ||
           !view.hasFocus() ||
@@ -255,7 +257,7 @@ export function slashCommands(options: {
           !['paragraph', 'heading'].includes(selection.$from.parent.type.name)
         )
           return false;
-        view.dispatch(view.state.tr.insertText(text, from, to).setMeta(session, 'start'));
+        view.dispatch(view.state.tr.insertText('/', from, to).setMeta(session, 'start'));
         return true;
       },
       decorations(state) {

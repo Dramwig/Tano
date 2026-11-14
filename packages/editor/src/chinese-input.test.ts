@@ -3,7 +3,7 @@ import { chineseInputOptions, defaultChineseInput, mapChineseInput, normalizeChi
 
 it('keeps every mapping disabled by default and enables only the chosen keys', () => {
   const input = '【】（）；，。！……￥';
-  expect(Object.values(defaultChineseInput).every(enabled => !enabled)).toBe(true);
+  expect(chineseInputOptions.every(({ key }) => !defaultChineseInput[key])).toBe(true);
   expect(mapChineseInput(input)).toBe(input);
   expect(mapChineseInput(input, { comma: true, ellipsisToCaret: true })).toBe('【】（）；,。！^￥');
   const enabled = Object.fromEntries(chineseInputOptions.map(({ key }) => [key, true]));
@@ -58,4 +58,22 @@ it('normalizes stored preferences and migrates yuan without overriding an explic
   expect(normalizeChineseInput({ brackets: 'true', comma: true })).toEqual({ ...defaultChineseInput, comma: true });
   expect(normalizeChineseInput(undefined, { yenToDollar: true })).toEqual({ ...defaultChineseInput, yenToDollar: true });
   expect(normalizeChineseInput({ yenToDollar: false }, { yenToDollar: true })).toEqual(defaultChineseInput);
+});
+
+it('recognizes syntax positions and upgrades old preferences', async () => {
+ const { chineseSyntaxEdit } = await import('./chinese-input');
+ expect(normalizeChineseInput({comma:true})).toMatchObject({quoteMarker:true,orderedMarker:true,codeFence:true,wikiLink:true,slashCommand:true,middleDot:false});
+ for (const mode of ['source','visual'] as const) {
+  expect(chineseSyntaxEdit('》',' ',{},mode)).toEqual({deleteBefore:1,insert:'> '});
+  expect(chineseSyntaxEdit('1。','　',{},mode)).toEqual({deleteBefore:1,insert:'. '});
+  expect(chineseSyntaxEdit('','···',{},mode)).toEqual({deleteBefore:0,insert:'```'});
+  expect(chineseSyntaxEdit('【','【',{},mode)?.insert).toBe('[[');
+  expect(chineseSyntaxEdit('[[页面】','】',{},mode)?.insert).toBe(']]');
+  expect(chineseSyntaxEdit('文字》',' ',{},mode)).toBeNull();
+  expect(chineseSyntaxEdit('2026。','年',{},mode)).toBeNull();
+  expect(chineseSyntaxEdit('·','·',{},mode)).toBeNull();
+  expect(chineseSyntaxEdit('【','【',{brackets:true},mode)).toBeNull();
+ }
+ expect(chineseSyntaxEdit('','、',{},'source')).toBeNull();
+ expect(chineseSyntaxEdit('','、',{},'visual')?.route).toBe('slash');
 });

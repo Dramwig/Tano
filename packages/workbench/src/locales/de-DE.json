@@ -3551,5 +3551,19 @@
   "Markdown 源码展开收起动画": "Animation beim Ein- und Ausblenden von Markdown",
   "光标进入或离开链接、行内代码、公式和引用时，源码平滑展开，离开后平滑收起。": "Betritt oder verlässt der Cursor einen Link, Inline-Code, eine Formel oder einen Verweis, klappt der Quelltext weich auf und wieder zu.",
   "减少动态效果": "Bewegung reduzieren",
-  "关闭按钮回弹、面板弹出和编辑区动画。系统开启“减少动态效果”时始终生效。": "Schaltet Tastenfedern, Panel-Einblendungen und Editor-Animationen ab. Immer aktiv, wenn das System Bewegung reduziert."
+  "关闭按钮回弹、面板弹出和编辑区动画。系统开启“减少动态效果”时始终生效。": "Schaltet Tastenfedern, Panel-Einblendungen und Editor-Animationen ab. Immer aktiv, wenn das System Bewegung reduziert.",
+  "自动补全": "Autovervollständigung",
+  "列表与引用续行": "Listen und Zitate fortsetzen",
+  "补全代码块与公式块": "Code- und Formelblöcke schließen",
+  "成对符号自动闭合": "Symbolpaare automatisch schließen",
+  "语法位置识别": "Syntaxerkennung",
+  "全局映射": "Globale Umwandlungen",
+  "行首 》 识别为引用": "Führendes 》 als Zitat erkennen",
+  "行首 数字。 识别为有序列表": "Führende Zahl。 als nummerierte Liste erkennen",
+  "行首 ··· 识别为代码块": "Führendes ··· als Codeblock erkennen",
+  "空行 、 打开块菜单（仅可视化编辑）": "Blockmenü mit 、 öffnen (nur visuell)",
+  "中文间隔号 · 映射为 `": "Mittelpunkt · in ` umwandeln",
+  "可视化编辑已内置列表续行和语法识别；以下选项让源码模式获得同样的输入体验。仅保存在当前设备。": "Der visuelle Editor unterstützt Listenfortsetzung und Syntaxerkennung. Diese Optionen ergänzen ähnliche Funktionen im Quelltextmodus. Nur auf diesem Gerät gespeichert.",
+  "在 Markdown 语法位置把中文符号识别为语法，默认开启；全局映射会转换所有位置的符号，默认关闭。可视化与源码模式通用。": "Chinesische Zeichen an Markdown-Syntaxpositionen erkennen ist standardmäßig aktiviert. Globale Umwandlungen gelten überall und sind standardmäßig deaktiviert. Gilt für beide Bearbeitungsmodi.",
+  "双链左右括号分别识别": "Öffnende und schließende Wiki-Link-Klammern getrennt erkennen"
 }

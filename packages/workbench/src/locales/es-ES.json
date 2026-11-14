@@ -3551,5 +3551,19 @@
   "Markdown 源码展开收起动画": "Animación al mostrar y ocultar el Markdown",
   "光标进入或离开链接、行内代码、公式和引用时，源码平滑展开，离开后平滑收起。": "Al entrar o salir de un enlace, código en línea, fórmula o referencia, el código fuente se despliega y se recoge con suavidad.",
   "减少动态效果": "Reducir movimiento",
-  "关闭按钮回弹、面板弹出和编辑区动画。系统开启“减少动态效果”时始终生效。": "Desactiva el rebote de botones, la aparición de paneles y las animaciones del editor. Siempre activo si el sistema reduce el movimiento."
+  "关闭按钮回弹、面板弹出和编辑区动画。系统开启“减少动态效果”时始终生效。": "Desactiva el rebote de botones, la aparición de paneles y las animaciones del editor. Siempre activo si el sistema reduce el movimiento.",
+  "自动补全": "Autocompletar",
+  "列表与引用续行": "Continuar listas y citas",
+  "补全代码块与公式块": "Cerrar bloques de código y fórmulas",
+  "成对符号自动闭合": "Cerrar pares de símbolos automáticamente",
+  "语法位置识别": "Reconocimiento de sintaxis",
+  "全局映射": "Conversiones globales",
+  "行首 》 识别为引用": "Reconocer 》 inicial como cita",
+  "行首 数字。 识别为有序列表": "Reconocer número。 inicial como lista ordenada",
+  "行首 ··· 识别为代码块": "Reconocer ··· inicial como bloque de código",
+  "空行 、 打开块菜单（仅可视化编辑）": "Abrir menú de bloques con 、 (solo editor visual)",
+  "中文间隔号 · 映射为 `": "Convertir punto medio · en `",
+  "可视化编辑已内置列表续行和语法识别；以下选项让源码模式获得同样的输入体验。仅保存在当前设备。": "El editor visual incluye continuación de listas y reconocimiento de sintaxis. Estas opciones añaden funciones similares al código fuente. Solo se guardan en este dispositivo.",
+  "在 Markdown 语法位置把中文符号识别为语法，默认开启；全局映射会转换所有位置的符号，默认关闭。可视化与源码模式通用。": "Reconocer símbolos chinos en posiciones de sintaxis Markdown está activado por defecto. Las conversiones globales afectan a todas las posiciones y están desactivadas por defecto. Se aplica a ambos modos.",
+  "双链左右括号分别识别": "Reconocer por separado los corchetes de apertura y cierre de enlaces wiki"
 }

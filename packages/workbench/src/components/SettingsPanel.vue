@@ -43,6 +43,9 @@ import {
   normalizeCopyFormat,
   normalizeSelectionWrapping,
   selectionWrappingOptions,
+  chineseSyntaxOptions,
+  markdownAutocompleteOptions,
+  normalizeMarkdownAutocomplete,
   chineseInputOptions,
   normalizeChineseInput,
 } from '@tano/editor/runtime';
@@ -179,6 +182,10 @@ const wrappingOptions = computed(() => selectionWrappingOptions.map(option => {
 }));
 function setWrapping(key: keyof typeof wrapping.value, enabled: boolean) {
   emit('update:editorPreferences', { ...display.value, selectionWrapping: { ...wrapping.value, [key]: enabled } });
+}
+const autocomplete = computed(() => normalizeMarkdownAutocomplete(display.value.markdownAutocomplete));
+function setMarkdownAutocomplete(key: keyof typeof autocomplete.value, enabled: boolean) {
+ emit('update:editorPreferences', { ...display.value, markdownAutocomplete: { ...autocomplete.value, [key]: enabled } });
 }
 const chineseInput = computed(() => normalizeChineseInput(display.value.chineseInput, display.value.selectionWrapping));
 function setChineseInput(key: keyof typeof chineseInput.value, enabled: boolean) {
@@ -383,7 +390,8 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('editing', 'editing-ai-shortcut', '空白块按空格启动 AI', '在空白 block 中按空格，直接展开一次性 AI 编辑输入框。', 'AI space block'),
   settingSearchEntry('editing', 'editing-wrapping', '输入符号包裹选区', '选中文字后输入符号，自动补齐两端。可视化与源码模式通用。', 'selection wrapping symbols'),
   ...selectionWrappingOptions.map(option => settingSearchEntry('editing', `editing-wrapping-${option.key}`, option.label, option.example, 'selection wrapping Markdown')),
-  ...chineseInputOptions.map(option => settingSearchEntry('editing', `editing-chinese-input-${option.key}`, option.label,
+  ...markdownAutocompleteOptions.map(option => settingSearchEntry('editing', `editing-autocomplete-${option.key}`, option.label, '自动补全 列表 续行 代码块 括号 autocomplete list continuation fence bracket')),
+  ...[...chineseSyntaxOptions, ...chineseInputOptions].map(option => settingSearchEntry('editing', `editing-chinese-input-${option.key}`, option.label,
     `${option.input} → ${option.output}`, '中文输入优化 输入法 标点 符号映射 Chinese IME punctuation')),
   ...shortcutDefinitions.map(item => settingSearchEntry('shortcuts', `shortcut-${item.id}`, item.label, 'scope' in item ? item.scope : '', 'shortcut keybinding keyboard')),
   settingSearchEntry('assistant', 'assistant-connections', '模型连接', '管理助手使用的 API 或 CLI 连接。', 'assistant model connection API CLI'),
@@ -1005,9 +1013,50 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
             </div>
             <p class="settings-local-note">{{ t('选区包裹仅影响当前设备，扩展语法的包裹默认关闭。正文显示由工作区「Markdown 与格式」控制，其他 Markdown 应用可能不支持。') }}</p>
           </section>
+          <section v-if="page === 'editing'" class="settings-section" :aria-label="t('自动补全')">
+            <h3>{{ t('自动补全') }}</h3>
+            <p class="settings-local-note">{{ t('可视化编辑已内置列表续行和语法识别；以下选项让源码模式获得同样的输入体验。仅保存在当前设备。') }}</p>
+            <div class="settings-card">
+              <div v-for="option in markdownAutocompleteOptions" :key="option.key" class="settings-row settings-row-compact"
+                :data-settings-key="`editing-autocomplete-${option.key}`">
+                <div class="settings-inline-copy">
+                  <strong>{{ t(option.label) }}</strong>
+                  <span class="settings-inline-example" :aria-label="`${option.input} → ${option.output}`">
+                    <kbd aria-hidden="true">{{ option.input }}</kbd>
+                    <ArrowRight :size="12" aria-hidden="true" />
+                    <code aria-hidden="true"><span>{{ option.output }}</span></code>
+                  </span>
+                </div>
+                <button type="button" class="settings-switch" role="switch" :aria-label="t(option.label)"
+                  :class="{ on: autocomplete[option.key] }" :aria-checked="autocomplete[option.key]"
+                  @click="setMarkdownAutocomplete(option.key, !autocomplete[option.key])"><span /></button>
+              </div>
+            </div>
+          </section>
           <section v-if="page === 'editing'" class="settings-section" :aria-label="t('中文输入优化')">
             <h3>{{ t('中文输入优化') }}</h3>
-            <p class="settings-local-note">{{ t('输入中文符号时，按键位转换为英文符号。可视化与源码模式通用，各项默认关闭。') }}</p>
+            <p class="settings-local-note">{{ t('在 Markdown 语法位置把中文符号识别为语法，默认开启；全局映射会转换所有位置的符号，默认关闭。可视化与源码模式通用。') }}</p>
+            <p class="settings-local-note">{{ t('语法位置识别') }}</p>
+            <div class="settings-card">
+              <div v-for="option in chineseSyntaxOptions" :key="option.key" class="settings-row settings-row-compact"
+                :data-settings-key="`editing-chinese-input-${option.key}`">
+                <div class="settings-inline-copy">
+                  <strong>{{ t(option.label) }}</strong>
+                  <span class="settings-inline-examples">
+                    <span v-for="(example, index) in ('examples' in option ? option.examples : [{ before: '', input: option.input, output: option.output }])"
+                      :key="index" class="settings-inline-example" :aria-label="`${example.before}${example.input} → ${example.output}`">
+                      <kbd aria-hidden="true">{{ example.before }}{{ example.input }}</kbd>
+                      <ArrowRight :size="12" aria-hidden="true" />
+                      <code aria-hidden="true"><span>{{ example.output }}</span></code>
+                    </span>
+                  </span>
+                </div>
+                <button type="button" class="settings-switch" role="switch" :aria-label="t(option.label)"
+                  :class="{ on: chineseInput[option.key] }" :aria-checked="chineseInput[option.key]"
+                  @click="setChineseInput(option.key, !chineseInput[option.key])"><span /></button>
+              </div>
+            </div>
+            <p class="settings-local-note">{{ t('全局映射') }}</p>
             <div class="settings-card">
               <div v-for="option in chineseInputOptions" :key="option.key" class="settings-row settings-row-compact"
                 :data-settings-key="`editing-chinese-input-${option.key}`">
@@ -2069,9 +2118,13 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   align-items: center;
   gap: 8px 24px;
 }
+.settings-inline-examples {
+  display: grid;
+  gap: 6px;
+}
 .settings-inline-example {
   display: inline-grid;
-  grid-template-columns: 68px 12px minmax(100px, max-content);
+  grid-template-columns: minmax(68px, max-content) 12px minmax(100px, max-content);
   align-items: center;
   gap: 12px;
   color: var(--muted);
@@ -2321,7 +2374,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
     gap: 6px;
   }
   .settings-inline-example {
-    grid-template-columns: 60px 12px minmax(88px, max-content);
+    grid-template-columns: minmax(60px, max-content) 12px minmax(88px, max-content);
     gap: 8px;
   }
   .settings-row:has(select),

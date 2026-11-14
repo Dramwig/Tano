@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test';
 test('selection wrappers share persistent settings across source and rich editing', async ({ page }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
+  await page.addInitScript(() => { if (window.top === window) localStorage.setItem('tano.preference.locale', 'zh-CN'); });
   await page.goto('http://127.0.0.1:43845');
   const rich = page.getByRole('textbox', { name: 'Markdown 文档编辑器', exact: true });
   await expect(rich).toBeVisible();
@@ -33,7 +34,7 @@ test('selection wrappers share persistent settings across source and rich editin
   const openSettings = async () => {
     await page.getByRole('button', { name: /^切换上下文：/ }).click();
     await page.getByRole('button', { name: '设置', exact: true }).click();
-    await page.getByRole('button', { name: '编辑设置', exact: true }).click();
+    await page.getByRole('button', { name: '编辑器', exact: true }).click();
   };
   await openSettings();
   await expect(rich.locator('strong')).toHaveText('文字');

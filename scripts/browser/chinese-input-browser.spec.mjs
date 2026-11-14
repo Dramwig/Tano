@@ -14,19 +14,19 @@ async function settings(page) {
   await page.locator('.settings-nav').getByRole('button', { name: '编辑器', exact: true }).click();
   return page.getByRole('region', { name: '中文输入优化', exact: true });
 }
-async function create(page, name) {
-  await page.evaluate(async name => {
+async function create(page, name, content = '输入：\n') {
+  await page.evaluate(async ({ name, content }) => {
     const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace');
-    await store.create(name, false, '输入：\n');
-  }, name);
+    await store.create(name, false, content);
+  }, { name, content });
 }
 
 test('Chinese input settings are separate, off by default, searchable and saved', async ({ page }, testInfo) => {
   await open(page);
   // A section has an accessible region role when it has an accessible name.
   const section = await settings(page);
-  await expect(section.getByRole('switch')).toHaveCount(8);
-  for (const control of await section.getByRole('switch').all()) await expect(control).toHaveAttribute('aria-checked', 'false');
+  await expect(section.getByRole('switch')).toHaveCount(14);
+  for (const control of await section.getByRole('switch').all()) await expect(control).toHaveAttribute('aria-checked', /行首|双链|块菜单/.test(await control.getAttribute('aria-label')) ? 'true' : 'false');
   await section.getByRole('switch', { name: '中文圆括号', exact: true }).click();
   await section.getByRole('switch', { name: '中文感叹号', exact: true }).click();
   await section.scrollIntoViewIfNeeded();
@@ -45,7 +45,7 @@ for (const source of [false, true]) test(`maps typing and committed IME input, p
   page.on('pageerror', error => errors.push(error.message));
   await open(page);
   const section = await settings(page);
-  for (const control of await section.getByRole('switch').all()) await control.click();
+  for (const control of await section.getByRole('switch').all()) if (await control.getAttribute('aria-checked') === 'false') await control.click();
   await page.locator('.settings-close').click();
   await create(page, `中文输入-${source}.md`);
   if (source) await page.getByRole('button', { name: '切换源码模式', exact: true }).click();
@@ -88,7 +88,7 @@ for (const source of [false, true]) test(`maps typing and committed IME input, p
 for (const source of [false, true]) test(`inserts mapped punctuation without Chinese DOM mutations (${source ? 'source' : 'visual'})`, async ({ page }) => {
   await open(page);
   const section = await settings(page);
-  for (const control of await section.getByRole('switch').all()) await control.click();
+  for (const control of await section.getByRole('switch').all()) if (await control.getAttribute('aria-checked') === 'false') await control.click();
   await page.locator('.settings-close').click();
   await create(page, `提前映射-${source}.md`);
   if (source) await page.getByRole('button', { name: '切换源码模式', exact: true }).click();
@@ -160,4 +160,48 @@ for (const source of [false, true]) test(`handles a Pinyin key and its committed
       key: 'Process', code, keyCode: 229, bubbles: true, cancelable: true,
     })), code);
   }
+});
+
+for (const source of [false,true]) test(`recognizes Chinese Markdown positions (${source ? 'source' : 'visual'})`, async ({page}) => {
+ await open(page); await create(page,`syntax-${source}.md`);
+ if (source) await page.getByRole('button',{name:'切换源码模式',exact:true}).click();
+ const editor=page.locator(source?'.cm-content':'.ProseMirror').first();
+ await editor.click(); await page.keyboard.press('Control+a');
+ await page.keyboard.insertText('》'); await page.keyboard.press('Space');
+ if (source) { await expect(editor).toHaveText('> '); await page.keyboard.press('Control+z'); await expect(editor).toHaveText('》 '); }
+ else { await expect(editor.locator('blockquote')).toHaveCount(1); await page.keyboard.press('Control+z'); await expect(editor).toContainText('》'); }
+});
+
+for (const source of [false,true]) for (const [input, selector, output] of [
+ ['1。 ', 'ol', '1. '], ['···ts\n', 'pre', '```ts'], ['【【页面】】', '[data-wiki-link]', '[[页面]]'],
+]) test(`Chinese syntax ${input} (${source?'source':'visual'})`, async ({page}) => {
+ await open(page); await create(page,`syntax-${source}-${input.length}.md`);
+ if(source) await page.getByRole('button',{name:'切换源码模式',exact:true}).click();
+ const editor=page.locator(source?'.cm-content':'.ProseMirror').first();
+ await editor.click(); await page.keyboard.press('Control+a');
+ for(const ch of input) { if(ch==='\n') await page.keyboard.press('Enter'); else if(ch===' ') await page.keyboard.press('Space'); else await page.keyboard.insertText(ch); }
+ if(source) await expect(editor).toContainText(output);
+ else if(selector==='[data-wiki-link]') await expect(editor).not.toContainText(/[【】]/);
+ else await expect(editor.locator(selector)).toHaveCount(1);
+});
+
+test('Chinese slash opens block menu and highlight stays literal while typing', async ({page}) => {
+ await open(page); await create(page,'syntax-slash.md','');
+ const editor=page.locator('.ProseMirror').first();
+ await editor.click(); await page.keyboard.press('Control+a'); await page.keyboard.press('Backspace'); await page.keyboard.insertText('、');
+ await expect(page.locator('.tano-slash-menu')).toBeVisible();
+ await page.keyboard.press('Escape'); await editor.click(); await page.keyboard.press('Control+a');
+ await page.keyboard.type('==highlight==');
+ await expect(editor).toContainText('==highlight==');
+ await expect(editor.locator('mark')).toHaveCount(0);
+});
+
+for(const source of [false,true]) test(`committed IME syntax (${source?'source':'visual'})`,async({page})=>{
+ await open(page); await create(page,`ime-syntax-${source}.md`,'');
+ if(source) await page.getByRole('button',{name:'切换源码模式',exact:true}).click();
+ const editor=page.locator(source?'.cm-content':'.ProseMirror').first(); await editor.click(); await page.keyboard.press('Control+a');
+ await editor.evaluate(el=>el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true,data:''})));
+ await page.keyboard.insertText('···');
+ await editor.evaluate(async el=>{el.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:'···'})); await new Promise(resolve=>queueMicrotask(()=>queueMicrotask(resolve)));});
+ if(source) await expect(editor).toHaveText('```'); else { await expect(editor).toContainText('```'); await page.keyboard.press('Enter'); await expect(editor.locator('pre')).toHaveCount(1); }
 });

@@ -100,7 +100,7 @@ import MarkdownEditorSkeleton from './components/MarkdownEditorSkeleton.vue';
 import DocumentLoading from './components/DocumentLoading.vue';
 const MarkdownEditor = defineAsyncComponent({ loader: () => import('@tano/editor'), delay: 0, loadingComponent: MarkdownEditorSkeleton });
 const CalloutIconPicker = defineAsyncComponent(() => import('./components/CalloutIconPicker.vue'));
-import { defaultEditorPreferences, normalizeCopyFormat, normalizeSelectionWrapping, normalizeChineseInput } from '@tano/editor/runtime';
+import { defaultEditorPreferences, normalizeCopyFormat, normalizeMarkdownAutocomplete, normalizeSelectionWrapping, normalizeChineseInput } from '@tano/editor/runtime';
 import type { EditorPreferences } from '@tano/editor/runtime';
 import { defaultSelectionContext } from '@tano/editor/selection-context';
 import type { EditorSelectionContext } from '@tano/editor/selection-context';
@@ -1022,6 +1022,9 @@ function readSelectionWrapping() {
   try { return normalizeSelectionWrapping(JSON.parse(readTextPreference('selectionWrapping') || 'null')); }
   catch { return normalizeSelectionWrapping(); }
 }
+function readMarkdownAutocomplete() {
+  try { return normalizeMarkdownAutocomplete(JSON.parse(readTextPreference('markdownAutocomplete') || 'null')); } catch { return normalizeMarkdownAutocomplete(); }
+}
 function readChineseInput() {
   let value: unknown, legacy: unknown;
   try { value = JSON.parse(readTextPreference('chineseInput') || 'null'); } catch { /* Use safe defaults. */ }
@@ -1040,6 +1043,7 @@ const editorPreferences = ref<EditorPreferences>({
   blankBlockAiShortcut: readPreference('blankBlockAiShortcut', defaultEditorPreferences.blankBlockAiShortcut),
   selectionWrapping: readSelectionWrapping(),
   chineseInput: readChineseInput(),
+  markdownAutocomplete: readMarkdownAutocomplete(),
   smoothCaret: readPreference('smoothCaret', true),
   typingMotion: readPreference('typingMotion', true),
   blockMotion: readPreference('blockMotion', true),
@@ -1057,6 +1061,7 @@ watch(
     savePreference('folding', preferences.folding);
     savePreference('blankBlockAiShortcut', preferences.blankBlockAiShortcut);
     saveTextPreference('selectionWrapping', JSON.stringify(normalizeSelectionWrapping(preferences.selectionWrapping)));
+    saveTextPreference('markdownAutocomplete', JSON.stringify(normalizeMarkdownAutocomplete(preferences.markdownAutocomplete)));
     saveTextPreference('chineseInput', JSON.stringify(normalizeChineseInput(preferences.chineseInput)));
     savePreference('smoothCaret', preferences.smoothCaret !== false);
     savePreference('typingMotion', preferences.typingMotion !== false);

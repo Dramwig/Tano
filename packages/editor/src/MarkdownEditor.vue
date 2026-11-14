@@ -114,7 +114,7 @@ import type { InlineSourceSession } from './inline-source-session';
 import { liveInlineSource, liveSource } from './live-source';
 import { nestedEmphasisRemark } from './nested-emphasis';
 import { sourceStyleRanges } from './source-highlight';
-import { configureMarkdownRuntime, defaultCapabilities, defaultEditorPreferences, normalizeCopyFormat, selectionWrap, workspaceWrapping, mapChineseInput, normalizeChineseInput, mappedChineseInputKey, mappedChineseBeforeInput } from './runtime';
+import { configureMarkdownRuntime, defaultCapabilities, defaultEditorPreferences, normalizeCopyFormat, chineseSyntaxEdit, selectionWrap, workspaceWrapping, mapChineseInput, normalizeChineseInput, mappedChineseInputKey, mappedChineseBeforeInput } from './runtime';
 import type { WorkspaceCapabilities, EditorPreferences, CopyFormat } from './runtime';
 import { destinationClipboardHTML, selectedFormulaMathML, tableTSV } from './clipboard-formats';
 import { runtimeViews, runtimeMarkViews, mermaidView } from './runtime-views';
@@ -892,7 +892,27 @@ function chineseInputSettings() {
 function mappedChineseInput(text: string) {
   return mapChineseInput(text, chineseInputSettings());
 }
+let replayingChineseSyntax = false;
+function insertChineseSyntax(view: EditorView, from: number, to: number, text: string, committed = false) {
+ if (replayingChineseSyntax || props.readonly || view.composing || (!committed && from !== to) || !view.state.selection.empty) return false;
+ const resolved = view.state.doc.resolve(from);
+ if (!resolved.parent.isTextblock || resolved.parent.type.spec.code || /math|tano_live_source/.test(resolved.parent.type.name) || resolved.marks().some(m => m.type.spec.code)) return false;
+ const before = resolved.parent.textBetween(0, resolved.parentOffset, '', '\ufffc');
+ const edit = chineseSyntaxEdit(before, text, chineseInputSettings(), 'visual');
+ if (!edit) return false;
+ const start = from - edit.deleteBefore;
+ const prefix = edit.insert.slice(0, -1), tail = edit.insert.slice(-1);
+ replayingChineseSyntax = true;
+ try {
+  view.dispatch(closeHistory(view.state.tr).insertText(prefix, start, committed ? to : from));
+  const pos = start + prefix.length;
+  const handled = view.someProp('handleTextInput', handler => handler(view, pos, pos, tail, () => view.state.tr.insertText(tail, pos)));
+  if (!handled) view.dispatch(view.state.tr.insertText(tail, pos));
+ } finally { replayingChineseSyntax = false; }
+ return true;
+}
 function insertChineseInput(ctx: Ctx, view: EditorView, from: number, to: number, text: string) {
+  if (insertChineseSyntax(view, from, to, text)) return true;
   const mapped = mappedChineseInput(text);
   return mapped !== text && insertMappedChineseInput(ctx, view, from, to, mapped);
 }
@@ -910,6 +930,7 @@ function chineseInputEventTarget(event: Event) {
 }
 function beforeChineseInput(ctx: Ctx, view: EditorView, event: InputEvent) {
   if (!chineseInputEventTarget(event)) return false;
+  if (!event.isComposing && event.inputType === 'insertText' && event.data && insertChineseSyntax(view, view.state.selection.from, view.state.selection.to, event.data)) { event.preventDefault(); return true; }
   const mapped = mappedChineseBeforeInput(event, chineseInputSettings());
   if (mapped === null) return false;
   const ranges = event.getTargetRanges?.() ?? [];
@@ -928,7 +949,7 @@ function beforeChineseInput(ctx: Ctx, view: EditorView, event: InputEvent) {
 }
 function finishChineseComposition(view: EditorView, text: string) {
   const revision = ++chineseCompositionRevision;
-  if (!text || mappedChineseInput(text) === text) return;
+  if (!text) return;
   // Run after the editor's composition-end flush, within the same paint boundary.
   // A timer can leave the committed Chinese glyph visible for a frame in WebView2.
   queueMicrotask(() => queueMicrotask(() => {
@@ -941,6 +962,7 @@ function finishChineseComposition(view: EditorView, text: string) {
   }));
 }
 function insertChineseInputFromComposition(view: EditorView, from: number, to: number, text: string) {
+  if (insertChineseSyntax(view, from, to, text, true)) return;
   const mapped = mappedChineseInput(text);
   if (mapped !== text) view.dispatch(view.state.tr.insertText(mapped, from, to));
 }
@@ -2965,6 +2987,7 @@ onMounted(async () => {
       .use(
         $prose(() =>
           slashCommands({
+            chineseSlash: () => chineseInputSettings().slashCommand,
             translate: props.translate,
             readonly: () => !!props.readonly,
             levels: () => props.enabledLevels,

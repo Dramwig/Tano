@@ -1,5 +1,20 @@
 /** English UI messages. Chinese source messages are the default locale. */
 export const englishMessages: Readonly<Record<string, string>> = {
+  "自动补全": "Autocomplete",
+  "列表与引用续行": "Continue lists and quotes",
+  "补全代码块与公式块": "Close code and math blocks",
+  "成对符号自动闭合": "Automatically close symbol pairs",
+  "语法位置识别": "Syntax recognition",
+  "全局映射": "Global mappings",
+  "行首 》 识别为引用": "Recognize leading 》 as a quote",
+  "行首 数字。 识别为有序列表": "Recognize leading number。 as an ordered list",
+  "行首 ··· 识别为代码块": "Recognize leading ··· as a code block",
+  "双链左右括号分别识别": "Recognize wiki-link opening and closing brackets separately",
+  "空行 、 打开块菜单（仅可视化编辑）": "Open block menu with 、 (visual editor only)",
+  "中文间隔号 · 映射为 `": "Map middle dot · to `",
+  "可视化编辑已内置列表续行和语法识别；以下选项让源码模式获得同样的输入体验。仅保存在当前设备。": "The visual editor includes list continuation and syntax recognition. These options add similar source editing behavior. Saved on this device only.",
+  "在 Markdown 语法位置把中文符号识别为语法，默认开启；全局映射会转换所有位置的符号，默认关闭。可视化与源码模式通用。": "Recognize Chinese symbols at Markdown syntax positions by default. Global mappings convert symbols everywhere and are off by default. Applies to visual and source editing.",
+
   "缺少{0}；请安装或更新宿主。": "Missing {0}. Install or update the host application.",
   "仅覆盖配色、图标、布局和形态；关闭后恢复用户默认。": "Override only colors, icons, layout and shape. Turn off to restore user defaults.",
   "四个槽位使用用户默认；其他工作区会沿用这些选择。": "All four choices use user defaults, inherited by other workspaces.",
