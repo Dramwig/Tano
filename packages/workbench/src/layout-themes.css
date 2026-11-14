@@ -177,7 +177,7 @@
     box-shadow: 0 0 0 1px var(--layout-hairline), 0 1px 2px #00000012;
   }
   :root[data-theme='dark'][data-layout='document'] :is(.desktop-tab-active, .desktop-tab-active:hover) { box-shadow: 0 0 0 1px var(--layout-hairline), 0 1px 2px #00000059; }
-  :root[data-layout='document'] .desktop-tab.desktop-tab-dragging { --desktop-tab-close-mask: var(--layout-desk); background: transparent; box-shadow: none; }
+  :root[data-layout='document'] :is(.desktop-tab.desktop-tab-dragging, .desktop-tab.desktop-tab-settling) { --desktop-tab-close-mask: var(--layout-desk); background: transparent; box-shadow: none; }
   :root[data-layout='document'] .desktop-tab-corners { display: none; }
   :root[data-layout='document'] .desktop-tab-close { top: 50%; right: 1px; border-radius: 5px; }
 

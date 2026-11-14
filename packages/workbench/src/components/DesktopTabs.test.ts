@@ -562,7 +562,9 @@ it('shows the dragged tab under the pointer, including outside the strip, and re
   expect(preview.querySelector('.workspace-emoji-icon')?.getAttribute('data-emoji')).toBe('🌿');
   expect(preview.textContent).toContain('a');
   expect(preview.style.left).toBe('180px');
-  expect(preview.style.top).toBe('0px'); // Snapped to the track, not the pointer's vertical offset.
+  // Not pulled into the track: it follows the pointer; only the slot moves.
+  expect(preview.style.top).toBe('2px');
+  expect(root.querySelector<HTMLElement>('.desktop-tab-dragging')?.style.transform).toMatch(/translateX/);
   expect(preview.style.width).toBe('200px');
 
   pointer(buttons[0], 'pointermove', 300, 80);
@@ -575,6 +577,25 @@ it('shows the dragged tab under the pointer, including outside the strip, and re
   await nextTick();
   expect(document.body.querySelector('.desktop-tab-drag-preview')).toBeNull();
   expect(fixture.store.moveDocument).not.toHaveBeenCalled();
+});
+
+it('keeps the slide transition when the pointer leaves a slot, so shifted tabs glide back', async () => {
+  const list = root.querySelector<HTMLElement>('.desktop-tab-list')!;
+  pointer(buttons[0], 'pointerdown', 80);
+  pointer(buttons[0], 'pointermove', 450, 18);
+  await nextTick();
+  expect(root.querySelector<HTMLElement>('[data-id="b"]')!.style.transform).toBe('translateX(-200px)');
+  expect(list.classList.contains('desktop-tab-list-slotting')).toBe(true);
+  pointer(buttons[0], 'pointermove', 450, 300);
+  await nextTick();
+  // The offsets reset while the transition is still in place.
+  expect(root.querySelector<HTMLElement>('[data-id="b"]')!.style.transform).toBe('');
+  expect(list.classList.contains('desktop-tab-list-slotting')).toBe(true);
+  pointer(buttons[0], 'pointerup', 450, 18);
+  await nextTick();
+  // A committed reorder must not slide a second time.
+  expect(fixture.store.moveDocument).toHaveBeenCalled();
+  expect(list.classList.contains('desktop-tab-list-slotting')).toBe(false);
 });
 
 it('supports dragging to the start and ignores small pointer movements', () => {
@@ -679,15 +700,65 @@ it('uses a native drag image and reorders a tab at the release point', async () 
   pointer(button, 'pointercancel', 80);
   await nextTick();
   expect(root.querySelector('.desktop-tab-list-dragging')).not.toBeNull();
-  // The source strip extends above y=0; a system point above the window still detaches.
+  // Just above the window, close to the strip, the tab still docks into it.
+  await vi.waitFor(() => expect(fixture.store.moveDocument).toHaveBeenCalledWith('a', 'b', 'after'));
+  expect(onDetachTab).not.toHaveBeenCalled();
+  fixture.store.moveDocument.mockClear();
+
+  // Further away it leaves the window.
+  const third = new MouseEvent('dragstart', { bubbles: true, cancelable: true, clientX: 80, clientY: 18 });
+  Object.defineProperty(third, 'dataTransfer', { value: transfer });
+  nativeCore.invoke.mockResolvedValueOnce({ x: 300, y: -120 });
+  button.dispatchEvent(third);
+  pointer(button, 'pointercancel', 80);
   await vi.waitFor(() => expect(onDetachTab).toHaveBeenCalledWith('a', {
-    x: 300, y: -2, grabX: 80, grabY: 18, width: 200, insideSourceWindow: false,
+    x: 300, y: -120, grabX: 80, grabY: 18, width: 200, insideSourceWindow: false,
   }, expect.any(Function)));
   expect(root.querySelector('.desktop-tab-outgoing')).not.toBeNull();
   onDetachTab.mock.calls[0][2]();
   await nextTick();
   expect(root.querySelector('.desktop-tab-outgoing')).toBeNull();
   expect(fixture.store.moveDocument).not.toHaveBeenCalled();
+});
+
+it('returns a tab released over its own window content instead of detaching it', async () => {
+  const onDetachTab = vi.fn();
+  app.unmount();
+  app = createApp(DesktopTabs, { detachable: true, onDetachTab });
+  app.mount(root.querySelector('.desktop-window-tab-slot')!);
+  const list = root.querySelector<HTMLElement>('.desktop-tab-list')!;
+  list.getBoundingClientRect = () => ({ left: 0, right: 600, top: 0, bottom: 36 }) as DOMRect;
+  const button = root.querySelector<HTMLButtonElement>('.desktop-tab-switch')!;
+  const start = new MouseEvent('dragstart', { bubbles: true, cancelable: true, clientX: 80, clientY: 18 });
+  Object.defineProperty(start, 'dataTransfer', { value: { setData: vi.fn(), setDragImage: vi.fn() } });
+  button.dispatchEvent(start);
+  window.dispatchEvent(new MouseEvent('dragover', { bubbles: true, cancelable: true, clientX: 300, clientY: 400 }));
+  nativeWindow.cursorPosition.mockResolvedValueOnce({ x: 300, y: 400 });
+  await releaseNativeAtCursor();
+  await vi.waitFor(() => expect(root.querySelector('.desktop-tab-list-dragging')).toBeNull());
+  expect(onDetachTab).not.toHaveBeenCalled();
+  expect(fixture.store.moveDocument).not.toHaveBeenCalled();
+  expect(root.querySelector('.desktop-tab-outgoing')).toBeNull();
+});
+
+it('trusts the host over a stray dragleave and returns an invalid drop instead of detaching', async () => {
+  const onDetachTab = vi.fn();
+  app.unmount();
+  app = createApp(DesktopTabs, { detachable: true, onDetachTab });
+  app.mount(root.querySelector('.desktop-window-tab-slot')!);
+  const list = root.querySelector<HTMLElement>('.desktop-tab-list')!;
+  list.getBoundingClientRect = () => ({ left: 0, right: 600, top: 0, bottom: 36 }) as DOMRect;
+  const button = root.querySelector<HTMLButtonElement>('.desktop-tab-switch')!;
+  const start = new MouseEvent('dragstart', { bubbles: true, cancelable: true, clientX: 80, clientY: 18 });
+  Object.defineProperty(start, 'dataTransfer', { value: { setData: vi.fn(), setDragImage: vi.fn() } });
+  button.dispatchEvent(start);
+  window.dispatchEvent(new MouseEvent('dragover', { bubbles: true, cancelable: true, clientX: 300, clientY: 400 }));
+  // Renderers emit dragleave without relatedTarget while crossing elements.
+  window.dispatchEvent(new MouseEvent('dragleave', { bubbles: true, clientX: 300, clientY: 400 }));
+  releaseNative({ x: 300, y: 400, overSource: true } as { x: number; y: number });
+  await vi.waitFor(() => expect(root.querySelector('.desktop-tab-list-dragging')).toBeNull());
+  expect(onDetachTab).not.toHaveBeenCalled();
+  expect(root.querySelector('.desktop-tab-outgoing')).toBeNull();
 });
 
 it('does not replay tab expansion when navigation replaces the file in a tab', async () => {

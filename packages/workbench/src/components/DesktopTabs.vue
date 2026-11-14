@@ -15,7 +15,8 @@ import { TAB_DOCK_PROBE, TAB_DOCK_REPLY, TAB_DRAG_FINISHED, parseTabDragMeta, ta
 import type { TabDockProbe, TabDragFinished } from '../tab-docking';
 import { paneDropAt } from '../pane-docking';
 import { tabLayoutRect } from '../tab-layout';
-import { tabDragImage } from '../tab-drag-image';
+import { TAB_DRAG_IMAGE_INSET, tabDragImage } from '../tab-drag-image';
+import { settlingTabId } from '../tab-settle';
 import type { PaneDrop } from '../pane-layout';
 import { mobile, nativeOs } from '../platform';
 import { useWorkspaceStore } from '../stores/workspace';
@@ -174,6 +175,7 @@ const tabLabel = (tab: DocumentTab) => props.assistantTab?.id === tab.id ? props
   : tab.directory ? t(tab.directory.name) : tab.dataTable ? tab.dataTable.name : tab.workspaceView ? tab.workspaceView.view.name : tab.graph ? t('关系图谱') : tab.plugins ? t('插件') : tab.calendar ? t('计划') : tab.pluginView ? tab.pluginView.label : tab.view ? tab.view.label : tab.blank ? t('新标签页') : title(tab.path);
 const draggingId = ref('');
 const capturingNativeDrag = ref(false);
+const nativeOverlay = ref(false);
 let nativeImage: { id: string; canvas: HTMLCanvasElement } | undefined;
 let nativePositionId = '';
 let unlistenNativePosition: (() => void) | undefined;
@@ -205,7 +207,9 @@ const snapLayout = computed(() => {
   const elements = new Map([...(tabList.value?.querySelectorAll<HTMLElement>('.desktop-tab') ?? [])].map(el => [el.dataset.id, el]));
   const widths = tabs.map(tab => {
     const element = elements.get(tab.id);
-    return element ? tabLayoutRect(element).width : 200;
+    // Hundredths: measuring mid-animation yields float noise (199.99998),
+    // which would change the offsets every frame and restart the slide.
+    return element ? Math.round(tabLayoutRect(element).width * 100) / 100 : 200;
   });
   const width = source >= 0 ? widths[source]! : Math.max(28, Math.min(200, incomingSlot.value?.width ?? widths[0] ?? 180));
   const offsets: Record<string, number> = {};
@@ -218,6 +222,59 @@ const snapLayout = computed(() => {
   });
   return { offsets, width, left: before, incoming: source < 0 };
 });
+// Keep the slide transition for the whole hover, not only while a slot is
+// open: leaving every slot must glide the shifted tabs back, not jump. It
+// ends together with the drop, whose reorder must not animate a second time.
+const slotReturn = ref(false);
+const slotMotion = computed(() => !!draggingId.value || slotReturn.value || !!incomingSlot.value || !!fileSlot.value || paneSlot.value !== undefined);
+// Slot motion is driven explicitly instead of by a CSS transition: every
+// offset change (opening, moving or closing a slot) glides each tab from where
+// it is drawn right now, so leaving a slot can never snap the tabs back.
+const slotAnimations = new Map<HTMLElement, ReturnType<typeof animate>>();
+const slotTargets = new Map<string, number>();
+function drawnOffset(element: HTMLElement) {
+  const values = getComputedStyle(element).transform.match(/^matrix\((.+)\)$/)?.[1]?.split(',').map(Number);
+  return values?.[4] ?? 0;
+}
+function stopSlotAnimations() {
+  for (const animation of slotAnimations.values()) animation.cancel();
+  slotAnimations.clear();
+}
+watch(
+  () => paneTabs.value.map(tab => `${tab.id}:${snapLayout.value?.offsets[tab.id] ?? 0}`).join('|'),
+  () => {
+    const list = tabList.value;
+    const offsets = snapLayout.value?.offsets ?? {};
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      || document.documentElement.dataset.motion === 'reduced';
+    // A committed drop reorders the DOM in the same update: nothing may slide.
+    if (!list || !slotMotion.value || reduced || typeof HTMLElement.prototype.animate !== 'function') {
+      stopSlotAnimations();
+      slotTargets.clear();
+      for (const tab of paneTabs.value) slotTargets.set(tab.id, offsets[tab.id] ?? 0);
+      return;
+    }
+    for (const tab of list.querySelectorAll<HTMLElement>('.desktop-tab')) {
+      const id = tab.dataset.id!;
+      const to = offsets[id] ?? 0;
+      const running = slotAnimations.get(tab);
+      const from = running ? drawnOffset(tab) : slotTargets.get(id) ?? 0;
+      running?.cancel();
+      slotAnimations.delete(tab);
+      slotTargets.set(id, to);
+      if (Math.abs(from - to) < 0.5) continue;
+      const animation = animate(tab, { transform: [`translateX(${from}px)`, `translateX(${to}px)`] },
+        { duration: 0.34, ease: springEasing('snappy') });
+      slotAnimations.set(tab, animation);
+      void animation.finished.then(() => {
+        if (slotAnimations.get(tab) !== animation) return;
+        slotAnimations.delete(tab);
+        animation.cancel();
+      }, () => {});
+    }
+  },
+  { flush: 'post' },
+);
 const draggedFiles = computed(() => {
   if (!props.fileDrag || props.fileDrag.workspaceId !== store.workspace?.id || store.busy) return [];
   const files = props.fileDrag.ids.map((id) => store.workspace!.files.find((file) => file.id === id));
@@ -276,26 +333,74 @@ function updateDropTargetAt(x: number, y: number, id: string) {
     side: x < rect.left + rect.width / 2 ? 'before' : 'after',
   };
 }
+// Just outside the window (typically above its top edge), a pointer close to
+// this strip still docks into it, so a small overshoot never tears a tab off.
+const NEAR_STRIP = 48;
+function stripPoint(x: number, y: number) {
+  const list = tabList.value;
+  if (!list) return;
+  const outside = x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight;
+  const bounds = list.getBoundingClientRect();
+  if (!outside || x < bounds.left - 24 || x > bounds.right + 24 ||
+      y < bounds.top - NEAR_STRIP || y > bounds.bottom) return;
+  return { x: Math.max(bounds.left, Math.min(x, bounds.right - 1)), y: (bounds.top + bounds.bottom) / 2 };
+}
 function updateDropTarget() {
   if (gesture) {
-    updateDropTargetAt(gesture.x, gesture.y, gesture.id);
-    updatePaneDrop(gesture.x, gesture.y, gesture.id);
-    if (dragPreview.value) {
-      const paneDrop = store.paneDrop;
-      const dockedStrip = paneDrop?.index !== undefined
-        ? [...document.querySelectorAll<HTMLElement>('.desktop-tab-strip')].find(strip => strip.dataset.tabPaneId === paneDrop.paneId)
-        : undefined;
-      const list = dockedStrip?.querySelector<HTMLElement>('.desktop-tab-list') ?? tabList.value;
-      const bounds = list?.getBoundingClientRect();
-      const overTrack = bounds && gesture.x >= bounds.left - 24 && gesture.x <= bounds.right + 24 &&
-        gesture.y >= bounds.top && gesture.y <= bounds.bottom;
-      const snapped = !!dockedStrip || !!overTrack;
-      const tab = list?.querySelector<HTMLElement>('.desktop-tab');
-      dragPreview.value.top = snapped && bounds
-        ? tab?.getBoundingClientRect().top ?? bounds.top + 4
-        : gesture.y - gesture.grabY;
-    }
+    const near = stripPoint(gesture.x, gesture.y);
+    const x = near?.x ?? gesture.x, y = near?.y ?? gesture.y;
+    updateDropTargetAt(x, y, gesture.id);
+    updatePaneDrop(x, y, gesture.id);
+    // The preview stays under the pointer. Only the empty slot in the track
+    // shows where the tab will land; it is placed there on release.
+    if (dragPreview.value) dragPreview.value.top = gesture.y - gesture.grabY;
   }
+}
+
+// Release: fly the floating preview into its slot, then reveal the real tab.
+// The target is re-measured every frame so scrolling, cross-pane growth and
+// layout changes cannot leave it short of the slot. Interruptible by any drag.
+const settlingPreview = ref(false);
+let settleFrame = 0;
+function stopSettling() {
+  cancelAnimationFrame(settleFrame);
+  settleFrame = 0;
+  slotReturn.value = false;
+  if (!settlingPreview.value) return;
+  settlingPreview.value = false;
+  if (settlingTabId.value === dragPreview.value?.id) settlingTabId.value = '';
+  dragPreview.value = undefined;
+}
+function settlePreview(from: NonNullable<typeof dragPreview.value>) {
+  stopSettling();
+  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    || document.documentElement.dataset.motion === 'reduced';
+  if (reduced || typeof HTMLElement.prototype.animate !== 'function') return;
+  dragPreview.value = { ...from };
+  settlingPreview.value = true;
+  settlingTabId.value = from.id;
+  const startedAt = performance.now();
+  // A short hop into a nearby slot is quick; a long return trip from an
+  // invalid drop takes a little longer so it reads as one smooth glide.
+  const home = [...document.querySelectorAll<HTMLElement>('.desktop-tab')].find(tab => tab.dataset.id === from.id)?.getBoundingClientRect();
+  const distance = home ? Math.hypot(home.left - from.left, home.top - from.top) : 0;
+  const duration = Math.min(460, 260 + distance * 0.18);
+  const step = (now: number) => {
+    const preview = dragPreview.value;
+    const target = [...document.querySelectorAll<HTMLElement>('.desktop-tab')].find(tab => tab.dataset.id === from.id);
+    if (!settlingPreview.value || !preview || !target) { stopSettling(); return; }
+    const box = target.getBoundingClientRect();
+    const t = Math.min(1, (now - startedAt) / duration);
+    // Critically damped feel without overshoot: the preview must not pass the slot.
+    const p = 1 - (1 - t) ** 3;
+    preview.left = from.left + (box.left - from.left) * p;
+    preview.top = from.top + (box.top - from.top) * p;
+    preview.width = from.width + (box.width - from.width) * p;
+    preview.height = from.height + (box.height - from.height) * p;
+    if (t >= 1) { stopSettling(); return; }
+    settleFrame = requestAnimationFrame(step);
+  };
+  settleFrame = requestAnimationFrame(step);
 }
 
 function dockIndexAt(x: number, y: number, centerOffset: number) {
@@ -471,6 +576,7 @@ function startDrag(event: PointerEvent, id: string) {
   if (event.button !== 0 || !event.isPrimary || gesture) return;
   // A touch gesture scrolls the strip; mouse/trackpad dragging still docks tabs.
   if (event.pointerType === 'touch') return;
+  stopSettling();
   // Activate before the native drag takes over, rather than waiting for click.
   store.activeId = id;
   if (nativeTabDrag) {
@@ -536,7 +642,12 @@ function finishDrag(commit = false, transferring = false) {
   const current = gesture;
   if (nativeDragging && !transferring) notifyDragFinished(current.id);
   gesture = undefined;
+  // Detached tabs leave the window; every other release (including cancel)
+  // lands the preview in the tab's final slot.
+  const landing = !transferring && draggingId.value && dragPreview.value ? { ...dragPreview.value } : undefined;
   const paneDrop = store.paneDrop;
+  // Nothing moves (cancel or no target): shifted tabs glide back with the preview.
+  const moved = commit && !!draggingId.value && (!!paneDrop || !!dropTarget.value);
   if (props.paneId) store.paneDrop = undefined;
   if (commit && draggingId.value && paneDrop) {
     store.dockTab(current.id, paneDrop);
@@ -549,10 +660,13 @@ function finishDrag(commit = false, transferring = false) {
   finishingDrag = false;
   draggingId.value = '';
   capturingNativeDrag.value = false;
+  nativeOverlay.value = false;
   nativeImage = undefined;
   nativePositionId = '';
   dragPreview.value = undefined;
   dropTarget.value = undefined;
+  if (landing) settlePreview(landing);
+  if (!moved && settlingPreview.value) slotReturn.value = true;
   if (current.pointerId >= 0 && current.element.hasPointerCapture(current.pointerId)) {
     current.element.releasePointerCapture(current.pointerId);
   }
@@ -589,7 +703,8 @@ async function finishAtSystemCursor(drop?: { x: number; y: number }) {
     if (gesture !== current) return;
     current.x = (cursor.x - origin.x) / scale;
     current.y = (cursor.y - origin.y) / scale;
-    if (nativeOutside) {
+    const near = stripPoint(current.x, current.y);
+    if (nativeOutside && !near) {
       dropTarget.value = undefined;
       if (props.paneId) store.paneDrop = undefined;
     } else updateDropTarget();
@@ -599,10 +714,23 @@ async function finishAtSystemCursor(drop?: { x: number; y: number }) {
     const withinStrip = withinWindow && bounds &&
       current.x >= bounds.left - 48 && current.x <= bounds.right + 48 &&
       current.y >= bounds.top - 36 && current.y <= bounds.bottom + 36;
-    if (withinWindow && !nativeOutside && (store.paneDrop || withinStrip)) {
+    // Just outside the window but close to the strip still docks here.
+    if (near || (withinWindow && !nativeOutside && (store.paneDrop || withinStrip))) {
       finishDrag(true);
       return;
     }
+    // Released over this window's own content, away from any slot or split
+    // edge: not a valid target, so the tab glides back to where it was.
+    if (withinWindow && !nativeOutside) {
+      finishDrag();
+      return;
+    }
+    // Where the tab was let go, so it can glide back if it ends up staying.
+    const released = {
+      id: current.id, path: current.path, dirty: current.dirty,
+      left: current.x - current.grabX, top: current.y - current.grabY,
+      width: current.width, height: current.height,
+    };
     finishDrag(false, true);
     outgoingId.value = current.id;
     emit('detach-tab', current.id, {
@@ -611,6 +739,10 @@ async function finishAtSystemCursor(drop?: { x: number; y: number }) {
     }, () => {
       notifyDragFinished(current.id);
       if (outgoingId.value === current.id) outgoingId.value = '';
+      // Not moved (blocked view, unsaved changes, no other window took it).
+      if (paneTabs.value.some(tab => tab.id === current.id) && !gesture) {
+        void nextTick(() => { if (!gesture) settlePreview(released); });
+      }
     });
   } catch (error) {
     finishDrag();
@@ -631,22 +763,28 @@ async function watchNativeRelease(current: NonNullable<typeof gesture>) {
     const scale = window.devicePixelRatio || 1;
     let preview;
     if (image) {
-      const bitmap = document.createElement('canvas');
-      bitmap.width = Math.round(image.width * scale);
-      bitmap.height = Math.round(image.height * scale);
-      const context = bitmap.getContext('2d');
+      // tabDragImage already paints at device pixels.
+      const context = image.getContext('2d');
       if (context) {
-        context.drawImage(image, 0, 0, bitmap.width, bitmap.height);
-        const bytes = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+        const bytes = context.getImageData(0, 0, image.width, image.height).data;
         let binary = '';
         for (const byte of bytes) binary += String.fromCharCode(byte);
-        preview = { width: bitmap.width, height: bitmap.height, rgba: btoa(binary),
-          grabX: Math.round(current.grabX * scale), grabY: Math.round(current.grabY * scale) };
+        preview = { width: image.width, height: image.height, rgba: btoa(binary),
+          // The bitmap has transparent room for the card's shadow.
+          grabX: Math.round((current.grabX + TAB_DRAG_IMAGE_INSET.x) * scale),
+          grabY: Math.round((current.grabY + TAB_DRAG_IMAGE_INSET.y) * scale) };
       }
     }
-    const drop = await invoke<{ x: number; y: number; cancelled?: boolean }>('tab_drag_release', { preview, dragId: nativePositionId });
+    // The topmost native overlay draws the card everywhere, so the source
+    // window can never cover or clip it; the DOM copy only lands it on release.
+    if (preview) nativeOverlay.value = true;
+    const drop = await invoke<{ x: number; y: number; cancelled?: boolean; overSource?: boolean }>('tab_drag_release', { preview, dragId: nativePositionId });
     if (gesture !== current || !nativeDragging) return;
     if (drop.cancelled) { finishDrag(); return; }
+    // The host knows which window is really under the release point. A stray
+    // dragleave must not turn an invalid drop on this window into a detach
+    // (which collapses the tab and makes its neighbours jump).
+    if (typeof drop.overSource === 'boolean') nativeOutside = !drop.overSource;
     // Let the browser finish its native drop dispatch before changing the tab tree.
     await new Promise((resolve) => setTimeout(resolve, 0));
     if (gesture === current && nativeDragging) await finishAtSystemCursor(drop);
@@ -662,6 +800,7 @@ function startNativeDrag(event: DragEvent, id: string) {
     event.preventDefault();
     return;
   }
+  stopSettling();
   cancelTabMoves();
   const element = event.currentTarget as HTMLElement;
   const tab = element.closest<HTMLElement>('.desktop-tab');
@@ -723,7 +862,9 @@ function updateNativePosition(x: number, y: number) {
   gesture.x = x;
   gesture.y = y;
   if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) {
+    // The native drag image owns this area.
     dragPreview.value = undefined;
+    if (stripPoint(x, y)) { updateDropTarget(); return; }
     dropTarget.value = undefined;
     if (props.paneId) store.paneDrop = undefined;
     return;
@@ -744,8 +885,8 @@ function nativeDragLeave(event: DragEvent) {
   dragPreview.value = undefined;
   // No dragover follows outside the WebView. Invalidate the last point so the
   // animation-frame hit test cannot keep a squeezed preview alive there.
-  gesture.x = -1;
-  gesture.y = -1;
+  gesture.x = -1e6;
+  gesture.y = -1e6;
   updateDropTarget();
 }
 
@@ -978,8 +1119,10 @@ function onTabWheel(event: WheelEvent) {
 }
 
 onBeforeUnmount(() => {
+  stopSlotAnimations();
   cancelTabMoves();
   finishDrag();
+  stopSettling();
   clearFileSlot();
   window.removeEventListener('dragover', fileDragOver, true);
   window.removeEventListener('dragleave', fileDragLeave, true);
@@ -1128,7 +1271,7 @@ async function onTabKeydown(event: KeyboardEvent) {
     <div
       ref="tabList"
       class="desktop-tab-list"
-      :class="{ 'desktop-tab-list-dragging': draggingId, 'desktop-tab-list-snapping': snapLayout, 'desktop-tab-list-frozen': frozenStripWidth !== undefined, 'desktop-tab-list-animating': tabLayoutAnimating }"
+      :class="{ 'desktop-tab-list-dragging': draggingId, 'desktop-tab-list-snapping': snapLayout, 'desktop-tab-list-slotting': slotMotion, 'desktop-tab-list-frozen': frozenStripWidth !== undefined, 'desktop-tab-list-animating': tabLayoutAnimating }"
       role="tablist"
       :aria-label="t('已打开的文档')"
       @keydown="onTabKeydown"
@@ -1151,6 +1294,7 @@ async function onTabKeydown(event: KeyboardEvent) {
         :class="{
           'desktop-tab-active': doc.id === selectedId,
           'desktop-tab-dragging': doc.id === draggingId,
+          'desktop-tab-settling': doc.id === settlingTabId && doc.id !== draggingId,
           'desktop-tab-drag-capturing': doc.id === draggingId && capturingNativeDrag,
           'desktop-tab-outgoing': doc.id === outgoingId,
           'desktop-tab-drop-before': dockSlotIndex === undefined && dropTarget?.id === doc.id && dropTarget.side === 'before',
@@ -1305,6 +1449,7 @@ async function onTabKeydown(event: KeyboardEvent) {
     <div
       v-if="dragPreview"
       class="desktop-tab-drag-preview"
+      :class="{ 'desktop-tab-drag-preview-settling': settlingPreview, 'desktop-tab-drag-preview-overlaid': nativeOverlay && !settlingPreview }"
       :style="{
         left: `${dragPreview.left}px`,
         top: `${dragPreview.top}px`,
@@ -1408,7 +1553,7 @@ async function onTabKeydown(event: KeyboardEvent) {
   bottom: 0;
   left: 8px;
   border-radius: 8px 8px 0 0;
-  background: color-mix(in srgb, var(--text) 7%, transparent);
+  background: transparent;
   pointer-events: none;
   transition: transform var(--motion-spring) var(--ease-spring), width var(--motion-spring) var(--ease-spring-smooth);
 }
@@ -1427,14 +1572,37 @@ async function onTabKeydown(event: KeyboardEvent) {
   box-sizing: border-box;
   padding: 0 16px;
   border: 0;
-  border-radius: 8px 8px 0 0;
+  /* Floating: a lifted card, visibly not part of the track. */
+  border-radius: 8px;
   background: var(--paper);
-  box-shadow: none;
+  box-shadow: 0 0 0 1px var(--line), 0 8px 22px rgb(0 0 0 / 12%), 0 2px 6px rgb(0 0 0 / 6%);
   color: var(--text);
   font-size: 13px;
   pointer-events: none;
   user-select: none;
+  animation: desktop-tab-lift var(--motion-spring, 0.32s) var(--ease-spring-smooth, ease-out) both;
+  transition: border-radius 0.24s ease-out, box-shadow 0.24s ease-out;
 }
+/* Landing: morph back into a docked tab shape while flying into the slot. */
+.desktop-tab-drag-preview-overlaid { visibility: hidden; }
+.desktop-tab-drag-preview-settling {
+  border-radius: 8px 8px 0 0;
+  box-shadow: 0 0 0 0 transparent, 0 0 0 transparent, 0 0 0 transparent;
+}
+@keyframes desktop-tab-lift {
+  from { box-shadow: 0 0 0 0 transparent, 0 0 0 transparent, 0 0 0 transparent; border-radius: 8px 8px 0 0; }
+}
+/* The reserved slot is plain empty space: the gap itself marks the drop point. */
+.desktop-tab.desktop-tab-dragging,
+.desktop-tab.desktop-tab-dragging:hover,
+.desktop-tab.desktop-tab-settling,
+.desktop-tab.desktop-tab-settling:hover {
+  --desktop-tab-close-mask: var(--sidebar);
+  background: transparent;
+  box-shadow: none;
+}
+.desktop-tab-settling > * { opacity: 0; }
+.desktop-tab-settling .desktop-tab-close { visibility: hidden; }
 .desktop-tab {
   --desktop-tab-close-mask: var(--sidebar);
   position: relative;
@@ -1454,8 +1622,8 @@ async function onTabKeydown(event: KeyboardEvent) {
     background 0.15s,
     color 0.15s;
 }
-.desktop-tab-list-snapping .desktop-tab {
-  transition: transform var(--motion-spring) var(--ease-spring), flex-basis var(--motion-spring) var(--ease-spring-smooth), background 0.15s, color 0.15s;
+.desktop-tab-list-slotting .desktop-tab {
+  transition: flex-basis var(--motion-spring) var(--ease-spring-smooth), background 0.15s, color 0.15s;
 }
 .desktop-tab-list-frozen .desktop-tab,
 .desktop-tab-list-animating .desktop-tab {
@@ -1492,12 +1660,6 @@ async function onTabKeydown(event: KeyboardEvent) {
   z-index: 1;
   background: var(--paper);
   color: var(--text);
-}
-.desktop-tab.desktop-tab-dragging,
-.desktop-tab.desktop-tab-dragging:hover {
-  --desktop-tab-close-mask: var(--sidebar);
-  background: transparent;
-  box-shadow: none;
 }
 .desktop-tab-active::before {
   inset: 0;
@@ -1674,7 +1836,8 @@ async function onTabKeydown(event: KeyboardEvent) {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .desktop-tab-strip, .desktop-tab, .desktop-tab-list-snapping .desktop-tab, .desktop-tab-incoming-slot { transition: none; }
+  .desktop-tab-strip, .desktop-tab, .desktop-tab-list-slotting .desktop-tab, .desktop-tab-incoming-slot { transition: none; }
+  .desktop-tab-drag-preview { animation: none; transition: none; }
 }
 @media (hover: none) {
   .desktop-tab-close {

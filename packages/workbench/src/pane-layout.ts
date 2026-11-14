@@ -90,9 +90,11 @@ export function dockSideAt(x: number, y: number, width: number, height: number):
   if (width <= 0 || height <= 0 || x < 0 || y < 0 || x > width || y > height) return;
   // The preview shows the resulting half-pane, not the hit area. Keep the
   // activation band narrow even in a maximized window and use the nearest edge.
+  // Splitting upward is not offered: the top edge sits under the tab strip and
+  // a new pane there would push the existing tabs down. Only bottom splits.
   const edgeSize = Math.min(32, width / 4, height / 4);
   const edges = [{ side: 'left', distance: x }, { side: 'right', distance: width - x },
-    { side: 'top', distance: y }, { side: 'bottom', distance: height - y }] as const;
+    { side: 'bottom', distance: height - y }] as const;
   const edge = [...edges].sort((a, b) => a.distance - b.distance)[0];
   return edge.distance <= edgeSize ? edge.side : undefined;
 }

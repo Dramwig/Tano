@@ -393,7 +393,7 @@ async fn tab_drag_release(
                 .map(serde_json::from_value::<tab_drag_preview::Bitmap>)
                 .transpose()
                 .map_err(|e| e.to_string())?
-                .map(tab_drag_preview::Preview::new)
+                .map(|bitmap| tab_drag_preview::Preview::new(bitmap, source as _))
                 .transpose()?;
             while unsafe { GetAsyncKeyState(VK_LBUTTON.into()) < 0 } {
                 if unsafe { GetAsyncKeyState(VK_ESCAPE.into()) < 0 } {
@@ -419,7 +419,18 @@ async fn tab_drag_release(
             if unsafe { GetCursorPos(&mut point) } == 0 {
                 return Err(std::io::Error::last_os_error().to_string());
             }
-            Ok(serde_json::json!({"x": point.x, "y": point.y}))
+            // Which top-level window is actually under the release point. A
+            // renderer dragleave is not reliable for this (it also fires while
+            // crossing elements), and a wrong "outside" detaches the tab.
+            // The overlay is click-through, so hit testing skips it.
+            let over_source = unsafe {
+                use windows_sys::Win32::UI::WindowsAndMessaging::{
+                    GetAncestor, WindowFromPoint, GA_ROOT,
+                };
+                let hit = WindowFromPoint(point);
+                !hit.is_null() && GetAncestor(hit, GA_ROOT) as usize == source
+            };
+            Ok(serde_json::json!({"x": point.x, "y": point.y, "overSource": over_source}))
         })
         .await
         .map_err(|error| error.to_string())?

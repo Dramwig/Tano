@@ -175,7 +175,8 @@ import { indexFolderHomes } from './folder-home';
 import { planFolderConversion, type FolderConversionKind } from './folder-conversion';
 import DesktopTabs from './components/DesktopTabs.vue';
 import WorkspacePanes from './components/WorkspacePanes.vue';
-import type { OpenDocument } from './stores/workspace';
+import type { DocumentTab, OpenDocument } from './stores/workspace';
+import type { PaneDrop } from './pane-layout';
 import { GRAPH_TAB_ID } from './document-graph';
 import { PLUGINS_TAB_ID } from './workspace-plugins';
 import { CALENDAR_TAB_ID, calendarPeriodTitle, shiftCalendarDate } from './calendar';
@@ -3490,6 +3491,25 @@ async function rollbackTabTransfer(request: TabTransferRollback) {
     store.activeId = pending.priorActive;
 }
 
+function detachBlocked(tab: DocumentTab) {
+  if (tab.attachmentPreview) return t('附件预览暂不支持移到其他窗口。');
+  if (tab.pluginView) return t('插件视图绑定当前窗口的运行实例，可以在当前窗口分屏。');
+  if (tab.workspaceView) return t('工作区视图暂不支持移到其他窗口。');
+  if (tab.view && !tab.view.detachable)
+    return tab.view.detachBlockedMessage ?? t('此视图保留在当前窗口，暂不支持移到其他窗口。');
+  if (tab.document?.conflict || tab.document?.missing) return t('请先处理文档冲突或缺失，再拖出标签页。');
+}
+
+function detachedTitle(tab: DocumentTab) {
+  return tab.view ? tab.view.label : tab.graph
+    ? t('关系图谱')
+    : tab.plugins
+      ? t('插件')
+      : tab.blank
+        ? t('新标签页')
+        : basename(tab.path).replace(/\.(md|markdown)$/i, '');
+}
+
 async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => void) {
   if (!native || mobile || detachingTab || !workspace.value || store.busy) {
     settled?.();
@@ -3500,26 +3520,9 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
     settled?.();
     return;
   }
-  if (tab.attachmentPreview) {
-    store.report(t('附件预览暂不支持移到其他窗口。'));
-    settled?.();
-    return;
-  }
-  if (tab.pluginView) {
-    store.report(t('插件视图绑定当前窗口的运行实例，可以在当前窗口分屏。'));
-    settled?.(); return;
-  }
-  if (tab.workspaceView) {
-    store.report(t('工作区视图暂不支持移到其他窗口。'));
-    settled?.(); return;
-  }
-  if (tab.view && !tab.view.detachable) {
-    store.report(tab.view.detachBlockedMessage ?? t('此视图保留在当前窗口，暂不支持移到其他窗口。'));
-    settled?.();
-    return;
-  }
-  if (tab.document?.conflict || tab.document?.missing) {
-    store.report(t('请先处理文档冲突或缺失，再拖出标签页。'));
+  const blocked = detachBlocked(tab);
+  if (blocked) {
+    store.report(blocked);
     settled?.();
     return;
   }
@@ -3540,34 +3543,10 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
     if (dock === 'inside-window' || (!dock && drop?.insideSourceWindow)) return;
     store.detachingTabId = id;
     if (dock) {
-      const transfer = await requestTabTransfer(dock.targetLabel, {
-        workspaceId: workspace.value.id,
-        tabId: id,
-        ...(id === SETTINGS_TAB_ID ? { settingsPage: settingsPage.value } : {}),
-        index: dock.index,
-        drop: dock.drop,
-      });
-      await store.close(id);
-      if (store.tabs.some((item) => item.id === id)) {
-        await emitTo(dock.targetLabel, TAB_TRANSFER_ROLLBACK, {
-          requestId: transfer.requestId,
-        } satisfies TabTransferRollback);
-        throw new Error(t('原标签页未能关闭，已取消跨窗口移动'));
-      }
-      if (detachedWindow && !store.tabs.length) {
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-        await getCurrentWindow().destroy();
-      }
+      await transferTabTo(id, dock);
       return;
     }
-    const title = tab.view ? tab.view.label : tab.graph
-      ? t('关系图谱')
-      : tab.plugins
-        ? t('插件')
-        : tab.blank
-          ? t('新标签页')
-          : basename(tab.path).replace(/\.(md|markdown)$/i, '');
-    const detached = await createDetachedTabWindow(workspace.value.path, id, title, drop,
+    const detached = await createDetachedTabWindow(workspace.value.path, id, detachedTitle(tab), drop,
       id === SETTINGS_TAB_ID ? settingsPage.value : undefined);
     await store.close(id);
     if (store.tabs.some((item) => item.id === id)) {
@@ -3582,6 +3561,32 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
     settled?.();
   }
 }
+
+/** Moves a tab into another window's strip or pane and closes it here. */
+async function transferTabTo(id: string, dock: { targetLabel: string; index: number; drop?: PaneDrop }) {
+  const transfer = await requestTabTransfer(dock.targetLabel, {
+    workspaceId: workspace.value!.id,
+    tabId: id,
+    ...(id === SETTINGS_TAB_ID ? { settingsPage: settingsPage.value } : {}),
+    index: dock.index,
+    drop: dock.drop,
+  });
+  await store.close(id);
+  if (store.tabs.some((item) => item.id === id)) {
+    await emitTo(dock.targetLabel, TAB_TRANSFER_ROLLBACK, {
+      requestId: transfer.requestId,
+    } satisfies TabTransferRollback);
+    throw new Error(t('原标签页未能关闭，已取消跨窗口移动'));
+  }
+  await closeEmptyDetachedWindow();
+}
+
+async function closeEmptyDetachedWindow() {
+  if (!detachedWindow || store.tabs.length) return;
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  await getCurrentWindow().destroy();
+}
+
 const workspaceExporting = ref(false);
 const workspaceExportError = ref('');
 const workspaceDeleting = ref(false);

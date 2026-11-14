@@ -282,7 +282,7 @@ it('keeps the original narrow edge active while its visible pane is squeezed awa
     expect(paneDropAt(850, 300)).toBeUndefined(); // Interior of the green preview.
     hit.mockReturnValue(pane);
     expect(paneDropAt(495, 300)).toBeUndefined(); // The temporarily resized edge is not a new target.
-    expect(paneDropAt(500, 45)).toEqual({ paneId: id, side: 'top' });
+    expect(paneDropAt(500, 45)).toBeUndefined(); // No upward split under the tab strip.
     expect(paneDropAt(500, 80)).toBeUndefined();
     expect(paneDropAt(110, 300)).toEqual({ paneId: id, side: 'left' });
     const strip = pane.querySelector<HTMLElement>('.workspace-tabbar')!;
