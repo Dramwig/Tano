@@ -79,22 +79,70 @@ export function tabDockIndex(center: number, centers: readonly number[]) {
   return index < 0 ? centers.length : index;
 }
 
+/** Longest wait for other windows to answer a dock probe. */
+export const TAB_DOCK_PROBE_TIMEOUT = 250;
+/** Extra wait after every candidate answered, so sibling panes of one window can still reply. */
+export const TAB_DOCK_PROBE_GRACE = 24;
+/** Physical pixels around a window that may still snap into its strip. */
+const DOCK_CANDIDATE_MARGIN = 96;
+
+/**
+ * Labels of other visible windows near the screen point, or null when the
+ * native geometry is unavailable and every window has to be probed.
+ */
+export async function dockCandidateLabels(point: { x: number; y: number }): Promise<Set<string> | null> {
+  try {
+    const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
+    const self = getCurrentWindow().label;
+    const windows = (await getAllWebviewWindows()).filter((window) => window.label !== self);
+    const near = await Promise.all(windows.map(async (window) => {
+      const [visible, minimized, position, size] = await Promise.all([
+        window.isVisible(), window.isMinimized(), window.outerPosition(), window.outerSize(),
+      ]);
+      return visible && !minimized &&
+        point.x >= position.x - DOCK_CANDIDATE_MARGIN && point.x < position.x + size.width + DOCK_CANDIDATE_MARGIN &&
+        point.y >= position.y - DOCK_CANDIDATE_MARGIN && point.y < position.y + size.height + DOCK_CANDIDATE_MARGIN
+        ? window.label : null;
+    }));
+    return new Set(near.filter((label): label is string => !!label));
+  } catch {
+    return null;
+  }
+}
+
 export async function findTabDockTarget(
   workspaceId: string,
   tabId: string,
   point: { x: number; y: number; centerOffset: number },
 ): Promise<{ targetLabel: string; index: number; drop?: PaneDrop } | 'inside-window' | null> {
+  // Dropping on empty desktop is the common case: no window can answer, so
+  // skip the probe round-trip entirely instead of sleeping for the timeout.
+  const candidates = await dockCandidateLabels(point);
+  if (candidates && !candidates.size) return null;
   const requestId = crypto.randomUUID();
   const replies: TabDockReply[] = [];
+  let answered: (() => void) | undefined;
   const unlisten = await listen<TabDockReply>(TAB_DOCK_REPLY, ({ payload }) => {
-    if (payload.requestId === requestId) replies.push(payload);
+    if (payload.requestId !== requestId || (candidates && !candidates.has(payload.targetLabel))) return;
+    replies.push(payload);
+    if (candidates && [...candidates].every((label) => replies.some((reply) => reply.targetLabel === label))) answered?.();
   });
   try {
     await emit<TabDockProbe>(TAB_DOCK_PROBE, {
       requestId, sourceLabel: getCurrentWindow().label, workspaceId, tabId,
       x: point.x, y: point.y, centerOffset: point.centerOffset,
     });
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, TAB_DOCK_PROBE_TIMEOUT);
+      answered = () => {
+        answered = undefined;
+        clearTimeout(timer);
+        timer = setTimeout(resolve, TAB_DOCK_PROBE_GRACE);
+      };
+      if (candidates && [...candidates].every((label) => replies.some((reply) => reply.targetLabel === label))) answered();
+    });
+    clearTimeout(timer);
     // A window actually under the native drag takes precedence over windows
     // behind it, even when the pointer is in its non-docking interior.
     const hovered = replies.filter(reply => reply.hovered);

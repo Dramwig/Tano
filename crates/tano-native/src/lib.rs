@@ -34,6 +34,8 @@ mod plugin_oauth_loopback;
 mod plugin_oauth_types;
 mod printing;
 mod search;
+#[cfg(all(desktop, debug_assertions))]
+mod aux_window_lab;
 mod session_storage;
 pub mod storage;
 #[cfg(windows)]
@@ -71,11 +73,14 @@ pub struct AppState {
 fn workspace_switch_blocked(app: &tauri::AppHandle) -> bool {
     // Settings are prewarmed and follow the main window's workspace snapshot. Only
     // independent content windows must be closed before replacing the shared session.
-    app.webview_windows().keys().any(|label| {
+    // Hidden detached windows are pre-booted spares with no tabs; the owner
+    // destroys them before switching, so they must not block the switch.
+    app.webview_windows().iter().any(|(label, window)| {
         label != "main"
             && !label.starts_with("settings-")
             && !label.starts_with("file-")
             && !label.starts_with("print-")
+            && !(label.starts_with("detached-") && !window.is_visible().unwrap_or(true))
     })
 }
 
@@ -200,11 +205,9 @@ fn unregister_workspace(
         return Err("工作区已切换，请重新确认删除注册".into());
     }
     // The settings window is part of this flow; only detached editors block unregistering.
-    if app
-        .webview_windows()
-        .keys()
-        .any(|label| label.starts_with("detached-"))
-    {
+    if app.webview_windows().iter().any(|(label, window)| {
+        label.starts_with("detached-") && window.is_visible().unwrap_or(true)
+    }) {
         return Err("请先关闭此工作区的独立文档窗口，再删除注册".into());
     }
     session_storage::unregister(
@@ -1176,6 +1179,13 @@ pub fn configure_with_commands(
             });
         })
         .invoke_handler(move |invoke| {
+            // Debug-only auxiliary window prototype (docs/aux-window-prototype.md).
+            #[cfg(all(desktop, debug_assertions))]
+            if invoke.message.command() == "aux_window_lab_open" {
+                let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool =
+                    tauri::generate_handler![aux_window_lab::aux_window_lab_open];
+                return handler(invoke);
+            }
             #[cfg(desktop)]
             if invoke.message.command() == "workspace_git_query" {
                 let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool =

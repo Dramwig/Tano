@@ -5,6 +5,7 @@ import { nativeAttachments } from '../attachments';
 import { WorkspacePluginRuntime } from '../workspace-plugin-runtime';
 import { WorkspaceLifecycle } from '../workspace-lifecycle';
 import { useTabNavigation } from '../tab-navigation';
+import { DETACHED_SPARE_TAB } from '../detached-spare-tab';
 import { computed, onScopeDispose, ref, shallowRef, watch, type ComputedRef } from 'vue';
 import { defineStore } from 'pinia';
 import { FileRegistry, defaultFileDatabaseQuery, defaultObjectViewQuery, parseWorkspaceView, workspaceViewPath, type WorkspaceViewDefinition } from '@tano/protocol';
@@ -1314,7 +1315,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           next.files.find((f) => f.path === workspaceWelcomePath) ??
           next.files.find((f) => /^readme\.md$/i.test(f.path)) ??
           next.files.find((f) => f.kind === 'file' && isMarkdown(f.path) && !isWorkspaceInternalPath(f.path));
-        if (detachedTabId) {
+        if (detachedTabId === DETACHED_SPARE_TAB) {
+          // A spare window stays hidden and empty; finish every workspace part
+          // now so adopting a dragged-out tab later needs no further loading.
+          await Promise.allSettled(pendingWorkspaceLoads);
+        } else if (detachedTabId) {
           if (isWorkspaceViewTab(detachedTabId) || detachedTabId.startsWith('plugin:')) await objectsReady;
           if (isTableTab(detachedTabId)) await tablesReady;
           if (detachedTabId === GRAPH_TAB_ID) await openGraphTab({ newTab: true });

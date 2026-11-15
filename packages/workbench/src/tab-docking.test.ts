@@ -23,7 +23,54 @@ vi.mock('@tauri-apps/api/event', () => ({
   }),
 }));
 
-beforeEach(() => { bus.handlers.clear(); bus.emitted.length = 0; });
+const screen = vi.hoisted(() => ({
+  // null: native geometry unavailable (probe every window, wait the full timeout).
+  windows: null as null | Array<{ label: string; visible?: boolean; x: number; y: number; width: number; height: number }>,
+}));
+vi.mock('@tauri-apps/api/webviewWindow', () => ({
+  getAllWebviewWindows: async () => {
+    if (!screen.windows) throw new Error('no native geometry');
+    return screen.windows.map((window) => ({
+      label: window.label,
+      isVisible: async () => window.visible ?? true,
+      isMinimized: async () => false,
+      outerPosition: async () => ({ x: window.x, y: window.y }),
+      outerSize: async () => ({ width: window.width, height: window.height }),
+    }));
+  },
+}));
+
+beforeEach(() => { bus.handlers.clear(); bus.emitted.length = 0; screen.windows = null; });
+
+it('skips the probe round-trip when no other window is near the release point', async () => {
+  screen.windows = [
+    { label: 'main', x: 0, y: 0, width: 1200, height: 800 },
+    { label: 'far', x: 3000, y: 0, width: 800, height: 600 },
+    { label: 'spare', visible: false, x: 2000, y: 100, width: 1100, height: 760 },
+  ];
+  const started = performance.now();
+  expect(await findTabDockTarget('workspace', 'tab', { x: 2200, y: 300, centerOffset: 0 })).toBeNull();
+  expect(performance.now() - started).toBeLessThan(100);
+  expect(bus.emitted.some((event) => event.name === 'tano-tab-dock-probe')).toBe(false);
+});
+
+it('resolves as soon as every nearby window answered and ignores far ones', async () => {
+  screen.windows = [
+    { label: 'main', x: 0, y: 0, width: 1200, height: 800 },
+    { label: 'near', x: 1300, y: 0, width: 800, height: 600 },
+  ];
+  bus.handlers.set('tano-tab-dock-probe', new Set([({ payload }) => {
+    for (const reply of [
+      { targetLabel: 'far', insideWindow: true, index: 5, hovered: true },
+      { targetLabel: 'near', insideWindow: true, index: 1 },
+    ]) for (const handler of bus.handlers.get('tano-tab-dock-reply') ?? [])
+      handler({ payload: { requestId: payload.requestId, ...reply } });
+  }]));
+  const started = performance.now();
+  expect(await findTabDockTarget('workspace', 'tab', { x: 1400, y: 20, centerOffset: 0 }))
+    .toEqual({ targetLabel: 'near', index: 1 });
+  expect(performance.now() - started).toBeLessThan(150);
+});
 
 it('round-trips tab drag metadata and inserts by tab centers', () => {
   const meta = { sourceLabel: 'detached-1', workspaceId: '工作区', tabId: '文档-1', width: 184, centerOffset: -12 };

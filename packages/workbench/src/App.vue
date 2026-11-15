@@ -261,7 +261,20 @@ import {
 } from './shortcuts';
 import type { ShortcutId } from './shortcuts';
 import { configuredEditorShortcuts } from './configured-editor-shortcuts';
-import { createDetachedTabWindow, detachedTabRequest, reportDetachedReady } from './detach-tab';
+import {
+  DETACHED_SPARE_CONSUMED,
+  claimDetachedSpare,
+  createDetachedTabWindow,
+  detachedTabRequest,
+  discardDetachedSpare,
+  isDetachedSpareWindow,
+  placeDetachedSpare,
+  releaseDetachedSpare,
+  reportDetachedReady,
+  serveDetachedSpareClaims,
+  warmDetachedSpare,
+  type DetachedSpareConsumed,
+} from './detach-tab';
 import type { DetachedDropPoint } from './detach-tab';
 import {
   findTabDockTarget,
@@ -342,6 +355,20 @@ usePlanSyncStore();
 const tabsEnabled = native && !mobile;
 const { width: viewportWidth, touch: touchLayout, compact: compactPanes } = useViewport(mobile);
 const detachedWindow = tabsEnabled && !!detachedTabRequest();
+/** Hidden pre-booted window waiting to adopt a dragged-out tab. */
+const spareWindow = detachedWindow && isDetachedSpareWindow();
+let spareWarmTimer: ReturnType<typeof setTimeout> | undefined;
+/** Idle delay before booting a spare, so it never competes with startup work. */
+const SPARE_WARM_DELAY = 2500;
+function scheduleDetachedSpare(delay = SPARE_WARM_DELAY) {
+  clearTimeout(spareWarmTimer);
+  if (!native || mobile || !tabsEnabled || detachedWindow || unmounted) return;
+  spareWarmTimer = setTimeout(() => {
+    const path = store.workspace?.path;
+    if (!path || unmounted || store.busy || store.openingWorkspace) return scheduleDetachedSpare(delay);
+    void warmDetachedSpare(path);
+  }, delay);
+}
 const localNative = native && !store.isWeb;
 const attachments =
   useWorkbenchRuntime().attachments ?? (localNative ? nativeAttachments : undefined);
@@ -418,7 +445,12 @@ function topbarVisibilityItems(tabId: string, hasDocument: boolean, activePane: 
 const SETTINGS_TAB_ID = 'view:settings';
 const settingsTabView = { id: SETTINGS_TAB_ID, get label() { return t('设置'); }, icon: Settings2, detachable: true };
 store.registerViews([...extensionViews, settingsTabView, { id: ASSISTANT_TAB_ID, label: t('助手'), icon: Bot }]);
-store.setBeforeWorkspaceChange(async () => { await assistant.settle(); await inlineRunner.settle(); await agentInbox.settle(); });
+store.setBeforeWorkspaceChange(async () => {
+  // A spare holds the old workspace; drop it before the native session switches.
+  clearTimeout(spareWarmTimer);
+  await discardDetachedSpare();
+  await assistant.settle(); await inlineRunner.settle(); await agentInbox.settle();
+});
 const activeExtensionView = computed(() =>
   extensionViews.find((view) => view.id === store.activeId),
 );
@@ -1427,6 +1459,8 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
       available: true,
       run: () => store.openWorkspaceView(record.view.id).catch(store.report),
     })),
+    // Dev-only prototype; the native command is compiled out of release builds.
+    { id: 'dev.aux-window-lab', category: '开发', label: '辅助窗口原型（实验）', keywords: 'aux window open 共享 辅助窗口 lab', available: native && !mobile && import.meta.env.DEV, run: () => { void import('@tauri-apps/api/core').then(({ invoke }) => invoke('aux_window_lab_open')).catch(store.report); } },
     { id: 'workbench.git', category: t('工作区'), label: 'Git 与同步', keywords: 'Git 状态 差异 提交 历史 同步', available: native && !mobile && !!workspace.value && !store.isWeb, run: () => openSystemSync() },
     { id: 'workbench.plugins', category: t('工作区'), get label() { return t('打开插件中心'); }, available: store.workspaceSettings.showPlugins, run: () => store.openPluginsTab() },
     { id: 'workbench.updates', category: t('历史'), get label() { return t('文档更新历史'); }, available: hasDocument, run: () => { historyPage.value = 'updates'; historyPanel.value = true; } },
@@ -3546,6 +3580,7 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
       await transferTabTo(id, dock);
       return;
     }
+    if (await detachIntoSpare(id, detachedTitle(tab), drop)) return;
     const detached = await createDetachedTabWindow(workspace.value.path, id, detachedTitle(tab), drop,
       id === SETTINGS_TAB_ID ? settingsPage.value : undefined);
     await store.close(id);
@@ -3560,6 +3595,28 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
     detachingTab = false;
     settled?.();
   }
+}
+
+/**
+ * Fast path for tearing a tab off: adopt a pre-booted hidden window instead of
+ * starting a WebView. Returns false (nothing changed) when no spare is ready.
+ */
+async function detachIntoSpare(id: string, title: string, drop?: DetachedDropPoint) {
+  const label = await claimDetachedSpare(workspace.value!.path);
+  if (!label) return false;
+  let window: Awaited<ReturnType<typeof placeDetachedSpare>> | undefined;
+  try {
+    window = await placeDetachedSpare(label, title, drop);
+    await transferTabTo(id, { targetLabel: label, index: 0 });
+  } catch (error) {
+    // The claimed spare is no longer clean; never reuse it.
+    if (window) await window.destroy().catch(() => {});
+    if (store.tabs.some((item) => item.id === id)) return false;
+    throw error;
+  }
+  await window.show();
+  await window.setFocus();
+  return true;
 }
 
 /** Moves a tab into another window's strip or pane and closes it here. */
@@ -4250,6 +4307,12 @@ let unlistenWatchError: (() => void) | undefined;
 let unlistenTabTransfer: (() => void) | undefined;
 let unlistenTabRollback: (() => void) | undefined;
 let unlistenSettingsCommand: (() => void) | undefined;
+let unlistenSpareConsumed: (() => void) | undefined;
+let stopSpareClaims: (() => void) | undefined;
+watch(() => store.workspace?.path, (path, previous) => {
+  // Opened or switched workspace: warm a spare for the new one.
+  if (path && path !== previous) scheduleDetachedSpare();
+});
 onMounted(async () => {
   window.addEventListener('keydown', handleWorkbenchShortcut, true);
   window.addEventListener('keydown', keydown);
@@ -4296,7 +4359,14 @@ onMounted(async () => {
     unlistenSettingsCommand = await listen<SettingsCommand>(SETTINGS_COMMAND, ({ payload }) => {
       handleSettingsCommand(payload);
     });
-    settingsPrewarmTimer = setTimeout(warmSettingsWindow, 800);
+    if (!spareWindow) settingsPrewarmTimer = setTimeout(warmSettingsWindow, 800);
+    if (!detachedWindow) {
+      unlistenSpareConsumed = await listen<DetachedSpareConsumed>(DETACHED_SPARE_CONSUMED, ({ payload }) => {
+        // Another window adopted our spare: boot the next one once things settle.
+        if (releaseDetachedSpare(payload.label)) scheduleDetachedSpare(1200);
+      });
+      scheduleDetachedSpare();
+    }
     unlistenTabTransfer = await listen<TabTransferRequest>(TAB_TRANSFER_REQUEST, ({ payload }) => {
       void acceptTabTransfer(payload).catch(store.report);
     });
@@ -4308,7 +4378,14 @@ onMounted(async () => {
     );
   }
   const detachedRequest = detachedWindow ? detachedTabRequest() : null;
-  if (detachedRequest) {
+  if (spareWindow && detachedRequest) {
+    // Empty and hidden until a dragged-out tab is transferred in.
+    const ready = store.workspace?.path === detachedRequest.workspacePath && !store.tabs.length;
+    if (ready) stopSpareClaims = await serveDetachedSpareClaims(
+      (path) => path === store.workspace?.path && !store.busy && !store.tabs.length,
+    );
+    await reportDetachedReady(ready ? undefined : t('独立窗口未能打开所选标签页'));
+  } else if (detachedRequest) {
     const opened =
       store.workspace?.path === detachedRequest.workspacePath &&
       store.tabs.length === 1 &&
@@ -4340,6 +4417,9 @@ onMounted(async () => {
             await agentInbox.settle();
             await editing.suspendAll();
             await closeSettingsWindow();
+            clearTimeout(spareWarmTimer);
+            // A hidden spare would otherwise keep the process alive.
+            await discardDetachedSpare();
             await getCurrentWindow().destroy();
           } else store.report(t('还有未保存的内容，窗口已保留。请先保存或另存副本。'));
         } catch (error) {
@@ -4352,6 +4432,10 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   unmounted = true;
   clearTimeout(settingsPrewarmTimer);
+  clearTimeout(spareWarmTimer);
+  unlistenSpareConsumed?.();
+  stopSpareClaims?.();
+  if (native && !mobile && !detachedWindow) void discardDetachedSpare();
   if (native && !mobile) void closeSettingsWindow();
   document.documentElement.style.removeProperty('--sidebar-width');
   if (headingFrame !== undefined) cancelAnimationFrame(headingFrame);

@@ -537,8 +537,11 @@ async function answerDockProbe(probe: TabDockProbe) {
   if (!nativeTabDrag || !store.workspace || probe.workspaceId !== store.workspace.id ||
       probe.sourceLabel === getCurrentWindow().label || document.visibilityState === 'hidden') return;
   const appWindow = getCurrentWindow();
-  const [origin, scale] = await Promise.all([appWindow.innerPosition(), appWindow.scaleFactor()]);
-  if (!dockProbeMounted) return;
+  const [origin, scale, visible] = await Promise.all([
+    appWindow.innerPosition(), appWindow.scaleFactor(), Promise.resolve().then(() => appWindow.isVisible()).catch(() => true),
+  ]);
+  // A hidden pre-booted spare has invisible bounds; it must never claim a drop.
+  if (!dockProbeMounted || !visible) return;
   const x = (probe.x - origin.x) / scale;
   const y = (probe.y - origin.y) / scale;
   const insideWindow = x >= 0 && y >= 0 && x < window.innerWidth && y < window.innerHeight;
