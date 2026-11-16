@@ -1207,3 +1207,12 @@ it('ignores the captured click when releasing outside the pressed tab', () => {
   buttons[0].click();
   expect(fixture.store.activeId).toBe('b');
 });
+
+it('constrains plugin detail icons to the tab icon size', async () => {
+  fixture.store.tabs[0].pluginDetail = { id: 'research', name: '研究工作台' };
+  await nextTick();
+  const icon = root.querySelector<HTMLElement>('.desktop-tab .plugin-icon')!;
+  expect(icon).not.toBeNull();
+  expect(icon.style.width).toBe('15px');
+  expect(icon.style.height).toBe('15px');
+});

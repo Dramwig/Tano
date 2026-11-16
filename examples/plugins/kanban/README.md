@@ -9,7 +9,7 @@ npm run plugin -- pack examples/plugins/kanban artifacts/kanban.tano-plugin.json
 npm run plugin -- verify artifacts/kanban.tano-plugin.json
 ```
 
-在插件中心导入生成的 JSON，查看权限并授权，随后通过「插件工作台 → 任务看板」打开。创建任务、拖拽换列或用状态下拉框移动，再刷新页面，状态仍从工作区对象读取。
+在插件中心导入生成的 JSON，查看权限并授权，随后通过「侧栏切换器 → 任务看板」打开。创建任务、拖拽换列或用状态下拉框移动，再刷新页面，状态仍从工作区对象读取。
 
 - `manifest.json` 声明 `objects.read`、`objects.write` 和 `ui` 权限。
 - `main.ts` 是 Worker 入口，读取基线摘要后再更新对象，冲突处理由宿主负责。

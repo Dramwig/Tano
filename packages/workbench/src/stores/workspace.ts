@@ -1,3 +1,5 @@
+import type { PluginManifest } from '@tano/protocol';
+import { bundledPluginCatalog } from '../plugin-catalog';
 import { t } from '../i18n';
 import { useDocumentIndex } from '../document-index';
 import { PluginAttachmentReader } from '../plugins/attachment-reader';
@@ -101,6 +103,7 @@ export interface DocumentTab {
   workspaceView?: WorkspaceViewRecord;
   directory?: { path: string; name: string; missing: boolean };
   pluginView?: PluginWorkbenchView;
+  pluginDetail?: PluginManifest;
   document?: OpenDocument;
   attachmentPreview: boolean;
   attachment?: FileEntry;
@@ -137,8 +140,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const entry = workspace.value?.files.find(file => file.id === id.slice('directory:'.length) && file.kind === 'directory');
     return { path: entry?.path ?? '', name: entry?.name ?? '文件夹不可用', missing: entry?.kind !== 'directory' };
   }
-  const isNavigationPage = (id: string) => (isDirectoryTab(id) && !directoryForTab(id)?.missing) || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || isTableTab(id) || hasWorkspaceViewTab(id);
-  const isBuiltinTab = (id: string) => isDirectoryTab(id) || id.startsWith('blank:') || id.startsWith('attachment:') || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || id === CALENDAR_TAB_ID || isTableTab(id) || hasWorkspaceViewTab(id);
+  const pluginDetailManifest = (id: string) => id.startsWith('plugin:') ? installedPlugins.value.find(item => `plugin:${item.manifest.id}` === id)?.manifest ?? bundledPluginCatalog.find(item => `plugin:${item.manifest.id}` === id)?.manifest : undefined;
+  const isNavigationPage = (id: string) => (isDirectoryTab(id) && !directoryForTab(id)?.missing) || !!pluginDetailManifest(id) || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || isTableTab(id) || hasWorkspaceViewTab(id);
+  const isBuiltinTab = (id: string) => isDirectoryTab(id) || id.startsWith('blank:') || id.startsWith('attachment:') || !!pluginDetailManifest(id) || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || id === CALENDAR_TAB_ID || isTableTab(id) || hasWorkspaceViewTab(id);
   const isUtilityTab = (id: string) => isBuiltinTab(id) || views.value.has(id) || pluginViews.value.some(view => view.key === id && view.location === 'tab');
   function registerViews(definitions: readonly WorkbenchViewTab[]) {
     const next = new Map<string, WorkbenchViewTab>();
@@ -904,9 +908,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const activeId = ref('');
   let activationRevision = 0;
   watch(activeId, () => { activationRevision++; }, { flush: 'sync' });
+  watch(installedPlugins, (items, previous) => {
+    if (workspaceLoading.value.plugins) return;
+    const removed = new Set(previous.filter(item => !items.some(next => next.manifest.id === item.manifest.id)).map(item => `plugin:${item.manifest.id}`));
+    for (const id of removed) { removeTabNavigation(id); }
+    tabIds.value = tabIds.value.filter(id => !removed.has(tabTarget(id)));
+    if (removed.has(tabTarget(activeId.value))) activeId.value = tabIds.value[0] ?? '';
+  });
   watch(pluginViews, definitions => {
     if (workspaceLoading.value.plugins) return;
-    const keys = new Set(definitions.filter(view => view.location === 'tab').map(view => view.key));
+    const keys = new Set([...definitions.filter(view => view.location === 'tab').map(view => view.key), ...installedPlugins.value.map(item => `plugin:${item.manifest.id}`), ...bundledPluginCatalog.map(item => `plugin:${item.manifest.id}`)]);
     const remaining = tabIds.value.filter(id => !id.startsWith('plugin:') || keys.has(id));
     if (remaining.length !== tabIds.value.length) {
       for (const id of tabIds.value) if (!remaining.includes(id)) removeTabNavigation(id);
@@ -1097,7 +1108,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const tablePath = tableFile ? displayPath(tableFile) : table?.path;
       const directory = directoryForTab(targetId);
       const workspaceView = workspaceViews.value.find(record => workspaceViewTabId(record.view.id) === targetId);
-      return { id, directory, path: directory ? directory.path : document ? displayPath(document) : pendingPath ?? (attachment ? displayPath(attachment) : tableFile ? displayPath(tableFile) : workspaceView?.path ?? tablePath ?? (attachmentPreview ? '附件不可用' : '')), blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, view: views.value.get(id), workspaceView, pluginView: pluginViews.value.find(view => view.key === id && view.location === 'tab'), document, attachmentPreview, attachment,
+      return { id, pluginDetail: pluginDetailManifest(targetId), directory, path: directory ? directory.path : document ? displayPath(document) : pendingPath ?? (attachment ? displayPath(attachment) : tableFile ? displayPath(tableFile) : workspaceView?.path ?? tablePath ?? (attachmentPreview ? '附件不可用' : '')), blank: id.startsWith('blank:'), graph: id === GRAPH_TAB_ID, plugins: id === PLUGINS_TAB_ID, calendar: id === CALENDAR_TAB_ID, view: views.value.get(id), workspaceView, pluginView: pluginViews.value.find(view => view.key === id && view.location === 'tab'), document, attachmentPreview, attachment,
         ...(isTableTab(targetId) ? { dataTable: { name: tablePath ? dataTableName(tablePath) : '数据表不可用', dirty: !!table && dataTables.dirty(table), icon: table?.draft.icon } } : {}) };
     }),
   );
@@ -1931,6 +1942,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function openWorkspaceView(id: string, options?: { newTab?: boolean; historyIndex?: number }) {
     if (!workspaceViews.value.some((record) => record.view.id === id)) throw new Error('工作区视图已不存在，请刷新后重试');
     await openPageTab(workspaceViewTabId(id), options);
+  }
+  async function openPluginDetail(pluginId: string, options?: { newTab?: boolean; historyIndex?: number }) {
+    if (pluginDetailManifest(`plugin:${pluginId}`)) await openPageTab(`plugin:${pluginId}`, options);
   }
   async function openPluginsTab(options?: { newTab?: boolean; historyIndex?: number }) {
     await openPageTab(PLUGINS_TAB_ID, options);
@@ -3330,6 +3344,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openGraphTab,
     openWorkspaceView,
     openPluginsTab,
+    openPluginDetail,
     openCalendarTab,
     registerViews,
     pluginViews,

@@ -233,3 +233,5 @@ iframe 仍为 opaque origin，不能访问宿主 DOM；主题不授予网络、�
 [本地验证](local-validation.md)，浏览器视口测试不能替代原生平台发布验收。
 
 文件图标 color 支持颜色 token 名（如 accent、syntax-blue）、十六进制颜色和 currentColor。语义引用渲染为宿主 CSS 变量，自动跟随配色与深浅模式；不允许任意 CSS 变量或 url()。
+
+插件详情在编辑区标签页打开。「详细信息」展示主题与图标声明；「功能」可打开插件视图。`location: "sidebar"` 的视图在侧栏切换器中独立显示，其余位置通过命令面板和详情页「功能」打开。

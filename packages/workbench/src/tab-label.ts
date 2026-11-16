@@ -4,6 +4,7 @@ import type { DocumentTab } from './stores/workspace';
 
 /** Shared by the tab strip and the auxiliary native window title. */
 export function documentTabLabel(tab: DocumentTab): string {
+  if (tab.pluginDetail) return tab.pluginDetail.name;
   if (tab.directory) return t(tab.directory.name);
   if (tab.dataTable) return tab.dataTable.name;
   if (tab.workspaceView) return tab.workspaceView.view.name;

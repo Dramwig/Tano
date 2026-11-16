@@ -265,6 +265,7 @@ const {
   CalendarView,
   PluginView,
   PluginInstaller,
+  PluginDetailPage,
   DocumentLoading,
   PageSearch,
   LayoutDocumentChrome,
@@ -482,6 +483,7 @@ const compactPanes = computed(() => !isAuxiliaryWindow && mainCompactPanes.value
                     <button v-if="currentAttachmentStatus(pane.id, tab.attachment)?.retry" :disabled="currentAttachmentStatus(pane.id, tab.attachment)?.retryDisabled" @click="currentAttachmentStatus(pane.id, tab.attachment)?.retry?.()">{{ t('重试') }}</button>
                   </DocumentStatus>
                 </template>
+                <template v-if="tab?.pluginDetail"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current">{{ tab.pluginDetail.name }}</span></template>
                 <template v-if="tab?.pluginView"><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current" :title="pluginViewHeader(store.pluginRuntime, tab.pluginView)?.title">{{ pluginViewHeader(store.pluginRuntime, tab.pluginView)?.title || tab.pluginView.label }}</span></template>
                 <template v-if="pane.activeId === PLUGINS_TAB_ID"
                   ><ChevronRight :size="12" /><Puzzle :size="14" /><span class="breadcrumb-current"
@@ -907,7 +909,8 @@ const compactPanes = computed(() => !isAuxiliaryWindow && mainCompactPanes.value
             </template>
 
             <WorkbenchSettings v-if="pane.activeId === SETTINGS_TAB_ID" tabbed />
-            <PluginView v-if="pane.activeId.startsWith('plugin:')" :view-key="pane.activeId" />
+            <PluginDetailPage v-if="tab?.pluginDetail" :plugin-id="tab.pluginDetail.id" />
+            <PluginView v-else-if="pane.activeId.startsWith('plugin:')" :view-key="pane.activeId" />
             <main
               v-if="workspace && pane.tabs.includes(PLUGINS_TAB_ID)"
               v-show="pane.activeId === PLUGINS_TAB_ID"

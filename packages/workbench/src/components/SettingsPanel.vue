@@ -410,7 +410,7 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('workspace', 'workspace-folder-home', '文件夹首页', '点击文件夹名称打开直属首页，点击图标展开。首页文件在文件树中隐藏，不移动或修改文件。', 'README _index index folder home'),
   settingSearchEntry('workspace', 'workspace-show-plan', '显示计划', '在侧栏显示计划与日历入口。', 'sidebar plan calendar'),
   settingSearchEntry('workspace', 'workspace-show-graph', '显示关系图谱', '在侧栏顶部显示关系图谱入口。', 'sidebar graph'),
-  settingSearchEntry('workspace', 'workspace-show-plugins', '显示插件', '在侧栏顶部显示插件管理入口。', 'sidebar plugins'),
+  settingSearchEntry('workspace', 'workspace-show-plugins', '显示插件', '在侧栏显示已安装插件与插件管理入口。', 'sidebar plugins'),
   settingSearchEntry('workspace', 'workspace-show-collaboration-views', '显示协作应用', '在侧栏显示聊天等协作入口，不影响账户收件箱。', 'sidebar collaboration chat inbox'),
   settingSearchEntry('workspace', 'workspace-export', '工作区内容', '将已保存的 Markdown、附件和工作区设置导出为 ZIP，保留文件夹结构。', 'export ZIP backup'),
   settingSearchEntry('workspace', 'workspace-page-views', '保存并显示页面浏览统计', '页面浏览量统计尚未实现，当前不会收集浏览数据。', 'analytics statistics views'),

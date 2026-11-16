@@ -1,3 +1,4 @@
+import { resolvePluginSidebar } from './workbench-navigation';
 import { isMouseEvent, isHTMLElement, isElement, ownerWindow } from '@tano/editor/dom-realm';
 import { useWindowContext, type WindowContext } from './windows/context';
 import { detachedWindowPosition, type DetachedDropPoint } from './windows/position';
@@ -338,7 +339,8 @@ import { isDataTableFilePath } from '@tano/protocol';
 
 import PluginView from './components/PluginView.vue';
 
-import PluginSidebar from './components/PluginSidebar.vue';
+import PluginExplorer from './components/PluginExplorer.vue';
+import PluginDetailPage from './components/PluginDetailPage.vue';
 
 import PluginMenu from './components/PluginMenu.vue';
 
@@ -687,7 +689,9 @@ function selectModule(id: string) {
   plans.view = navigationContext.value === 'home' ? personalPlanScope : 'workspace';
   sidebar.value = true;
 }
-watch(() => store.activePluginSidebar, key => { if (key) { sidebarView.value = 'plugin-views'; sidebar.value = true; } });
+watch(() => store.activePluginSidebar, key => { if (key) { sidebarView.value = `plugin-sidebar:${key}`; sidebar.value = true; } });
+watch([() => store.workspaceLoading.plugins || store.installedPluginWorkspace !== store.workspace?.id, () => store.pluginViews, sidebarView], ([loading, views, current]) => { const resolved = resolvePluginSidebar(current, loading, views); if (resolved !== current) sidebarView.value = resolved; });
+watch(sidebarView, current => { if (store.activePluginSidebar && current !== `plugin-sidebar:${store.activePluginSidebar}`) store.activePluginSidebar = ''; });
 watch(() => store.pluginSettingsRequest, request => { if (request) openSettings(request.key); });
 const homeContent = ref<string>();
 const homeExtension = computed(() => extensionViews.find(view => view.id === homeContent.value));
@@ -823,6 +827,7 @@ function initializePageHistory() {
 function currentPageRoute() {
   const currentWorkspace = workspace.value;
   if (currentWorkspace && isTableTab(activeId.value)) return pageRoutePath(currentWorkspace.id, activeId.value);
+  if (currentWorkspace && store.tabs.find(tab => tab.id === activeId.value)?.pluginDetail) return pageRoutePath(currentWorkspace.id, activeId.value);
   const pluginView = store.pluginViews.find(view => view.key === activeId.value && view.location === 'tab');
   if (currentWorkspace && pluginView) return pageRoutePath(currentWorkspace.id, pluginView.key);
   const currentFile = currentWorkspace?.files.find(
@@ -894,8 +899,8 @@ async function applyPageRoute(fromHistory = false) {
       await store.openDataTable(route.fileId === TABLES_TAB_ID ? undefined : tableFileId(route.fileId));
     } else if (route.fileId.startsWith('plugin:')) {
       const view = store.pluginViews.find(view => view.key === route.fileId && view.location === 'tab');
-      if (view) store.openPluginView(view.pluginId, view.id);
-      else store.report(t('链接中的插件视图尚未安装或已停用'));
+      if (view) store.openPluginView(view.pluginId, view.id); else await store.openPluginDetail(route.fileId.slice(7));
+
     } else {
       const file = workspace.value.files.find(
         (entry) => entry.id === route.fileId && entry.kind === 'file' && isMarkdown(entry.path),
@@ -1541,8 +1546,6 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
     { id: 'workbench.search', category: t('文档'), get label() { return t('查找文档'); }, shortcut: shortcuts.value.findDocument, available: !busy.value, run: () => showModal('search') },
     { id: 'workbench.open', category: t('文档'), get label() { return t('打开文档'); }, shortcut: shortcuts.value.openDocument, available: !busy.value, run: () => showModal('newTab') },
     { id: 'workbench.new', category: t('文档'), get label() { return t('新建文档'); }, shortcut: shortcuts.value.newDocument, available: writableWorkspace, run: createNewDocument },
-    { id: 'workbench.table.new', category: t('数据表'), get label() { return t('新建数据表'); }, keywords: t('table spreadsheet 表格'), available: writableWorkspace, run: () => store.createDataTable().catch(store.report) },
-    { id: 'workbench.table.parts', category: t('数据表'), get label() { return t('新建配件选择表'); }, available: writableWorkspace, run: () => store.createDataTable('parts').catch(store.report) },
     { id: 'workbench.save', category: t('文档'), get label() { return t('立即保存'); }, shortcut: shortcuts.value.save, available: hasDocument && !busy.value && !updateLock.value, run: () => store.flush() },
     { id: 'workbench.saveAs', category: t('文档'), get label() { return t('另存副本'); }, available: standardEditor && writableWorkspace, run: () => showModal('saveAs') },
     { id: 'workbench.folder', category: t('文档'), get label() { return t('新建文件夹'); }, available: writableWorkspace, run: () => createNewEntry('folder') },
@@ -1576,13 +1579,6 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
     { id: 'workbench.plan', category: t('工作区'), get label() { return t('打开计划'); }, available: !isAuxiliaryWindow && store.workspaceSettings.showPlan, run: () => { sidebar.value = true; selectModule('plan'); } },
     { id: 'workbench.calendar', category: t('工作区'), get label() { return t('打开日历'); }, available: store.workspaceSettings.showPlan, run: () => openCalendar() },
     { id: 'workbench.graph', category: t('工作区'), get label() { return t('打开关系图谱'); }, available: store.workspaceSettings.showGraph, run: () => store.openGraphTab() },
-    ...store.workspaceViews.map((record) => ({
-      id: `workbench.workspace-view.${record.view.id}`,
-      category: t('工作区'),
-      get label() { return t('打开视图：{0}', [record.view.name]); },
-      available: true,
-      run: () => store.openWorkspaceView(record.view.id).catch(store.report),
-    })),
     // Dev-only prototype; the native command is compiled out of release builds.
     { id: 'workbench.git', category: t('工作区'), label: 'Git 与同步', keywords: 'Git 状态 差异 提交 历史 同步', available: native && !mobile && !!workspace.value && !store.isWeb, run: () => openSystemSync() },
     { id: 'workbench.plugins', category: t('工作区'), get label() { return t('打开插件中心'); }, available: store.workspaceSettings.showPlugins, run: () => store.openPluginsTab() },
@@ -2718,7 +2714,7 @@ function openDirectoryContextMenu(parent: string, event: MouseEvent) {
   });
 }
 async function directoryContextAction(
-  action: 'document' | 'folder' | 'table' | 'database' | 'import' | 'duplicate' | 'copy' | 'rename' | 'delete',
+  action: 'document' | 'folder' | 'import' | 'duplicate' | 'copy' | 'rename' | 'delete',
 ) {
   const parent = directoryContextMenu.value?.parent ?? '';
   const target = parent
@@ -2730,10 +2726,6 @@ async function directoryContextAction(
     return;
   }
   if (parent && !target) return;
-  if (action === 'database') {
-    try { await store.createFileDatabase(parent); } catch (error) { store.report(error); }
-    return;
-  }
   if (action === 'copy') {
     if (!parent) return;
     try {
@@ -3044,8 +3036,6 @@ async function fileContextAction(
     | 'open-new-tab'
     | 'document'
     | 'folder'
-    | 'table'
-    | 'database'
     | 'rename'
     | 'delete'
     | 'copy'
@@ -3170,11 +3160,7 @@ async function fileContextAction(
     await removeDocument(file);
     return;
   }
-  if (action === 'database') {
-    try { await store.createFileDatabase(file.path); } catch (error) { store.report(error); }
-    return;
-  }
-  if (action === 'document' || action === 'folder' || action === 'table') {
+  if (action === 'document' || action === 'folder') {
     await createNewEntry(action, file.path);
     return;
   }
@@ -3525,7 +3511,7 @@ async function removeDocument(target?: FileEntry) {
 async function createNewDocument() {
   await createNewEntry('document');
 }
-async function createNewEntry(kind: 'document' | 'folder' | 'table', parent = '') {
+async function createNewEntry(kind: 'document' | 'folder', parent = '') {
   if (store.busy || workspace.value?.readOnly || updateLock.value) return;
   if (webPageRouting && !pageRouteReady) initialPageRouteSuperseded = true;
   menu.value = false;
@@ -3536,11 +3522,6 @@ async function createNewEntry(kind: 'document' | 'folder' | 'table', parent = ''
   try {
     if (kind === 'folder') {
       await store.createUntitledFolder(parent);
-      return;
-    }
-    if (kind === 'table') {
-      await store.createDataTable('blank', parent);
-      if (compactPanes.value) sidebar.value = false;
       return;
     }
     await store.createUntitledDocument(parent);
@@ -4711,7 +4692,8 @@ const helpBlocked = computed(() => !!(
     ButtonVisibilityGroup,
     CalendarDays,
     SidebarNavigation,
-    PluginSidebar,
+    PluginExplorer,
+    PluginDetailPage,
     WorkspaceViewSwitcher,
     Search,
     GitFork,

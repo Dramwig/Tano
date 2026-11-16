@@ -260,7 +260,8 @@ it('credits a new data table and an actual split, not failed creation or tab reo
   expect(readHelpCompleted()).not.toContain('data-table');
   create.mockRestore();
   await store.createDataTable();
-  expect(readHelpCompleted()).toContain('data-table');
+  expect(readHelpCompleted()).not.toContain('data-table');
+  expect(localStorage.getItem(helpChecklistKey + '.data-table')).toBe('1');
   await store.openFileInNewTab(file('source.md'));
   await store.openFileInNewTab(file('another.md'));
   store.dockTab(file('source.md').id, { paneId: store.activePaneId, side: 'center', index: 0 });

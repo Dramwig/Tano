@@ -99,12 +99,13 @@ try {
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(canonical);
   await page.getByRole('button', { name: '检查清单' }).click();
   await page.getByRole('button', { name: '安装此插件', exact: true }).click();
-  await page.getByRole('button', { name: '查看本机查询测试详情', exact: true }).click();
+  await page.locator('.plugin-center:not(.plugin-center-sidebar)').getByRole('button', { name: '查看本机查询测试详情', exact: true }).click();
+  await page.locator('.plugin-detail-page').getByRole('button', { name: '权限', exact: true }).click();
   await page.getByRole('button', { name: '授权此版本运行', exact: true }).click();
-  await page.getByRole('button', { name: '关闭插件窗口', exact: true }).click();
+  await closePluginDetails(page);
   await page.getByRole('button', { name: /^切换侧边栏视图：/ }).click();
-  await page.getByRole('menuitemradio', { name: '插件工作台', exact: true }).click();
-  await page.getByRole('region', { name: '插件工作台', exact: true }).getByRole('button', { name: /^Git 变更/ }).click();
+  await page.getByRole('menuitemradio', { name: '插件', exact: true }).click();
+  await page.getByRole('region', { name: '插件', exact: true }).getByRole('button', { name: /^Git 变更/ }).click();
   const view = page.getByRole('region', { name: '本机查询测试 · Git 变更', exact: true }).frameLocator('iframe[title="插件界面隔离容器"]').frameLocator('iframe');
   await expect(view.getByRole('heading', { name: 'Git 变更', exact: true })).toBeVisible({ timeout: 15000 });
   await expect(view.getByRole('heading', { name: 'Git 变更', exact: true })).toHaveCSS('font-size', '24px');
@@ -124,10 +125,11 @@ try {
   await expect(page.getByText('GitHub 议题导入 已安装并启用', { exact: true })).toBeVisible();
   // Installation publishes the new row before its completion message. Use its
   // keyboard action after completion so an intervening layout shift cannot lose a pointer click.
-  await page.getByRole('button', { name: '查看GitHub 议题导入详情', exact: true }).press('Enter');
-  await expect(page.getByRole('dialog', { name: '插件详情', exact: true })).toBeVisible();
+  await page.locator('.plugin-center:not(.plugin-center-sidebar)').getByRole('button', { name: '查看GitHub 议题导入详情', exact: true }).press('Enter');
+  await expect(page.locator('.plugin-detail-page')).toBeVisible();
+  await page.locator('.plugin-detail-page').getByRole('button', { name: '权限', exact: true }).click();
   await page.getByRole('button', { name: '授权此版本运行', exact: true }).click();
-  await page.getByRole('button', { name: '关闭插件窗口', exact: true }).click();
+  await closePluginDetails(page);
   const connection = page.locator('details[aria-label="插件服务连接"]');
   const expandConnections = async () => {
     // Tab views no longer render a duplicate preview in the plugin center.
@@ -213,10 +215,10 @@ try {
       await page.evaluate(({ workspaceId, entry }) => window.__TAURI_INTERNALS__.invoke('plugin_connections_remove', { requestId: crypto.randomUUID(), workspaceId, pluginId: entry.pluginId, origin: entry.origin, version: entry.version }), { workspaceId: identity, entry });
     }
   }
-  await page.getByRole('button', { name: /^已安装/ }).click();
-  await page.getByRole('button', { name: '查看本机查询测试详情', exact: true }).click();
+  await page.locator('.plugin-center:not(.plugin-center-sidebar)').getByRole('button', { name: /^已安装/ }).click();
+  await page.locator('.plugin-center:not(.plugin-center-sidebar)').getByRole('button', { name: '查看本机查询测试详情', exact: true }).click();
   await page.getByRole('button', { name: '停用插件', exact: true }).click();
-  await page.getByRole('button', { name: '关闭插件窗口', exact: true }).click();
+  await closePluginDetails(page);
   await expect(page.getByRole('tab', { name: /Git 变更/ })).toHaveCount(0);
   const switchedFlow = await page.evaluate(({ workspaceId, integrity }) => window.__TAURI_INTERNALS__.invoke('plugin_connections_oauth_start', {
     workspaceId, requestId: crypto.randomUUID(), input: { pluginId: 'github-importer', integrity, origin: 'https://api.github.com', methods: ['GET'], pathPrefix: '/repos/', providerId: 'native-smoke' },
@@ -259,4 +261,11 @@ try {
   // Do not leave a test application identity in the normal release executable.
   console.log('Restoring the normal release host configuration.');
   await run('cargo', cargoArgs, { env: nativeEnvironment });
+}
+
+async function closePluginDetails(page) {
+ const detail = page.locator('.plugin-detail-page');
+ if (await detail.count()) {
+  await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').openPluginsTab());
+ } else await page.getByRole('button', { name: '关闭插件窗口', exact: true }).click();
 }

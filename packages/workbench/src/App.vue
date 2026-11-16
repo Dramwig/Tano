@@ -255,13 +255,13 @@ const {
   ButtonVisibilityGroup,
   CalendarDays,
   SidebarNavigation,
-  PluginSidebar,
+  PluginExplorer,
+  PluginView,
   WorkspaceViewSwitcher,
   Search,
   GitFork,
   SquarePen,
   FileTree,
-  PluginInstaller,
   LoadingSkeleton,
   Table2,
   SidebarAssistant,
@@ -285,7 +285,6 @@ const {
   EyeOff,
   Eye,
   FileSymlink,
-  Database,
   FileSliders,
   Blocks,
   PluginMenu,
@@ -451,7 +450,6 @@ const {
             </button>
           </template>
         </SidebarNavigation>
-        <PluginSidebar v-if="sidebarView === 'plugin-views'" />
           <div
             v-show="navigationModule === 'workspace'"
             class="section-label sidebar-view-header"
@@ -512,6 +510,8 @@ const {
               </button>
             </ButtonVisibilityGroup>
           </div>
+        <PluginExplorer v-if="sidebarView === 'plugin-views'" />
+        <PluginView v-else-if="sidebarView.startsWith('plugin-sidebar:')" :view-key="sidebarView.slice(15)" />
         <div
           v-show="sidebarView === 'repository'"
           id="sidebar-repository-panel"
@@ -563,16 +563,6 @@ const {
             </div>
           </div>
         </div>
-        <section v-if="sidebarView === 'plugins'" class="sidebar-content workspace-plugins-sidebar" :aria-label="t('工作区插件')">
-          <PluginInstaller sidebar @objects="showObjects()" />
-        </section>
-        <section v-if="sidebarView === 'views'" class="sidebar-content workspace-views-sidebar" :aria-label="t('数据库与视图')">
-          <LoadingSkeleton v-if="store.workspaceLoading.views" :rows="4" />
-          <template v-else>
-          <button @click="store.openDataTable()"><Table2 :size="15" />{{ t('数据表') }}</button>
-          <button v-for="record in store.workspaceViews" :key="record.view.id" @click="store.openWorkspaceView(record.view.id)">{{ record.view.name }}</button>
-          </template>
-        </section>
         <SidebarAssistant v-if="sidebarView === 'assistant'" @open="compactPanes && (sidebar = false)" />
         <SidebarPlan
           v-show="sidebarView === 'plan' || sidebarView === 'events'"
@@ -584,13 +574,14 @@ const {
           @select-event="showPlanEvent"
         />
         <template v-for="view in extensionViews" :key="view.id">
-          <component
-            :is="view.sidebar"
+          <div
             v-if="view.sidebar"
             v-show="sidebarView === view.id"
             :id="`sidebar-${view.id}`"
-            :actions="viewActions[view.id]"
-          />
+            class="extension-sidebar"
+          >
+            <component :is="view.sidebar" :actions="viewActions[view.id]" />
+          </div>
         </template>
         <Teleport :to="activeWindow.overlays">
           <div v-surface-motion="'App:0'"
@@ -667,13 +658,6 @@ const {
                   @click="fileContextAction('folder')"
                 >
                   <FolderPlus :size="15" />{{ t('在此新建文件夹') }}
-                </button>
-                <button
-                  role="menuitem"
-                  :disabled="fileMutationDisabled(fileContextMenu.file)"
-                  @click="fileContextAction('table')"
-                >
-                  <Table2 :size="15" />{{ t('在此新建数据表') }}
                 </button>
                 <button
                   role="menuitem"
@@ -825,13 +809,6 @@ const {
                     <FileSymlink :size="15" />{{ t('转为普通文档') }}
                   </button>
                 </template>
-                <button
-                  role="menuitem"
-                  :disabled="fileMutationDisabled(fileContextMenu.file)"
-                  @click="fileContextAction('database')"
-                >
-                  <Database :size="15" />{{ t('以数据库视图管理此目录') }}
-                </button>
               </template>
               <template v-else-if="!isWorkspaceInternalPath(fileContextMenu.file.path)">
                 <div class="menu-divider" role="separator" />
@@ -895,12 +872,6 @@ const {
               @click="directoryContextAction('document')"
             >
               <FilePlus2 :size="15" />{{ t('新建文档') }}
-            </button>
-            <button role="menuitem" :disabled="!workspace || workspace.readOnly || busy" @click="directoryContextAction('table')">
-              <Table2 :size="15" />{{ t('新建数据表') }}
-            </button>
-            <button role="menuitem" :disabled="!workspace || workspace.readOnly || busy" @click="directoryContextAction('database')">
-              <Database :size="15" />{{ t('以数据库视图管理此目录') }}
             </button>
             <button
               role="menuitem"
@@ -1047,19 +1018,6 @@ const {
                 <Files :size="16" />{{ t('文档模板') }}
               </button>
               <button role="menuitem" @click="showObjects()"><Blocks :size="16" />{{ t('工作区对象') }}</button>
-              <button role="menuitem" :disabled="!workspace || workspace.readOnly || busy || !store.capabilities.features.objectReferences" @click="workspaceMenu = false; store.createObjectDatabase().catch(store.report)"><Table2 :size="16" />{{ t('创建对象数据库视图') }}</button>
-              <template v-if="store.workspaceViews.length">
-                <div class="menu-divider" />
-                <button
-                  v-for="record in store.workspaceViews"
-                  :key="record.view.id"
-                  role="menuitem"
-                  @click="workspaceMenu = false; store.openWorkspaceView(record.view.id).catch(store.report)"
-                >
-                  <Table2 :size="16" />{{ t('打开视图：{0}', [record.view.name]) }}
-                </button>
-              </template>
-              <p v-for="error in store.workspaceViewErrors" :key="error" class="workspace-view-menu-error" role="alert">{{ error }}</p>
               <button role="menuitem" @click="openSettings('about')">
                 <CircleHelp :size="16" />{{ t('关于 Tano / 同页') }}{{
                   updates.state.candidate ? t(' · 有新版本') : ''
@@ -1440,7 +1398,7 @@ const {
       </button>
     </div>
 
-    <NewTabPicker v-if="modal === 'newTab'" @close="modal = ''" @new-document="createNewDocument" @new-table="createNewEntry('table')" />
+    <NewTabPicker v-if="modal === 'newTab'" @close="modal = ''" @new-document="createNewDocument" />
     <div v-surface-motion="'App:8'"
       v-if="modal && modal !== 'newTab'"
       class="modal-backdrop"

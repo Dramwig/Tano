@@ -1,8 +1,8 @@
 import { computed, ref, watch } from 'vue';
 
 export type NavigationContext = 'home' | 'workspace';
-export type WorkspaceSidebarView = 'repository' | 'events' | 'views' | 'assistant' | 'plugins' | 'plugin-views';
-const workspaceViews: WorkspaceSidebarView[] = ['repository', 'events', 'views', 'assistant', 'plugins', 'plugin-views'];
+export type WorkspaceSidebarView = 'repository' | 'events' | 'assistant' | 'plugin-views' | `plugin-sidebar:${string}`;
+const workspaceViews: WorkspaceSidebarView[] = ['repository', 'events', 'assistant', 'plugin-views'];
 export const navigationStorageKey = 'tano.preference.navigationContext';
 type WorkspaceNavigation = { module: 'workspace' | 'plan'; view: WorkspaceSidebarView };
 type NavigationStorage = Pick<Storage, 'getItem' | 'setItem'>;
@@ -21,8 +21,9 @@ export function useWorkbenchNavigation(workspaceId: () => string | undefined, st
     if (value?.version === 1) {
       restoredContext = value.context === 'home' ? 'home' : 'workspace';
       if (typeof value.homeModule === 'string' && (value.homeModule === 'plan' || value.homeModule.startsWith('view:'))) homeModule.value = value.homeModule;
-      for (const [id, state] of Object.entries(value.workspaces ?? {}) as [string, WorkspaceNavigation][]) {
-        if (state && ['workspace', 'plan'].includes(state.module) && workspaceViews.includes(state.view)) saved.set(id, state);
+      for (const [id, state] of Object.entries(value.workspaces ?? {}) as [string, { module: WorkspaceNavigation['module']; view: string }][]) {
+        const view = state?.view === 'plugins' ? 'plugin-views' : state?.view === 'views' ? 'repository' : state?.view;
+        if (state && ['workspace', 'plan'].includes(state.module) && (workspaceViews.includes(view as WorkspaceSidebarView) || (typeof view === 'string' && view.startsWith('plugin-sidebar:')))) saved.set(id, { module: state.module, view: view as WorkspaceSidebarView });
       }
     }
   } catch { /* Unavailable or invalid preferences must not block navigation. */ }
@@ -76,9 +77,14 @@ export function useWorkbenchNavigation(workspaceId: () => string | undefined, st
   const sidebarView = computed({
     get: () => module.value === 'workspace' ? workspaceView.value : module.value,
     set: (id: string) => {
-      if (workspaceViews.includes(id as WorkspaceSidebarView)) selectWorkspaceView(id as WorkspaceSidebarView);
+      if (workspaceViews.includes(id as WorkspaceSidebarView) || id.startsWith('plugin-sidebar:')) selectWorkspaceView(id as WorkspaceSidebarView);
       else selectModule(id);
     },
   });
   return { context, homeModule, module, workspaceView, sidebarView, selectContext, openInHome, selectModule, selectWorkspaceView, restore };
+}
+
+/** Wait for plugin discovery before deciding whether a restored sidebar still exists. */
+export function resolvePluginSidebar(view: string, loading: boolean, views: readonly { key: string; location?: string }[]): string {
+ return !loading && view.startsWith('plugin-sidebar:') && !views.some(item => item.location === 'sidebar' && item.key === view.slice(15)) ? 'repository' : view;
 }

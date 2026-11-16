@@ -4,6 +4,7 @@ import { parsePluginPackage, type PluginConnectionProvider } from '../../package
 import { configureWorkbench } from '../../packages/workbench/src/runtime';
 import { DemoAdapter } from '../../packages/workbench/src/adapter';
 import { useWorkspaceStore } from '../../packages/workbench/src/stores/workspace';
+import PluginDetailPage from '../../packages/workbench/src/components/PluginDetailPage.vue';
 import PluginInstaller from '../../packages/workbench/src/components/PluginInstaller.vue';
 
 export async function mountConnections(withOAuth = false) {
@@ -30,6 +31,6 @@ export async function mountConnections(withOAuth = false) {
     source: `await tano.commands.register('request', async () => { const result = await tano.connections.request('https://api.example.com', { path: '/v1/items' }); await tano.views.render('main', { type: 'text', text: result.body }); });` }));
   await store.changePlugin({ install: pkg.manifest, package: pkg }, store.workspace!.id);
   const element = document.createElement('div'); element.id = 'connections-fixture'; element.style.cssText = 'position:fixed;inset:0;z-index:999999;background:var(--paper);overflow:auto;padding:24px'; document.body.append(element);
-  const app = createApp(() => h(PluginInstaller)); app.use(pinia); app.mount(element);
+  const app = createApp(() => h('div', [h(PluginInstaller), ...(store.tabs.find(tab => tab.id === store.activeId)?.pluginDetail ? [h(PluginDetailPage, { pluginId: store.tabs.find(tab => tab.id === store.activeId)!.pluginDetail!.id })] : [])])); app.use(pinia); app.mount(element);
   return { store, dispose: () => { app.unmount(); store.dispose(); store.$dispose(); element.remove(); } };
 }

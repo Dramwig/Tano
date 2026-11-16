@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PluginIcon from './PluginIcon.vue';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import LoadingSkeleton from './LoadingSkeleton.vue';
@@ -194,7 +195,7 @@ async function animateTabLayout(ids: string[], mode: TabLayoutMotion) {
   }
 }
 const title = (path: string) => basename(path).replace(/\.(md|markdown)$/i, '');
-const tabLabel = (tab: DocumentTab) => props.assistantTab?.id === tab.id ? props.assistantTab.title
+const tabLabel = (tab: DocumentTab) => tab.pluginDetail ? tab.pluginDetail.name : props.assistantTab?.id === tab.id ? props.assistantTab.title
   : documentTabLabel(tab);
 const draggingId = ref('');
 const capturingNativeDrag = ref(false);
@@ -1329,6 +1330,7 @@ async function onTabKeydown(event: KeyboardEvent) {
           <GitFork v-else-if="doc.graph" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <Puzzle v-else-if="doc.plugins" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <CalendarDays v-else-if="doc.calendar" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
+          <PluginIcon v-else-if="doc.pluginDetail" :id="doc.pluginDetail.id" :size="15" class="desktop-tab-icon" />
           <Puzzle v-else-if="doc.pluginView" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <component :is="doc.view.icon" v-else-if="doc.view" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <span v-else-if="!doc.blank && documentIcons[doc.id]" class="desktop-tab-icon desktop-tab-document-icon" aria-hidden="true">

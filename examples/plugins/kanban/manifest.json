@@ -11,5 +11,5 @@
   "networkOrigins": [],
   "nativeCommands": [],
   "commands": [{ "id": "open", "label": "打开任务看板", "menus": ["workspace"] }],
-  "views": [{ "id": "board", "label": "任务看板", "location": "tab" }]
+  "views": [{ "id": "board", "label": "任务看板", "location": "sidebar" }]
 }
