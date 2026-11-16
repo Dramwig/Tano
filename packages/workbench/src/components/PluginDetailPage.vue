@@ -38,6 +38,7 @@ const detailViews = computed(() =>
     : [],
 );
 const commands = computed(() => (detail.value?.manifestVersion === 2 ? detail.value.commands : []));
+const tabKeys = { details: '详细信息', features: '功能', permissions: '权限', settings: '设置' };
 const tabs = computed(() => [
   '详细信息',
   ...(detailViews.value.length || commands.value.length ? ['功能'] : []),
@@ -164,7 +165,7 @@ const modeLabels: Record<PluginMode, string> = {
         {{ t(tab) }}
       </button>
     </nav>
-    <section v-if="active === '详细信息'">
+    <section v-if="active === tabKeys.details">
       <p class="detail-description">
         {{ detail.description || t('为当前工作区添加自定义对象与关系。') }}
       </p>
@@ -215,7 +216,7 @@ const modeLabels: Record<PluginMode, string> = {
         </div>
       </section>
     </section>
-    <section v-if="active === '权限'">
+    <section v-if="active === tabKeys.permissions">
       <section v-if="detail.manifestVersion === 2" class="detail-section">
         <h4>{{ t('运行权限') }}</h4>
         <p>
@@ -246,7 +247,7 @@ const modeLabels: Record<PluginMode, string> = {
         </button>
       </section>
     </section>
-    <section v-if="active === '设置'">
+    <section v-if="active === tabKeys.settings">
       <section
         v-if="selectedInstallation?.rule && !selectedInstallation.system && store.canManagePlugins"
         class="detail-section plugin-policy"
@@ -305,7 +306,7 @@ const modeLabels: Record<PluginMode, string> = {
         >
       </p>
     </section>
-    <section v-if="active === '功能'">
+    <section v-if="active === tabKeys.features">
       <div v-for="view in detailViews" :key="view.key">
         {{ view.label }}
         <button
