@@ -1,3 +1,4 @@
+import { ownerWindow } from './dom-realm';
 import type { NodeViewConstructor } from '@milkdown/kit/prose/view';
 import { closeHistory } from '@milkdown/kit/prose/history';
 import { watch } from 'vue';
@@ -6,6 +7,10 @@ import { columnWidths, formatColumnWidths, resizeColumnWidths } from './column-w
 /** Editable column slots stay in contentDOM; resize controls never enter the document. */
 export function columnsView(readonly: () => boolean): NodeViewConstructor {
   return (node, view, getPos) => {
+    const window = ownerWindow(view.dom);
+    const document = window.document;
+    const ResizeObserver = window.ResizeObserver;
+
     let current = node;
     let destroyed = false;
     let drag: { pointer: number; index: number; x: number; available: number; widths: number[]; preview: number[]; handle: HTMLElement } | undefined;

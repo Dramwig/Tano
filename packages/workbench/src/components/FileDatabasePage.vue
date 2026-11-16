@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { computed, ref, watch } from 'vue';
 import { Database, Filter, Save, SlidersHorizontal } from 'lucide-vue-next';
@@ -65,6 +68,7 @@ function editProperties(file: FileEntry) {
   if (isMarkdown(file.path)) emit('edit-document-properties', file);
   else selected.value = file.id;
 }
+
 </script>
 <template>
   <div class="file-database-shell">
@@ -99,7 +103,7 @@ function editProperties(file: FileEntry) {
           <td :title="row.file.path"><button class="file-link" @click="emit('open-file', row.file)">{{ row.file.name }}</button><small>{{ row.file.path }}</small></td><td>{{ row.file.handlerId }}</td><td :title="row.metadata.tags.join(' · ')">{{ row.metadata.tags.join(' · ') || '—' }}</td><td :title="String(row.metadata.properties.owner ?? '')">{{ row.metadata.properties.owner ?? '—' }}</td><td :title="String(row.metadata.properties.status ?? '')">{{ row.metadata.properties.status ?? '—' }}</td><td>{{ linkCount(row.file.id) }}</td><td><button class="row-properties" :aria-label="`${t('编辑属性')}：${row.file.name}`" :title="isMarkdown(row.file.path) ? t('在文档中编辑属性') : t('编辑属性')" @click="editProperties(row.file)"><SlidersHorizontal :size="15" /></button></td>
         </tr></tbody></table></div>
     </section>
-    <Teleport to="body"><FileMetadataPanel v-if="selected" :file-id="selected" :workspace-id="view.workspaceId" @close="selected = ''" /></Teleport>
+    <Teleport :to="document.body"><FileMetadataPanel v-if="selected" :file-id="selected" :workspace-id="view.workspaceId" @close="selected = ''" /></Teleport>
   </div></main>
   <DocumentScrollbar :scroll-element="scrollElement" />
   </div>

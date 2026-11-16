@@ -210,6 +210,7 @@ export function mathView(
   revealMarkdown: () => boolean = () => true,
 ): NodeViewConstructor {
   return (node, view, getPos) => {
+    const document = view.dom.ownerDocument;
     let current = node;
     let editing = false;
     let stopPositioning: (() => void) | undefined;

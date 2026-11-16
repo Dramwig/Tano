@@ -1,9 +1,11 @@
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useWindowContext } from './windows/context';
 
 /** Keep native window chrome above overlays and inside the active modal's
  * non-inert subtree. A manual popover escapes dialog clipping/stacking without
  * dismissing the dialog or making the rest of the workbench interactive. */
 export function useWindowControlsLayer() {
+  const { document } = useWindowContext();
   const controls = ref<HTMLElement>();
   const target = ref<HTMLElement>();
   let observer: MutationObserver | undefined;

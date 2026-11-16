@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
+import { isNode } from '@tano/editor/dom-realm';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue';
@@ -111,7 +115,7 @@ function pickerKeydown(event: KeyboardEvent) {
   options[event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1 : (index + (event.key === 'ArrowUp' ? options.length - 1 : 1)) % options.length]?.focus();
 }
 function dismissPicker(event: Event) {
-  if (event.target instanceof Node && !picker.value?.contains(event.target)) pickerOpen.value = false;
+  if (isNode(event.target) && !picker.value?.contains(event.target)) pickerOpen.value = false;
 }
 onMounted(() => {
   document.addEventListener('pointerdown', dismissPicker);
@@ -122,6 +126,7 @@ onUnmounted(() => {
   document.removeEventListener('focusin', dismissPicker);
 });
 watch(() => props.disabled, disabled => { if (disabled) pickerOpen.value = false; });
+
 </script>
 
 <template>

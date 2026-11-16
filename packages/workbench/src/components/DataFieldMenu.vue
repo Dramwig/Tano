@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { localizedDataFieldTypes as dataFieldTypes } from '../ui-labels';
 import { t } from '../i18n';
@@ -389,10 +392,11 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', position, true);
   if (props.anchor.isConnected) props.anchor.focus();
 });
+
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <div v-surface-motion="'DataFieldMenu:0'" class="field-menu-layer" :class="{ 'field-menu-stacked': narrow }" @keydown="keydown">
       <section v-surface-motion="'DataFieldMenu:root'"
         ref="root"

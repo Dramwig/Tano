@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
 import { vSurfaceMotion, closeSurfaceDialog } from '@tano/editor/surface-motion';
 import { t, uiLocale } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useId } from 'vue';
@@ -39,6 +40,7 @@ export interface ImportRecord extends ImportReceipt { id: string; time: number; 
 type ImportEntry = { path: string; name: string; depth: number; kind: 'folder' | 'file' };
 const props = defineProps<{ attachments?: AttachmentService; records: ImportRecord[] }>();
 const emit = defineEmits<{ close: []; completed: [record: ImportRecord] }>();
+const { window, document, overlays } = useWindowContext();
 const store = useWorkspaceStore();
 const workspaceId = store.workspace!.id;
 const titleId = useId();
@@ -249,7 +251,7 @@ const issueText = (issue: ImportIssue) => `${issue.name}：${issue.message}`;
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport :to="overlays">
     <dialog v-surface-motion="'ImportPanel:0'" ref="dialog" class="import-dialog" :class="{ 'import-dialog-detail': prepared }" :aria-labelledby="titleId" @cancel.prevent="close" @keydown="keydown"
       @pointerdown="backdropPointerDown" @click.self="backdropClick">
       <div class="import-main">

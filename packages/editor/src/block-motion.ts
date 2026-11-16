@@ -1,3 +1,6 @@
+import { ownerWindow } from './dom-realm';
+
+import { isHTMLElement } from './dom-realm';
 import { Plugin, PluginKey, type Transaction } from '@milkdown/kit/prose/state';
 import { Mapping, ReplaceAroundStep, ReplaceStep } from '@milkdown/kit/prose/transform';
 import type { Node } from '@milkdown/kit/prose/model';
@@ -79,13 +82,15 @@ function indexAt(blocks: Block[], pos: number): number {
 
 function element(view: EditorView, block: Block): HTMLElement | null {
   const dom = view.nodeDOM(block.pos);
-  return dom instanceof HTMLElement ? dom : null;
+  return isHTMLElement(dom) ? dom : null;
 }
 
 /** Indices of blocks whose DOM is on screen (plus a margin). Starts from the
  * block under the top of the viewport, so cost is proportional to what is
  * visible, not to the document length. */
 function visible(view: EditorView, blocks: Block[]): number[] {
+    const window = ownerWindow(view.dom);
+
   if (!blocks.length) return [];
   const bounds = view.dom.getBoundingClientRect();
   const top = Math.max(bounds.top, 0) + 1;
@@ -115,6 +120,9 @@ function removed(mapping: Mapping, block: Block) {
 }
 
 function ghostLayer(view: EditorView): HTMLElement | undefined {
+    const window = ownerWindow(view.dom);
+    const document = window.document;
+
   const parent = view.dom.parentElement;
   if (!parent) return undefined;
   const layer = document.createElement('div');
@@ -189,7 +197,7 @@ function foldUnits(view: EditorView): FoldUnit[] | undefined {
     block.node.forEach((child, offset, childIndex) => {
       if (!childIndex) return;
       const nested = view.nodeDOM(block.pos + 1 + offset);
-      if (nested instanceof HTMLElement) measure(nested, index);
+      if (isHTMLElement(nested)) measure(nested, index);
     });
   }
   return units;
@@ -198,6 +206,8 @@ function foldUnits(view: EditorView): FoldUnit[] | undefined {
 type FoldSnapshot = { doc: Node; units: FoldUnit[]; ghosts: Map<number, HTMLElement> };
 
 function captureFold(view: EditorView): FoldSnapshot | undefined {
+    const window = ownerWindow(view.dom);
+
   const units = foldUnits(view);
   if (!units) return undefined;
   const ghosts = new Map<number, HTMLElement>();
@@ -210,6 +220,8 @@ function captureFold(view: EditorView): FoldSnapshot | undefined {
 }
 
 function playFold(view: EditorView, snapshot: FoldSnapshot) {
+    const window = ownerWindow(view.dom);
+
   const after = foldUnits(view);
   const before = snapshot.units;
   if (!after || after.length !== before.length || after.some((unit, index) => unit.dom !== before[index]!.dom)) return;
@@ -247,6 +259,9 @@ function playFold(view: EditorView, snapshot: FoldSnapshot) {
 
 /** True when an element's following siblings sit below it, not beside it. */
 function stacksVertically(element: HTMLElement) {
+    const window = ownerWindow(element);
+    const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+
   const parent = element.parentElement;
   if (!parent) return false;
   const own = getComputedStyle(element);
@@ -260,11 +275,13 @@ function stacksVertically(element: HTMLElement) {
 
 /** Glides the content after a block that changed height by `delta`. */
 function glideFollowers(element: HTMLElement, delta: number) {
+    const window = ownerWindow(element);
+
   if (!stacksVertically(element)) return;
   const bottom = window.innerHeight + 80;
   let count = 0;
   for (let sibling = element.nextElementSibling; sibling && count < 60; sibling = sibling.nextElementSibling) {
-    if (!(sibling instanceof HTMLElement) || sibling.dataset.motionGhost !== undefined) continue;
+    if (!(isHTMLElement(sibling)) || sibling.dataset.motionGhost !== undefined) continue;
     const rect = sibling.getBoundingClientRect();
     if (!rect.height && !rect.width) continue;
     if (rect.top > bottom) break;
@@ -278,6 +295,8 @@ function glideFollowers(element: HTMLElement, delta: number) {
  * top level. Only height changes caused by an edit are animated, so window
  * resizes, image loads and folding keep their own behaviour. */
 class GrowthWatcher {
+  private get window() { return ownerWindow(this.view.dom); }
+
   private observer: ResizeObserver;
   private heights = new Map<Element, number>();
   private watched: HTMLElement[] = [];
@@ -285,7 +304,7 @@ class GrowthWatcher {
   private token = 0;
 
   constructor(private view: EditorView) {
-    this.observer = new ResizeObserver(entries => this.resized(entries));
+    this.observer = new this.window.ResizeObserver(entries => this.resized(entries));
   }
 
   /** Called after every view update. `edited` is a non-structural doc change. */
@@ -308,7 +327,7 @@ class GrowthWatcher {
       // Resize observations run after this frame's rAF callbacks, so expire
       // the arm one frame later: unrelated resizes must not glide anything.
       const token = ++this.token;
-      requestAnimationFrame(() => requestAnimationFrame(() => { if (token === this.token) this.armed = false; }));
+      this.window.requestAnimationFrame(() => this.window.requestAnimationFrame(() => { if (token === this.token) this.armed = false; }));
     }
   }
 
@@ -318,7 +337,7 @@ class GrowthWatcher {
     const chain: HTMLElement[] = [];
     for (let depth = $head.depth; depth >= 1; depth--) {
       const dom = this.view.nodeDOM($head.before(depth));
-      if (dom instanceof HTMLElement && this.view.dom.contains(dom)) chain.push(dom);
+      if (isHTMLElement(dom) && this.view.dom.contains(dom)) chain.push(dom);
     }
     return chain;
   }
@@ -400,6 +419,9 @@ export function blockMotion(options: BlockMotionOptions | (() => boolean) = {}) 
       return true;
     },
     view(editorView) {
+    const window = ownerWindow(editorView.dom);
+    const ResizeObserver = window.ResizeObserver;
+
       view = editorView;
       if (typeof ResizeObserver !== 'undefined') growth = new GrowthWatcher(editorView);
       return {

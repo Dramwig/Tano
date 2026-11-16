@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+const ResizeObserver = (window as Window & typeof globalThis).ResizeObserver;
+import { isElement, isButtonElement } from '@tano/editor/dom-realm';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { MOTION_DURATION, captureList, spring } from '@tano/editor/motion';
 import LoadingSkeleton from './LoadingSkeleton.vue';
@@ -32,8 +37,8 @@ function afterPanelLeave() {
   if (!assistant.opened) emit('closed');
 }
 // Keep the destination while disabled so re-enabling Teleport updates its target.
-const teleportTarget = computed<string | HTMLElement>(previous => assistant.displayMode === 'sidebar' ? previous ?? 'body'
-  : assistant.displayMode === 'fullscreen' ? props.fullscreenTarget ?? 'body' : 'body');
+const teleportTarget = computed<string | HTMLElement>(previous => assistant.displayMode === 'sidebar' ? previous ?? document.body
+  : assistant.displayMode === 'fullscreen' ? props.fullscreenTarget ?? document.body : document.body);
 const section = ref<'conversation' | 'history'>('conversation');
 const query = ref('');
 const textarea = ref<HTMLTextAreaElement>();
@@ -307,7 +312,7 @@ function endFloatingGesture() {
   if (gesture?.target.hasPointerCapture(gesture.pointer)) gesture.target.releasePointerCapture(gesture.pointer);
 }
 function outsidePopover(event: PointerEvent) {
-  if (!(event.target instanceof Element) || !panel.value?.contains(event.target) ||
+  if (!(isElement(event.target)) || !panel.value?.contains(event.target) ||
     !event.target.closest('.assistant-popover, [data-assistant-popover]')) closePopover();
 }
 function openHistory() {
@@ -340,7 +345,7 @@ function addCurrentNote() {
   closePopover(true);
 }
 function menuKey(event: KeyboardEvent) {
-  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || !(event.target instanceof HTMLButtonElement)) return;
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || !(isButtonElement(event.target))) return;
   const menu = event.target.closest('.assistant-popover');
   if (!menu) return;
   const items = [...menu.querySelectorAll<HTMLButtonElement>('[data-menu-item]:not(:disabled)')];
@@ -481,6 +486,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
   if (element && element.scrollHeight - element.scrollTop - element.clientHeight < 160)
     void nextTick(scrollToLatest);
 });
+
 </script>
 
 <template>

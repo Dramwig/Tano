@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
+import { isNode } from '@tano/editor/dom-realm';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t, uiLocale } from '../i18n';
 import './review-card.css';
@@ -102,7 +106,7 @@ function removeMessage() {
 }
 function outsidePointer(event: PointerEvent) {
   const target = event.target;
-  if (target instanceof Node && !menu.value?.contains(target) && !menuButton?.contains(target)) closeMenu();
+  if (isNode(target) && !menu.value?.contains(target) && !menuButton?.contains(target)) closeMenu();
 }
 function menuKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') { event.preventDefault(); closeMenu(true); return; }
@@ -132,6 +136,7 @@ watch(() => props.thread.messages, messages => {
   if (menuMessage.value && !messages.some(message => message.id === menuMessage.value?.id)) closeMenu();
   if (editing.value && !messages.some(message => message.id === editing.value?.id)) finishEdit();
 });
+
 </script>
 
 <template>
@@ -179,7 +184,7 @@ watch(() => props.thread.messages, messages => {
     <CommentComposer v-if="!readonly && local" v-show="!preview" ref="replyComposer" v-model="reply" :author-name="authorName"
       :label="t('添加回复')" :busy="busy" compact class="comment-reply-composer" @submit="sendReply" />
   </article>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <div v-surface-motion="'CommentConversation:0'" v-if="menuMessage && !readonly" ref="menu" class="dropdown compact-action-menu comment-more-menu" :style="menuPosition" role="menu" :aria-label="t('更多评论操作')" @keydown.stop="menuKeydown">
       <template v-if="removal">
         <p>{{ removal.expectedMessages ? (local ? t('删除这条批注？') : t('删除这条讨论？')) : t('删除这条回复？') }}<span v-if="removal.expectedMessages && removal.expectedMessages.length > 1">{{ t('同时删除') }} {{ removal.expectedMessages.length - 1 }} {{ t('条回复') }}</span></p>

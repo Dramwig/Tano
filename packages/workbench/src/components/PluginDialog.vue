@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion, closeSurfaceDialog } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { onMounted, onBeforeUnmount, ref, useId } from 'vue';
@@ -26,6 +29,7 @@ function trapFocus(event: KeyboardEvent) {
     first?.focus();
   }
 }
+
 </script>
 
 <template>

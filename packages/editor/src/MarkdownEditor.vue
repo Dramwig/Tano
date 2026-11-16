@@ -1,4 +1,14 @@
 <script setup lang="ts">
+import { useEditorWindow } from './dom-context';
+
+const window = useEditorWindow();
+const document = window.document;
+const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
+const { ResizeObserver, IntersectionObserver } = window as Window & typeof globalThis;
+import { isElement, isHTMLElement, isMouseEvent } from './dom-realm';
+
 import { vSurfaceMotion, setSurfaceVisible } from './surface-motion';
 import { canAnimate, collapseElement, resizeHeight, settleHeight, spring, MOTION_DURATION, EASE_EXIT } from './motion';
 import { blockMotion } from './block-motion';
@@ -34,6 +44,7 @@ import {
 import { gfm, toggleStrikethroughCommand } from '@milkdown/kit/preset/gfm';
 import { toggleMark } from '@milkdown/kit/prose/commands';
 import { history, historyProviderPlugin } from '@milkdown/kit/plugin/history';
+import { captureHistory, restoreHistory } from './history-transfer';
 import { clipboard } from '@milkdown/kit/plugin/clipboard';
 import { callCommand, $prose } from '@milkdown/kit/utils';
 import { Plugin, PluginKey, NodeSelection, Selection, TextSelection } from '@milkdown/kit/prose/state';
@@ -197,7 +208,7 @@ const emit = defineEmits<{
 const policy = () => props.capabilities ?? defaultCapabilities;
 const referencesEnabled = () => props.referenceTargets !== undefined && commandEnabled('reference', props.enabledLevels, policy().features);
 const preferences = () => props.preferences ?? defaultEditorPreferences;
-const renderMermaid = createMermaidRenderer();
+const renderMermaid = createMermaidRenderer(document);
 const defaultCopyAction = computed(() => {
   const format = normalizeCopyFormat(preferences().copyFormat);
   return format === 'markdown' ? 'copy' : `copy-${format}`;
@@ -238,7 +249,7 @@ function initializeBody(markdown: string, expected: string) {
 function preventEditorTabNavigation(event: KeyboardEvent) {
   if (event.key !== 'Tab' || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
   const target = event.target;
-  if (!(target instanceof Element) || !target.closest('.ProseMirror') ||
+  if (!(isElement(target)) || !target.closest('.ProseMirror') ||
       target.closest('input, select, button, a[href], [role="button"], [role="tab"]')) return;
   // Run after the editor keymaps so list indentation and table navigation still work.
   event.preventDefault();
@@ -697,7 +708,7 @@ function syncProperty(event?: Event) {
     propertyError.value = '';
   } catch (error) {
     propertyError.value = error instanceof Error ? error.message : String(error);
-    propertyErrorField.value = event?.target instanceof Element && event.target.classList.contains('frontmatter-name-input')
+    propertyErrorField.value = isElement(event?.target) && event.target.classList.contains('frontmatter-name-input')
       ? 'name' : 'value';
   }
 }
@@ -926,7 +937,7 @@ function insertMappedChineseInput(ctx: Ctx, view: EditorView, from: number, to: 
   return true;
 }
 function chineseInputEventTarget(event: Event) {
-  return !(event.target instanceof Element && event.target.closest('input, textarea, [contenteditable="false"]'));
+  return !(isElement(event.target) && event.target.closest('input, textarea, [contenteditable="false"]'));
 }
 function beforeChineseInput(ctx: Ctx, view: EditorView, event: InputEvent) {
   if (!chineseInputEventTarget(event)) return false;
@@ -1065,7 +1076,7 @@ function inlineSourceDestination(ctx: Ctx, source: string): InlineSourceDestinat
 }
 
 function openInlineSourceLink(ctx: Ctx, view: EditorView, event: MouseEvent) {
-  if (!(event.target instanceof Element)) return false;
+  if (!(isElement(event.target))) return false;
   const sourceDom = event.target.closest('[data-tano-live-inline-source]');
   if (!sourceDom || !view.dom.contains(sourceDom)) return false;
   const source = currentSource(view);
@@ -1085,7 +1096,7 @@ function sourceId() {
 }
 
 function inlineAtomSourceRange(view: EditorView, event: MouseEvent | KeyboardEvent) {
-  if (!(event.target instanceof Element)) return null;
+  if (!(isElement(event.target))) return null;
   if (event.target.closest('button, input, textarea')) return null;
   const atom = event.target.closest(
     'a[data-tano-wiki-target], .math-inline, sup[data-type="footnote_reference"], .tano-html-node, .tano-image',
@@ -1149,7 +1160,7 @@ function inlineSourceTransaction(
 }
 
 function activateInlineSource(ctx: Ctx, view: EditorView, event?: MouseEvent | KeyboardEvent) {
-  const disabledStyle = event?.target instanceof Element
+  const disabledStyle = isElement(event?.target)
     ? event.target.closest<HTMLElement>('[data-tano-disabled-style]') : null;
   // Literal fallback delimiters live outside contentDOM and have no document
   // positions. Resolve their owning mark before revealing editable source.
@@ -1171,7 +1182,7 @@ function activateInlineSource(ctx: Ctx, view: EditorView, event?: MouseEvent | K
   }
   // Existing text has a semantic caret position mapped by the transaction.
   // Only previews and decorative delimiters lack an editable text position.
-  const clickedDelimiter = content && event?.target instanceof Element &&
+  const clickedDelimiter = content && isElement(event?.target) &&
     !content.contains(event.target);
   focusRevealedSource(view, atomRange || clickedDelimiter ? event : undefined);
   return true;
@@ -1181,7 +1192,7 @@ function activateInlineSource(ctx: Ctx, view: EditorView, event?: MouseEvent | K
 // pass a pointer to resolve against the newly editable source.
 function focusRevealedSource(view: EditorView, event?: MouseEvent | KeyboardEvent) {
   view.focus();
-  if (!(event instanceof MouseEvent) || (!event.clientX && !event.clientY)) return;
+  if (!(isMouseEvent(event)) || (!event.clientX && !event.clientY)) return;
   const source = currentSource(view);
   if (!source) return;
   const hit = view.posAtCoords({ left: event.clientX, top: event.clientY });
@@ -1238,7 +1249,7 @@ function blockNodeSourceTransaction(
   // A Mermaid preview is a div with no vertical padding. Its padding must not
   // become the fence line height of the editable <pre> source block.
   const style = selected.node.type.name === 'code_block' &&
-    !(rendered instanceof HTMLElement && rendered.matches('pre'))
+    !(isHTMLElement(rendered) && rendered.matches('pre'))
     ? null
     : sourceBlockStyle(rendered);
   const sourceNode = liveSource
@@ -1442,7 +1453,7 @@ function activateReferenceSource(view: EditorView, pos: number) {
 }
 
 function activateLocalSource(ctx: Ctx, view: EditorView, event: MouseEvent | KeyboardEvent) {
-  const target = event.target instanceof Element ? event.target : null;
+  const target = isElement(event.target) ? event.target : null;
   const previewBlock = target
     ?.closest('.math-preview, .tano-mermaid-preview, .tano-image-block')
     ?.closest('.math-block, .tano-mermaid, .tano-image-block');
@@ -2329,7 +2340,7 @@ const bridge = $prose(
             if (
               event.button === 0 &&
               (event.ctrlKey || event.metaKey) &&
-              event.target instanceof Element &&
+              isElement(event.target) &&
               view.dom.contains(event.target.closest('a[href], sup[data-type="footnote_reference"]'))
             ) {
               // Keep the anchor in the DOM until its click event opens it.
@@ -2346,7 +2357,7 @@ const bridge = $prose(
             }
             if (event.key.toLowerCase() === 'a' && (event.ctrlKey || event.metaKey) &&
                 !event.shiftKey && !event.altKey && !event.isComposing && event.keyCode !== 229 && !view.composing &&
-                !(event.target instanceof Element && event.target.closest('input, textarea, [contenteditable="false"]'))) {
+                !(isElement(event.target) && event.target.closest('input, textarea, [contenteditable="false"]'))) {
               const selection = expandBlockSelection(view.state.doc, view.state.selection);
               if (selection) {
                 event.preventDefault();
@@ -2517,7 +2528,7 @@ const bridge = $prose(
             if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
                 props.revealMarkdown !== false && !props.readonly &&
                 (event.clientX || event.clientY) && !currentSource(_view) &&
-                event.target instanceof Element &&
+                isElement(event.target) &&
                 !inlineAtomSourceRange(_view, event) &&
                 !event.target.closest('[contenteditable="false"], .math-preview, .tano-mermaid-preview, .tano-image-block')) {
               const hit = _view.posAtCoords({ left: event.clientX, top: event.clientY });
@@ -2530,7 +2541,7 @@ const bridge = $prose(
               return true;
             }
             if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
-                event.target instanceof Element &&
+                isElement(event.target) &&
                 activateFootnoteLabelSource(ctx, _view, event.target)) {
               event.preventDefault();
               return true;
@@ -2551,7 +2562,7 @@ const bridge = $prose(
               event.preventDefault();
               return activateInlineSource(ctx, _view, event);
             }
-            const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+            const link = isElement(event.target) ? event.target.closest('a[href]') : null;
             if (link) {
               event.preventDefault();
               const wikiTarget = link.getAttribute('data-tano-wiki-target');
@@ -3333,7 +3344,7 @@ function rememberRightClickSelection(event: MouseEvent) {
 
 function selectedContextTarget(event: MouseEvent) {
   const target = event.target;
-  return !props.readonly && !disposed && target instanceof Element &&
+  return !props.readonly && !disposed && isElement(target) &&
     (root.value?.closest('.editor-scroll') ?? root.value)?.contains(target) &&
     !target.closest('button, input, textarea, select, [role="dialog"]') &&
     bridgeView && !bridgeView.state.selection.empty;
@@ -3351,7 +3362,7 @@ function openSelectedContext(event: MouseEvent) {
 }
 
 function blockIndexFromEvent(view: EditorView, target: EventTarget | null): number | null {
-  if (!(target instanceof Element)) return null;
+  if (!(isElement(target))) return null;
   const handle = target.closest<HTMLElement>('.tano-block-handle');
   if (handle && root.value?.contains(handle)) {
     const index = blockTree(view.state.doc).findIndex(({ pos }) => pos === Number(handle.dataset.blockPos));
@@ -3361,7 +3372,7 @@ function blockIndexFromEvent(view: EditorView, target: EventTarget | null): numb
   const entries = blockTree(view.state.doc);
   for (let index = entries.length - 1; index >= 0; index--) {
     const dom = view.nodeDOM(entries[index]!.pos);
-    if (dom instanceof Element && dom.contains(target)) return index;
+    if (isElement(dom) && dom.contains(target)) return index;
   }
   return null;
 }
@@ -3728,7 +3739,7 @@ function dismissBlockSourceOnPointer(event: PointerEvent) {
       (localSource?.kind === 'block' && localSource.dismissOnOutside))) return;
   editor.action(ctx => {
     const view = ctx.get(editorViewCtx);
-    if (event.target instanceof Element) {
+    if (isElement(event.target)) {
       const source = event.target.closest('[data-tano-live-source]');
       if (source && view.dom.contains(source)) return;
     }
@@ -3784,7 +3795,7 @@ function focusTrailingParagraph(event: MouseEvent) {
       !view.editable ||
       view.composing ||
       view.dragging ||
-      !(event.target instanceof HTMLElement) ||
+      !(isHTMLElement(event.target)) ||
       !event.target.contains(view.dom)
     )
       return;
@@ -3792,7 +3803,7 @@ function focusTrailingParagraph(event: MouseEvent) {
     const last = doc.lastChild;
     if (!last) return;
     const lastDOM = view.nodeDOM(doc.content.size - last.nodeSize);
-    if (!(lastDOM instanceof HTMLElement) || event.clientY < lastDOM.getBoundingClientRect().bottom)
+    if (!(isHTMLElement(lastDOM)) || event.clientY < lastDOM.getBoundingClientRect().bottom)
       return;
 
     event.preventDefault();
@@ -3919,7 +3930,7 @@ function commentGeometry(anchors = props.commentAnchors ?? []): CommentGeometry 
       while (depth > 1 && !$pos.node(depth).isTextblock) depth--;
       const position = depth ? $pos.before(depth) : from;
       const dom = bridgeView.nodeDOM(position);
-      const element = dom instanceof HTMLElement ? dom : dom?.parentElement;
+      const element = isHTMLElement(dom) ? dom : dom?.parentElement;
       if (!element || !element.getClientRects().length) continue;
       const rect = element.getBoundingClientRect();
       const block = blocks.get(position) ?? { key: String(position), ids: [], top: rect.top, bottom: rect.bottom };
@@ -4022,7 +4033,7 @@ function restoreModeSelection(selection: ModeSelection, focus = true) {
       }
     } finally { applying = false; }
     const dom = view.domAtPos(view.state.selection.head).node;
-    const element = dom instanceof HTMLElement ? dom : dom.parentElement;
+    const element = isHTMLElement(dom) ? dom : dom.parentElement;
     element?.dispatchEvent(new Event('tano-reveal-search', { bubbles: true }));
     for (let parent = element; parent && parent !== view.dom; parent = parent.parentElement)
       if (parent instanceof HTMLDetailsElement) parent.open = true;
@@ -4071,6 +4082,17 @@ function revealPreviewSource() {
   });
 }
 defineExpose({
+  captureTransferState: () => {
+    if (!bridgeView || disposed || props.extension?.ownsHistory) return undefined;
+    const plugin = historyProviderPlugin.key()?.get(bridgeView.state);
+    return plugin ? { content: props.modelValue, revision: props.contentRevision, history: captureHistory(bridgeView.state, plugin) } : undefined;
+  },
+  restoreTransferState: (value: unknown) => {
+    const snapshot = value as { content: string; revision: unknown; history: EditorState } | undefined;
+    if (!snapshot || !bridgeView || disposed || props.extension?.ownsHistory || snapshot.content !== props.modelValue || snapshot.revision !== props.contentRevision) return;
+    const plugin = historyProviderPlugin.key()?.get(bridgeView.state);
+    if (plugin) bridgeView.updateState(restoreHistory(bridgeView.state, snapshot.history, plugin));
+  },
   revealPreviewSource,
   blockShortcut,
   addDocumentProperty,
@@ -4283,7 +4305,7 @@ onBeforeUnmount(() => {
     @keydown="preventEditorTabNavigation"
   />
   <slot v-if="emptyDocument && !readonly" name="empty-document" />
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <div v-surface-motion="'MarkdownEditor:1'"
       v-if="linkPanel"
       ref="linkPanelElement"
@@ -4306,7 +4328,7 @@ onBeforeUnmount(() => {
       </template>
     </div>
   </Teleport>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <div v-surface-motion="'MarkdownEditor:2'"
       v-if="blockMenu"
       ref="blockMenuElement"

@@ -1,3 +1,4 @@
+import { isHTMLElement } from '@tano/editor/dom-realm';
 import {
   AlignmentType, BorderStyle, Document, ExternalHyperlink, HeadingLevel, HighlightColor,
   ImageRun, LevelFormat, Packer, Paragraph, Table, TableCell, TableLayoutType, TableRow,
@@ -167,7 +168,7 @@ export async function renderWordDocument(root: HTMLElement, options: Pick<Docume
         result.push(...textRuns(node.textContent ?? '', inherited));
         continue;
       }
-      if (!(node instanceof HTMLElement) || hidden(node)) continue;
+      if (!(isHTMLElement(node)) || hidden(node)) continue;
       const style = runStyle(node, inherited);
       if (node.tagName === 'BR') result.push(new TextRun({ break: 1 }));
       else if (node instanceof HTMLImageElement) result.push(await imageRun(node, context.width));
@@ -204,7 +205,7 @@ export async function renderWordDocument(root: HTMLElement, options: Pick<Docume
       style: { paragraph: { indent: { left: context.indent + (index + 1) * 360, hanging: 240 } } },
     })) });
     for (const item of element.children) {
-      if (!(item instanceof HTMLElement) || item.tagName !== 'LI') continue;
+      if (!(isHTMLElement(item)) || item.tagName !== 'LI') continue;
       const itemContext = { ...context, width: Math.max(80, context.width - 24), listDepth: context.listDepth + 1 };
       const task = item.dataset.itemType === 'task' || item.hasAttribute('data-checked');
       let first = true;
@@ -219,10 +220,10 @@ export async function renderWordDocument(root: HTMLElement, options: Pick<Docume
         first = false;
       };
       for (const child of item.childNodes) {
-        if (child instanceof HTMLElement && ['UL', 'OL', 'TABLE', 'BLOCKQUOTE', 'PRE'].includes(child.tagName)) {
+        if (isHTMLElement(child) && ['UL', 'OL', 'TABLE', 'BLOCKQUOTE', 'PRE'].includes(child.tagName)) {
           await flush();
           result.push(...await block(child, itemContext));
-        } else if (child instanceof HTMLElement && child.tagName === 'P') {
+        } else if (isHTMLElement(child) && child.tagName === 'P') {
           if (buffer.length) await flush();
           buffer.push(...child.childNodes);
           await flush();
@@ -290,7 +291,7 @@ export async function renderWordDocument(root: HTMLElement, options: Pick<Docume
       buffer.length = 0;
     };
     for (const node of nodes) {
-      if (node instanceof HTMLElement && blockTags.has(node.tagName)) {
+      if (isHTMLElement(node) && blockTags.has(node.tagName)) {
         await flush();
         result.push(...await block(node, context));
       } else buffer.push(node);

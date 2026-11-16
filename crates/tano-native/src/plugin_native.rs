@@ -482,7 +482,7 @@ mod tests {
             .begin_control("main", &uuid::Uuid::new_v4().to_string())
             .unwrap();
         let request = state
-            .begin("settings-main", &uuid::Uuid::new_v4().to_string())
+            .begin("main", &uuid::Uuid::new_v4().to_string())
             .unwrap();
         state.stop_workspace();
         let current = state

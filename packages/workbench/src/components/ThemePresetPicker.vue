@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
+import { isNode } from '@tano/editor/dom-realm';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { ChevronDown, LayoutGrid } from 'lucide-vue-next';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
@@ -48,7 +52,7 @@ async function toggle() {
   (panel.value.querySelector<HTMLButtonElement>('.theme-preset-card:not(:disabled)') ?? panel.value).focus({ preventScroll: true });
 }
 function dismiss(event: PointerEvent) {
-  if (!expanded.value || !(event.target instanceof Node)) return;
+  if (!expanded.value || !(isNode(event.target))) return;
   // Dragging the settings scrollbar should keep the expanded choices visible.
   if (picker.value?.contains(event.target) || event.target === picker.value?.closest('.settings-main')) return;
   close();
@@ -60,6 +64,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', dismiss, true);
 });
+
 </script>
 
 <template>

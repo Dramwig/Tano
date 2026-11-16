@@ -7,7 +7,6 @@ import { NativeAdapter, native } from '@tano/workbench/adapter';
 import { markdownDemoLocaleFromPath } from '@tano/workbench/markdown-demo-routes';
 import { initializePlatform, mobile } from '@tano/workbench/platform';
 import '@tano/workbench/styles.css';
-import { settingsWindowRequest } from '@tano/workbench/settings-window';
 import { HttpPluginCatalog } from '@tano/workbench/plugins/catalog';
 import { createNativePluginConnections, createNativePluginServices } from '@tano/workbench/plugins/native';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -20,17 +19,14 @@ export async function start(signal?: AbortSignal) {
   // Catalogs are ready; native cross-window subscription
   // must not hold up mounting the workbench.
   void initializeLocaleSync(native);
-  const settingsRoute = native && !!settingsWindowRequest();
   await initializePlatform();
   signal?.throwIfAborted();
   const windowLabel = native && !mobile ? getCurrentWindow().label : '';
   const standalone = windowLabel.startsWith('file-');
   const [view, desktopFrame, storage] = await Promise.all([
-    settingsRoute
-      ? import('@tano/workbench/components/SettingsWindow.vue')
-      : standalone ? import('./StandaloneFile.vue')
+    standalone ? import('./StandaloneFile.vue')
       : windowLabel === 'main' ? import('./WorkspaceShell.vue') : import('@tano/workbench'),
-    native && !settingsRoute
+    native
       ? import('@tano/workbench/components/DesktopWindow.vue')
       : null,
     native
@@ -52,7 +48,7 @@ export async function start(signal?: AbortSignal) {
       ? t('Tano / 同页 — 本地工作区')
       : locale === 'en-us' ? 'Tano — English Markdown demo' : 'Tano / 同页 — 中文 Markdown 演示';
   });
-  const app = native && !mobile && !settingsRoute
+  const app = native && !mobile
     ? createApp(desktopFrame!.default, { view: view.default })
     : createApp(view.default);
   app.use(pinia).mount('#app');

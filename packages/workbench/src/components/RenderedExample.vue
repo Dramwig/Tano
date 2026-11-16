@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const ResizeObserver = (window as Window & typeof globalThis).ResizeObserver;
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import MarkdownEditor from '@tano/editor';
 import { prepareEditorPreview } from '@tano/editor/preview';
@@ -38,6 +41,7 @@ async function prepare() {
   if (props.properties) host.value?.querySelector('details')?.setAttribute('open', '');
 }
 watch(() => [props.markdown, props.source, props.folded, props.reveal], () => { if (ready.value) void prepare(); }, { flush: 'post' });
+
 </script>
 
 <template>

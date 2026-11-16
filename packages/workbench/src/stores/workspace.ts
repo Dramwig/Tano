@@ -5,7 +5,6 @@ import { nativeAttachments } from '../attachments';
 import { WorkspacePluginRuntime } from '../workspace-plugin-runtime';
 import { WorkspaceLifecycle } from '../workspace-lifecycle';
 import { useTabNavigation } from '../tab-navigation';
-import { DETACHED_SPARE_TAB } from '../detached-spare-tab';
 import { computed, onScopeDispose, ref, shallowRef, watch, type ComputedRef } from 'vue';
 import { defineStore } from 'pinia';
 import { FileRegistry, defaultFileDatabaseQuery, defaultObjectViewQuery, parseWorkspaceView, workspaceViewPath, type WorkspaceViewDefinition } from '@tano/protocol';
@@ -57,6 +56,7 @@ import { GRAPH_TAB_ID } from '../document-graph';
 import { CALENDAR_TAB_ID } from '../calendar';
 import { dockLayout, layoutPanes, newPane, reconcileLayout, restoreLayout } from '../pane-layout';
 import type { PaneDrop } from '../pane-layout';
+import { closeWindowLayout, moveTabToNewWindow, moveWindowTab, newWindowLayout, type WindowLayouts } from '../windows/layout';
 import { DocumentLayoutConflict, loadDocumentLayout, layoutDirty, saveDocumentLayout } from '../workspace-document-layout';
 import { documentLayoutPath, parseDocumentLayout } from '@tano/protocol';
 import type { DocumentLayoutState } from '../workspace-document-layout';
@@ -926,29 +926,64 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   });
   watch(() => workspace.value?.id, () => { activePluginSidebar.value = ''; pluginSettingsRequest.value = undefined; });
-  const layout = ref<WorkspaceLayout>(newPane());
-  const panes = computed(() => layoutPanes(layout.value));
+  const windowLayouts = ref<WindowLayouts>({ main: newWindowLayout() });
+  const layout = computed({
+    get: () => windowLayouts.value.main.layout,
+    set: (value: WorkspaceLayout) => { windowLayouts.value.main.layout = value; },
+  });
+  const panes = computed(() => Object.values(windowLayouts.value).flatMap(state => layoutPanes(state.layout)));
   const activePaneId = ref(layout.value.id);
+  watch(activePaneId, id => {
+    const owner = Object.values(windowLayouts.value).find(state => layoutPanes(state.layout).some(pane => pane.id === id));
+    if (owner) owner.activePaneId = id;
+  }, { flush: 'sync' });
   const paneDrop = ref<PaneDrop>();
   // Presentation only: keep the real tab/session until its new window is ready.
   const detachingTabId = ref('');
   let changingLayout = false;
   watch(() => [...tabIds.value], (ids, previous) => {
     if (changingLayout) return;
-    layout.value = reconcileLayout(layout.value, ids, previous, activePaneId.value);
+    const owner = Object.entries(windowLayouts.value).find(([, state]) =>
+      layoutPanes(state.layout).some(pane => pane.id === activePaneId.value))?.[0] ?? 'main';
+    const owned = new Set(panes.value.flatMap(pane => pane.tabs));
+    const additions = ids.filter(id => !owned.has(id));
+    const next: WindowLayouts = {};
+    for (const [id, state] of Object.entries(windowLayouts.value)) {
+      const priorTabs = layoutPanes(state.layout).flatMap(pane => pane.tabs);
+      const remaining = ids.filter(tab => priorTabs.includes(tab) || (id === owner && additions.includes(tab)));
+      if (id !== 'main' && !remaining.length) continue;
+      const updated = reconcileLayout(state.layout, remaining, previous.filter(tab => priorTabs.includes(tab)), state.activePaneId);
+      next[id] = { layout: updated, activePaneId: layoutPanes(updated).some(pane => pane.id === state.activePaneId)
+        ? state.activePaneId : layoutPanes(updated)[0].id };
+    }
+    windowLayouts.value = next;
     if (!panes.value.some(pane => pane.id === activePaneId.value)) activePaneId.value = panes.value[0].id;
   }, { flush: 'sync' });
   watch(activeId, id => {
     const pane = panes.value.find(pane => pane.tabs.includes(id));
-    if (pane) { pane.activeId = id; activePaneId.value = pane.id; }
+    if (pane) {
+      pane.activeId = id;
+      activePaneId.value = pane.id;
+      const owner = Object.values(windowLayouts.value).find(state => layoutPanes(state.layout).some(item => item.id === pane.id));
+      if (owner) owner.activePaneId = pane.id;
+    }
   }, { flush: 'sync' });
   function focusPane(id: string) {
     const pane = panes.value.find(pane => pane.id === id);
     if (!pane) return;
     activePaneId.value = pane.id;
+    const owner = Object.values(windowLayouts.value).find(state => layoutPanes(state.layout).some(item => item.id === id));
+    if (owner) owner.activePaneId = id;
     activeId.value = pane.activeId;
   }
   function dockTab(id: string, drop: PaneDrop) {
+    const owner = Object.entries(windowLayouts.value).find(([, state]) => layoutPanes(state.layout).some(pane => pane.id === drop.paneId))?.[0];
+    const source = Object.entries(windowLayouts.value).find(([, state]) => layoutPanes(state.layout).some(pane => pane.tabs.includes(id)))?.[0];
+    if (owner && (owner !== 'main' || source !== 'main')) {
+      applyWindowLayouts(moveWindowTab(windowLayouts.value, id, owner, drop), id);
+      paneDrop.value = undefined;
+      return;
+    }
     const before = layout.value;
     const priorActive = activeId.value;
     const origin = panes.value.find(pane => pane.tabs.includes(id));
@@ -987,7 +1022,40 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       if (node.id === id) node.ratio = Math.max(.1, Math.min(.9, ratio));
       else { resize(node.first); resize(node.second); }
     }
-    resize(layout.value);
+    for (const state of Object.values(windowLayouts.value)) resize(state.layout);
+  }
+
+  function applyWindowLayouts(next: WindowLayouts, selected: string) {
+    changingLayout = true;
+    try {
+      windowLayouts.value = next;
+      tabIds.value = panes.value.flatMap(pane => pane.tabs);
+      const pane = panes.value.find(pane => pane.tabs.includes(selected));
+      if (pane) {
+        activeId.value = selected;
+        focusPane(pane.id);
+      }
+    } finally {
+      changingLayout = false;
+    }
+  }
+  function moveTabToWindow(id: string, targetId: string, drop: PaneDrop) {
+    applyWindowLayouts(moveWindowTab(windowLayouts.value, id, targetId, drop), id);
+  }
+  function moveTabToAuxiliaryWindow(id: string, windowId: string) {
+    applyWindowLayouts(moveTabToNewWindow(windowLayouts.value, id, windowId), id);
+  }
+  async function closeAuxiliaryWindow(id: string) {
+    if (id === 'main') return false;
+    const state = windowLayouts.value[id];
+    if (!state) return true;
+    if (!(await flush())) return false;
+    for (const tab of layoutPanes(state.layout).flatMap(pane => pane.tabs)) {
+      await close(tab);
+      if (tabIds.value.includes(tab)) return false;
+    }
+    windowLayouts.value = closeWindowLayout(windowLayouts.value, id);
+    return true;
   }
   const busy = ref(false);
   // Folder selection keeps the current page visible. Presentation switches only
@@ -1066,13 +1134,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const sessionError = ref('');
   const isDemo = adapter.mode === 'demo';
   const isWeb = adapter.mode === 'web';
-  const detachedTabId = !isDemo && !isWeb && !mobile
-    ? new URLSearchParams(window.location.search).get('detachedTab')
-    : null;
-  const detachedWorkspacePath = detachedTabId
-    ? new URLSearchParams(window.location.search).get('workspacePath')
-    : null;
-  const remembersStartupWorkspace = !isDemo && !isWeb && !detachedTabId;
+  const remembersStartupWorkspace = !isDemo && !isWeb;
 
   const layoutPending = (doc: OpenDocument) => !!doc.tableLayout && layoutDirty(doc.tableLayout) &&
     doc.tableLayout.conflict?.draft !== JSON.stringify(doc.tableLayout.file);
@@ -1104,7 +1166,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   // Track only recoverable fields. Saving/error flags, undo stacks and plugin
   // state must not traverse/rewrite every open document on the input path.
   const recoveryDocuments = new WeakMap<OpenDocument, ComputedRef<WorkspaceSession['documents'][number]>>();
-  const sessionDocuments = computed(() => documents.value.map(doc => {
+  const mainTabIds = computed(() => layoutPanes(layout.value).flatMap(pane => pane.tabs));
+  const sessionDocuments = computed(() => documents.value.filter(doc => mainTabIds.value.some(id => tabTarget(id) === doc.id)).map(doc => {
     let snapshot = recoveryDocuments.get(doc);
     if (!snapshot) {
       snapshot = computed(() => ({
@@ -1115,18 +1178,18 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
     return snapshot.value;
   }));
-  const sessionTables = computed(() => dataTables.drafts());
+  const sessionTables = computed(() => dataTables.drafts().filter(draft => mainTabIds.value.some(id => tableFileId(tabTarget(id)) === (draft.fileId ?? draft.id))));
   const sessionLayout = computed(() => JSON.parse(JSON.stringify(layout.value)) as WorkspaceLayout);
   const sessionPayload = computed<WorkspaceSession>(() => ({
     version: 1,
-    activeId: activeId.value,
-    tabs: [...new Set(tabIds.value.map(tabTarget))],
+    activeId: layoutPanes(layout.value).find(pane => pane.id === windowLayouts.value.main.activePaneId)?.activeId ?? '',
+    tabs: [...new Set(mainTabIds.value.map(tabTarget))],
     layout: sessionLayout.value,
     dataTables: sessionTables.value,
     documents: sessionDocuments.value,
   }));
   function queueSession() {
-    if (detachedTabId || !sessionReady || sessionBlocked || !workspace.value || !adapter.saveSession) return;
+    if (!sessionReady || sessionBlocked || !workspace.value || !adapter.saveSession) return;
     journal.enqueue(workspace.value.id, sessionPayload.value);
   }
   const stopSessionWatch = watch(sessionPayload, queueSession, {
@@ -1173,8 +1236,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     onScopeDispose(() => window.removeEventListener('focus', refreshRecentOnFocus));
   }
   async function initialize(requestedWorkspace?: string) {
-    if (detachedTabId && detachedWorkspacePath) await openWorkspace(detachedWorkspacePath);
-    else if (isDemo || isWeb) {
+    if (isDemo || isWeb) {
       await openWorkspace(requestedWorkspace);
       if (!workspace.value && requestedWorkspace) await openWorkspace();
       if (isWeb) await refreshWorkspaces();
@@ -1256,7 +1318,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         if (next.reinitialized) {
           report('.tano 已删除，工作区已重新初始化。旧对象已丢失，文档和附件保留。');
         }
-        if (!detachedTabId && (newName !== undefined || next.newlyCreated)) {
+        if ((newName !== undefined || next.newlyCreated)) {
           try {
             next = await addWorkspaceWelcome(adapter, next);
           } catch (error) {
@@ -1300,7 +1362,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         const watcherReady = workspaceLifecycle.start().catch(report);
         pendingWorkspaceLoads.push(watcherReady);
         let saved: WorkspaceSession | null = null;
-        if (!detachedTabId && adapter.loadSession) {
+        if (adapter.loadSession) {
           try {
             saved = await adapter.loadSession(next.id);
           } catch (error) {
@@ -1309,37 +1371,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           }
         }
         if (saved) await restoreSession(saved, tablesReady, objectsReady);
-        else if (!detachedTabId) await settingsReady; // Only the default page depends on settings.
+        else await settingsReady; // Only the default page depends on settings.
         const first =
           next.files.find(f => f.id === workspaceSettings.value.homePageId && f.kind === 'file' && isMarkdown(f.path)) ??
           next.files.find((f) => f.path === workspaceWelcomePath) ??
           next.files.find((f) => /^readme\.md$/i.test(f.path)) ??
           next.files.find((f) => f.kind === 'file' && isMarkdown(f.path) && !isWorkspaceInternalPath(f.path));
-        if (detachedTabId === DETACHED_SPARE_TAB) {
-          // A spare window stays hidden and empty; finish every workspace part
-          // now so adopting a dragged-out tab later needs no further loading.
-          await Promise.allSettled(pendingWorkspaceLoads);
-        } else if (detachedTabId) {
-          if (isWorkspaceViewTab(detachedTabId) || detachedTabId.startsWith('plugin:')) await objectsReady;
-          if (isTableTab(detachedTabId)) await tablesReady;
-          if (detachedTabId === GRAPH_TAB_ID) await openGraphTab({ newTab: true });
-          else if (detachedTabId === PLUGINS_TAB_ID) await openPluginsTab({ newTab: true });
-          else if (detachedTabId === CALENDAR_TAB_ID) openCalendarTab();
-          else if (isTableTab(detachedTabId)) await openPageTab(detachedTabId, { newTab: true });
-          else if (isDirectoryTab(detachedTabId)) await openPageTab(detachedTabId, { newTab: true });
-          else if (isWorkspaceViewTab(detachedTabId)) await openWorkspaceView(workspaceViewId(detachedTabId)!, { newTab: true });
-          else if (views.value.has(detachedTabId)) {
-            if (!views.value.get(detachedTabId)?.detachable) throw new Error(t('此扩展视图不支持移到其他窗口'));
-            openViewTab(detachedTabId);
-          }
-          else if (detachedTabId.startsWith('blank:')) createBlankTab();
-          else {
-            const detachedFile = next.files.find((file) => file.id === detachedTabId);
-            if (!detachedFile) throw new Error('拖出的文档已不存在');
-            await openInitialDocument(detachedFile);
-            if (activeId.value !== detachedFile.id) throw new Error('无法打开拖出的文档');
-          }
-        } else if (!saved && first) {
+        if (!saved && first) {
           try {
             await openInitialDocument(first);
             ensureTabNavigation(activeId.value, activeId.value);
@@ -1349,7 +1387,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           }
         }
         workspaceLoading.value.session = false;
-        if (!detachedTabId) {
+        {
           for (const id of accountTabs) {
             if (!tabIds.value.includes(id)) tabIds.value.push(id);
             ensureTabNavigation(id);
@@ -1414,7 +1452,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const assertDeletion = () => {
         if (deleteId === undefined) return;
         if (workspace.value?.id !== deleteId) throw new Error(t('工作区已切换，请重新确认删除'));
-        if (detachedTabId) throw new Error('请在主工作台删除工作区');
         if (!adapter.deleteWorkspace || !workspace.value.canDelete)
           throw new Error(isWeb ? '仅工作区所有者可以删除工作区' : '此平台暂不支持删除本地工作区注册');
       };
@@ -1432,7 +1469,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         queueSession();
         await journal.flush();
         if (deleteId !== undefined) await adapter.deleteWorkspace!(deleteId);
-        else if (!detachedTabId) await adapter.close?.(current.id);
+        else await adapter.close?.(current.id);
         if (remembersStartupWorkspace) rememberStartupWorkspace(null);
         sessionReady = false;
         stopWatching();
@@ -3155,6 +3192,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     renameDataTable,
     openDataTable,
     layout,
+    windowLayouts,
+    moveTabToWindow,
+    moveTabToAuxiliaryWindow,
+    closeAuxiliaryWindow,
     panes,
     activePaneId,
     paneDrop,

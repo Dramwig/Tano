@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const ResizeObserver = (window as Window & typeof globalThis).ResizeObserver;
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useId, watch } from 'vue';
@@ -199,6 +202,7 @@ onMounted(async () => {
   }
 });
 onBeforeUnmount(() => { nameResize?.disconnect(); if (previousFocus?.isConnected) previousFocus.focus(); });
+
 </script>
 
 <template>

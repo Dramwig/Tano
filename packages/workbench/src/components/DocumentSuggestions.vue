@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window } = useWindowContext();
+const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
+const ResizeObserver = (window as Window & typeof globalThis).ResizeObserver;
+import { isElement } from '@tano/editor/dom-realm';
 import { t } from '../i18n';
 import './review-card.css';
 import { captureReviewRail, updateReviewRail, removeReviewRail } from './review-rail';
@@ -110,7 +116,7 @@ onMounted(() => {
   }
   if (host.value) {
     mutations = new MutationObserver(records => {
-      if (records.some(record => !(record.target instanceof Element) || !record.target.closest('.review-card'))) alignCards();
+      if (records.some(record => !(isElement(record.target)) || !record.target.closest('.review-card'))) alignCards();
     });
     mutations.observe(host.value, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style', 'class'] });
     host.value.addEventListener('tano-table-layout', alignCards);
@@ -139,7 +145,7 @@ watch(() => props.document.id, () => {
   void store.load(props.document.id);
 }, { immediate: true });
 watch(() => props.managed, managed => { if (managed && session.value) session.value.mode = false; });
-const stopPolling = subscribeBackgroundRefresh(() => store.load(props.document.id, true));
+const stopPolling = subscribeBackgroundRefresh(() => store.load(props.document.id, true), window);
 watch([sourceMarks, () => props.source], async ([snapshot, source]) => {
   const revision = ++generation;
   if (source || !snapshot.ranges.length) { publishMarks(emptyMarks); return; }
@@ -162,7 +168,7 @@ watch([sourceMarks, () => props.source], async ([snapshot, source]) => {
 }, { immediate: true });
 onBeforeUnmount(() => { removeReviewRail(reviewOwner); generation++; anchorGeneration++; stopPolling(); cancelAnimationFrame(frame); observer?.disconnect(); mutations?.disconnect(); window.removeEventListener('resize', alignCards); window.removeEventListener('pointerdown', outsidePointer, true); window.removeEventListener('keydown', escapeCard); host.value?.removeEventListener('tano-table-layout', alignCards); void parser?.then(codec => codec.destroy()); });
 function outsidePointer(event: PointerEvent) {
-  if (event.target instanceof Element && !event.target.closest('.suggestion-card, .comment-more-menu, [data-suggestion-id]')) selected.value = '';
+  if (isElement(event.target) && !event.target.closest('.suggestion-card, .comment-more-menu, [data-suggestion-id]')) selected.value = '';
 }
 function escapeCard(event: KeyboardEvent) { if (event.key === 'Escape') selected.value = ''; }
 async function action(run: () => Promise<unknown>) {
@@ -175,7 +181,7 @@ async function focus(id: string, scroll = true) {
   await conversations.get(id)?.focusReply();
 }
 function clicked(event: MouseEvent) {
-  const mark = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-suggestion-id]') : null;
+  const mark = isElement(event.target) ? event.target.closest<HTMLElement>('[data-suggestion-id]') : null;
   if (mark?.dataset.suggestionId) void focus(mark.dataset.suggestionId, false);
 }
 async function reply(id: string, body: string, mentions: CommentMention[], replyTo?: string) {
@@ -194,6 +200,7 @@ async function editReply(id: string, change: CommentMessageEdit) {
 async function removeReply(id: string, change: CommentMessageRemoval) {
   await action(() => store.changeReply(props.document.id, id, { type: 'delete', threadId: id, authorId: props.author.id, ...change }));
 }
+
 </script>
 
 <template>

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion, closeSurfaceDialog } from '@tano/editor/surface-motion';
 import { computed, nextTick, ref } from 'vue';
 import { Download, LoaderCircle } from 'lucide-vue-next';
@@ -53,11 +56,12 @@ async function save() {
   } catch (reason) { error.value = String(reason); }
   finally { saving.value = false; }
 }
+
 </script>
 
 <template>
   <button v-if="assistant.canImportCcSwitch" ref="trigger" type="button" class="cc-import-trigger" aria-haspopup="dialog" :disabled="assistant.busy || assistant.loading" @click="show"><Download :size="15" />{{ t('从 CC Switch 导入') }}</button>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <dialog v-surface-motion="'AssistantCcSwitchImport:0'" v-if="visible" ref="dialog" class="cc-import-dialog" aria-labelledby="cc-import-title" @cancel.prevent="close" @keydown.stop>
       <form @submit.prevent="save">
         <header><h2 id="cc-import-title">{{ t('从 CC Switch 导入') }}</h2></header>

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
@@ -367,6 +370,7 @@ function animateActions(element: Element, done: () => void, entering: boolean) {
   });
 }
 onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionMotion(element); });
+
 </script>
 
 <template>

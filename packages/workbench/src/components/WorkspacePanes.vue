@@ -1,14 +1,26 @@
 <script setup lang="ts">
 import { t } from '../i18n';
+import { isElement, isHTMLElement, ownerWindow } from '@tano/editor/dom-realm';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { layoutGeometry, mapLayout, newPane, panePreviewRects } from '../pane-layout';
 import type { LayoutRect } from '../pane-layout';
 import { useWorkspaceStore } from '../stores/workspace';
+import { useWindowContext } from '../windows/context';
 
 const props = withDefaults(defineProps<{ compact?: boolean; tabsEnabled?: boolean; loading?: boolean }>(), {
   tabsEnabled: true,
 });
 const store = useWorkspaceStore();
+const windowContext = useWindowContext();
+const loadingPane = newPane();
+const windowState = computed(() => store.windowLayouts?.[windowContext.id]);
+// An auxiliary window can mount before its layout is registered, or remain
+// mounted briefly after that layout is removed. Never mount another window's
+// editors in that interval: their shared pane refs would overwrite each other.
+const windowLayout = computed(() => windowState.value?.layout
+  ?? (windowContext.id === 'main' ? store.layout : loadingPane));
+const windowActivePaneId = computed(() => windowState.value?.activePaneId
+  ?? (windowContext.id === 'main' ? store.activePaneId : loadingPane.id));
 const documentForTab = (id: string) => typeof store.documentForTab === 'function'
   ? store.documentForTab(id)
   : store.documents.find(doc => doc.id === id);
@@ -19,23 +31,24 @@ const host = ref<HTMLElement>();
 const contentWidth = ref<number>();
 let resizeObserver: ResizeObserver | undefined;
 onMounted(() => {
-  if (!host.value || typeof ResizeObserver === 'undefined') return;
-  resizeObserver = new ResizeObserver(([entry]) => { contentWidth.value = entry.contentRect.width; });
+  if (!host.value) return;
+  const Observer = ownerWindow(host.value).ResizeObserver;
+  if (!Observer) return;
+  resizeObserver = new Observer(([entry]) => { contentWidth.value = entry.contentRect.width; });
   resizeObserver.observe(host.value);
 });
-const committed = computed(() => layoutGeometry(store.layout));
+const committed = computed(() => layoutGeometry(windowLayout.value));
 const geometry = computed(() => {
   if (singlePane.value || !store.detachingTabId) return committed.value;
-  const remaining = mapLayout(store.layout, pane =>
+  const remaining = mapLayout(windowLayout.value, pane =>
     pane.tabs.length === 1 && pane.tabs[0] === store.detachingTabId ? null : pane);
   // The last pane of a window stays visible until the transfer is acknowledged.
   return remaining ? layoutGeometry(remaining) : committed.value;
 });
-const loadingPane = newPane();
 const visible = computed(() => props.loading
   ? [{ pane: loadingPane, rect: { left: 0, top: 0, width: 1, height: 1 } }]
   : singlePane.value
-  ? geometry.value.panes.filter(({ pane }) => pane.id === store.activePaneId)
+  ? geometry.value.panes.filter(({ pane }) => pane.id === windowActivePaneId.value)
     .map(item => ({ ...item, rect: { left: 0, top: 0, width: 1, height: 1 } }))
   : geometry.value.panes);
 const preview = computed(() => {
@@ -59,8 +72,8 @@ const displayed = computed(() => tabbarPanes.value.map(item => ({
   ...item, topTabbar: item.rect.top === 0,
   rect: preview.value && item.pane.id === store.paneDrop?.paneId ? preview.value.content : item.rect,
 })));
-const visibleActivePaneId = computed(() => visible.value.some(({ pane }) => pane.id === store.activePaneId)
-  ? store.activePaneId : visible.value[0]?.pane.id);
+const visibleActivePaneId = computed(() => visible.value.some(({ pane }) => pane.id === windowActivePaneId.value)
+  ? windowActivePaneId.value : visible.value[0]?.pane.id);
 const rectStyle = (rect: LayoutRect) => ({ left: `${rect.left * 100}%`, top: `${rect.top * 100}%`, width: `${rect.width * 100}%`, height: `${rect.height * 100}%` });
 const tabbarStyle = (rect: LayoutRect) => ({
   left: contentWidth.value === undefined ? `${rect.left * 100}%` : `${rect.left * contentWidth.value}px`,
@@ -70,8 +83,8 @@ const tabbarStyle = (rect: LayoutRect) => ({
 });
 function focusPaneFromPointer(event: PointerEvent, paneId: string) {
   const target = event.target;
-  if (target instanceof HTMLElement && target.closest('.document-scrollbar')) return;
-  if (target instanceof HTMLElement && target.classList.contains('document-layout')) {
+  if (isHTMLElement(target) && target.closest('.document-scrollbar')) return;
+  if (isHTMLElement(target) && target.classList.contains('document-layout')) {
     const rect = target.getBoundingClientRect();
     const scrollbarWidth = target.offsetWidth - target.clientWidth;
     // Native scrollbar drags must keep the current DOM and active pane stable.
@@ -83,7 +96,7 @@ function focusPaneFromPointer(event: PointerEvent, paneId: string) {
 }
 function focusPaneFromEvent(event: Event, paneId: string) {
   // Shared history controls act on the focused pane, even when hosted elsewhere.
-  if (event.target instanceof Element && event.target.closest('.desktop-tab-navigation')) return;
+  if (isElement(event.target) && event.target.closest('.desktop-tab-navigation')) return;
   store.focusPane(paneId);
 }
 type Divider = ReturnType<typeof layoutGeometry>['dividers'][number];

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 const origin = 'http://127.0.0.1:43845';
-test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
+test.use({ locale: 'zh-CN', hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
 
 async function open(page) {
   const errors = [];
@@ -50,7 +50,7 @@ test('phone drawer, touch file actions, focus and outline work without covering 
   await expect(drawer).toBeVisible();
   await drawer.locator('.tree-row[title="01-基础块与行内.md"]').tap();
   await expect(drawer).toBeHidden();
-  await expect(page.getByRole('button', { name: '切换文件：01-基础块与行内.md', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '01-基础块与行内.md', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '文档大纲', exact: true }).tap();
   await expect(page.locator('.inspector-outline')).toBeVisible();
   await page.getByRole('button', { name: '关闭文档大纲', exact: true }).tap();
@@ -86,7 +86,7 @@ test('phones and wide tablets keep one page without exposing restored desktop ta
   await page.setViewportSize({ width: 1180, height: 820 });
   await expect(page.locator('.workspace-pane')).toHaveCount(1);
   await expect(page.locator('.workspace-tabbar, .pane-divider')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '切换文件：01-基础块与行内.md', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '01-基础块与行内.md', exact: true })).toBeVisible();
   expect(await page.evaluate(() => JSON.stringify(document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').layout))).toBe(await page.evaluate(() => window.mobileLayoutFixture.layout));
   await assertFits(page);
   expect(errors).toEqual([]);

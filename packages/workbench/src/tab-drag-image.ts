@@ -1,3 +1,4 @@
+import { ownerWindow } from '@tano/editor/dom-realm';
 // A prepainted bitmap is independent of WebView's DOM drag-snapshot timing.
 // It is shown by the native overlay outside the window, so it must look like
 // the in-window `.desktop-tab-drag-preview` card: fully rounded, hairline
@@ -6,18 +7,18 @@ export const TAB_DRAG_IMAGE_INSET = { x: 24, y: 18 } as const;
 const SHADOW_BOTTOM = 32;
 
 /** Painted at device pixels (`scale`), so the native overlay stays as crisp as the DOM. */
-export function tabDragImage(tab: HTMLElement, label: string, scale = window.devicePixelRatio || 1) {
+export function tabDragImage(tab: HTMLElement, label: string, scale = ownerWindow(tab).devicePixelRatio || 1) {
   const rect = tab.getBoundingClientRect();
   const width = Math.max(28, Math.round(rect.width));
   const height = Math.max(28, Math.round(rect.height));
   const { x: insetX, y: insetY } = TAB_DRAG_IMAGE_INSET;
-  const canvas = document.createElement('canvas');
+  const canvas = tab.ownerDocument.createElement('canvas');
   canvas.width = Math.round((width + insetX * 2) * scale);
   canvas.height = Math.round((height + insetY + SHADOW_BOTTOM) * scale);
   const context = canvas.getContext('2d');
   if (!context) return;
   context.scale(scale, scale);
-  const style = getComputedStyle(tab);
+  const style = ownerWindow(tab).getComputedStyle(tab);
   const color = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
   const paper = color('--paper', '#fff');
   const card = () => { context.beginPath(); context.roundRect(insetX, insetY, width, height, 8); };

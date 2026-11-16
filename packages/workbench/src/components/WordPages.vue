@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
+const ResizeObserver = (window as Window & typeof globalThis).ResizeObserver;
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { OfficeBlock } from '../office-preview/model';
 import OfficeBlocks from './OfficeBlocks.vue';
@@ -35,6 +40,7 @@ onMounted(() => {
   document.fonts?.ready.then(measure);
 });
 onBeforeUnmount(() => { disposed = true; observer?.disconnect(); cancelAnimationFrame(frame); });
+
 </script>
 
 <template>

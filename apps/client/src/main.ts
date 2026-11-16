@@ -27,13 +27,6 @@ const slowStartup = window.setTimeout(() => {
 
 async function boot() {
   const native = isTauri();
-  // Dev-only auxiliary window prototype (docs/aux-window-prototype.md).
-  // The lab host window is created visible by Rust; it needs no startup_ready.
-  if (import.meta.env.DEV && native && new URLSearchParams(window.location.search).get('auxLab') === 'host') {
-    const { runAuxWindowLab } = await import('@tano/workbench/aux-window-lab');
-    await runAuxWindowLab(root);
-    return;
-  }
   const controller = new AbortController();
   async function initialize() {
     // A hidden WebView can suspend rAF. Native startup must not wait for a

@@ -55,8 +55,8 @@ Before releasing desktop startup changes, inspect the **first visible frame** of
 in both `npm run desktop` (with a fresh Vite server) and the built release. It must
 show the startup UI or workbench, including when workbench imports are slow or
 fail. A screenshot taken after initialization does not verify this. Navigation
-completion is not evidence of a painted frame. Check that prewarmed settings stay
-hidden, the main window stays hidden until the workbench mounts, and a Vite or
+completion is not evidence of a painted frame. Check that auxiliary windows open only on request, the main window stays hidden
+until the workbench mounts, and a Vite or
 manual reload follows the same boundary. Check that startup errors and a stalled
 frontend offer recovery, and late imports cannot overwrite it. Report time to first content
 separately from time to an interactive workbench.

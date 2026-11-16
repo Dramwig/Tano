@@ -1,3 +1,4 @@
+import { ownerWindow } from '@tano/editor/dom-realm';
 import { animate } from 'motion/mini';
 import { springEasing } from '@tano/editor/motion';
 
@@ -6,6 +7,10 @@ type Layout = Point & { motion?: ReturnType<typeof animate> };
 
 // One layout scope for all three lists: changes in one group also move the groups below it.
 export function createPlanListMotion(root: HTMLElement) {
+    const window = ownerWindow(root);
+    const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+    const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
+    const { ResizeObserver, MutationObserver } = window;
   const layouts = new Map<HTMLElement, Layout>();
   const snapshots = new Map<HTMLElement, Point>();
   const resize = new ResizeObserver(() => update());

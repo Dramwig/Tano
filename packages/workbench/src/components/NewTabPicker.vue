@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -122,10 +125,11 @@ async function onSearchKeydown(event: KeyboardEvent) {
     list.value?.querySelector('.new-tab-choice-selected')?.scrollIntoView({ block: 'nearest' });
   }
 }
+
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <div v-surface-motion="'NewTabPicker:0'"
       class="new-tab-backdrop"
       @mousedown.self="emit('close')"

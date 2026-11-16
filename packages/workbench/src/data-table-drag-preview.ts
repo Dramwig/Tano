@@ -1,5 +1,11 @@
+import { ownerWindow } from '@tano/editor/dom-realm';
 /** Visual-only column reordering. Persist the order only when the user drops. */
 export function createColumnDragPreview(root: HTMLElement, id: string, startX: number) {
+  const window = ownerWindow(root);
+  const document = window.document;
+  const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+  const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
+
   const grid = root.querySelector<HTMLTableElement>('.data-grid');
   const scroller = grid?.closest<HTMLElement>('.data-grid-scroll');
   if (!grid || !scroller) return;
@@ -87,6 +93,11 @@ export function createColumnDragPreview(root: HTMLElement, id: string, startX: n
 
 /** Rows only make room within their existing group; filtered records stay untouched. */
 export function createRowDragPreview(root: HTMLElement, id: string, startY: number) {
+  const window = ownerWindow(root);
+  const document = window.document;
+  const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+  const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
+
   const grid = root.querySelector<HTMLTableElement>('.data-grid');
   const row = [...grid?.querySelectorAll<HTMLTableRowElement>('tbody tr[data-row]') ?? []]
     .find(row => row.dataset.row === id);
@@ -179,6 +190,11 @@ function startTablePointerReorder(
   root: HTMLElement, id: string, down: PointerEvent,
   drop: (target: ReorderTarget) => void, start: () => void, axis: 'column' | 'row',
 ) {
+  const window = ownerWindow(root);
+  const document = window.document;
+  const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+  const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
+
   if (down.button !== 0 || !down.isPrimary) return;
   const heading = down.currentTarget as HTMLElement;
   let preview: ReturnType<typeof createColumnDragPreview> | ReturnType<typeof createRowDragPreview>;

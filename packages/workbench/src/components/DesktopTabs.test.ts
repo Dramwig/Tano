@@ -5,12 +5,17 @@ import type { App } from 'vue';
 import DesktopTabs from './DesktopTabs.vue';
 import WorkspacePanes from './WorkspacePanes.vue';
 import { dockLayout, layoutPanes, newPane } from '../pane-layout';
-import { TAB_DOCK_PROBE, TAB_DRAG_FINISHED, tabDragMetaType } from '../tab-docking';
+import { finishedTabDrag, tabDragMetaType } from '../tab-docking';
 
 const fixture = vi.hoisted(() => ({ store: null as any }));
 const platform = vi.hoisted(() => ({ nativeOs: 'windows', mobile: false }));
 const nativeWindow = vi.hoisted(() => ({
   label: 'main',
+  listen: vi.fn(async (name: string, handler: (event: { payload: any }) => void) => {
+    const handlers = nativeEvents.listeners.get(name) ?? new Set();
+    handlers.add(handler); nativeEvents.listeners.set(name, handlers);
+    return () => handlers.delete(handler);
+  }),
   cursorPosition: vi.fn(async () => ({ x: 1200, y: 800 })),
   innerPosition: vi.fn(async () => ({ x: 0, y: 0 })),
   scaleFactor: vi.fn(async () => 1),
@@ -22,7 +27,7 @@ const nativeEvents = vi.hoisted(() => ({
 }));
 vi.mock('../stores/workspace', () => ({ useWorkspaceStore: () => fixture.store }));
 vi.mock('../platform', () => platform);
-vi.mock('@tauri-apps/api/core', () => ({ invoke: nativeCore.invoke }));
+vi.mock('@tauri-apps/api/core', () => ({ invoke: nativeCore.invoke, isTauri: () => !!platform.nativeOs }));
 vi.mock('@tauri-apps/api/event', () => ({
   emitTo: nativeEvents.emitTo,
   emit: vi.fn(async () => {}),
@@ -59,6 +64,7 @@ function pointer(target: HTMLElement, type: string, x: number, y = 18) {
 }
 
 beforeEach(() => {
+  vi.stubGlobal('__TAURI_INTERNALS__', {});
   HTMLElement.prototype.scrollIntoView = vi.fn();
   platform.nativeOs = 'windows';
   platform.mobile = false;
@@ -193,7 +199,7 @@ it('updates data table tab and drag preview icons and restores the table fallbac
   pointer(buttons[0], 'pointercancel', 260, 20);
 });
 
-it('renders extension labels and icons and prevents detaching window-local views', async () => {
+it('renders extension labels and icons and allows shared extension views to move', async () => {
   app.unmount();
   fixture.store.tabs.push({
     id: 'view:sample', path: '', blank: false,
@@ -208,12 +214,12 @@ it('renders extension labels and icons and prevents detaching window-local views
   tab.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
   await nextTick();
   const detach = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(button => button.textContent?.includes('在新窗口中打开'))!;
-  expect(detach.disabled).toBe(true);
+  expect(detach.disabled).toBe(false);
   root.querySelector<HTMLButtonElement>('[aria-label="关闭 扩展页面"]')!.click();
   expect(fixture.store.close).toHaveBeenCalledWith('view:sample');
 });
 
-it('previews an incoming tab with a full-width slot and answers a cross-window drop probe', async () => {
+it('previews an incoming tab with a full-width slot and clears it when the shared drag finishes', async () => {
   app.unmount();
   app = createApp(DesktopTabs, { detachable: true });
   app.mount(root.querySelector('.desktop-window-tab-slot')!);
@@ -226,7 +232,7 @@ it('previews an incoming tab with a full-width slot and answers a cross-window d
     }) as DOMRect;
   });
   const type = tabDragMetaType({
-    sourceLabel: 'detached-source', workspaceId: 'workspace-1', tabId: 'incoming',
+    sourceLabel: 'aux-source', workspaceId: 'workspace-1', tabId: 'incoming',
     width: 180, centerOffset: 0,
   });
   const over = new MouseEvent('dragover', { bubbles: true, cancelable: true, clientX: 250, clientY: 18 });
@@ -239,24 +245,11 @@ it('previews an incoming tab with a full-width slot and answers a cross-window d
   expect(list.querySelectorAll('.desktop-tab')).toHaveLength(3);
   expect(list.querySelector('.desktop-tab-dock-before')?.getAttribute('data-id')).toBe('b');
   expect(root.querySelector<HTMLElement>('.desktop-tab-strip')?.style.getPropertyValue('--desktop-tab-count')).toBe('3');
-  await vi.waitFor(() => expect(nativeEvents.listeners.get(TAB_DOCK_PROBE)?.size).toBe(1));
-  for (const handler of nativeEvents.listeners.get(TAB_DOCK_PROBE) ?? []) handler({ payload: {
-    requestId: 'probe-1', sourceLabel: 'detached-source', workspaceId: 'workspace-1',
-    tabId: 'incoming', x: 250, y: 18, centerOffset: 0,
-  } });
-  await vi.waitFor(() => expect(nativeEvents.emitTo).toHaveBeenCalledWith('detached-source',
-    'tano-tab-dock-reply', expect.objectContaining({ requestId: 'probe-1', targetLabel: 'main', index: 1 })));
-  for (const handler of nativeEvents.listeners.get(TAB_DOCK_PROBE) ?? []) handler({ payload: {
-    requestId: 'probe-near-top', sourceLabel: 'detached-source', workspaceId: 'workspace-1',
-    tabId: 'incoming', x: 250, y: -10, centerOffset: 0,
-  } });
-  await vi.waitFor(() => expect(nativeEvents.emitTo).toHaveBeenCalledWith('detached-source',
-    'tano-tab-dock-reply', expect.objectContaining({ requestId: 'probe-near-top', insideWindow: false, index: 1 })));
-  window.dispatchEvent(new CustomEvent('tano-tab-transfer-settled', {
-    detail: { sourceLabel: 'detached-source', tabId: 'incoming' },
-  }));
+  expect(root.querySelector<HTMLElement>('.desktop-tab-strip')?.style.getPropertyValue('--desktop-tab-reserved-width')).toBe('180px');
+  finishedTabDrag.value = { sourceLabel: 'aux-source', tabId: 'incoming' };
   await nextTick();
   expect(list.querySelector('.desktop-tab-dock-before, .desktop-tab-dock-after')).toBeNull();
+  expect(root.querySelector<HTMLElement>('.desktop-tab-strip')?.style.getPropertyValue('--desktop-tab-reserved-width')).toBe('0px');
 
   const after = new MouseEvent('dragover', { bubbles: true, cancelable: true, clientX: 550, clientY: 18 });
   Object.defineProperty(after, 'dataTransfer', { value: { types: [type], dropEffect: '' } });
@@ -331,13 +324,14 @@ it.each(['right', 'bottom'] as const)('shares history controls with the focused 
   expect(navigatedPages).toEqual(['c', leftPage]);
 });
 
-it('previews foreign tabs in the hovered pane only and retains the released destination while saving', async () => {
+it('previews foreign tabs in the hovered pane only and moves directly into the released destination', async () => {
   app.unmount();
   fixture.store.panes = [
     { id: 'left', tabs: ['a', 'b'], activeId: 'a' },
     { id: 'right', tabs: ['c'], activeId: 'c' },
   ];
   fixture.store.focusPane = vi.fn();
+  fixture.store.moveTabToWindow = vi.fn();
   app = createApp({ render: () => h('div', fixture.store.panes.map((pane: { id: string }) =>
     h('section', { class: 'workspace-pane', 'data-pane-id': pane.id }, [h(DesktopTabs, { paneId: pane.id, detachable: true })]))) });
   app.mount(root.querySelector('.desktop-window-tab-slot')!);
@@ -356,7 +350,6 @@ it('previews foreign tabs in the hovered pane only and retains the released dest
     window.dispatchEvent(event);
     return event;
   };
-  await vi.waitFor(() => expect(nativeEvents.listeners.get(TAB_DOCK_PROBE)?.size).toBe(2));
   expect(drag('dragover', 490, 300).defaultPrevented).toBe(true);
   expect(fixture.store.paneDrop).toEqual({ paneId: 'left', side: 'right' });
   drag('dragover', 980, 300);
@@ -368,14 +361,8 @@ it('previews foreign tabs in the hovered pane only and retains the released dest
   drag('dragover', 750, 590);
   expect(fixture.store.paneDrop).toEqual({ paneId: 'right', side: 'bottom' });
   drag('drop', 750, 590);
-  const date = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 1200);
-  for (const handler of nativeEvents.listeners.get(TAB_DOCK_PROBE) ?? []) handler({ payload: {
-    ...meta, requestId: 'nested', x: 750, y: 300,
-  } });
-  await vi.waitFor(() => expect(nativeEvents.emitTo).toHaveBeenCalledWith('other-window', 'tano-tab-dock-reply',
-    expect.objectContaining({ requestId: 'nested', hovered: true, index: 3, drop: { paneId: 'right', side: 'bottom' } })));
-  date.mockRestore();
-  for (const handler of nativeEvents.listeners.get(TAB_DRAG_FINISHED) ?? []) handler({ payload: meta });
+  expect(fixture.store.moveTabToWindow).toHaveBeenCalledWith('foreign', 'main', { paneId: 'right', side: 'bottom' });
+  await nextTick();
   expect(fixture.store.paneDrop).toBeUndefined();
   drag('dragover', 750, 18);
   expect(fixture.store.paneDrop).toEqual({ paneId: 'right', side: 'center', index: 1 });
@@ -661,7 +648,7 @@ it('uses a native drag image and reorders a tab at the release point', async () 
   expect(start.defaultPrevented).toBe(false);
   expect(transfer.setData).toHaveBeenCalledWith('application/x-tano-tab', 'a');
   expect(transfer.setDragImage).toHaveBeenCalledWith(expect.any(HTMLCanvasElement), 0, 0);
-  expect(nativeCore.invoke).toHaveBeenCalledWith('tab_drag_release', { preview: undefined, dragId: expect.any(String) });
+  expect(nativeCore.invoke).toHaveBeenCalledWith('tab_drag_release', { preview: undefined, dragId: expect.any(String), windowLabel: 'main' });
   expect(document.body.querySelector('.desktop-tab-drag-preview')).toBeNull();
   await vi.waitFor(() => expect(nativeEvents.listeners.get('tano-tab-drag-position')?.size).toBe(1));
   const args = (nativeCore.invoke.mock.calls as unknown as [string, { dragId: string }][]) .find(call => call[0] === 'tab_drag_release')![1];
@@ -940,7 +927,7 @@ it('opens devtools from the blank track without changing tabs and dismisses the 
   await nextTick();
   const menu = document.body.querySelector<HTMLElement>('.desktop-tab-context-menu')!;
   [...menu.querySelectorAll('button')].find(button => button.textContent?.includes('打开调试窗口'))!.click();
-  expect(nativeCore.invoke).toHaveBeenCalledExactlyOnceWith('open_devtools');
+  expect(nativeCore.invoke).toHaveBeenCalledExactlyOnceWith('open_devtools', { windowLabel: 'main' });
   await nextTick();
   expect(document.body.querySelector('.desktop-tab-context-menu')).toBeNull();
   expect(fixture.store.tabs.map((tab: { id: string }) => tab.id)).toEqual(['a', 'b', 'c']);

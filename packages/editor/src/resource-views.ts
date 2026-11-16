@@ -20,6 +20,7 @@ export function resourceView(
   revision: () => string | undefined,
 ): NodeViewConstructor {
   return (node, view, getPos) => {
+    const document = view.dom.ownerDocument;
     let current = node;
     let editing = false;
     let mediaKey = '';

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
+import { isKeyboardEvent, isNode, isHTMLElement } from '@tano/editor/dom-realm';
 import { vSurfaceMotion, closeSurfaceDialog } from '@tano/editor/surface-motion';
 import { uiLocale, t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowReactive, watch } from 'vue';
@@ -229,11 +233,11 @@ async function toggleMenu(connection: AssistantConnection, event: Event) {
     top: `${Math.max(8, Math.min(bounds.bottom + 4, window.innerHeight - height - 8))}px`,
   };
   menu.value.focus({ preventScroll: true });
-  if (event instanceof KeyboardEvent && event.key === 'ArrowDown') menuKey(event);
+  if (isKeyboardEvent(event) && event.key === 'ArrowDown') menuKey(event);
 }
 
 function dismissMenu(event: Event) {
-  if (!(event.target instanceof Node) || (!menu.value?.contains(event.target) && !menuTrigger?.contains(event.target))) closeMenu();
+  if (!(isNode(event.target)) || (!menu.value?.contains(event.target) && !menuTrigger?.contains(event.target))) closeMenu();
 }
 
 function menuKey(event: KeyboardEvent) {
@@ -292,7 +296,7 @@ watch(secret, value => { if (!value) secretVisible.value = false; });
 
 watch(editing, open => {
   if (!open) return;
-  previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  previousFocus = isHTMLElement(document.activeElement) ? document.activeElement : null;
   editor.value?.showModal();
   nameInput.value?.focus();
 }, { flush: 'post' });
@@ -443,6 +447,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', dismissMenu, true);
   window.removeEventListener('resize', dismissMenu);
 });
+
 </script>
 
 <template>
@@ -526,7 +531,7 @@ onBeforeUnmount(() => {
     <AssistantUsage v-if="assistant.available" :sessions="assistant.sessions ?? []" :connections="assistant.connections" :active-session="assistant.session" :loading="assistant.loading" :demo="assistant.demo" />
   </div>
 
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <dialog v-surface-motion="'AssistantSettings:0'" v-if="quotaConnection" ref="quotaDialog" class="assistant-connection-dialog assistant-config-dialog assistant-quota-dialog" :aria-label="t('额度查询配置')" @cancel.prevent="closeQuotaEditor" @keydown.stop>
       <AssistantQuotaConfig :key="quotaConnection.id" :connection="quotaConnection" @close="closeQuotaEditor" @busy="quotaSaving = $event" @saved="emit('changed')" />
     </dialog>

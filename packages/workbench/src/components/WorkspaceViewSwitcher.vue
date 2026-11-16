@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
+import { isNode } from '@tano/editor/dom-realm';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { useWorkspaceStore } from '../stores/workspace';
@@ -78,7 +82,7 @@ function keydown(event: KeyboardEvent) {
 }
 function outside(event: Event) {
   if (
-    event.target instanceof Node &&
+    isNode(event.target) &&
     (trigger.value?.contains(event.target) || menuElement.value?.contains(event.target))
   )
     return;
@@ -108,6 +112,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', outside, true);
   window.removeEventListener('resize', dismiss);
 });
+
 </script>
 
 <template>
@@ -128,7 +133,7 @@ onBeforeUnmount(() => {
     <span>{{ selected.label }}</span>
     <ChevronDown :size="12" :class="{ expanded: position }" aria-hidden="true" />
   </button>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <div v-surface-motion="'WorkspaceViewSwitcher:0'"
       v-if="position"
       :id="menuId"

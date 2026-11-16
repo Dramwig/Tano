@@ -4,6 +4,7 @@ import { createApp, h, nextTick, type App } from 'vue';
 import AppTooltip from './AppTooltip.vue';
 import WorkspaceBreadcrumb from './WorkspaceBreadcrumb.vue';
 import { settingHint } from '../setting-examples';
+import { windowContextKey } from '../windows/context';
 
 // Rendering engines are exercised in browser tests; these tests cover hint lifecycle/props.
 vi.mock('./RenderedExample.vue', () => ({ default: { props: { markdown: String, source: String, folded: Boolean }, template: '<div class="rendered-example" inert :data-markdown="markdown" :data-source="source" :data-folded="folded" />' } }));
@@ -82,6 +83,25 @@ beforeEach(() => {
 });
 afterEach(() => {
   app?.unmount(); root.remove(); button.remove(); vi.useRealTimers(); vi.restoreAllMocks();
+});
+it('keeps delegated hints in the auxiliary document', async () => {
+  app!.unmount();
+  const frame = document.createElement('iframe');
+  root.append(frame);
+  const target = frame.contentWindow!;
+  const mount = target.document.createElement('div');
+  target.document.body.append(mount, button);
+  app = createApp(AppTooltip);
+  app.provide(windowContextKey, {
+    id: 'aux-test', label: 'aux-aux-test', window: target, document: target.document,
+    overlays: target.document.body, native: undefined,
+  });
+  app.mount(mount);
+  button.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+  await vi.advanceTimersByTimeAsync(250);
+  await flush();
+  expect(target.document.querySelector('.app-tooltip')?.textContent).toBe('斜体Ctrl + I');
+  expect(hint()).toBeNull();
 });
 it('supports delegated hover on disabled controls and preserves existing descriptions', async () => {
   button.disabled = true;

@@ -1,3 +1,4 @@
+import { isElement } from '@tano/editor/dom-realm';
 import type { PluginCommandDefinition, PluginViewDefinition } from '@tano/protocol';
 import type { InstalledObjectPlugin } from '../workspace-plugins';
 import type { PluginRuntimeState } from './host';
@@ -30,7 +31,7 @@ export function pluginWorkbenchCommands(states: PluginRuntimeState[]): PluginWor
 const reserved = new Set(['Mod+B', 'Mod+I', 'Mod+U', 'Mod+Z', 'Mod+Y', 'Mod+Shift+Z', 'Mod+A', 'Mod+C', 'Mod+V', 'Mod+X', 'Mod+L', 'Mod+R', 'Mod+W', 'Mod+T', 'Mod+P', 'F5', 'F12']);
 export function pluginShortcutCommand(event: KeyboardEvent, commands: PluginWorkbenchCommand[], bindings: ShortcutBindings) {
   if (event.defaultPrevented || event.isComposing || event.repeat) return;
-  if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable], [role="dialog"], dialog')) return;
+  if (isElement(event.target) && event.target.closest('input, textarea, select, [contenteditable], [role="dialog"], dialog')) return;
   const key = shortcutBindingFromEvent(event);
   if (!key || reserved.has(key) || shortcutDefinitions.some(item => shortcutKeys(bindings[item.id]).includes(key))) return;
   const matches = commands.filter(command => command.shortcut === key);

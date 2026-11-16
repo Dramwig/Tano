@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
 import { t } from '../i18n';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
@@ -97,6 +101,7 @@ async function selectFile(event: Event, id: string) {
   }
   finally { if (request === generation) uploading.value = false; }
 }
+
 </script>
 <template>
   <div v-if="header" class="plugin-view-header" role="toolbar" :aria-label="t('{0}操作', [view.label])">
@@ -112,7 +117,7 @@ async function selectFile(event: Event, id: string) {
       <span v-if="item.id === header.statusAfter && header.status" class="plugin-view-position" aria-live="polite">{{ header.status }}</span>
     </template>
     <button v-if="groups.length" ref="trigger" type="button" :aria-label="t('预览操作')" :title="t('预览操作')" aria-haspopup="dialog" :aria-controls="popoverId" :aria-expanded="expanded" @click="toggle" @keydown.down.prevent="!expanded && toggle()"><MoreHorizontal :size="19" /></button>
-    <Teleport to="body">
+    <Teleport :to="document.body">
       <div v-surface-motion="'PluginViewHeader:0'" v-if="expanded && header" :id="popoverId" ref="popover" class="plugin-header-popover" :style="position" role="dialog" :aria-label="t('预览操作')" @keydown.stop="keyboard">
         <div class="plugin-header-heading"><span>{{ view.label }}</span><span>{{ header.status }}</span></div>
         <div v-for="group in groups" :key="group.label" class="plugin-header-group">

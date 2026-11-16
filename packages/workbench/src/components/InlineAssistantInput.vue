@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
+const ResizeObserver = (window as Window & typeof globalThis).ResizeObserver;
+import { isNode } from '@tano/editor/dom-realm';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { Check, ChevronDown, ChevronRight, ChevronUp, MessageCircle, MoreHorizontal, Square, ThumbsDown, ThumbsUp, Undo2, X } from 'lucide-vue-next';
@@ -86,7 +92,7 @@ function submit() {
 }
 function handleOutsidePointerDown(event: PointerEvent) {
   const target = event.target;
-  if (busy.value || !(target instanceof Node) || shell.value?.contains(target)) return;
+  if (busy.value || !(isNode(target)) || shell.value?.contains(target)) return;
   emit('close');
 }
 watch(() => [props.anchor, props.state], () => { schedule(); if (!props.embedded && props.state === 'input') void nextTick(() => input.value?.focus()); });
@@ -131,10 +137,11 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', schedule);
   props.anchor.dispose();
 });
+
 </script>
 
 <template>
-  <Teleport to="body" :disabled="embedded">
+  <Teleport :to="document.body" :disabled="embedded">
     <div v-surface-motion="'InlineAssistantInput:0'" ref="shell" class="inline-assistant" :class="{ 'inline-assistant-error': state === 'error', 'inline-assistant-embedded': embedded }" :style="style" role="status">
       <form v-if="state === 'input'" class="inline-assistant-input" @submit.prevent="submit">
         <AssistantButterfly :size="22" motion="none" />

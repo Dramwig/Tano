@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import AssistantConnectionStatus from './AssistantConnectionStatus.vue';
 import { Gauge, LoaderCircle, TriangleAlert } from 'lucide-vue-next';
@@ -50,6 +53,7 @@ function resetTime(value: string) {
   const date = new Date(/^\d+$/.test(value) ? Number(value) * 1000 : value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString(uiLocale.value);
 }
+
 </script>
 <template>
   <AssistantConnectionStatus class="connection-quota" :key="JSON.stringify(connection)" :label="t('额度详情')" :summary="summary" :checked-at="result?.checkedAt" :refreshing="loading" :failed="!!error" v-if="(loading || result || error) && !connection.platformProvider && connection.quota?.mode !== 'disabled' && (connection.kind === 'codex-cli' || connection.kind === 'claude-cli' || connection.quota)">

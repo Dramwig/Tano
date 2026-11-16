@@ -5,12 +5,46 @@ import type { App } from 'vue';
 import WorkspacePanes from './WorkspacePanes.vue';
 import { dockLayout, layoutPanes, mapLayout, newPane } from '../pane-layout';
 import { paneDropAt } from '../pane-docking';
+import { windowContextKey } from '../windows/context';
 
 const fixture = vi.hoisted(() => ({ store: null as any }));
 vi.mock('../stores/workspace', () => ({ useWorkspaceStore: () => fixture.store }));
 let app: App | undefined;
 let root: HTMLElement;
 afterEach(() => { app?.unmount(); root?.remove(); vi.restoreAllMocks(); });
+
+it('keeps an auxiliary window empty before registration and after its layout is removed', async () => {
+  const main = newPane(['a']);
+  fixture.store = reactive({
+    layout: main, activePaneId: main.id, windowLayouts: {},
+    documents: [{ id: 'a' }, { id: 'b' }], tabs: [{ id: 'a' }, { id: 'b' }],
+    focusPane: vi.fn(),
+  });
+  root = document.createElement('div');
+  document.body.append(root);
+  app = createApp({ render: () => h(WorkspacePanes, {}, {
+    default: ({ document: doc }: any) => doc ? h('textarea', { value: doc.id }) : null,
+  }) });
+  app.provide(windowContextKey, {
+    id: 'aux-test', label: 'aux-aux-test', window, document,
+    overlays: document.body, native: undefined,
+  });
+  app.mount(root);
+  await nextTick();
+  expect(root.querySelector('textarea')).toBeNull();
+  expect(root.querySelector(`[data-pane-id="${main.id}"]`)).toBeNull();
+
+  const auxiliary = newPane(['b']);
+  fixture.store.windowLayouts['aux-test'] = { layout: auxiliary, activePaneId: auxiliary.id };
+  await nextTick();
+  expect(root.querySelector('textarea')!.value).toBe('b');
+  expect(root.querySelector(`[data-pane-id="${main.id}"]`)).toBeNull();
+
+  delete fixture.store.windowLayouts['aux-test'];
+  await nextTick();
+  expect(root.querySelector('textarea')).toBeNull();
+  expect(root.querySelector(`[data-pane-id="${main.id}"]`)).toBeNull();
+});
 
 async function mountPanes(side: 'right' | 'bottom' = 'right', sharedTabs = false) {
   const layout = newPane(['a', 'b', 'c']);

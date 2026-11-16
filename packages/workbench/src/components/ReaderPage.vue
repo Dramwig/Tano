@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const IntersectionObserver = (window as Window & typeof globalThis).IntersectionObserver;
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 
 defineProps<{ page: number; width: number; height: number; scale: number; keepMounted?: boolean }>();
@@ -13,6 +16,7 @@ onMounted(() => {
   observer.observe(root.value);
 });
 onBeforeUnmount(() => observer?.disconnect());
+
 </script>
 
 <template>

@@ -1,3 +1,6 @@
+import { ownerWindow } from './dom-realm';
+
+import { isElement } from './dom-realm';
 /* Shared interaction motion for every Tano surface.
  *
  * Springs are pre-sampled into CSS `linear()` curves so CSS transitions, WAAPI
@@ -90,6 +93,9 @@ type Pressed = { element: HTMLElement; scale: number; hover: number; at: number;
 const animations = new WeakMap<HTMLElement, Animation>();
 
 function currentScale(element: HTMLElement): number {
+    const window = ownerWindow(element);
+    const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+
   const value = getComputedStyle(element).scale;
   if (!value || value === 'none') return 1;
   return parseFloat(value) || 1;
@@ -114,7 +120,7 @@ function settle(element: HTMLElement) {
 }
 
 function pressTarget(event: Event): HTMLElement | null {
-  const origin = event.target instanceof Element ? event.target : null;
+  const origin = isElement(event.target) ? event.target : null;
   const element = origin?.closest<HTMLElement>(PRESSABLE);
   if (!element || element.matches(NOT_PRESSABLE)) return null;
   if ((element as HTMLButtonElement).disabled || element.getAttribute('aria-disabled') === 'true') return null;
@@ -131,6 +137,9 @@ function depth(rect: DOMRect) {
 }
 /** Only standalone, button-shaped controls lift on hover. */
 function hoverLift(element: HTMLElement, rect: DOMRect) {
+    const window = ownerWindow(element);
+    const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+
   if (element.matches(ANCHOR)) return 1;
   // Full-width form buttons (login, checkout) lift too; long list rows don't.
   if (rect.width < 64 || rect.height < 28 || rect.width > 720 || rect.height > 72) return 1;
@@ -142,13 +151,15 @@ function hoverLift(element: HTMLElement, rect: DOMRect) {
   return 1 + Math.min(0.025, Math.max(0.01, 2 / rect.width));
 }
 
-let installed: (() => void) | undefined;
+const installations = new WeakMap<Document, () => void>();
 /** Installs delegated, compositor-only press and hover springs. Uses the
  * individual `scale` property, so existing `transform`s are preserved. */
 export function installInteractionMotion(root: Document = document): () => void {
+  const installed = installations.get(root);
   if (installed) return installed;
+  const window = ownerWindow(root);
   // Core and the cloud shell may both ship this module; one listener set wins.
-  const owner = globalThis as { __tanoInteractionMotion?: () => void };
+  const owner = window as { __tanoInteractionMotion?: () => void };
   if (owner.__tanoInteractionMotion) return owner.__tanoInteractionMotion;
   if (typeof window === 'undefined' || typeof HTMLElement.prototype.animate !== 'function') return () => {};
   let pressed: Pressed | undefined;
@@ -239,7 +250,7 @@ export function installInteractionMotion(root: Document = document): () => void 
   root.addEventListener('pointerout', leaveWindow, options);
   root.addEventListener('keydown', key, options);
   root.addEventListener('dragstart', drag, options);
-  installed = () => {
+  const dispose = () => {
     root.removeEventListener('pointerdown', down, options);
     root.removeEventListener('pointerup', up, options);
     root.removeEventListener('pointercancel', cancel, options);
@@ -247,12 +258,12 @@ export function installInteractionMotion(root: Document = document): () => void 
     root.removeEventListener('pointerout', leaveWindow, options);
     root.removeEventListener('keydown', key, options);
     root.removeEventListener('dragstart', drag, options);
-    installed = undefined;
+    installations.delete(root);
     if (owner.__tanoInteractionMotion === dispose) delete owner.__tanoInteractionMotion;
   };
-  const dispose = installed;
+  installations.set(root, dispose);
   owner.__tanoInteractionMotion = dispose;
-  return installed;
+  return dispose;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -364,6 +375,9 @@ export function resizeHeight(element: HTMLElement, from: number, to: number, opt
 /** Enter/leave a block row (or the whole panel) by growing from / shrinking
  * to nothing, padding and margin included. `done` runs when finished. */
 export function collapseElement(element: HTMLElement, enter: boolean, done: () => void) {
+    const window = ownerWindow(element);
+    const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+
   if (!canAnimate(element) || !element.getClientRects().length) { done(); return; }
   const style = getComputedStyle(element);
   const rect = element.getBoundingClientRect();

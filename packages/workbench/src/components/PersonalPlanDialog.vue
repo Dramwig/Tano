@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { nextTick, onMounted, onUnmounted, ref } from 'vue';
@@ -41,6 +44,7 @@ function keyboard(event: KeyboardEvent) {
     controls[0]?.focus();
   }
 }
+
 </script>
 <template>
   <div v-surface-motion="'PersonalPlanDialog:0'" class="personal-plan-backdrop" @mousedown.self="emit('close')">

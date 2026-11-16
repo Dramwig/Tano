@@ -22,7 +22,6 @@
     "./locale": "./src/locale.ts",
     "./startup-copy": "./src/startup-copy.ts",
     "./settings-window": "./src/settings-window.ts",
-    "./aux-window-lab": "./src/aux-window-lab/index.ts",
     "./stores/workspace": "./src/stores/workspace.ts",
     "./*": "./src/*"
   },

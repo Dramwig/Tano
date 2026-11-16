@@ -1,3 +1,4 @@
+import { ownerWindow } from './dom-realm';
 import type { NodeViewConstructor } from '@milkdown/kit/prose/view';
 import { watch } from 'vue';
 import { NodeSelection, TextSelection } from '@milkdown/kit/prose/state';
@@ -50,6 +51,9 @@ export function enhancedViews(
   views.tano_columns = columnsView(readonly);
   for (const kind of ['toggle', 'panel', 'tabs']) {
     views[`tano_${kind}`] = (node, view, getPos) => {
+    const window = ownerWindow(view.dom);
+    const document = window.document;
+
       let current = node,
         expanded = true,
         active = 0;

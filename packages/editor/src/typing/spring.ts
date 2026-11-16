@@ -89,23 +89,25 @@ export class FrameLoop {
   private frame = 0;
   private last = 0;
 
+  constructor(private owner: () => Window = () => window) {}
+
   add(task: FrameTask) { this.tasks.push(task); }
 
   wake() {
-    if (this.frame || typeof requestAnimationFrame !== 'function') return;
+    if (this.frame || typeof this.owner().requestAnimationFrame !== 'function') return;
     this.last = 0;
-    this.frame = requestAnimationFrame(now => this.tick(now));
+    this.frame = this.owner().requestAnimationFrame(now => this.tick(now));
   }
 
   /** Run a frame right now (tests, or work that must not wait a frame). */
   flush(now = performance.now()) {
-    if (this.frame) cancelAnimationFrame(this.frame);
+    if (this.frame) this.owner().cancelAnimationFrame(this.frame);
     this.frame = 0;
     this.tick(now);
   }
 
   stop() {
-    if (this.frame) cancelAnimationFrame(this.frame);
+    if (this.frame) this.owner().cancelAnimationFrame(this.frame);
     this.frame = 0;
   }
 
@@ -118,7 +120,7 @@ export class FrameLoop {
     for (const task of this.tasks) if (task(dt, now)) busy = true;
     if (busy) {
       const last = this.last;
-      this.frame = requestAnimationFrame(next => this.tick(next));
+      this.frame = this.owner().requestAnimationFrame(next => this.tick(next));
       this.last = last;
     }
   }

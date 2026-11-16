@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { t } from '../i18n';
 import { computed, getCurrentInstance, nextTick, ref, watch } from 'vue';
 import { Check, FileText, Link2, Pencil, X } from 'lucide-vue-next';
@@ -48,6 +51,7 @@ async function insert(target: ReferenceTarget) {
   await nextTick();
   textarea.value?.focus(); textarea.value?.setSelectionRange(range.from + link.length, range.from + link.length);
 }
+
 </script>
 
 <template>

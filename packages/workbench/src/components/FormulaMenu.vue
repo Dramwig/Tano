@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { onBeforeUnmount, onMounted, ref } from 'vue';
@@ -22,6 +25,7 @@ function escape() {
 }
 onMounted(() => window.addEventListener('click', closeOutside));
 onBeforeUnmount(() => window.removeEventListener('click', closeOutside));
+
 </script>
 
 <template>

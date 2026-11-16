@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+import { isButtonElement, isNode } from '@tano/editor/dom-realm';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t, uiIconLabel } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
@@ -158,7 +162,7 @@ function tabKeydown(event: KeyboardEvent, current: Tab) {
   panel.value?.querySelector<HTMLButtonElement>(`[data-tab="${value}"]`)?.focus();
 }
 function gridKeydown(event: KeyboardEvent) {
-  if (!(event.target instanceof HTMLButtonElement) || !event.target.hasAttribute('data-icon-choice')) return;
+  if (!(isButtonElement(event.target)) || !event.target.hasAttribute('data-icon-choice')) return;
   const buttons = [...(panel.value?.querySelectorAll<HTMLButtonElement>('[data-icon-choice]') ?? [])];
   const index = buttons.indexOf(event.target);
   const grid = event.target.closest<HTMLElement>('.workspace-icon-picker-grid');
@@ -186,7 +190,7 @@ function keydown(event: KeyboardEvent) {
   } else gridKeydown(event);
 }
 function outside(event: Event) {
-  if (!(event.target instanceof Node) || trigger.value?.contains(event.target) || panel.value?.contains(event.target)) return;
+  if (!(isNode(event.target)) || trigger.value?.contains(event.target) || panel.value?.contains(event.target)) return;
   close();
 }
 function dismiss() { close(); }
@@ -207,6 +211,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', outside, true);
   window.removeEventListener('resize', dismiss);
 });
+
 </script>
 
 <template>
@@ -215,7 +220,7 @@ onBeforeUnmount(() => {
     :aria-label="t('选择{0}', [label])" :data-tooltip="t('选择{0}', [label])" aria-haspopup="dialog" :aria-expanded="open"
     :aria-controls="pickerId" :disabled="disabled" @click="toggle"
   ><slot name="preview"><WorkspaceIcon :icon="icon" :mode="mode" :size="28" /></slot></button>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <section v-surface-motion="'WorkspaceIconPicker:0'"
       v-if="open" :id="pickerId" ref="panel" class="workspace-icon-picker" role="dialog"
       :aria-label="label" :style="{

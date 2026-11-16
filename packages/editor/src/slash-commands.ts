@@ -1,3 +1,6 @@
+import { ownerWindow } from './dom-realm';
+
+import { isNode } from './dom-realm';
 import { setSurfaceVisible } from './surface-motion';
 import { h, render, type Component } from 'vue';
 import { blockIcons, headingIcons, customCalloutIcon, blockIconStrokeWidth } from './block-icons';
@@ -349,6 +352,8 @@ export function slashCommands(options: {
       },
     },
     view(view) {
+      const window = ownerWindow(view.dom);
+      const document = window.document;
       const menu = document.createElement('div');
       menu.className = 'tano-slash-menu';
       menu.hidden = true;
@@ -387,7 +392,7 @@ export function slashCommands(options: {
           view.dispatch(view.state.tr.setMeta(session, 'close').setMeta('addToHistory', false));
       }
       blur = (event) => {
-        if (!(event.relatedTarget instanceof Node) || !menu.contains(event.relatedTarget)) close();
+        if (!(isNode(event.relatedTarget)) || !menu.contains(event.relatedTarget)) close();
       };
       function position() {
         if (menu.hidden) return;

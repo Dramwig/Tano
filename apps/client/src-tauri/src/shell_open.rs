@@ -65,20 +65,23 @@ pub struct ShellState {
     files: Mutex<HashMap<String, PathBuf>>,
     requests: Mutex<VecDeque<WorkspaceRequest>>,
     main: tauri::utils::config::WindowConfig,
+    initial: tauri::utils::config::WindowConfig,
 }
 
-pub fn prepare(context: &mut tauri::Context<tauri::Wry>) -> ShellState {
-    let main = context.config().app.windows[0].clone();
-    let state = ShellState {
+pub fn prepare() -> ShellState {
+    let mut main = crate::main_window_config();
+    main.visible = false;
+    let mut state = ShellState {
         files: Mutex::new(HashMap::new()),
         requests: Mutex::new(VecDeque::new()),
+        initial: main.clone(),
         main,
     };
     let args = std::env::args().collect::<Vec<_>>();
     match target(&args, &std::env::current_dir().unwrap_or_default()) {
         Ok(Some(Target::Markdown(path))) => {
             let label = file_label(&path);
-            let config = &mut context.config_mut().app.windows[0];
+            let config = &mut state.initial;
             config.label = label.clone();
             config.url = tauri::WebviewUrl::App("index.html?standalone=1".into());
             state.files.lock().unwrap().insert(label, path);
@@ -88,6 +91,16 @@ pub fn prepare(context: &mut tauri::Context<tauri::Wry>) -> ShellState {
         Ok(None) => {}
     }
     state
+}
+
+pub fn create_initial(app: &tauri::AppHandle) -> tauri::Result<()> {
+    let state = app.state::<ShellState>();
+    if state.initial.label == "main" {
+        crate::auxiliary_windows::create_main(app, &state.initial)?;
+    } else {
+        tauri::WebviewWindowBuilder::from_config(app, &state.initial)?.build()?;
+    }
+    Ok(())
 }
 
 impl ShellState {
@@ -118,10 +131,7 @@ fn main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
     let state = app.state::<ShellState>();
     let mut config = state.main.clone();
     config.visible = false;
-    tauri::WebviewWindowBuilder::from_config(app, &config)
-        .map_err(|e| e.to_string())?
-        .build()
-        .map_err(|e| e.to_string())
+    crate::auxiliary_windows::create_main(app, &config).map_err(|e| e.to_string())
 }
 
 pub fn receive(app: &tauri::AppHandle, args: Vec<String>, cwd: String) {

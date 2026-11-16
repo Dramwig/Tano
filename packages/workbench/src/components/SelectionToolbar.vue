@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
+const ResizeObserver = (window as Window & typeof globalThis).ResizeObserver;
+import { isElement } from '@tano/editor/dom-realm';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
@@ -253,7 +259,7 @@ function keydown(event: KeyboardEvent) {
 }
 function focusShortcut(event: KeyboardEvent) {
   if (props.dragging || event.defaultPrevented || !visible.value ||
-      (event.target instanceof Element && event.target.closest('[role="dialog"]'))) return;
+      (isElement(event.target) && event.target.closest('[role="dialog"]'))) return;
   if (!matchesShortcut(event, 'focusToolbar', props.shortcuts ?? defaultShortcutBindings)) return;
   panel.value?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
   event.preventDefault();
@@ -350,10 +356,11 @@ onBeforeUnmount(() => {
   window.visualViewport?.removeEventListener('resize', schedule);
   window.visualViewport?.removeEventListener('scroll', schedule);
 });
+
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <div v-surface-motion="'SelectionToolbar:surface'"
         v-if="visible"
         ref="panel"

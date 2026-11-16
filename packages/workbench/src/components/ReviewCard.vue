@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
 import './review-card.css';
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { animate } from 'motion/mini';
@@ -32,6 +35,7 @@ watch(() => props.framed && props.expanded, async selected => {
 });
 onBeforeUnmount(() => { revision++; movement?.stop(); });
 function activate() { if (props.framed && !props.expanded) emit('activate'); }
+
 </script>
 
 <template>

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const IntersectionObserver = (window as Window & typeof globalThis).IntersectionObserver;
 import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue';
 import type { FileEntry } from '@tano/protocol';
 import WorkspaceIcon from './WorkspaceIcon.vue';
@@ -46,6 +49,7 @@ onMounted(() => {
   if (host.value) observer.observe(host.value);
 });
 onBeforeUnmount(() => observer?.disconnect());
+
 </script>
 
 <template>

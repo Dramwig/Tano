@@ -1,3 +1,6 @@
+import { ownerWindow } from './dom-realm';
+
+import { isHTMLElement } from './dom-realm';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { tableLineSelection } from './table-commands';
 import type { TableTarget } from './table-commands';
@@ -10,10 +13,14 @@ export function createTableDragPreview(
   pointer: { x: number; y: number },
   visible: { left: number; right: number; top: number; bottom: number },
 ) {
+    const window = ownerWindow(grip);
+    const document = window.document;
+    const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+
   const cells: HTMLElement[] = [];
   tableLineSelection(view.state.doc, target)?.forEachCell((_cell, pos) => {
     const dom = view.nodeDOM(pos);
-    if (dom instanceof HTMLElement) cells.push(dom);
+    if (isHTMLElement(dom)) cells.push(dom);
   });
   if (!cells.length) return null;
   const table = cells[0]!.closest('table');

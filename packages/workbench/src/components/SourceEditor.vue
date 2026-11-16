@@ -1,9 +1,13 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { t } from '../i18n';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   defaultKeymap,
   history,
+  historyField,
   historyKeymap,
   indentWithTab,
   isolateHistory,
@@ -618,6 +622,19 @@ function revealSourceRange(range: { from: number; to: number }) {
   return true;
 }
 defineExpose({
+  captureTransferState: () => view ? {
+    content: props.modelValue, revision: props.contentRevision,
+    history: view.state.field(historyField), selection: view.state.selection,
+  } : undefined,
+  restoreTransferState: (value: unknown) => {
+    const snapshot = value as { content: string; revision: unknown; history: unknown; selection: EditorState['selection'] } | undefined;
+    if (!snapshot || !view || snapshot.content !== props.modelValue || snapshot.revision !== props.contentRevision) return;
+    view.dispatch({ effects: undoHistory.reconfigure([]) });
+    view.dispatch({
+      effects: undoHistory.reconfigure([history(), historyField.init(() => snapshot.history)]),
+      selection: snapshot.selection, annotations: Transaction.addToHistory.of(false),
+    });
+  },
   captureModeSelection,
   restoreModeSelection,
   revealSourceRange,
@@ -644,6 +661,7 @@ defineExpose({
   jumpToLine,
   insertBlockAtStart,
 });
+
 </script>
 
 <template>

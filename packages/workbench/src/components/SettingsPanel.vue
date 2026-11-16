@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import ModalBackdrop from './ModalBackdrop.vue';
 import CapabilitySyntax from './CapabilitySyntax.vue';
@@ -2472,6 +2475,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   cursor: grabbing;
 }
 .settings-windowed .settings-close {
+  top: calc(var(--workbench-tabbar-height) + 8px);
   z-index: 2;
 }
 

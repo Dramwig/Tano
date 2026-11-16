@@ -1,3 +1,6 @@
+import { ownerWindow } from './dom-realm';
+
+import { isElement, isHTMLElement } from './dom-realm';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@milkdown/kit/prose/state';
 import { Decoration, DecorationSet, type EditorView } from '@milkdown/kit/prose/view';
 import type { Node } from '@milkdown/kit/prose/model';
@@ -101,6 +104,9 @@ function characters(doc: Node, from: number, to: number) {
 
 /** Width an atom draws besides its label (an icon, padding). */
 function leadWidth(element: HTMLElement) {
+    const window = ownerWindow(element);
+    const document = window.document;
+
   const range = document.createRange();
   range.selectNodeContents(element);
   if (typeof range.getClientRects !== 'function') return 0;
@@ -168,6 +174,10 @@ function oneLine(rects: Iterable<DOMRect>): DOMRect | null {
 
 /** Read the range as it is drawn now, before ProseMirror redraws it. */
 function captureSwap(view: EditorView, from: number, to: number): SwapGhost | null {
+    const window = ownerWindow(view.dom);
+    const document = window.document;
+    const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+
   try {
     const start = view.domAtPos(from, 1), end = view.domAtPos(to, -1);
     const range = document.createRange();
@@ -176,7 +186,7 @@ function captureSwap(view: EditorView, from: number, to: number): SwapGhost | nu
     if (range.collapsed) return null;
     // Floating previews (the rendered formula under math source) are not part
     // of the line: leave them out of the measurement and the copy.
-    const host = range.commonAncestorContainer instanceof Element ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement;
+    const host = isElement(range.commonAncestorContainer) ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement;
     const floating = [...host?.querySelectorAll<HTMLElement>(FLOATING) ?? []].filter(element => range.intersectsNode(element)).map(element => element.getBoundingClientRect());
     const inside = (rect: DOMRect) => floating.some(box => rect.left >= box.left - 0.5 && rect.right <= box.right + 0.5 && rect.top >= box.top - 0.5 && rect.bottom <= box.bottom + 0.5);
     let rect = oneLine([...range.getClientRects()].filter(rect => !inside(rect)));
@@ -197,6 +207,9 @@ function captureSwap(view: EditorView, from: number, to: number): SwapGhost | nu
 
 /** Overlay next to (never inside) the ProseMirror DOM, with its typography. */
 function overlay(view: EditorView, existing?: HTMLElement) {
+    const window = ownerWindow(view.dom);
+    const document = window.document;
+
   const parent = view.dom.parentElement;
   if (!parent) return undefined;
   if (existing?.parentElement === parent) return existing;
@@ -216,6 +229,7 @@ export function inlineSourceMotion(options: InlineSourceMotionOptions = {}) {
   const enabled = options.enabled ?? (() => true);
   const morphs = new Map<string, Morph>();
   let view: EditorView | undefined;
+  const owner = () => view ? ownerWindow(view.dom) : globalThis.window;
   let layer: HTMLElement | undefined;
   let settleTimer = 0;
 
@@ -283,8 +297,8 @@ export function inlineSourceMotion(options: InlineSourceMotionOptions = {}) {
         if (old.atom && !next.atom && !seenAtoms.has(old.pos)) {
           seenAtoms.add(old.pos);
           const dom = view && view.state.doc === tr.before ? view.nodeDOM(old.pos) : null;
-          if (dom instanceof HTMLElement && leadWidth(dom) > 0.5) {
-            const element = document.createElement('span');
+          if (isHTMLElement(dom) && leadWidth(dom) > 0.5) {
+            const element = owner().document.createElement('span');
             element.className = 'tano-source-morph tano-source-exit tano-source-lead';
             const lead = dom.cloneNode(false) as HTMLElement;
             lead.removeAttribute('contenteditable');
@@ -309,7 +323,7 @@ export function inlineSourceMotion(options: InlineSourceMotionOptions = {}) {
       }
       const type = op.type;
       let end = index + 1;
-      // A run: same kind, contiguous in the document.
+      // A run: same kind, contiguous in the owner().document.
       while (end < ops.length && ops[end]!.type === type && (type === 'add'
         ? after[ops[end]!.b]!.pos === after[ops[end - 1]!.b]!.end
         : before[ops[end]!.a]!.pos === before[ops[end - 1]!.a]!.end)) end++;
@@ -345,7 +359,7 @@ export function inlineSourceMotion(options: InlineSourceMotionOptions = {}) {
           return morph ? openAt(morph, now) : 1;
         }));
         if (open <= 0.04) continue;
-        const element = document.createElement('span');
+        const element = owner().document.createElement('span');
         element.className = 'tano-source-morph tano-source-exit';
         element.textContent = text;
         const id = fresh('exit', open, 0, CLOSE_DURATION, text);
@@ -407,7 +421,7 @@ export function inlineSourceMotion(options: InlineSourceMotionOptions = {}) {
     const ghost = morph.ghost;
     const host = view && (layer = overlay(view, layer));
     if (!ghost?.rect || !ghost.content || ghost.element || !host || morph.delta === undefined) return;
-    const element = document.createElement('span');
+    const element = owner().document.createElement('span');
     element.className = 'tano-type-ghost tano-source-ghost';
     element.append(ghost.content);
     Object.assign(element.style, { left: '0px', top: '0px', height: `${ghost.rect.height}px`, lineHeight: `${ghost.rect.height}px` });
@@ -428,7 +442,7 @@ export function inlineSourceMotion(options: InlineSourceMotionOptions = {}) {
     ghost.element = element;
     ghost.animation = fade;
     fade.onfinish = () => { clip.cancel(); element.remove(); };
-    window.setTimeout(() => element.remove(), morph.duration + 200);
+    owner().setTimeout(() => element.remove(), morph.duration + 200);
   }
 
   /** Start (or pick up, for nodes ProseMirror redrew) every running morph. */
@@ -467,17 +481,17 @@ export function inlineSourceMotion(options: InlineSourceMotionOptions = {}) {
   }
 
   function scheduleSettle() {
-    window.clearTimeout(settleTimer);
+    owner().clearTimeout(settleTimer);
     let last = 0;
     for (const morph of morphs.values()) last = Math.max(last, morph.start + morph.duration);
     if (!morphs.size) return;
-    settleTimer = window.setTimeout(settle, Math.max(16, last - performance.now() + 30));
+    settleTimer = owner().setTimeout(settle, Math.max(16, last - performance.now() + 30));
   }
 
   function settle() {
     settleTimer = 0;
     if (!view || view.isDestroyed) return;
-    if (view.composing) { settleTimer = window.setTimeout(settle, 200); return; }
+    if (view.composing) { settleTimer = owner().setTimeout(settle, 200); return; }
     const now = performance.now();
     const done = [...morphs.values()].filter(morph => now - morph.start >= morph.duration).map(morph => morph.id);
     if (done.length) view.dispatch(view.state.tr.setMeta(inlineSourceMotionKey, { drop: done }).setMeta('addToHistory', false));
@@ -526,6 +540,8 @@ export function inlineSourceMotion(options: InlineSourceMotionOptions = {}) {
       decorations: state => inlineSourceMotionKey.getState(state)?.decorations,
     },
     view(editorView) {
+    const window = ownerWindow(editorView.dom);
+
       view = editorView;
       return {
         update(current) {
@@ -535,7 +551,7 @@ export function inlineSourceMotion(options: InlineSourceMotionOptions = {}) {
           scheduleSettle();
         },
         destroy() {
-          window.clearTimeout(settleTimer);
+          owner().clearTimeout(settleTimer);
           forget([...morphs.keys()]);
           layer?.remove();
           layer = undefined;

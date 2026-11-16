@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
+import { isNode } from '@tano/editor/dom-realm';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -35,7 +39,7 @@ async function place() {
   menu.value.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
 }
 function outside(event: Event) {
-  if (!(event.target instanceof Node) || !menu.value?.contains(event.target)) emit('close', false);
+  if (!(isNode(event.target)) || !menu.value?.contains(event.target)) emit('close', false);
 }
 function dismiss() {
   emit('close', false);
@@ -76,10 +80,11 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', outside, true);
   window.removeEventListener('resize', dismiss);
 });
+
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <div v-surface-motion="'PlanEventContextMenu:0'"
       :id="id"
       ref="menu"

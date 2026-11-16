@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t, uiLocale } from '../i18n';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
@@ -148,6 +151,7 @@ onBeforeUnmount(() => {
   clearInterval(timer);
   originalFocus?.focus();
 });
+
 </script>
 <template>
   <div v-surface-motion="'AgentPanel:0'" class="modal-backdrop" @mousedown.self="!busy && emit('close')">

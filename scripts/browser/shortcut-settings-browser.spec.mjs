@@ -22,9 +22,11 @@ test('shows shortcut conflicts directly under the active binding and clears them
   await expect(alert).toContainText('新建文档');
   await expect(page.locator('.shortcut-settings > [role="alert"]')).toHaveCount(0);
   await expect(control).toHaveAttribute('aria-invalid', 'true');
-  const buttonBounds = await control.boundingBox(), errorBounds = await alert.boundingBox();
-  expect(errorBounds.y).toBeGreaterThanOrEqual(buttonBounds.y + buttonBounds.height);
-  expect(Math.abs(errorBounds.x - buttonBounds.x)).toBeLessThan(2);
+  await expect(async () => {
+    const buttonBounds = await control.boundingBox(), errorBounds = await alert.boundingBox();
+    expect(errorBounds.y).toBeGreaterThanOrEqual(buttonBounds.y + buttonBounds.height);
+    expect(Math.abs(errorBounds.x - buttonBounds.x)).toBeLessThan(2);
+  }).toPass({ timeout: 5000 });
   await row.getByRole('button', { name: '取消编辑', exact: true }).click();
   await expect(alert).toHaveCount(0);
   await expect(control).toContainText('Ctrl+O');
@@ -134,9 +136,12 @@ test('custom formatting replaces native defaults without stealing sidebar bindin
   await prepare(page); await settings(page);
   const bold = page.getByRole('button', { name: '设置粗体快捷键', exact: true });
   await bold.click(); await bold.press('Alt+b');
+  await expect(bold).toContainText('Alt+B');
   await page.getByRole('button', { name: '关闭设置', exact: true }).click();
+  await expect(page.locator('.settings-dialog')).toHaveCount(0);
   const paragraph = page.locator('.ProseMirror p').first();
   await paragraph.click(); await page.keyboard.press('Home'); await page.keyboard.press('Shift+End');
+  await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe('Alpha');
   await page.keyboard.press('Control+b'); await expect(paragraph.locator('strong')).toHaveCount(0);
   await page.keyboard.press('Alt+b'); await expect(paragraph.locator('strong')).toHaveText('Alpha');
 });

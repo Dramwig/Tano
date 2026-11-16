@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t, uiLocale } from '../i18n';
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
@@ -62,6 +65,7 @@ function keydown(event: KeyboardEvent) {
 
 onMounted(() => void nextTick(() => firstNav.value?.focus()));
 onBeforeUnmount(() => originalFocus?.focus());
+
 </script>
 
 <template>

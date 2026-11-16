@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { computed, onBeforeUnmount, ref, useId } from 'vue';
 const props = defineProps<{ label: string; summary: string; failed?: boolean; checkedAt?: number; refreshing?: boolean }>();
@@ -39,6 +42,7 @@ function scheduleClose() {
 }
 
 onBeforeUnmount(() => { clearTimeout(closeTimer); clearInterval(ageTimer); });
+
 </script>
 <template>
   <div class="connection-status">

@@ -1,8 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main, detached, and settings windows: workspace access and window controls.",
-  "windows": ["main", "detached-*", "settings-*"],
+  "description": "Main and shared auxiliary windows: workspace access and window controls.",
+  "windows": [
+    "main",
+    "aux-*"
+  ],
   "permissions": [
     "core:default",
     "dialog:allow-open",
@@ -12,6 +15,7 @@
     "core:window:allow-hide",
     "core:window:allow-destroy",
     "core:window:allow-minimize",
+    "core:window:allow-unminimize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-set-focus",
     "core:window:allow-set-position",

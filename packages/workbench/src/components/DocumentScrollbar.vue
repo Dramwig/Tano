@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const ResizeObserver = (window as Window & typeof globalThis).ResizeObserver;
 import { t } from '../i18n';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
@@ -105,6 +108,7 @@ watch(() => props.scrollElement, (element, _, cleanup) => {
   });
 }, { immediate: true, flush: 'post' });
 onBeforeUnmount(() => finish());
+
 </script>
 
 <template>

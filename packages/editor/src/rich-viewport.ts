@@ -1,3 +1,6 @@
+import { ownerWindow } from './dom-realm';
+
+import { isHTMLElement, isElement } from './dom-realm';
 import { DOMSerializer, type Node } from '@milkdown/kit/prose/model';
 import { Plugin, PluginKey, TextSelection, type Transaction } from '@milkdown/kit/prose/state';
 import { Decoration, DecorationSet, type EditorView, type NodeView, type NodeViewConstructor } from '@milkdown/kit/prose/view';
@@ -28,6 +31,8 @@ function largeDocument(doc: Node) {
 }
 
 class RichViewport {
+  private get window() { return ownerWindow(this.view.dom); }
+
   entries = new Map<Element, Entry>();
   sizes = new WeakMap<Node, Size>();
   observer?: IntersectionObserver;
@@ -52,11 +57,11 @@ class RichViewport {
   activate() {
     const view = this.view;
     if (this.observer || !this.scroll || !largeDocument(view.state.doc)) return;
-    const style = getComputedStyle(view.dom);
+    const style = this.window.getComputedStyle(view.dom);
     this.width = view.dom.clientWidth || 700;
     this.fontSize = Number.parseFloat(style.fontSize) || 16;
     this.lineHeight = Number.parseFloat(style.lineHeight) || this.fontSize * 1.75;
-    this.observer = new IntersectionObserver(records => {
+    this.observer = new this.window.IntersectionObserver(records => {
       let extend = false;
       for (const record of records) {
         const entry = this.entries.get(record.target), pos = entry?.pos;
@@ -73,7 +78,7 @@ class RichViewport {
         this.schedule();
       }
     }, { root: this.scroll, rootMargin: '600px' });
-    if (typeof ResizeObserver !== 'undefined') this.resize = new ResizeObserver(records => {
+    if (typeof this.window.ResizeObserver !== 'undefined') this.resize = new this.window.ResizeObserver(records => {
       if (view.dom.clientWidth !== this.width) this.resized();
       for (const record of records) {
         const entry = this.entries.get(record.target);
@@ -82,10 +87,10 @@ class RichViewport {
     });
     this.resize?.observe(view.dom);
     view.dom.addEventListener('pointerdown', this.pointerDown, true);
-    window.addEventListener('pointerup', this.pointerUp);
-    window.addEventListener('pointercancel', this.pointerUp);
+    this.window.addEventListener('pointerup', this.pointerUp);
+    this.window.addEventListener('pointercancel', this.pointerUp);
     view.dom.addEventListener('compositionend', this.schedule);
-    window.addEventListener('resize', this.resized);
+    this.window.addEventListener('resize', this.resized);
     for (const entry of this.entries.values()) {
       this.observer.observe(entry.dom);
       if (!entry.placeholder) this.resize?.observe(entry.dom);
@@ -110,23 +115,23 @@ class RichViewport {
       this.indexedDoc = doc; this.positions = []; this.indices.clear();
       doc.forEach((_node, pos, index) => { this.positions.push(pos); this.indices.set(pos, index); });
     }
-    const window = new Set<number>();
+    const nearby = new Set<number>();
     for (const pos of this.intersecting) {
       const index = this.indices.get(pos);
       if (index === undefined) continue;
       for (let i = Math.max(0, index - 12); i < Math.min(this.positions.length, index + 13); i++)
-        window.add(this.positions[i]!);
+        nearby.add(this.positions[i]!);
     }
     // Hysteresis prevents mount/unmount churn at a viewport boundary.
-    this.visible = !this.dragging && this.visible.size > Math.max(100, window.size * 2)
-      ? window : new Set([...this.visible, ...window]);
+    this.visible = !this.dragging && this.visible.size > Math.max(100, nearby.size * 2)
+      ? nearby : new Set([...this.visible, ...nearby]);
   }
 
   measure(entry: Entry) {
     if (!entry.dom.isConnected || entry.placeholder) return;
     const rect = entry.dom.getBoundingClientRect();
     if (!rect.height) return;
-    const style = getComputedStyle(entry.dom);
+    const style = this.window.getComputedStyle(entry.dom);
     this.sizes.set(entry.node, { height: rect.height, marginTop: style.marginTop, marginBottom: style.marginBottom, width: this.width });
   }
 
@@ -151,7 +156,7 @@ class RichViewport {
 
   schedule = () => {
     if (this.frame !== undefined || !this.observer) return;
-    this.frame = requestAnimationFrame(() => {
+    this.frame = this.window.requestAnimationFrame(() => {
       this.frame = undefined;
       if (this.view.isDestroyed || this.view.composing) return;
       const current = viewportKey.getState(this.view.state) ?? new Set<number>();
@@ -169,14 +174,14 @@ class RichViewport {
         .setMeta('addToHistory', false).setMeta('tanoKeepNodeView', true));
       if (anchor) {
         const dom = this.view.nodeDOM(anchor.pos);
-        if (dom instanceof HTMLElement) this.scroll!.scrollTop += dom.getBoundingClientRect().top - anchor.top;
+        if (isHTMLElement(dom)) this.scroll!.scrollTop += dom.getBoundingClientRect().top - anchor.top;
       }
     });
   };
 
   pointerDown = (event: PointerEvent) => {
     this.dragging = true;
-    const target = event.target instanceof Element ? event.target.closest('[data-tano-virtual-placeholder]') : null;
+    const target = isElement(event.target) ? event.target.closest('[data-tano-virtual-placeholder]') : null;
     const pos = target && this.entries.get(target)?.pos;
     if (typeof pos !== 'number') return;
     event.preventDefault();
@@ -205,13 +210,13 @@ class RichViewport {
     this.view.dispatch(this.view.state.tr.setMeta('addToHistory', false).setMeta('tanoKeepNodeView', true));
   };
   destroy() {
-    if (this.frame !== undefined) cancelAnimationFrame(this.frame);
+    if (this.frame !== undefined) this.window.cancelAnimationFrame(this.frame);
     this.observer?.disconnect(); this.resize?.disconnect();
     this.view.dom.removeEventListener('pointerdown', this.pointerDown, true);
-    window.removeEventListener('pointerup', this.pointerUp);
-    window.removeEventListener('pointercancel', this.pointerUp);
+    this.window.removeEventListener('pointerup', this.pointerUp);
+    this.window.removeEventListener('pointercancel', this.pointerUp);
     this.view.dom.removeEventListener('compositionend', this.schedule);
-    window.removeEventListener('resize', this.resized);
+    this.window.removeEventListener('resize', this.resized);
     this.entries.clear();
   }
 }
@@ -227,6 +232,9 @@ function controller(view: EditorView) {
 export function virtualBlockViews(originals: Record<string, NodeViewConstructor>): Record<string, NodeViewConstructor> {
   const result = { ...originals };
   for (const name of virtualTypes) result[name] = (node, view, getPos, decorations, inner) => {
+    const window = ownerWindow(view.dom);
+    const document = window.document;
+
     const original = originals[name];
     const viewport = controller(view);
     const position = getPos();

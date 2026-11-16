@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { computed, ref, watch } from 'vue';
 import { objectViewText, objectViewValue, referenceKey, viewEngine } from '@tano/protocol';
 import type { WorkspaceObject, WorkspaceViewDefinition, ReferenceIdentity, ObjectViewLayout } from '@tano/protocol';
@@ -54,6 +57,7 @@ async function setStatus(row: WorkspaceObject, event: Event) {
   } catch (reason) { error.value = String(reason); (event.target as HTMLSelectElement).value = objectViewText(row.properties.status); }
   finally { busy.value = false; }
 }
+
 </script>
 <template>
   <main class="object-database" :aria-label="view.name">
@@ -88,7 +92,7 @@ async function setStatus(row: WorkspaceObject, event: Event) {
     </tbody></table></div>
     <div v-else-if="query.layout === 'board'" class="board"><section v-for="group in projection.groups" :key="group.name" class="column"><h2>{{ group.name || t('未设置') }} <small>{{ group.rows.length }}</small></h2><article v-for="row in group.rows" :key="referenceKey(row)" :data-object-id="row.id"><button @click="panel = { id: row.id }">{{ row.name }}</button><p>{{ t(label(row.type)) }}</p><p>{{ row.description }}</p><label>{{ t('状态') }}<select :value="row.properties.status ?? ''" :aria-label="`${t('状态')}：${row.name}`" :disabled="!writable || busy || row.properties.syncReadOnly === true" @change="setStatus(row, $event)"><option value="">{{ t('未设置') }}</option><option v-for="status in statuses" :key="status">{{ status }}</option></select></label><small>{{ countLinks(row) }} {{ t('关联') }}</small></article></section></div>
     <div v-else class="gallery"><article v-for="row in projection.rows" :key="referenceKey(row)" :data-object-id="row.id"><p>{{ t(label(row.type)) }} · {{ objectViewText(objectViewValue(row, 'property:status')) || t('未设置') }}</p><h2><button @click="panel = { id: row.id }">{{ row.name }}</button></h2><p class="description">{{ row.description }}</p><small>{{ countLinks(row) }} {{ t('关联') }}</small></article></div>
-    <Teleport to="body"><ObjectPanel v-show="!!panel" :open="!!panel" :selected-id="panel?.id" :initial-type="panel?.type" @close="panel = undefined" @open-reference="emit('open-object', $event)" @open-resource="emit('open-object', $event)" /></Teleport>
+    <Teleport :to="document.body"><ObjectPanel v-show="!!panel" :open="!!panel" :selected-id="panel?.id" :initial-type="panel?.type" @close="panel = undefined" @open-reference="emit('open-object', $event)" @open-resource="emit('open-object', $event)" /></Teleport>
   </main>
 </template>
 <style scoped>

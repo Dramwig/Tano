@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { localizedDataFieldTypes as dataFieldTypes } from '../ui-labels';
 import { t } from '../i18n';
@@ -150,6 +153,7 @@ function keydown(event: KeyboardEvent) {
     buttons[Math.max(0, Math.min(buttons.length - 1, index + offset))]?.focus();
   }
 }
+
 </script>
 
 <template>
@@ -192,7 +196,7 @@ function keydown(event: KeyboardEvent) {
       </button>
     </template>
   </div>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <section v-surface-motion="'DataFieldCreate:0'"
       v-if="open"
       ref="panel"

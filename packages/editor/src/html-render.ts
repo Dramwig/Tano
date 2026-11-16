@@ -1,3 +1,5 @@
+
+import { isElement } from './dom-realm';
 import DOMPurify from 'dompurify';
 
 const blockTags = new Set([
@@ -159,7 +161,7 @@ export function renderHtml(
   }
   wrapper.removeAttribute('title');
   if (
-    [...fragment.childNodes].some((node) => node instanceof Element && blockTags.has(node.tagName))
+    [...fragment.childNodes].some((node) => isElement(node) && blockTags.has(node.tagName))
   )
     wrapper.classList.add('tano-html-block');
   wrapper.append(fragment);

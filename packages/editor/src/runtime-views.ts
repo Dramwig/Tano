@@ -1,3 +1,4 @@
+import { ownerWindow } from './dom-realm';
 import { setSurfaceVisible, showSurface, removeSurface } from './surface-motion';
 import { DOMSerializer } from '@milkdown/kit/prose/model';
 import type { Mark, Node } from '@milkdown/kit/prose/model';
@@ -86,6 +87,9 @@ export function runtimeViews(
   ]) {
     const original = views[name];
     result[name] = (node, view, getPos, decorations, innerDecorations) => {
+    const window = ownerWindow(view.dom);
+    const document = window.document;
+
       const fallback = sourcePresentation(node, policy());
       if (!fallback) {
         const rendered =
@@ -138,6 +142,9 @@ export function mermaidView(
   renderMermaid: MermaidRenderer = createMermaidRenderer(),
 ): NodeViewConstructor {
   return (node, view, getPos) => {
+    const window = ownerWindow(view.dom);
+    const document = window.document;
+
     const isDiagram = node.attrs.language?.toLowerCase() === 'mermaid' && enabled();
     if (!isDiagram) {
       const { dom, contentDOM } = DOMSerializer.renderSpec(document, node.type.spec.toDOM!(node));
@@ -243,7 +250,7 @@ export function mermaidView(
           document.body.append(menu);
           showSurface(menu);
           language.setAttribute('aria-expanded', 'true');
-          stopPositioning = observePanelPosition(positionMenu);
+          stopPositioning = observePanelPosition(positionMenu, window);
         }
         filterText = query;
         renderMenu();

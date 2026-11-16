@@ -1,3 +1,4 @@
+import { ownerWindow } from './dom-realm';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@milkdown/kit/prose/state';
 import { Decoration, DecorationSet, type EditorView } from '@milkdown/kit/prose/view';
 import type { Node } from '@milkdown/kit/prose/model';
@@ -98,6 +99,9 @@ function deletedRange(tr: Transaction, state: EditorState) {
 /* ------------------------------------------------------------------------ */
 
 function overlay(view: EditorView, existing?: HTMLElement): HTMLElement | undefined {
+    const window = ownerWindow(view.dom);
+    const document = window.document;
+
   const parent = view.dom.parentElement;
   if (!parent) return undefined;
   if (existing && existing.parentElement === parent) return existing;
@@ -113,6 +117,9 @@ function overlay(view: EditorView, existing?: HTMLElement): HTMLElement | undefi
 }
 
 function domRange(view: EditorView, from: number, to: number): Range | null {
+    const window = ownerWindow(view.dom);
+    const document = window.document;
+
   try {
     const start = view.domAtPos(from, 1), end = view.domAtPos(to, -1);
     const range = document.createRange();
@@ -141,6 +148,7 @@ export function typingMotion(options: TypingMotionOptions | (() => boolean) = {}
   const enabled = typeof options === 'function' ? options : options.text ?? (() => true);
   const caretEnabled = typeof options === 'function' ? options : options.caret ?? (() => true);
   let view: EditorView | undefined;
+  const owner = () => view ? ownerWindow(view.dom) : globalThis.window;
   let layer: HTMLElement | undefined;
   /** The last keydown was an auto-repeat (a held Backspace, arrow, letter). */
   let held = false;
@@ -151,7 +159,7 @@ export function typingMotion(options: TypingMotionOptions | (() => boolean) = {}
   /** Text a command is about to delete, read before the DOM changes. */
   let pendingGhost: { ghost: GhostCapture; doc: Node } | undefined;
 
-  const loop = new FrameLoop();
+  const loop = new FrameLoop(owner);
   const reveal = new TypedReveal();
   const ghosts = new EraseGhosts();
   let caret: SmoothCaret | undefined;
@@ -235,7 +243,7 @@ export function typingMotion(options: TypingMotionOptions | (() => boolean) = {}
           if (input.isComposing || !active() || !NATIVE_DELETE.test(input.inputType)) return false;
           const [target] = input.getTargetRanges?.() ?? [];
           if (!target || target.collapsed) return false;
-          const range = document.createRange();
+          const range = owner().document.createRange();
           try {
             range.setStart(target.startContainer, target.startOffset);
             range.setEnd(target.endContainer, target.endOffset);
@@ -286,13 +294,17 @@ export function typingMotion(options: TypingMotionOptions | (() => boolean) = {}
       },
     },
     view(editorView) {
+    const window = ownerWindow(editorView.dom);
+    const document = owner().document;
+    const ResizeObserver = owner().ResizeObserver;
+
       view = editorView;
       caret = new SmoothCaret(editorView, getLayer, () => !!view && caretEnabled(), () => loop.wake());
       let settleTimer = 0;
       const settle = () => {
         settleTimer = 0;
         if (!view || view.isDestroyed) return;
-        if (view.composing) { settleTimer = window.setTimeout(settle, 240); return; }
+        if (view.composing) { settleTimer = owner().setTimeout(settle, 240); return; }
         if (!typingMotionKey.getState(view.state)?.count) return;
         view.dispatch(view.state.tr.setMeta(typingMotionKey, 'settle').setMeta('addToHistory', false));
       };
@@ -300,9 +312,9 @@ export function typingMotion(options: TypingMotionOptions | (() => boolean) = {}
         if (view && (view.root as Document).activeElement === view.dom) caret?.invalidate('move');
       };
       const onLayout = () => caret?.invalidate('follow');
-      document.addEventListener('selectionchange', onSelectionChange);
-      window.addEventListener('resize', onLayout);
-      window.addEventListener('scroll', onLayout, { capture: true, passive: true });
+      owner().document.addEventListener('selectionchange', onSelectionChange);
+      owner().addEventListener('resize', onLayout);
+      owner().addEventListener('scroll', onLayout, { capture: true, passive: true });
       const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(onLayout);
       observer?.observe(editorView.dom);
       return {
@@ -319,16 +331,16 @@ export function typingMotion(options: TypingMotionOptions | (() => boolean) = {}
             loop.wake();
           }
           if (after?.count && after.decorations !== before?.decorations) {
-            window.clearTimeout(settleTimer);
-            settleTimer = window.setTimeout(settle, SETTLE_AFTER);
+            owner().clearTimeout(settleTimer);
+            settleTimer = owner().setTimeout(settle, SETTLE_AFTER);
           }
           if (current.state.doc !== previous.doc || !current.state.selection.eq(previous.selection)) caret?.invalidate('move');
         },
         destroy() {
-          window.clearTimeout(settleTimer);
-          document.removeEventListener('selectionchange', onSelectionChange);
-          window.removeEventListener('resize', onLayout);
-          window.removeEventListener('scroll', onLayout, { capture: true });
+          owner().clearTimeout(settleTimer);
+          owner().document.removeEventListener('selectionchange', onSelectionChange);
+          owner().removeEventListener('resize', onLayout);
+          owner().removeEventListener('scroll', onLayout, { capture: true });
           observer?.disconnect();
           loop.stop();
           reveal.clear();

@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
+const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+const ResizeObserver = (window as Window & typeof globalThis).ResizeObserver;
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { t } from '../i18n';
 const props = withDefaults(defineProps<{ width?: number; gutter?: number }>(), { width: 320, gutter: 0 });
@@ -39,6 +45,7 @@ onMounted(async () => {
   measure();
 });
 onBeforeUnmount(() => { resize?.disconnect(); mutations?.disconnect(); styles?.disconnect(); theme?.disconnect(); cancelAnimationFrame(pending); });
+
 </script>
 <template>
   <div ref="frame" class="example-viewport">

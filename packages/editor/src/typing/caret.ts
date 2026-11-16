@@ -1,3 +1,4 @@
+import { ownerWindow } from '../dom-realm';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { reducedMotion, spring } from '../motion';
 import { CARET_FOLLOW_SPRING, CARET_SPRING, Spring, type SpringConfig } from './spring';
@@ -13,6 +14,8 @@ const RANK: Record<CaretRequest, number> = { follow: 0, move: 1, snap: 2 };
 type Target = { x: number; y: number; height: number; color: string; moving: boolean };
 
 export class SmoothCaret {
+  private get window() { return ownerWindow(this.view.dom); }
+
   readonly element: HTMLElement;
   private x = new Spring();
   private y = new Spring();
@@ -30,7 +33,7 @@ export class SmoothCaret {
     private enabled: () => boolean,
     private wake: () => void,
   ) {
-    this.element = document.createElement('div');
+    this.element = this.window.document.createElement('div');
     this.element.className = 'tano-caret';
     this.element.hidden = true;
   }
@@ -59,7 +62,7 @@ export class SmoothCaret {
 
   destroy() {
     this.hide();
-    window.clearTimeout(this.idleTimer);
+    this.window.clearTimeout(this.idleTimer);
     this.element.remove();
   }
 
@@ -96,7 +99,7 @@ export class SmoothCaret {
     if (root.activeElement !== view.dom) return undefined;
     const selection = view.state.selection;
     if (!selection.empty || !selection.$head.parent.inlineContent) return undefined;
-    const dom = (root as Document).getSelection?.() ?? document.getSelection();
+    const dom = (root as Document).getSelection?.() ?? this.window.document.getSelection();
     if (!dom || !dom.rangeCount || !dom.isCollapsed || !dom.anchorNode || !view.dom.contains(dom.anchorNode)) return undefined;
     const anchor = dom.anchorNode.nodeType === 3 ? dom.anchorNode.parentElement : dom.anchorNode as Element;
     if (!anchor || anchor.closest('[contenteditable="false"]')) return undefined;
@@ -126,7 +129,7 @@ export class SmoothCaret {
       x: Math.round((rect.left - origin.left) * 2) / 2 - 1,
       y: rect.top - origin.top,
       height: rect.bottom - rect.top,
-      color: getComputedStyle(anchor).color,
+      color: this.window.getComputedStyle(anchor).color,
       moving,
     };
   }
@@ -159,8 +162,8 @@ export class SmoothCaret {
     // Solid while it moves, then breathe.
     if (request !== 'follow') {
       this.element.classList.remove('is-idle');
-      window.clearTimeout(this.idleTimer);
-      this.idleTimer = window.setTimeout(() => this.element.classList.add('is-idle'), 520);
+      this.window.clearTimeout(this.idleTimer);
+      this.idleTimer = this.window.setTimeout(() => this.element.classList.add('is-idle'), 520);
     }
     return true;
   }

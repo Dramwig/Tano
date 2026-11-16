@@ -1,3 +1,4 @@
+import { ownerWindow } from './dom-realm';
 import { setSurfaceVisible } from './surface-motion';
 import { Plugin, PluginKey, TextSelection, NodeSelection } from '@milkdown/kit/prose/state';
 import type { EditorState, Transaction } from '@milkdown/kit/prose/state';
@@ -165,6 +166,8 @@ export function referencePicker(options: {
       handleKeyDown: (_view, event) => handleKey(event),
     },
     view(view) {
+      const window = ownerWindow(view.dom);
+      const document = window.document;
       const menu = document.createElement('div');
       menu.className = 'tano-reference-picker';
       menu.hidden = true;

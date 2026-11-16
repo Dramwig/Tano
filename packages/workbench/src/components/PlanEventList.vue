@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t, uiLocale } from '../i18n';
 import { onBeforeUnmount, ref, TransitionGroup, watch } from 'vue';
@@ -142,6 +145,7 @@ function eventTime(record: ObjectRecord, day: Date) {
     ? format(record.object.properties.start)
     : `${format(record.object.properties.start)} – ${format(record.object.properties.end)}`;
 }
+
 </script>
 
 <template>

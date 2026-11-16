@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const ResizeObserver = (window as Window & typeof globalThis).ResizeObserver;
+import { isNode } from '@tano/editor/dom-realm';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t, uiLocale } from '../i18n';
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
@@ -19,7 +23,7 @@ function close(restoreFocus = false) {
 }
 function dismiss(event: Event) {
   const target = event.target;
-  if (target instanceof Node && !panel.value?.contains(target) && !props.anchor.contains(target)) close();
+  if (isNode(target) && !panel.value?.contains(target) && !props.anchor.contains(target)) close();
 }
 function place() {
   if (!panel.value || !props.anchor.isConnected) return;
@@ -89,10 +93,11 @@ onUnmounted(() => {
   resizeObserver?.disconnect();
 });
 watch(() => props.date, focusPanel);
+
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <section v-surface-motion="'CalendarDayPopover:0'"
       :id="id"
       ref="panel"

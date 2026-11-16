@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { onBeforeUnmount, onMounted } from 'vue';
 import AssistantButterfly from './AssistantButterfly.vue';
 import type { ButterflyController } from '../assistant/butterfly';
@@ -10,7 +13,7 @@ const updateMotion = () => props.controller.setReducedMotion(media?.matches ?? f
 const visibility = () => { if (document.hidden) props.controller.cancel(); };
 const escape = (event: KeyboardEvent) => { if (event.key === 'Escape' && state.visible) void props.controller.returnHome(); };
 onMounted(() => {
-  media = matchMedia('(prefers-reduced-motion: reduce)');
+  media = window.matchMedia('(prefers-reduced-motion: reduce)');
   updateMotion(); media.addEventListener('change', updateMotion);
   document.addEventListener('visibilitychange', visibility);
   window.addEventListener('keydown', escape);
@@ -21,10 +24,11 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', escape);
   props.controller.cancel();
 });
+
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <div v-if="state.visible" class="assistant-butterfly-layer" aria-hidden="true" :data-phase="state.phase" :data-target="state.targetId">
       <div class="assistant-butterfly-actor" :style="{ transform: `translate3d(${state.x}px, ${state.y}px, 0) translate(-50%, -50%) rotate(${state.angle}deg)` }">
         <div class="assistant-butterfly-pose" :style="{ transform: `perspective(240px) rotateX(${state.pitch}deg) rotateY(${state.bank}deg) scale(${state.scale})` }">

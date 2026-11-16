@@ -13,22 +13,42 @@ export function refreshWorkspace(adapter: WorkspaceAdapter) {
   return pending;
 }
 
-const subscribers = new Set<() => void>();
-let timer: ReturnType<typeof setInterval> | undefined;
-function tick() {
-  if (document.visibilityState === 'hidden') return;
-  for (const run of subscribers) run();
-}
-function visibility() {
-  clearInterval(timer);
-  timer = undefined;
-  if (document.visibilityState === 'hidden') return;
-  tick();
-  timer = setInterval(tick, 5000);
+const clocks = new WeakMap<Window, ReturnType<typeof createRefreshClock>>();
+function createRefreshClock(window: Window) {
+  const document = window.document;
+  const subscribers = new Set<() => void>();
+  let timer: number | undefined;
+  function tick() {
+    if (document.visibilityState === 'hidden') return;
+    for (const run of subscribers) run();
+  }
+  function visibility() {
+    window.clearInterval(timer);
+    timer = undefined;
+    if (document.visibilityState === 'hidden') return;
+    tick();
+    timer = window.setInterval(tick, 5000);
+  }
+
+  return { subscribers, tick, visibility,
+    start() {
+      if (document.visibilityState !== 'hidden') timer = window.setInterval(tick, 5000);
+      document.addEventListener('visibilitychange', visibility);
+      window.addEventListener('focus', tick);
+    },
+    stop() {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', visibility);
+      window.removeEventListener('focus', tick);
+    },
+  };
 }
 
-/** One visible-page clock for review panes; no overlapping work per subscriber. */
-export function subscribeBackgroundRefresh(refresh: () => void | Promise<unknown>) {
+/** Review panes share one clock in their own window, with no overlapping reads. */
+export function subscribeBackgroundRefresh(refresh: () => void | Promise<unknown>, targetWindow: Window = window) {
+  let clock = clocks.get(targetWindow);
+  if (!clock) { clock = createRefreshClock(targetWindow); clocks.set(targetWindow, clock); }
+  const { subscribers } = clock;
   let pending = false;
   let active = true;
   const run = () => {
@@ -39,19 +59,10 @@ export function subscribeBackgroundRefresh(refresh: () => void | Promise<unknown
     }).finally(() => { pending = false; });
   };
   subscribers.add(run);
-  if (subscribers.size === 1) {
-    if (document.visibilityState !== 'hidden') timer = setInterval(tick, 5000);
-    document.addEventListener('visibilitychange', visibility);
-    window.addEventListener('focus', tick);
-  }
+  if (subscribers.size === 1) clock.start();
   return () => {
     active = false;
     subscribers.delete(run);
-    if (!subscribers.size) {
-      clearInterval(timer);
-      timer = undefined;
-      document.removeEventListener('visibilitychange', visibility);
-      window.removeEventListener('focus', tick);
-    }
+    if (!subscribers.size) { clock.stop(); clocks.delete(targetWindow); }
   };
 }

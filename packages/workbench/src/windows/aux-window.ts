@@ -1,14 +1,15 @@
 /**
- * Prototype primitive for VS Code–style auxiliary windows: a native window
+ * Shared primitive for VS Code–style auxiliary windows: a native window
  * opened with `window.open()` that shares this window's JavaScript realm, so
  * Vue can render straight into it without booting a second workbench.
  *
- * See docs/aux-window-prototype.md. Nothing in production uses this yet.
+ * See docs/auxiliary-windows.md.
  */
 
 export type AuxWindowOptions = {
   /** Popup name; reusing a name navigates the existing popup instead of opening a new one. */
   name: string;
+  kind: 'tab' | 'settings';
   title: string;
   width: number;
   height: number;
@@ -24,6 +25,8 @@ export type AuxWindow = {
   mount: HTMLElement;
   /** Milliseconds `window.open` took to return. */
   openMs: number;
+  /** Initial linked stylesheets have finished loading. */
+  stylesReady: Promise<void>;
   /** Number of <style>/<link rel=stylesheet> nodes mirrored into the popup. */
   styles: () => number;
   /** Resolves when the popup is closed by any means (title bar, Alt+F4, opener code). */
@@ -55,9 +58,18 @@ function isStyleNode(node: Node): node is HTMLStyleElement | HTMLLinkElement {
  */
 function mirrorDocument(source: Document, target: Document) {
   const copies = new Map<Node, Node>();
+  const syncStyle = (node: Node, copy: Node) => {
+    const sourceElement = node as Element;
+    const targetElement = copy as Element;
+    for (const attribute of [...targetElement.attributes]) targetElement.removeAttribute(attribute.name);
+    for (const attribute of [...sourceElement.attributes]) targetElement.setAttribute(attribute.name, attribute.value);
+    if (node.nodeName === 'LINK') targetElement.setAttribute('href', (node as HTMLLinkElement).href);
+    else copy.textContent = node.textContent;
+  };
   const add = (node: Node) => {
     if (!isStyleNode(node) || copies.has(node)) return;
     const copy = target.importNode(node, true);
+    syncStyle(node, copy);
     copies.set(node, copy);
     target.head.append(copy);
   };
@@ -84,9 +96,28 @@ function mirrorDocument(source: Document, target: Document) {
         const copy = style && copies.get(style);
         if (copy && style) copy.textContent = style.textContent;
       }
+      if (record.type === 'attributes') {
+        const copy = copies.get(record.target);
+        if (copy) syncStyle(record.target, copy);
+      }
+    }
+    // Match source order after inserting a stylesheet before existing nodes.
+    const ordered = [...source.head.querySelectorAll('style, link[rel="stylesheet"]')];
+    for (const [node, copy] of copies) {
+      if (!ordered.includes(node as Element)) {
+        (copy as ChildNode).remove();
+        copies.delete(node);
+      }
+    }
+    let following: Node | null = null;
+    for (const node of ordered.reverse()) {
+      add(node);
+      const copy = copies.get(node)!;
+      if (copy.nextSibling !== following) target.head.insertBefore(copy, following);
+      following = copy;
     }
   });
-  headObserver.observe(source.head, { childList: true, subtree: true, characterData: true });
+  headObserver.observe(source.head, { childList: true, subtree: true, characterData: true, attributes: true });
   const rootObserver = new MutationObserver(syncAttributes);
   rootObserver.observe(source.documentElement, { attributes: true });
   rootObserver.observe(source.body, { attributes: true, attributeFilter: ['class'] });
@@ -100,7 +131,11 @@ export function openAuxWindow(options: AuxWindowOptions, opener: Window = window
   const started = performance.now();
   // 'about:blank' inherits the opener's origin, which keeps the popup scriptable.
   // window.open('') is denied by some WebViews (tauri-apps/tauri#16425).
-  const popup = opener.open('about:blank', options.name, features(options));
+  if (!/^[a-zA-Z0-9-]{1,64}$/.test(options.name)) {
+    throw new AuxWindowError('Invalid auxiliary window ID');
+  }
+  const url = `about:blank#tano-aux=${options.name}&kind=${options.kind}`;
+  const popup = opener.open(url, options.name, features(options));
   const openMs = performance.now() - started;
   if (!popup) throw new AuxWindowError('window.open 返回了 null：宿主没有处理新窗口请求，或请求被拒绝。');
   let target: Document;
@@ -114,10 +149,20 @@ export function openAuxWindow(options: AuxWindowOptions, opener: Window = window
   if (!target.head) target.documentElement.append(target.createElement('head'));
   if (!target.body) target.documentElement.append(target.createElement('body'));
   target.title = options.title;
+  const base = target.createElement('base');
+  base.href = opener.document.baseURI;
+  target.head.prepend(base);
   const charset = target.createElement('meta');
   charset.setAttribute('charset', 'utf-8');
   target.head.prepend(charset);
   const mirror = mirrorDocument(opener.document, target);
+  const stylesReady = Promise.all([...target.head.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')].map(link => {
+    if (link.sheet) return Promise.resolve();
+    return new Promise<void>(resolve => {
+      link.addEventListener('load', () => resolve(), { once: true });
+      link.addEventListener('error', () => resolve(), { once: true });
+    });
+  })).then(() => {});
   const mount = target.createElement('div');
   mount.className = 'aux-window-root';
   target.body.append(mount);
@@ -146,16 +191,9 @@ export function openAuxWindow(options: AuxWindowOptions, opener: Window = window
     document: target,
     mount,
     openMs,
+    stylesReady,
     styles: mirror.count,
     closed,
     close() { popup.close(); dispose(); },
   };
-}
-
-/** Tauri window label of the popup's own WebView, when Tauri injected its IPC bridge there. */
-export function nativeLabelOf(popup: Window): string | null {
-  const internals = (popup as Window & {
-    __TAURI_INTERNALS__?: { metadata?: { currentWindow?: { label?: string } } };
-  }).__TAURI_INTERNALS__;
-  return internals?.metadata?.currentWindow?.label ?? null;
 }

@@ -1,3 +1,4 @@
+import { ownerWindow } from '../dom-realm';
 
 /* Erased text, drawn as an inert copy in the overlay layer: the letters
  * shrink toward the caret and fade. A new deletion interrupts the previous
@@ -8,6 +9,9 @@ export type GhostCapture = { rect: DOMRect; content: DocumentFragment; style: CS
 
 /** Read what a DOM range looks like now, before the browser removes it. */
 export function captureGhost(root: HTMLElement, range: Range, collapse: GhostCapture['collapse'], maxText: number): GhostCapture | null {
+    const window = ownerWindow(root);
+    const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+
   if (range.collapsed || !root.contains(range.commonAncestorContainer)) return null;
   const text = range.toString();
   if (!text.trim() || text.length > maxText || text.includes('\n')) return null;
@@ -39,6 +43,8 @@ export class EraseGhosts {
 
   /** Draw a ghost for text that was just deleted. */
   play(layer: HTMLElement, ghost: GhostCapture) {
+    const window = ownerWindow(layer);
+
     this.hurry();
     const element = this.place(layer, ghost);
     element.style.transformOrigin = ghost.collapse === 'start' ? '0% 60%' : '50% 60%';
@@ -68,6 +74,9 @@ export class EraseGhosts {
   }
 
   private place(layer: HTMLElement, ghost: GhostCapture) {
+    const window = ownerWindow(layer);
+    const document = window.document;
+
     const { rect, style } = ghost;
     const element = document.createElement('span');
     element.className = 'tano-type-ghost';

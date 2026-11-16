@@ -1,3 +1,6 @@
+import { ownerWindow } from './dom-realm';
+
+import { isHTMLElement } from './dom-realm';
 import type { Node } from '@milkdown/kit/prose/model';
 import type { NodeViewConstructor } from '@milkdown/kit/prose/view';
 import { renderMathPreview } from './math';
@@ -9,7 +12,7 @@ import { floatingPanelPosition, observePanelPosition } from './panel-position';
 
 /** Preserve the rendered block's spacing and typography as its source grows. */
 export function sourceBlockStyle(element: globalThis.Node | null): Record<string, string> | null {
-  if (!(element instanceof HTMLElement)) return null;
+  if (!(isHTMLElement(element))) return null;
   const style = getComputedStyle(element);
   const textStyle = getComputedStyle(
     element.matches('pre') ? element.querySelector(':scope > code') ?? element : element,
@@ -58,6 +61,10 @@ export function sourcePreviewView(
   mermaid?: { enabled: () => boolean; render: MermaidRenderer },
 ): NodeViewConstructor {
   return (node, view) => {
+    const window = ownerWindow(view.dom);
+    const document = window.document;
+    const ResizeObserver = window.ResizeObserver;
+
     let current = node;
     const diagram = !inline && node.attrs.origin === 'code_block' && !!mermaid;
     const expected = diagram ? 'code_block' : inline ? 'math_inline' : 'math_block';
@@ -122,7 +129,7 @@ export function sourcePreviewView(
       preview.style.left = `${x}px`;
       preview.style.top = `${y}px`;
     };
-    const stopPositioning = diagram ? observePanelPosition(position) : undefined;
+    const stopPositioning = diagram ? observePanelPosition(position, window) : undefined;
     const resizeObserver = diagram && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(position) : undefined;
     resizeObserver?.observe(view.dom);
     resizeObserver?.observe(dom);

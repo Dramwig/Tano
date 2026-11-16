@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
@@ -70,6 +73,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointerdown', outside);
   window.removeEventListener('resize', close);
 });
+
 </script>
 
 <template>
@@ -79,7 +83,7 @@ onBeforeUnmount(() => {
     @click="show(true)" @keydown="triggerKeydown">
     <Settings2 :size="15" />{{ t('工作区选项') }}<ChevronRight class="document-global-chevron" :size="14" />
   </button>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <div v-surface-motion="'DocumentGlobalMenu:0'" v-if="open" :id="panelId" ref="panel" class="dropdown compact-action-menu document-global-menu page-context-menu workspace-options-menu"
       :style="position" role="menu" :aria-label="t('工作区选项')" tabindex="-1"
       @pointerenter="cancelClose" @pointerleave="scheduleClose" @keydown="panelKeydown">

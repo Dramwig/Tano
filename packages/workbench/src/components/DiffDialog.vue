@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { onBeforeUnmount, onMounted, ref } from 'vue';
@@ -33,6 +36,7 @@ function keydown(event: KeyboardEvent) {
     elements[0]?.focus();
   }
 }
+
 </script>
 <template>
   <div v-surface-motion="'DiffDialog:0'" class="modal-backdrop" @mousedown.self="emit('close')">

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const ResizeObserver = (window as Window & typeof globalThis).ResizeObserver;
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t } from '../i18n';
@@ -631,6 +634,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', resizePanel);
   window.removeEventListener('blur', cancelPanelDrag);
 });
+
 </script>
 
 <template>
@@ -653,7 +657,7 @@ onBeforeUnmount(() => {
       <span>{{ t('查看关系图谱') }}</span>
     </button>
   </div>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <section v-surface-motion="'ReferenceGraphPopover:0'"
       v-if="opened"
       ref="panel"

@@ -1,3 +1,4 @@
+import { ownerWindow } from '@tano/editor/dom-realm';
 import type { ObjectDirective } from 'vue';
 
 const disposers = new WeakMap<HTMLElement, () => void>();
@@ -5,6 +6,10 @@ const disposers = new WeakMap<HTMLElement, () => void>();
 /** Keep a scroll mask at the viewport edges, fading only overflowing content. */
 export const vScrollFade: ObjectDirective<HTMLElement> = {
   mounted(element) {
+    const window = ownerWindow(element);
+    const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+    const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
+    const { ResizeObserver, MutationObserver } = window;
     let frame = 0;
     const update = () => {
       frame = 0;
