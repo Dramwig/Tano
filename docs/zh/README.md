@@ -30,3 +30,5 @@ Tano 是一个以真实文件为内容源、让人与 Agent 在同一页工作�
 | [备份与恢复](backup-recovery.md) | 备份内容与恢复机制 |
 | [构建与发布](releases.md) | 桌面安装包与签名更新 |
 | [许可与范围](license.md) | MIT 许可与第三方说明 |
+
+- [功能开关](feature-gating.md)

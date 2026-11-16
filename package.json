@@ -35,7 +35,7 @@
     "plugin": "node scripts/plugin/plugin.mjs",
     "plugin:excalidraw": "node scripts/build/build-excalidraw.mjs",
     "test:native": "node scripts/dev/test-native.mjs",
-    "check": "npm run version:check && npm run demo:check && npm run emoji:check && npm run typecheck && npm test && npm run build && npm run mcp:build && npm run docs:check && npm run boundary:check",
+    "check": "npm run features:check && npm run version:check && npm run demo:check && npm run emoji:check && npm run typecheck && npm test && npm run build && npm run mcp:build && npm run docs:check && npm run boundary:check",
     "mcp:build": "npm run build -w @tano/mcp",
     "mcp:start": "npm run start -w @tano/mcp",
     "mcp:smoke": "node scripts/smoke/mcp-smoke.mjs",
@@ -57,7 +57,8 @@
     "plugin:presentation": "node scripts/build/build-presentation-preview.mjs",
     "plugin:word": "node scripts/build/build-word-preview.mjs",
     "plugin:material-icons": "node --use-env-proxy scripts/build/build-material-icon-theme.mjs",
-    "plugin:vscode-icons": "node --use-env-proxy scripts/build/build-vscode-icons.mjs"
+    "plugin:vscode-icons": "node --use-env-proxy scripts/build/build-vscode-icons.mjs",
+    "features:check": "node scripts/dev/features-check.mjs"
   },
   "devDependencies": {
     "@excalidraw/excalidraw": "0.18.1",

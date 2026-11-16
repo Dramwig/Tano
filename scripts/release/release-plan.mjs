@@ -5,6 +5,8 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { checkFeatures, formatDevFeatures } from '../dev/features-check.mjs';
+
 export const stable = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 export function versionParts(value) {
   if (!stable.test(value)) throw new Error(`Expected a stable version: ${value}`);
@@ -60,6 +62,7 @@ export function readPlan(root) {
   return plan;
 }
 export async function prepareRelease(root, requested, scope) {
+  const unfinished = formatDevFeatures(checkFeatures(root));
   const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
   const kind = pkg.name === 'tano' ? 'core' : 'product';
   const version = nextVersion(pkg.version, requested);
@@ -86,7 +89,10 @@ export async function prepareRelease(root, requested, scope) {
   // Only use Git data as text. Commit messages are never evaluated by a shell.
   const changes = git('log', '--format=- %s (%h)', previous ? `${previous}..HEAD` : 'HEAD');
   if (kind === 'core')
-    (await import(pathToFileURL(join(root, 'scripts/release/version.mjs')))).setVersions(root, version);
+    (await import(pathToFileURL(join(root, 'scripts/release/version.mjs')))).setVersions(
+      root,
+      version,
+    );
   else
     (await import(pathToFileURL(join(root, 'scripts/set-product-version.mjs')))).setProductVersion(
       root,
@@ -95,7 +101,7 @@ export async function prepareRelease(root, requested, scope) {
   mkdirSync(join(root, '.github/releases'), { recursive: true });
   writeFileSync(
     join(root, plan.notes),
-    `# ${kind === 'core' ? 'Tano Core' : 'Tano'} ${version}\n\n${changes || '- Initial release'}\n`,
+    `# ${kind === 'core' ? 'Tano Core' : 'Tano'} ${version}\n\n${changes || '- Initial release'}\n\n## 仍为未完成状态的功能（未随本版本开启）\n\n${unfinished}\n`,
   );
   writeFileSync(join(root, '.github/release-plan.json'), `${JSON.stringify(plan, null, 2)}\n`);
   output({ version, tag, notes: plan.notes, branch: `codex/release-${kind}-${version}` });

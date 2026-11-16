@@ -17,7 +17,7 @@ not automatically from a branch push.
    results if run, without claiming untested changes are verified.
 4. Merge a task branch into dev with `git merge --no-ff <task-branch>`, and push dev.
 5. When ready to integrate, merge dev into main with
-   `git merge --no-ff dev`, and push main. Keep unfinished work out of main.
+   `git merge --no-ff dev`, and push main. Gate unfinished work according to [feature gating](feature-gating.md).
 
 For example, with current branches and development ready for integration:
 

@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 
 export default defineConfig({
+  optimizeDeps: { exclude: ['@tano/workbench'] },
   resolve: {
     // The browser export creates a DOM element at module load. Markdown also
     // runs in a Worker, so use the package's DOM-free entity lookup in both.

@@ -23,7 +23,8 @@
     "./startup-copy": "./src/startup-copy.ts",
     "./settings-window": "./src/settings-window.ts",
     "./stores/workspace": "./src/stores/workspace.ts",
-    "./*": "./src/*"
+    "./*": "./src/*",
+    "./features": "./src/features.ts"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",

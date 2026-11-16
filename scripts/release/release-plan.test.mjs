@@ -50,3 +50,52 @@ describe('release automation boundaries', () => {
     );
   });
 });
+
+import { formatDevFeatures } from '../dev/features-check.mjs';
+it('formats unfinished features for release drafts including an empty registry', () => {
+  expect(formatDevFeatures({})).toBe('- 无');
+  expect(
+    formatDevFeatures({
+      draft: { status: 'dev', note: 'Draft' },
+      live: { status: 'stable', note: 'Live' },
+    }),
+  ).toBe('- draft: Draft');
+});
+
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { prepareRelease } from './release-plan.mjs';
+it('prepare includes the checked unfinished feature list in the notes draft', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tano-feature-plan-'));
+  try {
+    for (const dir of ['packages/workbench/src', 'scripts/release'])
+      mkdirSync(join(root, dir), { recursive: true });
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'tano', version: '0.0.1' }));
+    writeFileSync(
+      join(root, 'packages/workbench/src/features.ts'),
+      "export const features = defineFeatures({draft:{status:'dev',note:'Draft entry'}});",
+    );
+    writeFileSync(join(root, 'packages/workbench/src/entry.ts'), "isFeatureEnabled('draft');");
+    writeFileSync(join(root, 'scripts/release/version.mjs'), 'export function setVersions() {}');
+    const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'pipe' });
+    git('init');
+    git('add', '.');
+    git(
+      '-c',
+      'user.name=Test',
+      '-c',
+      'user.email=test@example.com',
+      'commit',
+      '-m',
+      'test: fixture',
+    );
+    const plan = await prepareRelease(root, 'patch');
+    expect(readFileSync(join(root, plan.notes), 'utf8')).toContain(
+      '## 仍为未完成状态的功能（未随本版本开启）\n\n- draft: Draft entry',
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
