@@ -860,7 +860,10 @@ mod tests {
         let directory = PathBuf::from(std::env::var_os("TANO_CLI_FIXTURE_DIR").unwrap());
         if mode == "wait" {
             let mut child = fixture("child", &directory).as_std_mut().spawn().unwrap();
-            std::fs::write(directory.join("pid"), child.id().to_string()).unwrap();
+            // Publish readiness only after the PID is complete. Cancellation
+            // must not kill this fixture between creating and writing the file.
+            std::fs::write(directory.join("pid.pending"), child.id().to_string()).unwrap();
+            std::fs::rename(directory.join("pid.pending"), directory.join("pid")).unwrap();
             child.wait().unwrap();
         } else if mode == "child" {
             std::thread::sleep(Duration::from_secs(30));

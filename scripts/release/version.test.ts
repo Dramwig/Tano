@@ -59,6 +59,8 @@ it('updates application manifests, workspace dependencies and both native lockfi
     setVersions(root, '1.2.3');
     await mkdir(join(root, 'scripts/release'), { recursive: true });
     await copyFile('scripts/release/version.mjs', join(root, 'scripts/release/version.mjs'));
+    await mkdir(join(root, 'packages/workbench/src'), { recursive: true });
+    await writeFile(join(root, 'packages/workbench/src/features.ts'), 'export const features = {};\n');
     const git = (...args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'pipe' });
     git('init');
     git('add', '.');
