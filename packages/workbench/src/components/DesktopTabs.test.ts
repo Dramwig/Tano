@@ -939,6 +939,77 @@ it('uses the wheel to scroll only when tabs overflow', () => {
   expect(backward.defaultPrevented).toBe(true);
 });
 
+it.each(['关闭其他标签页', '关闭右侧标签页'])('releases compressed widths after %s when the pointer already left for the menu', async (label) => {
+  const list = root.querySelector<HTMLElement>('.desktop-tab-list')!;
+  for (const tab of list.querySelectorAll<HTMLElement>('.desktop-tab')) {
+    tab.getBoundingClientRect = () => ({ width: 80, left: 0 }) as DOMRect;
+  }
+  pointer(list, 'pointerenter', 20);
+  root.querySelector<HTMLElement>('[data-id="a"]')!
+    .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await nextTick();
+  pointer(list, 'pointerleave', 20, 60);
+  fixture.store.close = vi.fn(async (id: string) => {
+    fixture.store.tabs = fixture.store.tabs.filter((tab: { id: string }) => tab.id !== id);
+    await nextTick();
+  });
+  [...document.body.querySelectorAll<HTMLButtonElement>('.desktop-tab-context-menu button')]
+    .find(button => button.textContent?.includes(label))!.click();
+  await vi.waitFor(() => {
+    expect(fixture.store.tabs).toHaveLength(1);
+    expect(list.classList.contains('desktop-tab-list-animating')).toBe(false);
+    expect(list.classList.contains('desktop-tab-list-frozen')).toBe(false);
+    expect(list.querySelector<HTMLElement>('.desktop-tab')!.style.flex).toBe('');
+  });
+});
+
+it('keeps close widths only until the pointer leaves, including across consecutive closes', async () => {
+  const list = root.querySelector<HTMLElement>('.desktop-tab-list')!;
+  pointer(list, 'pointerenter', 20);
+  fixture.store.tabs.splice(2, 1);
+  await nextTick();
+  expect(list.classList.contains('desktop-tab-list-frozen')).toBe(true);
+  pointer(list, 'pointerleave', 20, 60);
+  fixture.store.tabs.splice(1, 1);
+  await vi.waitFor(() => {
+    expect(list.classList.contains('desktop-tab-list-animating')).toBe(false);
+    expect(list.classList.contains('desktop-tab-list-frozen')).toBe(false);
+  });
+});
+
+it.each([false, true])('animates frozen widths back to responsive widths (leave after close: %s)', async (leaveAfterClose) => {
+  const list = root.querySelector<HTMLElement>('.desktop-tab-list')!;
+  const originalAnimate = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'animate');
+  const previousImplementation = vi.mocked(animate).getMockImplementation();
+  Object.defineProperty(HTMLElement.prototype, 'animate', { configurable: true, value: vi.fn() });
+  vi.mocked(animate).mockImplementation(() => ({ finished: Promise.resolve(), cancel: vi.fn() }) as any);
+  vi.mocked(animate).mockClear();
+  for (const tab of list.querySelectorAll<HTMLElement>('.desktop-tab')) {
+    tab.getBoundingClientRect = () => ({
+      width: list.classList.contains('desktop-tab-list-frozen') || fixture.store.tabs.length === 3 ? 80 : 200,
+      left: 0,
+    }) as DOMRect;
+  }
+  try {
+    if (leaveAfterClose) pointer(list, 'pointerenter', 20);
+    fixture.store.tabs.splice(2, 1);
+    if (leaveAfterClose) {
+      await vi.waitFor(() => expect(list.classList.contains('desktop-tab-list-animating')).toBe(false));
+      expect(list.classList.contains('desktop-tab-list-frozen')).toBe(true);
+      pointer(list, 'pointerleave', 20, 60);
+    }
+    await vi.waitFor(() => {
+      expect(animate).toHaveBeenCalledWith(expect.any(HTMLElement),
+        { flexBasis: ['80px', '200px'], opacity: [1, 1] }, expect.any(Object));
+      expect(list.classList.contains('desktop-tab-list-frozen')).toBe(false);
+    });
+  } finally {
+    if (originalAnimate) Object.defineProperty(HTMLElement.prototype, 'animate', originalAnimate);
+    else delete (HTMLElement.prototype as Partial<HTMLElement>).animate;
+    vi.mocked(animate).mockImplementation(previousImplementation!);
+  }
+});
+
 it('opens tab actions by mouse or keyboard and closes other tabs in order', async () => {
   fixture.store.close = vi.fn(async (id: string) => {
     fixture.store.tabs = fixture.store.tabs.filter((tab: { id: string }) => tab.id !== id);

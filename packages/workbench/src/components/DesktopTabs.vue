@@ -184,6 +184,12 @@ async function animateTabLayout(ids: string[], mode: TabLayoutMotion) {
     movingTabs.delete(element);
   }
   if (revision === tabMoveRevision) {
+    if (mode === 'close' && !pointerInsideTabList.value) {
+      // Expand from the measured frozen widths through the same pixel motion
+      // used on open. Clearing them here would jump while transitions are off.
+      await animateTabLayout(paneTabIds.value, 'open');
+      return;
+    }
     if (opening) {
       releaseTabWidths();
       await nextTick();
@@ -1087,9 +1093,16 @@ onMounted(() => {
 
 async function onTabListPointerLeave() {
   pointerInsideTabList.value = false;
-  const revision = tabMoveRevision;
   while (tabLayoutMotion) await tabLayoutMotion;
-  if (!pointerInsideTabList.value && revision === tabMoveRevision) releaseTabWidths();
+  if (!pointerInsideTabList.value && frozenStripWidth.value !== undefined) {
+    startTabLayout(paneTabIds.value, 'open');
+  }
+}
+
+function startTabLayout(ids: string[], mode: TabLayoutMotion) {
+  const movement = animateTabLayout(ids, mode);
+  tabLayoutMotion = movement;
+  void movement.then(() => { if (tabLayoutMotion === movement) tabLayoutMotion = undefined; });
 }
 
 function onTabListPointerEnter() {
@@ -1182,9 +1195,7 @@ watch([
     // Source occupancy changes share measured layout motion with real tab removal.
     // Capture before Vue updates the flow, including an interrupted hover animation.
     const mode = reflow ? 'reflow' : opening || !removed ? 'open' : 'close';
-    const movement = animateTabLayout(ids.filter(id => id !== collapsed), mode);
-    tabLayoutMotion = movement;
-    void movement.then(() => { if (tabLayoutMotion === movement) tabLayoutMotion = undefined; });
+    startTabLayout(ids.filter(id => id !== collapsed), mode);
   }
 });
 
