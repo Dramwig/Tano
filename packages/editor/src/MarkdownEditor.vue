@@ -136,7 +136,7 @@ import { referencePicker, openReferencePicker } from './reference-picker';
 import { floatingPanelPosition, positionAnchoredPanel } from './panel-position';
 import type { PanelSide } from './panel-position';
 import { activateEditorPanel, announceEditorPanel, createEditorPanel, onOtherEditorPanel } from './editor-panel';
-import { droppedEntryReferences, entryReferenceDragType, parseReferenceUrl, referenceUrl, resolveReference } from '@tano/protocol';
+import { confirmEntryReferenceDrop, droppedEntryReferences, entryReferenceDragType, parseReferenceUrl, referenceUrl, resolveReference } from '@tano/protocol';
 import type { ReferenceTarget, ReferenceIdentity } from '@tano/protocol';
 import type { CommentAnchor } from '@tano/protocol';
 import { commentSpansForSelection, projectCommentText, proseRangesForCommentSpans } from './comment-projection';
@@ -2505,6 +2505,7 @@ const bridge = $prose(
               ]);
               const tr = view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(pos)));
               view.dispatch(tr.replaceSelection(new Slice(Fragment.fromArray(nodes), 0, 0)).scrollIntoView());
+              confirmEntryReferenceDrop(event);
               view.focus();
               return true;
             }

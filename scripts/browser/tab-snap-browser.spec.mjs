@@ -1,4 +1,57 @@
 import { test, expect } from '@playwright/test';
+import sharp from 'sharp';
+
+test('tab activation waits for a completed click across panes and cancelled drags', async ({ page }) => {
+  await page.route('**/use-workbench.ts*', async route => {
+    const response = await route.fetch();
+    await route.fulfill({ response, body: (await response.text()).replace('const tabsEnabled = native && !mobile;', 'const tabsEnabled = true;') });
+  });
+  await page.goto('http://127.0.0.1:43845');
+  await expect(page.locator('.desktop-tab').first()).toBeVisible();
+  const ids = await page.evaluate(() => {
+    const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace');
+    store.createBlankTab();
+    const first = store.activeId;
+    store.createBlankTab();
+    return { first, second: store.activeId };
+  });
+  const activeId = () => page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').activeId);
+  const first = page.locator(`.desktop-tab[data-id="${ids.first}"] .desktop-tab-switch`);
+  const second = page.locator(`.desktop-tab[data-id="${ids.second}"] .desktop-tab-switch`);
+  await first.hover();
+  await page.mouse.down();
+  expect(await activeId()).toBe(ids.second);
+  await page.mouse.up();
+  await expect.poll(activeId).toBe(ids.first);
+
+  await second.click();
+  await first.hover();
+  await page.mouse.down();
+  await page.mouse.move(500, 350, { steps: 10 });
+  await expect(page.locator('.desktop-tab-drag-preview')).toBeVisible();
+  expect(await activeId()).toBe(ids.second);
+  await page.mouse.up();
+  await expect(page.locator('.desktop-tab-drag-preview')).toHaveCount(0);
+  expect(await activeId()).toBe(ids.second);
+
+  await first.hover();
+  await page.mouse.down();
+  await page.mouse.move(500, 350, { steps: 10 });
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
+  await expect(page.locator('.desktop-tab-drag-preview')).toHaveCount(0);
+  expect(await activeId()).toBe(ids.second);
+
+  await page.evaluate(ids => {
+    const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace');
+    store.dockTab(ids.second, { paneId: store.activePaneId, side: 'right' });
+  }, ids);
+  await first.hover();
+  await page.mouse.down();
+  expect(await activeId()).toBe(ids.second);
+  await page.mouse.up();
+  await expect.poll(activeId).toBe(ids.first);
+});
 
 for (const count of [0, 2, 10]) test(`incoming auxiliary tab reserves track space (${count} existing tabs)`, async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 940 });
@@ -9,7 +62,7 @@ for (const count of [0, 2, 10]) test(`incoming auxiliary tab reserves track spac
   await page.route('**/DesktopTabs.vue', async route => {
     const response = await route.fetch();
     await route.fulfill({ response, body: (await response.text())
-      .replace(/const nativeTabDrag = [^;]+;/, 'const nativeTabDrag = true;')
+      .replace(/const nativeTabDrag = [^;]+;/, 'const nativeTabDrag = true;').replace('detachable: !!props.detachable', 'detachable: true')
       .replace('const windowContext = useWindowContext();', 'const windowContext = { ...useWindowContext(), native: { listen: async () => () => {} } };') });
   });
   await page.goto('http://127.0.0.1:43845');
@@ -102,7 +155,7 @@ for (const direction of ['auxiliary-to-main', 'main-to-auxiliary']) test(`active
   await page.route('**/DesktopTabs.vue', async route => {
     const response = await route.fetch();
     await route.fulfill({ response, body: (await response.text())
-      .replace(/const nativeTabDrag = [^;]+;/, 'const nativeTabDrag = true;')
+      .replace(/const nativeTabDrag = [^;]+;/, 'const nativeTabDrag = true;').replace('detachable: !!props.detachable', 'detachable: true')
       .replace('const windowContext = useWindowContext();', 'const windowContext = { ...useWindowContext(), native: { listen: async () => () => {} } };') });
   });
   await page.goto('http://127.0.0.1:43845');
@@ -536,7 +589,7 @@ test('native tab drag stays alive through snapping and hands an outside release 
   await page.route('**/DesktopTabs.vue', async route => {
     const response = await route.fetch();
     await route.fulfill({ response, body: (await response.text())
-      .replace(/const nativeTabDrag = [^;]+;/, 'const nativeTabDrag = true;')
+      .replace(/const nativeTabDrag = [^;]+;/, 'const nativeTabDrag = true;').replace('detachable: !!props.detachable', 'detachable: true')
       .replace('const windowContext = useWindowContext();', `const windowContext = { ...useWindowContext(), native: {
         label: 'main', innerPosition: async () => ({ x: 0, y: 0 }), scaleFactor: async () => 1,
         listen: async () => () => {},
@@ -614,6 +667,41 @@ test('native tab drag stays alive through snapping and hands an outside release 
     const box = node.getBoundingClientRect();
     return box.left < 1100 && box.right > 1100 && box.top < 80 && box.bottom > 80;
   })).toBe(true);
+  await expect.poll(() => tabs.evaluateAll(nodes => nodes.flatMap(node => node.getAnimations()).filter(animation => animation.playState === 'running').length)).toBe(0);
+  const positions = await page.evaluate(async () => {
+    const neighbor = document.querySelectorAll('.desktop-tab')[1];
+    const sample = () => neighbor.getBoundingClientRect().x;
+    const record = async (event, duration = 450) => {
+      const before = sample();
+      window.dispatchEvent(event);
+      const samples = [];
+      const started = performance.now();
+      while (performance.now() - started < duration) {
+        await new Promise(requestAnimationFrame);
+        samples.push(sample());
+      }
+      return { before, samples, after: sample() };
+    };
+    const leave = await record(new DragEvent('dragleave', { bubbles: true }));
+    const enter = await record(new DragEvent('dragover', { bubbles: true, clientX: 1100, clientY: 80 }));
+    const leaveAgain = await record(new DragEvent('dragleave', { bubbles: true }));
+    const partialEnter = await record(new DragEvent('dragover', { bubbles: true, clientX: 1100, clientY: 80 }), 80);
+    const reversed = await record(new DragEvent('dragleave', { bubbles: true }));
+    return { leave, enter, leaveAgain, partialEnter, reversed };
+  });
+  for (const motion of [positions.leave, positions.enter, positions.leaveAgain]) {
+    const lower = Math.min(motion.before, motion.after), upper = Math.max(motion.before, motion.after);
+    expect(upper - lower).toBeGreaterThan(first.width - 1);
+    expect(motion.samples.some(x => x > lower + 1 && x < upper - 1)).toBe(true);
+  }
+  expect(positions.enter.after).toBeCloseTo(positions.leave.before, 2);
+  expect(positions.partialEnter.after).toBeGreaterThan(positions.leave.after + 1);
+  expect(positions.partialEnter.after).toBeLessThan(positions.enter.after - 1);
+  expect(positions.reversed.before).toBeCloseTo(positions.partialEnter.after, 2);
+  expect(positions.reversed.samples.some(x => x > positions.reversed.after + 1 && x < positions.reversed.before - 1)).toBe(true);
+  await expect(tabs.first()).toHaveClass(/desktop-tab-away/);
+  expect((await tabs.first().boundingBox()).width).toBeCloseTo(first.width, 2);
+  await expect.poll(() => tabs.nth(1).evaluate(node => node.getBoundingClientRect().x)).toBeCloseTo(first.x, 2);
   await page.mouse.up();
   await page.evaluate(() => window.__releaseNativeDrag({ x: 1500, y: 1000 }));
   await expect.poll(() => page.evaluate(() => window.__detached.length)).toBe(1);
@@ -679,4 +767,196 @@ test('overflow scroll follows the latest active tab after rapid additions', asyn
   const active = await strip.locator('.desktop-tab-active').boundingBox();
   const list = await strip.locator('.desktop-tab-list').boundingBox();
   expect(active.x + active.width).toBeLessThanOrEqual(list.x + list.width + 1);
+});
+
+for (const theme of ['light', 'dark']) for (const layout of ['default', 'document'])
+for (const active of [true, false]) for (const destination of ['return', 'end'])
+test(`tab release hands off smoothly (${theme}, ${layout}, ${active ? 'active' : 'inactive'}, ${destination})`, async ({ page }) => {
+  await page.route('**/use-workbench.ts*', async route => {
+    const response = await route.fetch();
+    await route.fulfill({ response, body: (await response.text()).replace('const tabsEnabled = native && !mobile;', 'const tabsEnabled = true;') });
+  });
+  await page.goto('http://127.0.0.1:43845');
+  const tab = destination === 'end' ? page.locator('.desktop-tab').first() : page.locator('.desktop-tab').last();
+  await expect(tab).toBeVisible();
+  await page.locator('.desktop-tab-add').first().click();
+  if (destination === 'end') await page.locator('.desktop-tab-add').first().click();
+  await expect.poll(() => page.locator('.desktop-tab-strip').first().evaluate(node => node.getAnimations({ subtree: true }).length)).toBe(0);
+  await page.evaluate(({ layout, theme }) => {
+    document.documentElement.dataset.layout = layout;
+    document.documentElement.dataset.theme = theme;
+  }, { layout, theme });
+  if (active) await tab.locator('.desktop-tab-switch').click();
+  else if (destination === 'return') await page.locator('.desktop-tab').first().locator('.desktop-tab-switch').click();
+  const id = await tab.getAttribute('data-id');
+  const source = await tab.boundingBox();
+  await page.mouse.move(source.x + 60, source.y + 12);
+  await page.mouse.down();
+  const end = await page.locator('.desktop-tab').last().boundingBox();
+  await page.mouse.move(destination === 'end' ? end.x + end.width - 4 : 500,
+    destination === 'end' ? end.y + 12 : 300, { steps: 8 });
+  await expect(tab).toHaveClass(/desktop-tab-dragging/);
+  const before = await page.locator('.desktop-tab-drag-preview').boundingBox();
+  const beforeColors = await page.locator('.desktop-tab-drag-preview').evaluate(node => {
+    const style = getComputedStyle(node);
+    return { background: style.backgroundColor, color: style.color };
+  });
+  await page.mouse.up();
+  const samples = await page.evaluate(async id => {
+    const result = [];
+    const tab = [...document.querySelectorAll('.desktop-tab')].find(node => node.dataset.id === id);
+    const started = performance.now();
+    while (performance.now() - started < 800) {
+      const preview = document.querySelector('.desktop-tab-drag-preview');
+      const style = getComputedStyle(tab);
+      const previewStyle = preview && getComputedStyle(preview);
+      const previewIcon = preview?.querySelector('.desktop-tab-icon')?.getBoundingClientRect();
+      const tabIcon = tab.querySelector('.desktop-tab-icon')?.getBoundingClientRect();
+      const previewLabel = preview?.querySelector('.desktop-tab-label')?.getBoundingClientRect();
+      const tabLabel = tab.querySelector('.desktop-tab-label')?.getBoundingClientRect();
+      result.push({ y: preview?.getBoundingClientRect().y, preview: !!preview,
+        previewOpacity: preview ? Number(getComputedStyle(preview).opacity) : 0,
+        tabOpacity: Number(style.opacity), background: style.backgroundColor, color: style.color,
+        previewBackground: previewStyle?.backgroundColor, previewColor: previewStyle?.color,
+        iconOffset: previewIcon && tabIcon ? Math.hypot(previewIcon.x - tabIcon.x, previewIcon.y - tabIcon.y) : 0,
+        labelOffset: previewLabel && tabLabel ? Math.hypot(previewLabel.x - tabLabel.x, previewLabel.y - tabLabel.y) : 0 });
+      await new Promise(requestAnimationFrame);
+    }
+    return result;
+  }, id);
+  if (destination === 'return') expect(samples.some(sample => sample.y > source.y + 1 && sample.y < before.y - 1)).toBe(true);
+  else await expect(page.locator('.desktop-tab').last()).toHaveAttribute('data-id', id);
+  const handoff = samples.filter(sample => sample.preview && sample.tabOpacity === 1);
+  expect(handoff.length).toBeGreaterThan(0);
+  if (!active && destination === 'return') {
+    expect(samples.some(sample => sample.preview && sample.tabOpacity === 0 &&
+      sample.previewBackground !== beforeColors.background && sample.previewBackground !== sample.background)).toBe(true);
+    expect(samples.some(sample => sample.preview && sample.tabOpacity === 0 &&
+      sample.previewColor !== beforeColors.color && sample.previewColor !== sample.color)).toBe(true);
+  }
+  for (const sample of handoff) {
+    expect(sample.previewOpacity).toBe(0);
+    expect(sample.previewBackground).toBe(sample.background);
+    expect(sample.previewColor).toBe(sample.color);
+    // A compositor-driven strip can advance a fraction of a pixel between reads.
+    expect(sample.iconOffset).toBeLessThan(0.5);
+    expect(sample.labelOffset).toBeLessThan(0.5);
+  }
+  for (const sample of samples) {
+    // Source-over coverage, not the sum of two layers' opacity values.
+    const coverage = sample.previewOpacity + sample.tabOpacity * (1 - sample.previewOpacity);
+    expect(coverage).toBe(1);
+    expect([sample.previewOpacity, sample.tabOpacity].sort()).toEqual([0, 1]);
+  }
+  const landed = samples.filter(sample => !sample.preview);
+  expect(landed.length).toBeGreaterThan(1);
+  expect(landed.every(sample => sample.tabOpacity === 1 && sample.background === landed.at(-1).background)).toBe(true);
+  await expect(page.locator('.desktop-tab-drag-preview')).toHaveCount(0);
+  await expect(tab).not.toHaveClass(/desktop-tab-dragging/);
+  expect((await page.locator(`.desktop-tab[data-id="${id}"]`).boundingBox()).width).toBeCloseTo(source.width, 2);
+});
+
+
+for (const layout of ['default', 'document']) for (const active of [true, false])
+test(`landed tab pixels stay stable when the preview is removed (${layout}, ${active})`, async ({ page }, testInfo) => {
+  await page.route('**/use-workbench.ts*', async route => {
+    const response = await route.fetch();
+    await route.fulfill({ response, body: (await response.text()).replace('const tabsEnabled = native && !mobile;', 'const tabsEnabled = true;') });
+  });
+  await page.goto('http://127.0.0.1:43845');
+  await expect(page.locator('.desktop-tab').first()).toBeVisible();
+  await page.locator('.desktop-tab-add').first().click();
+  await page.evaluate(layout => { document.documentElement.dataset.layout = layout; }, layout);
+  const tab = page.locator('.desktop-tab').last();
+  if (!active) await page.locator('.desktop-tab').first().locator('.desktop-tab-switch').click();
+  await tab.locator('.desktop-tab-switch').hover();
+  await page.mouse.down();
+  await page.mouse.move(500, 300, { steps: 8 });
+  await expect(tab).toHaveClass(/desktop-tab-dragging/);
+  await page.evaluate(() => {
+    const original = window.requestAnimationFrame.bind(window);
+    const pending = [];
+    window.__landingHeld = false;
+    window.requestAnimationFrame = callback => original(time => {
+      if (window.__landingHeld) { pending.push(callback); return; }
+      callback(time);
+      queueMicrotask(() => {
+        const preview = document.querySelector('.desktop-tab-drag-preview-settling');
+        const target = document.querySelector('.desktop-tab-settling');
+        if (preview && target && getComputedStyle(preview).opacity === '0' && getComputedStyle(target).opacity === '1') {
+          window.__landingHeld = true;
+        }
+      });
+    });
+    window.__resumeLanding = () => {
+      window.requestAnimationFrame = original;
+      window.__landingHeld = false;
+      for (const callback of pending) original(callback);
+    };
+  });
+  await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => window.__landingHeld)).toBe(true);
+  const handedOff = await tab.screenshot();
+  await page.evaluate(() => window.__resumeLanding());
+  await expect(page.locator('.desktop-tab-drag-preview')).toHaveCount(0);
+  const cleanedUp = await tab.screenshot();
+  const [beforePixels, afterPixels] = await Promise.all([
+    sharp(handedOff).raw().toBuffer({ resolveWithObject: true }),
+    sharp(cleanedUp).raw().toBuffer({ resolveWithObject: true }),
+  ]);
+  let maxChannelDelta = 0;
+  for (let index = 0; index < beforePixels.data.length; index++) {
+    maxChannelDelta = Math.max(maxChannelDelta, Math.abs(beforePixels.data[index] - afterPixels.data[index]));
+  }
+  if (maxChannelDelta > 1) {
+    await sharp(handedOff).toFile(testInfo.outputPath('handoff.png'));
+    await sharp(cleanedUp).toFile(testInfo.outputPath('cleanup.png'));
+    await testInfo.attach('handoff', { path: testInfo.outputPath('handoff.png'), contentType: 'image/png' });
+    await testInfo.attach('cleanup', { path: testInfo.outputPath('cleanup.png'), contentType: 'image/png' });
+  }
+  expect(beforePixels.info).toEqual(afterPixels.info);
+  // Removing an opacity layer can round an antialiased edge by one 8-bit level.
+  expect(maxChannelDelta).toBeLessThanOrEqual(1);
+});
+
+for (const mode of ['reference', 'split', 'top']) test(`tab release applies ${mode} semantics in the workspace`, async ({ page }) => {
+  await page.route('**/use-workbench.ts*', async route => {
+    const response = await route.fetch();
+    await route.fulfill({ response, body: (await response.text()).replace('const tabsEnabled = native && !mobile;', 'const tabsEnabled = true;') });
+  });
+  await page.goto('http://127.0.0.1:43845');
+  const tab = page.locator('.desktop-tab').first();
+  await expect(tab).toBeVisible();
+  await page.locator('.desktop-tab-add').first().click();
+  await expect.poll(() => page.locator('.desktop-tab-strip').first().evaluate(node => node.getAnimations({ subtree: true }).length)).toBe(0);
+  await tab.locator('.desktop-tab-switch').click();
+  const id = await tab.getAttribute('data-id');
+  const source = await tab.boundingBox();
+  await page.evaluate(() => {
+    window.__insertions = 0;
+    window.addEventListener('tano-entry-reference-inserted', () => window.__insertions++);
+  });
+  await page.mouse.move(source.x + 60, source.y + 12);
+  await page.mouse.down();
+  await expect(page.locator('.ProseMirror').first()).toBeVisible();
+  const area = await page.locator(mode === 'reference' ? '.ProseMirror' : '.workspace-pane').first().boundingBox();
+  const contentTop = await page.locator('.workspace-tabbar').first().evaluate(node => node.getBoundingClientRect().bottom);
+  await page.mouse.move(mode === 'split' ? area.x + area.width - 3 : area.x + area.width / 2,
+    mode === 'top' ? contentTop + 2 : area.y + Math.min(200, area.height / 2), { steps: 8 });
+  if (mode === 'split') {
+    await expect(tab).toHaveClass(/desktop-tab-away/);
+    expect((await tab.boundingBox()).width).toBeCloseTo(source.width, 2);
+  } else expect((await tab.boundingBox()).width).toBeCloseTo(source.width, 2);
+  await page.mouse.up();
+  await expect(page.locator('.desktop-tab-drag-preview')).toHaveCount(0);
+  if (mode === 'reference') {
+    expect(await page.evaluate(() => window.__insertions)).toBe(1);
+    await expect(page.locator(`.desktop-tab[data-id="${id}"]`)).not.toHaveClass(/desktop-tab-dragging|desktop-tab-outgoing/);
+    await expect(page.locator('.workspace-pane')).toHaveCount(1);
+  } else if (mode === 'top') {
+    await expect(page.locator('.workspace-pane')).toHaveCount(1);
+  } else {
+    await expect(page.locator('.workspace-pane')).toHaveCount(2);
+    await expect(page.locator('.desktop-tab-outgoing')).toHaveCount(0);
+  }
 });

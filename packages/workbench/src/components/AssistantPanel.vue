@@ -12,7 +12,7 @@ import { assistantCopy, assistantTaskPrompts } from '../assistant/language';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { AlignLeft, ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRight, ChevronsRight, CircleCheck, Copy, Cpu, createLucideIcon, FilePlus2, FileText, History, Languages, LoaderCircle, MessageCircle, MessageCirclePlus, Minus, MoreHorizontal, Paperclip, Pencil, Plug, Plus, RefreshCw, Reply, Quote, Search, Settings2, Square, Terminal, Trash2, Undo2, X } from 'lucide-vue-next';
 import MarkdownEditor from '@tano/editor';
-import { droppedEntryReferences, entryReferenceDragType, referenceMarkdown } from '@tano/protocol';
+import { confirmEntryReferenceDrop, droppedEntryReferences, entryReferenceDragType, referenceMarkdown } from '@tano/protocol';
 import type { AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSource, ReferenceIdentity } from '@tano/protocol';
 import { useAssistantStore } from '../assistant/store';
 import { isAssistantFile } from '../assistant/files';
@@ -201,6 +201,7 @@ function dropReferences(event: DragEvent) {
       notice.value = t('已添加附件引用，当前助手无法直接读取附件正文');
     }
   }
+  if (targets.length) confirmEntryReferenceDrop(event);
   void nextTick(() => textarea.value?.focus());
 }
 function toggleSource(id: string) {

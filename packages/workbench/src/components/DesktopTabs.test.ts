@@ -550,7 +550,7 @@ it('keeps the slot across tab child transitions and ignores invalid drops', asyn
 
 it('shows the insertion side and commits only on release, suppressing the trailing click', async () => {
   pointer(buttons[0], 'pointerdown', 80);
-  expect(fixture.store.activeId).toBe('a');
+  expect(fixture.store.activeId).toBe('b');
   pointer(buttons[0], 'pointermove', 570);
   await nextTick();
   expect(root.querySelector('.desktop-tab-drop-after')?.getAttribute('data-id')).toBe('c');
@@ -560,7 +560,7 @@ it('shows the insertion side and commits only on release, suppressing the traili
   pointer(buttons[0], 'pointerup', 570);
   buttons[0].click();
   expect(fixture.store.moveDocument).toHaveBeenCalledExactlyOnceWith('a', 'c', 'after');
-  expect(fixture.store.activeId).toBe('a');
+  expect(fixture.store.activeId).toBe('b');
   await nextTick();
   expect(root.querySelector('.desktop-tab-dragging')).toBeNull();
 });
@@ -1171,4 +1171,39 @@ it.each([false, true])('previews a pane edge and docks on release without detach
     onDetachTab.mock.calls[0][2]();
   }
   delete (document as Partial<Document>).elementFromPoint;
+});
+
+it('cleans up input ownership before reporting a failed release operation', async () => {
+  const failure = new Error('move failed');
+  fixture.store.moveDocument.mockImplementation(() => { throw failure; });
+  pointer(buttons[0], 'pointerdown', 80);
+  pointer(buttons[0], 'pointermove', 570);
+  pointer(buttons[0], 'pointerup', 570);
+  await nextTick();
+  expect(fixture.store.report).toHaveBeenCalledWith(failure);
+  expect(buttons[0].releasePointerCapture).toHaveBeenCalledWith(1);
+  expect(root.querySelector('.desktop-tab-dragging')).toBeNull();
+  // The next gesture must be usable after an operation fails.
+  pointer(buttons[1], 'pointerdown', 280);
+  pointer(buttons[1], 'pointermove', 570);
+  await nextTick();
+  expect(root.querySelector('.desktop-tab-dragging')?.getAttribute('data-id')).toBe('b');
+});
+
+it('activates a tab only after pointer release completes a click', async () => {
+  buttons[0].getBoundingClientRect = () => ({ left: 0, right: 180, top: 0, bottom: 36 }) as DOMRect;
+  pointer(buttons[0], 'pointerdown', 80);
+  expect(fixture.store.activeId).toBe('b');
+  pointer(buttons[0], 'pointerup', 80);
+  expect(fixture.store.activeId).toBe('b');
+  buttons[0].click();
+  expect(fixture.store.activeId).toBe('a');
+});
+
+it('ignores the captured click when releasing outside the pressed tab', () => {
+  buttons[0].getBoundingClientRect = () => ({ left: 0, right: 180, top: 0, bottom: 36 }) as DOMRect;
+  pointer(buttons[0], 'pointerdown', 80);
+  pointer(buttons[0], 'pointerup', 185);
+  buttons[0].click();
+  expect(fixture.store.activeId).toBe('b');
 });
