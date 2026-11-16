@@ -19,7 +19,7 @@ import {
 import { Compartment, EditorState, RangeSet, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { Decoration, EditorView, GutterMarker, gutterLineClass, highlightActiveLineGutter, keymap, lineNumbers, WidgetType } from '@codemirror/view';
 import type { DecorationSet } from '@codemirror/view';
-import { droppedEntryReferences, entryReferenceDragType, referenceMarkdown } from '@tano/protocol';
+import { confirmEntryReferenceDrop, droppedEntryReferences, entryReferenceDragType, referenceMarkdown } from '@tano/protocol';
 import type { CommentAnchor, ReferenceIdentity, ReferenceTarget } from '@tano/protocol';
 import type { SuggestionDecorations } from '@tano/protocol';
 import type { CommentGeometry } from '@tano/editor/comment-projection';
@@ -401,6 +401,7 @@ onMounted(() => {
             if (insert) {
               const from = current.posAtCoords({ x: event.clientX, y: event.clientY }) ?? current.state.selection.main.head;
               current.dispatch({ changes: { from, insert }, selection: { anchor: from + insert.length }, userEvent: 'input.drop' });
+              confirmEntryReferenceDrop(event);
               current.focus();
             }
             return true;

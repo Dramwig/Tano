@@ -6,7 +6,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { animate } from 'motion/mini';
 import { springEasing } from '@tano/editor/motion';
 import { ArrowLeft, ArrowRight, Bot, CalendarDays, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, PanelBottomClose, ExternalLink, Bug } from 'lucide-vue-next';
-import { basename, isMarkdown, isDataTableFilePath } from '@tano/protocol';
+import { basename, isMarkdown, isDataTableFilePath, entryReferenceDragType } from '@tano/protocol';
 import { documentTabLabel } from '../tab-label';
 import { invoke } from '@tauri-apps/api/core';
 import { cursorPosition } from '@tauri-apps/api/window';
@@ -16,7 +16,9 @@ import { finishedTabDrag, parseTabDragMeta, tabDockIndex, tabDragMetaType, type 
 import { paneDropAt as hitTestPane } from '../pane-docking';
 import { tabLayoutRect } from '../tab-layout';
 import { TAB_DRAG_IMAGE_INSET, tabDragImage } from '../tab-drag-image';
-import { settlingTabId } from '../tab-settle';
+import { resolveTabRelease, type TabRelease } from '../tab-release';
+import { useTabReleaseMotion } from '../use-tab-release-motion';
+import { settlingTab } from '../tab-settle';
 import type { PaneDrop } from '../pane-layout';
 import { mobile, nativeOs } from '../platform';
 import { useWorkspaceStore } from '../stores/workspace';
@@ -50,6 +52,7 @@ const props = defineProps<{
 const paneTabs = computed(() => props.loading ? [] : props.paneId
   ? store.tabs.filter(tab => store.panes.find(pane => pane.id === props.paneId)?.tabs.includes(tab.id))
   : store.tabs);
+const paneTabIds = computed(() => paneTabs.value.map(tab => tab.id));
 const documentIcons = computed(() => Object.fromEntries(
   paneTabs.value.map(tab => [tab.id, tab.dataTable ? tab.dataTable.icon ?? '' : appearanceText(tab.document?.content ?? '', 'icon')]),
 ));
@@ -88,7 +91,8 @@ let blankTrack: HTMLElement | null = null;
 const frozenTabWidths = ref<Record<string, number>>({});
 const frozenStripWidth = ref<number>();
 const pointerInsideTabList = ref(false);
-const tabLayoutAnimating = ref(false);
+type TabLayoutMotion = 'open' | 'close' | 'reflow';
+const tabLayoutAnimating = ref<TabLayoutMotion | false>(false);
 const movingTabs = new Map<HTMLElement, { animation: ReturnType<typeof animate>; restore: () => void }>();
 let tabMoveRevision = 0;
 let tabLayoutMotion: Promise<void> | undefined;
@@ -109,7 +113,8 @@ function moveTabElement(element: HTMLElement, keyframes: Record<string, (number 
   const animation = animate(element, keyframes, { duration: 0.32, ease: springEasing('snappy') });
   movingTabs.set(element, { animation, restore });
 }
-async function animateTabLayout(ids: string[], opening: boolean) {
+async function animateTabLayout(ids: string[], mode: TabLayoutMotion) {
+  const opening = mode === 'open';
   const list = tabList.value;
   if (!list) return;
   const strip = list.parentElement!;
@@ -118,8 +123,9 @@ async function animateTabLayout(ids: string[], opening: boolean) {
   const previous = new Map([...list.querySelectorAll<HTMLElement>('.desktop-tab')]
     .map(tab => [tab.dataset.id!, { box: tab.getBoundingClientRect(), opacity: Number(getComputedStyle(tab).opacity) }]));
   cancelTabMoves();
+  if (mode === 'reflow') stopSlotAnimations();
   const revision = tabMoveRevision;
-  tabLayoutAnimating.value = true;
+  tabLayoutAnimating.value = mode;
   if (opening) releaseTabWidths();
   else {
     frozenTabWidths.value = Object.fromEntries([...previous].map(([id, { box }]) => [id, box.width]));
@@ -147,7 +153,7 @@ async function animateTabLayout(ids: string[], opening: boolean) {
   }
   for (const tab of list.querySelectorAll<HTMLElement>('.desktop-tab')) {
     const before = previous.get(tab.dataset.id!);
-    if (reduced || typeof tab.animate !== 'function') continue;
+    if (reduced || typeof tab.animate !== 'function' || tab.dataset.id === collapsedId.value) continue;
     if (opening) {
       const width = frozenTabWidths.value[tab.dataset.id!]!;
       const fromWidth = before?.box.width ?? 0, opacity = before?.opacity ?? 0;
@@ -158,10 +164,11 @@ async function animateTabLayout(ids: string[], opening: boolean) {
         tab.style.flex = flex; tab.style.overflow = overflow; tab.style.opacity = inlineOpacity;
       });
     } else {
-      const offset = before ? before.box.left - tabLayoutRect(tab).left : 0;
-      if (Math.abs(offset) < 0.5) continue;
+      const targetOffset = mode === 'reflow' ? snapLayout.value?.offsets[tab.dataset.id!] ?? 0 : 0;
+      const offset = before ? before.box.left - tabLayoutRect(tab).left : targetOffset;
+      if (Math.abs(offset - targetOffset) < 0.5) continue;
       const transform = tab.style.transform;
-      moveTabElement(tab, { transform: [`translateX(${offset}px)`, 'translateX(0px)'] }, () => { tab.style.transform = transform; });
+      moveTabElement(tab, { transform: [`translateX(${offset}px)`, `translateX(${targetOffset}px)`] }, () => { tab.style.transform = transform; });
     }
   }
   const movements = [...movingTabs];
@@ -196,15 +203,31 @@ let nativeImage: { id: string; canvas: HTMLCanvasElement } | undefined;
 let nativePositionId = '';
 let unlistenNativePosition: (() => void) | undefined;
 const outgoingId = ref('');
-const dragPreview = ref<{
-  id: string;
-  path: string;
-  dirty: boolean;
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}>();
+const sourceAway = ref(false);
+const sourceWidth = ref(0);
+const collapsedId = computed(() => {
+  const id = outgoingId.value || (sourceAway.value ? draggingId.value : '');
+  return paneTabs.value.some(tab => tab.id === id) ? id : '';
+});
+let referenceInserted = false;
+function referenceDropAccepted() { if (gesture) referenceInserted = true; }
+function referencePayload(id: string) {
+  const tab = paneTabs.value.find(tab => tab.id === id);
+  const target = store.referenceTargets?.find(target => target.id === tab?.document?.id || target.id === id);
+  return target ? JSON.stringify({ workspace: target.workspace, ids: [target.id] }) : undefined;
+}
+function releaseIntent(outside = false): TabRelease {
+  return resolveTabRelease({
+    source: { id: draggingId.value, paneId: props.paneId, tabs: paneTabs.value.map(tab => tab.id) },
+    reference: referenceInserted, outside, detachable: !!props.detachable,
+    paneDrop: store.paneDrop === sourcePaneDrop ? sourcePaneDrop : undefined, target: dropTarget.value,
+  });
+}
+
+const {
+  preview: dragPreview, previewStyle, previewOpacity, settling: settlingPreview, returningSlot: slotReturn, referenceReveal,
+  settle: settlePreview, cancel: stopSettling,
+} = useTabReleaseMotion(windowContext);
 const dropTarget = ref<{ id: string; side: 'before' | 'after' }>();
 watch(finishedTabDrag, result => {
   if (result && incomingHover?.sourceLabel === result.sourceLabel && incomingHover.tabId === result.tabId) clearIncomingSlot();
@@ -245,7 +268,6 @@ const reservedTabWidth = computed(() => snapLayout.value?.incoming ? snapLayout.
 // Keep the slide transition for the whole hover, not only while a slot is
 // open: leaving every slot must glide the shifted tabs back, not jump. It
 // ends together with the drop, whose reorder must not animate a second time.
-const slotReturn = ref(false);
 const slotMotion = computed(() => !!draggingId.value || slotReturn.value || !!incomingSlot.value || !!fileSlot.value || paneSlot.value !== undefined);
 // Slot motion is driven explicitly instead of by a CSS transition: every
 // offset change (opening, moving or closing a slot) glides each tab from where
@@ -274,7 +296,7 @@ watch(
     // Keep its return motion when the tabs are unchanged; a committed drop
     // changes the DOM order and must not replay the old slot offsets.
     const returning = ids === previousIds && [...slotTargets.values()].some(offset => offset !== 0);
-    if (!list || (!slotMotion.value && !returning) || reduced || typeof HTMLElement.prototype.animate !== 'function') {
+    if (!list || tabLayoutAnimating.value === 'reflow' || (!slotMotion.value && !returning) || reduced || typeof HTMLElement.prototype.animate !== 'function') {
       stopSlotAnimations();
       slotTargets.clear();
       for (const tab of paneTabs.value) slotTargets.set(tab.id, offsets[tab.id] ?? 0);
@@ -373,57 +395,14 @@ function updateDropTarget() {
     const x = near?.x ?? gesture.x, y = near?.y ?? gesture.y;
     updateDropTargetAt(x, y, gesture.id);
     updatePaneDrop(x, y, gesture.id);
+    const drop = sourcePaneDrop;
+    sourceAway.value = (!near && (nativeOutside || gesture.x < 0 || gesture.y < 0 ||
+      gesture.x >= window.innerWidth || gesture.y >= window.innerHeight)) ||
+      !!drop && (drop.paneId !== props.paneId || drop.side !== 'center');
     // The preview stays under the pointer. Only the empty slot in the track
     // shows where the tab will land; it is placed there on release.
     if (dragPreview.value) dragPreview.value.top = gesture.y - gesture.grabY;
   }
-}
-
-// Release: fly the floating preview into its slot, then reveal the real tab.
-// The target is re-measured every frame so scrolling, cross-pane growth and
-// layout changes cannot leave it short of the slot. Interruptible by any drag.
-const settlingPreview = ref(false);
-let settleFrame = 0;
-function stopSettling() {
-  cancelAnimationFrame(settleFrame);
-  settleFrame = 0;
-  slotReturn.value = false;
-  if (!settlingPreview.value) return;
-  settlingPreview.value = false;
-  if (settlingTabId.value === dragPreview.value?.id) settlingTabId.value = '';
-  dragPreview.value = undefined;
-}
-function settlePreview(from: NonNullable<typeof dragPreview.value>) {
-  stopSettling();
-  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    || document.documentElement.dataset.motion === 'reduced';
-  if (reduced || typeof HTMLElement.prototype.animate !== 'function') return;
-  dragPreview.value = { ...from };
-  settlingPreview.value = true;
-  settlingTabId.value = from.id;
-  // RAF timestamps and performance.now must come from the same window.
-  const startedAt = window.performance.now();
-  // A short hop into a nearby slot is quick; a long return trip from an
-  // invalid drop takes a little longer so it reads as one smooth glide.
-  const home = [...document.querySelectorAll<HTMLElement>('.desktop-tab')].find(tab => tab.dataset.id === from.id)?.getBoundingClientRect();
-  const distance = home ? Math.hypot(home.left - from.left, home.top - from.top) : 0;
-  const duration = Math.min(460, 260 + distance * 0.18);
-  const step = (now: number) => {
-    const preview = dragPreview.value;
-    const target = [...document.querySelectorAll<HTMLElement>('.desktop-tab')].find(tab => tab.dataset.id === from.id);
-    if (!settlingPreview.value || !preview || !target) { stopSettling(); return; }
-    const box = target.getBoundingClientRect();
-    const t = Math.max(0, Math.min(1, (now - startedAt) / duration));
-    // Critically damped feel without overshoot: the preview must not pass the slot.
-    const p = 1 - (1 - t) ** 3;
-    preview.left = from.left + (box.left - from.left) * p;
-    preview.top = from.top + (box.top - from.top) * p;
-    preview.width = from.width + (box.width - from.width) * p;
-    preview.height = from.height + (box.height - from.height) * p;
-    if (t >= 1) { stopSettling(); return; }
-    settleFrame = requestAnimationFrame(step);
-  };
-  settleFrame = requestAnimationFrame(step);
 }
 
 function dockIndexAt(x: number, y: number, centerOffset: number) {
@@ -575,12 +554,11 @@ function scrollWhileDragging() {
 }
 
 function startDrag(event: PointerEvent, id: string) {
-  if (event.button !== 0 || !event.isPrimary || gesture) return;
+  if (event.button !== 0 || !event.isPrimary || gesture || outgoingId.value) return;
   // A touch gesture scrolls the strip; mouse/trackpad dragging still docks tabs.
   if (event.pointerType === 'touch') return;
   stopSettling();
-  // Activate before the native drag takes over, rather than waiting for click.
-  store.activeId = id;
+  // Pointer down prepares dragging. The click handler owns tab activation.
   if (nativeTabDrag) {
     const tab = (event.currentTarget as HTMLElement).closest<HTMLElement>('.desktop-tab');
     const doc = paneTabs.value.find(item => item.id === id);
@@ -593,6 +571,7 @@ function startDrag(event: PointerEvent, id: string) {
   const tab = element.closest<HTMLElement>('.desktop-tab');
   if (!doc || !tab) return;
   const rect = tab.getBoundingClientRect();
+  sourceWidth.value = rect.width;
   gesture = {
     id,
     pointerId: event.pointerId,
@@ -639,27 +618,18 @@ function notifyDragFinished(tabId: string) {
   finishedTabDrag.value = { sourceLabel: windowContext.label, tabId };
 }
 
-function finishDrag(commit = false, transferring = false) {
-  if (!gesture) return;
+/** End input ownership before applying a release or starting its presentation. */
+function clearGesture() {
   const current = gesture;
-  if (nativeDragging && !transferring) notifyDragFinished(current.id);
+  if (!current) return;
   gesture = undefined;
-  // Detached tabs leave the window; every other release (including cancel)
-  // lands the preview in the tab's final slot.
-  const landing = !transferring && draggingId.value && dragPreview.value ? { ...dragPreview.value } : undefined;
-  const paneDrop = store.paneDrop === sourcePaneDrop ? sourcePaneDrop : undefined;
-  // Nothing moves (cancel or no target): shifted tabs glide back with the preview.
-  const moved = commit && !!draggingId.value && (!!paneDrop || !!dropTarget.value);
   clearSourcePaneDrop();
-  if (commit && draggingId.value && paneDrop) {
-    store.dockTab(current.id, paneDrop);
-  } else if (commit && draggingId.value && dropTarget.value) {
-    store.moveDocument(current.id, dropTarget.value.id, dropTarget.value.side);
-  }
   cancelAnimationFrame(scrollFrame);
   nativeDragging = false;
   nativeOutside = false;
   finishingDrag = false;
+  sourceAway.value = false;
+  referenceInserted = false;
   draggingId.value = '';
   capturingNativeDrag.value = false;
   nativeOverlay.value = false;
@@ -667,16 +637,49 @@ function finishDrag(commit = false, transferring = false) {
   nativePositionId = '';
   dragPreview.value = undefined;
   dropTarget.value = undefined;
-  if (landing) settlePreview(landing);
-  if (!moved && settlingPreview.value) slotReturn.value = true;
   if (current.pointerId >= 0 && current.element.hasPointerCapture(current.pointerId)) {
     current.element.releasePointerCapture(current.pointerId);
   }
-  // A drag's synthetic click must not switch the active document on release.
   clearTimeout(clickTimer);
-  clickTimer = setTimeout(() => {
-    suppressClick = false;
-  }, 0);
+  clickTimer = setTimeout(() => { suppressClick = false; }, 0);
+}
+
+/** Apply the resolved operation once, then hand its presentation to the motion owner. */
+function finishDrag(result: TabRelease = { kind: 'return' }) {
+  const current = gesture;
+  if (!current) return;
+  const native = nativeDragging;
+  const landing = result.kind !== 'detach' && draggingId.value && dragPreview.value ? { ...dragPreview.value } : undefined;
+  clearGesture();
+  if (native && result.kind !== 'detach') notifyDragFinished(current.id);
+  try {
+    if (result.kind === 'dock') store.dockTab(current.id, result.drop);
+    else if (result.kind === 'reorder') store.moveDocument(current.id, result.target.id, result.target.side);
+  } catch (error) {
+    store.report(error);
+    result = { kind: 'return' };
+  }
+  if (landing) settlePreview(landing, {
+    mode: result.kind === 'reference' ? 'reference' : 'return',
+    returnSlot: result.kind === 'return' || result.kind === 'reference',
+  });
+}
+
+function detachReleasedTab(current: NonNullable<typeof gesture>, point: DetachedDropPoint) {
+  const released = {
+    id: current.id, path: current.path, dirty: current.dirty,
+    left: current.x - current.grabX, top: current.y - current.grabY,
+    width: current.width, height: current.height,
+  };
+  finishDrag({ kind: 'detach' });
+  outgoingId.value = current.id;
+  emit('detach-tab', current.id, point, () => {
+    notifyDragFinished(current.id);
+    if (outgoingId.value === current.id) outgoingId.value = '';
+    if (mounted && paneTabs.value.some(tab => tab.id === current.id) && !gesture) {
+      void nextTick(() => { if (mounted && !gesture) settlePreview(released); });
+    }
+  });
 }
 
 function endDrag(event: PointerEvent) {
@@ -685,12 +688,25 @@ function endDrag(event: PointerEvent) {
   gesture.x = event.clientX;
   gesture.y = event.clientY;
   updateDropTarget();
-  const bounds = tabList.value?.getBoundingClientRect();
-  const withinStrip = bounds &&
-    event.clientX >= bounds.left - 48 && event.clientX <= bounds.right + 48 &&
-    event.clientY >= bounds.top - 36 && event.clientY <= bounds.bottom + 36;
-  if (store.paneDrop || !props.detachable || !draggingId.value || withinStrip) finishDrag(true);
-  else void finishAtSystemCursor();
+  if (!draggingId.value) {
+    // Pointer capture routes pointerup back here even after leaving the button.
+    const bounds = gesture.element.getBoundingClientRect();
+    suppressClick = event.clientX < bounds.left || event.clientX > bounds.right ||
+      event.clientY < bounds.top || event.clientY > bounds.bottom;
+    finishDrag();
+    return;
+  }
+  const payload = referencePayload(gesture.id);
+  if (!sourcePaneDrop && !dropTarget.value && payload) {
+    const transfer = new DataTransfer();
+    transfer.setData(entryReferenceDragType, payload);
+    document.elementFromPoint(event.clientX, event.clientY)?.dispatchEvent(new DragEvent('drop', {
+      bubbles: true, cancelable: true, clientX: event.clientX, clientY: event.clientY, dataTransfer: transfer,
+    }));
+  }
+  const outside = event.clientX < 0 || event.clientY < 0 || event.clientX >= window.innerWidth || event.clientY >= window.innerHeight;
+  if (outside && props.detachable && !stripPoint(event.clientX, event.clientY)) void finishAtSystemCursor();
+  else finishDrag(releaseIntent());
 }
 
 async function finishAtSystemCursor(drop?: { x: number; y: number }) {
@@ -710,41 +726,13 @@ async function finishAtSystemCursor(drop?: { x: number; y: number }) {
       dropTarget.value = undefined;
       clearSourcePaneDrop();
     } else updateDropTarget();
-    const bounds = tabList.value?.getBoundingClientRect();
     const withinWindow = current.x >= 0 && current.x < window.innerWidth &&
       current.y >= 0 && current.y < window.innerHeight;
-    const withinStrip = withinWindow && bounds &&
-      current.x >= bounds.left - 48 && current.x <= bounds.right + 48 &&
-      current.y >= bounds.top - 36 && current.y <= bounds.bottom + 36;
-    // Just outside the window but close to the strip still docks here.
-    if (near || (withinWindow && !nativeOutside && (store.paneDrop || withinStrip))) {
-      finishDrag(true);
-      return;
-    }
-    // Released over this window's own content, away from any slot or split
-    // edge: not a valid target, so the tab glides back to where it was.
-    if (withinWindow && !nativeOutside) {
-      finishDrag();
-      return;
-    }
-    // Where the tab was let go, so it can glide back if it ends up staying.
-    const released = {
-      id: current.id, path: current.path, dirty: current.dirty,
-      left: current.x - current.grabX, top: current.y - current.grabY,
-      width: current.width, height: current.height,
-    };
-    finishDrag(false, true);
-    outgoingId.value = current.id;
-    emit('detach-tab', current.id, {
+    const result = releaseIntent(!near && (nativeOutside || !withinWindow));
+    if (result.kind !== 'detach') { finishDrag(result); return; }
+    detachReleasedTab(current, {
       x: cursor.x, y: cursor.y, grabX: current.grabX, grabY: current.grabY,
       width: current.width, insideSourceWindow: withinWindow,
-    }, () => {
-      notifyDragFinished(current.id);
-      if (outgoingId.value === current.id) outgoingId.value = '';
-      // Not moved (blocked view, unsaved changes, no other window took it).
-      if (paneTabs.value.some(tab => tab.id === current.id) && !gesture) {
-        void nextTick(() => { if (!gesture) settlePreview(released); });
-      }
     });
   } catch (error) {
     finishDrag();
@@ -792,7 +780,7 @@ async function watchNativeRelease(current: NonNullable<typeof gesture>) {
     const ownLayout = store.windowLayouts?.[windowContext.id];
     if (store.windowLayouts && (!ownLayout || !store.panes.some(pane => pane.tabs.includes(current.id) &&
       pane.id === props.paneId))) {
-      finishDrag(false, true);
+      finishDrag({ kind: 'detach' });
       notifyDragFinished(current.id);
       return;
     }
@@ -805,7 +793,7 @@ async function watchNativeRelease(current: NonNullable<typeof gesture>) {
 }
 
 function startNativeDrag(event: DragEvent, id: string) {
-  if (!nativeTabDrag || !event.dataTransfer || gesture) {
+  if (!nativeTabDrag || !event.dataTransfer || gesture || outgoingId.value) {
     event.preventDefault();
     return;
   }
@@ -819,9 +807,16 @@ function startNativeDrag(event: DragEvent, id: string) {
     return;
   }
   const rect = tab.getBoundingClientRect();
+  sourceWidth.value = rect.width;
   const grabX = event.clientX - rect.left;
   const grabY = event.clientY - rect.top;
-  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.effectAllowed = 'copyMove';
+  const payload = referencePayload(id);
+  if (payload) event.dataTransfer.setData(entryReferenceDragType, payload);
+  if (nativeImage?.id !== id) {
+    const canvas = tabDragImage(tab, tabLabel(doc));
+    nativeImage = canvas ? { id, canvas } : undefined;
+  }
   event.dataTransfer.setData('application/x-tano-tab', id);
   if (store.workspace) event.dataTransfer.setData(tabDragMetaType({
     sourceLabel: windowContext.label, workspaceId: store.workspace.id, tabId: id,
@@ -871,6 +866,7 @@ function updateNativePosition(x: number, y: number) {
   gesture.x = x;
   gesture.y = y;
   if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) {
+    sourceAway.value = !stripPoint(x, y);
     // The native drag image owns this area.
     dragPreview.value = undefined;
     if (stripPoint(x, y)) { updateDropTarget(); return; }
@@ -1053,6 +1049,7 @@ async function contextAction(
 }
 
 onMounted(() => {
+  window.addEventListener('tano-entry-reference-inserted', referenceDropAccepted);
   blankTrack =
     tabList.value?.closest('.workspace-tabbar')?.querySelector('.workspace-window-drag') ??
     tabList.value?.closest('.desktop-window-titlebar')?.querySelector('.desktop-window-drag') ??
@@ -1115,10 +1112,11 @@ function onTabWheel(event: WheelEvent) {
 }
 
 onBeforeUnmount(() => {
+  window.removeEventListener('tano-entry-reference-inserted', referenceDropAccepted);
   stopSlotAnimations();
   cancelTabMoves();
-  finishDrag();
-  stopSettling();
+  if (nativeDragging && gesture) notifyDragFinished(gesture.id);
+  clearGesture();
   clearFileSlot();
   window.removeEventListener('dragover', fileDragOver, true);
   window.removeEventListener('dragleave', fileDragLeave, true);
@@ -1162,11 +1160,14 @@ watch(
   },
 );
 
-watch(() => [paneTabs.value.map(tab => tab.id), reservedTabWidth.value] as const, ([ids, reserved], [previous, previousReserved]) => {
-  if (incomingDropTimer) clearIncomingSlot();
+watch([
+  paneTabIds, reservedTabWidth, collapsedId,
+  () => paneTabs.value.map(tab => snapLayout.value?.offsets[tab.id] ?? 0).join('|'),
+], ([ids, reserved, collapsed, offsets], [previous, previousReserved, previousCollapsed, previousOffsets]) => {
   const removed = previous.some(id => !ids.includes(id));
   const closed = previous.some(id => !ids.includes(id) && !store.tabs.some(tab => tab.id === id));
   const opening = ids.some(id => !previous.includes(id));
+  if (incomingDropTimer && (removed || opening || reserved !== previousReserved)) clearIncomingSlot();
   // Navigation replaces a tab's content ID without opening another slot.
   // Do not expand that replacement from zero as if it were a new tab.
   if (closed && opening && ids.length === previous.length) {
@@ -1174,9 +1175,13 @@ watch(() => [paneTabs.value.map(tab => tab.id), reservedTabWidth.value] as const
     releaseTabWidths();
     return;
   }
-  if (removed || opening || reserved !== previousReserved) {
-    // Slot expansion and collapse use the same interruptible layout motion as opening a tab.
-    const movement = animateTabLayout(ids, opening || !removed);
+  const reflow = collapsed !== previousCollapsed ||
+    (tabLayoutAnimating.value === 'reflow' && offsets !== previousOffsets);
+  if (removed || opening || reserved !== previousReserved || reflow) {
+    // Source occupancy changes share measured layout motion with real tab removal.
+    // Capture before Vue updates the flow, including an interrupted hover animation.
+    const mode = reflow ? 'reflow' : opening || !removed ? 'open' : 'close';
+    const movement = animateTabLayout(ids.filter(id => id !== collapsed), mode);
     tabLayoutMotion = movement;
     void movement.then(() => { if (tabLayoutMotion === movement) tabLayoutMotion = undefined; });
   }
@@ -1254,10 +1259,11 @@ async function onTabKeydown(event: KeyboardEvent) {
   <nav
     class="desktop-tab-strip"
     :data-tab-pane-id="paneId"
-    @pointerdown.capture="activatePane"
+    @click="activatePane"
     :class="{ 'desktop-tab-strip-file-drop': fileSlot, 'desktop-tab-strip-inset': showNavigation === false }"
     :style="{
-      '--desktop-tab-count': paneTabs.length,
+      '--desktop-tab-count': paneTabs.length - (collapsedId ? 1 : 0),
+      '--desktop-tab-source-width': `${sourceWidth}px`,
       '--desktop-tab-reserved-width': `${reservedTabWidth}px`,
       width: frozenStripWidth === undefined ? undefined : `${frozenStripWidth + reservedTabWidth}px`,
     }"
@@ -1290,15 +1296,17 @@ async function onTabKeydown(event: KeyboardEvent) {
         :class="{
           'desktop-tab-active': doc.id === selectedId,
           'desktop-tab-dragging': doc.id === draggingId,
-          'desktop-tab-settling': doc.id === settlingTabId && doc.id !== draggingId,
+          'desktop-tab-settling': doc.id === settlingTab?.id && doc.id !== draggingId,
           'desktop-tab-drag-capturing': doc.id === draggingId && capturingNativeDrag,
           'desktop-tab-outgoing': doc.id === outgoingId,
+          'desktop-tab-away': doc.id === collapsedId,
           'desktop-tab-drop-before': dockSlotIndex === undefined && dropTarget?.id === doc.id && dropTarget.side === 'before',
           'desktop-tab-drop-after': dockSlotIndex === undefined && dropTarget?.id === doc.id && dropTarget.side === 'after',
           'desktop-tab-dock-before': dockSlotIndex === index,
           'desktop-tab-dock-after': dockSlotIndex === paneTabs.length && index === paneTabs.length - 1,
         }"
         :style="{
+          opacity: settlingTab?.id === doc.id ? settlingTab.opacity : referenceReveal?.id === doc.id ? referenceReveal.opacity : undefined,
           flex: frozenTabWidths[doc.id] !== undefined ? `0 0 ${frozenTabWidths[doc.id]}px` : undefined,
           transform: snapLayout ? `translateX(${snapLayout.offsets[doc.id] ?? 0}px)` : undefined,
         }"
@@ -1447,6 +1455,9 @@ async function onTabKeydown(event: KeyboardEvent) {
       class="desktop-tab-drag-preview"
       :class="{ 'desktop-tab-drag-preview-settling': settlingPreview, 'desktop-tab-drag-preview-overlaid': nativeOverlay && !settlingPreview }"
       :style="{
+        ...previewStyle,
+        opacity: previewOpacity,
+        filter: referenceReveal ? `blur(${referenceReveal.opacity * 4}px)` : undefined,
         left: `${dragPreview.left}px`,
         top: `${dragPreview.top}px`,
         width: `${dragPreview.width}px`,
@@ -1544,6 +1555,15 @@ async function onTabKeydown(event: KeyboardEvent) {
   opacity: 0;
   pointer-events: none;
 }
+/* Remove only layout occupancy. The native drag source retains its geometry. */
+.desktop-tab.desktop-tab-away {
+  position: absolute;
+  width: var(--desktop-tab-source-width);
+  min-width: var(--desktop-tab-source-width);
+  max-width: var(--desktop-tab-source-width);
+  opacity: 0;
+  pointer-events: none;
+}
 .desktop-tab-incoming-slot {
   position: absolute;
   top: 4px;
@@ -1591,17 +1611,14 @@ async function onTabKeydown(event: KeyboardEvent) {
 }
 /* The reserved slot is plain empty space: the gap itself marks the drop point. */
 .desktop-tab.desktop-tab-dragging,
-.desktop-tab.desktop-tab-dragging:hover,
-.desktop-tab.desktop-tab-settling,
-.desktop-tab.desktop-tab-settling:hover {
+.desktop-tab.desktop-tab-dragging:hover {
   --desktop-tab-close-mask: var(--sidebar);
   background: transparent;
   box-shadow: none;
 }
-.desktop-tab-settling > * { opacity: 0; }
-.desktop-tab-settling .desktop-tab-close { visibility: hidden; }
 .desktop-tab {
   --desktop-tab-close-mask: var(--sidebar);
+  --desktop-tab-color-duration: 0.15s;
   position: relative;
   container-type: inline-size;
   display: flex;
@@ -1616,16 +1633,18 @@ async function onTabKeydown(event: KeyboardEvent) {
   color: var(--text-secondary);
   transition:
     flex-basis var(--motion-spring) var(--ease-spring-smooth),
-    background 0.15s,
-    color 0.15s;
+    background var(--desktop-tab-color-duration),
+    color var(--desktop-tab-color-duration);
 }
 .desktop-tab-list-slotting .desktop-tab {
-  transition: flex-basis var(--motion-spring) var(--ease-spring-smooth), background 0.15s, color 0.15s;
+  transition: flex-basis var(--motion-spring) var(--ease-spring-smooth), background var(--desktop-tab-color-duration), color var(--desktop-tab-color-duration);
 }
 .desktop-tab-list-frozen .desktop-tab,
 .desktop-tab-list-animating .desktop-tab {
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--desktop-tab-color-duration), color var(--desktop-tab-color-duration);
 }
+/* Release motion blends the floating card toward these final colors. */
+.desktop-tab-settling { --desktop-tab-color-duration: 0s; }
 .desktop-tab-list-frozen .desktop-tab { min-width: 0; }
 .desktop-tab-navigation:has(.icon-button)::before,
 .desktop-tab::before {

@@ -95,8 +95,9 @@ function focusPaneFromPointer(event: PointerEvent, paneId: string) {
   focusPaneFromEvent(event, paneId);
 }
 function focusPaneFromEvent(event: Event, paneId: string) {
-  // Shared history controls act on the focused pane, even when hosted elsewhere.
-  if (isElement(event.target) && event.target.closest('.desktop-tab-navigation')) return;
+  // Tab controls focus their pane on click. Preparing a drag keeps the current page active.
+  // Shared history controls act on the already focused pane.
+  if (isElement(event.target) && event.target.closest('.desktop-tab-navigation, .desktop-tab-strip')) return;
   store.focusPane(paneId);
 }
 type Divider = ReturnType<typeof layoutGeometry>['dividers'][number];
