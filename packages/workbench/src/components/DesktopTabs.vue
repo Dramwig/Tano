@@ -261,14 +261,20 @@ function stopSlotAnimations() {
   slotAnimations.clear();
 }
 watch(
-  () => paneTabs.value.map(tab => `${tab.id}:${snapLayout.value?.offsets[tab.id] ?? 0}`).join('|'),
-  () => {
+  [
+    () => paneTabs.value.map(tab => tab.id).join('|'),
+    () => paneTabs.value.map(tab => snapLayout.value?.offsets[tab.id] ?? 0).join('|'),
+  ],
+  ([ids], [previousIds]) => {
     const list = tabList.value;
     const offsets = snapLayout.value?.offsets ?? {};
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
       || document.documentElement.dataset.motion === 'reduced';
-    // A committed drop reorders the DOM in the same update: nothing may slide.
-    if (!list || !slotMotion.value || reduced || typeof HTMLElement.prototype.animate !== 'function') {
+    // Leaving an incoming slot clears its hover state before this watcher runs.
+    // Keep its return motion when the tabs are unchanged; a committed drop
+    // changes the DOM order and must not replay the old slot offsets.
+    const returning = ids === previousIds && [...slotTargets.values()].some(offset => offset !== 0);
+    if (!list || (!slotMotion.value && !returning) || reduced || typeof HTMLElement.prototype.animate !== 'function') {
       stopSlotAnimations();
       slotTargets.clear();
       for (const tab of paneTabs.value) slotTargets.set(tab.id, offsets[tab.id] ?? 0);
@@ -1158,6 +1164,7 @@ watch(
 
 watch(() => [paneTabs.value.map(tab => tab.id), reservedTabWidth.value] as const, ([ids, reserved], [previous, previousReserved]) => {
   if (incomingDropTimer) clearIncomingSlot();
+  const removed = previous.some(id => !ids.includes(id));
   const closed = previous.some(id => !ids.includes(id) && !store.tabs.some(tab => tab.id === id));
   const opening = ids.some(id => !previous.includes(id));
   // Navigation replaces a tab's content ID without opening another slot.
@@ -1167,9 +1174,9 @@ watch(() => [paneTabs.value.map(tab => tab.id), reservedTabWidth.value] as const
     releaseTabWidths();
     return;
   }
-  if (closed || opening || reserved !== previousReserved) {
+  if (removed || opening || reserved !== previousReserved) {
     // Slot expansion and collapse use the same interruptible layout motion as opening a tab.
-    const movement = animateTabLayout(ids, opening || !closed);
+    const movement = animateTabLayout(ids, opening || !removed);
     tabLayoutMotion = movement;
     void movement.then(() => { if (tabLayoutMotion === movement) tabLayoutMotion = undefined; });
   }
@@ -1532,11 +1539,8 @@ async function onTabKeydown(event: KeyboardEvent) {
    Hiding its visibility can interrupt WebView's drag lifecycle before release. */
 .desktop-tab-dragging:not(.desktop-tab-drag-capturing) > * { opacity: 0; }
 .desktop-tab-outgoing {
-  flex: 0 0 0 !important;
-  min-width: 0 !important;
-  max-width: 0 !important;
-  overflow: hidden;
-  border: 0;
+  /* Keep its slot until the transfer commits. Removing it from this pane
+     then runs the same measured layout animation as closing a tab. */
   opacity: 0;
   pointer-events: none;
 }
