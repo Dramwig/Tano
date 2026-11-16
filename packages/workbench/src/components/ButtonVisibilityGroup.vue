@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
+import { isElement, isMouseEvent, isNode } from '@tano/editor/dom-realm';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Check } from 'lucide-vue-next';
@@ -63,12 +67,12 @@ function openMenu(event: MouseEvent | KeyboardEvent) {
   event.preventDefault();
   emit('open');
   returnFocus =
-    event.target instanceof Element
+    isElement(event.target)
       ? (event.target.closest('button') ?? navigation.value ?? null)
       : (navigation.value ?? null);
   const rect = navigation.value!.getBoundingClientRect();
-  const x = event instanceof MouseEvent ? event.clientX : rect.left;
-  const y = event instanceof MouseEvent ? event.clientY : rect.bottom;
+  const x = isMouseEvent(event) ? event.clientX : rect.left;
+  const y = isMouseEvent(event) ? event.clientY : rect.bottom;
   menu.value = { x: Math.max(8, x), y: Math.max(8, y) };
   void nextTick(() => {
     const element = menuElement.value;
@@ -103,11 +107,11 @@ function menuKeydown(event: KeyboardEvent) {
   }
 }
 function outsidePointer(event: Event) {
-  if (!(event.target instanceof Node) || !menuElement.value?.contains(event.target)) closeMenu();
+  if (!(isNode(event.target)) || !menuElement.value?.contains(event.target)) closeMenu();
 }
 function outsideContext(event: MouseEvent) {
   if (
-    !(event.target instanceof Node) ||
+    !(isNode(event.target)) ||
     (!navigation.value?.contains(event.target) && !menuElement.value?.contains(event.target))
   )
     closeMenu();
@@ -140,6 +144,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('storage', syncPreference);
   window.removeEventListener(preferenceChanged, syncLocalPreference);
 });
+
 </script>
 
 <template>
@@ -155,7 +160,7 @@ onBeforeUnmount(() => {
   >
     <slot :is-visible="isVisible" />
   </component>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <div v-surface-motion="'ButtonVisibilityGroup:0'"
       v-if="menu"
       ref="menuElement"

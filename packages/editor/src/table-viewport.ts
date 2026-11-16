@@ -1,9 +1,11 @@
+import { ownerWindow } from './dom-realm';
 import type { Node } from '@milkdown/kit/prose/model';
 import { Plugin, type Transaction } from '@milkdown/kit/prose/state';
 import { columnResizingPluginKey, TableMap, TableView } from '@milkdown/kit/prose/tables';
 import type { EditorView, ViewMutationRecord } from '@milkdown/kit/prose/view';
 import { defaultTableColumnWidth } from '@tano/protocol';
 import { animate } from 'motion/mini';
+import { springEasing } from './motion';
 
 const viewports = new WeakMap<EditorView, Set<TableViewport>>();
 const queues = new WeakMap<EditorView, { pending: Set<TableViewport>; frame?: number }>();
@@ -24,6 +26,8 @@ interface ScrollbarGeometry {
 
 /** Keep the content width independent of the visible, horizontally scrollable viewport. */
 export class TableViewport extends TableView {
+  private get window() { return ownerWindow(this.view.dom); }
+
   private wrapper: HTMLDivElement;
   private observer: ResizeObserver | undefined;
   private observedParent: HTMLElement | undefined;
@@ -39,10 +43,10 @@ export class TableViewport extends TableView {
     super(node, minimumWidth);
     this.wrapper = this.dom;
     this.wrapper.id = `tano-table-scroll-area-${++viewportId}`;
-    this.dom = document.createElement('div');
+    this.dom = this.window.document.createElement('div');
     this.dom.className = 'tano-table-viewport';
     this.dom.append(this.wrapper);
-    this.scrollbar = document.createElement('div');
+    this.scrollbar = this.window.document.createElement('div');
     this.scrollbar.className = 'tano-table-scrollbar';
     this.scrollbar.contentEditable = 'false';
     this.scrollbar.tabIndex = 0;
@@ -51,7 +55,7 @@ export class TableViewport extends TableView {
     this.scrollbar.setAttribute('aria-orientation', 'horizontal');
     this.scrollbar.setAttribute('aria-controls', this.wrapper.id);
     this.scrollbar.setAttribute('aria-valuemin', '0');
-    this.thumb = document.createElement('div');
+    this.thumb = this.window.document.createElement('div');
     this.thumb.className = 'tano-table-scroll-thumb';
     this.scrollbar.append(this.thumb);
     this.dom.append(this.scrollbar);
@@ -66,9 +70,9 @@ export class TableViewport extends TableView {
     entries.add(this);
     viewports.set(view, entries);
     this.wrapper.addEventListener('scroll', this.edges);
-    window.addEventListener('resize', this.schedule);
-    if (typeof ResizeObserver !== 'undefined') {
-      this.observer = new ResizeObserver(this.schedule);
+    this.window.addEventListener('resize', this.schedule);
+    if (typeof this.window.ResizeObserver !== 'undefined') {
+      this.observer = new this.window.ResizeObserver(this.schedule);
       for (const element of [this.table, view.dom, this.surface]) this.observer.observe(element);
     }
     this.schedule();
@@ -80,7 +84,7 @@ export class TableViewport extends TableView {
     queue.pending.add(this);
     if (queue.frame !== undefined) return;
     const batch = queue;
-    batch.frame = window.requestAnimationFrame(() => {
+    batch.frame = this.window.requestAnimationFrame(() => {
       batch.frame = undefined;
       if (this.view.isDestroyed) { batch.pending.clear(); return; }
       const pending = [...batch.pending].filter(item => item.dom.isConnected);
@@ -106,7 +110,7 @@ export class TableViewport extends TableView {
 
   private frameWidth() {
     const parent = this.dom.parentElement!;
-    const style = getComputedStyle(parent);
+    const style = this.window.getComputedStyle(parent);
     const inset = (value: string) => Number.parseFloat(value) || 0;
     const width = parent.getBoundingClientRect().width;
     return parent === this.view.dom
@@ -126,7 +130,7 @@ export class TableViewport extends TableView {
       this.observedParent = parent;
     }
     const container = parent.getBoundingClientRect();
-    const style = getComputedStyle(parent);
+    const style = this.window.getComputedStyle(parent);
     const inset = (value: string) => Number.parseFloat(value) || 0;
     const insetLeft = inset(style.paddingLeft) + inset(style.borderLeftWidth);
     const insetRight = inset(style.paddingRight) + inset(style.borderRightWidth);
@@ -152,11 +156,11 @@ export class TableViewport extends TableView {
       { element: this.scrollbar, styles: { width: frameWidth, marginLeft: frameInset + (annotated ? 0 : originLeft - left) } },
     ];
     const target = JSON.stringify(targets.map(entry => entry.styles));
-    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const reduceMotion = this.window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     if (this.layoutState?.target === target && this.layoutState.annotated === annotated && !(reduceMotion && this.motions)) return;
     const transition = this.layoutState !== undefined && this.layoutState.annotated !== annotated && !reduceMotion;
     const frames = transition ? targets.map(({ element, styles }) => {
-      const computed = getComputedStyle(element);
+      const computed = this.window.getComputedStyle(element);
       return Object.fromEntries(Object.entries(styles).flatMap(([property, value]) => {
         const from = parseFloat(computed[property as keyof ViewportStyles]) || 0;
         return Math.abs(from - value) > 0.01 ? [[property, [`${from}px`, `${value}px`]]] : [];
@@ -169,7 +173,7 @@ export class TableViewport extends TableView {
     if (!this.node.attrs.autoWidth || containerWidth <= 0 || columnResizingPluginKey.getState(this.view.state)?.dragging ||
         this.view.dom.parentElement?.classList.contains('tano-table-dragging')) return;
     const map = TableMap.get(this.node);
-    const style = getComputedStyle(this.table);
+    const style = this.window.getComputedStyle(this.table);
     const borders = (Number.parseFloat(style.borderLeftWidth) || 0) + (Number.parseFloat(style.borderRightWidth) || 0);
     const total = Math.max(map.width * defaultTableColumnWidth, Math.floor(containerWidth - borders));
     const width = Math.floor(total / map.width);
@@ -198,7 +202,7 @@ export class TableViewport extends TableView {
     if (!frames.length || typeof this.dom.animate !== 'function') return;
     // Animate the viewport and its compensating margins together; cell text stays unscaled.
     const motions = targets.flatMap(({ element }, index) => Object.keys(frames[index]!).length
-      ? [animate(element, frames[index]!, { duration: 0.24, ease: [0.22, 1, 0.36, 1] })] : []);
+      ? [animate(element, frames[index]!, { duration: 0.24, ease: springEasing('smooth') })] : []);
     if (!motions.length) return;
     this.motions = motions;
     this.trackMotion();
@@ -211,7 +215,7 @@ export class TableViewport extends TableView {
   }
 
   private trackMotion = () => {
-    this.motionFrame = window.requestAnimationFrame(() => {
+    this.motionFrame = this.window.requestAnimationFrame(() => {
       this.motionFrame = undefined;
       if (!this.motions) return;
       this.edges();
@@ -223,7 +227,7 @@ export class TableViewport extends TableView {
   private stopMotion() {
     this.motions?.forEach(motion => motion.stop());
     this.motions = undefined;
-    if (this.motionFrame !== undefined) window.cancelAnimationFrame(this.motionFrame);
+    if (this.motionFrame !== undefined) this.window.cancelAnimationFrame(this.motionFrame);
     this.motionFrame = undefined;
   }
 
@@ -312,12 +316,12 @@ export class TableViewport extends TableView {
     const queue = queues.get(this.view);
     queue?.pending.delete(this);
     if (queue && !queue.pending.size && queue.frame !== undefined) {
-      window.cancelAnimationFrame(queue.frame);
+      this.window.cancelAnimationFrame(queue.frame);
       queue.frame = undefined;
     }
     this.observer?.disconnect();
     this.wrapper.removeEventListener('scroll', this.edges);
-    window.removeEventListener('resize', this.schedule);
+    this.window.removeEventListener('resize', this.schedule);
     viewports.get(this.view)?.delete(this);
   }
 }

@@ -1840,6 +1840,23 @@ it.each([
   expect(errors).toEqual([]);
 });
 
+it.each([
+  '+++\ntitle = "TOML"\n+++\n\n# Body\n\nText\n',
+  '+++\ntitle = "TOML"\n+++\n',
+])('opens leading unsupported Markdown without selecting the block: %s', async content => {
+  const { editor, value, errors } = await mount(content);
+  const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
+  expect(root.querySelector('.tano-unsupported-block')).not.toBeNull();
+  expect(view.state.selection).not.toBeInstanceOf(NodeSelection);
+  expect(view.state.selection.empty).toBe(true);
+  expect(root.querySelector('.ProseMirror-selectednode')).toBeNull();
+  expect(value.value).toBe(content);
+  expect(editor.value!.canUndo()).toBe(false);
+  root.querySelector<HTMLButtonElement>('.tano-block-handle')!.click();
+  expect(root.querySelector('.tano-unsupported-block.ProseMirror-selectednode')).not.toBeNull();
+  expect(errors).toEqual([]);
+});
+
 it('reserves whole-block selection for the handle and context menu', async () => {
   const { editor, revealMarkdown, errors } = await mount('Before.\n\n$$\nx^2\n$$\n\nAfter.\n');
   revealMarkdown.value = false;
@@ -3780,12 +3797,13 @@ describe('click below the last block', () => {
     const { errors } = await mount(content);
     const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
     const before = prose.lastElementChild!;
-    const count = prose.childElementCount;
+    const blocks = () => [...prose.children].filter(child => !child.classList.contains('ProseMirror-widget'));
+    const count = blocks().length;
     vi.spyOn(before, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 50, 300, 50));
     expect(clickBelow(prose).defaultPrevented).toBe(true);
     await nextTick();
-    expect(prose.childElementCount).toBe(count + 1);
-    expect(prose.children[count - 1]).toBe(before);
+    expect(blocks().length).toBe(count + 1);
+    expect(blocks()[count - 1]).toBe(before);
     const paragraph = prose.lastElementChild!;
     expect(paragraph.tagName).toBe('P');
     expect(paragraph.textContent).toBe('');
@@ -3794,7 +3812,7 @@ describe('click below the last block', () => {
     expect(errors).toEqual([]);
     prose.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
     await nextTick();
-    expect(prose.childElementCount).toBe(count);
+    expect(blocks().length).toBe(count);
     expect(prose.lastElementChild!.tagName).toBe(before.tagName);
   });
 
@@ -4105,7 +4123,7 @@ describe('Markdown editor round trips', () => {
     await vi.waitFor(() => expect(handles()[1]!.hidden).toBe(true));
     expect(handles()[0]!.hidden).toBe(false);
     expect(value.value).toBe(saved);
-    root.querySelector<HTMLButtonElement>('[aria-label="添加子块"]')!.click();
+    root.querySelector<HTMLInputElement>('[aria-label="折叠块标题"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await nextTick();
     await vi.waitFor(() => expect(handles()[1]!.hidden).toBe(false));
     expect(root.querySelectorAll('.tano-toggle p')).toHaveLength(1);
@@ -4118,7 +4136,7 @@ describe('Markdown editor round trips', () => {
     editor.value!.command('toggle');
     await nextTick();
     expect(root.querySelector('.tano-toggle .tano-toggle p')).not.toBeNull();
-    root.querySelectorAll<HTMLButtonElement>('[aria-label="添加子块"]')[0]!.click();
+    root.querySelector<HTMLInputElement>('[aria-label="折叠块标题"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await nextTick();
     const view = editor.value!.withContext((ctx) => ctx.get(editorViewCtx));
     view.dispatch(view.state.tr.insertText('Sibling'));
@@ -5286,6 +5304,8 @@ describe('Markdown editor round trips', () => {
     name.value = 'status';
     name.dispatchEvent(new Event('input', { bubbles: true }));
     await nextTick();
+    panel.querySelector<HTMLButtonElement>('.frontmatter-value-editor button')!.click();
+    await nextTick();
     const input = panel.querySelector<HTMLInputElement>('[aria-label="属性值"]')!;
     input.value = 'draft';
     input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -5367,7 +5387,7 @@ describe('Markdown editor round trips', () => {
     const { value, readonly } = await mount(content);
     const panel = root.querySelector<HTMLDetailsElement>('.frontmatter-panel')!;
     panel.open = true;
-    const title = [...panel.querySelectorAll<HTMLButtonElement>('.frontmatter-property-button')]
+    const title = [...panel.querySelectorAll<HTMLButtonElement>('.frontmatter-property-value')]
       .find((button) => button.title === '编辑 title')!;
     title.focus();
     title.click();
@@ -5496,7 +5516,9 @@ describe('Markdown editor round trips', () => {
     expect(document.activeElement).toBe(name);
     expect(value.value).toContain('"zzzz": second');
 
-    const input = panel.querySelector<HTMLInputElement>('input[aria-label="属性值"]')!;
+    panel.querySelector<HTMLButtonElement>('.frontmatter-value-editor button')!.click();
+    await nextTick();
+    const input = panel.querySelector<HTMLInputElement>('[aria-label="属性值"]')!;
     input.focus();
     await nextTick();
     expect(names()).toEqual(['alpha', 'zzzz', 'zulu']);
@@ -5509,7 +5531,7 @@ describe('Markdown editor round trips', () => {
     const { value } = await mount('---\ntitle: first\nother: old\n---\n\nBody\n');
     const panel = root.querySelector<HTMLDetailsElement>('.frontmatter-panel')!;
     panel.open = true;
-    panel.querySelector<HTMLButtonElement>('[title="编辑 title"]')!.click();
+    panel.querySelector<HTMLButtonElement>('.frontmatter-property-value[title="编辑 title"]')!.click();
     await nextTick();
     const input = panel.querySelector<HTMLInputElement>('input[aria-label="属性值"]')!;
     input.value = 'draft';
@@ -5531,7 +5553,7 @@ describe('Markdown editor round trips', () => {
     const { value } = await mount('---\ntitle: original\n---\n\nBody\n');
     const panel = root.querySelector<HTMLDetailsElement>('.frontmatter-panel')!;
     panel.open = true;
-    panel.querySelector<HTMLButtonElement>('[title="编辑 title"]')!.click();
+    panel.querySelector<HTMLButtonElement>('.frontmatter-property-value[title="编辑 title"]')!.click();
     await nextTick();
     let input = panel.querySelector<HTMLInputElement>('input[aria-label="属性值"]')!;
     input.value = 'discarded';
@@ -5542,7 +5564,7 @@ describe('Markdown editor round trips', () => {
     expect(value.value).toContain('title: discarded');
     expect(panel.querySelector('.frontmatter-row-editor')).toBeNull();
 
-    panel.querySelector<HTMLButtonElement>('[title="编辑 title"]')!.click();
+    panel.querySelector<HTMLButtonElement>('.frontmatter-property-value[title="编辑 title"]')!.click();
     await nextTick();
     input = panel.querySelector<HTMLInputElement>('input[aria-label="属性值"]')!;
     input.value = 'saved';

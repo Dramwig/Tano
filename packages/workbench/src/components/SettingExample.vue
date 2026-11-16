@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window } = useWindowContext();
+
 import { computed } from 'vue';
 import { t } from '../i18n';
 import { settingExamples, type SettingExampleKey } from '../setting-examples';
@@ -29,7 +32,7 @@ const noMath = { ...defaultCapabilities, features: { ...defaultCapabilities.feat
 const outline = computed(() => [t('行程'), t('预算')].map((text, index) => ({ heading: { level: 2, text }, index })));
 const thread = computed<CommentThread>(() => ({ id: 'preview-thread', resolved: false, detached: false, createdAt: Date.now(),
   messages: [{ id: 'preview-message', authorId: 'preview-author', authorName: 'Lin', body: t('记得带相机。'), createdAt: Date.now() }] }));
-const assistantAnchor = { element: globalThis.document.createElement('div'), getRects: () => [], dispose: () => {} };
+const assistantAnchor = { element: window.document.createElement('div'), getRects: () => [], dispose: () => {} };
 const noRename = async () => {};
 const phaseLabels = computed(() => {
   switch (example.value.scene) {
@@ -47,6 +50,7 @@ const phaseLabels = computed(() => {
     default: return [t('关闭时'), t('开启时')];
   }
 });
+
 
 </script>
 <template>

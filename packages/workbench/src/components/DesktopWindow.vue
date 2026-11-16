@@ -3,12 +3,12 @@ import { t } from '../i18n';
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import type { Component } from 'vue';
 import { Minus, X } from 'lucide-vue-next';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { useWindowContext } from '../windows/context';
 import { useWindowControlsLayer } from '../window-controls-layer';
 
-defineProps<{ view: Component }>();
+defineProps<{ view?: Component }>();
 
-const appWindow = getCurrentWindow();
+const appWindow = useWindowContext().native!;
 const maximized = ref(false);
 const { controls, target: controlsTarget } = useWindowControlsLayer();
 let unlistenResize: (() => void) | undefined;
@@ -82,7 +82,7 @@ async function toggleMaximize() {
         </button>
       </div>
     </Teleport>
-    <div class="desktop-window-content"><component :is="view" /></div>
+    <div class="desktop-window-content"><slot><component :is="view" v-if="view" /></slot></div>
   </div>
 </template>
 

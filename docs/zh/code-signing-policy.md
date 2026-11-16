@@ -12,7 +12,7 @@
 
 仅适用于 [Dramwig/Tano](https://github.com/Dramwig/Tano) 公开 MIT 源码构建的 Tano Local 自有程序及 Windows x64 NSIS 安装包 `Tano-Local_<version>_x64-setup.exe`。
 
-私有 Cloud Overlay、托管服务及含私有代码的 Tano Product 安装包不在范围内，不能使用该基金会订阅签名。第三方组件保留原许可和签名，不以 Tano 自有程序身份重新签名。参见 [MIT](../../LICENSE)、[许可范围](../license.md)及[第三方声明](../../THIRD_PARTY_NOTICES.md)。
+私有 Cloud Overlay、托管服务及含私有代码的 Tano Product 安装包不在范围内，不能使用该基金会订阅签名。第三方组件保留原许可和签名，不以 Tano 自有程序身份重新签名。参见 [MIT](../../LICENSE)、[许可范围](../license.md)及[第三方声明](../THIRD_PARTY_NOTICES.md)。
 
 ## 团队与审批
 

@@ -1,3 +1,5 @@
+
+import { isNode } from './dom-realm';
 import { observePanelPosition } from './panel-position';
 
 const openEvent = 'tano-editor-panel-open';
@@ -31,13 +33,14 @@ export function activateEditorPanel(options: {
   close: () => void;
 }) {
   const { panel, anchor, position, close } = options;
+  const document = anchor.ownerDocument;
   const onOutside = (event: PointerEvent) => {
     const target = event.target;
-    if (!(target instanceof Node) || panel.contains(target) || anchor.contains(target)) return;
+    if (!(isNode(target)) || panel.contains(target) || anchor.contains(target)) return;
     close();
   };
   position();
-  const stopPositioning = observePanelPosition(position);
+  const stopPositioning = observePanelPosition(position, document.defaultView!);
   document.addEventListener('pointerdown', onOutside, true);
   return () => {
     stopPositioning();

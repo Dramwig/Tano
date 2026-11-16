@@ -1,3 +1,4 @@
+import { ownerWindow, isHTMLElement } from '@tano/editor/dom-realm';
 import { animate } from 'motion/mini';
 import type { ObjectDirective } from 'vue';
 
@@ -6,6 +7,10 @@ const disposers = new WeakMap<HTMLElement, () => void>();
 /** Animate the outline's actual dimensions so text and scroll masks stay sharp. */
 export const vOutlineMotion: ObjectDirective<HTMLElement> = {
   mounted(root) {
+    const window = ownerWindow(root);
+    const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+    const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
+    const { ResizeObserver, MutationObserver } = window;
     const element = root.querySelector<HTMLElement>('.inspector-surface');
     if (!element) return;
     const surface: HTMLElement = element;
@@ -35,7 +40,7 @@ export const vOutlineMotion: ObjectDirective<HTMLElement> = {
       if (disposed) return;
       // A second interaction starts at the in-flight size, not the old endpoint.
       const from = motion ? surface.getBoundingClientRect() : previous;
-      const fromOpacity = motion ? Number(getComputedStyle(surface).opacity) : 1;
+      const fromOpacity = motion ? Number(window.getComputedStyle(surface).opacity) : 1;
       clear();
       const to = surface.getBoundingClientRect();
       previous = to;
@@ -53,7 +58,7 @@ export const vOutlineMotion: ObjectDirective<HTMLElement> = {
         // Reveal a fully laid-out column through the card's overflow clip.
         // Animating its available text width would rewrap every heading per frame.
         const children = [...surface.children]
-          .filter((child): child is HTMLElement => child instanceof HTMLElement && !!child.getClientRects().length)
+          .filter((child): child is HTMLElement => isHTMLElement(child) && !!child.getClientRects().length)
           .map(element => ({ element, width: element.getBoundingClientRect().width }));
         for (const { element, width } of children) {
           lockedContent.push({ element, width: element.style.width, alignSelf: element.style.alignSelf });

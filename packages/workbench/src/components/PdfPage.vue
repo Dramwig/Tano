@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window } = useWindowContext();
+
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import PreviewSkeleton from './PreviewSkeleton.vue';
@@ -20,6 +23,7 @@ onMounted(async () => {
   } finally { if (!disposed) busy.value = false; }
 });
 onBeforeUnmount(() => { disposed = true; task?.cancel(); });
+
 </script>
 
 <template>

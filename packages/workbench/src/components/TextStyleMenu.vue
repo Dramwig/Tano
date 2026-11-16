@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
+import { isNode } from '@tano/editor/dom-realm';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { useFormattingShortcuts } from '../use-formatting-shortcuts';
@@ -120,7 +124,7 @@ function colorPanelKey(event: KeyboardEvent) {
   }
 }
 function closeColorsOnViewportChange(event: Event) {
-  if (event.target instanceof Node && colorPanel.value?.contains(event.target)) return;
+  if (isNode(event.target) && colorPanel.value?.contains(event.target)) return;
   closeColors();
 }
 onMounted(() => {
@@ -135,6 +139,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', closeColorsOnViewportChange);
   window.removeEventListener('scroll', closeColorsOnViewportChange, true);
 });
+
 </script>
 
 <template>

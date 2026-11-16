@@ -13,3 +13,8 @@ export function droppedEntryReferences(data: string, targets: readonly Reference
     return [];
   }
 }
+
+/** Acknowledges a completed insertion to the active drag source. */
+export function confirmEntryReferenceDrop(event: DragEvent) {
+  event.target?.dispatchEvent(new CustomEvent('tano-entry-reference-inserted', { bubbles: true }));
+}

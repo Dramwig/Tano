@@ -25,3 +25,5 @@ Tano is a File-Native Workspace: real files remain the source of truth while peo
 | [SignPath application materials](signpath-application.md) | Description, evidence and submission checklist |
 | [Core package distribution](core-distribution.md) | npm and Rust packages, immutable pins and registry migration |
 | [License and scope](license.md) | MIT license and third-party notices |
+
+- [Feature gating](feature-gating.md)

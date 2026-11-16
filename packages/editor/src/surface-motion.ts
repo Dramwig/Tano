@@ -1,6 +1,8 @@
+import { ownerWindow } from './dom-realm';
 import { vShow, type ObjectDirective, type VNode } from 'vue';
+import { EASE_EXIT, spring } from './motion';
 
-type Frame = { opacity: number; inset: number[]; y: number };
+type Frame = { opacity: number; inset: number[]; y: number; scale: number };
 type Flight = {
   from: Frame; to: Frame; animation: Animation; inner?: Animation;
   done: () => void; opening: boolean;
@@ -20,6 +22,8 @@ const backdropSelector = '.modal-backdrop, .data-modal-backdrop, .object-panel-b
 let reduced: MediaQueryList | undefined;
 
 function enabled(root: HTMLElement) {
+    const window = ownerWindow(root);
+
   if (typeof root.animate !== 'function' || typeof window.matchMedia !== 'function') return false;
   if (!reduced) {
     reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -50,15 +54,20 @@ function configure(surface: Surface) {
     (root.getAttribute('aria-modal') === 'true' && !root.classList.contains('sidebar'));
 }
 
-function closed(surface: Surface): Frame {
+function closed(surface: Surface, leaving = false): Frame {
+    const window = ownerWindow(surface.root);
+    const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+
   const rect = surface.target.getBoundingClientRect();
   const values = getComputedStyle(surface.target).getPropertyValue('--tano-surface-inset').trim().split(/\s+/);
   const fallback = [-48, -48, rect.height * 0.4, -48];
   const inset = values.length === 4 ? values.map((value, i) =>
     parseFloat(value) * (value.endsWith('%') ? (i % 2 ? rect.width : rect.height) / 100 : 1)) : fallback;
-  return { opacity: 0, inset, y: surface.modal ? 8 : 0 };
+  // Dialogs rise and settle on a spring; they leave with a shorter drop.
+  if (!surface.modal) return { opacity: 0, inset, y: 0, scale: 1 };
+  return leaving ? { opacity: 0, inset, y: 4, scale: 0.975 } : { opacity: 0, inset, y: 14, scale: 0.955 };
 }
-const opened = (): Frame => ({ opacity: 1, inset: [-48, -48, -48, -48], y: 0 });
+const opened = (): Frame => ({ opacity: 1, inset: [-48, -48, -48, -48], y: 0, scale: 1 });
 const clip = (frame: Frame) => `inset(${frame.inset.map(value => `${value}px`).join(' ')} round 8px)`;
 
 function current(surface: Surface): Frame {
@@ -73,10 +82,14 @@ function current(surface: Surface): Frame {
     opacity: mix(flight.from.opacity, flight.to.opacity),
     inset: flight.from.inset.map((value, i) => mix(value, flight.to.inset[i]!)),
     y: mix(flight.from.y, flight.to.y),
+    scale: mix(flight.from.scale, flight.to.scale),
   };
 }
 
 function stop(surface: Surface) {
+    const window = ownerWindow(surface.root);
+    const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
+
   if (surface.pending !== undefined) cancelAnimationFrame(surface.pending);
   surface.pending = undefined;
   if (surface.flight) {
@@ -114,6 +127,9 @@ function finish(surface: Surface) {
 }
 
 function run(surface: Surface, opening: boolean, done: () => void = () => {}) {
+    const window = ownerWindow(surface.root);
+    const document = window.document;
+
   configure(surface);
   if (!opening && surface.flight && !surface.flight.opening) {
     // close() may run before Vue removes the node. Keep the same flight and
@@ -152,21 +168,30 @@ function run(surface: Surface, opening: boolean, done: () => void = () => {}) {
     done();
     return;
   }
-  const to = opening ? opened() : closed(surface);
-  const duration = (opening ? 180 : 130) * Math.abs(to.opacity - from.opacity);
+  const to = opening ? opened() : closed(surface, true);
+  // Arrive on a spring (dialogs with a little overshoot), leave quickly.
+  const base = opening ? (surface.modal ? 440 : 280) : (surface.modal ? 160 : 130);
+  const duration = base * Math.abs(to.opacity - from.opacity);
   const frames: Keyframe[] = [from, to].map(frame => ({
     opacity: frame.opacity,
     ...(!surface.group && !surface.modal ? { clipPath: clip(frame) } : {}),
   }));
-  const options: KeyframeAnimationOptions = { duration, easing: 'cubic-bezier(0.2, 0, 0, 1)', fill: 'both' };
+  const easing = opening ? spring(surface.modal ? 'snappy' : 'smooth') : EASE_EXIT;
+  const options: KeyframeAnimationOptions = { duration, easing, fill: 'both' };
   const animation = surface.root.animate(frames, options);
-  const inner = surface.modal ? surface.target.animate([{ translate: `0 ${from.y}px` }, { translate: `0 ${to.y}px` }], options) : undefined;
+  const inner = surface.modal ? surface.target.animate([
+    { translate: `0 ${from.y}px`, scale: String(from.scale) },
+    { translate: `0 ${to.y}px`, scale: String(to.scale) },
+  ], options) : undefined;
   surface.flight = { from, to, animation, inner, done, opening };
   active.add(surface);
   animation.onfinish = () => { if (surface.flight?.animation === animation) finish(surface); };
 }
 
 function visible(root: HTMLElement) {
+    const window = ownerWindow(root);
+    const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+
   if (root.hidden || root.style.display === 'none' || root.classList.contains('field-menu-covered')) return false;
   if (root.tagName === 'DIALOG' && !(root as HTMLDialogElement).open) return false;
   if (root.hasAttribute('popover') && !root.matches(':popover-open')) return false;
@@ -174,6 +199,9 @@ function visible(root: HTMLElement) {
 }
 
 function enter(surface: Surface) {
+    const window = ownerWindow(surface.root);
+    const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+
   if (surface.pending !== undefined) return;
   if (!enabled(surface.root)) { surface.shown = true; restoreInteraction(surface); return; }
   const from = surface.flight ? current(surface) : undefined;
@@ -218,6 +246,10 @@ function observe(surface: Surface) {
 /** Keep the closing native surface painted, but release its modal/top-layer
  * behavior immediately. No cloned interactive menu or delayed logical close. */
 function prepareNativeClose(surface: Surface) {
+    const window = ownerWindow(surface.root);
+    const document = window.document;
+    const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+
   if (!enabled(surface.root) || surface.cleanupNative) return;
   const { root } = surface;
   const rect = root.getBoundingClientRect();
@@ -320,6 +352,9 @@ export const vSurfaceMotion: ObjectDirective<HTMLElement, string | false> = {
 /** Imperative editor views keep the semantic hidden flag synchronous while
  * retaining only the closing paint. Calling this again reverses the flight. */
 export function setSurfaceVisible(root: HTMLElement, show: boolean) {
+    const window = ownerWindow(root);
+    const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+
   const surface = getSurface(root);
   if (show === !root.hidden && (surface.flight || surface.shown === show)) return;
   if (show) {

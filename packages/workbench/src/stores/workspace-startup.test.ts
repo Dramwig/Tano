@@ -206,31 +206,6 @@ it('does not use stale history or open a folder dialog when recent history fails
   expect(store.fatal).toBe('无法读取历史记录');
 });
 
-it('keeps detached windows from replacing the main window startup selection', async () => {
-  rememberStartupWorkspace(lastWorkspace.id);
-  window.history.replaceState(null, '', `/?detachedTab=blank:test&workspacePath=${encodeURIComponent(olderWorkspace.path)}`);
-  const adapter = localWorkspace();
-  await store.initialize();
-  expect(adapter.open).toHaveBeenCalledExactlyOnceWith(olderWorkspace.path);
-  expect(store.tabs.map(tab => tab.id)).toEqual([expect.stringMatching(/^blank:/)]);
-  expect(readStartupWorkspace()).toBe(lastWorkspace.id);
-  await store.leaveWorkspace();
-  expect(readStartupWorkspace()).toBe(lastWorkspace.id);
-});
-
-it('opens a detached settings tab without restoring the main window document tabs', async () => {
-  rememberStartupWorkspace(lastWorkspace.id);
-  window.history.replaceState(null, '', `/?detachedTab=view:settings&workspacePath=${encodeURIComponent(olderWorkspace.path)}&settingsPage=shortcuts`);
-  const adapter = localWorkspace();
-  store.registerViews([{ id: 'view:settings', label: '设置', icon: {}, detachable: true }]);
-  await store.initialize();
-  expect(adapter.open).toHaveBeenCalledExactlyOnceWith(olderWorkspace.path);
-  expect(store.tabs.map(tab => tab.id)).toEqual(['view:settings']);
-  expect(store.activeId).toBe('view:settings');
-  expect(store.active).toBeUndefined();
-  expect(readStartupWorkspace()).toBe(lastWorkspace.id);
-});
-
 it('recovers invalid device preferences through recent history', async () => {
   localStorage.setItem(startupWorkspaceKey, '{broken');
   const adapter = localWorkspace();

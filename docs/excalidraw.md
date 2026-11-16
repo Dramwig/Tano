@@ -6,7 +6,7 @@
 
 1. 在插件中心找到 **Excalidraw** 并安装。
 2. 在详情中选择「授权此版本运行」。安装与代码授权仍是两个独立步骤。
-3. 在命令中心执行「Excalidraw：新建白板」，或从插件工作台打开「Excalidraw 白板」。
+3. 在命令中心执行「Excalidraw：新建白板」，或从命令面板或插件详情页「功能」打开「Excalidraw 白板」。
 4. 已启用且获授权时，从文件树打开 `.excalidraw.md` 文档会进入官方画布。停用插件后仍可直接读取 Markdown。
 
 绘图更改在停止操作后自动保存，也可点击「保存」。切换白板前会先保存当前更改。菜单、工具和键盘操作沿用官方组件；顶部文件操作用于选择、新建、导入和导出工作区白板。
@@ -29,7 +29,7 @@
 ```powershell
 npm run plugin:excalidraw
 npm run typecheck:plugins
-npx vitest run scripts/plugin-excalidraw.test.ts scripts/plugin-excalidraw-model.test.ts
+npx vitest run scripts/plugin/plugin-excalidraw.test.ts scripts/plugin/plugin-excalidraw-model.test.ts
 ```
 
 源码位于 `examples/plugins/excalidraw/`。专用构建脚本将固定版本官方依赖、中文语言包和字体打进隔离界面，并使用 gzip 和浏览器 `DecompressionStream` 在本地加载，使最终 JSON 插件包保持在现有 4 MiB 限额内。生成的 `packages/workbench/src/plugins/excalidraw/bundle.tano-plugin.json` 是应用离线安装源，插件中心只在用户安装时加载它；修改插件源码后需重新生成。共享工作台只携带安装包与清单，不直接依赖 React 或绘图库。

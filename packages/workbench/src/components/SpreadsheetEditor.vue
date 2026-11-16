@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { Copy, Eraser, Pencil, Plus, Trash2 } from 'lucide-vue-next';
@@ -319,11 +322,12 @@ async function saveFile() {
   } catch (error) { failure.value = String(error); }
   finally { saving.value = false; if (edits.value.length && !failure.value) scheduleSave(); }
 }
+
 </script>
 
 <template>
   <section class="spreadsheet-editor" :aria-label="t('Excel 工作簿')" :aria-busy="busy" @keydown="selectionKey">
-    <Teleport v-if="!statusManaged" :to="controlsTarget ?? 'body'" :disabled="!controlsTarget" defer>
+    <Teleport v-if="!statusManaged" :to="controlsTarget ?? document.body" :disabled="!controlsTarget" defer>
       <DocumentStatus :document-key="draftKey ?? path" :items="fileStatus.items">
         <button v-if="fileStatus.retry" :disabled="fileStatus.retryDisabled" @click="fileStatus.retry()">{{ t('重试') }}</button>
       </DocumentStatus>
@@ -352,7 +356,7 @@ async function saveFile() {
         <button v-if="writable" class="add-sheet" :disabled="busy || sheets.length >= officeLimits.sheets || totalCells >= officeLimits.cells" :aria-label="t('新建工作表')" @click="addSheet"><Plus :size="16" /></button>
       </template>
     </DocumentReader>
-    <Teleport to="body"><div v-surface-motion="'SpreadsheetEditor:0'" v-if="menu" ref="menuElement" class="dropdown compact-action-menu sheet-context-menu" role="menu" tabindex="-1" :aria-label="menu.sheet ? t('工作表操作') : t('行列操作')" :style="{ left: `${menu.x}px`, top: `${menu.y}px`, visibility: menu.positioned ? 'visible' : 'hidden' }" @keydown="menuKey" @contextmenu.prevent>
+    <Teleport :to="document.body"><div v-surface-motion="'SpreadsheetEditor:0'" v-if="menu" ref="menuElement" class="dropdown compact-action-menu sheet-context-menu" role="menu" tabindex="-1" :aria-label="menu.sheet ? t('工作表操作') : t('行列操作')" :style="{ left: `${menu.x}px`, top: `${menu.y}px`, visibility: menu.positioned ? 'visible' : 'hidden' }" @keydown="menuKey" @contextmenu.prevent>
       <template v-if="menu.sheet">
         <button role="menuitem" :disabled="!writable || busy" @click="beginRename"><Pencil :size="14" aria-hidden="true" />{{ t('重命名工作表') }}</button>
         <button role="menuitem" :disabled="!writable || busy || !canCopySheet" @click="sheetAction('copy-sheet')"><Copy :size="14" aria-hidden="true" />{{ t('复制工作表') }}</button>

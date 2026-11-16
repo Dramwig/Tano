@@ -1,3 +1,4 @@
+import { isHTMLElement, ownerWindow } from '@tano/editor/dom-realm';
 import { defaultShortcutBindings, shortcutBindingFromEvent, shortcutDefinitions, shortcutKeys } from './shortcuts';
 import type { ShortcutBindings } from './shortcuts';
 
@@ -7,7 +8,7 @@ export function configuredEditorShortcuts(bindings: () => ShortcutBindings, enab
   return (event: KeyboardEvent) => {
     if (forwarded.has(event) || !enabled() || event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
     const target = event.target;
-    if (!(target instanceof HTMLElement) || target.closest('input, textarea, select, [role="dialog"], dialog')) return;
+    if (!(isHTMLElement(target)) || target.closest('input, textarea, select, [role="dialog"], dialog')) return;
     const rich = target.closest('.ProseMirror');
     const source = target.closest('.cm-content');
     const menu = target.closest('.block-context-menu');
@@ -37,7 +38,7 @@ export function configuredEditorShortcuts(bindings: () => ShortcutBindings, enab
     if (!match) return; // A removed or replaced default must not reach the old keymap.
     const binding = sourceRedo ? sourceRedoKey : shortcutKeys(defaultShortcutBindings[match.id])[0]!;
     const parts = binding.split('+'), name = parts.pop()!;
-    const replacement = new KeyboardEvent('keydown', {
+    const replacement = new (ownerWindow(target).KeyboardEvent)('keydown', {
       key: name.length === 1 && !parts.includes('Shift') ? name.toLowerCase() : name,
       code: /^[A-Z]$/.test(name) ? `Key${name}` : /^\d$/.test(name) ? `Digit${name}` : name,
       ctrlKey: parts.includes('Mod') && !mac, metaKey: parts.includes('Mod') && mac,

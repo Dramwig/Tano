@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import ModalBackdrop from './ModalBackdrop.vue';
 import CapabilitySyntax from './CapabilitySyntax.vue';
@@ -43,6 +46,9 @@ import {
   normalizeCopyFormat,
   normalizeSelectionWrapping,
   selectionWrappingOptions,
+  chineseSyntaxOptions,
+  markdownAutocompleteOptions,
+  normalizeMarkdownAutocomplete,
   chineseInputOptions,
   normalizeChineseInput,
 } from '@tano/editor/runtime';
@@ -180,6 +186,10 @@ const wrappingOptions = computed(() => selectionWrappingOptions.map(option => {
 function setWrapping(key: keyof typeof wrapping.value, enabled: boolean) {
   emit('update:editorPreferences', { ...display.value, selectionWrapping: { ...wrapping.value, [key]: enabled } });
 }
+const autocomplete = computed(() => normalizeMarkdownAutocomplete(display.value.markdownAutocomplete));
+function setMarkdownAutocomplete(key: keyof typeof autocomplete.value, enabled: boolean) {
+ emit('update:editorPreferences', { ...display.value, markdownAutocomplete: { ...autocomplete.value, [key]: enabled } });
+}
 const chineseInput = computed(() => normalizeChineseInput(display.value.chineseInput, display.value.selectionWrapping));
 function setChineseInput(key: keyof typeof chineseInput.value, enabled: boolean) {
   emit('update:editorPreferences', { ...display.value, chineseInput: { ...chineseInput.value, [key]: enabled } });
@@ -196,6 +206,51 @@ const rulesDisabled = computed(
     props.capabilitySaving ||
     !!props.capabilityError,
 );
+type MotionOptionKey = 'smoothCaret' | 'typingMotion' | 'blockMotion' | 'blockResizeMotion' | 'sourceRevealMotion' | 'reduceInterfaceMotion';
+const motionOptions: { key: MotionOptionKey; settingsKey: string; readonly label: string; readonly description: string }[] = [
+  {
+    key: 'reduceInterfaceMotion',
+    settingsKey: 'appearance-reduce-motion',
+    get label() { return t('减少动态效果'); },
+    get description() { return t('关闭按钮回弹、面板弹出和编辑区动画。系统开启“减少动态效果”时始终生效。'); },
+  },
+  {
+    key: 'smoothCaret',
+    settingsKey: 'appearance-smooth-caret',
+    get label() { return t('光标平滑移动'); },
+    get description() { return t('输入、移动光标和换行时，光标平滑滑到新位置。'); },
+  },
+  {
+    key: 'typingMotion',
+    settingsKey: 'appearance-typing-motion',
+    get label() { return t('文字输入与删除动画'); },
+    get description() { return t('新输入的文字淡入，删除的文字在原位置淡出。'); },
+  },
+  {
+    key: 'blockMotion',
+    settingsKey: 'appearance-block-motion',
+    get label() { return t('段落增删动画'); },
+    get description() { return t('新段落浮现，删除的段落淡出，其余段落平滑让位。'); },
+  },
+  {
+    key: 'blockResizeMotion',
+    settingsKey: 'appearance-block-resize-motion',
+    get label() { return t('段落变高时下方内容平滑移动'); },
+    get description() { return t('段落内换行或删减使高度变化时，下方内容平滑跟随。'); },
+  },
+  {
+    key: 'sourceRevealMotion',
+    settingsKey: 'appearance-source-reveal-motion',
+    get label() { return t('Markdown 源码展开收起动画'); },
+    get description() { return t('光标进入或离开链接、行内代码、公式和引用时，源码平滑展开，离开后平滑收起。'); },
+  },
+];
+function motionOptionActive(key: MotionOptionKey) {
+  return key === 'reduceInterfaceMotion' ? display.value[key] === true : display.value[key] !== false;
+}
+function toggleMotionOption(key: MotionOptionKey) {
+  emit('update:editorPreferences', { ...display.value, [key]: !motionOptionActive(key) });
+}
 const displayOptions = [
   {
     key: 'previewMathWhileEditing',
@@ -321,6 +376,12 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('appearance', 'appearance-discussion', '文档讨论', '有讨论时在文档底部显示，没有讨论时自动隐藏。', 'comments discussion'),
   settingSearchEntry('appearance', 'appearance-outline', '显示目录', '', 'outline table of contents'),
   settingSearchEntry('appearance', 'appearance-outline-position', '目录显示在左侧', '将文档大纲放到编辑区左侧。', 'outline left right'),
+  settingSearchEntry('appearance', 'appearance-reduce-motion', '减少动态效果', '关闭按钮回弹、面板弹出和编辑区动画。系统开启“减少动态效果”时始终生效。', 'reduce motion animation accessibility 减少 动态 动画 动效 无障碍'),
+  settingSearchEntry('appearance', 'appearance-smooth-caret', '光标平滑移动', '输入、移动光标和换行时，光标平滑滑到新位置。', 'caret cursor smooth animation motion 光标 平滑 动画 动效'),
+  settingSearchEntry('appearance', 'appearance-typing-motion', '文字输入与删除动画', '新输入的文字淡入，删除的文字在原位置淡出。', 'typing delete animation motion 打字 输入 删除 退格 动画 动效'),
+  settingSearchEntry('appearance', 'appearance-block-motion', '段落增删动画', '新段落浮现，删除的段落淡出，其余段落平滑让位。', 'block paragraph animation motion 段落 块 动画 动效'),
+  settingSearchEntry('appearance', 'appearance-block-resize-motion', '段落变高时下方内容平滑移动', '段落内换行或删减使高度变化时，下方内容平滑跟随。', 'block height wrap animation motion 段落 高度 换行 动画 动效'),
+  settingSearchEntry('appearance', 'appearance-source-reveal-motion', 'Markdown 源码展开收起动画', '光标进入或离开链接、行内代码、公式和引用时，源码平滑展开，离开后平滑收起。', 'markdown source reveal link code math reference wiki animation motion 源码 展开 收起 链接 公式 引用 动画 动效'),
   settingSearchEntry('appearance', 'appearance-help', '偶尔显示使用提示', '在你停下来时，在帮助按钮上方显示简短的用法提示。关闭后仍可手动查看帮助。', 'help tips hints'),
   settingSearchEntry('editing', 'editing-default-mode', '默认编辑模式', '选择打开文档时使用的视图。', 'editor visual Markdown source'),
   settingSearchEntry('editing', 'editing-reveal-markdown', '光标进入时展开 Markdown 源码', '类似 Typora、Obsidian 的实时预览：光标进入时显示 Markdown 语法，离开后恢复排版。', 'live preview source syntax'),
@@ -332,7 +393,8 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('editing', 'editing-ai-shortcut', '空白块按空格启动 AI', '在空白 block 中按空格，直接展开一次性 AI 编辑输入框。', 'AI space block'),
   settingSearchEntry('editing', 'editing-wrapping', '输入符号包裹选区', '选中文字后输入符号，自动补齐两端。可视化与源码模式通用。', 'selection wrapping symbols'),
   ...selectionWrappingOptions.map(option => settingSearchEntry('editing', `editing-wrapping-${option.key}`, option.label, option.example, 'selection wrapping Markdown')),
-  ...chineseInputOptions.map(option => settingSearchEntry('editing', `editing-chinese-input-${option.key}`, option.label,
+  ...markdownAutocompleteOptions.map(option => settingSearchEntry('editing', `editing-autocomplete-${option.key}`, option.label, '自动补全 列表 续行 代码块 括号 autocomplete list continuation fence bracket')),
+  ...[...chineseSyntaxOptions, ...chineseInputOptions].map(option => settingSearchEntry('editing', `editing-chinese-input-${option.key}`, option.label,
     `${option.input} → ${option.output}`, '中文输入优化 输入法 标点 符号映射 Chinese IME punctuation')),
   ...shortcutDefinitions.map(item => settingSearchEntry('shortcuts', `shortcut-${item.id}`, item.label, 'scope' in item ? item.scope : '', 'shortcut keybinding keyboard')),
   settingSearchEntry('assistant', 'assistant-connections', '模型连接', '管理助手使用的 API 或 CLI 连接。', 'assistant model connection API CLI'),
@@ -348,7 +410,7 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('workspace', 'workspace-folder-home', '文件夹首页', '点击文件夹名称打开直属首页，点击图标展开。首页文件在文件树中隐藏，不移动或修改文件。', 'README _index index folder home'),
   settingSearchEntry('workspace', 'workspace-show-plan', '显示计划', '在侧栏显示计划与日历入口。', 'sidebar plan calendar'),
   settingSearchEntry('workspace', 'workspace-show-graph', '显示关系图谱', '在侧栏顶部显示关系图谱入口。', 'sidebar graph'),
-  settingSearchEntry('workspace', 'workspace-show-plugins', '显示插件', '在侧栏顶部显示插件管理入口。', 'sidebar plugins'),
+  settingSearchEntry('workspace', 'workspace-show-plugins', '显示插件', '在侧栏显示已安装插件与插件管理入口。', 'sidebar plugins'),
   settingSearchEntry('workspace', 'workspace-show-collaboration-views', '显示协作应用', '在侧栏显示聊天等协作入口，不影响账户收件箱。', 'sidebar collaboration chat inbox'),
   settingSearchEntry('workspace', 'workspace-export', '工作区内容', '将已保存的 Markdown、附件和工作区设置导出为 ZIP，保留文件夹结构。', 'export ZIP backup'),
   settingSearchEntry('workspace', 'workspace-page-views', '保存并显示页面浏览统计', '页面浏览量统计尚未实现，当前不会收集浏览数据。', 'analytics statistics views'),
@@ -954,9 +1016,50 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
             </div>
             <p class="settings-local-note">{{ t('选区包裹仅影响当前设备，扩展语法的包裹默认关闭。正文显示由工作区「Markdown 与格式」控制，其他 Markdown 应用可能不支持。') }}</p>
           </section>
+          <section v-if="page === 'editing'" class="settings-section" :aria-label="t('自动补全')">
+            <h3>{{ t('自动补全') }}</h3>
+            <p class="settings-local-note">{{ t('可视化编辑已内置列表续行和语法识别；以下选项让源码模式获得同样的输入体验。仅保存在当前设备。') }}</p>
+            <div class="settings-card">
+              <div v-for="option in markdownAutocompleteOptions" :key="option.key" class="settings-row settings-row-compact"
+                :data-settings-key="`editing-autocomplete-${option.key}`">
+                <div class="settings-inline-copy">
+                  <strong>{{ t(option.label) }}</strong>
+                  <span class="settings-inline-example" :aria-label="`${option.input} → ${option.output}`">
+                    <kbd aria-hidden="true">{{ option.input }}</kbd>
+                    <ArrowRight :size="12" aria-hidden="true" />
+                    <code aria-hidden="true"><span>{{ option.output }}</span></code>
+                  </span>
+                </div>
+                <button type="button" class="settings-switch" role="switch" :aria-label="t(option.label)"
+                  :class="{ on: autocomplete[option.key] }" :aria-checked="autocomplete[option.key]"
+                  @click="setMarkdownAutocomplete(option.key, !autocomplete[option.key])"><span /></button>
+              </div>
+            </div>
+          </section>
           <section v-if="page === 'editing'" class="settings-section" :aria-label="t('中文输入优化')">
             <h3>{{ t('中文输入优化') }}</h3>
-            <p class="settings-local-note">{{ t('输入中文符号时，按键位转换为英文符号。可视化与源码模式通用，各项默认关闭。') }}</p>
+            <p class="settings-local-note">{{ t('在 Markdown 语法位置把中文符号识别为语法，默认开启；全局映射会转换所有位置的符号，默认关闭。可视化与源码模式通用。') }}</p>
+            <p class="settings-local-note">{{ t('语法位置识别') }}</p>
+            <div class="settings-card">
+              <div v-for="option in chineseSyntaxOptions" :key="option.key" class="settings-row settings-row-compact"
+                :data-settings-key="`editing-chinese-input-${option.key}`">
+                <div class="settings-inline-copy">
+                  <strong>{{ t(option.label) }}</strong>
+                  <span class="settings-inline-examples">
+                    <span v-for="(example, index) in ('examples' in option ? option.examples : [{ before: '', input: option.input, output: option.output }])"
+                      :key="index" class="settings-inline-example" :aria-label="`${example.before}${example.input} → ${example.output}`">
+                      <kbd aria-hidden="true">{{ example.before }}{{ example.input }}</kbd>
+                      <ArrowRight :size="12" aria-hidden="true" />
+                      <code aria-hidden="true"><span>{{ example.output }}</span></code>
+                    </span>
+                  </span>
+                </div>
+                <button type="button" class="settings-switch" role="switch" :aria-label="t(option.label)"
+                  :class="{ on: chineseInput[option.key] }" :aria-checked="chineseInput[option.key]"
+                  @click="setChineseInput(option.key, !chineseInput[option.key])"><span /></button>
+              </div>
+            </div>
+            <p class="settings-local-note">{{ t('全局映射') }}</p>
             <div class="settings-card">
               <div v-for="option in chineseInputOptions" :key="option.key" class="settings-row settings-row-compact"
                 :data-settings-key="`editing-chinese-input-${option.key}`">
@@ -1070,6 +1173,23 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
                   :aria-label="t('目录显示在左侧')"
                   @click="emit('update:outlineOnLeft', !(outlineOnLeft ?? false))"
                 >
+                  <span />
+                </button>
+              </div>
+            </div>
+          </section>
+          <section v-if="page === 'appearance'" class="settings-section" :aria-label="t('动效')">
+            <h3>{{ t('动效') }}</h3>
+            <div class="settings-card">
+              <div v-for="option in motionOptions" :key="option.key" class="settings-row" :data-settings-key="option.settingsKey">
+                <div>
+                  <strong>{{ option.label }}</strong>
+                  <p>{{ option.description }}</p>
+                </div>
+                <button type="button" class="settings-switch" :class="{ on: motionOptionActive(option.key) }"
+                  role="switch" :aria-checked="motionOptionActive(option.key)" :aria-label="option.label"
+                  :disabled="option.key !== 'reduceInterfaceMotion' && display.reduceInterfaceMotion === true"
+                  @click="toggleMotionOption(option.key)">
                   <span />
                 </button>
               </div>
@@ -1931,7 +2051,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   padding: 3px;
   border-radius: 999px;
   background: var(--switch-off);
-  transition: background 0.18s;
+  transition: background-color var(--motion-base) var(--ease-standard);
 }
 .settings-switch::before {
   content: '';
@@ -1939,22 +2059,31 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   inset: -9px -3px;
 }
 .settings-switch.on {
-  background: var(--green);
+  background: var(--switch-on, var(--green));
 }
 .settings-switch.on:hover:not(:disabled) {
-  background: var(--green-hover);
+  background: color-mix(in srgb, var(--switch-on, var(--green)) 88%, var(--paper));
 }
 .settings-switch span {
   display: block;
   width: 16px;
   height: 16px;
-  border-radius: 50%;
+  border-radius: 999px;
   background: white;
-  box-shadow: 0 1px 3px #18212b26;
-  transition: transform 0.18s;
+  box-shadow: 0 1px 3px #18212b26, 0 0 0 0.5px #0000000d;
+  transition:
+    translate var(--motion-bouncy) var(--ease-spring-bouncy),
+    width var(--motion-spring) var(--ease-spring);
 }
 .settings-switch.on span {
-  transform: translateX(16px);
+  translate: 16px 0;
+}
+/* The thumb stretches toward its destination while pressed, then springs. */
+.settings-switch:active:not(:disabled) span {
+  width: 20px;
+}
+.settings-switch.on:active:not(:disabled) span {
+  translate: 12px 0;
 }
 .settings-row.is-disabled > div,
 .settings-switch:disabled {
@@ -1992,9 +2121,13 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   align-items: center;
   gap: 8px 24px;
 }
+.settings-inline-examples {
+  display: grid;
+  gap: 6px;
+}
 .settings-inline-example {
   display: inline-grid;
-  grid-template-columns: 68px 12px minmax(100px, max-content);
+  grid-template-columns: minmax(68px, max-content) 12px minmax(100px, max-content);
   align-items: center;
   gap: 12px;
   color: var(--muted);
@@ -2244,7 +2377,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
     gap: 6px;
   }
   .settings-inline-example {
-    grid-template-columns: 60px 12px minmax(88px, max-content);
+    grid-template-columns: minmax(60px, max-content) 12px minmax(88px, max-content);
     gap: 8px;
   }
   .settings-row:has(select),
@@ -2342,6 +2475,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   cursor: grabbing;
 }
 .settings-windowed .settings-close {
+  top: calc(var(--workbench-tabbar-height) + 8px);
   z-index: 2;
 }
 

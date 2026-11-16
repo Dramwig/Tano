@@ -1,12 +1,18 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+const ResizeObserver = (window as Window & typeof globalThis).ResizeObserver;
+import { isElement, isButtonElement } from '@tano/editor/dom-realm';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
+import { MOTION_DURATION, captureList, spring } from '@tano/editor/motion';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t, uiLocale } from '../i18n';
 import { assistantCopy, assistantTaskPrompts } from '../assistant/language';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { AlignLeft, ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRight, ChevronsRight, CircleCheck, Copy, Cpu, createLucideIcon, FilePlus2, FileText, History, Languages, LoaderCircle, MessageCircle, MessageCirclePlus, Minus, MoreHorizontal, Paperclip, Pencil, Plug, Plus, RefreshCw, Reply, Quote, Search, Settings2, Square, Terminal, Trash2, Undo2, X } from 'lucide-vue-next';
 import MarkdownEditor from '@tano/editor';
-import { droppedEntryReferences, entryReferenceDragType, referenceMarkdown } from '@tano/protocol';
+import { confirmEntryReferenceDrop, droppedEntryReferences, entryReferenceDragType, referenceMarkdown } from '@tano/protocol';
 import type { AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSource, ReferenceIdentity } from '@tano/protocol';
 import { useAssistantStore } from '../assistant/store';
 import { isAssistantFile } from '../assistant/files';
@@ -31,8 +37,8 @@ function afterPanelLeave() {
   if (!assistant.opened) emit('closed');
 }
 // Keep the destination while disabled so re-enabling Teleport updates its target.
-const teleportTarget = computed<string | HTMLElement>(previous => assistant.displayMode === 'sidebar' ? previous ?? 'body'
-  : assistant.displayMode === 'fullscreen' ? props.fullscreenTarget ?? 'body' : 'body');
+const teleportTarget = computed<string | HTMLElement>(previous => assistant.displayMode === 'sidebar' ? previous ?? document.body
+  : assistant.displayMode === 'fullscreen' ? props.fullscreenTarget ?? document.body : document.body);
 const section = ref<'conversation' | 'history'>('conversation');
 const query = ref('');
 const textarea = ref<HTMLTextAreaElement>();
@@ -122,6 +128,14 @@ const starters = computed(() => {
 const sourceFiles = computed(() => workspace.workspace?.files.filter(file => file.kind === 'file' && isAssistantFile(file.path) &&
   file.path.toLocaleLowerCase().includes(query.value.toLocaleLowerCase())).slice(0, 100) ?? []);
 const displayed = computed(() => assistant.session?.messages.slice(-visibleMessages.value) ?? []);
+// New turns rise in and deleted/retracted turns fade out. Opening a session
+// (no shared ids) or paging older history is not an edit, so it stays still.
+watch(() => displayed.value.map(message => message.id), (next, previous) => {
+  if (!previous?.length || !next.some(id => previous.includes(id))) return;
+  if (next.length > previous.length && next[0] !== previous[0] && next.includes(previous[0]!)) return;
+  const play = captureList(messages.value, '.assistant-message[data-message-id]', element => element.dataset.messageId, { maxEnter: 4, strip: ['data-message-id'] });
+  void nextTick(play);
+}, { flush: 'pre' });
 const messageSources = computed(() => {
   const messages = assistant.session?.messages ?? [];
   const sourcesByMessage = new Map<string, AssistantSource[]>();
@@ -187,6 +201,7 @@ function dropReferences(event: DragEvent) {
       notice.value = t('已添加附件引用，当前助手无法直接读取附件正文');
     }
   }
+  if (targets.length) confirmEntryReferenceDrop(event);
   void nextTick(() => textarea.value?.focus());
 }
 function toggleSource(id: string) {
@@ -298,7 +313,7 @@ function endFloatingGesture() {
   if (gesture?.target.hasPointerCapture(gesture.pointer)) gesture.target.releasePointerCapture(gesture.pointer);
 }
 function outsidePopover(event: PointerEvent) {
-  if (!(event.target instanceof Element) || !panel.value?.contains(event.target) ||
+  if (!(isElement(event.target)) || !panel.value?.contains(event.target) ||
     !event.target.closest('.assistant-popover, [data-assistant-popover]')) closePopover();
 }
 function openHistory() {
@@ -331,7 +346,7 @@ function addCurrentNote() {
   closePopover(true);
 }
 function menuKey(event: KeyboardEvent) {
-  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || !(event.target instanceof HTMLButtonElement)) return;
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || !(isButtonElement(event.target))) return;
   const menu = event.target.closest('.assistant-popover');
   if (!menu) return;
   const items = [...menu.querySelectorAll<HTMLButtonElement>('[data-menu-item]:not(:disabled)')];
@@ -456,7 +471,7 @@ watch(() => assistant.displayMode, async (_mode, _previous, onCleanup) => {
       borderRadius: radius,
     },
     { transform: 'none', borderRadius: getComputedStyle(element).borderRadius },
-  ], { duration: 240, easing: 'cubic-bezier(0.2, 0, 0, 1)' });
+  ], { duration: MOTION_DURATION.snappy + 40, easing: spring('snappy') });
 }, { flush: 'pre' });
 watch(() => [assistant.displayMode, props.fullscreenTarget], () => {
   endFloatingGesture();
@@ -472,6 +487,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
   if (element && element.scrollHeight - element.scrollTop - element.clientHeight < 160)
     void nextTick(scrollToLatest);
 });
+
 </script>
 
 <template>
@@ -556,7 +572,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
         </div>
         <button v-if="(assistant.session?.messages.length ?? 0) > visibleMessages" class="assistant-text-action" @click="visibleMessages += 30">{{ t('查看较早消息') }}</button>
         <div v-if="displayed.length" class="assistant-conversation-meta">{{ t('同页助手 ·') }} {{ messageTime(displayed[0]!.createdAt) }}</div>
-        <article v-for="message in displayed" :key="message.id" class="assistant-message" :class="`assistant-message-${message.role}`" :aria-label="message.role === 'user' ? t('你的消息') : t('助手回答')">
+        <article v-for="message in displayed" :key="message.id" :data-message-id="message.id" class="assistant-message" :class="`assistant-message-${message.role}`" :aria-label="message.role === 'user' ? t('你的消息') : t('助手回答')">
           <div v-if="message.role === 'user' && messageSources.get(message.id)?.length" class="assistant-citations assistant-attachments" :aria-label="t('已发送的引用')">
             <template v-for="source in messageSources.get(message.id)" :key="source.id">
               <button v-if="!source.selection" :data-tooltip="source.path" @click="openSource(source)"><FileText :size="12" />{{ source.path }}</button>
@@ -615,7 +631,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
           </div>
           <template v-if="modelView === 'connections'">
             <div class="assistant-menu-scroll panel-scrollbar">
-              <button v-for="connection in assistant.connections" :key="connection.id" class="assistant-menu-item assistant-detail-option" :class="{ selected: assistant.connectionId === connection.id }" :aria-pressed="assistant.connectionId === connection.id" :disabled="controlsLocked" data-menu-item @click="changeConnection(connection.id)"><Plug v-if="!connection.kind || connection.kind === 'api'" :size="17" /><Terminal v-else :size="17" /><span class="assistant-menu-label"><span>{{ connection.name }}</span><small>{{ connection.managed ? t('平台提供') : connection.kind === 'codex-cli' ? 'Codex CLI' : connection.kind === 'claude-cli' ? 'Claude CLI' : t('API 连接') }}</small></span><Check v-if="assistant.connectionId === connection.id" :size="16" class="assistant-menu-check" /></button>
+              <button v-for="connection in assistant.connections" :key="connection.id" class="assistant-menu-item assistant-detail-option" :class="{ selected: assistant.connectionId === connection.id }" :aria-pressed="assistant.connectionId === connection.id" :disabled="controlsLocked" data-menu-item @click="changeConnection(connection.id)"><Plug v-if="!connection.kind || connection.kind === 'api'" :size="17" /><Terminal v-else :size="17" /><span class="assistant-menu-label"><span>{{ connection.name }}</span><small>{{ connection.platformProvider ? t('平台提供') : connection.kind === 'codex-cli' ? 'Codex CLI' : connection.kind === 'claude-cli' ? 'Claude CLI' : t('API 连接') }}</small></span><Check v-if="assistant.connectionId === connection.id" :size="16" class="assistant-menu-check" /></button>
             </div>
             <div v-if="!assistant.demo && assistant.canConfigure !== false" class="assistant-menu-divider" />
             <button v-if="!assistant.demo && assistant.canConfigure !== false" class="assistant-menu-item" data-menu-item @click="closePopover(); emit('openSettings')"><Plus :size="17" /><span class="assistant-menu-label">{{ t('添加模型连接') }}</span></button>
@@ -637,7 +653,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
             </div>
             <p v-if="assistant.modelsError" class="assistant-model-error" role="alert">{{ assistant.modelsError }}</p>
             <div class="assistant-menu-divider" />
-            <button v-if="assistant.connection && !assistant.connection.managed" class="assistant-menu-item" :aria-label="t('手动指定对话模型')" :disabled="controlsLocked" data-menu-item @click="inputModel"><Pencil :size="16" /><span class="assistant-menu-label">{{ t('手动指定模型') }}</span></button>
+            <button v-if="assistant.connection && !assistant.connection.platformProvider" class="assistant-menu-item" :aria-label="t('手动指定对话模型')" :disabled="controlsLocked" data-menu-item @click="inputModel"><Pencil :size="16" /><span class="assistant-menu-label">{{ t('手动指定模型') }}</span></button>
             <button v-if="!assistant.connections.length && !assistant.demo && assistant.canConfigure !== false" class="assistant-menu-item" data-menu-item @click="closePopover(); emit('openSettings')"><Plus :size="16" /><span class="assistant-menu-label">{{ t('添加模型连接') }}</span></button>
           </template>
         </div>
@@ -692,7 +708,11 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
    the same amount of space back. Messages do not rewrap during the slide. */
 .assistant-panel-sidebar.assistant-sidebar-enter-active,
 .assistant-panel-sidebar.assistant-sidebar-leave-active {
-  transition: margin-right 200ms cubic-bezier(0.2, 0, 0, 1);
+  transition: margin-right var(--motion-spring) var(--ease-spring-smooth);
+}
+.assistant-panel-sidebar.assistant-sidebar-leave-active {
+  transition-duration: var(--motion-base);
+  transition-timing-function: var(--ease-exit);
 }
 .assistant-panel-sidebar.assistant-sidebar-enter-from,
 .assistant-panel-sidebar.assistant-sidebar-leave-to {
@@ -710,7 +730,11 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 .assistant-panel-floating.assistant-floating-enter-active,
 .assistant-panel-floating.assistant-floating-leave-active {
   transform-origin: bottom right;
-  transition: opacity 200ms cubic-bezier(0.2, 0, 0, 1), transform 200ms cubic-bezier(0.2, 0, 0, 1);
+  transition: opacity var(--motion-base) var(--ease-standard), transform var(--motion-bouncy) var(--ease-spring);
+}
+.assistant-panel-floating.assistant-floating-leave-active {
+  transition-duration: var(--motion-quick);
+  transition-timing-function: var(--ease-exit);
 }
 .assistant-panel-floating.assistant-floating-enter-from,
 .assistant-panel-floating.assistant-floating-leave-to {

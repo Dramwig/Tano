@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
+import { isKeyboardEvent } from '@tano/editor/dom-realm';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import LoadingSkeleton from './LoadingSkeleton.vue';
@@ -101,7 +105,7 @@ function show(event: MouseEvent | KeyboardEvent, key: string, directory: string)
   anchorKey.value = key;
   folder.value = directory;
   opened.value = true;
-  void focusEntry(props.path, event instanceof KeyboardEvent && event.key === 'ArrowUp');
+  void focusEntry(props.path, isKeyboardEvent(event) && event.key === 'ArrowUp');
 }
 function choose(entry: FileEntry) {
   close(true);
@@ -174,6 +178,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', placeMenu);
   window.removeEventListener('scroll', onScroll, true);
 });
+
 </script>
 
 <template>
@@ -242,7 +247,7 @@ onBeforeUnmount(() => {
     </template>
     <slot name="status" />
   </nav>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <div v-surface-motion="'WorkspaceBreadcrumb:0'" v-if="opened" :id="menuId" ref="menu" class="breadcrumb-menu" :style="position"
       role="menu" :aria-label="t('浏览目录：{0}', [folderLabel])" tabindex="-1" @keydown="menuKeydown">
       <div class="breadcrumb-menu-list panel-scrollbar">

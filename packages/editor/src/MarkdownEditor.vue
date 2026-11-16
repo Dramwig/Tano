@@ -1,5 +1,19 @@
 <script setup lang="ts">
+import { useEditorWindow } from './dom-context';
+
+const window = useEditorWindow();
+const document = window.document;
+const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
+const { ResizeObserver, IntersectionObserver } = window as Window & typeof globalThis;
+import { isElement, isHTMLElement, isMouseEvent } from './dom-realm';
+
 import { vSurfaceMotion, setSurfaceVisible } from './surface-motion';
+import { canAnimate, collapseElement, resizeHeight, settleHeight, spring, MOTION_DURATION, EASE_EXIT } from './motion';
+import { blockMotion } from './block-motion';
+import { typingMotion } from './typing-motion';
+import { inlineSourceMotion } from './inline-source-motion';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { Component } from 'vue';
 import ShortcutHint from './ShortcutHint.vue';
@@ -11,6 +25,7 @@ import {
   rootCtx,
   defaultValueCtx,
   editorViewOptionsCtx,
+  editorStateOptionsCtx,
   serializerCtx,
   parserCtx,
   editorViewCtx,
@@ -29,9 +44,11 @@ import {
 import { gfm, toggleStrikethroughCommand } from '@milkdown/kit/preset/gfm';
 import { toggleMark } from '@milkdown/kit/prose/commands';
 import { history, historyProviderPlugin } from '@milkdown/kit/plugin/history';
+import { captureHistory, restoreHistory } from './history-transfer';
 import { clipboard } from '@milkdown/kit/plugin/clipboard';
 import { callCommand, $prose } from '@milkdown/kit/utils';
 import { Plugin, PluginKey, NodeSelection, Selection, TextSelection } from '@milkdown/kit/prose/state';
+import { GapCursor, gapCursor } from '@milkdown/kit/prose/gapcursor';
 import type { EditorState, Transaction } from '@milkdown/kit/prose/state';
 import {
   closeHistory,
@@ -108,7 +125,7 @@ import type { InlineSourceSession } from './inline-source-session';
 import { liveInlineSource, liveSource } from './live-source';
 import { nestedEmphasisRemark } from './nested-emphasis';
 import { sourceStyleRanges } from './source-highlight';
-import { configureMarkdownRuntime, defaultCapabilities, defaultEditorPreferences, normalizeCopyFormat, selectionWrap, workspaceWrapping, mapChineseInput, normalizeChineseInput, mappedChineseInputKey, mappedChineseBeforeInput } from './runtime';
+import { configureMarkdownRuntime, defaultCapabilities, defaultEditorPreferences, normalizeCopyFormat, chineseSyntaxEdit, selectionWrap, workspaceWrapping, mapChineseInput, normalizeChineseInput, mappedChineseInputKey, mappedChineseBeforeInput } from './runtime';
 import type { WorkspaceCapabilities, EditorPreferences, CopyFormat } from './runtime';
 import { destinationClipboardHTML, selectedFormulaMathML, tableTSV } from './clipboard-formats';
 import { runtimeViews, runtimeMarkViews, mermaidView } from './runtime-views';
@@ -119,7 +136,7 @@ import { referencePicker, openReferencePicker } from './reference-picker';
 import { floatingPanelPosition, positionAnchoredPanel } from './panel-position';
 import type { PanelSide } from './panel-position';
 import { activateEditorPanel, announceEditorPanel, createEditorPanel, onOtherEditorPanel } from './editor-panel';
-import { droppedEntryReferences, entryReferenceDragType, parseReferenceUrl, referenceUrl, resolveReference } from '@tano/protocol';
+import { confirmEntryReferenceDrop, droppedEntryReferences, entryReferenceDragType, parseReferenceUrl, referenceUrl, resolveReference } from '@tano/protocol';
 import type { ReferenceTarget, ReferenceIdentity } from '@tano/protocol';
 import type { CommentAnchor } from '@tano/protocol';
 import { commentSpansForSelection, projectCommentText, proseRangesForCommentSpans } from './comment-projection';
@@ -191,7 +208,7 @@ const emit = defineEmits<{
 const policy = () => props.capabilities ?? defaultCapabilities;
 const referencesEnabled = () => props.referenceTargets !== undefined && commandEnabled('reference', props.enabledLevels, policy().features);
 const preferences = () => props.preferences ?? defaultEditorPreferences;
-const renderMermaid = createMermaidRenderer();
+const renderMermaid = createMermaidRenderer(document);
 const defaultCopyAction = computed(() => {
   const format = normalizeCopyFormat(preferences().copyFormat);
   return format === 'markdown' ? 'copy' : `copy-${format}`;
@@ -232,7 +249,7 @@ function initializeBody(markdown: string, expected: string) {
 function preventEditorTabNavigation(event: KeyboardEvent) {
   if (event.key !== 'Tab' || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
   const target = event.target;
-  if (!(target instanceof Element) || !target.closest('.ProseMirror') ||
+  if (!(isElement(target)) || !target.closest('.ProseMirror') ||
       target.closest('input, select, button, a[href], [role="button"], [role="tab"]')) return;
   // Run after the editor keymaps so list indentation and table navigation still work.
   event.preventDefault();
@@ -460,14 +477,112 @@ const visibleProperties = computed(() => {
   return rows;
 });
 const frontmatterPanel = ref<HTMLDetailsElement>();
+const frontmatterContent = ref<HTMLElement>();
+const panelExpanded = ref(false);
+let panelAnimation: Animation | undefined;
+watch(frontmatterPanel, (panel) => { panelExpanded.value = !!panel?.open; }, { flush: 'post' });
+
+// Document-property motion. Everything is layout-driven (heights animate), so
+// the rows below, and the document body under the panel, glide along instead
+// of jumping. Only user-initiated changes animate: switching documents swaps
+// the rows silently.
+let rowMotionUntil = 0;
+let rowMotionMutedUntil = 0;
+const armRowMotion = () => {
+  if (performance.now() < rowMotionMutedUntil) return;
+  rowMotionUntil = performance.now() + 700;
+};
+/** Pressing the panel heading blurs an open row editor first, which would
+ * play the row/button collapse a moment before the panel's own collapse. The
+ * panel animation already covers it, so those inner changes apply silently. */
+function muteRowMotion() {
+  rowMotionMutedUntil = performance.now() + 600;
+  rowMotionUntil = 0;
+}
+function enterRow(element: Element, done: () => void) {
+  if (performance.now() < rowMotionUntil) collapseElement(element as HTMLElement, true, done);
+  else done();
+}
+function leaveRow(element: Element, done: () => void) {
+  if (performance.now() >= rowMotionUntil) { done(); return; }
+  (element as HTMLElement).dataset.leaving = '1';
+  collapseElement(element as HTMLElement, false, done);
+}
+function boxHeight(element: HTMLElement) {
+  const style = getComputedStyle(element);
+  const height = element.getBoundingClientRect().height;
+  return style.boxSizing === 'border-box' ? height
+    : Math.max(0, height - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom));
+}
+/** Open/close the whole panel with a height + fade spring. Interruptible:
+ * reversing mid-way continues from the current visual height. */
+function setPanelOpen(open: boolean) {
+  const panel = frontmatterPanel.value, content = frontmatterContent.value;
+  if (!panel) return;
+  panelExpanded.value = open;
+  if (!content || !canAnimate(panel) || !canAnimate(content)) { panel.open = open; return; }
+  const style = getComputedStyle(content);
+  const zero = { height: '0px', paddingTop: '0px', opacity: 0 };
+  const from = panel.open
+    ? { height: `${boxHeight(content)}px`, paddingTop: style.paddingTop, opacity: Number(style.opacity) }
+    : zero;
+  panelAnimation?.cancel();
+  if (open) panel.open = true;
+  const natural = getComputedStyle(content);
+  const full = { height: `${boxHeight(content)}px`, paddingTop: natural.paddingTop, opacity: 1 };
+  const animation = content.animate(open ? [from, full] : [from, zero], open
+    ? { duration: MOTION_DURATION.snappy, easing: spring('smooth') }
+    : { duration: MOTION_DURATION.exit + 110, easing: EASE_EXIT, fill: 'forwards' });
+  panelAnimation = animation;
+  const previousOverflow = content.style.overflow;
+  content.style.overflow = 'clip';
+  const release = () => {
+    if (panelAnimation === animation) panelAnimation = undefined;
+    content.style.overflow = previousOverflow;
+  };
+  animation.addEventListener('finish', () => {
+    release();
+    // Hide first, then drop the held end state, so the full content can never flash back.
+    if (!open && !panelExpanded.value) { panel.open = false; animation.cancel(); }
+  });
+  animation.addEventListener('cancel', release);
+}
+function onPanelHeadingClick(event: MouseEvent) {
+  event.preventDefault();
+  setPanelOpen(!panelExpanded.value);
+}
+// A row whose height changes (edit expands a textarea, a type switch, a
+// validation message) animates itself; rows after it follow through layout.
 let editingPropertyBase: string | null = null;
 let activatingProperty = false;
 const propertyName = ref('');
+const editingPropertyField = ref<'name' | 'value'>('value');
 const propertyKind = ref<FrontmatterValueKind>('text');
 const propertyInput = ref('');
 const propertyError = ref('');
 const propertyErrorField = ref<'name' | 'value'>('value');
 const typeMenuProperty = ref<string | null | undefined>();
+const propertyLayoutSignature = computed(() => [
+  visibleProperties.value.map((property) => property.name).join('\u0000'),
+  String(editingProperty.value),
+  editingPropertyField.value,
+  propertyKind.value,
+  Math.min(12, propertyInput.value.split('\n').length),
+  propertyError.value,
+].join('\u0001'));
+watch(propertyLayoutSignature, () => {
+  const panel = frontmatterPanel.value;
+  if (!panel?.open || !canAnimate(panel) || performance.now() < rowMotionMutedUntil) return;
+  const before = new Map<HTMLElement, number>();
+  for (const row of panel.querySelectorAll<HTMLElement>('.frontmatter-property:not([data-leaving])'))
+    before.set(row, row.getBoundingClientRect().height);
+  void nextTick(() => {
+    const rows = [...before].filter(([row]) => row.isConnected && !row.dataset.leaving);
+    for (const [row] of rows) settleHeight(row);
+    const clip = typeMenuProperty.value === undefined;
+    for (const [row, from] of rows) resizeHeight(row, from, row.getBoundingClientRect().height, { clip });
+  });
+}, { flush: 'pre' });
 const propertyTypeOptions = [
   { kind: 'text', get label() { return t('文本'); }, icon: AlignLeft },
   { kind: 'number', get label() { return t('数字'); }, icon: Hash },
@@ -494,6 +609,7 @@ function editProperty(name: string | null, focus: 'name' | 'value' | false = 'va
   }
   const current = name === null ? null : frontmatterValue(metadata.value, name);
   if (name !== null && !current) return;
+  armRowMotion();
   editingOrder.value = visibleProperties.value.map((property) => property.name);
   const rowIndex = name === null ? visibleProperties.value.length
     : visibleProperties.value.findIndex((property) => property.name === name);
@@ -504,13 +620,14 @@ function editProperty(name: string | null, focus: 'name' | 'value' | false = 'va
   editingRowKey.value = name ?? '__new__';
   activatingProperty = true;
   editingProperty.value = name;
+  editingPropertyField.value = name === null || focus !== 'value' ? 'name' : 'value';
   propertyName.value = name ?? '';
   propertyKind.value = current?.kind ?? 'text';
   propertyInput.value = current?.value ?? '';
   editingPropertyBase = current ? JSON.stringify(current) : null;
   propertyError.value = '';
   void nextTick(() => {
-    if (name === null && frontmatterPanel.value) frontmatterPanel.value.open = true;
+    if (name === null && frontmatterPanel.value && !panelExpanded.value) setPanelOpen(true);
     if (focus) frontmatterPanel.value?.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
       `.frontmatter-row-editor ${name === null || focus === 'name' ? '.frontmatter-name-input' : '.frontmatter-value-editor :is(input, textarea, select)'}`,
     )?.focus();
@@ -523,7 +640,17 @@ async function addDocumentProperty() {
   await nextTick();
   frontmatterPanel.value?.scrollIntoView?.({ block: 'nearest' });
 }
+async function editPropertyValue() {
+  activatingProperty = true;
+  editingPropertyField.value = 'value';
+  await nextTick();
+  frontmatterPanel.value?.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+    '.frontmatter-value-editor :is(input, textarea, select)',
+  )?.focus();
+  activatingProperty = false;
+}
 function finishProperty() {
+  armRowMotion();
   editingProperty.value = undefined;
   typeMenuProperty.value = undefined;
   propertyError.value = '';
@@ -540,6 +667,15 @@ function onPropertyFocusOut(event: FocusEvent) {
   if (event.relatedTarget instanceof globalThis.Node &&
     (event.currentTarget as HTMLElement).contains(event.relatedTarget)) return;
   finishProperty();
+}
+function dismissPropertyTypeMenu(event: PointerEvent) {
+  if (typeMenuProperty.value === undefined) return;
+  const panel = frontmatterPanel.value;
+  const menu = panel?.querySelector('.frontmatter-type-menu');
+  const trigger = panel?.querySelector('.frontmatter-property-type[aria-expanded="true"]');
+  const path = event.composedPath();
+  if ((menu && path.includes(menu)) || (trigger && path.includes(trigger))) return;
+  typeMenuProperty.value = undefined;
 }
 function publishFrontmatter(markdown: string) {
   if (props.extension) {
@@ -572,7 +708,7 @@ function syncProperty(event?: Event) {
     propertyError.value = '';
   } catch (error) {
     propertyError.value = error instanceof Error ? error.message : String(error);
-    propertyErrorField.value = event?.target instanceof Element && event.target.classList.contains('frontmatter-name-input')
+    propertyErrorField.value = isElement(event?.target) && event.target.classList.contains('frontmatter-name-input')
       ? 'name' : 'value';
   }
 }
@@ -606,6 +742,8 @@ function openPropertyTypeMenu(name: string | null) {
   typeMenuProperty.value = typeMenuProperty.value === name ? undefined : name;
 }
 function changePropertyType(kind: FrontmatterValueKind) {
+  armRowMotion();
+  editingPropertyField.value = 'value';
   propertyInput.value = convertedPropertyInput(kind);
   propertyKind.value = kind;
   typeMenuProperty.value = undefined;
@@ -616,6 +754,7 @@ function deleteProperty() {
   try {
     if (JSON.stringify(frontmatterValue(metadata.value, editingProperty.value)) !== editingPropertyBase)
       throw new Error('属性已被其他修改更新，请重新打开编辑');
+    armRowMotion();
     publishFrontmatter(removeFrontmatterProperty(lastValue, editingProperty.value));
     editingProperty.value = undefined;
     typeMenuProperty.value = undefined;
@@ -764,7 +903,27 @@ function chineseInputSettings() {
 function mappedChineseInput(text: string) {
   return mapChineseInput(text, chineseInputSettings());
 }
+let replayingChineseSyntax = false;
+function insertChineseSyntax(view: EditorView, from: number, to: number, text: string, committed = false) {
+ if (replayingChineseSyntax || props.readonly || view.composing || (!committed && from !== to) || !view.state.selection.empty) return false;
+ const resolved = view.state.doc.resolve(from);
+ if (!resolved.parent.isTextblock || resolved.parent.type.spec.code || /math|tano_live_source/.test(resolved.parent.type.name) || resolved.marks().some(m => m.type.spec.code)) return false;
+ const before = resolved.parent.textBetween(0, resolved.parentOffset, '', '\ufffc');
+ const edit = chineseSyntaxEdit(before, text, chineseInputSettings(), 'visual');
+ if (!edit) return false;
+ const start = from - edit.deleteBefore;
+ const prefix = edit.insert.slice(0, -1), tail = edit.insert.slice(-1);
+ replayingChineseSyntax = true;
+ try {
+  view.dispatch(closeHistory(view.state.tr).insertText(prefix, start, committed ? to : from));
+  const pos = start + prefix.length;
+  const handled = view.someProp('handleTextInput', handler => handler(view, pos, pos, tail, () => view.state.tr.insertText(tail, pos)));
+  if (!handled) view.dispatch(view.state.tr.insertText(tail, pos));
+ } finally { replayingChineseSyntax = false; }
+ return true;
+}
 function insertChineseInput(ctx: Ctx, view: EditorView, from: number, to: number, text: string) {
+  if (insertChineseSyntax(view, from, to, text)) return true;
   const mapped = mappedChineseInput(text);
   return mapped !== text && insertMappedChineseInput(ctx, view, from, to, mapped);
 }
@@ -778,10 +937,11 @@ function insertMappedChineseInput(ctx: Ctx, view: EditorView, from: number, to: 
   return true;
 }
 function chineseInputEventTarget(event: Event) {
-  return !(event.target instanceof Element && event.target.closest('input, textarea, [contenteditable="false"]'));
+  return !(isElement(event.target) && event.target.closest('input, textarea, [contenteditable="false"]'));
 }
 function beforeChineseInput(ctx: Ctx, view: EditorView, event: InputEvent) {
   if (!chineseInputEventTarget(event)) return false;
+  if (!event.isComposing && event.inputType === 'insertText' && event.data && insertChineseSyntax(view, view.state.selection.from, view.state.selection.to, event.data)) { event.preventDefault(); return true; }
   const mapped = mappedChineseBeforeInput(event, chineseInputSettings());
   if (mapped === null) return false;
   const ranges = event.getTargetRanges?.() ?? [];
@@ -800,7 +960,7 @@ function beforeChineseInput(ctx: Ctx, view: EditorView, event: InputEvent) {
 }
 function finishChineseComposition(view: EditorView, text: string) {
   const revision = ++chineseCompositionRevision;
-  if (!text || mappedChineseInput(text) === text) return;
+  if (!text) return;
   // Run after the editor's composition-end flush, within the same paint boundary.
   // A timer can leave the committed Chinese glyph visible for a frame in WebView2.
   queueMicrotask(() => queueMicrotask(() => {
@@ -813,6 +973,7 @@ function finishChineseComposition(view: EditorView, text: string) {
   }));
 }
 function insertChineseInputFromComposition(view: EditorView, from: number, to: number, text: string) {
+  if (insertChineseSyntax(view, from, to, text, true)) return;
   const mapped = mappedChineseInput(text);
   if (mapped !== text) view.dispatch(view.state.tr.insertText(mapped, from, to));
 }
@@ -915,7 +1076,7 @@ function inlineSourceDestination(ctx: Ctx, source: string): InlineSourceDestinat
 }
 
 function openInlineSourceLink(ctx: Ctx, view: EditorView, event: MouseEvent) {
-  if (!(event.target instanceof Element)) return false;
+  if (!(isElement(event.target))) return false;
   const sourceDom = event.target.closest('[data-tano-live-inline-source]');
   if (!sourceDom || !view.dom.contains(sourceDom)) return false;
   const source = currentSource(view);
@@ -935,7 +1096,7 @@ function sourceId() {
 }
 
 function inlineAtomSourceRange(view: EditorView, event: MouseEvent | KeyboardEvent) {
-  if (!(event.target instanceof Element)) return null;
+  if (!(isElement(event.target))) return null;
   if (event.target.closest('button, input, textarea')) return null;
   const atom = event.target.closest(
     'a[data-tano-wiki-target], .math-inline, sup[data-type="footnote_reference"], .tano-html-node, .tano-image',
@@ -999,7 +1160,7 @@ function inlineSourceTransaction(
 }
 
 function activateInlineSource(ctx: Ctx, view: EditorView, event?: MouseEvent | KeyboardEvent) {
-  const disabledStyle = event?.target instanceof Element
+  const disabledStyle = isElement(event?.target)
     ? event.target.closest<HTMLElement>('[data-tano-disabled-style]') : null;
   // Literal fallback delimiters live outside contentDOM and have no document
   // positions. Resolve their owning mark before revealing editable source.
@@ -1021,7 +1182,7 @@ function activateInlineSource(ctx: Ctx, view: EditorView, event?: MouseEvent | K
   }
   // Existing text has a semantic caret position mapped by the transaction.
   // Only previews and decorative delimiters lack an editable text position.
-  const clickedDelimiter = content && event?.target instanceof Element &&
+  const clickedDelimiter = content && isElement(event?.target) &&
     !content.contains(event.target);
   focusRevealedSource(view, atomRange || clickedDelimiter ? event : undefined);
   return true;
@@ -1031,7 +1192,7 @@ function activateInlineSource(ctx: Ctx, view: EditorView, event?: MouseEvent | K
 // pass a pointer to resolve against the newly editable source.
 function focusRevealedSource(view: EditorView, event?: MouseEvent | KeyboardEvent) {
   view.focus();
-  if (!(event instanceof MouseEvent) || (!event.clientX && !event.clientY)) return;
+  if (!(isMouseEvent(event)) || (!event.clientX && !event.clientY)) return;
   const source = currentSource(view);
   if (!source) return;
   const hit = view.posAtCoords({ left: event.clientX, top: event.clientY });
@@ -1088,7 +1249,7 @@ function blockNodeSourceTransaction(
   // A Mermaid preview is a div with no vertical padding. Its padding must not
   // become the fence line height of the editable <pre> source block.
   const style = selected.node.type.name === 'code_block' &&
-    !(rendered instanceof HTMLElement && rendered.matches('pre'))
+    !(isHTMLElement(rendered) && rendered.matches('pre'))
     ? null
     : sourceBlockStyle(rendered);
   const sourceNode = liveSource
@@ -1292,7 +1453,7 @@ function activateReferenceSource(view: EditorView, pos: number) {
 }
 
 function activateLocalSource(ctx: Ctx, view: EditorView, event: MouseEvent | KeyboardEvent) {
-  const target = event.target instanceof Element ? event.target : null;
+  const target = isElement(event.target) ? event.target : null;
   const previewBlock = target
     ?.closest('.math-preview, .tano-mermaid-preview, .tano-image-block')
     ?.closest('.math-block, .tano-mermaid, .tano-image-block');
@@ -2179,7 +2340,7 @@ const bridge = $prose(
             if (
               event.button === 0 &&
               (event.ctrlKey || event.metaKey) &&
-              event.target instanceof Element &&
+              isElement(event.target) &&
               view.dom.contains(event.target.closest('a[href], sup[data-type="footnote_reference"]'))
             ) {
               // Keep the anchor in the DOM until its click event opens it.
@@ -2196,7 +2357,7 @@ const bridge = $prose(
             }
             if (event.key.toLowerCase() === 'a' && (event.ctrlKey || event.metaKey) &&
                 !event.shiftKey && !event.altKey && !event.isComposing && event.keyCode !== 229 && !view.composing &&
-                !(event.target instanceof Element && event.target.closest('input, textarea, [contenteditable="false"]'))) {
+                !(isElement(event.target) && event.target.closest('input, textarea, [contenteditable="false"]'))) {
               const selection = expandBlockSelection(view.state.doc, view.state.selection);
               if (selection) {
                 event.preventDefault();
@@ -2344,6 +2505,7 @@ const bridge = $prose(
               ]);
               const tr = view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(pos)));
               view.dispatch(tr.replaceSelection(new Slice(Fragment.fromArray(nodes), 0, 0)).scrollIntoView());
+              confirmEntryReferenceDrop(event);
               view.focus();
               return true;
             }
@@ -2367,7 +2529,7 @@ const bridge = $prose(
             if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
                 props.revealMarkdown !== false && !props.readonly &&
                 (event.clientX || event.clientY) && !currentSource(_view) &&
-                event.target instanceof Element &&
+                isElement(event.target) &&
                 !inlineAtomSourceRange(_view, event) &&
                 !event.target.closest('[contenteditable="false"], .math-preview, .tano-mermaid-preview, .tano-image-block')) {
               const hit = _view.posAtCoords({ left: event.clientX, top: event.clientY });
@@ -2380,7 +2542,7 @@ const bridge = $prose(
               return true;
             }
             if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
-                event.target instanceof Element &&
+                isElement(event.target) &&
                 activateFootnoteLabelSource(ctx, _view, event.target)) {
               event.preventDefault();
               return true;
@@ -2401,7 +2563,7 @@ const bridge = $prose(
               event.preventDefault();
               return activateInlineSource(ctx, _view, event);
             }
-            const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+            const link = isElement(event.target) ? event.target.closest('a[href]') : null;
             if (link) {
               event.preventDefault();
               const wikiTarget = link.getAttribute('data-tano-wiki-target');
@@ -2745,6 +2907,7 @@ const commentMarks = $prose(() => new Plugin({
 }));
 
 onMounted(async () => {
+  window.addEventListener('pointerdown', dismissPropertyTypeMenu, true);
   window.addEventListener('mouseup', endPointerSelection);
   window.addEventListener('blur', endPointerSelection);
   window.addEventListener('pointerdown', dismissBlockSourceOnPointer, true);
@@ -2761,6 +2924,18 @@ onMounted(async () => {
         configureMarkdownRuntime(ctx, policy);
         ctx.set(rootCtx, root.value!);
         ctx.set(defaultValueCtx, frontmatter.body);
+        ctx.update(editorStateOptionsCtx, previous => options => {
+          const configured = previous(options);
+          const doc = configured.doc;
+          if (!configured.selection && doc && Selection.atStart(doc) instanceof NodeSelection) {
+            const start = doc.resolve(0);
+            const caret = Selection.findFrom(start, 1, true)
+              ?? (doc.firstChild?.isAtom && doc.contentMatchAt(0).defaultType?.isTextblock
+                ? new GapCursor(start) : null);
+            if (caret) return { ...configured, selection: caret };
+          }
+          return configured;
+        });
         configureMarkdownSchema(ctx);
         ctx.update(editorViewOptionsCtx, (prev) => ({
           ...prev,
@@ -2824,6 +2999,7 @@ onMounted(async () => {
       .use(
         $prose(() =>
           slashCommands({
+            chineseSlash: () => chineseInputSettings().slashCommand,
             translate: props.translate,
             readonly: () => !!props.readonly,
             levels: () => props.enabledLevels,
@@ -2836,7 +3012,19 @@ onMounted(async () => {
       .use(commentMarks)
       .use(referenceFlash)
       .use($prose(richViewport))
+      .use($prose(gapCursor))
       .use($prose(visualAnchorPlugin))
+      .use($prose(() => blockMotion({
+        structure: () => preferences().blockMotion !== false,
+        resize: () => preferences().blockResizeMotion !== false,
+      })))
+      .use($prose(() => typingMotion({
+        text: () => !props.readonly && preferences().typingMotion !== false,
+        caret: () => !props.readonly && preferences().smoothCaret !== false,
+      })))
+      .use($prose(() => inlineSourceMotion({
+        enabled: () => !props.readonly && preferences().sourceRevealMotion !== false,
+      })))
       .use($prose(() => suggestionMarks(() => props.suggestionMarks)))
       .use($prose(() => pageSearchPlugin(() => emit('searchChange'))));
     editor = await instance.create();
@@ -3157,7 +3345,7 @@ function rememberRightClickSelection(event: MouseEvent) {
 
 function selectedContextTarget(event: MouseEvent) {
   const target = event.target;
-  return !props.readonly && !disposed && target instanceof Element &&
+  return !props.readonly && !disposed && isElement(target) &&
     (root.value?.closest('.editor-scroll') ?? root.value)?.contains(target) &&
     !target.closest('button, input, textarea, select, [role="dialog"]') &&
     bridgeView && !bridgeView.state.selection.empty;
@@ -3175,7 +3363,7 @@ function openSelectedContext(event: MouseEvent) {
 }
 
 function blockIndexFromEvent(view: EditorView, target: EventTarget | null): number | null {
-  if (!(target instanceof Element)) return null;
+  if (!(isElement(target))) return null;
   const handle = target.closest<HTMLElement>('.tano-block-handle');
   if (handle && root.value?.contains(handle)) {
     const index = blockTree(view.state.doc).findIndex(({ pos }) => pos === Number(handle.dataset.blockPos));
@@ -3185,7 +3373,7 @@ function blockIndexFromEvent(view: EditorView, target: EventTarget | null): numb
   const entries = blockTree(view.state.doc);
   for (let index = entries.length - 1; index >= 0; index--) {
     const dom = view.nodeDOM(entries[index]!.pos);
-    if (dom instanceof Element && dom.contains(target)) return index;
+    if (isElement(dom) && dom.contains(target)) return index;
   }
   return null;
 }
@@ -3552,7 +3740,7 @@ function dismissBlockSourceOnPointer(event: PointerEvent) {
       (localSource?.kind === 'block' && localSource.dismissOnOutside))) return;
   editor.action(ctx => {
     const view = ctx.get(editorViewCtx);
-    if (event.target instanceof Element) {
+    if (isElement(event.target)) {
       const source = event.target.closest('[data-tano-live-source]');
       if (source && view.dom.contains(source)) return;
     }
@@ -3608,7 +3796,7 @@ function focusTrailingParagraph(event: MouseEvent) {
       !view.editable ||
       view.composing ||
       view.dragging ||
-      !(event.target instanceof HTMLElement) ||
+      !(isHTMLElement(event.target)) ||
       !event.target.contains(view.dom)
     )
       return;
@@ -3616,7 +3804,7 @@ function focusTrailingParagraph(event: MouseEvent) {
     const last = doc.lastChild;
     if (!last) return;
     const lastDOM = view.nodeDOM(doc.content.size - last.nodeSize);
-    if (!(lastDOM instanceof HTMLElement) || event.clientY < lastDOM.getBoundingClientRect().bottom)
+    if (!(isHTMLElement(lastDOM)) || event.clientY < lastDOM.getBoundingClientRect().bottom)
       return;
 
     event.preventDefault();
@@ -3743,7 +3931,7 @@ function commentGeometry(anchors = props.commentAnchors ?? []): CommentGeometry 
       while (depth > 1 && !$pos.node(depth).isTextblock) depth--;
       const position = depth ? $pos.before(depth) : from;
       const dom = bridgeView.nodeDOM(position);
-      const element = dom instanceof HTMLElement ? dom : dom?.parentElement;
+      const element = isHTMLElement(dom) ? dom : dom?.parentElement;
       if (!element || !element.getClientRects().length) continue;
       const rect = element.getBoundingClientRect();
       const block = blocks.get(position) ?? { key: String(position), ids: [], top: rect.top, bottom: rect.bottom };
@@ -3846,7 +4034,7 @@ function restoreModeSelection(selection: ModeSelection, focus = true) {
       }
     } finally { applying = false; }
     const dom = view.domAtPos(view.state.selection.head).node;
-    const element = dom instanceof HTMLElement ? dom : dom.parentElement;
+    const element = isHTMLElement(dom) ? dom : dom.parentElement;
     element?.dispatchEvent(new Event('tano-reveal-search', { bubbles: true }));
     for (let parent = element; parent && parent !== view.dom; parent = parent.parentElement)
       if (parent instanceof HTMLDetailsElement) parent.open = true;
@@ -3895,6 +4083,17 @@ function revealPreviewSource() {
   });
 }
 defineExpose({
+  captureTransferState: () => {
+    if (!bridgeView || disposed || props.extension?.ownsHistory) return undefined;
+    const plugin = historyProviderPlugin.key()?.get(bridgeView.state);
+    return plugin ? { content: props.modelValue, revision: props.contentRevision, history: captureHistory(bridgeView.state, plugin) } : undefined;
+  },
+  restoreTransferState: (value: unknown) => {
+    const snapshot = value as { content: string; revision: unknown; history: EditorState } | undefined;
+    if (!snapshot || !bridgeView || disposed || props.extension?.ownsHistory || snapshot.content !== props.modelValue || snapshot.revision !== props.contentRevision) return;
+    const plugin = historyProviderPlugin.key()?.get(bridgeView.state);
+    if (plugin) bridgeView.updateState(restoreHistory(bridgeView.state, snapshot.history, plugin));
+  },
   revealPreviewSource,
   blockShortcut,
   addDocumentProperty,
@@ -3928,6 +4127,7 @@ defineExpose({
   redoLastChange,
 });
 onBeforeUnmount(() => {
+  window.removeEventListener('pointerdown', dismissPropertyTypeMenu, true);
   chineseCompositionRevision++;
   suggestionCodec.clear();
   clearTimeout(referenceFlashTimer);
@@ -3960,9 +4160,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <Transition :css="false" @enter="enterRow" @leave="leaveRow">
   <details v-if="showDocumentProperties && (properties === null || properties.length > 0 || editingProperty !== undefined)" ref="frontmatterPanel" class="frontmatter-panel">
-    <summary class="frontmatter-heading">
-      <svg class="frontmatter-chevron" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <summary class="frontmatter-heading" @pointerdown="muteRowMotion" @click="onPanelHeadingClick">
+      <svg class="frontmatter-chevron" :class="{ 'is-expanded': panelExpanded }" viewBox="0 0 16 16" fill="none" aria-hidden="true">
         <path
           d="m6 4.5 3.5 3.5L6 11.5"
           stroke="currentColor"
@@ -3981,19 +4182,19 @@ onBeforeUnmount(() => {
         @keydown.stop
       ><ArrowDownAZ :size="16" /></button>
     </summary>
-    <div class="frontmatter-content">
+    <div ref="frontmatterContent" class="frontmatter-content">
       <template v-if="properties === null">
         <pre class="frontmatter-raw">{{ metadata }}</pre>
         <button v-if="!readonly" type="button" class="frontmatter-add" @click="emit('editSource')">{{ t('在源码中编辑') }}</button>
       </template>
-      <template v-else>
+      <TransitionGroup v-else tag="div" class="frontmatter-rows" :css="false" @enter="enterRow" @leave="leaveRow">
         <div
           v-for="property in visibleProperties"
           :key="editingProperty === property.name || (editingProperty === null && !property.name) ? editingRowKey : property.name"
           class="frontmatter-property"
           :class="{ 'is-editing': editingProperty === property.name || (editingProperty === null && !property.name) }"
           :data-property-name="property.name"
-          :style="editingProperty === property.name || (editingProperty === null && !property.name) ? { height: `${editingRowHeight}px` } : undefined"
+          :style="editingProperty === property.name || (editingProperty === null && !property.name) ? { minHeight: `${editingRowHeight}px` } : undefined"
           @focusout="onPropertyFocusOut"
           @keydown.esc="finishPropertyOnKey"
         >
@@ -4016,7 +4217,15 @@ onBeforeUnmount(() => {
               <span v-if="propertyError && propertyErrorField === 'name'" class="frontmatter-row-error" role="alert">{{ propertyError }}</span>
             </div>
             <div class="frontmatter-value-editor">
-              <select v-if="propertyKind === 'boolean'" v-model="propertyInput" :aria-label="t('属性值')" :aria-invalid="propertyError && propertyErrorField === 'value' ? true : undefined" @change="syncProperty">
+              <button
+                v-if="editingPropertyField === 'name'"
+                type="button"
+                class="frontmatter-property-value frontmatter-property-button"
+                data-no-press
+                :title="t('编辑 {0}', [property.name])"
+                @click="editPropertyValue"
+              >{{ propertyKind === 'null' ? t('空') : property.value }}</button>
+              <select v-else-if="propertyKind === 'boolean'" v-model="propertyInput" :aria-label="t('属性值')" :aria-invalid="propertyError && propertyErrorField === 'value' ? true : undefined" @change="syncProperty">
                 <option value="true">true</option>
                 <option value="false">false</option>
               </select>
@@ -4027,7 +4236,7 @@ onBeforeUnmount(() => {
                 v-model="propertyInput"
                 :aria-label="t('属性值')"
                 :aria-invalid="propertyError && propertyErrorField === 'value' ? true : undefined"
-                :rows="propertyKind === 'text' ? 2 : 4"
+                :rows="Math.min(12, Math.max(propertyKind === 'text' ? 2 : 4, propertyInput.split('\n').length))"
                 :title="propertyKind === 'list' || propertyKind === 'object' ? t('使用 JSON 格式') : undefined"
                 spellcheck="false"
                 @input="syncProperty"
@@ -4052,6 +4261,7 @@ onBeforeUnmount(() => {
               v-if="!readonly"
               type="button"
               class="frontmatter-property-name frontmatter-property-button"
+              data-no-press
               :title="t('编辑 {0}', [property.name])"
               @click="editProperty(property.name, 'name')"
             >{{ property.name }}</button>
@@ -4060,28 +4270,32 @@ onBeforeUnmount(() => {
               v-if="!readonly"
               type="button"
               class="frontmatter-property-value frontmatter-property-button"
+              data-no-press
               :title="t('编辑 {0}', [property.name])"
               @click="editProperty(property.name)"
-            >{{ property.value }}</button>
-            <span v-else class="frontmatter-property-value">{{ property.value }}</span>
+            >{{ currentPropertyKind(property.name) === 'null' ? t('空') : property.value }}</button>
+            <span v-else class="frontmatter-property-value">{{ currentPropertyKind(property.name) === 'null' ? t('空') : property.value }}</span>
           </template>
-          <div v-surface-motion="'MarkdownEditor:0'" v-if="typeMenuProperty === property.name || (typeMenuProperty === null && !property.name)" class="frontmatter-type-menu" role="menu" :aria-label="t('属性类型')">
+          <div v-surface-motion="'MarkdownEditor:0'" v-if="typeMenuProperty === property.name || (typeMenuProperty === null && !property.name)" class="frontmatter-type-menu compact-action-menu" role="menu" :aria-label="t('属性类型')">
             <button v-for="option in propertyTypeOptions" :key="option.kind" type="button" role="menuitemradio" :aria-checked="currentPropertyKind(property.name) === option.kind" @click="changePropertyType(option.kind)">
               <component :is="option.icon" :size="16" />{{ option.label }}
             </button>
             <button v-if="editingProperty !== null" type="button" role="menuitem" class="frontmatter-type-delete" @click="deleteProperty"><Trash2 :size="16" />{{ t('删除属性') }}</button>
           </div>
         </div>
-      </template>
-      <button
-        v-if="!readonly && properties !== null && editingProperty !== null"
-        type="button"
-        class="frontmatter-add frontmatter-add-property"
-        @click="editProperty(null)"
-      >
-        <Plus :size="16" aria-hidden="true" />{{ t('添加文档属性') }} </button>
+      </TransitionGroup>
+      <Transition :css="false" @enter="enterRow" @leave="leaveRow">
+        <button
+          v-if="!readonly && properties !== null && editingProperty !== null"
+          type="button"
+          class="frontmatter-add frontmatter-add-property"
+          @click="editProperty(null)"
+        >
+          <Plus :size="16" aria-hidden="true" />{{ t('添加文档属性') }} </button>
+      </Transition>
     </div>
   </details>
+  </Transition>
   <div
     ref="root"
     class="milkdown-host"
@@ -4092,7 +4306,7 @@ onBeforeUnmount(() => {
     @keydown="preventEditorTabNavigation"
   />
   <slot v-if="emptyDocument && !readonly" name="empty-document" />
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <div v-surface-motion="'MarkdownEditor:1'"
       v-if="linkPanel"
       ref="linkPanelElement"
@@ -4115,7 +4329,7 @@ onBeforeUnmount(() => {
       </template>
     </div>
   </Teleport>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <div v-surface-motion="'MarkdownEditor:2'"
       v-if="blockMenu"
       ref="blockMenuElement"

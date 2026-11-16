@@ -1,8 +1,10 @@
+import type { MarkdownAutocompletePreferences } from './markdown-autocomplete';
+export * from './markdown-autocomplete';
 import type { Ctx } from '@milkdown/kit/ctx';
 import { isShortId } from '@tano/protocol';
 import type { SelectionWrappingPreferences } from './selection-wrapping';
 import type { ChineseInputPreferences } from './chinese-input';
-export { chineseInputOptions, defaultChineseInput, normalizeChineseInput, mapChineseInput, mappedChineseInputKey, mappedChineseBeforeInput } from './chinese-input';
+export { chineseSyntaxEdit, chineseSyntaxOptions, chineseInputOptions, defaultChineseInput, normalizeChineseInput, mapChineseInput, mappedChineseInputKey, mappedChineseBeforeInput } from './chinese-input';
 export type { ChineseInputPreferences } from './chinese-input';
 export { selectionWrap, selectionWrappingOptions, defaultSelectionWrapping, normalizeSelectionWrapping } from './selection-wrapping';
 export type { SelectionWrappingPreferences } from './selection-wrapping';
@@ -57,8 +59,22 @@ export interface EditorPreferences {
   /** Pressing Space in an empty paragraph opens the one-shot AI composer. */
   blankBlockAiShortcut: boolean;
   selectionWrapping?: SelectionWrappingPreferences;
-  /** Device-local punctuation mappings for Chinese input methods; all disabled by default. */
+  /** Device-local source editor autocomplete. */
+  markdownAutocomplete?: MarkdownAutocompletePreferences;
+  /** Syntax recognition defaults on; global punctuation mappings default off. */
   chineseInput?: ChineseInputPreferences;
+  /** Device-local editor motion; absent means on. Reduced motion always wins. */
+  smoothCaret?: boolean;
+  /** Typed text fades in, deleted text fades out. */
+  typingMotion?: boolean;
+  /** Added blocks rise in, removed blocks fade out, the rest glide. */
+  blockMotion?: boolean;
+  /** Content below a block glides when the block grows or shrinks. */
+  blockResizeMotion?: boolean;
+  /** Live Markdown fields (links, code, math, references) open and close smoothly. */
+  sourceRevealMotion?: boolean;
+  /** Turns interface motion (press, panels, popovers) down like the OS setting. */
+  reduceInterfaceMotion?: boolean;
 }
 export const defaultCapabilities: WorkspaceCapabilities = {
   version: 1,
@@ -78,6 +94,12 @@ export const defaultEditorPreferences: EditorPreferences = {
   previewMermaidWhileEditing: true,
   folding: true,
   blankBlockAiShortcut: true,
+  smoothCaret: true,
+  typingMotion: true,
+  blockMotion: true,
+  blockResizeMotion: true,
+  sourceRevealMotion: true,
+  reduceInterfaceMotion: false,
 };
 
 /** Validate portable policy without discarding unknown fields from newer clients. */

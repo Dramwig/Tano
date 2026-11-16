@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window } = useWindowContext();
+
 import { computed, ref, shallowRef, watch } from 'vue';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { t } from '../i18n';
@@ -37,6 +40,7 @@ watch(() => props.bytes, async (bytes, _, onCleanup) => {
   } catch (reason) { if (current) error.value = String(reason); }
   finally { if (current) busy.value = false; }
 }, { immediate: true });
+
 </script>
 <template>
   <section class="pdf-preview" :aria-label="t('PDF 预览')" :aria-busy="busy">

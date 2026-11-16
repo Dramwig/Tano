@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
+import { isElement, isNode } from '@tano/editor/dom-realm';
 import ShortcutHint from '@tano/editor/shortcut-hint';
 import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 import { shortcutLabel } from '../shortcuts';
@@ -23,7 +27,7 @@ function tooltipLabel(element: HTMLElement) {
 }
 const id = useId();
 const tooltip = ref<HTMLElement>();
-const portal = ref<HTMLElement | string>('body');
+const portal = ref<HTMLElement>(document.body);
 const label = ref('');
 const shortcut = ref('');
 const example = ref<DocumentFeature>();
@@ -123,14 +127,14 @@ function show(button: HTMLElement, point?: { x: number; y: number }) {
   anchor = button;
   pointerAnchor = point;
   // A modal makes nodes outside its DOM subtree inert, including popovers.
-  portal.value = button.closest<HTMLDialogElement>('dialog[open]') ?? 'body';
+  portal.value = button.closest<HTMLDialogElement>('dialog[open]') ?? document.body;
   button.setAttribute('aria-describedby', [button.getAttribute('aria-describedby'), id].filter(Boolean).join(' '));
   update();
 }
 function enter(event: PointerEvent | FocusEvent) {
   if ('pointerType' in event && event.pointerType === 'touch') return;
   const target = event.target;
-  if (!(target instanceof Element)) return;
+  if (!(isElement(target))) return;
   const button = target.closest<HTMLElement>(`[data-tooltip], ${editorLinkSelector}`);
   if (!button) return;
   // Menus restore focus after selection, even when the pointer is elsewhere.
@@ -146,10 +150,10 @@ function enter(event: PointerEvent | FocusEvent) {
   timer = setTimeout(() => show(button, point), Number.isFinite(delay) && delay >= 0 ? delay : 250);
 }
 function leave(event: MouseEvent | FocusEvent) {
-  if (!(event.target instanceof Node) ||
+  if (!(isNode(event.target)) ||
     (!(anchor ?? pending)?.contains(event.target) && !tooltip.value?.contains(event.target))) return;
   const next = event.relatedTarget;
-  if (next instanceof Node && ((anchor ?? pending)?.contains(next) || tooltip.value?.contains(next))) return;
+  if (isNode(next) && ((anchor ?? pending)?.contains(next) || tooltip.value?.contains(next))) return;
   cancelTimer();
   pending = null;
   // Allow moving onto the hint to read a long description.
@@ -164,11 +168,11 @@ function escape(event: KeyboardEvent) {
 }
 function dismiss(event: Event) {
   if (event.type === 'pointerdown') keyboardFocus = false;
-  if (event.target instanceof Node && tooltip.value?.contains(event.target)) return;
+  if (isNode(event.target) && tooltip.value?.contains(event.target)) return;
   hide();
 }
 function scroll(event: Event) {
-  if (event.target instanceof Node && tooltip.value?.contains(event.target)) return;
+  if (isNode(event.target) && tooltip.value?.contains(event.target)) return;
   hide();
 }
 onMounted(() => {
@@ -204,6 +208,7 @@ onBeforeUnmount(() => {
   window.visualViewport?.removeEventListener('resize', hide);
   window.visualViewport?.removeEventListener('scroll', hide);
 });
+
 </script>
 
 <template>
@@ -242,6 +247,9 @@ onBeforeUnmount(() => {
   overflow-wrap: anywhere;
 }
 .app-tooltip[data-ready='false'] { visibility: hidden; }
+@media (prefers-reduced-motion: no-preference) {
+  .app-tooltip[data-ready='true'] { animation: tano-tooltip-in var(--motion-spring, 300ms) var(--ease-spring, ease-out) both; }
+}
 .app-tooltip::backdrop { background: transparent; pointer-events: none; }
 .app-tooltip-shortcut { justify-self: center; color: #b8b8b8; }
 @media (forced-colors: active) {

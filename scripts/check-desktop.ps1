@@ -7,7 +7,7 @@ foreach ($command in @('node', 'npm', 'rustc', 'cargo')) {
     Write-Host "$command : $($resolved.Source)"
 }
 
-& node (Join-Path $PSScriptRoot 'check-node.mjs')
+& node (Join-Path $PSScriptRoot 'check\check-node.mjs')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $tanoVsWhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'

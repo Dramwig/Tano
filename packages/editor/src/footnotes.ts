@@ -1,3 +1,5 @@
+
+import { isElement, isHTMLElement } from './dom-realm';
 import { Plugin, PluginKey } from '@milkdown/kit/prose/state';
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
 import type { Node } from '@milkdown/kit/prose/model';
@@ -8,7 +10,7 @@ const footnoteLabelKey = (label: string) => label.trim().replace(/\s+/g, ' ').to
 
 export function jumpToFootnote(view: EditorView, event: MouseEvent): boolean {
   if (event.button !== 0 || (!event.ctrlKey && !event.metaKey) ||
-      !(event.target instanceof Element)) return false;
+      !(isElement(event.target))) return false;
   const reference = event.target.closest('sup[data-type="footnote_reference"]');
   if (!reference || !view.dom.contains(reference)) return false;
   const label = footnoteLabelKey(reference.getAttribute('data-label') ?? '');
@@ -23,7 +25,7 @@ export function jumpToFootnote(view: EditorView, event: MouseEvent): boolean {
   });
   if (position === undefined) return false;
   const definition = view.nodeDOM(position);
-  if (!(definition instanceof HTMLElement)) return false;
+  if (!(isHTMLElement(definition))) return false;
   definition.scrollIntoView({ block: 'center', behavior: 'smooth' });
   return true;
 }

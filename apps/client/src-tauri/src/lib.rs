@@ -1,5 +1,17 @@
 #[cfg(desktop)]
+mod auxiliary_windows;
+#[cfg(desktop)]
 mod shell_open;
+
+#[cfg(desktop)]
+fn main_window_config() -> tauri::utils::config::WindowConfig {
+    serde_json::from_value(serde_json::json!({
+        "label": "main", "title": "Tano / 同页", "width": 1440,
+        "height": 940, "minWidth": 800, "minHeight": 580,
+        "decorations": false, "dragDropEnabled": false, "backgroundColor": "#f7f7f2"
+    }))
+    .expect("valid main window configuration")
+}
 
 #[tauri::command]
 fn startup_ready(window: tauri::WebviewWindow) -> Result<(), String> {
@@ -16,22 +28,17 @@ fn startup_ready(window: tauri::WebviewWindow) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let mut context = tauri::generate_context!();
+    let context = tauri::generate_context!();
     #[cfg(desktop)]
-    let shell = shell_open::prepare(&mut context);
-    #[cfg(desktop)]
-    for window in &mut context.config_mut().app.windows {
-        // Only the frontend may reveal this window after mounting the workbench.
-        if window.label == "main" || window.label.starts_with("file-") {
-            window.visible = false;
-            #[cfg(debug_assertions)]
-            eprintln!("[startup] main window starts hidden");
-        }
-    }
+    let shell = shell_open::prepare();
     let builder = tauri::Builder::default();
     #[cfg(desktop)]
     let builder = builder
         .manage(shell)
+        .setup(|app| {
+            shell_open::create_initial(app.handle())?;
+            Ok(())
+        })
         .plugin(tauri_plugin_single_instance::init(shell_open::receive));
     #[cfg(desktop)]
     let builder = tano_native::configure_with_commands(

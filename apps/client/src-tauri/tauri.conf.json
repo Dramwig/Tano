@@ -16,18 +16,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "Tano / 同页",
-        "width": 1440,
-        "height": 940,
-        "minWidth": 800,
-        "minHeight": 580,
-        "decorations": false,
-        "dragDropEnabled": false,
-        "backgroundColor": "#f7f7f2"
-      }
-    ],
+    "windows": [],
     "security": {
       "dangerousDisableAssetCspModification": [
         "style-src"

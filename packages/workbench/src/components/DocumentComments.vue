@@ -1,4 +1,11 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
+const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+const ResizeObserver = (window as Window & typeof globalThis).ResizeObserver;
+import { isHTMLElement, isElement } from '@tano/editor/dom-realm';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t } from '../i18n';
@@ -256,7 +263,7 @@ onMounted(() => {
     if (!busy.value && !loading.value && props.document.content === props.document.base.content &&
         !(annotations.value?.threads.some(thread => working.value[thread.id] && thread.anchor && !thread.detached &&
           thread.anchor.baseHash !== props.document.base.hash))) return load();
-  });
+  }, window);
   scheduleLayout();
 });
 watch(() => props.editorElement, (element, previous) => {
@@ -337,7 +344,7 @@ function setAnnotationCard(id: string, value: unknown) {
   const previous = annotationCards.get(id);
   if (previous === value) return;
   if (previous) { cardResizeObserver?.unobserve(previous); }
-  if (value instanceof HTMLElement) {
+  if (isHTMLElement(value)) {
     annotationCards.set(id, value);
     cardResizeObserver?.observe(value);
   } else annotationCards.delete(id);
@@ -471,7 +478,7 @@ async function annotationFocusout(id: string) {
 }
 function outsidePointer(event: PointerEvent) {
   const target = event.target;
-  if (!(target instanceof Element) || target.closest('.annotation-popup, .annotation-rail, .comment-more-menu, .annotation-count, .annotation-create-button, [data-comment-id]')) return;
+  if (!(isElement(target)) || target.closest('.annotation-popup, .annotation-rail, .comment-more-menu, .annotation-count, .annotation-create-button, [data-comment-id]')) return;
   dismissPopup();
 }
 function escapePopup(event: KeyboardEvent) { if (event.key === 'Escape') dismissPopup(); }
@@ -484,7 +491,7 @@ async function selectDraft(id: string) {
   await composers.get(id)?.focus();
 }
 function markClicked(event: MouseEvent) {
-  const target = event.target instanceof Element ? event.target.closest('[data-comment-id]') : null;
+  const target = isElement(event.target) ? event.target.closest('[data-comment-id]') : null;
   const id = target?.getAttribute('data-comment-id');
   if (!id) return;
   if (drafts.value.some(draft => draft.id === id)) {
@@ -689,6 +696,7 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
   }
   finally { busy.value = false; }
 }
+
 </script>
 
 <template>

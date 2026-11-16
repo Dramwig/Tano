@@ -1,4 +1,5 @@
 export type PanelSide = 'above' | 'below';
+import { ownerWindow } from './dom-realm';
 
 interface PanelPosition {
   x: number;
@@ -7,6 +8,7 @@ interface PanelPosition {
 }
 
 function visibleBounds(anchor: Element, includeClippingParents: boolean) {
+  const window = ownerWindow(anchor);
   const margin = 8;
   const bounds = { left: margin, top: margin, right: window.innerWidth - margin, bottom: window.innerHeight - margin };
   if (!includeClippingParents) return bounds;
@@ -55,7 +57,7 @@ export function positionAnchoredPanel(anchor: HTMLElement, panel: HTMLElement, p
   return position.side;
 }
 
-export function observePanelPosition(reposition: () => void) {
+export function observePanelPosition(reposition: () => void, window: Window = globalThis.window) {
   window.addEventListener('resize', reposition);
   window.addEventListener('scroll', reposition, true);
   return () => {

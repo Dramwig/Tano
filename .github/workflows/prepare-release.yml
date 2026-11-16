@@ -31,7 +31,7 @@ jobs:
         id: plan
         env:
           REQUESTED_VERSION: ${{ inputs.version }}
-        run: node scripts/release-plan.mjs prepare "$REQUESTED_VERSION" core
+        run: node scripts/release/release-plan.mjs prepare "$REQUESTED_VERSION" core
       - run: npm run version:check
       - uses: ./.github/actions/release-token
         id: identity

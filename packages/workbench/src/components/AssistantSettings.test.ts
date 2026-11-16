@@ -473,7 +473,7 @@ it('reveals only the entered key and resets visibility when cleared or reopened'
 });
 
 it('shows platform connections without personal editing actions', async () => {
-  assistant.canConfigure = false; assistant.connections = [{ ...connection, name: '同页官方', managed: true }];
+  assistant.canConfigure = false; assistant.connections = [{ ...connection, name: '同页官方', platformProvider: true }];
   await nextTick(); expect(button('添加连接')).toBeUndefined();
   expect(root.querySelector('button[data-tooltip="删除模型连接"]')).toBeNull();
   root.querySelector<HTMLButtonElement>('.assistant-connection-more')!.click(); await nextTick();

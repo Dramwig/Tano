@@ -1,3 +1,4 @@
+import { resolvePluginSidebar } from './workbench-navigation';
 import { effectScope, nextTick, ref } from 'vue';
 import { expect, it } from 'vitest';
 import { navigationStorageKey, useWorkbenchNavigation } from './workbench-navigation';
@@ -66,4 +67,51 @@ it('defaults to workspace when available, and safely falls back from unavailable
   nav.sidebarView.value = 'repository';
   expect(nav.context.value).toBe('workspace');
   scope.stop();
+});
+
+for (const module of ['workspace', 'plan'] as const) {
+  it(`migrates the legacy plugins sidebar while preserving ${module}`, () => {
+    const scope = effectScope();
+    let saved = JSON.stringify({ version: 1, context: 'workspace', workspaces: { a: { module, view: 'plugins' } } });
+    const nav = scope.run(() => useWorkbenchNavigation(() => 'a', {
+      getItem: () => saved, setItem: (_key, value) => { saved = value; },
+    }))!;
+    nav.restore();
+    expect(nav.workspaceView.value).toBe('plugin-views');
+    expect(nav.module.value).toBe(module);
+    expect(JSON.parse(saved).workspaces.a).toEqual({ module, view: 'plugin-views' });
+    scope.stop();
+  });
+}
+
+for (const module of ['workspace', 'plan'] as const) {
+  it(`restores removed views to files while preserving ${module}`, () => {
+    const scope = effectScope();
+    let saved = JSON.stringify({ version: 1, context: 'workspace', workspaces: { a: { module, view: 'views' } } });
+    const nav = scope.run(() => useWorkbenchNavigation(() => 'a', {
+      getItem: () => saved, setItem: (_key, value) => { saved = value; },
+    }))!;
+    nav.restore();
+    expect(nav.workspaceView.value).toBe('repository');
+    expect(nav.module.value).toBe(module);
+    expect(JSON.parse(saved).workspaces.a).toEqual({ module, view: 'repository' });
+    scope.stop();
+  });
+}
+
+it('preserves dynamic sidebar ids until discovery finishes', () => {
+ const id = 'plugin-sidebar:plugin:kanban:board';
+ expect(resolvePluginSidebar(id, true, [])).toBe(id);
+ expect(resolvePluginSidebar(id, false, [])).toBe('repository');
+ expect(resolvePluginSidebar(id, false, [{ key:'plugin:kanban:board', location:'sidebar' }])).toBe(id);
+});
+
+it('saves and restores dynamic sidebar ids through the sidebar binding', async () => {
+ const scope = effectScope(); let saved = '';
+ const storage = { getItem: () => saved || null, setItem: (_key: string, value: string) => { saved = value; } };
+ const nav = scope.run(() => useWorkbenchNavigation(() => 'a', storage))!; nav.restore();
+ nav.sidebarView.value = 'plugin-sidebar:plugin:kanban:board'; await nextTick();
+ expect(nav.context.value).toBe('workspace');
+ const restored = scope.run(() => useWorkbenchNavigation(() => 'a', storage))!; restored.restore();
+ expect(restored.sidebarView.value).toBe('plugin-sidebar:plugin:kanban:board'); scope.stop();
 });

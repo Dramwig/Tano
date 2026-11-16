@@ -68,7 +68,7 @@ describe('nested workspace layout', () => {
   });
 
   it.each([
-    [5, 200, 'left'], [595, 200, 'right'], [300, 5, 'top'], [300, 395, 'bottom'], [300, 200, undefined],
+    [5, 200, 'left'], [595, 200, 'right'], [300, 5, undefined], [300, 395, 'bottom'], [300, 200, undefined],
   ] as const)('previews %s,%s as %s relative to the target pane', (x, y, side) => {
     expect(dockSideAt(x, y, 600, 400)).toBe(side);
   });
@@ -82,7 +82,8 @@ describe('nested workspace layout', () => {
       expect(dockSideAt(width / 2, 33, width, height)).toBeUndefined();
       expect(dockSideAt(width / 2, height - 33, width, height)).toBeUndefined();
     }
-    expect(dockSideAt(20, 10, 1800, 400)).toBe('top');
+    expect(dockSideAt(20, 10, 1800, 400)).toBe('left'); // Upward splits are not offered.
+    expect(dockSideAt(300, 10, 1800, 400)).toBeUndefined();
     expect(dockSideAt(20, 30, 1800, 400)).toBe('left');
     expect(dockSideAt(-1, 200, 600, 400)).toBeUndefined();
   });

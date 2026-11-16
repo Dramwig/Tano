@@ -1532,6 +1532,63 @@ describe('workspace file reconciliation', () => {
 
 
 describe('workspace panes', () => {
+  it('merges independent external edits after moving an unsaved draft through auxiliary windows', async () => {
+    const document = store.active!;
+    store.edit('A\nB\nC\nD\n');
+    store.moveTabToAuxiliaryWindow(document.id, 'aux-one');
+    backend.files.get('note.md')!.content = 'A\nX\nC\n';
+    store.moveTabToAuxiliaryWindow(document.id, 'aux-two');
+    expect(await store.flush()).toBe(true);
+    expect(store.documentForTab(document.id)).toBe(document);
+    expect(document.content).toBe('A\nX\nC\nD\n');
+    expect(backend.files.get('note.md')!.content).toBe(document.content);
+    expect(store.windowLayouts['aux-one']).toBeUndefined();
+  });
+
+  it('preserves both conflicting versions when a moved draft returns to the main window', async () => {
+    const document = store.active!;
+    store.edit('human\n');
+    store.moveTabToAuxiliaryWindow(document.id, 'aux-one');
+    backend.files.get('note.md')!.content = 'agent\n';
+    store.moveTabToWindow(document.id, 'main', { paneId: store.windowLayouts.main.activePaneId, side: 'center' });
+    await store.flush();
+    expect(store.documentForTab(document.id)).toBe(document);
+    expect(document.content).toBe('human\n');
+    expect(document.conflict).toBeDefined();
+    expect(backend.files.get('note.md')!.content).toBe('agent\n');
+    expect(backend.files.get(document.conflict!.copyPath)!.content).toBe('human\n');
+  });
+
+  it('moves a live draft between windows without reading or reopening it and persists only main tabs', async () => {
+    expect(store.activeId).toBe('note-id');
+    store.edit('unsaved auxiliary draft');
+    const document = store.active!;
+    const read = vi.spyOn(backend, 'read');
+    store.moveTabToAuxiliaryWindow('note-id', 'aux-one');
+    expect(store.documentForTab('note-id')).toBe(document);
+    expect(document.content).toBe('unsaved auxiliary draft');
+    expect(read).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(backend.session?.tabs).not.toContain('note-id'));
+    expect(backend.session?.documents).toEqual([]);
+    store.moveTabToWindow('note-id', 'main', { paneId: store.layout.id, side: 'center' });
+    expect(store.windowLayouts['aux-one']).toBeUndefined();
+    expect(store.documentForTab('note-id')).toBe(document);
+    await vi.waitFor(() => expect(backend.session?.tabs).toContain('note-id'));
+  });
+
+  it('keeps an auxiliary window and its draft on save failure, then saves and closes on retry', async () => {
+    expect(store.activeId).toBe('note-id');
+    store.moveTabToAuxiliaryWindow('note-id', 'aux-one');
+    backend.failWrites = true;
+    store.edit('retry this draft');
+    expect(await store.closeAuxiliaryWindow('aux-one')).toBe(false);
+    expect(store.windowLayouts['aux-one']).toBeDefined();
+    expect(store.documentForTab('note-id')?.content).toBe('retry this draft');
+    backend.failWrites = false;
+    expect(await store.closeAuxiliaryWindow('aux-one')).toBe(true);
+    expect(store.windowLayouts['aux-one']).toBeUndefined();
+    expect(backend.files.get('note.md')!.content).toBe('retry this draft');
+  });
   it('keeps a pending detached tab and its pane in the recovery session until it actually closes', async () => {
     store.createBlankTab();
     const blank = store.activeId;

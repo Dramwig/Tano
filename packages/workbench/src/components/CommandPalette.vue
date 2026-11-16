@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion, closeSurfaceDialog } from '@tano/editor/surface-motion';
 import ShortcutHint from '@tano/editor/shortcut-hint';
 import { t } from '../i18n';
@@ -51,6 +54,7 @@ function keydown(event: KeyboardEvent) {
 }
 onMounted(() => { dialog.value?.showModal(); void nextTick(() => input.value?.focus()); });
 onBeforeUnmount(() => { closeSurfaceDialog(dialog.value); if (before?.isConnected) before.focus(); });
+
 </script>
 <template>
   <dialog v-surface-motion="'CommandPalette:0'" ref="dialog" class="command-palette" :aria-label="t('命令中心')" @cancel.prevent="emit('close')" @keydown="keydown" @click="event => { if (event.target === dialog) emit('close'); }">

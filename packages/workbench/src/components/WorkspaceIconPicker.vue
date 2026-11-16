@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+import { isButtonElement, isNode } from '@tano/editor/dom-realm';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t, uiIconLabel } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
@@ -23,6 +27,9 @@ const panel = ref<HTMLElement>();
 const searchInput = ref<HTMLInputElement>();
 const scrollArea = ref<HTMLElement>();
 const open = ref(false);
+// Keep one anchor for an open session: tab changes must not follow layout
+// movement of the document underneath the teleported picker.
+let anchorRect: DOMRect | undefined;
 watch(open, value => emit('update:open', value), { flush: 'sync' });
 const tabs = [
   { id: 'emoji', get label() { return t('表情符号'); } },
@@ -81,7 +88,7 @@ function scrollToCategory(id: string) {
 }
 function place() {
   if (!trigger.value) return;
-  const rect = trigger.value.getBoundingClientRect();
+  const rect = anchorRect ?? trigger.value.getBoundingClientRect();
   const width = Math.max(0, Math.min(392, window.innerWidth - 16));
   const maxHeight = Math.max(0, Math.min(440, window.innerHeight - 16));
   const height = Math.min(panel.value?.offsetHeight || maxHeight, maxHeight);
@@ -101,6 +108,7 @@ async function toggle() {
   if (open.value) { close(); return; }
   tab.value = props.icon.startsWith('icon:') ? 'icons' : 'emoji';
   query.value = ''; focusedIcon.value = '';
+  anchorRect = trigger.value?.getBoundingClientRect();
   place();
   open.value = true;
   await nextTick();
@@ -154,7 +162,7 @@ function tabKeydown(event: KeyboardEvent, current: Tab) {
   panel.value?.querySelector<HTMLButtonElement>(`[data-tab="${value}"]`)?.focus();
 }
 function gridKeydown(event: KeyboardEvent) {
-  if (!(event.target instanceof HTMLButtonElement) || !event.target.hasAttribute('data-icon-choice')) return;
+  if (!(isButtonElement(event.target)) || !event.target.hasAttribute('data-icon-choice')) return;
   const buttons = [...(panel.value?.querySelectorAll<HTMLButtonElement>('[data-icon-choice]') ?? [])];
   const index = buttons.indexOf(event.target);
   const grid = event.target.closest<HTMLElement>('.workspace-icon-picker-grid');
@@ -182,7 +190,7 @@ function keydown(event: KeyboardEvent) {
   } else gridKeydown(event);
 }
 function outside(event: Event) {
-  if (!(event.target instanceof Node) || trigger.value?.contains(event.target) || panel.value?.contains(event.target)) return;
+  if (!(isNode(event.target)) || trigger.value?.contains(event.target) || panel.value?.contains(event.target)) return;
   close();
 }
 function dismiss() { close(); }
@@ -203,6 +211,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', outside, true);
   window.removeEventListener('resize', dismiss);
 });
+
 </script>
 
 <template>
@@ -211,7 +220,7 @@ onBeforeUnmount(() => {
     :aria-label="t('选择{0}', [label])" :data-tooltip="t('选择{0}', [label])" aria-haspopup="dialog" :aria-expanded="open"
     :aria-controls="pickerId" :disabled="disabled" @click="toggle"
   ><slot name="preview"><WorkspaceIcon :icon="icon" :mode="mode" :size="28" /></slot></button>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <section v-surface-motion="'WorkspaceIconPicker:0'"
       v-if="open" :id="pickerId" ref="panel" class="workspace-icon-picker" role="dialog"
       :aria-label="label" :style="{

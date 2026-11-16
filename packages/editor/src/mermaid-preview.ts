@@ -7,7 +7,7 @@ let diagramId = 0;
 // an editing preview cannot change the theme of another diagram in flight.
 let rendering: Promise<unknown> = Promise.resolve();
 
-export function createMermaidRenderer(): MermaidRenderer {
+export function createMermaidRenderer(document: Document = globalThis.document): MermaidRenderer {
   const previews = new Map<string, { id: string; svg: string }>();
   return (source, width, theme = 'default') => {
     const key = `${theme}:${source}`;

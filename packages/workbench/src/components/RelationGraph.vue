@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
+const ResizeObserver = (window as Window & typeof globalThis).ResizeObserver;
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t } from '../i18n';
 import {
@@ -419,6 +424,7 @@ onBeforeUnmount(() => {
   observer?.disconnect();
   clearTimeout(clickTimer);
 });
+
 </script>
 
 <template>
@@ -503,7 +509,7 @@ onBeforeUnmount(() => {
         </g>
       </g>
     </svg>
-    <Teleport v-if="visible" :to="controlsTarget ?? 'body'" :disabled="!controlsTarget" defer>
+    <Teleport v-if="visible" :to="controlsTarget ?? document.body" :disabled="!controlsTarget" defer>
       <div
         class="graph-controls"
         :class="{ 'graph-controls-inline': controlsTarget }"

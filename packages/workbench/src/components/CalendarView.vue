@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const ResizeObserver = (window as Window & typeof globalThis).ResizeObserver;
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t, uiLocale } from '../i18n';
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
@@ -385,6 +388,7 @@ watch(() => props.date, (date) => {
     void scrollToTimelineDate(date);
   }
 });
+
 </script>
 
 <template>

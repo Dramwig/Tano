@@ -1,3 +1,5 @@
+
+import { isElement, ownerWindow } from './dom-realm';
 import type { EditorView } from '@milkdown/kit/prose/view';
 
 /** Browser-maintained visibility, shared by drag and fold controls. No scroll-time
@@ -10,6 +12,7 @@ export class BlockViewport {
   private indexedDoc?: EditorView['state']['doc'];
 
   constructor(private view: EditorView, changed: () => void) {
+    const { IntersectionObserver } = ownerWindow(view.dom);
     if (typeof IntersectionObserver !== 'undefined') this.observer = new IntersectionObserver(records => {
       for (const record of records) {
         const pos = this.positions.get(record.target);
@@ -30,7 +33,7 @@ export class BlockViewport {
       if (elements.has(pos)) continue;
       const cached = this.elements.get(pos);
       const dom = sameDoc && cached?.isConnected ? cached : this.view.nodeDOM(pos);
-      if (!(dom instanceof Element)) continue;
+      if (!(isElement(dom))) continue;
       elements.set(pos, dom); reverse.set(dom, pos);
       const previous = this.positions.get(dom);
       if (!this.observer || (previous !== undefined && this.visible.has(previous))) visible.add(pos);

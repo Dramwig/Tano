@@ -17,7 +17,7 @@ not automatically from a branch push.
    results if run, without claiming untested changes are verified.
 4. Merge a task branch into dev with `git merge --no-ff <task-branch>`, and push dev.
 5. When ready to integrate, merge dev into main with
-   `git merge --no-ff dev`, and push main. Keep unfinished work out of main.
+   `git merge --no-ff dev`, and push main. Gate unfinished work according to [feature gating](feature-gating.md).
 
 For example, with current branches and development ready for integration:
 
@@ -89,8 +89,8 @@ merges do not trigger Actions. GitHub cannot attest to local test results.
 Inspect and verify policy with an authenticated repository administrator:
 
 ```sh
-node scripts/configure-branches.mjs OWNER/REPOSITORY
-node scripts/configure-branches.mjs OWNER/REPOSITORY --apply
+node scripts/dev/configure-branches.mjs OWNER/REPOSITORY
+node scripts/dev/configure-branches.mjs OWNER/REPOSITORY --apply
 ```
 
 The first command is read-only. The second creates missing matching protection

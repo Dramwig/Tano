@@ -10,7 +10,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-node scripts\local-desktop.mjs
+node scripts\dev\local-desktop.mjs
 if errorlevel 1 (
   pause
   exit /b 1

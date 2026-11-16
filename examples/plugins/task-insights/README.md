@@ -10,7 +10,7 @@ npm run typecheck:plugins
 npm run plugin -- pack examples/plugins/task-insights artifacts/task-insights.tano-plugin.json
 ```
 
-在网页演示或桌面本地工作区的「插件」中导入生成的 JSON 包，检查并授权当前版本，再从「插件工作台」打开「任务统计」。在线产品也使用同一 SDK 和包格式，需由工作区管理员导入并启用。任务内容保留在 `.tano/objects/` 中，插件只申请 `objects.read` 和 `ui`。
+在网页演示或桌面本地工作区的「插件」中导入生成的 JSON 包，检查并授权当前版本，再从命令面板或插件详情页「功能」打开「任务统计」。在线产品也使用同一 SDK 和包格式，需由工作区管理员导入并启用。任务内容保留在 `.tano/objects/` 中，插件只申请 `objects.read` 和 `ui`。
 
 ## 使用与统计口径
 
@@ -29,7 +29,7 @@ npm run plugin -- pack examples/plugins/task-insights artifacts/task-insights.ta
 本仓库把 React、Chart.js 和类型包作为开发依赖，锁定在根 `package-lock.json`，不向宿主工作台注入 React。独立开发时在自己的项目安装这些依赖及 SDK 类型，并保留 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)；升级依赖时同步其中版本和许可。插件 SDK 与打包方式见[插件开发文档](../../../docs/plugins.md)。
 
 ```sh
-npx vitest run scripts/plugin-task-insights.test.ts scripts/plugin-task-insights-package.test.mjs
+npx vitest run scripts/plugin/plugin-task-insights.test.ts scripts/plugin/plugin-task-insights-package.test.mjs
 npm run test:plugins:browser -- --grep "packaged React chart"
 npm run test:plugins:native
 ```

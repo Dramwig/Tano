@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const IntersectionObserver = (window as Window & typeof globalThis).IntersectionObserver;
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 const props = defineProps<{ document: PDFDocumentProxy; page: number }>();
@@ -22,6 +25,7 @@ onMounted(() => {
   if (canvas.value) observer.observe(canvas.value);
 });
 onBeforeUnmount(() => { disposed = true; observer?.disconnect(); task?.cancel(); });
+
 </script>
 <template><canvas ref="canvas" class="pdf-thumbnail" aria-hidden="true" /></template>
 <style scoped>.pdf-thumbnail { width: 40px; max-height: 58px; object-fit: contain; background: white; box-shadow: 0 1px 3px #0002; flex-shrink: 0; }</style>

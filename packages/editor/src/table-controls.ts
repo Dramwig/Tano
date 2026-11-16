@@ -1,3 +1,6 @@
+import { ownerWindow } from './dom-realm';
+
+import { isHTMLElement, isElement } from './dom-realm';
 import { setSurfaceVisible } from './surface-motion';
 import { h, render } from 'vue';
 import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronRight, Copy, Eraser, GripHorizontal, GripVertical, PaintRoller, Plus, RotateCcw, Trash2 } from 'lucide-vue-next';
@@ -27,6 +30,12 @@ export function tableControls(readonly: () => boolean) {
   return new Plugin({
     key: new PluginKey('tanoTableControls'),
     view(view) {
+    const window = ownerWindow(view.dom);
+    const document = window.document;
+    const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+    const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
+    const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+
       const host = view.dom.parentElement!;
       const surface = host.closest<HTMLElement>('.editor-scroll') ?? host;
       const scroll = host.closest<HTMLElement>('.document-layout');
@@ -137,7 +146,7 @@ export function tableControls(readonly: () => boolean) {
         const offset = map.map[row * map.width + column];
         if (offset === undefined) return null;
         const dom = view.nodeDOM(pos + 1 + offset);
-        return dom instanceof HTMLElement ? dom : null;
+        return isHTMLElement(dom) ? dom : null;
       };
       const geometry = () => {
         if (!hovered) return null;
@@ -545,7 +554,7 @@ export function tableControls(readonly: () => boolean) {
           return;
         }
         if (!menu.hidden) return;
-        if (!(event.target instanceof Element) || controls.contains(event.target)) return;
+        if (!(isElement(event.target)) || controls.contains(event.target)) return;
         let cell = event.target.closest('td, th');
         if (!cell && surface.contains(event.target)) {
           const table = [...view.dom.querySelectorAll('table')].find(table => {
@@ -634,7 +643,7 @@ export function tableControls(readonly: () => boolean) {
       const schedulePosition = (event?: Event) => {
         if (!hovered) return;
         const target = event?.target;
-        if (event?.type === 'scroll' && target instanceof Element && !target.contains(host) && !host.contains(target)) return;
+        if (event?.type === 'scroll' && isElement(target) && !target.contains(host) && !host.contains(target)) return;
         const ownScroll = event?.type === 'scroll' && target === scroll;
         if (ownScroll && scroll && !selected && !pending && menu.hidden && scroll.scrollLeft === documentLeft) return;
         if (positionFrame !== undefined) return;
@@ -643,7 +652,7 @@ export function tableControls(readonly: () => boolean) {
           reposition();
         });
       };
-      const stopPosition = observePanelPosition(schedulePosition);
+      const stopPosition = observePanelPosition(schedulePosition, window);
       host.addEventListener('tano-table-layout', reposition);
       host.addEventListener('tano-block-layout', reposition);
       const stopOther = onOtherEditorPanel(host, () => selected ? grips[selected.axis] : null, close);

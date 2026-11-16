@@ -25,6 +25,8 @@ export interface AssistantConnection {
   maxOutputTokens: number;
   hasKey: boolean;
   /** Configured by the hosting application. */
+  platformProvider?: boolean;
+  /** Legacy wire field for released servers. Normalize at the transport boundary. */
   managed?: boolean;
 }
 

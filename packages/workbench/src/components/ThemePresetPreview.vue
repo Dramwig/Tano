@@ -38,7 +38,7 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
   --preview-paper: #ffffff;
   --preview-sidebar: #f8f8f7;
   --preview-surface: #f7f7f5;
-  --preview-green: #1f7a52;
+  --preview-green: #2f2e2a;
   --preview-text: #37352f;
   --preview-muted: #787774;
   --preview-line: #ebebea;
@@ -51,7 +51,7 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
   --preview-paper: #1f1f1e;
   --preview-sidebar: #1b1b1a;
   --preview-surface: #272726;
-  --preview-green: #91b8a1;
+  --preview-green: #e4e3df;
   --preview-text: #d8d7d4;
   --preview-muted: #9b9a96;
   --preview-line: #2e2e2d;

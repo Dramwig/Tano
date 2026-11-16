@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -50,6 +53,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('click', outside);
   window.removeEventListener(toolbarMenuOpenEvent, closeOtherMenu);
 });
+
 </script>
 
 <template>

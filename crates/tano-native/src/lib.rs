@@ -69,11 +69,11 @@ pub struct AppState {
 }
 
 fn workspace_switch_blocked(app: &tauri::AppHandle) -> bool {
-    // Settings are prewarmed and follow the main window's workspace snapshot. Only
-    // independent content windows must be closed before replacing the shared session.
+    // Auxiliary windows share the main workspace session. File and print windows
+    // have their own storage and do not participate in workspace switching.
     app.webview_windows().keys().any(|label| {
         label != "main"
-            && !label.starts_with("settings-")
+            && !label.starts_with("aux-")
             && !label.starts_with("file-")
             && !label.starts_with("print-")
     })
@@ -198,14 +198,6 @@ fn unregister_workspace(
     let session = guard.as_ref().ok_or("请先打开一个工作空间")?;
     if session.id != workspace_id {
         return Err("工作区已切换，请重新确认删除注册".into());
-    }
-    // The settings window is part of this flow; only detached editors block unregistering.
-    if app
-        .webview_windows()
-        .keys()
-        .any(|label| label.starts_with("detached-"))
-    {
-        return Err("请先关闭此工作区的独立文档窗口，再删除注册".into());
     }
     session_storage::unregister(
         &cache_path(&app)?,
@@ -366,16 +358,37 @@ fn runtime_platform() -> serde_json::Value {
 
 #[cfg(desktop)]
 #[tauri::command]
-fn open_devtools(window: tauri::WebviewWindow) {
-    window.open_devtools();
+fn open_devtools(window: tauri::WebviewWindow, window_label: String) -> Result<(), String> {
+    operation_window(window, &window_label)?.open_devtools();
+    Ok(())
+}
+
+fn operation_window(
+    window: tauri::WebviewWindow,
+    label: &str,
+) -> Result<tauri::WebviewWindow, String> {
+    // Independent file windows can operate on themselves. Only the main bridge
+    // may address a shared auxiliary window.
+    if label == window.label() {
+        return Ok(window);
+    }
+    if window.label() != "main" || !label.starts_with("aux-") {
+        return Err("Invalid operation window".into());
+    }
+    window
+        .app_handle()
+        .get_webview_window(label)
+        .ok_or_else(|| "Window is closed".into())
 }
 
 #[tauri::command]
 async fn tab_drag_release(
     window: tauri::WebviewWindow,
+    window_label: String,
     preview: Option<serde_json::Value>,
     drag_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    let window = operation_window(window, &window_label)?;
     #[cfg(windows)]
     {
         let source = window.hwnd().map_err(|e| e.to_string())?.0 as usize;
@@ -393,7 +406,7 @@ async fn tab_drag_release(
                 .map(serde_json::from_value::<tab_drag_preview::Bitmap>)
                 .transpose()
                 .map_err(|e| e.to_string())?
-                .map(tab_drag_preview::Preview::new)
+                .map(|bitmap| tab_drag_preview::Preview::new(bitmap, source as _))
                 .transpose()?;
             while unsafe { GetAsyncKeyState(VK_LBUTTON.into()) < 0 } {
                 if unsafe { GetAsyncKeyState(VK_ESCAPE.into()) < 0 } {
@@ -419,7 +432,18 @@ async fn tab_drag_release(
             if unsafe { GetCursorPos(&mut point) } == 0 {
                 return Err(std::io::Error::last_os_error().to_string());
             }
-            Ok(serde_json::json!({"x": point.x, "y": point.y}))
+            // Which top-level window is actually under the release point. A
+            // renderer dragleave is not reliable for this (it also fires while
+            // crossing elements), and a wrong "outside" detaches the tab.
+            // The overlay is click-through, so hit testing skips it.
+            let over_source = unsafe {
+                use windows_sys::Win32::UI::WindowsAndMessaging::{
+                    GetAncestor, WindowFromPoint, GA_ROOT,
+                };
+                let hit = WindowFromPoint(point);
+                !hit.is_null() && GetAncestor(hit, GA_ROOT) as usize == source
+            };
+            Ok(serde_json::json!({"x": point.x, "y": point.y, "overSource": over_source}))
         })
         .await
         .map_err(|error| error.to_string())?

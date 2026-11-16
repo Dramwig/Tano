@@ -76,7 +76,7 @@ layout observers. Limits are 50 MiB input, 2,000 ZIP entries, 20 MiB per entry,
 
 Rebuild with `npm run plugin:word`. Sources and notices are in
 [the Word plugin](../examples/plugins/word-preview/README.md). Browser acceptance uses
-`npx playwright test word-browser.spec.mjs` and source-controlled fixtures.
+`npx playwright test -c scripts/playwright.config.mjs word-browser.spec.mjs` and source-controlled fixtures.
 
 ## Presentation Preview plugin
 

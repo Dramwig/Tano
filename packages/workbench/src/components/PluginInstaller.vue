@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { recordHelpCompleted } from '../help-checklist';
+import { usePluginActions, matchesPlugin } from '../use-plugin-actions';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { retiredSystemPlugin } from '../workspace-plugins';
 import { t } from '../i18n';
@@ -16,50 +18,45 @@ import {
   X,
 } from 'lucide-vue-next';
 import { parsePluginPackage, pluginPackageLimit } from '@tano/protocol';
-import type { PluginManifest, PluginPackage, PluginMode, PluginPermission } from '@tano/protocol';
+import type { PluginManifest, PluginPackage } from '@tano/protocol';
 import PluginRuntimePanel from './PluginRuntimePanel.vue';
-import PluginMaintenance from './PluginMaintenance.vue';
+
 import PluginChangeSummary from './PluginChangeSummary.vue';
 import PluginRepositoryStorage from './PluginRepositoryStorage.vue';
 import PluginCatalogBrowser from './PluginCatalogBrowser.vue';
 import PluginConnections from './PluginConnections.vue';
 import PluginAutomations from './PluginAutomations.vue';
 import { documentOverviewPlugin } from '../plugins/example';
-import type { PluginChange } from '../workspace-plugins';
+
 import { useWorkspaceStore } from '../stores/workspace';
-import { recordHelpCompleted } from '../help-checklist';
+
 import PluginDialog from './PluginDialog.vue';
-import PluginIcon from './PluginIcon.vue';
+
 import PluginListItem from './PluginListItem.vue';
 import { bundledPluginCatalog, type PluginCatalogEntry } from '../plugin-catalog';
 
-const props = withDefaults(defineProps<{ sidebar?: boolean; catalog?: readonly PluginCatalogEntry[] }>(), {
+const props = withDefaults(defineProps<{ catalog?: readonly PluginCatalogEntry[] }>(), {
   catalog: () => bundledPluginCatalog,
 });
 const store = useWorkspaceStore();
-const emit = defineEmits<{ objects: [] }>();
+const { error, status, pending, busy, change, installFromCatalog } = usePluginActions(undefined, () => props.catalog);
+watch(status, value => { if (value && importing.value) { importing.value = false; preview.value = undefined; manifestText.value = ''; chooseView('installed'); } });
+defineExpose({ openImport });
+const emit = defineEmits<{ objects: []; feedback: [status: string, error: string] }>();
+watch([status, error], ([message, failure]) => emit('feedback', message, failure));
 const input = ref<HTMLInputElement>();
 const search = ref<HTMLInputElement>();
 const manifestText = ref('');
 const preview = ref<PluginManifest>();
 const previewPackage = ref<PluginPackage>();
-const policyMode = ref<PluginMode>('recommended');
-const settingsText = ref('{}');
-const sourceUrl = ref('');
-const permissionLabels: Record<PluginPermission, string> = { get 'attachments.read'() { return t('只读访问工作区附件'); }, get 'documents.read'() { return t('读取与打开文档'); }, get 'documents.write'() { return t('创建与修改文档'); }, get 'objects.read'() { return t('读取对象'); }, get 'objects.write'() { return t('创建与修改对象'); }, get 'relations.read'() { return t('读取关系'); }, get 'relations.write'() { return t('修改关系'); }, get storage() { return t('保存插件本机状态'); }, get network() { return t('访问指定网络来源'); }, get connections() { return t('使用单独授权的服务凭据'); }, get native() { return t('调用指定本机能力'); }, get ui() { return t('运行隔离的自定义界面'); } };
-const modeLabels: Record<PluginMode, string> = { get required() { return t('必需'); }, get recommended() { return t('推荐'); }, get optional() { return t('允许自行启用'); }, get disabled() { return t('禁止'); } };
-const error = ref('');
-const status = ref('');
-const pending = ref('');
-const busy = computed(() => !!pending.value);
 type View = 'discover' | 'installed' | 'community' | 'publishing';
-const view = ref<View>(props.sidebar ? 'installed' : 'discover');
+const view = ref<View>('discover');
 const publishingOpened = ref(false);
 const query = ref('');
 const category = ref('all');
 const installedFilter = ref('all');
 const importing = ref(false);
-const selected = ref<PluginManifest>();
+
 const pageSize = 24;
 const visibleLimit = ref(pageSize);
 const categories = computed(() => {
@@ -74,21 +71,11 @@ const categories = computed(() => {
 const installedById = computed(
   () => new Map(store.installedPlugins.map((item) => [item.manifest.id, item])),
 );
-const selectedInstallation = computed(
-  () => selected.value && installedById.value.get(selected.value.id),
-);
-// Installed details always describe the actual local version, including imported updates.
-const detail = computed(() => selectedInstallation.value?.manifest ?? selected.value);
-const detailViews = computed(() => store.pluginViews.filter((view) => view.pluginId === detail.value?.id));
 const feedbackError = computed(() => error.value || store.pluginError);
-const hasDialog = computed(() => importing.value || !!selected.value);
+const hasDialog = computed(() => importing.value);
 let importSequence = 0;
 
-function matches(plugin: PluginManifest) {
-  const terms =
-    `${plugin.name} ${plugin.id} ${plugin.description ?? ''} ${plugin.objectTypes.map((type) => `${type.label} ${type.type}`).join(' ')} ${plugin.relationTypes.map((type) => type.label).join(' ')}`.toLocaleLowerCase();
-  return terms.includes(query.value.trim().toLocaleLowerCase());
-}
+const matches = (plugin: PluginManifest) => matchesPlugin(plugin, query.value);
 const catalog = computed(() =>
   props.catalog.filter(entry => !retiredSystemPlugin(entry.manifest.id))
     .filter(
@@ -139,34 +126,11 @@ function clearFilters() {
   installedFilter.value = 'all';
   search.value?.focus();
 }
-async function installFromCatalog(manifest: PluginManifest) {
-  if (busy.value || !store.workspace) return;
-  const entry = props.catalog.find((item) => item.manifest.id === manifest.id);
-  if (!entry?.loadPackage) { await change({ install: manifest, ...(entry?.package ? { package: entry.package } : {}) }); return; }
-  const workspace = store.workspace.id;
-  pending.value = manifest.id; error.value = ''; status.value = '';
-  try {
-    const pkg = await entry.loadPackage();
-    if (store.workspace?.id !== workspace) return;
-    pending.value = '';
-    await change({ install: manifest, package: pkg });
-  } catch (cause) { if (store.workspace?.id === workspace) error.value = String(cause); }
-  finally { pending.value = ''; }
-}
 function browse() {
   chooseView('discover');
   nextTick(() => search.value?.focus());
 }
-function showDetails(plugin: PluginManifest) {
-  status.value = '';
-  error.value = '';
-  selected.value = plugin;
-  recordHelpCompleted('plugins', 'plugin-details');
-  const rule = installedById.value.get(plugin.id)?.rule;
-  policyMode.value = rule?.mode ?? 'recommended';
-  settingsText.value = JSON.stringify(rule?.settings ?? {}, null, 2);
-  sourceUrl.value = rule?.sourceUrl ?? '';
-}
+function showDetails(plugin: PluginManifest) { recordHelpCompleted('plugins', 'plugin-details'); void store.openPluginDetail(plugin.id); }
 function openImport() {
   error.value = '';
   status.value = '';
@@ -175,7 +139,7 @@ function openImport() {
 function closeDialog() {
   if (busy.value) return;
   importSequence++;
-  selected.value = undefined;
+
   importing.value = false;
   manifestText.value = '';
   preview.value = undefined;
@@ -186,7 +150,7 @@ watch(
   () => {
     importSequence++;
     importing.value = false;
-    selected.value = undefined;
+
     manifestText.value = '';
     preview.value = undefined;
     error.value = '';
@@ -234,50 +198,6 @@ async function importFile(event: Event) {
       error.value = String(cause);
   }
 }
-async function change(value: PluginChange) {
-  if (busy.value || !store.workspace) return;
-  const workspace = store.workspace.id;
-  pending.value =
-    'install' in value ? value.install.id : 'uninstall' in value ? value.uninstall : value.id;
-  error.value = '';
-  status.value = '';
-  try {
-    await store.changePlugin(value, workspace);
-    if (store.workspace?.id === workspace) {
-      status.value =
-        'install' in value
-          ? t('{0} 已安装并启用', [value.install.name])
-          : 'uninstall' in value
-            ? t('插件已卸载，对象和关系文件已保留')
-            : 'mode' in value ? t('工作区插件规则已保存') : 'forgetVersion' in value ? t('已移除历史版本引用') : value.enabled
-              ? t('插件已启用')
-              : t('插件已停用，对象和关系文件已保留');
-      if ('install' in value) {
-        preview.value = undefined;
-        manifestText.value = '';
-        if (importing.value) {
-          importing.value = false;
-          chooseView('installed');
-        }
-      }
-      if ('uninstall' in value) selected.value = undefined;
-    }
-  } catch (cause) {
-    if (store.workspace?.id === workspace) error.value = String(cause);
-  } finally {
-    pending.value = '';
-  }
-}
-async function authorize(allowed: boolean) {
-  if (!detail.value || !store.workspace) return;
-  try { await store.authorizePlugin(detail.value.id, allowed ? selectedInstallation.value?.rule?.integrity : undefined, store.workspace.id); }
-  catch (cause) { error.value = String(cause); }
-}
-async function savePolicy() {
-  if (!detail.value) return;
-  try { await change({ id: detail.value.id, mode: policyMode.value, settings: JSON.parse(settingsText.value), sourceUrl: sourceUrl.value }); }
-  catch (cause) { error.value = String(cause); }
-}
 async function importCachedPackage() {
   try { await store.cachePluginPackage(manifestText.value); status.value = t('插件包已保存到此设备，请在详情中授权运行'); await store.refresh(); }
   catch (cause) { error.value = String(cause); }
@@ -285,12 +205,12 @@ async function importCachedPackage() {
 </script>
 
 <template>
-  <div class="plugin-center" :class="{ 'plugin-center-sidebar': sidebar }">
+  <div class="plugin-center">
     <LoadingSkeleton v-if="store.workspaceLoading?.plugins" :rows="6" />
     <div v-show="!store.workspaceLoading?.plugins" class="component-loading-content">
     <div class="catalog-controls">
       <header class="center-heading">
-        <div v-if="!sidebar" class="center-title">
+        <div class="center-title">
           <h1>{{ t('插件') }}</h1>
           <p>{{ t('发现、安装和管理你的同页扩展。') }}</p>
         </div>
@@ -325,7 +245,7 @@ async function importCachedPackage() {
       </header>
       <div class="catalog-navigation">
         <nav class="center-nav" :aria-label="t('插件中心导航')">
-          <button v-if="!sidebar" :class="{ active: view === 'community' }" :aria-pressed="view === 'community'" @click="chooseView('community')">{{ t('社区目录') }}</button>
+          <button :class="{ active: view === 'community' }" :aria-pressed="view === 'community'" @click="chooseView('community')">{{ t('社区目录') }}</button>
           <button
             :class="{ active: view === 'discover' }"
             :aria-pressed="view === 'discover'"
@@ -416,18 +336,17 @@ async function importCachedPackage() {
     <div v-if="publishingOpened && $slots.publishing" v-show="view === 'publishing'">
       <slot name="publishing" />
     </div>
-    <template v-if="!sidebar && view !== 'publishing'">
+    <template v-if="view !== 'publishing'">
       <PluginRuntimePanel />
       <PluginConnections />
       <PluginAutomations />
       <PluginRepositoryStorage />
     </template>
-    <footer v-if="!sidebar && view !== 'publishing'" class="center-footer">
+    <footer v-if="view !== 'publishing'" class="center-footer">
       <span>{{ store.pluginCatalogSource ? t('社区目录已接入 · 版本由工作区管理员选择') : t('当前提供内置插件与文件导入 · 社区目录尚未配置') }}</span
       ><button @click="emit('objects')">{{ t('管理工作区对象') }} <ArrowUpRight :size="13" /></button>
     </footer>
-    <button v-if="sidebar" class="pc-button sidebar-manage" @click="store.openPluginsTab()">{{ t('管理插件') }} <ArrowUpRight :size="13" /></button>
-    <PluginDialog
+    <Teleport to="body"><PluginDialog
       v-if="hasDialog"
       :title="importing ? t('导入插件') : t('插件详情')"
       :busy="busy"
@@ -494,118 +413,7 @@ async function importCachedPackage() {
           <button v-if="preview.manifestVersion === 2" class="pc-button pc-secondary" :disabled="busy" @click="importCachedPackage">{{ t('仅保存到此设备') }}</button>
         </div>
       </template>
-      <template v-else-if="detail">
-        <div class="detail-heading">
-          <PluginIcon :id="detail.id" />
-          <div>
-            <h3>{{ detail.name }}</h3>
-            <p>v{{ detail.version }} · {{ detail.id }}<span v-if="selectedInstallation?.system"> · {{ t('系统插件') }}</span></p>
-          </div>
-          <span
-            v-if="selectedInstallation"
-            class="plugin-state"
-            :class="{ enabled: selectedInstallation.enabled }"
-            >{{ selectedInstallation.enabled ? t('已启用') : t('已停用') }}</span
-          >
-        </div>
-        <p class="detail-description">
-          {{ detail.description || t('为当前工作区添加自定义对象与关系。') }}
-        </p>
-        <section v-if="detail.appearance" class="detail-section">
-          <h4>{{ t('主题与图标') }}</h4>
-          <p v-for="color in detail.appearance.colors" :key="color.id">{{ t('配色主题') }}：{{ color.label }}</p>
-          <p v-for="icons in detail.appearance.icons" :key="icons.id">{{ t('文件与目录图标') }}：{{ icons.label }}</p>
-          <p v-for="layout in detail.appearance.layouts" :key="layout.id">{{ t('布局风格') }}：{{ layout.label }}</p>
-          <p v-for="shape in detail.appearance.shapes" :key="shape.id">{{ t('形态与密度') }}：{{ shape.label }}</p>
-          <p v-for="preset in detail.appearance.presets" :key="preset.id">{{ t('主题预设') }}：{{ preset.label }}</p>
-          <p>{{ t('安装后在设置 → 外观应用预设，或分别选择配色、图标、布局和形态。未指定的项保持当前。') }}</p>
-        </section>
-        <section class="detail-section">
-          <h4>
-            {{ t('扩展对象') }} <span>{{ detail.objectTypes.length }}</span>
-          </h4>
-          <div v-for="type in detail.objectTypes" :key="type.type" class="detail-type">
-            <strong>{{ type.label }}</strong>
-            <p>{{ type.fields?.map((field) => field.label).join('、') || t('无额外字段') }}</p>
-          </div>
-          <p v-if="!detail.objectTypes.length" class="dialog-intro">{{ t('此插件没有新增对象类型。') }}</p>
-        </section>
-        <section class="detail-section">
-          <h4>
-            {{ t('连接关系') }} <span>{{ detail.relationTypes.length }}</span>
-          </h4>
-          <div class="detail-relations">
-            <span v-for="relation in detail.relationTypes" :key="relation.type">{{
-              relation.label
-            }}</span
-            ><span v-if="!detail.relationTypes.length">{{ t('无新增关系类型') }}</span>
-          </div>
-        </section>
-        <section v-if="detail.manifestVersion === 2" class="detail-section">
-          <h4>{{ t('运行权限') }}</h4>
-          <p>{{ detail.permissions.map(permission => permissionLabels[permission]).join('、') || t('仅显示插件界面') }}</p>
-          <p v-if="detail.networkOrigins.length">{{ t('网络来源：') }}{{ detail.networkOrigins.join('、') }}</p>
-          <p v-if="detail.nativeCommands.length">{{ t('本机能力：') }}{{ detail.nativeCommands.join('、') }}</p>
-          <p class="dialog-intro">{{ selectedInstallation?.system ? t('随应用提供，默认启用，无需单独授权；版本随应用更新。') : t('授权绑定当前内容摘要；更新后需要重新授权。') }}</p>
-          <button v-if="selectedInstallation && !selectedInstallation.system" class="pc-button pc-secondary" @click="authorize(!selectedInstallation.authorized)">{{ selectedInstallation.authorized ? t('撤销此设备授权') : t('授权此版本运行') }}</button>
-        </section>
-        <section v-if="selectedInstallation?.rule && !selectedInstallation.system && store.canManagePlugins" class="detail-section plugin-policy">
-          <h4>{{ t('工作区规则') }}</h4>
-          <p>{{ t('保存后影响此工作区的所有成员。必需仍需成员各自授权代码；禁止会在成员同步后停止运行，共享设置变更会重新启动已授权实例。') }}</p>
-          <label>{{ t('启用方式') }}<select v-model="policyMode" :aria-label="t('插件工作区规则')"><option value="required">{{ t('必需') }}</option><option value="recommended">{{ t('推荐') }}</option><option value="optional">{{ t('允许自行启用') }}</option><option value="disabled">{{ t('禁止') }}</option></select></label>
-          <label>{{ t('共享设置') }}<textarea v-model="settingsText" :aria-label="t('插件共享设置')" rows="4" spellcheck="false" /></label>
-          <label v-if="detail.manifestVersion === 2">{{ t('插件包 HTTPS 地址（可选）') }}<input v-model="sourceUrl" :aria-label="t('插件包下载地址')" type="url" /></label>
-          <button class="pc-button pc-secondary" :disabled="busy" @click="savePolicy">{{ t('保存工作区规则') }}</button>
-        </section>
-        <p v-else-if="selectedInstallation?.rule && !selectedInstallation.system" class="dialog-intro">{{ t('启用方式由工作区管理员控制：') }}{{ modeLabels[selectedInstallation.rule.mode] }}</p>
-        <PluginMaintenance v-if="selectedInstallation && !selectedInstallation.system && detail.manifestVersion === 2" :id="detail.id" />
-        <p class="detail-scope">
-          <ShieldCheck :size="17" /><span
-            >{{ selectedInstallation?.system ? t('系统插件随应用提供；启用偏好仅保存在此设备。') : t('版本与共享设置保存在工作区；代码和缓存保存在应用数据中。') }}<br />{{ t('插件操作遵循你的文档权限。') }}</span
-          >
-        </p>
-        <footer class="detail-footer">
-          <template v-if="selectedInstallation"
-            ><button
-              v-if="!selectedInstallation.system" class="pc-button pc-text uninstall"
-              :disabled="busy || !store.canManagePlugins"
-              @click="change({ uninstall: detail.id })"
-            >
-              {{ t('卸载插件') }}</button
-            ><button
-              class="pc-button pc-secondary"
-              :disabled="busy || selectedInstallation.rule?.mode === 'required' || selectedInstallation.rule?.mode === 'disabled'"
-              @click="change({ id: detail.id, enabled: !selectedInstallation.enabled })"
-            >
-              {{ selectedInstallation.enabled ? t('停用插件') : t('启用插件') }}</button
-            ><template v-if="detailViews.length && !detail.objectTypes.length">
-              <button v-for="pluginView in detailViews" :key="pluginView.key" class="pc-button pc-primary" :disabled="busy"
-                @click="store.openPluginView(pluginView.pluginId, pluginView.id); closeDialog()">
-                {{ t('打开{0}', [pluginView.label]) }} <ArrowUpRight :size="15" />
-              </button>
-            </template><button
-              v-else
-              class="pc-button pc-primary"
-              :disabled="busy"
-              @click="
-                closeDialog();
-                emit('objects');
-              "
-            >
-              {{ t('管理对象') }} <ArrowUpRight :size="15" /></button></template
-          ><button
-            v-else
-            class="pc-button pc-primary"
-            :disabled="busy || !store.canManagePlugins"
-            @click="installFromCatalog(detail)"
-          >
-            <Download v-if="!busy" :size="15" /><LoaderCircle v-else class="pc-spin" :size="15" />{{
-              busy ? t('正在安装…') : t('安装插件')
-            }}
-          </button>
-        </footer>
-      </template>
-    </PluginDialog>
+    </PluginDialog></Teleport>
     </div>
   </div>
 </template>
@@ -613,25 +421,4 @@ async function importCachedPackage() {
 <style scoped src="./plugin-center.css"></style>
 
 <style scoped>
-.plugin-center-sidebar { min-height: 0; overflow-y: auto; overflow-x: hidden; padding-top: 8px; }
-.plugin-center-sidebar .catalog-controls { position: static; background: transparent; padding-bottom: 8px; }
-.plugin-center-sidebar .heading-actions { width: 100%; gap: 4px; }
-.plugin-center-sidebar .plugin-search { flex: 1; width: 0; min-width: 0; border-radius: 4px; padding-inline: 7px; }
-.plugin-center-sidebar .pc-add { padding: 6px; border-radius: 4px; background: transparent; color: var(--text); gap: 3px; }
-.plugin-center-sidebar .catalog-navigation { gap: 6px; margin-top: 8px; }
-.plugin-center-sidebar .center-nav { gap: 2px; }
-.plugin-center-sidebar .center-nav > button { padding: 4px 7px; min-height: 28px; border-radius: 4px; font-size: 12px; }
-.plugin-center-sidebar .catalog-filter { width: 100%; }
-.plugin-center-sidebar .catalog-filter select { width: 100%; }
-.plugin-center-sidebar .catalog-heading { margin: 6px 0; }
-.plugin-center-sidebar .catalog-heading h2 { font-size: 12px; }
-.plugin-center-sidebar .plugin-list { display: flex; flex-direction: column; gap: 0; }
-.plugin-center-sidebar :deep(.plugin-entry) { flex-wrap: wrap; gap: 3px; min-height: 76px; padding: 8px 3px; border-radius: 4px; }
-.plugin-center-sidebar :deep(.entry-main) { gap: 8px; flex-basis: calc(100% - 32px); }
-.plugin-center-sidebar :deep(.entry-state) { order: 2; padding-left: 48px; }
-.plugin-center-sidebar :deep(.entry-action) { width: 26px; height: 26px; }
-.plugin-center-sidebar :deep(.entry-description) { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.plugin-center-sidebar .pc-empty { padding: 24px 8px; }
-.plugin-center-sidebar .installed-note { display: none; }
-.plugin-center-sidebar .sidebar-manage { flex-shrink: 0; margin-top: 8px; align-self: flex-start; color: var(--muted); }
 </style>

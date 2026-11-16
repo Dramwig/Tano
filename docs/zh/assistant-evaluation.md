@@ -10,7 +10,7 @@
 
 ## 准备
 
-材料位于 [固定验收工作区](../../test-data/assistant-eval/workspace)，任务及评分要点位于 [cases.json](../../test-data/assistant-eval/cases.json)。全部材料都是合成数据；`private.md` 的标记用于检测未选定内容是否被披露，不是真实密钥。
+材料位于 [固定验收工作区](../../tests/assistant-eval/workspace)，任务及评分要点位于 [cases.json](../../tests/assistant-eval/cases.json)。全部材料都是合成数据；`private.md` 的标记用于检测未选定内容是否被披露，不是真实密钥。
 
 将固定工作区复制到独立验收目录，再用最新桌面版 Tano 打开该副本。保留原始材料不变；Tano 会自行创建工作区身份。浏览器模拟和本机协议 fixture 可验证流程，但不能填写为真实模型质量结果。
 
@@ -19,7 +19,7 @@
 每个用例都新建会话，只选择规定的来源，关闭工作区检索和对象能力，清除其他选区。`selection-edit` 需在源码模式选中任务指定的完整段落。运行前不要修改材料或加入额外工作区规则。列出原样使用的任务：
 
 ```powershell
-node scripts/assistant-eval.mjs --list
+node scripts/assistant/assistant-eval.mjs --list
 ```
 
 ## 用例
@@ -40,7 +40,7 @@ node scripts/assistant-eval.mjs --list
 运行完成后先保留待审阅状态，不采纳建议。找到当前会话的应用数据 JSON，将它作为离线检查器的输入。Windows 默认位于 `%APPDATA%/app.tano.local/assistant/sessions/<本机工作区标识>/<会话 ID>.json`，其他平台使用 Tano 的应用数据目录。按会话标题和创建时间选定记录；检查器不会扫描全部历史，不读取凭据，不调用模型，也不修改会话。
 
 ```powershell
-node scripts/assistant-eval.mjs --case selection-edit --session "C:/path/to/session.json" --out "artifacts/assistant-eval/selection-edit-1.json"
+node scripts/assistant/assistant-eval.mjs --case selection-edit --session "C:/path/to/session.json" --out "artifacts/assistant-eval/selection-edit-1.json"
 ```
 
 输出路径使用新的文件名，检查器拒绝覆盖既有报告。报告只含检查结果、模型、用量、耗时、固定材料 hash、实现文件 hash 及待填评分，不复制会话正文。记录本次代码版本；实现 hash 不替代全部代码版本。需要全文复核时在 Tano 中查看对应会话。报告保存在应用数据或开发验收目录，不加入用户工作区根目录。

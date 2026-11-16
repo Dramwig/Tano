@@ -4,14 +4,14 @@ import researchIcon from '../assets/plugins/research.svg';
 import readingIcon from '../assets/plugins/reading.svg';
 import extensionIcon from '../assets/plugins/extension.svg';
 
-const props = defineProps<{ id: string; compact?: boolean }>();
+const props = defineProps<{ id: string; compact?: boolean; size?: number }>();
 const icon = computed(() =>
   props.id === 'research' ? researchIcon : props.id === 'reading' ? readingIcon : extensionIcon,
 );
 </script>
 
 <template>
-  <span class="plugin-icon" :class="{ compact }" aria-hidden="true">
+  <span class="plugin-icon" :class="{ compact }" :style="size === undefined ? undefined : { width: `${size}px`, height: `${size}px` }" aria-hidden="true">
     <img :src="icon" alt="" width="128" height="128" draggable="false" />
   </span>
 </template>

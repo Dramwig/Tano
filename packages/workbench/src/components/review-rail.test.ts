@@ -134,7 +134,7 @@ it('pins the selected card and animates cards above and below it, then restores 
     expect([first.style.top, middle.style.top, last.style.top]).toEqual(['228px', '320px', '432px']);
     for (const card of [first, middle, last]) expect(animate).toHaveBeenCalledWith(card,
       expect.objectContaining({ transform: ['translateY(72px)', 'translateY(0px)'] }),
-      { duration: 0.22, ease: [0.22, 1, 0.36, 1] });
+      { duration: 0.34, ease: expect.any(Function) });
     await Promise.resolve();
     // Replies can grow without moving the selected card away from its line.
     (middle.firstElementChild as HTMLElement).style.height = '200px';

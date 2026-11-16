@@ -1,3 +1,5 @@
+
+import { isElement, isNode, ownerWindow } from './dom-realm';
 import { NodeSelection, Plugin, PluginKey, Selection, TextSelection } from '@milkdown/kit/prose/state';
 import type { EditorState, Transaction } from '@milkdown/kit/prose/state';
 import type { Node as ProseMirrorNode } from '@milkdown/kit/prose/model';
@@ -8,6 +10,7 @@ import { closeHistory } from '@milkdown/kit/prose/history';
 import { moveBlocksTo } from './block-tree';
 import { BlockRangeSelection } from './block-selection';
 import { BlockViewport } from './block-viewport';
+import { blockMotionKey, FOLD_MOTION } from './block-motion';
 
 /** Move one top-level Markdown block in a single, undoable editor transaction. */
 export function moveBlock(
@@ -75,6 +78,7 @@ function firstLineCenter(element: Element, block: DOMRect): number {
   const firstItem = element.matches('ul, ol') ? element.querySelector('li') : null;
   const firstParagraph = element.matches('blockquote') ? element.querySelector(':scope > p') : null;
   const firstContent = firstRow ?? firstItem ?? firstParagraph ?? element;
+  const document = element.ownerDocument;
   const walker = document.createTreeWalker(firstContent, NodeFilter.SHOW_TEXT);
   while (walker.nextNode()) {
     const text = walker.currentNode as Text;
@@ -108,7 +112,7 @@ function firstLineCenter(element: Element, block: DOMRect): number {
 
   const first = firstContent.querySelector('p, li, th, td, pre, code') ?? firstContent;
   const rect = first.getBoundingClientRect();
-  const style = getComputedStyle(first);
+  const style = ownerWindow(first).getComputedStyle(first);
   const lineHeight =
     Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.4 || 24;
   const inset =
@@ -172,7 +176,7 @@ export function blockControls(
         // Leaf blocks have no text caret, so ProseMirror selects the whole node on click.
         // Whole-block selection is reserved for the gutter handle and context menu.
         return event.button === 0 && direct && node.isBlock &&
-          (node.isAtom || (event.target instanceof Element && !!event.target.closest('.tano-mermaid')));
+          (node.isAtom || (isElement(event.target) && !!event.target.closest('.tano-mermaid')));
       },
       decorations(state) {
         const decorations: Decoration[] = state.selection instanceof BlockRangeSelection
@@ -220,6 +224,12 @@ export function blockControls(
     },
     view(initialView) {
       let view = initialView;
+      const window = ownerWindow(view.dom);
+      const document = view.dom.ownerDocument;
+      const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+      const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
+      const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+      const { ResizeObserver } = window;
       const host = view.dom.parentElement!;
       const hoverSurface =
         host.closest<HTMLElement>('.editor-scroll') ?? host.parentElement ?? host;
@@ -305,7 +315,7 @@ export function blockControls(
       }
 
       function blockIndexAt(target: EventTarget | null): number | null {
-        if (!(target instanceof Element)) return null;
+        if (!(isElement(target))) return null;
         const handle = target.closest<HTMLButtonElement>('.tano-block-handle');
         if (handle && controls.contains(handle)) return Number(handle.dataset.blockIndex);
         if (!view.dom.contains(target)) return null;
@@ -346,7 +356,7 @@ export function blockControls(
       }
 
       function foldIndexAt(target: EventTarget | null, x: number, y: number) {
-        if (target instanceof Element) {
+        if (isElement(target)) {
           const button = target.closest<HTMLButtonElement>('.tano-fold-toggle');
           if (button && controls.contains(button)) return Number(button.dataset.foldIndex);
           // Text content identifies its own item even when jsdom or a browser
@@ -646,14 +656,14 @@ export function blockControls(
       function onTableScroll(event: Event) {
         // Nested scroll areas move their children relative to the editor host;
         // unlike the document's own scroll, these still need fresh positions.
-        if (event.target instanceof Element) scheduleLayout();
+        if (isElement(event.target)) scheduleLayout();
       }
 
       function onFallbackScroll(event: Event) {
         // Absolute controls already move with their content. IntersectionObserver
         // maintains their mounted range; only older hosts need scroll-time work.
         const target = event.target;
-        if (target === document || (target instanceof Element && target.contains(host))) scheduleLayout();
+        if (target === document || (isElement(target) && target.contains(host))) scheduleLayout();
       }
 
       function clearDragVisuals() {
@@ -689,7 +699,7 @@ export function blockControls(
         if (hoveredIndex == null) return null;
         const handle = handles.get(hoveredIndex);
         if (!handle || handle.hidden || (!handle.classList.contains('is-column-child') && !handle.classList.contains('is-columns'))) return null;
-        if (event.target instanceof Element && event.target.closest('.tano-block-handle')) return null;
+        if (isElement(event.target) && event.target.closest('.tano-block-handle')) return null;
         const hovered = entries[hoveredIndex]!;
         const targetIndex = blockIndexAt(event.target);
         const target = targetIndex == null ? null : entries[targetIndex];
@@ -727,7 +737,7 @@ export function blockControls(
         if (event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey ||
           view.composing || view.dragging || pendingPointer || marquee ||
           !((selection instanceof NodeSelection && selection.node.isBlock) || selection instanceof BlockRangeSelection) ||
-          !(target instanceof Element)) return;
+          !(isElement(target))) return;
         // Keep the selection available to block actions and floating editor controls.
         if (target.closest('.tano-block-controls, .tano-editor-panel, [role="menu"], button, input, textarea, select')) return;
         const selectedDOM = selection instanceof BlockRangeSelection
@@ -815,7 +825,7 @@ export function blockControls(
         event.preventDefault();
         event.stopPropagation();
         const key = blockKey(index);
-        view.dispatch(view.state.tr.setMeta(foldingKey, key).setMeta('addToHistory', false));
+        view.dispatch(view.state.tr.setMeta(foldingKey, key).setMeta(blockMotionKey, FOLD_MOTION).setMeta('addToHistory', false));
       }
 
       function findInsertion(x: number, y: number) {
@@ -828,14 +838,14 @@ export function blockControls(
             return node && entry.parentPos >= pos && entry.parentPos < pos + node.nodeSize;
           })) continue;
           const dom = view.nodeDOM(entry.parentPos);
-          const content = dom instanceof Element
+          const content = isElement(dom)
             ? dom.matches('blockquote') ? dom : dom.querySelector(':scope > .tano-enhanced-content')
             : null;
           if (!content || content.closest('[hidden], .tano-folded-heading-content, .tano-folded-list-content')) continue;
           const rect = content.getBoundingClientRect();
-          const firstBody = dom instanceof Element && dom.matches('blockquote')
+          const firstBody = isElement(dom) && dom.matches('blockquote')
             ? view.nodeDOM(entry.pos) : null;
-          const bodyTop = firstBody instanceof Element ? firstBody.getBoundingClientRect().top : rect.top;
+          const bodyTop = isElement(firstBody) ? firstBody.getBoundingClientRect().top : rect.top;
           if (entry.depth >= depth && x >= rect.left + 12 && x <= rect.right && y >= bodyTop && y <= rect.bottom) {
             parentPos = entry.parentPos;
             depth = entry.depth;
@@ -914,7 +924,7 @@ export function blockControls(
         preview.inert = true;
         preview.style.width = `${element.getBoundingClientRect().width}px`;
         preview.style.fontSize = getComputedStyle(view.dom).fontSize;
-        const draggedElements = sourcePositions.map(pos => view.nodeDOM(pos)).filter((node): node is Element => node instanceof Element);
+        const draggedElements = sourcePositions.map(pos => view.nodeDOM(pos)).filter((node): node is Element => isElement(node));
         for (const element of draggedElements) {
           const copy = element.cloneNode(true) as HTMLElement;
           for (const item of [copy, ...copy.querySelectorAll('*')]) {
@@ -965,7 +975,7 @@ export function blockControls(
 
       function startMarquee(event: PointerEvent) {
         if (readonly() || event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || view.composing ||
-          !(event.target instanceof Element) ||
+          !(isElement(event.target)) ||
           event.target.closest('button, input, textarea, select, a, .document-cover, .tano-block-controls, .tano-editor-panel, [role="menu"]')) return;
         const rect = view.dom.getBoundingClientRect();
         // The left gutter includes the space beside the document title. Only
@@ -1066,7 +1076,7 @@ export function blockControls(
               event.clientX <= rect.right &&
               event.clientY >= rect.top &&
               event.clientY <= rect.bottom
-            : event.target instanceof window.Node && hoverSurface.contains(event.target);
+            : isNode(event.target) && hoverSurface.contains(event.target);
         // A remote collaborator or a local edit may have changed positions mid-drag.
         if (
           dragging &&
@@ -1107,8 +1117,8 @@ export function blockControls(
           !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey &&
           !event.isComposing && !view.composing && !readonly()) {
           const target = event.target;
-          const insideEditor = target === view.dom || target instanceof Node && view.dom.contains(target);
-          const insideBlockMenu = target instanceof Element && !!target.closest('.block-context-menu');
+          const insideEditor = target === view.dom || isNode(target) && view.dom.contains(target);
+          const insideBlockMenu = isElement(target) && !!target.closest('.block-context-menu');
           const selection = view.state.selection;
           const positions = selection instanceof BlockRangeSelection
             ? selection.blocks.map(block => block.pos)

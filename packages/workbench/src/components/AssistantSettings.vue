@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
+import { isKeyboardEvent, isNode, isHTMLElement } from '@tano/editor/dom-realm';
 import { vSurfaceMotion, closeSurfaceDialog } from '@tano/editor/surface-motion';
 import { uiLocale, t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowReactive, watch } from 'vue';
@@ -136,7 +140,7 @@ const menuConnectionId = ref('');
 const quotaRequests = ref<Record<string, number>>({});
 const quotaLoading = ref<Record<string, boolean>>({});
 function canQueryQuota(connection: AssistantConnection) {
-  return !connection.managed && connection.quota?.mode !== 'disabled' &&
+  return !connection.platformProvider && connection.quota?.mode !== 'disabled' &&
     (connection.kind === 'codex-cli' || connection.kind === 'claude-cli' || !!connection.quota);
 }
 function queryConnectionQuota(connection: AssistantConnection) {
@@ -229,11 +233,11 @@ async function toggleMenu(connection: AssistantConnection, event: Event) {
     top: `${Math.max(8, Math.min(bounds.bottom + 4, window.innerHeight - height - 8))}px`,
   };
   menu.value.focus({ preventScroll: true });
-  if (event instanceof KeyboardEvent && event.key === 'ArrowDown') menuKey(event);
+  if (isKeyboardEvent(event) && event.key === 'ArrowDown') menuKey(event);
 }
 
 function dismissMenu(event: Event) {
-  if (!(event.target instanceof Node) || (!menu.value?.contains(event.target) && !menuTrigger?.contains(event.target))) closeMenu();
+  if (!(isNode(event.target)) || (!menu.value?.contains(event.target) && !menuTrigger?.contains(event.target))) closeMenu();
 }
 
 function menuKey(event: KeyboardEvent) {
@@ -261,7 +265,7 @@ async function checkConnection(connection: AssistantConnection) {
   try {
     const count = await assistant.checkConnection(connection.id, controller.signal);
     if (controller.signal.aborted || connectionChecks.value[connection.id]?.fingerprint !== fingerprint) return;
-    const message = connection.managed ? t('平台已开放 {0} 个模型，可在助手中选择使用。', [count]) : connection.kind && connection.kind !== 'api'
+    const message = connection.platformProvider ? t('平台已开放 {0} 个模型，可在助手中选择使用。', [count]) : connection.kind && connection.kind !== 'api'
       ? t('「{0}」的 CLI 可执行文件可用；登录状态与模型连通需在会话中确认。', [connection.name])
       : t('「{0}」连接成功，已读取 {1} 个模型。检测范围为模型列表接口，模型调用权限需在会话中确认。', [connection.name, count]);
     connectionChecks.value[connection.id] = { fingerprint, message, failed: false, elapsedMs: Math.round(performance.now() - startedAt), checkedAt: Date.now() };
@@ -292,7 +296,7 @@ watch(secret, value => { if (!value) secretVisible.value = false; });
 
 watch(editing, open => {
   if (!open) return;
-  previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  previousFocus = isHTMLElement(document.activeElement) ? document.activeElement : null;
   editor.value?.showModal();
   nameInput.value?.focus();
 }, { flush: 'post' });
@@ -304,7 +308,7 @@ watch(pendingDeletion, connection => {
 }, { flush: 'post' });
 
 function editConnection(connection: AssistantConnection) {
-  if (connection.managed) return;
+  if (connection.platformProvider) return;
   closeMenu(true);
   draft.value = {
     id: connection.id,
@@ -326,7 +330,7 @@ function editConnection(connection: AssistantConnection) {
 }
 
 function copyConnection(connection: AssistantConnection) {
-  if (connection.managed || saving.value || assistant.busy || assistant.loading) return;
+  if (connection.platformProvider || saving.value || assistant.busy || assistant.loading) return;
   editConnection(connection);
   draft.value!.id = crypto.randomUUID();
   const suffixLength = t('{0}（副本）', ['']).length;
@@ -382,7 +386,7 @@ async function saveConnection() {
 }
 
 function confirmRemoval(connection: AssistantConnection, event: Event) {
-  if (connection.managed || saving.value || removing.value || assistant.busy || assistant.loading) return;
+  if (connection.platformProvider || saving.value || removing.value || assistant.busy || assistant.loading) return;
   closeMenu();
   error.value = '';
   notice.value = '';
@@ -443,6 +447,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', dismissMenu, true);
   window.removeEventListener('resize', dismissMenu);
 });
+
 </script>
 
 <template>
@@ -471,11 +476,11 @@ onBeforeUnmount(() => {
         <div class="settings-card assistant-settings-card">
           <div class="assistant-connection-list">
             <div v-for="connection in assistant.connections" :key="connection.id">
-              <button type="button" aria-haspopup="dialog" :disabled="connection.managed" @click="editConnection(connection)">
+              <button type="button" aria-haspopup="dialog" :disabled="connection.platformProvider" @click="editConnection(connection)">
                 <AssistantConnectionAvatar :connection="connection" />
                 <span class="connection-label">
                 <strong>{{ connection.name }}</strong>
-                <small>{{ connection.managed ? t('平台提供，登录后即可使用') : connection.kind === 'codex-cli' ? 'Codex CLI' : connection.kind === 'claude-cli' ? 'Claude CLI' : connection.endpoint }}</small>
+                <small>{{ connection.platformProvider ? t('平台提供，登录后即可使用') : connection.kind === 'codex-cli' ? 'Codex CLI' : connection.kind === 'claude-cli' ? 'Claude CLI' : connection.endpoint }}</small>
                 </span>
               </button>
               <div class="connection-statuses">
@@ -498,7 +503,7 @@ onBeforeUnmount(() => {
                 type="button"
                 class="icon-button"
                 :disabled="saving || assistant.busy || assistant.loading"
-                v-if="!connection.managed"
+                v-if="!connection.platformProvider"
                 :aria-label="t('删除连接 {0}', [connection.name])"
                 :data-tooltip="t('删除模型连接')"
                 aria-haspopup="dialog"
@@ -526,7 +531,7 @@ onBeforeUnmount(() => {
     <AssistantUsage v-if="assistant.available" :sessions="assistant.sessions ?? []" :connections="assistant.connections" :active-session="assistant.session" :loading="assistant.loading" :demo="assistant.demo" />
   </div>
 
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <dialog v-surface-motion="'AssistantSettings:0'" v-if="quotaConnection" ref="quotaDialog" class="assistant-connection-dialog assistant-config-dialog assistant-quota-dialog" :aria-label="t('额度查询配置')" @cancel.prevent="closeQuotaEditor" @keydown.stop>
       <AssistantQuotaConfig :key="quotaConnection.id" :connection="quotaConnection" @close="closeQuotaEditor" @busy="quotaSaving = $event" @saved="emit('changed')" />
     </dialog>
@@ -544,13 +549,13 @@ onBeforeUnmount(() => {
       </form>
     </dialog>
     <div v-surface-motion="'AssistantSettings:2'" v-if="menuConnection" id="assistant-connection-actions" ref="menu" class="dropdown compact-action-menu assistant-connection-menu" role="menu" tabindex="-1" :aria-label="t('{0} 操作', [menuConnection.name])" :style="menuPosition" @keydown.stop="menuKey">
-      <button type="button" role="menuitem" :disabled="checkControllers.has(menuConnection.id) || saving" @click="checkConnection(menuConnection)"><Wifi :size="15" />{{ checkControllers.has(menuConnection.id) ? t('正在检测…') : menuConnection.managed ? t('刷新模型名单') : t('检测连通') }}</button>
+      <button type="button" role="menuitem" :disabled="checkControllers.has(menuConnection.id) || saving" @click="checkConnection(menuConnection)"><Wifi :size="15" />{{ checkControllers.has(menuConnection.id) ? t('正在检测…') : menuConnection.platformProvider ? t('刷新模型名单') : t('检测连通') }}</button>
       <button v-if="canQueryQuota(menuConnection)" type="button" role="menuitem" :disabled="saving || quotaLoading[menuConnection.id]" @click="queryConnectionQuota(menuConnection)"><Gauge :size="15" />{{ quotaLoading[menuConnection.id] ? t('正在查询额度…') : t('查询额度') }}</button>
-      <div v-if="!menuConnection.managed" class="menu-divider" role="separator" />
-      <button v-if="!menuConnection.managed" type="button" role="menuitem" :disabled="saving || assistant.busy || assistant.loading" @click="editConnection(menuConnection)"><Pencil :size="15" />{{ t('编辑连接') }}</button>
-      <button v-if="!menuConnection.managed" type="button" role="menuitem" :disabled="saving || assistant.busy || assistant.loading" @click="copyConnection(menuConnection)"><Copy :size="15" />{{ t('复制连接') }}</button>
-      <div v-if="!menuConnection.managed" class="menu-divider" role="separator" />
-      <button v-if="!menuConnection.managed" type="button" role="menuitem" :disabled="saving || assistant.busy || assistant.loading" @click="configureQuota(menuConnection)"><Settings2 :size="15" />{{ t('配置额度查询') }}</button>
+      <div v-if="!menuConnection.platformProvider" class="menu-divider" role="separator" />
+      <button v-if="!menuConnection.platformProvider" type="button" role="menuitem" :disabled="saving || assistant.busy || assistant.loading" @click="editConnection(menuConnection)"><Pencil :size="15" />{{ t('编辑连接') }}</button>
+      <button v-if="!menuConnection.platformProvider" type="button" role="menuitem" :disabled="saving || assistant.busy || assistant.loading" @click="copyConnection(menuConnection)"><Copy :size="15" />{{ t('复制连接') }}</button>
+      <div v-if="!menuConnection.platformProvider" class="menu-divider" role="separator" />
+      <button v-if="!menuConnection.platformProvider" type="button" role="menuitem" :disabled="saving || assistant.busy || assistant.loading" @click="configureQuota(menuConnection)"><Settings2 :size="15" />{{ t('配置额度查询') }}</button>
     </div>
     <dialog v-surface-motion="'AssistantSettings:3'" v-if="draft" ref="editor" class="assistant-connection-dialog assistant-config-dialog" aria-labelledby="assistant-connection-editor-title" @cancel.prevent="closeEditor" @keydown.stop>
       <form class="assistant-connection-form" :aria-busy="saving" @submit.prevent="saveConnection">

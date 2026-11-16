@@ -9,7 +9,7 @@ defineProps<{
   showDocumentProperties: boolean;
   showOutline: boolean;
   showAllLineNumbers: boolean;
-  detachedWindow: boolean;
+  auxiliaryWindow: boolean;
   source: boolean;
 }>();
 const emit = defineEmits<{
@@ -65,7 +65,7 @@ const emit = defineEmits<{
     />
   </button>
   <button
-    v-if="!detachedWindow"
+    v-if="!auxiliaryWindow"
     type="button"
     role="menuitemcheckbox"
     :aria-checked="showOutline"

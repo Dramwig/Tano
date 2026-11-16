@@ -157,7 +157,6 @@ export const helpChecklist = [
   { id: 'child-document', stage: 'organize', topic: 'folders', get label() { return t('给文档添加子文档'); }, get hint() { return t('右键文档选择「新建子文档」；原文会成为文件夹首页，内容保留。'); }, requires: 'folder-conversion' },
   { id: 'flatten-folder', stage: 'organize', topic: 'folders', get label() { return t('将首页转回普通文档'); }, get hint() { return t('文件夹只剩首页时，右键选择「转为普通文档」。'); }, requires: 'folder-conversion' },
   { id: 'split-view', stage: 'reading', topic: 'reading', get label() { return t('并排查看文档'); }, get hint() { return t('打开两篇文档，将一个标签拖到正文区域边缘，预览分屏位置后松开。'); }, requires: 'panes' },
-  { id: 'data-table', stage: 'workflow', topic: 'tables', get label() { return t('创建可筛选的数据表'); }, get hint() { return t('在文件树右键选择「新建数据表」，用字段和记录整理信息。'); }, requires: 'workspace-write' },
   { id: 'assistant', stage: 'assistant', topic: 'assistant', get label() { return t('打开同页助手'); }, get hint() { return t('点击页面右下角的助手入口，或从工作区导航进入助手。'); }, requires: 'assistant' },
   { id: 'assistant-connection', stage: 'assistant', topic: 'assistant', get label() { return t('配置模型连接'); }, get hint() { return t('在设置的助手页面添加 API 或本机 CLI 连接，再在会话中选择模型。'); }, requires: 'assistant-configure' },
   { id: 'assistant-question', stage: 'assistant', topic: 'assistant', get label() { return t('让助手回答一个问题'); }, get hint() { return t('选择连接和模型后发送问题并查看回答；浏览器演示使用模拟响应。'); }, requires: 'assistant' },
@@ -165,7 +164,8 @@ export const helpChecklist = [
   { id: 'suggestion-mode', stage: 'review', topic: 'suggestions', get label() { return t('尝试建议编辑'); }, get hint() { return t('在文档「更多（⋯）」选择「建议编辑」；修改会保留为建议，接受前正文不变。'); }, requires: 'suggestions' },
   { id: 'accept-suggestion', stage: 'review', topic: 'suggestions', get label() { return t('审阅并接受一处修改'); }, get hint() { return t('核对建议卡片中的原文和修改，确认后点击接受，将这一处写入正文。'); }, requires: 'suggestions' },
 ] as const satisfies readonly HelpStep[];
-export type HelpChecklistId = typeof helpChecklist[number]['id'];
+// Retain the historical completion marker used by the data-table API.
+export type HelpChecklistId = typeof helpChecklist[number]['id'] | 'data-table';
 export interface HelpLessonCursor { stage: HelpStageId; first: HelpChecklistId }
 
 export function isHelpStepAvailable(step: typeof helpChecklist[number], availability: HelpAvailability = {}) {

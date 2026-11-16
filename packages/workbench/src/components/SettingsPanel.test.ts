@@ -278,6 +278,32 @@ it('shows the Markdown reveal switch enabled and emits a change', async () => {
   expect(revealUpdates).toEqual([false]);
 });
 
+it('switches each editor motion separately and greys them out while motion is reduced', async () => {
+  await openPage('外观');
+  const toggle = (label: string) => root.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${label}"]`)!;
+  for (const label of ['光标平滑移动', '文字输入与删除动画', '段落增删动画', '段落变高时下方内容平滑移动'])
+    expect(toggle(label).getAttribute('aria-checked')).toBe('true');
+  expect(toggle('减少动态效果').getAttribute('aria-checked')).toBe('false');
+  const motionRows = [...root.querySelectorAll('section[aria-label="动效"] [role="switch"]')].map(row => row.getAttribute('aria-label'));
+  expect(motionRows[0]).toBe('减少动态效果');
+  const previous = { ...editorPreferences.value };
+  toggle('光标平滑移动').click();
+  await nextTick();
+  expect(editorPreferences.value).toEqual({ ...previous, smoothCaret: false });
+  toggle('段落变高时下方内容平滑移动').click();
+  await nextTick();
+  expect(editorPreferences.value).toEqual({ ...previous, smoothCaret: false, blockResizeMotion: false });
+  expect(toggle('Markdown 源码展开收起动画').getAttribute('aria-checked')).toBe('true');
+  toggle('Markdown 源码展开收起动画').click();
+  await nextTick();
+  expect(editorPreferences.value).toEqual({ ...previous, smoothCaret: false, blockResizeMotion: false, sourceRevealMotion: false });
+  toggle('减少动态效果').click();
+  await nextTick();
+  expect(editorPreferences.value.reduceInterfaceMotion).toBe(true);
+  expect(toggle('文字输入与删除动画').disabled).toBe(true);
+  expect(toggle('减少动态效果').disabled).toBe(false);
+});
+
 it('toggles automatic text spacing in appearance without changing other editor preferences', async () => {
   await openPage('外观');
   const toggle = root.querySelector<HTMLButtonElement>('[role="switch"][aria-label="正文自动间距"]')!;
@@ -801,7 +827,7 @@ it('configures individual selection wrappers and disables them with the master s
 it('groups Chinese input mappings separately, defaults them off and keeps them independent of wrapping', async () => {
   await openPage('编辑器');
   const section = root.querySelector<HTMLElement>('section[aria-label="中文输入优化"]')!;
-  expect(section.previousElementSibling?.getAttribute('aria-label')).toBe('选区符号包裹');
+  expect(section.previousElementSibling?.getAttribute('aria-label')).toBe('自动补全');
   expect(root.querySelector('section[aria-label="选区符号包裹"] [aria-label="中文 ￥ 映射为 $"]')).toBeNull();
   for (const option of chineseInputOptions) {
     const control = section.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${option.label}"]`)!;
@@ -933,4 +959,12 @@ it('selects colors and icons independently and explains unavailable selections',
 beforeAll(async () => {
   const { uiLocales } = await import('../locale');
   await Promise.all(uiLocales.map(preloadUiLocale));
+});
+
+it('exposes autocomplete switches and separate Chinese syntax defaults', async () => {
+ await openPage('编辑器');
+ const section = root.querySelector('section[aria-label="自动补全"]')!;
+ expect(section.querySelectorAll('[role="switch"]')).toHaveLength(3);
+ expect(root.querySelector('[data-settings-key="editing-chinese-input-quoteMarker"] [role="switch"]')?.getAttribute('aria-checked')).toBe('true');
+ expect(root.querySelector('section[aria-label="中文输入优化"]')?.textContent).toContain('全局映射');
 });

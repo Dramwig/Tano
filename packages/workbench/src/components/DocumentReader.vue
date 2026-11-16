@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
+const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
+const ResizeObserver = (window as Window & typeof globalThis).ResizeObserver;
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { ChevronLeft, ChevronRight, PanelLeft, Minus, Plus, MoveHorizontal, Info, FileText, MoreHorizontal } from 'lucide-vue-next';
 import { t } from '../i18n';
@@ -126,14 +131,15 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', placeActions);
   window.removeEventListener('keydown', actionsKeydown);
 });
+
 </script>
 
 <template>
   <div ref="root" class="document-reader" :class="{ 'reader-grid': grid, 'reader-landscape': landscape, 'reader-continuous': continuous }">
-    <Teleport :to="controlsTarget ?? 'body'" :disabled="!controlsTarget" defer>
+    <Teleport :to="controlsTarget ?? document.body" :disabled="!controlsTarget" defer>
       <button v-if="controlsTarget" ref="trigger" type="button" class="reader-actions-trigger icon-button" :aria-label="t('预览操作')" :data-tooltip="t('预览操作')" aria-haspopup="dialog" :aria-controls="actionsId" :aria-expanded="actionsOpen" @click="toggleActions" @keydown.down.prevent="!actionsOpen && toggleActions()"><MoreHorizontal :size="19" /></button>
     </Teleport>
-    <Teleport to="body" :disabled="!controlsTarget">
+    <Teleport :to="document.body" :disabled="!controlsTarget">
     <header v-if="!controlsTarget || actionsOpen" :id="actionsId" ref="actions" class="reader-toolbar" :class="{ 'reader-actions-popover': controlsTarget }" :style="controlsTarget ? actionsPosition : undefined" :role="controlsTarget ? 'dialog' : undefined" :aria-label="controlsTarget ? t('预览操作') : undefined" @keydown.stop="actionsKeydown">
       <div class="reader-tools reader-leading">
         <button v-if="navigation" :aria-label="t('切换页面导航')" :title="t('切换页面导航')" :aria-expanded="sidebar" @click="sidebar = !sidebar"><PanelLeft :size="16" /></button>

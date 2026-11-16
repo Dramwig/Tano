@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t, uiLocale } from '../i18n';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
@@ -107,10 +110,11 @@ async function importFile() {
 }
 const accountName = (id: string) => sync.accounts.find(a => a.id === id)?.label || t('账号不可用');
 const time = (value?: string) => value ? new Date(value).toLocaleString(uiLocale.value, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : t('尚未同步');
+
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <div v-surface-motion="'PlanConnectionsDialog:0'" class="plan-connections-backdrop" @mousedown.self="!working && emit('close')">
       <section ref="panel" class="plan-connections" role="dialog" aria-modal="true" :aria-label="t('日历与 Todo 连接')" tabindex="-1" @keydown="keyboard">
         <header><div><h2>{{ t('日历与 Todo') }}</h2><p>{{ t('连接常用服务，或从文件导入事项。') }}</p></div><button class="icon-button" :aria-label="t('关闭同步设置')" :disabled="working" @click="emit('close')"><X :size="18" /></button></header>

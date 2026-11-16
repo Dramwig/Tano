@@ -79,9 +79,13 @@ export function butterflyLandingPoint(rect: ButterflyRect, placement: ButterflyP
 }
 
 export function createButterflyController(overrides: Partial<ButterflyEnvironment> = {}) {
+  let frameWindow: Window | undefined;
+  const targetWindow = () => targets.get(state.targetId)?.target.element()?.ownerDocument.defaultView ?? window;
   const env: ButterflyEnvironment = {
-    now: () => performance.now(), requestFrame: callback => requestAnimationFrame(callback),
-    cancelFrame: id => cancelAnimationFrame(id), viewport: () => ({ width: innerWidth, height: innerHeight }),
+    now: () => performance.now(),
+    requestFrame: callback => { frameWindow = targetWindow(); return frameWindow.requestAnimationFrame(callback); },
+    cancelFrame: id => frameWindow?.cancelAnimationFrame(id),
+    viewport: () => ({ width: targetWindow().innerWidth, height: targetWindow().innerHeight }),
     measure: measureButterflyTarget, ...overrides,
   };
   const state = shallowReactive({ phase: 'docked' as ButterflyPhase, visible: false, targetId: '', homeId: '',

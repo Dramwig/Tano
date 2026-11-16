@@ -1,9 +1,14 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
+import { isNode } from '@tano/editor/dom-realm';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { useWorkspaceStore } from '../stores/workspace';
 import { useAssistantStore } from '../assistant/store';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
+import PluginIcon from './PluginIcon.vue';
 import { Check, ChevronDown, FolderOpen, CalendarDays, Bot, Puzzle } from 'lucide-vue-next';
 const store = useWorkspaceStore();
 const assistant = useAssistantStore();
@@ -12,10 +17,9 @@ const emit = defineEmits<{ open: []; 'update:modelValue': [value: string] }>();
 const views = computed(() => [
   { id: 'repository', label: t('文件'), icon: FolderOpen },
   ...(store.workspaceSettings.showPlan ? [{ id: 'events', label: t('事件与任务'), icon: CalendarDays }] : []),
-  { id: 'views', label: t('数据库与视图'), icon: FolderOpen },
   ...(assistant.available ? [{ id: 'assistant', label: t('助手'), icon: Bot }] : []),
-  ...(store.workspaceSettings.showPlugins ? [{ id: 'plugins', label: t('工作区插件'), icon: Puzzle }] : []),
-  ...(store.pluginViews.length || store.pluginCommands.length ? [{ id: 'plugin-views', label: t('插件工作台'), icon: Puzzle }] : []),
+  ...(store.workspaceSettings.showPlugins ? [{ id: 'plugin-views', label: t('插件'), icon: Puzzle }] : []),
+  ...store.pluginViews.filter(view => view.location === 'sidebar').map(view => ({ id: `plugin-sidebar:${view.key}`, label: view.label, icon: PluginIcon, pluginId: view.pluginId })),
 ]);
 const selected = computed(() => views.value.find(view => view.id === props.modelValue) ?? views.value[0]);
 const menuId = useId();
@@ -78,7 +82,7 @@ function keydown(event: KeyboardEvent) {
 }
 function outside(event: Event) {
   if (
-    event.target instanceof Node &&
+    isNode(event.target) &&
     (trigger.value?.contains(event.target) || menuElement.value?.contains(event.target))
   )
     return;
@@ -108,6 +112,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', outside, true);
   window.removeEventListener('resize', dismiss);
 });
+
 </script>
 
 <template>
@@ -124,11 +129,11 @@ onBeforeUnmount(() => {
     @keydown.down.prevent="open"
     @keydown.up.prevent="open"
   >
-    <component :is="selected.icon" :size="15" aria-hidden="true" />
+    <component :is="selected.icon" :id="'pluginId' in selected ? String(selected.pluginId) : undefined" :size="15" aria-hidden="true" />
     <span>{{ selected.label }}</span>
     <ChevronDown :size="12" :class="{ expanded: position }" aria-hidden="true" />
   </button>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <div v-surface-motion="'WorkspaceViewSwitcher:0'"
       v-if="position"
       :id="menuId"
@@ -146,7 +151,7 @@ onBeforeUnmount(() => {
     >
       <button v-for="item in views" :key="item.id" type="button" role="menuitemradio"
         :aria-checked="item.id === modelValue" @click="select(item.id)">
-        <component :is="item.icon" :size="15" aria-hidden="true" />
+        <component :is="item.icon" :id="'pluginId' in item ? String(item.pluginId) : undefined" :size="15" aria-hidden="true" />
         <span class="repository-switcher-details"><span>{{ item.label }}</span></span>
         <Check v-if="item.id === modelValue" :size="14" aria-hidden="true" />
       </button>
@@ -155,6 +160,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+:deep(.plugin-icon) { width:15px; height:15px; }
 .repository-switcher-trigger {
   display: inline-flex;
   align-items: center;

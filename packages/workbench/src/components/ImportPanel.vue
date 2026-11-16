@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
 import { vSurfaceMotion, closeSurfaceDialog } from '@tano/editor/surface-motion';
 import { t, uiLocale } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useId } from 'vue';
 import { animate } from 'motion/mini';
+import { springEasing } from '@tano/editor/motion';
 import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Check, CheckCircle2, ChevronRight, CircleAlert, FileText,
   Folder, History, LoaderCircle, UploadCloud, X } from 'lucide-vue-next';
 import { isWorkspaceInternalPath } from '@tano/protocol';
@@ -38,6 +40,7 @@ export interface ImportRecord extends ImportReceipt { id: string; time: number; 
 type ImportEntry = { path: string; name: string; depth: number; kind: 'folder' | 'file' };
 const props = defineProps<{ attachments?: AttachmentService; records: ImportRecord[] }>();
 const emit = defineEmits<{ close: []; completed: [record: ImportRecord] }>();
+const { window, document, overlays } = useWindowContext();
 const store = useWorkspaceStore();
 const workspaceId = store.workspace!.id;
 const titleId = useId();
@@ -132,7 +135,7 @@ async function animateDialogHeight() {
     element.style.height = '';
     return;
   }
-  const animation = animate(element, { height: [from, to] }, { duration: 0.3, ease: [0.22, 1, 0.36, 1] });
+  const animation = animate(element, { height: [from, to] }, { duration: 0.36, ease: springEasing('smooth') });
   dialogHeightMotion = animation;
   void animation.finished.then(() => {
     if (dialogHeightMotion !== animation) return;
@@ -248,7 +251,7 @@ const issueText = (issue: ImportIssue) => `${issue.name}：${issue.message}`;
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport :to="overlays">
     <dialog v-surface-motion="'ImportPanel:0'" ref="dialog" class="import-dialog" :class="{ 'import-dialog-detail': prepared }" :aria-labelledby="titleId" @cancel.prevent="close" @keydown="keydown"
       @pointerdown="backdropPointerDown" @click.self="backdropClick">
       <div class="import-main">

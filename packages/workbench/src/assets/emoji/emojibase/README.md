@@ -10,6 +10,6 @@ maps them to nine categories, and combines their Chinese and English search tags
 Existing curated workspace names and Unicode values take precedence.
 Artwork comes from the separately licensed [Twemoji sprite](../twemoji/README.md).
 
-Run `node scripts/build-workspace-emoji-catalog.mjs` to regenerate offline from
+Run `node scripts/build/build-workspace-emoji-catalog.mjs` to regenerate offline from
 the pinned npm package. Run it with `--check` to verify the generated subset.
 Input SHA-256 hashes are retained in [manifest.json](manifest.json).

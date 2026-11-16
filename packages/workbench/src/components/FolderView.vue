@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
+import { captureList } from '@tano/editor/motion';
 import { ArrowUp } from 'lucide-vue-next';
 import { isDataTableFilePath, isMarkdown, isWorkspaceInternalPath, parentPath, type FileEntry } from '@tano/protocol';
 import { uiLocale, t } from '../i18n';
@@ -21,6 +22,13 @@ const children = computed(() => props.directory.missing ? [] : props.entries
   .filter(file => !isWorkspaceInternalPath(file.path) && parentPath(file.path) === props.directory.path)
   .sort((a, b) => a.kind !== b.kind ? (a.kind === 'directory' ? -1 : 1)
     : a.name.localeCompare(b.name, 'zh-CN', { numeric: true })));
+const list = ref<HTMLElement>();
+// Entries created, renamed or deleted in this folder glide into place.
+watch(() => [props.directory.path, children.value.map(file => file.id).join('\n')] as const, (next, previous) => {
+  if (!previous || next[0] !== previous[0] || !previous[1]) return;
+  const play = captureList(list.value, ':scope > li[data-entry-id]', item => item.dataset.entryId, { strip: ['data-entry-id'] });
+  void nextTick(play);
+}, { flush: 'pre' });
 const fileType = (file: FileEntry) => file.kind === 'directory' ? t('文件夹') : file.name.includes('.') ? file.name.split('.').at(-1)!.toUpperCase() : t('文件');
 const fileSize = (file: FileEntry) => file.kind === 'directory' ? '—' : file.size < 1024 ? `${file.size} B` : file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} KB` : `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
 </script>
@@ -34,8 +42,8 @@ const fileSize = (file: FileEntry) => file.kind === 'directory' ? '—' : file.s
     <p v-if="directory.missing" class="folder-view-empty" role="status">{{ t('文件夹不可用') }}</p>
     <template v-else>
       <div class="folder-view-columns" aria-hidden="true"><span>{{ t('名称') }}</span><span>{{ t('修改时间') }}</span><span>{{ t('类型') }}</span><span>{{ t('大小') }}</span></div>
-      <ul class="folder-view-list">
-        <li v-for="file in children" :key="file.id">
+      <ul ref="list" class="folder-view-list">
+        <li v-for="file in children" :key="file.id" :data-entry-id="file.id">
           <button type="button" class="folder-view-entry" :data-path="file.path" :title="file.name" @click="emit('open', file)">
             <span class="folder-view-name">
               <DocumentFileIcon v-if="homeFor(file)" :file="homeFor(file)!"

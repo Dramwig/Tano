@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { localizedDataFieldTypes as dataFieldTypes } from '../ui-labels';
 import { t } from '../i18n';
@@ -775,6 +778,7 @@ const filterOperators = [
   { id: 'empty', get label() { return t('为空'); } },
   { id: 'notEmpty', get label() { return t('不为空'); } },
 ];
+
 </script>
 
 <template>
@@ -796,7 +800,7 @@ const filterOperators = [
           :value="title"
           @change="renameTitle"
         /></div>
-        <Teleport :to="controlsTarget ?? 'body'" :disabled="!controlsTarget" defer>
+        <Teleport :to="controlsTarget ?? document.body" :disabled="!controlsTarget" defer>
           <div
             class="data-table-controls"
             role="group"

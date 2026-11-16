@@ -1,7 +1,11 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
 import './review-card.css';
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { animate } from 'motion/mini';
+import { springEasing } from '@tano/editor/motion';
 
 const props = withDefaults(defineProps<{ expanded: boolean; label?: string; framed?: boolean }>(), { framed: true });
 const emit = defineEmits<{ activate: [] }>();
@@ -21,7 +25,7 @@ watch(() => props.framed && props.expanded, async selected => {
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
   // Independent translate keeps the rail's vertical transform animation intact.
   const animation = animate(element, { translate: [current, selected ? '-12px 0px' : '0px 0px'] },
-    { duration: 0.28, ease: [0.22, 1, 0.36, 1] });
+    { duration: 0.38, ease: springEasing('snappy') });
   movement = animation;
   await animation.finished;
   if (version !== revision) return;
@@ -31,6 +35,7 @@ watch(() => props.framed && props.expanded, async selected => {
 });
 onBeforeUnmount(() => { revision++; movement?.stop(); });
 function activate() { if (props.framed && !props.expanded) emit('activate'); }
+
 </script>
 
 <template>

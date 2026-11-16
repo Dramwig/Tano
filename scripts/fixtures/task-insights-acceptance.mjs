@@ -15,13 +15,14 @@ export async function acceptTaskInsights(page, expect, canonical, screenshotPath
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(canonical);
   await page.getByRole('button', { name: '检查清单' }).click();
   await page.getByRole('button', { name: '安装此插件', exact: true }).click();
-  await page.getByRole('button', { name: '查看任务统计详情', exact: true }).click();
+  await page.locator('.plugin-center:not(.plugin-center-sidebar)').getByRole('button', { name: '查看任务统计详情', exact: true }).click();
+  await page.locator('.plugin-detail-page').getByRole('button', { name: '权限', exact: true }).click();
   await page.getByRole('button', { name: '授权此版本运行', exact: true }).click();
-  await page.getByRole('button', { name: '关闭插件窗口', exact: true }).click();
+  await closePluginDetails(page);
   await expect.poll(() => page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').pluginRuntime.find(row => row.id === 'task-insights')?.status), { timeout: 30000 }).toBe('running');
   await page.getByRole('button', { name: /^切换侧边栏视图：/ }).click();
-  await page.getByRole('menuitemradio', { name: '插件工作台', exact: true }).click();
-  await page.getByRole('navigation', { name: '插件视图' }).getByRole('button', { name: /^任务统计/ }).click();
+  await page.getByRole('menuitemradio', { name: '插件', exact: true }).click();
+  await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').openPluginView('task-insights', 'dashboard'));
   const surface = page.getByRole('region', { name: '任务统计 · 任务统计', exact: true });
   const ui = surface.frameLocator('iframe[title="插件界面隔离容器"]').frameLocator('iframe[title="插件自定义界面"]');
   await expect(ui.getByRole('heading', { name: '任务统计', exact: true })).toHaveCSS('font-size', '28px');
@@ -72,11 +73,19 @@ export async function acceptTaskInsights(page, expect, canonical, screenshotPath
   const runtime = await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').pluginRuntime.find(row => row.id === 'task-insights'));
   expect(runtime.status).toBe('running');
   expect(runtime.logs.filter(row => row.level === 'error')).toEqual([]);
-  await page.getByRole('region', { name: '插件工作台', exact: true }).getByRole('button', { name: '管理插件', exact: true }).click();
-  await page.getByRole('button', { name: /^已安装/ }).click();
-  await page.getByRole('button', { name: '查看任务统计详情', exact: true }).click();
+  await page.getByRole('region', { name: '插件', exact: true }).getByLabel('更多操作', { exact: true }).click();
+  await page.getByRole('button', { name: '插件中心…', exact: true }).click();
+  await page.locator('.plugin-center:not(.plugin-center-sidebar)').getByRole('button', { name: /^已安装/ }).click();
+  await page.locator('.plugin-center:not(.plugin-center-sidebar)').getByRole('button', { name: '查看任务统计详情', exact: true }).click();
   await page.getByRole('button', { name: '停用插件', exact: true }).click();
-  await page.getByRole('button', { name: '关闭插件窗口', exact: true }).click();
+  await closePluginDetails(page);
   await expect(page.getByRole('tab', { name: /任务统计/ })).toHaveCount(0);
   expect(await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').pluginRuntime.some(row => row.id === 'task-insights' && row.status === 'running'))).toBe(false);
+}
+
+async function closePluginDetails(page) {
+ const detail = page.locator('.plugin-detail-page');
+ if (await detail.count()) {
+  await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').openPluginsTab());
+ } else await page.getByRole('button', { name: '关闭插件窗口', exact: true }).click();
 }

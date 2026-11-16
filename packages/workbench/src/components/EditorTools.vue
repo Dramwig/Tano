@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { t } from '../i18n';
 import { computed, nextTick, ref, watch } from 'vue';
 import type { EditorSelectionContext } from '@tano/editor/document-model';
@@ -135,6 +138,7 @@ async function changeMode(mode: ToolbarMode) {
   // The mode switch removes its own button; return keyboard focus to this editor.
   focusEditor();
 }
+
 </script>
 
 <template>
@@ -188,7 +192,7 @@ async function changeMode(mode: ToolbarMode) {
       <template #leading><ToolbarDragHandle v-model:open="handleMenuOpen" :mode="mode" @start="startDrag" @select="changeMode" /></template>
     </SelectionToolbar>
   </template>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <template v-if="drag">
       <div
         ref="previewPanel"

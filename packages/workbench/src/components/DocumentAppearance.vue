@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
+import { isNode } from '@tano/editor/dom-realm';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
@@ -178,7 +182,7 @@ function fileChanged(key: AppearanceProperty, event: Event) {
   if (file) void uploadImage(key, file);
 }
 function outside(event: Event) {
-  if (!(event.target instanceof Node) || coverTrigger.value?.contains(event.target) || coverPanel.value?.contains(event.target)) return;
+  if (!(isNode(event.target)) || coverTrigger.value?.contains(event.target) || coverPanel.value?.contains(event.target)) return;
   closeCover();
 }
 function coverKeydown(event: KeyboardEvent) {
@@ -209,6 +213,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', placeCover);
   window.visualViewport?.removeEventListener('resize', placeCover);
 });
+
 </script>
 
 <template>
@@ -245,7 +250,7 @@ onBeforeUnmount(() => {
     <input ref="coverInput" hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" :aria-label="t('上传文档封面')" :disabled="disabled" @change="fileChanged('cover', $event)" />
     <p v-if="error && !coverOpen" class="document-appearance-error" role="alert">{{ error }}</p>
     </div>
-    <Teleport to="body">
+    <Teleport :to="document.body">
       <section v-surface-motion="'DocumentAppearance:0'" v-if="coverOpen" :id="coverPanelId" ref="coverPanel" class="workspace-icon-picker document-cover-picker" role="dialog" :aria-label="t('文档封面')"
         :style="{ left: `${coverPosition.left}px`, top: `${coverPosition.top}px`, width: `${coverPosition.width}px`, maxHeight: `${coverPosition.maxHeight}px` }"
         :aria-busy="busy" @keydown="coverKeydown" @paste="pasteCover">

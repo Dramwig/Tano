@@ -1,3 +1,4 @@
+import { isElement } from '@tano/editor/dom-realm';
 import { t } from './i18n';
 
 // Formatting bindings supplied by the Milkdown CommonMark and GFM presets.
@@ -211,7 +212,7 @@ export function matchesShortcut(event: KeyboardShortcutEvent, id: ShortcutId, bi
 export function isSidebarToggleShortcut(event: KeyboardShortcutEvent, bindings = defaultShortcutBindings) {
   const target = event.target;
   // Formatting shortcuts belong to the focused editor or input.
-  if (target instanceof Element && target.closest(
+  if (isElement(target) && target.closest(
     'input, textarea, select, [contenteditable="true"], [contenteditable=""], [contenteditable="plaintext-only"]',
   )) return false;
   return matchesShortcut(event, 'toggleSidebar', bindings);

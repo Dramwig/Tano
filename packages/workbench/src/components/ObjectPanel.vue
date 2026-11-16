@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { uiLocale, t } from '../i18n';
 import { computed, nextTick, ref, watch } from 'vue';
@@ -314,6 +317,7 @@ const uri = computed(() =>
       })
     : t('保存后生成唯一 ID'),
 );
+
 </script>
 
 <template>

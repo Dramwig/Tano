@@ -3,7 +3,7 @@ import { tabLayoutRect } from './tab-layout';
 import type { PaneDrop } from './pane-layout';
 
 // Both captured pointer drags and Windows native drags use the same hit test.
-export function paneDropAt(x: number, y: number): PaneDrop | undefined {
+export function paneDropAt(x: number, y: number, document: Document = globalThis.document): PaneDrop | undefined {
   const hit = document.elementFromPoint(x, y);
   const strip = hit?.closest<HTMLElement>('[data-tab-pane-id]');
   const host = hit?.closest<HTMLElement>('.workspace-panes');

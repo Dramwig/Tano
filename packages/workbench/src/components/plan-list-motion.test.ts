@@ -50,7 +50,7 @@ function item(key: string, y: number) {
   return { element, position };
 }
 function displacement(element: HTMLElement, dy: number) {
-  expect(animate).toHaveBeenCalledWith(element, { translate: [`0px ${dy}px`, '0px 0px'] }, expect.objectContaining({ duration: 0.22 }));
+  expect(animate).toHaveBeenCalledWith(element, { translate: [`0px ${dy}px`, '0px 0px'] }, expect.objectContaining({ duration: 0.34 }));
 }
 
 it('keeps the initial layout still and moves both task/event rows and following group headings on reorder', () => {

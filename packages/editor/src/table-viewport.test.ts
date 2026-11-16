@@ -13,9 +13,9 @@ let root: HTMLElement;
 afterEach(() => { app?.unmount(); root?.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 it('fits many tables in one transaction when the document width changes', async () => {
-  const callbacks = new Set<() => void>();
+  const callbacks = new Set<(entries: ResizeObserverEntry[]) => void>();
   vi.stubGlobal('ResizeObserver', class {
-    constructor(callback: () => void) { callbacks.add(callback); }
+    constructor(callback: (entries: ResizeObserverEntry[]) => void) { callbacks.add(callback); }
     observe() {}
     unobserve() {}
     disconnect() {}
@@ -55,7 +55,7 @@ it('fits many tables in one transaction when the document width changes', async 
   const dispatch = view.dispatch.bind(view);
   let updates = 0;
   view.dispatch = tr => { if (tr.docChanged) updates++; dispatch(tr); };
-  width = 1200; callbacks.forEach(callback => callback());
+  width = 1200; callbacks.forEach(callback => callback([]));
   await vi.waitFor(() => expect(widths()).toEqual(Array(40).fill(600)), { timeout: 5000 });
   await vi.waitFor(() => expect(geometryOrder.filter(event => event === 'write').length).toBeGreaterThanOrEqual(20));
   expect(geometryOrder.slice(0, 20)).toEqual(Array(20).fill('read'));
@@ -94,12 +94,13 @@ it.each([0, 8])('expands only wide tables, reserves the comment gutter, and trac
   let tableWidth = 1600;
   let paneWidth = 1280;
   let wrapper: HTMLElement | undefined;
-  const resizeCallbacks = new Set<() => void>();
-  const resize = () => resizeCallbacks.forEach(callback => callback());
+  const resizeCallbacks = new Set<(entries: ResizeObserverEntry[]) => void>();
+  const resize = () => resizeCallbacks.forEach(callback => callback([]));
   const disconnect = vi.fn();
   vi.stubGlobal('ResizeObserver', class {
-    constructor(callback: () => void) { resizeCallbacks.add(callback); }
+    constructor(callback: (entries: ResizeObserverEntry[]) => void) { resizeCallbacks.add(callback); }
     observe() {}
+    unobserve() {}
     disconnect = disconnect;
   });
   Range.prototype.getBoundingClientRect = () => new DOMRect();

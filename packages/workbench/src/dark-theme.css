@@ -16,16 +16,18 @@
   --text: #d8d7d4;
   --text-secondary: #b2b1ad;
   --muted: #9b9a96;
-  --green: #91b8a1;
-  --green-hover: #adcdb9;
-  --green-fill: #386b50;
-  --green-fill-hover: #44785d;
-  /* Neutral selection states — no green unless it's a true action */
+  --brand-green: #91b8a1;
+  --green: #e4e3df;
+  --green-hover: #ffffff;
+  --green-fill: #4d4c48;
+  --green-fill-hover: #5c5b57;
+  --switch-on: #b9b8b3;
+  /* Neutral selection states */
   --selected: #323231;
   --selected-text: var(--text);
-  --accent: #2b3a32;
-  --block-selection: #35483d;
-  --selection: #3b5344;
+  --accent: #2f2f2d;
+  --block-selection: #3a3a38;
+  --selection: #464542;
   --switch-off: #56554f;
   --danger: #d9a099;
   --danger-bg: #3a2c2c;

@@ -572,3 +572,80 @@ it('does not intercept composing, modified, or read-only input', async () => {
   await nextTick();
   expect(typeSymbol(view, '*')).toBe(false);
 });
+
+it('continues markup in one undo step and closes fences at the middle line', async () => {
+ const { view, value, editor } = await mountSource('- item');
+ view.dispatch({ selection: { anchor: 6 } });
+ view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+ expect(value.value).toBe('- item\n- ');
+ expect(editor.value!.undoLastChange()).toBe(true);
+ expect(value.value).toBe('- item');
+ view.dispatch({ changes: {from:0,to:view.state.doc.length,insert:'```ts'}, selection:{anchor:5} });
+ view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+ expect(value.value).toBe('```ts\n\n```');
+ expect(view.state.selection.main.head).toBe(6);
+});
+it('restores Chinese source punctuation when undoing recognition', async () => {
+ const { view, value, editor } = await mountSource('》');
+ view.dispatch({selection:{anchor:1}});
+ let handled = false;
+ for (const handler of view.state.facet(EditorView.inputHandler)) if (handler(view,1,1,' ',()=>view.state.update({}))) {handled=true;break;}
+ expect(handled).toBe(true);
+ expect(value.value).toBe('> ');
+ editor.value!.undoLastChange();
+ expect(value.value).toBe('》 ');
+});
+
+it('leaves plain newlines when continuation is disabled or Shift is held', async () => {
+ const { view, value, preferences, readonly } = await mountSource('- item');
+ view.dispatch({selection:{anchor:6}});
+ view.contentDOM.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',shiftKey:true,bubbles:true,cancelable:true}));
+ expect(value.value).toBe('- item\n');
+ preferences.value = {...preferences.value, markdownAutocomplete:{listContinuation:false,fenceClosing:false,bracketPairs:false}} as typeof preferences.value;
+ view.contentDOM.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',bubbles:true,cancelable:true}));
+ expect(value.value).toBe('- item\n\n');
+ readonly.value=true; await nextTick();
+ view.contentDOM.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',bubbles:true,cancelable:true}));
+ expect(value.value).toBe('- item\n\n');
+});
+
+it('tracks generated closers across typing and never skips manual closers', async () => {
+ const {view,value,preferences} = await mountSource('');
+ preferences.value = {...preferences.value, markdownAutocomplete:{listContinuation:true,fenceClosing:true,bracketPairs:true}} as typeof preferences.value;
+ await nextTick();
+ const input = (text: string) => { const {from,to} = view.state.selection.main; return view.state.facet(EditorView.inputHandler).some(handler=>handler(view,from,to,text,()=>view.state.update({}))); };
+ expect(input('(')).toBe(true); expect(value.value).toBe('()');
+ view.dispatch({changes:{from:1,insert:'a'},selection:{anchor:2}});
+ expect(input(')')).toBe(true); expect(value.value).toBe('(a)'); expect(view.state.selection.main.head).toBe(3);
+ view.dispatch({changes:{from:0,to:3,insert:'()'},selection:{anchor:1}});
+ expect(input(')')).toBe(false);
+ view.dispatch({changes:{from:0,to:2,insert:''},selection:{anchor:0}});
+ expect(input('[')).toBe(true); expect(value.value).toBe('[]');
+ typeSymbol(view,'Backspace'); expect(value.value).toBe('');
+});
+
+it.each([false, true])('does not reparse 1000 lines for ordinary typing (bracket pairs: %s)', async bracketPairs => {
+ const highlight = await import('@tano/editor/source-highlight');
+ const {view,value,preferences} = await mountSource(Array.from({length:1000}, (_,i)=>`ordinary line ${i}`).join('\n'));
+ preferences.value = {...preferences.value, markdownAutocomplete:{listContinuation:true,fenceClosing:true,bracketPairs}} as typeof preferences.value;
+ await nextTick();
+ const at = view.state.doc.line(500).to;
+ view.dispatch({selection:{anchor:at}});
+ const parse = vi.spyOn(highlight,'sourceStyleRanges');
+ try {
+  const handled = view.state.facet(EditorView.inputHandler).some(handler => handler(view,at,at,'a',()=>view.state.update({changes:{from:at,insert:'a'}})));
+  if (!handled) view.dispatch({changes:{from:at,insert:'a'},selection:{anchor:at+1},userEvent:'input.type'});
+  await nextTick();
+  expect(value.value.split('\n')[499]).toBe('ordinary line 499a');
+  expect(parse).not.toHaveBeenCalled();
+ } finally { parse.mockRestore(); }
+});
+
+it.each(['```\n》\n```', '$$\n》\n$$', '---\n》\n---', '<!--\n》\n-->'])('uses cached protected syntax to reject Chinese candidates in %s', async content => {
+ const {view,value} = await mountSource(content);
+ const at = content.indexOf('》')+1;
+ view.dispatch({selection:{anchor:at}});
+ const handled = view.state.facet(EditorView.inputHandler).some(handler => handler(view,at,at,' ',()=>view.state.update({})));
+ expect(handled).toBe(false);
+ expect(value.value).toBe(content);
+});

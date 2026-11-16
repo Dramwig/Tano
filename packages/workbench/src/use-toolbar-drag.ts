@@ -1,3 +1,4 @@
+import { useWindowContext } from './windows/context';
 import { onBeforeUnmount, shallowRef } from 'vue';
 import { toolbarDropTarget, toolbarPaneBounds } from './toolbar-docking';
 import type { ToolbarMode } from './toolbar-preference';
@@ -16,6 +17,7 @@ export function useToolbarDrag(
   focusEditor: () => void,
   tap?: () => void,
 ) {
+  const { window } = useWindowContext();
   const drag = shallowRef<ToolbarDrag | null>(null);
   let pending: {
     pointer: number;

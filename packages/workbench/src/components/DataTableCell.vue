@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
 import type { CSSProperties } from 'vue';
@@ -204,6 +207,7 @@ function toggle(value: string) {
     props.value,
   );
 }
+
 </script>
 
 <template>

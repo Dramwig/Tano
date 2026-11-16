@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
+const ResizeObserver = (window as Window & typeof globalThis).ResizeObserver;
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
@@ -128,6 +132,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', scrolled, true);
   window.removeEventListener('resize', resized);
 });
+
 </script>
 
 <template>
@@ -147,7 +152,7 @@ onBeforeUnmount(() => {
       </button>
     </div>
   </section>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <div v-surface-motion="'DocumentStarter:0'" v-if="open" :id="menuId" ref="menu" class="dropdown compact-action-menu panel-scrollbar document-starter-menu"
       role="menu" tabindex="-1" :aria-label="t('更多开始使用选项')" :style="position" @keydown.stop="menuKey">
       <button v-for="action in overflow" :key="action.id" type="button" role="menuitem"

@@ -20,7 +20,7 @@ it('restores the caret height relative to its pane instead of copying the old sc
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 0; });
   const { scroll, editor } = fixture();
   const bookmark = captureModeViewport(editor, scroll)!;
-  expect(bookmark).toEqual({ selection: { anchor: 30, head: 10 }, top: 400, scrollTop: 200 });
+  expect(bookmark).toEqual({ selection: { anchor: 30, head: 10 }, top: 400, scrollTop: 200, height: 0 });
   editor.modeCursorTop = () => 950 - scroll.scrollTop;
   await restoreModeViewport(editor, scroll, bookmark, false, () => true);
   expect(scroll.scrollTop).toBe(500);
@@ -46,4 +46,14 @@ it('does not restore a selection after the target pane has changed', async () =>
   const { scroll, editor } = fixture();
   await restoreModeViewport(editor, scroll, captureModeViewport(editor, scroll)!, true, () => false);
   expect(editor.restoreModeSelection).not.toHaveBeenCalled();
+});
+
+it('keeps a visible caret in view when moving into a shorter window', async () => {
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 0; });
+  const { scroll, editor } = fixture();
+  Object.defineProperty(scroll, 'clientHeight', { value: 500, configurable: true });
+  const bookmark = captureModeViewport(editor, scroll)!;
+  Object.defineProperty(scroll, 'clientHeight', { value: 250 });
+  await restoreModeViewport(editor, scroll, bookmark, false, () => true);
+  expect(editor.modeCursorTop() - scroll.getBoundingClientRect().top).toBe(226);
 });

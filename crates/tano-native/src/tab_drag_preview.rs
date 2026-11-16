@@ -3,7 +3,7 @@
 use base64::Engine;
 use std::ptr::{null, null_mut};
 use windows_sys::Win32::{
-    Foundation::{HWND, POINT, RECT, SIZE},
+    Foundation::{HWND, POINT, SIZE},
     Graphics::Gdi::*,
     UI::WindowsAndMessaging::*,
 };
@@ -28,7 +28,10 @@ pub struct Preview {
 }
 
 impl Preview {
-    pub fn new(data: Bitmap) -> Result<Self, String> {
+    /// `owner` is the drag's source window. Windows keeps an owned window
+    /// above its owner in every case, so the source window can never cover
+    /// the card; WS_EX_TOPMOST keeps it above other applications' windows.
+    pub fn new(data: Bitmap, owner: HWND) -> Result<Self, String> {
         if !(1..=2048).contains(&data.width) || !(1..=512).contains(&data.height) {
             return Err("Invalid tab preview size".into());
         }
@@ -40,7 +43,11 @@ impl Preview {
         }
         unsafe {
             let hwnd = CreateWindowExW(
-                WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
+                WS_EX_LAYERED
+                    | WS_EX_TRANSPARENT
+                    | WS_EX_NOACTIVATE
+                    | WS_EX_TOOLWINDOW
+                    | WS_EX_TOPMOST,
                 windows_sys::w!("STATIC"),
                 windows_sys::w!("Tano tab preview"),
                 WS_POPUP,
@@ -48,7 +55,7 @@ impl Preview {
                 0,
                 data.width,
                 data.height,
-                null_mut(),
+                owner,
                 null_mut(),
                 null_mut(),
                 null(),
@@ -98,54 +105,46 @@ impl Preview {
         }
     }
 
-    pub fn update(&self, cursor: POINT, source: HWND) -> Result<(), String> {
+    /// Shown wherever the cursor is, including over the source window: the
+    /// overlay is topmost, so the source window can never cover the card.
+    pub fn update(&self, cursor: POINT, _source: HWND) -> Result<(), String> {
         unsafe {
-            let mut rect: RECT = std::mem::zeroed();
-            let inside = GetWindowRect(source, &mut rect) != 0
-                && cursor.x >= rect.left
-                && cursor.x < rect.right
-                && cursor.y >= rect.top
-                && cursor.y < rect.bottom;
-            if inside {
-                ShowWindow(self.hwnd, SW_HIDE);
-            } else {
-                let position = POINT {
-                    x: cursor.x - self.grab.x,
-                    y: cursor.y - self.grab.y,
-                };
-                let origin = POINT { x: 0, y: 0 };
-                let blend = BLENDFUNCTION {
-                    BlendOp: AC_SRC_OVER as u8,
-                    BlendFlags: 0,
-                    SourceConstantAlpha: 255,
-                    AlphaFormat: AC_SRC_ALPHA as u8,
-                };
-                if UpdateLayeredWindow(
-                    self.hwnd,
-                    null_mut(),
-                    &position,
-                    &self.size,
-                    self.dc,
-                    &origin,
-                    0,
-                    &blend,
-                    ULW_ALPHA,
-                ) == 0
-                {
-                    return Err(std::io::Error::last_os_error().to_string());
-                }
-                if SetWindowPos(
-                    self.hwnd,
-                    HWND_TOPMOST,
-                    position.x,
-                    position.y,
-                    0,
-                    0,
-                    SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
-                ) == 0
-                {
-                    return Err(std::io::Error::last_os_error().to_string());
-                }
+            let position = POINT {
+                x: cursor.x - self.grab.x,
+                y: cursor.y - self.grab.y,
+            };
+            let origin = POINT { x: 0, y: 0 };
+            let blend = BLENDFUNCTION {
+                BlendOp: AC_SRC_OVER as u8,
+                BlendFlags: 0,
+                SourceConstantAlpha: 255,
+                AlphaFormat: AC_SRC_ALPHA as u8,
+            };
+            if UpdateLayeredWindow(
+                self.hwnd,
+                null_mut(),
+                &position,
+                &self.size,
+                self.dc,
+                &origin,
+                0,
+                &blend,
+                ULW_ALPHA,
+            ) == 0
+            {
+                return Err(std::io::Error::last_os_error().to_string());
+            }
+            if SetWindowPos(
+                self.hwnd,
+                HWND_TOPMOST,
+                position.x,
+                position.y,
+                0,
+                0,
+                SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            ) == 0
+            {
+                return Err(std::io::Error::last_os_error().to_string());
             }
             let mut message: MSG = std::mem::zeroed();
             while PeekMessageW(&mut message, self.hwnd, 0, 0, PM_REMOVE) != 0 {
@@ -177,9 +176,10 @@ impl Drop for Preview {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use windows_sys::Win32::Foundation::RECT;
 
     #[test]
-    fn native_preview_tracks_outside_hides_inside_and_releases_window() {
+    fn native_preview_tracks_everywhere_and_releases_window() {
         unsafe {
             let source = CreateWindowExW(
                 WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
@@ -196,14 +196,23 @@ mod tests {
                 null(),
             );
             assert!(!source.is_null());
-            let preview = Preview::new(Bitmap {
-                width: 120,
-                height: 32,
-                rgba: base64::engine::general_purpose::STANDARD.encode(vec![255; 120 * 32 * 4]),
-                grab_x: 20,
-                grab_y: 12,
-            })
+            let preview = Preview::new(
+                Bitmap {
+                    width: 120,
+                    height: 32,
+                    rgba: base64::engine::general_purpose::STANDARD.encode(vec![255; 120 * 32 * 4]),
+                    grab_x: 20,
+                    grab_y: 12,
+                },
+                source,
+            )
             .unwrap();
+            // Owned by the source, so it is always stacked above it.
+            assert_eq!(GetWindow(preview.hwnd, GW_OWNER), source);
+            assert_ne!(
+                GetWindowLongW(preview.hwnd, GWL_EXSTYLE) as u32 & WS_EX_TOPMOST,
+                0
+            );
             let hwnd = preview.hwnd;
             preview.update(POINT { x: 400, y: 400 }, source).unwrap();
             assert_ne!(IsWindowVisible(hwnd), 0);
@@ -218,8 +227,9 @@ mod tests {
                 styles & (WS_EX_TRANSPARENT | WS_EX_NOACTIVATE),
                 WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
             );
+            // Over the source window it stays visible (topmost), never covered.
             preview.update(POINT { x: 150, y: 150 }, source).unwrap();
-            assert_eq!(IsWindowVisible(hwnd), 0);
+            assert_ne!(IsWindowVisible(hwnd), 0);
             drop(preview);
             assert_eq!(IsWindow(hwnd), 0);
             DestroyWindow(source);

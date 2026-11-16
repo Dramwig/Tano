@@ -1,9 +1,13 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { t } from '../i18n';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   defaultKeymap,
   history,
+  historyField,
   historyKeymap,
   indentWithTab,
   isolateHistory,
@@ -15,17 +19,17 @@ import {
 import { Compartment, EditorState, RangeSet, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { Decoration, EditorView, GutterMarker, gutterLineClass, highlightActiveLineGutter, keymap, lineNumbers, WidgetType } from '@codemirror/view';
 import type { DecorationSet } from '@codemirror/view';
-import { droppedEntryReferences, entryReferenceDragType, referenceMarkdown } from '@tano/protocol';
+import { confirmEntryReferenceDrop, droppedEntryReferences, entryReferenceDragType, referenceMarkdown } from '@tano/protocol';
 import type { CommentAnchor, ReferenceIdentity, ReferenceTarget } from '@tano/protocol';
 import type { SuggestionDecorations } from '@tano/protocol';
 import type { CommentGeometry } from '@tano/editor/comment-projection';
-import { sourceChanges, sourceStyleRanges, type SourceHighlightChange, type SourceHighlightUpdate } from '@tano/editor/source-highlight';
+import { sourceChanges, type SourceHighlightChange, type SourceHighlightUpdate } from '@tano/editor/source-highlight';
 import { SourceHighlightParser } from '../source-highlight-parser';
 import { captureModeViewport, restoreModeViewport } from '../editor-mode';
 import type { ModeSelection } from '@tano/editor/mode-selection';
 import { splitFrontmatter } from '@tano/editor/syntax';
 import { referenceInsertionPoint } from '@tano/editor/document-links';
-import { selectionWrap, workspaceWrapping, mapChineseInput, normalizeChineseInput, mappedChineseInputKey, mappedChineseBeforeInput } from '@tano/editor/runtime';
+import { continueMarkup, closeMarkupFence, closingBracket, normalizeMarkdownAutocomplete, chineseSyntaxEdit, selectionWrap, workspaceWrapping, mapChineseInput, normalizeChineseInput, mappedChineseInputKey, mappedChineseBeforeInput } from '@tano/editor/runtime';
 import type { EditorPreferences, WorkspaceCapabilities } from '@tano/editor/runtime';
 import { textSearchRanges } from '@tano/editor/search';
 
@@ -215,7 +219,7 @@ function fileHandler(event: Event, files: FileList | null | undefined, requireIm
 function wrapSelectedSourceField(event: KeyboardEvent, current: EditorView) {
   const mapped = mappedChineseInputKey(event, chineseInputSettings());
   const { from, to } = current.state.selection.main;
-  if (mapped && insertMappedChineseInput(current, from, to, mapped)) {
+  if (mapped && insertChineseInput(current, from, to, event.key)) {
     event.preventDefault();
     return true;
   }
@@ -241,8 +245,7 @@ function wrapSourceSelection(current: EditorView, text: string) {
   const wrap = selectionWrap(selected, text, workspaceWrapping(props.preferences?.selectionWrapping, props.capabilities?.features),
     source.slice(0, selection.from), source.slice(selection.to));
   if (!wrap) return false;
-  if (sourceStyleRanges(source).some(range => ['code', 'math', 'frontmatter', 'html'].includes(range.style) &&
-      range.from < selection.to && range.to > selection.from)) return false;
+  if (blockedSource(current, selection.from, selection.to)) return false;
   if (wrap.prefix) current.dispatch({
     changes: { from: selection.from, to: selection.to, insert: wrap.prefix + selected + wrap.suffix },
     selection: { anchor: selection.anchor + wrap.prefix.length, head: selection.head + wrap.prefix.length },
@@ -251,14 +254,70 @@ function wrapSourceSelection(current: EditorView, text: string) {
   return true;
 }
 
+const autoCloser = StateEffect.define<number>();
+const autoClosers = StateField.define<number[]>({
+ create: () => [],
+ update(positions, tr) {
+  const mapped = positions.filter(p => { let removed = false; tr.changes.iterChangedRanges((from, to) => { if (from <= p && to > p) removed = true; }); return !removed; }).map(p => tr.changes.mapPos(p, 1));
+  for (const effect of tr.effects) if (effect.is(autoCloser)) mapped.push(effect.value);
+  return mapped;
+ }
+});
+/** Reuse the mapped syntax cache rather than reparsing Markdown on input. */
+function blockedSource(current: EditorView, from: number, to = from, styles = ['code', 'math', 'frontmatter', 'html']) {
+ let blocked = false;
+ current.state.field(syntaxStyles).decorations.between(from, to, (start, end, decoration) => {
+  if ((from === to ? start <= from : start < to) && end > from &&
+      styles.some(style => decoration.spec.class === `cm-source-${style}`)) blocked = true;
+ });
+ return blocked;
+}
+function autocompleteKey(current: EditorView, key: 'Enter' | 'Backspace' | 'Shift-Enter') {
+ if (props.readonly || current.compositionStarted || current.composing || current.state.selection.ranges.length !== 1 || !current.state.selection.main.empty) return false;
+ const { head } = current.state.selection.main, line = current.state.doc.lineAt(head);
+ const settings = normalizeMarkdownAutocomplete(props.preferences?.markdownAutocomplete);
+ if (key === 'Backspace' && settings.bracketPairs && current.state.field(autoClosers).includes(head) && closingBracket('x', '', current.state.sliceDoc(head - 1, head)) === current.state.sliceDoc(head, head + 1)) {
+  current.dispatch({ changes: { from: head - 1, to: head + 1 }, selection: { anchor: head - 1 }, userEvent: 'delete.backward', annotations: isolateHistory.of('full') }); return true;
+ }
+ if (key === 'Enter' && settings.fenceClosing && head === line.to &&
+     (/^ {0,3}(`{3,}|~{3,})[^`]*$/.test(line.text) || (props.capabilities?.features?.math !== false && /^ {0,3}\$\$\s*$/.test(line.text))) &&
+     !blockedSource(current, head, head, ['html', 'frontmatter'])) {
+  const fence = closeMarkupFence(current.state.doc.toString(), line.from, props.capabilities?.features?.math !== false);
+  if (fence) { current.dispatch({ changes: { from: head, insert: fence.insert }, selection: { anchor: head + fence.cursor }, userEvent: 'input', annotations: isolateHistory.of('full') }); return true; }
+ }
+ if (!settings.listContinuation) return false;
+ if (key === 'Shift-Enter') { if (blockedSource(current, head)) return false; current.dispatch({ changes: { from: head, insert: '\n' }, selection: { anchor: head + 1 }, userEvent: 'input', annotations: isolateHistory.of('full') }); return true; }
+ let edit = continueMarkup(line.text, head - line.from, { backspace: key === 'Backspace' });
+ if (!edit || blockedSource(current, head)) return false;
+ // Only empty nested items need the preceding list indentation.
+ if (key === 'Enter' && edit.from === 0 && /^[ \t]+/.test(line.text))
+  edit = continueMarkup(line.text, head - line.from, { previousLines: current.state.sliceDoc(0, line.from).split('\n') })!;
+ current.dispatch({ changes: { from: line.from + edit.from, to: line.from + edit.to, insert: edit.insert }, selection: { anchor: line.from + edit.cursor }, userEvent: 'input', annotations: isolateHistory.of('full') }); return true;
+}
+function syntaxSource(current: EditorView, from: number, to: number, text: string, committed = false) {
+ if (props.readonly || current.compositionStarted || current.composing || current.state.selection.ranges.length !== 1 || (!committed && from !== to)) return false;
+ const line = current.state.doc.lineAt(from);
+ const edit = chineseSyntaxEdit(current.state.sliceDoc(line.from, from), text, chineseInputSettings(), 'source');
+ if (!edit || blockedSource(current, from)) return false;
+ if (!committed) current.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length }, userEvent: 'input.type' });
+ const start = from - edit.deleteBefore;
+ current.dispatch({ changes: { from: start, to: from + text.length, insert: edit.insert }, selection: { anchor: start + edit.insert.length }, userEvent: 'input.type', annotations: isolateHistory.of('before') });
+ return true;
+}
 function chineseInputSettings() {
   return normalizeChineseInput(props.preferences?.chineseInput, props.preferences?.selectionWrapping);
 }
 function mappedChineseInput(text: string) {
   return mapChineseInput(text, chineseInputSettings());
 }
-function insertChineseInput(current: EditorView, from: number, to: number, text: string) {
+function insertChineseInput(current: EditorView, from: number, to: number, text: string, committed = false) {
+  if (syntaxSource(current, from, to, text)) return true;
   const mapped = mappedChineseInput(text);
+  if (!props.readonly && !current.compositionStarted && !current.composing && (from === to || committed) && current.state.selection.ranges.length === 1 && normalizeMarkdownAutocomplete(props.preferences?.markdownAutocomplete).bracketPairs) {
+   if (mapped.length === 1 && current.state.field(autoClosers).includes(from) && current.state.sliceDoc(from, from + 1) === mapped) { current.dispatch({ selection: { anchor: from + 1 } }); return true; }
+   const close = closingBracket(current.state.sliceDoc(current.state.doc.lineAt(from).from, from), current.state.sliceDoc(from, from + 1), mapped);
+   if (close && !blockedSource(current, from)) { current.dispatch({ changes: { from, to, insert: mapped + close }, selection: { anchor: from + 1 }, effects: autoCloser.of(from + 1), userEvent: 'input.type' }); return true; }
+  }
   return mapped !== text && insertMappedChineseInput(current, from, to, mapped);
 }
 function insertMappedChineseInput(current: EditorView, from: number, to: number, mapped: string) {
@@ -271,14 +330,14 @@ function insertMappedChineseInput(current: EditorView, from: number, to: number,
 }
 function finishChineseComposition(current: EditorView, text: string) {
   const revision = ++chineseCompositionRevision;
-  if (!text || mappedChineseInput(text) === text) return;
+  if (!text) return;
   // Wait for CodeMirror's composition-end flush without yielding a browser frame.
   queueMicrotask(() => queueMicrotask(() => {
     if (revision !== chineseCompositionRevision || view !== current || props.readonly || current.compositionStarted || current.state.selection.ranges.length !== 1) return;
     const selection = current.state.selection.main;
     const to = selection.from, from = to - text.length;
     if (selection.empty && from >= 0 && current.state.sliceDoc(from, to) === text)
-      insertChineseInput(current, from, to, text);
+      syntaxSource(current, from, to, text, true) || insertChineseInput(current, from, to, text, true);
   }));
 }
 
@@ -289,7 +348,8 @@ onMounted(() => {
       doc: props.modelValue,
       extensions: [
         undoHistory.of(history()),
-        keymap.of([{ ...indentWithTab, preventDefault: true }, ...defaultKeymap, ...historyKeymap]),
+        autoClosers,
+        keymap.of([ ...(['Enter', 'Backspace', 'Shift-Enter'] as const).map(key => ({ key, run: (v: EditorView) => autocompleteKey(v, key) })), { ...indentWithTab, preventDefault: true }, ...defaultKeymap, ...historyKeymap]),
         lineNumbers(),
         highlightActiveLineGutter(),
         syntaxStyles,
@@ -308,7 +368,7 @@ onMounted(() => {
         EditorView.domEventHandlers({
           beforeinput: (event, current) => {
             const mapped = mappedChineseBeforeInput(event, chineseInputSettings());
-            if (mapped === null) return false;
+            if (mapped === null && (event.isComposing || event.inputType !== 'insertText' || !event.data)) return false;
             const ranges = event.getTargetRanges?.() ?? [];
             if (ranges.length > 1) return false;
             let { from, to } = current.state.selection.main;
@@ -318,6 +378,8 @@ onMounted(() => {
               from = current.posAtDOM(range.startContainer, range.startOffset);
               to = current.posAtDOM(range.endContainer, range.endOffset);
             }
+            if (!event.isComposing && event.inputType === 'insertText' && event.data && insertChineseInput(current, from, to, event.data)) { event.preventDefault(); return true; }
+            if (mapped === null) return false;
             if (from < 0 || to < from || to > current.state.doc.length || !insertMappedChineseInput(current, from, to, mapped)) return false;
             event.preventDefault();
             return true;
@@ -339,6 +401,7 @@ onMounted(() => {
             if (insert) {
               const from = current.posAtCoords({ x: event.clientX, y: event.clientY }) ?? current.state.selection.main.head;
               current.dispatch({ changes: { from, insert }, selection: { anchor: from + insert.length }, userEvent: 'input.drop' });
+              confirmEntryReferenceDrop(event);
               current.focus();
             }
             return true;
@@ -560,6 +623,19 @@ function revealSourceRange(range: { from: number; to: number }) {
   return true;
 }
 defineExpose({
+  captureTransferState: () => view ? {
+    content: props.modelValue, revision: props.contentRevision,
+    history: view.state.field(historyField), selection: view.state.selection,
+  } : undefined,
+  restoreTransferState: (value: unknown) => {
+    const snapshot = value as { content: string; revision: unknown; history: unknown; selection: EditorState['selection'] } | undefined;
+    if (!snapshot || !view || snapshot.content !== props.modelValue || snapshot.revision !== props.contentRevision) return;
+    view.dispatch({ effects: undoHistory.reconfigure([]) });
+    view.dispatch({
+      effects: undoHistory.reconfigure([history(), historyField.init(() => snapshot.history)]),
+      selection: snapshot.selection, annotations: Transaction.addToHistory.of(false),
+    });
+  },
   captureModeSelection,
   restoreModeSelection,
   revealSourceRange,
@@ -586,6 +662,7 @@ defineExpose({
   jumpToLine,
   insertBlockAtStart,
 });
+
 </script>
 
 <template>

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import { nextTick, onMounted, onBeforeUnmount, ref } from 'vue';
@@ -33,6 +36,7 @@ async function save(append = false) {
   catch (reason) { createdId.value = props.session.created?.object.id; error.value = String(reason); }
   finally { busy.value = false; }
 }
+
 </script>
 
 <template>

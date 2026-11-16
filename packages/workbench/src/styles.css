@@ -4,6 +4,8 @@
 @import './mobile.css';
 @import './scrollbars.css';
 @import './surface-motion.css';
+@import './interaction-motion.css';
+@import '@milkdown/kit/prose/gapcursor/style/gapcursor.css';
 
 @font-face {
   font-family: Literata;
@@ -81,15 +83,20 @@
   --text: #37352f;
   --text-secondary: #5f5e5b;
   --muted: #787774;
-  --green: #1f7a52;
-  --green-hover: #176340;
-  --green-fill: #1f7a52;
-  --green-fill-hover: #176340;
-  /* Neutral selection states — no green unless it's a true action */
+  /* Monochrome accent: the historical `--green*` names are the interaction
+     ink (focus, active, fills). Brand green survives only as a tiny status
+     cue via --brand-green (e.g. the saved check). */
+  --brand-green: #1f7a52;
+  --green: #2f2e2a;
+  --green-hover: #111110;
+  --green-fill: #2f2e2a;
+  --green-fill-hover: #4a4844;
+  --switch-on: #2f2e2a;
+  /* Neutral selection states */
   --selected: #ebeae8;
   --selected-text: var(--text);
-  --accent: #eaf5ee;
-  --block-selection: #e1f1e8;
+  --accent: #f0efed;
+  --block-selection: #e6e5e1;
   --block-selection-overlay: color-mix(in srgb, var(--block-selection) 62%, transparent);
   --line: #ebebea;
   --tree-guide: color-mix(in srgb, var(--muted) 18%, transparent);
@@ -160,13 +167,17 @@ button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: 2px solid var(--green);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
 }
 button {
   transition:
-    background 0.15s,
-    color 0.15s;
+    background var(--motion-quick) var(--ease-standard),
+    color var(--motion-quick) var(--ease-standard),
+    border-color var(--motion-quick) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard),
+    opacity var(--motion-quick) var(--ease-standard),
+    outline-offset var(--motion-base) var(--ease-spring-bouncy);
 }
 a {
   color: #5f5e5b;
@@ -255,7 +266,11 @@ button:hover {
 .sidebar-enter-active,
 .sidebar-leave-active {
   overflow: hidden;
-  transition: transform 200ms cubic-bezier(0.2, 0, 0, 1);
+  transition: transform var(--motion-spring) var(--ease-spring-smooth);
+}
+.sidebar-leave-active {
+  transition-duration: var(--motion-base);
+  transition-timing-function: var(--ease-exit);
 }
 .sidebar-leave-active {
   /* Release the layout width once, keeping the departing surface visible. */
@@ -325,9 +340,9 @@ button:hover {
   margin-left: 0;
   opacity: 0;
   transition:
-    grid-template-columns 200ms cubic-bezier(0.2, 0, 0, 1),
-    margin-left 200ms cubic-bezier(0.2, 0, 0, 1),
-    opacity 200ms ease;
+    grid-template-columns var(--motion-spring) var(--ease-spring-smooth),
+    margin-left var(--motion-spring) var(--ease-spring-smooth),
+    opacity var(--motion-base) var(--ease-standard);
 }
 .sidebar-navigation-button > span > span {
   min-width: 0;
@@ -474,6 +489,12 @@ button:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.extension-sidebar {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
 .sidebar-content {
   flex: 1;
   min-height: 0;
@@ -507,8 +528,6 @@ button:hover {
   min-height: 28px;
   margin-bottom: 0;
 }
-.workspace-views-sidebar > button { display: flex; gap: 7px; align-items: center; padding: 8px 12px; text-align: left; border-radius: 6px; }
-.workspace-views-sidebar > button:hover { background: var(--hover); }
 .assistant-page-placeholder { padding: 24px; }
 .sidebar-view-header + .sidebar-content {
   margin-top: 0;
@@ -1274,22 +1293,17 @@ button:hover {
 .tano-toggle > .tano-enhanced-header > .tano-toggle-trigger {
   font-size: 18px;
 }
+.tano-toggle-icon {
+  display: inline-block;
+  rotate: 0deg;
+  transition: rotate var(--motion-spring, 380ms) var(--ease-spring-smooth, ease-out);
+}
+.tano-toggle-trigger[aria-expanded='true'] > .tano-toggle-icon {
+  rotate: 90deg;
+}
 .tano-toggle > .tano-enhanced-header > button:focus-visible {
   outline: 2px solid var(--text-secondary);
   outline-offset: 2px;
-}
-.tano-toggle > .tano-enhanced-header > .tano-add-child {
-  font-size: 18px;
-  opacity: 0;
-  pointer-events: none;
-}
-.tano-toggle > .tano-enhanced-header:hover > .tano-add-child,
-.tano-toggle > .tano-enhanced-header:focus-within > .tano-add-child {
-  opacity: 1;
-  pointer-events: auto;
-}
-.tano-toggle > .tano-enhanced-header > .tano-add-child:disabled {
-  display: none;
 }
 .tano-toggle > .tano-enhanced-content {
   padding: 0 0 0 28px;
@@ -1299,12 +1313,6 @@ button:hover {
 }
 .tano-toggle > .tano-enhanced-content > :last-child {
   margin-bottom: 0;
-}
-@media (hover: none) {
-  .tano-toggle > .tano-enhanced-header > .tano-add-child {
-    opacity: 1;
-    pointer-events: auto;
-  }
 }
 .tano-enhanced-content[hidden],
 .tano-enhanced[hidden] {
@@ -1909,22 +1917,33 @@ button:hover {
   flex: 0 0 30px;
   border-radius: 999px;
   background: var(--switch-off);
-  transition: background-color 150ms ease;
+  transition: background-color var(--motion-base) var(--ease-standard);
 }
 .menu-switch.on {
-  background: var(--green);
+  background: var(--switch-on, var(--green));
 }
 .menu-switch > span {
   display: block;
   width: 14px;
   height: 14px;
-  border-radius: 50%;
+  border-radius: 999px;
   background: #fff;
-  box-shadow: 0 1px 3px #18212b26;
-  transition: transform 150ms ease;
+  box-shadow: 0 1px 3px #18212b26, 0 0 0 0.5px #0000000d;
+  transition:
+    translate var(--motion-bouncy) var(--ease-spring-bouncy),
+    width var(--motion-spring) var(--ease-spring);
 }
 .menu-switch.on > span {
-  transform: translateX(12px);
+  translate: 12px 0;
+}
+/* iOS-style: the thumb stretches toward its destination while pressed. */
+:active > .menu-switch > span,
+.menu-switch:active > span {
+  width: 17px;
+}
+:active > .menu-switch.on > span,
+.menu-switch.on:active > span {
+  translate: 9px 0;
 }
 .file-context-menu {
   position: fixed;
@@ -2064,13 +2083,6 @@ button:hover {
   max-height: min(560px, calc(100dvh - 76px));
   overflow-y: auto;
   overscroll-behavior: contain;
-}
-.workspace-view-menu-error {
-  margin: 6px 10px;
-  color: var(--warning);
-  font-size: 11px;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
 }
 .workspace-entry-context-menu {
   width: 190px;
@@ -3518,14 +3530,6 @@ button:hover {
   font: 13px/1.4 var(--font-mono);
   user-select: text;
 }
-.tano-prose.ProseMirror-focused .tano-live-wiki {
-  font-size: 0;
-}
-.tano-prose.ProseMirror-focused .tano-live-wiki::before {
-  content: attr(data-markdown-source);
-  font: 14px var(--font-mono);
-  color: var(--text);
-}
 .tano-prose hr {
   border: 0;
   border-top: 1px solid var(--line);
@@ -3533,6 +3537,9 @@ button:hover {
 }
 .tano-prose > hr {
   margin-inline: var(--tano-block-frame-inset);
+}
+.tano-prose .ProseMirror-gapcursor::after {
+  border-top-color: var(--text);
 }
 .tano-prose .ProseMirror-selectednode,
 .tano-prose .tano-block-selected {
@@ -4663,7 +4670,7 @@ button:hover {
   }
   .sidebar-dismiss-enter-active,
   .sidebar-dismiss-leave-active {
-    transition: opacity 200ms cubic-bezier(0.2, 0, 0, 1);
+    transition: opacity var(--motion-base) var(--ease-standard);
   }
   .sidebar-dismiss-enter-from,
   .sidebar-dismiss-leave-to {
@@ -5097,9 +5104,15 @@ button:hover {
   color: inherit;
   transform: rotate(0);
   transform-origin: center;
+  transition: transform var(--motion-spring, 380ms) var(--ease-spring, ease);
 }
-.frontmatter-panel[open] .frontmatter-chevron {
+/* Follows the panel's own expanded state (not [open]) so it turns the moment
+ * the user clicks, while the content is still animating closed. */
+.frontmatter-chevron.is-expanded {
   transform: rotate(90deg);
+}
+.frontmatter-rows {
+  display: contents;
 }
 .frontmatter-order-toggle {
   display: grid;
@@ -5136,7 +5149,7 @@ button:hover {
   position: relative;
   display: grid;
   grid-template-columns: 17px minmax(100px, 140px) minmax(0, 1fr);
-  align-items: center;
+  align-items: start;
   gap: 8px;
   min-height: 32px;
   padding: 5px 0;
@@ -5163,13 +5176,17 @@ button:hover {
   color: var(--text);
 }
 .frontmatter-property-name {
+  min-width: 0;
   color: var(--text-secondary);
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .frontmatter-property-value {
   min-width: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .frontmatter-property-button {
   width: 100%;
@@ -5180,6 +5197,7 @@ button:hover {
 }
 .frontmatter-property.is-editing {
   z-index: 2;
+  align-items: start;
 }
 .frontmatter-property-button:hover,
 .frontmatter-property-button:focus-visible {
@@ -5190,10 +5208,9 @@ button:hover {
   display: grid;
   grid-column: 2 / -1;
   grid-template-columns: minmax(100px, 140px) minmax(0, 1fr);
-  align-items: center;
+  align-items: start;
   gap: 8px;
   min-width: 0;
-  height: 100%;
 }
 .frontmatter-row-editor input,
 .frontmatter-row-editor select,
@@ -5201,14 +5218,33 @@ button:hover {
   width: 100%;
   min-width: 0;
   height: 22px;
+  margin: 0;
   padding: 0 4px;
   border: 0;
   border-radius: 3px;
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 14px;
   line-height: 22px;
+}
+.frontmatter-row-editor .frontmatter-name-input {
+  color: var(--text-secondary);
+}
+.frontmatter-value-editor select {
+  appearance: none;
+  padding-right: 24px;
+}
+.frontmatter-value-editor:has(> select)::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--text-secondary);
+  border-bottom: 1.5px solid var(--text-secondary);
+  transform: rotate(45deg);
+  pointer-events: none;
 }
 .frontmatter-row-editor input:focus,
 .frontmatter-row-editor select:focus,
@@ -5219,31 +5255,33 @@ button:hover {
 .frontmatter-value-editor {
   position: relative;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   min-width: 0;
-  height: 100%;
 }
 .frontmatter-value-editor textarea {
-  height: 100%;
-  min-height: 0;
-  resize: none;
+  height: auto;
+  min-height: 44px;
+  resize: vertical;
   overflow-y: auto;
 }
 .frontmatter-null-value {
-  padding: 3px 4px;
-  color: var(--muted);
+  height: 22px;
+  padding: 0 4px;
+  color: var(--text);
+  line-height: 22px;
 }
 .frontmatter-row-error {
-  position: absolute;
-  top: calc(100% + 2px);
-  left: 4px;
-  z-index: 3;
+  align-self: flex-start;
+  max-width: 100%;
+  margin-top: 2px;
   padding: 2px 6px;
   border: 1px solid var(--line);
   border-radius: 3px;
   background: var(--paper);
   color: var(--danger, #b42318);
   font-size: 12px;
+  overflow-wrap: anywhere;
 }
 .frontmatter-type-menu {
   position: absolute;
@@ -5254,19 +5292,24 @@ button:hover {
   width: 176px;
   max-height: 300px;
   overflow-y: auto;
-  padding: 5px;
   border: 1px solid var(--line);
-  border-radius: 6px;
   background: var(--paper);
-  box-shadow: 0 8px 24px #0002;
+}
+/* Height animations temporarily clip the disclosure and its rows. A menu
+   must remain visible and clickable beyond all of those animated bounds. */
+.frontmatter-panel:has(.frontmatter-type-menu),
+.frontmatter-panel:has(.frontmatter-type-menu)::details-content,
+.frontmatter-content:has(.frontmatter-type-menu),
+.frontmatter-property:has(.frontmatter-type-menu) {
+  overflow: visible !important;
+}
+.frontmatter-panel:has(.frontmatter-type-menu) {
+  position: relative;
+  z-index: 3;
 }
 .frontmatter-type-menu button {
   display: flex;
   align-items: center;
-  gap: 9px;
-  min-height: 30px;
-  padding: 4px 8px;
-  border-radius: 3px;
   text-align: left;
 }
 .frontmatter-type-menu button:hover,

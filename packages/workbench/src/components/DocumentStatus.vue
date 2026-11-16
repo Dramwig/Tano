@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { AlertCircle, Check, CircleDot, CloudUpload, Eye, LoaderCircle, LockKeyhole, RefreshCw, WifiOff } from 'lucide-vue-next';
@@ -57,6 +60,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', place);
   window.removeEventListener('scroll', place, true);
 });
+
 </script>
 
 <template>
@@ -68,7 +72,7 @@ onBeforeUnmount(() => {
     <component :is="icons[primary.kind]" :size="14" :stroke-width="1.6" aria-hidden="true"
       :class="{ spinning: primary.kind === 'syncing' || primary.kind === 'saving' }" />
   </button>
-  <Teleport to="body">
+  <Teleport :to="document.body">
     <section v-surface-motion="'DocumentStatus:0'" v-if="opened" :id="panelId" ref="panel" class="document-status-panel" :style="position"
       role="dialog" :aria-label="t('文章状态')" @pointerenter="cancelClose" @pointerleave="leave" @focusin="cancelClose">
       <div v-for="(item, index) in items" :key="`${item.kind}:${index}`" class="document-status-row">
@@ -86,7 +90,7 @@ onBeforeUnmount(() => {
 .document-status-trigger:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
 .document-status-trigger.needs-attention { color: var(--danger, #c4483d); }
 /* The saved check is the one quiet brand-green mark in the chrome. */
-.document-status-trigger.is-saved, .document-status-trigger.is-saved:hover, .document-status-trigger.is-saved[aria-expanded='true'] { color: var(--green); }
+.document-status-trigger.is-saved, .document-status-trigger.is-saved:hover, .document-status-trigger.is-saved[aria-expanded='true'] { color: var(--brand-green, var(--green)); }
 .document-status-panel { position: fixed; z-index: 90; box-sizing: border-box; width: 288px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow-y: auto; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--text); box-shadow: 0 8px 28px #0002; }
 .document-status-row { display: flex; align-items: flex-start; gap: 9px; }
 .document-status-row + .document-status-row { margin-top: 12px; }

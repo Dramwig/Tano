@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useWindowContext } from '../windows/context';
+const { window, document } = useWindowContext();
+
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useWorkspaceStore } from '../stores/workspace';
@@ -72,6 +75,7 @@ async function save() {
   } catch (reason) { error.value = String(reason); }
   finally { busy.value = false; }
 }
+
 </script>
 <template>
   <div v-surface-motion="'FileMetadataPanel:0'" class="file-metadata-backdrop" @click.self="!busy && emit('close')" @keydown.esc.stop="!busy && emit('close')">
