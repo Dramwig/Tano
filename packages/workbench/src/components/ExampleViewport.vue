@@ -7,14 +7,19 @@ const getComputedStyle = (element: Element, pseudo?: string | null) => window.ge
 const ResizeObserver = (window as Window & typeof globalThis).ResizeObserver;
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { t } from '../i18n';
-const props = withDefaults(defineProps<{ width?: number; gutter?: number }>(), { width: 320, gutter: 0 });
+const props = withDefaults(defineProps<{ width?: number; gutter?: number; fitHeight?: boolean }>(), { width: 320, gutter: 0 });
 const frame = ref<HTMLElement>(), iframe = ref<HTMLIFrameElement>(), content = ref<HTMLElement>(), portal = ref<HTMLElement>();
 const viewport = { width: window.innerWidth, height: window.innerHeight };
+const maxHeight = 104;
+const displayHeight = ref(maxHeight);
 let resize: ResizeObserver | undefined, mutations: MutationObserver | undefined, styles: MutationObserver | undefined, theme: MutationObserver | undefined, pending = 0;
 function measure() {
   if (!frame.value || !content.value || !iframe.value) return;
-  const width = frame.value.clientWidth, height = frame.value.clientHeight;
-  const scale = Math.min(1, width / props.width, height / Math.max(1, content.value.scrollHeight, content.value.offsetHeight));
+  const width = frame.value.clientWidth;
+  const contentHeight = Math.max(content.value.scrollHeight, content.value.offsetHeight);
+  if (!width || !contentHeight) return;
+  const scale = Math.min(1, width / props.width, maxHeight / contentHeight);
+  displayHeight.value = props.fitHeight ? Math.ceil(contentHeight * scale) : maxHeight;
   const transform = `translateX(${(width - props.width * scale) / 2}px) scale(${scale})`;
   if (iframe.value.style.transform !== transform) iframe.value.style.transform = transform;
 }
@@ -48,13 +53,13 @@ onBeforeUnmount(() => { resize?.disconnect(); mutations?.disconnect(); styles?.d
 
 </script>
 <template>
-  <div ref="frame" class="example-viewport">
+  <div ref="frame" class="example-viewport" :style="{ height: `${displayHeight}px` }">
     <!-- An unscaled inner viewport keeps the real widgets' geometry calculations intact. -->
     <iframe ref="iframe" :title="t('渲染示例')" tabindex="-1" aria-hidden="true" :style="{ width: `${viewport.width}px`, height: `${viewport.height}px` }" />
     <Teleport v-if="portal" :to="portal"><div ref="content" :style="{ width: `${width}px`, paddingLeft: `${gutter}px`, boxSizing: 'border-box' }"><slot /></div></Teleport>
   </div>
 </template>
 <style scoped>
-.example-viewport { position: relative; width: 100%; height: 104px; overflow: hidden; }
+.example-viewport { position: relative; width: 100%; overflow: hidden; }
 .example-viewport > iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: top left; }
 </style>

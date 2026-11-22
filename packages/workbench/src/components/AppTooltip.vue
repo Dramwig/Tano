@@ -4,7 +4,7 @@ const { window, document } = useWindowContext();
 
 import { isElement, isNode } from '@tano/editor/dom-realm';
 import ShortcutHint from '@tano/editor/shortcut-hint';
-import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { shortcutLabel } from '../shortcuts';
 import { featureDefinitions } from '@tano/editor/runtime';
 import type { DocumentFeature } from '@tano/editor/runtime';
@@ -109,6 +109,13 @@ async function place() {
   hint.style.top = `${Math.max(top, Math.min(y, bottom - hint.offsetHeight))}px`;
   ready.value = true;
 }
+watch([tooltip, settingExample], ([element, setting], _, onCleanup) => {
+  const { ResizeObserver } = window as Window & typeof globalThis;
+  if (!element || !setting || !ResizeObserver) return;
+  const resize = new ResizeObserver(() => { void place(); });
+  resize.observe(element);
+  onCleanup(() => resize.disconnect());
+});
 function update() {
   if (!anchor) return;
   if (!usable(anchor)) return hide();
@@ -214,11 +221,11 @@ onBeforeUnmount(() => {
 <template>
   <Teleport :to="portal">
     <div v-if="label" :id="id" ref="tooltip" class="app-tooltip panel-scrollbar" role="tooltip"
-      popover="manual" :data-ready="ready" @pointerenter="cancelTimer" @pointerleave="leave"
+      popover="manual" :data-ready="ready" :data-setting="settingExample" @pointerenter="cancelTimer" @pointerleave="leave"
       @mousedown="(blockExample || settingExample) && $event.preventDefault()">
       <span v-if="!example && !blockExample && !settingExample">{{ label }}</span>
       <span v-if="shortcut" class="app-tooltip-shortcut"><ShortcutHint :label="shortcut" /></span>
-      <SettingExample v-if="settingExample" :setting="settingExample" />
+      <SettingExample v-if="settingExample" :key="settingExample" :setting="settingExample" />
       <CapabilityExample v-else-if="example" :feature="example" />
       <BlockExample v-else-if="blockExample" :command="blockExample" :value="blockValue" :label="label" />
     </div>
@@ -248,7 +255,8 @@ onBeforeUnmount(() => {
 }
 .app-tooltip[data-ready='false'] { visibility: hidden; }
 @media (prefers-reduced-motion: no-preference) {
-  .app-tooltip[data-ready='true'] { animation: tano-tooltip-in var(--motion-spring, 300ms) var(--ease-spring, ease-out) both; }
+  /* The folding preview keeps its heading glyphs at the same scale on entry. */
+  .app-tooltip[data-ready='true']:not([data-setting='editing-folding']) { animation: tano-tooltip-in var(--motion-spring, 300ms) var(--ease-spring, ease-out) both; }
 }
 .app-tooltip::backdrop { background: transparent; pointer-events: none; }
 .app-tooltip-shortcut { justify-self: center; color: #b8b8b8; }
