@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
@@ -377,7 +378,7 @@ pub async fn assistant_models(
 
 #[tauri::command]
 pub fn assistant_protocol_version() -> u32 {
-    13
+    15
 }
 
 #[tauri::command]
@@ -538,21 +539,115 @@ pub fn assistant_connection_remove(app: tauri::AppHandle, id: String) -> Result<
     Ok(())
 }
 
-fn request_body(config: &Connection, request: Value) -> Result<Value, String> {
-    if serde_json::to_vec(&request)
+fn is_attachment_image(mime: &str) -> bool {
+    matches!(
+        mime,
+        "image/png" | "image/jpeg" | "image/webp" | "image/gif"
+    )
+}
+
+fn is_responses_only_attachment(mime: &str) -> bool {
+    mime != "application/pdf" && !is_attachment_image(mime)
+}
+
+fn is_attachment_mime(mime: &str) -> bool {
+    let valid_part = |part: &str| {
+        !part.is_empty()
+            && part.bytes().all(|byte| {
+                byte.is_ascii_lowercase() || byte.is_ascii_digit() || b".+_-".contains(&byte)
+            })
+    };
+    mime.len() <= 127
+        && mime
+            .split_once('/')
+            .is_some_and(|(kind, subtype)| valid_part(kind) && valid_part(subtype))
+}
+
+fn request_messages(config: &Connection, request: &Value) -> Result<Vec<Value>, String> {
+    let message_bytes = serde_json::to_vec(request)
         .map_err(|_| "模型请求无效")?
-        .len()
-        > 1_000_000
-    {
+        .len();
+    if message_bytes > 7_000_000 {
         return Err("模型请求超过大小限制".into());
     }
-    let messages = request
+    let mut messages = request
         .get("messages")
         .and_then(Value::as_array)
-        .ok_or("模型消息无效")?;
+        .ok_or("模型消息无效")?
+        .clone();
     if messages.is_empty() || messages.len() > 350 {
         return Err("模型消息数量无效".into());
     }
+    let mut decoded_bytes = 0;
+    let mut encoded_bytes = 0;
+    let mut attachment_count = 0;
+    for message in &mut messages {
+        if message["content"].is_array() {
+            return Err("模型消息内容无效".into());
+        }
+        let Some(attachments) = message
+            .as_object_mut()
+            .and_then(|item| item.remove("attachments"))
+        else {
+            continue;
+        };
+        let attachments = attachments
+            .as_array()
+            .filter(|items| !items.is_empty())
+            .ok_or("模型附件无效")?;
+        attachment_count += attachments.len();
+        if attachment_count > 10 || message["role"] != "user" {
+            return Err("模型附件无效".into());
+        }
+        let text = message["content"].as_str().ok_or("模型消息内容无效")?;
+        let responses = config.protocol == Protocol::Responses;
+        let mut parts =
+            vec![json!({"type": if responses { "input_text" } else { "text" }, "text": text})];
+        for attachment in attachments {
+            let name = attachment["name"]
+                .as_str()
+                .filter(|name| !name.trim().is_empty() && name.chars().count() <= 255)
+                .ok_or("模型附件名称无效")?;
+            let mime = attachment["mime"]
+                .as_str()
+                .filter(|mime| is_attachment_mime(mime))
+                .ok_or("模型附件类型不受支持")?;
+            let image = is_attachment_image(mime);
+            if config.kind == crate::assistant_cli::Kind::ClaudeCli
+                || (config.kind == crate::assistant_cli::Kind::CodexCli && !image)
+                || (!responses && is_responses_only_attachment(mime))
+            {
+                return Err("当前模型连接无法接收此附件".into());
+            }
+            let data = attachment["data"]
+                .as_str()
+                .filter(|data| !data.is_empty())
+                .ok_or("模型附件数据无效")?;
+            encoded_bytes += data.len();
+            decoded_bytes += STANDARD.decode(data).map_err(|_| "模型附件数据无效")?.len();
+            if decoded_bytes > 4 * 1024 * 1024 {
+                return Err("模型附件超过大小限制".into());
+            }
+            let url = format!("data:{mime};base64,{data}");
+            parts.push(match (responses, image) {
+                (true, false) => json!({"type": "input_file", "filename": name, "file_data": url}),
+                (false, false) => {
+                    json!({"type": "file", "file": {"filename": name, "file_data": url}})
+                }
+                (true, true) => json!({"type": "input_image", "image_url": url, "detail": "auto"}),
+                (false, true) => json!({"type": "image_url", "image_url": {"url": url}}),
+            });
+        }
+        message["content"] = Value::Array(parts);
+    }
+    if message_bytes - encoded_bytes > 1_000_000 {
+        return Err("模型请求超过大小限制".into());
+    }
+    Ok(messages)
+}
+
+fn request_body(config: &Connection, request: Value) -> Result<Value, String> {
+    let messages = request_messages(config, &request)?;
     let model = request
         .get("model")
         .and_then(Value::as_str)
@@ -560,7 +655,7 @@ fn request_body(config: &Connection, request: Value) -> Result<Value, String> {
         .ok_or("请为当前对话选择有效模型")?;
     let mut body = match config.protocol {
         Protocol::ChatCompletions => {
-            let mut messages = messages.clone();
+            let mut messages = messages;
             // Several compatible services accept only one leading system message.
             // Preserve every instruction in order, without promoting later messages
             // (or document/tool data) into the system role.
@@ -588,7 +683,7 @@ fn request_body(config: &Connection, request: Value) -> Result<Value, String> {
         Protocol::Responses => {
             let mut instructions = Vec::new();
             let mut input = Vec::new();
-            for message in messages {
+            for message in &messages {
                 let role = message
                     .get("role")
                     .and_then(Value::as_str)
@@ -605,8 +700,8 @@ fn request_body(config: &Connection, request: Value) -> Result<Value, String> {
                         input.extend(items.clone());
                     }
                     "user" | "assistant" => {
-                        if let Some(content) = content {
-                            input.push(json!({"role": role, "content": content}));
+                        if content.is_some() || (role == "user" && message["content"].is_array()) {
+                            input.push(json!({"role": role, "content": message["content"]}));
                         }
                         if role == "assistant" {
                             if let Some(calls) = message.get("tool_calls") {
@@ -1550,8 +1645,44 @@ mod tests {
             forbidden["tools"][10]["function"]["name"] = json!("execute_shell");
             assert!(request_body(&config, forbidden).is_err());
         }
-        assert_eq!(assistant_protocol_version(), 13);
+        assert_eq!(assistant_protocol_version(), 15);
     }
+    #[test]
+    fn sends_clipboard_media_in_each_provider_protocol() {
+        let mut config: Connection = serde_json::from_value(json!({
+            "id":"1735eb4e-b089-42e4-b1e2-1d92d4992063", "name":"fixture",
+            "endpoint":"https://example.com/v1", "protocol":"chat-completions",
+            "tools":true, "maxOutputTokens":4096
+        }))
+        .unwrap();
+        let request = json!({"model":"test","messages":[{"role":"user","content":"Review these",
+            "attachments":[{"name":"image.png","mime":"image/png","data":"UE5H"},
+                {"name":"report.pdf","mime":"application/pdf","data":"JVBERi0="}]}]});
+        let chat = request_body(&config, request.clone()).unwrap();
+        assert_eq!(
+            chat["messages"][0]["content"],
+            json!([
+                {"type":"text","text":"Review these"},
+                {"type":"image_url","image_url":{"url":"data:image/png;base64,UE5H"}},
+                {"type":"file","file":{"filename":"report.pdf","file_data":"data:application/pdf;base64,JVBERi0="}}
+            ])
+        );
+        assert!(chat["messages"][0].get("attachments").is_none());
+        config.protocol = Protocol::Responses;
+        let responses = request_body(&config, request.clone()).unwrap();
+        assert_eq!(
+            responses["input"][0]["content"],
+            json!([
+                {"type":"input_text","text":"Review these"},
+                {"type":"input_image","image_url":"data:image/png;base64,UE5H","detail":"auto"},
+                {"type":"input_file","filename":"report.pdf","file_data":"data:application/pdf;base64,JVBERi0="}
+            ])
+        );
+        let mut invalid = request;
+        invalid["messages"][0]["attachments"][0]["data"] = json!("https://example.org/image.png");
+        assert!(request_body(&config, invalid).is_err());
+    }
+
     #[test]
     fn chat_combines_only_leading_system_messages_and_preserves_tool_receipts() {
         let config: Connection = serde_json::from_value(json!({

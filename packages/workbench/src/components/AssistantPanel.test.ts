@@ -10,6 +10,8 @@ import { useAssistantStore } from '../assistant/store';
 import AssistantPanel from './AssistantPanel.vue';
 import { setUiLocale, preloadUiLocale } from '../i18n';
 import { assistantTaskPrompts } from '../assistant/language';
+import { demoAssistantTransport } from '../assistant/transport';
+import type { AssistantTransport } from '@tano/protocol';
 let app: ReturnType<typeof createApp> | undefined;
 let pinia: ReturnType<typeof createPinia>;
 let root: HTMLDivElement;
@@ -35,13 +37,13 @@ it('opens task evidence from an assistant report and disables references in a di
   expect(root.querySelector<HTMLButtonElement>('.tano-reference button')!.disabled).toBe(true);
 });
 
-async function mountEmptyConversation(fullscreenTarget?: string | Ref<HTMLElement | undefined>) {
+async function mountEmptyConversation(fullscreenTarget?: string | Ref<HTMLElement | undefined>, assistantTransport?: AssistantTransport) {
   localStorage.clear();
   vi.stubGlobal('navigator', Object.create(navigator, {
     platform: { value: navigator.platform },
     locks: { value: { request: async (_name: string, action: () => unknown) => action() } },
   }));
-  pinia = configureWorkbench(createPinia(), { adapter: new DemoAdapter(), native: false, mobile: false });
+  pinia = configureWorkbench(createPinia(), { adapter: new DemoAdapter(), assistant: assistantTransport, native: false, mobile: false });
   setActivePinia(pinia);
   const workspace = useWorkspaceStore(); await workspace.openWorkspace();
   const file = workspace.workspace!.files.find(file => file.kind === 'file' && file.path.endsWith('.md'))!;
@@ -503,6 +505,86 @@ it('uses an inline reference picker to attach a document', async () => {
   expect(root.querySelector('#assistant-add-options')).toBeNull();
   expect(root.querySelector('.assistant-context')!.textContent).toContain(workspace.active!.path);
 
+});
+
+function pasteIntoAssistant(files: File[] = [], items: Partial<DataTransferItem>[] = []) {
+  const event = new Event('paste', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clipboardData', { value: { files, items } });
+  root.querySelector('textarea')!.dispatchEvent(event);
+  return event;
+}
+
+it('pastes multiple files and image clipboard items without replacing the draft or intercepting plain text', async () => {
+  const { assistant } = await mountEmptyConversation();
+  assistant.prompt = '对照这些内容';
+  expect(pasteIntoAssistant([], [{ kind: 'string', type: 'text/plain' }]).defaultPrevented).toBe(false);
+  const notes = new File(['笔记'], 'notes.md');
+  const table = new File(['name,score'], 'scores.csv');
+  const screenshot = new File(['image'], 'image.png', { type: 'image/png' });
+  expect(pasteIntoAssistant([notes, table]).defaultPrevented).toBe(true);
+  expect(pasteIntoAssistant([], [{ kind: 'file', getAsFile: () => screenshot }]).defaultPrevented).toBe(true);
+  await nextTick();
+  expect(assistant.prompt).toBe('对照这些内容');
+  expect([...root.querySelectorAll('.assistant-context')].map(chip => chip.textContent)).toEqual(['notes.md', 'scores.csv', 'image.png']);
+  root.querySelector<HTMLButtonElement>('[aria-label="移除附件：image.png"]')!.click();
+  await nextTick();
+  expect(assistant.attachments.map(file => file.name)).toEqual(['notes.md', 'scores.csv']);
+  expect(document.activeElement).toBe(root.querySelector('textarea'));
+  assistant.newSession();
+  expect(assistant.attachments).toEqual([]);
+});
+
+it('detects clipboard text without relying on extensions and sends binary attachments with their bytes', async () => {
+  const demo = demoAssistantTransport();
+  const transport: AssistantTransport = { ...demo, request: vi.fn(demo.request), supportsMediaAttachments: () => true };
+  const { assistant } = await mountEmptyConversation(undefined, transport);
+  await assistant.selectModel('demo');
+  const notes = new File(['附件正文'], 'Makefile');
+  const batch = new File(['@echo off\r\necho fixture\r\n'], 'local-desktop.bat', { type: 'application/octet-stream' });
+  const utf16 = new File([Uint8Array.of(0xff, 0xfe, 0x68, 0x00, 0x69, 0x00)], 'script.ps1');
+  const document = new File([Uint8Array.of(0x50, 0x4b, 3, 4, 0)], 'guide.docx');
+  const image = new File(['image'], 'image.png', { type: 'image/png' });
+  pasteIntoAssistant([notes, batch, utf16, document, image]);
+  await nextTick();
+  const send = root.querySelector<HTMLButtonElement>('.assistant-send')!;
+  expect(send.disabled).toBe(false);
+  send.click();
+  await vi.waitFor(() => expect(assistant.session?.messages.at(-1)?.state).toBe('completed'));
+  const request = vi.mocked(transport.request).mock.calls[0]![1];
+  const user = request.messages.find(message => message.role === 'user')!;
+  expect(user.content).toContain('附件正文');
+  expect(user.content).toContain(JSON.stringify({ name: 'local-desktop.bat', content: '@echo off\r\necho fixture\r\n' }));
+  expect(user.content).toContain(JSON.stringify({ name: 'script.ps1', content: 'hi' }));
+  expect(user.attachments).toEqual([
+    { name: 'guide.docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', data: 'UEsDBAA=' },
+    { name: 'image.png', mime: 'image/png', data: 'aW1hZ2U=' },
+  ]);
+  const [saved] = (await transport.loadSessions(assistant.session!.workspaceId))[0]!.messages;
+  expect(saved.attachments).toEqual([
+    { name: 'Makefile', kind: 'text' },
+    { name: 'local-desktop.bat', kind: 'text' },
+    { name: 'script.ps1', kind: 'text' },
+    { name: 'guide.docx', kind: 'file' },
+    { name: 'image.png', kind: 'image' },
+  ]);
+  expect(saved.content).toBe('');
+  expect(assistant.attachments).toEqual([]);
+  expect(root.querySelector('[aria-label="已发送的附件"]')?.textContent).toContain('image.png');
+});
+
+it.each([
+  ['image.png', 'image/png'],
+  ['project.zip', ''],
+])('can paste %s and keeps it in the draft when the selected connection cannot send it', async (name, type) => {
+  const { assistant } = await mountEmptyConversation();
+  await assistant.selectModel('demo');
+  expect(pasteIntoAssistant([new File([Uint8Array.of(0, 0xff)], name, { type })]).defaultPrevented).toBe(true);
+  await nextTick();
+  expect(root.querySelector('.assistant-context')?.textContent).toBe(name);
+  await assistant.send();
+  expect(assistant.error).toContain(`当前模型连接无法接收此附件：${name}`);
+  expect(assistant.attachments).toHaveLength(1);
+  expect(assistant.session?.messages).toEqual([]);
 });
 
 it('groups and searches recent sessions in the title menu while keeping the conversation visible', async () => {

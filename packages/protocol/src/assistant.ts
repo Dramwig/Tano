@@ -1,4 +1,4 @@
-export const ASSISTANT_PROTOCOL_VERSION = 13;
+export const ASSISTANT_PROTOCOL_VERSION = 15;
 
 
 export type AssistantReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
@@ -151,12 +151,27 @@ export function parseAssistantAnswers(value: unknown, questions: readonly Assist
   });
 }
 
+export type AssistantMediaKind = 'image' | 'pdf' | 'file';
+
+export interface AssistantAttachmentInfo {
+  name: string;
+  kind: 'text' | AssistantMediaKind;
+}
+
+export interface AssistantMediaAttachment {
+  name: string;
+  mime: string;
+  data: string;
+}
+
 export interface AssistantMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   createdAt: number;
   sources?: AssistantSource[];
+  /** Clipboard attachment names and types retained in the conversation. */
+  attachments?: AssistantAttachmentInfo[];
   /** Initial source IDs attached to the preceding user message; later tool reads are excluded. */
   attachedSourceIds?: string[];
   proposals?: AssistantProposal[];
@@ -199,6 +214,8 @@ export interface AssistantToolCall {
 export interface AssistantWireMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | null;
+  /** Inline media on the current user turn, encoded as base64. */
+  attachments?: AssistantMediaAttachment[];
   tool_calls?: AssistantToolCall[];
   tool_call_id?: string;
   /** Transient Responses output, including reasoning needed by the next tool round. */
@@ -225,6 +242,7 @@ export interface AssistantTransport {
   scanCcSwitch?(path?: string): Promise<AssistantImportCandidate[]>;
   importCcSwitch?(ids: string[], path?: string): Promise<void>;
   canConfigure?: boolean;
+  supportsMediaAttachments?(connection: AssistantConnection, kind: AssistantMediaKind): boolean;
   connections(): Promise<AssistantConnection[]>;
   quota?(connectionId: string): Promise<AssistantQuotaResult>;
   saveQuota?(connectionId: string, config: AssistantQuotaConfig, key?: string): Promise<void>;
@@ -271,6 +289,9 @@ export function parseAssistantSession(value: unknown): AssistantSession {
           !['completed', 'cancelled', 'failed', 'interrupted'].includes(message.state ?? '') ||
           (message.termination.reason === 'completed') !== (message.state === 'completed'))) ||
         (message.sources && (!Array.isArray(message.sources) || message.sources.length > 30)) ||
+        (message.attachments !== undefined && (message.role !== 'user' || !Array.isArray(message.attachments) ||
+          message.attachments.length > 10 || message.attachments.some(item => !item || !text(item.name, 255) ||
+            !item.name.trim() || !['text', 'image', 'pdf', 'file'].includes(item.kind)))) ||
         (message.attachedSourceIds !== undefined && (message.role !== 'assistant' || !Array.isArray(message.attachedSourceIds) ||
           message.attachedSourceIds.length > 20 || new Set(message.attachedSourceIds).size !== message.attachedSourceIds.length ||
           message.attachedSourceIds.some(id => !text(id, 80) || !message.sources?.some(source => source?.id === id)))) ||

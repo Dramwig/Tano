@@ -765,9 +765,21 @@ pub async fn run(
     std::fs::create_dir_all(&runs).map_err(|_| "无法创建 CLI 临时目录")?;
     let directory = tempfile::tempdir_in(runs).map_err(|_| "无法创建 CLI 临时目录")?;
     progress(channel, "starting")?;
+    let mut messages = request["messages"].clone();
+    if let Some(messages) = messages.as_array_mut() {
+        for message in messages {
+            if let Some(parts) = message["content"].as_array() {
+                message["content"] = parts
+                    .first()
+                    .and_then(|part| part.get("text"))
+                    .cloned()
+                    .unwrap_or(Value::Null);
+            }
+        }
+    }
     let prompt = format!(
         "{INSTRUCTIONS}\nTano conversation and authorized function definitions:\n{}",
-        json!({"messages":request["messages"], "tools":request["tools"]})
+        json!({"messages":messages, "tools":request["tools"]})
     );
     if kind == Kind::CodexCli {
         let (reply, usage, shown) = streaming::run(

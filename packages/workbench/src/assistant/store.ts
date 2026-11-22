@@ -13,8 +13,11 @@ import { AssistantRunError } from './completion';
 import type { AssistantTextPhase } from './completion';
 import { assistantHistory } from './results';
 import { useSuggestionStore } from '../stores/suggestions';
-import { uiLocale } from '../i18n';
+import { t, uiLocale } from '../i18n';
+import { isFeatureEnabled } from '../features';
 import { assistantCopy, assistantTaskPrompts, formatAssistantText } from './language';
+import { assistantAttachmentBytes, describeAssistantAttachment, maxAssistantAttachments, readAssistantAttachments } from './attachments';
+import type { AssistantDraftAttachment } from './attachments';
 
 export type AssistantConnectionCheck = { fingerprint: string; elapsedMs?: number; checkedAt?: number; message: string; failed: boolean };
 
@@ -81,8 +84,40 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
   const externalSessions = ref<AssistantSession[]>([]);
   const session = ref<AssistantSession | null>(null);
   const files = ref<string[]>([]);
+  const attachmentsEnabled = !inline && !background && available && isFeatureEnabled('assistantClipboardAttachments');
+  const attachments = shallowRef<AssistantDraftAttachment[]>([]);
   const selection = ref<{ fileId: string; text: string; from?: number; to?: number } | null>(null);
   const prompt = ref(''), error = ref(''), progress = ref('');
+  const hasDraft = computed(() => !!(prompt.value.trim() || attachments.value.length));
+  function addClipboardAttachments(pasted: readonly File[]): string {
+    if (!attachmentsEnabled || !workspace.workspace || loading.value || busy.value || applying.value)
+      return t('当前无法添加附件');
+    let notice = '';
+    const next = [...attachments.value];
+    let bytes = next.reduce((total, item) => total + item.file.size, 0);
+    for (const file of pasted) {
+      if (next.length >= maxAssistantAttachments) {
+        notice ||= t('一次最多添加 {0} 个附件', [maxAssistantAttachments]);
+        break;
+      }
+      const attachment = describeAssistantAttachment(file);
+      if (!attachment) {
+        notice ||= t('无法读取附件：{0}', [file.name]);
+        continue;
+      }
+      if (bytes + file.size > assistantAttachmentBytes.text + assistantAttachmentBytes.media) {
+        notice ||= t('附件超过大小限制：{0}', [attachment.name]);
+        continue;
+      }
+      next.push(attachment);
+      bytes += file.size;
+    }
+    attachments.value = next;
+    return notice;
+  }
+  function removeAttachment(id: string) {
+    if (!busy.value && !loading.value && !applying.value) attachments.value = attachments.value.filter(item => item.id !== id);
+  }
   let builtInPrompt: string | undefined;
   watch(prompt, value => { if (value !== builtInPrompt) builtInPrompt = undefined; }, { flush: 'sync' });
   function setBuiltInPrompt(value: string) {
@@ -122,7 +157,7 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
       ...(connectionId.value ? { connectionId: connectionId.value } : {}),
       ...(modelId.value ? { model: modelId.value } : {}),
       ...(connection.value?.kind === 'codex-cli' ? { reasoningEffort: reasoningEffort.value } : {}) };
-    prompt.value = ''; error.value = '';
+    prompt.value = ''; attachments.value = []; error.value = '';
     replyTarget.value = null;
   }
   async function persist(target = session.value) {
@@ -341,23 +376,24 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
     } catch (reason) { error.value = String(reason); }
   }
   async function send() {
-    if (!transport || busy.value || applying.value || loading.value || !prompt.value.trim()) return;
+    if (!transport || busy.value || applying.value || loading.value || !hasDraft.value) return;
     const requestLocale = uiLocale.value;
     const promptOrigin = prompt.value === builtInPrompt ? 'builtin' : 'user';
     if (!connection.value) { error.value = assistantConnectionRequiredMessage; return; }
     if (!isAssistantModelId(modelId.value)) { error.value = '请为当前对话选择模型'; return; }
+    const config = { ...connection.value };
+    const pasted = attachments.value;
+    const question = prompt.value.trim();
     if (!session.value) newSession();
     const target = session.value!;
     if (target.messages.length >= 290) { error.value = '会话已达到消息上限，请新建会话'; return; }
     const expected = scope();
     const epoch = generation;
-    const config = { ...connection.value };
     const objectContext = workspace.capabilities.features.objectReferences;
     const model = modelId.value;
     const effort = config.kind === 'codex-cli' ? reasoningEffort.value : undefined;
     target.connectionId = config.id; target.model = model;
     if (effort !== undefined) target.reasoningEffort = effort;
-    const question = prompt.value.trim();
     if (question.length > 20_000) { error.value = '问题超过 20,000 字，请缩短后发送'; return; }
     busy.value = true; error.value = ''; progress.value = assistantCopy(requestLocale).progress.reading;
     const startedAt = performance.now();
@@ -365,6 +401,8 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
     const abort = new AbortController(); controller = abort;
     let reply: AssistantMessage | undefined;
     try {
+      const inputs = pasted.length ? await readAssistantAttachments(pasted,
+        kind => transport.supportsMediaAttachments?.(config, kind) ?? false, abort.signal) : undefined;
       const sources: AssistantSource[] = [];
       const rules = await workspace.assistantRules(expected);
       for (const id of [...new Set(files.value)]) {
@@ -389,16 +427,20 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
       if (epoch !== generation) return;
       const history = assistantHistory(target.messages);
       const now = Date.now();
-      target.messages.push({ id: crypto.randomUUID(), role: 'user', content: question, createdAt: now });
+      const user: AssistantMessage = { id: crypto.randomUUID(), role: 'user', content: question, createdAt: now,
+        ...(inputs ? { attachments: inputs.info } : {}) };
+      target.messages.push(user);
       reply = { id: crypto.randomUUID(), role: 'assistant', content: '', createdAt: now, sources,
         attachedSourceIds: sources.map(source => source.id), proposals: [], toolResults: [], activity: [], rules: rules.map(rule => rule.path), state: 'running', model,
         connectionId: config.id, connectionName: config.name };
       target.messages.push(reply);
       // Use the reactive instance for streaming; the plain object pushed above is not reactive.
       reply = target.messages[target.messages.length - 1];
-      target.title = target.messages.find(message => message.role === 'user')!.content.slice(0, 50);
+      const first = target.messages.find(message => message.role === 'user')!;
+      target.title = (first.content || first.attachments?.[0]?.name || target.title).slice(0, 50);
       target.updatedAt = now; prompt.value = '';
       await persist(target);
+      if (epoch === generation) attachments.value = [];
       let structureSnapshot: Awaited<ReturnType<typeof workspace.assistantStructures>> | undefined;
       let structureChanged = false;
       let responseActivity: Extract<AssistantActivity, { kind: 'text' }> | undefined;
@@ -412,6 +454,7 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
       reply.usage = await runAssistant({ transport: executionTransport, connectionId: config.id, model, reasoningEffort: effort, tools: config.tools,
         mode: inline ? 'inline' : 'sidebar', locale: requestLocale, promptOrigin,
         workspaceId: expected.id, runId: reply.id, sources: reply.sources!, history, rules, prompt: question, signal: abort.signal,
+        ...(inputs ? { attachments: inputs } : {}),
         ...(inline ? {} : { askUser: (questions: AssistantQuestion[]) => askUser(questions, target, reply!, abort.signal) }),
         execute: async (proposal: AssistantProposal) => {
           const result = await executeChange(reply!.proposals!.find(item => item.id === proposal.id)!, target, expected, abort.signal);
@@ -698,7 +741,7 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
     if (busy.value || applying.value) return;
     session.value = sessions.value.find(item => item.id === id) ?? null;
     restoreModelSelection(session.value);
-    files.value = []; selection.value = null; prompt.value = ''; error.value = '';
+    files.value = []; attachments.value = []; selection.value = null; prompt.value = ''; error.value = '';
     replyTarget.value = null;
   }
   async function loadExternal() {
@@ -715,14 +758,14 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
     if (!parsed.external || parsed.messages.length !== 1 || parsed.messages[0].proposals?.length !== 1 || parsed.messages[0].proposals[0].id !== parsed.id)
       throw new Error('外部提案封装无效');
     await persist(parsed);
-    session.value = parsed; opened.value = true; files.value = []; selection.value = null; replyTarget.value = null;
+    session.value = parsed; opened.value = true; files.value = []; attachments.value = []; selection.value = null; replyTarget.value = null;
     restoreModelSelection(parsed);
     externalSessions.value = externalSessions.value.filter(item => item.id !== target.id);
   }
   watch(() => workspace.workspace ? `${workspace.workspace.id}:${workspace.workspace.path}:${workspace.assistantEpoch}` : '', async key => {
     stop(); modelController?.abort(); const epoch = ++generation;
     if (displayMode.value === 'fullscreen') setDisplayMode('sidebar');
-    busy.value = false; prompt.value = ''; files.value = []; selection.value = null; session.value = null; sessions.value = [];
+    busy.value = false; prompt.value = ''; files.value = []; attachments.value = []; selection.value = null; session.value = null; sessions.value = [];
     replyTarget.value = null;
     connectionId.value = ''; modelId.value = ''; models.value = []; modelsError.value = ''; modelsLoading.value = false;
     if (!key || !transport) return;
@@ -754,6 +797,6 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
   watch([connection, opened], () => { void reloadModels(); });
   onScopeDispose(() => { stop(); modelController?.abort(); });
   return { connectionCheckResults, connectionQuotaResults, canImportCcSwitch, scanCcSwitch, importCcSwitch, available, demo, canConfigure, opened, displayMode, fullscreenTabId, fullscreenPaneId, isFullscreenTab, setDisplayMode, loading, busy, applying, connections, connectionId, connection, modelId, models, modelsLoading, modelsError, reloadModels, refreshModels, selectModel, selectConnection, sessions, session, externalSessions, loadExternal, importExternal,
-    files, selection, prompt, setBuiltInPrompt, error, progress, pendingUserInput, startDocumentDraft, submitUserInput, reasoningEffort, selectReasoningEffort, replyTarget, open, stop, settle, send, newSession, selectSession, deleteSession, review, verify,
+    files, attachmentsEnabled, attachments, addClipboardAttachments, removeAttachment, selection, prompt, hasDraft, setBuiltInPrompt, error, progress, pendingUserInput, startDocumentDraft, submitUserInput, reasoningEffort, selectReasoningEffort, replyTarget, open, stop, settle, send, newSession, selectSession, deleteSession, review, verify,
     undo, reject, publishSuggestions, saveConnection, removeConnection, reloadConnections, checkConnection, readConnectionKey, queryQuota, saveQuota, setManaged: (check: (id: string) => boolean) => { managed = check; } };
 }

@@ -2,6 +2,7 @@ import { Channel, invoke } from '@tauri-apps/api/core';
 import { splitFrontmatter } from '@tano/editor/syntax';
 import { ASSISTANT_PROTOCOL_VERSION, parseAssistantSession, isDataTableFilePath, parseDataTable, parseAgentInbox } from '@tano/protocol';
 import { browserAgentInbox } from './browser-inbox';
+import { assistantClipboardSeparator } from './attachments';
 import type { AssistantConnection, AssistantRequest, AssistantSession, AssistantSource, AssistantTransport } from '@tano/protocol';
 import { assistantCopy, assistantRequestLocale, assistantSourceSeparator, assistantTaskPrompts, formatAssistantText } from './language';
 import { loadLocaleCatalogs } from '../locale-catalogs';
@@ -19,6 +20,11 @@ export function nativeAssistantTransport(): AssistantTransport {
     return invoke<T>(command, args);
   }
   return {
+    supportsMediaAttachments: (connection, kind) => {
+      if (connection.platformProvider || connection.kind === 'claude-cli') return false;
+      if (connection.kind === 'codex-cli') return kind === 'image';
+      return kind !== 'file' || connection.protocol === 'responses';
+    },
     inbox: {
       load: async workspaceId => parseAgentInbox(await call('assistant_inbox_load', { workspaceId }), workspaceId),
       compareExchange: (inbox, expectedRevision) => call('assistant_inbox_save', {
@@ -133,9 +139,10 @@ export function demoAssistantTransport(): AssistantTransport {
       const toolResponse = last.role === 'tool';
       const sourceMessage = [...request.messages].reverse().find(message => message.role === 'user')?.content ?? '';
       const separator = assistantSourceSeparator();
-      const sources = JSON.parse(sourceMessage.slice(sourceMessage.indexOf(separator) + separator.length)) as AssistantSource[];
+      const sourceStart = sourceMessage.lastIndexOf(separator);
+      const sources = JSON.parse(sourceMessage.slice(sourceStart + separator.length)) as AssistantSource[];
       const source = sources[0];
-      const question = sourceMessage.slice(0, sourceMessage.indexOf(separator));
+      const question = sourceMessage.slice(0, sourceStart).split(assistantClipboardSeparator)[0]!;
       const direct = request.tools?.some(tool => tool.function.name === 'edit_document') && !/建议|方案|先.*看|不要|暂不|仅分析|suggest|proposal|do not|don't/i.test(question);
       const frames: unknown[] = [];
       const answeredQuestions = toolResponse && request.messages.some(message => message.tool_calls?.some(call => call.id === last.tool_call_id && call.function.name === 'ask_user'));

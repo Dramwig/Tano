@@ -11,12 +11,13 @@ import { t, uiLocale } from '../i18n';
 import { assistantCopy, assistantTaskPrompts } from '../assistant/language';
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { agentInboxKey, type useAgentInboxController } from '../assistant/agent-controller';
-import { AlignLeft, ArrowDown, ArrowLeft, ArrowUp, Bot, Check, ChevronDown, ChevronRight, ChevronsRight, CircleCheck, Copy, Cpu, createLucideIcon, FilePlus2, FileText, History, Languages, LoaderCircle, MessageCircle, MessageCirclePlus, Minus, MoreHorizontal, Paperclip, Pencil, Plug, Plus, RefreshCw, Reply, Quote, Search, Settings2, Square, Trash2, Undo2, X } from 'lucide-vue-next';
+import { AlignLeft, ArrowDown, ArrowLeft, ArrowUp, Bot, Check, ChevronDown, ChevronRight, ChevronsRight, CircleCheck, Copy, Cpu, createLucideIcon, FilePlus2, FileText, History, Image as ImageIcon, Languages, LoaderCircle, MessageCircle, MessageCirclePlus, Minus, MoreHorizontal, Paperclip, Pencil, Plug, Plus, RefreshCw, Reply, Quote, Search, Settings2, Square, Trash2, Undo2, X } from 'lucide-vue-next';
 import MarkdownEditor from '@tano/editor';
 import { confirmEntryReferenceDrop, droppedEntryReferences, entryReferenceDragType, referenceMarkdown } from '@tano/protocol';
 import type { AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSource, ReferenceIdentity } from '@tano/protocol';
 import { assistantConnectionRequiredMessage, useAssistantStore } from '../assistant/store';
 import { isAssistantFile } from '../assistant/files';
+import { clipboardAssistantFiles } from '../assistant/attachments';
 import { assistantToolLabel, assistantAnswerText } from '../assistant/results';
 import type { AssistantDisplayMode } from '../assistant/store';
 import { useWorkspaceStore } from '../stores/workspace';
@@ -218,6 +219,19 @@ function toggleSource(id: string) {
     if (assistant.selection?.fileId === id) assistant.selection = null;
   } else if (assistant.files.length < 20) assistant.files.push(id);
   else notice.value = t('一次最多选择 20 篇文档');
+}
+function pasteAttachments(event: ClipboardEvent) {
+  if (!assistant.attachmentsEnabled || event.defaultPrevented) return;
+  const files = clipboardAssistantFiles(event.clipboardData);
+  if (!files.length) return;
+  event.preventDefault();
+  event.stopPropagation();
+  notice.value = assistant.addClipboardAttachments(files);
+}
+function removeAttachment(id: string) {
+  assistant.removeAttachment(id);
+  notice.value = '';
+  textarea.value?.focus({ preventScroll: true });
 }
 async function openSource(source: AssistantSource) {
   notice.value = '';
@@ -587,13 +601,19 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
         <button v-if="(assistant.session?.messages.length ?? 0) > visibleMessages" class="assistant-text-action" @click="visibleMessages += 30">{{ t('查看较早消息') }}</button>
         <div v-if="displayed.length" class="assistant-conversation-meta">{{ t('同页助手 ·') }} {{ messageTime(displayed[0]!.createdAt) }}</div>
         <article v-for="message in displayed" :key="message.id" :data-message-id="message.id" class="assistant-message" :class="`assistant-message-${message.role}`" :aria-label="message.role === 'user' ? t('你的消息') : t('助手回答')">
-          <div v-if="message.role === 'user' && messageSources.get(message.id)?.length" class="assistant-citations assistant-attachments" :aria-label="t('已发送的引用')">
+          <div v-if="message.role === 'user' && (messageSources.get(message.id)?.length || message.attachments?.length)"
+            class="assistant-citations assistant-attachments" :aria-label="message.attachments?.length ? t('已发送的附件') : t('已发送的引用')">
             <template v-for="source in messageSources.get(message.id)" :key="source.id">
               <button v-if="!source.selection" :data-tooltip="source.path" @click="openSource(source)"><FileText :size="12" />{{ source.path }}</button>
               <button v-if="source.selection" class="assistant-sent-selection" :data-tooltip="`${source.path}\n${source.selection.text}`" :aria-label="t('引用文字：{0}', [source.selection.text])" @click="openSource(source)"><Quote :size="12" /><span>{{ source.selection.text }}</span></button>
             </template>
+            <span v-for="(attachment, index) in message.attachments" :key="index" class="assistant-sent-file">
+              <component :is="attachment.kind === 'image' ? ImageIcon : FileText" :size="12" />{{ attachment.name }}
+            </span>
           </div>
-          <div v-if="message.role === 'user'" class="assistant-message-text">{{ message.content }}</div>
+          <template v-if="message.role === 'user'">
+            <div v-if="message.content" class="assistant-message-text">{{ message.content }}</div>
+          </template>
           <AssistantMessageBody v-else :message="message">
             <template #input="{ input }"><AssistantQuestionCard v-if="input.id !== assistant.pendingUserInput?.request.id" :request="input" /></template>
             <template #text="{ content, id }"><div class="assistant-answer"><MarkdownEditor :model-value="answerMarkdown({ ...message, content })" :document-id="`assistant-${message.id}-${id}`" :reference-targets="assistant.session?.workspaceId === workspace.workspace?.id ? workspace.referenceTargets : []" readonly :reveal-markdown="false" open-links-on-tap :resolve-image="() => null" @open-link="sourceLink(message, $event)" @open-reference="openAnswerReference" @ready="answerReady" @error="notice = $event" /></div></template>
@@ -726,16 +746,21 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
         </div>
       <AssistantQuestionCard v-if="assistant.pendingUserInput" :key="assistant.pendingUserInput.request.id" :request="assistant.pendingUserInput.request" />
       <form v-else class="assistant-composer" @submit.prevent="closePopover(); assistant.send()">
-        <div v-if="assistant.files.length || assistant.selection" class="assistant-contexts">
+        <div v-if="assistant.files.length || assistant.selection || assistant.attachments.length" class="assistant-contexts">
           <button v-for="id in assistant.files.filter(id => id !== assistant.selection?.fileId)" :key="id" type="button" class="assistant-context" :disabled="assistant.busy" :data-tooltip="t('移除参考：{0}', [workspace.workspace?.files.find(file => file.id === id)?.path ?? id])" @click="toggleSource(id)"><FileText :size="13" /><span>{{ workspace.workspace?.files.find(file => file.id === id)?.name ?? t('已移除文档') }}</span><X :size="12" /></button>
           <div v-if="assistant.selection" class="assistant-context assistant-selection" :title="`${workspace.workspace?.files.find(file => file.id === assistant.selection?.fileId)?.path ?? assistant.selection.fileId}\n${assistant.selection.text}`" :aria-label="t('引用文字：{0}', [assistant.selection.text])"><Quote :size="13" /><span>{{ assistant.selection.text }}</span><button type="button" class="icon-button" :aria-label="t('清除助手选区')" :data-tooltip="t('清除选区')" :disabled="assistant.busy" @click="assistant.selection = null"><X :size="13" /></button></div>
+          <button v-for="attachment in assistant.attachments" :key="attachment.id" type="button" class="assistant-context"
+            :disabled="controlsLocked" :aria-label="t('移除附件：{0}', [attachment.name])"
+            :data-tooltip="t('移除附件：{0}', [attachment.name])" @click="removeAttachment(attachment.id)">
+            <component :is="attachment.kind === 'image' ? ImageIcon : FileText" :size="13" /><span>{{ attachment.name }}</span><X :size="12" />
+          </button>
         </div>
-        <textarea ref="textarea" v-model="assistant.prompt" rows="2" maxlength="20000" :aria-label="t('给助手的任务')" :placeholder="t('问问同页助手…')" @keydown="sendKey" />
+        <textarea ref="textarea" v-model="assistant.prompt" rows="2" maxlength="20000" :aria-label="t('给助手的任务')" :placeholder="t('问问同页助手…')" @keydown="sendKey" @paste="pasteAttachments" />
         <div class="assistant-compose-actions">
           <button type="button" class="icon-button assistant-compose-tool" :data-tooltip="t('添加内容')" :aria-label="t('添加内容')" :disabled="controlsLocked" :aria-expanded="popover === 'add'" aria-controls="assistant-add-options" data-assistant-popover @click="togglePopover('add', $event)"><Plus :size="20" /></button>
           <button type="button" class="assistant-compose-model" :data-tooltip="`${assistant.connection?.name ?? t('模型连接')} · ${modelLabel}`" :aria-label="t('选择助手模型')" :aria-expanded="popover === 'model'" aria-controls="assistant-model-options" data-assistant-popover @click="togglePopover('model', $event)"><span>{{ modelLabel }}</span></button>
           <button v-if="assistant.connection?.kind === 'codex-cli'" type="button" class="assistant-compose-reasoning" :data-tooltip="t('推理强度：{0}', [reasoningLabel])" :aria-label="t('选择推理强度')" :disabled="controlsLocked" :aria-expanded="popover === 'reasoning'" aria-controls="assistant-reasoning-options" data-assistant-popover @click="togglePopover('reasoning', $event)"><span>{{ reasoningLabel }}</span></button>
-          <button v-if="assistant.busy" type="button" class="icon-button assistant-stop" :aria-label="t('停止助手生成')" :data-tooltip="t('停止生成')" @click="assistant.stop()"><Square :size="16" /></button><button v-else class="primary-button assistant-send" :aria-label="t('发送给助手')" :data-tooltip="t('发送')" :disabled="!assistant.prompt.trim() || !assistant.connection || !assistant.modelId || assistant.loading || assistant.applying"><ArrowUp :size="18" /></button>
+          <button v-if="assistant.busy" type="button" class="icon-button assistant-stop" :aria-label="t('停止助手生成')" :data-tooltip="t('停止生成')" @click="assistant.stop()"><Square :size="16" /></button><button v-else class="primary-button assistant-send" :aria-label="t('发送给助手')" :data-tooltip="t('发送')" :disabled="!assistant.hasDraft || !assistant.connection || !assistant.modelId || assistant.loading || assistant.applying"><ArrowUp :size="18" /></button>
         </div>
       </form>
       </div>
@@ -901,7 +926,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 .assistant-answer :deep(li) { margin: 5px 0; }
 .assistant-message-error { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; color: var(--danger); }
 .assistant-citations { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
-.assistant-citations button { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 11px; text-align: left; overflow-wrap: anywhere; }
+.assistant-citations button, .assistant-sent-file { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 11px; text-align: left; overflow-wrap: anywhere; }
 .assistant-citations button:hover { background: var(--hover); }
 .assistant-citations svg { flex-shrink: 0; }
 .assistant-attachments { justify-content: flex-end; max-width: 88%; margin: 0 0 8px; }
@@ -923,10 +948,24 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 .assistant-jump-latest:hover { color: var(--paper); background: var(--text-secondary); }
 .assistant-composer-area { position: relative; flex: 0 0 auto; min-width: 0; margin: 4px 18px 18px; }
 .assistant-composer-area-question { display: flex; flex-direction: column; flex-shrink: 1; min-height: 0; max-height: min(60%, 460px); }
-.assistant-composer { --assistant-composer-muted: color-mix(in srgb, var(--muted) 80%, var(--paper)); --assistant-composer-placeholder: color-mix(in srgb, var(--muted) 45%, var(--paper)); --assistant-composer-line: color-mix(in srgb, var(--line) 65%, var(--paper)); padding: 12px 12px 9px; border: 1px solid var(--assistant-composer-line); border-radius: 18px; background: var(--paper); box-shadow: 0 2px 6px rgb(0 0 0 / 2%); transition: border-color 120ms ease; }
+.assistant-composer { --assistant-composer-padding-inline: 12px; --assistant-composer-muted: color-mix(in srgb, var(--muted) 80%, var(--paper)); --assistant-composer-placeholder: color-mix(in srgb, var(--muted) 45%, var(--paper)); --assistant-composer-line: color-mix(in srgb, var(--line) 65%, var(--paper)); padding: 12px var(--assistant-composer-padding-inline) 9px; border: 1px solid var(--assistant-composer-line); border-radius: 18px; background: var(--paper); box-shadow: 0 2px 6px rgb(0 0 0 / 2%); transition: border-color 120ms ease; }
 .assistant-composer:focus-within { border-color: color-mix(in srgb, var(--line) 90%, var(--paper)); }
 :global(:root[data-theme='dark'] .assistant-composer) { --assistant-composer-placeholder: var(--assistant-composer-muted); }
-.assistant-composer textarea { display: block; width: 100%; resize: none; min-height: 52px; max-height: 168px; border: 0; background: transparent; color: var(--text); padding: 0; font: inherit; font-size: 14px; line-height: 1.65; }
+.assistant-composer textarea {
+  display: block;
+  width: calc(100% + var(--assistant-composer-padding-inline));
+  resize: none;
+  min-height: 52px;
+  max-height: 168px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 0;
+  padding-inline-end: var(--assistant-composer-padding-inline);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.65;
+}
 .assistant-composer textarea::placeholder { color: var(--assistant-composer-placeholder); opacity: 1; }
 .assistant-composer textarea:focus { outline: none; }
 .assistant-compose-actions { display: flex; align-items: center; gap: 1px; min-height: 30px; margin-top: 7px; }
@@ -970,7 +1009,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 .assistant-panel-floating .assistant-conversation-meta { padding-bottom: 12px; }
 .assistant-panel-floating .assistant-message-user .assistant-message-text { padding: 8px 14px; border-radius: 18px; }
 .assistant-panel-floating .assistant-composer-area { margin: 0 14px 14px; }
-.assistant-panel-floating .assistant-composer { padding: 12px 12px 8px; box-shadow: none; }
+.assistant-panel-floating .assistant-composer { padding-bottom: 8px; box-shadow: none; }
 .assistant-panel-floating .assistant-composer textarea { min-height: 40px; }
 .assistant-panel-floating .assistant-compose-actions { margin-top: 4px; }
 .assistant-panel-floating .assistant-context { padding: 3px 6px; }

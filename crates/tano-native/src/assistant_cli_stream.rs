@@ -155,8 +155,21 @@ async fn response(
     }
 }
 
-fn turn_params(thread_id: &str, prompt: &str, effort: Option<ReasoningEffort>) -> Value {
-    let mut params = json!({"threadId":thread_id, "input":[{"type":"text","text":prompt}], "outputSchema":schema()});
+fn turn_params(
+    thread_id: &str,
+    prompt: &str,
+    effort: Option<ReasoningEffort>,
+    request: &Value,
+) -> Value {
+    let mut input = vec![json!({"type":"text","text":prompt})];
+    for message in request["messages"].as_array().into_iter().flatten() {
+        for part in message["content"].as_array().into_iter().flatten() {
+            if let Some(url) = part.pointer("/image_url/url").and_then(Value::as_str) {
+                input.push(json!({"type":"image","url":url}));
+            }
+        }
+    }
+    let mut params = json!({"threadId":thread_id, "input":input, "outputSchema":schema()});
     if let Some(effort) = effort {
         params["effort"] = json!(effort);
     }
@@ -200,7 +213,7 @@ async fn conversation(
         .ok_or("CLI 会话标识无效")?;
     send(
         writer,
-        json!({"id":2,"method":"turn/start","params":turn_params(thread_id,prompt,effort)}),
+        json!({"id":2,"method":"turn/start","params":turn_params(thread_id,prompt,effort,request)}),
     )
     .await?;
     let mut turn = TurnStream::default();
@@ -648,7 +661,9 @@ mod tests {
         assert_eq!(reply.content, "first answer");
         assert_eq!(shown, reply.content);
         assert_eq!(usage["input_tokens"], 11);
-        assert!(turn_params("t", "p", None).get("effort").is_none());
+        assert!(turn_params("t", "p", None, &Value::Null)
+            .get("effort")
+            .is_none());
     }
 
     #[tokio::test]
