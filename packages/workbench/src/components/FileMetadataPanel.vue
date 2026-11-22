@@ -99,7 +99,7 @@ async function save() {
           <ul><li v-for="row in links" :key="row.id">{{ targets.find(target => referenceKey(target) === referenceKey(linkedTarget(row)))?.name ?? referenceKey(linkedTarget(row)) }} <button :disabled="busy || store.workspace?.readOnly" @click="removeLink(row)">{{ t('移除关联') }}</button></li></ul>
           <label>{{ t('选择对象') }}<select v-model="linkTarget" :aria-label="t('选择对象')" :disabled="busy || store.workspace?.readOnly || !store.capabilities.features.objectReferences"><option value="">{{ t('选择对象') }}</option><option v-for="target in targets" :key="referenceKey(target)" :value="referenceKey(target)">{{ target.name }} · {{ target.type }}</option></select></label>
           <button :disabled="busy || !linkTarget || store.workspace?.readOnly" @click="addLink">{{ t('添加关联') }}</button>
-          <p v-if="!store.capabilities.features.objectReferences">{{ t('请在工作区设置中启用 Level 2 对象引用。') }}</p>
+          <p v-if="!store.capabilities.features.objectReferences">{{ t('请在工作区设置中启用「工作区对象与引用」。') }}</p>
         </section>
         </template>
       </template>

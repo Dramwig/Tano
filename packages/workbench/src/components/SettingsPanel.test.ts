@@ -423,8 +423,17 @@ it('offers workspace bullet markers under Markdown syntax and disables them with
 it('offers extension rendering switches in shared document capabilities', async () => {
   hostWorkspace.value = { id: 'local-workspace', name: '本地', path: 'C:/Notes' };
   await openPage('Markdown 与格式');
-  for (const feature of ['superscript', 'subscript', 'underline', 'highlight', 'inlineComment'] as const) {
+  const featureLabels = {
+    objectReferences: '工作区对象与引用',
+    superscript: '上标',
+    subscript: '下标',
+    underline: '下划线',
+    highlight: '高亮',
+    inlineComment: '注释',
+  };
+  for (const [feature, label] of Object.entries(featureLabels)) {
     const control = root.querySelector<HTMLButtonElement>(`[data-settings-key="documents-${feature}"] [role="switch"]`)!;
+    expect(control.getAttribute('aria-label')).toBe(label);
     expect(control.getAttribute('aria-checked')).toBe('true');
     control.click();
     expect(capabilityUpdates.at(-1)).toEqual({ feature, enabled: false });

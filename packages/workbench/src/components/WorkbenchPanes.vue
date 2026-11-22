@@ -357,7 +357,7 @@ const ownsFullscreenAssistant = computed(() => {
         </template>
         <template #sidebar>
           <AssistantPanel
-            v-if="assistant.available && assistantPanelMounted"
+            v-if="assistant.available && assistantPanelMounted && (assistant.displayMode !== 'fullscreen' || ownsFullscreenAssistant)"
             :compact="compactPanes"
             :toggle-shortcut="shortcuts.toggleAssistant"
             :fullscreen-target="assistantHosts.get(assistant.fullscreenPaneId ?? '')"
@@ -924,7 +924,7 @@ const ownsFullscreenAssistant = computed(() => {
             >
               <div class="plugins-tab-content">
                 <p v-if="!store.capabilities.features.objectReferences" class="tool-level-notice">
-                  {{ t('Level 2 已关闭，插件对象和关系暂时只读。可在工作区设置中重新启用。') }}
+                  {{ t('「工作区对象与引用」已关闭，插件对象和关系暂时只读。可在工作区设置中重新启用。') }}
                 </p>
                 <p v-else-if="workspace.readOnly" class="tool-level-notice">
                   {{ t('此工作区为只读，无法修改对象和关系。') }}

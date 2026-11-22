@@ -561,7 +561,7 @@ onBeforeUnmount(() => {
     <div ref="viewPicker" class="sidebar-calendar-heading">
       <div class="sidebar-calendar-month">
         <span :title="monthTitle"><template v-if="uiLocale !== 'zh-CN'">{{ month.toLocaleDateString(uiLocale, { month: 'short', year: 'numeric' }) }}</template><template v-else><span class="sidebar-calendar-year">{{ month.getFullYear() }} {{ t('年') }} </span>{{ month.getMonth() + 1 }} {{ t('月') }}</template></span>
-        <button ref="viewTrigger" type="button" class="plan-view-trigger" :disabled="workspaceOnly" :aria-label="t('计划范围')" aria-haspopup="menu" aria-controls="plan-view-menu" :aria-expanded="viewOpen" :data-tooltip="viewOptions.find(option => option.value === plans.view)?.detail" @click="toggleViewMenu" @keydown.down.prevent="workspaceOnly || viewOpen || toggleViewMenu()">
+        <button v-if="!workspaceOnly" ref="viewTrigger" type="button" class="plan-view-trigger" :aria-label="t('计划范围')" aria-haspopup="menu" aria-controls="plan-view-menu" :aria-expanded="viewOpen" :data-tooltip="viewOptions.find(option => option.value === plans.view)?.detail" @click="toggleViewMenu" @keydown.down.prevent="viewOpen || toggleViewMenu()">
           <span>{{ viewLabel }}</span><ChevronDown :size="12" aria-hidden="true" />
         </button>
         <button type="button" class="sidebar-calendar-today" :aria-label="t('回到今天')" @click="goToToday">{{ t('今天') }}</button>
