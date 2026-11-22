@@ -48,6 +48,7 @@ const {
   sidebarView,
   draggedEntry,
   dropFolder,
+  dropPlaceholders,
   fileDragOver,
   fileDragLeave,
   fileDrop,
@@ -592,6 +593,7 @@ const brandButton = ref<HTMLElement | null>(null);
               :context-selected="fileContextMenu?.file.id"
               :dragged-id="draggedEntry?.file.id"
               :drop-target="dropFolder"
+              :drop-preview="dropPlaceholders"
               :can-drag="canDragEntry"
               :renaming-id="treeRename?.fileId"
               :rename-entry="renameTreeEntry"

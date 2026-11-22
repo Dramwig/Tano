@@ -2,7 +2,8 @@
 import { t } from '../i18n';
 import { computed, inject, nextTick, onBeforeUnmount, provide, ref, watch } from 'vue';
 import { captureList } from '@tano/editor/motion';
-import { flattenFileTree, indexFileTree } from '../file-tree-model';
+import { flattenFileTree, indexFileTree, isDropPlaceholderId } from '../file-tree-model';
+import { warmFileDragIcon } from '../file-drag-image';
 import { indexFolderHomes, type FolderHomeFileName } from '../folder-home';
 import { treeRowHeight, useFileTreeViewport } from '../file-tree-viewport';
 import {
@@ -34,6 +35,8 @@ const props = withDefaults(
     contextSelected?: string;
     draggedId?: string;
     dropTarget?: string | null;
+    /** Placeholder entries previewing where the dragged rows will land. */
+    dropPreview?: readonly FileEntry[];
     canDrag?: (file: FileEntry) => boolean;
     renamingId?: string;
     renameEntry?: (file: FileEntry, name: string) => Promise<void>;
@@ -46,6 +49,7 @@ const props = withDefaults(
     contextSelected: '',
     draggedId: '',
     dropTarget: null,
+    dropPreview: () => [],
   },
 );
 const emit = defineEmits<{
@@ -73,7 +77,10 @@ const treeElement = ref<HTMLElement>();
 const virtual = computed(() => !props.loading && props.depth === 0 && largeTree.value);
 const homes = computed(() => indexFolderHomes(props.entries, props.folderHomeFileName));
 const hiddenHomeIds = computed(() => new Set([...homes.value.values()].map(file => file.id).filter(id => id !== props.revealedHomeId)));
-const folders = computed(() => indexFileTree(props.entries.filter(file => !hiddenHomeIds.value.has(file.id))));
+const folders = computed(() => indexFileTree([
+  ...props.entries.filter(file => !hiddenHomeIds.value.has(file.id)),
+  ...(props.draggedId ? props.dropPreview : []),
+]));
 const homeFor = (file: FileEntry) => file.kind === 'directory' ? homes.value.get(file.path) : undefined;
 const isSelected = (file: FileEntry) => props.selectedIds.has(file.id) ||
   (!!homeFor(file) && hiddenHomeIds.value.has(homeFor(file)!.id) && props.selectedIds.has(homeFor(file)!.id));
@@ -102,8 +109,8 @@ const { windowRows, focused, reveal, focus } = useFileTreeViewport(treeElement, 
   () => [props.renamingId, props.draggedId, props.contextSelected]);
 const tabStop = computed(() => rows.value.some(row => row.file.id === focused.value) ? focused.value : rows.value[0]?.file.id);
 function getVisibleIds(): string[] {
-  return virtual.value ? rows.value.map(row => row.file.id)
-    : [...(treeElement.value?.querySelectorAll<HTMLElement>('.tree-row[data-entry-id]') ?? [])].map(row => row.dataset.entryId!);
+  return virtual.value ? rows.value.map(row => row.file.id).filter(id => !isDropPlaceholderId(id))
+    : [...(treeElement.value?.querySelectorAll<HTMLElement>('.tree-row[data-entry-id]:not(.tree-row-placeholder)') ?? [])].map(row => row.dataset.entryId!);
 }
 defineExpose({ getVisibleIds });
 watch(() => props.revealedHomeId, async id => {
@@ -302,7 +309,22 @@ function clickIcon(file: FileEntry, event: MouseEvent) {
       :class="{ 'file-tree-virtual-row': virtual }"
       :style="virtual ? { top: `${index * treeRowHeight}px`, height: `${treeRowHeight}px` } : undefined"
       role="none">
+      <div
+        v-if="isDropPlaceholderId(file.id)"
+        class="tree-row tree-row-placeholder"
+        aria-hidden="true"
+        :style="{ paddingLeft: `${4 + rowDepth * 17}px`, '--tree-depth': rowDepth }"
+        :data-entry-id="file.id"
+      >
+        <span class="tree-icon" aria-hidden="true">
+          <ResourceIcon :path="file.path" :name="file.name" :kind="file.kind" :expanded="false" class="tree-item-icon" />
+        </span>
+        <span class="tree-label">{{
+          file.kind === 'directory' ? file.name : file.name.replace(/(\.table\.json|\.(md|markdown))$/i, '')
+        }}</span>
+      </div>
       <component
+        v-else
         :is="file.id === renamingId ? 'div' : 'button'"
         class="tree-row"
         role="treeitem"
@@ -328,7 +350,7 @@ function clickIcon(file: FileEntry, event: MouseEvent) {
         :aria-expanded="file.kind === 'directory' ? !isCollapsed(file.path) : undefined"
         @click="clickEntry(file, $event)"
         @mousedown="suppressHeldClick(file, $event)"
-        @pointerdown="startTouchHold(file, $event)"
+        @pointerdown="warmFileDragIcon($event.currentTarget as HTMLElement); startTouchHold(file, $event)"
         @pointermove="moveTouchHold"
         @pointerup="cancelTouchHold"
         @pointercancel="cancelTouchHold"
@@ -379,7 +401,7 @@ function clickIcon(file: FileEntry, event: MouseEvent) {
         <span v-if="file.name === 'AGENTS.md'" class="agent-file-dot" />
       </component>
       <FileTree
-        v-if="!virtual && file.kind === 'directory' && !isCollapsed(file.path)"
+        v-if="!virtual && file.kind === 'directory' && !isDropPlaceholderId(file.id) && !isCollapsed(file.path)"
         :entries="entries"
         :folder-home-file-name="folderHomeFileName"
         :revealed-home-id="revealedHomeId"
@@ -391,6 +413,7 @@ function clickIcon(file: FileEntry, event: MouseEvent) {
         :context-selected="contextSelected"
         :dragged-id="draggedId"
         :drop-target="dropTarget"
+        :drop-preview="dropPreview"
         :can-drag="canDrag"
         :renaming-id="renamingId"
         :rename-entry="renameEntry"

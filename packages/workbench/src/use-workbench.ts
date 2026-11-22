@@ -285,6 +285,7 @@ import { handleMobileVisibility } from './mobile-lifecycle';
 import { useViewport } from './viewport';
 
 import { useWorkspaceStore } from './stores/workspace';
+import { fileDragImage } from './file-drag-image';
 
 import { retainWorkbenchSession } from './workbench-session';
 
@@ -366,6 +367,7 @@ import { useUpdatesStore } from './stores/updates';
 import { resolveWikiLink } from './wiki-links';
 
 import { applyFileMovePreview, planFileMovePreview, type FileMovePreview } from './file-move';
+import { DROP_PLACEHOLDER_PREFIX } from './file-tree-model';
 
 import {
   isSidebarToggleShortcut, matchesShortcut, parseShortcutBindings, readShortcutBindings,
@@ -1446,6 +1448,20 @@ const tabFileDrag = computed(() =>
     : undefined,
 );
 const dropFolder = ref<string | null>(null);
+// Slot preview: while a valid folder is hovered, the tree shows where the dragged
+// entries would land as placeholder rows (the real rows stay put so the native
+// drag source is never re-parented mid-drag).
+const dropPlaceholders = computed<FileEntry[]>(() => {
+  const folder = dropFolder.value;
+  if (folder === null || !draggedEntry.value) return [];
+  const changes = planDropIn(folder);
+  if (!changes) return [];
+  const byId = new Map(changes.map((change) => [change.id, change.to]));
+  return draggedSelection.value.flatMap((file) => {
+    const path = byId.get(file.id);
+    return path ? [{ ...file, id: `${DROP_PLACEHOLDER_PREFIX}${file.id}`, path, name: basename(path) }] : [];
+  });
+});
 const moveBusy = ref(false);
 const optimisticFileMove = ref<{ workspaceId: string; changes: FileMovePreview[] } | null>(null);
 const treeFiles = computed(() => {
@@ -2952,7 +2968,12 @@ function fileDeleteDisabled(file: FileEntry) {
   );
 }
 const selectionDeleteDisabled = computed(() => contextEntries.value.some(fileDeleteDisabled));
-function canDragEntry(file: FileEntry) {
+// Dragging only needs to be possible so entries can be dropped on tabs, the editor or
+// the assistant (references / open). Whether a drop may *move* files is decided separately.
+function canDragEntry(_file: FileEntry) {
+  return !!workspace.value && !updateLock.value;
+}
+function canMoveEntry(file: FileEntry) {
   if (
     !workspace.value ||
     workspace.value.readOnly ||
@@ -2972,7 +2993,7 @@ function planDropIn(folder: string): FileMovePreview[] | null {
     !workspace.value ||
     drag.workspaceId !== workspace.value.id ||
     !draggedSelection.value.length ||
-    !draggedSelection.value.every(canDragEntry)
+    !draggedSelection.value.every(canMoveEntry)
   )
     return null;
   try {
@@ -3008,23 +3029,45 @@ function fileDragStart(file: FileEntry, event: DragEvent) {
     'application/x-tano-entry',
     selection.map((entry) => entry.id).join(','),
   );
+  // Same card as a dragged tab instead of the browser's row snapshot.
+  const row = event.currentTarget as HTMLElement | null;
+  if (row) {
+    const label = selection.length === 1
+      ? row.querySelector('.tree-label')?.textContent?.trim() || file.name
+      : t('{0} 个文档', [selection.length]);
+    const image = fileDragImage(row, label, { x: event.clientX, y: event.clientY });
+    if (image) event.dataTransfer.setDragImage(image.canvas, image.x, image.y);
+  }
 }
 function fileDragEnd() {
   draggedEntry.value = null;
   draggedSelection.value = [];
   dropFolder.value = null;
+  dropPointer = undefined;
+}
+// The slot preview changes row layout under a stationary pointer. Retargeting only
+// counts when the pointer itself moved, otherwise the shifted rows would flip the
+// target back and forth.
+let dropPointer: { x: number; y: number } | undefined;
+const pointerMovedSinceTarget = (event: DragEvent) =>
+  !dropPointer || Math.hypot(event.clientX - dropPointer.x, event.clientY - dropPointer.y) >= 4;
+function setDropFolder(folder: string | null, event: DragEvent) {
+  if (dropFolder.value === folder) return;
+  dropFolder.value = folder;
+  dropPointer = { x: event.clientX, y: event.clientY };
 }
 function fileDragOver(folder: string, event: DragEvent) {
   event.preventDefault();
   event.stopPropagation();
+  if (dropFolder.value !== null && dropFolder.value !== folder && !pointerMovedSinceTarget(event)) folder = dropFolder.value;
   const valid = planDropIn(folder) !== null;
   if (event.dataTransfer) event.dataTransfer.dropEffect = valid ? 'move' : 'none';
-  dropFolder.value = valid ? folder : null;
+  setDropFolder(valid ? folder : null, event);
 }
 function fileDragLeave(folder: string, event: DragEvent) {
   const target = event.currentTarget as HTMLElement | null;
   if (target?.contains(event.relatedTarget as Node | null)) return;
-  if (dropFolder.value === folder) dropFolder.value = null;
+  if (dropFolder.value === folder && pointerMovedSinceTarget(event)) setDropFolder(null, event);
 }
 async function fileDrop(folder: string, event: DragEvent) {
   event.preventDefault();
@@ -4365,6 +4408,7 @@ const helpBlocked = computed(() => !!(
     sidebarView,
     draggedEntry,
     dropFolder,
+    dropPlaceholders,
     fileDragOver,
     fileDragLeave,
     fileDrop,

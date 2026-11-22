@@ -498,10 +498,18 @@ function scrollWhileFileDragging() {
   const slot = fileSlot.value;
   if (!list || !slot) return;
   const bounds = list.getBoundingClientRect();
-  if (slot.x >= bounds.left && slot.x <= bounds.right) {
-    if (slot.x < bounds.left + 32) list.scrollLeft -= 10;
-    else if (slot.x > bounds.right - 32) list.scrollLeft += 10;
+  // Same guard as scrollWhileDragging: the reserved slot spacer and a strip
+  // that is still resizing look like overflow. Scrolling into them pushed the
+  // first tab under the navigation buttons and widened the visible gap.
+  if (slot.x >= bounds.left && slot.x <= bounds.right && !tabLayoutAnimating.value) {
+    const maxScroll = realScrollRange(list, bounds);
+    if (slot.x < bounds.left + 32) list.scrollLeft = Math.max(0, list.scrollLeft - 10);
+    else if (slot.x > bounds.right - 32 && list.scrollLeft < maxScroll)
+      list.scrollLeft = Math.min(maxScroll, list.scrollLeft + 10);
   }
+  // A slot that was already scrolled into before must not stay there.
+  const maxScroll = realScrollRange(list, bounds);
+  if (list.scrollLeft > maxScroll) list.scrollLeft = maxScroll;
   slot.index = fileIndexAt(slot.x);
   fileScrollFrame = requestAnimationFrame(scrollWhileFileDragging);
 }
