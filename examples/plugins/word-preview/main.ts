@@ -67,7 +67,7 @@ export default async function activate(tano: TanoPluginApi) {
     current = undefined; imported = undefined;
     await header();
     await tano.views.renderCustom('document', context?.fileId ? { loading: true, token } : { idle: true, token });
-    await tano.views.open('document');
+    if (!context?.viewAlreadyOpen) await tano.views.open('document');
     if (!context?.fileId) return;
     try {
       const chunk = await tano.attachments.read(context.fileId);

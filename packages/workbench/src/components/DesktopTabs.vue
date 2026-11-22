@@ -220,8 +220,24 @@ let referenceInserted = false;
 function referenceDropAccepted() { if (gesture) referenceInserted = true; }
 function referencePayload(id: string) {
   const tab = paneTabs.value.find(tab => tab.id === id);
-  const target = store.referenceTargets?.find(target => target.id === tab?.document?.id || target.id === id);
+  // A tab stands for its file: a document, or an attachment previewed in it.
+  const fileId = tab?.document?.id ?? tab?.attachment?.id;
+  const target = store.referenceTargets?.find(target => target.id === fileId || target.id === id);
   return target ? JSON.stringify({ workspace: target.workspace, ids: [target.id] }) : undefined;
+}
+/**
+ * Offer the tab's file to whatever accepts references under the release point.
+ * Illegal tabs (no file) and track/pane drops never produce a drop, so those
+ * releases stay ordinary returns, reorders or docks.
+ */
+function dropReferenceAt(id: string, x: number, y: number) {
+  const payload = referencePayload(id);
+  if (!payload || sourcePaneDrop || dropTarget.value) return;
+  const transfer = new DataTransfer();
+  transfer.setData(entryReferenceDragType, payload);
+  document.elementFromPoint(x, y)?.dispatchEvent(new DragEvent('drop', {
+    bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: transfer,
+  }));
 }
 function releaseIntent(outside = false): TabRelease {
   return resolveTabRelease({
@@ -359,6 +375,12 @@ let gesture:
 let scrollFrame = 0;
 let nativeDragging = false;
 let nativeOutside = false;
+// The OS drop reaches the page asynchronously to the host's button-release
+// signal. Track it so a reference drop is neither missed nor inserted twice.
+let nativeDropSeen = false;
+let nativeDropSignal: (() => void) | undefined;
+let swallowLateDrop = false;
+const NATIVE_DROP_WAIT = 160;
 let finishingDrag = false;
 let suppressClick = false;
 let clickTimer: ReturnType<typeof setTimeout> | undefined;
@@ -634,6 +656,8 @@ function clearGesture() {
   cancelAnimationFrame(scrollFrame);
   nativeDragging = false;
   nativeOutside = false;
+  nativeDropSeen = false;
+  nativeDropSignal = undefined;
   finishingDrag = false;
   sourceAway.value = false;
   referenceInserted = false;
@@ -703,14 +727,7 @@ function endDrag(event: PointerEvent) {
     finishDrag();
     return;
   }
-  const payload = referencePayload(gesture.id);
-  if (!sourcePaneDrop && !dropTarget.value && payload) {
-    const transfer = new DataTransfer();
-    transfer.setData(entryReferenceDragType, payload);
-    document.elementFromPoint(event.clientX, event.clientY)?.dispatchEvent(new DragEvent('drop', {
-      bubbles: true, cancelable: true, clientX: event.clientX, clientY: event.clientY, dataTransfer: transfer,
-    }));
-  }
+  dropReferenceAt(gesture.id, event.clientX, event.clientY);
   const outside = event.clientX < 0 || event.clientY < 0 || event.clientX >= window.innerWidth || event.clientY >= window.innerHeight;
   if (outside && props.detachable && !stripPoint(event.clientX, event.clientY)) void finishAtSystemCursor();
   else finishDrag(releaseIntent());
@@ -735,6 +752,15 @@ async function finishAtSystemCursor(drop?: { x: number; y: number }) {
     } else updateDropTarget();
     const withinWindow = current.x >= 0 && current.x < window.innerWidth &&
       current.y >= 0 && current.y < window.innerHeight;
+    // No OS drop arrived over this window: deliver the reference ourselves, as
+    // for captured pointer drags, and swallow the OS drop if it still shows up.
+    if (nativeDragging && !nativeDropSeen && !referenceInserted && withinWindow && !near) {
+      dropReferenceAt(current.id, current.x, current.y);
+      if (referenceInserted) {
+        swallowLateDrop = true;
+        setTimeout(() => { swallowLateDrop = false; }, 1500);
+      }
+    }
     const result = releaseIntent(!near && (nativeOutside || !withinWindow));
     if (result.kind !== 'detach') { finishDrag(result); return; }
     detachReleasedTab(current, {
@@ -783,6 +809,15 @@ async function watchNativeRelease(current: NonNullable<typeof gesture>) {
     // (which collapses the tab and makes its neighbours jump).
     if (typeof drop.overSource === 'boolean') nativeOutside = !drop.overSource;
     // Let the browser finish its native drop dispatch before changing the tab tree.
+    // Released over this window, the drop may still be in flight: wait for it
+    // (briefly) so an inserted reference is known before the release resolves.
+    if (!nativeOutside && !nativeDropSeen) {
+      await new Promise<void>((resolve) => {
+        const done = () => { clearTimeout(timer); if (nativeDropSignal === done) nativeDropSignal = undefined; resolve(); };
+        const timer = setTimeout(done, NATIVE_DROP_WAIT);
+        nativeDropSignal = done;
+      });
+    }
     await new Promise((resolve) => setTimeout(resolve, 0));
     const ownLayout = store.windowLayouts?.[windowContext.id];
     if (store.windowLayouts && (!ownLayout || !store.panes.some(pane => pane.tabs.includes(current.id) &&
@@ -903,7 +938,17 @@ function nativeDragLeave(event: DragEvent) {
 }
 
 function nativeDrop(event: DragEvent) {
-  if (nativeDragging) event.preventDefault();
+  if (swallowLateDrop && event.dataTransfer?.types.includes(entryReferenceDragType)) {
+    // Already inserted by the fallback above; a second insertion would duplicate it.
+    swallowLateDrop = false;
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+  if (!nativeDragging) return;
+  event.preventDefault();
+  nativeDropSeen = true;
+  nativeDropSignal?.();
 }
 
 function nativeDragEnd() {
@@ -1613,11 +1658,15 @@ async function onTabKeydown(event: KeyboardEvent) {
   animation: desktop-tab-lift var(--motion-spring, 0.32s) var(--ease-spring-smooth, ease-out) both;
   transition: border-radius 0.24s ease-out, box-shadow 0.24s ease-out;
 }
-/* Landing: morph back into a docked tab shape while flying into the slot. */
+/* Landing: morph back into a docked tab shape while flying into the slot.
+   The card keeps its border and shadow for the whole flight; the docked tab
+   takes over through the opacity crossfade, so nothing pops at the end. */
 .desktop-tab-drag-preview-overlaid { visibility: hidden; }
 .desktop-tab-drag-preview-settling {
   border-radius: 8px 8px 0 0;
-  box-shadow: 0 0 0 0 transparent, 0 0 0 transparent, 0 0 0 transparent;
+  /* The shadow is driven per frame from flight progress; a CSS transition
+     would restart every frame and lag behind it. */
+  transition: border-radius 0.24s ease-out;
 }
 @keyframes desktop-tab-lift {
   from { box-shadow: 0 0 0 0 transparent, 0 0 0 transparent, 0 0 0 transparent; border-radius: 8px 8px 0 0; }

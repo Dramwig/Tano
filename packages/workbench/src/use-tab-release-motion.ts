@@ -125,6 +125,10 @@ export function useTabReleaseMotion({ window, document }: { window: Window; docu
           style.backgroundColor = blendColor(colorStart.backgroundColor, colorTo.backgroundColor, progress);
           style.color = blendColor(colorStart.color, colorTo.color, progress);
         }
+        // The lifted card sets back down: ring and shadows fade with the flight.
+        const rest = 1 - progress;
+        style.boxShadow = `0 0 0 1px color-mix(in srgb, var(--line) ${rest * 100}%, transparent), `
+          + `0 8px 22px rgb(0 0 0 / ${12 * rest}%), 0 2px 6px rgb(0 0 0 / ${6 * rest}%)`;
         previewStyle.value = style;
         // Reveal the aligned tab and hide the preview in the same Vue update.
         // Two half-opacity layers compose to only 75% coverage and cause a flash.

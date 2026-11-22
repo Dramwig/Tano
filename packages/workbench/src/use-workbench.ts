@@ -2553,7 +2553,8 @@ async function openEntry(file: FileEntry, newTab = false) {
     return;
   }
   if (workspace.value) {
-    store.openAttachmentInNewTab(file);
+    if (newTab) await store.openAttachmentInNewTab(file);
+    else await store.openAttachment(file);
     if (compactPanes.value) sidebar.value = false;
     return;
   }
