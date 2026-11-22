@@ -6,6 +6,11 @@ import { ownerWindow } from '@tano/editor/dom-realm';
 export const TAB_DRAG_IMAGE_INSET = { x: 24, y: 18 } as const;
 const SHADOW_BOTTOM = 32;
 
+const readiness = new WeakMap<HTMLCanvasElement, Promise<void>>();
+
+/** Resolves once the tab icon is painted, so the bitmap never ships a placeholder glyph. */
+export const tabDragImageReady = (canvas: HTMLCanvasElement) => readiness.get(canvas) ?? Promise.resolve();
+
 /** Painted at device pixels (`scale`), so the native overlay stays as crisp as the DOM. */
 export function tabDragImage(tab: HTMLElement, label: string, scale = ownerWindow(tab).devicePixelRatio || 1) {
   const rect = tab.getBoundingClientRect();
@@ -73,11 +78,16 @@ export function tabDragImage(tab: HTMLElement, label: string, scale = ownerWindo
     copy.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
     copy.style.color = getComputedStyle(svg).color;
     const image = new Image();
-    image.onload = () => {
-      context.fillStyle = paper;
-      context.fillRect(left, iconY, 15, 15);
-      context.drawImage(image, left, iconY, 15, 15);
-    };
+    readiness.set(canvas, new Promise<void>((resolve) => {
+      image.onload = () => {
+        context.fillStyle = paper;
+        context.fillRect(left, iconY, 15, 15);
+        context.drawImage(image, left, iconY, 15, 15);
+        resolve();
+      };
+      // A broken icon keeps the seeded glyph; never block the drag on it.
+      image.onerror = () => resolve();
+    }));
     image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(copy))}`;
   }
   return canvas;

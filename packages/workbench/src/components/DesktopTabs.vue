@@ -16,7 +16,7 @@ import type { DetachedDropPoint } from '../windows/position';
 import { finishedTabDrag, parseTabDragMeta, tabDockIndex, tabDragMetaType, type TabDragMeta } from '../tab-docking';
 import { paneDropAt as hitTestPane } from '../pane-docking';
 import { tabLayoutRect } from '../tab-layout';
-import { TAB_DRAG_IMAGE_INSET, tabDragImage } from '../tab-drag-image';
+import { TAB_DRAG_IMAGE_INSET, tabDragImage, tabDragImageReady } from '../tab-drag-image';
 import { resolveTabRelease, type TabRelease } from '../tab-release';
 import { useTabReleaseMotion } from '../use-tab-release-motion';
 import { settlingTab } from '../tab-settle';
@@ -204,11 +204,30 @@ const title = (path: string) => basename(path).replace(/\.(md|markdown)$/i, '');
 const tabLabel = (tab: DocumentTab) => tab.pluginDetail ? tab.pluginDetail.name : props.assistantTab?.id === tab.id ? props.assistantTab.title
   : documentTabLabel(tab);
 const draggingId = ref('');
-const capturingNativeDrag = ref(false);
 const nativeOverlay = ref(false);
-let nativeImage: { id: string; canvas: HTMLCanvasElement } | undefined;
+let nativeImage: { id: string; canvas: HTMLCanvasElement; encoded: Promise<string | undefined> } | undefined;
+// The native overlay is the only renderer of the dragged card. While it is on
+// its way (bitmap encoding, host window creation) the DOM card stays hidden
+// instead of showing a second, slightly different copy; a timer falls back to
+// the DOM card if the host never confirms.
+const overlayPending = ref(false);
+let overlayFallback: ReturnType<typeof setTimeout> | undefined;
+
+function makeNativeImage(id: string, canvas: HTMLCanvasElement) {
+  // Encoded while the pointer is still down, so the overlay can appear on the
+  // very first drag frame instead of after a per-byte string conversion.
+  const encoded = tabDragImageReady(canvas).then(() => {
+    const data = canvas.getContext('2d')?.getImageData(0, 0, canvas.width, canvas.height).data;
+    if (!data) return undefined;
+    let binary = '';
+    for (let i = 0; i < data.length; i += 0x8000) binary += String.fromCharCode(...data.subarray(i, i + 0x8000));
+    return btoa(binary);
+  }).catch(() => undefined);
+  return { id, canvas, encoded };
+}
 let nativePositionId = '';
 let unlistenNativePosition: (() => void) | undefined;
+let unlistenOverlayReady: (() => void) | undefined;
 const outgoingId = ref('');
 const sourceAway = ref(false);
 const sourceWidth = ref(0);
@@ -387,16 +406,10 @@ let clickTimer: ReturnType<typeof setTimeout> | undefined;
 
 function updateDropTargetAt(x: number, y: number, id: string) {
   const list = tabList.value;
-  if (!list) return;
-  const bounds = list.getBoundingClientRect();
   dropTarget.value = undefined;
-  if (
-    y < bounds.top ||
-    y > bounds.bottom ||
-    x < bounds.left - 24 ||
-    x > bounds.right + 24
-  )
-    return;
+  if (!list || !overStrip(x, y)) return;
+  // Same pointer-based rule as the pane hit test (pane-docking.ts), so the
+  // reorder target and the pane slot never disagree. Past the last tab: append.
   const tabs = [...list.querySelectorAll<HTMLElement>('.desktop-tab')];
   const target = tabs.find((tab) => x < tabLayoutRect(tab).right) ?? tabs.at(-1);
   if (!target || target.dataset.id === id) return;
@@ -418,16 +431,29 @@ function stripPoint(x: number, y: number) {
       y < bounds.top - NEAR_STRIP || y > bounds.bottom) return;
   return { x: Math.max(bounds.left, Math.min(x, bounds.right - 1)), y: (bounds.top + bounds.bottom) / 2 };
 }
+/**
+ * The tab bar is the whole row the tabs sit in, not just the (frozen, possibly
+ * narrow) list: a card anywhere along that row inserts, past the last tab it appends.
+ */
+function overStrip(x: number, y: number) {
+  const list = tabList.value;
+  if (!list) return false;
+  const rows = list.getBoundingClientRect();
+  if (y < rows.top || y > rows.bottom) return false;
+  if (x >= rows.left - 24 && x <= rows.right + 24) return true;
+  const row = list.closest<HTMLElement>('.workspace-tabbar, .desktop-window-titlebar')?.getBoundingClientRect();
+  return !!row && row.width > 0 && x >= row.left && x <= row.right;
+}
 function updateDropTarget() {
   if (gesture) {
     const near = stripPoint(gesture.x, gesture.y);
     const x = near?.x ?? gesture.x, y = near?.y ?? gesture.y;
     updateDropTargetAt(x, y, gesture.id);
     updatePaneDrop(x, y, gesture.id);
-    const drop = sourcePaneDrop;
-    sourceAway.value = (!near && (nativeOutside || gesture.x < 0 || gesture.y < 0 ||
-      gesture.x >= window.innerWidth || gesture.y >= window.innerHeight)) ||
-      !!drop && (drop.paneId !== props.paneId || drop.side !== 'center');
+    // One rule: the slot is held only while the pointer is over this tab strip.
+    // Anywhere else (content area, another pane, outside the window) it
+    // collapses at once, so neighbours never depend on a 32px split band.
+    sourceAway.value = !overStrip(x, y);
     // The preview stays under the pointer. Only the empty slot in the track
     // shows where the tab will land; it is placed there on release.
     if (dragPreview.value) dragPreview.value.top = gesture.y - gesture.grabY;
@@ -565,6 +591,17 @@ function incomingDrop(event: DragEvent) {
   });
 }
 
+/** Scroll range of the laid-out tabs alone, ignoring slot transforms. */
+function realScrollRange(list: HTMLElement, bounds = list.getBoundingClientRect()) {
+  const tabs = [...list.querySelectorAll<HTMLElement>('.desktop-tab')]
+    .filter(tab => !tab.classList.contains('desktop-tab-away'));
+  const last = tabs.at(-1);
+  if (!last) return 0;
+  const padding = parseFloat(getComputedStyle(list).paddingRight) || 0;
+  const contentRight = tabLayoutRect(last).right - bounds.left + list.scrollLeft + padding;
+  return Math.max(0, Math.ceil(contentRight - list.clientWidth));
+}
+
 function scrollWhileDragging() {
   const list = tabList.value;
   if (!gesture || !draggingId.value || !list) return;
@@ -575,8 +612,21 @@ function scrollWhileDragging() {
     gesture.x >= bounds.left - 24 &&
     gesture.x <= bounds.right + 24
   ) {
-    if (gesture.x < bounds.left + 32) list.scrollLeft -= 10;
-    else if (gesture.x > bounds.right - 32) list.scrollLeft += 10;
+    // Scroll only across real tab overflow. The slot offsets are transforms,
+    // and a slot opened at the end translates the source past the edge, which
+    // the browser counts as scrollable overflow: scrolling into it slid every
+    // tab left, then snapped back when the slot closed and the overflow vanished.
+    // Nor while the strip is resizing for the source leaving/returning: its
+    // width is transiently short of the tabs (trace: 398px for three 178px
+    // tabs), which looked like overflow, scrolled every tab left, and snapped
+    // back to 0 once the strip had grown.
+    if (!tabLayoutAnimating.value) {
+      const maxScroll = realScrollRange(list, bounds);
+      if (gesture.x < bounds.left + 32) list.scrollLeft = Math.max(0, list.scrollLeft - 10);
+      else if (gesture.x > bounds.right - 32 && list.scrollLeft < maxScroll) {
+        list.scrollLeft = Math.min(maxScroll, list.scrollLeft + 10);
+      }
+    }
   }
   updateDropTarget();
   scrollFrame = requestAnimationFrame(scrollWhileDragging);
@@ -592,7 +642,7 @@ function startDrag(event: PointerEvent, id: string) {
     const tab = (event.currentTarget as HTMLElement).closest<HTMLElement>('.desktop-tab');
     const doc = paneTabs.value.find(item => item.id === id);
     const canvas = tab && doc ? tabDragImage(tab, tabLabel(doc)) : undefined;
-    nativeImage = canvas ? { id, canvas } : undefined;
+    nativeImage = canvas ? makeNativeImage(id, canvas) : undefined;
     return;
   }
   const element = event.currentTarget as HTMLElement;
@@ -662,8 +712,9 @@ function clearGesture() {
   sourceAway.value = false;
   referenceInserted = false;
   draggingId.value = '';
-  capturingNativeDrag.value = false;
   nativeOverlay.value = false;
+  overlayPending.value = false;
+  clearTimeout(overlayFallback);
   nativeImage = undefined;
   nativePositionId = '';
   dragPreview.value = undefined;
@@ -782,25 +833,31 @@ function pointerInterrupted() {
 
 async function watchNativeRelease(current: NonNullable<typeof gesture>) {
   try {
-    const image = nativeImage?.id === current.id ? nativeImage.canvas : undefined;
+    const source = nativeImage?.id === current.id ? nativeImage : undefined;
+    const image = source?.canvas;
     const scale = window.devicePixelRatio || 1;
     let preview;
-    if (image) {
-      // tabDragImage already paints at device pixels.
-      const context = image.getContext('2d');
-      if (context) {
-        const bytes = context.getImageData(0, 0, image.width, image.height).data;
-        let binary = '';
-        for (const byte of bytes) binary += String.fromCharCode(byte);
-        preview = { width: image.width, height: image.height, rgba: btoa(binary),
+    if (image && source) {
+      // The overlay is the single renderer: hide the DOM card from the first
+      // frame so two different-looking copies never alternate.
+      overlayPending.value = true;
+      clearTimeout(overlayFallback);
+      overlayFallback = setTimeout(() => { overlayPending.value = false; }, 500);
+      // tabDragImage already paints at device pixels; the icon is decoded and
+      // the bitmap encoded before the drag started, so this normally resolves at once.
+      const rgba = await Promise.race([source.encoded, new Promise<undefined>(resolve => setTimeout(resolve, 150))]);
+      if (gesture !== current || !nativeDragging) return;
+      if (rgba) {
+        preview = { width: image.width, height: image.height, rgba,
           // The bitmap has transparent room for the card's shadow.
           grabX: Math.round((current.grabX + TAB_DRAG_IMAGE_INSET.x) * scale),
           grabY: Math.round((current.grabY + TAB_DRAG_IMAGE_INSET.y) * scale) };
-      }
+      } else overlayPending.value = false;
     }
     // The topmost native overlay draws the card everywhere, so the source
     // window can never cover or clip it; the DOM copy only lands it on release.
-    if (preview) nativeOverlay.value = true;
+    // The host confirms with `tano-tab-drag-overlay-ready`; if that never
+    // arrives the fallback timer above restores the DOM card.
     const drop = await invoke<{ x: number; y: number; cancelled?: boolean; overSource?: boolean }>('tab_drag_release', { preview, dragId: nativePositionId, windowLabel: windowContext.label });
     if (gesture !== current || !nativeDragging) return;
     if (drop.cancelled) { finishDrag(); return; }
@@ -857,7 +914,7 @@ function startNativeDrag(event: DragEvent, id: string) {
   if (payload) event.dataTransfer.setData(entryReferenceDragType, payload);
   if (nativeImage?.id !== id) {
     const canvas = tabDragImage(tab, tabLabel(doc));
-    nativeImage = canvas ? { id, canvas } : undefined;
+    nativeImage = canvas ? makeNativeImage(id, canvas) : undefined;
   }
   event.dataTransfer.setData('application/x-tano-tab', id);
   if (store.workspace) event.dataTransfer.setData(tabDragMetaType({
@@ -872,7 +929,10 @@ function startNativeDrag(event: DragEvent, id: string) {
   image.setAttribute('aria-hidden', 'true');
   document.body.append(image);
   event.dataTransfer.setDragImage(image, 0, 0);
-  capturingNativeDrag.value = true;
+  // The ghost is this blank 1px canvas, not the source tab, so the tab can
+  // go transparent in the same frame as dragstart. Keeping it visible until the
+  // next animation frame (the old `capturingNativeDrag` window) left a ghost of
+  // the tab in its slot that then vanished.
   gesture = {
     id, pointerId: -1, element, startX: event.clientX, startY: event.clientY,
     x: event.clientX, y: event.clientY, grabX, grabY,
@@ -883,12 +943,8 @@ function startNativeDrag(event: DragEvent, id: string) {
   nativePositionId = crypto.randomUUID();
   nativeOutside = false;
   draggingId.value = id;
-  const current = gesture;
   requestAnimationFrame(() => {
     image.remove();
-    // WebView captures the native ghost after dragstart dispatch. Do not make
-    // its source transparent until that capture has completed.
-    if (gesture === current) capturingNativeDrag.value = false;
   });
   suppressClick = true;
   scrollFrame = requestAnimationFrame(scrollWhileDragging);
@@ -1131,6 +1187,12 @@ onMounted(() => {
       if (mounted) unlistenNativePosition = unlisten;
       else unlisten();
     }).catch(store.report);
+    void windowContext.native!.listen<{ dragId: string }>('tano-tab-drag-overlay-ready', ({ payload }) => {
+      if (payload.dragId === nativePositionId && nativeDragging && gesture) nativeOverlay.value = true;
+    }).then(unlisten => {
+      if (mounted) unlistenOverlayReady = unlisten;
+      else unlisten();
+    }).catch(store.report);
   }
   window.addEventListener('scroll', dismissContextMenu, true);
   window.addEventListener('resize', dismissContextMenu);
@@ -1197,6 +1259,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('dragend', nativeDragEnd, true);
   mounted = false;
   unlistenNativePosition?.();
+  unlistenOverlayReady?.();
   clearIncomingSlot();
   window.removeEventListener('scroll', dismissContextMenu, true);
   window.removeEventListener('resize', dismissContextMenu);
@@ -1354,7 +1417,6 @@ async function onTabKeydown(event: KeyboardEvent) {
           'desktop-tab-active': doc.id === selectedId,
           'desktop-tab-dragging': doc.id === draggingId,
           'desktop-tab-settling': doc.id === settlingTab?.id && doc.id !== draggingId,
-          'desktop-tab-drag-capturing': doc.id === draggingId && capturingNativeDrag,
           'desktop-tab-outgoing': doc.id === outgoingId,
           'desktop-tab-away': doc.id === collapsedId,
           'desktop-tab-drop-before': dockSlotIndex === undefined && dropTarget?.id === doc.id && dropTarget.side === 'before',
@@ -1511,7 +1573,7 @@ async function onTabKeydown(event: KeyboardEvent) {
     <div
       v-if="dragPreview"
       class="desktop-tab-drag-preview"
-      :class="{ 'desktop-tab-drag-preview-settling': settlingPreview, 'desktop-tab-drag-preview-overlaid': nativeOverlay && !settlingPreview }"
+      :class="{ 'desktop-tab-drag-preview-settling': settlingPreview, 'desktop-tab-drag-preview-overlaid': (nativeOverlay || overlayPending) && !settlingPreview }"
       :style="{
         ...previewStyle,
         opacity: previewOpacity,
@@ -1606,7 +1668,7 @@ async function onTabKeydown(event: KeyboardEvent) {
 }
 /* Keep the native draggable rendered and hit-testable throughout the OS drag.
    Hiding its visibility can interrupt WebView's drag lifecycle before release. */
-.desktop-tab-dragging:not(.desktop-tab-drag-capturing) > * { opacity: 0; }
+.desktop-tab-dragging > * { opacity: 0; }
 .desktop-tab-outgoing {
   /* Keep its slot until the transfer commits. Removing it from this pane
      then runs the same measured layout animation as closing a tab. */
@@ -1707,6 +1769,9 @@ async function onTabKeydown(event: KeyboardEvent) {
 }
 /* Release motion blends the floating card toward these final colors. */
 .desktop-tab-settling { --desktop-tab-color-duration: 0s; }
+/* Lifting a tab out must empty its slot at once: a 0.15s background fade left
+   a fading copy of the (active) tab behind the drag preview. */
+.desktop-tab-dragging { --desktop-tab-color-duration: 0s; }
 .desktop-tab-list-frozen .desktop-tab { min-width: 0; }
 .desktop-tab-navigation:has(.icon-button)::before,
 .desktop-tab::before {

@@ -408,6 +408,7 @@ async fn tab_drag_release(
                 .map_err(|e| e.to_string())?
                 .map(|bitmap| tab_drag_preview::Preview::new(bitmap, source as _))
                 .transpose()?;
+            let mut overlay_announced = false;
             while unsafe { GetAsyncKeyState(VK_LBUTTON.into()) < 0 } {
                 if unsafe { GetAsyncKeyState(VK_ESCAPE.into()) < 0 } {
                     return Ok(serde_json::json!({"x": 0, "y": 0, "cancelled": true}));
@@ -416,6 +417,14 @@ async fn tab_drag_release(
                 if unsafe { GetCursorPos(&mut cursor) } != 0 {
                     if let Some(preview) = &preview {
                         preview.update(cursor, source as _)?;
+                        // The card is now really on screen: only then may the
+                        // renderer hand its DOM copy over, so it never vanishes first.
+                        if !overlay_announced {
+                            overlay_announced = true;
+                            if let Some(drag_id) = &drag_id {
+                                let _ = window.emit("tano-tab-drag-overlay-ready", serde_json::json!({ "dragId": drag_id }));
+                            }
+                        }
                     }
                     if let Some(drag_id) = &drag_id {
                         let mut local = cursor;
