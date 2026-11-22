@@ -124,8 +124,7 @@ onMounted(async () => {
         :entries="store.workspace?.files ?? []" :demo-label="demoLabel" :read-only="store.workspace?.readOnly"
         :pages="breadcrumbPages" @navigate="navigateBreadcrumb" @open="emit('openFile', $event)" @open-directory="emit('openDirectory', $event)"
       /></div>
-      <button v-if="mode === 'browse'" class="template-button" :disabled="disabled" @click="edit(true)"><Plus :size="15" />{{ t('创建模板') }}</button>
-      <button v-else-if="mode === 'preview'" class="template-button template-button-primary" @click="navigate('detail')"><FilePlus2 :size="15" />{{ t('使用模板') }}</button>
+      <button v-if="mode === 'preview'" class="template-button template-button-primary" @click="navigate('detail')"><FilePlus2 :size="15" />{{ t('使用模板') }}</button>
     </header>
 
     <div ref="scroller" class="template-library-scroll panel-scrollbar">
@@ -135,8 +134,11 @@ onMounted(async () => {
             <div><h1 tabindex="-1">{{ t('下一页，从这里开始。') }}</h1><p>{{ t('为工作、学习和生活，找到一个好用的起点。') }}</p></div>
             <div class="template-search"><Search :size="17" /><input v-model="query" :aria-label="t('搜索模板')" :placeholder="t('搜索模板')" type="search" /><button v-if="query" class="icon-button" :aria-label="t('清空搜索')" @click="query = ''"><X :size="15" /></button></div>
           </div>
-          <div class="template-categories" role="group" :aria-label="t('模板分类')">
+          <div class="template-browse-toolbar">
+            <div class="template-categories" role="group" :aria-label="t('模板分类')">
               <button v-for="item in templateCategories" :key="item.id" :aria-pressed="category === item.id" :class="{ selected: category === item.id }" @click="category = item.id">{{ item.label }}</button>
+            </div>
+            <button class="template-button" :disabled="disabled" @click="edit(true)"><Plus :size="15" />{{ t('创建模板') }}</button>
           </div>
           <p v-if="loadError" class="template-error" role="alert">{{ loadError }}</p>
           <div v-if="category === 'all' && !query.trim()" class="template-collections">
@@ -237,7 +239,9 @@ onMounted(async () => {
 .template-search input { flex: 1; min-width: 0; padding: 0; border: 0; outline: none; background: transparent; height: 100%; font-size: 13px; }
 .template-search input::-webkit-search-cancel-button { display: none; }
 .template-search .icon-button { width: 25px; height: 25px; }
-.template-categories { display: flex; align-items: center; gap: 28px; border-bottom: 1px solid var(--line); margin-bottom: 22px; }
+.template-browse-toolbar { display: flex; flex-wrap: wrap; align-items: center; column-gap: 16px; border-bottom: 1px solid var(--line); margin-bottom: 22px; }
+.template-browse-toolbar > .template-button { margin: 4px 0 4px auto; }
+.template-categories { display: flex; align-items: center; gap: 28px; }
 .template-categories button { position: relative; padding: 12px 0 15px; border: 0; border-radius: 0; background: transparent; color: var(--muted); font-size: 13px; line-height: 18px; white-space: nowrap; }
 .template-categories button.selected { color: var(--text); font-weight: 500; }
 .template-categories button.selected::after { position: absolute; bottom: 0; left: 0; right: 0; height: 2px; border-radius: 1px; background: var(--text); content: ''; }
@@ -342,7 +346,7 @@ onMounted(async () => {
   .template-library-content { padding: 24px 18px; }
   .template-library h1 { font-size: 25px; }
   .template-library-hero { padding: 8px 0 20px; }
-  .template-categories { gap: 24px; overflow-x: auto; }
+  .template-categories { gap: 24px; max-width: 100%; overflow-x: auto; }
   .template-categories button { padding: 12px 0; }
   .template-collections { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .template-collection { min-height: 124px; }
