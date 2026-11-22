@@ -13,7 +13,7 @@ const labels = { color: '配色主题', icons: '文件与目录图标', layout: 
 <template>
   <div class="theme-preset-entry">
     <button type="button" class="theme-preset-card" :class="{ 'theme-preset-card-borderless': borderless, 'theme-preset-card-compact': compact }" :data-preset-id="preset.id" :disabled="preset.unavailable"
-      :aria-pressed="!!selected" :aria-describedby="preset.missing?.length ? missingId : undefined"
+      data-no-selection-pop :aria-pressed="!!selected" :aria-describedby="preset.missing?.length ? missingId : undefined"
       :aria-label="`${t('应用预设')}：${t(preset.label)}`" @click="emit('select', preset)">
       <span class="theme-preset-name"><strong>{{ t(preset.label) }}</strong><span v-if="selected" class="theme-preset-current">{{ t('当前') }}</span></span>
       <ThemePresetPreview :preset="preset" />

@@ -66,11 +66,11 @@
     opacity var(--motion-quick) var(--ease-standard);
 }
 
-/* ---- Selection changes pop once (tabs, segmented choices, toggled tools).
-   An animation starts the moment its selector begins to match, so this runs
-   exactly when the state flips to selected. ---------------------------------- */
+/* ---- Selection pop for tabs, segmented choices and toggled tools.
+   The selector also matches controls mounted in a selected state. Controls
+   with their own selection feedback can opt out with data-no-selection-pop. -- */
 @media (prefers-reduced-motion: no-preference) {
-  :where([role='tab'][aria-selected='true'], [role='radio'][aria-checked='true'], button[aria-pressed='true'], [role='menuitemradio'][aria-checked='true'] > svg) {
+  :where([role='tab'][aria-selected='true'], [role='radio'][aria-checked='true'], button[aria-pressed='true']:not([data-no-selection-pop]), [role='menuitemradio'][aria-checked='true'] > svg) {
     animation: tano-select-pop var(--motion-bouncy) var(--ease-spring-bouncy);
   }
 }

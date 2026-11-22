@@ -15,6 +15,42 @@ async function openSettings(page, locale = 'zh-CN') {
   await page.getByRole('button', { name: locale === 'en-US' ? 'Settings' : '设置', exact: true }).click();
   await expect(page.locator('.settings-dialog')).toBeVisible();
 }
+
+test('theme presets only bounce when the user switches presets', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await openSettings(page);
+  const nav = page.locator('.settings-nav');
+  const presets = page.locator('.theme-preset-quick-row');
+  const current = presets.getByRole('button', { pressed: true });
+  const paper = presets.getByRole('button', { name: '应用预设：纸感' });
+  const selectAndReadAnimations = preset => preset.evaluate(async button => {
+    // Activation through click excludes the separate pointer and keyboard press effects.
+    button.click();
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    return button.getAnimations()
+      .map(animation => animation.effect.getKeyframes().map(frame => frame.scale))
+      .filter(scales => scales.some(scale => scale !== undefined));
+  });
+
+  await nav.getByRole('button', { name: '外观', exact: true }).click();
+  await expect(current).toHaveAccessibleName('应用预设：同页默认');
+  await expect(current).toHaveCSS('animation-name', 'none');
+  expect(await selectAndReadAnimations(paper)).toEqual([['0.94', '1']]);
+  await expect(paper).toHaveAttribute('aria-pressed', 'true');
+
+  await nav.getByRole('button', { name: '编辑器', exact: true }).click();
+  await expect(current).toHaveCount(0);
+  await nav.getByRole('button', { name: '外观', exact: true }).click();
+  await expect(current).toHaveAccessibleName('应用预设：纸感');
+  await expect(current).toHaveCSS('animation-name', 'none');
+  expect(await selectAndReadAnimations(paper)).toEqual([]);
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const islands = presets.getByRole('button', { name: '应用预设：卡片岛' });
+  expect(await selectAndReadAnimations(islands)).toEqual([]);
+  await expect(islands).toHaveAttribute('aria-pressed', 'true');
+});
+
 async function animationFrame(example, time) {
   await example.evaluate(async (element, time) => {
     const inner = element.querySelector('iframe')?.contentDocument?.body;

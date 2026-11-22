@@ -5,6 +5,7 @@ const { window, document } = useWindowContext();
 import { isNode } from '@tano/editor/dom-realm';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { ChevronDown, LayoutGrid } from 'lucide-vue-next';
+import { canAnimate, MOTION_DURATION, spring } from '@tano/editor/motion';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import type { AppearancePreset, AppearanceSelection, AppearanceSnapshot } from '../appearance';
 import { t } from '../i18n';
@@ -38,11 +39,20 @@ function close(restoreFocus = false) {
   expanded.value = false;
   if (restoreFocus) trigger.value?.focus({ preventScroll: true });
 }
-function select(preset: AppearancePreset) {
+async function select(preset: AppearancePreset) {
   if (preset.unavailable || !props.appearance.presets.some(item => item.id === preset.id)) return;
   const restoreFocus = expanded.value;
-  emit('select', { workspaceId: props.appearance.workspaceId, kind: 'preset', id: preset.id });
+  const { workspaceId, scope } = props.appearance;
+  const previousPresetId = current.value.id;
+  emit('select', { workspaceId, kind: 'preset', id: preset.id });
   close(restoreFocus);
+
+  await nextTick();
+  if (props.appearance.workspaceId !== workspaceId || props.appearance.scope !== scope || current.value.id === previousPresetId) return;
+  const card = picker.value?.querySelector('.theme-preset-quick-row [aria-pressed="true"]');
+  if (canAnimate(card)) {
+    card.animate([{ scale: '0.94' }, { scale: '1' }], { duration: MOTION_DURATION.bouncy, easing: spring('bouncy') });
+  }
 }
 async function toggle() {
   if (expanded.value) { close(true); return; }
