@@ -9,17 +9,19 @@ import { MOTION_DURATION, captureList, spring } from '@tano/editor/motion';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { t, uiLocale } from '../i18n';
 import { assistantCopy, assistantTaskPrompts } from '../assistant/language';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { AlignLeft, ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRight, ChevronsRight, CircleCheck, Copy, Cpu, createLucideIcon, FilePlus2, FileText, History, Languages, LoaderCircle, MessageCircle, MessageCirclePlus, Minus, MoreHorizontal, Paperclip, Pencil, Plug, Plus, RefreshCw, Reply, Quote, Search, Settings2, Square, Terminal, Trash2, Undo2, X } from 'lucide-vue-next';
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { agentInboxKey, type useAgentInboxController } from '../assistant/agent-controller';
+import { AlignLeft, ArrowDown, ArrowLeft, ArrowUp, Bot, Check, ChevronDown, ChevronRight, ChevronsRight, CircleCheck, Copy, Cpu, createLucideIcon, FilePlus2, FileText, History, Languages, LoaderCircle, MessageCircle, MessageCirclePlus, Minus, MoreHorizontal, Paperclip, Pencil, Plug, Plus, RefreshCw, Reply, Quote, Search, Settings2, Square, Trash2, Undo2, X } from 'lucide-vue-next';
 import MarkdownEditor from '@tano/editor';
 import { confirmEntryReferenceDrop, droppedEntryReferences, entryReferenceDragType, referenceMarkdown } from '@tano/protocol';
 import type { AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSource, ReferenceIdentity } from '@tano/protocol';
-import { useAssistantStore } from '../assistant/store';
+import { assistantConnectionRequiredMessage, useAssistantStore } from '../assistant/store';
 import { isAssistantFile } from '../assistant/files';
 import { assistantToolLabel, assistantAnswerText } from '../assistant/results';
 import type { AssistantDisplayMode } from '../assistant/store';
 import { useWorkspaceStore } from '../stores/workspace';
 import AssistantChangeList from './AssistantChangeList.vue';
+import AssistantConnectionAvatar from './AssistantConnectionAvatar.vue';
 import AssistantModelIcon from './AssistantModelIcon.vue';
 import AssistantGenerationHint from './AssistantGenerationHint.vue';
 import AssistantButterfly from './AssistantButterfly.vue';
@@ -39,7 +41,12 @@ function afterPanelLeave() {
 // Keep the destination while disabled so re-enabling Teleport updates its target.
 const teleportTarget = computed<string | HTMLElement>(previous => assistant.displayMode === 'sidebar' ? previous ?? document.body
   : assistant.displayMode === 'fullscreen' ? props.fullscreenTarget ?? document.body : document.body);
-const section = ref<'conversation' | 'history'>('conversation');
+const section = ref<'conversation' | 'history' | 'inbox'>('conversation');
+const agentInbox = inject<ReturnType<typeof useAgentInboxController> | undefined>(agentInboxKey, undefined);
+const hasAgentInbox = computed(() => !!agentInbox?.bindings.value.length);
+const activeAgentTasks = computed(() => agentInbox?.tasks.value.filter(task => ['queued', 'running', 'waiting'].includes(task.status)).length ?? 0);
+// Leave the inbox view if the last robot disappears (e.g. workspace switch).
+watch(hasAgentInbox, has => { if (!has && section.value === 'inbox') section.value = 'conversation'; });
 const query = ref('');
 const textarea = ref<HTMLTextAreaElement>();
 const messages = ref<HTMLElement>();
@@ -180,7 +187,7 @@ function setModelView(view: 'main' | 'connections') {
 function searchModels() {
   searchingModels.value = !searchingModels.value;
   if (!searchingModels.value) modelQuery.value = '';
-  void nextTick(() => panel.value?.querySelector<HTMLElement>(searchingModels.value ? '#assistant-model-search' : `[aria-label="${t('搜索模型列表')}"]`)?.focus());
+  void nextTick(() => panel.value?.querySelector<HTMLElement>(searchingModels.value ? '#assistant-model-search' : `[aria-label="${t('搜索模型列表')}"]`)?.focus({ preventScroll: true }));
 }
 function dragReferences(event: DragEvent) {
   if (controlsLocked.value || !event.dataTransfer?.types.includes(entryReferenceDragType)) return;
@@ -497,7 +504,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
     <header class="assistant-heading" @pointerdown="startFloatingGesture" @pointermove="moveFloatingGesture" @pointerup="endFloatingGesture" @pointercancel="endFloatingGesture" @lostpointercapture="endFloatingGesture">
       <button v-if="compact && navigationVisible && assistant.displayMode === 'fullscreen'" class="icon-button" :aria-label="t('展开侧栏')" @click="emit('showNavigation')"><ArrowLeft :size="17" /></button>
       <button v-if="section !== 'conversation'" class="icon-button" :aria-label="t('返回助手对话')" :data-tooltip="t('返回对话')" @click="section = 'conversation'"><ArrowLeft :size="17" /></button>
-      <h2 v-if="section !== 'conversation'">{{ t('会话记录') }}</h2>
+      <h2 v-if="section !== 'conversation'">{{ section === 'inbox' ? t('机器人收件箱') : t('会话记录') }}</h2>
       <h2 v-else class="assistant-title-heading">
         <button class="assistant-title" :data-tooltip="title" :aria-label="t('打开助手会话记录')" :aria-expanded="popover === 'history'" aria-controls="assistant-history-options" data-assistant-popover @click="togglePopover('history', $event)"><span>{{ title }}</span><ChevronDown :size="16" /></button>
       </h2>
@@ -505,6 +512,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
         <button v-if="assistant.pendingUserInput" class="icon-button" :data-tooltip="t('停止询问')" :aria-label="t('停止助手生成')" @click="assistant.stop()"><Square :size="16" /></button>
         <button v-else class="icon-button" :data-tooltip="t('新建会话')" :aria-label="t('新建助手会话')" :disabled="assistant.busy || assistant.applying" @click="startNewSession"><MessageCirclePlus :size="18" /></button>
       </template>
+      <button v-if="hasAgentInbox && section !== 'inbox'" class="icon-button assistant-inbox-entry" :data-tooltip="activeAgentTasks ? t('机器人收件箱 · {0} 个进行中', [activeAgentTasks]) : t('机器人收件箱')" :aria-label="t('机器人收件箱')" @click="closePopover(); section = 'inbox'"><Bot :size="18" :stroke-width="1.5" /><span v-if="activeAgentTasks" class="assistant-inbox-badge" aria-hidden="true">{{ activeAgentTasks > 9 ? '9+' : activeAgentTasks }}</span></button>
       <button class="icon-button assistant-display-mode" :data-tooltip="t('切换助手显示模式')" :aria-label="t('切换助手显示模式')" :aria-expanded="popover === 'mode'" aria-controls="assistant-display-options" data-assistant-popover @click="togglePopover('mode', $event)"><component :is="displayModeIcon" :size="18" :stroke-width="1.5" /></button>
       <div v-surface-motion="'AssistantPanel:0'" v-if="popover === 'mode'" id="assistant-display-options" class="assistant-popover assistant-mode-menu" role="menu" :aria-label="t('助手显示模式')">
         <template v-for="mode in displayModes" :key="mode.id">
@@ -536,9 +544,16 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
     </header>
     <div v-if="assistant.demo" class="assistant-demo-label">{{ t('浏览器演示 · 模型响应为模拟数据') }}</div>
     <p v-if="notice" class="assistant-notice" role="status">{{ notice }}</p>
-    <p v-if="assistant.error" class="assistant-error" role="alert">{{ assistant.error }}</p>
+    <p v-if="assistant.error" class="assistant-error" role="alert">
+      <template v-if="assistant.error === assistantConnectionRequiredMessage && !assistant.demo && assistant.canConfigure !== false">请先<button
+        type="button" class="assistant-error-link" :aria-label="t('配置模型连接')"
+        @click="closePopover(); emit('openSettings')">配置</button>模型连接</template>
+      <template v-else>{{ assistant.error }}</template>
+    </p>
 
-    <div v-if="section === 'history'" class="assistant-history">
+    <AgentInboxPanel v-if="section === 'inbox'" />
+
+    <div v-else-if="section === 'history'" class="assistant-history">
       <div v-if="!assistant.demo" class="assistant-proposal-actions"><span>{{ t('外部 MCP 提案') }}</span><button class="icon-button" :aria-label="t('刷新外部 MCP 提案')" :data-tooltip="t('刷新提案')" :disabled="assistant.busy || assistant.applying" @click="assistant.loadExternal()"><RefreshCw :size="15" /></button></div>
       <div v-for="external in assistant.externalSessions" :key="external.id" class="assistant-history-row"><button :disabled="assistant.busy || assistant.applying" @click="assistant.importExternal(external).then(() => section = 'conversation').catch(error => assistant.error = String(error))"><strong>{{ external.title }}</strong><small>{{ t('外部 Agent · 待审阅') }}</small></button></div>
       <p v-if="!assistant.sessions.length" class="assistant-empty">{{ t('暂无会话记录') }}</p>
@@ -558,7 +573,6 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
     <template v-else>
       <div class="assistant-transcript">
       <div ref="messages" class="assistant-messages panel-scrollbar" role="log" :aria-label="t('助手对话')" @scroll="updateScroll">
-        <AgentInboxPanel />
         <LoadingSkeleton v-if="assistant.loading && !assistant.session?.messages.length" :rows="5" />
         <div v-else-if="!assistant.session?.messages.length" class="assistant-welcome">
           <!-- Reserved for platform AI settings; currently greets with a flutter. -->
@@ -626,28 +640,49 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
           <div class="assistant-popover-heading">
             <button v-if="modelView !== 'main'" class="icon-button" :data-tooltip="t('返回模型列表')" :aria-label="t('返回模型列表')" @click="setModelView('main')"><ArrowLeft :size="16" /></button>
             <span>{{ modelView === 'connections' ? t('模型连接') : modelView === 'manual' ? t('指定模型') : t('选择模型') }}</span>
+            <button v-if="modelView === 'main' && !assistant.demo && assistant.canConfigure !== false"
+              type="button" class="icon-button" :aria-label="t('配置模型连接')" :data-tooltip="t('配置模型连接')"
+              @click="closePopover(); emit('openSettings')"><Settings2 :size="15" /></button>
             <button v-if="modelView === 'main'" class="icon-button" :class="{ selected: searchingModels }" :aria-label="t('搜索模型列表')" :data-tooltip="searchingModels ? t('收起搜索') : t('搜索模型')" :aria-expanded="searchingModels" aria-controls="assistant-model-search" @click="searchModels"><Search :size="15" /></button>
             <button v-if="modelView === 'main'" class="icon-button" :aria-label="t('刷新模型列表')" :data-tooltip="t('刷新模型列表')" :disabled="assistant.modelsLoading || controlsLocked" @click="assistant.refreshModels()"><LoaderCircle v-if="assistant.modelsLoading" :size="15" class="spinning" /><RefreshCw v-else :size="15" /></button>
           </div>
           <template v-if="modelView === 'connections'">
             <div class="assistant-menu-scroll panel-scrollbar">
-              <button v-for="connection in assistant.connections" :key="connection.id" class="assistant-menu-item assistant-detail-option" :class="{ selected: assistant.connectionId === connection.id }" :aria-pressed="assistant.connectionId === connection.id" :disabled="controlsLocked" data-menu-item @click="changeConnection(connection.id)"><Plug v-if="!connection.kind || connection.kind === 'api'" :size="17" /><Terminal v-else :size="17" /><span class="assistant-menu-label"><span>{{ connection.name }}</span><small>{{ connection.platformProvider ? t('平台提供') : connection.kind === 'codex-cli' ? 'Codex CLI' : connection.kind === 'claude-cli' ? 'Claude CLI' : t('API 连接') }}</small></span><Check v-if="assistant.connectionId === connection.id" :size="16" class="assistant-menu-check" /></button>
+              <button v-for="connection in assistant.connections" :key="connection.id" class="assistant-menu-item" :class="{ selected: assistant.connectionId === connection.id }" :aria-pressed="assistant.connectionId === connection.id" :disabled="controlsLocked" data-menu-item @click="changeConnection(connection.id)">
+                <AssistantConnectionAvatar class="assistant-connection-avatar" :connection="connection" :size="18" />
+                <span class="assistant-menu-label">{{ connection.name }}</span>
+                <Check v-if="assistant.connectionId === connection.id" :size="16" class="assistant-menu-check" />
+              </button>
             </div>
             <div v-if="!assistant.demo && assistant.canConfigure !== false" class="assistant-menu-divider" />
             <button v-if="!assistant.demo && assistant.canConfigure !== false" class="assistant-menu-item" data-menu-item @click="closePopover(); emit('openSettings')"><Plus :size="17" /><span class="assistant-menu-label">{{ t('添加模型连接') }}</span></button>
           </template>
           <template v-else-if="modelView === 'manual'">
             <form class="assistant-manual-model" @submit.prevent="changeModel(manualModelId)">
-              <label for="assistant-model-id">{{ t('模型 ID') }}</label>
-              <div><input id="assistant-model-id" v-model="manualModelId" :aria-label="t('当前对话的模型 ID')" :placeholder="t('模型 ID')" maxlength="200" autocomplete="off" :disabled="controlsLocked" /><button class="icon-button" :aria-label="t('确认对话模型')" :data-tooltip="t('确认模型')" :disabled="!manualModelId.trim() || controlsLocked"><Check :size="16" /></button></div>
+              <input id="assistant-model-id" v-model="manualModelId" :aria-label="t('当前对话的模型 ID')" :placeholder="t('模型 ID')" maxlength="200" autocomplete="off" :disabled="controlsLocked" />
+              <button class="icon-button" :aria-label="t('确认对话模型')" :data-tooltip="t('确认模型')" :disabled="!manualModelId.trim() || controlsLocked"><Check :size="16" /></button>
             </form>
           </template>
           <template v-else>
-            <button class="assistant-menu-item assistant-detail-option assistant-connection-option" :aria-label="t('选择模型连接')" :disabled="controlsLocked" data-menu-item @click="setModelView('connections')"><Plug :size="17" /><span class="assistant-menu-label"><span>{{ assistant.connection?.name ?? (assistant.connectionId ? t('连接已移除') : t('选择模型连接')) }}</span><small>{{ assistant.connection?.kind === 'codex-cli' ? 'Codex CLI' : assistant.connection?.kind === 'claude-cli' ? 'Claude CLI' : assistant.demo ? t('浏览器模拟') : t('模型连接') }}</small></span><ChevronRight :size="16" /></button>
+            <button class="assistant-menu-item assistant-connection-option" :aria-label="t('选择模型连接')" :disabled="controlsLocked" data-menu-item @click="setModelView('connections')">
+              <AssistantConnectionAvatar v-if="assistant.connection" class="assistant-connection-avatar" :connection="assistant.connection" :size="18" />
+              <Plug v-else :size="17" />
+              <span class="assistant-menu-label">{{ assistant.connection?.name ?? (assistant.connectionId ? t('连接已移除') : t('选择模型连接')) }}</span>
+              <ChevronRight :size="16" />
+            </button>
             <div class="assistant-menu-divider" />
-            <label v-if="searchingModels" class="assistant-menu-search"><Search :size="15" /><input id="assistant-model-search" v-model="modelQuery" :aria-label="t('搜索模型')" :placeholder="t('搜索模型')" /></label>
+            <div class="assistant-model-search-reveal" :class="{ expanded: searchingModels }" :inert="!searchingModels">
+              <div>
+                <label class="assistant-menu-search"><Search :size="15" /><input id="assistant-model-search" v-model="modelQuery" :aria-label="t('搜索模型')" :placeholder="t('搜索模型')" /></label>
+              </div>
+            </div>
             <div class="assistant-menu-scroll panel-scrollbar" :aria-label="t('模型列表')">
-              <button v-for="model in listedModels" :key="model" class="assistant-menu-item assistant-model-option" :class="{ selected: assistant.modelId === model }" :data-tooltip="model" :aria-label="t('使用模型 {0}', [model])" :aria-pressed="assistant.modelId === model" :disabled="controlsLocked" data-menu-item @click="changeModel(model)"><AssistantModelIcon :model="model" /><span class="assistant-menu-label">{{ model === 'cli-default' ? t('CLI 默认模型') : model }}</span><span v-if="!assistant.models.includes(model)" class="assistant-menu-badge">{{ t('自定义') }}</span><Check v-if="assistant.modelId === model" :size="16" class="assistant-menu-check" /></button>
+              <button v-for="model in listedModels" :key="model" class="assistant-menu-item assistant-model-option" :class="{ selected: assistant.modelId === model }" :data-tooltip="model" :aria-label="t('使用模型 {0}', [model])" :aria-pressed="assistant.modelId === model" :disabled="controlsLocked" data-menu-item @click="changeModel(model)">
+                <span class="assistant-model-icon-slot"><AssistantModelIcon :model="model" :size="12" /></span>
+                <span class="assistant-menu-label">{{ model === 'cli-default' ? t('CLI 默认模型') : model }}</span>
+                <span v-if="!assistant.models.includes(model)" class="assistant-menu-badge">{{ t('自定义') }}</span>
+                <Check v-if="assistant.modelId === model" :size="16" class="assistant-menu-check" />
+              </button>
               <LoadingSkeleton v-if="assistant.modelsLoading && !listedModels.length" :rows="3" />
               <p v-else-if="!listedModels.length" class="assistant-menu-empty">{{ modelQuery ? t('没有找到匹配的模型') : assistant.connection ? t('暂无可用模型') : t('请选择模型连接') }}</p>
             </div>
@@ -674,11 +709,20 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
           </template>
         </div>
         <div v-surface-motion="'AssistantPanel:7'" v-if="popover === 'reasoning' && assistant.connection?.kind === 'codex-cli'" id="assistant-reasoning-options" class="assistant-popover assistant-reasoning-menu" :style="menuPosition" role="dialog" :aria-label="t('当前对话的推理强度')">
-          <div class="assistant-menu-heading"><span>{{ t('推理强度') }}</span></div>
+          <h3 class="assistant-reasoning-heading">{{ t('推理强度') }}</h3>
           <div role="radiogroup" :aria-label="t('推理强度')">
-            <button v-for="choice in reasoningChoices" :key="choice.id" type="button" role="radio" :aria-label="choice.label" :aria-checked="assistant.reasoningEffort === choice.id" class="assistant-menu-item assistant-detail-option" :class="{ selected: assistant.reasoningEffort === choice.id }" :disabled="controlsLocked" data-menu-item @click="changeReasoning(choice.id)"><span class="assistant-menu-label"><span>{{ choice.label }}</span><small>{{ choice.detail }}</small></span><Check v-if="assistant.reasoningEffort === choice.id" :size="16" /></button>
+            <button v-for="choice in reasoningChoices" :key="choice.id" type="button" role="radio" :aria-label="choice.label"
+              :aria-describedby="`assistant-reasoning-detail-${choice.id}`" :aria-checked="assistant.reasoningEffort === choice.id"
+              class="assistant-menu-item assistant-reasoning-option" :class="{ selected: assistant.reasoningEffort === choice.id }"
+              :disabled="controlsLocked" data-menu-item @click="changeReasoning(choice.id)">
+              <span class="assistant-reasoning-label">
+                <span>{{ choice.label }}</span>
+                <small :id="`assistant-reasoning-detail-${choice.id}`">{{ choice.detail }}</small>
+              </span>
+              <Check v-if="assistant.reasoningEffort === choice.id" class="assistant-menu-check" :size="16" />
+            </button>
           </div>
-          <p class="assistant-menu-help">{{ t('用于当前对话。可用强度取决于所选模型。') }}</p>
+          <p class="assistant-reasoning-help">{{ t('用于当前对话。可用强度取决于所选模型。') }}</p>
         </div>
       <AssistantQuestionCard v-if="assistant.pendingUserInput" :key="assistant.pendingUserInput.request.id" :request="assistant.pendingUserInput.request" />
       <form v-else class="assistant-composer" @submit.prevent="closePopover(); assistant.send()">
@@ -758,6 +802,8 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 .assistant-demo-label { flex: 0 0 auto; padding: 4px 22px 7px; color: var(--muted); font-size: 10px; }
 .assistant-error, .assistant-notice { margin: 0; padding: 10px 20px; font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
 .assistant-error { color: var(--danger); background: var(--danger-bg); }
+.assistant-error-link { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.assistant-error-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .assistant-notice { color: var(--text-secondary); background: var(--surface); }
 .assistant-popover { position: absolute; z-index: 5; padding: 4px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); box-shadow: 0 8px 28px rgb(0 0 0 / 10%); font-size: 12px; line-height: 16px; }
 .assistant-more-menu { top: calc(100% - 4px); right: 17px; width: 180px; }
@@ -765,6 +811,8 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 .assistant-mode-menu .assistant-mode-icon { width: 16px; height: 16px; }
 .assistant-display-mode :deep(.assistant-mode-region), .assistant-mode-menu :deep(.assistant-mode-region) { fill: var(--text); }
 .assistant-display-mode[aria-expanded='true'] { background: var(--surface); }
+.assistant-inbox-entry { position: relative; }
+.assistant-inbox-badge { position: absolute; top: 1px; right: 0; min-width: 14px; height: 14px; padding: 0 3px; box-sizing: border-box; border-radius: 7px; background: var(--text); color: var(--paper); font-size: 9px; font-weight: 600; line-height: 14px; text-align: center; font-variant-numeric: tabular-nums; pointer-events: none; }
 .assistant-more-menu > button { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 26px; padding: 4px 7px; border-radius: 6px; font-size: 12px; line-height: 16px; text-align: left; }
 .assistant-more-menu > button > svg { width: 14px; height: 14px; }
 .assistant-more-menu > button:hover { background: var(--surface); }
@@ -783,6 +831,8 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 .assistant-menu-item { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 26px; padding: 4px 7px; border-radius: 6px; color: var(--text-secondary); font-size: 12px; line-height: 16px; text-align: left; }
 .assistant-menu-item:hover:not(:disabled), .assistant-menu-item.selected { background: var(--surface); color: var(--text); }
 .assistant-menu-item > svg { flex-shrink: 0; width: 14px; height: 14px; color: var(--muted); }
+.assistant-model-menu .assistant-menu-item > .assistant-connection-avatar { background: transparent; }
+.assistant-model-icon-slot { display: grid; place-items: center; flex: 0 0 18px; }
 .assistant-menu-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .assistant-menu-check { color: var(--text) !important; }
 .assistant-menu-count { color: var(--muted); font-size: 11px; white-space: nowrap; }
@@ -790,21 +840,27 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 .assistant-menu-divider { height: 1px; margin: 3px -6px; background: var(--line); }
 .assistant-history-group h3 { margin: 0; padding: 4px 7px 3px; color: var(--muted); font-size: 11px; font-weight: 500; }
 .assistant-menu-scroll { flex: 1 1 auto; max-height: 258px; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.assistant-model-menu .assistant-menu-scroll { --scrollbar-size: 6px; margin-right: -6px; padding-right: 6px; overflow-x: hidden; }
+.assistant-model-menu .assistant-menu-scroll::-webkit-scrollbar-thumb { border-right-width: 0; }
 .assistant-menu-empty { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0; padding: 16px 7px; color: var(--muted); font-size: 12px; }
-.assistant-detail-option { align-items: flex-start; }
-.assistant-detail-option > svg { margin-top: 1px; }
-.assistant-detail-option .assistant-menu-label { display: grid; gap: 2px; }
-.assistant-detail-option .assistant-menu-label > span { overflow: hidden; text-overflow: ellipsis; }
-.assistant-detail-option small { color: var(--muted); font-size: 11px; line-height: 16px; font-weight: 400; }
+.assistant-reasoning-heading { margin: 0; padding: 5px 9px 6px; color: var(--muted); font-size: 11px; font-weight: 500; }
+.assistant-reasoning-option { padding: 4px 9px; }
+.assistant-reasoning-label { display: grid; flex: 1; min-width: 0; gap: 1px; }
+.assistant-reasoning-label > span { color: var(--text); font-weight: 500; }
+.assistant-reasoning-label small { color: var(--muted); font-size: 11px; line-height: 14px; }
+.assistant-reasoning-help { margin: 4px -6px 0; padding: 7px 15px 4px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
 .assistant-model-error { margin: 4px 7px; color: var(--danger); font-size: 11px; overflow-wrap: anywhere; }
 .assistant-menu-search { display: flex; align-items: center; gap: 6px; margin: 2px 7px 4px; padding: 4px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
 .assistant-menu-search input { width: 100%; min-width: 0; border: 0; padding: 0; background: transparent; color: var(--text); font-size: 12px; }
 .assistant-menu-search svg { flex-shrink: 0; width: 14px; height: 14px; }
+.assistant-model-search-reveal { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--motion-base) var(--ease-standard); }
+.assistant-model-search-reveal.expanded { grid-template-rows: 1fr; }
+.assistant-model-search-reveal > div { min-height: 0; overflow: hidden; }
 .assistant-model-menu .assistant-menu-search { margin: 3px 7px 6px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
 .assistant-model-menu .assistant-menu-search input { outline: none; box-shadow: none; }
-.assistant-manual-model { display: grid; gap: 6px; padding: 4px 7px 6px; font-size: 12px; }
-.assistant-manual-model > div { display: flex; align-items: center; gap: 5px; }
+.assistant-manual-model { display: flex; align-items: center; gap: 5px; padding: 4px 7px 6px; font-size: 12px; }
 .assistant-manual-model input { flex: 1; width: 100%; min-width: 0; padding: 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); color: var(--text); }
+.assistant-manual-model input:focus { outline: none; border-color: var(--focus-ring); }
 .assistant-session-option small { flex-shrink: 0; color: var(--muted); font-size: 11px; }
 .assistant-history-group + .assistant-history-group { margin-top: 3px; }
 .assistant-contexts { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; max-height: 116px; overflow: auto; padding: 0 0 8px; }
@@ -919,7 +975,8 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 .assistant-panel-floating .assistant-compose-actions { margin-top: 4px; }
 .assistant-panel-floating .assistant-context { padding: 3px 6px; }
 .assistant-panel-fullscreen { position: relative; inset: auto; z-index: auto; flex: 1; width: 100%; height: 100%; border-left: 0; }
-.assistant-panel-fullscreen .assistant-messages { width: 100%; max-width: 820px; margin-inline: auto; }
+.assistant-panel-fullscreen .assistant-messages { scrollbar-gutter: stable both-edges; }
+.assistant-panel-fullscreen .assistant-messages > * { width: 100%; max-width: 768px; margin-inline: auto; }
 .assistant-panel-fullscreen .assistant-composer-area { width: calc(100% - 36px); max-width: 768px; margin: 4px auto 18px; }
 .assistant-panel-fullscreen .assistant-welcome { padding-bottom: 24px; }
 @media (max-width: 700px) { .assistant-panel-floating { right: 16px; bottom: 16px; } .assistant-panel-fullscreen .assistant-composer-area { width: calc(100% - 28px); margin-bottom: 14px; } }

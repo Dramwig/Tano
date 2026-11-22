@@ -83,6 +83,8 @@
   "原文档已移除": "El documento fuente fue eliminado",
   "任务尚未开始执行": "Esta tarea aún no ha comenzado",
   "机器人收件箱": "Bandeja de entrada del agente",
+  "机器人收件箱 · {0} 个进行中": "Bandeja de entrada del agente · {0} en curso",
+  "暂无机器人任务": "Aún no hay tareas del agente",
   "正文、批注和评论中的 @ 会自动成为任务，同一机器人按顺序处理。": "Las menciones en documentos, anotaciones y comentarios se convierten en tareas. Cada agente procesa sus tareas en orden.",
   "机器人设置": "Configuración del agente",
   "自动处理": "Procesar automáticamente",

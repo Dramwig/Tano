@@ -20,6 +20,8 @@ export type AssistantConnectionCheck = { fingerprint: string; elapsedMs?: number
 
 export type AssistantDisplayMode = 'sidebar' | 'floating' | 'fullscreen';
 
+export const assistantConnectionRequiredMessage = '请先配置模型连接';
+
 const displayModePreferenceKey = 'tano.preference.assistantDisplayMode';
 function preferredDisplayMode(): 'sidebar' | 'floating' {
   try { return localStorage.getItem(displayModePreferenceKey) === 'sidebar' ? 'sidebar' : 'floating'; }
@@ -342,7 +344,7 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
     if (!transport || busy.value || applying.value || loading.value || !prompt.value.trim()) return;
     const requestLocale = uiLocale.value;
     const promptOrigin = prompt.value === builtInPrompt ? 'builtin' : 'user';
-    if (!connection.value) { error.value = '请先配置模型连接'; return; }
+    if (!connection.value) { error.value = assistantConnectionRequiredMessage; return; }
     if (!isAssistantModelId(modelId.value)) { error.value = '请为当前对话选择模型'; return; }
     if (!session.value) newSession();
     const target = session.value!;

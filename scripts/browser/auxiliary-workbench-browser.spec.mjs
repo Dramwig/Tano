@@ -39,6 +39,63 @@ async function openDocumentWindow(page, id, content) {
   return popup;
 }
 
+test('opening assistant history renders one fullscreen panel in the tab owner', async ({ page }) => {
+  await prepare(page);
+  const first = await openDocumentWindow(page, 'first', 'First document\n');
+  const second = await openDocumentWindow(page, 'second', 'Second document\n');
+  await page.evaluate(() => {
+    const { assistant, store } = window.workbench;
+    store.focusPane(store.windowLayouts.main.activePaneId);
+    window.workbench.sidebarView = 'assistant';
+    assistant.sessions = [{
+      version: 1, id: 'history', workspaceId: store.workspace.id, title: '历史对话',
+      createdAt: 1, updatedAt: 1, revision: 0,
+      messages: Array.from({ length: 24 }, (_, index) => ({
+        id: `message-${index}`, role: 'user', content: `历史消息正文 ${index}`, createdAt: 1,
+      })),
+    }];
+  });
+  const history = page.getByRole('button', { name: '历史对话', exact: true });
+  await history.click();
+  const mainPanel = page.locator('.assistant-fullscreen-host .assistant-panel-fullscreen');
+  await expect(mainPanel).toHaveCount(1);
+  await expect(mainPanel).toContainText('历史消息正文');
+  const transcript = mainPanel.getByRole('log');
+  const bounds = await transcript.evaluate(element => {
+    const viewport = element.getBoundingClientRect();
+    const panel = element.closest('.assistant-panel').getBoundingClientRect();
+    const message = element.querySelector('.assistant-message').getBoundingClientRect();
+    return {
+      overflowing: element.scrollHeight > element.clientHeight,
+      rightInset: panel.right - viewport.right,
+      messageWidth: message.width,
+      centerOffset: (message.left + message.right - panel.left - panel.right) / 2,
+    };
+  });
+  expect(bounds.overflowing).toBe(true);
+  expect(Math.abs(bounds.rightInset)).toBeLessThan(1);
+  expect(bounds.messageWidth).toBeLessThanOrEqual(768);
+  expect(Math.abs(bounds.centerOffset)).toBeLessThan(1);
+  await transcript.hover({ position: { x: 32, y: 32 } });
+  await page.mouse.wheel(0, -500);
+  await expect(mainPanel.getByRole('button', { name: '滚动到最新消息' })).toBeVisible();
+  await mainPanel.getByRole('button', { name: '滚动到最新消息' }).click();
+  await expect(mainPanel.getByRole('button', { name: '滚动到最新消息' })).toBeHidden();
+  await history.click();
+  await expect(mainPanel).toHaveCount(1);
+  await page.evaluate(() => {
+    const { store, ASSISTANT_TAB_ID } = window.workbench;
+    store.moveTabToWindow(ASSISTANT_TAB_ID, 'first', {
+      paneId: store.windowLayouts.first.activePaneId, side: 'center',
+    });
+  });
+  const movedPanel = first.locator('.assistant-fullscreen-host .assistant-panel-fullscreen');
+  await expect(movedPanel).toHaveCount(1);
+  await expect(movedPanel).toContainText('历史消息正文');
+  await expect(page.locator('.assistant-panel')).toHaveCount(0);
+  await expect(second.locator('.assistant-panel')).toHaveCount(0);
+});
+
 test('real workbench windows preserve drafts through auxiliary splits and close empty sources', async ({ page }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));

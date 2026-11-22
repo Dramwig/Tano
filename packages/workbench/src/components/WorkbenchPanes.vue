@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import WorkbenchSettings from './WorkbenchSettings.vue';
 import { computed, inject, toRefs } from 'vue';
+import { layoutPanes } from '../pane-layout';
 import { workbenchContextKey } from '../workbench-context';
 import { useWindowContext } from '../windows/context';
 
@@ -292,6 +293,11 @@ const {
   vOutlineMotion,
 } = toRefs(context);
 const compactPanes = computed(() => !isAuxiliaryWindow && mainCompactPanes.value);
+// The fullscreen host is shared across windows; only its owner may mount the panel.
+const ownsFullscreenAssistant = computed(() => {
+  const layout = store.value.windowLayouts[windowContext.id]?.layout;
+  return !!layout && layoutPanes(layout).some(pane => pane.id === assistant.value.fullscreenPaneId);
+});
 </script>
 
 <template>

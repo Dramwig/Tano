@@ -38,7 +38,10 @@ pub fn create_main(
             let Some((label, kind)) = request("main", url.as_str()) else {
                 return NewWindowResponse::Deny;
             };
-            let mut builder = WebviewWindowBuilder::new(&handle, label, WebviewUrl::External(url))
+            // WebView2 requires an unnavigated WebView for SetNewWindow.
+            // Tauri skips initial navigation only for the exact about:blank URL.
+            let blank = WebviewUrl::External("about:blank".parse().expect("valid blank URL"));
+            let mut builder = WebviewWindowBuilder::new(&handle, label, blank)
                 .window_features(features)
                 .visible(false)
                 .decorations(false)

@@ -100,6 +100,8 @@ export const englishMessages: Readonly<Record<string, string>> = {
   "原文档已移除": "The source document was removed",
   "任务尚未开始执行": "This task has not started yet",
   "机器人收件箱": "Agent inbox",
+  "机器人收件箱 · {0} 个进行中": "Agent inbox · {0} running",
+  "暂无机器人任务": "No agent tasks yet",
   "正文、批注和评论中的 @ 会自动成为任务，同一机器人按顺序处理。": "Mentions in documents, annotations and comments become tasks. Each agent processes its tasks in order.",
   "机器人设置": "Agent settings",
   "自动处理": "Process automatically",

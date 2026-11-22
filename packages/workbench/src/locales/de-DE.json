@@ -83,6 +83,8 @@
   "原文档已移除": "Das Quelldokument wurde entfernt",
   "任务尚未开始执行": "Diese Aufgabe wurde noch nicht gestartet",
   "机器人收件箱": "Agent-Posteingang",
+  "机器人收件箱 · {0} 个进行中": "Agent-Posteingang · {0} aktiv",
+  "暂无机器人任务": "Noch keine Agent-Aufgaben",
   "正文、批注和评论中的 @ 会自动成为任务，同一机器人按顺序处理。": "Erwähnungen in Dokumenten, Anmerkungen und Kommentare werden zu Aufgaben. Jeder Agent bearbeitet seine Aufgaben der Reihe nach.",
   "机器人设置": "Agenteneinstellungen",
   "自动处理": "Automatisch verarbeiten",

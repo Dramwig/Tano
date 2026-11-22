@@ -427,7 +427,7 @@ it('selects a model in the composer and dismisses menus without losing focus', a
 it('switches the connection from its list and returns to model selection', async () => {
   const { assistant } = await mountEmptyConversation();
   await vi.waitFor(() => expect(assistant.modelsLoading).toBe(false));
-  const connection = { ...assistant.connections[0]!, id: crypto.randomUUID(), name: '备用连接' };
+  const connection = { ...assistant.connections[0]!, id: crypto.randomUUID(), name: '备用连接', icon: 'siliconcloud' };
   assistant.connections.push(connection);
   await assistant.selectModel('模拟响应');
   root.querySelector<HTMLButtonElement>('[aria-label="选择助手模型"]')!.click(); await nextTick();
@@ -435,13 +435,16 @@ it('switches the connection from its list and returns to model selection', async
   const search = root.querySelector<HTMLInputElement>('[aria-label="搜索模型"]')!;
   search.value = 'previous-model'; search.dispatchEvent(new Event('input')); await nextTick();
   root.querySelector<HTMLButtonElement>('[aria-label="选择模型连接"]')!.click(); await nextTick();
-  const connections = root.querySelectorAll<HTMLButtonElement>('#assistant-model-options .assistant-detail-option');
+  const connections = root.querySelectorAll<HTMLButtonElement>('#assistant-model-options button[aria-pressed]');
+  expect(Array.from(connections, button => button.querySelector('.assistant-menu-label')?.textContent)).toEqual(assistant.connections.map(connection => connection.name));
+  expect(connections[1]!.querySelector('.connection-avatar')?.getAttribute('data-brand')).toBe('siliconcloud');
   connections[1]!.click();
   await vi.waitFor(() => expect(root.querySelector('.assistant-connection-option')).not.toBeNull());
   expect(assistant.connectionId).toBe(connection.id);
   expect(assistant.modelId).toBe('');
-  expect(root.querySelector('.assistant-connection-option')!.textContent).toContain('备用连接');
-  expect(root.querySelector('[aria-label="搜索模型"]')).toBeNull();
+  expect(root.querySelector('.assistant-connection-option .assistant-menu-label')?.textContent).toBe('备用连接');
+  expect(root.querySelector('.assistant-connection-option .connection-avatar')?.getAttribute('data-brand')).toBe('siliconcloud');
+  expect(root.querySelector('[inert] #assistant-model-search')).not.toBeNull();
   root.querySelector<HTMLButtonElement>('[aria-label="搜索模型列表"]')!.click(); await nextTick();
   expect(root.querySelector<HTMLInputElement>('[aria-label="搜索模型"]')!.value).toBe('');
   expect(root.querySelector('#assistant-model-options')).not.toBeNull();
@@ -456,7 +459,7 @@ it('searches all discovered models, preserves a custom selection and accepts man
   expect(root.querySelector('[aria-label="使用模型 custom-model"]')!.getAttribute('aria-pressed')).toBe('true');
   expect(root.querySelectorAll('.assistant-model-option')).toHaveLength(6);
   expect(root.querySelector('[aria-label="查看全部模型"]')).toBeNull();
-  expect(root.querySelector('[aria-label="搜索模型"]')).toBeNull();
+  expect(root.querySelector('[inert] #assistant-model-search')).not.toBeNull();
   const searchToggle = root.querySelector<HTMLButtonElement>('[aria-label="搜索模型列表"]')!;
   expect(searchToggle.getAttribute('aria-expanded')).toBe('false');
   searchToggle.click(); await nextTick();
@@ -466,7 +469,7 @@ it('searches all discovered models, preserves a custom selection and accepts man
   search.value = 'ECHO'; search.dispatchEvent(new Event('input')); await nextTick();
   expect(root.querySelectorAll('.assistant-model-option')).toHaveLength(1);
   searchToggle.click(); await nextTick();
-  expect(root.querySelector('[aria-label="搜索模型"]')).toBeNull();
+  expect(root.querySelector('[inert] #assistant-model-search')).not.toBeNull();
   expect(root.querySelectorAll('.assistant-model-option')).toHaveLength(6);
   expect(document.activeElement).toBe(searchToggle);
   searchToggle.click(); await nextTick();
