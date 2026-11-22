@@ -1901,6 +1901,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activeId.value = id;
     ensureTabNavigation(id, id);
     touchNavigation();
+    return id;
   }
   async function openPageTab(id: string, options?: { newTab?: boolean; historyIndex?: number }) {
     if (!workspace.value) return;

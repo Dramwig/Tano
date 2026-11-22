@@ -9,7 +9,7 @@ import DocumentReader from './DocumentReader.vue';
 import DocumentStatus from './DocumentStatus.vue';
 import type { AttachmentStatusUpdate } from '../attachment-status';
 import { t } from '../i18n';
-import { officeDefaultColumnWidth, officeLimits, type OfficeSheet } from '../office-preview/model';
+import { officeDefaultColumnWidth, officeLimits, officeRowHeight, officeRowNumberWidth, type OfficeSheet } from '../office-preview/model';
 import type { SheetEdit } from '../office-preview/edit';
 import { draft, serializeWorkbook } from '../office-preview/draft';
 import { readOffice } from '../office-preview/client';
@@ -147,7 +147,7 @@ const widths = computed(() => Array.from({ length: sheet.value.columns }, (_, i)
 const totalCells = computed(() => sheets.value.reduce((total, item) => total + Math.max(1, item.rows.length) * item.columns, 0));
 const canAdd = computed(() => writable.value && sheet.value.columns < officeLimits.columns && totalCells.value + Math.max(1, sheet.value.rows.length) <= officeLimits.cells);
 const addColumnWidth = 104;
-const width = computed(() => 44 + widths.value.reduce((a, b) => a + b, 0) + (canAdd.value ? addColumnWidth : 0));
+const width = computed(() => officeRowNumberWidth + widths.value.reduce((a, b) => a + b, 0) + (canAdd.value ? addColumnWidth : 0));
 const rows = computed(() => sheet.value.rows.length ? sheet.value.rows : [Array(sheet.value.columns).fill('')]);
 const label = (index: number) => { let value = ''; for (let n = index + 1; n; n = Math.floor((n - 1) / 26)) value = String.fromCharCode(65 + (n - 1) % 26) + value; return value; };
 const limitWidth = (value: number) => Math.min(2048, Math.max(24, Math.round(value)));
@@ -241,25 +241,31 @@ async function setWidth(column: number, value: number) {
   const edit: SheetEdit = { kind: 'width', sheet: sheet.value.name, column, width: limitWidth(value) };
   if (writable.value) await commit(edit); else if (!busy.value) apply(edit);
 }
-let drag: { pointer: number; x: number; width: number; column: number; scale: number; preview: number } | undefined;
+let drag: { pointer: number; x: number; width: number; column: number; scale: number; preview: number; table: HTMLTableElement; col: HTMLTableColElement } | undefined;
 function start(event: PointerEvent, column: number, scale: number) {
-  if (busy.value || event.button !== 0) return;
+  const grid = table.value;
+  const col = grid?.querySelectorAll('col')[column + 1];
+  if (!grid || !col || drag || busy.value || event.button !== 0) return;
   const handle = event.currentTarget as HTMLElement;
   handle.setPointerCapture(event.pointerId);
-  drag = { pointer: event.pointerId, x: event.clientX, width: widths.value[column], column, scale, preview: widths.value[column] };
+  drag = { pointer: event.pointerId, x: event.clientX, width: widths.value[column], column, scale, preview: widths.value[column], table: grid, col };
 }
 function move(event: PointerEvent) {
   if (!drag || event.pointerId !== drag.pointer) return;
   drag.preview = limitWidth(drag.width + (event.clientX - drag.x) / drag.scale);
-  const col = table.value?.querySelectorAll('col')[drag.column + 1] as HTMLElement | undefined;
-  if (col && table.value) { col.style.width = `${drag.preview}px`; table.value.style.width = `${width.value + drag.preview - drag.width}px`; }
+  drag.col.style.setProperty('--column-drag-width', `${drag.preview}px`);
+  drag.table.style.setProperty('--grid-drag-width', `${width.value + drag.preview - widths.value[drag.column]}px`);
 }
 async function end(event: PointerEvent, cancel = false) {
   if (!drag || event.pointerId !== drag.pointer) return;
   const current = drag; drag = undefined;
-  if (!cancel && current.preview !== current.width) await setWidth(current.column, current.preview);
-  const col = table.value?.querySelectorAll('col')[current.column + 1] as HTMLElement | undefined;
-  if (col && table.value) { col.style.width = `${widths.value[current.column]}px`; table.value.style.width = `${width.value}px`; }
+  if (!cancel && current.preview !== current.width) {
+    await setWidth(current.column, current.preview);
+    // Keep the preview through the draft write and the render of the committed width.
+    await nextTick();
+  }
+  current.col.style.removeProperty('--column-drag-width');
+  current.table.style.removeProperty('--grid-drag-width');
 }
 function fit(column: number) {
   const canvas = document.createElement('canvas'), context = canvas.getContext('2d');
@@ -339,8 +345,8 @@ async function saveFile() {
     <DocumentReader :page="1" :count="1" grid :controls-target="controlsTarget" :reset-key="selected" :format="path.split('.').at(-1)?.toUpperCase()" :status="t('共 {0} 行', [sheet.rows.length])" :note="t('显示单元格内容与已保存的公式结果，不执行公式、宏或外部链接。')">
       <template #default="{ scale }">
         <p v-if="sheet.truncated" role="status">{{ t('预览仅显示前 {0} 行、{1} 列，请导出后查看完整工作表。', [officeLimits.rows, officeLimits.columns]) }}</p>
-        <table ref="table" class="office-grid" :data-selection-axis="selection?.axis" :aria-label="sheet.name" :style="{ width: `${width}px`, zoom: scale }">
-          <colgroup><col style="width:44px"><col v-for="(w, i) in widths" :key="i" :style="{ width: `${w}px` }"><col v-if="canAdd" :style="{ width: `${addColumnWidth}px` }"></colgroup>
+        <table ref="table" class="office-grid" :data-selection-axis="selection?.axis" :aria-label="sheet.name" :style="{ width: `var(--grid-drag-width, ${width}px)`, zoom: scale, '--office-row-height': `${officeRowHeight}px` }">
+          <colgroup><col :style="{ width: `${officeRowNumberWidth}px` }"><col v-for="(w, i) in widths" :key="i" :style="{ width: `var(--column-drag-width, ${w}px)` }"><col v-if="canAdd" :style="{ width: `${addColumnWidth}px` }"></colgroup>
           <thead><tr><th class="office-corner"></th><th v-for="(_, column) in widths" :key="column" scope="col" :class="{ 'axis-selected': selection?.axis === 'column' && selection.index === column }" @contextmenu.prevent.stop="openMenu($event, 'column', column)"><button class="axis-selector" :aria-label="t('选择 {0} 列', [label(column)])" :aria-pressed="selection?.axis === 'column' && selection.index === column" @click="selectAxis('column', column)" @keydown.shift.f10.prevent="openMenu($event, 'column', column)">{{ label(column) }}</button>
             <span class="column-resizer" role="separator" aria-orientation="vertical" :aria-label="t('调整 {0} 列宽', [label(column)])" :aria-valuenow="widths[column]" :aria-valuemin="24" :aria-valuemax="2048" tabindex="0"
               @pointerdown.stop.prevent="start($event, column, scale)" @click.stop @pointermove="move" @pointerup="end($event)" @pointercancel="end($event, true)" @lostpointercapture="end($event, true)" @dblclick.prevent="fit(column)" @keydown.enter.prevent="fit(column)" @keydown.left.prevent="setWidth(column, widths[column] - 8)" @keydown.right.prevent="setWidth(column, widths[column] + 8)" />
@@ -385,7 +391,7 @@ async function saveFile() {
 :where(.spreadsheet-editor) button { color:var(--text); background:var(--paper); border:1px solid var(--line); cursor:pointer; font:inherit; }
 :where(.spreadsheet-editor) button:disabled { opacity:.5; cursor:default; }
 .office-grid { --selected-grid-line:color-mix(in srgb, var(--text) 18%, var(--paper)); border-collapse:separate; border-spacing:0; table-layout:fixed; font:13px/18px var(--font-ui, sans-serif); }
-.office-grid th, .office-grid td { box-sizing:border-box; height:22px; border:0; border-right:1px solid var(--line); border-bottom:1px solid var(--line); padding:1px 4px; text-align:left; vertical-align:top; white-space:nowrap; overflow:hidden; text-overflow:clip; }
+.office-grid th, .office-grid td { box-sizing:border-box; height:var(--office-row-height); border:0; border-right:1px solid var(--line); border-bottom:1px solid var(--line); padding:1px 4px; text-align:left; vertical-align:top; white-space:nowrap; overflow:hidden; text-overflow:clip; }
 /* Emphasize only boundaries shared by selected cells, never the outer edge. */
 .office-grid[data-selection-axis='column'] thead .axis-selected,
 .office-grid[data-selection-axis='column'] tbody tr:not(:last-child) .cell-selected { border-bottom-color:var(--selected-grid-line); }
@@ -394,7 +400,7 @@ async function saveFile() {
 .office-grid th { color:var(--muted); background:var(--paper); font-weight:400; text-align:center; font-size:11px; user-select:none; }
 .office-grid thead { position:sticky; top:0; z-index:2; }
 .office-grid thead th { position:relative; overflow:visible; }
-.office-grid tbody th, .office-grid .office-corner { position:sticky; left:0; width:44px; }
+.office-grid tbody th, .office-grid .office-corner { position:sticky; left:0; }
 .office-grid .office-corner { z-index:4; }
 .office-grid tr:hover td { background:color-mix(in srgb, var(--green) 5%, var(--paper)); }
 .column-resizer { position:absolute; top:0; right:-5px; width:9px; height:100%; z-index:1; cursor:col-resize; touch-action:none; outline:none; }

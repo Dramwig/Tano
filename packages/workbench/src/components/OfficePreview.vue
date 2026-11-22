@@ -66,7 +66,7 @@ watch([() => props.bytes, () => props.path, retry], async (_, __, cleanup) => {
 
 <style scoped>
 .office-preview { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; color: var(--text); font-size: 14px; }
-.office-preview > .preview-skeleton { box-sizing: border-box; padding: 24px; overflow: hidden; }
+.office-preview > .preview-skeleton:not(.preview-skeleton-excel) { box-sizing: border-box; padding: 24px; overflow: hidden; }
 .office-error { padding: 24px; color: var(--muted); overflow-wrap: anywhere; }
 .office-error button { font: inherit; border: 1px solid var(--line); padding: 6px 12px; border-radius: 4px; color: var(--text); background: var(--paper); }
 .office-preview :deep(.office-reading) { box-sizing: border-box; width: 794px; min-height: 1123px; margin: 0 auto; padding: 64px 64px 80px; color: #24292f; background: #fff; font: 16px/1.85 var(--font-ui, sans-serif); --line: #d9dde3; }

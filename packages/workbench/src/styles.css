@@ -374,6 +374,19 @@ button:hover {
   width: 32px;
   height: 30px;
 }
+.brand-menu-button {
+  padding: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.brand-menu-button:hover,
+.brand-menu-button[aria-expanded='true'] {
+  background: var(--hover);
+}
+.brand-menu-button:focus-visible {
+  outline: 2px solid var(--text-secondary);
+  outline-offset: 1px;
+}
 .brand[href] {
   color: var(--text);
   text-decoration: none;
@@ -392,6 +405,13 @@ button:hover {
 .sidebar-brand-slot .brand > img {
   /* Align the visible pages, accounting for the SVG's transparent inset. */
   transform: translateX(-3px);
+}
+.sidebar-brand-slot .brand-menu-button > img {
+  /* The button has a visible hover box, so move the box instead of the image to keep the logo centered in it. */
+  transform: none;
+}
+.sidebar-brand-slot .brand-menu-button {
+  margin-left: -3px;
 }
 .version-pill {
   font-size: 12px;
@@ -524,14 +544,32 @@ button:hover {
   letter-spacing: 0;
 }
 .sidebar-view-header {
-  /* Preserve the view switcher's height while showing the root drop hint. */
-  min-height: 28px;
-  margin-bottom: 0;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 0 0 5px;
+  margin-bottom: 4px;
 }
-.assistant-page-placeholder { padding: 24px; }
 .sidebar-view-header + .sidebar-content {
   margin-top: 0;
 }
+.workspace-root-header {
+  /* Fixed height so the root drop hint and the hover-revealed actions never shift the tree. */
+  height: 26px;
+  margin: 2px 0 2px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+.workspace-root-name {
+  flex: 1;
+}
+.workspace-root-header + .sidebar-content {
+  margin-top: 0;
+}
+.assistant-page-placeholder { padding: 24px; }
 .section-label > span {
   min-width: 0;
   overflow: hidden;
@@ -4476,12 +4514,6 @@ button:hover {
   gap: 8px;
   width: min(720px, 100%);
   max-height: calc(100dvh - clamp(48px, 12vh, 112px));
-  padding: 0;
-  overflow: visible;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
 }
 .search-input-wrap {
   display: flex;
@@ -4499,9 +4531,13 @@ button:hover {
   min-width: 0;
   height: 32px;
   border: 0;
+  color: var(--text);
   background: transparent;
   padding: 0;
   line-height: 32px;
+}
+.search-input-wrap input::placeholder {
+  color: var(--muted);
 }
 .search-input-wrap input:focus-visible {
   outline: none;
@@ -4579,7 +4615,7 @@ button:hover {
 }
 .search-results mark {
   border-radius: 2px;
-  background: #fef3c7;
+  background: var(--highlight-bg);
   color: var(--text);
   font-weight: 500;
 }

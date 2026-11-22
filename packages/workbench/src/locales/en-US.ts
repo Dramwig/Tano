@@ -1550,6 +1550,7 @@ export const englishMessages: Readonly<Record<string, string>> = {
   "还原窗口": "Restore window",
   "最大化": "Maximize",
   "关闭窗口": "Close window",
+  "新建窗口": "New window",
   "窗口控制": "Window controls",
   "关闭差异": "Close diff",
   "文档修改差异": "Document diff",

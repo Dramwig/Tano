@@ -3,11 +3,44 @@ import { test, expect } from '@playwright/test';
 
 test.use({ locale: 'zh-CN' });
 
+test('workspace search shows only the search bar until a query is entered', async ({ page }) => {
+  await page.goto(process.env.TANO_NAV_TEST_URL || 'http://127.0.0.1:43845');
+  await page.getByRole('button', { name: '查找文档', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '找到那一页' });
+  const input = dialog.getByRole('searchbox');
+  const transparent = 'rgba(0, 0, 0, 0)';
+  await expect(dialog).toHaveCSS('background-color', transparent);
+  await expect(dialog).toHaveCSS('box-shadow', 'none');
+  await expect(dialog).toHaveCSS('padding', '0px');
+  await expect(input).toHaveCSS('background-color', transparent);
+  await expect(dialog.locator('.search-results')).toHaveCount(0);
+  await expect(input).toBeFocused();
+  await input.press('Shift+Tab');
+  await expect(dialog.getByRole('button', { name: '关闭搜索' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(input).toBeFocused();
+  await input.fill('01-基础块与行内');
+  const title = page.locator('strong').filter({ hasText: /^01-基础块与行内$/ });
+  await dialog.getByRole('button').filter({ has: title }).press('Enter');
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole('button', { name: '01-基础块与行内.md', exact: true })).toBeVisible();
+});
+
 async function selectContext(page, context) {
   await page.getByRole('button', { name: /^切换上下文：/ }).click();
   if (context === 'home') await page.locator('#workspace-menu').getByRole('button', { name: '主页', exact: true }).click();
   else await page.locator('#workspace-menu [data-workspace-entry-id]').first().click();
 }
+
+const viewTabs = page => page.getByRole('tablist', { name: '侧边栏视图', exact: true });
+// Sidebar views are icon tabs; views beyond the row's capacity live in the trailing "more" menu.
+async function selectView(page, name) {
+  const tab = viewTabs(page).getByRole('tab', { name, exact: true });
+  if (await tab.count()) return tab.click();
+  await viewTabs(page).getByRole('tab', { name: '更多', exact: true }).click();
+  await page.getByRole('menuitemradio', { name, exact: true }).click();
+}
+const selectedView = (page, name) => viewTabs(page).getByRole('tab', { name, exact: true, selected: true });
 
 test('workspace browsing preserves content and assistant drafts across entry points', async ({ page }) => {
   const errors = [];
@@ -17,8 +50,7 @@ test('workspace browsing preserves content and assistant drafts across entry poi
   await expect(editor).toBeVisible();
   await expect(page).toHaveURL(/\/p\//);
   const original = page.url();
-  await page.getByRole('button', { name: '切换侧边栏视图：文件', exact: true }).click();
-  await page.getByRole('menuitemradio', { name: '事件与任务', exact: true }).click();
+  await selectView(page, '事件与任务');
   await expect(editor).toBeVisible();
   expect(page.url()).toBe(original);
   await expect(page.getByRole('button', { name: '计划范围', exact: true })).toBeDisabled();
@@ -29,16 +61,13 @@ test('workspace browsing preserves content and assistant drafts across entry poi
   expect(page.url()).toBe(original);
   await expect(page.locator('.sidebar-view-header')).toBeHidden();
   await selectContext(page, 'workspace');
-  await page.getByRole('button', { name: '切换侧边栏视图：事件与任务', exact: true }).click();
-  await page.getByRole('menuitemradio', { name: '助手', exact: true }).click();
+  await selectView(page, '助手');
   await page.locator('.assistant-navigation-new').click();
   await page.locator('.assistant-panel textarea').fill('尚未发送的助手草稿');
-  await page.getByRole('button', { name: '切换侧边栏视图：助手', exact: true }).click();
-  await page.getByRole('menuitemradio', { name: '文件', exact: true }).click();
+  await selectView(page, '文件');
   await page.locator('.tree-row[title^="01-"]').click();
   await expect(editor).toBeVisible();
-  await page.getByRole('button', { name: '切换侧边栏视图：文件', exact: true }).click();
-  await page.getByRole('menuitemradio', { name: '助手', exact: true }).click();
+  await selectView(page, '助手');
   await page.locator('.assistant-navigation-session').first().click();
   await expect(page.locator('.assistant-panel textarea')).toHaveValue('尚未发送的助手草稿');
   expect(errors).toEqual([]);
@@ -49,14 +78,12 @@ test('mobile assistant can reopen navigation and return to a document', async ({
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto(process.env.TANO_NAV_TEST_URL || 'http://127.0.0.1:43845');
   await page.getByRole('group', { name: '文档导航', exact: true }).getByRole('button', { name: '展开侧栏', exact: true }).click();
-  await page.getByRole('button', { name: '切换侧边栏视图：文件', exact: true }).click();
-  await page.getByRole('menuitemradio', { name: '助手', exact: true }).click();
+  await selectView(page, '助手');
   await page.locator('.assistant-navigation-new').click();
   await expect(page.locator('.assistant-panel textarea')).toBeVisible();
   await expect(page.getByRole('dialog', { name: '工作区侧栏', exact: true })).toBeHidden();
   await page.getByRole('button', { name: '展开侧栏', exact: true }).click();
-  await page.getByRole('button', { name: '切换侧边栏视图：助手', exact: true }).click();
-  await page.getByRole('menuitemradio', { name: '文件', exact: true }).click();
+  await selectView(page, '文件');
   await page.locator('.tree-row[title^="01-"]').click();
   await expect(page.getByRole('textbox', { name: 'Markdown 文档编辑器', exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
@@ -89,8 +116,7 @@ test('module navigation keeps the main content until a sidebar item is opened', 
   const content = await calendar.textContent();
   const calendarUrl = page.url();
   await selectContext(page, 'workspace');
-  await page.getByRole('button', { name: '切换侧边栏视图：文件', exact: true }).click();
-  await page.getByRole('menuitemradio', { name: '事件与任务', exact: true }).click();
+  await selectView(page, '事件与任务');
   await expect(calendar).toBeVisible();
   await expect(calendar).toHaveText(content);
   if (await messages.count()) {
@@ -120,7 +146,7 @@ test('legacy plugin navigation opens the merged sidebar', async ({ page }) => {
     localStorage.setItem('tano.preference.navigationContext', JSON.stringify({ version: 1, context: 'workspace', workspaces: { [store.workspace.id]: { module: 'workspace', view: 'plugins' } } }));
   });
   await page.reload();
-  await expect(page.getByRole('button', { name: '切换侧边栏视图：插件', exact: true })).toBeVisible();
+  await expect(selectedView(page, '插件')).toBeVisible();
   const sidebar = page.getByRole('region', { name: '插件', exact: true });
   await expect(sidebar.getByRole('searchbox', { name: '搜索插件' })).toBeVisible();
   const header = await page.locator('.sidebar-view-header').boundingBox();
@@ -136,19 +162,15 @@ test('legacy plugin navigation opens the merged sidebar', async ({ page }) => {
   await page.screenshot({ path: test.info().outputPath('plugin-explorer-controls.png') });
   await sidebar.getByRole('button', { name: '插件中心…', exact: true }).click();
   await expect(page.locator('.plugin-center:not(.plugin-center-sidebar)')).toBeVisible();
-  await page.getByRole('button', { name: '切换侧边栏视图：插件', exact: true }).click();
-  await expect(page.getByRole('menuitemradio', { name: '插件', exact: true })).toHaveCount(1);
-  await expect(page.getByRole('menuitemradio')).toHaveCount(4);
-  await page.keyboard.press('Escape');
+  await expect(viewTabs(page).getByRole('tab', { name: '插件', exact: true })).toHaveCount(1);
+  await expect(viewTabs(page).getByRole('tab')).toHaveCount(4);
 
 });
 
 test('database creation and saved-view entry points are absent', async ({ page }) => {
   await page.goto(process.env.TANO_NAV_TEST_URL || 'http://127.0.0.1:43845');
   await expect(page.locator('.tree-row').first()).toBeVisible();
-  await page.getByRole('button', { name: /^切换侧边栏视图：/ }).click();
-  await expect(page.getByRole('menuitemradio', { name: '数据库与视图', exact: true })).toHaveCount(0);
-  await page.keyboard.press('Escape');
+  await expect(viewTabs(page).getByRole('tab', { name: '数据库与视图', exact: true })).toHaveCount(0);
   await page.locator('.tree-row').first().click({ button: 'right' });
   await expect(page.getByRole('menuitem', { name: /新建数据表|数据库视图/ })).toHaveCount(0);
   await page.keyboard.press('Escape');
@@ -178,8 +200,7 @@ test('existing table files still open from the file tree', async ({ page }) => {
 test('plugin explorer opens detail pages and restores independent sidebar views', async ({ page }) => {
  test.setTimeout(90000);
  await page.goto(process.env.TANO_NAV_TEST_URL || 'http://127.0.0.1:43845');
- await page.getByRole('button', { name: /^切换侧边栏视图：/ }).click();
- await page.getByRole('menuitemradio', { name:'插件', exact:true }).click();
+ await selectView(page, '插件');
  const explorer = page.locator('.plugin-explorer');
  await expect(explorer.locator('.row')).toHaveCount(2);
  await expect(explorer.locator('nav')).toHaveCount(0);
@@ -199,20 +220,17 @@ test('plugin explorer opens detail pages and restores independent sidebar views'
  await explorer.getByRole('button', { name:/^任务看板 / }).click();
  await page.locator('.plugin-detail-page').getByRole('button', { name:'权限', exact:true }).click();
  await page.getByRole('button', { name:'授权此版本运行', exact:true }).click();
- await page.getByRole('button', { name:/^切换侧边栏视图：/ }).click();
- await page.getByRole('menuitemradio', { name:'任务看板', exact:true }).click();
+ await selectView(page, '任务看板');
  await expect(page.getByRole('region', { name:'任务看板 · 任务看板', exact:true })).toBeVisible();
  await page.reload();
- await expect(page.getByRole('button', { name:'切换侧边栏视图：任务看板', exact:true })).toBeVisible();
+ await expect(selectedView(page, '任务看板')).toBeVisible();
  await page.evaluate(async () => { const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace'); await store.updateWorkspaceSettings(store.workspace.id, { key:'showPlugins', value:false, previous:true }); });
- await page.getByRole('button', { name:/^切换侧边栏视图：/ }).click();
- await expect(page.getByRole('menuitemradio', { name:'插件', exact:true })).toHaveCount(0);
- await expect(page.getByRole('menuitemradio', { name:'任务看板', exact:true })).toBeVisible();
- await page.keyboard.press('Escape');
+ await expect(viewTabs(page).getByRole('tab', { name:'插件', exact:true })).toHaveCount(0);
+ await expect(viewTabs(page).getByRole('tab', { name:'任务看板', exact:true })).toBeVisible();
  await page.evaluate(async () => {
  const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace');
  await store.changePlugin({ uninstall:'kanban' }, store.workspace.id);
  });
- await expect(page.getByRole('button', { name:'切换侧边栏视图：文件', exact:true })).toBeVisible();
+ await expect(selectedView(page, '文件')).toBeVisible();
  await expect(page.locator('.plugin-detail-page')).toHaveCount(0);
 });

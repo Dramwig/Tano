@@ -48,6 +48,7 @@ import {
   ref,
   shallowReactive,
   shallowRef,
+  useTemplateRef,
   watch,
 } from 'vue';
 
@@ -504,15 +505,21 @@ const sidebarNavigationItems = computed(() => [
     .filter((view) => view.sidebar)
     .map((view) => ({ id: view.id, label: view.label })),
 ]);
+// Sidebar buttons are grouped by scope: the header row holds workspace-wide actions (search, graph,
+// extension headers), the view row switches sidebar views, and the workspace root row holds
+// file-tree actions. Keep each action in the row matching what it affects.
 const sidebarHeaderItems = computed(() => [
+  ...(navigationModule.value === 'workspace' ? [
+    { id: 'search', get label() { return t('查找文档'); } },
+    ...(store.workspaceSettings.showGraph ? [{ id: 'graph', get label() { return t('关系图谱'); } }] : []),
+  ] : []),
   ...extensionViews
     .filter((view) => view.header)
     .map((view) => ({ id: view.id, label: view.label })),
 ]);
 const repositoryActionItems = computed(() => [
-  ...(store.workspaceSettings.showGraph ? [{ id: 'graph', get label() { return t('关系图谱'); } }] : []),
-  { id: 'search', get label() { return t('查找文档'); } },
   { id: 'create', get label() { return t('新建文档'); } },
+  { id: 'folder', get label() { return t('新建文件夹'); } },
 ]);
 const documentToolItems = [
   { id: 'markdown-reveal', get label() { return t('光标展开源码'); } },
@@ -1546,6 +1553,12 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
     { id: 'workbench.search', category: t('文档'), get label() { return t('查找文档'); }, shortcut: shortcuts.value.findDocument, available: !busy.value, run: () => showModal('search') },
     { id: 'workbench.open', category: t('文档'), get label() { return t('打开文档'); }, shortcut: shortcuts.value.openDocument, available: !busy.value, run: () => showModal('newTab') },
     { id: 'workbench.new', category: t('文档'), get label() { return t('新建文档'); }, shortcut: shortcuts.value.newDocument, available: writableWorkspace, run: createNewDocument },
+    // Opens a blank tab in its own window. It shares the current workspace; an independent
+    // window with its own workspace would need a second app instance and is not supported.
+    { id: 'workbench.new-window', category: t('文档'), get label() { return t('新建窗口'); }, available: native && !mobile && !isAuxiliaryWindow && !!workspace.value && !busy.value && !updateLock.value,
+      run: () => { const id = store.createBlankTab(); if (id) return detachTab(id); } },
+    { id: 'workbench.reveal', category: t('文档'), get label() { return t('在资源管理器中显示'); }, available: native && !mobile && !isAuxiliaryWindow && !!workspace.value && !store.isWeb, run: () => store.reveal() },
+    { id: 'workbench.open-folder', category: t('文档'), get label() { return t('打开文件夹'); }, available: !isAuxiliaryWindow && !busy.value && !updateLock.value, run: () => store.openWorkspace() },
     { id: 'workbench.save', category: t('文档'), get label() { return t('立即保存'); }, shortcut: shortcuts.value.save, available: hasDocument && !busy.value && !updateLock.value, run: () => store.flush() },
     { id: 'workbench.saveAs', category: t('文档'), get label() { return t('另存副本'); }, available: standardEditor && writableWorkspace, run: () => showModal('saveAs') },
     { id: 'workbench.folder', category: t('文档'), get label() { return t('新建文件夹'); }, available: writableWorkspace, run: () => createNewEntry('folder') },
@@ -1589,6 +1602,7 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
     { id: 'workbench.settings.shortcuts', category: t('设置'), get label() { return t('快捷键'); }, run: () => openSettings('shortcuts') },
     { id: 'workbench.settings.workspace', category: t('设置'), get label() { return t('工作区设置'); }, available: navigationContext.value === 'workspace' && !!workspace.value, run: () => openSettings('workspace') },
     { id: 'workbench.settings.about', category: t('设置'), get label() { return t('关于同页'); }, run: () => openSettings('about') },
+    { id: 'workbench.check-updates', category: t('设置'), get label() { return t('检查更新'); }, available: native && !mobile && !updateLock.value && !updates.state.busy, run: () => { openSettings('about'); return updates.check(); } },
   ];
 });
 const settingsPage = ref<SettingsPageId>(readSettingsPage());
@@ -1669,7 +1683,7 @@ watch(
 const input = ref('');
 const modalError = ref('');
 const modalBusy = ref(false);
-const inputEl = ref<HTMLInputElement>();
+const inputEl = useTemplateRef<HTMLInputElement>('inputEl');
 const paneEditors = shallowReactive(new Map<string, InstanceType<typeof MarkdownEditor>>());
 type InlineAssistantTarget = {
   paneId: string;
@@ -4008,7 +4022,7 @@ function keydown(event: KeyboardEvent) {
   if (event.key === 'Tab' && modal.value) {
     const targets = [
       ...document.querySelectorAll<HTMLElement>(
-        '.modal button:not(:disabled), .modal input, .modal a',
+        ':is(.modal, .search-modal) :is(button:not(:disabled), input, a)',
       ),
     ];
     const first = targets[0],
