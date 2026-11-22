@@ -1203,6 +1203,7 @@ function readChineseInput() {
 const editorPreferences = ref<EditorPreferences>({
   copyFormat: normalizeCopyFormat(readTextPreference('copyFormat')),
   autoSpacing: readPreference('autoSpacing', defaultEditorPreferences.autoSpacing ?? false),
+  completeTextSpacing: readPreference('completeTextSpacing', false),
   previewMathWhileEditing: readPreference(
     'previewMathWhileEditing',
     defaultEditorPreferences.previewMathWhileEditing,
@@ -1225,6 +1226,7 @@ watch(
   (preferences) => {
     saveTextPreference('copyFormat', normalizeCopyFormat(preferences.copyFormat));
     savePreference('autoSpacing', preferences.autoSpacing ?? false);
+    savePreference('completeTextSpacing', preferences.completeTextSpacing === true);
     savePreference('previewMathWhileEditing', preferences.previewMathWhileEditing);
     savePreference('previewMermaidWhileEditing', preferences.previewMermaidWhileEditing !== false);
     savePreference('folding', preferences.folding);

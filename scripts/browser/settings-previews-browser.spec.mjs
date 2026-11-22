@@ -66,6 +66,14 @@ async function hoverRow(page, row) {
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await row.hover({ position: { x: 95, y: 28 } });
 }
+async function expectLeftOfRow(page, tooltip, row) {
+  const hint = await tooltip.boundingBox();
+  const anchor = await row.boundingBox();
+  expect(anchor.x - (hint.x + hint.width)).toBeCloseTo(8, 0);
+  const centerTop = anchor.y + (anchor.height - hint.height) / 2;
+  expect(hint.y).toBeCloseTo(Math.max(8, Math.min(centerTop, page.viewportSize().height - 8 - hint.height)), 0);
+  expect(hint.x).toBeGreaterThanOrEqual(8);
+}
 
 for (const locale of ['zh-CN', 'en-US']) test(`settings explain visual behavior with hover animations (${locale})`, async ({ page }, testInfo) => {
   const errors = [];
@@ -92,13 +100,18 @@ for (const locale of ['zh-CN', 'en-US']) test(`settings explain visual behavior 
       await expect(rendered.locator(settingTargets[scene]).first()).toBeAttached();
       await expect(example.locator('.setting-example-description')).not.toBeEmpty();
       await expect(example.locator('.setting-example-stage')).toHaveAttribute('inert', '');
-      await animationFrame(example, scene === 'mermaid' ? 2700 : 700);
-      if (scene === 'folding') {
-        await expect(rendered.locator('.demo-after .tano-folded-heading-content').first()).toHaveCSS('display', 'none');
-        await expect(rendered.locator('.demo-after .tano-fold-toggle').first()).toBeVisible();
-        await expect(rendered.locator('.demo-after .tano-fold-toggle').first()).toHaveText('▸');
+      if (scene === 'input-spacing') {
+        await expect(rendered.locator('.input-spacing-caret')).toBeVisible();
+        await expect(rendered.locator('.input-spacing-source')).toContainText('用 T');
+      } else {
+        await animationFrame(example, scene === 'mermaid' ? 2700 : 700);
+        if (scene === 'folding') {
+          await expect(rendered.locator('.demo-after .tano-folded-heading-content').first()).toHaveCSS('display', 'none');
+          await expect(rendered.locator('.demo-after .tano-fold-toggle').first()).toBeVisible();
+          await expect(rendered.locator('.demo-after .tano-fold-toggle').first()).toHaveText('▸');
+        }
+        await expect(example.locator('.demo-phase > .demo-after')).toHaveCSS('opacity', '1');
       }
-      await expect(example.locator('.demo-phase > .demo-after')).toHaveCSS('opacity', '1');
       const viewport = example.locator('.example-viewport');
       const height = () => viewport.evaluate(element => element.offsetHeight);
       if (scene === 'recognition') {
@@ -106,13 +119,11 @@ for (const locale of ['zh-CN', 'en-US']) test(`settings explain visual behavior 
       }
       await example.screenshot({ path: testInfo.outputPath(`${key}-${locale}.png`) });
       const afterHeight = await height();
-      const hint = await tooltip.boundingBox();
-      const anchor = await row.boundingBox();
-      expect(hint.y + hint.height <= anchor.y || hint.y >= anchor.y + anchor.height).toBe(true);
-      expect(hint.x).toBeGreaterThanOrEqual(8);
-      expect(hint.x + hint.width).toBeLessThanOrEqual(1432);
-      await animationFrame(example, scene === 'mermaid' ? 700 : 2700);
-      await expect(example.locator('.demo-phase > .demo-before')).toHaveCSS('opacity', '1');
+      await expectLeftOfRow(page, tooltip, row);
+      if (scene !== 'input-spacing') {
+        await animationFrame(example, scene === 'mermaid' ? 700 : 2700);
+        await expect(example.locator('.demo-phase > .demo-before')).toHaveCSS('opacity', '1');
+      }
       expect(await height()).toBe(afterHeight);
       if (['editing-preview-math', 'editing-preview-mermaid', 'editing-folding'].includes(key))
         await example.screenshot({ path: testInfo.outputPath(`${key}-before-${locale}.png`) });
@@ -121,21 +132,76 @@ for (const locale of ['zh-CN', 'en-US']) test(`settings explain visual behavior 
     expect(await controlState()).toEqual(original);
     if (category === 'documents') {
       for (const [feature, selector] of Object.entries(capabilityTargets)) {
-        await hoverRow(page, page.locator(`[data-settings-key="documents-${feature}"]`));
+        const row = page.locator(`[data-settings-key="documents-${feature}"]`);
+        await hoverRow(page, row);
         const example = tooltip.locator('.capability-example');
         await expect(example).toHaveAttribute('data-feature', feature);
         await expect(example.locator(selector).first()).toBeAttached();
         if (feature === 'inlineComment') await expect(example.locator(selector)).toBeVisible();
         await example.screenshot({ path: testInfo.outputPath(`capability-${feature}-${locale}.png`) });
+        await expectLeftOfRow(page, tooltip, row);
       }
     }
   }
-  expect(covered).toBe(19);
+  expect(covered).toBe(20);
   await page.keyboard.press('Escape');
   await expect(tooltip).toHaveCount(0);
   await expect(page.locator('.settings-dialog')).toBeVisible();
   expect(await page.locator('.ProseMirror').first().innerText()).toBe(content);
   expect(errors).toEqual([]);
+});
+
+test('the page title preview stays close to its row when the settings window gets narrower', async ({ page }, testInfo) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await openSettings(page);
+  await page.setViewportSize({ width: 1065, height: 700 });
+  await page.locator('.settings-nav').getByRole('button', { name: '外观', exact: true }).click();
+  const row = page.locator('[data-settings-key="appearance-page-title"]');
+  const tooltip = page.getByRole('tooltip');
+  await hoverRow(page, row);
+  await expect(tooltip).toHaveAttribute('data-setting', 'appearance-page-title');
+  await expect(tooltip).toHaveAttribute('data-ready', 'true');
+  await expect(tooltip.locator('.example-viewport')).toHaveAttribute('data-ready', 'true');
+  await expect(tooltip).toHaveCSS('animation-name', 'none');
+  await expect(tooltip).toHaveCSS('pointer-events', 'none');
+  await expectLeftOfRow(page, tooltip, row);
+  await page.screenshot({ path: testInfo.outputPath('page-title-preview-left.png') });
+
+  await page.setViewportSize({ width: 620, height: 700 });
+  await expect(tooltip).toHaveCount(0);
+  await hoverRow(page, row);
+  await expect(tooltip).toHaveAttribute('data-ready', 'true');
+  const hint = await tooltip.boundingBox();
+  const anchor = await row.boundingBox();
+  expect(hint.x).toBeCloseTo(anchor.x, 0);
+  expect(Math.max(anchor.y - (hint.y + hint.height), hint.y - (anchor.y + anchor.height))).toBeCloseTo(8, 0);
+  expect(hint.y).toBeGreaterThanOrEqual(8);
+  expect(hint.y + hint.height).toBeLessThanOrEqual(692);
+});
+
+test('the spacing preview inserts literal spaces during individual keystrokes', async ({ page }, testInfo) => {
+  await openSettings(page);
+  await page.locator('.settings-nav').getByRole('button', { name: '编辑器', exact: true }).click();
+  const row = page.locator('[data-settings-key="editing-autocomplete-spacing"]');
+  await hoverRow(page, row);
+  const example = page.getByRole('tooltip').locator('.setting-example[data-scene="input-spacing"]');
+  const rendered = example.frameLocator('iframe');
+  const demo = rendered.locator('.input-spacing-example');
+  const readFrame = () => demo.evaluate(element => ({
+    key: element.querySelector('kbd')?.textContent,
+    source: element.querySelector('.input-spacing-source').textContent,
+    inserted: [...element.querySelectorAll('.input-spacing-inserted')].map(space => space.textContent),
+  }));
+  const sampling = { intervals: [50, 100], timeout: 12000 };
+  await expect.poll(readFrame, sampling).toEqual({ key: '用', source: '用', inserted: [] });
+  const viewport = example.locator('.example-viewport');
+  const initialHeight = await viewport.evaluate(element => element.offsetHeight);
+  await expect.poll(readFrame, sampling).toEqual({ key: 'T', source: '用 T', inserted: [' '] });
+  await expect.poll(readFrame, sampling).toEqual({ key: '$', source: '用 Tano 记录 2026 年\n公式 $x$', inserted: [' '] });
+  await expect.poll(readFrame, sampling).toEqual({ key: ']', source: '用 Tano 记录 2026 年\n公式 $x$ 见 [[笔记]]', inserted: [' '] });
+  expect(await viewport.evaluate(element => element.offsetHeight)).toBe(initialHeight);
+  await example.screenshot({ path: testInfo.outputPath('typing-spaces.png') });
+  await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
 });
 
 test('the folding preview animates in both directions without rescaling headings', async ({ page }, testInfo) => {
@@ -163,17 +229,30 @@ test('the folding preview animates in both directions without rescaling headings
   const expanded = rendered.locator('.demo-crossfade > .demo-before');
   const collapsed = rendered.locator('.demo-crossfade > .demo-after');
   const lowerHeading = expanded.locator('h2').last();
+  const editorArrow = expanded.locator('.tano-fold-toggle').last();
   const foldedPosition = (await collapsed.locator('h2').last().boundingBox()).y;
+  await expect(editorArrow).toHaveCSS('visibility', 'hidden');
+  const headingArrow = () => lowerHeading.evaluate(element => {
+    const marker = getComputedStyle(element, '::before');
+    return { content: marker.content, position: marker.position, top: marker.top, height: parseFloat(marker.height) };
+  });
   await animationFrame(example, 2700);
   const expandedPosition = (await lowerHeading.boundingBox()).y;
+  const expandedArrow = await headingArrow();
+  expect(expandedArrow).toMatchObject({ content: '"▾"', position: 'absolute', top: '0px' });
+  expect(expandedArrow.height).toBeCloseTo(await lowerHeading.evaluate(element => element.getBoundingClientRect().height), 1);
+  await example.screenshot({ path: testInfo.outputPath('folding-expanded.png') });
   for (const time of [1500, 4250]) {
     await animationFrame(example, time);
+    await expanded.locator('.tano-prose').dispatchEvent('tano-block-layout');
     await expect(expanded).toHaveCSS('opacity', '1');
     await expect(collapsed).toHaveCSS('opacity', '0');
     const movingHeading = await lowerHeading.boundingBox();
     expect(movingHeading.y).toBeGreaterThan(foldedPosition);
     expect(movingHeading.y).toBeLessThan(expandedPosition);
     expect(movingHeading.height).toBeCloseTo(settled.height, 1);
+    expect(await headingArrow()).toEqual(expandedArrow);
+    await expect(editorArrow).toHaveCSS('visibility', 'hidden');
     const listClip = await expanded.locator('.tano-prose > ul').evaluate(element => getComputedStyle(element).clipPath);
     expect(parseFloat(listClip.match(/([\d.]+)%\)/)?.[1])).toBeCloseTo(50, 1);
   }
@@ -184,12 +263,15 @@ test('the Mermaid setting preview reserves its height and fades in the rendered 
   await page.locator('.settings-nav').getByRole('button', { name: '编辑器', exact: true }).click();
   const recorded = await page.evaluateHandle(() => {
     const heights = new Set();
+    const transforms = new Set();
     const observer = new MutationObserver(() => {
       const viewport = document.querySelector('.setting-example[data-scene="mermaid"] .example-viewport');
       if (viewport) heights.add(viewport.style.height);
+      const transform = viewport?.querySelector('iframe')?.style.transform;
+      if (transform) transforms.add(transform);
     });
     observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
-    return { heights, observer };
+    return { heights, transforms, observer };
   });
   try {
     await hoverRow(page, page.locator('[data-settings-key="editing-preview-mermaid"]'));
@@ -206,6 +288,7 @@ test('the Mermaid setting preview reserves its height and fades in the rendered 
     expect(opacity).toBeGreaterThan(0);
     expect(opacity).toBeLessThan(1);
     expect(await recorded.evaluate(({ heights }) => [...heights])).toEqual(['104px']);
+    expect(await recorded.evaluate(({ transforms }) => transforms.size)).toBe(1);
   } finally {
     await recorded.evaluate(({ observer }) => observer.disconnect());
     await recorded.dispose();
@@ -225,6 +308,14 @@ test('setting previews stay informative without motion and explain disabled cont
   await expect(example).toHaveAttribute('data-scene', 'math');
   await expect(example.frameLocator('iframe').locator('.demo-after .tano-live-math-preview .katex')).toBeVisible();
   expect(await example.evaluate(element => element.getAnimations({ subtree: true }).length + element.querySelector('iframe').contentDocument.body.getAnimations({ subtree: true }).length)).toBe(0);
+
+  await hoverRow(page, page.locator('[data-settings-key="editing-autocomplete-spacing"]'));
+  await expect(example).toHaveAttribute('data-scene', 'input-spacing');
+  const rendered = example.frameLocator('iframe');
+  await expect(rendered.locator('.input-spacing-caret')).toHaveCount(0);
+  await expect(rendered.locator('.input-spacing-key')).toHaveCount(0);
+  await expect(rendered.locator('.input-spacing-source')).toHaveText('用 Tano 记录 2026 年 公式 $x$ 见 [[笔记]]');
+
   await page.keyboard.press('Escape');
   await expect(tooltip).toHaveCount(0);
   await expect(page.locator('.settings-dialog')).toBeVisible();

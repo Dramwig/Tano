@@ -60,7 +60,7 @@ import {
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
 import { createDocumentDecorations } from './document-decorations';
 import { richViewport, virtualBlockViews } from './rich-viewport';
-import { autoSpacing } from './auto-spacing';
+import { autoSpacing, completeInlineObjectSpacing, completeProseSpacing, inputSpacing, markTextSpacingInput } from './auto-spacing';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { DOMSerializer, Fragment, Slice } from '@milkdown/kit/prose/model';
 import { canSplit } from '@milkdown/kit/prose/transform';
@@ -132,7 +132,7 @@ import { runtimeViews, runtimeMarkViews, mermaidView } from './runtime-views';
 import { footnoteNumbers, jumpToFootnote } from './footnotes';
 import { references } from './references';
 import { referenceViews } from './reference-views';
-import { referencePicker, openReferencePicker } from './reference-picker';
+import { referencePicker, referencePickerKey, openReferencePicker } from './reference-picker';
 import { floatingPanelPosition, positionAnchoredPanel } from './panel-position';
 import type { PanelSide } from './panel-position';
 import { activateEditorPanel, announceEditorPanel, createEditorPanel, onOtherEditorPanel } from './editor-panel';
@@ -208,6 +208,8 @@ const emit = defineEmits<{
 const policy = () => props.capabilities ?? defaultCapabilities;
 const referencesEnabled = () => props.referenceTargets !== undefined && commandEnabled('reference', props.enabledLevels, policy().features);
 const preferences = () => props.preferences ?? defaultEditorPreferences;
+const completesTextSpacing = () => !props.readonly && preferences().completeTextSpacing === true;
+const canSpaceTextInput = (view: EditorView) => completesTextSpacing() && !view.composing && !referencePickerKey.getState(view.state);
 const renderMermaid = createMermaidRenderer(document);
 const defaultCopyAction = computed(() => {
   const format = normalizeCopyFormat(preferences().copyFormat);
@@ -932,8 +934,11 @@ function insertMappedChineseInput(ctx: Ctx, view: EditorView, from: number, to: 
   if (!wrapSelectedInlineSource(ctx, view, from, to, mapped) &&
       !insertEmptyCodeSourceText(view, from, to, mapped) &&
       !fillEmptyRenderedCodeLine(view, from, to, mapped) &&
-      !insertPartialEmphasisSource(ctx, view, from, to, mapped))
-    view.dispatch(view.state.tr.insertText(mapped, from, to));
+      !insertPartialEmphasisSource(ctx, view, from, to, mapped)) {
+    const tr = view.state.tr.insertText(mapped, from, to);
+    if (canSpaceTextInput(view)) markTextSpacingInput(tr, from, mapped);
+    view.dispatch(tr);
+  }
   return true;
 }
 function chineseInputEventTarget(event: Event) {
@@ -975,7 +980,9 @@ function finishChineseComposition(view: EditorView, text: string) {
 function insertChineseInputFromComposition(view: EditorView, from: number, to: number, text: string) {
   if (insertChineseSyntax(view, from, to, text, true)) return;
   const mapped = mappedChineseInput(text);
-  if (mapped !== text) view.dispatch(view.state.tr.insertText(mapped, from, to));
+  const tr = mapped !== text ? view.state.tr.insertText(mapped, from, to) : view.state.tr;
+  if (canSpaceTextInput(view)) completeProseSpacing(tr, from, from + mapped.length, policy().features);
+  if (tr.docChanged) view.dispatch(tr);
 }
 
 function wrapSelectedInlineSource(ctx: Ctx, view: EditorView, from: number, to: number, text: string) {
@@ -2921,11 +2928,14 @@ onMounted(async () => {
   try {
     const instance = Editor.make()
       .config((ctx) => {
-        configureMarkdownRuntime(ctx, policy);
+        configureMarkdownRuntime(ctx, policy, completesTextSpacing);
         ctx.set(rootCtx, root.value!);
         ctx.set(defaultValueCtx, frontmatter.body);
         ctx.update(editorStateOptionsCtx, previous => options => {
           const configured = previous(options);
+          // Milkdown adds its input rules after $prose plugins. Let those rules
+          // recognize Markdown syntax before handling ordinary text input.
+          configured.plugins = [...(configured.plugins ?? []), inputSpacing(completesTextSpacing, () => policy().features, canSpaceTextInput)];
           const doc = configured.doc;
           if (!configured.selection && doc && Selection.atStart(doc) instanceof NodeSelection) {
             const start = doc.resolve(0);
@@ -2972,7 +2982,11 @@ onMounted(async () => {
       .use(latexMathInput)
       .use(enhanced)
       .use(references)
-      .use($prose(() => referencePicker({ enabled: () => referencesEnabled() && !props.readonly, targets: () => props.referenceTargets ?? [] })))
+      .use($prose(ctx => referencePicker({
+        enabled: () => referencesEnabled() && !props.readonly,
+        targets: () => props.referenceTargets ?? [],
+        completeSpacing: (tr, from) => completeInlineObjectSpacing(ctx, tr, from),
+      })))
       .use(rawBlocks)
       .use(liveSource)
       .use(liveInlineSource)
@@ -3269,7 +3283,8 @@ function command(name: string, value?: string) {
         emit('error', '所选文字或文档名称包含不支持的提及符号，请调整后重试');
         return;
       }
-      view.dispatch(view.state.tr.replaceSelectionWith(wikiLink.type(ctx).create(parsed)));
+      const from = view.state.selection.from;
+      view.dispatch(completeInlineObjectSpacing(ctx, view.state.tr.replaceSelectionWith(wikiLink.type(ctx).create(parsed)), from));
     });
   if (name === 'footnote')
     editor.action((ctx) => {

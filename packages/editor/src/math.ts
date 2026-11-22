@@ -9,6 +9,7 @@ import { positionAnchoredPanel } from './panel-position';
 import type { PanelSide } from './panel-position';
 import { activateEditorPanel, announceEditorPanel, createEditorPanel, onOtherEditorPanel } from './editor-panel';
 import { markdownPolicy, recognizesMath } from './runtime';
+import { completeInlineObjectSpacing } from './auto-spacing';
 import katex from 'katex';
 import type { NodeViewConstructor } from '@milkdown/kit/prose/view';
 
@@ -139,7 +140,7 @@ export const inlineMathInput = $inputRule(
       /(?<![\\$])(\${1,2})([^$\n\ufffc]+)\1$/,
       (state, match, start, end) => {
         if (!recognizesMath(markdownPolicy(ctx), 'dollar') || containsCode(state, start, end)) return null;
-        return state.tr.replaceWith(
+        const tr = state.tr.replaceWith(
           start,
           end,
           inlineMath.type(ctx).create({
@@ -149,6 +150,7 @@ export const inlineMathInput = $inputRule(
             originalValue: match[2],
           }),
         );
+        return completeInlineObjectSpacing(ctx, tr, start);
       },
       { inCodeMark: false },
     ),
@@ -181,13 +183,14 @@ export const latexMathInput = $inputRule(
   (ctx) =>
     new InputRule(/(?<!\\)\\\(([^\n\ufffc]+)\\\)$/, (state, match, start, end) => {
       if (!recognizesMath(markdownPolicy(ctx), 'latex') || containsCode(state, start, end)) return null;
-      return state.tr.replaceWith(
+      const tr = state.tr.replaceWith(
         start,
         end,
         inlineMath
           .type(ctx)
           .create({ value: match[1], delimiter: 'latex', originalValue: match[1], raw: match[0] }),
       );
+      return completeInlineObjectSpacing(ctx, tr, start);
     }),
 );
 

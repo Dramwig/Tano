@@ -18,7 +18,7 @@ const emit = defineEmits<{ editorReady: []; mermaidReady: [] }>();
 const editor = ref<InstanceType<typeof MarkdownEditor>>();
 const host = ref<HTMLElement>();
 const id = useId();
-const ready = ref(false);
+const ready = ref<boolean>();
 let observer: MutationObserver | undefined;
 let sizing: ResizeObserver | undefined;
 let mermaidReady = false;
@@ -54,11 +54,12 @@ watch(() => [props.markdown, props.source, props.folded, props.reveal], () => { 
 </script>
 
 <template>
-  <div ref="host" class="rendered-example" :data-ready="ready" data-renderer="editor" :data-source="source" :data-live-preview="livePreview !== false" :data-fold-demo="folded !== undefined || undefined"
+  <div ref="host" class="rendered-example" :data-ready="ready ?? 'pending'" data-renderer="editor" :data-source="source" :data-live-preview="livePreview !== false" :data-fold-demo="folded !== undefined || undefined"
     inert aria-hidden="true" @click.stop @pointerdown.stop>
     <MarkdownEditor ref="editor" :model-value="markdown" :document-id="`example-${id}`" :readonly="!editable && !source && !reveal"
       :translate="t" :reference-targets="targets" :resolve-image="previewResource" :reveal-markdown="!!source || !!reveal"
-      :show-document-properties="!!properties" :preferences="preferences" :capabilities="capabilities ?? defaultCapabilities" :custom-callout-icon="CalloutIconPicker" @ready="prepare" />
+      :show-document-properties="!!properties" :preferences="preferences" :capabilities="capabilities ?? defaultCapabilities" :custom-callout-icon="CalloutIconPicker"
+      @ready="prepare" @error="ready = false" />
   </div>
 </template>
 

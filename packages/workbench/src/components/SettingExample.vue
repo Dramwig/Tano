@@ -12,6 +12,7 @@ import { blockPreviewMarkdown } from '../preview-samples';
 import RenderedExample from './RenderedExample.vue';
 import SourceExample from './SourceExample.vue';
 import ExampleViewport from './ExampleViewport.vue';
+import InputSpacingExample from './InputSpacingExample.vue';
 import EditorToolbar from './EditorToolbar.vue';
 import DocumentTitle from './DocumentTitle.vue';
 import DocumentOutline from './DocumentOutline.vue';
@@ -20,6 +21,11 @@ import CommentConversation from './CommentConversation.vue';
 import InlineAssistantInput from './InlineAssistantInput.vue';
 const props = defineProps<{ setting: SettingExampleKey }>();
 const example = computed(() => settingExamples[props.setting]);
+const demoWidth = computed(() => {
+  const scene = example.value.scene;
+  if (scene === 'input-spacing') return 245;
+  return ['toolbar', 'outline', 'outline-position', 'discussion'].includes(scene) ? 420 : 320;
+});
 const mermaidReady = ref(false);
 const foldingDemo = ref<HTMLElement>();
 const foldingTravel = ref<number>();
@@ -74,9 +80,9 @@ const phaseLabels = computed(() => {
 <template>
   <div class="setting-example" :data-setting="setting" :data-scene="example.scene">
     <div class="setting-example-stage" aria-hidden="true" inert>
-      <div class="demo-phase" :class="demoClasses"><span class="demo-before">{{ phaseLabels[0] }}</span><span class="demo-after">{{ phaseLabels[1] }}</span></div>
+      <div v-if="example.scene !== 'input-spacing'" class="demo-phase" :class="demoClasses"><span class="demo-before">{{ phaseLabels[0] }}</span><span class="demo-after">{{ phaseLabels[1] }}</span></div>
       <!-- Mermaid renders asynchronously, so reserve the full viewport from the start. -->
-      <ExampleViewport :fit-height="example.scene !== 'mermaid'" :width="['toolbar', 'outline', 'outline-position', 'discussion'].includes(example.scene) ? 420 : 320" :gutter="example.scene === 'folding' ? 24 : 0">
+      <ExampleViewport :fit-height="example.scene !== 'mermaid'" :width="demoWidth" :gutter="example.scene === 'folding' ? 24 : 0">
         <div v-if="example.scene === 'math' || example.scene === 'mermaid'" class="demo-crossfade" :class="demoClasses">
           <RenderedExample class="demo-before" :markdown="source" :source="example.scene" :live-preview="false" />
           <RenderedExample class="demo-after" :markdown="source" :source="example.scene" live-preview @mermaid-ready="mermaidReady = true" />
@@ -102,6 +108,7 @@ const phaseLabels = computed(() => {
           <RenderedExample class="demo-before" markdown="用Tano记录2026年的旅行" :preferences="{ autoSpacing: false }" />
           <RenderedExample class="demo-after" markdown="用Tano记录2026年的旅行" :preferences="{ autoSpacing: true }" />
         </div>
+        <InputSpacingExample v-else-if="example.scene === 'input-spacing'" />
         <div v-else-if="example.scene === 'ai'" class="demo-crossfade">
           <div class="demo-before"><RenderedExample markdown="" /><kbd>space</kbd></div>
           <div class="demo-after"><InlineAssistantInput embedded :anchor="assistantAnchor" state="input" :value="t('帮我整理旅行计划。')" /></div>
@@ -150,8 +157,7 @@ const phaseLabels = computed(() => {
   .demo-folding > .demo-before { animation: demo-fold-expanded 5s step-end infinite; }
   .demo-folding > .demo-after { animation: demo-fold-collapsed 5s step-end infinite; }
   .demo-folding > .demo-before :deep(.tano-prose > ul) { animation: demo-fold-list 5s ease-in-out infinite; }
-  .demo-folding > .demo-before :deep(.tano-prose > h2:last-of-type),
-  .demo-folding > .demo-before :deep(.tano-fold-toggle ~ .tano-fold-toggle) { animation: demo-fold-travel 5s ease-in-out infinite; }
+  .demo-folding > .demo-before :deep(.tano-prose > h2:last-of-type) { animation: demo-fold-travel 5s ease-in-out infinite; }
   .demo-folding > .demo-before :deep(:nth-child(1 of .tano-fold-toggle)) { animation: demo-fold-arrow 5s ease-in-out infinite; }
   .demo-waiting > .demo-before, .demo-waiting > .demo-after,
   .demo-folding.demo-waiting > .demo-before :deep(*) { animation-play-state: paused; }
@@ -171,7 +177,24 @@ const phaseLabels = computed(() => {
   35%, 80% { rotate: none; }
 }
 .demo-crossfade.demo-folding.demo-waiting { visibility: hidden; }
+/* Anchor the moving arrow to its heading so editor layout cannot offset it twice. */
+.demo-folding :deep(.tano-fold-toggle ~ .tano-fold-toggle) { visibility: hidden; }
+.demo-folding :deep(.tano-prose > h2:last-of-type) { position: relative; }
+.demo-folding :deep(.tano-prose > h2:last-of-type)::before {
+  content: '▾';
+  position: absolute;
+  top: 0;
+  left: -10px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 100%;
+  color: var(--muted);
+  font: 400 14px/1 var(--font-ui);
+}
 .demo-crossfade { display: grid; }
+/* Include room for the asynchronously rendered diagram when measuring the source phase. */
+.demo-crossfade.demo-mermaid { min-height: 176px; align-content: start; }
 .actual-floating-toolbar { position: relative; padding-top: 54px; }
 .actual-floating-toolbar > :deep(.contextual-toolbar) { position: absolute; top: 0; left: 8px; }
 .actual-outline-page { display: flex; gap: 24px; align-items: flex-start; }

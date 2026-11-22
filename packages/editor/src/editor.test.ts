@@ -604,7 +604,7 @@ it('supports deleting matches and skips newly inserted matches after single repl
   expect(value.value).toBe('find find find\n');
 });
 it('toggles visual spacing without changing Markdown, selection, history or copied content', async () => {
-  const source = '中文Word与2026年，公式$x$与[[中文引用]]相邻。\n\n`代码A中1`\n';
+  const source = '中文Word与2026年，公式$x$与[[中文引用]]相邻。\n\n[[cite]][[next]] [[spaced]]，[[punctuated]]\n\n`代码A中1`\n';
   const { value, preferences, editor, errors } = await mount(source);
   const view = editor.value!.withContext(ctx => ctx.get(editorViewCtx));
   const before = view.state.doc.toJSON();
@@ -612,7 +612,9 @@ it('toggles visual spacing without changing Markdown, selection, history or copi
   expect(root.querySelector('.tano-auto-space-before')).toBeNull();
   preferences.value = { ...preferences.value, autoSpacing: true };
   await nextTick();
-  expect(root.querySelectorAll('.tano-auto-space-before')).toHaveLength(8);
+  expect(root.querySelectorAll('.tano-auto-space-before')).toHaveLength(9);
+  expect([...root.querySelectorAll('.tano-auto-space-before[data-tano-wiki-target]')]
+    .map(link => link.getAttribute('data-tano-wiki-target'))).toEqual(['中文引用', 'next']);
   expect(root.querySelector('code .tano-auto-space-before')).toBeNull();
   expect(view.state.doc.toJSON()).toEqual(before);
   expect(view.state.selection.eq(selection)).toBe(true);

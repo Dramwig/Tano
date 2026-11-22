@@ -79,6 +79,9 @@ async function place() {
   hint.style.maxWidth = `${Math.min(320, right - left)}px`;
   hint.style.maxHeight = `${bottom - top}px`;
   const rect = button.getBoundingClientRect();
+  // Nested preview triggers share their row's bounds. The preview can cover settings navigation.
+  const leftAnchor = button.closest('[data-tooltip-placement="left"]');
+  hint.toggleAttribute('data-passive', !!leftAnchor);
   const gap = blockExample.value ? 2 : button.closest('.compact-action-menu') ? 3 : 8;
   if (button.dataset.tooltipPlacement === 'right') {
     const edge = button.closest('[data-tooltip-boundary], [role="listbox"]')?.getBoundingClientRect() ?? rect;
@@ -103,9 +106,14 @@ async function place() {
     ready.value = true;
     return;
   }
-  const above = rect.top - hint.offsetHeight - gap;
-  const y = above >= top ? above : rect.bottom + gap;
-  hint.style.left = `${Math.max(left, Math.min(rect.left + (rect.width - hint.offsetWidth) / 2, right - hint.offsetWidth))}px`;
+  const bounds = leftAnchor?.getBoundingClientRect() ?? rect;
+  const besideLeft = bounds.left - hint.offsetWidth - gap;
+  const beside = leftAnchor && besideLeft >= left;
+  const above = bounds.top - hint.offsetHeight - gap;
+  const y = beside ? bounds.top + (bounds.height - hint.offsetHeight) / 2
+    : above >= top ? above : bounds.bottom + gap;
+  const x = beside ? besideLeft : leftAnchor ? bounds.left : rect.left + (rect.width - hint.offsetWidth) / 2;
+  hint.style.left = `${Math.max(left, Math.min(x, right - hint.offsetWidth))}px`;
   hint.style.top = `${Math.max(top, Math.min(y, bottom - hint.offsetHeight))}px`;
   ready.value = true;
 }
@@ -253,10 +261,12 @@ onBeforeUnmount(() => {
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
-.app-tooltip[data-ready='false'] { visibility: hidden; }
+.app-tooltip[data-ready='false'],
+.app-tooltip[data-setting]:has(.example-viewport[data-ready='false']) { visibility: hidden; }
+.app-tooltip[data-passive] { pointer-events: none; }
 @media (prefers-reduced-motion: no-preference) {
-  /* The folding preview keeps its heading glyphs at the same scale on entry. */
-  .app-tooltip[data-ready='true']:not([data-setting='editing-folding']) { animation: tano-tooltip-in var(--motion-spring, 300ms) var(--ease-spring, ease-out) both; }
+  /* Settings previews already animate their content at its display scale. */
+  .app-tooltip[data-ready='true']:not([data-passive]) { animation: tano-tooltip-in var(--motion-spring, 300ms) var(--ease-spring, ease-out) both; }
 }
 .app-tooltip::backdrop { background: transparent; pointer-events: none; }
 .app-tooltip-shortcut { justify-self: center; color: #b8b8b8; }

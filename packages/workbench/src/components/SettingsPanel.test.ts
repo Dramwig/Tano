@@ -973,7 +973,13 @@ beforeAll(async () => {
 it('exposes autocomplete switches and separate Chinese syntax defaults', async () => {
  await openPage('编辑器');
  const section = root.querySelector('section[aria-label="自动补全"]')!;
- expect(section.querySelectorAll('[role="switch"]')).toHaveLength(3);
+ expect(section.querySelectorAll('[role="switch"]')).toHaveLength(4);
+ const spacing = section.querySelector<HTMLButtonElement>('[aria-label="输入时自动补空格"]')!;
+ expect(spacing.getAttribute('aria-checked')).toBe('false');
+ spacing.click();
+ await nextTick();
+ expect(spacing.getAttribute('aria-checked')).toBe('true');
+ expect(editorPreferences.value.autoSpacing).toBe(false);
  expect(root.querySelector('[data-settings-key="editing-chinese-input-quoteMarker"] [role="switch"]')?.getAttribute('aria-checked')).toBe('true');
  expect(root.querySelector('section[aria-label="中文输入优化"]')?.textContent).toContain('全局映射');
 });

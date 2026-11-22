@@ -4,6 +4,7 @@ import { computed, inject, toRefs } from 'vue';
 import { layoutPanes } from '../pane-layout';
 import { workbenchContextKey } from '../workbench-context';
 import { useWindowContext } from '../windows/context';
+import { isFeatureEnabled } from '../features';
 
 const windowContext = useWindowContext();
 const isAuxiliaryWindow = windowContext.id !== 'main';
@@ -292,6 +293,9 @@ const {
   vButterflyPerch,
   vOutlineMotion,
 } = toRefs(context);
+const documentEditorPreferences = computed(() => isFeatureEnabled('markdownSpacingAutocomplete')
+  ? editorPreferences.value
+  : { ...editorPreferences.value, completeTextSpacing: false });
 const compactPanes = computed(() => !isAuxiliaryWindow && mainCompactPanes.value);
 // The fullscreen host is shared across windows; only its owner may mount the panel.
 const ownsFullscreenAssistant = computed(() => {
@@ -1140,7 +1144,7 @@ const ownsFullscreenAssistant = computed(() => {
                         @enter="insertBlockBelowTitle"
                         @comment="paneComments.get(pane.id)?.showDiscussion()"
                       />
-                      <SourceEditor :reference-targets="store.referenceTargets" :capabilities="store.capabilities" :preferences="editorPreferences" :suggestion-marks="suggestions.sourceMarks"
+                      <SourceEditor :reference-targets="store.referenceTargets" :capabilities="store.capabilities" :preferences="documentEditorPreferences" :suggestion-marks="suggestions.sourceMarks"
                         :show-all-line-numbers="showAllLineNumbers"
                         v-if="paneSource(pane.activeId)"
                         :key="active.id"
@@ -1171,7 +1175,7 @@ const ownsFullscreenAssistant = computed(() => {
                         :show-document-properties="showDocumentProperties"
                         :capabilities="store.capabilities"
                         :reference-targets="store.referenceTargets"
-                        :preferences="editorPreferences"
+                        :preferences="documentEditorPreferences"
                         :translate="t"
                         :extension="
                           active.id === store.active?.id ? editing.active?.extension : undefined

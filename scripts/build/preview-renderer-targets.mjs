@@ -22,6 +22,7 @@ export const settingTargets = {
   math: '.demo-after .tano-live-math-preview .katex', mermaid: '.demo-after .tano-live-mermaid-preview svg',
   folding: '.demo-after .tano-folded-heading-content', toolbar: '.demo-after .contextual-toolbar.editor-toolbar',
   wrapping: '.demo-after .cm-editor', spacing: '.demo-after .tano-prose', ai: '.demo-after .inline-assistant-input input',
+  'input-spacing': '.input-spacing-source',
   title: '.demo-after .document-title-input', properties: '.demo-after .frontmatter-panel[open] .frontmatter-property',
   discussion: '.demo-after .comment-conversation .comment-avatar', outline: '.demo-after .outline-marker',
   'outline-position': '.demo-after .outline-marker', recognition: '.demo-after .math-preview .katex',

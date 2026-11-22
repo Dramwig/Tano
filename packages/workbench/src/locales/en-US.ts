@@ -9,6 +9,9 @@ export const englishMessages: Readonly<Record<string, string>> = {
   "列表与引用续行": "Continue lists and quotes",
   "补全代码块与公式块": "Close code and math blocks",
   "成对符号自动闭合": "Automatically close symbol pairs",
+  "输入时自动补空格": "Insert spaces while typing",
+  "空格会写入 Markdown 原文。": "The inserted spaces are saved in Markdown.",
+  "输入时在中文与英文、数字、行内公式及引用之间补空格，写入 Markdown 原文。可视化与源码模式通用。": "Insert spaces between Chinese text and Latin letters, numbers, inline math, or references. Spaces are saved in Markdown in both visual and source mode.",
   "语法位置识别": "Syntax recognition",
   "全局映射": "Global mappings",
   "行首 》 识别为引用": "Recognize leading 》 as a quote",
@@ -17,7 +20,7 @@ export const englishMessages: Readonly<Record<string, string>> = {
   "双链左右括号分别识别": "Recognize wiki-link opening and closing brackets separately",
   "空行 、 打开块菜单（仅可视化编辑）": "Open block menu with 、 (visual editor only)",
   "中文间隔号 · 映射为 `": "Map middle dot · to `",
-  "可视化编辑已内置列表续行和语法识别；以下选项让源码模式获得同样的输入体验。仅保存在当前设备。": "The visual editor includes list continuation and syntax recognition. These options add similar source editing behavior. Saved on this device only.",
+  "可视化编辑内置列表续行与语法识别。设置仅保存在当前设备。": "The visual editor has built-in list continuation and syntax recognition. Settings are saved on this device.",
   "在 Markdown 语法位置把中文符号识别为语法，默认开启；全局映射会转换所有位置的符号，默认关闭。可视化与源码模式通用。": "Recognize Chinese symbols at Markdown syntax positions by default. Global mappings convert symbols everywhere and are off by default. Applies to visual and source editing.",
 
   "缺少{0}；请安装或更新宿主。": "Missing {0}. Install or update the host application.",

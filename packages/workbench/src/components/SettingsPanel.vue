@@ -35,6 +35,7 @@ import {
   X,
 } from 'lucide-vue-next';
 import type { SettingsPage, SettingsPageContext } from '../runtime';
+import { isFeatureEnabled } from '../features';
 import type { PluginSettingsPage, PluginInteraction } from '../plugins/workbench';
 import PluginSurface from './PluginSurface.vue';
 import UpdatePanel from './UpdatePanel.vue';
@@ -187,6 +188,7 @@ function setWrapping(key: keyof typeof wrapping.value, enabled: boolean) {
   emit('update:editorPreferences', { ...display.value, selectionWrapping: { ...wrapping.value, [key]: enabled } });
 }
 const autocomplete = computed(() => normalizeMarkdownAutocomplete(display.value.markdownAutocomplete));
+const spacingAutocompleteAvailable = isFeatureEnabled('markdownSpacingAutocomplete');
 function setMarkdownAutocomplete(key: keyof typeof autocomplete.value, enabled: boolean) {
  emit('update:editorPreferences', { ...display.value, markdownAutocomplete: { ...autocomplete.value, [key]: enabled } });
 }
@@ -394,6 +396,8 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('editing', 'editing-wrapping', '输入符号包裹选区', '选中文字后输入符号，自动补齐两端。可视化与源码模式通用。', 'selection wrapping symbols'),
   ...selectionWrappingOptions.map(option => settingSearchEntry('editing', `editing-wrapping-${option.key}`, option.label, option.example, 'selection wrapping Markdown')),
   ...markdownAutocompleteOptions.map(option => settingSearchEntry('editing', `editing-autocomplete-${option.key}`, option.label, '自动补全 列表 续行 代码块 括号 autocomplete list continuation fence bracket')),
+  ...(spacingAutocompleteAvailable ? [settingSearchEntry('editing', 'editing-autocomplete-spacing', '输入时自动补空格',
+    '输入时在中文与英文、数字、行内公式及引用之间补空格，写入 Markdown 原文。可视化与源码模式通用。', '正文自动间距 中英文 spacing')] : []),
   ...[...chineseSyntaxOptions, ...chineseInputOptions].map(option => settingSearchEntry('editing', `editing-chinese-input-${option.key}`, option.label,
     `${option.input} → ${option.output}`, '中文输入优化 输入法 标点 符号映射 Chinese IME punctuation')),
   ...shortcutDefinitions.map(item => settingSearchEntry('shortcuts', `shortcut-${item.id}`, item.label, 'scope' in item ? item.scope : '', 'shortcut keybinding keyboard')),
@@ -1018,7 +1022,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
           </section>
           <section v-if="page === 'editing'" class="settings-section" :aria-label="t('自动补全')">
             <h3>{{ t('自动补全') }}</h3>
-            <p class="settings-local-note">{{ t('可视化编辑已内置列表续行和语法识别；以下选项让源码模式获得同样的输入体验。仅保存在当前设备。') }}</p>
+            <p class="settings-local-note">{{ t('可视化编辑内置列表续行与语法识别。设置仅保存在当前设备。') }}</p>
             <div class="settings-card">
               <div v-for="option in markdownAutocompleteOptions" :key="option.key" class="settings-row settings-row-compact"
                 :data-settings-key="`editing-autocomplete-${option.key}`">
@@ -1033,6 +1037,16 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
                 <button type="button" class="settings-switch" role="switch" :aria-label="t(option.label)"
                   :class="{ on: autocomplete[option.key] }" :aria-checked="autocomplete[option.key]"
                   @click="setMarkdownAutocomplete(option.key, !autocomplete[option.key])"><span /></button>
+              </div>
+              <div v-if="spacingAutocompleteAvailable" class="settings-row" data-settings-key="editing-autocomplete-spacing"
+                v-bind="settingHint('editing-autocomplete-spacing')">
+                <div>
+                  <strong>{{ t('输入时自动补空格') }}</strong>
+                  <p>{{ t('输入时在中文与英文、数字、行内公式及引用之间补空格，写入 Markdown 原文。可视化与源码模式通用。') }}</p>
+                </div>
+                <button type="button" class="settings-switch" role="switch" :aria-label="t('输入时自动补空格')"
+                  :class="{ on: display.completeTextSpacing }" :aria-checked="display.completeTextSpacing ?? false"
+                  @click="emit('update:editorPreferences', { ...display, completeTextSpacing: !display.completeTextSpacing })"><span /></button>
               </div>
             </div>
           </section>
@@ -1241,6 +1255,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
                 class="settings-row settings-row-compact"
                 :data-settings-key="`documents-${feature.key}`"
                 :data-tooltip="t(feature.label)" :data-tooltip-example="feature.key"
+                data-tooltip-placement="left"
               >
                 <div class="settings-inline-copy">
                   <strong>{{ t(feature.label) }}</strong>

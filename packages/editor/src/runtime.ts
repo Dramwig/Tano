@@ -52,6 +52,8 @@ export interface EditorPreferences {
   copyFormat?: CopyFormat;
   /** Device-local visual spacing; never inserts characters into Markdown. */
   autoSpacing?: boolean;
+  /** Device-local autocomplete that inserts spaces into Markdown while typing. */
+  completeTextSpacing?: boolean;
   previewMathWhileEditing: boolean;
   /** Device-local Mermaid preview while editing revealed Markdown source. */
   previewMermaidWhileEditing?: boolean;
@@ -90,6 +92,7 @@ export const defaultCapabilities: WorkspaceCapabilities = {
 export const defaultEditorPreferences: EditorPreferences = {
   copyFormat: 'markdown',
   autoSpacing: false,
+  completeTextSpacing: false,
   previewMathWhileEditing: true,
   previewMermaidWhileEditing: true,
   folding: true,
@@ -184,12 +187,15 @@ export function workspaceWrapping(options: Partial<SelectionWrappingPreferences>
 }
 
 // Policy belongs to the codec instance, never to a process-wide current workspace.
-const policies = new WeakMap<Ctx, () => WorkspaceCapabilities>();
-export function configureMarkdownRuntime(ctx: Ctx, policy: () => WorkspaceCapabilities) {
-  policies.set(ctx, policy);
+const runtimes = new WeakMap<Ctx, { policy: () => WorkspaceCapabilities; completeSpacing?: () => boolean }>();
+export function configureMarkdownRuntime(ctx: Ctx, policy: () => WorkspaceCapabilities, completeSpacing?: () => boolean) {
+  runtimes.set(ctx, { policy, completeSpacing });
 }
 export function markdownPolicy(ctx: Ctx) {
-  return policies.get(ctx)?.() ?? defaultCapabilities;
+  return runtimes.get(ctx)?.policy() ?? defaultCapabilities;
+}
+export function completesMarkdownSpacing(ctx: Ctx) {
+  return runtimes.get(ctx)?.completeSpacing?.() === true;
 }
 export function newMathSyntax(policy: WorkspaceCapabilities) {
   return policy.mathSyntax === 'preserve'
