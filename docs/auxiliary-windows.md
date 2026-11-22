@@ -109,6 +109,8 @@ Tauri 的 Create 响应要求 WebviewWindow，本实现使用对应 builder。�
 
 ## 验证记录
 
+本文引用的辅助窗口日志已归档到仓库本地的 `artifacts/auxiliary-windows/`，可按下文的文件名查阅。
+
 以下记录已经结束的检查。桌面工具无法完成的项目在逐项验收表中注明。
 
 | 命令 | 实际结果 |
