@@ -379,6 +379,38 @@ test('liquid glass keeps the docked toolbar transparent above both theme palette
   }
 });
 
+test('liquid glass islands use the same single rim on the sidebar and tabbed page', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1296, height: 944 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await prepare(page);
+  await page.evaluate(() => {
+    const { appearance, appearanceController, openSettingsTab } = window.workbench;
+    appearanceController.select({ workspaceId: appearance.workspaceId, kind: 'preset', id: 'builtin:liquid' });
+    window.workbench.developerMode = true;
+    openSettingsTab('appearance');
+  });
+  const settings = page.locator('.settings-tabbed');
+  const sidebar = page.locator('.sidebar-surface[data-liquid-glass]');
+  const card = page.locator('.workspace-card[data-liquid-joined-card]');
+  const rim = page.locator('.liquid-joined-outline path');
+  for (const [mode, wallpaper] of [['light', '云层'], ['dark', '调试条纹']]) {
+    await settings.getByRole('combobox', { name: '显示模式', exact: true }).selectOption(mode);
+    await settings.getByRole('button', { name: wallpaper, exact: true }).click();
+    await expect(settings.locator('.glass-wallpaper')).toHaveAttribute('aria-busy', 'false');
+    await expect(rim).toHaveCSS('stroke-width', '1px');
+    const color = await rim.evaluate(path => getComputedStyle(path).stroke);
+    await expect(sidebar).toHaveCSS('box-shadow', `${color} 0px 0px 0px 1px inset`);
+    await expect(card).toHaveCSS('box-shadow', 'none');
+    for (const surface of [sidebar, card]) {
+      const id = await surface.getAttribute('data-liquid-glass');
+      const lens = page.locator(`.liquid-lens[style*="url(#tano-liquid-${id})"]`);
+      await expect(lens).toHaveCSS('box-shadow', 'none');
+      await expect(lens).toHaveCSS('backdrop-filter', /tano-liquid-/);
+    }
+    await page.screenshot({ path: testInfo.outputPath(`island-rims-${mode}.png`) });
+  }
+});
+
 test('the selected liquid glass tab and its page share one surface', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await prepare(page);
