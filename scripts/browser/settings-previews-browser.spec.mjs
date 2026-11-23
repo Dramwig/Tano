@@ -22,7 +22,7 @@ test('theme presets only bounce when the user switches presets', async ({ page }
   const nav = page.locator('.settings-nav');
   const presets = page.locator('.theme-preset-quick-row');
   const current = presets.getByRole('button', { pressed: true });
-  const paper = presets.getByRole('button', { name: '应用预设：纸感' });
+  const islands = presets.getByRole('button', { name: '应用预设：卡片岛' });
   const selectAndReadAnimations = preset => preset.evaluate(async button => {
     // Activation through click excludes the separate pointer and keyboard press effects.
     button.click();
@@ -35,20 +35,21 @@ test('theme presets only bounce when the user switches presets', async ({ page }
   await nav.getByRole('button', { name: '外观', exact: true }).click();
   await expect(current).toHaveAccessibleName('应用预设：同页默认');
   await expect(current).toHaveCSS('animation-name', 'none');
-  expect(await selectAndReadAnimations(paper)).toEqual([['0.94', '1']]);
-  await expect(paper).toHaveAttribute('aria-pressed', 'true');
+  expect(await selectAndReadAnimations(islands)).toEqual([['0.94', '1']]);
+  await expect(islands).toHaveAttribute('aria-pressed', 'true');
 
   await nav.getByRole('button', { name: '编辑器', exact: true }).click();
   await expect(current).toHaveCount(0);
   await nav.getByRole('button', { name: '外观', exact: true }).click();
-  await expect(current).toHaveAccessibleName('应用预设：纸感');
+  await expect(current).toHaveAccessibleName('应用预设：卡片岛');
   await expect(current).toHaveCSS('animation-name', 'none');
-  expect(await selectAndReadAnimations(paper)).toEqual([]);
+  expect(await selectAndReadAnimations(islands)).toEqual([]);
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  const islands = presets.getByRole('button', { name: '应用预设：卡片岛' });
-  expect(await selectAndReadAnimations(islands)).toEqual([]);
-  await expect(islands).toHaveAttribute('aria-pressed', 'true');
+  // The default preset is now the "previous" card beside the current one.
+  const defaults = presets.getByRole('button', { name: '应用预设：同页默认' });
+  expect(await selectAndReadAnimations(defaults)).toEqual([]);
+  await expect(defaults).toHaveAttribute('aria-pressed', 'true');
 });
 
 async function animationFrame(example, time) {

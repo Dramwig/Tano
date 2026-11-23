@@ -7,7 +7,7 @@ import ThemePresetPreview from './ThemePresetPreview.vue';
 defineProps<{ preset: AppearancePreset; selected?: boolean; borderless?: boolean; compact?: boolean }>();
 const emit = defineEmits<{ select: [preset: AppearancePreset] }>();
 const missingId = useId();
-const labels = { color: '配色主题', icons: '文件与目录图标', layout: '布局风格', shape: '形态与密度' };
+const labels = { color: '配色主题', icons: '文件与目录图标', layout: '布局风格', material: '材质', shape: '形态与密度' };
 </script>
 
 <template>

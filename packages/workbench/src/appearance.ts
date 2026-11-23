@@ -5,7 +5,11 @@ import { FileIconRegistry } from './file-icons/registry';
 import { applyAppearance, fixedColorMode, parseThemePreference, type ThemePreference } from './theme';
 import type { InstalledObjectPlugin } from './workspace-plugins';
 
-export const appearanceKinds = ['color', 'icons', 'layout', 'shape'] as const;
+export const appearanceKinds = ['color', 'icons', 'layout', 'material', 'shape'] as const;
+/** Kinds a theme plugin may set. Materials are drawn by the host, so plugins cannot contribute or reference them. */
+const pluginPresetKinds = ['color', 'icons', 'layout', 'shape'] as const;
+/** The frosted-glass material turns the sidebar and page sheets of any layout into translucent glass. */
+export const glassMaterial = 'builtin:frost';
 export type AppearanceKind = typeof appearanceKinds[number];
 export const builtinDefault = 'builtin:tano';
 export const builtinAppearance: AppearanceBuiltins = {
@@ -14,6 +18,7 @@ export const builtinAppearance: AppearanceBuiltins = {
     { id: 'builtin:paper', label: '纸感', structure: 'document', surface: 'paper', gap: 24, pageWidth: 800 },
   ],
   colors: builtinColors,
+  materials: [{ id: glassMaterial, label: '磨砂玻璃' }],
   shapes: [
     { id: 'builtin:rounded', label: '圆润宽松', tokens: { 'radius-control': '10px', 'radius-card': '16px', 'radius-dialog': '20px', 'space-panel': '22px', 'space-row-gap': '6px',
       'overlay-shadow': '0px 1px 2px #1b263a14, 0px 8px 24px #1b263a14', 'dialog-shadow': '0px 24px 64px #1b263a33' } },
@@ -24,9 +29,10 @@ export const builtinAppearance: AppearanceBuiltins = {
     { id: 'builtin:crisp', label: '直角紧凑', tokens: { 'radius-control': '0px', 'radius-card': '0px', 'radius-dialog': '0px', 'space-panel': '12px', 'space-control-y': '4px', 'overlay-shadow': 'none', 'dialog-shadow': 'none' } },
   ],
   presets: [
-    { id: builtinDefault, label: '同页默认', selected: { color: builtinDefault, icons: builtinDefault, layout: builtinDefault, shape: builtinDefault } },
-    { id: 'builtin:islands', label: '卡片岛', selected: { color: 'builtin:mist', icons: builtinDefault, layout: 'builtin:islands', shape: 'builtin:rounded' } },
-    { id: 'builtin:paper', label: '纸感', selected: { color: 'builtin:ink', icons: builtinDefault, layout: 'builtin:paper', shape: 'builtin:print' } },
+    { id: builtinDefault, label: '同页默认', selected: { color: builtinDefault, icons: builtinDefault, layout: builtinDefault, material: builtinDefault, shape: builtinDefault } },
+    { id: 'builtin:islands', label: '卡片岛', selected: { color: 'builtin:mist', icons: builtinDefault, layout: 'builtin:islands', material: builtinDefault, shape: 'builtin:rounded' } },
+    { id: 'builtin:paper', label: '纸感', selected: { color: 'builtin:ink', icons: builtinDefault, layout: 'builtin:paper', material: builtinDefault, shape: 'builtin:print' } },
+    { id: 'builtin:frost', label: '磨砂玻璃', selected: { color: 'builtin:haze', icons: builtinDefault, layout: 'builtin:islands', material: glassMaterial, shape: 'builtin:rounded' } },
   ],
 };
 /** The host owns the catalog. The protocol only validates builtin reference syntax. */
@@ -34,6 +40,8 @@ export interface AppearanceBuiltins {
   colors?: readonly ColorThemeDefinition[];
   layouts: readonly LayoutThemeDefinition[];
   shapes: readonly ShapeThemeDefinition[];
+  /** Host-drawn card materials besides the default flat one. */
+  materials?: readonly AppearanceChoice[];
   presets: readonly Pick<AppearancePreset, 'id' | 'label' | 'selected'>[];
 }
 export interface AppearanceChoice { id: string; label: string }
@@ -48,6 +56,8 @@ export interface AppearancePreset extends AppearanceChoice {
   missing?: { kind: AppearanceKind; id: string }[];
   previews?: AppearancePreview[];
   structure?: LayoutThemeDefinition['structure'];
+  /** Set when the preset shows frosted glass, so the preview can draw it. */
+  material?: 'frost';
 }
 export interface AppearanceSnapshot {
   workspaceId: string;
@@ -57,6 +67,7 @@ export interface AppearanceSnapshot {
   icons: AppearanceChoice[];
   layouts: LayoutThemeDefinition[];
   shapes: AppearanceChoice[];
+  materials: AppearanceChoice[];
   presets: AppearancePreset[];
   presetId?: string;
   currentPreset?: AppearancePreset;
@@ -68,8 +79,8 @@ export interface AppearanceSnapshot {
   shape?: ShapeThemeDefinition;
   errors: string[];
 }
-const defaults = (): Record<AppearanceKind, string> => ({ color: builtinDefault, icons: builtinDefault, layout: builtinDefault, shape: builtinDefault });
-const initial = (): AppearanceSnapshot => ({ workspaceId: '', scope: 'user', mode: 'system', colors: [], icons: [], layouts: [], shapes: [], presets: [], selected: defaults(), active: defaults(), errors: [] });
+const defaults = (): Record<AppearanceKind, string> => ({ color: builtinDefault, icons: builtinDefault, layout: builtinDefault, material: builtinDefault, shape: builtinDefault });
+const initial = (): AppearanceSnapshot => ({ workspaceId: '', scope: 'user', mode: 'system', colors: [], icons: [], layouts: [], shapes: [], materials: [], presets: [], selected: defaults(), active: defaults(), errors: [] });
 interface Preferences { selected: Record<AppearanceKind, string>; mode: ThemePreference; recentPresetIds?: string[] }
 interface WorkspacePreferences { selected: Record<AppearanceKind, string>; enabled: boolean; recentPresetIds?: string[] }
 function readPresetHistory(value: unknown): string[] {
@@ -136,8 +147,9 @@ export class AppearanceController {
     this.layouts = new Map(this.builtins.layouts.map(item => [item.id, item]));
     this.shapes = new Map(this.builtins.shapes.map(item => [item.id, item]));
     const next: AppearanceSnapshot = { ...initial(), workspaceId, ...this.preferences(workspaceId), colors: (this.builtins.colors ?? []).map(({ id, label }) => ({ id, label })), layouts: [...this.builtins.layouts], shapes: [...this.builtins.shapes],
+      materials: [...(this.builtins.materials ?? [])],
       presets: this.builtins.presets.map(preset => ({ ...preset, selected: { ...preset.selected }, ...this.colorPreview(preset.selected.color),
-        structure: preset.selected.layout ? this.layouts.get(preset.selected.layout)?.structure ?? 'continuous' : undefined })) };
+        ...this.layoutPreview(preset.selected) })) };
     if (workspaceId) for (const plugin of installed) {
       if (!plugin.enabled || (plugin.manifest.manifestVersion === 2 && !plugin.authorized) || !plugin.manifest.appearance) continue;
       const disposers: (() => void)[] = [];
@@ -157,13 +169,12 @@ export class AppearanceController {
         for (const icons of contribution.icons ?? []) next.icons.push({ id: `${plugin.manifest.id}:${icons.id}`, label: `${icons.label} · ${plugin.manifest.name}` });
         for (const preset of contribution.presets ?? []) {
           const selected: AppearancePreset['selected'] = {};
-          for (const kind of appearanceKinds) {
+          for (const kind of pluginPresetKinds) {
             const reference = preset[kind];
             if (reference !== undefined) selected[kind] = reference.startsWith('builtin:') ? reference : `${plugin.manifest.id}:${reference}`;
           }
           next.presets.push({ id: `${plugin.manifest.id}:${preset.id}`, label: `${preset.label} · ${plugin.manifest.name}`, selected,
-            ...this.colorPreview(selected.color),
-            structure: selected.layout ? this.layouts.get(selected.layout)?.structure ?? 'continuous' : undefined });
+            ...this.colorPreview(selected.color), ...this.layoutPreview(selected) });
         }
         this.disposers.push(...disposers);
       } catch {
@@ -180,6 +191,13 @@ export class AppearanceController {
     }
     this.activate(next);
   }
+  /** A preset that leaves the layout alone previews no structure; the current combination always has one. */
+  private layoutPreview(selected: Partial<Record<AppearanceKind, string>>, current = false): Pick<AppearancePreset, 'structure' | 'material'> {
+    const material = selected.material === glassMaterial ? { material: 'frost' as const } : {};
+    if (!selected.layout && !current) return { structure: undefined, ...material };
+    const layout = selected.layout ? this.layouts.get(selected.layout) : undefined;
+    return { structure: layout?.structure ?? 'continuous', ...material };
+  }
   /** Keep both palettes in light-to-dark order, independent of the active appearance. */
   private colorPreview(id?: string): Pick<AppearancePreset, 'previews'> {
     const color = id === builtinDefault ? { light: {}, dark: {} } : id ? this.colors.get(id) : undefined;
@@ -187,12 +205,14 @@ export class AppearanceController {
     return { previews: (['light', 'dark'] as const).flatMap(mode => {
       const tokens = color[mode];
       if (tokens === undefined) return [];
-      return [{ mode, colors: Object.fromEntries(['paper', 'surface', 'green', 'text', 'line', 'control-border', 'muted', 'sidebar', 'selected']
+      return [{ mode, colors: Object.fromEntries(['paper', 'surface', 'green', 'text', 'line', 'control-border', 'muted', 'sidebar', 'selected',
+        'syntax-blue', 'syntax-purple', 'syntax-teal']
         .flatMap(key => { const value = tokens[key as keyof typeof tokens]; return value ? [[`--preview-${key}`, value]] : []; })) }];
     }) };
   }
   private available(state: AppearanceSnapshot, kind: AppearanceKind, id: string) {
-    return id === builtinDefault || (kind === 'color' ? state.colors : kind === 'icons' ? state.icons : kind === 'layout' ? state.layouts : state.shapes).some(choice => choice.id === id);
+    return id === builtinDefault || (kind === 'color' ? state.colors : kind === 'icons' ? state.icons : kind === 'layout' ? state.layouts
+      : kind === 'material' ? state.materials : state.shapes).some(choice => choice.id === id);
   }
   select(selection: AppearanceSelection) {
     const state = this.state.value;
@@ -240,9 +260,9 @@ export class AppearanceController {
       .every(kind => preset.selected[kind] === undefined || (preset.selected[kind] === next.selected[kind] && next.selected[kind] === next.active[kind])))?.id;
     const preset = next.presets.find(item => item.id === next.presetId);
     next.currentPreset = { id: preset?.id ?? 'current', label: preset?.label ?? '当前搭配', selected: { ...next.active },
-      ...this.colorPreview(next.active.color), structure: this.layouts.get(next.active.layout)?.structure ?? 'continuous' };
+      ...this.colorPreview(next.active.color), ...this.layoutPreview(next.active, true) };
     this.registry.select(next.active.icons);
-    this.apply(next.color, next.layout, next.shape, next.mode);
+    this.apply(next.color, next.layout, next.shape, next.mode, next.active.material === builtinDefault ? undefined : next.active.material);
     this.state.value = next;
   }
   dispose() {

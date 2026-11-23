@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeAll, afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createApp, h, nextTick, type App } from 'vue';
-import { AppearanceController } from '../appearance';
+import { AppearanceController, builtinAppearance } from '../appearance';
 import { FileIconRegistry } from '../file-icons/registry';
 import { setUiLocale, preloadUiLocale } from '../i18n';
 import ThemePresetPicker from './ThemePresetPicker.vue';
@@ -27,6 +27,12 @@ async function open() { more().click(); await nextTick(); await nextTick(); }
 const pressed = () => [...root.querySelectorAll('.theme-preset-quick-row [aria-pressed="true"]')].map(card => card.getAttribute('data-preset-id'));
 
 it('lists every preset in catalog order without a collapsed panel when they fit in one row', async () => {
+  app.unmount(); controller.dispose();
+  controller = new AppearanceController(new FileIconRegistry(), 'alice', localStorage, vi.fn(),
+    { ...builtinAppearance, presets: builtinAppearance.presets.slice(0, 3) });
+  controller.sync('one', []);
+  app = createApp(() => h(ThemePresetPicker, { appearance: controller.state.value, onSelect: selection => controller.select(selection) }));
+  app.mount(root);
   expect(rowIds()).toEqual(['builtin:tano', 'builtin:islands', 'builtin:paper']);
   expect(pressed()).toEqual(['builtin:tano']);
   expect(more()).toBeNull();
@@ -37,6 +43,22 @@ it('lists every preset in catalog order without a collapsed panel when they fit 
   expect(rowIds()).toEqual(['builtin:tano', 'builtin:islands', 'builtin:paper']);
   expect(pressed()).toEqual(['builtin:paper']);
   expect(more()).toBeNull();
+});
+
+it('keeps three cards in the row and moves further presets such as frosted glass into more', async () => {
+  expect(root.querySelector('.theme-preset-quick-row')?.children).toHaveLength(3);
+  expect(rowIds()).toEqual(['builtin:tano', 'builtin:islands']);
+  expect(pressed()).toEqual(['builtin:tano']);
+  await open();
+  expect([...root.querySelectorAll('.theme-preset-popover [data-preset-id]')].map(card => card.getAttribute('data-preset-id')))
+    .toEqual(['builtin:paper', 'builtin:frost']);
+  expect(root.querySelector('.theme-preset-popover [data-preset-id="builtin:frost"] [data-preview-surface="frost"]')).not.toBeNull();
+  expect(root.querySelector('.theme-preset-popover [data-preset-id="builtin:paper"] [data-preview-surface]')).toBeNull();
+  root.querySelector<HTMLButtonElement>('.theme-preset-popover [data-preset-id="builtin:frost"]')!.click();
+  await nextTick();
+  expect(rowIds()).toEqual(['builtin:frost', 'builtin:tano']);
+  expect(pressed()).toEqual(['builtin:frost']);
+  expect(root.querySelector('.theme-preset-quick-row')?.textContent).toContain('磨砂玻璃');
 });
 
 async function customize() {
@@ -54,11 +76,11 @@ it('collapses into current, previous and more once the choices no longer fit', a
   await open();
   expect(more().getAttribute('aria-expanded')).toBe('true');
   expect([...root.querySelectorAll('.theme-preset-popover [data-preset-id]')].map(card => card.getAttribute('data-preset-id')))
-    .toEqual(['builtin:tano', 'builtin:islands']);
+    .toEqual(['builtin:tano', 'builtin:islands', 'builtin:frost']);
   root.querySelector<HTMLButtonElement>('.theme-preset-popover [data-preset-id="builtin:islands"]')!.click();
   await nextTick();
   expect(root.querySelector('.theme-preset-popover')).toBeNull();
-  expect(rowIds()).toEqual(['builtin:tano', 'builtin:islands', 'builtin:paper']);
+  expect(rowIds()).toEqual(['builtin:islands', 'builtin:paper']);
   expect(pressed()).toEqual(['builtin:islands']);
 });
 

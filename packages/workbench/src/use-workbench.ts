@@ -387,6 +387,8 @@ import { pageRoutePath, pageRouteUrl, parsePageRoute } from './web-navigation';
 import { applyTheme } from './theme';
 
 import { AppearanceController } from './appearance';
+import { GlassWallpaperController, indexedDbWallpaperStore, setGlassWallpaper } from './glass-wallpaper';
+import { builtinThumbnail, decodeImage, normalizeImport, paintBuiltin, renderWallpaper } from './glass-wallpaper-render';
 
 import LayoutDocumentChrome from './components/LayoutDocumentChrome.vue';
 
@@ -967,7 +969,17 @@ watch([() => store.workspace?.id ?? '', () => store.installedPlugins, () => stor
 onBeforeUnmount(() => appearanceController.dispose());
 const theme = computed<ThemePreference>({ get: () => appearance.value.mode,
   set: mode => appearanceController.select({ workspaceId: appearance.value.workspaceId, kind: 'mode', id: mode }) });
-const onAppearanceStorage = (event: StorageEvent) => appearanceController.refreshPreferences(event.key);
+// The frosted-glass background image is a device preference; it publishes CSS variables on <html>.
+const glassWallpaperController = new GlassWallpaperController(useWorkbenchRuntime().plugins?.principal ?? 'device', {
+  getItem: key => window.localStorage.getItem(key), setItem: (key, value) => window.localStorage.setItem(key, value),
+}, indexedDbWallpaperStore(), { normalizeImport, decode: decodeImage, builtin: id => paintBuiltin(id), thumbnail: builtinThumbnail, render: renderWallpaper });
+setGlassWallpaper(glassWallpaperController);
+onMounted(() => { void glassWallpaperController.load(); });
+onBeforeUnmount(() => { glassWallpaperController.dispose(); setGlassWallpaper(undefined); });
+const onAppearanceStorage = (event: StorageEvent) => {
+  appearanceController.refreshPreferences(event.key);
+  glassWallpaperController.refreshPreferences(event.key);
+};
 onMounted(() => window.addEventListener('storage', onAppearanceStorage));
 // Delegated press/hover springs for every button in the workbench and its
 // teleported surfaces (dialogs, menus, settings).

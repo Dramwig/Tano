@@ -107,7 +107,7 @@ async function toggleMaximize() {
   align-items: stretch;
   height: var(--desktop-titlebar-height);
   left: 0;
-  background: var(--sidebar);
+  background: var(--workbench-back);
   color: var(--text-secondary);
   user-select: none;
   padding-right: 138px;
@@ -214,7 +214,7 @@ async function toggleMaximize() {
   border: 0;
   border-radius: 0;
   overflow: visible;
-  background: var(--sidebar);
+  background: var(--workbench-back);
   color: var(--text-secondary);
   display: flex;
   align-items: stretch;
@@ -296,17 +296,8 @@ async function toggleMaximize() {
 .workspace-native-tabs .workspace-pane-top-right > .workspace-tabbar {
   padding-right: 138px;
 }
-/* Round the document surface below its tab strip without clipping menus. */
-.workspace-native-tabs .workspace-pane::after {
-  content: '';
-  position: absolute;
-  top: var(--workspace-pane-tabbar-height);
-  left: 0;
-  width: 8px;
-  height: 8px;
-  background: radial-gradient(circle at bottom right, transparent 8px, var(--sidebar) 8.5px);
-  pointer-events: none;
-}
+/* Round each page surface below its tab strip (the surface is a real element, so menus are not clipped). */
+.workspace-native-tabs { --workspace-pane-surface-radius: 8px; }
 .workspace-window-drag {
   flex: 1 0 24px;
   min-width: 24px;

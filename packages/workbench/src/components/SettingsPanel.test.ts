@@ -507,9 +507,9 @@ it('offers light, dark, and system display modes', async () => {
 });
 
 it.each(['light', 'dark'] as const)('limits display mode options for a %s-only theme and restores the user preference for dual themes', async mode => {
-  const selected = { color: 'sample:fixed', icons: 'builtin:tano', layout: 'builtin:tano', shape: 'builtin:tano' };
+  const selected = { color: 'sample:fixed', icons: 'builtin:tano', layout: 'builtin:tano', material: 'builtin:tano', shape: 'builtin:tano' };
   const palette = mode === 'light' ? { light: {} } : { dark: {} };
-  appearance.value = { workspaceId: 'one', scope: 'workspace', mode: 'system', colors: [], icons: [], layouts: [], shapes: [], presets: [],
+  appearance.value = { workspaceId: 'one', scope: 'workspace', mode: 'system', colors: [], icons: [], layouts: [], materials: [], shapes: [], presets: [],
     selected, active: selected, color: { id: 'sample:fixed', label: '单模式', ...palette }, errors: [] };
   await openPage('外观');
   const select = root.querySelector<HTMLSelectElement>('[aria-label="显示模式"]')!;
@@ -943,8 +943,8 @@ it('offers math recognition separately from output and respects math and write p
 
 
 it('emits a single complete-preset command and reflects matched or customized state', async () => {
-  const selected = { color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', shape: 'builtin:tano' };
-  appearance.value = { workspaceId: 'one', scope: 'user', mode: 'system', shapes: [], colors: [], icons: [], layouts: [],
+  const selected = { color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', material: 'builtin:tano', shape: 'builtin:tano' };
+  appearance.value = { workspaceId: 'one', scope: 'user', mode: 'system', shapes: [], colors: [], icons: [], layouts: [], materials: [],
     presets: [{ id: 'builtin:tano', label: '同页默认', selected }], presetId: 'builtin:tano', selected, active: selected, errors: [] };
   await openPage('外观'); await nextTick();
   const card = root.querySelector<HTMLButtonElement>('[data-preset-id="builtin:tano"]')!;
@@ -970,8 +970,9 @@ it('emits a single complete-preset command and reflects matched or customized st
   expect(root.textContent).toContain('偏好在工作区间共用');
 });
 it('selects colors and icons independently and explains unavailable selections', async () => {
-  appearance.value = { workspaceId: 'one', scope: 'user', mode: 'system', shapes: [], colors: [{ id: 'paper:paper', label: '纸页' }], icons: [{ id: 'lines:lines', label: '线条' }], layouts: [...builtinAppearance.layouts], presets: [],
-    selected: { color: 'builtin:tano', icons: 'missing', layout: 'builtin:tano', shape: 'builtin:tano' }, active: { color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', shape: 'builtin:tano' }, errors: [] };
+  const active = { color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', material: 'builtin:tano', shape: 'builtin:tano' };
+  appearance.value = { workspaceId: 'one', scope: 'user', mode: 'system', shapes: [], colors: [{ id: 'paper:paper', label: '纸页' }], icons: [{ id: 'lines:lines', label: '线条' }], layouts: [...builtinAppearance.layouts], materials: [], presets: [],
+    selected: { ...active, icons: 'missing' }, active, errors: [] };
   await openPage('外观'); await nextTick();
   const color = root.querySelector<HTMLSelectElement>('[aria-label="配色主题"]')!;
   const icons = root.querySelector<HTMLSelectElement>('[aria-label="文件与目录图标"]')!;

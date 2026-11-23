@@ -159,6 +159,8 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
           :data-pane-id="pane.id" :style="rectStyle(rect)" :aria-label="showTabs ? t('文档标签组') : t('文档内容')"
           @pointerdown.capture="focusPaneFromPointer($event, pane.id)" @focusin="focusPaneFromEvent($event, pane.id)"
         >
+          <!-- The front panel: the page itself, under the pane's content (see .app-shell in styles.css). -->
+          <div class="workspace-pane-surface" aria-hidden="true" />
           <slot v-if="!singlePane && showTabs && !topTabbar" name="tabs" :pane="pane" :rect="rect" />
           <slot :pane="pane" :rect="rect" :document="documentForTab(pane.activeId)"
             :tab="store.tabs.find(tab => tab.id === pane.activeId)" />
@@ -185,13 +187,15 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
 
 <style scoped>
 .workspace-layout { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
-.workspace-pane-tabbars { position: relative; flex: 0 0 var(--workbench-tabbar-height); background: var(--sidebar); }
+.workspace-pane-tabbars { position: relative; flex: 0 0 var(--workbench-tabbar-height); background: var(--workbench-back); }
 .workspace-pane-tabbar { position: absolute; top: 0; height: 100%; min-width: 0; }
 .workspace-pane-tabbar + .workspace-pane-tabbar::before { content: ''; position: absolute; z-index: 1; top: 0; bottom: 0; left: 0; border-left: 1px solid var(--line); pointer-events: none; }
 .workspace-body { display: flex; flex: 1; min-width: 0; min-height: 0; }
 .workspace-panes { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
-.workspace-pane { --workspace-pane-tabbar-height: var(--workbench-tabbar-height); --inspector-top: calc(var(--workspace-pane-tabbar-height) + var(--topbar-height) + 44px + 16px); position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--paper); }
+.workspace-pane { --workspace-pane-tabbar-height: var(--workbench-tabbar-height); --inspector-top: calc(var(--workspace-pane-tabbar-height) + var(--topbar-height) + 44px + 16px); position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
 .workspace-pane-external-tabs { --workspace-pane-tabbar-height: 0px; }
+/* A real element with a real rounded corner, rather than a corner patch painted over the page. */
+.workspace-pane-surface { position: absolute; z-index: -1; inset: 0; border-top-left-radius: var(--workspace-pane-surface-radius, 0px); background: var(--workbench-front); pointer-events: none; }
 .workspace-panes-multiple .workspace-pane { container-type: size; }
 .pane-divider { position: absolute; z-index: 12; touch-action: none; }
 .pane-divider-horizontal { width: 7px !important; transform: translateX(-50%); cursor: col-resize; }

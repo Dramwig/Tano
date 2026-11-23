@@ -1744,12 +1744,12 @@ async function onTabKeydown(event: KeyboardEvent) {
 /* The reserved slot is plain empty space: the gap itself marks the drop point. */
 .desktop-tab.desktop-tab-dragging,
 .desktop-tab.desktop-tab-dragging:hover {
-  --desktop-tab-close-mask: var(--sidebar);
+  --desktop-tab-close-mask: var(--workbench-back);
   background: transparent;
   box-shadow: none;
 }
 .desktop-tab {
-  --desktop-tab-close-mask: var(--sidebar);
+  --desktop-tab-close-mask: var(--workbench-back);
   --desktop-tab-color-duration: 0.15s;
   position: relative;
   container-type: inline-size;
@@ -1802,14 +1802,14 @@ async function onTabKeydown(event: KeyboardEvent) {
   border-right-color: transparent;
 }
 .desktop-tab:hover {
-  --desktop-tab-close-mask: color-mix(in srgb, var(--paper) 55%, var(--sidebar));
+  --desktop-tab-close-mask: color-mix(in srgb, var(--workbench-front) 55%, var(--workbench-back));
   background: var(--desktop-tab-close-mask);
 }
 .desktop-tab-active,
 .desktop-tab-active:hover {
-  --desktop-tab-close-mask: var(--paper);
+  --desktop-tab-close-mask: var(--workbench-front);
   z-index: 1;
-  background: var(--paper);
+  background: var(--workbench-front);
   color: var(--text);
 }
 .desktop-tab-active::before {
@@ -1836,11 +1836,11 @@ async function onTabKeydown(event: KeyboardEvent) {
 }
 .desktop-tab-corners::before {
   left: -8px;
-  background: radial-gradient(circle at top left, transparent 7.5px, var(--paper) 8px);
+  background: radial-gradient(circle at top left, transparent 7.5px, var(--workbench-front) 8px);
 }
 .desktop-tab-corners::after {
   right: -8px;
-  background: radial-gradient(circle at top right, transparent 7.5px, var(--paper) 8px);
+  background: radial-gradient(circle at top right, transparent 7.5px, var(--workbench-front) 8px);
 }
 .desktop-tab-corners > span {
   position: absolute;

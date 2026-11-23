@@ -200,12 +200,27 @@ svg {
 button:hover {
   color: var(--text);
 }
+/* The workbench is two physical layers, drawn the way it looks:
+   - the back panel: the window itself (.app-shell), with the sidebar and tab strips sitting on it;
+   - the front panel: each pane's page surface (.workspace-pane-surface), with the active tab and its
+     curved feet joined to it.
+   Materials restyle these two layers rather than individual elements. --workbench-back-paint is how the
+   back panel itself is painted (a material may layer an image or light field); --workbench-back is the
+   colour of things that sit on it and must match it (sidebar, tab strips, close masks). */
+:root {
+  --workbench-back: var(--sidebar);
+  --workbench-back-paint: var(--workbench-back);
+  --workbench-front: var(--paper);
+}
 .app-shell {
   position: relative;
   display: flex;
   height: 100dvh;
   min-height: 450px;
   overflow: hidden;
+  /* Page surfaces sit at z-index -1 behind pane content; this keeps them above the back panel. */
+  isolation: isolate;
+  background: var(--workbench-back-paint);
 }
 .sidebar-dismiss {
   display: none;
@@ -216,7 +231,7 @@ button:hover {
   z-index: 4;
   width: var(--sidebar-width);
   flex: 0 0 var(--sidebar-width);
-  background: var(--sidebar);
+  background: var(--workbench-back);
   border-right: 0;
   display: flex;
   flex-direction: column;
@@ -799,7 +814,7 @@ button:hover {
   margin: auto -7px 0;
   border-top: 0;
   padding: 6px 2px 6px 5px;
-  background: var(--sidebar);
+  background: var(--workbench-back);
 }
 .sidebar-bottom > .icon-button {
   flex: 0 0 28px;
@@ -857,6 +872,14 @@ button:hover {
   flex-direction: column;
   background: var(--paper);
 }
+/* With panes, the page is each pane's own surface on the back panel; the column itself stays clear. */
+.main-column:has(.workspace-pane) {
+  background: transparent;
+}
+/* A pane that carries its own tab strip (split panes below the top row) starts its page below the strip. */
+.workspace-pane:has(> .workspace-tabbar) > .workspace-pane-surface {
+  top: var(--workspace-pane-tabbar-height);
+}
 .topbar {
   height: var(--topbar-height);
   flex-shrink: 0;
@@ -871,7 +894,7 @@ button:hover {
   display: flex;
   height: var(--workbench-tabbar-height);
   flex-shrink: 0;
-  background: var(--sidebar);
+  background: var(--workbench-back);
 }
 .workspace-tabbar::after {
   content: '';

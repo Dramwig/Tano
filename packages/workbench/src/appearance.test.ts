@@ -24,7 +24,7 @@ it('keeps shape independent of colors and layout, with partial presets leaving i
   controller.select({ workspaceId: 'one', kind: 'icons', id: 'sample:ink' });
   controller.select({ workspaceId: 'one', kind: 'shape', id: 'builtin:crisp' });
   controller.select({ workspaceId: 'one', kind: 'preset', id: 'sample:partial' });
-  expect(controller.state.value.active).toEqual({ color: 'sample:ink', icons: 'sample:ink', layout: 'builtin:islands', shape: 'builtin:crisp' });
+  expect(controller.state.value.active).toEqual({ color: 'sample:ink', icons: 'sample:ink', layout: 'builtin:islands', material: 'builtin:tano', shape: 'builtin:crisp' });
   expect(document.documentElement.style.getPropertyValue('--radius-card')).toBe('0px');
   controller.select({ workspaceId: 'one', kind: 'color', id: 'builtin:tano' });
   expect(document.documentElement.style.getPropertyValue('--radius-card')).toBe('0px');
@@ -44,7 +44,7 @@ it('keeps mode user-wide while isolating workspace slots and accounts, including
   controller.select({ workspaceId: 'two', kind: 'mode', id: 'light' });
   expect(readThemePreference('alice')).toBe('light');
   expect(JSON.parse(localStorage.getItem('tano.appearance.v2.alice.workspace.two')!)).toEqual({
-    enabled: true, selected: { color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', shape: 'builtin:tano' },
+    enabled: true, selected: { color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', material: 'builtin:tano', shape: 'builtin:tano' },
   });
   controller.sync('one', installed); expect(controller.state.value.mode).toBe('light'); expect(controller.state.value.active.color).toBe('sample:ink');
   controller.sync('two', installed); expect(controller.state.value.mode).toBe('light');
@@ -88,6 +88,46 @@ it('uses only explicitly configured presets from the injected catalog without in
   expect(document.documentElement.style.getPropertyValue('--radius-card')).toBe('0px');
   expect(controller.state.value.presets[0]?.structure).toBe('islands');
   controller.dispose();
+});
+it('treats frosted glass as a material that combines freely with every layout and palette', () => {
+  const root = document.documentElement;
+  const controller = new AppearanceController(new FileIconRegistry(), 'device', undefined, applyAppearance); controller.sync('one', []);
+  expect(controller.state.value.layouts.map(layout => layout.id)).toEqual(['builtin:islands', 'builtin:paper']);
+  expect(controller.state.value.materials).toEqual([{ id: 'builtin:frost', label: '磨砂玻璃' }]);
+  const preset = controller.state.value.presets.find(p => p.id === 'builtin:frost');
+  expect(preset).toMatchObject({ unavailable: false, structure: 'islands', material: 'frost',
+    selected: { color: 'builtin:haze', layout: 'builtin:islands', material: 'builtin:frost' } });
+  expect(controller.state.value.presets.find(p => p.id === 'builtin:islands')?.material).toBeUndefined();
+  controller.select({ workspaceId: 'one', kind: 'preset', id: 'builtin:frost' });
+  expect([root.dataset.layout, root.dataset.surface, root.dataset.material]).toEqual(['islands', 'flat', 'builtin:frost']);
+  expect(controller.state.value.currentPreset).toMatchObject({ id: 'builtin:frost', material: 'frost' });
+  // Any palette, any structure: nothing else changes when one slot changes.
+  controller.select({ workspaceId: 'one', kind: 'color', id: 'builtin:ink' });
+  controller.select({ workspaceId: 'one', kind: 'layout', id: 'builtin:paper' });
+  expect(controller.state.value.active).toMatchObject({ color: 'builtin:ink', layout: 'builtin:paper', material: 'builtin:frost' });
+  expect([root.dataset.layout, root.dataset.material]).toEqual(['document', 'builtin:frost']);
+  controller.select({ workspaceId: 'one', kind: 'layout', id: 'builtin:tano' });
+  expect([root.dataset.layout, root.dataset.material]).toEqual(['continuous', 'builtin:frost']);
+  expect(controller.state.value.currentPreset).toMatchObject({ id: 'current', structure: 'continuous', material: 'frost' });
+  controller.select({ workspaceId: 'one', kind: 'material', id: 'builtin:tano' });
+  expect(controller.state.value.selected.layout).toBe('builtin:tano');
+  expect(root.dataset.material).toBeUndefined();
+  // The card-island preset brings a flat material back explicitly.
+  controller.select({ workspaceId: 'one', kind: 'material', id: 'builtin:frost' });
+  controller.select({ workspaceId: 'one', kind: 'preset', id: 'builtin:islands' });
+  expect(controller.state.value.active.material).toBe('builtin:tano');
+  expect(controller.state.value.presetId).toBe('builtin:islands');
+  controller.select({ workspaceId: 'one', kind: 'material', id: 'plugin:unknown' });
+  expect(controller.state.value.active.material).toBe('builtin:tano');
+  controller.dispose();
+  expect(root.dataset.material).toBeUndefined();
+});
+it('reads older saved choices without a material as flat', () => {
+  localStorage.setItem('tano.appearance.v2.carol.user', JSON.stringify({ selected: { color: 'builtin:mist', icons: 'builtin:tano', layout: 'builtin:islands', shape: 'builtin:rounded' }, mode: 'light' }));
+  const controller = new AppearanceController(new FileIconRegistry(), 'carol', localStorage); controller.sync('one', []);
+  expect(controller.state.value.selected.material).toBe('builtin:tano');
+  expect(controller.state.value.presetId).toBe('builtin:islands');
+  controller.dispose(); localStorage.clear();
 });
 it('refreshes inherited preferences from another window without discarding a local override', () => {
   const controller = new AppearanceController(new FileIconRegistry(), 'alice', localStorage); controller.sync('one', []);
@@ -155,7 +195,7 @@ it('applies all preset choices with one save and repaint, supports customization
   controller.select({ workspaceId: 'one', kind: 'mode', id: 'dark' }); apply.mockClear(); storage.setItem.mockClear();
   controller.select({ workspaceId: 'one', kind: 'preset', id: 'sample:writing' });
   expect(storage.setItem).toHaveBeenCalledOnce(); expect(apply).toHaveBeenCalledOnce();
-  expect(controller.state.value.active).toEqual({ color: 'sample:ink', icons: 'sample:ink', layout: 'builtin:islands', shape: 'builtin:tano' });
+  expect(controller.state.value.active).toEqual({ color: 'sample:ink', icons: 'sample:ink', layout: 'builtin:islands', material: 'builtin:tano', shape: 'builtin:tano' });
   expect(controller.state.value.presetId).toBe('sample:writing');
   expect(registry.resolve({ path: 'x.md' }).id).toBe('note');
   expect(resolvedTheme().mode).toBe('dark');
@@ -164,7 +204,7 @@ it('applies all preset choices with one save and repaint, supports customization
   controller.select({ workspaceId: 'one', kind: 'preset', id: 'sample:writing' });
   expect(controller.state.value.presetId).toBe('sample:writing');
   controller.select({ workspaceId: 'one', kind: 'preset', id: 'builtin:tano' });
-  expect(controller.state.value.active).toEqual({ color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', shape: 'builtin:tano' });
+  expect(controller.state.value.active).toEqual({ color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', material: 'builtin:tano', shape: 'builtin:tano' });
   expect(controller.state.value.presetId).toBe('builtin:tano'); controller.dispose();
 });
 it('persists choices across reload, restores disabled presets and never reapplies changed recommendations', () => {
@@ -239,7 +279,7 @@ it('restores an unavailable plugin layout after re-enable and clears it on dispo
 it('keeps color and icons independent, restores fallback on disable/uninstall, and restores selection on re-enable', () => {
   const registry = new FileIconRegistry(), controller = new AppearanceController(registry, 'alice', localStorage);
   controller.sync('one', [{ manifest, enabled: true }]);
-  expect(controller.state.value.active).toEqual({ color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', shape: 'builtin:tano' });
+  expect(controller.state.value.active).toEqual({ color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', material: 'builtin:tano', shape: 'builtin:tano' });
   controller.select({ workspaceId: 'one', kind: 'icons', id: 'sample:ink' });
   expect(controller.state.value.active.color).toBe('builtin:tano');
   expect(registry.resolve({ path: 'x.md' }).id).toBe('note');
@@ -250,7 +290,7 @@ it('keeps color and icons independent, restores fallback on disable/uninstall, a
   expect(document.documentElement.style.getPropertyValue('--radius-card')).toBe('');
   for (const installed of [[{ manifest, enabled: false }], []]) {
     controller.sync('one', installed);
-    expect(controller.state.value.active).toEqual({ color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', shape: 'builtin:tano' });
+    expect(controller.state.value.active).toEqual({ color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', material: 'builtin:tano', shape: 'builtin:tano' });
     expect(controller.state.value.selected.color).toBe('sample:ink');
     expect(document.documentElement.style.getPropertyValue('--paper')).toBe('');
     controller.sync('one', [{ manifest, enabled: true }]);
@@ -264,7 +304,7 @@ it('isolates workspace/account choices, rejects stale settings commands, and per
   controller.sync('one', installed); controller.select({ workspaceId: 'one', kind: 'scope', id: 'workspace' }); controller.select({ workspaceId: 'one', kind: 'color', id: 'sample:ink' });
   controller.sync('two', installed);
   controller.select({ workspaceId: 'one', kind: 'icons', id: 'sample:ink' });
-  expect(controller.state.value.active).toEqual({ color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', shape: 'builtin:tano' });
+  expect(controller.state.value.active).toEqual({ color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', material: 'builtin:tano', shape: 'builtin:tano' });
   controller.sync('one', installed); expect(controller.state.value.active.color).toBe('sample:ink');
   controller.dispose();
   const reload = new AppearanceController(registry, 'alice', localStorage); reload.sync('one', installed);

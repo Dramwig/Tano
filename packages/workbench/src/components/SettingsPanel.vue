@@ -7,6 +7,7 @@ import ModalBackdrop from './ModalBackdrop.vue';
 import CapabilitySyntax from './CapabilitySyntax.vue';
 import { settingHint } from '../setting-examples';
 import ThemePresetPicker from './ThemePresetPicker.vue';
+import GlassWallpaperSetting from './GlassWallpaperSetting.vue';
 import { t, uiLocale, setUiLocale, uiSearchText, localeLoadError } from '../i18n';
 import { uiLocaleOptions } from '../locale';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -62,8 +63,9 @@ import {
 import type { WorkspaceCapabilities, EditorPreferences } from '@tano/editor/runtime';
 import type { CapabilityPatch } from '../workspace-capabilities';
 import { fixedColorMode, type ThemePreference } from '../theme';
-import type { AppearanceSnapshot, AppearanceSelection } from '../appearance';
-import { appearanceKinds, builtinDefault } from '../appearance';
+import type { AppearanceKind, AppearanceSnapshot, AppearanceSelection } from '../appearance';
+import { appearanceKinds, builtinDefault, glassMaterial } from '../appearance';
+import { glassWallpaper } from '../glass-wallpaper';
 import { defaultSplitFontSettings, sanitizeCustomFontName } from '../editor-font';
 import type { SplitFontSettings, VisualFontChoice } from '../editor-font';
 import { useEditorFontFamily } from '../use-editor-font';
@@ -135,6 +137,21 @@ const props = defineProps<{
   capabilitySaving?: boolean;
 }>();
 const fixedDisplayMode = computed(() => fixedColorMode(props.appearance?.color));
+/** The background image only exists for the frosted-glass material, so its row follows the active layout. */
+const frostActive = computed(() => !!glassWallpaper() && props.appearance?.active.material === glassMaterial);
+/** One row per appearance setting; the default option of the material row is the plain flat card. */
+const appearanceRows: Record<AppearanceKind, { label: string; description: string; defaultLabel: string }> = {
+  color: { label: '配色主题', description: '从内置项和当前工作区已启用的插件中选择，保存在当前设备。', defaultLabel: '同页默认' },
+  icons: { label: '文件与目录图标', description: '从内置项和当前工作区已启用的插件中选择，保存在当前设备。', defaultLabel: '同页默认' },
+  layout: { label: '布局风格', description: '选择页面结构：连续页面、卡片岛或纸感文稿，可与任意配色、图标混搭。', defaultLabel: '同页默认' },
+  material: { label: '材质', description: '选择侧栏和页面的质感，可与任意布局、配色混搭。', defaultLabel: '平面' },
+  shape: { label: '形态与密度', description: '选择组件圆角、控件间距和阴影；字体在下方单独设置。', defaultLabel: '同页默认' },
+};
+function appearanceChoices(kind: AppearanceKind) {
+  const appearance = props.appearance!;
+  return kind === 'color' ? appearance.colors : kind === 'layout' ? appearance.layouts : kind === 'shape' ? appearance.shapes
+    : kind === 'material' ? appearance.materials : appearance.icons;
+}
 const displayMode = computed(() => fixedDisplayMode.value ?? props.theme);
 const displayModeDescription = computed(() => fixedDisplayMode.value === 'light' ? '当前配色主题仅支持浅色。'
   : fixedDisplayMode.value === 'dark' ? '当前配色主题仅支持深色。' : '选择浅色、深色或跟随系统，偏好在工作区间共用。');
@@ -403,10 +420,12 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   ...(props.appearance ? [
   settingSearchEntry('appearance', 'appearance-scope', '为此工作区单独设置', '用户默认与工作区覆盖', 'scope user workspace 用户 默认 覆盖'),
   settingSearchEntry('appearance', 'appearance-shape', '形态与密度', '选择组件圆角、控件间距和阴影；字体在下方单独设置。', 'shape density 圆角 密度 间距 阴影'),
-  settingSearchEntry('appearance', 'appearance-presets', '主题预设', '只应用预设声明的配色、图标、布局和形态，未指定的项保持当前。', 'preset theme 一键 整套 预设 风格'),
+  settingSearchEntry('appearance', 'appearance-presets', '主题预设', '只应用预设声明的配色、图标、布局、材质和形态，未指定的项保持当前。', 'preset theme 一键 整套 预设 风格'),
   settingSearchEntry('appearance', 'appearance-color', '配色主题', '选择工作区主题插件。', 'theme 插件 风格 配色'),
   settingSearchEntry('appearance', 'appearance-icons', '文件与目录图标', '选择工作区图标主题。', 'icon 文件夹 图标 插件'),
-  settingSearchEntry('appearance', 'appearance-layout', '布局风格', '独立选择页面结构和材质，可与任意配色、图标混搭。', 'layout islands paper 卡片岛 纸感 纸质 布局'),
+  settingSearchEntry('appearance', 'appearance-layout', '布局风格', '选择页面结构：连续页面、卡片岛或纸感文稿，可与任意配色、图标混搭。', 'layout islands paper 卡片岛 纸感 纸质 布局 结构'),
+  settingSearchEntry('appearance', 'appearance-material', '材质', '选择侧栏和页面的质感，可与任意布局、配色混搭。', 'material glass frost frosted translucent 材质 玻璃 磨砂 毛玻璃 透明 质感'),
+  ...(frostActive.value ? [settingSearchEntry('appearance', 'appearance-wallpaper', '背景图片', '磨砂玻璃会透出这张图片，卡片透明度会按图片自动调整以保证文字清晰。图片只保存在这台设备。', 'wallpaper background image glass 壁纸 背景 图片 柔化')] : []),
   ] : []),
   ...(!splitFonts.value.enabled ? [settingSearchEntry('appearance', 'appearance-visual-font', '可视化编辑字体', '选择内置字体，或使用本机已安装的字体。', 'font system serif mono Maple custom')] : []),
   settingSearchEntry('appearance', 'appearance-split-fonts', '分别设置中英文字体', '开启后分别选择中文和英文字体；关闭后恢复统一字体设置。', 'font split Chinese English 中英文 中文 英文 字体 拆分'),
@@ -724,7 +743,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
               </div>
               <p v-if="localeLoadError" role="alert">{{ t('无法加载界面语言，请重试。') }}</p>
               <div v-if="appearance" class="settings-row" data-settings-key="appearance-scope">
-                <div><strong>{{ t('为此工作区单独设置') }}</strong><p>{{ t(appearance.scope === 'workspace' ? '仅覆盖配色、图标、布局和形态；关闭后恢复用户默认。' : '四个槽位使用用户默认；其他工作区会沿用这些选择。') }}</p></div>
+                <div><strong>{{ t('为此工作区单独设置') }}</strong><p>{{ t(appearance.scope === 'workspace' ? '仅覆盖配色、图标、布局、材质和形态；关闭后恢复用户默认。' : '外观各项使用用户默认；其他工作区会沿用这些选择。') }}</p></div>
                 <button type="button" class="settings-switch" :class="{ on: appearance.scope === 'workspace' }" role="switch" :aria-label="t('为此工作区单独设置')" :aria-checked="appearance.scope === 'workspace'" :disabled="!appearance.workspaceId"
                   @click="emit('appearance', { workspaceId: appearance.workspaceId, kind: 'scope', id: appearance.scope === 'workspace' ? 'user' : 'workspace' })"><span /></button>
               </div>
@@ -747,23 +766,26 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
               <template v-if="appearance">
                 <section class="theme-presets" data-settings-key="appearance-presets" :aria-label="t('主题预设')">
                   <h3>{{ t('主题预设') }}</h3>
-                  <p>{{ t('只应用预设声明的配色、图标、布局和形态，未指定的项保持当前。') }}</p>
+                  <p>{{ t('只应用预设声明的配色、图标、布局、材质和形态，未指定的项保持当前。') }}</p>
                   <ThemePresetPicker :appearance="appearance" @select="emit('appearance', $event)" />
                 </section>
-                <div v-for="kind in appearanceKinds" :key="kind" class="settings-row" :data-settings-key="`appearance-${kind}`">
+                <template v-for="kind in appearanceKinds" :key="kind">
+                <div class="settings-row" :data-settings-key="`appearance-${kind}`">
                   <div>
-                    <strong>{{ t(kind === 'color' ? '配色主题' : kind === 'layout' ? '布局风格' : kind === 'shape' ? '形态与密度' : '文件与目录图标') }}</strong>
-                    <p>{{ t(kind === 'shape' ? '选择组件圆角、控件间距和阴影；字体在下方单独设置。' : kind === 'layout' ? '独立选择页面结构和材质，可与任意配色、图标混搭。' : '从内置项和当前工作区已启用的插件中选择，保存在当前设备。') }}</p>
+                    <strong>{{ t(appearanceRows[kind].label) }}</strong>
+                    <p>{{ t(appearanceRows[kind].description) }}</p>
                     <p v-if="appearance.selected[kind] !== appearance.active[kind]" role="status">{{ t('原主题当前不可用，已使用同页默认；重新启用后会自动恢复。') }}</p>
                   </div>
-                  <select :aria-label="t(kind === 'color' ? '配色主题' : kind === 'layout' ? '布局风格' : kind === 'shape' ? '形态与密度' : '文件与目录图标')"
+                  <select :aria-label="t(appearanceRows[kind].label)"
                     :value="appearance.selected[kind]"
                     @change="emit('appearance', { workspaceId: appearance.workspaceId, kind, id: ($event.target as HTMLSelectElement).value })">
-                    <option :value="builtinDefault">{{ t('同页默认') }}</option>
+                    <option :value="builtinDefault">{{ t(appearanceRows[kind].defaultLabel) }}</option>
                     <option v-if="appearance.selected[kind] !== appearance.active[kind]" :value="appearance.selected[kind]" disabled>{{ t('原主题暂不可用（使用默认）') }}</option>
-                    <option v-for="choice in (kind === 'color' ? appearance.colors : kind === 'layout' ? appearance.layouts : kind === 'shape' ? appearance.shapes : appearance.icons)" :key="choice.id" :value="choice.id">{{ t(choice.label) }}</option>
+                    <option v-for="choice in appearanceChoices(kind)" :key="choice.id" :value="choice.id">{{ t(choice.label) }}</option>
                   </select>
                 </div>
+                <GlassWallpaperSetting v-if="kind === 'material' && frostActive" />
+                </template>
                 <p v-for="message in appearance.errors" :key="message" role="alert">{{ message }}</p>
               </template>
             </div>

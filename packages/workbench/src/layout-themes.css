@@ -10,7 +10,7 @@
     --layout-hairline: color-mix(in srgb, var(--line) 85%, var(--text) 6%);
   }
   /* Same specificity as the rule above (and later), so the designed desk actually wins. */
-  :root[data-layout-theme]:is([data-color-theme='builtin:mist'], [data-color-theme='builtin:ink'], [data-color-theme='builtin:sage']) { --desk-depth: 0%; }
+  :root[data-layout-theme]:is([data-color-theme='builtin:mist'], [data-color-theme='builtin:ink'], [data-color-theme='builtin:sage'], [data-color-theme='builtin:haze']) { --desk-depth: 0%; }
   /* In dark mode the desk recedes into black so raised pages and cards stay lighter than their surroundings. */
   :root[data-theme='dark'][data-layout-theme]:not([data-layout-theme='builtin:tano']) {
     --layout-desk: color-mix(in srgb, var(--sidebar) calc(100% - var(--desk-depth) * 3), #000 calc(var(--desk-depth) * 3));
@@ -36,7 +36,7 @@
   :root[data-layout='islands'] .app-shell > .sidebar { padding: 0 8px; background: transparent; isolation: isolate; }
   :root[data-layout='islands'] .app-shell > .sidebar::before {
     content: ''; position: absolute; z-index: -1; inset: var(--island-top) 0 0; pointer-events: none;
-    background: var(--paper); border-radius: var(--radius-card); box-shadow: var(--island-lift);
+    background: var(--workbench-front); border-radius: var(--radius-card); box-shadow: var(--island-lift);
   }
   :root[data-layout='islands'] .sidebar > * { min-width: 0; }
   :root[data-layout='islands'] .sidebar > .sidebar-resize-handle { right: calc(var(--island-gap) * -.5 - 5px); }
@@ -62,7 +62,8 @@
   /* The desk gap already separates split cards: no divider hairline and no
      tab-strip corner patch (that patch is painted in the sidebar colour for the flat layout). */
   :root[data-layout='islands'] .pane-divider::before { display: none; }
-  :root[data-layout='islands'] .workspace-native-tabs .workspace-pane::after { display: none; }
+  /* Islands draw their own front panels (the cards), so the generic page surface is not used. */
+  :root[data-layout='islands'] .workspace-pane-surface { display: none; }
   :root[data-layout='islands'] .workspace-pane-tabbar + .workspace-pane-tabbar::before { display: none; }
   /* Split tab strips span the pane including its half-gap of desk; inset them so each strip starts
      exactly above its card. Then keep a tab strip that opens at the card's edge clear of the rounded
@@ -80,16 +81,16 @@
   :root[data-layout='islands'] :is(.workspace-page-body, .workspace-pane > .assistant-fullscreen-host),
   :root[data-layout='islands'] .workspace-native-tabs .workspace-page-content {
     display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
-    background: var(--paper); border-radius: var(--radius-card); box-shadow: var(--island-lift);
+    background: var(--workbench-front); border-radius: var(--radius-card); box-shadow: var(--island-lift);
   }
   /* The desktop tab strip already sits on the desk, so there the document top bar belongs to the card. */
   :root[data-layout='islands'] .workspace-native-tabs .workspace-page-body { display: contents; }
   /* Pages without a document top bar (home, extension views) use the whole column as the card. */
   :root[data-layout='islands'] .main-column:not(:has(.workspace-page-content)) {
     margin-top: var(--island-top); overflow: hidden;
-    background: var(--paper); border-radius: var(--radius-card); box-shadow: var(--island-lift);
+    background: var(--workbench-front); border-radius: var(--radius-card); box-shadow: var(--island-lift);
   }
-  :root[data-layout='islands'] :is(.folder-view-entry, .review-card) { border: 1px solid var(--layout-hairline); border-radius: var(--radius-card); background: var(--paper); box-shadow: var(--layout-lift); }
+  :root[data-layout='islands'] :is(.folder-view-entry, .review-card) { border: 1px solid var(--layout-hairline); border-radius: var(--radius-card); background: var(--workbench-front); box-shadow: var(--layout-lift); }
 
   /* Settings repeat the workbench: navigation sits on the desk and the page is one card beside it.
      The rows inside stay flat, so there is never a card inside a card. A settings tab already lives
@@ -101,13 +102,13 @@
   :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-nav {
     padding-top: calc(30px - var(--settings-island-gap)); border: 0; background: transparent;
   }
-  :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-search { border-color: var(--layout-hairline); background: var(--paper); }
+  :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-search { border-color: var(--layout-hairline); background: var(--workbench-front); }
   :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-nav-scroll button:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
-  :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-nav-scroll button.selected { background: var(--paper); box-shadow: var(--island-lift); }
+  :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-nav-scroll button.selected { background: var(--workbench-front); box-shadow: var(--island-lift); }
   :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-nav-foot { border-top-color: var(--layout-hairline); }
-  :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-workspace-icon { border-color: var(--layout-hairline); background: var(--paper); }
+  :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-workspace-icon { border-color: var(--layout-hairline); background: var(--workbench-front); }
   :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-main {
-    background: var(--paper); border-radius: var(--radius-card); box-shadow: var(--island-lift);
+    background: var(--workbench-front); border-radius: var(--radius-card); box-shadow: var(--island-lift);
   }
   /* The window actions float over the page card, so they keep its inset. */
   :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-close {
@@ -132,7 +133,7 @@
   :root[data-layout='document'] .workspace-pane .topbar { border-bottom: 1px solid var(--layout-hairline); background: var(--layout-desk); }
   :root[data-layout='document'] .document-layout { padding: calc(var(--layout-gap) + 8px) clamp(12px, 3vw, 48px) 64px; }
   :root[data-layout='document'] .document-main {
-    max-width: var(--layout-page-width); margin-inline: auto; background-color: var(--paper);
+    max-width: var(--layout-page-width); margin-inline: auto; background-color: var(--workbench-front);
     border: 1px solid var(--layout-hairline); border-radius: 4px;
     box-shadow: 0 1px 2px #0000000d, 0 12px 32px -16px #0000002e;
   }
@@ -146,19 +147,19 @@
   :root[data-layout='document'] .tano-prose > :is(p, ul, ol, blockquote) { line-height: 1.8; }
   :root[data-layout='document'] .tano-prose :is(h1, h2, h3) { letter-spacing: .01em; }
   :root[data-layout='document'] .tano-prose > h2 { padding-bottom: 6px; background: linear-gradient(var(--line), var(--line)) var(--tano-block-padding-inline) 100% / calc(100% - 2 * var(--tano-block-padding-inline)) 1px no-repeat; }
-  :root[data-layout='document'] .document-main > .editor-toolbar { border-bottom: 1px solid var(--line); background: var(--paper); }
+  :root[data-layout='document'] .document-main > .editor-toolbar { border-bottom: 1px solid var(--line); background: var(--workbench-front); }
   :root[data-layout='document'] .document-main:has(.editor-scroll.width-unlimited) { max-width: none; }
 
   /* Paper chrome is one desk: tab strip, top bar and the area around the sheet share a colour.
      With no sheet open (home) the desk is simply empty; other views keep their own paper surface. */
   :root[data-layout='document'] .workspace-pane-tabbars { background: var(--layout-desk); }
-  :root[data-layout='document'] .workspace-native-tabs .workspace-pane::after { display: none; }
+  :root[data-layout='document'] .workspace-pane-surface { display: none; }
   :root[data-layout='document'] .workspace-no-tabs { background: transparent; }
   :root[data-layout='document'] .workspace-no-tabs .editor-empty-mark { background: color-mix(in srgb, var(--text) 8%, var(--layout-desk)); }
   :root[data-theme='dark'][data-layout='document'] .workspace-no-tabs .editor-empty-mark { background: color-mix(in srgb, var(--layout-desk) 60%, #000); }
   :root[data-layout='document'] .workspace-no-tabs .editor-empty-actions button:hover:not(:disabled) { background: var(--paper); }
-  :root[data-layout='document'] .workspace-pane:not(:has(.document-layout, .workspace-no-tabs)) { background: var(--paper); }
-  :root[data-layout='document'] .workspace-pane:not(:has(.document-layout, .workspace-no-tabs)) .topbar { background: var(--paper); }
+  :root[data-layout='document'] .workspace-pane:not(:has(.document-layout, .workspace-no-tabs)) { background: var(--workbench-front); }
+  :root[data-layout='document'] .workspace-pane:not(:has(.document-layout, .workspace-no-tabs)) .topbar { background: var(--workbench-front); }
   /* The active tab does not merge into the bar below (that bar is desk, not page). It is a small
      slip of the same paper as the sheet, lying on the desk; inactive tabs are just ink on the desk. */
   :root[data-layout='document'] .desktop-tab {
@@ -172,8 +173,8 @@
     --desktop-tab-close-mask: color-mix(in srgb, var(--text) 5%, var(--layout-desk));
   }
   :root[data-layout='document'] :is(.desktop-tab-active, .desktop-tab-active:hover) {
-    --desktop-tab-close-mask: var(--paper);
-    background: var(--paper);
+    --desktop-tab-close-mask: var(--workbench-front);
+    background: var(--workbench-front);
     box-shadow: 0 0 0 1px var(--layout-hairline), 0 1px 2px #00000012;
   }
   :root[data-theme='dark'][data-layout='document'] :is(.desktop-tab-active, .desktop-tab-active:hover) { box-shadow: 0 0 0 1px var(--layout-hairline), 0 1px 2px #00000059; }
@@ -184,6 +185,145 @@
   /* Materials remain composable with the independently selected geometry. A barely visible tooth keeps the sheet from feeling like a screen. */
   :root[data-layout-theme][data-surface='paper'] .document-main { background-image: radial-gradient(color-mix(in srgb, var(--text) 2.5%, transparent) .6px, transparent .9px); background-size: 5px 5px; }
   :root[data-layout-theme][data-surface='paper'] :is(.settings-dialog, .modal, .dropdown) { border-radius: var(--radius-dialog); border: 1px solid var(--layout-edge); box-shadow: var(--overlay-shadow); }
+
+  /* Frosted glass (磨砂玻璃) is a material (data-material) that works on every layout structure.
+     Glass only reads as glass when there is something behind it, so the window background ("desk") is
+     bright and carries a few large, soft orbs of colour — or the user's background image. Sheets over it
+     are translucent paper with a sheen falling from the top-left, fine grain, a crisp white rim and a
+     faint glow along the bottom edge; body text always sits on the densest sheet.
+     Live backdrop blur is used only on the sidebar layer: the sidebar already has its own stacking context,
+     so a pseudo-element layer behind it is safe. Content containers (pages, sheets, settings) never get
+     backdrop-filter or isolation — that would make them the containing block of position: fixed popovers
+     (e.g. data-table cells) and trap their stacking. The desk behind them is always soft, so a translucent
+     fill looks the same as a blurred one. Menus and popovers stay opaque. */
+  :root[data-material='builtin:frost'] {
+    --glass-shade: var(--text);
+    --glass-fill-strength: 50%;
+    --glass-page-strength: 52%;
+    --glass-filter: blur(32px) saturate(170%) brightness(1.06);
+    --glass-fill: color-mix(in srgb, var(--paper) var(--glass-fill-strength), transparent);
+    /* Tint of the back panel (desk, sidebar, tab strips), so it reads as the grey panel behind the page. */
+    /* The front panel shows the back through it, so the step between the layers is roughly
+       front opacity × (paper − back). A slightly shaded tint keeps that step at least as clear as the flat theme's. */
+    --glass-back: color-mix(in srgb, color-mix(in srgb, var(--sidebar) 92%, var(--text)) 66%, transparent);
+    --glass-page-fill: color-mix(in srgb, var(--paper) var(--glass-page-strength), transparent);
+    --glass-sheen: linear-gradient(160deg, color-mix(in srgb, #ffffff 60%, transparent) 0%, color-mix(in srgb, #ffffff 14%, transparent) 30%, transparent 58%);
+    --glass-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 .09 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    --glass-edge: color-mix(in srgb, #ffffff 72%, transparent);
+    --glass-drop: 0 1px 2px color-mix(in srgb, var(--glass-shade) 6%, transparent),
+      0 22px 48px -26px color-mix(in srgb, var(--syntax-blue) 30%, color-mix(in srgb, var(--glass-shade) 20%, transparent));
+    --layout-hairline: color-mix(in srgb, var(--glass-shade) 7%, transparent);
+    --glass-desk:
+      radial-gradient(26% 40% at 12% 32%, color-mix(in srgb, var(--syntax-blue) 42%, transparent), transparent 70%),
+      radial-gradient(30% 44% at 40% 72%, color-mix(in srgb, var(--syntax-blue) 46%, transparent), transparent 72%),
+      radial-gradient(30% 42% at 70% 30%, color-mix(in srgb, var(--syntax-purple) 34%, transparent), transparent 72%),
+      radial-gradient(30% 40% at 98% 8%, color-mix(in srgb, var(--syntax-teal) 34%, transparent), transparent 70%),
+      radial-gradient(34% 40% at 88% 86%, color-mix(in srgb, var(--syntax-teal) 32%, transparent), transparent 72%),
+      radial-gradient(26% 30% at 22% 104%, color-mix(in srgb, var(--syntax-purple) 24%, transparent), transparent 70%),
+      linear-gradient(170deg, color-mix(in srgb, var(--sidebar) 70%, #ffffff), color-mix(in srgb, var(--sidebar) 40%, #ffffff));
+  }
+  /* The continuous page is one large writing surface, so it is a touch denser than an island card. */
+  :root[data-material='builtin:frost'][data-layout='continuous'] { --glass-page-strength: 54%; }
+  :root[data-theme='dark'][data-material='builtin:frost'] {
+    --glass-shade: #000000;
+    /* In dark mode the back must stay darker than the page so the page still reads as the raised layer. */
+    --glass-back: color-mix(in srgb, var(--sidebar) 90%, transparent);
+    --glass-fill-strength: 58%;
+    --glass-page-strength: 64%;
+    --glass-filter: blur(32px) saturate(160%);
+    --glass-sheen: linear-gradient(160deg, color-mix(in srgb, #ffffff 12%, transparent) 0%, color-mix(in srgb, #ffffff 3%, transparent) 30%, transparent 58%);
+    --glass-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 .05 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    --glass-edge: color-mix(in srgb, #ffffff 12%, transparent);
+    --glass-drop: 0 1px 2px #00000059, 0 24px 48px -24px #000000a6;
+    --layout-hairline: color-mix(in srgb, #ffffff 8%, transparent);
+    --glass-desk:
+      radial-gradient(26% 40% at 12% 32%, color-mix(in srgb, var(--syntax-blue) 30%, transparent), transparent 70%),
+      radial-gradient(30% 44% at 40% 72%, color-mix(in srgb, var(--syntax-blue) 32%, transparent), transparent 72%),
+      radial-gradient(30% 42% at 70% 30%, color-mix(in srgb, var(--syntax-purple) 26%, transparent), transparent 72%),
+      radial-gradient(30% 40% at 98% 8%, color-mix(in srgb, var(--syntax-teal) 22%, transparent), transparent 70%),
+      radial-gradient(34% 40% at 88% 86%, color-mix(in srgb, var(--syntax-teal) 22%, transparent), transparent 72%),
+      linear-gradient(170deg, var(--sidebar), color-mix(in srgb, var(--sidebar) 86%, var(--text) 14%));
+  }
+  :root[data-theme='dark'][data-material='builtin:frost'][data-layout='continuous'] { --glass-page-strength: 66%; }
+
+  /* With a background image (see glass-wallpaper.ts) the image replaces the painted light field. It arrives
+     pre-softened, under a veil of the desk colour; the script measures the image and raises the sheet
+     opacity, per layout, just enough for body text (7:1) and secondary text (4.5:1). Fixed attachment keeps
+     the image aligned between the workbench and the settings dialog. Must follow the rules above. */
+  :root[data-material='builtin:frost'][data-glass-wallpaper][data-layout] {
+    --glass-fill-strength: var(--glass-wallpaper-fill, 60%);
+    --glass-page-strength: var(--glass-wallpaper-page, 84%);
+    --glass-drop: 0 1px 2px color-mix(in srgb, var(--glass-shade) 8%, transparent),
+      0 22px 48px -26px color-mix(in srgb, var(--glass-wallpaper-glow, var(--glass-shade)) 45%, color-mix(in srgb, var(--glass-shade) 25%, transparent));
+    --glass-desk:
+      linear-gradient(color-mix(in srgb, var(--sidebar) var(--glass-wallpaper-veil, 30%), transparent), color-mix(in srgb, var(--sidebar) var(--glass-wallpaper-veil, 30%), transparent)) fixed,
+      var(--glass-wallpaper) center / cover no-repeat fixed,
+      var(--sidebar);
+  }
+
+  /* ---- The two workbench layers in glass (see .app-shell in styles.css) ----
+     Every layout keeps its own geometry; only the layers change. The back panel is the light field under a
+     tint of the sidebar colour, with grain and a sheen; things sitting on it are clear. The front panel —
+     page surfaces, the active tab and its curved feet, island cards, the paper sheet — is one uniform
+     translucent paper, so a tab and its page composite to the same colour and read as one piece, and the
+     back grain and sheen show through evenly without seams. */
+  :root[data-material='builtin:frost'] {
+    --workbench-back: transparent;
+    /* No sheen on the back: it would brighten the tab strip exactly where the active tab must stand out. */
+    --workbench-back-paint: var(--glass-grain), linear-gradient(var(--glass-back), var(--glass-back)), var(--glass-desk);
+    --workbench-front: var(--glass-page-fill);
+  }
+  /* A drawer sidebar (compact layout) floats over the page, so there it is a live-blurred sheet. The
+     sidebar already forms a stacking context (z-index 4), so the pseudo-element layer is safe. */
+  :root.compact-layout[data-material='builtin:frost'] .app-shell > .sidebar::before {
+    content: ''; position: absolute; z-index: -1; inset: 0; pointer-events: none;
+    background: var(--glass-grain), var(--glass-fill);
+    -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter);
+  }
+  /* A close mask in a translucent colour would not hide the label, so the label fades under the close button. */
+  :root[data-material='builtin:frost'] :is(.desktop-tab, .desktop-tab-active, .desktop-tab-active:hover) { --desktop-tab-close-mask: transparent; }
+  :root[data-material='builtin:frost'] .desktop-tab:hover:not(.desktop-tab-active) { --desktop-tab-close-mask: transparent; background: color-mix(in srgb, var(--paper) 32%, transparent); }
+  :root[data-material='builtin:frost'] .desktop-tab-close::before { display: none; }
+  :root[data-material='builtin:frost'] :is(.desktop-tab:hover, .desktop-tab:has(.desktop-tab-close:focus-visible)) .desktop-tab-switch {
+    -webkit-mask-image: linear-gradient(to left, transparent 30px, #000 56px); mask-image: linear-gradient(to left, transparent 30px, #000 56px);
+  }
+  /* Content drawn on the page in the page colour would cover the glass. */
+  :root[data-material='builtin:frost'] .workspace-no-tabs { background: transparent; }
+  /* The sticky editor toolbar has text scrolling under it, so it is a real frosted bar: a blurred layer
+     behind its buttons. It is its own stacking context (sticky, z-index 3), so the layer is safe. */
+  :root[data-material='builtin:frost'] .editor-toolbar { background: transparent; }
+  :root[data-material='builtin:frost'] .editor-toolbar::before {
+    content: ''; position: absolute; z-index: -1; inset: 0; pointer-events: none;
+    background: color-mix(in srgb, var(--paper) 72%, transparent);
+    -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%);
+  }
+
+  /* Card islands: the desk shows between the cards; cards and tab joins are already front panels. */
+  :root[data-layout='islands'][data-material='builtin:frost'] {
+    --island-desk: var(--glass-sheen) fixed, var(--glass-grain), var(--glass-desk);
+    --island-lift: 0 0 0 1px var(--glass-edge), var(--glass-drop);
+  }
+  /* Paper document: the desk is the back panel; the sheet keeps its shape as front glass. */
+  :root[data-layout='document'][data-material='builtin:frost'] :is(.main-column, .workspace-pane, .workspace-pane .topbar, .workspace-pane-tabbars) { background: transparent; }
+  :root[data-layout='document'][data-material='builtin:frost'] .workspace-pane:not(:has(.document-layout, .workspace-no-tabs)) { background: var(--workbench-front); }
+  :root[data-layout='document'][data-material='builtin:frost'] .workspace-pane:not(:has(.document-layout, .workspace-no-tabs)) .topbar { background: transparent; }
+  :root[data-layout='document'][data-material='builtin:frost'] .document-main { border-color: var(--glass-edge); }
+
+  /* Settings dialog: back panel and front sheet, matching the workbench. */
+  :root[data-material='builtin:frost'] .settings-backdrop:not(.settings-tabbed) :is(.settings-nav-scroll button.selected, .settings-search, .settings-workspace-icon) { background: var(--workbench-front); }
+  :root[data-material='builtin:frost']:not([data-layout='islands']) .settings-backdrop:not(.settings-tabbed) .settings-dialog { background: var(--workbench-back-paint); }
+  :root[data-material='builtin:frost']:not([data-layout='islands']) .settings-backdrop:not(.settings-tabbed) .settings-nav { border-right-color: var(--layout-hairline); background: transparent; }
+  :root[data-material='builtin:frost']:not([data-layout='islands']) .settings-backdrop:not(.settings-tabbed) .settings-main { background: var(--workbench-front); }
+
+  /* Respect "reduce transparency", and stay readable where backdrop blur is unavailable. */
+  @media (prefers-reduced-transparency: reduce) {
+    :root[data-material='builtin:frost'] {
+      --glass-fill-strength: 97% !important; --glass-page-strength: 100% !important; --glass-filter: none !important;
+    }
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    :root[data-material='builtin:frost'] { --glass-fill-strength: 92% !important; }
+  }
 
   :root[data-layout='document'] .workspace-panes-multiple .document-layout { padding: 10px; }
   :root[data-layout='document'] .workspace-panes-multiple .editor-scroll { --document-inset-start: 28px; --document-inset-end: 28px; }
