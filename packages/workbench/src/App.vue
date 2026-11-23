@@ -373,7 +373,7 @@ const brandButton = ref<HTMLElement | null>(null);
       'workspace-empty': !workspace,
     }"
   >
-    <!-- Liquid glass draws its blurred background and rim refraction here, under everything (liquid-glass.ts). -->
+    <!-- Liquid glass draws its rim refraction and highlights here, under everything (liquid-glass.ts). -->
     <div class="liquid-backdrop" aria-hidden="true"></div>
     <Teleport :to="activeWindow.overlays"><WindowScope :key="activeWindow.id" :context="activeWindow"><AssistantButterflyLayer :controller="butterfly" /></WindowScope></Teleport>
     <Teleport :to="activeWindow.overlays">

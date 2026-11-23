@@ -66,24 +66,19 @@ it('keeps liquid glass clearer than frosted glass while body and sidebar text st
   });
   const frost = wallpaperStyle(samples, 50, 'light', tokens, 'continuous');
   const liquid = wallpaperStyle(samples, 50, 'light', tokens, 'continuous', 'liquid');
-  expect(liquid.veil).toBeCloseTo(frost.veil * liquidWallpaper.veilScale);
-  // Through the lens's brightness the page needs less paper than without it (Safari, Firefox).
-  expect(liquid.page).toBeLessThanOrEqual(liquid.pageFlat);
+  expect(liquid.veil).toBe(frost.veil);
   // The sidebar pane is measured only over the left column, so the dark patch does not thicken it.
   expect(liquid.fill).toBeLessThan(frost.fill);
   const over = (background: Rgb, alpha: number) => mix(tokens.paper, background, alpha);
-  const brightness = liquidWallpaper.brightness.light;
   for (const sample of samples) {
     const bare = mix(tokens.sidebar, sample, liquid.veil);
-    const lens = bare.map(v => Math.min(255, v * brightness)) as Rgb;
-    expect(contrast(tokens.text, over(lens, liquid.page))).toBeGreaterThanOrEqual(7);
-    expect(contrast(tokens.text, over(bare, liquid.pageFlat))).toBeGreaterThanOrEqual(7);
+    expect(contrast(tokens.text, over(bare, liquid.page))).toBeGreaterThanOrEqual(7);
   }
   // Secondary text (leaning towards body text) on the sidebar pane over the left column: AA.
   const ink = mix(tokens.text, tokens.muted, liquidWallpaper.ink);
   for (const [index, sample] of samples.entries()) {
     if (index % 40 >= 12) continue;
-    const lens = mix(tokens.sidebar, sample, liquid.veil).map(v => Math.min(255, v * brightness)) as Rgb;
+    const lens = mix(tokens.sidebar, sample, liquid.veil);
     expect(contrast(ink, over(lens, liquid.fill))).toBeGreaterThanOrEqual(4.5);
   }
 });
@@ -137,6 +132,7 @@ it('publishes a built-in wallpaper as CSS variables, persists the choice and cle
   expect(controller.state.value.thumbnails).toEqual({
     'builtin:dawn': 'data:builtin:dawn:dark',
     'builtin:dusk': 'data:builtin:dusk:dark',
+    'builtin:clouds': 'data:builtin:clouds:dark',
   });
   await flush();
   expect(renderer.builtin).toHaveBeenNthCalledWith(1, 'builtin:dawn', 'light');
@@ -152,6 +148,48 @@ it('publishes a built-in wallpaper as CSS variables, persists the choice and cle
   expect(root.style.getPropertyValue('--glass-wallpaper')).toBe('');
   expect(revoked).toEqual(['blob:1-50', 'blob:2-50']);
   controller.dispose();
+});
+
+it('keeps liquid wallpaper sharp through softness changes and restores the saved frost softness', async () => {
+  const { store, renderer } = fakes();
+  const controller = new GlassWallpaperController('alice', localStorage, store, renderer);
+  await controller.load();
+  controller.select('builtin:dusk'); await flush();
+  root.dataset.material = 'builtin:liquid';
+  window.dispatchEvent(new Event(themeChangedEvent)); await flush();
+  expect(renderer.render).toHaveBeenLastCalledWith(expect.anything(), 0);
+  controller.setSoftness(72, true); await flush();
+  expect(renderer.render).toHaveBeenCalledTimes(2);
+  root.dataset.material = 'builtin:frost';
+  window.dispatchEvent(new Event(themeChangedEvent)); await flush();
+  expect(renderer.render).toHaveBeenLastCalledWith(expect.anything(), 72);
+  controller.dispose();
+  delete root.dataset.material;
+});
+
+it('restores a manual veil per mode while keeping the liquid bitmap sharp', async () => {
+  const { store, renderer } = fakes();
+  root.dataset.material = 'builtin:liquid';
+  const controller = new GlassWallpaperController('alice', localStorage, store, renderer);
+  try {
+    await controller.load();
+    await controller.importFile(new File(['png'], 'a.png', { type: 'image/png' }));
+    const renders = vi.mocked(renderer.render).mock.calls.length;
+    controller.setVeilOpacity(100, true);
+    expect(root.style.getPropertyValue('--glass-wallpaper-veil')).toBe('100%');
+    root.dataset.theme = 'dark'; window.dispatchEvent(new Event(themeChangedEvent));
+    expect(root.style.getPropertyValue('--glass-wallpaper-veil')).toBe('91%');
+    controller.setVeilOpacity(0, true);
+    expect(root.style.getPropertyValue('--glass-wallpaper-veil')).toBe('0%');
+    expect(renderer.render).toHaveBeenCalledTimes(renders);
+    await controller.load();
+    expect(controller.veilOpacity).toBe(0);
+    root.dataset.theme = 'light'; window.dispatchEvent(new Event(themeChangedEvent));
+    expect(controller.veilOpacity).toBe(100);
+  } finally {
+    controller.dispose();
+    delete root.dataset.material;
+  }
 });
 
 it('imports, reloads in another window and removes a custom image', async () => {

@@ -4,7 +4,7 @@ import type { WallpaperRender } from './glass-wallpaper-render';
 
 /**
  * Background image behind the frosted-glass layout. A device-level preference (like the display mode):
- * the image itself lives in IndexedDB, only the choice and softness live in localStorage. The result is
+ * the image itself lives in IndexedDB, only the display preferences live in localStorage. The result is
  * published as CSS variables on <html>, which auxiliary windows already mirror.
  */
 export type Rgb = [number, number, number];
@@ -13,6 +13,8 @@ export interface WallpaperPreference {
   source: string;
   /** 0–100: how much the image is blurred and veiled before the glass sits on it. */
   softness: number;
+  /** Explicit desk veil percentages, saved independently for light and dark mode. */
+  veilOpacity?: Partial<Record<ResolvedTheme['mode'], number>>;
   /** Changes whenever the stored custom image changes, so other windows reload it. */
   customRevision?: number;
 }
@@ -32,7 +34,7 @@ type WallpaperSource = CanvasImageSource & { width: number; height: number };
 export interface WallpaperRenderer {
   normalizeImport(file: Blob): Promise<Blob>;
   decode(blob: Blob): Promise<WallpaperSource>;
-  builtin(id: string, mode: ResolvedTheme['mode']): WallpaperSource;
+  builtin(id: string, mode: ResolvedTheme['mode']): WallpaperSource | Promise<WallpaperSource>;
   thumbnail(id: string, mode: ResolvedTheme['mode']): string;
   customThumbnail(source: WallpaperSource): string;
   render(source: WallpaperSource, softness: number): Promise<WallpaperRender>;
@@ -41,6 +43,7 @@ export interface WallpaperRenderer {
 export const builtinWallpapers = [
   { id: 'builtin:dawn', label: '晨雾' },
   { id: 'builtin:dusk', label: '暮光' },
+  { id: 'builtin:clouds', label: '云层' },
 ] as const;
 export const debugStripeWallpaper = { id: 'debug:stripes', label: '调试条纹' } as const;
 export const defaultWallpaper: WallpaperPreference = { source: 'none', softness: 50 };
@@ -54,7 +57,14 @@ export function parseWallpaperPreference(value: unknown): WallpaperPreference {
     builtinWallpapers.some(item => item.id === record.source)) ? record.source : 'none';
   const softness = typeof record.softness === 'number' && Number.isFinite(record.softness) ? Math.round(Math.min(100, Math.max(0, record.softness))) : defaultWallpaper.softness;
   const revision = typeof record.customRevision === 'number' && Number.isFinite(record.customRevision) ? { customRevision: record.customRevision } : {};
-  return { source, softness, ...revision };
+  const veilOpacity: WallpaperPreference['veilOpacity'] = {};
+  if (record.veilOpacity && typeof record.veilOpacity === 'object') {
+    for (const mode of ['light', 'dark'] as const) {
+      const value = (record.veilOpacity as Record<string, unknown>)[mode];
+      if (typeof value === 'number' && Number.isFinite(value)) veilOpacity[mode] = Math.round(Math.min(100, Math.max(0, value)));
+    }
+  }
+  return { source, softness, ...(Object.keys(veilOpacity).length ? { veilOpacity } : {}), ...revision };
 }
 
 // ---- Colour maths (sRGB, matching CSS color-mix(in srgb, …)) ----
@@ -100,8 +110,11 @@ export function solveGlassStrength(backgrounds: readonly Rgb[], paper: Rgb, text
 }
 
 /** Veil of the desk colour over the image: light mode washes it out, dark mode sinks it. */
-export function wallpaperVeil(softness: number, mode: 'light' | 'dark'): number {
+export function wallpaperVeil(softness: number, mode: 'light' | 'dark', material: 'frost' | 'liquid' = 'frost'): number {
   const s = Math.min(100, Math.max(0, softness)) / 100;
+  // Frost paints a second, 90%-opaque desk behind the panes in dark mode. Clear glass
+  // transmits the desk directly, so shade the wallpaper itself, including exposed tab strips.
+  if (mode === 'dark' && material === 'liquid') return 0.84 + s * 0.14;
   return mode === 'dark' ? 0.3 + s * 0.3 : 0.08 + s * 0.32;
 }
 
@@ -117,46 +130,34 @@ export const wallpaperMinimums = {
 } as const;
 export type WallpaperStructure = keyof typeof wallpaperMinimums;
 
-/**
- * Liquid glass uses half the frosted veil and a thin, brightened fill on glass surfaces
- * (layout-themes.css --liquid-brightness, must match). `fill` is the sidebar surface's tint
- * for secondary text contrast (AA).
- */
+/** Minimum tint on a clear sheet; sampled wallpaper can require more for text contrast. */
 export const liquidWallpaper = {
-  veilScale: 0.5,
   /** Secondary text on liquid glass leans this far towards body text (layout-themes.css: --liquid-ink, must match). */
   ink: 0.55,
-  brightness: { light: 1.08, dark: 0.92 },
-  minimums: { light: { panel: 0.2, page: 0.3 }, dark: { panel: 0.36, page: 0.42 } },
+  minimums: { light: { panel: 0.06, page: 0.1 }, dark: { panel: 0.09, page: 0.14 } },
 } as const;
 /** Layout of the coarse samples (row-major), see glass-wallpaper-render.ts. */
 export const wallpaperSampleGrid = { columns: 40, rows: 25 } as const;
-const brighten =([r, g, b]: Rgb, factor: number): Rgb => [Math.min(255, r * factor), Math.min(255, g * factor), Math.min(255, b * factor)];
-
-/** `pageFlat` is the liquid page without the lens (browsers without SVG backdrop filters); it equals `page` otherwise. */
-export interface WallpaperStyle { veil: number; fill: number; page: number; pageFlat: number; glow: string }
+export interface WallpaperStyle { veil: number; fill: number; page: number; glow: string }
 export function wallpaperStyle(samples: readonly Rgb[], softness: number, mode: 'light' | 'dark',
-  tokens: { paper: Rgb; sidebar: Rgb; text: Rgb; muted: Rgb }, structure: WallpaperStructure = 'islands', material: 'frost' | 'liquid' = 'frost'): WallpaperStyle {
+  tokens: { paper: Rgb; sidebar: Rgb; text: Rgb; muted: Rgb }, structure: WallpaperStructure = 'islands', material: 'frost' | 'liquid' = 'frost',
+  veil = wallpaperVeil(softness, mode, material)): WallpaperStyle {
   const minimum = wallpaperMinimums[structure][mode];
   const liquid = material === 'liquid';
-  const veil = wallpaperVeil(softness, mode) * (liquid ? liquidWallpaper.veilScale : 1);
   const backgrounds = samples.map(sample => mix(tokens.sidebar, sample, veil));
-  let page: number, fill: number, pageFlat: number;
+  let page: number, fill: number;
   if (liquid) {
     const lowest = liquidWallpaper.minimums[mode];
-    const lens = backgrounds.map(background => brighten(background, liquidWallpaper.brightness[mode]));
-    // Sheets sit on the bare (veiled) image, seen through the glass; body text needs AAA on the result.
-    page = solveGlassStrength(lens, tokens.paper, tokens.text, 7, lowest.page);
-    pageFlat = solveGlassStrength(backgrounds, tokens.paper, tokens.text, 7, lowest.page);
+    page = solveGlassStrength(backgrounds, tokens.paper, tokens.text, 7, lowest.page);
     // Sample the left and top edges for a conservative sidebar tint.
     const grid = samples.length === wallpaperSampleGrid.columns * wallpaperSampleGrid.rows;
-    const chrome = lens.filter((_, index) => !grid
+    const chrome = backgrounds.filter((_, index) => !grid
       || index % wallpaperSampleGrid.columns < wallpaperSampleGrid.columns * 0.3
       || Math.floor(index / wallpaperSampleGrid.columns) < wallpaperSampleGrid.rows * 0.1);
     fill = solveGlassStrength(chrome, tokens.paper, mix(tokens.text, tokens.muted, liquidWallpaper.ink), 4.5, lowest.panel);
   } else {
     // Body text needs AAA on the page; secondary text in the sidebar needs AA.
-    page = pageFlat = solveGlassStrength(backgrounds, tokens.paper, tokens.text, 7, minimum.page);
+    page = solveGlassStrength(backgrounds, tokens.paper, tokens.text, 7, minimum.page);
     fill = solveGlassStrength(backgrounds, tokens.paper, tokens.muted, 4.5, minimum.fill);
   }
   // The most saturated colours of the image tint the card shadows.
@@ -166,7 +167,7 @@ export function wallpaperStyle(samples: readonly Rgb[], softness: number, mode: 
     weight += saturation; sum[0] += r * saturation; sum[1] += g * saturation; sum[2] += b * saturation;
   }
   const glow = weight ? toHex(sum.map(v => v / weight) as Rgb) : toHex(tokens.sidebar);
-  return { veil, fill, page, pageFlat, glow };
+  return { veil, fill, page, glow };
 }
 
 // ---- Storage ----
@@ -207,21 +208,23 @@ export class GlassWallpaperController {
   private customSource?: { revision?: number; image: Promise<WallpaperSource> };
   private generation = 0;
   private softnessTimer?: ReturnType<typeof setTimeout>;
+  private clearWallpaper = false;
   private thumbnailMode?: ResolvedTheme['mode'];
   private developerMode = false;
-  private wallpaperBeforeStripes?: Pick<WallpaperPreference, 'source' | 'softness'>;
+  private useMaterialDefault = true;
+  private wallpaperBeforeStripes?: Pick<WallpaperPreference, 'source' | 'softness' | 'veilOpacity'>;
   private readonly onTheme = () => {
     const mode = this.mode();
-    if (this.thumbnailMode !== undefined && mode !== this.thumbnailMode) {
-      this.updateThumbnails(mode);
-      const { source } = this.state.value;
-      if (source !== 'none' && source !== 'custom') {
-        clearTimeout(this.softnessTimer);
-        void this.refresh();
-        return;
-      }
+    const modeChanged = this.thumbnailMode !== undefined && mode !== this.thumbnailMode;
+    if (modeChanged) this.updateThumbnails(mode);
+    const materialChanged = this.clearWallpaper !== this.isLiquid();
+    if (materialChanged && this.useMaterialDefault && !this.wallpaperBeforeStripes) this.patch({ source: this.defaultSource() });
+    const { source } = this.state.value;
+    this.publish(); // Repaint the current bitmap immediately while a replacement is being prepared.
+    if (materialChanged || (modeChanged && source !== 'none' && source !== 'custom')) {
+      clearTimeout(this.softnessTimer);
+      void this.refresh();
     }
-    this.publish();
   };
   constructor(
     private readonly principal: string,
@@ -234,17 +237,24 @@ export class GlassWallpaperController {
     this.key = `tano.glass-wallpaper.v1.${encodeURIComponent(principal)}`;
     this.target.addEventListener(themeChangedEvent, this.onTheme);
   }
+  private defaultSource() { return this.isLiquid() ? 'builtin:clouds' : defaultWallpaper.source; }
   private read(): WallpaperPreference {
-    try { return parseWallpaperPreference(JSON.parse(this.storage?.getItem(this.key) ?? 'null')); } catch { return { ...defaultWallpaper }; }
+    try {
+      const saved = this.storage?.getItem(this.key);
+      this.useMaterialDefault = !saved;
+      if (saved) return parseWallpaperPreference(JSON.parse(saved));
+    } catch { this.useMaterialDefault = true; }
+    return { ...defaultWallpaper, source: this.defaultSource() };
   }
   private write(preference: WallpaperPreference) {
+    this.useMaterialDefault = false;
     try { this.storage?.setItem(this.key, JSON.stringify(preference)); } catch { /* Session-only when storage is unavailable. */ }
   }
   private patch(next: Partial<GlassWallpaperState>) { this.state.value = { ...this.state.value, ...next }; }
   private preference(): WallpaperPreference {
-    const { source, softness } = this.wallpaperBeforeStripes ?? this.state.value;
+    const { source, softness, veilOpacity } = this.wallpaperBeforeStripes ?? this.state.value;
     const { customRevision } = this.state.value;
-    return { source, softness, ...(customRevision === undefined ? {} : { customRevision }) };
+    return { source, softness, ...(veilOpacity ? { veilOpacity } : {}), ...(customRevision === undefined ? {} : { customRevision }) };
   }
   private leaveDebugStripes() {
     if (!this.wallpaperBeforeStripes) return;
@@ -261,6 +271,23 @@ export class GlassWallpaperController {
       void this.refresh();
     }
   }
+  get supportsBlur() { return !this.isLiquid(); }
+  get veilOpacity() {
+    const { source, softness, veilOpacity } = this.state.value;
+    const mode = this.mode();
+    if (veilOpacity?.[mode] !== undefined) return veilOpacity[mode];
+    const liquid = this.isLiquid();
+    const automatic = liquid && source === 'builtin:clouds' ? softness / 400 : wallpaperVeil(softness, mode, liquid ? 'liquid' : 'frost');
+    return Math.round(automatic * 100);
+  }
+  setVeilOpacity(value: number, commit = false) {
+    if (!Number.isFinite(value)) return;
+    const opacity = Math.round(Math.min(100, Math.max(0, value)));
+    this.patch({ veilOpacity: { ...this.state.value.veilOpacity, [this.mode()]: opacity } });
+    this.publish();
+    if (commit && !this.wallpaperBeforeStripes) this.write(this.preference());
+  }
+  private isLiquid() { return this.root().dataset.material === 'builtin:liquid'; }
   private mode(root = this.root()): ResolvedTheme['mode'] {
     return root.dataset.theme === 'dark' ? 'dark' : 'light';
   }
@@ -274,7 +301,7 @@ export class GlassWallpaperController {
   async load() {
     this.leaveDebugStripes();
     this.clearCustomSource();
-    this.patch({ customRevision: undefined, ...this.read() });
+    this.patch({ customRevision: undefined, veilOpacity: undefined, ...this.read() });
     this.updateThumbnails(this.mode());
     await this.refresh();
   }
@@ -285,7 +312,7 @@ export class GlassWallpaperController {
     if (JSON.stringify(saved) === JSON.stringify(current)) return;
     this.leaveDebugStripes();
     if (saved.customRevision !== current.customRevision) this.clearCustomSource();
-    this.patch({ customRevision: undefined, ...saved });
+    this.patch({ customRevision: undefined, veilOpacity: undefined, ...saved });
     void this.refresh();
   }
   private clearCustomSource() {
@@ -318,7 +345,8 @@ export class GlassWallpaperController {
   }
   private async refresh() {
     const generation = ++this.generation;
-    const { softness } = this.state.value;
+    this.clearWallpaper = this.isLiquid();
+    const softness = this.clearWallpaper ? 0 : this.state.value.softness;
     this.patch({ busy: true, error: undefined });
     try {
       const source = await this.source();
@@ -338,10 +366,10 @@ export class GlassWallpaperController {
   select(source: string) {
     if (source === debugStripeWallpaper.id) {
       if (!this.developerMode || this.wallpaperBeforeStripes) return;
-      const { source: previousSource, softness } = this.state.value;
-      this.wallpaperBeforeStripes = { source: previousSource, softness };
+      const { source: previousSource, softness, veilOpacity } = this.state.value;
+      this.wallpaperBeforeStripes = { source: previousSource, softness, veilOpacity };
       clearTimeout(this.softnessTimer);
-      this.patch({ source, softness: 0 });
+      this.patch({ source, softness: 0, veilOpacity: undefined });
       void this.refresh();
       return;
     }
@@ -358,6 +386,7 @@ export class GlassWallpaperController {
     if (commit && !this.wallpaperBeforeStripes) this.write(this.preference());
     if (this.state.value.source === 'none') return;
     this.publish();
+    if (this.isLiquid()) return; // Adjust only the desk veil and contrast on clear glass.
     this.softnessTimer = setTimeout(() => void this.refresh(), commit ? 0 : 120);
   }
   async importFile(file: File) {
@@ -389,7 +418,7 @@ export class GlassWallpaperController {
   /** Compute the glass tint and contrast from the current bitmap and theme. */
   private publish() {
     const root = this.root();
-    const names = ['--glass-wallpaper', '--glass-wallpaper-veil', '--glass-wallpaper-fill', '--glass-wallpaper-page', '--glass-wallpaper-page-flat', '--glass-wallpaper-glow'];
+    const names = ['--glass-wallpaper', '--glass-wallpaper-veil', '--glass-wallpaper-fill', '--glass-wallpaper-page', '--glass-wallpaper-glow'];
     if (!this.render || this.state.value.source === 'none') {
       root.removeAttribute('data-glass-wallpaper');
       for (const name of names) root.style.removeProperty(name);
@@ -403,13 +432,13 @@ export class GlassWallpaperController {
       paper: token('paper', light ? [251, 252, 254] : [25, 32, 42]), sidebar: token('sidebar', light ? [223, 230, 238] : [15, 19, 26]),
       text: token('text', light ? [28, 36, 48] : [227, 232, 240]), muted: token('muted', light ? [92, 104, 122] : [141, 153, 171]),
     }, root.dataset.layout === 'continuous' || root.dataset.layout === 'document' ? root.dataset.layout : 'islands',
-    root.dataset.material === 'builtin:liquid' ? 'liquid' : 'frost');
+    root.dataset.material === 'builtin:liquid' ? 'liquid' : 'frost',
+    this.veilOpacity / 100);
     root.setAttribute('data-glass-wallpaper', '');
     root.style.setProperty('--glass-wallpaper', `url("${this.render.url}")`);
     root.style.setProperty('--glass-wallpaper-veil', `${Math.round(style.veil * 100)}%`);
     root.style.setProperty('--glass-wallpaper-fill', `${Math.round(style.fill * 100)}%`);
     root.style.setProperty('--glass-wallpaper-page', `${Math.round(style.page * 100)}%`);
-    root.style.setProperty('--glass-wallpaper-page-flat', `${Math.round(style.pageFlat * 100)}%`);
     root.style.setProperty('--glass-wallpaper-glow', style.glow);
   }
   dispose() {

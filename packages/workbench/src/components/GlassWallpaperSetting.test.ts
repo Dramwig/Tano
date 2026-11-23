@@ -36,8 +36,14 @@ it('lists the light field and built-in images, applies a choice and enables soft
   setGlassWallpaper(controller);
   mount();
   const labels = [...root.querySelectorAll('.glass-wallpaper-choice')].map(button => button.textContent?.trim());
-  expect(labels).toEqual(['光斑', '晨雾', '暮光']);
-  const slider = root.querySelector<HTMLInputElement>('input[type="range"]')!;
+  expect(labels).toEqual(['光斑', '晨雾', '暮光', '云层']);
+  const range = (label: string) => {
+    const id = [...root.querySelectorAll('label')].find(node => node.textContent === label)!.htmlFor;
+    return document.getElementById(id) as HTMLInputElement;
+  };
+  const slider = range('柔化');
+  const veil = range('背景蒙版不透明度');
+  expect(veil.disabled).toBe(true);
   expect(slider.disabled).toBe(true);
   expect(root.querySelector('[aria-label="移除我的图片"]')).toBeNull();
   root.querySelectorAll<HTMLButtonElement>('.glass-wallpaper-choice')[2]!.click();
@@ -69,6 +75,14 @@ it('lists the light field and built-in images, applies a choice and enables soft
   await nextTick();
   const custom = [...root.querySelectorAll('.glass-wallpaper-choice')].find(button => button.textContent?.trim() === '我的图片')!;
   const swatch = custom.querySelector<HTMLElement>('.glass-wallpaper-swatch')!;
+  expect(veil.disabled).toBe(false);
+  veil.value = '75';
+  veil.dispatchEvent(new Event('input'));
+  await nextTick();
+  expect(document.documentElement.style.getPropertyValue('--glass-wallpaper-veil')).toBe('75%');
+  expect(veil.getAttribute('aria-valuetext')).toBe('75%');
+  veil.dispatchEvent(new Event('change'));
+  expect(JSON.parse(localStorage.getItem(wallpaperKey)!).veilOpacity).toEqual({ light: 75 });
   const preview = swatch.style.backgroundImage;
   expect(preview).toContain('cHJldmlldw==');
   root.querySelector<HTMLButtonElement>('.glass-wallpaper-choice')!.click();

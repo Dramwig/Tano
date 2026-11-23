@@ -128,7 +128,8 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 .theme-preview[data-preview-surface] .theme-preview-toolbar,
 .theme-preview[data-preview-surface] .theme-preview-workspace { background: transparent; }
 .theme-preview[data-preview-surface] .theme-preview-window { border-color: transparent; box-shadow: none; }
-.theme-preview[data-preview-surface] .theme-preview-sidebar,
+.theme-preview[data-preview-surface='frost'] .theme-preview-sidebar,
+.theme-preview[data-preview-surface='liquid'][data-preview-structure='islands'] .theme-preview-sidebar,
 .theme-preview[data-preview-surface] .theme-preview-main {
   border-color: var(--preview-rim);
   border-radius: 6px;
@@ -138,15 +139,26 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 }
 .theme-preview[data-preview-surface] .theme-preview-main { --preview-glass: 74%; }
 /* Liquid glass: clearer cards whose edges catch the light (see layout-themes.css). */
-.theme-preview[data-preview-surface='liquid'] .theme-preview-scene { --preview-glass: 40%; --preview-rim: #ffffffeb; --preview-edge: #ffffff80; --preview-glow: #ffffff8c; --preview-outline: #1c24301f; }
-.theme-preview[data-preview-surface='liquid'] .theme-preview-scene[data-preview-mode='dark'] { --preview-glass: 52%; --preview-rim: #ffffff42; --preview-edge: #ffffff1a; --preview-glow: #ffffff17; --preview-outline: #00000073; }
-.theme-preview[data-preview-surface='liquid'] :is(.theme-preview-sidebar, .theme-preview-main) {
+.theme-preview[data-preview-surface='liquid'] .theme-preview-scene { --preview-glass: 10%; --preview-rim: #ffffff80; --preview-edge: #ffffff80; --preview-outline: #1c24301f; }
+.theme-preview[data-preview-surface='liquid'] .theme-preview-scene[data-preview-mode='dark'] { --preview-glass: 16%; --preview-rim: #ffffff42; --preview-edge: #ffffff1a; --preview-outline: #00000073; }
+.theme-preview[data-preview-surface='liquid']:not([data-preview-structure='islands']) .theme-preview-sidebar { background: transparent; }
+.theme-preview[data-preview-surface='liquid'][data-preview-structure='islands'] .theme-preview-sidebar,
+.theme-preview[data-preview-surface='liquid'] .theme-preview-main {
   border-color: transparent;
   background: color-mix(in srgb, var(--preview-paper) var(--preview-glass), transparent);
   box-shadow: 0 0 0 .5px var(--preview-outline), inset 1px 1px 0 var(--preview-rim), inset -1px -1px 0 var(--preview-edge),
-    inset 0 0 7px -1px var(--preview-glow), 0 6px 12px -8px #1c305a4d;
-  -webkit-backdrop-filter: blur(5px) saturate(180%) brightness(1.05); backdrop-filter: blur(5px) saturate(180%) brightness(1.05);
+    0 6px 12px -8px #1c305a4d;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
 }
-.theme-preview[data-preview-surface='liquid'] .theme-preview-main { --preview-glass: 56%; }
-.theme-preview[data-preview-surface='liquid'] [data-preview-mode='dark'] .theme-preview-main { --preview-glass: 64%; }
+.theme-preview[data-preview-surface='liquid'] .theme-preview-scene[data-preview-mode] {
+  background: url('../assets/clouds-day.webp') center / cover;
+}
+.theme-preview[data-preview-surface='liquid'] .theme-preview-scene[data-preview-mode='dark'] {
+  background-image: url('../assets/clouds-night.webp');
+}
+.theme-preview[data-preview-surface='liquid'] .theme-preview-main { --preview-glass: 16%; }
+.theme-preview[data-preview-surface='liquid'][data-preview-structure='continuous'] .theme-preview-main {
+  border-radius: 6px 0 0; box-shadow: inset 1px 1px 0 var(--preview-rim);
+}
+.theme-preview[data-preview-surface='liquid'] [data-preview-mode='dark'] .theme-preview-main { --preview-glass: 22%; }
 </style>

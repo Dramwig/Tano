@@ -429,7 +429,7 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('appearance', 'appearance-icons', '文件与目录图标', '选择工作区图标主题。', 'icon 文件夹 图标 插件'),
   settingSearchEntry('appearance', 'appearance-layout', '布局风格', '选择页面结构：连续页面、卡片岛或纸感文稿，可与任意配色、图标混搭。', 'layout islands paper 卡片岛 纸感 纸质 布局 结构'),
   settingSearchEntry('appearance', 'appearance-material', '材质', '选择侧栏和页面的质感，可与任意布局、配色混搭。', 'material glass frost frosted liquid translucent 材质 玻璃 磨砂 毛玻璃 液态 液态玻璃 透明 质感'),
-  ...(frostActive.value ? [settingSearchEntry('appearance', 'appearance-wallpaper', '背景图片', '玻璃材质会透出这张图片，卡片透明度会按图片自动调整以保证文字清晰。图片只保存在这台设备。', 'wallpaper background image glass 壁纸 背景 图片 柔化')] : []),
+  ...(frostActive.value ? [settingSearchEntry('appearance', 'appearance-wallpaper', '背景图片', '玻璃材质会透出这张图片，卡片透明度会按图片自动调整以保证文字清晰。图片只保存在这台设备。', 'wallpaper background image glass overlay opacity 壁纸 背景 图片 柔化 蒙版 不透明度')] : []),
   ] : []),
   ...(!splitFonts.value.enabled ? [settingSearchEntry('appearance', 'appearance-visual-font', '可视化编辑字体', '选择内置字体，或使用本机已安装的字体。', 'font system serif mono Maple custom')] : []),
   settingSearchEntry('appearance', 'appearance-split-fonts', '分别设置中英文字体', '开启后分别选择中文和英文字体；关闭后恢复统一字体设置。', 'font split Chinese English 中英文 中文 英文 字体 拆分'),
@@ -1910,7 +1910,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   background: var(--paper);
   backdrop-filter: none;
 }
-.settings-tabbed .settings-dialog {
+:root .modal-backdrop.settings-backdrop.settings-tabbed > .settings-dialog {
   width: 100%;
   height: 100%;
   border: 0;

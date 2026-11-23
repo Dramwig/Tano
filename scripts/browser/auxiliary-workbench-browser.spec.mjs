@@ -281,6 +281,7 @@ test('built-in glass wallpapers switch their thumbnail and bitmap with the displ
     const previousWallpaper = await readWallpaper();
     await choice.click();
     await expect.poll(readWallpaper).not.toBe(previousWallpaper);
+    await expect(root).toHaveCSS('--glass-wallpaper-veil', '24%');
     const lightWallpaper = await readWallpaper();
     const lightSwatch = await swatch.evaluate(element => getComputedStyle(element).backgroundImage);
 
@@ -291,6 +292,7 @@ test('built-in glass wallpapers switch their thumbnail and bitmap with the displ
     await expect(root).toHaveAttribute('data-glass-wallpaper', '');
     await expect(choice).toHaveAttribute('aria-pressed', 'true');
     const darkSwatch = await swatch.evaluate(element => getComputedStyle(element).backgroundImage);
+    await expect(root).toHaveCSS('--glass-wallpaper-veil', preset === 'builtin:liquid' ? '91%' : '45%');
     const darkWallpaper = await readWallpaper();
     expect(await readBrightness(darkSwatch)).toBeLessThan(await readBrightness(lightSwatch) * 0.6);
     expect(await readBrightness(darkWallpaper)).toBeLessThan(100);
@@ -301,6 +303,79 @@ test('built-in glass wallpapers switch their thumbnail and bitmap with the displ
     await expect(root).toHaveAttribute('data-theme', 'light');
     await expect(swatch).toHaveCSS('background-image', lightSwatch);
     await expect.poll(readWallpaper).not.toBe(darkWallpaper);
+    await expect(root).toHaveCSS('--glass-wallpaper-veil', '24%');
+  }
+});
+
+test('dark liquid glass shades a bright custom wallpaper across the desktop tab strip and settings page', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1296, height: 944 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await prepare(page);
+  const selectPreset = id => page.evaluate(id => {
+    const { appearance, appearanceController } = window.workbench;
+    appearanceController.select({ workspaceId: appearance.workspaceId, kind: 'preset', id });
+  }, id);
+  await selectPreset('builtin:frost');
+  await page.evaluate(() => window.workbench.openSettings('appearance'));
+  const mode = page.getByRole('combobox', { name: '显示模式', exact: true });
+  await mode.selectOption('dark');
+  const white = await sharp({ create: { width: 512, height: 384, channels: 3, background: '#fff' } }).png().toBuffer();
+  await page.locator('.glass-wallpaper input[type=file]').setInputFiles({ name: 'bright.png', mimeType: 'image/png', buffer: white });
+  const root = page.locator('html');
+  await expect(root).toHaveAttribute('data-glass-wallpaper', '');
+  await page.getByRole('button', { name: '作为标签页打开', exact: true }).click();
+  await expect(page.locator('.settings-tabbed')).toBeVisible();
+
+  // Sample blank space above the file tree and inside the settings tab from the actual composite.
+  const sample = async name => {
+    const shot = await sharp(await page.screenshot({ path: testInfo.outputPath(name) })).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    return [{ left: 55, top: 5 }, { left: 495, top: 300 }].map(({ left, top }) => {
+      const offset = (top * shot.info.width + left) * shot.info.channels;
+      return Math.max(...shot.data.subarray(offset, offset + 3));
+    });
+  };
+  const frost = await sample('dark-frost.png');
+  await selectPreset('builtin:liquid');
+  await expect(root).toHaveAttribute('data-liquid-refraction', '');
+  const liquid = await sample('dark-liquid.png');
+  for (const [i, brightness] of liquid.entries()) {
+    expect(brightness).toBeLessThan(65);
+    expect(brightness).toBeLessThanOrEqual(frost[i] + 18);
+  }
+  await mode.selectOption('light');
+  await expect(root).toHaveAttribute('data-theme', 'light');
+  for (const brightness of await sample('light-liquid.png')) expect(brightness).toBeGreaterThan(180);
+
+  const black = await sharp({ create: { width: 512, height: 384, channels: 3, background: '#000' } }).png().toBuffer();
+  await page.locator('.glass-wallpaper input[type=file]').setInputFiles({ name: 'dark.png', mimeType: 'image/png', buffer: black });
+  await expect(page.locator('.glass-wallpaper')).toHaveAttribute('aria-busy', 'false');
+  const overlay = page.getByRole('slider', { name: '背景蒙版不透明度' });
+  await overlay.press('Home');
+  await expect(root).toHaveCSS('--glass-wallpaper-veil', '0%');
+  const [bare] = await sample('light-liquid-bare.png');
+  await overlay.press('End');
+  await expect(root).toHaveCSS('--glass-wallpaper-veil', '100%');
+  const [veiled] = await sample('light-liquid-veiled.png');
+  expect(veiled - bare).toBeGreaterThan(100);
+});
+
+test('liquid glass keeps the docked toolbar transparent above both theme palettes', async ({ page }) => {
+  await prepare(page);
+  await page.evaluate(() => {
+    const { appearance, appearanceController } = window.workbench;
+    appearanceController.select({ workspaceId: appearance.workspaceId, kind: 'preset', id: 'builtin:liquid' });
+    window.workbench.toolbarMode = 'bottom';
+  });
+  const toolbar = page.locator('.selection-toolbar .selection-format-toolbar');
+  for (const colorScheme of ['light', 'dark']) {
+    await page.emulateMedia({ colorScheme });
+    await page.locator('.ProseMirror').first().click();
+    await expect(toolbar).toBeVisible();
+    await expect(toolbar).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect.poll(() => toolbar.evaluate(el => getComputedStyle(el, '::before').backdropFilter)).toContain('#tano-liquid-');
+    await toolbar.locator('button[aria-haspopup]').first().click();
+    await expect(page.locator('.selection-toolbar .dropdown:visible').first()).toBeVisible();
+    await page.keyboard.press('Escape');
   }
 });
 
@@ -323,7 +398,9 @@ test('the selected liquid glass tab and its page share one surface', async ({ pa
   await expect(main).not.toHaveAttribute('data-liquid-joined-tab', '');
   await expect(card).toHaveAttribute('data-liquid-joined-card', '');
   await expect(veil).toHaveCount(1);
-  await expect.poll(() => veil.evaluate(element => element.previousElementSibling.style.getPropertyValue('--liquid-backdrop'))).toContain('url(');
+  await expect(page.locator('html')).toHaveAttribute('data-glass-wallpaper', '');
+  await expect(page.locator('.liquid-pane')).toHaveCount(0);
+  await expect(card).toHaveCSS('backdrop-filter', 'none');
   await expect(second).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   const previousOutline = await veil.evaluate(element => element.style.clipPath);
   await main.getByRole('tab').click();
@@ -351,6 +428,23 @@ test('the selected liquid glass tab and its page share one surface', async ({ pa
   await expect(main).toHaveAttribute('data-liquid-joined-tab', '');
   await expect(second).toHaveAttribute('data-liquid-joined-tab', '');
   await expect(card).toHaveCount(2);
+});
+
+test('the settings tab meets the breadcrumb without a rounded dialog frame', async ({ page }) => {
+  await prepare(page);
+  await page.evaluate(() => window.workbench.openSettingsTab('appearance'));
+  const settings = page.locator('.settings-tabbed .settings-dialog');
+  const header = page.locator('.topbar:visible').filter({ has: page.locator('.breadcrumb-current', { hasText: '设置' }) });
+  await expect(header.locator('.breadcrumb-menu-trigger + svg + .breadcrumb-current')).toHaveText('设置');
+  for (const layout of ['builtin:tano', 'builtin:islands', 'builtin:paper']) {
+    await settings.getByRole('combobox', { name: '布局风格', exact: true }).selectOption(layout);
+    await expect(settings).toHaveCSS('border-top-left-radius', '0px');
+    await expect(settings).toHaveCSS('box-shadow', 'none');
+    const bar = await header.boundingBox();
+    const panel = await settings.boundingBox();
+    expect(panel.x).toBeCloseTo(bar.x, 0);
+    expect(panel.y).toBeCloseTo(bar.y + bar.height, 0);
+  }
 });
 
 for (const [material, preset] of [['frosted glass', 'builtin:frost'], ['liquid glass', 'builtin:liquid']]) {
@@ -421,9 +515,141 @@ test('switching glass material preserves the layout’s cards and docked tabs', 
     await expect(root).toHaveAttribute('data-material', 'builtin:liquid');
     await expect(root).toHaveAttribute('data-layout', structure);
     expect(await sidebarBounds()).toEqual(frostedSidebar);
+    if (structure === 'islands') {
+      await expect(sidebarSurface).toHaveAttribute('data-liquid-glass', /\d+/);
+    } else {
+      await expect(sidebarSurface).not.toHaveAttribute('data-liquid-glass', /.+/);
+      await expect(page.locator('.workspace-pane-surface:visible')).toHaveAttribute('data-liquid-glass', /\d+/);
+    }
     await expect(inactiveTab).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     expect(await inactiveTab.evaluate(tab => getComputedStyle(tab, '::after').content)).toBe('none');
   }
+});
+
+for (const [layout, id] of [['continuous', 'builtin:tano'], ['document', 'builtin:paper']]) {
+  test(`liquid glass refracts the visible ${layout} settings and document surfaces`, async ({ page }, testInfo) => {
+    await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
+    await prepare(page);
+    await page.evaluate(() => window.workbench.openSettingsTab('appearance'));
+    const settings = page.locator('.settings-tabbed');
+    await settings.getByRole('combobox', { name: '布局风格', exact: true }).selectOption(id);
+    await settings.getByRole('combobox', { name: '材质', exact: true }).selectOption('builtin:liquid');
+    await settings.getByRole('group', { name: '背景图片' }).getByRole('button', { name: '云层', exact: true }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-glass-wallpaper', '');
+    const sidebar = page.locator('.app-shell > .sidebar > .sidebar-surface');
+    await expect(sidebar).toBeHidden();
+    await expect(sidebar).not.toHaveAttribute('data-liquid-glass', /.+/);
+    await expect(page.locator('.app-shell > .sidebar')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    const previewSidebar = settings.locator(`[data-preview-surface="liquid"][data-preview-structure="${layout}"] .theme-preview-sidebar`).first();
+    await expect(previewSidebar).toHaveCSS('box-shadow', 'none');
+    await expect(previewSidebar).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    for (const view of ['settings', 'editor']) {
+      if (view === 'editor') await page.locator('.tree-row[title="Main.md"]').click();
+      const target = page.locator(layout === 'document' && view === 'editor' ? '.document-main:visible' : '.workspace-pane-surface:visible');
+      await expect(target).toHaveAttribute('data-liquid-glass', /\d+/);
+      const surfaceId = await target.getAttribute('data-liquid-glass');
+      const box = await target.boundingBox();
+      const clip = { x: Math.ceil(box.x + 2), y: Math.ceil(box.y + 60), width: 22, height: 200 };
+      const capture = async () => sharp(await page.screenshot({ clip })).removeAlpha().raw().toBuffer();
+      const glass = await capture();
+      await page.screenshot({ path: testInfo.outputPath(`${layout}-${view}.png`) });
+      // Keep tint, blur and shadows identical; neutralize just the displacement.
+      const channels = page.locator(`#tano-liquid-${surfaceId} feDisplacementMap`);
+      await expect(channels).toHaveCount(3);
+      const scales = await channels.evaluateAll(nodes => nodes.map(node => {
+        const scale = node.getAttribute('scale');
+        node.setAttribute('scale', '0');
+        return scale;
+      }));
+      const flat = await capture();
+      await channels.evaluateAll((nodes, original) => nodes.forEach((node, i) => node.setAttribute('scale', original[i])), scales);
+      const difference = glass.reduce((sum, value, i) => sum + Math.abs(value - flat[i]), 0) / glass.length;
+      expect(difference).toBeGreaterThan(0.5);
+    }
+    // The browser has no native title bar to host the compact desktop toggle.
+    await page.evaluate(() => { window.workbench.native = false; });
+    await page.setViewportSize({ width: 640, height: 720 });
+    await expect(page.locator('html')).toHaveClass(/compact-layout/);
+    await expect(page.locator('.app-shell > .sidebar')).toHaveAttribute('aria-hidden', 'true');
+    await page.getByRole('button', { name: '展开侧栏', exact: true }).click();
+    await expect(page.locator('.app-shell > .sidebar')).toBeVisible();
+    await expect(sidebar).toHaveCSS('display', 'none');
+    await expect(sidebar).not.toHaveAttribute('data-liquid-glass', /.+/);
+  });
+}
+
+test('continuous glass bends wallpaper stripes at the exposed top and keeps window seams flat', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1296, height: 944 });
+  await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
+  await prepare(page);
+  await page.evaluate(() => {
+    window.workbench.developerMode = true;
+    window.workbench.openSettingsTab('appearance');
+  });
+  const settings = page.locator('.settings-tabbed');
+  await settings.getByRole('combobox', { name: '布局风格', exact: true }).selectOption('builtin:tano');
+  await settings.getByRole('combobox', { name: '材质', exact: true }).selectOption('builtin:liquid');
+  await settings.getByRole('button', { name: '调试条纹', exact: true }).click();
+  await expect(settings.locator('.glass-wallpaper')).toHaveAttribute('aria-busy', 'false');
+  const pane = page.locator('.workspace-pane-surface:visible');
+  await expect(pane).toHaveAttribute('data-liquid-joined-card', '');
+  const box = await pane.boundingBox();
+  const tab = await page.locator('[data-liquid-joined-tab]').boundingBox();
+  const x = Math.floor(box.x + box.width - 215);
+  expect(x).toBeGreaterThan(tab.x + tab.width);
+  // On the unbent wallpaper these vertical stripes have the same horizontal
+  // profile in every row. At the rim they curve as they enter the sheet.
+  const clip = { left: x, top: Math.round(box.y) + 2, width: 155, height: 32 };
+  const sample = (image, region) => sharp(image).extract(region).removeAlpha().raw().toBuffer();
+  const rowVariation = async image => {
+    const pixels = await sample(image, clip);
+    const stride = clip.width * 3;
+    return pixels.subarray(0, stride).reduce((sum, value, i) =>
+      sum + Math.abs(value - pixels[(clip.height - 1) * stride + i]), 0) / stride;
+  };
+  const glass = await page.screenshot({ path: testInfo.outputPath('continuous-top-stripes.png') });
+  const id = await pane.getAttribute('data-liquid-glass');
+  await page.locator(`#tano-liquid-${id} feDisplacementMap`).evaluateAll(nodes =>
+    nodes.forEach(node => node.setAttribute('scale', '0')));
+  const flat = await page.screenshot();
+  expect(await rowVariation(glass) - await rowVariation(flat)).toBeGreaterThan(2);
+  const right = Math.round(box.x + box.width), bottom = Math.round(box.y + box.height);
+  for (const region of [
+    { left: right - 8, top: Math.round(box.y + 130), width: 8, height: 460 },
+    { left: x, top: bottom - 8, width: 155, height: 8 },
+  ]) {
+    const original = await sample(flat, region);
+    expect((await sample(glass, region)).equals(original)).toBe(true);
+  }
+});
+
+test('continuous liquid glass extends only the pane edges that reach the window', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await prepare(page);
+  await page.evaluate(() => window.workbench.openSettingsTab('appearance'));
+  const settings = page.locator('.settings-tabbed');
+  await settings.getByRole('combobox', { name: '布局风格', exact: true }).selectOption('builtin:tano');
+  await settings.getByRole('combobox', { name: '材质', exact: true }).selectOption('builtin:liquid');
+  const panes = page.locator('.workspace-pane-surface:visible');
+  const extensions = () => panes.evaluateAll(elements => elements.map(el => {
+    const box = el.getBoundingClientRect();
+    const lens = document.querySelector(`.liquid-lens[style*="url(#tano-liquid-${el.dataset.liquidGlass})"]`)?.getBoundingClientRect();
+    return {
+      right: lens?.right > box.right + 1,
+      bottom: lens?.bottom > box.bottom + 1,
+      x: box.left, y: box.top,
+    };
+  }).sort((a, b) => a.y - b.y || a.x - b.x).map(({ right, bottom }) => [right, bottom]));
+  await expect.poll(extensions).toEqual([[true, true]]);
+  const split = side => page.evaluate(side => {
+    const { store } = window.workbench;
+    store.moveTabToWindow(store.activeId, 'main', { paneId: store.windowLayouts.main.activePaneId, side });
+  }, side);
+  await split('right');
+  await expect.poll(extensions).toEqual([[false, true], [true, true]]);
+  await page.evaluate(() => window.workbench.store.create('Split.md', false, 'Split document'));
+  await split('bottom');
+  await expect.poll(extensions).toEqual([[false, true], [true, false], [true, true]]);
 });
 
 test('settings edits update the actual main and auxiliary editors immediately', async ({ page }) => {

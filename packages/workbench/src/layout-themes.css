@@ -249,30 +249,23 @@
   }
   :root[data-theme='dark']:is([data-material='builtin:frost'], [data-material='builtin:liquid'])[data-layout='continuous'] { --glass-page-strength: 66%; }
 
-  /* Liquid glass (液态玻璃), after Apple's 2025 material. Where frosted glass is milky paper, liquid glass is a
-     clear, thick slab: no grain, a thinner tint and a lighter, more saturated live blur, and it is the edge
-     that tells you it is glass — a crisp specular line where light enters (top-left) and a fainter one where
-     it leaves (bottom-right), with a soft inner glow where the thick rim bends the light. Only box-shadows
-     are used, so nothing changes the stacking or containing blocks described above. Colour stays the palette's.
-     This is also the whole look where SVG backdrop filters are unsupported (Safari, Firefox); in Chromium the
-     refraction layers further down bend the backdrop along the rim. */
+  /* Clear transmission through the sheet, directional reflections on its bevel. */
   :root[data-material='builtin:liquid'] {
     --glass-grain: none;
     /* Only the sheets are glass. The back panel — sidebar column, tab strip, the desk between cards — is the
        bare background, untinted, so the editor sheet reads as a pane of glass lying on it. */
     --glass-back: transparent;
-    --glass-fill-strength: 40%;
-    --glass-page-strength: 46%;
-    --glass-filter: blur(14px) saturate(180%) brightness(1.05);
-    --glass-edge: color-mix(in srgb, #ffffff 55%, transparent);
+    --glass-fill-strength: 10%;
+    --glass-page-strength: 16%;
+    --glass-filter: none;
+    --glass-edge: color-mix(in srgb, #ffffff 26%, transparent);
     /* A darker hairline outside the light rim keeps the clear sheet's outline readable on a bright desk. */
     --glass-outline: color-mix(in srgb, var(--glass-shade) 11%, transparent);
     --glass-specular:
-      inset 1px 1px 0 color-mix(in srgb, #ffffff 92%, transparent),
-      inset -1px -1px 0 color-mix(in srgb, #ffffff 50%, transparent),
-      inset 0 0 14px -2px color-mix(in srgb, #ffffff 55%, transparent);
+      inset 1px 1px 0 color-mix(in srgb, #ffffff 50%, transparent),
+      inset -1px -1px 0 color-mix(in srgb, #ffffff 18%, transparent);
   }
-  :root[data-material='builtin:liquid'][data-layout='continuous'] { --glass-page-strength: 50%; }
+  :root[data-material='builtin:liquid'][data-layout='continuous'] { --glass-page-strength: 18%; }
   /* Vibrancy: on clear glass, secondary text leans towards body text so it stays legible over a bright,
      barely veiled image (the contrast solver in glass-wallpaper.ts assumes this mix: liquidWallpaper.ink).
      The palette's tokens are inline on <html>, so they are read there and mixed one level down. */
@@ -283,17 +276,16 @@
   }
   :root[data-theme='dark'][data-material='builtin:liquid'] {
     --glass-back: transparent;
-    --glass-fill-strength: 50%;
-    --glass-page-strength: 58%;
-    --glass-filter: blur(14px) saturate(170%);
+    --glass-fill-strength: 18%;
+    --glass-page-strength: 22%;
+    --glass-filter: none;
     --glass-edge: color-mix(in srgb, #ffffff 10%, transparent);
     --glass-outline: color-mix(in srgb, #000000 45%, transparent);
     --glass-specular:
       inset 1px 1px 0 color-mix(in srgb, #ffffff 26%, transparent),
-      inset -1px -1px 0 color-mix(in srgb, #ffffff 10%, transparent),
-      inset 0 0 16px -4px color-mix(in srgb, #ffffff 9%, transparent);
+      inset -1px -1px 0 color-mix(in srgb, #ffffff 10%, transparent);
   }
-  :root[data-theme='dark'][data-material='builtin:liquid'][data-layout='continuous'] { --glass-page-strength: 62%; }
+  :root[data-theme='dark'][data-material='builtin:liquid'][data-layout='continuous'] { --glass-page-strength: 24%; }
 
   /* With a background image (see glass-wallpaper.ts) the image replaces the painted light field. It arrives
      pre-softened, under a veil of the desk colour; the script measures the image and raises the sheet
@@ -309,13 +301,6 @@
       var(--glass-wallpaper) center / cover no-repeat fixed,
       var(--sidebar);
   }
-  /* Liquid glass with an image: the solver measured a thin back panel and a page that relies on the lens's
-     brightness; without the lens (Safari, Firefox) the page uses the flat value. */
-  :root[data-material='builtin:liquid'][data-glass-wallpaper][data-layout] {
-    --glass-page-strength: var(--glass-wallpaper-page-flat, var(--glass-wallpaper-page, 70%));
-  }
-  :root[data-material='builtin:liquid'][data-glass-wallpaper][data-layout][data-liquid-refraction] { --glass-page-strength: var(--glass-wallpaper-page, 60%); }
-
   /* ---- The two workbench layers in glass (see .app-shell in styles.css) ----
      Every layout keeps its own geometry; only the layers change. The back panel is the light field under a
      tint of the sidebar colour, with grain and a sheen; things sitting on it are clear. The front panel —
@@ -332,28 +317,22 @@
   /* Liquid glass paints the surfaces the layout already provides. Sidebar and tab-strip chrome on
      the desk stay on the desk, and the layout and shape still determine each surface's bounds. */
   :root[data-material='builtin:liquid'] {
-    --liquid-blur: 22px;
-    --liquid-panel-blur: 26px;
     /* Sidebar surface tint; with an image it is measured (glass-wallpaper.ts, `fill`). */
-    --liquid-panel-strength: 26%;
+    --liquid-panel-strength: 10%;
     --liquid-panel: color-mix(in srgb, var(--paper) var(--liquid-panel-strength), transparent);
   }
-  :root[data-theme='dark'][data-material='builtin:liquid'] { --liquid-panel-strength: 42%; }
+  :root[data-theme='dark'][data-material='builtin:liquid'] { --liquid-panel-strength: 16%; }
   :root[data-material='builtin:liquid'][data-glass-wallpaper][data-layout] { --liquid-panel-strength: var(--glass-wallpaper-fill, 40%); }
-  /* The layout shows this layer for the island sidebar card or the compact drawer. */
-  :root[data-material='builtin:liquid'] .sidebar-surface {
+  /* Only the islands layout gives the sidebar its own sheet. */
+  :root[data-material='builtin:liquid'][data-layout='islands'] .sidebar-surface {
     background: var(--liquid-panel);
-    -webkit-backdrop-filter: blur(var(--liquid-panel-blur)) saturate(var(--liquid-saturate)) brightness(var(--liquid-brightness));
-    backdrop-filter: blur(var(--liquid-panel-blur)) saturate(var(--liquid-saturate)) brightness(var(--liquid-brightness));
+    -webkit-backdrop-filter: none; backdrop-filter: none;
     box-shadow: 0 0 0 .5px var(--glass-outline), var(--glass-specular), var(--glass-drop);
   }
-  :root[data-layout='continuous'][data-material='builtin:liquid'] .workspace-pane-surface {
-    -webkit-backdrop-filter: blur(var(--liquid-blur)) saturate(var(--liquid-saturate)) brightness(var(--liquid-brightness));
-    backdrop-filter: blur(var(--liquid-blur)) saturate(var(--liquid-saturate)) brightness(var(--liquid-brightness));
-  }
-  /* A drawer sidebar (compact layout) floats over the page, so there it is a live-blurred sheet. The
+  /* A drawer sidebar (compact layout) floats over the page. The
      sidebar already forms a stacking context (z-index 4), so the pseudo-element layer is safe. */
-  :root.compact-layout:is([data-material='builtin:frost'], [data-material='builtin:liquid']) .sidebar-surface {
+  :root.compact-layout[data-material='builtin:frost'] .sidebar-surface,
+  :root.compact-layout[data-material='builtin:liquid'][data-layout='islands'] .sidebar-surface {
     display: block; inset: 0;
   }
   :root.compact-layout[data-material='builtin:frost'] .sidebar-surface {
@@ -394,47 +373,26 @@
     border-color: transparent;
     box-shadow: 0 0 0 .5px var(--glass-outline), var(--glass-specular), var(--glass-drop);
   }
-  /* The continuous page meets the sidebar: light the edge it enters by. Its top joins the active tab, so it
-     gets no rim there (a line would cut the tab off its page). */
+  /* In compact mode the drawer covers the editor, so paint the desk behind its controls. */
+  :root.compact-layout[data-material='builtin:liquid']:not([data-layout='islands']) .app-shell > .sidebar {
+    background: var(--workbench-back-paint);
+  }
   :root[data-layout='continuous'][data-material='builtin:liquid'] .workspace-pane-surface {
-    box-shadow: inset 1px 0 0 color-mix(in srgb, #ffffff 70%, transparent), inset 12px 0 14px -12px color-mix(in srgb, #ffffff 45%, transparent);
+    box-shadow: inset 1px 0 0 color-mix(in srgb, #ffffff 38%, transparent);
   }
   :root[data-theme='dark'][data-layout='continuous'][data-material='builtin:liquid'] .workspace-pane-surface {
     box-shadow: inset 1px 0 0 color-mix(in srgb, #ffffff 14%, transparent);
   }
   :root[data-material='builtin:liquid']:not([data-layout='islands']) .settings-backdrop:not(.settings-tabbed) .settings-main { box-shadow: var(--glass-specular); }
-  /* Real refraction (Chromium; liquid-glass.ts). Live backdrop filters over whole sheets are re-run on every
-     frame anything above them changes (scrolling), so liquid-glass.ts draws the glass itself in
-     .liquid-backdrop, a layer at the bottom of .app-shell. Per surface, bottom to top: .liquid-lens, thin
-     .liquid-rim strips along the free edges that bend the unblurred background (a small
-     backdrop-filter: url(#…) each); .liquid-pane, the background pre-blurred and toned once
-     (--liquid-backdrop), faded out across the rim so the bent band shows there; .liquid-shine-layer, the
-     specular highlight. The surfaces then only keep what is cheap: their translucent veil, outline and shadow.
-     data-liquid-glass marks a refracting surface (sidebar card, page cards, the paper sheet); its interior
-     veil is ::after, faded across the bezel by --liquid-mask and sized from --liquid-w/-h, so content
-     containers never become a containing block, stacking context or backdrop root for their content.
-     data-liquid-pane marks a surface that is only blurred (the continuous page). */
   :root[data-material='builtin:liquid'] {
-    /* Rim width; liquid-glass.ts holds it near each surface's corner radius (surfaceBezel). */
-    --liquid-bezel: 24px;
-    /* Blur of the sheets: enough to calm a photo behind body text, little enough that the bent rim reads. */
-    --liquid-sheet-blur: 8px;
-    /* Strength of the generated specular rim (liquid-glass.ts reads it per surface). */
-    --liquid-specular-strength: .9;
-    --liquid-rim-fill: color-mix(in srgb, var(--paper) 10%, transparent);
-    /* --liquid-brightness must match liquidWallpaper.brightness in glass-wallpaper.ts (the contrast solver counts on it).
-       Both are baked into the pre-blurred background (liquid-glass.ts reads them from here). */
-    --liquid-saturate: 180%; --liquid-brightness: 1.08;
+    --liquid-bezel: 18px;
+    --liquid-frame: inset 0 0 2px 1px #18263e2b, inset 0 0 10px 4px #22304319;
+    --liquid-capsule-tint: rgb(255 255 255 / 10%);
   }
-  :root[data-theme='dark'][data-material='builtin:liquid'] {
-    --liquid-specular-strength: .38;
-    --liquid-rim-fill: color-mix(in srgb, var(--paper) 22%, transparent);
-    --liquid-saturate: 150%; --liquid-brightness: .92;
+  :root[data-material='builtin:liquid'][data-theme='dark'] {
+    --liquid-frame: inset 0 0 2px 1px #ffffff59, inset 0 0 10px 4px #ffffff26;
+    --liquid-capsule-tint: rgb(0 0 0 / 10%);
   }
-  /* How much each surface's pane blurs the background (read per surface by liquid-glass.ts). */
-  :root[data-material='builtin:liquid'] .sidebar-surface { --liquid-pane-blur: var(--liquid-panel-blur); }
-  :root[data-material='builtin:liquid'] :is(.workspace-card, .document-main) { --liquid-pane-blur: var(--liquid-sheet-blur); }
-  :root[data-material='builtin:liquid'] .workspace-pane-surface { --liquid-pane-blur: var(--liquid-blur); }
 
   /* The glass layer itself: under every other child of .app-shell (whose isolation keeps it above the desk). */
   .liquid-backdrop { display: none; }
@@ -442,16 +400,11 @@
   :root[data-material='builtin:liquid'] .liquid-backdrop:has(.liquid-joined-veil) {
     display: block; position: absolute; inset: 0; z-index: -2; overflow: hidden; pointer-events: none;
   }
-  :root[data-material='builtin:liquid'][data-liquid-refraction] .liquid-pane {
-    position: absolute; overflow: hidden;
-    /* Aligned with the desk's own `center / cover fixed` wallpaper; without a wallpaper the soft desk shows through. */
-    background: linear-gradient(var(--liquid-rim-fill), var(--liquid-rim-fill)), var(--liquid-backdrop, none) center / cover no-repeat fixed;
+  :root[data-material='builtin:liquid'][data-liquid-refraction] .liquid-lens {
+    position: absolute; overflow: hidden; backdrop-filter: var(--liquid-filter);
+    box-shadow: var(--liquid-frame);
   }
-  /* Under the pane, the strips bend the unblurred background; over it, the highlight. */
-  :root[data-material='builtin:liquid'][data-liquid-refraction] :is(.liquid-lens, .liquid-shine-layer) { position: absolute; overflow: hidden; }
-  :root[data-material='builtin:liquid'][data-liquid-refraction] :is(.liquid-rim, .liquid-shine) {
-    position: absolute; background-size: 100% 100%; background-repeat: no-repeat;
-  }
+  :root[data-material='builtin:liquid'] .liquid-lens[data-joined] { box-shadow: none; }
   /* The selected tab and the page share the same clipped wallpaper and tint. */
   :root[data-material='builtin:liquid'] .liquid-joined-veil {
     position: absolute; background: var(--workbench-front);
@@ -460,7 +413,7 @@
   :root[data-material='builtin:liquid'] .liquid-joined-outline {
     position: absolute; overflow: visible; fill: none; stroke: var(--glass-edge); stroke-width: 1;
   }
-  :root[data-material='builtin:liquid'][data-layout='islands'] .workspace-card[data-liquid-joined-card] {
+  :root[data-material='builtin:liquid'][data-layout] :is(.workspace-card, .workspace-pane-surface)[data-liquid-joined-card] {
     background: transparent; box-shadow: none;
   }
   :root[data-material='builtin:liquid'] .desktop-tab[data-liquid-joined-tab] {
@@ -468,18 +421,13 @@
   }
   :root[data-material='builtin:liquid'] .desktop-tab[data-liquid-joined-tab] .desktop-tab-corners { display: none; }
 
-  /* The surfaces over their panes: no live filters, only veil, outline and shadow. */
-  :root[data-material='builtin:liquid'][data-liquid-refraction] :is([data-liquid-glass], [data-liquid-pane]) {
-    -webkit-backdrop-filter: none; backdrop-filter: none;
-  }
-  /* With the generated rim highlight (.liquid-shine, drawn by angle from the top left) the box-shadow
-     approximation of it would draw a second, flat line: refracting surfaces drop it. */
+  /* The refracting lens paints the frame below the workbench content. */
   :root[data-material='builtin:liquid'][data-liquid-refraction] [data-liquid-glass] { --glass-specular: 0 0 0 0 transparent; }
   :root[data-layout='islands'][data-material='builtin:liquid'][data-liquid-refraction] .workspace-card[data-liquid-glass] {
     --island-lift: 0 0 0 .5px var(--glass-outline), var(--glass-drop);
   }
-  :root[data-material='builtin:liquid'][data-liquid-refraction] :is(.sidebar-surface, .workspace-card, .document-main)[data-liquid-glass] { background: transparent; }
-  :root[data-material='builtin:liquid'][data-liquid-refraction] [data-liquid-glass]:not([data-liquid-joined-card])::after {
+  :root[data-material='builtin:liquid'][data-liquid-refraction] :is(.sidebar-surface, .workspace-card, .document-main, .workspace-pane-surface)[data-liquid-glass] { background: transparent; }
+  :root[data-material='builtin:liquid'][data-liquid-refraction] [data-liquid-glass]:not([data-liquid-joined-card], [data-liquid-local])::after {
     content: ''; position: absolute; z-index: -1; pointer-events: none;
     width: var(--liquid-w); height: var(--liquid-h); border-radius: inherit;
     background: var(--workbench-front);
@@ -488,10 +436,33 @@
   }
   /* Layer elements already sit behind their content, so their veil simply covers them. */
   :root[data-material='builtin:liquid'][data-liquid-refraction] .sidebar-surface[data-liquid-glass]::after { z-index: 0; inset: 0; background: var(--liquid-panel) !important; }
+  :root[data-material='builtin:liquid'] .workspace-pane-surface[data-liquid-glass]::after { inset: 0; }
+  :root[data-material='builtin:liquid'] .document-main[data-liquid-local] { isolation: isolate; }
+  :root[data-material='builtin:liquid'] .document-main[data-liquid-local]::before {
+    content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit;
+    backdrop-filter: var(--liquid-filter); background: var(--workbench-front); box-shadow: var(--liquid-frame);
+  }
+  :root[data-material='builtin:liquid'] :is(.sidebar-surface, .settings-main)[data-liquid-local] {
+    backdrop-filter: var(--liquid-filter);
+  }
+  :root.compact-layout[data-material='builtin:liquid'][data-liquid-refraction] .sidebar-surface[data-liquid-local] {
+    background: var(--liquid-panel);
+  }
   /* The sticky toolbar is clearer, like the sheet it sits on. */
   :root[data-material='builtin:liquid'] .editor-toolbar::before {
-    background: color-mix(in srgb, var(--paper) 58%, transparent);
-    -webkit-backdrop-filter: blur(10px) saturate(170%); backdrop-filter: blur(10px) saturate(170%);
+    background: var(--workbench-front);
+    -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+  }
+
+  /* The floating toolbar samples the live page under its own capsule, including while docked. */
+  :root[data-material='builtin:liquid'] .selection-toolbar .selection-format-toolbar {
+    z-index: 0; background: transparent; border-radius: 999px;
+    box-shadow: 0 1px 2px #0003, 0 5px 16px -6px #08182c63;
+  }
+  :root[data-material='builtin:liquid'] .selection-format-toolbar::before {
+    content: ''; position: absolute; z-index: -1; inset: 0; border-radius: inherit; pointer-events: none;
+    background: var(--liquid-capsule-tint); box-shadow: var(--liquid-frame);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: var(--liquid-filter, blur(12px));
   }
 
   /* A settings tab shares the front surface already drawn by its workspace pane. */
@@ -531,6 +502,7 @@
     :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']) {
       --glass-fill-strength: 97% !important; --glass-page-strength: 100% !important; --glass-filter: none !important;
     }
+    :root[data-material='builtin:liquid'][data-layout] { --liquid-panel-strength: 97%; --liquid-capsule-tint: var(--paper); }
   }
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
     :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']) { --glass-fill-strength: 92% !important; }

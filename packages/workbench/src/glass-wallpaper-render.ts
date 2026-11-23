@@ -5,6 +5,8 @@
 import type { Rgb } from './glass-wallpaper';
 import { debugStripeWallpaper, wallpaperSampleGrid } from './glass-wallpaper';
 import type { ResolvedTheme } from './theme';
+import cloudDay from './assets/clouds-day.webp';
+import cloudNight from './assets/clouds-night.webp';
 
 export interface WallpaperRender {
   /** Object URL of the softened bitmap; the caller owns it and must revoke it. */
@@ -83,7 +85,8 @@ const recipes: Record<string, {
     ],
   },
 };
-export const builtinWallpaperIds = Object.keys(recipes);
+const clouds = { light: cloudDay, dark: cloudNight };
+export const builtinWallpaperIds = [...Object.keys(recipes), 'builtin:clouds'];
 
 function paintDebugStripes(context: CanvasRenderingContext2D, mode: ResolvedTheme['mode'], width: number, height: number) {
   const [teal, yellow, green, peach, ink] = mode === 'dark'
@@ -113,7 +116,7 @@ function paintDebugStripes(context: CanvasRenderingContext2D, mode: ResolvedThem
   }
 }
 
-export function paintBuiltin(id: string, mode: ResolvedTheme['mode'], width = renderLongSide, height = Math.round(renderLongSide * 0.625)): HTMLCanvasElement {
+function paintField(id: string, mode: ResolvedTheme['mode'], width: number, height: number): HTMLCanvasElement {
   const { element, context } = canvas(width, height);
   if (id === debugStripeWallpaper.id) {
     paintDebugStripes(context, mode, element.width, element.height);
@@ -135,7 +138,16 @@ export function paintBuiltin(id: string, mode: ResolvedTheme['mode'], width = re
 
 /** Small unsoftened preview for the picker. */
 export function builtinThumbnail(id: string, mode: ResolvedTheme['mode']): string {
-  return paintBuiltin(id, mode, 160, 100).toDataURL('image/png');
+  if (id === 'builtin:clouds') return clouds[mode];
+  return paintField(id, mode, 160, 100).toDataURL('image/png');
+}
+
+export async function paintBuiltin(id: string, mode: ResolvedTheme['mode']) {
+  if (id !== 'builtin:clouds') return paintField(id, mode, renderLongSide, Math.round(renderLongSide * 0.625));
+  const image = new Image();
+  image.src = clouds[mode];
+  await image.decode();
+  return image;
 }
 
 export function customThumbnail(source: Source): string {

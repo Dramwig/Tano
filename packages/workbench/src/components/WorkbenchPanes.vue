@@ -503,7 +503,7 @@ const ownsFullscreenAssistant = computed(() => {
                 ><template
                   v-for="view in [...extensionViews, settingsTabView].filter((view) => view.id === pane.activeId)"
                   :key="view.id"
-                  ><ChevronRight :size="12" /><component :is="view.icon" :size="14" /><span
+                  ><component :is="view.icon" :size="14" /><span
                     class="breadcrumb-current"
                     >{{ view.label }}</span
                   ></template
