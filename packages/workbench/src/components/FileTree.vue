@@ -334,7 +334,9 @@ function clickIcon(file: FileEntry, event: MouseEvent) {
           'multi-selected': selectedIds.size > 1 && selectedIds.has(file.id),
           'context-target': file.id === contextSelected,
           dragging: file.id === draggedId,
-          'drop-target': file.kind === 'directory' && file.path === dropTarget,
+          // An expanded target already shows the slot placeholder inside it.
+          'drop-target': file.kind === 'directory' && file.path === dropTarget &&
+            !(draggedId && dropPreview.length && !isCollapsed(file.path)),
           attachment:
             file.kind === 'file' && !isMarkdown(file.path) && !isDataTableFilePath(file.path),
         }"

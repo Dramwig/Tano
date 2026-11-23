@@ -574,7 +574,7 @@ const brandButton = ref<HTMLElement | null>(null);
           <div
             v-scroll-fade
             class="tree-scroll"
-            :class="{ 'drop-root': draggedEntry && dropFolder === '' }"
+            :class="{ 'drop-root': draggedEntry && dropFolder === '' && !dropPlaceholders.length }"
             @contextmenu.self.prevent="openDirectoryContextMenu('', $event)"
             @dragover.self="fileDragOver('', $event)"
             @dragleave.self="fileDragLeave('', $event)"

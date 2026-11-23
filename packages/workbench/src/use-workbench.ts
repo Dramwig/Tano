@@ -285,7 +285,7 @@ import { handleMobileVisibility } from './mobile-lifecycle';
 import { useViewport } from './viewport';
 
 import { useWorkspaceStore } from './stores/workspace';
-import { fileDragImage } from './file-drag-image';
+import { fileDragImage, settleFileDragCard } from './file-drag-image';
 
 import { retainWorkbenchSession } from './workbench-session';
 
@@ -3052,10 +3052,12 @@ function fileDragStart(file: FileEntry, event: DragEvent) {
   }
 }
 function fileDragEnd() {
+  settleFileDragCard(); // no slot took it (cancelled, or dropped elsewhere): fade in place
   draggedEntry.value = null;
   draggedSelection.value = [];
   dropFolder.value = null;
   dropPointer = undefined;
+  cancelDropLeave();
 }
 // The slot preview changes row layout under a stationary pointer. Retargeting only
 // counts when the pointer itself moved, otherwise the shifted rows would flip the
@@ -3068,9 +3070,18 @@ function setDropFolder(folder: string | null, event: DragEvent) {
   dropFolder.value = folder;
   dropPointer = { x: event.clientX, y: event.clientY };
 }
+// Moving between rows fires dragleave on the old row before the next dragover. Clearing
+// at once would remove the slot placeholder and re-add it a moment later, so its leaving
+// ghost and the arriving row would both claim space. Clear only if no dragover follows.
+let leaveTimer: ReturnType<typeof setTimeout> | undefined;
+function cancelDropLeave() {
+  if (leaveTimer) clearTimeout(leaveTimer);
+  leaveTimer = undefined;
+}
 function fileDragOver(folder: string, event: DragEvent) {
   event.preventDefault();
   event.stopPropagation();
+  cancelDropLeave();
   if (dropFolder.value !== null && dropFolder.value !== folder && !pointerMovedSinceTarget(event)) folder = dropFolder.value;
   const valid = planDropIn(folder) !== null;
   if (event.dataTransfer) event.dataTransfer.dropEffect = valid ? 'move' : 'none';
@@ -3079,7 +3090,15 @@ function fileDragOver(folder: string, event: DragEvent) {
 function fileDragLeave(folder: string, event: DragEvent) {
   const target = event.currentTarget as HTMLElement | null;
   if (target?.contains(event.relatedTarget as Node | null)) return;
-  if (dropFolder.value === folder && pointerMovedSinceTarget(event)) setDropFolder(null, event);
+  if (dropFolder.value !== folder || !pointerMovedSinceTarget(event)) return;
+  cancelDropLeave();
+  const { clientX: x, clientY: y } = event;
+  leaveTimer = setTimeout(() => {
+    leaveTimer = undefined;
+    if (dropFolder.value !== folder) return;
+    dropFolder.value = null;
+    dropPointer = { x, y };
+  }, 120);
 }
 async function fileDrop(folder: string, event: DragEvent) {
   event.preventDefault();
