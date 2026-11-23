@@ -1247,7 +1247,8 @@ const brandButton = ref<HTMLElement | null>(null);
         />
     </WorkspaceSidebar>
 
-    <div ref="mainColumn" class="main-column" :inert="compactPanes && sidebar || undefined">
+    <!-- Without workbench panes (home, extension views, empty) the whole column is the page card. -->
+    <div ref="mainColumn" class="main-column" :class="{ 'workspace-card': !(workspace || startupPending || filesPending) }" :inert="compactPanes && sidebar || undefined">
       <button v-if="!workspace && !sidebar && !isAuxiliaryWindow" class="icon-button" :aria-label="t('展开侧栏')" @click="sidebar = true"><PanelLeftOpen :size="18" /></button>
       <Teleport :to="activeWindow.overlays"><WindowScope :key="activeWindow.id" :context="activeWindow">
       <ReferenceGraphPopover

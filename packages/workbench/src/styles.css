@@ -210,6 +210,8 @@ button:hover {
 :root {
   --workbench-back: var(--sidebar);
   --workbench-back-paint: var(--workbench-back);
+  /* Usually the back colour; a layout whose back panel differs from the sidebar (paper's desk) sets both. */
+  --workbench-sidebar: var(--workbench-back);
   --workbench-front: var(--paper);
 }
 .app-shell {
@@ -231,7 +233,7 @@ button:hover {
   z-index: 4;
   width: var(--sidebar-width);
   flex: 0 0 var(--sidebar-width);
-  background: var(--workbench-back);
+  background: var(--workbench-sidebar);
   border-right: 0;
   display: flex;
   flex-direction: column;
@@ -826,7 +828,7 @@ button:hover {
   margin: auto -7px 0;
   border-top: 0;
   padding: 6px 2px 6px 5px;
-  background: var(--workbench-back);
+  background: var(--workbench-sidebar);
 }
 .sidebar-bottom > .icon-button {
   flex: 0 0 28px;
@@ -883,6 +885,15 @@ button:hover {
   display: flex;
   flex-direction: column;
   background: var(--paper);
+}
+/* Where the sidebar is a card (islands) or a floating sheet, this real element is that card, behind the
+   sidebar's content. The sidebar is its own stacking context (z-index 4), so z-index -1 stays inside it. */
+.sidebar-surface {
+  display: none;
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
 }
 /* With panes, the page is each pane's own surface on the back panel; the column itself stays clear. */
 .main-column:has(.workspace-pane) {

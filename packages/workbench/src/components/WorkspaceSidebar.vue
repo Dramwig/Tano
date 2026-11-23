@@ -85,6 +85,8 @@ onBeforeUnmount(cancelMotion);
     <aside ref="drawer" v-show="open" class="sidebar" :aria-label="t('工作区侧栏')" tabindex="-1"
       :role="compact ? 'dialog' : undefined" :aria-modal="compact && open || undefined" @keydown="drawerKeydown"
       :inert="!open || undefined" :aria-hidden="!open">
+      <!-- The sidebar's own front panel, used by layouts where the sidebar is a card (see .sidebar-surface). -->
+      <div class="sidebar-surface" aria-hidden="true" />
       <slot />
     </aside>
   </Transition>

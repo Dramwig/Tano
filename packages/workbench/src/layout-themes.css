@@ -24,18 +24,21 @@
     --island-lift: 0 0 0 1px var(--layout-hairline), 0 1px 2px #0000000f;
   }
   :root[data-theme='dark'][data-layout='islands'] { --island-desk: var(--layout-desk); --island-lift: 0 0 0 1px var(--layout-hairline); }
+  /* The desk is the back panel: bars sitting on it (sidebar header, tab strips) match it, and the sidebar
+     itself is clear because its card is drawn by .sidebar-surface. */
+  :root[data-layout='islands'] { --workbench-back: var(--island-desk); --workbench-sidebar: transparent; }
   :root[data-layout='islands'] .app-shell {
     --island-top: var(--workbench-topbar-height); --island-gap: calc(var(--layout-gap) * .375);
-    padding: 0 var(--island-gap) var(--island-gap); gap: var(--island-gap); background: var(--island-desk);
+    padding: 0 var(--island-gap) var(--island-gap); gap: var(--island-gap);
   }
   /* Match the first bar of the main column: the 36px pane top bar on desktop pointers (see WorkspacePanes), or the tab strip. */
   @media (pointer: fine) and (min-width: 701px) { :root[data-layout='islands'] .app-shell { --island-top: 36px; } }
   :root[data-layout='islands'] .app-shell:has(.workspace-native-tabs) { --island-top: var(--workbench-tabbar-height); }
 
   /* Sidebar: the header row stays on the desk; everything below is drawn on one card behind the content. */
-  :root[data-layout='islands'] .app-shell > .sidebar { padding: 0 8px; background: transparent; isolation: isolate; }
-  :root[data-layout='islands'] .app-shell > .sidebar::before {
-    content: ''; position: absolute; z-index: -1; inset: var(--island-top) 0 0; pointer-events: none;
+  :root[data-layout='islands'] .app-shell > .sidebar { padding: 0 8px; }
+  :root[data-layout='islands'] .sidebar-surface {
+    display: block; inset: var(--island-top) 0 0;
     background: var(--workbench-front); border-radius: var(--radius-card); box-shadow: var(--island-lift);
   }
   :root[data-layout='islands'] .sidebar > * { min-width: 0; }
@@ -43,15 +46,14 @@
   :root[data-layout='islands'] .sidebar-header { height: var(--island-top); padding-inline: 4px; }
   :root[data-layout='islands'] .sidebar-header + * { margin-top: 6px; }
   :root[data-layout='islands'] .sidebar-bottom {
-    margin: auto -8px 0; padding: 7px 8px; background: transparent;
+    margin: auto -8px 0; padding: 7px 8px;
     border-top: 1px solid var(--layout-hairline); border-radius: 0 0 var(--radius-card) var(--radius-card);
   }
   :root[data-layout='islands'] .tree-row.selected { border-radius: var(--radius-control); }
 
   /* Main column: bars on the desk, the page below them is the card. Panes keep a hairline of room so the edge is not clipped. */
-  :root[data-layout='islands'] :is(.main-column, .workspace-pane, .workspace-pane-tabbars, .workspace-tabbar) { background: transparent; }
   :root[data-layout='islands'] .workspace-pane { padding: 0 1px 2px; }
-  :root[data-layout='islands'] .main-column:has(.workspace-page-content) { margin: 0 -1px -2px; }
+  :root[data-layout='islands'] .main-column:not(.workspace-card) { margin: 0 -1px -2px; }
   :root[data-layout='islands'] .workspace-panes-multiple .workspace-pane { padding: calc(var(--island-gap) / 2); }
   :root[data-layout='islands'] .workspace-panes-multiple .workspace-pane-top { padding-top: 0; }
   /* The column is pulled out by the room each pane keeps (a hairline, or half a gap once split), so every
@@ -78,18 +80,15 @@
     margin-inline-start: max(12px, calc(var(--radius-card) + 8px));
     max-width: calc(100% - max(12px, calc(var(--radius-card) + 8px)));
   }
-  :root[data-layout='islands'] :is(.workspace-page-body, .workspace-pane > .assistant-fullscreen-host),
-  :root[data-layout='islands'] .workspace-native-tabs .workspace-page-content {
+  /* Page cards: the components mark which element is the card (.workspace-card) — the page body, the whole
+     page content under a native tab strip, the fullscreen assistant, or the column itself when there are
+     no workbench panes. The card clips its content to the rounded corners. */
+  :root[data-layout='islands'] .workspace-card {
     display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
     background: var(--workbench-front); border-radius: var(--radius-card); box-shadow: var(--island-lift);
   }
-  /* The desktop tab strip already sits on the desk, so there the document top bar belongs to the card. */
-  :root[data-layout='islands'] .workspace-native-tabs .workspace-page-body { display: contents; }
-  /* Pages without a document top bar (home, extension views) use the whole column as the card. */
-  :root[data-layout='islands'] .main-column:not(:has(.workspace-page-content)) {
-    margin-top: var(--island-top); overflow: hidden;
-    background: var(--workbench-front); border-radius: var(--radius-card); box-shadow: var(--island-lift);
-  }
+  /* The column card starts below the desk row, level with the sidebar card. */
+  :root[data-layout='islands'] .main-column.workspace-card { margin-top: var(--island-top); }
   :root[data-layout='islands'] :is(.folder-view-entry, .review-card) { border: 1px solid var(--layout-hairline); border-radius: var(--radius-card); background: var(--workbench-front); box-shadow: var(--layout-lift); }
 
   /* Settings repeat the workbench: navigation sits on the desk and the page is one card beside it.
@@ -97,7 +96,7 @@
      inside the page card and keeps the plain layout. */
   :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-dialog {
     --settings-island-gap: calc(var(--layout-gap, 24px) * .375);
-    padding: var(--settings-island-gap); padding-left: 0; background: var(--island-desk);
+    padding: var(--settings-island-gap); padding-left: 0; background: var(--workbench-back-paint);
   }
   :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-nav {
     padding-top: calc(30px - var(--settings-island-gap)); border: 0; background: transparent;
@@ -129,8 +128,11 @@
 
   /* Paper: one calm sheet on a warm desk. No stacked pages or ornaments; a quiet running header,
      a narrower reading measure and a short rule under a centred title carry the feel. */
-  :root[data-layout='document'] :is(.main-column, .workspace-pane) { background: var(--layout-desk); }
-  :root[data-layout='document'] .workspace-pane .topbar { border-bottom: 1px solid var(--layout-hairline); background: var(--layout-desk); }
+  /* The desk is the back panel: the window is painted desk-coloured and the column, panes and tab strips
+     stay clear on it. The sidebar keeps its own colour. */
+  :root[data-layout='document'] { --workbench-back: var(--layout-desk); --workbench-back-paint: var(--layout-desk); --workbench-sidebar: var(--sidebar); }
+  :root[data-layout='document'] .main-column { background: transparent; }
+  :root[data-layout='document'] .workspace-pane .topbar { border-bottom: 1px solid var(--layout-hairline); }
   :root[data-layout='document'] .document-layout { padding: calc(var(--layout-gap) + 8px) clamp(12px, 3vw, 48px) 64px; }
   :root[data-layout='document'] .document-main {
     max-width: var(--layout-page-width); margin-inline: auto; background-color: var(--workbench-front);
@@ -152,25 +154,24 @@
 
   /* Paper chrome is one desk: tab strip, top bar and the area around the sheet share a colour.
      With no sheet open (home) the desk is simply empty; other views keep their own paper surface. */
-  :root[data-layout='document'] .workspace-pane-tabbars { background: var(--layout-desk); }
-  :root[data-layout='document'] .workspace-pane-surface { display: none; }
+  /* Document panes show the desk around the sheet; other views (graph, plugins) use the pane's page surface, square-cornered. */
+  :root[data-layout='document'] .workspace-pane:has(.document-layout, .workspace-no-tabs) > .workspace-pane-surface { display: none; }
+  :root[data-layout='document'] .workspace-native-tabs { --workspace-pane-surface-radius: 0px; }
   :root[data-layout='document'] .workspace-no-tabs { background: transparent; }
   :root[data-layout='document'] .workspace-no-tabs .editor-empty-mark { background: color-mix(in srgb, var(--text) 8%, var(--layout-desk)); }
   :root[data-theme='dark'][data-layout='document'] .workspace-no-tabs .editor-empty-mark { background: color-mix(in srgb, var(--layout-desk) 60%, #000); }
   :root[data-layout='document'] .workspace-no-tabs .editor-empty-actions button:hover:not(:disabled) { background: var(--paper); }
-  :root[data-layout='document'] .workspace-pane:not(:has(.document-layout, .workspace-no-tabs)) { background: var(--workbench-front); }
-  :root[data-layout='document'] .workspace-pane:not(:has(.document-layout, .workspace-no-tabs)) .topbar { background: var(--workbench-front); }
   /* The active tab does not merge into the bar below (that bar is desk, not page). It is a small
      slip of the same paper as the sheet, lying on the desk; inactive tabs are just ink on the desk. */
   :root[data-layout='document'] .desktop-tab {
-    --desktop-tab-close-mask: var(--layout-desk);
+    --desktop-tab-close-mask: var(--workbench-back);
     height: calc(100% - 10px); margin-top: 5px; border-radius: 6px;
   }
   :root[data-layout='document'] .desktop-tab::before { inset: 4px 0; }
   /* The default tab pads its bottom to offset a top-only inset; the slip is inset evenly, so centre within it. */
   :root[data-layout='document'] .desktop-tab-switch { padding-bottom: 0; }
   :root[data-layout='document'] .desktop-tab:hover {
-    --desktop-tab-close-mask: color-mix(in srgb, var(--text) 5%, var(--layout-desk));
+    --desktop-tab-close-mask: color-mix(in srgb, var(--text) 5%, var(--workbench-back));
   }
   :root[data-layout='document'] :is(.desktop-tab-active, .desktop-tab-active:hover) {
     --desktop-tab-close-mask: var(--workbench-front);
@@ -178,7 +179,7 @@
     box-shadow: 0 0 0 1px var(--layout-hairline), 0 1px 2px #00000012;
   }
   :root[data-theme='dark'][data-layout='document'] :is(.desktop-tab-active, .desktop-tab-active:hover) { box-shadow: 0 0 0 1px var(--layout-hairline), 0 1px 2px #00000059; }
-  :root[data-layout='document'] .desktop-tab.desktop-tab-dragging { --desktop-tab-close-mask: var(--layout-desk); background: transparent; box-shadow: none; }
+  :root[data-layout='document'] .desktop-tab.desktop-tab-dragging { --desktop-tab-close-mask: var(--workbench-back); background: transparent; box-shadow: none; }
   :root[data-layout='document'] .desktop-tab-corners { display: none; }
   :root[data-layout='document'] .desktop-tab-close { top: 50%; right: 1px; border-radius: 5px; }
 
@@ -269,14 +270,15 @@
      back grain and sheen show through evenly without seams. */
   :root[data-material='builtin:frost'] {
     --workbench-back: transparent;
+    --workbench-sidebar: transparent;
     /* No sheen on the back: it would brighten the tab strip exactly where the active tab must stand out. */
     --workbench-back-paint: var(--glass-grain), linear-gradient(var(--glass-back), var(--glass-back)), var(--glass-desk);
     --workbench-front: var(--glass-page-fill);
   }
   /* A drawer sidebar (compact layout) floats over the page, so there it is a live-blurred sheet. The
      sidebar already forms a stacking context (z-index 4), so the pseudo-element layer is safe. */
-  :root.compact-layout[data-material='builtin:frost'] .app-shell > .sidebar::before {
-    content: ''; position: absolute; z-index: -1; inset: 0; pointer-events: none;
+  :root.compact-layout[data-material='builtin:frost'] .sidebar-surface {
+    display: block; inset: 0;
     background: var(--glass-grain), var(--glass-fill);
     -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter);
   }
@@ -300,13 +302,9 @@
 
   /* Card islands: the desk shows between the cards; cards and tab joins are already front panels. */
   :root[data-layout='islands'][data-material='builtin:frost'] {
-    --island-desk: var(--glass-sheen) fixed, var(--glass-grain), var(--glass-desk);
     --island-lift: 0 0 0 1px var(--glass-edge), var(--glass-drop);
   }
   /* Paper document: the desk is the back panel; the sheet keeps its shape as front glass. */
-  :root[data-layout='document'][data-material='builtin:frost'] :is(.main-column, .workspace-pane, .workspace-pane .topbar, .workspace-pane-tabbars) { background: transparent; }
-  :root[data-layout='document'][data-material='builtin:frost'] .workspace-pane:not(:has(.document-layout, .workspace-no-tabs)) { background: var(--workbench-front); }
-  :root[data-layout='document'][data-material='builtin:frost'] .workspace-pane:not(:has(.document-layout, .workspace-no-tabs)) .topbar { background: transparent; }
   :root[data-layout='document'][data-material='builtin:frost'] .document-main { border-color: var(--glass-edge); }
 
   /* Settings dialog: back panel and front sheet, matching the workbench. */

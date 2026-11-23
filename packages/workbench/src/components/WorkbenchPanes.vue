@@ -399,9 +399,10 @@ const ownsFullscreenAssistant = computed(() => {
             :id="`assistant-fullscreen-${pane.id}`"
             :ref="(el) => setAssistantHost(pane.id, el)"
             v-show="assistant.isFullscreenTab(pane.activeId) && !(templateLibraryOpen && pane.id === templatePaneId)"
-            class="assistant-fullscreen-host"
+            class="assistant-fullscreen-host workspace-card"
           />
-          <div v-show="!assistant.isFullscreenTab(pane.activeId) && !(templateLibraryOpen && pane.id === templatePaneId)" class="workspace-page-content">
+          <div v-show="!assistant.isFullscreenTab(pane.activeId) && !(templateLibraryOpen && pane.id === templatePaneId)" class="workspace-page-content"
+            :class="{ 'workspace-card': tabsEnabled && !compactPanes }">
             <ButtonVisibilityGroup
               v-if="!isAuxiliaryWindow || pane.activeId === CALENDAR_TAB_ID || tab?.pluginView"
               v-slot="{ isVisible }"
@@ -853,8 +854,11 @@ const ownsFullscreenAssistant = computed(() => {
                 </template>
               </div>
             </ButtonVisibilityGroup>
-            <!-- Everything below the top bar. A layout can raise it as its own surface (card islands); otherwise display: contents. -->
-            <div class="workspace-page-body">
+            <!-- Everything below the top bar (display: contents unless it is the card).
+                 .workspace-card marks the element that is the page's card where a layout draws cards (islands):
+                 with native tab strips the top bar belongs to the card, so the card is the whole page content;
+                 otherwise the top bar sits on the desk and the card is this body. -->
+            <div class="workspace-page-body" :class="{ 'workspace-card': !(tabsEnabled && !compactPanes) }">
             <KeepAlive v-if="pane.tabs.includes(GRAPH_TAB_ID)">
               <RelationGraph
                 v-if="workspace && pane.activeId === GRAPH_TAB_ID"
