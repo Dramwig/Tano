@@ -1,6 +1,6 @@
 # 架构
 
-[English](../architecture.md) | 中文 | [日本語](../ja/architecture.md) | [Deutsch](../de/architecture.md) | [文档目录](README.md)
+[English](../architecture.md) | 简体中文 | [繁體中文](../zh-tw/architecture.md) | [日本語](../ja/architecture.md) | [Español](../es/architecture.md) | [Deutsch](../de/architecture.md) | [文档目录](README.md)
 
 Vue 工作台通过文档 store 使用 `WorkspaceAdapter`。桌面适配器调用由 `tano-native` 实现的 Tauri IPC 命令；浏览器演示使用独立的浏览器存储适配器。`configureWorkbench(pinia, runtime)` 将一个运行时绑定到每个工作台实例。
 

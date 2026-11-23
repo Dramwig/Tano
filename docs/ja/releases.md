@@ -1,6 +1,6 @@
 # ビルドとリリース
 
-[English](../releases.md) | [中文](../zh/releases.md) | 日本語 | [Deutsch](../de/releases.md) | [ドキュメント一覧](README.md)
+[English](../releases.md) | [简体中文](../zh/releases.md) | [繁體中文](../zh-tw/releases.md) | 日本語 | [Español](../es/releases.md) | [Deutsch](../de/releases.md) | [ドキュメント一覧](README.md)
 
 `npm run desktop:build` でデスクトップパッケージをビルドします。ソースからのビルドにはアカウントや署名鍵は不要で、更新先も既定では設定されません。Windows の NSIS インストーラーは `apps/client/src-tauri/target/release/bundle/nsis/` に出力されます。
 

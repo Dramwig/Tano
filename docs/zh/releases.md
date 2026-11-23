@@ -1,6 +1,6 @@
 # 构建与发布
 
-[English](../releases.md) | 中文 | [日本語](../ja/releases.md) | [Deutsch](../de/releases.md) | [文档目录](README.md)
+[English](../releases.md) | 简体中文 | [繁體中文](../zh-tw/releases.md) | [日本語](../ja/releases.md) | [Español](../es/releases.md) | [Deutsch](../de/releases.md) | [文档目录](README.md)
 
 本地发布验收、手动创建不可变标签和注册表发包流程见 [Core 发布自动化](../release-automation.md) 与 [Core 注册表分发](../core-distribution.md)。生产部署与官方多平台签名流程由私有仓库维护。
 

@@ -1,6 +1,6 @@
 # バックアップと復旧
 
-[English](../backup-recovery.md) | [中文](../zh/backup-recovery.md) | 日本語 | [Deutsch](../de/backup-recovery.md) | [ドキュメント一覧](README.md)
+[English](../backup-recovery.md) | [简体中文](../zh/backup-recovery.md) | [繁體中文](../zh-tw/backup-recovery.md) | 日本語 | [Español](../es/backup-recovery.md) | [Deutsch](../de/backup-recovery.md) | [ドキュメント一覧](README.md)
 
 Markdown ファイル、添付ファイル、`.tano/` ディレクトリ全体を一緒にバックアップしてください。ワークスペースの UUID、ファイルの ID、オブジェクト、関係、ルールは持ち運べる元データであり、削除してよいキャッシュではありません。
 

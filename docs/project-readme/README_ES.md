@@ -10,7 +10,7 @@
 
 [English](../../README.md) | [简体中文](README_ZH.md) | [繁體中文](README_TW.md) | [日本語](README_JA.md) | Español | [Deutsch](README_DE.md)
 
-[Sitio oficial](https://tano.page) · [Descargas](https://github.com/Dramwig/Tano/releases) · [Documentación](../README.md)
+[Sitio oficial](https://tano.page) · [Descargas](https://github.com/Dramwig/Tano/releases) · [Documentación](../es/README.md)
 
 </div>
 
@@ -46,7 +46,7 @@ Para ver la demo, ejecuta `npm run dev` y abre `http://127.0.0.1:43841`. El desa
 
 ## Documentación y desarrollo
 
-La documentación técnica está disponible en [inglés](../README.md) y otros idiomas. Consulta [desarrollo local](../local-development.md), [arquitectura](../architecture.md), [flujo de agentes](../agent-workflow.md), [copias y recuperación](../backup-recovery.md) y [compilación y versiones](../releases.md).
+Consulta el [índice de documentación en español](../es/README.md) o abre directamente las guías de [desarrollo local](../es/local-development.md), [arquitectura](../es/architecture.md), [trabajo con agentes](../es/agent-workflow.md), [copias de seguridad y recuperación](../es/backup-recovery.md), [compilación y publicación](../es/releases.md) y [licencia y alcance](../es/license.md).
 
 ```sh
 npm run check

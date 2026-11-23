@@ -1,6 +1,6 @@
 # Builds and releases
 
-English | [中文](zh/releases.md) | [日本語](ja/releases.md) | [Deutsch](de/releases.md) | [Documentation](README.md)
+English | [简体中文](zh/releases.md) | [繁體中文](zh-tw/releases.md) | [日本語](ja/releases.md) | [Español](es/releases.md) | [Deutsch](de/releases.md) | [Documentation](README.md)
 
 For local release validation, manually created immutable tags and registry publication, see [Core release automation](release-automation.md) and [Core distribution](core-distribution.md).
 

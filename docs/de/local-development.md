@@ -1,6 +1,6 @@
 # Lokale Entwicklung
 
-[English](../local-development.md) | [中文](../zh/local-development.md) | [日本語](../ja/local-development.md) | Deutsch | [Dokumentationsübersicht](README.md)
+[English](../local-development.md) | [简体中文](../zh/local-development.md) | [繁體中文](../zh-tw/local-development.md) | [日本語](../ja/local-development.md) | [Español](../es/local-development.md) | Deutsch | [Dokumentationsübersicht](README.md)
 
 Node.js 24.12+, npm und Rust stable installieren. Für die Desktop-Entwicklung gelten außerdem die [Systemvoraussetzungen für Tauri 2](https://v2.tauri.app/start/prerequisites/) der jeweiligen Plattform. Unter Windows gehören C++ Build Tools, Windows SDK und WebView2 dazu; `powershell -File scripts/check-desktop.ps1` prüft die lokale Umgebung.
 

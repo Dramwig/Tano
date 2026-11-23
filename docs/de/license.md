@@ -1,6 +1,6 @@
 # Lizenz und Umfang
 
-[English](../license.md) | [中文](../zh/license.md) | [日本語](../ja/license.md) | Deutsch | [Dokumentationsübersicht](README.md)
+[English](../license.md) | [简体中文](../zh/license.md) | [繁體中文](../zh-tw/license.md) | [日本語](../ja/license.md) | [Español](../es/license.md) | Deutsch | [Dokumentationsübersicht](README.md)
 
 Die Desktop-App, die Browserdemo, der lokale MCP-Server und die gemeinsamen Arbeitsbereichspakete von Tano stehen unter der üblichen [MIT-Lizenz](../../LICENSE). Das lokale Produkt kann ohne Benutzerkonto gebaut und genutzt werden.
 

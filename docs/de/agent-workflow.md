@@ -1,6 +1,6 @@
 # Arbeiten mit Agenten
 
-[English](../agent-workflow.md) | [中文](../zh/agent-workflow.md) | [日本語](../ja/agent-workflow.md) | Deutsch | [Dokumentationsübersicht](README.md)
+[English](../agent-workflow.md) | [简体中文](../zh/agent-workflow.md) | [繁體中文](../zh-tw/agent-workflow.md) | [日本語](../ja/agent-workflow.md) | [Español](../es/agent-workflow.md) | Deutsch | [Dokumentationsübersicht](README.md)
 
 Zuerst einen Arbeitsbereichsordner in der Desktop-App öffnen. Agenten können dessen Markdown-Dateien direkt bearbeiten oder den lokalen stdio-MCP-Server von Tano nutzen, um Dokumente aufzulisten, zu lesen, zu erstellen und bedingt zu aktualisieren.
 

@@ -1,6 +1,6 @@
 # Backup and recovery
 
-English | [中文](zh/backup-recovery.md) | [日本語](ja/backup-recovery.md) | [Deutsch](de/backup-recovery.md) | [Documentation](README.md)
+English | [简体中文](zh/backup-recovery.md) | [繁體中文](zh-tw/backup-recovery.md) | [日本語](ja/backup-recovery.md) | [Español](es/backup-recovery.md) | [Deutsch](de/backup-recovery.md) | [Documentation](README.md)
 
 Back up Markdown files, attachments, and the entire `.tano/` directory together. The workspace UUID, file identities, objects, relations, and rules are portable source data, not disposable cache.
 

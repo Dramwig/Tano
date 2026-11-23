@@ -1,6 +1,6 @@
 # 许可与范围
 
-[English](../license.md) | 中文 | [日本語](../ja/license.md) | [Deutsch](../de/license.md) | [文档目录](README.md)
+[English](../license.md) | 简体中文 | [繁體中文](../zh-tw/license.md) | [日本語](../ja/license.md) | [Español](../es/license.md) | [Deutsch](../de/license.md) | [文档目录](README.md)
 
 Tano 桌面应用、浏览器演示、本地 MCP 服务和共享工作区包采用标准 [MIT License](../../LICENSE)。本地产品无需账号即可构建和使用。
 

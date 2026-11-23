@@ -1,6 +1,6 @@
 # Architecture
 
-English | [中文](zh/architecture.md) | [日本語](ja/architecture.md) | [Deutsch](de/architecture.md) | [Documentation](README.md)
+English | [简体中文](zh/architecture.md) | [繁體中文](zh-tw/architecture.md) | [日本語](ja/architecture.md) | [Español](es/architecture.md) | [Deutsch](de/architecture.md) | [Documentation](README.md)
 
 The Vue workbench uses a document store and a `WorkspaceAdapter`. The desktop adapter calls the Tauri IPC commands implemented by `tano-native`; the browser demo uses a separate browser-storage adapter. `configureWorkbench(pinia, runtime)` binds one runtime to each workbench instance.
 

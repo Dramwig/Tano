@@ -1,6 +1,6 @@
 # Sicherung und Wiederherstellung
 
-[English](../backup-recovery.md) | [中文](../zh/backup-recovery.md) | [日本語](../ja/backup-recovery.md) | Deutsch | [Dokumentationsübersicht](README.md)
+[English](../backup-recovery.md) | [简体中文](../zh/backup-recovery.md) | [繁體中文](../zh-tw/backup-recovery.md) | [日本語](../ja/backup-recovery.md) | [Español](../es/backup-recovery.md) | Deutsch | [Dokumentationsübersicht](README.md)
 
 Markdown-Dateien, Anhänge und das gesamte Verzeichnis `.tano/` gemeinsam sichern. Die UUID des Arbeitsbereichs, Datei-Identitäten, Objekte, Beziehungen und Regeln sind übertragbare Quelldaten und kein entbehrlicher Cache.
 
