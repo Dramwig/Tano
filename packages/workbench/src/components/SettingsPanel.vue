@@ -64,7 +64,7 @@ import type { WorkspaceCapabilities, EditorPreferences } from '@tano/editor/runt
 import type { CapabilityPatch } from '../workspace-capabilities';
 import { fixedColorMode, type ThemePreference } from '../theme';
 import type { AppearanceKind, AppearanceSnapshot, AppearanceSelection } from '../appearance';
-import { appearanceKinds, builtinDefault, glassMaterial } from '../appearance';
+import { appearanceKinds, builtinDefault, glassMaterials } from '../appearance';
 import { glassWallpaper } from '../glass-wallpaper';
 import { defaultSplitFontSettings, sanitizeCustomFontName } from '../editor-font';
 import type { SplitFontSettings, VisualFontChoice } from '../editor-font';
@@ -109,6 +109,7 @@ const props = defineProps<{
   mode: 'demo' | 'web' | 'local';
   native: boolean;
   mobile: boolean;
+  developerMode?: boolean;
   defaultSource: boolean;
   theme: ThemePreference;
   appearance?: AppearanceSnapshot;
@@ -137,8 +138,8 @@ const props = defineProps<{
   capabilitySaving?: boolean;
 }>();
 const fixedDisplayMode = computed(() => fixedColorMode(props.appearance?.color));
-/** The background image only exists for the frosted-glass material, so its row follows the active layout. */
-const frostActive = computed(() => !!glassWallpaper() && props.appearance?.active.material === glassMaterial);
+/** The background image only exists for the glass materials (frosted and liquid), so its row follows the active material. */
+const frostActive = computed(() => !!glassWallpaper() && glassMaterials.includes(props.appearance?.active.material ?? ''));
 /** One row per appearance setting; the default option of the material row is the plain flat card. */
 const appearanceRows: Record<AppearanceKind, { label: string; description: string; defaultLabel: string }> = {
   color: { label: '配色主题', description: '从内置项和当前工作区已启用的插件中选择，保存在当前设备。', defaultLabel: '同页默认' },
@@ -155,12 +156,15 @@ function appearanceChoices(kind: AppearanceKind) {
 const displayMode = computed(() => fixedDisplayMode.value ?? props.theme);
 const displayModeDescription = computed(() => fixedDisplayMode.value === 'light' ? '当前配色主题仅支持浅色。'
   : fixedDisplayMode.value === 'dark' ? '当前配色主题仅支持深色。' : '选择浅色、深色或跟随系统，偏好在工作区间共用。');
+const showDeveloperMode = computed(() => props.native && !props.mobile);
+const developerModeDescription = '开启后，右键单击顶部标签栏的空白处，即可打开调试窗口。';
 const emit = defineEmits<{
   close: [];
   'open-tab': [page: string];
   'open-window': [page: string];
   'page-change': [page: string];
   'drag-window': [event: MouseEvent];
+  'update:developerMode': [value: boolean];
   'update:defaultSource': [value: boolean];
   'update:theme': [value: ThemePreference];
   appearance: [selection: AppearanceSelection];
@@ -424,8 +428,8 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('appearance', 'appearance-color', '配色主题', '选择工作区主题插件。', 'theme 插件 风格 配色'),
   settingSearchEntry('appearance', 'appearance-icons', '文件与目录图标', '选择工作区图标主题。', 'icon 文件夹 图标 插件'),
   settingSearchEntry('appearance', 'appearance-layout', '布局风格', '选择页面结构：连续页面、卡片岛或纸感文稿，可与任意配色、图标混搭。', 'layout islands paper 卡片岛 纸感 纸质 布局 结构'),
-  settingSearchEntry('appearance', 'appearance-material', '材质', '选择侧栏和页面的质感，可与任意布局、配色混搭。', 'material glass frost frosted translucent 材质 玻璃 磨砂 毛玻璃 透明 质感'),
-  ...(frostActive.value ? [settingSearchEntry('appearance', 'appearance-wallpaper', '背景图片', '磨砂玻璃会透出这张图片，卡片透明度会按图片自动调整以保证文字清晰。图片只保存在这台设备。', 'wallpaper background image glass 壁纸 背景 图片 柔化')] : []),
+  settingSearchEntry('appearance', 'appearance-material', '材质', '选择侧栏和页面的质感，可与任意布局、配色混搭。', 'material glass frost frosted liquid translucent 材质 玻璃 磨砂 毛玻璃 液态 液态玻璃 透明 质感'),
+  ...(frostActive.value ? [settingSearchEntry('appearance', 'appearance-wallpaper', '背景图片', '玻璃材质会透出这张图片，卡片透明度会按图片自动调整以保证文字清晰。图片只保存在这台设备。', 'wallpaper background image glass 壁纸 背景 图片 柔化')] : []),
   ] : []),
   ...(!splitFonts.value.enabled ? [settingSearchEntry('appearance', 'appearance-visual-font', '可视化编辑字体', '选择内置字体，或使用本机已安装的字体。', 'font system serif mono Maple custom')] : []),
   settingSearchEntry('appearance', 'appearance-split-fonts', '分别设置中英文字体', '开启后分别选择中文和英文字体；关闭后恢复统一字体设置。', 'font split Chinese English 中英文 中文 英文 字体 拆分'),
@@ -485,6 +489,9 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('workspace', 'workspace-id', '工作区 ID', '', 'workspace id identifier'),
   settingSearchEntry('workspace', 'workspace-delete', '删除当前工作区', '移除当前设备上的工作区注册。', 'workspace delete remove'),
   settingSearchEntry('about', 'about-updates', '版本与更新', '检查并安装同页更新。', 'version update'),
+  ...(showDeveloperMode.value ? [
+    settingSearchEntry('about', 'about-developer-mode', '开发者模式', developerModeDescription, 'devtools debug inspect 调试'),
+  ] : []),
   settingSearchEntry('about', 'about-links', '资源与支持', '打开官网、使用文档、发行说明，或反馈问题。', 'website docs documentation help release notes changelog feedback issue GitHub tano.page 官网 文档 帮助 更新日志 反馈'),
 ]);
 const settingSearchMatches = computed(() => {
@@ -1574,6 +1581,21 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
             <div v-if="native && !mobile" class="settings-about-update">
               <slot name="update-panel"><UpdatePanel /></slot>
             </div>
+            <div v-if="showDeveloperMode" class="settings-row" data-settings-key="about-developer-mode">
+              <div>
+                <strong>{{ t('开发者模式') }}</strong>
+                <p>{{ t(developerModeDescription) }}</p>
+              </div>
+              <button
+                type="button"
+                class="settings-switch"
+                :class="{ on: developerMode }"
+                role="switch"
+                :aria-label="t('开发者模式')"
+                :aria-checked="developerMode === true"
+                @click="emit('update:developerMode', !developerMode)"
+              ><span /></button>
+            </div>
           </div>
 
           <section class="settings-section" aria-labelledby="settings-about-resources" data-settings-key="about-links">
@@ -1648,6 +1670,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   overflow: hidden;
 }
 .settings-dialog {
+  --settings-action-inset: 16px;
   position: relative;
   display: flex;
   width: min(1060px, 100%);
@@ -1841,7 +1864,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
 .settings-close {
   position: absolute;
   top: 16px;
-  right: 16px;
+  right: var(--settings-action-inset);
   display: grid;
   place-items: center;
   width: 32px;
@@ -1854,14 +1877,12 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
 .settings-close:hover {
   background: var(--hover);
 }
-.settings-open-tab {
-  right: 56px;
-}
+.settings-open-tab,
 .settings-open-window {
-  right: 56px;
+  right: calc(var(--settings-action-inset) + 40px);
 }
 .settings-open-window-with-tab {
-  right: 96px;
+  right: calc(var(--settings-action-inset) + 80px);
 }
 .settings-open-tab,
 .settings-open-window {
@@ -2568,6 +2589,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
     grid-template-columns: minmax(0, 1fr);
   }
   .settings-dialog {
+    --settings-action-inset: 12px;
     width: 100%;
     height: calc(100dvh - 24px);
     flex-direction: column;
@@ -2581,7 +2603,15 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   }
   .settings-close {
     top: 10px;
-    right: 12px;
+  }
+  .settings-dialog:has(> .settings-close) .settings-search {
+    margin-right: 36px;
+  }
+  .settings-dialog:has(> :is(.settings-open-tab, .settings-open-window)) .settings-search {
+    margin-right: 76px;
+  }
+  .settings-dialog:has(> .settings-open-window-with-tab) .settings-search {
+    margin-right: 116px;
   }
   .settings-nav-scroll {
     display: flex;
@@ -2721,7 +2751,8 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   background: var(--paper);
   backdrop-filter: none;
 }
-.settings-windowed .settings-dialog {
+/* The native window clips the outer edge. Override the themed modal frame. */
+:root .modal-backdrop.settings-backdrop.settings-windowed > .settings-dialog {
   width: 100%;
   height: 100dvh;
   border: 0;

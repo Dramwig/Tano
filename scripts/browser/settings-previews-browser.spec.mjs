@@ -25,9 +25,10 @@ test('theme presets only bounce when the user switches presets', async ({ page }
   const islands = presets.getByRole('button', { name: '应用预设：卡片岛' });
   const selectAndReadAnimations = preset => preset.evaluate(async button => {
     // Activation through click excludes the separate pointer and keyboard press effects.
+    const row = button.closest('.theme-preset-quick-row');
     button.click();
     await new Promise(resolve => requestAnimationFrame(resolve));
-    return button.getAnimations()
+    return row.querySelector('[aria-pressed="true"]').getAnimations()
       .map(animation => animation.effect.getKeyframes().map(frame => frame.scale))
       .filter(scales => scales.some(scale => scale !== undefined));
   });
@@ -50,6 +51,53 @@ test('theme presets only bounce when the user switches presets', async ({ page }
   const defaults = presets.getByRole('button', { name: '应用预设：同页默认' });
   expect(await selectAndReadAnimations(defaults)).toEqual([]);
   await expect(defaults).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('saves, reapplies and deletes a custom theme without changing the active appearance on deletion', async ({ page }) => {
+  await openSettings(page);
+  const openAppearance = () => page.locator('.settings-nav').getByRole('button', { name: '外观', exact: true }).click();
+  await openAppearance();
+  const presets = page.getByRole('region', { name: '主题预设' });
+  const save = presets.getByRole('button', { name: '保存当前搭配为自定义主题' });
+  const remove = presets.getByRole('button', { name: '删除主题「自定义主题 1」' });
+  const current = presets.getByRole('button', { name: '应用预设：当前搭配' });
+  const shape = page.getByRole('combobox', { name: '形态与密度' });
+  await expect(save).toHaveCount(0);
+  await expect(presets.getByRole('button', { name: /^删除主题/ })).toHaveCount(0);
+  await presets.getByRole('button', { name: '应用预设：卡片岛' }).click();
+  await shape.selectOption('builtin:crisp');
+  await expect(current).toHaveAttribute('aria-pressed', 'true');
+  await save.focus();
+  await save.press('Enter');
+  const custom = presets.getByRole('button', { name: '应用预设：自定义主题 1' });
+  await expect(custom).toBeFocused();
+  await expect(custom).toHaveAttribute('aria-pressed', 'true');
+  await expect(save).toHaveCount(0);
+
+  await openSettings(page);
+  await openAppearance();
+  await expect(custom).toHaveAttribute('aria-pressed', 'true');
+  await presets.getByRole('button', { name: '更多主题', exact: true }).click();
+  await presets.getByRole('button', { name: '应用预设：同页默认' }).click();
+  await expect(shape).toHaveValue('builtin:tano');
+  await presets.getByRole('button', { name: '更多主题', exact: true }).click();
+  await presets.getByRole('button', { name: '应用预设：纸感' }).click();
+  await presets.getByRole('button', { name: '更多主题', exact: true }).click();
+  await presets.getByRole('region', { name: '更多主题' }).getByRole('button', { name: '应用预设：自定义主题 1' }).click();
+  await expect(shape).toHaveValue('builtin:crisp');
+  await expect(page.getByRole('combobox', { name: '布局风格' })).toHaveValue('builtin:islands');
+
+  await remove.click();
+  await expect(current).toBeFocused();
+  await expect(save).toBeVisible();
+  await expect(shape).toHaveValue('builtin:crisp');
+  await openSettings(page);
+  await openAppearance();
+  await expect(current).toHaveAttribute('aria-pressed', 'true');
+  await expect(shape).toHaveValue('builtin:crisp');
+  await presets.getByRole('button', { name: '更多主题', exact: true }).click();
+  await expect(custom).toHaveCount(0);
+  await expect(remove).toHaveCount(0);
 });
 
 async function animationFrame(example, time) {

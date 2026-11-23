@@ -137,4 +137,16 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
   -webkit-backdrop-filter: blur(8px) saturate(170%) brightness(1.04); backdrop-filter: blur(8px) saturate(170%) brightness(1.04);
 }
 .theme-preview[data-preview-surface] .theme-preview-main { --preview-glass: 74%; }
+/* Liquid glass: clearer cards whose edges catch the light (see layout-themes.css). */
+.theme-preview[data-preview-surface='liquid'] .theme-preview-scene { --preview-glass: 40%; --preview-rim: #ffffffeb; --preview-edge: #ffffff80; --preview-glow: #ffffff8c; --preview-outline: #1c24301f; }
+.theme-preview[data-preview-surface='liquid'] .theme-preview-scene[data-preview-mode='dark'] { --preview-glass: 52%; --preview-rim: #ffffff42; --preview-edge: #ffffff1a; --preview-glow: #ffffff17; --preview-outline: #00000073; }
+.theme-preview[data-preview-surface='liquid'] :is(.theme-preview-sidebar, .theme-preview-main) {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--preview-paper) var(--preview-glass), transparent);
+  box-shadow: 0 0 0 .5px var(--preview-outline), inset 1px 1px 0 var(--preview-rim), inset -1px -1px 0 var(--preview-edge),
+    inset 0 0 7px -1px var(--preview-glow), 0 6px 12px -8px #1c305a4d;
+  -webkit-backdrop-filter: blur(5px) saturate(180%) brightness(1.05); backdrop-filter: blur(5px) saturate(180%) brightness(1.05);
+}
+.theme-preview[data-preview-surface='liquid'] .theme-preview-main { --preview-glass: 56%; }
+.theme-preview[data-preview-surface='liquid'] [data-preview-mode='dark'] .theme-preview-main { --preview-glass: 64%; }
 </style>

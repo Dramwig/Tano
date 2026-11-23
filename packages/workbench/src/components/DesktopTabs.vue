@@ -3,7 +3,7 @@ import PluginIcon from './PluginIcon.vue';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../i18n';
 import LoadingSkeleton from './LoadingSkeleton.vue';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { animate } from 'motion/mini';
 import { springEasing } from '@tano/editor/motion';
 import { ArrowLeft, ArrowRight, Bot, CalendarDays, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, PanelBottomClose, ExternalLink, Bug } from 'lucide-vue-next';
@@ -29,9 +29,12 @@ import WorkspaceIcon from './WorkspaceIcon.vue';
 import ResourceIcon from './ResourceIcon.vue';
 import { appearanceText } from '../document-appearance';
 import { useWindowContext } from '../windows/context';
+import { workbenchContextKey } from '../workbench-context';
 import { Database, FilePlus2 } from 'lucide-vue-next';
 
 const store = useWorkspaceStore();
+const workbench = inject(workbenchContextKey, null);
+const canOpenDevtools = computed(() => !!nativeOs && !mobile && workbench?.developerMode === true);
 const windowContext = useWindowContext();
 const { window, document } = windowContext;
 const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
@@ -1143,7 +1146,10 @@ async function contextAction(
 ) {
   const tabId = contextMenu.value?.tabId;
   closeContextMenu();
-  if (action === 'open-devtools') return invoke<void>('open_devtools', { windowLabel: windowContext.label }).catch(store.report);
+  if (action === 'open-devtools') {
+    if (canOpenDevtools.value) await invoke<void>('open_devtools', { windowLabel: windowContext.label }).catch(store.report);
+    return;
+  }
   activatePane();
   if ((action === 'split-right' || action === 'split-bottom') && tabId && props.paneId) {
     if (paneTabs.value.length === 1) store.createBlankTab();
@@ -1568,7 +1574,7 @@ async function onTabKeydown(event: KeyboardEvent) {
         >
           <XCircle :size="15" />{{ t('关闭全部标签页') }}
         </button>
-        <template v-if="nativeOs && !mobile">
+        <template v-if="canOpenDevtools">
           <div class="menu-divider" role="separator" />
           <button type="button" role="menuitem" @click="contextAction('open-devtools')">
             <Bug :size="15" />{{ t('打开调试窗口') }}

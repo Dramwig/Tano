@@ -1,9 +1,10 @@
 /**
- * Canvas work for the frosted-glass wallpaper. Everything here runs once per import or softness
- * change, never per frame: the desk then paints one static, pre-softened bitmap, so the live
+ * Canvas work for glass wallpapers. The desk paints a static, pre-softened bitmap, so the live
  * backdrop blur on the cards has little left to do.
  */
 import type { Rgb } from './glass-wallpaper';
+import { debugStripeWallpaper, wallpaperSampleGrid } from './glass-wallpaper';
+import type { ResolvedTheme } from './theme';
 
 export interface WallpaperRender {
   /** Object URL of the softened bitmap; the caller owns it and must revoke it. */
@@ -15,8 +16,8 @@ export interface WallpaperRender {
 /** Long side of the stored original and of the rendered desk bitmap. */
 const importLongSide = 2400;
 const renderLongSide = 1600;
-const sampleColumns = 40;
-const sampleRows = 25;
+const sampleColumns = wallpaperSampleGrid.columns;
+const sampleRows = wallpaperSampleGrid.rows;
 
 function canvas(width: number, height: number) {
   const element = document.createElement('canvas');
@@ -57,27 +58,74 @@ export async function normalizeImport(file: Blob): Promise<Blob> {
 }
 
 /** Built-in wallpapers are painted, not shipped: soft fields of light with no asset weight. */
-const recipes: Record<string, { base: [string, string]; lights: [x: number, y: number, r: number, color: string][] }> = {
-  'builtin:dawn': { base: ['#dfe8f3', '#f4f1ee'], lights: [
-    [0.18, 0.36, 0.42, '#7fa6ffcc'], [0.74, 0.28, 0.34, '#b9a2ff99'], [0.58, 0.9, 0.4, '#8fe0d0aa'], [0.96, 0.04, 0.3, '#ffd2b099'], [0.36, 0.72, 0.22, '#5d8cff88'],
-  ] },
-  'builtin:dusk': { base: ['#f3e3dc', '#e7dff0'], lights: [
-    [0.2, 0.3, 0.38, '#ff9f7acc'], [0.7, 0.62, 0.42, '#c68cffaa'], [0.9, 0.1, 0.3, '#ffd27aaa'], [0.36, 0.95, 0.34, '#7f9cff88'], [0.52, 0.34, 0.2, '#ff7aa088'],
-  ] },
-  'builtin:tide': { base: ['#10202a', '#0b1220'], lights: [
-    [0.22, 0.4, 0.42, '#1f8fa0dd'], [0.72, 0.68, 0.44, '#3a5fd0bb'], [0.88, 0.08, 0.3, '#58d0b099'], [0.4, 0.96, 0.32, '#8a6cff88'], [0.56, 0.3, 0.2, '#2fb5c888'],
-  ] },
+const recipes: Record<string, {
+  base: Record<ResolvedTheme['mode'], [string, string]>;
+  lights: [x: number, y: number, radius: number, light: string, dark: string][];
+}> = {
+  'builtin:dawn': {
+    base: { light: ['#dfe8f3', '#f4f1ee'], dark: ['#101a29', '#151e2b'] },
+    lights: [
+      [0.18, 0.36, 0.42, '#7fa6ffcc', '#385892cc'],
+      [0.74, 0.28, 0.34, '#b9a2ff99', '#554579aa'],
+      [0.58, 0.9, 0.4, '#8fe0d0aa', '#2c6a68aa'],
+      [0.96, 0.04, 0.3, '#ffd2b099', '#805c6399'],
+      [0.36, 0.72, 0.22, '#5d8cff88', '#304b8288'],
+    ],
+  },
+  'builtin:dusk': {
+    base: { light: ['#f3e3dc', '#e7dff0'], dark: ['#261922', '#19172a'] },
+    lights: [
+      [0.2, 0.3, 0.38, '#ff9f7acc', '#935244cc'],
+      [0.7, 0.62, 0.42, '#c68cffaa', '#714984bb'],
+      [0.9, 0.1, 0.3, '#ffd27aaa', '#8c6045aa'],
+      [0.36, 0.95, 0.34, '#7f9cff88', '#3f4c8588'],
+      [0.52, 0.34, 0.2, '#ff7aa088', '#8c456188'],
+    ],
+  },
 };
 export const builtinWallpaperIds = Object.keys(recipes);
 
-export function paintBuiltin(id: string, width = renderLongSide, height = Math.round(renderLongSide * 0.625)): HTMLCanvasElement {
-  const recipe = recipes[id] ?? recipes['builtin:dawn']!;
+function paintDebugStripes(context: CanvasRenderingContext2D, mode: ResolvedTheme['mode'], width: number, height: number) {
+  const [teal, yellow, green, peach, ink] = mode === 'dark'
+    ? ['#28484d', '#5c512e', '#3e5433', '#604435', '#dbe6e9']
+    : ['#a8ddd9', '#f0dd8e', '#bad994', '#efc6a6', '#20231f'];
+  context.save();
+  context.scale(width, height);
+  context.fillStyle = teal;
+  context.fillRect(0, 0, 1, 1);
+  for (const [color, x, y, radiusX, radiusY, rotation] of [
+    [yellow, 0.34, 0.12, 0.48, 0.51, 0.29],
+    [green, 0, 0.28, 0.22, 0.55, -0.18],
+    [peach, 0.87, 0.91, 0.33, 0.43, 0.32],
+  ] as const) {
+    context.fillStyle = color;
+    context.beginPath();
+    context.ellipse(x, y, radiusX, radiusY, rotation, 0, Math.PI * 2);
+    context.fill();
+  }
+  context.restore();
+
+  const spacing = Math.max(8, Math.round(width / 60));
+  const thickness = Math.max(0.5, 0.75 * width / renderLongSide);
+  context.fillStyle = ink;
+  for (let x = Math.floor(spacing / 2); x < width; x += spacing) {
+    context.fillRect(x, 0, thickness, height);
+  }
+}
+
+export function paintBuiltin(id: string, mode: ResolvedTheme['mode'], width = renderLongSide, height = Math.round(renderLongSide * 0.625)): HTMLCanvasElement {
   const { element, context } = canvas(width, height);
+  if (id === debugStripeWallpaper.id) {
+    paintDebugStripes(context, mode, element.width, element.height);
+    return element;
+  }
+  const recipe = recipes[id] ?? recipes['builtin:dawn']!;
   const base = context.createLinearGradient(0, 0, width * 0.3, height);
-  base.addColorStop(0, recipe.base[0]); base.addColorStop(1, recipe.base[1]);
+  base.addColorStop(0, recipe.base[mode][0]); base.addColorStop(1, recipe.base[mode][1]);
   context.fillStyle = base; context.fillRect(0, 0, width, height);
   const unit = Math.max(width, height);
-  for (const [x, y, r, color] of recipe.lights) {
+  for (const [x, y, r, day, night] of recipe.lights) {
+    const color = mode === 'dark' ? night : day;
     const light = context.createRadialGradient(x * width, y * height, 0, x * width, y * height, r * unit);
     light.addColorStop(0, color); light.addColorStop(1, `${color.slice(0, 7)}00`);
     context.fillStyle = light; context.fillRect(0, 0, width, height);
@@ -86,8 +134,17 @@ export function paintBuiltin(id: string, width = renderLongSide, height = Math.r
 }
 
 /** Small unsoftened preview for the picker. */
-export function builtinThumbnail(id: string): string {
-  return paintBuiltin(id, 160, 100).toDataURL('image/png');
+export function builtinThumbnail(id: string, mode: ResolvedTheme['mode']): string {
+  return paintBuiltin(id, mode, 160, 100).toDataURL('image/png');
+}
+
+export function customThumbnail(source: Source): string {
+  const { element, context } = canvas(160, 100);
+  const scale = Math.max(element.width / source.width, element.height / source.height);
+  const width = source.width * scale, height = source.height * scale;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(source, (element.width - width) / 2, (element.height - height) / 2, width, height);
+  return element.toDataURL('image/webp', 0.85);
 }
 
 /** True when the 2D context really applies CSS filters (Chromium yes, older WebKit no). */

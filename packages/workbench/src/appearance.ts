@@ -10,6 +10,11 @@ export const appearanceKinds = ['color', 'icons', 'layout', 'material', 'shape']
 const pluginPresetKinds = ['color', 'icons', 'layout', 'shape'] as const;
 /** The frosted-glass material turns the sidebar and page sheets of any layout into translucent glass. */
 export const glassMaterial = 'builtin:frost';
+/** Liquid glass: the same layers, but clear glass whose thick edges catch the light. */
+export const liquidGlassMaterial = 'builtin:liquid';
+/** Glass materials share the desk, the background image and the layer structure. */
+export const glassMaterials: readonly string[] = [glassMaterial, liquidGlassMaterial];
+const materialSurface: Record<string, NonNullable<AppearancePreset['material']>> = { [glassMaterial]: 'frost', [liquidGlassMaterial]: 'liquid' };
 export type AppearanceKind = typeof appearanceKinds[number];
 export const builtinDefault = 'builtin:tano';
 export const builtinAppearance: AppearanceBuiltins = {
@@ -18,7 +23,7 @@ export const builtinAppearance: AppearanceBuiltins = {
     { id: 'builtin:paper', label: '纸感', structure: 'document', surface: 'paper', gap: 24, pageWidth: 800 },
   ],
   colors: builtinColors,
-  materials: [{ id: glassMaterial, label: '磨砂玻璃' }],
+  materials: [{ id: glassMaterial, label: '磨砂玻璃' }, { id: liquidGlassMaterial, label: '液态玻璃' }],
   shapes: [
     { id: 'builtin:rounded', label: '圆润宽松', tokens: { 'radius-control': '10px', 'radius-card': '16px', 'radius-dialog': '20px', 'space-panel': '22px', 'space-row-gap': '6px',
       'overlay-shadow': '0px 1px 2px #1b263a14, 0px 8px 24px #1b263a14', 'dialog-shadow': '0px 24px 64px #1b263a33' } },
@@ -33,6 +38,7 @@ export const builtinAppearance: AppearanceBuiltins = {
     { id: 'builtin:islands', label: '卡片岛', selected: { color: 'builtin:mist', icons: builtinDefault, layout: 'builtin:islands', material: builtinDefault, shape: 'builtin:rounded' } },
     { id: 'builtin:paper', label: '纸感', selected: { color: 'builtin:ink', icons: builtinDefault, layout: 'builtin:paper', material: builtinDefault, shape: 'builtin:print' } },
     { id: 'builtin:frost', label: '磨砂玻璃', selected: { color: 'builtin:haze', icons: builtinDefault, layout: 'builtin:islands', material: glassMaterial, shape: 'builtin:rounded' } },
+    { id: 'builtin:liquid', label: '液态玻璃', selected: { color: 'builtin:haze', icons: builtinDefault, layout: 'builtin:islands', material: liquidGlassMaterial, shape: 'builtin:rounded' } },
   ],
 };
 /** The host owns the catalog. The protocol only validates builtin reference syntax. */
@@ -45,19 +51,22 @@ export interface AppearanceBuiltins {
   presets: readonly Pick<AppearancePreset, 'id' | 'label' | 'selected'>[];
 }
 export interface AppearanceChoice { id: string; label: string }
-export interface AppearanceSelection { workspaceId: string; kind: AppearanceKind | 'preset' | 'scope' | 'mode'; id: string }
+export type AppearanceSelection =
+  | { workspaceId: string; kind: AppearanceKind | 'preset' | 'remove-preset' | 'scope' | 'mode'; id: string }
+  | { workspaceId: string; kind: 'save-preset' };
 export interface AppearancePreview {
   mode: 'light' | 'dark';
   colors: Record<string, string>;
 }
 export interface AppearancePreset extends AppearanceChoice {
   selected: Partial<Record<AppearanceKind, string>>;
+  customNumber?: number;
   unavailable?: boolean;
   missing?: { kind: AppearanceKind; id: string }[];
   previews?: AppearancePreview[];
   structure?: LayoutThemeDefinition['structure'];
-  /** Set when the preset shows frosted glass, so the preview can draw it. */
-  material?: 'frost';
+  /** Set when the preset shows a glass material, so the preview can draw it. */
+  material?: 'frost' | 'liquid';
 }
 export interface AppearanceSnapshot {
   workspaceId: string;
@@ -71,6 +80,7 @@ export interface AppearanceSnapshot {
   presets: AppearancePreset[];
   presetId?: string;
   currentPreset?: AppearancePreset;
+  canSavePreset?: boolean;
   recentPresetIds?: string[];
   selected: Record<AppearanceKind, string>;
   active: Record<AppearanceKind, string>;
@@ -83,6 +93,7 @@ const defaults = (): Record<AppearanceKind, string> => ({ color: builtinDefault,
 const initial = (): AppearanceSnapshot => ({ workspaceId: '', scope: 'user', mode: 'system', colors: [], icons: [], layouts: [], shapes: [], materials: [], presets: [], selected: defaults(), active: defaults(), errors: [] });
 interface Preferences { selected: Record<AppearanceKind, string>; mode: ThemePreference; recentPresetIds?: string[] }
 interface WorkspacePreferences { selected: Record<AppearanceKind, string>; enabled: boolean; recentPresetIds?: string[] }
+type AppearanceStorage = Pick<Storage, 'getItem' | 'setItem'> & Partial<Pick<Storage, 'key' | 'length' | 'removeItem'>>;
 function readPresetHistory(value: unknown): string[] {
   return Array.isArray(value) ? [...new Set(value.filter((id): id is string => typeof id === 'string' && id.length > 0))].slice(0, 12) : [];
 }
@@ -103,11 +114,12 @@ export class AppearanceController {
   private shapes = new Map<string, ShapeThemeDefinition>();
   private memory = new Map<string, unknown>();
   constructor(readonly registry: FileIconRegistry, private principal = 'device',
-    private storage?: Pick<Storage, 'getItem' | 'setItem'>,
+    private storage?: AppearanceStorage,
     private apply = applyAppearance,
     private builtins: AppearanceBuiltins = builtinAppearance) {}
 
   private get userKey() { return `tano.appearance.v2.${encodeURIComponent(this.principal)}.user`; }
+  private get customPresetPrefix() { return `${this.userKey}.preset.`; }
   private workspaceKey(id: string) { return `tano.appearance.v2.${encodeURIComponent(this.principal)}.workspace.${encodeURIComponent(id)}`; }
   private read(key: string): any {
     if (this.memory.has(key)) return this.memory.get(key);
@@ -132,9 +144,12 @@ export class AppearanceController {
   }
   /** Called by the owning window on preference storage events from another window. */
   refreshPreferences(key: string | null) {
-    if (key !== null && key !== this.userKey && key !== this.workspaceKey(this.state.value.workspaceId)) return;
+    const refreshPresets = key === null || key.startsWith(this.customPresetPrefix);
+    if (!refreshPresets && key !== this.userKey && key !== this.workspaceKey(this.state.value.workspaceId)) return;
     if (key === null) this.memory.clear(); else this.memory.delete(key);
-    this.activate({ ...this.state.value, ...this.preferences(this.state.value.workspaceId) });
+    const next = { ...this.state.value, ...this.preferences(this.state.value.workspaceId) };
+    if (refreshPresets) this.loadCustomPresets(next);
+    this.activate(next);
   }
   sync(workspaceId: string, installed: readonly InstalledObjectPlugin[]) {
     const signature = JSON.stringify([workspaceId, installed.map(plugin => [plugin.manifest.id,
@@ -182,18 +197,14 @@ export class AppearanceController {
         next.errors.push(`${plugin.manifest.name}：主题无法加载，已回退到默认外观。`);
       }
     }
-    for (const preset of next.presets) {
-      preset.missing = appearanceKinds.flatMap(kind => {
-        const id = preset.selected[kind];
-        return id !== undefined && !this.available(next, kind, id) ? [{ kind, id }] : [];
-      });
-      preset.unavailable = preset.missing.length > 0;
-    }
+    for (const preset of next.presets) Object.assign(preset, this.presetAvailability(next, preset.selected));
+    this.loadCustomPresets(next);
     this.activate(next);
   }
   /** A preset that leaves the layout alone previews no structure; the current combination always has one. */
   private layoutPreview(selected: Partial<Record<AppearanceKind, string>>, current = false): Pick<AppearancePreset, 'structure' | 'material'> {
-    const material = selected.material === glassMaterial ? { material: 'frost' as const } : {};
+    const surface = selected.material ? materialSurface[selected.material] : undefined;
+    const material = surface ? { material: surface } : {};
     if (!selected.layout && !current) return { structure: undefined, ...material };
     const layout = selected.layout ? this.layouts.get(selected.layout) : undefined;
     return { structure: layout?.structure ?? 'continuous', ...material };
@@ -214,9 +225,72 @@ export class AppearanceController {
     return id === builtinDefault || (kind === 'color' ? state.colors : kind === 'icons' ? state.icons : kind === 'layout' ? state.layouts
       : kind === 'material' ? state.materials : state.shapes).some(choice => choice.id === id);
   }
+  private presetAvailability(state: AppearanceSnapshot, selected: AppearancePreset['selected']) {
+    const missing = appearanceKinds.flatMap(kind => {
+      const id = selected[kind];
+      return id !== undefined && !this.available(state, kind, id) ? [{ kind, id }] : [];
+    });
+    return { missing, unavailable: missing.length > 0 };
+  }
+  private loadCustomPresets(state: AppearanceSnapshot) {
+    const prefix = this.customPresetPrefix;
+    const keys = new Set([...this.memory.keys()].filter(key => key.startsWith(prefix)));
+    try {
+      const count = this.storage?.length ?? 0;
+      for (let index = 0; index < count; index++) {
+        const key = this.storage?.key?.(index);
+        if (key?.startsWith(prefix)) keys.add(key);
+      }
+    } catch { /* Session presets are still available. */ }
+    const saved = [...keys].flatMap(key => {
+      const entry = this.read(key);
+      const selected = readChoices(entry?.selected);
+      return selected && Number.isFinite(entry.createdAt)
+        ? [{ id: key.slice(prefix.length), selected, createdAt: Number(entry.createdAt) }] : [];
+    }).sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+    state.presets = [...state.presets.filter(preset => preset.customNumber === undefined), ...saved.map(({ id, selected }, index) => ({
+      id, label: '自定义主题 {0}', customNumber: index + 1, selected,
+      ...this.colorPreview(selected.color), ...this.layoutPreview(selected), ...this.presetAvailability(state, selected),
+    }))];
+  }
+  private saveCurrentPreset(state: AppearanceSnapshot) {
+    if (!state.canSavePreset) return;
+    // Each combination has its own key so settings windows can save independently.
+    const id = `custom:theme:${appearanceKinds.map(kind => encodeURIComponent(state.active[kind])).join(':')}`;
+    const key = this.customPresetPrefix + id;
+    if (!this.read(key)) this.write(key, { selected: { ...state.active }, createdAt: Date.now() });
+    const next = { ...state };
+    this.loadCustomPresets(next);
+    this.activate(next);
+  }
+  private removeCustomPreset(state: AppearanceSnapshot, id: string) {
+    if (!state.presets.some(preset => preset.id === id && preset.customNumber !== undefined)) return;
+    const key = this.customPresetPrefix + id;
+    try {
+      if (this.storage?.removeItem) {
+        this.storage.removeItem(key);
+        this.memory.delete(key);
+      } else {
+        this.write(key, null);
+      }
+    } catch {
+      this.memory.set(key, null); // Keep the deletion for this session if storage is unavailable.
+    }
+    const next = { ...state };
+    this.loadCustomPresets(next);
+    this.activate(next);
+  }
   select(selection: AppearanceSelection) {
     const state = this.state.value;
     if (selection.workspaceId !== state.workspaceId) return;
+    if (selection.kind === 'save-preset') {
+      this.saveCurrentPreset(state);
+      return;
+    }
+    if (selection.kind === 'remove-preset') {
+      this.removeCustomPreset(state, selection.id);
+      return;
+    }
     if (selection.kind === 'scope') {
       if (!state.workspaceId || !['user', 'workspace'].includes(selection.id)) return;
       const value: WorkspacePreferences = { enabled: selection.id === 'workspace', selected: { ...state.selected },
@@ -259,7 +333,8 @@ export class AppearanceController {
     next.presetId = [...next.presets].sort((a, b) => Object.keys(b.selected).length - Object.keys(a.selected).length).find(preset => !preset.unavailable && appearanceKinds
       .every(kind => preset.selected[kind] === undefined || (preset.selected[kind] === next.selected[kind] && next.selected[kind] === next.active[kind])))?.id;
     const preset = next.presets.find(item => item.id === next.presetId);
-    next.currentPreset = { id: preset?.id ?? 'current', label: preset?.label ?? '当前搭配', selected: { ...next.active },
+    next.canSavePreset = !next.presets.some(item => appearanceKinds.every(kind => item.selected[kind] === next.active[kind]));
+    next.currentPreset = { id: preset?.id ?? 'current', label: preset?.label ?? '当前搭配', customNumber: preset?.customNumber, selected: { ...next.active },
       ...this.colorPreview(next.active.color), ...this.layoutPreview(next.active, true) };
     this.registry.select(next.active.icons);
     this.apply(next.color, next.layout, next.shape, next.mode, next.active.material === builtinDefault ? undefined : next.active.material);

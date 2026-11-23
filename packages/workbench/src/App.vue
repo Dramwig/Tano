@@ -57,6 +57,7 @@ const {
   workspaceMenu,
   modal,
   settingsPanel,
+  SETTINGS_TAB_ID,
   repositoryActionItems,
   showModal,
   activeId,
@@ -372,6 +373,8 @@ const brandButton = ref<HTMLElement | null>(null);
       'workspace-empty': !workspace,
     }"
   >
+    <!-- Liquid glass draws its blurred background and rim refraction here, under everything (liquid-glass.ts). -->
+    <div class="liquid-backdrop" aria-hidden="true"></div>
     <Teleport :to="activeWindow.overlays"><WindowScope :key="activeWindow.id" :context="activeWindow"><AssistantButterflyLayer :controller="butterfly" /></WindowScope></Teleport>
     <Teleport :to="activeWindow.overlays">
       <WindowScope :key="activeWindow.id" :context="activeWindow">
@@ -1261,7 +1264,7 @@ const brandButton = ref<HTMLElement | null>(null);
         @open="openReference"
       />
       </WindowScope></Teleport>
-      <div v-if="(workspace || startupPending || filesPending) && compactPanes && tabsEnabled" class="workspace-tabbar">
+      <div v-if="compactPanes && tabsEnabled && (workspace || startupPending || filesPending || store.tabs.length)" class="workspace-tabbar">
         <DesktopTabs
           :loading="sessionPending"
           :file-drag="tabFileDrag"
@@ -1278,6 +1281,7 @@ const brandButton = ref<HTMLElement | null>(null);
           <div class="workspace-tabbar" :data-tab-pane-id="pane.id"><DesktopTabs :pane-id="pane.id" :show-navigation="rect.top === 0 && rect.left === 0" :detachable="false" /></div>
         </template>
         <template #default="{ pane }">
+          <WorkbenchSettings v-if="pane.activeId === SETTINGS_TAB_ID" tabbed />
           <template v-for="view in extensionViews" :key="view.id"><component v-if="pane.activeId === view.id" :is="view.component" :actions="viewActions[view.id]" /></template>
         </template>
       </WorkspacePanes>

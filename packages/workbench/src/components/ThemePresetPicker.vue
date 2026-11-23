@@ -39,6 +39,13 @@ function close(restoreFocus = false) {
   expanded.value = false;
   if (restoreFocus) trigger.value?.focus({ preventScroll: true });
 }
+function focusCurrent() {
+  picker.value?.querySelector<HTMLButtonElement>('.theme-preset-quick-row [aria-pressed="true"]')?.focus({ preventScroll: true });
+}
+function focusMore() {
+  if (!panel.value) return;
+  (panel.value.querySelector<HTMLButtonElement>('.theme-preset-card:not(:disabled)') ?? panel.value).focus({ preventScroll: true });
+}
 async function select(preset: AppearancePreset) {
   if (preset.unavailable || !props.appearance.presets.some(item => item.id === preset.id)) return;
   const restoreFocus = expanded.value;
@@ -54,12 +61,24 @@ async function select(preset: AppearancePreset) {
     card.animate([{ scale: '0.94' }, { scale: '1' }], { duration: MOTION_DURATION.bouncy, easing: spring('bouncy') });
   }
 }
+async function save() {
+  emit('select', { workspaceId: props.appearance.workspaceId, kind: 'save-preset' });
+  close();
+  await nextTick();
+  if (!props.appearance.canSavePreset) focusCurrent();
+}
+async function removePreset(preset: AppearancePreset, fromMore = false) {
+  emit('select', { workspaceId: props.appearance.workspaceId, kind: 'remove-preset', id: preset.id });
+  await nextTick();
+  if (props.appearance.presets.some(item => item.id === preset.id)) return;
+  if (fromMore && panel.value) focusMore();
+  else focusCurrent();
+}
 async function toggle() {
   if (expanded.value) { close(true); return; }
   expanded.value = true;
   await nextTick();
-  if (!panel.value) return;
-  (panel.value.querySelector<HTMLButtonElement>('.theme-preset-card:not(:disabled)') ?? panel.value).focus({ preventScroll: true });
+  focusMore();
 }
 function dismiss(event: PointerEvent) {
   if (!expanded.value || !(isNode(event.target))) return;
@@ -67,7 +86,7 @@ function dismiss(event: PointerEvent) {
   if (picker.value?.contains(event.target) || event.target === picker.value?.closest('.settings-main')) return;
   close();
 }
-watch(() => [props.appearance.workspaceId, props.appearance.scope, !!inlinePresets.value], () => close());
+watch([() => props.appearance.workspaceId, () => props.appearance.scope, () => !!inlinePresets.value], () => close());
 onMounted(() => {
   document.addEventListener('pointerdown', dismiss, true);
 });
@@ -80,11 +99,12 @@ onBeforeUnmount(() => {
 <template>
   <div ref="picker" class="theme-preset-picker">
     <div v-if="inlinePresets" class="theme-preset-quick-row" :aria-label="t('常用主题')">
-      <ThemePresetCard v-for="preset in inlinePresets" :key="preset.id" :preset="preset" :selected="preset.id === current.id" @select="select" />
+      <ThemePresetCard v-for="preset in inlinePresets" :key="preset.id" :preset="preset" :selected="preset.id === current.id"
+        :saveable="preset.id === current.id && appearance.canSavePreset" @select="select" @save="save" @remove="removePreset" />
     </div>
     <div v-else class="theme-preset-quick-row" :aria-label="t('常用主题')">
-      <ThemePresetCard :preset="current" selected @select="select" />
-      <ThemePresetCard v-if="previous" :preset="previous" @select="select" />
+      <ThemePresetCard :preset="current" selected :saveable="appearance.canSavePreset" @select="select" @save="save" @remove="removePreset" />
+      <ThemePresetCard v-if="previous" :preset="previous" @select="select" @remove="removePreset" />
       <button ref="trigger" type="button" class="theme-preset-more" :aria-label="t('更多主题')"
         :aria-expanded="expanded" :aria-controls="expanded ? panelId : undefined" @click="toggle" @keydown.esc.stop.prevent="close(true)">
         <span class="theme-preset-more-heading"><strong>{{ t('更多') }}</strong><ChevronDown :size="14" :class="{ expanded }" aria-hidden="true" /></span>
@@ -95,7 +115,8 @@ onBeforeUnmount(() => {
       class="theme-preset-popover" role="region" :aria-label="t('更多主题')" tabindex="-1"
       @keydown.esc.stop.prevent="close(true)">
       <div class="theme-preset-grid">
-        <ThemePresetCard v-for="preset in morePresets" :key="preset.id" :preset="preset" borderless compact @select="select" />
+        <ThemePresetCard v-for="preset in morePresets" :key="preset.id" :preset="preset" borderless compact
+          @select="select" @remove="removePreset($event, true)" />
       </div>
     </div>
   </div>

@@ -51,8 +51,9 @@ it('keeps three cards in the row and moves further presets such as frosted glass
   expect(pressed()).toEqual(['builtin:tano']);
   await open();
   expect([...root.querySelectorAll('.theme-preset-popover [data-preset-id]')].map(card => card.getAttribute('data-preset-id')))
-    .toEqual(['builtin:paper', 'builtin:frost']);
+    .toEqual(['builtin:paper', 'builtin:frost', 'builtin:liquid']);
   expect(root.querySelector('.theme-preset-popover [data-preset-id="builtin:frost"] [data-preview-surface="frost"]')).not.toBeNull();
+  expect(root.querySelector('.theme-preset-popover [data-preset-id="builtin:liquid"] [data-preview-surface="liquid"]')).not.toBeNull();
   expect(root.querySelector('.theme-preset-popover [data-preset-id="builtin:paper"] [data-preview-surface]')).toBeNull();
   root.querySelector<HTMLButtonElement>('.theme-preset-popover [data-preset-id="builtin:frost"]')!.click();
   await nextTick();
@@ -76,7 +77,7 @@ it('collapses into current, previous and more once the choices no longer fit', a
   await open();
   expect(more().getAttribute('aria-expanded')).toBe('true');
   expect([...root.querySelectorAll('.theme-preset-popover [data-preset-id]')].map(card => card.getAttribute('data-preset-id')))
-    .toEqual(['builtin:tano', 'builtin:islands', 'builtin:frost']);
+    .toEqual(['builtin:tano', 'builtin:islands', 'builtin:frost', 'builtin:liquid']);
   root.querySelector<HTMLButtonElement>('.theme-preset-popover [data-preset-id="builtin:islands"]')!.click();
   await nextTick();
   expect(root.querySelector('.theme-preset-popover')).toBeNull();
@@ -95,6 +96,23 @@ it('closes on Escape without closing settings and restores keyboard focus', asyn
   expect(root.querySelector('.theme-preset-popover')).toBeNull();
   expect(bubbled).not.toHaveBeenCalled();
   expect(document.activeElement).toBe(more());
+});
+
+it('deletes a custom preset in more and keeps the panel and current appearance', async () => {
+  await customize();
+  controller.select({ workspaceId: 'one', kind: 'save-preset' });
+  const id = controller.state.value.presetId;
+  controller.select({ workspaceId: 'one', kind: 'preset', id: 'builtin:tano' });
+  controller.select({ workspaceId: 'one', kind: 'preset', id: 'builtin:islands' });
+  await nextTick();
+  await open();
+  const panel = root.querySelector('.theme-preset-popover')!;
+  panel.querySelector<HTMLButtonElement>('button[aria-label="删除主题「自定义主题 1」"]')!.click();
+  await nextTick();
+  expect(controller.state.value.presets.some(preset => preset.id === id)).toBe(false);
+  expect(pressed()).toEqual(['builtin:islands']);
+  expect(more().getAttribute('aria-expanded')).toBe('true');
+  expect(panel.contains(document.activeElement)).toBe(true);
 });
 
 it('hides unavailable entries from the previous slot of a custom combination', async () => {

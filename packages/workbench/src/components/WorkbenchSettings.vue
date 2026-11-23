@@ -6,7 +6,7 @@ defineProps<{ tabbed?: boolean; windowed?: boolean }>();
 const context = inject(workbenchContextKey);
 if (!context) throw new Error('Workbench context is required');
 const windowContext = useWindowContext();
-const { native, mobile, workspace, shortcuts, store, tabsEnabled, extensions, updates, editorPreferences, showPageTitle, showDocumentProperties, showOutline, outlineOnLeft, active, settingsWorkspace, openingSettingsWindow, openSettingsTab, openSettingsInNewWindow, settingsPage, workspaceExporting, workspaceExportError, workspaceDeletionError, deleteWorkspace, exportWorkspace, defaultSource, theme, appearance, appearanceController, visualFontChoice, customFontName, splitFontSettings, revealMarkdown, toolbarMode, showDocumentDiscussion, visualFontSize, sourceFontSize, appVersion, documentationBaseUrl, assistant, settingsAction, SettingsPanel, settingsContext } = toRefs(context);
+const { native, mobile, workspace, shortcuts, store, tabsEnabled, extensions, updates, editorPreferences, showPageTitle, showDocumentProperties, showOutline, outlineOnLeft, active, openingSettingsWindow, openSettingsTab, openSettingsInNewWindow, settingsPage, workspaceExporting, workspaceExportError, workspaceDeletionError, deleteWorkspace, exportWorkspace, defaultSource, theme, appearance, appearanceController, visualFontChoice, customFontName, splitFontSettings, revealMarkdown, toolbarMode, showDocumentDiscussion, visualFontSize, sourceFontSize, appVersion, documentationBaseUrl, assistant, settingsAction, SettingsPanel, settingsContext } = toRefs(context);
 function closeSettings() {
   if (windowContext.id === 'settings') void context!.auxiliaryWindows.close('settings');
   else context!.settingsPanel = false;
@@ -17,7 +17,7 @@ function closeSettings() {
       @drag-window="event => { if (event.button === 0) void windowContext.native?.startDragging(); }"
       :tabbed="tabbed"
       :windowed="windowed"
-      :can-open-tab="tabsEnabled && !!settingsWorkspace"
+      :can-open-tab="tabsEnabled"
       :can-open-window="native && !mobile && tabsEnabled"
       :opening-window="openingSettingsWindow"
       @open-tab="openSettingsTab"
@@ -44,6 +44,7 @@ function closeSettings() {
       :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'"
       :native="native"
       :mobile="mobile"
+      v-model:developer-mode="context.developerMode"
       :default-source="defaultSource"
       :theme="theme"
       :appearance="appearance"

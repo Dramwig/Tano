@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import sharp from 'sharp';
 
 async function prepare(page) {
   await page.addInitScript(() => {
@@ -163,6 +164,268 @@ test('real workbench windows preserve drafts through auxiliary splits and close 
   expect(errors).toEqual([]);
 });
 
+test('the detached settings window fills its corners while island cards stay rounded', async ({ page }) => {
+  await prepare(page);
+  const selectPreset = id => page.evaluate(id => {
+    const { appearance, appearanceController } = window.workbench;
+    appearanceController.select({ workspaceId: appearance.workspaceId, kind: 'preset', id });
+  }, id);
+  await selectPreset('builtin:islands');
+  await page.evaluate(() => window.workbench.openSettings('appearance'));
+  await expect(page.locator('.settings-dialog')).toHaveCSS('border-radius', '20px');
+  await page.getByRole('button', { name: '关闭设置', exact: true }).click();
+
+  const opened = page.waitForEvent('popup');
+  await page.evaluate(() => window.workbench.auxiliaryWindows.open('settings', 'settings', '设置'));
+  const settings = await opened;
+  await settings.setViewportSize({ width: 1080, height: 780 });
+  const dialog = settings.locator('.settings-windowed > .settings-dialog');
+  const card = dialog.locator('.settings-main');
+  for (const { preset, color, cardRadius } of [
+    { preset: 'builtin:islands', color: 'builtin:mist', cardRadius: '16px' },
+    { preset: 'builtin:frost', color: 'builtin:haze', cardRadius: '16px' },
+    { preset: 'builtin:paper', color: 'builtin:ink', cardRadius: '0px' },
+  ]) {
+    await selectPreset(preset);
+    await expect(settings.locator('html')).toHaveAttribute('data-color-theme', color);
+    await expect(dialog).toHaveCSS('border-radius', '0px');
+    await expect(dialog).toHaveCSS('border-top-width', '0px');
+    await expect(dialog).toHaveCSS('box-shadow', 'none');
+    await expect(card).toHaveCSS('border-radius', cardRadius);
+  }
+  await page.evaluate(() => window.workbench.auxiliaryWindows.close('settings'));
+});
+
+test('the glass settings modal keeps the same wallpaper framing when its zoom finishes', async ({ page }) => {
+  await page.setViewportSize({ width: 1296, height: 944 });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await prepare(page);
+  await page.evaluate(() => {
+    const { appearance, appearanceController, openSettings } = window.workbench;
+    appearanceController.select({ workspaceId: appearance.workspaceId, kind: 'preset', id: 'builtin:liquid' });
+    openSettings('appearance');
+  });
+  const dialog = page.locator('.settings-dialog');
+  const image = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000">
+    <defs><pattern id="bands" width="300" height="300" patternUnits="userSpaceOnUse">
+      <rect width="300" height="300" fill="#233563"/><path d="M0 0H300V50H0Z M0 0H50V300H0Z" fill="#ffc277"/>
+    </pattern></defs><rect width="1600" height="1000" fill="url(#bands)"/>
+  </svg>`)).png().toBuffer();
+  await dialog.locator('.glass-wallpaper input[type=file]').setInputFiles({ name: 'wallpaper.png', mimeType: 'image/png', buffer: image });
+  await expect(page.locator('html')).toHaveAttribute('data-glass-wallpaper', '');
+  await dialog.getByRole('button', { name: '关闭设置', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+
+  await page.evaluate(() => {
+    const animate = Element.prototype.animate;
+    Element.prototype.animate = function (...args) {
+      const animation = animate.apply(this, args);
+      if (this.matches('.settings-backdrop, .settings-dialog')) {
+        animation.pause();
+        animation.currentTime = 60;
+      }
+      return animation;
+    };
+    window.workbench.openSettings('appearance');
+  });
+  const backdrop = page.locator('.settings-backdrop');
+  await expect.poll(() => backdrop.evaluate(el => Number(getComputedStyle(el).opacity))).toBeLessThan(1);
+  expect(await dialog.evaluate(el => Number(getComputedStyle(el).scale))).toBeLessThan(1);
+  await backdrop.evaluate(el => {
+    for (const animation of el.getAnimations({ subtree: true })) {
+      if (animation.effect.target === el || animation.effect.target.matches('.settings-dialog')) {
+        animation.currentTime = animation.effect.getComputedTiming().endTime;
+      }
+    }
+  });
+  // Compare an empty area of the sidebar in the last keyframe and after the
+  // animator removes the transform. The two frames should use the same crop.
+  await expect(dialog).toHaveCSS('scale', '1');
+  const box = await dialog.boundingBox();
+  const clip = { x: Math.round(box.x + 24), y: Math.round(box.y + box.height / 2), width: 160, height: 150 };
+  const capture = async () => sharp(await page.screenshot({ clip })).removeAlpha().raw().toBuffer();
+  const animated = await capture();
+  await backdrop.evaluate(el => el.getAnimations()[0].finish());
+  await expect(dialog).toHaveCSS('scale', 'none');
+  const settled = await capture();
+  const changed = settled.reduce((count, channel, index) => count + Number(Math.abs(channel - animated[index]) > 4), 0);
+  expect(changed / settled.length).toBeLessThan(0.01);
+});
+
+test('built-in glass wallpapers switch their thumbnail and bitmap with the display mode', async ({ page }) => {
+  await prepare(page);
+  await page.evaluate(() => window.workbench.openSettings('appearance'));
+  const mode = page.getByRole('combobox', { name: '显示模式', exact: true });
+  const root = page.locator('html');
+  const readWallpaper = () => root.evaluate(element => element.style.getPropertyValue('--glass-wallpaper'));
+  const readBrightness = cssImage => page.evaluate(async cssImage => {
+    const url = cssImage.slice(5, -2);
+    const image = await createImageBitmap(await (await fetch(url)).blob());
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    const context = canvas.getContext('2d');
+    context.drawImage(image, 0, 0, 1, 1);
+    image.close();
+    const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
+    return (red + green + blue) / 3;
+  }, cssImage);
+
+  for (const [preset, wallpaper] of [['builtin:frost', '晨雾'], ['builtin:liquid', '暮光']]) {
+    await page.evaluate(id => {
+      const { appearance, appearanceController } = window.workbench;
+      appearanceController.select({ workspaceId: appearance.workspaceId, kind: 'preset', id });
+    }, preset);
+    await mode.selectOption('light');
+    const choice = page.getByRole('group', { name: '背景图片' }).getByRole('button', { name: wallpaper, exact: true });
+    const swatch = choice.locator('.glass-wallpaper-swatch');
+    const previousWallpaper = await readWallpaper();
+    await choice.click();
+    await expect.poll(readWallpaper).not.toBe(previousWallpaper);
+    const lightWallpaper = await readWallpaper();
+    const lightSwatch = await swatch.evaluate(element => getComputedStyle(element).backgroundImage);
+
+    await mode.selectOption('dark');
+    await expect(root).toHaveAttribute('data-theme', 'dark');
+    await expect(swatch).not.toHaveCSS('background-image', lightSwatch);
+    await expect.poll(readWallpaper).not.toBe(lightWallpaper);
+    await expect(root).toHaveAttribute('data-glass-wallpaper', '');
+    await expect(choice).toHaveAttribute('aria-pressed', 'true');
+    const darkSwatch = await swatch.evaluate(element => getComputedStyle(element).backgroundImage);
+    const darkWallpaper = await readWallpaper();
+    expect(await readBrightness(darkSwatch)).toBeLessThan(await readBrightness(lightSwatch) * 0.6);
+    expect(await readBrightness(darkWallpaper)).toBeLessThan(100);
+
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await mode.selectOption('system');
+    await page.emulateMedia({ colorScheme: 'light' });
+    await expect(root).toHaveAttribute('data-theme', 'light');
+    await expect(swatch).toHaveCSS('background-image', lightSwatch);
+    await expect.poll(readWallpaper).not.toBe(darkWallpaper);
+  }
+});
+
+test('the selected liquid glass tab and its page share one surface', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await prepare(page);
+  await page.evaluate(async () => {
+    const { appearance, appearanceController, openSettings, store } = window.workbench;
+    appearanceController.select({ workspaceId: appearance.workspaceId, kind: 'preset', id: 'builtin:liquid' });
+    await store.create('Second.md', false, 'Second document\n');
+    openSettings('appearance');
+  });
+  await page.getByRole('group', { name: '背景图片' }).getByRole('button', { name: '暮光', exact: true }).click();
+  await page.getByRole('button', { name: '关闭设置', exact: true }).click();
+  const main = page.locator('.desktop-tab').filter({ hasText: 'Main' });
+  const second = page.locator('.desktop-tab').filter({ hasText: 'Second' });
+  const card = page.locator('.workspace-page-content:visible');
+  const veil = page.locator('.liquid-joined-veil');
+  await expect(second).toHaveAttribute('data-liquid-joined-tab', '');
+  await expect(main).not.toHaveAttribute('data-liquid-joined-tab', '');
+  await expect(card).toHaveAttribute('data-liquid-joined-card', '');
+  await expect(veil).toHaveCount(1);
+  await expect.poll(() => veil.evaluate(element => element.previousElementSibling.style.getPropertyValue('--liquid-backdrop'))).toContain('url(');
+  await expect(second).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const previousOutline = await veil.evaluate(element => element.style.clipPath);
+  await main.getByRole('tab').click();
+  await expect(main).toHaveAttribute('data-liquid-joined-tab', '');
+  await expect(second).not.toHaveAttribute('data-liquid-joined-tab', '');
+  await expect.poll(() => veil.evaluate(element => element.style.clipPath)).not.toBe(previousOutline);
+  const [tab, body, glass] = await Promise.all([main.boundingBox(), card.boundingBox(), veil.boundingBox()]);
+  expect(Math.abs(tab.y + tab.height - body.y)).toBeLessThan(1);
+  expect(Math.abs(glass.y - tab.y)).toBeLessThan(1);
+  expect(Math.abs(glass.y + glass.height - body.y - body.height)).toBeLessThan(1);
+
+  const pixels = await sharp(await page.screenshot({ clip: {
+    x: Math.round(tab.x + 74), y: Math.round(body.y - 2), width: 24, height: 4,
+  } })).removeAlpha().raw().toBuffer();
+  const rowBytes = 24 * 3;
+  const seam = pixels.reduce((largest, channel, index) => Math.max(largest, Math.abs(channel - pixels[index % rowBytes])), 0);
+  expect(seam).toBeLessThan(8);
+
+  await second.getByRole('tab').click();
+  await page.evaluate(() => {
+    const { store } = window.workbench;
+    store.moveTabToWindow(store.activeId, 'main', { paneId: store.windowLayouts.main.activePaneId, side: 'bottom' });
+  });
+  await expect(veil).toHaveCount(2);
+  await expect(main).toHaveAttribute('data-liquid-joined-tab', '');
+  await expect(second).toHaveAttribute('data-liquid-joined-tab', '');
+  await expect(card).toHaveCount(2);
+});
+
+for (const [material, preset] of [['frosted glass', 'builtin:frost'], ['liquid glass', 'builtin:liquid']]) {
+  test(`${material} settings tabs show the same wallpaper surface as document tabs`, async ({ page }) => {
+    await prepare(page);
+    await page.evaluate(id => {
+      const { appearance, appearanceController, openSettings } = window.workbench;
+      appearanceController.select({ workspaceId: appearance.workspaceId, kind: 'preset', id });
+      openSettings('appearance');
+    }, preset);
+    await page.getByRole('group', { name: '背景图片' }).getByRole('button', { name: '晨雾', exact: true }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-glass-wallpaper', '');
+    const pageCard = page.locator('.workspace-page-content.workspace-card:visible');
+    const documentBackground = await pageCard.evaluate(card => getComputedStyle(card).backgroundColor);
+
+    await page.locator('.settings-main').evaluate(main => { main.scrollTop = 0; });
+    await page.getByRole('button', { name: '作为标签页打开', exact: true }).click();
+    const tab = page.locator('.settings-tabbed');
+    await expect(tab).toBeVisible();
+    await expect(pageCard).toHaveCSS('background-color', documentBackground);
+    for (const surface of [tab, tab.locator('.settings-dialog'), tab.locator('.settings-nav'), tab.locator('.settings-main')]) {
+      await expect(surface).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(surface).toHaveCSS('background-image', 'none');
+    }
+    if (preset === 'builtin:liquid') {
+      await expect(pageCard).toHaveAttribute('data-liquid-joined-card', '');
+      await expect(page.locator('.workspace-tabbar .desktop-tab-active')).toHaveAttribute('data-liquid-joined-tab', '');
+    }
+  });
+}
+
+test('switching glass material preserves the layout’s cards and docked tabs', async ({ page }) => {
+  await prepare(page);
+  await page.evaluate(() => {
+    const { appearance, appearanceController, openSettingsTab } = window.workbench;
+    appearanceController.select({ workspaceId: appearance.workspaceId, kind: 'preset', id: 'builtin:frost' });
+    openSettingsTab('appearance');
+  });
+  const settings = page.locator('.settings-tabbed');
+  const layout = settings.getByRole('combobox', { name: '布局风格', exact: true });
+  const material = settings.getByRole('combobox', { name: '材质', exact: true });
+  const root = page.locator('html');
+  const sidebarSurface = page.locator('.app-shell > .sidebar > .sidebar-surface');
+  const sidebarBounds = () => sidebarSurface.evaluate(surface => {
+    const { display, top, right, bottom, left, borderRadius } = getComputedStyle(surface);
+    return { display, top, right, bottom, left, borderRadius };
+  });
+  const inactiveTab = page.locator('.desktop-tab:not(.desktop-tab-active)').first();
+  await expect(inactiveTab).toBeVisible();
+
+  for (const [id, structure] of [
+    ['builtin:islands', 'islands'],
+    ['builtin:tano', 'continuous'],
+    ['builtin:paper', 'document'],
+  ]) {
+    await layout.selectOption(id);
+    await expect(root).toHaveAttribute('data-layout', structure);
+    await material.selectOption('builtin:frost');
+    await expect(root).toHaveAttribute('data-material', 'builtin:frost');
+    const frostedSidebar = await sidebarBounds();
+    if (structure === 'islands') {
+      expect(parseFloat(frostedSidebar.top)).toBeGreaterThan(0);
+    } else {
+      expect(frostedSidebar.display).toBe('none');
+    }
+
+    await material.selectOption('builtin:liquid');
+    await expect(root).toHaveAttribute('data-material', 'builtin:liquid');
+    await expect(root).toHaveAttribute('data-layout', structure);
+    expect(await sidebarBounds()).toEqual(frostedSidebar);
+    await expect(inactiveTab).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    expect(await inactiveTab.evaluate(tab => getComputedStyle(tab, '::after').content)).toBe('none');
+  }
+});
+
 test('settings edits update the actual main and auxiliary editors immediately', async ({ page }) => {
   await prepare(page);
   const child = await openDocumentWindow(page, 'settings-target', 'Auxiliary document\n');
@@ -171,8 +434,14 @@ test('settings edits update the actual main and auxiliary editors immediately', 
   await page.evaluate(() => window.workbench.auxiliaryWindows.open('settings', 'settings', '设置'));
   const settings = await opened;
   await expect(settings.locator('.settings-windowed')).toBeVisible();
-  await expect(settings.locator('.desktop-window-actions').getByRole('button')).toHaveCount(3);
-  await expect(settings.getByRole('button', { name: '关闭窗口', exact: true })).toBeVisible();
+  const actions = settings.locator('.desktop-window-actions');
+  await expect(actions.getByRole('button')).toHaveCount(3);
+  await expect(actions).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(settings.locator('.desktop-window-titlebar')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const closeWindow = actions.getByRole('button', { name: '关闭窗口', exact: true });
+  await expect(closeWindow).toBeVisible();
+  await closeWindow.hover();
+  await expect(closeWindow).toHaveCSS('background-color', 'rgb(217, 45, 32)');
   await expect(settings.getByRole('button', { name: '关闭设置', exact: true })).toHaveCount(0);
   await expect(settings.getByRole('button', { name: '作为标签页打开', exact: true })).toHaveCount(0);
   await settings.getByRole('combobox', { name: '显示模式', exact: true }).selectOption('dark');

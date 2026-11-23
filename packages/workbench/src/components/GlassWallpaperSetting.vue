@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, useId } from 'vue';
 import { ImagePlus, Trash2 } from 'lucide-vue-next';
-import { builtinWallpapers, glassWallpaper } from '../glass-wallpaper';
+import { builtinWallpapers, debugStripeWallpaper, glassWallpaper } from '../glass-wallpaper';
 import { t } from '../i18n';
 
 /** Background image for the frosted-glass layout. Rendered only while that layout is active. */
@@ -12,10 +12,12 @@ const softnessId = useId();
 const choices = computed(() => {
   const current = state.value;
   if (!current) return [];
+  const debugStripePreview = current.thumbnails[debugStripeWallpaper.id];
   return [
     { id: 'none', label: '光斑', preview: undefined },
     ...builtinWallpapers.map(item => ({ id: item.id, label: item.label, preview: current.thumbnails[item.id] })),
-    ...(current.customRevision !== undefined ? [{ id: 'custom', label: '我的图片', preview: current.source === 'custom' ? current.url : undefined }] : []),
+    ...(debugStripePreview ? [{ ...debugStripeWallpaper, preview: debugStripePreview }] : []),
+    ...(current.customRevision !== undefined ? [{ id: 'custom', label: '我的图片', preview: current.customThumbnail }] : []),
   ];
 });
 
@@ -31,7 +33,7 @@ function pick(event: Event) {
     <div class="glass-wallpaper-head">
       <div>
         <strong>{{ t('背景图片') }}</strong>
-        <p>{{ t('磨砂玻璃会透出这张图片，卡片透明度会按图片自动调整以保证文字清晰。图片只保存在这台设备。') }}</p>
+        <p>{{ t('玻璃材质会透出这张图片，卡片透明度会按图片自动调整以保证文字清晰。图片只保存在这台设备。') }}</p>
       </div>
       <div class="glass-wallpaper-actions">
         <button type="button" class="glass-wallpaper-button" :disabled="state.busy" @click="input?.click()">

@@ -1,5 +1,5 @@
 import { shallowRef } from 'vue';
-import { themeChangedEvent } from './theme';
+import { themeChangedEvent, type ResolvedTheme } from './theme';
 import type { WallpaperRender } from './glass-wallpaper-render';
 
 /**
@@ -18,6 +18,7 @@ export interface WallpaperPreference {
 }
 export interface GlassWallpaperState extends WallpaperPreference {
   url?: string;
+  customThumbnail?: string;
   busy: boolean;
   error?: string;
   thumbnails: Record<string, string>;
@@ -27,19 +28,21 @@ export interface WallpaperImageStore {
   put(key: string, blob: Blob): Promise<void>;
   delete(key: string): Promise<void>;
 }
+type WallpaperSource = CanvasImageSource & { width: number; height: number };
 export interface WallpaperRenderer {
   normalizeImport(file: Blob): Promise<Blob>;
-  decode(blob: Blob): Promise<CanvasImageSource & { width: number; height: number }>;
-  builtin(id: string): CanvasImageSource & { width: number; height: number };
-  thumbnail(id: string): string;
-  render(source: CanvasImageSource & { width: number; height: number }, softness: number): Promise<WallpaperRender>;
+  decode(blob: Blob): Promise<WallpaperSource>;
+  builtin(id: string, mode: ResolvedTheme['mode']): WallpaperSource;
+  thumbnail(id: string, mode: ResolvedTheme['mode']): string;
+  customThumbnail(source: WallpaperSource): string;
+  render(source: WallpaperSource, softness: number): Promise<WallpaperRender>;
 }
 
 export const builtinWallpapers = [
   { id: 'builtin:dawn', label: '晨雾' },
   { id: 'builtin:dusk', label: '暮光' },
-  { id: 'builtin:tide', label: '深潮' },
 ] as const;
+export const debugStripeWallpaper = { id: 'debug:stripes', label: '调试条纹' } as const;
 export const defaultWallpaper: WallpaperPreference = { source: 'none', softness: 50 };
 /** Picked files above this size are refused before decoding. */
 export const maxWallpaperBytes = 30 * 1024 * 1024;
@@ -114,15 +117,48 @@ export const wallpaperMinimums = {
 } as const;
 export type WallpaperStructure = keyof typeof wallpaperMinimums;
 
-export interface WallpaperStyle { veil: number; fill: number; page: number; glow: string }
+/**
+ * Liquid glass uses half the frosted veil and a thin, brightened fill on glass surfaces
+ * (layout-themes.css --liquid-brightness, must match). `fill` is the sidebar surface's tint
+ * for secondary text contrast (AA).
+ */
+export const liquidWallpaper = {
+  veilScale: 0.5,
+  /** Secondary text on liquid glass leans this far towards body text (layout-themes.css: --liquid-ink, must match). */
+  ink: 0.55,
+  brightness: { light: 1.08, dark: 0.92 },
+  minimums: { light: { panel: 0.2, page: 0.3 }, dark: { panel: 0.36, page: 0.42 } },
+} as const;
+/** Layout of the coarse samples (row-major), see glass-wallpaper-render.ts. */
+export const wallpaperSampleGrid = { columns: 40, rows: 25 } as const;
+const brighten =([r, g, b]: Rgb, factor: number): Rgb => [Math.min(255, r * factor), Math.min(255, g * factor), Math.min(255, b * factor)];
+
+/** `pageFlat` is the liquid page without the lens (browsers without SVG backdrop filters); it equals `page` otherwise. */
+export interface WallpaperStyle { veil: number; fill: number; page: number; pageFlat: number; glow: string }
 export function wallpaperStyle(samples: readonly Rgb[], softness: number, mode: 'light' | 'dark',
-  tokens: { paper: Rgb; sidebar: Rgb; text: Rgb; muted: Rgb }, structure: WallpaperStructure = 'islands'): WallpaperStyle {
+  tokens: { paper: Rgb; sidebar: Rgb; text: Rgb; muted: Rgb }, structure: WallpaperStructure = 'islands', material: 'frost' | 'liquid' = 'frost'): WallpaperStyle {
   const minimum = wallpaperMinimums[structure][mode];
-  const veil = wallpaperVeil(softness, mode);
+  const liquid = material === 'liquid';
+  const veil = wallpaperVeil(softness, mode) * (liquid ? liquidWallpaper.veilScale : 1);
   const backgrounds = samples.map(sample => mix(tokens.sidebar, sample, veil));
-  // Body text needs AAA on the page; secondary text in the sidebar needs AA.
-  const page = solveGlassStrength(backgrounds, tokens.paper, tokens.text, 7, minimum.page);
-  const fill = solveGlassStrength(backgrounds, tokens.paper, tokens.muted, 4.5, minimum.fill);
+  let page: number, fill: number, pageFlat: number;
+  if (liquid) {
+    const lowest = liquidWallpaper.minimums[mode];
+    const lens = backgrounds.map(background => brighten(background, liquidWallpaper.brightness[mode]));
+    // Sheets sit on the bare (veiled) image, seen through the glass; body text needs AAA on the result.
+    page = solveGlassStrength(lens, tokens.paper, tokens.text, 7, lowest.page);
+    pageFlat = solveGlassStrength(backgrounds, tokens.paper, tokens.text, 7, lowest.page);
+    // Sample the left and top edges for a conservative sidebar tint.
+    const grid = samples.length === wallpaperSampleGrid.columns * wallpaperSampleGrid.rows;
+    const chrome = lens.filter((_, index) => !grid
+      || index % wallpaperSampleGrid.columns < wallpaperSampleGrid.columns * 0.3
+      || Math.floor(index / wallpaperSampleGrid.columns) < wallpaperSampleGrid.rows * 0.1);
+    fill = solveGlassStrength(chrome, tokens.paper, mix(tokens.text, tokens.muted, liquidWallpaper.ink), 4.5, lowest.panel);
+  } else {
+    // Body text needs AAA on the page; secondary text in the sidebar needs AA.
+    page = pageFlat = solveGlassStrength(backgrounds, tokens.paper, tokens.text, 7, minimum.page);
+    fill = solveGlassStrength(backgrounds, tokens.paper, tokens.muted, 4.5, minimum.fill);
+  }
   // The most saturated colours of the image tint the card shadows.
   let weight = 0; const sum: Rgb = [0, 0, 0];
   for (const [r, g, b] of samples) {
@@ -130,7 +166,7 @@ export function wallpaperStyle(samples: readonly Rgb[], softness: number, mode: 
     weight += saturation; sum[0] += r * saturation; sum[1] += g * saturation; sum[2] += b * saturation;
   }
   const glow = weight ? toHex(sum.map(v => v / weight) as Rgb) : toHex(tokens.sidebar);
-  return { veil, fill, page, glow };
+  return { veil, fill, page, pageFlat, glow };
 }
 
 // ---- Storage ----
@@ -168,10 +204,25 @@ export class GlassWallpaperController {
   readonly state = shallowRef<GlassWallpaperState>({ ...defaultWallpaper, busy: false, thumbnails: {} });
   private readonly key: string;
   private render?: WallpaperRender;
-  private customSource?: { revision?: number; image: CanvasImageSource & { width: number; height: number } };
+  private customSource?: { revision?: number; image: Promise<WallpaperSource> };
   private generation = 0;
   private softnessTimer?: ReturnType<typeof setTimeout>;
-  private readonly onTheme = () => this.publish();
+  private thumbnailMode?: ResolvedTheme['mode'];
+  private developerMode = false;
+  private wallpaperBeforeStripes?: Pick<WallpaperPreference, 'source' | 'softness'>;
+  private readonly onTheme = () => {
+    const mode = this.mode();
+    if (this.thumbnailMode !== undefined && mode !== this.thumbnailMode) {
+      this.updateThumbnails(mode);
+      const { source } = this.state.value;
+      if (source !== 'none' && source !== 'custom') {
+        clearTimeout(this.softnessTimer);
+        void this.refresh();
+        return;
+      }
+    }
+    this.publish();
+  };
   constructor(
     private readonly principal: string,
     private readonly storage: Storage | undefined,
@@ -191,13 +242,40 @@ export class GlassWallpaperController {
   }
   private patch(next: Partial<GlassWallpaperState>) { this.state.value = { ...this.state.value, ...next }; }
   private preference(): WallpaperPreference {
-    const { source, softness, customRevision } = this.state.value;
+    const { source, softness } = this.wallpaperBeforeStripes ?? this.state.value;
+    const { customRevision } = this.state.value;
     return { source, softness, ...(customRevision === undefined ? {} : { customRevision }) };
+  }
+  private leaveDebugStripes() {
+    if (!this.wallpaperBeforeStripes) return;
+    this.patch(this.wallpaperBeforeStripes);
+    this.wallpaperBeforeStripes = undefined;
+    clearTimeout(this.softnessTimer);
+  }
+  setDeveloperMode(enabled: boolean) {
+    if (this.developerMode === enabled) return;
+    this.developerMode = enabled;
+    if (this.thumbnailMode !== undefined) this.updateThumbnails(this.mode());
+    if (!enabled && this.wallpaperBeforeStripes) {
+      this.leaveDebugStripes();
+      void this.refresh();
+    }
+  }
+  private mode(root = this.root()): ResolvedTheme['mode'] {
+    return root.dataset.theme === 'dark' ? 'dark' : 'light';
+  }
+  private updateThumbnails(mode: ResolvedTheme['mode']) {
+    const choices = this.developerMode ? [...builtinWallpapers, debugStripeWallpaper] : builtinWallpapers;
+    const thumbnails = Object.fromEntries(choices.map(item => [item.id, this.renderer.thumbnail(item.id, mode)]));
+    this.thumbnailMode = mode;
+    this.patch({ thumbnails });
   }
   /** Load the saved choice; also used when another window changes it. */
   async load() {
-    const thumbnails = Object.fromEntries(builtinWallpapers.map(item => [item.id, this.renderer.thumbnail(item.id)]));
-    this.patch({ ...this.read(), thumbnails });
+    this.leaveDebugStripes();
+    this.clearCustomSource();
+    this.patch({ customRevision: undefined, ...this.read() });
+    this.updateThumbnails(this.mode());
     await this.refresh();
   }
   refreshPreferences(key: string | null) {
@@ -205,20 +283,38 @@ export class GlassWallpaperController {
     const saved = this.read();
     const current = this.preference();
     if (JSON.stringify(saved) === JSON.stringify(current)) return;
-    this.patch(saved);
+    this.leaveDebugStripes();
+    if (saved.customRevision !== current.customRevision) this.clearCustomSource();
+    this.patch({ customRevision: undefined, ...saved });
     void this.refresh();
+  }
+  private clearCustomSource() {
+    this.customSource = undefined;
+    this.patch({ customThumbnail: undefined });
+  }
+  private loadCustomSource(revision: number | undefined) {
+    if (this.customSource && this.customSource.revision === revision) return this.customSource.image;
+    const image = this.images.get(this.principal).then(blob => {
+      if (!blob) throw new Error('之前选择的图片已不存在，请重新选择。');
+      return this.renderer.decode(blob);
+    });
+    this.customSource = { revision, image };
+    void image.then(source => {
+      if (this.customSource?.image !== image || revision === undefined) return;
+      try {
+        this.patch({ customThumbnail: this.renderer.customThumbnail(source) });
+      } catch { /* Preview failure does not prevent using the wallpaper. */ }
+    }, () => {
+      if (this.customSource?.image === image) this.customSource = undefined;
+    });
+    return image;
   }
   private async source() {
     const { source, customRevision } = this.state.value;
-    if (source === 'custom') {
-      if (!this.customSource || this.customSource.revision !== customRevision) {
-        const blob = await this.images.get(this.principal);
-        if (!blob) throw new Error('之前选择的图片已不存在，请重新选择。');
-        this.customSource = { revision: customRevision, image: await this.renderer.decode(blob) };
-      }
-      return this.customSource.image;
-    }
-    return source === 'none' ? undefined : this.renderer.builtin(source);
+    if (source === 'custom') return this.loadCustomSource(customRevision);
+    // Populate the picker even when a different wallpaper is active.
+    if (customRevision !== undefined) void this.loadCustomSource(customRevision);
+    return source === 'none' ? undefined : this.renderer.builtin(source, this.mode());
   }
   private async refresh() {
     const generation = ++this.generation;
@@ -240,7 +336,17 @@ export class GlassWallpaperController {
     this.publish();
   }
   select(source: string) {
+    if (source === debugStripeWallpaper.id) {
+      if (!this.developerMode || this.wallpaperBeforeStripes) return;
+      const { source: previousSource, softness } = this.state.value;
+      this.wallpaperBeforeStripes = { source: previousSource, softness };
+      clearTimeout(this.softnessTimer);
+      this.patch({ source, softness: 0 });
+      void this.refresh();
+      return;
+    }
     if (source === 'custom' && this.state.value.customRevision === undefined) return;
+    this.leaveDebugStripes();
     this.patch({ source });
     this.write(this.preference());
     void this.refresh();
@@ -249,7 +355,7 @@ export class GlassWallpaperController {
   setSoftness(softness: number, commit = false) {
     this.patch({ softness: Math.round(Math.min(100, Math.max(0, softness))) });
     clearTimeout(this.softnessTimer);
-    if (commit) this.write(this.preference());
+    if (commit && !this.wallpaperBeforeStripes) this.write(this.preference());
     if (this.state.value.source === 'none') return;
     this.publish();
     this.softnessTimer = setTimeout(() => void this.refresh(), commit ? 0 : 120);
@@ -265,23 +371,25 @@ export class GlassWallpaperController {
       this.patch({ busy: false, error: error instanceof Error ? error.message : '无法保存这张图片。' });
       return;
     }
-    this.customSource = undefined;
+    this.clearCustomSource();
+    this.leaveDebugStripes();
     this.patch({ source: 'custom', customRevision: Date.now() });
     this.write(this.preference());
     await this.refresh();
   }
   async removeCustom() {
     try { await this.images.delete(this.principal); } catch { /* A missing record is already removed. */ }
-    this.customSource = undefined;
+    this.clearCustomSource();
+    if (this.wallpaperBeforeStripes?.source === 'custom') this.wallpaperBeforeStripes.source = 'none';
     const source = this.state.value.source === 'custom' ? 'none' : this.state.value.source;
     this.patch({ source, customRevision: undefined });
     this.write(this.preference());
     await this.refresh();
   }
-  /** Mode-dependent values are recomputed on every theme change; the bitmap is reused. */
+  /** Compute the glass tint and contrast from the current bitmap and theme. */
   private publish() {
     const root = this.root();
-    const names = ['--glass-wallpaper', '--glass-wallpaper-veil', '--glass-wallpaper-fill', '--glass-wallpaper-page', '--glass-wallpaper-glow'];
+    const names = ['--glass-wallpaper', '--glass-wallpaper-veil', '--glass-wallpaper-fill', '--glass-wallpaper-page', '--glass-wallpaper-page-flat', '--glass-wallpaper-glow'];
     if (!this.render || this.state.value.source === 'none') {
       root.removeAttribute('data-glass-wallpaper');
       for (const name of names) root.style.removeProperty(name);
@@ -289,21 +397,24 @@ export class GlassWallpaperController {
     }
     const styles = getComputedStyle(root);
     const token = (name: string, fallback: Rgb) => parseColor(styles.getPropertyValue(`--${name}`)) ?? fallback;
-    const mode = root.dataset.theme === 'dark' ? 'dark' : 'light';
+    const mode = this.mode(root);
     const light = mode === 'light';
     const style = wallpaperStyle(this.render.samples, this.state.value.softness, mode, {
       paper: token('paper', light ? [251, 252, 254] : [25, 32, 42]), sidebar: token('sidebar', light ? [223, 230, 238] : [15, 19, 26]),
       text: token('text', light ? [28, 36, 48] : [227, 232, 240]), muted: token('muted', light ? [92, 104, 122] : [141, 153, 171]),
-    }, root.dataset.layout === 'continuous' || root.dataset.layout === 'document' ? root.dataset.layout : 'islands');
+    }, root.dataset.layout === 'continuous' || root.dataset.layout === 'document' ? root.dataset.layout : 'islands',
+    root.dataset.material === 'builtin:liquid' ? 'liquid' : 'frost');
     root.setAttribute('data-glass-wallpaper', '');
     root.style.setProperty('--glass-wallpaper', `url("${this.render.url}")`);
     root.style.setProperty('--glass-wallpaper-veil', `${Math.round(style.veil * 100)}%`);
     root.style.setProperty('--glass-wallpaper-fill', `${Math.round(style.fill * 100)}%`);
     root.style.setProperty('--glass-wallpaper-page', `${Math.round(style.page * 100)}%`);
+    root.style.setProperty('--glass-wallpaper-page-flat', `${Math.round(style.pageFlat * 100)}%`);
     root.style.setProperty('--glass-wallpaper-glow', style.glow);
   }
   dispose() {
     this.generation++;
+    this.clearCustomSource();
     clearTimeout(this.softnessTimer);
     this.target.removeEventListener(themeChangedEvent, this.onTheme);
     if (this.render) URL.revokeObjectURL(this.render.url);

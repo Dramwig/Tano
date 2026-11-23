@@ -223,6 +223,10 @@ async function toggleMaximize() {
 .desktop-window-actions:not(:popover-open) {
   display: none;
 }
+/* Settings paint the whole window. The titlebar and its teleported controls sit above that surface. */
+:root:has(.settings-windowed) :is(.desktop-window-titlebar, .desktop-window-actions) {
+  background: transparent;
+}
 .desktop-window-actions button {
   display: grid;
   place-items: center;

@@ -25,6 +25,7 @@ import { uiLocale, t } from './i18n';
 import { documentTabLabel } from './tab-label';
 
 import { readSettingsPage } from './settings-preference';
+import { featureChannel } from './features';
 
 import { focusedOutlineIndices } from './outline-tree';
 
@@ -293,7 +294,7 @@ import { useSuggestionStore } from './stores/suggestions';
 
 import { useWorkbenchRuntime, createLocalExtensions } from './runtime';
 
-import type { WorkbenchActions } from './runtime';
+import type { WorkbenchActions, WorkbenchViewTab } from './runtime';
 
 import { native } from './adapter';
 
@@ -388,7 +389,8 @@ import { applyTheme } from './theme';
 
 import { AppearanceController } from './appearance';
 import { GlassWallpaperController, indexedDbWallpaperStore, setGlassWallpaper } from './glass-wallpaper';
-import { builtinThumbnail, decodeImage, normalizeImport, paintBuiltin, renderWallpaper } from './glass-wallpaper-render';
+import { LiquidGlassController } from './liquid-glass';
+import { builtinThumbnail, customThumbnail, decodeImage, normalizeImport, paintBuiltin, renderWallpaper } from './glass-wallpaper-render';
 
 import LayoutDocumentChrome from './components/LayoutDocumentChrome.vue';
 
@@ -576,7 +578,7 @@ function topbarVisibilityItems(tabId: string, hasDocument: boolean, activePane: 
   ].map((item, index, items) => ({ ...item, separatorBefore: items[index - 1]?.id === 'document-status' }));
 }
 const SETTINGS_TAB_ID = 'view:settings';
-const settingsTabView = { id: SETTINGS_TAB_ID, get label() { return t('设置'); }, icon: Settings2, detachable: true };
+const settingsTabView: WorkbenchViewTab = { id: SETTINGS_TAB_ID, get label() { return t('设置'); }, icon: Settings2, scope: 'account', detachable: true };
 store.registerViews([...extensionViews, settingsTabView, { id: ASSISTANT_TAB_ID, label: t('助手'), icon: Bot }]);
 store.setBeforeWorkspaceChange(async () => {
   if (!(await auxiliaryWindows.closeAll())) throw new Error(t('还有未保存的修改，请先处理保存错误。'));
@@ -961,6 +963,9 @@ const appearanceIcons = new FileIconRegistry();
 provide(fileIconRegistryKey, appearanceIcons);
 const appearanceController = new AppearanceController(appearanceIcons, useWorkbenchRuntime().plugins?.principal ?? 'device', {
   getItem: key => window.localStorage.getItem(key), setItem: (key, value) => window.localStorage.setItem(key, value),
+  get length() { return window.localStorage.length; },
+  key: index => window.localStorage.key(index),
+  removeItem: key => window.localStorage.removeItem(key),
 });
 const appearance = appearanceController.state;
 watch([() => store.workspace?.id ?? '', () => store.installedPlugins, () => store.installedPluginWorkspace], ([id, installed, loadedFor]) => {
@@ -972,7 +977,7 @@ const theme = computed<ThemePreference>({ get: () => appearance.value.mode,
 // The frosted-glass background image is a device preference; it publishes CSS variables on <html>.
 const glassWallpaperController = new GlassWallpaperController(useWorkbenchRuntime().plugins?.principal ?? 'device', {
   getItem: key => window.localStorage.getItem(key), setItem: (key, value) => window.localStorage.setItem(key, value),
-}, indexedDbWallpaperStore(), { normalizeImport, decode: decodeImage, builtin: id => paintBuiltin(id), thumbnail: builtinThumbnail, render: renderWallpaper });
+}, indexedDbWallpaperStore(), { normalizeImport, decode: decodeImage, builtin: paintBuiltin, thumbnail: builtinThumbnail, customThumbnail, render: renderWallpaper });
 setGlassWallpaper(glassWallpaperController);
 onMounted(() => { void glassWallpaperController.load(); });
 onBeforeUnmount(() => { glassWallpaperController.dispose(); setGlassWallpaper(undefined); });
@@ -981,6 +986,10 @@ const onAppearanceStorage = (event: StorageEvent) => {
   glassWallpaperController.refreshPreferences(event.key);
 };
 onMounted(() => window.addEventListener('storage', onAppearanceStorage));
+// Liquid glass bends its backdrop through per-surface SVG filters (Chromium only; see liquid-glass.ts).
+const liquidGlass = new LiquidGlassController();
+onMounted(() => liquidGlass.start());
+onBeforeUnmount(() => liquidGlass.dispose());
 // Delegated press/hover springs for every button in the workbench and its
 // teleported surfaces (dialogs, menus, settings).
 let disposeInteractionMotion: (() => void) | undefined;
@@ -1171,6 +1180,12 @@ const sourceFontSize = ref(readFontSizePreference('sourceFontSize', 14));
 watch(visualFontSize, (value) => saveFontSizePreference('visualFontSize', value));
 watch(sourceFontSize, (value) => saveFontSizePreference('sourceFontSize', value));
 const showPageTitle = ref(readPreference('showPageTitle', true));
+const developerMode = ref(readPreference('developerMode', featureChannel === 'dev'));
+glassWallpaperController.setDeveloperMode(developerMode.value);
+watch(developerMode, (enabled) => {
+  savePreference('developerMode', enabled);
+  glassWallpaperController.setDeveloperMode(enabled);
+});
 const showAllLineNumbers = ref(readPreference('showAllLineNumbers', false));
 watch(showAllLineNumbers, (value) => savePreference('showAllLineNumbers', value));
 watch(showPageTitle, (value) => savePreference('showPageTitle', value));
@@ -1639,10 +1654,10 @@ const settingsPage = ref<SettingsPageId>(readSettingsPage());
 // A loaded workspace keeps its session, but only the workspace navigation owns its settings.
 const settingsWorkspace = computed(() => navigationContext.value === 'workspace' ? workspace.value : null);
 function openSettingsTab(page: SettingsPageId) {
-  if (!settingsWorkspace.value) return;
   settingsPage.value = page;
   store.openViewTab(SETTINGS_TAB_ID);
   settingsPanel.value = false;
+  if (compactPanes.value) sidebar.value = false;
 }
 const openingSettingsWindow = ref(false);
 async function openSettingsInNewWindow(page: SettingsPageId) {
@@ -3770,10 +3785,10 @@ function openSettings(page: SettingsPageId = readSettingsPage(settingsPage.value
   menu.value = false;
   workspaceMenu.value = false;
   settingsPage.value = page === 'preferences' ? 'appearance' : page;
-  const pane = settingsWorkspace.value && store.panes.find(pane => pane.tabs.includes(SETTINGS_TAB_ID));
+  const pane = store.panes.find(pane => pane.tabs.includes(SETTINGS_TAB_ID));
   if (pane) {
     store.focusPane(pane.id);
-    store.openViewTab(SETTINGS_TAB_ID);
+    openSettingsTab(settingsPage.value);
     return;
   }
   settingsPanel.value = true;
@@ -4748,6 +4763,7 @@ const helpBlocked = computed(() => !!(
     openSettingsInNewWindow,
     settingsPage,
     settingsContext,
+    developerMode,
     workspaceExporting,
     workspaceExportError,
     workspaceDeletionError,

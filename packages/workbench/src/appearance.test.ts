@@ -93,7 +93,7 @@ it('treats frosted glass as a material that combines freely with every layout an
   const root = document.documentElement;
   const controller = new AppearanceController(new FileIconRegistry(), 'device', undefined, applyAppearance); controller.sync('one', []);
   expect(controller.state.value.layouts.map(layout => layout.id)).toEqual(['builtin:islands', 'builtin:paper']);
-  expect(controller.state.value.materials).toEqual([{ id: 'builtin:frost', label: '磨砂玻璃' }]);
+  expect(controller.state.value.materials).toEqual([{ id: 'builtin:frost', label: '磨砂玻璃' }, { id: 'builtin:liquid', label: '液态玻璃' }]);
   const preset = controller.state.value.presets.find(p => p.id === 'builtin:frost');
   expect(preset).toMatchObject({ unavailable: false, structure: 'islands', material: 'frost',
     selected: { color: 'builtin:haze', layout: 'builtin:islands', material: 'builtin:frost' } });
@@ -122,6 +122,24 @@ it('treats frosted glass as a material that combines freely with every layout an
   controller.dispose();
   expect(root.dataset.material).toBeUndefined();
 });
+it('offers liquid glass as a second glass material with its own preset and preview', () => {
+  const root = document.documentElement;
+  const controller = new AppearanceController(new FileIconRegistry(), 'device', undefined, applyAppearance); controller.sync('one', []);
+  expect(controller.state.value.presets.find(p => p.id === 'builtin:liquid')).toMatchObject({ unavailable: false, structure: 'islands', material: 'liquid',
+    selected: { color: 'builtin:haze', layout: 'builtin:islands', material: 'builtin:liquid' } });
+  controller.select({ workspaceId: 'one', kind: 'preset', id: 'builtin:liquid' });
+  expect(root.dataset.material).toBe('builtin:liquid');
+  expect(controller.state.value.currentPreset).toMatchObject({ id: 'builtin:liquid', material: 'liquid' });
+  // Switching between the two glass materials keeps every other slot.
+  controller.select({ workspaceId: 'one', kind: 'material', id: 'builtin:frost' });
+  expect(controller.state.value.presetId).toBe('builtin:frost');
+  controller.select({ workspaceId: 'one', kind: 'layout', id: 'builtin:paper' });
+  controller.select({ workspaceId: 'one', kind: 'material', id: 'builtin:liquid' });
+  expect(controller.state.value.active).toMatchObject({ layout: 'builtin:paper', material: 'builtin:liquid' });
+  expect(controller.state.value.currentPreset).toMatchObject({ id: 'current', structure: 'document', material: 'liquid' });
+  controller.dispose();
+  expect(root.dataset.material).toBeUndefined();
+});
 it('reads older saved choices without a material as flat', () => {
   localStorage.setItem('tano.appearance.v2.carol.user', JSON.stringify({ selected: { color: 'builtin:mist', icons: 'builtin:tano', layout: 'builtin:islands', shape: 'builtin:rounded' }, mode: 'light' }));
   const controller = new AppearanceController(new FileIconRegistry(), 'carol', localStorage); controller.sync('one', []);
@@ -146,6 +164,52 @@ it('refreshes inherited preferences from another window without discarding a loc
 });
 const presetManifest: ObjectPluginManifest = { ...manifest, appearance: { ...manifest.appearance!,
   presets: [{ id: 'writing', label: '书写', color: 'ink', icons: 'ink', layout: 'builtin:islands', shape: 'builtin:tano' }] } };
+it('saves a complete preset from a partial match and keeps other windows’ saves and plugin requirements', () => {
+  const installed = [{ manifest: presetManifest, enabled: true }];
+  const aliceWindow = () => new AppearanceController(new FileIconRegistry(), 'alice', localStorage, vi.fn());
+  const first = aliceWindow(), second = aliceWindow();
+  first.sync('one', installed);
+  second.sync('two', []);
+  first.select({ workspaceId: 'one', kind: 'scope', id: 'workspace' });
+  first.select({ workspaceId: 'one', kind: 'preset', id: 'sample:writing' });
+  first.select({ workspaceId: 'one', kind: 'material', id: 'builtin:frost' });
+  expect(first.state.value.presetId).toBe('sample:writing');
+  const selected = first.state.value.active;
+  first.select({ workspaceId: 'one', kind: 'save-preset' });
+  const id = first.state.value.presetId!;
+  expect(first.state.value.currentPreset).toMatchObject({ customNumber: 1, selected });
+  expect(first.state.value.canSavePreset).toBe(false);
+  first.select({ workspaceId: 'one', kind: 'save-preset' });
+  expect(first.state.value.presets.filter(preset => preset.customNumber)).toHaveLength(1);
+
+  // This window has yet to receive the first window’s storage event.
+  second.select({ workspaceId: 'two', kind: 'shape', id: 'builtin:crisp' });
+  second.select({ workspaceId: 'two', kind: 'save-preset' });
+  expect(second.state.value.presets.find(preset => preset.id === id)?.unavailable).toBe(true);
+  const key = `tano.appearance.v2.alice.user.preset.${second.state.value.presetId}`;
+  first.refreshPreferences(key);
+  expect(first.state.value.presets.filter(preset => preset.customNumber)).toHaveLength(2);
+  expect(first.state.value.scope).toBe('workspace');
+  expect(first.state.value.active).toEqual(selected);
+
+  const reopened = aliceWindow();
+  reopened.sync('one', installed);
+  reopened.select({ workspaceId: 'one', kind: 'preset', id: 'builtin:tano' });
+  reopened.select({ workspaceId: 'one', kind: 'preset', id });
+  expect(reopened.state.value.active).toEqual(selected);
+  expect(reopened.state.value.currentPreset?.id).toBe(id);
+
+  // The window without the required plugin can still remove the saved preset.
+  second.select({ workspaceId: 'two', kind: 'remove-preset', id });
+  const removedKey = `tano.appearance.v2.alice.user.preset.${id}`;
+  expect(localStorage.getItem(removedKey)).toBeNull();
+  first.refreshPreferences(removedKey);
+  expect(first.state.value.presets.some(preset => preset.id === id)).toBe(false);
+  expect(first.state.value.presets.some(preset => preset.id === second.state.value.presetId)).toBe(true);
+  expect(first.state.value.active).toEqual(selected);
+  expect(first.state.value.canSavePreset).toBe(true);
+  for (const controller of [first, second, reopened]) controller.dispose();
+});
 it('applies single-mode themes without changing user preference through workspace overrides, reload and plugin fallback', () => {
   const custom = structuredClone(manifest);
   custom.appearance!.colors!.push({ id: 'day', label: '日光', light: { paper: '#fff9ed' } }, { id: 'night', label: '夜色', dark: { paper: '#17202a' } });

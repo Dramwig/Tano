@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import {
-  contrast, GlassWallpaperController, parseColor, parseWallpaperPreference, solveGlassStrength, wallpaperStyle, wallpaperVeil,
+  contrast, GlassWallpaperController, liquidWallpaper, mix, parseColor, parseWallpaperPreference, solveGlassStrength, wallpaperStyle, wallpaperVeil,
   type Rgb, type WallpaperImageStore, type WallpaperRenderer,
 } from './glass-wallpaper';
 import { themeChangedEvent } from './theme';
@@ -58,9 +58,40 @@ it('starts the large continuous page denser than island cards and the document s
   expect(wallpaperStyle(pale, 50, 'dark', { paper: [25, 32, 42], sidebar: [15, 19, 26], text: [227, 232, 240], muted: [141, 153, 171] }, 'continuous').page).toBeGreaterThanOrEqual(0.76);
 });
 
+it('keeps liquid glass clearer than frosted glass while body and sidebar text stay readable', () => {
+  // A 40×25 grid: a mid-grey wall on the left, a dark patch in the middle of the page.
+  const samples: Rgb[] = Array.from({ length: 1000 }, (_, index) => {
+    const column = index % 40, row = Math.floor(index / 40);
+    return column < 10 ? [120, 130, 140] : column > 16 && column < 26 && row > 5 && row < 18 ? [55, 45, 40] : [215, 210, 205];
+  });
+  const frost = wallpaperStyle(samples, 50, 'light', tokens, 'continuous');
+  const liquid = wallpaperStyle(samples, 50, 'light', tokens, 'continuous', 'liquid');
+  expect(liquid.veil).toBeCloseTo(frost.veil * liquidWallpaper.veilScale);
+  // Through the lens's brightness the page needs less paper than without it (Safari, Firefox).
+  expect(liquid.page).toBeLessThanOrEqual(liquid.pageFlat);
+  // The sidebar pane is measured only over the left column, so the dark patch does not thicken it.
+  expect(liquid.fill).toBeLessThan(frost.fill);
+  const over = (background: Rgb, alpha: number) => mix(tokens.paper, background, alpha);
+  const brightness = liquidWallpaper.brightness.light;
+  for (const sample of samples) {
+    const bare = mix(tokens.sidebar, sample, liquid.veil);
+    const lens = bare.map(v => Math.min(255, v * brightness)) as Rgb;
+    expect(contrast(tokens.text, over(lens, liquid.page))).toBeGreaterThanOrEqual(7);
+    expect(contrast(tokens.text, over(bare, liquid.pageFlat))).toBeGreaterThanOrEqual(7);
+  }
+  // Secondary text (leaning towards body text) on the sidebar pane over the left column: AA.
+  const ink = mix(tokens.text, tokens.muted, liquidWallpaper.ink);
+  for (const [index, sample] of samples.entries()) {
+    if (index % 40 >= 12) continue;
+    const lens = mix(tokens.sidebar, sample, liquid.veil).map(v => Math.min(255, v * brightness)) as Rgb;
+    expect(contrast(ink, over(lens, liquid.fill))).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
 it('sanitises saved preferences', () => {
   expect(parseWallpaperPreference(null)).toEqual({ source: 'none', softness: 50 });
   expect(parseWallpaperPreference({ source: 'builtin:dusk', softness: 140, customRevision: 3 })).toEqual({ source: 'builtin:dusk', softness: 100, customRevision: 3 });
+  expect(parseWallpaperPreference({ source: 'builtin:tide', softness: 35, customRevision: 3 })).toEqual({ source: 'none', softness: 35, customRevision: 3 });
   expect(parseWallpaperPreference({ source: 'https://evil', softness: 'x' })).toEqual({ source: 'none', softness: 50 });
 });
 
@@ -74,7 +105,8 @@ function fakes() {
     normalizeImport: vi.fn(async (file: Blob) => file),
     decode: vi.fn(async () => source),
     builtin: vi.fn(() => source),
-    thumbnail: id => `data:${id}`,
+    thumbnail: (id, mode) => `data:${id}:${mode}`,
+    customThumbnail: vi.fn(() => 'data:custom'),
     render: vi.fn(async (_source, softness) => ({ url: `blob:${++urls}-${softness}`, samples: [[40, 60, 120]] as Rgb[] })),
   };
   return { images, store, renderer };
@@ -94,21 +126,31 @@ it('publishes a built-in wallpaper as CSS variables, persists the choice and cle
   const controller = new GlassWallpaperController('alice', localStorage, store, renderer);
   await controller.load();
   expect(root.hasAttribute('data-glass-wallpaper')).toBe(false);
-  expect(controller.state.value.thumbnails['builtin:dawn']).toBe('data:builtin:dawn');
+  expect(controller.state.value.thumbnails['builtin:dawn']).toBe('data:builtin:dawn:light');
   controller.select('builtin:dawn'); await flush();
   expect(root.hasAttribute('data-glass-wallpaper')).toBe(true);
   expect(root.style.getPropertyValue('--glass-wallpaper')).toBe('url("blob:1-50")');
   expect(root.style.getPropertyValue('--glass-wallpaper-veil')).toBe('24%');
   expect(parseFloat(root.style.getPropertyValue('--glass-wallpaper-page'))).toBeGreaterThanOrEqual(58);
   expect(JSON.parse(localStorage.getItem('tano.glass-wallpaper.v1.alice')!)).toEqual({ source: 'builtin:dawn', softness: 50 });
-  // A theme change recomputes the mode-dependent veil without re-rendering the bitmap.
   root.dataset.theme = 'dark'; window.dispatchEvent(new Event(themeChangedEvent));
+  expect(controller.state.value.thumbnails).toEqual({
+    'builtin:dawn': 'data:builtin:dawn:dark',
+    'builtin:dusk': 'data:builtin:dusk:dark',
+  });
+  await flush();
+  expect(renderer.builtin).toHaveBeenNthCalledWith(1, 'builtin:dawn', 'light');
+  expect(renderer.builtin).toHaveBeenNthCalledWith(2, 'builtin:dawn', 'dark');
+  expect(root.style.getPropertyValue('--glass-wallpaper')).toBe('url("blob:2-50")');
   expect(root.style.getPropertyValue('--glass-wallpaper-veil')).toBe('45%');
-  expect(renderer.render).toHaveBeenCalledTimes(1);
+  // Changing other appearance settings in dark mode reuses the dark bitmap.
+  window.dispatchEvent(new Event(themeChangedEvent)); await flush();
+  expect(renderer.render).toHaveBeenCalledTimes(2);
+  expect(JSON.parse(localStorage.getItem('tano.glass-wallpaper.v1.alice')!)).toEqual({ source: 'builtin:dawn', softness: 50 });
   controller.select('none'); await flush();
   expect(root.hasAttribute('data-glass-wallpaper')).toBe(false);
   expect(root.style.getPropertyValue('--glass-wallpaper')).toBe('');
-  expect(revoked).toEqual(['blob:1-50']);
+  expect(revoked).toEqual(['blob:1-50', 'blob:2-50']);
   controller.dispose();
 });
 
@@ -122,20 +164,39 @@ it('imports, reloads in another window and removes a custom image', async () => 
   expect(controller.state.value.error).toBe('请选择图片文件。');
   await controller.importFile(new File(['png'], 'a.png', { type: 'image/png' }));
   expect(images.has('alice')).toBe(true);
+  expect(controller.state.value).toMatchObject({ source: 'custom', busy: false, url: 'blob:1-50', customThumbnail: 'data:custom' });
+  root.dataset.theme = 'dark'; window.dispatchEvent(new Event(themeChangedEvent));
+  await flush();
+  expect(renderer.render).toHaveBeenCalledTimes(1);
   expect(controller.state.value).toMatchObject({ source: 'custom', busy: false, url: 'blob:1-50' });
   const saved = JSON.parse(localStorage.getItem('tano.glass-wallpaper.v1.alice')!);
   expect(saved.customRevision).toEqual(expect.any(Number));
 
+  controller.select('builtin:dawn'); await flush();
+  expect(revoked).toContain('blob:1-50');
+  expect(controller.state.value.customThumbnail).toBe('data:custom');
+  expect(renderer.decode).toHaveBeenCalledTimes(1);
+
   const other = new GlassWallpaperController('alice', localStorage, store, renderer, () => document.createElement('div'));
   await other.load();
-  expect(other.state.value).toMatchObject({ source: 'custom', customRevision: saved.customRevision });
+  await flush();
+  expect(other.state.value).toMatchObject({ source: 'builtin:dawn', customRevision: saved.customRevision, customThumbnail: 'data:custom' });
+
+  const now = vi.spyOn(Date, 'now').mockReturnValue(saved.customRevision + 1);
+  vi.mocked(renderer.customThumbnail).mockReturnValue('data:replacement');
+  await controller.importFile(new File(['replacement'], 'b.png', { type: 'image/png' }));
+  now.mockRestore();
+  other.refreshPreferences('tano.glass-wallpaper.v1.alice'); await flush();
+  expect(other.state.value).toMatchObject({ source: 'custom', customThumbnail: 'data:replacement' });
   other.refreshPreferences('unrelated');
   await controller.removeCustom();
   expect(images.has('alice')).toBe(false);
   expect(controller.state.value.source).toBe('none');
   expect(controller.state.value.customRevision).toBeUndefined();
+  expect(controller.state.value.customThumbnail).toBeUndefined();
   other.refreshPreferences('tano.glass-wallpaper.v1.alice'); await flush();
   expect(other.state.value.source).toBe('none');
+  expect(other.state.value.customThumbnail).toBeUndefined();
   controller.dispose(); other.dispose();
 });
 
@@ -144,7 +205,7 @@ it('debounces softness while dragging, renders once on release and drops stale r
   const { store, renderer } = fakes();
   const controller = new GlassWallpaperController('alice', localStorage, store, renderer);
   await controller.load();
-  controller.select('builtin:tide'); await vi.runAllTimersAsync();
+  controller.select('builtin:dusk'); await vi.runAllTimersAsync();
   for (const value of [55, 60, 70]) controller.setSoftness(value);
   expect(root.style.getPropertyValue('--glass-wallpaper-veil')).toBe('30%'); // Veil follows the slider immediately.
   controller.setSoftness(72, true); await vi.runAllTimersAsync();

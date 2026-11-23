@@ -109,6 +109,7 @@ let visualFontSize = ref(16);
 let sourceFontSize = ref(14);
 let toolbarMode = ref<ToolbarMode>('selection');
 let workspaceMode = ref<'demo' | 'web' | 'local'>('local');
+const developerMode = ref(false);
 let hostWorkspace = ref<SettingsPageContext['workspace']>(null);
 let hostFile = ref<SettingsPageContext['activeFile']>(null);
 const ExtraSettings = defineComponent({
@@ -160,6 +161,7 @@ beforeEach(() => {
   sourceFontSize = ref(14);
   toolbarMode = ref('selection');
   workspaceMode = ref('local');
+  developerMode.value = false;
   hostWorkspace = ref(null);
   hostFile = ref(null);
   root = document.createElement('div');
@@ -196,6 +198,8 @@ beforeEach(() => {
         ],
         native: true,
         mobile: false,
+        developerMode: developerMode.value,
+        'onUpdate:developerMode': (enabled: boolean) => { developerMode.value = enabled; },
         defaultSource: false,
         theme: theme.value,
         appearance: appearance.value,
@@ -799,6 +803,17 @@ it('opens directly on the complete about page with the current locale slogan', a
   await nextTick();
   expect(root.querySelector('.settings-about-slogan')?.textContent).toBe('Humans and agents, on the same page.');
   expect(root.textContent).not.toContain('人与 Agent，在同一页工作。');
+});
+
+it('toggles developer mode from the about page', async () => {
+  const toggle = root.querySelector<HTMLButtonElement>('[role="switch"][aria-label="开发者模式"]')!;
+  expect(toggle.getAttribute('aria-checked')).toBe('false');
+  toggle.click();
+  await nextTick();
+  expect(toggle.getAttribute('aria-checked')).toBe('true');
+  toggle.click();
+  await nextTick();
+  expect(toggle.getAttribute('aria-checked')).toBe('false');
 });
 
 it('links the about page to the website, documentation, releases, and feedback', () => {
