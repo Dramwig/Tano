@@ -12,10 +12,16 @@ import { uiLocaleOptions } from '../locale';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   ArrowRight,
+  ArrowUpRight,
   BookOpen,
   Bot,
+  Check,
   CircleHelp,
+  Copy,
   ExternalLink,
+  Globe,
+  MessageCircle,
+  ScrollText,
   FileText,
   FolderOpen,
   History,
@@ -71,6 +77,8 @@ import { defaultShortcutBindings, shortcutDefinitions } from '../shortcuts';
 import type { ShortcutBindings } from '../shortcuts';
 import { useHelpPreferences } from '../help-guidance';
 import { readSettingsPage, rememberSettingsPage } from '../settings-preference';
+import { helpDocumentationUrl } from '../help-content';
+import { openExternalUrl } from '../attachments';
 
 type Page = string;
 type Action =
@@ -117,6 +125,8 @@ const props = defineProps<{
   sourceFontSize: number;
   historyEnabled: boolean;
   version: string;
+  /** Localized documentation root supplied by the product host. */
+  documentationBaseUrl?: string;
   initialPage?: Page;
   rememberPage?: boolean;
   capabilities?: WorkspaceCapabilities;
@@ -177,6 +187,40 @@ const mathSyntaxDescription = computed(() => ({
   latex: '新旧公式统一使用反斜杠括号（\\(…\\) / \\[…\\]），在下次编辑保存正文时应用。',
 })[rules.value.mathSyntax]);
 const { preferences: helpPreferences, setEnabled: setHelpEnabled } = useHelpPreferences();
+const aboutUrls = computed(() => ({
+  website: 'https://tano.page/',
+  docs: helpDocumentationUrl(props.documentationBaseUrl).replace(/\/?$/, '/'),
+  releases: 'https://github.com/Dramwig/Tano/releases',
+  issues: 'https://github.com/Dramwig/Tano/issues',
+  source: 'https://github.com/Dramwig/Tano',
+}));
+const aboutLinks = computed(() => [
+  { id: 'website', icon: Globe, label: t('官网'), description: 'tano.page', url: aboutUrls.value.website },
+  { id: 'docs', icon: BookOpen, label: t('使用文档'), description: t('上手指南与功能说明'), url: aboutUrls.value.docs },
+  { id: 'releases', icon: ScrollText, label: t('发行说明'), description: t('查看每个版本的变化'), url: aboutUrls.value.releases },
+  { id: 'issues', icon: MessageCircle, label: t('反馈问题'), description: t('报告问题或提出建议'), url: aboutUrls.value.issues },
+]);
+const aboutLinkError = ref('');
+function openAboutLink(event: MouseEvent, url: string) {
+  aboutLinkError.value = '';
+  // Desktop webviews cannot open target="_blank" links; hand them to the system browser.
+  if (!props.native) return;
+  event.preventDefault();
+  openExternalUrl(url).catch(error => { aboutLinkError.value = String(error); });
+}
+const versionCopied = ref(false);
+let versionCopiedTimer: ReturnType<typeof setTimeout> | undefined;
+async function copyVersionInfo() {
+  const platform = window.navigator.platform || 'unknown';
+  const text = `Tano ${props.version} · ${props.mode}${props.native ? ' · desktop' : ''} · ${platform} · ${uiLocale.value}`;
+  try {
+    await window.navigator.clipboard.writeText(text);
+    versionCopied.value = true;
+    clearTimeout(versionCopiedTimer);
+    versionCopiedTimer = setTimeout(() => { versionCopied.value = false; }, 1600);
+  } catch (error) { aboutLinkError.value = String(error); }
+}
+onBeforeUnmount(() => clearTimeout(versionCopiedTimer));
 const display = computed(() => props.editorPreferences ?? defaultEditorPreferences);
 const wrapping = computed(() => normalizeSelectionWrapping(display.value.selectionWrapping));
 const wrappingOptions = computed(() => selectionWrappingOptions.map(option => {
@@ -422,6 +466,7 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('workspace', 'workspace-id', '工作区 ID', '', 'workspace id identifier'),
   settingSearchEntry('workspace', 'workspace-delete', '删除当前工作区', '移除当前设备上的工作区注册。', 'workspace delete remove'),
   settingSearchEntry('about', 'about-updates', '版本与更新', '检查并安装同页更新。', 'version update'),
+  settingSearchEntry('about', 'about-links', '资源与支持', '打开官网、使用文档、发行说明，或反馈问题。', 'website docs documentation help release notes changelog feedback issue GitHub tano.page 官网 文档 帮助 更新日志 反馈'),
 ]);
 const settingSearchMatches = computed(() => {
   const query = search.value.trim().toLocaleLowerCase();
@@ -1483,17 +1528,55 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
           <div class="settings-card settings-brand-card" data-settings-key="about-updates">
             <div class="settings-about-brand">
               <img src="../assets/tano-logo.svg" alt="" />
-              <!-- i18n-ignore: The Chinese brand suffix is shown only in the Chinese UI. -->
-              <h3>Tano <span v-if="uiLocale === 'zh-CN'">/ 同页</span></h3>
+              <div class="settings-about-identity">
+                <!-- i18n-ignore: The Chinese brand suffix is shown only in the Chinese UI. -->
+                <h3>Tano <span v-if="uiLocale === 'zh-CN'">/ 同页</span></h3>
+                <p class="settings-about-slogan">{{ t('人与 Agent，在同一页工作。') }}</p>
+              </div>
               <div class="settings-brand-actions">
                 <span class="settings-version-pill">{{ version }}</span>
+                <button
+                  type="button"
+                  class="settings-about-copy"
+                  :class="{ copied: versionCopied }"
+                  :aria-label="t('复制版本信息')"
+                  :data-tooltip="versionCopied ? t('已复制版本信息') : t('复制版本信息，反馈问题时附上')"
+                  @click="copyVersionInfo"
+                >
+                  <Check v-if="versionCopied" :size="13" />
+                  <Copy v-else :size="13" />
+                </button>
               </div>
             </div>
-            <p class="settings-about-slogan">{{ t('人与 Agent，在同一页工作。') }}</p>
+            <span class="settings-visually-hidden" role="status" aria-live="polite">{{ versionCopied ? t('已复制版本信息') : '' }}</span>
             <div v-if="native && !mobile" class="settings-about-update">
               <slot name="update-panel"><UpdatePanel /></slot>
             </div>
           </div>
+
+          <section class="settings-section" aria-labelledby="settings-about-resources" data-settings-key="about-links">
+            <h3 id="settings-about-resources">{{ t('资源与支持') }}</h3>
+            <div class="settings-about-links">
+              <a
+                v-for="link in aboutLinks"
+                :key="link.id"
+                class="settings-about-link"
+                :href="link.url"
+                target="_blank"
+                rel="noopener noreferrer"
+                :data-about-link="link.id"
+                @click="openAboutLink($event, link.url)"
+              >
+                <span class="settings-about-link-icon" aria-hidden="true"><component :is="link.icon" :size="16" /></span>
+                <span class="settings-about-link-copy">
+                  <strong>{{ link.label }}</strong>
+                  <span>{{ link.description }}</span>
+                </span>
+                <ArrowUpRight class="settings-about-link-arrow" :size="14" aria-hidden="true" />
+              </a>
+            </div>
+            <p v-if="aboutLinkError" class="settings-about-error" role="alert">{{ aboutLinkError }}</p>
+          </section>
 
           <section class="settings-section" aria-labelledby="settings-work-mode">
             <h3 id="settings-work-mode">{{ t('工作方式') }}</h3>
@@ -1520,6 +1603,15 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
             </div>
           </section>
 
+          <footer class="settings-about-footer">
+            <span>© 2026 Tano · {{ t('MIT 许可证') }}</span>
+            <a
+              :href="aboutUrls.source"
+              target="_blank"
+              rel="noopener noreferrer"
+              @click="openAboutLink($event, aboutUrls.source)"
+            >{{ t('查看源代码') }}<ArrowUpRight :size="11" aria-hidden="true" /></a>
+          </footer>
         </div>
       </main>
     </section>
@@ -2267,11 +2359,146 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   background: var(--paper);
   font-size: 11px;
 }
+.settings-about-identity {
+  min-width: 0;
+}
 .settings-about-slogan {
-  margin: 18px 0 5px;
+  margin: 3px 0 0;
   color: var(--text-secondary);
   font-size: 13px;
-  line-height: 1.7;
+  line-height: 1.6;
+}
+.settings-brand-actions {
+  align-items: center;
+}
+.settings-about-copy {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+.settings-about-copy:hover {
+  border-color: var(--line);
+  color: var(--text);
+  background: var(--hover);
+}
+.settings-about-copy.copied {
+  color: var(--green);
+}
+.settings-about-copy:focus-visible,
+.settings-about-link:focus-visible,
+.settings-about-footer a:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.settings-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.settings-about-links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+.settings-about-link {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--paper);
+  text-decoration: none;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+.settings-about-link:hover {
+  border-color: var(--control-border);
+  background: var(--hover);
+}
+.settings-about-link-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: var(--hover);
+}
+.settings-about-link:hover .settings-about-link-icon {
+  color: var(--green);
+  background: var(--paper);
+}
+.settings-about-link-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.settings-about-link-copy strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.settings-about-link-copy span {
+  overflow: hidden;
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-about-link-arrow {
+  flex: none;
+  color: var(--muted);
+  opacity: .55;
+  transition: opacity .15s ease, transform .15s ease;
+}
+.settings-about-link:hover .settings-about-link-arrow {
+  opacity: 1;
+  transform: translate(1px, -1px);
+}
+.settings-about-error {
+  margin: 10px 0 0;
+  color: var(--warning);
+  font-size: 12px;
+}
+.settings-about-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+}
+.settings-about-footer a {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--muted);
+  text-decoration: none;
+}
+.settings-about-footer a:hover {
+  color: var(--text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-about-link, .settings-about-link-arrow { transition: none; }
+  .settings-about-link:hover .settings-about-link-arrow { transform: none; }
 }
 .settings-about-update {
   margin-top: 22px;
@@ -2314,6 +2541,9 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
 @media (max-width: 700px) {
   .modal-backdrop.settings-backdrop {
     padding: 12px;
+  }
+  .settings-about-links {
+    grid-template-columns: minmax(0, 1fr);
   }
   .settings-dialog {
     width: 100%;

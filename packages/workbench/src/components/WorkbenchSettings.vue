@@ -6,7 +6,7 @@ defineProps<{ tabbed?: boolean; windowed?: boolean }>();
 const context = inject(workbenchContextKey);
 if (!context) throw new Error('Workbench context is required');
 const windowContext = useWindowContext();
-const { native, mobile, workspace, shortcuts, store, tabsEnabled, extensions, updates, editorPreferences, showPageTitle, showDocumentProperties, showOutline, outlineOnLeft, active, settingsWorkspace, openingSettingsWindow, openSettingsTab, openSettingsInNewWindow, settingsPage, workspaceExporting, workspaceExportError, workspaceDeletionError, deleteWorkspace, exportWorkspace, defaultSource, theme, appearance, appearanceController, visualFontChoice, customFontName, splitFontSettings, revealMarkdown, toolbarMode, showDocumentDiscussion, visualFontSize, sourceFontSize, appVersion, assistant, settingsAction, SettingsPanel, settingsContext } = toRefs(context);
+const { native, mobile, workspace, shortcuts, store, tabsEnabled, extensions, updates, editorPreferences, showPageTitle, showDocumentProperties, showOutline, outlineOnLeft, active, settingsWorkspace, openingSettingsWindow, openSettingsTab, openSettingsInNewWindow, settingsPage, workspaceExporting, workspaceExportError, workspaceDeletionError, deleteWorkspace, exportWorkspace, defaultSource, theme, appearance, appearanceController, visualFontChoice, customFontName, splitFontSettings, revealMarkdown, toolbarMode, showDocumentDiscussion, visualFontSize, sourceFontSize, appVersion, documentationBaseUrl, assistant, settingsAction, SettingsPanel, settingsContext } = toRefs(context);
 function closeSettings() {
   if (windowContext.id === 'settings') void context!.auxiliaryWindows.close('settings');
   else context!.settingsPanel = false;
@@ -64,6 +64,7 @@ function closeSettings() {
       :history-enabled="!!extensions.historyEnabled"
       :capabilities="store.capabilities"
       :version="updates.state.status?.currentVersion ?? appVersion"
+      :documentation-base-url="documentationBaseUrl"
       :initial-page="settingsPage"
       :editor-preferences="editorPreferences"
       :capability-error="store.capabilityError"

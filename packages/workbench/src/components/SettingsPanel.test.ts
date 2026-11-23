@@ -801,6 +801,15 @@ it('opens directly on the complete about page with the current locale slogan', a
   expect(root.textContent).not.toContain('人与 Agent，在同一页工作。');
 });
 
+it('links the about page to the website, documentation, releases, and feedback', () => {
+  const href = (id: string) => root.querySelector<HTMLAnchorElement>(`[data-about-link="${id}"]`)?.getAttribute('href');
+  expect(href('website')).toBe('https://tano.page/');
+  expect(href('docs')).toBe('https://tano.page/zh-cn/docs/');
+  expect(href('releases')).toBe('https://github.com/Dramwig/Tano/releases');
+  expect(href('issues')).toBe('https://github.com/Dramwig/Tano/issues');
+  expect(root.querySelector('.settings-about-copy')?.getAttribute('aria-label')).toBe('复制版本信息');
+});
+
 it('keeps the about content inside settings navigation', async () => {
   await openPage('外观');
   expect(root.querySelector('h2')?.textContent).toBe('外观');
