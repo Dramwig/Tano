@@ -92,6 +92,10 @@ const ANCHOR = '[aria-haspopup]:not([aria-haspopup="false"]), [aria-expanded], [
 type Pressed = { element: HTMLElement; scale: number; hover: number; at: number; animation?: Animation };
 const animations = new WeakMap<HTMLElement, Animation>();
 
+function pressSurface(control: HTMLElement): HTMLElement {
+  return control.hasAttribute('data-press-parent') ? control.parentElement ?? control : control;
+}
+
 function currentScale(element: HTMLElement): number {
     const window = ownerWindow(element);
     const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
@@ -102,11 +106,12 @@ function currentScale(element: HTMLElement): number {
 }
 
 function scaleTo(element: HTMLElement, to: number, duration: number, easing: string) {
-  const from = currentScale(element);
+  const surface = pressSurface(element);
+  const from = currentScale(surface);
   const running = animations.get(element);
   running?.cancel();
   if (!running && Math.abs(from - to) < 0.0005 && to === 1) return;
-  const animation = element.animate([{ scale: String(from) }, { scale: String(to) }], { duration, easing, fill: 'forwards' });
+  const animation = surface.animate([{ scale: String(from) }, { scale: String(to) }], { duration, easing, fill: 'forwards' });
   animations.set(element, animation);
   animation.onfinish = () => {
     if (animations.get(element) !== animation) return;
@@ -182,9 +187,10 @@ export function installInteractionMotion(root: Document = document): () => void 
     if (held < MOTION_DURATION.press + 30) {
       // A quick click releases before the press has landed. Finish the dip
       // first, then spring back, so every tap reads as a press.
-      const from = currentScale(element);
+      const surface = pressSurface(element);
+      const from = currentScale(surface);
       animations.get(element)?.cancel();
-      const animation = element.animate([
+      const animation = surface.animate([
         { scale: String(from), easing: EASE_PRESS },
         { scale: String(current.scale), offset: 0.18, easing: spring('bouncy') },
         { scale: String(target) },
@@ -233,7 +239,7 @@ export function installInteractionMotion(root: Document = document): () => void 
     const rect = element.getBoundingClientRect();
     const scale = depth(rect);
     animations.get(element)?.cancel();
-    const animation = element.animate(
+    const animation = pressSurface(element).animate(
       [{ scale: '1' }, { scale: String(scale), offset: 0.22 }, { scale: '1' }],
       { duration: MOTION_DURATION.bouncy, easing: 'ease-out' },
     );

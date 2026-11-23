@@ -19,7 +19,7 @@ const actionLabel = computed(() => removable.value
 <template>
   <div class="theme-preset-entry" :class="{ 'theme-preset-entry-with-action': saveable || removable }">
     <button type="button" class="theme-preset-card" :class="{ 'theme-preset-card-borderless': borderless, 'theme-preset-card-compact': compact }" :data-preset-id="preset.id" :disabled="preset.unavailable"
-      data-no-selection-pop :aria-pressed="!!selected" :aria-describedby="preset.missing?.length ? missingId : undefined"
+      data-press-parent data-no-selection-pop :aria-pressed="!!selected" :aria-describedby="preset.missing?.length ? missingId : undefined"
       :aria-label="`${t('应用预设')}：${label}`" @click="emit('select', preset)">
       <span class="theme-preset-name"><strong>{{ label }}</strong><span v-if="selected" class="theme-preset-current">{{ t('当前') }}</span></span>
       <ThemePresetPreview :preset="preset" />

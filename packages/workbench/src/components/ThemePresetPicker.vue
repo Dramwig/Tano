@@ -56,7 +56,7 @@ async function select(preset: AppearancePreset) {
 
   await nextTick();
   if (props.appearance.workspaceId !== workspaceId || props.appearance.scope !== scope || current.value.id === previousPresetId) return;
-  const card = picker.value?.querySelector('.theme-preset-quick-row [aria-pressed="true"]');
+  const card = picker.value?.querySelector('.theme-preset-quick-row [aria-pressed="true"]')?.closest('.theme-preset-entry');
   if (canAnimate(card)) {
     card.animate([{ scale: '0.94' }, { scale: '1' }], { duration: MOTION_DURATION.bouncy, easing: spring('bouncy') });
   }
