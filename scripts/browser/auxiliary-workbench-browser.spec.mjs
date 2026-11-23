@@ -171,6 +171,10 @@ test('settings edits update the actual main and auxiliary editors immediately', 
   await page.evaluate(() => window.workbench.auxiliaryWindows.open('settings', 'settings', '设置'));
   const settings = await opened;
   await expect(settings.locator('.settings-windowed')).toBeVisible();
+  await expect(settings.locator('.desktop-window-actions').getByRole('button')).toHaveCount(3);
+  await expect(settings.getByRole('button', { name: '关闭窗口', exact: true })).toBeVisible();
+  await expect(settings.getByRole('button', { name: '关闭设置', exact: true })).toHaveCount(0);
+  await expect(settings.getByRole('button', { name: '作为标签页打开', exact: true })).toHaveCount(0);
   await settings.getByRole('combobox', { name: '显示模式', exact: true }).selectOption('dark');
   for (const target of [page, child, settings]) {
     await expect(target.locator('html')).toHaveAttribute('data-theme', 'dark');

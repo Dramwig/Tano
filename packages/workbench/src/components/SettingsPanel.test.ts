@@ -24,6 +24,7 @@ vi.mock('./UpdatePanel.vue', () => ({
 
 let app: App;
 const tabbed = ref(false);
+const windowed = ref(false);
 const openedTabs: string[] = [];
 const openedWindows: string[] = [];
 const canOpenWindow = ref(true);
@@ -78,6 +79,14 @@ it('renders tab settings without modal controls or trapping Escape', async () =>
   root.querySelector('.settings-dialog')!.dispatchEvent(event);
   expect(propagated).toHaveBeenCalledOnce();
 });
+
+it('hides panel actions in detached settings', async () => {
+  windowed.value = true;
+  await nextTick();
+
+  expect(root.querySelector('.settings-close')).toBeNull();
+  expect(root.textContent).not.toContain('作为标签页打开');
+});
 let root: HTMLDivElement;
 let revealUpdates: boolean[];
 let preferenceUpdates: EditorPreferences[];
@@ -124,6 +133,7 @@ beforeEach(() => {
   initialSettingsPage.value = 'about';
   localStorage.removeItem(settingsPagePreferenceKey);
   tabbed.value = false;
+  windowed.value = false;
   openedTabs.length = 0;
   openedWindows.length = 0;
   canOpenWindow.value = true;
@@ -160,6 +170,7 @@ beforeEach(() => {
         key: panelKey.value,
         rememberPage: rememberPage.value,
         tabbed: tabbed.value,
+        windowed: windowed.value,
         canOpenTab: true,
         canOpenWindow: canOpenWindow.value,
         openingWindow: openingWindow.value,

@@ -631,7 +631,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
         @click="emit('open-window', page)"
       ><ExternalLink :size="18" /></button>
       <button
-        v-if="canOpenTab && !tabbed"
+        v-if="canOpenTab && !windowed && !tabbed"
         class="settings-close settings-open-tab"
         :class="{ 'settings-action-hidden': !atTop }"
         :inert="!atTop"
@@ -642,7 +642,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
         @click="emit('open-tab', page)"
       ><PanelTop :size="18" /></button>
       <button
-        v-if="!tabbed"
+        v-if="!windowed && !tabbed"
         class="settings-close"
         type="button"
         :aria-label="t('关闭设置')"
@@ -2489,11 +2489,6 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
 .settings-window-drag-region:active {
   cursor: grabbing;
 }
-.settings-windowed .settings-close {
-  top: calc(var(--workbench-tabbar-height) + 8px);
-  z-index: 2;
-}
-
 .theme-presets { padding-block: 20px; border-bottom: 1px solid var(--line); }
 .theme-presets > p { color: var(--text-secondary); font-size: 13px; line-height: 1.6; }
 </style>
