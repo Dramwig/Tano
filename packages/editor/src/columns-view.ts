@@ -1,4 +1,4 @@
-import { ownerWindow } from './dom-realm';
+import { ownerWindow } from './primitives/dom-realm';
 import type { NodeViewConstructor } from '@milkdown/kit/prose/view';
 import { closeHistory } from '@milkdown/kit/prose/history';
 import { watch } from 'vue';

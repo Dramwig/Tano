@@ -1,7 +1,7 @@
-import { ownerWindow } from './dom-realm';
+import { ownerWindow } from './primitives/dom-realm';
 
-import { isNode } from './dom-realm';
-import { setSurfaceVisible } from './surface-motion';
+import { isNode } from './primitives/dom-realm';
+import { setSurfaceVisible } from './primitives/surface-motion';
 import { h, render, type Component } from 'vue';
 import { blockIcons, headingIcons, customCalloutIcon, blockIconStrokeWidth } from './block-icons';
 import { Plugin, PluginKey, Selection, TextSelection } from '@milkdown/kit/prose/state';

@@ -23,18 +23,8 @@ import {
   remarkPreserveEmptyLinePlugin,
 } from '@milkdown/kit/preset/commonmark';
 import { schema as gfmSchema, remarkGFMPlugin } from '@milkdown/kit/preset/gfm';
-import { mathRemark, inlineMath, blockMath } from './math';
 import { configureMarkdownSchema } from './schema';
-import { tableBreaksRemark } from './table-markdown';
-import { codeBlankLinesRemark } from './code-blank-lines';
-import { listMarkdown } from './list-markdown';
-import { textStyles } from './text-styles';
-import { wikiLink, wikiLinkRemark } from './wiki-link';
-import { rawBlocks } from './raw-block';
-import { references } from './references';
-import { liveSource, liveInlineSource } from './live-source';
-import { nestedEmphasisRemark } from './nested-emphasis';
-import { enhanced } from './enhanced';
+import { composeMarkdownSchemaPlugins } from './markdown-schema-plugins';
 import { splitFrontmatter, unsupportedMarkdown } from './syntax';
 import { projectCommentText } from './comment-projection';
 import { makeCommentAnchor } from './comment-anchors';
@@ -75,30 +65,19 @@ export async function createHeadlessMarkdown(policy: WorkspaceCapabilities = def
     serializer,
     init(Editor.make()),
     config(configureMarkdownSchema),
-    ...tableBreaksRemark,
-    ...commonmarkSchema,
-    ...codeBlankLinesRemark,
-    ...listMarkdown,
-    ...gfmSchema,
-    ...textStyles,
-    ...wikiLinkRemark,
-    ...wikiLink,
-    ...mathRemark,
-    ...inlineMath,
-    ...blockMath,
-    ...remarkAddOrderInListPlugin,
-    ...remarkInlineLinkPlugin,
-    ...remarkLineBreak,
-    ...remarkHtmlTransformer,
-    ...remarkMarker,
-    ...remarkPreserveEmptyLinePlugin,
-    ...remarkGFMPlugin,
-    ...enhanced,
-    ...references,
-    ...rawBlocks,
-    ...liveSource,
-    ...liveInlineSource,
-    ...nestedEmphasisRemark,
+    ...composeMarkdownSchemaPlugins({
+      commonmark: commonmarkSchema,
+      gfm: gfmSchema,
+      afterGfm: [
+        ...remarkAddOrderInListPlugin,
+        ...remarkInlineLinkPlugin,
+        ...remarkLineBreak,
+        ...remarkHtmlTransformer,
+        ...remarkMarker,
+        ...remarkPreserveEmptyLinePlugin,
+        ...remarkGFMPlugin,
+      ],
+    }),
   ];
   const runners = plugins.map((plugin) => plugin(ctx));
   const cleanups = await Promise.all(runners.map((run) => run()));

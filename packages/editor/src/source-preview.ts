@@ -1,6 +1,6 @@
-import { ownerWindow } from './dom-realm';
+import { ownerWindow } from './primitives/dom-realm';
 
-import { isHTMLElement } from './dom-realm';
+import { isHTMLElement } from './primitives/dom-realm';
 import type { Node } from '@milkdown/kit/prose/model';
 import type { NodeViewConstructor } from '@milkdown/kit/prose/view';
 import { renderMathPreview } from './math';

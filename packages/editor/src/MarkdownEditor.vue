@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useEditorWindow } from './dom-context';
+import { useEditorWindow } from './primitives/dom-context';
 
 const window = useEditorWindow();
 const document = window.document;
@@ -7,16 +7,16 @@ const getComputedStyle = (element: Element, pseudo?: string | null) => window.ge
 const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
 const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
 const { ResizeObserver, IntersectionObserver } = window as Window & typeof globalThis;
-import { isElement, isHTMLElement, isMouseEvent } from './dom-realm';
+import { isElement, isHTMLElement, isMouseEvent } from './primitives/dom-realm';
 
-import { vSurfaceMotion, setSurfaceVisible } from './surface-motion';
-import { canAnimate, collapseElement, resizeHeight, settleHeight, spring, MOTION_DURATION, EASE_EXIT } from './motion';
+import { vSurfaceMotion, setSurfaceVisible } from './primitives/surface-motion';
+import { canAnimate, collapseElement, resizeHeight, settleHeight, spring, MOTION_DURATION, EASE_EXIT } from './primitives/motion';
 import { blockMotion } from './block-motion';
 import { typingMotion } from './typing-motion';
 import { inlineSourceMotion } from './inline-source-motion';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { Component } from 'vue';
-import ShortcutHint from './ShortcutHint.vue';
+import ShortcutHint from './primitives/ShortcutHint.vue';
 import WechatLogo from './clipboard-icons/wechat.vue';
 import ZhihuLogo from './clipboard-icons/zhihu.vue';
 import { AlignLeft, ArrowDown, ArrowDownAZ, ArrowUp, Braces, ClipboardCopy, CopyPlus, Group, Heading, IndentDecrease, IndentIncrease, Pilcrow, Replace, RotateCcw, Sigma, Table2, SquareCode, Ungroup, CalendarClock, CalendarDays, Check, CheckSquare2, ChevronRight, CircleHelp, Columns2, Hash, Info, List, ListCollapse, PanelsTopLeft, Plus, Quote, Trash2 } from 'lucide-vue-next';
@@ -69,8 +69,6 @@ import type { Ctx } from '@milkdown/kit/ctx';
 import { prism } from '@milkdown/plugin-prism';
 import {
   inlineMath,
-  blockMath,
-  mathRemark,
   latexMathInput,
   mathView,
   inlineMathInput,
@@ -92,19 +90,17 @@ import type { FrontmatterValueKind } from './frontmatter-display';
 import 'katex/dist/katex.min.css';
 import type { EditorExtension } from './extension';
 import { configureMarkdownSchema } from './schema';
-import { listMarkdown } from './list-markdown';
-import { codeBlankLinesRemark } from './code-blank-lines';
+import { composeMarkdownSchemaPlugins } from './markdown-schema-plugins';
 import { blockControls } from './blocks';
 import { BlockRangeSelection, expandBlockSelection } from './block-selection';
 import { blockTree, moveBlockSibling, moveBlocksTo, isBlockContainer, indentBlock, outdentBlock, deleteBlock, deleteBlocks } from './block-tree';
 import { emptyBlockDeletion } from './empty-block';
 import { slashCommands } from './slash-commands';
 import type { SlashTranslate } from './slash-commands';
-import { textStyles, underline, superscript, subscript, highlight, textColor, backgroundColor } from './text-styles';
+import { underline, superscript, subscript, highlight, textColor, backgroundColor } from './text-styles';
 import { normalizeTextColor } from './text-style-markdown';
-import { wikiLink, wikiLinkInput, wikiLinkRemark } from './wiki-link';
+import { wikiLink, wikiLinkInput } from './wiki-link';
 import { parseWikiLink } from './wiki-link-markdown';
-import { rawBlocks } from './raw-block';
 import { renderHtml } from './html-render';
 import { blockType, selectionContext } from './document-model';
 import type { EditorSelectionContext } from './document-model';
@@ -114,7 +110,6 @@ import { createCalloutTitle } from './callout-title';
 import type { CalloutKind } from './callout-title';
 import { blockContentStart, calloutMarker } from './callout';
 import { customCalloutWidget } from './custom-callout-view';
-import { enhanced } from './enhanced';
 import { enhancedViews } from './enhanced-views';
 import { safeResourceUrl } from './enhanced-markdown';
 import { featureLevel, commandEnabled } from './document-model';
@@ -123,14 +118,12 @@ import { activeInlineSourceRange } from './inline-source-range';
 import { inlineSourceCodec, inlineSourceAttributes, reconcileInlineSource } from './inline-source-session';
 import type { InlineSourceSession } from './inline-source-session';
 import { liveInlineSource, liveSource } from './live-source';
-import { nestedEmphasisRemark } from './nested-emphasis';
 import { sourceStyleRanges } from './source-highlight';
 import { configureMarkdownRuntime, defaultCapabilities, defaultEditorPreferences, normalizeCopyFormat, chineseSyntaxEdit, selectionWrap, workspaceWrapping, mapChineseInput, normalizeChineseInput, mappedChineseInputKey, mappedChineseBeforeInput } from './runtime';
 import type { WorkspaceCapabilities, EditorPreferences, CopyFormat } from './runtime';
 import { destinationClipboardHTML, selectedFormulaMathML, tableTSV } from './clipboard-formats';
 import { runtimeViews, runtimeMarkViews, mermaidView } from './runtime-views';
 import { footnoteNumbers, jumpToFootnote } from './footnotes';
-import { references } from './references';
 import { referenceViews } from './reference-views';
 import { referencePicker, referencePickerKey, openReferencePicker } from './reference-picker';
 import { floatingPanelPosition, positionAnchoredPanel } from './panel-position';
@@ -143,7 +136,6 @@ import { commentSpansForSelection, projectCommentText, proseRangesForCommentSpan
 import { captureCaretAnchor, captureVisualAnchor, visualAnchorPlugin, visualSelection } from './visual-anchor';
 import { columnResizing, isInTable } from '@milkdown/kit/prose/tables';
 import { breakTableCell, nextTableRow, tableLineAction } from './table-commands';
-import { tableBreaksRemark } from './table-markdown';
 import { defaultTableColumnWidth, minimumTableColumnWidth } from '@tano/protocol';
 import type { TableLayout } from '@tano/protocol';
 import { tableLayouts, tableLayoutKey, sameMarkdownContent } from './table-layout';
@@ -2963,38 +2955,32 @@ onMounted(async () => {
           },
         }));
       })
-      .use(tableBreaksRemark)
-      .use(commonmark)
-      .use(codeBlankLinesRemark)
-      .use(listMarkdown)
-      .use($prose(() => columnResizing({ cellMinWidth: minimumTableColumnWidth, defaultCellMinWidth: defaultTableColumnWidth, handleWidth: 6, View: null })))
-      .use(gfm)
-      .use($prose(() => tableLayouts(() => props.tableLayouts ?? [], tables => emit('tableLayoutChange', tables), () => !!props.readonly)))
-      .use($prose(() => tableControls(() => !!props.readonly)))
-      .use($prose(tableViewports))
-      .use($prose(footnoteNumbers))
-      .use($prose(() => autoSpacing(() => preferences().autoSpacing === true, () => policy().features)))
-      .use(textStyles)
-      .use(wikiLinkRemark)
-      .use(wikiLink)
-      .use(wikiLinkInput)
-      .use(mathRemark)
-      .use(latexMathInput)
-      .use(enhanced)
-      .use(references)
-      .use($prose(ctx => referencePicker({
-        enabled: () => referencesEnabled() && !props.readonly,
-        targets: () => props.referenceTargets ?? [],
-        completeSpacing: (tr, from) => completeInlineObjectSpacing(ctx, tr, from),
-      })))
-      .use(rawBlocks)
-      .use(liveSource)
-      .use(liveInlineSource)
-      .use(nestedEmphasisRemark)
-      .use(inlineMath)
-      .use(blockMath)
-      .use(inlineMathInput)
-      .use(blockMathInput)
+      .use(
+        composeMarkdownSchemaPlugins({
+          commonmark,
+          gfm,
+          beforeGfm: [
+            $prose(() => columnResizing({ cellMinWidth: minimumTableColumnWidth, defaultCellMinWidth: defaultTableColumnWidth, handleWidth: 6, View: null })),
+          ],
+          afterGfm: [
+            $prose(() => tableLayouts(() => props.tableLayouts ?? [], tables => emit('tableLayoutChange', tables), () => !!props.readonly)),
+            $prose(() => tableControls(() => !!props.readonly)),
+            $prose(tableViewports),
+            $prose(footnoteNumbers),
+            $prose(() => autoSpacing(() => preferences().autoSpacing === true, () => policy().features)),
+          ],
+          afterWikiLink: [wikiLinkInput],
+          afterMathRemark: [latexMathInput],
+          afterReferences: [
+            $prose(ctx => referencePicker({
+              enabled: () => referencesEnabled() && !props.readonly,
+              targets: () => props.referenceTargets ?? [],
+              completeSpacing: (tr, from) => completeInlineObjectSpacing(ctx, tr, from),
+            })),
+          ],
+          afterMathNodes: [inlineMathInput, blockMathInput],
+        }),
+      )
       .use(prism)
       .use(props.extension?.ownsHistory ? [] : history)
       .use(props.extension?.plugins ?? [])

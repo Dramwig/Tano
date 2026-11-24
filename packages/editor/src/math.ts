@@ -1,4 +1,4 @@
-import { setSurfaceVisible } from './surface-motion';
+import { setSurfaceVisible } from './primitives/surface-motion';
 import { $nodeSchema, $remark, $inputRule } from '@milkdown/kit/utils';
 import { InputRule } from '@milkdown/kit/prose/inputrules';
 import { NodeSelection, Selection } from '@milkdown/kit/prose/state';

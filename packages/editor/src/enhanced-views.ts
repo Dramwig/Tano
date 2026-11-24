@@ -1,10 +1,10 @@
-import { ownerWindow } from './dom-realm';
+import { ownerWindow } from './primitives/dom-realm';
 import type { NodeViewConstructor } from '@milkdown/kit/prose/view';
 import { watch } from 'vue';
 import { NodeSelection, TextSelection } from '@milkdown/kit/prose/state';
 import { resourceView } from './resource-views';
 import { columnsView } from './columns-view';
-import { resizeHeight, settleHeight } from './motion';
+import { resizeHeight, settleHeight } from './primitives/motion';
 
 let tabsId = 0;
 

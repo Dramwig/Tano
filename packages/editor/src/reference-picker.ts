@@ -1,5 +1,5 @@
-import { ownerWindow } from './dom-realm';
-import { setSurfaceVisible } from './surface-motion';
+import { ownerWindow } from './primitives/dom-realm';
+import { setSurfaceVisible } from './primitives/surface-motion';
 import { Plugin, PluginKey, TextSelection, NodeSelection } from '@milkdown/kit/prose/state';
 import type { EditorState, Transaction } from '@milkdown/kit/prose/state';
 import { closeHistory } from '@milkdown/kit/prose/history';
@@ -11,7 +11,7 @@ import {
 } from '@tano/protocol';
 import { h, render as renderIcon, type Component } from 'vue';
 import { animate } from 'motion/mini';
-import { springEasing } from './motion';
+import { springEasing } from './primitives/motion';
 import { Bot, Box, CalendarDays, FileText, Paperclip, UserRound } from 'lucide-vue-next';
 import type { ReferenceTarget } from '@tano/protocol';
 import { selectedBlocks } from './document-model';

@@ -1,5 +1,5 @@
 
-import { isElement, isHTMLElement } from './dom-realm';
+import { isElement, isHTMLElement } from './primitives/dom-realm';
 import { Plugin, PluginKey } from '@milkdown/kit/prose/state';
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
 import type { Node } from '@milkdown/kit/prose/model';

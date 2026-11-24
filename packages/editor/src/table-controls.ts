@@ -1,7 +1,7 @@
-import { ownerWindow } from './dom-realm';
+import { ownerWindow } from './primitives/dom-realm';
 
-import { isHTMLElement, isElement } from './dom-realm';
-import { setSurfaceVisible } from './surface-motion';
+import { isHTMLElement, isElement } from './primitives/dom-realm';
+import { setSurfaceVisible } from './primitives/surface-motion';
 import { h, render } from 'vue';
 import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronRight, Copy, Eraser, GripHorizontal, GripVertical, PaintRoller, Plus, RotateCcw, Trash2 } from 'lucide-vue-next';
 import type { Component } from 'vue';

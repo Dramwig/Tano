@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./dom-realm": "./src/dom-realm.ts",
-    "./dom-context": "./src/dom-context.ts",
+    "./dom-realm": "./src/primitives/dom-realm.ts",
+    "./dom-context": "./src/primitives/dom-context.ts",
     "./preview": "./src/preview.ts",
     "./block-icons": "./src/block-icons.ts",
-    "./shortcut-hint": "./src/ShortcutHint.vue",
+    "./shortcut-hint": "./src/primitives/ShortcutHint.vue",
     "./code-preview": "./src/code-preview.ts",
     ".": "./src/MarkdownEditor.vue",
     "./syntax": "./src/syntax.ts",
@@ -24,8 +24,8 @@
     "./comment-anchors": "./src/comment-anchors.ts",
     "./extension": "./src/extension.ts",
     "./search": "./src/search.ts",
-    "./surface-motion": "./src/surface-motion.ts",
-    "./motion": "./src/motion.ts"
+    "./surface-motion": "./src/primitives/surface-motion.ts",
+    "./motion": "./src/primitives/motion.ts"
   },
   "dependencies": {
     "@milkdown/kit": "^7.22.1",
