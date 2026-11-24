@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { useWindowContext } from '../windows/context';
-const { window, document } = useWindowContext();
+import { useEditorWindow } from './primitives/dom-context';
+const window = useEditorWindow();
+const document = window.document;
 
-import { t } from '../i18n';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   defaultKeymap,
@@ -22,16 +22,16 @@ import type { DecorationSet } from '@codemirror/view';
 import { confirmEntryReferenceDrop, droppedEntryReferences, entryReferenceDragType, referenceMarkdown } from '@tano/protocol';
 import type { CommentAnchor, ReferenceIdentity, ReferenceTarget } from '@tano/protocol';
 import type { SuggestionDecorations } from '@tano/protocol';
-import type { CommentGeometry } from '@tano/editor/comment-projection';
-import { mayCompleteSourceSpacing, sourceChanges, sourceSpacingPositions, type SourceHighlightChange, type SourceHighlightUpdate } from '@tano/editor/source-highlight';
-import { SourceHighlightParser } from '../source-highlight-parser';
-import { captureModeViewport, restoreModeViewport } from '../editor-mode';
-import type { ModeSelection } from '@tano/editor/mode-selection';
-import { splitFrontmatter } from '@tano/editor/syntax';
-import { referenceInsertionPoint } from '@tano/editor/document-links';
-import { continueMarkup, closeMarkupFence, closingBracket, normalizeMarkdownAutocomplete, chineseSyntaxEdit, selectionWrap, workspaceWrapping, mapChineseInput, normalizeChineseInput, mappedChineseInputKey, mappedChineseBeforeInput } from '@tano/editor/runtime';
-import type { EditorPreferences, WorkspaceCapabilities } from '@tano/editor/runtime';
-import { textSearchRanges } from '@tano/editor/search';
+import type { CommentGeometry } from './comment-projection';
+import { mayCompleteSourceSpacing, sourceChanges, sourceSpacingPositions, type SourceHighlightChange, type SourceHighlightUpdate } from './source-highlight';
+import { SourceHighlightParser } from './source-highlight-parser';
+import { captureModeViewport, restoreModeViewport } from './editor-mode';
+import type { ModeSelection } from './mode-selection';
+import { splitFrontmatter } from './syntax';
+import { referenceInsertionPoint } from './document-links';
+import { continueMarkup, closeMarkupFence, closingBracket, normalizeMarkdownAutocomplete, chineseSyntaxEdit, selectionWrap, workspaceWrapping, mapChineseInput, normalizeChineseInput, mappedChineseInputKey, mappedChineseBeforeInput } from './runtime';
+import type { EditorPreferences, WorkspaceCapabilities } from './runtime';
+import { textSearchRanges } from './search';
 
 const setPageSearch = StateEffect.define<{ query: string; index: number }>();
 const setReferenceFlash = StateEffect.define<{ from: number; to: number } | null>();
@@ -73,7 +73,9 @@ const props = defineProps<{
   localNative: boolean;
   commentAnchors?: readonly { id: string; anchor: CommentAnchor }[];
   suggestionMarks?: SuggestionDecorations;
+  translate?: (text: string) => string;
 }>();
+const t = (text: string) => props.translate ? props.translate(text) : text;
 const emit = defineEmits<{
   ready: [];
   'update:modelValue': [value: string];

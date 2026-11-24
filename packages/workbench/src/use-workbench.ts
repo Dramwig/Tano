@@ -137,9 +137,9 @@ import { defaultSelectionContext } from '@tano/editor/selection-context';
 
 import type { EditorSelectionContext } from '@tano/editor/selection-context';
 
-import { captureModeViewport, restoreModeViewport } from './editor-mode';
+import { captureModeViewport, restoreModeViewport } from '@tano/editor/editor-mode';
 
-import type { ModeViewport } from './editor-mode';
+import type { ModeViewport } from '@tano/editor/editor-mode';
 
 import AttachmentPreview from './components/AttachmentPreview.vue';
 
@@ -416,7 +416,7 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
 
 const MarkdownEditor = defineAsyncComponent({ loader: () => import('@tano/editor'), delay: 0, loadingComponent: MarkdownEditorSkeleton });
 const CalloutIconPicker = defineAsyncComponent(() => import('./components/CalloutIconPicker.vue'));
-const SourceEditor = loadingComponent(() => import('./components/SourceEditor.vue'), 'editor');
+const SourceEditor = loadingComponent(() => import('@tano/editor/source-editor'), 'editor');
 const ImportPanel = defineAsyncComponent(() => import('./components/ImportPanel.vue'));
 const TemplateLibrary = loadingComponent(() => import('./components/TemplateLibrary.vue'), 'document');
 // Discussion and annotation surfaces decide their own visibility and loading state.

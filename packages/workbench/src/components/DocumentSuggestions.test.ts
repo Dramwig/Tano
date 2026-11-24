@@ -12,7 +12,7 @@ import { configureWorkbench } from '../runtime';
 import { useWorkspaceStore } from '../stores/workspace';
 import { useSuggestionStore } from '../stores/suggestions';
 import { demoFiles } from '../demo';
-import SourceEditor from './SourceEditor.vue';
+import SourceEditor from '@tano/editor/source-editor';
 import { updateReviewRail, removeReviewRail } from './review-rail';
 
 let app: ReturnType<typeof createApp> | undefined;

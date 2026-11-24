@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import SourceEditor from './SourceEditor.vue';
+import SourceEditor from '@tano/editor/source-editor';
 defineProps<{ markdown: string }>();
 </script>
 <template><div class="source-example" inert data-renderer="source"><SourceEditor :model-value="markdown" readonly :local-native="false" :show-all-line-numbers="false" /></div></template>

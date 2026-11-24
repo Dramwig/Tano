@@ -10,7 +10,7 @@ import { safeRemoteImage } from '@tano/protocol';
 import { t } from '@tano/workbench/i18n';
 import { matchesShortcut, readShortcutBindings, shortcutPreferenceKey } from '@tano/workbench/shortcuts';
 import DocumentPrintButton from '@tano/workbench/components/DocumentPrintButton.vue';
-import SourceEditor from '@tano/workbench/components/SourceEditor.vue';
+import SourceEditor from '@tano/editor/source-editor';
 import { StandaloneSession, type Snapshot, type WriteResult } from './standalone-session';
 
 const session = ref<StandaloneSession>();
@@ -187,7 +187,7 @@ onBeforeUnmount(() => {
       <details><summary>{{ t('查看磁盘版本') }}</summary><pre>{{ session.conflict.content }}</pre></details>
     </section>
     <div v-if="session" class="standalone-document">
-      <SourceEditor v-if="source" v-model="session.content" :readonly="false" :local-native="true" :show-all-line-numbers="true" />
+      <SourceEditor v-if="source" v-model="session.content" :readonly="false" :local-native="true" :show-all-line-numbers="true" :translate="t" />
       <MarkdownEditor v-else v-model="session.content" :document-id="appWindow.label" :translate="t" @error="error = $event" @edit-source="source = true" />
     </div>
     <div v-if="closing" class="standalone-overlay">

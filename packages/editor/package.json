@@ -18,6 +18,8 @@
     "./document-links": "./src/document-links.ts",
     "./runtime": "./src/runtime.ts",
     "./source-highlight": "./src/source-highlight.ts",
+    "./source-editor": "./src/SourceEditor.vue",
+    "./editor-mode": "./src/editor-mode.ts",
     "./mode-selection": "./src/mode-selection.ts",
     "./headless": "./src/headless.ts",
     "./comment-projection": "./src/comment-projection.ts",
@@ -28,6 +30,9 @@
     "./motion": "./src/primitives/motion.ts"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.13",
     "@milkdown/kit": "^7.22.1",
     "@milkdown/plugin-prism": "^7.22.1",
     "@tano/protocol": "^0.13.0",
