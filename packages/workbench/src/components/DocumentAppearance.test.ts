@@ -269,3 +269,32 @@ it('keeps the teleported picker open for internal interaction, supports keyboard
   document.body.dispatchEvent(new Event('pointerdown', { bubbles: true })); await nextTick();
   expect(document.querySelector('.document-cover-picker')).toBeNull();
 });
+
+it('serves artwork covers from the configured HTTPS host and falls back to CSS gradients offline', async () => {
+  const preset = documentCoverPreset('tano:cma-136510')!;
+  expect(preset.image).toMatch(/^https:\/\/assets\.tano\.page\/covers\/.+\.webp$/);
+  expect(preset.thumbnail).toMatch(/^https:\/\/assets\.tano\.page\/covers\/.+-thumb\.webp$/);
+  expect(preset.background).toContain('linear-gradient');
+  expect(documentCoverPreset('tano:cma-136510', 'https://cdn.example.test/covers/')?.image)
+    .toMatch(/^https:\/\/cdn\.example\.test\/covers\/[^/]+\.webp$/);
+
+  const { state } = await mount();
+  state.modelValue = '---\ncover: tano:cma-136510\n---\n正文\n';
+  await nextTick();
+  const banner = root.querySelector<HTMLElement>('.document-cover')!;
+  expect(banner.style.background).toContain('linear-gradient');
+  const img = banner.querySelector('img')!;
+  img.dispatchEvent(new Event('error'));
+  await nextTick();
+  expect(banner.querySelector('img')).toBeNull();
+  expect(banner.querySelector('.document-cover-unavailable')?.textContent).toContain('离线模式');
+  expect(appearanceText(state.modelValue, 'cover')).toBe('tano:cma-136510');
+
+  await click('更换封面');
+  const swatch = document.querySelector<HTMLButtonElement>('[aria-label="使用封面：睡莲"]')!;
+  const thumb = swatch.querySelector('img')!;
+  thumb.dispatchEvent(new Event('error'));
+  await nextTick();
+  expect(swatch.querySelector('img')).toBeNull();
+  expect(swatch.style.background).toContain('linear-gradient');
+});

@@ -12,7 +12,8 @@ import WorkspaceIconPicker from './WorkspaceIconPicker.vue';
 import WorkspaceIcon from './WorkspaceIcon.vue';
 import { iconImage } from '../icon-image';
 import { appearanceProperty, appearanceText, embeddedCoverImage, updateAppearance } from '../document-appearance';
-import { documentCoverGroups, documentCoverPreset } from '../document-cover-gallery';
+import { documentCoverPreset, getDocumentCoverGroups } from '../document-cover-gallery';
+import { resolveDocumentCoverBaseUrl } from '../runtime';
 import type { AppearanceProperty } from '../document-appearance';
 import type { DocumentCover } from '../document-cover-gallery';
 
@@ -46,12 +47,21 @@ const coverOpen = ref(false);
 const busy = ref(false);
 const error = ref('');
 const imageFailed = ref(false);
+const failedThumbnails = ref(new Set<string>());
 const disabled = computed(() => props.readonly || busy.value);
 const icon = computed(() => appearanceText(props.modelValue, 'icon'));
 const cover = computed(() => appearanceText(props.modelValue, 'cover'));
 const coverTrigger = computed(() => cover.value ? changeCoverTrigger.value : addCoverTrigger.value);
-const coverPreset = computed(() => documentCoverPreset(cover.value));
+const coverBaseUrl = computed(() => resolveDocumentCoverBaseUrl());
+const coverGroups = computed(() => getDocumentCoverGroups(coverBaseUrl.value));
+const coverPreset = computed(() => documentCoverPreset(cover.value, coverBaseUrl.value));
 const coverCaption = (preset: DocumentCover) => [preset.label, preset.artist, preset.date].filter(Boolean).join(' · ');
+function markThumbnailFailed(id: string) {
+  if (failedThumbnails.value.has(id)) return;
+  const next = new Set(failedThumbnails.value);
+  next.add(id);
+  failedThumbnails.value = next;
+}
 const coverUrl = computed(() => {
   void props.resourceRevision;
   if (coverPreset.value?.image) return coverPreset.value.image;
@@ -220,7 +230,8 @@ onBeforeUnmount(() => {
   <div class="document-appearance" :class="{ 'is-open': iconOpen || coverOpen || busy, 'has-cover': !!cover, 'has-icon': !!icon }">
     <div v-if="cover" class="document-cover" :class="{ 'is-specimen': coverPreset?.presentation === 'specimen' }" :style="coverPreset ? { background: coverPreset.background } : undefined">
       <img v-if="coverUrl && !imageFailed" :src="coverUrl" :alt="t('文档封面')" :title="coverPreset ? coverCaption(coverPreset) : undefined" :style="{ objectPosition: coverPreset?.objectPosition }" @error="imageFailed = true" />
-      <span v-else-if="!coverPreset || coverPreset.image" class="document-cover-unavailable">{{ t('封面图片无法显示') }}</span>
+      <span v-else-if="coverPreset?.image" class="document-cover-unavailable">{{ t('离线模式：连接网络后显示预设封面') }}</span>
+      <span v-else-if="!coverPreset" class="document-cover-unavailable">{{ t('封面图片无法显示') }}</span>
     </div>
     <button v-if="!readonly && cover" ref="changeCoverTrigger" type="button" class="document-title-action document-cover-trigger" :disabled="disabled" aria-haspopup="dialog"
       :aria-expanded="coverOpen" :aria-controls="coverPanelId" @click="toggleCover">
@@ -264,13 +275,13 @@ onBeforeUnmount(() => {
         </header>
         <div :id="`${coverPanelId}-content`" class="document-cover-picker-content" role="tabpanel" :aria-labelledby="`${coverPanelId}-${coverTab}-tab`">
           <div v-if="coverTab === 'gallery'" class="document-cover-gallery">
-            <section v-for="group in documentCoverGroups" :key="group.id" class="document-cover-group" :aria-labelledby="`${coverPanelId}-${group.id}-heading`">
+            <section v-for="group in coverGroups" :key="group.id" class="document-cover-group" :aria-labelledby="`${coverPanelId}-${group.id}-heading`">
               <h4 :id="`${coverPanelId}-${group.id}-heading`">{{ group.label }}</h4>
               <div class="document-cover-presets" :class="{ 'document-cover-colors': group.id === 'colors' }">
                 <button v-for="item in group.covers" :key="item.value" type="button" :aria-label="t('使用封面：{0}', [item.label])" :data-tooltip="coverCaption(item)"
                   :class="{ 'is-specimen': item.presentation === 'specimen' }"
                   :aria-pressed="cover === item.value" :disabled="disabled" :style="{ background: item.background }" @click="selectCover(item.value)">
-                  <img v-if="item.thumbnail" :src="item.thumbnail" :style="{ objectPosition: item.objectPosition }" alt="" loading="lazy" decoding="async" draggable="false" />
+                  <img v-if="item.thumbnail && !failedThumbnails.has(item.value)" :src="item.thumbnail" :style="{ objectPosition: item.objectPosition }" alt="" loading="lazy" decoding="async" draggable="false" @error="markThumbnailFailed(item.value)" />
                 </button>
               </div>
             </section>
