@@ -1,156 +1,101 @@
 <script setup lang="ts">
-import { useEditorWindow } from './primitives/dom-context';
-
-const window = useEditorWindow();
-const document = window.document;
-const getComputedStyle = (element: Element, pseudo?: string | null) => window.getComputedStyle(element, pseudo);
-const requestAnimationFrame = (callback: FrameRequestCallback) => window.requestAnimationFrame(callback);
-const cancelAnimationFrame = (id: number) => window.cancelAnimationFrame(id);
-const { ResizeObserver, IntersectionObserver } = window as Window & typeof globalThis;
-import { isElement, isHTMLElement, isMouseEvent } from './primitives/dom-realm';
-
-import { vSurfaceMotion, setSurfaceVisible } from './primitives/surface-motion';
-import { canAnimate, collapseElement, resizeHeight, settleHeight, spring, MOTION_DURATION, EASE_EXIT } from './primitives/motion';
-import { blockMotion } from './block-motion';
-import { typingMotion } from './typing-motion';
-import { inlineSourceMotion } from './inline-source-motion';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-import type { Component } from 'vue';
-import ShortcutHint from './primitives/ShortcutHint.vue';
-import WechatLogo from './clipboard-icons/wechat.vue';
-import ZhihuLogo from './clipboard-icons/zhihu.vue';
-import { AlignLeft, ArrowDown, ArrowDownAZ, ArrowUp, Braces, ClipboardCopy, CopyPlus, Group, Heading, IndentDecrease, IndentIncrease, Pilcrow, Replace, RotateCcw, Sigma, Table2, SquareCode, Ungroup, CalendarClock, CalendarDays, Check, CheckSquare2, ChevronRight, CircleHelp, Columns2, Hash, Info, List, ListCollapse, PanelsTopLeft, Plus, Quote, Trash2 } from 'lucide-vue-next';
+import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue';
 import {
   Editor,
-  rootCtx,
   defaultValueCtx,
-  editorViewOptionsCtx,
   editorStateOptionsCtx,
-  serializerCtx,
-  parserCtx,
   editorViewCtx,
+  editorViewOptionsCtx,
+  parserCtx,
   remarkCtx,
+  rootCtx,
+  serializerCtx,
 } from '@milkdown/kit/core';
 import { SerializerState } from '@milkdown/kit/transformer';
 import remarkGfm from 'remark-gfm';
-import {
-  commonmark,
-  toggleStrongCommand,
-  toggleEmphasisCommand,
-  toggleInlineCodeCommand,
-  imageSchema,
-  sanitizeLinkHref,
-} from '@milkdown/kit/preset/commonmark';
-import { gfm, toggleStrikethroughCommand } from '@milkdown/kit/preset/gfm';
-import { toggleMark } from '@milkdown/kit/prose/commands';
+import { commonmark } from '@milkdown/kit/preset/commonmark';
+import { gfm } from '@milkdown/kit/preset/gfm';
 import { history, historyProviderPlugin } from '@milkdown/kit/plugin/history';
-import { captureHistory, restoreHistory } from './history-transfer';
 import { clipboard } from '@milkdown/kit/plugin/clipboard';
-import { callCommand, $prose } from '@milkdown/kit/utils';
-import { Plugin, PluginKey, NodeSelection, Selection, TextSelection } from '@milkdown/kit/prose/state';
+import { $prose } from '@milkdown/kit/utils';
+import { NodeSelection, Plugin, Selection, TextSelection, type EditorState } from '@milkdown/kit/prose/state';
 import { GapCursor, gapCursor } from '@milkdown/kit/prose/gapcursor';
-import type { EditorState, Transaction } from '@milkdown/kit/prose/state';
-import {
-  closeHistory,
-  redo as redoHistory,
-  redoDepth,
-  undo as undoHistory,
-  undoDepth,
-} from '@milkdown/kit/prose/history';
-import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
-import { createDocumentDecorations } from './document-decorations';
-import { richViewport, virtualBlockViews } from './rich-viewport';
-import { autoSpacing, completeInlineObjectSpacing, completeProseSpacing, inputSpacing, markTextSpacingInput } from './auto-spacing';
+import { closeHistory } from '@milkdown/kit/prose/history';
+import { columnResizing, isInTable } from '@milkdown/kit/prose/tables';
 import type { EditorView } from '@milkdown/kit/prose/view';
-import { DOMSerializer, Fragment, Slice } from '@milkdown/kit/prose/model';
-import { canSplit } from '@milkdown/kit/prose/transform';
-import type { Mark, Node } from '@milkdown/kit/prose/model';
-import type { Ctx } from '@milkdown/kit/ctx';
+import type { Node } from '@milkdown/kit/prose/model';
 import { prism } from '@milkdown/plugin-prism';
+import 'katex/dist/katex.min.css';
 import {
-  inlineMath,
-  latexMathInput,
-  mathView,
-  inlineMathInput,
-  blockMathInput,
-} from './math';
-import { sourcePreviewView, sourceBlockStyle } from './source-preview';
+  defaultTableColumnWidth,
+  minimumTableColumnWidth,
+  type CommentAnchor,
+  type ReferenceIdentity,
+  type ReferenceTarget,
+  type SuggestionDecorations,
+  type TableLayout,
+} from '@tano/protocol';
+import { useEditorWindow } from './primitives/dom-context';
+import { isElement } from './primitives/dom-realm';
+import { blockMotion } from './block-motion';
+import { typingMotion } from './typing-motion';
+import { inlineSourceMotion } from './inline-source-motion';
+import { captureHistory, restoreHistory } from './history-transfer';
+import { richViewport } from './rich-viewport';
+import { autoSpacing, completeInlineObjectSpacing, inputSpacing } from './auto-spacing';
+import { blockMathInput, inlineMathInput, latexMathInput } from './math';
 import { createMermaidRenderer } from './mermaid-preview';
 import { splitFrontmatter } from './syntax';
 import { SuggestionChangeCodec } from './suggestion-codec';
-import { markdownPositionMap } from './mode-selection';
-import type { ModeSelection } from './mode-selection';
-import {
-  frontmatterProperties,
-  frontmatterValue,
-  removeFrontmatterProperty,
-  updateFrontmatterProperty,
-} from './frontmatter-display';
-import type { FrontmatterValueKind } from './frontmatter-display';
-import 'katex/dist/katex.min.css';
 import type { EditorExtension } from './extension';
 import { configureMarkdownSchema } from './schema';
 import { composeMarkdownSchemaPlugins } from './markdown-schema-plugins';
 import { blockControls } from './blocks';
-import { BlockRangeSelection, expandBlockSelection } from './block-selection';
-import { blockTree, moveBlockSibling, moveBlocksTo, isBlockContainer, indentBlock, outdentBlock, deleteBlock, deleteBlocks } from './block-tree';
+import { expandBlockSelection } from './block-selection';
 import { emptyBlockDeletion } from './empty-block';
-import { slashCommands } from './slash-commands';
-import type { SlashTranslate } from './slash-commands';
-import { underline, superscript, subscript, highlight, textColor, backgroundColor } from './text-styles';
-import { normalizeTextColor } from './text-style-markdown';
-import { wikiLink, wikiLinkInput } from './wiki-link';
-import { parseWikiLink } from './wiki-link-markdown';
-import { renderHtml } from './html-render';
-import { blockType, selectionContext } from './document-model';
-import type { EditorSelectionContext } from './document-model';
-import { availableBlockConversions, blockCommand, blockCommandNames } from './block-commands';
-import { blockMenuStructure, blockContainerOptions } from './block-menu-structure';
-import { createCalloutTitle } from './callout-title';
-import type { CalloutKind } from './callout-title';
-import { blockContentStart, calloutMarker } from './callout';
-import { customCalloutWidget } from './custom-callout-view';
-import { enhancedViews } from './enhanced-views';
-import { safeResourceUrl } from './enhanced-markdown';
-import { featureLevel, commandEnabled } from './document-model';
-import { emptyFencedCodeBodyOffset, liveMarkdown } from './live-markdown';
-import { activeInlineSourceRange } from './inline-source-range';
-import { inlineSourceCodec, inlineSourceAttributes, reconcileInlineSource } from './inline-source-session';
-import type { InlineSourceSession } from './inline-source-session';
-import { liveInlineSource, liveSource } from './live-source';
-import { sourceStyleRanges } from './source-highlight';
-import { configureMarkdownRuntime, defaultCapabilities, defaultEditorPreferences, normalizeCopyFormat, chineseSyntaxEdit, selectionWrap, workspaceWrapping, mapChineseInput, normalizeChineseInput, mappedChineseInputKey, mappedChineseBeforeInput } from './runtime';
-import type { WorkspaceCapabilities, EditorPreferences, CopyFormat } from './runtime';
-import { destinationClipboardHTML, selectedFormulaMathML, tableTSV } from './clipboard-formats';
-import { runtimeViews, runtimeMarkViews, mermaidView } from './runtime-views';
+import { slashCommands, type SlashTranslate } from './slash-commands';
+import { wikiLinkInput } from './wiki-link';
+import { commandEnabled, selectionContext, type EditorSelectionContext } from './document-model';
+import { availableBlockConversions } from './block-commands';
+import { liveMarkdown } from './live-markdown';
+import {
+  configureMarkdownRuntime,
+  defaultCapabilities,
+  defaultEditorPreferences,
+  normalizeCopyFormat,
+  type EditorPreferences,
+  type WorkspaceCapabilities,
+} from './runtime';
+import { runtimeMarkViews } from './runtime-views';
 import { footnoteNumbers, jumpToFootnote } from './footnotes';
-import { referenceViews } from './reference-views';
-import { referencePicker, referencePickerKey, openReferencePicker } from './reference-picker';
-import { floatingPanelPosition, positionAnchoredPanel } from './panel-position';
-import type { PanelSide } from './panel-position';
-import { activateEditorPanel, announceEditorPanel, createEditorPanel, onOtherEditorPanel } from './editor-panel';
-import { confirmEntryReferenceDrop, droppedEntryReferences, entryReferenceDragType, parseReferenceUrl, referenceUrl, resolveReference } from '@tano/protocol';
-import type { ReferenceTarget, ReferenceIdentity } from '@tano/protocol';
-import type { CommentAnchor } from '@tano/protocol';
-import { commentSpansForSelection, projectCommentText, proseRangesForCommentSpans } from './comment-projection';
+import { referencePicker, referencePickerKey } from './reference-picker';
 import { captureCaretAnchor, captureVisualAnchor, visualAnchorPlugin, visualSelection } from './visual-anchor';
-import { columnResizing, isInTable } from '@milkdown/kit/prose/tables';
-import { breakTableCell, nextTableRow, tableLineAction } from './table-commands';
-import { defaultTableColumnWidth, minimumTableColumnWidth } from '@tano/protocol';
-import type { TableLayout } from '@tano/protocol';
-import { tableLayouts, tableLayoutKey, sameMarkdownContent } from './table-layout';
+import { breakTableCell, nextTableRow } from './table-commands';
+import { sameMarkdownContent, tableLayoutKey, tableLayouts } from './table-layout';
 import { tableControls } from './table-controls';
-import { TableViewport, tableViewports } from './table-viewport';
-import type { CommentGeometry } from './comment-projection';
+import { tableViewports } from './table-viewport';
 import { suggestionMarks } from './suggestion-marks';
-import type { SuggestionDecorations } from '@tano/protocol';
-import { pageSearchKey, pageSearchPlugin, proseSearchRanges } from './search';
+import { pageSearchPlugin } from './search';
+import FrontmatterPanel from './components/FrontmatterPanel.vue';
+import LinkEditorPopover from './components/LinkEditorPopover.vue';
+import BlockContextMenu from './components/BlockContextMenu.vue';
+import { createLinkPanelController } from './plugins/link-panel-controller';
+import { createEditorClipboard } from './plugins/editor-clipboard';
+import { createEditorUploads, type ImportedResource } from './plugins/editor-uploads';
+import { createInlineSourceController } from './plugins/inline-source-controller';
+import { createChineseInputController } from './plugins/chinese-input';
+import { buildEditorNodeViews } from './plugins/editor-node-views';
+import {
+  createCommentMarksPlugin,
+  createEditorDecorationsBuilder,
+  createReferenceFlashPlugin,
+} from './plugins/editor-decorations';
+import { createBlockMenuController } from './plugins/block-menu-controller';
+import { createEditorCommandsApi } from './plugins/editor-commands';
 
-interface ImportedResource {
-  url: string;
-  name: string;
-  image: boolean;
-}
+const window = useEditorWindow();
+const document = window.document;
+
 const props = withDefaults(
   defineProps<{
     modelValue: string;
@@ -180,9 +125,6 @@ const props = withDefaults(
   }>(),
   { revealMarkdown: true, showDocumentProperties: true },
 );
-const t: SlashTranslate = (message, values = []) => props.translate?.(message, values) ??
-  message.replace(/\{(\d+)\}/g, (token, index: string) =>
-    Number(index) < values.length ? String(values[Number(index)] ?? '') : token);
 
 const emit = defineEmits<{
   'update:modelValue': [value: string];
@@ -197,26 +139,63 @@ const emit = defineEmits<{
   ready: [];
   searchChange: [];
 }>();
+
 const policy = () => props.capabilities ?? defaultCapabilities;
-const referencesEnabled = () => props.referenceTargets !== undefined && commandEnabled('reference', props.enabledLevels, policy().features);
+const referencesEnabled = () =>
+  props.referenceTargets !== undefined &&
+  commandEnabled('reference', props.enabledLevels, policy().features);
 const preferences = () => props.preferences ?? defaultEditorPreferences;
 const completesTextSpacing = () => !props.readonly && preferences().completeTextSpacing === true;
-const canSpaceTextInput = (view: EditorView) => completesTextSpacing() && !view.composing && !referencePickerKey.getState(view.state);
+const canSpaceTextInput = (view: EditorView) =>
+  completesTextSpacing() && !view.composing && !referencePickerKey.getState(view.state);
 const renderMermaid = createMermaidRenderer(document);
 const defaultCopyAction = computed(() => {
   const format = normalizeCopyFormat(preferences().copyFormat);
   return format === 'markdown' ? 'copy' : `copy-${format}`;
 });
+const copyShortcutLabel =
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+    ? '⌘ + C'
+    : 'Ctrl + C';
+
 const root = ref<HTMLElement>();
+const frontmatterPanelRef = ref<InstanceType<typeof FrontmatterPanel>>();
 const emptyDocument = ref(false);
+
+let editor: Editor | undefined;
+let bridgeView: EditorView | undefined;
+let suggestionSerializer: ReturnType<typeof SerializerState.create> | undefined;
+const suggestionCodec = new SuggestionChangeCodec<Node>();
+let disposed = false;
+let unbindExtension: (() => void) | undefined;
+let lastValue = props.modelValue;
+let applying = false;
+let runtimeRevision = 0;
+let frontmatter = splitFrontmatter(props.modelValue);
+const metadata = ref(frontmatter.prefix);
+
 function isEmptyDocument(doc: Node) {
-  return doc.childCount === 1 && doc.firstChild?.type.name === 'paragraph' && doc.firstChild.content.size === 0;
+  return (
+    doc.childCount === 1 &&
+    doc.firstChild?.type.name === 'paragraph' &&
+    doc.firstChild.content.size === 0
+  );
 }
+
 /** Initialize only the unchanged empty body, through normal editing and undo. */
 function initializeBody(markdown: string, expected: string) {
-  if (!editor || !bridgeView || disposed || props.readonly ||
-      props.modelValue !== expected || lastValue !== expected || !isEmptyDocument(bridgeView.state.doc)) return false;
-  return editor.action(ctx => {
+  if (
+    !editor ||
+    !bridgeView ||
+    disposed ||
+    props.readonly ||
+    props.modelValue !== expected ||
+    lastValue !== expected ||
+    !isEmptyDocument(bridgeView.state.doc)
+  ) {
+    return false;
+  }
+  return editor.action((ctx) => {
     const doc = ctx.get(parserCtx)(markdown);
     if (!doc || isEmptyDocument(doc)) return false;
     const view = ctx.get(editorViewCtx);
@@ -225,10 +204,18 @@ function initializeBody(markdown: string, expected: string) {
       if (props.extension) {
         // The host records the semantic edit before view-only normalization can
         // mark its appended transactions as excluded from collaborative undo.
-        props.extension.apply(ctx, splitFrontmatter(expected).prefix + markdown, { addToHistory: true });
-        view.dispatch(view.state.tr.setSelection(TextSelection.atStart(view.state.doc)).scrollIntoView());
+        props.extension.apply(ctx, splitFrontmatter(expected).prefix + markdown, {
+          addToHistory: true,
+        });
+        view.dispatch(
+          view.state.tr.setSelection(TextSelection.atStart(view.state.doc)).scrollIntoView(),
+        );
       } else {
-        const tr = closeHistory(view.state.tr).replaceWith(0, view.state.doc.content.size, doc.content);
+        const tr = closeHistory(view.state.tr).replaceWith(
+          0,
+          view.state.doc.content.size,
+          doc.content,
+        );
         tr.setSelection(TextSelection.atStart(tr.doc));
         view.dispatch(tr.scrollIntoView());
         view.dispatch(closeHistory(view.state.tr));
@@ -240,437 +227,23 @@ function initializeBody(markdown: string, expected: string) {
     return true;
   });
 }
+
 function preventEditorTabNavigation(event: KeyboardEvent) {
-  if (event.key !== 'Tab' || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.key !== 'Tab' || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) {
+    return;
+  }
   const target = event.target;
-  if (!(isElement(target)) || !target.closest('.ProseMirror') ||
-      target.closest('input, select, button, a[href], [role="button"], [role="tab"]')) return;
+  if (
+    !isElement(target) ||
+    !target.closest('.ProseMirror') ||
+    target.closest('input, select, button, a[href], [role="button"], [role="tab"]')
+  ) {
+    return;
+  }
   // Run after the editor keymaps so list indentation and table navigation still work.
   event.preventDefault();
 }
-const linkModifier = ref(false);
-type LinkPanel =
-  | { kind: 'wiki'; pos: number; target: string; label: string; explicitLabel: boolean; x: number; y: number }
-  | { kind: 'link'; from: number; to: number; text: string; href: string; title: string; x: number; y: number };
-const linkPanel = shallowRef<LinkPanel | null>(null);
-const linkPanelElement = ref<HTMLElement>();
-const linkPanelFirstInput = ref<HTMLInputElement>();
-let linkPanelAnchor: Element | null = null;
-let linkPanelSide: PanelSide | undefined;
-let linkPanelWriting = false;
-let stopLinkPanel: (() => void) | undefined;
-let stopOtherLinkPanel: (() => void) | undefined;
-function closeLinkPanel() {
-  stopLinkPanel?.();
-  stopLinkPanel = undefined;
-  linkPanel.value = null;
-  linkPanelAnchor?.classList.remove('tano-editor-active');
-  linkPanelAnchor = null;
-  linkPanelSide = undefined;
-}
-function positionLinkPanel() {
-  let anchor = linkPanelAnchor;
-  const panel = linkPanel.value;
-  if (!anchor || !panel || !linkPanelElement.value) return;
-  const view = bridgeView;
-  if (view && !view.dom.contains(anchor)) {
-    anchor = [...view.dom.querySelectorAll<HTMLAnchorElement>('a[href]')].find((candidate) => {
-      if (panel.kind === 'wiki')
-        return candidate.hasAttribute('data-tano-wiki-target') && view.posAtDOM(candidate, 0) === panel.pos;
-      const range = linkMarkRange(view, candidate);
-      return range?.from === panel.from && range.to === panel.to;
-    }) ?? null;
-    if (!anchor) return closeLinkPanel();
-    linkPanelAnchor?.classList.remove('tano-editor-active');
-    linkPanelAnchor = anchor;
-    anchor.classList.add('tano-editor-active');
-  }
-  const position = floatingPanelPosition(anchor, linkPanelElement.value, 0, false, linkPanelSide);
-  linkPanelSide = position.side;
-  linkPanel.value = { ...panel, x: position.x, y: position.y };
-}
-function linkMarkRange(view: EditorView, link: Element) {
-  const pos = view.posAtDOM(link, 0);
-  for (const candidate of [pos, pos - 1]) {
-    if (candidate < 0) continue;
-    const $pos = view.state.doc.resolve(candidate);
-    const parent = $pos.parent;
-    if (!parent.inlineContent) continue;
-    const start = $pos.start();
-    let offset = 0;
-    const runs: { from: number; to: number; mark: Mark }[] = [];
-    parent.forEach((node) => {
-      const mark = node.marks.find((item) => item.type.name === 'link');
-      if (mark) runs.push({ from: start + offset, to: start + offset + node.nodeSize, mark });
-      offset += node.nodeSize;
-    });
-    const hit = runs.find((run) => run.from <= candidate && candidate < run.to);
-    if (!hit) continue;
-    let from = hit.from;
-    let to = hit.to;
-    for (let index = runs.length - 1; index >= 0; index--) {
-      const run = runs[index]!;
-      if (run.to === from && run.mark.eq(hit.mark)) from = run.from;
-    }
-    for (const run of runs) {
-      if (run.from === to && run.mark.eq(hit.mark)) to = run.to;
-    }
-    return { from, to, mark: hit.mark };
-  }
-  return null;
-}
-function openLinkPanel(view: EditorView, link: Element) {
-  if (props.readonly || props.revealMarkdown !== false) return false;
-  linkPanelSide = undefined;
-  const bounds = link.getBoundingClientRect();
-  const wikiTarget = link.getAttribute('data-tano-wiki-target');
-  if (wikiTarget !== null) {
-    const pos = view.posAtDOM(link, 0);
-    const node = view.state.doc.nodeAt(pos);
-    if (node?.type.name !== 'tano_wiki_link') return false;
-    linkPanel.value = {
-      kind: 'wiki', pos, target: String(node.attrs.target),
-      label: node.attrs.explicitLabel ? String(node.attrs.label) : '',
-      explicitLabel: !!node.attrs.explicitLabel,
-      x: bounds.left, y: bounds.bottom + 6,
-    };
-  } else {
-    const range = linkMarkRange(view, link);
-    if (!range) return false;
-    linkPanel.value = {
-      kind: 'link', from: range.from, to: range.to,
-      text: view.state.doc.textBetween(range.from, range.to),
-      href: String(range.mark.attrs.href ?? ''),
-      title: String(range.mark.attrs.title ?? ''),
-      x: bounds.left, y: bounds.bottom + 6,
-    };
-  }
-  linkPanelAnchor?.classList.remove('tano-editor-active');
-  linkPanelAnchor = link;
-  link.classList.add('tano-editor-active');
-  announceEditorPanel(view.dom, link);
-  void nextTick(() => {
-    if (linkPanelAnchor !== link || !linkPanelElement.value) return;
-    positionLinkPanel();
-    stopLinkPanel?.();
-    stopLinkPanel = activateEditorPanel({
-      panel: linkPanelElement.value, anchor: link, position: positionLinkPanel, close: closeLinkPanel,
-    });
-    linkPanelFirstInput.value?.focus();
-  });
-  return true;
-}
-function editLinkPanel(field: 'text' | 'href' | 'title' | 'target' | 'label', event: Event) {
-  const panel = linkPanel.value;
-  const value = (event.target as HTMLInputElement).value;
-  if (!panel || !editor || props.readonly) return;
-  linkPanel.value = { ...panel, [field]: value } as LinkPanel;
-  editor.action((ctx) => {
-    const view = ctx.get(editorViewCtx);
-    if (panel.kind === 'wiki') {
-      const node = view.state.doc.nodeAt(panel.pos);
-      if (node?.type.name !== 'tano_wiki_link') return closeLinkPanel();
-      const target = field === 'target' ? value : panel.target;
-      const label = field === 'label' ? value : panel.label;
-      if (!target.trim() || /[\[\]\r\n|]/.test(target) || /[\[\]\r\n|]/.test(label)) return;
-      const explicitLabel = !!label.trim();
-      view.dispatch(view.state.tr.setNodeMarkup(panel.pos, undefined, {
-        target, label: explicitLabel ? label : target, explicitLabel,
-      }));
-      return;
-    }
-    const text = field === 'text' ? value : panel.text;
-    const href = field === 'href' ? value : panel.href;
-    const title = field === 'title' ? value : panel.title;
-    const first = view.state.doc.nodeAt(panel.from);
-    if (!first?.isText) return closeLinkPanel();
-    const oldMark = first.marks.find((mark) => mark.type.name === 'link');
-    if (!oldMark) return closeLinkPanel();
-    const nextMark = oldMark.type.create({ href, title: title || null });
-    let tr = view.state.tr;
-    if (field === 'text') {
-      if (!text) return;
-      const marks = first.marks.map((mark) => mark === oldMark ? nextMark : mark);
-      tr = tr.replaceWith(panel.from, panel.to, view.state.schema.text(text, marks));
-      linkPanel.value = { ...linkPanel.value!, to: panel.from + text.length } as LinkPanel;
-    } else {
-      tr = tr.removeMark(panel.from, panel.to, oldMark).addMark(panel.from, panel.to, nextMark);
-    }
-    linkPanelWriting = true;
-    try { view.dispatch(tr); } finally { linkPanelWriting = false; }
-  });
-  void nextTick(positionLinkPanel);
-}
-function syncLinkModifier(event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey'>) {
-  linkModifier.value = event.ctrlKey || event.metaKey;
-}
-function clearLinkModifier() {
-  linkModifier.value = false;
-}
-const blockMenuElement = ref<HTMLElement>();
-const blockMenu = shallowRef<{ index: number; x: number; y: number; doc: Node; selectionMenu?: boolean } | null>(null);
-const blockConvertTrigger = ref<HTMLButtonElement>();
-const blockCopyTrigger = ref<HTMLButtonElement>();
-const blockWrapTrigger = ref<HTMLButtonElement>();
-const copyShortcutLabel = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘ + C' : 'Ctrl + C';
-const blockContainerIcons = { quote: Quote, callout: Info, toggle: ListCollapse, tabs: PanelsTopLeft, columns: Columns2 };
-const blockSubmenuKind = ref<'convert' | 'wrap' | 'copy'>('convert');
-const blockConvertElement = ref<HTMLElement>();
-const blockConvertMenu = shallowRef<{ x: number; y: number } | null>(null);
-let blockConvertCloseTimer: ReturnType<typeof setTimeout> | undefined;
-let selectionBeforeMenu: { selection: Selection; doc: Node } | null = null;
-let rightClickSelection: { selection: Selection; doc: Node } | null = null;
-let editor: Editor | undefined;
-let suggestionSerializer: ReturnType<typeof SerializerState.create> | undefined;
-const suggestionCodec = new SuggestionChangeCodec<Node>();
-let disposed = false;
-let unbindExtension: (() => void) | undefined;
-let lastValue = props.modelValue;
-let applying = false;
-let runtimeRevision = 0;
-let transitioningSource = false;
-let sourceActivationPending = false;
-let selectingWithPointer = false;
-function endPointerSelection() { selectingWithPointer = false; }
-let bridgeView: EditorView | undefined;
-type BlockSourceGroup = { id: string; original: Fragment; initial: string };
-let localSource:
-  | { kind: 'block'; id: string; original: Node; initial: string; style: Record<string, string> | null; dismissOnOutside?: boolean }
-  | { kind: 'block-group'; id: string; sources: BlockSourceGroup[] }
-  | InlineSourceSession
-  | { kind: 'footnote-label'; id: string; initial: string; createdParagraph: boolean }
-  | undefined;
-let localSourceCounter = 0;
-let frontmatter = splitFrontmatter(props.modelValue);
-const metadata = ref(frontmatter.prefix);
-const properties = computed(() => metadata.value ? frontmatterProperties(metadata.value) : []);
-const editingProperty = ref<string | null | undefined>();
-const editingRowKey = ref<string>();
-const editingRowHeight = ref(32);
-const editingRowIndex = ref(0);
-const editingOrder = ref<string[]>([]);
-const propertyOrder = ref<'source' | 'name'>('source');
-const propertyNameCollator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' });
-const visibleProperties = computed(() => {
-  const rows = [...(properties.value ?? [])];
-  if (editingProperty.value !== undefined) {
-    const order = new Map(editingOrder.value.map((name, index) => [name, index]));
-    rows.sort((left, right) => (order.get(left.name) ?? Infinity) - (order.get(right.name) ?? Infinity));
-  } else if (propertyOrder.value === 'name') {
-    rows.sort((left, right) => propertyNameCollator.compare(left.name, right.name));
-  }
-  if (editingProperty.value === null) {
-    rows.splice(Math.min(editingRowIndex.value, rows.length), 0, { name: '', value: '', kind: 'text' });
-  } else if (editingProperty.value !== undefined) {
-    const currentIndex = rows.findIndex((property) => property.name === editingProperty.value);
-    if (currentIndex !== -1) {
-      const [current] = rows.splice(currentIndex, 1);
-      rows.splice(Math.min(editingRowIndex.value, rows.length), 0, current!);
-    }
-  }
-  return rows;
-});
-const frontmatterPanel = ref<HTMLDetailsElement>();
-const frontmatterContent = ref<HTMLElement>();
-const panelExpanded = ref(false);
-let panelAnimation: Animation | undefined;
-watch(frontmatterPanel, (panel) => { panelExpanded.value = !!panel?.open; }, { flush: 'post' });
 
-// Document-property motion. Everything is layout-driven (heights animate), so
-// the rows below, and the document body under the panel, glide along instead
-// of jumping. Only user-initiated changes animate: switching documents swaps
-// the rows silently.
-let rowMotionUntil = 0;
-let rowMotionMutedUntil = 0;
-const armRowMotion = () => {
-  if (performance.now() < rowMotionMutedUntil) return;
-  rowMotionUntil = performance.now() + 700;
-};
-/** Pressing the panel heading blurs an open row editor first, which would
- * play the row/button collapse a moment before the panel's own collapse. The
- * panel animation already covers it, so those inner changes apply silently. */
-function muteRowMotion() {
-  rowMotionMutedUntil = performance.now() + 600;
-  rowMotionUntil = 0;
-}
-function enterRow(element: Element, done: () => void) {
-  if (performance.now() < rowMotionUntil) collapseElement(element as HTMLElement, true, done);
-  else done();
-}
-function leaveRow(element: Element, done: () => void) {
-  if (performance.now() >= rowMotionUntil) { done(); return; }
-  (element as HTMLElement).dataset.leaving = '1';
-  collapseElement(element as HTMLElement, false, done);
-}
-function boxHeight(element: HTMLElement) {
-  const style = getComputedStyle(element);
-  const height = element.getBoundingClientRect().height;
-  return style.boxSizing === 'border-box' ? height
-    : Math.max(0, height - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom));
-}
-/** Open/close the whole panel with a height + fade spring. Interruptible:
- * reversing mid-way continues from the current visual height. */
-function setPanelOpen(open: boolean) {
-  const panel = frontmatterPanel.value, content = frontmatterContent.value;
-  if (!panel) return;
-  panelExpanded.value = open;
-  if (!content || !canAnimate(panel) || !canAnimate(content)) { panel.open = open; return; }
-  const style = getComputedStyle(content);
-  const zero = { height: '0px', paddingTop: '0px', opacity: 0 };
-  const from = panel.open
-    ? { height: `${boxHeight(content)}px`, paddingTop: style.paddingTop, opacity: Number(style.opacity) }
-    : zero;
-  panelAnimation?.cancel();
-  if (open) panel.open = true;
-  const natural = getComputedStyle(content);
-  const full = { height: `${boxHeight(content)}px`, paddingTop: natural.paddingTop, opacity: 1 };
-  const animation = content.animate(open ? [from, full] : [from, zero], open
-    ? { duration: MOTION_DURATION.snappy, easing: spring('smooth') }
-    : { duration: MOTION_DURATION.exit + 110, easing: EASE_EXIT, fill: 'forwards' });
-  panelAnimation = animation;
-  const previousOverflow = content.style.overflow;
-  content.style.overflow = 'clip';
-  const release = () => {
-    if (panelAnimation === animation) panelAnimation = undefined;
-    content.style.overflow = previousOverflow;
-  };
-  animation.addEventListener('finish', () => {
-    release();
-    // Hide first, then drop the held end state, so the full content can never flash back.
-    if (!open && !panelExpanded.value) { panel.open = false; animation.cancel(); }
-  });
-  animation.addEventListener('cancel', release);
-}
-function onPanelHeadingClick(event: MouseEvent) {
-  event.preventDefault();
-  setPanelOpen(!panelExpanded.value);
-}
-// A row whose height changes (edit expands a textarea, a type switch, a
-// validation message) animates itself; rows after it follow through layout.
-let editingPropertyBase: string | null = null;
-let activatingProperty = false;
-const propertyName = ref('');
-const editingPropertyField = ref<'name' | 'value'>('value');
-const propertyKind = ref<FrontmatterValueKind>('text');
-const propertyInput = ref('');
-const propertyError = ref('');
-const propertyErrorField = ref<'name' | 'value'>('value');
-const typeMenuProperty = ref<string | null | undefined>();
-const propertyLayoutSignature = computed(() => [
-  visibleProperties.value.map((property) => property.name).join('\u0000'),
-  String(editingProperty.value),
-  editingPropertyField.value,
-  propertyKind.value,
-  Math.min(12, propertyInput.value.split('\n').length),
-  propertyError.value,
-].join('\u0001'));
-watch(propertyLayoutSignature, () => {
-  const panel = frontmatterPanel.value;
-  if (!panel?.open || !canAnimate(panel) || performance.now() < rowMotionMutedUntil) return;
-  const before = new Map<HTMLElement, number>();
-  for (const row of panel.querySelectorAll<HTMLElement>('.frontmatter-property:not([data-leaving])'))
-    before.set(row, row.getBoundingClientRect().height);
-  void nextTick(() => {
-    const rows = [...before].filter(([row]) => row.isConnected && !row.dataset.leaving);
-    for (const [row] of rows) settleHeight(row);
-    const clip = typeMenuProperty.value === undefined;
-    for (const [row, from] of rows) resizeHeight(row, from, row.getBoundingClientRect().height, { clip });
-  });
-}, { flush: 'pre' });
-const propertyTypeOptions = [
-  { kind: 'text', get label() { return t('文本'); }, icon: AlignLeft },
-  { kind: 'number', get label() { return t('数字'); }, icon: Hash },
-  { kind: 'boolean', get label() { return t('复选框'); }, icon: CheckSquare2 },
-  { kind: 'date', get label() { return t('日期'); }, icon: CalendarDays },
-  { kind: 'datetime', get label() { return t('日期和时间'); }, icon: CalendarClock },
-  { kind: 'list', get label() { return t('列表'); }, icon: List },
-  { kind: 'object', get label() { return t('对象'); }, icon: Braces },
-  { kind: 'null', get label() { return t('空值'); }, icon: CircleHelp },
-] as const;
-function currentPropertyKind(name: string): FrontmatterValueKind {
-  return editingProperty.value === name || (editingProperty.value === null && !name)
-    ? propertyKind.value
-    : frontmatterValue(metadata.value, name)?.kind ?? 'text';
-}
-function propertyTypeIcon(name: string) {
-  return propertyTypeOptions.find((option) => option.kind === currentPropertyKind(name))?.icon ?? AlignLeft;
-}
-function editProperty(name: string | null, focus: 'name' | 'value' | false = 'value') {
-  if (props.readonly || properties.value === null) return;
-  if (editingProperty.value !== undefined && editingProperty.value !== name) {
-    finishProperty();
-    if (editingProperty.value !== undefined) return;
-  }
-  const current = name === null ? null : frontmatterValue(metadata.value, name);
-  if (name !== null && !current) return;
-  armRowMotion();
-  editingOrder.value = visibleProperties.value.map((property) => property.name);
-  const rowIndex = name === null ? visibleProperties.value.length
-    : visibleProperties.value.findIndex((property) => property.name === name);
-  editingRowIndex.value = rowIndex < 0 ? visibleProperties.value.length : rowIndex;
-  const row = [...(frontmatterPanel.value?.querySelectorAll<HTMLElement>('.frontmatter-property') ?? [])]
-    .find((element) => element.dataset.propertyName === name);
-  editingRowHeight.value = row?.offsetHeight || 32;
-  editingRowKey.value = name ?? '__new__';
-  activatingProperty = true;
-  editingProperty.value = name;
-  editingPropertyField.value = name === null || focus !== 'value' ? 'name' : 'value';
-  propertyName.value = name ?? '';
-  propertyKind.value = current?.kind ?? 'text';
-  propertyInput.value = current?.value ?? '';
-  editingPropertyBase = current ? JSON.stringify(current) : null;
-  propertyError.value = '';
-  void nextTick(() => {
-    if (name === null && frontmatterPanel.value && !panelExpanded.value) setPanelOpen(true);
-    if (focus) frontmatterPanel.value?.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
-      `.frontmatter-row-editor ${name === null || focus === 'name' ? '.frontmatter-name-input' : '.frontmatter-value-editor :is(input, textarea, select)'}`,
-    )?.focus();
-    activatingProperty = false;
-  });
-}
-async function addDocumentProperty() {
-  if (props.readonly || !props.showDocumentProperties || properties.value === null) return;
-  editProperty(null);
-  await nextTick();
-  frontmatterPanel.value?.scrollIntoView?.({ block: 'nearest' });
-}
-async function editPropertyValue() {
-  activatingProperty = true;
-  editingPropertyField.value = 'value';
-  await nextTick();
-  frontmatterPanel.value?.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
-    '.frontmatter-value-editor :is(input, textarea, select)',
-  )?.focus();
-  activatingProperty = false;
-}
-function finishProperty() {
-  armRowMotion();
-  editingProperty.value = undefined;
-  typeMenuProperty.value = undefined;
-  propertyError.value = '';
-}
-function finishPropertyOnKey(event: KeyboardEvent) {
-  if (event.isComposing || event.keyCode === 229 ||
-    (event.target as HTMLInputElement & { composing?: boolean }).composing) return;
-  event.preventDefault();
-  event.stopPropagation();
-  finishProperty();
-}
-function onPropertyFocusOut(event: FocusEvent) {
-  if (activatingProperty) return;
-  if (event.relatedTarget instanceof globalThis.Node &&
-    (event.currentTarget as HTMLElement).contains(event.relatedTarget)) return;
-  finishProperty();
-}
-function dismissPropertyTypeMenu(event: PointerEvent) {
-  if (typeMenuProperty.value === undefined) return;
-  const panel = frontmatterPanel.value;
-  const menu = panel?.querySelector('.frontmatter-type-menu');
-  const trigger = panel?.querySelector('.frontmatter-property-type[aria-expanded="true"]');
-  const path = event.composedPath();
-  if ((menu && path.includes(menu)) || (trigger && path.includes(trigger))) return;
-  typeMenuProperty.value = undefined;
-}
 function publishFrontmatter(markdown: string) {
   if (props.extension) {
     props.extension.updateMetadata(markdown);
@@ -681,1479 +254,186 @@ function publishFrontmatter(markdown: string) {
     emit('update:modelValue', markdown);
   }
 }
-function syncProperty(event?: Event) {
-  if (event instanceof InputEvent && event.isComposing) return;
-  if (props.readonly || editingProperty.value === undefined) return;
-  if (editingProperty.value === null && !propertyName.value.trim()) return;
-  try {
-    if (editingProperty.value !== null &&
-      JSON.stringify(frontmatterValue(metadata.value, editingProperty.value)) !== editingPropertyBase)
-      throw new Error('属性已被其他修改更新，请重新打开编辑');
-    const markdown = updateFrontmatterProperty(
-      lastValue,
-      editingProperty.value,
-      propertyName.value,
-      propertyKind.value,
-      propertyInput.value,
-    );
-    publishFrontmatter(markdown);
-    editingProperty.value = propertyName.value.trim();
-    editingPropertyBase = JSON.stringify(frontmatterValue(splitFrontmatter(markdown).prefix, editingProperty.value));
-    propertyError.value = '';
-  } catch (error) {
-    propertyError.value = error instanceof Error ? error.message : String(error);
-    propertyErrorField.value = isElement(event?.target) && event.target.classList.contains('frontmatter-name-input')
-      ? 'name' : 'value';
-  }
-}
-function convertedPropertyInput(kind: FrontmatterValueKind): string {
-  const value = propertyInput.value;
-  if (kind === 'number') return Number.isFinite(Number(value)) && value.trim() ? value : '0';
-  if (kind === 'boolean') return value === 'true' ? 'true' : 'false';
-  if (kind === 'date') return /^\d{4}[-/]\d{2}[-/]\d{2}/.test(value)
-    ? value.slice(0, 10).replaceAll('/', '-') : new Date().toISOString().slice(0, 10);
-  if (kind === 'datetime') {
-    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) return value;
-    const date = /^\d{4}[-/]\d{2}[-/]\d{2}/.test(value)
-      ? value.slice(0, 10).replaceAll('/', '-') : new Date().toISOString().slice(0, 10);
-    return `${date}T00:00`;
-  }
-  if (kind === 'list' || kind === 'object') {
-    try {
-      const parsed: unknown = JSON.parse(value);
-      if (kind === 'list' && Array.isArray(parsed)) return JSON.stringify(parsed, null, 2);
-      if (kind === 'object' && parsed && typeof parsed === 'object' && !Array.isArray(parsed))
-        return JSON.stringify(parsed, null, 2);
-    } catch { /* Use a valid empty collection. */ }
-    return kind === 'list' ? JSON.stringify(value ? [value] : [], null, 2) : '{}';
-  }
-  return kind === 'null' ? '' : value;
-}
-function openPropertyTypeMenu(name: string | null) {
-  if (props.readonly) return;
-  if (editingProperty.value !== name) editProperty(name, false);
-  if (editingProperty.value !== name) return;
-  typeMenuProperty.value = typeMenuProperty.value === name ? undefined : name;
-}
-function changePropertyType(kind: FrontmatterValueKind) {
-  armRowMotion();
-  editingPropertyField.value = 'value';
-  propertyInput.value = convertedPropertyInput(kind);
-  propertyKind.value = kind;
-  typeMenuProperty.value = undefined;
-  syncProperty();
-}
-function deleteProperty() {
-  if (props.readonly || editingProperty.value == null) return;
-  try {
-    if (JSON.stringify(frontmatterValue(metadata.value, editingProperty.value)) !== editingPropertyBase)
-      throw new Error('属性已被其他修改更新，请重新打开编辑');
-    armRowMotion();
-    publishFrontmatter(removeFrontmatterProperty(lastValue, editingProperty.value));
-    editingProperty.value = undefined;
-    typeMenuProperty.value = undefined;
-    propertyError.value = '';
-  } catch (error) {
-    propertyError.value = error instanceof Error ? error.message : String(error);
-  }
-}
-const uploads = new PluginKey<DecorationSet>('tano-uploads');
-const editableInlineAtoms = new Set([
-  'tano_reference',
-  'tano_wiki_link',
-  'math_inline',
-  'footnote_reference',
-  'html',
-  'image',
-]);
-function isEditableInlineAtom(node: Node, parent: Node) {
-  return (
-    node.isInline &&
-    editableInlineAtoms.has(node.type.name) &&
-    !(node.type.name === 'image' && parent.type.name === 'paragraph' && parent.childCount === 1)
-  );
-}
 
-async function importInto(
-  ctx: Ctx,
-  view: EditorView,
-  file: File,
-  position: number,
-  requireImage: boolean,
-) {
-  if (!props.importFile || props.readonly) return;
-  const id = crypto.randomUUID();
-  view.dispatch(
-    view.state.tr.setMeta(uploads, { add: { id, position } }).setMeta('addToHistory', false),
-  );
-  try {
-    const resource = await props.importFile(file, requireImage);
-    if (disposed || props.readonly) return;
-    const placeholder = uploads
-      .getState(view.state)
-      ?.find(undefined, undefined, (spec) => spec.id === id)[0];
-    if (!placeholder) throw new Error('插入位置已被删除；附件已保存在 assets 文件夹');
-    const node = resource.image
-      ? imageSchema.type(ctx).create({ src: resource.url, alt: resource.name })
-      : commandEnabled('file', props.enabledLevels, policy().features)
-        ? view.state.schema.nodes.tano_file!.create({ title: resource.name, url: resource.url })
-        : view.state.schema.text(resource.name, [
-            view.state.schema.marks.link!.create({ href: resource.url }),
-          ]);
-    view.dispatch(
-      view.state.tr
-        .insert(placeholder.from, node)
-        .setMeta(uploads, { remove: id })
-        .scrollIntoView(),
-    );
-  } catch (error) {
-    if (!disposed) emit('error', String(error));
-  } finally {
-    if (!disposed)
-      view.dispatch(view.state.tr.setMeta(uploads, { remove: id }).setMeta('addToHistory', false));
-  }
-}
-function importFiles(files: File[]) {
-  editor?.action((ctx) => {
-    const view = ctx.get(editorViewCtx);
-    for (const file of files.slice(0, 10))
-      void importInto(ctx, view, file, view.state.selection.from, false);
-  });
-}
+const linkPanel = createLinkPanelController({
+  window,
+  getEditor: () => editor,
+  getView: () => bridgeView,
+  readonly: () => !!props.readonly,
+  revealMarkdown: () => props.revealMarkdown !== false,
+});
 
-function containsEmbeddedImage(data: DataTransfer | null) {
-  return /<img\b[^>]*\bsrc\s*=\s*["']?data:image\//i.test(
-    typeof data?.getData === 'function' ? data.getData('text/html') : '',
-  );
-}
+const editorClipboard = createEditorClipboard({
+  document,
+  readonly: () => !!props.readonly,
+  preferences,
+  referenceTargets: () => props.referenceTargets ?? [],
+  onError: (message) => emit('error', message),
+});
 
-function unavailableImageLabel(reference: string, alt: unknown) {
-  if (typeof alt === 'string' && alt) return alt;
-  if (/^data:image\//i.test(reference)) return '剪贴板内嵌图片';
-  return reference.length > 160 ? `${reference.slice(0, 157)}…` : reference;
-}
+const editorUploads = createEditorUploads({
+  document,
+  getEditor: () => editor,
+  isDisposed: () => disposed,
+  readonly: () => !!props.readonly,
+  enabledLevels: () => props.enabledLevels,
+  policy,
+  referencesEnabled,
+  referenceTargets: () => props.referenceTargets ?? [],
+  importFile: () => props.importFile,
+  onError: (message) => emit('error', message),
+});
 
-function sourceOffset(source: string, before: string, first: string) {
-  if (!before) return first ? Math.max(0, source.indexOf(first)) : 0;
-  let offset = 0;
-  for (const character of before) {
-    const found = source.indexOf(character, offset);
-    if (found < 0) return source.length;
-    offset = found + character.length;
-  }
-  return offset;
-}
+const inlineSource = createInlineSourceController({
+  getEditor: () => editor,
+  getView: () => bridgeView,
+  isDisposed: () => disposed,
+  readonly: () => !!props.readonly,
+  revealMarkdown: () => props.revealMarkdown !== false,
+  policy,
+  preferences,
+  referencesEnabled,
+  referenceTargets: () => props.referenceTargets ?? [],
+  isApplying: () => applying,
+  setApplying: (value) => {
+    applying = value;
+  },
+  onError: (message) => emit('error', message),
+  onOpenWikiLink: (target) => emit('openWikiLink', target),
+  onOpenReference: (identity) => emit('openReference', identity),
+  onOpenLink: (href) => emit('openLink', href),
+});
 
-function findCurrentSource(state: EditorState) {
-  if (!localSource) return undefined;
-  const ids = new Set(localSource.kind === 'block-group' ? localSource.sources.map(source => source.id) : [localSource.id]);
-  let found: { node: Node; pos: number } | undefined;
-  state.doc.descendants((node, pos) => {
-    if (
-      ['tano_live_source', 'tano_live_source_inline'].includes(node.type.name) &&
-      ids.has(node.attrs.id)
-    ) {
-      // Several disjoint block groups can stay open together. Prefer the one
-      // containing the selection so moving between their sources keeps them open.
-      if (!found || (state.selection.from >= pos + 1 && state.selection.to < pos + node.nodeSize))
-        found = { node, pos };
-      return false;
-    }
-  });
-  return found;
-}
+const chineseInput = createChineseInputController({
+  readonly: () => !!props.readonly,
+  isDisposed: () => disposed,
+  preferences,
+  policy,
+  canSpaceTextInput,
+  wrapSelectedInlineSource: inlineSource.wrapSelectedInlineSource,
+  insertEmptyCodeSourceText: inlineSource.insertEmptyCodeSourceText,
+  fillEmptyRenderedCodeLine: inlineSource.fillEmptyRenderedCodeLine,
+  insertPartialEmphasisSource: inlineSource.insertPartialEmphasisSource,
+});
 
-function currentSource(view: EditorView) {
-  return findCurrentSource(view.state);
-}
+const blockMenu = createBlockMenuController({
+  window,
+  document,
+  root,
+  getEditor: () => editor,
+  getView: () => bridgeView,
+  isDisposed: () => disposed,
+  readonly: () => !!props.readonly,
+  enabledLevels: () => props.enabledLevels,
+  policy,
+  defaultCopyAction,
+  clipboardContent: editorClipboard.clipboardContent,
+  selectedBlocksSourceTransaction: inlineSource.selectedBlocksSourceTransaction,
+  blockNodeSourceTransaction: inlineSource.blockNodeSourceTransaction,
+  setLocalSourceDismissOnOutside: inlineSource.setLocalSourceDismissOnOutside,
+  setApplying: (value) => {
+    applying = value;
+  },
+  setTransitioningSource: inlineSource.setTransitioningSource,
+  onError: (message) => emit('error', message),
+});
 
-function insertEmptyCodeSourceText(view: EditorView, from: number, to: number, text: string) {
-  if (!text || props.readonly || localSource?.kind !== 'block' ||
-      localSource.original.type.name !== 'code_block') return false;
-  const current = currentSource(view);
-  if (current?.node.attrs.origin !== 'code_block') return false;
-  const bodyOffset = emptyFencedCodeBodyOffset(current.node.textContent);
-  if (bodyOffset === null || from !== current.pos + 1 + bodyOffset || to !== from) return false;
-  const tr = view.state.tr.insertText(`${text}\n`, from, to);
-  tr.setSelection(TextSelection.create(tr.doc, from + text.length));
-  view.dispatch(tr);
-  return true;
-}
+const editorCommands = createEditorCommandsApi({
+  getEditor: () => editor,
+  getView: () => bridgeView,
+  isDisposed: () => disposed,
+  readonly: () => !!props.readonly,
+  revealMarkdown: () => props.revealMarkdown !== false,
+  enabledLevels: () => props.enabledLevels,
+  policy,
+  referencesEnabled,
+  extension: () => props.extension,
+  getModelValue: () => props.modelValue,
+  getLastValue: () => lastValue,
+  getFrontmatterPrefix: () => frontmatter.prefix,
+  getCommentAnchors: () => props.commentAnchors,
+  getLocalSource: inlineSource.getLocalSource,
+  toggleSourceSyntax: inlineSource.toggleSourceSyntax,
+  selectedSourceTransaction: inlineSource.selectedSourceTransaction,
+  blockNodeSourceTransaction: inlineSource.blockNodeSourceTransaction,
+  isApplying: () => applying,
+  setApplying: (value) => {
+    applying = value;
+  },
+  onError: (message) => emit('error', message),
+});
 
-function fillEmptyRenderedCodeLine(view: EditorView, from: number, to: number, text: string) {
-  if (!text || text === '\n' || props.readonly || props.revealMarkdown !== false || from !== to)
-    return false;
-  const $from = view.state.doc.resolve(from);
-  if ($from.parent.type.name !== 'code_block' || $from.parent.textContent !== '\n' ||
-      $from.parentOffset !== 0) return false;
-  view.dispatch(view.state.tr.insertText(text, from, from + 1));
-  return true;
-}
+const buildDocumentDecorations = createEditorDecorationsBuilder({
+  getEditor: () => editor,
+  getRuntimeRevision: () => runtimeRevision,
+  readonly: () => !!props.readonly,
+  revealMarkdown: () => props.revealMarkdown !== false,
+  policy,
+  customCalloutIcon: () => props.customCalloutIcon,
+  extension: () => props.extension,
+  inlineSourceDestination: inlineSource.inlineSourceDestination,
+});
 
-let chineseCompositionRevision = 0;
-function chineseInputSettings() {
-  return normalizeChineseInput(preferences().chineseInput, preferences().selectionWrapping);
-}
-function mappedChineseInput(text: string) {
-  return mapChineseInput(text, chineseInputSettings());
-}
-let replayingChineseSyntax = false;
-function insertChineseSyntax(view: EditorView, from: number, to: number, text: string, committed = false) {
- if (replayingChineseSyntax || props.readonly || view.composing || (!committed && from !== to) || !view.state.selection.empty) return false;
- const resolved = view.state.doc.resolve(from);
- if (!resolved.parent.isTextblock || resolved.parent.type.spec.code || /math|tano_live_source/.test(resolved.parent.type.name) || resolved.marks().some(m => m.type.spec.code)) return false;
- const before = resolved.parent.textBetween(0, resolved.parentOffset, '', '\ufffc');
- const edit = chineseSyntaxEdit(before, text, chineseInputSettings(), 'visual');
- if (!edit) return false;
- const start = from - edit.deleteBefore;
- const prefix = edit.insert.slice(0, -1), tail = edit.insert.slice(-1);
- replayingChineseSyntax = true;
- try {
-  view.dispatch(closeHistory(view.state.tr).insertText(prefix, start, committed ? to : from));
-  const pos = start + prefix.length;
-  const handled = view.someProp('handleTextInput', handler => handler(view, pos, pos, tail, () => view.state.tr.insertText(tail, pos)));
-  if (!handled) view.dispatch(view.state.tr.insertText(tail, pos));
- } finally { replayingChineseSyntax = false; }
- return true;
-}
-function insertChineseInput(ctx: Ctx, view: EditorView, from: number, to: number, text: string) {
-  if (insertChineseSyntax(view, from, to, text)) return true;
-  const mapped = mappedChineseInput(text);
-  return mapped !== text && insertMappedChineseInput(ctx, view, from, to, mapped);
-}
-function insertMappedChineseInput(ctx: Ctx, view: EditorView, from: number, to: number, mapped: string) {
-  if (props.readonly || view.composing) return false;
-  if (!wrapSelectedInlineSource(ctx, view, from, to, mapped) &&
-      !insertEmptyCodeSourceText(view, from, to, mapped) &&
-      !fillEmptyRenderedCodeLine(view, from, to, mapped) &&
-      !insertPartialEmphasisSource(ctx, view, from, to, mapped)) {
-    const tr = view.state.tr.insertText(mapped, from, to);
-    if (canSpaceTextInput(view)) markTextSpacingInput(tr, from, mapped);
-    view.dispatch(tr);
-  }
-  return true;
-}
-function chineseInputEventTarget(event: Event) {
-  return !(isElement(event.target) && event.target.closest('input, textarea, [contenteditable="false"]'));
-}
-function beforeChineseInput(ctx: Ctx, view: EditorView, event: InputEvent) {
-  if (!chineseInputEventTarget(event)) return false;
-  if (!event.isComposing && event.inputType === 'insertText' && event.data && insertChineseSyntax(view, view.state.selection.from, view.state.selection.to, event.data)) { event.preventDefault(); return true; }
-  const mapped = mappedChineseBeforeInput(event, chineseInputSettings());
-  if (mapped === null) return false;
-  const ranges = event.getTargetRanges?.() ?? [];
-  if (ranges.length > 1) return false;
-  let { from, to } = view.state.selection;
-  if (ranges.length) {
-    const range = ranges[0]!;
-    if (!view.dom.contains(range.startContainer) || !view.dom.contains(range.endContainer)) return false;
-    from = view.posAtDOM(range.startContainer, range.startOffset);
-    to = view.posAtDOM(range.endContainer, range.endOffset);
-  }
-  if (from < 0 || to < from || to > view.state.doc.content.size) return false;
-  if (!insertMappedChineseInput(ctx, view, from, to, mapped)) return false;
-  event.preventDefault();
-  return true;
-}
-function finishChineseComposition(view: EditorView, text: string) {
-  const revision = ++chineseCompositionRevision;
-  if (!text) return;
-  // Run after the editor's composition-end flush, within the same paint boundary.
-  // A timer can leave the committed Chinese glyph visible for a frame in WebView2.
-  queueMicrotask(() => queueMicrotask(() => {
-    if (revision !== chineseCompositionRevision || disposed || view.isDestroyed || props.readonly || view.composing) return;
-    const { selection } = view.state;
-    if (!selection.empty || selection.$from.parentOffset < text.length) return;
-    const to = selection.from, from = to - text.length;
-    if (view.state.doc.textBetween(from, to) === text)
-      insertChineseInputFromComposition(view, from, to, text);
-  }));
-}
-function insertChineseInputFromComposition(view: EditorView, from: number, to: number, text: string) {
-  if (insertChineseSyntax(view, from, to, text, true)) return;
-  const mapped = mappedChineseInput(text);
-  const tr = mapped !== text ? view.state.tr.insertText(mapped, from, to) : view.state.tr;
-  if (canSpaceTextInput(view)) completeProseSpacing(tr, from, from + mapped.length, policy().features);
-  if (tr.docChanged) view.dispatch(tr);
-}
+const referenceFlash = createReferenceFlashPlugin();
+const commentMarks = createCommentMarksPlugin(() => props.commentAnchors);
 
-function wrapSelectedInlineSource(ctx: Ctx, view: EditorView, from: number, to: number, text: string) {
-  if (props.readonly || view.composing || from === to) return false;
-  const state = view.state;
-  const $from = state.doc.resolve(from), $to = state.doc.resolve(to);
-  const live = $from.parent.type.name === 'tano_live_source_inline';
-  if (!$from.sameParent($to) || !$from.parent.inlineContent ||
-      ($from.parent.type.spec.code && !live)) return false;
-  if (live && ($from.parent.attrs.origin === 'math_inline' ||
-      sourceStyleRanges($from.parent.textContent).some(range =>
-        ['code', 'math'].includes(range.style) && range.from < $to.parentOffset && range.to > $from.parentOffset))) return false;
-  let protectedContent = false;
-  state.doc.nodesBetween(from, to, node => {
-    if (node.isInline && ((!node.isText && node.type.name !== 'tano_live_source_inline') ||
-        node.marks.some(mark => mark.type.spec.code))) protectedContent = true;
-  });
-  if (protectedContent) return false;
-  const selected = state.doc.textBetween(from, to);
-  const wrap = selectionWrap(selected, text, workspaceWrapping(preferences().selectionWrapping, policy().features),
-    $from.parent.textContent.slice(0, $from.parentOffset), $to.parent.textContent.slice($to.parentOffset));
-  if (!wrap || (wrap.prefix === '$' && !policy().features.math)) return false;
-  if (!wrap.prefix) return true;
-  const backward = state.selection.anchor > state.selection.head;
-  if (live) {
-    const tr = state.tr.insertText(wrap.suffix, to).insertText(wrap.prefix, from);
-    tr.setSelection(TextSelection.create(tr.doc,
-      (backward ? to : from) + wrap.prefix.length, (backward ? from : to) + wrap.prefix.length));
-    view.dispatch(tr);
-    return true;
-  }
-  const original = $from.parent.cut(from - $from.start(), to - $from.start()).content;
-  if (props.revealMarkdown === false) {
-    const markName = ({ '*': 'strong', '**': 'strong', '_': 'strong', '__': 'strong',
-      '~': wrap.prefix === '~' && preferences().selectionWrapping?.strike === false ? 'subscript' : 'strike_through', '~~': 'strike_through',
-      '=': 'highlight', '==': 'highlight', '^': 'superscript', '+': 'underline', '%': 'inline_comment',
-    } as Record<string, string>)[text];
-    let alreadyWrapped = !!markName;
-    original.forEach(node => { alreadyWrapped &&= node.marks.some(mark => mark.type.name === markName); });
-    if (alreadyWrapped) return true;
-  }
-  const paragraph = state.schema.nodes.paragraph!.create(null, original);
-  const selectedSource = wrap.literal ? selected : ctx.get(serializerCtx)(state.schema.nodes.doc!.create(null, [paragraph]))
-    .replace(/\n+$/, '');
-  if (!selectedSource || /[\r\n]/.test(selectedSource)) return false;
-  const source = wrap.prefix + selectedSource + wrap.suffix;
-  if (props.revealMarkdown === false) {
-    const parsed = ctx.get(parserCtx)(source)?.firstChild;
-    if (!parsed || parsed.type.name !== 'paragraph') return false;
-    const tr = state.tr.replaceWith(from, to, parsed.content);
-    tr.setSelection(TextSelection.create(tr.doc, backward ? from + parsed.content.size : from,
-      backward ? from : from + parsed.content.size));
-    view.dispatch(tr);
-    return true;
-  }
-  const id = sourceId();
-  const node = liveInlineSource.type(ctx).create(
-    { id, origin: wrap.prefix === '$' ? 'math_inline' : '' }, state.schema.text(source),
-  );
-  const selectionFrom = from + 1 + wrap.prefix.length;
-  const selectionTo = selectionFrom + selectedSource.length;
-  localSource = { kind: 'inline', id, original, initial: selectedSource };
-  const tr = state.tr.replaceWith(from, to, node);
-  tr.setSelection(TextSelection.create(tr.doc, backward ? selectionTo : selectionFrom, backward ? selectionFrom : selectionTo));
-  view.dispatch(tr);
-  return true;
-}
-
-type InlineSourceDestination =
-  | { kind: 'wiki'; target: string }
-  | { kind: 'reference'; identity: ReferenceIdentity }
-  | { kind: 'link'; href: string };
-
-function inlineSourceDestination(ctx: Ctx, source: string): InlineSourceDestination | null {
-  let parsed: Node | null;
-  try {
-    parsed = ctx.get(parserCtx)(source);
-  } catch {
-    return null;
-  }
-  if (parsed?.childCount !== 1 || parsed.firstChild?.type.name !== 'paragraph') return null;
-  let destination: InlineSourceDestination | null = null;
-  parsed.firstChild.forEach((node) => {
-    if (destination) return;
-    if (node.type.name === 'tano_wiki_link') {
-      destination = { kind: 'wiki', target: String(node.attrs.target) };
-    } else if (node.type.name === 'tano_reference' && referencesEnabled()) {
-      const identity = parseReferenceUrl(String(node.attrs.url));
-      if (identity && 'target' in resolveReference(props.referenceTargets ?? [], identity))
-        destination = { kind: 'reference', identity };
-    } else if (node.isText) {
-      const link = node.marks.find((mark) => mark.type.name === 'link');
-      const href = sanitizeLinkHref(String(link?.attrs.href ?? ''));
-      if (href) destination = { kind: 'link', href };
-    }
-  });
-  return destination;
-}
-
-function openInlineSourceLink(ctx: Ctx, view: EditorView, event: MouseEvent) {
-  if (!(isElement(event.target))) return false;
-  const sourceDom = event.target.closest('[data-tano-live-inline-source]');
-  if (!sourceDom || !view.dom.contains(sourceDom)) return false;
-  const source = currentSource(view);
-  if (source?.node.type.name !== 'tano_live_source_inline') return false;
-  const destination = inlineSourceDestination(ctx, source.node.textContent);
-  if (!destination) return false;
-  if (destination.kind === 'wiki') emit('openWikiLink', destination.target);
-  else if (destination.kind === 'reference') emit('openReference', destination.identity);
-  else emit('openLink', destination.href);
-  return true;
-}
-
-function sourceId() {
-  return typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `local-${++localSourceCounter}`;
-}
-
-function inlineAtomSourceRange(view: EditorView, event: MouseEvent | KeyboardEvent) {
-  if (!(isElement(event.target))) return null;
-  if (event.target.closest('button, input, textarea')) return null;
-  const atom = event.target.closest(
-    'a[data-tano-wiki-target], .math-inline, sup[data-type="footnote_reference"], .tano-html-node, .tano-image',
-  );
-  if (!atom || !view.dom.contains(atom)) return null;
-  const pos = view.posAtDOM(atom, 0);
-  for (const candidate of [pos, pos - 1]) {
-    const node = view.state.doc.nodeAt(candidate);
-    if (node && isEditableInlineAtom(node, view.state.doc.resolve(candidate).parent))
-      return { from: candidate, to: candidate + node.nodeSize };
-  }
-  const selection = view.state.selection;
-  if (
-    selection instanceof NodeSelection &&
-    isEditableInlineAtom(selection.node, selection.$from.parent)
-  )
-    return { from: selection.from, to: selection.to };
-  return null;
-}
-
-function inlineSourceTransaction(
-  ctx: Ctx,
-  state: EditorState,
-  range: { from: number; to: number },
-  tr: Transaction = state.tr,
-) {
-  const $from = tr.doc.resolve(range.from);
-  const original = $from.parent.cut(range.from - $from.start(), range.to - $from.start()).content;
-  const codec = inlineSourceCodec(state.schema, ctx.get(parserCtx), ctx.get(serializerCtx));
-  const source = codec.serialize(original);
-  const before = tr.doc.textBetween(
-    range.from,
-    Math.max(range.from, Math.min(range.to, tr.selection.from)),
-  );
-  let offset = Math.min(
-    source.length,
-    sourceOffset(source, before, tr.doc.textBetween(range.from, range.to)[0] ?? ''),
-  );
-  // At a field boundary the caret belongs between complete Markdown tokens,
-  // including closing delimiters and inline atoms that have no textContent.
-  const relative = tr.selection.from - range.from;
-  let atBoundary = relative === original.size;
-  original.forEach((_node, position) => { if (position === relative) atBoundary = true; });
-  if (atBoundary && relative >= 0 && relative <= original.size) {
-    const prefix = original.cut(0, relative);
-    const prefixSource = codec.serialize(prefix);
-    if (source.startsWith(prefixSource)) offset = prefixSource.length;
-  }
-  const id = sourceId();
-  const node = liveInlineSource
-    .type(ctx)
-    .create(
-      { id, ...inlineSourceAttributes(original) },
-      source ? state.schema.text(source) : undefined,
-    );
-  localSource = { kind: 'inline', id, original, initial: source };
-  tr.replaceWith(range.from, range.to, node);
-  tr.setSelection(TextSelection.create(tr.doc, range.from + 1 + offset));
-  tr.setMeta('addToHistory', false);
-  return tr;
-}
-
-function activateInlineSource(ctx: Ctx, view: EditorView, event?: MouseEvent | KeyboardEvent) {
-  const disabledStyle = isElement(event?.target)
-    ? event.target.closest<HTMLElement>('[data-tano-disabled-style]') : null;
-  // Literal fallback delimiters live outside contentDOM and have no document
-  // positions. Resolve their owning mark before revealing editable source.
-  const content = disabledStyle?.children[1];
-  const selection = content && view.dom.contains(content)
-    ? TextSelection.create(view.state.doc, view.posAtDOM(content, 0)) : view.state.selection;
-  const atomRange = event ? inlineAtomSourceRange(view, event) : null;
-  const range =
-    atomRange ??
-    activeInlineSourceRange({ selection }, revealableInlineAtom);
-  if (!range) return false;
-  const tr = inlineSourceTransaction(ctx, view.state, range,
-    content ? view.state.tr.setSelection(selection) : view.state.tr);
-  applying = true;
-  try {
-    view.dispatch(tr);
-  } finally {
-    applying = false;
-  }
-  // Existing text has a semantic caret position mapped by the transaction.
-  // Only previews and decorative delimiters lack an editable text position.
-  const clickedDelimiter = content && isElement(event?.target) &&
-    !content.contains(event.target);
-  focusRevealedSource(view, atomRange || clickedDelimiter ? event : undefined);
-  return true;
-}
-
-// Text callers retain the transaction's mapped caret. Only non-text previews
-// pass a pointer to resolve against the newly editable source.
-function focusRevealedSource(view: EditorView, event?: MouseEvent | KeyboardEvent) {
-  view.focus();
-  if (!(isMouseEvent(event)) || (!event.clientX && !event.clientY)) return;
-  const source = currentSource(view);
-  if (!source) return;
-  const hit = view.posAtCoords({ left: event.clientX, top: event.clientY });
-  if (!hit) return;
-  const pos = Math.max(source.pos + 1, Math.min(source.pos + source.node.nodeSize - 1, hit.pos));
-  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos))
-    .setMeta('addToHistory', false));
-}
-
-function activateLinkSource(ctx: Ctx, view: EditorView, link: Element, event: MouseEvent) {
-  const range = linkMarkRange(view, link);
-  if (!range) return false;
-  const selection = TextSelection.create(view.state.doc,
-    Math.max(range.from, Math.min(range.to, view.state.selection.from)));
-  const tr = inlineSourceTransaction(ctx, view.state, range, view.state.tr.setSelection(selection));
-  applying = true;
-  try {
-    view.dispatch(tr);
-  } finally {
-    applying = false;
-  }
-  focusRevealedSource(view);
-  return true;
-}
-
-function blockNodeSourceTransaction(
-  ctx: Ctx,
-  state: EditorState,
-  selected: { node: Node; pos: number },
-  tr: Transaction,
-) {
-  const source = ctx
-    .get(serializerCtx)(state.schema.nodes.doc!.create(null, [selected.node]))
-    .replace(/\n+$/, '');
-  const before = tr.doc.textBetween(selected.pos,
-    Math.max(selected.pos, Math.min(selected.pos + selected.node.nodeSize, tr.selection.from)), '\n');
-  const offset = selected.node.type.name === 'code_block'
-    ? Math.min(
-        source.length,
-        source.indexOf('\n') + 1 + Math.max(0, tr.selection.from - selected.pos - 1),
-      )
-    : Math.min(
-        source.length,
-        sourceOffset(source, before, selected.node.textContent[0] ?? ''),
-      );
-  const id = sourceId();
-  // A previous source block may already have been replaced in this transaction.
-  // Read the target's DOM at its position in the still-rendered document.
-  const renderedPos = tr.mapping.invert().map(selected.pos, -1);
-  const rendered = bridgeView?.state.doc === state.doc &&
-    state.doc.nodeAt(renderedPos)?.eq(selected.node)
-    ? bridgeView.nodeDOM(renderedPos)
-    : null;
-  // A Mermaid preview is a div with no vertical padding. Its padding must not
-  // become the fence line height of the editable <pre> source block.
-  const style = selected.node.type.name === 'code_block' &&
-    !(isHTMLElement(rendered) && rendered.matches('pre'))
-    ? null
-    : sourceBlockStyle(rendered);
-  const sourceNode = liveSource
-    .type(ctx)
-    .create(
-      { id, origin: selected.node.type.name, level: Number(selected.node.attrs.level ?? 0) },
-      source ? state.schema.text(source) : undefined,
-    );
-  localSource = { kind: 'block', id, original: selected.node, initial: source, style };
-  tr.replaceWith(selected.pos, selected.pos + selected.node.nodeSize, sourceNode);
-  tr.setSelection(TextSelection.create(tr.doc, selected.pos + 1 + offset));
-  tr.setMeta('addToHistory', false);
-  return tr;
-}
-
-function selectedBlocksSourceTransaction(ctx: Ctx, state: EditorState, selection: BlockRangeSelection) {
-  const groups: (typeof selection.blocks)[] = [];
-  for (const block of selection.blocks) {
-    const previous = groups.at(-1)?.at(-1);
-    if (previous && previous.parentPos === block.parentPos && previous.pos + previous.node.nodeSize === block.pos)
-      groups.at(-1)!.push(block);
-    else groups.push([block]);
-  }
-  const sources = groups.map(blocks => {
-    const original = Fragment.fromArray(blocks.map(block => block.node));
-    const initial = ctx.get(serializerCtx)(state.schema.topNodeType.create(null, original)).replace(/\n+$/, '');
-    return { id: sourceId(), original, initial };
-  });
-  const tr = state.tr;
-  for (let index = groups.length - 1; index >= 0; index--) {
-    const blocks = groups[index]!, source = sources[index]!;
-    const last = blocks.at(-1)!;
-    const node = liveSource.type(ctx).create({ id: source.id, origin: 'blocks' },
-      source.initial ? state.schema.text(source.initial) : undefined);
-    tr.replaceWith(blocks[0]!.pos, last.pos + last.node.nodeSize, node);
-  }
-  localSource = { kind: 'block-group', id: sources[0]!.id, sources };
-  tr.setSelection(TextSelection.create(tr.doc, groups[0]![0]!.pos + 1));
-  return tr.setMeta('addToHistory', false);
-}
-
-function caretBlockSourceTransaction(ctx: Ctx, state: EditorState, tr: Transaction = state.tr) {
-  const $cursor = tr.selection.$from;
-  for (let depth = $cursor.depth; depth > 0; depth--) {
-    const node = $cursor.node(depth);
-    if (
-      (node.type.name === 'heading' && node.textContent) ||
-      (node.type.name === 'code_block' && String(node.attrs.language).toLowerCase() !== 'mermaid')
-    )
-      return blockNodeSourceTransaction(ctx, state, { node, pos: $cursor.before(depth) }, tr);
-  }
-  return null;
-}
-
-function previewBlockSourceTransaction(ctx: Ctx, view: EditorView, target: Element) {
-  const block = target.closest('.math-block, .tano-mermaid, .tano-image-block');
-  if (!block || !view.dom.contains(block)) return null;
-  const image = block.classList.contains('tano-image-block');
-  const expected = block.classList.contains('math-block') ? 'math_block' : 'code_block';
-  const pos = view.posAtDOM(block, 0);
-  for (const candidate of [pos, pos - 1]) {
-    const node = view.state.doc.nodeAt(candidate);
-    if (image) {
-      if (node?.type.name !== 'image') continue;
-      const $pos = view.state.doc.resolve(candidate);
-      const paragraph = $pos.parent;
-      if (paragraph.type.name === 'paragraph' && paragraph.childCount === 1) {
-        const container = $pos.node($pos.depth - 1);
-        const index = $pos.index($pos.depth - 1);
-        if (container.canReplaceWith(index, index + 1, liveSource.type(ctx)))
-          return blockNodeSourceTransaction(
-            ctx,
-            view.state,
-            { node: paragraph, pos: $pos.before() },
-            view.state.tr,
-          );
-        return inlineSourceTransaction(
-          ctx,
-          view.state,
-          { from: candidate, to: candidate + node.nodeSize },
-          view.state.tr.setSelection(NodeSelection.create(view.state.doc, candidate)),
-        );
-      }
-      continue;
-    }
-    if (node?.type.name === expected &&
-        (expected !== 'code_block' || String(node.attrs.language).toLowerCase() === 'mermaid'))
-      return blockNodeSourceTransaction(ctx, view.state, { node, pos: candidate }, view.state.tr);
-  }
-  return null;
-}
-
-function clickedCodeBlockSourceTransaction(ctx: Ctx, view: EditorView, target: Element) {
-  const block = target.closest('pre');
-  if (!block || !view.dom.contains(block) || block.hasAttribute('data-tano-live-source'))
-    return null;
-  const mapped = view.posAtDOM(block, 0);
-  for (const pos of [mapped, mapped - 1]) {
-    const node = view.state.doc.nodeAt(pos);
-    if (node?.type.name !== 'code_block' || String(node.attrs.language).toLowerCase() === 'mermaid')
-      continue;
-    const selection = view.dom.ownerDocument.getSelection();
-    let caret = view.state.selection.from;
-    if (selection?.isCollapsed && selection.anchorNode && block.contains(selection.anchorNode)) {
-      try {
-        caret = view.posAtDOM(selection.anchorNode, selection.anchorOffset);
-      } catch {
-        // Keep the current editor selection if the browser selection is stale.
-      }
-    }
-    caret = Math.max(pos + 1, Math.min(pos + node.nodeSize - 1, caret));
-    return blockNodeSourceTransaction(
-      ctx,
-      view.state,
-      { node, pos },
-      view.state.tr.setSelection(TextSelection.create(view.state.doc, caret)),
-    );
-  }
-  return null;
-}
-
-function activateFootnoteLabelAt(ctx: Ctx, view: EditorView, pos: number, fromBody: boolean) {
-  if (localSource?.kind === 'footnote-label' || props.readonly || props.revealMarkdown === false)
-    return false;
-  const definition = view.state.doc.nodeAt(pos);
-  if (definition?.type.name !== 'footnote_definition') return false;
-  const createdParagraph = definition.firstChild?.type.name !== 'paragraph';
-  const id = sourceId();
-  const source = `[^${String(definition.attrs.label)}]: `;
-  const label = liveInlineSource.type(ctx).create(
-    { id, origin: 'footnote_definition' },
-    view.state.schema.text(source),
-  );
-  const tr = view.state.tr;
-  const sourcePos = pos + 2;
-  if (createdParagraph)
-    tr.insert(pos + 1, view.state.schema.nodes.paragraph!.create(null, label));
-  else tr.insert(sourcePos, label);
-  tr.setSelection(TextSelection.create(tr.doc, sourcePos + 1 + (fromBody ? source.length : 2)));
-  tr.setMeta('addToHistory', false);
-  localSource = { kind: 'footnote-label', id, initial: source, createdParagraph };
-  applying = true;
-  try {
-    view.dispatch(tr);
-  } finally {
-    applying = false;
-  }
-  view.focus();
-  return true;
-}
-
-function activateFootnoteLabelSource(ctx: Ctx, view: EditorView, target: Element) {
-  // The number is a ::before pseudo-element, so its click targets the dl.
-  if (!target.matches('dl[data-type="footnote_definition"]') || !view.dom.contains(target))
-    return false;
-  const mapped = view.posAtDOM(target, 0);
-  return activateFootnoteLabelAt(ctx, view, mapped, false) ||
-    activateFootnoteLabelAt(ctx, view, mapped - 1, false);
-}
-
-function enterFootnoteLabelFromCaret(ctx: Ctx, view: EditorView) {
-  const selection = view.state.selection;
-  if (!(selection instanceof TextSelection) || !selection.empty ||
-      selection.$from.parent.type.name !== 'paragraph' ||
-      selection.$from.parentOffset !== 0 || selection.$from.depth < 2) return false;
-  const definitionDepth = selection.$from.depth - 1;
-  if (selection.$from.node(definitionDepth).type.name !== 'footnote_definition' ||
-      selection.$from.index(definitionDepth) !== 0) return false;
-  return activateFootnoteLabelAt(ctx, view, selection.$from.before(definitionDepth), true);
-}
-
-function revealableInlineAtom(node: Node, parent: Node) {
-  return isEditableInlineAtom(node, parent) && (node.type.name !== 'tano_reference' || referencesEnabled());
-}
-
-function selectedSourceTransaction(ctx: Ctx, state: EditorState, tr: Transaction = state.tr) {
-  const selection = tr.selection;
-  if (selection instanceof NodeSelection) {
-    const name = selection.node.type.name;
-    if (
-      !isEditableInlineAtom(selection.node, selection.$from.parent) ||
-      (name === 'tano_reference' && !referencesEnabled())
-    )
-      return null;
-    return inlineSourceTransaction(ctx, state, { from: selection.from, to: selection.to }, tr);
-  }
-  if (!(selection instanceof TextSelection) || !selection.empty) return null;
-  const inlineRange = activeInlineSourceRange(tr, revealableInlineAtom);
-  return inlineRange
-    ? inlineSourceTransaction(ctx, state, inlineRange, tr)
-    : caretBlockSourceTransaction(ctx, state, tr);
-}
-
-function activateReferenceSource(view: EditorView, pos: number) {
-  if (props.readonly || props.revealMarkdown === false || !referencesEnabled() || view.composing)
-    return;
-  const node = view.state.doc.nodeAt(pos);
-  if (node?.type.name !== 'tano_reference') return;
-  view.focus();
-  view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));
-}
-
-function activateLocalSource(ctx: Ctx, view: EditorView, event: MouseEvent | KeyboardEvent) {
-  const target = isElement(event.target) ? event.target : null;
-  const previewBlock = target
-    ?.closest('.math-preview, .tano-mermaid-preview, .tano-image-block')
-    ?.closest('.math-block, .tano-mermaid, .tano-image-block');
-  if (
-    props.revealMarkdown === false ||
-    props.readonly ||
-    view.composing ||
-    ('button' in event && event.button !== 0) ||
-    event.ctrlKey ||
-    event.metaKey ||
-    event.shiftKey ||
-    target?.closest('button, input, textarea') ||
-    (target?.closest('[contenteditable="false"]:not(.tano-wiki-link)') && !previewBlock &&
-      !target.closest('[data-tano-disabled-style]'))
-  )
-    return false;
-  if (target && previewBlock) {
-    const tr = previewBlockSourceTransaction(ctx, view, target);
-    if (tr) {
-      applying = true;
-      try {
-        view.dispatch(tr);
-      } finally {
-        applying = false;
-      }
-      focusRevealedSource(view, event);
-      return true;
-    }
-  }
-  if (target) {
-    const tr = clickedCodeBlockSourceTransaction(ctx, view, target);
-    if (tr) {
-      applying = true;
-      try {
-        view.dispatch(tr);
-      } finally {
-        applying = false;
-      }
-      focusRevealedSource(view);
-      return true;
-    }
-  }
-  const $cursor = view.state.selection.$from;
-  for (let depth = $cursor.depth; depth > 0; depth--) {
-    const node = $cursor.node(depth);
-    if (node.type.name !== 'tano_live_source_inline') continue;
-    const id = String(node.attrs.id);
-    if (localSource?.id !== id)
-      localSource = {
-        kind: 'inline',
-        id,
-        original: Fragment.from(node),
-        initial: node.textContent,
-      };
-    return false;
-  }
-  if (activateInlineSource(ctx, view, event)) return true;
-  const tr = caretBlockSourceTransaction(ctx, view.state);
-  if (!tr) return false;
-  applying = true;
-  try {
-    view.dispatch(tr);
-  } finally {
-    applying = false;
-  }
-  focusRevealedSource(view);
-  return true;
-}
-
-function footnoteLabelTransaction(
-  state: EditorState,
-  source: { node: Node; pos: number },
-  createdParagraph: boolean,
-) {
-  const $source = state.doc.resolve(source.pos);
-  let depth = $source.depth;
-  while (depth > 0 && $source.node(depth).type.name !== 'footnote_definition') depth--;
-  if (!depth) return null;
-  const definitionPos = $source.before(depth);
-  const definition = $source.node(depth);
-  const raw = source.node.textContent;
-  const label = /^\[\^([^\]\r\n]+)\]:[ \t]*$/.exec(raw)?.[1];
-  const tr = state.tr;
-  if (createdParagraph) {
-    const paragraph = definition.firstChild!;
-    tr.delete(definitionPos + 1, definitionPos + 1 + paragraph.nodeSize);
-  } else tr.delete(source.pos, source.pos + source.node.nodeSize);
-  if (label?.trim())
-    tr.setNodeMarkup(definitionPos, undefined, { ...definition.attrs, label });
-  return { tr, valid: !!label?.trim() };
-}
-
-function serializableDocument(state: EditorState) {
-  if (localSource?.kind !== 'footnote-label') return state.doc;
-  const source = findCurrentSource(state);
-  return source
-    ? footnoteLabelTransaction(state, source, localSource.createdParagraph)?.tr.doc ?? state.doc
-    : state.doc;
-}
-
-function retainsInlineSource(doc: Node) {
-  let retained = false;
-  doc.descendants(node => {
-    if (node.type.name === 'tano_live_source_inline') retained = true;
-    return !retained;
-  });
-  return retained;
-}
-
-function updateInlineSource(ctx: Ctx, state: EditorState) {
-  if (localSource?.kind !== 'inline' || bridgeView?.composing || props.readonly) return null;
-  const current = findCurrentSource(state);
-  if (!current) return null;
-  const result = reconcileInlineSource(state, current, localSource,
-    inlineSourceCodec(state.schema, ctx.get(parserCtx), ctx.get(serializerCtx)),
-    revealableInlineAtom, props.revealMarkdown !== false);
-  if (result) localSource = result.session;
-  return result;
-}
-
-function preserveSourceBlockSelection(state: EditorState, tr: Transaction) {
-  if (!(state.selection instanceof BlockRangeSelection)) return;
-  // Finishing live Markdown replaces its temporary nodes. Keep the restored
-  // blocks selected instead of treating their source nodes as deletions.
-  const ranges = state.selection.blocks.map(block => ({
-    from: tr.mapping.map(block.pos, -1),
-    to: tr.mapping.map(block.pos + block.node.nodeSize, 1),
-  }));
-  const positions = blockTree(tr.doc).filter(block => ranges.some(range =>
-    block.pos >= range.from && block.pos + block.node.nodeSize <= range.to)).map(block => block.pos);
-  const selection = BlockRangeSelection.fromBlocks(tr.doc, positions,
-    tr.mapping.map(state.selection.anchorBlock, -1), tr.mapping.map(state.selection.headBlock, -1));
-  if (selection) tr.setSelection(selection);
-}
-
-function finishLocalSourceTransaction(ctx: Ctx, state: EditorState) {
-  if (!localSource) return;
-  const current = findCurrentSource(state);
-  const session = localSource;
-  localSource = undefined;
-  if (session.kind === 'block-group') {
-    const sources = new Map(session.sources.map(source => [source.id, source]));
-    const replacements: { pos: number; node: Node; content: Fragment }[] = [];
-    let unchanged = true;
-    state.doc.descendants((node, pos) => {
-      if (node.type.name !== 'tano_live_source') return;
-      const source = sources.get(node.attrs.id);
-      if (!source) return false;
-      const raw = node.textContent;
-      if (raw === source.initial) replacements.push({ pos, node, content: source.original });
-      else {
-        unchanged = false;
-        const parsed = ctx.get(parserCtx)(raw);
-        // Keep source text editable when conversion would change its spelling.
-        if (parsed && !retainsInlineSource(parsed) &&
-            ctx.get(serializerCtx)(parsed).replace(/\n+$/, '') === raw.replace(/\n+$/, ''))
-          replacements.push({ pos, node, content: parsed.content.size ? parsed.content : Fragment.from(state.schema.nodes.paragraph!.create()) });
-      }
-      return false;
-    });
-    if (!replacements.length) return;
-    const tr = state.tr;
-    for (const { pos, node, content } of replacements.reverse()) tr.replaceWith(pos, pos + node.nodeSize, content);
-    preserveSourceBlockSelection(state, tr);
-    if (unchanged) tr.setMeta('addToHistory', false);
-    return { tr, unchanged };
-  }
-  if (!current) return;
-  const raw = current.node.textContent;
-  if (session.kind === 'footnote-label') {
-    const result = footnoteLabelTransaction(state, current, session.createdParagraph);
-    if (!result) return;
-    if (!result.valid && raw !== session.initial)
-      emit('error', '脚注名称无效，已保留原名称');
-    if (raw === session.initial) result.tr.setMeta('addToHistory', false);
-    return { tr: result.tr, unchanged: raw === session.initial };
-  }
-  let replacement: Node[] | Fragment;
-  if (raw === session.initial)
-    replacement = session.kind === 'block' ? [session.original] : session.original;
-  else {
-    const parsed = ctx.get(parserCtx)(raw);
-    if (!parsed) {
-      emit('error', '局部 Markdown 无法解析，原文已保留');
-      return;
-    }
-    const normalized = ctx.get(serializerCtx)(parsed).replace(/\n+$/, '');
-    if (normalized !== raw.replace(/\n+$/, '')) return;
-    if (retainsInlineSource(parsed)) return;
-    if (session.kind === 'inline') {
-      if (parsed.childCount !== 1 || parsed.firstChild?.type.name !== 'paragraph') return;
-      replacement = parsed.firstChild.content;
-    } else
-      replacement = parsed.childCount
-        ? [...Array(parsed.childCount)].map((_, index) => parsed.child(index))
-        : [state.schema.nodes.paragraph!.create()];
-  }
-  const tr = state.tr.replaceWith(
-    current.pos,
-    current.pos + current.node.nodeSize,
-    replacement,
-  );
-  preserveSourceBlockSelection(state, tr);
-  if (raw === session.initial) tr.setMeta('addToHistory', false);
-  return { tr, unchanged: raw === session.initial };
-}
-
-function finishLocalSource(ctx: Ctx, view: EditorView) {
-  const result = finishLocalSourceTransaction(ctx, view.state);
-  if (!result) return;
-  applying = result.unchanged;
-  transitioningSource = true;
-  try {
-    view.dispatch(result.tr);
-  } finally {
-    applying = false;
-    transitioningSource = false;
-  }
-}
-
-function moveAcrossInlineSourceEdge(ctx: Ctx, view: EditorView, direction: -1 | 1) {
-  const current = currentSource(view);
-  const selection = view.state.selection;
-  if (localSource?.kind !== 'inline' || !current ||
-      !(selection instanceof TextSelection) || !selection.empty ||
-      selection.$from.parent !== current.node) return false;
-  const offset = selection.$from.parentOffset;
-  const size = current.node.content.size;
-  const remaining = direction < 0 ? offset : size - offset;
-  // Chromium can skip the first/last DOM caret stop of an inline content node.
-  // Keep that stop explicit so leaving and re-opening the field cannot loop.
-  if (remaining > 1) return false;
-  if (remaining === 1) {
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc,
-      selection.from + direction)).setMeta('addToHistory', false));
-    return true;
-  }
-  const end = current.pos + current.node.nodeSize;
-  const finished = finishLocalSourceTransaction(ctx, view.state);
-  const tr = finished?.tr ?? view.state.tr;
-  let position = direction < 0 ? current.pos : tr.mapping.map(end, 1);
-  const boundary = tr.doc.resolve(position);
-  const adjacent = direction < 0 ? boundary.nodeBefore : boundary.nodeAfter;
-  // The inside and outside of the source node are the same visible caret
-  // stop. Consume the arrow's character movement as well as closing the field.
-  if (adjacent?.isText) {
-    const segments = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(adjacent.text!)];
-    const step = direction < 0 ? segments.at(-1)!.segment.length : segments[0]!.segment.length;
-    position += direction * step;
-    tr.setSelection(TextSelection.create(tr.doc, position));
-  } else {
-    const next = Math.max(0, Math.min(tr.doc.content.size, position + direction));
-    tr.setSelection(Selection.findFrom(tr.doc.resolve(next), direction, true) ?? TextSelection.create(tr.doc, position));
-  }
-  tr.setStoredMarks([]);
-  const adjacentRange = finished && props.revealMarkdown !== false
-    ? activeInlineSourceRange(tr, revealableInlineAtom) : null;
-  if (adjacentRange) inlineSourceTransaction(ctx, view.state, adjacentRange, tr);
-  tr.setMeta('tanoKeepNodeView', true);
-  transitioningSource = true;
-  applying = finished?.unchanged ?? false;
-  try { view.dispatch(tr); }
-  finally { transitioningSource = false; applying = false; }
-  return true;
-}
-
-function enterHeadingSource(ctx: Ctx, view: EditorView) {
-  const current = currentSource(view);
-  const selection = view.state.selection;
-  if (
-    localSource?.kind !== 'block' ||
-    current?.node.attrs.origin !== 'heading' ||
-    !(selection instanceof TextSelection)
-  ) return false;
-  const raw = current.node.textContent;
-  const prefix = /^(#{1,6})[ \t]+/.exec(raw);
-  const start = current.pos + 1;
-  const from = selection.from - start;
-  const to = selection.to - start;
-  if (!prefix || raw.includes('\n') || from < prefix[0].length || to > raw.length) return false;
-
-  // Parse once with a temporary visible character at the split. Cutting the
-  // parsed inline content keeps marks and links on both sides of the cursor.
-  const marker = '\uE000';
-  if (raw.includes(marker)) return false;
-  const parsed = ctx.get(parserCtx)(`${raw.slice(0, from)}${marker}${raw.slice(to)}`);
-  if (parsed?.childCount !== 1 || parsed.firstChild?.type.name !== 'heading') return false;
-  const sourceHeading = parsed.firstChild;
-  let splitAt: number | undefined;
-  sourceHeading.descendants((node, pos) => {
-    const offset = node.isText ? node.text?.indexOf(marker) ?? -1 : -1;
-    if (offset >= 0) splitAt = pos + offset;
-  });
-  if (splitAt === undefined) return false;
-  const heading = sourceHeading.copy(sourceHeading.content.cut(0, splitAt));
-  const paragraph = view.state.schema.nodes.paragraph!.create(
-    null,
-    sourceHeading.content.cut(splitAt + marker.length),
-  );
-  const tr = view.state.tr.replaceWith(
-    current.pos,
-    current.pos + current.node.nodeSize,
-    [heading, paragraph],
-  );
-  tr.setSelection(TextSelection.create(tr.doc, current.pos + heading.nodeSize + 1));
-  localSource = undefined;
-  transitioningSource = true;
-  try {
-    view.dispatch(tr);
-  } finally {
-    transitioningSource = false;
-  }
-  return true;
-}
-
-function enterInlineSourceTextblock(ctx: Ctx, view: EditorView, cellBreak = false) {
-  const current = currentSource(view);
-  const selection = view.state.selection;
-  if (
-    localSource?.kind !== 'inline' ||
-    current?.node.type.name !== 'tano_live_source_inline' ||
-    !(selection instanceof TextSelection) ||
-    selection.$from.parent.type.name !== 'tano_live_source_inline'
-  ) return false;
-  const blockDepth = selection.$from.depth - 1;
-  if (blockDepth < 1 || !['heading', 'paragraph'].includes(selection.$from.node(blockDepth).type.name))
-    return false;
-  const raw = current.node.textContent;
-  const marker = '\uE000';
-  if (raw.includes(marker)) return false;
-  const start = current.pos + 1;
-  const from = selection.from - start;
-  const to = selection.to - start;
-  if (from < 0 || to > raw.length) return false;
-  const parsed = ctx.get(parserCtx)(`${raw.slice(0, from)}${marker}${raw.slice(to)}`);
-  if (parsed?.childCount !== 1 || parsed.firstChild?.type.name !== 'paragraph') return false;
-  const inline = parsed.firstChild;
-  let splitAt: number | undefined;
-  inline.descendants((node, pos) => {
-    const offset = node.isText ? node.text?.indexOf(marker) ?? -1 : -1;
-    if (offset >= 0) splitAt = pos + offset;
-  });
-  if (splitAt === undefined) return false;
-
-  // Inline source fields are code nodes, so the base Enter command would insert
-  // a literal newline. Restore the formatted content and split its text block
-  // in one transaction, including the list item when this is a list paragraph.
-  const tr = view.state.tr.replaceWith(current.pos, current.pos + current.node.nodeSize,
-    inline.content.cut(0, splitAt).append(inline.content.cut(splitAt + marker.length)));
-  const splitPos = current.pos + splitAt;
-  if (cellBreak) {
-    tr.insert(splitPos, view.state.schema.nodes.hardbreak!.create());
-    tr.setSelection(TextSelection.create(tr.doc, splitPos + 1));
-    tr.setStoredMarks([]);
-    localSource = undefined;
-    transitioningSource = true;
-    try { view.dispatch(tr.scrollIntoView()); }
-    finally { transitioningSource = false; }
-    return true;
-  }
-  const block = selection.$from.node(blockDepth);
-  const splitDepth = block.type.name === 'paragraph' &&
-    selection.$from.node(blockDepth - 1).type.name === 'list_item' ? 2 : 1;
-  const types = block.type.name === 'heading' ? [{ type: view.state.schema.nodes.paragraph! }] : undefined;
-  if (!canSplit(tr.doc, splitPos, splitDepth, types)) return false;
-  tr.split(splitPos, splitDepth, types);
-  tr.setSelection(TextSelection.create(tr.doc, splitPos + splitDepth * 2));
-  tr.scrollIntoView();
-  localSource = undefined;
-  transitioningSource = true;
-  try {
-    view.dispatch(tr);
-  } finally {
-    transitioningSource = false;
-  }
-  return true;
-}
-
-function enterRenderedHeading(view: EditorView) {
-  const selection = view.state.selection;
-  if (
-    !(selection instanceof TextSelection) ||
-    selection.$from.parent.type.name !== 'heading' ||
-    selection.$to.parent !== selection.$from.parent
-  ) return false;
-  const heading = selection.$from.parent;
-  const pos = selection.$from.before();
-  const left = heading.copy(heading.content.cut(0, selection.$from.parentOffset));
-  const right = view.state.schema.nodes.paragraph!.create(
-    null,
-    heading.content.cut(selection.$to.parentOffset),
-  );
-  const tr = view.state.tr.replaceWith(pos, pos + heading.nodeSize, [left, right]);
-  tr.setSelection(TextSelection.create(tr.doc, pos + left.nodeSize + 1));
-  view.dispatch(tr);
-  return true;
-}
-
-function restoreOrphanSource(ctx: Ctx, state: EditorState) {
-  let restored: Transaction | null = null;
-  state.doc.descendants((node, pos) => {
-    if (restored) return false;
-    if (
-      (node.type.name === 'tano_live_source_inline' ||
-        (node.type.name === 'tano_live_source' && node.attrs.origin === 'heading')) &&
-      node.attrs.id !== localSource?.id
-    ) {
-      if (node.attrs.origin === 'footnote_definition') {
-        restored = state.tr.delete(pos, pos + node.nodeSize).setMeta('addToHistory', false);
-        return false;
-      }
-      const raw = node.textContent;
-      const parsed = ctx.get(parserCtx)(raw);
-      if (!parsed?.childCount || retainsInlineSource(parsed)) return false;
-      // An inactive source field has the same lossless-conversion requirement
-      // as the active field. Otherwise the next unrelated edit discards syntax.
-      if (ctx.get(serializerCtx)(parsed).replace(/\n+$/, '') !== raw.replace(/\n+$/, '')) return false;
-      const replacement = node.type.name === 'tano_live_source_inline'
-        ? parsed.childCount === 1 && parsed.firstChild?.type.name === 'paragraph'
-          ? parsed.firstChild.content
-          : null
-        : parsed.firstChild?.type.name === 'heading'
-          ? Array.from({ length: parsed.childCount }, (_, index) => parsed.child(index))
-          : null;
-      if (replacement) restored = state.tr.replaceWith(pos, pos + node.nodeSize, replacement)
-        .setMeta('addToHistory', false);
-      return false;
-    }
-  });
-  return restored;
-}
-
-function toggleSourceSyntax(view: EditorView, name: 'bold' | 'italic' | 'code') {
-  const current = currentSource(view);
-  if (!current) return false;
-  const delimiter = name === 'bold' ? '**' : name === 'italic' ? '*' : '`';
-  const start = current.pos + 1;
-  const end = start + current.node.textContent.length;
-  const { from, to } = view.state.selection;
-  if (from < start || to > end) return false;
-  const raw = current.node.textContent;
-  const size = delimiter.length;
-  const tr = view.state.tr;
-  if (
-    current.node.type.name === 'tano_live_source_inline' &&
-    raw.startsWith(delimiter) &&
-    raw.endsWith(delimiter) &&
-    from >= start + size &&
-    to <= end - size
-  ) {
-    const parsedStyles = sourceStyleRanges(raw).filter((range) =>
-      ['strong', 'emphasis', 'code', 'link'].includes(range.style),
-    );
-    if (
-      name !== 'code' &&
-      parsedStyles.length === 1 &&
-      parsedStyles[0]!.style === (name === 'bold' ? 'strong' : 'emphasis')
-    ) {
-      const prefix = raw.slice(size, from - start);
-      const selected = raw.slice(from - start, to - start);
-      const suffix = raw.slice(to - start, raw.length - size);
-      const keepStyled = (text: string) => {
-        const leading = /^\s*/.exec(text)?.[0] ?? '';
-        const trailing = /\s*$/.exec(text)?.[0] ?? '';
-        const content = text.slice(leading.length, text.length - trailing.length);
-        return content ? `${leading}${delimiter}${content}${delimiter}${trailing}` : text;
-      };
-      const before = keepStyled(prefix);
-      const replacement = before + selected + keepStyled(suffix);
-      tr.insertText(replacement, start, end);
-      tr.setSelection(
-        TextSelection.create(
-          tr.doc,
-          start + before.length,
-          start + before.length + selected.length,
-        ),
-      );
-    } else {
-      tr.delete(end - size, end);
-      tr.delete(start, start + size);
-      tr.setSelection(TextSelection.create(tr.doc, from - size, to - size));
-    }
-  } else {
-    const selected = view.state.doc.textBetween(from, to);
-    tr.insertText(`${delimiter}${selected}${delimiter}`, from, to);
-    tr.setSelection(TextSelection.create(tr.doc, from + size, from + size + selected.length));
-  }
-  view.dispatch(tr);
-  return true;
-}
-
-function insertPartialEmphasisSource(ctx: Ctx, view: EditorView, from: number, to: number, text: string) {
-  if (text !== '*' || props.readonly || props.revealMarkdown === false ||
-      (localSource && findCurrentSource(view.state))) return false;
-  const { state } = view;
-  const $from = state.doc.resolve(from), $to = state.doc.resolve(to);
-  if (!$from.sameParent($to) || $from.parent.type.spec.code) return false;
-  const { node, offset } = $from.parent.childBefore($from.parentOffset);
-  if (!node?.isText || node.marks.length || $to.parentOffset > offset + node.nodeSize) return false;
-  const cursor = $from.parentOffset - offset;
-  const after = $to.parentOffset - offset;
-  const candidate = node.text!.slice(0, cursor) + text + node.text!.slice(after);
-  const range = sourceStyleRanges(candidate).find(range =>
-    range.style === 'emphasis' && range.to === cursor + 1 &&
-    range.from > 0 && candidate[range.from - 1] === '*');
-  if (!range) return false;
-  let start = range.from;
-  while (start > 0 && candidate[start - 1] === '*') start--;
-  // An explicitly escaped star is literal content, not part of the opener.
-  if ((/\\+$/.exec(candidate.slice(0, start))?.[0].length ?? 0) % 2) return false;
-  const position = $from.start() + offset + start;
-  const source = candidate.slice(start, range.to);
-  const id = sourceId();
-  localSource = {
-    kind: 'inline', id,
-    original: $from.parent.cut(offset + start, $to.parentOffset).content,
-    initial: node.text!.slice(start, after),
-  };
-  const tr = state.tr.replaceWith(position, to,
-    liveInlineSource.type(ctx).create({ id }, state.schema.text(source)));
-  tr.setSelection(TextSelection.create(tr.doc, position + 1 + source.length));
-  view.dispatch(tr);
-  return true;
-}
+const clipboardPlugin = $prose(
+  (ctx) =>
+    new Plugin({
+      props: {
+        handleDOMEvents: {
+          copy: (view, event) => editorClipboard.copySelectionWithPreference(ctx, view, event),
+          cut: (view, event) => editorClipboard.copySelectionWithPreference(ctx, view, event),
+        },
+      },
+    }),
+);
 
 // Capture every transaction synchronously: a debounced editor listener loses the
 // final keystrokes when a tab is closed or switched before its debounce fires.
-const documentDecorations = createDocumentDecorations();
-const referenceFlashKey = new PluginKey<DecorationSet>('tano-reference-flash');
-let referenceFlashTimer: ReturnType<typeof setTimeout> | undefined;
-const referenceFlash = $prose(() => new Plugin<DecorationSet>({
-  key: referenceFlashKey,
-  state: {
-    init: () => DecorationSet.empty,
-    apply(tr, previous) {
-      const range = tr.getMeta(referenceFlashKey) as { from: number; to: number } | null | undefined;
-      if (range === null || tr.docChanged) return DecorationSet.empty;
-      return range ? DecorationSet.create(tr.doc, [Decoration.inline(range.from, range.to, { class: 'tano-reference-flash' })]) : previous;
-    },
-  },
-  props: { decorations: state => referenceFlashKey.getState(state) },
-}));
-function clipboardContent(ctx: Ctx, content: Fragment, format: CopyFormat | 'mathml' | 'tsv'): { text: string; html?: string } {
-  if (format === 'markdown')
-    return { text: ctx.get(serializerCtx)(ctx.get(editorViewCtx).state.schema.topNodeType.create(null, content)) };
-  const text = content.textBetween(0, content.size, '\n\n', node => {
-    if (node.type.name.startsWith('tano_reference')) {
-      const identity = parseReferenceUrl(node.attrs.url ?? '');
-      const result = identity && resolveReference(props.referenceTargets ?? [], identity);
-      return result && result.target ? result.target.name : node.attrs.label || node.attrs.url || '';
-    }
-    if (node.type.name === 'hardbreak') return '\n';
-    return node.attrs.label || node.attrs.alt || node.attrs.value || node.attrs.target || '';
-  });
-  if (format === 'text') return { text };
-  const clipboardDocument = document.implementation.createHTMLDocument('');
-  const container = clipboardDocument.createElement('div');
-  container.append(DOMSerializer.fromSchema(ctx.get(editorViewCtx).state.schema).serializeFragment(content, { document: clipboardDocument }));
-  if (format === 'mathml') {
-    const math = selectedFormulaMathML(container);
-    return { text: math, html: math };
-  }
-  if (format === 'tsv') {
-    // Resolve object names before converting cells to spreadsheet text.
-    container.querySelectorAll<HTMLElement>('[data-tano-reference]').forEach(reference => {
-      const identity = parseReferenceUrl(reference.dataset.referenceUrl ?? '');
-      const resolved = identity && resolveReference(props.referenceTargets ?? [], identity);
-      reference.textContent = resolved && resolved.target ? resolved.target.name : reference.dataset.referenceLabel || reference.dataset.referenceUrl || '';
-    });
-    return { text: tableTSV(container) };
-  }
-  const html = destinationClipboardHTML(container, props.referenceTargets ?? [],
-    format === 'wechat' || format === 'zhihu' ? format : 'rich');
-  return format === 'html' ? { text: html } : { text, html };
-}
-
-function copySelectionWithPreference(ctx: Ctx, view: EditorView, event: ClipboardEvent) {
-  if (view.state.selection.empty || !event.clipboardData) return false;
-  event.preventDefault();
-  if (event.type === 'cut' && props.readonly) return true;
-  const format = normalizeCopyFormat(preferences().copyFormat);
-  const serialized = view.serializeForClipboard(view.state.selection.content());
-  let copied: { text: string; html?: string };
-  try { copied = format === 'markdown' ? { text: serialized.text } : clipboardContent(ctx, serialized.slice.content, format); }
-  catch (error) {
-    emit('error', error instanceof Error ? error.message : '无法转换复制内容');
-    return true;
-  }
-  event.clipboardData.clearData();
-  event.clipboardData.setData('text/plain', copied.text);
-  if (copied.html !== undefined) event.clipboardData.setData('text/html', copied.html);
-  if (event.type === 'cut')
-    view.dispatch(view.state.tr.deleteSelection().scrollIntoView().setMeta('uiEvent', 'cut'));
-  return true;
-}
-
-const bridge = $prose(
+const changeBridge = $prose(
   (ctx) =>
     new Plugin({
-      key: uploads,
-      state: {
-        init: () => DecorationSet.empty,
-        apply(transaction, current) {
-          let next = current.map(transaction.mapping, transaction.doc);
-          const change = transaction.getMeta(uploads);
-          if (change?.add) {
-            const label = document.createElement('span');
-            label.className = 'asset-upload-placeholder';
-            label.textContent = '正在导入附件…';
-            next = next.add(transaction.doc, [
-              Decoration.widget(change.add.position, label, { id: change.add.id, side: -1 }),
-            ]);
-          }
-          if (change?.remove)
-            next = next.remove(
-              next.find(undefined, undefined, (spec) => spec.id === change.remove),
-            );
-          return next;
-        },
-      },
       appendTransaction(transactions, _previous, state) {
-        if (transactions.some((transaction) => transaction.docChanged)) {
-          const restoredSource = restoreOrphanSource(ctx, state);
-          if (restoredSource) return restoredSource;
-        }
-        if (localSource) {
-          const updated = updateInlineSource(ctx, state);
-          if (updated) {
-            sourceActivationPending ||= updated.presentationOnly && !transactions.some(transaction => transaction.docChanged);
-            return updated.tr;
-          }
-          const current = findCurrentSource(state);
-          if (
-            !current ||
-            (state.selection.from >= current.pos + 1 &&
-              state.selection.to <= current.pos + current.node.nodeSize - 1)
-          )
-            return null;
-          const finished = finishLocalSourceTransaction(ctx, state);
-          if (!finished) return null;
-          const next =
-            bridgeView?.hasFocus() && !selectingWithPointer &&
-            !transactions.some((transaction) => transaction.getMeta('tanoBlockContextSelect')) &&
-            !props.readonly && props.revealMarkdown !== false
-              ? selectedSourceTransaction(ctx, state, finished.tr)
-              : null;
-          sourceActivationPending = !!next || finished.unchanged;
-          return finished.tr;
-        }
-        const codeCaret =
-          state.selection instanceof TextSelection &&
-          state.selection.empty &&
-          state.selection.$from.parent.type.name === 'code_block' &&
-          String(state.selection.$from.parent.attrs.language).toLowerCase() !== 'mermaid';
-        const docChanged = transactions.some((transaction) => transaction.docChanged);
-        if (
-          !bridgeView?.hasFocus() ||
-          transitioningSource ||
-          selectingWithPointer ||
-          applying ||
-          disposed ||
-          props.readonly ||
-          props.revealMarkdown === false ||
-          (!codeCaret && !transactions.some((transaction) => transaction.selectionSet)) ||
-          (docChanged && !codeCaret) ||
-          transactions.some((transaction) => transaction.getMeta('tanoKeepNodeView'))
-        )
-          return null;
-        // Replace the selected field before ProseMirror paints the new caret.
-        // Its first visible Markdown characters must already be editable.
-        const tr = selectedSourceTransaction(ctx, state);
-        if (tr) sourceActivationPending = !docChanged;
-        return tr;
+        return inlineSource.appendSourceTransaction(ctx, transactions, state);
       },
       view: (view) => {
         bridgeView = view;
         emptyDocument.value = isEmptyDocument(view.state.doc);
-        emit('selectionChange', { ...selectionContext(view.state), availableBlockCommands: availableBlockConversions(view.state) });
+        emit('selectionChange', {
+          ...selectionContext(view.state),
+          availableBlockCommands: availableBlockConversions(view.state),
+        });
         return {
           update(view, previous) {
             emptyDocument.value = isEmptyDocument(view.state.doc);
-            if (blockMenu.value && !previous.doc.eq(view.state.doc)) closeBlockMenu(false);
-            const activated = sourceActivationPending;
-            sourceActivationPending = false;
-            const source = currentSource(view);
+            if (blockMenu.blockMenu.value && !previous.doc.eq(view.state.doc)) {
+              blockMenu.closeBlockMenu(false);
+            }
+            const activated = inlineSource.consumeSourceActivationPending();
+            const source = inlineSource.currentSource(view);
             if (
-              localSource &&
+              inlineSource.getLocalSource() &&
               source &&
               (view.state.selection.from < source.pos + 1 ||
                 view.state.selection.to > source.pos + source.node.nodeSize - 1)
             ) {
-              finishLocalSource(ctx, view);
+              inlineSource.finishLocalSource(ctx, view);
               return;
             }
             if (
               !previous.selection.eq(view.state.selection) ||
               !previous.doc.eq(view.state.doc) ||
               previous.storedMarks !== view.state.storedMarks
-            )
-              emit('selectionChange', { ...selectionContext(view.state), availableBlockCommands: availableBlockConversions(view.state) });
-            if (activated || applying || disposed || props.readonly || previous.doc.eq(view.state.doc)) return;
+            ) {
+              emit('selectionChange', {
+                ...selectionContext(view.state),
+                availableBlockCommands: availableBlockConversions(view.state),
+              });
+            }
+            if (activated || applying || disposed || props.readonly || previous.doc.eq(view.state.doc)) {
+              return;
+            }
             if (sameMarkdownContent(previous.doc, view.state.doc)) return;
             // Column padding depends on the widest cell: typing in that cell
             // otherwise looks like edits to every row. Use stable table spacing
@@ -2167,13 +447,18 @@ const bridge = $prose(
               }
               serialize = suggestionSerializer;
             }
-            let markdown = frontmatter.prefix + serialize(serializableDocument(view.state));
+            let markdown =
+              frontmatter.prefix + serialize(inlineSource.serializableDocument(view.state));
             if (props.transformChange) {
               try {
                 const mapped = suggestionCodec.map({
-                  previous: lastValue, current: markdown, prefix: frontmatter.prefix,
-                  parse: ctx.get(parserCtx), stableSerialize: serialize,
-                  serialize: ctx.get(serializerCtx), transform: props.transformChange,
+                  previous: lastValue,
+                  current: markdown,
+                  prefix: frontmatter.prefix,
+                  parse: ctx.get(parserCtx),
+                  stableSerialize: serialize,
+                  serialize: ctx.get(serializerCtx),
+                  transform: props.transformChange,
                 });
                 if (mapped === undefined) return;
                 markdown = mapped;
@@ -2182,7 +467,9 @@ const bridge = $prose(
                 // Restore the last safely represented view instead of leaving unsaved text hidden.
                 const retained = lastValue;
                 lastValue = markdown;
-                queueMicrotask(() => { if (!disposed) applyContent(retained); });
+                queueMicrotask(() => {
+                  if (!disposed) applyContent(retained);
+                });
                 return;
               }
             }
@@ -2194,126 +481,44 @@ const bridge = $prose(
       },
       props: {
         handleTextInput(view, from, to, text) {
-          return insertChineseInput(ctx, view, from, to, text) ||
-            insertEmptyCodeSourceText(view, from, to, text) ||
-            fillEmptyRenderedCodeLine(view, from, to, text) ||
-            wrapSelectedInlineSource(ctx, view, from, to, text) ||
-            insertPartialEmphasisSource(ctx, view, from, to, text);
+          return (
+            chineseInput.insertChineseInput(ctx, view, from, to, text) ||
+            inlineSource.insertEmptyCodeSourceText(view, from, to, text) ||
+            inlineSource.fillEmptyRenderedCodeLine(view, from, to, text) ||
+            inlineSource.wrapSelectedInlineSource(ctx, view, from, to, text) ||
+            inlineSource.insertPartialEmphasisSource(ctx, view, from, to, text)
+          );
         },
         handlePaste(view, event) {
           if (event.clipboardData?.files.length) return false;
           const selection = view.state.selection;
           if (!(selection instanceof TextSelection)) return false;
           const text = event.clipboardData?.getData('text/plain') ?? '';
-          if (!insertEmptyCodeSourceText(view, selection.from, selection.to, text) &&
-              !fillEmptyRenderedCodeLine(view, selection.from, selection.to, text)) return false;
+          if (
+            !inlineSource.insertEmptyCodeSourceText(view, selection.from, selection.to, text) &&
+            !inlineSource.fillEmptyRenderedCodeLine(view, selection.from, selection.to, text)
+          ) {
+            return false;
+          }
           event.preventDefault();
           return true;
         },
-        decorations: (state) => {
-          const decorated = documentDecorations(state, `${runtimeRevision}:${props.readonly}:${props.revealMarkdown}`, (block, start) => {
-          const decorations: Decoration[] = [];
-          const visit = (node: Node, pos: number) => {
-            if (
-              node.type.name === 'tano_live_source_inline' &&
-              inlineSourceDestination(ctx, node.textContent)
-            )
-              decorations.push(
-                Decoration.node(pos, pos + node.nodeSize, { class: 'tano-clickable-source' }),
-              );
-            if (node.type.name === 'tano_wiki_link')
-              decorations.push(
-                Decoration.node(pos, pos + node.nodeSize, {
-                  'data-feature-level': '1',
-                  'data-inline-type': 'Mention',
-                }),
-              );
-            if (
-              node.isText &&
-              node.text?.startsWith('@') &&
-              node.marks.some((mark) => mark.type.name === 'link')
-            )
-              decorations.push(
-                Decoration.inline(pos, pos + node.nodeSize, {
-                  class: 'tano-file-mention',
-                  'data-feature-level': '1',
-                  'data-inline-type': 'Mention',
-                }),
-              );
-            if (!node.isText && !node.isBlock)
-              decorations.push(
-                Decoration.node(pos, pos + node.nodeSize, {
-                  'data-runtime-policy': String(runtimeRevision),
-                }),
-              );
-            if (!node.isBlock) return;
-            const type = blockType(node);
-            const editingFootnoteLabel = type === 'FootnoteDefinition' &&
-              node.firstChild?.firstChild?.type.name === 'tano_live_source_inline' &&
-              node.firstChild.firstChild.attrs.origin === 'footnote_definition';
-            if (type === 'Callout' && policy().features.callout) {
-              const marker = calloutMarker.exec(
-                node.firstChild?.textContent ?? '',
-              );
-              if (marker && node.firstChild?.type.name === 'paragraph') {
-                decorations.push(
-                  Decoration.inline(pos + 2, pos + 2 + marker[0].length, {
-                    class: 'tano-callout-marker',
-                  }),
-                );
-                if (marker[1]!.toUpperCase().startsWith('CUSTOM')) {
-                  decorations.push(customCalloutWidget(pos, marker[0], !!props.readonly, props.customCalloutIcon,
-                    () => editor?.action(ctx => props.extension?.stopHistoryCapture?.(ctx))));
-                } else {
-                  const label = createCalloutTitle(marker[1]!.toUpperCase() as CalloutKind);
-                  decorations.push(Decoration.widget(pos + 1, label, { side: -1 }));
-                }
-                if (node.firstChild.textContent === marker[0])
-                  decorations.push(
-                    Decoration.node(pos + 1, pos + 1 + node.firstChild.nodeSize, {
-                      class: 'tano-callout-marker-paragraph',
-                    }),
-                  );
-              }
-            }
-            decorations.push(
-              Decoration.node(pos, pos + node.nodeSize, {
-                'data-runtime-policy': String(runtimeRevision),
-                'data-block-type': type,
-                'data-feature-level': String(featureLevel(type)),
-                ...(editingFootnoteLabel ? { class: 'tano-footnote-label-editing' } : {}),
-                ...(type === 'Callout' && policy().features.callout
-                  ? {
-                      class:
-                        'tano-callout' +
-                        (!/^\[!CUSTOM[:\]]/i.test(node.firstChild?.textContent ?? '') &&
-                        props.revealMarkdown !== false &&
-                        !props.readonly &&
-                        state.selection.empty &&
-                        state.selection.from >= pos &&
-                        state.selection.from <= pos + node.nodeSize
-                          ? ' tano-live-callout'
-                          : ''),
-                      'data-callout-kind':
-                        /^\[!([A-Z]+)[:\]]/i
-                          .exec(node.firstChild?.textContent ?? '')?.[1]
-                          ?.toLowerCase() ?? 'note',
-                    }
-                  : {}),
-              }),
-            );
-          };
-          visit(block, start);
-          block.descendants((node, pos) => visit(node, start + pos + 1));
-          return decorations;
-          });
-          const placeholders = uploads.getState(state);
-          return placeholders && placeholders !== DecorationSet.empty ? decorated.add(state.doc, placeholders.find()) : decorated;
-        },
+        decorations: (state) => buildDocumentDecorations(ctx, state),
         handleKeyDown(view, event) {
-          if (event.key !== 'ArrowDown' || event.shiftKey || event.ctrlKey || event.metaKey ||
-              event.altKey || event.isComposing || event.keyCode === 229 || view.composing ||
-              props.readonly || !view.editable) return false;
+          if (
+            event.key !== 'ArrowDown' ||
+            event.shiftKey ||
+            event.ctrlKey ||
+            event.metaKey ||
+            event.altKey ||
+            event.isComposing ||
+            event.keyCode === 229 ||
+            view.composing ||
+            props.readonly ||
+            !view.editable
+          ) {
+            return false;
+          }
           const { doc, selection } = view.state;
           if (selection instanceof TextSelection) {
             if (!selection.empty) return false;
@@ -2327,15 +532,14 @@ const bridge = $prose(
             return false;
           }
           if (doc.lastChild?.eq(view.state.schema.nodes.paragraph!.create())) return false;
-          moveToTrailingParagraph(view);
+          editorCommands.moveToTrailingParagraph(view);
           return true;
         },
         handleDOMEvents: {
-          beforeinput: (view, event) => beforeChineseInput(ctx, view, event as InputEvent),
-          copy: (view, event) => copySelectionWithPreference(ctx, view, event),
-          cut: (view, event) => copySelectionWithPreference(ctx, view, event),
+          beforeinput: (view, event) =>
+            chineseInput.beforeChineseInput(ctx, view, event as InputEvent),
           mousedown(view, event) {
-            if (event.button === 0) selectingWithPointer = true;
+            if (event.button === 0) inlineSource.setSelectingWithPointer(true);
             if (
               event.button === 0 &&
               (event.ctrlKey || event.metaKey) &&
@@ -2349,14 +553,20 @@ const bridge = $prose(
             return false;
           },
           keydown(view, event) {
-            const mapped = chineseInputEventTarget(event) && mappedChineseInputKey(event, chineseInputSettings());
-            if (mapped && insertMappedChineseInput(ctx, view, view.state.selection.from, view.state.selection.to, mapped)) {
-              event.preventDefault();
-              return true;
-            }
-            if (event.key.toLowerCase() === 'a' && (event.ctrlKey || event.metaKey) &&
-                !event.shiftKey && !event.altKey && !event.isComposing && event.keyCode !== 229 && !view.composing &&
-                !(isElement(event.target) && event.target.closest('input, textarea, [contenteditable="false"]'))) {
+            if (chineseInput.handleChineseKeyDown(ctx, view, event)) return true;
+            if (
+              event.key.toLowerCase() === 'a' &&
+              (event.ctrlKey || event.metaKey) &&
+              !event.shiftKey &&
+              !event.altKey &&
+              !event.isComposing &&
+              event.keyCode !== 229 &&
+              !view.composing &&
+              !(
+                isElement(event.target) &&
+                event.target.closest('input, textarea, [contenteditable="false"]')
+              )
+            ) {
               const selection = expandBlockSelection(view.state.doc, view.state.selection);
               if (selection) {
                 event.preventDefault();
@@ -2369,10 +579,16 @@ const bridge = $prose(
             }
             if (
               event.key === ' ' &&
-              !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey &&
-              !event.isComposing && !view.composing && !props.readonly &&
+              !event.shiftKey &&
+              !event.ctrlKey &&
+              !event.metaKey &&
+              !event.altKey &&
+              !event.isComposing &&
+              !view.composing &&
+              !props.readonly &&
               preferences().blankBlockAiShortcut &&
-              view.state.selection instanceof TextSelection && view.state.selection.empty &&
+              view.state.selection instanceof TextSelection &&
+              view.state.selection.empty &&
               view.state.selection.$from.parent.type.name === 'paragraph' &&
               view.state.selection.$from.parent.content.size === 0
             ) {
@@ -2381,11 +597,18 @@ const bridge = $prose(
               emit('blankBlockAi');
               return true;
             }
-            const source = currentSource(view);
-            if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
-                !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey &&
-                !event.isComposing && !view.composing && !props.readonly &&
-                moveAcrossInlineSourceEdge(ctx, view, event.key === 'ArrowLeft' ? -1 : 1)) {
+            const source = inlineSource.currentSource(view);
+            if (
+              (event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
+              !event.shiftKey &&
+              !event.ctrlKey &&
+              !event.metaKey &&
+              !event.altKey &&
+              !event.isComposing &&
+              !view.composing &&
+              !props.readonly &&
+              inlineSource.moveAcrossInlineSourceEdge(ctx, view, event.key === 'ArrowLeft' ? -1 : 1)
+            ) {
               event.preventDefault();
               return true;
             }
@@ -2396,28 +619,42 @@ const bridge = $prose(
               event.stopPropagation();
               if (props.readonly) return true;
               if (event.ctrlKey || event.metaKey || event.shiftKey) {
-                if (source && enterInlineSourceTextblock(ctx, view, true)) return true;
+                if (source && inlineSource.enterInlineSourceTextblock(ctx, view, true)) return true;
                 const tr = breakTableCell(view.state);
                 if (tr) view.dispatch(tr);
               } else {
-                if (source) finishLocalSource(ctx, view);
+                if (source) inlineSource.finishLocalSource(ctx, view);
                 const tr = nextTableRow(view.state);
                 if (tr) view.dispatch(tr);
               }
               return true;
             }
-            if (event.key === 'ArrowLeft' && !event.shiftKey && !event.ctrlKey &&
-                !event.metaKey && !event.altKey && !event.isComposing && !view.composing &&
-                enterFootnoteLabelFromCaret(ctx, view)) {
+            if (
+              event.key === 'ArrowLeft' &&
+              !event.shiftKey &&
+              !event.ctrlKey &&
+              !event.metaKey &&
+              !event.altKey &&
+              !event.isComposing &&
+              !view.composing &&
+              inlineSource.enterFootnoteLabelFromCaret(ctx, view)
+            ) {
               event.preventDefault();
               return true;
             }
             if (
               event.key === 'Enter' &&
-              !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey &&
-              !event.isComposing && !view.composing && !props.readonly &&
-              ((source && (enterHeadingSource(ctx, view) || enterInlineSourceTextblock(ctx, view))) ||
-                enterRenderedHeading(view))
+              !event.shiftKey &&
+              !event.ctrlKey &&
+              !event.metaKey &&
+              !event.altKey &&
+              !event.isComposing &&
+              !view.composing &&
+              !props.readonly &&
+              ((source &&
+                (inlineSource.enterHeadingSource(ctx, view) ||
+                  inlineSource.enterInlineSourceTextblock(ctx, view))) ||
+                inlineSource.enterRenderedHeading(view))
             ) {
               event.preventDefault();
               event.stopPropagation();
@@ -2430,7 +667,10 @@ const bridge = $prose(
             ) {
               event.preventDefault();
               event.stopPropagation();
-              toggleSourceSyntax(view, event.key.toLowerCase() === 'b' ? 'bold' : 'italic');
+              inlineSource.toggleSourceSyntax(
+                view,
+                event.key.toLowerCase() === 'b' ? 'bold' : 'italic',
+              );
               return true;
             }
             if (
@@ -2440,113 +680,87 @@ const bridge = $prose(
             ) {
               event.preventDefault();
               event.stopPropagation();
-              finishLocalSource(ctx, view);
+              inlineSource.finishLocalSource(ctx, view);
               return true;
             }
             return false;
           },
           blur(view) {
-            finishLocalSource(ctx, view);
+            inlineSource.finishLocalSource(ctx, view);
             return false;
           },
           compositionstart() {
-            chineseCompositionRevision++;
+            chineseInput.bumpCompositionRevision();
             return false;
           },
           compositionend(view, event) {
-            finishChineseComposition(view, (event as CompositionEvent).data);
+            chineseInput.finishChineseComposition(view, (event as CompositionEvent).data);
             queueMicrotask(() => {
-              if (!disposed && !view.isDestroyed && localSource)
+              if (!disposed && !view.isDestroyed && inlineSource.getLocalSource()) {
                 view.dispatch(view.state.tr);
+              }
             });
             return false;
           },
-          paste(view, event) {
-            const files = Array.from(event.clipboardData?.files ?? []);
-            const embeddedImage = containsEmbeddedImage(event.clipboardData);
-            if ((!files.length && !embeddedImage) || props.readonly) return false;
-            event.preventDefault();
-            if (!props.importFile) {
-              emit('error', '当前工作区不能保存图片或附件，请在桌面工作空间中粘贴图片');
-              return true;
-            }
-            if (!files.length) {
-              emit('error', '剪贴板没有提供可导入的图片文件，请先将图片保存为文件后再导入');
-              return true;
-            }
-            for (const file of files.slice(0, 10))
-              void importInto(
-                ctx,
-                view,
-                file,
-                view.state.selection.from,
-                file.type.startsWith('image/'),
-              );
-            return true;
-          },
-          dragover(_view, event) {
-            if (props.readonly || !referencesEnabled() || !event.dataTransfer?.types.includes(entryReferenceDragType)) return false;
-            event.preventDefault();
-            event.dataTransfer.dropEffect = 'copy';
-            return true;
-          },
-          drop(view, event) {
-            if (event.dataTransfer?.types.includes(entryReferenceDragType)) {
-              event.preventDefault();
-              event.stopPropagation();
-              if (props.readonly || !referencesEnabled()) return true;
-              const targets = droppedEntryReferences(event.dataTransfer.getData(entryReferenceDragType), props.referenceTargets ?? []);
-              if (!targets.length) return true;
-              const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos ?? view.state.selection.from;
-              const nodes = targets.flatMap((target, index) => [
-                ...(index ? [view.state.schema.text(' ')] : []),
-                view.state.schema.nodes.tano_reference!.create({ url: referenceUrl(target), label: target.name }),
-              ]);
-              const tr = view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(pos)));
-              view.dispatch(tr.replaceSelection(new Slice(Fragment.fromArray(nodes), 0, 0)).scrollIntoView());
-              confirmEntryReferenceDrop(event);
-              view.focus();
-              return true;
-            }
-            const files = Array.from(event.dataTransfer?.files ?? []);
-            if (!files.length || !props.importFile || props.readonly) return false;
-            event.preventDefault();
-            const pos =
-              view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos ??
-              view.state.selection.from;
-            for (const file of files.slice(0, 10)) void importInto(ctx, view, file, pos, false);
-            return true;
-          },
-          click(_view, event) {
-            endPointerSelection();
+          click(view, event) {
+            inlineSource.endPointerSelection();
             // A native drag also ends with a click. Keep its text range instead
             // of replacing the heading/link/code DOM with an editable source.
-            if (_view.state.selection instanceof TextSelection && !_view.state.selection.empty &&
-                event.button === 0 && !event.ctrlKey && !event.metaKey) return false;
+            if (
+              view.state.selection instanceof TextSelection &&
+              !view.state.selection.empty &&
+              event.button === 0 &&
+              !event.ctrlKey &&
+              !event.metaKey
+            ) {
+              return false;
+            }
             // The native DOM selection may not have reached editor state yet.
             // Resolve textual clicks before adding delimiters changes the layout.
-            if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
-                props.revealMarkdown !== false && !props.readonly &&
-                (event.clientX || event.clientY) && !currentSource(_view) &&
-                isElement(event.target) &&
-                !inlineAtomSourceRange(_view, event) &&
-                !event.target.closest('[contenteditable="false"], .math-preview, .tano-mermaid-preview, .tano-image-block')) {
-              const hit = _view.posAtCoords({ left: event.clientX, top: event.clientY });
-              if (hit && _view.state.doc.resolve(hit.pos).parent.inlineContent)
-                _view.dispatch(_view.state.tr.setSelection(TextSelection.create(_view.state.doc, hit.pos))
-                  .setMeta('tanoKeepNodeView', true).setMeta('addToHistory', false));
+            if (
+              event.button === 0 &&
+              !event.ctrlKey &&
+              !event.metaKey &&
+              !event.shiftKey &&
+              props.revealMarkdown !== false &&
+              !props.readonly &&
+              (event.clientX || event.clientY) &&
+              !inlineSource.currentSource(view) &&
+              isElement(event.target) &&
+              !inlineSource.inlineAtomSourceRange(view, event) &&
+              !event.target.closest(
+                '[contenteditable="false"], .math-preview, .tano-mermaid-preview, .tano-image-block',
+              )
+            ) {
+              const hit = view.posAtCoords({ left: event.clientX, top: event.clientY });
+              if (hit && view.state.doc.resolve(hit.pos).parent.inlineContent) {
+                view.dispatch(
+                  view.state.tr
+                    .setSelection(TextSelection.create(view.state.doc, hit.pos))
+                    .setMeta('tanoKeepNodeView', true)
+                    .setMeta('addToHistory', false),
+                );
+              }
             }
-            if (jumpToFootnote(_view, event)) {
+            if (jumpToFootnote(view, event)) {
               event.preventDefault();
               return true;
             }
-            if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
-                isElement(event.target) &&
-                activateFootnoteLabelSource(ctx, _view, event.target)) {
+            if (
+              event.button === 0 &&
+              !event.ctrlKey &&
+              !event.metaKey &&
+              !event.shiftKey &&
+              isElement(event.target) &&
+              inlineSource.activateFootnoteLabelSource(ctx, view, event.target)
+            ) {
               event.preventDefault();
               return true;
             }
-            if ((event.ctrlKey || event.metaKey) && openInlineSourceLink(ctx, _view, event)) {
+            if (
+              (event.ctrlKey || event.metaKey) &&
+              inlineSource.openInlineSourceLink(ctx, view, event)
+            ) {
               event.preventDefault();
               return true;
             }
@@ -2557,383 +771,93 @@ const bridge = $prose(
               !event.ctrlKey &&
               !event.metaKey &&
               !event.shiftKey &&
-              inlineAtomSourceRange(_view, event)
+              inlineSource.inlineAtomSourceRange(view, event)
             ) {
               event.preventDefault();
-              return activateInlineSource(ctx, _view, event);
+              return inlineSource.activateInlineSource(ctx, view, event);
             }
             const link = isElement(event.target) ? event.target.closest('a[href]') : null;
             if (link) {
               event.preventDefault();
               const wikiTarget = link.getAttribute('data-tano-wiki-target');
               if (event.ctrlKey || event.metaKey) {
-                closeLinkPanel();
+                linkPanel.closeLinkPanel();
                 if (wikiTarget !== null) emit('openWikiLink', wikiTarget);
                 else emit('openLink', link.getAttribute('href') ?? '');
                 return true;
               }
-              if (wikiTarget === null && props.revealMarkdown !== false && !props.readonly &&
-                  event.button === 0 && !event.altKey && !event.shiftKey)
-                return activateLinkSource(ctx, _view, link, event);
-              if (props.revealMarkdown === false && event.button === 0 && !event.altKey && !event.shiftKey)
-                return openLinkPanel(_view, link);
+              if (
+                wikiTarget === null &&
+                props.revealMarkdown !== false &&
+                !props.readonly &&
+                event.button === 0 &&
+                !event.altKey &&
+                !event.shiftKey
+              ) {
+                return inlineSource.activateLinkSource(ctx, view, link);
+              }
+              if (
+                props.revealMarkdown === false &&
+                event.button === 0 &&
+                !event.altKey &&
+                !event.shiftKey
+              ) {
+                return linkPanel.openLinkPanel(view, link);
+              }
             }
-            return activateLocalSource(ctx, _view, event);
+            return inlineSource.activateLocalSource(ctx, view, event);
           },
         },
         markViews: runtimeMarkViews(policy()),
-        nodeViews: virtualBlockViews(runtimeViews(
-          {
-            table: (node, view) => new TableViewport(node, defaultTableColumnWidth, view),
-            ...referenceViews(
-              () => props.referenceTargets ?? [],
-              referencesEnabled,
-              (identity) => emit('openReference', identity),
-              () => props.revealMarkdown !== false && !props.readonly,
-              activateReferenceSource,
-            ),
-            ...enhancedViews(
-              () => !!props.readonly,
-              (url) => emit('openLink', url, true),
-              (url) =>
-                props.resolveImage?.(url) ??
-                (!props.resolveImage && /^https?:\/\//i.test(url) ? url : null),
-              () => props.resourceRevision,
-            ),
-            html(node) {
-              const wrapper = document.createElement('span');
-              let current = node;
-              const render = () =>
-                renderHtml(wrapper, String(current.attrs.value ?? ''), props.resolveImage);
-              render();
-              const stop = watch(() => props.resourceRevision, render);
-              return {
-                dom: wrapper,
-                update(next) {
-                  if (next.type !== current.type) return false;
-                  current = next;
-                  render();
-                  return true;
-                },
-                ignoreMutation: () => true,
-                destroy: stop,
-              };
-            },
-            code_block: mermaidView(
-              () => policy().features.mermaid,
-              () => !!props.readonly,
-              () => props.revealMarkdown !== false,
-              renderMermaid,
-            ),
-            math_inline: mathView(
-              false,
-              () => !!props.readonly,
-              () => props.revealMarkdown === false || preferences().previewMathWhileEditing,
-              () => props.revealMarkdown !== false,
-            ),
-            math_block: mathView(
-              true,
-              () => !!props.readonly,
-              () => props.revealMarkdown === false || preferences().previewMathWhileEditing,
-              () => props.revealMarkdown !== false,
-            ),
-            tano_live_source_inline: sourcePreviewView(
-              true,
-              () => preferences().previewMathWhileEditing && props.revealMarkdown !== false,
-              (source) => ctx.get(parserCtx)(source),
-              undefined,
-              policy,
-            ),
-            tano_live_source: sourcePreviewView(
-              false,
-              () => preferences().previewMathWhileEditing && props.revealMarkdown !== false,
-              (source) => ctx.get(parserCtx)(source),
-              (id) => localSource?.kind === 'block' && localSource.id === id
-                ? localSource.style
-                : null,
-              policy,
-              {
-                enabled: () => preferences().previewMermaidWhileEditing !== false && props.revealMarkdown !== false && !props.readonly,
-                render: renderMermaid,
-              },
-            ),
-            image(node, view, getPos) {
-              const wrapper = document.createElement('span');
-              wrapper.className = 'tano-image';
-              wrapper.contentEditable = 'false';
-              const img = document.createElement('img');
-              img.loading = 'lazy';
-              img.referrerPolicy = 'no-referrer';
-              const status = document.createElement('small');
-              const imageCaption = document.createElement('span');
-              imageCaption.className = 'tano-image-caption';
-              const panel = createEditorPanel('div', 'tano-image-editor-panel', '编辑图片');
-              const fields = (['src', 'alt', 'title'] as const).map((key) => {
-                const label = document.createElement('label');
-                const caption = document.createElement('span');
-                caption.textContent = { src: '图片地址', alt: '图注（替代文字）', title: '悬停提示' }[key];
-                const input = document.createElement('input');
-                input.type = 'text';
-                input.setAttribute('aria-label', caption.textContent);
-                label.append(caption, input);
-                panel.append(label);
-                return { key, input };
-              });
-              wrapper.append(img, status, imageCaption, panel);
-              let current = node;
-              let editing = false;
-              let stopPositioning: (() => void) | undefined;
-              let panelSide: PanelSide | undefined;
-              const standalone = () => {
-                const pos = getPos();
-                if (pos === undefined) return false;
-                const parent = view.state.doc.resolve(pos).parent;
-                return parent.type.name === 'paragraph' && parent.childCount === 1;
-              };
-              function positionPanel() {
-                panelSide = positionAnchoredPanel(wrapper, panel, 0, panelSide);
-              }
-              function render() {
-                const block = standalone();
-                if (editing && (props.revealMarkdown !== false || props.readonly)) {
-                  editing = false;
-                  panelSide = undefined;
-                  stopPositioning?.();
-                  stopPositioning = undefined;
-                }
-                wrapper.classList.toggle('tano-image-block', block);
-                wrapper.classList.toggle('tano-editor-active', editing);
-                wrapper.classList.toggle('tano-image-click-to-edit', props.revealMarkdown === false && !props.readonly);
-                img.tabIndex = status.tabIndex = !props.readonly ? 0 : -1;
-                img.setAttribute('role', !props.readonly ? 'button' : 'img');
-                if (!props.readonly) {
-                  img.setAttribute('aria-label', '编辑图片');
-                  status.setAttribute('role', 'button');
-                  status.setAttribute('aria-label', '编辑图片');
-                } else {
-                  img.removeAttribute('aria-label');
-                  status.removeAttribute('role');
-                  status.removeAttribute('aria-label');
-                }
-                setSurfaceVisible(panel, editing);
-                for (const { key, input } of fields) {
-                  const value = String(current.attrs[key] ?? '');
-                  if (input.value !== value) input.value = value;
-                  input.readOnly = !!props.readonly;
-                }
-                const reference = String(current.attrs.src ?? '');
-                const url =
-                  props.resolveImage?.(reference) ??
-                  (!props.resolveImage && /^https:\/\//i.test(reference) ? reference : null);
-                img.alt = current.attrs.alt ?? '';
-                img.title = current.attrs.title ?? '';
-                imageCaption.textContent = block ? String(current.attrs.alt ?? '') : '';
-                imageCaption.hidden = !block || !imageCaption.textContent || !url;
-                status.textContent = `图片不可用：${unavailableImageLabel(reference, current.attrs.alt)}`;
-                status.hidden = !!url;
-                img.hidden = !url;
-                if (url) img.src = url;
-                else img.removeAttribute('src');
-                if (editing) positionPanel();
-              }
-              function finish(refocus = true) {
-                if (!editing) return;
-                editing = false;
-                panelSide = undefined;
-                stopPositioning?.();
-                stopPositioning = undefined;
-                render();
-                if (refocus) view.focus();
-              }
-              function openPanel() {
-                if (props.revealMarkdown !== false || props.readonly || editing) return;
-                announceEditorPanel(view.dom, wrapper);
-                editing = true;
-                panelSide = undefined;
-                render();
-                stopPositioning = activateEditorPanel({ panel, anchor: wrapper, position: positionPanel, close: () => finish(false) });
-                fields[0]!.input.focus();
-              }
-              img.onerror = () => {
-                img.hidden = true;
-                status.hidden = false;
-                imageCaption.hidden = true;
-                if (editing) positionPanel();
-              };
-              img.onload = () => {
-                img.hidden = false;
-                status.hidden = true;
-                imageCaption.hidden = !standalone() || !imageCaption.textContent;
-                if (editing) positionPanel();
-              };
-              wrapper.onclick = (event) => {
-                if (panel.contains(event.target as globalThis.Node)) return;
-                if (editing) finish(false);
-                else if (props.revealMarkdown === false) openPanel();
-              };
-              wrapper.onkeydown = (event) => {
-                if (panel.contains(event.target as globalThis.Node) || !['Enter', ' '].includes(event.key))
-                  return;
-                event.preventDefault();
-                if (editing) finish(false);
-                else if (props.revealMarkdown !== false) img.click();
-                else openPanel();
-              };
-              for (const { key, input } of fields) {
-                input.oninput = () => {
-                  if (props.readonly) return;
-                  const pos = getPos();
-                  if (pos !== undefined)
-                    view.dispatch(
-                      view.state.tr.setNodeMarkup(pos, undefined, {
-                        ...current.attrs,
-                        [key]: input.value,
-                      }),
-                    );
-                };
-                input.onkeydown = (event) => {
-                  if (event.key !== 'Escape') return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                  finish();
-                };
-              }
-              wrapper.addEventListener('tano-math-refresh', render);
-              const stopOtherPanel = onOtherEditorPanel(view.dom, wrapper, () => finish(false));
-              render();
-              const stop = watch(() => props.resourceRevision, render);
-              return {
-                dom: wrapper,
-                stopEvent: (event) =>
-                  panel.contains(event.target as globalThis.Node) ||
-                  ((props.revealMarkdown === false || editing) &&
-                    wrapper.contains(event.target as globalThis.Node)),
-                update(next) {
-                  if (next.type !== current.type) return false;
-                  current = next;
-                  render();
-                  return true;
-                },
-                ignoreMutation: () => true,
-                destroy() {
-                  stop();
-                  stopPositioning?.();
-                  stopOtherPanel();
-                  wrapper.removeEventListener('tano-math-refresh', render);
-                  wrapper.onclick = wrapper.onkeydown = null;
-                  for (const { input } of fields) input.oninput = input.onkeydown = null;
-                  img.onload = img.onerror = null;
-                },
-              };
-            },
-            list_item(node, view, getPos) {
-              const li = document.createElement('li');
-              if (node.attrs.checked == null)
-                return {
-                  dom: li,
-                  contentDOM: li,
-                  update: (next) => next.type === node.type && next.attrs.checked == null,
-                };
-              li.dataset.itemType = 'task';
-              li.dataset.checked = String(node.attrs.checked);
-              const checkbox = document.createElement('input');
-              checkbox.type = 'checkbox';
-              checkbox.checked = node.attrs.checked;
-              checkbox.contentEditable = 'false';
-              checkbox.setAttribute('aria-label', '完成任务');
-              const content = document.createElement('div');
-              li.append(checkbox, content);
-              const change = () => {
-                const pos = getPos();
-                if (pos === undefined || props.readonly) return;
-                const current = view.state.doc.nodeAt(pos);
-                if (current)
-                  view.dispatch(
-                    view.state.tr.setNodeMarkup(pos, undefined, {
-                      ...current.attrs,
-                      checked: checkbox.checked,
-                    }),
-                  );
-              };
-              checkbox.addEventListener('change', change);
-              return {
-                dom: li,
-                contentDOM: content,
-                update(next) {
-                  if (next.type !== node.type || next.attrs.checked == null) return false;
-                  checkbox.checked = next.attrs.checked;
-                  li.dataset.checked = String(next.attrs.checked);
-                  return true;
-                },
-                stopEvent: (event) => event.target === checkbox,
-                ignoreMutation: (mutation) =>
-                  mutation.type !== 'selection' &&
-                  (mutation.target === checkbox || mutation.target === li),
-                destroy: () => checkbox.removeEventListener('change', change),
-              };
-            },
-          },
+        nodeViews: buildEditorNodeViews({
+          document,
+          ctx,
           policy,
-          (node) => {
-            const schema = node.type.schema;
-            const content = node.isInline ? schema.nodes.paragraph!.create(null, node) : node;
-            return ctx.get(serializerCtx)(schema.topNodeType.create(null, content));
-          },
-          () => emit('editSource'),
-        )),
+          preferences,
+          readonly: () => !!props.readonly,
+          revealMarkdown: () => props.revealMarkdown !== false,
+          resourceRevision: () => props.resourceRevision,
+          resolveImage: () => props.resolveImage,
+          referencesEnabled,
+          referenceTargets: () => props.referenceTargets ?? [],
+          renderMermaid,
+          getLocalSource: inlineSource.getLocalSource,
+          activateReferenceSource: inlineSource.activateReferenceSource,
+          onOpenReference: (identity) => emit('openReference', identity),
+          onOpenLink: (url, newTab) => emit('openLink', url, newTab),
+          onEditSource: () => emit('editSource'),
+        }),
       },
     }),
 );
 
-const commentMarks = $prose(() => new Plugin({
-  props: {
-    decorations(state) {
-      if (!props.commentAnchors?.length) return DecorationSet.empty;
-      const text = projectCommentText(state.doc).text;
-      const marks = (props.commentAnchors ?? []).flatMap(({ id, anchor }) => {
-        if (anchor.basis !== 'prose' ||
-            anchor.spans.some(span => text.slice(span.from, span.to) !== span.text)) return [];
-        return proseRangesForCommentSpans(state.doc, anchor.spans).map(({ from, to }) => {
-          const node = state.doc.nodeAt(from);
-          return node && !node.isText && node.isAtom && node.nodeSize === to - from
-            ? Decoration.node(from, to, { class: 'tano-comment-mark', 'data-comment-id': id }, { id })
-            : Decoration.inline(from, to, { class: 'tano-comment-mark', 'data-comment-id': id }, { id });
-        });
-      });
-      return DecorationSet.create(state.doc, marks);
-    },
-  },
-}));
-
 onMounted(async () => {
-  window.addEventListener('pointerdown', dismissPropertyTypeMenu, true);
-  window.addEventListener('mouseup', endPointerSelection);
-  window.addEventListener('blur', endPointerSelection);
-  window.addEventListener('pointerdown', dismissBlockSourceOnPointer, true);
-  window.addEventListener('pointerdown', dismissBlockMenuOnPointer, true);
-  window.addEventListener('contextmenu', dismissBlockMenuOnContext);
-  window.addEventListener('mousedown', preserveSelectedContext, true);
-  window.addEventListener('pointerdown', preserveSelectedContext, true);
-  window.addEventListener('contextmenu', openSelectedContext, true);
-  window.addEventListener('scroll', dismissBlockMenuOnScroll, true);
-  window.addEventListener('resize', dismissBlockMenuOnScroll);
+  window.addEventListener('mouseup', inlineSource.endPointerSelection);
+  window.addEventListener('blur', inlineSource.endPointerSelection);
+  window.addEventListener('pointerdown', inlineSource.dismissBlockSourceOnPointer, true);
+  blockMenu.mount();
   try {
     const instance = Editor.make()
       .config((ctx) => {
         configureMarkdownRuntime(ctx, policy, completesTextSpacing);
         ctx.set(rootCtx, root.value!);
         ctx.set(defaultValueCtx, frontmatter.body);
-        ctx.update(editorStateOptionsCtx, previous => options => {
+        ctx.update(editorStateOptionsCtx, (previous) => (options) => {
           const configured = previous(options);
           // Milkdown adds its input rules after $prose plugins. Let those rules
           // recognize Markdown syntax before handling ordinary text input.
-          configured.plugins = [...(configured.plugins ?? []), inputSpacing(completesTextSpacing, () => policy().features, canSpaceTextInput)];
+          configured.plugins = [
+            ...(configured.plugins ?? []),
+            inputSpacing(completesTextSpacing, () => policy().features, canSpaceTextInput),
+          ];
           const doc = configured.doc;
           if (!configured.selection && doc && Selection.atStart(doc) instanceof NodeSelection) {
             const start = doc.resolve(0);
-            const caret = Selection.findFrom(start, 1, true)
-              ?? (doc.firstChild?.isAtom && doc.contentMatchAt(0).defaultType?.isTextblock
-                ? new GapCursor(start) : null);
+            const caret =
+              Selection.findFrom(start, 1, true) ??
+              (doc.firstChild?.isAtom && doc.contentMatchAt(0).defaultType?.isTextblock
+                ? new GapCursor(start)
+                : null);
             if (caret) return { ...configured, selection: caret };
           }
           return configured;
@@ -2945,9 +869,8 @@ onMounted(async () => {
           // Milkdown's plain-text shortcut ignores marks and single-child block
           // structure. Always serialize the slice, including partial selections,
           // so copy/cut and drag retain Markdown syntax and reference identities.
-          clipboardTextSerializer: (slice, view) => ctx.get(serializerCtx)(
-            view.state.schema.topNodeType.create(null, slice.content),
-          ),
+          clipboardTextSerializer: (slice, view) =>
+            ctx.get(serializerCtx)(view.state.schema.topNodeType.create(null, slice.content)),
           attributes: {
             class: 'tano-prose',
             spellcheck: 'false',
@@ -2960,23 +883,43 @@ onMounted(async () => {
           commonmark,
           gfm,
           beforeGfm: [
-            $prose(() => columnResizing({ cellMinWidth: minimumTableColumnWidth, defaultCellMinWidth: defaultTableColumnWidth, handleWidth: 6, View: null })),
+            $prose(() =>
+              columnResizing({
+                cellMinWidth: minimumTableColumnWidth,
+                defaultCellMinWidth: defaultTableColumnWidth,
+                handleWidth: 6,
+                View: null,
+              }),
+            ),
           ],
           afterGfm: [
-            $prose(() => tableLayouts(() => props.tableLayouts ?? [], tables => emit('tableLayoutChange', tables), () => !!props.readonly)),
+            $prose(() =>
+              tableLayouts(
+                () => props.tableLayouts ?? [],
+                (tables) => emit('tableLayoutChange', tables),
+                () => !!props.readonly,
+              ),
+            ),
             $prose(() => tableControls(() => !!props.readonly)),
             $prose(tableViewports),
             $prose(footnoteNumbers),
-            $prose(() => autoSpacing(() => preferences().autoSpacing === true, () => policy().features)),
+            $prose(() =>
+              autoSpacing(
+                () => preferences().autoSpacing === true,
+                () => policy().features,
+              ),
+            ),
           ],
           afterWikiLink: [wikiLinkInput],
           afterMathRemark: [latexMathInput],
           afterReferences: [
-            $prose(ctx => referencePicker({
-              enabled: () => referencesEnabled() && !props.readonly,
-              targets: () => props.referenceTargets ?? [],
-              completeSpacing: (tr, from) => completeInlineObjectSpacing(ctx, tr, from),
-            })),
+            $prose((ctx) =>
+              referencePicker({
+                enabled: () => referencesEnabled() && !props.readonly,
+                targets: () => props.referenceTargets ?? [],
+                completeSpacing: (tr, from) => completeInlineObjectSpacing(ctx, tr, from),
+              }),
+            ),
           ],
           afterMathNodes: [inlineMathInput, blockMathInput],
         }),
@@ -2994,12 +937,21 @@ onMounted(async () => {
           ),
         ),
       )
-      .use($prose(() => blockControls(() => !!props.readonly, () => preferences().folding, () => commandEnabled('columns', props.enabledLevels, policy().features), openBlockMenu)))
+      .use(
+        $prose(() =>
+          blockControls(
+            () => !!props.readonly,
+            () => preferences().folding,
+            () => commandEnabled('columns', props.enabledLevels, policy().features),
+            blockMenu.openBlockMenu,
+          ),
+        ),
+      )
       .use($prose(() => emptyBlockDeletion(() => !!props.readonly)))
       .use(
         $prose(() =>
           slashCommands({
-            chineseSlash: () => chineseInputSettings().slashCommand,
+            chineseSlash: () => chineseInput.chineseInputSettings().slashCommand,
             translate: props.translate,
             readonly: () => !!props.readonly,
             levels: () => props.enabledLevels,
@@ -3008,23 +960,37 @@ onMounted(async () => {
           }),
         ),
       )
-      .use(bridge)
+      .use(clipboardPlugin)
+      .use(editorUploads.plugin)
+      .use(changeBridge)
       .use(commentMarks)
       .use(referenceFlash)
       .use($prose(richViewport))
       .use($prose(gapCursor))
       .use($prose(visualAnchorPlugin))
-      .use($prose(() => blockMotion({
-        structure: () => preferences().blockMotion !== false,
-        resize: () => preferences().blockResizeMotion !== false,
-      })))
-      .use($prose(() => typingMotion({
-        text: () => !props.readonly && preferences().typingMotion !== false,
-        caret: () => !props.readonly && preferences().smoothCaret !== false,
-      })))
-      .use($prose(() => inlineSourceMotion({
-        enabled: () => !props.readonly && preferences().sourceRevealMotion !== false,
-      })))
+      .use(
+        $prose(() =>
+          blockMotion({
+            structure: () => preferences().blockMotion !== false,
+            resize: () => preferences().blockResizeMotion !== false,
+          }),
+        ),
+      )
+      .use(
+        $prose(() =>
+          typingMotion({
+            text: () => !props.readonly && preferences().typingMotion !== false,
+            caret: () => !props.readonly && preferences().smoothCaret !== false,
+          }),
+        ),
+      )
+      .use(
+        $prose(() =>
+          inlineSourceMotion({
+            enabled: () => !props.readonly && preferences().sourceRevealMotion !== false,
+          }),
+        ),
+      )
       .use($prose(() => suggestionMarks(() => props.suggestionMarks)))
       .use($prose(() => pageSearchPlugin(() => emit('searchChange'))));
     editor = await instance.create();
@@ -3033,7 +999,7 @@ onMounted(async () => {
       await editor.destroy();
       return;
     }
-    if (bridgeView) stopOtherLinkPanel = onOtherEditorPanel(bridgeView.dom, () => linkPanelAnchor, closeLinkPanel);
+    if (bridgeView) linkPanel.bindOtherPanelListener(bridgeView.dom);
     if (props.extension) {
       unbindExtension = editor.action((ctx) =>
         props.extension!.bind(ctx, (markdown) => {
@@ -3045,7 +1011,9 @@ onMounted(async () => {
           }
         }),
       );
-    } else if (lastValue !== props.modelValue) applyContent(props.modelValue);
+    } else if (lastValue !== props.modelValue) {
+      applyContent(props.modelValue);
+    }
     emit('ready');
   } catch (error) {
     console.error('Markdown editor initialization failed', error);
@@ -3056,34 +1024,41 @@ onMounted(async () => {
 function applyContent(value: string) {
   if (!editor || value === lastValue) return;
 
-  if (!linkPanelWriting) closeLinkPanel();
+  if (!linkPanel.isWriting()) linkPanel.closeLinkPanel();
   applying = true;
   try {
     const previousBody = splitFrontmatter(lastValue).body;
     frontmatter = splitFrontmatter(value);
     metadata.value = frontmatter.prefix;
     if (props.extension) {
-      localSource = undefined;
+      inlineSource.clearLocalSource();
       editor.action((ctx) => props.extension!.apply(ctx, value));
-    } else if (frontmatter.body !== previousBody) editor.action((ctx) => {
-      const view = ctx.get(editorViewCtx);
-      const doc = ctx.get(parserCtx)(frontmatter.body);
-      if (!doc) throw new Error('Markdown 无法解析，编辑内容已保留');
-      // Generated heading anchors are view state, not Markdown changes.
-      const comparison = view.state.tr;
-      view.state.doc.descendants((node, pos) => {
-        if (node.type.name === 'heading' && node.attrs.id) comparison.setNodeAttribute(pos, 'id', '');
+    } else if (frontmatter.body !== previousBody) {
+      editor.action((ctx) => {
+        const view = ctx.get(editorViewCtx);
+        const doc = ctx.get(parserCtx)(frontmatter.body);
+        if (!doc) throw new Error('Markdown 无法解析，编辑内容已保留');
+        // Generated heading anchors are view state, not Markdown changes.
+        const comparison = view.state.tr;
+        view.state.doc.descendants((node, pos) => {
+          if (node.type.name === 'heading' && node.attrs.id) {
+            comparison.setNodeAttribute(pos, 'id', '');
+          }
+        });
+        const from = comparison.doc.content.findDiffStart(doc.content);
+        if (from === null) return;
+        const end = comparison.doc.content.findDiffEnd(doc.content)!;
+        // Repeated text can make the shared prefix and suffix overlap.
+        const overlap = from - Math.min(end.a, end.b);
+        if (overlap > 0) {
+          end.a += overlap;
+          end.b += overlap;
+        }
+        inlineSource.clearLocalSource();
+        const tr = view.state.tr.replace(from, end.a, doc.slice(from, end.b));
+        view.dispatch(closeHistory(tr).setMeta('addToHistory', false));
       });
-      const from = comparison.doc.content.findDiffStart(doc.content);
-      if (from === null) return;
-      const end = comparison.doc.content.findDiffEnd(doc.content)!;
-      // Repeated text can make the shared prefix and suffix overlap.
-      const overlap = from - Math.min(end.a, end.b);
-      if (overlap > 0) { end.a += overlap; end.b += overlap; }
-      localSource = undefined;
-      const tr = view.state.tr.replace(from, end.a, doc.slice(from, end.b));
-      view.dispatch(closeHistory(tr).setMeta('addToHistory', false));
-    });
+    }
     lastValue = value;
   } catch (error) {
     emit('error', String(error));
@@ -3091,63 +1066,98 @@ function applyContent(value: string) {
     applying = false;
   }
 }
-watch(() => [props.modelValue, props.contentRevision] as const, ([value, revision], [, previousRevision]) => {
-  applyContent(value);
-  if (revision !== previousRevision && editor && !props.extension?.ownsHistory) {
-    // A suggestion projection is a different editing context. Clear only undo
-    // state, keeping the EditorView, node views, selection and layout mounted.
-    editor.action(ctx => {
-      const view = ctx.get(editorViewCtx);
-      const provider = historyProviderPlugin.key()?.get(view.state);
-      const plugins = view.state.plugins;
-      view.updateState(view.state.reconfigure({ plugins: plugins.filter(plugin => plugin !== provider) })
-        .reconfigure({ plugins }));
-    });
-  }
-});
-watch(() => props.suggestionMarks, () => {
-  if (bridgeView && !disposed) bridgeView.dispatch(bridgeView.state.tr.setMeta('addToHistory', false));
-});
-watch(() => props.tableLayouts, (tables) => {
-  if (bridgeView) bridgeView.dispatch(bridgeView.state.tr
-    .setMeta(tableLayoutKey, tables ?? []).setMeta('addToHistory', false));
-});
-watch(() => props.commentAnchors, () => {
-  if (bridgeView) bridgeView.dispatch(bridgeView.state.tr.setMeta('addToHistory', false));
-}, { deep: true });
-watch(() => props.readonly, () => {
-  if (blockMenu.value) closeBlockMenu();
-  if (props.readonly) {
-    editingProperty.value = undefined;
-    typeMenuProperty.value = undefined;
 
-    closeLinkPanel();
-  }
-});
-watch(() => props.documentId, () => {
-  suggestionCodec.clear();
-  editingProperty.value = undefined;
-  typeMenuProperty.value = undefined;
-  if (blockMenu.value) closeBlockMenu(false);
-  closeLinkPanel();
-});
-watch(() => JSON.stringify(policy().features), () => {
-  editor?.action(ctx => {
-    const view = ctx.get(editorViewCtx);
-    // ProseMirror rebuilds mark views when nodeViews changes identity.
-    view.setProps({ nodeViews: { ...view.props.nodeViews }, markViews: runtimeMarkViews(policy()) });
-  });
-});
+watch(
+  () => [props.modelValue, props.contentRevision] as const,
+  ([value, revision], [, previousRevision]) => {
+    applyContent(value);
+    if (revision !== previousRevision && editor && !props.extension?.ownsHistory) {
+      // A suggestion projection is a different editing context. Clear only undo
+      // state, keeping the EditorView, node views, selection and layout mounted.
+      editor.action((ctx) => {
+        const view = ctx.get(editorViewCtx);
+        const provider = historyProviderPlugin.key()?.get(view.state);
+        const plugins = view.state.plugins;
+        view.updateState(
+          view.state
+            .reconfigure({ plugins: plugins.filter((plugin) => plugin !== provider) })
+            .reconfigure({ plugins }),
+        );
+      });
+    }
+  },
+);
+watch(
+  () => props.suggestionMarks,
+  () => {
+    if (bridgeView && !disposed) {
+      bridgeView.dispatch(bridgeView.state.tr.setMeta('addToHistory', false));
+    }
+  },
+);
+watch(
+  () => props.tableLayouts,
+  (tables) => {
+    if (bridgeView) {
+      bridgeView.dispatch(
+        bridgeView.state.tr.setMeta(tableLayoutKey, tables ?? []).setMeta('addToHistory', false),
+      );
+    }
+  },
+);
+watch(
+  () => props.commentAnchors,
+  () => {
+    if (bridgeView) bridgeView.dispatch(bridgeView.state.tr.setMeta('addToHistory', false));
+  },
+  { deep: true },
+);
+watch(
+  () => props.readonly,
+  () => {
+    if (blockMenu.blockMenu.value) blockMenu.closeBlockMenu();
+    if (props.readonly) {
+      frontmatterPanelRef.value?.resetEditing();
+      linkPanel.closeLinkPanel();
+    }
+  },
+);
+watch(
+  () => props.documentId,
+  () => {
+    suggestionCodec.clear();
+    frontmatterPanelRef.value?.resetEditing();
+    if (blockMenu.blockMenu.value) blockMenu.closeBlockMenu(false);
+    linkPanel.closeLinkPanel();
+  },
+);
+watch(
+  () => JSON.stringify(policy().features),
+  () => {
+    editor?.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      // ProseMirror rebuilds mark views when nodeViews changes identity.
+      view.setProps({ nodeViews: { ...view.props.nodeViews }, markViews: runtimeMarkViews(policy()) });
+    });
+  },
+);
 watch(
   // Page widths are workbench layout state. Saving them must not invalidate
   // every node view (or refresh every formula/code block) in a long document.
-  () => JSON.stringify([props.readonly, props.enabledLevels, {
-    features: policy().features,
-    markdownDialect: policy().markdownDialect,
-    mathSyntax: policy().mathSyntax,
-    mathRecognition: policy().mathRecognition,
-    bulletListMarker: policy().bulletListMarker,
-  }, props.preferences, props.referenceTargets]),
+  () =>
+    JSON.stringify([
+      props.readonly,
+      props.enabledLevels,
+      {
+        features: policy().features,
+        markdownDialect: policy().markdownDialect,
+        mathSyntax: policy().mathSyntax,
+        mathRecognition: policy().mathRecognition,
+        bulletListMarker: policy().bulletListMarker,
+      },
+      props.preferences,
+      props.referenceTargets,
+    ]),
   () =>
     editor?.action((ctx) => {
       runtimeRevision++;
@@ -3155,1002 +1165,103 @@ watch(
       const view = ctx.get(editorViewCtx);
       view.setProps({ editable: () => !props.readonly });
       view.dispatch(view.state.tr.setMeta('addToHistory', false));
-      view.dom.querySelectorAll('.tano-math, .tano-mermaid, .tano-code-block, .tano-image, [data-tano-live-source], [data-tano-live-inline-source]').forEach((node) => node.dispatchEvent(new Event('tano-math-refresh')));
+      view.dom
+        .querySelectorAll(
+          '.tano-math, .tano-mermaid, .tano-code-block, .tano-image, [data-tano-live-source], [data-tano-live-inline-source]',
+        )
+        .forEach((node) => node.dispatchEvent(new Event('tano-math-refresh')));
     }),
 );
 watch(
   () => props.revealMarkdown,
   () => {
-
-    closeLinkPanel();
+    linkPanel.closeLinkPanel();
     editor?.action((ctx) => {
       const view = ctx.get(editorViewCtx);
-      if (props.revealMarkdown === false) finishLocalSource(ctx, view);
+      if (props.revealMarkdown === false) inlineSource.finishLocalSource(ctx, view);
       view.dispatch(view.state.tr.setMeta('addToHistory', false));
-      view.dom.querySelectorAll('.tano-math, .tano-mermaid, .tano-code-block, .tano-image, [data-tano-live-source], [data-tano-live-inline-source]').forEach((node) => node.dispatchEvent(new Event('tano-math-refresh')));
+      view.dom
+        .querySelectorAll(
+          '.tano-math, .tano-mermaid, .tano-code-block, .tano-image, [data-tano-live-source], [data-tano-live-inline-source]',
+        )
+        .forEach((node) => node.dispatchEvent(new Event('tano-math-refresh')));
     });
   },
 );
-function command(name: string, value?: string) {
-  if (!editor || props.readonly) return;
-  if (!commandEnabled(name, props.enabledLevels, policy().features)) return;
-  if (name === 'reference' || name === 'object-reference') {
-    if (!referencesEnabled()) return;
-    editor.action((ctx) => { const view = ctx.get(editorViewCtx); view.dispatch(openReferencePicker(view.state, name === 'object-reference')); });
-    return;
-  }
-  if (name === 'bold' || name === 'italic' || name === 'code') {
-    let sourceEdited = false;
-    editor.action((ctx) => {
-      const view = ctx.get(editorViewCtx);
-      if (localSource?.kind === 'inline') sourceEdited = toggleSourceSyntax(view, name);
-    });
-    if (sourceEdited) {
-      editor.action((ctx) => ctx.get(editorViewCtx).focus());
-      return;
-    }
-  }
-  if (name === 'bold') editor.action(callCommand(toggleStrongCommand.key));
-  if (name === 'italic') editor.action(callCommand(toggleEmphasisCommand.key));
-  if (name === 'code') editor.action(callCommand(toggleInlineCodeCommand.key));
-  if (name === 'strikethrough') editor.action(callCommand(toggleStrikethroughCommand.key));
-  const styles = { underline, superscript, subscript, highlight };
-  if (name in styles)
-    editor.action((ctx) => {
-      const view = ctx.get(editorViewCtx);
-      toggleMark(styles[name as keyof typeof styles].type(ctx))(view.state, view.dispatch);
-    });
-  if (name === 'text-color' || name === 'background-color')
-    editor.action((ctx) => {
-      const view = ctx.get(editorViewCtx);
-      const type = (name === 'text-color' ? textColor : backgroundColor).type(ctx);
-      const color = value ? normalizeTextColor(value) : null;
-      if (value && !color) return;
-      const { from, to, empty } = view.state.selection;
-      const transaction = view.state.tr;
-      if (name === 'background-color') {
-        const highlightType = highlight.type(ctx);
-        if (empty) transaction.removeStoredMark(highlightType);
-        else transaction.removeMark(from, to, highlightType);
-      }
-      if (empty) {
-        if (color) transaction.addStoredMark(type.create({ color }));
-        else transaction.removeStoredMark(type);
-      } else {
-        transaction.removeMark(from, to, type);
-        if (color) transaction.addMark(from, to, type.create({ color }));
-      }
-      view.dispatch(transaction);
-    });
-  if (blockCommandNames.has(name))
-    editor.action((ctx) => {
-      const view = ctx.get(editorViewCtx);
-      if (!blockCommand(name, value)(view.state, view.dispatch))
-        emit('error', '当前块无法转换为此类型，请先选择正文或标题');
-    });
-  if (name === 'link')
-    editor.action((ctx) => {
-      const view = ctx.get(editorViewCtx);
-      const { from, to } = view.state.selection;
-      if (!view.state.selection.$from.parent.inlineContent) return;
-      const tr = view.state.tr.removeMark(from, to, view.state.schema.marks.link!);
-      if (value?.trim())
-        tr.addMark(from, to, view.state.schema.marks.link!.create({ href: value.trim() }));
-      view.dispatch(tr);
-    });
-  if (name === 'mention')
-    editor.action((ctx) => {
-      const view = ctx.get(editorViewCtx);
-      const target = value?.trim();
-      if (!target) return;
-      if (/\.[a-z\d]{1,8}(?:[?#].*)?$/i.test(target) && !/\.md(?:[?#]|$)/i.test(target)) {
-        if (!safeResourceUrl(target)) {
-          emit('error', '请使用工作空间内的相对路径');
-          return;
-        }
-        view.dispatch(
-          view.state.tr.replaceSelectionWith(
-            view.state.schema.text(`@${target.split('/').pop()}`, [
-              view.state.schema.marks.link!.create({ href: target }),
-            ]),
-          ),
-        );
-        return;
-      }
-      const selected =
-        view.state.selection instanceof NodeSelection ? view.state.selection.node : null;
-      const label =
-        selected?.type.name === 'tano_wiki_link'
-          ? String(selected.attrs.label)
-          : view.state.doc.textBetween(view.state.selection.from, view.state.selection.to) ||
-            target;
-      const parsed = parseWikiLink(label === target ? target : `${target}|${label}`);
-      if (!parsed) {
-        emit('error', '所选文字或文档名称包含不支持的提及符号，请调整后重试');
-        return;
-      }
-      const from = view.state.selection.from;
-      view.dispatch(completeInlineObjectSpacing(ctx, view.state.tr.replaceSelectionWith(wikiLink.type(ctx).create(parsed)), from));
-    });
-  if (name === 'footnote')
-    editor.action((ctx) => {
-      const view = ctx.get(editorViewCtx);
-      const { schema, selection } = view.state;
-      if (!selection.$from.parent.inlineContent) return;
-      const used = new Set<string>();
-      view.state.doc.descendants((node) => {
-        if (node.type.name.startsWith('footnote_')) used.add(String(node.attrs.label));
-      });
-      let number = 1;
-      while (used.has(String(number))) number++;
-      const label = String(number);
-      // Reference the selected text without replacing it. Definitions remain editable blocks.
-      const pos = selection.to;
-      const tr = view.state.tr.insert(pos, schema.nodes.footnote_reference!.create({ label }));
-      tr.insert(
-        tr.doc.content.size,
-        schema.nodes.footnote_definition!.create(
-          { label },
-          schema.nodes.paragraph!.create(null, schema.text(value?.trim() || '脚注内容')),
-        ),
-      );
-      tr.setSelection(NodeSelection.create(tr.doc, pos));
-      view.dispatch(tr.scrollIntoView());
-    });
-  if (name === 'math')
-    editor.action((ctx) => {
-      const view = ctx.get(editorViewCtx);
-      const selected = view.state.doc.textBetween(
-        view.state.selection.from,
-        view.state.selection.to,
-      );
-      const node = view.state.selection instanceof NodeSelection ? view.state.selection.node : null;
-      view.dispatch(
-        view.state.tr.replaceSelectionWith(
-          inlineMath.type(ctx).create({
-            value: node?.type.name === 'math_inline' ? node.attrs.value : selected || 'E = mc^2',
-          }),
-        ),
-      );
-    });
-  editor.action((ctx) => ctx.get(editorViewCtx).focus());
-}
 
-function closeBlockMenu(restoreSelection = true) {
-  const saved = selectionBeforeMenu;
-  closeBlockConvertMenu();
-  blockMenu.value = null;
-  selectionBeforeMenu = null;
-  rightClickSelection = null;
-  if (!restoreSelection || !saved || !editor || disposed) return;
-  editor.action((ctx) => {
-    const view = ctx.get(editorViewCtx);
-    if (view.state.doc.eq(saved.doc) && !view.state.selection.eq(saved.selection))
-      view.dispatch(view.state.tr.setSelection(saved.selection).setMeta('addToHistory', false));
-  });
-}
-
-function rememberRightClickSelection(event: MouseEvent) {
-  if (event.button !== 2 || !editor) return;
-  editor.action((ctx) => {
-    const view = ctx.get(editorViewCtx);
-    if (blockIndexFromEvent(view, event.target) == null) return;
-    // ProseMirror otherwise moves the caret on right mousedown. For headings that
-    // opens the live Markdown source before the contextmenu event can reach us.
-    event.preventDefault();
-    event.stopPropagation();
-    const state = view.state;
-    rightClickSelection = { selection: state.selection, doc: state.doc };
-  });
-}
-
-function selectedContextTarget(event: MouseEvent) {
-  const target = event.target;
-  return !props.readonly && !disposed && isElement(target) &&
-    (root.value?.closest('.editor-scroll') ?? root.value)?.contains(target) &&
-    !target.closest('button, input, textarea, select, [role="dialog"]') &&
-    bridgeView && !bridgeView.state.selection.empty;
-}
-function preserveSelectedContext(event: MouseEvent) {
-  if (event.button !== 2 || !selectedContextTarget(event)) return;
-  event.preventDefault();
-  event.stopPropagation();
-}
-function openSelectedContext(event: MouseEvent) {
-  if (!selectedContextTarget(event)) return;
-  event.preventDefault();
-  event.stopPropagation();
-  openBlockMenu(event, undefined, true);
-}
-
-function blockIndexFromEvent(view: EditorView, target: EventTarget | null): number | null {
-  if (!(isElement(target))) return null;
-  const handle = target.closest<HTMLElement>('.tano-block-handle');
-  if (handle && root.value?.contains(handle)) {
-    const index = blockTree(view.state.doc).findIndex(({ pos }) => pos === Number(handle.dataset.blockPos));
-    return index < 0 ? null : index;
-  }
-  if (!view.dom.contains(target)) return null;
-  const entries = blockTree(view.state.doc);
-  for (let index = entries.length - 1; index >= 0; index--) {
-    const dom = view.nodeDOM(entries[index]!.pos);
-    if (isElement(dom) && dom.contains(target)) return index;
-  }
-  return null;
-}
-
-function openBlockMenu(event: MouseEvent, anchor?: HTMLElement, preserveSelection = false) {
-  if (!editor || props.readonly || disposed) return;
-  editor.action((ctx) => {
-    const view = ctx.get(editorViewCtx);
-    if (anchor && view.state.selection instanceof BlockRangeSelection) preserveSelection = true;
-    const index = preserveSelection
-      ? blockTree(view.state.doc).findIndex(({ pos, node }) => view.state.selection instanceof NodeSelection || view.state.selection instanceof BlockRangeSelection
-        ? pos === view.state.selection.from
-        : pos <= view.state.selection.from && pos + node.nodeSize > view.state.selection.from)
-      : blockIndexFromEvent(view, event.target);
-    if (index == null || index < 0) {
-      if (blockMenu.value) closeBlockMenu();
-      return;
-    }
-    event.preventDefault();
-    if (blockMenu.value) closeBlockMenu();
-    const previous = rightClickSelection?.doc.eq(view.state.doc)
-      ? rightClickSelection
-      : { selection: view.state.selection, doc: view.state.doc };
-    rightClickSelection = null;
-    const pos = blockTree(view.state.doc)[index]!.pos;
-    if (!preserveSelection) view.dispatch(
-      view.state.tr
-        .setSelection(NodeSelection.create(view.state.doc, pos))
-        .setMeta('tanoBlockContextSelect', true)
-        .setMeta('addToHistory', false),
-    );
-    // Leaving a live heading source replaces its temporary node. The mapped
-    // selection may become a caret, so select the restored block once more.
-    if (!preserveSelection && (!(view.state.selection instanceof NodeSelection) || view.state.selection.from !== pos))
-      view.dispatch(
-        view.state.tr
-          .setSelection(NodeSelection.create(view.state.doc, pos))
-          .setMeta('tanoBlockContextSelect', true)
-          .setMeta('addToHistory', false),
-      );
-    selectionBeforeMenu = previous;
-    blockMenu.value = {
-      index,
-      x: Math.max(8, event.clientX),
-      y: Math.max(8, event.clientY),
-      doc: view.state.doc,
-      selectionMenu: preserveSelection && view.state.selection instanceof TextSelection,
-    };
-    const openedMenu = blockMenu.value;
-    void nextTick(() => {
-      const menu = blockMenuElement.value;
-      if (!menu || blockMenu.value !== openedMenu) return;
-      const bounds = anchor?.getBoundingClientRect();
-      // Handle clicks open beside the block; right clicks stay at the pointer.
-      const left = bounds ? bounds.left - menu.offsetWidth - 8 : openedMenu.x;
-      const x = bounds && left < 8 ? bounds.right + 8 : left;
-      const y = bounds?.top ?? openedMenu.y;
-      blockMenu.value = {
-        ...openedMenu,
-        x: Math.max(8, Math.min(x, window.innerWidth - menu.offsetWidth - 8)),
-        y: Math.max(8, preserveSelection && y + menu.offsetHeight > window.innerHeight - 8
-          ? y - menu.offsetHeight : Math.min(y, window.innerHeight - menu.offsetHeight - 8)),
-      };
-      menu.focus({ preventScroll: true });
-    });
-  });
-}
-
-function blockMenuCommandAvailable(name: string) {
-  const current = blockMenu.value;
-  return !!current && !!bridgeView &&
-    (name === 'unwrap' || commandEnabled(name.startsWith('wrap-') ? name.slice(5) : name, props.enabledLevels, policy().features)) &&
-    !!blockMenuStructure(bridgeView.state, name);
-}
-function blockMenuSelectionCount() {
-  return selectionBeforeMenu?.selection instanceof BlockRangeSelection ? selectionBeforeMenu.selection.blocks.length : 1;
-}
-const blockMenuTable = computed(() => {
-  const current = blockMenu.value;
-  if (!current || current.selectionMenu || blockMenuSelectionCount() > 1) return null;
-  const entry = blockTree(current.doc)[current.index];
-  return entry?.node.type.name === 'table' ? entry.node : null;
-});
-function blockShortcut(action: string) {
-  if (!bridgeView || props.readonly || disposed) return;
-  const view = bridgeView, state = view.state;
-  const selection = state.selection;
-  let tr: Transaction | null = null;
-  if (selection instanceof BlockRangeSelection) tr = selectedBlocksMenuTransaction(state, action);
-  else if (selection instanceof NodeSelection && selection.node.isBlock) {
-    tr = action === 'delete' ? deleteBlocks(state, [selection.from])
-      : action === 'indent' ? indentBlock(state, selection.from)
-      : action === 'outdent' ? outdentBlock(state, selection.from)
-      : moveBlockSibling(state, selection.from, action === 'move-up' ? -1 : 1);
-  }
-  if (tr) { closeBlockMenu(false); view.dispatch(tr.scrollIntoView()); view.focus(); }
-}
-
-function blockMenuMoveAvailable(action: string) {
-  const current = blockMenu.value;
-  if (!current || !editor) return false;
-  return editor.action((ctx) => {
-    const state = ctx.get(editorViewCtx).state;
-    if (!state.doc.eq(current.doc)) return false;
-    if (state.selection instanceof BlockRangeSelection) return !!selectedBlocksMenuTransaction(state, action);
-    const pos = blockTree(state.doc)[current.index]?.pos;
-    if (pos == null) return false;
-    return !!(action === 'indent' ? indentBlock(state, pos) : action === 'outdent' ? outdentBlock(state, pos)
-      : moveBlockSibling(state, pos, action === 'move-up' ? -1 : 1));
-  });
-}
-
-function selectedBlocksMenuTransaction(state: EditorState, action: string): Transaction | null {
-  const selection = state.selection;
-  if (!(selection instanceof BlockRangeSelection)) return null;
-  const blocks = selection.blocks, first = blocks[0]!, last = blocks.at(-1)!;
-  const positions = blocks.map(block => block.pos);
-  if (action === 'delete') return deleteBlocks(state, positions);
-  if (action === 'duplicate') {
-    const at = last.pos + last.node.nodeSize;
-    const tr = state.tr.insert(at, selection.content().content);
-    let pos = at;
-    const copied = blocks.map(block => { const start = pos; pos += block.node.nodeSize; return start; });
-    return tr.setSelection(BlockRangeSelection.fromBlocks(tr.doc, copied)!);
-  }
-  if (!blocks.every((block, index) => block.parentPos === first.parentPos && block.index === first.index + index)) return null;
-  let parentPos = first.parentPos, index = first.index;
-  if (action === 'move-up') index--;
-  else if (action === 'move-down') index = last.index + 2;
-  else if (action === 'indent') {
-    if (first.index <= blockContentStart(first.parent)) return null;
-    const previous = first.parent.child(first.index - 1);
-    if (!isBlockContainer(previous)) return null;
-    parentPos = first.pos - previous.nodeSize;
-    index = previous.childCount;
-  } else if (action === 'outdent') {
-    const owner = blockTree(state.doc).find(entry => entry.pos <= first.parentPos &&
-      first.parentPos < entry.pos + entry.node.nodeSize &&
-      entry.depth === first.depth - (first.parent.type.name === 'tano_panel' ? 2 : 1));
-    if (!owner) return null;
-    parentPos = owner.parentPos;
-    index = owner.index + 1;
-  } else return null;
-  const tr = moveBlocksTo(state, positions, parentPos, index, true);
-  if (!tr) return null;
-  let pos = tr.selection.from;
-  const moved = blocks.map(block => { const start = pos; pos += block.node.nodeSize; return start; });
-  return tr.setSelection(BlockRangeSelection.fromBlocks(tr.doc, moved)!);
-}
-
-function menuCopyContent(ctx: Ctx, table = false): Fragment | null {
-  const current = blockMenu.value;
-  if (!current) return null;
-  const view = ctx.get(editorViewCtx);
-  if (!view.state.doc.eq(current.doc)) return null;
-  if (table) {
-    const { $from, $to } = view.state.selection;
-    for (let depth = $from.depth; depth > 0; depth--) {
-      if ($from.node(depth).type.name === 'table' && $to.depth >= depth && $to.node(depth) === $from.node(depth))
-        return Fragment.from($from.node(depth));
-    }
-  }
-  return current.selectionMenu || view.state.selection instanceof BlockRangeSelection
-    ? view.state.selection.content().content
-    : Fragment.from(blockTree(view.state.doc)[current.index]!.node);
-}
-
-const specialCopyFormats = computed(() => {
-  if (!blockMenu.value || !editor) return { mathml: false, tsv: false };
-  return editor.action(ctx => {
-    let formulas = 0, tables = 0;
-    menuCopyContent(ctx)?.descendants(node => { if (node.type.name === 'math_inline' || node.type.name === 'math_block') formulas++; });
-    menuCopyContent(ctx, true)?.descendants(node => { if (node.type.name === 'table') tables++; });
-    return { mathml: formulas === 1, tsv: tables === 1 };
-  });
-});
-
-async function blockMenuAction(action: string) {
-  const current = blockMenu.value;
-  if (!current || !editor || props.readonly) return;
-  if (['copy', 'copy-html', 'copy-text', 'copy-rich', 'copy-wechat', 'copy-zhihu', 'copy-mathml', 'copy-tsv'].includes(action)) {
-    let copied: { text: string; html?: string } | null;
-    try {
-      copied = editor.action((ctx) => {
-        const content = menuCopyContent(ctx, action === 'copy-tsv');
-        if (!content) return null;
-        const format = action === 'copy-mathml' ? 'mathml' : action === 'copy-tsv' ? 'tsv' : normalizeCopyFormat(action.slice(5));
-        return clipboardContent(ctx, content, format);
-      });
-    } catch (error) {
-      emit('error', error instanceof Error ? error.message : '无法转换复制内容');
-      closeBlockMenu(!current.selectionMenu);
-      return;
-    }
-    closeBlockMenu(!current.selectionMenu);
-    if (copied !== null) {
-      try {
-        if (copied.html !== undefined) {
-          if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
-            emit('error', '当前环境不支持复制富文本，请使用复制 HTML 或复制 Markdown');
-            return;
-          }
-          await navigator.clipboard.write([new ClipboardItem({
-            'text/html': new Blob([copied.html], { type: 'text/html' }),
-            'text/plain': new Blob([copied.text], { type: 'text/plain' }),
-          })]);
-        } else await navigator.clipboard.writeText(copied.text);
-      }
-      catch { emit('error', current.selectionMenu ? '无法复制选区内容，请检查剪贴板权限' : '无法复制块内容，请检查剪贴板权限'); }
-    }
-    return;
-  }
-  if (current.selectionMenu) { closeBlockMenu(false); return; }
-  if (['paragraph', 'heading', 'list', 'quote', 'unwrap'].includes(action) || action.startsWith('wrap-')) {
-    if (!blockMenuCommandAvailable(action)) return;
-    closeBlockMenu(false);
-    editor.action(ctx => {
-      const view = ctx.get(editorViewCtx);
-      const tr = blockMenuStructure(view.state, action);
-      if (tr) view.dispatch(tr.scrollIntoView());
-      view.focus();
-    });
-    return;
-  }
-  closeBlockMenu(false);
-  editor.action((ctx) => {
-    const view = ctx.get(editorViewCtx);
-    if (!view.state.doc.eq(current.doc)) return;
-    if (view.state.selection instanceof BlockRangeSelection && action !== 'source' && action !== 'restoreAutoWidth') {
-      const tr = selectedBlocksMenuTransaction(view.state, action);
-      if (tr) view.dispatch(tr.scrollIntoView());
-      view.focus();
-      return;
-    }
-    const { doc, schema } = view.state;
-    const { node, pos, parent } = blockTree(doc)[current.index]!;
-    if (action === 'source') {
-      const selection = view.state.selection;
-      const tr = selection instanceof BlockRangeSelection && selection.blocks.length > 1
-        ? selectedBlocksSourceTransaction(ctx, view.state, selection)
-        : blockNodeSourceTransaction(ctx, view.state, { node, pos }, view.state.tr);
-      if (localSource?.kind === 'block') localSource.dismissOnOutside = true;
-      // Revealing syntax is a view change, including when automatic reveal is off.
-      applying = true;
-      transitioningSource = true;
-      try {
-        view.dispatch(tr.scrollIntoView());
-      } finally {
-        applying = false;
-        transitioningSource = false;
-      }
-    } else if (action === 'restoreAutoWidth') {
-      const tr = tableLineAction(view.state, { pos, axis: 'column', index: 0 }, 'restoreAutoWidth');
-      if (tr) view.dispatch(tr.scrollIntoView());
-    } else if (action === 'duplicate') {
-      const insertPos = pos + node.nodeSize;
-      const tr = view.state.tr.insert(insertPos, node);
-      tr.setSelection(NodeSelection.create(tr.doc, insertPos));
-      view.dispatch(tr.scrollIntoView());
-    } else if (['move-up', 'move-down', 'indent', 'outdent'].includes(action)) {
-      const tr = action === 'indent' ? indentBlock(view.state, pos) : action === 'outdent' ? outdentBlock(view.state, pos)
-        : moveBlockSibling(view.state, pos, action === 'move-up' ? -1 : 1);
-      if (!tr) return;
-      view.dispatch(tr.scrollIntoView());
-    } else if (action === 'delete') {
-      const tr = deleteBlock(view.state, pos);
-      if (tr) view.dispatch(tr.scrollIntoView());
-    }
-    view.focus();
-  });
-}
-
-function blockSubmenuTrigger() {
-  return blockSubmenuKind.value === 'copy' ? blockCopyTrigger : blockSubmenuKind.value === 'wrap' ? blockWrapTrigger : blockConvertTrigger;
-}
-
-function closeBlockConvertMenu(restoreFocus = false) {
-  clearTimeout(blockConvertCloseTimer);
-  blockConvertCloseTimer = undefined;
-  blockConvertMenu.value = null;
-  if (restoreFocus) blockSubmenuTrigger().value?.focus();
-}
-
-function scheduleCloseBlockConvertMenu() {
-  clearTimeout(blockConvertCloseTimer);
-  blockConvertCloseTimer = setTimeout(() => {
-    closeBlockConvertMenu(!!blockConvertElement.value?.contains(document.activeElement));
-  }, 150);
-}
-
-function openBlockConvertMenu(focusMenu = false, kind: 'convert' | 'wrap' | 'copy' = 'convert') {
-  clearTimeout(blockConvertCloseTimer);
-  if (!blockMenu.value) return;
-  blockSubmenuKind.value = kind;
-  blockConvertMenu.value ??= { x: blockMenu.value.x, y: blockMenu.value.y };
-  void nextTick(() => {
-    const trigger = blockSubmenuTrigger().value;
-    const submenu = blockConvertElement.value;
-    const menu = blockMenuElement.value;
-    if (!trigger || !submenu || !menu || !blockConvertMenu.value) return;
-    const bounds = menu.getBoundingClientRect();
-    const triggerBounds = trigger.getBoundingClientRect();
-    const x = bounds.right + submenu.offsetWidth <= window.innerWidth - 8
-      ? bounds.right - 1 : bounds.left - submenu.offsetWidth + 1;
-    submenu.dataset.surfaceSide = x < bounds.left ? 'left' : 'right';
-    blockConvertMenu.value = {
-      x: Math.max(8, Math.min(x, window.innerWidth - submenu.offsetWidth - 8)),
-      y: Math.max(8, Math.min(triggerBounds.top - 5, window.innerHeight - submenu.offsetHeight - 8)),
-    };
-    if (focusMenu) submenu.focus({ preventScroll: true });
-  });
-}
-
-function onBlockMenuKeydown(event: KeyboardEvent) {
-  if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && !event.isComposing && event.key.toLowerCase() === 'c') {
-    event.preventDefault();
-    event.stopPropagation();
-    void blockMenuAction(defaultCopyAction.value);
-    return;
-  }
-  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.isComposing) {
-    const action = ({ ArrowUp: 'move-up', ArrowDown: 'move-down', ArrowRight: 'indent', ArrowLeft: 'outdent' } as Record<string, string>)[event.key];
-    if (action) {
-      event.preventDefault();
-      event.stopPropagation();
-      if (blockMenuMoveAvailable(action)) void blockMenuAction(action);
-      return;
-    }
-  }
-  const inSubmenu = !!blockConvertElement.value?.contains(event.target as globalThis.Node);
-  if ((event.key === 'Escape' && blockConvertMenu.value) || (event.key === 'ArrowLeft' && inSubmenu)) {
-    event.preventDefault();
-    event.stopPropagation();
-    closeBlockConvertMenu(true);
-    return;
-  }
-  if (event.key === 'ArrowRight' && (event.target === blockConvertTrigger.value || event.target === blockWrapTrigger.value || event.target === blockCopyTrigger.value)) {
-    event.preventDefault();
-    openBlockConvertMenu(true, event.target === blockCopyTrigger.value ? 'copy' : event.target === blockWrapTrigger.value ? 'wrap' : 'convert');
-    return;
-  }
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    closeBlockMenu();
-    editor?.action((ctx) => ctx.get(editorViewCtx).focus());
-    return;
-  }
-  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-  const menu = inSubmenu ? blockConvertElement.value : blockMenuElement.value;
-  const items = [...(menu?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])]
-    .filter(button => button.closest('[role="menu"]') === menu);
-  if (!items.length) return;
-  event.preventDefault();
-  const current = items.indexOf(document.activeElement as HTMLButtonElement);
-  const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
-    : current < 0 ? (event.key === 'ArrowDown' ? 0 : items.length - 1)
-      : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
-  if (!inSubmenu) closeBlockConvertMenu();
-  items[next]?.focus();
-}
-
-function dismissBlockSourceOnPointer(event: PointerEvent) {
-  if (!editor || disposed || !(localSource?.kind === 'block-group' ||
-      (localSource?.kind === 'block' && localSource.dismissOnOutside))) return;
-  editor.action(ctx => {
-    const view = ctx.get(editorViewCtx);
-    if (isElement(event.target)) {
-      const source = event.target.closest('[data-tano-live-source]');
-      if (source && view.dom.contains(source)) return;
-    }
-    finishLocalSource(ctx, view);
-  });
-}
-
-function dismissBlockMenuOnPointer(event: PointerEvent) {
-  if (blockMenu.value && !(event.target instanceof globalThis.Node && blockMenuElement.value?.contains(event.target)))
-    closeBlockMenu();
-}
-function dismissBlockMenuOnContext(event: MouseEvent) {
-  if (
-    blockMenu.value &&
-    !event.defaultPrevented &&
-    !(event.target instanceof globalThis.Node && root.value?.contains(event.target))
-  )
-    closeBlockMenu();
-}
-function dismissBlockMenuOnScroll() {
-  if (blockMenu.value) closeBlockMenu();
-}
-window.addEventListener('keydown', syncLinkModifier, true);
-window.addEventListener('keyup', syncLinkModifier, true);
-window.addEventListener('blur', clearLinkModifier);
-function insertBlockAtStart() {
-  if (!editor || props.readonly || disposed) return;
-  editor.action((ctx) => {
-    const view = ctx.get(editorViewCtx);
-    const tr = view.state.tr.insert(0, view.state.schema.nodes.paragraph!.create());
-    tr.setSelection(TextSelection.create(tr.doc, 1));
-    view.dispatch(closeHistory(tr).scrollIntoView());
-    view.focus();
-  });
-}
-function focusTrailingParagraph(event: MouseEvent) {
-  if (
-    !editor ||
-    props.readonly ||
-    disposed ||
-    event.defaultPrevented ||
-    event.button !== 0 ||
-    event.shiftKey ||
-    event.ctrlKey ||
-    event.metaKey ||
-    event.altKey
-  )
-    return;
-  editor.action((ctx) => {
-    const view = ctx.get(editorViewCtx);
-    // Only bare editor/background surfaces count, never block content or controls.
-    if (
-      !view.editable ||
-      view.composing ||
-      view.dragging ||
-      !(isHTMLElement(event.target)) ||
-      !event.target.contains(view.dom)
-    )
-      return;
-    const { doc } = view.state;
-    const last = doc.lastChild;
-    if (!last) return;
-    const lastDOM = view.nodeDOM(doc.content.size - last.nodeSize);
-    if (!(isHTMLElement(lastDOM)) || event.clientY < lastDOM.getBoundingClientRect().bottom)
-      return;
-
-    event.preventDefault();
-    moveToTrailingParagraph(view);
-  });
-}
-function moveToTrailingParagraph(view: EditorView) {
-  const { doc, schema } = view.state;
-  const paragraph = schema.nodes.paragraph!.create();
-  const last = doc.lastChild;
-  if (!last) return;
-  const reuse = last.eq(paragraph);
-  const tr = view.state.tr;
-  const position = reuse ? doc.content.size - last.nodeSize + 1 : doc.content.size + 1;
-  if (!reuse) tr.insert(doc.content.size, paragraph);
-  tr.setSelection(TextSelection.create(tr.doc, position)).setStoredMarks([]);
-  view.dispatch((reuse ? tr : closeHistory(tr)).scrollIntoView());
-  view.focus();
-}
-function canUndo() {
-  if (!editor || props.readonly || props.extension?.ownsHistory) return false;
-  return editor.action((ctx) => undoDepth(ctx.get(editorViewCtx).state) > 0);
-}
-function undoLastChange() {
-  if (!editor || props.readonly || props.extension?.ownsHistory) return false;
-  return editor.action((ctx) => {
-    const view = ctx.get(editorViewCtx);
-    const changed = undoHistory(view.state, view.dispatch);
-    if (changed) view.focus();
-    return changed;
-  });
-}
-function canRedo() {
-  if (!editor || props.readonly || props.extension?.ownsHistory) return false;
-  return editor.action((ctx) => redoDepth(ctx.get(editorViewCtx).state) > 0);
-}
-function redoLastChange() {
-  if (!editor || props.readonly || props.extension?.ownsHistory) return false;
-  return editor.action((ctx) => {
-    const view = ctx.get(editorViewCtx);
-    const changed = redoHistory(view.state, view.dispatch);
-    if (changed) view.focus();
-    return changed;
-  });
-}
-function withContext<T>(action: (ctx: Ctx, markdown: string) => T): T {
-  if (!editor) throw new Error('编辑器尚未就绪');
-  return editor.action((ctx) => action(ctx, lastValue));
-}
-function commentSelection() {
-  if (!bridgeView) return null;
-  const { doc, selection } = bridgeView.state;
-  const range = selection.empty && selection.$from.parent.isTextblock
-    ? TextSelection.create(doc, selection.$from.start(), selection.$from.end()) : selection;
-  const spans = commentSpansForSelection(doc, range);
-  return spans.length ? { text: projectCommentText(doc).text, spans } : null;
-}
-/** Capture a real rich-text selection with source offsets for guarded assistant edits. */
-function assistantSelection() {
-  const view = bridgeView;
-  if (!view || !(view.state.selection instanceof TextSelection) || view.state.selection.empty) return null;
-  const { doc, selection } = view.state;
-  const spans = commentSpansForSelection(doc, selection);
-  if (!spans.length) return null;
-  return editor!.action(ctx => {
-    const map = markdownPositionMap(doc, lastValue, node => frontmatter.prefix + ctx.get(serializerCtx)(node));
-    const from = map.toSource(selection.from), to = map.toSource(selection.to);
-    return { text: lastValue.slice(from, to), from, to, spans };
-  });
-}
-function assistantBlankBlockSelection() {
-  const view = bridgeView;
-  if (!view || props.readonly || !(view.state.selection instanceof TextSelection) || !view.state.selection.empty ||
-      view.state.selection.$from.parent.type.name !== 'paragraph' || view.state.selection.$from.parent.content.size !== 0)
-    return null;
-  return editor!.action(ctx => {
-    const map = markdownPositionMap(view.state.doc, lastValue, node => frontmatter.prefix + ctx.get(serializerCtx)(node));
-    const offset = map.toSource(view.state.selection.from);
-    return { text: '', from: offset, to: offset };
-  });
-}
-function captureTodoSelection() {
-  const view = bridgeView;
-  if (!view || props.readonly || props.extension || !(view.state.selection instanceof TextSelection) || view.state.selection.empty || !view.state.selection.$to.parent.isTextblock) return null;
-  const doc = view.state.doc, at = view.state.selection.to;
-  const type = view.state.schema.nodes.tano_reference;
-  if (!type) return null;
-  const $to = view.state.selection.$to;
-  const inline = $to.parent.canReplaceWith($to.index(), $to.index(), type);
-  const paragraph = view.state.schema.nodes.paragraph;
-  if (!inline && (!paragraph || !$to.node(-1).canReplaceWith($to.index(-1) + 1, $to.index(-1) + 1, paragraph))) return null;
-  const spans = commentSpansForSelection(doc, view.state.selection);
-  const text = spans.map(span => span.text).join('\n');
-  if (!text.trim()) return null;
-  return { text, insert: (identity: ReferenceIdentity, label: string) => {
-    if (bridgeView !== view || props.readonly || props.extension || !view.state.doc.eq(doc)) return false;
-    const reference = type.create({ url: referenceUrl(identity), label });
-    const insertion = inline ? Fragment.fromArray([
-      view.state.schema.text(' '), type.create({ url: referenceUrl(identity), label }),
-    ]) : Fragment.from(paragraph!.create(null, reference));
-    view.dispatch(view.state.tr.insert(inline ? at : $to.after(), insertion).scrollIntoView());
-    return true;
-  } };
-}
-function focusComment(anchor: CommentAnchor) {
-  if (!bridgeView || anchor.basis !== 'prose') return false;
-  const ranges = proseRangesForCommentSpans(bridgeView.state.doc, anchor.spans);
-  if (!ranges.length) return false;
-  const { from, to } = ranges[0]!;
-  bridgeView.dispatch(bridgeView.state.tr.setSelection(TextSelection.create(bridgeView.state.doc, from, to)).scrollIntoView());
-  bridgeView.focus();
-  return true;
-}
-function commentGeometry(anchors = props.commentAnchors ?? []): CommentGeometry | null {
-  if (!bridgeView || !anchors.length) return null;
-  const { doc } = bridgeView.state;
-  const text = projectCommentText(doc).text;
-  const blocks = new Map<number, { key: string; ids: string[]; top: number; bottom: number }>();
-  for (const { id, anchor } of anchors) {
-    if (anchor.basis !== 'prose' || anchor.spans.some(span => text.slice(span.from, span.to) !== span.text)) continue;
-    for (const { from } of proseRangesForCommentSpans(doc, anchor.spans)) {
-      const $pos = doc.resolve(from);
-      let depth = $pos.depth;
-      while (depth > 1 && !$pos.node(depth).isTextblock) depth--;
-      const position = depth ? $pos.before(depth) : from;
-      const dom = bridgeView.nodeDOM(position);
-      const element = isHTMLElement(dom) ? dom : dom?.parentElement;
-      if (!element || !element.getClientRects().length) continue;
-      const rect = element.getBoundingClientRect();
-      const block = blocks.get(position) ?? { key: String(position), ids: [], top: rect.top, bottom: rect.bottom };
-      if (!block.ids.includes(id)) block.ids.push(id);
-      blocks.set(position, block);
-    }
-  }
-  const rect = bridgeView.dom.getBoundingClientRect();
-  return { left: rect.left, right: rect.right, blocks: [...blocks.values()].sort((a, b) => a.top - b.top) };
-}
-function search(query: string, index = 0, scroll = true) {
-  if (!bridgeView || disposed) return 0;
-  const view = bridgeView;
-  view.dispatch(view.state.tr.setMeta(pageSearchKey, { query, index }).setMeta('addToHistory', false));
-  const ranges = pageSearchKey.getState(view.state)?.ranges ?? [];
-  const match = ranges[index];
-  if (scroll && match) {
-    view.dispatch(view.state.tr.setMeta('tanoRevealPosition', match.from).setMeta('addToHistory', false));
-    const element = view.dom.querySelector<HTMLElement>('.tano-search-current');
-    element?.dispatchEvent(new Event('tano-reveal-search', { bubbles: true }));
-    for (let parent = element; parent && parent !== view.dom; parent = parent.parentElement)
-      if (parent instanceof HTMLDetailsElement) parent.open = true;
-    element?.scrollIntoView?.({ block: 'center', inline: 'nearest' });
-  }
-  return ranges.length;
-}
-function searchSelection() {
-  if (!bridgeView) return '';
-  const { doc, selection } = bridgeView.state;
-  return doc.textBetween(selection.from, selection.to, '\n');
-}
-function replaceSearch(query: string, replacement: string, index: number | 'all') {
-  if (!bridgeView || disposed || props.readonly) return { replaced: 0, index: 0 };
-  const view = bridgeView;
-  const matches = proseSearchRanges(view.state.doc, query);
-  const selected = index === 'all' ? matches : matches[index] ? [matches[index]!] : [];
-  if (!selected.length) return { replaced: 0, index: 0 };
-  const tr = closeHistory(view.state.tr);
-  for (const { from, to } of [...selected].reverse()) tr.insertText(replacement, from, to);
-  // Keep replacement as one undo step, separate from typing before and after it.
-  view.dispatch(tr);
-  view.dispatch(closeHistory(view.state.tr));
-  const next = index === 'all' ? 0 : proseSearchRanges(view.state.doc, query)
-    .findIndex(match => match.from >= selected[0]!.from + replacement.length);
-  return { replaced: selected.length, index: Math.max(0, next) };
-}
-function applyPluginEdit(before: string, after: string) {
-  if (!editor || props.readonly || props.modelValue !== before) throw new Error('编辑器内容已变化，请重新读取文档');
-  const next = splitFrontmatter(after);
-  if (next.prefix !== splitFrontmatter(before).prefix) throw new Error('当前编辑器的插件事务暂不支持修改文档属性');
-  editor.action(ctx => {
-    const view = ctx.get(editorViewCtx);
-    const parsed = ctx.get(parserCtx)(next.body);
-    if (!parsed) throw new Error('插件生成的 Markdown 无法解析');
-    const from = view.state.doc.content.findDiffStart(parsed.content);
-    if (from === null) return;
-    const end = view.state.doc.content.findDiffEnd(parsed.content)!;
-    const overlap = from - Math.min(end.a, end.b);
-    if (overlap > 0) { end.a += overlap; end.b += overlap; }
-    view.dispatch(closeHistory(view.state.tr).replace(from, end.a, parsed.slice(from, end.b)));
-    view.dispatch(closeHistory(view.state.tr));
-  });
-}
-let restoredModeSelection: { source: ModeSelection; selection: Selection; doc: Node; markdown: string } | undefined;
-function captureModeSelection(): ModeSelection | null {
-  if (!editor || !bridgeView) return null;
-  const { doc, selection } = bridgeView.state;
-  const restored = restoredModeSelection;
-  // Syntax-only positions (for example inside a closing delimiter) can have no
-  // rendered equivalent. Retain the exact source offset until the user moves.
-  if (restored && restored.markdown === lastValue && restored.doc.eq(doc) && restored.selection.eq(selection))
-    return { ...restored.source };
-  return editor.action(ctx => {
-    const map = markdownPositionMap(doc, lastValue, node => frontmatter.prefix + ctx.get(serializerCtx)(node));
-    return { anchor: map.toSource(selection.anchor), head: map.toSource(selection.head) };
-  });
-}
-function restoreModeSelection(selection: ModeSelection, focus = true) {
-  if (!editor || !bridgeView || disposed) return;
-  editor.action(ctx => {
-    const view = bridgeView!;
-    const restore = () => {
-      const map = markdownPositionMap(view.state.doc, lastValue, node => frontmatter.prefix + ctx.get(serializerCtx)(node));
-      const anchor = Selection.near(view.state.doc.resolve(map.toProse(selection.anchor)));
-      const head = Selection.near(view.state.doc.resolve(map.toProse(selection.head)));
-      const next = anchor instanceof TextSelection && head instanceof TextSelection
-        ? TextSelection.create(view.state.doc, anchor.head, head.head) : head;
-      view.dispatch(view.state.tr.setSelection(next).setMeta('addToHistory', false)
-        .setMeta('tanoKeepNodeView', true).setMeta('tanoRevealPosition', next.head));
-    };
-    applying = true;
-    try {
-      restore();
-      if (focus) {
-        view.focus();
-        if (!props.readonly && props.revealMarkdown !== false && selection.anchor === selection.head) {
-          const tr = selectedSourceTransaction(ctx, view.state);
-          if (tr) { view.dispatch(tr); restore(); }
-        }
-      }
-    } finally { applying = false; }
-    const dom = view.domAtPos(view.state.selection.head).node;
-    const element = isHTMLElement(dom) ? dom : dom.parentElement;
-    element?.dispatchEvent(new Event('tano-reveal-search', { bubbles: true }));
-    for (let parent = element; parent && parent !== view.dom; parent = parent.parentElement)
-      if (parent instanceof HTMLDetailsElement) parent.open = true;
-    restoredModeSelection = { source: { ...selection }, selection: view.state.selection, doc: view.state.doc, markdown: lastValue };
-  });
-}
-function modeCursorTop() {
-  if (!bridgeView || disposed) return null;
-  const selection = bridgeView.state.selection;
-  return bridgeView.coordsAtPos(selection instanceof NodeSelection ? selection.from : selection.head).top;
-}
-function revealSourceRange(range: { from: number; to: number }) {
-  if (!editor || !bridgeView || disposed || range.from < 0 || range.to > lastValue.length || range.to <= range.from) return false;
-  return editor.action(ctx => {
-    const view = bridgeView!;
-    const map = markdownPositionMap(view.state.doc, lastValue, node => frontmatter.prefix + ctx.get(serializerCtx)(node));
-    const from = map.toProse(range.from), to = map.toProse(range.to);
-    if (to <= from) return false;
-    clearTimeout(referenceFlashTimer);
-    // Removing the old decoration restarts the animation on repeated clicks.
-    view.dispatch(view.state.tr.setMeta(referenceFlashKey, null).setMeta('addToHistory', false));
-    view.dispatch(view.state.tr.setMeta(referenceFlashKey, { from, to }).setMeta('tanoRevealPosition', from).setMeta('addToHistory', false));
-    const element = view.dom.querySelector<HTMLElement>('.tano-reference-flash');
-    element?.dispatchEvent(new Event('tano-reveal-search', { bubbles: true }));
-    for (let parent = element; parent && parent !== view.dom; parent = parent.parentElement)
-      if (parent instanceof HTMLDetailsElement) parent.open = true;
-    element?.scrollIntoView?.({ block: 'center', inline: 'nearest' });
-    referenceFlashTimer = setTimeout(() => {
-      if (!disposed && bridgeView === view) view.dispatch(view.state.tr.setMeta(referenceFlashKey, null).setMeta('addToHistory', false));
-    }, 2400);
-    return true;
-  });
-}
-/** Render the normal source-editing state in an isolated example without moving browser focus. */
-function revealPreviewSource() {
-  if (!editor || !bridgeView || disposed || props.readonly) return;
-  editor.action(ctx => {
-    const view = ctx.get(editorViewCtx);
-    const node = view.state.doc.firstChild;
-    if (!node || node.type.name === 'tano_live_source') return;
-    const tr = blockNodeSourceTransaction(ctx, view.state, { node, pos: 0 }, view.state.tr);
-    const previous = applying;
-    applying = true;
-    try { view.dispatch(tr.setMeta('addToHistory', false)); }
-    finally { applying = previous; }
-  });
-}
 defineExpose({
   captureTransferState: () => {
     if (!bridgeView || disposed || props.extension?.ownsHistory) return undefined;
     const plugin = historyProviderPlugin.key()?.get(bridgeView.state);
-    return plugin ? { content: props.modelValue, revision: props.contentRevision, history: captureHistory(bridgeView.state, plugin) } : undefined;
+    return plugin
+      ? {
+          content: props.modelValue,
+          revision: props.contentRevision,
+          history: captureHistory(bridgeView.state, plugin),
+        }
+      : undefined;
   },
   restoreTransferState: (value: unknown) => {
     const snapshot = value as { content: string; revision: unknown; history: EditorState } | undefined;
-    if (!snapshot || !bridgeView || disposed || props.extension?.ownsHistory || snapshot.content !== props.modelValue || snapshot.revision !== props.contentRevision) return;
+    if (
+      !snapshot ||
+      !bridgeView ||
+      disposed ||
+      props.extension?.ownsHistory ||
+      snapshot.content !== props.modelValue ||
+      snapshot.revision !== props.contentRevision
+    ) {
+      return;
+    }
     const plugin = historyProviderPlugin.key()?.get(bridgeView.state);
     if (plugin) bridgeView.updateState(restoreHistory(bridgeView.state, snapshot.history, plugin));
   },
-  revealPreviewSource,
-  blockShortcut,
-  addDocumentProperty,
+  revealPreviewSource: editorCommands.revealPreviewSource,
+  blockShortcut: blockMenu.blockShortcut,
+  addDocumentProperty: async () => {
+    await frontmatterPanelRef.value?.addDocumentProperty();
+  },
   initializeBody,
-  captureVisualAnchor: (options?: { highlight?: boolean }) => bridgeView && !disposed ? captureVisualAnchor(bridgeView, options) : null,
-  captureBlankBlockAnchor: () => bridgeView && !disposed ? captureCaretAnchor(bridgeView) : null,
-  visualSelection: () => bridgeView && !disposed ? visualSelection(bridgeView) : null,
-  captureModeSelection,
-  restoreModeSelection,
-  revealSourceRange,
-  modeCursorTop,
-  applyPluginEdit,
-  search,
-  replaceSearch,
-  searchSelection,
+  captureVisualAnchor: (options?: { highlight?: boolean }) =>
+    bridgeView && !disposed ? captureVisualAnchor(bridgeView, options) : null,
+  captureBlankBlockAnchor: () => (bridgeView && !disposed ? captureCaretAnchor(bridgeView) : null),
+  visualSelection: () => (bridgeView && !disposed ? visualSelection(bridgeView) : null),
+  captureModeSelection: editorCommands.captureModeSelection,
+  restoreModeSelection: editorCommands.restoreModeSelection,
+  revealSourceRange: editorCommands.revealSourceRange,
+  modeCursorTop: editorCommands.modeCursorTop,
+  applyPluginEdit: editorCommands.applyPluginEdit,
+  search: editorCommands.search,
+  replaceSearch: editorCommands.replaceSearch,
+  searchSelection: editorCommands.searchSelection,
   focus: () => bridgeView?.focus(),
-  command,
-  importFiles,
-  withContext,
-  commentSelection,
-  assistantSelection,
-  assistantBlankBlockSelection,
-  captureTodoSelection,
-  focusComment,
-  commentGeometry,
-  insertBlockAtStart,
-  focusTrailingParagraph,
-  canUndo,
-  undoLastChange,
-  canRedo,
-  redoLastChange,
+  command: editorCommands.command,
+  importFiles: editorUploads.importFiles,
+  withContext: editorCommands.withContext,
+  commentSelection: editorCommands.commentSelection,
+  assistantSelection: editorCommands.assistantSelection,
+  assistantBlankBlockSelection: editorCommands.assistantBlankBlockSelection,
+  captureTodoSelection: editorCommands.captureTodoSelection,
+  focusComment: editorCommands.focusComment,
+  commentGeometry: editorCommands.commentGeometry,
+  insertBlockAtStart: editorCommands.insertBlockAtStart,
+  focusTrailingParagraph: editorCommands.focusTrailingParagraph,
+  canUndo: editorCommands.canUndo,
+  undoLastChange: editorCommands.undoLastChange,
+  canRedo: editorCommands.canRedo,
+  redoLastChange: editorCommands.redoLastChange,
 });
-onBeforeUnmount(() => {
-  window.removeEventListener('pointerdown', dismissPropertyTypeMenu, true);
-  chineseCompositionRevision++;
-  suggestionCodec.clear();
-  clearTimeout(referenceFlashTimer);
-  closeBlockConvertMenu();
-  disposed = true;
-  blockMenu.value = null;
 
-  closeLinkPanel();
-  stopOtherLinkPanel?.();
-  window.removeEventListener('mouseup', endPointerSelection);
-  window.removeEventListener('blur', endPointerSelection);
-  window.removeEventListener('pointerdown', dismissBlockSourceOnPointer, true);
-  window.removeEventListener('pointerdown', dismissBlockMenuOnPointer, true);
-  window.removeEventListener('contextmenu', dismissBlockMenuOnContext);
-  window.removeEventListener('mousedown', preserveSelectedContext, true);
-  window.removeEventListener('pointerdown', preserveSelectedContext, true);
-  window.removeEventListener('contextmenu', openSelectedContext, true);
-  window.removeEventListener('scroll', dismissBlockMenuOnScroll, true);
-  window.removeEventListener('resize', dismissBlockMenuOnScroll);
-  window.removeEventListener('keydown', syncLinkModifier, true);
-  window.removeEventListener('keyup', syncLinkModifier, true);
-  window.removeEventListener('blur', clearLinkModifier);
+onBeforeUnmount(() => {
+  chineseInput.bumpCompositionRevision();
+  suggestionCodec.clear();
+  editorCommands.dispose();
+  disposed = true;
+  blockMenu.dispose();
+  linkPanel.dispose();
+  window.removeEventListener('mouseup', inlineSource.endPointerSelection);
+  window.removeEventListener('blur', inlineSource.endPointerSelection);
+  window.removeEventListener('pointerdown', inlineSource.dismissBlockSourceOnPointer, true);
   unbindExtension?.();
   // Stop DOM observers and scheduled plugin work before Milkdown removes the
   // schema contexts asynchronously. Otherwise a queued render can use a
@@ -4161,230 +1272,55 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <Transition :css="false" @enter="enterRow" @leave="leaveRow">
-  <details v-if="showDocumentProperties && (properties === null || properties.length > 0 || editingProperty !== undefined)" ref="frontmatterPanel" class="frontmatter-panel">
-    <summary class="frontmatter-heading" @pointerdown="muteRowMotion" @click="onPanelHeadingClick">
-      <svg class="frontmatter-chevron" :class="{ 'is-expanded': panelExpanded }" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <path
-          d="m6 4.5 3.5 3.5L6 11.5"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
-      </svg> {{ t('文档属性') }} <button
-        v-if="properties !== null"
-        type="button"
-        class="frontmatter-order-toggle"
-        :aria-pressed="propertyOrder === 'name'"
-        :aria-label="propertyOrder === 'source' ? t('按名称排序文档属性') : t('按文件顺序显示文档属性')"
-        :title="propertyOrder === 'source' ? t('按名称排序') : t('按文件顺序显示')"
-        @click.stop.prevent="propertyOrder = propertyOrder === 'source' ? 'name' : 'source'"
-        @keydown.stop
-      ><ArrowDownAZ :size="16" /></button>
-    </summary>
-    <div ref="frontmatterContent" class="frontmatter-content">
-      <template v-if="properties === null">
-        <pre class="frontmatter-raw">{{ metadata }}</pre>
-        <button v-if="!readonly" type="button" class="frontmatter-add" @click="emit('editSource')">{{ t('在源码中编辑') }}</button>
-      </template>
-      <TransitionGroup v-else tag="div" class="frontmatter-rows" :css="false" @enter="enterRow" @leave="leaveRow">
-        <div
-          v-for="property in visibleProperties"
-          :key="editingProperty === property.name || (editingProperty === null && !property.name) ? editingRowKey : property.name"
-          class="frontmatter-property"
-          :class="{ 'is-editing': editingProperty === property.name || (editingProperty === null && !property.name) }"
-          :data-property-name="property.name"
-          :style="editingProperty === property.name || (editingProperty === null && !property.name) ? { minHeight: `${editingRowHeight}px` } : undefined"
-          @focusout="onPropertyFocusOut"
-          @keydown.esc="finishPropertyOnKey"
-        >
-          <button
-            v-if="!readonly"
-            type="button"
-            class="frontmatter-property-type"
-            :title="t('属性类型：{0}', [propertyTypeOptions.find((option) => option.kind === currentPropertyKind(property.name))?.label])"
-            :aria-label="t('切换 {0} 的类型', [property.name || t('新属性')])"
-            :aria-expanded="typeMenuProperty === property.name || (typeMenuProperty === null && !property.name)"
-            @click="openPropertyTypeMenu(property.name || null)"
-          ><component :is="propertyTypeIcon(property.name)" :size="16" /></button>
-          <component :is="propertyTypeIcon(property.name)" v-else class="frontmatter-property-icon" :size="16" aria-hidden="true" />
-          <div
-            v-if="editingProperty === property.name || (editingProperty === null && !property.name)"
-            class="frontmatter-row-editor"
-          >
-            <div class="frontmatter-name-editor">
-              <input v-model="propertyName" class="frontmatter-name-input" :aria-label="t('属性名')" :aria-invalid="propertyError && propertyErrorField === 'name' ? true : undefined" spellcheck="false" @input="syncProperty" @compositionend="syncProperty" @keydown.enter="finishPropertyOnKey" />
-              <span v-if="propertyError && propertyErrorField === 'name'" class="frontmatter-row-error" role="alert">{{ propertyError }}</span>
-            </div>
-            <div class="frontmatter-value-editor">
-              <button
-                v-if="editingPropertyField === 'name'"
-                type="button"
-                class="frontmatter-property-value frontmatter-property-button"
-                data-no-press
-                :title="t('编辑 {0}', [property.name])"
-                @click="editPropertyValue"
-              >{{ propertyKind === 'null' ? t('空') : property.value }}</button>
-              <select v-else-if="propertyKind === 'boolean'" v-model="propertyInput" :aria-label="t('属性值')" :aria-invalid="propertyError && propertyErrorField === 'value' ? true : undefined" @change="syncProperty">
-                <option value="true">true</option>
-                <option value="false">false</option>
-              </select>
-              <span v-else-if="propertyKind === 'null'" class="frontmatter-null-value">{{ t('空') }}</span>
-              <input v-else-if="propertyKind === 'date'" v-model="propertyInput" :aria-label="t('属性值')" :aria-invalid="propertyError && propertyErrorField === 'value' ? true : undefined" type="date" @input="syncProperty" />
-              <textarea
-                v-else-if="propertyKind === 'list' || propertyKind === 'object' || propertyInput.includes('\n')"
-                v-model="propertyInput"
-                :aria-label="t('属性值')"
-                :aria-invalid="propertyError && propertyErrorField === 'value' ? true : undefined"
-                :rows="Math.min(12, Math.max(propertyKind === 'text' ? 2 : 4, propertyInput.split('\n').length))"
-                :title="propertyKind === 'list' || propertyKind === 'object' ? t('使用 JSON 格式') : undefined"
-                spellcheck="false"
-                @input="syncProperty"
-                @compositionend="syncProperty"
-              />
-              <input
-                v-else
-                v-model="propertyInput"
-                :aria-label="t('属性值')"
-                :aria-invalid="propertyError && propertyErrorField === 'value' ? true : undefined"
-                type="text"
-                :inputmode="propertyKind === 'number' ? 'decimal' : undefined"
-                @input="syncProperty"
-                @compositionend="syncProperty"
-                @keydown.enter="finishPropertyOnKey"
-              />
-              <span v-if="propertyError && propertyErrorField === 'value'" class="frontmatter-row-error" role="alert">{{ propertyError }}</span>
-            </div>
-          </div>
-          <template v-else>
-            <button
-              v-if="!readonly"
-              type="button"
-              class="frontmatter-property-name frontmatter-property-button"
-              data-no-press
-              :title="t('编辑 {0}', [property.name])"
-              @click="editProperty(property.name, 'name')"
-            >{{ property.name }}</button>
-            <span v-else class="frontmatter-property-name">{{ property.name }}</span>
-            <button
-              v-if="!readonly"
-              type="button"
-              class="frontmatter-property-value frontmatter-property-button"
-              data-no-press
-              :title="t('编辑 {0}', [property.name])"
-              @click="editProperty(property.name)"
-            >{{ currentPropertyKind(property.name) === 'null' ? t('空') : property.value }}</button>
-            <span v-else class="frontmatter-property-value">{{ currentPropertyKind(property.name) === 'null' ? t('空') : property.value }}</span>
-          </template>
-          <div v-surface-motion="'MarkdownEditor:0'" v-if="typeMenuProperty === property.name || (typeMenuProperty === null && !property.name)" class="frontmatter-type-menu compact-action-menu" role="menu" :aria-label="t('属性类型')">
-            <button v-for="option in propertyTypeOptions" :key="option.kind" type="button" role="menuitemradio" :aria-checked="currentPropertyKind(property.name) === option.kind" @click="changePropertyType(option.kind)">
-              <component :is="option.icon" :size="16" />{{ option.label }}
-            </button>
-            <button v-if="editingProperty !== null" type="button" role="menuitem" class="frontmatter-type-delete" @click="deleteProperty"><Trash2 :size="16" />{{ t('删除属性') }}</button>
-          </div>
-        </div>
-      </TransitionGroup>
-      <Transition :css="false" @enter="enterRow" @leave="leaveRow">
-        <button
-          v-if="!readonly && properties !== null && editingProperty !== null"
-          type="button"
-          class="frontmatter-add frontmatter-add-property"
-          @click="editProperty(null)"
-        >
-          <Plus :size="16" aria-hidden="true" />{{ t('添加文档属性') }} </button>
-      </Transition>
-    </div>
-  </details>
-  </Transition>
+  <FrontmatterPanel
+    ref="frontmatterPanelRef"
+    :metadata="metadata"
+    :get-markdown="() => lastValue"
+    :readonly="readonly"
+    :show-document-properties="showDocumentProperties"
+    :translate="translate"
+    @publish-frontmatter="publishFrontmatter"
+    @edit-source="emit('editSource')"
+  />
   <div
     ref="root"
     class="milkdown-host"
-    :class="{ 'tano-link-modifier': linkModifier }"
-    @pointermove="syncLinkModifier"
-    @mousedown.capture="rememberRightClickSelection($event); focusTrailingParagraph($event)"
-    @contextmenu="openBlockMenu"
+    :class="{ 'tano-link-modifier': linkPanel.linkModifier.value }"
+    @pointermove="linkPanel.syncLinkModifier"
+    @mousedown.capture="blockMenu.rememberRightClickSelection($event); editorCommands.focusTrailingParagraph($event)"
+    @contextmenu="blockMenu.openBlockMenu"
     @keydown="preventEditorTabNavigation"
   />
   <slot v-if="emptyDocument && !readonly" name="empty-document" />
-  <Teleport :to="document.body">
-    <div v-surface-motion="'MarkdownEditor:1'"
-      v-if="linkPanel"
-      ref="linkPanelElement"
-      class="tano-editor-panel tano-link-editor-panel"
-      role="group"
-      :aria-label="linkPanel.kind === 'wiki' ? t('编辑 Wiki 链接') : t('编辑链接')"
-      :style="{ left: `${linkPanel.x}px`, top: `${linkPanel.y}px` }"
-      @keydown.esc.prevent.stop="closeLinkPanel"
-      @mousedown.stop
-      @click.stop
-    >
-      <template v-if="linkPanel.kind === 'wiki'">
-        <label>{{ t('目标') }}<input ref="linkPanelFirstInput" :value="linkPanel.target" :aria-label="t('Wiki 链接目标')" @input="editLinkPanel('target', $event)" /></label>
-        <label>{{ t('别名') }}<input :value="linkPanel.label" :aria-label="t('Wiki 链接别名')" :placeholder="t('留空时使用目标名称')" @input="editLinkPanel('label', $event)" /></label>
-      </template>
-      <template v-else>
-        <label>{{ t('文字') }}<input ref="linkPanelFirstInput" :value="linkPanel.text" :aria-label="t('链接文字')" @input="editLinkPanel('text', $event)" /></label>
-        <label>{{ t('地址') }}<input :value="linkPanel.href" :aria-label="t('链接地址')" @input="editLinkPanel('href', $event)" /></label>
-        <label>{{ t('标题') }}<input :value="linkPanel.title" :aria-label="t('链接标题')" :placeholder="t('可选')" @input="editLinkPanel('title', $event)" /></label>
-      </template>
-    </div>
-  </Teleport>
-  <Teleport :to="document.body">
-    <div v-surface-motion="'MarkdownEditor:2'"
-      v-if="blockMenu"
-      ref="blockMenuElement"
-      class="dropdown compact-action-menu block-context-menu"
-      role="menu"
-      tabindex="-1"
-      :aria-label="blockMenu.selectionMenu ? t('选区操作') : blockMenuSelectionCount() > 1 ? t('{0} 个块的操作', [blockMenuSelectionCount()]) : t('第 {0} 个块的操作', [blockMenu.index + 1])"
-      :style="{ left: `${blockMenu.x}px`, top: `${blockMenu.y}px` }"
-      @keydown="onBlockMenuKeydown"
-    >
-      <div class="block-convert-menu" role="presentation" @pointerenter="openBlockConvertMenu(false, 'copy')" @pointerleave="scheduleCloseBlockConvertMenu">
-        <button ref="blockCopyTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'copy'" @click="openBlockConvertMenu(true, 'copy')"><ClipboardCopy :size="15" aria-hidden="true" />{{ t('复制为') }}<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
-        <div v-surface-motion="'MarkdownEditor:3'" v-if="blockConvertMenu && blockSubmenuKind === 'copy'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" :aria-label="t('复制为')" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
-      <button role="menuitem" type="button" @click="blockMenuAction('copy')"><ClipboardCopy :size="15" aria-hidden="true" />{{ t('复制 Markdown') }}<kbd v-if="defaultCopyAction === 'copy'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
-      <button role="menuitem" type="button" :title="t('在 Word / WPS 中粘贴后选择“保留源格式”，以保留颜色、底色和字体')" @click="blockMenuAction('copy-rich')"><Pilcrow :size="15" aria-hidden="true" />{{ t('复制富文本（Word / WPS）') }}<kbd v-if="defaultCopyAction === 'copy-rich'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
-      <button role="menuitem" type="button" :title="t('复制 HTML 源码')" @click="blockMenuAction('copy-html')"><Braces :size="15" aria-hidden="true" />{{ t('复制 HTML') }}<kbd v-if="defaultCopyAction === 'copy-html'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
-      <button role="menuitem" type="button" @click="blockMenuAction('copy-text')"><AlignLeft :size="15" aria-hidden="true" />{{ t('复制纯文本') }}<kbd v-if="defaultCopyAction === 'copy-text'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
-      <div v-if="specialCopyFormats.mathml || specialCopyFormats.tsv" class="menu-divider" role="separator" />
-      <button v-if="specialCopyFormats.mathml" role="menuitem" type="button" @click="blockMenuAction('copy-mathml')"><Sigma :size="15" aria-hidden="true" />{{ t('复制公式 MathML') }}</button>
-      <button v-if="specialCopyFormats.tsv" role="menuitem" type="button" @click="blockMenuAction('copy-tsv')"><Table2 :size="15" aria-hidden="true" />{{ t('复制表格 TSV') }}</button>
-      <div class="menu-divider" role="separator" />
-      <button role="menuitem" type="button" :title="t('内联排版样式，外链转为可见地址；公式本地渲染为 SVG')" @click="blockMenuAction('copy-wechat')"><WechatLogo />{{ t('复制到微信公众号') }}<kbd v-if="defaultCopyAction === 'copy-wechat'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
-      <button role="menuitem" type="button" :title="t('保留链接，公式使用知乎编辑器的识别标记')" @click="blockMenuAction('copy-zhihu')"><ZhihuLogo />{{ t('复制到知乎') }}<kbd v-if="defaultCopyAction === 'copy-zhihu'" class="menu-shortcut" aria-hidden="true">{{ copyShortcutLabel }}</kbd></button>
-        </div>
-      </div>
-      <template v-if="!blockMenu.selectionMenu">
-      <button role="menuitem" type="button" :title="t('编辑所选块的 Markdown 源码')" @click="blockMenuAction('source')"><SquareCode :size="15" aria-hidden="true" />{{ t('编辑源码') }}</button>
-      <button role="menuitem" type="button" @click="blockMenuAction('duplicate')"><CopyPlus :size="15" aria-hidden="true" />{{ t('创建副本') }}</button>
-      <button v-if="blockMenuTable" role="menuitem" type="button" :disabled="!!blockMenuTable.attrs.autoWidth" :title="blockMenuTable.attrs.autoWidth ? t('整张表已使用自动宽度') : t('恢复整张表的自动宽度')" @click="blockMenuAction('restoreAutoWidth')"><RotateCcw :size="15" aria-hidden="true" />{{ t('恢复自动宽度') }}<Check v-if="blockMenuTable.attrs.autoWidth" class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
-      <div class="menu-divider" role="separator" />
-      <div class="block-convert-menu" role="presentation" @pointerenter="openBlockConvertMenu()" @pointerleave="scheduleCloseBlockConvertMenu">
-        <button ref="blockConvertTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'convert'" @click="openBlockConvertMenu(true)"><Replace :size="15" aria-hidden="true" />{{ t('转换为') }}<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
-        <div v-surface-motion="'MarkdownEditor:4'" v-if="blockConvertMenu && blockSubmenuKind === 'convert'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" :aria-label="t('转换为')" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
-          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('paragraph')" @click="blockMenuAction('paragraph')"><Pilcrow :size="15" aria-hidden="true" />{{ t('转为正文') }}</button>
-          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('heading')" @click="blockMenuAction('heading')"><Heading :size="15" aria-hidden="true" />{{ t('转为标题') }}</button>
-          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('list')" @click="blockMenuAction('list')"><List :size="15" aria-hidden="true" />{{ t('转为列表') }}</button>
-          <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('quote')" @click="blockMenuAction('quote')"><Quote :size="15" aria-hidden="true" />{{ t('转为引用') }}</button>
-        </div>
-      </div>
-      <div class="block-convert-menu" role="presentation" @pointerenter="openBlockConvertMenu(false, 'wrap')" @pointerleave="scheduleCloseBlockConvertMenu">
-        <button ref="blockWrapTrigger" role="menuitem" type="button" aria-haspopup="menu" :aria-expanded="!!blockConvertMenu && blockSubmenuKind === 'wrap'" @click="openBlockConvertMenu(true, 'wrap')"><Group :size="15" aria-hidden="true" />{{ t('合并放入新块') }}<ChevronRight class="block-convert-chevron" :size="15" aria-hidden="true" /></button>
-        <div v-surface-motion="'MarkdownEditor:5'" v-if="blockConvertMenu && blockSubmenuKind === 'wrap'" ref="blockConvertElement" class="dropdown compact-action-menu block-convert-submenu" role="menu" tabindex="-1" :aria-label="t('合并放入新块')" :style="{ left: `${blockConvertMenu.x}px`, top: `${blockConvertMenu.y}px` }">
-          <button v-for="option in blockContainerOptions" :key="option.type" role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('wrap-' + option.type)" @click="blockMenuAction('wrap-' + option.type)"><component :is="blockContainerIcons[option.type]" :size="16" aria-hidden="true" />{{ t(option.label) }}</button>
-        </div>
-      </div>
-      <button role="menuitem" type="button" :disabled="!blockMenuCommandAvailable('unwrap')" :title="t('移除外层块，将内部子块提升一级')" @click="blockMenuAction('unwrap')"><Ungroup :size="15" aria-hidden="true" />{{ t('展开') }}</button>
-      <div class="menu-divider" role="separator" />
-      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('move-up')" @click="blockMenuAction('move-up')"><ArrowUp :size="15" aria-hidden="true" />{{ t('上移块') }}<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['move-up'] ?? 'Alt + ↑' }}</kbd></button>
-      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('move-down')" @click="blockMenuAction('move-down')"><ArrowDown :size="15" aria-hidden="true" />{{ t('下移块') }}<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['move-down'] ?? 'Alt + ↓' }}</kbd></button>
-      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('indent')" @click="blockMenuAction('indent')"><IndentIncrease :size="15" aria-hidden="true" />{{ t('移入前容器') }}<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['indent'] ?? 'Alt + →' }}</kbd></button>
-      <button role="menuitem" type="button" :disabled="!blockMenuMoveAvailable('outdent')" @click="blockMenuAction('outdent')"><IndentDecrease :size="15" aria-hidden="true" />{{ t('移出当前容器') }}<kbd class="menu-shortcut" aria-hidden="true">{{ shortcutHints?.['outdent'] ?? 'Alt + ←' }}</kbd></button>
-      <div class="menu-divider" role="separator" />
-      <button role="menuitem" type="button" class="danger-text" @click="blockMenuAction('delete')"><Trash2 :size="15" aria-hidden="true" />{{ t('删除块') }}<kbd class="menu-shortcut" aria-hidden="true"><ShortcutHint :label="shortcutHints?.['delete'] ?? 'Backspace'" /></kbd></button>
-      </template>
-    </div>
-  </Teleport>
+  <LinkEditorPopover
+    :panel="linkPanel.linkPanel.value"
+    :translate="translate"
+    :set-panel-element="(el) => (linkPanel.linkPanelElement.value = el)"
+    :set-first-input="(el) => (linkPanel.linkPanelFirstInput.value = el)"
+    @edit="linkPanel.editLinkPanel"
+    @close="linkPanel.closeLinkPanel"
+  />
+  <BlockContextMenu
+    :menu="blockMenu.blockMenu.value"
+    :submenu="blockMenu.blockConvertMenu.value"
+    :submenu-kind="blockMenu.blockSubmenuKind.value"
+    :selection-count="blockMenu.blockMenuSelectionCount()"
+    :menu-table="blockMenu.blockMenuTable.value"
+    :default-copy-action="defaultCopyAction"
+    :copy-shortcut-label="copyShortcutLabel"
+    :special-copy-formats="blockMenu.specialCopyFormats.value"
+    :shortcut-hints="shortcutHints"
+    :translate="translate"
+    :command-available="blockMenu.blockMenuCommandAvailable"
+    :move-available="blockMenu.blockMenuMoveAvailable"
+    :set-menu-element="(el) => (blockMenu.blockMenuElement.value = el)"
+    :set-convert-element="(el) => (blockMenu.blockConvertElement.value = el)"
+    :set-copy-trigger="(el) => (blockMenu.blockCopyTrigger.value = el)"
+    :set-convert-trigger="(el) => (blockMenu.blockConvertTrigger.value = el)"
+    :set-wrap-trigger="(el) => (blockMenu.blockWrapTrigger.value = el)"
+    @action="blockMenu.blockMenuAction"
+    @keydown="blockMenu.onBlockMenuKeydown"
+    @open-submenu="blockMenu.openBlockConvertMenu"
+    @schedule-close-submenu="blockMenu.scheduleCloseBlockConvertMenu"
+  />
 </template>

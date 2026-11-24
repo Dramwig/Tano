@@ -168,7 +168,7 @@ for (const [pkgRel, allowedInternal] of workspaceDag) {
   }
 
   for (const f of walk(path.join(pkgDir, 'src'))) {
-    if (/\.(test|spec)\.(ts|tsx|mjs|js)$/.test(f)) continue;
+    if (/\.(test|spec)(\.[^/\\]+)?\.(ts|tsx|mjs|js)$/.test(f)) continue;
     if (!/\.(ts|vue|mjs|css)$/.test(f)) continue;
     const relative = path.relative(root, f).replaceAll('\\', '/');
     const text = fs.readFileSync(f, 'utf8');
