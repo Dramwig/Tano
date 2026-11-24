@@ -33,6 +33,6 @@ it('scans literal calls and rejects release channel assignments', () => {
     expect(unsafeChannel(source)).toBe(true);
   expect(unsafeChannel('VITE_TANO_CHANNEL=stable')).toBe(false);
 });
-it('checks the real empty registry', () => {
-  expect(checkFeatures(process.cwd())).toEqual({});
+it('checks the real registry and its references', () => {
+  expect(() => checkFeatures(process.cwd())).not.toThrow();
 });
