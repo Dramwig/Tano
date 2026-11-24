@@ -22,7 +22,7 @@ Core packages.
 
 Before any release-related Git commit, push, or tag creation, update the website
 changelog in the private Tano-cloud repository, including for a Core-only release.
-Edit `apps/client/src/changelog/zh-cn.md` and `en-us.md` together, following that
+Edit `apps/website/src/changelog/zh-cn.md` and `en-us.md` together, following that
 repository's `docs/changelog.md`. Record the intended version, date, release scope
 and actual additions, improvements and fixes since the previous corresponding
 release. Review `http://127.0.0.1:43941/zh-cn/changelog/` locally before proceeding.

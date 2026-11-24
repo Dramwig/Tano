@@ -95,10 +95,14 @@ export interface WorkbenchExtensions {
   disconnect(): Promise<void>;
   showHistory?(): void;
 }
+export const DEFAULT_DOCUMENT_COVER_BASE_URL = 'https://assets.tano.page/covers';
+
 export interface WorkbenchRuntime {
   adapter: WorkspaceAdapter;
   /** Absolute, localized documentation root supplied by the product host. */
   documentationBaseUrl?: string;
+  /** Optional HTTPS/relative base URL hosting curated document cover WebP files. */
+  documentCoverBaseUrl?: string;
   attachments?: AttachmentService;
   personalPlans?: ObjectStorage;
   assistant?: AssistantTransport;
@@ -119,9 +123,11 @@ export interface CloudExtension {
 }
 
 const runtimes = new WeakMap<Pinia, WorkbenchRuntime>();
+let customCoverBaseUrlCount = 0;
 export function configureWorkbench(pinia: Pinia, runtime: WorkbenchRuntime) {
   if (runtimes.has(pinia)) throw new Error('工作台实例已配置；切换存储请创建新实例');
   runtimes.set(pinia, runtime);
+  if (runtime.documentCoverBaseUrl) customCoverBaseUrlCount++;
   return pinia;
 }
 export function configureWorkbenchWithCloudExtension(
@@ -141,6 +147,14 @@ export function useWorkbenchRuntime(): WorkbenchRuntime {
   const runtime = pinia && runtimes.get(pinia);
   if (!runtime) throw new Error('工作台缺少存储配置');
   return runtime;
+}
+export function resolveDocumentCoverBaseUrl(pinia?: Pinia): string {
+  const active = pinia ?? (customCoverBaseUrlCount > 0 ? getActivePinia() : undefined);
+  const configured = active ? runtimes.get(active)?.documentCoverBaseUrl : undefined;
+  const envUrl = (import.meta as { env?: { VITE_TANO_COVER_BASE_URL?: string } }).env
+    ?.VITE_TANO_COVER_BASE_URL;
+  const raw = (configured ?? envUrl ?? DEFAULT_DOCUMENT_COVER_BASE_URL).trim();
+  return (raw || DEFAULT_DOCUMENT_COVER_BASE_URL).replace(/\/+$/, '');
 }
 export function createLocalExtensions(): WorkbenchExtensions {
   const done = async () => {};
