@@ -1,0 +1,345 @@
+.menu-wrap {
+  position: relative;
+}
+.dropdown {
+  position: absolute;
+  z-index: 30;
+  width: 218px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 35px #0f0f0f18;
+  border-radius: 8px;
+  padding: 6px;
+}
+.dropdown button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  text-align: left;
+  padding: 10px 8px;
+  border-radius: 4px;
+  color: var(--text-secondary);
+}
+.dropdown button:hover {
+  background: var(--hover);
+}
+.dropdown button:disabled:hover {
+  background: transparent;
+}
+.compact-action-menu,
+.tano-editor-panel.compact-action-menu {
+  width: 184px;
+  max-width: calc(100vw - 16px);
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow:
+    0 8px 24px #1b23311f,
+    0 18px 40px #1b233114;
+}
+.editor-toolbar .dropdown,
+.selection-format-toolbar .dropdown {
+  box-shadow:
+    0 4px 14px #1b23310c,
+    0 10px 24px #1b233106;
+}
+.compact-action-menu button {
+  min-height: 26px;
+  padding: 4px 7px;
+  line-height: 16px;
+  gap: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  border-radius: 6px;
+  color: var(--text);
+}
+.compact-action-menu button:focus {
+  outline: none;
+  background: var(--hover);
+}
+.compact-action-menu button svg {
+  width: 14px;
+  height: 14px;
+}
+.dropdown.compact-action-menu .danger-text {
+  color: var(--danger);
+}
+.compact-action-menu .danger-text svg {
+  color: var(--danger);
+}
+.compact-action-menu .menu-divider {
+  /* Borders snap to device pixels; filled 1px blocks can alternate in thickness at fractional scaling. */
+  height: 0;
+  flex-shrink: 0;
+  margin: 3px -6px;
+  border-top: 1px solid var(--line);
+  background: none;
+}
+.compact-action-menu .menu-shortcut {
+  font-size: 10px;
+}
+.compact-action-menu .menu-beta {
+  margin-left: auto;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--hover);
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 14px;
+}
+.compact-action-menu .page-toggle-menu-item {
+  min-height: 26px;
+}
+.menu-switch {
+  position: relative;
+  width: 30px;
+  height: 18px;
+  margin-left: auto;
+  padding: 2px;
+  flex: 0 0 30px;
+  border-radius: 999px;
+  background: var(--switch-off);
+  transition: background-color var(--motion-base) var(--ease-standard);
+}
+.menu-switch.on {
+  background: var(--switch-on, var(--green));
+}
+.menu-switch > span {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 3px #18212b26, 0 0 0 0.5px #0000000d;
+  transition:
+    translate var(--motion-bouncy) var(--ease-spring-bouncy),
+    width var(--motion-spring) var(--ease-spring);
+}
+.menu-switch.on > span {
+  translate: 12px 0;
+}
+/* iOS-style: the thumb stretches toward its destination while pressed. */
+:active > .menu-switch > span,
+.menu-switch:active > span {
+  width: 17px;
+}
+:active > .menu-switch.on > span,
+.menu-switch.on:active > span {
+  translate: 9px 0;
+}
+.file-context-menu {
+  position: fixed;
+  z-index: 100;
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+}
+.file-context-menu:focus {
+  outline: none;
+}
+.block-context-menu {
+  position: fixed;
+  z-index: 100;
+  width: 190px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+}
+.block-context-menu:focus {
+  outline: none;
+}
+.block-context-menu .menu-shortcut {
+  padding-left: 0;
+}
+.block-context-menu button > svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  stroke-width: 1.6;
+}
+.block-context-menu .block-convert-chevron {
+  margin-left: auto;
+}
+.block-convert-menu > button[aria-expanded='true'] {
+  background: var(--hover);
+}
+.block-convert-submenu {
+  position: fixed;
+  z-index: 101;
+  width: 154px;
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+}
+.block-convert-submenu[aria-label='复制为'] {
+  width: 240px;
+  max-width: calc(100vw - 16px);
+}
+.page-context-menu {
+  position: fixed;
+  z-index: 100;
+  width: 144px;
+}
+.page-context-menu:focus {
+  outline: none;
+}
+.page-context-menu button {
+  gap: 7px;
+}
+.page-context-menu button > svg:first-child {
+  flex: 0 0 14px;
+  color: var(--text-secondary);
+}
+.page-context-menu .page-context-check {
+  margin-left: auto;
+  color: var(--text);
+}
+.file-context-count {
+  padding: 5px 7px 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.delete-file-list {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+.document-dropdown {
+  right: 0;
+  top: 35px;
+}
+.document-global-trigger .document-global-chevron,
+.document-export-trigger .document-export-chevron {
+  margin-left: auto;
+}
+.document-global-trigger[aria-expanded='true'],
+.document-export-trigger[aria-expanded='true'] {
+  background: var(--hover);
+}
+.workspace-options-menu,
+.document-export-menu {
+  width: 184px;
+}
+.document-export-menu {
+  position: fixed;
+  z-index: 100;
+}
+.document-export-renderer {
+  position: fixed;
+  top: 0;
+  left: -10000px;
+  width: 800px;
+  background: #ffffff;
+  color: #37352f;
+}
+.document-export-content {
+  box-sizing: border-box;
+  width: 800px;
+  padding: 24px;
+  background: #ffffff;
+  color: #37352f;
+}
+.document-export-content .tano-prose {
+  min-height: 0;
+}
+.document-export-content .tano-table-viewport,
+.document-export-content .tableWrapper {
+  overflow: visible;
+}
+.document-export-content pre,
+.document-export-content pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.document-export-title {
+  margin: 0 0 24px;
+  font-size: 30px;
+  line-height: 1.4;
+}
+.workspace-dropdown {
+  left: 8px;
+  bottom: calc(100% + 6px);
+  width: 280px;
+  max-width: calc(100vw - 16px);
+  max-height: min(560px, calc(100dvh - 76px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.workspace-entry-context-menu {
+  width: 190px;
+  z-index: 120;
+}
+.workspace-entry-context-check {
+  margin-left: auto;
+  color: var(--text);
+}
+.sidebar-popover button,
+.sidebar-popover .workspace-list-empty,
+.sidebar-popover .local-note strong,
+.sidebar-popover .local-note p {
+  font-size: 13px;
+}
+.sidebar-popover .recent-label {
+  padding: 5px 7px 4px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0;
+}
+.workspace-recent-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.workspace-dropdown .workspace-recent-open {
+  display: grid;
+  place-items: center;
+  flex: 0 0 26px;
+  width: 26px;
+  min-height: 26px;
+  padding: 0;
+  margin-right: 2px;
+  color: var(--text-secondary);
+}
+.sidebar-popover .workspace-list-avatar {
+  flex-basis: 18px;
+  width: 18px;
+  height: 18px;
+  font-size: 11px;
+}
+.sidebar-popover .local-note {
+  gap: 6px;
+  padding: 5px 7px;
+}
+.sidebar-popover .local-note-icon {
+  width: 16px;
+  height: 16px;
+}
+.sidebar-popover .local-note p {
+  margin-top: 2px;
+  line-height: 16px;
+}
+.menu-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 5px;
+}
+.menu-shortcut {
+  margin-left: auto;
+  padding: 0 0 0 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-family: inherit;
+  font-weight: normal;
+  font-size: 12px;
+  color: var(--muted);
+}
+.dropdown .danger-text {
+  color: var(--danger);
+}

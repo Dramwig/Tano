@@ -1,6 +1,9 @@
-import { invoke, isTauri } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
-import { open as chooseDirectory } from '@tauri-apps/plugin-dialog';
+import {
+  isNativeRuntime as isTauri,
+  nativeInvoke as invoke,
+  nativeListen as listen,
+  nativeOpenDialog as chooseDirectory,
+} from './platform/native-bridge';
 import type {
   FileEntry,
   FileChangeRequest,

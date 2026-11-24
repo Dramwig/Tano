@@ -1,5 +1,8 @@
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
-import { save } from '@tauri-apps/plugin-dialog';
+import {
+  nativeConvertFileSrc as convertFileSrc,
+  nativeInvoke as invoke,
+  nativeSaveDialog as save,
+} from './platform/native-bridge';
 import {
   basename,
   relativeWorkspaceReference,

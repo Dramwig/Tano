@@ -168,7 +168,7 @@ for (const [pkgRel, allowedInternal] of workspaceDag) {
   }
 
   for (const f of walk(path.join(pkgDir, 'src'))) {
-    if (/\.(test|spec)\.(ts|tsx|mjs|js)$/.test(f)) continue;
+    if (/\.(test|spec)(\.[^/\\]+)?\.(ts|tsx|mjs|js)$/.test(f)) continue;
     if (!/\.(ts|vue|mjs|css)$/.test(f)) continue;
     const relative = path.relative(root, f).replaceAll('\\', '/');
     const text = fs.readFileSync(f, 'utf8');
@@ -183,6 +183,9 @@ for (const [pkgRel, allowedInternal] of workspaceDag) {
       }
       if (!typeOnly && !declaredRuntime.has(dep)) {
         failures.push(`${relative}: undeclared runtime dependency ${dep} (from ${specifier})`);
+      }
+      if (pkgRel === 'packages/workbench' && dep.startsWith('@tauri-apps/') && relative !== 'packages/workbench/src/platform/native-bridge.ts') {
+        failures.push(`${relative}: direct Tauri import ${specifier} must go through platform/native-bridge.ts`);
       }
       if (pkgRel === 'apps/client' && specifier.startsWith('@tano/workbench/components/')) {
         failures.push(`${relative}: use explicit @tano/workbench export instead of internal path ${specifier}`);

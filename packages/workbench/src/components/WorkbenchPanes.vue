@@ -1,10 +1,92 @@
 <script setup lang="ts">
-import WorkbenchSettings from './WorkbenchSettings.vue';
 import { computed, inject, toRefs } from 'vue';
-import { layoutPanes } from '../pane-layout';
-import { workbenchContextKey } from '../workbench-context';
-import { useWindowContext } from '../windows/context';
+import {
+  AlertTriangle,
+  Archive,
+  ArrowDownToLine,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUpRight,
+  Bot,
+  CalendarDays,
+  Check,
+  CheckCheck,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  FileText,
+  GitFork,
+  History,
+  List,
+  ListTodo,
+  ListTree,
+  LockKeyhole,
+  MessageSquare,
+  MessageSquareDiff,
+  MoreHorizontal,
+  MoveHorizontal,
+  PanelLeftOpen,
+  Pin,
+  Plus,
+  Puzzle,
+  Redo2,
+  RefreshCw,
+  Repeat2,
+  Search,
+  Trash2,
+  Undo2,
+  X,
+} from 'lucide-vue-next';
+import ShortcutHint from '@tano/editor/shortcut-hint';
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { isFeatureEnabled } from '../features';
+import { vOutlineMotion } from '../outline-motion';
+import { layoutPanes } from '../pane-layout';
+import { useWindowContext } from '../windows/context';
+import {
+  AssistantPanel,
+  CalendarView,
+  CalloutIconPicker,
+  DataTablePage,
+  DocumentComments,
+  EditorTools,
+  MarkdownEditor,
+  PluginInstaller,
+  RelationGraph,
+  SourceEditor,
+  TemplateLibrary,
+  WorkspaceViewTab,
+} from '../workbench-async-components';
+import { workbenchContextKey } from '../workbench-context';
+import AssistantLauncher from './AssistantLauncher.vue';
+import AttachmentPreview from './AttachmentPreview.vue';
+import ButtonVisibilityGroup from './ButtonVisibilityGroup.vue';
+import DesktopTabs from './DesktopTabs.vue';
+import DocumentExportMenu from './DocumentExportMenu.vue';
+import DocumentGlobalMenu from './DocumentGlobalMenu.vue';
+import DocumentLoading from './DocumentLoading.vue';
+import DocumentOutline from './DocumentOutline.vue';
+import DocumentPrintButton from './DocumentPrintButton.vue';
+import DocumentScrollbar from './DocumentScrollbar.vue';
+import DocumentStarter from './DocumentStarter.vue';
+import DocumentStatus from './DocumentStatus.vue';
+import DocumentSuggestions from './DocumentSuggestions.vue';
+import DocumentTitle from './DocumentTitle.vue';
+import EmptyEditor from './EmptyEditor.vue';
+import FolderView from './FolderView.vue';
+import LayoutDocumentChrome from './LayoutDocumentChrome.vue';
+import MarkdownRevealToggle from './MarkdownRevealToggle.vue';
+import PageDisplayOptions from './PageDisplayOptions.vue';
+import PageSearch from './PageSearch.vue';
+import PluginDetailPage from './PluginDetailPage.vue';
+import PluginMenu from './PluginMenu.vue';
+import PluginView from './PluginView.vue';
+import PluginViewHeader from './PluginViewHeader.vue';
+import SourceCodeIcon from './SourceCodeIcon.vue';
+import WorkbenchSettings from './WorkbenchSettings.vue';
+import WorkspaceBreadcrumb from './WorkspaceBreadcrumb.vue';
+import WorkspacePanes from './WorkspacePanes.vue';
 
 const windowContext = useWindowContext();
 const isAuxiliaryWindow = windowContext.id !== 'main';
@@ -175,7 +257,6 @@ const {
   paneEditorReady,
   paneSourceSelections,
   insertSourceFiles,
-  CalloutIconPicker,
   setPaneEditor,
   openDocumentLink,
   openWikiLink,
@@ -213,85 +294,8 @@ const {
   localNative,
   agentPanel,
   activities,
-  AlertTriangle,
-  RefreshCw,
-  Check,
-  FileText,
   uiLocale,
-  PanelLeftOpen,
-  DesktopTabs,
-  AssistantPanel,
-  TemplateLibrary,
-  ArrowLeft,
-  ArrowRight,
-  DocumentStatus,
-  ChevronRight,
-  Puzzle,
-  WorkspaceBreadcrumb,
-  PluginViewHeader,
-  List,
-  ArrowDownToLine,
-  LockKeyhole,
-  ChevronLeft,
-  ChevronDown,
-  CalendarDays,
-  MessageSquareDiff,
-  X,
-  MarkdownRevealToggle,
-  SourceCodeIcon,
-  MoreHorizontal,
-  PluginMenu,
-  Search,
-  ShortcutHint,
-  Repeat2,
-  Undo2,
-  Redo2,
-  CheckCheck,
-  Plus,
-  MessageSquare,
-  GitFork,
-  MoveHorizontal,
-  Archive,
-  Clock3,
-  PageDisplayOptions,
-  DocumentGlobalMenu,
-  DocumentExportMenu,
-  DocumentPrintButton,
-  Trash2,
-  ButtonVisibilityGroup,
-  RelationGraph,
-  DataTablePage,
-  AssistantLauncher,
-  FolderView,
-  WorkspaceViewTab,
-  CalendarView,
-  PluginView,
-  PluginInstaller,
-  PluginDetailPage,
-  DocumentLoading,
-  PageSearch,
-  LayoutDocumentChrome,
-  ListTodo,
-  EditorTools,
-  ArrowUpRight,
-  DocumentTitle,
-  SourceEditor,
-  DocumentStarter,
-  MarkdownEditor,
-  DocumentComments,
-  DocumentSuggestions,
-  DocumentScrollbar,
-  AttachmentPreview,
-  EmptyEditor,
-  History,
-  ListTree,
-  Pin,
-  DocumentOutline,
-  Bot,
-  WorkspacePanes,
-  vSurfaceMotion,
   vButterflyPerch,
-  vOutlineMotion,
 } = toRefs(context);
 const documentEditorPreferences = computed(() => isFeatureEnabled('markdownSpacingAutocomplete')
   ? editorPreferences.value
@@ -710,7 +714,7 @@ const ownsFullscreenAssistant = computed(() => {
                     </button>
                     <div v-surface-motion="'App:5'"
                       v-if="menu && pane.id === store.activePaneId"
-                      ref="documentMenuElement"
+                      :ref="(el) => { context.documentMenuElement = (el as HTMLElement | null) ?? undefined; }"
                       class="dropdown compact-action-menu document-dropdown"
                       @keydown="documentMenuKeydown"
                     >
@@ -1367,7 +1371,7 @@ const ownsFullscreenAssistant = computed(() => {
                 <div v-if="panel === 'outline' && outlineSearchOpen" class="outline-search">
                   <Search :size="14" aria-hidden="true" />
                   <input
-                    ref="outlineSearchInput"
+                    :ref="(el) => { context.outlineSearchInput = (el as HTMLInputElement | null) ?? undefined; }"
                     v-model="outlineSearch"
                     type="search"
                     :aria-label="t('搜索当前文档标题')"

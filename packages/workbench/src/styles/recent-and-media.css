@@ -1,0 +1,148 @@
+.recent-label {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  padding: 8px 12px;
+}
+.recent-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-spaces {
+  width: min(430px, 100%);
+  margin-top: 22px;
+  text-align: left;
+}
+.recent-spaces button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.recent-spaces button:hover {
+  background: var(--hover);
+}
+.recent-spaces-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 4px;
+}
+.recent-spaces .recent-open-button {
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+.recent-spaces .recent-open-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.recent-spaces .recent-workspace-details {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+  text-align: left;
+}
+.recent-spaces strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+.recent-spaces small {
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tano-image {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: middle;
+}
+.tano-image-block:has(.tano-image-editor-panel:not([hidden])) {
+  z-index: 20;
+}
+.tano-image-click-to-edit {
+  cursor: text;
+}
+.tano-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+.tano-image img[hidden],
+.tano-image small[hidden] {
+  display: none;
+}
+.tano-image small {
+  display: inline-block;
+  padding: 10px 14px;
+  background: var(--warning-bg);
+  border: 1px dashed var(--warning-border);
+  border-radius: 6px;
+  color: var(--warning);
+  font: 12px/1.7 var(--font-ui);
+}
+.tano-image-caption {
+  display: block;
+  max-width: 100%;
+  margin-top: 5px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.tano-image-editor-panel {
+  display: grid;
+  width: min(360px, var(--tano-panel-available-width, calc(100vw - 16px)));
+  gap: 8px;
+}
+.tano-image-editor-panel label {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.tano-image-editor-panel input {
+  width: min(44ch, calc(100vw - 54px));
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  outline: none;
+  background: var(--paper);
+  color: var(--text);
+  font: 13px/1.5 var(--font-mono);
+  user-select: text;
+}
+.tano-image-editor-panel input:focus {
+  border-color: var(--green);
+}
+.tano-image [hidden] {
+  display: none;
+}
+.asset-upload-placeholder {
+  display: inline-block;
+  color: var(--text-secondary);
+  background: var(--surface);
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: 5px;
+}

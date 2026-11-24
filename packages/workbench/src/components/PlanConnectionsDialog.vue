@@ -6,7 +6,7 @@ import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t, uiLocale } from '../i18n';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { CalendarDays, Check, Cloud, FileUp, ListTodo, RefreshCw, X, ArrowLeft, Plus, ChevronRight } from 'lucide-vue-next';
-import { invoke } from '@tauri-apps/api/core';
+import { nativeInvoke as invoke } from '../platform/native-bridge';
 import { usePlanSyncStore } from '../stores/plan-sync';
 import { useWorkspaceStore } from '../stores/workspace';
 import { usePlanStore } from '../stores/plans';

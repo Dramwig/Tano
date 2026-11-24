@@ -3619,5 +3619,6 @@
   "输入时自动补空格": "Leerzeichen beim Tippen automatisch einfügen",
   "附件超过大小限制：{0}": "Der Anhang überschreitet die maximale Größe: {0}",
   "在 Markdown 语法位置把中文符号识别为语法，默认开启；全局映射会转换所有位置的符号，默认关闭。可视化与源码模式通用。": "Chinesische Zeichen an Markdown-Syntaxpositionen erkennen ist standardmäßig aktiviert. Globale Umwandlungen gelten überall und sind standardmäßig deaktiviert. Gilt für beide Bearbeitungsmodi.",
-  "双链左右括号分别识别": "Öffnende und schließende Wiki-Link-Klammern getrennt erkennen"
+  "双链左右括号分别识别": "Öffnende und schließende Wiki-Link-Klammern getrennt erkennen",
+  "离线模式：连接网络后显示预设封面": "Offlinemodus: Verbinde dich mit dem Internet, um voreingestellte Titelbilder anzuzeigen"
 }

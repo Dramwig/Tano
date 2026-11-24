@@ -1,6 +1,6 @@
 import { computed, ref, markRaw } from 'vue';
 import { defineStore } from 'pinia';
-import { Channel, invoke } from '@tauri-apps/api/core';
+import { createNativeChannel, nativeInvoke as invoke } from '../platform/native-bridge';
 import { UpdateController } from '../updates/controller';
 import type { UpdateCandidate, UpdateProgress, UpdateStatus } from '../updates/controller';
 import { useWorkspaceStore } from './workspace';
@@ -18,7 +18,7 @@ export const useUpdatesStore = defineStore('updates', () => {
         check: () => invoke<UpdateCandidate | null>('update_check'),
         openRelease: openExternalUrl,
         async download(id, onProgress) {
-          const progress = new Channel<UpdateProgress>();
+          const progress = createNativeChannel<UpdateProgress>();
           progress.onmessage = onProgress;
           await invoke('update_download', { id, progress });
         },

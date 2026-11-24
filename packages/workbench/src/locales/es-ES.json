@@ -3619,5 +3619,6 @@
   "输入时自动补空格": "Añadir espacios automáticamente al escribir",
   "附件超过大小限制：{0}": "El archivo adjunto supera el tamaño máximo: {0}",
   "在 Markdown 语法位置把中文符号识别为语法，默认开启；全局映射会转换所有位置的符号，默认关闭。可视化与源码模式通用。": "Reconocer símbolos chinos en posiciones de sintaxis Markdown está activado por defecto. Las conversiones globales afectan a todas las posiciones y están desactivadas por defecto. Se aplica a ambos modos.",
-  "双链左右括号分别识别": "Reconocer por separado los corchetes de apertura y cierre de enlaces wiki"
+  "双链左右括号分别识别": "Reconocer por separado los corchetes de apertura y cierre de enlaces wiki",
+  "离线模式：连接网络后显示预设封面": "Modo sin conexión: conéctate a Internet para ver las portadas predefinidas"
 }

@@ -5,7 +5,7 @@ const { window, document } = useWindowContext();
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t, uiLocale } from '../i18n';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
+import { nativeInvoke as invoke } from '../platform/native-bridge';
 import { Bot, X, Terminal, RefreshCw, FileText, Copy } from 'lucide-vue-next';
 import { workspaceAgentGuide, assistantRulesPath } from '@tano/protocol';
 import type { AgentChange, AgentChangeDetail, AgentSetup } from '@tano/protocol';

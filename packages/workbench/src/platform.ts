@@ -1,4 +1,4 @@
-import { invoke, isTauri } from '@tauri-apps/api/core';
+import { isNativeRuntime as isTauri, nativeInvoke as invoke } from './platform/native-bridge';
 
 // Resolved from Rust before mounting; user-agent strings are not a platform boundary.
 export let mobile = false;

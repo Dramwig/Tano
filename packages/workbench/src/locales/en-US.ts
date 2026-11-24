@@ -3624,4 +3624,5 @@ export const englishMessages: Readonly<Record<string, string>> = {
   "光标进入或离开链接、行内代码、公式和引用时，源码平滑展开，离开后平滑收起。": "When the cursor enters or leaves a link, inline code, formula or reference, its source smoothly opens up and closes again.",
   "减少动态效果": "Reduce motion",
   "关闭按钮回弹、面板弹出和编辑区动画。系统开启“减少动态效果”时始终生效。": "Turns off button bounce, panel pop-ins and editor animation. Always on when the system reduce-motion setting is enabled.",
+  "离线模式：连接网络后显示预设封面": "Offline mode: connect to the internet to display preset covers",
 };

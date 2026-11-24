@@ -90,7 +90,7 @@ export async function initializeLocaleSync(native: boolean): Promise<void> {
   if (!native || syncStarted) return;
   syncStarted = true;
   try {
-    const { emit, listen } = await import('@tauri-apps/api/event');
+    const { nativeEmit: emit, nativeListen: listen } = await import('./platform/native-bridge');
     await listen<UiLocale>('tano-ui-locale', event => { void setUiLocale(event.payload); });
     window.addEventListener(localeChangeEvent, () => {
       void emit('tano-ui-locale', selectedLocale.value).catch(() => {});

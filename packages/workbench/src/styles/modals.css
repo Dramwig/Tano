@@ -1,0 +1,234 @@
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: #0f0f0f35;
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 16vh 22px 30px;
+  z-index: 60;
+  overflow-y: auto;
+}
+.modal {
+  width: 480px;
+  max-width: 100%;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 25px 90px #0f0f0f28;
+  padding: 24px;
+}
+.modal > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.modal h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+.modal-description {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 2;
+  margin: 3px 0 21px;
+}
+.modal label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 9px;
+}
+.modal input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--text);
+  font-size: 14px;
+}
+.modal input::placeholder {
+  color: var(--muted);
+}
+.input-hint {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.9;
+  margin-top: 10px;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 25px;
+}
+.secondary-button {
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  padding: 10px 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.secondary-button:hover {
+  background: var(--hover);
+}
+.form-error {
+  font-size: 12px;
+  color: var(--danger);
+  background: var(--danger-bg);
+  padding: 10px;
+  border-radius: 5px;
+}
+.destructive {
+  background: #ab3e35;
+}
+.destructive:hover {
+  background: #8e3029;
+}
+.delete-file {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 15px;
+  word-break: break-all;
+}
+.modal-backdrop.search-backdrop {
+  padding: clamp(32px, 7.5vh, 80px) 16px 24px;
+  background: #0005;
+  backdrop-filter: blur(4px);
+}
+.search-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(720px, 100%);
+  max-height: calc(100dvh - clamp(48px, 12vh, 112px));
+}
+.search-input-wrap {
+  display: flex;
+  align-items: center;
+  flex: 0 0 52px;
+  gap: 16px;
+  height: 52px;
+  padding: 0 20px;
+  border-radius: 22px;
+  background: var(--paper);
+  box-shadow: 0 8px 24px #1c211d18;
+}
+.search-input-wrap input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  border: 0;
+  color: var(--text);
+  background: transparent;
+  padding: 0;
+  line-height: 32px;
+}
+.search-input-wrap input::placeholder {
+  color: var(--muted);
+}
+.search-input-wrap input:focus-visible {
+  outline: none;
+}
+.search-input-wrap button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+  color: var(--muted);
+}
+.search-input-wrap button:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.search-results {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px 18px;
+  border-radius: 14px;
+  background: var(--paper);
+  box-shadow: 0 24px 64px #1c211d24;
+}
+.search-results button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 11px 10px;
+  border-radius: 10px;
+  text-align: left;
+}
+.search-results button:hover,
+.search-results button:focus-visible {
+  background: var(--hover);
+}
+.search-result-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.search-result-breadcrumb span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.search-result-location {
+  min-width: 0;
+}
+.search-result-breadcrumb strong {
+  min-width: 3ch;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-results small {
+  display: block;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-results mark {
+  border-radius: 2px;
+  background: var(--highlight-bg);
+  color: var(--text);
+  font-weight: 500;
+}
+.panel-empty {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  line-height: 2;
+  padding: 18px 0;
+}
+.spinning {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

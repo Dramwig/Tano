@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { nativeInvoke as invoke } from './platform/native-bridge';
 import { ref } from 'vue';
 import type { WorkbenchExtensions } from './runtime';
 import type { useWorkspaceStore } from './stores/workspace';

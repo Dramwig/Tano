@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { inject, toRefs } from 'vue';
+import { SettingsPanel } from '../workbench-async-components';
 import { workbenchContextKey } from '../workbench-context';
 import { useWindowContext } from '../windows/context';
 defineProps<{ tabbed?: boolean; windowed?: boolean }>();
 const context = inject(workbenchContextKey);
 if (!context) throw new Error('Workbench context is required');
 const windowContext = useWindowContext();
-const { native, mobile, workspace, shortcuts, store, tabsEnabled, extensions, updates, editorPreferences, showPageTitle, showDocumentProperties, showOutline, outlineOnLeft, active, openingSettingsWindow, openSettingsTab, openSettingsInNewWindow, settingsPage, workspaceExporting, workspaceExportError, workspaceDeletionError, deleteWorkspace, exportWorkspace, defaultSource, theme, appearance, appearanceController, visualFontChoice, customFontName, splitFontSettings, revealMarkdown, toolbarMode, showDocumentDiscussion, visualFontSize, sourceFontSize, appVersion, documentationBaseUrl, assistant, settingsAction, SettingsPanel, settingsContext } = toRefs(context);
+const { native, mobile, workspace, shortcuts, store, tabsEnabled, extensions, updates, editorPreferences, showPageTitle, showDocumentProperties, showOutline, outlineOnLeft, active, openingSettingsWindow, openSettingsTab, openSettingsInNewWindow, settingsPage, workspaceExporting, workspaceExportError, workspaceDeletionError, deleteWorkspace, exportWorkspace, defaultSource, theme, appearance, appearanceController, visualFontChoice, customFontName, splitFontSettings, revealMarkdown, toolbarMode, showDocumentDiscussion, visualFontSize, sourceFontSize, appVersion, documentationBaseUrl, assistant, settingsAction, settingsContext } = toRefs(context);
 function closeSettings() {
   if (windowContext.id === 'settings') void context!.auxiliaryWindows.close('settings');
   else context!.settingsPanel = false;

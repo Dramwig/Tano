@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { nativeInvoke as invoke } from './platform/native-bridge';
 import { ref } from 'vue';
 export interface GitEntry { path: string; index: string; worktree: string; originalPath: string | null }
 export interface GitStatus { branch: string | null; detached: boolean; entries: GitEntry[] }
