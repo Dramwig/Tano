@@ -1,0 +1,66 @@
+{
+  "constants": {
+    "WORKSPACE_DATA_DIRECTORY": ".tano",
+    "OBJECT_DIRECTORY": ".tano/objects",
+    "WORKSPACE_CAPABILITY_PATH": ".tano/capabilities.json",
+    "WORKSPACE_SETTINGS_PATH": ".tano/settings.tano.json",
+    "WORKSPACE_RELATION_PATH": ".tano/relations.tano-relations.json"
+  },
+  "hashes": [
+    {
+      "input": "abc",
+      "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    },
+    {
+      "input": "# Notes\n",
+      "sha256": "365d0b84ae63c2afc293dedd2b00bdf0dc8d6ef70c9297d90f9e5682ab0d72ee"
+    },
+    {
+      "input": "# Notes\r\n",
+      "sha256": "1f2993541852aff90c5da92621bd5fc15770ac5c3cfcad8fe736afafc66faa2f"
+    }
+  ],
+  "shortIds": {
+    "valid": ["a1b2c3", "000000", "dead01"],
+    "invalid": [
+      "A1B2C3",
+      "abcdef0",
+      "12345",
+      "a1b2cg",
+      "\uff1123456",
+      "550e8400-e29b-41d4-a716-446655440000"
+    ]
+  },
+  "workspaceInternalPaths": {
+    "valid": [
+      ".tano",
+      ".tano/config.json",
+      ".tano/capabilities.json",
+      ".tano/settings.tano.json",
+      ".tano/relations.tano-relations.json",
+      ".tano/objects/a1b2c3.tano.json",
+      ".tano/conflicts/conflict.json"
+    ],
+    "invalid": [
+      ".tano-backup/config.json",
+      "notes/.tano/config.json",
+      "README.md"
+    ]
+  },
+  "workspaceDataPaths": {
+    "valid": [
+      ".tano/capabilities.json",
+      ".tano/settings.tano.json",
+      ".tano/relations.tano-relations.json",
+      ".tano/objects/a1b2c3.tano.json",
+      ".tano/conflicts/conflict.json"
+    ],
+    "invalid": [
+      ".tano",
+      ".tano/config.json",
+      ".tano/cache.sqlite",
+      ".tano/objects/a.json",
+      "notes/welcome.md"
+    ]
+  }
+}
