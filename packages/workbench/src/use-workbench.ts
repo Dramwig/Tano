@@ -1,47 +1,5 @@
-import { resolvePluginSidebar } from './workbench-navigation';
-import { isMouseEvent, isHTMLElement, isElement, ownerWindow } from '@tano/editor/dom-realm';
-import { useWindowContext, type WindowContext } from './windows/context';
-import { detachedWindowPosition, type DetachedDropPoint } from './windows/position';
-import type { SettingsPageId } from './settings-window';
-import { useAuxiliaryWindows } from './windows/manager';
-
-import { vSurfaceMotion } from '@tano/editor/surface-motion';
-
-import { installInteractionMotion } from '@tano/editor/motion';
-
-import ShortcutHint from '@tano/editor/shortcut-hint';
-
-import WorkspaceSyncPanel from './components/WorkspaceSyncPanel.vue';
-
-import { vScrollFade } from './scroll-fade';
-
-import { vOutlineMotion } from './outline-motion';
-
-import { HeadingViewport } from './heading-viewport';
-
-import { createWorkspaceSync, syncEvent } from './workspace-sync';
-
-import { uiLocale, t } from './i18n';
-import { documentTabLabel } from './tab-label';
-
-import { readSettingsPage } from './settings-preference';
-import { featureChannel } from './features';
-
-import { focusedOutlineIndices } from './outline-tree';
-
-import AppTooltip from './components/AppTooltip.vue';
-
-import DocumentOutline from './components/DocumentOutline.vue';
-
-import { assistantDiscussionPrompt } from './assistant/language';
-
-import { assistantSourceRange } from './assistant/source-selection';
-
-import type { AssistantSource } from '@tano/protocol';
-
 import {
   computed,
-  defineAsyncComponent,
   nextTick,
   onBeforeUnmount,
   onMounted,
@@ -52,363 +10,179 @@ import {
   useTemplateRef,
   watch,
 } from 'vue';
-
 import { storeToRefs } from 'pinia';
-
+import { Bot, Settings2 } from 'lucide-vue-next';
 import { version as appVersion } from '../package.json';
-
-import {
-  BookOpen,
-  House,
-  ChevronDown,
-  ChevronUp,
-  ChevronLeft,
-  ChevronRight,
-  Search,
-  Plus,
-  FolderPlus,
-  FolderOpen,
-  FolderSearch,
-  FolderTree,
-  PanelLeftOpen,
-  PanelsTopLeft,
-  FileText,
-  FilePlus2,
-  FileOutput,
-  FileSliders,
-  FileSymlink,
-  Paperclip,
-  Eye,
-  EyeOff,
-  TextCursorInput,
-  Route,
-  AppWindow,
-  Blocks,
-  X,
-  Check,
-  Circle,
-  MoreHorizontal,
-  ArrowUpRight,
-  Archive,
-  Clock3,
-  History,
-  List,
-  ListTree,
-  ListTodo,
-  CircleHelp,
-  ArrowLeft,
-  ArrowRight,
-  AlertTriangle,
-  RefreshCw,
-  Repeat2,
-  Trash2,
-  Bot,
-  MessageSquare,
-  MessageSquareDiff,
-  Link,
-  CheckCheck,
-  CopyPlus,
-  LoaderCircle,
-  Puzzle,
-  GitFork,
-  CalendarDays,
-  Settings2,
-  SquarePen,
-  Pin,
-  LockKeyhole,
-  MoveHorizontal,
-  Undo2,
-  Redo2,
-  ArrowDownToLine,
-  Files,
-  Table2,
-  Database,
-} from 'lucide-vue-next';
-
-import MarkdownEditorSkeleton from './components/MarkdownEditorSkeleton.vue';
-
-import DocumentLoading from './components/DocumentLoading.vue';
-
-import { defaultEditorPreferences, normalizeCopyFormat, normalizeMarkdownAutocomplete, normalizeSelectionWrapping, normalizeChineseInput } from '@tano/editor/runtime';
-
-import type { EditorPreferences } from '@tano/editor/runtime';
-
-import { defaultSelectionContext } from '@tano/editor/selection-context';
-
-import type { EditorSelectionContext } from '@tano/editor/selection-context';
-
-import { captureModeViewport, restoreModeViewport } from '@tano/editor/editor-mode';
-
-import type { ModeViewport } from '@tano/editor/editor-mode';
-
-import AttachmentPreview from './components/AttachmentPreview.vue';
-
-import type { AttachmentStatusUpdate } from './attachment-status';
-
-import FileMetadataPanel from './components/FileMetadataPanel.vue';
-
-import { fileHandlers } from '@tano/protocol';
-
-import PageSearch from './components/PageSearch.vue';
-
-import EmptyEditor from './components/EmptyEditor.vue';
-
-import DocumentStarter from './components/DocumentStarter.vue';
-
-import { documentStarter, templateStarterBody } from './document-starters';
-
-import MarkdownRevealToggle from './components/MarkdownRevealToggle.vue';
-
-import SourceCodeIcon from './components/SourceCodeIcon.vue';
-
-import OpenWorkspaceIcon from './components/OpenWorkspaceIcon.vue';
-
-import DocumentTitle from './components/DocumentTitle.vue';
-
-import { appearanceText } from './document-appearance';
-
-import { useDocumentFavicon } from './document-favicon';
-
-import WorkspaceBreadcrumb from './components/WorkspaceBreadcrumb.vue';
-
-import FolderView from './components/FolderView.vue';
-
-import PluginViewHeader from './components/PluginViewHeader.vue';
-
-import { pluginPreviewStatus, pluginViewHeader } from './plugins/view-header';
-
-import DocumentStatus from './components/DocumentStatus.vue';
-
-import { documentStatusItems, type DocumentSyncStatus } from './document-status';
-
-import DocumentScrollbar from './components/DocumentScrollbar.vue';
-
-import PageDisplayOptions from './components/PageDisplayOptions.vue';
-
-import DocumentGlobalMenu from './components/DocumentGlobalMenu.vue';
-
-import DocumentExportMenu from './components/DocumentExportMenu.vue';
-
-import DocumentPrintButton from './components/DocumentPrintButton.vue';
-
-import type { ImportRecord } from './components/ImportPanel.vue';
-
-import type { DocumentExportFormat, DocumentExportOptions } from './document-export';
-
-// Keep the document layout mounted while only the editor implementation loads.
-import DocumentSuggestions from './components/DocumentSuggestions.vue';
-
-import ReferenceGraphPopover from './components/ReferenceGraphPopover.vue';
-
-import { planDocumentSource, selectionTodoSession } from './selection-todo';
-
-import type { SelectionTodoSession } from './selection-todo';
-
+import { isElement, isHTMLElement, isMouseEvent, ownerWindow } from '@tano/editor/dom-realm';
 import { documentLinks, referenceInsertionPoint } from '@tano/editor/document-links';
-
-import type { CommentAnchor } from '@tano/protocol';
-
-import { splitFrontmatter, unsupportedMarkdown } from '@tano/editor/syntax';
-
+import { captureModeViewport, restoreModeViewport, type ModeViewport } from '@tano/editor/editor-mode';
 import { frontmatterProperties } from '@tano/editor/frontmatter-display';
-
+import { installInteractionMotion } from '@tano/editor/motion';
+import {
+  defaultEditorPreferences,
+  normalizeChineseInput,
+  normalizeCopyFormat,
+  normalizeMarkdownAutocomplete,
+  normalizeSelectionWrapping,
+  type EditorPreferences,
+} from '@tano/editor/runtime';
+import { defaultSelectionContext, type EditorSelectionContext } from '@tano/editor/selection-context';
+import { splitFrontmatter, unsupportedMarkdown } from '@tano/editor/syntax';
+import { headings } from '@tano/markdown';
 import {
   basename,
-  parentPath,
+  fileHandlers,
+  isDataTableFilePath,
   isMarkdown,
-  validatePath,
+  isObjectPath,
   isWorkspaceInternalPath,
-  resolveWorkspaceReference,
+  parentPath,
+  referenceMarkdown,
+  referenceUrl,
   relativeWorkspaceReference,
+  resolveReference,
+  resolveWorkspaceReference,
   safeRemoteImage,
+  validatePath,
+  type AssistantSource,
+  type CommentAnchor,
+  type FileEntry,
+  type RecentWorkspace,
+  type ReferenceIdentity,
+  type ReferenceTarget,
 } from '@tano/protocol';
-
-import type { FileEntry, RecentWorkspace } from '@tano/protocol';
-
-import { useWorkspaceSearch } from './workspace-search';
-
+import { native } from './adapter';
+import { AppearanceController } from './appearance';
+import { agentInboxKey, useAgentInboxController } from './assistant/agent-controller';
+import { butterflyScope } from './assistant/butterfly';
+import { createButterflyIdleTrigger } from './assistant/butterfly-idle';
+import { butterflyPerchDirective, provideButterflyController } from './assistant/butterfly-vue';
+import { inlineAssistantResult } from './assistant/inline-result';
+import { assistantDiscussionPrompt } from './assistant/language';
+import { ASSISTANT_TAB_ID, openAssistantPage } from './assistant/navigation';
+import { assistantSourceRange } from './assistant/source-selection';
+import { useAssistantStore, useInlineAssistantStore } from './assistant/store';
+import type { AttachmentStatusUpdate } from './attachment-status';
 import {
-  nativeAttachments,
   exportAttachment,
-  resourceMarkdown,
+  nativeAttachments,
   openExternalUrl,
   openWorkspaceEntry,
+  resourceMarkdown,
   workspaceEntryPath,
 } from './attachments';
-
-import { headings } from '@tano/markdown';
-
-import FileTree from './components/FileTree.vue';
-
-import { indexFolderHomes } from './folder-home';
-
-import { planFolderConversion, type FolderConversionKind } from './folder-conversion';
-
-import DesktopTabs from './components/DesktopTabs.vue';
-
-import WorkspacePanes from './components/WorkspacePanes.vue';
-
-import type { DocumentTab, OpenDocument } from './stores/workspace';
-
-import type { PaneDrop } from './pane-layout';
-import { layoutPanes } from './pane-layout';
-
-import { GRAPH_TAB_ID } from './document-graph';
-
-import { PLUGINS_TAB_ID } from './workspace-plugins';
-
-import { CALENDAR_TAB_ID, calendarPeriodTitle, shiftCalendarDate } from './calendar';
-
-import type { CalendarViewMode } from './calendar';
-
-import NewTabPicker from './components/NewTabPicker.vue';
-
-import { parseToolbarMode, toolbarPreferenceKey } from './toolbar-preference';
-
-import AssistantLauncher from './components/AssistantLauncher.vue';
-
-import AssistantButterflyLayer from './components/AssistantButterflyLayer.vue';
-
-import { butterflyScope } from './assistant/butterfly';
-
-import { createButterflyIdleTrigger } from './assistant/butterfly-idle';
-
-import { butterflyPerchDirective, provideButterflyController } from './assistant/butterfly-vue';
-
-import { useAssistantStore, useInlineAssistantStore } from './assistant/store';
-
-import { useAgentInboxController, agentInboxKey } from './assistant/agent-controller';
-
-import { inlineAssistantResult } from './assistant/inline-result';
-
-import { handleMobileVisibility } from './mobile-lifecycle';
-
-import { useViewport } from './viewport';
-
-import { useWorkspaceStore } from './stores/workspace';
-import { fileDragImage, settleFileDragCard } from './file-drag-image';
-
-import { retainWorkbenchSession } from './workbench-session';
-
-import { useSuggestionStore } from './stores/suggestions';
-
-import { useWorkbenchRuntime, createLocalExtensions } from './runtime';
-
-import type { WorkbenchActions, WorkbenchViewTab } from './runtime';
-
-import { native } from './adapter';
-
-import { mobile } from './platform';
-
-import WorkspaceIcon from './components/WorkspaceIcon.vue';
-
-import WorkspaceMenuLayout from './components/WorkspaceMenuLayout.vue';
-
-import { workspaceArchive, workspaceArchiveName } from './workspace-export';
-
-import type { ObjectRecord } from './workspace-objects';
-
-import { usePlanStore } from './stores/plans';
-
-import { usePlanSyncStore } from './stores/plan-sync';
-
-import { planKey } from './personal-plans';
-
-import SidebarNavigation from './components/SidebarNavigation.vue';
-
-import WorkspaceSidebar from './components/WorkspaceSidebar.vue';
-
-import HelpLauncher from './components/HelpLauncher.vue';
-
-import SidebarUpdateButton from './components/SidebarUpdateButton.vue';
-
-import type { HelpAvailability, HelpContext } from './help-content';
-
-import { recordHelpCompleted } from './help-checklist';
-
-import WorkspaceViewSwitcher from './components/WorkspaceViewSwitcher.vue';
-
-import { useWorkbenchNavigation, type WorkspaceSidebarView } from './workbench-navigation';
-
-import { ASSISTANT_TAB_ID, openAssistantPage } from './assistant/navigation';
-
-import ButtonVisibilityGroup from './components/ButtonVisibilityGroup.vue';
-
-import type { InlineAssistantAnchor } from './components/InlineAssistantInput.vue';
-
-import { isTableTab, TABLES_TAB_ID, tableFileId } from './data-tables';
-
-import { isDataTableFilePath } from '@tano/protocol';
-
-import PluginView from './components/PluginView.vue';
-
-import PluginExplorer from './components/PluginExplorer.vue';
-import PluginDetailPage from './components/PluginDetailPage.vue';
-
-import PluginMenu from './components/PluginMenu.vue';
-
-import CommandPalette from './components/CommandPalette.vue';
-
-import { editorPaletteCommands } from './command-palette';
-
-import type { WorkbenchCommand } from './command-palette';
-
-import { pluginShortcutCommand } from './plugins/workbench';
-
-import { isObjectPath, referenceMarkdown, referenceUrl, resolveReference } from '@tano/protocol';
-
-import type { ReferenceIdentity, ReferenceTarget } from '@tano/protocol';
-
-import LoadingSkeleton from './components/LoadingSkeleton.vue';
-
-import { loadingComponent } from './loading-component';
-
-import { useUpdatesStore } from './stores/updates';
-
-import { resolveWikiLink } from './wiki-links';
-
-import { applyFileMovePreview, planFileMovePreview, type FileMovePreview } from './file-move';
-import { DROP_PLACEHOLDER_PREFIX } from './file-tree-model';
-
 import {
-  isSidebarToggleShortcut, matchesShortcut, parseShortcutBindings, readShortcutBindings,
-  saveShortcutBindings, shortcutLabel, shortcutAriaLabel, shortcutKeys, shortcutPreferenceKey,
-} from './shortcuts';
-
-import type { ShortcutId } from './shortcuts';
-
+  CALENDAR_TAB_ID,
+  calendarPeriodTitle,
+  shiftCalendarDate,
+  type CalendarViewMode,
+} from './calendar';
+import { editorPaletteCommands, type WorkbenchCommand } from './command-palette';
+import type FileTree from './components/FileTree.vue';
+import type { ImportRecord } from './components/ImportPanel.vue';
+import type { InlineAssistantAnchor } from './components/InlineAssistantInput.vue';
+import type PageSearch from './components/PageSearch.vue';
 import { configuredEditorShortcuts } from './configured-editor-shortcuts';
-
+import { isTableTab, tableFileId, TABLES_TAB_ID } from './data-tables';
+import { appearanceText } from './document-appearance';
+import type { DocumentExportFormat, DocumentExportOptions } from './document-export';
+import { useDocumentFavicon } from './document-favicon';
+import { GRAPH_TAB_ID } from './document-graph';
+import { documentStarter, templateStarterBody } from './document-starters';
+import { documentStatusItems, type DocumentSyncStatus } from './document-status';
+import {
+  parseSplitFontSettings,
+  parseVisualFontChoice,
+  sanitizeCustomFontName,
+  type VisualFontChoice,
+} from './editor-font';
+import { featureChannel } from './features';
+import { fileDragImage, settleFileDragCard } from './file-drag-image';
+import { fileIconRegistryKey, FileIconRegistry } from './file-icons/registry';
+import { applyFileMovePreview, planFileMovePreview, type FileMovePreview } from './file-move';
 import { selectTreeEntry, topLevelEntries } from './file-selection';
-
-import { isBlankPageTarget } from './page-context-menu';
-
-import { pageRoutePath, pageRouteUrl, parsePageRoute } from './web-navigation';
-
-import { applyAppearance, applyTheme, resolveThemeMode } from './theme';
-
-import { AppearanceController } from './appearance';
-import { GlassWallpaperController, indexedDbWallpaperStore, setGlassWallpaper } from './glass-wallpaper';
+import { DROP_PLACEHOLDER_PREFIX } from './file-tree-model';
+import { planFolderConversion, type FolderConversionKind } from './folder-conversion';
+import { indexFolderHomes } from './folder-home';
+import {
+  GlassWallpaperController,
+  indexedDbWallpaperStore,
+  setGlassWallpaper,
+} from './glass-wallpaper';
+import {
+  builtinThumbnail,
+  customThumbnail,
+  decodeImage,
+  normalizeImport,
+  paintBuiltin,
+  renderWallpaper,
+} from './glass-wallpaper-render';
+import { HeadingViewport } from './heading-viewport';
+import { recordHelpCompleted } from './help-checklist';
+import type { HelpAvailability, HelpContext } from './help-content';
+import { t, uiLocale } from './i18n';
 import { LiquidGlassController } from './liquid-glass';
-import { builtinThumbnail, customThumbnail, decodeImage, normalizeImport, paintBuiltin, renderWallpaper } from './glass-wallpaper-render';
-
-import LayoutDocumentChrome from './components/LayoutDocumentChrome.vue';
-
-import { FileIconRegistry, fileIconRegistryKey } from './file-icons/registry';
-
-import type { ThemePreference } from './theme';
-
-import { parseVisualFontChoice, sanitizeCustomFontName, parseSplitFontSettings } from './editor-font';
-
-import { useEditorFontFamily } from './use-editor-font';
-
-import type { VisualFontChoice } from './editor-font';
-
+import { handleMobileVisibility } from './mobile-lifecycle';
+import { focusedOutlineIndices } from './outline-tree';
+import { isBlankPageTarget } from './page-context-menu';
+import { layoutPanes, type PaneDrop } from './pane-layout';
+import { planKey } from './personal-plans';
+import { mobile } from './platform';
 import {
   nativeEmitTo as emitTo,
   nativeListen as listen,
   nativeMonitorFromPoint as monitorFromPoint,
 } from './platform/native-bridge';
+import { pluginPreviewStatus, pluginViewHeader } from './plugins/view-header';
+import { pluginShortcutCommand } from './plugins/workbench';
+import {
+  createLocalExtensions,
+  useWorkbenchRuntime,
+  type WorkbenchActions,
+  type WorkbenchViewTab,
+} from './runtime';
+import { planDocumentSource, selectionTodoSession, type SelectionTodoSession } from './selection-todo';
+import { readSettingsPage } from './settings-preference';
+import type { SettingsPageId } from './settings-window';
+import {
+  isSidebarToggleShortcut,
+  matchesShortcut,
+  parseShortcutBindings,
+  readShortcutBindings,
+  saveShortcutBindings,
+  shortcutAriaLabel,
+  shortcutKeys,
+  shortcutLabel,
+  shortcutPreferenceKey,
+  type ShortcutId,
+} from './shortcuts';
+import { usePlanSyncStore } from './stores/plan-sync';
+import { usePlanStore } from './stores/plans';
+import { useSuggestionStore } from './stores/suggestions';
+import { useUpdatesStore } from './stores/updates';
+import { useWorkspaceStore, type DocumentTab, type OpenDocument } from './stores/workspace';
+import { documentTabLabel } from './tab-label';
+import { applyAppearance, applyTheme, resolveThemeMode, type ThemePreference } from './theme';
+import { parseToolbarMode, toolbarPreferenceKey } from './toolbar-preference';
+import { useEditorFontFamily } from './use-editor-font';
+import { useViewport } from './viewport';
+import { pageRoutePath, pageRouteUrl, parsePageRoute } from './web-navigation';
+import { resolveWikiLink } from './wiki-links';
+import { useWindowContext, type WindowContext } from './windows/context';
+import { useAuxiliaryWindows } from './windows/manager';
+import { detachedWindowPosition, type DetachedDropPoint } from './windows/position';
+import type { DocumentComments, MarkdownEditor, SourceEditor } from './workbench-async-components';
+import {
+  resolvePluginSidebar,
+  useWorkbenchNavigation,
+  type WorkspaceSidebarView,
+} from './workbench-navigation';
+import { retainWorkbenchSession } from './workbench-session';
+import { workspaceArchive, workspaceArchiveName } from './workspace-export';
+import type { ObjectRecord } from './workspace-objects';
+import { PLUGINS_TAB_ID } from './workspace-plugins';
+import { useWorkspaceSearch } from './workspace-search';
+import { createWorkspaceSync, syncEvent } from './workspace-sync';
 
 export interface WorkbenchProps {
   initialWorkspace?: string;
@@ -416,37 +190,9 @@ export interface WorkbenchProps {
   createWorkspace?: boolean;
 }
 
-export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => void) {
-
-const MarkdownEditor = defineAsyncComponent({ loader: () => import('@tano/editor'), delay: 0, loadingComponent: MarkdownEditorSkeleton });
-const CalloutIconPicker = defineAsyncComponent(() => import('./components/CalloutIconPicker.vue'));
-const SourceEditor = loadingComponent(() => import('@tano/editor/source-editor'), 'editor');
-const ImportPanel = defineAsyncComponent(() => import('./components/ImportPanel.vue'));
-const TemplateLibrary = loadingComponent(() => import('./components/TemplateLibrary.vue'), 'document');
-// Discussion and annotation surfaces decide their own visibility and loading state.
-const DocumentComments = defineAsyncComponent(() => import('./components/DocumentComments.vue'));
-const SelectionTodoDialog = defineAsyncComponent(() => import('./components/SelectionTodoDialog.vue'));
 type WorkspaceEntry = Pick<RecentWorkspace, 'id' | 'name' | 'path' | 'icon'>;
-const RelationGraph = loadingComponent(() => import('./components/RelationGraph.vue'), 'document');
-const EditorTools = defineAsyncComponent(() => import('./components/EditorTools.vue'));
-const DocumentHistoryPanel = loadingComponent(() => import('./components/DocumentHistoryPanel.vue'));
-const AgentPanel = loadingComponent(() => import('./components/AgentPanel.vue'));
-// The panel owns its placement (Teleport for floating/fullscreen). A generic
-// loading skeleton here would enter the pane's flex row and shrink the editor
-// on the first open, then disappear when the panel teleports out.
-const AssistantPanel = defineAsyncComponent(() => import('./components/AssistantPanel.vue'));
-const DiffDialog = defineAsyncComponent(() => import('./components/DiffDialog.vue'));
-const MobileRecycle = defineAsyncComponent(() => import('./components/MobileRecycle.vue'));
-const SettingsPanel = defineAsyncComponent(() => import('./components/SettingsPanel.vue'));
-const ObjectPanel = defineAsyncComponent(() => import('./components/ObjectPanel.vue'));
-const PlanDetailPanel = defineAsyncComponent(() => import('./components/PlanDetailPanel.vue'));
-const SidebarPlan = loadingComponent(() => import('./components/SidebarPlan.vue'), 'tree');
-const SidebarAssistant = loadingComponent(() => import('./components/SidebarAssistant.vue'));
-const InlineAssistantInput = defineAsyncComponent(() => import('./components/InlineAssistantInput.vue'));
-const CalendarView = loadingComponent(() => import('./components/CalendarView.vue'), 'document');
-const DataTablePage = loadingComponent(() => import('./components/DataTablePage.vue'), 'spreadsheet');
-const WorkspaceViewTab = loadingComponent(() => import('./components/WorkspaceViewTab.vue'), 'document');
-const PluginInstaller = defineAsyncComponent(() => import('./components/PluginInstaller.vue'));
+
+export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => void) {
 
 
 
@@ -4525,12 +4271,9 @@ const helpBlocked = computed(() => !!(
     workspaceEntryContextKeydown,
     workspaceEntryContextAction,
     toggleWorkspaceMenu,
-    ChevronUp,
-    ChevronDown,
     workspaceDropdownContextMenu,
     selectContext,
     extensions,
-    WorkspaceMenuLayout,
     extensionActions,
     commandPaletteOpened,
     openSystemSync,
@@ -4685,7 +4428,6 @@ const helpBlocked = computed(() => !!(
     paneEditorReady,
     paneSourceSelections,
     insertSourceFiles,
-    CalloutIconPicker,
     setPaneEditor,
     openDocumentLink,
     openWikiLink,
@@ -4720,10 +4462,6 @@ const helpBlocked = computed(() => !!(
     outline,
     activeHeading,
     activities,
-    AlertTriangle,
-    RefreshCw,
-    Check,
-    FileText,
     uiLocale,
     homeContent,
     homeExtension,
@@ -4797,133 +4535,6 @@ const helpBlocked = computed(() => !!(
     modalDeleteEntries,
     modalTarget,
     modalError,
-    AppTooltip,
-    PanelLeftOpen,
-    DesktopTabs,
-    AssistantButterflyLayer,
-    FileMetadataPanel,
-    ButtonVisibilityGroup,
-    CalendarDays,
-    SidebarNavigation,
-    PluginExplorer,
-    PluginDetailPage,
-    WorkspaceViewSwitcher,
-    Search,
-    GitFork,
-    SquarePen,
-    FileTree,
-    PluginInstaller,
-    LoadingSkeleton,
-    Table2,
-    SidebarAssistant,
-    SidebarPlan,
-    CopyPlus,
-    Route,
-    FolderTree,
-    Trash2,
-    ShortcutHint,
-    House,
-    FilePlus2,
-    FolderPlus,
-    TextCursorInput,
-    Paperclip,
-    PanelsTopLeft,
-    Link,
-    FileOutput,
-    AppWindow,
-    FolderSearch,
-    EyeOff,
-    Eye,
-    FileSymlink,
-    Database,
-    FileSliders,
-    Blocks,
-    PluginMenu,
-    ArrowDownToLine,
-    FolderOpen,
-    WorkspaceIcon,
-    Files,
-    CircleHelp,
-    Bot,
-    OpenWorkspaceIcon,
-    HelpLauncher,
-    SidebarUpdateButton,
-    WorkspaceSidebar,
-    ReferenceGraphPopover,
-    AssistantPanel,
-    TemplateLibrary,
-    ArrowLeft,
-    ArrowRight,
-    DocumentStatus,
-    ChevronRight,
-    Puzzle,
-    WorkspaceBreadcrumb,
-    PluginViewHeader,
-    List,
-    LockKeyhole,
-    ChevronLeft,
-    MessageSquareDiff,
-    X,
-    MarkdownRevealToggle,
-    SourceCodeIcon,
-    MoreHorizontal,
-    Repeat2,
-    Undo2,
-    Redo2,
-    CheckCheck,
-    Plus,
-    MessageSquare,
-    MoveHorizontal,
-    Archive,
-    Clock3,
-    PageDisplayOptions,
-    DocumentGlobalMenu,
-    DocumentExportMenu,
-    DocumentPrintButton,
-    RelationGraph,
-    DataTablePage,
-    AssistantLauncher,
-    FolderView,
-    WorkspaceViewTab,
-    CalendarView,
-    PluginView,
-    DocumentLoading,
-    PageSearch,
-    LayoutDocumentChrome,
-    ListTodo,
-    EditorTools,
-    ArrowUpRight,
-    DocumentTitle,
-    SourceEditor,
-    DocumentStarter,
-    MarkdownEditor,
-    DocumentComments,
-    DocumentSuggestions,
-    DocumentScrollbar,
-    AttachmentPreview,
-    EmptyEditor,
-    History,
-    ListTree,
-    Pin,
-    DocumentOutline,
-    WorkspacePanes,
-    InlineAssistantInput,
-    ImportPanel,
-    WorkspaceSyncPanel,
-    MobileRecycle,
-    AgentPanel,
-    DiffDialog,
-    DocumentHistoryPanel,
-    ObjectPanel,
-    PlanDetailPanel,
-    SelectionTodoDialog,
-    CommandPalette,
-    SettingsPanel,
-    NewTabPicker,
-    LoaderCircle,
-    vScrollFade,
-    vSurfaceMotion,
     vButterflyPerch,
-    vOutlineMotion,
   };
 }

@@ -1,12 +1,96 @@
 <script setup lang="ts">
-import WindowScope from './windows/WindowScope.vue';
-import WorkbenchSettings from './components/WorkbenchSettings.vue';
-import AppMenu from './components/AppMenu.vue';
 import { provide, proxyRefs, ref, shallowReactive, toRefs } from 'vue';
-import { useWorkbench, type WorkbenchProps } from './use-workbench';
-import { workbenchContextKey } from './workbench-context';
+import {
+  AlertTriangle,
+  AppWindow,
+  ArrowDownToLine,
+  ArrowRight,
+  Blocks,
+  Bot,
+  CalendarDays,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  CircleHelp,
+  CopyPlus,
+  Database,
+  Eye,
+  EyeOff,
+  FileOutput,
+  FilePlus2,
+  Files,
+  FileSliders,
+  FileSymlink,
+  FileText,
+  FolderOpen,
+  FolderPlus,
+  FolderSearch,
+  FolderTree,
+  GitFork,
+  House,
+  Link,
+  LoaderCircle,
+  PanelLeftOpen,
+  PanelsTopLeft,
+  Paperclip,
+  RefreshCw,
+  Route,
+  Search,
+  SquarePen,
+  Table2,
+  TextCursorInput,
+  Trash2,
+  X,
+} from 'lucide-vue-next';
+import ShortcutHint from '@tano/editor/shortcut-hint';
+import { vSurfaceMotion } from '@tano/editor/surface-motion';
+import AppMenu from './components/AppMenu.vue';
+import AppTooltip from './components/AppTooltip.vue';
+import AssistantButterflyLayer from './components/AssistantButterflyLayer.vue';
+import ButtonVisibilityGroup from './components/ButtonVisibilityGroup.vue';
+import CommandPalette from './components/CommandPalette.vue';
+import DesktopTabs from './components/DesktopTabs.vue';
+import FileMetadataPanel from './components/FileMetadataPanel.vue';
+import FileTree from './components/FileTree.vue';
+import HelpLauncher from './components/HelpLauncher.vue';
+import LoadingSkeleton from './components/LoadingSkeleton.vue';
+import NewTabPicker from './components/NewTabPicker.vue';
+import OpenWorkspaceIcon from './components/OpenWorkspaceIcon.vue';
+import PageDisplayOptions from './components/PageDisplayOptions.vue';
+import PluginExplorer from './components/PluginExplorer.vue';
+import PluginMenu from './components/PluginMenu.vue';
+import PluginView from './components/PluginView.vue';
+import ReferenceGraphPopover from './components/ReferenceGraphPopover.vue';
+import SidebarNavigation from './components/SidebarNavigation.vue';
+import SidebarUpdateButton from './components/SidebarUpdateButton.vue';
 import WorkbenchPanes from './components/WorkbenchPanes.vue';
+import WorkbenchSettings from './components/WorkbenchSettings.vue';
+import WorkspaceIcon from './components/WorkspaceIcon.vue';
+import WorkspaceMenuLayout from './components/WorkspaceMenuLayout.vue';
+import WorkspacePanes from './components/WorkspacePanes.vue';
+import WorkspaceSidebar from './components/WorkspaceSidebar.vue';
+import WorkspaceSyncPanel from './components/WorkspaceSyncPanel.vue';
+import WorkspaceViewSwitcher from './components/WorkspaceViewSwitcher.vue';
+import { vScrollFade } from './scroll-fade';
+import { useWorkbench, type WorkbenchProps } from './use-workbench';
 import AuxiliaryWindows from './windows/AuxiliaryWindows.vue';
+import WindowScope from './windows/WindowScope.vue';
+import {
+  AgentPanel,
+  CalendarView,
+  DiffDialog,
+  DocumentHistoryPanel,
+  ImportPanel,
+  InlineAssistantInput,
+  MobileRecycle,
+  ObjectPanel,
+  PlanDetailPanel,
+  SelectionTodoDialog,
+  SettingsPanel,
+  SidebarAssistant,
+  SidebarPlan,
+} from './workbench-async-components';
+import { workbenchContextKey } from './workbench-context';
 
 const props = defineProps<WorkbenchProps>();
 const emit = defineEmits<{ ready: [] }>();
@@ -115,12 +199,9 @@ const {
   workspaceEntryContextKeydown,
   workspaceEntryContextAction,
   toggleWorkspaceMenu,
-  ChevronUp,
-  ChevronDown,
   workspaceDropdownContextMenu,
   selectContext,
   extensions,
-  WorkspaceMenuLayout,
   extensionActions,
   commandPaletteOpened,
   openSystemSync,
@@ -250,82 +331,6 @@ const {
   modalDeleteEntries,
   modalTarget,
   modalError,
-  AppTooltip,
-  PanelLeftOpen,
-  DesktopTabs,
-  AssistantButterflyLayer,
-  FileMetadataPanel,
-  ButtonVisibilityGroup,
-  CalendarDays,
-  SidebarNavigation,
-  PluginExplorer,
-  PluginView,
-  WorkspaceViewSwitcher,
-  Search,
-  GitFork,
-  SquarePen,
-  FileTree,
-  LoadingSkeleton,
-  Table2,
-  SidebarAssistant,
-  SidebarPlan,
-  CopyPlus,
-  Route,
-  FolderTree,
-  Trash2,
-  ShortcutHint,
-  House,
-  FilePlus2,
-  FolderPlus,
-  TextCursorInput,
-  FileText,
-  Paperclip,
-  PanelsTopLeft,
-  Link,
-  FileOutput,
-  AppWindow,
-  FolderSearch,
-  EyeOff,
-  Eye,
-  FileSymlink,
-  FileSliders,
-  Blocks,
-  PluginMenu,
-  ArrowDownToLine,
-  FolderOpen,
-  Check,
-  WorkspaceIcon,
-  RefreshCw,
-  Files,
-  CircleHelp,
-  Bot,
-  OpenWorkspaceIcon,
-  HelpLauncher,
-  SidebarUpdateButton,
-  WorkspaceSidebar,
-  ReferenceGraphPopover,
-  WorkspacePanes,
-  CalendarView,
-  InlineAssistantInput,
-  PageDisplayOptions,
-  ImportPanel,
-  WorkspaceSyncPanel,
-  MobileRecycle,
-  AgentPanel,
-  DiffDialog,
-  DocumentHistoryPanel,
-  ObjectPanel,
-  PlanDetailPanel,
-  SelectionTodoDialog,
-  CommandPalette,
-  SettingsPanel,
-  AlertTriangle,
-  X,
-  NewTabPicker,
-  LoaderCircle,
-  ArrowRight,
-  vScrollFade,
-  vSurfaceMotion,
 } = toRefs(context);
 // The brand icon opens the self-drawn application menu on desktop; the web build keeps it as a home link.
 const appMenuOpen = ref(false);
