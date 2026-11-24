@@ -1,6 +1,6 @@
 import type { AssistantRequest, AssistantWireMessage } from '@tano/protocol';
 import { editDocumentRules } from './tool-rules';
-import type { UiLocale } from '../locale';
+import type { UiLocale } from '../i18n/locale';
 import { assistantCopy, assistantLanguagePolicy, assistantTaskPrompts, formatAssistantText } from './language';
 import type { AssistantPromptOrigin } from './language';
 

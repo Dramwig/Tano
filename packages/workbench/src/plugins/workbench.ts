@@ -1,8 +1,8 @@
 import { isElement } from '@tano/editor/dom-realm';
 import type { PluginCommandDefinition, PluginViewDefinition } from '@tano/protocol';
-import type { InstalledObjectPlugin } from '../workspace-plugins';
+import type { InstalledObjectPlugin } from './workspace-plugins';
 import type { PluginRuntimeState } from './host';
-import { shortcutBindingFromEvent, shortcutKeys, shortcutDefinitions, type ShortcutBindings } from '../shortcuts';
+import { shortcutBindingFromEvent, shortcutKeys, shortcutDefinitions, type ShortcutBindings } from '../shell/shortcuts';
 
 export interface PluginWorkbenchView extends PluginViewDefinition {
   key: string; pluginId: string; pluginName: string;

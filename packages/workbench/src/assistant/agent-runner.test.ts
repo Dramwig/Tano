@@ -3,10 +3,10 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { createPinia, disposePinia, setActivePinia } from 'pinia';
 import { commentMentionEvents, emptyAgentInbox, parseAgentInbox, parseAssistantSession } from '@tano/protocol';
 import type { AssistantSession, AssistantTransport } from '@tano/protocol';
-import { DemoAdapter } from '../adapter';
+import { DemoAdapter } from '../workspace/adapter';
 import { configureWorkbench } from '../runtime';
 import { useWorkspaceStore } from '../stores/workspace';
-import { loadCommentFile, saveCommentChange } from '../workspace-comments';
+import { loadCommentFile, saveCommentChange } from '../workspace/workspace-comments';
 import { createAgentTaskRunner } from './agent-runner';
 import { AgentTaskQueue } from './inbox';
 

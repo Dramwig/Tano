@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import type { ReferenceTarget, WorkspaceRelation } from '@tano/protocol';
 import { referenceKey } from '@tano/protocol';
-import { contentReferences } from '../content-references';
+import { contentReferences } from '../objects/content-references';
 import { parseTaskQuery, possibleDuplicateTasks, queryTasks } from './tasks';
 
 const doc = (id: string, path: string): ReferenceTarget => ({ type: 'document', id, name: path, path, workspace: 'workspace' });

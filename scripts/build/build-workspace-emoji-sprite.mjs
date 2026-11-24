@@ -3,8 +3,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
-import { workspaceEmojiGroups, workspaceBuiltinIconGroups } from '../../packages/workbench/src/workspace-icons.ts';
-import { workspaceEmojiCodepoint } from '../../packages/workbench/src/workspace-emoji-codepoint.ts';
+import { workspaceEmojiGroups, workspaceBuiltinIconGroups } from '../../packages/workbench/src/workspace/workspace-icons.ts';
+import { workspaceEmojiCodepoint } from '../../packages/workbench/src/workspace/workspace-emoji-codepoint.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const sourceDir = join(root, 'packages/workbench/assets-src/twemoji');

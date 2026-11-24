@@ -1,5 +1,5 @@
 import type { AssistantActivity, AssistantMessage, AssistantToolResult, AssistantUserInput, AssistantWireMessage } from '@tano/protocol';
-import { uiLocale } from '../i18n';
+import { uiLocale } from '../i18n/i18n';
 import { assistantCopy } from './language';
 
 export function assistantMessageParts(message: AssistantMessage) {

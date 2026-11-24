@@ -8,7 +8,7 @@ import { markRaw, nextTick, onBeforeUnmount, shallowReactive, watch } from 'vue'
 import { createWindowContext, type WindowContext } from './context';
 import { openAuxWindow, type AuxWindow } from './aux-window';
 import type { useWorkspaceStore } from '../stores/workspace';
-import { layoutPanes } from '../pane-layout';
+import { layoutPanes } from '../shell/pane-layout';
 
 export interface AuxiliaryEntry {
   id: string;

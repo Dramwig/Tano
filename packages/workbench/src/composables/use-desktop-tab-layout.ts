@@ -1,7 +1,7 @@
 import { nextTick, onBeforeUnmount, ref, watch, type ComputedRef, type Ref } from 'vue';
 import { animate } from 'motion/mini';
 import { springEasing } from '@tano/editor/motion';
-import { tabLayoutRect } from '../tab-layout';
+import { tabLayoutRect } from '../tabs/tab-layout';
 import type { DocumentTab, useWorkspaceStore } from '../stores/workspace';
 import type { useWindowContext } from '../windows/context';
 

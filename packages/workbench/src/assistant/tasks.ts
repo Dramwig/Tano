@@ -1,7 +1,7 @@
 import { referenceKey, referenceUrl, taskReview, validatePath, validEventDate } from '@tano/protocol';
 import type { ReferenceIdentity, ReferenceTarget, WorkspaceRelation } from '@tano/protocol';
-import type { ContentReference } from '../content-references';
-import { localDayKey } from '../calendar';
+import type { ContentReference } from '../objects/content-references';
+import { localDayKey } from '../plans/calendar';
 
 export interface TaskQuery {
   documentId: string | null;

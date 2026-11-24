@@ -1,13 +1,13 @@
 import { ref, type ComputedRef } from 'vue';
 import type { DataField, DataRow, DataTable, DataView } from '@tano/protocol';
-import { t } from '../i18n';
+import { t } from '../i18n/i18n';
 import {
   applyDataPaste,
   copyTable,
   exportDataCsv,
   parseDelimited,
   tableItemId,
-} from '../data-tables';
+} from '../data-tables/data-tables';
 
 export interface DataTableIoOptions {
   document: Document;

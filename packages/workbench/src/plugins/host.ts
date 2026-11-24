@@ -1,10 +1,10 @@
 import { canonicalPluginJson, parsePluginView, parsePluginJson, parsePluginSettings, pluginKey, pluginRecord, pluginText, pluginStorageLimit } from '@tano/protocol';
 import type { ExecutablePluginManifest, PluginCommandDefinition, PluginViewDefinition, PluginPermission, PluginViewNode, PluginJson, PluginUiBundle, Workspace } from '@tano/protocol';
-import type { InstalledObjectPlugin } from '../workspace-plugins';
+import type { InstalledObjectPlugin } from './workspace-plugins';
 import { PluginPackageCache, fetchPluginText, pluginApplicationStorage, type PluginPackageRepository } from './packages';
 import { createPluginSandbox, type PluginSandbox, type PluginSandboxFactory } from './sandbox';
 import { applyPluginTextEdits } from './data';
-import type { PluginEvent } from '../plugin-sdk';
+import type { PluginEvent } from './plugin-sdk';
 import type { PluginCatalogProvider } from './catalog';
 import { resolveSystemPlugin } from './system';
 import { parseViewHeader, type PluginViewHeader } from './view-header';

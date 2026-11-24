@@ -1,6 +1,6 @@
 import type { Connection, ItemValue, LocalSyncPort, RemoteAdapter, RemoteItem } from './types';
 import { localValue } from './types';
-import { mergeDescription } from '../description-merge';
+import { mergeDescription } from '../documents/description-merge';
 import { projectDescription, restoreDescription } from './descriptions';
 const fields = ['name', 'description', 'start', 'end', 'date', 'allDay', 'completed', 'archived'] as const;
 export const equalItems = (a: ItemValue, b: ItemValue) => fields.every(k => a[k] === b[k]);

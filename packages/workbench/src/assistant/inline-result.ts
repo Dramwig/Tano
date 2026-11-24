@@ -1,5 +1,5 @@
 import type { AssistantMessage, AssistantProposal } from '@tano/protocol';
-import { uiLocale } from '../i18n';
+import { uiLocale } from '../i18n/i18n';
 import { assistantCopy } from './language';
 import { assistantAnswerText } from './results';
 

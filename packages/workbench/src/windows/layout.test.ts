@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { layoutPanes } from '../pane-layout';
+import { layoutPanes } from '../shell/pane-layout';
 import { closeWindowLayout, moveTabToNewWindow, moveWindowTab, newWindowLayout, removeWindowTab } from './layout';
 
 it('moves a tab to a new window without losing either active pane', () => {

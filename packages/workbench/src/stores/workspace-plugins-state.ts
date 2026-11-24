@@ -24,10 +24,10 @@ import {
   type WorkspaceRelation,
 } from '@tano/protocol';
 import { assistantHash } from '../assistant/hash';
-import { nativeAttachments } from '../attachments';
-import type { useDocumentIndex } from '../document-index';
-import { documentDirty as dirty, type OpenDocument } from '../document-session';
-import { t } from '../i18n';
+import { nativeAttachments } from '../files/attachments';
+import type { useDocumentIndex } from '../documents/document-index';
+import { documentDirty as dirty, type OpenDocument } from '../documents/document-session';
+import { t } from '../i18n/i18n';
 import { PluginAttachmentReader } from '../plugins/attachment-reader';
 import { PluginQueryPager, pluginChanges } from '../plugins/data';
 import type { PluginDevelopmentState } from '../plugins/development';
@@ -41,10 +41,10 @@ import {
   type PluginInteraction,
 } from '../plugins/workbench';
 import type { WorkbenchRuntime } from '../runtime';
-import { mergeObject, saveObject, type ObjectRecord } from '../workspace-objects';
-import { WorkspacePluginRuntime } from '../workspace-plugin-runtime';
-import { PLUGINS_TAB_ID, type InstalledObjectPlugin } from '../workspace-plugins';
-import { saveRelationChange } from '../workspace-relations';
+import { mergeObject, saveObject, type ObjectRecord } from '../objects/workspace-objects';
+import { WorkspacePluginRuntime } from '../plugins/workspace-plugin-runtime';
+import { PLUGINS_TAB_ID, type InstalledObjectPlugin } from '../plugins/workspace-plugins';
+import { saveRelationChange } from '../objects/workspace-relations';
 
 export interface WorkspacePluginsStateDeps {
   adapter: WorkspaceAdapter;

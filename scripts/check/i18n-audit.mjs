@@ -86,7 +86,7 @@ export function auditI18n() {
   for (const directory of ['packages/workbench/src', 'apps/client/src']) walk(resolve(root, directory));
   // Include shared labels and generated UI data when reporting possible dead keys.
   for (const directory of ['packages/editor/src', 'packages/protocol/src']) walk(resolve(root, directory));
-  const english = JSON.parse(readFileSync(resolve(root, 'packages/workbench/src/locales/en-US.json'), 'utf8'));
+  const english = JSON.parse(readFileSync(resolve(root, 'packages/workbench/src/i18n/locales/en-US.json'), 'utf8'));
   const catalog = Object.fromEntries(Object.keys(english).map(key => [key, true]));
   return { issues, missing: [...keys].filter(key => !(key in catalog)).sort(),
     unusedCandidates: Object.keys(catalog).filter(key => !literals.has(key)).sort(), usedKeys: keys.size };

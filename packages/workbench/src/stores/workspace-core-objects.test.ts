@@ -3,7 +3,7 @@ import { configureWorkbench } from '../runtime';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { createPinia, disposePinia, setActivePinia } from 'pinia';
 import { registerObjectType, relationPath, resolveReference } from '@tano/protocol';
-import { DemoAdapter } from '../adapter';
+import { DemoAdapter } from '../workspace/adapter';
 const fixture = vi.hoisted(() => ({ adapter: null as unknown }));
 import { useWorkspaceStore } from './workspace';
 let pinia: ReturnType<typeof createPinia>;

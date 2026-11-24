@@ -1,5 +1,5 @@
 import { isWorkspaceInternalPath, isMarkdown, type Workspace } from '@tano/protocol';
-import type { AttachmentService } from '../attachments';
+import type { AttachmentService } from '../files/attachments';
 
 /** One bounded snapshot per workbench. A continuation can never mix file versions or instances. */
 export class PluginAttachmentReader {

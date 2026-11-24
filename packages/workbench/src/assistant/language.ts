@@ -1,8 +1,8 @@
 import type { AssistantRequest } from '@tano/protocol';
-import { parseUiLocale, uiLocales } from '../locale';
-import type { UiLocale } from '../locale';
-import { localeDefinition } from '../locale-registry';
-import { assistantCatalog } from '../locale-catalogs';
+import { parseUiLocale, uiLocales } from '../i18n/locale';
+import type { UiLocale } from '../i18n/locale';
+import { localeDefinition } from '../i18n/locale-registry';
+import { assistantCatalog } from '../i18n/locale-catalogs';
 import taskPrompts from './task-prompts.json';
 
 export const assistantCopy = (locale: UiLocale) => assistantCatalog(parseUiLocale(locale));

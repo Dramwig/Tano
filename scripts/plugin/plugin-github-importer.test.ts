@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import activate from '../../examples/plugins/github-importer/main';
-import type { TanoPluginApi } from '../../packages/workbench/src/plugin-sdk';
+import type { TanoPluginApi } from '../../packages/workbench/src/plugins/plugin-sdk';
 
 it('previews a bounded issue before creating Markdown, preserves existing files and does not retry service failures', async () => {
   let action!: Parameters<TanoPluginApi['views']['onAction']>[1];

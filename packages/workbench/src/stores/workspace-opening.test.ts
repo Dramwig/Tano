@@ -3,8 +3,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createPinia, disposePinia, setActivePinia } from 'pinia';
 import { watch } from 'vue';
 import { workspaceCapabilityPath, type Workspace, type WorkspaceAdapter } from '@tano/protocol';
-import { newDataTable } from '../data-tables';
-import { DemoAdapter } from '../adapter';
+import { newDataTable } from '../data-tables/data-tables';
+import { DemoAdapter } from '../workspace/adapter';
 import { configureWorkbench } from '../runtime';
 import { useWorkspaceStore } from './workspace';
 

@@ -1,12 +1,12 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch, type Ref } from 'vue';
 import { isElement, isHTMLElement, ownerWindow } from '@tano/editor/dom-realm';
 import { headings } from '@tano/markdown';
-import { HeadingViewport } from '../heading-viewport';
-import { recordHelpCompleted } from '../help-checklist';
-import { focusedOutlineIndices } from '../outline-tree';
+import { HeadingViewport } from '../documents/heading-viewport';
+import { recordHelpCompleted } from '../help/help-checklist';
+import { focusedOutlineIndices } from '../documents/outline-tree';
 import type { OpenDocument } from '../stores/workspace';
 import type { WindowContext } from '../windows/context';
-import type { SourceEditor } from '../workbench-async-components';
+import type { SourceEditor } from '../shell/workbench-async-components';
 import { readPreference, savePreference } from './use-workbench-preferences';
 
 export interface WorkbenchOutlineDeps {

@@ -3,7 +3,7 @@ import type { PluginPackage } from '../../packages/protocol/src';
 import { PluginPackageCache } from '../../packages/workbench/src/plugins/packages';
 import { PluginExecutionHost, type PluginRuntimeState } from '../../packages/workbench/src/plugins/host';
 import { createNativePluginServices } from '../../packages/workbench/src/plugins/native';
-import PluginCustomView from '../../packages/workbench/src/components/PluginCustomView.vue';
+import PluginCustomView from '../../packages/workbench/src/plugins/components/PluginCustomView.vue';
 
 /** Real package/Worker/UI/IPC bridge; only the OS endpoint is a fixture. Native behavior has Rust tests. */
 export async function mountNative(pkg: PluginPackage) {

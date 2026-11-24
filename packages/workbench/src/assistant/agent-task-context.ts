@@ -1,6 +1,6 @@
 import { createHeadlessMarkdown } from '@tano/editor/headless';
 import type { AgentTask } from '@tano/protocol';
-import { loadCommentFile, saveCommentChange, type CommentStorage } from '../workspace-comments';
+import { loadCommentFile, saveCommentChange, type CommentStorage } from '../workspace/workspace-comments';
 
 export async function agentTaskPrompt(task: AgentTask, name: string, adapter: CommentStorage) {
   const source = task.event.source;

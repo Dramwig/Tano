@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { mergeItems, synchronize } from './engine';
 import { itemProperties } from './types';
 import type { Connection, ItemValue, LocalSyncPort, RemoteAdapter, RemoteItem } from './types';
-import type { ObjectRecord } from '../workspace-objects';
+import type { ObjectRecord } from '../objects/workspace-objects';
 const base: ItemValue = { name: '评审', description: '', start: '2026-09-30T03:00:00.000Z', end: '2026-09-30T04:00:00.000Z', archived: false };
 const record = (id: string, value: ItemValue, extra = {}): ObjectRecord => ({ object: { id, version: 1, type: 'event', ...value, properties: { ...itemProperties(value, 'calendar'), ...extra } }, path: `.tano/objects/${id}.tano.json`, snapshot: { content: '', hash: 'base', modified: 0 } });
 function setup() {

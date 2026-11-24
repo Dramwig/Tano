@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 const read = path => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
-const uiText = (locale, key) => locale === 'zh-CN' ? key : read(`../../packages/workbench/src/locales/${locale}.json`)[key];
+const uiText = (locale, key) => locale === 'zh-CN' ? key : read(`../../packages/workbench/src/i18n/locales/${locale}.json`)[key];
 
 for (const locale of ['zh-CN', 'en-US', 'zh-TW', 'ja-JP', 'es-ES', 'de-DE']) test(`uses English AI task prompts with ${locale} UI and responses while preserving the document`, async ({ page }, testInfo) => {
   const copy = read(`../../packages/workbench/src/assistant/locales/${locale}.json`);

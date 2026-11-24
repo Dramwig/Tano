@@ -40,14 +40,14 @@ import {
   type StructureSnapshot,
 } from './structures';
 import { parseTaskQuery, possibleDuplicateTasks, queryTasks, type TaskQuery } from './tasks';
-import { contentReferences } from '../content-references';
-import type { createDataTableController } from '../data-table-controller';
-import { tableTabId } from '../data-tables';
-import type { useDocumentIndex } from '../document-index';
-import { documentDirty as dirty, type OpenDocument } from '../document-session';
-import { locateSuggestion } from '../document-suggestions';
-import { mergeObject, type ObjectRecord } from '../workspace-objects';
-import { loadSuggestions, saveSuggestions, type SuggestionState } from '../workspace-suggestions';
+import { contentReferences } from '../objects/content-references';
+import type { createDataTableController } from '../data-tables/data-table-controller';
+import { tableTabId } from '../data-tables/data-tables';
+import type { useDocumentIndex } from '../documents/document-index';
+import { documentDirty as dirty, type OpenDocument } from '../documents/document-session';
+import { locateSuggestion } from '../documents/document-suggestions';
+import { mergeObject, type ObjectRecord } from '../objects/workspace-objects';
+import { loadSuggestions, saveSuggestions, type SuggestionState } from '../workspace/workspace-suggestions';
 import type { Activity } from '../stores/workspace';
 
 export type AssistantScope = Pick<Workspace, 'id' | 'path'> & { epoch?: number };

@@ -6,22 +6,22 @@ import {
   type FileEntry,
   type WorkspaceAdapter,
 } from '@tano/protocol';
-import { native } from '../adapter';
-import type { AttachmentService } from '../attachments';
-import { topLevelEntries } from '../file-selection';
-import { recordHelpCompleted } from '../help-checklist';
-import { t } from '../i18n';
-import { mobile } from '../platform';
+import { native } from '../workspace/adapter';
+import type { AttachmentService } from '../files/attachments';
+import { topLevelEntries } from '../files/file-selection';
+import { recordHelpCompleted } from '../help/help-checklist';
+import { t } from '../i18n/i18n';
+import { mobile } from '../platform/platform';
 import { nativeMonitorFromPoint as monitorFromPoint } from '../platform/native-bridge';
 import type { WorkbenchExtensions } from '../runtime';
 import type { DocumentTab, useWorkspaceStore } from '../stores/workspace';
-import { documentTabLabel } from '../tab-label';
+import { documentTabLabel } from '../tabs/tab-label';
 import type { WindowContext } from '../windows/context';
 import type { useAuxiliaryWindows } from '../windows/manager';
 import { detachedWindowPosition, type DetachedDropPoint } from '../windows/position';
-import type { SourceEditor } from '../workbench-async-components';
-import { useWorkspaceSearch } from '../workspace-search';
-import { workspaceArchive, workspaceArchiveName } from '../workspace-export';
+import type { SourceEditor } from '../shell/workbench-async-components';
+import { useWorkspaceSearch } from '../workspace/workspace-search';
+import { workspaceArchive, workspaceArchiveName } from '../workspace/workspace-export';
 
 export interface WorkbenchModalsDeps {
   store: ReturnType<typeof useWorkspaceStore>;
@@ -459,10 +459,10 @@ export function useWorkbenchModals(deps: WorkbenchModalsDeps) {
       );
       const filename = workspaceArchiveName(current.name);
       if (native) {
-        const { saveDocumentExport } = await import('../native-document-export');
+        const { saveDocumentExport } = await import('../documents/native-document-export');
         await saveDocumentExport(blob, filename, 'zip');
       } else {
-        const { downloadExport } = await import('../document-export');
+        const { downloadExport } = await import('../documents/document-export');
         downloadExport(blob, filename);
       }
     } catch (error) {

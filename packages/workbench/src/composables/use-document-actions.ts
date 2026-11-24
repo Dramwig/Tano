@@ -15,27 +15,27 @@ import {
   type CommentAnchor,
   type FileEntry,
 } from '@tano/protocol';
-import { native } from '../adapter';
+import { native } from '../workspace/adapter';
 import { assistantSourceRange } from '../assistant/source-selection';
 import {
   openExternalUrl,
   resourceMarkdown,
   type AttachmentService,
-} from '../attachments';
-import type { DocumentExportFormat, DocumentExportOptions } from '../document-export';
-import { documentStarter, templateStarterBody } from '../document-starters';
-import { documentStatusItems, type DocumentSyncStatus } from '../document-status';
-import { recordHelpCompleted } from '../help-checklist';
-import { t } from '../i18n';
-import { isBlankPageTarget } from '../page-context-menu';
-import { layoutPanes } from '../pane-layout';
+} from '../files/attachments';
+import type { DocumentExportFormat, DocumentExportOptions } from '../documents/document-export';
+import { documentStarter, templateStarterBody } from '../documents/document-starters';
+import { documentStatusItems, type DocumentSyncStatus } from '../documents/document-status';
+import { recordHelpCompleted } from '../help/help-checklist';
+import { t } from '../i18n/i18n';
+import { isBlankPageTarget } from '../shell/page-context-menu';
+import { layoutPanes } from '../shell/pane-layout';
 import type { WorkbenchExtensions } from '../runtime';
 import type { OpenDocument, useWorkspaceStore } from '../stores/workspace';
-import { resolveWikiLink } from '../wiki-links';
+import { resolveWikiLink } from '../objects/wiki-links';
 import type { WindowContext } from '../windows/context';
-import type { DocumentComments, MarkdownEditor, SourceEditor } from '../workbench-async-components';
-import type PageSearch from '../components/PageSearch.vue';
-import type { createWorkspaceSync } from '../workspace-sync';
+import type { DocumentComments, MarkdownEditor, SourceEditor } from '../shell/workbench-async-components';
+import type PageSearch from '../shell/components/PageSearch.vue';
+import type { createWorkspaceSync } from '../workspace/workspace-sync';
 import { pageLockPreferenceKey, readPreference } from './use-workbench-preferences';
 
 export interface DocumentActionsDeps {
@@ -914,7 +914,7 @@ export function useDocumentActions(deps: DocumentActionsDeps) {
     menu.value = false;
     printBusy.value = true;
     try {
-      const { printDocument } = await import('../document-print');
+      const { printDocument } = await import('../documents/document-print');
       await printDocument(options);
     } catch (reason) {
       store.report(t('打印失败：{0}', [reason instanceof Error ? reason.message : String(reason)]));
@@ -931,12 +931,12 @@ export function useDocumentActions(deps: DocumentActionsDeps) {
     exportBusy.value = true;
     try {
       const { downloadExport, exportFilename, renderDocumentExport } = await import(
-        '../document-export'
+        '../documents/document-export'
       );
       const blob = await renderDocumentExport(options, format);
       const filename = exportFilename(options.path, format);
       if (localNative) {
-        const { saveDocumentExport } = await import('../native-document-export');
+        const { saveDocumentExport } = await import('../documents/native-document-export');
         if (!(await saveDocumentExport(blob, filename, format))) return;
       } else downloadExport(blob, filename);
       recordHelpCompleted('export-document');

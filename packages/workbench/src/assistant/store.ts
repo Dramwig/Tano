@@ -5,7 +5,7 @@ import type { AssistantQuestion, AssistantQuestionAnswer, AssistantUserInput } f
 import type { AssistantActivity, AssistantConnection, AssistantQuotaResult, AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSession, AssistantSource } from '@tano/protocol';
 import type { AssistantExecutionResult } from './execution';
 import { useWorkspaceStore } from '../stores/workspace';
-import { recordHelpCompleted } from '../help-checklist';
+import { recordHelpCompleted } from '../help/help-checklist';
 import { useWorkbenchRuntime } from '../runtime';
 import { demoAssistantTransport, nativeAssistantTransport } from './transport';
 import { runAssistant, AssistantWaitingError } from './engine';
@@ -13,7 +13,7 @@ import { AssistantRunError } from './completion';
 import type { AssistantTextPhase } from './completion';
 import { assistantHistory } from './results';
 import { useSuggestionStore } from '../stores/suggestions';
-import { t, uiLocale } from '../i18n';
+import { t, uiLocale } from '../i18n/i18n';
 import { isFeatureEnabled } from '../features';
 import { assistantCopy, assistantTaskPrompts, formatAssistantText } from './language';
 import { assistantAttachmentBytes, describeAssistantAttachment, maxAssistantAttachments, readAssistantAttachments } from './attachments';

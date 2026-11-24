@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { applyAppearance, applyTheme, resolvedTheme } from '../theme';
-import type { TanoPluginViewApi } from '../plugin-sdk';
+import { applyAppearance, applyTheme, resolvedTheme } from '../appearance/theme';
+import type { TanoPluginViewApi } from './plugin-sdk';
 import { createPluginUiSandbox } from './ui-sandbox';
 import clientSource from './ui-client.js?raw';
 

@@ -2,11 +2,11 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { RecentWorkspace } from '@tano/protocol';
 import { createPinia, disposePinia, setActivePinia } from 'pinia';
-import { DemoAdapter } from '../adapter';
+import { DemoAdapter } from '../workspace/adapter';
 import { configureWorkbench } from '../runtime';
 import { useWorkspaceStore } from './workspace';
-import { workspaceWelcomeContent, workspaceWelcomePath } from '../workspace-welcome';
-import { readStartupWorkspace, rememberStartupWorkspace, startupWorkspaceKey } from '../workspace-startup';
+import { workspaceWelcomeContent, workspaceWelcomePath } from '../workspace/workspace-welcome';
+import { readStartupWorkspace, rememberStartupWorkspace, startupWorkspaceKey } from '../workspace/workspace-startup';
 
 let pinia: ReturnType<typeof createPinia>;
 let store: ReturnType<typeof useWorkspaceStore>;

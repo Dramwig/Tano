@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it, vi } from 'vitest';
 import { ObjectTypeRegistry, canonicalPluginJson, workspacePluginPath, type PluginPackage } from '@tano/protocol';
-import { DemoAdapter } from '../adapter';
-import { WorkspacePluginHost } from '../workspace-plugins';
+import { DemoAdapter } from '../workspace/adapter';
+import { WorkspacePluginHost } from './workspace-plugins';
 import { PluginExecutionHost } from './host';
 import type { PluginSandboxFactory } from './sandbox';
 import { systemPlugin, systemPluginIds } from './system';

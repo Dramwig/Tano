@@ -2,7 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { emptyAgentInbox, parseAgentInbox } from '@tano/protocol';
 import type { AssistantTransport } from '@tano/protocol';
-import { DemoAdapter } from '../adapter';
+import { DemoAdapter } from '../workspace/adapter';
 import { ensureAgentIdentities } from './agent-identities';
 
 afterEach(() => localStorage.clear());

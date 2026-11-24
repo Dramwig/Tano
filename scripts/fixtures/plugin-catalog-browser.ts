@@ -1,11 +1,11 @@
 import { createApp, h } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { configureWorkbench } from '../../packages/workbench/src/runtime';
-import { DemoAdapter } from '../../packages/workbench/src/adapter';
+import { DemoAdapter } from '../../packages/workbench/src/workspace/adapter';
 import { useWorkspaceStore } from '../../packages/workbench/src/stores/workspace';
 import { HttpPluginCatalog } from '../../packages/workbench/src/plugins/catalog';
-import PluginDetailPage from '../../packages/workbench/src/components/PluginDetailPage.vue';
-import PluginInstaller from '../../packages/workbench/src/components/PluginInstaller.vue';
+import PluginDetailPage from '../../packages/workbench/src/plugins/components/PluginDetailPage.vue';
+import PluginInstaller from '../../packages/workbench/src/plugins/components/PluginInstaller.vue';
 
 export async function mountCatalog(source: string) {
   const pinia = configureWorkbench(createPinia(), { adapter: new DemoAdapter({ files: {} }), native: false, mobile: false,

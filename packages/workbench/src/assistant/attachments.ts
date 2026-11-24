@@ -1,5 +1,5 @@
 import type { AssistantAttachmentInfo, AssistantMediaAttachment, AssistantMediaKind } from '@tano/protocol';
-import { t } from '../i18n';
+import { t } from '../i18n/i18n';
 
 export const maxAssistantAttachments = 10;
 export const assistantAttachmentBytes = { text: 128 * 1024, media: 4 * 1024 * 1024 };

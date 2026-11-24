@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, expect, it } from 'vitest';
 import { parsePluginPackage, parsePluginPolicy, canonicalPluginJson } from '../../packages/protocol/src/extensions';
 import { FileIconRegistry } from '../../packages/workbench/src/file-icons/registry';
-import { AppearanceController } from '../../packages/workbench/src/appearance';
+import { AppearanceController } from '../../packages/workbench/src/appearance/appearance';
 
 const content = readFileSync('examples/plugins/vscode-icons/vscode-icons-1.0.0.tano-plugin.json', 'utf8');
 const pkg = parsePluginPackage(content);

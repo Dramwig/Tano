@@ -1,9 +1,9 @@
 import { createApp, h } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { configureWorkbench } from '../../packages/workbench/src/runtime';
-import { DemoAdapter } from '../../packages/workbench/src/adapter';
+import { DemoAdapter } from '../../packages/workbench/src/workspace/adapter';
 import { useWorkspaceStore } from '../../packages/workbench/src/stores/workspace';
-import PluginRepositoryStorage from '../../packages/workbench/src/components/PluginRepositoryStorage.vue';
+import PluginRepositoryStorage from '../../packages/workbench/src/plugins/components/PluginRepositoryStorage.vue';
 
 /** Browser fixture for a hosted repository provider, using the real workbench store. */
 export async function mountRepository() {

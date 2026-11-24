@@ -2,12 +2,12 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { parsePluginPackage } from '@tano/protocol';
-import { DemoAdapter } from '../adapter';
+import { DemoAdapter } from '../workspace/adapter';
 import { configureWorkbench } from '../runtime';
 import { useWorkspaceStore } from '../stores/workspace';
 import { documentOverviewPlugin } from './example';
 import { pluginIntegrity } from './packages';
-import { WorkspacePluginHost } from '../workspace-plugins';
+import { WorkspacePluginHost } from './workspace-plugins';
 
 vi.mock('./sandbox', () => ({ createPluginSandbox: () => ({ send: vi.fn(), dispose: vi.fn() }) }));
 let store: ReturnType<typeof useWorkspaceStore> | undefined;

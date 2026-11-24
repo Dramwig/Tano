@@ -4,7 +4,7 @@ import { createPinia, disposePinia, setActivePinia } from 'pinia';
 import { parseObject, parseRelations, relationPath } from '@tano/protocol';
 import type { AssistantToolCall } from '@tano/protocol';
 import { configureWorkbench } from '../runtime';
-import { DemoAdapter } from '../adapter';
+import { DemoAdapter } from '../workspace/adapter';
 import { useWorkspaceStore } from '../stores/workspace';
 
 let pinia: ReturnType<typeof createPinia>;

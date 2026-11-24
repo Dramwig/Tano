@@ -5,7 +5,7 @@ import type { WorkspaceAdapter } from '@tano/protocol';
 import { CLOUD_EXTENSION_API_VERSION, configureWorkbench, configureWorkbenchWithCloudExtension, createLocalExtensions, useWorkbenchRuntime } from './runtime';
 import type { CloudExtension } from './runtime';
 import { useWorkspaceStore } from './stores/workspace';
-import { DemoAdapter } from './adapter';
+import { DemoAdapter } from './workspace/adapter';
 
 const cleanup: (() => void)[] = [];
 afterEach(() => { cleanup.splice(0).reverse().forEach(fn => fn()); localStorage.clear(); });

@@ -2,10 +2,10 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createPinia, disposePinia, setActivePinia } from 'pinia';
 import { watch } from 'vue';
-import { DemoAdapter } from '../adapter';
+import { DemoAdapter } from '../workspace/adapter';
 import { configureWorkbench } from '../runtime';
 import { useWorkspaceStore } from './workspace';
-import { defaultWorkspaceSettings, saveWorkspaceSettingsPatch } from '../workspace-settings';
+import { defaultWorkspaceSettings, saveWorkspaceSettingsPatch } from '../workspace/workspace-settings';
 import { workspaceSettingsPath } from '@tano/protocol';
 import type { WorkspaceAdapter } from '@tano/protocol';
 
