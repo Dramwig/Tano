@@ -5,6 +5,8 @@ mod assistant;
 #[cfg(desktop)]
 mod assistant_cli;
 mod assistant_files;
+#[cfg(desktop)]
+pub mod auxiliary_windows;
 pub mod identity_manifest;
 #[cfg(desktop)]
 mod import_connections;

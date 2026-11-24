@@ -96,7 +96,7 @@ pub fn prepare() -> ShellState {
 pub fn create_initial(app: &tauri::AppHandle) -> tauri::Result<()> {
     let state = app.state::<ShellState>();
     if state.initial.label == "main" {
-        crate::auxiliary_windows::create_main(app, &state.initial)?;
+        tano_native::auxiliary_windows::create_main(app, &state.initial)?;
     } else {
         tauri::WebviewWindowBuilder::from_config(app, &state.initial)?.build()?;
     }
@@ -131,7 +131,7 @@ fn main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
     let state = app.state::<ShellState>();
     let mut config = state.main.clone();
     config.visible = false;
-    crate::auxiliary_windows::create_main(app, &config).map_err(|e| e.to_string())
+    tano_native::auxiliary_windows::create_main(app, &config).map_err(|e| e.to_string())
 }
 
 pub fn receive(app: &tauri::AppHandle, args: Vec<String>, cwd: String) {

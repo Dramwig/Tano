@@ -4246,15 +4246,8 @@ dependencies = [
 name = "tano"
 version = "0.13.0"
 dependencies = [
- "base64 0.22.1",
- "libc",
- "notify",
- "percent-encoding",
- "reqwest",
- "rusqlite",
  "serde",
  "serde_json",
- "sha2",
  "tano-native",
  "tauri",
  "tauri-build",
@@ -4264,9 +4257,6 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
  "tempfile",
- "trash",
- "uuid",
- "windows-sys 0.61.2",
 ]
 
 [[package]]
