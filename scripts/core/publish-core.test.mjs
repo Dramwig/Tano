@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -7,9 +7,15 @@ import { corePackages, integrity, sha256 } from './core-distribution.mjs';
 import { publishCore } from './publish-core.mjs';
 
 const directories = [];
+const protocolVersion = '0.2.0-alpha.7';
+const protocolUrl = `https://crates.io/api/v1/crates/tano-page-protocol/${protocolVersion}`;
 afterEach(async () => { for (const path of directories.splice(0)) await rm(path, { recursive: true, force: true }); });
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'tano-core-publisher-')); directories.push(root);
+  const nativeDirectory = join(root, 'crates/tano-native');
+  await mkdir(nativeDirectory, { recursive: true });
+  await writeFile(join(nativeDirectory, 'Cargo.toml'),
+    `[dependencies]\ntano_protocol = { version = "${protocolVersion}", package = "tano-page-protocol", path = "../../packages/rust-protocol" }\n`);
   const out = join(root, 'artifacts/core-registry'); await mkdir(out, { recursive: true });
   const manifest = { format: 2, version: '0.8.2', dirty: false, sourceCommit: 'a'.repeat(40), npmRegistry: 'https://registry.npmjs.org/', packages: [] };
   for (const name of corePackages) {
@@ -27,8 +33,20 @@ async function fixture() {
   const evidencePath = join(out, 'evidence.json');
   await writeFile(evidencePath, JSON.stringify({ sourceCommit: manifest.sourceCommit,
     commands: ['npm run check', 'npm run test:native', 'npm run mcp:smoke', 'npm run core:registry:smoke'].map(command => ({ command, exitCode: 0 })) }));
-  return { root, out, manifest, evidencePath, loadAuth: async () => ({ cwd: root, env: {}, dispose: async () => {} }) };
+  return { root, out, manifest, evidencePath,
+    fetchImpl: vi.fn(() => { throw new Error('unexpected crates.io query'); }),
+    loadAuth: async () => ({ cwd: root, env: {}, dispose: async () => {} }) };
 }
+it('keeps the dry run offline and previews the same Core distribution', async () => {
+  const f = await fixture();
+  const run = vi.fn();
+  const loadAuth = vi.fn();
+  await expect(publishCore({ ...f, npmCli: '/npm.js', run, loadAuth })).resolves.toEqual(f.manifest);
+  expect(run).toHaveBeenCalledTimes(5);
+  for (const [, args] of run.mock.calls) expect(args).toEqual(expect.arrayContaining(['publish', '--dry-run']));
+  expect(f.fetchImpl).not.toHaveBeenCalled();
+  expect(loadAuth).not.toHaveBeenCalled();
+});
 it('retries a partial publication by skipping only identical existing versions', async () => {
   const f = await fixture(), published = [];
   const run = (command, args) => {
@@ -42,7 +60,7 @@ it('retries a partial publication by skipping only identical existing versions',
     return 'dramwig';
   };
   await publishCore({ ...f, apply: true, npmCli: '/npm.js', run,
-    fetchImpl: async () => Response.json({ version: { checksum: f.manifest.native.sha256 } }) });
+    fetchImpl: async url => url === protocolUrl ? new Response() : Response.json({ version: { checksum: f.manifest.native.sha256 } }) });
   expect(published).toHaveLength(4);
   expect(published.some(path => path.endsWith('protocol.tgz'))).toBe(false);
 });
@@ -56,6 +74,22 @@ it('rejects a version collision before any remote writes', async () => {
   };
   await expect(publishCore({ ...f, apply: true, npmCli: '/npm.js', run })).rejects.toThrow('different code');
   expect(commands.some(c => c.command === 'cargo' || c.args[1] === 'publish')).toBe(false);
+});
+it('blocks all uploads when the Rust protocol dependency version is missing on crates.io', async () => {
+  const f = await fixture();
+  const run = vi.fn((command, args) => {
+    if (command === 'git') return args[0] === 'rev-parse' ? f.manifest.sourceCommit : '';
+    if (args[1] === 'view') { const error = new Error('missing'); error.stderr = 'E404'; throw error; }
+    return 'dramwig';
+  });
+  const fetchImpl = vi.fn(async () => new Response(null, { status: 404 }));
+  await expect(publishCore({ ...f, apply: true, npmCli: '/npm.js', run, fetchImpl }))
+    .rejects.toThrow(`Publish tano-page-protocol@${protocolVersion} to crates.io before publishing Core`);
+  expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([
+    `https://crates.io/api/v1/crates/tano-native/${f.manifest.version}`,
+    protocolUrl,
+  ]);
+  expect(run.mock.calls.some(([command, args]) => command === 'cargo' || args[1] === 'publish')).toBe(false);
 });
 it('rejects modified archives before contacting a registry', async () => {
   const f = await fixture(); await writeFile(join(f.out, 'editor.tgz'), 'tampered');
@@ -87,7 +121,7 @@ it('publishes the complete set without passing the npm token to Cargo or enablin
   const f = await fixture(), commands = []; let disposed = false;
   const isolated = { cwd: '/isolated', env: { TANO_NPM_PUBLISH_TOKEN: 'test-only' }, dispose: async () => { disposed = true; } };
   await publishCore({ ...f, apply: true, npmCli: '/npm.js', loadAuth: async () => isolated,
-    fetchImpl: async () => new Response('', { status: 404 }),
+    fetchImpl: async url => url === protocolUrl ? new Response() : new Response(null, { status: 404 }),
     run: (command, args, options) => {
       commands.push({ command, args });
       if (command === 'git') return args[0] === 'rev-parse' ? f.manifest.sourceCommit : '';

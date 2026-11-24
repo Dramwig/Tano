@@ -78,7 +78,7 @@ pub enum WriteResult {
 }
 
 pub fn hash(content: &[u8]) -> String {
-    tano_page::content_hash(content)
+    tano_protocol::content_hash(content)
 }
 
 pub(crate) fn modified(metadata: &fs::Metadata) -> u64 {

@@ -172,7 +172,8 @@ fn recent_created_at(root: &Path, expected_id: &str) -> Option<u64> {
 // Read presentation from the portable settings, without opening or mutating the workspace.
 fn recent_icon(root: &Path) -> Option<String> {
     let root = fs::canonicalize(root).ok()?;
-    let path = storage::resolve_storage(&root, tano_page::WORKSPACE_SETTINGS_PATH, true).ok()?;
+    let path =
+        storage::resolve_storage(&root, tano_protocol::WORKSPACE_SETTINGS_PATH, true).ok()?;
     let mut content = String::new();
     fs::File::open(path)
         .ok()?

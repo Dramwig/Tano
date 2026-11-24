@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27,<2"]
 build-backend = "hatchling.build"
 
 [project]
-name = "tano.page"
+name = "tano-page-protocol"
 version = "0.1.0a2"
 description = "Tano Markdown workspace protocol helpers: content hashes, short IDs and portable path classification."
 readme = "README.md"
@@ -19,7 +19,7 @@ classifiers = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/tano_page"]
+packages = ["src/tano_page_protocol"]
 
 [tool.hatch.build.targets.sdist]
 include = ["src/", "tests/", "README.md", "LICENSE", "pyproject.toml"]

@@ -4258,7 +4258,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2",
- "tano-page",
+ "tano-page-protocol",
  "tauri",
  "tauri-plugin-dialog",
  "tauri-plugin-fs",
@@ -4276,7 +4276,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tano-page"
+name = "tano-page-protocol"
 version = "0.1.0-alpha.2"
 dependencies = [
  "sha2",

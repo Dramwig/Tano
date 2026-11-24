@@ -6,7 +6,7 @@ This preview Rust library provides working helpers used by Tano's local File-Nat
 workspace protocol. It is not the desktop application or a sync client.
 
 ```rust
-use tano_page::{content_hash, is_short_id, is_workspace_data_path};
+use tano_page_protocol::{content_hash, is_short_id, is_workspace_data_path};
 
 let revision = content_hash(b"# Notes\n");
 assert_eq!(revision.len(), 64);

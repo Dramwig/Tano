@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import unittest
 
-from tano_page import (
+from tano_page_protocol import (
     OBJECT_DIRECTORY,
     WORKSPACE_CAPABILITY_PATH,
     WORKSPACE_DATA_DIRECTORY,
