@@ -1,4 +1,4 @@
-import type { FileEntry } from './index';
+import type { FileEntry } from './types';
 import { isMarkdown } from './paths';
 import { isWorkspaceInternalPath } from './workspace-paths';
 import { isShortId } from './short-id';

@@ -1,4 +1,4 @@
-import type { FileEntry } from './index';
+import type { FileEntry } from './types';
 import type { ReferenceIdentity } from './objects';
 import { isShortId } from './short-id';
 import { validObjectType } from './object-types';

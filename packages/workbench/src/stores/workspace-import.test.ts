@@ -2,9 +2,9 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createPinia, disposePinia, setActivePinia } from 'pinia';
 import { configureWorkbench } from '../runtime';
-import { DemoAdapter } from '../adapter';
+import { DemoAdapter } from '../workspace/adapter';
 import { useWorkspaceStore } from './workspace';
-import type { PreparedImport } from '../document-import';
+import type { PreparedImport } from '../documents/document-import';
 
 let pinia: ReturnType<typeof createPinia>;
 let adapter: DemoAdapter;

@@ -13,8 +13,12 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@tano/editor": "0.13.0",
+    "@tano/markdown": "0.13.0",
+    "@tano/protocol": "0.13.0",
     "@tano/workbench": "0.13.0",
     "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/plugin-dialog": "^2.4.0",
     "pinia": "^3.0.3"
   },
   "devDependencies": {

@@ -1,0 +1,324 @@
+// @vitest-environment jsdom
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { createApp, h, nextTick, shallowRef } from 'vue';
+import { bundledObjectPlugins } from '@tano/protocol';
+import type { App } from 'vue';
+import { createPinia, disposePinia, setActivePinia } from 'pinia';
+import { DemoAdapter } from '../../workspace/adapter';
+import { configureWorkbench } from '../../runtime';
+import { useWorkspaceStore } from '../../stores/workspace';
+import PluginInstaller from './PluginInstaller.vue';
+import PluginDetailPage from './PluginDetailPage.vue';
+import { bundledPluginCatalog, type PluginCatalogEntry } from '../plugin-catalog';
+
+let app: App;
+let root: HTMLElement;
+let store: ReturnType<typeof useWorkspaceStore>;
+let pinia: ReturnType<typeof createPinia>;
+const showModal = HTMLDialogElement.prototype.showModal;
+const close = HTMLDialogElement.prototype.close;
+const catalogOverride = shallowRef<readonly PluginCatalogEntry[]>();
+const publishingAvailable = shallowRef(false);
+
+beforeEach(async () => {
+  // jsdom does not implement the native dialog top layer.
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+  };
+  localStorage.clear();
+  catalogOverride.value = undefined;
+  publishingAvailable.value = false;
+  pinia = createPinia();
+  configureWorkbench(pinia, { adapter: new DemoAdapter(), native: false, mobile: false });
+  setActivePinia(pinia);
+  store = useWorkspaceStore();
+  await store.openWorkspace();
+  root = document.createElement('div');
+  document.body.append(root);
+  app = createApp(() => h('div', [h(PluginInstaller, { catalog: catalogOverride.value }, publishingAvailable.value
+    ? { publishing: () => h('textarea', { 'aria-label': '投稿草稿' }) } : undefined), ...(store.tabs.find(tab => tab.id === store.activeId)?.pluginDetail ? [h(PluginDetailPage, { pluginId: store.tabs.find(tab => tab.id === store.activeId)!.pluginDetail!.id })] : [])]));
+  app.use(pinia);
+  app.mount(root);
+});
+
+afterEach(() => {
+  app.unmount();
+  store.dispose();
+  disposePinia(pinia);
+  root.remove();
+  HTMLDialogElement.prototype.showModal = showModal;
+  HTMLDialogElement.prototype.close = close;
+  vi.restoreAllMocks();
+});
+
+function button(label: string) {
+  return [...document.querySelectorAll<HTMLButtonElement>('button')].find(
+    (element) =>
+      element.textContent?.trim() === label || element.getAttribute('aria-label') === label,
+  )!;
+}
+
+it('loads a bundled code package on installation and keeps failed downloads retryable', async () => {
+  const manifest = { ...bundledObjectPlugins[0]!, id: 'lazy-drawing', name: '按需白板', objectTypes: [], relationTypes: [] };
+  const loadPackage = vi.fn().mockRejectedValueOnce(new Error('package unavailable')).mockResolvedValue({ packageVersion: 1, manifest });
+  catalogOverride.value = [{ manifest, category: { id: 'tools', label: '工具' }, loadPackage }];
+  await nextTick();
+  expect(loadPackage).not.toHaveBeenCalled();
+  button('安装按需白板').click();
+  await vi.waitFor(() => expect(document.body.textContent).toContain('package unavailable'));
+  expect(store.installedPlugins.filter(plugin => !plugin.system)).toHaveLength(0);
+  expect(button('安装按需白板').disabled).toBe(false);
+  button('安装按需白板').click();
+  await vi.waitFor(() => expect(store.installedPlugins[0]?.manifest.id).toBe('lazy-drawing'));
+  expect(loadPackage).toHaveBeenCalledTimes(2);
+});
+
+it('offers publishing only when the product provides it and preserves drafts while browsing plugins', async () => {
+  expect(button('我的投稿')).toBeUndefined();
+  button('社区目录').click();
+  await nextTick();
+  expect(button('发布插件')).toBeUndefined();
+  publishingAvailable.value = true;
+  await nextTick();
+  expect(document.querySelector('[aria-label="投稿草稿"]')).toBeNull();
+  button('发布插件').click();
+  await nextTick();
+  expect(button('我的投稿').getAttribute('aria-pressed')).toBe('true');
+  expect(button('导入插件')).toBeUndefined();
+  expect(document.querySelector('.catalog-filter')).toBeNull();
+  expect(document.querySelector('.center-footer')).toBeNull();
+  const draft = document.querySelector<HTMLTextAreaElement>('[aria-label="投稿草稿"]')!;
+  draft.value = '未提交的新版本说明';
+  button('社区目录').click();
+  await nextTick();
+  expect(draft.parentElement?.style.display).toBe('none');
+  button('我的投稿').click();
+  await nextTick();
+  expect(document.querySelector('[aria-label="投稿草稿"]')).toBe(draft);
+  expect(draft.value).toBe('未提交的新版本说明');
+  expect(draft.parentElement?.style.display).not.toBe('none');
+});
+
+it('installs a plugin and preserves its objects when disabled and re-enabled', async () => {
+  button('安装研究工作台').click();
+  await vi.waitFor(() => expect(store.installedPlugins.filter(plugin => !plugin.system)).toHaveLength(1));
+  const paper = await store.createObject({
+    type: 'research.paper',
+    name: '论文',
+    properties: {},
+    description: '',
+    archived: false,
+  });
+  expect(store.referenceTargets.some((item) => item.id === paper.object.id)).toBe(true);
+
+  button(`已安装 ${store.installedPlugins.length}`).click();
+  await nextTick();
+  button('管理研究工作台').click();
+  await vi.waitFor(() => expect(document.querySelector('.plugin-detail-page')).not.toBeNull());
+  button('停用插件').click();
+  await vi.waitFor(() => expect(store.installedPlugins[0]?.enabled).toBe(false));
+  expect(store.objects).toHaveLength(1);
+  expect(store.referenceTargets.some((item) => item.id === paper.object.id)).toBe(false);
+
+  button('启用插件').click();
+  await vi.waitFor(() => expect(store.installedPlugins[0]?.enabled).toBe(true));
+  expect(store.referenceTargets.some((item) => item.id === paper.object.id)).toBe(true);
+
+  button('卸载插件').click();
+  await vi.waitFor(() => expect(store.installedPlugins.filter(plugin => !plugin.system)).toHaveLength(0));
+  expect(store.objects).toHaveLength(1);
+  expect(document.body.textContent).toContain('演示文稿预览');
+});
+
+it('combines category and object-type search and resets an empty result', async () => {
+  const category = document.querySelector<HTMLSelectElement>('select[aria-label="插件分类"]')!;
+  category.value = 'reading';
+  category.dispatchEvent(new Event('change'));
+  await nextTick();
+  expect(document.querySelectorAll('.plugin-entry')).toHaveLength(1);
+  expect(document.querySelector('.plugin-entry')?.textContent).toContain('阅读书架');
+  const search = document.querySelector<HTMLInputElement>('input[type="search"]')!;
+  search.value = '  RESEARCH.PAPER  ';
+  search.dispatchEvent(new Event('input'));
+  await nextTick();
+  expect(document.body.textContent).toContain('没有找到匹配的插件');
+  category.value = 'all';
+  category.dispatchEvent(new Event('change'));
+  await nextTick();
+  expect(document.querySelectorAll('.plugin-entry')).toHaveLength(1);
+  expect(document.querySelector('.plugin-entry')?.textContent).toContain('研究工作台');
+  search.value = '不存在的插件';
+  search.dispatchEvent(new Event('input'));
+  await nextTick();
+  button('重置筛选').click();
+  await nextTick();
+  expect(document.querySelectorAll('.plugin-entry')).toHaveLength(bundledPluginCatalog.length);
+  expect(search.value).toBe('');
+});
+
+it('does not offer the retired Git plugin for installation', () => {
+  expect(bundledPluginCatalog.some(entry => entry.manifest.id === 'git-inspector')).toBe(false);
+  expect(document.body.textContent).not.toContain('安装Git 变更');
+});
+
+it('opens details, installs there, and shows the installed manifest version', async () => {
+  button('查看研究工作台详情').click();
+  await vi.waitFor(() => expect(document.querySelector('.plugin-detail-page')).not.toBeNull());
+  const dialog = document.querySelector('.plugin-detail-page')!;
+  expect(dialog.textContent).toContain('年份、DOI');
+  dialog.querySelector<HTMLButtonElement>('.pc-primary')!.click();
+  await vi.waitFor(() => expect(dialog.textContent).toContain('停用插件'));
+  await store.changePlugin(
+    { install: { ...bundledObjectPlugins[0], version: '2.0.0', name: '自定义研究台' } },
+    store.workspace!.id,
+  );
+  await nextTick();
+  expect(dialog.textContent).toContain('v2.0.0');
+  expect(dialog.textContent).toContain('自定义研究台');
+  expect(document.querySelector('dialog')).toBeNull();
+});
+
+it('validates imports and invalidates a preview after editing before installation', async () => {
+  button('导入插件').click();
+  await nextTick();
+  const textarea = document.querySelector('textarea')!;
+  textarea.value = '{ invalid json }';
+  textarea.dispatchEvent(new Event('input'));
+  await nextTick();
+  button('检查清单').click();
+  await nextTick();
+  expect(document.querySelector('[role="alert"]')).not.toBeNull();
+  expect(document.querySelector('.plugin-preview')).toBeNull();
+
+  textarea.value = JSON.stringify(bundledObjectPlugins[1]);
+  textarea.dispatchEvent(new Event('input'));
+  await nextTick();
+  button('检查清单').click();
+  await nextTick();
+  expect(document.querySelector('.plugin-preview')?.textContent).toContain('阅读书架');
+  textarea.value = '{}';
+  textarea.dispatchEvent(new Event('input'));
+  await nextTick();
+  expect(document.querySelector('.plugin-preview')).toBeNull();
+
+  textarea.value = JSON.stringify(bundledObjectPlugins[1]);
+  textarea.dispatchEvent(new Event('input'));
+  await nextTick();
+  button('检查清单').click();
+  await nextTick();
+  button('安装此插件').click();
+  await vi.waitFor(() => expect(document.querySelector('dialog')).toBeNull());
+  expect(store.installedPlugins[0]?.manifest.id).toBe('reading');
+  expect(document.querySelector('[aria-label="已安装插件"]')?.textContent).toContain('阅读书架');
+});
+
+it('keeps a failed install actionable and reports the error in its dialog', async () => {
+  vi.spyOn(store, 'changePlugin').mockRejectedValueOnce(new Error('安装记录已在另一窗口改变'));
+  button('查看研究工作台详情').click();
+  await vi.waitFor(() => expect(document.querySelector('.plugin-detail-page')).not.toBeNull());
+  const install = document.querySelector<HTMLButtonElement>('.plugin-detail-page .pc-primary')!;
+  install.click();
+  await vi.waitFor(() =>
+    expect(document.querySelector('.plugin-detail-page [role="alert"]')?.textContent).toContain('另一窗口'),
+  );
+  expect(install.disabled).toBe(false);
+  expect(store.installedPlugins.filter(plugin => !plugin.system)).toHaveLength(0);
+});
+
+it('clears an earlier preview when a newly selected file cannot be imported', async () => {
+  button('导入插件').click();
+  await nextTick();
+  const textarea = document.querySelector('textarea')!;
+  textarea.value = JSON.stringify(bundledObjectPlugins[0]);
+  textarea.dispatchEvent(new Event('input'));
+  await nextTick();
+  button('检查清单').click();
+  await nextTick();
+  expect(document.querySelector('.plugin-preview')).not.toBeNull();
+  const file = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+  Object.defineProperty(file, 'files', { value: [{ size: 4 * 1024 * 1024 + 1 }] });
+  file.dispatchEvent(new Event('change'));
+  await nextTick();
+  expect(document.querySelector('.plugin-preview')).toBeNull();
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain('不能超过 4 MiB');
+});
+
+it('browses a large catalog in batches and searches across unloaded entries', async () => {
+  catalogOverride.value = Array.from({ length: 61 }, (_, index) => ({
+    manifest: {
+      ...bundledObjectPlugins[0],
+      id: `sample${index}`,
+      name: `插件 ${String(index).padStart(2, '0')}`,
+    },
+    category:
+      index < 30 ? { id: 'research', label: '学术研究' } : { id: 'reading', label: '阅读写作' },
+  }));
+  await nextTick();
+  expect(document.querySelectorAll('.plugin-entry')).toHaveLength(24);
+  expect(document.querySelector('.catalog-heading')?.textContent).toContain('61');
+  button('显示更多').click();
+  await nextTick();
+  expect(document.querySelectorAll('.plugin-entry')).toHaveLength(48);
+  button('显示更多').click();
+  await nextTick();
+  expect(document.querySelectorAll('.plugin-entry')).toHaveLength(61);
+  expect(document.querySelector('.catalog-more')).toBeNull();
+
+  const category = document.querySelector<HTMLSelectElement>('select[aria-label="插件分类"]')!;
+  category.value = 'reading';
+  category.dispatchEvent(new Event('change'));
+  await nextTick();
+  expect(document.querySelectorAll('.plugin-entry')).toHaveLength(24);
+  expect(document.querySelector('.catalog-heading')?.textContent).toContain('31');
+  expect(document.querySelector('.plugin-entry')?.textContent).toContain('插件 30');
+  const search = document.querySelector<HTMLInputElement>('input[type="search"]')!;
+  search.value = '插件 60';
+  search.dispatchEvent(new Event('input'));
+  await nextTick();
+  expect(document.querySelectorAll('.plugin-entry')).toHaveLength(1);
+  expect(document.querySelector('.plugin-entry')?.textContent).toContain('插件 60');
+  expect(document.querySelector('.catalog-more')).toBeNull();
+});
+
+it('filters a long installed list by state before paginating', async () => {
+  store.installedPlugins = Array.from({ length: 50 }, (_, index) => ({
+    manifest: { ...bundledObjectPlugins[0], id: `sample${index}`, name: `已安装插件 ${index}` },
+    enabled: index % 2 === 0,
+  }));
+  await nextTick();
+  button('已安装 50').click();
+  await nextTick();
+  expect(document.querySelectorAll('.plugin-entry')).toHaveLength(24);
+  const state = document.querySelector<HTMLSelectElement>('select[aria-label="安装状态"]')!;
+  state.value = 'disabled';
+  state.dispatchEvent(new Event('change'));
+  await nextTick();
+  expect(document.querySelectorAll('.plugin-entry')).toHaveLength(24);
+  expect(document.querySelector('.catalog-heading')?.textContent).toContain('25');
+  expect(
+    [...document.querySelectorAll('.entry-state')].every((item) => item.textContent === '已停用'),
+  ).toBe(true);
+  button('显示更多').click();
+  await nextTick();
+  expect(document.querySelectorAll('.plugin-entry')).toHaveLength(25);
+  expect(document.querySelector('.catalog-more')).toBeNull();
+});
+
+it.each(['演示文稿预览', 'Word 文档预览'])('identifies system plugin %s and exposes only its device activation control', async name => {
+  button(`已安装 ${store.installedPlugins.length}`).click(); await nextTick();
+  button(`管理${name}`).click(); await vi.waitFor(() => expect(document.querySelector('.plugin-detail-page')).not.toBeNull());
+  expect(document.body.textContent).toContain('系统插件');
+  button('权限').click(); await nextTick();
+  expect(document.body.textContent).toContain('无需单独授权');
+  expect(button('卸载插件')).toBeUndefined();
+  expect(button('撤销此设备授权')).toBeUndefined();
+  expect(button('授权此版本运行')).toBeUndefined();
+  expect(document.querySelector('[aria-label="插件工作区规则"]')).toBeNull();
+  button('停用插件').click();
+  await vi.waitFor(() => expect(store.installedPlugins.find(p => p.system && p.manifest.name === name)?.enabled).toBe(false));
+  button('启用插件').click();
+  await vi.waitFor(() => expect(store.installedPlugins.find(p => p.system && p.manifest.name === name)?.enabled).toBe(true));
+});

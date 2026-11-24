@@ -1,0 +1,397 @@
+.desktop-tab-navigation:has(.icon-button) {
+  position: relative;
+  padding-inline: 6px;
+}
+.desktop-sidebar-toggle:not(.desktop-sidebar-toggle-hidden) + .desktop-tab-navigation:has(.icon-button) {
+  padding-inline-start: 2px;
+}
+.desktop-tab-strip {
+  display: flex;
+  /* Motion measures this final width, then expands with pixel tab bases. */
+  width: calc(var(--desktop-tab-count) * 200px + var(--desktop-tab-reserved-width, 0px) + 42px);
+  max-width: 100%;
+  min-width: 0;
+  height: 100%;
+  align-items: stretch;
+}
+.desktop-tab-strip-inset {
+  margin-inline-start: 12px;
+  max-width: calc(100% - 12px);
+}
+.desktop-tab-strip-file-drop .desktop-tab-list {
+  min-width: 4px;
+}
+.desktop-tab-file-drop-hint {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  gap: 3px;
+  max-width: min(224px, calc(100vw - 16px));
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+  color: var(--text-secondary);
+  font-size: 12px;
+  pointer-events: none;
+}
+.desktop-tab-file-drop-hint strong {
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.desktop-tab-list {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  /* Keep both edge tabs' lower curves inside the scroll viewport without
+     shifting the tabs or the adjacent navigation and add buttons. */
+  padding-inline: 8px;
+  margin-inline: -8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.desktop-tab-list::-webkit-scrollbar {
+  display: none;
+}
+.desktop-tab-list::after {
+  content: '';
+  flex: 0 0 var(--desktop-tab-reserved-width, 0px);
+}
+.desktop-tab-dragging {
+  background: transparent;
+}
+/* Keep the native draggable rendered and hit-testable throughout the OS drag.
+   Hiding its visibility can interrupt WebView's drag lifecycle before release. */
+.desktop-tab-dragging > * { opacity: 0; }
+.desktop-tab-outgoing {
+  /* Keep its slot until the transfer commits. Removing it from this pane
+     then runs the same measured layout animation as closing a tab. */
+  opacity: 0;
+  pointer-events: none;
+}
+/* Remove only layout occupancy. The native drag source retains its geometry. */
+.desktop-tab.desktop-tab-away {
+  position: absolute;
+  width: var(--desktop-tab-source-width);
+  min-width: var(--desktop-tab-source-width);
+  max-width: var(--desktop-tab-source-width);
+  opacity: 0;
+  pointer-events: none;
+}
+.desktop-tab-incoming-slot {
+  position: absolute;
+  top: 4px;
+  bottom: 0;
+  left: 8px;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  pointer-events: none;
+  transition: transform var(--motion-spring) var(--ease-spring), width var(--motion-spring) var(--ease-spring-smooth);
+}
+.desktop-tab-context-menu {
+  position: fixed;
+  z-index: 1001;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+.desktop-tab-drag-preview {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  box-sizing: border-box;
+  padding: 0 16px;
+  border: 0;
+  /* Floating: a lifted card, visibly not part of the track. */
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 0 0 1px var(--line), 0 8px 22px rgb(0 0 0 / 12%), 0 2px 6px rgb(0 0 0 / 6%);
+  color: var(--text);
+  font-size: 13px;
+  pointer-events: none;
+  user-select: none;
+  animation: desktop-tab-lift var(--motion-spring, 0.32s) var(--ease-spring-smooth, ease-out) both;
+  transition: border-radius 0.24s ease-out, box-shadow 0.24s ease-out;
+}
+/* Landing: morph back into a docked tab shape while flying into the slot.
+   The card keeps its border and shadow for the whole flight; the docked tab
+   takes over through the opacity crossfade, so nothing pops at the end. */
+.desktop-tab-drag-preview-overlaid { visibility: hidden; }
+.desktop-tab-drag-preview-settling {
+  border-radius: 8px 8px 0 0;
+  /* The shadow is driven per frame from flight progress; a CSS transition
+     would restart every frame and lag behind it. */
+  transition: border-radius 0.24s ease-out;
+}
+@keyframes desktop-tab-lift {
+  from { box-shadow: 0 0 0 0 transparent, 0 0 0 transparent, 0 0 0 transparent; border-radius: 8px 8px 0 0; }
+}
+/* The reserved slot is plain empty space: the gap itself marks the drop point. */
+.desktop-tab.desktop-tab-dragging,
+.desktop-tab.desktop-tab-dragging:hover {
+  --desktop-tab-close-mask: var(--workbench-back);
+  background: transparent;
+  box-shadow: none;
+}
+.desktop-tab {
+  --desktop-tab-close-mask: var(--workbench-back);
+  --desktop-tab-color-duration: 0.15s;
+  position: relative;
+  container-type: inline-size;
+  display: flex;
+  align-items: center;
+  /* Keep a responsive basis outside the measured open/close animations. */
+  flex: 0 0 calc((100% - var(--desktop-tab-reserved-width, 0px)) / max(1, var(--desktop-tab-count)));
+  min-width: 28px;
+  max-width: 200px;
+  height: calc(100% - 4px);
+  margin-top: 4px;
+  border-radius: 8px 8px 0 0;
+  color: var(--text-secondary);
+  transition:
+    flex-basis var(--motion-spring) var(--ease-spring-smooth),
+    background var(--desktop-tab-color-duration),
+    color var(--desktop-tab-color-duration);
+}
+.desktop-tab-list-slotting .desktop-tab {
+  transition: flex-basis var(--motion-spring) var(--ease-spring-smooth), background var(--desktop-tab-color-duration), color var(--desktop-tab-color-duration);
+}
+.desktop-tab-list-frozen .desktop-tab,
+.desktop-tab-list-animating .desktop-tab {
+  transition: background var(--desktop-tab-color-duration), color var(--desktop-tab-color-duration);
+}
+/* Release motion blends the floating card toward these final colors. */
+.desktop-tab-settling { --desktop-tab-color-duration: 0s; }
+/* Lifting a tab out must empty its slot at once: a 0.15s background fade left
+   a fading copy of the (active) tab behind the drag preview. */
+.desktop-tab-dragging { --desktop-tab-color-duration: 0s; }
+.desktop-tab-list-frozen .desktop-tab { min-width: 0; }
+.desktop-tab-navigation:has(.icon-button)::before,
+.desktop-tab::before {
+  content: '';
+  position: absolute;
+  z-index: 3;
+  inset: 4px 0 8px;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  pointer-events: none;
+}
+.desktop-tab-navigation::before {
+  margin-top: 4px;
+}
+.desktop-tab-navigation:has(+ .desktop-tab-strip .desktop-tab:first-child.desktop-tab-active)::before,
+.desktop-tab:has(+ .desktop-tab-active)::before,
+.desktop-tab:last-of-type::before,
+.desktop-tab-dragging::before,
+.desktop-tab-native-drag-image .desktop-tab::before {
+  border-right-color: transparent;
+}
+.desktop-tab:hover {
+  --desktop-tab-close-mask: color-mix(in srgb, var(--workbench-front) 55%, var(--workbench-back));
+  background: var(--desktop-tab-close-mask);
+}
+.desktop-tab-active,
+.desktop-tab-active:hover {
+  --desktop-tab-close-mask: var(--workbench-front);
+  z-index: 1;
+  background: var(--workbench-front);
+  color: var(--text);
+}
+.desktop-tab-active::before {
+  inset: 0;
+  border: 0;
+  border-radius: inherit;
+}
+.desktop-tab-corners {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  pointer-events: none;
+}
+.desktop-tab-native-drag-image .desktop-tab-corners {
+  display: none;
+}
+.desktop-tab-corners::before,
+.desktop-tab-corners::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 8px;
+  height: 8px;
+}
+.desktop-tab-corners::before {
+  left: -8px;
+  background: radial-gradient(circle at top left, transparent 7.5px, var(--workbench-front) 8px);
+}
+.desktop-tab-corners::after {
+  right: -8px;
+  background: radial-gradient(circle at top right, transparent 7.5px, var(--workbench-front) 8px);
+}
+.desktop-tab-corners > span {
+  position: absolute;
+  bottom: 0;
+  width: 8px;
+  height: 8px;
+  border-bottom: 0;
+}
+.desktop-tab-corner-outline-left {
+  left: -8px;
+  border-right: 0;
+  border-bottom-right-radius: 8px;
+}
+.desktop-tab-corner-outline-right {
+  right: -8px;
+  border-left: 0;
+  border-bottom-left-radius: 8px;
+}
+.desktop-tab-switch {
+  touch-action: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: clamp(0px, calc((100cqw - 28px) / 10), 8px);
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  /* Center content in the strip despite the tab's 4px top inset. */
+  padding: 0 6px 4px clamp(6px, 8cqw, 12px);
+  text-align: left;
+  font-size: 13px;
+  line-height: 18px;
+}
+.desktop-tab-icon {
+  flex: 0 0 15px;
+  color: var(--muted);
+}
+.desktop-tab-document-icon {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  overflow: hidden;
+  border-radius: 3px;
+}
+.desktop-tab-label {
+  font-weight: 400;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+.desktop-tab-dirty {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--text);
+}
+.desktop-tab-close,
+.desktop-tab-add {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 4px;
+  color: var(--muted);
+}
+.desktop-tab-close {
+  position: absolute;
+  z-index: 2;
+  top: calc(50% - 2px);
+  right: 0;
+  width: 40px;
+  transform: translateY(-50%);
+  background: var(--desktop-tab-close-mask);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    color 0.15s;
+}
+.desktop-tab-close::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  right: 100%;
+  width: 44px;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, var(--desktop-tab-close-mask));
+  pointer-events: none;
+}
+.desktop-tab:hover .desktop-tab-close,
+.desktop-tab-close:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.desktop-tab-close:hover,
+.desktop-tab-add:not(:disabled):hover {
+  color: var(--text);
+}
+.desktop-tab-add:not(:disabled):hover {
+  background: var(--hover);
+}
+.desktop-tab-add {
+  align-self: center;
+  width: 28px;
+  height: 28px;
+  margin: 0 7px;
+}
+.desktop-tab-switch:focus-visible,
+.desktop-tab-close:focus-visible,
+.desktop-tab-add:focus-visible {
+  outline-offset: -3px;
+}
+@container (max-width: 40px) {
+  .desktop-tab-label,
+  .desktop-tab-dirty,
+  .desktop-tab-close::before {
+    display: none;
+  }
+  .desktop-tab-close {
+    right: 50%;
+    width: 24px;
+    transform: translate(50%, -50%);
+  }
+  @media (hover: hover) {
+    .desktop-tab:hover .desktop-tab-close:not(:hover):not(:focus-visible) {
+      opacity: 0;
+    }
+    .desktop-tab:hover .desktop-tab-close:hover {
+      opacity: 1;
+    }
+  }
+}
+@container (max-width: 32px) {
+  .desktop-tab-close {
+    width: 18px;
+    height: 18px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .desktop-tab-strip, .desktop-tab, .desktop-tab-list-slotting .desktop-tab, .desktop-tab-incoming-slot { transition: none; }
+  .desktop-tab-drag-preview { animation: none; transition: none; }
+}
+@media (hover: none) {
+  .desktop-tab-close {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+/* The placeholder has no actions, even when native dragging retains :hover
+   or keyboard focus on the source tab. Never hide the draggable switch. */
+.desktop-tab.desktop-tab-dragging .desktop-tab-close,
+.desktop-tab-native-drag-image .desktop-tab-close {
+  visibility: hidden;
+  pointer-events: none;
+}

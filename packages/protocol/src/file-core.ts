@@ -1,4 +1,4 @@
-import type { FileEntry, Workspace } from './index';
+import type { FileEntry, Workspace } from './types';
 import { isWorkspaceInternalPath } from './workspace-paths';
 
 export type FilePreviewKind = 'markdown' | 'table' | 'image' | 'pdf' | 'office' | 'csv' | 'json' | 'code' | 'text' | 'audio' | 'video' | 'binary';

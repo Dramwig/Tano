@@ -1,0 +1,157 @@
+.editor-scroll,
+.tano-prose {
+  --tano-block-padding-inline: 8px;
+}
+.editor-scroll {
+  --document-inset-start: clamp(32px, 5vw, 96px);
+  --document-inset-end: max(64px, clamp(32px, 5vw, 96px));
+  flex: 1;
+  min-width: 0;
+  padding: 48px var(--document-inset-end) 60px var(--document-inset-start);
+}
+.document-main > .editor-scroll:has(.document-cover) { padding-top: 0; }
+.editor-scroll:focus {
+  outline: none;
+}
+.document-scroll-shell.has-assistant-launcher .editor-scroll {
+  padding-bottom: calc(108px + env(safe-area-inset-bottom, 0px));
+}
+/* Empty-document guidance follows the pane viewport, including split panes. */
+.document-main > .editor-scroll:has(.document-starter) {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px));
+}
+.editor-scroll:has(.document-starter) > .document-suggestions,
+.editor-scroll:has(.document-starter) > .document-suggestions > .suggestion-layout,
+.editor-scroll:has(.document-starter) > .document-suggestions > .suggestion-layout > .suggestion-content,
+.editor-scroll:has(.document-starter) .suggestion-content > .milkdown-host,
+.editor-scroll:has(.document-starter) .milkdown-host > .milkdown {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+.editor-scroll:has(.document-starter) .suggestion-content > .milkdown-host,
+.editor-scroll:has(.document-starter) .suggestion-content > .frontmatter-panel {
+  flex-shrink: 0;
+  width: 100%;
+}
+.editor-scroll:has(.document-starter) .milkdown-host .tano-prose {
+  flex: 1;
+  min-height: 80px;
+}
+.editor-scroll.width-unlimited .milkdown-host,
+.editor-scroll.width-unlimited .source-editor,
+.editor-scroll.width-unlimited .document-title-content,
+.editor-scroll.width-unlimited .document-appearance-content,
+.editor-scroll.width-unlimited .document-references,
+.editor-scroll.width-unlimited .frontmatter-panel,
+.editor-scroll.width-unlimited .document-discussion {
+  max-width: none;
+}
+.milkdown-host,
+.source-editor {
+  max-width: var(--tano-content-measure);
+  margin: 0 auto;
+}
+.milkdown-host {
+  --tano-table-stroke-width: 3px;
+  position: relative;
+}
+.document-title {
+  position: relative;
+  width: 100%;
+  margin: 0 auto 24px;
+}
+.document-title-content,
+.document-appearance-content {
+  position: relative;
+  max-width: var(--tano-content-measure);
+  margin: 0 auto;
+}
+.document-title-content,
+.frontmatter-panel {
+  /* Align document metadata with the content inside text blocks. */
+  padding-inline: var(--tano-block-padding-inline);
+}
+.document-title-input,
+.document-title-mirror {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-family: var(--tano-prose-font-family, inherit);
+  font-size: clamp(30px, 3vw, 40px);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  text-align: left;
+  text-overflow: ellipsis;
+}
+.document-title-input::placeholder {
+  color: var(--muted);
+  opacity: 0.45;
+}
+.document-title-wrap {
+  display: grid;
+  min-width: 0;
+}
+.document-title-wrap > .document-title-input,
+.document-title-wrap > .document-title-mirror {
+  grid-area: 1 / 1;
+  min-width: 0;
+  /* Serif ascenders/descenders can extend past the line box. Keep the mirror
+     and textarea padding identical so auto-sizing includes that ink space. */
+  padding-block: 0.15em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+.document-title-wrap > textarea {
+  height: 100%;
+  min-height: 0;
+  resize: none;
+  overflow: hidden;
+}
+.document-title-mirror {
+  visibility: hidden;
+  pointer-events: none;
+}
+.document-title-input:focus-visible {
+  outline: none;
+}
+.document-title-error {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  padding: 4px 12px;
+  border-radius: 4px;
+  background: #e9344b;
+  color: #fff;
+  box-shadow: 0 2px 5px #00000016;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+}
+.document-title-error::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: calc(50% - 5px);
+  border: 5px solid transparent;
+  border-top: 0;
+  border-bottom-color: #e9344b;
+}
+
+.source-view {
+  display: flex;
+  flex-direction: column;
+}

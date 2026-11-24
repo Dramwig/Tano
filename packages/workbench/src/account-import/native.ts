@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { nativeInvoke as invoke } from '../platform/native-bridge';
 import type { ImportAccountHost, ImportAccount, ImportCapability, ImportResponse } from './types';
 
 export function nativeImportHost(): ImportAccountHost {

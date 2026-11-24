@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { webcrypto } from 'node:crypto';
-import { DemoAdapter } from '../adapter';
+import { DemoAdapter } from '../workspace/adapter';
 import { configureWorkbench } from '../runtime';
 import { useWorkspaceStore } from './workspace';
 import { parseDataTable } from '@tano/protocol';

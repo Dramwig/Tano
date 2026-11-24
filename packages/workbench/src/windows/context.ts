@@ -1,6 +1,10 @@
 import { inject, provide, type InjectionKey } from 'vue';
 import { provideEditorWindow } from '@tano/editor/dom-context';
-import { Window as NativeWindow, getCurrentWindow } from '@tauri-apps/api/window';
+import {
+  getNativeCurrentWindow as getCurrentWindow,
+  getNativeWindowByLabel,
+  type NativeWindow,
+} from '../platform/native-bridge';
 
 export interface WindowContext {
   id: string;
@@ -14,7 +18,7 @@ export interface WindowContext {
 export const windowContextKey: InjectionKey<WindowContext> = Symbol('tano-window');
 
 export async function createWindowContext(id: string, label: string, target: Window): Promise<WindowContext> {
-  const native = '__TAURI_INTERNALS__' in window ? await NativeWindow.getByLabel(label) : undefined;
+  const native = '__TAURI_INTERNALS__' in window ? await getNativeWindowByLabel(label) : undefined;
   if (native === null) throw new Error(`Auxiliary window ${label} is unavailable`);
   return {
     id, label, window: target, document: target.document,

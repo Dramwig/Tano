@@ -7,7 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, expect } from '@playwright/test';
 import { buildPlugin } from './plugin-build.mjs';
-import { acceptTaskInsights } from '../fixtures/task-insights-acceptance.mjs';
+import { acceptTaskInsights } from '../../tests/fixtures/task-insights-acceptance.mjs';
 
 if (process.platform !== 'win32') throw new Error('This acceptance test requires Windows and WebView2.');
 if (!process.env.npm_execpath) throw new Error('Run npm run test:plugins:native from the repository.');
@@ -93,7 +93,7 @@ try {
   const insights = await buildPlugin(join(root, 'examples/plugins/task-insights'));
   await acceptTaskInsights(page, expect, insights.canonical, join(artifacts, 'plugin-react-native.png'));
   console.log('React/Chart.js native acceptance passed: pagination, canvas, filters, events and cleanup.');
-  const { canonical, integrity } = await buildPlugin(join(root, 'scripts/fixtures/native-query-plugin'));
+  const { canonical, integrity } = await buildPlugin(join(root, 'tests/fixtures/native-query-plugin'));
   await openPluginCenter(page);
   await page.getByRole('button', { name: '导入插件', exact: true }).click();
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(canonical);

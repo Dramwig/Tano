@@ -1,5 +1,5 @@
-import { openWorkspaceSync } from '../workspace-sync';
-import { invoke } from '@tauri-apps/api/core';
+import { openWorkspaceSync } from '../workspace/workspace-sync';
+import { nativeInvoke as invoke } from '../platform/native-bridge';
 import { parsePluginConnectionInput, parsePluginConnectionRequest, pluginConnectionOrigin, type PluginConnectionProvider, type PluginConnection, type PluginOAuthFlow, type PluginOAuthProvider, type PluginOAuthStatus } from '@tano/protocol';
 import type { PluginNativeContext, PluginRuntimeServices } from './host';
 

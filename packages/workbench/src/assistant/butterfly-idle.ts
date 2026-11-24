@@ -1,4 +1,4 @@
-import { subscribeUserActivity } from '../user-activity';
+import { subscribeUserActivity } from '../shell/user-activity';
 
 export const BUTTERFLY_IDLE_MS = 30_000;
 

@@ -10,7 +10,7 @@ Tano 是一个以真实文件为内容源、让人与 Agent 在同一页工作�
 | [Local 隐私说明](local-privacy.md) | 本地数据、联网请求及第三方连接 |
 | [SignPath 申请材料](../signpath-application.md) | 英文项目介绍、公开证据及提交前检查 |
 | [本地开发](local-development.md) | 环境要求、启动与检查 |
-| [Windows 右键打开](../windows-shell.md) | 安装时可选的右键菜单、文件夹工作区与独立 Markdown 文件 |
+| [Windows 右键打开](windows-shell.md) | 安装时可选的右键菜单、文件夹工作区与独立 Markdown 文件 |
 | [第三方账号导入](account-import.md) | OAuth 应用配置、连接方式与导入范围 |
 | [手机与平板开发](../mobile.md) | Android、iPhone/iPad、响应式布局与本机验证 |
 | [架构](architecture.md) | 存储分层与工作区身份 |
@@ -18,9 +18,9 @@ Tano 是一个以真实文件为内容源、让人与 Agent 在同一页工作�
 | [Workspace Contract v1](workspace-contract.md) | File、Object、View、稳定身份、来源和冲突规则 |
 | [产品规划：File-Native Workspace](product-strategy.md) | 产品定位、竞争边界、当前状态和交付顺序 |
 | [数据表](data-tables.md) | 独立记录、类型字段、视图、公式、CSV 与冲突恢复 |
-| [插件开发与工作区管理](../plugins.md) | 跨端插件、管理员规则、SDK 与开发工具 |
-| [插件 API 参考](../plugin-api.md) | SDK 方法、Vue/React 模板、兼容性与迁移 |
-| [插件目录与发布](../plugin-catalog.md) | 在线投稿审核、自托管目录、版本与撤回 |
+| [插件开发与工作区管理](plugins.md) | 跨端插件、管理员规则、SDK 与开发工具 |
+| [插件 API 参考](plugin-api.md) | SDK 方法、Vue/React 模板、兼容性与迁移 |
+| [插件目录与发布](plugin-catalog.md) | 在线投稿审核、自托管目录、版本与撤回 |
 | [日历与 Todo 同步](planning-sync.md) | 独立连接、账号配置与文件导入 |
 | [Agent 工作流](agent-workflow.md) | 本地 MCP 与条件写入 |
 | [Tano 助手](assistant.md) | BYOK 连接、参考文档、修改审阅与外部提案 |

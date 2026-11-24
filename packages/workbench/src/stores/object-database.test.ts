@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createPinia, disposePinia } from 'pinia';
-import { DemoAdapter } from '../adapter';
+import { DemoAdapter } from '../workspace/adapter';
 import { configureWorkbench } from '../runtime';
 import { useWorkspaceStore } from './workspace';
-import { newDataTable } from '../data-tables';
+import { newDataTable } from '../data-tables/data-tables';
 import { relationPath } from '@tano/protocol';
 let adapter: DemoAdapter, store: ReturnType<typeof useWorkspaceStore>, pinia: ReturnType<typeof createPinia>;
 beforeEach(async () => {

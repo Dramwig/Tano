@@ -82,10 +82,10 @@ export default function mount(api: TanoPluginViewApi) { createRoot(document.getE
   const sdk = relative(target, root).replaceAll('\\', '/') || '.';
   files.set('tsconfig.json', JSON.stringify({ compilerOptions: { target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler',
     strict: true, noEmit: true, skipLibCheck: true, jsx: 'react-jsx', lib: ['ES2022', 'DOM'], paths: {
-      '@tano/workbench/plugin-sdk': [`${sdk}/packages/workbench/src/plugin-sdk.ts`], '@tano/protocol': [`${sdk}/packages/protocol/src/index.ts`],
+      '@tano/workbench/plugin-sdk': [`${sdk}/packages/workbench/src/plugins/plugin-sdk.ts`], '@tano/protocol': [`${sdk}/packages/protocol/src/index.ts`],
     } }, include: ['**/*.ts', '**/*.tsx'] }, null, 2) + '\n');
   files.set('package.json', JSON.stringify({ name: id, private: true, version: '1.0.0', type: 'module', scripts: { check: 'tsc --noEmit' }, dependencies, devDependencies }, null, 2) + '\n');
-  files.set('README.md', `# ${id}\n\n${template} 模板，插件 API v1。\n\n在 Tano 仓库根目录运行 npm install 后，可使用 npm run plugin -- pack <此目录> 打包，或 npm run plugin -- watch <此目录> --origin <同页来源> 开发。\n\n在插件目录运行 npm install 和 npm run check 可独立检查类型。tsconfig.json 中的 SDK 路径指向创建模板时的 Tano 源码目录；移动工程后请更新这两个路径。\n\nmain.ts 在 Worker 中使用 SDK；ui/ 在隔离页面中显示数据，只通过 tanoView 消息通信。框架与样式打包进 JSON，不依赖 CDN。\n\n发布前核对权限、升级版本号、选择你自己的源码许可证；若更新框架依赖，请同步 THIRD_PARTY_NOTICES.txt。完整 API、兼容性和迁移说明见 Tano/docs/plugin-api.md。\n`);
+  files.set('README.md', `# ${id}\n\n${template} 模板，插件 API v1。\n\n在 Tano 仓库根目录运行 npm install 后，可使用 npm run plugin -- pack <此目录> 打包，或 npm run plugin -- watch <此目录> --origin <同页来源> 开发。\n\n在插件目录运行 npm install 和 npm run check 可独立检查类型。tsconfig.json 中的 SDK 路径指向创建模板时的 Tano 源码目录；移动工程后请更新这两个路径。\n\nmain.ts 在 Worker 中使用 SDK；ui/ 在隔离页面中显示数据，只通过 tanoView 消息通信。框架与样式打包进 JSON，不依赖 CDN。\n\n发布前核对权限、升级版本号、选择你自己的源码许可证；若更新框架依赖，请同步 THIRD_PARTY_NOTICES.txt。完整 API、兼容性和迁移说明见 Tano/docs/zh/plugin-api.md。\n`);
   await mkdir(dirname(target), { recursive: true });
   await mkdir(target); // Existing projects are never partially overwritten.
   if (ui) await mkdir(join(target, 'ui'));

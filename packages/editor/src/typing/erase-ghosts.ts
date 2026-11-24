@@ -1,4 +1,4 @@
-import { ownerWindow } from '../dom-realm';
+import { ownerWindow } from '../primitives/dom-realm';
 
 /* Erased text, drawn as an inert copy in the overlay layer: the letters
  * shrink toward the caret and fade. A new deletion interrupts the previous

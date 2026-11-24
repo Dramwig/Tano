@@ -27,7 +27,7 @@ export async function start(signal?: AbortSignal) {
     standalone ? import('./StandaloneFile.vue')
       : windowLabel === 'main' ? import('./WorkspaceShell.vue') : import('@tano/workbench'),
     native
-      ? import('@tano/workbench/components/DesktopWindow.vue')
+      ? import('@tano/workbench/desktop-window')
       : null,
     native
       ? { adapter: new NativeAdapter() }

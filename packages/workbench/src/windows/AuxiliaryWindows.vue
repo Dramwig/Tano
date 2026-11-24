@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, inject, watch } from 'vue';
-import { workbenchContextKey } from '../workbench-context';
-import { layoutPanes } from '../pane-layout';
-import AppTooltip from '../components/AppTooltip.vue';
-import WorkbenchSettings from '../components/WorkbenchSettings.vue';
-import DesktopWindow from '../components/DesktopWindow.vue';
-import WorkbenchPanes from '../components/WorkbenchPanes.vue';
+import { workbenchContextKey } from '../shell/workbench-context';
+import { layoutPanes } from '../shell/pane-layout';
+import AppTooltip from '../shell/components/AppTooltip.vue';
+import WorkbenchSettings from '../settings/components/WorkbenchSettings.vue';
+import DesktopWindow from '../shell/components/DesktopWindow.vue';
+import WorkbenchPanes from '../shell/components/WorkbenchPanes.vue';
 import WindowScope from './WindowScope.vue';
 
 const workbench = inject(workbenchContextKey);

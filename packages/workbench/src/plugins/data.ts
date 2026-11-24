@@ -1,5 +1,5 @@
 import { canonicalPluginJson, pluginRecord } from '@tano/protocol';
-import type { PluginPage, PluginPageOptions, PluginTextEdit, PluginEvent } from '../plugin-sdk';
+import type { PluginPage, PluginPageOptions, PluginTextEdit, PluginEvent } from './plugin-sdk';
 import { assistantHash } from '../assistant/hash';
 
 export function pluginQueryOptions(value: unknown, allowed: readonly string[]) {

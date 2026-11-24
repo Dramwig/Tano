@@ -31,7 +31,7 @@ vi.mock('@tano/workbench/plugins/native', () => ({
 vi.mock('@tano/workbench', () => ({ default: { name: 'Workbench' } }));
 vi.mock('./WorkspaceShell.vue', () => ({ default: { name: 'WorkspaceShell' } }));
 vi.mock('./StandaloneFile.vue', () => ({ default: { name: 'StandaloneFile' } }));
-vi.mock('@tano/workbench/components/DesktopWindow.vue', () => ({ default: {} }));
+vi.mock('@tano/workbench/desktop-window', () => ({ default: {} }));
 
 beforeEach(() => {
   app.mount.mockReset();

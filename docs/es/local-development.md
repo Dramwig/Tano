@@ -4,7 +4,7 @@
 
 Para configurar aplicaciones OAuth de proveedores externos, consulta la [guía de importación de cuentas](../account-import.md) (en inglés). Los pasos de compilación y verificación para móviles y tabletas están en la [guía de desarrollo móvil](../mobile.md) (en inglés).
 
-Instala Node.js 24.12 o posterior, npm y la versión estable de Rust. Para desarrollar la aplicación de escritorio, instala también los [requisitos de Tauri 2](https://v2.tauri.app/start/prerequisites/) de tu plataforma. En Windows se necesitan C++ Build Tools, Windows SDK y WebView2. Ejecuta `powershell -File scripts/check-desktop.ps1` para comprobar el entorno.
+Instala Node.js 24.12 o posterior, npm y la versión estable de Rust. Para desarrollar la aplicación de escritorio, instala también los [requisitos de Tauri 2](https://v2.tauri.app/start/prerequisites/) de tu plataforma. En Windows se necesitan C++ Build Tools, Windows SDK y WebView2. Ejecuta `powershell -File scripts/check/check-desktop.ps1` para comprobar el entorno.
 
 Desde la raíz del repositorio, ejecuta estos comandos.
 

@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import type { Workspace } from '@tano/protocol';
-import type { AttachmentService } from '../attachments';
+import type { AttachmentService } from '../files/attachments';
 import { PluginAttachmentReader } from './attachment-reader';
 
 const workspace = { id: 'ws', files: [{ id: 'slides', kind: 'file', path: 'deck.ppt', size: 20000, modified: 1 }] } as Workspace;

@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { workspaceEmojiGroups, builtinWorkspaceIcons } from '../../packages/workbench/src/workspace-icons.ts';
+import { workspaceEmojiGroups, builtinWorkspaceIcons } from '../../packages/workbench/src/workspace/workspace-icons.ts';
 
 const require = createRequire(import.meta.url);
 const english = require('emojibase-data/en/data.json');
@@ -13,7 +13,7 @@ const result = Object.fromEntries([
     return [icon.value, label[0].toUpperCase() + label.slice(1)];
   }),
 ]);
-const path = new URL('../../packages/workbench/src/locales/icon-labels-en.json', import.meta.url);
+const path = new URL('../../packages/workbench/src/i18n/locales/icon-labels-en.json', import.meta.url);
 const output = JSON.stringify(result, null, 2) + '\n';
 if (process.argv.includes('--check')) {
   if (readFileSync(path, 'utf8') !== output) throw new Error('English icon labels need regeneration');

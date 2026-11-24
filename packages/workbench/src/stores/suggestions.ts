@@ -2,13 +2,13 @@ import { computed, reactive } from 'vue';
 import { defineStore } from 'pinia';
 import type { AssistantPreview, AssistantProposal, DocumentSuggestion } from '@tano/protocol';
 import { suggestionReviewThread } from '@tano/protocol';
-import { applyCommentChange } from '../workspace-comments';
-import type { CommentChange } from '../workspace-comments';
+import { applyCommentChange } from '../workspace/workspace-comments';
+import type { CommentChange } from '../workspace/workspace-comments';
 import { useWorkspaceStore } from './workspace';
-import { recordHelpCompleted } from '../help-checklist';
-import { projectSuggestions, proposalSuggestions, suggestEdit } from '../document-suggestions';
-import { mergeSuggestions } from '../workspace-suggestions';
-import type { SuggestionState } from '../workspace-suggestions';
+import { recordHelpCompleted } from '../help/help-checklist';
+import { projectSuggestions, proposalSuggestions, suggestEdit } from '../documents/document-suggestions';
+import { mergeSuggestions } from '../workspace/workspace-suggestions';
+import type { SuggestionState } from '../workspace/workspace-suggestions';
 
 interface Session {
   scope: { id: string; path: string; epoch: number };

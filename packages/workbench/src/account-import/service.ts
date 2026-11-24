@@ -1,5 +1,5 @@
-import { prepareImport, importName, importLimits } from '../document-import';
-import type { PreparedImport } from '../document-import';
+import { prepareImport, importName, importLimits } from '../documents/document-import';
+import type { PreparedImport } from '../documents/document-import';
 import type { AccountImportService, ImportAccount, ImportAccountHost, ImportRequest, ImportResource } from './types';
 import { thriftFields, thriftField, thriftResult } from './thrift';
 

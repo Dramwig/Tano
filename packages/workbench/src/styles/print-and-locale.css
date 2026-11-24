@@ -1,0 +1,83 @@
+.suggestion-mode-badge { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; padding: 4px 7px 4px 10px; border-radius: 999px; color: var(--suggestion-color); background: color-mix(in srgb, var(--suggestion-color) 9%, var(--paper)); font-size: 12px; line-height: 20px; white-space: nowrap; }
+.suggestion-mode-badge button { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; color: inherit; background: transparent; opacity: .7; }
+.suggestion-mode-badge button:hover { background: var(--suggestion-bg); opacity: 1; }
+.suggestion-mode-badge button:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
+.suggestion-mode-badge button:disabled { opacity: .4; }
+/* Keep the table launcher anchored to its pane while the grid scrolls. */
+.data-table-assistant-page {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+@media print {
+  [data-tano-comment] { display: none !important; }
+  @page { margin: 16mm; }
+  html.document-printing,
+  html.document-printing body {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+    color-scheme: light !important;
+  }
+  html.document-printing body > :not(.document-print-root) { display: none !important; }
+  .document-print-root {
+    position: static;
+    display: block;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .document-print-root .document-export-content {
+    width: auto;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    overflow-wrap: anywhere;
+  }
+  .document-print-root .tano-prose {
+    min-width: 0;
+    min-height: 0;
+    overflow: visible;
+  }
+  .document-print-root :is(h1, h2, h3, h4, h5, h6) {
+    break-after: avoid;
+    break-inside: avoid;
+  }
+  .document-print-root :is(p, li) { orphans: 3; widows: 3; }
+  .document-print-root :is(img, svg, .tano-math-block, .tano-mermaid-preview) {
+    max-width: 100%;
+    height: auto;
+    break-inside: avoid;
+  }
+  .document-print-root img { max-height: 240mm; object-fit: contain; }
+  .document-print-root :is(.tano-table-viewport, .tableWrapper) {
+    display: block;
+    max-width: 100%;
+    overflow: visible;
+  }
+  .document-print-root table { table-layout: fixed; }
+  .document-print-root :is(th, td) { min-width: 0; overflow-wrap: anywhere; }
+  .document-print-root tr { break-inside: avoid; }
+  .document-print-root thead { display: table-header-group; }
+  .document-print-root pre { overflow: visible; }
+  .document-print-root .tano-tabs > .tano-enhanced-content { padding: 0; }
+  .document-print-root .document-print-panel-title { margin: 16px 0 8px; font-size: 1em; }
+  .document-print-root :is(.tano-enhanced, .tano-enhanced-content) {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+
+
+/* Regional glyph shapes for application chrome; editor font preferences remain explicit. */
+:root:lang(zh-TW) { --font-cjk-sans: 'PingFang TC', 'Microsoft JhengHei UI', 'Microsoft JhengHei', 'Noto Sans CJK TC', 'Noto Sans TC', sans-serif; }
+:root:lang(ja) { --font-cjk-sans: 'Hiragino Sans', 'Yu Gothic UI', 'Yu Gothic', Meiryo, 'Noto Sans CJK JP', 'Noto Sans JP', sans-serif; }

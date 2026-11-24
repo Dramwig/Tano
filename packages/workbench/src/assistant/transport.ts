@@ -1,11 +1,11 @@
-import { Channel, invoke } from '@tauri-apps/api/core';
+import { createNativeChannel, nativeInvoke as invoke } from '../platform/native-bridge';
 import { splitFrontmatter } from '@tano/editor/syntax';
 import { ASSISTANT_PROTOCOL_VERSION, parseAssistantSession, isDataTableFilePath, parseDataTable, parseAgentInbox } from '@tano/protocol';
 import { browserAgentInbox } from './browser-inbox';
 import { assistantClipboardSeparator } from './attachments';
 import type { AssistantConnection, AssistantRequest, AssistantSession, AssistantSource, AssistantTransport } from '@tano/protocol';
 import { assistantCopy, assistantRequestLocale, assistantSourceSeparator, assistantTaskPrompts, formatAssistantText } from './language';
-import { loadLocaleCatalogs } from '../locale-catalogs';
+import { loadLocaleCatalogs } from '../i18n/locale-catalogs';
 
 export function nativeAssistantTransport(): AssistantTransport {
   let compatible: Promise<void> | undefined;
@@ -61,7 +61,7 @@ export function nativeAssistantTransport(): AssistantTransport {
         delivered();
         void call('assistant_cancel', { requestId }).catch(() => {});
       };
-      const channel = new Channel<number[]>();
+      const channel = createNativeChannel<number[]>();
       channel.onmessage = bytes => {
         if (closed || signal.aborted || streamError) return;
         // Successful delivery ends with an ordered empty chunk.

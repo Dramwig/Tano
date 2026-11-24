@@ -33,9 +33,9 @@
 | --- | --- | --- |
 | 外部 Agent | [stdio MCP](../../apps/mcp/src/server.ts) 保留原四个工具，并增加稳定身份读取、提交提案、查询结果和规则读取 | 扩展到结构化对象提案；原四个直接写入工具仍由外部客户端负责授权 |
 | 文档保存 | [工作区 store](../../packages/workbench/src/stores/workspace.ts) 已提供草稿快照、串行审阅、三方合并及条件写入 | 持续验证真实材料和外部进程竞争 |
-| 合并与差异 | 已复用 [Markdown 三方合并](../../packages/markdown/src/index.ts) 与 [ChangeDiff](../../packages/workbench/src/components/ChangeDiff.vue)，实现状态、预览过期、去重和反向提案；文档建议支持逐项接受与拒绝 | 更复杂的语义冲突与跨结构依赖 |
-| Agent 界面 | [AssistantPanel](../../packages/workbench/src/components/AssistantPanel.vue) 已提供会话、连接、来源、提案和停止；原 MCP 面板保留 | 更多供应商协议与参数设置 |
-| 活动记录 | [原生活动读取](../../crates/tano-native/src/agent.rs) 展示 MCP 写入记录 | 内置助手的会话、运行、提案和写入结果关联 |
+| 合并与差异 | 已复用 [Markdown 三方合并](../../packages/markdown/src/index.ts) 与 [ChangeDiff](../../packages/workbench/src/assistant/components/ChangeDiff.vue)，实现状态、预览过期、去重和反向提案；文档建议支持逐项接受与拒绝 | 更复杂的语义冲突与跨结构依赖 |
+| Agent 界面 | [AssistantPanel](../../packages/workbench/src/assistant/components/AssistantPanel.vue) 已提供会话、连接、来源、提案和停止；原 MCP 面板保留 | 更多供应商协议与参数设置 |
+| 活动记录 | [原生活动读取](../../crates/tano-native/src/assistant/agent.rs) 展示 MCP 写入记录 | 内置助手的会话、运行、提案和写入结果关联 |
 | 批注与讨论 | 已提供「请助手参与讨论」与回复草稿入口；发布仍是用户动作 | 专门的助手作者与讨论运行关系 |
 | 原生连接 | 已提供 HTTP SSE、系统凭据库、取消、超时、用量与脱敏错误 | 真实模型质量评估、兼容服务实测 |
 | Cloud 边界 | [Cloud Extension API](../cloud-extension.md) 承载可选产品能力 | 后续注入托管模型和协作能力；本地助手独立可用 |
@@ -86,7 +86,7 @@ flowchart TD
 | `packages/workbench/src/assistant/engine.ts`、`structures.ts` | 不依赖 Vue 或 Tauri 的流解析、工具循环、预算、提案校验 |
 | `packages/workbench/src/assistant/`，新增 | 当前实例的会话 store、上下文构建、提案协调与 UI |
 | `packages/workbench/src/runtime.ts` | 注入可选助手能力；本地与 Cloud 可提供各自传输实现 |
-| `crates/tano-native/src/assistant.rs` | 模型传输、系统凭据、运行取消、记录持久化、外部提案互通及宿主操作校验 |
+| `crates/tano-native/src/assistant/mod.rs` | 模型传输、系统凭据、运行取消、记录持久化、外部提案互通及宿主操作校验 |
 | `apps/mcp/` | 维持现有外部接入；后续增加版本化的提案工具 |
 | `Tano-cloud` | 托管模型网关、账号配额、计费、远程执行与聊天集成 |
 

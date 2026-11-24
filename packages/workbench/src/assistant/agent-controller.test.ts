@@ -5,7 +5,7 @@ import { effectScope, nextTick } from 'vue';
 import { createHash } from 'node:crypto';
 import { emptyAgentInbox } from '@tano/protocol';
 import type { AssistantTransport } from '@tano/protocol';
-import { DemoAdapter } from '../adapter';
+import { DemoAdapter } from '../workspace/adapter';
 import { configureWorkbench } from '../runtime';
 import { useWorkspaceStore } from '../stores/workspace';
 import { useAgentInboxController } from './agent-controller';

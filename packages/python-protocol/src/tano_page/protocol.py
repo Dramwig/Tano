@@ -6,6 +6,7 @@ import re
 WORKSPACE_DATA_DIRECTORY = ".tano"
 OBJECT_DIRECTORY = ".tano/objects"
 WORKSPACE_CAPABILITY_PATH = ".tano/capabilities.json"
+WORKSPACE_SETTINGS_PATH = ".tano/settings.tano.json"
 WORKSPACE_RELATION_PATH = ".tano/relations.tano-relations.json"
 
 
@@ -27,7 +28,7 @@ def is_workspace_internal_path(path: str) -> bool:
 def is_workspace_data_path(path: str) -> bool:
     """Classify portable data paths, excluding workspace identity and app caches."""
     return (
-        path in (WORKSPACE_CAPABILITY_PATH, WORKSPACE_RELATION_PATH)
+        path in (WORKSPACE_CAPABILITY_PATH, WORKSPACE_SETTINGS_PATH, WORKSPACE_RELATION_PATH)
         or (path.startswith(".tano/conflicts/") and path.endswith(".json"))
         or (path.startswith(".tano/objects/") and path.endswith(".tano.json"))
     )

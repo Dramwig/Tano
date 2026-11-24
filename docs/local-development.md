@@ -4,7 +4,7 @@ For third-party account imports, see [OAuth application configuration](account-i
 
 English | [简体中文](zh/local-development.md) | [繁體中文](zh-tw/local-development.md) | [日本語](ja/local-development.md) | [Español](es/local-development.md) | [Deutsch](de/local-development.md) | [Documentation](README.md)
 
-Install Node.js 24.12+, npm, and Rust stable. Desktop development also needs the [Tauri 2 system prerequisites](https://v2.tauri.app/start/prerequisites/). On Windows, these include C++ Build Tools, the Windows SDK, and WebView2; `powershell -File scripts/check-desktop.ps1` checks the local setup.
+Install Node.js 24.12+, npm, and Rust stable. Desktop development also needs the [Tauri 2 system prerequisites](https://v2.tauri.app/start/prerequisites/). On Windows, these include C++ Build Tools, the Windows SDK, and WebView2; `powershell -File scripts/check/check-desktop.ps1` checks the local setup.
 
 From the repository root:
 

@@ -1,11 +1,14 @@
-import { Window as NativeWindow, monitorFromPoint } from '@tauri-apps/api/window';
-import { PhysicalPosition } from '@tauri-apps/api/dpi';
+import {
+  createNativePhysicalPosition,
+  getNativeWindowByLabel,
+  nativeMonitorFromPoint as monitorFromPoint,
+} from '../platform/native-bridge';
 import { SETTINGS_WIDTH, SETTINGS_HEIGHT, centeredSettingsPosition } from './position';
 import { markRaw, nextTick, onBeforeUnmount, shallowReactive, watch } from 'vue';
 import { createWindowContext, type WindowContext } from './context';
 import { openAuxWindow, type AuxWindow } from './aux-window';
 import type { useWorkspaceStore } from '../stores/workspace';
-import { layoutPanes } from '../pane-layout';
+import { layoutPanes } from '../shell/pane-layout';
 
 export interface AuxiliaryEntry {
   id: string;
@@ -79,13 +82,13 @@ export function useAuxiliaryWindows(store: ReturnType<typeof useWorkspaceStore>,
         }
       });
       if (kind === 'settings' && context.native) {
-        const parent = await NativeWindow.getByLabel('main');
+        const parent = await getNativeWindowByLabel('main');
         if (!parent) throw new Error('Main window is unavailable');
         const [position, size] = await Promise.all([parent.outerPosition(), parent.outerSize()]);
         const monitor = await monitorFromPoint(position.x + size.width / 2, position.y + size.height / 2);
         for (let pass = 0; pass < 2; pass++) {
           const childSize = await context.native.outerSize();
-          await context.native.setPosition(new PhysicalPosition(centeredSettingsPosition({ position, size }, childSize, monitor?.workArea)));
+          await context.native.setPosition(createNativePhysicalPosition(centeredSettingsPosition({ position, size }, childSize, monitor?.workArea)));
         }
       }
       prepareContent?.(entry);

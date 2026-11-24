@@ -3,11 +3,12 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { unzipSync } from 'fflate';
-import { workspaceEmojiGroups, workspaceBuiltinIconGroups } from '../../packages/workbench/src/workspace-icons.ts';
-import { workspaceEmojiCodepoint } from '../../packages/workbench/src/workspace-emoji-codepoint.ts';
+import { workspaceEmojiGroups, workspaceBuiltinIconGroups } from '../../packages/workbench/src/workspace/workspace-icons.ts';
+import { workspaceEmojiCodepoint } from '../../packages/workbench/src/workspace/workspace-emoji-codepoint.ts';
 
 const version = '17.0.3';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const sourceDir = join(root, 'packages/workbench/assets-src/twemoji');
 const target = join(root, 'packages/workbench/src/assets/emoji/twemoji');
 const prefix = `twemoji-${version}/`;
 const source = `https://github.com/jdecked/twemoji/tree/v${version}`;
@@ -28,15 +29,16 @@ const archive = new Uint8Array(await response.arrayBuffer());
 const files = unzipSync(archive, { filter: file => paths.has(file.name) });
 for (const path of paths) if (!files[path]) throw new Error(`Missing upstream asset: ${path}`);
 
+await mkdir(sourceDir, { recursive: true });
 await mkdir(target, { recursive: true });
 const assets = {};
 for (const id of codepoints) {
   const bytes = files[`${prefix}assets/svg/${id}.svg`];
-  await writeFile(join(target, `${id}.svg`), bytes);
+  await writeFile(join(sourceDir, `${id}.svg`), bytes);
   assets[`${id}.svg`] = createHash('sha256').update(bytes).digest('hex');
 }
 await writeFile(join(target, 'LICENSE-GRAPHICS'), files[`${prefix}LICENSE-GRAPHICS`]);
-await writeFile(join(target, 'manifest.json'), JSON.stringify({
+await writeFile(join(sourceDir, 'manifest.json'), JSON.stringify({
   version, source, archiveUrl,
   archiveSha256: createHash('sha256').update(archive).digest('hex'),
   assets,
@@ -64,7 +66,7 @@ Regenerate the catalog subset from the pinned release with
 To rebuild offline from retained SVGs, run \`npm run emoji:generate\`.
 \`npm run emoji:check\` verifies source hashes, catalog coordinates, and the
 generated image. Source archive and per-file SHA-256 hashes are recorded in
-[manifest.json](manifest.json). No SVG source artwork is changed.
+[manifest.json](../../../../assets-src/twemoji/manifest.json). No SVG source artwork is changed.
 `);
 console.log(`Bundled ${codepoints.length} Twemoji ${version} SVGs with license and source hashes.`);
 await import('./build-workspace-emoji-sprite.mjs');
