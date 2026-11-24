@@ -4,12 +4,12 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { save as chooseSave } from '@tauri-apps/plugin-dialog';
 import MarkdownEditor from '@tano/editor';
-import AppTooltip from '@tano/workbench/components/AppTooltip.vue';
+import AppTooltip from '@tano/workbench/app-tooltip';
 import { defaultCapabilities } from '@tano/editor/runtime';
 import { safeRemoteImage } from '@tano/protocol';
 import { t } from '@tano/workbench/i18n';
 import { matchesShortcut, readShortcutBindings, shortcutPreferenceKey } from '@tano/workbench/shortcuts';
-import DocumentPrintButton from '@tano/workbench/components/DocumentPrintButton.vue';
+import DocumentPrintButton from '@tano/workbench/document-print-button';
 import SourceEditor from '@tano/editor/source-editor';
 import { StandaloneSession, type Snapshot, type WriteResult } from './standalone-session';
 
