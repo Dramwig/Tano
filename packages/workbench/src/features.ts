@@ -1,29 +1,16 @@
 /// <reference types="vite/client" />
 // SPDX-License-Identifier: MIT
-export type FeatureChannel = 'dev' | 'stable';
-export type FeatureDefinition = { status: FeatureChannel; note: string };
-export function defineFeatures<const T extends Record<string, FeatureDefinition>>(
-  definitions: T,
-): T {
-  return definitions;
-}
-export function resolveFeatureChannel(env: {
-  DEV?: boolean;
-  VITE_TANO_CHANNEL?: string;
-}): FeatureChannel {
-  return env.DEV === true || env.VITE_TANO_CHANNEL === 'dev' ? 'dev' : 'stable';
-}
-export function createFeatureGate<T extends Record<string, FeatureDefinition>>(
-  definitions: T,
-  channel: FeatureChannel,
-) {
-  return {
-    isEnabled(id: keyof T): boolean {
-      if (!Object.hasOwn(definitions, id)) throw new Error(`Unknown feature: ${String(id)}`);
-      return definitions[id].status === 'stable' || channel === 'dev';
-    },
-  };
-}
+import {
+  createFeatureGate,
+  defineFeatures,
+  resolveFeatureChannel,
+  type FeatureChannel,
+  type FeatureDefinition,
+} from '@tano/protocol/features';
+
+export { createFeatureGate, defineFeatures, resolveFeatureChannel };
+export type { FeatureChannel, FeatureDefinition };
+
 export const features = defineFeatures({
   assistantClipboardAttachments: { status: 'dev', note: 'Paste local files and images into the assistant composer.' },
   markdownSpacingAutocomplete: { status: 'dev', note: 'Insert real Markdown spaces at mixed-script boundaries while editing.' },

@@ -1,4 +1,5 @@
-import type { WorkspaceObject, WorkspaceRelation, ReferenceIdentity } from './index';
+import type { ReferenceIdentity, WorkspaceObject } from './objects';
+import type { WorkspaceRelation } from './relations';
 import { validObjectType } from './object-types';
 import { referenceKey } from './relations';
 
