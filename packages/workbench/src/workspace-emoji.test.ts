@@ -8,6 +8,7 @@ import { workspaceEmojiSprite } from './workspace-emoji';
 import sprite from './assets/emoji/twemoji/sprite.json';
 
 const directory = new URL('./assets/emoji/twemoji/', import.meta.url);
+const sourceDirectory = new URL('../assets-src/twemoji/', import.meta.url);
 
 it('offers over 1800 unique base emoji across nine categories with Chinese and English search', () => {
   const icons = workspaceEmojiGroups.flatMap(group => group.icons);
@@ -28,7 +29,7 @@ it('uses one local sprite with a distinct in-bounds cell for every catalog emoji
     ...workspaceEmojiGroups.flatMap(group => group.icons.map(icon => icon.value)),
     ...[...workspaceEmojiGroups, ...workspaceBuiltinIconGroups].map(group => group.symbol),
   ];
-  const manifest = JSON.parse(readFileSync(new URL('manifest.json', directory), 'utf8'));
+  const manifest = JSON.parse(readFileSync(new URL('manifest.json', sourceDirectory), 'utf8'));
   const images = new Set<string>();
   const cells = new Set<string>();
   for (const emoji of emojis) {
@@ -41,7 +42,7 @@ it('uses one local sprite with a distinct in-bounds cell for every catalog emoji
     expect(cell[1]).toBeGreaterThanOrEqual(0); expect(cell[1]).toBeLessThan(sprite.rows);
     cells.add(cell.join(','));
     const filename = `${workspaceEmojiCodepoint(emoji)}.svg`;
-    const bytes = readFileSync(new URL(filename, directory));
+    const bytes = readFileSync(new URL(filename, sourceDirectory));
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(manifest.assets[filename]);
   }
   expect(images.size).toBe(1);
@@ -69,7 +70,7 @@ it('crops original colored artwork without neighbors at the first, middle, and l
   for (const index of [0, Math.floor(ids.length / 2), ids.length - 1]) {
     const id = ids[index];
     const [column, row] = (sprite.cells as Record<string, number[]>)[id];
-    const source = await sharp(readFileSync(new URL(`${id}.svg`, directory)), { density: 144 })
+    const source = await sharp(readFileSync(new URL(`${id}.svg`, sourceDirectory)), { density: 144 })
       .resize(sprite.artworkSize, sprite.artworkSize).ensureAlpha().raw().toBuffer();
     // Turn the CSS percentages back into source-pixel offsets, independently of the cell lookup.
     const emoji = id.split('-').map(part => String.fromCodePoint(parseInt(part, 16))).join('');

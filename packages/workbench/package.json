@@ -36,9 +36,6 @@
     "@tano/protocol": "0.13.0",
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-dialog": "^2.4.0",
-    "@types/d3-force": "^3.0.10",
-    "@types/papaparse": "^5.3.16",
-    "@types/turndown": "^5.0.6",
     "@xmldom/xmldom": "0.9.12",
     "cfb": "1.2.2",
     "d3-force": "^3.0.0",
@@ -61,6 +58,11 @@
     "unified": "^11.0.5",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@types/d3-force": "^3.0.10",
+    "@types/papaparse": "^5.3.16",
+    "@types/turndown": "^5.0.6"
   },
   "license": "MIT",
   "files": [
