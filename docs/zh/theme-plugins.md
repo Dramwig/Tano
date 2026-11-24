@@ -111,7 +111,7 @@ color、icons、layout、shape 均可选，至少声明一项；省略表示不�
 
 ## 稳定变量
 
-颜色 token 用于 colors.light/dark，形态 token 用于 shapes.tokens。完整白名单与校验为 [协议类型](../packages/protocol/src/appearance.ts)，变量名不带 `--`，
+颜色 token 用于 colors.light/dark，形态 token 用于 shapes.tokens。完整白名单与校验为 [协议类型](../../packages/protocol/src/appearance.ts)，变量名不带 `--`，
 宿主与隔离 UI 均暴露对应的 `--变量名`。声明与隔离 UI 已解析快照统一使用 `version: 2`，不提供旧版外观契约兼容。
 
 | 分类 | 变量 | 允许值 |
@@ -133,7 +133,7 @@ color、icons、layout、shape 均可选，至少声明一项；省略表示不�
 可在「编辑字体与字号」顶部开启「分别设置中英文字体」，独立选择中文和英文字体。英文字体仅应用于拉丁字符，中文及全角标点使用中文字体；关闭后恢复原有统一字体，单独设置仍保留。设置保存在当前设备，并应用于正文、页面内标题、源码和字体预览。
 主题作者须自行验证颜色对比；语法颜色名称是语义槽位，不要求实际颜色必须与名称相同。
 
-图标格式见 [文件图标主题](file-icon-themes.md)。`appearance.icons` 使用相同的 `FileIconTheme`，
+图标格式见 [文件图标主题](../file-icon-themes.md)。`appearance.icons` 使用相同的 `FileIconTheme`，
 最多 2048 个图标、每个最多 32 条路径、单路径最多 4096 字符、每张匹配表最多 8192 项。
 矢量图标使用 20×20 坐标、单色描边，允许 `currentColor`。
 彩色图标可在原定义上增加 `image`（`data:image/png;base64,...`），并按需提供 `lightImage`；
@@ -141,7 +141,7 @@ color、icons、layout、shape 均可选，至少声明一项；省略表示不�
 并非跟随操作系统模式。每张编码图片最多 44 KiB，必须包含 PNG 签名、IHDR、IDAT 与 IEND，尺寸限制为 1–128px；不接受远程资源、HTML、SVG 或脚本。
 图标主题可提供最多 4096 字符的 `notice`，保留第三方许可全文。原有单色主题无须修改。
 插件清单和完整包分别最多 4 MiB，工作区插件规则最多 16 MiB（包含当前及历史清单），所有限制均按 UTF-8 字节计算。
-例如 [Material 文件图标](../examples/plugins/material-icon-theme/README.md) 使用嵌入式彩色资源，作为按需导入的独立插件提供。
+例如 [Material 文件图标](../../examples/plugins/material-icon-theme/README.md) 使用嵌入式彩色资源，作为按需导入的独立插件提供。
 用户显式指定的文档 emoji/图标仍优先。
 
 ## 生命周期与保存
@@ -219,7 +219,7 @@ iframe 仍为 opaque origin，不能访问宿主 DOM；主题不授予网络、�
 文档可以展开到窗格宽度。打印不应用工作台结构 CSS。材质颜色来自当前配色，可与深浅色组合。
 新增结构应由宿主实现并加入契约；插件不注入任意 CSS 或替换编辑器 DOM。
 默认布局保持同页原样；停用布局插件时使用连续平面布局。
-完整布局插件示例见 [页面风格集](../examples/plugins/theme-layouts/README.md)。
+完整布局插件示例见 [页面风格集](../../examples/plugins/theme-layouts/README.md)。
 
 ### 磨砂玻璃
 
@@ -251,14 +251,14 @@ iframe 仍为 opaque origin，不能访问宿主 DOM；主题不授予网络、�
 
 ## 验收样例
 
-- [纸页](../examples/plugins/theme-paper/manifest.json)：暖纸色、衬线正文、小圆角。
-- [潮汐](../examples/plugins/theme-tide/manifest.json)：蓝色、圆润控件、柔和阴影。
-- [明晰](../examples/plugins/theme-contrast/manifest.json)：黑白高对比、直角、无阴影。
+- [纸页](../../examples/plugins/theme-paper/manifest.json)：暖纸色、衬线正文、小圆角。
+- [潮汐](../../examples/plugins/theme-tide/manifest.json)：蓝色、圆润控件、柔和阴影。
+- [明晰](../../examples/plugins/theme-contrast/manifest.json)：黑白高对比、直角、无阴影。
 
 每套均包含深浅两种配色、独立形态和一套原创 MIT 图标。验收应覆盖安装后手动选择、独立混搭、
 编辑器、目录展开、菜单弹窗、设置、系统模式变化、iframe 已打开时切换、停用/卸载/恢复、
 工作区切换、重载恢复及手机宽度。原生多窗口与设备平台验收仍遵循
-[本地验证](local-validation.md)，浏览器视口测试不能替代原生平台发布验收。
+[本地验证](../local-validation.md)，浏览器视口测试不能替代原生平台发布验收。
 
 文件图标 color 支持颜色 token 名（如 accent、syntax-blue）、十六进制颜色和 currentColor。语义引用渲染为宿主 CSS 变量，自动跟随配色与深浅模式；不允许任意 CSS 变量或 url()。
 

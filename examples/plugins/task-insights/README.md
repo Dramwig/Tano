@@ -26,7 +26,7 @@ npm run plugin -- pack examples/plugins/task-insights artifacts/task-insights.ta
 
 图表组件卸载时调用 [Chart.js `destroy`](https://www.chartjs.org/docs/latest/developers/api.html#destroy)，页面退出时调用 [React `root.unmount`](https://react.dev/reference/react-dom/client/createRoot#root-unmount)，同时释放状态订阅。宿主在停用插件、关闭视图或切换工作区时销毁对应隔离页面；停用或切换也终止 Worker。
 
-本仓库把 React、Chart.js 和类型包作为开发依赖，锁定在根 `package-lock.json`，不向宿主工作台注入 React。独立开发时在自己的项目安装这些依赖及 SDK 类型，并保留 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)；升级依赖时同步其中版本和许可。插件 SDK 与打包方式见[插件开发文档](../../../docs/plugins.md)。
+本仓库把 React、Chart.js 和类型包作为开发依赖，锁定在根 `package-lock.json`，不向宿主工作台注入 React。独立开发时在自己的项目安装这些依赖及 SDK 类型，并保留 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)；升级依赖时同步其中版本和许可。插件 SDK 与打包方式见[插件开发文档](../../../docs/zh/plugins.md)。
 
 ```sh
 npx vitest run examples/plugins/task-insights/plugin-task-insights.test.ts examples/plugins/task-insights/plugin-task-insights-package.test.mjs

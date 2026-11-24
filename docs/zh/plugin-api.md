@@ -2,7 +2,7 @@
 
 主题贡献、稳定样式变量、独立配色/图标选择及隔离页面同步见 [主题插件](theme-plugins.md)。
 
-本文覆盖 [SDK 类型定义](../packages/workbench/src/plugin-sdk.ts) 的全部公开方法。清单、运行限制和示例见 [插件开发](plugins.md)。SDK 只导入类型，运行时对象由宿主传给 `activate(tano)`。
+本文覆盖 [SDK 类型定义](../../packages/workbench/src/plugins/plugin-sdk.ts) 的全部公开方法。清单、运行限制和示例见 [插件开发](plugins.md)。SDK 只导入类型，运行时对象由宿主传给 `activate(tano)`。
 
 ## 创建与验证
 
@@ -61,7 +61,7 @@ npm run plugin -- verify ./artifacts/my-vue-plugin/my-vue-plugin-1.0.0.tano-plug
 
 除返回取消函数的回调注册方法外，下表方法都返回 Promise。失败用 `try/catch` 处理，不依赖完整中文消息作为稳定错误码，不自动重试可能已生效的写操作。文件 ID 独立于路径；切换工作区、停用、版本变化或权限撤销会销毁实例和取消待处理调用。每次操作重新核对当前用户权限。
 
-`PluginJson` 只能为普通 JSON 值；不要传 Vue Proxy、函数、循环引用、DOM、Map、BigInt 或凭据。包上限 4 MiB、本机状态 256 KiB、共享设置 32 KiB；日志最多 100 条。启动超时 15 秒，前台交互超时 30 秒，超时实例停止。具体约束见 [宿主](../packages/workbench/src/plugins/host.ts) 和 [格式协议](../packages/protocol/src/extensions.ts)。
+`PluginJson` 只能为普通 JSON 值；不要传 Vue Proxy、函数、循环引用、DOM、Map、BigInt 或凭据。包上限 4 MiB、本机状态 256 KiB、共享设置 32 KiB；日志最多 100 条。启动超时 15 秒，前台交互超时 30 秒，超时实例停止。具体约束见 [宿主](../../packages/workbench/src/plugins/host.ts) 和 [格式协议](../../packages/protocol/src/extensions.ts)。
 
 ## 上下文、命令与通知
 
@@ -110,7 +110,7 @@ await tano.documents.edit(fileId, [{ from: document.content.length,
 | `relations.add(relation)` | 完整关系，返回 void | `relations.write` |
 | `relations.remove(relation)` | 完整关系，返回 void | `relations.write` |
 
-对象 query 支持 query/type/archived/properties，最多 10 个标量属性等值条件，按 name/type/id 排序。关系支持 type/sourceId/targetId，按 ID 排序；两者支持 limit/cursor/direction。完整类型见 [对象协议](../packages/protocol/src/objects.ts)，对象内容保持为工作区 Markdown。
+对象 query 支持 query/type/archived/properties，最多 10 个标量属性等值条件，按 name/type/id 排序。关系支持 type/sourceId/targetId，按 ID 排序；两者支持 limit/cursor/direction。完整类型见 [对象协议](../../packages/protocol/src/objects.ts)，对象内容保持为工作区 Markdown。
 
 ## 状态、网络与连接
 

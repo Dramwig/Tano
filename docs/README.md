@@ -7,16 +7,16 @@ Tano is a File-Native Workspace: real files remain the source of truth while peo
 | Guide | Topic |
 | --- | --- |
 | [Local development](local-development.md) | Requirements, setup, and checks |
-| [Windows context menus](windows-shell.md) | Optional installer menus and standalone Markdown files |
+| [Windows context menus](zh/windows-shell.md) | Optional installer menus and standalone Markdown files |
 | [Third-party account imports](account-import.md) | Provider applications, credentials, and import limits |
 | [Mobile development](mobile.md) | Android, iPhone/iPad, adaptive layout and local device checks |
 | [Architecture](architecture.md) | Storage layers and workspace identity |
 | [Office attachment reading](office-preview.md) | Built-in read-only Excel, Word and PowerPoint previews and limits |
 | [Cloud Extension API](cloud-extension.md) | Optional overlay contract and repository boundary |
-| [Git and version history](git.md) | Local Git inspection and the cloud history boundary |
-| [Plugins](plugins.md) | Plugin SDK, shared workspace rules, permissions, and development tools |
-| [Plugin API reference](plugin-api.md) | SDK methods, Vue/React starters, compatibility, and migration |
-| [Plugin catalogs](plugin-catalog.md) | Reviewed releases, immutable packages, self-hosted catalogs, and withdrawals |
+| [Git and version history](zh/git.md) | Local Git inspection and the cloud history boundary |
+| [Plugins](zh/plugins.md) | Plugin SDK, shared workspace rules, permissions, and development tools |
+| [Plugin API reference](zh/plugin-api.md) | SDK methods, Vue/React starters, compatibility, and migration |
+| [Plugin catalogs](zh/plugin-catalog.md) | Reviewed releases, immutable packages, self-hosted catalogs, and withdrawals |
 | [Agent workflow](agent-workflow.md) | Local MCP server and conditional writes |
 | [Backup and recovery](backup-recovery.md) | What to back up and how recovery works |
 | [Builds and releases](releases.md) | Desktop packages and signed updates |

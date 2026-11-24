@@ -66,7 +66,7 @@ dispose();
 ## Plugin contributions
 
 Installable packages now declare `appearance: { version: 2, icons: [...] }` using
-this same data shape. See [Theme plugins](theme-plugins.md) for validation limits,
+this same data shape. See [Theme plugins](zh/theme-plugins.md) for validation limits,
 packing, separate color/icon selection, device-local persistence and lifecycle
 fallback. Only enabled contributions (and authorized executable versions) are
 registered. Disable, uninstall and workspace changes dispose the old icons;

@@ -6,16 +6,16 @@
 
 ## 安装和管理
 
-[演示文稿预览与 Word 文档预览](office-preview.md) 是随应用提供的系统插件，新旧工作区默认启用，
+[演示文稿预览与 Word 文档预览](../office-preview.md) 是随应用提供的系统插件，新旧工作区默认启用，
 无需安装或单独授权；只读工作区同样可用。系统插件使用应用内置代码，不能卸载、
 导入替换或独立升级，版本随应用更新。用户可在插件中心停用，设备偏好会保留。
 自动加载不会向工作区写入插件规则，也不会替第三方插件授予任何权限。
 
 内置 [Excalidraw 插件](excalidraw.md) 复用官方绘图组件，支持独立画布标签页、工作区 Markdown 自动保存与标准 Excalidraw 文件导入导出。
 
-[Material 文件图标](../examples/plugins/material-icon-theme/README.md) 是可按需导入的独立图标插件，
+[Material 文件图标](../../examples/plugins/material-icon-theme/README.md) 是可按需导入的独立图标插件，
 安装后在「设置 → 外观 → 文件与目录图标」选择；不需要脚本授权，资源离线可用。
-同样可以安装 [vscode-icons 文件图标](../examples/plugins/vscode-icons/README.md)，在外观设置中切换两套经典图标。
+同样可以安装 [vscode-icons 文件图标](../../examples/plugins/vscode-icons/README.md)，在外观设置中切换两套经典图标。
 
 打开「插件」，使用内置声明式插件，或导入 JSON 插件包。导入窗口提供「文档总览」代码示例。检查、导入以及打开工作区均不会替用户授权第三方插件代码。
 
@@ -204,7 +204,7 @@ const item = JSON.parse(response.body);
 
 本地代理重新验证工作区和磁盘插件规则，只连接经 DNS 校验并固定地址的公共 HTTPS 服务，不使用系统代理、Cookie、重定向或自动重试。全应用网络与 Git 查询共用最多 4 个并发槽，凭据管理保留独立余量；网络调用最多 15 秒。修改或撤销连接、改变插件规则、取消调用或切换工作区后，宿主停止等待并拒绝旧结果；远端已经执行的写入无法撤回。响应上限、方法、路径和凭据回显限制与在线代理一致。
 
-可安装的[GitHub 议题导入示例](../examples/plugins/github-importer/README.md)演示配置连接、读取预览、明确确认后创建 Markdown，保留同名已有文档。浏览器演示和移动端尚未接入本地持久凭据提供方；自有宿主可通过 `WorkbenchRuntime.plugins.connections` 接入。
+可安装的[GitHub 议题导入示例](../../examples/plugins/github-importer/README.md)演示配置连接、读取预览、明确确认后创建 Markdown，保留同名已有文档。浏览器演示和移动端尚未接入本地持久凭据提供方；自有宿主可通过 `WorkbenchRuntime.plugins.connections` 接入。
 
 在线宿主可提供 `PluginConnectionProvider.oauth`，在相同连接界面显示「使用账号登录」。管理员在部署环境配置服务来源、登录地址、客户端、固定回调地址及权限范围；插件和共享工作区规则不能指定这些内容。用户确认后点击「前往服务登录」，在外部浏览器中完成授权，再返回同页等待结果。在线工作区要求系统浏览器登录发起授权的同一同页账号。未配置服务的来源仍使用 API Key。
 
@@ -293,7 +293,7 @@ export default function mount(view: TanoPluginViewApi) {
 
 界面采用两层不透明来源的 sandbox iframe：外层只有固定启动代码并禁止子页面加载外部地址，内层运行包内代码。CSP 阻止直接网络请求、外部图片/CSS、表单提交、嵌套网络页面和 Worker；窗口、宿主存储、凭据及 Tauri IPC 不提供给界面。固定启动代码也禁用 WebRTC 构造器，避免其独立网络通道。正常表单事件可用于交互，界面允许用户导出本地生成的文件，实际联网必须交给 Worker 的已授权 SDK。[iframe sandbox](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/iframe#sandbox) 和 [CSP frame-src](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/frame-src) 提供浏览器边界；跨浏览器行为仍需实际验收。
 
-完整 Vue 示例见 [任务看板](../examples/plugins/kanban/README.md)，包含拖拽、键盘移动、错误反馈、工作区对象持久化和重启恢复。React 与 Chart.js 示例见 [任务统计](../examples/plugins/task-insights/README.md)，包含分页汇总、交互图表、筛选、实时刷新与资源清理。两个示例都使用工作区事件任务，内容没有移到插件缓存或数据库。
+完整 Vue 示例见 [任务看板](../../examples/plugins/kanban/README.md)，包含拖拽、键盘移动、错误反馈、工作区对象持久化和重启恢复。React 与 Chart.js 示例见 [任务统计](../../examples/plugins/task-insights/README.md)，包含分页汇总、交互图表、筛选、实时刷新与资源清理。两个示例都使用工作区事件任务，内容没有移到插件缓存或数据库。
 
 宿主可通过 `WorkbenchRuntime.plugins.native` 注册受信任系统集成，并接收工作区 ID 与取消信号。核心没有默认开放任意 shell/文件系统。浏览器缺少本机集成时会阻止依赖这些命令的插件。云端上传与后台授权分开：上传包不会执行服务端脚本。后台任务由在线宿主的持久队列统一调度。
 
@@ -317,7 +317,7 @@ export default async function run(tano: TanoAutomationApi, execution: PluginAuto
 
 后台文档写入复用版本比较与协作协调流程：独立修改合并，重叠修改或合并计算超过限额时保留插件冲突副本。宿主每次运行最多读取 64 MiB 数据，保存最近 32 个读基线；解释器还有独立的 CPU、内存和消息限额。服务连接使用授权者此前为该精确插件版本配置的凭据；密钥仍不进入脚本。第三方写入发生异常或执行结果不明时记录为结果不确定，不自动重试；取消不能撤销已经完成的操作。
 
-可打包的[工作区日报示例](../examples/plugins/daily-report/README.md)会分页读取任务和文档并创建独立 Markdown。在线工作区所有者可在「插件 → 后台自动化」新建任务，核对当前版本、权限及共享设置后单独授权，选择手动或按间隔执行。界面提供任务编辑、停用、运行记录、停止执行和删除；停用需取消「启用此后台任务」后保存。插件在此设备上是否运行不影响后台任务授权。宿主通过 `WorkbenchRuntime.plugins.automations` 接入任务服务，SDK 无权自行创建或授权任务。
+可打包的[工作区日报示例](../../examples/plugins/daily-report/README.md)会分页读取任务和文档并创建独立 Markdown。在线工作区所有者可在「插件 → 后台自动化」新建任务，核对当前版本、权限及共享设置后单独授权，选择手动或按间隔执行。界面提供任务编辑、停用、运行记录、停止执行和删除；停用需取消「启用此后台任务」后保存。插件在此设备上是否运行不影响后台任务授权。宿主通过 `WorkbenchRuntime.plugins.automations` 接入任务服务，SDK 无权自行创建或授权任务。
 
 任务保存同时比较任务版本和用户核对的规则摘要；刷新发现其他管理员的更改时重新核对，避免把旧表单覆盖到新配置。切换工作区、共享规则变化或失去管理权限会取消界面请求。手动提交中断后，设备应用状态保留提交标识，可「确认上次提交」而不重复入队；查看记录并主动结束本次确认后，下一次运行才使用新标识。这里只保存标识，不保存参数和凭据。本地桌面和浏览器演示没有后台任务服务。
 
@@ -339,4 +339,4 @@ Windows 上可运行 `npm run test:plugins:native`，使用真实 WebView2、生
 
 公共 MIT 核心包含 SDK、格式、管理界面、运行时和开发工具。账户、在线包分发、云端权限与部署位于独立私有产品仓库。插件作者仍需遵循各自依赖的许可义务。
 
-系统提供统一的“工作区同步”入口，内置 Git 后端；Git 状态、差异和历史也在系统面板中，写入与网络操作由系统管理。见[Git 多端同步](zh/git-sync.md)。
+系统提供统一的“工作区同步”入口，内置 Git 后端；Git 状态、差异和历史也在系统面板中，写入与网络操作由系统管理。见[Git 多端同步](git-sync.md)。
