@@ -7,10 +7,10 @@ fn document_commands_return_to_the_window_thread_while_a_scan_holds_the_session(
     let app = tauri::test::mock_builder()
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
-            read_document,
-            write_document,
-            create_folder,
-            read_attachment
+            ipc::documents::read_document,
+            ipc::documents::write_document,
+            ipc::documents::create_folder,
+            ipc::attachments::read_attachment
         ])
         .build(tauri::test::mock_context(tauri::test::noop_assets()))
         .unwrap();
