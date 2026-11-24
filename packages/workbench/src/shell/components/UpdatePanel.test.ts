@@ -128,3 +128,18 @@ it('checks, downloads, and installs through the compact control and blocks click
   await nextTick();
   expect(root.querySelector('[role="alert"]')?.textContent).toContain('冲突');
 });
+
+it('links unpackaged Microsoft Store builds to the Store listing instead of the EXE installer page', async () => {
+  Object.assign(state.status, {
+    channel: 'microsoft-store',
+    configured: false,
+    reason: '此版本由 Microsoft Store 管理更新',
+    downloadUrl: 'https://apps.microsoft.com/detail/9P3925SGRTB0',
+  });
+  await nextTick();
+  const button = root.querySelector<HTMLButtonElement>('button')!;
+  expect(button.textContent).toContain('打开 Microsoft Store');
+  button.click();
+  await nextTick();
+  expect(openExternalUrl).toHaveBeenCalledWith('https://apps.microsoft.com/detail/9P3925SGRTB0');
+});

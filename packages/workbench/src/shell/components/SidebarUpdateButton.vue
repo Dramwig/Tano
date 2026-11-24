@@ -133,7 +133,7 @@ const label = computed(() => {
       : t('正在下载更新');
   }
   if (props.state.phase === 'installing') return t('正在安装更新');
-  return t(props.state.phase === 'ready' ? '保存并安装 {0}' : '下载更新 {0}', [props.state.candidate?.version ?? '']);
+  return t(props.state.phase === 'ready' ? '保存并安装 {0}' : '下载更新 {0}', [props.state.candidate?.version ?? '']).trim();
 });
 const hint = computed(() => props.state.error ? `${label.value}：${props.state.error}` : props.state.phase === 'ready'
   ? `${label.value}。${t('更新包已验证。安装会先保存文档，然后退出并重新打开 Tano；离线协作草稿保留在本机。')}`
