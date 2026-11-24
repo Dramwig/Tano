@@ -559,9 +559,9 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
     <div v-if="assistant.demo" class="assistant-demo-label">{{ t('浏览器演示 · 模型响应为模拟数据') }}</div>
     <p v-if="notice" class="assistant-notice" role="status">{{ notice }}</p>
     <p v-if="assistant.error" class="assistant-error" role="alert">
-      <template v-if="assistant.error === assistantConnectionRequiredMessage && !assistant.demo && assistant.canConfigure !== false">请先<button
-        type="button" class="assistant-error-link" :aria-label="t('配置模型连接')"
-        @click="closePopover(); emit('openSettings')">配置</button>模型连接</template>
+      <button v-if="assistant.error === assistantConnectionRequiredMessage && !assistant.demo && assistant.canConfigure !== false"
+        type="button" class="assistant-error-link"
+        @click="closePopover(); emit('openSettings')">{{ t('配置模型连接') }}</button>
       <template v-else>{{ assistant.error }}</template>
     </p>
 

@@ -28,7 +28,7 @@ test('theme presets only bounce when the user switches presets', async ({ page }
     const row = button.closest('.theme-preset-quick-row');
     button.click();
     await new Promise(resolve => requestAnimationFrame(resolve));
-    return row.querySelector('[aria-pressed="true"]').getAnimations()
+    return row.querySelector('[aria-pressed="true"]').closest('.theme-preset-entry').getAnimations()
       .map(animation => animation.effect.getKeyframes().map(frame => frame.scale))
       .filter(scales => scales.some(scale => scale !== undefined));
   });

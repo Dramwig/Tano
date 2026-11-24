@@ -114,13 +114,16 @@ export function settleFileDragCard() {
   card = undefined;
   const { element, detach } = current;
   detach(); // stop following the pointer, keep the element for the fade
-  if (!canAnimate(element)) { element.remove(); return; }
+  const removeCard = () => element.remove();
+  if (!canAnimate(element)) {
+    removeCard();
+    return;
+  }
   // Fade in place; the tree's own motion moves the row into its slot.
   const animation = element.animate([
     { scale: '1', opacity: 1 },
     { scale: '0.96', opacity: 0 },
   ], { duration: MOTION_DURATION.exit + 40, easing: EASE_EXIT, fill: 'forwards' });
-  const done = () => element.remove();
-  animation.onfinish = done;
-  animation.oncancel = done;
+  animation.onfinish = removeCard;
+  animation.oncancel = removeCard;
 }

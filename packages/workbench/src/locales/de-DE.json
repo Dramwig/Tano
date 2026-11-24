@@ -3607,7 +3607,17 @@
   "行首 ··· 识别为代码块": "Führendes ··· als Codeblock erkennen",
   "空行 、 打开块菜单（仅可视化编辑）": "Blockmenü mit 、 öffnen (nur visuell)",
   "中文间隔号 · 映射为 `": "Mittelpunkt · in ` umwandeln",
-  "可视化编辑已内置列表续行和语法识别；以下选项让源码模式获得同样的输入体验。仅保存在当前设备。": "Der visuelle Editor unterstützt Listenfortsetzung und Syntaxerkennung. Diese Optionen ergänzen ähnliche Funktionen im Quelltextmodus. Nur auf diesem Gerät gespeichert.",
+  "一次最多添加 {0} 个附件": "Es können höchstens {0} Anhänge auf einmal hinzugefügt werden",
+  "可视化编辑内置列表续行与语法识别。设置仅保存在当前设备。": "Der visuelle Editor setzt Listen fort und erkennt Syntax automatisch. Die Einstellungen werden nur auf diesem Gerät gespeichert.",
+  "已发送的附件": "Gesendete Anhänge",
+  "当前无法添加附件": "Zurzeit können keine Anhänge hinzugefügt werden",
+  "当前模型连接无法接收此附件：{0}。请切换连接或移除附件。": "Die aktuelle Modellverbindung kann diesen Anhang nicht empfangen: {0}. Wechsle die Verbindung oder entferne den Anhang.",
+  "无法读取附件：{0}": "Anhang konnte nicht gelesen werden: {0}",
+  "移除附件：{0}": "Anhang entfernen: {0}",
+  "空格会写入 Markdown 原文。": "Leerzeichen werden im Markdown-Quelltext gespeichert.",
+  "输入时在中文与英文、数字、行内公式及引用之间补空格，写入 Markdown 原文。可视化与源码模式通用。": "Fügt beim Tippen Leerzeichen zwischen chinesischem Text und lateinischen Buchstaben, Zahlen, Inline-Formeln oder Verweisen ein. Sie werden im Markdown-Quelltext gespeichert. Gilt im visuellen Editor und im Quelltextmodus.",
+  "输入时自动补空格": "Leerzeichen beim Tippen automatisch einfügen",
+  "附件超过大小限制：{0}": "Der Anhang überschreitet die maximale Größe: {0}",
   "在 Markdown 语法位置把中文符号识别为语法，默认开启；全局映射会转换所有位置的符号，默认关闭。可视化与源码模式通用。": "Chinesische Zeichen an Markdown-Syntaxpositionen erkennen ist standardmäßig aktiviert. Globale Umwandlungen gelten überall und sind standardmäßig deaktiviert. Gilt für beide Bearbeitungsmodi.",
   "双链左右括号分别识别": "Öffnende und schließende Wiki-Link-Klammern getrennt erkennen"
 }
