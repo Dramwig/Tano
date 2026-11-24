@@ -714,7 +714,7 @@ const ownsFullscreenAssistant = computed(() => {
                     </button>
                     <div v-surface-motion="'App:5'"
                       v-if="menu && pane.id === store.activePaneId"
-                      ref="documentMenuElement"
+                      :ref="(el) => { context.documentMenuElement = (el as HTMLElement | null) ?? undefined; }"
                       class="dropdown compact-action-menu document-dropdown"
                       @keydown="documentMenuKeydown"
                     >
@@ -1371,7 +1371,7 @@ const ownsFullscreenAssistant = computed(() => {
                 <div v-if="panel === 'outline' && outlineSearchOpen" class="outline-search">
                   <Search :size="14" aria-hidden="true" />
                   <input
-                    ref="outlineSearchInput"
+                    :ref="(el) => { context.outlineSearchInput = (el as HTMLInputElement | null) ?? undefined; }"
                     v-model="outlineSearch"
                     type="search"
                     :aria-label="t('搜索当前文档标题')"
