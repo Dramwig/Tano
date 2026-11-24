@@ -154,7 +154,7 @@ export class LiquidGlassController {
   start() {
     this.reducedTransparency?.addEventListener?.('change', this.onResize);
     this.rootObserver.observe(this.doc.documentElement, { attributes: true,
-      attributeFilter: ['data-material', 'data-layout', 'data-theme', 'data-glass-wallpaper', 'class', 'style'] });
+      attributeFilter: ['data-material', 'data-layout', 'data-layout-theme', 'data-theme', 'data-glass-wallpaper', 'class', 'style'] });
     this.doc.defaultView?.addEventListener('resize', this.onResize);
     this.doc.addEventListener('scroll', this.onScroll, true);
     this.schedule();

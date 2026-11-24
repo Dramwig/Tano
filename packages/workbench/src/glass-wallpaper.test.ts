@@ -157,16 +157,38 @@ it('applies softness to both glass materials and preserves manual veil opacity',
   controller.select('builtin:dusk'); await flush();
   root.dataset.material = 'builtin:liquid';
   window.dispatchEvent(new Event(themeChangedEvent)); await flush();
-  expect(renderer.render).toHaveBeenLastCalledWith(expect.anything(), 50);
+  expect(renderer.render).toHaveBeenCalledTimes(1);
   controller.setVeilOpacity(65, true);
   controller.setSoftness(72, true); await flush();
   expect(renderer.render).toHaveBeenLastCalledWith(expect.anything(), 72);
   expect(root.style.getPropertyValue('--glass-wallpaper-veil')).toBe('65%');
   root.dataset.material = 'builtin:frost';
   window.dispatchEvent(new Event(themeChangedEvent)); await flush();
-  expect(renderer.render).toHaveBeenLastCalledWith(expect.anything(), 72);
+  expect(renderer.render).toHaveBeenCalledTimes(2);
   controller.dispose();
   delete root.dataset.material;
+});
+
+it('discards a prepared cloud wallpaper when the user switches away before it is ready', async () => {
+  const { store, renderer } = fakes();
+  const controller = new GlassWallpaperController('alice', localStorage, store, renderer);
+  await controller.load();
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  vi.mocked(renderer.render).mockImplementationOnce(async () => {
+    await gate;
+    return { url: 'blob:abandoned', samples: [] };
+  });
+  const applyLiquid = vi.fn();
+  const applyFlat = vi.fn();
+  controller.applyWithWallpaper('builtin:liquid', () => 'light', applyLiquid);
+  controller.applyWithWallpaper(undefined, () => 'light', applyFlat);
+  expect(applyFlat).toHaveBeenCalledOnce();
+  release();
+  await flush();
+  expect(applyLiquid).not.toHaveBeenCalled();
+  expect(revoked).toEqual(['blob:abandoned']);
+  controller.dispose();
 });
 
 it('restores a manual veil per mode without re-rendering the liquid bitmap', async () => {

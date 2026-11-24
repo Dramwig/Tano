@@ -142,11 +142,11 @@ const fixedDisplayMode = computed(() => fixedColorMode(props.appearance?.color))
 const frostActive = computed(() => !!glassWallpaper() && glassMaterials.includes(props.appearance?.active.material ?? ''));
 /** One row per appearance setting; the default option of the material row is the plain flat card. */
 const appearanceRows: Record<AppearanceKind, { label: string; description: string; defaultLabel: string }> = {
-  color: { label: '配色主题', description: '从内置项和当前工作区已启用的插件中选择，保存在当前设备。', defaultLabel: '同页默认' },
-  icons: { label: '文件与目录图标', description: '从内置项和当前工作区已启用的插件中选择，保存在当前设备。', defaultLabel: '同页默认' },
-  layout: { label: '布局风格', description: '选择页面结构：连续页面、卡片岛或纸感文稿，可与任意配色、图标混搭。', defaultLabel: '同页默认' },
+  color: { label: '配色主题', description: '从内置项和当前工作区已启用的插件中选择，保存在当前设备。', defaultLabel: '中性灰' },
+  icons: { label: '文件与目录图标', description: '从内置项和当前工作区已启用的插件中选择，保存在当前设备。', defaultLabel: '同页线框' },
+  layout: { label: '布局风格', description: '选择页面结构，可与任意配色、图标混搭。留边布局的内容区四周留空，侧栏融入背景。', defaultLabel: '贴边布局' },
   material: { label: '材质', description: '选择侧栏和页面的质感，可与任意布局、配色混搭。', defaultLabel: '平面' },
-  shape: { label: '形态与密度', description: '选择组件圆角、控件间距和阴影；字体在下方单独设置。', defaultLabel: '同页默认' },
+  shape: { label: '形态与密度', description: '选择组件圆角、控件间距和阴影；字体在下方单独设置。', defaultLabel: '标准圆角' },
 };
 function appearanceChoices(kind: AppearanceKind) {
   const appearance = props.appearance!;
@@ -427,7 +427,7 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('appearance', 'appearance-presets', '主题预设', '只应用预设声明的配色、图标、布局、材质和形态，未指定的项保持当前。', 'preset theme 一键 整套 预设 风格'),
   settingSearchEntry('appearance', 'appearance-color', '配色主题', '选择工作区主题插件。', 'theme 插件 风格 配色'),
   settingSearchEntry('appearance', 'appearance-icons', '文件与目录图标', '选择工作区图标主题。', 'icon 文件夹 图标 插件'),
-  settingSearchEntry('appearance', 'appearance-layout', '布局风格', '选择页面结构：连续页面、卡片岛或纸感文稿，可与任意配色、图标混搭。', 'layout islands paper 卡片岛 纸感 纸质 布局 结构'),
+  settingSearchEntry('appearance', 'appearance-layout', '布局风格', '选择页面结构，可与任意配色、图标混搭。留边布局的内容区四周留空，侧栏融入背景。', 'layout inset islands paper 贴边 留边 卡片岛 纸感 纸质 布局 结构'),
   settingSearchEntry('appearance', 'appearance-material', '材质', '选择侧栏和页面的质感，可与任意布局、配色混搭。', 'material glass frost frosted liquid translucent 材质 玻璃 磨砂 毛玻璃 液态 液态玻璃 透明 质感'),
   ...(frostActive.value ? [settingSearchEntry('appearance', 'appearance-wallpaper', '背景图片', '玻璃材质会透出这张图片，卡片透明度会按图片自动调整以保证文字清晰。图片只保存在这台设备。', 'wallpaper background image glass overlay opacity 壁纸 背景 图片 柔化 蒙版 不透明度')] : []),
   ] : []),
@@ -781,7 +781,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
                   <div>
                     <strong>{{ t(appearanceRows[kind].label) }}</strong>
                     <p>{{ t(appearanceRows[kind].description) }}</p>
-                    <p v-if="appearance.selected[kind] !== appearance.active[kind]" role="status">{{ t('原主题当前不可用，已使用同页默认；重新启用后会自动恢复。') }}</p>
+                    <p v-if="appearance.selected[kind] !== appearance.active[kind]" role="status">{{ t('原主题当前不可用，已使用「{0}」。原主题恢复可用后会自动切回。', [t(appearanceRows[kind].defaultLabel)]) }}</p>
                   </div>
                   <select :aria-label="t(appearanceRows[kind].label)"
                     :value="appearance.selected[kind]"

@@ -17,9 +17,12 @@ export const glassMaterials: readonly string[] = [glassMaterial, liquidGlassMate
 const materialSurface: Record<string, NonNullable<AppearancePreset['material']>> = { [glassMaterial]: 'frost', [liquidGlassMaterial]: 'liquid' };
 export type AppearanceKind = typeof appearanceKinds[number];
 export const builtinDefault = 'builtin:tano';
+export const insetLayout = 'builtin:inset';
+const cardIslandsLayout = { structure: 'islands', surface: 'flat', gap: 16, pageWidth: 960 } as const;
 export const builtinAppearance: AppearanceBuiltins = {
   layouts: [
-    { id: 'builtin:islands', label: '卡片岛', structure: 'islands', surface: 'flat', gap: 16, pageWidth: 960 },
+    { id: insetLayout, label: '留边布局', ...cardIslandsLayout },
+    { id: 'builtin:islands', label: '卡片岛', ...cardIslandsLayout },
     { id: 'builtin:paper', label: '纸感', structure: 'document', surface: 'paper', gap: 24, pageWidth: 800 },
   ],
   colors: builtinColors,

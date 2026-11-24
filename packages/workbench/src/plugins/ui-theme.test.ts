@@ -38,7 +38,7 @@ it('sends the initial theme before UI code, updates live without replacing busin
   }) });
   port.postMessage.mockClear(); applyAppearance();
   expect(port.postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'theme', theme: expect.objectContaining({
-    shape: { id: 'builtin:tano', label: '同页默认', tokens: {} },
+    shape: { id: 'builtin:tano', label: '标准圆角', tokens: {} },
   }) });
   expect(root.querySelector('iframe')).toBe(frame);
   port.postMessage.mockClear(); applyAppearance({ light: { paper: '#fff' } }, undefined, undefined, 'dark');

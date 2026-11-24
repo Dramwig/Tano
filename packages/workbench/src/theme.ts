@@ -44,7 +44,7 @@ export function resolvedTheme(): ResolvedTheme {
   const styles = getComputedStyle(document.documentElement);
   return { version: appearanceVersion, mode: document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light',
     ...(layout ? { layout: { ...layout } } : {}),
-    shape: shape ? { ...shape, tokens: { ...shape.tokens } } : { id: 'builtin:tano', label: '同页默认', tokens: {} },
+    shape: shape ? { ...shape, tokens: { ...shape.tokens } } : { id: 'builtin:tano', label: '标准圆角', tokens: {} },
     tokens: Object.fromEntries(themeTokenNames.map(key => [key, styles.getPropertyValue(`--${key}`).trim()]).filter(([, value]) => value)) };
 }
 
@@ -69,10 +69,14 @@ export function readThemePreference(principal = 'device'): ThemePreference {
   }
 }
 
+export function resolveThemeMode(preference: ThemePreference, color?: ColorAppearance): ResolvedTheme['mode'] {
+  const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ?? false;
+  return fixedColorMode(color) ?? (preference === 'system' ? (prefersDark ? 'dark' : 'light') : preference);
+}
+
 export function applyTheme(preference: ThemePreference): void {
   currentPreference = preference;
-  const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ?? false;
-  const resolved = fixedColorMode(appearance) ?? (preference === 'system' ? (prefersDark ? 'dark' : 'light') : preference);
+  const resolved = resolveThemeMode(preference, appearance);
   document.documentElement.dataset.theme = resolved;
   document.documentElement.style.colorScheme = resolved;
   for (const key of applied) document.documentElement.style.removeProperty(`--${key}`);
