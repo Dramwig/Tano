@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
-import { englishMessages } from './locales/en-US';
+import englishMessages from './locales/en-US.json';
 import { localeRegistry } from './locale';
 import { startupCopy } from './startup-copy';
 import type { PluralCatalog } from './plurals';

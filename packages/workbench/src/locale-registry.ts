@@ -9,7 +9,7 @@ export const localeRegistry = [
   },
   { value: 'en-US', label: 'English', language: 'English',
     startup: { opening: 'Opening Tano...', loading: 'Loading the workbench. The first launch may take a moment.', retry: 'Reload', failure: 'Unable to open Tano', timeout: 'Opening Tano timed out after 30 seconds. Please reload.' },
-    loadMessages: () => import('./locales/en-US').then(module => module.englishMessages),
+    loadMessages: () => import('./locales/en-US.json').then(module => module.default),
     loadIcons: () => import('./locales/icon-labels-en.json').then(module => module.default),
     loadAssistant: () => import('./assistant/locales/en-US.json').then(module => module.default),
     loadPlurals: () => import('./locales/plurals-en-US.json').then(module => module.default),

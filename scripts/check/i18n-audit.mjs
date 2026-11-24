@@ -86,14 +86,8 @@ export function auditI18n() {
   for (const directory of ['packages/workbench/src', 'apps/client/src']) walk(resolve(root, directory));
   // Include shared labels and generated UI data when reporting possible dead keys.
   for (const directory of ['packages/editor/src', 'packages/protocol/src']) walk(resolve(root, directory));
-  const english = readFileSync(resolve(root, 'packages/workbench/src/locales/en-US.ts'), 'utf8');
-  const catalog = {};
-  const catalogSource = ts.createSourceFile('en.ts', english, ts.ScriptTarget.Latest, true);
-  function catalogKeys(node) {
-    if (ts.isPropertyAssignment(node) && ts.isStringLiteralLike(node.name)) catalog[node.name.text] = true;
-    ts.forEachChild(node, catalogKeys);
-  }
-  catalogKeys(catalogSource);
+  const english = JSON.parse(readFileSync(resolve(root, 'packages/workbench/src/locales/en-US.json'), 'utf8'));
+  const catalog = Object.fromEntries(Object.keys(english).map(key => [key, true]));
   return { issues, missing: [...keys].filter(key => !(key in catalog)).sort(),
     unusedCandidates: Object.keys(catalog).filter(key => !literals.has(key)).sort(), usedKeys: keys.size };
 }

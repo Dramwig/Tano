@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import ts from 'typescript';
 import { parse } from '@vue/compiler-sfc';
 import { expect, it } from 'vitest';
-import { englishMessages } from './locales/en-US';
+import englishMessages from './locales/en-US.json';
 import { blockTypes, inlineTypes } from '@tano/editor/selection-context';
 import { featureDefinitions, selectionWrappingOptions, chineseInputOptions } from '@tano/editor/runtime';
 import { dataFieldTypes } from '@tano/protocol';
