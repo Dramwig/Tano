@@ -3,7 +3,7 @@ import { expect, it } from 'vitest';
 import { parsePluginPackage, canonicalPluginJson } from '@tano/protocol';
 import { documentOverviewPlugin } from './example';
 import { pluginWorkbenchViews, pluginWorkbenchCommands, pluginShortcutCommand, type PluginWorkbenchCommand } from './workbench';
-import { defaultShortcutBindings } from '../shortcuts';
+import { defaultShortcutBindings } from '../shell/shortcuts';
 
 const command: PluginWorkbenchCommand = { id: 'open', key: 'plugin:test:open', label: '打开', pluginId: 'test', pluginName: '测试插件', instanceId: 'one', shortcut: 'Alt+Shift+J' };
 

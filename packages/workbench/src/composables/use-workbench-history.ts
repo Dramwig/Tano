@@ -1,11 +1,11 @@
 import { ref, watch, type Ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { isMarkdown } from '@tano/protocol';
-import { native } from '../adapter';
-import { isTableTab, tableFileId, TABLES_TAB_ID } from '../data-tables';
-import { t } from '../i18n';
+import { native } from '../workspace/adapter';
+import { isTableTab, tableFileId, TABLES_TAB_ID } from '../data-tables/data-tables';
+import { t } from '../i18n/i18n';
 import type { useWorkspaceStore } from '../stores/workspace';
-import { pageRoutePath, parsePageRoute } from '../web-navigation';
+import { pageRoutePath, parsePageRoute } from '../shell/web-navigation';
 import type { WindowContext } from '../windows/context';
 
 export interface WorkbenchHistoryDeps {

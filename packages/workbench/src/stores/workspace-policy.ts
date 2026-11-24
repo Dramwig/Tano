@@ -13,14 +13,14 @@ import {
   loadCapabilities,
   saveCapabilityPatch,
   type CapabilityPatch,
-} from '../workspace-capabilities';
+} from '../workspace/workspace-capabilities';
 import {
   defaultWorkspaceSettings,
   loadWorkspaceSettings,
   saveWorkspaceSettingsPatch,
   type WorkspaceSettings,
   type WorkspaceSettingsPatch,
-} from '../workspace-settings';
+} from '../workspace/workspace-settings';
 
 export interface WorkspacePolicyDeps {
   adapter: WorkspaceAdapter;

@@ -2,7 +2,7 @@ import type { Ctx } from '@milkdown/kit/ctx';
 import { closeHistory } from '@milkdown/kit/prose/history';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { isElement } from '../primitives/dom-realm';
-import { completeProseSpacing, markTextSpacingInput } from '../auto-spacing';
+import { completeProseSpacing, markTextSpacingInput } from '../core/auto-spacing';
 import {
   chineseSyntaxEdit,
   mapChineseInput,
@@ -11,7 +11,7 @@ import {
   normalizeChineseInput,
   type EditorPreferences,
   type WorkspaceCapabilities,
-} from '../runtime';
+} from '../core/runtime';
 
 export interface ChineseInputControllerOptions {
   readonly: () => boolean;

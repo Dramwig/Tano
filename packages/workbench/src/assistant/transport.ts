@@ -5,7 +5,7 @@ import { browserAgentInbox } from './browser-inbox';
 import { assistantClipboardSeparator } from './attachments';
 import type { AssistantConnection, AssistantRequest, AssistantSession, AssistantSource, AssistantTransport } from '@tano/protocol';
 import { assistantCopy, assistantRequestLocale, assistantSourceSeparator, assistantTaskPrompts, formatAssistantText } from './language';
-import { loadLocaleCatalogs } from '../locale-catalogs';
+import { loadLocaleCatalogs } from '../i18n/locale-catalogs';
 
 export function nativeAssistantTransport(): AssistantTransport {
   let compatible: Promise<void> | undefined;

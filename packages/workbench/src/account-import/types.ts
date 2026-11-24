@@ -1,4 +1,4 @@
-import type { PreparedImport } from '../document-import';
+import type { PreparedImport } from '../documents/document-import';
 
 export type ImportProviderId = 'notion' | 'obsidian' | 'confluence' | 'evernote' | 'trello' | 'roam' | 'asana' | 'workflowy' | 'jira' | 'monday' | 'quip' | 'google-docs';
 export interface ImportAccount { id: string; provider: ImportProviderId; label: string; context: string }

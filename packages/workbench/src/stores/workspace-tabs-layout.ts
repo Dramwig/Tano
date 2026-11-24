@@ -7,19 +7,19 @@ import {
   type Workspace,
   type WorkspaceLayout,
 } from '@tano/protocol';
-import { CALENDAR_TAB_ID } from '../calendar';
-import type { createDataTableController } from '../data-table-controller';
-import { isTableTab, tableFileId, tableTabId } from '../data-tables';
-import { GRAPH_TAB_ID } from '../document-graph';
-import type { useDocumentIndex } from '../document-index';
-import { documentDirty as dirty, type OpenDocument } from '../document-session';
-import { recordHelpCompleted } from '../help-checklist';
-import { t } from '../i18n';
-import { dockLayout, layoutPanes, reconcileLayout, type PaneDrop } from '../pane-layout';
-import { bundledPluginCatalog } from '../plugin-catalog';
+import { CALENDAR_TAB_ID } from '../plans/calendar';
+import type { createDataTableController } from '../data-tables/data-table-controller';
+import { isTableTab, tableFileId, tableTabId } from '../data-tables/data-tables';
+import { GRAPH_TAB_ID } from '../documents/document-graph';
+import type { useDocumentIndex } from '../documents/document-index';
+import { documentDirty as dirty, type OpenDocument } from '../documents/document-session';
+import { recordHelpCompleted } from '../help/help-checklist';
+import { t } from '../i18n/i18n';
+import { dockLayout, layoutPanes, reconcileLayout, type PaneDrop } from '../shell/pane-layout';
+import { bundledPluginCatalog } from '../plugins/plugin-catalog';
 import { pluginViewKey, type PluginWorkbenchView } from '../plugins/workbench';
 import type { WorkbenchViewTab } from '../runtime';
-import { useTabNavigation } from '../tab-navigation';
+import { useTabNavigation } from '../tabs/tab-navigation';
 import {
   closeWindowLayout,
   moveTabToNewWindow,
@@ -27,8 +27,8 @@ import {
   newWindowLayout,
   type WindowLayouts,
 } from '../windows/layout';
-import { PLUGINS_TAB_ID, type InstalledObjectPlugin } from '../workspace-plugins';
-import type { WorkspaceViewRecord } from '../workspace-views';
+import { PLUGINS_TAB_ID, type InstalledObjectPlugin } from '../plugins/workspace-plugins';
+import type { WorkspaceViewRecord } from '../workspace/workspace-views';
 import type { DocumentTab } from './workspace';
 
 export interface WorkspaceTabsLayoutDeps {

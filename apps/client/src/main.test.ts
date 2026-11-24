@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import html from '../index.html?raw';
-import { startupSkeleton } from '../../../packages/workbench/src/startup-skeleton';
+import { startupSkeleton } from '../../../packages/workbench/src/shell/startup-skeleton';
 
 const start = vi.fn<(signal?: AbortSignal) => Promise<void>>();
 const nativeStartup = vi.hoisted(() => ({ native: false, reveal: vi.fn() }));

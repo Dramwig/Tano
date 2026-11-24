@@ -13,20 +13,20 @@ import {
   type ReferenceIdentity,
   type WorkspaceAdapter,
 } from '@tano/protocol';
-import { openWorkspaceEntry, workspaceEntryPath, type AttachmentService } from '../attachments';
-import type FileTree from '../components/FileTree.vue';
-import { tableFileId } from '../data-tables';
-import { appearanceText } from '../document-appearance';
-import { fileDragImage, settleFileDragCard } from '../file-drag-image';
-import { applyFileMovePreview, planFileMovePreview, type FileMovePreview } from '../file-move';
-import { selectTreeEntry, topLevelEntries } from '../file-selection';
-import { DROP_PLACEHOLDER_PREFIX } from '../file-tree-model';
-import { planFolderConversion, type FolderConversionKind } from '../folder-conversion';
-import { indexFolderHomes } from '../folder-home';
-import { t } from '../i18n';
-import { mobile } from '../platform';
+import { openWorkspaceEntry, workspaceEntryPath, type AttachmentService } from '../files/attachments';
+import type FileTree from '../files/components/FileTree.vue';
+import { tableFileId } from '../data-tables/data-tables';
+import { appearanceText } from '../documents/document-appearance';
+import { fileDragImage, settleFileDragCard } from '../files/file-drag-image';
+import { applyFileMovePreview, planFileMovePreview, type FileMovePreview } from '../files/file-move';
+import { selectTreeEntry, topLevelEntries } from '../files/file-selection';
+import { DROP_PLACEHOLDER_PREFIX } from '../files/file-tree-model';
+import { planFolderConversion, type FolderConversionKind } from '../files/folder-conversion';
+import { indexFolderHomes } from '../files/folder-home';
+import { t } from '../i18n/i18n';
+import { mobile } from '../platform/platform';
 import type { useWorkspaceStore } from '../stores/workspace';
-import { pageRouteUrl } from '../web-navigation';
+import { pageRouteUrl } from '../shell/web-navigation';
 import type { WindowContext } from '../windows/context';
 
 export type WorkspaceEntry = Pick<RecentWorkspace, 'id' | 'name' | 'path' | 'icon'>;

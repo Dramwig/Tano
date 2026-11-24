@@ -13,9 +13,9 @@ import type {
 
 const fixture = vi.hoisted(() => ({ adapter: null as WorkspaceAdapter | null }));
 import { useWorkspaceStore } from './workspace';
-import { GRAPH_TAB_ID } from '../document-graph';
-import { PLUGINS_TAB_ID } from '../workspace-plugins';
-import { CALENDAR_TAB_ID } from '../calendar';
+import { GRAPH_TAB_ID } from '../documents/document-graph';
+import { PLUGINS_TAB_ID } from '../plugins/workspace-plugins';
+import { CALENDAR_TAB_ID } from '../plans/calendar';
 
 const extensionView = { id: 'view:sample', label: '扩展', icon: markRaw({ render: () => null }) };
 

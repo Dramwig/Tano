@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createPinia, disposePinia, setActivePinia } from 'pinia';
 import type { AssistantProposal } from '@tano/protocol';
 import { parseAssistantSession } from '@tano/protocol';
-import { DemoAdapter } from '../adapter';
+import { DemoAdapter } from '../workspace/adapter';
 import { configureWorkbench } from '../runtime';
 import { useWorkspaceStore } from './workspace';
 

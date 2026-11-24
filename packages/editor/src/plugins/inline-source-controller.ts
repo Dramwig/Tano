@@ -18,25 +18,25 @@ import {
   type ReferenceTarget,
 } from '@tano/protocol';
 import { isElement, isHTMLElement, isMouseEvent } from '../primitives/dom-realm';
-import { activeInlineSourceRange } from '../inline-source-range';
+import { activeInlineSourceRange } from './inline-source-range';
 import {
   inlineSourceAttributes,
   inlineSourceCodec,
   reconcileInlineSource,
   type InlineSourceSession,
-} from '../inline-source-session';
-import { liveInlineSource, liveSource } from '../live-source';
-import { emptyFencedCodeBodyOffset } from '../live-markdown';
-import { sourceBlockStyle } from '../source-preview';
-import { sourceStyleRanges } from '../source-highlight';
-import { BlockRangeSelection } from '../block-selection';
-import { blockTree } from '../block-tree';
+} from './inline-source-session';
+import { liveInlineSource, liveSource } from '../markdown/live-source';
+import { emptyFencedCodeBodyOffset } from '../markdown/live-markdown';
+import { sourceBlockStyle } from '../views/source-preview';
+import { sourceStyleRanges } from './source-highlight';
+import { BlockRangeSelection } from './block-selection';
+import { blockTree } from './block-tree';
 import {
   selectionWrap,
   workspaceWrapping,
   type EditorPreferences,
   type WorkspaceCapabilities,
-} from '../runtime';
+} from '../core/runtime';
 import { linkMarkRange } from './link-panel-controller';
 
 export type BlockSourceGroup = { id: string; original: Fragment; initial: string };

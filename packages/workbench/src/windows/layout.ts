@@ -1,5 +1,5 @@
 import type { WorkspaceLayout } from '@tano/protocol';
-import { dockLayout, layoutPanes, mapLayout, newPane, type PaneDrop } from '../pane-layout';
+import { dockLayout, layoutPanes, mapLayout, newPane, type PaneDrop } from '../shell/pane-layout';
 
 export interface WindowLayout {
   layout: WorkspaceLayout;

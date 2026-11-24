@@ -5,7 +5,7 @@ import { UpdateController } from '../updates/controller';
 import type { UpdateCandidate, UpdateProgress, UpdateStatus } from '../updates/controller';
 import { useWorkspaceStore } from './workspace';
 import { useWorkbenchRuntime } from '../runtime';
-import { openExternalUrl } from '../attachments';
+import { openExternalUrl } from '../files/attachments';
 
 export const useUpdatesStore = defineStore('updates', () => {
   const workspace = useWorkspaceStore();

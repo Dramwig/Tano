@@ -1,4 +1,4 @@
-import type { ObjectRecord } from '../workspace-objects';
+import type { ObjectRecord } from '../objects/workspace-objects';
 export type SyncKind = 'calendar' | 'todo';
 export type ProviderId = 'google' | 'icloud' | 'feishu' | 'caldav' | 'todoist' | 'microsoft';
 export interface Account { id: string; provider: ProviderId; label: string; server: string }

@@ -4,30 +4,30 @@ import { isElement } from '@tano/editor/dom-realm';
 import { installInteractionMotion } from '@tano/editor/motion';
 import { defaultSelectionContext, type EditorSelectionContext } from '@tano/editor/selection-context';
 import type { FileEntry } from '@tano/protocol';
-import { native } from '../adapter';
+import { native } from '../workspace/adapter';
 import type { useAssistantStore } from '../assistant/store';
-import { editorPaletteCommands, type WorkbenchCommand } from '../command-palette';
-import type FileTree from '../components/FileTree.vue';
-import type PageSearch from '../components/PageSearch.vue';
-import { configuredEditorShortcuts } from '../configured-editor-shortcuts';
-import type { DocumentExportFormat } from '../document-export';
-import { t } from '../i18n';
-import { handleMobileVisibility } from '../mobile-lifecycle';
-import { mobile } from '../platform';
+import { editorPaletteCommands, type WorkbenchCommand } from '../shell/command-palette';
+import type FileTree from '../files/components/FileTree.vue';
+import type PageSearch from '../shell/components/PageSearch.vue';
+import { configuredEditorShortcuts } from '../shell/configured-editor-shortcuts';
+import type { DocumentExportFormat } from '../documents/document-export';
+import { t } from '../i18n/i18n';
+import { handleMobileVisibility } from '../shell/mobile-lifecycle';
+import { mobile } from '../platform/platform';
 import { pluginShortcutCommand } from '../plugins/workbench';
 import type { WorkbenchExtensions } from '../runtime';
-import type { SelectionTodoSession } from '../selection-todo';
-import type { SettingsPageId } from '../settings-window';
+import type { SelectionTodoSession } from '../plans/selection-todo';
+import type { SettingsPageId } from '../settings/settings-window';
 import {
   isSidebarToggleShortcut,
   matchesShortcut,
   type ShortcutBindings,
-} from '../shortcuts';
+} from '../shell/shortcuts';
 import type { useUpdatesStore } from '../stores/updates';
 import type { useWorkspaceStore } from '../stores/workspace';
 import type { WindowContext } from '../windows/context';
 import type { useAuxiliaryWindows } from '../windows/manager';
-import type { MarkdownEditor } from '../workbench-async-components';
+import type { MarkdownEditor } from '../shell/workbench-async-components';
 
 export interface WorkbenchShortcutsDeps {
   store: ReturnType<typeof useWorkspaceStore>;

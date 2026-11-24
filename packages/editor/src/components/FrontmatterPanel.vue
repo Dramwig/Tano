@@ -25,15 +25,15 @@ import {
   MOTION_DURATION,
   EASE_EXIT,
 } from '../primitives/motion';
-import { splitFrontmatter } from '../syntax';
+import { splitFrontmatter } from '../markdown/syntax';
 import {
   frontmatterProperties,
   frontmatterValue,
   removeFrontmatterProperty,
   updateFrontmatterProperty,
   type FrontmatterValueKind,
-} from '../frontmatter-display';
-import type { SlashTranslate } from '../slash-commands';
+} from '../markdown/frontmatter-display';
+import type { SlashTranslate } from '../plugins/slash-commands';
 
 const props = defineProps<{
   metadata: string;

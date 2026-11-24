@@ -3,7 +3,7 @@
  * opened with `window.open()` that shares this window's JavaScript realm, so
  * Vue can render straight into it without booting a second workbench.
  *
- * See docs/auxiliary-windows.md.
+ * See docs/zh/auxiliary-windows.md.
  */
 
 export type AuxWindowOptions = {

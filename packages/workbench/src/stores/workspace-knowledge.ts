@@ -31,23 +31,23 @@ import {
   type WorkspaceRelation,
   type WorkspaceViewDefinition,
 } from '@tano/protocol';
-import { contentReferences, referenceContext } from '../content-references';
-import type { useDocumentIndex } from '../document-index';
-import type { OpenDocument } from '../document-session';
+import { contentReferences, referenceContext } from '../objects/content-references';
+import type { useDocumentIndex } from '../documents/document-index';
+import type { OpenDocument } from '../documents/document-session';
 import {
   loadFileMetadata,
   markdownFileMetadata,
   saveFileMetadata,
   type FileMetadataState,
-} from '../file-metadata';
-import { recordHelpCompleted, recordHelpPlanEdit } from '../help-checklist';
-import { t } from '../i18n';
-import { previewTaskRepeat, repeatRelations, type RepeatPreview } from '../task-repeat';
-import { loadObjects, saveObject, type ObjectRecord } from '../workspace-objects';
-import type { InstalledObjectPlugin } from '../workspace-plugins';
-import { loadRelations, saveRelationChange, type RelationChange } from '../workspace-relations';
-import { loadTemplates, saveTemplate, type DocumentTemplate } from '../workspace-templates';
-import { loadWorkspaceViews, type WorkspaceViewRecord } from '../workspace-views';
+} from '../files/file-metadata';
+import { recordHelpCompleted, recordHelpPlanEdit } from '../help/help-checklist';
+import { t } from '../i18n/i18n';
+import { previewTaskRepeat, repeatRelations, type RepeatPreview } from '../plans/task-repeat';
+import { loadObjects, saveObject, type ObjectRecord } from '../objects/workspace-objects';
+import type { InstalledObjectPlugin } from '../plugins/workspace-plugins';
+import { loadRelations, saveRelationChange, type RelationChange } from '../objects/workspace-relations';
+import { loadTemplates, saveTemplate, type DocumentTemplate } from '../workspace/workspace-templates';
+import { loadWorkspaceViews, type WorkspaceViewRecord } from '../workspace/workspace-views';
 import type { Activity } from './workspace';
 
 export interface WorkspaceKnowledgeDeps {

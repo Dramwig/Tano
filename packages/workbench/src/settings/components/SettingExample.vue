@@ -1,0 +1,215 @@
+<script setup lang="ts">
+import { useWindowContext } from '../../windows/context';
+const { window } = useWindowContext();
+
+import { computed, ref } from 'vue';
+import { t } from '../../i18n/i18n';
+import { settingExamples, type SettingExampleKey } from '../setting-examples';
+import { defaultCapabilities } from '@tano/editor/runtime';
+import { defaultSelectionContext } from '@tano/editor/selection-context';
+import type { CommentThread } from '@tano/protocol';
+import { blockPreviewMarkdown } from '../../files/preview-samples';
+import RenderedExample from './RenderedExample.vue';
+import SourceExample from './SourceExample.vue';
+import ExampleViewport from './ExampleViewport.vue';
+import InputSpacingExample from './InputSpacingExample.vue';
+import EditorToolbar from '../../shell/components/EditorToolbar.vue';
+import DocumentTitle from '../../documents/components/DocumentTitle.vue';
+import DocumentOutline from '../../documents/components/DocumentOutline.vue';
+import DocumentDiscussionHeader from '../../documents/components/DocumentDiscussionHeader.vue';
+import CommentConversation from '../../documents/components/CommentConversation.vue';
+import InlineAssistantInput from '../../assistant/components/InlineAssistantInput.vue';
+const props = defineProps<{ setting: SettingExampleKey }>();
+const example = computed(() => settingExamples[props.setting]);
+const demoWidth = computed(() => {
+  const scene = example.value.scene;
+  if (scene === 'input-spacing') return 245;
+  return ['toolbar', 'outline', 'outline-position', 'discussion'].includes(scene) ? 420 : 320;
+});
+const mermaidReady = ref(false);
+const foldingDemo = ref<HTMLElement>();
+const foldingTravel = ref<number>();
+let foldingEditorsReady = 0;
+function prepareFoldingDemo() {
+  if (++foldingEditorsReady < 2 || !foldingDemo.value) return;
+  const expanded = foldingDemo.value.querySelector('.demo-before .tano-prose > h2:last-of-type');
+  const collapsed = foldingDemo.value.querySelector('.demo-after .tano-prose > h2:last-of-type');
+  if (expanded && collapsed) {
+    foldingTravel.value = collapsed.getBoundingClientRect().top - expanded.getBoundingClientRect().top;
+  }
+}
+const demoClasses = computed(() => ({
+  'demo-mermaid': example.value.scene === 'mermaid',
+  'demo-folding': example.value.scene === 'folding',
+  'demo-waiting': (example.value.scene === 'mermaid' && !mermaidReady.value)
+    || (example.value.scene === 'folding' && foldingTravel.value === undefined),
+}));
+const document = computed(() => `## ${t('海边两日游')}\n\n${t('沿着海岸散步。')}`);
+const outlineDocument = computed(() => `## ${t('行程')}\n\n${t('沿着海岸散步。')}\n\n## ${t('预算')}\n\n¥180`);
+const foldDocument = computed(() => `## ${t('出行清单')}\n\n${blockPreviewMarkdown('list')}\n\n## ${t('海边两日游')}`);
+const source = computed(() => blockPreviewMarkdown(example.value.scene === 'mermaid' ? 'mermaid' : 'math-block'));
+const propertyDocument = computed(() => `---\ntags: [${JSON.stringify(t('旅行'))}]\ncreated: 2026-11-06\n---\n\n${t('沿着海岸散步。')}`);
+const syntax = ['$$\nE = mc^2\n$$', '\\[\nE = mc^2\n\\]'];
+const listSource = computed(() => [`- ${t('相机')}\n- ${t('雨伞')}`, `* ${t('相机')}\n* ${t('雨伞')}`]);
+const toolbarContext = { ...defaultSelectionContext, level: 'inline' as const, textSelected: true, canStyleText: true };
+const noMath = { ...defaultCapabilities, features: { ...defaultCapabilities.features, math: false } };
+const outline = computed(() => [t('行程'), t('预算')].map((text, index) => ({ heading: { level: 2, text }, index })));
+const thread = computed<CommentThread>(() => ({ id: 'preview-thread', resolved: false, detached: false, createdAt: Date.now(),
+  messages: [{ id: 'preview-message', authorId: 'preview-author', authorName: 'Lin', body: t('记得带相机。'), createdAt: Date.now() }] }));
+const assistantAnchor = { element: window.document.createElement('div'), getRects: () => [], dispose: () => {} };
+const noRename = async () => {};
+const phaseLabels = computed(() => {
+  switch (example.value.scene) {
+    case 'mode': return [t('Markdown 源码'), t('可视化编辑')];
+    case 'copy': return [t('Markdown 源码'), t('富文本')];
+    case 'reveal': return [t('光标进入'), t('光标离开')];
+    case 'math': case 'mermaid': return [t('编辑源码'), t('同步预览')];
+    case 'folding': return [t('展开'), t('收起')];
+    case 'toolbar': return [t('随选区显示'), t('固定在顶部')];
+    case 'wrapping': return [t('选中文字'), t('输入符号')];
+    case 'math-syntax': return [t('美元符号'), t('反斜杠括号')];
+    case 'bullet': return ['- →', '* →'];
+    case 'outline-position': return [t('右侧'), t('左侧')];
+    case 'recognition': return [t('普通文本'), t('识别为公式')];
+    default: return [t('关闭时'), t('开启时')];
+  }
+});
+
+
+</script>
+<template>
+  <div class="setting-example" :data-setting="setting" :data-scene="example.scene">
+    <div class="setting-example-stage" aria-hidden="true" inert>
+      <div v-if="example.scene !== 'input-spacing'" class="demo-phase" :class="demoClasses"><span class="demo-before">{{ phaseLabels[0] }}</span><span class="demo-after">{{ phaseLabels[1] }}</span></div>
+      <!-- Mermaid renders asynchronously, so reserve the full viewport from the start. -->
+      <ExampleViewport :fit-height="example.scene !== 'mermaid'" :width="demoWidth" :gutter="example.scene === 'folding' ? 24 : 0">
+        <div v-if="example.scene === 'math' || example.scene === 'mermaid'" class="demo-crossfade" :class="demoClasses">
+          <RenderedExample class="demo-before" :markdown="source" :source="example.scene" :live-preview="false" />
+          <RenderedExample class="demo-after" :markdown="source" :source="example.scene" live-preview @mermaid-ready="mermaidReady = true" />
+        </div>
+        <div v-else-if="['mode', 'copy'].includes(example.scene)" class="demo-crossfade">
+          <SourceExample class="demo-before" :markdown="document" /><RenderedExample class="demo-after" :markdown="document" />
+        </div>
+        <div v-else-if="example.scene === 'reveal'" class="demo-crossfade">
+          <RenderedExample class="demo-before" :markdown="document" reveal /><RenderedExample class="demo-after" :markdown="document" />
+        </div>
+        <div v-else-if="example.scene === 'folding'" ref="foldingDemo" class="demo-crossfade" :class="demoClasses" :style="{ '--fold-travel': `${foldingTravel ?? 0}px` }">
+          <RenderedExample class="demo-before" :markdown="foldDocument" :folded="false" @editor-ready="prepareFoldingDemo" />
+          <RenderedExample class="demo-after" :markdown="foldDocument" folded @editor-ready="prepareFoldingDemo" />
+        </div>
+        <div v-else-if="example.scene === 'toolbar'" class="demo-crossfade">
+          <div class="demo-before actual-floating-toolbar"><RenderedExample :markdown="document" /><EditorToolbar :context="toolbarContext" compact compact-actions assistant /></div>
+          <div class="demo-after"><EditorToolbar :context="toolbarContext" compact-actions assistant /><RenderedExample :markdown="document" /></div>
+        </div>
+        <div v-else-if="example.scene === 'wrapping'" class="demo-crossfade">
+          <SourceExample class="demo-before" :markdown="t('海边两日游')" /><SourceExample class="demo-after" :markdown="`*${t('海边两日游')}*`" />
+        </div>
+        <div v-else-if="example.scene === 'spacing'" class="demo-crossfade">
+          <RenderedExample class="demo-before" markdown="用Tano记录2026年的旅行" :preferences="{ autoSpacing: false }" />
+          <RenderedExample class="demo-after" markdown="用Tano记录2026年的旅行" :preferences="{ autoSpacing: true }" />
+        </div>
+        <InputSpacingExample v-else-if="example.scene === 'input-spacing'" />
+        <div v-else-if="example.scene === 'ai'" class="demo-crossfade">
+          <div class="demo-before"><RenderedExample markdown="" /><kbd>space</kbd></div>
+          <div class="demo-after"><InlineAssistantInput embedded :anchor="assistantAnchor" state="input" :value="t('帮我整理旅行计划。')" /></div>
+        </div>
+        <div v-else-if="example.scene === 'recognition'" class="demo-crossfade">
+          <RenderedExample class="demo-before" markdown="$E = mc^2$" :capabilities="noMath" />
+          <RenderedExample class="demo-after" markdown="$E = mc^2$" />
+        </div>
+        <div v-else-if="example.scene === 'math-syntax'" class="demo-crossfade">
+          <div v-for="(text, index) in syntax" :key="index" :class="index ? 'demo-after' : 'demo-before'"><SourceExample :markdown="text" /><RenderedExample :markdown="text" /></div>
+        </div>
+        <div v-else-if="example.scene === 'bullet'" class="demo-crossfade">
+          <div v-for="(text, index) in listSource" :key="index" :class="index ? 'demo-after' : 'demo-before'"><SourceExample :markdown="text" /><RenderedExample :markdown="text" /></div>
+        </div>
+        <div v-else-if="['outline', 'outline-position'].includes(example.scene)" class="demo-crossfade">
+          <div class="demo-before actual-outline-page"><RenderedExample :markdown="outlineDocument" /><DocumentOutline v-if="example.scene === 'outline-position'" :items="outline" :active-index="0" has-headings /></div>
+          <div class="demo-after actual-outline-page"><DocumentOutline :items="outline" :active-index="0" has-headings /><RenderedExample :markdown="outlineDocument" /></div>
+        </div>
+        <div v-else-if="example.scene === 'properties'" class="demo-crossfade">
+          <RenderedExample class="demo-before" :markdown="propertyDocument" /><RenderedExample class="demo-after" :markdown="propertyDocument" properties />
+        </div>
+        <div v-else-if="example.scene === 'title'" class="demo-crossfade">
+          <RenderedExample class="demo-before" :markdown="t('沿着海岸散步。')" />
+          <div class="demo-after actual-page-title"><DocumentTitle workspace-id="preview" document-id="a00001" :path="`${t('海边两日游')}.md`" :files="[]" readonly :rename="noRename" /><RenderedExample :markdown="t('沿着海岸散步。')" /></div>
+        </div>
+        <div v-else-if="example.scene === 'discussion'" class="demo-crossfade">
+          <RenderedExample class="demo-before" :markdown="t('沿着海岸散步。')" />
+          <div class="demo-after"><RenderedExample :markdown="t('沿着海岸散步。')" /><div class="actual-discussion"><DocumentDiscussionHeader :count="1" /><CommentConversation :thread="thread" readonly :busy="false" author-id="preview-reader" author-name="Reader" /></div></div>
+        </div>
+      </ExampleViewport>
+    </div>
+    <span class="setting-example-description">{{ t(example.description) }}</span>
+  </div>
+</template>
+<style scoped>
+.setting-example { display: grid; gap: 8px; width: 224px; max-width: 100%; white-space: normal; }
+.setting-example-stage { padding: 8px; border-radius: 5px; background: var(--paper); color: var(--text); pointer-events: none; user-select: none; }
+.demo-phase { display: grid; margin-bottom: 6px; color: var(--muted); font-size: 10px; line-height: 14px; }
+.demo-phase > *, .demo-crossfade > .demo-before, .demo-crossfade > .demo-after { grid-area: 1 / 1; }
+.demo-before { animation: setting-demo-before 5s ease-in-out infinite; }
+.demo-after { animation: setting-demo-after 5s ease-in-out infinite; }
+@media (prefers-reduced-motion: no-preference) {
+  .demo-mermaid > .demo-before { animation-name: setting-demo-after; }
+  .demo-mermaid > .demo-after { animation-name: setting-demo-before; }
+  /* Paint one copy of each heading. Use the expanded editor for both transitions. */
+  .demo-folding > .demo-before { animation: demo-fold-expanded 5s step-end infinite; }
+  .demo-folding > .demo-after { animation: demo-fold-collapsed 5s step-end infinite; }
+  .demo-folding > .demo-before :deep(.tano-prose > ul) { animation: demo-fold-list 5s ease-in-out infinite; }
+  .demo-folding > .demo-before :deep(.tano-prose > h2:last-of-type) { animation: demo-fold-travel 5s ease-in-out infinite; }
+  .demo-folding > .demo-before :deep(:nth-child(1 of .tano-fold-toggle)) { animation: demo-fold-arrow 5s ease-in-out infinite; }
+  .demo-waiting > .demo-before, .demo-waiting > .demo-after,
+  .demo-folding.demo-waiting > .demo-before :deep(*) { animation-play-state: paused; }
+}
+@keyframes demo-fold-expanded { 0%, 90%, 100% { opacity: 0; } 25% { opacity: 1; } }
+@keyframes demo-fold-collapsed { 0%, 90%, 100% { opacity: 1; } 25% { opacity: 0; } }
+@keyframes demo-fold-list {
+  0%, 25%, 90%, 100% { clip-path: inset(0 0 100%); }
+  35%, 80% { clip-path: inset(0); }
+}
+@keyframes demo-fold-travel {
+  0%, 25%, 90%, 100% { translate: 0 var(--fold-travel); }
+  35%, 80% { translate: none; }
+}
+@keyframes demo-fold-arrow {
+  0%, 25%, 90%, 100% { rotate: -90deg; }
+  35%, 80% { rotate: none; }
+}
+.demo-crossfade.demo-folding.demo-waiting { visibility: hidden; }
+/* Anchor the moving arrow to its heading so editor layout cannot offset it twice. */
+.demo-folding :deep(.tano-fold-toggle ~ .tano-fold-toggle) { visibility: hidden; }
+.demo-folding :deep(.tano-prose > h2:last-of-type) { position: relative; }
+.demo-folding :deep(.tano-prose > h2:last-of-type)::before {
+  content: '▾';
+  position: absolute;
+  top: 0;
+  left: -10px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 100%;
+  color: var(--muted);
+  font: 400 14px/1 var(--font-ui);
+}
+.demo-crossfade { display: grid; }
+/* Include room for the asynchronously rendered diagram when measuring the source phase. */
+.demo-crossfade.demo-mermaid { min-height: 176px; align-content: start; }
+.actual-floating-toolbar { position: relative; padding-top: 54px; }
+.actual-floating-toolbar > :deep(.contextual-toolbar) { position: absolute; top: 0; left: 8px; }
+.actual-outline-page { display: flex; gap: 24px; align-items: flex-start; }
+.actual-outline-page > .rendered-example { flex: 1; min-width: 0; }
+.actual-outline-page > :deep(.outline) { flex: 0 0 120px; min-width: 0; }
+.actual-page-title > :deep(.document-title) { margin: 0 0 16px; padding: 0; }
+.actual-discussion { margin-top: 24px; }
+.setting-example-description { color: #eee; font-size: 12px; line-height: 1.5; }
+@keyframes setting-demo-before { 0%, 38%, 100% { opacity: 0; } 48%, 90% { opacity: 1; } }
+@keyframes setting-demo-after { 0%, 38%, 100% { opacity: 1; } 48%, 90% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .demo-before { display: none; animation: none; }
+  .demo-after { opacity: 1; animation: none; }
+  .demo-mermaid.demo-waiting > .demo-before { display: block; }
+  .demo-mermaid.demo-waiting > .demo-after { opacity: 0; }
+}
+@media (forced-colors: active) { .setting-example-description { color: CanvasText; } }
+</style>

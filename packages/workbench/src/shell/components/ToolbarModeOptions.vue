@@ -1,0 +1,31 @@
+<script setup lang="ts">
+import { t } from '../../i18n/i18n';
+import { PanelBottom, PanelLeft, PanelRight, Pin, TextCursorInput } from 'lucide-vue-next';
+import { toolbarModeLabels } from '../toolbar-preference';
+import type { ToolbarMode } from '../toolbar-preference';
+
+defineProps<{ mode: ToolbarMode }>();
+const emit = defineEmits<{ select: [mode: ToolbarMode] }>();
+// Keep the existing pin action at the very bottom of the selection menu.
+const options = [
+  { mode: 'selection', icon: TextCursorInput },
+  { mode: 'left', icon: PanelLeft },
+  { mode: 'right', icon: PanelRight },
+  { mode: 'bottom', icon: PanelBottom },
+  { mode: 'fixed', icon: Pin },
+] as const;
+</script>
+
+<template>
+  <template v-for="option in options" :key="option.mode">
+    <button
+      v-if="option.mode !== mode"
+      type="button"
+      :aria-label="t(toolbarModeLabels[option.mode])"
+      @mousedown.prevent
+      @click="emit('select', option.mode)"
+    >
+      <component :is="option.icon" :size="16" />{{ t(toolbarModeLabels[option.mode]) }}
+    </button>
+  </template>
+</template>

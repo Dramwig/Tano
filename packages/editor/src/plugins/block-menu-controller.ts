@@ -11,7 +11,7 @@ import {
 } from '@milkdown/kit/prose/state';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { isElement } from '../primitives/dom-realm';
-import { BlockRangeSelection } from '../block-selection';
+import { BlockRangeSelection } from './block-selection';
 import {
   blockTree,
   deleteBlock,
@@ -21,12 +21,12 @@ import {
   moveBlockSibling,
   moveBlocksTo,
   outdentBlock,
-} from '../block-tree';
-import { blockMenuStructure } from '../block-menu-structure';
-import { blockContentStart } from '../callout';
-import { commandEnabled } from '../document-model';
-import { normalizeCopyFormat, type CopyFormat, type WorkspaceCapabilities } from '../runtime';
-import { tableLineAction } from '../table-commands';
+} from './block-tree';
+import { blockMenuStructure } from './block-menu-structure';
+import { blockContentStart } from '../markdown/callout';
+import { commandEnabled } from '../core/document-model';
+import { normalizeCopyFormat, type CopyFormat, type WorkspaceCapabilities } from '../core/runtime';
+import { tableLineAction } from './table-commands';
 
 export interface BlockMenuState {
   index: number;

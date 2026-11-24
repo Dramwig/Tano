@@ -9,7 +9,7 @@ import type {
   DataView,
 } from '@tano/protocol';
 import { dataTableName, safeRemoteImage, validDataValue } from '@tano/protocol';
-import { t } from '../i18n';
+import { t } from '../i18n/i18n';
 import { useWorkspaceStore, type OpenDocument } from '../stores/workspace';
 import {
   canonicalFormula,
@@ -20,12 +20,12 @@ import {
   displayFormula,
   newDataView,
   tableItemId,
-} from '../data-tables';
-import { nativeAttachments, openExternalUrl } from '../attachments';
+} from '../data-tables/data-tables';
+import { nativeAttachments, openExternalUrl } from '../files/attachments';
 import { useWorkbenchRuntime } from '../runtime';
-import { startColumnPointerReorder, startRowPointerReorder } from '../data-table-drag-preview';
-import { appearanceText } from '../document-appearance';
-import { addDataField, createAndSelectDataOption } from '../data-table-properties';
+import { startColumnPointerReorder, startRowPointerReorder } from '../data-tables/data-table-drag-preview';
+import { appearanceText } from '../documents/document-appearance';
+import { addDataField, createAndSelectDataOption } from '../data-tables/data-table-properties';
 import { useWindowContext } from '../windows/context';
 import { useDataTableIo } from './use-data-table-io';
 

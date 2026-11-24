@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { createPinia, disposePinia } from 'pinia';
-import { DemoAdapter } from '../adapter';
+import { DemoAdapter } from '../workspace/adapter';
 import { configureWorkbench } from '../runtime';
 import { useWorkspaceStore } from './workspace';
 import { emptyFileMetadata, queryFileDatabase, fileMetadataPath } from '@tano/protocol';

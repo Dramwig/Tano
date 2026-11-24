@@ -12,14 +12,14 @@ import {
   tabDockIndex,
   tabDragMetaType,
   type TabDragMeta,
-} from '../tab-docking';
-import { paneDropAt as hitTestPane } from '../pane-docking';
-import { tabLayoutRect } from '../tab-layout';
-import { TAB_DRAG_IMAGE_INSET, tabDragImage, tabDragImageReady } from '../tab-drag-image';
-import { resolveTabRelease, type TabRelease } from '../tab-release';
-import { useTabReleaseMotion } from '../use-tab-release-motion';
-import type { PaneDrop } from '../pane-layout';
-import { nativeOs } from '../platform';
+} from '../tabs/tab-docking';
+import { paneDropAt as hitTestPane } from '../shell/pane-docking';
+import { tabLayoutRect } from '../tabs/tab-layout';
+import { TAB_DRAG_IMAGE_INSET, tabDragImage, tabDragImageReady } from '../tabs/tab-drag-image';
+import { resolveTabRelease, type TabRelease } from '../tabs/tab-release';
+import { useTabReleaseMotion } from '../tabs/use-tab-release-motion';
+import type { PaneDrop } from '../shell/pane-layout';
+import { nativeOs } from '../platform/platform';
 import type { DocumentTab, useWorkspaceStore } from '../stores/workspace';
 import type { useWindowContext } from '../windows/context';
 import type { TabLayoutMotion, TabSnapLayout } from './use-desktop-tab-layout';

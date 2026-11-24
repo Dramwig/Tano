@@ -3,13 +3,13 @@ import type { Pinia } from 'pinia';
 import type { Component } from 'vue';
 import type { WorkspaceAdapter, AssistantTransport, WorkspaceObject, Workspace, FileEntry } from '@tano/protocol';
 import type { EditorExtension } from '@tano/editor/extension';
-import type { ObjectStorage } from './workspace-objects';
-import type { CommentAuthor } from './workspace-comments';
-import type { AttachmentService } from './attachments';
-import type { SettingsPageId } from './settings-window';
+import type { ObjectStorage } from './objects/workspace-objects';
+import type { CommentAuthor } from './workspace/workspace-comments';
+import type { AttachmentService } from './files/attachments';
+import type { SettingsPageId } from './settings/settings-window';
 import type { PluginRuntimeServices } from './plugins/host';
 import type { ImportAccountHost } from './account-import/types';
-import type { DocumentSyncStatus } from './document-status';
+import type { DocumentSyncStatus } from './documents/document-status';
 
 export interface WorkbenchActions {
   closeMenus(): void;
@@ -73,7 +73,7 @@ export interface WorkbenchObjectDetailsProps {
   disabled: boolean;
 }
 export interface WorkbenchExtensions {
-  commands?: import('./command-palette').WorkbenchCommand[];
+  commands?: import('./shell/command-palette').WorkbenchCommand[];
   editing: EditingSession;
   /** Per-document persistence state, supplied by hosts that synchronize content. */
   documentStatus?(id: string): DocumentSyncStatus | undefined;

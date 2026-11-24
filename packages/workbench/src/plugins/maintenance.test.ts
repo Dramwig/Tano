@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it, vi } from 'vitest';
 import { ObjectTypeRegistry, canonicalPluginJson, parsePluginPackage, parsePluginPolicy, pluginCacheLimit, pluginPackageLimit } from '@tano/protocol';
-import { DemoAdapter } from '../adapter';
-import { WorkspacePluginHost } from '../workspace-plugins';
+import { DemoAdapter } from '../workspace/adapter';
+import { WorkspacePluginHost } from './workspace-plugins';
 import { PluginPackageCache } from './packages';
 import { PluginCacheStorage } from './cache-storage';
 import { PluginExecutionHost, type PluginRuntimeState } from './host';

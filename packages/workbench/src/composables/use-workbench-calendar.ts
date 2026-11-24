@@ -4,8 +4,8 @@ import {
   calendarPeriodTitle,
   shiftCalendarDate,
   type CalendarViewMode,
-} from '../calendar';
-import { t } from '../i18n';
+} from '../plans/calendar';
+import { t } from '../i18n/i18n';
 import type { usePlanStore } from '../stores/plans';
 import type { useWorkspaceStore } from '../stores/workspace';
 

@@ -17,14 +17,14 @@ import { inlineAssistantResult } from '../assistant/inline-result';
 import { assistantDiscussionPrompt } from '../assistant/language';
 import { assistantSourceRange } from '../assistant/source-selection';
 import type { useAssistantStore, useInlineAssistantStore } from '../assistant/store';
-import type { InlineAssistantAnchor } from '../components/InlineAssistantInput.vue';
-import { isTableTab, tableFileId } from '../data-tables';
-import { t } from '../i18n';
+import type { InlineAssistantAnchor } from '../assistant/components/InlineAssistantInput.vue';
+import { isTableTab, tableFileId } from '../data-tables/data-tables';
+import { t } from '../i18n/i18n';
 import type { WorkbenchExtensions } from '../runtime';
-import { selectionTodoSession, type SelectionTodoSession } from '../selection-todo';
+import { selectionTodoSession, type SelectionTodoSession } from '../plans/selection-todo';
 import type { OpenDocument, useWorkspaceStore } from '../stores/workspace';
 import type { WindowContext } from '../windows/context';
-import type { DocumentComments, MarkdownEditor, SourceEditor } from '../workbench-async-components';
+import type { DocumentComments, MarkdownEditor, SourceEditor } from '../shell/workbench-async-components';
 
 export type InlineAssistantTarget = {
   paneId: string;

@@ -4,8 +4,11 @@ use std::{fs, path::Path, time::UNIX_EPOCH};
 pub(crate) const MAX_DOCUMENT_BYTES: u64 = 8 * 1024 * 1024;
 pub(crate) const MAX_WORKSPACE_ENTRIES: usize = 20_000;
 
-#[path = "../storage_scan_cache.rs"]
+pub(crate) mod assets;
+pub(crate) mod mobile;
 pub(crate) mod scan_cache;
+pub(crate) mod search;
+pub(crate) mod session;
 
 mod identity;
 mod io;
@@ -119,11 +122,9 @@ use std::collections::{HashMap, HashSet};
 use std::io::Write;
 
 #[cfg(test)]
-#[path = "../storage_cross_volume_tests.rs"]
 mod cross_volume_tests;
 
 #[cfg(test)]
-#[path = "../storage_scan_cache_tests.rs"]
 mod scan_cache_tests;
 
 #[cfg(test)]

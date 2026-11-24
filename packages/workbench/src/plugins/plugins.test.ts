@@ -2,8 +2,8 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { reactive } from 'vue';
 import { ObjectTypeRegistry, bundledObjectPlugins, parsePluginPackage, parsePluginPolicy, parsePluginView, workspacePluginPath } from '@tano/protocol';
-import { DemoAdapter } from '../adapter';
-import { WorkspacePluginHost } from '../workspace-plugins';
+import { DemoAdapter } from '../workspace/adapter';
+import { WorkspacePluginHost } from './workspace-plugins';
 import { loadPluginPolicy, savePluginRule } from './policy';
 import { documentOverviewPlugin } from './example';
 import { PluginPackageCache } from './packages';

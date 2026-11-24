@@ -20,37 +20,37 @@ import {
   type WorkspaceSession,
 } from '@tano/protocol';
 import { createWorkspaceAssistantBridge } from '../assistant/workspace-bridge';
-import { createDataTableController } from '../data-table-controller';
-import { isTableTab, TABLES_TAB_ID, tableFileId, tableTabId } from '../data-tables';
-import { GRAPH_TAB_ID } from '../document-graph';
-import { useDocumentIndex } from '../document-index';
-import { createDocumentSession, documentDirty as dirty, type OpenDocument } from '../document-session';
-import { indexFolderHomes } from '../folder-home';
-import { recordHelpCompleted } from '../help-checklist';
-import { createHelpEditQueue } from '../help-edit-queue';
-import { optimisticFiles } from '../optimistic-files';
-import { layoutPanes, restoreLayout } from '../pane-layout';
+import { createDataTableController } from '../data-tables/data-table-controller';
+import { isTableTab, TABLES_TAB_ID, tableFileId, tableTabId } from '../data-tables/data-tables';
+import { GRAPH_TAB_ID } from '../documents/document-graph';
+import { useDocumentIndex } from '../documents/document-index';
+import { createDocumentSession, documentDirty as dirty, type OpenDocument } from '../documents/document-session';
+import { indexFolderHomes } from '../files/folder-home';
+import { recordHelpCompleted } from '../help/help-checklist';
+import { createHelpEditQueue } from '../help/help-edit-queue';
+import { optimisticFiles } from '../files/optimistic-files';
+import { layoutPanes, restoreLayout } from '../shell/pane-layout';
 import type { PluginWorkbenchView } from '../plugins/workbench';
 import { useWorkbenchRuntime, type WorkbenchViewTab } from '../runtime';
-import { SessionJournal } from '../session-journal';
+import { SessionJournal } from '../shell/session-journal';
 import {
   DocumentLayoutConflict,
   layoutDirty,
   loadDocumentLayout,
   saveDocumentLayout,
-} from '../workspace-document-layout';
-import { WorkspaceLifecycle } from '../workspace-lifecycle';
-import { PLUGINS_TAB_ID, type InstalledObjectPlugin } from '../workspace-plugins';
-import { readStartupWorkspace, rememberStartupWorkspace } from '../workspace-startup';
-import type { WorkspaceViewRecord } from '../workspace-views';
-import { addWorkspaceWelcome, workspaceWelcomePath } from '../workspace-welcome';
+} from '../workspace/workspace-document-layout';
+import { WorkspaceLifecycle } from '../workspace/workspace-lifecycle';
+import { PLUGINS_TAB_ID, type InstalledObjectPlugin } from '../plugins/workspace-plugins';
+import { readStartupWorkspace, rememberStartupWorkspace } from '../workspace/workspace-startup';
+import type { WorkspaceViewRecord } from '../workspace/workspace-views';
+import { addWorkspaceWelcome, workspaceWelcomePath } from '../workspace/workspace-welcome';
 import { createWorkspaceFileOps } from './workspace-file-ops';
 import { createWorkspaceKnowledge } from './workspace-knowledge';
 import { createWorkspacePluginsState } from './workspace-plugins-state';
 import { createWorkspacePolicy } from './workspace-policy';
 import { createWorkspaceTabsLayout } from './workspace-tabs-layout';
 
-export type { OpenDocument } from '../document-session';
+export type { OpenDocument } from '../documents/document-session';
 
 export interface DocumentTab {
   id: string;

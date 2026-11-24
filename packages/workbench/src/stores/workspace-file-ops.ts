@@ -10,19 +10,19 @@ import {
   type Workspace,
   type WorkspaceAdapter,
 } from '@tano/protocol';
-import type { createDataTableController } from '../data-table-controller';
-import { isTableTab, tableFileId, tableTabId } from '../data-tables';
-import type { PreparedImport } from '../document-import';
-import type { useDocumentIndex } from '../document-index';
-import { documentDirty as dirty, type OpenDocument } from '../document-session';
-import { planFileMove } from '../file-move';
-import { topLevelEntries } from '../file-selection';
-import { convertFolderDocument, type FolderConversionKind } from '../folder-conversion';
-import { recordHelpCompleted } from '../help-checklist';
-import { t } from '../i18n';
-import type { FileMutationPreview, optimisticFiles } from '../optimistic-files';
-import { writeWorkspaceImport } from '../workspace-import';
-import type { WorkspaceSettings } from '../workspace-settings';
+import type { createDataTableController } from '../data-tables/data-table-controller';
+import { isTableTab, tableFileId, tableTabId } from '../data-tables/data-tables';
+import type { PreparedImport } from '../documents/document-import';
+import type { useDocumentIndex } from '../documents/document-index';
+import { documentDirty as dirty, type OpenDocument } from '../documents/document-session';
+import { planFileMove } from '../files/file-move';
+import { topLevelEntries } from '../files/file-selection';
+import { convertFolderDocument, type FolderConversionKind } from '../files/folder-conversion';
+import { recordHelpCompleted } from '../help/help-checklist';
+import { t } from '../i18n/i18n';
+import type { FileMutationPreview, optimisticFiles } from '../files/optimistic-files';
+import { writeWorkspaceImport } from '../workspace/workspace-import';
+import type { WorkspaceSettings } from '../workspace/workspace-settings';
 import type { Activity } from './workspace';
 
 export interface WorkspaceFileOpsDeps {

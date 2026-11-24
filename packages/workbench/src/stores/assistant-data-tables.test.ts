@@ -4,7 +4,7 @@ import { createPinia, disposePinia, setActivePinia } from 'pinia';
 import { webcrypto } from 'node:crypto';
 import { parseDataTable } from '@tano/protocol';
 import type { AssistantProposal, AssistantTransport } from '@tano/protocol';
-import { DemoAdapter } from '../adapter';
+import { DemoAdapter } from '../workspace/adapter';
 import { configureWorkbench, useWorkbenchRuntime } from '../runtime';
 import { proposalFromTool } from '../assistant/engine';
 import { useAssistantStore } from '../assistant/store';

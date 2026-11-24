@@ -8,18 +8,18 @@ import {
   type ReferenceTarget,
 } from '@tano/protocol';
 import { setSurfaceVisible } from '../primitives/surface-motion';
-import { renderHtml } from '../html-render';
-import { mathView } from '../math';
-import { sourcePreviewView } from '../source-preview';
-import { enhancedViews } from '../enhanced-views';
-import { mermaidView, runtimeViews } from '../runtime-views';
-import { referenceViews } from '../reference-views';
-import { virtualBlockViews } from '../rich-viewport';
-import { TableViewport } from '../table-viewport';
-import { positionAnchoredPanel, type PanelSide } from '../panel-position';
-import { activateEditorPanel, announceEditorPanel, createEditorPanel, onOtherEditorPanel } from '../editor-panel';
-import type { createMermaidRenderer } from '../mermaid-preview';
-import type { EditorPreferences, WorkspaceCapabilities } from '../runtime';
+import { renderHtml } from '../views/html-render';
+import { mathView } from '../markdown/math';
+import { sourcePreviewView } from '../views/source-preview';
+import { enhancedViews } from '../views/enhanced-views';
+import { mermaidView, runtimeViews } from '../views/runtime-views';
+import { referenceViews } from '../views/reference-views';
+import { virtualBlockViews } from '../views/rich-viewport';
+import { TableViewport } from '../views/table-viewport';
+import { positionAnchoredPanel, type PanelSide } from '../core/panel-position';
+import { activateEditorPanel, announceEditorPanel, createEditorPanel, onOtherEditorPanel } from '../core/editor-panel';
+import type { createMermaidRenderer } from '../views/mermaid-preview';
+import type { EditorPreferences, WorkspaceCapabilities } from '../core/runtime';
 import type { LocalSourceState } from './inline-source-controller';
 import { unavailableImageLabel } from './editor-clipboard';
 

@@ -3,11 +3,11 @@ import { defineStore } from 'pinia';
 import { parseObject, validateObjectProperties } from '@tano/protocol';
 import type { WorkspaceObject } from '@tano/protocol';
 import { useWorkbenchRuntime } from '../runtime';
-import { BrowserPersonalPlans, NativePersonalPlans, PERSONAL_PLANS_KEY } from '../personal-plans';
-import { loadObjects, saveObject } from '../workspace-objects';
-import type { ObjectRecord } from '../workspace-objects';
+import { BrowserPersonalPlans, NativePersonalPlans, PERSONAL_PLANS_KEY } from '../plans/personal-plans';
+import { loadObjects, saveObject } from '../objects/workspace-objects';
+import type { ObjectRecord } from '../objects/workspace-objects';
 import { useWorkspaceStore } from './workspace';
-import { recordHelpPlanEdit } from '../help-checklist';
+import { recordHelpPlanEdit } from '../help/help-checklist';
 
 export type PlanScope = 'workspace' | 'personal';
 export const usePlanStore = defineStore('plans', () => {

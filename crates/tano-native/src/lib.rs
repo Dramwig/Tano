@@ -1,56 +1,48 @@
+#[path = "assistant/agent.rs"]
 mod agent;
-mod assets;
 #[cfg(desktop)]
 mod assistant;
-#[cfg(desktop)]
-mod assistant_cli;
+#[path = "assistant/files.rs"]
 mod assistant_files;
-#[cfg(desktop)]
-pub mod auxiliary_windows;
 pub mod error;
-pub mod identity_manifest;
 #[cfg(desktop)]
-mod import_connections;
-#[cfg(desktop)]
-mod import_oauth;
+mod import;
 mod ipc;
-mod mobile_storage;
-#[cfg(test)]
-mod performance;
-mod personal_plans;
+mod plans;
 #[cfg(desktop)]
-mod plan_connections;
-#[cfg(desktop)]
-mod plugin_connection_http;
-#[cfg(desktop)]
-mod plugin_connection_types;
-#[cfg(desktop)]
-mod plugin_connection_vault;
-#[cfg(desktop)]
-mod plugin_connections;
-#[cfg(desktop)]
-mod plugin_native;
-#[cfg(desktop)]
-mod plugin_oauth;
-#[cfg(desktop)]
-mod plugin_oauth_loopback;
-#[cfg(desktop)]
-mod plugin_oauth_types;
-mod printing;
-mod search;
-mod session_storage;
+mod plugins;
 pub mod storage;
-#[cfg(windows)]
-mod tab_drag_preview;
-mod updates;
-#[cfg(desktop)]
-mod workspace_git;
-mod workspace_identity;
-mod workspace_lock;
 #[cfg(test)]
-mod workspace_responsiveness_tests;
+mod tests;
+mod updates;
+mod window;
+mod workspace;
+
+// Preserve public module paths and concise internal module aliases.
 #[cfg(desktop)]
-mod workspace_sync;
+pub use window::auxiliary as auxiliary_windows;
+pub use workspace::identity_manifest;
+
+#[cfg(desktop)]
+pub(crate) use assistant::cli as assistant_cli;
+#[cfg(desktop)]
+pub(crate) use import::connections as import_connections;
+#[cfg(desktop)]
+pub(crate) use plans::connections as plan_connections;
+pub(crate) use plans::personal as personal_plans;
+#[cfg(desktop)]
+pub(crate) use plugins::{
+    connections as plugin_connections, native as plugin_native, oauth as plugin_oauth,
+};
+pub(crate) use storage::{assets, mobile as mobile_storage, search, session as session_storage};
+pub(crate) use window::printing;
+#[cfg(windows)]
+pub(crate) use window::tab_drag_preview;
+#[cfg(desktop)]
+pub(crate) use workspace::git as workspace_git;
+#[cfg(desktop)]
+pub(crate) use workspace::sync as workspace_sync;
+pub(crate) use workspace::{identity as workspace_identity, lock as workspace_lock};
 
 use error::NativeError;
 use std::{

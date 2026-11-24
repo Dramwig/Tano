@@ -9,20 +9,20 @@ import {
   normalizeSelectionWrapping,
   type EditorPreferences,
 } from '@tano/editor/runtime';
-import { AppearanceController } from '../appearance';
+import { AppearanceController } from '../appearance/appearance';
 import {
   parseSplitFontSettings,
   parseVisualFontChoice,
   sanitizeCustomFontName,
   type VisualFontChoice,
-} from '../editor-font';
+} from '../appearance/editor-font';
 import { featureChannel } from '../features';
 import { fileIconRegistryKey, FileIconRegistry } from '../file-icons/registry';
 import {
   GlassWallpaperController,
   indexedDbWallpaperStore,
   setGlassWallpaper,
-} from '../glass-wallpaper';
+} from '../appearance/glass-wallpaper';
 import {
   builtinThumbnail,
   customThumbnail,
@@ -30,8 +30,8 @@ import {
   normalizeImport,
   paintBuiltin,
   renderWallpaper,
-} from '../glass-wallpaper-render';
-import { LiquidGlassController } from '../liquid-glass';
+} from '../appearance/glass-wallpaper-render';
+import { LiquidGlassController } from '../appearance/liquid-glass';
 import { useWorkbenchRuntime, type WorkbenchExtensions } from '../runtime';
 import {
   readShortcutBindings,
@@ -40,11 +40,11 @@ import {
   shortcutLabel,
   shortcutPreferenceKey,
   type ShortcutId,
-} from '../shortcuts';
+} from '../shell/shortcuts';
 import type { useWorkspaceStore } from '../stores/workspace';
-import { applyAppearance, applyTheme, resolveThemeMode, type ThemePreference } from '../theme';
-import { parseToolbarMode, toolbarPreferenceKey } from '../toolbar-preference';
-import { useEditorFontFamily } from '../use-editor-font';
+import { applyAppearance, applyTheme, resolveThemeMode, type ThemePreference } from '../appearance/theme';
+import { parseToolbarMode, toolbarPreferenceKey } from '../shell/toolbar-preference';
+import { useEditorFontFamily } from '../appearance/use-editor-font';
 import type { WindowContext } from '../windows/context';
 
 export const SIDEBAR_MIN_WIDTH = 180;

@@ -33,8 +33,8 @@ import { vSurfaceMotion } from '../primitives/surface-motion';
 import ShortcutHint from '../primitives/ShortcutHint.vue';
 import WechatLogo from '../clipboard-icons/wechat.vue';
 import ZhihuLogo from '../clipboard-icons/zhihu.vue';
-import { blockContainerOptions } from '../block-menu-structure';
-import type { SlashTranslate } from '../slash-commands';
+import { blockContainerOptions } from '../plugins/block-menu-structure';
+import type { SlashTranslate } from '../plugins/slash-commands';
 import type { BlockMenuState, BlockSubmenuKind } from '../plugins/block-menu-controller';
 
 const props = defineProps<{

@@ -1,5 +1,5 @@
 import { parsePluginJson, pluginRecord, type PluginJson, type PluginUiBundle } from '@tano/protocol';
-import { resolvedTheme, themeChangedEvent } from '../theme';
+import { resolvedTheme, themeChangedEvent } from '../appearance/theme';
 import outerSource from './ui-outer.js?raw';
 import clientSource from './ui-client.js?raw';
 import innerSource from './ui-inner.js?raw';

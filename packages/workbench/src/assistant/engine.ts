@@ -13,10 +13,10 @@ import type { AssistantExecutionResult } from './execution';
 import { editDocumentRules } from './tool-rules';
 import { assistantSystemMessages } from './prompts';
 import type { AssistantMode } from './prompts';
-import type { UiLocale } from '../locale';
+import type { UiLocale } from '../i18n/locale';
 import { assistantCopy, assistantSourceSeparator, formatAssistantText } from './language';
 import type { AssistantPromptOrigin } from './language';
-import { loadLocaleCatalogs } from '../locale-catalogs';
+import { loadLocaleCatalogs } from '../i18n/locale-catalogs';
 
 export const assistantLimits = { contextBytes: 256_000, rounds: 8, idleRounds: 3, proposals: 20, responseBytes: 1_000_000 };
 

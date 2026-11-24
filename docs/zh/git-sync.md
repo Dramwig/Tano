@@ -29,4 +29,4 @@ Git 同步当前支持根目录中普通 `.git` 仓库；拒绝符号链接、�
 
 每次 Git 操作都有自己的原子性，但“保存、提交、获取、合并、推送”整体不是事务。推送失败不会回滚或删除已经保存的本地提交。
 
-参见 [Workspace Contract](workspace-contract.md)、[可靠云同步](reliable-sync.md) 和 [插件能力](../plugins.md)。
+参见 [Workspace Contract](workspace-contract.md)、[可靠云同步](reliable-sync.md) 和 [插件能力](plugins.md)。

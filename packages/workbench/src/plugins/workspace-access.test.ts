@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
-import { DemoAdapter } from '../adapter';
+import { DemoAdapter } from '../workspace/adapter';
 import { configureWorkbench } from '../runtime';
 import { useWorkspaceStore } from '../stores/workspace';
 import { documentOverviewPlugin } from './example';

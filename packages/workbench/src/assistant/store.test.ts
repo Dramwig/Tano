@@ -5,7 +5,7 @@ import type { AssistantProposal, AssistantSession, AssistantTransport, Workspace
 import { parseAssistantSession } from '@tano/protocol';
 import { configureWorkbench, useWorkbenchRuntime } from '../runtime';
 import { useAssistantStore, useInlineAssistantStore } from './store';
-import { setUiLocale, preloadUiLocale } from '../i18n';
+import { setUiLocale, preloadUiLocale } from '../i18n/i18n';
 import { assistantLanguagePolicy, assistantTaskPrompts } from './language';
 import { assistantAnswerText, assistantDisplayParts } from './results';
 
@@ -815,6 +815,6 @@ describe('assistant session coordination', () => {
 });
 
 beforeAll(async () => {
-  const { uiLocales } = await import('../locale');
+  const { uiLocales } = await import('../i18n/locale');
   await Promise.all(uiLocales.map(preloadUiLocale));
 });

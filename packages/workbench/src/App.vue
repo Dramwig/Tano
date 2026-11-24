@@ -22,32 +22,32 @@ import {
 } from 'lucide-vue-next';
 import ShortcutHint from '@tano/editor/shortcut-hint';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
-import AppMenu from './components/AppMenu.vue';
-import AppTooltip from './components/AppTooltip.vue';
-import AssistantButterflyLayer from './components/AssistantButterflyLayer.vue';
-import ButtonVisibilityGroup from './components/ButtonVisibilityGroup.vue';
-import DesktopTabs from './components/DesktopTabs.vue';
-import FileMetadataPanel from './components/FileMetadataPanel.vue';
-import FileTree from './components/FileTree.vue';
-import HelpLauncher from './components/HelpLauncher.vue';
-import OpenWorkspaceIcon from './components/OpenWorkspaceIcon.vue';
-import PluginExplorer from './components/PluginExplorer.vue';
-import PluginMenu from './components/PluginMenu.vue';
-import PluginView from './components/PluginView.vue';
-import ReferenceGraphPopover from './components/ReferenceGraphPopover.vue';
-import SidebarNavigation from './components/SidebarNavigation.vue';
-import SidebarUpdateButton from './components/SidebarUpdateButton.vue';
-import WorkbenchContextMenus from './components/WorkbenchContextMenus.vue';
-import WorkbenchModals from './components/WorkbenchModals.vue';
-import WorkbenchPanes from './components/WorkbenchPanes.vue';
-import WorkbenchSettings from './components/WorkbenchSettings.vue';
-import WorkspaceIcon from './components/WorkspaceIcon.vue';
-import WorkspaceMenuLayout from './components/WorkspaceMenuLayout.vue';
-import WorkspacePanes from './components/WorkspacePanes.vue';
-import WorkspaceSidebar from './components/WorkspaceSidebar.vue';
-import WorkspaceViewSwitcher from './components/WorkspaceViewSwitcher.vue';
-import { vScrollFade } from './scroll-fade';
-import { useWorkbench, type WorkbenchProps } from './use-workbench';
+import AppMenu from './shell/components/AppMenu.vue';
+import AppTooltip from './shell/components/AppTooltip.vue';
+import AssistantButterflyLayer from './assistant/components/AssistantButterflyLayer.vue';
+import ButtonVisibilityGroup from './shell/components/ButtonVisibilityGroup.vue';
+import DesktopTabs from './tabs/components/DesktopTabs.vue';
+import FileMetadataPanel from './files/components/FileMetadataPanel.vue';
+import FileTree from './files/components/FileTree.vue';
+import HelpLauncher from './help/components/HelpLauncher.vue';
+import OpenWorkspaceIcon from './shell/components/OpenWorkspaceIcon.vue';
+import PluginExplorer from './plugins/components/PluginExplorer.vue';
+import PluginMenu from './plugins/components/PluginMenu.vue';
+import PluginView from './plugins/components/PluginView.vue';
+import ReferenceGraphPopover from './objects/components/ReferenceGraphPopover.vue';
+import SidebarNavigation from './shell/components/SidebarNavigation.vue';
+import SidebarUpdateButton from './shell/components/SidebarUpdateButton.vue';
+import WorkbenchContextMenus from './shell/components/WorkbenchContextMenus.vue';
+import WorkbenchModals from './shell/components/WorkbenchModals.vue';
+import WorkbenchPanes from './shell/components/WorkbenchPanes.vue';
+import WorkbenchSettings from './settings/components/WorkbenchSettings.vue';
+import WorkspaceIcon from './workspace/components/WorkspaceIcon.vue';
+import WorkspaceMenuLayout from './shell/components/WorkspaceMenuLayout.vue';
+import WorkspacePanes from './shell/components/WorkspacePanes.vue';
+import WorkspaceSidebar from './shell/components/WorkspaceSidebar.vue';
+import WorkspaceViewSwitcher from './shell/components/WorkspaceViewSwitcher.vue';
+import { vScrollFade } from './shell/scroll-fade';
+import { useWorkbench, type WorkbenchProps } from './shell/use-workbench';
 import AuxiliaryWindows from './windows/AuxiliaryWindows.vue';
 import WindowScope from './windows/WindowScope.vue';
 import {
@@ -55,8 +55,8 @@ import {
   InlineAssistantInput,
   SidebarAssistant,
   SidebarPlan,
-} from './workbench-async-components';
-import { workbenchContextKey } from './workbench-context';
+} from './shell/workbench-async-components';
+import { workbenchContextKey } from './shell/workbench-context';
 
 const props = defineProps<WorkbenchProps>();
 const emit = defineEmits<{ ready: [] }>();

@@ -1,6 +1,6 @@
 import { canonicalPluginJson, isMarkdown, isWorkspaceInternalPath, pluginRecord } from '@tano/protocol';
 import type { Workspace, WorkspaceRelation, WorkspaceObject } from '@tano/protocol';
-import type { PluginDocumentEntry, PluginPageOptions } from '../plugin-sdk';
+import type { PluginDocumentEntry, PluginPageOptions } from './plugin-sdk';
 import { assistantHash } from '../assistant/hash';
 import { compareQueryText, PluginQueryPager, pluginQueryOptions, queryBoolean, queryText } from './data';
 

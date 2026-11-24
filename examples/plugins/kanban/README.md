@@ -18,4 +18,4 @@ npm run plugin -- verify artifacts/kanban.tano-plugin.json
 
 示例显示最多 100 项未归档事件任务，不直接支持旧版 `task` 类型。已完成状态使用 `completed` 属性，中间列保存在 `kanbanLane` 属性。关闭插件不会删除任务；存在交付审阅要求的任务仍遵守宿主的完成校验。
 
-独立开发插件时，应在自己的项目中安装 Vue 和 SDK 类型依赖。也可以将界面改成 React、其他浏览器组件库或原生 DOM；所有运行代码须随包提供。完整协议见[插件开发文档](../../../docs/plugins.md)。
+独立开发插件时，应在自己的项目中安装 Vue 和 SDK 类型依赖。也可以将界面改成 React、其他浏览器组件库或原生 DOM；所有运行代码须随包提供。完整协议见[插件开发文档](../../../docs/zh/plugins.md)。

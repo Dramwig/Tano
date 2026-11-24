@@ -26,27 +26,27 @@ import type { EditorView } from '@milkdown/kit/prose/view';
 import { callCommand } from '@milkdown/kit/utils';
 import { referenceUrl, type CommentAnchor, type ReferenceIdentity } from '@tano/protocol';
 import { isHTMLElement } from '../primitives/dom-realm';
-import { completeInlineObjectSpacing } from '../auto-spacing';
-import { blockCommand, blockCommandNames } from '../block-commands';
+import { completeInlineObjectSpacing } from '../core/auto-spacing';
+import { blockCommand, blockCommandNames } from './block-commands';
 import {
   commentSpansForSelection,
   projectCommentText,
   proseRangesForCommentSpans,
   type CommentGeometry,
-} from '../comment-projection';
-import { commandEnabled } from '../document-model';
-import { safeResourceUrl } from '../enhanced-markdown';
-import type { EditorExtension } from '../extension';
-import { inlineMath } from '../math';
-import { markdownPositionMap, type ModeSelection } from '../mode-selection';
-import { openReferencePicker } from '../reference-picker';
-import type { WorkspaceCapabilities } from '../runtime';
-import { pageSearchKey, proseSearchRanges } from '../search';
-import { splitFrontmatter } from '../syntax';
-import { backgroundColor, highlight, subscript, superscript, textColor, underline } from '../text-styles';
-import { normalizeTextColor } from '../text-style-markdown';
-import { wikiLink } from '../wiki-link';
-import { parseWikiLink } from '../wiki-link-markdown';
+} from '../core/comment-projection';
+import { commandEnabled } from '../core/document-model';
+import { safeResourceUrl } from '../markdown/enhanced-markdown';
+import type { EditorExtension } from '../core/extension';
+import { inlineMath } from '../markdown/math';
+import { markdownPositionMap, type ModeSelection } from '../core/mode-selection';
+import { openReferencePicker } from '../core/reference-picker';
+import type { WorkspaceCapabilities } from '../core/runtime';
+import { pageSearchKey, proseSearchRanges } from '../core/search';
+import { splitFrontmatter } from '../markdown/syntax';
+import { backgroundColor, highlight, subscript, superscript, textColor, underline } from '../markdown/text-styles';
+import { normalizeTextColor } from '../markdown/text-style-markdown';
+import { wikiLink } from '../markdown/wiki-link';
+import { parseWikiLink } from '../markdown/wiki-link-markdown';
 import { referenceFlashKey } from './editor-decorations';
 import type { LocalSourceState } from './inline-source-controller';
 

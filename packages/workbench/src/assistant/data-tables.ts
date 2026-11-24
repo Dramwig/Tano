@@ -1,7 +1,7 @@
 import { parseDataTable } from '@tano/protocol';
 import type { AssistantPreview, AssistantProposal, DataTable, FileSnapshot, WorkspaceAdapter } from '@tano/protocol';
-import type { DataTableState } from '../data-table-controller';
-import { mergeDataTable } from '../workspace-data-tables';
+import type { DataTableState } from '../data-tables/data-table-controller';
+import { mergeDataTable } from '../data-tables/workspace-data-tables';
 
 const serialize = (table: DataTable) => JSON.stringify(table, null, 2) + '\n';
 
