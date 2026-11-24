@@ -7,7 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, expect } from '@playwright/test';
 import { buildPlugin } from './plugin-build.mjs';
-import { acceptTaskInsights } from '../../tests/fixtures/task-insights-acceptance.mjs';
+import { acceptTaskInsights, selectWorkspaceSidebarTab } from '../../tests/fixtures/task-insights-acceptance.mjs';
 
 if (process.platform !== 'win32') throw new Error('This acceptance test requires Windows and WebView2.');
 if (!process.env.npm_execpath) throw new Error('Run npm run test:plugins:native from the repository.');
@@ -103,8 +103,7 @@ try {
   await page.locator('.plugin-detail-page').getByRole('button', { name: '权限', exact: true }).click();
   await page.getByRole('button', { name: '授权此版本运行', exact: true }).click();
   await closePluginDetails(page);
-  await page.getByRole('button', { name: /^切换侧边栏视图：/ }).click();
-  await page.getByRole('menuitemradio', { name: '插件', exact: true }).click();
+  await selectWorkspaceSidebarTab(page, '插件');
   await page.getByRole('region', { name: '插件', exact: true }).getByRole('button', { name: /^Git 变更/ }).click();
   const view = page.getByRole('region', { name: '本机查询测试 · Git 变更', exact: true }).frameLocator('iframe[title="插件界面隔离容器"]').frameLocator('iframe');
   await expect(view.getByRole('heading', { name: 'Git 变更', exact: true })).toBeVisible({ timeout: 15000 });

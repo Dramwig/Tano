@@ -1,3 +1,8 @@
+export function selectWorkspaceSidebarTab(page, name) {
+  return page.getByRole('tablist', { name: '侧边栏视图', exact: true })
+    .getByRole('tab', { name, exact: true }).click();
+}
+
 /** Reused unchanged by the browser demo and the production WebView2/native adapter. */
 export async function acceptTaskInsights(page, expect, canonical, screenshotPath) {
   await page.evaluate(async () => {
@@ -20,8 +25,7 @@ export async function acceptTaskInsights(page, expect, canonical, screenshotPath
   await page.getByRole('button', { name: '授权此版本运行', exact: true }).click();
   await closePluginDetails(page);
   await expect.poll(() => page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').pluginRuntime.find(row => row.id === 'task-insights')?.status), { timeout: 30000 }).toBe('running');
-  await page.getByRole('button', { name: /^切换侧边栏视图：/ }).click();
-  await page.getByRole('menuitemradio', { name: '插件', exact: true }).click();
+  await selectWorkspaceSidebarTab(page, '插件');
   await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').openPluginView('task-insights', 'dashboard'));
   const surface = page.getByRole('region', { name: '任务统计 · 任务统计', exact: true });
   const ui = surface.frameLocator('iframe[title="插件界面隔离容器"]').frameLocator('iframe[title="插件自定义界面"]');
