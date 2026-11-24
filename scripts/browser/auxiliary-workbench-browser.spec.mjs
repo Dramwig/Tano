@@ -252,6 +252,26 @@ test('the glass settings modal keeps the same wallpaper framing when its zoom fi
   expect(changed / settled.length).toBeLessThan(0.01);
 });
 
+test('wallpaper sliders share both track edges at wide and narrow widths', async ({ page }) => {
+  await prepare(page);
+  await page.evaluate(() => {
+    const { appearance, appearanceController } = window.workbench;
+    appearanceController.select({ workspaceId: appearance.workspaceId, kind: 'preset', id: 'builtin:liquid' });
+    window.workbench.openSettings('appearance');
+  });
+  const sliders = page.locator('.glass-wallpaper').getByRole('slider');
+  for (const width of [1280, 640]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(sliders).toHaveCount(2);
+    const [overlay, softness] = await sliders.evaluateAll(inputs => inputs.map(input => {
+      const { left, right } = input.getBoundingClientRect();
+      return { left, right };
+    }));
+    expect(overlay.right).toBeGreaterThan(overlay.left);
+    expect(softness).toEqual(overlay);
+  }
+});
+
 test('built-in glass wallpapers switch their thumbnail and bitmap with the display mode', async ({ page }) => {
   await prepare(page);
   await page.evaluate(() => window.workbench.openSettings('appearance'));
@@ -276,6 +296,8 @@ test('built-in glass wallpapers switch their thumbnail and bitmap with the displ
       appearanceController.select({ workspaceId: appearance.workspaceId, kind: 'preset', id });
     }, preset);
     await mode.selectOption('light');
+    const sliders = page.locator('.glass-wallpaper').getByRole('slider');
+    await expect(sliders).toHaveCount(2);
     const choice = page.getByRole('group', { name: '背景图片' }).getByRole('button', { name: wallpaper, exact: true });
     const swatch = choice.locator('.glass-wallpaper-swatch');
     const previousWallpaper = await readWallpaper();
@@ -287,15 +309,18 @@ test('built-in glass wallpapers switch their thumbnail and bitmap with the displ
 
     await mode.selectOption('dark');
     await expect(root).toHaveAttribute('data-theme', 'dark');
+    await expect(sliders).toHaveCount(2);
     await expect(swatch).not.toHaveCSS('background-image', lightSwatch);
     await expect.poll(readWallpaper).not.toBe(lightWallpaper);
     await expect(root).toHaveAttribute('data-glass-wallpaper', '');
     await expect(choice).toHaveAttribute('aria-pressed', 'true');
     const darkSwatch = await swatch.evaluate(element => getComputedStyle(element).backgroundImage);
     await expect(root).toHaveCSS('--glass-wallpaper-veil', preset === 'builtin:liquid' ? '91%' : '45%');
+    await expect(page.locator('.glass-wallpaper')).toHaveAttribute('aria-busy', 'false');
     const darkWallpaper = await readWallpaper();
+    const darkBrightness = await readBrightness(darkWallpaper);
     expect(await readBrightness(darkSwatch)).toBeLessThan(await readBrightness(lightSwatch) * 0.6);
-    expect(await readBrightness(darkWallpaper)).toBeLessThan(100);
+    expect(darkBrightness).toBeLessThan(100);
 
     await page.emulateMedia({ colorScheme: 'dark' });
     await mode.selectOption('system');

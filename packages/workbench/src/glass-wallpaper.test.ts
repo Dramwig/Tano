@@ -150,16 +150,18 @@ it('publishes a built-in wallpaper as CSS variables, persists the choice and cle
   controller.dispose();
 });
 
-it('keeps liquid wallpaper sharp through softness changes and restores the saved frost softness', async () => {
+it('applies softness to both glass materials and preserves manual veil opacity', async () => {
   const { store, renderer } = fakes();
   const controller = new GlassWallpaperController('alice', localStorage, store, renderer);
   await controller.load();
   controller.select('builtin:dusk'); await flush();
   root.dataset.material = 'builtin:liquid';
   window.dispatchEvent(new Event(themeChangedEvent)); await flush();
-  expect(renderer.render).toHaveBeenLastCalledWith(expect.anything(), 0);
+  expect(renderer.render).toHaveBeenLastCalledWith(expect.anything(), 50);
+  controller.setVeilOpacity(65, true);
   controller.setSoftness(72, true); await flush();
-  expect(renderer.render).toHaveBeenCalledTimes(2);
+  expect(renderer.render).toHaveBeenLastCalledWith(expect.anything(), 72);
+  expect(root.style.getPropertyValue('--glass-wallpaper-veil')).toBe('65%');
   root.dataset.material = 'builtin:frost';
   window.dispatchEvent(new Event(themeChangedEvent)); await flush();
   expect(renderer.render).toHaveBeenLastCalledWith(expect.anything(), 72);
@@ -167,7 +169,7 @@ it('keeps liquid wallpaper sharp through softness changes and restores the saved
   delete root.dataset.material;
 });
 
-it('restores a manual veil per mode while keeping the liquid bitmap sharp', async () => {
+it('restores a manual veil per mode without re-rendering the liquid bitmap', async () => {
   const { store, renderer } = fakes();
   root.dataset.material = 'builtin:liquid';
   const controller = new GlassWallpaperController('alice', localStorage, store, renderer);

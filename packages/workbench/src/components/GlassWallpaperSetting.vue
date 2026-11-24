@@ -9,6 +9,7 @@ const controller = glassWallpaper();
 const state = computed(() => controller?.state.value);
 const input = ref<HTMLInputElement>();
 const softnessId = useId();
+const veilId = useId();
 const choices = computed(() => {
   const current = state.value;
   if (!current) return [];
@@ -54,7 +55,13 @@ function pick(event: Event) {
         <span>{{ t(choice.label) }}</span>
       </button>
     </div>
-    <div class="glass-wallpaper-softness">
+    <div class="glass-wallpaper-sliders">
+      <label :for="veilId">{{ t('背景蒙版不透明度') }}</label>
+      <input :id="veilId" type="range" min="0" max="100" step="1" :value="controller.veilOpacity" :disabled="state.source === 'none'"
+        :aria-valuetext="`${controller.veilOpacity}%`"
+        @input="controller.setVeilOpacity(Number(($event.target as HTMLInputElement).value))"
+        @change="controller.setVeilOpacity(Number(($event.target as HTMLInputElement).value), true)" />
+      <output :for="veilId">{{ controller.veilOpacity }}%</output>
       <label :for="softnessId">{{ t('柔化') }}</label>
       <input :id="softnessId" type="range" min="0" max="100" step="1" :value="state.softness" :disabled="state.source === 'none'"
         :aria-valuetext="`${state.softness}%`"
@@ -93,10 +100,11 @@ function pick(event: Event) {
     radial-gradient(45% 50% at 50% 100%, color-mix(in srgb, var(--syntax-teal) 22%, transparent), transparent 70%),
     var(--sidebar);
 }
-.glass-wallpaper-softness { display: flex; align-items: center; gap: 12px; margin-top: 14px; font-size: 12px; color: var(--text-secondary); }
-.glass-wallpaper-softness input { flex: 1; min-width: 0; accent-color: var(--green); }
-.glass-wallpaper-softness input:disabled { opacity: .45; }
-.glass-wallpaper-softness output { width: 36px; text-align: end; font-variant-numeric: tabular-nums; color: var(--muted); }
+.glass-wallpaper-sliders { display: grid; grid-template-columns: fit-content(40%) minmax(0, 1fr) 36px; align-items: center; gap: 14px 12px; margin-top: 14px; font-size: 12px; color: var(--text-secondary); }
+.glass-wallpaper-sliders label { overflow-wrap: anywhere; }
+.glass-wallpaper-sliders input { width: 100%; margin: 0; min-width: 0; accent-color: var(--green); }
+.glass-wallpaper-sliders input:disabled { opacity: .45; }
+.glass-wallpaper-sliders output { text-align: end; font-variant-numeric: tabular-nums; color: var(--muted); }
 .glass-wallpaper-error { margin: 10px 0 0; color: var(--danger); font-size: 12px; }
 @media (max-width: 700px) {
   .glass-wallpaper-head { flex-direction: column; gap: 10px; }

@@ -208,7 +208,7 @@ export class GlassWallpaperController {
   private customSource?: { revision?: number; image: Promise<WallpaperSource> };
   private generation = 0;
   private softnessTimer?: ReturnType<typeof setTimeout>;
-  private clearWallpaper = false;
+  private liquidMaterial = false;
   private thumbnailMode?: ResolvedTheme['mode'];
   private developerMode = false;
   private useMaterialDefault = true;
@@ -217,7 +217,7 @@ export class GlassWallpaperController {
     const mode = this.mode();
     const modeChanged = this.thumbnailMode !== undefined && mode !== this.thumbnailMode;
     if (modeChanged) this.updateThumbnails(mode);
-    const materialChanged = this.clearWallpaper !== this.isLiquid();
+    const materialChanged = this.liquidMaterial !== this.isLiquid();
     if (materialChanged && this.useMaterialDefault && !this.wallpaperBeforeStripes) this.patch({ source: this.defaultSource() });
     const { source } = this.state.value;
     this.publish(); // Repaint the current bitmap immediately while a replacement is being prepared.
@@ -271,7 +271,6 @@ export class GlassWallpaperController {
       void this.refresh();
     }
   }
-  get supportsBlur() { return !this.isLiquid(); }
   get veilOpacity() {
     const { source, softness, veilOpacity } = this.state.value;
     const mode = this.mode();
@@ -345,8 +344,8 @@ export class GlassWallpaperController {
   }
   private async refresh() {
     const generation = ++this.generation;
-    this.clearWallpaper = this.isLiquid();
-    const softness = this.clearWallpaper ? 0 : this.state.value.softness;
+    this.liquidMaterial = this.isLiquid();
+    const softness = this.state.value.softness;
     this.patch({ busy: true, error: undefined });
     try {
       const source = await this.source();
@@ -386,7 +385,6 @@ export class GlassWallpaperController {
     if (commit && !this.wallpaperBeforeStripes) this.write(this.preference());
     if (this.state.value.source === 'none') return;
     this.publish();
-    if (this.isLiquid()) return; // Adjust only the desk veil and contrast on clear glass.
     this.softnessTimer = setTimeout(() => void this.refresh(), commit ? 0 : 120);
   }
   async importFile(file: File) {
